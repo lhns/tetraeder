@@ -1,0 +1,13 @@
+# Component alerts for hard engine failures (docs/plan.md "Alerts"). SLO burn-rate alerts come in Phase 3a.
+# Loaded by vmalert in docker-compose.yml; metric names follow -opentelemetry.usePrometheusNaming.
+groups:
+  - name: tetraeder-engine
+    rules:
+      - alert: TetraederRequestsFailing
+        expr: sum by (error_type) (rate(gen_ai_server_request_duration_seconds_count{error_type!=""}[5m])) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Engine requests failing ({{ $labels.error_type }})"
+          description: "Requests end with error.type {{ $labels.error_type }} for 5 minutes; check the engine log (decode or load errors)."
