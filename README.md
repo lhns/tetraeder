@@ -12,6 +12,10 @@ Status: Phase 0 (foundations). Workspace stubs and Vast tooling only; no engine 
 
 Targets Windows and Linux. Build and test: `cargo build --workspace && cargo test --workspace`.
 
+## Name
+
+A tetrahedron (German: Tetraeder) has four faces, one for each of the four parallel modes the engine combines: tensor, pipeline, expert and data parallel. The core idea of the project is that all four are shapes of one placement plan, which the planner chooses together. Four also fits the four memory tiers (VRAM, RAM, NVMe, remote node) and the four milestones.
+
 ## Vast boxes
 
 All GPU work runs on ephemeral Vast.ai boxes through `scripts/vastctl.py` (ADR 0021). Needs `uv`, `ssh`, `scp`, `tar` (Git Bash on Windows), the API key in `~/.config/vastai/vast_api_key` and the registered SSH key `~/.ssh/lrn_vast_ed25519`. State lives in `.vast/` (git-ignored). Rules for agents are in [AGENTS.md](AGENTS.md).
