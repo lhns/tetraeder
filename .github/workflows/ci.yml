@@ -87,7 +87,10 @@ jobs:
       - name: Ninja generator
         if: runner.os == 'Windows'
         shell: bash
-        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+        # CUDA 12.8 rejects the runner's newer MSVC; compile-only, so the version check can be skipped.
+        run: |
+          echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
+          echo "NVCC_APPEND_FLAGS=-allow-unsupported-compiler" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           key: cuda
