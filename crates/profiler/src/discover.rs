@@ -3,11 +3,12 @@
 use crate::gpu::{GpuInfo, discover_gpus, pcie_prior_bytes_per_s};
 use crate::graph::{Device, DeviceKind, HardwareGraph, Link, LinkKind, Measurement, Tier};
 use crate::probe::{probe_disk_read, probe_ram_read};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// Hook for measurements that need ggml (Phase 1: `ggml-sys` exists).
-/// TODO: implement with a pinned-memory host-to-device copy loop once ggml-sys lands.
+/// Hook for measurements that need ggml.
+/// Still missing: an implementation backed by `ggml-sys` (pinned-memory host-to-device copy loop).
 pub trait DeviceProbe: Send + Sync {
     /// Host-to-device copy bandwidth in bytes per second for the GPU at NVML index `gpu_index`.
     fn host_to_device(&self, gpu_index: u32) -> Option<Measurement>;
@@ -101,20 +102,24 @@ fn discover_host(opts: &DiscoverOpts, g: &mut HardwareGraph) {
             .with_cpu(CpuRefreshKind::nothing())
             .with_memory(MemoryRefreshKind::nothing().with_ram()),
     );
+    // Without sysinfo the graph still needs its cpu0 (links point at it), with unknown sizes.
+    let sys = sys
+        .inspect_err(|e| g.notes.push(format!("sysinfo: host: {e}")))
+        .ok();
     let name = sys
-        .cpus()
-        .first()
+        .as_ref()
+        .and_then(|s| s.cpus().first())
         .map(|c| c.brand().trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "unknown cpu".into());
-    let threads = sys.cpus().len() as u32;
-    let cores = sys.physical_core_count().map(|c| c as u32);
+    let threads = sys.as_ref().map_or(1, |s| s.cpus().len().max(1) as u32);
+    let cores = System::physical_core_count().ok().map(|c| c as u32);
     let mut cpu = Device::new(
         "cpu0",
         DeviceKind::Cpu,
         &name,
         Tier::Ram,
-        sys.total_memory(),
+        sys.as_ref().map_or(0, System::total_memory),
     );
     cpu.cores = cores;
     cpu.threads = Some(threads);
@@ -128,9 +133,15 @@ fn discover_host(opts: &DiscoverOpts, g: &mut HardwareGraph) {
 
 fn discover_disks(opts: &DiscoverOpts, g: &mut HardwareGraph) {
     use sysinfo::{DiskKind, Disks};
-    let disks = Disks::new_with_refreshed_list();
+    let disks = match Disks::new_with_refreshed_list() {
+        Ok(d) => d,
+        Err(e) => {
+            g.notes.push(format!("sysinfo: disks: {e}"));
+            return;
+        }
+    };
     let mut vols: Vec<(String, PathBuf, u64, &'static str)> = Vec::new();
-    for d in disks.list() {
+    for d in disks.iter() {
         let fs = d.file_system().to_string_lossy().to_lowercase();
         if d.total_space() == 0 || PSEUDO_FS.contains(&fs.as_str()) {
             continue;
@@ -173,15 +184,19 @@ fn discover_disks(opts: &DiscoverOpts, g: &mut HardwareGraph) {
         }
     }
 
-    let mut seen: Vec<String> = Vec::new();
+    let keys: Vec<&OsStr> = vols
+        .iter()
+        .map(|v| volume_key(&v.0, &v.1, cfg!(windows)))
+        .collect();
+    let mut seen: Vec<&OsStr> = Vec::new();
     for (i, (name, mount, total, media)) in vols.iter().enumerate() {
         // Subvolumes and bind mounts list one device several times; keep the first, but a probe
         // result on a later duplicate still applies to it.
-        let dup = seen.iter().position(|n| n == name);
+        let dup = seen.iter().position(|k| *k == keys[i]);
         let idx = dup.unwrap_or(seen.len());
         let id = format!("disk{idx}");
         if dup.is_none() {
-            seen.push(name.clone());
+            seen.push(keys[i]);
             let mut dev = Device::new(&id, DeviceKind::Disk, name, Tier::Nvme, *total);
             dev.mount = Some(mount.to_string_lossy().into_owned());
             dev.media = Some((*media).into());
@@ -207,6 +222,17 @@ fn discover_disks(opts: &DiscoverOpts, g: &mut HardwareGraph) {
                 l.beta_bytes_per_s = m;
             }
         }
+    }
+}
+
+/// Identity of a volume for deduplication. Linux subvolumes and bind mounts share a device name
+/// under several mount points; Windows volumes can share an empty or equal label, but each has
+/// its own mount point.
+fn volume_key<'a>(name: &'a str, mount: &'a Path, by_mount: bool) -> &'a OsStr {
+    if by_mount {
+        mount.as_os_str()
+    } else {
+        OsStr::new(name)
     }
 }
 
@@ -352,8 +378,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn volume_key_separates_windows_volumes_and_merges_linux_subvolumes() {
+        let (c, d) = (Path::new("C:\\"), Path::new("D:\\"));
+        assert_ne!(volume_key("", c, true), volume_key("", d, true));
+        assert_eq!(
+            volume_key("/dev/sda2", Path::new("/"), false),
+            volume_key("/dev/sda2", Path::new("/home"), false)
+        );
+    }
+
     /// Runs the real discovery on whatever machine this is.
     #[test]
+    #[ignore = "real hardware probes; cargo test -- --ignored"]
     fn real_discovery_on_this_machine() {
         let opts = DiscoverOpts {
             repeats: 3,

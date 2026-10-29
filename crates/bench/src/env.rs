@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GpuSnap {
@@ -71,16 +72,23 @@ pub fn parse_gpu_csv(text: &str) -> Vec<GpuSnap> {
 /// Current state of all GPUs; empty without nvidia-smi or a device.
 pub fn gpu_snapshot() -> Vec<GpuSnap> {
     // Newer drivers renamed clocks_throttle_reasons.active to clocks_event_reasons.active.
+    // The field name that worked is cached, so a sample runs nvidia-smi once.
+    static THROTTLE_FIELD: OnceLock<&'static str> = OnceLock::new();
+    let query = |name: &str| {
+        let q = format!("--query-gpu={}", GPU_FIELDS.replace("{THROTTLE}", name));
+        let out = run("nvidia-smi", &[&q, "--format=csv,noheader,nounits"])?;
+        Some(parse_gpu_csv(&out)).filter(|g| !g.is_empty())
+    };
+    if let Some(name) = THROTTLE_FIELD.get() {
+        return query(name).unwrap_or_default();
+    }
     for name in [
         "clocks_event_reasons.active",
         "clocks_throttle_reasons.active",
     ] {
-        let q = format!("--query-gpu={}", GPU_FIELDS.replace("{THROTTLE}", name));
-        if let Some(out) = run("nvidia-smi", &[&q, "--format=csv,noheader,nounits"]) {
-            let gpus = parse_gpu_csv(&out);
-            if !gpus.is_empty() {
-                return gpus;
-            }
+        if let Some(gpus) = query(name) {
+            let _ = THROTTLE_FIELD.set(name);
+            return gpus;
         }
     }
     Vec::new()
@@ -186,6 +194,12 @@ fn now_secs() -> u64 {
 pub fn utc_now() -> String {
     let (y, mo, d, h, mi, s) = utc_parts(now_secs());
     format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
+}
+
+/// `HHMMSS` (UTC), distinguishes several runs of one spec on the same day.
+pub fn time_name() -> String {
+    let (.., h, mi, s) = utc_parts(now_secs());
+    format!("{h:02}{mi:02}{s:02}")
 }
 
 /// `YYYYMMDD`, the name of the nightly results directory (UTC).

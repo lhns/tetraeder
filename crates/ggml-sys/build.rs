@@ -15,7 +15,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=../../vendor/PIN");
-    println!("cargo:rerun-if-changed=../../patches/series");
+    println!("cargo:rerun-if-changed=../../patches");
     println!("cargo:rerun-if-env-changed=TETRAEDER_CUDA_ARCHS");
     println!("cargo:rerun-if-env-changed=TETRAEDER_GGML_NATIVE");
     println!("cargo:rerun-if-env-changed=LIBCLANG_PATH");
@@ -154,7 +154,9 @@ fn generate_bindings(src: &Path) {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
     let bindings = builder.generate().unwrap_or_else(|e| {
         panic!(
-            "bindgen failed ({e}). It needs libclang: install LLVM (Windows: `winget install LLVM.LLVM`,              Debian/Ubuntu: `apt install libclang-dev`) and set LIBCLANG_PATH to the directory              holding libclang.dll / libclang.so."
+            "bindgen failed ({e}). It needs libclang: install LLVM (Windows: `winget install LLVM.LLVM`,
+             Debian/Ubuntu: `apt install libclang-dev`) and set LIBCLANG_PATH to the directory
+             holding libclang.dll / libclang.so."
         )
     });
     let dest = PathBuf::from(env("OUT_DIR")).join("bindings.rs");

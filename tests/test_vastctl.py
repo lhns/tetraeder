@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import tomllib
 from pathlib import Path
 
 import httpx
@@ -111,6 +112,8 @@ class FakeShell:
         self.sub_files = {"CMakeLists.txt": b"project(llama)"}
         self.stdins: list[bytes] = []
         self.nightly_rc = 0
+        self.run_out = "launched scripts/nightly.sh at 12:00:00\n"
+        self.provision_log = "cuda: ok\n12:01:00 PROVISION_DONE rc=0\n"
 
     @staticmethod
     def _archive(tmp: Path) -> bytes:
@@ -140,6 +143,8 @@ class FakeShell:
                     return res(0, tar_bytes({prefix + k: v for k, v in self.sub_files.items()}))
                 paths = argv[argv.index("--") + 1:]
                 return res(0, tar_bytes({f"{x}/f.txt" if "." not in x else x: b"x" for x in paths}))
+            if "write-tree" in argv:
+                return res(0, b"deadbeef\n")
             return res(0, b"")
         if input is not None:
             self.stdins.append(input)
@@ -164,6 +169,12 @@ class FakeShell:
             return res(0, b"installed 3 files into /root/tetraeder\n")
         if "nightly.log" in cmd:
             return res(0, b"12:00:00\nNIGHTLY_DONE rc=%d\n" % self.nightly_rc)
+        if "vast_box.sh run " in cmd:
+            return res(0, banner + self.run_out.encode())
+        if "nohup" in cmd:
+            return res(0, banner + b"launched 0\n")
+        if "provision.log" in cmd and "tail" in cmd:
+            return res(0, self.provision_log.encode())
         if "ensure-watchdog" in cmd:
             return res(0, b"watchdog=1 mode=supervisor\n")
         return res(0, b"ok\n")
@@ -566,7 +577,7 @@ def test_git_archive_includes_submodule_in_one_tarball(env):
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
         names = tf.getnames()
     assert "vendor/llama.cpp/CMakeLists.txt" in names and "Cargo.toml" in names and "crates/f.txt" in names
-    sub_calls = [a for a in shell.argvs if a[0] == "git" and "-C" in a]
+    sub_calls = [a for a in shell.argvs if a[0] == "git" and "-C" in a and "archive" in a]
     assert sub_calls and "--prefix=vendor/llama.cpp/" in sub_calls[0]
     main_call = next(a for a in shell.argvs if a[:2] == ["git", "archive"])
     assert main_call[main_call.index("--") + 1:] == ["crates", "scripts", "Cargo.toml"]  # missing paths skipped
@@ -611,6 +622,9 @@ def nightly_env(env, monkeypatch):
 
     shell.fetch_ok = True
     monkeypatch.setattr(vc, "fetch", fake_fetch)
+    spec = ctx.root / vc.NIGHTLY_SPEC  # nightly resolves the spec against the repo root
+    spec.parent.mkdir(parents=True)
+    shutil.copy(ROOT / vc.NIGHTLY_SPEC, spec)
     return ctx, fake, shell, order
 
 
@@ -699,3 +713,173 @@ def test_nightly_respects_runway_minimum(nightly_env):
     fake.credit = 0.5  # 0.3 $/h -> 1.7 h < runway_rent_min_h
     assert vc.main(["nightly"], ctx) == 1
     assert not fake.calls("PUT", "/asks/") and order == []
+
+
+# ------------------------------------------------------------------------------------------------ review fixes
+def _covered(path: str) -> bool:
+    return any(path == a or path.startswith(a + "/") for a in vc.ARCHIVE_PATHS)
+
+
+def test_archive_paths_cover_workspace_members_and_build_rs_inputs():
+    cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    for member in cargo["workspace"]["members"]:
+        assert _covered(member.removesuffix("/*")), member
+    build_rs = (ROOT / "crates" / "ggml-sys" / "build.rs").read_text(encoding="utf-8")
+    paths = re.findall(r'rerun-if-changed=((?:\.\./)+[^"]+)', build_rs)
+    assert "../../vendor/PIN" in paths
+    for p in paths:
+        repo_path = p.replace("../", "")
+        if repo_path.startswith(vc.SUBMODULE):
+            continue
+        assert _covered(repo_path), repo_path
+
+
+def test_image_tag_comes_from_vendor_pin():
+    tag = re.search(r"^tag=(\S+)", (ROOT / "vendor" / "PIN").read_text(encoding="utf-8"), re.M).group(1)
+    assert vc.IMAGE == f"ghcr.io/lhns/tetraeder-box:{tag}"
+
+
+def test_bench_spec_llama_pin_matches_vendor_pin():
+    pin = re.search(r"^commit=(\S+)", (ROOT / "vendor" / "PIN").read_text(encoding="utf-8"), re.M).group(1)
+    spec = tomllib.loads((ROOT / vc.NIGHTLY_SPEC).read_text(encoding="utf-8"))
+    assert spec["pins"]["llama_cpp"] == pin
+
+
+def test_git_archive_takes_submodule_from_index_tree(env):
+    ctx, shell = git_env(env)
+    vc.git_archive(ctx)
+    wt = next(a for a in shell.argvs if "write-tree" in a)
+    assert wt[:3] == ["git", "-C", vc.SUBMODULE]
+    sub = next(a for a in shell.argvs if a[0] == "git" and "-C" in a and "archive" in a)
+    assert sub[-1] == "deadbeef" and "HEAD" not in sub  # staged patches are included
+
+
+def test_start_batch_requires_launched_marker(env):
+    ctx, fake, shell = env
+    manage(ctx, fake)
+    shell.run_out = "no such script: scripts/nightly.sh\n"
+    with pytest.raises(vc.VastError, match="did not start"):
+        vc.start_batch(ctx, "100", {"script": "scripts/nightly.sh", "args": []})
+    assert ctx.store.state["batch"] is None
+
+
+def test_nightly_start_failure_destroys_box(nightly_env, monkeypatch):
+    ctx, fake, shell, order = nightly_env
+
+    def bad_start(c, i, b):
+        raise vc.VastError("job did not start")
+    monkeypatch.setattr(vc, "start_batch", bad_start)
+    assert vc.main(["nightly"], ctx) == 1
+    assert fake.calls("DELETE", "/instances/999/")
+
+
+def test_nightly_computes_models_before_renting(nightly_env):
+    ctx, fake, shell, order = nightly_env
+    (ctx.root / vc.NIGHTLY_SPEC).unlink()
+    assert vc.main(["nightly"], ctx) == 1
+    assert not fake.calls("PUT", "/asks/")  # nothing rented
+
+
+def test_nightly_resolves_spec_against_repo_root_not_cwd(nightly_env, monkeypatch, tmp_path):
+    ctx, fake, shell, order = nightly_env
+    (ctx.root / vc.NIGHTLY_SPEC).write_text('[model.a]\nhf = "org/root:root.gguf"\n', encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert vc.main(["nightly"], ctx) == 0
+    assert ("provision", ["org/root:root.gguf"]) in order
+
+
+@pytest.mark.parametrize("exc", [KeyboardInterrupt(), RuntimeError("boom")])
+def test_nightly_any_exception_before_job_start_destroys_box(nightly_env, monkeypatch, exc):
+    ctx, fake, shell, order = nightly_env
+
+    def boom(*a, **k):
+        raise exc
+    monkeypatch.setattr(vc, "provision", boom)
+    with pytest.raises(type(exc)):
+        vc.nightly(ctx, vc.build_parser().parse_args(["nightly"]))
+    assert fake.calls("DELETE", "/instances/999/")
+
+
+@pytest.mark.parametrize("exc", [vc.Unreachable("down"), vc.VastError("api")])
+def test_nightly_fetch_error_keeps_box_for_watchdog(nightly_env, monkeypatch, exc):
+    ctx, fake, shell, order = nightly_env
+
+    def boom(*a, **k):
+        raise exc
+    monkeypatch.setattr(vc, "fetch", boom)
+    assert vc.main(["nightly"], ctx) == 1
+    assert not fake.calls("DELETE")
+    assert "nightly FAILED" in (ctx.vast_dir / "events.log").read_text()
+
+
+def test_nightly_lock_excludes_watchdog_tick_and_second_nightly(nightly_env):
+    ctx, fake, shell, order = nightly_env
+    lock = vc.FileLock(ctx.vast_dir / "nightly.lock")
+    assert lock.acquire()
+    try:
+        assert vc.watchdog_tick(ctx, vc.Policy()) == {"skipped": "nightly running"}
+        assert not fake.requests  # the tick did not even call the API
+        assert vc.main(["nightly"], ctx) == 1 and not fake.calls("PUT", "/asks/")
+    finally:
+        lock.release()
+    assert vc.watchdog_tick(ctx, vc.Policy())["balance"]  # released: ticks run again
+    assert vc.main(["nightly"], ctx) == 0  # and the tick released its own hold
+
+
+def test_watchdog_stops_box_running_past_max_box_hours(env):
+    ctx, fake, shell = env
+    rec = manage(ctx, fake)
+    rec["runs"] = {"bench/results": {"ok": False}}
+    fake.instances[100]["start_date"] = time.time() - 4 * 3600
+    tick(ctx)
+    assert json.loads(fake.calls("PUT", "/instances/100/")[0][2]) == {"state": "stopped"}
+    assert not fake.calls("DELETE")
+    assert "max_box_hours" in (ctx.vast_dir / "events.log").read_text()
+    assert R(ctx)["role"] == "salvage"  # unfetched results: the salvage path fetches them later
+
+
+def test_watchdog_leaves_young_box_alone(env):
+    ctx, fake, shell = env
+    manage(ctx, fake)
+    tick(ctx)
+    assert not fake.calls("PUT", "/instances/100/")
+
+
+def test_watchdog_does_not_idle_stop_while_provisioning(env):
+    ctx, fake, shell = env
+    rec = manage(ctx, fake)
+    rec["idle_since"] = time.time() - 25 * 60
+    rec["provision_started"] = time.time() - 600
+    rec["provisioned"] = None
+    shell.health = "exp_procs=0\nbatch_alive=0\ngpu_util=0\nwatchdog=1\n"
+    tick(ctx)
+    assert not fake.calls("PUT", "/instances/100/")
+    R(ctx)["provision_started"] = time.time() - 3 * 3600  # a provision that never finished stops blocking
+    tick(ctx)
+    assert fake.calls("PUT", "/instances/100/")
+
+
+def test_provision_appends_log_and_polls_only_new_lines(env):
+    ctx, fake, shell = env
+    manage(ctx, fake)
+    assert vc.provision(ctx, "100", ["org/m:a.gguf"], wait_min=1)
+    launch = next(a[-1] for a in shell.argvs if a[0] == "ssh" and "nohup" in a[-1])
+    assert ">> /root/provision.log" in launch and "> /root/provision.log" not in launch.replace(">>", "")
+    poll = next(a[-1] for a in shell.argvs if a[0] == "ssh" and "tail -n +" in a[-1])
+    assert "provision.log" in poll  # only lines after the launch count, so an old PROVISION_DONE is ignored
+    assert R(ctx)["provisioned"]
+
+
+def test_main_prints_redacted_traceback_for_unexpected_errors(env, monkeypatch, capsys):
+    ctx, fake, shell = env
+    vc.redact.add(KEY)
+
+    def boom(c, a):
+        raise RuntimeError(f"bad {KEY}")
+    monkeypatch.setitem(vc.COMMANDS, "balance", boom)
+    assert vc.main(["balance"], ctx) == 1
+    err = capsys.readouterr()
+    text = err.out + err.err
+    assert "Traceback" in text and "RuntimeError" in text and KEY not in text and "***" in text

@@ -28,7 +28,7 @@ $V nightly                   # all of the above in one go: create, provision, ru
 $V watchdog --dry-run        # report what the cost-control loop would do
 ```
 
-Commit before `provision` or `run`: only committed HEAD (plus the `vendor/llama.cpp` checkout) is pushed. Until the GHCR image exists (Step 3), pass `--image nvidia/cuda:12.8.1-devel-ubuntu24.04`; `provision` then installs the missing tools. `.vast/config.json` holds the thresholds (price cap 0.45 USD/h, one instance, `auto_replace` off).
+Commit before `provision` or `run`: only committed HEAD (plus the `vendor/llama.cpp` checkout) is pushed. The box image (`ghcr.io/lhns/tetraeder-box:<tag from vendor/PIN>`) is built by `.github/workflows/box-image.yml`; to use a plain CUDA image instead pass `--image nvidia/cuda:12.8.1-devel-ubuntu24.04` and `provision` installs the missing tools. `.vast/config.json` holds the thresholds (price cap 0.45 USD/h, one instance, `auto_replace` off).
 
 Windows Task Scheduler, run once from a prompt (the nightly time is an example). Not registered by the repo; check `watchdog --dry-run` first.
 

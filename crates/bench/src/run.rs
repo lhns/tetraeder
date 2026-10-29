@@ -57,8 +57,6 @@ pub struct MetricResult {
     pub b: Summary,
     /// b / a, paired by repeat.
     pub ratio: Ratio,
-    /// The whole confidence interval lies below 1.
-    pub significant_drop: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,13 +90,16 @@ pub struct Results {
     pub exit_code: i32,
 }
 
-/// Exit code: 2 on any error (or skip under `--strict`), else 1 on any regression, else 0.
+/// Exit code, first match wins: 2 on any error (or skip under `--strict`), 1 on any regression,
+/// 3 inconclusive (a noise pair outside its band), else 0.
 pub fn exit_code(pairs: &[PairResult], strict: bool) -> i32 {
     let any = |f: &dyn Fn(Status) -> bool| pairs.iter().any(|p| f(p.status));
     if any(&|s| s == Status::Error || (strict && s == Status::Skipped)) {
         2
     } else if any(&|s| s == Status::Regression) {
         1
+    } else if any(&|s| s == Status::Noisy) {
+        3
     } else {
         0
     }
@@ -130,12 +131,12 @@ pub fn verdict(
     }
 }
 
-fn fnv1a(text: &str) -> String {
+fn fnv1a(text: &str) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
     for b in text.bytes() {
         h = (h ^ u64::from(b)).wrapping_mul(0x100000001b3);
     }
-    format!("{h:016x}")
+    h
 }
 
 struct Resolved<'a> {
@@ -339,7 +340,7 @@ fn run_pair(
         if a.is_empty() || a.len() != b.len() {
             continue;
         }
-        let seed = spec.spec.seed ^ stats::Rng::new(fnv_seed(&p.id)).next_u64();
+        let seed = spec.spec.seed ^ stats::Rng::new(fnv1a(&p.id)).next_u64();
         if let Some(ratio) = stats::paired_ratio(
             &a,
             &b,
@@ -352,7 +353,6 @@ fn run_pair(
                 MetricResult {
                     a: stats::summarize(&a),
                     b: stats::summarize(&b),
-                    significant_drop: ratio.ci_hi < 1.0,
                     ratio,
                 },
             );
@@ -360,10 +360,6 @@ fn run_pair(
     }
     (res.status, res.reason) = verdict(p.role, band, &res.metrics);
     Ok(res)
-}
-
-fn fnv_seed(s: &str) -> u64 {
-    u64::from_str_radix(&fnv1a(s), 16).unwrap_or(0)
 }
 
 /// Run all (selected) pairs of a spec and build the results.
@@ -391,7 +387,7 @@ pub fn run_spec(spec: &Spec, spec_text: &str, opts: &Options) -> Result<Results>
     Ok(Results {
         schema: RESULTS_SCHEMA,
         spec: spec.spec.name.clone(),
-        spec_fnv1a: fnv1a(spec_text),
+        spec_fnv1a: format!("{:016x}", fnv1a(spec_text)),
         pins: spec.pins.clone(),
         repeats: opts.repeats.unwrap_or(spec.spec.repeats),
         warmup: spec.spec.warmup,
@@ -405,10 +401,36 @@ pub fn run_spec(spec: &Spec, spec_text: &str, opts: &Options) -> Result<Results>
 
 pub fn write_results(results: &Results, out_dir: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
-    let path = out_dir.join(format!("{}.json", results.spec));
-    std::fs::write(&path, serde_json::to_string_pretty(results)? + "\n")
-        .with_context(|| format!("write {}", path.display()))?;
-    Ok(path)
+    // One file per run: a second run on the same UTC day must not overwrite the first, so a
+    // name taken within the same second gets a counter.
+    let stem = format!("{}-{}", results.spec, env::time_name());
+    let body = serde_json::to_string_pretty(results)? + "\n";
+    for n in 0..1000 {
+        let name = if n == 0 {
+            format!("{stem}.json")
+        } else {
+            format!("{stem}-{n}.json")
+        };
+        let path = out_dir.join(name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut f) => {
+                use std::io::Write;
+                f.write_all(body.as_bytes())
+                    .with_context(|| format!("write {}", path.display()))?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e).with_context(|| format!("create {}", path.display())),
+        }
+    }
+    anyhow::bail!(
+        "no free results file name for {stem} in {}",
+        out_dir.display()
+    )
 }
 
 /// Human-readable summary, one line per pair and metric.
@@ -456,7 +478,6 @@ mod tests {
                 ci_hi: ratio,
                 confidence: 0.95,
             },
-            significant_drop: false,
         }
     }
 
@@ -492,13 +513,13 @@ mod tests {
                 Device::Cpu,
             )
         };
+        assert_eq!(exit_code(&[mk(Status::Ok), mk(Status::Skipped)], false), 0);
+        assert_eq!(exit_code(&[mk(Status::Ok), mk(Status::Noisy)], false), 3);
         assert_eq!(
-            exit_code(
-                &[mk(Status::Ok), mk(Status::Skipped), mk(Status::Noisy)],
-                false
-            ),
-            0
+            exit_code(&[mk(Status::Noisy), mk(Status::Regression)], false),
+            1
         );
+        assert_eq!(exit_code(&[mk(Status::Noisy), mk(Status::Error)], false), 2);
         assert_eq!(exit_code(&[mk(Status::Ok), mk(Status::Skipped)], true), 2);
         assert_eq!(
             exit_code(&[mk(Status::Regression), mk(Status::Ok)], false),

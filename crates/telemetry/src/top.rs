@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn renders_devices_and_empty_steps() {
         let d = DeviceSample {
-            id: "cpu".into(),
+            id: "cpu0".into(),
             name: "Test CPU".into(),
             kind: DeviceKind::Cpu,
             busy: 0.25,

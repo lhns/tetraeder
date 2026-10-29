@@ -32,13 +32,34 @@ struct Row {
 }
 
 /// Parse `llama-bench -o json` output: an array with one row per test (pp and tg rows).
-/// Tolerates log lines before the array.
+/// Tolerates log lines before the array (even ones starting with `[`, like `[info] ...`): the
+/// array is the first line starting with `[` that parses.
 pub fn parse_llama_bench(stdout: &str) -> Result<Measured> {
-    let start = stdout
-        .find('[')
-        .context("no JSON array in llama-bench output")?;
-    let mut de = serde_json::Deserializer::from_str(&stdout[start..]);
-    let rows = Vec::<Row>::deserialize(&mut de).context("llama-bench JSON")?;
+    let mut starts = Vec::new();
+    let mut off = 0;
+    for line in stdout.split_inclusive('\n') {
+        if line.trim_start().starts_with('[') {
+            starts.push(off + line.len() - line.trim_start().len());
+        }
+        off += line.len();
+    }
+    let mut last_err = None;
+    let mut parsed = None;
+    for &start in &starts {
+        let mut de = serde_json::Deserializer::from_str(&stdout[start..]);
+        match Vec::<Row>::deserialize(&mut de) {
+            Ok(rows) => {
+                parsed = Some(rows);
+                break;
+            }
+            Err(e) => last_err = Some(e),
+        }
+    }
+    let rows = match (parsed, last_err) {
+        (Some(rows), _) => rows,
+        (None, Some(e)) => return Err(e).context("llama-bench JSON"),
+        (None, None) => anyhow::bail!("no JSON array in llama-bench output"),
+    };
     let mut m = Measured::default();
     for r in rows {
         if r.n_prompt > 0 && r.n_gen == 0 {
@@ -166,6 +187,13 @@ mod tests {
         assert_eq!(m.pp_ts, Some(160.5));
         assert_eq!(m.tg_ts, Some(42.25));
         assert_eq!(m.build_commit.as_deref(), Some("2e0d86be"));
+    }
+
+    #[test]
+    fn skips_bracketed_log_lines_before_the_array() {
+        let log = format!("[info] loading model\n[warn] x: [1, 2\n{REAL}\n");
+        let m = parse_llama_bench(&log).unwrap();
+        assert_eq!(m.tg_ts, Some(42.25));
     }
 
     #[test]

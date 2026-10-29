@@ -18,7 +18,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Run a spec and write bench/results/<date>/<spec>.json. Exit 0 ok, 1 regression, 2 error.
+    /// Run a spec and write bench/results/<date>/<spec>-<HHMMSS>.json. Exit 0 ok, 1 regression,
+    /// 2 error, 3 inconclusive (noise pair outside its band).
     Run {
         spec: PathBuf,
         /// Results directory (default bench/results/<YYYYMMDD>).

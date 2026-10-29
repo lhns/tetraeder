@@ -11,6 +11,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use tetraeder_transport::bench::{self, Plan, Row, Transport};
+use tetraeder_transport::proto;
 
 #[derive(Parser)]
 struct Cli {
@@ -33,6 +34,27 @@ enum Which {
     Tcp,
     Tls,
     Quic,
+}
+
+impl Measure {
+    fn plan(&self) -> Result<Plan> {
+        anyhow::ensure!(!self.sizes.is_empty(), "--sizes is empty");
+        anyhow::ensure!(self.sizes.iter().all(|&s| s > 0), "--sizes must be > 0");
+        anyhow::ensure!(
+            self.sizes
+                .iter()
+                .all(|&s| u32::try_from(s).is_ok_and(|s| s <= proto::MAX_MESSAGE_SIZE)),
+            "--sizes must be at most {} bytes",
+            proto::MAX_MESSAGE_SIZE
+        );
+        anyhow::ensure!(self.iters > 0, "--iters must be > 0");
+        Ok(Plan {
+            sizes: self.sizes.clone(),
+            iters: self.iters,
+            warmup: self.warmup,
+            throughput_bytes: self.throughput_bytes,
+        })
+    }
 }
 
 impl Which {
@@ -92,13 +114,17 @@ enum Cmd {
 }
 
 /// Address of `t` for base address `base` (see the module doc for the port layout).
-fn addr_of(base: SocketAddr, which: Which, t: Transport) -> SocketAddr {
+fn addr_of(base: SocketAddr, which: Which, t: Transport) -> Result<SocketAddr> {
     let offset = match (which, t) {
         (Which::All, Transport::Tls) => 1,
         (Which::All, Transport::Quic) => 2,
         _ => 0,
     };
-    SocketAddr::new(base.ip(), base.port() + offset)
+    let port = base
+        .port()
+        .checked_add(offset)
+        .with_context(|| format!("port {} + {offset} exceeds 65535", base.port()))?;
+    Ok(SocketAddr::new(base.ip(), port))
 }
 
 fn report(rows: &[Row], m: &Measure) -> Result<()> {
@@ -118,7 +144,7 @@ async fn main() -> Result<()> {
         Cmd::Server { addr, transport } => {
             let mut tasks = Vec::new();
             for t in transport.list() {
-                let s = bench::bind(t, addr_of(addr, transport, t)).await?;
+                let s = bench::bind(t, addr_of(addr, transport, t)?).await?;
                 eprintln!("{} listening on {}", t.name(), s.addr);
                 tasks.push(tokio::spawn(s.run()));
             }
@@ -127,25 +153,15 @@ async fn main() -> Result<()> {
             }
         }
         Cmd::Client { addr, transport, m } => {
-            let plan = Plan {
-                sizes: m.sizes.clone(),
-                iters: m.iters,
-                warmup: m.warmup,
-                throughput_bytes: m.throughput_bytes,
-            };
+            let plan = m.plan()?;
             let mut rows = Vec::new();
             for t in transport.list() {
-                rows.extend(bench::measure(t, addr_of(addr, transport, t), &plan).await?);
+                rows.extend(bench::measure(t, addr_of(addr, transport, t)?, &plan).await?);
             }
             report(&rows, &m)?;
         }
         Cmd::Local { transport, m } => {
-            let plan = Plan {
-                sizes: m.sizes.clone(),
-                iters: m.iters,
-                warmup: m.warmup,
-                throughput_bytes: m.throughput_bytes,
-            };
+            let plan = m.plan()?;
             let mut rows = Vec::new();
             for t in transport.list() {
                 let s = bench::bind(t, "127.0.0.1:0".parse()?).await?;

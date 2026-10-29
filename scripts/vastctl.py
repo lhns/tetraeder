@@ -32,6 +32,7 @@ import sys
 import tarfile
 import time
 import tomllib
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -44,10 +45,21 @@ ROOT = Path(__file__).resolve().parent.parent
 API_BASE = "https://console.vast.ai"
 KEY_FILE = Path.home() / ".config" / "vastai" / "vast_api_key"
 SSH_KEY = Path.home() / ".ssh" / "lrn_vast_ed25519"
-# Prebuilt box image (CUDA toolchain, rustup, cmake/ninja/sccache, ggml built at the pin); built by a GitHub Actions
-# workflow in Step 3 and must be public for Vast to pull it. Until then pass `--image` or use FALLBACK_IMAGE, on which
+
+
+def _image_from_pin(root: Path = ROOT) -> str:
+    """Box image tagged with the llama.cpp tag in vendor/PIN (`tag=` line), so a box always matches the pin."""
+    try:
+        m = re.search(r"^tag=(\S+)", (root / "vendor" / "PIN").read_text(encoding="utf-8"), re.M)
+    except OSError:
+        m = None
+    return f"ghcr.io/lhns/tetraeder-box:{m.group(1) if m else 'latest'}"
+
+
+# Prebuilt box image (CUDA toolchain, rustup, cmake/ninja/sccache, llama.cpp built at the pin), built by
+# .github/workflows/box-image.yml and public on GHCR. FALLBACK_IMAGE (`--image`) is a plain CUDA image on which
 # `provision` installs the missing tools itself (slow).
-IMAGE = "ghcr.io/lhns/tetraeder-box:latest"
+IMAGE = _image_from_pin()
 FALLBACK_IMAGE = "nvidia/cuda:12.8.1-devel-ubuntu24.04"
 LABEL = "tetraeder"
 REMOTE_DIR = "/root/tetraeder"
@@ -100,6 +112,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "provision_wait_min": 40,
     "fetch_wait_min": 10,
     "nightly_wait_min": 90,           # `nightly` gives the on-box run this long, then fetches whatever exists
+    "max_box_hours": 3,               # watchdog hard cap: a managed box running longer is STOPPED (disk kept)
 }
 
 
@@ -463,6 +476,57 @@ class Store:
         self.state["pending"] = [p for p in self.state["pending"] if p["key"] != key]
 
 
+# ----------------------------------------------------------------------------------------------- process lock
+class FileLock:
+    """Exclusive, non-blocking OS file lock that dies with the process (msvcrt on Windows, flock elsewhere), so a
+    crashed `nightly` never blocks the watchdog."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.fh: Any = None
+
+    def acquire(self) -> bool:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fh = self.path.open("a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fh.close()
+            return False
+        self.fh = fh
+        return True
+
+    def release(self) -> None:
+        fh, self.fh = self.fh, None
+        if fh is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        fh.close()
+
+
+def nightly_lock(ctx: Ctx) -> FileLock:
+    return FileLock(ctx.vast_dir / "nightly.lock")
+
+
 # ----------------------------------------------------------------------------------------------- ssh / scp
 class Unreachable(RuntimeError):
     pass
@@ -716,9 +780,12 @@ def wait_ready(ctx: Ctx, iid: str, minutes: float, every: float = 15) -> Endpoin
         ctx.sleep(every)
 
 
-ARCHIVE_PATHS = ["crates", "patches", "bench", "scripts", "docs/adr", "Cargo.toml", "Cargo.lock",
-                 "rust-toolchain.toml", "AGENTS.md"]
+# Everything the box needs for `cargo build --workspace` (members: crates/*, xtask; ggml-sys/build.rs reads
+# vendor/PIN and patches/) and the nightly run. tests/test_vastctl.py checks this against Cargo.toml and build.rs.
+ARCHIVE_PATHS = ["crates", "xtask", "patches", "bench", "scripts", "docs/adr", "vendor/PIN", "Cargo.toml",
+                 "Cargo.lock", "rust-toolchain.toml", "AGENTS.md"]
 SUBMODULE = "vendor/llama.cpp"
+PROVISION_LOG = "/root/provision.log"
 
 
 def _git(ctx: Ctx, *args: str) -> subprocess.CompletedProcess:
@@ -726,8 +793,9 @@ def _git(ctx: Ctx, *args: str) -> subprocess.CompletedProcess:
 
 
 def git_archive(ctx: Ctx) -> bytes:
-    """Committed HEAD (paths that exist in HEAD) plus the vendor/llama.cpp submodule checkout, as one tar.gz.
-    `git archive` skips submodules, so they are archived with a second call and merged into the same tarball."""
+    """Committed HEAD (paths that exist in HEAD) plus the vendor/llama.cpp submodule's index tree, as one tar.gz.
+    `git archive` skips submodules, so they are archived with a second call and merged into the same tarball.
+    The submodule comes from its index (write-tree), not its HEAD: patches/apply.sh stages the patch queue there."""
     p = _git(ctx, "ls-tree", "--name-only", "HEAD", "--", *ARCHIVE_PATHS)
     paths = [ln.strip() for ln in _dec(p.stdout).splitlines() if ln.strip()]
     if p.returncode != 0 or not paths:
@@ -746,7 +814,11 @@ def git_archive(ctx: Ctx) -> bytes:
             raise VastError(f"git archive failed: {_dec(a.stderr)[-200:]}")
         tars.append(a.stdout)
     if (ctx.root / SUBMODULE / ".git").exists():
-        s = _git(ctx, "-C", SUBMODULE, "archive", "--format=tar", f"--prefix={SUBMODULE}/", "HEAD")
+        wt = _git(ctx, "-C", SUBMODULE, "write-tree")
+        tree = _dec(wt.stdout).strip()
+        if wt.returncode != 0 or not tree:
+            raise VastError(f"git write-tree in {SUBMODULE} failed: {_dec(wt.stderr)[-200:]}")
+        s = _git(ctx, "-C", SUBMODULE, "archive", "--format=tar", f"--prefix={SUBMODULE}/", tree)
         if s.returncode != 0:
             raise VastError(f"git archive of {SUBMODULE} failed: {_dec(s.stderr)[-200:]}")
         tars.append(s.stdout)
@@ -817,18 +889,28 @@ def spec_models(path: str | Path) -> list[str]:
 def provision(ctx: Ctx, iid: str, models: list[str] | None = None, wait_min: float | None = None) -> bool:
     st = ctx.store
     remote = Remote(ctx, iid)
+    # the watchdog must not idle-stop the box while it downloads and installs (see _tick_active)
+    st.rec(iid).update(provision_started=time.time(), provisioned=None)
+    st.save()
     push_code(ctx, remote)
     models = list(models or [])
     args = " ".join(shlex.quote(m) for m in models)
-    remote.run(f"nohup setsid bash {BOX_HELPER} provision {args} > /root/provision.log 2>&1 "
-               "< /dev/null & echo launched", timeout=30)
+    # append (a repeated launch must not wipe the log); remember where this run starts so an old PROVISION_DONE
+    # from an earlier provision of the same box is never mistaken for this one
+    r = remote.run(f"touch {PROVISION_LOG}; n=$(wc -l < {PROVISION_LOG}); echo \"launched $n\"; "
+                   f"nohup setsid bash {BOX_HELPER} provision {args} >> {PROVISION_LOG} 2>&1 "
+                   "< /dev/null &", timeout=30)
+    m = re.search(r"launched (\d+)", r.out)
+    if r.rc != 0 or not m:
+        raise VastError(f"provision did not start: {(r.out + r.err)[-200:]}")
+    offset = int(m.group(1))
     st.event(f"provision launched (models: {', '.join(models) or 'none'}); log /root/provision.log", iid)
     deadline = time.time() + 60 * (wait_min or st.config["provision_wait_min"])
     last = ""
     while time.time() < deadline:
         ctx.sleep(20)
         try:
-            out = remote.run("tail -n 40 /root/provision.log", timeout=30, rounds=1).out
+            out = remote.run(f"tail -n +{offset + 1} {PROVISION_LOG} | tail -n 40", timeout=30, rounds=1).out
         except Unreachable as e:
             say(f"[{iid}] provision poll: unreachable ({e}); still waiting")
             continue
@@ -857,6 +939,8 @@ def start_batch(ctx: Ctx, iid: str, batch: dict) -> Result:
     push_code(ctx, remote)
     args = " ".join(shlex.quote(str(x)) for x in [batch["script"], *batch.get("args", [])])
     r = remote.box(f"run {args}", timeout=90)
+    if r.rc != 0 or "launched" not in r.out:
+        raise VastError(f"job did not start (rc={r.rc}): {(r.out + r.err)[-300:]}")
     batch = dict(batch, instance=iid, started=time.time(), all_done=False)
     ctx.store.state["batch"] = batch
     rec = ctx.store.rec(iid)
@@ -1077,7 +1161,19 @@ def pending_work(st: Store) -> bool:
 
 def watchdog_tick(ctx: Ctx, pol: Policy) -> dict:
     """One pass over every managed instance: health, cost control, unreachability, salvage, replacement.
-    Raises VastError on API failure (the loop backs off)."""
+    Raises VastError on API failure (the loop backs off). Skipped while `nightly` (another process sharing
+    .vast/state.json) holds .vast/nightly.lock; the tick holds the lock itself so a nightly cannot start mid-pass."""
+    lock = nightly_lock(ctx)
+    if not lock.acquire():
+        say("watchdog: nightly running, tick skipped")
+        return {"skipped": "nightly running"}
+    try:
+        return _watchdog_tick_locked(ctx, pol)
+    finally:
+        lock.release()
+
+
+def _watchdog_tick_locked(ctx: Ctx, pol: Policy) -> dict:
     st = ctx.store
     st.state, st.config = st._load(), st._load_config()  # pick up manual fetch/adopt/block and config edits
     cfg = st.config
@@ -1118,8 +1214,39 @@ def watchdog_tick(ctx: Ctx, pol: Policy) -> dict:
     return report
 
 
+def _stop_over_max_hours(ctx: Ctx, pol: Policy, iid: str, rec: dict, inst: dict) -> bool:
+    """Hard cost cap: STOP (not destroy: the disk keeps the results) a box running longer than max_box_hours.
+    Unfetched results move the box to salvage, which starts it again for short fetch windows."""
+    st, cfg = ctx.store, ctx.store.config
+    if inst.get("actual_status") != "running":
+        return False
+    started = inst.get("start_date") or rec.get("created") or time.time()
+    hours = (time.time() - float(started)) / 3600
+    if hours < cfg["max_box_hours"]:
+        return False
+    if time.time() - rec.get("stop_requested", 0) < 600:  # already asked; the API status may lag
+        return True
+    if pol.dry_run:
+        say(f"[{iid}] (dry-run) would stop: running {hours:.1f} h > max_box_hours {cfg['max_box_hours']}")
+        return True
+    stop(ctx, iid, f"(running {hours:.1f} h > max_box_hours {cfg['max_box_hours']})")
+    if not all_fetched(rec)[0]:
+        rec["role"] = "salvage"
+        rec["salvage_since"] = time.time()
+        rec["last_salvage_attempt"] = time.time()
+    return True
+
+
+def _is_provisioning(cfg: dict, rec: dict) -> bool:
+    started = rec.get("provision_started")
+    return bool(started and not rec.get("provisioned")
+                and time.time() - started < (cfg["provision_wait_min"] + 10) * 60)
+
+
 def _tick_active(ctx: Ctx, pol: Policy, iid: str, rec: dict, inst: dict, low_balance: bool) -> dict:
     st, cfg = ctx.store, ctx.store.config
+    if _stop_over_max_hours(ctx, pol, iid, rec, inst):
+        return {"id": iid, "status": "max_box_hours"}
     h = health_check(ctx, iid, inst)
     say(health_line(h))
     cls, status = h["class"], h["status"]
@@ -1168,7 +1295,8 @@ def _tick_active(ctx: Ctx, pol: Policy, iid: str, rec: dict, inst: dict, low_bal
         return h
     if status == "running" and cls == "idle":
         idle_for = h["idle_min"]
-        if (pol.stop_idle and idle_for >= cfg["idle_stop_min"]) or (low_balance and pol.stop_idle):
+        provisioning = _is_provisioning(cfg, rec)  # downloads and installs look idle; low balance still stops
+        if (pol.stop_idle and idle_for >= cfg["idle_stop_min"] and not provisioning) or (low_balance and pol.stop_idle):
             why = "low balance" if low_balance and idle_for < cfg["idle_stop_min"] else f"idle {idle_for:.0f} min"
             if pol.dry_run:
                 say(f"[{iid}] (dry-run) would fetch + stop ({why})")
@@ -1435,9 +1563,21 @@ def wait_nightly(ctx: Ctx, iid: str, minutes: float) -> int | None:
 def nightly(ctx: Ctx, a: argparse.Namespace) -> dict:
     """create --auto, provision, run scripts/nightly.sh detached, wait on the box, fetch, destroy. The destroy guard
     applies: a box whose results are not verified stays up for the watchdog to salvage."""
+    lock = nightly_lock(ctx)
+    if not lock.acquire():
+        raise VastError(f"another nightly or watchdog tick holds {lock.path}; try again shortly")
+    try:
+        return _nightly_locked(ctx, a)
+    finally:
+        lock.release()
+
+
+def _nightly_locked(ctx: Ctx, a: argparse.Namespace) -> dict:
     st = ctx.store
     t0 = time.time()
     res: dict[str, Any] = {"ok": False, "rc": None, "id": None}
+    # everything that can fail locally happens before money is spent
+    models = parse_models(a.models) if a.models else spec_models(ctx.root / NIGHTLY_SPEC)
     cur = st.state.get("current")
     if cur and st.state["instances"].get(str(cur), {}).get("role") == "active":
         inst = ctx.api.instance(cur)
@@ -1473,16 +1613,26 @@ def nightly(ctx: Ctx, a: argparse.Namespace) -> dict:
     try:
         if wait_ready(ctx, iid, st.config["create_wait_min"]) is None:
             return abort("box not reachable")
-        if not provision(ctx, iid, parse_models(a.models) if a.models else spec_models(NIGHTLY_SPEC)):
+        if not provision(ctx, iid, models):
             return abort("provision failed")
         start_batch(ctx, iid, {"script": NIGHTLY_SCRIPT, "args": [], "runs_dirs": list(DEFAULT_RUNS)})
     except (Unreachable, VastError) as e:  # nothing was produced yet: do not leave a billed box behind
         return abort(f"{type(e).__name__}: {e}")
+    except BaseException as e:  # noqa: BLE001 - incl. KeyboardInterrupt: same rule, then let it propagate
+        try:
+            abort(f"{type(e).__name__}")
+        except Exception as e2:  # noqa: BLE001
+            say(f"[{iid}] abort after {type(e).__name__} failed: {e2}; box may still be running")
+        raise
     rc = wait_nightly(ctx, iid, a.wait_min or st.config["nightly_wait_min"])
     res["rc"] = rc
     if rc is not None and st.state.get("batch"):
         st.state["batch"]["all_done"] = True
-    fetched = fetch(ctx, iid)
+    try:
+        fetched = fetch(ctx, iid)
+    except (Unreachable, VastError) as e:
+        say(f"[{iid}] fetch failed: {e}")
+        fetched = False
     if not fetched:
         say(f"[{iid}] results not verified: box kept for the watchdog (destroy guard)")
         return finish(False, "fetch not verified" if rc is not None else "timeout, fetch not verified")
@@ -1834,6 +1984,11 @@ def main(argv: list[str] | None = None, ctx: Ctx | None = None) -> int:
         return 1
     except KeyboardInterrupt:
         return 130
+    except Exception:  # noqa: BLE001 - a bug must still print a readable, secret-free traceback
+        print(redact(traceback.format_exc()), file=sys.stderr, flush=True)
+        if a.json:
+            print(redact(json.dumps({"error": "unexpected error, see stderr"})))
+        return 1
     if isinstance(res, int):
         return res
     if a.json:

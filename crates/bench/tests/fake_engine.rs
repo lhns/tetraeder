@@ -99,8 +99,17 @@ band = 0.05
     }
 
     fn results(&self) -> Value {
-        serde_json::from_slice(&std::fs::read(self.dir.path().join("out").join("t.json")).unwrap())
+        let mut files: Vec<_> = std::fs::read_dir(self.dir.path().join("out"))
             .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| {
+                p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("t-"))
+            })
+            .collect();
+        // Names carry the run time (plus a counter within one second), so the last is the latest.
+        files.sort_by_key(|p| p.metadata().unwrap().modified().unwrap());
+        serde_json::from_slice(&std::fs::read(files.pop().unwrap()).unwrap()).unwrap()
     }
 }
 
@@ -148,7 +157,6 @@ fn slower_candidate_beyond_band_is_a_regression_with_nonzero_exit() {
     assert_eq!(p["status"], "regression");
     let ratio = p["metrics"]["tg"]["ratio"]["median"].as_f64().unwrap();
     assert!((ratio - 0.8).abs() < 1e-9);
-    assert_eq!(p["metrics"]["tg"]["significant_drop"], true);
     assert_eq!(r["exit_code"], 1);
     assert!(r["env"]["host_id"].as_str().is_some_and(|h| !h.is_empty()));
 }

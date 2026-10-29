@@ -77,7 +77,17 @@ jobs:
         with:
           cuda: "12.8.1"
           method: network
-          sub-packages: ${{ runner.os == 'Windows' && '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration", "thrust"]' || '["nvcc", "cudart", "cublas", "cublas-dev"]' }}
+          # Linux apt names: cuBLAS ships as libcublas-*, not cuda-cublas-*.
+          sub-packages: ${{ runner.os == 'Windows' && '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration", "thrust"]' || '["nvcc", "cudart-dev", "cccl"]' }}
+          non-cuda-sub-packages: ${{ runner.os == 'Windows' && '[]' || '["libcublas", "libcublas-dev"]' }}
+      # Windows: the Visual Studio generator does not see the CUDA toolset installed by the action; Ninja in an
+      # MSVC developer shell finds nvcc through CUDA_PATH.
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Ninja generator
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           key: cuda

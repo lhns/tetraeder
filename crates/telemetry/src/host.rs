@@ -61,7 +61,7 @@ impl HostMetrics for SysinfoHost {
             .map(|c| c.brand().trim().to_owned())
             .unwrap_or_default();
         vec![DeviceSample {
-            id: "cpu".into(),
+            id: "cpu0".into(),
             name,
             kind: DeviceKind::Cpu,
             busy: f64::from(self.sys.global_cpu_usage()) / 100.0,
@@ -140,7 +140,7 @@ mod tests {
         let mut h = SysinfoHost::new().unwrap();
         let s = h.sample();
         assert_eq!(s.len(), 1);
-        assert_eq!(s[0].id, "cpu");
+        assert_eq!(s[0].id, "cpu0");
         assert!(s[0].mem_total > 0 && s[0].mem_used <= s[0].mem_total);
         assert!((0.0..=1.0).contains(&s[0].busy));
     }

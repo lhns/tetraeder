@@ -1,6 +1,6 @@
 # Collector that writes OTLP to JSON-lines files, for a Vast box with no backend.
 # Run on the box: otelcol-contrib --config config-file.yaml
-# Then fetch /var/lib/otelcol/*.jsonl with vastctl before destroying the box.
+# Copy /var/lib/otelcol/*.jsonl off the box (vastctl ssh / scp) before destroying it; vastctl fetch does not pack them.
 # Replay later by sending the files to the compose collector (otlpjsonfile receiver).
 receivers:
   otlp:

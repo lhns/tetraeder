@@ -338,6 +338,14 @@ pub fn decode_throughput_bound(
     Ok(1.0 / busy.values().copied().fold(0.0, f64::max))
 }
 
+/// Why a plan fails the memory check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanMemoryError {
+    /// A stage names a device the hardware graph does not have.
+    UnknownDevice(String),
+    Overflow(String, MemoryOverflow),
+}
+
 /// Per-stage memory check: weights + KV(batch x context) + workspace against device capacity.
 pub fn check_plan_memory(
     hw: &HardwareGraph,
@@ -346,10 +354,10 @@ pub fn check_plan_memory(
     batch: u64,
     context: u64,
     workspace_bytes: u64,
-) -> Result<(), (String, MemoryOverflow)> {
+) -> Result<(), PlanMemoryError> {
     for s in &plan.stages {
         let Some(dev) = hw.device(&s.device) else {
-            continue;
+            return Err(PlanMemoryError::UnknownDevice(s.device.clone()));
         };
         let l = u64::from(s.layers);
         let kv = kv_bytes(model.kv_bytes_per_token_per_layer * l, batch, context);
@@ -359,7 +367,7 @@ pub fn check_plan_memory(
             workspace_bytes,
             dev.capacity_bytes,
         )
-        .map_err(|e| (s.device.clone(), e))?;
+        .map_err(|e| PlanMemoryError::Overflow(s.device.clone(), e))?;
     }
     Ok(())
 }
@@ -577,7 +585,7 @@ impl Sim<'_> {
                             self.push(t, Kind::Arrive { req: nr });
                         }
                     } else {
-                        // Return the sampled token to stage 0 (token ids, 1 token of activation).
+                        // Return the sampled token to stage 0, charged as one activation (an upper bound for a token id).
                         let at = self.send(n_stages - 1, t, 1);
                         self.push(
                             at,
@@ -799,7 +807,9 @@ mod tests {
         assert!(check_plan_memory(&hw, &model(), &ok, 1, 4096, 0).is_ok());
         // 20 layers x 4096 B x 100_000 x 100 = 819 GB of KV: gpu1 overflows first.
         let err = check_plan_memory(&hw, &model(), &ok, 100, 100_000, 0).unwrap_err();
-        assert_eq!(err.0, "gpu0");
+        assert!(matches!(err, PlanMemoryError::Overflow(ref d, _) if d == "gpu0"));
+        let e = check_plan_memory(&hw, &model(), &plan(&[("gpu9", 32)]), 1, 1, 0).unwrap_err();
+        assert_eq!(e, PlanMemoryError::UnknownDevice("gpu9".into()));
     }
 
     #[test]

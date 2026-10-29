@@ -83,20 +83,42 @@ pub async fn bind(transport: Transport, addr: SocketAddr) -> Result<Server> {
     })
 }
 
+/// Accept one connection; a failed accept or `set_nodelay` is logged and skipped, so one bad
+/// connection (or a transient fd shortage) does not stop the server.
+async fn accept_tcp(l: &TcpListener) -> Option<TcpStream> {
+    match l.accept().await {
+        Ok((s, _)) => match s.set_nodelay(true) {
+            Ok(()) => Some(s),
+            Err(e) => {
+                eprintln!("set_nodelay failed: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            eprintln!("accept failed: {e}");
+            // Avoid a hot loop if accept keeps failing (for example out of file descriptors).
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            None
+        }
+    }
+}
+
 impl Server {
     pub async fn run(self) -> Result<()> {
         match self.inner {
             Inner::Tcp(l) => loop {
-                let (s, _) = l.accept().await?;
-                s.set_nodelay(true)?;
+                let Some(s) = accept_tcp(&l).await else {
+                    continue;
+                };
                 tokio::spawn(async move {
                     let (r, w) = tokio::io::split(s);
                     let _ = proto::serve_stream(r, w).await;
                 });
             },
             Inner::Tls(l, acceptor) => loop {
-                let (s, _) = l.accept().await?;
-                s.set_nodelay(true)?;
+                let Some(s) = accept_tcp(&l).await else {
+                    continue;
+                };
                 let acceptor = acceptor.clone();
                 tokio::spawn(async move {
                     if let Ok(s) = acceptor.accept(s).await {

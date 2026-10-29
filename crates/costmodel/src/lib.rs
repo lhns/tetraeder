@@ -75,9 +75,26 @@ impl OpCost {
         })
     }
 
+    /// Points with `M <= 0` (or NaN) are dropped, those sharing an `M` are averaged, so `f`
+    /// never divides by zero.
     pub fn with_measured(mut self, mut points: Vec<(f64, f64)>) -> Self {
+        points.retain(|p| p.0 > 0.0);
         points.sort_by(|a, b| a.0.total_cmp(&b.0));
-        self.measured = points;
+        let mut merged: Vec<(f64, f64)> = Vec::with_capacity(points.len());
+        let mut run = 0usize;
+        for (x, y) in points {
+            match merged.last_mut() {
+                Some(last) if last.0 == x => {
+                    run += 1;
+                    last.1 += (y - last.1) / run as f64;
+                }
+                _ => {
+                    run = 1;
+                    merged.push((x, y));
+                }
+            }
+        }
+        self.measured = merged;
         self
     }
 
@@ -198,6 +215,18 @@ mod tests {
             },
             measured: Vec::new(),
         }
+    }
+
+    #[test]
+    fn measured_points_drop_nonpositive_m_and_average_duplicates() {
+        let c = cost().with_measured(vec![(0.0, 9.0), (-1.0, 9.0), (4.0, 2e-3), (4.0, 4e-3)]);
+        assert_eq!(c.measured, vec![(4.0, 3e-3)]);
+        assert!(c.f(0.0).is_finite() && c.f(2.0).is_finite());
+        let c = cost().with_measured(vec![(1.0, 1e-3), (4.0, 2e-3), (4.0, 4e-3), (8.0, 5e-3)]);
+        assert!(c.f(6.0).is_finite());
+        close(c.f(8.0), 5e-3);
+        let none = cost().with_measured(vec![(0.0, 1.0)]);
+        close(none.f(1.0), cost().prior.time(1.0));
     }
 
     #[test]

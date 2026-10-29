@@ -18,6 +18,9 @@
 #   inventory                  models and result directories on the box (for re-provisioning a replacement)
 #   logs [n]                   tail the nightly log and the watchdog log
 set -uo pipefail
+# the GHCR image keeps the toolchain in /opt/cargo; a rustup under $HOME is the fallback (see deps)
+if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
+export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH"
 TETRAEDER="${TETRAEDER_DIR:-/root/tetraeder}"
 RUNS="$TETRAEDER/runs/vast"
 cmd="${1:-health}"; shift || true
@@ -48,8 +51,9 @@ health() {
   echo "gpu_mem_used=$(echo "$q" | cut -d, -f2)"
   echo "gpu_mem_total=$(echo "$q" | cut -d, -f3)"
   # busy = a cargo/rustc/nvcc/cmake/ninja process, or an engine/bench binary under target/ (anchored: a bare
-  # "tetraeder" would match this very script's path /root/tetraeder/scripts/...)
-  echo "exp_procs=$(pgrep -f '(^|/)(cargo|rustc|nvcc|cmake|ninja)( |$)|target/(release|debug)/tetraede[r]|bench[.]s[h]|(^|/)llama-' | wc -l)"
+  # "tetraeder" would match this very script's path /root/tetraeder/scripts/...) or a provision/models run
+  # (this script's own `health` call is excluded by the subcommand)
+  echo "exp_procs=$(pgrep -f '(^|/)(cargo|rustc|nvcc|cmake|ninja)( |$)|target/(release|debug)/tetraede[r]|bench[.]s[h]|vast_bo[x][.]sh (provision|models)|(^|/)llama-' | wc -l)"
   echo "batch_alive=$(pgrep -f 'nightl[y][.]sh' | wc -l)"
   local log="$RUNS/nightly.log"
   if [ -f "$log" ]; then
@@ -113,7 +117,7 @@ EOS
 }
 
 install_push() {
-  local src=/root/.tetraeder_push n=0
+  local src=/root/.tetraeder_push n=0 failed=0
   [ -d "$src" ] || { echo "no push dir"; return 1; }
   # normalise line endings in the staging copy, before anything is moved next to running scripts
   find "$src" -type f \( -name '*.sh' -o -name '*.py' -o -name '*.toml' -o -name '*.yaml' -o -name '*.md' \) \
@@ -121,14 +125,17 @@ install_push() {
   cd "$src" || return 1
   while IFS= read -r -d '' f; do
     mkdir -p "$TETRAEDER/$(dirname "$f")"
-    mv -f "$f" "$TETRAEDER/$f"; n=$((n + 1))
+    if mv -f "$f" "$TETRAEDER/$f"; then n=$((n + 1)); else echo "mv failed: $f"; failed=1; fi
   done < <(find . -type f -print0)
-  cd / && rm -rf "$src"
+  cd / || return 1
+  # keep the staging dir when a move failed, so the push can be inspected or repeated
+  if [ "$failed" != 0 ]; then echo "install-push: $src kept (mv failures)"; return 1; fi
+  rm -rf "$src"
   echo "installed $n files into $TETRAEDER"
 }
 
 deps() {
-  export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+  export PATH="$HOME/.local/bin:$PATH"
   local sudo="" need=""
   [ "$(id -u)" -eq 0 ] || sudo="sudo"
   command -v cc > /dev/null 2>&1 || need="$need build-essential"
@@ -158,6 +165,8 @@ deps() {
 }
 
 provision() {
+  # a repeated launch (vastctl re-runs ssh commands after a dropped connection) must not start a second provisioning
+  exec 8> /root/provision.lock; flock -n 8 || { echo "provision already running"; return 0; }
   local rc=0
   echo "$(date +%T) provision start"
   deps || { echo "deps FAILED"; rc=1; }
@@ -167,14 +176,13 @@ provision() {
   [ "$CUDA_ENV_STATUS" = fail ] && { echo "CUDA FAILED: libcuda cannot initialise the GPU"; rc=1; }
   if [ "$#" -gt 0 ]; then models "$@" || rc=1; fi
   disk_probe > /dev/null  # cache the disk bandwidth now so `health` never pays for it
-  ensure_watchdog
+  ensure_watchdog 8>&-  # the long-lived watchdog must not inherit (and hold) the provision lock
   inventory
   echo "$(date +%T) PROVISION_DONE rc=$rc"
 }
 
 verify() {  # replacement acceptance test: GPU visible, cargo works, models present, CUDA initialises
   local ok=1
-  export PATH="$HOME/.cargo/bin:$PATH"
   nvidia-smi -L > /dev/null 2>&1 && echo "verify_gpu=1" || { echo "verify_gpu=0"; ok=0; }
   if (cd "$TETRAEDER" && cargo --version > /dev/null 2>&1 && command -v cmake > /dev/null 2>&1); then
     echo "verify_tools=1"
@@ -273,7 +281,6 @@ run_job() {  # run <script> [args...]: detached; the script itself takes a flock
   cd "$TETRAEDER" || exit 1
   [ -f "$script" ] || { echo "no such script: $script"; exit 2; }
   mkdir -p runs/vast
-  export PATH="$HOME/.cargo/bin:$PATH"
   nohup setsid bash "$script" "$@" >> "runs/vast/$(basename "$script" .sh).log" 2>&1 < /dev/null &
   sleep 3
   echo "launched $script at $(date +%T)"

@@ -1,2 +1,9 @@
 *.sh text eol=lf
 *.py text eol=lf
+vendor/PIN text eol=lf
+patches/series text eol=lf
+*.patch text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
