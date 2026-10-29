@@ -1,0 +1,62 @@
+# Tiny CPU-only spec for the Windows VM and CI: proves the harness against a real llama-bench in a minute.
+#   LLAMA_BENCH=<path to llama-bench> tetraeder-bench run bench/spec/smoke.toml --out-dir runs/smoke
+# Model: Qwen3 0.6B Q8_0 (about 640 MB) in .hf_cache/Qwen__Qwen3-0.6B-GGUF/.
+
+[spec]
+name = "smoke"
+description = "A/A and 1-thread vs 2-thread CPU pairs on a tiny model"
+repeats = 5
+warmup = 1
+timeout_s = 300
+page_cache = "warm"
+seed = 7
+
+[pins]
+llama_cpp = "2e0d86bebc210947680e8f0d67daa79f3260c106"
+
+[workload]
+batch = 512
+ubatch = 128
+prompt_len = 64
+gen_len = 16
+threads = 4
+
+[model.tiny]
+hf = "Qwen/Qwen3-0.6B-GGUF:Qwen3-0.6B-Q8_0.gguf"
+
+[[engine]]
+id = "llama-bench"
+kind = "llama-bench"
+bin_env = "LLAMA_BENCH"
+bin = "llama-bench"
+
+[[variant]]
+id = "cpu-4t"
+engine = "llama-bench"
+model = "tiny"
+device = "cpu"
+args = ["-ngl", "0"]
+
+[[variant]]
+id = "cpu-2t"
+engine = "llama-bench"
+model = "tiny"
+device = "cpu"
+args = ["-ngl", "0", "-t", "2"]
+
+[[pair]]
+id = "noise-cpu-tiny"
+a = "cpu-4t"
+b = "cpu-4t"
+role = "noise"
+
+[[pair]]
+id = "info-cpu-2t-vs-4t"
+a = "cpu-4t"
+b = "cpu-2t"
+role = "info"
+
+[[noise_band]]
+class = "cpu"
+device = "cpu"
+band = 0.15

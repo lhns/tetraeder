@@ -1,0 +1,12 @@
+[package]
+name = "tetraeder-gateway"
+description = "Tetraeder: OpenAI and Anthropic API, tool calls, structured output, auth, quotas and routing."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

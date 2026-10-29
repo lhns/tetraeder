@@ -1,0 +1,99 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Toolchain
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: libclang (bindgen)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - name: libclang (bindgen)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run pytest tests/test_vastctl.py
+      - name: bash -n scripts
+        if: runner.os == 'Linux'
+        run: |
+          for f in scripts/*.sh patches/*.sh; do bash -n "$f"; done
+
+  cuda-build:
+    name: cuda compile-only (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      # One arch keeps the compile-only job cheap; the box image builds the full list.
+      TETRAEDER_CUDA_ARCHS: "86"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Toolchain
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: libclang (bindgen)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - name: libclang (bindgen)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
+      - uses: Jimver/cuda-toolkit@v0.2.24
+        with:
+          cuda: "12.8.1"
+          method: network
+          sub-packages: ${{ runner.os == 'Windows' && '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration", "thrust"]' || '["nvcc", "cudart", "cublas", "cublas-dev"]' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cuda
+      - run: cargo build -p tetraeder-ggml-sys --features cuda
+
+  vulkan-build:
+    name: vulkan compile-only (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Vulkan SDK and libclang
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build libvulkan-dev glslc spirv-headers
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: vulkan
+      - run: cargo build -p tetraeder-ggml-sys --features vulkan

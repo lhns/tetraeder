@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "model": "Qwen/Qwen3-0.6B-GGUF:Qwen3-0.6B-Q8_0.gguf",
+  "engine": "example (format sample, not real data)",
+  "backend": "cpu",
+  "top_k": 2,
+  "cases": [
+    {
+      "id": "format-sample",
+      "prompt_tokens": [1, 2, 3],
+      "tokens": [10, 20],
+      "top": [
+        [{ "id": 10, "logit": 5.0 }, { "id": 11, "logit": 4.0 }],
+        [{ "id": 20, "logit": 6.0 }, { "id": 21, "logit": 2.5 }]
+      ]
+    }
+  ]
+}

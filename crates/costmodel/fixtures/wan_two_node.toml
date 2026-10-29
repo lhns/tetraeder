@@ -1,0 +1,27 @@
+# Simulator fixture: two single-GPU nodes joined by a WAN link with a 50 ms round trip,
+# so one-way alpha is 25 ms. 1 Gbit/s (125 MB/s).
+[[devices]]
+id = "gpu0"
+kind = "gpu"
+name = "Node A GPU"
+tier = "vram"
+capacity_bytes = 25769803776
+bandwidth_bytes_per_s = { value = 1.0e12, source = "prior" }
+compute = { flops_per_s = 8.0e13, c0_graph_s = 5.0e-6, c0_eager_s = 2.0e-5 }
+
+[[devices]]
+id = "gpu1"
+kind = "gpu"
+name = "Node B GPU"
+tier = "vram"
+capacity_bytes = 25769803776
+bandwidth_bytes_per_s = { value = 1.0e12, source = "prior" }
+compute = { flops_per_s = 8.0e13, c0_graph_s = 5.0e-6, c0_eager_s = 2.0e-5 }
+
+[[links]]
+id = "wan"
+a = "gpu0"
+b = "gpu1"
+kind = "network"
+alpha_s = { value = 0.025, source = "prior" }
+beta_bytes_per_s = { value = 1.25e8, source = "prior" }

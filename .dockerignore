@@ -1,0 +1,7 @@
+target*/
+.venv/
+.git/
+vendor/llama.cpp/
+runs/
+.hf_cache/
+.vast/

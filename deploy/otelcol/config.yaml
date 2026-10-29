@@ -1,0 +1,55 @@
+# Collector for the compose stack. Tail sampling keeps every slow or failed trace
+# and a small share of the rest (docs/plan.md, Observability).
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+  tail_sampling:
+    decision_wait: 30s
+    num_traces: 50000
+    policies:
+      - name: errors
+        type: status_code
+        status_code: { status_codes: [ERROR] }
+      - name: slow
+        type: latency
+        latency: { threshold_ms: 2000 }
+      - name: sample-rest
+        type: probabilistic
+        probabilistic: { sampling_percentage: 5 }
+  batch: {}
+
+exporters:
+  # VictoriaMetrics accepts OTLP/HTTP metrics natively.
+  otlphttp/metrics:
+    metrics_endpoint: http://victoriametrics:8428/opentelemetry/v1/metrics
+    tls: { insecure: true }
+  otlphttp/traces:
+    traces_endpoint: http://victoriatraces:10428/insert/opentelemetry/v1/traces
+    tls: { insecure: true }
+  # Logs: no log store in this stack yet; add VictoriaLogs or Loki here.
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/metrics]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, tail_sampling, batch]
+      exporters: [otlphttp/traces]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

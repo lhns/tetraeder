@@ -1,0 +1,179 @@
+# Phase 0/1 benchmark spec, run nightly on a Vast box by scripts/nightly.sh.
+#   tetraeder-bench run bench/spec/phase0.toml
+# Rules (AGENTS.md "Benchmark comparability on Vast"): clocks cannot be locked in a container and the host changes
+# nightly, so every comparison is paired (A, B, A, B ... in one session) and gated on the paired ratio.
+# Absolute tok/s are recorded but never compared across nights.
+
+[spec]
+name = "phase0"
+description = "llama.cpp baseline (CPU, CUDA, MoE with expert-offload overrides) plus the Tetraeder slot"
+repeats = 5               # interleaved A,B pairs per spec pair
+warmup = 1                # discarded A,B invocations; loads the model into the page cache
+page_cache = "warm"       # warm: files stay cached after warmup; cold needs root and drops caches before every sample
+bootstrap_resamples = 10000
+confidence = 0.95
+seed = 20240601
+
+[pins]
+# Commits the binaries must come from; the harness records the build_commit llama-bench reports next to these.
+llama_cpp = "2e0d86bebc210947680e8f0d67daa79f3260c106"   # vendor/llama.cpp submodule
+ik_llama_cpp = "pending"                                # baseline added when its exit test needs it
+tetraeder = "HEAD"                                      # recorded as env.git_commit
+
+[workload]
+batch = 2048
+ubatch = 512
+prompt_len = 512
+gen_len = 64
+threads = 8               # container CPU quota is about 11 cores; leave headroom for the harness
+
+[model.dense]
+hf = "Qwen/Qwen3-8B-GGUF:Qwen3-8B-Q4_K_M.gguf"
+note = "about 5 GB; fits any nightly GPU"
+
+[model.moe]
+hf = "Qwen/Qwen3-30B-A3B-GGUF:Qwen3-30B-A3B-Q4_K_M.gguf"
+note = "about 18.6 GB, 48 layers; needs a 24 GB card for the full-GPU variant and 20 GB RAM for the CPU variants"
+
+[[engine]]
+id = "llama-bench"
+kind = "llama-bench"
+bin_env = "LLAMA_BENCH"
+bin = "/opt/llama.cpp/bin/llama-bench"
+
+[[engine]]
+id = "tetraeder"
+kind = "tetraeder"
+bin_env = "TETRAEDER_BIN"
+bin = "target/release/tetraeder"
+runnable = false          # Phase 1 wires libllama; until then its pairs are skipped with a clear status
+note = "needs an adapter in tetraeder-bench/src/engine.rs when it becomes runnable"
+
+# llama.cpp, dense
+[[variant]]
+id = "llama-cpu-dense"
+engine = "llama-bench"
+model = "dense"
+device = "cpu"
+args = ["-ngl", "0"]
+
+[[variant]]
+id = "llama-cuda-dense"
+engine = "llama-bench"
+model = "dense"
+device = "cuda"
+args = ["-ngl", "99"]
+
+# llama.cpp, MoE: plain, and with expert-offload tensor overrides (-ot <regex>=<buffer type>)
+[[variant]]
+id = "llama-cpu-moe"
+engine = "llama-bench"
+model = "moe"
+device = "cpu"
+args = ["-ngl", "0"]
+
+[[variant]]
+id = "llama-cuda-moe-full"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99"]
+
+[[variant]]
+id = "llama-cuda-moe-ot-all-experts"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-ot", "exps=CPU"]
+
+[[variant]]
+id = "llama-cuda-moe-ot-upper-half"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+# experts of layers 24..47 stay in RAM
+args = ["-ngl", "99", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# Tetraeder slot: same placement as its baseline, not runnable yet
+[[variant]]
+id = "tetraeder-cpu-dense"
+engine = "tetraeder"
+model = "dense"
+device = "cpu"
+args = ["--ngl", "0"]
+
+[[variant]]
+id = "tetraeder-cuda-dense"
+engine = "tetraeder"
+model = "dense"
+device = "cuda"
+args = ["--ngl", "99"]
+
+# A/A pairs measure the noise of this box in this session
+[[pair]]
+id = "noise-cpu-dense"
+a = "llama-cpu-dense"
+b = "llama-cpu-dense"
+role = "noise"
+
+[[pair]]
+id = "noise-cuda-dense"
+a = "llama-cuda-dense"
+b = "llama-cuda-dense"
+role = "noise"
+
+[[pair]]
+id = "noise-cpu-moe"
+a = "llama-cpu-moe"
+b = "llama-cpu-moe"
+role = "noise"
+
+# What expert offload costs on this box (reported, not gated)
+[[pair]]
+id = "info-cuda-moe-ot-all-experts"
+a = "llama-cuda-moe-full"
+b = "llama-cuda-moe-ot-all-experts"
+role = "info"
+
+[[pair]]
+id = "info-cuda-moe-ot-upper-half"
+a = "llama-cuda-moe-full"
+b = "llama-cuda-moe-ot-upper-half"
+role = "info"
+
+# Phase 1 exit test: Tetraeder within 5% of llama.cpp at the same parameters
+[[pair]]
+id = "gate-tetraeder-cpu-dense"
+a = "llama-cpu-dense"
+b = "tetraeder-cpu-dense"
+role = "gate"
+
+[[pair]]
+id = "gate-tetraeder-cuda-dense"
+a = "llama-cuda-dense"
+b = "tetraeder-cuda-dense"
+role = "gate"
+
+# Allowed drop of the paired ratio per device and GPU class. PROVISIONAL: replace with bands measured from the
+# noise-* pairs over several nights on each class (p95 of |ratio - 1| plus margin).
+[[noise_band]]
+class = "cpu"
+device = "cpu"
+band = 0.10
+
+[[noise_band]]
+class = "cuda-default"
+device = "cuda"
+band = 0.08
+
+[[noise_band]]
+class = "rtx-4090"
+device = "cuda"
+gpu_match = "4090"
+band = 0.05
+
+[[noise_band]]
+class = "rtx-3090"
+device = "cuda"
+gpu_match = "3090"
+band = 0.05

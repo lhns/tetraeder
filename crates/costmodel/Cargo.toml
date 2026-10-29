@@ -1,0 +1,20 @@
+[package]
+name = "tetraeder-costmodel"
+description = "Tetraeder: Step-time cost model with measured per-op curves; `sim` holds the discrete-event simulator."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+tetraeder-profiler = { path = "../profiler" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+proptest = "1"

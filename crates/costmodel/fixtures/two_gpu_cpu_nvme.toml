@@ -1,0 +1,82 @@
+# Simulator fixture: a consumer box with a 24 GB and an 8 GB GPU, CPU RAM and an NVMe.
+# gpu1 and the NVMe share chipset lanes (8 GB/s together).
+[[devices]]
+id = "cpu0"
+kind = "cpu"
+name = "Fixture CPU"
+tier = "ram"
+capacity_bytes = 68719476736
+cores = 8
+threads = 16
+numa_nodes = 1
+bandwidth_bytes_per_s = { value = 5.0e10, source = "prior" }
+compute = { flops_per_s = 1.0e12, c0_graph_s = 2.0e-6, c0_eager_s = 5.0e-6 }
+
+[[devices]]
+id = "gpu0"
+kind = "gpu"
+name = "Fixture 24 GB GPU"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 0
+bandwidth_bytes_per_s = { value = 1.0e12, source = "prior" }
+compute = { flops_per_s = 8.0e13, c0_graph_s = 5.0e-6, c0_eager_s = 2.0e-5 }
+pcie = { gen_current = 4, width_current = 16, gen_max = 4, width_max = 16 }
+
+[[devices]]
+id = "gpu1"
+kind = "gpu"
+name = "Fixture 8 GB GPU"
+tier = "vram"
+capacity_bytes = 8589934592
+index = 1
+bandwidth_bytes_per_s = { value = 3.0e11, source = "prior" }
+compute = { flops_per_s = 2.0e13, c0_graph_s = 5.0e-6, c0_eager_s = 2.0e-5 }
+pcie = { gen_current = 4, width_current = 4, gen_max = 4, width_max = 4 }
+
+[[devices]]
+id = "nvme0"
+kind = "disk"
+name = "Fixture NVMe"
+tier = "nvme"
+capacity_bytes = 2000000000000
+bandwidth_bytes_per_s = { value = 5.0e9, source = "prior" }
+media = "ssd"
+
+[[links]]
+id = "pcie-gpu0"
+a = "gpu0"
+b = "cpu0"
+kind = "pcie"
+alpha_s = { value = 1.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 2.5e10, source = "prior" }
+
+[[links]]
+id = "pcie-gpu1"
+a = "gpu1"
+b = "cpu0"
+kind = "pcie"
+lane_group = "chipset"
+alpha_s = { value = 1.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 6.0e9, source = "prior" }
+
+[[links]]
+id = "p2p-gpu0-gpu1"
+a = "gpu0"
+b = "gpu1"
+kind = "p2p"
+alpha_s = { value = 1.5e-5, source = "prior" }
+beta_bytes_per_s = { value = 6.0e9, source = "prior" }
+
+[[links]]
+id = "nvme-cpu"
+a = "nvme0"
+b = "cpu0"
+kind = "storage"
+lane_group = "chipset"
+alpha_s = { value = 1.0e-4, source = "prior" }
+beta_bytes_per_s = { value = 5.0e9, source = "prior" }
+
+[[lane_groups]]
+id = "chipset"
+capacity_bytes_per_s = 8.0e9

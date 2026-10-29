@@ -1,0 +1,72 @@
+# Profiler test fixture: a host with two GPUs on different slots and an NVMe sharing chipset lanes.
+[[devices]]
+id = "cpu0"
+kind = "cpu"
+name = "Test CPU"
+tier = "ram"
+capacity_bytes = 68719476736
+cores = 8
+threads = 16
+numa_nodes = 1
+[devices.bandwidth_bytes_per_s]
+value = 5.0e10
+spread = 0.04
+samples = 5
+source = "measured"
+
+[[devices]]
+id = "gpu0"
+kind = "gpu"
+name = "Big GPU"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 0
+pcie = { gen_current = 4, width_current = 16, gen_max = 4, width_max = 16 }
+
+[[devices]]
+id = "gpu1"
+kind = "gpu"
+name = "Small GPU"
+tier = "vram"
+capacity_bytes = 8589934592
+index = 1
+pcie = { gen_current = 3, width_current = 4, gen_max = 4, width_max = 8 }
+
+[[devices]]
+id = "nvme0"
+kind = "disk"
+name = "nvme0"
+tier = "nvme"
+capacity_bytes = 1000000000000
+mount = "/"
+media = "ssd"
+
+[[links]]
+id = "pcie-gpu0"
+a = "gpu0"
+b = "cpu0"
+kind = "pcie"
+alpha_s = { value = 1.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 2.5e10, spread = 0.02, samples = 5, source = "measured" }
+
+[[links]]
+id = "pcie-gpu1"
+a = "gpu1"
+b = "cpu0"
+kind = "pcie"
+lane_group = "chipset"
+alpha_s = { value = 1.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 3.0e9, source = "prior" }
+
+[[links]]
+id = "nvme-cpu"
+a = "nvme0"
+b = "cpu0"
+kind = "storage"
+lane_group = "chipset"
+alpha_s = { value = 1.0e-4, source = "prior" }
+beta_bytes_per_s = { value = 3.0e9, source = "prior" }
+
+[[lane_groups]]
+id = "chipset"
+capacity_bytes_per_s = 8.0e9

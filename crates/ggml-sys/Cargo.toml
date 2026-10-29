@@ -1,0 +1,27 @@
+[package]
+name = "tetraeder-ggml-sys"
+description = "Tetraeder: Raw bindings to the pinned, patched ggml and libllama (built from vendor/llama.cpp)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+links = "ggml"
+build = "build.rs"
+
+[features]
+default = ["cpu"]
+cpu = []
+cuda = []
+vulkan = []
+
+[build-dependencies]
+bindgen = "0.72"
+cmake = "0.1"
+
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

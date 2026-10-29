@@ -1,0 +1,40 @@
+# Collector that writes OTLP to JSON-lines files, for a Vast box with no backend.
+# Run on the box: otelcol-contrib --config config-file.yaml
+# Then fetch /var/lib/otelcol/*.jsonl with vastctl before destroying the box.
+# Replay later by sending the files to the compose collector (otlpjsonfile receiver).
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+      http:
+        endpoint: 127.0.0.1:4318
+
+processors:
+  batch: {}
+
+exporters:
+  file/metrics:
+    path: /var/lib/otelcol/metrics.jsonl
+    rotation: { max_megabytes: 100, max_backups: 10 }
+  file/traces:
+    path: /var/lib/otelcol/traces.jsonl
+    rotation: { max_megabytes: 100, max_backups: 10 }
+  file/logs:
+    path: /var/lib/otelcol/logs.jsonl
+    rotation: { max_megabytes: 100, max_backups: 10 }
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file/metrics]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file/traces]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file/logs]

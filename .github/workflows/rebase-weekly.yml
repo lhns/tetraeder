@@ -1,0 +1,56 @@
+name: rebase-weekly
+
+# Tries the patch queue on upstream llama.cpp master. Reports only; never opens a PR or moves the pin.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Build tools
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - name: Apply patch queue on upstream master
+        id: apply
+        env:
+          PIN_REF: master
+        run: |
+          set +e
+          patches/apply.sh 2>&1 | tee apply.log
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          echo "head=$(git -C vendor/llama.cpp rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: rebase
+      - name: Build and test ggml-sys (CPU)
+        id: test
+        if: steps.apply.outputs.status == '0'
+        run: |
+          set +e
+          cargo test -p tetraeder-ggml-sys 2>&1 | tee test.log
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Summary
+        if: always()
+        run: |
+          pin=$(sed -n 's/^tag=//p' vendor/PIN)
+          {
+            echo "## llama.cpp rebase check"
+            echo "- pin: \`$pin\`; upstream master: \`${{ steps.apply.outputs.head }}\`"
+            echo "- patches apply: $([ '${{ steps.apply.outputs.status }}' = 0 ] && echo ok || echo FAILED)"
+            echo "- ggml-sys CPU build and tests: $([ '${{ steps.test.outputs.status }}' = 0 ] && echo ok || echo 'FAILED or skipped')"
+            echo
+            echo '```'
+            tail -n 40 apply.log test.log 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fail on problems
+        if: steps.apply.outputs.status != '0' || steps.test.outputs.status != '0'
+        run: exit 1

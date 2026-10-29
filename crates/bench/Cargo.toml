@@ -1,0 +1,26 @@
+[package]
+name = "tetraeder-bench"
+description = "Tetraeder: Benchmark harness: pinned TOML spec, paired interleaved runs, JSON results, noise-band gate, golden data."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "tetraeder-bench"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

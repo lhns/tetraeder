@@ -1,0 +1,15 @@
+[package]
+name = "tetraeder-memory"
+description = "Tetraeder: Per-device arenas, memory tiers, expert slot cache, direct I/O and prefetch."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

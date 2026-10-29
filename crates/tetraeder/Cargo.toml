@@ -1,0 +1,20 @@
+[package]
+name = "tetraeder"
+description = "Tetraeder: LLM inference engine in Rust on a patched ggml."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# GPU metrics through NVML (library loaded at runtime; absent GPU is fine).
+nvml = ["tetraeder-telemetry/nvml"]
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+tetraeder-telemetry = { path = "../telemetry" }

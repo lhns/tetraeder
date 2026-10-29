@@ -1,0 +1,26 @@
+[package]
+name = "tetraeder-profiler"
+description = "Tetraeder: Hardware discovery and measurement: per-op curves, tier bandwidth, link latency and bandwidth."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# GPU discovery through NVML (needs the NVIDIA driver at run time, not at build time).
+nvml = ["dep:nvml-wrapper"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+sysinfo = { version = "0.33", default-features = false, features = ["system", "disk"] }
+nvml-wrapper = { version = "0.10", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
