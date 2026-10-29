@@ -2,6 +2,7 @@
 
 use crate::{BufferKey, Expanded, Knobs, Placement, ShardKey};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -48,11 +49,57 @@ impl PlanDiff {
     /// Weight bytes that must be written somewhere: added shards and changed shards whose home
     /// or format differs.
     pub fn moved_bytes(&self) -> u64 {
-        todo!()
+        self.shards
+            .iter()
+            .map(|c| match c {
+                ShardChange::Add { to, .. } => to.bytes,
+                ShardChange::Change { from, to, .. }
+                    if from.home != to.home || from.format != to.format =>
+                {
+                    to.bytes
+                }
+                _ => 0,
+            })
+            .sum()
     }
 }
 
 pub fn diff(from: &Expanded, to: &Expanded) -> PlanDiff {
-    let _ = (from, to);
-    todo!()
+    let keys: BTreeSet<&ShardKey> = from.shards.keys().chain(to.shards.keys()).collect();
+    let shards = keys
+        .into_iter()
+        .filter_map(|k| match (from.shards.get(k), to.shards.get(k)) {
+            (None, Some(t)) => Some(ShardChange::Add {
+                key: *k,
+                to: t.clone(),
+            }),
+            (Some(f), None) => Some(ShardChange::Remove {
+                key: *k,
+                from: f.clone(),
+            }),
+            (Some(f), Some(t)) if f != t => Some(ShardChange::Change {
+                key: *k,
+                from: f.clone(),
+                to: t.clone(),
+            }),
+            _ => None,
+        })
+        .collect();
+    let keys: BTreeSet<&BufferKey> = from.buffers.keys().chain(to.buffers.keys()).collect();
+    let buffers = keys
+        .into_iter()
+        .filter_map(|k| {
+            let (f, t) = (from.buffers.get(k).copied(), to.buffers.get(k).copied());
+            (f != t).then(|| BufferChange {
+                key: k.clone(),
+                from: f,
+                to: t,
+            })
+        })
+        .collect();
+    PlanDiff {
+        shards,
+        buffers,
+        knobs: (from.knobs != to.knobs).then_some((from.knobs, to.knobs)),
+    }
 }
