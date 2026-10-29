@@ -29,7 +29,7 @@ INSTANCE_KEY = "INSTKEY-SECRET-987654321"
 
 
 def make_instance(iid=100, status="running", port=41022, host_id=555, runtype="ssh_direc ssh_proxy"):
-    return {"id": iid, "actual_status": status, "host_id": host_id, "machine_id": 9, "gpu_name": "RTX 4090",
+    return {"id": iid, "actual_status": status, "host_id": host_id, "machine_id": 9, "gpu_name": "RTX 3090",
             "dph_total": 0.4, "public_ipaddr": "1.2.3.4", "ssh_host": "ssh5.vast.ai", "ssh_port": 19554,
             "image_runtype": runtype, "label": "tetraeder", "start_date": time.time() - 3600,
             "ports": {"22/tcp": [{"HostIp": "0.0.0.0", "HostPort": str(port)}]} if status == "running" else None,
@@ -37,7 +37,7 @@ def make_instance(iid=100, status="running", port=41022, host_id=555, runtype="s
 
 
 def offer(oid, host, price, score, rel=0.995, verified=None, verification="verified", ports=10, vram=24564):
-    return {"id": oid, "host_id": host, "machine_id": host + 1, "gpu_name": "RTX 4090", "gpu_ram": vram,
+    return {"id": oid, "host_id": host, "machine_id": host + 1, "gpu_name": "RTX 3090", "gpu_ram": vram,
             "dph_total": price, "dlperf_per_dphtotal": score, "reliability2": rel, "verified": verified,
             "verification": verification, "direct_port_count": ports, "geolocation": "X", "inet_down": 900,
             "cuda_max_good": 12.8}
@@ -221,7 +221,7 @@ def test_offer_filtering_and_ranking_with_blocklist():
     by_price = vc.filter_rank_offers(offers, {"483833"}, max_price=0.45, min_rel=0.99, min_vram_gb=24,
                                      sort="price")
     assert [o["id"] for o in by_price] == [3, 2]
-    q = vc.build_offer_query(["RTX 4090"], 24, 0.99, 500, 50, 12.4, False)
+    q = vc.build_offer_query(["RTX 3090"], 24, 0.99, 500, 50, 12.4, False)
     assert q["gpu_ram"]["gte"] < 23034  # an L4 (23034 MiB) still counts as a 24 GB card
     assert q["reliability2"] == {"gte": 0.99} and q["type"] == "on-demand"
 
@@ -234,7 +234,7 @@ def test_offers_command_uses_state_blocklist(env, capsys):
     assert "offer         2" in out and "host 483833" not in out
     body = json.loads(fake.calls("POST", "/bundles/")[0][2])
     assert body["verified"] == {"eq": True} and body["direct_port_count"] == {"gte": 1}
-    assert body["gpu_name"] == {"in": ["RTX 4090"]}  # one GPU class for comparable benchmarks
+    assert body["gpu_name"] == {"in": ["RTX 3090"]}  # one GPU class for comparable benchmarks
 
 
 # ------------------------------------------------------------------------------------------------ endpoints
@@ -521,7 +521,7 @@ def test_defaults_and_seed_blocklist(env):
     assert cfg["max_price_per_hour"] == 0.45 and cfg["disk_gb"] == 80
     assert ctx.store.config["auto_replace"] is False
     assert {"483833", "366851"} <= set(ctx.store.blocklist())
-    assert vc.LABEL == "tetraeder" and vc.GPU_CLASS == ["RTX 4090"] and vc.IMAGE.startswith("ghcr.io/lhns/")
+    assert vc.LABEL == "tetraeder" and vc.GPU_CLASS == ["RTX 3090"] and vc.IMAGE.startswith("ghcr.io/lhns/")
 
 
 def test_offers_prefer_last_good_host_but_blocklist_wins():
@@ -670,6 +670,11 @@ def test_create_uses_image_override(env):
 def test_parse_models():
     assert vc.parse_models("") == [] and vc.parse_models(None) == []
     assert vc.parse_models("a/b:x.gguf, c/d:y.gguf+z.gguf") == ["a/b:x.gguf", "c/d:y.gguf+z.gguf"]
+
+
+def test_spec_models_reads_nightly_spec():
+    models = vc.spec_models(Path(__file__).parent.parent / vc.NIGHTLY_SPEC)
+    assert models and all(re.fullmatch(r"[^/:]+/[^/:]+:[^:]+\.gguf", m) for m in models)
 
 
 def test_git_archive_refuses_when_nothing_is_committed(env):

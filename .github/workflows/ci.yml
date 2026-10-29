@@ -11,6 +11,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Portable ggml CPU code: cached build output may run on a runner with a different CPU.
+  TETRAEDER_GGML_NATIVE: "OFF"
 
 jobs:
   test:

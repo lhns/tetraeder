@@ -17,7 +17,7 @@ All GPU work runs on ephemeral Vast.ai boxes through `scripts/vastctl.py` (ADR 0
 ```bash
 V="uv run python scripts/vastctl.py"
 $V balance                   # credit and runway
-$V offers                    # ranked RTX 4090 offers; the last-good host comes first
+$V offers                    # ranked RTX 3090 offers; the last-good host comes first
 $V create --auto             # rent the best offer under max_price_per_hour (add --image to override the image)
 $V provision                 # push committed HEAD, toolchain, models (--models org/name:file.gguf,...), on-box autostop
 $V run scripts/nightly.sh    # start a repo script detached on the box

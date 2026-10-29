@@ -62,9 +62,9 @@ EOJ
 stage bench-env bench_env || rc=1
 
 bench_spec() {  # paired llama.cpp baseline run; writes $date_dir/phase0.json, exits 1 on a regression, 2 on an error
-  # llama-bench lives in /opt/llama.cpp/bin on the box (LLAMA_BENCH overrides); missing binaries or models skip pairs
-  # (status "skipped" in the JSON) instead of failing the night.
-  target/release/tetraeder-bench run bench/spec/phase0.toml --out-dir "$date_dir" \
+  # llama-bench lives in /opt/llama.cpp/bin on the box (LLAMA_BENCH overrides). --strict: a pair skipped for a
+  # missing binary or model fails the night, so a run that measured nothing never passes.
+  target/release/tetraeder-bench run bench/spec/phase0.toml --strict --out-dir "$date_dir" \
     --llama-bench "${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}" --models-dir "${TETRAEDER_MODELS_DIR:-.hf_cache}"
 }
 stage bench bench_spec || rc=1

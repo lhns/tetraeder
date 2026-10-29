@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -54,7 +55,7 @@ STAGING_DIR = "/root/.tetraeder_push"
 BOX_HELPER = "/root/vast_box.sh"
 BANNER = ("AI agents", "Welcome", "Have fun")
 # One GPU model for every run so benchmark numbers stay comparable (override with --gpu for experiments).
-GPU_CLASS = ["RTX 4090"]
+GPU_CLASS = ["RTX 3090"]  # 24 GB, usually under the price cap; RTX 4090 rarely is
 SEED_BLOCKLIST = {
     "483833": "2026-09-29: host network down ~28 min of every ~45 min (SSH + DNS outages)",
     "366851": "2026-10: stopped from outside twice, GPU rented away while stopped",
@@ -65,6 +66,7 @@ DEFAULT_RUNS = ["bench/results"]
 RUNS_DIR = "runs/vast"
 DONE_MARKER = "DONE"
 NIGHTLY_SCRIPT = "scripts/nightly.sh"
+NIGHTLY_SPEC = "bench/spec/phase0.toml"  # nightly.sh runs this spec; `nightly` downloads its models
 ONSTART = f"[ -f {BOX_HELPER} ] && bash {BOX_HELPER} ensure-watchdog >> /root/autostop.log 2>&1 || true"
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -806,6 +808,12 @@ def parse_models(spec: str | None) -> list[str]:
     return [m.strip() for m in (spec or "").split(",") if m.strip()]
 
 
+def spec_models(path: str | Path) -> list[str]:
+    """`hf` entries of a benchmark spec's [model.*] tables, in `--models` format."""
+    spec = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    return [m["hf"] for m in spec.get("model", {}).values() if m.get("hf")]
+
+
 def provision(ctx: Ctx, iid: str, models: list[str] | None = None, wait_min: float | None = None) -> bool:
     st = ctx.store
     remote = Remote(ctx, iid)
@@ -1465,7 +1473,7 @@ def nightly(ctx: Ctx, a: argparse.Namespace) -> dict:
     try:
         if wait_ready(ctx, iid, st.config["create_wait_min"]) is None:
             return abort("box not reachable")
-        if not provision(ctx, iid, parse_models(a.models)):
+        if not provision(ctx, iid, parse_models(a.models) if a.models else spec_models(NIGHTLY_SPEC)):
             return abort("provision failed")
         start_batch(ctx, iid, {"script": NIGHTLY_SCRIPT, "args": [], "runs_dirs": list(DEFAULT_RUNS)})
     except (Unreachable, VastError) as e:  # nothing was produced yet: do not leave a billed box behind
@@ -1754,7 +1762,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("script", help="repo-relative script, e.g. scripts/nightly.sh")
     s.add_argument("args", nargs="*")
     s = sub.add_parser("nightly", parents=[common], help="create, provision, run nightly.sh, wait, fetch, destroy")
-    s.add_argument("--models", default="", help="comma list of org/name:file.gguf (default: none)")
+    s.add_argument("--models", default="", help=f"comma list of org/name:file.gguf (default: the models of {NIGHTLY_SPEC})")
     s.add_argument("--image", help=f"container image (default {IMAGE}; fallback {FALLBACK_IMAGE})")
     s.add_argument("--gpu", help=f"comma list (default {','.join(GPU_CLASS)})")
     s.add_argument("--max-price", type=float)

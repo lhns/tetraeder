@@ -9,7 +9,10 @@ ARG SCCACHE_VERSION=0.10.0
 # Ampere (8.6), Ada (8.9), Hopper (9.0), Blackwell (12.0)
 ARG CUDA_ARCHS="86;89;90;120"
 
+# GGML_NATIVE=OFF (llama.cpp below and box-side Rust builds): the image is built on a CI runner and runs on any
+# Vast host, so ggml CPU code targets its portable AVX2 baseline instead of the build machine's ISA.
 ENV DEBIAN_FRONTEND=noninteractive \
+    TETRAEDER_GGML_NATIVE=OFF \
     NVIDIA_DRIVER_CAPABILITIES=all \
     RUSTUP_HOME=/opt/rustup \
     CARGO_HOME=/opt/cargo \
@@ -45,6 +48,7 @@ RUN test -n "${LLAMA_COMMIT}" && \
         -DCMAKE_INSTALL_PREFIX=/opt/llama.cpp \
         -DBUILD_SHARED_LIBS=OFF \
         -DGGML_CUDA=ON \
+        -DGGML_NATIVE=OFF \
         -DGGML_OPENMP=OFF \
         -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
         -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined \
