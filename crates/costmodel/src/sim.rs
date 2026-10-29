@@ -7,11 +7,15 @@
 //! its activations to the next over the link between the two devices; the last stage returns the
 //! sampled token to the first, so a token pays S hops, as in `pipeline_token_time`. Links are
 //! undirected: both directions share one resource. Same input and seed give the same output.
+//!
+//! Plans in the shared IR (`tetraeder_plan`, ADR 0027) enter through [`PlanStub::from_plan`] and
+//! [`ModelSpec::from_desc`], which accept the single-replica, one-device-per-stage subset.
 
 use crate::{GraphMode, MemoryOverflow, OpCost, OpShape, Stage, check_memory, kv_bytes};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap};
+use tetraeder_plan::{ModelDesc, Plan, UnitSize};
 use tetraeder_profiler::HardwareGraph;
 
 // ---------------------------------------------------------------- model, plan, workload
@@ -39,6 +43,67 @@ pub struct PlanStub {
     /// A prompt is cut into at most this many chunks that pipeline through the stages.
     pub prefill_micro_batches: u32,
     pub graphs: bool,
+}
+
+impl ModelSpec {
+    /// Uniform per-layer view of a plan-IR model at source formats. Weight bytes per layer are
+    /// what one token reads: attention, MLP and the `experts_used` active experts.
+    pub fn from_desc(m: &ModelDesc) -> Self {
+        let bytes = |u: &UnitSize| u.bytes(u.source_format);
+        let (expert_bytes, expert_flops) = m.expert.as_ref().map_or((0, 0.0), |e| {
+            let k = m.experts_used.min(m.experts);
+            (u64::from(k) * bytes(e), f64::from(k) * e.flops_per_token)
+        });
+        Self {
+            layers: m.layers,
+            flops_per_token_per_layer: m.attn.flops_per_token
+                + m.mlp.flops_per_token
+                + expert_flops,
+            weight_bytes_per_layer: bytes(&m.attn) + bytes(&m.mlp) + expert_bytes,
+            kv_bytes_per_token_per_layer: m.kv_bytes_per_token_per_layer,
+            activation_bytes_per_token: m.activation_bytes_per_token as f64,
+        }
+    }
+}
+
+impl PlanStub {
+    /// The simulator's view of a plan-IR plan: one replica, each stage on one compute device
+    /// without tensor or expert parallel. Formats, homes, tiers and the embedding and head units
+    /// are not simulated yet; validate the plan with `tetraeder_plan::validate` first.
+    pub fn from_plan(plan: &Plan) -> Result<Self, SimError> {
+        let [replica] = plan.replicas.as_slice() else {
+            return Err(SimError::Unsupported(format!(
+                "{} replicas, the simulator runs one",
+                plan.replicas.len()
+            )));
+        };
+        let stages = replica
+            .stages
+            .iter()
+            .map(|s| {
+                if s.tp.unwrap_or(1) > 1 || s.ep.unwrap_or(1) > 1 {
+                    return Err(SimError::Unsupported(
+                        "tensor or expert parallel stage".into(),
+                    ));
+                }
+                match s.devices.as_slice() {
+                    [d] => Ok(StageSpec {
+                        device: d.clone(),
+                        layers: s.layers.len(),
+                    }),
+                    ds => Err(SimError::Unsupported(format!(
+                        "stage with {} compute devices, the simulator needs one",
+                        ds.len()
+                    ))),
+                }
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(Self {
+            stages,
+            prefill_micro_batches: plan.knobs.prefill_micro_batches,
+            graphs: plan.knobs.cuda_graphs,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -125,9 +190,14 @@ pub enum SimError {
     UnknownDevice(String),
     MissingCompute(String),
     MissingLink(String, String),
-    LayerMismatch { plan: u32, model: u32 },
+    LayerMismatch {
+        plan: u32,
+        model: u32,
+    },
     EmptyPlan,
     BadWorkload(&'static str),
+    /// A plan-IR plan uses fields the simulator does not model.
+    Unsupported(String),
 }
 
 impl std::fmt::Display for SimError {
@@ -141,6 +211,7 @@ impl std::fmt::Display for SimError {
             }
             Self::EmptyPlan => write!(f, "plan has no stages"),
             Self::BadWorkload(w) => write!(f, "bad workload: {w}"),
+            Self::Unsupported(w) => write!(f, "not simulated: {w}"),
         }
     }
 }
@@ -779,6 +850,38 @@ mod tests {
         assert!(a.tpot_s.p50 > 0.0 && a.throughput_tok_s > 0.0);
         let other = simulate(&hw, &model(), &p, &WorkloadProfile { seed: 43, ..w }).unwrap();
         assert_ne!(a, other);
+    }
+
+    #[test]
+    fn plan_ir_converts_to_the_stub() {
+        let desc: ModelDesc =
+            toml::from_str(include_str!("../../plan/fixtures/model_small_moe.toml")).unwrap();
+        let mut ir = Plan::from_toml(include_str!(
+            "../../plan/fixtures/plan_small_moe_phase2.toml"
+        ))
+        .unwrap();
+        let m = ModelSpec::from_desc(&desc);
+        // attn 20M + mlp 1M + 2 active experts x 5M params, F16.
+        assert_eq!(
+            m.weight_bytes_per_layer,
+            2 * (20_000_000 + 1_000_000 + 10_000_000)
+        );
+        assert_eq!(m.flops_per_token_per_layer, 4.0e7 + 2.0e6 + 2.0e7);
+
+        // Stage 1 computes on gpu1 and cpu0: not a single-device pipeline.
+        assert!(matches!(
+            PlanStub::from_plan(&ir),
+            Err(SimError::Unsupported(_))
+        ));
+        ir.replicas[0].stages[1].devices = vec!["gpu1".into()];
+        let stub = PlanStub::from_plan(&ir).unwrap();
+        assert_eq!(stub, {
+            let mut p = plan(&[("gpu0", 2), ("gpu1", 2)]);
+            p.prefill_micro_batches = 4;
+            p
+        });
+        let hw = HardwareGraph::from_toml(FIXTURE).unwrap();
+        simulate(&hw, &m, &stub, &closed(2, 4, 64, 8)).unwrap();
     }
 
     #[test]
