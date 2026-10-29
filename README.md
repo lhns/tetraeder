@@ -2,6 +2,8 @@
 
 An LLM inference engine in Rust on a patched ggml: one placement plan expresses every parallel mode and memory tier, a measured-cost planner chooses it for the hardware at hand, and built-in OpenTelemetry observability finds the bottleneck and proposes the fix.
 
+You set limits such as a target tok/s, a quality floor and which devices it may use; the planner picks formats per layer and expert (mixed quantization, measured per model) and placement together. See [Quantization and quality](docs/plan.md#quantization-and-quality).
+
 - Design, phases and exit tests: [docs/plan.md](docs/plan.md)
 - Decisions: [docs/adr/](docs/adr/README.md)
 - Rules for contributors and agents: [AGENTS.md](AGENTS.md)

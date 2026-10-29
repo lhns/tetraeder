@@ -2,6 +2,8 @@
 
 Oct 29, 2026 · @Pierre
 
+This file is the maintained design. It started as an export of the Claude Doc "Tetraeder: build plan" (rev 105); since Oct 29, 2026 changes go here, and the Claude Doc is the older version.
+
 Tetraeder is an LLM inference engine in Rust on a patched ggml: one placement plan expresses every parallel mode and memory tier, a measured-cost planner chooses it for whatever mix of GPUs, CPUs, VRAM, RAM, NVMe and nodes you have, and built-in OpenTelemetry observability finds the bottleneck and proposes the fix.
 
 ## Goals and principles
@@ -40,7 +42,7 @@ Models: Qwen3 dense, then Qwen3 MoE, then GLM and DeepSeek-style MoE. Formats: G
 
 ## Feature map
 
-All 47 wanted features have a home and a phase; the MVP (M1, after Phase 3b) covers one MoE family plus dense models on CUDA and CPU, with tiered memory, expert streaming, the planner, observability and the bottleneck detector on one machine.
+All 52 wanted features have a home and a phase; the MVP (M1, after Phase 3b) covers one MoE family plus dense models on CUDA and CPU, with tiered memory, expert streaming, the planner, observability and the bottleneck detector on one machine.
 
 | # | Feature | Built in | Phase |
 | --- | --- | --- | --- |
@@ -48,7 +50,7 @@ All 47 wanted features have a home and a phase; the MVP (M1, after Phase 3b) cov
 | 2 | MoE-aware expert placement and streaming | `memory`, `planner`, own graph builder | 2 |
 | 3 | KV cache tiers (VRAM, RAM, NVMe, remote) | `kvcache` | 4, remote in 6 |
 | 4 | Prefix caching, shared across nodes | `kvcache` | 4, cross-node in 6 |
-| 5 | Weight and KV quantization, chosen to fit | ggml formats, `planner` | 1 |
+| 5 | Weight and KV quantization, chosen per unit with placement (see Quantization and quality) | ggml formats, `planner` | 1 whole-model, 2 per unit |
 | 6 | Fast model loading | `model` (aligned direct reads, parallel I/O) | 2 |
 | 7 | Tensor parallel | own executor, NCCL, all-reduce patch | 5 |
 | 8 | Pipeline parallel (layer split) | `executor` | 1 in a node, 6 across nodes |
@@ -66,7 +68,7 @@ All 47 wanted features have a home and a phase; the MVP (M1, after Phase 3b) cov
 | 20 | Security (mTLS, node trust rules) | `transport`, `control` | 6 |
 | 21 | Automatic hardware discovery | `profiler` | 0 |
 | 22 | Measured-cost planner | `profiler`, `costmodel`, `planner` | 3a |
-| 23 | Selectable objective (latency, throughput, context) | `planner` | 3a |
+| 23 | Objective as limits (target tok/s, quality floor, device cost) plus a position on the speed and quality front | `planner` | 3a |
 | 24 | Live replanning | `planner`, `control` | 3a as drain-and-restart, 7 live |
 | 25 | Continuous batching | `scheduler` | 4 |
 | 26 | Chunked prefill | `scheduler` | 4 |
@@ -91,6 +93,11 @@ All 47 wanted features have a home and a phase; the MVP (M1, after Phase 3b) cov
 | 45 | SLO burn-rate alerts | `telemetry`, dashboards | 3a |
 | 46 | Process isolation per device | `executor` (one worker process per device) | 5 |
 | 47 | Request cancellation and backpressure | `gateway`, `scheduler` | 3b |
+| 48 | Quality profile per model (measured drift per tensor group and format) | `profiler`, calibration job | 2, used by the planner in 3a |
+| 49 | Load-time conversion from F16 or BF16 with a disk cache | `model` | 2, safetensors with the own loaders |
+| 50 | 1 to 2 bit formats (IQ1, IQ2, TQ, Q1\_0) as planner choices | ggml formats, `planner` | 2 |
+| 51 | Natively ternary model families (BitNet b1.58) | libllama, own builder | 1 via libllama, own builder in 9 |
+| 52 | Self-speculative decoding (low-bit draft of the same model) | `scheduler`, `planner` | 4 |
 
 ## Architecture
 
@@ -263,6 +270,20 @@ Cross-node expert parallel adds one round trip per MoE layer per token: about 12
 
 Example, estimates only: GLM-5.2 needs about 11 GB of routed expert weights per token at int4 in the worst case. From one NVMe at 7 GB/s with no cache hits that is under 1 tok/s, Colibri's cold range. Spread over four nodes with about 96 GB RAM each, every node reads about 3 GB per token from RAM at 50 to 100 GB/s, a ceiling of about 15 to 30 tok/s before network and compute.
 
+### Parallel shapes across slow links
+
+Machines that are not on one LAN (rented boxes in different data centres, 10 to 150 ms round trip) are still useful, depending on the parallel shape:
+
+| Shape | Traffic between machines per token | Over a high-latency link |
+| --- | --- | --- |
+| Data-parallel replicas (independent prompts) | none | Ideal; any latency is fine |
+| Pipeline parallel with many requests in flight | one activation per stage boundary (about 8 to 16 KB) | Good throughput once micro-batches in flight are at least the number of stages. A single stream pays one one-way latency per hop, the hop back to stage 1 included: S stages on S sites add S times RTT/2 per token (two machines: one RTT) |
+| Prefill on one machine, decode on another | the KV cache once per request | Workable for long prompts; KV size and bandwidth decide |
+| Expert parallel across machines | one round trip per MoE layer (about 60 per token) | Correctness only: about 60 RTT per token is seconds per token |
+| Tensor parallel across machines | an all-reduce per layer | Not supported (ADR 0008) |
+
+The planner sees these costs through the per-link latency and bandwidth; the simulator checks the pipeline numbers.
+
 ### What the planner cannot fix
 
 - Total fast memory across all machines smaller than the experts in regular use: the disk is the limit again; the planner minimizes misses.
@@ -270,6 +291,48 @@ Example, estimates only: GLM-5.2 needs about 11 GB of routed expert weights per 
 - Skewed expert popularity: the planner spreads or replicates popular experts.
 
 `plan what-if` answers which purchase helps most in those cases: RAM, a faster NVMe, a second NVMe for striping, or another node.
+
+## Quantization and quality
+
+Quantization is not one global setting. The planner chooses a format for every unit (tensor, layer slice, expert) together with its device and tier, and measures what each choice costs in quality (ADR 0024). Fewer bytes per weight mean less to read from the slowest tier per token, and free memory for KV cache, larger batches and more pipeline stages in flight.
+
+### Formats
+
+At the pin (llama.cpp b11976) ggml offers the usual 8, 6, 5 and 4 bit formats (Q8\_0, Q6\_K, Q5\_K, Q4\_K and others), the importance-weighted IQ4, IQ3 and IQ2 families, and five formats near one bit: IQ1\_S and IQ1\_M (about 1.6 and 1.75 bits per weight), TQ1\_0 and TQ2\_0 (ternary), and Q1\_0. The IQ formats below 4 bits need an importance matrix from calibration text. They damage small models badly and work reasonably on very large MoE models, so they are formats the planner may choose where the quality profile says the loss is small, not a mode of their own.
+
+Natively ternary models (BitNet b1.58 and similar) are different: they are trained with ternary weights, so nothing is lost by storing them that way. They are a model family. libllama loads BitNet at the pin, so they run through the Phase 1 path; an own builder with faster ternary kernels comes with the other families in Phase 9.
+
+### Mixed formats across layers, devices and tiers
+
+GGUF already gives every tensor its own format, and activations cross stage and device boundaries in f16 or f32 whatever the weight format. So a model can be partly quantized: one stage on a large GPU in Q8\_0, another on a smaller GPU or the CPU in Q4\_K, with no conversion at the boundary.
+
+For MoE models the format follows the tier. Hot experts stay in VRAM at high precision; rarely used experts move to RAM or NVMe at low precision. The bytes read from the slowest tier per token drop by the compression ratio, while most tokens only touch high-precision experts. The router, attention and shared experts, which every token uses, stay at high precision.
+
+In Phase 1 on libllama only its tensor-type overrides are available; the full per-unit choice comes with the own graph builder and plan IR in Phase 2.
+
+### Which tensors take fewer bits
+
+Some tensors lose much more quality when squeezed than others. llama.cpp's mixed presets (Q4\_K\_M and others) encode fixed rules: more bits for the token embeddings and output head, and for some attention-value and FFN-down tensors, especially in the first and last layers. These rules are the prior when nothing is measured.
+
+The planner works from a **quality profile** per model instead:
+
+- For each tensor group (per layer, or per expert group for MoE) and each candidate format, the calibration job quantizes only that group and measures the KL divergence of the output logits from the full-precision model on a calibration set.
+- The same run writes the importance matrix the IQ formats need.
+- The profile is a file next to the model, keyed by model hash, calibration set and ggml version, so it can be shared and a model is profiled once. It runs as a batch job on a rented GPU box.
+- Profiles can be per workload (code, chat, long context), like routing profiles, since which experts and layers matter depends on the text. A profile from another workload is still better than the fixed rules.
+- A plan's quality loss is estimated as the sum over its units. This additivity is an assumption, so a test compares the summed estimate with the measured divergence of the whole mix on every profiled model.
+
+With the profile, picking formats is a knapsack: squeeze first the units that lose the least quality per byte saved, until the plan meets its speed or memory limit. The planner does this inside each placement skeleton, so format and placement are decided together.
+
+### Load-time conversion
+
+If only an F16 or BF16 model is on disk, the engine converts it at load time to the formats the plan chose, with ggml's per-tensor quantization on all CPU cores. Simple formats convert quickly; the IQ formats and the importance matrix take much longer, so every conversion is cached on disk, keyed by source hash, format, importance-matrix hash and ggml version. The planner counts a missing conversion as a one-time switch cost, not a per-token cost.
+
+Conversion only goes downward: requantizing an already quantized model loses more than converting from full precision, so the engine always starts from the most precise copy available and records it. Hugging Face safetensors need a tensor-name mapping per architecture, which comes with the own loaders and builders from Phase 2; until then the source is a GGUF.
+
+### Self-speculative decoding
+
+A low-bit copy of the same model drafts several tokens and the high-precision copy verifies them in one batched step. The output is exactly what the high-precision model would produce, at a speed between the two. It needs memory for both copies, or a low-bit copy of only some layers, so it is a plan option the planner weighs like any other (Phase 4, with speculative decoding).
 
 ## Planner and optimizer
 
@@ -280,11 +343,14 @@ The planner turns measured hardware, the model, the workload and your hints into
 - **Hardware graph:** per device and tier the capacity, bandwidth and per-op cost curves; per link (GPU pairs, host to device, NVMe to host, network) the latency α and bandwidth β, measured under load, with shared PCIe lanes detected. Measured on startup with repeats, medians and drift detection (clocks, thermals, power limits, NUMA, page cache, Proxmox co-tenants). A priors database scaled from measured same-class devices answers what-if questions about hardware you do not have.
 - **Model graph:** units with sizes and costs; for MoE, measured routing frequencies per expert.
 - **Workload profile:** arrival rate, prompt and output length distributions, prefix reuse, concurrency; measured online from telemetry, seeded by hints.
-- **Objective and SLOs**, **hints**, and the **current plan** (for switch costs).
+- **Quality profile** per model (see Quantization and quality): quality loss per tensor group and format.
+- **Objective and SLOs**, **hints**, and the **current plan** (for switch costs, including weight conversions that are not cached yet).
+
+Everything the cost model uses is measured, not assumed: compute per device; capacity, bandwidth and request-size curves (IOPS for small reads) per tier (VRAM, RAM, NVMe, remote); latency and bandwidth per link (PCIe, NVLink, network), including what each link delivers when several streams share it (two GPUs or a GPU and an NVMe behind one PCIe root, several transfers on one network card).
 
 ### Cost model
 
-Each op costs a fixed launch and sync term plus a term in M, the tokens in the step, measured per op shape and device:
+Each op costs a fixed launch and sync term plus a term in M, the tokens in the step, measured per op, shape, weight format and device (a 4 bit and a 1.6 bit matrix multiply on the same device are different curves, especially on the CPU):
 
 ```latex
 t_{\text{op}}(M) = c_0 + f_{\text{op,dev}}(M)
@@ -310,14 +376,16 @@ with a the activation size per hop. Tier streaming costs bytes over tier bandwid
 W_{\text{shards}} + \text{KV}(\text{batch} \times \text{context}) + \text{workspace} \le \text{capacity}
 ```
 
+Quantization enters both sides: smaller formats shrink the weight shards, which leaves room for KV and larger batches, and change the per-op curves. Each plan also gets a quality loss Q(plan), the sum of its units' entries in the quality profile, and a resource cost from the device cost hints; the objective (see Hints) trades speed against quality and cost.
+
 Latency under load comes from a discrete-event simulator that replays the workload profile against a candidate plan and schedules micro-batches explicitly. Telemetry residuals (predicted minus measured, per op and per stage) feed learned correction factors.
 
 ### Search
 
 1. **Enumerate skeletons:** tensor, pipeline, expert and data parallel degrees per device group. Tensor parallel only within one vendor on Linux with a fast link; degrees only as divisors of heads and experts.
 2. **Prune** by memory lower bounds (after the measured reserve), hard hints, and fields the current phase cannot execute.
-3. **Solve each skeleton:** layer split across uneven stages by dynamic programming (minimize the slowest stage); expert placement and tiers as a mixed-integer program over routing frequencies, with greedy or large-neighbourhood search under a time limit when it does not close; KV budgets per tier.
-4. **Score** survivors analytically; run the top 20 through the simulator.
+3. **Solve each skeleton:** layer split across uneven stages by dynamic programming (minimize the slowest stage); expert placement and tiers as a mixed-integer program over routing frequencies, with greedy or large-neighbourhood search under a time limit when it does not close; KV budgets per tier; weight formats per unit by a greedy knapsack over the quality profile (least quality lost per byte saved first) until the skeleton meets its limits.
+4. **Score** survivors analytically; run the top 20 through the simulator. The survivors' speed and quality form the Pareto front that `plan explain` shows.
 5. **Benchmark for real** only when the top two are within the model's error band, on the pinned replay trace; knob-only candidates without reloading the model.
 6. **Replan online** when telemetry shows drift, load shift, an SLO miss or a node change. Switch only if the predicted gain over the planning horizon exceeds the switch cost times a safety factor; cheap moves (batch limits, KV budget, hot set, replicas) before resharding.
 
@@ -327,19 +395,21 @@ The planner is scored by regret and rank correlation over the candidate set defi
 
 | Kind | Example | Effect |
 | --- | --- | --- |
-| Objective and SLO | `objective = "latency"`, `p95_ttft_ms = 2000`, `min_tok_s = 20` | Target and hard limits |
+| Objective and SLO | `objective = "latency"`, `p95_ttft_ms = 2000`, `target_tok_s = 20` | Regime and hard limits (ADR 0025): among plans that meet them, best quality first, then lowest resource cost, then extra speed; a target tok/s alone is enough |
+| Quality floor | `max_quality_loss = 0.02` (KL divergence), `min_format = "Q4_K"`, `min_format layers 0..2 = "Q8_0"` | Hard limit on quantization |
+| Trade-off | `tradeoff = 0.7` | Picks a point on the speed and quality front: 0 the fastest plan, 1 the best-quality plan; a view on the front, not a weight |
 | Pin | `pin layers 0..8 -> gpu0` | Hard constraint |
 | Forbid | `forbid tier nvme for dense`, `forbid node laptop` | Hard constraint, also privacy |
 | Prefer | `prefer node rack1 weight 0.2` | Soft cost term |
 | Workload | `prefix_reuse = high`, `typical_prompt = 30000`, `concurrency = 4` | Seeds the profile |
 | Partial plan | A plan file with open fields | Planner fills only those |
 | Stability | `max_switches_per_hour = 1`, freeze 09:00 to 18:00 | Limits replanning |
-| Power and cost | `max_watts = 900`, per-device cost weights | Resource budget |
+| Power and cost | `max_watts = 900`, `cost node laptop 0.8`, `cost gpu1 0.3` | Resource budget; device costs decide how much slow or shared hardware a plan may use |
 | Advisor policy | `auto_apply = ["batch", "kv_budget", "hot_set"]` | Which advisor actions run without asking |
 
 ### Explain, diff, what-if
 
-- `plan explain`: predicted numbers per stage, the binding bottleneck, the runner-up and why it lost.
+- `plan explain`: predicted numbers per stage, the binding bottleneck, the runner-up and why it lost, the format per unit and its quality cost, and the speed and quality front with the chosen point.
 - `plan diff`: what moves between two plans and how long the switch takes.
 - `plan what-if --add gpu:4090 --add ram:256G --remove node:laptop`: solve for hardware you don't have, from the priors database.
 
@@ -468,15 +538,15 @@ Phases 8 and 9 (backend parity, breadth) can run in parallel with M3 and M4.
 | --- | --- | --- |
 | 0. Foundations | Repo, AGENTS.md, ADRs, CI plus a nightly GPU host; benchmark spec and harness with llama.cpp (also with expert offload overrides), ik\_llama.cpp, KTransformers, Colibri and vLLM as baselines; reference logits; simulator skeleton; hardware discovery; telemetry skeleton and first dashboard. Spikes: two ggml backends in one process (CUDA plus Vulkan or HIP); QUIC versus TCP with TLS versus RDMA latency; exemplars in opentelemetry-rust | Harness runs the spec; dashboard shows live GPU and host metrics; each spike ends in an ADR |
 | 1. Engine core on libllama | Rust drives libllama for dense models; placement through llama.cpp parameters; mixed GPU sizes and CPU; step timing; OpenTelemetry metrics and traces | Within 5% of llama.cpp at the same parameters; production telemetry overhead under 2% |
-| 2. Own MoE builder, tiers, expert streaming | Plan IR and validator; Qwen3 MoE graph builder in Rust (CUDA, CPU); per-device arenas with measured reserve; VRAM, RAM and NVMe tiers; slot cache with prefetch, sync only on misses; aligned direct I/O on Linux and Windows | Logit parity with libllama; a MoE larger than RAM at least as fast as the best baseline that runs it (Colibri, llama.cpp with expert overrides, ik\_llama.cpp) |
-| 3a. Planner and detector | Profiler with PCIe topology; cost model with c0 per graph mode; simulator; planner with hints, explain, what-if; bottleneck detector and advisor (report only); SLO burn-rate alerts; drain-and-restart replanning | Regret at most 10% and rank correlation at least 0.8 over at least 20 candidates per fixture; detector: correct top-1 in 9 of 10 single-fault runs, at most 1 false positive in 10 no-fault runs, both faults in the top 3 on two-fault fixtures |
+| 2. Own MoE builder, tiers, expert streaming | Plan IR and validator; Qwen3 MoE graph builder in Rust (CUDA, CPU); per-device arenas with measured reserve; VRAM, RAM and NVMe tiers; slot cache with prefetch, sync only on misses; aligned direct I/O on Linux and Windows; format per unit in the plan IR; load-time conversion with a disk cache; quality profile format and calibration job | Logit parity with libllama; a MoE larger than RAM at least as fast as the best baseline that runs it (Colibri, llama.cpp with expert overrides, ik\_llama.cpp) |
+| 3a. Planner and detector | Profiler with PCIe topology; cost model with c0 per graph mode; simulator; planner with hints, explain, what-if; formats per unit from the quality profile, limits and Pareto front (ADR 0025); bottleneck detector and advisor (report only); SLO burn-rate alerts; drain-and-restart replanning | Regret at most 10% and rank correlation at least 0.8 over at least 20 candidates per fixture; detector: correct top-1 in 9 of 10 single-fault runs, at most 1 false positive in 10 no-fault runs, both faults in the top 3 on two-fault fixtures; at the byte budget of a llama.cpp preset (Q4\_K\_M), the planner's format mix has no higher KL divergence than the preset on every profiled model, and summed profile estimates stay within a stated band of the measured divergence |
 | 3b. Gateway | OpenAI and Anthropic API, streaming, tool calls, structured output (llguidance), chat templates, cancellation, backpressure, per-request cost accounting | Conformance tests for both APIs; a week of Claude Code use logged |
-| 4. Own KV and scheduler | Qwen3 dense builder; chunked or paged KV (decided by experiment); prefix cache; continuous batching; chunked prefill; speculative decoding (n-gram, draft; MTP where available) | At least llama.cpp server throughput at concurrency 4; prefix hits cut time to first token on a Claude Code replay |
+| 4. Own KV and scheduler | Qwen3 dense builder; chunked or paged KV (decided by experiment); prefix cache; continuous batching; chunked prefill; speculative decoding (n-gram, draft, self-speculative with a low-bit copy; MTP where available) | At least llama.cpp server throughput at concurrency 4; prefix hits cut time to first token on a Claude Code replay |
 | 5. Own executor, multi-GPU | Executor replacing ggml's backend scheduler; worker process per device; all-reduce patch; tensor, expert and tensor-times-pipeline parallel | Planner picks the measured winner among layer split, tensor and expert parallel; predictions within 15% |
 | 6. Multi-node | Transport chosen in Phase 0; discovery; mTLS; pipeline and experts across nodes; remote KV; replicas; failover | A model larger than any single node runs within 15% of prediction; killing a node with a replica keeps new requests flowing, in-flight requests on it fail cleanly |
 | 7. Online loop | Advisor auto-apply with rollback; live replica scaling; live reshard via migration DAGs; prefill and decode on different hardware | Day-long trace: at least 10% more goodput than the best static plan, at most 1 switch per hour, zero failed requests |
 | 8. Backend parity | Own builders on HIP, Vulkan, Metal; more model families (GLM, DeepSeek with MLA-aware KV) | Parity per backend and split point; within 15% of llama.cpp per backend |
-| 9. Breadth | Several models, batched multi-LoRA, context parallel, multimodal, embeddings, auth and quotas, Windows and Linux packages, container image | Feature tests per item; packages install cleanly on both systems |
+| 9. Breadth | Several models, natively ternary families (BitNet) with an own builder, batched multi-LoRA, context parallel, multimodal, embeddings, auth and quotas, Windows and Linux packages, container image | Feature tests per item; packages install cleanly on both systems |
 
 ## Effort
 
@@ -576,7 +646,7 @@ Phases 0 to 4 on your Linux host and Windows desktop, with one Linux GPU machine
 
 ## Architecture decision records
 
-Twenty decisions are made; Phase 0 writes each as `docs/adr/00NN-<slug>.md` (status, context, decision, consequences) so Claude Code can cite them.
+Twenty-five decisions are made; Phase 0 writes each as `docs/adr/00NN-<slug>.md` (status, context, decision, consequences) so Claude Code can cite them.
 
 | ADR | Decision | Why | Consequence |
 | --- | --- | --- | --- |
@@ -600,6 +670,11 @@ Twenty decisions are made; Phase 0 writes each as `docs/adr/00NN-<slug>.md` (sta
 | 0018 | Transport is chosen by measurement in Phase 0 (quinn, iroh, TCP with TLS, RDMA where present) | Userspace QUIC costs latency and CPU per hop, which matters for per-layer expert round trips | ADR records the measured numbers |
 | 0019 | M1 scope: dense models via libllama plus one MoE family with an own builder, CUDA and CPU only | Keeps M1 reachable; other backends and families come in Phase 8 | Mixed vendors in M1 only if the Phase 0 multi-backend spike passes |
 | 0020 | No timing patch: whole-step timing with CUDA graphs in production, per-op timing in calibration runs without graphs, CUPTI or rocprof from outside in profiling mode | Timing inside captured graphs is unusable and disabling graphs changes what is measured | Two c0 values per op in the cost model |
+| 0021 | All GPU work runs on ephemeral Vast boxes; nightly GPU CI is a scheduled Vast job on a prebuilt image | No own GPU host; one box at a time under a price cap | Paired same-box benchmarks instead of locked clocks; Windows GPU runtime untested |
+| 0022 | No OpenTelemetry exemplars for now | opentelemetry-rust 0.33 emits none | Slow traces kept by tail sampling in the collector |
+| 0023 | Transport spike: QUIC versus TCP with TLS versus plain TCP (Proposed) | Per-hop latency matters for cross-node experts | WAN numbers between two boxes still pending |
+| 0024 | Quantization is a planner choice per unit; quality is measured per model as KL divergence per tensor group and format (Proposed) | Sensitivity differs per tensor; the format should follow the tier | Calibration job and quality profile per model; conversion cache |
+| 0025 | The objective is hard limits plus a position on the speed and quality front, no weighted score (Proposed) | Speed and quality have unrelated scales | A target tok/s alone is enough; `tradeoff` picks a point on the front |
 
 ## Risks and open decisions
 
@@ -618,6 +693,7 @@ The largest risk is calendar time; next come cost-model accuracy, ggml drift and
 | Telemetry overhead | Timing can slow decode | Step timing only in production, per-op only in calibration, budgets measured nightly |
 | Detector false positives | Wrong blame leads to wrong actions | No-fault and two-fault controls in the exit test; "balanced" verdict |
 | Advisor harm | An automatic change makes things worse | Auto-apply only cheap, reversible knobs; verify and roll back |
+| Quality estimate | Summed per-tensor drift may not predict the drift of a whole mix | Additivity test on every profiled model; fall back to preset rules where it fails |
 | Live reshard bugs | Moving weights and KV under load can corrupt state | Migration DAGs as data, property tests, simulator first, drain before move |
 
 ### Open decisions
@@ -625,6 +701,7 @@ The largest risk is calendar time; next come cost-model accuracy, ggml drift and
 - **KV layout in Phase 4:** contiguous chunks on unmodified attention, or paged blocks with a patch; decided by experiment.
 - **Mixed vendors in M1:** decided by the Phase 0 multi-backend spike.
 - **Transport:** decided by the Phase 0 latency measurement.
+- **Quality profile granularity:** per layer, per tensor or per expert group; decided by profiling cost against planner gain in Phase 2.
 - **Trace backend:** Jaeger or Grafana Tempo next to VictoriaMetrics.
 - **Name check:** confirm Tetraeder is free on crates.io and GitHub.
 
