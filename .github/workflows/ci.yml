@@ -2,7 +2,8 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    # Phase branches get CI before they have a PR.
+    branches: [main, "phase*"]
   pull_request:
 
 concurrency:
