@@ -10,3 +10,27 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+tetraeder-telemetry = { path = "../telemetry" }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "query"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+tokio-util = "0.7.20"
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+minijinja = { version = "3.0.4", features = ["json", "loop_controls", "serde", "preserve_order"] }
+minijinja-contrib = { version = "3.0.4", features = ["pycompat"] }
+llguidance = { version = "1.9.1", default-features = false, features = ["lark", "ahash", "referencing"] }
+opentelemetry = "0.33.1"
+tracing = "0.1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["io-util"] }
+tower = { version = "0.5.3", features = ["util"] }
+http-body-util = "0.1"
+opentelemetry_sdk = { version = "0.33.1", features = ["testing", "metrics", "trace"] }
+tracing-opentelemetry = "0.34.0"
+tracing-subscriber = { version = "0.3.23", features = ["registry"] }

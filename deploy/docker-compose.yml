@@ -29,6 +29,20 @@ services:
     ports:
       - "10428:10428"
 
+  # Evaluates deploy/alerts; no Alertmanager yet, so firing alerts are visible in vmalert's UI (:8880).
+  vmalert:
+    image: victoriametrics/vmalert:v1.108.1
+    command:
+      - "-rule=/etc/alerts/*.yml"
+      - "-datasource.url=http://victoriametrics:8428"
+      - "-notifier.blackhole"
+    volumes:
+      - ./alerts:/etc/alerts:ro
+    ports:
+      - "8880:8880"
+    depends_on:
+      - victoriametrics
+
   grafana:
     image: grafana/grafana:11.4.0
     environment:
