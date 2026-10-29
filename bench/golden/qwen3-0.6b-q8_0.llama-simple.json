@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "model": "Qwen/Qwen3-0.6B-GGUF:Qwen3-0.6B-Q8_0.gguf",
+  "engine": "llama.cpp@2e0d86be llama-simple",
+  "backend": "cpu",
+  "n_predict": 32,
+  "cases": [
+    {"id": "capital", "prompt": "The capital of France is", "text": "The capital of France is Paris, and the capital of Italy is Rome. The capital of Spain is Madrid. The capital of China is Beijing. The capital of Japan is Tokyo. The"},
+    {"id": "fibonacci", "prompt": "def fibonacci(n):", "text": "def fibonacci(n):\n    if n == 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        return fibonacci(n"},
+    {"id": "story", "prompt": "Once upon a time", "text": "Once upon a time, there were 3000 people in a town. The number of people who are in the town is 3000. The number of"}
+  ]
+}

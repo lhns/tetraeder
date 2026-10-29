@@ -1,0 +1,27 @@
+[package]
+name = "tetraeder-engine"
+description = "Tetraeder: Phase 1 engine: generation loop and bench adapter over libllama, with step telemetry."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+cuda = ["tetraeder-ggml-sys/cuda"]
+vulkan = ["tetraeder-ggml-sys/vulkan"]
+
+[dependencies]
+tetraeder-ggml-sys = { path = "../ggml-sys" }
+tetraeder-telemetry = { path = "../telemetry" }
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tetraeder-bench = { path = "../bench" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

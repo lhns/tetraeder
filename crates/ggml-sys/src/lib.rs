@@ -1,7 +1,21 @@
-//! Raw bindings to the pinned, patched ggml and libllama (built from `vendor/llama.cpp`).
+//! Bindings to the pinned, patched ggml and libllama (built from `vendor/llama.cpp`).
 //!
-//! This crate and `memory` are the only places where `unsafe` is allowed.
-#![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
-#![allow(clippy::all, clippy::pedantic, unsafe_op_in_unsafe_fn, dead_code)]
+//! `raw` holds the generated bindings, `llama` a safe wrapper over libllama. This crate and
+//! `memory` are the only places where `unsafe` is allowed.
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+pub mod llama;
+
+#[allow(
+    non_upper_case_globals,
+    non_camel_case_types,
+    non_snake_case,
+    clippy::all,
+    clippy::pedantic,
+    unsafe_op_in_unsafe_fn,
+    dead_code
+)]
+pub mod raw {
+    include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
+
+pub use raw::*;
