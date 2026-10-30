@@ -2,6 +2,7 @@ name: ci
 
 on:
   push:
+    # Phase branches get CI before they have a PR.
     branches: [main, "phase*"]
   pull_request:
 

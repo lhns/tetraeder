@@ -30,3 +30,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0024](0024-quantization-per-unit-and-quality-profile.md) | Quantization is a planner choice per unit; quality is measured per model (Proposed) |
 | [0025](0025-objective-is-limits-plus-pareto-position.md) | The objective is hard limits plus a position on the speed and quality front (Proposed) |
 | [0026](0026-phase1-engine-on-libllama.md) | Phase 1 engine interface: safe libllama wrapper in ggml-sys, engine loop in a new engine crate |
+| [0027](0027-placement-plan-ir-shape.md) | Placement plan IR: assignment rules over a model description, one expanded form for checks, diff and migration |
