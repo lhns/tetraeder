@@ -1,6 +1,6 @@
 # 0021. All GPU work runs on ephemeral Vast boxes
 
-Status: Accepted
+Status: Accepted (tooling: superseded by 0029)
 
 ## Context
 

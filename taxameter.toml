@@ -1,0 +1,66 @@
+# GPU box config for taxameter (https://github.com/lhns/taxameter), ADR 0029.
+[project]
+name = "tetraeder"
+remote_dir = "/root/tetraeder"
+state_dir = ".vast"
+ssh_key = "~/.ssh/lrn_vast_ed25519"
+
+[provider]
+name = "vast"
+
+[offers]
+gpus = ["RTX 3090"]
+min_vram_gb = 24
+min_disk_gb = 50
+min_reliability = 0.99
+min_inet_mbps = 500
+min_cuda = 12.8  # a host with max CUDA 12.5 left the CUDA 12.8 image stuck in loading
+interruptible = false
+
+[image]
+name = "ghcr.io/lhns/tetraeder-box"
+tag = "latest"
+tag_file = "vendor/PIN"  # the box image is tagged with the llama.cpp tag, so a box always matches the pin
+tag_regex = '^tag=(\S+)'
+fallback = "nvidia/cuda:12.8.1-devel-ubuntu24.04"  # plain CUDA image; the provision hook installs the tools
+
+[push]
+# everything the box builds; tests/test_taxameter_config.py checks it against Cargo.toml and build.rs
+paths = ["crates", "xtask", "patches", "bench", "scripts", "docs/adr", "vendor/PIN", "Cargo.toml",
+         "Cargo.lock", "rust-toolchain.toml", "AGENTS.md"]
+submodules = ["vendor/llama.cpp"]
+
+[box]
+# cargo/rustc/nvcc/cmake/ninja, the engine and bench binaries under target/, bench.sh, llama.cpp tools
+# (the [x] brackets keep the pattern from matching its own command line)
+busy = '(^|/)(cargo|rustc|nvcc|cmake|ninja)( |$)|target/(release|debug)/tetraede[r]|bench[.]s[h]|(^|/)llama-'
+batch = 'nightl[y][.]sh'
+batch_log = "runs/vast/nightly.log"
+batch_done = "^NIGHTLY_DONE"
+logs_dir = "runs/vast"
+provision_hook = "scripts/box_deps.sh"
+verify_hook = "scripts/box_verify.sh"
+
+[results]
+dirs = ["bench/results"]
+done_marker = "DONE"
+extra = ["runs/vast", "bench/golden"]
+include = ["*.json", "*.jsonl", "DONE", "*.log"]
+whole = ["bench/golden"]
+exclude = ["*.gguf", "*/target/*"]
+
+[models]
+from_toml = "bench/spec/phase0.toml"  # the nightly spec lists the models it needs
+from_key = "model.*.hf"
+
+[nightly]
+script = "scripts/nightly.sh"
+done_line = "NIGHTLY_DONE"
+
+[policy]
+max_price_per_hour = 0.45
+max_instances = 1
+auto_replace = false  # an automatic replacement could start a second paid box
+disk_gb = 80
+nightly_wait_min = 90
+max_box_hours = 3

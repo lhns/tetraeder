@@ -132,23 +132,31 @@ wheels = [
 ]
 
 [[package]]
-name = "tetraeder-tools"
-version = "0.0.0"
-source = { virtual = "." }
+name = "taxameter"
+version = "0.1.0"
+source = { git = "https://github.com/lhns/taxameter?tag=v0.1.0#34c63198176fcb43f07be7c41259b1b8092176a7" }
 dependencies = [
     { name = "httpx" },
 ]
 
+[[package]]
+name = "tetraeder-tools"
+version = "0.0.0"
+source = { virtual = "." }
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "taxameter" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8" }]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "taxameter", git = "https://github.com/lhns/taxameter?tag=v0.1.0" },
+]
 
 [[package]]
 name = "typing-extensions"

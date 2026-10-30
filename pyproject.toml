@@ -1,16 +1,19 @@
-# Tooling only (scripts/vastctl.py and its tests); Tetraeder itself has no Python at runtime.
+# Tooling only (taxameter.toml and its config tests); Tetraeder itself has no Python at runtime.
 [project]
 name = "tetraeder-tools"
 version = "0.0.0"
-description = "Offline tooling for Tetraeder: Vast.ai box management."
+description = "Offline tooling for Tetraeder: Vast.ai box management through taxameter."
 requires-python = ">=3.12"
-dependencies = ["httpx>=0.27"]
+dependencies = []
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "taxameter"]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+taxameter = { git = "https://github.com/lhns/taxameter", tag = "v0.1.0" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

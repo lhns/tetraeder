@@ -86,7 +86,7 @@ pub struct Workload {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Model {
-    /// `org/name:file.gguf`, the `vastctl --models` format. Lives in `<models_dir>/<org>__<name>/<file>`.
+    /// `org/name:file.gguf`, the `taxameter --models` format. Lives in `<models_dir>/<org>__<name>/<file>`.
     pub hf: String,
     #[serde(default)]
     pub note: String,
