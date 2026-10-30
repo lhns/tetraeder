@@ -55,6 +55,20 @@ fn main() {
         let archs = std::env::var("TETRAEDER_CUDA_ARCHS").unwrap_or_else(|_| "86;89;90;120".into());
         cfg.define("CMAKE_CUDA_ARCHITECTURES", archs);
     }
+    // cmake-rs replaces CMAKE_<LANG>_FLAGS_RELEASE on MSVC with its own flags, which drop /O2 and
+    // /DNDEBUG: ggml would build unoptimized with asserts on. Restore CMake's MSVC Release defaults.
+    // The CRT flag must match Rust's (/MD unless crt-static).
+    if env("CARGO_CFG_TARGET_ENV") == "msvc" {
+        let static_crt = std::env::var("CARGO_CFG_TARGET_FEATURE")
+            .is_ok_and(|f| f.split(',').any(|x| x == "crt-static"));
+        let crt = if static_crt { "/MT" } else { "/MD" };
+        for lang in ["C", "CXX"] {
+            cfg.define(
+                format!("CMAKE_{lang}_FLAGS_RELEASE"),
+                format!("-nologo {crt} -Brepro /O2 /Ob2 /DNDEBUG"),
+            );
+        }
+    }
     let out = cfg.build();
 
     for dir in ["lib", "lib64"] {

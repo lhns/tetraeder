@@ -60,15 +60,13 @@ fn greedy_tokens(model: &Arc<Model>, prompt: &[Token], n: usize) -> Vec<Token> {
     for (i, &t) in prompt.iter().enumerate() {
         batch.push(t, i as i32, 0, i == prompt.len() - 1).unwrap();
     }
-    let mut pos = prompt.len() as i32;
     let mut out = Vec::new();
-    for _ in 0..n {
+    for pos in (prompt.len() as i32..).take(n) {
         ctx.decode(&batch).unwrap();
         let tok = smpl.sample(&mut ctx, -1).unwrap();
         out.push(tok);
         batch.clear();
         batch.push(tok, pos, 0, true).unwrap();
-        pos += 1;
     }
     out
 }
