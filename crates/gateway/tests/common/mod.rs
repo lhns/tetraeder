@@ -113,6 +113,14 @@ pub fn chatml_user(text: &str) -> String {
     format!("<|im_start|>user\n{text}<|im_end|>\n<|im_start|>assistant\n")
 }
 
+/// Fake-engine token count of `chatml_user(text)`: bytes, with each special token as one.
+pub fn chatml_user_tokens(text: &str) -> usize {
+    let s = chatml_user(text);
+    tetraeder_gateway::fake::SPECIALS
+        .iter()
+        .fold(s.len(), |n, sp| n - s.matches(sp).count() * (sp.len() - 1))
+}
+
 pub fn weather_tool_openai() -> Value {
     serde_json::json!({"type": "function", "function": {
         "name": "get_weather",

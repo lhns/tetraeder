@@ -110,7 +110,10 @@ impl GenerateSpec {
 #[derive(Debug, Clone, PartialEq)]
 pub enum OutEvent {
     Segment(Segment),
-    Done { finish: Finish, usage: Usage },
+    Done {
+        finish: Finish,
+        usage: Usage,
+    },
     /// Generation failed after it started; nothing follows.
     Error(GatewayError),
 }
@@ -303,20 +306,23 @@ impl Gateway {
     }
 
     fn state(&self, id: &str) -> Result<Arc<ModelState>, GatewayError> {
-        if let Some(s) = self.models.lock().unwrap_or_else(|e| e.into_inner()).get(id) {
+        if let Some(s) = self
+            .models
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id)
+        {
             return Ok(Arc::clone(s));
         }
         let info = self.model(id)?;
         let vocab = self.engine.vocab(id).map_err(engine_err)?;
         let (template, template_error) = match &info.chat_template {
-            Some(src) => match ChatTemplate::new(
-                src,
-                info.bos_token.as_deref(),
-                info.eos_token.as_deref(),
-            ) {
-                Ok(t) => (Some(t), None),
-                Err(e) => (None, Some(e.to_string())),
-            },
+            Some(src) => {
+                match ChatTemplate::new(src, info.bos_token.as_deref(), info.eos_token.as_deref()) {
+                    Ok(t) => (Some(t), None),
+                    Err(e) => (None, Some(e.to_string())),
+                }
+            }
             None => (None, None),
         };
         let src = info.chat_template.as_deref().unwrap_or_default();
@@ -456,7 +462,8 @@ impl Gateway {
             None => ctx - n_prompt,
         };
 
-        let (parser, constraint) = self.output_setup(&st, &spec.prompt, &spec.format, in_reasoning)?;
+        let (parser, constraint) =
+            self.output_setup(&st, &spec.prompt, &spec.format, in_reasoning)?;
 
         let permit = self.admit().await?;
         let cancel = CancellationToken::new();
@@ -510,7 +517,7 @@ impl Gateway {
         prompt: &Prompt,
         format: &Option<OutputFormat>,
         in_reasoning: bool,
-    ) -> Result<(Option<OutputParser>, Option<Box<dyn TokenConstraint>>), GatewayError> {
+    ) -> Result<OutputSetup, GatewayError> {
         let Prompt::Chat {
             tools,
             tool_choice,
@@ -618,6 +625,9 @@ impl Gateway {
         self.admission.waiting.load(Ordering::SeqCst)
     }
 }
+
+/// The output parser (chat only) and the sampling constraint of one request.
+type OutputSetup = (Option<OutputParser>, Option<Box<dyn TokenConstraint>>);
 
 fn engine_err(e: crate::engine::EngineError) -> GatewayError {
     use crate::engine::EngineError as E;
@@ -810,10 +820,7 @@ impl Run {
             if let Some(f) = first
                 && usage.completion_tokens > 1
             {
-                g.time_per_output_token(
-                    (last - f) / (usage.completion_tokens - 1),
-                    &self.model,
-                );
+                g.time_per_output_token((last - f) / (usage.completion_tokens - 1), &self.model);
             }
             let uncached = usage.prompt_tokens.saturating_sub(usage.cached_tokens);
             g.tokens(

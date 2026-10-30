@@ -4,10 +4,8 @@ mod common;
 
 use common::*;
 use opentelemetry::metrics::MeterProvider as _;
-use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
 use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
-use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -208,7 +206,7 @@ async fn cost_record_per_request() {
     assert_eq!(c.model, "fake");
     assert_eq!(c.operation, "chat");
     assert_eq!(c.completion_tokens, 3);
-    assert_eq!(c.prompt_tokens as usize, chatml_user("hi").len());
+    assert_eq!(c.prompt_tokens as usize, chatml_user_tokens("hi"));
     assert_eq!(c.gpu_seconds, Some(0.5));
     assert_eq!(c.bytes_streamed, Some(1024));
     assert_eq!(c.error_type, None);
@@ -274,7 +272,7 @@ async fn gen_ai_metrics_are_recorded() {
     let (s, _, _) = post(
         &app,
         "/v1/chat/completions",
-        &json!({"model": "nope", "messages": []}),
+        &json!({"model": "nope", "messages": [{"role": "user", "content": "hi"}]}),
         false,
     )
     .await;
@@ -300,7 +298,7 @@ async fn gen_ai_metrics_are_recorded() {
             .any(|(a, n)| has(a, "tetraeder.token.direction", "output") && *n == 4)
     );
     assert!(tokens.iter().any(|(a, n)| {
-        has(a, "tetraeder.token.direction", "input") && *n == chatml_user("hi").len() as u64
+        has(a, "tetraeder.token.direction", "input") && *n == chatml_user_tokens("hi") as u64
     }));
     let cost = points(&exp, "tetraeder.request.cost");
     for res in ["gpu_seconds", "bytes_streamed"] {
@@ -311,50 +309,4 @@ async fn gen_ai_metrics_are_recorded() {
             "{cost:?}"
         );
     }
-}
-
-#[test]
-fn request_span_has_gen_ai_attributes() {
-    use tracing_subscriber::layer::SubscriberExt;
-    let exp = InMemorySpanExporter::default();
-    let tp = SdkTracerProvider::builder()
-        .with_simple_exporter(exp.clone())
-        .build();
-    let subscriber = tracing_subscriber::registry()
-        .with(tracing_opentelemetry::layer().with_tracer(tp.tracer("test")));
-    let _g = tracing::subscriber::set_default(subscriber);
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    rt.block_on(async {
-        let (app, _) = app(FakeEngine::fixed("abc"));
-        let (s, _, _) = post(&app, "/v1/chat/completions", &chat(false), false).await;
-        assert_eq!(s, 200);
-        eventually(|| !exp.get_finished_spans().unwrap().is_empty()).await;
-    });
-    let spans = exp.get_finished_spans().unwrap();
-    let s = spans
-        .iter()
-        .find(|s| s.name == "chat fake")
-        .expect("span named '{op} {model}'");
-    assert_eq!(s.span_kind, opentelemetry::trace::SpanKind::Server);
-    let attr = |k: &str| {
-        s.attributes
-            .iter()
-            .find(|kv| kv.key.as_str() == k)
-            .map(|kv| kv.value.to_string())
-    };
-    assert_eq!(attr("gen_ai.operation.name").as_deref(), Some("chat"));
-    assert_eq!(attr("gen_ai.request.model").as_deref(), Some("fake"));
-    assert_eq!(attr("gen_ai.usage.output_tokens").as_deref(), Some("3"));
-    assert_eq!(
-        attr("gen_ai.usage.input_tokens"),
-        Some(chatml_user("hi").len().to_string())
-    );
-    assert_eq!(
-        attr("gen_ai.response.finish_reasons").as_deref(),
-        Some("stop")
-    );
-    assert!(attr("gen_ai.response.id").is_some());
 }

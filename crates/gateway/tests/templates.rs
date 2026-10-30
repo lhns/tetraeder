@@ -186,9 +186,7 @@ fn strftime_now_uses_system_time_unless_fixed() {
 #[test]
 fn crlf_in_source_is_normalised_like_jinja2() {
     let t = ChatTemplate::new("a{{ 'x\r\ny' }}\r\nb\r\n", None, None).unwrap();
-    let out = t
-        .render(&[], &[], false, &serde_json::Map::new())
-        .unwrap();
+    let out = t.render(&[], &[], false, &serde_json::Map::new()).unwrap();
     assert_eq!(out, "ax\ny\nb");
 }
 

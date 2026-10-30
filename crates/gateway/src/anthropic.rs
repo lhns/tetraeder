@@ -3,9 +3,11 @@
 //! Shapes follow platform.claude.com/docs/en/api (messages, streaming, errors, models).
 //! Errors carry a `request_id` matching the `request-id` header.
 
-use crate::chat::{ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage};
+use crate::chat::{
+    ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
+};
 use crate::error::{AnthropicError, GatewayError};
-use crate::gateway::{Gateway, GenerateSpec, Generation, OutEvent, Operation, Prompt, new_id};
+use crate::gateway::{Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, new_id};
 use crate::openai::{parse_body, sse};
 use axum::Json;
 use axum::body::Bytes;
@@ -51,18 +53,26 @@ fn text_of(v: &Value, what: &str) -> Result<String, GatewayError> {
             let mut out = String::new();
             for b in blocks {
                 match b.get("type").and_then(Value::as_str) {
-                    Some("text") => out.push_str(b.get("text").and_then(Value::as_str).unwrap_or("")),
+                    Some("text") => {
+                        out.push_str(b.get("text").and_then(Value::as_str).unwrap_or(""))
+                    }
                     Some(t) => {
                         return Err(GatewayError::InvalidRequest(format!(
                             "{what}: block type '{t}' is not supported here"
                         )));
                     }
-                    None => return Err(GatewayError::InvalidRequest(format!("{what}: block without type"))),
+                    None => {
+                        return Err(GatewayError::InvalidRequest(format!(
+                            "{what}: block without type"
+                        )));
+                    }
                 }
             }
             Ok(out)
         }
-        _ => Err(GatewayError::InvalidRequest(format!("{what} must be a string or an array of blocks"))),
+        _ => Err(GatewayError::InvalidRequest(format!(
+            "{what} must be a string or an array of blocks"
+        ))),
     }
 }
 
@@ -70,7 +80,9 @@ fn text_of(v: &Value, what: &str) -> Result<String, GatewayError> {
 /// `tool_use` blocks become `tool_calls`, `thinking` becomes `reasoning_content`.
 fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, GatewayError> {
     if raw.is_empty() {
-        return Err(GatewayError::InvalidRequest("messages: at least one message is required".into()));
+        return Err(GatewayError::InvalidRequest(
+            "messages: at least one message is required".into(),
+        ));
     }
     let mut out = Vec::new();
     if let Some(s) = system {
@@ -96,12 +108,20 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
                 let mut text = String::new();
                 for b in &blocks {
                     match b.get("type").and_then(Value::as_str) {
-                        Some("text") => text.push_str(b.get("text").and_then(Value::as_str).unwrap_or("")),
+                        Some("text") => {
+                            text.push_str(b.get("text").and_then(Value::as_str).unwrap_or(""))
+                        }
                         Some("tool_result") => {
-                            let id = b.get("tool_use_id").and_then(Value::as_str).unwrap_or_default();
+                            let id = b
+                                .get("tool_use_id")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default();
                             let mut t = ChatMessage::new(
                                 "tool",
-                                text_of(b.get("content").unwrap_or(&Value::Null), "tool_result content")?,
+                                text_of(
+                                    b.get("content").unwrap_or(&Value::Null),
+                                    "tool_result content",
+                                )?,
                             );
                             t.tool_call_id = Some(id.to_owned());
                             t.name = names.iter().find(|(i, _)| i == id).map(|(_, n)| n.clone());
@@ -112,7 +132,11 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
                                 "messages: block type '{t}' is not supported"
                             )));
                         }
-                        None => return Err(GatewayError::InvalidRequest("messages: block without type".into())),
+                        None => {
+                            return Err(GatewayError::InvalidRequest(
+                                "messages: block without type".into(),
+                            ));
+                        }
                     }
                 }
                 if !text.is_empty() {
@@ -123,15 +147,27 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
                 let mut a = ChatMessage::new("assistant", "");
                 for b in &blocks {
                     match b.get("type").and_then(Value::as_str) {
-                        Some("text") => a.content.push_str(b.get("text").and_then(Value::as_str).unwrap_or("")),
+                        Some("text") => a
+                            .content
+                            .push_str(b.get("text").and_then(Value::as_str).unwrap_or("")),
                         Some("thinking") => {
                             let t = b.get("thinking").and_then(Value::as_str).unwrap_or("");
-                            a.reasoning_content.get_or_insert_with(String::new).push_str(t);
+                            a.reasoning_content
+                                .get_or_insert_with(String::new)
+                                .push_str(t);
                         }
                         Some("redacted_thinking") => {}
                         Some("tool_use") => {
-                            let id = b.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
-                            let name = b.get("name").and_then(Value::as_str).unwrap_or_default().to_owned();
+                            let id = b
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_owned();
+                            let name = b
+                                .get("name")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_owned();
                             names.push((id.clone(), name.clone()));
                             a.tool_calls.push(ToolCall {
                                 id,
@@ -144,15 +180,28 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
                                 "messages: block type '{t}' is not supported"
                             )));
                         }
-                        None => return Err(GatewayError::InvalidRequest("messages: block without type".into())),
+                        None => {
+                            return Err(GatewayError::InvalidRequest(
+                                "messages: block without type".into(),
+                            ));
+                        }
                     }
                 }
                 out.push(a);
             }
-            r => return Err(GatewayError::InvalidRequest(format!("messages: unsupported role '{r}'"))),
+            r => {
+                return Err(GatewayError::InvalidRequest(format!(
+                    "messages: unsupported role '{r}'"
+                )));
+            }
         }
     }
-    if raw.last().and_then(|m| m.get("role")).and_then(Value::as_str) == Some("assistant") {
+    if raw
+        .last()
+        .and_then(|m| m.get("role"))
+        .and_then(Value::as_str)
+        == Some("assistant")
+    {
         return Err(GatewayError::InvalidRequest(
             "This model does not support assistant message prefill. The conversation must end with a user message."
                 .into(),
@@ -178,11 +227,13 @@ fn tools(raw: &[Value]) -> Result<Vec<ToolDef>, GatewayError> {
             .ok_or_else(|| GatewayError::InvalidRequest("tools: name is required".into()))?;
         out.push(ToolDef {
             name: name.to_owned(),
-            description: t.get("description").and_then(Value::as_str).map(str::to_owned),
-            parameters: t
-                .get("input_schema")
-                .cloned()
-                .ok_or_else(|| GatewayError::InvalidRequest(format!("tools.{name}: input_schema is required")))?,
+            description: t
+                .get("description")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            parameters: t.get("input_schema").cloned().ok_or_else(|| {
+                GatewayError::InvalidRequest(format!("tools.{name}: input_schema is required"))
+            })?,
         });
     }
     Ok(out)
@@ -191,9 +242,19 @@ fn tools(raw: &[Value]) -> Result<Vec<ToolDef>, GatewayError> {
 /// Returns the choice and whether parallel calls are allowed.
 fn tool_choice(v: Option<&Value>, has_tools: bool) -> Result<(ToolChoice, bool), GatewayError> {
     let Some(v) = v else {
-        return Ok((if has_tools { ToolChoice::Auto } else { ToolChoice::None }, true));
+        return Ok((
+            if has_tools {
+                ToolChoice::Auto
+            } else {
+                ToolChoice::None
+            },
+            true,
+        ));
     };
-    let parallel = !v.get("disable_parallel_tool_use").and_then(Value::as_bool).unwrap_or(false);
+    let parallel = !v
+        .get("disable_parallel_tool_use")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let c = match v.get("type").and_then(Value::as_str) {
         Some("auto") => ToolChoice::Auto,
         Some("any") => ToolChoice::Required,
@@ -201,10 +262,16 @@ fn tool_choice(v: Option<&Value>, has_tools: bool) -> Result<(ToolChoice, bool),
         Some("tool") => ToolChoice::Named(
             v.get("name")
                 .and_then(Value::as_str)
-                .ok_or_else(|| GatewayError::InvalidRequest("tool_choice: name is required".into()))?
+                .ok_or_else(|| {
+                    GatewayError::InvalidRequest("tool_choice: name is required".into())
+                })?
                 .to_owned(),
         ),
-        _ => return Err(GatewayError::InvalidRequest("tool_choice: unknown type".into())),
+        _ => {
+            return Err(GatewayError::InvalidRequest(
+                "tool_choice: unknown type".into(),
+            ));
+        }
     };
     Ok((c, parallel))
 }
@@ -220,7 +287,9 @@ fn output_format(req: &MessagesRequest) -> Result<Option<OutputFormat>, GatewayE
         Some("json_schema") => Ok(Some(OutputFormat::JsonSchema(
             f.get("schema").cloned().unwrap_or_else(|| json!({})),
         ))),
-        _ => Err(GatewayError::InvalidRequest("output_config.format: type must be json_schema".into())),
+        _ => Err(GatewayError::InvalidRequest(
+            "output_config.format: type must be json_schema".into(),
+        )),
     }
 }
 
@@ -228,7 +297,12 @@ fn spec(req: MessagesRequest) -> Result<GenerateSpec, GatewayError> {
     let tools = tools(&req.tools)?;
     let (choice, parallel) = tool_choice(req.tool_choice.as_ref(), !tools.is_empty())?;
     let mut kwargs = Map::new();
-    match req.thinking.as_ref().and_then(|t| t.get("type")).and_then(Value::as_str) {
+    match req
+        .thinking
+        .as_ref()
+        .and_then(|t| t.get("type"))
+        .and_then(Value::as_str)
+    {
         Some("enabled") | Some("adaptive") => {
             kwargs.insert("enable_thinking".into(), Value::Bool(true));
         }
@@ -301,10 +375,16 @@ pub async fn messages_handler(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     }
 }
 
-async fn messages_inner(gw: Arc<Gateway>, body: Bytes, request_id: &str) -> Result<Response, GatewayError> {
+async fn messages_inner(
+    gw: Arc<Gateway>,
+    body: Bytes,
+    request_id: &str,
+) -> Result<Response, GatewayError> {
     let req: MessagesRequest = parse_body(&body)?;
     if req.max_tokens.is_none() {
-        return Err(GatewayError::InvalidRequest("max_tokens: Field required".into()));
+        return Err(GatewayError::InvalidRequest(
+            "max_tokens: Field required".into(),
+        ));
     }
     let stream = req.stream;
     let generation = gw.generate(spec(req)?, Operation::Chat).await?;
@@ -319,7 +399,10 @@ async fn messages_inner(gw: Arc<Gateway>, body: Bytes, request_id: &str) -> Resu
     while let Some(ev) = g.next().await {
         match ev {
             OutEvent::Segment(s) => push_block(&mut content, s),
-            OutEvent::Done { finish: f, usage: u } => {
+            OutEvent::Done {
+                finish: f,
+                usage: u,
+            } => {
                 finish = Some(f);
                 usage = u;
             }
@@ -345,7 +428,10 @@ async fn messages_inner(gw: Arc<Gateway>, body: Bytes, request_id: &str) -> Resu
 
 /// Appends a segment to the content, merging with the previous block of the same kind.
 fn push_block(content: &mut Vec<Value>, s: Segment) {
-    let last_type = content.last().and_then(|b| b.get("type")).and_then(Value::as_str);
+    let last_type = content
+        .last()
+        .and_then(|b| b.get("type"))
+        .and_then(Value::as_str);
     match s {
         Segment::Text(t) => {
             if last_type == Some("text") {
@@ -358,7 +444,8 @@ fn push_block(content: &mut Vec<Value>, s: Segment) {
         Segment::Reasoning(r) => {
             if last_type == Some("thinking") {
                 let b = content.last_mut().expect("checked");
-                b["thinking"] = Value::String(b["thinking"].as_str().unwrap_or_default().to_owned() + &r);
+                b["thinking"] =
+                    Value::String(b["thinking"].as_str().unwrap_or_default().to_owned() + &r);
             } else {
                 content.push(json!({"type": "thinking", "thinking": r, "signature": ""}));
             }
@@ -402,7 +489,10 @@ impl MsgStream {
             ));
         }
         if self.open != Open::None {
-            out.push(event("content_block_stop", json!({"type": "content_block_stop", "index": self.index})));
+            out.push(event(
+                "content_block_stop",
+                json!({"type": "content_block_stop", "index": self.index}),
+            ));
             self.index += 1;
             self.open = Open::None;
         }
@@ -479,8 +569,13 @@ fn message_stream(g: Generation, request_id: String) -> impl Stream<Item = Event
                     json!({"type": "content_block_start", "index": s.index, "content_block": {
                         "type": "tool_use", "id": tool_id(&tc.id), "name": tc.name, "input": {}}}),
                 ));
-                out.push(s.delta(json!({"type": "input_json_delta", "partial_json": tc.arguments.to_string()})));
-                out.push(event("content_block_stop", json!({"type": "content_block_stop", "index": s.index})));
+                out.push(s.delta(
+                    json!({"type": "input_json_delta", "partial_json": tc.arguments.to_string()}),
+                ));
+                out.push(event(
+                    "content_block_stop",
+                    json!({"type": "content_block_stop", "index": s.index}),
+                ));
                 s.index += 1;
             }
             Some(OutEvent::Done { finish, usage }) => {
@@ -497,7 +592,10 @@ fn message_stream(g: Generation, request_id: String) -> impl Stream<Item = Event
             }
             Some(OutEvent::Error(e)) => {
                 let body = e.anthropic_body(&s.request_id);
-                out.push(event("error", json!({"type": "error", "error": body["error"]})));
+                out.push(event(
+                    "error",
+                    json!({"type": "error", "error": body["error"]}),
+                ));
                 s.done = true;
             }
             None => return None,
@@ -559,7 +657,8 @@ pub async fn list_models(gw: &Gateway) -> Response {
     let data: Vec<Value> = gw.models().iter().map(model_json).collect();
     let first = data.first().map(|m| m["id"].clone()).unwrap_or(Value::Null);
     let last = data.last().map(|m| m["id"].clone()).unwrap_or(Value::Null);
-    Json(json!({"data": data, "has_more": false, "first_id": first, "last_id": last})).into_response()
+    Json(json!({"data": data, "has_more": false, "first_id": first, "last_id": last}))
+        .into_response()
 }
 
 pub async fn get_model(gw: &Gateway, Path(id): Path<String>) -> Response {

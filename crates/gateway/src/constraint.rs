@@ -8,10 +8,10 @@ use crate::chat::{OutputFormat, ToolChoice, ToolDef};
 use crate::engine::{TokenConstraint, TokenId, TokenMask, Vocab};
 use crate::toolcall::ToolFormat;
 use llguidance::api::TopLevelGrammar;
+use llguidance::toktrie::{ApproximateTokEnv, TokEnv, TokRxInfo, TokTrie};
 use llguidance::{Matcher, ParserFactory};
 use serde_json::{Value, json};
 use std::sync::Arc;
-use llguidance::toktrie::{ApproximateTokEnv, TokEnv, TokRxInfo, TokTrie};
 
 /// How the model's output may start with respect to a `<think>` block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +35,10 @@ pub struct ConstraintFactory {
 
 impl ConstraintFactory {
     pub fn new(vocab: &Vocab) -> Result<Self, String> {
-        let eos = *vocab.eog.first().ok_or("vocabulary has no end-of-generation token")?;
+        let eos = *vocab
+            .eog
+            .first()
+            .ok_or("vocabulary has no end-of-generation token")?;
         let mut words = vocab.tokens.clone();
         let mut special = Vec::new();
         for &id in &vocab.special {
@@ -184,15 +187,17 @@ fn qwen_xml_grammar(tools: &[&ToolDef], repeat: &str) -> String {
                     params.join(" | ")
                 )
             };
-            let body = if params.is_empty() {
-                format!("func{i}: \"<function=\" {} \">\\n\" \"</function>\"\n", lark_string(&t.name))
+            if params.is_empty() {
+                format!(
+                    "func{i}: \"<function=\" {} \">\\n\" \"</function>\"\n",
+                    lark_string(&t.name)
+                )
             } else {
                 format!(
                     "func{i}: \"<function=\" {} \">\\n\" fparam{i}* \"</function>\"\n{param_rule}",
                     lark_string(&t.name)
                 )
-            };
-            body
+            }
         })
         .collect();
     let alts: Vec<String> = (0..tools.len()).map(|i| format!("func{i}")).collect();
@@ -215,7 +220,10 @@ struct Constraint {
 
 impl TokenConstraint for Constraint {
     fn mask(&mut self) -> Result<Option<TokenMask>, String> {
-        let v = self.matcher.compute_mask_or_eos().map_err(|e| e.to_string())?;
+        let v = self
+            .matcher
+            .compute_mask_or_eos()
+            .map_err(|e| e.to_string())?;
         let mut words = v.as_slice().to_vec();
         // The grammar knows one EOS; any end-of-generation token ends the output equally.
         if self.eog.first().is_some_and(|&e| v.is_allowed(e)) {
@@ -234,17 +242,15 @@ impl TokenConstraint for Constraint {
         if self.eog.contains(&token) {
             return Ok(());
         }
-        self.matcher
-            .consume_token(token)
-            .map_err(|e| e.to_string())
+        self.matcher.consume_token(token).map_err(|e| e.to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::{FakeEngine, IM_END};
     use crate::engine::Engine;
+    use crate::fake::{FakeEngine, IM_END};
 
     fn factory() -> (ConstraintFactory, FakeEngine) {
         let e = FakeEngine::fixed("");
@@ -256,7 +262,11 @@ mod tests {
     fn feed(c: &mut dyn TokenConstraint, e: &FakeEngine, text: &str) -> TokenMask {
         for t in e.tokenize("fake", text).unwrap() {
             let m = c.mask().unwrap().unwrap();
-            assert!(m.allows(t), "token {t} ({:?}) rejected after part of {text:?}", char::from_u32(t));
+            assert!(
+                m.allows(t),
+                "token {t} ({:?}) rejected after part of {text:?}",
+                char::from_u32(t)
+            );
             c.commit(t).unwrap();
         }
         c.mask().unwrap().unwrap()
@@ -267,7 +277,9 @@ mod tests {
         let (f, e) = factory();
         let schema = json!({"type": "object", "properties": {"a": {"type": "integer"}},
                             "required": ["a"], "additionalProperties": false});
-        let mut c = f.json(&OutputFormat::JsonSchema(schema), Reasoning::None).unwrap();
+        let mut c = f
+            .json(&OutputFormat::JsonSchema(schema), Reasoning::None)
+            .unwrap();
         let m = c.mask().unwrap().unwrap();
         assert!(!m.allows(u32::from(b'S')));
         assert!(!m.allows(IM_END));
@@ -279,16 +291,24 @@ mod tests {
     fn json_after_open_think() {
         let (f, e) = factory();
         let mut c = f.json(&OutputFormat::JsonObject, Reasoning::Open).unwrap();
-        let end = feed(c.as_mut(), &e, "let me think { not json\n</think>\n\n{\"k\": 1}");
+        let end = feed(
+            c.as_mut(),
+            &e,
+            "let me think { not json\n</think>\n\n{\"k\": 1}",
+        );
         assert!(end.allows(IM_END));
     }
 
     #[test]
     fn optional_think_then_json() {
         let (f, e) = factory();
-        let mut c = f.json(&OutputFormat::JsonObject, Reasoning::Optional).unwrap();
+        let mut c = f
+            .json(&OutputFormat::JsonObject, Reasoning::Optional)
+            .unwrap();
         feed(c.as_mut(), &e, "<think>hm</think>\n{}");
-        let mut c = f.json(&OutputFormat::JsonObject, Reasoning::Optional).unwrap();
+        let mut c = f
+            .json(&OutputFormat::JsonObject, Reasoning::Optional)
+            .unwrap();
         let end = feed(c.as_mut(), &e, "{}");
         assert!(end.allows(IM_END));
     }
@@ -313,7 +333,13 @@ mod tests {
         let (f, e) = factory();
         let t = tools();
         let mut c = f
-            .tool_calls(ToolFormat::Hermes, &t, &ToolChoice::Required, true, Reasoning::None)
+            .tool_calls(
+                ToolFormat::Hermes,
+                &t,
+                &ToolChoice::Required,
+                true,
+                Reasoning::None,
+            )
             .unwrap();
         let m = c.mask().unwrap().unwrap();
         assert!(!m.allows(u32::from(b'I')));
@@ -330,7 +356,13 @@ mod tests {
         let (f, e) = factory();
         let t = tools();
         let mut c = f
-            .tool_calls(ToolFormat::Hermes, &t, &ToolChoice::Named("now".into()), false, Reasoning::None)
+            .tool_calls(
+                ToolFormat::Hermes,
+                &t,
+                &ToolChoice::Named("now".into()),
+                false,
+                Reasoning::None,
+            )
             .unwrap();
         let m = feed(c.as_mut(), &e, "<tool_call>\n{\"name\": \"");
         assert!(m.allows(u32::from(b'n')));
@@ -342,7 +374,13 @@ mod tests {
         let (f, e) = factory();
         let t = tools();
         let mut c = f
-            .tool_calls(ToolFormat::QwenXml, &t, &ToolChoice::Required, false, Reasoning::None)
+            .tool_calls(
+                ToolFormat::QwenXml,
+                &t,
+                &ToolChoice::Required,
+                false,
+                Reasoning::None,
+            )
             .unwrap();
         let end = feed(
             c.as_mut(),
@@ -357,14 +395,30 @@ mod tests {
         let (f, e) = factory();
         let t = tools();
         let mut c = f
-            .tool_calls(ToolFormat::Llama3, &t, &ToolChoice::Required, false, Reasoning::None)
+            .tool_calls(
+                ToolFormat::Llama3,
+                &t,
+                &ToolChoice::Required,
+                false,
+                Reasoning::None,
+            )
             .unwrap();
         let end = feed(c.as_mut(), &e, "{\"name\": \"now\", \"parameters\": {}}");
         assert!(end.allows(IM_END));
         let mut c = f
-            .tool_calls(ToolFormat::Mistral, &t, &ToolChoice::Required, true, Reasoning::None)
+            .tool_calls(
+                ToolFormat::Mistral,
+                &t,
+                &ToolChoice::Required,
+                true,
+                Reasoning::None,
+            )
             .unwrap();
-        let end = feed(c.as_mut(), &e, "[TOOL_CALLS][{\"name\": \"now\", \"arguments\": {}}]");
+        let end = feed(
+            c.as_mut(),
+            &e,
+            "[TOOL_CALLS][{\"name\": \"now\", \"arguments\": {}}]",
+        );
         assert!(end.allows(IM_END));
     }
 }

@@ -49,7 +49,7 @@ async fn message_shape() {
     assert_eq!(v["content"], json!([{"type": "text", "text": "Hello!"}]));
     assert_eq!(v["stop_reason"], "end_turn");
     assert!(v["stop_sequence"].is_null());
-    assert_eq!(v["usage"]["input_tokens"], chatml_user("hi").len() as u64);
+    assert_eq!(v["usage"]["input_tokens"], chatml_user_tokens("hi") as u64);
     assert_eq!(v["usage"]["output_tokens"], 6);
     assert_eq!(v["usage"]["cache_read_input_tokens"], 0);
 }
@@ -363,7 +363,7 @@ async fn count_tokens_matches_usage() {
     let (s, h, v) = post(&app, "/v1/messages/count_tokens", &body, true).await;
     assert_eq!(s, 200, "{v}");
     assert!(h.contains_key("request-id"));
-    assert_eq!(v, json!({"input_tokens": chatml_user("count me").len()}));
+    assert_eq!(v, json!({"input_tokens": chatml_user_tokens("count me")}));
 }
 
 #[tokio::test]

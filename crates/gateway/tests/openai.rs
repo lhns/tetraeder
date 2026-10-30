@@ -43,7 +43,7 @@ async fn chat_completion_shape() {
     assert!(c.get("logprobs").is_some_and(Value::is_null));
     assert_eq!(c["finish_reason"], "stop");
     let u = &v["usage"];
-    let prompt = chatml_user("hi").len() as u64;
+    let prompt = chatml_user_tokens("hi") as u64;
     assert_eq!(u["prompt_tokens"], prompt);
     assert_eq!(u["completion_tokens"], 11);
     assert_eq!(u["total_tokens"], prompt + 11);

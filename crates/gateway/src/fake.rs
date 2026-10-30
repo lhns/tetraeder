@@ -26,43 +26,17 @@ pub const SPECIALS: [&str; 6] = [
 pub const IM_END: TokenId = 256;
 
 /// ChatML template, the shape Qwen and Hermes models use, with tools in the system turn.
-pub const CHATML_TEMPLATE: &str = r#"{%- if tools %}<|im_start|>system
-{% if messages[0].role == 'system' %}{{ messages[0].content }}
-
-{% endif %}# Tools
-
-<tools>
-{%- for tool in tools %}
-{{ tool | tojson }}
-{%- endfor %}
-</tools>
-
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call><|im_end|>
-{% elif messages[0].role == 'system' %}<|im_start|>system
-{{ messages[0].content }}<|im_end|>
-{% endif %}
+pub const CHATML_TEMPLATE: &str = r##"{%- if tools %}{{ '<|im_start|>system\n' }}{% if messages[0].role == 'system' %}{{ messages[0].content + '\n\n' }}{% endif %}{{ '# Tools\n\n<tools>' }}{% for tool in tools %}{{ '\n' + (tool | tojson) }}{% endfor %}{{ '\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call><|im_end|>\n' }}
+{%- elif messages[0].role == 'system' %}{{ '<|im_start|>system\n' + messages[0].content + '<|im_end|>\n' }}
+{%- endif %}
 {%- for message in messages %}
 {%- if message.role == 'system' %}
-{%- elif message.role == 'assistant' %}<|im_start|>assistant
-{% if message.content %}{{ message.content }}{% endif %}
-{%- for tc in message.tool_calls or [] %}
-<tool_call>
-{"name": "{{ tc.function.name }}", "arguments": {{ tc.function.arguments | tojson }}}
-</tool_call>
-{%- endfor %}<|im_end|>
-{% elif message.role == 'tool' %}<|im_start|>user
-<tool_response>
-{{ message.content }}
-</tool_response><|im_end|>
-{% else %}<|im_start|>{{ message.role }}
-{{ message.content }}<|im_end|>
-{% endif %}
+{%- elif message.role == 'assistant' %}{{ '<|im_start|>assistant\n' + (message.content or '') }}{% for tc in message.tool_calls or [] %}{{ '\n<tool_call>\n{"name": "' + tc.function.name + '", "arguments": ' + (tc.function.arguments | tojson) + '}\n</tool_call>' }}{% endfor %}{{ '<|im_end|>\n' }}
+{%- elif message.role == 'tool' %}{{ '<|im_start|>user\n<tool_response>\n' + message.content + '\n</tool_response><|im_end|>\n' }}
+{%- else %}{{ '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>\n' }}
+{%- endif %}
 {%- endfor %}
-{%- if add_generation_prompt %}<|im_start|>assistant
-{% endif %}"#;
+{%- if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"##;
 
 type Script = dyn Fn(&str) -> String + Send + Sync;
 

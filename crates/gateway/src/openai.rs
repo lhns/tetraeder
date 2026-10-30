@@ -4,9 +4,11 @@
 //! `top_k`, `chat_template_kwargs`, `reasoning_content` on assistant messages (as in
 //! llama.cpp and vLLM).
 
-use crate::chat::{ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage};
+use crate::chat::{
+    ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
+};
 use crate::error::{GatewayError, OpenAiError};
-use crate::gateway::{Gateway, GenerateSpec, Generation, OutEvent, Operation, Prompt};
+use crate::gateway::{Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -96,18 +98,26 @@ fn content_text(v: &Value) -> std::result::Result<String, GatewayError> {
             let mut out = String::new();
             for p in parts {
                 match p.get("type").and_then(Value::as_str) {
-                    Some("text") => out.push_str(p.get("text").and_then(Value::as_str).unwrap_or("")),
+                    Some("text") => {
+                        out.push_str(p.get("text").and_then(Value::as_str).unwrap_or(""))
+                    }
                     Some(t) => {
                         return Err(GatewayError::InvalidRequest(format!(
                             "content part type '{t}' is not supported, only text"
                         )));
                     }
-                    None => return Err(GatewayError::InvalidRequest("content part without type".into())),
+                    None => {
+                        return Err(GatewayError::InvalidRequest(
+                            "content part without type".into(),
+                        ));
+                    }
                 }
             }
             Ok(out)
         }
-        _ => Err(GatewayError::InvalidRequest("content must be a string or an array of parts".into())),
+        _ => Err(GatewayError::InvalidRequest(
+            "content must be a string or an array of parts".into(),
+        )),
     }
 }
 
@@ -119,16 +129,22 @@ fn stop_list(v: Option<Value>) -> std::result::Result<Vec<String>, GatewayError>
             .into_iter()
             .map(|s| match s {
                 Value::String(s) => Ok(s),
-                _ => Err(GatewayError::InvalidRequest("stop must hold strings".into())),
+                _ => Err(GatewayError::InvalidRequest(
+                    "stop must hold strings".into(),
+                )),
             })
             .collect(),
-        Some(_) => Err(GatewayError::InvalidRequest("stop must be a string or an array".into())),
+        Some(_) => Err(GatewayError::InvalidRequest(
+            "stop must be a string or an array".into(),
+        )),
     }
 }
 
 fn messages(raw: &[Value]) -> std::result::Result<Vec<ChatMessage>, GatewayError> {
     if raw.is_empty() {
-        return Err(GatewayError::InvalidRequest("messages must not be empty".into()));
+        return Err(GatewayError::InvalidRequest(
+            "messages must not be empty".into(),
+        ));
     }
     let mut out: Vec<ChatMessage> = Vec::new();
     for m in raw {
@@ -146,12 +162,25 @@ fn messages(raw: &[Value]) -> std::result::Result<Vec<ChatMessage>, GatewayError
                     .get("reasoning_content")
                     .and_then(Value::as_str)
                     .map(str::to_owned);
-                for tc in m.get("tool_calls").and_then(Value::as_array).into_iter().flatten() {
+                for tc in m
+                    .get("tool_calls")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
                     let f = tc.get("function").unwrap_or(&Value::Null);
                     let args = f.get("arguments").and_then(Value::as_str).unwrap_or("{}");
                     a.tool_calls.push(ToolCall {
-                        id: tc.get("id").and_then(Value::as_str).unwrap_or_default().to_owned(),
-                        name: f.get("name").and_then(Value::as_str).unwrap_or_default().to_owned(),
+                        id: tc
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_owned(),
+                        name: f
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_owned(),
                         // Templates want an object; keep unparsable arguments as a string.
                         arguments: serde_json::from_str(args)
                             .unwrap_or_else(|_| Value::String(args.to_owned())),
@@ -161,7 +190,10 @@ fn messages(raw: &[Value]) -> std::result::Result<Vec<ChatMessage>, GatewayError
             }
             "tool" => {
                 let mut t = ChatMessage::new("tool", content);
-                let id = m.get("tool_call_id").and_then(Value::as_str).map(str::to_owned);
+                let id = m
+                    .get("tool_call_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
                 t.name = id.as_ref().and_then(|id| {
                     out.iter()
                         .flat_map(|p| &p.tool_calls)
@@ -172,7 +204,9 @@ fn messages(raw: &[Value]) -> std::result::Result<Vec<ChatMessage>, GatewayError
                 t
             }
             other => {
-                return Err(GatewayError::InvalidRequest(format!("unsupported role '{other}'")));
+                return Err(GatewayError::InvalidRequest(format!(
+                    "unsupported role '{other}'"
+                )));
             }
         };
         if let Some(n) = m.get("name").and_then(Value::as_str)
@@ -189,7 +223,9 @@ fn tools(raw: Vec<Value>) -> std::result::Result<Vec<ToolDef>, GatewayError> {
     raw.into_iter()
         .map(|t| {
             if t.get("type").and_then(Value::as_str) != Some("function") {
-                return Err(GatewayError::InvalidRequest("only function tools are supported".into()));
+                return Err(GatewayError::InvalidRequest(
+                    "only function tools are supported".into(),
+                ));
             }
             let f = t.get("function").cloned().unwrap_or(Value::Null);
             let name = f
@@ -198,7 +234,10 @@ fn tools(raw: Vec<Value>) -> std::result::Result<Vec<ToolDef>, GatewayError> {
                 .ok_or_else(|| GatewayError::InvalidRequest("tool function without name".into()))?;
             Ok(ToolDef {
                 name: name.to_owned(),
-                description: f.get("description").and_then(Value::as_str).map(str::to_owned),
+                description: f
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
                 parameters: f
                     .get("parameters")
                     .cloned()
@@ -221,13 +260,21 @@ fn tool_choice(v: Option<Value>, has_tools: bool) -> std::result::Result<ToolCho
             "auto" => ToolChoice::Auto,
             "none" => ToolChoice::None,
             "required" => ToolChoice::Required,
-            o => return Err(GatewayError::InvalidRequest(format!("unknown tool_choice '{o}'"))),
+            o => {
+                return Err(GatewayError::InvalidRequest(format!(
+                    "unknown tool_choice '{o}'"
+                )));
+            }
         },
         Some(o) => match o.pointer("/function/name").and_then(Value::as_str) {
             Some(n) if o.get("type").and_then(Value::as_str) == Some("function") => {
                 ToolChoice::Named(n.to_owned())
             }
-            _ => return Err(GatewayError::InvalidRequest("unsupported tool_choice".into())),
+            _ => {
+                return Err(GatewayError::InvalidRequest(
+                    "unsupported tool_choice".into(),
+                ));
+            }
         },
     })
 }
@@ -244,14 +291,18 @@ fn response_format(v: Option<Value>) -> std::result::Result<Option<OutputFormat>
                 .unwrap_or_else(|| json!({}));
             Ok(Some(OutputFormat::JsonSchema(schema)))
         }
-        Some(t) => Err(GatewayError::InvalidRequest(format!("unsupported response_format type '{t}'"))),
+        Some(t) => Err(GatewayError::InvalidRequest(format!(
+            "unsupported response_format type '{t}'"
+        ))),
     }
 }
 
 fn check_n(n: Option<u32>) -> std::result::Result<(), GatewayError> {
     match n {
         None | Some(1) => Ok(()),
-        Some(_) => Err(GatewayError::InvalidRequest("only n = 1 is supported".into())),
+        Some(_) => Err(GatewayError::InvalidRequest(
+            "only n = 1 is supported".into(),
+        )),
     }
 }
 
@@ -391,7 +442,9 @@ fn chat_stream(g: Generation, usage: bool) -> impl Stream<Item = Event> + Send +
         let mut out = Vec::new();
         if !s.started {
             s.started = true;
-            out.push(data(&s.chunk(json!({"role": "assistant", "content": ""}), None)));
+            out.push(data(
+                &s.chunk(json!({"role": "assistant", "content": ""}), None),
+            ));
             return Some((stream::iter(out), s));
         }
         match s.g.next().await {
@@ -449,7 +502,9 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
             a[0].as_str().unwrap_or_default().to_owned()
         }
         Value::Array(_) => {
-            return Err(bad("prompt must be one string; batches and token arrays are not supported"));
+            return Err(bad(
+                "prompt must be one string; batches and token arrays are not supported",
+            ));
         }
         _ => return Err(bad("prompt must be a string")),
     };
