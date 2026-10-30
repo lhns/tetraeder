@@ -46,8 +46,7 @@ id = "tetraeder"
 kind = "tetraeder"
 bin_env = "TETRAEDER_BIN"
 bin = "target/release/tetraeder"
-runnable = false          # Phase 1 wires libllama; until then its pairs are skipped with a clear status
-note = "needs an adapter in tetraeder-bench/src/engine.rs when it becomes runnable"
+note = "`tetraeder bench`: llama-bench's pp/tg loops through the libllama engine (ADR 0026)"
 
 # llama.cpp, dense
 [[variant]]
@@ -94,7 +93,7 @@ device = "cuda"
 # experts of layers 24..47 stay in RAM
 args = ["-ngl", "99", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
 
-# Tetraeder slot: same placement as its baseline, not runnable yet
+# Tetraeder: same placement as its baseline; telemetry on (production mode) unless stated
 [[variant]]
 id = "tetraeder-cpu-dense"
 engine = "tetraeder"
@@ -108,6 +107,13 @@ engine = "tetraeder"
 model = "dense"
 device = "cuda"
 args = ["--ngl", "99"]
+
+[[variant]]
+id = "tetraeder-cuda-dense-telemetry-off"
+engine = "tetraeder"
+model = "dense"
+device = "cuda"
+args = ["--ngl", "99", "--telemetry", "off"]
 
 # A/A pairs measure the noise of this box in this session
 [[pair]]
@@ -153,6 +159,14 @@ id = "gate-tetraeder-cuda-dense"
 a = "llama-cuda-dense"
 b = "tetraeder-cuda-dense"
 role = "gate"
+
+# Phase 1 exit test: production telemetry overhead under 2%. Reported, not gated, until a band below the box noise
+# is measured (ADR 0026).
+[[pair]]
+id = "info-tetraeder-telemetry-overhead"
+a = "tetraeder-cuda-dense-telemetry-off"
+b = "tetraeder-cuda-dense"
+role = "info"
 
 # Allowed drop of the paired ratio per device and GPU class. PROVISIONAL: replace with bands measured from the
 # noise-* pairs over several nights on each class (p95 of |ratio - 1| plus margin).

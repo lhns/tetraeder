@@ -102,6 +102,31 @@ pub fn llama_bench_args(w: &Workload, v: &Variant, model: &Path) -> Vec<String> 
     a
 }
 
+/// `tetraeder bench` takes the same workload with its own flag names and prints llama-bench rows.
+pub fn tetraeder_bench_args(w: &Workload, v: &Variant, model: &Path) -> Vec<String> {
+    let mut a: Vec<String> = vec![
+        "bench".into(),
+        "-m".into(),
+        model.display().to_string(),
+        "-p".into(),
+        w.prompt_len.to_string(),
+        "-n".into(),
+        w.gen_len.to_string(),
+        "-b".into(),
+        w.batch.to_string(),
+        "--ubatch".into(),
+        w.ubatch.to_string(),
+        "-r".into(),
+        "1".into(),
+    ];
+    let own_threads = v.args.iter().any(|x| x == "-t" || x == "--threads");
+    if let (Some(t), false) = (w.threads, own_threads) {
+        a.extend(["-t".into(), t.to_string()]);
+    }
+    a.extend(v.args.iter().cloned());
+    a
+}
+
 /// Run one engine invocation; kill it after `timeout` so a hung engine cannot block the night.
 pub fn run_llama_bench(bin: &Path, args: &[String], timeout: Duration) -> Result<Measured> {
     let t0 = Instant::now();
@@ -227,5 +252,28 @@ mod tests {
         let a2 = llama_bench_args(&w, &own, Path::new("m.gguf"));
         assert_eq!(a2.iter().filter(|x| *x == "-t").count(), 1);
         assert_eq!(&a[a.len() - 4..], ["-ngl", "99", "-ot", "exps=CPU"]);
+    }
+
+    #[test]
+    fn tetraeder_args_use_its_subcommand_and_flags() {
+        let w = Workload {
+            batch: 2048,
+            ubatch: 512,
+            prompt_len: 512,
+            gen_len: 64,
+            threads: Some(8),
+        };
+        let v = Variant {
+            id: "t".into(),
+            engine: "tetraeder".into(),
+            model: "m".into(),
+            device: crate::spec::Device::Cpu,
+            args: vec!["--ngl".into(), "0".into()],
+        };
+        let a = tetraeder_bench_args(&w, &v, Path::new("m.gguf"));
+        assert_eq!(&a[..3], ["bench", "-m", "m.gguf"]);
+        assert!(a.windows(2).any(|p| p == ["--ubatch", "512"]));
+        assert!(a.windows(2).any(|p| p == ["-t", "8"]));
+        assert_eq!(&a[a.len() - 2..], ["--ngl", "0"]);
     }
 }

@@ -156,18 +156,12 @@ fn skip_reason<'a>(
     if !engine.runnable {
         return Ok(Err(format!("engine `{}` is not runnable yet", engine.id)));
     }
-    if engine.kind != EngineKind::LlamaBench {
-        return Ok(Err(format!(
-            "no harness adapter for engine kind of `{}`",
-            engine.id
-        )));
-    }
     if v.device == Device::Cuda && !has_gpu {
         return Ok(Err("needs a CUDA GPU (nvidia-smi found none)".into()));
     }
-    let configured = match &opts.llama_bench {
-        Some(p) => p.display().to_string(),
-        None => engine
+    let configured = match (&opts.llama_bench, engine.kind) {
+        (Some(p), EngineKind::LlamaBench) => p.display().to_string(),
+        _ => engine
             .bin_env
             .as_ref()
             .and_then(|k| std::env::var(k).ok())
@@ -185,7 +179,10 @@ fn skip_reason<'a>(
     if !model.is_file() {
         return Ok(Err(format!("model file {} not found", model.display())));
     }
-    let args = engine::llama_bench_args(&spec.workload, v, &model);
+    let args = match engine.kind {
+        EngineKind::LlamaBench => engine::llama_bench_args(&spec.workload, v, &model),
+        EngineKind::Tetraeder => engine::tetraeder_bench_args(&spec.workload, v, &model),
+    };
     Ok(Ok(Resolved {
         variant: v,
         bin,
