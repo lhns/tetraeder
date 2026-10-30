@@ -189,9 +189,14 @@ fn noise_pair_reports_the_box_noise() {
         "",
     );
     let o = f.run(&[], &[]);
-    assert_eq!(code(&o), 0, "noise never fails the run: {}", text_of(&o));
     let p = &f.results()["pairs"][0];
-    assert!(["ok", "noisy"].contains(&p["status"].as_str().unwrap()));
+    // The jitter is random, so either verdict can come out; each has its own exit code (3: inconclusive).
+    let want = match p["status"].as_str().unwrap() {
+        "ok" => 0,
+        "noisy" => 3,
+        s => panic!("unexpected status {s}"),
+    };
+    assert_eq!(code(&o), want, "{}", text_of(&o));
     assert!(p["metrics"]["tg"]["a"]["rel_iqr"].as_f64().unwrap() > 0.0);
 }
 
