@@ -93,7 +93,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: cuda
-      - run: cargo build -p tetraeder-ggml-sys --features cuda
+      # Link the binary, not just the -sys crate: missing CUDA link libraries only show up here.
+      - run: cargo build -p tetraeder --features tetraeder-ggml-sys/cuda
 
   vulkan-build:
     name: vulkan compile-only (ubuntu-latest)

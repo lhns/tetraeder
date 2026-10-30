@@ -44,6 +44,8 @@ fn main() {
         .define("LLAMA_CURL", "OFF")
         .define("LLAMA_OPENSSL", "OFF")
         .define("GGML_CUDA", onoff(cuda))
+        // Single-GPU until Phase 5; NCCL found on the box image would otherwise add an unlinked dependency.
+        .define("GGML_CUDA_NCCL", "OFF")
         .define("GGML_VULKAN", onoff(vulkan))
         .build_target("install");
     // ggml default: native ISA. Set TETRAEDER_GGML_NATIVE=OFF for portable binaries (AVX2 etc.
