@@ -54,7 +54,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # windows-2022: CUDA 12.8 supports its MSVC (newer runners crash cudafe++)
+        os: [ubuntu-latest, windows-2022]
     env:
       # One arch keeps the compile-only job cheap; the box image builds the full list.
       TETRAEDER_CUDA_ARCHS: "86"
@@ -87,10 +88,7 @@ jobs:
       - name: Ninja generator
         if: runner.os == 'Windows'
         shell: bash
-        # CUDA 12.8 rejects the runner's newer MSVC; compile-only, so the version check can be skipped.
-        run: |
-          echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
-          echo "NVCC_APPEND_FLAGS=-allow-unsupported-compiler" >> "$GITHUB_ENV"
+        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           key: cuda
