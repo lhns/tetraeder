@@ -116,23 +116,28 @@ device = "cuda"
 args = ["--ngl", "99", "--telemetry", "off"]
 
 # A/A pairs measure the noise of this box in this session
-[[pair]]
-id = "noise-cpu-dense"
-a = "llama-cpu-dense"
-b = "llama-cpu-dense"
-role = "noise"
-
+# Pairs run in file order: GPU pairs first, so the slow CPU pairs cannot push the Phase 1 GPU exit test past
+# the bench time limit.
 [[pair]]
 id = "noise-cuda-dense"
 a = "llama-cuda-dense"
 b = "llama-cuda-dense"
 role = "noise"
 
+# Phase 1 exit test: Tetraeder within 5% of llama.cpp at the same parameters
 [[pair]]
-id = "noise-cpu-moe"
-a = "llama-cpu-moe"
-b = "llama-cpu-moe"
-role = "noise"
+id = "gate-tetraeder-cuda-dense"
+a = "llama-cuda-dense"
+b = "tetraeder-cuda-dense"
+role = "gate"
+
+# Phase 1 exit test: production telemetry overhead under 2%. Reported, not gated, until a band below the box noise
+# is measured (ADR 0026).
+[[pair]]
+id = "info-tetraeder-telemetry-overhead"
+a = "tetraeder-cuda-dense-telemetry-off"
+b = "tetraeder-cuda-dense"
+role = "info"
 
 # What expert offload costs on this box (reported, not gated)
 [[pair]]
@@ -147,6 +152,12 @@ a = "llama-cuda-moe-full"
 b = "llama-cuda-moe-ot-upper-half"
 role = "info"
 
+[[pair]]
+id = "noise-cpu-dense"
+a = "llama-cpu-dense"
+b = "llama-cpu-dense"
+role = "noise"
+
 # Phase 1 exit test: Tetraeder within 5% of llama.cpp at the same parameters
 [[pair]]
 id = "gate-tetraeder-cpu-dense"
@@ -155,18 +166,10 @@ b = "tetraeder-cpu-dense"
 role = "gate"
 
 [[pair]]
-id = "gate-tetraeder-cuda-dense"
-a = "llama-cuda-dense"
-b = "tetraeder-cuda-dense"
-role = "gate"
-
-# Phase 1 exit test: production telemetry overhead under 2%. Reported, not gated, until a band below the box noise
-# is measured (ADR 0026).
-[[pair]]
-id = "info-tetraeder-telemetry-overhead"
-a = "tetraeder-cuda-dense-telemetry-off"
-b = "tetraeder-cuda-dense"
-role = "info"
+id = "noise-cpu-moe"
+a = "llama-cpu-moe"
+b = "llama-cpu-moe"
+role = "noise"
 
 # Allowed drop of the paired ratio per device and GPU class. PROVISIONAL: replace with bands measured from the
 # noise-* pairs over several nights on each class (p95 of |ratio - 1| plus margin).

@@ -8,10 +8,10 @@
 #   from the bench: 0 ok   1 regression beyond the noise band   2 error or skipped pair   3 inconclusive (noisy box)
 #   own: 10 build failed   11 tests failed   12 env snapshot failed   13 CUDA unusable
 #   124 a stage hit its time limit   143 killed by a signal
-# Time limits (BUILD_MIN + TEST_MIN + BENCH_MIN stay well under taxameter's nightly_wait_min of 90).
+# Time limits (BUILD_MIN + TEST_MIN + BENCH_MIN stay well under taxameter's nightly_wait_min of 110).
 BUILD_MIN="${BUILD_MIN:-40}"
 TEST_MIN="${TEST_MIN:-15}"
-BENCH_MIN="${BENCH_MIN:-30}"
+BENCH_MIN="${BENCH_MIN:-45}"  # the phase0 spec took 31 min on an RTX 3090 box
 exec 8> /root/tetraeder_nightly.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 # Image toolchain lives in /opt/cargo (RUSTUP_HOME/CARGO_HOME); a rustup under $HOME is the fallback

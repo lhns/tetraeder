@@ -62,5 +62,5 @@ max_price_per_hour = 0.45
 max_instances = 1
 auto_replace = false  # an automatic replacement could start a second paid box
 disk_gb = 80
-nightly_wait_min = 90
+nightly_wait_min = 110
 max_box_hours = 3
