@@ -54,7 +54,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # windows-2022: CUDA 12.8 supports its MSVC (newer runners crash cudafe++)
+        os: [ubuntu-latest, windows-2022]
     env:
       # One arch keeps the compile-only job cheap; the box image builds the full list.
       TETRAEDER_CUDA_ARCHS: "86"
