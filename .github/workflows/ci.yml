@@ -94,7 +94,7 @@ jobs:
         with:
           key: cuda
       # Link the binary, not just the -sys crate: missing CUDA link libraries only show up here.
-      - run: cargo build -p tetraeder --features tetraeder-ggml-sys/cuda
+      - run: cargo build -p tetraeder -p tetraeder-ggml-sys --features tetraeder-ggml-sys/cuda
 
   vulkan-build:
     name: vulkan compile-only (ubuntu-latest)
