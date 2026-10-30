@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Nightly job, runs ON the Vast box (started detached by `vastctl nightly` via vast_box.sh run).
+# Nightly job, runs ON the Vast box (started detached by `taxameter nightly` via box.sh run).
 # Stages: cuda check, cargo build, cargo test, bench env snapshot (env.json), benchmark spec (bench/spec/phase0.toml).
 # Always ends with bench/results/<date>/DONE (content: rc=N) and a final `NIGHTLY_DONE rc=N` log line, even on
-# failure or signal, so vastctl can verify the fetch and read the verdict.
+# failure or signal, so taxameter can verify the fetch and read the verdict.
 #
 # Exit codes (the first failing stage decides):
 #   from the bench: 0 ok   1 regression beyond the noise band   2 error or skipped pair   3 inconclusive (noisy box)
 #   own: 10 build failed   11 tests failed   12 env snapshot failed   13 CUDA unusable
 #   124 a stage hit its time limit   143 killed by a signal
-# Time limits (BUILD_MIN + TEST_MIN + BENCH_MIN stay well under vastctl's nightly_wait_min of 90).
+# Time limits (BUILD_MIN + TEST_MIN + BENCH_MIN stay well under taxameter's nightly_wait_min of 90).
 BUILD_MIN="${BUILD_MIN:-40}"
 TEST_MIN="${TEST_MIN:-15}"
 BENCH_MIN="${BENCH_MIN:-30}"
@@ -22,13 +22,13 @@ command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 date_dir="bench/results/$(date +%Y%m%d)"
 mkdir -p "$date_dir" runs/vast
 rm -f "$date_dir/DONE"
-# Fresh log: an old NIGHTLY_DONE line must never satisfy vastctl's wait. The log is open in append mode.
+# Fresh log: an old NIGHTLY_DONE line must never satisfy taxameter's wait. The log is open in append mode.
 log=runs/vast/nightly.log
 if [ -s "$log" ]; then cp -f "$log" "$log.prev"; : > "$log"; fi
 rc=0
 trap 'rc=143; exit 143' TERM INT HUP
 
-stage() {  # stage <name> <limit-min|0> <cmd...>: log "[HH:MM:SS] start|done <name>" (vastctl health parses these lines)
+stage() {  # stage <name> <limit-min|0> <cmd...>: log "[HH:MM:SS] start|done <name>" (taxameter health parses these lines)
   local name="$1" limit="$2"; shift 2
   echo "[$(date +%T)] start $name"
   if [ "$limit" -gt 0 ]; then timeout -k 30 "${limit}m" "$@"; else "$@"; fi
@@ -47,7 +47,7 @@ finish() {
 trap finish EXIT
 
 # shellcheck disable=SC1091
-. scripts/cuda_env.sh
+. "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
 echo "[$(date +%T)] cuda: $CUDA_ENV_STATUS"
 if [ "$CUDA_ENV_STATUS" = fail ]; then rc=13; echo "cuda unusable, aborting"; exit "$rc"; fi
 

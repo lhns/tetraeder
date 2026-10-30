@@ -28,13 +28,13 @@ Update the ADR if a decision changed. Report exit-test numbers.
 
 ## GPU work on Vast.ai (ADR 0021)
 
-All GPU work goes through `scripts/vastctl.py` (`uv run python scripts/vastctl.py ...`). There is no other GPU. Commit before provisioning: `provision` and `run` push committed HEAD only. Overview and Task Scheduler setup: README, section "Vast boxes".
+All GPU work goes through taxameter (`uv run taxameter ...`, config in `taxameter.toml`, ADR 0029). There is no other GPU. Commit before provisioning: `provision` and `run` push committed HEAD only. Overview and Task Scheduler setup: README, section "Vast boxes".
 
-- **Key hygiene:** never print, log, commit or pass the API key (`~/.config/vastai/vast_api_key`) on a command line. vastctl reads it from the file, sends it only as a header and redacts every output line.
+- **Key hygiene:** never print, log, commit or pass the API key (`~/.config/vastai/vast_api_key`) on a command line. taxameter reads it from the file, sends it only as a header and redacts every output line.
 - **Money:** the box bills every running minute. Never leave the GPU idle and keep independent jobs running in parallel. Print `date +%T` at launch and at checks, estimate durations, flag overruns. Destroy the box when done, after a verified fetch. Caps: 0.45 USD/h, one instance. Ask before raising them.
-- **Detached:** long work runs detached on the box (`nohup setsid ... &`). `vastctl ssh` stops remote commands after 120 s unless `--timeout`.
+- **Detached:** long work runs detached on the box (`nohup setsid ... &`). `taxameter ssh` stops remote commands after 120 s unless `--timeout`.
 - **Waiting:** run wait loops on the box (`ssh --timeout 540 -- 'for ...; sleep 5; done'`), not as local polling loops. Claude Code reaps local background shells when the machine is low on memory.
-- **Idempotent launches:** vastctl re-runs a command after a dropped connection, which once started duplicate jobs. Guard every launch script with `exec 8> /root/x.lock; flock -n 8 || exit 0`.
+- **Idempotent launches:** taxameter re-runs a command after a dropped connection, which once started duplicate jobs. Guard every launch script with `exec 8> /root/x.lock; flock -n 8 || exit 0`.
 - **No inline patterns:** never put a `pgrep -f` or `pkill -f` pattern inline in `ssh '...'`. It matches the ssh shell's own command line and kills it. Put the pattern in a script file on the box.
 - **Scripts:** never overwrite a shell script while bash is executing it. Upload new versions under a new name.
 - **VRAM:** budget every job before launching, including its final evaluation, which can peak far above the main run. Queue jobs with wait-for-file instead of packing them, and check `nvidia-smi` when several jobs share a card.
@@ -42,7 +42,7 @@ All GPU work goes through `scripts/vastctl.py` (`uv run python scripts/vastctl.p
 - **Models:** store them in `.hf_cache/<org>__<model>/` and run offline (`HF_HUB_OFFLINE=1`). `models` probes ModelScope and Hugging Face and takes the faster. Never start a second download of the same model.
 - **CUDA:** never launch on a box whose provision log does not say `cuda: ok` or `cuda: ok_preload`.
 - **External stops:** a box can be stopped from outside (`intended_status=stopped`). Processes die and the disk survives; `start` may need a second request. Long scripts save results incrementally and resume.
-- **Blocklisted hosts:** 483833 (network down about 28 of every 45 min) and 366851 (stopped from outside twice, GPU rented away while stopped). Both are in `SEED_BLOCKLIST`.
+- **Blocklisted hosts:** 483833 (network down about 28 of every 45 min) and 366851 (stopped from outside twice, GPU rented away while stopped). Both ship in taxameter's Vast provider seed blocklist.
 - **Configs:** before comparing runs, diff their configs.
 - **Windows:** set `MSYS_NO_PATHCONV=1` for Git Bash commands with `/root/...` arguments.
 

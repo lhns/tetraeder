@@ -43,7 +43,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - uses: astral-sh/setup-uv@v5
-      - run: uv run pytest tests/test_vastctl.py
+      - run: uv run pytest -q tests
       - name: bash -n scripts
         if: runner.os == 'Linux'
         run: |
