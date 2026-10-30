@@ -1,0 +1,24 @@
+# Gateway alert rules (Prometheus rule format, evaluated by vmalert in the compose stack).
+groups:
+  - name: gateway
+    rules:
+      # Admission sheds load: the queue is too short or the engine too slow for the traffic.
+      - alert: GatewayShedding
+        expr: |
+          sum(rate(gen_ai_server_request_duration_seconds_count{error_type="overloaded"}[5m]))
+            / sum(rate(gen_ai_server_request_duration_seconds_count[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway rejects more than 5% of requests as overloaded"
+      # Engine or internal failures after admission.
+      - alert: GatewayInternalErrors
+        expr: |
+          sum(rate(gen_ai_server_request_duration_seconds_count{error_type="internal"}[5m]))
+            / sum(rate(gen_ai_server_request_duration_seconds_count[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 1% of gateway requests fail with internal errors"

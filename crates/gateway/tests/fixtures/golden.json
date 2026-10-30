@@ -1,0 +1,414 @@
+{
+ "fixed_time": 1768478400,
+ "cases": {
+  "system_user": {
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are terse."
+    },
+    {
+     "role": "user",
+     "content": "Hello there"
+    }
+   ],
+   "tools": [],
+   "add_generation_prompt": true,
+   "kwargs": {}
+  },
+  "multi_turn": {
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi"
+    },
+    {
+     "role": "assistant",
+     "content": "Hello! How can I help?"
+    },
+    {
+     "role": "user",
+     "content": "What is 2+2?"
+    }
+   ],
+   "tools": [],
+   "add_generation_prompt": true,
+   "kwargs": {}
+  },
+  "tool_round": {
+   "messages": [
+    {
+     "role": "system",
+     "content": "You can use tools."
+    },
+    {
+     "role": "user",
+     "content": "Weather in Zürich?"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "abc123xyz",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": {
+         "city": "Zürich",
+         "unit": "celsius",
+         "days": 2
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "{\"temp\": 3}",
+     "tool_call_id": "abc123xyz",
+     "name": "get_weather"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the weather in a city (°C) <now> & 'later'",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "add_generation_prompt": true,
+   "kwargs": {}
+  },
+  "thinking_off": {
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi"
+    },
+    {
+     "role": "assistant",
+     "content": "Hello",
+     "reasoning_content": "The user greets me."
+    },
+    {
+     "role": "user",
+     "content": "Again"
+    }
+   ],
+   "tools": [],
+   "add_generation_prompt": true,
+   "kwargs": {
+    "enable_thinking": false
+   }
+  }
+ },
+ "renders": [
+  {
+   "template": "Qwen-Qwen3-0.6B",
+   "case": "system_user",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>system\nYou are terse.<|im_end|>\n<|im_start|>user\nHello there<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen-Qwen3-0.6B",
+   "case": "multi_turn",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello! How can I help?<|im_end|>\n<|im_start|>user\nWhat is 2+2?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen-Qwen3-0.6B",
+   "case": "tool_round",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>system\nYou can use tools.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the weather in a city (°C) <now> & 'later'\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWeather in Zürich?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Zürich\", \"unit\": \"celsius\", \"days\": 2}}\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temp\": 3}\n</tool_response><|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen-Qwen3-0.6B",
+   "case": "thinking_off",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello<|im_end|>\n<|im_start|>user\nAgain<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "template": "Qwen3-Coder",
+   "case": "system_user",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>system\nYou are terse.<|im_end|>\n<|im_start|>user\nHello there<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen3-Coder",
+   "case": "multi_turn",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello! How can I help?<|im_end|>\n<|im_start|>user\nWhat is 2+2?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen3-Coder",
+   "case": "tool_round",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>system\nYou can use tools.\n\n# Tools\n\nYou have access to the following tools:\n\n<tools>\n<function>\n<name>get_weather</name>\n<description>Get the weather in a city (°C) <now> & 'later'</description>\n<parameters>\n<parameter>\n<name>city</name>\n<type>string</type>\n<description>City name</description>\n</parameter>\n<parameter>\n<name>unit</name>\n<type>string</type>\n<enum>[\"celsius\", \"fahrenheit\"]</enum>\n</parameter>\n<parameter>\n<name>days</name>\n<type>integer</type>\n</parameter>\n<required>[\"city\"]</required>\n</parameters>\n</function>\n</tools>\n\nIf you choose to call a tool ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nvalue_2\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: the tool calling block MUST begin with an opening <tool_call> tag and end with a closing </tool_call> tag.\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nWeather in Zürich?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n<function=get_weather>\n<parameter=city>\nZürich\n</parameter>\n<parameter=unit>\ncelsius\n</parameter>\n<parameter=days>\n2\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temp\": 3}\n</tool_response>\n<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen3-Coder",
+   "case": "thinking_off",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello<|im_end|>\n<|im_start|>user\nAgain<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen-Qwen2.5-7B-Instruct",
+   "case": "system_user",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>system\nYou are terse.<|im_end|>\n<|im_start|>user\nHello there<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen-Qwen2.5-7B-Instruct",
+   "case": "multi_turn",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello! How can I help?<|im_end|>\n<|im_start|>user\nWhat is 2+2?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen-Qwen2.5-7B-Instruct",
+   "case": "tool_round",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>system\nYou can use tools.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the weather in a city (°C) <now> & 'later'\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n<|im_start|>user\nWeather in Zürich?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Zürich\", \"unit\": \"celsius\", \"days\": 2}}\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temp\": 3}\n</tool_response><|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "Qwen-Qwen2.5-7B-Instruct",
+   "case": "thinking_off",
+   "bos": "",
+   "eos": "<|im_end|>",
+   "expected": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello<|im_end|>\n<|im_start|>user\nAgain<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "meta-llama-Llama-3.1-8B-Instruct",
+   "case": "system_user",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|eot_id|>",
+   "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\nYou are terse.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello there<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+   "template": "meta-llama-Llama-3.1-8B-Instruct",
+   "case": "multi_turn",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|eot_id|>",
+   "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHi<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nHello! How can I help?<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is 2+2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+   "template": "meta-llama-Llama-3.1-8B-Instruct",
+   "case": "tool_round",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|eot_id|>",
+   "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nEnvironment: ipython\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\nYou can use tools.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nGiven the following functions, please respond with a JSON for a function call with its proper arguments that best answers the given prompt.\n\nRespond in the format {\"name\": function name, \"parameters\": dictionary of argument name and its value}.Do not use variables.\n\n{\n    \"type\": \"function\",\n    \"function\": {\n        \"name\": \"get_weather\",\n        \"description\": \"Get the weather in a city (°C) <now> & 'later'\",\n        \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"city\": {\n                    \"type\": \"string\",\n                    \"description\": \"City name\"\n                },\n                \"unit\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                        \"celsius\",\n                        \"fahrenheit\"\n                    ]\n                },\n                \"days\": {\n                    \"type\": \"integer\"\n                }\n            },\n            \"required\": [\n                \"city\"\n            ]\n        }\n    }\n}\n\nWeather in Zürich?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{\"name\": \"get_weather\", \"parameters\": {\"city\": \"Zürich\", \"unit\": \"celsius\", \"days\": 2}}<|eot_id|><|start_header_id|>ipython<|end_header_id|>\n\n\"{\\\"temp\\\": 3}\"<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+   "template": "meta-llama-Llama-3.1-8B-Instruct",
+   "case": "thinking_off",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|eot_id|>",
+   "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHi<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nHello<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nAgain<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+   "template": "meta-llama-Llama-3.2-3B-Instruct",
+   "case": "system_user",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|eot_id|>",
+   "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 15 Jan 2026\n\nYou are terse.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello there<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+   "template": "meta-llama-Llama-3.2-3B-Instruct",
+   "case": "multi_turn",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|eot_id|>",
+   "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 15 Jan 2026\n\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHi<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nHello! How can I help?<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat is 2+2?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+   "template": "meta-llama-Llama-3.2-3B-Instruct",
+   "case": "tool_round",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|eot_id|>",
+   "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nEnvironment: ipython\nCutting Knowledge Date: December 2023\nToday Date: 15 Jan 2026\n\nYou can use tools.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nGiven the following functions, please respond with a JSON for a function call with its proper arguments that best answers the given prompt.\n\nRespond in the format {\"name\": function name, \"parameters\": dictionary of argument name and its value}.Do not use variables.\n\n{\n    \"type\": \"function\",\n    \"function\": {\n        \"name\": \"get_weather\",\n        \"description\": \"Get the weather in a city (°C) <now> & 'later'\",\n        \"parameters\": {\n            \"type\": \"object\",\n            \"properties\": {\n                \"city\": {\n                    \"type\": \"string\",\n                    \"description\": \"City name\"\n                },\n                \"unit\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                        \"celsius\",\n                        \"fahrenheit\"\n                    ]\n                },\n                \"days\": {\n                    \"type\": \"integer\"\n                }\n            },\n            \"required\": [\n                \"city\"\n            ]\n        }\n    }\n}\n\nWeather in Zürich?<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{\"name\": \"get_weather\", \"parameters\": {\"city\": \"Zürich\", \"unit\": \"celsius\", \"days\": 2}}<|eot_id|><|start_header_id|>ipython<|end_header_id|>\n\n\"{\\\"temp\\\": 3}\"<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+   "template": "meta-llama-Llama-3.2-3B-Instruct",
+   "case": "thinking_off",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|eot_id|>",
+   "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 15 Jan 2026\n\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHi<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nHello<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nAgain<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+   "template": "Mistral-Small-3.2-24B-Instruct-2506",
+   "case": "system_user",
+   "bos": "<s>",
+   "eos": "</s>",
+   "expected": "<s>[SYSTEM_PROMPT]You are terse.[/SYSTEM_PROMPT][INST]Hello there[/INST]"
+  },
+  {
+   "template": "Mistral-Small-3.2-24B-Instruct-2506",
+   "case": "multi_turn",
+   "bos": "<s>",
+   "eos": "</s>",
+   "expected": "<s>[SYSTEM_PROMPT]You are Mistral Small 3, a Large Language Model (LLM) created by Mistral AI, a French startup headquartered in Paris.\nYour knowledge base was last updated on 2023-10-01. The current date is 2026-01-15.\n\nWhen you're not sure about some information or when the user's request requires up-to-date or specific data, you must use the available tools to fetch the information. Do not hesitate to use tools whenever they can provide a more accurate or complete response. If no relevant tools are available, then clearly state that you don't have the information and avoid making up anything.\n\nIf the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer the question, you do not try to answer it right away and you rather ask the user to clarify their request (e.g. \"What are some good restaurants around me?\" => \"Where are you?\" or \"When is the next flight to Tokyo\" => \"Where do you travel from?\").\nYou are always very attentive to dates, and when asked about information at specific dates, you discard information that is at another date.\nYou follow these instructions in all languages, and always respond to the user in the language they use or request.\nNext sections describe the capabilities that you have.\n\n# WEB BROWSING INSTRUCTIONS\n\nYou cannot perform any web search or access internet to open URLs, links etc. If it seems like the user is expecting you to do so, you clarify the situation and ask the user to copy paste the text directly in the chat.\n\n# MULTI-MODAL INSTRUCTIONS\n\nYou have the ability to read images, but you cannot generate images. You also cannot transcribe audio files or videos.\nYou cannot read nor transcribe audio files or videos.\n\n# TOOL CALLING INSTRUCTIONS\n\nYou may have access to tools that you can use to fetch information or perform actions. You must use these tools in the following situations:\n\n1. When the request requires up-to-date information.\n2. When the request requires specific data that you do not have in your knowledge base.\n3. When the request involves actions that you cannot perform without tools.\n\nAlways prioritize using tools to provide the most accurate and helpful response. If tools are not available, inform the user that you cannot perform the requested action at the moment.[/SYSTEM_PROMPT][INST]Hi[/INST]Hello! How can I help?</s>[INST]What is 2+2?[/INST]"
+  },
+  {
+   "template": "Mistral-Small-3.2-24B-Instruct-2506",
+   "case": "tool_round",
+   "bos": "<s>",
+   "eos": "</s>",
+   "expected": "<s>[SYSTEM_PROMPT]You can use tools.[/SYSTEM_PROMPT][AVAILABLE_TOOLS][{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the weather in a city (°C) <now> & 'later'\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\"}}, \"required\": [\"city\"]}}}][/AVAILABLE_TOOLS][INST]Weather in Zürich?[/INST][TOOL_CALLS]get_weather[CALL_ID]abc123xyz[ARGS]{\"city\": \"Zürich\", \"unit\": \"celsius\", \"days\": 2}</s>[TOOL_RESULTS]abc123xyz[TOOL_CONTENT]{\"temp\": 3}[/TOOL_RESULTS]"
+  },
+  {
+   "template": "Mistral-Small-3.2-24B-Instruct-2506",
+   "case": "thinking_off",
+   "bos": "<s>",
+   "eos": "</s>",
+   "expected": "<s>[SYSTEM_PROMPT]You are Mistral Small 3, a Large Language Model (LLM) created by Mistral AI, a French startup headquartered in Paris.\nYour knowledge base was last updated on 2023-10-01. The current date is 2026-01-15.\n\nWhen you're not sure about some information or when the user's request requires up-to-date or specific data, you must use the available tools to fetch the information. Do not hesitate to use tools whenever they can provide a more accurate or complete response. If no relevant tools are available, then clearly state that you don't have the information and avoid making up anything.\n\nIf the user's question is not clear, ambiguous, or does not provide enough context for you to accurately answer the question, you do not try to answer it right away and you rather ask the user to clarify their request (e.g. \"What are some good restaurants around me?\" => \"Where are you?\" or \"When is the next flight to Tokyo\" => \"Where do you travel from?\").\nYou are always very attentive to dates, and when asked about information at specific dates, you discard information that is at another date.\nYou follow these instructions in all languages, and always respond to the user in the language they use or request.\nNext sections describe the capabilities that you have.\n\n# WEB BROWSING INSTRUCTIONS\n\nYou cannot perform any web search or access internet to open URLs, links etc. If it seems like the user is expecting you to do so, you clarify the situation and ask the user to copy paste the text directly in the chat.\n\n# MULTI-MODAL INSTRUCTIONS\n\nYou have the ability to read images, but you cannot generate images. You also cannot transcribe audio files or videos.\nYou cannot read nor transcribe audio files or videos.\n\n# TOOL CALLING INSTRUCTIONS\n\nYou may have access to tools that you can use to fetch information or perform actions. You must use these tools in the following situations:\n\n1. When the request requires up-to-date information.\n2. When the request requires specific data that you do not have in your knowledge base.\n3. When the request involves actions that you cannot perform without tools.\n\nAlways prioritize using tools to provide the most accurate and helpful response. If tools are not available, inform the user that you cannot perform the requested action at the moment.[/SYSTEM_PROMPT][INST]Hi[/INST]Hello</s>[INST]Again[/INST]"
+  },
+  {
+   "template": "NousResearch-Hermes-3-Llama-3.1-8B-tool_use",
+   "case": "system_user",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|im_end|>",
+   "expected": "<|begin_of_text|><|im_start|>system\nYou are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools>  </tools>Use the following pydantic model json schema for each tool call you will make: {\"properties\": {\"name\": {\"title\": \"Name\", \"type\": \"string\"}, \"arguments\": {\"title\": \"Arguments\", \"type\": \"object\"}}, \"required\": [\"name\", \"arguments\"], \"title\": \"FunctionCall\", \"type\": \"object\"}}\nFor each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-dict>}\n</tool_call><|im_end|>\n<|im_start|>system\nYou are terse.<|im_end|>\n<|im_start|>user\nHello there<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "NousResearch-Hermes-3-Llama-3.1-8B-tool_use",
+   "case": "multi_turn",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|im_end|>",
+   "expected": "<|begin_of_text|><|im_start|>system\nYou are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools>  </tools>Use the following pydantic model json schema for each tool call you will make: {\"properties\": {\"name\": {\"title\": \"Name\", \"type\": \"string\"}, \"arguments\": {\"title\": \"Arguments\", \"type\": \"object\"}}, \"required\": [\"name\", \"arguments\"], \"title\": \"FunctionCall\", \"type\": \"object\"}}\nFor each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-dict>}\n</tool_call><|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello! How can I help?<|im_end|>\n<|im_start|>user\nWhat is 2+2?<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "NousResearch-Hermes-3-Llama-3.1-8B-tool_use",
+   "case": "tool_round",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|im_end|>",
+   "expected": "<|begin_of_text|><|im_start|>system\nYou are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> {\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"get_weather(city: str, unit: str, days: int) - Get the weather in a city (°C) <now> & 'later'\n\n    Args:\n        city(str): City name        unit(str):         days(int): \", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\"}}, \"required\": [\"city\"]}} </tools>Use the following pydantic model json schema for each tool call you will make: {\"properties\": {\"name\": {\"title\": \"Name\", \"type\": \"string\"}, \"arguments\": {\"title\": \"Arguments\", \"type\": \"object\"}}, \"required\": [\"name\", \"arguments\"], \"title\": \"FunctionCall\", \"type\": \"object\"}}\nFor each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-dict>}\n</tool_call><|im_end|>\n<|im_start|>system\nYou can use tools.<|im_end|>\n<|im_start|>user\nWeather in Zürich?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Zürich\", \"unit\": \"celsius\", \"days\": 2}}\n</tool_call><|im_end|>\n<|im_start|>tool\n<tool_response>\n{\"temp\": 3}\n</tool_response><|im_end|><|im_start|>assistant\n"
+  },
+  {
+   "template": "NousResearch-Hermes-3-Llama-3.1-8B-tool_use",
+   "case": "thinking_off",
+   "bos": "<|begin_of_text|>",
+   "eos": "<|im_end|>",
+   "expected": "<|begin_of_text|><|im_start|>system\nYou are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools>  </tools>Use the following pydantic model json schema for each tool call you will make: {\"properties\": {\"name\": {\"title\": \"Name\", \"type\": \"string\"}, \"arguments\": {\"title\": \"Arguments\", \"type\": \"object\"}}, \"required\": [\"name\", \"arguments\"], \"title\": \"FunctionCall\", \"type\": \"object\"}}\nFor each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-dict>}\n</tool_call><|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello<|im_end|>\n<|im_start|>user\nAgain<|im_end|>\n<|im_start|>assistant\n"
+  },
+  {
+   "template": "deepseek-ai-DeepSeek-R1-Distill-Qwen-32B",
+   "case": "system_user",
+   "bos": "<｜begin▁of▁sentence｜>",
+   "eos": "<｜end▁of▁sentence｜>",
+   "expected": "<｜begin▁of▁sentence｜>You are terse.<｜User｜>Hello there<｜Assistant｜><think>\n</think>"
+  },
+  {
+   "template": "deepseek-ai-DeepSeek-R1-Distill-Qwen-32B",
+   "case": "multi_turn",
+   "bos": "<｜begin▁of▁sentence｜>",
+   "eos": "<｜end▁of▁sentence｜>",
+   "expected": "<｜begin▁of▁sentence｜><｜User｜>Hi<｜Assistant｜>Hello! How can I help?<｜end▁of▁sentence｜><｜User｜>What is 2+2?<｜Assistant｜><think>\n</think>"
+  },
+  {
+   "template": "deepseek-ai-DeepSeek-R1-Distill-Qwen-32B",
+   "case": "tool_round",
+   "bos": "<｜begin▁of▁sentence｜>",
+   "eos": "<｜end▁of▁sentence｜>",
+   "expected": "<｜begin▁of▁sentence｜>You can use tools.<｜User｜>Weather in Zürich?<｜Assistant｜><｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>get_weather\n```json\n{\"city\": \"Zürich\", \"unit\": \"celsius\", \"days\": 2}\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜><｜end▁of▁sentence｜><｜Assistant｜><｜end▁of▁sentence｜><｜tool▁outputs▁begin｜><｜tool▁output▁begin｜>{\"temp\": 3}<｜tool▁output▁end｜><｜tool▁outputs▁end｜>"
+  },
+  {
+   "template": "deepseek-ai-DeepSeek-R1-Distill-Qwen-32B",
+   "case": "thinking_off",
+   "bos": "<｜begin▁of▁sentence｜>",
+   "eos": "<｜end▁of▁sentence｜>",
+   "expected": "<｜begin▁of▁sentence｜><｜User｜>Hi<｜Assistant｜>Hello<｜end▁of▁sentence｜><｜User｜>Again<｜Assistant｜><think>\n</think>"
+  },
+  {
+   "template": "google-gemma-2-2b-it",
+   "case": "system_user",
+   "bos": "<bos>",
+   "eos": "<eos>",
+   "error": true,
+   "message": "System role not supported"
+  },
+  {
+   "template": "google-gemma-2-2b-it",
+   "case": "multi_turn",
+   "bos": "<bos>",
+   "eos": "<eos>",
+   "expected": "<bos><start_of_turn>user\nHi<end_of_turn>\n<start_of_turn>model\nHello! How can I help?<end_of_turn>\n<start_of_turn>user\nWhat is 2+2?<end_of_turn>\n<start_of_turn>model\n"
+  },
+  {
+   "template": "google-gemma-2-2b-it",
+   "case": "tool_round",
+   "bos": "<bos>",
+   "eos": "<eos>",
+   "error": true,
+   "message": "System role not supported"
+  },
+  {
+   "template": "google-gemma-2-2b-it",
+   "case": "thinking_off",
+   "bos": "<bos>",
+   "eos": "<eos>",
+   "expected": "<bos><start_of_turn>user\nHi<end_of_turn>\n<start_of_turn>model\nHello<end_of_turn>\n<start_of_turn>user\nAgain<end_of_turn>\n<start_of_turn>model\n"
+  },
+  {
+   "template": "microsoft-Phi-3.5-mini-instruct",
+   "case": "system_user",
+   "bos": "<s>",
+   "eos": "<|endoftext|>",
+   "expected": "<|system|>\nYou are terse.<|end|>\n<|user|>\nHello there<|end|>\n<|assistant|>\n"
+  },
+  {
+   "template": "microsoft-Phi-3.5-mini-instruct",
+   "case": "multi_turn",
+   "bos": "<s>",
+   "eos": "<|endoftext|>",
+   "expected": "<|user|>\nHi<|end|>\n<|assistant|>\nHello! How can I help?<|end|>\n<|user|>\nWhat is 2+2?<|end|>\n<|assistant|>\n"
+  },
+  {
+   "template": "microsoft-Phi-3.5-mini-instruct",
+   "case": "tool_round",
+   "bos": "<s>",
+   "eos": "<|endoftext|>",
+   "expected": "<|system|>\nYou can use tools.<|end|>\n<|user|>\nWeather in Zürich?<|end|>\n<|assistant|>\n<|end|>\n<|assistant|>\n"
+  },
+  {
+   "template": "microsoft-Phi-3.5-mini-instruct",
+   "case": "thinking_off",
+   "bos": "<s>",
+   "eos": "<|endoftext|>",
+   "expected": "<|user|>\nHi<|end|>\n<|assistant|>\nHello<|end|>\n<|user|>\nAgain<|end|>\n<|assistant|>\n"
+  }
+ ]
+}
