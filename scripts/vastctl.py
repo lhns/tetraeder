@@ -710,7 +710,7 @@ def search_offers(ctx: Ctx, a: argparse.Namespace | None = None, extra_block: se
     min_vram = float(g("min_vram", 24))
     min_rel = float(g("min_reliability", 0.99))
     q = build_offer_query(gpus, min_vram, min_rel, float(g("min_inet", 500)), float(g("min_disk", 50)),
-                          float(g("min_cuda", 12.4)), bool(g("interruptible", False)))
+                          float(g("min_cuda", 12.8)), bool(g("interruptible", False)))
     block = ctx.store.blocklist() | set(extra_block or set())
     block |= {h.strip() for h in (g("exclude_hosts", "") or "").split(",") if h.strip()}
     mp = max_price if max_price is not None else g("max_price", None)
@@ -1884,7 +1884,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--min-reliability", type=float, default=0.99)
         s.add_argument("--min-inet", type=float, default=500)
         s.add_argument("--min-disk", type=float, default=50)
-        s.add_argument("--min-cuda", type=float, default=12.4)
+        s.add_argument("--min-cuda", type=float, default=12.8)  # the box image is CUDA 12.8; older drivers never start it
         s.add_argument("--exclude-hosts", default="", help="extra host ids to skip (comma list)")
         s.add_argument("--interruptible", action="store_true")
         s.add_argument("--sort", choices=["score", "price"], default="score")
