@@ -42,7 +42,8 @@ id = "cpu-2t"
 engine = "llama-bench"
 model = "tiny"
 device = "cpu"
-args = ["-ngl", "0", "-t", "2"]
+threads = 2
+args = ["-ngl", "0"]
 
 [[pair]]
 id = "noise-cpu-tiny"

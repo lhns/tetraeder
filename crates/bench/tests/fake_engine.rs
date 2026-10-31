@@ -148,6 +148,36 @@ fn runs_are_interleaved_a_b_a_b_after_warmup() {
 }
 
 #[test]
+fn cpu_variants_run_hidden_from_the_gpu_with_explicit_threads() {
+    let f = Fixture::new("info", &[], &[], "");
+    let log = f.dir.path().join("env.log");
+    let o = f.run(
+        &[],
+        &[
+            ("FAKE_ENV_LOG", log.to_str().unwrap()),
+            ("CUDA_VISIBLE_DEVICES", "0"),
+        ],
+    );
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    let lines = std::fs::read_to_string(&log).unwrap();
+    assert!(lines.lines().count() >= 8);
+    assert!(
+        lines
+            .lines()
+            .all(|l| l.starts_with("CUDA_VISIBLE_DEVICES= threads=")),
+        "{lines}"
+    );
+    assert!(lines.lines().all(|l| !l.ends_with("threads=")), "{lines}");
+    let r = f.results();
+    let n = r["pairs"][0]["samples"][0]["threads"].as_u64().unwrap();
+    assert!(n >= 1);
+    assert!(
+        lines.lines().all(|l| l.ends_with(&format!("threads={n}"))),
+        "{lines}"
+    );
+}
+
+#[test]
 fn slower_candidate_beyond_band_is_a_regression_with_nonzero_exit() {
     let f = Fixture::new("gate", &["--fake-tg", "100"], &["--fake-tg", "80"], "");
     let o = f.run(&[], &[]);

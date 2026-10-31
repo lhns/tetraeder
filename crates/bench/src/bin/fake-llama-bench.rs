@@ -1,6 +1,7 @@
 //! Test double for `llama-bench`: prints the same JSON shape with throughput taken from its flags.
 //! Flags: `--fake-pp N`, `--fake-tg N`, `--fake-jitter F` (relative, random from the clock),
 //! `--fake-fail`, `--fake-sleep-ms N`. `FAKE_LOG` names a file that gets one line (the variant tag) per call, to check interleaving.
+//! `FAKE_ENV_LOG` names a file that gets one line `CUDA_VISIBLE_DEVICES=<value|unset> threads=<-t>` per call.
 //! All other llama-bench flags are accepted and ignored except `-p`/`-n`, which switch the rows on.
 
 use std::io::Write;
@@ -29,6 +30,20 @@ fn main() {
             .open(&path)
             .expect("open FAKE_LOG");
         writeln!(f, "{tag}").expect("write FAKE_LOG");
+    }
+    if let Ok(path) = std::env::var("FAKE_ENV_LOG") {
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .expect("open FAKE_ENV_LOG");
+        let cuda = std::env::var("CUDA_VISIBLE_DEVICES").unwrap_or_else(|_| "unset".into());
+        writeln!(
+            f,
+            "CUDA_VISIBLE_DEVICES={cuda} threads={}",
+            flag("-t").unwrap_or_default()
+        )
+        .expect("write FAKE_ENV_LOG");
     }
     // Uniform in +-jitter around the nominal rate, from the clock.
     let nanos = std::time::SystemTime::now()
