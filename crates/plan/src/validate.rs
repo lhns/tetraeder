@@ -581,7 +581,8 @@ impl<'a> Checker<'a> {
                 kind,
                 device: device.to_string(),
             };
-            *self.exp.buffers.entry(key).or_default() += bytes;
+            let total = self.exp.buffers.entry(key).or_default();
+            *total = total.saturating_add(bytes);
         };
         for d in st.kv.iter().flatten() {
             add(BufferKind::Kv, &d.device, d.bytes);
@@ -591,7 +592,7 @@ impl<'a> Checker<'a> {
         }
         for c in &st.expert_cache {
             if moe {
-                let bytes = u64::from(c.slots) * layers * max_expert;
+                let bytes = (u64::from(c.slots) * layers).saturating_mul(max_expert);
                 add(BufferKind::SlotCache, &c.device, bytes);
             } else {
                 self.issues.push(Issue::SlotCache {
