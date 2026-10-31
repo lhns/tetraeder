@@ -33,3 +33,5 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0027](0027-placement-plan-ir-shape.md) | Placement plan IR: assignment rules over a model description, one expanded form for checks, diff and migration |
 | [0028](0028-gateway.md) | Gateway: axum, a narrow token-level engine trait, minijinja templates, llguidance constraints |
 | [0029](0029-gpu-tooling-from-taxameter.md) | GPU box tooling comes from the shared package taxameter |
+| [0030](0030-own-moe-graph-builder.md) | Own Qwen3 MoE graph builder: safe ggml surface, builder in model, one segment per MoE layer |
+| [0031](0031-arenas-tiers-slot-cache-direct-io.md) | Memory: per-device arenas with prefill and decode budgets, expert slot cache over three tiers, aligned direct I/O |

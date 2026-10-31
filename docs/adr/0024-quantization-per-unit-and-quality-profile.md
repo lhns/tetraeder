@@ -20,3 +20,5 @@ Feature 5 ("quantization chosen to fit") picked one format for the whole model. 
 - Converted weights need a disk cache keyed by source hash, format, importance-matrix hash and ggml version.
 - Profiles can differ per workload (code versus chat), like routing profiles.
 - Exit tests compare against llama.cpp presets at the same byte budget, not against absolute divergence numbers.
+- Derived low-bit checkpoints (a vendor's ternary or distilled copy of a model) are not a format choice: they cannot be produced by conversion and their units cannot be mixed with the original's. They are a separate model with its own hash, profiled against the original's logits, and a candidate draft model for self-speculative decoding (Phase 4).
+- KL on calibration text can miss losses on agent work. A second check, tool-call validity on a fixed agent trace through the gateway's parsers (ADR 0028), validates chosen mixes; it is not a planner input.
