@@ -4,7 +4,9 @@
 //! independent of each other); buffer and knob changes; then prepare and commit (two-phase).
 //! Until Phase 7 the executor runs it drain-and-restart. Memory-aware ordering is Phase 7.
 
-use crate::{BufferKey, Expanded, Knobs, Placement, PlanDiff, ShardChange, ShardKey};
+use crate::{
+    BudgetKey, Budgets, BufferKey, Expanded, Knobs, Placement, PlanDiff, ShardChange, ShardKey,
+};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +24,11 @@ pub enum Step {
     SetBuffer {
         key: BufferKey,
         bytes: Option<u64>,
+    },
+    /// `None` removes the budgets.
+    SetBudgets {
+        key: BudgetKey,
+        budgets: Option<Budgets>,
     },
     SetKnobs(Knobs),
     Prepare,
@@ -41,6 +48,7 @@ pub struct MigrationDag {
 pub struct State {
     pub shards: BTreeMap<ShardKey, Vec<Placement>>,
     pub buffers: BTreeMap<BufferKey, u64>,
+    pub budgets: BTreeMap<BudgetKey, Budgets>,
     pub knobs: Knobs,
 }
 
@@ -53,6 +61,7 @@ impl From<&Expanded> for State {
                 .map(|(k, p)| (*k, vec![p.clone()]))
                 .collect(),
             buffers: e.buffers.clone(),
+            budgets: e.budgets.clone(),
             knobs: e.knobs,
         }
     }
@@ -80,6 +89,14 @@ impl State {
                 }
                 None => {
                     self.buffers.remove(key);
+                }
+            },
+            Step::SetBudgets { key, budgets } => match budgets {
+                Some(b) => {
+                    self.budgets.insert(key.clone(), *b);
+                }
+                None => {
+                    self.budgets.remove(key);
                 }
             },
             Step::SetKnobs(k) => self.knobs = *k,
@@ -126,6 +143,13 @@ impl MigrationDag {
             steps.push(Step::SetBuffer {
                 key: b.key.clone(),
                 bytes: b.to,
+            });
+        }
+        for b in &diff.budgets {
+            chains.push((steps.len(), steps.len()));
+            steps.push(Step::SetBudgets {
+                key: b.key.clone(),
+                budgets: b.to,
             });
         }
         if let Some((_, to)) = diff.knobs {

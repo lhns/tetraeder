@@ -2,8 +2,8 @@
 //! hard hints and the phase capability table. Collects every issue, not just the first.
 
 use crate::{
-    BufferKey, BufferKind, ComputeOverride, Expanded, Format, Hints, ModelDesc, Phase, Placement,
-    Plan, Replica, ShardKey, Stage, UnitId, UnitKind,
+    BudgetKey, Budgets, BufferKey, BufferKind, ComputeOverride, Expanded, Format, Hints, ModelDesc,
+    Phase, PhaseBudget, PhaseBytes, Placement, Plan, Replica, ShardKey, Stage, UnitId, UnitKind,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -105,6 +105,23 @@ pub enum Issue {
     },
     MemoryExceeded {
         device: String,
+        used: u64,
+        capacity: u64,
+        reserve: u64,
+    },
+    /// A phase budget that does not fit the stage's slot and workspace arenas on its device
+    /// (KV cannot be borrowed), or is given twice for a device.
+    PhaseBudget {
+        at: At,
+        device: String,
+        phase: &'static str,
+        detail: String,
+    },
+    /// Weights, KV and a phase's slot and workspace bytes together exceed capacity minus
+    /// reserve.
+    PhaseMemoryExceeded {
+        device: String,
+        phase: &'static str,
         used: u64,
         capacity: u64,
         reserve: u64,
@@ -239,6 +256,7 @@ impl<'a> Checker<'a> {
         }
         self.flag_if(self.remote && !multi_node, "multi_node");
         self.memory();
+        self.phase_memory();
         self.hints();
         for field in std::mem::take(&mut self.fields) {
             self.issues.push(Issue::Phase {
@@ -359,6 +377,9 @@ impl<'a> Checker<'a> {
         for c in &st.expert_cache {
             self.named(at, &c.device);
         }
+        for b in &st.phase_budgets {
+            self.named(at, &b.device);
+        }
 
         if self.complete {
             let mut open = Vec::new();
@@ -388,6 +409,10 @@ impl<'a> Checker<'a> {
         self.flag_if(
             (st.tp.unwrap_or(1) > 1 || st.ep.unwrap_or(1) > 1) && !caps.tp_ep,
             "tp_ep",
+        );
+        self.flag_if(
+            !st.phase_budgets.is_empty() && !caps.phase_budgets,
+            "phase_budgets",
         );
         self.flag_if(
             !st.expert_cache.is_empty() && !caps.expert_tiers,
@@ -508,6 +533,7 @@ impl<'a> Checker<'a> {
 
         self.rule_checks(at, st, &first_unit);
         self.buffers(r, s, st, max_expert);
+        self.budgets(r, s, st);
         self.expert_spread(at, st, &expert_compute);
     }
 
@@ -603,6 +629,86 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Phase budgets of every device with a slot or workspace arena in the stage; the arena
+    /// sizes where the plan gives none. Complete plans also check them against the arenas.
+    fn budgets(&mut self, r: u32, s: u32, st: &Stage) {
+        let at = At {
+            replica: r,
+            stage: Some(s),
+        };
+        let arena = |exp: &Expanded, kind, device: &str| {
+            let key = BufferKey {
+                replica: r,
+                stage: s,
+                kind,
+                device: device.to_string(),
+            };
+            exp.buffers.get(&key).copied().unwrap_or(0)
+        };
+        let mut devices: BTreeSet<&str> = self
+            .exp
+            .buffers
+            .keys()
+            .filter(|k| {
+                (k.replica, k.stage) == (r, s)
+                    && matches!(k.kind, BufferKind::Workspace | BufferKind::SlotCache)
+            })
+            .map(|k| k.device.as_str())
+            .collect();
+        let mut explicit: BTreeMap<&str, &PhaseBudget> = BTreeMap::new();
+        let mut found = Vec::new();
+        for b in &st.phase_budgets {
+            if explicit.insert(&b.device, b).is_some() {
+                found.push(Issue::PhaseBudget {
+                    at,
+                    device: b.device.clone(),
+                    phase: "both",
+                    detail: "given twice".into(),
+                });
+            }
+            devices.insert(&b.device);
+        }
+        let mut out = Vec::new();
+        for dev in devices {
+            let slots = arena(&self.exp, BufferKind::SlotCache, dev);
+            let ws = arena(&self.exp, BufferKind::Workspace, dev);
+            let pool = slots.saturating_add(ws);
+            let same = PhaseBytes {
+                slots,
+                workspace: ws,
+            };
+            let (prefill, decode) = explicit
+                .get(dev)
+                .map_or((same, same), |b| (b.prefill, b.decode));
+            if self.complete && self.ctx.hw.device(dev).is_some() {
+                for (phase, b) in [("prefill", prefill), ("decode", decode)] {
+                    let total = b.slots.saturating_add(b.workspace);
+                    let detail = if b.slots > slots {
+                        format!("{} slot bytes, the slot arena has {slots}", b.slots)
+                    } else if total > pool {
+                        format!("{total} slot and workspace bytes, the arenas hold {pool}")
+                    } else {
+                        continue;
+                    };
+                    found.push(Issue::PhaseBudget {
+                        at,
+                        device: dev.to_string(),
+                        phase,
+                        detail,
+                    });
+                }
+            }
+            let key = BudgetKey {
+                replica: r,
+                stage: s,
+                device: dev.to_string(),
+            };
+            out.push((key, Budgets { prefill, decode }));
+        }
+        self.issues.extend(found);
+        self.exp.budgets.extend(out);
+    }
+
     fn expert_spread(&mut self, at: At, st: &Stage, compute: &BTreeMap<(u32, u32), String>) {
         let model = self.ctx.model;
         let Some(ep) = st.ep.filter(|&ep| ep > 1) else {
@@ -645,6 +751,52 @@ impl<'a> Checker<'a> {
                     capacity: d.capacity_bytes,
                     reserve,
                 });
+            }
+        }
+    }
+
+    /// Per phase: weights and KV plus the phase's slot and workspace bytes, on devices with an
+    /// explicit budget. Without one a phase equals the arenas and `memory` covers it.
+    fn phase_memory(&mut self) {
+        let devices: BTreeSet<&str> = (self.plan.replicas.iter())
+            .flat_map(|rep| &rep.stages)
+            .flat_map(|st| &st.phase_budgets)
+            .map(|b| b.device.as_str())
+            .collect();
+        for dev in devices {
+            let Some(d) = self.ctx.hw.device(dev) else {
+                continue;
+            };
+            let mut fixed = 0u64;
+            for p in self.exp.shards.values().filter(|p| p.home == dev) {
+                fixed = fixed.saturating_add(p.bytes);
+            }
+            for (k, b) in &self.exp.buffers {
+                if k.device == dev && k.kind == BufferKind::Kv {
+                    fixed = fixed.saturating_add(*b);
+                }
+            }
+            let reserve = self.ctx.reserve.get(dev).copied().unwrap_or(0);
+            let limit = d.capacity_bytes.saturating_sub(reserve);
+            for phase in ["prefill", "decode"] {
+                let mut used = fixed;
+                for (_, b) in self.exp.budgets.iter().filter(|(k, _)| k.device == dev) {
+                    let p = if phase == "prefill" {
+                        b.prefill
+                    } else {
+                        b.decode
+                    };
+                    used = used.saturating_add(p.slots).saturating_add(p.workspace);
+                }
+                if used > limit {
+                    self.issues.push(Issue::PhaseMemoryExceeded {
+                        device: dev.to_string(),
+                        phase,
+                        used,
+                        capacity: d.capacity_bytes,
+                        reserve,
+                    });
+                }
             }
         }
     }

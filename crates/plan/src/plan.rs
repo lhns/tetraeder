@@ -79,6 +79,26 @@ pub struct SlotCache {
     pub slots: u32,
 }
 
+/// Bytes a phase uses of a device's slot and workspace arenas (ADR 0031).
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
+pub struct PhaseBytes {
+    pub slots: u64,
+    pub workspace: u64,
+}
+
+/// Per-phase split of the slot and workspace arenas on one device. Prefill borrows slot bytes
+/// beyond the pinned hot set for workspace, decode gets them back. KV is never borrowed: each
+/// phase stays within the stage's slot and workspace arenas on the device. A device without an
+/// entry uses the arenas as sized (`expert_cache`, `workspace`) in both phases.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PhaseBudget {
+    pub device: String,
+    pub prefill: PhaseBytes,
+    pub decode: PhaseBytes,
+}
+
 /// One pipeline stage: a layer span computed by a device group.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stage {
@@ -101,6 +121,9 @@ pub struct Stage {
     pub workspace: Vec<DeviceBytes>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expert_cache: Vec<SlotCache>,
+    /// Prefill and decode budgets within the slot and workspace arenas (ADR 0031).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub phase_budgets: Vec<PhaseBudget>,
 }
 
 /// A full copy of the model behind the router (data parallel).

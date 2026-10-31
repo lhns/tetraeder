@@ -16,10 +16,12 @@ mod migrate;
 mod model;
 mod phase;
 mod plan;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 mod validate;
 
-pub use diff::{BufferChange, PlanDiff, ShardChange, diff};
-pub use expand::{BufferKey, BufferKind, Expanded, Placement, ShardKey};
+pub use diff::{BudgetChange, BufferChange, PlanDiff, ShardChange, diff};
+pub use expand::{BudgetKey, Budgets, BufferKey, BufferKind, Expanded, Placement, ShardKey};
 pub use format::Format;
 pub use hints::{
     Forbid, FormatFloor, Freeze, Hints, Level, Objective, Pin, Prefer, Stability, WorkloadHints,
@@ -27,5 +29,8 @@ pub use hints::{
 pub use migrate::{MigrationDag, State, Step};
 pub use model::{ModelDesc, UnitId, UnitKind, UnitSize};
 pub use phase::{Capabilities, ComputeOverride, Phase};
-pub use plan::{Assign, DeviceBytes, Knobs, Plan, Replica, SlotCache, Span, Stage, UnitSel};
+pub use plan::{
+    Assign, DeviceBytes, Knobs, PhaseBudget, PhaseBytes, Plan, Replica, SlotCache, Span, Stage,
+    UnitSel,
+};
 pub use validate::{At, Context, Issue, validate, validate_partial};

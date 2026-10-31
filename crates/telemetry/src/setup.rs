@@ -256,6 +256,10 @@ mod tests {
         m.device_busy("gpu0", 0.5);
         m.memory_used("gpu0", "vram", "weights", 1);
         m.memory_capacity("gpu0", "vram", "weights", 2);
+        m.expert_cache_requests(3, 4, "vram", CacheResult::Hit);
+        m.expert_load_duration(Duration::from_millis(2), "vram", "nvme");
+        m.tier_read_bytes(4096, "nvme0", "nvme");
+        m.expert_layer_hit(true);
         mp.force_flush().unwrap();
 
         let mut names = Vec::new();
@@ -285,6 +289,10 @@ mod tests {
             "tetraeder.device.busy",
             "tetraeder.memory.used",
             "tetraeder.memory.capacity",
+            "tetraeder.expert.cache.requests",
+            "tetraeder.expert.load.duration",
+            "tetraeder.tier.read.bytes",
+            "tetraeder.expert.layer_hit",
         ] {
             assert!(names.iter().any(|x| x == n), "missing metric {n}");
         }

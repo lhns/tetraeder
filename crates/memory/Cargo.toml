@@ -13,3 +13,33 @@ unsafe_code = "allow"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
+
+[features]
+default = ["ggml", "metrics"]
+# Arenas on ggml backends. Off, the crate builds without the ggml C build (cross-checks).
+ggml = ["dep:tetraeder-ggml-sys"]
+metrics = ["dep:tetraeder-telemetry"]
+
+[dependencies]
+tetraeder-plan = { path = "../plan" }
+tetraeder-profiler = { path = "../profiler" }
+tetraeder-ggml-sys = { path = "../ggml-sys", optional = true }
+tetraeder-telemetry = { path = "../telemetry", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# O_DIRECT flag value (differs by architecture).
+libc = "0.2"
+# io_uring when the kernel and the container allow it; the thread pool covers the rest.
+io-uring = "0.7"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tetraeder-plan = { path = "../plan", features = ["testing"] }
+proptest = "1"

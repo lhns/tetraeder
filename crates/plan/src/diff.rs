@@ -1,6 +1,6 @@
 //! Plan diff on the expanded form (`plan diff`).
 
-use crate::{BufferKey, Expanded, Knobs, Placement, ShardKey};
+use crate::{BudgetKey, Budgets, BufferKey, Expanded, Knobs, Placement, ShardKey};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -31,19 +31,32 @@ pub struct BufferChange {
     pub to: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BudgetChange {
+    pub key: BudgetKey,
+    /// `None`: the arenas do not exist on that side.
+    pub from: Option<Budgets>,
+    pub to: Option<Budgets>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlanDiff {
     /// In key order.
     pub shards: Vec<ShardChange>,
     /// In key order.
     pub buffers: Vec<BufferChange>,
+    /// In key order.
+    pub budgets: Vec<BudgetChange>,
     /// `(from, to)` when the knobs differ.
     pub knobs: Option<(Knobs, Knobs)>,
 }
 
 impl PlanDiff {
     pub fn is_empty(&self) -> bool {
-        self.shards.is_empty() && self.buffers.is_empty() && self.knobs.is_none()
+        self.shards.is_empty()
+            && self.buffers.is_empty()
+            && self.budgets.is_empty()
+            && self.knobs.is_none()
     }
 
     /// Weight bytes that must be written somewhere: added shards and changed shards whose home
@@ -97,9 +110,22 @@ pub fn diff(from: &Expanded, to: &Expanded) -> PlanDiff {
             })
         })
         .collect();
+    let keys: BTreeSet<&BudgetKey> = from.budgets.keys().chain(to.budgets.keys()).collect();
+    let budgets = keys
+        .into_iter()
+        .filter_map(|k| {
+            let (f, t) = (from.budgets.get(k).copied(), to.budgets.get(k).copied());
+            (f != t).then(|| BudgetChange {
+                key: k.clone(),
+                from: f,
+                to: t,
+            })
+        })
+        .collect();
     PlanDiff {
         shards,
         buffers,
+        budgets,
         knobs: (from.knobs != to.knobs).then_some((from.knobs, to.knobs)),
     }
 }
