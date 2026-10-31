@@ -52,14 +52,16 @@ pub struct Expanded {
 }
 
 impl Expanded {
-    /// Bytes held per device: shard weights at their home plus buffers.
+    /// Bytes held per device: shard weights at their home plus buffers (saturating).
     pub fn memory_per_device(&self) -> BTreeMap<String, u64> {
         let mut m: BTreeMap<String, u64> = BTreeMap::new();
         for p in self.shards.values() {
-            *m.entry(p.home.clone()).or_default() += p.bytes;
+            let used = m.entry(p.home.clone()).or_default();
+            *used = used.saturating_add(p.bytes);
         }
         for (k, b) in &self.buffers {
-            *m.entry(k.device.clone()).or_default() += b;
+            let used = m.entry(k.device.clone()).or_default();
+            *used = used.saturating_add(*b);
         }
         m
     }

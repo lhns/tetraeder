@@ -160,6 +160,29 @@ fn memory_counts_the_measured_reserve() {
 }
 
 #[test]
+fn huge_budgets_do_not_wrap_the_memory_check() {
+    let mut p = plan();
+    // Two budgets on one device sum past u64::MAX.
+    stage(&mut p, 0).kv = Some(vec![
+        DeviceBytes {
+            device: "gpu0".into(),
+            bytes: u64::MAX,
+        },
+        DeviceBytes {
+            device: "gpu0".into(),
+            bytes: 2,
+        },
+    ]);
+    let found = issues(&p, 2);
+    assert!(
+        found
+            .iter()
+            .any(|i| matches!(i, Issue::MemoryExceeded { device, .. } if device == "gpu0")),
+        "{found:#?}"
+    );
+}
+
+#[test]
 fn formats_only_convert_downward() {
     let mut p = plan();
     stage(&mut p, 0).assign[0].format = Some(Format::F32);
