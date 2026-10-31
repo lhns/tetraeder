@@ -26,7 +26,10 @@ pub struct EnvInfo {
     pub os: String,
     pub arch: String,
     pub cpu: String,
+    /// `std::thread::available_parallelism()`: respects affinity and the cgroup CPU quota.
     pub cpus: usize,
+    /// Container CPU quota in cores (cgroup v2 `cpu.max`, else v1 cfs), null if unlimited or unknown.
+    pub cpu_quota: Option<f64>,
     pub ram_gb: Option<f64>,
     pub gpus: Vec<GpuSnap>,
     pub git_commit: String,
@@ -127,6 +130,37 @@ fn ram_gb() -> Option<f64> {
     Some((kb / 1048576.0 * 10.0).round() / 10.0)
 }
 
+/// Cores allowed by a cgroup v2 `cpu.max` line (`<quota|max> <period>`).
+pub fn parse_cpu_max(text: &str) -> Option<f64> {
+    let mut f = text.split_whitespace();
+    let (quota, period) = (f.next()?, f.next().unwrap_or("100000"));
+    ratio(quota.parse().ok()?, period.parse().ok()?)
+}
+
+/// Cores allowed by cgroup v1 `cpu.cfs_quota_us` / `cpu.cfs_period_us` (quota -1 = unlimited).
+pub fn parse_cfs(quota: &str, period: &str) -> Option<f64> {
+    ratio(quota.trim().parse().ok()?, period.trim().parse().ok()?)
+}
+
+fn ratio(quota: f64, period: f64) -> Option<f64> {
+    (quota > 0.0 && period > 0.0).then(|| (quota / period * 100.0).round() / 100.0)
+}
+
+fn cpu_quota() -> Option<f64> {
+    let read = |p: &str| std::fs::read_to_string(p).ok();
+    if let Some(t) = read("/sys/fs/cgroup/cpu.max") {
+        return parse_cpu_max(&t);
+    }
+    ["/sys/fs/cgroup/cpu", "/sys/fs/cgroup/cpu,cpuacct"]
+        .iter()
+        .find_map(|d| {
+            parse_cfs(
+                &read(&format!("{d}/cpu.cfs_quota_us"))?,
+                &read(&format!("{d}/cpu.cfs_period_us"))?,
+            )
+        })
+}
+
 fn git_commit() -> (String, Option<bool>) {
     let commit = run("git", &["rev-parse", "HEAD"])
         .or_else(|| std::env::var("TETRAEDER_GIT_COMMIT").ok())
@@ -148,6 +182,7 @@ pub fn capture() -> EnvInfo {
         os: std::env::consts::OS.into(),
         arch: std::env::consts::ARCH.into(),
         cpu: cpu_model(),
+        cpu_quota: cpu_quota(),
         cpus: std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(1),
@@ -230,6 +265,33 @@ mod tests {
         assert_eq!(g.len(), 1);
         assert_eq!(g[0].clocks_sm_mhz, None);
         assert!(parse_gpu_csv("").is_empty());
+    }
+
+    #[test]
+    fn parses_cgroup_cpu_quota() {
+        assert_eq!(
+            parse_cpu_max(
+                "1100000 100000
+"
+            ),
+            Some(11.0)
+        );
+        assert_eq!(
+            parse_cpu_max(
+                "max 100000
+"
+            ),
+            None
+        );
+        assert_eq!(
+            parse_cfs(
+                "-1
+", "100000
+"
+            ),
+            None
+        );
+        assert_eq!(parse_cfs("250000", "100000"), Some(2.5));
     }
 
     #[test]
