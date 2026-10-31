@@ -16,6 +16,8 @@ mod migrate;
 mod model;
 mod phase;
 mod plan;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 mod validate;
 
 pub use diff::{BudgetChange, BufferChange, PlanDiff, ShardChange, diff};
