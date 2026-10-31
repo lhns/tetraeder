@@ -15,6 +15,9 @@ pub mod attr {
     pub const DEVICE: &str = "tetraeder.device";
     pub const TIER: &str = "tetraeder.memory.tier";
     pub const KIND: &str = "tetraeder.memory.kind";
+    pub const LAYER: &str = "tetraeder.layer";
+    pub const RESULT: &str = "tetraeder.result";
+    pub const SOURCE: &str = "tetraeder.source";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +62,7 @@ const LATENCY_BOUNDS: [f64; 14] = [
     0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 60.0,
 ];
 
-/// Typed instruments for the Phase 0/1 subset of the metric catalog (docs/plan.md).
+/// Typed instruments for the Phase 0 to 2 subset of the metric catalog (docs/plan.md).
 #[derive(Debug, Clone)]
 pub struct Metrics {
     ttft: Histogram<f64>,
@@ -72,6 +75,10 @@ pub struct Metrics {
     device_temp: Gauge<f64>,
     mem_used: Gauge<u64>,
     mem_capacity: Gauge<u64>,
+    expert_requests: Counter<u64>,
+    expert_load: Histogram<f64>,
+    tier_read: Counter<u64>,
+    layer_hit: Counter<u64>,
 }
 
 impl Metrics {
@@ -120,6 +127,25 @@ impl Metrics {
                 .u64_gauge("tetraeder.memory.capacity")
                 .with_unit("By")
                 .build(),
+            expert_requests: meter
+                .u64_counter("tetraeder.expert.cache.requests")
+                .with_unit("{request}")
+                .with_description("Expert slot lookups by layer, tier and result")
+                .build(),
+            expert_load: hist(
+                "tetraeder.expert.load.duration",
+                "Time to bring one expert into a slot",
+            ),
+            tier_read: meter
+                .u64_counter("tetraeder.tier.read.bytes")
+                .with_unit("By")
+                .with_description("Bytes read from a memory tier")
+                .build(),
+            layer_hit: meter
+                .u64_counter("tetraeder.expert.layer_hit")
+                .with_unit("{layer}")
+                .with_description("MoE layer steps with all top-k experts resident (full) or not")
+                .build(),
         }
     }
 
@@ -161,13 +187,7 @@ impl Metrics {
                         Direction::Output => "output",
                     },
                 ),
-                KeyValue::new(
-                    attr::CACHE,
-                    match cache {
-                        CacheResult::Hit => "hit",
-                        CacheResult::Miss => "miss",
-                    },
-                ),
+                KeyValue::new(attr::CACHE, cache_result(cache)),
             ],
         );
     }
@@ -198,15 +218,66 @@ impl Metrics {
             .record(celsius, &[KeyValue::new(attr::DEVICE, device.to_owned())]);
     }
 
-    /// `tier` is for example `vram` or `ram`; `kind` is `weights`, `kv`, `workspace`,
+    /// `tier` is for example `vram` or `ram`; `kind` is `weights`, `kv`, `workspace`, `slots`,
     /// `reserve`, or `total` when the split is unknown.
     pub fn memory_used(&self, device: &str, tier: &str, kind: &str, bytes: u64) {
         self.mem_used.record(bytes, &mem_attrs(device, tier, kind));
     }
 
+    /// Expert slot lookups in the cache of `tier` for a MoE `layer`.
+    pub fn expert_cache_requests(&self, n: u64, layer: u32, tier: &str, result: CacheResult) {
+        self.expert_requests.add(
+            n,
+            &[
+                KeyValue::new(attr::LAYER, i64::from(layer)),
+                KeyValue::new(attr::TIER, tier.to_owned()),
+                KeyValue::new(attr::RESULT, cache_result(result)),
+            ],
+        );
+    }
+
+    /// `source` is where the bytes came from, for example `nvme` or `ram`.
+    pub fn expert_load_duration(&self, d: Duration, tier: &str, source: &str) {
+        self.expert_load.record(
+            d.as_secs_f64(),
+            &[
+                KeyValue::new(attr::TIER, tier.to_owned()),
+                KeyValue::new(attr::SOURCE, source.to_owned()),
+            ],
+        );
+    }
+
+    pub fn tier_read_bytes(&self, bytes: u64, device: &str, tier: &str) {
+        self.tier_read.add(
+            bytes,
+            &[
+                KeyValue::new(attr::DEVICE, device.to_owned()),
+                KeyValue::new(attr::TIER, tier.to_owned()),
+            ],
+        );
+    }
+
+    /// A MoE layer step: `full` when every top-k expert was resident, else partial.
+    pub fn expert_layer_hit(&self, full: bool) {
+        self.layer_hit.add(
+            1,
+            &[KeyValue::new(
+                attr::RESULT,
+                if full { "full" } else { "partial" },
+            )],
+        );
+    }
+
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {
         self.mem_capacity
             .record(bytes, &mem_attrs(device, tier, kind));
+    }
+}
+
+fn cache_result(r: CacheResult) -> &'static str {
+    match r {
+        CacheResult::Hit => "hit",
+        CacheResult::Miss => "miss",
     }
 }
 
