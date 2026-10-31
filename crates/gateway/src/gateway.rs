@@ -4,11 +4,8 @@ use crate::chat::{
     ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
 };
 use crate::constraint::{ConstraintFactory, Reasoning};
-use crate::decode::{StopMatcher, Utf8Decoder};
-use crate::engine::{
-    Engine, EngineStats, FinishReason, GenEvent, GenerateRequest, ModelInfo, SamplingParams,
-    TokenConstraint, Vocab,
-};
+use crate::decode::StopMatcher;
+use crate::engine::{Engine, GenerateRequest, ModelInfo, SamplingParams, TokenConstraint, Vocab};
 use crate::error::GatewayError;
 use crate::template::ChatTemplate;
 use crate::toolcall::{OutputParser, ToolFormat};
@@ -17,11 +14,16 @@ use opentelemetry::metrics::{Gauge, Histogram, Meter};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tetraeder_telemetry::{CacheResult, Direction};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::Instrument;
+
+mod cost;
+mod pump;
+
+pub use cost::{CostSink, RequestCost, attr};
+use pump::Run;
 
 #[derive(Debug, Clone)]
 pub struct GatewayConfig {
@@ -166,35 +168,6 @@ impl Generation {
         }
         Ok(c)
     }
-}
-
-/// What one finished request cost, for accounting outside the gateway.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RequestCost {
-    pub request_id: String,
-    pub caller: String,
-    pub model: String,
-    pub operation: &'static str,
-    pub prompt_tokens: u32,
-    pub cached_tokens: u32,
-    pub completion_tokens: u32,
-    pub gpu_seconds: Option<f64>,
-    pub bytes_streamed: Option<u64>,
-    pub duration: Duration,
-    /// `error.type` when the request did not complete (`cancelled`, `internal`, ...).
-    pub error_type: Option<&'static str>,
-}
-
-/// Receives the cost of every request that reached the engine.
-pub trait CostSink: Send + Sync {
-    fn record(&self, cost: &RequestCost);
-}
-
-/// Attribute names used only by the gateway.
-pub mod attr {
-    pub const CALLER: &str = "tetraeder.caller";
-    pub const RESOURCE: &str = "tetraeder.cost.resource";
-    pub const PRIORITY: &str = "tetraeder.priority";
 }
 
 struct GatewayMetrics {
@@ -672,250 +645,6 @@ impl Gateway {
 
 /// The output parser (chat only) and the sampling constraint of one request.
 type OutputSetup = (Option<OutputParser>, Option<Box<dyn TokenConstraint>>);
-
-/// State of one generation's output pump.
-struct Run {
-    gw: Arc<Gateway>,
-    id: String,
-    model: String,
-    caller: String,
-    op: Operation,
-    started: Instant,
-    prompt_tokens: u32,
-    vocab: Arc<Vocab>,
-    parser: Option<OutputParser>,
-    /// Parallel calls are off: generation ends after the first complete tool call.
-    single_call: bool,
-    stop: StopMatcher,
-    cancel: CancellationToken,
-    span: tracing::Span,
-    _permit: OwnedSemaphorePermit,
-}
-
-enum Outcome {
-    Done(Finish),
-    ClientGone,
-    Failed(GatewayError),
-}
-
-impl Run {
-    fn segments(&mut self, text: &str, out: &mut Vec<Segment>) {
-        if text.is_empty() {
-            return;
-        }
-        match &mut self.parser {
-            Some(p) => out.extend(p.push(text)),
-            None => out.push(Segment::Text(text.to_owned())),
-        }
-    }
-
-    async fn pump(mut self, mut erx: mpsc::Receiver<GenEvent>, tx: mpsc::Sender<OutEvent>) {
-        let mut utf8 = Utf8Decoder::default();
-        let mut n_out: u32 = 0;
-        let mut first: Option<Instant> = None;
-        let mut last = self.started;
-        let mut stop_hit: Option<String> = None;
-        let mut saw_tool_call = false;
-        let mut call_done = false;
-        let mut stats = EngineStats::default();
-        let mut buf = Vec::new();
-
-        let outcome = loop {
-            let Some(ev) = erx.recv().await else {
-                break Outcome::Failed(GatewayError::Internal(
-                    "engine ended without finishing".into(),
-                ));
-            };
-            buf.clear();
-            match ev {
-                GenEvent::Token(id) => {
-                    if stop_hit.is_some() || call_done {
-                        continue;
-                    }
-                    let now = Instant::now();
-                    if first.is_none() {
-                        first = Some(now);
-                        if let Some(m) = &self.gw.metrics {
-                            m.genai.time_to_first_token(
-                                now - self.started,
-                                &self.model,
-                                self.op.as_str(),
-                            );
-                        }
-                    }
-                    last = now;
-                    n_out += 1;
-                    let text = utf8.push(self.vocab.bytes(id));
-                    let (emit, hit) = self.stop.push(&text);
-                    self.segments(&emit, &mut buf);
-                    if hit.is_some() {
-                        stop_hit = hit;
-                        self.cancel.cancel();
-                    }
-                }
-                GenEvent::Finished { reason, stats: s } => {
-                    stats = s;
-                    let ended_early = stop_hit.is_some() || call_done;
-                    if reason == FinishReason::Cancelled && !ended_early {
-                        break Outcome::ClientGone;
-                    }
-                    if !ended_early {
-                        let (emit, _) = self.stop.push(&utf8.finish());
-                        self.segments(&emit, &mut buf);
-                        let rest = self.stop.finish();
-                        self.segments(&rest, &mut buf);
-                    }
-                    if let Some(p) = self.parser.as_mut().filter(|_| !call_done) {
-                        buf.extend(p.finish());
-                    }
-                    saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
-                    let finish = match (stop_hit.take(), reason) {
-                        (Some(s), _) => Finish::StopSequence(s),
-                        _ if call_done => Finish::ToolCalls,
-                        (None, FinishReason::Length) => Finish::Length,
-                        _ if saw_tool_call => Finish::ToolCalls,
-                        _ => Finish::Stop,
-                    };
-                    if !self.send_all(&tx, &mut buf).await {
-                        break Outcome::ClientGone;
-                    }
-                    break Outcome::Done(finish);
-                }
-                GenEvent::Error(msg) => {
-                    break Outcome::Failed(GatewayError::Internal(format!("engine error: {msg}")));
-                }
-            }
-            saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
-            if !self.send_all(&tx, &mut buf).await {
-                self.cancel.cancel();
-                break Outcome::ClientGone;
-            }
-            if self.single_call && saw_tool_call && !call_done {
-                call_done = true;
-                self.cancel.cancel();
-            }
-        };
-
-        if matches!(outcome, Outcome::ClientGone) {
-            // The engine stops on cancellation; wait for its final stats for accounting.
-            self.cancel.cancel();
-            while let Some(ev) = erx.recv().await {
-                if let GenEvent::Finished { stats: s, .. } = ev {
-                    stats = s;
-                }
-            }
-        }
-        let usage = Usage {
-            prompt_tokens: self.prompt_tokens,
-            completion_tokens: n_out,
-            cached_tokens: stats.cached_tokens,
-        };
-        // Account before the final event so a caller that saw it also sees the metrics.
-        let error_type = match &outcome {
-            Outcome::Done(finish) => {
-                self.span
-                    .record("gen_ai.response.finish_reasons", finish.openai_reason());
-                None
-            }
-            Outcome::ClientGone => Some("cancelled"),
-            Outcome::Failed(e) => Some(e.otel_type()),
-        };
-        self.finish(usage, &stats, first, last, error_type);
-        let last_event = match outcome {
-            Outcome::Done(finish) => Some(OutEvent::Done { finish, usage }),
-            Outcome::ClientGone => None,
-            Outcome::Failed(e) => Some(OutEvent::Error(e)),
-        };
-        if let Some(ev) = last_event {
-            let _ = tx.send(ev).await;
-        }
-    }
-
-    async fn send_all(&self, tx: &mpsc::Sender<OutEvent>, buf: &mut Vec<Segment>) -> bool {
-        for s in buf.drain(..) {
-            if tx.send(OutEvent::Segment(s)).await.is_err() {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn finish(
-        &self,
-        usage: Usage,
-        stats: &EngineStats,
-        first: Option<Instant>,
-        last: Instant,
-        error_type: Option<&'static str>,
-    ) {
-        let duration = self.started.elapsed();
-        self.span
-            .record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-        self.span
-            .record("gen_ai.usage.output_tokens", usage.completion_tokens);
-        if let Some(e) = error_type {
-            record_error(&self.span, e);
-        }
-        if let Some(m) = &self.gw.metrics {
-            let g = &m.genai;
-            g.request_duration(duration, &self.model, error_type);
-            if let Some(f) = first
-                && usage.completion_tokens > 1
-            {
-                g.time_per_output_token((last - f) / (usage.completion_tokens - 1), &self.model);
-            }
-            let uncached = usage.prompt_tokens.saturating_sub(usage.cached_tokens);
-            g.tokens(
-                u64::from(uncached),
-                &self.model,
-                Direction::Input,
-                CacheResult::Miss,
-            );
-            if usage.cached_tokens > 0 {
-                g.tokens(
-                    u64::from(usage.cached_tokens),
-                    &self.model,
-                    Direction::Input,
-                    CacheResult::Hit,
-                );
-            }
-            g.tokens(
-                u64::from(usage.completion_tokens),
-                &self.model,
-                Direction::Output,
-                CacheResult::Miss,
-            );
-            let attrs = |res: &'static str| {
-                [
-                    KeyValue::new(tetraeder_telemetry::attr::MODEL, self.model.clone()),
-                    KeyValue::new(attr::CALLER, self.gw.caller_label(&self.caller)),
-                    KeyValue::new(attr::RESOURCE, res),
-                ]
-            };
-            if let Some(s) = stats.gpu_seconds {
-                m.request_cost.record(s, &attrs("gpu_seconds"));
-            }
-            if let Some(b) = stats.bytes_streamed {
-                m.request_cost.record(b as f64, &attrs("bytes_streamed"));
-            }
-        }
-        if let Some(sink) = &self.gw.cost_sink {
-            sink.record(&RequestCost {
-                request_id: self.id.clone(),
-                caller: self.caller.clone(),
-                model: self.model.clone(),
-                operation: self.op.as_str(),
-                prompt_tokens: usage.prompt_tokens,
-                cached_tokens: usage.cached_tokens,
-                completion_tokens: usage.completion_tokens,
-                gpu_seconds: stats.gpu_seconds,
-                bytes_streamed: stats.bytes_streamed,
-                duration,
-                error_type,
-            });
-        }
-    }
-}
 
 /// Sets `error.type`; server failures also mark the span as an error, so tail sampling keeps it.
 fn record_error(span: &tracing::Span, error_type: &'static str) {
