@@ -432,7 +432,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (error_type) (rate(gen_ai_server_request_duration_seconds_count[$__rate_interval]))",
+          "expr": "label_replace(sum by (error_type) (rate(gen_ai_server_request_duration_seconds_count[$__rate_interval])), \"error_type\", \"ok\", \"error_type\", \"\")",
           "legendFormat": "{{error_type}}",
           "datasource": {
             "type": "prometheus",
