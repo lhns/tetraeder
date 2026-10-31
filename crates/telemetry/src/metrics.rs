@@ -55,6 +55,9 @@ pub struct StepSample {
     pub graphs: bool,
     pub duration: Duration,
     pub tokens: u32,
+    /// Graph segments the step ran: 1 for a whole-graph step, `n_layer + 1` for the builder's
+    /// per-MoE-layer segments (ADR 0030).
+    pub segments: u32,
 }
 
 /// Seconds, from 1 ms to 60 s.
@@ -70,6 +73,7 @@ pub struct Metrics {
     request_duration: Histogram<f64>,
     tokens: Counter<u64>,
     step_duration: Histogram<f64>,
+    step_segments: Histogram<f64>,
     device_busy: Gauge<f64>,
     device_power: Gauge<f64>,
     device_temp: Gauge<f64>,
@@ -106,6 +110,12 @@ impl Metrics {
                 .with_unit("{token}")
                 .build(),
             step_duration: hist("tetraeder.step.duration", "Duration of one engine step"),
+            step_segments: meter
+                .f64_histogram("tetraeder.step.segments")
+                .with_unit("{segment}")
+                .with_description("Graph segments per engine step")
+                .with_boundaries(vec![1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0])
+                .build(),
             device_busy: meter
                 .f64_gauge("tetraeder.device.busy")
                 .with_unit("1")
@@ -193,14 +203,13 @@ impl Metrics {
     }
 
     pub fn step_duration(&self, s: &StepSample) {
-        self.step_duration.record(
-            s.duration.as_secs_f64(),
-            &[
-                KeyValue::new(attr::PHASE, s.phase.as_str()),
-                KeyValue::new(attr::STAGE, i64::from(s.stage)),
-                KeyValue::new(attr::GRAPHS, if s.graphs { "on" } else { "off" }),
-            ],
-        );
+        let attrs = [
+            KeyValue::new(attr::PHASE, s.phase.as_str()),
+            KeyValue::new(attr::STAGE, i64::from(s.stage)),
+            KeyValue::new(attr::GRAPHS, if s.graphs { "on" } else { "off" }),
+        ];
+        self.step_duration.record(s.duration.as_secs_f64(), &attrs);
+        self.step_segments.record(f64::from(s.segments), &attrs);
     }
 
     pub fn device_busy(&self, device: &str, fraction: f64) {

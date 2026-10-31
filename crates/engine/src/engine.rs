@@ -236,6 +236,7 @@ impl Engine {
                 graphs: self.graphs,
                 duration,
                 tokens,
+                segments: 1,
             });
         }
         Ok(duration)

@@ -171,6 +171,14 @@ impl LayerSlots {
         }
     }
 
+    /// Forget every resident (a load failed and the slots hold no valid weights). Pins and
+    /// statistics stay.
+    pub fn clear(&mut self) {
+        self.table.clear();
+        self.owner.fill(None);
+        self.stamp.fill(0);
+    }
+
     /// Pin these experts (at most the active slot count; extra entries and repeats are
     /// ignored). Experts that were pinned and are not any more become ordinary LRU entries.
     pub fn set_hot_set(&mut self, hot: &[u32]) -> Change {
@@ -385,6 +393,28 @@ mod tests {
         l.set_hot_set(&[0, 1, 2]);
         l.set_active(0);
         assert_eq!(l.active(), 3);
+    }
+
+    #[test]
+    fn clear_forgets_residents_and_keeps_stats_and_pins() {
+        let mut l = LayerSlots::new(8, 2);
+        l.set_hot_set(&[5]);
+        l.lookup(5);
+        l.lookup(1);
+        l.clear();
+        assert_eq!(l.resident(), 0);
+        assert_eq!(l.slot_of(5), None);
+        assert_eq!(l.owner_of(0), None);
+        assert!(l.is_pinned(5));
+        assert_eq!(l.stats().misses, 2);
+        // The slots are free again.
+        assert!(matches!(
+            l.lookup(1),
+            Lookup::Miss {
+                slot: 0,
+                evicted: None
+            }
+        ));
     }
 
     #[test]

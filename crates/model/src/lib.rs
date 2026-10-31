@@ -3,10 +3,13 @@
 //!
 //! Phase 2: the Qwen3 MoE builder of ADR 0030 ([`Qwen3Moe`]).
 
+pub mod experts;
 pub mod gguf;
 pub mod hparams;
 pub mod qwen3moe;
 
+pub use experts::{ExpertStats, IoCounters, LayerExpertStats, RoutingStep};
 pub use gguf::{Gguf, GgufError, TensorInfo};
 pub use hparams::{ExpertSlabs, Hparams, ModelFile};
 pub use qwen3moe::{BackendChoice, LoadOptions, ModelError, Qwen3Moe};
+pub use tetraeder_memory::slots::LayerStats;
