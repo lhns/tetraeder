@@ -360,6 +360,7 @@ impl<'a> Tensor<'a> {
         unsafe { (*self.ptr.as_ptr()).nb }
     }
 
+    #[allow(clippy::unnecessary_cast)] // C enum: i32 on MSVC, u32 elsewhere
     pub fn ty(self) -> Type {
         // SAFETY: as above.
         Type(unsafe { (*self.ptr.as_ptr()).type_ } as u32)

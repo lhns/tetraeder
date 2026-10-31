@@ -38,6 +38,8 @@ pub type Result<T> = std::result::Result<T, GgmlError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Type(u32);
 
+// bindgen types C enums as i32 on MSVC and u32 elsewhere, so the casts are needed on Windows only.
+#[allow(clippy::unnecessary_cast)]
 impl Type {
     pub const F32: Type = Type(sys::GGML_TYPE_F32 as u32);
     pub const F16: Type = Type(sys::GGML_TYPE_F16 as u32);
@@ -98,6 +100,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::unnecessary_cast)] // see `impl Type`
     fn types() {
         assert_eq!(Type::F16.name(), "f16");
         assert_eq!(Type::F32.row_size(10), 40);
