@@ -79,7 +79,8 @@ pub struct Workload {
     pub ubatch: u32,
     pub prompt_len: u32,
     pub gen_len: u32,
-    /// CPU threads (`-t`); omitted = engine default.
+    /// CPU threads (`-t`) for every variant; omitted = `available_parallelism()` (cgroup quota aware).
+    /// A variant's own `threads` wins. Both engines always get the same explicit count.
     pub threads: Option<u32>,
 }
 
@@ -147,9 +148,24 @@ pub struct Variant {
     pub engine: String,
     pub model: String,
     pub device: Device,
-    /// Extra engine flags, e.g. `["-ngl", "99", "-ot", "exps=CPU"]`.
+    /// CPU threads for this variant; overrides the workload value. Do not put `-t` in `args`.
+    #[serde(default)]
+    pub threads: Option<u32>,
+    /// Extra engine flags, e.g. `["-ngl", "99", "-ot", "exps=CPU"]`. `-p`, `-n` and `-r` here replace the
+    /// workload defaults (`-r` defaults to 1: the harness repeats).
     #[serde(default)]
     pub args: Vec<String>,
+}
+
+/// True if `args` sets any of the flag spellings.
+pub fn has_flag(args: &[String], names: &[&str]) -> bool {
+    args.iter().any(|a| names.contains(&a.as_str()))
+}
+
+/// The thread count the harness passes to every engine for `v`: the variant's, else the workload's, else
+/// `default` (the harness host's `available_parallelism()`).
+pub fn threads_for(w: &Workload, v: &Variant, default: u32) -> u32 {
+    v.threads.or(w.threads).unwrap_or(default).max(1)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -254,6 +270,11 @@ impl Spec {
                 .get(&v.model)
                 .with_context(|| format!("variant `{}`: unknown model `{}`", v.id, v.model))?;
             m.org_name_file()?;
+            ensure!(
+                !has_flag(&v.args, &["-t", "--threads"]),
+                "variant `{}`: use `threads = N` instead of -t in args",
+                v.id
+            );
         }
         for p in &self.pair {
             let (Some(a), Some(b)) = (self.variant(&p.a), self.variant(&p.b)) else {

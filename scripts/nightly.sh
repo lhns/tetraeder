@@ -54,11 +54,27 @@ if [ "$CUDA_ENV_STATUS" = fail ]; then rc=13; echo "cuda unusable, aborting"; ex
 # fail_stage <rc-if-failed> <stage rc>: a timeout (124) keeps its code
 fail_stage() { if [ "$2" = 124 ]; then rc=124; else rc="$1"; fi; exit "$rc"; }
 cuda_feat=tetraeder-ggml-sys/cuda
+# Build ggml CUDA only for this box's GPUs (compute_cap 8.6 -> 86), not the 4-arch default (37 min cold). An explicit value wins.
+if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
+  archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')
+  if [ -n "$archs" ]; then export TETRAEDER_CUDA_ARCHS="$archs"; fi
+fi
+echo "[$(date +%T)] cuda archs: ${TETRAEDER_CUDA_ARCHS:-default}"
 stage build "$BUILD_MIN" cargo build --release --workspace --features "$cuda_feat" || fail_stage 10 $?
-stage test "$TEST_MIN" cargo test --workspace --features "$cuda_feat" || fail_stage 11 $?
+# --release reuses the ggml build of the stage above (a debug test build compiled ggml again, 5.5 min)
+stage test "$TEST_MIN" cargo test --release --workspace --features "$cuda_feat" || fail_stage 11 $?
 
 bench_env() {  # shell-side environment snapshot next to the harness results (the harness also records its own)
   q() { nvidia-smi --query-gpu="$1" --format=csv,noheader 2> /dev/null | head -1 | sed 's/"//g'; }
+  # Container CPU quota in cores (cgroup v2 cpu.max, else v1 cfs), null if unlimited. nproc ignores the quota, so
+  # available_parallelism is min(nproc, ceil(quota)), what Rust reports; the harness records the threads it passes.
+  local quota=null cpus avail m1 m2
+  cpus=$(nproc)
+  if [ -r /sys/fs/cgroup/cpu.max ]; then read -r m1 m2 < /sys/fs/cgroup/cpu.max
+  elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then m1=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us); m2=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us); fi
+  case "${m1:-max}" in max | -1 | 0) ;; *) quota=$(awk -v q="$m1" -v p="${m2:-100000}" 'BEGIN {printf "%.2f", q / p}');; esac
+  avail=$cpus
+  if [ "$quota" != null ]; then avail=$(awk -v c="$cpus" -v q="$quota" 'BEGIN {n = int(q) < q ? int(q) + 1 : int(q); print (n < c ? n : c)}'); fi
   cat > "$date_dir/env.json" <<EOJ
 {
   "date": "$(date -u +%FT%TZ)",
@@ -66,7 +82,10 @@ bench_env() {  # shell-side environment snapshot next to the harness results (th
   "container_id": "${CONTAINER_ID:-}",
   "kernel": "$(uname -r)",
   "cpu": "$(sed -n 's/^model name[^:]*: *//p' /proc/cpuinfo | head -1)",
-  "cpus": $(nproc),
+  "cpus": $cpus,
+  "cpu_quota": $quota,
+  "available_parallelism": $avail,
+  "cuda_archs": "${TETRAEDER_CUDA_ARCHS:-default}",
   "ram_gb": $(awk '/MemTotal/ {printf "%d", $2 / 1048576}' /proc/meminfo),
   "disk_read_mbs": "$(cat /root/.disk_probe 2> /dev/null)",
   "gpu": "$(q name)",

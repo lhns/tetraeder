@@ -19,7 +19,7 @@ pub struct BenchArgs {
     #[arg(short = 'n', long, default_value_t = 128)]
     n_gen: u32,
     /// Repetitions per test.
-    #[arg(short = 'r', long, default_value_t = 5)]
+    #[arg(short = 'r', long, alias = "repetitions", default_value_t = 5)]
     reps: u32,
     /// Output format; only json.
     #[arg(short = 'o', long, default_value = "json")]

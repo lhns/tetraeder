@@ -1,6 +1,6 @@
 //! Invoking engine binaries and parsing their output.
 
-use crate::spec::{Variant, Workload};
+use crate::spec::{Device, Variant, Workload, has_flag};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::io::Read;
@@ -75,63 +75,76 @@ pub fn parse_llama_bench(stdout: &str) -> Result<Measured> {
     Ok(m)
 }
 
-/// One `-r 1` invocation: the harness does the repeating so that variants can be interleaved.
-pub fn llama_bench_args(w: &Workload, v: &Variant, model: &Path) -> Vec<String> {
-    let mut a: Vec<String> = vec![
-        "-m".into(),
-        model.display().to_string(),
-        "-p".into(),
-        w.prompt_len.to_string(),
-        "-n".into(),
-        w.gen_len.to_string(),
+/// Workload defaults, each replaced by the variant's own flag: `-p`, `-n` (a second one would add a test to the
+/// sweep) and `-r` (1: the harness does the repeating so that variants can be interleaved).
+fn common_args(
+    w: &Workload,
+    v: &Variant,
+    model: &Path,
+    threads: u32,
+    ubatch_flag: &str,
+) -> Vec<String> {
+    let mut a: Vec<String> = vec!["-m".into(), model.display().to_string()];
+    if !has_flag(&v.args, &["-p", "--n-prompt"]) {
+        a.extend(["-p".into(), w.prompt_len.to_string()]);
+    }
+    if !has_flag(&v.args, &["-n", "--n-gen"]) {
+        a.extend(["-n".into(), w.gen_len.to_string()]);
+    }
+    a.extend([
         "-b".into(),
         w.batch.to_string(),
-        "-ub".into(),
+        ubatch_flag.into(),
         w.ubatch.to_string(),
-        "-r".into(),
-        "1".into(),
-        "-o".into(),
-        "json".into(),
-    ];
-    // A second -t would add a test to the sweep instead of replacing the first.
-    let own_threads = v.args.iter().any(|x| x == "-t" || x == "--threads");
-    if let (Some(t), false) = (w.threads, own_threads) {
-        a.extend(["-t".into(), t.to_string()]);
+        "-t".into(),
+        threads.to_string(),
+    ]);
+    if !has_flag(&v.args, &["-r", "--repetitions", "--reps"]) {
+        a.extend(["-r".into(), "1".into()]);
     }
+    a
+}
+
+/// One llama-bench invocation with an explicit thread count.
+pub fn llama_bench_args(w: &Workload, v: &Variant, model: &Path, threads: u32) -> Vec<String> {
+    let mut a = common_args(w, v, model, threads, "-ub");
+    a.extend(["-o".into(), "json".into()]);
     a.extend(v.args.iter().cloned());
     a
 }
 
 /// `tetraeder bench` takes the same workload with its own flag names and prints llama-bench rows.
-pub fn tetraeder_bench_args(w: &Workload, v: &Variant, model: &Path) -> Vec<String> {
-    let mut a: Vec<String> = vec![
-        "bench".into(),
-        "-m".into(),
-        model.display().to_string(),
-        "-p".into(),
-        w.prompt_len.to_string(),
-        "-n".into(),
-        w.gen_len.to_string(),
-        "-b".into(),
-        w.batch.to_string(),
-        "--ubatch".into(),
-        w.ubatch.to_string(),
-        "-r".into(),
-        "1".into(),
-    ];
-    let own_threads = v.args.iter().any(|x| x == "-t" || x == "--threads");
-    if let (Some(t), false) = (w.threads, own_threads) {
-        a.extend(["-t".into(), t.to_string()]);
-    }
+pub fn tetraeder_bench_args(w: &Workload, v: &Variant, model: &Path, threads: u32) -> Vec<String> {
+    let mut a = vec!["bench".to_string()];
+    a.extend(common_args(w, v, model, threads, "--ubatch"));
     a.extend(v.args.iter().cloned());
     a
 }
 
+/// Environment for a variant's child process. A CPU variant must not see the GPU: the CUDA build offloads big
+/// batched matmuls to it even with `-ngl 0`. ggml reads `CUDA_VISIBLE_DEVICES` and `GGML_VK_VISIBLE_DEVICES`
+/// (an empty value hides all devices).
+pub fn device_env(device: Device) -> Vec<(&'static str, &'static str)> {
+    match device {
+        Device::Cpu => vec![
+            ("CUDA_VISIBLE_DEVICES", ""),
+            ("GGML_VK_VISIBLE_DEVICES", ""),
+        ],
+        Device::Cuda => Vec::new(),
+    }
+}
+
 /// Run one engine invocation; kill it after `timeout` so a hung engine cannot block the night.
-pub fn run_llama_bench(bin: &Path, args: &[String], timeout: Duration) -> Result<Measured> {
+pub fn run_llama_bench(
+    bin: &Path,
+    args: &[String],
+    env: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<Measured> {
     let t0 = Instant::now();
     let mut child = Command::new(bin)
         .args(args)
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -200,6 +213,7 @@ pub fn resolve_bin(bin: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::spec::threads_for;
 
     const REAL: &str = r#"[
   {"build_commit":"2e0d86be","build_number":1,"cpu_info":"x","gpu_info":"","backends":"CPU","model_filename":"m.gguf","n_batch":512,"n_ubatch":128,"n_threads":4,"n_prompt":16,"n_gen":0,"test_time":"t","avg_ns":1000,"stddev_ns":0,"avg_ts":160.5,"stddev_ts":0.0,"samples_ns":[1000],"samples_ts":[160.5]},
@@ -228,52 +242,81 @@ mod tests {
         assert!(parse_llama_bench(r#"[{"n_prompt":4,"n_gen":4,"avg_ts":1.0}]"#).is_err());
     }
 
-    #[test]
-    fn args_carry_workload_and_variant_flags() {
-        let w = Workload {
-            batch: 2048,
-            ubatch: 512,
-            prompt_len: 512,
-            gen_len: 128,
-            threads: Some(4),
-        };
-        let v = Variant {
-            id: "v".into(),
-            engine: "e".into(),
-            model: "m".into(),
-            device: crate::spec::Device::Cuda,
-            args: vec!["-ngl".into(), "99".into(), "-ot".into(), "exps=CPU".into()],
-        };
-        let a = llama_bench_args(&w, &v, Path::new("m.gguf"));
-        assert_eq!(&a[..4], ["-m", "m.gguf", "-p", "512"]);
-        assert!(a.windows(2).any(|p| p == ["-t", "4"]));
-        let mut own = v.clone();
-        own.args = vec!["-t".into(), "2".into()];
-        let a2 = llama_bench_args(&w, &own, Path::new("m.gguf"));
-        assert_eq!(a2.iter().filter(|x| *x == "-t").count(), 1);
-        assert_eq!(&a[a.len() - 4..], ["-ngl", "99", "-ot", "exps=CPU"]);
-    }
-
-    #[test]
-    fn tetraeder_args_use_its_subcommand_and_flags() {
-        let w = Workload {
+    fn w(threads: Option<u32>) -> Workload {
+        Workload {
             batch: 2048,
             ubatch: 512,
             prompt_len: 512,
             gen_len: 64,
-            threads: Some(8),
-        };
-        let v = Variant {
-            id: "t".into(),
-            engine: "tetraeder".into(),
+            threads,
+        }
+    }
+
+    fn v(device: Device, args: &[&str]) -> Variant {
+        Variant {
+            id: "v".into(),
+            engine: "e".into(),
             model: "m".into(),
-            device: crate::spec::Device::Cpu,
-            args: vec!["--ngl".into(), "0".into()],
-        };
-        let a = tetraeder_bench_args(&w, &v, Path::new("m.gguf"));
+            device,
+            threads: None,
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn pair(a: &[String], k: &str, val: &str) -> bool {
+        a.windows(2).any(|p| p == [k, val])
+    }
+
+    #[test]
+    fn args_carry_workload_and_variant_flags() {
+        let v = v(Device::Cuda, &["-ngl", "99", "-ot", "exps=CPU"]);
+        let a = llama_bench_args(&w(None), &v, Path::new("m.gguf"), 4);
+        assert_eq!(&a[..4], ["-m", "m.gguf", "-p", "512"]);
+        assert!(pair(&a, "-t", "4"));
+        assert!(pair(&a, "-r", "1"));
+        assert_eq!(a.iter().filter(|x| *x == "-t").count(), 1);
+        assert_eq!(&a[a.len() - 4..], ["-ngl", "99", "-ot", "exps=CPU"]);
+    }
+
+    #[test]
+    fn variant_flags_replace_prompt_and_reps_defaults() {
+        let v = v(Device::Cuda, &["-ngl", "99", "-p", "2048", "-r", "3"]);
+        for a in [
+            llama_bench_args(&w(None), &v, Path::new("m.gguf"), 4),
+            tetraeder_bench_args(&w(None), &v, Path::new("m.gguf"), 4),
+        ] {
+            assert_eq!(a.iter().filter(|x| *x == "-p").count(), 1);
+            assert_eq!(a.iter().filter(|x| *x == "-r").count(), 1);
+            assert!(pair(&a, "-p", "2048"));
+            assert!(pair(&a, "-r", "3"));
+        }
+    }
+
+    #[test]
+    fn tetraeder_args_use_its_subcommand_and_flags() {
+        let v = v(Device::Cpu, &["--ngl", "0"]);
+        let a = tetraeder_bench_args(&w(None), &v, Path::new("m.gguf"), 8);
         assert_eq!(&a[..3], ["bench", "-m", "m.gguf"]);
-        assert!(a.windows(2).any(|p| p == ["--ubatch", "512"]));
-        assert!(a.windows(2).any(|p| p == ["-t", "8"]));
+        assert!(pair(&a, "--ubatch", "512"));
+        assert!(pair(&a, "-t", "8"));
+        assert!(pair(&a, "-r", "1"));
         assert_eq!(&a[a.len() - 2..], ["--ngl", "0"]);
+    }
+
+    #[test]
+    fn cpu_variants_hide_the_gpu_and_cuda_variants_do_not() {
+        let cpu = device_env(Device::Cpu);
+        assert!(cpu.contains(&("CUDA_VISIBLE_DEVICES", "")));
+        assert!(cpu.contains(&("GGML_VK_VISIBLE_DEVICES", "")));
+        assert!(device_env(Device::Cuda).is_empty());
+    }
+
+    #[test]
+    fn thread_count_precedence() {
+        let mut var = v(Device::Cpu, &[]);
+        assert_eq!(threads_for(&w(None), &var, 11), 11);
+        assert_eq!(threads_for(&w(Some(8)), &var, 11), 8);
+        var.threads = Some(3);
+        assert_eq!(threads_for(&w(Some(8)), &var, 11), 3);
     }
 }

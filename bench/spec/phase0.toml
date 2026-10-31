@@ -25,7 +25,9 @@ batch = 2048
 ubatch = 512
 prompt_len = 512
 gen_len = 64
-threads = 8               # container CPU quota is about 11 cores; leave headroom for the harness
+# threads: omitted. The harness passes the same explicit -t to both engines for every variant: the harness host's
+# available_parallelism() (cgroup quota aware), or `threads = N` on a variant. llama-bench's own default (one per
+# physical core, about 40 on the 80-CPU box) exceeds the container quota (about 11) and made CPU numbers meaningless.
 
 [model.dense]
 hf = "Qwen/Qwen3-8B-GGUF:Qwen3-8B-Q4_K_M.gguf"
@@ -48,6 +50,10 @@ bin_env = "TETRAEDER_BIN"
 bin = "target/release/tetraeder"
 note = "`tetraeder bench`: llama-bench's pp/tg loops through the libllama engine (ADR 0026)"
 
+# Variant args may replace the workload's -p and -r (the harness defaults to -r 1 and repeats itself). CUDA variants
+# use -p 2048 -r 3: a pp512 run takes about 0.1 s and was noisy; both engines get the same flags.
+# CPU variants run with CUDA_VISIBLE_DEVICES and GGML_VK_VISIBLE_DEVICES empty, so prompts do not leave for the GPU.
+
 # llama.cpp, dense
 [[variant]]
 id = "llama-cpu-dense"
@@ -61,7 +67,7 @@ id = "llama-cuda-dense"
 engine = "llama-bench"
 model = "dense"
 device = "cuda"
-args = ["-ngl", "99"]
+args = ["-ngl", "99", "-p", "2048", "-r", "3"]
 
 # llama.cpp, MoE: plain, and with expert-offload tensor overrides (-ot <regex>=<buffer type>)
 [[variant]]
@@ -76,14 +82,14 @@ id = "llama-cuda-moe-full"
 engine = "llama-bench"
 model = "moe"
 device = "cuda"
-args = ["-ngl", "99"]
+args = ["-ngl", "99", "-p", "2048", "-r", "3"]
 
 [[variant]]
 id = "llama-cuda-moe-ot-all-experts"
 engine = "llama-bench"
 model = "moe"
 device = "cuda"
-args = ["-ngl", "99", "-ot", "exps=CPU"]
+args = ["-ngl", "99", "-ot", "exps=CPU", "-p", "2048", "-r", "3"]
 
 [[variant]]
 id = "llama-cuda-moe-ot-upper-half"
@@ -91,7 +97,7 @@ engine = "llama-bench"
 model = "moe"
 device = "cuda"
 # experts of layers 24..47 stay in RAM
-args = ["-ngl", "99", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+args = ["-ngl", "99", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU', "-p", "2048", "-r", "3"]
 
 # Tetraeder: same placement as its baseline; telemetry on (production mode) unless stated
 [[variant]]
@@ -106,14 +112,14 @@ id = "tetraeder-cuda-dense"
 engine = "tetraeder"
 model = "dense"
 device = "cuda"
-args = ["--ngl", "99"]
+args = ["--ngl", "99", "-p", "2048", "-r", "3"]
 
 [[variant]]
 id = "tetraeder-cuda-dense-telemetry-off"
 engine = "tetraeder"
 model = "dense"
 device = "cuda"
-args = ["--ngl", "99", "--telemetry", "off"]
+args = ["--ngl", "99", "--telemetry", "off", "-p", "2048", "-r", "3"]
 
 # A/A pairs measure the noise of this box in this session
 # Pairs run in file order: GPU pairs first, so the slow CPU pairs cannot push the Phase 1 GPU exit test past

@@ -2,7 +2,7 @@
 
 use crate::engine::{self, Measured};
 use crate::env::{self, EnvInfo, GpuSnap};
-use crate::spec::{Device, EngineKind, PageCache, Pair, Role, Spec, Variant};
+use crate::spec::{self, Device, EngineKind, PageCache, Pair, Role, Spec, Variant};
 use crate::stats::{self, Ratio, Summary};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,9 @@ pub struct Sample {
     pub tg_ts: Option<f64>,
     pub wall_s: f64,
     pub build_commit: Option<String>,
+    /// Threads passed to the engine (`-t`).
+    #[serde(default)]
+    pub threads: u32,
     /// GPU state right after the sample (clocks, throttle reasons); empty without a GPU.
     pub gpu: Vec<GpuSnap>,
 }
@@ -144,6 +147,8 @@ struct Resolved<'a> {
     bin: PathBuf,
     model: PathBuf,
     args: Vec<String>,
+    env: Vec<(&'static str, &'static str)>,
+    threads: u32,
 }
 
 fn skip_reason<'a>(
@@ -179,15 +184,19 @@ fn skip_reason<'a>(
     if !model.is_file() {
         return Ok(Err(format!("model file {} not found", model.display())));
     }
+    let default_threads = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
+    let threads = spec::threads_for(&spec.workload, v, default_threads);
     let args = match engine.kind {
-        EngineKind::LlamaBench => engine::llama_bench_args(&spec.workload, v, &model),
-        EngineKind::Tetraeder => engine::tetraeder_bench_args(&spec.workload, v, &model),
+        EngineKind::LlamaBench => engine::llama_bench_args(&spec.workload, v, &model, threads),
+        EngineKind::Tetraeder => engine::tetraeder_bench_args(&spec.workload, v, &model, threads),
     };
     Ok(Ok(Resolved {
         variant: v,
         bin,
         model,
         args,
+        env: engine::device_env(v.device),
+        threads,
     }))
 }
 
@@ -210,7 +219,7 @@ fn log(opts: &Options, msg: &str) {
 }
 
 fn run_one(r: &Resolved<'_>, timeout: Duration) -> Result<Measured> {
-    engine::run_llama_bench(&r.bin, &r.args, timeout)
+    engine::run_llama_bench(&r.bin, &r.args, &r.env, timeout)
         .with_context(|| format!("variant `{}` ({})", r.variant.id, r.model.display()))
 }
 
@@ -310,6 +319,7 @@ fn run_pair(
                     tg_ts: m.tg_ts,
                     wall_s: m.wall_s,
                     build_commit: m.build_commit,
+                    threads: r.threads,
                     gpu: env::gpu_snapshot(),
                 });
             }
