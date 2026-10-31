@@ -1,8 +1,10 @@
 //! Bindings to the pinned, patched ggml and libllama (built from `vendor/llama.cpp`).
 //!
-//! `raw` holds the generated bindings, `llama` a safe wrapper over libllama. This crate and
+//! `raw` holds the generated bindings, `llama` a safe wrapper over libllama, `ggml` a safe
+//! surface over raw ggml for own graph builders. This crate and
 //! `memory` are the only places where `unsafe` is allowed.
 
+pub mod ggml;
 pub mod llama;
 
 #[allow(
