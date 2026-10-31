@@ -49,3 +49,5 @@ All GPU work goes through taxameter (`uv run taxameter ...`, config in `taxamete
 ### Benchmark comparability on Vast
 
 Clocks cannot be locked in a container and the host changes nightly. Compare only paired runs: baseline and Tetraeder (telemetry on and off) in the same session on the same box, repeats interleaved. Measure a noise band per GPU class and gate regressions on paired ratios. Never compare absolute tok/s across nights. Record host id, GPU, driver, clocks and throttle reasons with every run.
+
+Thread counts and devices are part of the pairing: the harness passes one explicit `-t` (default `available_parallelism()`, which respects the container CPU quota; `threads = N` per variant overrides) to both engines, and runs `device = "cpu"` variants with `CUDA_VISIBLE_DEVICES` and `GGML_VK_VISIBLE_DEVICES` empty, so CPU numbers never use the GPU. Each sample records its thread count; `env.json` records the CPU quota. Repeats come from the harness (`-r 1` per call); a variant may set `-p` and `-r` in its args for both engines (CUDA variants: `-p 2048 -r 3`).
