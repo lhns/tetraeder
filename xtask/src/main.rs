@@ -14,7 +14,6 @@ const MODEL_URL: &str =
 const MODEL_DIR: &str = "Qwen__Qwen3-0.6B-GGUF";
 const MODEL_FILE: &str = "Qwen3-0.6B-Q8_0.gguf";
 const MODEL_ID: &str = "Qwen/Qwen3-0.6B-GGUF:Qwen3-0.6B-Q8_0.gguf";
-const LLAMA_COMMIT: &str = "2e0d86be";
 const N_PREDICT: u32 = 32;
 const PROMPTS: [(&str, &str); 3] = [
     ("capital", "The capital of France is"),
@@ -42,6 +41,15 @@ fn models_dir() -> PathBuf {
         .map(|a| a.join(".hf_cache"))
         .find(|p| p.is_dir())
         .unwrap_or_else(|| r.join(".hf_cache"))
+}
+
+/// Short commit of the vendored llama.cpp, from `vendor/PIN` (the single source of the pin).
+fn llama_commit() -> Res<String> {
+    let pin = std::fs::read_to_string(root().join("vendor/PIN")).map_err(|e| e.to_string())?;
+    pin.lines()
+        .find_map(|l| l.strip_prefix("commit="))
+        .map(|c| c.trim().chars().take(8).collect())
+        .ok_or_else(|| "vendor/PIN has no commit= line".to_string())
 }
 
 fn run(cmd: &mut Command) -> Res<()> {
@@ -182,7 +190,7 @@ fn golden() -> Res<()> {
     let json = format!(
         "{{\n  \"schema\": 1,\n  \"model\": {},\n  \"engine\": {},\n  \"backend\": \"cpu\",\n  \"n_predict\": {N_PREDICT},\n  \"cases\": [\n{}\n  ]\n}}\n",
         json_str(MODEL_ID),
-        json_str(&format!("llama.cpp@{LLAMA_COMMIT} llama-simple")),
+        json_str(&format!("llama.cpp@{} llama-simple", llama_commit()?)),
         cases.join(",\n")
     );
     let dir = root().join("bench/golden");
