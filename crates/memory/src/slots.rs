@@ -388,6 +388,28 @@ mod tests {
     }
 
     #[test]
+    fn clear_forgets_residents_and_keeps_stats_and_pins() {
+        let mut l = LayerSlots::new(8, 2);
+        l.set_hot_set(&[5]);
+        l.lookup(5);
+        l.lookup(1);
+        l.clear();
+        assert_eq!(l.resident(), 0);
+        assert_eq!(l.slot_of(5), None);
+        assert_eq!(l.owner_of(0), None);
+        assert!(l.is_pinned(5));
+        assert_eq!(l.stats().misses, 2);
+        // The slots are free again.
+        assert!(matches!(
+            l.lookup(1),
+            Lookup::Miss {
+                slot: 0,
+                evicted: None
+            }
+        ));
+    }
+
+    #[test]
     fn hot_set_from_counts() {
         assert_eq!(hot_from_counts(&[5, 0, 9, 5, 1], 3), vec![2, 0, 3]);
         assert_eq!(hot_from_counts(&[0, 0], 4), Vec::<u32>::new());
