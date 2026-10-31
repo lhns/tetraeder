@@ -108,6 +108,9 @@ pub struct Context {
     /// Which tokens of the last decoded batch have logits. libllama aborts (debug builds) or
     /// logs (release) on an invalid output index, so the wrapper checks indices itself.
     outputs: Vec<bool>,
+    /// libllama's extended batch, created on the first decode and refilled for every call (the
+    /// plain `llama_decode` builds a temporary one per call).
+    batch: *mut sys::llama_batch_ext,
 }
 
 // SAFETY: a llama_context has no thread affinity; it may move between threads but is not
@@ -141,6 +144,7 @@ impl Context {
             model: Arc::clone(model),
             pool: None,
             outputs: Vec::new(),
+            batch: std::ptr::null_mut(),
         })
     }
 
@@ -162,11 +166,45 @@ impl Context {
 
     /// Runs the batch. Codes: 1 no KV slot, 2 aborted, -1 invalid batch, others fatal.
     pub fn decode(&mut self, batch: &Batch) -> Result<()> {
-        // SAFETY: the batch arrays are owned by `batch` and hold `n_tokens` valid entries.
-        let rc = unsafe { sys::llama_decode(self.ptr, batch.raw()) };
         self.outputs.clear();
+        if self.batch.is_null() {
+            // SAFETY: live context; the batch is freed in `Drop` before the context.
+            self.batch = unsafe { sys::llama_batch_ext_init(self.ptr) };
+            if self.batch.is_null() {
+                return Err(LlamaError::InvalidBatch);
+            }
+        }
+        // SAFETY: `self.batch` is a live extended batch owned by this context.
+        unsafe { sys::llama_batch_ext_clear(self.batch) };
+        for (i, e) in batch.entries().iter().enumerate() {
+            // Text tokens use the first of the positions; the array is as long as the largest
+            // position count libllama reads (M-RoPE sections).
+            let pos: [i32; 4] = [e.pos, 0, 0, 0];
+            // SAFETY: `self.batch` is live; `pos` holds the positions of one token and is read
+            // during the call only.
+            let ok = unsafe {
+                let idx = sys::llama_batch_ext_add_token(self.batch, e.seq, e.token);
+                if idx < 0 {
+                    return Err(if idx == -1 {
+                        LlamaError::BatchFull(i)
+                    } else {
+                        LlamaError::InvalidBatch
+                    });
+                }
+                sys::llama_batch_ext_set_pos(self.batch, idx, pos.as_ptr())
+                    && (!e.logits || sys::llama_batch_ext_set_output_logits(self.batch, idx, true))
+            };
+            if !ok {
+                return Err(LlamaError::InvalidBatch);
+            }
+        }
+        // SAFETY: live context and batch.
+        let rc = unsafe {
+            sys::llama_process(self.ptr, sys::LLAMA_PROCESS_TYPE_DECODE as _, self.batch)
+        };
         if rc == 0 {
-            self.outputs.extend(batch.logits_flags());
+            self.outputs
+                .extend(batch.entries().iter().map(|e| e.logits));
         }
         match rc {
             0 => Ok(()),
@@ -255,7 +293,13 @@ impl Context {
 
 impl Drop for Context {
     fn drop(&mut self) {
-        // SAFETY: owned and freed once; `model` and `pool` drop after this runs.
-        unsafe { sys::llama_free(self.ptr) }
+        // SAFETY: owned and freed once; `model` and `pool` drop after this runs. The extended
+        // batch goes first, it was made from this context.
+        unsafe {
+            if !self.batch.is_null() {
+                sys::llama_batch_ext_free(self.batch);
+            }
+            sys::llama_free(self.ptr)
+        }
     }
 }
