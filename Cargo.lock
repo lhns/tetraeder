@@ -2068,6 +2068,13 @@ dependencies = [
 [[package]]
 name = "tetraeder-model"
 version = "0.0.0"
+dependencies = [
+ "tetraeder-ggml-sys",
+ "tetraeder-plan",
+ "thiserror 2.0.21",
+ "toml",
+ "tracing",
+]
 
 [[package]]
 name = "tetraeder-plan"

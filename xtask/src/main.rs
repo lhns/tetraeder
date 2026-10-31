@@ -218,13 +218,30 @@ fn golden() -> Res<()> {
     )
 }
 
+/// Writes the synthetic qwen3moe fixture (ADR 0030) with the vendored gguf-py through uv.
+fn tiny_moe() -> Res<()> {
+    let r = root();
+    let out = r.join("tests/fixtures/tiny-qwen3moe-f16.gguf");
+    std::fs::create_dir_all(out.parent().expect("fixture dir")).map_err(|e| e.to_string())?;
+    run(Command::new("uv")
+        .args(["run", "--no-project", "--python", "3.12"])
+        .args(["--with", "numpy", "--with"])
+        .arg(r.join("vendor/llama.cpp/gguf-py"))
+        .arg("python")
+        .arg(r.join("xtask/tiny_moe.py"))
+        .arg(&out))?;
+    eprintln!("wrote {}", out.display());
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let task = std::env::args().nth(1).unwrap_or_default();
     let res = match task.as_str() {
         "fetch-model" => fetch_model(),
         "llama-tools" => llama_tools(),
         "golden" => golden(),
-        _ => Err("usage: cargo xtask <fetch-model|llama-tools|golden>".into()),
+        "tiny-moe" => tiny_moe(),
+        _ => Err("usage: cargo xtask <fetch-model|llama-tools|golden|tiny-moe>".into()),
     };
     match res {
         Ok(()) => ExitCode::SUCCESS,
