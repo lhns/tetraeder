@@ -473,3 +473,28 @@ async fn zero_max_tokens_is_rejected() {
         assert_error(&v, "invalid_request_error");
     }
 }
+
+#[tokio::test]
+async fn single_tool_call_cancels_the_engine() {
+    let script = format!("{WEATHER_CALL}\n{WEATHER_CALL}");
+    for (parallel, calls, cancelled) in [(false, 1, 1), (true, 2, 0)] {
+        let engine = FakeEngine::fixed(&script);
+        let cancelled_count = engine.cancelled.clone();
+        let (app, _) = app(engine);
+        let body = json!({"model": "fake", "messages": user("weather?"),
+                          "tools": [weather_tool_openai()], "parallel_tool_calls": parallel});
+        let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 200, "{v}");
+        let c = &v["choices"][0];
+        assert_eq!(c["finish_reason"], "tool_calls", "{v}");
+        assert_eq!(
+            c["message"]["tool_calls"].as_array().unwrap().len(),
+            calls,
+            "{v}"
+        );
+        assert_eq!(
+            cancelled_count.load(std::sync::atomic::Ordering::SeqCst),
+            cancelled
+        );
+    }
+}

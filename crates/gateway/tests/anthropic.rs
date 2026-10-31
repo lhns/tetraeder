@@ -419,3 +419,18 @@ async fn zero_max_tokens_is_rejected() {
     assert_eq!(s, 400, "{v}");
     assert_error(&v, "invalid_request_error", &h);
 }
+
+#[tokio::test]
+async fn disable_parallel_tool_use_cancels_after_the_first_call() {
+    let engine = FakeEngine::fixed(&format!("{WEATHER_CALL}\n{WEATHER_CALL}"));
+    let cancelled = engine.cancelled.clone();
+    let (app, _) = app(engine);
+    let mut body = req("weather?");
+    body["tools"] = json!([weather_tool_anthropic()]);
+    body["tool_choice"] = json!({"type": "auto", "disable_parallel_tool_use": true});
+    let (s, _, v) = post(&app, "/v1/messages", &body, true).await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["stop_reason"], "tool_use");
+    assert_eq!(v["content"].as_array().unwrap().len(), 1, "{v}");
+    assert_eq!(cancelled.load(std::sync::atomic::Ordering::SeqCst), 1);
+}

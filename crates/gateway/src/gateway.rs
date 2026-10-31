@@ -511,6 +511,11 @@ impl Gateway {
             prompt_tokens: n_prompt,
             vocab: Arc::clone(&st.vocab),
             parser,
+            single_call: matches!(
+                &spec.prompt,
+                Prompt::Chat { parallel_tool_calls: false, tools, tool_choice, .. }
+                    if !tools.is_empty() && *tool_choice != ToolChoice::None
+            ),
             stop: StopMatcher::new(spec.stop.clone()),
             cancel: cancel.clone(),
             span: span.clone(),
@@ -679,6 +684,8 @@ struct Run {
     prompt_tokens: u32,
     vocab: Arc<Vocab>,
     parser: Option<OutputParser>,
+    /// Parallel calls are off: generation ends after the first complete tool call.
+    single_call: bool,
     stop: StopMatcher,
     cancel: CancellationToken,
     span: tracing::Span,
@@ -709,6 +716,7 @@ impl Run {
         let mut last = self.started;
         let mut stop_hit: Option<String> = None;
         let mut saw_tool_call = false;
+        let mut call_done = false;
         let mut stats = EngineStats::default();
         let mut buf = Vec::new();
 
@@ -721,7 +729,7 @@ impl Run {
             buf.clear();
             match ev {
                 GenEvent::Token(id) => {
-                    if stop_hit.is_some() {
+                    if stop_hit.is_some() || call_done {
                         continue;
                     }
                     let now = Instant::now();
@@ -747,21 +755,23 @@ impl Run {
                 }
                 GenEvent::Finished { reason, stats: s } => {
                     stats = s;
-                    if reason == FinishReason::Cancelled && stop_hit.is_none() {
+                    let ended_early = stop_hit.is_some() || call_done;
+                    if reason == FinishReason::Cancelled && !ended_early {
                         break Outcome::ClientGone;
                     }
-                    if stop_hit.is_none() {
+                    if !ended_early {
                         let (emit, _) = self.stop.push(&utf8.finish());
                         self.segments(&emit, &mut buf);
                         let rest = self.stop.finish();
                         self.segments(&rest, &mut buf);
                     }
-                    if let Some(p) = &mut self.parser {
+                    if let Some(p) = self.parser.as_mut().filter(|_| !call_done) {
                         buf.extend(p.finish());
                     }
                     saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
                     let finish = match (stop_hit.take(), reason) {
                         (Some(s), _) => Finish::StopSequence(s),
+                        _ if call_done => Finish::ToolCalls,
                         (None, FinishReason::Length) => Finish::Length,
                         _ if saw_tool_call => Finish::ToolCalls,
                         _ => Finish::Stop,
@@ -779,6 +789,10 @@ impl Run {
             if !self.send_all(&tx, &mut buf).await {
                 self.cancel.cancel();
                 break Outcome::ClientGone;
+            }
+            if self.single_call && saw_tool_call && !call_done {
+                call_done = true;
+                self.cancel.cancel();
             }
         };
 
