@@ -21,6 +21,7 @@ ADR 0006 asks for one plan IR, a validator, a per-phase capability table and mig
   | Layer split, homes on CPU or GPU | yes | yes | yes | yes |
   | Format other than the source | no | yes | yes | yes |
   | Expert homes on disk, slot caches | no | yes | yes | yes |
+  | Prefill and decode budgets (ADR 0031) | no | yes | yes | yes |
   | Compute device other than home | no | experts only | yes | yes |
   | `tp`, `ep` above 1 | no | no | yes | yes |
   | Several replicas, remote devices | no | no | no | yes |

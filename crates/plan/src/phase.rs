@@ -24,6 +24,8 @@ pub struct Capabilities {
     /// Expert homes on disk devices and expert slot caches.
     pub expert_tiers: bool,
     pub compute_override: ComputeOverride,
+    /// Separate prefill and decode budgets for slots and workspace (ADR 0031).
+    pub phase_budgets: bool,
     /// Tensor and expert parallel degrees above 1.
     pub tp_ep: bool,
     /// More than one replica and devices with tier `Remote`.
@@ -41,6 +43,7 @@ impl Phase {
                 2..=4 => ComputeOverride::ExpertsOnly,
                 _ => ComputeOverride::Any,
             },
+            phase_budgets: p >= 2,
             tp_ep: p >= 5,
             multi_node: p >= 6,
         }

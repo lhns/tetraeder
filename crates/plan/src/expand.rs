@@ -1,7 +1,7 @@
 //! The expanded form of a complete plan: one entry per shard plus byte buffers per device.
 //! Validator, diff and migration DAG all work on it (ADR 0027).
 
-use crate::{Format, Knobs, UnitId};
+use crate::{Format, Knobs, PhaseBytes, UnitId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -43,11 +43,29 @@ pub struct BufferKey {
     pub device: String,
 }
 
+/// A stage's slot and workspace arenas on one device.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct BudgetKey {
+    pub replica: u32,
+    pub stage: u32,
+    pub device: String,
+}
+
+/// Bytes of the slot and workspace arenas each phase uses; the arena sizes when the plan gives
+/// no per-phase split.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Budgets {
+    pub prefill: PhaseBytes,
+    pub decode: PhaseBytes,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Expanded {
     pub shards: BTreeMap<ShardKey, Placement>,
     /// Bytes per buffer; entries with the same key in one stage are summed.
     pub buffers: BTreeMap<BufferKey, u64>,
+    /// Phase budgets of every (stage, device) with a slot or workspace buffer.
+    pub budgets: BTreeMap<BudgetKey, Budgets>,
     pub knobs: Knobs,
 }
 

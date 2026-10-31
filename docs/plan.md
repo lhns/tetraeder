@@ -165,6 +165,7 @@ The IR is richer than what can run early; the planner only proposes fields the c
 | Layer split and GPU ratios | Yes (tensor split, split mode) | Yes | Yes |
 | Tensor-to-buffer overrides (offload, experts to CPU) | Yes (buffer-type overrides by regex) | Yes | Yes |
 | Expert tiers and slot cache | No | Yes, for the own MoE family | Yes |
+| Prefill and decode budgets for slots and workspace | No | Yes | Yes |
 | Compute device per shard | No (follows the buffer; ggml copies CPU weights to the GPU at larger batches, not tunable) | Partly | Yes |
 | Tensor and expert parallel | No | No | Yes |
 | Replicas, stages across nodes | No | No | Phase 6 |

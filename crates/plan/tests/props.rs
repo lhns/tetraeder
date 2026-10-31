@@ -111,7 +111,7 @@ fn gen_plan(rng: &mut Rng, m: &ModelDesc, hw: &HardwareGraph, phase: u8, oversiz
             stages: gen_stages(rng, m, hw, phase, &mut big),
         })
         .collect();
-    Plan {
+    let mut plan = Plan {
         model: m.name.clone(),
         knobs: Knobs {
             prefill_micro_batches: rng.range(1, 8) as u32,
@@ -119,6 +119,37 @@ fn gen_plan(rng: &mut Rng, m: &ModelDesc, hw: &HardwareGraph, phase: u8, oversiz
             max_batch: rng.chance(2).then(|| rng.range(1, 64) as u32),
         },
         replicas,
+    };
+    add_budgets(rng, &mut plan, m, hw);
+    plan
+}
+
+/// Splits the slot and workspace arenas of some stages differently per phase. The arena sizes
+/// come from the validated plan, so a plan that fails memory gets none.
+fn add_budgets(rng: &mut Rng, plan: &mut Plan, m: &ModelDesc, hw: &HardwareGraph) {
+    let reserve = BTreeMap::new();
+    let Ok(e) = validate_with(plan, m, hw, 6, &reserve) else {
+        return;
+    };
+    for (k, b) in &e.budgets {
+        let (slots, ws) = (b.prefill.slots, b.prefill.workspace);
+        if !rng.chance(2) {
+            continue;
+        }
+        let mut split = || {
+            let s = rng.range(0, slots);
+            PhaseBytes {
+                slots: s,
+                workspace: rng.range(0, slots + ws - s),
+            }
+        };
+        let (prefill, decode) = (split(), split());
+        let st = &mut plan.replicas[k.replica as usize].stages[k.stage as usize];
+        st.phase_budgets.push(PhaseBudget {
+            device: k.device.clone(),
+            prefill,
+            decode,
+        });
     }
 }
 
@@ -254,6 +285,7 @@ fn gen_stages(
             kv: Some(kv),
             workspace,
             expert_cache,
+            phase_budgets: vec![],
         });
     }
     stages
@@ -303,10 +335,59 @@ fn check_accepted(
     for (k, b) in &e.buffers {
         *used.entry(&k.device).or_default() += b;
     }
-    for (dev, bytes) in used {
+    for (dev, bytes) in &used {
+        let cap = hw.device(dev).unwrap().capacity_bytes;
+        let limit = cap.saturating_sub(reserve.get(*dev).copied().unwrap_or(0));
+        assert!(*bytes <= limit, "{dev}: {bytes} > {limit}");
+    }
+
+    // Phase budgets: inside the arenas (so KV is never borrowed), and weights plus KV plus a
+    // phase's bytes inside capacity minus reserve.
+    let arena = |k: &BudgetKey, kind| {
+        let key = BufferKey {
+            replica: k.replica,
+            stage: k.stage,
+            kind,
+            device: k.device.clone(),
+        };
+        e.buffers.get(&key).copied().unwrap_or(0)
+    };
+    let mut explicit = 0;
+    for rep in &plan.replicas {
+        explicit += rep
+            .stages
+            .iter()
+            .map(|s| s.phase_budgets.len())
+            .sum::<usize>();
+    }
+    assert!(e.budgets.len() >= explicit);
+    let mut phase_used: BTreeMap<&str, [u64; 2]> = BTreeMap::new();
+    for (k, b) in &e.budgets {
+        let (slots, ws) = (
+            arena(k, BufferKind::SlotCache),
+            arena(k, BufferKind::Workspace),
+        );
+        for (i, p) in [b.prefill, b.decode].into_iter().enumerate() {
+            assert!(
+                p.slots <= slots && p.slots + p.workspace <= slots + ws,
+                "{k:?}"
+            );
+            phase_used.entry(&k.device).or_default()[i] += p.slots + p.workspace;
+        }
+    }
+    for (dev, phases) in phase_used {
+        let arenas: u64 = e
+            .budgets
+            .keys()
+            .filter(|k| k.device == dev)
+            .map(|k| arena(k, BufferKind::SlotCache) + arena(k, BufferKind::Workspace))
+            .sum();
         let cap = hw.device(dev).unwrap().capacity_bytes;
         let limit = cap.saturating_sub(reserve.get(dev).copied().unwrap_or(0));
-        assert!(bytes <= limit, "{dev}: {bytes} > {limit}");
+        for p in phases {
+            // used - arenas = weights + KV
+            assert!(used[dev] - arenas + p <= limit, "{dev}");
+        }
     }
 
     let mut by_unit: BTreeMap<(u32, UnitId), Vec<(u32, u32)>> = BTreeMap::new();
@@ -328,9 +409,12 @@ fn check_accepted(
 }
 
 fn only_memory(issues: &[Issue]) -> bool {
-    issues
-        .iter()
-        .all(|i| matches!(i, Issue::MemoryExceeded { .. }))
+    issues.iter().all(|i| {
+        matches!(
+            i,
+            Issue::MemoryExceeded { .. } | Issue::PhaseMemoryExceeded { .. }
+        )
+    })
 }
 
 fn random_reserve(rng: &mut Rng, hw: &HardwareGraph, big: bool) -> BTreeMap<String, u64> {
