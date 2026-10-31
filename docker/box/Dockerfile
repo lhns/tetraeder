@@ -38,7 +38,7 @@ RUN curl -fsSL https://sh.rustup.rs | RUSTC_WRAPPER= sh -s -- -y --profile minim
         --default-toolchain "${RUST_VERSION}" -c rustfmt -c clippy
 
 # llama.cpp at the pin, fetched by commit (the build context does not carry the submodule).
-# Static libs, tools (llama-bench, llama-cli, llama-server) and headers go to /opt/llama.cpp.
+# Static libs, tools (llama-bench, llama-cli, llama-server, llama-simple for the parity check) and headers go to /opt/llama.cpp.
 RUN test -n "${LLAMA_COMMIT}" && \
     git init /tmp/llama.cpp && cd /tmp/llama.cpp && \
     git remote add origin https://github.com/ggml-org/llama.cpp && \
@@ -56,7 +56,7 @@ RUN test -n "${LLAMA_COMMIT}" && \
         -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF && \
     cmake --build build -j"$(nproc)" && \
     cmake --install build && \
-    for b in llama-bench llama-cli llama-server; do \
+    for b in llama-bench llama-cli llama-server llama-simple; do \
         test -x "build/bin/$b" && install -D "build/bin/$b" "/opt/llama.cpp/bin/$b" || echo "note: $b not built"; \
     done && \
     echo "tag=${LLAMA_TAG} commit=${LLAMA_COMMIT}" > /opt/llama.cpp/PIN && \

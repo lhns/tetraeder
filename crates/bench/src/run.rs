@@ -1,7 +1,8 @@
 //! Running a spec: paired, interleaved repeats, statistics, noise-band verdicts, results JSON.
 
-use crate::engine::{self, Measured};
+use crate::engine::{self, Measured, Settings};
 use crate::env::{self, EnvInfo, GpuSnap};
+use crate::quality::{self, ParityFile, Quality};
 use crate::spec::{self, Device, EngineKind, PageCache, Pair, Role, Spec, Variant};
 use crate::stats::{self, Ratio, Summary};
 use anyhow::{Context, Result};
@@ -23,6 +24,8 @@ pub struct Options {
     /// Treat a skipped pair as an error.
     pub strict: bool,
     pub quiet: bool,
+    /// Parity results (`tetraeder-bench parity`) for the quality of gate pairs with a Tetraeder candidate.
+    pub parity: Option<ParityFile>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +53,17 @@ pub struct Sample {
     /// Threads passed to the engine (`-t`).
     #[serde(default)]
     pub threads: u32,
+    /// 0: a ran before b in this repetition, 1: b before a (see `order_for`).
+    #[serde(default)]
+    pub order: u8,
+    /// Effective engine settings as reported by the engine (flash attention, CUDA graphs, batch sizes, -ngl, -ot).
+    #[serde(default)]
+    pub settings: Settings,
+    /// Decode calls and graph reuses over the timed repetitions; Tetraeder only (graph-reuse evidence).
+    #[serde(default)]
+    pub n_eval: Option<i64>,
+    #[serde(default)]
+    pub n_reused: Option<i64>,
     /// GPU state right after the sample (clocks, throttle reasons); empty without a GPU.
     pub gpu: Vec<GpuSnap>,
 }
@@ -74,6 +88,10 @@ pub struct PairResult {
     pub noise_class: Option<String>,
     pub band: Option<f64>,
     pub metrics: BTreeMap<String, MetricResult>,
+    /// Output parity of the candidate, for gates with a Tetraeder candidate; a failed or missing one makes the
+    /// pair an error.
+    #[serde(default)]
+    pub quality: Option<Quality>,
     pub samples: Vec<Sample>,
 }
 
@@ -235,8 +253,15 @@ fn base_result(p: &Pair, device: Device) -> PairResult {
         noise_class: None,
         band: None,
         metrics: BTreeMap::new(),
+        quality: None,
         samples: Vec::new(),
     }
+}
+
+/// Order of the two sides in a repetition: ABBA over the repeats (a,b then b,a ...), so that a systematic
+/// advantage of running second (clocks, caches) cancels in the paired ratio.
+pub fn order_for(rep: usize) -> u8 {
+    (rep % 2) as u8
 }
 
 fn run_pair(
@@ -293,9 +318,15 @@ fn run_pair(
                 run_one(r, timeout)?;
             }
         }
-        // Strictly interleaved: A, B, A, B, ... so drift hits both sides alike.
+        // Interleaved with alternating order (A,B then B,A ...) so drift and order effects hit both sides alike.
         for rep in 0..repeats {
-            for (side, r) in [("a", &ra), ("b", &rb)] {
+            let order = order_for(rep);
+            let sides = if order == 0 {
+                [("a", &ra), ("b", &rb)]
+            } else {
+                [("b", &rb), ("a", &ra)]
+            };
+            for (side, r) in sides {
                 if cold {
                     drop_caches();
                 }
@@ -320,6 +351,10 @@ fn run_pair(
                     wall_s: m.wall_s,
                     build_commit: m.build_commit,
                     threads: r.threads,
+                    order,
+                    settings: m.settings,
+                    n_eval: m.n_eval,
+                    n_reused: m.n_reused,
                     gpu: env::gpu_snapshot(),
                 });
             }
@@ -366,6 +401,10 @@ fn run_pair(
         }
     }
     (res.status, res.reason) = verdict(p.role, band, &res.metrics);
+    if quality::needs_quality(spec, p) {
+        let q = quality::lookup(opts.parity.as_ref(), &vb.model, vb.device);
+        quality::attach(&mut res, q);
+    }
     Ok(res)
 }
 
@@ -504,6 +543,52 @@ mod tests {
         assert_eq!(verdict(Role::Noise, 0.05, &m(1.02)).0, Status::Ok);
         assert_eq!(verdict(Role::Noise, 0.05, &m(0.9)).0, Status::Noisy);
         assert_eq!(verdict(Role::Info, 0.05, &m(0.5)).0, Status::Ok);
+    }
+
+    #[test]
+    fn sides_alternate_abba() {
+        let orders: Vec<u8> = (0..5).map(order_for).collect();
+        assert_eq!(orders, [0, 1, 0, 1, 0]);
+    }
+
+    #[test]
+    fn failed_or_missing_quality_turns_a_gate_into_an_error() {
+        let q = |status| Quality {
+            check: "c".into(),
+            status,
+            detail: "d".into(),
+        };
+        let mk = |s| PairResult {
+            status: s,
+            ..base_result(
+                &Pair {
+                    id: "x".into(),
+                    a: "a".into(),
+                    b: "b".into(),
+                    role: Role::Gate,
+                },
+                Device::Cpu,
+            )
+        };
+        for st in [
+            quality::QualityStatus::Failed,
+            quality::QualityStatus::Missing,
+            quality::QualityStatus::Error,
+        ] {
+            for before in [Status::Ok, Status::Regression] {
+                let mut r = mk(before);
+                quality::attach(&mut r, q(st));
+                assert_eq!(r.status, Status::Error, "{st:?} {before:?}");
+                assert!(r.reason.contains("quality"));
+            }
+        }
+        let mut r = mk(Status::Ok);
+        quality::attach(&mut r, q(quality::QualityStatus::Ok));
+        assert_eq!(r.status, Status::Ok);
+        assert!(r.quality.is_some());
+        let mut r = mk(Status::Skipped);
+        quality::attach(&mut r, q(quality::QualityStatus::Missing));
+        assert_eq!(r.status, Status::Skipped);
     }
 
     #[test]

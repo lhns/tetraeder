@@ -136,7 +136,7 @@ fn runs_are_interleaved_a_b_a_b_after_warmup() {
         .lines()
         .map(String::from)
         .collect();
-    assert_eq!(calls.join(""), "ABABABAB"); // 1 warmup + 3 repeats
+    assert_eq!(calls.join(""), "ABABBAAB"); // warmup AB, then AB, BA, AB (alternating order)
     let r = f.results();
     let samples = r["pairs"][0]["samples"].as_array().unwrap();
     assert_eq!(samples.len(), 6);
@@ -144,7 +144,14 @@ fn runs_are_interleaved_a_b_a_b_after_warmup() {
         .iter()
         .map(|s| s["side"].as_str().unwrap())
         .collect();
-    assert_eq!(sides, "ababab");
+    assert_eq!(sides, "abbaab");
+    let orders: Vec<u64> = samples
+        .iter()
+        .map(|s| s["order"].as_u64().unwrap())
+        .collect();
+    assert_eq!(orders, [0, 0, 1, 1, 0, 0]);
+    // each sample carries the settings the engine reported (null for the fake)
+    assert!(samples[0]["settings"].is_object());
 }
 
 #[test]
@@ -331,4 +338,121 @@ fn check_and_golden_compare_subcommands() {
     };
     assert_eq!(code(&cmp(&a, &a)), 0);
     assert_eq!(code(&cmp(&a, &b)), 1);
+}
+
+const FAKE_PARITY: &str = env!("CARGO_BIN_EXE_fake-parity-engine");
+
+/// A fixture with a runnable Tetraeder engine (the fake llama-bench) and a gate pair llama vs tetraeder.
+fn tetraeder_gate() -> Fixture {
+    let extra = r#"
+[[pair]]
+id = "gate-tet"
+a = "va"
+b = "vt"
+role = "gate"
+"#;
+    let f = Fixture::new("info", &[], &[], extra);
+    let spec = f.dir.path().join("spec.toml");
+    let text = std::fs::read_to_string(&spec).unwrap().replace(
+        "bin = 'nonexistent'
+runnable = false",
+        &format!("bin = '{FAKE}'"),
+    );
+    std::fs::write(&spec, text).unwrap();
+    f
+}
+
+fn write_parity(f: &Fixture, status: &str) -> std::path::PathBuf {
+    let path = f.dir.path().join("parity.json");
+    let check = format!(
+        r#"{{"schema":1,"spec":"t","checks":[{{"model":"m","device":"cpu","check":"greedy-golden","status":"{status}","detail":"d"}}]}}"#
+    );
+    std::fs::write(&path, check).unwrap();
+    path
+}
+
+#[test]
+fn tetraeder_gate_without_parity_is_an_error() {
+    let f = tetraeder_gate();
+    let o = f.run(&["--only", "gate-tet"], &[]);
+    assert_eq!(code(&o), 2, "{}", text_of(&o));
+    let p = &f.results()["pairs"][0];
+    assert_eq!(p["status"], "error");
+    assert_eq!(p["quality"]["status"], "missing");
+}
+
+#[test]
+fn tetraeder_gate_with_ok_parity_passes_and_records_it() {
+    let f = tetraeder_gate();
+    let par = write_parity(&f, "ok");
+    let o = f.run(
+        &["--only", "gate-tet", "--parity", par.to_str().unwrap()],
+        &[],
+    );
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    let p = &f.results()["pairs"][0];
+    assert_eq!(p["status"], "ok");
+    assert_eq!(p["quality"]["status"], "ok");
+    assert_eq!(p["quality"]["check"], "greedy-golden");
+}
+
+#[test]
+fn tetraeder_gate_with_failed_parity_is_an_error() {
+    let f = tetraeder_gate();
+    let par = write_parity(&f, "failed");
+    let o = f.run(
+        &["--only", "gate-tet", "--parity", par.to_str().unwrap()],
+        &[],
+    );
+    assert_eq!(code(&o), 2, "{}", text_of(&o));
+    assert_eq!(f.results()["pairs"][0]["status"], "error");
+}
+
+#[test]
+fn llama_only_gate_needs_no_quality() {
+    let f = Fixture::new("gate", &["--fake-tg", "100"], &["--fake-tg", "100"], "");
+    assert_eq!(code(&f.run(&[], &[])), 0);
+    assert!(f.results()["pairs"][0]["quality"].is_null());
+}
+
+#[test]
+fn parity_subcommand_compares_against_the_reference() {
+    let f = tetraeder_gate();
+    let run = |envs: &[(&str, &str)]| {
+        let mut c = Command::new(BENCH);
+        c.arg("parity")
+            .arg(f.dir.path().join("spec.toml"))
+            .arg("--out-dir")
+            .arg(f.dir.path().join("par"))
+            .arg("--llama-simple")
+            .arg(FAKE_PARITY)
+            .arg("--tetraeder")
+            .arg(FAKE_PARITY)
+            .env("TETRAEDER_MODELS_DIR", f.dir.path().join("models"));
+        for (k, v) in envs {
+            c.env(k, v);
+        }
+        c.output().unwrap()
+    };
+    let o = run(&[]);
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    let file: Value =
+        serde_json::from_slice(&std::fs::read(f.dir.path().join("par/parity.json")).unwrap())
+            .unwrap();
+    assert_eq!(file["checks"][0]["model"], "m");
+    assert_eq!(file["checks"][0]["status"], "ok");
+    let o = run(&[("FAKE_PARITY_DIFF", "1")]);
+    assert_eq!(code(&o), 1, "{}", text_of(&o));
+    assert!(text_of(&o).contains("differ"));
+    // and the results of a run next to it pick the file up by default
+    let o = f.run(
+        &[
+            "--only",
+            "gate-tet",
+            "--parity",
+            f.dir.path().join("par/parity.json").to_str().unwrap(),
+        ],
+        &[],
+    );
+    assert_eq!(code(&o), 2, "{}", text_of(&o));
 }

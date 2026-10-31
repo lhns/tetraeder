@@ -5,7 +5,7 @@ use crate::engine_args::ModelArgs;
 use clap::{Args, ValueEnum};
 use std::sync::Arc;
 use std::time::Duration;
-use tetraeder_engine::Engine;
+use tetraeder_engine::{Engine, FlashAttn};
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
 #[derive(Args)]
@@ -56,6 +56,8 @@ pub fn run(a: &BenchArgs) -> anyhow::Result<()> {
         )?;
         engine.bench_reset();
         engine.bench_warmup(n_prompt as usize, n_gen as usize)?;
+        // Counters are cumulative: the delta over the timed reps shows graph reuse without the warmup.
+        let perf0 = engine.perf();
         let mut samples = Vec::with_capacity(a.reps as usize);
         for _ in 0..a.reps {
             engine.bench_reset();
@@ -66,7 +68,31 @@ pub fn run(a: &BenchArgs) -> anyhow::Result<()> {
             };
             samples.push(d);
         }
-        rows.push(row(n_prompt, n_gen, &samples));
+        let perf1 = engine.perf();
+        let settings = Settings {
+            n_batch: a.model.batch,
+            n_ubatch: a.model.ubatch,
+            n_threads: a.model.threads.unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map_or(1, |n| i32::try_from(n.get()).unwrap_or(1))
+            }),
+            n_gpu_layers: a.model.ngl,
+            flash_attn: match a.model.flash_attn {
+                FlashAttn::Auto => -1,
+                FlashAttn::Off => 0,
+                FlashAttn::On => 1,
+            },
+            tensor_buft_overrides: overrides_str(
+                a.model
+                    .override_tensor
+                    .iter()
+                    .map(|o| (o.pattern.as_str(), o.buffer.as_str())),
+            ),
+            cuda_graphs: engine.graphs(),
+            n_eval: perf1.n_eval - perf0.n_eval,
+            n_reused: perf1.n_reused - perf0.n_reused,
+        };
+        rows.push(row(n_prompt, n_gen, &samples, &settings));
     }
     if let Some(t) = &telemetry {
         let st = t.ring().stats();
@@ -80,7 +106,32 @@ pub fn run(a: &BenchArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn row(n_prompt: u32, n_gen: u32, samples: &[Duration]) -> serde_json::Value {
+/// Effective settings of one test, reported under llama-bench's field names (`flash_attn`: -1 auto, 0 off, 1 on).
+/// `cuda_graphs`, `n_eval` and `n_reused` are Tetraeder additions.
+struct Settings {
+    n_batch: u32,
+    n_ubatch: u32,
+    n_threads: i32,
+    n_gpu_layers: i32,
+    flash_attn: i32,
+    tensor_buft_overrides: String,
+    cuda_graphs: bool,
+    /// Decode calls and graph reuses during the timed repetitions.
+    n_eval: i32,
+    n_reused: i32,
+}
+
+/// llama-bench's spelling: `none`, else `pattern=buffer` joined by `;`.
+fn overrides_str<'a>(ov: impl Iterator<Item = (&'a str, &'a str)>) -> String {
+    let v: Vec<String> = ov.map(|(p, b)| format!("{p}={b}")).collect();
+    if v.is_empty() {
+        "none".into()
+    } else {
+        v.join(";")
+    }
+}
+
+fn row(n_prompt: u32, n_gen: u32, samples: &[Duration], st: &Settings) -> serde_json::Value {
     let n = f64::from(n_prompt + n_gen);
     let ts: Vec<f64> = samples.iter().map(|d| n / d.as_secs_f64()).collect();
     let ns: Vec<u128> = samples.iter().map(Duration::as_nanos).collect();
@@ -92,6 +143,15 @@ fn row(n_prompt: u32, n_gen: u32, samples: &[Duration]) -> serde_json::Value {
     serde_json::json!({
         "build_commit": option_env!("TETRAEDER_GIT_SHA").unwrap_or("unknown"),
         "engine": "tetraeder",
+        "n_batch": st.n_batch,
+        "n_ubatch": st.n_ubatch,
+        "n_threads": st.n_threads,
+        "n_gpu_layers": st.n_gpu_layers,
+        "flash_attn": st.flash_attn,
+        "tensor_buft_overrides": st.tensor_buft_overrides,
+        "cuda_graphs": st.cuda_graphs,
+        "n_eval": st.n_eval,
+        "n_reused": st.n_reused,
         "n_prompt": n_prompt,
         "n_gen": n_gen,
         "avg_ns": ns.iter().sum::<u128>() / ns.len() as u128,
@@ -108,7 +168,23 @@ mod tests {
 
     #[test]
     fn row_has_llama_bench_shape() {
-        let r = row(0, 8, &[Duration::from_secs(1), Duration::from_secs(2)]);
+        let st = Settings {
+            n_batch: 2048,
+            n_ubatch: 512,
+            n_threads: 4,
+            n_gpu_layers: 99,
+            flash_attn: 1,
+            tensor_buft_overrides: overrides_str([("exps", "CPU")].into_iter()),
+            cuda_graphs: true,
+            n_eval: 16,
+            n_reused: 15,
+        };
+        let r = row(0, 8, &[Duration::from_secs(1), Duration::from_secs(2)], &st);
+        assert_eq!(r["flash_attn"], 1);
+        assert_eq!(r["tensor_buft_overrides"], "exps=CPU");
+        assert_eq!(r["n_reused"], 15);
+        assert_eq!(r["cuda_graphs"], true);
+        assert_eq!(overrides_str(std::iter::empty()), "none");
         assert_eq!(r["n_gen"], 8);
         assert_eq!(r["n_prompt"], 0);
         assert_eq!(r["avg_ts"], 6.0);

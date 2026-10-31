@@ -2,7 +2,7 @@
 
 use crate::spec::{Device, Variant, Workload, has_flag};
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -11,6 +11,11 @@ use std::time::{Duration, Instant};
 /// Result of one engine invocation, in tokens per second.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Measured {
+    /// Effective engine settings as the engine reported them (llama-bench's field names).
+    pub settings: Settings,
+    /// Decode calls and graph reuses over the timed repetitions (Tetraeder reports them; llama-bench does not).
+    pub n_eval: Option<i64>,
+    pub n_reused: Option<i64>,
     /// Prompt processing (`-p`).
     pub pp_ts: Option<f64>,
     /// Token generation (`-n`).
@@ -20,8 +25,44 @@ pub struct Measured {
     pub wall_s: f64,
 }
 
+/// What the engine actually ran with, taken from its output row, so a pair can be checked for equal settings.
+/// `flash_attn` is llama-bench's: -1 auto, 0 off, 1 on. Unreported fields are null.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct Settings {
+    pub flash_attn: Option<i64>,
+    /// llama-bench does not report it: derived (CUDA backend, layers offloaded, `GGML_CUDA_DISABLE_GRAPHS` unset).
+    /// Tetraeder reports its own expectation. Neither confirms libllama really captured graphs; see `n_reused`.
+    pub cuda_graphs: Option<bool>,
+    pub n_batch: Option<i64>,
+    pub n_ubatch: Option<i64>,
+    pub n_threads: Option<i64>,
+    pub n_gpu_layers: Option<i64>,
+    /// `none` or `pattern=buffer` joined by `;` (the `-ot` overrides).
+    pub tensor_buft_overrides: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct Row {
+    #[serde(default)]
+    flash_attn: Option<i64>,
+    #[serde(default)]
+    cuda_graphs: Option<bool>,
+    #[serde(default)]
+    n_batch: Option<i64>,
+    #[serde(default)]
+    n_ubatch: Option<i64>,
+    #[serde(default)]
+    n_threads: Option<i64>,
+    #[serde(default)]
+    n_gpu_layers: Option<i64>,
+    #[serde(default)]
+    tensor_buft_overrides: Option<String>,
+    #[serde(default)]
+    backends: Option<String>,
+    #[serde(default)]
+    n_eval: Option<i64>,
+    #[serde(default)]
+    n_reused: Option<i64>,
     #[serde(default)]
     n_prompt: u64,
     #[serde(default)]
@@ -29,6 +70,13 @@ struct Row {
     avg_ts: f64,
     #[serde(default)]
     build_commit: Option<String>,
+}
+
+fn sum_opt(a: Option<i64>, b: Option<i64>) -> Option<i64> {
+    match (a, b) {
+        (None, None) => None,
+        (a, b) => Some(a.unwrap_or(0) + b.unwrap_or(0)),
+    }
 }
 
 /// Parse `llama-bench -o json` output: an array with one row per test (pp and tg rows).
@@ -68,6 +116,23 @@ pub fn parse_llama_bench(stdout: &str) -> Result<Measured> {
             m.tg_ts = Some(r.avg_ts);
         }
         m.build_commit = m.build_commit.or(r.build_commit);
+        let st = &mut m.settings;
+        st.flash_attn = st.flash_attn.or(r.flash_attn);
+        st.n_batch = st.n_batch.or(r.n_batch);
+        st.n_ubatch = st.n_ubatch.or(r.n_ubatch);
+        st.n_threads = st.n_threads.or(r.n_threads);
+        st.n_gpu_layers = st.n_gpu_layers.or(r.n_gpu_layers);
+        st.tensor_buft_overrides = st.tensor_buft_overrides.take().or(r.tensor_buft_overrides);
+        st.cuda_graphs = st.cuda_graphs.or(r.cuda_graphs).or_else(|| {
+            r.backends.as_deref().map(|b| {
+                b.contains("CUDA")
+                    && r.n_gpu_layers != Some(0)
+                    && std::env::var_os("GGML_CUDA_DISABLE_GRAPHS").is_none()
+            })
+        });
+        // Counters sum over the rows (pp and tg test).
+        m.n_eval = sum_opt(m.n_eval, r.n_eval);
+        m.n_reused = sum_opt(m.n_reused, r.n_reused);
     }
     if m.pp_ts.is_none() && m.tg_ts.is_none() {
         bail!("llama-bench output has no pp or tg row");
@@ -76,7 +141,7 @@ pub fn parse_llama_bench(stdout: &str) -> Result<Measured> {
 }
 
 /// Workload defaults, each replaced by the variant's own flag: `-p`, `-n` (a second one would add a test to the
-/// sweep) and `-r` (1: the harness does the repeating so that variants can be interleaved).
+/// sweep), `-b`, `-ub` and `-r` (1: the harness does the repeating so that variants can be interleaved).
 fn common_args(
     w: &Workload,
     v: &Variant,
@@ -91,14 +156,14 @@ fn common_args(
     if !has_flag(&v.args, &["-n", "--n-gen"]) {
         a.extend(["-n".into(), w.gen_len.to_string()]);
     }
-    a.extend([
-        "-b".into(),
-        w.batch.to_string(),
-        ubatch_flag.into(),
-        w.ubatch.to_string(),
-        "-t".into(),
-        threads.to_string(),
-    ]);
+    // `-b` and the ubatch flag may be replaced by the variant (ubatch sweeps); -ub above -b is clamped by the engines.
+    if !has_flag(&v.args, &["-b", "--batch-size", "--batch"]) {
+        a.extend(["-b".into(), w.batch.to_string()]);
+    }
+    if !has_flag(&v.args, &["-ub", "--ubatch-size", "--ubatch"]) {
+        a.extend([ubatch_flag.into(), w.ubatch.to_string()]);
+    }
+    a.extend(["-t".into(), threads.to_string()]);
     if !has_flag(&v.args, &["-r", "--repetitions", "--reps"]) {
         a.extend(["-r".into(), "1".into()]);
     }
@@ -134,13 +199,21 @@ pub fn device_env(device: Device) -> Vec<(&'static str, &'static str)> {
     }
 }
 
-/// Run one engine invocation; kill it after `timeout` so a hung engine cannot block the night.
-pub fn run_llama_bench(
+/// Captured output of a finished child process.
+pub struct Captured {
+    pub stdout: String,
+    pub stderr: String,
+    pub wall_s: f64,
+}
+
+/// Run a binary to completion with piped output; kill it after `timeout` so a hung engine cannot block the night.
+/// A nonzero exit is an error carrying the stderr tail.
+pub fn run_capture(
     bin: &Path,
     args: &[String],
     env: &[(&str, &str)],
     timeout: Duration,
-) -> Result<Measured> {
+) -> Result<Captured> {
     let t0 = Instant::now();
     let mut child = Command::new(bin)
         .args(args)
@@ -189,8 +262,23 @@ pub fn run_llama_bench(
             tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
         );
     }
-    let mut m = parse_llama_bench(&stdout)?;
-    m.wall_s = wall_s;
+    Ok(Captured {
+        stdout,
+        stderr,
+        wall_s,
+    })
+}
+
+/// Run one engine invocation and parse its llama-bench rows.
+pub fn run_llama_bench(
+    bin: &Path,
+    args: &[String],
+    env: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<Measured> {
+    let c = run_capture(bin, args, env, timeout)?;
+    let mut m = parse_llama_bench(&c.stdout)?;
+    m.wall_s = c.wall_s;
     Ok(m)
 }
 
@@ -226,6 +314,30 @@ mod tests {
         assert_eq!(m.pp_ts, Some(160.5));
         assert_eq!(m.tg_ts, Some(42.25));
         assert_eq!(m.build_commit.as_deref(), Some("2e0d86be"));
+    }
+
+    #[test]
+    fn parses_settings_and_graph_counters() {
+        let rows = r#"[
+ {"build_commit":"x","backends":"CUDA","n_batch":2048,"n_ubatch":1024,"n_threads":8,"n_gpu_layers":99,"flash_attn":1,"tensor_buft_overrides":"exps=CPU","n_prompt":16,"n_gen":0,"avg_ts":1.0},
+ {"n_prompt":0,"n_gen":8,"avg_ts":2.0,"n_eval":8,"n_reused":7},
+ {"n_prompt":0,"n_gen":8,"avg_ts":2.0,"n_eval":8,"n_reused":6}]"#;
+        let m = parse_llama_bench(rows).unwrap();
+        let s = &m.settings;
+        assert_eq!(s.flash_attn, Some(1));
+        assert_eq!(
+            (s.n_batch, s.n_ubatch, s.n_threads),
+            (Some(2048), Some(1024), Some(8))
+        );
+        assert_eq!(s.n_gpu_layers, Some(99));
+        assert_eq!(s.tensor_buft_overrides.as_deref(), Some("exps=CPU"));
+        assert!(s.cuda_graphs.is_some());
+        assert_eq!((m.n_eval, m.n_reused), (Some(16), Some(13)));
+        // llama-bench rows without the counters leave them null
+        let m = parse_llama_bench(REAL).unwrap();
+        assert_eq!(m.n_reused, None);
+        assert_eq!(m.settings.cuda_graphs, Some(false)); // derived: CPU backend
+        assert_eq!(m.settings.n_batch, Some(512));
     }
 
     #[test]
@@ -290,6 +402,23 @@ mod tests {
             assert!(pair(&a, "-p", "2048"));
             assert!(pair(&a, "-r", "3"));
         }
+    }
+
+    #[test]
+    fn variant_batch_flags_replace_workload_defaults() {
+        let v = v(Device::Cuda, &["-b", "4096", "-ub", "4096", "-fa", "1"]);
+        let a = llama_bench_args(&w(None), &v, Path::new("m.gguf"), 4);
+        assert_eq!(a.iter().filter(|x| *x == "-b").count(), 1);
+        assert_eq!(a.iter().filter(|x| *x == "-ub").count(), 1);
+        assert!(pair(&a, "-b", "4096") && pair(&a, "-ub", "4096"));
+        let v = v_ubatch();
+        let a = tetraeder_bench_args(&w(None), &v, Path::new("m.gguf"), 4);
+        assert_eq!(a.iter().filter(|x| *x == "--ubatch").count(), 1);
+        assert!(pair(&a, "--ubatch", "1024") && pair(&a, "-b", "2048"));
+    }
+
+    fn v_ubatch() -> Variant {
+        v(Device::Cuda, &["--ubatch", "1024"])
     }
 
     #[test]

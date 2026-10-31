@@ -1,0 +1,307 @@
+# Phase 2 baseline: tuned llama.cpp on the MoE, the numbers the own MoE engine has to beat (docs/plan.md, ADR 0031).
+#   tetraeder-bench run bench/spec/phase2-baseline.toml      (nightly: BENCH_SPEC=phase2-baseline scripts/nightly.sh)
+# llama.cpp only, no Tetraeder engine yet. Every pair is "info": reported, never gated. Paired and interleaved like
+# phase0 (AGENTS.md "Benchmark comparability on Vast"): compare ratios inside a pair, never absolute tok/s across nights.
+#
+# Sweep: ubatch 512/1024/2048/4096 (with -b equal to it) with flash attention on, for full GPU and the two expert
+# offload placements of phase0 (all experts in RAM, layers 24..47 in RAM). Points: pp16384 + tg128 for the sweep,
+# pp32768 + tg128 at ubatch 2048 (and 4096 for the offload placements).
+#
+# Runtime on an RTX 3090 box (ESTIMATE from phase0 numbers and PCIe arithmetic, not measured; replace after the first
+# run): about 42 min for 16 pairs (2 repeats per side, no warmup). nightly.sh gives it a 60 min limit.
+# Per invocation (15 s model load + pp + tg128) in the variant comments. To shrink it: repeats = 1, or drop the
+# 4096 points of the offload placements.
+# Cut to fit: warmup = 0 (a warmup would double every invocation; the first pair's first sample may include the
+# model page-in when phase0 did not run before), no pp32768 at ubatch 512/1024.
+#
+# VRAM (24 GB card): Qwen3-30B-A3B Q4_K_M weights 18.6 GB (17.3 GiB). KV cache f16 = 48 layers x 2 x 4 KV heads x
+# 128 x 2 B = 96 KiB/token: 1.5 GiB at 16K, 3.0 GiB at 32K (context = pp + 128). Compute buffers with flash attention
+# about 1 to 2 GiB at ubatch 2048. Full GPU at 32K: about 17.3 + 3.0 + 2 + CUDA context 0.5 = 22.8 of 24 GiB, so
+# it fits at ubatch 2048 only; full GPU at ubatch 4096 is limited to pp16384 and the 32K point is left out for
+# it. If the 32K full-GPU variant fails with an out-of-memory error its pair reports `error`; read it as "does not fit".
+
+[spec]
+name = "phase2-baseline"
+description = "Tuned llama.cpp baseline on Qwen3-30B-A3B: ubatch sweep with flash attention, full GPU and expert offload, pp16384/pp32768, tg128"
+repeats = 2
+warmup = 0
+page_cache = "warm"
+timeout_s = 900           # a pp32768 run with every expert in RAM is the slowest invocation
+bootstrap_resamples = 10000
+confidence = 0.95
+seed = 20240602
+
+[pins]
+llama_cpp = "2e0d86bebc210947680e8f0d67daa79f3260c106"   # vendor/llama.cpp submodule, same as phase0
+tetraeder = "HEAD"
+
+[workload]
+batch = 2048
+ubatch = 512
+prompt_len = 16384
+gen_len = 128
+# threads: omitted, as in phase0 (the harness passes the container's available_parallelism() to both sides).
+
+[model.moe]
+hf = "Qwen/Qwen3-30B-A3B-GGUF:Qwen3-30B-A3B-Q4_K_M.gguf"
+note = "about 18.6 GB, 48 layers; needs a 24 GB card for the full-GPU variants and 20 GB RAM for the offload variants"
+
+[[engine]]
+id = "llama-bench"
+kind = "llama-bench"
+bin_env = "LLAMA_BENCH"
+bin = "/opt/llama.cpp/bin/llama-bench"
+
+# Variant args replace the workload's -p, -n, -b and -ub (the harness defaults are 16384, 128, 2048, 512).
+
+# ~24 s per invocation
+[[variant]]
+id = "p2-full-ub512"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "512", "-ub", "512"]
+
+# ~23 s per invocation
+[[variant]]
+id = "p2-full-ub1024"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "1024", "-ub", "1024"]
+
+# ~23 s per invocation
+[[variant]]
+id = "p2-full-ub2048"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048"]
+
+# ~24 s per invocation
+[[variant]]
+id = "p2-full-ub4096"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "4096", "-ub", "4096"]
+
+# ~35 s per invocation
+[[variant]]
+id = "p2-full-ub2048-pp32k"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-p", "32768"]
+
+# ~76 s per invocation
+[[variant]]
+id = "p2-ot-all-experts-ub512"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "512", "-ub", "512", "-ot", "exps=CPU"]
+
+# ~51 s per invocation
+[[variant]]
+id = "p2-ot-all-experts-ub1024"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "1024", "-ub", "1024", "-ot", "exps=CPU"]
+
+# ~39 s per invocation
+[[variant]]
+id = "p2-ot-all-experts-ub2048"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-ot", "exps=CPU"]
+
+# ~33 s per invocation
+[[variant]]
+id = "p2-ot-all-experts-ub4096"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "4096", "-ub", "4096", "-ot", "exps=CPU"]
+
+# ~61 s per invocation
+[[variant]]
+id = "p2-ot-all-experts-ub2048-pp32k"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-p", "32768", "-ot", "exps=CPU"]
+
+# ~47 s per invocation
+[[variant]]
+id = "p2-ot-all-experts-ub4096-pp32k"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "4096", "-ub", "4096", "-p", "32768", "-ot", "exps=CPU"]
+
+# ~48 s per invocation
+[[variant]]
+id = "p2-ot-upper-half-ub512"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "512", "-ub", "512", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# ~35 s per invocation
+[[variant]]
+id = "p2-ot-upper-half-ub1024"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "1024", "-ub", "1024", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# ~29 s per invocation
+[[variant]]
+id = "p2-ot-upper-half-ub2048"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# ~26 s per invocation
+[[variant]]
+id = "p2-ot-upper-half-ub4096"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "4096", "-ub", "4096", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# ~43 s per invocation
+[[variant]]
+id = "p2-ot-upper-half-ub2048-pp32k"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-p", "32768", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# ~35 s per invocation
+[[variant]]
+id = "p2-ot-upper-half-ub4096-pp32k"
+engine = "llama-bench"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "4096", "-ub", "4096", "-p", "32768", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# Pairs: a is the reference, b the changed setting; ratio = b / a
+
+[[pair]]
+id = "info-full-ub1024-vs-512"
+a = "p2-full-ub512"
+b = "p2-full-ub1024"
+role = "info"
+
+[[pair]]
+id = "info-full-ub2048-vs-512"
+a = "p2-full-ub512"
+b = "p2-full-ub2048"
+role = "info"
+
+[[pair]]
+id = "info-full-ub4096-vs-512"
+a = "p2-full-ub512"
+b = "p2-full-ub4096"
+role = "info"
+
+[[pair]]
+id = "info-full-pp32k-vs-pp16k"
+a = "p2-full-ub2048"
+b = "p2-full-ub2048-pp32k"
+role = "info"
+
+[[pair]]
+id = "info-ot-all-experts-ub1024-vs-512"
+a = "p2-ot-all-experts-ub512"
+b = "p2-ot-all-experts-ub1024"
+role = "info"
+
+[[pair]]
+id = "info-ot-all-experts-ub2048-vs-512"
+a = "p2-ot-all-experts-ub512"
+b = "p2-ot-all-experts-ub2048"
+role = "info"
+
+[[pair]]
+id = "info-ot-all-experts-ub4096-vs-512"
+a = "p2-ot-all-experts-ub512"
+b = "p2-ot-all-experts-ub4096"
+role = "info"
+
+[[pair]]
+id = "info-ot-all-experts-pp32k-vs-pp16k"
+a = "p2-ot-all-experts-ub2048"
+b = "p2-ot-all-experts-ub2048-pp32k"
+role = "info"
+
+[[pair]]
+id = "info-ot-all-experts-pp32k-ub4096-vs-ub2048"
+a = "p2-ot-all-experts-ub2048-pp32k"
+b = "p2-ot-all-experts-ub4096-pp32k"
+role = "info"
+
+[[pair]]
+id = "info-ot-upper-half-ub1024-vs-512"
+a = "p2-ot-upper-half-ub512"
+b = "p2-ot-upper-half-ub1024"
+role = "info"
+
+[[pair]]
+id = "info-ot-upper-half-ub2048-vs-512"
+a = "p2-ot-upper-half-ub512"
+b = "p2-ot-upper-half-ub2048"
+role = "info"
+
+[[pair]]
+id = "info-ot-upper-half-ub4096-vs-512"
+a = "p2-ot-upper-half-ub512"
+b = "p2-ot-upper-half-ub4096"
+role = "info"
+
+[[pair]]
+id = "info-ot-upper-half-pp32k-vs-pp16k"
+a = "p2-ot-upper-half-ub2048"
+b = "p2-ot-upper-half-ub2048-pp32k"
+role = "info"
+
+[[pair]]
+id = "info-ot-upper-half-pp32k-ub4096-vs-ub2048"
+a = "p2-ot-upper-half-ub2048-pp32k"
+b = "p2-ot-upper-half-ub4096-pp32k"
+role = "info"
+
+[[pair]]
+id = "info-ot-all-experts-vs-full-ub2048"
+a = "p2-full-ub2048"
+b = "p2-ot-all-experts-ub2048"
+role = "info"
+
+[[pair]]
+id = "info-ot-upper-half-vs-full-ub2048"
+a = "p2-full-ub2048"
+b = "p2-ot-upper-half-ub2048"
+role = "info"
+
+# Bands are not used by info pairs but every device needs one (same values as phase0).
+[[noise_band]]
+class = "cuda-default"
+device = "cuda"
+band = 0.08
+
+[[noise_band]]
+class = "rtx-4090"
+device = "cuda"
+gpu_match = "4090"
+band = 0.05
+
+[[noise_band]]
+class = "rtx-3090"
+device = "cuda"
+gpu_match = "3090"
+band = 0.05

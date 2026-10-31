@@ -179,6 +179,16 @@ impl Engine {
         &self.model
     }
 
+    /// Whether steps are expected to run as CUDA graphs (layers offloaded to CUDA, not disabled by env).
+    pub fn graphs(&self) -> bool {
+        self.graphs
+    }
+
+    /// libllama's cumulative perf counters; `n_eval` and `n_reused` show how many decodes reused the graph.
+    pub fn perf(&self) -> llama::PerfData {
+        self.ctx.perf()
+    }
+
     pub fn n_ctx(&self) -> usize {
         self.ctx.n_ctx() as usize
     }
