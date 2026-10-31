@@ -318,6 +318,12 @@ async fn errors_use_the_openai_shape() {
             "invalid_request_error",
         ),
         (
+            // u32::MAX must not overflow the context check.
+            json!({"model": "fake", "messages": user("hi"), "max_tokens": 4294967295u32}),
+            400,
+            "invalid_request_error",
+        ),
+        (
             json!({"model": "fake", "messages": user("hi"), "tool_choice": "required"}),
             400,
             "invalid_request_error",
