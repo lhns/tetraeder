@@ -108,6 +108,17 @@ pub enum Finish {
     ToolCalls,
 }
 
+impl Finish {
+    /// OpenAI's `finish_reason` vocabulary, also used by the GenAI semantic conventions.
+    pub fn openai_reason(&self) -> &'static str {
+        match self {
+            Finish::Stop | Finish::StopSequence(_) => "stop",
+            Finish::Length => "length",
+            Finish::ToolCalls => "tool_calls",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Usage {
     pub prompt_tokens: u32,

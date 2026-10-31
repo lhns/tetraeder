@@ -306,14 +306,6 @@ fn check_n(n: Option<u32>) -> std::result::Result<(), GatewayError> {
     }
 }
 
-fn finish_reason(f: &Finish) -> &'static str {
-    match f {
-        Finish::Stop | Finish::StopSequence(_) => "stop",
-        Finish::Length => "length",
-        Finish::ToolCalls => "tool_calls",
-    }
-}
-
 fn usage_json(u: &Usage) -> Value {
     json!({
         "prompt_tokens": u.prompt_tokens,
@@ -389,7 +381,7 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     if let Some(r) = c.reasoning {
         message["reasoning_content"] = Value::String(r);
     }
-    let finish = c.finish.as_ref().map_or("stop", finish_reason);
+    let finish = c.finish.as_ref().map_or("stop", Finish::openai_reason);
     Ok(Json(json!({
         "id": id,
         "object": "chat.completion",
@@ -461,7 +453,7 @@ fn chat_stream(g: Generation, usage: bool) -> impl Stream<Item = Event> + Send +
                 out.push(data(&s.chunk(json!({"tool_calls": [call]}), None)));
             }
             Some(OutEvent::Done { finish, usage }) => {
-                out.push(data(&s.chunk(json!({}), Some(finish_reason(&finish)))));
+                out.push(data(&s.chunk(json!({}), Some(finish.openai_reason()))));
                 if s.usage {
                     out.push(data(&json!({
                         "id": s.id,
@@ -536,7 +528,7 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
         "created": created,
         "model": model,
         "choices": [{"text": text, "index": 0, "logprobs": null,
-                     "finish_reason": c.finish.as_ref().map_or("stop", finish_reason)}],
+                     "finish_reason": c.finish.as_ref().map_or("stop", Finish::openai_reason)}],
         "usage": usage_json(&c.usage),
     }))
     .into_response())
@@ -577,7 +569,7 @@ fn completion_stream(
                 Some(OutEvent::Segment(Segment::Text(t))) => out.push(data(&chunk(&g, &t, None))),
                 Some(OutEvent::Segment(_)) => {}
                 Some(OutEvent::Done { finish, usage: u }) => {
-                    out.push(data(&chunk(&g, "", Some(finish_reason(&finish)))));
+                    out.push(data(&chunk(&g, "", Some(finish.openai_reason()))));
                     if usage {
                         let mut last = chunk(&g, "", None);
                         last["choices"] = json!([]);
