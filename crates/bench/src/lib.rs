@@ -3,6 +3,7 @@
 pub mod engine;
 pub mod env;
 pub mod golden;
+pub mod quality;
 pub mod run;
 pub mod spec;
 pub mod stats;
