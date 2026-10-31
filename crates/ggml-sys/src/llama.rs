@@ -776,8 +776,9 @@ impl Context {
     pub fn logits_ith(&mut self, i: i32) -> Result<&[f32]> {
         self.check_output(i)?;
         let n = usize::try_from(self.model.n_vocab()).unwrap_or(0);
-        // SAFETY: live context; the index was validated against the last batch; a non-null result points at `n_vocab` floats owned by the
-        // context, valid until the next decode, which needs `&mut self` and so ends this borrow.
+        // SAFETY: live context; the index was validated against the last batch; a non-null
+        // result points at `n_vocab` floats owned by the context, valid until the next decode,
+        // which needs `&mut self` and so ends this borrow.
         unsafe {
             let p = sys::llama_get_logits_ith(self.ptr, i);
             if p.is_null() {

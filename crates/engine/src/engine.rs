@@ -133,10 +133,11 @@ impl Engine {
         let chunk = (ctx.n_batch() as usize).max(1);
         let batch = Batch::new(chunk);
 
-        let gpu_devices = llama::devices()
+        let devices = llama::devices();
+        let gpu_devices = devices
             .iter()
             .any(|d| matches!(d.kind, DeviceKind::Gpu | DeviceKind::IGpu));
-        let cuda = llama::devices().iter().any(|d| d.name.starts_with("CUDA"));
+        let cuda = devices.iter().any(|d| d.name.starts_with("CUDA"));
         let offloaded = placement.n_gpu_layers != 0 && gpu_devices;
         let graphs = placement.n_gpu_layers != 0
             && cuda
@@ -198,14 +199,14 @@ impl Engine {
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
-    fn span(&self, name: &'static str) -> Span {
-        if self.telemetry.is_some() {
-            match name {
-                "prefill" => tracing::info_span!("prefill"),
-                _ => tracing::info_span!("decode"),
-            }
-        } else {
+    /// Child span of the request span; none when telemetry is off.
+    fn span(&self, phase: Phase) -> Span {
+        if self.telemetry.is_none() {
             Span::none()
+        } else if phase == Phase::Prefill {
+            tracing::info_span!("prefill")
+        } else {
+            tracing::info_span!("decode")
         }
     }
 
@@ -340,7 +341,7 @@ impl Engine {
         // Prefill in n_batch chunks; logits only for the last prompt token.
         let mut prefill_steps = 0;
         {
-            let span = self.span("prefill");
+            let span = self.span(Phase::Prefill);
             let _e = span.enter();
             let n = prompt_tokens.len();
             let mut pos = 0;
@@ -365,7 +366,7 @@ impl Engine {
         let mut stop_reason = StopReason::MaxTokens;
         let mut pos = prompt_tokens.len() as i32;
         {
-            let span = self.span("decode");
+            let span = self.span(Phase::Decode);
             let _e = span.enter();
             for index in 0..max_tokens {
                 let candidates = if req.top_k_logits > 0 {
