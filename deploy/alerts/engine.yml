@@ -1,10 +1,12 @@
 # Component alerts for hard engine failures (docs/plan.md "Alerts"). SLO burn-rate alerts come in Phase 3a.
+# Client-caused outcomes of the gateway (cancelled, invalid_request, not_found, overloaded) are not engine failures;
+# overloaded has its own alert in gateway.yml.
 # Loaded by vmalert in docker-compose.yml; metric names follow -opentelemetry.usePrometheusNaming.
 groups:
   - name: tetraeder-engine
     rules:
       - alert: TetraederRequestsFailing
-        expr: sum by (error_type) (rate(gen_ai_server_request_duration_seconds_count{error_type!=""}[5m])) > 0
+        expr: sum by (error_type) (rate(gen_ai_server_request_duration_seconds_count{error_type!="", error_type!~"cancelled|invalid_request|not_found|overloaded"}[5m])) > 0
         for: 5m
         labels:
           severity: page

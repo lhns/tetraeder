@@ -318,6 +318,12 @@ async fn errors_use_the_openai_shape() {
             "invalid_request_error",
         ),
         (
+            // u32::MAX must not overflow the context check.
+            json!({"model": "fake", "messages": user("hi"), "max_tokens": 4294967295u32}),
+            400,
+            "invalid_request_error",
+        ),
+        (
             json!({"model": "fake", "messages": user("hi"), "tool_choice": "required"}),
             400,
             "invalid_request_error",
@@ -443,4 +449,52 @@ async fn stop_cancels_the_engine() {
     let (_, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
     assert_eq!(v["choices"][0]["message"]["content"], "Hello ");
     assert_eq!(cancelled.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn zero_max_tokens_is_rejected() {
+    let (app, _) = app(FakeEngine::fixed("x"));
+    for (path, body) in [
+        (
+            "/v1/chat/completions",
+            json!({"model": "fake", "messages": user("hi"), "max_tokens": 0}),
+        ),
+        (
+            "/v1/chat/completions",
+            json!({"model": "fake", "messages": user("hi"), "max_completion_tokens": 0}),
+        ),
+        (
+            "/v1/completions",
+            json!({"model": "fake", "prompt": "hi", "max_tokens": 0}),
+        ),
+    ] {
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 400, "{body} -> {v}");
+        assert_error(&v, "invalid_request_error");
+    }
+}
+
+#[tokio::test]
+async fn single_tool_call_cancels_the_engine() {
+    let script = format!("{WEATHER_CALL}\n{WEATHER_CALL}");
+    for (parallel, calls, cancelled) in [(false, 1, 1), (true, 2, 0)] {
+        let engine = FakeEngine::fixed(&script);
+        let cancelled_count = engine.cancelled.clone();
+        let (app, _) = app(engine);
+        let body = json!({"model": "fake", "messages": user("weather?"),
+                          "tools": [weather_tool_openai()], "parallel_tool_calls": parallel});
+        let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 200, "{v}");
+        let c = &v["choices"][0];
+        assert_eq!(c["finish_reason"], "tool_calls", "{v}");
+        assert_eq!(
+            c["message"]["tool_calls"].as_array().unwrap().len(),
+            calls,
+            "{v}"
+        );
+        assert_eq!(
+            cancelled_count.load(std::sync::atomic::Ordering::SeqCst),
+            cancelled
+        );
+    }
 }

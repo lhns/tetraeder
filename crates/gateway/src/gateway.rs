@@ -14,7 +14,7 @@ use crate::template::ChatTemplate;
 use crate::toolcall::{OutputParser, ToolFormat};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Gauge, Histogram, Meter};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -253,7 +253,12 @@ pub struct Gateway {
     metrics: Option<GatewayMetrics>,
     cost_sink: Option<Arc<dyn CostSink>>,
     models: Mutex<HashMap<String, Arc<ModelState>>>,
+    callers: Mutex<HashSet<String>>,
 }
+
+/// Distinct caller ids kept as metric label values; later ones count as `other`.
+const MAX_CALLERS: usize = 100;
+const MAX_CALLER_LEN: usize = 64;
 
 fn now_unix() -> u64 {
     SystemTime::now()
@@ -279,6 +284,7 @@ impl Gateway {
             metrics: None,
             cost_sink: None,
             models: Mutex::default(),
+            callers: Mutex::default(),
         }
     }
 
@@ -315,7 +321,7 @@ impl Gateway {
             return Ok(Arc::clone(s));
         }
         let info = self.model(id)?;
-        let vocab = self.engine.vocab(id).map_err(engine_err)?;
+        let vocab = self.engine.vocab(id).map_err(|e| self.engine_err(e))?;
         let (template, template_error) = match &info.chat_template {
             Some(src) => {
                 match ChatTemplate::new(src, info.bos_token.as_deref(), info.eos_token.as_deref()) {
@@ -349,7 +355,7 @@ impl Gateway {
         let toks = self
             .engine
             .tokenize(&spec.model, &text)
-            .map_err(engine_err)?;
+            .map_err(|e| self.engine_err(e))?;
         Ok(toks.len() as u32)
     }
 
@@ -422,8 +428,13 @@ impl Gateway {
         if let Err(e) = &res {
             record_error(&span, e.otel_type());
             if let Some(m) = &self.metrics {
+                // A model the engine does not know is client input: not a label value.
+                let model = match e {
+                    GatewayError::NotFound(_) => "unknown",
+                    _ => spec.model.as_str(),
+                };
                 m.genai
-                    .request_duration(started.elapsed(), &spec.model, Some(e.otel_type()));
+                    .request_duration(started.elapsed(), model, Some(e.otel_type()));
             }
         }
         res
@@ -442,7 +453,7 @@ impl Gateway {
         let prompt = self
             .engine
             .tokenize(&spec.model, &text)
-            .map_err(engine_err)?;
+            .map_err(|e| self.engine_err(e))?;
         let ctx = st.info.context_length;
         let n_prompt = prompt.len() as u32;
         if n_prompt >= ctx {
@@ -452,7 +463,12 @@ impl Gateway {
             )));
         }
         let max_tokens = match spec.max_tokens {
-            Some(m) if n_prompt + m > ctx => {
+            Some(0) => {
+                return Err(GatewayError::InvalidRequest(
+                    "max_tokens must be at least 1".into(),
+                ));
+            }
+            Some(m) if n_prompt.saturating_add(m) > ctx => {
                 return Err(GatewayError::InvalidRequest(format!(
                     "prompt ({n_prompt} tokens) plus max_tokens ({m}) exceeds the context length of '{}' ({ctx})",
                     spec.model
@@ -482,7 +498,7 @@ impl Gateway {
                 constraint,
                 cancel: cancel.clone(),
             })
-            .map_err(engine_err)?;
+            .map_err(|e| self.engine_err(e))?;
 
         let (tx, rx) = mpsc::channel(self.cfg.stream_buffer.max(1));
         let run = Run {
@@ -495,6 +511,11 @@ impl Gateway {
             prompt_tokens: n_prompt,
             vocab: Arc::clone(&st.vocab),
             parser,
+            single_call: matches!(
+                &spec.prompt,
+                Prompt::Chat { parallel_tool_calls: false, tools, tool_choice, .. }
+                    if !tools.is_empty() && *tool_choice != ToolChoice::None
+            ),
             stop: StopMatcher::new(spec.stop.clone()),
             cancel: cancel.clone(),
             span: span.clone(),
@@ -620,6 +641,29 @@ impl Gateway {
         }
     }
 
+    fn engine_err(&self, e: crate::engine::EngineError) -> GatewayError {
+        use crate::engine::EngineError as E;
+        match e {
+            E::ModelNotFound(m) => GatewayError::NotFound(format!("model '{m}' not found")),
+            E::Overloaded => GatewayError::Overloaded {
+                retry_after_secs: self.cfg.retry_after_secs,
+            },
+            E::Other(m) => GatewayError::Internal(m),
+        }
+    }
+
+    /// The caller as a metric label: the first `MAX_CALLERS` distinct ids, then `other`.
+    /// Callers are client-supplied until auth exists, so they must not grow the series count.
+    fn caller_label(&self, caller: &str) -> String {
+        let caller: String = caller.chars().take(MAX_CALLER_LEN).collect();
+        let mut seen = self.callers.lock().unwrap_or_else(|e| e.into_inner());
+        if seen.contains(&caller) || (seen.len() < MAX_CALLERS && seen.insert(caller.clone())) {
+            caller
+        } else {
+            "other".to_owned()
+        }
+    }
+
     /// Requests waiting for a slot.
     pub fn queue_depth(&self) -> usize {
         self.admission.waiting.load(Ordering::SeqCst)
@@ -628,17 +672,6 @@ impl Gateway {
 
 /// The output parser (chat only) and the sampling constraint of one request.
 type OutputSetup = (Option<OutputParser>, Option<Box<dyn TokenConstraint>>);
-
-fn engine_err(e: crate::engine::EngineError) -> GatewayError {
-    use crate::engine::EngineError as E;
-    match e {
-        E::ModelNotFound(m) => GatewayError::NotFound(format!("model '{m}' not found")),
-        E::Overloaded => GatewayError::Overloaded {
-            retry_after_secs: 1,
-        },
-        E::Other(m) => GatewayError::Internal(m),
-    }
-}
 
 /// State of one generation's output pump.
 struct Run {
@@ -651,6 +684,8 @@ struct Run {
     prompt_tokens: u32,
     vocab: Arc<Vocab>,
     parser: Option<OutputParser>,
+    /// Parallel calls are off: generation ends after the first complete tool call.
+    single_call: bool,
     stop: StopMatcher,
     cancel: CancellationToken,
     span: tracing::Span,
@@ -681,6 +716,7 @@ impl Run {
         let mut last = self.started;
         let mut stop_hit: Option<String> = None;
         let mut saw_tool_call = false;
+        let mut call_done = false;
         let mut stats = EngineStats::default();
         let mut buf = Vec::new();
 
@@ -693,7 +729,7 @@ impl Run {
             buf.clear();
             match ev {
                 GenEvent::Token(id) => {
-                    if stop_hit.is_some() {
+                    if stop_hit.is_some() || call_done {
                         continue;
                     }
                     let now = Instant::now();
@@ -719,21 +755,23 @@ impl Run {
                 }
                 GenEvent::Finished { reason, stats: s } => {
                     stats = s;
-                    if reason == FinishReason::Cancelled && stop_hit.is_none() {
+                    let ended_early = stop_hit.is_some() || call_done;
+                    if reason == FinishReason::Cancelled && !ended_early {
                         break Outcome::ClientGone;
                     }
-                    if stop_hit.is_none() {
+                    if !ended_early {
                         let (emit, _) = self.stop.push(&utf8.finish());
                         self.segments(&emit, &mut buf);
                         let rest = self.stop.finish();
                         self.segments(&rest, &mut buf);
                     }
-                    if let Some(p) = &mut self.parser {
+                    if let Some(p) = self.parser.as_mut().filter(|_| !call_done) {
                         buf.extend(p.finish());
                     }
                     saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
                     let finish = match (stop_hit.take(), reason) {
                         (Some(s), _) => Finish::StopSequence(s),
+                        _ if call_done => Finish::ToolCalls,
                         (None, FinishReason::Length) => Finish::Length,
                         _ if saw_tool_call => Finish::ToolCalls,
                         _ => Finish::Stop,
@@ -751,6 +789,10 @@ impl Run {
             if !self.send_all(&tx, &mut buf).await {
                 self.cancel.cancel();
                 break Outcome::ClientGone;
+            }
+            if self.single_call && saw_tool_call && !call_done {
+                call_done = true;
+                self.cancel.cancel();
             }
         };
 
@@ -772,7 +814,7 @@ impl Run {
         let error_type = match &outcome {
             Outcome::Done(finish) => {
                 self.span
-                    .record("gen_ai.response.finish_reasons", finish_name(finish));
+                    .record("gen_ai.response.finish_reasons", finish.openai_reason());
                 None
             }
             Outcome::ClientGone => Some("cancelled"),
@@ -846,7 +888,7 @@ impl Run {
             let attrs = |res: &'static str| {
                 [
                     KeyValue::new(tetraeder_telemetry::attr::MODEL, self.model.clone()),
-                    KeyValue::new(attr::CALLER, self.caller.clone()),
+                    KeyValue::new(attr::CALLER, self.gw.caller_label(&self.caller)),
                     KeyValue::new(attr::RESOURCE, res),
                 ]
             };
@@ -880,14 +922,5 @@ fn record_error(span: &tracing::Span, error_type: &'static str) {
     span.record("error.type", error_type);
     if error_type == "internal" {
         span.record("otel.status_code", "ERROR");
-    }
-}
-
-/// `gen_ai.response.finish_reasons` value (OpenAI vocabulary, as the semantic conventions use).
-fn finish_name(f: &Finish) -> &'static str {
-    match f {
-        Finish::Stop | Finish::StopSequence(_) => "stop",
-        Finish::Length => "length",
-        Finish::ToolCalls => "tool_calls",
     }
 }

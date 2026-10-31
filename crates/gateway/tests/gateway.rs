@@ -310,3 +310,63 @@ async fn gen_ai_metrics_are_recorded() {
         );
     }
 }
+
+#[tokio::test]
+async fn metric_labels_stay_bounded() {
+    let exp = InMemoryMetricExporter::default();
+    let mp = SdkMeterProvider::builder()
+        .with_reader(PeriodicReader::builder(exp.clone()).build())
+        .build();
+    let gw = Arc::new(
+        Gateway::new(Arc::new(FakeEngine::fixed("a")), GatewayConfig::default())
+            .with_meter(&mp.meter("test")),
+    );
+    let app = router(gw);
+    // Unknown model names come from the client; they must not become label values.
+    let (s, _, _) = post(
+        &app,
+        "/v1/chat/completions",
+        &json!({"model": "random-name-1", "messages": [{"role": "user", "content": "hi"}]}),
+        false,
+    )
+    .await;
+    assert_eq!(s, 404);
+    // So must caller ids.
+    for i in 0..150 {
+        let mut body = chat(false);
+        body["user"] = json!(format!("caller-{i}"));
+        let (s, _, _) = post(&app, "/v1/chat/completions", &body, false).await;
+        assert_eq!(s, 200);
+    }
+    mp.force_flush().unwrap();
+
+    let dur = points(&exp, "gen_ai.server.request.duration");
+    assert!(
+        !dur.iter()
+            .any(|(a, _)| has(a, "gen_ai.request.model", "random-name-1")),
+        "{dur:?}"
+    );
+    let cost = points(&exp, "tetraeder.request.cost");
+    let callers: std::collections::HashSet<&str> = cost
+        .iter()
+        .flat_map(|(a, _)| a.iter())
+        .filter(|(k, _)| k == "tetraeder.caller")
+        .map(|(_, v)| v.as_str())
+        .collect();
+    assert!(callers.len() <= 101, "{} callers", callers.len());
+    assert!(callers.contains("other"), "{callers:?}");
+}
+
+#[tokio::test]
+async fn engine_overload_uses_the_configured_retry_after() {
+    let mut engine = FakeEngine::fixed("a");
+    engine.reject = Some(tetraeder_gateway::engine::EngineError::Overloaded);
+    let cfg = GatewayConfig {
+        retry_after_secs: 7,
+        ..GatewayConfig::default()
+    };
+    let (app, _) = app_with(engine, cfg);
+    let (s, h, _) = post(&app, "/v1/chat/completions", &chat(false), false).await;
+    assert_eq!(s, 429);
+    assert_eq!(h["retry-after"], "7");
+}

@@ -48,6 +48,8 @@ pub struct FakeEngine {
     pub token_delay: Duration,
     /// Channel capacity per request.
     pub channel_capacity: usize,
+    /// Make `generate` fail with this error.
+    pub reject: Option<EngineError>,
     /// Send `GenEvent::Error` after this many tokens.
     pub fail_after: Option<usize>,
     /// Stats the engine reports besides token counts.
@@ -93,6 +95,7 @@ impl FakeEngine {
             script: Arc::new(script),
             token_delay: Duration::ZERO,
             channel_capacity: 4,
+            reject: None,
             fail_after: None,
             gpu_seconds: Some(0.5),
             bytes_streamed: Some(1024),
@@ -165,6 +168,9 @@ impl Engine for FakeEngine {
 
     fn generate(&self, mut req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError> {
         self.check(&req.model)?;
+        if let Some(e) = &self.reject {
+            return Err(e.clone());
+        }
         let prompt = self.decode(&req.prompt);
         self.prompts.lock().unwrap().push(prompt.clone());
         self.started.fetch_add(1, Ordering::SeqCst);
