@@ -463,6 +463,11 @@ impl Gateway {
             )));
         }
         let max_tokens = match spec.max_tokens {
+            Some(0) => {
+                return Err(GatewayError::InvalidRequest(
+                    "max_tokens must be at least 1".into(),
+                ));
+            }
             Some(m) if n_prompt.saturating_add(m) > ctx => {
                 return Err(GatewayError::InvalidRequest(format!(
                     "prompt ({n_prompt} tokens) plus max_tokens ({m}) exceeds the context length of '{}' ({ctx})",

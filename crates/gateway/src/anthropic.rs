@@ -112,6 +112,10 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
                             text.push_str(b.get("text").and_then(Value::as_str).unwrap_or(""))
                         }
                         Some("tool_result") => {
+                            // Keep the order of the blocks: earlier text is its own message.
+                            if !text.is_empty() {
+                                out.push(ChatMessage::new("user", std::mem::take(&mut text)));
+                            }
                             let id = b
                                 .get("tool_use_id")
                                 .and_then(Value::as_str)

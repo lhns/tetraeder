@@ -386,3 +386,36 @@ async fn models_in_anthropic_shape() {
     assert_eq!(s, 404);
     assert_error(&e, "not_found_error", &h);
 }
+
+#[tokio::test]
+async fn text_before_tool_result_keeps_its_order() {
+    let engine = FakeEngine::fixed("ok");
+    let prompts = engine.prompts.clone();
+    let (app, _) = app(engine);
+    let body = json!({"model": "fake", "max_tokens": 64, "tools": [weather_tool_anthropic()], "messages": [
+        {"role": "user", "content": "weather?"},
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": {"city": "Paris"}}]},
+        {"role": "user", "content": [
+            {"type": "text", "text": "BEFORE-RESULT"},
+            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "sunny"}]},
+    ]});
+    let (s, _, v) = post(&app, "/v1/messages", &body, true).await;
+    assert_eq!(s, 200, "{v}");
+    let p = prompts.lock().unwrap()[0].clone();
+    let (a, b) = (
+        p.find("BEFORE-RESULT").unwrap(),
+        p.find("<tool_response>").unwrap(),
+    );
+    assert!(a < b, "{p}");
+}
+
+#[tokio::test]
+async fn zero_max_tokens_is_rejected() {
+    let (app, _) = app(FakeEngine::fixed("x"));
+    let mut body = req("hi");
+    body["max_tokens"] = json!(0);
+    let (s, h, v) = post(&app, "/v1/messages", &body, true).await;
+    assert_eq!(s, 400, "{v}");
+    assert_error(&v, "invalid_request_error", &h);
+}

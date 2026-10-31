@@ -450,3 +450,26 @@ async fn stop_cancels_the_engine() {
     assert_eq!(v["choices"][0]["message"]["content"], "Hello ");
     assert_eq!(cancelled.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn zero_max_tokens_is_rejected() {
+    let (app, _) = app(FakeEngine::fixed("x"));
+    for (path, body) in [
+        (
+            "/v1/chat/completions",
+            json!({"model": "fake", "messages": user("hi"), "max_tokens": 0}),
+        ),
+        (
+            "/v1/chat/completions",
+            json!({"model": "fake", "messages": user("hi"), "max_completion_tokens": 0}),
+        ),
+        (
+            "/v1/completions",
+            json!({"model": "fake", "prompt": "hi", "max_tokens": 0}),
+        ),
+    ] {
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 400, "{body} -> {v}");
+        assert_error(&v, "invalid_request_error");
+    }
+}

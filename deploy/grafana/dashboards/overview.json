@@ -241,38 +241,6 @@
       ]
     },
     {
-      "id": 7,
-      "title": "GPU utilization",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "victoriametrics"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 16,
-        "w": 8,
-        "h": 8
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "tetraeder_device_busy_ratio{tetraeder_device=~\"gpu.*\"}",
-          "legendFormat": "{{tetraeder_device}}",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "victoriametrics"
-          }
-        }
-      ]
-    },
-    {
       "id": 8,
       "title": "GPU power",
       "type": "timeseries",
@@ -281,9 +249,9 @@
         "uid": "victoriametrics"
       },
       "gridPos": {
-        "x": 8,
+        "x": 0,
         "y": 16,
-        "w": 8,
+        "w": 12,
         "h": 8
       },
       "fieldConfig": {
@@ -313,9 +281,9 @@
         "uid": "victoriametrics"
       },
       "gridPos": {
-        "x": 16,
+        "x": 12,
         "y": 16,
-        "w": 8,
+        "w": 12,
         "h": 8
       },
       "fieldConfig": {
