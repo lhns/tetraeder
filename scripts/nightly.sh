@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Nightly job, runs ON the Vast box (started detached by `taxameter nightly` via box.sh run).
-# Stages: cuda check, cargo build, cargo test, bench env snapshot (env.json), benchmark spec (bench/spec/phase0.toml).
+# Stages: cuda check, cargo build, cargo test, parity (greedy golden check, parity.json), bench env snapshot (env.json),
+# benchmark spec (bench/spec/phase0.toml; BENCH_SPEC=phase2-baseline selects the Phase 2 llama.cpp baseline instead).
 # Always ends with bench/results/<date>/DONE (content: rc=N) and a final `NIGHTLY_DONE rc=N` log line, even on
 # failure or signal, so taxameter can verify the fetch and read the verdict.
 #
@@ -8,12 +9,17 @@
 #   from the bench: 0 ok   1 regression beyond the noise band   2 error or skipped pair   3 inconclusive (noisy box)
 #   own: 10 build failed   11 tests failed   12 env snapshot failed   13 CUDA unusable
 #   124 a stage hit its time limit   143 killed by a signal
-# Time limits (BUILD_MIN + TEST_MIN + BENCH_MIN stay well under taxameter's nightly_wait_min of 110).
+# Time limits (BUILD_MIN + TEST_MIN + PARITY_MIN + BENCH_MIN stay under taxameter's nightly_wait_min of 110 for phase0;
+# phase2-baseline needs a larger nightly_wait_min).
 BUILD_MIN="${BUILD_MIN:-40}"
 TEST_MIN="${TEST_MIN:-15}"
-BENCH_MIN="${BENCH_MIN:-45}"  # the phase0 spec took 31 min on an RTX 3090 box
+PARITY_MIN="${PARITY_MIN:-5}"
+BENCH_SPEC="${BENCH_SPEC:-phase0}"  # name of a spec in bench/spec/
+case "$BENCH_SPEC" in phase0) bench_default=45;; phase2-baseline) bench_default=60;; *) bench_default=45;; esac
+BENCH_MIN="${BENCH_MIN:-$bench_default}"  # the phase0 spec took 31 min on an RTX 3090 box; phase2-baseline is estimated at 42
 exec 8> /root/tetraeder_nightly.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
+[ -f "bench/spec/$BENCH_SPEC.toml" ] || { echo "no spec bench/spec/$BENCH_SPEC.toml"; exit 2; }
 # Image toolchain lives in /opt/cargo (RUSTUP_HOME/CARGO_HOME); a rustup under $HOME is the fallback
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH"
@@ -64,6 +70,15 @@ stage build "$BUILD_MIN" cargo build --release --workspace --features "$cuda_fea
 # --release reuses the ggml build of the stage above (a debug test build compiled ggml again, 5.5 min)
 stage test "$TEST_MIN" cargo test --release --workspace --features "$cuda_feat" || fail_stage 11 $?
 
+parity_check() {  # quality next to speed: greedy golden check of the Tetraeder build against llama-simple (ADR 0026).
+  # Writes $date_dir/parity.json; the bench attaches it to every Tetraeder gate. Its exit code is not the night's:
+  # a failed or missing check makes the gate pair an error there. A stale file from an earlier run must never count.
+  rm -f "$date_dir/parity.json"
+  timeout -k 30 "${PARITY_MIN}m" target/release/tetraeder-bench parity "bench/spec/$BENCH_SPEC.toml" --out-dir "$date_dir" \
+    --llama-simple "${LLAMA_SIMPLE:-/opt/llama.cpp/bin/llama-simple}" --models-dir "${TETRAEDER_MODELS_DIR:-.hf_cache}"
+}
+stage parity 0 parity_check || echo "parity rc=$? (Tetraeder gates will report an error)"
+
 bench_env() {  # shell-side environment snapshot next to the harness results (the harness also records its own)
   q() { nvidia-smi --query-gpu="$1" --format=csv,noheader 2> /dev/null | head -1 | sed 's/"//g'; }
   # Container CPU quota in cores (cgroup v2 cpu.max, else v1 cfs), null if unlimited. nproc ignores the quota, so
@@ -102,10 +117,10 @@ EOJ
 }
 stage bench-env 0 bench_env || rc=12
 
-bench_spec() {  # paired llama.cpp baseline run; writes $date_dir/phase0-<HHMMSS>.json; exit codes above
+bench_spec() {  # paired llama.cpp baseline run; writes $date_dir/$BENCH_SPEC-<HHMMSS>.json; exit codes above
   # llama-bench lives in /opt/llama.cpp/bin on the box (LLAMA_BENCH overrides). --strict: a pair skipped for a
   # missing binary or model fails the night, so a run that measured nothing never passes.
-  timeout -k 30 "${BENCH_MIN}m" target/release/tetraeder-bench run bench/spec/phase0.toml --strict --out-dir "$date_dir" \
+  timeout -k 30 "${BENCH_MIN}m" target/release/tetraeder-bench run "bench/spec/$BENCH_SPEC.toml" --strict --out-dir "$date_dir" \
     --llama-bench "${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}" --models-dir "${TETRAEDER_MODELS_DIR:-.hf_cache}"
 }
 stage bench 0 bench_spec  # the time limit is inside bench_spec (timeout cannot run a function)
