@@ -76,7 +76,7 @@ pub fn libllama_reference(prompt: &[i32], n_greedy: usize) -> Reference {
     ctx.decode(&batch).unwrap();
     let mut prompt_logits = Vec::new();
     for i in 0..prompt.len() {
-        pub prompt_logits.extend_from_slice(ctx.logits_ith(i as i32).unwrap());
+        prompt_logits.extend_from_slice(ctx.logits_ith(i as i32).unwrap());
     }
     let mut greedy = Vec::new();
     let mut next = argmax(&prompt_logits[(prompt.len() - 1) * n_vocab..]) as i32;
@@ -91,11 +91,10 @@ pub fn libllama_reference(prompt: &[i32], n_greedy: usize) -> Reference {
     }
     Reference {
         n_vocab,
-        pub prompt_logits,
+        prompt_logits,
         greedy,
     }
 }
-
 
 /// Prefill of `PROMPT` (logits of every position), then `N_GREEDY` greedy decode steps, against
 /// the reference. Panics on a difference above `tol` in a reference top-k logit or in the

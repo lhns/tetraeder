@@ -17,7 +17,9 @@ cuda = ["tetraeder-ggml-sys/cuda"]
 
 [dependencies]
 tetraeder-ggml-sys = { path = "../ggml-sys" }
+tetraeder-memory = { path = "../memory" }
 tetraeder-plan = { path = "../plan" }
+tetraeder-telemetry = { path = "../telemetry" }
 thiserror = "2"
 tracing = "0.1"
 
@@ -25,4 +27,3 @@ tracing = "0.1"
 toml = "0.8"
 opentelemetry = "0.33.1"
 opentelemetry_sdk = { version = "0.33.1", features = ["testing"] }
-tetraeder-telemetry = { path = "../telemetry" }

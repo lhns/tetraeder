@@ -364,10 +364,9 @@ fn cpu_telemetry_reports_steps_and_cache() {
             .copied()
             .unwrap_or(0)
     };
-    let (h, mi) = stats
-        .layers
-        .iter()
-        .fold((0, 0), |a, l| (a.0 + l.compute.hits, a.1 + l.compute.misses));
+    let (h, mi) = stats.layers.iter().fold((0, 0), |a, l| {
+        (a.0 + l.compute.hits, a.1 + l.compute.misses)
+    });
     assert_eq!((sum("vram", "hit"), sum("vram", "miss")), (h, mi));
     let (h, mi) = stats.layers.iter().fold((0, 0), |a, l| {
         let r = l.ram.unwrap();

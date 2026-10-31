@@ -644,6 +644,39 @@
           }
         }
       ]
+    },
+    {
+      "id": 20,
+      "title": "Segments per step",
+      "description": "Mean graph segments per engine step; n_layer + 1 for the own builder (ADR 0030), 1 for libllama.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_phase) (rate(tetraeder_step_segments_sum[$__rate_interval])) / sum by (tetraeder_phase) (rate(tetraeder_step_segments_count[$__rate_interval]))",
+          "legendFormat": "{{tetraeder_phase}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

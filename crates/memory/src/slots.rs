@@ -171,6 +171,14 @@ impl LayerSlots {
         }
     }
 
+    /// Forget every resident (a load failed and the slots hold no valid weights). Pins and
+    /// statistics stay.
+    pub fn clear(&mut self) {
+        self.table.clear();
+        self.owner.fill(None);
+        self.stamp.fill(0);
+    }
+
     /// Pin these experts (at most the active slot count; extra entries and repeats are
     /// ignored). Experts that were pinned and are not any more become ordinary LRU entries.
     pub fn set_hot_set(&mut self, hot: &[u32]) -> Change {

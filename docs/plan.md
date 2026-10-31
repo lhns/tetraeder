@@ -436,6 +436,7 @@ Every layer emits OpenTelemetry metrics, traces and logs from the first commit; 
 | `gen_ai.server.request.duration` | histogram | `gen_ai.request.model`, `error.type` | SLOs |
 | `tetraeder.tokens` | counter | model, direction (input, output), cache (hit, miss) | throughput, cost (no server token counter in semconv yet) |
 | `tetraeder.step.duration` | histogram | phase (prefill, decode), stage, graphs (on, off) | detector, planner |
+| `tetraeder.step.segments` | histogram | phase, stage, graphs | segments-per-step panel (ADR 0030, 0033) |
 | `tetraeder.op.duration` | histogram, calibration runs only | op, device, backend, batch bucket | cost model |
 | `tetraeder.device.busy` | gauge (fraction) | device | detector |
 | `tetraeder.device.throttle` | gauge | device, reason (thermal, power, clocks) | detector (checked first) |

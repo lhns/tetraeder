@@ -226,6 +226,7 @@ mod tests {
             graphs: true,
             duration: Duration::from_millis(ms),
             tokens: 1,
+            segments: 1,
         }
     }
 

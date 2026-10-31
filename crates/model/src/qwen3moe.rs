@@ -5,17 +5,26 @@
 //! it ends at the top-k. The host reads the ids, maps experts to slots (identity for now,
 //! [`map_experts`]) and passes the mapped ids to the next segment through a state tensor.
 //! Activations between segments stay in backend memory, in two alternating state slots.
+//!
+//! With fewer expert slots than experts (ADR 0033) the expert tensors are slot tensors; between
+//! segments the [`Streamer`] makes the routed experts resident and the host writes slot ids.
 
+use crate::experts::{ExpertStats, RoutingStep, Streamer};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, OwnedTensor, RopeParams, Sched, Tensor, Type,
 };
+use tetraeder_memory::IoOptions;
+use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_plan::ModelDesc;
+use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Instant;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
@@ -40,11 +49,36 @@ pub enum BackendChoice {
     Gpu { index: usize },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub struct LoadOptions {
     pub backend: BackendChoice,
     /// KV cache length in tokens (rounded up to a multiple of 256).
     pub n_ctx: usize,
+    /// Expert slots per MoE layer on the compute backend (ADR 0033). `None`, or at least the
+    /// expert count: every expert is loaded at load time and stays resident. Fewer: experts
+    /// are read from the GGUF on demand.
+    pub expert_slots: Option<usize>,
+    /// Host-memory expert slots per layer between the file and the compute slots. Only with
+    /// fewer compute slots than experts.
+    pub ram_slots: Option<usize>,
+    /// Direct I/O settings for expert reads.
+    pub io: IoOptions,
+    /// Step and expert cache metrics go here when set.
+    pub telemetry: Option<Arc<Telemetry>>,
+    /// Keep the router's choices (see [`Qwen3Moe::take_routing_log`]); off by default.
+    pub record_routing: bool,
+}
+
+impl std::fmt::Debug for LoadOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoadOptions")
+            .field("backend", &self.backend)
+            .field("n_ctx", &self.n_ctx)
+            .field("expert_slots", &self.expert_slots)
+            .field("ram_slots", &self.ram_slots)
+            .field("telemetry", &self.telemetry.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl LoadOptions {
@@ -52,6 +86,11 @@ impl LoadOptions {
         Self {
             backend,
             n_ctx: 2048,
+            expert_slots: None,
+            ram_slots: None,
+            io: IoOptions::default(),
+            telemetry: None,
+            record_routing: false,
         }
     }
 }
@@ -76,9 +115,20 @@ struct Layer {
     k_norm: OwnedTensor,
     ffn_norm: OwnedTensor,
     gate_inp: OwnedTensor,
+    /// Stacked expert weights, or slot tensors with fewer entries when streaming.
     gate_exps: OwnedTensor,
     up_exps: OwnedTensor,
     down_exps: OwnedTensor,
+}
+
+impl Layer {
+    fn exps(&self) -> [Tensor<'_>; 3] {
+        [
+            self.gate_exps.get(),
+            self.up_exps.get(),
+            self.down_exps.get(),
+        ]
+    }
 }
 
 struct Weights {
@@ -106,6 +156,8 @@ struct Slot {
     ids: OwnedTensor,
     /// The ids the expert matmuls use, written by the host.
     ids_map: OwnedTensor,
+    /// Sum of the expert FFN passes when a layer step needed more than one (ADR 0033).
+    acc: OwnedTensor,
 }
 
 /// Per-step inputs and slots; reallocated when the token count or the padded KV length changes.
@@ -118,7 +170,7 @@ struct State {
     slots: [Slot; 2],
 }
 
-/// A Qwen3 MoE model with all experts resident in backend memory.
+/// A Qwen3 MoE model. The experts are all resident in backend memory or streamed through slots.
 pub struct Qwen3Moe {
     file: ModelFile,
     sched: Sched,
@@ -128,6 +180,11 @@ pub struct Qwen3Moe {
     state: Option<State>,
     n_past: usize,
     segments_run: u64,
+    passes_run: u64,
+    streamer: Option<Streamer>,
+    metrics: MemoryMetrics,
+    telemetry: Option<Arc<Telemetry>>,
+    routing: Option<Vec<RoutingStep>>,
 }
 
 impl std::fmt::Debug for Qwen3Moe {
@@ -138,14 +195,6 @@ impl std::fmt::Debug for Qwen3Moe {
             .field("n_past", &self.n_past)
             .finish()
     }
-}
-
-/// Maps the experts the router chose to the tensor rows the expert matmuls read. With all
-/// experts resident that is the identity; the slot cache (ADR 0031) replaces it with the
-/// expert-to-slot lookup, after starting loads for misses.
-fn map_experts(_layer: usize, chosen: &[i32], mapped: &mut Vec<i32>) {
-    mapped.clear();
-    mapped.extend_from_slice(chosen);
 }
 
 fn f16_bits_tensor_bytes(bits: &[u16]) -> Vec<u8> {
@@ -173,8 +222,32 @@ impl Qwen3Moe {
             }
         };
         let sched = Sched::new(&backends, SEGMENT_NODES * 4, false)?;
-        let weights = load_weights(&file, &primary)?;
+        let slots = match opts.expert_slots {
+            Some(0) => {
+                return Err(ModelError::Invalid(
+                    "expert_slots must be at least 1".into(),
+                ));
+            }
+            Some(n) if n < h.n_expert as usize => Some(n),
+            _ => None,
+        };
+        let weights = load_weights(&file, &primary, slots)?;
         let kv = alloc_kv(h, pad(opts.n_ctx.max(1), KV_PAD), &primary)?;
+        let metrics = MemoryMetrics::new(opts.telemetry.clone());
+        let streamer = slots
+            .map(|n| {
+                let tensors: Vec<_> = weights.layers.iter().map(Layer::exps).collect();
+                Streamer::new(
+                    &file,
+                    &tensors,
+                    n,
+                    opts.ram_slots.map(|r| r.max(1)),
+                    opts.io,
+                    metrics.clone(),
+                    primary.name().to_string(),
+                )
+            })
+            .transpose()?;
         tracing::debug!(
             backend = primary.name(),
             n_layer = h.n_layer,
@@ -190,6 +263,11 @@ impl Qwen3Moe {
             state: None,
             n_past: 0,
             segments_run: 0,
+            passes_run: 0,
+            streamer,
+            metrics,
+            telemetry: opts.telemetry.clone(),
+            routing: opts.record_routing.then(Vec::new),
         })
     }
 
@@ -224,6 +302,26 @@ impl Qwen3Moe {
         self.segments_run
     }
 
+    /// Extra expert FFN graphs run because a layer step needed more distinct experts than
+    /// there are slots (ADR 0033).
+    pub fn overflow_passes(&self) -> u64 {
+        self.passes_run
+    }
+
+    /// Expert cache and read counters; `None` when every expert is resident.
+    pub fn expert_stats(&self) -> Option<ExpertStats> {
+        self.streamer.as_ref().map(Streamer::stats)
+    }
+
+    /// The routing recorded since the last call (empty unless `record_routing` is set), one
+    /// entry per layer step in execution order.
+    pub fn take_routing_log(&mut self) -> Vec<RoutingStep> {
+        self.routing
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
     /// Forgets the KV cache; the next `eval` starts at position 0.
     pub fn reset(&mut self) {
         self.n_past = 0;
@@ -242,6 +340,7 @@ impl Qwen3Moe {
     }
 
     fn run(&mut self, tokens: &[i32], last_only: bool) -> Result<Vec<f32>> {
+        let t0 = Instant::now();
         let h = self.file.hparams.clone();
         let n = tokens.len();
         if n == 0 {
@@ -281,6 +380,8 @@ impl Qwen3Moe {
 
         let mut mapped = Vec::new();
         let mut logits = Vec::new();
+        // The previous layer step ran in several passes and left the FFN sum in `acc`.
+        let mut from_acc = false;
         for seg in 0..=h.n_layer as usize {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
             let (graph, out) = build_segment(
@@ -292,7 +393,9 @@ impl Qwen3Moe {
                 seg,
                 self.n_past,
                 last_only,
+                from_acc,
             );
+            from_acc = false;
             self.sched.alloc_graph(&graph)?;
             self.sched.compute(&graph)?;
             self.segments_run += 1;
@@ -302,30 +405,107 @@ impl Qwen3Moe {
             if seg < h.n_layer as usize {
                 let slot = &st.slots[seg % 2];
                 let chosen = slot.ids.get().get_i32()?;
-                map_experts(seg, &chosen, &mut mapped);
-                slot.ids_map.get().set_i32(&mapped)?;
+                if let Some(log) = &mut self.routing {
+                    log.push(RoutingStep {
+                        layer: seg,
+                        ids: chosen.clone(),
+                    });
+                }
+                let Some(streamer) = &mut self.streamer else {
+                    // All experts resident: the router's ids are the tensor rows.
+                    self.metrics.layer_step(true);
+                    slot.ids_map.get().set_i32(&chosen)?;
+                    continue;
+                };
+                let layer = &self.weights.layers[seg];
+                let chunks = streamer.plan(seg, &chosen)?;
+                if let [chunk] = chunks.as_slice() {
+                    let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
+                    map_chunk(&chosen, chunk, &slots, &mut mapped, None);
+                    slot.ids_map.get().set_i32(&mapped)?;
+                    continue;
+                }
+                // More distinct experts than slots: one FFN pass per chunk, summed (ADR 0033).
+                let weights = slot.w.get().get_f32()?;
+                let mut masked = Vec::new();
+                for (pass, chunk) in chunks.iter().enumerate() {
+                    let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
+                    masked.clone_from(&weights);
+                    map_chunk(&chosen, chunk, &slots, &mut mapped, Some(&mut masked));
+                    slot.ids_map.get().set_i32(&mapped)?;
+                    slot.w.get().set_f32(&masked)?;
+                    let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
+                    let graph = ffn_pass(&h, &ctx, layer, slot, pass == 0);
+                    self.sched.alloc_graph(&graph)?;
+                    self.sched.compute(&graph)?;
+                    self.passes_run += 1;
+                }
+                from_acc = true;
             }
         }
         self.n_past += n;
+        if let Some(t) = &self.telemetry {
+            t.record_step(StepSample {
+                phase: if n > 1 { Phase::Prefill } else { Phase::Decode },
+                stage: 0,
+                graphs: false,
+                duration: t0.elapsed(),
+                tokens: n as u32,
+                segments: h.n_layer + 1,
+            });
+        }
         Ok(logits)
     }
 }
 
-fn load_weights(file: &ModelFile, backend: &Backend) -> Result<Weights> {
+/// Writes into `mapped` the slot of each chosen expert. Experts outside `chunk` (they belong to
+/// another pass) point at the first slot of the chunk and, in `masked`, get router weight 0 so
+/// they add nothing.
+fn map_chunk(
+    chosen: &[i32],
+    chunk: &[u32],
+    slots: &[u32],
+    mapped: &mut Vec<i32>,
+    mut masked: Option<&mut Vec<f32>>,
+) {
+    let slot_of = |e: i32| chunk.iter().position(|&c| c as i32 == e).map(|i| slots[i]);
+    mapped.clear();
+    for (i, &e) in chosen.iter().enumerate() {
+        match slot_of(e) {
+            Some(s) => mapped.push(s as i32),
+            None => {
+                mapped.push(slots[0] as i32);
+                if let Some(m) = masked.as_deref_mut() {
+                    m[i] = 0.0;
+                }
+            }
+        }
+    }
+}
+
+/// With `slots`, the expert tensors have that many entries and are left empty (zeros) for the
+/// streamer to fill; everything else is read from the file.
+fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Result<Weights> {
     let h = &file.hparams;
     let n_tensors = 3 + h.n_layer as usize * 12;
     let ctx = Rc::new(Context::new(n_tensors + 4, 0)?);
     let mut loaded: Vec<(OwnedTensor, u64, u64)> = Vec::new();
     let mut make = |name: &str| -> Result<OwnedTensor> {
         let info = file.gguf.tensor(name)?;
-        let ne: Vec<i64> = info.ne.iter().map(|&x| x as i64).collect();
+        let mut ne: Vec<i64> = info.ne.iter().map(|&x| x as i64).collect();
+        let streamed = slots.filter(|_| name.contains("_exps."));
+        if let Some(n) = streamed {
+            ne[2] = n as i64;
+        }
         let nd = ne.iter().rposition(|&x| x != 1).map_or(1, |i| i + 1);
         let t = ctx.new_persistent(info.ty, &ne[..nd]);
         t.get().set_name(name);
-        if t.get().nbytes() as u64 != info.nbytes {
-            return Err(ModelError::Invalid(format!("size mismatch for `{name}`")));
+        if streamed.is_none() {
+            if t.get().nbytes() as u64 != info.nbytes {
+                return Err(ModelError::Invalid(format!("size mismatch for `{name}`")));
+            }
+            loaded.push((t.clone(), info.offset, info.nbytes));
         }
-        loaded.push((t.clone(), info.offset, info.nbytes));
         Ok(t)
     };
     let tok_embd = make(names::TOK_EMBD)?;
@@ -354,6 +534,11 @@ fn load_weights(file: &ModelFile, backend: &Backend) -> Result<Weights> {
         });
     }
     ctx.alloc_tensors(backend)?;
+    if slots.is_some() {
+        // A slot that is never loaded must still hold finite weights: an overflow pass runs
+        // the matmuls of unused slots with router weight 0, and 0 * NaN is NaN.
+        ctx.clear_buffer(0);
+    }
     let mut f = std::fs::File::open(&file.path)?;
     let mut buf = vec![0u8; 16 << 20];
     for (t, offset, nbytes) in loaded {
@@ -405,6 +590,7 @@ fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<
             w: t(Type::F32, &[1, nu, nt], "weights"),
             ids: t(Type::I32, &[nu, nt], "ids"),
             ids_map: t(Type::I32, &[nu, nt], "ids_mapped"),
+            acc: t(Type::F32, &[ne, nt], "moe_acc"),
         }
     };
     let state = State {
@@ -430,6 +616,7 @@ fn build_segment<'a>(
     seg: usize,
     n_past: usize,
     last_only: bool,
+    from_acc: bool,
 ) -> (Graph<'a>, Option<Tensor<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
     let n_layer = h.n_layer as usize;
@@ -438,7 +625,11 @@ fn build_segment<'a>(
         ctx.get_rows(w.tok_embd.get(), st.tokens.get())
     } else {
         let s = &st.slots[(seg - 1) % 2];
-        let moe = moe_ffn(h, ctx, &w.layers[seg - 1], s);
+        let moe = if from_acc {
+            s.acc.get()
+        } else {
+            moe_ffn(h, ctx, &w.layers[seg - 1], s)
+        };
         ctx.add(moe, s.resid.get())
     };
 
@@ -531,6 +722,22 @@ fn attention_and_router<'a>(
     let sum = ctx.clamp(ctx.sum_rows(sel), 6.103_515_6e-5, f32::INFINITY);
     let weights = ctx.reshape(ctx.div(sel, sum), &[1, nu, n]);
     (ffn_inp, xn, weights, ids)
+}
+
+/// One pass of the expert FFN of a layer step that needed several: its output is added to `acc`
+/// (or replaces it in the first pass).
+fn ffn_pass<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    lw: &'a Layer,
+    s: &'a Slot,
+    first: bool,
+) -> Graph<'a> {
+    let mut g = ctx.new_graph(SEGMENT_NODES);
+    let out = moe_ffn(h, ctx, lw, s);
+    let acc = s.acc.get();
+    g.expand(ctx.cpy(if first { out } else { ctx.add(out, acc) }, acc));
+    g
 }
 
 /// Expert FFN of layer `il` for the ids in the slot's `ids_map`: `down(silu(gate) * up)`, scaled
