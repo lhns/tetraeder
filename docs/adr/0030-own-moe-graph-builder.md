@@ -23,3 +23,10 @@ plan.md says a step runs as one graph when every expert hits. At the pin (b11976
 - `tetraeder.step.duration` counts segments per step; ADR 0020 whole-step timing still holds per step.
 - The engine gains a second backend path next to libllama; the gateway's engine trait (ADR 0028) serves both.
 - Rebases must keep the builder in step with `build_moe_ffn`; the parity test catches drift.
+
+## Implementation notes (step 1)
+
+- Segment `l` runs the expert FFN of layer `l - 1`, the residual, then attention and the router of layer `l`, so a step is `n_layer + 1` segments. Activations that cross a boundary (residual, normed input, router weights, ids) live in two alternating state slots in backend memory; only the ids travel to the host and back.
+- The GGUF header (hyperparameters, tensor index, expert slab ranges) is read by a small Rust parser in `tetraeder-model`, so the model crate needs no `unsafe` and no ggml gguf bindings. Tensor data is read by offset into backend buffers.
+- Attention uses `flash_attn_ext` with an F16 cache laid out like libllama's (`[n_embd_kv, n_ctx]` per layer), K and V stores entering the graph before the attention.
+- Parity tolerance and results: see `crates/model/tests/parity.rs`.

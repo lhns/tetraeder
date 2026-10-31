@@ -10,3 +10,16 @@ publish = false
 
 [lints]
 workspace = true
+
+[features]
+# Forwarded to ggml-sys: build ggml with CUDA.
+cuda = ["tetraeder-ggml-sys/cuda"]
+
+[dependencies]
+tetraeder-ggml-sys = { path = "../ggml-sys" }
+tetraeder-plan = { path = "../plan" }
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+toml = "0.8"
