@@ -601,14 +601,11 @@ impl Qwen3Moe {
                     weights: slot.w.get().get_f32()?,
                 });
             }
-            let Some(streamer) = &mut self.streamer else {
-                // All experts resident: the router's ids are the tensor rows.
-                self.metrics.layer_step(true);
-                slot.ids_map.get().set_i32(&chosen)?;
-                lap(&mut prof.readback, t);
-                continue;
-            };
             lap(&mut prof.readback, t);
+            let streamer = self
+                .streamer
+                .as_mut()
+                .expect("a resident step returned above");
             let layer = &self.weights.layers[seg];
             if self.policy == MissPolicy::Cpu {
                 // Resident experts run from the compute slots, the others from the RAM slots

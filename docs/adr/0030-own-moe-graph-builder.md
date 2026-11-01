@@ -1,6 +1,6 @@
 # 0030. Own Qwen3 MoE graph builder: safe ggml surface in ggml-sys, builder in model, ggml's scheduler, one segment per MoE layer
 
-Status: Accepted (Phase 2)
+Status: Accepted (Phase 2). Superseded in part by ADR 0036: a step with every expert resident is one graph, not one segment per MoE layer.
 
 ## Context
 

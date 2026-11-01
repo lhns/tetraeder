@@ -1,6 +1,6 @@
 # 0033. Expert slots in the builder: lookup order, overflow passes, RAM tier, failure semantics
 
-Status: Accepted (Phase 2)
+Status: Accepted (Phase 2). Superseded in part by ADR 0034 (slots below top-k) and ADR 0035 (pair groups replace the masked overflow passes).
 
 ## Context
 

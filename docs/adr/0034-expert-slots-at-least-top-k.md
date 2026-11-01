@@ -1,6 +1,6 @@
 # 0034. Expert slots: at least the experts per token, distinct slots per token in overflow passes
 
-Status: Accepted (Phase 2). Supersedes the part of ADR 0033 that allowed fewer slots than experts per token.
+Status: Accepted (Phase 2). Supersedes the part of ADR 0033 that allowed fewer slots than experts per token. Superseded by ADR 0035: pair groups need no mask, parking entries or distinct-slot rule and allow any slot count again.
 
 ## Context
 
