@@ -16,17 +16,17 @@
 #   from the bench: 0 ok   1 regression beyond the noise band   2 error or skipped pair   3 inconclusive (noisy box)
 #   own: 10 build failed   11 tests failed   12 env snapshot failed   13 CUDA unusable
 #   124 a stage hit its time limit   143 killed by a signal
-# Time limits in minutes. taxameter's nightly_wait_min (taxameter.toml, now 150) must cover the sum of the limits of the
+# Time limits in minutes. taxameter's nightly_wait_min (taxameter.toml, now 170) must cover the sum of the limits of the
 # stages that run. Worst case with both optional stages: phase0 40+15+5+15+10+45 = 130, phase2-baseline
-# 40+15+5+15+10+60 = 145 (+ a 30 s kill grace per stage). Without them 105 and 120.
+# 40+15+5+15+10+80 = 165 (+ a 30 s kill grace per stage). Without them 105 and 140.
 BUILD_MIN="${BUILD_MIN:-40}"
 TEST_MIN="${TEST_MIN:-15}"
 PARITY_MIN="${PARITY_MIN:-5}"
 MOE_MIN="${MOE_MIN:-15}"  # three loads of 18.6 GB from disk, libllama, the checks
 GAP_MIN="${GAP_MIN:-10}"  # one pair, warmup + 10 repeats, plus a parity run when the night's spec is not phase0
 BENCH_SPEC="${BENCH_SPEC:-phase0}"  # name of a spec in bench/spec/
-case "$BENCH_SPEC" in phase0) bench_default=45;; phase2-baseline) bench_default=60;; *) bench_default=45;; esac
-BENCH_MIN="${BENCH_MIN:-$bench_default}"  # the phase0 spec took 31 min on an RTX 3090 box; phase2-baseline is estimated at 42
+case "$BENCH_SPEC" in phase0) bench_default=45;; phase2-baseline) bench_default=80;; *) bench_default=45;; esac
+BENCH_MIN="${BENCH_MIN:-$bench_default}"  # the phase0 spec took 31 min on an RTX 3090 box; phase2-baseline is estimated at 60 with the ik_llama variants
 exec 8> /root/tetraeder_nightly.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 [ -f "bench/spec/$BENCH_SPEC.toml" ] || { echo "no spec bench/spec/$BENCH_SPEC.toml"; exit 2; }

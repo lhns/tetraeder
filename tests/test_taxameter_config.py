@@ -56,7 +56,11 @@ def test_push_paths_cover_files_the_crates_read_from_the_repo_root(cfg):
 
 
 def test_image_tag_comes_from_vendor_pin(cfg):
-    assert cfg.image_ref() == f"ghcr.io/lhns/tetraeder-box:{_pin('tag')}"
+    assert cfg.image_ref() == f"ghcr.io/lhns/tetraeder-box:{_pin('image_tag')}"
+
+
+def test_image_tag_encodes_both_pins():
+    assert _pin("image_tag") == f"{_pin('tag')}-ik{_pin('ik_commit')[:8]}"
 
 
 def test_bench_spec_llama_pin_matches_vendor_pin():
@@ -76,3 +80,10 @@ def test_config_loads_and_files_exist(cfg):
     for rel in (cfg.nightly.script, cfg.box.provision_hook, cfg.box.verify_hook):
         assert (ROOT / rel).is_file(), rel
     assert cfg.min_cuda() == 12.8
+
+
+def test_phase2_spec_ik_pin_matches_vendor_pin():
+    spec = tomllib.loads((ROOT / "bench/spec/phase2-baseline.toml").read_text(encoding="utf-8"))
+    assert spec["pins"]["ik_llama"] == _pin("ik_commit")
+    assert any(e["id"] == "ik_llama" and e["kind"] == "ik-llama" for e in spec["engine"])
+    assert {v["engine"] for v in spec["variant"]} <= {e["id"] for e in spec["engine"]}

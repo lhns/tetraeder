@@ -43,7 +43,7 @@ pub struct Settings {
 
 #[derive(Deserialize)]
 struct Row {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "int_or_bool")]
     flash_attn: Option<i64>,
     #[serde(default)]
     cuda_graphs: Option<bool>,
@@ -55,7 +55,8 @@ struct Row {
     n_threads: Option<i64>,
     #[serde(default)]
     n_gpu_layers: Option<i64>,
-    #[serde(default)]
+    // ik_llama.cpp's llama-bench names it `override_tensor`
+    #[serde(default, alias = "override_tensor")]
     tensor_buft_overrides: Option<String>,
     #[serde(default)]
     backends: Option<String>,
@@ -70,6 +71,20 @@ struct Row {
     avg_ts: f64,
     #[serde(default)]
     build_commit: Option<String>,
+}
+
+/// llama.cpp prints `flash_attn` as an int, ik_llama.cpp as a bool (true is 1).
+fn int_or_bool<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum V {
+        B(bool),
+        I(i64),
+    }
+    Ok(Option::<V>::deserialize(d)?.map(|v| match v {
+        V::B(b) => i64::from(b),
+        V::I(i) => i,
+    }))
 }
 
 fn sum_opt(a: Option<i64>, b: Option<i64>) -> Option<i64> {
@@ -338,6 +353,22 @@ mod tests {
         assert_eq!(m.n_reused, None);
         assert_eq!(m.settings.cuda_graphs, Some(false)); // derived: CPU backend
         assert_eq!(m.settings.n_batch, Some(512));
+    }
+
+    #[test]
+    fn parses_ik_llama_rows() {
+        // ik_llama.cpp: bool flash_attn, `override_tensor`, no `backends`
+        let rows = r#"[
+ {"build_commit":"b25c3fd2","cuda":true,"n_batch":2048,"n_ubatch":512,"n_threads":8,"n_gpu_layers":99,"flash_attn":true,"override_tensor":"exps=CPU","n_prompt":64,"n_gen":0,"avg_ts":3.5,"samples_ts":[3.5]},
+ {"n_prompt":0,"n_gen":16,"flash_attn":true,"avg_ts":9.0}]"#;
+        let m = parse_llama_bench(rows).unwrap();
+        assert_eq!((m.pp_ts, m.tg_ts), (Some(3.5), Some(9.0)));
+        assert_eq!(m.settings.flash_attn, Some(1));
+        assert_eq!(
+            m.settings.tensor_buft_overrides.as_deref(),
+            Some("exps=CPU")
+        );
+        assert_eq!(m.settings.cuda_graphs, None);
     }
 
     #[test]

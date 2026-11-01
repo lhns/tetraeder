@@ -20,8 +20,8 @@ interruptible = false
 [image]
 name = "ghcr.io/lhns/tetraeder-box"
 tag = "latest"
-tag_file = "vendor/PIN"  # the box image is tagged with the llama.cpp tag, so a box always matches the pin
-tag_regex = '^tag=(\S+)'
+tag_file = "vendor/PIN"  # the image tag encodes both pins (<llama tag>-ik<ik_llama short commit>), so a box always matches
+tag_regex = '^image_tag=(\S+)'
 fallback = "nvidia/cuda:12.8.1-devel-ubuntu24.04"  # plain CUDA image; the provision hook installs the tools
 
 [push]
@@ -63,5 +63,5 @@ max_instances = 1  # per project (label); other projects on the account have the
 max_account_price_per_hour = 1.0  # all projects on the Vast account together
 auto_replace = false  # an automatic replacement could start a second paid box
 disk_gb = 80
-nightly_wait_min = 150  # sum of the nightly.sh stage limits, phase2-baseline with gpu-moe and gap: 145
+nightly_wait_min = 170  # sum of the nightly.sh stage limits, phase2-baseline with gpu-moe and gap: 165
 max_box_hours = 3

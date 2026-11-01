@@ -1,6 +1,6 @@
 # bench
 
-- `spec/*.toml`: pinned benchmark specs. `phase0.toml` is the nightly gate, `phase2-baseline.toml` the tuned llama.cpp baseline for Phase 2, `smoke.toml` a CPU-only check for dev machines.
+- `spec/*.toml`: pinned benchmark specs. `phase0.toml` is the nightly gate, `phase2-baseline.toml` the tuned llama.cpp and ik_llama.cpp baselines for Phase 2 (engine `kind = "ik-llama"`, binary `/opt/ik_llama/bin/llama-bench` or `$IK_LLAMA_BENCH`; `--llama-bench` only overrides the llama.cpp one), `smoke.toml` a CPU-only check for dev machines.
 - `golden/`: greedy token sequences and top-k logits per position (format: `crates/bench/src/golden.rs`). Full logits are a nightly artifact, not in git.
 - `results/<YYYYMMDD>/<spec>-<HHMMSS>.json`: output (UTC, one file per run) of `tetraeder-bench run <spec>`, plus `env.json`, `parity.json` and the `DONE` marker from `scripts/nightly.sh`.
 
