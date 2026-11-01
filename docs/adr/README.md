@@ -38,3 +38,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0032](0032-memory-crate-dependencies-and-budget-semantics.md) | Memory crate: reserve as accounting, phase budget semantics, I/O dependencies |
 | [0033](0033-expert-slots-in-the-builder.md) | Expert slots in the builder: lookup order, overflow passes, RAM tier, failure semantics |
 | [0034](0034-expert-slots-at-least-top-k.md) | Expert slots: at least the experts per token, distinct slots per token in overflow passes |
+| [0035](0035-expert-pair-groups-and-cpu-experts.md) | Expert pairs computed in compact groups per backend; non-resident experts on the CPU (Proposed) |
