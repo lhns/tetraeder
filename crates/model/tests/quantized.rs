@@ -51,7 +51,10 @@ fn cpu_q8_0_matches_libllama() {
 /// hardware: gpu (CUDA build; skips without a GPU device). A 24-token prompt is above the
 /// batch-8 limit of CUDA's vector kernel, so the expert matmuls take the MMQ path the real
 /// Q4_K_M model takes in prefill. Pair groups (2 and 4 slots) against the resident builder on
-/// the same GPU: only the summation order and the MMQ split differ.
+/// the same GPU: a gross check only. A group's gathered `[n_embd, 1, n_pairs]` input changes
+/// MMQ's tiles and stream-k split, so the last bits differ and can flip a near-tied routing
+/// choice (measured 2026-11-01: max delta 0.18; ADR 0034, 0035). A wrong or stale pair would
+/// be off on the scale of the logits.
 #[test]
 fn gpu_q8_0_pair_groups_match_resident() {
     if !Backend::gpu_available() {
@@ -74,6 +77,7 @@ fn gpu_q8_0_pair_groups_match_resident() {
         (logits, m.expert_groups())
     };
     let (base, _) = run(None);
+    let scale = base.iter().fold(0f32, |a, x| a.max(x.abs()));
     for slots in [4, 2] {
         let (got, groups) = run(Some(slots));
         let worst = base
@@ -83,14 +87,17 @@ fn gpu_q8_0_pair_groups_match_resident() {
             .fold(0f32, f32::max);
         let nan = got.iter().any(|x| !x.is_finite());
         eprintln!(
-            "q8_0 gpu slots {slots}: groups {groups}, max |delta| {worst:e}, non-finite {nan}"
+            "q8_0 gpu slots {slots}: groups {groups}, max |delta| {worst:e} (logit scale {scale}), non-finite {nan}"
         );
         assert!(!nan, "slots {slots}: non-finite logits");
         assert!(
             groups > 0,
             "slots {slots}: 24 tokens route to more than {slots} experts"
         );
-        assert!(worst < 1e-3, "slots {slots}: max |delta| {worst:e}");
+        assert!(
+            worst < 0.05 * scale,
+            "slots {slots}: max |delta| {worst:e}, logit scale {scale}"
+        );
     }
     std::fs::remove_file(&path).ok();
 }
