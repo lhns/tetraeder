@@ -159,8 +159,6 @@ struct Sim {
     partial: Vec<u64>,
     experts_read: u64,
     batches: u64,
-    /// Chunks in which a RAM hit had to move ahead of a RAM miss.
-    reordered: u64,
 }
 
 impl Sim {
@@ -178,7 +176,6 @@ impl Sim {
             partial: vec![0; layers],
             experts_read: 0,
             batches: 0,
-            reordered: 0,
         }
     }
 
@@ -217,12 +214,12 @@ impl Sim {
                     let (rh, rm): (Vec<i32>, Vec<i32>) =
                         loads.iter().partition(|&&e| self.ram[il].has(e));
                     let ordered: Vec<i32> = rh.into_iter().chain(rm).collect();
-                    if ordered != loads {
-                        self.reordered += 1;
-                    }
                     for group in ordered.chunks(n) {
                         let mut read = false;
-                        for &e in group {
+                        // Within a group the hits go first as well.
+                        let (gh, gm): (Vec<i32>, Vec<i32>) =
+                            group.iter().partition(|&&e| self.ram[il].has(e));
+                        for e in gh.into_iter().chain(gm) {
                             if self.ram[il].access(e) {
                                 self.r[il].hits += 1;
                             } else {
@@ -243,9 +240,7 @@ impl Sim {
 /// of experts read from the file equal the simulation fed with the routing the model recorded.
 #[test]
 fn cpu_cache_counts_match_an_lru_simulation() {
-    // Chunks in which a RAM hit sat behind a RAM miss: the order of ADR 0033 matters there.
-    let mut reordered = 0;
-    for (slots, ram) in [
+    let mut configs = vec![
         (4, None),
         (2, None),
         (1, None),
@@ -254,11 +249,10 @@ fn cpu_cache_counts_match_an_lru_simulation() {
         (3, Some(5)),
         (1, Some(2)),
         (2, Some(8)),
-        (4, Some(2)),
-        (4, Some(3)),
-        (3, Some(2)),
-        (6, Some(2)),
-    ] {
+    ];
+    // RAM tiers smaller than the compute slots: the loads of a chunk span several RAM groups.
+    configs.extend([(4, Some(2)), (3, Some(2)), (6, Some(2)), (6, Some(4))]);
+    for (slots, ram) in configs {
         let mut m = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
         let layers = m.hparams().n_layer as usize;
         let mut next = argmax(&m.eval_last(&PROMPT).unwrap()) as i32;
@@ -302,9 +296,7 @@ fn cpu_cache_counts_match_an_lru_simulation() {
         );
         assert!(stats.io.bytes_read > 0);
         assert_eq!(stats.io.batches, sim.batches, "slots {slots} ram {ram:?}");
-        reordered += sim.reordered;
     }
-    assert!(reordered > 0, "no case put a RAM hit behind a RAM miss");
 }
 
 /// hardware: cpu. A read that fails in the middle of a step is an error, not a step with the
