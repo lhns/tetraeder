@@ -8,7 +8,7 @@ pub mod gguf;
 pub mod hparams;
 pub mod qwen3moe;
 
-pub use experts::{ExpertStats, IoCounters, LayerExpertStats, RoutingStep};
+pub use experts::{ExpertStats, IoCounters, LayerExpertStats, MissPolicy, RoutingStep};
 pub use gguf::{Gguf, GgufError, TensorInfo};
 pub use hparams::{ExpertSlabs, Hparams, ModelFile};
 pub use qwen3moe::{BackendChoice, LoadOptions, ModelError, Qwen3Moe};

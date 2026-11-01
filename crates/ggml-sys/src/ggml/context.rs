@@ -53,6 +53,16 @@ impl Context {
         Ok(size)
     }
 
+    /// Like [`Context::alloc_tensors`], with the buffer marked as weights: ops reading these
+    /// tensors run on `backend` (see [`Buffer::set_usage_weights`]).
+    pub fn alloc_weights(&self, backend: &Backend) -> Result<usize> {
+        let size = self.alloc_tensors(backend)?;
+        if let Some(b) = self.buffer.borrow().as_ref() {
+            b.set_usage_weights();
+        }
+        Ok(size)
+    }
+
     /// Sets every byte of the tensor buffer.
     pub fn clear_buffer(&self, value: u8) {
         if let Some(b) = self.buffer.borrow().as_ref() {
@@ -103,6 +113,13 @@ impl Context {
     pub fn get_rows<'a>(&'a self, a: Tensor<'a>, idx: Tensor<'a>) -> Tensor<'a> {
         // SAFETY: live context and tensors (lifetimes); ggml aborts on invalid shapes.
         self.t(unsafe { sys::ggml_get_rows(self.ptr.as_ptr(), a.raw(), idx.raw()) })
+    }
+
+    /// Writes the rows of `src` (F32 `[n, n_rows]`) into `dst` at the row numbers in the I32
+    /// tensor `idx`. Returns a view of `dst`; use it to order later reads after the write.
+    pub fn set_rows<'a>(&'a self, dst: Tensor<'a>, src: Tensor<'a>, idx: Tensor<'a>) -> Tensor<'a> {
+        // SAFETY: see `get_rows`.
+        self.t(unsafe { sys::ggml_set_rows(self.ptr.as_ptr(), dst.raw(), src.raw(), idx.raw()) })
     }
 
     pub fn add<'a>(&'a self, a: Tensor<'a>, b: Tensor<'a>) -> Tensor<'a> {

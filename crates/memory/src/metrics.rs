@@ -58,6 +58,15 @@ impl MemoryMetrics {
         }
     }
 
+    /// `tetraeder.expert.cache.requests` with result `cpu`: the expert was not resident in
+    /// `tier` and its pairs were computed on the CPU, with no slot assigned.
+    pub fn cpu_lookup(&self, layer: u32, tier: Tier) {
+        if let Some(t) = &self.telemetry {
+            t.metrics()
+                .expert_cache_requests(1, layer, tier.as_str(), CacheResult::Cpu);
+        }
+    }
+
     /// `tetraeder.expert.layer_hit`: one MoE layer step, `full` when all top-k were resident.
     pub fn layer_step(&self, full: bool) {
         if let Some(t) = &self.telemetry {

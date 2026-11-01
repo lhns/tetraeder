@@ -45,6 +45,8 @@ pub enum Direction {
 pub enum CacheResult {
     Hit,
     Miss,
+    /// Expert caches only: not resident, computed on the CPU instead of being loaded (ADR 0035).
+    Cpu,
 }
 
 /// One engine step: a prefill chunk or a decode step on one stage.
@@ -56,7 +58,7 @@ pub struct StepSample {
     pub duration: Duration,
     pub tokens: u32,
     /// Graph segments the step ran: 1 for a whole-graph step, `n_layer + 1` for the builder's
-    /// per-MoE-layer segments (ADR 0030), plus the overflow passes of the step (ADR 0033).
+    /// per-MoE-layer segments (ADR 0030), plus the standalone expert group graphs of the step (ADR 0035).
     pub segments: u32,
 }
 
@@ -287,6 +289,7 @@ fn cache_result(r: CacheResult) -> &'static str {
     match r {
         CacheResult::Hit => "hit",
         CacheResult::Miss => "miss",
+        CacheResult::Cpu => "cpu",
     }
 }
 

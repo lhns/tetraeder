@@ -2,8 +2,8 @@
 //! tier, against libllama, against an independent LRU simulation, and on read failures.
 //!
 //! The fixture has 8 experts per layer and routes the top 2. With 2 slots a prefill needs more
-//! distinct experts than slots, which runs the overflow passes of ADR 0033; fewer slots than
-//! experts per token are rejected (ADR 0034).
+//! distinct experts than slots, which runs expert pair groups (ADR 0035); a single slot is
+//! enough, zero is rejected.
 //!
 //! Hardware labels (AGENTS rule 9): `cpu_*` tests need no GPU; `gpu_*` tests skip cleanly when the
 //! build has no GPU device.
@@ -13,7 +13,7 @@ mod common;
 use common::*;
 use std::sync::Arc;
 use tetraeder_ggml_sys::ggml::Backend;
-use tetraeder_model::{BackendChoice, LoadOptions, ModelError, Qwen3Moe};
+use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy, ModelError, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 const EXPERTS: usize = 8;
@@ -36,7 +36,7 @@ fn opts(slots: usize, ram: Option<usize>) -> LoadOptions {
 #[test]
 fn cpu_slot_counts_match_libllama() {
     let r = libllama_reference(&PROMPT, N_GREEDY);
-    for slots in [8, 4, 2] {
+    for slots in [8, 4, 2, 1] {
         for ram in [None, Some(1), Some(3), Some(8)] {
             let mut m = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
             let worst = check_against(&mut m, &r, TOL_CPU);
@@ -45,17 +45,17 @@ fn cpu_slot_counts_match_libllama() {
             assert_eq!(m.segments_run(), (layers + 1) * (2 + N_GREEDY as u64));
             if slots == EXPERTS {
                 assert!(m.expert_stats().is_none(), "all experts resident: no cache");
-                assert_eq!(m.overflow_passes(), 0);
+                assert_eq!(m.expert_groups(), 0);
             } else {
                 let stats = m.expert_stats().expect("streaming");
                 assert!(stats.layers.iter().all(|l| l.compute.misses > 0));
                 assert_eq!(stats.layers[0].ram.is_some(), ram.is_some());
                 assert!(stats.io.experts_read > 0);
             }
-            if slots == 2 {
+            if slots <= 2 {
                 assert!(
-                    m.overflow_passes() > 0,
-                    "a prefill routes to more than 2 experts"
+                    m.expert_groups() > 0,
+                    "a prefill routes to more than 2 experts, slots {slots}"
                 );
             }
         }
@@ -71,7 +71,7 @@ fn gpu_slot_counts_match_libllama() {
         return;
     }
     let r = libllama_reference(&PROMPT, N_GREEDY);
-    for slots in [8, 4, 2] {
+    for slots in [8, 4, 2, 1] {
         for ram in [None, Some(3)] {
             let o = opts_on(BackendChoice::Gpu { index: 0 }, slots, ram);
             let mut m = Qwen3Moe::load(fixture(), &o).unwrap();
@@ -81,15 +81,15 @@ fn gpu_slot_counts_match_libllama() {
             assert_eq!(m.segments_run(), (layers + 1) * (2 + N_GREEDY as u64));
             if slots == EXPERTS {
                 assert!(m.expert_stats().is_none(), "all experts resident: no cache");
-                assert_eq!(m.overflow_passes(), 0);
+                assert_eq!(m.expert_groups(), 0);
             } else {
                 let stats = m.expert_stats().expect("streaming");
                 assert!(stats.io.experts_read > 0);
             }
-            if slots == 2 {
+            if slots <= 2 {
                 assert!(
-                    m.overflow_passes() > 0,
-                    "a prefill routes to more than 2 experts"
+                    m.expert_groups() > 0,
+                    "a prefill routes to more than 2 experts, slots {slots}"
                 );
             }
         }
@@ -110,8 +110,8 @@ fn cpu_default_slots_reproduce_the_resident_model() {
     assert_eq!(base, eval(opts(EXPERTS, Some(2))));
     assert_eq!(base, eval(opts(64, None)));
     assert!(Qwen3Moe::load(fixture(), &opts(0, None)).is_err());
-    // fewer slots than experts per token (top-2): a token's experts need distinct slots
-    assert!(Qwen3Moe::load(fixture(), &opts(1, None)).is_err());
+    // one slot is below the experts per token (top-2) and legal: pair groups need no distinct slots
+    assert!(Qwen3Moe::load(fixture(), &opts(1, None)).is_ok());
 }
 
 /// Least recently used over a list, written without `LayerSlots`.
@@ -339,11 +339,27 @@ fn cpu_read_failure_is_an_error_and_leaves_no_stale_slot() {
 /// with the counters of the model.
 #[test]
 fn cpu_telemetry_reports_steps_and_cache() {
+    check_telemetry(opts(2, Some(3)));
+}
+
+/// hardware: cpu. The same under the cpu miss policy: result `cpu` counts the routed experts
+/// that were computed on the CPU, and the hit and miss counts still agree with the model's.
+#[test]
+fn cpu_telemetry_reports_cpu_experts() {
+    let o = LoadOptions {
+        miss: MissPolicy::Cpu,
+        ..opts(3, Some(8))
+    };
+    check_telemetry(o);
+}
+
+fn check_telemetry(base: LoadOptions) {
     use opentelemetry::KeyValue;
     use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
     use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
     use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
+    let o_cpu = base.miss == MissPolicy::Cpu;
     let exp = InMemoryMetricExporter::default();
     let mp = SdkMeterProvider::builder()
         .with_reader(PeriodicReader::builder(exp.clone()).build())
@@ -356,7 +372,7 @@ fn cpu_telemetry_reports_steps_and_cache() {
     ));
     let o = LoadOptions {
         telemetry: Some(t.clone()),
-        ..opts(2, Some(3))
+        ..base
     };
     let mut m = Qwen3Moe::load(fixture(), &o).unwrap();
     m.eval(&PROMPT).unwrap();
@@ -421,7 +437,7 @@ fn cpu_telemetry_reports_steps_and_cache() {
         }
     }
     assert_eq!(steps, 2);
-    assert_eq!(segments as u64, 2 * (layers + 1) + m.overflow_passes());
+    assert_eq!(segments as u64, 2 * (layers + 1) + m.group_graphs());
     let full: u64 = stats.layers.iter().map(|l| l.full_steps).sum();
     let partial: u64 = stats.layers.iter().map(|l| l.partial_steps).sum();
     assert_eq!(full + partial, 2 * layers);
@@ -437,6 +453,9 @@ fn cpu_telemetry_reports_steps_and_cache() {
         (a.0 + l.compute.hits, a.1 + l.compute.misses)
     });
     assert_eq!((sum("vram", "hit"), sum("vram", "miss")), (h, mi));
+    let cpu: u64 = stats.layers.iter().map(|l| l.cpu).sum();
+    assert_eq!(sum("vram", "cpu"), cpu);
+    assert_eq!(cpu > 0, o_cpu);
     let (h, mi) = stats.layers.iter().fold((0, 0), |a, l| {
         let r = l.ram.unwrap();
         (a.0 + r.hits, a.1 + r.misses)

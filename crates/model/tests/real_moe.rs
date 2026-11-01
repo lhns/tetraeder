@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
-use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, Qwen3Moe};
+use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 
 const N_PROMPT: usize = 64;
 const N_GREEDY: usize = 16;
@@ -137,7 +137,7 @@ fn routing_diff(a: &Run, b: &Run, n_prompt: usize) -> Vec<usize> {
 }
 
 /// Where two runs' prefills first differ: the first layer whose router weights differ bitwise
-/// (the layer after the first different FFN output), its tokens, and per token the passes its
+/// (the layer after the first different FFN output), its tokens, and per token the groups its
 /// experts of the layer before fell into with `slots` (prefill from empty slots: distinct experts
 /// in first-appearance order, chunks of `slots`).
 fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
@@ -154,7 +154,7 @@ fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
         if tokens.is_empty() {
             continue;
         }
-        let passes = if l == 0 {
+        let groups = if l == 0 {
             Vec::new()
         } else {
             let ids = &a.routing[l - 1];
@@ -164,12 +164,12 @@ fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
                     order.push(e);
                 }
             }
-            let pass_of = |e: i32| order.iter().position(|&o| o == e).unwrap() / slots;
+            let group_of = |e: i32| order.iter().position(|&o| o == e).unwrap() / slots;
             (0..n_prompt)
                 .map(|t| {
                     let mut p: Vec<usize> = ids[t * nu..(t + 1) * nu]
                         .iter()
-                        .map(|&e| pass_of(e))
+                        .map(|&e| group_of(e))
                         .collect();
                     p.sort();
                     p.dedup();
@@ -177,16 +177,22 @@ fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
                 })
                 .collect::<Vec<_>>()
         };
-        let single_pass_tokens = passes.iter().filter(|p| p.len() == 1).count();
-        let differing_passes: Vec<_> = tokens.iter().map(|&t| passes.get(t).cloned()).collect();
+        let single_group_tokens = groups.iter().filter(|p| p.len() == 1).count();
+        let differing_groups: Vec<_> = tokens.iter().map(|&t| groups.get(t).cloned()).collect();
         return json!({
             "layer": l,
             "tokens": tokens,
-            "their_passes_in_layer_before": differing_passes,
-            "single_pass_tokens_in_layer_before": single_pass_tokens,
+            "their_groups_in_layer_before": differing_groups,
+            "single_group_tokens_in_layer_before": single_group_tokens,
         });
     }
     json!(null)
+}
+
+/// Configurations named `*_cpupolicy` use `MissPolicy::Cpu` (ADR 0035): the hot set in the
+/// compute slots, every other routed expert computed on the CPU from the RAM tier.
+fn is_cpu_policy(name: &str) -> bool {
+    name.ends_with("_cpupolicy")
 }
 
 /// One builder configuration, loaded, checked and dropped. Returns its greedy tokens and the
@@ -203,6 +209,11 @@ fn run_config(
         expert_slots,
         ram_slots,
         record_routing: true,
+        miss: if is_cpu_policy(name) {
+            MissPolicy::Cpu
+        } else {
+            MissPolicy::Upload
+        },
         // `cpu_*` configs run the builder on the CPU backend.
         ..LoadOptions::new(if name.starts_with("cpu_") {
             BackendChoice::Cpu { threads: None }
@@ -245,12 +256,14 @@ fn run_config(
     }
     let mut next = argmax(&logits[(r.prompt.len() - 1) * n_vocab..]) as i32;
     let mut greedy = Vec::new();
+    let uploads_before = m.expert_stats().map_or(0, |s| s.io.uploads);
     let t0 = Instant::now();
     for _ in 0..N_GREEDY {
         greedy.push(next);
         next = argmax(&m.eval(&[next]).unwrap()) as i32;
     }
     let decode_s = t0.elapsed().as_secs_f64();
+    let uploads_decode = m.expert_stats().map_or(0, |s| s.io.uploads) - uploads_before;
 
     let mut out = json!({
         "load_s": load_s,
@@ -259,7 +272,10 @@ fn run_config(
         "decode_tok_s": N_GREEDY as f64 / decode_s,
         "max_top5_delta": worst,
         "first_prompt_pos_off": first_off,
-        "overflow_passes": m.overflow_passes(),
+        "expert_groups": m.expert_groups(),
+        "group_graphs": m.group_graphs(),
+        "max_splits": m.max_splits(),
+        "uploads_during_decode": uploads_decode,
         "greedy": greedy,
     });
     if let Some(s) = m.expert_stats() {
@@ -287,6 +303,9 @@ fn run_config(
             "experts_read": s.io.experts_read,
             "read_s": read_s,
             "read_gb_s": read_gb_s,
+            "cpu_experts": sum(&|l| l.cpu),
+            "mixed_steps": sum(&|l| l.mixed_steps),
+            "uploads": s.io.uploads,
             "ram_hits": sum(&|l| l.ram.map_or(0, |x| x.hits)),
             "ram_misses": sum(&|l| l.ram.map_or(0, |x| x.misses)),
         });
@@ -337,10 +356,10 @@ fn gpu_real_moe_streaming() {
     // (name, compute slots, RAM slots, prefill evals, base config, exact).
     // Single-token evals take CUDA's vector kernel, whose result per row does not depend on the
     // number of experts in the tensor, so streaming must equal the resident builder bit for bit.
-    // A prefill that needs overflow passes takes MMQ, whose stream-k split depends on that
-    // number; it is checked for gross errors only (ADR 0034). On the CPU the same multi-pass
-    // prefill is exact since masked pairs park outside the slots (ADR 0034), which separates the
-    // kernel's rounding from the streaming logic.
+    // A prefill that needs pair groups takes MMQ, whose stream-k split depends on the number of
+    // rows per expert; it is checked for gross errors only (ADR 0034, 0035). On the CPU the same
+    // prefill is exact since a group gives every expert all its rows (ADR 0035), which separates
+    // the kernel's rounding from the streaming logic.
     let n = r.prompt.len();
     let configs = [
         ("resident", None, None, 1, None, true),
@@ -360,6 +379,17 @@ fn gpu_real_moe_streaming() {
             "slots32_ram64",
             Some(32),
             Some(64),
+            1,
+            Some("resident"),
+            false,
+        ),
+        // Placement v1 (ADR 0035): 32 compute slots hold the hot set, the rest runs on the CPU
+        // from 128 RAM slots; decode must not upload. The prefill takes MMQ for the compute
+        // group and the CPU kernels for the others, so it is checked like `slots32`.
+        (
+            "slots32_ram128_cpupolicy",
+            Some(32),
+            Some(128),
             1,
             Some("resident"),
             false,
@@ -414,6 +444,17 @@ fn gpu_real_moe_streaming() {
                     "{name}: layer-0 routing or top-1 agreement ({agree:.3}) off against {}",
                     base.0
                 ));
+            }
+        }
+        if is_cpu_policy(name) {
+            let up = run.report["uploads_during_decode"].as_u64();
+            eprintln!(
+                "{name}: prefill {:.1} tok/s, decode {:.1} tok/s, uploads during decode {up:?}",
+                run.report["prefill_tok_s"].as_f64().unwrap_or(0.0),
+                run.report["decode_tok_s"].as_f64().unwrap_or(0.0),
+            );
+            if up != Some(0) {
+                failures.push(format!("{name}: decode uploaded {up:?} experts"));
             }
         }
         report[name] = run.report.clone();

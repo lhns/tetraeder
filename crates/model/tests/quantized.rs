@@ -13,7 +13,7 @@ use tetraeder_model::{BackendChoice, LoadOptions, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 
-/// hardware: cpu. Resident and streaming (with and without a RAM tier, with overflow passes)
+/// hardware: cpu. Resident and streaming (with and without a RAM tier, with pair groups)
 /// match libllama on the Q8_0 copy. Same kernels on both sides, so the CPU tolerance applies.
 #[test]
 fn cpu_q8_0_matches_libllama() {
@@ -50,10 +50,10 @@ fn cpu_q8_0_matches_libllama() {
 
 /// hardware: gpu (CUDA build; skips without a GPU device). A 24-token prompt is above the
 /// batch-8 limit of CUDA's vector kernel, so the expert matmuls take the MMQ path the real
-/// Q4_K_M model takes in prefill. Overflow passes (2 and 4 slots) against the resident builder on
-/// the same GPU: only the summation order differs.
+/// Q4_K_M model takes in prefill. Pair groups (2 and 4 slots) against the resident builder on
+/// the same GPU: only the summation order and the MMQ split differ.
 #[test]
-fn gpu_q8_0_overflow_passes_match_resident() {
+fn gpu_q8_0_pair_groups_match_resident() {
     if !Backend::gpu_available() {
         eprintln!("skip: no GPU device in this build or on this machine");
         return;
@@ -71,11 +71,11 @@ fn gpu_q8_0_overflow_passes_match_resident() {
         let mut m = Qwen3Moe::load(&path, &o).unwrap();
         let prompt: Vec<i32> = (0..24).map(|i| (i * 37 + 5) % m.n_vocab() as i32).collect();
         let logits = m.eval(&prompt).unwrap();
-        (logits, m.overflow_passes())
+        (logits, m.expert_groups())
     };
     let (base, _) = run(None);
     for slots in [4, 2] {
-        let (got, passes) = run(Some(slots));
+        let (got, groups) = run(Some(slots));
         let worst = base
             .iter()
             .zip(&got)
@@ -83,11 +83,11 @@ fn gpu_q8_0_overflow_passes_match_resident() {
             .fold(0f32, f32::max);
         let nan = got.iter().any(|x| !x.is_finite());
         eprintln!(
-            "q8_0 gpu slots {slots}: passes {passes}, max |delta| {worst:e}, non-finite {nan}"
+            "q8_0 gpu slots {slots}: groups {groups}, max |delta| {worst:e}, non-finite {nan}"
         );
         assert!(!nan, "slots {slots}: non-finite logits");
         assert!(
-            passes > 0,
+            groups > 0,
             "slots {slots}: 24 tokens route to more than {slots} experts"
         );
         assert!(worst < 1e-3, "slots {slots}: max |delta| {worst:e}");

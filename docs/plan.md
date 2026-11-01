@@ -443,7 +443,7 @@ Every layer emits OpenTelemetry metrics, traces and logs from the first commit; 
 | `tetraeder.memory.used`, `.capacity` | gauge | device, tier, kind (weights, KV, workspace, reserve) | planner, alerts |
 | `tetraeder.tier.read.bytes` | counter | device, tier | detector, cost model |
 | `tetraeder.link.bytes`, `.latency` | counter, histogram | source, destination, transport | detector, cost model |
-| `tetraeder.expert.cache.requests` | counter | layer, tier, result (hit, miss) | detector, hot-set sizing, CUDA-graph survival |
+| `tetraeder.expert.cache.requests` | counter | layer, tier, result (hit, miss, cpu) | detector, hot-set sizing, CUDA-graph survival |
 | `tetraeder.expert.load.duration` | histogram | tier, source | detector |
 | `tetraeder.expert.routing` | summary: top 16 experts per layer | layer, expert | planner (placement) |
 | `tetraeder.kv.blocks` | gauge | device, tier, state | detector, planner |
