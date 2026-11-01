@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
-use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, Qwen3Moe, RoutingStep};
+use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, Qwen3Moe};
 
 const N_PROMPT: usize = 64;
 const N_GREEDY: usize = 16;
@@ -111,9 +111,9 @@ fn run_config(
     path: &Path,
     expert_slots: Option<usize>,
     ram_slots: Option<usize>,
-    stepwise: bool,
+    split: usize,
     r: &Reference,
-) -> (Vec<i32>, Value, Vec<RoutingStep>) {
+) -> (Vec<i32>, Value, Vec<Vec<i32>>) {
     let o = LoadOptions {
         expert_slots,
         ram_slots,
@@ -127,19 +127,18 @@ fn run_config(
     let n_vocab = m.n_vocab();
 
     let t0 = Instant::now();
-    // Stepwise: one token per eval, so no step needs more distinct experts than slots.
-    let logits = if stepwise {
-        let mut l = Vec::with_capacity(r.prompt.len() * n_vocab);
-        for &t in &r.prompt {
-            l.extend(m.eval(&[t]).unwrap());
-        }
-        l
-    } else {
-        m.eval(&r.prompt).unwrap()
-    };
+    // Prefill in `split` evals: the same math in another summation order (the noise floor).
+    let mut logits = Vec::with_capacity(r.prompt.len() * n_vocab);
+    for part in r.prompt.chunks(r.prompt.len().div_ceil(split)) {
+        logits.extend(m.eval(part).unwrap());
+    }
     let prefill_s = t0.elapsed().as_secs_f64();
     assert_eq!(logits.len(), r.prompt.len() * n_vocab);
-    let routing = m.take_routing_log();
+    // Prefill routing per layer, token-major, whatever the split.
+    let mut routing: Vec<Vec<i32>> = vec![Vec::new(); layers as usize];
+    for step in m.take_routing_log() {
+        routing[step.layer].extend(step.ids);
+    }
     let mut worst = 0f32;
     // First prompt position whose top-5 logits differ by more than float noise.
     let mut first_off = None;
@@ -175,7 +174,7 @@ fn run_config(
     if let Some(s) = m.expert_stats() {
         let sum = |f: &dyn Fn(&LayerExpertStats) -> u64| -> u64 { s.layers.iter().map(f).sum() };
         let (full, partial) = (sum(&|l| l.full_steps), sum(&|l| l.partial_steps));
-        let prefill_steps = if stepwise { r.prompt.len() as u64 } else { 1 };
+        let prefill_steps = split as u64;
         assert_eq!(
             full + partial,
             layers * (prefill_steps + N_GREEDY as u64),
@@ -238,29 +237,28 @@ fn gpu_real_moe_streaming() {
     // Checked after the report is written, so a failure still leaves the numbers.
     let mut failures = Vec::new();
     let mut resident: Option<Vec<i32>> = None;
-    // slots120: prefill fits without overflow passes; slots32_stepwise: no overflow passes at all,
-    // only slot replacement. Together they separate the two mechanisms when a config differs.
+    // resident_split2: the resident builder with the prefill in two evals, the noise floor of
+    // the model on this GPU (summation order only). slots120: prefill fits without overflow passes.
     let configs = [
-        ("resident", None, None, false),
-        ("slots120", Some(120), None, false),
-        ("slots32_stepwise", Some(32), None, true),
-        ("slots32", Some(32), None, false),
-        ("slots32_ram64", Some(32), Some(64), false),
+        ("resident", None, None, 1),
+        ("resident_split2", None, None, 2),
+        ("slots120", Some(120), None, 1),
+        ("slots32", Some(32), None, 1),
+        ("slots32_ram64", Some(32), Some(64), 1),
     ];
-    let mut resident_routing: Option<Vec<RoutingStep>> = None;
-    for (name, slots, ram, stepwise) in configs {
-        let (greedy, mut v, routing) = run_config(name, &path, slots, ram, stepwise, &r);
+    let mut resident_routing: Option<Vec<Vec<i32>>> = None;
+    for (name, slots, ram, split) in configs {
+        let (greedy, mut v, routing) = run_config(name, &path, slots, ram, split, &r);
         // Prefill routing against the resident builder: per layer, the tokens whose expert set
         // differs. A late, single flip points at rounding; early, wide differences at a bug.
-        if let (Some(base), false) = (&resident_routing, stepwise) {
+        if let Some(base) = &resident_routing {
             let diff: Vec<usize> = base
                 .iter()
                 .zip(&routing)
                 .map(|(a, b)| {
-                    let nu = a.ids.len() / r.prompt.len();
-                    a.ids
-                        .chunks(nu)
-                        .zip(b.ids.chunks(nu))
+                    let nu = a.len() / r.prompt.len();
+                    a.chunks(nu)
+                        .zip(b.chunks(nu))
                         .filter(|(x, y)| {
                             let (mut x, mut y) = (x.to_vec(), y.to_vec());
                             x.sort();
