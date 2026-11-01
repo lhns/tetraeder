@@ -44,7 +44,7 @@ pub struct ExpertStats {
 
 /// The top-k ids the router chose in one layer step (`[n_used, n_tokens]`, token-major), kept
 /// when `LoadOptions::record_routing` is set.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RoutingStep {
     pub layer: usize,
     pub ids: Vec<i32>,
