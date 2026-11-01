@@ -415,6 +415,16 @@ fn gpu_real_moe_streaming() {
             Some("resident"),
             false,
         ),
+        // The exit regime (model larger than RAM): 32 RAM slots per layer, so CPU groups read
+        // their experts from disk in every step, warm rerun included.
+        (
+            "slots32_ram32_cpupolicy",
+            Some(32),
+            Some(32),
+            1,
+            Some("resident"),
+            false,
+        ),
         ("cpu_resident", None, None, 1, None, true),
         ("cpu_slots32", Some(32), None, 1, Some("cpu_resident"), true),
     ];
