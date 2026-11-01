@@ -63,5 +63,5 @@ max_instances = 1  # per project (label); other projects on the account have the
 max_account_price_per_hour = 1.0  # all projects on the Vast account together
 auto_replace = false  # an automatic replacement could start a second paid box
 disk_gb = 80
-nightly_wait_min = 110
+nightly_wait_min = 150  # sum of the nightly.sh stage limits, phase2-baseline with gpu-moe and gap: 145
 max_box_hours = 3
