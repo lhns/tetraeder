@@ -424,9 +424,11 @@ impl Qwen3Moe {
                 };
                 let layer = &self.weights.layers[seg];
                 let chunks = streamer.plan(seg, &chosen)?;
+                // The parking entries follow the slots (see `load_weights`).
+                let park = layer.gate_exps.get().ne()[2] as usize - nu;
                 if let [chunk] = chunks.as_slice() {
                     let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
-                    map_chunk(&chosen, nu, chunk, &slots, &mut mapped, None);
+                    map_chunk(&chosen, nu, chunk, &slots, park, &mut mapped, None);
                     slot.ids_map.get().set_i32(&mapped)?;
                     continue;
                 }
@@ -439,7 +441,15 @@ impl Qwen3Moe {
                     let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
                     mask.clear();
                     mask.resize(weights.len(), 1.0);
-                    map_chunk(&chosen, nu, chunk, &slots, &mut mapped, Some(&mut mask));
+                    map_chunk(
+                        &chosen,
+                        nu,
+                        chunk,
+                        &slots,
+                        park,
+                        &mut mapped,
+                        Some(&mut mask),
+                    );
                     slot.ids_map.get().set_i32(&mapped)?;
                     slot.w.get().set_f32(&mask)?;
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
@@ -469,14 +479,17 @@ impl Qwen3Moe {
 }
 
 /// Writes into `mapped` the slot of each chosen expert (`chosen` holds `n_used` per token). Pairs
-/// whose expert is outside `chunk` (another pass) get router weight 0 in `masked` and a slot that
-/// no other pair of the same token uses: CUDA's sorted `mul_mat_id` counts each (token, slot)
-/// once and aborts on repeats (ADR 0034). Every slot holds finite weights, loaded or zero.
+/// whose expert is outside `chunk` (another pass) get mask 0 in `masked` and one of the `n_used`
+/// zero parking entries from `park` on, distinct per token: CUDA's sorted `mul_mat_id` counts
+/// each (token, slot) once and aborts on repeats. Parking keeps the rows of every chunk slot equal
+/// to its expert's rows in a single pass; the CPU's K-quant `mul_mat_id` picks its kernel per
+/// expert by that row count, so extra rows would change the rounding of the real pairs (ADR 0034).
 fn map_chunk(
     chosen: &[i32],
     n_used: usize,
     chunk: &[u32],
     slots: &[u32],
+    park: usize,
     mapped: &mut Vec<i32>,
     mut masked: Option<&mut Vec<f32>>,
 ) {
@@ -490,15 +503,13 @@ fn map_chunk(
     for (t, token) in chosen.chunks(n_used).enumerate() {
         let start = mapped.len();
         mapped.extend(token.iter().map(|&e| slot_of(e).unwrap_or(-1)));
-        let mut free = 0;
+        let mut free = park as i32;
         for i in start..mapped.len() {
             if mapped[i] >= 0 {
                 continue;
             }
-            while mapped[start..].contains(&free) {
-                free += 1;
-            }
             mapped[i] = free;
+            free += 1;
             if let Some(m) = masked.as_deref_mut() {
                 m[t * n_used + i - start] = 0.0;
             }
@@ -518,7 +529,8 @@ fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Re
         let mut ne: Vec<i64> = info.ne.iter().map(|&x| x as i64).collect();
         let streamed = slots.filter(|_| name.contains("_exps."));
         if let Some(n) = streamed {
-            ne[2] = n as i64;
+            // `n_used` parking entries after the slots for the masked pairs of overflow passes.
+            ne[2] = (n + h.n_expert_used as usize) as i64;
         }
         let nd = ne.iter().rposition(|&x| x != 1).map_or(1, |i| i + 1);
         let t = ctx.new_persistent(info.ty, &ne[..nd]);
@@ -558,8 +570,8 @@ fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Re
     }
     ctx.alloc_tensors(backend)?;
     if slots.is_some() {
-        // A slot that is never loaded must still hold finite weights: an overflow pass runs
-        // the matmuls of unused slots with router weight 0, and 0 * NaN is NaN.
+        // Parking entries and slots that are never loaded must hold finite weights: an overflow
+        // pass runs their matmuls with mask 0, and 0 * NaN is NaN.
         ctx.clear_buffer(0);
     }
     let mut f = std::fs::File::open(&file.path)?;
@@ -798,18 +810,83 @@ fn sum_experts<'a>(h: &Hparams, ctx: &'a Context, experts: Tensor<'a>) -> Tensor
 mod tests {
     use super::map_chunk;
 
-    /// Two tokens, top-2, chunk {5} in slot 3: the masked pairs get weight 0 and slots that no
-    /// other pair of their token uses (CUDA's mul_mat_id aborts on a repeated slot).
+    /// Two tokens, top-2, chunk {5} in slot 3 of 4: the masked pairs get weight 0 and parking
+    /// entries (from 4 on) that no other pair of their token uses (CUDA's mul_mat_id aborts on a
+    /// repeated slot).
     #[test]
     fn masked_pairs_get_distinct_slots_per_token() {
         let chosen = [5, 1, 2, 4];
         let mut mapped = Vec::new();
         let mut w = vec![1.0; 4];
-        map_chunk(&chosen, 2, &[5], &[3], &mut mapped, Some(&mut w));
-        assert_eq!(mapped, [3, 0, 0, 1]);
+        map_chunk(&chosen, 2, &[5], &[3], 4, &mut mapped, Some(&mut w));
+        assert_eq!(mapped, [3, 4, 4, 5]);
         assert_eq!(w, [1.0, 0.0, 0.0, 0.0]);
         for token in mapped.chunks(2) {
             assert_ne!(token[0], token[1]);
+        }
+    }
+
+    /// Top-8 of 32 experts, 24 tokens, 8 slots: in every pass each chunk expert's slot gets
+    /// exactly the rows the expert has in a single pass, and masked pairs only use parking
+    /// entries. The CPU's K-quant `mul_mat_id` chooses its kernel per expert by that row count
+    /// (ADR 0034), so this is what keeps the passes bitwise equal to a single pass.
+    #[test]
+    fn passes_keep_the_rows_of_every_expert() {
+        let (n_expert, n_used, n_tokens, slots) = (32usize, 8usize, 24usize, 8usize);
+        let mut x = 12345u64;
+        let mut chosen = Vec::new();
+        for _ in 0..n_tokens {
+            let mut token: Vec<i32> = Vec::new();
+            while token.len() < n_used {
+                x = x
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                // Skewed like a real router: low ids are popular.
+                let u = (x >> 33) as f64 / (1u64 << 31) as f64;
+                let e = (u * u * n_expert as f64) as i32;
+                if !token.contains(&e) {
+                    token.push(e);
+                }
+            }
+            chosen.extend(token);
+        }
+        let mut order: Vec<u32> = Vec::new();
+        for &e in &chosen {
+            if !order.contains(&(e as u32)) {
+                order.push(e as u32);
+            }
+        }
+        let rows = |e: u32| chosen.iter().filter(|&&c| c as u32 == e).count();
+        let chunks: Vec<&[u32]> = order.chunks(slots).collect();
+        assert!(chunks.len() > 1, "the routing needs passes");
+        let mut mapped = Vec::new();
+        for chunk in chunks {
+            let ids: Vec<u32> = (0..chunk.len() as u32).rev().collect();
+            let mut mask = vec![1.0; chosen.len()];
+            map_chunk(
+                &chosen,
+                n_used,
+                chunk,
+                &ids,
+                slots,
+                &mut mapped,
+                Some(&mut mask),
+            );
+            for (&e, &slot) in chunk.iter().zip(&ids) {
+                let got = mapped.iter().filter(|&&m| m == slot as i32).count();
+                assert_eq!(got, rows(e), "expert {e} in slot {slot}");
+            }
+            for (i, &m) in mapped.iter().enumerate() {
+                let masked = mask[i] == 0.0;
+                assert_eq!(masked, m as usize >= slots, "pair {i} -> slot {m}");
+                assert!((m as usize) < slots + n_used);
+            }
+            for token in mapped.chunks(n_used) {
+                let mut t = token.to_vec();
+                t.sort();
+                t.dedup();
+                assert_eq!(t.len(), n_used, "distinct slots per token");
+            }
         }
     }
 }

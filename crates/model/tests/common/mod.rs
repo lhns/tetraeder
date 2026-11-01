@@ -1,6 +1,8 @@
 //! Shared by the model tests: the fixture, libllama as the reference and the logit checks.
 #![allow(dead_code)]
 
+pub mod synth;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
