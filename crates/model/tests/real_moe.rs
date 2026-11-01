@@ -270,6 +270,12 @@ fn gpu_real_moe_streaming() {
                 .collect();
             eprintln!("{name}: prefill tokens with other experts, per layer: {diff:?}");
             v["routing_diff_per_layer"] = json!(diff);
+            // Streaming is bitwise equal to the resident builder (ADR 0034), so routing is too.
+            if diff.iter().any(|&d| d > 0) {
+                failures.push(format!(
+                    "{name}: prefill routing differs from the resident builder"
+                ));
+            }
         }
         if resident_routing.is_none() {
             resident_routing = Some(routing);

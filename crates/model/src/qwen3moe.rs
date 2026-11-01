@@ -430,20 +430,24 @@ impl Qwen3Moe {
                     continue;
                 }
                 // More distinct experts than slots: one FFN pass per chunk, summed (ADR 0033).
+                // The passes scale by a 0/1 mask instead of the router weights and collect the
+                // unweighted expert outputs; the next segment applies the weights (ADR 0034).
                 let weights = slot.w.get().get_f32()?;
-                let mut masked = Vec::new();
+                let mut mask = Vec::new();
                 for (pass, chunk) in chunks.iter().enumerate() {
                     let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
-                    masked.clone_from(&weights);
-                    map_chunk(&chosen, nu, chunk, &slots, &mut mapped, Some(&mut masked));
+                    mask.clear();
+                    mask.resize(weights.len(), 1.0);
+                    map_chunk(&chosen, nu, chunk, &slots, &mut mapped, Some(&mut mask));
                     slot.ids_map.get().set_i32(&mapped)?;
-                    slot.w.get().set_f32(&masked)?;
+                    slot.w.get().set_f32(&mask)?;
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
                     let graph = ffn_pass(&h, &ctx, layer, slot, pass == 0);
                     self.sched.alloc_graph(&graph)?;
                     self.sched.compute(&graph)?;
                     self.passes_run += 1;
                 }
+                slot.w.get().set_f32(&weights)?;
                 from_acc = true;
             }
         }
@@ -644,7 +648,7 @@ fn build_segment<'a>(
     } else {
         let s = &st.slots[(seg - 1) % 2];
         let moe = if from_acc {
-            sum_experts(h, ctx, s.acc.get())
+            sum_experts(h, ctx, ctx.mul(s.acc.get(), s.w.get()))
         } else {
             moe_ffn(h, ctx, &w.layers[seg - 1], s)
         };
@@ -742,11 +746,12 @@ fn attention_and_router<'a>(
     (ffn_inp, xn, weights, ids)
 }
 
-/// One pass of the expert FFN of a layer step that needed several. It adds its weighted expert
-/// outputs, before the sum over experts, into `acc` (or replaces it in the first pass). Each
-/// (token, choice) is nonzero in exactly one pass and adding an exact zero changes nothing, so
-/// `acc` ends up bitwise equal to the single-pass tensor and the next segment sums it in the
-/// same order (ADR 0034).
+/// One pass of the expert FFN of a layer step that needed several. The slot's `w` holds a 0/1
+/// mask here, so the pass adds its unweighted expert outputs into `acc` (or replaces it in the
+/// first pass). Each (token, choice) is nonzero in exactly one pass and `x * 1` and `x + 0` are
+/// exact, so `acc` ends up bitwise equal to the single pass's expert outputs. The next segment
+/// weights and sums it with the same ops as a single pass, which CUDA fuses into one kernel with
+/// its own rounding (ADR 0034).
 fn ffn_pass<'a>(
     h: &Hparams,
     ctx: &'a Context,
@@ -767,7 +772,7 @@ fn moe_ffn<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Ten
     sum_experts(h, ctx, weighted_experts(h, ctx, lw, s))
 }
 
-/// `down(silu(gate) * up)` per selected expert, scaled by its router weight: `[n_embd, n_used, n]`.
+/// `down(silu(gate) * up)` per selected expert, scaled by the slot's `w`: `[n_embd, n_used, n]`.
 fn weighted_experts<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Tensor<'a> {
     let n = s.xn.get().ne()[1];
     let cur = ctx.reshape(s.xn.get(), &[h.n_embd as i64, 1, n]);
