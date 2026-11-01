@@ -173,7 +173,12 @@ fn run_config(
     if let Some(s) = m.expert_stats() {
         let sum = |f: &dyn Fn(&LayerExpertStats) -> u64| -> u64 { s.layers.iter().map(f).sum() };
         let (full, partial) = (sum(&|l| l.full_steps), sum(&|l| l.partial_steps));
-        assert_eq!(full + partial, layers * (1 + N_GREEDY as u64), "{name}");
+        let prefill_steps = if stepwise { r.prompt.len() as u64 } else { 1 };
+        assert_eq!(
+            full + partial,
+            layers * (prefill_steps + N_GREEDY as u64),
+            "{name}"
+        );
         let read_s = s.io.read_time.as_secs_f64();
         let read_gb_s = if read_s > 0.0 {
             s.io.bytes_read as f64 / 1e9 / read_s
