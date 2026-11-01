@@ -172,8 +172,9 @@ impl Streamer {
                         })
                     })
                     .collect();
+                // No zero clear: a CPU group only reads RAM slots staged for it, and touching
+                // every page at load would commit the whole tier up front (ADR 0035).
                 ctx.alloc_weights(cpu)?;
-                ctx.clear_buffer(0);
                 Ok(RamTier {
                     cache: SlotCache::new(Tier::Ram, h.n_layer, n_expert, n as u32),
                     tensors,
