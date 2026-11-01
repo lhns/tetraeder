@@ -48,6 +48,8 @@ pub struct ExpertStats {
 pub struct RoutingStep {
     pub layer: usize,
     pub ids: Vec<i32>,
+    /// The router weights of `ids`, same layout.
+    pub weights: Vec<f32>,
 }
 
 /// Host copies of experts between the file and the compute tier: `slots` per layer, each

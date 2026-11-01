@@ -109,6 +109,8 @@ struct Run {
     report: Value,
     /// Prefill routing per layer, token-major.
     routing: Vec<Vec<i32>>,
+    /// Prefill router weights per layer, same layout.
+    weights: Vec<Vec<f32>>,
     /// Prefill logits of every prompt position.
     logits: Vec<f32>,
     n_vocab: usize,
@@ -132,6 +134,59 @@ fn routing_diff(a: &Run, b: &Run, n_prompt: usize) -> Vec<usize> {
                 .count()
         })
         .collect()
+}
+
+/// Where two runs' prefills first differ: the first layer whose router weights differ bitwise
+/// (the layer after the first different FFN output), its tokens, and per token the passes its
+/// experts of the layer before fell into with `slots` (prefill from empty slots: distinct experts
+/// in first-appearance order, chunks of `slots`).
+fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
+    for (l, (x, y)) in a.weights.iter().zip(&b.weights).enumerate() {
+        let nu = x.len() / n_prompt;
+        let tokens: Vec<usize> = (0..n_prompt)
+            .filter(|&t| {
+                x[t * nu..(t + 1) * nu]
+                    .iter()
+                    .zip(&y[t * nu..(t + 1) * nu])
+                    .any(|(p, q)| p.to_bits() != q.to_bits())
+            })
+            .collect();
+        if tokens.is_empty() {
+            continue;
+        }
+        let passes = if l == 0 {
+            Vec::new()
+        } else {
+            let ids = &a.routing[l - 1];
+            let mut order: Vec<i32> = Vec::new();
+            for &e in ids {
+                if !order.contains(&e) {
+                    order.push(e);
+                }
+            }
+            let pass_of = |e: i32| order.iter().position(|&o| o == e).unwrap() / slots;
+            (0..n_prompt)
+                .map(|t| {
+                    let mut p: Vec<usize> = ids[t * nu..(t + 1) * nu]
+                        .iter()
+                        .map(|&e| pass_of(e))
+                        .collect();
+                    p.sort();
+                    p.dedup();
+                    p
+                })
+                .collect::<Vec<_>>()
+        };
+        let single_pass_tokens = passes.iter().filter(|p| p.len() == 1).count();
+        let differing_passes: Vec<_> = tokens.iter().map(|&t| passes.get(t).cloned()).collect();
+        return json!({
+            "layer": l,
+            "tokens": tokens,
+            "their_passes_in_layer_before": differing_passes,
+            "single_pass_tokens_in_layer_before": single_pass_tokens,
+        });
+    }
+    json!(null)
 }
 
 /// One builder configuration, loaded, checked and dropped. Returns its greedy tokens and the
@@ -171,8 +226,10 @@ fn run_config(
     assert_eq!(logits.len(), r.prompt.len() * n_vocab);
     // Prefill routing per layer, token-major, whatever the split.
     let mut routing: Vec<Vec<i32>> = vec![Vec::new(); layers as usize];
+    let mut weights: Vec<Vec<f32>> = vec![Vec::new(); layers as usize];
     for step in m.take_routing_log() {
         routing[step.layer].extend(step.ids);
+        weights[step.layer].extend(step.weights);
     }
     let mut worst = 0f32;
     // First prompt position whose top-5 logits differ by more than float noise.
@@ -239,6 +296,7 @@ fn run_config(
         greedy,
         report: out,
         routing,
+        weights,
         logits,
         n_vocab,
     }
@@ -334,6 +392,11 @@ fn gpu_real_moe_streaming() {
                 "{name} vs {}: max |logit delta| {max_delta:e}, top-1 agreement {agree:.3}, routing diff per layer {diff:?}",
                 base.0
             );
+            if name == "cpu_slots32" {
+                let d = first_weight_diff(b, &run, n, 32);
+                eprintln!("{name} vs {}: first router weight difference {d}", base.0);
+                run.report["first_weight_diff"] = d;
+            }
             run.report["vs"] = json!({
                 "base": base.0,
                 "max_logit_delta": max_delta,

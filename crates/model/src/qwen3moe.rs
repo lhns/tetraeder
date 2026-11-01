@@ -413,6 +413,7 @@ impl Qwen3Moe {
                     log.push(RoutingStep {
                         layer: seg,
                         ids: chosen.clone(),
+                        weights: slot.w.get().get_f32()?,
                     });
                 }
                 let Some(streamer) = &mut self.streamer else {
