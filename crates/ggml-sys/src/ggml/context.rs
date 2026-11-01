@@ -405,6 +405,28 @@ impl<'a> Tensor<'a> {
         cstr(unsafe { (*self.ptr.as_ptr()).name.as_ptr() })
     }
 
+    /// ggml's op name, for example `SOFT_MAX` or `MUL_MAT_ID`; `NONE` for a leaf.
+    pub fn op_name(self) -> String {
+        // SAFETY: as above; ggml returns a static NUL-terminated name for every op.
+        cstr(unsafe { sys::ggml_op_name((*self.ptr.as_ptr()).op) })
+    }
+
+    /// Same tensor (identity, not contents).
+    pub fn is(self, other: Tensor<'_>) -> bool {
+        self.ptr == other.ptr
+    }
+
+    /// Source `i` of the op, if set.
+    pub fn src(self, i: usize) -> Option<Tensor<'a>> {
+        // SAFETY: as above. A source belongs to this context or to one the graph's builder
+        // borrows for at least `'a` (weights, KV cache, state).
+        let p = unsafe { (*self.ptr.as_ptr()).src }.get(i).copied()?;
+        NonNull::new(p).map(|ptr| Tensor {
+            ptr,
+            _ctx: PhantomData,
+        })
+    }
+
     /// Marks the tensor as a graph output, so the scheduler keeps its data after compute.
     pub fn set_output(self) -> Self {
         // SAFETY: as above.
@@ -544,5 +566,16 @@ impl<'a> Graph<'a> {
     pub fn n_nodes(&self) -> usize {
         // SAFETY: live graph.
         unsafe { sys::ggml_graph_n_nodes(self.ptr.as_ptr()) as usize }
+    }
+
+    /// Node `i` in execution order, for checks of the graph's op order.
+    pub fn node(&self, i: usize) -> Tensor<'a> {
+        assert!(i < self.n_nodes(), "node {i} out of range");
+        // SAFETY: live graph and an index below its node count.
+        let p = unsafe { sys::ggml_graph_node(self.ptr.as_ptr(), i as i32) };
+        Tensor {
+            ptr: NonNull::new(p).expect("graph nodes are non-null"),
+            _ctx: PhantomData,
+        }
     }
 }

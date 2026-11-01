@@ -1054,6 +1054,9 @@ fn build_step<'a>(
     for il in 0..h.n_layer as usize {
         let (ffn_inp, xn, weights, ids) =
             attention_and_router(h, ctx, &mut g, w, kv, st, il, x, n_past);
+        // The router's nodes enter the graph before the expert FFN, consecutive as in libllama's
+        // `build_moe_ffn` and in the segments, so CUDA's topk-moe fusion fires the same way.
+        g.expand(weights);
         if record {
             let r = (ctx.cont(ids).set_output(), ctx.cont(weights).set_output());
             g.expand(r.0);
@@ -1261,5 +1264,139 @@ mod tests {
         assert_eq!(g.tokens, [0, 1]);
         assert_eq!(g.pairs, [0, 3]);
         assert_eq!(g.ids, [3, 3]);
+    }
+}
+
+/// The op order of the graphs where ggml-cuda decides its fusions. CUDA fuses by matching
+/// consecutive nodes, so the same ops in another order run other kernels and give other bits.
+/// libllama orders the router so the topk-moe fusion fires (`build_moe_ffn` expands the weights
+/// early); the builder's graphs must do the same, checked here without a GPU (ADR 0036).
+#[cfg(test)]
+mod graph_order {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// `ggml_cuda_topk_moe_fusion` with softmax gating and normalized weights.
+    const TOPK_MOE: [&str; 10] = [
+        "SOFT_MAX", "RESHAPE", "ARGSORT", "VIEW", "GET_ROWS", "RESHAPE", "SUM_ROWS", "CLAMP",
+        "DIV", "RESHAPE",
+    ];
+
+    type Ops = Vec<(String, [i64; 4])>;
+
+    fn model() -> Qwen3Moe {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/tiny-qwen3moe-f16.gguf");
+        let opts = LoadOptions::new(BackendChoice::Cpu { threads: Some(1) });
+        Qwen3Moe::load(path, &opts).expect("fixture loads")
+    }
+
+    /// Op name and shape of every node, minus the nodes `skip` drops.
+    fn ops(g: &Graph<'_>, skip: impl Fn(Tensor<'_>) -> bool) -> Ops {
+        (0..g.n_nodes())
+            .map(|i| g.node(i))
+            .filter(|&t| !skip(t))
+            .map(|t| (t.op_name(), t.ne()))
+            .collect()
+    }
+
+    /// Every router is the topk-moe window with the links the CUDA matcher checks, and every
+    /// weighted expert output is followed by its views and adds (`moe_weighted_reduction`).
+    fn assert_fusable(g: &Graph<'_>, n_layer: usize, n_used: usize, what: &str) {
+        let n = |i: usize| g.node(i);
+        let src_is = |i: usize, s: usize, t: Tensor<'_>| n(i).src(s).is_some_and(|x| x.is(t));
+        let (mut routers, mut reductions) = (0, 0);
+        for i in 0..g.n_nodes() {
+            match n(i).op_name().as_str() {
+                "SOFT_MAX" => {
+                    routers += 1;
+                    let got: Vec<String> = (i..(i + TOPK_MOE.len()).min(g.n_nodes()))
+                        .map(|j| n(j).op_name())
+                        .collect();
+                    assert_eq!(got, TOPK_MOE, "{what}: router at node {i}");
+                    // (node, source, node it must be) as in ggml_cuda_topk_moe_fusion.
+                    let links = [
+                        (i + 1, 0, i),
+                        (i + 2, 0, i),
+                        (i + 3, 0, i + 2),
+                        (i + 4, 0, i + 1),
+                        (i + 4, 1, i + 3),
+                        (i + 5, 0, i + 4),
+                        (i + 6, 0, i + 5),
+                        (i + 7, 0, i + 6),
+                        (i + 8, 0, i + 5),
+                        (i + 8, 1, i + 7),
+                        (i + 9, 0, i + 8),
+                    ];
+                    for (node, s, from) in links {
+                        assert!(
+                            src_is(node, s, n(from)),
+                            "{what}: router at node {i}, {node}"
+                        );
+                    }
+                }
+                "MUL" if n(i).src(0).is_some_and(|e| e.op_name() == "MUL_MAT_ID") => {
+                    reductions += 1;
+                    let (mut views, mut adds) = (0, 0);
+                    for j in i + 1..i + 2 * n_used {
+                        match n(j).op_name().as_str() {
+                            "VIEW" if src_is(j, 0, n(i)) => views += 1,
+                            "ADD" => adds += 1,
+                            op => panic!("{what}: node {j} after the weighting is {op}"),
+                        }
+                    }
+                    assert_eq!((views, adds), (n_used, n_used - 1), "{what}: node {i}");
+                }
+                _ => {}
+            }
+        }
+        assert_eq!((routers, reductions), (n_layer, n_layer), "{what}");
+    }
+
+    /// The segments' ops in order, without the copies into the state slots.
+    fn segment_ops(m: &Qwen3Moe, st: &State, last_only: bool) -> Ops {
+        let h = &m.file.hparams;
+        let n_layer = h.n_layer as usize;
+        let to_state = |t: Tensor<'_>| {
+            t.op_name() == "CPY"
+                && t.src(1).is_some_and(|d| {
+                    let name = d.name();
+                    ["resid_", "xn_", "weights_", "ids_"]
+                        .iter()
+                        .any(|p| name.starts_with(p))
+                })
+        };
+        let mut all = Vec::new();
+        for seg in 0..=n_layer {
+            let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
+            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, 0, last_only, &[]);
+            if seg > 0 && seg < n_layer {
+                // A middle segment holds the previous layer's reduction and one router.
+                let what = format!("segment {seg}");
+                assert_fusable(&g, 1, h.n_expert_used as usize, &what);
+            }
+            all.extend(ops(&g, to_state));
+        }
+        all
+    }
+
+    #[test]
+    fn whole_step_graph_orders_ops_like_the_segments_and_libllama() {
+        let m = model();
+        let h = m.file.hparams.clone();
+        for (n, last_only) in [(1, false), (5, true)] {
+            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary).unwrap();
+            let segments = segment_ops(&m, &st, last_only);
+            for record in [false, true] {
+                let what = format!("step n={n} record={record}");
+                let ctx = Context::new(step_nodes(&h), step_nodes(&h)).unwrap();
+                let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, 0, last_only, record);
+                let (n_layer, n_used) = (h.n_layer as usize, h.n_expert_used as usize);
+                assert_fusable(&g, n_layer, n_used, &what);
+                // The routing outputs are extra nodes; the rest is the segments' order.
+                let step = ops(&g, |t| t.op_name() == "CONT");
+                assert_eq!(step, segments, "{what}");
+            }
+        }
     }
 }
