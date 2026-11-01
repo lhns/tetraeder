@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CPU speed of the builder against libllama (tests/cpu_bench.rs, ADR 0036) on the synthetic MoE and on
 # Qwen3-30B-A3B, GPU hidden. Started detached by `taxameter run scripts/cpu_bench.sh`; ends with
-# CPU_BENCH_DONE rc=N in its log. THREADS (comma list) overrides the default, the available parallelism.
+# CPU_BENCH_DONE rc=N in its log. THREADS (comma list) overrides the thread counts.
 exec 8> /root/tetraeder_cpu_bench.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
@@ -20,7 +20,10 @@ log=runs/vast/cpu_bench.log
   models_dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}"
   # CPU only on both sides: libllama would otherwise offload large ops to the GPU.
   export CUDA_VISIBLE_DEVICES='' GGML_VK_VISIBLE_DEVICES=''
-  [ -n "${THREADS:-}" ] && export TETRAEDER_BENCH_THREADS="$THREADS"
+  # Default: 8 and the container's CPU quota rounded down (ADR 0021), else the available parallelism.
+  quota=$(awk '$1 != "max" { print int($1 / $2) }' /sys/fs/cgroup/cpu.max 2> /dev/null)
+  THREADS="${THREADS:-${quota:+8,$quota}}"
+  [ -n "$THREADS" ] && export TETRAEDER_BENCH_THREADS="$THREADS"
   export TETRAEDER_BENCH_MACHINE="vast host $(hostname), $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
   cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_bench --no-run
   for which in synth real; do

@@ -18,6 +18,8 @@ With every expert resident the segments buy nothing: the host only copies the ro
 
 ## Consequences
 
+- Supersedes ADR 0030's one segment per MoE layer when every expert is resident.
+- Local result (bench/results/20261101-local): the threadpool alone takes the builder at 8 threads from 0.25 to 2.5 tok/s decode; after both changes the 1-thread ratio to libllama is 1.14 decode and 1.08 prefill. The whole-step graph's gain is within this VM's noise; it removes 48 launches and synchronizations per token, which matters on a GPU and is measured on the box.
 - Same logits bit for bit: the resident builder is the reference of the exactness tests (multipass, cpu_experts, slots), which compare it against the segmented streaming paths.
 - The CPU policy (ADR 0035) still runs one segment per layer: its host work between layers is real. A RAM tier holding every expert could also become one graph with a device-side slot table; that waits for measurements on the box.
 - Not covered: llama.cpp repacks Q4_K weights for AVX2 (`q4_K_8x8_q8_K`, extra buffer type `CPU_REPACK`), the builder's CPU buffers do not. That changes numerics and is a separate decision, measured on the box with `tests/cpu_bench.rs`.
