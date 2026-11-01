@@ -1,7 +1,7 @@
 //! Shared by the model tests: the fixture, libllama as the reference and the logit checks.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
 use tetraeder_model::Qwen3Moe;
@@ -45,9 +45,14 @@ pub struct Reference {
 }
 
 pub fn libllama_reference(prompt: &[i32], n_greedy: usize) -> Reference {
+    libllama_reference_at(&fixture(), prompt, n_greedy)
+}
+
+/// Like [`libllama_reference`] for another GGUF (same shape, for example a quantized copy).
+pub fn libllama_reference_at(path: &Path, prompt: &[i32], n_greedy: usize) -> Reference {
     let model = Arc::new(
         Model::load(
-            fixture(),
+            path,
             &ModelParams {
                 n_gpu_layers: 0,
                 ..ModelParams::default()
