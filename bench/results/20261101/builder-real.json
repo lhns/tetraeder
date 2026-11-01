@@ -1,6 +1,6 @@
 {
   "cpu_resident": {
-    "decode_tok_s": 7.107901489228106,
+    "decode_tok_s": 7.076208333069598,
     "first_prompt_pos_off": 0,
     "greedy": [
       518,
@@ -20,14 +20,14 @@
       13,
       576
     ],
-    "load_s": 14.277677278,
+    "load_s": 14.138298985,
     "max_top5_delta": 3.191488265991211,
     "overflow_passes": 0,
-    "prefill_s": 1.269885951,
-    "prefill_tok_s": 50.39822666720722
+    "prefill_s": 1.284162268,
+    "prefill_tok_s": 49.83793839362363
   },
   "cpu_slots32": {
-    "decode_tok_s": 3.5348594038514363,
+    "decode_tok_s": 3.5525678949024333,
     "experts": {
       "compute_hits": 4991,
       "compute_misses": 3956,
@@ -38,10 +38,116 @@
       "partial_steps": 573,
       "ram_hits": 0,
       "ram_misses": 0,
-      "read_gb_s": 1.3064947771738078,
-      "read_s": 8.687975213
+      "read_gb_s": 1.2935532382870858,
+      "read_s": 8.774895307
     },
     "first_prompt_pos_off": 0,
+    "first_weight_diff": {
+      "layer": 1,
+      "single_pass_tokens_in_layer_before": 6,
+      "their_passes_in_layer_before": [
+        [
+          0
+        ],
+        [
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          1
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ],
+        [
+          0,
+          1,
+          2
+        ]
+      ],
+      "tokens": [
+        0,
+        1,
+        6,
+        9,
+        13,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        33,
+        42,
+        45,
+        47,
+        53,
+        57,
+        61
+      ]
+    },
     "greedy": [
       518,
       279,
@@ -60,11 +166,11 @@
       3729,
       13
     ],
-    "load_s": 3.159158377,
+    "load_s": 3.167471816,
     "max_top5_delta": 3.2023801803588867,
     "overflow_passes": 107,
-    "prefill_s": 10.634202233,
-    "prefill_tok_s": 6.018316992448718,
+    "prefill_s": 10.695280007000001,
+    "prefill_tok_s": 5.983948055414385,
     "vs": {
       "base": "cpu_resident",
       "greedy_equal": false,
@@ -124,7 +230,7 @@
   },
   "greedy_tokens": 16,
   "libllama": {
-    "decode_tok_s": 127.20098042699685,
+    "decode_tok_s": 125.06886115617174,
     "greedy": [
       518,
       279,
@@ -143,13 +249,13 @@
       315,
       279
     ],
-    "load_s": 4.928716102,
-    "prefill_s": 0.232042452
+    "load_s": 4.785973981,
+    "prefill_s": 0.226929414
   },
   "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
   "prompt_tokens": 64,
   "resident": {
-    "decode_tok_s": 103.92332235898719,
+    "decode_tok_s": 98.21452439969518,
     "first_prompt_pos_off": null,
     "greedy": [
       518,
@@ -169,14 +275,14 @@
       315,
       279
     ],
-    "load_s": 4.486520018,
+    "load_s": 4.773729462,
     "max_top5_delta": 0.0,
     "overflow_passes": 0,
-    "prefill_s": 0.1302172,
-    "prefill_tok_s": 491.4865317331351
+    "prefill_s": 0.131578919,
+    "prefill_tok_s": 486.40010486786264
   },
   "resident_split2": {
-    "decode_tok_s": 103.10593283330265,
+    "decode_tok_s": 98.44248484287213,
     "first_prompt_pos_off": null,
     "greedy": [
       518,
@@ -196,11 +302,11 @@
       315,
       279
     ],
-    "load_s": 4.411328714,
+    "load_s": 4.363294196,
     "max_top5_delta": 0.0,
     "overflow_passes": 0,
-    "prefill_s": 0.117592965,
-    "prefill_tok_s": 544.2502449019803,
+    "prefill_s": 0.11558681,
+    "prefill_tok_s": 553.6963949433331,
     "vs": {
       "base": "resident",
       "greedy_equal": true,
@@ -259,7 +365,7 @@
     }
   },
   "resident_tokenwise": {
-    "decode_tok_s": 104.96176364312521,
+    "decode_tok_s": 100.66345458391142,
     "first_prompt_pos_off": 0,
     "greedy": [
       518,
@@ -279,14 +385,14 @@
       13,
       576
     ],
-    "load_s": 4.304226535,
+    "load_s": 4.334227609,
     "max_top5_delta": 1.5246639251708984,
     "overflow_passes": 0,
-    "prefill_s": 0.624128433,
-    "prefill_tok_s": 102.54299694755295
+    "prefill_s": 0.651089707,
+    "prefill_tok_s": 98.29674668778014
   },
   "slots120": {
-    "decode_tok_s": 44.65134189449884,
+    "decode_tok_s": 45.464085550429004,
     "experts": {
       "compute_hits": 6048,
       "compute_misses": 2897,
@@ -297,8 +403,8 @@
       "partial_steps": 128,
       "ram_hits": 0,
       "ram_misses": 0,
-      "read_gb_s": 1.1482487725929036,
-      "read_s": 7.219155547
+      "read_gb_s": 1.1415617765102986,
+      "read_s": 7.261443635
     },
     "first_prompt_pos_off": null,
     "greedy": [
@@ -319,11 +425,11 @@
       315,
       279
     ],
-    "load_s": 0.648487676,
+    "load_s": 0.639326195,
     "max_top5_delta": 0.0,
     "overflow_passes": 0,
-    "prefill_s": 8.546006243,
-    "prefill_tok_s": 7.4888782175208615,
+    "prefill_s": 8.595657448,
+    "prefill_tok_s": 7.445620115409699,
     "vs": {
       "base": "resident",
       "greedy_equal": true,
@@ -382,7 +488,7 @@
     }
   },
   "slots32": {
-    "decode_tok_s": 6.291583211600701,
+    "decode_tok_s": 6.022244488676617,
     "experts": {
       "compute_hits": 4959,
       "compute_misses": 3990,
@@ -393,8 +499,8 @@
       "partial_steps": 579,
       "ram_hits": 0,
       "ram_misses": 0,
-      "read_gb_s": 1.7404269524116527,
-      "read_s": 6.576491673
+      "read_gb_s": 1.550452925028655,
+      "read_s": 7.382296602
     },
     "first_prompt_pos_off": 0,
     "greedy": [
@@ -415,11 +521,11 @@
       13,
       576
     ],
-    "load_s": 0.301425406,
+    "load_s": 0.307300802,
     "max_top5_delta": 1.77935791015625,
     "overflow_passes": 105,
-    "prefill_s": 6.351957528,
-    "prefill_tok_s": 10.075634120329402,
+    "prefill_s": 7.163001277,
+    "prefill_tok_s": 8.934802260262112,
     "vs": {
       "base": "resident",
       "greedy_equal": false,
@@ -478,7 +584,7 @@
     }
   },
   "slots32_ram64": {
-    "decode_tok_s": 17.778558197220775,
+    "decode_tok_s": 17.68822995407354,
     "experts": {
       "compute_hits": 4959,
       "compute_misses": 3990,
@@ -489,8 +595,8 @@
       "partial_steps": 579,
       "ram_hits": 1073,
       "ram_misses": 2917,
-      "read_gb_s": 0.9668237095442127,
-      "read_s": 8.640483974
+      "read_gb_s": 0.9014069288940555,
+      "read_s": 9.267539998
     },
     "first_prompt_pos_off": 0,
     "greedy": [
@@ -511,11 +617,11 @@
       13,
       576
     ],
-    "load_s": 0.293101001,
+    "load_s": 0.28668559,
     "max_top5_delta": 1.77935791015625,
     "overflow_passes": 105,
-    "prefill_s": 9.727181668,
-    "prefill_tok_s": 6.579500844581121,
+    "prefill_s": 10.357940908,
+    "prefill_tok_s": 6.178834245961891,
     "vs": {
       "base": "resident",
       "greedy_equal": false,
@@ -574,7 +680,7 @@
     }
   },
   "slots32_tokenwise": {
-    "decode_tok_s": 10.862449279999522,
+    "decode_tok_s": 10.66623138487467,
     "experts": {
       "compute_hits": 25876,
       "compute_misses": 4844,
@@ -585,8 +691,8 @@
       "partial_steps": 2264,
       "ram_hits": 0,
       "ram_misses": 0,
-      "read_gb_s": 1.993629715048821,
-      "read_s": 7.016518467
+      "read_gb_s": 1.999013108852048,
+      "read_s": 6.997622802
     },
     "first_prompt_pos_off": 0,
     "greedy": [
@@ -607,11 +713,11 @@
       13,
       576
     ],
-    "load_s": 0.53116303,
+    "load_s": 0.53248599,
     "max_top5_delta": 1.5246639251708984,
     "overflow_passes": 0,
-    "prefill_s": 9.135372708,
-    "prefill_tok_s": 7.00573496513767,
+    "prefill_s": 9.20638151,
+    "prefill_tok_s": 6.95169974549534,
     "vs": {
       "base": "resident_tokenwise",
       "greedy_equal": true,
