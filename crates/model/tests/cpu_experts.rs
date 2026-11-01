@@ -264,13 +264,15 @@ fn gpu_cpu_groups_match_resident() {
     let scale = want.iter().flatten().fold(0f32, |a, x| a.max(x.abs()));
     let tol = TOL_GPU + 1e-2 * scale;
     let mut worst = 0f32;
+    let mut flips = Vec::new();
     for (i, (a, b)) in want.iter().zip(&got).enumerate() {
         for (pos, (x, y)) in a.chunks(n_vocab).zip(b.chunks(n_vocab)).enumerate() {
-            assert_eq!(
-                argmax(x),
-                argmax(y),
-                "eval {i} position {pos}: top-1 differs"
-            );
+            if argmax(x) != argmax(y) {
+                // a flip is a rounding effect only if the resident top-1 was a near tie
+                let mut sorted = x.to_vec();
+                sorted.sort_by(|p, q| q.total_cmp(p));
+                flips.push((i, pos, argmax(x), argmax(y), sorted[0] - sorted[1]));
+            }
         }
         worst = worst.max(
             a.iter()
@@ -288,7 +290,9 @@ fn gpu_cpu_groups_match_resident() {
         sum(&s, |l| l.cpu),
         sum(&s, |l| l.compute.hits),
     );
+    eprintln!("top-1 flips (eval, position, resident, got, resident margin): {flips:?}");
     assert!(worst <= tol, "max |logit delta| {worst:e} above {tol:e}");
+    assert!(flips.is_empty(), "top-1 differs: {flips:?}");
     assert_eq!(
         s.io.uploads, after_hot,
         "decode and the second prefill upload nothing"
