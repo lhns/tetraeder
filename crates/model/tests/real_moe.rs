@@ -339,7 +339,8 @@ fn gpu_real_moe_streaming() {
     // number of experts in the tensor, so streaming must equal the resident builder bit for bit.
     // A prefill that needs overflow passes takes MMQ, whose stream-k split depends on that
     // number; it is checked for gross errors only (ADR 0034). On the CPU the same multi-pass
-    // prefill is exact, which separates the kernel's rounding from the streaming logic.
+    // prefill is exact since masked pairs park outside the slots (ADR 0034), which separates the
+    // kernel's rounding from the streaming logic.
     let n = r.prompt.len();
     let configs = [
         ("resident", None, None, 1, None, true),
