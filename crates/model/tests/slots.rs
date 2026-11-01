@@ -4,24 +4,30 @@
 //! The fixture has 8 experts per layer and routes the top 2, so 1 slot cannot hold even one
 //! token's experts: that case runs the overflow passes of ADR 0033.
 //!
-//! Hardware label: all tests are `cpu_*`.
+//! Hardware labels (AGENTS rule 9): `cpu_*` tests need no GPU; `gpu_*` tests skip cleanly when the
+//! build has no GPU device.
 
 mod common;
 
 use common::*;
 use std::sync::Arc;
+use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_model::{BackendChoice, LoadOptions, ModelError, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 const EXPERTS: usize = 8;
 
-fn opts(slots: usize, ram: Option<usize>) -> LoadOptions {
+fn opts_on(backend: BackendChoice, slots: usize, ram: Option<usize>) -> LoadOptions {
     LoadOptions {
         expert_slots: Some(slots),
         ram_slots: ram,
         record_routing: true,
-        ..LoadOptions::new(CPU)
+        ..LoadOptions::new(backend)
     }
+}
+
+fn opts(slots: usize, ram: Option<usize>) -> LoadOptions {
+    opts_on(CPU, slots, ram)
 }
 
 /// hardware: cpu. Slot counts 8 (all), 4, 2 and 1 per layer, each with no RAM tier and with
@@ -43,6 +49,37 @@ fn cpu_slot_counts_match_libllama() {
                 let stats = m.expert_stats().expect("streaming");
                 assert!(stats.layers.iter().all(|l| l.compute.misses > 0));
                 assert_eq!(stats.layers[0].ram.is_some(), ram.is_some());
+                assert!(stats.io.experts_read > 0);
+            }
+            if slots == 1 {
+                assert!(m.overflow_passes() > 0, "top-2 does not fit one slot");
+            }
+        }
+    }
+}
+
+/// hardware: gpu (CUDA build; skips without a GPU device). The matrix of the CPU test with the
+/// builder on GPU 0 against the CPU libllama reference, within `TOL_GPU`.
+#[test]
+fn gpu_slot_counts_match_libllama() {
+    if !Backend::gpu_available() {
+        eprintln!("skip: no GPU device in this build or on this machine");
+        return;
+    }
+    let r = libllama_reference(&PROMPT, N_GREEDY);
+    for slots in [8, 4, 2, 1] {
+        for ram in [None, Some(3)] {
+            let o = opts_on(BackendChoice::Gpu { index: 0 }, slots, ram);
+            let mut m = Qwen3Moe::load(fixture(), &o).unwrap();
+            let worst = check_against(&mut m, &r, TOL_GPU);
+            eprintln!("gpu slots {slots} ram {ram:?}: max |delta| {worst:e}");
+            let layers = m.hparams().n_layer as u64;
+            assert_eq!(m.segments_run(), (layers + 1) * (2 + N_GREEDY as u64));
+            if slots == EXPERTS {
+                assert!(m.expert_stats().is_none(), "all experts resident: no cache");
+                assert_eq!(m.overflow_passes(), 0);
+            } else {
+                let stats = m.expert_stats().expect("streaming");
                 assert!(stats.io.experts_read > 0);
             }
             if slots == 1 {
