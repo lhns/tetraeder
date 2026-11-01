@@ -213,8 +213,15 @@ impl Streamer {
             match self.ram.is_some() {
                 false => self.load_from_file(file, il, dst, &loads)?,
                 true => {
-                    let n = self.ram.as_ref().map_or(1, |r| r.slots.max(1));
-                    for group in loads.chunks(n) {
+                    let ram = self.ram.as_ref().expect("RAM tier");
+                    let n = ram.slots.max(1);
+                    // RAM hits first across all loads, so misses cannot evict a hit of a later
+                    // group before it is used.
+                    let (hits, misses): (Vec<_>, Vec<_>) = loads
+                        .iter()
+                        .partition(|&&(e, _)| ram.cache.layer(il).slot_of(e).is_some());
+                    let ordered: Vec<(u32, u32)> = hits.into_iter().chain(misses).copied().collect();
+                    for group in ordered.chunks(n) {
                         self.load_via_ram(file, il, dst, group)?;
                     }
                 }
@@ -310,9 +317,11 @@ impl Streamer {
             self.metrics
                 .tier_read(&self.device, "ram", (n_ram * total) as u64);
         }
-        for (_, _, _, from_file) in &plan {
-            let source = if *from_file { "nvme" } else { "ram" };
-            self.record_loads(1, source, t0);
+        // The batch time is shared by the experts of the group (ADR 0033).
+        let share = t0.elapsed() / plan.len().max(1) as u32;
+        for &(_, _, _, from_file) in &plan {
+            let source = if from_file { "nvme" } else { "ram" };
+            self.metrics.expert_load(Tier::Vram, source, share);
         }
         Ok(())
     }

@@ -121,6 +121,9 @@ struct Sim {
     full: Vec<u64>,
     partial: Vec<u64>,
     experts_read: u64,
+    batches: u64,
+    /// Chunks in which a RAM hit had to move ahead of a RAM miss.
+    reordered: u64,
 }
 
 impl Sim {
@@ -137,6 +140,8 @@ impl Sim {
             full: vec![0; layers],
             partial: vec![0; layers],
             experts_read: 0,
+            batches: 0,
+            reordered: 0,
         }
     }
 
@@ -166,19 +171,30 @@ impl Sim {
                 }
             }
             match self.ram_slots {
-                None => self.experts_read += loads.len() as u64,
+                None => {
+                    self.experts_read += loads.len() as u64;
+                    self.batches += u64::from(!loads.is_empty());
+                }
                 Some(n) => {
-                    for group in loads.chunks(n) {
-                        let (rh, rm): (Vec<i32>, Vec<i32>) =
-                            group.iter().partition(|&&e| self.ram[il].has(e));
-                        for e in rh.into_iter().chain(rm) {
+                    // RAM hits first across all loads of the chunk, then groups of `n`.
+                    let (rh, rm): (Vec<i32>, Vec<i32>) =
+                        loads.iter().partition(|&&e| self.ram[il].has(e));
+                    let ordered: Vec<i32> = rh.into_iter().chain(rm).collect();
+                    if ordered != loads {
+                        self.reordered += 1;
+                    }
+                    for group in ordered.chunks(n) {
+                        let mut read = false;
+                        for &e in group {
                             if self.ram[il].access(e) {
                                 self.r[il].hits += 1;
                             } else {
                                 self.r[il].misses += 1;
                                 self.experts_read += 1;
+                                read = true;
                             }
                         }
+                        self.batches += u64::from(read);
                     }
                 }
             }
@@ -190,6 +206,8 @@ impl Sim {
 /// of experts read from the file equal the simulation fed with the routing the model recorded.
 #[test]
 fn cpu_cache_counts_match_an_lru_simulation() {
+    // Chunks in which a RAM hit sat behind a RAM miss: the order of ADR 0033 matters there.
+    let mut reordered = 0;
     for (slots, ram) in [
         (4, None),
         (2, None),
@@ -199,6 +217,10 @@ fn cpu_cache_counts_match_an_lru_simulation() {
         (3, Some(5)),
         (1, Some(2)),
         (2, Some(8)),
+        (4, Some(2)),
+        (4, Some(3)),
+        (3, Some(2)),
+        (6, Some(2)),
     ] {
         let mut m = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
         let layers = m.hparams().n_layer as usize;
@@ -242,9 +264,10 @@ fn cpu_cache_counts_match_an_lru_simulation() {
             "slots {slots} ram {ram:?}"
         );
         assert!(stats.io.bytes_read > 0);
-        // One read per layer step at most per chunk.
-        assert!(stats.io.batches <= stats.io.experts_read);
+        assert_eq!(stats.io.batches, sim.batches, "slots {slots} ram {ram:?}");
+        reordered += sim.reordered;
     }
+    assert!(reordered > 0, "no case put a RAM hit behind a RAM miss");
 }
 
 /// hardware: cpu. A read that fails in the middle of a step is an error, not a step with the
@@ -311,7 +334,7 @@ fn cpu_telemetry_reports_steps_and_cache() {
             .unwrap_or_default()
     }
     let mut requests = std::collections::BTreeMap::<(String, String), u64>::new();
-    let (mut layer_hits, mut read_bytes) = (0u64, 0u64);
+    let (mut layer_full, mut layer_partial, mut read_bytes) = (0u64, 0u64, 0u64);
     let (mut steps, mut segments) = (0u64, 0.0f64);
     for rm in exp.get_finished_metrics().unwrap() {
         for sm in rm.scope_metrics() {
@@ -328,7 +351,13 @@ fn cpu_telemetry_reports_steps_and_cache() {
                         }
                     }
                     ("tetraeder.expert.layer_hit", AggregatedMetrics::U64(MetricData::Sum(s))) => {
-                        layer_hits += s.data_points().map(|d| d.value()).sum::<u64>();
+                        for dp in s.data_points() {
+                            match attr(dp.attributes(), "tetraeder.result").as_str() {
+                                "full" => layer_full += dp.value(),
+                                "partial" => layer_partial += dp.value(),
+                                other => panic!("layer_hit result {other}"),
+                            }
+                        }
                     }
                     ("tetraeder.tier.read.bytes", AggregatedMetrics::U64(MetricData::Sum(s))) => {
                         for dp in s.data_points() {
@@ -356,7 +385,10 @@ fn cpu_telemetry_reports_steps_and_cache() {
     }
     assert_eq!(steps, 2);
     assert_eq!(segments as u64, 2 * (layers + 1));
-    assert_eq!(layer_hits, 2 * layers);
+    let full: u64 = stats.layers.iter().map(|l| l.full_steps).sum();
+    let partial: u64 = stats.layers.iter().map(|l| l.partial_steps).sum();
+    assert_eq!(full + partial, 2 * layers);
+    assert_eq!((layer_full, layer_partial), (full, partial));
     assert_eq!(read_bytes, stats.io.bytes_read);
     let sum = |tier: &str, res: &str| {
         requests
