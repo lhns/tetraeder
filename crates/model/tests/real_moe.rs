@@ -111,6 +111,7 @@ fn run_config(
     path: &Path,
     expert_slots: Option<usize>,
     ram_slots: Option<usize>,
+    stepwise: bool,
     r: &Reference,
 ) -> (Vec<i32>, Value) {
     let o = LoadOptions {
@@ -125,13 +126,28 @@ fn run_config(
     let n_vocab = m.n_vocab();
 
     let t0 = Instant::now();
-    let logits = m.eval(&r.prompt).unwrap();
+    // Stepwise: one token per eval, so no step needs more distinct experts than slots.
+    let logits = if stepwise {
+        let mut l = Vec::with_capacity(r.prompt.len() * n_vocab);
+        for &t in &r.prompt {
+            l.extend(m.eval(&[t]).unwrap());
+        }
+        l
+    } else {
+        m.eval(&r.prompt).unwrap()
+    };
     let prefill_s = t0.elapsed().as_secs_f64();
     assert_eq!(logits.len(), r.prompt.len() * n_vocab);
     let mut worst = 0f32;
+    // First prompt position whose top-5 logits differ by more than float noise.
+    let mut first_off = None;
     for (p, want) in r.top.iter().enumerate() {
         for &(tok, v) in want {
-            worst = worst.max((v - logits[p * n_vocab + tok]).abs());
+            let d = (v - logits[p * n_vocab + tok]).abs();
+            worst = worst.max(d);
+            if d > 1e-2 && first_off.is_none() {
+                first_off = Some(p);
+            }
         }
     }
     let mut next = argmax(&logits[(r.prompt.len() - 1) * n_vocab..]) as i32;
@@ -150,6 +166,7 @@ fn run_config(
         "prefill_tok_s": r.prompt.len() as f64 / prefill_s,
         "decode_tok_s": N_GREEDY as f64 / decode_s,
         "max_top5_delta": worst,
+        "first_prompt_pos_off": first_off,
         "overflow_passes": m.overflow_passes(),
         "greedy": greedy,
     });
@@ -214,13 +231,17 @@ fn gpu_real_moe_streaming() {
     // Checked after the report is written, so a failure still leaves the numbers.
     let mut failures = Vec::new();
     let mut resident: Option<Vec<i32>> = None;
+    // slots120: prefill fits without overflow passes; slots32_stepwise: no overflow passes at all,
+    // only slot replacement. Together they separate the two mechanisms when a config differs.
     let configs = [
-        ("resident", None, None),
-        ("slots32", Some(32), None),
-        ("slots32_ram64", Some(32), Some(64)),
+        ("resident", None, None, false),
+        ("slots120", Some(120), None, false),
+        ("slots32_stepwise", Some(32), None, true),
+        ("slots32", Some(32), None, false),
+        ("slots32_ram64", Some(32), Some(64), false),
     ];
-    for (name, slots, ram) in configs {
-        let (greedy, v) = run_config(name, &path, slots, ram, &r);
+    for (name, slots, ram, stepwise) in configs {
+        let (greedy, v) = run_config(name, &path, slots, ram, stepwise, &r);
         if greedy != r.greedy {
             failures.push(format!("{name}: greedy sequence differs from libllama"));
         }
