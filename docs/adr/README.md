@@ -40,3 +40,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0034](0034-expert-slots-at-least-top-k.md) | Expert slots: at least the experts per token, distinct slots per token in overflow passes |
 | [0035](0035-expert-pair-groups-and-cpu-experts.md) | Expert pairs computed in compact groups per backend; non-resident experts on the CPU |
 | [0036](0036-cpu-threadpool-and-whole-step-graph.md) | The CPU backend keeps one threadpool; a step with every expert resident is one graph |
+| [0037](0037-split-gguf-and-slot-tiers-from-byte-budgets.md) | Split GGUF files; expert slot tiers sized from byte budgets and reported |
