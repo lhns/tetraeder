@@ -310,6 +310,27 @@ fn run_config(
             "ram_misses": sum(&|l| l.ram.map_or(0, |x| x.misses)),
         });
     }
+    if is_cpu_policy(name) {
+        // The run above starts with an empty RAM tier and reads experts from disk; llama.cpp's
+        // `-ot` has the whole model in memory. Run the prompt again warm, with the time breakdown.
+        m.reset();
+        m.take_profile();
+        let t0 = Instant::now();
+        m.eval(&r.prompt).unwrap();
+        let prefill_s = t0.elapsed().as_secs_f64();
+        let prefill_profile = m.take_profile();
+        let t0 = Instant::now();
+        for &t in &greedy {
+            m.eval(&[t]).unwrap();
+        }
+        let decode_s = t0.elapsed().as_secs_f64();
+        out["warm"] = json!({
+            "prefill_tok_s": r.prompt.len() as f64 / prefill_s,
+            "decode_tok_s": greedy.len() as f64 / decode_s,
+            "prefill_profile": format!("{prefill_profile:?}"),
+            "decode_profile": format!("{:?}", m.take_profile()),
+        });
+    }
     eprintln!("{name}: {out}");
     Run {
         greedy,
