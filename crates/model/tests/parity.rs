@@ -17,10 +17,9 @@ fn check_parity(backend: BackendChoice, tol: f32) {
         "max |delta| over the top-{TOP_K} logits of {} positions: {worst:e}",
         PROMPT.len()
     );
-    // Steps: the full prefill, the last-only prefill and one per greedy token; each runs one
-    // segment per MoE layer plus the head (ADR 0030).
-    let layers = m.hparams().n_layer as u64;
-    assert_eq!(m.segments_run(), (layers + 1) * (2 + N_GREEDY as u64));
+    // Steps: the full prefill, the last-only prefill and one per greedy token; with every
+    // expert resident each runs as one graph (ADR 0036).
+    assert_eq!(m.segments_run(), 2 + N_GREEDY as u64);
 }
 
 /// hardware: cpu

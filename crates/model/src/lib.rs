@@ -11,5 +11,5 @@ pub mod qwen3moe;
 pub use experts::{ExpertStats, IoCounters, LayerExpertStats, MissPolicy, RoutingStep};
 pub use gguf::{Gguf, GgufError, TensorInfo};
 pub use hparams::{ExpertSlabs, Hparams, ModelFile};
-pub use qwen3moe::{BackendChoice, LoadOptions, ModelError, Qwen3Moe};
+pub use qwen3moe::{BackendChoice, LoadOptions, ModelError, Qwen3Moe, StepProfile};
 pub use tetraeder_memory::slots::LayerStats;

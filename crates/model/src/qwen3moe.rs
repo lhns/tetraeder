@@ -33,7 +33,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
@@ -48,6 +48,28 @@ pub enum ModelError {
 }
 
 pub type Result<T> = std::result::Result<T, ModelError>;
+
+/// Where the wall time of `eval` went, summed over steps since load or the last
+/// [`Qwen3Moe::take_profile`]. Host-side timers only; `compute` includes waiting for the backend.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct StepProfile {
+    pub steps: u64,
+    /// Graphs computed: segments plus standalone group graphs.
+    pub graphs: u64,
+    /// Step inputs (tokens, positions, mask) and state allocation.
+    pub inputs: Duration,
+    /// Context creation and graph building.
+    pub build: Duration,
+    /// `sched.alloc_graph` and the group index writes.
+    pub alloc: Duration,
+    /// `sched.compute` of the segments and reading the logits.
+    pub compute: Duration,
+    /// Reading the router ids (and weights when recording) and writing the mapped ids.
+    pub readback: Duration,
+    /// Streamer work between segments: planning, staging, uploads and standalone group graphs.
+    pub streamer: Duration,
+    pub total: Duration,
+}
 
 /// Where the weights, the KV cache and the compute run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +140,8 @@ const KV_PAD: usize = 256;
 const MASK_PAD: usize = 32;
 /// Upper bound of nodes in one segment; the scheduler's hash tables are sized for it.
 const SEGMENT_NODES: usize = 1024;
+/// Upper bound of nodes per layer in a whole-step graph (about 70 are used).
+const STEP_NODES_PER_LAYER: usize = 128;
 const F16_NEG_INF: u16 = 0xFC00;
 
 fn pad(n: usize, to: usize) -> usize {
@@ -209,6 +233,7 @@ pub struct Qwen3Moe {
     metrics: MemoryMetrics,
     telemetry: Option<Arc<Telemetry>>,
     routing: Option<Vec<RoutingStep>>,
+    profile: StepProfile,
 }
 
 impl std::fmt::Debug for Qwen3Moe {
@@ -219,6 +244,13 @@ impl std::fmt::Debug for Qwen3Moe {
             .field("n_past", &self.n_past)
             .finish()
     }
+}
+
+/// Adds the time since `t` to `acc` and returns now.
+fn lap(acc: &mut Duration, t: Instant) -> Instant {
+    let now = Instant::now();
+    *acc += now - t;
+    now
 }
 
 fn f16_bits_tensor_bytes(bits: &[u16]) -> Vec<u8> {
@@ -252,7 +284,7 @@ impl Qwen3Moe {
                 (gpu.clone(), cpu.clone(), vec![gpu, cpu])
             }
         };
-        let sched = Sched::new(&backends, SEGMENT_NODES * 4, false)?;
+        let sched = Sched::new(&backends, step_nodes(h).max(SEGMENT_NODES) * 4, false)?;
         let slots = match opts.expert_slots {
             Some(0) => {
                 return Err(ModelError::Invalid(
@@ -309,6 +341,7 @@ impl Qwen3Moe {
             metrics,
             telemetry: opts.telemetry.clone(),
             routing: opts.record_routing.then(Vec::new),
+            profile: StepProfile::default(),
         };
         if cpu_hot && opts.routing_profile.is_some() {
             model.refresh_hot_set()?;
@@ -342,7 +375,8 @@ impl Qwen3Moe {
         self.kv.n_ctx
     }
 
-    /// Graph segments computed so far (`n_layer + 1` per step).
+    /// Graphs computed so far for the steps: `n_layer + 1` segments per step when streaming,
+    /// one whole-step graph per step when every expert is resident (ADR 0036).
     pub fn segments_run(&self) -> u64 {
         self.segments_run
     }
@@ -403,6 +437,11 @@ impl Qwen3Moe {
             .unwrap_or_default()
     }
 
+    /// The time breakdown since load or the last call, then starts a new one.
+    pub fn take_profile(&mut self) -> StepProfile {
+        std::mem::take(&mut self.profile)
+    }
+
     /// Forgets the KV cache; the next `eval` starts at position 0.
     pub fn reset(&mut self) {
         self.n_past = 0;
@@ -458,6 +497,50 @@ impl Qwen3Moe {
             }
         }
         st.mask.get().set_bytes(&f16_bits_tensor_bytes(&mask), 0)?;
+        let mut prof = self.profile;
+        prof.steps += 1;
+        prof.inputs += t0.elapsed();
+
+        if self.streamer.is_none() {
+            // Every expert resident: no host work between layers, so the step is one graph
+            // (ADR 0036).
+            let t = Instant::now();
+            let ctx = Context::new(step_nodes(&h), step_nodes(&h))?;
+            let record = self.routing.is_some();
+            let (graph, out, routed) = build_step(
+                &h,
+                &self.weights,
+                &self.kv,
+                st,
+                &ctx,
+                self.n_past,
+                last_only,
+                record,
+            );
+            let t = lap(&mut prof.build, t);
+            self.sched.alloc_graph(&graph)?;
+            self.max_splits = self.max_splits.max(self.sched.n_splits());
+            let t = lap(&mut prof.alloc, t);
+            self.sched.compute(&graph)?;
+            self.segments_run += 1;
+            prof.graphs += 1;
+            let logits = out.get_f32()?;
+            let t = lap(&mut prof.compute, t);
+            if let Some(log) = &mut self.routing {
+                for (layer, (ids, w)) in routed.iter().enumerate() {
+                    log.push(RoutingStep {
+                        layer,
+                        ids: ids.get_i32()?,
+                        weights: w.get_f32()?,
+                    });
+                }
+            }
+            for _ in 0..h.n_layer {
+                self.metrics.layer_step(true);
+            }
+            lap(&mut prof.readback, t);
+            return self.finish_step(n, t0, prof, 1, logits);
+        }
 
         let graphs_before = self.group_graphs_run;
         let nu = h.n_expert_used as usize;
@@ -468,6 +551,7 @@ impl Qwen3Moe {
         for seg in 0..=n_layer {
             let groups = std::mem::take(&mut pending);
             {
+                let t = Instant::now();
                 let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
                 let specs: Vec<([Tensor<'_>; 3], usize)> = groups
                     .iter()
@@ -488,21 +572,26 @@ impl Qwen3Moe {
                     last_only,
                     &specs,
                 );
+                let t = lap(&mut prof.build, t);
                 self.sched.alloc_graph(&graph)?;
                 self.max_splits = self.max_splits.max(self.sched.n_splits());
                 for (g, i) in groups.iter().zip(&inputs) {
                     i.write(&g.pairs)?;
                     self.groups_run += 1;
                 }
+                let t = lap(&mut prof.alloc, t);
                 self.sched.compute(&graph)?;
                 self.segments_run += 1;
+                prof.graphs += 1;
                 if let Some(l) = out {
                     logits = l.get_f32()?;
                 }
+                lap(&mut prof.compute, t);
             }
             if seg == n_layer {
                 continue;
             }
+            let t = Instant::now();
             let slot = &st.slots[seg % 2];
             let chosen = slot.ids.get().get_i32()?;
             if let Some(log) = &mut self.routing {
@@ -516,8 +605,10 @@ impl Qwen3Moe {
                 // All experts resident: the router's ids are the tensor rows.
                 self.metrics.layer_step(true);
                 slot.ids_map.get().set_i32(&chosen)?;
+                lap(&mut prof.readback, t);
                 continue;
             };
+            lap(&mut prof.readback, t);
             let layer = &self.weights.layers[seg];
             if self.policy == MissPolicy::Cpu {
                 // Resident experts run from the compute slots, the others from the RAM slots
@@ -581,7 +672,28 @@ impl Qwen3Moe {
                 self.group_graphs_run += 1;
             }
         }
+        // Segment graphs plus the standalone group graphs of this step (ADR 0035).
+        let graphs = h.n_layer + 1 + (self.group_graphs_run - graphs_before) as u32;
+        prof.graphs += self.group_graphs_run - graphs_before;
+        // The rest of this step's time is the streamer's.
+        let timed = |p: &StepProfile| p.inputs + p.build + p.alloc + p.compute + p.readback;
+        let others = timed(&prof) - timed(&self.profile);
+        prof.streamer += t0.elapsed().saturating_sub(others);
+        self.finish_step(n, t0, prof, graphs, logits)
+    }
+
+    /// Bookkeeping after a step that computed `graphs` graphs.
+    fn finish_step(
+        &mut self,
+        n: usize,
+        t0: Instant,
+        mut prof: StepProfile,
+        graphs: u32,
+        logits: Vec<f32>,
+    ) -> Result<Vec<f32>> {
         self.n_past += n;
+        prof.total += t0.elapsed();
+        self.profile = prof;
         if let Some(t) = &self.telemetry {
             t.record_step(StepSample {
                 phase: if n > 1 { Phase::Prefill } else { Phase::Decode },
@@ -589,8 +701,7 @@ impl Qwen3Moe {
                 graphs: false,
                 duration: t0.elapsed(),
                 tokens: n as u32,
-                // Segment graphs plus the standalone group graphs of this step (ADR 0035).
-                segments: h.n_layer + 1 + (self.group_graphs_run - graphs_before) as u32,
+                segments: graphs,
             });
         }
         if n > 1 && self.hot_pending {
@@ -903,13 +1014,7 @@ fn build_segment<'a>(
     };
 
     if seg == n_layer {
-        let mut cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), w.out_norm.get());
-        if last_only && st.n_tokens > 1 {
-            let nb1 = cur.nb()[1];
-            cur = ctx.view(cur, &[h.n_embd as i64, 1], &[nb1], (st.n_tokens - 1) * nb1);
-        }
-        let head = w.output.as_ref().unwrap_or(&w.tok_embd);
-        let logits = ctx.mul_mat(head.get(), cur).set_output();
+        let logits = head(h, ctx, w, st, x, last_only);
         g.expand(logits);
         return (g, Some(logits), inputs);
     }
@@ -922,6 +1027,63 @@ fn build_segment<'a>(
     g.expand(ctx.cpy(weights, s.w.get()));
     g.expand(ctx.cpy(ids, s.ids.get()));
     (g, None, inputs)
+}
+
+/// Nodes and tensors of a whole-step graph.
+fn step_nodes(h: &Hparams) -> usize {
+    STEP_NODES_PER_LAYER * (h.n_layer as usize + 1)
+}
+
+/// The whole step as one graph when every expert is resident (ADR 0036): the ops of the
+/// segments, with the router's ids and weights feeding the expert matmuls directly. Returns the
+/// graph, the logits and, with `record`, each layer's ids and weights as outputs.
+#[allow(clippy::too_many_arguments)]
+fn build_step<'a>(
+    h: &Hparams,
+    w: &'a Weights,
+    kv: &'a Kv,
+    st: &'a State,
+    ctx: &'a Context,
+    n_past: usize,
+    last_only: bool,
+    record: bool,
+) -> (Graph<'a>, Tensor<'a>, Vec<(Tensor<'a>, Tensor<'a>)>) {
+    let mut g = ctx.new_graph(step_nodes(h));
+    let mut x = ctx.get_rows(w.tok_embd.get(), st.tokens.get());
+    let mut routed = Vec::new();
+    for il in 0..h.n_layer as usize {
+        let (ffn_inp, xn, weights, ids) =
+            attention_and_router(h, ctx, &mut g, w, kv, st, il, x, n_past);
+        if record {
+            let r = (ctx.cont(ids).set_output(), ctx.cont(weights).set_output());
+            g.expand(r.0);
+            g.expand(r.1);
+            routed.push(r);
+        }
+        let experts = weighted_experts(h, ctx, &w.layers[il], xn, ids, weights);
+        x = ctx.add(sum_experts(h, ctx, experts), ffn_inp);
+    }
+    let logits = head(h, ctx, w, st, x, last_only);
+    g.expand(logits);
+    (g, logits, routed)
+}
+
+/// Output norm and projection; only the last position when `last_only`.
+fn head<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    w: &'a Weights,
+    st: &'a State,
+    x: Tensor<'a>,
+    last_only: bool,
+) -> Tensor<'a> {
+    let mut cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), w.out_norm.get());
+    if last_only && st.n_tokens > 1 {
+        let nb1 = cur.nb()[1];
+        cur = ctx.view(cur, &[h.n_embd as i64, 1], &[nb1], (st.n_tokens - 1) * nb1);
+    }
+    let head = w.output.as_ref().unwrap_or(&w.tok_embd);
+    ctx.mul_mat(head.get(), cur).set_output()
 }
 
 /// Layer `il`: attention with Q/K norm, RoPE and the KV cache, the residual, the FFN norm and the
@@ -996,19 +1158,27 @@ fn attention_and_router<'a>(
 /// Expert FFN of layer `il` for the ids in the slot's `ids_map`: `down(silu(gate) * up)`, scaled
 /// by the router weights and summed over the selected experts.
 fn moe_ffn<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Tensor<'a> {
-    sum_experts(h, ctx, weighted_experts(h, ctx, lw, s))
+    let experts = weighted_experts(h, ctx, lw, s.xn.get(), s.ids_map.get(), s.w.get());
+    sum_experts(h, ctx, experts)
 }
 
-/// `down(silu(gate) * up)` per selected expert, scaled by the slot's `w`: `[n_embd, n_used, n]`.
-fn weighted_experts<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Tensor<'a> {
-    let n = s.xn.get().ne()[1];
-    let cur = ctx.reshape(s.xn.get(), &[h.n_embd as i64, 1, n]);
-    let ids = s.ids_map.get();
+/// `down(silu(gate) * up)` per selected expert of the normed input `xn` `[n_embd, n]`, scaled by
+/// the router weights `w` `[1, n_used, n]`: `[n_embd, n_used, n]`.
+fn weighted_experts<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    lw: &'a Layer,
+    xn: Tensor<'a>,
+    ids: Tensor<'a>,
+    w: Tensor<'a>,
+) -> Tensor<'a> {
+    let n = xn.ne()[1];
+    let cur = ctx.reshape(xn, &[h.n_embd as i64, 1, n]);
     let up = ctx.mul_mat_id(lw.up_exps.get(), cur, ids);
     let gate = ctx.mul_mat_id(lw.gate_exps.get(), cur, ids);
     let act = ctx.swiglu_split(gate, up);
     let experts = ctx.mul_mat_id(lw.down_exps.get(), act, ids);
-    ctx.mul(experts, s.w.get())
+    ctx.mul(experts, w)
 }
 
 /// Sum over the selected experts, in choice order: `[n_embd, n_used, n]` to `[n_embd, n]`.

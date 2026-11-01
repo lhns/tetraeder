@@ -39,3 +39,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0033](0033-expert-slots-in-the-builder.md) | Expert slots in the builder: lookup order, overflow passes, RAM tier, failure semantics |
 | [0034](0034-expert-slots-at-least-top-k.md) | Expert slots: at least the experts per token, distinct slots per token in overflow passes |
 | [0035](0035-expert-pair-groups-and-cpu-experts.md) | Expert pairs computed in compact groups per backend; non-resident experts on the CPU (Proposed) |
+| [0036](0036-cpu-threadpool-and-whole-step-graph.md) | The CPU backend keeps one threadpool; a step with every expert resident is one graph |

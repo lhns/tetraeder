@@ -1,0 +1,228 @@
+{
+  "env": {
+    "available_parallelism": 16,
+    "cpu": null,
+    "cpu_quota": null,
+    "gpu_devices_visible": 0,
+    "os": "windows"
+  },
+  "machine": "Windows 11 QEMU VM, 16 vCPU without AVX, 16 GB RAM, shared; release build, no GPU",
+  "model": {
+    "bytes": 387385248,
+    "ftype": "Q4_K_M",
+    "synthetic": "MoeSpec { layers: 48, embd: 512, heads: 8, heads_kv: 2, head_dim: 64, experts: 32, used: 8, ff: 256, seed: 20261101 }"
+  },
+  "n_decode": 32,
+  "n_prompt": 64,
+  "ratios_builder_over_libllama": [
+    {
+      "decode_ratio": 1.142918028924228,
+      "prefill_ratio": 1.0847961025742345,
+      "threads": 1,
+      "variant": "builder"
+    },
+    {
+      "decode_ratio": 0.9556177639738889,
+      "prefill_ratio": 1.1598530337334614,
+      "threads": 1,
+      "variant": "builder_cpupolicy"
+    },
+    {
+      "decode_ratio": 1.474084838246752,
+      "prefill_ratio": 0.6144398527295407,
+      "threads": 8,
+      "variant": "builder"
+    },
+    {
+      "decode_ratio": 0.7802962156705048,
+      "prefill_ratio": 0.5896814674388509,
+      "threads": 8,
+      "variant": "builder_cpupolicy"
+    }
+  ],
+  "repeats": 3,
+  "runs": [
+    {
+      "decode_tok_s": [
+        2.496448022547918,
+        2.5156600427267564,
+        2.809418561680942
+      ],
+      "decode_tok_s_median": 2.5156600427267564,
+      "greedy_equals_libllama": true,
+      "prefill_tok_s": [
+        2.632178752937126,
+        2.614650889035229,
+        3.049321570975597
+      ],
+      "prefill_tok_s_median": 2.632178752937126,
+      "threads": 1,
+      "variant": "libllama"
+    },
+    {
+      "decode_tok_s": [
+        2.8751932174767036,
+        2.6695024791502684,
+        2.919151073283819
+      ],
+      "decode_tok_s_median": 2.8751932174767036,
+      "greedy_equals_libllama": true,
+      "prefill_tok_s": [
+        2.8553772524649035,
+        2.790854956132579,
+        2.9954838353933515
+      ],
+      "prefill_tok_s_median": 2.8553772524649035,
+      "profile_decode_per_token": {
+        "alloc_ms": 2.0778854166666663,
+        "build_ms": 3.0538562499999995,
+        "compute_ms": 349.5687239583333,
+        "graphs": 1.0,
+        "inputs_ms": 0.026291666666666668,
+        "readback_ms": 0.0012208333333333333,
+        "streamer_ms": 0.0,
+        "total_ms": 354.72851770833336
+      },
+      "profile_prefill_per_step": {
+        "alloc_ms": 5.763966666666666,
+        "build_ms": 3.120466666666667,
+        "compute_ms": 22227.766233333332,
+        "graphs": 1.0,
+        "inputs_ms": 0.2268,
+        "readback_ms": 0.0015333333333333334,
+        "streamer_ms": 0.0,
+        "total_ms": 22236.8795
+      },
+      "threads": 1,
+      "variant": "builder"
+    },
+    {
+      "decode_tok_s": [
+        2.3425677010484205,
+        2.4040094249490007,
+        2.599632415226028
+      ],
+      "decode_tok_s_median": 2.4040094249490007,
+      "greedy_equals_libllama": true,
+      "prefill_tok_s": [
+        3.1243278881163734,
+        2.6374656361923585,
+        3.052940511922885
+      ],
+      "prefill_tok_s_median": 3.052940511922885,
+      "profile_decode_per_token": {
+        "alloc_ms": 9.476288541666667,
+        "build_ms": 4.860998958333334,
+        "compute_ms": 392.13209062500005,
+        "graphs": 49.0,
+        "inputs_ms": 0.03971458333333334,
+        "readback_ms": 0.583203125,
+        "streamer_ms": 2.0771822916666665,
+        "total_ms": 409.17003958333333
+      },
+      "profile_prefill_per_step": {
+        "alloc_ms": 12.572333333333333,
+        "build_ms": 5.118533333333334,
+        "compute_ms": 21880.426566666665,
+        "graphs": 49.0,
+        "inputs_ms": 0.8056000000000001,
+        "readback_ms": 0.34073333333333333,
+        "streamer_ms": 5.2330000000000005,
+        "total_ms": 21904.497166666668
+      },
+      "threads": 1,
+      "variant": "builder_cpupolicy"
+    },
+    {
+      "decode_tok_s": [
+        1.2963683512700614,
+        3.6899332911950635,
+        1.0226786697055947
+      ],
+      "decode_tok_s_median": 1.2963683512700614,
+      "greedy_equals_libllama": true,
+      "prefill_tok_s": [
+        9.345312388385576,
+        8.962626031501978,
+        5.779486788075142
+      ],
+      "prefill_tok_s_median": 8.962626031501978,
+      "threads": 8,
+      "variant": "libllama"
+    },
+    {
+      "decode_tok_s": [
+        1.9109569313901371,
+        3.607888784122313,
+        1.8762969389540578
+      ],
+      "decode_tok_s_median": 1.9109569313901371,
+      "greedy_equals_libllama": true,
+      "prefill_tok_s": [
+        5.506994618866023,
+        9.717541732818074,
+        4.8257247199867574
+      ],
+      "prefill_tok_s_median": 5.506994618866023,
+      "profile_decode_per_token": {
+        "alloc_ms": 2.4140489583333333,
+        "build_ms": 3.807290625,
+        "compute_ms": 437.6468625,
+        "graphs": 1.0,
+        "inputs_ms": 0.047020833333333324,
+        "readback_ms": 0.0016031250000000002,
+        "streamer_ms": 0.0,
+        "total_ms": 443.9173895833333
+      },
+      "profile_prefill_per_step": {
+        "alloc_ms": 7.947166666666667,
+        "build_ms": 4.373333333333333,
+        "compute_ms": 10476.5598,
+        "graphs": 1.0,
+        "inputs_ms": 0.44236666666666663,
+        "readback_ms": 0.0015000000000000002,
+        "streamer_ms": 0.0,
+        "total_ms": 10489.3247
+      },
+      "threads": 8,
+      "variant": "builder"
+    },
+    {
+      "decode_tok_s": [
+        1.0115513186110405,
+        1.9890286794129384,
+        0.759483036320997
+      ],
+      "decode_tok_s_median": 1.0115513186110405,
+      "greedy_equals_libllama": true,
+      "prefill_tok_s": [
+        5.285094470361731,
+        6.658515187526937,
+        4.9357041628384435
+      ],
+      "prefill_tok_s_median": 5.285094470361731,
+      "profile_decode_per_token": {
+        "alloc_ms": 9.621719791666667,
+        "build_ms": 4.566391666666666,
+        "compute_ms": 919.567146875,
+        "graphs": 49.0,
+        "inputs_ms": 0.04489270833333333,
+        "readback_ms": 0.19959270833333334,
+        "streamer_ms": 2.001955208333333,
+        "total_ms": 936.0021364583332
+      },
+      "profile_prefill_per_step": {
+        "alloc_ms": 10.643333333333333,
+        "build_ms": 6.711033333333334,
+        "compute_ms": 11538.4801,
+        "graphs": 49.0,
+        "inputs_ms": 0.2524,
+        "readback_ms": 0.3636333333333333,
+        "streamer_ms": 6.215566666666667,
+        "total_ms": 11562.666533333331
+      },
+      "threads": 8,
+      "variant": "builder_cpupolicy"
+    }
+  ]
+}

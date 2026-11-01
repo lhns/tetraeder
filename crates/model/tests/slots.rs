@@ -41,8 +41,11 @@ fn cpu_slot_counts_match_libllama() {
             let mut m = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
             let worst = check_against(&mut m, &r, TOL_CPU);
             eprintln!("slots {slots} ram {ram:?}: max |delta| {worst:e}");
+            // One segment per MoE layer plus the head when streaming, one graph per step with
+            // every expert resident (ADR 0036).
             let layers = m.hparams().n_layer as u64;
-            assert_eq!(m.segments_run(), (layers + 1) * (2 + N_GREEDY as u64));
+            let per_step = if slots == EXPERTS { 1 } else { layers + 1 };
+            assert_eq!(m.segments_run(), per_step * (2 + N_GREEDY as u64));
             if slots == EXPERTS {
                 assert!(m.expert_stats().is_none(), "all experts resident: no cache");
                 assert_eq!(m.expert_groups(), 0);
@@ -77,8 +80,11 @@ fn gpu_slot_counts_match_libllama() {
             let mut m = Qwen3Moe::load(fixture(), &o).unwrap();
             let worst = check_against(&mut m, &r, TOL_GPU);
             eprintln!("gpu slots {slots} ram {ram:?}: max |delta| {worst:e}");
+            // One segment per MoE layer plus the head when streaming, one graph per step with
+            // every expert resident (ADR 0036).
             let layers = m.hparams().n_layer as u64;
-            assert_eq!(m.segments_run(), (layers + 1) * (2 + N_GREEDY as u64));
+            let per_step = if slots == EXPERTS { 1 } else { layers + 1 };
+            assert_eq!(m.segments_run(), per_step * (2 + N_GREEDY as u64));
             if slots == EXPERTS {
                 assert!(m.expert_stats().is_none(), "all experts resident: no cache");
                 assert_eq!(m.expert_groups(), 0);
