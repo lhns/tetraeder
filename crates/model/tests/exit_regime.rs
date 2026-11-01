@@ -19,6 +19,8 @@
 //! - `TETRAEDER_EXIT_DECODE` (32) greedy tokens after the prefill.
 //! - `TETRAEDER_EXIT_CTX` (prefill + decode, rounded up), `TETRAEDER_EXIT_THREADS`.
 //! - `TETRAEDER_EXIT_OP_OFFLOAD=1`: large CPU-group matmuls run on the GPU (ggml op offload).
+//! - `TETRAEDER_EXIT_REFRESH_HOT=1`: rebuild the hot set from the whole prefill before decode
+//!   (by default it comes from the first ubatch).
 //! - `TETRAEDER_EXIT_PROMPT_FILE`: text tokenized with the model's vocab (libllama, vocab
 //!   only), repeated to length. Default: deterministic pseudo-random token ids.
 //! - `TETRAEDER_EXIT_OUT` (JSON file), `TETRAEDER_EXIT_MACHINE` (a note).
@@ -199,6 +201,7 @@ fn exit_regime() {
     opts.n_ctx = n_ctx;
     opts.miss = MissPolicy::Cpu;
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
+    let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
         None => opts.expert_slots = Some(env_u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize),
@@ -233,6 +236,12 @@ fn exit_regime() {
         }
         let prefill_s = t0.elapsed().as_secs_f64();
         let pp = m.take_profile();
+        // The hot set comes from the first ubatch; optionally rebuild it from the whole prefill.
+        let t = Instant::now();
+        if refresh_hot {
+            m.refresh_hot_set().expect("hot set refresh");
+        }
+        let refresh_s = t.elapsed().as_secs_f64();
         let s1 = m.expert_stats().unwrap();
 
         let mut next = argmax(&last) as i32;
@@ -260,6 +269,7 @@ fn exit_regime() {
             "prefill_tokens": n_prefill,
             "prefill_s": prefill_s,
             "prefill_tok_s": n_prefill as f64 / prefill_s,
+            "hot_refresh_s": refresh_s,
             "ubatch_s": ubatch_s,
             "prefill_profile_per_ubatch": profile_json(&pp, pp.steps.max(1) as f64),
             "prefill_io": io_json(&s0.io, &s1.io, n_prefill as f64),
@@ -290,6 +300,7 @@ fn exit_regime() {
             "threads": threads,
             "n_ctx": n_ctx,
             "op_offload": opts.op_offload,
+            "refresh_hot": refresh_hot,
             "expert_slots": opts.expert_slots,
             "expert_slot_bytes": opts.expert_slot_bytes,
             "ram_slots": opts.ram_slots,
