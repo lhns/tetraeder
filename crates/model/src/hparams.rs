@@ -1,6 +1,6 @@
 //! Qwen3 MoE hyperparameters, tensor index and the placement description from a GGUF header.
 
-use crate::gguf::{Gguf, GgufError, TensorInfo};
+use crate::gguf::{Gguf, GgufError, Slab, TensorInfo};
 use std::path::Path;
 use tetraeder_plan::{Format, ModelDesc, UnitSize};
 
@@ -88,13 +88,13 @@ impl Hparams {
 /// Where one expert's weights live in the file: the gate, up and down slabs of one layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExpertSlabs {
-    /// `(file offset, bytes)` of gate, up and down, in [`EXPERT_TENSORS`] order.
-    pub parts: [(u64, u64); 3],
+    /// Gate, up and down, in [`EXPERT_TENSORS`] order.
+    pub parts: [Slab; 3],
 }
 
 impl ExpertSlabs {
     pub fn bytes(&self) -> u64 {
-        self.parts.iter().map(|p| p.1).sum()
+        self.parts.iter().map(|p| p.len).sum()
     }
 }
 
@@ -123,7 +123,11 @@ impl ModelFile {
 
     /// Byte ranges of expert `e` of layer `il` (what ADR 0031's I/O reads per slot).
     pub fn expert_slabs(&self, il: u32, e: u32) -> Result<ExpertSlabs, GgufError> {
-        let mut parts = [(0, 0); 3];
+        let mut parts = [Slab {
+            shard: 0,
+            offset: 0,
+            len: 0,
+        }; 3];
         for (p, name) in parts.iter_mut().zip(EXPERT_TENSORS) {
             let t = self.layer_tensor(il, name)?;
             *p = t.slab(e as u64).ok_or_else(|| {
@@ -131,6 +135,21 @@ impl ModelFile {
             })?;
         }
         Ok(ExpertSlabs { parts })
+    }
+
+    /// Bytes of one expert's gate, up and down slab, per layer (Q4_K_M widens `ffn_down` in some
+    /// layers, so the layers differ).
+    pub fn expert_bytes_per_layer(&self) -> Result<Vec<u64>, GgufError> {
+        (0..self.hparams.n_layer)
+            .map(|il| Ok(self.expert_slabs(il, 0)?.bytes()))
+            .collect()
+    }
+
+    /// Slots per layer that `bytes` buys: the same count in every layer, so
+    /// `floor(bytes / sum over layers of one expert's bytes)`, capped at the expert count.
+    pub fn slots_for_bytes(&self, bytes: u64) -> Result<u64, GgufError> {
+        let per_slot: u64 = self.expert_bytes_per_layer()?.iter().sum();
+        Ok((bytes / per_slot.max(1)).min(self.hparams.n_expert as u64))
     }
 
     /// Unit sizes for the placement plan (`plan::ModelDesc`). All layers are alike; the sizes come

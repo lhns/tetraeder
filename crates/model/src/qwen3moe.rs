@@ -71,6 +71,47 @@ pub struct StepProfile {
     pub total: Duration,
 }
 
+/// One buffer the builder owns (ADR 0037).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemoryUse {
+    pub device: String,
+    /// `vram` for the primary backend's memory, `ram` for host memory (also the primary
+    /// backend's when it is the CPU).
+    pub tier: &'static str,
+    /// `weights`, `slots`, `kv` or `workspace`.
+    pub kind: &'static str,
+    /// Size of the buffer.
+    pub capacity: u64,
+    /// Bytes holding data: for slots the resident experts, otherwise the whole buffer (the
+    /// workspace is as big as the largest graph so far).
+    pub used: u64,
+}
+
+/// Slots per layer for a tier from its count or its byte budget (ADR 0037).
+fn resolve_tier(
+    file: &ModelFile,
+    tier: &str,
+    count: Option<usize>,
+    bytes: Option<u64>,
+) -> Result<Option<usize>> {
+    let Some(bytes) = bytes else {
+        return Ok(count);
+    };
+    if count.is_some() {
+        return Err(ModelError::Invalid(format!(
+            "set {tier}_slots or {tier}_slot_bytes, not both"
+        )));
+    }
+    let n = file.slots_for_bytes(bytes)?;
+    if n == 0 {
+        let min: u64 = file.expert_bytes_per_layer()?.iter().sum();
+        return Err(ModelError::Invalid(format!(
+            "{tier}_slot_bytes {bytes} buys no slot; one slot per layer needs {min} bytes"
+        )));
+    }
+    Ok(Some(n as usize))
+}
+
 /// Where the weights, the KV cache and the compute run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendChoice {
@@ -92,6 +133,13 @@ pub struct LoadOptions {
     /// Host-memory expert slots per layer between the file and the compute slots. Only with
     /// fewer compute slots than experts.
     pub ram_slots: Option<usize>,
+    /// Compute-tier slot bytes instead of `expert_slots` (ADR 0037): the budget buys
+    /// `floor(bytes / sum over layers of one expert's bytes)` slots per layer. This is the
+    /// tier's slot bytes only, not weights, KV cache or compute buffers. At least the expert
+    /// count's worth means every expert is resident. Exclusive with `expert_slots`.
+    pub expert_slot_bytes: Option<u64>,
+    /// RAM-tier slot bytes instead of `ram_slots`, counted like `expert_slot_bytes`.
+    pub ram_slot_bytes: Option<u64>,
     /// Direct I/O settings for expert reads.
     pub io: IoOptions,
     /// Step and expert cache metrics go here when set.
@@ -114,6 +162,8 @@ impl std::fmt::Debug for LoadOptions {
             .field("n_ctx", &self.n_ctx)
             .field("expert_slots", &self.expert_slots)
             .field("ram_slots", &self.ram_slots)
+            .field("expert_slot_bytes", &self.expert_slot_bytes)
+            .field("ram_slot_bytes", &self.ram_slot_bytes)
             .field("miss", &self.miss)
             .field("telemetry", &self.telemetry.is_some())
             .finish_non_exhaustive()
@@ -127,6 +177,8 @@ impl LoadOptions {
             n_ctx: 2048,
             expert_slots: None,
             ram_slots: None,
+            expert_slot_bytes: None,
+            ram_slot_bytes: None,
             io: IoOptions::default(),
             telemetry: None,
             record_routing: false,
@@ -218,6 +270,11 @@ pub struct Qwen3Moe {
     file: ModelFile,
     sched: Sched,
     primary: Backend,
+    cpu: Backend,
+    /// Size of the weights buffer on the primary backend (slot tensors included) and of the KV
+    /// buffer.
+    weights_bytes: u64,
+    kv_bytes: u64,
     weights: Weights,
     kv: Kv,
     state: Option<State>,
@@ -264,7 +321,10 @@ impl Qwen3Moe {
         if h.n_head % h.n_head_kv != 0 || h.n_expert_used > h.n_expert || h.n_rot != h.head_dim {
             return Err(ModelError::Invalid("unsupported hyperparameters".into()));
         }
-        if opts.miss == MissPolicy::Cpu && opts.ram_slots.is_none() {
+        let expert_slots =
+            resolve_tier(&file, "expert", opts.expert_slots, opts.expert_slot_bytes)?;
+        let ram_slots = resolve_tier(&file, "ram", opts.ram_slots, opts.ram_slot_bytes)?;
+        if opts.miss == MissPolicy::Cpu && ram_slots.is_none() {
             return Err(ModelError::Invalid(
                 "the cpu miss policy needs ram_slots".into(),
             ));
@@ -285,7 +345,7 @@ impl Qwen3Moe {
             }
         };
         let sched = Sched::new(&backends, step_nodes(h).max(SEGMENT_NODES) * 4, false)?;
-        let slots = match opts.expert_slots {
+        let slots = match expert_slots {
             Some(0) => {
                 return Err(ModelError::Invalid(
                     "expert_slots must be at least 1".into(),
@@ -294,15 +354,15 @@ impl Qwen3Moe {
             Some(n) if n < h.n_expert as usize => Some(n),
             _ => None,
         };
-        let weights = load_weights(&file, &primary, slots)?;
-        let kv = alloc_kv(h, pad(opts.n_ctx.max(1), KV_PAD), &primary)?;
+        let (weights, weights_bytes) = load_weights(&file, &primary, slots)?;
+        let (kv, kv_bytes) = alloc_kv(h, pad(opts.n_ctx.max(1), KV_PAD), &primary)?;
         let metrics = MemoryMetrics::new(opts.telemetry.clone());
         let streamer = slots
             .map(|n| {
                 let tensors: Vec<_> = weights.layers.iter().map(Layer::exps).collect();
                 let cfg = StreamerConfig {
                     slots: n,
-                    ram_slots: opts.ram_slots.map(|r| r.max(1)),
+                    ram_slots: ram_slots.map(|r| r.max(1)),
                     io: opts.io,
                     profile: opts.routing_profile.clone(),
                 };
@@ -327,6 +387,9 @@ impl Qwen3Moe {
             file,
             sched,
             primary,
+            cpu,
+            weights_bytes: weights_bytes as u64,
+            kv_bytes: kv_bytes as u64,
             weights,
             kv,
             state: None,
@@ -421,6 +484,42 @@ impl Qwen3Moe {
         };
         let layers = &self.weights.layers;
         streamer.refresh_hot_set(&self.file, |il| layers[il].exps())
+    }
+
+    /// Every buffer the builder owns with its capacity and used bytes (ADR 0037): the weights,
+    /// the compute slot tensors, the KV cache, the RAM tier and the scheduler's compute buffers.
+    /// Cheap: it reads sizes and the slot tables.
+    pub fn memory(&self) -> Vec<MemoryUse> {
+        let tier = if self.primary.is_cpu() { "ram" } else { "vram" };
+        let device = self.primary.name();
+        let mut out = Vec::new();
+        let mut push = |device: &str, tier, kind, capacity: u64, used: u64| {
+            out.push(MemoryUse {
+                device: device.to_string(),
+                tier,
+                kind,
+                capacity,
+                used,
+            });
+        };
+        let slots = self.streamer.as_ref().map(Streamer::slot_use);
+        let slot_cap = slots.as_ref().map_or(0, |s| s.compute_capacity);
+        let weights = self.weights_bytes.saturating_sub(slot_cap);
+        push(&device, tier, "weights", weights, weights);
+        if let Some(s) = &slots {
+            push(&device, tier, "slots", s.compute_capacity, s.compute_used);
+        }
+        push(&device, tier, "kv", self.kv_bytes, self.kv_bytes);
+        if let Some((cap, used)) = slots.and_then(|s| s.ram) {
+            push("host", "ram", "slots", cap, used);
+        }
+        let work = self.sched.buffer_size(&self.primary) as u64;
+        push(&device, tier, "workspace", work, work);
+        if !self.primary.is_cpu() {
+            let work = self.sched.buffer_size(&self.cpu) as u64;
+            push(&self.cpu.name(), "ram", "workspace", work, work);
+        }
+        out
     }
 
     /// Expert cache and read counters; `None` when every expert is resident.
@@ -700,6 +799,10 @@ impl Qwen3Moe {
                 tokens: n as u32,
                 segments: graphs,
             });
+            for m in self.memory() {
+                self.metrics
+                    .buffer(&m.device, m.tier, m.kind, m.used, m.capacity);
+            }
         }
         if n > 1 && self.hot_pending {
             // The first prefill's routing decides the hot set (ADR 0035).
@@ -853,11 +956,16 @@ fn add_group<'a>(
 
 /// With `slots`, the expert tensors have that many entries and are left empty (zeros) for the
 /// streamer to fill; everything else is read from the file.
-fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Result<Weights> {
+/// The weights and the size of their buffer.
+fn load_weights(
+    file: &ModelFile,
+    backend: &Backend,
+    slots: Option<usize>,
+) -> Result<(Weights, usize)> {
     let h = &file.hparams;
     let n_tensors = 3 + h.n_layer as usize * 12;
     let ctx = Rc::new(Context::new(n_tensors + 4, 0)?);
-    let mut loaded: Vec<(OwnedTensor, u64, u64)> = Vec::new();
+    let mut loaded: Vec<(OwnedTensor, usize, u64, u64)> = Vec::new();
     let mut make = |name: &str| -> Result<OwnedTensor> {
         let info = file.gguf.tensor(name)?;
         let mut ne: Vec<i64> = info.ne.iter().map(|&x| x as i64).collect();
@@ -872,7 +980,7 @@ fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Re
             if t.get().nbytes() as u64 != info.nbytes {
                 return Err(ModelError::Invalid(format!("size mismatch for `{name}`")));
             }
-            loaded.push((t.clone(), info.offset, info.nbytes));
+            loaded.push((t.clone(), info.shard, info.offset, info.nbytes));
         }
         Ok(t)
     };
@@ -901,14 +1009,20 @@ fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Re
             down_exps: l("ffn_down_exps")?,
         });
     }
-    ctx.alloc_weights(backend)?;
+    let buffer_size = ctx.alloc_weights(backend)?;
     if slots.is_some() {
         // Defensive: slots never loaded hold zeros, not garbage.
         ctx.clear_buffer(0);
     }
-    let mut f = std::fs::File::open(&file.path)?;
+    let mut shards = file
+        .gguf
+        .paths
+        .iter()
+        .map(std::fs::File::open)
+        .collect::<std::io::Result<Vec<_>>>()?;
     let mut buf = vec![0u8; 16 << 20];
-    for (t, offset, nbytes) in loaded {
+    for (t, shard, offset, nbytes) in loaded {
+        let f = &mut shards[shard];
         f.seek(SeekFrom::Start(offset))?;
         let mut done = 0u64;
         while done < nbytes {
@@ -918,15 +1032,16 @@ fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Re
             done += len as u64;
         }
     }
-    Ok(Weights {
+    let weights = Weights {
         tok_embd,
         out_norm,
         output,
         layers,
-    })
+    };
+    Ok((weights, buffer_size))
 }
 
-fn alloc_kv(h: &Hparams, n_ctx: usize, backend: &Backend) -> Result<Kv> {
+fn alloc_kv(h: &Hparams, n_ctx: usize, backend: &Backend) -> Result<(Kv, usize)> {
     let ctx = Rc::new(Context::new(2 * h.n_layer as usize + 4, 0)?);
     let n_embd_kv = (h.n_head_kv * h.head_dim) as i64;
     let mk = |kind: &str, il: u32| {
@@ -936,10 +1051,10 @@ fn alloc_kv(h: &Hparams, n_ctx: usize, backend: &Backend) -> Result<Kv> {
     };
     let k = (0..h.n_layer).map(|il| mk("k", il)).collect();
     let v = (0..h.n_layer).map(|il| mk("v", il)).collect();
-    ctx.alloc_tensors(backend)?;
+    let bytes = ctx.alloc_tensors(backend)?;
     // Padding rows are masked, but 0 * NaN is NaN: never leave them uninitialized.
     ctx.clear_buffer(0);
-    Ok(Kv { k, v, n_ctx })
+    Ok((Kv { k, v, n_ctx }, bytes))
 }
 
 fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<State> {
