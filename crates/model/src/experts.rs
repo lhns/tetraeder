@@ -60,9 +60,9 @@ struct RamTier {
 
 pub(crate) struct Streamer {
     dio: DirectFile,
-    /// Bytes of one expert's gate, up and down slab.
-    sizes: [usize; 3],
-    total: usize,
+    /// Bytes of one expert's gate, up and down slab, per layer: quantization mixes such as
+    /// Q4_K_M give some layers wider formats.
+    sizes: Vec<[usize; 3]>,
     n_expert: u32,
     compute: SlotCache,
     ram: Option<RamTier>,
@@ -91,30 +91,30 @@ impl Streamer {
     ) -> Result<Streamer> {
         let h = &file.hparams;
         let layers = h.n_layer as usize;
-        let first = file.expert_slabs(0, 0)?;
-        let sizes = first.parts.map(|p| p.1 as usize);
+        let mut sizes = Vec::with_capacity(layers);
         for (il, t) in slot_tensors.iter().enumerate() {
             let slabs = file.expert_slabs(il as u32, 0)?;
             for m in 0..3 {
-                if t[m].nb()[2] as u64 != slabs.parts[m].1 || slabs.parts[m].1 as usize != sizes[m]
-                {
+                if t[m].nb()[2] as u64 != slabs.parts[m].1 {
                     return Err(invalid(format!(
                         "layer {il}: slot size does not match the expert slab"
                     )));
                 }
             }
+            sizes.push(slabs.parts.map(|p| p.1 as usize));
         }
-        let total: usize = sizes.iter().sum();
         let n_expert = h.n_expert;
         let ram = ram_slots.map(|n| RamTier {
             cache: SlotCache::new(Tier::Ram, h.n_layer, n_expert, n as u32),
-            arenas: (0..layers).map(|_| vec![0u8; n * total]).collect(),
+            arenas: sizes
+                .iter()
+                .map(|sz| vec![0u8; n * sz.iter().sum::<usize>()])
+                .collect(),
             slots: n,
         });
         Ok(Streamer {
             dio: DirectFile::open_with(&file.path, io)?,
             sizes,
-            total,
             n_expert,
             compute: SlotCache::new(Tier::Vram, h.n_layer, n_expert, slots as u32),
             ram,
@@ -237,7 +237,8 @@ impl Streamer {
         loads: &[(u32, u32)],
     ) -> Result<()> {
         let t0 = Instant::now();
-        let total = self.total;
+        let sizes = self.sizes[il];
+        let total: usize = sizes.iter().sum();
         self.staging.resize(loads.len() * total, 0);
         let mut staging = std::mem::take(&mut self.staging);
         let items: Vec<(u32, &mut [u8])> = loads
@@ -249,7 +250,7 @@ impl Streamer {
         let res = read.and_then(|bytes| {
             self.metrics.tier_read(&self.device, "nvme", bytes);
             for (&(_, slot), src) in loads.iter().zip(staging.chunks(total)) {
-                upload(dst, &self.sizes, slot, src)?;
+                upload(dst, &sizes, slot, src)?;
             }
             Ok(())
         });
@@ -271,7 +272,8 @@ impl Streamer {
     ) -> Result<()> {
         let t0 = Instant::now();
         let ram = self.ram.as_mut().expect("RAM tier");
-        let total = self.total;
+        let sizes = self.sizes[il];
+        let total: usize = sizes.iter().sum();
         let (hits, misses): (Vec<_>, Vec<_>) = group
             .iter()
             .partition(|&&(e, _)| ram.cache.layer(il).slot_of(e).is_some());
@@ -306,7 +308,7 @@ impl Streamer {
         for &(_, cslot, rslot, _) in &plan {
             upload(
                 dst,
-                &self.sizes,
+                &sizes,
                 cslot,
                 &arena[rslot * total..(rslot + 1) * total],
             )?;
