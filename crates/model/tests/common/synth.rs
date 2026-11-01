@@ -245,18 +245,28 @@ pub fn write_moe(path: &Path, s: &MoeSpec) {
 
 /// The model of `spec` quantized to `ftype`, in the temp dir, written once per process and name.
 pub fn quantized_moe(spec: &MoeSpec, ftype: Ftype, name: &str) -> PathBuf {
-    let dir = std::env::temp_dir();
     let id = std::process::id();
-    let src = dir.join(format!("tetraeder-synth-{name}-{id}-f32.gguf"));
-    let out = dir.join(format!("tetraeder-synth-{name}-{id}.gguf"));
+    quantized_moe_at(
+        spec,
+        ftype,
+        &std::env::temp_dir().join(format!("tetraeder-synth-{name}-{id}.gguf")),
+    )
+}
+
+/// The model of `spec` quantized to `ftype` at `out`, written only if `out` does not exist (the
+/// F32 intermediate goes next to it, 4 bytes per weight, and is removed after).
+pub fn quantized_moe_at(spec: &MoeSpec, ftype: Ftype, out: &Path) -> PathBuf {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !out.is_file() {
+        let src = out.with_extension("f32.tmp");
+        let part = out.with_extension("part");
         write_moe(&src, spec);
         let mut qp = QuantizeParams::new(ftype);
         qp.nthread = 2;
-        quantize(&src, &out, &qp).unwrap();
+        quantize(&src, &part, &qp).unwrap();
         std::fs::remove_file(&src).ok();
+        std::fs::rename(&part, out).unwrap();
     }
-    out
+    out.to_path_buf()
 }

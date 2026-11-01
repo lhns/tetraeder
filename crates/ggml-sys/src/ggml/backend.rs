@@ -8,12 +8,21 @@ use std::rc::Rc;
 struct BackendInner {
     ptr: NonNull<sys::ggml_backend>,
     is_cpu: bool,
+    /// The CPU backend's own threadpool. Without one, ggml creates and joins its worker threads
+    /// on every graph compute.
+    pool: Option<NonNull<sys::ggml_threadpool>>,
 }
 
 impl Drop for BackendInner {
     fn drop(&mut self) {
-        // SAFETY: owned; every Buffer and Sched holds an Rc, so none outlives this.
-        unsafe { sys::ggml_backend_free(self.ptr.as_ptr()) }
+        // SAFETY: owned; every Buffer and Sched holds an Rc, so none outlives this. The backend
+        // goes first: it uses the pool until it is freed and never frees the pool itself.
+        unsafe {
+            sys::ggml_backend_free(self.ptr.as_ptr());
+            if let Some(pool) = self.pool {
+                sys::ggml_threadpool_free(pool.as_ptr());
+            }
+        }
     }
 }
 
@@ -30,16 +39,35 @@ impl std::fmt::Debug for Backend {
 }
 
 impl Backend {
-    /// The CPU backend with `n_threads` compute threads.
+    /// The CPU backend with `n_threads` compute threads in a threadpool of its own that lives as
+    /// long as the backend (as libllama with an attached pool and llama-bench run).
     pub fn cpu(n_threads: i32) -> Result<Backend> {
         crate::llama::init();
+        let n = n_threads.max(1);
         // SAFETY: plain constructor; null means failure.
         let ptr = unsafe { sys::ggml_backend_cpu_init() };
         let ptr = NonNull::new(ptr).ok_or_else(|| GgmlError::NoBackend("CPU".into()))?;
-        // SAFETY: ptr is a live CPU backend.
-        unsafe { sys::ggml_backend_cpu_set_n_threads(ptr.as_ptr(), n_threads.max(1)) };
+        // SAFETY: `params` is a valid in-out struct; null means failure.
+        let pool = NonNull::new(unsafe {
+            let mut params = sys::ggml_threadpool_params_default(n);
+            sys::ggml_threadpool_new(&mut params)
+        });
+        // Owned from here, so a failure below frees both.
+        let inner = BackendInner {
+            ptr,
+            is_cpu: true,
+            pool,
+        };
+        let Some(pool) = pool else {
+            return Err(GgmlError::NoBackend("CPU threadpool".into()));
+        };
+        // SAFETY: live CPU backend and pool; the pool outlives the backend (freed after it).
+        unsafe {
+            sys::ggml_backend_cpu_set_n_threads(ptr.as_ptr(), n);
+            sys::ggml_backend_cpu_set_threadpool(ptr.as_ptr(), pool.as_ptr());
+        }
         Ok(Backend {
-            inner: Rc::new(BackendInner { ptr, is_cpu: true }),
+            inner: Rc::new(inner),
         })
     }
 
@@ -67,7 +95,11 @@ impl Backend {
         let ptr = unsafe { sys::ggml_backend_dev_init(dev, std::ptr::null()) };
         let ptr = NonNull::new(ptr).ok_or_else(|| GgmlError::NoBackend(format!("GPU {index}")))?;
         Ok(Backend {
-            inner: Rc::new(BackendInner { ptr, is_cpu: false }),
+            inner: Rc::new(BackendInner {
+                ptr,
+                is_cpu: false,
+                pool: None,
+            }),
         })
     }
 
