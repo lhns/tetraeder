@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # Nightly job, runs ON the Vast box (started detached by `taxameter nightly` via box.sh run).
-# Stages: cuda check, cargo build, cargo test, parity (greedy golden check, parity.json), bench env snapshot (env.json),
-# benchmark spec (bench/spec/phase0.toml; BENCH_SPEC=phase2-baseline selects the Phase 2 llama.cpp baseline instead).
+# Stages: cuda check, cargo build, cargo test, parity (greedy golden check, parity.json), two optional stages (below),
+# bench env snapshot (env.json), benchmark spec (bench/spec/phase0.toml; BENCH_SPEC=phase2-baseline selects the Phase 2
+# llama.cpp baseline instead).
+# Optional stages, off unless asked (taxameter's `nightly` cannot pass env; use `taxameter run scripts/nightly.sh --env ...`).
+# Their exit codes are logged, never the night's:
+#   gpu-moe  MOE_CHECK=1: the builder on the real Qwen3-30B-A3B Q4_K_M (tests/real_moe.rs: greedy equal to libllama, resident
+#            and streaming) -> $date_dir/builder-real.json. MOE_GGUF overrides the model path.
+#   gap      GAP_PAIR=<pair id of phase0.toml>, e.g. gate-tetraeder-cuda-dense: that pair again with 10 repeats ->
+#            $date_dir/gap/ (own parity.json, results json). Needs both models of phase0.toml (provisioned from it).
 # Always ends with bench/results/<date>/DONE (content: rc=N) and a final `NIGHTLY_DONE rc=N` log line, even on
 # failure or signal, so taxameter can verify the fetch and read the verdict.
 #
@@ -9,11 +16,14 @@
 #   from the bench: 0 ok   1 regression beyond the noise band   2 error or skipped pair   3 inconclusive (noisy box)
 #   own: 10 build failed   11 tests failed   12 env snapshot failed   13 CUDA unusable
 #   124 a stage hit its time limit   143 killed by a signal
-# Time limits (BUILD_MIN + TEST_MIN + PARITY_MIN + BENCH_MIN stay under taxameter's nightly_wait_min of 110 for phase0;
-# phase2-baseline needs a larger nightly_wait_min).
+# Time limits in minutes. taxameter's nightly_wait_min (taxameter.toml, now 150) must cover the sum of the limits of the
+# stages that run. Worst case with both optional stages: phase0 40+15+5+15+10+45 = 130, phase2-baseline
+# 40+15+5+15+10+60 = 145 (+ a 30 s kill grace per stage). Without them 105 and 120.
 BUILD_MIN="${BUILD_MIN:-40}"
 TEST_MIN="${TEST_MIN:-15}"
 PARITY_MIN="${PARITY_MIN:-5}"
+MOE_MIN="${MOE_MIN:-15}"  # three loads of 18.6 GB from disk, libllama, the checks
+GAP_MIN="${GAP_MIN:-10}"  # one pair, warmup + 10 repeats, plus a parity run when the night's spec is not phase0
 BENCH_SPEC="${BENCH_SPEC:-phase0}"  # name of a spec in bench/spec/
 case "$BENCH_SPEC" in phase0) bench_default=45;; phase2-baseline) bench_default=60;; *) bench_default=45;; esac
 BENCH_MIN="${BENCH_MIN:-$bench_default}"  # the phase0 spec took 31 min on an RTX 3090 box; phase2-baseline is estimated at 42
@@ -78,6 +88,44 @@ parity_check() {  # quality next to speed: greedy golden check of the Tetraeder 
     --llama-simple "${LLAMA_SIMPLE:-/opt/llama.cpp/bin/llama-simple}" --models-dir "${TETRAEDER_MODELS_DIR:-.hf_cache}"
 }
 stage parity 0 parity_check || echo "parity rc=$? (Tetraeder gates will report an error)"
+
+abs() { case "$1" in /*) echo "$1";; *) echo "$PWD/$1";; esac; }  # cargo test runs in the crate dir: paths must be absolute
+models_dir="$(abs "${TETRAEDER_MODELS_DIR:-.hf_cache}")"
+
+if [ "${MOE_CHECK:-0}" = 1 ]; then
+  # same path rule as the bench: <models-dir>/<org>__<repo>/<file>; same build as the stages above (release, same features)
+  moe_gguf="${MOE_GGUF:-$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf}"
+  if [ -f "$moe_gguf" ]; then
+    stage gpu-moe "$MOE_MIN" env TETRAEDER_MOE_GGUF="$moe_gguf" TETRAEDER_REAL_OUT="$(abs "$date_dir")/builder-real.json" \
+      cargo test --release -p tetraeder-model --features "$cuda_feat" --test real_moe -- --nocapture \
+      || echo "gpu-moe rc=$? (not the night's)"
+  else
+    echo "gpu-moe skipped: no model file $moe_gguf"
+  fi
+fi
+
+gap_run() {  # run by bash -c under a timeout; the phase0 pair again with more repeats, own results dir and parity.json
+  local dir="$date_dir/gap" spec=bench/spec/phase0.toml
+  grep -q "^id = \"$GAP_PAIR\"" "$spec" || { echo "no pair $GAP_PAIR in $spec"; return 2; }
+  mkdir -p "$dir"
+  rm -f "$dir/parity.json"
+  # The Tetraeder gate needs a parity.json for phase0. The night's own is that when the spec is phase0; otherwise it
+  # is absent or from another spec (phase2-baseline has no Tetraeder engine: an empty file), so check again here.
+  if [ "$BENCH_SPEC" = phase0 ] && [ -s "$date_dir/parity.json" ]; then
+    cp "$date_dir/parity.json" "$dir/parity.json"
+  else
+    timeout -k 30 "${PARITY_MIN}m" target/release/tetraeder-bench parity "$spec" --out-dir "$dir" \
+      --llama-simple "${LLAMA_SIMPLE:-/opt/llama.cpp/bin/llama-simple}" --models-dir "$models_dir" \
+      || echo "gap parity rc=$? (the Tetraeder gate will report an error)"
+  fi
+  target/release/tetraeder-bench run "$spec" --only "$GAP_PAIR" --repeats 10 --strict --out-dir "$dir" \
+    --llama-bench "${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}" --models-dir "$models_dir"
+}
+if [ -n "${GAP_PAIR:-}" ]; then
+  export -f gap_run
+  export date_dir BENCH_SPEC GAP_PAIR PARITY_MIN models_dir
+  stage gap "$GAP_MIN" bash -c gap_run || echo "gap rc=$? (not the night's)"
+fi
 
 bench_env() {  # shell-side environment snapshot next to the harness results (the harness also records its own)
   q() { nvidia-smi --query-gpu="$1" --format=csv,noheader 2> /dev/null | head -1 | sed 's/"//g'; }

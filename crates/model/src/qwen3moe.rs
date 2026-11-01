@@ -378,6 +378,7 @@ impl Qwen3Moe {
         }
         st.mask.get().set_bytes(&f16_bits_tensor_bytes(&mask), 0)?;
 
+        let passes_before = self.passes_run;
         let mut mapped = Vec::new();
         let mut logits = Vec::new();
         // The previous layer step ran in several passes and left the FFN sum in `acc`.
@@ -451,7 +452,8 @@ impl Qwen3Moe {
                 graphs: false,
                 duration: t0.elapsed(),
                 tokens: n as u32,
-                segments: h.n_layer + 1,
+                // Segment graphs plus the overflow passes of this step (ADR 0033).
+                segments: h.n_layer + 1 + (self.passes_run - passes_before) as u32,
             });
         }
         Ok(logits)

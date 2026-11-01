@@ -4,24 +4,30 @@
 //! The fixture has 8 experts per layer and routes the top 2, so 1 slot cannot hold even one
 //! token's experts: that case runs the overflow passes of ADR 0033.
 //!
-//! Hardware label: all tests are `cpu_*`.
+//! Hardware labels (AGENTS rule 9): `cpu_*` tests need no GPU; `gpu_*` tests skip cleanly when the
+//! build has no GPU device.
 
 mod common;
 
 use common::*;
 use std::sync::Arc;
+use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_model::{BackendChoice, LoadOptions, ModelError, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 const EXPERTS: usize = 8;
 
-fn opts(slots: usize, ram: Option<usize>) -> LoadOptions {
+fn opts_on(backend: BackendChoice, slots: usize, ram: Option<usize>) -> LoadOptions {
     LoadOptions {
         expert_slots: Some(slots),
         ram_slots: ram,
         record_routing: true,
-        ..LoadOptions::new(CPU)
+        ..LoadOptions::new(backend)
     }
+}
+
+fn opts(slots: usize, ram: Option<usize>) -> LoadOptions {
+    opts_on(CPU, slots, ram)
 }
 
 /// hardware: cpu. Slot counts 8 (all), 4, 2 and 1 per layer, each with no RAM tier and with
@@ -43,6 +49,37 @@ fn cpu_slot_counts_match_libllama() {
                 let stats = m.expert_stats().expect("streaming");
                 assert!(stats.layers.iter().all(|l| l.compute.misses > 0));
                 assert_eq!(stats.layers[0].ram.is_some(), ram.is_some());
+                assert!(stats.io.experts_read > 0);
+            }
+            if slots == 1 {
+                assert!(m.overflow_passes() > 0, "top-2 does not fit one slot");
+            }
+        }
+    }
+}
+
+/// hardware: gpu (CUDA build; skips without a GPU device). The matrix of the CPU test with the
+/// builder on GPU 0 against the CPU libllama reference, within `TOL_GPU`.
+#[test]
+fn gpu_slot_counts_match_libllama() {
+    if !Backend::gpu_available() {
+        eprintln!("skip: no GPU device in this build or on this machine");
+        return;
+    }
+    let r = libllama_reference(&PROMPT, N_GREEDY);
+    for slots in [8, 4, 2, 1] {
+        for ram in [None, Some(3)] {
+            let o = opts_on(BackendChoice::Gpu { index: 0 }, slots, ram);
+            let mut m = Qwen3Moe::load(fixture(), &o).unwrap();
+            let worst = check_against(&mut m, &r, TOL_GPU);
+            eprintln!("gpu slots {slots} ram {ram:?}: max |delta| {worst:e}");
+            let layers = m.hparams().n_layer as u64;
+            assert_eq!(m.segments_run(), (layers + 1) * (2 + N_GREEDY as u64));
+            if slots == EXPERTS {
+                assert!(m.expert_stats().is_none(), "all experts resident: no cache");
+                assert_eq!(m.overflow_passes(), 0);
+            } else {
+                let stats = m.expert_stats().expect("streaming");
                 assert!(stats.io.experts_read > 0);
             }
             if slots == 1 {
@@ -121,6 +158,7 @@ struct Sim {
     full: Vec<u64>,
     partial: Vec<u64>,
     experts_read: u64,
+    batches: u64,
 }
 
 impl Sim {
@@ -137,6 +175,7 @@ impl Sim {
             full: vec![0; layers],
             partial: vec![0; layers],
             experts_read: 0,
+            batches: 0,
         }
     }
 
@@ -166,19 +205,30 @@ impl Sim {
                 }
             }
             match self.ram_slots {
-                None => self.experts_read += loads.len() as u64,
+                None => {
+                    self.experts_read += loads.len() as u64;
+                    self.batches += u64::from(!loads.is_empty());
+                }
                 Some(n) => {
-                    for group in loads.chunks(n) {
-                        let (rh, rm): (Vec<i32>, Vec<i32>) =
+                    // RAM hits first across all loads of the chunk, then groups of `n`.
+                    let (rh, rm): (Vec<i32>, Vec<i32>) =
+                        loads.iter().partition(|&&e| self.ram[il].has(e));
+                    let ordered: Vec<i32> = rh.into_iter().chain(rm).collect();
+                    for group in ordered.chunks(n) {
+                        let mut read = false;
+                        // Within a group the hits go first as well.
+                        let (gh, gm): (Vec<i32>, Vec<i32>) =
                             group.iter().partition(|&&e| self.ram[il].has(e));
-                        for e in rh.into_iter().chain(rm) {
+                        for e in gh.into_iter().chain(gm) {
                             if self.ram[il].access(e) {
                                 self.r[il].hits += 1;
                             } else {
                                 self.r[il].misses += 1;
                                 self.experts_read += 1;
+                                read = true;
                             }
                         }
+                        self.batches += u64::from(read);
                     }
                 }
             }
@@ -190,7 +240,7 @@ impl Sim {
 /// of experts read from the file equal the simulation fed with the routing the model recorded.
 #[test]
 fn cpu_cache_counts_match_an_lru_simulation() {
-    for (slots, ram) in [
+    let mut configs = vec![
         (4, None),
         (2, None),
         (1, None),
@@ -199,7 +249,10 @@ fn cpu_cache_counts_match_an_lru_simulation() {
         (3, Some(5)),
         (1, Some(2)),
         (2, Some(8)),
-    ] {
+    ];
+    // RAM tiers smaller than the compute slots: the loads of a chunk span several RAM groups.
+    configs.extend([(4, Some(2)), (3, Some(2)), (6, Some(2)), (6, Some(4))]);
+    for (slots, ram) in configs {
         let mut m = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
         let layers = m.hparams().n_layer as usize;
         let mut next = argmax(&m.eval_last(&PROMPT).unwrap()) as i32;
@@ -242,8 +295,7 @@ fn cpu_cache_counts_match_an_lru_simulation() {
             "slots {slots} ram {ram:?}"
         );
         assert!(stats.io.bytes_read > 0);
-        // One read per layer step at most per chunk.
-        assert!(stats.io.batches <= stats.io.experts_read);
+        assert_eq!(stats.io.batches, sim.batches, "slots {slots} ram {ram:?}");
     }
 }
 
@@ -311,7 +363,7 @@ fn cpu_telemetry_reports_steps_and_cache() {
             .unwrap_or_default()
     }
     let mut requests = std::collections::BTreeMap::<(String, String), u64>::new();
-    let (mut layer_hits, mut read_bytes) = (0u64, 0u64);
+    let (mut layer_full, mut layer_partial, mut read_bytes) = (0u64, 0u64, 0u64);
     let (mut steps, mut segments) = (0u64, 0.0f64);
     for rm in exp.get_finished_metrics().unwrap() {
         for sm in rm.scope_metrics() {
@@ -328,7 +380,13 @@ fn cpu_telemetry_reports_steps_and_cache() {
                         }
                     }
                     ("tetraeder.expert.layer_hit", AggregatedMetrics::U64(MetricData::Sum(s))) => {
-                        layer_hits += s.data_points().map(|d| d.value()).sum::<u64>();
+                        for dp in s.data_points() {
+                            match attr(dp.attributes(), "tetraeder.result").as_str() {
+                                "full" => layer_full += dp.value(),
+                                "partial" => layer_partial += dp.value(),
+                                other => panic!("layer_hit result {other}"),
+                            }
+                        }
                     }
                     ("tetraeder.tier.read.bytes", AggregatedMetrics::U64(MetricData::Sum(s))) => {
                         for dp in s.data_points() {
@@ -355,8 +413,11 @@ fn cpu_telemetry_reports_steps_and_cache() {
         }
     }
     assert_eq!(steps, 2);
-    assert_eq!(segments as u64, 2 * (layers + 1));
-    assert_eq!(layer_hits, 2 * layers);
+    assert_eq!(segments as u64, 2 * (layers + 1) + m.overflow_passes());
+    let full: u64 = stats.layers.iter().map(|l| l.full_steps).sum();
+    let partial: u64 = stats.layers.iter().map(|l| l.partial_steps).sum();
+    assert_eq!(full + partial, 2 * layers);
+    assert_eq!((layer_full, layer_partial), (full, partial));
     assert_eq!(read_bytes, stats.io.bytes_read);
     let sum = |tier: &str, res: &str| {
         requests

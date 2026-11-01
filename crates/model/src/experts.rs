@@ -4,7 +4,7 @@
 
 use crate::hparams::ModelFile;
 use crate::qwen3moe::{ModelError, Result};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tetraeder_ggml_sys::ggml::Tensor;
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_memory::slots::{LayerStats, Lookup, SlotCache, Tier};
@@ -19,6 +19,8 @@ pub struct IoCounters {
     pub experts_read: u64,
     /// Bytes of those experts.
     pub bytes_read: u64,
+    /// Wall time spent inside `read_batch`.
+    pub read_time: Duration,
 }
 
 /// Cache counters of one MoE layer.
@@ -213,8 +215,11 @@ impl Streamer {
             match self.ram.is_some() {
                 false => self.load_from_file(file, il, dst, &loads)?,
                 true => {
-                    let n = self.ram.as_ref().map_or(1, |r| r.slots.max(1));
-                    for group in loads.chunks(n) {
+                    let ram = self.ram.as_ref().expect("RAM tier");
+                    let n = ram.slots.max(1);
+                    let layer = ram.cache.layer(il);
+                    let ordered = ram_hits_first(&loads, |e| layer.slot_of(e).is_some());
+                    for group in ordered.chunks(n) {
                         self.load_via_ram(file, il, dst, group)?;
                     }
                 }
@@ -310,9 +315,11 @@ impl Streamer {
             self.metrics
                 .tier_read(&self.device, "ram", (n_ram * total) as u64);
         }
-        for (_, _, _, from_file) in &plan {
-            let source = if *from_file { "nvme" } else { "ram" };
-            self.record_loads(1, source, t0);
+        // The batch time is shared by the experts of the group (ADR 0033).
+        let share = t0.elapsed() / plan.len().max(1) as u32;
+        for &(_, _, _, from_file) in &plan {
+            let source = if from_file { "nvme" } else { "ram" };
+            self.metrics.expert_load(Tier::Vram, source, share);
         }
         Ok(())
     }
@@ -325,6 +332,13 @@ impl Streamer {
             self.metrics.expert_load(Tier::Vram, source, took);
         }
     }
+}
+
+/// RAM hits first across all loads of a chunk, then the misses, so the misses of one RAM group
+/// cannot evict a hit that waits in a later group (ADR 0033).
+fn ram_hits_first(loads: &[(u32, u32)], in_ram: impl Fn(u32) -> bool) -> Vec<(u32, u32)> {
+    let (hits, misses): (Vec<_>, Vec<_>) = loads.iter().partition(|&&(e, _)| in_ram(e));
+    hits.into_iter().chain(misses).copied().collect()
 }
 
 /// Reads the three slabs of each expert into its buffer (`total` bytes: gate, up, down) with
@@ -349,7 +363,9 @@ fn read_experts(
             });
         }
     }
+    let t0 = Instant::now();
     let stats = dio.read_batch(&mut reqs)?;
+    io.read_time += t0.elapsed();
     io.batches += 1;
     io.experts_read += n;
     io.bytes_read += stats.requested;
@@ -364,4 +380,40 @@ fn upload(dst: &[Tensor<'_>; 3], sizes: &[usize; 3], slot: u32, src: &[u8]) -> R
         at += size;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// RAM reads for `loads` in groups of the RAM slot count, RAM holding `resident` (least
+    /// recent first).
+    fn ram_reads(order: impl Fn(&[(u32, u32)], &SlotCache) -> Vec<(u32, u32)>) -> u32 {
+        let mut ram = SlotCache::new(Tier::Ram, 1, 8, 2);
+        for e in [7, 2] {
+            ram.layer_mut(0).lookup(e);
+        }
+        let loads = [(0, 0), (1, 1), (2, 2)];
+        let mut reads = 0;
+        for group in order(&loads, &ram).chunks(2) {
+            for &(e, _) in group {
+                if matches!(ram.layer_mut(0).lookup(e), Lookup::Miss { .. }) {
+                    reads += 1;
+                }
+            }
+        }
+        reads
+    }
+
+    /// RAM slots 2 holding [7, 2]; loads [0, 1, 2] where 2 is a RAM hit. Two misses first
+    /// evict 2 and it is read again; hits first read only 0 and 1.
+    #[test]
+    fn ram_hits_first_across_groups() {
+        let in_order = |l: &[(u32, u32)], _: &SlotCache| l.to_vec();
+        let hits_first = |l: &[(u32, u32)], c: &SlotCache| {
+            ram_hits_first(l, |e| c.layer(0).slot_of(e).is_some())
+        };
+        assert_eq!(ram_reads(in_order), 3);
+        assert_eq!(ram_reads(hits_first), 2);
+    }
 }
