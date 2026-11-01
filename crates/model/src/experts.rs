@@ -231,6 +231,12 @@ impl Streamer {
         })
     }
 
+    pub(crate) fn io_backend(&self) -> String {
+        let d = &self.dio[0];
+        let mode = if d.is_direct() { "direct" } else { "buffered" };
+        format!("{mode} {}", d.backend())
+    }
+
     pub(crate) fn stats(&self) -> ExpertStats {
         ExpertStats {
             layers: (0..self.full.len())

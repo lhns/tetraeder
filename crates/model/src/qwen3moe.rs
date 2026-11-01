@@ -153,6 +153,10 @@ pub struct LoadOptions {
     /// With `MissPolicy::Cpu` the hot set is built from it at load; without one, after the
     /// first multi-token step.
     pub routing_profile: Option<Vec<Vec<u64>>>,
+    /// Passed to ggml's scheduler, which then runs large-batch ops whose weights sit in host
+    /// memory on the GPU, copying the weights per op, as llama.cpp does by default. Only
+    /// matters with a GPU backend.
+    pub op_offload: bool,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -184,6 +188,7 @@ impl LoadOptions {
             record_routing: false,
             miss: MissPolicy::Upload,
             routing_profile: None,
+            op_offload: false,
         }
     }
 }
@@ -344,7 +349,7 @@ impl Qwen3Moe {
                 (gpu.clone(), cpu.clone(), vec![gpu, cpu])
             }
         };
-        let sched = Sched::new(&backends, step_nodes(h).max(SEGMENT_NODES) * 4, false)?;
+        let sched = Sched::new(&backends, step_nodes(h).max(SEGMENT_NODES) * 4, opts.op_offload)?;
         let slots = match expert_slots {
             Some(0) => {
                 return Err(ModelError::Invalid(
@@ -520,6 +525,12 @@ impl Qwen3Moe {
             push(&self.cpu.name(), "ram", "workspace", work, work);
         }
         out
+    }
+
+    /// The expert file I/O of the first shard, e.g. `direct overlapped`; `None` when every
+    /// expert is resident.
+    pub fn io_backend(&self) -> Option<String> {
+        self.streamer.as_ref().map(Streamer::io_backend)
     }
 
     /// Expert cache and read counters; `None` when every expert is resident.
