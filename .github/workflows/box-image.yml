@@ -27,6 +27,8 @@ jobs:
           {
             echo "tag=$(sed -n 's/^tag=//p' vendor/PIN)"
             echo "commit=$(sed -n 's/^commit=//p' vendor/PIN)"
+            echo "ik_commit=$(sed -n 's/^ik_commit=//p' vendor/PIN)"
+            echo "image_tag=$(sed -n 's/^image_tag=//p' vendor/PIN)"
             echo "rust=$(grep -m1 channel rust-toolchain.toml | cut -d'"' -f2)"
           } >> "$GITHUB_OUTPUT"
       # The CUDA devel base alone unpacks to ~10 GB; the stock runner has ~14 GB free.
@@ -48,9 +50,10 @@ jobs:
           build-args: |
             LLAMA_TAG=${{ steps.pin.outputs.tag }}
             LLAMA_COMMIT=${{ steps.pin.outputs.commit }}
+            IK_COMMIT=${{ steps.pin.outputs.ik_commit }}
             RUST_VERSION=${{ steps.pin.outputs.rust }}
           tags: |
-            ghcr.io/lhns/tetraeder-box:${{ steps.pin.outputs.tag }}
+            ghcr.io/lhns/tetraeder-box:${{ steps.pin.outputs.image_tag }}
             ghcr.io/lhns/tetraeder-box:latest
           cache-from: type=gha
           cache-to: type=gha,mode=min  # max would export the multi-GB CUDA layers into the 10 GB cache

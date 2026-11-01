@@ -1,6 +1,6 @@
 # Phase 2 baseline: tuned llama.cpp on the MoE, the numbers the own MoE engine has to beat (docs/plan.md, ADR 0031).
 #   tetraeder-bench run bench/spec/phase2-baseline.toml      (nightly: BENCH_SPEC=phase2-baseline scripts/nightly.sh)
-# llama.cpp only, no Tetraeder engine yet. Every pair is "info": reported, never gated. Paired and interleaved like
+# llama.cpp and ik_llama.cpp (second baseline, see the ik_llama variants below), no Tetraeder engine yet. Every pair is "info": reported, never gated. Paired and interleaved like
 # phase0 (AGENTS.md "Benchmark comparability on Vast"): compare ratios inside a pair, never absolute tok/s across nights.
 #
 # Sweep: ubatch 512/1024/2048/4096 (with -b equal to it) with flash attention on, for full GPU and the two expert
@@ -11,6 +11,8 @@
 # run): about 42 min for 16 pairs (2 repeats per side, no warmup). nightly.sh gives it a 60 min limit.
 # Per invocation (15 s model load + pp + tg128) in the variant comments. To shrink it: repeats = 1, or drop the
 # 4096 points of the offload placements.
+# The ik_llama variants add about 18 min (ESTIMATE: 6 variants, 6 info pairs against their llama.cpp twins; the
+# -rtr ones load slower). nightly.sh gives the spec 80 min.
 # Cut to fit: warmup = 0 (a warmup would double every invocation; the first pair's first sample may include the
 # model page-in when phase0 did not run before), no pp32768 at ubatch 512/1024.
 #
@@ -33,6 +35,7 @@ seed = 20240602
 
 [pins]
 llama_cpp = "2e0d86bebc210947680e8f0d67daa79f3260c106"   # vendor/llama.cpp submodule, same as phase0
+ik_llama = "b25c3fd2c6d7e407c3a104a413d0211fe2c7a88e"    # ik_commit in vendor/PIN, built into the box image only
 tetraeder = "HEAD"
 
 [workload]
@@ -51,6 +54,13 @@ id = "llama-bench"
 kind = "llama-bench"
 bin_env = "LLAMA_BENCH"
 bin = "/opt/llama.cpp/bin/llama-bench"
+
+[[engine]]
+id = "ik_llama"
+kind = "ik-llama"
+bin_env = "IK_LLAMA_BENCH"
+bin = "/opt/ik_llama/bin/llama-bench"
+note = "ik_llama.cpp's llama-bench at the ik pin; same flags and JSON rows as llama.cpp's (flash_attn is a bool)"
 
 # Variant args replace the workload's -p, -n, -b and -ub (the harness defaults are 16384, 128, 2048, 512).
 
@@ -190,6 +200,62 @@ model = "moe"
 device = "cuda"
 args = ["-ngl", "99", "-fa", "1", "-b", "4096", "-ub", "4096", "-p", "32768", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
 
+# ik_llama.cpp variants. Same placements, sizes and thread count as the llama.cpp twins above, so each pair differs
+# only in the engine. ik_llama's MoE defaults stay on: `-fmoe 1` (fused up/gate/down expert op) is its default at the
+# pin, so the plain variants already include it (`-mla` is for DeepSeek only).
+# The `-rtr 1` variants add run-time repacking of CPU-resident tensors into ik_llama's interleaved quant layouts
+# (what its CPU-offload speed claims rely on; it turns mmap off, so the model is read and repacked at every start,
+# which adds to the invocation time). llama.cpp has no such flag, so those pairs compare rtr against plain ik_llama.
+# Timings below are ESTIMATES (not measured).
+
+# ~76 s per invocation (estimate)
+[[variant]]
+id = "p2-ik-ot-all-experts-ub512"
+engine = "ik_llama"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "512", "-ub", "512", "-ot", "exps=CPU"]
+
+# ~40 s per invocation (estimate)
+[[variant]]
+id = "p2-ik-ot-all-experts-ub2048"
+engine = "ik_llama"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-ot", "exps=CPU"]
+
+# ~48 s per invocation (estimate)
+[[variant]]
+id = "p2-ik-ot-upper-half-ub512"
+engine = "ik_llama"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "512", "-ub", "512", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# ~30 s per invocation (estimate)
+[[variant]]
+id = "p2-ik-ot-upper-half-ub2048"
+engine = "ik_llama"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
+
+# ~60 s per invocation (estimate): repack at load
+[[variant]]
+id = "p2-ik-ot-all-experts-ub2048-rtr"
+engine = "ik_llama"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-ot", "exps=CPU", "-rtr", "1"]
+
+# ~45 s per invocation (estimate): repack at load
+[[variant]]
+id = "p2-ik-ot-upper-half-ub2048-rtr"
+engine = "ik_llama"
+model = "moe"
+device = "cuda"
+args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU', "-rtr", "1"]
+
 # Pairs: a is the reference, b the changed setting; ratio = b / a
 
 [[pair]]
@@ -286,6 +352,42 @@ role = "info"
 id = "info-ot-upper-half-vs-full-ub2048"
 a = "p2-full-ub2048"
 b = "p2-ot-upper-half-ub2048"
+role = "info"
+
+[[pair]]
+id = "info-ik-ot-all-experts-ub512-vs-llama"
+a = "p2-ot-all-experts-ub512"
+b = "p2-ik-ot-all-experts-ub512"
+role = "info"
+
+[[pair]]
+id = "info-ik-ot-all-experts-ub2048-vs-llama"
+a = "p2-ot-all-experts-ub2048"
+b = "p2-ik-ot-all-experts-ub2048"
+role = "info"
+
+[[pair]]
+id = "info-ik-ot-upper-half-ub512-vs-llama"
+a = "p2-ot-upper-half-ub512"
+b = "p2-ik-ot-upper-half-ub512"
+role = "info"
+
+[[pair]]
+id = "info-ik-ot-upper-half-ub2048-vs-llama"
+a = "p2-ot-upper-half-ub2048"
+b = "p2-ik-ot-upper-half-ub2048"
+role = "info"
+
+[[pair]]
+id = "info-ik-ot-all-experts-rtr-vs-plain-ub2048"
+a = "p2-ik-ot-all-experts-ub2048"
+b = "p2-ik-ot-all-experts-ub2048-rtr"
+role = "info"
+
+[[pair]]
+id = "info-ik-ot-upper-half-rtr-vs-plain-ub2048"
+a = "p2-ik-ot-upper-half-ub2048"
+b = "p2-ik-ot-upper-half-ub2048-rtr"
 role = "info"
 
 # Bands are not used by info pairs but every device needs one (same values as phase0).

@@ -111,6 +111,8 @@ impl Model {
 #[serde(rename_all = "kebab-case")]
 pub enum EngineKind {
     LlamaBench,
+    /// ik_llama.cpp's llama-bench: same flags and rows (bool `flash_attn`); `--llama-bench` does not override it.
+    IkLlama,
     Tetraeder,
 }
 

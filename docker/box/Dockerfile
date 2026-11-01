@@ -1,9 +1,10 @@
 # Tetraeder GPU box image (ghcr.io/lhns/tetraeder-box), used on rented Vast.ai boxes.
-# Contains the toolchain plus llama.cpp built with CUDA at the repo pin (vendor/PIN) for baselines.
+# Contains the toolchain plus llama.cpp and ik_llama.cpp built with CUDA at the repo pins (vendor/PIN) for baselines.
 FROM nvidia/cuda:12.8.1-devel-ubuntu24.04
 
 ARG LLAMA_TAG
 ARG LLAMA_COMMIT
+ARG IK_COMMIT
 ARG RUST_VERSION=1.95.0
 ARG SCCACHE_VERSION=0.10.0
 # Ampere (8.6), Ada (8.9), Hopper (9.0), Blackwell (12.0)
@@ -62,6 +63,32 @@ RUN test -n "${LLAMA_COMMIT}" && \
     echo "tag=${LLAMA_TAG} commit=${LLAMA_COMMIT}" > /opt/llama.cpp/PIN && \
     sccache --show-stats && rm -rf /tmp/llama.cpp
 
+# ik_llama.cpp at its pin (ik_commit in vendor/PIN), same portable CPU and CUDA arch settings. Only the baseline
+# tools are installed (no libs or headers). Its option names match upstream's here: GGML_CUDA, GGML_NATIVE=OFF
+# (turns on AVX2/FMA/F16C, which its IQK kernels need), GGML_OPENMP, LLAMA_BUILD_EXAMPLES (llama-bench and
+# llama-cli live in examples/). BUILD_SHARED_LIBS=OFF so the binaries need no libs from the build tree.
+RUN test -n "${IK_COMMIT}" && \
+    git init /tmp/ik_llama.cpp && cd /tmp/ik_llama.cpp && \
+    git remote add origin https://github.com/ikawrakow/ik_llama.cpp && \
+    git fetch --depth 1 origin "${IK_COMMIT}" && git checkout -q FETCH_HEAD && \
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DGGML_CUDA=ON \
+        -DGGML_NATIVE=OFF \
+        -DGGML_OPENMP=OFF \
+        -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+        -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined \
+        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_SERVER=OFF \
+        -DLLAMA_CURL=OFF && \
+    cmake --build build -j"$(nproc)" --target llama-bench llama-cli && \
+    for b in llama-bench llama-cli; do \
+        install -D "build/bin/$b" "/opt/ik_llama/bin/$b"; \
+    done && \
+    echo "commit=${IK_COMMIT}" > /opt/ik_llama/PIN && \
+    sccache --show-stats && rm -rf /tmp/ik_llama.cpp
+
+# ik_llama's binaries are not on PATH: its names collide with llama.cpp's; the harness uses /opt/ik_llama/bin.
 ENV PATH=/opt/llama.cpp/bin:$PATH \
     LLAMA_CPP_DIR=/opt/llama.cpp
 
