@@ -1,8 +1,9 @@
 //! Expert slots (ADR 0033): the builder with fewer slots than experts, with and without a RAM
 //! tier, against libllama, against an independent LRU simulation, and on read failures.
 //!
-//! The fixture has 8 experts per layer and routes the top 2, so 1 slot cannot hold even one
-//! token's experts: that case runs the overflow passes of ADR 0033.
+//! The fixture has 8 experts per layer and routes the top 2. With 2 slots a prefill needs more
+//! distinct experts than slots, which runs the overflow passes of ADR 0033; fewer slots than
+//! experts per token are rejected (ADR 0034).
 //!
 //! Hardware labels (AGENTS rule 9): `cpu_*` tests need no GPU; `gpu_*` tests skip cleanly when the
 //! build has no GPU device.
@@ -30,12 +31,12 @@ fn opts(slots: usize, ram: Option<usize>) -> LoadOptions {
     opts_on(CPU, slots, ram)
 }
 
-/// hardware: cpu. Slot counts 8 (all), 4, 2 and 1 per layer, each with no RAM tier and with
+/// hardware: cpu. Slot counts 8 (all), 4 and 2 per layer, each with no RAM tier and with
 /// RAM tiers of 1, 3 and 8 slots: prefill logits and the greedy sequence match libllama.
 #[test]
 fn cpu_slot_counts_match_libllama() {
     let r = libllama_reference(&PROMPT, N_GREEDY);
-    for slots in [8, 4, 2, 1] {
+    for slots in [8, 4, 2] {
         for ram in [None, Some(1), Some(3), Some(8)] {
             let mut m = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
             let worst = check_against(&mut m, &r, TOL_CPU);
@@ -51,8 +52,11 @@ fn cpu_slot_counts_match_libllama() {
                 assert_eq!(stats.layers[0].ram.is_some(), ram.is_some());
                 assert!(stats.io.experts_read > 0);
             }
-            if slots == 1 {
-                assert!(m.overflow_passes() > 0, "top-2 does not fit one slot");
+            if slots == 2 {
+                assert!(
+                    m.overflow_passes() > 0,
+                    "a prefill routes to more than 2 experts"
+                );
             }
         }
     }
@@ -67,7 +71,7 @@ fn gpu_slot_counts_match_libllama() {
         return;
     }
     let r = libllama_reference(&PROMPT, N_GREEDY);
-    for slots in [8, 4, 2, 1] {
+    for slots in [8, 4, 2] {
         for ram in [None, Some(3)] {
             let o = opts_on(BackendChoice::Gpu { index: 0 }, slots, ram);
             let mut m = Qwen3Moe::load(fixture(), &o).unwrap();
@@ -82,8 +86,11 @@ fn gpu_slot_counts_match_libllama() {
                 let stats = m.expert_stats().expect("streaming");
                 assert!(stats.io.experts_read > 0);
             }
-            if slots == 1 {
-                assert!(m.overflow_passes() > 0, "top-2 does not fit one slot");
+            if slots == 2 {
+                assert!(
+                    m.overflow_passes() > 0,
+                    "a prefill routes to more than 2 experts"
+                );
             }
         }
     }
@@ -103,6 +110,8 @@ fn cpu_default_slots_reproduce_the_resident_model() {
     assert_eq!(base, eval(opts(EXPERTS, Some(2))));
     assert_eq!(base, eval(opts(64, None)));
     assert!(Qwen3Moe::load(fixture(), &opts(0, None)).is_err());
+    // fewer slots than experts per token (top-2): a token's experts need distinct slots
+    assert!(Qwen3Moe::load(fixture(), &opts(1, None)).is_err());
 }
 
 /// Least recently used over a list, written without `LayerSlots`.
@@ -243,11 +252,10 @@ fn cpu_cache_counts_match_an_lru_simulation() {
     let mut configs = vec![
         (4, None),
         (2, None),
-        (1, None),
         (4, Some(3)),
         (2, Some(2)),
         (3, Some(5)),
-        (1, Some(2)),
+        (2, Some(1)),
         (2, Some(8)),
     ];
     // RAM tiers smaller than the compute slots: the loads of a chunk span several RAM groups.

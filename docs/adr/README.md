@@ -36,3 +36,5 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0030](0030-own-moe-graph-builder.md) | Own Qwen3 MoE graph builder: safe ggml surface, builder in model, one segment per MoE layer |
 | [0031](0031-arenas-tiers-slot-cache-direct-io.md) | Memory: per-device arenas with prefill and decode budgets, expert slot cache over three tiers, aligned direct I/O |
 | [0032](0032-memory-crate-dependencies-and-budget-semantics.md) | Memory crate: reserve as accounting, phase budget semantics, I/O dependencies |
+| [0033](0033-expert-slots-in-the-builder.md) | Expert slots in the builder: lookup order, overflow passes, RAM tier, failure semantics |
+| [0034](0034-expert-slots-at-least-top-k.md) | Expert slots: at least the experts per token, distinct slots per token in overflow passes |

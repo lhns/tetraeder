@@ -32,7 +32,7 @@ fn cpu_q8_0_matches_libllama() {
         (None, None),
         (Some(4), None),
         (Some(2), Some(3)),
-        (Some(1), None),
+        (Some(2), None),
     ] {
         let o = LoadOptions {
             expert_slots: slots,

@@ -223,10 +223,12 @@ impl Qwen3Moe {
         };
         let sched = Sched::new(&backends, SEGMENT_NODES * 4, false)?;
         let slots = match opts.expert_slots {
-            Some(0) => {
-                return Err(ModelError::Invalid(
-                    "expert_slots must be at least 1".into(),
-                ));
+            // A token's experts need distinct slots within one pass (ADR 0034).
+            Some(n) if n < h.n_expert_used as usize => {
+                return Err(ModelError::Invalid(format!(
+                    "expert_slots must be at least the experts per token ({})",
+                    h.n_expert_used
+                )));
             }
             Some(n) if n < h.n_expert as usize => Some(n),
             _ => None,
@@ -379,6 +381,7 @@ impl Qwen3Moe {
         st.mask.get().set_bytes(&f16_bits_tensor_bytes(&mask), 0)?;
 
         let passes_before = self.passes_run;
+        let nu = h.n_expert_used as usize;
         let mut mapped = Vec::new();
         let mut logits = Vec::new();
         // The previous layer step ran in several passes and left the FFN sum in `acc`.
@@ -422,7 +425,7 @@ impl Qwen3Moe {
                 let chunks = streamer.plan(seg, &chosen)?;
                 if let [chunk] = chunks.as_slice() {
                     let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
-                    map_chunk(&chosen, chunk, &slots, &mut mapped, None);
+                    map_chunk(&chosen, nu, chunk, &slots, &mut mapped, None);
                     slot.ids_map.get().set_i32(&mapped)?;
                     continue;
                 }
@@ -432,7 +435,7 @@ impl Qwen3Moe {
                 for (pass, chunk) in chunks.iter().enumerate() {
                     let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
                     masked.clone_from(&weights);
-                    map_chunk(&chosen, chunk, &slots, &mut mapped, Some(&mut masked));
+                    map_chunk(&chosen, nu, chunk, &slots, &mut mapped, Some(&mut masked));
                     slot.ids_map.get().set_i32(&mapped)?;
                     slot.w.get().set_f32(&masked)?;
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
@@ -460,26 +463,39 @@ impl Qwen3Moe {
     }
 }
 
-/// Writes into `mapped` the slot of each chosen expert. Experts outside `chunk` (they belong to
-/// another pass) point at the first slot of the chunk and, in `masked`, get router weight 0 so
-/// they add nothing.
+/// Writes into `mapped` the slot of each chosen expert (`chosen` holds `n_used` per token). Pairs
+/// whose expert is outside `chunk` (another pass) get router weight 0 in `masked` and a slot that
+/// no other pair of the same token uses: CUDA's sorted `mul_mat_id` counts each (token, slot)
+/// once and aborts on repeats (ADR 0034). Every slot holds finite weights, loaded or zero.
 fn map_chunk(
     chosen: &[i32],
+    n_used: usize,
     chunk: &[u32],
     slots: &[u32],
     mapped: &mut Vec<i32>,
     mut masked: Option<&mut Vec<f32>>,
 ) {
-    let slot_of = |e: i32| chunk.iter().position(|&c| c as i32 == e).map(|i| slots[i]);
+    let slot_of = |e: i32| {
+        chunk
+            .iter()
+            .position(|&c| c as i32 == e)
+            .map(|i| slots[i] as i32)
+    };
     mapped.clear();
-    for (i, &e) in chosen.iter().enumerate() {
-        match slot_of(e) {
-            Some(s) => mapped.push(s as i32),
-            None => {
-                mapped.push(slots[0] as i32);
-                if let Some(m) = masked.as_deref_mut() {
-                    m[i] = 0.0;
-                }
+    for (t, token) in chosen.chunks(n_used).enumerate() {
+        let start = mapped.len();
+        mapped.extend(token.iter().map(|&e| slot_of(e).unwrap_or(-1)));
+        let mut free = 0;
+        for i in start..mapped.len() {
+            if mapped[i] >= 0 {
+                continue;
+            }
+            while mapped[start..].contains(&free) {
+                free += 1;
+            }
+            mapped[i] = free;
+            if let Some(m) = masked.as_deref_mut() {
+                m[t * n_used + i - start] = 0.0;
             }
         }
     }
@@ -757,4 +773,24 @@ fn moe_ffn<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Ten
     let n_embd = h.n_embd as i64;
     let view = |i: usize| ctx.view(experts, &[n_embd, n], &[nb2], i * nb1);
     (1..h.n_expert_used as usize).fold(view(0), |acc, i| ctx.add(acc, view(i)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_chunk;
+
+    /// Two tokens, top-2, chunk {5} in slot 3: the masked pairs get weight 0 and slots that no
+    /// other pair of their token uses (CUDA's mul_mat_id aborts on a repeated slot).
+    #[test]
+    fn masked_pairs_get_distinct_slots_per_token() {
+        let chosen = [5, 1, 2, 4];
+        let mut mapped = Vec::new();
+        let mut w = vec![1.0; 4];
+        map_chunk(&chosen, 2, &[5], &[3], &mut mapped, Some(&mut w));
+        assert_eq!(mapped, [3, 0, 0, 1]);
+        assert_eq!(w, [1.0, 0.0, 0.0, 0.0]);
+        for token in mapped.chunks(2) {
+            assert_ne!(token[0], token[1]);
+        }
+    }
 }
