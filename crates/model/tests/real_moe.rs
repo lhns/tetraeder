@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
-use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, Qwen3Moe};
+use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, Qwen3Moe, RoutingStep};
 
 const N_PROMPT: usize = 64;
 const N_GREEDY: usize = 16;
@@ -113,10 +113,11 @@ fn run_config(
     ram_slots: Option<usize>,
     stepwise: bool,
     r: &Reference,
-) -> (Vec<i32>, Value) {
+) -> (Vec<i32>, Value, Vec<RoutingStep>) {
     let o = LoadOptions {
         expert_slots,
         ram_slots,
+        record_routing: true,
         ..LoadOptions::new(BackendChoice::Gpu { index: 0 })
     };
     let t0 = Instant::now();
@@ -138,6 +139,7 @@ fn run_config(
     };
     let prefill_s = t0.elapsed().as_secs_f64();
     assert_eq!(logits.len(), r.prompt.len() * n_vocab);
+    let routing = m.take_routing_log();
     let mut worst = 0f32;
     // First prompt position whose top-5 logits differ by more than float noise.
     let mut first_off = None;
@@ -200,7 +202,7 @@ fn run_config(
         });
     }
     eprintln!("{name}: {out}");
-    (greedy, out)
+    (greedy, out, routing)
 }
 
 /// hardware: gpu (CUDA build, 24 GB; skips without a GPU or `TETRAEDER_MOE_GGUF`). Greedy
@@ -245,8 +247,35 @@ fn gpu_real_moe_streaming() {
         ("slots32", Some(32), None, false),
         ("slots32_ram64", Some(32), Some(64), false),
     ];
+    let mut resident_routing: Option<Vec<RoutingStep>> = None;
     for (name, slots, ram, stepwise) in configs {
-        let (greedy, v) = run_config(name, &path, slots, ram, stepwise, &r);
+        let (greedy, mut v, routing) = run_config(name, &path, slots, ram, stepwise, &r);
+        // Prefill routing against the resident builder: per layer, the tokens whose expert set
+        // differs. A late, single flip points at rounding; early, wide differences at a bug.
+        if let (Some(base), false) = (&resident_routing, stepwise) {
+            let diff: Vec<usize> = base
+                .iter()
+                .zip(&routing)
+                .map(|(a, b)| {
+                    let nu = a.ids.len() / r.prompt.len();
+                    a.ids
+                        .chunks(nu)
+                        .zip(b.ids.chunks(nu))
+                        .filter(|(x, y)| {
+                            let (mut x, mut y) = (x.to_vec(), y.to_vec());
+                            x.sort();
+                            y.sort();
+                            x != y
+                        })
+                        .count()
+                })
+                .collect();
+            eprintln!("{name}: prefill tokens with other experts, per layer: {diff:?}");
+            v["routing_diff_per_layer"] = json!(diff);
+        }
+        if resident_routing.is_none() {
+            resident_routing = Some(routing);
+        }
         if greedy != r.greedy {
             failures.push(format!("{name}: greedy sequence differs from libllama"));
         }

@@ -94,8 +94,8 @@ impl Streamer {
         let mut sizes = Vec::with_capacity(layers);
         for (il, t) in slot_tensors.iter().enumerate() {
             let slabs = file.expert_slabs(il as u32, 0)?;
-            for m in 0..3 {
-                if t[m].nb()[2] as u64 != slabs.parts[m].1 {
+            for (tensor, part) in t.iter().zip(&slabs.parts) {
+                if tensor.nb()[2] as u64 != part.1 {
                     return Err(invalid(format!(
                         "layer {il}: slot size does not match the expert slab"
                     )));
