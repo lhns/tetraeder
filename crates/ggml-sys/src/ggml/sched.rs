@@ -123,6 +123,16 @@ impl Sched {
         // SAFETY: live scheduler.
         unsafe { sys::ggml_backend_sched_get_n_splits(self.ptr.as_ptr()) as usize }
     }
+
+    /// Bytes of the compute buffer the scheduler holds on `backend` for the last allocated
+    /// graph (0 for a backend that is not part of the scheduler).
+    pub fn buffer_size(&self, backend: &Backend) -> usize {
+        if !self.backends.iter().any(|b| b.same(backend)) {
+            return 0;
+        }
+        // SAFETY: live scheduler and backend, and the backend is one of the scheduler's.
+        unsafe { sys::ggml_backend_sched_get_buffer_size(self.ptr.as_ptr(), backend.raw()) }
+    }
 }
 
 impl Drop for Sched {

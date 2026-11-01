@@ -16,6 +16,7 @@ pub mod fake;
 pub mod ggml;
 #[cfg(feature = "metrics")]
 pub mod metrics;
+pub mod process;
 pub mod reserve;
 pub mod slots;
 
