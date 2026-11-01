@@ -110,6 +110,17 @@ fn cpu_ram_slot_bytes_buy_whole_slots() {
 
 /// hardware: cpu
 #[test]
+fn cpu_memory_reports_the_read_bounce_buffer() {
+    let mut m = Qwen3Moe::load(path(), &cpu_policy(Some(2), None)).unwrap();
+    run(&mut m);
+    let memory = m.memory();
+    let io = find(&memory, "ram", "io");
+    assert_eq!(io.device, "host");
+    assert!(io.capacity > 0 && io.used == io.capacity, "{io:?}");
+}
+
+/// hardware: cpu
+#[test]
 fn cpu_budget_errors() {
     let u = unit();
     let msg = invalid(Qwen3Moe::load(path(), &cpu_policy(None, Some(u - 1))));

@@ -349,7 +349,11 @@ impl Qwen3Moe {
                 (gpu.clone(), cpu.clone(), vec![gpu, cpu])
             }
         };
-        let sched = Sched::new(&backends, step_nodes(h).max(SEGMENT_NODES) * 4, opts.op_offload)?;
+        let sched = Sched::new(
+            &backends,
+            step_nodes(h).max(SEGMENT_NODES) * 4,
+            opts.op_offload,
+        )?;
         let slots = match expert_slots {
             Some(0) => {
                 return Err(ModelError::Invalid(
@@ -517,6 +521,10 @@ impl Qwen3Moe {
         push(&device, tier, "kv", self.kv_bytes, self.kv_bytes);
         if let Some((cap, used)) = slots.and_then(|s| s.ram) {
             push("host", "ram", "slots", cap, used);
+        }
+        if let Some(st) = &self.streamer {
+            let io = st.bounce_bytes();
+            push("host", "ram", "io", io, io);
         }
         let work = self.sched.buffer_size(&self.primary) as u64;
         push(&device, tier, "workspace", work, work);

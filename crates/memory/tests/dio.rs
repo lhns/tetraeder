@@ -6,7 +6,7 @@ use proptest::prelude::*;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use tetraeder_memory::{DirectFile, IoOptions, ReadReq};
+use tetraeder_memory::{DirectFile, IoOptions, Range, ReadReq};
 
 /// Not a multiple of the 4 KiB block, and several blocks long.
 const SIZE: usize = 5 * 4096 + 1234;
@@ -159,5 +159,122 @@ proptest! {
         let len = len.min(SIZE - offset);
         let f = DirectFile::open(path).unwrap();
         prop_assert_eq!(read(&f, offset as u64, len), bytes[offset..offset + len].to_vec());
+    }
+}
+
+/// Collects what `read_batch_with` delivers, per range index.
+fn collect(f: &DirectFile, ranges: &[Range]) -> Vec<Vec<u8>> {
+    let mut out = vec![Vec::new(); ranges.len()];
+    let mut order = Vec::new();
+    f.read_batch_with(ranges, |i, b| {
+        order.push(i);
+        out[i] = b.to_vec();
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(order, (0..ranges.len()).collect::<Vec<_>>(), "range order");
+    out
+}
+
+fn expect(ranges: &[Range]) -> Vec<Vec<u8>> {
+    let (_, bytes) = data();
+    ranges
+        .iter()
+        .map(|r| bytes[r.offset as usize..r.offset as usize + r.len].to_vec())
+        .collect()
+}
+
+/// The file opened direct (where the OS allows) and buffered.
+fn files(bounce_bytes: usize) -> Vec<DirectFile> {
+    let (path, _) = data();
+    [false, true]
+        .into_iter()
+        .map(|buffered| {
+            DirectFile::open_with(
+                path,
+                IoOptions {
+                    buffered,
+                    bounce_bytes,
+                    ..IoOptions::default()
+                },
+            )
+            .unwrap()
+        })
+        .collect()
+}
+
+fn range(offset: u64, len: usize) -> Range {
+    Range { offset, len }
+}
+
+#[test]
+fn batch_with_unaligned_ranges_equal_buffered_reads() {
+    let ranges = [
+        range(5, 100),
+        range(4090, 20),
+        range(0, 0),
+        range(8192, 4096),
+        range((SIZE - 10) as u64, 10),
+        range(100, SIZE - 100),
+    ];
+    for f in files(0) {
+        assert_eq!(collect(&f, &ranges), expect(&ranges), "{f:?}");
+    }
+}
+
+#[test]
+fn batch_with_sub_batches_and_oversized_ranges() {
+    // A cap of two blocks: the ranges span sub-batch boundaries, the later ones are larger
+    // than the cap.
+    let ranges = [
+        range(3, 5000),
+        range(5000, 700),
+        range(9000, 4200),
+        range(100, 10_000),
+        range(2000, SIZE - 2000),
+        range(17, 1),
+    ];
+    for f in files(2 * 4096) {
+        assert_eq!(collect(&f, &ranges), expect(&ranges), "{f:?}");
+        // The largest range alone sets the buffer.
+        assert!(f.bounce_capacity() >= SIZE - 2000, "{f:?}");
+    }
+}
+
+#[test]
+fn bounce_buffer_is_reused_across_calls() {
+    let ranges = [range(10, 3000), range(6000, 3000)];
+    for f in files(0) {
+        let before = f.bounce_capacity();
+        collect(&f, &ranges);
+        let cap = f.bounce_capacity();
+        assert!(cap > before, "{f:?}");
+        collect(&f, &ranges);
+        assert_eq!(f.bounce_capacity(), cap, "{f:?}");
+        // A smaller batch does not shrink it.
+        collect(&f, &ranges[..1]);
+        assert_eq!(f.bounce_capacity(), cap, "{f:?}");
+    }
+}
+
+#[test]
+fn batch_with_errors_propagate() {
+    let ranges = [range(0, 10), range(100, 10)];
+    for f in files(0) {
+        let mut seen = 0;
+        let err = f
+            .read_batch_with(&ranges, |i, _| {
+                seen += 1;
+                if i == 0 {
+                    Err(std::io::Error::other("sink failed"))
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+        assert_eq!(err.to_string(), "sink failed");
+        assert_eq!(seen, 1);
+        let past = [range(SIZE as u64 - 5, 10)];
+        assert!(f.read_batch_with(&past, |_, _| Ok(())).is_err());
     }
 }

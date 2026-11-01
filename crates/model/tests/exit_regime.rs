@@ -201,9 +201,7 @@ fn exit_regime() {
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
-        None => {
-            opts.expert_slots = Some(env_u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize)
-        }
+        None => opts.expert_slots = Some(env_u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize),
     }
     match env_u64("TETRAEDER_EXIT_RAM_SLOT_BYTES") {
         Some(b) => opts.ram_slot_bytes = Some(b),
