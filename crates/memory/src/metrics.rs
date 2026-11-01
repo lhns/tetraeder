@@ -37,6 +37,14 @@ impl MemoryMetrics {
         t.metrics().memory_capacity(device, tier, kind, bytes);
     }
 
+    /// `tetraeder.memory.used` and `.capacity` of one buffer, `kind` as in the catalog
+    /// (`weights`, `slots`, `kv`, `workspace`).
+    pub fn buffer(&self, device: &str, tier: &str, kind: &str, used: u64, capacity: u64) {
+        let Some(t) = &self.telemetry else { return };
+        t.metrics().memory_used(device, tier, kind, used);
+        t.metrics().memory_capacity(device, tier, kind, capacity);
+    }
+
     /// Slot bytes in use under the current phase budget.
     pub fn slots_in_use(&self, device: &str, tier: &str, bytes: u64) {
         if let Some(t) = &self.telemetry {

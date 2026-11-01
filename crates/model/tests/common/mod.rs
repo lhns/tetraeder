@@ -1,6 +1,7 @@
 //! Shared by the model tests: the fixture, libllama as the reference and the logit checks.
 #![allow(dead_code)]
 
+pub mod split;
 pub mod synth;
 
 use std::path::{Path, PathBuf};

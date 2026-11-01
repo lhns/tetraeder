@@ -14,6 +14,7 @@ use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
 use std::ptr::NonNull;
+use std::sync::Mutex;
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -55,7 +56,13 @@ pub struct Options {
     pub queue_depth: usize,
     /// Open buffered from the start (tests, filesystems known to refuse direct I/O).
     pub buffered: bool,
+    /// Cap in bytes on the aligned bytes of one sub-batch of [`DirectFile::read_batch_with`].
+    /// 0: 256 MiB. A single range larger than the cap gets a buffer of its own size.
+    pub bounce_bytes: usize,
 }
+
+/// Default [`Options::bounce_bytes`].
+const DEFAULT_BOUNCE: usize = 256 << 20;
 
 /// Page-aligned heap buffer.
 pub struct AlignedBuf {
@@ -149,6 +156,9 @@ pub struct DirectFile {
     direct: bool,
     fallback: Option<String>,
     engine: Box<dyn Engine>,
+    /// Bounce buffer of `read_batch_with`: grown when a batch needs more, never shrunk.
+    bounce: Mutex<Option<AlignedBuf>>,
+    bounce_cap: usize,
 }
 
 impl std::fmt::Debug for DirectFile {
@@ -195,6 +205,12 @@ impl DirectFile {
             size,
             direct,
             fallback,
+            bounce: Mutex::new(None),
+            bounce_cap: if opts.bounce_bytes == 0 {
+                DEFAULT_BOUNCE
+            } else {
+                opts.bounce_bytes.next_multiple_of(ALIGN)
+            },
         };
         // Some mounts open with O_DIRECT and fail the first read.
         if direct && size > 0 {
@@ -284,65 +300,136 @@ impl DirectFile {
         Ok(stats)
     }
 
-    /// Direct: each range is widened to aligned bounds, read into a bounce buffer, copied out.
+    /// Direct: each range is widened to aligned bounds, read through the bounce buffer, copied
+    /// out.
     fn read_direct(&self, reqs: &mut [ReadReq<'_>]) -> io::Result<ReadStats> {
-        struct Bounce {
-            buf: AlignedBuf,
-            /// Offset of the range inside the buffer.
-            skip: usize,
-            first_job: usize,
-            jobs: usize,
-        }
+        let ranges: Vec<Range> = reqs
+            .iter()
+            .map(|r| Range {
+                offset: r.offset,
+                len: r.dst.len(),
+            })
+            .collect();
+        self.read_batch_with(&ranges, |i, bytes| {
+            reqs[i].dst.copy_from_slice(bytes);
+            Ok(())
+        })
+    }
+
+    /// Size of the bounce buffer, 0 before the first `read_batch_with`.
+    pub fn bounce_capacity(&self) -> usize {
+        let g = self.bounce.lock().unwrap_or_else(|e| e.into_inner());
+        g.as_ref().map_or(0, AlignedBuf::len)
+    }
+
+    /// Reads every range through a bounce buffer owned by the file and hands each range's bytes
+    /// to `sink(index, bytes)`, so the caller copies them once to where they belong. Direct
+    /// mode widens each range to aligned bounds, buffered mode does not. Ranges go to the
+    /// device in sub-batches whose aligned bytes fit [`Options::bounce_bytes`] (a larger range
+    /// is a sub-batch of its own), each submitted at once; the sink runs in range order after
+    /// its sub-batch has landed. The sink must not read from this file (the buffer is locked).
+    /// On an error, ranges after the failing one are not delivered.
+    pub fn read_batch_with(
+        &self,
+        ranges: &[Range],
+        mut sink: impl FnMut(usize, &[u8]) -> io::Result<()>,
+    ) -> io::Result<ReadStats> {
         let mut stats = ReadStats::default();
-        let mut bounces: Vec<Option<Bounce>> = Vec::with_capacity(reqs.len());
-        let mut jobs: Vec<Job> = Vec::new();
-        for r in reqs.iter() {
-            stats.requested += r.dst.len() as u64;
-            if r.dst.is_empty() {
-                bounces.push(None);
-                continue;
-            }
-            let a = ALIGN as u64;
-            let start = r.offset / a * a;
-            let end = (r.offset + r.dst.len() as u64).next_multiple_of(a);
-            let mut buf = AlignedBuf::zeroed((end - start) as usize);
-            let (first_job, total) = (jobs.len(), (end - start) as usize);
-            let mut at = 0;
-            while at < total {
-                let n = (total - at).min(MAX_CHUNK);
-                // SAFETY: the buffer lives in `bounces` until the engine call returns, and its
-                // heap block does not move when the Vec of bounces grows.
-                jobs.push(unsafe { Job::new(start + at as u64, buf.as_mut_ptr().add(at), n) });
-                at += n;
-            }
-            bounces.push(Some(Bounce {
-                skip: (r.offset - start) as usize,
-                first_job,
-                jobs: jobs.len() - first_job,
-                buf,
-            }));
-        }
-        self.engine.read(&self.file, &mut jobs)?;
-        for (r, b) in reqs.iter_mut().zip(&bounces) {
-            let Some(b) = b else { continue };
-            // Bytes available from the start of the enclosing range: chunks in order, up to the
-            // first short one (end of file).
-            let mut have = 0;
-            for j in &jobs[b.first_job..b.first_job + b.jobs] {
-                have += j.filled;
-                stats.device += j.filled as u64;
-                if j.filled < j.len {
-                    break;
-                }
-            }
-            let need = b.skip + r.dst.len();
-            if have < need {
+        // Per range: offset and length of its device read, and where the range starts in it.
+        let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(ranges.len());
+        for r in ranges {
+            let end = r.offset.checked_add(r.len as u64);
+            if end.is_none_or(|e| e > self.size) {
                 return Err(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
-                    format!("direct read of {need} bytes at {} got {have}", r.offset),
+                    format!(
+                        "range {}+{} is past the end of the file ({} bytes)",
+                        r.offset, r.len, self.size
+                    ),
                 ));
             }
-            r.dst.copy_from_slice(&b.buf.as_slice()[b.skip..need]);
+            stats.requested += r.len as u64;
+            spans.push(if !self.direct || r.len == 0 {
+                (r.offset, r.len, 0)
+            } else {
+                let a = ALIGN as u64;
+                let start = r.offset / a * a;
+                let end = (r.offset + r.len as u64).next_multiple_of(a);
+                (start, (end - start) as usize, (r.offset - start) as usize)
+            });
+        }
+        // Sub-batches as index ranges; the buffer must hold the largest.
+        let aligned = |len: usize| len.next_multiple_of(ALIGN);
+        let mut batches: Vec<(usize, usize)> = Vec::new();
+        let (mut from, mut bytes, mut need) = (0, 0usize, 0usize);
+        for (i, sp) in spans.iter().enumerate() {
+            let n = aligned(sp.1);
+            if i > from && bytes + n > self.bounce_cap {
+                batches.push((from, i));
+                (from, bytes) = (i, 0);
+            }
+            bytes += n;
+            need = need.max(bytes);
+        }
+        if from < spans.len() {
+            batches.push((from, spans.len()));
+        }
+        let mut guard = self.bounce.lock().unwrap_or_else(|e| e.into_inner());
+        if need > 0 && guard.as_ref().is_none_or(|b| b.len() < need) {
+            *guard = Some(AlignedBuf::zeroed(need));
+        }
+        for (from, to) in batches {
+            let mut jobs: Vec<Job> = Vec::new();
+            // Per range: its first job, job count and offset in the buffer.
+            let mut layout: Vec<(usize, usize, usize)> = Vec::with_capacity(to - from);
+            if let Some(buf) = guard.as_mut() {
+                let mut pos = 0;
+                for &(offset, len, _) in &spans[from..to] {
+                    let first = jobs.len();
+                    let mut at = 0;
+                    while at < len {
+                        let n = (len - at).min(MAX_CHUNK);
+                        // SAFETY: the guard keeps the buffer alive past the engine call, and
+                        // the regions of the sub-batch do not overlap (`pos` advances by the
+                        // aligned length).
+                        jobs.push(unsafe {
+                            Job::new(offset + at as u64, buf.as_mut_ptr().add(pos + at), n)
+                        });
+                        at += n;
+                    }
+                    layout.push((first, jobs.len() - first, pos));
+                    pos += aligned(len);
+                }
+            }
+            self.engine.read(&self.file, &mut jobs)?;
+            for (k, i) in (from..to).enumerate() {
+                let (offset, len, skip) = spans[i];
+                let (first, count, pos) = layout[k];
+                // Bytes available from the start of the span: chunks in order, up to the first
+                // short one (end of file).
+                let mut have = 0;
+                for j in &jobs[first..first + count] {
+                    have += j.filled;
+                    stats.device += j.filled as u64;
+                    if j.filled < j.len {
+                        break;
+                    }
+                }
+                let want = skip + ranges[i].len;
+                if have < want {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        format!("read of {want} bytes at {offset} got {have}"),
+                    ));
+                }
+                let buf = guard.as_ref().map_or(&[][..], AlignedBuf::as_slice);
+                let bytes = if len == 0 {
+                    &[][..]
+                } else {
+                    &buf[pos + skip..pos + want]
+                };
+                sink(i, bytes)?;
+            }
         }
         Ok(stats)
     }

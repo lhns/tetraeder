@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tetraeder_ggml_sys::ggml::{Backend, Context, OwnedTensor, Tensor};
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_memory::slots::{LayerStats, Lookup, SlotCache, Tier, hot_from_counts};
-use tetraeder_memory::{DirectFile, IoOptions, ReadReq};
+use tetraeder_memory::{DirectFile, IoOptions, Range};
 
 /// What a layer step does with a routed expert that is not resident in the compute tier.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -27,13 +27,13 @@ pub enum MissPolicy {
 /// Reads from the model file and writes into the compute tier since load.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IoCounters {
-    /// `read_batch` calls.
+    /// `read_batch_with` calls, one per shard and request.
     pub batches: u64,
     /// Experts read from the file (three slabs each).
     pub experts_read: u64,
     /// Bytes of those experts.
     pub bytes_read: u64,
-    /// Wall time spent inside `read_batch`.
+    /// Wall time of the device reads (`read_batch_with`, without the copies into the slots).
     pub read_time: Duration,
     /// Experts written into the compute tier, from any source.
     pub uploads: u64,
@@ -80,6 +80,8 @@ struct RamTier {
     cache: SlotCache,
     tensors: Vec<[OwnedTensor; 3]>,
     slots: usize,
+    /// Size of the slot buffer.
+    bytes: usize,
 }
 
 impl RamTier {
@@ -98,17 +100,27 @@ pub(crate) struct CpuPlan {
     pub cpu: Vec<Vec<u32>>,
 }
 
+/// Bytes of the slot tiers, see [`Streamer::slot_use`].
+pub(crate) struct SlotUse {
+    pub compute_capacity: u64,
+    pub compute_used: u64,
+    /// `(capacity, used)` of the RAM tier.
+    pub ram: Option<(u64, u64)>,
+}
+
 pub(crate) struct Streamer {
-    dio: DirectFile,
+    /// One direct file per shard.
+    dio: Vec<DirectFile>,
     /// Bytes of one expert's gate, up and down slab, per layer: quantization mixes such as
     /// Q4_K_M give some layers wider formats.
     sizes: Vec<[usize; 3]>,
     n_expert: u32,
+    /// Compute slots per layer.
+    slots: usize,
     compute: SlotCache,
     ram: Option<RamTier>,
     metrics: MemoryMetrics,
     device: String,
-    staging: Vec<u8>,
     io: IoCounters,
     full: Vec<u64>,
     partial: Vec<u64>,
@@ -147,13 +159,13 @@ impl Streamer {
         for (il, t) in slot_tensors.iter().enumerate() {
             let slabs = file.expert_slabs(il as u32, 0)?;
             for (tensor, part) in t.iter().zip(&slabs.parts) {
-                if tensor.nb()[2] as u64 != part.1 {
+                if tensor.nb()[2] as u64 != part.len {
                     return Err(invalid(format!(
                         "layer {il}: slot size does not match the expert slab"
                     )));
                 }
             }
-            sizes.push(slabs.parts.map(|p| p.1 as usize));
+            sizes.push(slabs.parts.map(|p| p.len as usize));
         }
         let n_expert = h.n_expert;
         let ram = cfg
@@ -174,11 +186,12 @@ impl Streamer {
                     .collect();
                 // No zero clear: a CPU group only reads RAM slots staged for it, and touching
                 // every page at load would commit the whole tier up front (ADR 0035).
-                ctx.alloc_weights(cpu)?;
+                let bytes = ctx.alloc_weights(cpu)?;
                 Ok(RamTier {
                     cache: SlotCache::new(Tier::Ram, h.n_layer, n_expert, n as u32),
                     tensors,
                     slots: n,
+                    bytes,
                 })
             })
             .transpose()?;
@@ -194,14 +207,19 @@ impl Streamer {
             None => vec![vec![0; n_expert as usize]; layers],
         };
         Ok(Streamer {
-            dio: DirectFile::open_with(&file.path, cfg.io)?,
+            dio: file
+                .gguf
+                .paths
+                .iter()
+                .map(|p| DirectFile::open_with(p, cfg.io))
+                .collect::<std::io::Result<Vec<_>>>()?,
             sizes,
             n_expert,
+            slots: cfg.slots,
             compute: SlotCache::new(Tier::Vram, h.n_layer, n_expert, cfg.slots as u32),
             ram,
             metrics,
             device,
-            staging: Vec::new(),
             io: IoCounters::default(),
             full: vec![0; layers],
             partial: vec![0; layers],
@@ -209,6 +227,17 @@ impl Streamer {
             mixed: vec![0; layers],
             counts,
         })
+    }
+
+    /// Bytes held by the shards' bounce buffers for direct reads.
+    pub(crate) fn bounce_bytes(&self) -> u64 {
+        self.dio.iter().map(|d| d.bounce_capacity() as u64).sum()
+    }
+
+    pub(crate) fn io_backend(&self) -> String {
+        let d = &self.dio[0];
+        let mode = if d.is_direct() { "direct" } else { "buffered" };
+        format!("{mode} {}", d.backend())
     }
 
     pub(crate) fn stats(&self) -> ExpertStats {
@@ -224,6 +253,28 @@ impl Streamer {
                 })
                 .collect(),
             io: self.io,
+        }
+    }
+
+    /// Capacity and bytes in use of the compute slot tensors and of the RAM tier. Used bytes are
+    /// the resident slots (one expert's bytes of the layer each); reads only the slot tables.
+    pub(crate) fn slot_use(&self) -> SlotUse {
+        let per_expert: Vec<u64> = self
+            .sizes
+            .iter()
+            .map(|s| s.iter().sum::<usize>() as u64)
+            .collect();
+        let used = |cache: &SlotCache| -> u64 {
+            per_expert
+                .iter()
+                .enumerate()
+                .map(|(il, b)| cache.layer(il).resident() as u64 * b)
+                .sum()
+        };
+        SlotUse {
+            compute_capacity: per_expert.iter().sum::<u64>() * self.slots as u64,
+            compute_used: used(&self.compute),
+            ram: self.ram.as_ref().map(|r| (r.bytes as u64, used(&r.cache))),
         }
     }
 
@@ -354,7 +405,6 @@ impl Streamer {
         let t0 = Instant::now();
         let ram = self.ram.as_mut().expect("RAM tier");
         let sizes = self.sizes[il];
-        let total: usize = sizes.iter().sum();
         let mut order: Vec<usize> = (0..experts.len()).collect();
         order.sort_by_key(|&i| ram.cache.layer(il).slot_of(experts[i]).is_none());
         let mut out = vec![(0usize, false); experts.len()];
@@ -369,24 +419,20 @@ impl Streamer {
         }
         let reads: Vec<usize> = (0..experts.len()).filter(|&i| out[i].1).collect();
         if !reads.is_empty() {
-            self.staging.resize(reads.len() * total, 0);
-            let mut staging = std::mem::take(&mut self.staging);
-            let items: Vec<(u32, &mut [u8])> = reads
+            let loads: Vec<(u32, u32)> = reads
                 .iter()
-                .map(|&i| experts[i])
-                .zip(staging.chunks_mut(total))
+                .map(|&i| (experts[i], out[i].0 as u32))
                 .collect();
-            let read = read_experts(&self.dio, file, il, items, &mut self.io);
-            let dst = ram.exps(il);
-            let res = read.and_then(|bytes| {
-                self.metrics.tier_read(&self.device, "nvme", bytes);
-                for (&i, src) in reads.iter().zip(staging.chunks(total)) {
-                    write_slot(&dst, &sizes, out[i].0 as u32, src)?;
-                }
-                Ok(())
-            });
-            self.staging = staging;
-            res?;
+            let bytes = read_experts(
+                &self.dio,
+                file,
+                il,
+                &loads,
+                &ram.exps(il),
+                &sizes,
+                &mut self.io,
+            )?;
+            self.metrics.tier_read(&self.device, "nvme", bytes);
             let took = t0.elapsed() / reads.len() as u32;
             for _ in &reads {
                 self.metrics.expert_load(Tier::Ram, "nvme", took);
@@ -470,7 +516,7 @@ impl Streamer {
         Ok(())
     }
 
-    /// No RAM tier: one batch from the file into a staging buffer, then the uploads.
+    /// No RAM tier: one batch from the file, each slab copied straight into its compute slot.
     fn load_from_file(
         &mut self,
         file: &ModelFile,
@@ -480,25 +526,9 @@ impl Streamer {
     ) -> Result<()> {
         let t0 = Instant::now();
         let sizes = self.sizes[il];
-        let total: usize = sizes.iter().sum();
-        self.staging.resize(loads.len() * total, 0);
-        let mut staging = std::mem::take(&mut self.staging);
-        let items: Vec<(u32, &mut [u8])> = loads
-            .iter()
-            .map(|l| l.0)
-            .zip(staging.chunks_mut(total))
-            .collect();
-        let read = read_experts(&self.dio, file, il, items, &mut self.io);
-        let res = read.and_then(|bytes| {
-            self.metrics.tier_read(&self.device, "nvme", bytes);
-            for (&(_, slot), src) in loads.iter().zip(staging.chunks(total)) {
-                write_slot(dst, &sizes, slot, src)?;
-                self.io.uploads += 1;
-            }
-            Ok(())
-        });
-        self.staging = staging;
-        res?;
+        let bytes = read_experts(&self.dio, file, il, loads, dst, &sizes, &mut self.io)?;
+        self.metrics.tier_read(&self.device, "nvme", bytes);
+        self.io.uploads += loads.len() as u64;
         self.record_loads(loads.len(), "nvme", t0);
         Ok(())
     }
@@ -562,35 +592,60 @@ fn ram_hits_first(loads: &[(u32, u32)], in_ram: impl Fn(u32) -> bool) -> Vec<(u3
     hits.into_iter().chain(misses).copied().collect()
 }
 
-/// Reads the three slabs of each expert into its buffer (`total` bytes: gate, up, down) with
-/// one batch. Returns the bytes read.
+/// Reads the three slabs of each `(expert, slot)` of `loads` from the file into slot `slot` of
+/// `dst` (gate, up, down tensors): one batch per shard that holds any of them, each slab
+/// copied once, from the bounce buffer into the slot. Returns the bytes read.
 fn read_experts(
-    dio: &DirectFile,
+    dio: &[DirectFile],
     file: &ModelFile,
     il: usize,
-    items: Vec<(u32, &mut [u8])>,
+    loads: &[(u32, u32)],
+    dst: &[Tensor<'_>; 3],
+    sizes: &[usize; 3],
     io: &mut IoCounters,
 ) -> Result<u64> {
-    let mut reqs: Vec<ReadReq<'_>> = Vec::with_capacity(items.len() * 3);
-    let n = items.len() as u64;
-    for (e, buf) in items {
+    // Per shard the ranges and, for each, which tensor and slot it fills.
+    let mut ranges: Vec<Vec<Range>> = (0..dio.len()).map(|_| Vec::new()).collect();
+    let mut targets: Vec<Vec<(usize, u32)>> = (0..dio.len()).map(|_| Vec::new()).collect();
+    for &(e, slot) in loads {
         let slabs = file.expert_slabs(il as u32, e)?;
-        let (gate, rest) = buf.split_at_mut(slabs.parts[0].1 as usize);
-        let (up, down) = rest.split_at_mut(slabs.parts[1].1 as usize);
-        for (dst, part) in [gate, up, down].into_iter().zip(slabs.parts) {
-            reqs.push(ReadReq {
-                offset: part.0,
-                dst,
+        for (p, part) in slabs.parts.iter().enumerate() {
+            ranges[part.shard].push(Range {
+                offset: part.offset,
+                len: part.len as usize,
             });
+            targets[part.shard].push((p, slot));
         }
     }
-    let t0 = Instant::now();
-    let stats = dio.read_batch(&mut reqs)?;
-    io.read_time += t0.elapsed();
-    io.batches += 1;
-    io.experts_read += n;
-    io.bytes_read += stats.requested;
-    Ok(stats.requested)
+    let mut requested = 0;
+    for ((shard, ranges), targets) in dio.iter().zip(&ranges).zip(&targets) {
+        if ranges.is_empty() {
+            continue;
+        }
+        let t0 = Instant::now();
+        let mut copy = Duration::ZERO;
+        let mut failure = None;
+        let res = shard.read_batch_with(ranges, |i, bytes| {
+            let (p, slot) = targets[i];
+            let t = Instant::now();
+            let r = dst[p].set_bytes(bytes, slot as usize * sizes[p]);
+            copy += t.elapsed();
+            r.map_err(|e| {
+                failure = Some(e);
+                std::io::Error::other("write into the expert slot failed")
+            })
+        });
+        // The device time only: the copies into the slots are part of the step, not of the read.
+        io.read_time += t0.elapsed().saturating_sub(copy);
+        io.batches += 1;
+        match res {
+            Ok(stats) => requested += stats.requested,
+            Err(e) => return Err(failure.map_or_else(|| e.into(), ModelError::from)),
+        }
+    }
+    io.experts_read += loads.len() as u64;
+    io.bytes_read += requested;
+    Ok(requested)
 }
 
 /// Writes one expert (gate, up, down slabs back to back in `src`) into slot `slot`.

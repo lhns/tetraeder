@@ -66,7 +66,8 @@ fn expert_slabs_tile_the_stacked_tensors() {
             assert_eq!(t.ne[2], 8);
             let mut end = t.offset;
             for e in 0..8 {
-                let (off, len) = t.slab(e).unwrap();
+                let s = t.slab(e).unwrap();
+                let (off, len) = (s.offset, s.len);
                 assert_eq!(off, end, "slabs are contiguous");
                 assert_eq!(len, t.nbytes / 8);
                 end = off + len;

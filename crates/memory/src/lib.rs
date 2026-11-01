@@ -16,6 +16,7 @@ pub mod fake;
 pub mod ggml;
 #[cfg(feature = "metrics")]
 pub mod metrics;
+pub mod process;
 pub mod reserve;
 pub mod slots;
 
@@ -23,6 +24,6 @@ pub use arena::{
     Allocator, Arena, ArenaBuffer, ArenaError, Arenas, Phase, Purpose, arena_sizes,
     available_for_arenas, phase_bytes,
 };
-pub use dio::{AlignedBuf, DirectFile, Options as IoOptions, ReadReq, ReadStats};
+pub use dio::{AlignedBuf, DirectFile, Options as IoOptions, Range, ReadReq, ReadStats};
 pub use reserve::{ReserveReport, measure_reserve, reserve_map};
 pub use slots::{Change, LayerSlots, Lookup, Move, SlotCache, Tier};

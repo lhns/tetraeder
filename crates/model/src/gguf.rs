@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tetraeder_ggml_sys::ggml::Type;
 
 #[derive(Debug, thiserror::Error)]
@@ -26,6 +26,8 @@ pub enum GgufError {
     WrongType(String),
     #[error("missing tensor `{0}`")]
     MissingTensor(String),
+    #[error("split GGUF: {0}")]
+    Split(String),
 }
 
 type Result<T> = std::result::Result<T, GgufError>;
@@ -49,9 +51,19 @@ pub struct TensorInfo {
     pub ty: Type,
     /// Elements per dimension (ggml order: `ne[0]` is the contiguous one).
     pub ne: [u64; 4],
-    /// Absolute byte offset of the data in the file.
+    /// Index of the shard file that holds the data (0 for a single file).
+    pub shard: usize,
+    /// Absolute byte offset of the data in its shard file.
     pub offset: u64,
     pub nbytes: u64,
+}
+
+/// A byte range of a tensor inside one shard file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Slab {
+    pub shard: usize,
+    pub offset: u64,
+    pub len: u64,
 }
 
 impl TensorInfo {
@@ -59,25 +71,70 @@ impl TensorInfo {
         self.ne.iter().product()
     }
 
-    /// Byte range `[offset, offset + len)` of slab `i` along the last non-trivial dimension
-    /// (the expert dimension of stacked expert tensors, `ne[2]`).
-    pub fn slab(&self, i: u64) -> Option<(u64, u64)> {
+    /// Slab `i` along the last non-trivial dimension (the expert dimension of stacked expert
+    /// tensors, `ne[2]`): its shard and byte range `[offset, offset + len)` in that shard.
+    pub fn slab(&self, i: u64) -> Option<Slab> {
         let n = self.ne[2];
         (i < n).then(|| {
             let len = self.nbytes / n;
-            (self.offset + i * len, len)
+            Slab {
+                shard: self.shard,
+                offset: self.offset + i * len,
+                len,
+            }
         })
     }
 }
 
-/// Parsed GGUF header.
+/// Parsed GGUF header. A split model (llama.cpp's `gguf-split`) is opened from its first shard
+/// and merged into one tensor index; a single file is one shard.
 #[derive(Debug)]
 pub struct Gguf {
+    /// Metadata of the first shard.
     kv: HashMap<String, Value>,
     pub tensors: Vec<TensorInfo>,
     by_name: HashMap<String, usize>,
+    /// Shard files in order.
+    pub paths: Vec<PathBuf>,
+    /// Alignment and data section start of the first shard.
     pub alignment: u64,
     pub data_offset: u64,
+    /// Byte range of the first shard's key-value section and its number of entries, for tools
+    /// that rewrite a file.
+    pub kv_section: (u64, u64),
+    pub n_kv: u64,
+}
+
+/// One parsed file.
+struct Shard {
+    kv: HashMap<String, Value>,
+    tensors: Vec<TensorInfo>,
+    alignment: u64,
+    data_offset: u64,
+    kv_section: (u64, u64),
+    n_kv: u64,
+}
+
+fn kv_int(kv: &HashMap<String, Value>, key: &str) -> Option<u64> {
+    match kv.get(key) {
+        Some(Value::U64(v)) => Some(*v),
+        Some(Value::I64(v)) if *v >= 0 => Some(*v as u64),
+        _ => None,
+    }
+}
+
+/// Path of shard `no` (0-based) of `count` from the path of shard 0, by llama.cpp's rule
+/// (`<prefix>-00001-of-0000N.gguf`).
+fn shard_path(first: &Path, count: u64, no: u64) -> Result<PathBuf> {
+    let name = first.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let suffix = format!("-{:05}-of-{count:05}.gguf", 1);
+    let prefix = name.strip_suffix(&suffix).ok_or_else(|| {
+        GgufError::Split(format!(
+            "`{}` should be named `<prefix>{suffix}`",
+            first.display()
+        ))
+    })?;
+    Ok(first.with_file_name(format!("{prefix}-{:05}-of-{count:05}.gguf", no + 1)))
 }
 
 struct Rd<R> {
@@ -157,8 +214,73 @@ impl<R: Read> Rd<R> {
 }
 
 impl Gguf {
+    /// Opens a single file or, given the first shard of a split model, all of its shards.
     pub fn open(path: impl AsRef<Path>) -> Result<Gguf> {
         let path = path.as_ref();
+        let first = parse_file(path, 0)?;
+        let count = kv_int(&first.kv, "split.count").unwrap_or(1);
+        let mut paths = vec![path.to_path_buf()];
+        let mut tensors = first.tensors;
+        if count > 1 {
+            if kv_int(&first.kv, "split.no") != Some(0) {
+                return Err(GgufError::Split(format!(
+                    "`{}` is not the first shard; open the -00001-of-{count:05} file",
+                    path.display()
+                )));
+            }
+            if count > 1 << 16 {
+                return Err(GgufError::Split(format!("{count} shards")));
+            }
+            for no in 1..count {
+                let p = shard_path(path, count, no)?;
+                let shard = parse_file(&p, no as usize)?;
+                if kv_int(&shard.kv, "split.no") != Some(no)
+                    || kv_int(&shard.kv, "split.count") != Some(count)
+                {
+                    return Err(GgufError::Split(format!(
+                        "`{}` is not shard {} of {count}",
+                        p.display(),
+                        no + 1
+                    )));
+                }
+                tensors.extend(shard.tensors);
+                paths.push(p);
+            }
+            if kv_int(&first.kv, "split.tensors.count") != Some(tensors.len() as u64) {
+                return Err(GgufError::Split(format!(
+                    "{} tensors in the shards, split.tensors.count says {:?}",
+                    tensors.len(),
+                    first.kv.get("split.tensors.count")
+                )));
+            }
+        }
+        let mut by_name = HashMap::new();
+        for (i, t) in tensors.iter().enumerate() {
+            if by_name.insert(t.name.clone(), i).is_some() {
+                return Err(GgufError::Corrupt(format!("duplicate tensor `{}`", t.name)));
+            }
+        }
+        Ok(Gguf {
+            kv: first.kv,
+            tensors,
+            by_name,
+            paths,
+            alignment: first.alignment,
+            data_offset: first.data_offset,
+            kv_section: first.kv_section,
+            n_kv: first.n_kv,
+        })
+    }
+
+    /// Number of shard files (1 for a single file).
+    pub fn n_shards(&self) -> usize {
+        self.paths.len()
+    }
+}
+
+/// Parses one GGUF file; its tensors get shard index `shard`.
+fn parse_file(path: &Path, shard: usize) -> Result<Shard> {
+    {
         let io = |source| GgufError::Io {
             path: path.display().to_string(),
             source,
@@ -179,11 +301,13 @@ impl Gguf {
             return Err(GgufError::Corrupt("implausible counts".into()));
         }
         let mut kv = HashMap::new();
+        let kv_start = rd.r.stream_position().map_err(io)?;
         for _ in 0..n_kv {
             let key = rd.string()?;
             let ty = rd.u32()?;
             kv.insert(key, rd.value(ty)?);
         }
+        let kv_end = rd.r.stream_position().map_err(io)?;
         let alignment = match kv.get("general.alignment") {
             Some(Value::U64(a)) if *a > 0 => *a,
             _ => 32,
@@ -210,7 +334,6 @@ impl Gguf {
         let data_offset = pos.div_ceil(alignment) * alignment;
         r.seek(SeekFrom::Start(data_offset)).ok();
         let mut tensors = Vec::new();
-        let mut by_name = HashMap::new();
         for (name, ne, ty, off) in raw {
             let ty = Type::from_id(ty)
                 .ok_or_else(|| GgufError::Corrupt(format!("tensor `{name}` has type id {ty}")))?;
@@ -220,24 +343,27 @@ impl Gguf {
                 )));
             }
             let nbytes = ty.row_size(ne[0] as i64) as u64 * ne[1] * ne[2] * ne[3];
-            by_name.insert(name.clone(), tensors.len());
             tensors.push(TensorInfo {
                 name,
                 ty,
                 ne,
+                shard,
                 offset: data_offset + off,
                 nbytes,
             });
         }
-        Ok(Gguf {
+        Ok(Shard {
             kv,
             tensors,
-            by_name,
             alignment,
             data_offset,
+            kv_section: (kv_start, kv_end),
+            n_kv,
         })
     }
+}
 
+impl Gguf {
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.kv.get(key)
     }

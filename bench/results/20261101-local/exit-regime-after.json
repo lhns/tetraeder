@@ -1,0 +1,526 @@
+{
+  "env": {
+    "available_parallelism": 16,
+    "gpu_devices_visible": 0,
+    "os": "windows"
+  },
+  "expert_bytes_per_layer": [
+    3059712,
+    2654208,
+    2654208,
+    3059712,
+    2654208,
+    2654208,
+    3059712,
+    3059712
+  ],
+  "io_backend": "direct overlapped",
+  "machine": "Windows 11 QEMU VM, 16 vCPU without AVX, 16 GB RAM, shared; release build, no GPU",
+  "model": {
+    "bytes": 415901344,
+    "ftype": "Q4_K_M",
+    "synthetic": "MoeSpec { layers: 8, embd: 2048, heads: 16, heads_kv: 4, head_dim: 128, experts: 16, used: 4, ff: 768, seed: 20261101 }"
+  },
+  "options": {
+    "expert_slot_bytes": null,
+    "expert_slots": 2,
+    "gpu": false,
+    "n_ctx": 288,
+    "op_offload": false,
+    "ram_slot_bytes": null,
+    "ram_slots": 4,
+    "threads": 8
+  },
+  "runs": [
+    {
+      "decode_io": {
+        "batches": 251,
+        "bytes": 1732165632,
+        "bytes_per_token": 54130176.0,
+        "experts_read": 608,
+        "read_gb_s": 2.5665941292847063,
+        "read_ms_per_token": 21.090275,
+        "read_s": 0.6748888,
+        "uploads": 0
+      },
+      "decode_layers": {
+        "full_hit_rate": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "full_hit_rate_mean": 0.0,
+        "ram_hit_rate": [
+          0.36036036036036034,
+          0.3177570093457944,
+          0.2956521739130435,
+          0.3106796116504854,
+          0.30434782608695654,
+          0.29914529914529914,
+          0.3047619047619048,
+          0.3474576271186441
+        ],
+        "ram_hit_rate_mean": 0.31752022654781104
+      },
+      "decode_profile_per_token": {
+        "alloc_ms": 1.095984375,
+        "build_ms": 1.6714125,
+        "compute_ms": 352.000590625,
+        "graphs": 9.0,
+        "inputs_ms": 0.09170937500000001,
+        "readback_ms": 0.04461875,
+        "streamer_ms": 33.797459374999995,
+        "total_ms": 388.70230312499996
+      },
+      "decode_tok_s": 2.5725498448414794,
+      "decode_tokens": 32,
+      "greedy": [
+        187,
+        148,
+        112,
+        110,
+        185,
+        126,
+        82,
+        52,
+        72,
+        114,
+        29,
+        252,
+        156,
+        174,
+        49,
+        247,
+        56,
+        1,
+        169,
+        185,
+        211,
+        211,
+        165,
+        54,
+        184,
+        227,
+        62,
+        77,
+        247,
+        217,
+        131,
+        27
+      ],
+      "load_s": 0.5160118,
+      "max_splits": 1,
+      "memory": [
+        {
+          "capacity": 50199616,
+          "device": "CPU",
+          "kind": "weights",
+          "tier": "ram",
+          "used": 50199616
+        },
+        {
+          "capacity": 45711360,
+          "device": "CPU",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 45711360
+        },
+        {
+          "capacity": 8388608,
+          "device": "CPU",
+          "kind": "kv",
+          "tier": "ram",
+          "used": 8388608
+        },
+        {
+          "capacity": 91422720,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 91422720
+        },
+        {
+          "capacity": 12288000,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 12288000
+        },
+        {
+          "capacity": 655360,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 655360
+        }
+      ],
+      "peak_rss_bytes": 223944704,
+      "prefill_io": {
+        "batches": 419,
+        "bytes": 3758542848,
+        "bytes_per_token": 14681808.0,
+        "experts_read": 1316,
+        "read_gb_s": 2.4673156436991315,
+        "read_ms_per_token": 5.95051875,
+        "read_s": 1.5233328,
+        "uploads": 16
+      },
+      "prefill_profile_per_ubatch": {
+        "alloc_ms": 1.325325,
+        "build_ms": 1.558325,
+        "compute_ms": 1019.25568125,
+        "graphs": 32.4375,
+        "inputs_ms": 0.06680625,
+        "readback_ms": 0.05198125,
+        "streamer_ms": 1078.3113375,
+        "total_ms": 2100.5699125
+      },
+      "prefill_s": 33.7413244,
+      "prefill_tok_s": 7.5871354948948,
+      "prefill_tokens": 256,
+      "rss_bytes": 217321472,
+      "ubatch": 16,
+      "ubatch_s": [
+        2.7574563,
+        2.4401581,
+        1.2122702,
+        1.4406273,
+        1.9513816,
+        1.8320352,
+        1.746263,
+        1.7194646,
+        1.7994396,
+        2.121497,
+        2.0035966,
+        4.48027,
+        1.8369548999999998,
+        2.2352773,
+        2.1573254,
+        2.0072947
+      ]
+    },
+    {
+      "decode_io": {
+        "batches": 248,
+        "bytes": 1694011392,
+        "bytes_per_token": 52937856.0,
+        "experts_read": 595,
+        "read_gb_s": 2.3820501383028136,
+        "read_ms_per_token": 22.223653125,
+        "read_s": 0.7111569,
+        "uploads": 0
+      },
+      "decode_layers": {
+        "full_hit_rate": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "full_hit_rate_mean": 0.0,
+        "ram_hit_rate": [
+          0.40425531914893614,
+          0.27522935779816515,
+          0.3130434782608696,
+          0.26126126126126126,
+          0.2857142857142857,
+          0.3392857142857143,
+          0.29523809523809524,
+          0.330188679245283
+        ],
+        "ram_hit_rate_mean": 0.31302702386907627
+      },
+      "decode_profile_per_token": {
+        "alloc_ms": 1.042365625,
+        "build_ms": 1.3142,
+        "compute_ms": 423.043659375,
+        "graphs": 9.0,
+        "inputs_ms": 0.14571874999999998,
+        "readback_ms": 0.042868750000000004,
+        "streamer_ms": 34.71605625,
+        "total_ms": 460.30534374999996
+      },
+      "decode_tok_s": 2.1723894340164507,
+      "decode_tokens": 32,
+      "greedy": [
+        187,
+        148,
+        112,
+        110,
+        185,
+        126,
+        82,
+        52,
+        72,
+        66,
+        19,
+        130,
+        55,
+        166,
+        77,
+        73,
+        258,
+        240,
+        17,
+        53,
+        121,
+        259,
+        180,
+        169,
+        185,
+        167,
+        141,
+        82,
+        79,
+        19,
+        56,
+        57
+      ],
+      "load_s": 0.3560613,
+      "max_splits": 1,
+      "memory": [
+        {
+          "capacity": 50199616,
+          "device": "CPU",
+          "kind": "weights",
+          "tier": "ram",
+          "used": 50199616
+        },
+        {
+          "capacity": 45711360,
+          "device": "CPU",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 45711360
+        },
+        {
+          "capacity": 8388608,
+          "device": "CPU",
+          "kind": "kv",
+          "tier": "ram",
+          "used": 8388608
+        },
+        {
+          "capacity": 91422720,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 91422720
+        },
+        {
+          "capacity": 12288000,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 12288000
+        },
+        {
+          "capacity": 2621440,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 2621440
+        }
+      ],
+      "peak_rss_bytes": 232079360,
+      "prefill_io": {
+        "batches": 120,
+        "bytes": 1139724288,
+        "bytes_per_token": 4452048.0,
+        "experts_read": 399,
+        "read_gb_s": 3.255820223820372,
+        "read_ms_per_token": 1.367412109375,
+        "read_s": 0.3500575,
+        "uploads": 16
+      },
+      "prefill_profile_per_ubatch": {
+        "alloc_ms": 1.4059249999999999,
+        "build_ms": 0.97735,
+        "compute_ms": 2579.716525,
+        "graphs": 33.0,
+        "inputs_ms": 0.144875,
+        "readback_ms": 0.077125,
+        "streamer_ms": 2626.31025,
+        "total_ms": 5208.6326
+      },
+      "prefill_s": 20.9566978,
+      "prefill_tok_s": 12.215665008062482,
+      "prefill_tokens": 256,
+      "rss_bytes": 220704768,
+      "ubatch": 64,
+      "ubatch_s": [
+        5.1587507,
+        5.1870273000000005,
+        5.0574288,
+        5.5534876
+      ]
+    },
+    {
+      "decode_io": {
+        "batches": 250,
+        "bytes": 1672372224,
+        "bytes_per_token": 52261632.0,
+        "experts_read": 587,
+        "read_gb_s": 2.528766212557792,
+        "read_ms_per_token": 20.66685,
+        "read_s": 0.6613392,
+        "uploads": 0
+      },
+      "decode_layers": {
+        "full_hit_rate": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "full_hit_rate_mean": 0.0,
+        "ram_hit_rate": [
+          0.39361702127659576,
+          0.3137254901960784,
+          0.2920353982300885,
+          0.25892857142857145,
+          0.2857142857142857,
+          0.33035714285714285,
+          0.3047619047619048,
+          0.31
+        ],
+        "ram_hit_rate_mean": 0.31114247680808343
+      },
+      "decode_profile_per_token": {
+        "alloc_ms": 1.0386312500000001,
+        "build_ms": 1.22465625,
+        "compute_ms": 311.791209375,
+        "graphs": 9.0,
+        "inputs_ms": 0.18585,
+        "readback_ms": 0.0423,
+        "streamer_ms": 32.555781249999995,
+        "total_ms": 346.8388625
+      },
+      "decode_tok_s": 2.8831455608203296,
+      "decode_tokens": 32,
+      "greedy": [
+        187,
+        148,
+        112,
+        110,
+        185,
+        126,
+        82,
+        52,
+        72,
+        66,
+        19,
+        130,
+        55,
+        166,
+        77,
+        73,
+        258,
+        240,
+        17,
+        53,
+        121,
+        259,
+        180,
+        169,
+        185,
+        167,
+        141,
+        82,
+        79,
+        19,
+        56,
+        57
+      ],
+      "load_s": 0.4416851,
+      "max_splits": 1,
+      "memory": [
+        {
+          "capacity": 50199616,
+          "device": "CPU",
+          "kind": "weights",
+          "tier": "ram",
+          "used": 50199616
+        },
+        {
+          "capacity": 45711360,
+          "device": "CPU",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 45711360
+        },
+        {
+          "capacity": 8388608,
+          "device": "CPU",
+          "kind": "kv",
+          "tier": "ram",
+          "used": 8388608
+        },
+        {
+          "capacity": 91422720,
+          "device": "host",
+          "kind": "slots",
+          "tier": "ram",
+          "used": 91422720
+        },
+        {
+          "capacity": 12288000,
+          "device": "host",
+          "kind": "io",
+          "tier": "ram",
+          "used": 12288000
+        },
+        {
+          "capacity": 10485760,
+          "device": "CPU",
+          "kind": "workspace",
+          "tier": "ram",
+          "used": 10485760
+        }
+      ],
+      "peak_rss_bytes": 259158016,
+      "prefill_io": {
+        "batches": 40,
+        "bytes": 411402240,
+        "bytes_per_token": 1607040.0,
+        "experts_read": 144,
+        "read_gb_s": 2.5176691186370146,
+        "read_ms_per_token": 0.6383046875,
+        "read_s": 0.163406,
+        "uploads": 16
+      },
+      "prefill_profile_per_ubatch": {
+        "alloc_ms": 2.2742,
+        "build_ms": 1.3619,
+        "compute_ms": 10846.1843,
+        "graphs": 33.0,
+        "inputs_ms": 0.7333,
+        "readback_ms": 0.3077,
+        "streamer_ms": 9227.7478,
+        "total_ms": 20078.6097
+      },
+      "prefill_s": 20.173676,
+      "prefill_tok_s": 12.689804277614055,
+      "prefill_tokens": 256,
+      "rss_bytes": 228638720,
+      "ubatch": 256,
+      "ubatch_s": [
+        20.173674
+      ]
+    }
+  ],
+  "slot_bytes_all_layers": 22855680
+}
