@@ -60,6 +60,9 @@ struct Row {
     tensor_buft_overrides: Option<String>,
     #[serde(default)]
     backends: Option<String>,
+    // ik_llama.cpp: a bool instead of `backends`
+    #[serde(default)]
+    cuda: Option<bool>,
     #[serde(default)]
     n_eval: Option<i64>,
     #[serde(default)]
@@ -139,9 +142,9 @@ pub fn parse_llama_bench(stdout: &str) -> Result<Measured> {
         st.n_gpu_layers = st.n_gpu_layers.or(r.n_gpu_layers);
         st.tensor_buft_overrides = st.tensor_buft_overrides.take().or(r.tensor_buft_overrides);
         st.cuda_graphs = st.cuda_graphs.or(r.cuda_graphs).or_else(|| {
-            r.backends.as_deref().map(|b| {
-                b.contains("CUDA")
-                    && r.n_gpu_layers != Some(0)
+            let cuda = r.backends.as_deref().map(|b| b.contains("CUDA")).or(r.cuda);
+            cuda.map(|c| {
+                c && r.n_gpu_layers != Some(0)
                     && std::env::var_os("GGML_CUDA_DISABLE_GRAPHS").is_none()
             })
         });
@@ -368,7 +371,7 @@ mod tests {
             m.settings.tensor_buft_overrides.as_deref(),
             Some("exps=CPU")
         );
-        assert_eq!(m.settings.cuda_graphs, None);
+        assert!(m.settings.cuda_graphs.is_some()); // derived from `cuda`
     }
 
     #[test]

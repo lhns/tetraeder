@@ -205,7 +205,9 @@ fn skip_reason<'a>(
     let default_threads = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
     let threads = spec::threads_for(&spec.workload, v, default_threads);
     let args = match engine.kind {
-        EngineKind::LlamaBench | EngineKind::IkLlama => engine::llama_bench_args(&spec.workload, v, &model, threads),
+        EngineKind::LlamaBench | EngineKind::IkLlama => {
+            engine::llama_bench_args(&spec.workload, v, &model, threads)
+        }
         EngineKind::Tetraeder => engine::tetraeder_bench_args(&spec.workload, v, &model, threads),
     };
     Ok(Ok(Resolved {
