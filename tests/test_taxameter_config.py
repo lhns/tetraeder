@@ -39,6 +39,22 @@ def test_push_paths_cover_workspace_members_and_build_rs_inputs(cfg):
         assert covered(repo_path), repo_path
 
 
+def test_push_paths_cover_files_the_crates_read_from_the_repo_root(cfg):
+    # a test reading ../../tests/fixtures failed on the box because that directory was not pushed
+    def covered(path: str) -> bool:
+        return any(path == a or path.startswith(a + "/") for a in cfg.push.paths)
+
+    for src in (ROOT / "crates").rglob("*.rs"):
+        crate_dir = src.relative_to(ROOT).parts[:2]
+        for p in re.findall(r'"((?:\.\./)+(?:[\w.-]+/)*[\w.-]+)', src.read_text(encoding="utf-8")):
+            # relative to the source file (include_str!) or to the crate (CARGO_MANIFEST_DIR); check what exists
+            for base in (src.parent, ROOT.joinpath(*crate_dir)):
+                target = (base / p).resolve()
+                if target.exists() and ROOT in target.parents:
+                    rel = target.relative_to(ROOT).as_posix()
+                    assert covered(rel), f"{src.relative_to(ROOT)}: {p}"
+
+
 def test_image_tag_comes_from_vendor_pin(cfg):
     assert cfg.image_ref() == f"ghcr.io/lhns/tetraeder-box:{_pin('tag')}"
 
