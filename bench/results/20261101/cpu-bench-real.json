@@ -1,0 +1,123 @@
+{
+  "env": {
+    "available_parallelism": 11,
+    "cpu": "AMD EPYC 7K62 48-Core Processor",
+    "cpu_quota": null,
+    "gpu_devices_visible": 0,
+    "os": "linux"
+  },
+  "machine": "vast host baff21dcea72, AMD EPYC 7K62 48-Core Processor",
+  "model": {
+    "path": "/root/tetraeder/.hf_cache/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf"
+  },
+  "n_decode": 32,
+  "n_prompt": 64,
+  "ratios_builder_over_libllama": [
+    {
+      "decode_ratio": 1.3029813426370498,
+      "prefill_ratio": 0.8193308600749841,
+      "threads": 11,
+      "variant": "builder"
+    },
+    {
+      "decode_ratio": 1.2194714951768193,
+      "prefill_ratio": 0.7755048853185332,
+      "threads": 11,
+      "variant": "builder_cpupolicy"
+    }
+  ],
+  "repeats": 3,
+  "runs": [
+    {
+      "decode_tok_s": [
+        17.780460878958515,
+        17.529680597825216,
+        17.413075632380412
+      ],
+      "decode_tok_s_median": 17.529680597825216,
+      "greedy_equals_libllama": true,
+      "prefill_tok_s": [
+        51.33960483025368,
+        52.38456174351674,
+        52.384811118636215
+      ],
+      "prefill_tok_s_median": 52.38456174351674,
+      "threads": 11,
+      "variant": "libllama"
+    },
+    {
+      "decode_tok_s": [
+        22.70878382578113,
+        23.09991124234479,
+        22.840846761352942
+      ],
+      "decode_tok_s_median": 22.840846761352942,
+      "greedy_equals_libllama": false,
+      "prefill_tok_s": [
+        42.866577063553684,
+        43.165250373098,
+        42.920288027966684
+      ],
+      "prefill_tok_s_median": 42.920288027966684,
+      "profile_decode_per_token": {
+        "alloc_ms": 0.9432386979166666,
+        "build_ms": 0.8900412916666666,
+        "compute_ms": 41.672713989583336,
+        "graphs": 1.0,
+        "inputs_ms": 0.0084963125,
+        "readback_ms": 0.0006776666666666666,
+        "streamer_ms": 0.0,
+        "total_ms": 43.51547976041667
+      },
+      "profile_prefill_per_step": {
+        "alloc_ms": 1.5495963333333336,
+        "build_ms": 0.823997,
+        "compute_ms": 1486.358672,
+        "graphs": 1.0,
+        "inputs_ms": 0.04071033333333333,
+        "readback_ms": 0.0013033333333333332,
+        "streamer_ms": 0.0,
+        "total_ms": 1488.7745256666667
+      },
+      "threads": 11,
+      "variant": "builder"
+    },
+    {
+      "decode_tok_s": [
+        16.196621551670752,
+        21.376945808601995,
+        21.485552817180817
+      ],
+      "decode_tok_s_median": 21.376945808601995,
+      "greedy_equals_libllama": false,
+      "prefill_tok_s": [
+        40.25562016890101,
+        40.624483547367575,
+        40.77676209701997
+      ],
+      "prefill_tok_s_median": 40.624483547367575,
+      "profile_decode_per_token": {
+        "alloc_ms": 1.9359287500000002,
+        "build_ms": 1.7236430104166667,
+        "compute_ms": 42.961548604166666,
+        "graphs": 49.0,
+        "inputs_ms": 0.008923197916666667,
+        "readback_ms": 0.02279169791666667,
+        "streamer_ms": 4.847999541666667,
+        "total_ms": 51.50125652083333
+      },
+      "profile_prefill_per_step": {
+        "alloc_ms": 4.125167666666667,
+        "build_ms": 2.534314666666667,
+        "compute_ms": 1569.292724,
+        "graphs": 49.0,
+        "inputs_ms": 0.039414,
+        "readback_ms": 0.165921,
+        "streamer_ms": 1.9348210000000001,
+        "total_ms": 1578.092759
+      },
+      "threads": 11,
+      "variant": "builder_cpupolicy"
+    }
+  ]
+}
