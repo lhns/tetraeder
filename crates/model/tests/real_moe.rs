@@ -104,6 +104,36 @@ fn libllama_on_gpu(path: &Path) -> Reference {
     }
 }
 
+struct Run {
+    greedy: Vec<i32>,
+    report: Value,
+    /// Prefill routing per layer, token-major.
+    routing: Vec<Vec<i32>>,
+    /// Prefill logits of every prompt position.
+    logits: Vec<f32>,
+    n_vocab: usize,
+}
+
+/// Per layer, the prompt tokens whose expert set differs between two runs.
+fn routing_diff(a: &Run, b: &Run, n_prompt: usize) -> Vec<usize> {
+    a.routing
+        .iter()
+        .zip(&b.routing)
+        .map(|(x, y)| {
+            let nu = x.len() / n_prompt;
+            x.chunks(nu)
+                .zip(y.chunks(nu))
+                .filter(|(p, q)| {
+                    let (mut p, mut q) = (p.to_vec(), q.to_vec());
+                    p.sort();
+                    q.sort();
+                    p != q
+                })
+                .count()
+        })
+        .collect()
+}
+
 /// One builder configuration, loaded, checked and dropped. Returns its greedy tokens and the
 /// numbers of the run.
 fn run_config(
@@ -113,7 +143,7 @@ fn run_config(
     ram_slots: Option<usize>,
     split: usize,
     r: &Reference,
-) -> (Vec<i32>, Value, Vec<Vec<i32>>) {
+) -> Run {
     let o = LoadOptions {
         expert_slots,
         ram_slots,
@@ -152,7 +182,6 @@ fn run_config(
         }
     }
     let mut next = argmax(&logits[(r.prompt.len() - 1) * n_vocab..]) as i32;
-    drop(logits);
     let mut greedy = Vec::new();
     let t0 = Instant::now();
     for _ in 0..N_GREEDY {
@@ -201,7 +230,13 @@ fn run_config(
         });
     }
     eprintln!("{name}: {out}");
-    (greedy, out, routing)
+    Run {
+        greedy,
+        report: out,
+        routing,
+        logits,
+        n_vocab,
+    }
 }
 
 /// hardware: gpu (CUDA build, 24 GB; skips without a GPU or `TETRAEDER_MOE_GGUF`). Greedy
@@ -236,58 +271,81 @@ fn gpu_real_moe_streaming() {
     });
     // Checked after the report is written, so a failure still leaves the numbers.
     let mut failures = Vec::new();
-    let mut resident: Option<Vec<i32>> = None;
-    // resident_split2: the resident builder with the prefill in two evals, the noise floor of
-    // the model on this GPU (summation order only). slots120: prefill fits without overflow passes.
+    // (name, compute slots, RAM slots, prefill evals, base config, exact).
+    // Single-token evals take CUDA's vector kernel, whose result per row does not depend on the
+    // number of experts in the tensor, so streaming must equal the resident builder bit for bit.
+    // A prefill that needs overflow passes takes MMQ, whose stream-k split depends on that
+    // number; it is checked for gross errors only (ADR 0034).
+    let n = r.prompt.len();
     let configs = [
-        ("resident", None, None, 1),
-        ("resident_split2", None, None, 2),
-        ("slots120", Some(120), None, 1),
-        ("slots32", Some(32), None, 1),
-        ("slots32_ram64", Some(32), Some(64), 1),
+        ("resident", None, None, 1, None, true),
+        ("resident_split2", None, None, 2, Some("resident"), true),
+        ("slots120", Some(120), None, 1, Some("resident"), true),
+        ("resident_tokenwise", None, None, n, None, true),
+        (
+            "slots32_tokenwise",
+            Some(32),
+            None,
+            n,
+            Some("resident_tokenwise"),
+            true,
+        ),
+        ("slots32", Some(32), None, 1, Some("resident"), false),
+        (
+            "slots32_ram64",
+            Some(32),
+            Some(64),
+            1,
+            Some("resident"),
+            false,
+        ),
     ];
-    let mut resident_routing: Option<Vec<Vec<i32>>> = None;
-    for (name, slots, ram, split) in configs {
-        let (greedy, mut v, routing) = run_config(name, &path, slots, ram, split, &r);
-        // Prefill routing against the resident builder: per layer, the tokens whose expert set
-        // differs. A late, single flip points at rounding; early, wide differences at a bug.
-        if let Some(base) = &resident_routing {
-            let diff: Vec<usize> = base
+    let mut runs: Vec<(&str, Run)> = Vec::new();
+    for (name, slots, ram, split, base, exact) in configs {
+        let mut run = run_config(name, &path, slots, ram, split, &r);
+        if name == "resident" && run.greedy != r.greedy {
+            failures.push(format!("{name}: greedy sequence differs from libllama"));
+        }
+        if let Some(base) = base.and_then(|b| runs.iter().find(|(n, _)| *n == b)) {
+            let b = &base.1;
+            let diff = routing_diff(b, &run, n);
+            let max_delta = b
+                .logits
                 .iter()
-                .zip(&routing)
-                .map(|(a, b)| {
-                    let nu = a.len() / r.prompt.len();
-                    a.chunks(nu)
-                        .zip(b.chunks(nu))
-                        .filter(|(x, y)| {
-                            let (mut x, mut y) = (x.to_vec(), y.to_vec());
-                            x.sort();
-                            y.sort();
-                            x != y
-                        })
-                        .count()
-                })
-                .collect();
-            eprintln!("{name}: prefill tokens with other experts, per layer: {diff:?}");
-            v["routing_diff_per_layer"] = json!(diff);
-            // Streaming is bitwise equal to the resident builder (ADR 0034), so routing is too.
-            if diff.iter().any(|&d| d > 0) {
+                .zip(&run.logits)
+                .map(|(x, y)| (x - y).abs())
+                .fold(0f32, f32::max);
+            let top1 = |l: &[f32]| -> Vec<usize> { l.chunks(run.n_vocab).map(argmax).collect() };
+            let agree = top1(&b.logits)
+                .iter()
+                .zip(top1(&run.logits))
+                .filter(|(x, y)| **x == *y)
+                .count() as f64
+                / n as f64;
+            eprintln!(
+                "{name} vs {}: max |logit delta| {max_delta:e}, top-1 agreement {agree:.3}, routing diff per layer {diff:?}",
+                base.0
+            );
+            run.report["vs"] = json!({
+                "base": base.0,
+                "max_logit_delta": max_delta,
+                "top1_agreement": agree,
+                "routing_diff_per_layer": diff,
+                "greedy_equal": run.greedy == b.greedy,
+            });
+            if exact {
+                if max_delta != 0.0 || run.greedy != b.greedy {
+                    failures.push(format!("{name}: not bitwise equal to {}", base.0));
+                }
+            } else if diff[0] != 0 || agree < 0.9 {
                 failures.push(format!(
-                    "{name}: prefill routing differs from the resident builder"
+                    "{name}: layer-0 routing or top-1 agreement ({agree:.3}) off against {}",
+                    base.0
                 ));
             }
         }
-        if resident_routing.is_none() {
-            resident_routing = Some(routing);
-        }
-        if greedy != r.greedy {
-            failures.push(format!("{name}: greedy sequence differs from libllama"));
-        }
-        if resident.as_ref().is_some_and(|base| *base != greedy) {
-            failures.push(format!("{name}: differs from the resident builder"));
-        }
-        resident.get_or_insert(greedy);
-        report[name] = v;
+        report[name] = run.report.clone();
+        runs.push((name, run));
     }
     if let Some(out) = std::env::var_os("TETRAEDER_REAL_OUT") {
         let out = PathBuf::from(out);

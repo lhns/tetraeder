@@ -14,6 +14,8 @@ ADR 0033's overflow passes pointed every pair whose expert is outside the pass a
 
 ## Consequences
 
+- Bitwise equality to the resident builder holds on CPU and for single-token steps on CUDA (the vector kernel's result per row does not depend on the number of experts in the tensor). A CUDA prefill that needs overflow passes runs MMQ, whose stream-k split of the inner dimension depends on the number of output tiles, which includes the expert count of the slot tensor (32 slots against 128 experts). The last bits then differ, near-tied routing choices can flip and the difference cascades. That is ggml's kernel choice, not a streaming defect; making it exact would need a ggml patch. The real-model test therefore checks single-token streaming bit for bit and a multi-pass prefill only for gross errors (identical layer-0 routing, top-1 agreement of at least 90% of positions).
+
 - The overflow passes stay the mechanism for more distinct experts than slots in a step; only the slot below top-k case is gone.
 - The load-time zero clear of slot tensors is now required, not just defensive.
 - Tests: the slot matrices start at 2 slots for the top-2 fixture; a unit test checks distinct slots per token.
