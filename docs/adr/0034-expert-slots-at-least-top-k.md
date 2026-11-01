@@ -9,6 +9,7 @@ ADR 0033's overflow passes pointed every pair whose expert is outside the pass a
 ## Decision
 
 - A masked pair gets a slot no other pair of the same token uses in that pass. Any slot works: every slot holds finite weights (loaded, or zero from the load-time clear), and the weight is 0.
+- The passes accumulate the weighted outputs per (token, choice), before the sum over experts, and the next segment sums them in choice order. Each pair is nonzero in exactly one pass and adding an exact zero changes nothing, so the result is bitwise equal to a single pass and streaming output does not depend on the slot count. The first real-model run showed why it matters: summing per pass changed the rounding, one near-tied routing decision flipped at layer 2 of Qwen3-30B-A3B and the difference cascaded through attention. The accumulator is `n_expert_used` times larger (about 270 MB at ubatch 4096 for Qwen3-30B-A3B, inside the phase workspace budget).
 - `expert_slots` must be at least `n_expert_used`; smaller values are a load error. Fewer distinct slots than picks per token cannot be expressed to `mul_mat_id`, and no real configuration needs it (Qwen3 MoE routes 8 of 128).
 
 ## Consequences

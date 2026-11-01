@@ -608,7 +608,7 @@ fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<
             w: t(Type::F32, &[1, nu, nt], "weights"),
             ids: t(Type::I32, &[nu, nt], "ids"),
             ids_map: t(Type::I32, &[nu, nt], "ids_mapped"),
-            acc: t(Type::F32, &[ne, nt], "moe_acc"),
+            acc: t(Type::F32, &[ne, nu, nt], "moe_acc"),
         }
     };
     let state = State {
@@ -644,7 +644,7 @@ fn build_segment<'a>(
     } else {
         let s = &st.slots[(seg - 1) % 2];
         let moe = if from_acc {
-            s.acc.get()
+            sum_experts(h, ctx, s.acc.get())
         } else {
             moe_ffn(h, ctx, &w.layers[seg - 1], s)
         };
@@ -742,8 +742,11 @@ fn attention_and_router<'a>(
     (ffn_inp, xn, weights, ids)
 }
 
-/// One pass of the expert FFN of a layer step that needed several: its output is added to `acc`
-/// (or replaces it in the first pass).
+/// One pass of the expert FFN of a layer step that needed several. It adds its weighted expert
+/// outputs, before the sum over experts, into `acc` (or replaces it in the first pass). Each
+/// (token, choice) is nonzero in exactly one pass and adding an exact zero changes nothing, so
+/// `acc` ends up bitwise equal to the single-pass tensor and the next segment sums it in the
+/// same order (ADR 0034).
 fn ffn_pass<'a>(
     h: &Hparams,
     ctx: &'a Context,
@@ -752,7 +755,7 @@ fn ffn_pass<'a>(
     first: bool,
 ) -> Graph<'a> {
     let mut g = ctx.new_graph(SEGMENT_NODES);
-    let out = moe_ffn(h, ctx, lw, s);
+    let out = weighted_experts(h, ctx, lw, s);
     let acc = s.acc.get();
     g.expand(ctx.cpy(if first { out } else { ctx.add(out, acc) }, acc));
     g
@@ -761,6 +764,11 @@ fn ffn_pass<'a>(
 /// Expert FFN of layer `il` for the ids in the slot's `ids_map`: `down(silu(gate) * up)`, scaled
 /// by the router weights and summed over the selected experts.
 fn moe_ffn<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Tensor<'a> {
+    sum_experts(h, ctx, weighted_experts(h, ctx, lw, s))
+}
+
+/// `down(silu(gate) * up)` per selected expert, scaled by its router weight: `[n_embd, n_used, n]`.
+fn weighted_experts<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Tensor<'a> {
     let n = s.xn.get().ne()[1];
     let cur = ctx.reshape(s.xn.get(), &[h.n_embd as i64, 1, n]);
     let ids = s.ids_map.get();
@@ -768,7 +776,12 @@ fn moe_ffn<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Ten
     let gate = ctx.mul_mat_id(lw.gate_exps.get(), cur, ids);
     let act = ctx.swiglu_split(gate, up);
     let experts = ctx.mul_mat_id(lw.down_exps.get(), act, ids);
-    let experts = ctx.mul(experts, s.w.get());
+    ctx.mul(experts, s.w.get())
+}
+
+/// Sum over the selected experts, in choice order: `[n_embd, n_used, n]` to `[n_embd, n]`.
+fn sum_experts<'a>(h: &Hparams, ctx: &'a Context, experts: Tensor<'a>) -> Tensor<'a> {
+    let n = experts.ne()[2];
     let [_, nb1, nb2, _] = experts.nb();
     let n_embd = h.n_embd as i64;
     let view = |i: usize| ctx.view(experts, &[n_embd, n], &[nb2], i * nb1);

@@ -21,7 +21,7 @@ log=runs/vast/moe_check.log
   TETRAEDER_MOE_GGUF="${MOE_GGUF:-$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf}" \
     TETRAEDER_REAL_OUT="$date_dir/builder-real.json" \
     timeout -k 30 "${MOE_MIN:-15}m" cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
-    --test quantized --test real_moe -- --nocapture
+    --test slots --test parity --test quantized --test real_moe -- --nocapture
   rc=$?
   echo "MOE_CHECK_DONE rc=$rc"
 } >> "$log" 2>&1
