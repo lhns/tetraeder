@@ -421,7 +421,7 @@ fn cpu_telemetry_reports_steps_and_cache() {
         }
     }
     assert_eq!(steps, 2);
-    assert_eq!(segments as u64, 2 * (layers + 1));
+    assert_eq!(segments as u64, 2 * (layers + 1) + m.overflow_passes());
     let full: u64 = stats.layers.iter().map(|l| l.full_steps).sum();
     let partial: u64 = stats.layers.iter().map(|l| l.partial_steps).sum();
     assert_eq!(full + partial, 2 * layers);
