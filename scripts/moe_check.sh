@@ -25,3 +25,5 @@ log=runs/vast/moe_check.log
   rc=$?
   echo "MOE_CHECK_DONE rc=$rc"
 } >> "$log" 2>&1
+# sccache inherits fd 8 and would keep the flock after this script exits (as in nightly.sh)
+command -v sccache > /dev/null 2>&1 && timeout 30 sccache --stop-server > /dev/null 2>&1
