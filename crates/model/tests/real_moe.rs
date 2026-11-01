@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
-use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, Qwen3Moe};
+use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 
 const N_PROMPT: usize = 64;
 const N_GREEDY: usize = 16;
@@ -189,6 +189,12 @@ fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
     json!(null)
 }
 
+/// Configurations named `*_cpupolicy` use `MissPolicy::Cpu` (ADR 0035): the hot set in the
+/// compute slots, every other routed expert computed on the CPU from the RAM tier.
+fn is_cpu_policy(name: &str) -> bool {
+    name.ends_with("_cpupolicy")
+}
+
 /// One builder configuration, loaded, checked and dropped. Returns its greedy tokens and the
 /// numbers of the run.
 fn run_config(
@@ -203,6 +209,11 @@ fn run_config(
         expert_slots,
         ram_slots,
         record_routing: true,
+        miss: if is_cpu_policy(name) {
+            MissPolicy::Cpu
+        } else {
+            MissPolicy::Upload
+        },
         // `cpu_*` configs run the builder on the CPU backend.
         ..LoadOptions::new(if name.starts_with("cpu_") {
             BackendChoice::Cpu { threads: None }
@@ -245,12 +256,14 @@ fn run_config(
     }
     let mut next = argmax(&logits[(r.prompt.len() - 1) * n_vocab..]) as i32;
     let mut greedy = Vec::new();
+    let uploads_before = m.expert_stats().map_or(0, |s| s.io.uploads);
     let t0 = Instant::now();
     for _ in 0..N_GREEDY {
         greedy.push(next);
         next = argmax(&m.eval(&[next]).unwrap()) as i32;
     }
     let decode_s = t0.elapsed().as_secs_f64();
+    let uploads_decode = m.expert_stats().map_or(0, |s| s.io.uploads) - uploads_before;
 
     let mut out = json!({
         "load_s": load_s,
@@ -261,6 +274,8 @@ fn run_config(
         "first_prompt_pos_off": first_off,
         "expert_groups": m.expert_groups(),
         "group_graphs": m.group_graphs(),
+        "max_splits": m.max_splits(),
+        "uploads_during_decode": uploads_decode,
         "greedy": greedy,
     });
     if let Some(s) = m.expert_stats() {
@@ -288,6 +303,9 @@ fn run_config(
             "experts_read": s.io.experts_read,
             "read_s": read_s,
             "read_gb_s": read_gb_s,
+            "cpu_experts": sum(&|l| l.cpu),
+            "mixed_steps": sum(&|l| l.mixed_steps),
+            "uploads": s.io.uploads,
             "ram_hits": sum(&|l| l.ram.map_or(0, |x| x.hits)),
             "ram_misses": sum(&|l| l.ram.map_or(0, |x| x.misses)),
         });
@@ -365,6 +383,17 @@ fn gpu_real_moe_streaming() {
             Some("resident"),
             false,
         ),
+        // Placement v1 (ADR 0035): 32 compute slots hold the hot set, the rest runs on the CPU
+        // from 128 RAM slots; decode must not upload. The prefill takes MMQ for the compute
+        // group and the CPU kernels for the others, so it is checked like `slots32`.
+        (
+            "slots32_ram128_cpupolicy",
+            Some(32),
+            Some(128),
+            1,
+            Some("resident"),
+            false,
+        ),
         ("cpu_resident", None, None, 1, None, true),
         ("cpu_slots32", Some(32), None, 1, Some("cpu_resident"), true),
     ];
@@ -415,6 +444,17 @@ fn gpu_real_moe_streaming() {
                     "{name}: layer-0 routing or top-1 agreement ({agree:.3}) off against {}",
                     base.0
                 ));
+            }
+        }
+        if is_cpu_policy(name) {
+            let up = run.report["uploads_during_decode"].as_u64();
+            eprintln!(
+                "{name}: prefill {:.1} tok/s, decode {:.1} tok/s, uploads during decode {up:?}",
+                run.report["prefill_tok_s"].as_f64().unwrap_or(0.0),
+                run.report["decode_tok_s"].as_f64().unwrap_or(0.0),
+            );
+            if up != Some(0) {
+                failures.push(format!("{name}: decode uploaded {up:?} experts"));
             }
         }
         report[name] = run.report.clone();

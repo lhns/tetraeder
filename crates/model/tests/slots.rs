@@ -13,7 +13,7 @@ mod common;
 use common::*;
 use std::sync::Arc;
 use tetraeder_ggml_sys::ggml::Backend;
-use tetraeder_model::{BackendChoice, LoadOptions, ModelError, Qwen3Moe};
+use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy, ModelError, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 const EXPERTS: usize = 8;
@@ -339,11 +339,27 @@ fn cpu_read_failure_is_an_error_and_leaves_no_stale_slot() {
 /// with the counters of the model.
 #[test]
 fn cpu_telemetry_reports_steps_and_cache() {
+    check_telemetry(opts(2, Some(3)));
+}
+
+/// hardware: cpu. The same under the cpu miss policy: result `cpu` counts the routed experts
+/// that were computed on the CPU, and the hit and miss counts still agree with the model's.
+#[test]
+fn cpu_telemetry_reports_cpu_experts() {
+    let o = LoadOptions {
+        miss: MissPolicy::Cpu,
+        ..opts(3, Some(8))
+    };
+    check_telemetry(o);
+}
+
+fn check_telemetry(base: LoadOptions) {
     use opentelemetry::KeyValue;
     use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
     use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
     use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
+    let o_cpu = base.miss == MissPolicy::Cpu;
     let exp = InMemoryMetricExporter::default();
     let mp = SdkMeterProvider::builder()
         .with_reader(PeriodicReader::builder(exp.clone()).build())
@@ -356,7 +372,7 @@ fn cpu_telemetry_reports_steps_and_cache() {
     ));
     let o = LoadOptions {
         telemetry: Some(t.clone()),
-        ..opts(2, Some(3))
+        ..base
     };
     let mut m = Qwen3Moe::load(fixture(), &o).unwrap();
     m.eval(&PROMPT).unwrap();
@@ -437,6 +453,9 @@ fn cpu_telemetry_reports_steps_and_cache() {
         (a.0 + l.compute.hits, a.1 + l.compute.misses)
     });
     assert_eq!((sum("vram", "hit"), sum("vram", "miss")), (h, mi));
+    let cpu: u64 = stats.layers.iter().map(|l| l.cpu).sum();
+    assert_eq!(sum("vram", "cpu"), cpu);
+    assert_eq!(cpu > 0, o_cpu);
     let (h, mi) = stats.layers.iter().fold((0, 0), |a, l| {
         let r = l.ram.unwrap();
         (a.0 + r.hits, a.1 + r.misses)

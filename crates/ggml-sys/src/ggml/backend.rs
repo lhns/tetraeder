@@ -146,6 +146,19 @@ impl Buffer {
         unsafe { sys::ggml_backend_buffer_get_size(self.ptr.as_ptr()) }
     }
 
+    /// Marks the buffer as holding weights. The scheduler runs an op on the backend whose buffer
+    /// holds a weights-usage source, so weights in host memory compute on the CPU even when a
+    /// GPU is the primary backend.
+    pub fn set_usage_weights(&self) {
+        // SAFETY: live buffer.
+        unsafe {
+            sys::ggml_backend_buffer_set_usage(
+                self.ptr.as_ptr(),
+                sys::GGML_BACKEND_BUFFER_USAGE_WEIGHTS,
+            )
+        }
+    }
+
     pub fn clear(&self, value: u8) {
         // SAFETY: live buffer.
         unsafe { sys::ggml_backend_buffer_clear(self.ptr.as_ptr(), value) }

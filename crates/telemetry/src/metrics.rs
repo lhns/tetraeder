@@ -45,6 +45,8 @@ pub enum Direction {
 pub enum CacheResult {
     Hit,
     Miss,
+    /// Expert caches only: not resident, computed on the CPU instead of being loaded (ADR 0035).
+    Cpu,
 }
 
 /// One engine step: a prefill chunk or a decode step on one stage.
@@ -287,6 +289,7 @@ fn cache_result(r: CacheResult) -> &'static str {
     match r {
         CacheResult::Hit => "hit",
         CacheResult::Miss => "miss",
+        CacheResult::Cpu => "cpu",
     }
 }
 

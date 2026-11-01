@@ -13,8 +13,12 @@
 //! gathers the inputs of its pairs, runs the expert matmuls on them and scatters the unweighted
 //! outputs into the slot's `acc`. The last group runs inside the next segment, which then
 //! weights and sums `acc` with the same ops as the resident graph.
+//!
+//! With `MissPolicy::Cpu` the experts not resident in the compute slots form pair groups over the
+//! RAM slot tensors, which sit in a CPU buffer marked as weights, so the scheduler computes them
+//! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
-use crate::experts::{ExpertStats, RoutingStep, Streamer};
+use crate::experts::{ExpertStats, MissPolicy, RoutingStep, Streamer, StreamerConfig};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use tetraeder_ggml_sys::ggml::{
@@ -72,6 +76,13 @@ pub struct LoadOptions {
     pub telemetry: Option<Arc<Telemetry>>,
     /// Keep the router's choices (see [`Qwen3Moe::take_routing_log`]); off by default.
     pub record_routing: bool,
+    /// What a routed expert that is not in a compute slot costs: an upload or a CPU group
+    /// (ADR 0035). `Cpu` needs `ram_slots`.
+    pub miss: MissPolicy,
+    /// Routed pairs per layer and expert from an earlier run ([`Qwen3Moe::routing_counts`]).
+    /// With `MissPolicy::Cpu` the hot set is built from it at load; without one, after the
+    /// first multi-token step.
+    pub routing_profile: Option<Vec<Vec<u64>>>,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -81,6 +92,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("n_ctx", &self.n_ctx)
             .field("expert_slots", &self.expert_slots)
             .field("ram_slots", &self.ram_slots)
+            .field("miss", &self.miss)
             .field("telemetry", &self.telemetry.is_some())
             .finish_non_exhaustive()
     }
@@ -96,6 +108,8 @@ impl LoadOptions {
             io: IoOptions::default(),
             telemetry: None,
             record_routing: false,
+            miss: MissPolicy::Upload,
+            routing_profile: None,
         }
     }
 }
@@ -187,6 +201,10 @@ pub struct Qwen3Moe {
     segments_run: u64,
     groups_run: u64,
     group_graphs_run: u64,
+    max_splits: usize,
+    policy: MissPolicy,
+    /// The hot set still has to be built from the first prefill's routing.
+    hot_pending: bool,
     streamer: Option<Streamer>,
     metrics: MemoryMetrics,
     telemetry: Option<Arc<Telemetry>>,
@@ -214,17 +232,24 @@ impl Qwen3Moe {
         if h.n_head % h.n_head_kv != 0 || h.n_expert_used > h.n_expert || h.n_rot != h.head_dim {
             return Err(ModelError::Invalid("unsupported hyperparameters".into()));
         }
-        let (primary, backends) = match opts.backend {
+        if opts.miss == MissPolicy::Cpu && opts.ram_slots.is_none() {
+            return Err(ModelError::Invalid(
+                "the cpu miss policy needs ram_slots".into(),
+            ));
+        }
+        // `cpu` holds the RAM tier and runs the CPU groups.
+        let (primary, cpu, backends) = match opts.backend {
             BackendChoice::Cpu { threads } => {
                 let n = threads
                     .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from));
                 let cpu = Backend::cpu(n as i32)?;
-                (cpu.clone(), vec![cpu])
+                (cpu.clone(), cpu.clone(), vec![cpu])
             }
             BackendChoice::Gpu { index } => {
                 let gpu = Backend::gpu(index)?;
                 let n = std::thread::available_parallelism().map_or(1, usize::from);
-                (gpu.clone(), vec![gpu, Backend::cpu(n as i32)?])
+                let cpu = Backend::cpu(n as i32)?;
+                (gpu.clone(), cpu.clone(), vec![gpu, cpu])
             }
         };
         let sched = Sched::new(&backends, SEGMENT_NODES * 4, false)?;
@@ -243,12 +268,17 @@ impl Qwen3Moe {
         let streamer = slots
             .map(|n| {
                 let tensors: Vec<_> = weights.layers.iter().map(Layer::exps).collect();
+                let cfg = StreamerConfig {
+                    slots: n,
+                    ram_slots: opts.ram_slots.map(|r| r.max(1)),
+                    io: opts.io,
+                    profile: opts.routing_profile.clone(),
+                };
                 Streamer::new(
                     &file,
                     &tensors,
-                    n,
-                    opts.ram_slots.map(|r| r.max(1)),
-                    opts.io,
+                    &cpu,
+                    cfg,
                     metrics.clone(),
                     primary.name().to_string(),
                 )
@@ -260,7 +290,8 @@ impl Qwen3Moe {
             n_expert = h.n_expert,
             "qwen3moe loaded"
         );
-        Ok(Qwen3Moe {
+        let cpu_hot = opts.miss == MissPolicy::Cpu && streamer.is_some();
+        let mut model = Qwen3Moe {
             file,
             sched,
             primary,
@@ -271,11 +302,18 @@ impl Qwen3Moe {
             segments_run: 0,
             groups_run: 0,
             group_graphs_run: 0,
+            max_splits: 0,
+            policy: opts.miss,
+            hot_pending: cpu_hot && opts.routing_profile.is_none(),
             streamer,
             metrics,
             telemetry: opts.telemetry.clone(),
             routing: opts.record_routing.then(Vec::new),
-        })
+        };
+        if cpu_hot && opts.routing_profile.is_some() {
+            model.refresh_hot_set()?;
+        }
+        Ok(model)
     }
 
     pub fn hparams(&self) -> &Hparams {
@@ -318,6 +356,37 @@ impl Qwen3Moe {
     /// Standalone group graphs run: graphs beyond the `n_layer + 1` segments of a step.
     pub fn group_graphs(&self) -> u64 {
         self.group_graphs_run
+    }
+
+    /// The most scheduler splits (runs on one backend) any graph had so far; more than one
+    /// means a graph ran on both the GPU and the CPU.
+    pub fn max_splits(&self) -> usize {
+        self.max_splits
+    }
+
+    /// Routed pairs per layer and expert since load, plus the routing profile if one was given
+    /// (a profile for [`LoadOptions::routing_profile`]); empty when every expert is resident.
+    pub fn routing_counts(&self) -> Vec<Vec<u64>> {
+        self.streamer
+            .as_ref()
+            .map(|s| s.counts().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// Rebuilds the hot set from the routing counts (ADR 0035): per layer the most routed
+    /// experts, as many as there are compute slots, pinned and made resident. Needs
+    /// `MissPolicy::Cpu`; call it between requests. Does nothing when every expert is resident.
+    pub fn refresh_hot_set(&mut self) -> Result<()> {
+        if self.policy != MissPolicy::Cpu {
+            return Err(ModelError::Invalid(
+                "the hot set needs the cpu miss policy".into(),
+            ));
+        }
+        let Some(streamer) = &mut self.streamer else {
+            return Ok(());
+        };
+        let layers = &self.weights.layers;
+        streamer.refresh_hot_set(&self.file, |il| layers[il].exps())
     }
 
     /// Expert cache and read counters; `None` when every expert is resident.
@@ -392,81 +461,124 @@ impl Qwen3Moe {
 
         let graphs_before = self.group_graphs_run;
         let nu = h.n_expert_used as usize;
+        let n_layer = h.n_layer as usize;
         let mut logits = Vec::new();
-        // The last pair group of the previous layer step, computed inside this segment.
-        let mut pending: Option<PairGroup> = None;
-        for seg in 0..=h.n_layer as usize {
-            let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
-            let group = pending
-                .as_ref()
-                .map(|p| (&self.weights.layers[seg - 1], p.pairs.len()));
-            let (graph, out, inputs) = build_segment(
-                &h,
-                &self.weights,
-                &self.kv,
-                st,
-                &ctx,
-                seg,
-                self.n_past,
-                last_only,
-                group,
-            );
-            self.sched.alloc_graph(&graph)?;
-            if let (Some(p), Some(inputs)) = (pending.take(), inputs) {
-                inputs.write(&p)?;
-                self.groups_run += 1;
-            }
-            self.sched.compute(&graph)?;
-            self.segments_run += 1;
-            if let Some(l) = out {
-                logits = l.get_f32()?;
-            }
-            if seg < h.n_layer as usize {
-                let slot = &st.slots[seg % 2];
-                let chosen = slot.ids.get().get_i32()?;
-                if let Some(log) = &mut self.routing {
-                    log.push(RoutingStep {
-                        layer: seg,
-                        ids: chosen.clone(),
-                        weights: slot.w.get().get_f32()?,
-                    });
+        // The pair groups of the previous layer step that run inside this segment.
+        let mut pending: Vec<PendingGroup> = Vec::new();
+        for seg in 0..=n_layer {
+            let groups = std::mem::take(&mut pending);
+            {
+                let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
+                let specs: Vec<([Tensor<'_>; 3], usize)> = groups
+                    .iter()
+                    .map(|g| {
+                        let lw = &self.weights.layers[seg - 1];
+                        let exps = group_exps(g.src, lw, self.streamer.as_ref(), seg - 1);
+                        (exps, g.pairs.pairs.len())
+                    })
+                    .collect();
+                let (graph, out, inputs) = build_segment(
+                    &h,
+                    &self.weights,
+                    &self.kv,
+                    st,
+                    &ctx,
+                    seg,
+                    self.n_past,
+                    last_only,
+                    &specs,
+                );
+                self.sched.alloc_graph(&graph)?;
+                self.max_splits = self.max_splits.max(self.sched.n_splits());
+                for (g, i) in groups.iter().zip(&inputs) {
+                    i.write(&g.pairs)?;
+                    self.groups_run += 1;
                 }
-                let Some(streamer) = &mut self.streamer else {
-                    // All experts resident: the router's ids are the tensor rows.
-                    self.metrics.layer_step(true);
-                    slot.ids_map.get().set_i32(&chosen)?;
-                    continue;
-                };
-                let layer = &self.weights.layers[seg];
-                let chunks = streamer.plan(seg, &chosen)?;
-                if let [chunk] = chunks.as_slice() {
-                    let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
-                    slot.ids_map
-                        .get()
-                        .set_i32(&map_ids(&chosen, chunk, &slots))?;
+                self.sched.compute(&graph)?;
+                self.segments_run += 1;
+                if let Some(l) = out {
+                    logits = l.get_f32()?;
+                }
+            }
+            if seg == n_layer {
+                continue;
+            }
+            let slot = &st.slots[seg % 2];
+            let chosen = slot.ids.get().get_i32()?;
+            if let Some(log) = &mut self.routing {
+                log.push(RoutingStep {
+                    layer: seg,
+                    ids: chosen.clone(),
+                    weights: slot.w.get().get_f32()?,
+                });
+            }
+            let Some(streamer) = &mut self.streamer else {
+                // All experts resident: the router's ids are the tensor rows.
+                self.metrics.layer_step(true);
+                slot.ids_map.get().set_i32(&chosen)?;
+                continue;
+            };
+            let layer = &self.weights.layers[seg];
+            if self.policy == MissPolicy::Cpu {
+                // Resident experts run from the compute slots, the others from the RAM slots
+                // on the CPU, in chunks of the RAM slot count (ADR 0035).
+                let plan = streamer.plan_cpu(seg, &chosen)?;
+                if plan.cpu.is_empty() {
+                    let ids = map_ids(&chosen, &plan.compute, &plan.compute_slots);
+                    slot.ids_map.get().set_i32(&ids)?;
                     continue;
                 }
-                // More distinct experts than slots: one pair group per chunk (ADR 0035). All
-                // but the last run as graphs of their own; the last goes into the next segment.
-                let last = chunks.len() - 1;
-                for (i, chunk) in chunks.iter().enumerate() {
-                    let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
-                    let group = group_pairs(&chosen, nu, chunk, &slots);
+                let last = plan.cpu.len() - 1;
+                for (i, chunk) in plan.cpu.iter().enumerate() {
+                    let slots = streamer.stage_ram(&self.file, seg, chunk)?;
+                    let pairs = group_pairs(&chosen, nu, chunk, &slots);
+                    let group = PendingGroup {
+                        src: ExpertSrc::Ram,
+                        pairs,
+                    };
                     if i == last {
-                        pending = Some(group);
+                        pending.push(group);
                         continue;
                     }
-                    let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
-                    let mut g = ctx.new_graph(SEGMENT_NODES);
-                    let acc = ctx.reshape(slot.acc.get(), &[h.n_embd as i64, acc_rows(slot)]);
-                    let (done, inputs) = add_group(&h, &ctx, layer, slot, acc, group.pairs.len());
-                    g.expand(done);
-                    self.sched.alloc_graph(&g)?;
-                    inputs.write(&group)?;
-                    self.sched.compute(&g)?;
+                    let exps = streamer.ram_exps(seg).expect("RAM tier");
+                    let splits = run_group_graph(&h, &mut self.sched, exps, slot, &group.pairs)?;
+                    self.max_splits = self.max_splits.max(splits);
                     self.groups_run += 1;
                     self.group_graphs_run += 1;
                 }
+                if !plan.compute.is_empty() {
+                    pending.push(PendingGroup {
+                        src: ExpertSrc::Compute,
+                        pairs: group_pairs(&chosen, nu, &plan.compute, &plan.compute_slots),
+                    });
+                }
+                continue;
+            }
+            let chunks = streamer.plan(seg, &chosen)?;
+            if let [chunk] = chunks.as_slice() {
+                let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
+                slot.ids_map
+                    .get()
+                    .set_i32(&map_ids(&chosen, chunk, &slots))?;
+                continue;
+            }
+            // More distinct experts than slots: one pair group per chunk (ADR 0035). All
+            // but the last run as graphs of their own; the last goes into the next segment.
+            let last = chunks.len() - 1;
+            for (i, chunk) in chunks.iter().enumerate() {
+                let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
+                let pairs = group_pairs(&chosen, nu, chunk, &slots);
+                if i == last {
+                    pending.push(PendingGroup {
+                        src: ExpertSrc::Compute,
+                        pairs,
+                    });
+                    continue;
+                }
+                let splits = run_group_graph(&h, &mut self.sched, layer.exps(), slot, &pairs)?;
+                self.max_splits = self.max_splits.max(splits);
+                self.groups_run += 1;
+                self.group_graphs_run += 1;
             }
         }
         self.n_past += n;
@@ -480,6 +592,11 @@ impl Qwen3Moe {
                 // Segment graphs plus the standalone group graphs of this step (ADR 0035).
                 segments: h.n_layer + 1 + (self.group_graphs_run - graphs_before) as u32,
             });
+        }
+        if n > 1 && self.hot_pending {
+            // The first prefill's routing decides the hot set (ADR 0035).
+            self.hot_pending = false;
+            self.refresh_hot_set()?;
         }
         Ok(logits)
     }
@@ -527,6 +644,55 @@ fn group_pairs(chosen: &[i32], n_used: usize, experts: &[u32], slots: &[u32]) ->
     g
 }
 
+/// Which tensors a pair group's experts are in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExpertSrc {
+    /// The layer's expert tensors: all experts, or the compute slots.
+    Compute,
+    /// The RAM slot tensors, computed on the CPU.
+    Ram,
+}
+
+/// A pair group waiting to be built into the next segment.
+struct PendingGroup {
+    src: ExpertSrc,
+    pairs: PairGroup,
+}
+
+fn group_exps<'a>(
+    src: ExpertSrc,
+    lw: &'a Layer,
+    streamer: Option<&'a Streamer>,
+    il: usize,
+) -> [Tensor<'a>; 3] {
+    match src {
+        ExpertSrc::Compute => lw.exps(),
+        ExpertSrc::Ram => streamer
+            .and_then(|s| s.ram_exps(il))
+            .expect("a RAM group needs the RAM tier"),
+    }
+}
+
+/// Runs one pair group as a graph of its own. Returns the scheduler's split count.
+fn run_group_graph(
+    h: &Hparams,
+    sched: &mut Sched,
+    exps: [Tensor<'_>; 3],
+    s: &Slot,
+    group: &PairGroup,
+) -> Result<usize> {
+    let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
+    let mut g = ctx.new_graph(SEGMENT_NODES);
+    let acc = ctx.reshape(s.acc.get(), &[h.n_embd as i64, acc_rows(s)]);
+    let (done, inputs) = add_group(h, &ctx, exps, s, acc, group.pairs.len());
+    g.expand(done);
+    sched.alloc_graph(&g)?;
+    let splits = sched.n_splits();
+    inputs.write(group)?;
+    sched.compute(&g)?;
+    Ok(splits)
+}
+
 /// Index tensors of a group in a graph; filled after the graph is allocated.
 struct GroupInputs<'a> {
     tokens: Tensor<'a>,
@@ -556,19 +722,20 @@ fn acc_rows(s: &Slot) -> i64 {
 fn add_group<'a>(
     h: &Hparams,
     ctx: &'a Context,
-    lw: &'a Layer,
+    exps: [Tensor<'a>; 3],
     s: &'a Slot,
     dst: Tensor<'a>,
     n_pairs: usize,
 ) -> (Tensor<'a>, GroupInputs<'a>) {
+    let [gate_exps, up_exps, down_exps] = exps;
     let p = n_pairs as i64;
     let index = |ne: &[i64]| ctx.new_tensor(Type::I32, ne).set_input();
     let (tokens, ids, pairs) = (index(&[p]), index(&[1, p]), index(&[p]));
     let xg = ctx.reshape(ctx.get_rows(s.xn.get(), tokens), &[h.n_embd as i64, 1, p]);
-    let up = ctx.mul_mat_id(lw.up_exps.get(), xg, ids);
-    let gate = ctx.mul_mat_id(lw.gate_exps.get(), xg, ids);
+    let up = ctx.mul_mat_id(up_exps, xg, ids);
+    let gate = ctx.mul_mat_id(gate_exps, xg, ids);
     let act = ctx.swiglu_split(gate, up);
-    let out = ctx.mul_mat_id(lw.down_exps.get(), act, ids);
+    let out = ctx.mul_mat_id(down_exps, act, ids);
     let out = ctx.reshape(out, &[h.n_embd as i64, p]);
     (
         ctx.set_rows(dst, out, pairs),
@@ -626,7 +793,7 @@ fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Re
             down_exps: l("ffn_down_exps")?,
         });
     }
-    ctx.alloc_tensors(backend)?;
+    ctx.alloc_weights(backend)?;
     if slots.is_some() {
         // Defensive: slots never loaded hold zeros, not garbage.
         ctx.clear_buffer(0);
@@ -708,23 +875,26 @@ fn build_segment<'a>(
     seg: usize,
     n_past: usize,
     last_only: bool,
-    group: Option<(&'a Layer, usize)>,
-) -> (Graph<'a>, Option<Tensor<'a>>, Option<GroupInputs<'a>>) {
+    groups: &[([Tensor<'a>; 3], usize)],
+) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
     let n_layer = h.n_layer as usize;
 
-    let mut inputs = None;
+    let mut inputs = Vec::new();
     let x = if seg == 0 {
         ctx.get_rows(w.tok_embd.get(), st.tokens.get())
     } else {
         let s = &st.slots[(seg - 1) % 2];
-        let moe = if let Some((lw, n_pairs)) = group {
-            // The earlier groups are in `acc`; this one completes it, then the same weighting
+        let moe = if !groups.is_empty() {
+            // The earlier groups are in `acc`; these complete it, then the same weighting
             // and sum as a single pass (ADR 0034).
-            let acc = ctx.reshape(s.acc.get(), &[h.n_embd as i64, acc_rows(s)]);
-            let (done, i) = add_group(h, ctx, lw, s, acc, n_pairs);
-            inputs = Some(i);
-            let done = ctx.reshape(done, &s.acc.get().ne()[..3]);
+            let mut acc = ctx.reshape(s.acc.get(), &[h.n_embd as i64, acc_rows(s)]);
+            for &(exps, n_pairs) in groups {
+                let (done, i) = add_group(h, ctx, exps, s, acc, n_pairs);
+                acc = done;
+                inputs.push(i);
+            }
+            let done = ctx.reshape(acc, &s.acc.get().ne()[..3]);
             sum_experts(h, ctx, ctx.mul(done, s.w.get()))
         } else {
             moe_ffn(h, ctx, &w.layers[seg - 1], s)
