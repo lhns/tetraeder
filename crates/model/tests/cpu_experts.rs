@@ -240,8 +240,9 @@ fn cpu_miss_policy_cpu_needs_ram_slots() {
 }
 
 /// hardware: gpu (skips without a GPU device). The resident GPU builder against `Cpu` with 8
-/// compute slots and 32 RAM slots on the same GPU: same top-1 everywhere, logits within a
-/// tolerance (CPU and GPU kernels round differently), decode after the hot set uploads nothing,
+/// compute slots and 32 RAM slots on the same GPU: logits within twice the resident CPU-vs-GPU
+/// difference (the kernels round differently; on this random fixture that cascades to several
+/// logits), top-1 flips only at near ties, decode after the hot set uploads nothing,
 /// and the scheduler splits a mixed segment between the backends.
 #[test]
 fn gpu_cpu_groups_match_resident() {
@@ -261,8 +262,16 @@ fn gpu_cpu_groups_match_resident() {
     m.reset();
     got.extend(run_prompt(&mut m, &prompt(53, 11), Some(&tokens[N_DECODE..])).0);
     let n_vocab = m.n_vocab();
-    let scale = want.iter().flatten().fold(0f32, |a, x| a.max(x.abs()));
-    let tol = TOL_GPU + 1e-2 * scale;
+    // The yardstick: how far the resident builder on the CPU is from the resident GPU builder on
+    // the same tokens. Mixing the backends cannot be expected to stay closer than twice that.
+    let cpu_ref = sequence(&mut load(&path, &opts(CPU, None)), Some(&tokens)).0;
+    let max_delta = |a: &[Vec<f32>], b: &[Vec<f32>]| {
+        a.iter().zip(b).fold(0f32, |m, (x, y)| {
+            x.iter().zip(y).fold(m, |m, (p, q)| m.max((p - q).abs()))
+        })
+    };
+    let backend_delta = max_delta(&want, &cpu_ref);
+    let tol = TOL_GPU + 2.0 * backend_delta;
     let mut worst = 0f32;
     let mut flips = Vec::new();
     for (i, (a, b)) in want.iter().zip(&got).enumerate() {
@@ -283,16 +292,21 @@ fn gpu_cpu_groups_match_resident() {
     }
     let s = m.expert_stats().unwrap();
     eprintln!(
-        "gpu: max |logit delta| {worst:e} (tolerance {tol:e}, logit scale {scale}), max splits {}, groups {}, uploads {} (after the first hot set {after_hot}), cpu experts {}, compute hits {}",
+        "gpu: max |logit delta| {worst:e} (tolerance {tol:e}), max splits {}, groups {}, uploads {} (after the first hot set {after_hot}), cpu experts {}, compute hits {}",
         m.max_splits(),
         m.expert_groups(),
         s.io.uploads,
         sum(&s, |l| l.cpu),
         sum(&s, |l| l.compute.hits),
     );
-    eprintln!("top-1 flips (eval, position, resident, got, resident margin): {flips:?}");
+    eprintln!(
+        "top-1 flips (eval, position, resident, got, resident margin): {flips:?}; resident CPU vs GPU max delta {backend_delta:e}"
+    );
     assert!(worst <= tol, "max |logit delta| {worst:e} above {tol:e}");
-    assert!(flips.is_empty(), "top-1 differs: {flips:?}");
+    // a top-1 flip is a rounding effect only where the resident choice was within the yardstick
+    for f in &flips {
+        assert!(f.4 <= tol, "top-1 differs beyond a near tie: {f:?}");
+    }
     assert_eq!(
         s.io.uploads, after_hot,
         "decode and the second prefill upload nothing"
