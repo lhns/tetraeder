@@ -56,7 +56,7 @@ pub struct StepSample {
     pub duration: Duration,
     pub tokens: u32,
     /// Graph segments the step ran: 1 for a whole-graph step, `n_layer + 1` for the builder's
-    /// per-MoE-layer segments (ADR 0030), plus the overflow passes of the step (ADR 0033).
+    /// per-MoE-layer segments (ADR 0030), plus the standalone expert group graphs of the step (ADR 0035).
     pub segments: u32,
 }
 

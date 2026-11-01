@@ -145,7 +145,7 @@ impl Streamer {
 
     /// Splits a layer step into chunks of experts that fit the compute slots together: the
     /// distinct experts in order of first appearance, resident ones first. One chunk is the
-    /// usual case; more mean the overflow passes of ADR 0033.
+    /// usual case; more mean one pair group per chunk (ADR 0035).
     pub(crate) fn plan(&mut self, il: usize, chosen: &[i32]) -> Result<Vec<Vec<u32>>> {
         let mut seen = vec![false; self.n_expert as usize];
         let mut distinct = Vec::new();

@@ -105,6 +105,13 @@ impl Context {
         self.t(unsafe { sys::ggml_get_rows(self.ptr.as_ptr(), a.raw(), idx.raw()) })
     }
 
+    /// Writes the rows of `src` (F32 `[n, n_rows]`) into `dst` at the row numbers in the I32
+    /// tensor `idx`. Returns a view of `dst`; use it to order later reads after the write.
+    pub fn set_rows<'a>(&'a self, dst: Tensor<'a>, src: Tensor<'a>, idx: Tensor<'a>) -> Tensor<'a> {
+        // SAFETY: see `get_rows`.
+        self.t(unsafe { sys::ggml_set_rows(self.ptr.as_ptr(), dst.raw(), src.raw(), idx.raw()) })
+    }
+
     pub fn add<'a>(&'a self, a: Tensor<'a>, b: Tensor<'a>) -> Tensor<'a> {
         // SAFETY: see `get_rows`.
         self.t(unsafe { sys::ggml_add(self.ptr.as_ptr(), a.raw(), b.raw()) })

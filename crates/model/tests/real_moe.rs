@@ -137,7 +137,7 @@ fn routing_diff(a: &Run, b: &Run, n_prompt: usize) -> Vec<usize> {
 }
 
 /// Where two runs' prefills first differ: the first layer whose router weights differ bitwise
-/// (the layer after the first different FFN output), its tokens, and per token the passes its
+/// (the layer after the first different FFN output), its tokens, and per token the groups its
 /// experts of the layer before fell into with `slots` (prefill from empty slots: distinct experts
 /// in first-appearance order, chunks of `slots`).
 fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
@@ -154,7 +154,7 @@ fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
         if tokens.is_empty() {
             continue;
         }
-        let passes = if l == 0 {
+        let groups = if l == 0 {
             Vec::new()
         } else {
             let ids = &a.routing[l - 1];
@@ -164,12 +164,12 @@ fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
                     order.push(e);
                 }
             }
-            let pass_of = |e: i32| order.iter().position(|&o| o == e).unwrap() / slots;
+            let group_of = |e: i32| order.iter().position(|&o| o == e).unwrap() / slots;
             (0..n_prompt)
                 .map(|t| {
                     let mut p: Vec<usize> = ids[t * nu..(t + 1) * nu]
                         .iter()
-                        .map(|&e| pass_of(e))
+                        .map(|&e| group_of(e))
                         .collect();
                     p.sort();
                     p.dedup();
@@ -177,13 +177,13 @@ fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
                 })
                 .collect::<Vec<_>>()
         };
-        let single_pass_tokens = passes.iter().filter(|p| p.len() == 1).count();
-        let differing_passes: Vec<_> = tokens.iter().map(|&t| passes.get(t).cloned()).collect();
+        let single_group_tokens = groups.iter().filter(|p| p.len() == 1).count();
+        let differing_groups: Vec<_> = tokens.iter().map(|&t| groups.get(t).cloned()).collect();
         return json!({
             "layer": l,
             "tokens": tokens,
-            "their_passes_in_layer_before": differing_passes,
-            "single_pass_tokens_in_layer_before": single_pass_tokens,
+            "their_groups_in_layer_before": differing_groups,
+            "single_group_tokens_in_layer_before": single_group_tokens,
         });
     }
     json!(null)
@@ -259,7 +259,8 @@ fn run_config(
         "decode_tok_s": N_GREEDY as f64 / decode_s,
         "max_top5_delta": worst,
         "first_prompt_pos_off": first_off,
-        "overflow_passes": m.overflow_passes(),
+        "expert_groups": m.expert_groups(),
+        "group_graphs": m.group_graphs(),
         "greedy": greedy,
     });
     if let Some(s) = m.expert_stats() {
@@ -337,10 +338,10 @@ fn gpu_real_moe_streaming() {
     // (name, compute slots, RAM slots, prefill evals, base config, exact).
     // Single-token evals take CUDA's vector kernel, whose result per row does not depend on the
     // number of experts in the tensor, so streaming must equal the resident builder bit for bit.
-    // A prefill that needs overflow passes takes MMQ, whose stream-k split depends on that
-    // number; it is checked for gross errors only (ADR 0034). On the CPU the same multi-pass
-    // prefill is exact since masked pairs park outside the slots (ADR 0034), which separates the
-    // kernel's rounding from the streaming logic.
+    // A prefill that needs pair groups takes MMQ, whose stream-k split depends on the number of
+    // rows per expert; it is checked for gross errors only (ADR 0034, 0035). On the CPU the same
+    // prefill is exact since a group gives every expert all its rows (ADR 0035), which separates
+    // the kernel's rounding from the streaming logic.
     let n = r.prompt.len();
     let configs = [
         ("resident", None, None, 1, None, true),

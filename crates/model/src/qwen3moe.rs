@@ -8,6 +8,11 @@
 //!
 //! With fewer expert slots than experts (ADR 0033) the expert tensors are slot tensors; between
 //! segments the [`Streamer`] makes the routed experts resident and the host writes slot ids.
+//! When a layer step routes to more distinct experts than there are slots, its (token, choice)
+//! pairs are split into pair groups, one per chunk of resident experts (ADR 0035). A group
+//! gathers the inputs of its pairs, runs the expert matmuls on them and scatters the unweighted
+//! outputs into the slot's `acc`. The last group runs inside the next segment, which then
+//! weights and sums `acc` with the same ops as the resident graph.
 
 use crate::experts::{ExpertStats, RoutingStep, Streamer};
 use crate::gguf::GgufError;
@@ -156,7 +161,7 @@ struct Slot {
     ids: OwnedTensor,
     /// The ids the expert matmuls use, written by the host.
     ids_map: OwnedTensor,
-    /// Sum of the expert FFN passes when a layer step needed more than one (ADR 0033).
+    /// Unweighted expert outputs per (token, choice), filled by pair groups (ADR 0035).
     acc: OwnedTensor,
 }
 
@@ -180,7 +185,8 @@ pub struct Qwen3Moe {
     state: Option<State>,
     n_past: usize,
     segments_run: u64,
-    passes_run: u64,
+    groups_run: u64,
+    group_graphs_run: u64,
     streamer: Option<Streamer>,
     metrics: MemoryMetrics,
     telemetry: Option<Arc<Telemetry>>,
@@ -223,12 +229,10 @@ impl Qwen3Moe {
         };
         let sched = Sched::new(&backends, SEGMENT_NODES * 4, false)?;
         let slots = match opts.expert_slots {
-            // A token's experts need distinct slots within one pass (ADR 0034).
-            Some(n) if n < h.n_expert_used as usize => {
-                return Err(ModelError::Invalid(format!(
-                    "expert_slots must be at least the experts per token ({})",
-                    h.n_expert_used
-                )));
+            Some(0) => {
+                return Err(ModelError::Invalid(
+                    "expert_slots must be at least 1".into(),
+                ));
             }
             Some(n) if n < h.n_expert as usize => Some(n),
             _ => None,
@@ -265,7 +269,8 @@ impl Qwen3Moe {
             state: None,
             n_past: 0,
             segments_run: 0,
-            passes_run: 0,
+            groups_run: 0,
+            group_graphs_run: 0,
             streamer,
             metrics,
             telemetry: opts.telemetry.clone(),
@@ -304,10 +309,15 @@ impl Qwen3Moe {
         self.segments_run
     }
 
-    /// Extra expert FFN graphs run because a layer step needed more distinct experts than
-    /// there are slots (ADR 0033).
-    pub fn overflow_passes(&self) -> u64 {
-        self.passes_run
+    /// Pair groups computed because a layer step needed more distinct experts than there are
+    /// slots (ADR 0035), inside a segment or as a standalone graph.
+    pub fn expert_groups(&self) -> u64 {
+        self.groups_run
+    }
+
+    /// Standalone group graphs run: graphs beyond the `n_layer + 1` segments of a step.
+    pub fn group_graphs(&self) -> u64 {
+        self.group_graphs_run
     }
 
     /// Expert cache and read counters; `None` when every expert is resident.
@@ -380,15 +390,17 @@ impl Qwen3Moe {
         }
         st.mask.get().set_bytes(&f16_bits_tensor_bytes(&mask), 0)?;
 
-        let passes_before = self.passes_run;
+        let graphs_before = self.group_graphs_run;
         let nu = h.n_expert_used as usize;
-        let mut mapped = Vec::new();
         let mut logits = Vec::new();
-        // The previous layer step ran in several passes and left the FFN sum in `acc`.
-        let mut from_acc = false;
+        // The last pair group of the previous layer step, computed inside this segment.
+        let mut pending: Option<PairGroup> = None;
         for seg in 0..=h.n_layer as usize {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
-            let (graph, out) = build_segment(
+            let group = pending
+                .as_ref()
+                .map(|p| (&self.weights.layers[seg - 1], p.pairs.len()));
+            let (graph, out, inputs) = build_segment(
                 &h,
                 &self.weights,
                 &self.kv,
@@ -397,10 +409,13 @@ impl Qwen3Moe {
                 seg,
                 self.n_past,
                 last_only,
-                from_acc,
+                group,
             );
-            from_acc = false;
             self.sched.alloc_graph(&graph)?;
+            if let (Some(p), Some(inputs)) = (pending.take(), inputs) {
+                inputs.write(&p)?;
+                self.groups_run += 1;
+            }
             self.sched.compute(&graph)?;
             self.segments_run += 1;
             if let Some(l) = out {
@@ -424,42 +439,34 @@ impl Qwen3Moe {
                 };
                 let layer = &self.weights.layers[seg];
                 let chunks = streamer.plan(seg, &chosen)?;
-                // The parking entries follow the slots (see `load_weights`).
-                let park = layer.gate_exps.get().ne()[2] as usize - nu;
                 if let [chunk] = chunks.as_slice() {
                     let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
-                    map_chunk(&chosen, nu, chunk, &slots, park, &mut mapped, None);
-                    slot.ids_map.get().set_i32(&mapped)?;
+                    slot.ids_map
+                        .get()
+                        .set_i32(&map_ids(&chosen, chunk, &slots))?;
                     continue;
                 }
-                // More distinct experts than slots: one FFN pass per chunk, summed (ADR 0033).
-                // The passes scale by a 0/1 mask instead of the router weights and collect the
-                // unweighted expert outputs; the next segment applies the weights (ADR 0034).
-                let weights = slot.w.get().get_f32()?;
-                let mut mask = Vec::new();
-                for (pass, chunk) in chunks.iter().enumerate() {
+                // More distinct experts than slots: one pair group per chunk (ADR 0035). All
+                // but the last run as graphs of their own; the last goes into the next segment.
+                let last = chunks.len() - 1;
+                for (i, chunk) in chunks.iter().enumerate() {
                     let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
-                    mask.clear();
-                    mask.resize(weights.len(), 1.0);
-                    map_chunk(
-                        &chosen,
-                        nu,
-                        chunk,
-                        &slots,
-                        park,
-                        &mut mapped,
-                        Some(&mut mask),
-                    );
-                    slot.ids_map.get().set_i32(&mapped)?;
-                    slot.w.get().set_f32(&mask)?;
+                    let group = group_pairs(&chosen, nu, chunk, &slots);
+                    if i == last {
+                        pending = Some(group);
+                        continue;
+                    }
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
-                    let graph = ffn_pass(&h, &ctx, layer, slot, pass == 0);
-                    self.sched.alloc_graph(&graph)?;
-                    self.sched.compute(&graph)?;
-                    self.passes_run += 1;
+                    let mut g = ctx.new_graph(SEGMENT_NODES);
+                    let acc = ctx.reshape(slot.acc.get(), &[h.n_embd as i64, acc_rows(slot)]);
+                    let (done, inputs) = add_group(&h, &ctx, layer, slot, acc, group.pairs.len());
+                    g.expand(done);
+                    self.sched.alloc_graph(&g)?;
+                    inputs.write(&group)?;
+                    self.sched.compute(&g)?;
+                    self.groups_run += 1;
+                    self.group_graphs_run += 1;
                 }
-                slot.w.get().set_f32(&weights)?;
-                from_acc = true;
             }
         }
         self.n_past += n;
@@ -470,51 +477,103 @@ impl Qwen3Moe {
                 graphs: false,
                 duration: t0.elapsed(),
                 tokens: n as u32,
-                // Segment graphs plus the overflow passes of this step (ADR 0033).
-                segments: h.n_layer + 1 + (self.passes_run - passes_before) as u32,
+                // Segment graphs plus the standalone group graphs of this step (ADR 0035).
+                segments: h.n_layer + 1 + (self.group_graphs_run - graphs_before) as u32,
             });
         }
         Ok(logits)
     }
 }
 
-/// Writes into `mapped` the slot of each chosen expert (`chosen` holds `n_used` per token). Pairs
-/// whose expert is outside `chunk` (another pass) get mask 0 in `masked` and one of the `n_used`
-/// zero parking entries from `park` on, distinct per token: CUDA's sorted `mul_mat_id` counts
-/// each (token, slot) once and aborts on repeats. Parking keeps the rows of every chunk slot equal
-/// to its expert's rows in a single pass; the CPU's K-quant `mul_mat_id` picks its kernel per
-/// expert by that row count, so extra rows would change the rounding of the real pairs (ADR 0034).
-fn map_chunk(
-    chosen: &[i32],
-    n_used: usize,
-    chunk: &[u32],
-    slots: &[u32],
-    park: usize,
-    mapped: &mut Vec<i32>,
-    mut masked: Option<&mut Vec<f32>>,
-) {
-    let slot_of = |e: i32| {
-        chunk
-            .iter()
-            .position(|&c| c as i32 == e)
-            .map(|i| slots[i] as i32)
-    };
-    mapped.clear();
-    for (t, token) in chosen.chunks(n_used).enumerate() {
-        let start = mapped.len();
-        mapped.extend(token.iter().map(|&e| slot_of(e).unwrap_or(-1)));
-        let mut free = park as i32;
-        for i in start..mapped.len() {
-            if mapped[i] >= 0 {
-                continue;
-            }
-            mapped[i] = free;
-            free += 1;
-            if let Some(m) = masked.as_deref_mut() {
-                m[t * n_used + i - start] = 0.0;
-            }
+/// The slot of each chosen expert; every chosen expert is in `chunk` (the single-chunk case).
+fn map_ids(chosen: &[i32], chunk: &[u32], slots: &[u32]) -> Vec<i32> {
+    chosen
+        .iter()
+        .map(|&e| {
+            let i = chunk
+                .iter()
+                .position(|&c| c as i32 == e)
+                .expect("a single chunk holds every chosen expert");
+            slots[i] as i32
+        })
+        .collect()
+}
+
+/// The pairs of one expert group (ADR 0035), in the order the resident `mul_mat_id` visits them.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct PairGroup {
+    /// The pair's token: the row of the normed hidden state to gather.
+    tokens: Vec<i32>,
+    /// `token * n_used + choice`: the pair's row in the accumulator.
+    pairs: Vec<i32>,
+    /// The slot of the pair's expert.
+    ids: Vec<i32>,
+}
+
+/// The pairs of `chosen` (`n_used` per token) whose expert is in `experts`, with the experts' slots
+/// in `slots`. Walking token-major, choice-minor gives each expert all its routed rows in the
+/// order the resident layer gives them; the CPU's K-quant `mul_mat_id` picks its kernel per expert
+/// by that row count and order, so this keeps the group bitwise equal to the resident layer
+/// (ADR 0034, 0035).
+fn group_pairs(chosen: &[i32], n_used: usize, experts: &[u32], slots: &[u32]) -> PairGroup {
+    let mut g = PairGroup::default();
+    for (pair, &e) in chosen.iter().enumerate() {
+        if let Some(i) = experts.iter().position(|&c| c as i32 == e) {
+            g.tokens.push((pair / n_used) as i32);
+            g.pairs.push(pair as i32);
+            g.ids.push(slots[i] as i32);
         }
     }
+    g
+}
+
+/// Index tensors of a group in a graph; filled after the graph is allocated.
+struct GroupInputs<'a> {
+    tokens: Tensor<'a>,
+    ids: Tensor<'a>,
+    pairs: Tensor<'a>,
+}
+
+impl GroupInputs<'_> {
+    fn write(&self, g: &PairGroup) -> Result<()> {
+        self.tokens.set_i32(&g.tokens)?;
+        self.ids.set_i32(&g.ids)?;
+        self.pairs.set_i32(&g.pairs)?;
+        Ok(())
+    }
+}
+
+/// Rows of the slot's accumulator viewed as `[n_embd, n_used * n_tokens]`.
+fn acc_rows(s: &Slot) -> i64 {
+    let ne = s.acc.get().ne();
+    ne[1] * ne[2]
+}
+
+/// Adds the expert FFN of a group of `n_pairs` pairs: gather the pairs' inputs, run the expert
+/// matmuls with one expert per row, and write the unweighted outputs into the rows `pairs` of
+/// `dst` (`[n_embd, n_used * n_tokens]`). Returns the written `dst`, to order later reads after
+/// the write, and the index tensors to fill.
+fn add_group<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    lw: &'a Layer,
+    s: &'a Slot,
+    dst: Tensor<'a>,
+    n_pairs: usize,
+) -> (Tensor<'a>, GroupInputs<'a>) {
+    let p = n_pairs as i64;
+    let index = |ne: &[i64]| ctx.new_tensor(Type::I32, ne).set_input();
+    let (tokens, ids, pairs) = (index(&[p]), index(&[1, p]), index(&[p]));
+    let xg = ctx.reshape(ctx.get_rows(s.xn.get(), tokens), &[h.n_embd as i64, 1, p]);
+    let up = ctx.mul_mat_id(lw.up_exps.get(), xg, ids);
+    let gate = ctx.mul_mat_id(lw.gate_exps.get(), xg, ids);
+    let act = ctx.swiglu_split(gate, up);
+    let out = ctx.mul_mat_id(lw.down_exps.get(), act, ids);
+    let out = ctx.reshape(out, &[h.n_embd as i64, p]);
+    (
+        ctx.set_rows(dst, out, pairs),
+        GroupInputs { tokens, ids, pairs },
+    )
 }
 
 /// With `slots`, the expert tensors have that many entries and are left empty (zeros) for the
@@ -529,8 +588,7 @@ fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Re
         let mut ne: Vec<i64> = info.ne.iter().map(|&x| x as i64).collect();
         let streamed = slots.filter(|_| name.contains("_exps."));
         if let Some(n) = streamed {
-            // `n_used` parking entries after the slots for the masked pairs of overflow passes.
-            ne[2] = (n + h.n_expert_used as usize) as i64;
+            ne[2] = n as i64;
         }
         let nd = ne.iter().rposition(|&x| x != 1).map_or(1, |i| i + 1);
         let t = ctx.new_persistent(info.ty, &ne[..nd]);
@@ -570,8 +628,7 @@ fn load_weights(file: &ModelFile, backend: &Backend, slots: Option<usize>) -> Re
     }
     ctx.alloc_tensors(backend)?;
     if slots.is_some() {
-        // Parking entries and slots that are never loaded must hold finite weights: an overflow
-        // pass runs their matmuls with mask 0, and 0 * NaN is NaN.
+        // Defensive: slots never loaded hold zeros, not garbage.
         ctx.clear_buffer(0);
     }
     let mut f = std::fs::File::open(&file.path)?;
@@ -651,17 +708,24 @@ fn build_segment<'a>(
     seg: usize,
     n_past: usize,
     last_only: bool,
-    from_acc: bool,
-) -> (Graph<'a>, Option<Tensor<'a>>) {
+    group: Option<(&'a Layer, usize)>,
+) -> (Graph<'a>, Option<Tensor<'a>>, Option<GroupInputs<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
     let n_layer = h.n_layer as usize;
 
+    let mut inputs = None;
     let x = if seg == 0 {
         ctx.get_rows(w.tok_embd.get(), st.tokens.get())
     } else {
         let s = &st.slots[(seg - 1) % 2];
-        let moe = if from_acc {
-            sum_experts(h, ctx, ctx.mul(s.acc.get(), s.w.get()))
+        let moe = if let Some((lw, n_pairs)) = group {
+            // The earlier groups are in `acc`; this one completes it, then the same weighting
+            // and sum as a single pass (ADR 0034).
+            let acc = ctx.reshape(s.acc.get(), &[h.n_embd as i64, acc_rows(s)]);
+            let (done, i) = add_group(h, ctx, lw, s, acc, n_pairs);
+            inputs = Some(i);
+            let done = ctx.reshape(done, &s.acc.get().ne()[..3]);
+            sum_experts(h, ctx, ctx.mul(done, s.w.get()))
         } else {
             moe_ffn(h, ctx, &w.layers[seg - 1], s)
         };
@@ -677,7 +741,7 @@ fn build_segment<'a>(
         let head = w.output.as_ref().unwrap_or(&w.tok_embd);
         let logits = ctx.mul_mat(head.get(), cur).set_output();
         g.expand(logits);
-        return (g, Some(logits));
+        return (g, Some(logits), inputs);
     }
 
     let s = &st.slots[seg % 2];
@@ -687,7 +751,7 @@ fn build_segment<'a>(
     g.expand(ctx.cpy(xn, s.xn.get()));
     g.expand(ctx.cpy(weights, s.w.get()));
     g.expand(ctx.cpy(ids, s.ids.get()));
-    (g, None)
+    (g, None, inputs)
 }
 
 /// Layer `il`: attention with Q/K norm, RoPE and the KV cache, the residual, the FFN norm and the
@@ -759,26 +823,6 @@ fn attention_and_router<'a>(
     (ffn_inp, xn, weights, ids)
 }
 
-/// One pass of the expert FFN of a layer step that needed several. The slot's `w` holds a 0/1
-/// mask here, so the pass adds its unweighted expert outputs into `acc` (or replaces it in the
-/// first pass). Each (token, choice) is nonzero in exactly one pass and `x * 1` and `x + 0` are
-/// exact, so `acc` ends up bitwise equal to the single pass's expert outputs. The next segment
-/// weights and sums it with the same ops as a single pass, which CUDA fuses into one kernel with
-/// its own rounding (ADR 0034).
-fn ffn_pass<'a>(
-    h: &Hparams,
-    ctx: &'a Context,
-    lw: &'a Layer,
-    s: &'a Slot,
-    first: bool,
-) -> Graph<'a> {
-    let mut g = ctx.new_graph(SEGMENT_NODES);
-    let out = weighted_experts(h, ctx, lw, s);
-    let acc = s.acc.get();
-    g.expand(ctx.cpy(if first { out } else { ctx.add(out, acc) }, acc));
-    g
-}
-
 /// Expert FFN of layer `il` for the ids in the slot's `ids_map`: `down(silu(gate) * up)`, scaled
 /// by the router weights and summed over the selected experts.
 fn moe_ffn<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Tensor<'a> {
@@ -808,31 +852,11 @@ fn sum_experts<'a>(h: &Hparams, ctx: &'a Context, experts: Tensor<'a>) -> Tensor
 
 #[cfg(test)]
 mod tests {
-    use super::map_chunk;
+    use super::group_pairs;
 
-    /// Two tokens, top-2, chunk {5} in slot 3 of 4: the masked pairs get weight 0 and parking
-    /// entries (from 4 on) that no other pair of their token uses (CUDA's mul_mat_id aborts on a
-    /// repeated slot).
-    #[test]
-    fn masked_pairs_get_distinct_slots_per_token() {
-        let chosen = [5, 1, 2, 4];
-        let mut mapped = Vec::new();
-        let mut w = vec![1.0; 4];
-        map_chunk(&chosen, 2, &[5], &[3], 4, &mut mapped, Some(&mut w));
-        assert_eq!(mapped, [3, 4, 4, 5]);
-        assert_eq!(w, [1.0, 0.0, 0.0, 0.0]);
-        for token in mapped.chunks(2) {
-            assert_ne!(token[0], token[1]);
-        }
-    }
-
-    /// Top-8 of 32 experts, 24 tokens, 8 slots: in every pass each chunk expert's slot gets
-    /// exactly the rows the expert has in a single pass, and masked pairs only use parking
-    /// entries. The CPU's K-quant `mul_mat_id` chooses its kernel per expert by that row count
-    /// (ADR 0034), so this is what keeps the passes bitwise equal to a single pass.
-    #[test]
-    fn passes_keep_the_rows_of_every_expert() {
-        let (n_expert, n_used, n_tokens, slots) = (32usize, 8usize, 24usize, 8usize);
+    /// Top-8 of 32 experts, 24 tokens, skewed like a real router: low ids are popular.
+    fn routing() -> (Vec<i32>, usize) {
+        let (n_expert, n_used, n_tokens) = (32usize, 8usize, 24usize);
         let mut x = 12345u64;
         let mut chosen = Vec::new();
         for _ in 0..n_tokens {
@@ -841,7 +865,6 @@ mod tests {
                 x = x
                     .wrapping_mul(6364136223846793005)
                     .wrapping_add(1442695040888963407);
-                // Skewed like a real router: low ids are popular.
                 let u = (x >> 33) as f64 / (1u64 << 31) as f64;
                 let e = (u * u * n_expert as f64) as i32;
                 if !token.contains(&e) {
@@ -850,6 +873,15 @@ mod tests {
             }
             chosen.extend(token);
         }
+        (chosen, n_used)
+    }
+
+    /// Every pair lands in exactly one group, in increasing pair order, and each expert has all
+    /// its routed rows in its group: the CPU's K-quant `mul_mat_id` picks its kernel per expert by
+    /// that row count (ADR 0034), so this keeps the groups bitwise equal to a single layer.
+    #[test]
+    fn groups_partition_the_pairs_and_keep_the_rows_of_every_expert() {
+        let (chosen, n_used) = routing();
         let mut order: Vec<u32> = Vec::new();
         for &e in &chosen {
             if !order.contains(&(e as u32)) {
@@ -857,36 +889,37 @@ mod tests {
             }
         }
         let rows = |e: u32| chosen.iter().filter(|&&c| c as u32 == e).count();
-        let chunks: Vec<&[u32]> = order.chunks(slots).collect();
-        assert!(chunks.len() > 1, "the routing needs passes");
-        let mut mapped = Vec::new();
-        for chunk in chunks {
-            let ids: Vec<u32> = (0..chunk.len() as u32).rev().collect();
-            let mut mask = vec![1.0; chosen.len()];
-            map_chunk(
-                &chosen,
-                n_used,
-                chunk,
-                &ids,
-                slots,
-                &mut mapped,
-                Some(&mut mask),
-            );
-            for (&e, &slot) in chunk.iter().zip(&ids) {
-                let got = mapped.iter().filter(|&&m| m == slot as i32).count();
-                assert_eq!(got, rows(e), "expert {e} in slot {slot}");
+        for size in [4usize, 8, 12] {
+            let chunks: Vec<&[u32]> = order.chunks(size).collect();
+            assert!(chunks.len() > 1, "chunks of {size} need several groups");
+            let mut seen = vec![0u32; chosen.len()];
+            for chunk in chunks {
+                // Slot numbers unrelated to the expert ids.
+                let slots: Vec<u32> = (0..chunk.len() as u32).rev().collect();
+                let g = group_pairs(&chosen, n_used, chunk, &slots);
+                assert!(g.pairs.windows(2).all(|w| w[0] < w[1]), "pairs increase");
+                for (i, &pair) in g.pairs.iter().enumerate() {
+                    let pair = pair as usize;
+                    seen[pair] += 1;
+                    assert_eq!(g.tokens[i] as usize, pair / n_used);
+                    let k = slots.iter().position(|&s| s as i32 == g.ids[i]).unwrap();
+                    assert_eq!(chunk[k] as i32, chosen[pair], "slot of pair {pair}");
+                }
+                for (&e, &slot) in chunk.iter().zip(&slots) {
+                    let got = g.ids.iter().filter(|&&i| i == slot as i32).count();
+                    assert_eq!(got, rows(e), "size {size}: expert {e} in slot {slot}");
+                }
             }
-            for (i, &m) in mapped.iter().enumerate() {
-                let masked = mask[i] == 0.0;
-                assert_eq!(masked, m as usize >= slots, "pair {i} -> slot {m}");
-                assert!((m as usize) < slots + n_used);
-            }
-            for token in mapped.chunks(n_used) {
-                let mut t = token.to_vec();
-                t.sort();
-                t.dedup();
-                assert_eq!(t.len(), n_used, "distinct slots per token");
-            }
+            assert!(seen.iter().all(|&n| n == 1), "size {size}: each pair once");
         }
+    }
+
+    /// Two tokens, top-2: the group of expert 5 holds the pairs that chose it.
+    #[test]
+    fn group_of_one_expert() {
+        let g = group_pairs(&[5, 1, 2, 5], 2, &[5], &[3]);
+        assert_eq!(g.tokens, [0, 1]);
+        assert_eq!(g.pairs, [0, 3]);
+        assert_eq!(g.ids, [3, 3]);
     }
 }
