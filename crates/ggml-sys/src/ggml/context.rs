@@ -95,6 +95,81 @@ impl Context {
         }
     }
 
+    /// True if `p` points into this context's memory pool, where ggml keeps the metadata of its
+    /// tensors and graphs.
+    fn owns<T>(&self, p: *const T) -> bool {
+        // SAFETY: live context; the getters read two fields.
+        let (base, size) = unsafe {
+            (
+                sys::ggml_get_mem_buffer(self.ptr.as_ptr()) as usize,
+                sys::ggml_get_mem_size(self.ptr.as_ptr()),
+            )
+        };
+        (p as usize).wrapping_sub(base) < size
+    }
+
+    /// An [`OwnedTensor`] for a tensor of this context (an op result, say), so it outlives the
+    /// borrow. Errors if the tensor belongs to another context.
+    pub fn keep(self: &Rc<Self>, t: Tensor<'_>) -> Result<OwnedTensor> {
+        if !self.owns(t.ptr.as_ptr()) {
+            return Err(GgmlError::Invalid(
+                "keep: the tensor is not in this context".into(),
+            ));
+        }
+        Ok(OwnedTensor {
+            _ctx: Rc::clone(self),
+            ptr: t.ptr,
+        })
+    }
+
+    /// Keeps `g` (a graph of this context) with everything it needs alive, so it can be computed
+    /// again later. `deps` name the other contexts the graph reads (weights, KV cache, state):
+    /// every node, source and view source must be in this context or in one of theirs.
+    ///
+    /// The only other memory a tensor of a context points to is a backend buffer, and the only
+    /// ways to attach one are [`Context::alloc_tensors`] (owned by that context) and a
+    /// [`super::Sched`] allocation (intermediates, owned by the scheduler). So holding the
+    /// contexts holds every buffer the graph's leaves use.
+    pub fn keep_graph(self: &Rc<Self>, g: Graph<'_>, deps: &[&OwnedTensor]) -> Result<OwnedGraph> {
+        let mut ctxs = vec![Rc::clone(self)];
+        for d in deps {
+            if !ctxs.iter().any(|c| Rc::ptr_eq(c, &d._ctx)) {
+                ctxs.push(Rc::clone(&d._ctx));
+            }
+        }
+        // Null (no source, no view source) counts as known.
+        let known = |p: *const sys::ggml_tensor| p.is_null() || ctxs.iter().any(|c| c.owns(p));
+        if !self.owns(g.ptr.as_ptr()) {
+            return Err(GgmlError::Invalid(
+                "keep_graph: the graph is not in this context".into(),
+            ));
+        }
+        for i in 0..g.n_nodes() {
+            let node = g.node(i).ptr.as_ptr();
+            // SAFETY: a node of the graph, whose context `self` is live. Its sources and view
+            // sources are checked to lie in held contexts before they are read one level deeper;
+            // the pointers themselves are only compared.
+            let ok = unsafe {
+                let t = &*node;
+                known(node)
+                    && known(t.view_src)
+                    && t.src
+                        .iter()
+                        .all(|&s| known(s) && (s.is_null() || known((*s).view_src)))
+            };
+            if !ok {
+                return Err(GgmlError::Invalid(format!(
+                    "keep_graph: node {i} reads a tensor outside the graph's context and its deps"
+                )));
+            }
+        }
+        Ok(OwnedGraph {
+            ctxs,
+            ptr: g.ptr,
+            id: g.id,
+        })
+    }
+
     /// A new graph that can hold `nodes` nodes (the context must have been sized for it).
     pub fn new_graph<'a>(&'a self, nodes: usize) -> Graph<'a> {
         static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -544,6 +619,27 @@ impl OwnedTensor {
     pub fn get(&self) -> Tensor<'_> {
         Tensor {
             ptr: self.ptr,
+            _ctx: PhantomData,
+        }
+    }
+}
+
+/// A graph that holds the contexts of everything it reads ([`Context::keep_graph`]).
+pub struct OwnedGraph {
+    /// The graph's own context first, then the contexts of its deps. Never read; held so the
+    /// tensors and buffers the graph points to stay alive.
+    #[allow(dead_code)]
+    ctxs: Vec<Rc<Context>>,
+    ptr: NonNull<sys::ggml_cgraph>,
+    id: u64,
+}
+
+impl OwnedGraph {
+    /// The graph, with the same id, so a [`super::Sched`] that allocated it still accepts it.
+    pub fn get(&self) -> Graph<'_> {
+        Graph {
+            ptr: self.ptr,
+            id: self.id,
             _ctx: PhantomData,
         }
     }

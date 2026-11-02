@@ -22,7 +22,7 @@ use crate::experts::{ExpertStats, MissPolicy, RoutingStep, Streamer, StreamerCon
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use tetraeder_ggml_sys::ggml::{
-    Backend, Context, GgmlError, Graph, OwnedTensor, RopeParams, Sched, Tensor, Type,
+    Backend, Context, GgmlError, Graph, OwnedGraph, OwnedTensor, RopeParams, Sched, Tensor, Type,
 };
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::metrics::MemoryMetrics;
@@ -105,6 +105,10 @@ pub struct LoadOptions {
     /// With `MissPolicy::Cpu` the hot set is built from it at load; without one, after the
     /// first multi-token step.
     pub routing_profile: Option<Vec<Vec<u64>>>,
+    /// Keep the whole-step graph and its scheduler allocation across steps with the same token
+    /// count, padded KV length, `last_only` and routing recording, so ggml-cuda can replay a
+    /// captured CUDA graph (ADR 0036). Only with every expert resident; off by default.
+    pub reuse_step_graph: bool,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -116,6 +120,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("ram_slots", &self.ram_slots)
             .field("miss", &self.miss)
             .field("telemetry", &self.telemetry.is_some())
+            .field("reuse_step_graph", &self.reuse_step_graph)
             .finish_non_exhaustive()
     }
 }
@@ -132,6 +137,7 @@ impl LoadOptions {
             record_routing: false,
             miss: MissPolicy::Upload,
             routing_profile: None,
+            reuse_step_graph: false,
         }
     }
 }
@@ -213,6 +219,17 @@ struct State {
     slots: [Slot; 2],
 }
 
+/// A whole-step graph kept across steps (`LoadOptions::reuse_step_graph`). It holds the contexts
+/// of the weights, KV cache and state it reads, so the state must be dropped after it.
+struct StepGraph {
+    /// Token count, padded KV length, `last_only` and routing recording of the build.
+    key: (usize, usize, bool, bool),
+    graph: OwnedGraph,
+    logits: OwnedTensor,
+    /// Per layer, the router's ids and weights (with routing recording).
+    routed: Vec<(OwnedTensor, OwnedTensor)>,
+}
+
 /// A Qwen3 MoE model. The experts are all resident in backend memory or streamed through slots.
 pub struct Qwen3Moe {
     file: ModelFile,
@@ -220,8 +237,11 @@ pub struct Qwen3Moe {
     primary: Backend,
     weights: Weights,
     kv: Kv,
+    step: Option<StepGraph>,
     state: Option<State>,
     n_past: usize,
+    reuse_step_graph: bool,
+    step_graphs_built: u64,
     segments_run: u64,
     groups_run: u64,
     group_graphs_run: u64,
@@ -329,8 +349,11 @@ impl Qwen3Moe {
             primary,
             weights,
             kv,
+            step: None,
             state: None,
             n_past: 0,
+            reuse_step_graph: opts.reuse_step_graph,
+            step_graphs_built: 0,
             segments_run: 0,
             groups_run: 0,
             group_graphs_run: 0,
@@ -379,6 +402,20 @@ impl Qwen3Moe {
     /// one whole-step graph per step when every expert is resident (ADR 0036).
     pub fn segments_run(&self) -> u64 {
         self.segments_run
+    }
+
+    /// Whole-step graphs built and allocated so far (resident experts only); with
+    /// [`LoadOptions::reuse_step_graph`] fewer than the steps run.
+    pub fn step_graphs_built(&self) -> u64 {
+        self.step_graphs_built
+    }
+
+    /// Turns the reuse of the whole-step graph on or off between steps; off drops the kept graph.
+    pub fn set_reuse_step_graph(&mut self, on: bool) {
+        self.reuse_step_graph = on;
+        if !on {
+            self.step = None;
+        }
     }
 
     /// Pair groups computed because a layer step needed more distinct experts than there are
@@ -483,7 +520,9 @@ impl Qwen3Moe {
             .as_ref()
             .is_none_or(|s| s.n_tokens != n || s.n_kv != n_kv)
         {
-            self.state = None; // free the old buffers first
+            // The kept graph holds the old state's context: drop it first, then free the buffers.
+            self.step = None;
+            self.state = None;
             self.state = Some(alloc_state(&h, n, n_kv, &self.primary)?);
         }
         let st = self.state.as_ref().expect("state allocated above");
@@ -504,34 +543,62 @@ impl Qwen3Moe {
         if self.streamer.is_none() {
             // Every expert resident: no host work between layers, so the step is one graph
             // (ADR 0036).
-            let t = Instant::now();
-            let ctx = Context::new(step_nodes(&h), step_nodes(&h))?;
+            let mut t = Instant::now();
             let record = self.routing.is_some();
-            let (graph, out, routed) = build_step(
-                &h,
-                &self.weights,
-                &self.kv,
-                st,
-                &ctx,
-                self.n_past,
-                last_only,
-                record,
-            );
-            let t = lap(&mut prof.build, t);
-            self.sched.alloc_graph(&graph)?;
-            self.max_splits = self.max_splits.max(self.sched.n_splits());
-            let t = lap(&mut prof.alloc, t);
-            self.sched.compute(&graph)?;
+            let key = (n, n_kv, last_only, record);
+            let reusable = self.reuse_step_graph
+                && self
+                    .step
+                    .as_ref()
+                    .is_some_and(|s| s.key == key && self.sched.is_allocated(&s.graph.get()));
+            // A kept graph is computed again with the new inputs: no build, no allocation.
+            // Otherwise the graph is built and allocated; it is kept only with reuse on.
+            let fresh;
+            let step: &StepGraph = if reusable {
+                self.step.as_ref().expect("checked above")
+            } else {
+                self.step = None;
+                let ctx = Rc::new(Context::new(step_nodes(&h), step_nodes(&h))?);
+                let (graph, out, routed) =
+                    build_step(&h, &self.weights, &self.kv, st, &ctx, last_only, record);
+                let deps = [
+                    &self.weights.tok_embd,
+                    &self.kv.k[0],
+                    &self.kv.v[0],
+                    &st.tokens,
+                ];
+                let routed = routed
+                    .into_iter()
+                    .map(|(ids, w)| Ok((ctx.keep(ids)?, ctx.keep(w)?)))
+                    .collect::<Result<Vec<_>>>()?;
+                fresh = StepGraph {
+                    key,
+                    logits: ctx.keep(out)?,
+                    routed,
+                    graph: ctx.keep_graph(graph, &deps)?,
+                };
+                t = lap(&mut prof.build, t);
+                self.sched.alloc_graph(&fresh.graph.get())?;
+                self.max_splits = self.max_splits.max(self.sched.n_splits());
+                self.step_graphs_built += 1;
+                t = lap(&mut prof.alloc, t);
+                if self.reuse_step_graph {
+                    self.step.insert(fresh)
+                } else {
+                    &fresh
+                }
+            };
+            self.sched.compute(&step.graph.get())?;
             self.segments_run += 1;
             prof.graphs += 1;
-            let logits = out.get_f32()?;
+            let logits = step.logits.get().get_f32()?;
             let t = lap(&mut prof.compute, t);
             if let Some(log) = &mut self.routing {
-                for (layer, (ids, w)) in routed.iter().enumerate() {
+                for (layer, (ids, w)) in step.routed.iter().enumerate() {
                     log.push(RoutingStep {
                         layer,
-                        ids: ids.get_i32()?,
-                        weights: w.get_f32()?,
+                        ids: ids.get().get_i32()?,
+                        weights: w.get().get_f32()?,
                     });
                 }
             }
@@ -568,7 +635,6 @@ impl Qwen3Moe {
                     st,
                     &ctx,
                     seg,
-                    self.n_past,
                     last_only,
                     &specs,
                 );
@@ -981,7 +1047,6 @@ fn build_segment<'a>(
     st: &'a State,
     ctx: &'a Context,
     seg: usize,
-    n_past: usize,
     last_only: bool,
     groups: &[([Tensor<'a>; 3], usize)],
 ) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
@@ -1017,8 +1082,7 @@ fn build_segment<'a>(
     }
 
     let s = &st.slots[seg % 2];
-    let (ffn_inp, xn, weights, ids) =
-        attention_and_router(h, ctx, &mut g, w, kv, st, seg, x, n_past);
+    let (ffn_inp, xn, weights, ids) = attention_and_router(h, ctx, &mut g, w, kv, st, seg, x);
     g.expand(ctx.cpy(ffn_inp, s.resid.get()));
     g.expand(ctx.cpy(xn, s.xn.get()));
     g.expand(ctx.cpy(weights, s.w.get()));
@@ -1041,7 +1105,6 @@ fn build_step<'a>(
     kv: &'a Kv,
     st: &'a State,
     ctx: &'a Context,
-    n_past: usize,
     last_only: bool,
     record: bool,
 ) -> (Graph<'a>, Tensor<'a>, Vec<(Tensor<'a>, Tensor<'a>)>) {
@@ -1049,8 +1112,7 @@ fn build_step<'a>(
     let mut x = ctx.get_rows(w.tok_embd.get(), st.tokens.get());
     let mut routed = Vec::new();
     for il in 0..h.n_layer as usize {
-        let (ffn_inp, xn, weights, ids) =
-            attention_and_router(h, ctx, &mut g, w, kv, st, il, x, n_past);
+        let (ffn_inp, xn, weights, ids) = attention_and_router(h, ctx, &mut g, w, kv, st, il, x);
         // The router's nodes enter the graph before the expert FFN, consecutive as in libllama's
         // `build_moe_ffn` and in the segments, so CUDA's topk-moe fusion fires the same way.
         g.expand(weights);
@@ -1098,7 +1160,6 @@ fn attention_and_router<'a>(
     st: &'a State,
     il: usize,
     x: Tensor<'a>,
-    n_past: usize,
 ) -> (Tensor<'a>, Tensor<'a>, Tensor<'a>, Tensor<'a>) {
     let lw = &w.layers[il];
     let n = st.n_tokens as i64;
@@ -1127,12 +1188,14 @@ fn attention_and_router<'a>(
     // Store K and V in the cache rows of these positions; the cache must be written before the
     // attention reads it, so the stores enter the graph first.
     let (kc, vc) = (kv.k[il].get(), kv.v[il].get());
+    // `set_rows` with the positions as row indices, as libllama does: unlike a copy into a view
+    // at `n_past`, the node is the same every step, so ggml-cuda can replay a captured CUDA
+    // graph (ADR 0036).
     let row = kc.nb()[1];
     let n_embd_kv = hd * nkv;
     for (src, cache) in [(k, kc), (v, vc)] {
         let src = ctx.reshape(src, &[n_embd_kv, n]);
-        let dst = ctx.view(cache, &[n_embd_kv, n], &[row], n_past * row);
-        g.expand(ctx.cpy(src, dst));
+        g.expand(ctx.set_rows(cache, src, st.pos.get()));
     }
 
     let n_kv = st.n_kv as i64;
@@ -1366,7 +1429,7 @@ mod graph_order {
         let mut all = Vec::new();
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, 0, last_only, &[]);
+            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, &[]);
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router.
                 let what = format!("segment {seg}");
@@ -1387,7 +1450,7 @@ mod graph_order {
             for record in [false, true] {
                 let what = format!("step n={n} record={record}");
                 let ctx = Context::new(step_nodes(&h), step_nodes(&h)).unwrap();
-                let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, 0, last_only, record);
+                let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, last_only, record);
                 let (n_layer, n_used) = (h.n_layer as usize, h.n_expert_used as usize);
                 assert_fusable(&g, n_layer, n_used, &what);
                 // The routing outputs are extra nodes; the rest is the segments' order.

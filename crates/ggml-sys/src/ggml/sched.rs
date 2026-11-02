@@ -100,7 +100,15 @@ impl Sched {
         Ok(())
     }
 
+    /// True if `graph` is the one the last `alloc_graph` allocated, so it can be computed again
+    /// with new input data and no new allocation (as libllama does between decode steps).
+    pub fn is_allocated(&self, graph: &Graph<'_>) -> bool {
+        self.allocated == Some(graph.id)
+    }
+
     /// Computes the graph given to the last `alloc_graph` and waits for the result.
+    /// May be called again for the same graph: the scheduler keeps its allocation until the next
+    /// reset.
     pub fn compute(&mut self, graph: &Graph<'_>) -> Result<()> {
         if self.allocated != Some(graph.id) {
             return Err(GgmlError::Invalid(

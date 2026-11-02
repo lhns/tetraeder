@@ -12,6 +12,7 @@ use crate::raw as sys;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 mod batch;
 mod context;
@@ -71,6 +72,51 @@ pub type Result<T> = std::result::Result<T, LlamaError>;
 // Backend init and logging
 // ---------------------------------------------------------------------------------------------
 
+static CUDA_WARMUPS: AtomicU64 = AtomicU64::new(0);
+static CUDA_RESETS: AtomicU64 = AtomicU64::new(0);
+static CUDA_REUSED: AtomicU64 = AtomicU64::new(0);
+static CUDA_UPDATE_FAILED: AtomicU64 = AtomicU64::new(0);
+
+/// How often ggml-cuda logged its CUDA graph events since process start. It logs them only when
+/// the process starts with `GGML_CUDA_GRAPH_DEBUG` set; all zero otherwise.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CudaGraphLogCounts {
+    /// Captures: a graph finished its warmup and was captured.
+    pub warmups: u64,
+    /// The warmup counter restarted because the graph's properties changed.
+    pub resets: u64,
+    /// A graph with the uid of the last one was launched without comparing properties.
+    pub reused: u64,
+    /// Updating the captured graph failed.
+    pub update_failed: u64,
+}
+
+pub fn cuda_graph_log_counts() -> CudaGraphLogCounts {
+    let get = |c: &AtomicU64| c.load(Ordering::Relaxed);
+    CudaGraphLogCounts {
+        warmups: get(&CUDA_WARMUPS),
+        resets: get(&CUDA_RESETS),
+        reused: get(&CUDA_REUSED),
+        update_failed: get(&CUDA_UPDATE_FAILED),
+    }
+}
+
+/// Counts the CUDA graph messages of ggml-cuda (`llama_log_set` routes ggml's logger here too).
+fn count_cuda_graph_event(s: &str) {
+    let counter = if s.contains("CUDA graph warmup complete") {
+        &CUDA_WARMUPS
+    } else if s.contains("CUDA graph warmup reset") {
+        &CUDA_RESETS
+    } else if s.contains("CUDA Graph id") && s.contains("reused") {
+        &CUDA_REUSED
+    } else if s.contains("CUDA graph update failed") {
+        &CUDA_UPDATE_FAILED
+    } else {
+        return;
+    };
+    counter.fetch_add(1, Ordering::Relaxed);
+}
+
 unsafe extern "C" fn log_callback(
     level: sys::ggml_log_level,
     text: *const c_char,
@@ -85,6 +131,7 @@ unsafe extern "C" fn log_callback(
     if s.is_empty() {
         return;
     }
+    count_cuda_graph_event(s);
     if level == sys::GGML_LOG_LEVEL_ERROR {
         tracing::error!(target: "llama", "{s}");
     } else if level == sys::GGML_LOG_LEVEL_WARN {
