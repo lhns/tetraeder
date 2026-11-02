@@ -7,9 +7,15 @@
 exec 8> /root/tetraeder_prefetch_eq.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
-export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH"
+export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
+command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 # shellcheck disable=SC1091
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
+# this box's GPU only, as exit_run.sh (same build, no ggml-cuda rebuild for every arch)
+if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
+  archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')
+  [ -n "$archs" ] && export TETRAEDER_CUDA_ARCHS="$archs"
+fi
 log=runs/vast/prefetch_eq.log
 date_dir="$PWD/bench/results/$(date +%Y%m%d)"
 mkdir -p "$date_dir" runs/vast
@@ -44,7 +50,7 @@ run() {
       TETRAEDER_EXIT_CTX=2048 TETRAEDER_EXIT_OP_OFFLOAD=0 TETRAEDER_EXIT_PREFETCH=$p
   done
   for p in 0 1; do
-    run "ub-p$p" TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=16 \
+    run "ub-p$p" TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=8 \
       TETRAEDER_EXIT_CTX=4096 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFETCH=$p
   done
   python3 - "$date_dir" "$stamp" << 'EOF'
