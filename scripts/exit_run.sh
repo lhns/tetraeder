@@ -14,6 +14,11 @@ date_dir="$PWD/bench/results/$(date +%Y%m%d)"
 mkdir -p "$date_dir" runs/vast
 log=runs/vast/exit_run.log
 stamp=$(date +%H%M%S)
+# this box's GPU only, as moe_check.sh: another arch list rebuilds ggml-cuda for every arch (an hour, no cache hit)
+if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
+  archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')
+  [ -n "$archs" ] && export TETRAEDER_CUDA_ARCHS="$archs"
+fi
 model="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf"
 threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
 # RAM the container may use: the cgroup limit if set, else MemTotal. The exit test needs a model larger than RAM, but
