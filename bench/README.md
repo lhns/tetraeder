@@ -26,3 +26,5 @@ A gate whose candidate is a Tetraeder build must also produce the reference outp
 ## Phase 2 baseline
 
 `phase2-baseline.toml`: llama.cpp on Qwen3-30B-A3B Q4_K_M with flash attention, ubatch 512 to 4096, full GPU and the two expert-offload placements of phase0, pp16384, pp32768 and tg128. Info pairs only, about 42 min estimated on a 3090 (not measured yet). Select it with `BENCH_SPEC=phase2-baseline scripts/nightly.sh`; it replaces phase0 for that night, and taxameter's nightly wait limit must allow for it.
+
+Exit-run baseline from Colibri (pinned v2.1.0, `qwen36` engine reads the Qwen3 MoE GGUF in place): `scripts/colibri_build.sh`, then `scripts/colibri_exit.sh <first-shard> <threads> <ram-bytes> <out.json> [deep|short]`. It is not wired into `scripts/exit_run.sh`; its JSON has its own shape (prefill and decode tok/s from the engine's TTFT and total time).

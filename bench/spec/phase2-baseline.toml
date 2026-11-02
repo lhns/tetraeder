@@ -11,8 +11,8 @@
 # run): about 42 min for 16 pairs (2 repeats per side, no warmup). nightly.sh gives it a 60 min limit.
 # Per invocation (15 s model load + pp + tg128) in the variant comments. To shrink it: repeats = 1, or drop the
 # 4096 points of the offload placements.
-# The ik_llama variants add about 18 min (ESTIMATE: 6 variants, 6 info pairs against their llama.cpp twins; the
-# -rtr ones load slower). nightly.sh gives the spec 80 min.
+# The ik_llama variants add about 12 min (ESTIMATE: 4 variants at ubatch 2048, 4 info pairs; the -rtr ones load
+# slower; the ubatch 512 ones were cut to keep the nightly under the 3 h box cap). nightly.sh gives the spec 80 min.
 # Cut to fit: warmup = 0 (a warmup would double every invocation; the first pair's first sample may include the
 # model page-in when phase0 did not run before), no pp32768 at ubatch 512/1024.
 #
@@ -208,14 +208,6 @@ args = ["-ngl", "99", "-fa", "1", "-b", "4096", "-ub", "4096", "-p", "32768", "-
 # which adds to the invocation time). llama.cpp has no such flag, so those pairs compare rtr against plain ik_llama.
 # Timings below are ESTIMATES (not measured).
 
-# ~76 s per invocation (estimate)
-[[variant]]
-id = "p2-ik-ot-all-experts-ub512"
-engine = "ik_llama"
-model = "moe"
-device = "cuda"
-args = ["-ngl", "99", "-fa", "1", "-b", "512", "-ub", "512", "-ot", "exps=CPU"]
-
 # ~40 s per invocation (estimate)
 [[variant]]
 id = "p2-ik-ot-all-experts-ub2048"
@@ -223,14 +215,6 @@ engine = "ik_llama"
 model = "moe"
 device = "cuda"
 args = ["-ngl", "99", "-fa", "1", "-b", "2048", "-ub", "2048", "-ot", "exps=CPU"]
-
-# ~48 s per invocation (estimate)
-[[variant]]
-id = "p2-ik-ot-upper-half-ub512"
-engine = "ik_llama"
-model = "moe"
-device = "cuda"
-args = ["-ngl", "99", "-fa", "1", "-b", "512", "-ub", "512", "-ot", 'blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU']
 
 # ~30 s per invocation (estimate)
 [[variant]]
@@ -355,21 +339,9 @@ b = "p2-ot-upper-half-ub2048"
 role = "info"
 
 [[pair]]
-id = "info-ik-ot-all-experts-ub512-vs-llama"
-a = "p2-ot-all-experts-ub512"
-b = "p2-ik-ot-all-experts-ub512"
-role = "info"
-
-[[pair]]
 id = "info-ik-ot-all-experts-ub2048-vs-llama"
 a = "p2-ot-all-experts-ub2048"
 b = "p2-ik-ot-all-experts-ub2048"
-role = "info"
-
-[[pair]]
-id = "info-ik-ot-upper-half-ub512-vs-llama"
-a = "p2-ot-upper-half-ub512"
-b = "p2-ik-ot-upper-half-ub512"
 role = "info"
 
 [[pair]]
