@@ -41,3 +41,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0035](0035-expert-pair-groups-and-cpu-experts.md) | Expert pairs computed in compact groups per backend; non-resident experts on the CPU |
 | [0036](0036-cpu-threadpool-and-whole-step-graph.md) | The CPU backend keeps one threadpool; a step with every expert resident is one graph |
 | [0037](0037-split-gguf-and-slot-tiers-from-byte-budgets.md) | Split GGUF files; expert slot tiers sized from byte budgets and reported |
+| [0038](0038-predicted-next-layer-expert-prefetch.md) | Predicted next-layer expert prefetch into the RAM tier |
