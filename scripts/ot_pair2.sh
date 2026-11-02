@@ -10,8 +10,7 @@ mkdir -p "$date_dir" runs/vast
 log=runs/vast/ot_pair.log
 model="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf"
 bench="${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}"
-threads=$(awk '$1 != "max" { print int($1 / $2) }' /sys/fs/cgroup/cpu.max 2> /dev/null)
-threads="${THREADS:-${threads:-$(nproc)}}"
+threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
 ik_bench="${IK_LLAMA_BENCH:-/opt/ik_llama/bin/llama-bench}"
 [ -x "$ik_bench" ] || echo "note: $ik_bench missing, ik_llama pair skipped" >> "$log"
 stamp=$(date +%H%M%S)  # one per run, so a rerun on the same day keeps the earlier files

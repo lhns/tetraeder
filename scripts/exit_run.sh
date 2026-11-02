@@ -15,8 +15,7 @@ mkdir -p "$date_dir" runs/vast
 log=runs/vast/exit_run.log
 stamp=$(date +%H%M%S)
 model="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf"
-threads=$(awk '$1 != "max" { print int($1 / $2) }' /sys/fs/cgroup/cpu.max 2> /dev/null)
-threads="${THREADS:-${threads:-$(nproc)}}"
+threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
 # RAM the container may use: the cgroup limit if set, else MemTotal. The RAM tier gets that minus RAM_RESERVE_GB.
 mem=$(cat /sys/fs/cgroup/memory.max 2> /dev/null)
 case "$mem" in '' | max) mem=$(awk '/MemTotal/ { print $2 * 1024 }' /proc/meminfo) ;; esac
@@ -67,21 +66,36 @@ baseline() {
 
 if [ $rc = 0 ]; then
   {
-    # smoke gate: real header, direct I/O, the backend split, memory within the budgets
+    # smoke gate: real header, the full KV (a VRAM OOM shows here), direct I/O, the backend split, memory
     exit_regime smoke 20 TETRAEDER_EXIT_PREFILL=8 TETRAEDER_EXIT_UBATCH=8 TETRAEDER_EXIT_DECODE=2 \
-      TETRAEDER_EXIT_OP_OFFLOAD=1 || rc=22
+      TETRAEDER_EXIT_CTX=33024 TETRAEDER_EXIT_OP_OFFLOAD=1 || rc=22
+    python3 - "$date_dir/exit-smoke-$stamp.json" << 'EOF'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception as e:
+    sys.exit(f"smoke json: {e}")
+print("smoke:", {k: d.get(k) for k in ("io_backend", "slot_bytes_all_layers", "options")})
+for r in d.get("runs") or []:
+    print("  run:", {k: r.get(k) for k in ("max_splits", "rss_bytes", "peak_rss_bytes", "decode_tok_s")})
+    for m in r.get("memory") or []:
+        print("  memory:", m)
+EOF
     if [ $rc = 0 ]; then
       exit_regime main 60 TETRAEDER_EXIT_PREFILL=32768 TETRAEDER_EXIT_UBATCH=4096 TETRAEDER_EXIT_DECODE=64 \
         TETRAEDER_EXIT_CTX=33024 TETRAEDER_EXIT_OP_OFFLOAD=1 || rc=23
+      # baselines at depth 0, same box and threads, before the variants so a short box still has the comparison:
+      # all experts on the CPU, and the same expert VRAM as the builder (layers 0-3 of about 1.46 GB each on the GPU)
+      for e in llama ik; do
+        b=$bench; [ $e = ik ] && b=$ik_bench
+        baseline "$b" "exit-$e-ot-all" 30 -ub 2048 -p 2048 -n 32 -ot 'exps=CPU'
+        baseline "$b" "exit-$e-ot-samevram" 30 -ub 2048 -p 2048 -n 32 -ot 'blk\.[0-3]\.ffn_.*_exps=CUDA0,exps=CPU'
+      done
       exit_regime refresh-hot 30 TETRAEDER_EXIT_PREFILL=8192 TETRAEDER_EXIT_UBATCH=4096 TETRAEDER_EXIT_DECODE=64 \
         TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_REFRESH_HOT=1 || rc=24
       exit_regime cpu-prefill 30 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=32 \
         TETRAEDER_EXIT_OP_OFFLOAD=0 || rc=25
-      # baselines, same box and threads: all experts on the CPU, then the deep prompt last (it may page-fault long)
-      for e in llama ik; do
-        b=$bench; [ $e = ik ] && b=$ik_bench
-        baseline "$b" "exit-$e-ot-all" 30 -ub 2048 -p 2048 -n 32 -ot 'exps=CPU'
-      done
+      # the deep prompt last: on a page-faulting 235B it may take long
       for e in llama ik; do
         b=$bench; [ $e = ik ] && b=$ik_bench
         baseline "$b" "exit-$e-ot-all-d32k" 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot 'exps=CPU'
@@ -89,5 +103,6 @@ if [ $rc = 0 ]; then
     fi
   } >> "$log" 2>&1
 fi
+touch "$date_dir/DONE"
 echo "EXIT_RUN_DONE rc=$rc" >> "$log"
 command -v sccache > /dev/null 2>&1 && timeout 30 sccache --stop-server > /dev/null 2>&1

@@ -21,7 +21,7 @@ log=runs/vast/cpu_bench.log
   # CPU only on both sides: libllama would otherwise offload large ops to the GPU.
   export CUDA_VISIBLE_DEVICES='' GGML_VK_VISIBLE_DEVICES=''
   # Default: 8 and the container's CPU quota rounded down (ADR 0021), else the available parallelism.
-  quota=$(awk '$1 != "max" { print int($1 / $2) }' /sys/fs/cgroup/cpu.max 2> /dev/null)
+  quota=$(bash scripts/cpu_quota.sh)
   THREADS="${THREADS:-${quota:+8,$quota}}"
   [ -n "$THREADS" ] && export TETRAEDER_BENCH_THREADS="$THREADS"
   export TETRAEDER_BENCH_MACHINE="vast host $(hostname), $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"

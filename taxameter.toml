@@ -32,9 +32,10 @@ paths = ["crates", "xtask", "patches", "bench", "scripts", "docs/adr", "tests/fi
 submodules = ["vendor/llama.cpp"]
 
 [box]
-# cargo/rustc/nvcc/cmake/ninja, the engine and bench binaries under target/, bench.sh, llama.cpp tools
+# cargo/rustc/nvcc/cmake/ninja, the engine and bench binaries and test binaries (deps/) under target/, bench.sh,
+# llama.cpp tools, the exit-run scripts (a long CPU-bound test once looked idle to the GPU check)
 # (the [x] brackets keep the pattern from matching its own command line)
-busy = '(^|/)(cargo|rustc|nvcc|cmake|ninja)( |$)|target/(release|debug)/tetraede[r]|bench[.]s[h]|(^|/)llama-'
+busy = '(^|/)(cargo|rustc|nvcc|cmake|ninja)( |$)|target/(release|debug)/tetraede[r]|target/(release|debug)/dep[s]/|bench[.]s[h]|(^|/)llama-|scripts/exit_(box|run)[.]s[h]'
 batch = 'nightl[y][.]sh'
 batch_log = "runs/vast/nightly.log"
 batch_done = "^NIGHTLY_DONE"
