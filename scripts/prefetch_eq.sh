@@ -45,6 +45,14 @@ run() {
 
 {
   for _ in $(seq 1 2160); do grep -q EXIT_BOX_DONE runs/vast/exit_box.log 2> /dev/null && break; sleep 5; done
+  if [ -n "${EQ_NAME:-}" ]; then
+    # one extra pair: EQ_NAME, EQ_PREFILL, EQ_UBATCH, EQ_DECODE, EQ_CTX, EQ_OFFLOAD
+    for p in 0 1; do
+      run "$EQ_NAME-p$p" TETRAEDER_EXIT_PREFILL="$EQ_PREFILL" TETRAEDER_EXIT_UBATCH="$EQ_UBATCH"         TETRAEDER_EXIT_DECODE="$EQ_DECODE" TETRAEDER_EXIT_CTX="$EQ_CTX" TETRAEDER_EXIT_OP_OFFLOAD="$EQ_OFFLOAD"         TETRAEDER_EXIT_PREFETCH=$p
+    done
+    pairs=$EQ_NAME
+  else
+  pairs="short ub"
   for p in 0 1; do
     run "short-p$p" TETRAEDER_EXIT_PREFILL=8 TETRAEDER_EXIT_UBATCH=8 TETRAEDER_EXIT_DECODE=32 \
       TETRAEDER_EXIT_CTX=2048 TETRAEDER_EXIT_OP_OFFLOAD=0 TETRAEDER_EXIT_PREFETCH=$p
@@ -53,10 +61,12 @@ run() {
     run "ub-p$p" TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=8 \
       TETRAEDER_EXIT_CTX=4096 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFETCH=$p
   done
-  python3 - "$date_dir" "$stamp" << 'EOF'
+  fi
+  # shellcheck disable=SC2086 # one argument per pair
+  python3 - "$date_dir" "$stamp" $pairs << 'EOF'
 import json, sys
 d, s = sys.argv[1:3]
-for pair in ("short", "ub"):
+for pair in sys.argv[3:]:
     g = []
     for p in (0, 1):
         try:
