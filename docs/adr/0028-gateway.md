@@ -45,4 +45,4 @@ Detokenization happens in the gateway from `Vocab` bytes (UTF-8 assembled across
 - Tool-call families beyond the four listed need a parser each; models with other formats get plain text.
 - Images, audio, embeddings, `n > 1` and logprobs are rejected with 400 until Phase 9.
 - `count_tokens` and usage are exact for the local tokenizer, not for the remote vendor's.
-- No `tetraeder serve` command until an engine exists.
+- No `tetraeder serve` command until an engine exists. Done in ADR 0040, which also replaces the custom libllama sampler with Rust sampling over logits and clamps `max_tokens` to the context instead of rejecting it.
