@@ -29,7 +29,8 @@ upper='blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU'
       > "$date_dir/ot-pair-$v-$stamp.json" || rc=$?
     # ik_llama.cpp right after its llama.cpp twin (same threads and sizes); not for `full`; older images lack it
     if [ "$v" != full ] && [ -x "$ik_bench" ]; then
-      "$ik_bench" -m "$model" -ngl 99 -fa 1 -p 64 -n 16 -r 3 -t "$threads" "${ot[@]}" -o json         > "$date_dir/ik-pair-$v-$stamp.json" || rc=$?
+      "$ik_bench" -m "$model" -ngl 99 -fa 1 -p 64 -n 16 -r 3 -t "$threads" "${ot[@]}" -o json \
+        > "$date_dir/ik-pair-$v-$stamp.json" || rc=$?
     fi
   done
   echo "[$(date +%T)] llama-bench rc=$rc"
