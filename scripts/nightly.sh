@@ -6,7 +6,7 @@
 # Optional stages, off unless asked (taxameter's `nightly` cannot pass env; use `taxameter run scripts/nightly.sh --env ...`).
 # Their exit codes are logged, never the night's:
 #   gpu-moe  MOE_CHECK=1: the builder on the real Qwen3-30B-A3B Q4_K_M (tests/real_moe.rs: greedy equal to libllama, resident
-#            and streaming) -> $date_dir/builder-real.json. MOE_GGUF overrides the model path.
+#            and streaming) -> $date_dir/builder-real-<HHMMSS>.json. MOE_GGUF overrides the model path.
 #   gap      GAP_PAIR=<pair id of phase0.toml>, e.g. gate-tetraeder-cuda-dense: that pair again with 10 repeats ->
 #            $date_dir/gap/ (own parity.json, results json). Needs both models of phase0.toml (provisioned from it).
 # Always ends with bench/results/<date>/DONE (content: rc=N) and a final `NIGHTLY_DONE rc=N` log line, even on
@@ -96,7 +96,7 @@ if [ "${MOE_CHECK:-0}" = 1 ]; then
   # same path rule as the bench: <models-dir>/<org>__<repo>/<file>; same build as the stages above (release, same features)
   moe_gguf="${MOE_GGUF:-$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf}"
   if [ -f "$moe_gguf" ]; then
-    stage gpu-moe "$MOE_MIN" env TETRAEDER_MOE_GGUF="$moe_gguf" TETRAEDER_REAL_OUT="$(abs "$date_dir")/builder-real.json" \
+    stage gpu-moe "$MOE_MIN" env TETRAEDER_MOE_GGUF="$moe_gguf" TETRAEDER_REAL_OUT="$(abs "$date_dir")/builder-real-$(date +%H%M%S).json" \
       cargo test --release -p tetraeder-model --features "$cuda_feat" --test real_moe -- --nocapture \
       || echo "gpu-moe rc=$? (not the night's)"
   else

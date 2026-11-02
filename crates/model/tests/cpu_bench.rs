@@ -66,14 +66,6 @@ fn model_path() -> (PathBuf, Value) {
     (p, v)
 }
 
-/// The CPU quota of the container (cgroup v2 `cpu.max`), if any.
-fn cpu_quota() -> Option<f64> {
-    let s = std::fs::read_to_string("/sys/fs/cgroup/cpu.max").ok()?;
-    let mut it = s.split_whitespace();
-    let (q, p) = (it.next()?, it.next()?);
-    Some(q.parse::<f64>().ok()? / p.parse::<f64>().ok()?)
-}
-
 fn cpu_model() -> Option<String> {
     let s = std::fs::read_to_string("/proc/cpuinfo").ok()?;
     s.lines()
@@ -231,11 +223,7 @@ fn cpu_bench_builder_vs_libllama() {
     let n_prompt = env_usize("TETRAEDER_BENCH_PROMPT", 64);
     let n_decode = env_usize("TETRAEDER_BENCH_DECODE", 32);
     let repeats = env_usize("TETRAEDER_BENCH_REPEATS", 3).max(1);
-    let avail = std::thread::available_parallelism().map_or(1, usize::from);
-    let threads: Vec<usize> = std::env::var("TETRAEDER_BENCH_THREADS")
-        .ok()
-        .map(|v| v.split(',').filter_map(|t| t.trim().parse().ok()).collect())
-        .unwrap_or_else(|| vec![avail]);
+    let threads = common::bench_thread_list();
     let variants: Vec<String> = std::env::var("TETRAEDER_BENCH_VARIANTS")
         .unwrap_or_else(|_| "libllama,builder,builder_cpupolicy".into())
         .split(',')
@@ -369,8 +357,8 @@ fn cpu_bench_builder_vs_libllama() {
         "env": {
             "os": std::env::consts::OS,
             "cpu": cpu_model(),
-            "available_parallelism": avail,
-            "cpu_quota": cpu_quota(),
+            "available_parallelism": std::thread::available_parallelism().map_or(1, usize::from),
+            "cpu_quota": common::cpu_quota(),
             "gpu_devices_visible": Backend::gpu_count(),
         },
         "model": model_info,

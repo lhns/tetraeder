@@ -124,6 +124,10 @@ pub enum BackendChoice {
 #[derive(Clone)]
 pub struct LoadOptions {
     pub backend: BackendChoice,
+    /// Threads of the CPU backend: the whole compute for `BackendChoice::Cpu`, the RAM tier and
+    /// CPU groups under `Gpu`. `None`: `BackendChoice::Cpu { threads }` if given, else the
+    /// available parallelism. When set it wins over `Cpu { threads }`.
+    pub cpu_threads: Option<usize>,
     /// KV cache length in tokens (rounded up to a multiple of 256).
     pub n_ctx: usize,
     /// Expert slots per MoE layer on the compute backend (ADR 0033). `None`, or at least the
@@ -163,6 +167,7 @@ impl std::fmt::Debug for LoadOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LoadOptions")
             .field("backend", &self.backend)
+            .field("cpu_threads", &self.cpu_threads)
             .field("n_ctx", &self.n_ctx)
             .field("expert_slots", &self.expert_slots)
             .field("ram_slots", &self.ram_slots)
@@ -178,6 +183,7 @@ impl LoadOptions {
     pub fn new(backend: BackendChoice) -> Self {
         Self {
             backend,
+            cpu_threads: None,
             n_ctx: 2048,
             expert_slots: None,
             ram_slots: None,
@@ -335,17 +341,20 @@ impl Qwen3Moe {
             ));
         }
         // `cpu` holds the RAM tier and runs the CPU groups.
+        let threads_for = |own: Option<usize>| {
+            opts.cpu_threads
+                .or(own)
+                .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))
+        };
         let (primary, cpu, backends) = match opts.backend {
             BackendChoice::Cpu { threads } => {
-                let n = threads
-                    .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from));
+                let n = threads_for(threads);
                 let cpu = Backend::cpu(n as i32)?;
                 (cpu.clone(), cpu.clone(), vec![cpu])
             }
             BackendChoice::Gpu { index } => {
                 let gpu = Backend::gpu(index)?;
-                let n = std::thread::available_parallelism().map_or(1, usize::from);
-                let cpu = Backend::cpu(n as i32)?;
+                let cpu = Backend::cpu(threads_for(None) as i32)?;
                 (gpu.clone(), cpu.clone(), vec![gpu, cpu])
             }
         };

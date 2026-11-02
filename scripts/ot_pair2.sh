@@ -14,6 +14,7 @@ threads=$(awk '$1 != "max" { print int($1 / $2) }' /sys/fs/cgroup/cpu.max 2> /de
 threads="${THREADS:-${threads:-$(nproc)}}"
 ik_bench="${IK_LLAMA_BENCH:-/opt/ik_llama/bin/llama-bench}"
 [ -x "$ik_bench" ] || echo "note: $ik_bench missing, ik_llama pair skipped" >> "$log"
+stamp=$(date +%H%M%S)  # one per run, so a rerun on the same day keeps the earlier files
 upper='blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU'
 {
   echo "[$(date +%T)] start llama-bench, threads $threads"
@@ -25,11 +26,10 @@ upper='blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU'
       ot-upper) ot=(-ot "$upper") ;;
     esac
     "$bench" -m "$model" -ngl 99 -fa 1 -p 64 -n 16 -r 3 -t "$threads" "${ot[@]}" -o json \
-      > "$date_dir/ot-pair-$v.json" || rc=$?
+      > "$date_dir/ot-pair-$v-$stamp.json" || rc=$?
     # ik_llama.cpp right after its llama.cpp twin (same threads and sizes); not for `full`; older images lack it
     if [ "$v" != full ] && [ -x "$ik_bench" ]; then
-      "$ik_bench" -m "$model" -ngl 99 -fa 1 -p 64 -n 16 -r 3 -t "$threads" "${ot[@]}" -o json \
-        > "$date_dir/ik-pair-$v.json" || rc=$?
+      "$ik_bench" -m "$model" -ngl 99 -fa 1 -p 64 -n 16 -r 3 -t "$threads" "${ot[@]}" -o json         > "$date_dir/ik-pair-$v-$stamp.json" || rc=$?
     fi
   done
   echo "[$(date +%T)] llama-bench rc=$rc"
