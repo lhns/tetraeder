@@ -185,8 +185,11 @@ mod tests {
 
     fn file(len: usize) -> (std::path::PathBuf, Vec<u8>) {
         let data: Vec<u8> = (0..len).map(|i| (i * 7 + i / 251) as u8).collect();
+        // One file per call: tests run in parallel and a shared name would be truncated under a reader.
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path =
-            std::env::temp_dir().join(format!("tetraeder-reader-{}-{}", std::process::id(), len));
+            std::env::temp_dir().join(format!("tetraeder-reader-{}-{n}", std::process::id()));
         std::fs::File::create(&path)
             .unwrap()
             .write_all(&data)
