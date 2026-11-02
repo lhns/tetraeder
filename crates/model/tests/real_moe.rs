@@ -38,7 +38,7 @@ struct Reference {
 }
 
 /// Everything libllama holds (model, context, GPU buffers) is dropped on return.
-fn libllama_on_gpu(path: &Path) -> Reference {
+fn libllama_on_gpu(path: &Path, threads: usize) -> Reference {
     let t0 = Instant::now();
     let model = Arc::new(
         Model::load(
@@ -61,8 +61,8 @@ fn libllama_on_gpu(path: &Path) -> Reference {
             n_ctx: 512,
             n_batch: 128,
             n_ubatch: 128,
-            n_threads: 4,
-            n_threads_batch: 4,
+            n_threads: threads as i32,
+            n_threads_batch: threads as i32,
             flash_attn: FlashAttn::On,
             ..ContextParams::default()
         },
@@ -203,18 +203,21 @@ fn run_config(
     expert_slots: Option<usize>,
     ram_slots: Option<usize>,
     split: usize,
+    threads: usize,
     r: &Reference,
 ) -> Run {
     let o = LoadOptions {
         expert_slots,
         ram_slots,
-        record_routing: true,
+        // `resident_norecord` measures speed: libllama records nothing.
+        record_routing: name != "resident_norecord",
         miss: if is_cpu_policy(name) {
             MissPolicy::Cpu
         } else {
             MissPolicy::Upload
         },
         // `cpu_*` configs run the builder on the CPU backend.
+        cpu_threads: Some(threads),
         ..LoadOptions::new(if name.starts_with("cpu_") {
             BackendChoice::Cpu { threads: None }
         } else {
@@ -356,7 +359,9 @@ fn gpu_real_moe_streaming() {
     }
     assert!(path.is_file(), "TETRAEDER_MOE_GGUF names no file: {path:?}");
 
-    let r = libllama_on_gpu(&path);
+    let threads = common::bench_threads();
+    eprintln!("threads for both engines: {threads}");
+    let r = libllama_on_gpu(&path, threads);
     eprintln!(
         "libllama: load {:.1} s, prefill {:.3} s, decode {:.1} tok/s (info only)",
         r.load_s, r.prefill_s, r.decode_tps
@@ -365,6 +370,8 @@ fn gpu_real_moe_streaming() {
         "model": path.file_name().map(|f| f.to_string_lossy().into_owned()),
         "prompt_tokens": r.prompt.len(),
         "greedy_tokens": N_GREEDY,
+        "threads": threads,
+        "cpu_quota": common::cpu_quota(),
         "libllama": {
             "load_s": r.load_s,
             "prefill_s": r.prefill_s,
@@ -384,6 +391,7 @@ fn gpu_real_moe_streaming() {
     let n = r.prompt.len();
     let configs = [
         ("resident", None, None, 1, None, true),
+        ("resident_norecord", None, None, 1, None, true),
         ("resident_split2", None, None, 2, Some("resident"), true),
         ("slots120", Some(120), None, 1, Some("resident"), true),
         ("resident_tokenwise", None, None, n, None, true),
@@ -430,8 +438,8 @@ fn gpu_real_moe_streaming() {
     ];
     let mut runs: Vec<(&str, Run)> = Vec::new();
     for (name, slots, ram, split, base, exact) in configs {
-        let mut run = run_config(name, &path, slots, ram, split, &r);
-        if name == "resident" && run.greedy != r.greedy {
+        let mut run = run_config(name, &path, slots, ram, split, threads, &r);
+        if (name == "resident" || name == "resident_norecord") && run.greedy != r.greedy {
             failures.push(format!("{name}: greedy sequence differs from libllama"));
         }
         if let Some(base) = base.and_then(|b| runs.iter().find(|(n, _)| *n == b)) {

@@ -3,6 +3,34 @@
 
 pub mod synth;
 
+/// The CPU quota of the container (cgroup v2 `cpu.max`), if any.
+pub fn cpu_quota() -> Option<f64> {
+    let s = std::fs::read_to_string("/sys/fs/cgroup/cpu.max").ok()?;
+    let mut it = s.split_whitespace();
+    let (q, p) = (it.next()?, it.next()?);
+    Some(q.parse::<f64>().ok()? / p.parse::<f64>().ok()?)
+}
+
+/// Thread counts for a paired benchmark: `TETRAEDER_BENCH_THREADS` (comma list) if set, else
+/// the container CPU quota rounded down, else the available parallelism (same rule as
+/// `scripts/ot_pair2.sh`; the host core count in a container is not what it may use).
+pub fn bench_thread_list() -> Vec<usize> {
+    let from_env: Vec<usize> = std::env::var("TETRAEDER_BENCH_THREADS")
+        .ok()
+        .map(|v| v.split(',').filter_map(|t| t.trim().parse().ok()).collect())
+        .unwrap_or_default();
+    if !from_env.is_empty() {
+        return from_env;
+    }
+    let quota = cpu_quota().map(|q| q as usize).filter(|&q| q >= 1);
+    vec![quota.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))]
+}
+
+/// The one thread count both engines get: the first of [`bench_thread_list`].
+pub fn bench_threads() -> usize {
+    bench_thread_list()[0]
+}
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};

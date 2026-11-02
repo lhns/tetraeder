@@ -23,7 +23,7 @@ upper='blk\.(2[4-9]|3[0-9]|4[0-7])\.ffn_(up|down|gate)_exps=CPU'
       ot-upper) ot=(-ot "$upper") ;;
     esac
     "$bench" -m "$model" -ngl 99 -fa 1 -p 64 -n 16 -r 3 -t "$threads" "${ot[@]}" -o json \
-      > "$date_dir/ot-pair-$v.json" || rc=$?
+      > "$date_dir/ot-pair-$v-$(date +%H%M%S).json" || rc=$?
   done
   echo "[$(date +%T)] llama-bench rc=$rc"
 } >> "$log" 2>&1
