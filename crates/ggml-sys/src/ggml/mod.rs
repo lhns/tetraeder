@@ -14,7 +14,7 @@ mod context;
 mod sched;
 
 pub use backend::{Backend, Buffer};
-pub use context::{Context, Graph, OwnedTensor, RopeParams, Tensor};
+pub use context::{Context, Graph, OwnedGraph, OwnedTensor, RopeParams, Tensor};
 pub use sched::Sched;
 
 use crate::raw as sys;
