@@ -9,6 +9,9 @@ ARG RUST_VERSION=1.95.0
 ARG SCCACHE_VERSION=0.10.0
 # Ampere (8.6), Ada (8.9), Hopper (9.0), Blackwell (12.0)
 ARG CUDA_ARCHS="86;89;90;120"
+# ik_llama.cpp compiles many more CUDA kernels: for all four archs the image build ran past 3 h on the CI runner.
+# The boxes are RTX 3090 (taxameter.toml offers), so that baseline is built for Ampere only.
+ARG IK_CUDA_ARCHS="86"
 
 # GGML_NATIVE=OFF (llama.cpp below and box-side Rust builds): the image is built on a CI runner and runs on any
 # Vast host, so ggml CPU code targets its portable AVX2 baseline instead of the build machine's ISA.
