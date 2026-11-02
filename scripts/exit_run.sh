@@ -25,8 +25,11 @@ threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
 # Vast's cgroup limit can exceed the offer's RAM (183 GB on a "126 GB" offer, model 142 GB). So a balloon process
 # holds the difference to EMULATE_RAM_GB (default 128) as touched anonymous memory (no swap: it stays resident), and
 # both engines, page cache included, run within the rest. The RAM tier gets the emulated RAM minus RAM_RESERVE_GB.
-mem=$(cat /sys/fs/cgroup/memory.max 2> /dev/null)
-case "$mem" in '' | max) mem=$(awk '/MemTotal/ { print $2 * 1024 }' /proc/meminfo) ;; esac
+# (cgroup v2 memory.max, else v1 limit_in_bytes, which reads as a huge number when unlimited; at most MemTotal)
+total=$(awk '/MemTotal/ { print $2 * 1024 }' /proc/meminfo)
+mem=$(cat /sys/fs/cgroup/memory.max 2> /dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2> /dev/null)
+case "$mem" in '' | max) mem=$total ;; esac
+[ "$mem" -gt "$total" ] && mem=$total
 emulated=$((${EMULATE_RAM_GB:-128} * 1000000000))
 balloon=$((mem - emulated))
 if [ "$balloon" -gt 0 ]; then
