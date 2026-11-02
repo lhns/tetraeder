@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Phase 2 exit run (ADR 0035, 0037): Qwen3-235B-A22B Q4_K_M, larger than the box RAM, builder with MissPolicy::Cpu
-# (tests/exit_regime.rs) against llama.cpp and ik_llama.cpp with expert offload (-ot) on the same box and threads.
+# (tests/exit_regime.rs) against llama.cpp with expert offload (-ot) on the same box and threads.
 # Waits for scripts/fetch_exit_model.sh. Started detached by `taxameter run scripts/exit_run.sh`; ends with
 # EXIT_RUN_DONE rc=N in runs/vast/exit_run.log. Every stage has a time limit; a failed smoke gate stops the run.
 exec 8> /root/tetraeder_exit_run.lock; flock -n 8 || exit 0
@@ -46,7 +46,6 @@ fi
 ram_bytes=$((mem - ${RAM_RESERVE_GB:-20} * 1000000000))
 vram_bytes="${VRAM_SLOT_BYTES:-5500000000}"
 bench="${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}"
-ik_bench="${IK_LLAMA_BENCH:-/opt/ik_llama/bin/llama-bench}"
 # natural text for the prompt (random token ids spread routing pessimistically)
 prompt=/root/exit_prompt.txt
 cat AGENTS.md docs/adr/*.md > "$prompt"
@@ -118,20 +117,16 @@ EOF
       # baselines at depth 0, same box and threads, before the variants so a short box still has the comparison:
       # all experts on the CPU, and the same expert VRAM as the builder (layers 0-3 of about 1.46 GB each on the GPU;
       # llama-bench takes ',' as alternative configs, so overrides in one config are joined with ';')
-      for e in llama ik; do
-        b=$bench; [ $e = ik ] && b=$ik_bench
-        baseline "$b" "exit-$e-ot-all" 30 -ub 2048 -p 2048 -n 32 -ot 'exps=CPU'
-        baseline "$b" "exit-$e-ot-samevram" 30 -ub 2048 -p 2048 -n 32 -ot 'blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU'
-      done
+      # (llama.cpp only: ik_llama was OOM-killed at 128 GB)
+      baseline "$bench" exit-llama-ot-all 30 -ub 2048 -p 2048 -n 32 -ot 'exps=CPU'
+      baseline "$bench" exit-llama-ot-samevram 30 -ub 2048 -p 2048 -n 32 -ot 'blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU'
       exit_regime refresh-hot 30 TETRAEDER_EXIT_PREFILL=8192 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=64 \
         TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_REFRESH_HOT=1 || rc=24
       exit_regime cpu-prefill 30 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=32 \
         TETRAEDER_EXIT_OP_OFFLOAD=0 || rc=25
       # the deep prompt last: on a page-faulting 235B it may take long
-      for e in llama ik; do
-        b=$bench; [ $e = ik ] && b=$ik_bench
-        baseline "$b" "exit-$e-ot-all-d32k" 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot 'exps=CPU'
-      done
+      baseline "$bench" exit-llama-ot-all-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot 'exps=CPU'
+      baseline "$bench" exit-llama-ot-samevram-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot 'blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU'
     fi
   } >> "$log" 2>&1
 fi
