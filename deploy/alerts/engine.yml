@@ -13,3 +13,14 @@ groups:
         annotations:
           summary: "Engine requests failing ({{ $labels.error_type }})"
           description: "Requests end with error.type {{ $labels.error_type }} for 5 minutes; check the engine log (decode or load errors)."
+      # Prefetch (ADR 0038) reads experts the router mostly does not choose: disk bandwidth wasted, no step time saved.
+      - alert: TetraederPrefetchAccuracyLow
+        expr: |
+          sum(rate(tetraeder_expert_prefetch_accuracy_ratio_sum[10m])) / sum(rate(tetraeder_expert_prefetch_accuracy_ratio_count[10m])) < 0.4
+            and on() sum(rate(tetraeder_expert_prefetch_total{tetraeder_result="issued"}[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Expert prefetch predicts fewer than 40% of the routed experts"
+          description: "Turn LoadOptions::prefetch off, or check the model: wasted prefetch bytes compete with the reads of the step."

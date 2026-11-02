@@ -53,6 +53,46 @@ pub const TOP_K: usize = 5;
 pub const PROMPT: [i32; 6] = [12, 77, 3, 200, 41, 9];
 pub const N_GREEDY: usize = 12;
 
+/// Prefetch counters between two stats snapshots, per `per` (tokens): experts issued, used and
+/// wasted, bytes, the worker's read time against the time the step waited for it, and the
+/// prediction accuracy (hits over slots scored) per layer and overall (ADR 0038).
+pub fn prefetch_json(
+    a: &tetraeder_model::ExpertStats,
+    b: &tetraeder_model::ExpertStats,
+    per: f64,
+) -> serde_json::Value {
+    let (x, y) = (&a.io, &b.io);
+    let read = (y.prefetch_read_time - x.prefetch_read_time).as_secs_f64();
+    let wait = (y.prefetch_wait_time - x.prefetch_wait_time).as_secs_f64();
+    let (mut hits, mut total) = (0u64, 0u64);
+    let accuracy: Vec<Option<f64>> = a
+        .layers
+        .iter()
+        .zip(&b.layers)
+        .map(|(p, q)| {
+            let (h, t) = (
+                q.predicted_hits - p.predicted_hits,
+                q.predicted_total - p.predicted_total,
+            );
+            hits += h;
+            total += t;
+            (t > 0).then(|| h as f64 / t as f64)
+        })
+        .collect();
+    serde_json::json!({
+        "issued": y.prefetch_issued - x.prefetch_issued,
+        "used": y.prefetch_used - x.prefetch_used,
+        "wasted": y.prefetch_wasted - x.prefetch_wasted,
+        "bytes": y.prefetch_bytes - x.prefetch_bytes,
+        "wasted_bytes": y.prefetch_wasted_bytes - x.prefetch_wasted_bytes,
+        "read_ms_per_token": read * 1e3 / per,
+        "wait_ms_per_token": wait * 1e3 / per,
+        "overlap": if read > 0.0 { Some(1.0 - wait / read) } else { None },
+        "accuracy_mean": if total > 0 { Some(hits as f64 / total as f64) } else { None },
+        "accuracy": accuracy,
+    })
+}
+
 pub fn argmax(v: &[f32]) -> usize {
     v.iter()
         .enumerate()

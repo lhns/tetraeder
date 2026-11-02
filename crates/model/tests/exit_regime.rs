@@ -19,6 +19,9 @@
 //! - `TETRAEDER_EXIT_DECODE` (32) greedy tokens after the prefill.
 //! - `TETRAEDER_EXIT_CTX` (prefill + decode, rounded up), `TETRAEDER_EXIT_THREADS`.
 //! - `TETRAEDER_EXIT_OP_OFFLOAD=1`: large CPU-group matmuls run on the GPU (ggml op offload).
+//! - `TETRAEDER_EXIT_PREFETCH=1`: predicted next-layer expert prefetch into the RAM tier
+//!   (ADR 0038); the JSON gets `prefill_prefetch` and `decode_prefetch` (counters, overlap and
+//!   prediction accuracy per layer and mean).
 //! - `TETRAEDER_EXIT_REFRESH_HOT=1`: rebuild the hot set from the whole prefill before decode
 //!   (by default it comes from the first ubatch).
 //! - `TETRAEDER_EXIT_PROMPT_FILE`: text tokenized with the model's vocab (libllama, vocab
@@ -27,8 +30,8 @@
 
 mod common;
 
-use common::argmax;
 use common::synth::{MoeSpec, quantized_moe_at};
+use common::{argmax, prefetch_json};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -201,6 +204,7 @@ fn exit_regime() {
     opts.n_ctx = n_ctx;
     opts.miss = MissPolicy::Cpu;
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
+    opts.prefetch = env_flag("TETRAEDER_EXIT_PREFETCH");
     let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
@@ -273,10 +277,12 @@ fn exit_regime() {
             "ubatch_s": ubatch_s,
             "prefill_profile_per_ubatch": profile_json(&pp, pp.steps.max(1) as f64),
             "prefill_io": io_json(&s0.io, &s1.io, n_prefill as f64),
+            "prefill_prefetch": prefetch_json(&s0, &s1, n_prefill as f64),
             "decode_tokens": n_decode,
             "decode_tok_s": n_decode as f64 / decode_s,
             "decode_profile_per_token": profile_json(&tg, n_decode.max(1) as f64),
             "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64),
+            "decode_prefetch": prefetch_json(&s1, &s2, n_decode.max(1) as f64),
             "decode_layers": layers_json(&s1, &s2),
             "greedy": greedy,
             "max_splits": m.max_splits(),
@@ -301,6 +307,7 @@ fn exit_regime() {
             "n_ctx": n_ctx,
             "op_offload": opts.op_offload,
             "refresh_hot": refresh_hot,
+            "prefetch": opts.prefetch,
             "expert_slots": opts.expert_slots,
             "expert_slot_bytes": opts.expert_slot_bytes,
             "ram_slots": opts.ram_slots,
