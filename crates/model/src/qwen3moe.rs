@@ -163,8 +163,13 @@ pub struct LoadOptions {
     pub op_offload: bool,
     /// Keep the whole-step graph and its scheduler allocation across steps with the same token
     /// count, padded KV length, `last_only` and routing recording, so ggml-cuda can replay a
-    /// captured CUDA graph (ADR 0036). Only with every expert resident; off by default.
+    /// captured CUDA graph (ADR 0036). Only with every expert resident; on by default (30B decode
+    /// 160 to 203 tok/s on the RTX 3090, greedy identical).
     pub reuse_step_graph: bool,
+    /// Predict each layer's experts from the previous layer and, with `MissPolicy::Cpu` and a
+    /// RAM tier, read the predicted ones into the RAM tier while the previous layer computes
+    /// (ADR 0038). Without a RAM tier the prediction is only scored. Off by default.
+    pub prefetch: bool,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -181,6 +186,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("telemetry", &self.telemetry.is_some())
             .field("op_offload", &self.op_offload)
             .field("reuse_step_graph", &self.reuse_step_graph)
+            .field("prefetch", &self.prefetch)
             .finish_non_exhaustive()
     }
 }
@@ -201,7 +207,8 @@ impl LoadOptions {
             miss: MissPolicy::Upload,
             routing_profile: None,
             op_offload: false,
-            reuse_step_graph: false,
+            reuse_step_graph: true,
+            prefetch: false,
         }
     }
 }
@@ -269,6 +276,8 @@ struct Slot {
     ids: OwnedTensor,
     /// The ids the expert matmuls use, written by the host.
     ids_map: OwnedTensor,
+    /// The next layer's predicted top-k ids `[n_used, n]` (ADR 0038), with prefetch on.
+    pred: OwnedTensor,
     /// Unweighted expert outputs per (token, choice), filled by pair groups (ADR 0035).
     acc: OwnedTensor,
 }
@@ -316,6 +325,12 @@ pub struct Qwen3Moe {
     group_graphs_run: u64,
     max_splits: usize,
     policy: MissPolicy,
+    /// Each segment also predicts the next layer's experts (ADR 0038): scored always, prefetched
+    /// with the cpu miss policy and a RAM tier.
+    predict: bool,
+    /// Pair groups may run on a GPU backend (the primary is not the CPU).
+    gpu: bool,
+    op_offload: bool,
     /// The hot set still has to be built from the first prefill's routing.
     hot_pending: bool,
     streamer: Option<Streamer>,
@@ -404,6 +419,7 @@ impl Qwen3Moe {
                     ram_slots: ram_slots.map(|r| r.max(1)),
                     io: opts.io,
                     profile: opts.routing_profile.clone(),
+                    prefetch: opts.prefetch,
                 };
                 Streamer::new(
                     &file,
@@ -422,6 +438,7 @@ impl Qwen3Moe {
             "qwen3moe loaded"
         );
         let cpu_hot = opts.miss == MissPolicy::Cpu && streamer.is_some();
+        let opts_primary_is_cpu = primary.is_cpu();
         let mut model = Qwen3Moe {
             file,
             sched,
@@ -441,6 +458,9 @@ impl Qwen3Moe {
             group_graphs_run: 0,
             max_splits: 0,
             policy: opts.miss,
+            predict: opts.prefetch && streamer.is_some(),
+            gpu: !opts_primary_is_cpu,
+            op_offload: opts.op_offload,
             hot_pending: cpu_hot && opts.routing_profile.is_none(),
             streamer,
             metrics,
@@ -743,6 +763,12 @@ impl Qwen3Moe {
         let mut logits = Vec::new();
         // The pair groups of the previous layer step that run inside this segment.
         let mut pending: Vec<PendingGroup> = Vec::new();
+        // The previous segment's prediction of this layer's experts (ADR 0038).
+        let mut predicted: Option<Vec<i32>> = None;
+        if let Some(streamer) = &mut self.streamer {
+            // A step that failed may have left a prefetch in flight.
+            streamer.settle();
+        }
         for seg in 0..=n_layer {
             let groups = std::mem::take(&mut pending);
             {
@@ -764,6 +790,7 @@ impl Qwen3Moe {
                     &ctx,
                     seg,
                     last_only,
+                    self.predict,
                     &specs,
                 );
                 let t = lap(&mut prof.build, t);
@@ -795,11 +822,20 @@ impl Qwen3Moe {
                     weights: slot.w.get().get_f32()?,
                 });
             }
-            lap(&mut prof.readback, t);
             let streamer = self
                 .streamer
                 .as_mut()
                 .expect("a resident step returned above");
+            if let Some(p) = predicted.take() {
+                streamer.score_prediction(seg, &p, &chosen, nu);
+            }
+            // Layer `seg + 1`'s predicted experts, read with this layer's routing.
+            if self.predict && seg + 1 < n_layer {
+                predicted = Some(slot.pred.get().get_i32()?);
+            }
+            lap(&mut prof.readback, t);
+            // The reads started a layer ago must have landed before the layer is planned.
+            streamer.finish_prefetch()?;
             let layer = &self.weights.layers[seg];
             if self.policy == MissPolicy::Cpu {
                 // Resident experts run from the compute slots, the others from the RAM slots
@@ -808,31 +844,44 @@ impl Qwen3Moe {
                 if plan.cpu.is_empty() {
                     let ids = map_ids(&chosen, &plan.compute, &plan.compute_slots);
                     slot.ids_map.get().set_i32(&ids)?;
+                    if let Some(p) = &predicted {
+                        streamer.start_prefetch(&self.file, seg + 1, p)?;
+                    }
                     continue;
                 }
+                let cap_ram = group_cap(ExpertSrc::Ram, self.gpu, self.op_offload);
+                let cap_compute = group_cap(ExpertSrc::Compute, self.gpu, self.op_offload);
                 let last = plan.cpu.len() - 1;
                 for (i, chunk) in plan.cpu.iter().enumerate() {
                     let slots = streamer.stage_ram(&self.file, seg, chunk)?;
                     let pairs = group_pairs(&chosen, nu, chunk, &slots);
-                    let group = PendingGroup {
-                        src: ExpertSrc::Ram,
-                        pairs,
-                    };
-                    if i == last {
-                        pending.push(group);
-                        continue;
+                    for pairs in split_group(pairs, cap_ram) {
+                        if i == last {
+                            pending.push(PendingGroup {
+                                src: ExpertSrc::Ram,
+                                pairs,
+                            });
+                            continue;
+                        }
+                        let exps = streamer.ram_exps(seg).expect("RAM tier");
+                        let splits =
+                            run_group_graph(&h, &mut self.sched, exps, slot, &pairs, &mut prof)?;
+                        self.max_splits = self.max_splits.max(splits);
+                        self.groups_run += 1;
+                        self.group_graphs_run += 1;
                     }
-                    let exps = streamer.ram_exps(seg).expect("RAM tier");
-                    let splits = run_group_graph(&h, &mut self.sched, exps, slot, &group.pairs)?;
-                    self.max_splits = self.max_splits.max(splits);
-                    self.groups_run += 1;
-                    self.group_graphs_run += 1;
                 }
                 if !plan.compute.is_empty() {
-                    pending.push(PendingGroup {
-                        src: ExpertSrc::Compute,
-                        pairs: group_pairs(&chosen, nu, &plan.compute, &plan.compute_slots),
-                    });
+                    let pairs = group_pairs(&chosen, nu, &plan.compute, &plan.compute_slots);
+                    for pairs in split_group(pairs, cap_compute) {
+                        pending.push(PendingGroup {
+                            src: ExpertSrc::Compute,
+                            pairs,
+                        });
+                    }
+                }
+                if let Some(p) = &predicted {
+                    streamer.start_prefetch(&self.file, seg + 1, p)?;
                 }
                 continue;
             }
@@ -846,21 +895,31 @@ impl Qwen3Moe {
             }
             // More distinct experts than slots: one pair group per chunk (ADR 0035). All
             // but the last run as graphs of their own; the last goes into the next segment.
+            let cap = group_cap(ExpertSrc::Compute, self.gpu, self.op_offload);
             let last = chunks.len() - 1;
             for (i, chunk) in chunks.iter().enumerate() {
                 let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
                 let pairs = group_pairs(&chosen, nu, chunk, &slots);
-                if i == last {
-                    pending.push(PendingGroup {
-                        src: ExpertSrc::Compute,
-                        pairs,
-                    });
-                    continue;
+                for pairs in split_group(pairs, cap) {
+                    if i == last {
+                        pending.push(PendingGroup {
+                            src: ExpertSrc::Compute,
+                            pairs,
+                        });
+                        continue;
+                    }
+                    let splits = run_group_graph(
+                        &h,
+                        &mut self.sched,
+                        layer.exps(),
+                        slot,
+                        &pairs,
+                        &mut prof,
+                    )?;
+                    self.max_splits = self.max_splits.max(splits);
+                    self.groups_run += 1;
+                    self.group_graphs_run += 1;
                 }
-                let splits = run_group_graph(&h, &mut self.sched, layer.exps(), slot, &pairs)?;
-                self.max_splits = self.max_splits.max(splits);
-                self.groups_run += 1;
-                self.group_graphs_run += 1;
             }
         }
         // Segment graphs plus the standalone group graphs of this step (ADR 0035).
@@ -950,6 +1009,43 @@ fn group_pairs(chosen: &[i32], n_used: usize, experts: &[u32], slots: &[u32]) ->
     g
 }
 
+/// Most (token, choice) rows of one group on CUDA: `mul_mat_id`'s id helper asserts
+/// `n_rows * 4 B <= shared memory per block` (about 25k rows on Ampere); ubatch 4096 at top-8 is
+/// 32k rows and aborted on the box.
+const MAX_GROUP_ROWS: usize = 16384;
+
+/// The row cap of a group that can run on CUDA: compute-tier groups on a GPU backend, and RAM
+/// groups when `op_offload` lets ggml run their matmuls there. CPU-only groups are never split:
+/// the CPU K-quant `mul_mat_id` picks its kernel by per-expert row count, so splitting would break
+/// the bitwise equality with the resident layer (ADR 0034, 0035).
+fn group_cap(src: ExpertSrc, gpu: bool, op_offload: bool) -> Option<usize> {
+    let on_gpu = gpu
+        && match src {
+            ExpertSrc::Compute => true,
+            ExpertSrc::Ram => op_offload,
+        };
+    on_gpu.then_some(MAX_GROUP_ROWS)
+}
+
+/// `g` as consecutive sub-groups of at most `cap` pairs, token-major order kept; the pairs'
+/// destination rows are disjoint, so the sub-groups can run in any graph.
+fn split_group(g: PairGroup, cap: Option<usize>) -> Vec<PairGroup> {
+    let Some(cap) = cap.filter(|&c| g.pairs.len() > c) else {
+        return vec![g];
+    };
+    (0..g.pairs.len())
+        .step_by(cap)
+        .map(|from| {
+            let to = (from + cap).min(g.pairs.len());
+            PairGroup {
+                tokens: g.tokens[from..to].to_vec(),
+                pairs: g.pairs[from..to].to_vec(),
+                ids: g.ids[from..to].to_vec(),
+            }
+        })
+        .collect()
+}
+
 /// Which tensors a pair group's experts are in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExpertSrc {
@@ -979,23 +1075,29 @@ fn group_exps<'a>(
     }
 }
 
-/// Runs one pair group as a graph of its own. Returns the scheduler's split count.
+/// Runs one pair group as a graph of its own. Returns the scheduler's split count; the time goes
+/// to `prof`'s build, alloc and compute like a segment's.
 fn run_group_graph(
     h: &Hparams,
     sched: &mut Sched,
     exps: [Tensor<'_>; 3],
     s: &Slot,
     group: &PairGroup,
+    prof: &mut StepProfile,
 ) -> Result<usize> {
+    let t = Instant::now();
     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
     let mut g = ctx.new_graph(SEGMENT_NODES);
     let acc = ctx.reshape(s.acc.get(), &[h.n_embd as i64, acc_rows(s)]);
     let (done, inputs) = add_group(h, &ctx, exps, s, acc, group.pairs.len());
     g.expand(done);
+    let t = lap(&mut prof.build, t);
     sched.alloc_graph(&g)?;
     let splits = sched.n_splits();
     inputs.write(group)?;
+    let t = lap(&mut prof.alloc, t);
     sched.compute(&g)?;
+    lap(&mut prof.compute, t);
     Ok(splits)
 }
 
@@ -1167,6 +1269,7 @@ fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<
             w: t(Type::F32, &[1, nu, nt], "weights"),
             ids: t(Type::I32, &[nu, nt], "ids"),
             ids_map: t(Type::I32, &[nu, nt], "ids_mapped"),
+            pred: t(Type::I32, &[nu, nt], "predicted"),
             acc: t(Type::F32, &[ne, nu, nt], "moe_acc"),
         }
     };
@@ -1192,6 +1295,7 @@ fn build_segment<'a>(
     ctx: &'a Context,
     seg: usize,
     last_only: bool,
+    predict: bool,
     groups: &[([Tensor<'a>; 3], usize)],
 ) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
@@ -1231,6 +1335,14 @@ fn build_segment<'a>(
     g.expand(ctx.cpy(xn, s.xn.get()));
     g.expand(ctx.cpy(weights, s.w.get()));
     g.expand(ctx.cpy(ids, s.ids.get()));
+    if predict && seg + 1 < n_layer {
+        // After the real router so its nodes stay consecutive for the CUDA topk-moe fusion.
+        let next = &w.layers[seg + 1];
+        let xp = ctx.mul(ctx.rms_norm(ffn_inp, h.rms_eps), next.ffn_norm.get());
+        let probs = ctx.soft_max(ctx.mul_mat(next.gate_inp.get(), xp));
+        let pred = ctx.argsort_top_k(probs, h.n_expert_used as i32);
+        g.expand(ctx.cpy(pred, s.pred.get()));
+    }
     (g, None, inputs)
 }
 
@@ -1399,7 +1511,7 @@ fn sum_experts<'a>(h: &Hparams, ctx: &'a Context, experts: Tensor<'a>) -> Tensor
 
 #[cfg(test)]
 mod tests {
-    use super::group_pairs;
+    use super::{ExpertSrc, MAX_GROUP_ROWS, group_cap, group_pairs, split_group};
 
     /// Top-8 of 32 experts, 24 tokens, skewed like a real router: low ids are popular.
     fn routing() -> (Vec<i32>, usize) {
@@ -1459,6 +1571,54 @@ mod tests {
             }
             assert!(seen.iter().all(|&n| n == 1), "size {size}: each pair once");
         }
+    }
+
+    /// A group over the cap splits into consecutive sub-groups that concatenate to the original.
+    #[test]
+    fn split_keeps_order_and_covers_every_pair() {
+        let (chosen, n_used) = routing();
+        let experts: Vec<u32> = (0..32).collect();
+        let g = group_pairs(&chosen, n_used, &experts, &experts);
+        let whole = group_pairs(&chosen, n_used, &experts, &experts);
+        for cap in [1usize, 7, 64, 191] {
+            let parts = split_group(group_pairs(&chosen, n_used, &experts, &experts), Some(cap));
+            assert_eq!(parts.len(), g.pairs.len().div_ceil(cap));
+            assert!(
+                parts
+                    .iter()
+                    .all(|p| p.pairs.len() <= cap && !p.pairs.is_empty())
+            );
+            let join = |f: fn(&super::PairGroup) -> &Vec<i32>| -> Vec<i32> {
+                parts.iter().flat_map(|p| f(p).clone()).collect()
+            };
+            assert_eq!(join(|p| &p.pairs), whole.pairs);
+            assert_eq!(join(|p| &p.tokens), whole.tokens);
+            assert_eq!(join(|p| &p.ids), whole.ids);
+        }
+        // At or under the cap, or no cap: untouched.
+        assert_eq!(
+            split_group(
+                group_pairs(&chosen, n_used, &experts, &experts),
+                Some(g.pairs.len())
+            )
+            .len(),
+            1
+        );
+        assert_eq!(
+            split_group(group_pairs(&chosen, n_used, &experts, &experts), None).len(),
+            1
+        );
+    }
+
+    /// Only groups that can run on CUDA are capped.
+    #[test]
+    fn cap_applies_to_cuda_groups_only() {
+        let c = Some(MAX_GROUP_ROWS);
+        assert_eq!(group_cap(ExpertSrc::Compute, true, false), c);
+        assert_eq!(group_cap(ExpertSrc::Ram, true, true), c);
+        assert_eq!(group_cap(ExpertSrc::Ram, true, false), None);
+        assert_eq!(group_cap(ExpertSrc::Ram, false, true), None);
+        assert_eq!(group_cap(ExpertSrc::Compute, false, false), None);
     }
 
     /// Two tokens, top-2: the group of expert 5 holds the pairs that chose it.
@@ -1573,7 +1733,8 @@ mod graph_order {
         let mut all = Vec::new();
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, &[]);
+            let (g, _, _) =
+                build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, false, &[]);
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router.
                 let what = format!("segment {seg}");

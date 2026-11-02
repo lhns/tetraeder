@@ -9,7 +9,7 @@
 
 mod common;
 
-use common::{TOP_K, argmax, top_k};
+use common::{TOP_K, argmax, prefetch_json, top_k};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -190,9 +190,14 @@ fn first_weight_diff(a: &Run, b: &Run, n_prompt: usize, slots: usize) -> Value {
 }
 
 /// Configurations named `*_cpupolicy` use `MissPolicy::Cpu` (ADR 0035): the hot set in the
-/// compute slots, every other routed expert computed on the CPU from the RAM tier.
+/// compute slots, every other routed expert computed on the CPU from the RAM tier. A `_prefetch`
+/// suffix adds the predicted next-layer expert prefetch (ADR 0038).
 fn is_cpu_policy(name: &str) -> bool {
-    name.ends_with("_cpupolicy")
+    name.trim_end_matches("_prefetch").ends_with("_cpupolicy")
+}
+
+fn is_prefetch(name: &str) -> bool {
+    name.ends_with("_prefetch")
 }
 
 /// One builder configuration, loaded, checked and dropped. Returns its greedy tokens and the
@@ -216,6 +221,7 @@ fn run_config(
         } else {
             MissPolicy::Upload
         },
+        prefetch: is_prefetch(name),
         // `cpu_*` configs run the builder on the CPU backend.
         cpu_threads: Some(threads),
         ..LoadOptions::new(if name.starts_with("cpu_") {
@@ -229,6 +235,7 @@ fn run_config(
     let load_s = t0.elapsed().as_secs_f64();
     let layers = m.hparams().n_layer as u64;
     let n_vocab = m.n_vocab();
+    let stats_at_load = m.expert_stats();
 
     let t0 = Instant::now();
     // Prefill in `split` evals: the same math in another summation order (the noise floor).
@@ -313,6 +320,11 @@ fn run_config(
             "ram_misses": sum(&|l| l.ram.map_or(0, |x| x.misses)),
         });
     }
+    let stats_cold = m.expert_stats();
+    if let (true, Some(a), Some(b)) = (is_prefetch(name), &stats_at_load, &stats_cold) {
+        let tokens = (r.prompt.len() + N_GREEDY) as f64;
+        out["prefetch"] = prefetch_json(a, b, tokens);
+    }
     if is_cpu_policy(name) {
         // The run above starts with an empty RAM tier and reads experts from disk; llama.cpp's
         // `-ot` has the whole model in memory. Run the prompt again warm, with the time breakdown.
@@ -333,6 +345,10 @@ fn run_config(
             "prefill_profile": format!("{prefill_profile:?}"),
             "decode_profile": format!("{:?}", m.take_profile()),
         });
+        if let (true, Some(a), Some(b)) = (is_prefetch(name), &stats_cold, m.expert_stats()) {
+            let tokens = (r.prompt.len() + greedy.len()) as f64;
+            out["warm"]["prefetch"] = prefetch_json(a, &b, tokens);
+        }
     }
     eprintln!("{name}: {out}");
     Run {
@@ -427,6 +443,16 @@ fn gpu_real_moe_streaming() {
         // their experts from disk in every step, warm rerun included.
         (
             "slots32_ram32_cpupolicy",
+            Some(32),
+            Some(32),
+            1,
+            Some("resident"),
+            false,
+        ),
+        // The same with the predicted next-layer experts read ahead (ADR 0038): the logits are
+        // those of `slots32_ram32_cpupolicy`; the report has the counters and the accuracy.
+        (
+            "slots32_ram32_cpupolicy_prefetch",
             Some(32),
             Some(32),
             1,

@@ -90,6 +90,37 @@ impl MemoryMetrics {
         }
     }
 
+    /// `tetraeder.expert.prefetch`, result `issued`: experts read ahead for `layer` (ADR 0038).
+    pub fn prefetch_issued(&self, layer: u32, n: u64) {
+        if let Some(t) = &self.telemetry {
+            t.metrics().expert_prefetch(n, layer, "issued");
+        }
+    }
+
+    /// A prefetched expert of `layer` was routed while resident.
+    pub fn prefetch_used(&self, layer: u32) {
+        if let Some(t) = &self.telemetry {
+            t.metrics().expert_prefetch(1, layer, "used");
+        }
+    }
+
+    /// A prefetched expert of `layer` was evicted before it was routed; `bytes` is its size.
+    pub fn prefetch_wasted(&self, layer: u32, bytes: u64) {
+        if let Some(t) = &self.telemetry {
+            t.metrics().expert_prefetch(1, layer, "wasted");
+            t.metrics().expert_prefetch_wasted_bytes(bytes);
+        }
+    }
+
+    /// `tetraeder.expert.prefetch.accuracy` of one layer step: `hits` of `total` predicted
+    /// experts were routed.
+    pub fn prediction_accuracy(&self, layer: u32, hits: u64, total: u64) {
+        if let (Some(t), true) = (&self.telemetry, total > 0) {
+            t.metrics()
+                .expert_prefetch_accuracy(layer, hits as f64 / total as f64);
+        }
+    }
+
     /// `tetraeder.tier.read.bytes`.
     pub fn tier_read(&self, device: &str, tier: &str, bytes: u64) {
         if let Some(t) = &self.telemetry {
