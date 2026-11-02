@@ -166,6 +166,10 @@ pub struct LoadOptions {
     /// captured CUDA graph (ADR 0036). Only with every expert resident; on by default (30B decode
     /// 160 to 203 tok/s on the RTX 3090, greedy identical).
     pub reuse_step_graph: bool,
+    /// Predict each layer's experts from the previous layer and, with `MissPolicy::Cpu` and a
+    /// RAM tier, read the predicted ones into the RAM tier while the previous layer computes
+    /// (ADR 0038). Without a RAM tier the prediction is only scored. Off by default.
+    pub prefetch: bool,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -182,6 +186,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("telemetry", &self.telemetry.is_some())
             .field("op_offload", &self.op_offload)
             .field("reuse_step_graph", &self.reuse_step_graph)
+            .field("prefetch", &self.prefetch)
             .finish_non_exhaustive()
     }
 }
@@ -203,6 +208,7 @@ impl LoadOptions {
             routing_profile: None,
             op_offload: false,
             reuse_step_graph: true,
+            prefetch: false,
         }
     }
 }
@@ -270,6 +276,8 @@ struct Slot {
     ids: OwnedTensor,
     /// The ids the expert matmuls use, written by the host.
     ids_map: OwnedTensor,
+    /// The next layer's predicted top-k ids `[n_used, n]` (ADR 0038), with prefetch on.
+    pred: OwnedTensor,
     /// Unweighted expert outputs per (token, choice), filled by pair groups (ADR 0035).
     acc: OwnedTensor,
 }
@@ -317,6 +325,9 @@ pub struct Qwen3Moe {
     group_graphs_run: u64,
     max_splits: usize,
     policy: MissPolicy,
+    /// Each segment also predicts the next layer's experts (ADR 0038): scored always, prefetched
+    /// with the cpu miss policy and a RAM tier.
+    predict: bool,
     /// Pair groups may run on a GPU backend (the primary is not the CPU).
     gpu: bool,
     op_offload: bool,
@@ -408,6 +419,7 @@ impl Qwen3Moe {
                     ram_slots: ram_slots.map(|r| r.max(1)),
                     io: opts.io,
                     profile: opts.routing_profile.clone(),
+                    prefetch: opts.prefetch,
                 };
                 Streamer::new(
                     &file,
@@ -446,6 +458,7 @@ impl Qwen3Moe {
             group_graphs_run: 0,
             max_splits: 0,
             policy: opts.miss,
+            predict: opts.prefetch && streamer.is_some(),
             gpu: !opts_primary_is_cpu,
             op_offload: opts.op_offload,
             hot_pending: cpu_hot && opts.routing_profile.is_none(),
@@ -750,6 +763,12 @@ impl Qwen3Moe {
         let mut logits = Vec::new();
         // The pair groups of the previous layer step that run inside this segment.
         let mut pending: Vec<PendingGroup> = Vec::new();
+        // The previous segment's prediction of this layer's experts (ADR 0038).
+        let mut predicted: Option<Vec<i32>> = None;
+        if let Some(streamer) = &mut self.streamer {
+            // A step that failed may have left a prefetch in flight.
+            streamer.settle();
+        }
         for seg in 0..=n_layer {
             let groups = std::mem::take(&mut pending);
             {
@@ -771,6 +790,7 @@ impl Qwen3Moe {
                     &ctx,
                     seg,
                     last_only,
+                    self.predict,
                     &specs,
                 );
                 let t = lap(&mut prof.build, t);
@@ -802,11 +822,20 @@ impl Qwen3Moe {
                     weights: slot.w.get().get_f32()?,
                 });
             }
-            lap(&mut prof.readback, t);
             let streamer = self
                 .streamer
                 .as_mut()
                 .expect("a resident step returned above");
+            if let Some(p) = predicted.take() {
+                streamer.score_prediction(seg, &p, &chosen, nu);
+            }
+            // Layer `seg + 1`'s predicted experts, read with this layer's routing.
+            if self.predict && seg + 1 < n_layer {
+                predicted = Some(slot.pred.get().get_i32()?);
+            }
+            lap(&mut prof.readback, t);
+            // The reads started a layer ago must have landed before the layer is planned.
+            streamer.finish_prefetch()?;
             let layer = &self.weights.layers[seg];
             if self.policy == MissPolicy::Cpu {
                 // Resident experts run from the compute slots, the others from the RAM slots
@@ -815,6 +844,9 @@ impl Qwen3Moe {
                 if plan.cpu.is_empty() {
                     let ids = map_ids(&chosen, &plan.compute, &plan.compute_slots);
                     slot.ids_map.get().set_i32(&ids)?;
+                    if let Some(p) = &predicted {
+                        streamer.start_prefetch(&self.file, seg + 1, p)?;
+                    }
                     continue;
                 }
                 let cap_ram = group_cap(ExpertSrc::Ram, self.gpu, self.op_offload);
@@ -847,6 +879,9 @@ impl Qwen3Moe {
                             pairs,
                         });
                     }
+                }
+                if let Some(p) = &predicted {
+                    streamer.start_prefetch(&self.file, seg + 1, p)?;
                 }
                 continue;
             }
@@ -1234,6 +1269,7 @@ fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<
             w: t(Type::F32, &[1, nu, nt], "weights"),
             ids: t(Type::I32, &[nu, nt], "ids"),
             ids_map: t(Type::I32, &[nu, nt], "ids_mapped"),
+            pred: t(Type::I32, &[nu, nt], "predicted"),
             acc: t(Type::F32, &[ne, nu, nt], "moe_acc"),
         }
     };
@@ -1259,6 +1295,7 @@ fn build_segment<'a>(
     ctx: &'a Context,
     seg: usize,
     last_only: bool,
+    predict: bool,
     groups: &[([Tensor<'a>; 3], usize)],
 ) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
@@ -1298,6 +1335,14 @@ fn build_segment<'a>(
     g.expand(ctx.cpy(xn, s.xn.get()));
     g.expand(ctx.cpy(weights, s.w.get()));
     g.expand(ctx.cpy(ids, s.ids.get()));
+    if predict && seg + 1 < n_layer {
+        // After the real router so its nodes stay consecutive for the CUDA topk-moe fusion.
+        let next = &w.layers[seg + 1];
+        let xp = ctx.mul(ctx.rms_norm(ffn_inp, h.rms_eps), next.ffn_norm.get());
+        let probs = ctx.soft_max(ctx.mul_mat(next.gate_inp.get(), xp));
+        let pred = ctx.argsort_top_k(probs, h.n_expert_used as i32);
+        g.expand(ctx.cpy(pred, s.pred.get()));
+    }
     (g, None, inputs)
 }
 
@@ -1688,7 +1733,8 @@ mod graph_order {
         let mut all = Vec::new();
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, &[]);
+            let (g, _, _) =
+                build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, false, &[]);
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router.
                 let what = format!("segment {seg}");

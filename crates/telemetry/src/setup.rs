@@ -261,6 +261,9 @@ mod tests {
         m.expert_load_duration(Duration::from_millis(2), "vram", "nvme");
         m.tier_read_bytes(4096, "nvme0", "nvme");
         m.expert_layer_hit(true);
+        m.expert_prefetch(2, 4, "issued");
+        m.expert_prefetch_wasted_bytes(10);
+        m.expert_prefetch_accuracy(4, 0.5);
         mp.force_flush().unwrap();
 
         let mut names = Vec::new();
@@ -294,6 +297,9 @@ mod tests {
             "tetraeder.expert.load.duration",
             "tetraeder.tier.read.bytes",
             "tetraeder.expert.layer_hit",
+            "tetraeder.expert.prefetch",
+            "tetraeder.expert.prefetch.wasted",
+            "tetraeder.expert.prefetch.accuracy",
         ] {
             assert!(names.iter().any(|x| x == n), "missing metric {n}");
         }

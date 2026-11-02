@@ -85,6 +85,9 @@ pub struct Metrics {
     expert_load: Histogram<f64>,
     tier_read: Counter<u64>,
     layer_hit: Counter<u64>,
+    prefetch: Counter<u64>,
+    prefetch_wasted_bytes: Counter<u64>,
+    prefetch_accuracy: Histogram<f64>,
 }
 
 impl Metrics {
@@ -157,6 +160,22 @@ impl Metrics {
                 .u64_counter("tetraeder.expert.layer_hit")
                 .with_unit("{layer}")
                 .with_description("MoE layer steps with all top-k experts resident (full) or not")
+                .build(),
+            prefetch: meter
+                .u64_counter("tetraeder.expert.prefetch")
+                .with_unit("{expert}")
+                .with_description("Experts read ahead into the RAM tier by layer and result")
+                .build(),
+            prefetch_wasted_bytes: meter
+                .u64_counter("tetraeder.expert.prefetch.wasted")
+                .with_unit("By")
+                .with_description("Bytes of prefetched experts evicted before they were routed")
+                .build(),
+            prefetch_accuracy: meter
+                .f64_histogram("tetraeder.expert.prefetch.accuracy")
+                .with_unit("1")
+                .with_description("Share of predicted experts the router chose, per layer step")
+                .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
                 .build(),
         }
     }
@@ -277,6 +296,28 @@ impl Metrics {
                 if full { "full" } else { "partial" },
             )],
         );
+    }
+
+    /// Prefetch of a MoE `layer`: `result` is `issued`, `used` (routed while resident) or
+    /// `wasted` (evicted unused).
+    pub fn expert_prefetch(&self, n: u64, layer: u32, result: &'static str) {
+        self.prefetch.add(
+            n,
+            &[
+                KeyValue::new(attr::LAYER, i64::from(layer)),
+                KeyValue::new(attr::RESULT, result),
+            ],
+        );
+    }
+
+    pub fn expert_prefetch_wasted_bytes(&self, bytes: u64) {
+        self.prefetch_wasted_bytes.add(bytes, &[]);
+    }
+
+    /// One layer step's prediction: `accuracy` in 0 to 1.
+    pub fn expert_prefetch_accuracy(&self, layer: u32, accuracy: f64) {
+        self.prefetch_accuracy
+            .record(accuracy, &[KeyValue::new(attr::LAYER, i64::from(layer))]);
     }
 
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {
