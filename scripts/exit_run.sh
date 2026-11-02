@@ -61,10 +61,14 @@ rc=0
   cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run || rc=21
 } >> "$log" 2>&1
 
+# STAGES (space list of stage names, default all) lets a relaunch skip stages that already ran
+want() { [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]]; }
+
 # exit_regime <name> <minutes> [ENV=VALUE...]: one harness run, JSON to exit-<name>-<stamp>.json
 exit_regime() {
   local name=$1 min=$2
   shift 2
+  want "$name" || return 0
   echo "[$(date +%T)] start $name"
   env TETRAEDER_EXIT_GGUF="$model" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
     TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
@@ -81,6 +85,7 @@ exit_regime() {
 baseline() {
   local bin=$1 name=$2 min=$3
   shift 3
+  want "$name" || return 0
   [ -x "$bin" ] || { echo "skip $name: $bin missing"; return 0; }
   echo "[$(date +%T)] start $name"
   timeout -k 30 "${min}m" "$bin" -m "$model" -ngl 99 -fa 1 -t "$threads" -r 1 -o json "$@" > "$date_dir/$name-$stamp.json"
@@ -106,16 +111,19 @@ for r in d.get("runs") or []:
         print("  memory:", m)
 EOF
     if [ $rc = 0 ]; then
-      exit_regime main 60 TETRAEDER_EXIT_PREFILL=32768 TETRAEDER_EXIT_UBATCH=4096 TETRAEDER_EXIT_DECODE=64 \
+      # ubatch 2048: a pair group passes one row per (token, expert) pair to CUDA's mul_mat_id, whose id helper
+      # needs 4 B of shared memory per row (about 25k rows on Ampere); ubatch 4096 at top-8 is 32k (abort, 2026-11-02)
+      exit_regime main 60 TETRAEDER_EXIT_PREFILL=32768 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=64 \
         TETRAEDER_EXIT_CTX=33024 TETRAEDER_EXIT_OP_OFFLOAD=1 || rc=23
       # baselines at depth 0, same box and threads, before the variants so a short box still has the comparison:
-      # all experts on the CPU, and the same expert VRAM as the builder (layers 0-3 of about 1.46 GB each on the GPU)
+      # all experts on the CPU, and the same expert VRAM as the builder (layers 0-3 of about 1.46 GB each on the GPU;
+      # llama-bench takes ',' as alternative configs, so overrides in one config are joined with ';')
       for e in llama ik; do
         b=$bench; [ $e = ik ] && b=$ik_bench
         baseline "$b" "exit-$e-ot-all" 30 -ub 2048 -p 2048 -n 32 -ot 'exps=CPU'
-        baseline "$b" "exit-$e-ot-samevram" 30 -ub 2048 -p 2048 -n 32 -ot 'blk\.[0-3]\.ffn_.*_exps=CUDA0,exps=CPU'
+        baseline "$b" "exit-$e-ot-samevram" 30 -ub 2048 -p 2048 -n 32 -ot 'blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU'
       done
-      exit_regime refresh-hot 30 TETRAEDER_EXIT_PREFILL=8192 TETRAEDER_EXIT_UBATCH=4096 TETRAEDER_EXIT_DECODE=64 \
+      exit_regime refresh-hot 30 TETRAEDER_EXIT_PREFILL=8192 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=64 \
         TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_REFRESH_HOT=1 || rc=24
       exit_regime cpu-prefill 30 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=32 \
         TETRAEDER_EXIT_OP_OFFLOAD=0 || rc=25
