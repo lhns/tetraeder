@@ -43,3 +43,6 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0037](0037-split-gguf-and-slot-tiers-from-byte-budgets.md) | Split GGUF files; expert slot tiers sized from byte budgets and reported |
 | [0038](0038-predicted-next-layer-expert-prefetch.md) | Predicted next-layer expert prefetch into the RAM tier |
 | [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | No AVX2 repack of the builder's CPU weights for now |
+| [0040](0040-planner-candidates-calibration-and-scoring.md) | Planner: executable candidates, a cost model calibrated from anchor runs, scored by regret and rank (Proposed) |
+| [0041](0041-detector-observation-faults-and-limits.md) | Bottleneck detector: one observation type, faults separate from the limiting resource, advisor report only (Proposed) |
+| [0042](0042-slo-burn-rate-alerts-and-drain-restart-replanning.md) | SLO burn-rate alerts and drain-and-restart replanning (Proposed) |
