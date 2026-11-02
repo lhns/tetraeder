@@ -1,0 +1,946 @@
+# Tetraeder: agent rules
+
+Rust LLM inference engine on a patched ggml. Design: `docs/plan.md`. Decisions: `docs/adr/`.
+Plain, short docs and comments; no em dashes.
+
+## Rules
+
+1. Start every phase with an ADR and the interfaces it touches; failing tests before code.
+2. Numerical parity per op and end to end against reference logits, per backend and per split point; greedy golden sequences for regressions.
+3. No optimization without a benchmark run from the pinned spec; results committed as JSON; CI fails on a regression beyond the noise band.
+4. Planner and detector changes are tested on every simulated hardware fixture and fault first; real hardware confirms nightly.
+5. Property tests on plans: memory never exceeded, every unit computed exactly once, every migration DAG ends in its target plan.
+6. Every new component ships with its metrics, a dashboard panel and an alert rule in the same PR.
+7. `unsafe` only in `ggml-sys` and `memory`, each block with a safety comment.
+8. A ggml change goes into the patch queue with an ADR and backend tests; nothing is upstreamed; never edit vendored ggml in place.
+9. Tests are labelled by the hardware they need and skip cleanly without it.
+10. Small PRs naming the phase and exit test they move.
+11. Every change builds and tests on Windows and Linux (`cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check`).
+
+## Session prompt template
+
+```
+Phase <n>, item <x>. Read docs/plan.md (section <s>) and docs/adr/<nnnn>.
+Write the failing test first, then implement, then run
+`cargo test`, `bench run <spec>` and check the dashboard panel.
+Update the ADR if a decision changed. Report exit-test numbers.
+```
+
+## GPU work on Vast.ai (ADR 0021)
+
+All GPU work goes through taxameter (`uv run taxameter ...`, config in `taxameter.toml`, ADR 0029). There is no other GPU. Commit before provisioning: `provision` and `run` push committed HEAD only. Overview and Task Scheduler setup: README, section "Vast boxes".
+
+- **Key hygiene:** never print, log, commit or pass the API key (`~/.config/vastai/vast_api_key`) on a command line. taxameter reads it from the file, sends it only as a header and redacts every output line.
+- **Money:** the box bills every running minute. Never leave the GPU idle and keep independent jobs running in parallel. Print `date +%T` at launch and at checks, estimate durations, flag overruns. Destroy the box when done, after a verified fetch. Caps: 0.45 USD/h and one instance for this project, 1.0 USD/h for all projects on the account (`max_account_price_per_hour`), 3 h per box (`max_box_hours`). Ask before raising them.
+- **Detached:** long work runs detached on the box (`nohup setsid ... &`). `taxameter ssh` stops remote commands after 120 s unless `--timeout`.
+- **Waiting:** run wait loops on the box (`ssh --timeout 540 -- 'for ...; sleep 5; done'`), not as local polling loops. Claude Code reaps local background shells when the machine is low on memory.
+- **Idempotent launches:** taxameter re-runs a command after a dropped connection, which once started duplicate jobs. Guard every launch script with `exec 8> /root/x.lock; flock -n 8 || exit 0`.
+- **No inline patterns:** never put a `pgrep -f` or `pkill -f` pattern inline in `ssh '...'`. It matches the ssh shell's own command line and kills it. Put the pattern in a script file on the box.
+- **Scripts:** never overwrite a shell script while bash is executing it. Upload new versions under a new name.
+- **VRAM:** budget every job before launching, including its final evaluation, which can peak far above the main run. Queue jobs with wait-for-file instead of packing them, and check `nvidia-smi` when several jobs share a card.
+- **CPU quota:** a container shows all host cores but has a quota of about 11. Cap side jobs (`OMP_NUM_THREADS`, `MKL_NUM_THREADS`, cargo `-j`) at 2-3. One uncapped job once dropped GPU use from 98% to 20%.
+- **Models:** store them in `.hf_cache/<org>__<model>/` and run offline (`HF_HUB_OFFLINE=1`). `models` probes ModelScope and Hugging Face and takes the faster. Never start a second download of the same model.
+- **CUDA:** never launch on a box whose provision log does not say `cuda: ok` or `cuda: ok_preload`.
+- **External stops:** a box can be stopped from outside (`intended_status=stopped`). Processes die and the disk survives; `start` may need a second request. Long scripts save results incrementally and resume.
+- **Blocklisted hosts:** 483833 (network down about 28 of every 45 min) and 366851 (stopped from outside twice, GPU rented away while stopped). Both ship in taxameter's Vast provider seed blocklist.
+- **Configs:** before comparing runs, diff their configs.
+- **Windows:** set `MSYS_NO_PATHCONV=1` for Git Bash commands with `/root/...` arguments.
+
+### Benchmark comparability on Vast
+
+Clocks cannot be locked in a container and the host changes nightly. Compare only paired runs: baseline and Tetraeder (telemetry on and off) in the same session on the same box, repeats interleaved. Measure a noise band per GPU class and gate regressions on paired ratios. Never compare absolute tok/s across nights. Record host id, GPU, driver, clocks and throttle reasons with every run.
+
+Thread counts and devices are part of the pairing: the harness passes one explicit `-t` (default `available_parallelism()`, which respects the container CPU quota; `threads = N` per variant overrides) to both engines, and runs `device = "cpu"` variants with `CUDA_VISIBLE_DEVICES` and `GGML_VK_VISIBLE_DEVICES` empty, so CPU numbers never use the GPU. Each sample records its thread count; `env.json` records the CPU quota. Repeats come from the harness (`-r 1` per call); a variant may set `-p` and `-r` in its args for both engines (CUDA variants: `-p 2048 -r 3`).
+# 0001. Own Rust engine on ggml, reached by a strangler path from libllama
+
+Status: Accepted
+
+## Context
+
+Tiered memory, expert streaming, one plan for all modes and deep observability need control no existing engine gives.
+
+## Decision
+
+Own Rust engine on ggml, reached by a strangler path from libllama; vLLM or SGLang only as an external process behind the gateway.
+
+## Consequences
+
+libllama for dense models first; own pieces replace it phase by phase.
+# 0002. Rust for all host code
+
+Status: Accepted
+
+## Context
+
+Performance lives in kernels; one static binary for Windows and Linux, memory safety, no GC pauses, the needed crates.
+
+## Decision
+
+Rust for all host code; kernels stay in C, C++ and CUDA.
+
+## Consequences
+
+`ggml-sys` FFI; no Python at runtime.
+# 0003. No interaction combinators, HVM, Bend2 or e-graph search
+
+Status: Accepted
+
+## Context
+
+Dense matrix math with known shapes; these runtimes do not use tensor cores; Bend2 is experimental; e-graph gains are small here.
+
+## Decision
+
+No interaction combinators, HVM, Bend2 or e-graph search.
+
+## Consequences
+
+Their order-independent local rewriting survives only as the design rule for migration DAGs.
+# 0004. No Java with TornadoVM, no Mojo for now
+
+Status: Accepted
+
+## Context
+
+TornadoVM lags tuned kernels and lacks NCCL, attention and MoE kernels; JVM on every node; Mojo is young and not fully open.
+
+## Decision
+
+No Java with TornadoVM, no Mojo for now.
+
+## Consequences
+
+Revisit Mojo if it matures.
+# 0005. Inside the engine, ggml is the only kernel base
+
+Status: Accepted
+
+## Context
+
+Three kernel ecosystems have incompatible KV and quant layouts; FlashInfer has no stable C ABI.
+
+## Decision
+
+Inside the engine, ggml is the only kernel base; no FlashInfer or CUTLASS.
+
+## Consequences
+
+Peak NVIDIA throughput comes only from an external vLLM or SGLang process (ADR 0001).
+# 0006. One placement plan IR
+
+Status: Accepted
+
+## Context
+
+Every mode is a shape of one structure; the planner must not propose what cannot run.
+
+## Decision
+
+One placement plan IR; plan diffs compile to migration DAGs; each phase declares which fields it can execute.
+
+## Consequences
+
+Validator, property tests, per-phase capability table.
+# 0007. Cost model from measured per-op curves, c0 plus f(M), with c0 per graph mode
+
+Status: Accepted
+
+## Context
+
+Fixed per-op cost dominates decode at batch 1; ranking matters more than absolute error.
+
+## Decision
+
+Cost model from measured per-op curves, c0 plus f(M), with c0 per graph mode; planner scored by regret and rank correlation over a defined candidate set.
+
+## Consequences
+
+Calibration runs, residual tracking, roofline only as a prior.
+# 0008. Tensor parallel and cross-node expert parallel are Linux only
+
+Status: Accepted
+
+## Context
+
+NCCL, RCCL, RDMA and io_uring do not exist on Windows; single-machine expert parallel needs none of them.
+
+## Decision
+
+Tensor parallel and cross-node expert parallel are Linux only; expert parallel inside one Windows machine is allowed.
+
+## Consequences
+
+Windows nodes are clients, workers or pipeline stages.
+# 0009. Replanning is drain-and-restart until Phase 7, then live
+
+Status: Accepted
+
+## Context
+
+Live reshard is the hardest correctness problem.
+
+## Decision
+
+Replanning is drain-and-restart until Phase 7, then live.
+
+## Consequences
+
+Hysteresis in minutes until Phase 7.
+# 0010. Name Tetraeder, license Apache-2.0
+
+Status: Accepted
+
+## Context
+
+Four faces for tensor, pipeline, expert and data parallel; matches your other projects.
+
+## Decision
+
+Name Tetraeder, license Apache-2.0.
+
+## Consequences
+
+Checked 2026-10-29: the crates.io name `tetraeder` is free and no GitHub project conflicts (only unrelated geometry exercises). Publishing stays off for now.
+# 0011. Ggml is modified only through a private ordered patch queue
+
+Status: Accepted
+
+## Context
+
+ggml changes almost daily; nothing is upstreamed for now.
+
+## Decision
+
+ggml is modified only through a private ordered patch queue; one pin, a llama.cpp commit that vendors ggml; never a long-lived fork.
+
+## Consequences
+
+One weekly rebase job for libllama binding and patches; patches kept clean so upstreaming stays possible later.
+# 0012. OpenTelemetry for metrics, traces and logs from the first commit
+
+Status: Accepted
+
+## Context
+
+One data path for dashboards, alerts, detector and planner; works with your VictoriaMetrics and OTel stack.
+
+## Decision
+
+OpenTelemetry for metrics, traces and logs from the first commit; GenAI semantic conventions with their attribute names; tail sampling; SLO burn-rate alerts; nothing leaves the machine unless configured.
+
+## Consequences
+
+Overhead budgets per mode measured nightly on a GPU host.
+# 0013. Bottleneck detection checks the environment first, picks the regime (load or batch 1), and outputs a ranked list with confidence or "balanced"
+
+Status: Accepted
+
+## Context
+
+Demand explains throughput under load, critical path explains batch 1; a detector without false-positive control is not trustworthy.
+
+## Decision
+
+Bottleneck detection checks the environment first, picks the regime (load or batch 1), and outputs a ranked list with confidence or "balanced"; the advisor acts by policy with verification and rollback.
+
+## Consequences
+
+Fault-injection fixtures with no-fault and two-fault controls.
+# 0014. Expert streaming needs an own graph builder, so the first one (Qwen3 MoE, CUDA and CPU) comes in Phase 2
+
+Status: Accepted
+
+## Context
+
+libllama allocates full expert tensors and runs top-k in its graph with no public hook; a sync per layer would break CUDA graphs.
+
+## Decision
+
+Expert streaming needs an own graph builder, so the first one (Qwen3 MoE, CUDA and CPU) comes in Phase 2; sync only on a miss, with predictive prefetch.
+
+## Consequences
+
+Hit rate is a first-class metric; Colibri is the reference design.
+# 0015. Own graph builders in Rust per family
+
+Status: Accepted
+
+## Context
+
+llama.cpp's builders are internal C++ without a stable API.
+
+## Decision
+
+Own graph builders in Rust per family; libllama stays as parity reference and fallback.
+
+## Consequences
+
+Parity tests against libllama per family and backend.
+# 0016. An own executor replaces ggml's backend scheduler in Phase 5
+
+Status: Accepted
+
+## Context
+
+ggml issues splits sequentially from one host thread; tensor parallel needs concurrent per-device subgraphs with NCCL group semantics.
+
+## Decision
+
+An own executor replaces ggml's backend scheduler in Phase 5.
+
+## Consequences
+
+The all-reduce patch is only useful together with it.
+# 0017. One worker process per device
+
+Status: Accepted
+
+## Context
+
+A sticky CUDA error or driver fault must not take down the whole engine.
+
+## Decision
+
+One worker process per device.
+
+## Consequences
+
+IPC between workers through shared memory; supervisor restarts a failed worker.
+# 0018. Transport is chosen by measurement in Phase 0 (quinn, iroh, TCP with TLS, RDMA where present)
+
+Status: Accepted
+
+## Context
+
+Userspace QUIC costs latency and CPU per hop, which matters for per-layer expert round trips.
+
+## Decision
+
+Transport is chosen by measurement in Phase 0 (quinn, iroh, TCP with TLS, RDMA where present).
+
+## Consequences
+
+ADR records the measured numbers.
+# 0019. M1 scope: dense models via libllama plus one MoE family with an own builder, CUDA and CPU only
+
+Status: Accepted
+
+## Context
+
+Keeps M1 reachable; other backends and families come in Phase 8.
+
+## Decision
+
+M1 scope: dense models via libllama plus one MoE family with an own builder, CUDA and CPU only.
+
+## Consequences
+
+Mixed vendors in M1 only if the Phase 0 multi-backend spike passes.
+# 0020. No timing patch: whole-step timing with CUDA graphs in production, per-op timing in calibration runs without graphs, CUPTI or rocprof from outside in profiling mode
+
+Status: Accepted
+
+## Context
+
+Timing inside captured graphs is unusable and disabling graphs changes what is measured.
+
+## Decision
+
+No timing patch: whole-step timing with CUDA graphs in production, per-op timing in calibration runs without graphs, CUPTI or rocprof from outside in profiling mode.
+
+## Consequences
+
+Two c0 values per op in the cost model.
+# 0021. All GPU work runs on ephemeral Vast boxes
+
+Status: Accepted (tooling: superseded by 0029)
+
+## Context
+
+There is no own GPU host, and the dev VM has no GPU. The design doc assumed a permanent nightly GPU host with locked clocks. A scheduled rental is cheaper (about one hour a night at 0.35 USD) and needs no hardware to maintain.
+
+## Decision
+
+All GPU work (benchmarks, parity, spikes) runs on ephemeral Vast.ai boxes, driven only by `scripts/vastctl.py`. Nightly GPU CI is a scheduled rent, run, fetch, destroy job (`vastctl nightly`). Boxes start from a prebuilt GHCR image (`ghcr.io/lhns/tetraeder-box`) with the toolchain and ggml already built, so a box only builds Rust incrementally. Budget caps: 0.45 USD/h, one instance.
+
+## Consequences
+
+- Clocks cannot be locked and the host changes nightly, so benchmarks are paired same-box runs with a noise band per GPU class; absolute tok/s is never compared across nights.
+- Windows GPU runtime is untested (Vast is Linux only): Windows gets CPU dev and tests plus CUDA compile-only jobs in CI.
+- HIP, RDMA and Metal cannot be tested on Vast; M1 stays CUDA and CPU (ADR 0019).
+- Fault injection is limited to what a container allows; the simulator covers the rest.
+# 0022. No OpenTelemetry exemplars for now
+
+Status: Accepted
+
+## Context
+
+The plan wants exemplars from slow histogram buckets to traces, if opentelemetry-rust supports them well enough (Phase 0 spike). We tested opentelemetry_sdk 0.33.1 with opentelemetry-otlp 0.33.1: `crates/telemetry/tests/exemplars.rs` records 100 values into a histogram inside a sampled span and reads the exported data point.
+
+Result: the data point has zero exemplars. The data model (`HistogramDataPoint::exemplars()`) and the OTLP mapping in opentelemetry-proto exist, but the SDK aggregators always fill an empty list, and there is no feature flag or exemplar filter/reservoir configuration. So neither the SDK nor OTLP export carries trace-linked exemplars today.
+
+## Decision
+
+Do not build on exemplars. Link metrics to traces by other means: slow-request traces are kept by tail sampling in the collector, and dashboards pivot on time range and the `gen_ai.request.model` attribute. The test asserts zero exemplars and fails once the SDK produces them, which is our signal to revisit.
+
+Not chosen: a custom reservoir or a post-processing exporter that adds exemplars (our own code on an unstable SDK API), and Prometheus client exemplars (a second metrics path, against ADR 0012).
+
+## Consequences
+
+No click-through from a slow bucket to a trace in Grafana at first. Revisit on each opentelemetry-rust upgrade by running the test.
+# 0023. Transport spike: QUIC (quinn) versus TCP with TLS versus plain TCP
+
+Status: Proposed (localhost numbers only; WAN and RDMA pending, no transport is chosen yet)
+
+## Context
+
+ADR 0018 says the cross-node transport is chosen by measurement in Phase 0. Cross-node expert parallel adds one round trip per MoE layer per token (about 60 hops, an activation of about 8 KB each), so per-hop latency and CPU cost matter more than peak bandwidth. 1 MB messages stand for bulk moves (expert weights, KV).
+
+The spike is `crates/transport` (`transport-bench`): one stream, ping-pong echo for round-trip latency (p50, p99 over 2000 hops, 400 for 1 MB), and a one-way stream with a final ack for throughput. Transports: plain TCP (the floor), TCP with TLS 1.3 (rustls, ring), QUIC (quinn 0.11, rustls, ring; stream and connection windows raised to 32/64 MiB). Self-signed certificate generated at startup, the client accepts any certificate (spike only). `server` and `client` modes take an address, so the same binary runs between two Vast boxes.
+
+## Measurements (localhost, Windows VM)
+
+Host: QEMU Virtual CPU 2.5+, 16 vCPU, **no AES-NI and no AVX2**, shared with other jobs (about 85% load during the runs). Loopback, release build, one client, one server, one process.
+
+AES-GCM (rustls default) is software-only here and caps TLS and QUIC at about 40 MiB/s whatever the message size, so those numbers say nothing about the protocols. The table uses ChaCha20-Poly1305 (`--cipher chacha`), which is fast in software; the AES run is listed for reference.
+
+| Transport | Size | p50 | p99 | Throughput |
+| --- | --- | --- | --- | --- |
+| TCP | 8 KB | 326 us | 780 us | 127 MiB/s |
+| TLS (ChaCha) | 8 KB | 457 us | 635 us | 90 MiB/s |
+| QUIC (ChaCha) | 8 KB | 874 us | 2191 us | 72 MiB/s |
+| TCP | 1 MB | 2.3 ms | 27 ms | 672 MiB/s |
+| TLS (ChaCha) | 1 MB | 12.1 ms | 32 ms | 214 MiB/s |
+| QUIC (ChaCha) | 1 MB | 24.1 ms | 69 ms | 81 MiB/s |
+| TLS (AES-GCM, no AES-NI) | 8 KB | 905 us | 2073 us | 36 MiB/s |
+| QUIC (AES-GCM, no AES-NI) | 8 KB | 1160 us | 2078 us | 38 MiB/s |
+
+Reading, with that caveat: on this host TCP is the floor at about 0.3 ms per 8 KB hop (Windows loopback is slow; Linux loopback is typically under 0.1 ms). TLS adds about 0.13 ms per 8 KB hop, QUIC about 0.55 ms, in line with the plan's remark that userspace QUIC costs hundreds of microseconds per hop. At 60 hops per token that is about 8 ms (TLS over TCP) versus 33 ms (QUIC) of overhead on top of the 20 ms TCP floor, before any real network latency. These are indications only: crypto cost depends on the CPU, and the VM is noisy (TCP p99 for 1 MB varies by 10x).
+
+## Decision (proposed, not final)
+
+Leaning to TCP with TLS (mTLS in Phase 6) for per-layer expert traffic if the WAN numbers confirm a clear latency gap. QUIC stays a candidate for bulk and lossy links (loss recovery, no head-of-line blocking across streams) and for NAT traversal via iroh. Do not decide before the pending measurements.
+
+Pending, to fill in before this ADR is Accepted:
+
+- WAN numbers between two Vast boxes (`transport-bench server` on one, `client --addr` on the other; needs `max_instances 2` for about an hour; run AES and ChaCha, the boxes have AES-NI).
+- Linux loopback and same-datacenter numbers, to separate protocol cost from Windows loopback cost.
+- RDMA: not available on Vast; revisit on homelab hardware (Phase 6) or drop from the options.
+- iroh (QUIC with relay and hole punching) is not measured here; add it if NAT traversal is a requirement.
+
+## Consequences
+
+- No transport trait is designed yet; `tetraeder-transport` only holds the benchmark. Phase 6 defines the trait on top of the winner.
+- The numbers above are not a basis for the Phase 6 latency budget until the WAN run exists.
+- Hosts without AES-NI (the dev VM) must use `--cipher chacha` for transport measurements.
+# 0024. Quantization is a planner choice per unit; quality is measured per model
+
+Status: Proposed (design; implemented in Phases 2 and 3a)
+
+## Context
+
+Feature 5 ("quantization chosen to fit") picked one format for the whole model. But formats can differ per tensor (GGUF already mixes them), activations cross stage and device boundaries in f16 or f32 whatever the weight format, and sensitivity differs a lot between tensors: embeddings, output head, router and shared experts hurt more when squeezed than rarely used experts. Choosing the format together with placement lets cold MoE experts sit on NVMe at low precision while hot ones stay in VRAM at high precision, which cuts bytes from the slowest tier. The planner can only trade quality if quality is a number it can compute for a candidate plan.
+
+## Decision
+
+- The format of every unit (tensor, layer slice, expert) is a field of the placement plan (ADR 0006), chosen by the planner together with device and tier.
+- Quality is measured, not guessed: a **quality profile** per model holds the KL divergence from the full-precision model's logits for each (tensor group, format) pair on a calibration set. A plan's quality loss is estimated as the sum over its units. Additivity is an assumption with a test: the summed estimate is compared with the measured divergence of the whole chosen mix.
+- Without a profile, the planner uses llama.cpp's fixed preset rules (more bits for embeddings, output, some attention and FFN-down tensors, first and last layers) as the prior.
+- Weights are converted at load time from the most precise source available, only downward, and the result is cached on disk.
+
+## Consequences
+
+- Per model, a calibration job (a Vast batch) produces the profile and the importance matrix the 1 to 2 bit formats need.
+- Op cost curves are keyed by format as well as op, shape and device (ADR 0007).
+- Converted weights need a disk cache keyed by source hash, format, importance-matrix hash and ggml version.
+- Profiles can differ per workload (code versus chat), like routing profiles.
+- Exit tests compare against llama.cpp presets at the same byte budget, not against absolute divergence numbers.
+- Derived low-bit checkpoints (a vendor's ternary or distilled copy of a model) are not a format choice: they cannot be produced by conversion and their units cannot be mixed with the original's. They are a separate model with its own hash, profiled against the original's logits, and a candidate draft model for self-speculative decoding (Phase 4).
+- KL on calibration text can miss losses on agent work. A second check, tool-call validity on a fixed agent trace through the gateway's parsers (ADR 0028), validates chosen mixes; it is not a planner input.
+# 0025. The objective is hard limits plus a position on the speed and quality front
+
+Status: Proposed (design; implemented in Phase 3a)
+
+## Context
+
+Users want to say "fast" or "good" and how much slow hardware the engine may use. A single weighted score (for example 0.7 speed, 0.3 quality) cannot be set sensibly: tok/s and KL divergence have unrelated scales, and the right weight changes with the model and the hardware. With quantization a planner choice (ADR 0024), every candidate plan has a speed, a quality loss and a resource cost.
+
+## Decision
+
+- Inputs are **limits**: `target_tok_s` (and `p95_ttft_ms`, memory), an optional quality floor (`max_quality_loss` as KL divergence or `min_format`), and device rules (allow, forbid, prefer, and a cost per device or node).
+- Among plans that meet all limits the planner decides in this order: quality first, then resource cost (fewest and cheapest devices), then extra speed. So a target tok/s alone is enough: the planner finds the best-quality plan that reaches it on the cheapest hardware that can.
+- The planner also computes the **Pareto front** of speed against quality for the current limits. An optional `tradeoff` value from 0 (fastest plan) to 1 (best-quality plan) picks a point on that front. It is a view on the front, not a weight.
+- If no plan meets the limits, the planner says which limit fails, returns the closest plan and shows the front.
+
+## Consequences
+
+- The simulator and cost model must score quality loss and resource cost next to latency and throughput.
+- `plan explain` shows the front and where the chosen plan sits; `plan what-if` shows how it moves with other hardware.
+- The tie-break order (quality, then cost, then speed) is the default; a hint can change it later if a real workload needs that.
+# 0026. Phase 1 engine interface: safe libllama wrapper in ggml-sys, engine loop in a new engine crate
+
+Status: Accepted
+
+## Context
+
+Phase 1 drives libllama (b11976, vendored) for dense models: load, tokenize, prefill, decode with sampling, stream, placement through llama.cpp parameters, step timing into telemetry, and a bench adapter for the exit test (within 5% of llama-bench at the same parameters, production telemetry overhead under 2%). `unsafe` is allowed only in `ggml-sys` and `memory` (AGENTS rule 7). The `executor` crate is reserved for the Phase 5 executor and `model` for own graph builders.
+
+What the b11976 C API does and does not offer:
+
+- Placement: `n_gpu_layers`, `split_mode` (none, layer, row, tensor), `main_gpu`, `tensor_split`, `devices`, `tensor_buft_overrides` (regex pattern to buffer type), `load_mode` (auto, none, mmap, mlock, mmap+mlock, direct I/O; replaces `use_mmap`/`use_mlock`).
+- Per-tensor *type* overrides exist only in `llama_model_quantize_params.tt_overrides`, not at load. Converting at load is Phase 2 (ADR 0024).
+- The memory breakdown per device (`llama_get_memory_breakdown`) is not in `llama.h`; only `llama_model_size` and device free/total memory are public.
+
+## Decision
+
+- **`ggml-sys`** keeps the raw bindings in `ggml_sys::raw` (re-exported at the root, lints relaxed only there) and gains a safe module `ggml_sys::llama`: `Model`, `Context`, `Batch`, `Sampler`, `ThreadPool`, `ModelParams`, `ContextParams`, device and buffer-type lookup by name, `quantize` with per-tensor type overrides, and GGUF tensor-type listing. Every handle frees itself on drop; params structs start from libllama's defaults; buffers that libllama keeps pointers to (override patterns, tensor split) live as long as the `Model`. libllama logs go to `tracing`. `llama_backend_init` runs once; the backend is never freed in-process.
+- **`tetraeder-engine`** (new crate, no `unsafe`) owns the generation loop: typed `Placement` and `ContextConfig`, `Engine::load`, `generate` with greedy or seeded random sampling that streams UTF-8-safe text pieces through a callback, and `bench_prompt`/`bench_gen` that mirror llama-bench's timed loops (random tokens, BOS first if the model adds one, no sampler, synchronize after the prompt and after every generated token, memory cleared between repeats, a threadpool attached like llama-bench does).
+- **Step timing:** one step is one `llama_decode` call followed by `llama_synchronize`, timed on the host (ADR 0020). Prefill is chunked by `n_batch`. `graphs` is on when layers are offloaded to CUDA and `GGML_CUDA_DISABLE_GRAPHS` is unset. Steps feed the ring and `tetraeder.step.duration`; requests feed TTFT, TPOT, request duration and `tetraeder.tokens`; weights bytes feed `tetraeder.memory.used{kind=weights}`. Traces: one `tracing` span per request (`gen_ai.operation.name`, `gen_ai.request.model`, usage counts) with `prefill` and `decode` child spans, no span per decode step.
+- **Telemetry modes:** `off` records nothing; `on` records metrics, ring and spans into in-process providers, plus OTLP export only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. The overhead pair compares off and on without an endpoint.
+- **CLI:** `tetraeder run --model ... --prompt ...` streams a completion; `tetraeder bench` takes the harness workload (`-p`, `-n`, `-b`, `--ubatch`, `-t`, `-r`) and prints llama-bench's JSON row shape, so the harness parses both engines with one parser. Placement flags are the same for both commands: `--ngl`, `--split-mode`, `--main-gpu`, `--tensor-split`, `--override-tensor <regex>=<buffer type>`, `--load-mode`.
+- **Bench harness:** `EngineKind::Tetraeder` gets an argument builder; invocation and parsing are shared with llama-bench.
+- **Parity:** greedy text of `llama-simple` (built from the vendored tree by `cargo xtask llama-tools`) is the reference; a bench-format golden (tokens plus top-k logits) guards regressions. Both recorded by `cargo xtask golden` on CPU.
+
+## Consequences
+
+- One safe surface over libllama for every later caller; the Phase 2 own builders reuse `ggml-sys` but not `tetraeder-engine`'s libllama path.
+- Per-tensor type choice at load needs a quantize-to-cache step (Phase 2), not a load flag.
+- Per-device KV and workspace bytes are not reported until a patch or the own KV cache (Phase 4) provides them.
+- The exit test (within 5%, overhead under 2%) needs a paired GPU run; CPU pairs run locally. The overhead pair is reported, not gated, until a band below the box noise is measured.
+- When llama-bench's timed loop changes on a rebase, `bench_prompt`/`bench_gen` must follow.
+# 0027. Placement plan IR: assignment rules over a model description, one expanded form for checks, diff and migration
+
+Status: Accepted (Phase 2)
+
+## Context
+
+ADR 0006 asks for one plan IR, a validator, a per-phase capability table and migration DAGs; ADR 0024 makes the weight format a per-unit plan field; ADR 0025 makes limits and device rules an input next to the plan. A 60-layer model with 128 experts per layer has about 7700 units, so a plan that lists every unit is not hand-editable, while the checks need every unit. The profiler gives every device exactly one tier and has no node concept yet.
+
+## Decision
+
+- **Model description** (`ModelDesc`, in `plan`, no ggml): layer count, heads, KV heads, routed experts and top-k, and per unit kind (embedding, attention, MLP, expert, head) the parameter count, FLOPs per token and source format. Units are `embed`, `layer.N.attn`, `layer.N.mlp` (dense FFN, or router plus shared experts), `layer.N.expert.E`, `head`. The model crate fills it from GGUF later.
+- **Plan** (TOML and JSON): data-parallel `replicas`, each a list of pipeline `stages`. A stage has a half-open layer span (spans tile the model in order; embedding in the first stage, head in the last), a compute device group, tensor and expert parallel degrees, `assign` rules, KV and workspace bytes per device, and expert slot caches. An `assign` rule selects units (kinds, layer span, expert span) and gives one home device per shard, optionally a compute device per shard, and a format. Knobs: prefill micro-batches, CUDA graphs, batch limit.
+- **Location is a device id; tier is the device's tier** in the hardware graph (VRAM, RAM, NVMe, remote). The plan stores no tier, so it cannot disagree with the hardware. `Tier::Remote` is the only cross-node marker until the hardware graph models nodes.
+- **One expanded form.** `expand` turns a complete plan into a map from `(replica, unit, shard, shard count)` to `(stage, home, compute, format, bytes)` plus byte buffers (KV, workspace, slot caches) per device. The validator, diff and migration DAG all work on it. A degree change shows up as removed and added shards because the key holds the shard count.
+- **Validator** (complete plans): units covered exactly once per replica; shard counts match degrees (attention and MLP have `tp` shards on distinct compute devices, experts one); `tp` divides heads, KV heads and the group size, `ep` divides experts and the group size, and with `ep > 1` each MoE layer's experts are spread evenly over `ep` compute devices; compute devices are in the group and can compute; per device, weights plus buffers stay within capacity minus the measured reserve (an input map from device id to bytes until the profiler measures it); formats only convert downward (ADR 0024); hard hints (pin, forbid, format floors) hold; fields the executing phase cannot run are rejected. All issues are collected, not just the first.
+- **Partial plans:** `validate_partial` checks only what is set. Open fields are a stage with no devices, an absent degree, an absent home or format in a rule, absent KV budgets and units no rule selects. A missing compute device always means "computes where its home is".
+- **Phase capability table** in code, one test per row of docs/plan.md "What each phase can execute". Phases are integers; 3 stands for both 3a and 3b, which execute the same fields.
+
+  | Field | 1 | 2 to 4 | 5 | 6 on |
+  | --- | --- | --- | --- | --- |
+  | Layer split, homes on CPU or GPU | yes | yes | yes | yes |
+  | Format other than the source | no | yes | yes | yes |
+  | Expert homes on disk, slot caches | no | yes | yes | yes |
+  | Prefill and decode budgets (ADR 0031) | no | yes | yes | yes |
+  | Compute device other than home | no | experts only | yes | yes |
+  | `tp`, `ep` above 1 | no | no | yes | yes |
+  | Several replicas, remote devices | no | no | no | yes |
+
+- **Formats:** the ggml block size and block bytes per format are copied from `ggml-common.h` at the pin (b11976) into `plan`. "At least as precise" means at least as many bits per weight; formats with equal bits per weight count as equally precise.
+- **Hints** (ADR 0025 and the Hints table in docs/plan.md) are a separate serde type. The validator enforces the hard ones (pin, forbid, format floors); limits, trade-off, preferences, costs, workload, stability and advisor policy go to the planner.
+- **Migration DAG:** drain, then per shard load the new placement before freeing the old one (shards independent), buffer and knob changes, then prepare and commit. Its property test applies steps in random topological orders to the source state and requires the target's expanded form at the end.
+
+## Consequences
+
+- One generator of valid plans serves the property tests (memory never exceeded, every unit computed exactly once, every migration DAG ends in its target plan) on every hardware fixture.
+- The simulator converts a single-replica plan without tensor or expert parallel into its pipeline stub; richer plans need a richer simulator.
+- Not yet in the IR: per-layer size overrides (dense first layers in DeepSeek-style models), stage edges with an explicit transport, separate prefill and decode plans, speculative decoding knobs, nodes in the hardware graph, and memory-aware ordering of migration steps (Phase 7, live reshard). Each is a field added when its phase needs it.
+# 0028. Gateway: axum, a narrow token-level engine trait, minijinja templates, llguidance constraints
+
+Status: Accepted
+
+## Context
+
+Phase 3b (plan rows 32, 33, 44, 47) needs OpenAI- and Anthropic-compatible HTTP APIs with streaming, chat templates from GGUF metadata, tool calls, structured output, cancellation, backpressure and per-request cost accounting. The engine (Phase 1, libllama) is built in parallel, so the gateway needs a contract it can be tested against now and that a small Phase 1 adapter can implement later.
+
+Two gateway features need more than "text in, text out": token counting (`count_tokens`, context checks, usage) needs the tokenizer, and structured output needs a token mask applied before every sampling step. llama.cpp's sampler chain accepts custom samplers (`llama_sampler_i::apply` sees the candidate array), so a mask from outside costs one small custom sampler in the adapter.
+
+## Decision
+
+**HTTP stack.** axum 0.8 on tokio, SSE through `axum::response::sse`. One router serves both APIs; `GET /v1/models` answers in the Anthropic shape when the request carries an `anthropic-version` header, else in the OpenAI shape. Routes: `/v1/chat/completions`, `/v1/completions`, `/v1/models`, `/v1/models/{id}`, `/v1/messages`, `/v1/messages/count_tokens`. No auth yet (Phase 9); keys are accepted and ignored.
+
+**Engine trait** (`crates/gateway/src/engine.rs`), tokens in, tokens out:
+
+```rust
+pub trait Engine: Send + Sync + 'static {
+    fn models(&self) -> Vec<ModelInfo>;            // id, context length, GGUF chat template, bos/eos strings
+    fn vocab(&self, model: &str) -> Result<Arc<Vocab>, EngineError>;   // bytes per token id, end-of-generation ids
+    fn tokenize(&self, model: &str, text: &str) -> Result<Vec<TokenId>, EngineError>; // special tokens parsed, no BOS added
+    fn generate(&self, req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError>;
+}
+```
+
+`GenerateRequest` carries the prompt tokens, sampling parameters, an optional `Box<dyn TokenConstraint>` (`mask()` before each step, `commit(token)` after) and a `CancellationToken`. The engine sends `GenEvent::Token(id)` per sampled token and ends with `GenEvent::Finished { reason, stats }` or `GenEvent::Error`. `EngineStats` holds prompt, cached and generated token counts plus `gpu_seconds` and `bytes_streamed` (weights moved between tiers), both `Option` so the engine fills what it measures. The channel is bounded: a slow client slows the engine instead of buffering without limit. The engine stops when the token is cancelled or the receiver is dropped.
+
+Detokenization happens in the gateway from `Vocab` bytes (UTF-8 assembled across tokens), so the trait has no `detokenize`. The Phase 1 adapter is: `models` and `vocab` from GGUF metadata and `llama_token_to_piece`, `tokenize` via `llama_tokenize(parse_special=true, add_special=false)`, and a decode loop on a thread with one custom sampler that applies the mask. The mask hook is the only part beyond glue; it is kept because the alternative (llama.cpp's own llguidance or GBNF sampler) would put grammar construction inside the engine and duplicate the tool-call formats the gateway already owns.
+
+**Admission and backpressure.** A semaphore bounds requests in generation; a bounded wait queue sits in front. A full queue is rejected at once: 429 `rate_limit_exceeded` on the OpenAI surface, 529 `overloaded_error` on the Anthropic surface, both with `Retry-After`. Queue depth is a gauge (`tetraeder.scheduler.queue.depth`). Prompt plus `max_tokens` beyond the context length is a 400 before admission. Phase 4's scheduler replaces the semaphore with continuous batching behind the same trait.
+
+**Cancellation.** Each generation holds a drop guard that cancels its token. A client disconnect drops the SSE body stream or the handler future, which fires the guard; a stop sequence cancels it the same way. With parallel tool calls off (`parallel_tool_calls: false`, or `disable_parallel_tool_use: true` on Anthropic), the first complete tool call also cancels it; otherwise generation ends on its own.
+
+**Chat templates.** minijinja 3 with `minijinja-contrib` pycompat (Python string and dict methods used by HF templates), loop controls, `tojson`, and the HF extras `raise_exception` and `strftime_now`. Context: `messages`, `tools`, `add_generation_prompt`, `bos_token`, `eos_token`, plus per-request kwargs (`enable_thinking`). Messages are normalised to the HF shape first (assistant `tool_calls` with `arguments` as a JSON object, `tool` role messages, `reasoning_content`). Rendering is checked against Python jinja2 on templates from llama.cpp's corpus (`vendor/llama.cpp/models/templates`).
+
+**Tool calls.** Tools are rendered by the template. Output parsing is per family, picked from the template text: Hermes and Qwen (`<tool_call>` JSON), Qwen3-Coder (`<tool_call><function=...>` XML), Llama 3.x (bare JSON or `<|python_tag|>`), Mistral (`[TOOL_CALLS]`). Unknown templates fall back to Hermes. `<think>` blocks become Anthropic `thinking` blocks and OpenAI `reasoning_content`. Forced tool use (`required`, `any`, a named tool) is enforced by a grammar of the family's call syntax.
+
+**Structured output.** llguidance (pure Rust, builds on Windows and Linux; checked) turns `response_format` (OpenAI) and `output_config.format` (Anthropic) JSON schemas, and forced tool calls, into a `TokenConstraint` over the engine's `Vocab`.
+
+**Telemetry.** Per request: `gen_ai.server.request.duration` (with `error.type`), `time_to_first_token`, `time_per_output_token`, `tetraeder.tokens`, and `tetraeder.request.cost` per resource (GPU-seconds, bytes streamed) and caller. One span per request named `{gen_ai.operation.name} {gen_ai.request.model}` with GenAI attributes (usage, finish reasons, response id). A `CostSink` hook receives every finished request's cost record for external accounting. The caller is the OpenAI `user` or Anthropic `metadata.user_id` field until auth exists.
+
+## Consequences
+
+- The Phase 1 adapter implements four methods and one custom sampler; the gateway is tested end to end against a fake engine with a byte-level vocabulary that honours the mask.
+- Tool-call families beyond the four listed need a parser each; models with other formats get plain text.
+- Images, audio, embeddings, `n > 1` and logprobs are rejected with 400 until Phase 9.
+- `count_tokens` and usage are exact for the local tokenizer, not for the remote vendor's.
+- No `tetraeder serve` command until an engine exists.
+# 0029. GPU box tooling comes from the shared package taxameter
+
+Status: Accepted
+
+## Context
+
+ADR 0021 put the Vast box tooling in this repo (`scripts/vastctl.py`, `vast_box.sh`, `idle_autostop.sh`, `cuda_env.sh`, `pack_results.sh`). LRN carried a diverging copy. Fixes had to be made twice.
+
+## Decision
+
+The tool moved into the shared package [taxameter](https://github.com/lhns/taxameter), a git dependency in the `dev` group of `pyproject.toml`, pinned by tag (`v0.1.0`). Project values live in `taxameter.toml` (offers, image tag from `vendor/PIN`, push paths, results, policy). Rust dependencies and the cargo check run as box hooks: `scripts/box_deps.sh` (provision) and `scripts/box_verify.sh` (verify). `nightly.sh` sources `cuda_env.sh` from `/root/.taxameter` on the box. `scripts/vastctl.py` stays as a shim so the registered Task Scheduler commands keep working. The `.vast/` state is unchanged and carries over. The repo keeps tests only for its own config (`tests/test_taxameter_config.py`).
+
+## Consequences
+
+- Upgrading taxameter means changing the tag in `pyproject.toml` and running `uv lock`.
+- The generic tests, helper scripts and the on-box watchdog now belong to taxameter; a box provisioned by the old tool keeps its old watchdog until it is destroyed.
+- CI needs network access to GitHub to resolve the dependency.
+- ADR 0021 stays valid for the workflow (ephemeral boxes, caps, nightly); only the tooling moved.
+# 0030. Own Qwen3 MoE graph builder: safe ggml surface in ggml-sys, builder in model, ggml's scheduler, one segment per MoE layer
+
+Status: Accepted (Phase 2). Superseded in part by ADR 0036: a step with every expert resident is one graph, not one segment per MoE layer.
+
+## Context
+
+ADR 0014 and 0015 ask for an own builder for one MoE family (Qwen3 MoE, CUDA and CPU) so experts can live in slot tensors that the engine fills. libllama keeps full expert tensors and runs top-k inside its graph. Until Phase 5 (ADR 0016) ggml's backend scheduler issues the graph. `unsafe` is allowed only in `ggml-sys` and `memory`.
+
+plan.md says a step runs as one graph when every expert hits. At the pin (b11976) quantized `MUL_MAT_ID` at batch 1 takes the MMVQ path and does not block CUDA graphs (`ggml_cuda_mul_mat_id_needs_sync`), so graphs are possible in principle. But a whole-step graph needs every routed expert of every layer resident: Qwen3-30B-A3B routes 8 of 128 experts in each of 48 layers, so at an 80% per-expert hit rate a layer hits fully about 17% of the time and a step practically never. Experts computed on the CPU (llama.cpp's `-ot` setup, the baseline to beat) split the graph at every MoE layer anyway.
+
+## Decision
+
+- **Safe ggml surface** in `ggml_sys::ggml`: context, tensor handles tied to their context's lifetime, the ops a Qwen3 MoE layer needs (as libllama's `build_moe_ffn` and attention use them), backend and buffer handles, and `ggml_backend_sched` (reserve, alloc, compute, eval callback). Raw pointers do not leave `ggml-sys`.
+- **Builder** in `tetraeder-model` (no `unsafe`): reads hyperparameters and the tensor index from GGUF, fills `plan::ModelDesc`, builds the graph op for op like libllama for `qwen3moe`, and owns a simple contiguous per-layer KV cache until Phase 4.
+- **One graph segment per MoE layer.** The step is built as segments that end at a layer's router top-k. Between segments the host reads the top-k ids (a few bytes), maps experts to slots, starts loads for misses, and launches the next segment with the remapped ids as an input tensor. Each segment can be a CUDA graph. This is the correct baseline; it pays what `-ot` already pays.
+- **Whole-step graphs are a later optimization, gated by measurement:** a device-side expert-to-slot table (`get_rows` on a table tensor) and a miss bitmap read once per step, re-running only layers that missed. Built only if the measured per-layer full-hit rate makes it pay (roughly 98% or more); the hit-rate metrics below decide.
+- **Parity:** against libllama on the same GGUF, per backend: top-k logits per position within a tolerance, and identical greedy sequences, with all experts resident and with experts streamed. Local tests use a synthetic random-weight `qwen3moe` GGUF (2 layers, 8 experts, top-2, tiny dims) written by `cargo xtask tiny-moe` with the vendored gguf-py; the real model runs on Vast.
+- **First failing test:** the tiny fixture's logits from the builder match libllama's on CPU.
+
+## Consequences
+
+- plan.md's "sync only on a miss" becomes "one segment per MoE layer, whole-step graphs once hit rates allow".
+- `tetraeder.step.duration` counts segments per step; ADR 0020 whole-step timing still holds per step.
+- The engine gains a second backend path next to libllama; the gateway's engine trait (ADR 0028) serves both.
+- Rebases must keep the builder in step with `build_moe_ffn`; the parity test catches drift.
+
+## Implementation notes (step 1)
+
+- Segment `l` runs the expert FFN of layer `l - 1`, the residual, then attention and the router of layer `l`, so a step is `n_layer + 1` segments. Activations that cross a boundary (residual, normed input, router weights, ids) live in two alternating state slots in backend memory; only the ids travel to the host and back.
+- The GGUF header (hyperparameters, tensor index, expert slab ranges) is read by a small Rust parser in `tetraeder-model`, so the model crate needs no `unsafe` and no ggml gguf bindings. Tensor data is read by offset into backend buffers.
+- Attention uses `flash_attn_ext` with an F16 cache laid out like libllama's (`[n_embd_kv, n_ctx]` per layer), K and V stores entering the graph before the attention.
+- Parity tolerance and results: see `crates/model/tests/parity.rs`.
+# 0031. Memory: per-device arenas with prefill and decode budgets, expert slot cache over VRAM, RAM and NVMe, aligned direct I/O
+
+Status: Accepted (Phase 2)
+
+## Context
+
+The plan IR (ADR 0027) gives per-device KV, workspace and slot-cache bytes, and the validator checks them against capacity minus a measured reserve. Phase 2 must allocate them and stream experts from disk. A small card gains most when VRAM moves between uses by phase: prefill wants a large ubatch workspace and touches nearly every expert, decode wants many expert slots. Vast containers report all host RAM, and "NVMe" is often shared.
+
+## Decision
+
+- **Arenas** in `tetraeder-memory`: one ggml backend buffer per (device, purpose), purposes KV, expert slots, workspace and reserve, sized from the expanded plan. The reserve is measured at startup (free memory before and after backend init plus a test allocation) and reported, not assumed.
+- **Per-phase budgets:** the IR gains `prefill` and `decode` byte budgets per device for slots and workspace (ADR 0027 allows fields as phases need them; full separate prefill and decode layouts stay Phase 7). Prefill borrows slot bytes beyond the pinned hot set for workspace; decode gets them back and refills from the hot set and routing profile. KV is never borrowed.
+- **Slot cache:** per MoE layer a VRAM slot tensor and a RAM slot tensor per weight (gate, up, down), a host table from expert to slot per tier, a pinned hot set from routing counts, LRU for the rest. Experts not in VRAM are computed on the CPU from RAM slots or uploaded, whichever the cost model says (feature in plan.md "Expert streaming", item 6).
+- **Direct I/O:** experts read by file offset. Linux uses `O_DIRECT` with page-aligned bounce buffers covering the aligned enclosing range, io_uring when the container allows it, a thread pool otherwise. Windows uses `FILE_FLAG_NO_BUFFERING` with overlapped I/O, sector-aligned. Both paths are tested on their OS in CI with a temp file.
+- **Metrics** (rule 6, names from the plan.md catalog): `tetraeder.memory.used` and `.capacity` by device, tier and kind (weights, kv, workspace, slots, reserve); `tetraeder.expert.cache.requests` by layer, tier and result; `tetraeder.expert.load.duration` by tier; `tetraeder.tier.read.bytes`; a new `tetraeder.expert.layer_hit` counter by result (full, partial) that decides ADR 0030's whole-step graphs. Dashboard panel "Experts and cache". Alert: none new; hard out-of-memory and I/O errors go through the error rate SLO.
+- **First failing test:** an arena sized from an expanded plan never exceeds its device budget, and a direct read of an unaligned GGUF range returns the same bytes as a buffered read, on both OSes.
+
+## Consequences
+
+- The Phase 2 exit test ("MoE larger than RAM") runs Qwen3-235B-A22B Q4_K_M (about 142 GB) on a box with at most 128 GB RAM and at least 250 GB disk, so the page cache cannot hold the model for any engine. taxameter offers need a max-RAM filter for that job.
+- Exit numbers include the per-layer full-hit rate and decode tok/s right after a 32K prefill (the cost of refilling slots).
+- Residency-biased routing (steering top-k toward resident experts) changes outputs; it is not part of Phase 2 and comes later only as an opt-in knob with a measured quality cost (ADR 0024, 0025).
+# 0032. Memory crate: reserve as accounting, phase budget semantics, I/O dependencies
+
+Status: Accepted (Phase 2)
+
+## Context
+
+ADR 0031 fixes the arenas, the slot cache and direct I/O. Building them left a few choices open: what a phase budget may borrow, whether the reserve is a buffer, and which crates carry the platform I/O.
+
+## Decision
+
+- **Phase budgets** (plan IR `phase_budgets`, Phase 2+): per stage and device `prefill` and `decode` bytes for slots and workspace. Each phase must satisfy `slots <= slot arena` and `slots + workspace <= slot arena + workspace arena` of the stage on that device, so borrowing happens only between those two arenas and KV is never touched. Weights plus KV plus a phase's bytes must fit capacity minus reserve. Without an entry both phases use the arenas as sized. The expanded plan always carries budgets for every (stage, device) with a slot or workspace buffer. The phase switch repartitions slots inside the existing buffers; it never reallocates.
+- **Reserve** is a measured number (others + backend init + allocator overhead), reported for the validator's reserve map. It is not a live buffer, which would count twice against capacity. Metrics report it as kind `reserve`.
+- **Dependencies** of `tetraeder-memory`: `io-uring` (Linux, io_uring engine; the thread pool needs no crate), `libc` (Linux, the `O_DIRECT` value differs by architecture), `windows-sys` (Windows, overlapped reads; already in the lock file). The ggml arenas and the telemetry hooks are default features, so the pure parts cross-check without the ggml C build.
+- **Test generator**: the plan crate's deterministic plan generator moves from its test file to a `testing` feature, so other crates test against the same plans.
+
+## Consequences
+
+- The io_uring engine is only compiled and cross-checked off Linux; it runs where the kernel and the container allow it (Docker's default seccomp blocks it and the thread pool takes over). Treat it as unverified until a Linux run reports `backend=io_uring`.
+- Plans that differ only in phase budgets show up in `diff` and as a `SetBudgets` migration step.
+# 0033. Expert slots in the builder: lookup order, overflow passes, RAM tier, failure semantics
+
+Status: Accepted (Phase 2). Superseded in part by ADR 0034 (slots below top-k) and ADR 0035 (pair groups replace the masked overflow passes).
+
+## Context
+
+ADR 0030 splits a step into one segment per MoE layer and leaves the expert-to-slot map as a hook; ADR 0031 and 0032 give the slot cache, direct I/O and metrics. Step 2 connects them: a layer's expert tensors become slot tensors that hold fewer experts than the layer has, filled from the GGUF on demand. Open: what a lookup round does exactly, what happens when a layer step needs more distinct experts than there are slots (the fixture routes top-2, so 1 slot cannot hold one token), and what a failed load leaves behind.
+
+## Decision
+
+- **Options.** `LoadOptions.expert_slots` (compute tier, per layer; default: all experts) and `ram_slots` (host tier between file and compute tier; default: none). Slots at or above the expert count mean the old path: every expert loaded at load time, identity map, no cache. Below it the expert tensors have `slots` entries in dimension 2, are zero-filled and are not read at load.
+- **Lookup round per layer step.** The host reads the top-k ids, takes the distinct experts in order of first appearance and puts those already resident first. They go through `LayerSlots::lookup` in that order, so hits are touched before any miss can evict them. The misses of one round are read with one `DirectFile::read_batch` (three slabs per expert), staged in host memory and uploaded into their slots. With a RAM tier the same round runs on it first: compute-tier misses look up the RAM slots (hits first), RAM misses are read from the file in one batch into their RAM slots, then every missing expert is uploaded from its RAM slot.
+- **Overflow: passes.** If the distinct experts exceed the active slots, the round is split into chunks of at most `slots` experts (residents first, so only the first chunk has hits; later chunks evict the earlier ones). The expert FFN then runs once per chunk as its own small graph over all tokens: ids of pairs (token, choice) whose expert is not in the chunk point at a slot of the chunk and get router weight 0, so they add exactly 0. The passes accumulate into a state tensor and the next segment reads that instead of computing the FFN inline. A single chunk (the usual case) stays inline in the segment and costs nothing extra. Chosen over splitting tokens into groups because it also covers `slots < n_expert_used` with static shapes and one mechanism, and over a CPU fallback because that needs the whole expert in host memory and a second compute path. Cost: each pass computes the FFN for every pair, so a prefill that needs P chunks does P times the FFN work; acceptable for correctness first, the phase budgets (ADR 0032) and prefetch are what keep P small. A pair-compacted pass (gather the chunk's pairs, scatter back) is a later optimization behind a benchmark.
+- **Failure.** A load error aborts the step with `ModelError::Io`; the layer's slot tables (both tiers) are cleared, since slots were assigned before their bytes arrived. The KV position is not advanced. No step ever computes with slots whose load did not finish.
+- **Telemetry.** Cache requests are counted per distinct expert per layer step: tier `vram` is the compute tier (also on the CPU backend, where it is host memory), tier `ram` the RAM tier. `expert.layer_hit` is `full` when the round had no compute-tier miss. Load duration is the batch time divided by its experts, source `nvme` (file) or `ram`; tier read bytes count file bytes under `nvme` and RAM-tier uploads under `ram`. `tetraeder.step.duration` gets a sibling `tetraeder.step.segments` histogram (segments per step; `n_layer + 1` for the builder, 1 for libllama).
+
+## Consequences
+
+- Behavior with all experts resident is unchanged and bitwise identical.
+- Pinned hot sets and prefetch (next step) plug into the same `LayerSlots` and the same round; `Bypass` (all slots pinned) is an error until then.
+- Overflow results differ from the single pass only by float summation order (tests use the CPU tolerance of the parity test).
+- The compute tier's `vram` label is wrong for CPU runs; a device-tier label can come with the plan IR's tier names.
+# 0034. Expert slots: at least the experts per token, distinct slots per token in overflow passes
+
+Status: Accepted (Phase 2). Supersedes the part of ADR 0033 that allowed fewer slots than experts per token. Superseded by ADR 0035: pair groups need no mask, parking entries or distinct-slot rule and allow any slot count again.
+
+## Context
+
+ADR 0033's overflow passes pointed every pair whose expert is outside the pass at the pass's first slot, with router weight 0, and allowed `expert_slots` below `n_expert_used`. The first CUDA run aborted in ggml's sorted `mul_mat_id` (`ids_to_sorted_host.size() == ne_get_rows`): for batches above the MMVQ path it counts each (token, slot) once, so a token naming the same slot twice is invalid input. On the CPU backend the repeats were harmless, which is why the CPU parity tests passed.
+
+## Decision
+
+- A masked pair gets a slot no other pair of the same token uses in that pass. It must hold finite weights (0 * NaN is NaN) and, as found later, must not hold an expert of the pass: see the parking entries below.
+- The passes multiply by a 0/1 mask instead of the router weights and accumulate the unweighted expert outputs per (token, choice); the next segment applies the router weights and sums over experts with the same ops as a single pass. Each pair is nonzero in exactly one pass, and `x * 1` and `x + 0` are exact, so the result is bitwise equal to a single pass and streaming output does not depend on the slot count. The first real-model run (Qwen3-30B-A3B Q4_K_M, 32 slots) showed why exactness matters: CUDA fuses weighting and sum into one kernel (`moe_weighted_reduction`, which contracts to fused multiply-adds), passes that weighted and summed by themselves rounded differently in the last bit, a near-tied routing choice flipped at layer 2 and the difference cascaded through attention to logit differences above 1. The accumulator is `n_expert_used` times larger than the FFN output (about 270 MB at ubatch 4096 for Qwen3-30B-A3B, inside the phase workspace budget).
+- `expert_slots` must be at least `n_expert_used`; smaller values are a load error. Fewer distinct slots than picks per token cannot be expressed to `mul_mat_id`, and no real configuration needs it (Qwen3 MoE routes 8 of 128).
+
+## Consequences
+
+- Bitwise equality to the resident builder holds on CPU and for single-token steps on CUDA (the vector kernel's result per row does not depend on the number of experts in the tensor). A CUDA prefill that needs overflow passes runs MMQ, whose stream-k split of the inner dimension depends on the number of output tiles, which includes the expert count of the slot tensor (32 slots against 128 experts). The last bits then differ, near-tied routing choices can flip and the difference cascades. The real-model test therefore checks single-token streaming bit for bit and a CUDA multi-pass prefill only for gross errors (identical layer-0 routing, top-1 agreement of at least 75% of positions).
+- **Masked pairs park outside the slots.** The same multi-pass prefill also differed on the CPU backend (Qwen3-30B-A3B Q4_K_M, 32 slots: first router weight difference at layer 1, including tokens whose experts were all in pass 0). Cause: the vendored CPU `mul_mat_id` sends an expert to a tiled K-quant kernel (`ggml-cpu/tiled`, Q2_K to Q6_K and IQ types, AVX builds, `GGML_CPU_TILED_MM`) when at least 8 rows route to it, else to `vec_dot`, and the two round differently. So a pair's output depends on how many rows share its expert. The masked pairs went to the lowest free slots, which hold the chunk's own experts (in a first-appearance chunk, the first tokens' experts), and pushed their row counts across 8. The F16 and Q8_0 fixtures have no tiled kernel, which is why they stayed exact. Now the slot tensors have `n_used` extra zero parking entries after the slots and masked pairs use only those, so every chunk expert sees exactly its single-pass rows in the same order. Cost: `n_used` experts per layer more memory (Qwen3-30B-A3B: about 1.1 GB at 32 slots). A pair-compacted pass gives each expert its real rows too, but must also keep their order and the input layout to stay exact; not yet verified. The tiled kernel needs AVX, so the K-quant exact test (`crates/model/tests/multipass.rs`) only discriminates on AVX machines; a unit test checks the row-count invariant everywhere.
+
+- The overflow passes stay the mechanism for more distinct experts than slots in a step; only the slot below top-k case is gone.
+- The load-time zero clear of slot tensors is now required, not just defensive.
+- Tests: the slot matrices start at 2 slots for the top-2 fixture; a unit test checks distinct slots per token.
+# 0035. Expert pairs computed in compact groups per backend; non-resident experts on the CPU
+
+Status: Accepted (Phase 2). Supersedes ADR 0034 and the overflow passes of ADR 0033.
+
+## Context
+
+The run of 2026-11-01 (bench/results/20261101, RTX 3090, Qwen3-30B-A3B Q4_K_M, the builder as of that run) measured:
+
+| Setup | Prefill tok/s | Decode tok/s |
+|---|---|---|
+| llama.cpp, all on GPU | 2800 (ubatch 512) to 4300 (4096) | 190 |
+| llama.cpp, all experts on CPU (`-ot`) | 460 to 2080 | 40 |
+| llama.cpp, layers 24 to 47 experts on CPU | 880 to 2900 | 67 |
+| Tetraeder, 32 VRAM slots, upload on miss | 9 | 6 |
+| Tetraeder, 32 slots + 64 RAM slots | 6 | 18 |
+| Tetraeder, 120 slots | 7 | 46 |
+
+Uploading every missed expert loses to computing it where it already is: a decode step misses dozens of experts at a few MB each, and the read and upload path ran at 0.8 to 1.5 GB/s. The ADR 0033 overflow passes also compute every pair in every pass (P times the FFN work) and need `n_used` parking entries per layer to stay exact (ADR 0034).
+
+## Decision
+
+- **Pair groups.** A layer step's (token, choice) pairs are split into groups, each computed by one backend from one expert tensor: the VRAM slot tensor (pairs whose expert is resident there) or the RAM slot tensor (the rest). A group gathers its pairs' inputs (`get_rows` on the normed hidden state by token index), runs `mul_mat_id` with one expert per row, and scatters the unweighted outputs into the per-pair accumulator `[n_embd, n_used, n_tokens]` (`set_rows` by pair index). The next segment weights and sums the accumulator with the same ops as the resident graph, so CUDA's fused weighted sum rounds the same (ADR 0034). No pair is computed twice or masked; work is exactly the routed pairs. This replaces ADR 0033's masked overflow passes: a step with more distinct experts than slots becomes several GPU groups or, by default, GPU hits plus a CPU group.
+- **CPU experts come from the RAM slot tier** (ADR 0031, 0033): host slot tensors filled by direct I/O, LRU, as today. With `ram_slots` equal to the expert count it is "every expert in RAM" (Qwen3-30B-A3B on a large box); for a model larger than RAM (the exit test) it is the same mechanism with misses read in one batch per layer step. No memory map: a page-cache fault is a synchronous small random read, the failure mode that makes `-ot` collapse once the model exceeds RAM.
+- **Placement v1: hot set in VRAM, everything else on the CPU.** VRAM slots hold a per-layer hot set from routing counts (a routing profile when one exists, else counts from the first prefill), pinned; decode never uploads. A VRAM miss is computed on the CPU from its RAM slot (read from disk first on a RAM miss), never uploaded on the critical path. Hot-set refresh runs between requests. Uploading on miss stays available as a policy for the cost model (feature "Expert streaming", item 6) to choose later.
+- **One graph per segment, v1.** The GPU and CPU groups of a layer step go into one segment graph; ggml's scheduler splits it by backend and copies the inputs. Running the groups concurrently is a measured follow-up, not part of v1.
+- **First failing tests.** The CPU group, the GPU group and both together are bitwise equal to the resident builder on CPU for the top-8 Q4_K_M fixture of `tests/multipass.rs`; decode with a hot set issues no uploads. The CPU's K-quant `mul_mat_id` picks its kernel per expert by row count (ADR 0034), so a group must give each expert exactly its routed rows in the order the resident `mul_mat_id` visits them (token-major, choice-minor). Whether the tiled kernel's result depends on the input layout (`[n_embd, n_used, n_tokens]` with broadcast against gathered `[n_embd, 1, n_pairs]`) was settled by these tests: it does not (see Implementation notes). The tests only discriminate on AVX machines (CI).
+
+## Consequences
+
+- Exit numbers to beat: llama.cpp `-ot` at the same VRAM use (decode 40 to 67 tok/s, prefill 460 to 2900 by ubatch). A large prefill ubatch matters: llama.cpp's `-ot` prefill gains 4.5x from ubatch 512 to 4096.
+- The builder needs a per-step CPU and GPU threading split (CPU quota, ADR 0021) and the `tetraeder.expert.cache.requests` result `cpu` alongside hit and miss.
+- Supersedes ADR 0033's overflow passes as the way to run more distinct experts than slots, and with them ADR 0034's mask, parking and distinct-slot rules, once pair groups pass the tests above. The reason is cost, not exactness: with parking the passes are exact on CPU. A CUDA prefill from a slot tensor stays inexact either way (MMQ's stream-k split depends on the expert count, ADR 0034).
+- Prefetch and phase budgets (ADR 0031) move after this: with misses computed on the CPU they tune the hot set, they do not gate correctness.
+
+## Implementation notes
+
+- **Stage 1 (one backend).** A layer step whose distinct experts fit the compute slots runs in place as before (slot ids in `ids_map`, no gather). Otherwise the experts are chunked by the compute slot count (residents first, ADR 0033), one group per chunk. Groups are formed per expert, so each expert gets all its routed rows, in token-major order. All but the last group run as small graphs of their own; the last is built into the next segment, which then reads the accumulator. Each pair is written exactly once per layer step, so the accumulator needs no clearing. Counters: `expert_groups()` and `group_graphs()` (standalone graphs, added to `tetraeder.step.segments`).
+- **Slots below top-k are allowed again** (`expert_slots >= 1`). One expert per row cannot repeat a slot within a token, so ADR 0034's distinct-slot rule, its mask and its parking entries are gone.
+- **Input layout settled.** Both CPU paths address a src1 row as `(choice % ne11) + token * ne11` and build each expert's row list in token-major, choice-minor order; `from_float` quantizes per row. The tiled kernel's windows (and its narrow path) depend only on that row list. So a gathered `[n_embd, 1, n_pairs]` input gives every expert the same row bytes, count and order as the resident layout, and the result is bitwise equal. Evidence: `tests/multipass.rs` (Q4_K_M at 4, 8, 12 and 16 slots, prefill and decode) passes on the AVX2 CI runners, and a throwaway branch that splits groups by pair count instead of by expert fails it there on Linux and Windows (logit differences 0.18 to 0.36 at every slot count, Q8_0 still exact; 2026-11-01). Reversing the row order within each expert passes too, so the row count is what matters, not the order; the builder keeps token-major order anyway.
+- **Stage 2 (mixed groups).** The RAM slot tier becomes ggml tensors (per layer gate, up and down, `ram_slots` deep) in a CPU backend buffer marked as weights. ggml's scheduler runs an op on the backend of a weights-usage source buffer, so a CPU group's matmuls run on the CPU from the RAM slots and only its gathered inputs and outputs cross to the GPU; this is llama.cpp's `-ot` mechanism. The compute-tier weights are marked the same way. RAM slots are filled by direct I/O into a reused bounce buffer owned by the file and one copy into the tensor (one memcpy per disk read). The RAM tier is not zero-cleared at load: a CPU group reads only slots staged for it, and a clear would commit the whole tier up front. Locally the CPU backend stands in for both tiers, which tests the groups but not the backend split; the split is checked by `gpu_*` tests.
+- **Miss policy.** `LoadOptions::miss` chooses `Upload` (stage 1 behavior: compute-tier misses are loaded, more experts than slots become several compute groups) or `Cpu` (placement v1: compute-tier misses go to a CPU group from the RAM tier, which `Cpu` requires). Under `Cpu` a layer step is at most one compute group plus CPU groups chunked by the RAM slot count; the last CPU group and the compute group share the segment graph. Compute-tier misses are not looked up (a lookup assigns a slot); they count as `tetraeder.expert.cache.requests` result `cpu`.
+- **Hot set.** The streamer counts routed pairs per layer and expert. Under `Cpu` the compute slots are filled only by `refresh_hot_set`: the top experts by count, pinned, uploaded from the RAM tier or the file. It runs at load from a routing profile when one is given, else once after the first multi-token step; callers may run it again between requests. Decode never uploads, checked by an upload counter.
+- **First GPU run (2026-11-01, second box, RTX 3090, Qwen3-30B-A3B Q4_K_M, `bench/results/20261101/builder-real.json` at commit cef79f2).** Correctness: `cpu_slots32` (pair groups, AVX2 host) is bitwise equal to the resident CPU builder; on CUDA, 32 slots prefill reaches top-1 agreement 0.922 (masked passes: 0.859) and single-token streaming stays exact; `Cpu` policy with 32 VRAM and 128 RAM slots splits segments across both backends (max splits 3), uploads nothing during decode and agrees on top-1 at 0.859 (CPU and GPU kernels round differently). Speed is far off the target: `Cpu` policy decode 11.5 tok/s and prefill 2.2 tok/s against llama.cpp `-ot` 40 to 67 and 460 to 2900; the own builder all on CPU decodes at 4.1 tok/s. The CPU path's cost has to be found before placement is tuned.
+- **After ADR 0036 (threadpool, one-graph resident step, topk-moe fusion fixed; 2026-11-01, third box).** All real-model checks pass with CUDA fusion on: resident equals libllama, `slots120` and token-wise 32 slots equal resident bitwise. Resident decode 103 tok/s against libllama 127. `Cpu` policy (32 VRAM, 128 RAM slots): cold 3.2 prefill and 17.5 decode tok/s (the RAM tier fills from disk); warm 144 prefill (64 tokens) and 30.5 decode tok/s. Warm decode step 33 ms: compute 23, alloc 5.3, streamer 2, build 1.4, readback 1.1 (49 graphs per step).
+- **Paired with llama.cpp (2026-11-01, fourth box, 9 threads from the CPU quota, 64-token prompt, 16 decode tokens, `scripts/ot_pair2.sh`, commit after 4e1661e).** llama-bench: full GPU 1267 prefill and 180 decode tok/s; `-ot` all experts on CPU 48 and 30.7; `-ot` layers 24 to 47 on CPU 102 and 41.1. Builder `Cpu` policy warm (32 VRAM slots, 128 RAM slots): 165 and 34.6, so between the two `-ot` placements in decode, with less VRAM than the second, and ahead in short prefill. Exit regime (32 RAM slots, disk reads every step): 14.5 and 17.1 tok/s, decode step streamer time 29 ms of 59. The disk path is the next target.
+# 0036. The CPU backend keeps one threadpool; a step with every expert resident is one graph
+
+Status: Accepted (Phase 2)
+
+## Context
+
+The run of 2026-11-01 (ADR 0035, Consequences) measured the builder all on CPU at 4.1 tok/s decode and 9.8 tok/s prefill on Qwen3-30B-A3B, where llama.cpp on the same box is several times faster. `tests/cpu_bench.rs` reproduces it on a synthetic 48-layer top-8 Q4_K_M MoE (bench/results/20261101-local): at 1 thread the builder matches libllama (decode ratio 0.97); at 8 threads it decodes at 0.09x libllama, 10 times slower than its own 1-thread run, with only about 9 ms per token in graph building and allocation. The time is inside `sched.compute`.
+
+`Backend::cpu` set a thread count but no threadpool, and ggml is built without OpenMP. Then `ggml_graph_compute` creates a disposable threadpool for every graph: it spawns and joins `n - 1` threads per call. A step runs `n_layer + 1` segments (ADR 0030), so 48 thread creations and joins per token and thread count. libllama in the comparison and llama-bench attach a pool once.
+
+With every expert resident the segments buy nothing: the host only copies the router's ids back into the next segment. They still cost a context, a graph build, a scheduler allocation and a compute launch per layer, and on a GPU a synchronization per layer (the resident GPU builder decoded 45 tok/s against libllama's 67 on the same box).
+
+## Decision
+
+- **`Backend::cpu` owns a ggml threadpool** for its lifetime (`ggml_threadpool_new`, `ggml_backend_cpu_set_threadpool`), freed after the backend. Every CPU compute, segments and group graphs, reuses its threads. No numeric change: the thread count is the same.
+- **One graph per step when every expert is resident** (no streamer). It is the segments' ops in the same order, with the router's ids and weights feeding the expert matmuls directly instead of through the state slots. This is ADR 0030's whole-step graph for the case with no misses by construction; streaming keeps one segment per MoE layer. With `record_routing` the ids and weights of every layer are extra graph outputs. `segments_run` and `tetraeder.step.segments` count 1 per such step.
+- `Qwen3Moe::take_profile` returns a host-side time breakdown (build, allocation, compute, readback, streamer) for the benchmark.
+
+## Consequences
+
+- Supersedes ADR 0030's one segment per MoE layer when every expert is resident.
+- Local result (bench/results/20261101-local): the threadpool alone takes the builder at 8 threads from 0.25 to 2.5 tok/s decode; after both changes the 1-thread ratio to libllama is 1.14 decode and 1.08 prefill. The whole-step graph's gain is within this VM's noise; it removes 48 launches and synchronizations per token, which matters on a GPU and is measured on the box.
+- Same logits bit for bit: the resident builder is the reference of the exactness tests (multipass, cpu_experts, slots), which compare it against the segmented streaming paths.
+- The CPU policy (ADR 0035) still runs one segment per layer: its host work between layers is real. A RAM tier holding every expert could also become one graph with a device-side slot table; that waits for measurements on the box.
+- The node order is part of the numerics on CUDA: ggml-cuda fuses by matching consecutive nodes. The first whole-step graph reached each router only through the expert matmuls' ids, so the order was `SOFT_MAX, ARGSORT, VIEW, MUL_MAT_ID...` and the topk-moe fusion (`ggml_cuda_topk_moe_fusion`, which needs `SOFT_MAX, RESHAPE, ARGSORT, VIEW, GET_ROWS, RESHAPE, SUM_ROWS, CLAMP, DIV, RESHAPE`) did not fire. libllama and the segments fuse it, so on the RTX 3090 the resident path differed from both while `GGML_CUDA_DISABLE_FUSION=1` made all three equal. The graph now expands each layer's router weights before the expert FFN, as `build_moe_ffn` does ("call early so that topk-moe can be used"). `graph_order` in `qwen3moe.rs` checks without a GPU that the step graph's ops equal the segments' ops in order and that every router and expert sum has the shape the CUDA matchers need.
+- Not covered: llama.cpp repacks Q4_K weights for AVX2 (`q4_K_8x8_q8_K`, extra buffer type `CPU_REPACK`), the builder's CPU buffers do not. That changes numerics and is a separate decision, measured on the box with `tests/cpu_bench.rs`.
+
+## Implementation note: CUDA graphs and the resident step (2026-11-01)
+
+On the RTX 3090 the resident builder decoded about 104 tok/s against libllama's 127 (`tests/real_moe.rs`, `resident` records routing, a confound handled on another branch). Reading ggml-cuda at the pin (b11976) shows why the builder never gets CUDA graphs:
+
+- ggml-cuda keys a captured graph by the address of the split's first node (`ggml_cuda_graph_get_key`, ggml-cuda.cu 2803) and replays it only after a warmup call in which nothing changed (`ggml_backend_cuda_graph_compute`, 4923-4951). "Nothing changed" is a `memcmp` of every node's whole `ggml_tensor` struct (data, view offset, src pointers) and its sources' data, `ne` and `nb` (`ggml_cuda_graph_update_required`, 2807-2849). A graph with the same `uid` as last time skips the comparison (2813); `ggml_backend_sched` gives every split a new `uid` on each `alloc_graph` (ggml-backend.cpp 1751).
+- The builder stored K and V with `cpy(cur, view(cache, ..., n_past * row))` (qwen3moe.rs, `attention_and_router`). The view's data pointer moves one row per decode step, so the properties change on every call, warmup never completes and every step runs eagerly, about 2,500 kernel launches. This holds whatever else is reused. In addition the step graph lived in a fresh `Context` per step, so the key and every src pointer only stay equal if the allocator happens to return the same block.
+- libllama writes the cache with `ggml_set_rows(cache, cur, idxs)` with the row indices as an input (llama-kv-cache.cpp 1355, 1390), so the topology and every pointer are constant, and reuses the previous graph and its scheduler allocation when the shapes allow (llama-context.cpp 1539-1576): same `uid`, no rebuild, no split, no comparison.
+- Not a blocker: quantized `MUL_MAT_ID` at batch 1 takes MMVQ and does not need a stream sync (`ggml_cuda_mul_mat_id_needs_sync`, 2078-2096), so the step graph is capturable.
+
+Changes:
+
+- K and V are stored with `set_rows(cache, cur, pos)`; `pos` already holds the step's cache rows. Same values (the same F32 to F16 conversion), segments and whole-step graph alike. libllama uses I64 indices and a VIEW, which also lets CUDA fuse RoPE into the store (`ggml_cuda_should_fuse_rope_set_rows`); that fusion does not change values and is not needed for graph capture.
+- `LoadOptions::reuse_step_graph` (default on since the box run) keeps the whole-step graph, its context and its scheduler allocation while the token count, padded KV length, `last_only` and routing recording stay the same: a decode step only writes inputs and computes. `ggml-sys` gains `OwnedGraph`, which holds every context its tensors live in, so computing a kept graph stays sound.
+- `tests/gpu_graphs.rs` and `scripts/graphs_check.sh` measure decode on the box: libllama and the builder (reuse off and on, routing not recorded), each process with CUDA graphs on, off (`GGML_CUDA_DISABLE_GRAPHS=1`) and with `GGML_CUDA_GRAPH_DEBUG=1`, whose captures and uid reuses the test counts from ggml's log.
+
+Expected on the box: libllama clearly slower with graphs off; the builder with reuse off about as fast with graphs on as off if the context address changes between steps; with reuse on, one capture per shape, a uid reuse on every later decode step, and decode close to libllama. If libllama is not faster with graphs on, CUDA graphs are not the gap and the decode profile (build, allocation, readback) is the next place to look.
+
+Box result (bench/results/20261102/cuda-graphs-*.json): 30B decode 160 to 203 tok/s with reuse (llama.cpp 207), greedy identical, 127 replays, 0 update failures; `reuse_step_graph` now defaults to true.
+# 0037. Split GGUF files; expert slot tiers sized from byte budgets and reported
+
+Status: Accepted (Phase 2)
+
+## Context
+
+The Phase 2 exit test runs Qwen3-235B-A22B Q4_K_M (about 140 GB) on a box with at most 128 GB RAM and one 24 GB GPU (ADR 0031). That GGUF ships as several files written by llama.cpp's `gguf-split`, and the builder read one file. Slot counts were constants per layer (`expert_slots`, `ram_slots`), so a run could neither be sized from the memory it has nor show that it stayed inside it. Q4_K_M gives layers different expert sizes (wider `ffn_down` in some layers), so "bytes per slot" is not one number.
+
+## Decision
+
+- **Split files as llama.cpp writes them.** The first shard (`<prefix>-00001-of-0000N.gguf`) holds all metadata plus `split.no` (u16), `split.count` (u16) and `split.tensors.count` (i32); the others hold only the three split keys and their tensors, offsets relative to their own data section. `Gguf::open` on the first shard opens all shards by llama.cpp's naming rule, checks numbering and the total tensor count, and merges the tensor index; each `TensorInfo` carries its shard. Opening a later shard is an error. A tensor never spans shards, but a layer's gate, up and down tensors may sit in different shards, so an expert slab carries its shard per part. The streamer keeps one direct file per shard and issues one batch per shard per round.
+- **Slot tiers from byte budgets.** `LoadOptions` gains `expert_slot_bytes` and `ram_slot_bytes`, each exclusive with its count. A budget buys `floor(bytes / sum over layers of one expert's bytes in that layer)` slots per layer, the same count in every layer, capped at the expert count. A budget that buys no slot is an error. The budget is the tier's slot bytes only, the quantity the plan IR calls a slot-cache buffer; weights, KV and compute buffers are reported next to it, not carved from it.
+- **Reporting.** `Qwen3Moe::memory()` lists every buffer the builder owns by device, tier and kind (`weights`, `slots`, `kv`, `io` for the bounce buffers of the expert reads, `workspace`) with capacity and used bytes. The RAM tier's capacity is its buffer size and its used bytes are the resident slots: it is committed lazily (ADR 0035), so used bytes, not capacity, are what the process touches. The same numbers go to `tetraeder.memory.used` and `.capacity`. Peak resident set size of the process comes from the memory crate, so a run can show that it stayed within the box.
+
+## Consequences
+
+- One code path for single and split files; a single file is one shard.
+- Uniform slots per layer waste up to one expert of the widest layer per layer; per-layer counts wait until routing profiles show layers differ in need.
+- The slot budgets are what the planner will fill from `phase_budgets` (ADR 0032) once the builder runs from a plan; until then the exit run passes them directly.
+- Miss reads go through one bounce buffer per shard, reused across steps (at most 256 MiB, reported as `io`), and one copy into the slot. Local exit regime (`tests/exit_regime.rs`, synthetic 8-layer top-4 MoE, 4 of 16 experts in RAM, Windows VM, `bench/results/20261101-local/exit-regime-{before,after}.json`): decode streamer time 73 to 154 ms per token before, 33 to 35 after; read rate 2.4 to 2.6 GB/s after (device time only; the before figure of 0.4 to 0.9 also counted allocation, zeroing and two copies, so the streamer time is the comparable number); greedy tokens unchanged. Local prefill is CPU-compute bound (reads 1 to 5 % of it); on the box `op_offload` runs large CPU-group matmuls on the GPU, as llama.cpp does.
+- **Exit run (2026-11-02, box 58813464, RTX 3090, 91.6 GB container RAM, 15 threads, Qwen3-235B-A22B Q4_K_M 142 GB, `scripts/exit_run.sh`, `bench/results/20261102/exit-*-120520.json`).** Builder `Cpu` policy, VRAM slots 5.5 GB, RAM tier 71.6 GB, op offload, ubatch 2048: 32K prefill 67.8 tok/s, decode after it 2.26 tok/s (442 ms/token: compute 225, streamer 206 of which reads 141; 742 MB read per token at 5.3 GB/s). Same box and threads, llama.cpp `-ot exps=CPU`: pp2048 at depth 32K 38.5, tg32 at depth 32K 2.69; at depth 0 43.0 and 2.60; same expert VRAM (`blk.0-3` experts on the GPU) 47.2 and 3.16. So prefill beats expert offload by about 1.7x and decode does not (0.84x at 32K). Decode is reads then compute in series; overlapping the miss reads with the layer's GPU work and prefetching the next layer are the next levers. ik_llama.cpp `-ot` was OOM-killed at 128 GB (it does not keep CPU-overridden experts mapped), so it has no number in this regime. Ubatch 4096 aborts in CUDA's `mm_ids_helper` (4 B shared memory per row, about 25k rows on Ampere; a pair group at top-8 has 32k): pair groups need a row cap before larger ubatches.
+# 0038. Predicted next-layer expert prefetch into the RAM tier
+
+Status: Proposed (Phase 2). Accepted once the measurement below holds on the 235B. Extends ADR 0035; does not change it.
+
+## Context
+
+The Phase 2 exit run (ADR 0037, bench/results/20261102/exit-main-120520.json, Qwen3-235B-A22B Q4_K_M, RTX 3090, 91.6 GB box) decodes at 2.26 tok/s after a 32K prefill, 0.84x llama.cpp `-ot` (2.69). Per token: 442 ms = compute 225 (GPU attention plus the CPU groups) + streamer 206 (disk reads 141 at 5.3 GB/s for 742 MB, plus the copy from the bounce buffer into the RAM slots) + alloc 8. Every layer step has at least one CPU expert (full-hit rate 0), the RAM tier hits 90%.
+
+The reads cannot overlap with compute without a prediction. Segment L computes CPU group L-1, attention L and router L, so layer L's experts are known only after segment L, and group L must finish before attention L+1. The reads for layer L's misses sit strictly between segment L and segment L+1. Moving them off the critical path needs a guess of layer L+1's experts before segment L+1 starts.
+
+The bar is the best tuned baseline at 32K (plan.md, Phase 2 exit): llama.cpp `-ot` with the same expert VRAM (at depth 0: 3.16 tok/s against 2.60 for all experts on the CPU), so about 300 ms per token. Hiding a fraction A of the 206 ms streamer time gets there at A of about 0.7.
+
+## Decision
+
+- **Pre-gating.** Segment L also computes layer L+1's router on layer L's FFN input: `top_k(gate_inp[L+1] x rms_norm(h_L) * ffn_norm[L+1])`, where `h_L` is the residual after attention L. One small matmul per layer on the router's backend. The ids are read back with layer L's routing.
+- **Async reads into the RAM tier.** After layer L's own misses are staged (synchronously, as today), the predicted experts of layer L+1 that are in neither tier are looked up in layer L+1's RAM cache (which assigns slots) and read by a background reader while segment L+1 computes. Before layer L+1 is planned, its prefetch is waited for. Correct predictions are then RAM hits; wrong ones cost disk bandwidth that was idle and an LRU entry.
+- **Safety.** RAM slot tensors are per layer, so a prefetch into layer L+1 never aliases group L, which reads layer L's slots. Slots with a read in flight are pinned until the wait; no other code path reads or evicts them. The reader writes through a raw host pointer of the CPU buffer, so that code lives in `memory` (Rule 7), and the streamer waits for every read before it is dropped. The main thread does no reads while a prefetch is in flight (its reads happen between the wait for L and the prefetch for L+1), so the shard's bounce buffer is never shared concurrently.
+- **Scope v1:** `MissPolicy::Cpu` with a RAM tier, decode and prefill, behind `LoadOptions::prefetch` (default off until the exit run shows a gain). Prefetched experts do not count as routed (the hot set reads the counts). Prefill: the union of 2048 predictions covers most experts, so prefetch is capped at the slots the prediction does not need; intra-layer chunk pipelining for prefill (read chunk i+1 while chunk i computes) is a follow-up on the same reader.
+
+## Consequences
+
+- Measure first: per-layer overlap of predicted and actual top-8 (`expert.prefetch` counters: issued, used, wasted bytes) on the 30B in `moe_check` and on the 235B in the exit run, prefetch off and on, paired. If the 235B's accuracy is below about 0.6, pre-gating alone does not pass the exit test and this ADR records that; the reader stays for prefill pipelining.
+- New metrics, dashboard panel and alert (Rule 6): prefetch accuracy per layer and wasted read bytes.
+- The copy into the RAM slots moves to the reader thread for prefetched experts; the remaining synchronous copy (mispredictions) is a separate lever.
+- `exit_run.sh` gains the missing baseline, llama.cpp `-ot` same VRAM at depth 32K, so the number to beat is measured on the same box.
+
+## Implementation notes
+
+Built behind `LoadOptions::prefetch` (default off); tests in `tests/prefetch.rs`, harness in `exit_regime.rs` (`TETRAEDER_EXIT_PREFETCH=1`, stage `main-prefetch` of `exit_run.sh`) and `real_moe.rs` (`slots32_ram32_cpupolicy_prefetch`).
+
+- **Prediction.** Segment L adds `soft_max`, `argsort_top_k` of `gate_inp[L+1] x (rms_norm(ffn_inp_L) * ffn_norm[L+1])` after the real router's nodes (so the CUDA topk-moe window stays intact), copied to a `pred` state tensor and read back with layer L's ids. It runs whenever prefetch is on and experts stream, so accuracy is scored without a RAM tier too. Layer 0 has no prediction.
+- **Reader.** `memory::reader::Reader` is one persistent thread running `DirectFile::read_batch_with` per shard, handing each range to a `Send` sink; `copy_sink` + `tensor_dst` is the raw host memcpy (unsafe in `memory` only; `Tensor::host_ptr` in `ggml-sys`). The sink is a boxed closure so a repacking buffer can plug in its own. `tensor_dst` is a safe function whose liveness obligation is documented, not typed: the streamer keeps it by pinning the slots until the wait and declaring the reader before the RAM tier, so it drops (and waits) first.
+- **Pinning.** The RAM tier has no hot set, so the in-flight slots use `LayerSlots::set_hot_set`: the predicted experts that are already resident plus the ones being read are pinned, and the new ones are read into free or unpinned LRU slots. At most `RAM slots - resident predicted` experts are read, most-predicted first; experts in the compute tier are skipped. Prefetch lookups touch no routing counts.
+- **Order.** Layer L: wait for its prefetch (clears the layer on error), plan and stage as before (prefetched experts are RAM hits), then issue the reads for L+1 after the last synchronous read, so the bounce buffer is never shared. Nothing is in flight after the last layer. The start of a step and `refresh_hot_set` settle any leftover from a failed step.
+- **Counters.** `IoCounters`: `prefetch_issued`, `_used` (a flagged expert hit in `fill_ram`), `_wasted` (a flagged expert evicted; never-used ones still resident count in neither), `_bytes`, `_wasted_bytes`, worker read time and the time the step waited (overlap = 1 - wait / read). Prefetch reads are also in `batches`, `experts_read` and `bytes_read` but not in `read_time`. `LayerExpertStats::predicted_hits / predicted_total` give the accuracy. The prefetch lookups count as RAM-tier misses in the slot stats and the later routed lookup as a hit; they are not reported to `expert.cache.requests`.
+- **Metrics (Rule 6).** `tetraeder.expert.prefetch` (layer, result issued/used/wasted), `tetraeder.expert.prefetch.wasted` (bytes), `tetraeder.expert.prefetch.accuracy` (histogram per layer step); two dashboard panels and the `TetraederPrefetchAccuracyLow` alert (below 0.4 for 10 minutes while prefetch issues reads).
+- **Not done:** no fault-injection hook exists; the error test cuts the model file, which fails whichever read comes first (the reader's own error path is unit-tested in `memory`). Intra-layer pipelining for prefill is still the follow-up. Accuracy and overlap on the 235B are measured by the exit run; the status stays Proposed until then.
+
+# 0039. No AVX2 repack of the builder's CPU weights for now
+
+Status: Accepted (Phase 2). Revisit for CPU-only prefill (Phase 9 breadth) or if ggml's repack buffer becomes offloadable.
+
+## Context
+
+llama.cpp allocates CPU-resident Q4_K weights in ggml's `CPU_REPACK` extra buffer type, which interleaves 8 rows (`q4_K_8x8_q8_K`, AVX2) on write; the builder's CPU buffers and RAM tier are plain. ADR 0036 left this open. Measured on the box (bench/results/20261101/cpu-bench-real.json, EPYC 7K62, 11 threads, Qwen3-30B-A3B Q4_K_M, CPU only): the builder against libllama (which repacks) is 0.82x on prefill and 1.30x on decode (`builder_cpupolicy` 0.78x and 1.22x).
+
+Reading ggml at the pin (b11976):
+
+- `CPU_REPACK`'s `set_tensor` asserts a whole-tensor write (`offset == 0`, `size == nbytes`), but a view's `init_tensor` gets its own repack traits, and each expert's slab maps to the same bytes in the repacked layout (rows interleave in groups of 8 within one expert). So per-slot writes work through a 3D view of one slot without a ggml patch.
+- The repack buffer type has no `is_host`, so `ggml_backend_sched` never op-offloads an op whose weights sit there (ggml-backend.cpp, the `op_offload && ggml_backend_buffer_is_host` check). The exit regime's prefill depends on op offload: 67.8 tok/s with it over a 32K prompt, 18.0 without over 2K (exit-main and exit-cpu-prefill-120520.json).
+- The repacked kernels change rounding, so the CPU groups would no longer be bitwise equal to the resident builder (ADR 0034, 0035) unless the resident CPU weights repack too.
+
+## Decision
+
+Keep the builder's CPU weights and RAM tier unpacked. In the GPU-plus-RAM regime that Phase 2 targets, repacking would turn off op offload for the RAM tier (prefill several times slower) to speed up batch-1 CPU groups, where the builder already decodes 1.3x libllama on CPU. The CPU-only prefill gap (0.82x) is real but outside the Phase 2 exit test.
+
+## Consequences
+
+- No ggml patch and no new numerics; the exactness tests stay as they are.
+- If CPU-only prefill matters later, the measured path is: repack per slot through views, only for `BackendChoice::Cpu` and only with op offload off, gated on `tests/cpu_bench.rs` showing prefill gains without the decode loss.
+# Architecture decision records
+
+One file per decision: Status, Context, Decision, Consequences. Do not change an accepted decision; supersede it with a new ADR.
+
+| ADR | Title |
+| --- | --- |
+| [0001](0001-own-rust-engine-on-ggml.md) | Own Rust engine on ggml, reached by a strangler path from libllama |
+| [0002](0002-rust-for-host-code.md) | Rust for all host code |
+| [0003](0003-no-interaction-combinators.md) | No interaction combinators, HVM, Bend2 or e-graph search |
+| [0004](0004-no-tornadovm-no-mojo.md) | No Java with TornadoVM, no Mojo for now |
+| [0005](0005-ggml-only-kernel-base.md) | Inside the engine, ggml is the only kernel base |
+| [0006](0006-one-placement-plan-ir.md) | One placement plan IR |
+| [0007](0007-measured-cost-model.md) | Cost model from measured per-op curves, c0 plus f(M), with c0 per graph mode |
+| [0008](0008-tensor-and-cross-node-expert-parallel-linux-only.md) | Tensor parallel and cross-node expert parallel are Linux only |
+| [0009](0009-drain-and-restart-replanning.md) | Replanning is drain-and-restart until Phase 7, then live |
+| [0010](0010-name-and-license.md) | Name Tetraeder, license Apache-2.0 |
+| [0011](0011-private-ggml-patch-queue.md) | Ggml is modified only through a private ordered patch queue |
+| [0012](0012-opentelemetry-from-first-commit.md) | OpenTelemetry for metrics, traces and logs from the first commit |
+| [0013](0013-bottleneck-detection-and-advisor.md) | Bottleneck detection checks the environment first, picks the regime (load or batch 1), and outputs a ranked list with confidence or "balanced" |
+| [0014](0014-own-graph-builder-for-expert-streaming.md) | Expert streaming needs an own graph builder, so the first one (Qwen3 MoE, CUDA and CPU) comes in Phase 2 |
+| [0015](0015-own-graph-builders-in-rust.md) | Own graph builders in Rust per family |
+| [0016](0016-own-executor-in-phase-5.md) | An own executor replaces ggml's backend scheduler in Phase 5 |
+| [0017](0017-worker-process-per-device.md) | One worker process per device |
+| [0018](0018-transport-chosen-by-measurement.md) | Transport is chosen by measurement in Phase 0 (quinn, iroh, TCP with TLS, RDMA where present) |
+| [0019](0019-m1-scope.md) | M1 scope: dense models via libllama plus one MoE family with an own builder, CUDA and CPU only |
+| [0020](0020-no-timing-patch.md) | No timing patch: whole-step timing with CUDA graphs in production, per-op timing in calibration runs |
+| [0021](0021-gpu-work-on-ephemeral-vast-boxes.md) | All GPU work runs on ephemeral Vast boxes |
+| [0022](0022-otel-exemplars.md) | No OpenTelemetry exemplars for now |
+| [0023](0023-transport-spike.md) | Transport spike: QUIC versus TCP with TLS versus plain TCP (Proposed) |
+| [0024](0024-quantization-per-unit-and-quality-profile.md) | Quantization is a planner choice per unit; quality is measured per model (Proposed) |
+| [0025](0025-objective-is-limits-plus-pareto-position.md) | The objective is hard limits plus a position on the speed and quality front (Proposed) |
+| [0026](0026-phase1-engine-on-libllama.md) | Phase 1 engine interface: safe libllama wrapper in ggml-sys, engine loop in a new engine crate |
+| [0027](0027-placement-plan-ir-shape.md) | Placement plan IR: assignment rules over a model description, one expanded form for checks, diff and migration |
+| [0028](0028-gateway.md) | Gateway: axum, a narrow token-level engine trait, minijinja templates, llguidance constraints |
+| [0029](0029-gpu-tooling-from-taxameter.md) | GPU box tooling comes from the shared package taxameter |
+| [0030](0030-own-moe-graph-builder.md) | Own Qwen3 MoE graph builder: safe ggml surface, builder in model, one segment per MoE layer |
+| [0031](0031-arenas-tiers-slot-cache-direct-io.md) | Memory: per-device arenas with prefill and decode budgets, expert slot cache over three tiers, aligned direct I/O |
+| [0032](0032-memory-crate-dependencies-and-budget-semantics.md) | Memory crate: reserve as accounting, phase budget semantics, I/O dependencies |
+| [0033](0033-expert-slots-in-the-builder.md) | Expert slots in the builder: lookup order, overflow passes, RAM tier, failure semantics |
+| [0034](0034-expert-slots-at-least-top-k.md) | Expert slots: at least the experts per token, distinct slots per token in overflow passes |
+| [0035](0035-expert-pair-groups-and-cpu-experts.md) | Expert pairs computed in compact groups per backend; non-resident experts on the CPU |
+| [0036](0036-cpu-threadpool-and-whole-step-graph.md) | The CPU backend keeps one threadpool; a step with every expert resident is one graph |
+| [0037](0037-split-gguf-and-slot-tiers-from-byte-budgets.md) | Split GGUF files; expert slot tiers sized from byte budgets and reported |
+| [0038](0038-predicted-next-layer-expert-prefetch.md) | Predicted next-layer expert prefetch into the RAM tier |
+| [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | No AVX2 repack of the builder's CPU weights for now |

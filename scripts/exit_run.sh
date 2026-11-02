@@ -46,15 +46,27 @@ time.sleep(10**9)
   mem=$emulated
   sleep 60  # touching the pages takes a while; the run must not start before
 fi
-ram_bytes=$((mem - ${RAM_RESERVE_GB:-20} * 1000000000))
+# The builder reads with direct I/O (no page cache): besides the tiers it holds the bounce buffers (1.3 GB) and about
+# 1 GB of process memory (peak RSS 72.75 GB with a 70.8 GB RAM tier, 2026-11-02), so 8 GB is left for the rest.
+ram_bytes=$((mem - ${RAM_RESERVE_GB:-8} * 1000000000))
+# expert VRAM: VRAM_SLOT_BYTES if set, else what llama.cpp's tuned -ot puts on the GPU (stage llama-fit), else 5.5 GB
 vram_bytes="${VRAM_SLOT_BYTES:-5500000000}"
+ot_fit='blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU'
+ik_bench="${IK_BENCH:-/opt/ik_llama/bin/llama-bench}"
 bench="${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}"
-# natural text for the prompt (random token ids spread routing pessimistically)
+# natural text for the prompt (random token ids spread routing pessimistically), frozen: it was built from the
+# checkout's AGENTS.md and ADRs, so every ADR edit changed the 32K prompt (ADR 0038, Results). Copied for the scripts
+# that read /root/exit_prompt.txt (Colibri, KTransformers).
 prompt=/root/exit_prompt.txt
-cat AGENTS.md docs/adr/*.md > "$prompt"
+cp bench/prompts/exit_prompt.txt "$prompt"
 rc=0
 # STAGES (space list of stage names, default all) lets a relaunch skip stages that already ran
 want() { [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]]; }
+# KTransformers installs while the model downloads (its own log and lock)
+if want ktransformers; then
+  bash scripts/ktransformers_build.sh 8>&- &
+  kt_build_pid=$!
+fi
 # Colibri builds while the model downloads (its own log and lock; fd 8 is this script's lock)
 if want colibri-short || want colibri-deep; then
   bash scripts/colibri_build.sh 8>&- &
@@ -109,6 +121,37 @@ colibri() {
   echo "[$(date +%T)] done colibri-$1 rc=$?"
 }
 
+# ktransformers: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads and RAM
+ktransformers() {
+  want ktransformers || return 0
+  [ -n "${kt_build_pid:-}" ] && wait "$kt_build_pid"
+  kt_build_pid=
+  echo "[$(date +%T)] start ktransformers"
+  bash scripts/ktransformers_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-ktransformers-$stamp.json" deep 8>&-
+  echo "[$(date +%T)] done ktransformers rc=$?"
+}
+
+# llama_fit: the most layers' experts llama.cpp keeps on the GPU at ctx 33024, ubatch 2048 (scripts/llama_fit.sh); the
+# builder then gets the same expert bytes as VRAM slots (from the smoke run's per-layer expert sizes), so both engines
+# use the same VRAM for experts
+llama_fit() {
+  want llama-fit || return 0
+  echo "[$(date +%T)] start llama-fit"
+  local f="$date_dir/exit-llama-fit-$stamp.json"
+  bash scripts/llama_fit.sh "$model" "$threads" 2048 33024 "$f" || return 0
+  local n
+  n=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['layers'])" "$f") || return 0
+  [ "$n" -ge 0 ] || return 0
+  ot_fit=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['ot'])" "$f")
+  if [ -z "${VRAM_SLOT_BYTES:-}" ] && [ "$n" -gt 0 ]; then
+    vram_bytes=$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(sum(d['expert_bytes_per_layer'][:int(sys.argv[2])]) * int(sys.argv[3]))" "$date_dir/exit-smoke-$stamp.json" "$n" 128)
+  fi
+  echo "[$(date +%T)] done llama-fit: $n layers, -ot $ot_fit, builder vram slots $vram_bytes B"
+}
+
 if [ $rc = 0 ]; then
   {
     # smoke gate: real header, the full KV (a VRAM OOM shows here), direct I/O, the backend split, memory
@@ -127,29 +170,31 @@ for r in d.get("runs") or []:
         print("  memory:", m)
 EOF
     if [ $rc = 0 ]; then
+      llama_fit
       # ubatch 2048: a pair group passes one row per (token, expert) pair to CUDA's mul_mat_id, whose id helper
       # needs 4 B of shared memory per row (about 25k rows on Ampere); ubatch 4096 at top-8 is 32k (abort, 2026-11-02)
-      exit_regime main 60 TETRAEDER_EXIT_PREFILL=32768 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=64 \
-        TETRAEDER_EXIT_CTX=33024 TETRAEDER_EXIT_OP_OFFLOAD=1 || rc=23
-      # the same with the predicted next-layer experts read ahead into the RAM tier (ADR 0038)
-      exit_regime main-prefetch 60 TETRAEDER_EXIT_PREFILL=32768 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=64 \
-        TETRAEDER_EXIT_CTX=33024 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFETCH=1 || rc=26
-      # baselines at depth 0, same box and threads, before the variants so a short box still has the comparison:
-      # all experts on the CPU, and the same expert VRAM as the builder (layers 0-3 of about 1.46 GB each on the GPU;
-      # llama-bench takes ',' as alternative configs, so overrides in one config are joined with ';')
-      # (llama.cpp only: ik_llama was OOM-killed at 128 GB)
-      baseline "$bench" exit-llama-ot-all 30 -ub 2048 -p 2048 -n 32 -ot 'exps=CPU'
-      baseline "$bench" exit-llama-ot-samevram 30 -ub 2048 -p 2048 -n 32 -ot 'blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU'
-      exit_regime refresh-hot 30 TETRAEDER_EXIT_PREFILL=8192 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=64 \
-        TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_REFRESH_HOT=1 || rc=24
-      exit_regime cpu-prefill 30 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=32 \
-        TETRAEDER_EXIT_OP_OFFLOAD=0 || rc=25
-      # the deep prompt last: on a page-faulting 235B it may take long
-      baseline "$bench" exit-llama-ot-all-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot 'exps=CPU'
-      baseline "$bench" exit-llama-ot-samevram-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot 'blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU'
-      # Colibri last: its 32K prefill on the 235B is untested and may use its whole 60 min limit
+      deep=(TETRAEDER_EXIT_PREFILL=32768 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=64 TETRAEDER_EXIT_CTX=33024
+        TETRAEDER_EXIT_OP_OFFLOAD=1)
+      # prefetch off and on (ADR 0038), paired
+      exit_regime main 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=0 || rc=23
+      exit_regime main-prefetch 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
+      # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
+      for v in ${VARIANTS:-}; do
+        IFS=',' read -ra extra <<< "${v#*:}"
+        exit_regime "${v%%:*}" 60 "${deep[@]}" "${extra[@]}" || rc=27
+      done
+      # llama.cpp on the same prompt tokens through libllama (exit_regime's reference engine): logit parity of the
+      # builder at 32K (greedy, first-token top-10, margins) and the tuned -ot baseline on real text
+      exit_regime reference 60 "${deep[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit" || rc=28
+      # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
+      # are joined with ';'), then ik_llama.cpp with the same overrides (it was OOM-killed at 128 GB with mmap)
+      baseline "$bench" exit-llama-ot-fit-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot "$ot_fit"
+      baseline "$ik_bench" exit-ik-ot-fit-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot "$ot_fit"
+      # other tracks' stages (speculative decoding) go here
+      ktransformers
+      # Colibri last; 32K deep is out of reach (2046 tokens took 895 s), so only the short profile by default
       colibri short
-      colibri deep
+      [ -n "${STAGES:-}" ] && colibri deep
     fi
   } >> "$log" 2>&1
 fi
