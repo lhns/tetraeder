@@ -550,6 +550,18 @@ impl<'a> Tensor<'a> {
         Ok(())
     }
 
+    /// Address of the tensor's data when its buffer is host memory (a CPU buffer), else `None`.
+    /// For a background reader that fills slots with plain copies (ADR 0038): the caller keeps
+    /// the tensor and its buffer alive, in range and unshared while the copy runs.
+    pub fn host_ptr(self) -> Option<*mut u8> {
+        // SAFETY: the handle borrows its live context; the buffer is checked for null first.
+        unsafe {
+            let t = self.ptr.as_ptr();
+            let host = !(*t).buffer.is_null() && sys::ggml_backend_buffer_is_host((*t).buffer);
+            (host && !(*t).data.is_null()).then(|| (*t).data.cast())
+        }
+    }
+
     /// Reads raw bytes at `offset` (backend memory to host).
     pub fn get_bytes(self, offset: usize, len: usize) -> Result<Vec<u8>> {
         self.check_range(offset, len)?;
