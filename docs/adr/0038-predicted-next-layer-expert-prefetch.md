@@ -1,6 +1,6 @@
 # 0038. Predicted next-layer expert prefetch into the RAM tier
 
-Status: Proposed (Phase 2). Accepted once the measurement below holds on the 235B. Extends ADR 0035; does not change it.
+Status: Accepted (Phase 2, measured 2026-11-02, see Results). Extends ADR 0035; does not change it.
 
 ## Context
 
@@ -34,5 +34,22 @@ Built behind `LoadOptions::prefetch` (default off); tests in `tests/prefetch.rs`
 - **Order.** Layer L: wait for its prefetch (clears the layer on error), plan and stage as before (prefetched experts are RAM hits), then issue the reads for L+1 after the last synchronous read, so the bounce buffer is never shared. Nothing is in flight after the last layer. The start of a step and `refresh_hot_set` settle any leftover from a failed step.
 - **Counters.** `IoCounters`: `prefetch_issued`, `_used` (a flagged expert hit in `fill_ram`), `_wasted` (a flagged expert evicted; never-used ones still resident count in neither), `_bytes`, `_wasted_bytes`, worker read time and the time the step waited (overlap = 1 - wait / read). Prefetch reads are also in `batches`, `experts_read` and `bytes_read` but not in `read_time`. `LayerExpertStats::predicted_hits / predicted_total` give the accuracy. The prefetch lookups count as RAM-tier misses in the slot stats and the later routed lookup as a hit; they are not reported to `expert.cache.requests`.
 - **Metrics (Rule 6).** `tetraeder.expert.prefetch` (layer, result issued/used/wasted), `tetraeder.expert.prefetch.wasted` (bytes), `tetraeder.expert.prefetch.accuracy` (histogram per layer step); two dashboard panels and the `TetraederPrefetchAccuracyLow` alert (below 0.4 for 10 minutes while prefetch issues reads).
-- **Not done:** no fault-injection hook exists; the error test cuts the model file, which fails whichever read comes first (the reader's own error path is unit-tested in `memory`). Intra-layer pipelining for prefill is still the follow-up. Accuracy and overlap on the 235B are measured by the exit run; the status stays Proposed until then.
+- **Not done:** no fault-injection hook exists; the error test cuts the model file, which fails whichever read comes first (the reader's own error path is unit-tested in `memory`). Intra-layer pipelining for prefill is still the follow-up. Accuracy and overlap on the 235B are measured by the exit run (Results below).
 
+## Results
+
+Box 58872072 (RTX 3090, container limit 91.7 GB, 5 threads from the CPU quota, disk 3.1 GB/s), bench/results/20261102/*-203803.json and eq-*.json. Qwen3-235B-A22B Q4_K_M, 32K prefill, 64 decode tokens, op offload on, prefetch off and on in the same session:
+
+| | off | on |
+|---|---|---|
+| prefill tok/s | 57.1 | 60.6 |
+| decode tok/s | 2.19 | 2.38 (+8.4%) |
+| decode ms per token: compute, streamer | 197, 248 | 185, 225 |
+| prediction accuracy (decode, prefill) | | 0.85, 0.88 |
+| prefetch read time hidden behind compute (decode, prefill) | | 29%, 48% |
+
+On the 30B (moe_check, `slots32_ram32_cpupolicy_prefetch`): accuracy 0.89, warm decode 38.3 to 39.7 tok/s.
+
+Output: greedy tokens are equal with prefetch off and on in every same-conditions pair (8, 2048, 8192 and 32768 token prefills, op offload off and on). The first 32K run on the box (`main`, off) differed from all later 32K runs, off and on alike, and equals the previous box's first run: a first-run effect unrelated to prefetch, open.
+
+Decision: accepted, the gate (accuracy at least 0.6) holds. Most of the read still waits: the step waits for 71% of the decode prefetch time, likely because the reader thread competes with ggml's spinning CPU threads for a 5.8-core quota. Next levers: a lower ggml thread count while a prefetch is in flight, and reading two layers ahead. Default stays off until prediction runs only where it can prefetch (today it also adds its graph nodes and readback under `MissPolicy::Upload`).
