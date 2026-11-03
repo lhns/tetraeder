@@ -3,11 +3,12 @@
  "model": {
   "name": "Qwen3 30Ba3 Instruct",
   "arch": "qwen3moe",
-  "source": "m-00001-of-00023.gguf",
+  "source": "Qwen3-30B-A3B-Q8_0.gguf",
   "source_format": "Q8_0",
   "fingerprint": "0f7d709cf56918296d3267f5541e2381aec42400d8ab9ef960778804d0874e76",
   "layers": 48,
-  "experts": 128
+  "experts": 128,
+  "source_note": "measured on the group shards the Q8_0 file was split into (80 GB box disk); fingerprint is of those shards"
  },
  "ggml": "b11976",
  "calibration": {

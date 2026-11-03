@@ -705,7 +705,7 @@ The largest risk is calendar time; next come cost-model accuracy, ggml drift and
 - **KV layout in Phase 4:** contiguous chunks on unmodified attention, or paged blocks with a patch; decided by experiment.
 - **Mixed vendors in M1:** decided by the Phase 0 multi-backend spike.
 - **Transport:** decided by the Phase 0 latency measurement.
-- **Quality profile granularity:** per layer, per tensor or per expert group; decided by profiling cost against planner gain in Phase 2.
+- **Quality profile granularity:** decided for v1 in ADR 0048: per role class and span of layers (6 on Qwen3-8B, 12 on Qwen3-30B-A3B), embed and head apart.
 - **Trace backend:** Jaeger or Grafana Tempo next to VictoriaMetrics.
 - **Name check:** confirm Tetraeder is free on crates.io and GitHub.
 
