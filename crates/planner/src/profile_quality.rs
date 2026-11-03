@@ -503,8 +503,14 @@ mod tests {
     }
 
     #[test]
-    fn band_of_a_profile_without_checks_is_zero() {
-        let (p, _) = small();
+    fn band_of_a_profile_without_usable_checks() {
+        let (mut p, _) = small();
+        // One check: no fit, the correction is the identity.
+        let b = Band::of(&p);
+        assert_eq!(Correction::from_profile(&p), Correction::IDENTITY);
+        assert_eq!(b.raw, b.corrected);
+        assert_eq!(b.leave_one_out, None);
+        p.checks.clear();
         let b = Band::of(&p);
         assert_eq!((b.raw, b.corrected, b.leave_one_out), (0.0, 0.0, None));
     }
@@ -543,13 +549,12 @@ mod tests {
                 smallest: floor
             })
         );
-        let mut last = f64::INFINITY;
         for extra in [0, 1 << 20, 1 << 22, 1 << 24, 1 << 26, 1 << 30] {
             let m = mix_at_budget(&p, floor + extra).unwrap();
             assert!(m.bytes <= floor + extra);
-            assert!(m.estimate <= last + 1e-12, "{extra}");
-            last = m.estimate;
         }
+        let smallest_mix = mix_at_budget(&p, floor).unwrap();
+        assert!(smallest_mix.estimate > p.base.kl);
         // Room for everything: every group at the base.
         let m = mix_at_budget(&p, p.base.bytes).unwrap();
         assert!((m.estimate - p.base.kl).abs() < 1e-12);

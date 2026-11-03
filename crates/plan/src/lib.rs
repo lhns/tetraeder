@@ -34,5 +34,8 @@ pub use plan::{
     Assign, DeviceBytes, Knobs, PhaseBudget, PhaseBytes, Plan, Replica, SlotCache, Span, Stage,
     UnitFormats, UnitSel,
 };
-pub use quality::{EstimateError, QUALITY_SCHEMA, QualityError, QualityIssue, QualityProfile};
+pub use quality::{
+    EstimateError, GroupEntry, QUALITY_SCHEMA, QualityError, QualityGroup, QualityIssue,
+    QualityProfile,
+};
 pub use validate::{At, Context, Issue, validate, validate_partial};
