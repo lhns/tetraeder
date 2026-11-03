@@ -1,0 +1,62 @@
+{
+ "layers": 8,
+ "ot": "blk\\.(0|1|2|3|4|5|6|7)\\.ffn_.*_exps=CUDA0;exps=CPU",
+ "ubatch": 2048,
+ "ctx": 33024,
+ "tries": [
+  {
+   "layers": 12,
+   "fits": false,
+   "buffers_mib": [],
+   "tail": [
+    "1.14.954.839 E cmn  common_init_: failed to create context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "1.14.954.842 E cmn  common_init_: failed to create context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "1.14.955.356 E srv    load_model: failed to create_context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "1.14.955.431 I srv    operator(): operator(): cleaning up before exit...",
+    "1.14.957.965 E srv  server_run_i: exiting due to model loading error"
+   ]
+  },
+  {
+   "layers": 11,
+   "fits": false,
+   "buffers_mib": [],
+   "tail": [
+    "0.58.661.363 E cmn  common_init_: failed to create context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.58.661.367 E cmn  common_init_: failed to create context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.58.661.789 E srv    load_model: failed to create_context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.58.661.794 I srv    operator(): operator(): cleaning up before exit...",
+    "0.58.664.695 E srv  server_run_i: exiting due to model loading error"
+   ]
+  },
+  {
+   "layers": 10,
+   "fits": false,
+   "buffers_mib": [],
+   "tail": [
+    "0.52.595.166 E cmn  common_init_: failed to create context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.52.595.169 E cmn  common_init_: failed to create context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.52.595.641 E srv    load_model: failed to create_context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.52.595.648 I srv    operator(): operator(): cleaning up before exit...",
+    "0.52.600.357 E srv  server_run_i: exiting due to model loading error"
+   ]
+  },
+  {
+   "layers": 9,
+   "fits": false,
+   "buffers_mib": [],
+   "tail": [
+    "0.53.845.362 E cmn  common_init_: failed to create context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.53.845.365 E cmn  common_init_: failed to create context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.53.845.840 E srv    load_model: failed to create_context with model '/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf'",
+    "0.53.845.844 I srv    operator(): operator(): cleaning up before exit...",
+    "0.53.851.048 E srv  server_run_i: exiting due to model loading error"
+   ]
+  },
+  {
+   "layers": 8,
+   "fits": true,
+   "buffers_mib": [],
+   "tail": []
+  }
+ ]
+}
