@@ -96,6 +96,8 @@ pub struct Gguf {
     by_name: HashMap<String, usize>,
     /// Shard files in order.
     pub paths: Vec<PathBuf>,
+    /// Data section start of each shard (0 for a headerless cache shard, see `convert`).
+    pub data_offsets: Vec<u64>,
     /// Alignment and data section start of the first shard.
     pub alignment: u64,
     pub data_offset: u64,
@@ -213,6 +215,22 @@ impl<R: Read> Rd<R> {
     }
 }
 
+/// Splits a raw key-value section of `n` entries into `(key, start, end)` byte ranges.
+pub(crate) fn kv_entries(section: &[u8], n: u64) -> Result<Vec<(String, usize, usize)>> {
+    let mut rd = Rd {
+        r: std::io::Cursor::new(section),
+    };
+    let mut out = Vec::new();
+    for _ in 0..n {
+        let start = rd.r.position() as usize;
+        let key = rd.string()?;
+        let ty = rd.u32()?;
+        rd.value(ty)?;
+        out.push((key, start, rd.r.position() as usize));
+    }
+    Ok(out)
+}
+
 impl Gguf {
     /// Opens a single file or, given the first shard of a split model, all of its shards.
     pub fn open(path: impl AsRef<Path>) -> Result<Gguf> {
@@ -220,6 +238,7 @@ impl Gguf {
         let first = parse_file(path, 0)?;
         let count = kv_int(&first.kv, "split.count").unwrap_or(1);
         let mut paths = vec![path.to_path_buf()];
+        let mut data_offsets = vec![first.data_offset];
         let mut tensors = first.tensors;
         if count > 1 {
             if kv_int(&first.kv, "split.no") != Some(0) {
@@ -244,6 +263,7 @@ impl Gguf {
                     )));
                 }
                 tensors.extend(shard.tensors);
+                data_offsets.push(shard.data_offset);
                 paths.push(p);
             }
             if kv_int(&first.kv, "split.tensors.count") != Some(tensors.len() as u64) {
@@ -265,6 +285,7 @@ impl Gguf {
             tensors,
             by_name,
             paths,
+            data_offsets,
             alignment: first.alignment,
             data_offset: first.data_offset,
             kv_section: first.kv_section,
@@ -275,6 +296,29 @@ impl Gguf {
     /// Number of shard files (1 for a single file).
     pub fn n_shards(&self) -> usize {
         self.paths.len()
+    }
+
+    /// Points tensor `name` at `len` bytes of type `ty` at offset 0 of the headerless file `path`,
+    /// which becomes an extra shard (a conversion cache file, ADR 0041).
+    pub fn retarget(&mut self, name: &str, ty: Type, path: PathBuf) -> Result<()> {
+        let i = *self
+            .by_name
+            .get(name)
+            .ok_or_else(|| GgufError::MissingTensor(name.into()))?;
+        let shard = match self.paths.iter().position(|p| *p == path) {
+            Some(s) => s,
+            None => {
+                self.paths.push(path);
+                self.data_offsets.push(0);
+                self.paths.len() - 1
+            }
+        };
+        let t = &mut self.tensors[i];
+        t.ty = ty;
+        t.shard = shard;
+        t.offset = 0;
+        t.nbytes = ty.row_size(t.ne[0] as i64) as u64 * t.ne[1] * t.ne[2] * t.ne[3];
+        Ok(())
     }
 }
 

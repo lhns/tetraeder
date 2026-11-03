@@ -37,13 +37,28 @@ fn model_desc_counts() {
     assert_eq!(d.attn.params, 64 + 64 * 64 + 2 * 64 * 32 + 64 * 64 + 2 * 16);
     // ffn_norm + router
     assert_eq!(d.mlp.params, 64 + 8 * 64);
-    let e = d.expert.unwrap();
+    let e = d.expert.as_ref().unwrap();
     assert_eq!(e.params, 3 * 32 * 64);
     assert_eq!(e.flops_per_token, 2.0 * e.params as f64);
     // output_norm + output.weight
     assert_eq!(d.head.params, 64 + 260 * 64);
     assert_eq!(d.attn.source_format, Format::F16);
-    assert_eq!(d.expert.unwrap().source_format, Format::F16);
+    assert_eq!(e.source_format, Format::F16);
+    let roles: Vec<_> = e
+        .roles
+        .iter()
+        .map(|r| (r.name.as_str(), r.params))
+        .collect();
+    assert_eq!(
+        roles,
+        [
+            ("expert.gate", 32 * 64),
+            ("expert.up", 32 * 64),
+            ("expert.down", 32 * 64)
+        ]
+    );
+    let attn_roles: Vec<_> = d.attn.roles.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(attn_roles, ["attn.q", "attn.k", "attn.v", "attn.o"]);
     assert_eq!(d.mlp.source_format, Format::F32);
     // K and V of 2 heads * 16, F16.
     assert_eq!(d.kv_bytes_per_token_per_layer, 2 * 2 * 32);

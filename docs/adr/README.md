@@ -43,3 +43,5 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0037](0037-split-gguf-and-slot-tiers-from-byte-budgets.md) | Split GGUF files; expert slot tiers sized from byte budgets and reported |
 | [0038](0038-predicted-next-layer-expert-prefetch.md) | Predicted next-layer expert prefetch into the RAM tier |
 | [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | No AVX2 repack of the builder's CPU weights for now |
+| [0041](0041-formats-per-role-and-load-time-conversion-cache.md) | Formats per tensor role in the plan; load-time conversion into a per-tensor disk cache |
+| [0042](0042-quality-profile-file-and-calibration-job.md) | Quality profile file and calibration job |

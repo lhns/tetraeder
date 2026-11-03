@@ -48,6 +48,7 @@ pub fn gen_model(rng: &mut Rng) -> ModelDesc {
         params: rng.range(1000, hi),
         flops_per_token: 1.0e6,
         source_format,
+        roles: vec![],
     };
     let (embed, attn, mlp, expert, head) = (
         size(2_000_000),
@@ -56,6 +57,25 @@ pub fn gen_model(rng: &mut Rng) -> ModelDesc {
         size(1_000_000),
         size(2_000_000),
     );
+    let with_roles = rng.chance(2);
+    let mut roled = |s: UnitSize, kind: UnitKind| {
+        if !with_roles {
+            return s;
+        }
+        let names = kind.roles();
+        let share = s.params / names.len() as u64;
+        let roles = names.iter().map(|n| RoleSize {
+            name: n.to_string(),
+            params: rng.range(share / 2, share),
+            source_format: s.source_format,
+        });
+        UnitSize {
+            roles: roles.collect(),
+            ..s
+        }
+    };
+    let (attn, mlp) = (roled(attn, UnitKind::Attn), roled(mlp, UnitKind::Mlp));
+    let expert = roled(expert, UnitKind::Expert);
     ModelDesc {
         name: "gen".into(),
         layers: rng.range(1, 6) as u32,
@@ -79,6 +99,24 @@ fn sel(kinds: &[UnitKind], experts: Option<Span>) -> UnitSel {
         layers: None,
         experts,
     }
+}
+
+/// Role overrides for a rule selecting `kinds`: none, or a random subset of their roles.
+fn gen_role_formats(
+    rng: &mut Rng,
+    kinds: &[UnitKind],
+    formats: &[Format],
+) -> BTreeMap<String, Format> {
+    let mut out = BTreeMap::new();
+    if rng.chance(2) {
+        return out;
+    }
+    for role in kinds.iter().flat_map(|k| k.roles()) {
+        if rng.chance(2) {
+            out.insert(role.to_string(), *rng.pick(formats));
+        }
+    }
+    out
 }
 
 fn ids(hw: &HardwareGraph, f: impl Fn(DeviceKind) -> bool) -> Vec<String> {
@@ -213,6 +251,7 @@ fn gen_stages(
             home: Some(home),
             compute: comp,
             format: Some(*rng.pick(&formats)),
+            role_formats: gen_role_formats(rng, &[UnitKind::Attn, UnitKind::Mlp], &formats),
         });
         if s == 0 || s + 2 == bounds.len() {
             assign.push(Assign {
@@ -220,6 +259,7 @@ fn gen_stages(
                 home: Some(vec![rng.pick(&group).clone()]),
                 compute: None,
                 format: Some(*rng.pick(&formats)),
+                role_formats: BTreeMap::new(),
             });
         }
         if m.is_moe() {
@@ -233,6 +273,9 @@ fn gen_stages(
             } else {
                 vec![Span(0, cut), Span(cut, m.experts)]
             };
+            // All experts of a layer and role share one format (ADR 0041).
+            let expert_format = *rng.pick(&formats);
+            let expert_roles = gen_role_formats(rng, &[UnitKind::Expert], &formats);
             for span in spans {
                 let (home, comp) = match rng.below(3) {
                     0 => (rng.pick(&group).clone(), None),
@@ -243,7 +286,8 @@ fn gen_stages(
                     units: sel(&[UnitKind::Expert], Some(span)),
                     home: Some(vec![home]),
                     compute: comp.map(|c| vec![c]),
-                    format: Some(*rng.pick(&formats)),
+                    format: Some(expert_format),
+                    role_formats: expert_roles.clone(),
                 });
             }
         }

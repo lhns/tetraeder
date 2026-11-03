@@ -30,6 +30,9 @@ pub struct Capabilities {
     pub tp_ep: bool,
     /// More than one replica and devices with tier `Remote`.
     pub multi_node: bool,
+    /// Experts of one layer and role in different formats (needs slot tensors per type,
+    /// ADR 0041). No phase runs it yet.
+    pub per_expert_formats: bool,
 }
 
 impl Phase {
@@ -46,6 +49,7 @@ impl Phase {
             phase_budgets: p >= 2,
             tp_ep: p >= 5,
             multi_node: p >= 6,
+            per_expert_formats: false,
         }
     }
 }

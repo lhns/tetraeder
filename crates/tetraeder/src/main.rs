@@ -2,6 +2,7 @@
 
 mod bench;
 mod engine_args;
+mod quant;
 mod run;
 mod top;
 
@@ -22,6 +23,9 @@ enum Command {
     Run(run::RunArgs),
     /// llama-bench's pp and tg tests through the engine; prints llama-bench JSON rows.
     Bench(bench::BenchArgs),
+    /// Quantization tools: convert tensor formats and export a GGUF.
+    #[command(subcommand)]
+    Quant(quant::QuantCommand),
 }
 
 fn main() -> std::process::ExitCode {
@@ -32,6 +36,7 @@ fn main() -> std::process::ExitCode {
         }
         Some(Command::Run(args)) => run::run(&args),
         Some(Command::Bench(args)) => bench::run(&args),
+        Some(Command::Quant(cmd)) => quant::run(&cmd),
         None => {
             println!("tetraeder {}", env!("CARGO_PKG_VERSION"));
             Ok(())

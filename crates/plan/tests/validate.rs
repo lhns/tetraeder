@@ -73,7 +73,7 @@ fn fixture_roundtrips_and_validates() {
     let cold = &e.shards[&key(UnitId::Expert(3, 6))];
     assert_eq!(
         (cold.home.as_str(), cold.compute.as_str(), cold.format),
-        ("nvme0", "cpu0", Format::IQ2_XXS)
+        ("nvme0", "cpu0", Format::Q4_K)
     );
     assert_eq!(e.shards[&key(UnitId::Head)].stage, 1);
 
@@ -94,7 +94,7 @@ fn fixture_roundtrips_and_validates() {
         + 1_073_741_824
         + 268_435_456;
     assert_eq!(mem["gpu0"], gpu0);
-    assert_eq!(mem["nvme0"], 8 * Format::IQ2_XXS.bytes(5_000_000));
+    assert_eq!(mem["nvme0"], 8 * Format::Q4_K.bytes(5_000_000));
 }
 
 #[test]
@@ -232,6 +232,7 @@ fn tp_plan(tp: u32, homes: [&str; 2]) -> Plan {
             home: Some(homes.iter().map(|h| h.to_string()).collect()),
             compute: None,
             format: Some(Format::Q8_0),
+            role_formats: BTreeMap::new(),
         },
         Assign {
             units: UnitSel {
@@ -241,6 +242,7 @@ fn tp_plan(tp: u32, homes: [&str; 2]) -> Plan {
             home: Some(vec!["gpu0".into()]),
             compute: None,
             format: Some(Format::Q8_0),
+            role_formats: BTreeMap::new(),
         },
     ];
     p
@@ -326,7 +328,7 @@ fn hard_hints_hold() {
     let p = plan();
     let hints: Hints = Hints::from_toml(
         r#"
-min_format = "Q4_K"
+min_format = "Q8_0"
 
 [[pin]]
 units = { layers = [0, 2] }
@@ -478,7 +480,7 @@ fn diff_and_migration_move_cold_experts_to_ram() {
             .iter()
             .all(|c| matches!(c, ShardChange::Change { .. }))
     );
-    assert_eq!(d.moved_bytes(), 8 * Format::IQ2_XXS.bytes(5_000_000));
+    assert_eq!(d.moved_bytes(), 8 * Format::Q4_K.bytes(5_000_000));
 
     let dag = MigrationDag::from_diff(&d);
     assert_eq!(dag.steps.first(), Some(&Step::Drain));

@@ -18,6 +18,7 @@ pub mod attr {
     pub const LAYER: &str = "tetraeder.layer";
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
+    pub const FORMAT: &str = "tetraeder.format";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +89,9 @@ pub struct Metrics {
     prefetch: Counter<u64>,
     prefetch_wasted_bytes: Counter<u64>,
     prefetch_accuracy: Histogram<f64>,
+    convert_duration: Histogram<f64>,
+    convert_bytes: Counter<u64>,
+    convert_cache: Counter<u64>,
 }
 
 impl Metrics {
@@ -176,6 +180,26 @@ impl Metrics {
                 .with_unit("1")
                 .with_description("Share of predicted experts the router chose, per layer step")
                 .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                .build(),
+            convert_duration: meter
+                .f64_histogram("tetraeder.convert.duration")
+                .with_unit("s")
+                .with_description("Time to convert one tensor to its target format")
+                .with_boundaries(vec![
+                    0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+                ])
+                .build(),
+            convert_bytes: meter
+                .u64_counter("tetraeder.convert.bytes")
+                .with_unit("By")
+                .with_description("Bytes written to the conversion cache")
+                .build(),
+            convert_cache: meter
+                .u64_counter("tetraeder.convert.cache")
+                .with_unit("{tensor}")
+                .with_description(
+                    "Converted tensors found in the conversion cache (hit) or converted (miss)",
+                )
                 .build(),
         }
     }
@@ -318,6 +342,29 @@ impl Metrics {
     pub fn expert_prefetch_accuracy(&self, layer: u32, accuracy: f64) {
         self.prefetch_accuracy
             .record(accuracy, &[KeyValue::new(attr::LAYER, i64::from(layer))]);
+    }
+
+    /// One tensor converted to `format` (ADR 0041).
+    pub fn convert_duration(&self, d: Duration, format: &str) {
+        self.convert_duration.record(
+            d.as_secs_f64(),
+            &[KeyValue::new(attr::FORMAT, format.to_owned())],
+        );
+    }
+
+    pub fn convert_bytes(&self, bytes: u64) {
+        self.convert_bytes.add(bytes, &[]);
+    }
+
+    /// A converted tensor looked up in the cache: `hit` or `miss`.
+    pub fn convert_cache(&self, hit: bool) {
+        self.convert_cache.add(
+            1,
+            &[KeyValue::new(
+                attr::RESULT,
+                if hit { "hit" } else { "miss" },
+            )],
+        );
     }
 
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {

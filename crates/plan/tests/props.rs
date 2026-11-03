@@ -42,7 +42,7 @@ fn validate_with(
 }
 
 fn params_of(m: &ModelDesc, u: UnitId) -> UnitSize {
-    *m.size(u).unwrap()
+    m.size(u).unwrap().clone()
 }
 
 /// Property 2, the checks on an accepted plan, written without `memory_per_device`.
@@ -57,11 +57,23 @@ fn check_accepted(
     for (k, p) in &e.shards {
         *used.entry(&p.home).or_default() += p.bytes;
         let size = params_of(m, k.unit);
-        assert_eq!(
-            p.bytes,
-            p.format.bytes(size.params).div_ceil(u64::from(k.of))
-        );
-        assert!(size.source_format.at_least(p.format), "upconvert {k:?}");
+        // Bytes written out again from the roles, not through `UnitSize`.
+        let whole = if size.roles.is_empty() {
+            assert!(p.roles.is_empty());
+            assert!(size.source_format.at_least(p.format), "upconvert {k:?}");
+            p.format.bytes(size.params)
+        } else {
+            assert_eq!(p.roles.len(), size.roles.len());
+            let mut sum =
+                Format::F32.bytes(size.params - size.roles.iter().map(|r| r.params).sum::<u64>());
+            for r in &size.roles {
+                let f = p.roles[&r.name];
+                assert!(r.source_format.at_least(f), "upconvert {k:?} {}", r.name);
+                sum += f.bytes(r.params);
+            }
+            sum
+        };
+        assert_eq!(p.bytes, whole.div_ceil(u64::from(k.of)));
     }
     for (k, b) in &e.buffers {
         *used.entry(&k.device).or_default() += b;

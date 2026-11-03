@@ -1,7 +1,8 @@
 //! The placement plan as written by the planner or by hand (ADR 0027).
 
-use crate::{Format, UnitId, UnitKind};
+use crate::{Format, ModelDesc, UnitId, UnitKind};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Half-open range `[start, end)` of layers or experts, written `[start, end]` in TOML.
 #[derive(
@@ -64,6 +65,17 @@ pub struct Assign {
     /// Absent: open (partial plan).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<Format>,
+    /// Per-role override of `format` (ADR 0041), keyed by role name such as `attn.v`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub role_formats: BTreeMap<String, Format>,
+}
+
+/// A unit's default format and resolved role formats.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitFormats {
+    pub format: Format,
+    /// Empty when the unit's size describes no roles.
+    pub roles: BTreeMap<String, Format>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +185,35 @@ pub struct Plan {
 }
 
 impl Plan {
+    /// Format of every unit one replica assigns, without hardware. Units no rule selects or whose
+    /// rule has no format are left out. The first rule that matches a unit in the stage holding
+    /// its layer wins (the validator rejects overlaps).
+    pub fn unit_formats(&self, desc: &ModelDesc, replica: usize) -> BTreeMap<UnitId, UnitFormats> {
+        let mut out = BTreeMap::new();
+        let Some(rep) = self.replicas.get(replica) else {
+            return out;
+        };
+        let n = rep.stages.len();
+        for (i, st) in rep.stages.iter().enumerate() {
+            for u in desc.units() {
+                let in_stage = match u {
+                    UnitId::Embed => i == 0,
+                    UnitId::Head => i + 1 == n,
+                    _ => u.layer().is_some_and(|l| st.layers.contains(l)),
+                };
+                let rule = st.assign.iter().find(|a| a.units.matches(u));
+                let (true, Some(a), Some(size)) = (in_stage, rule, desc.size(u)) else {
+                    continue;
+                };
+                if let Some(format) = a.format {
+                    let roles = size.role_formats(format, &a.role_formats);
+                    out.insert(u, UnitFormats { format, roles });
+                }
+            }
+        }
+        out
+    }
+
     pub fn to_toml(&self) -> Result<String, toml::ser::Error> {
         toml::to_string_pretty(self)
     }

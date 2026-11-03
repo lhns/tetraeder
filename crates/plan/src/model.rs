@@ -2,21 +2,66 @@
 
 use crate::Format;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
 
+/// One weight role of a unit (ADR 0041), named `<kind>.<role>` such as `attn.q`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoleSize {
+    pub name: String,
+    pub params: u64,
+    /// Most precise format available on disk for this role's tensors.
+    pub source_format: Format,
+}
+
 /// Size and cost of one unit of a kind; all units of a kind are alike.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UnitSize {
     pub params: u64,
     pub flops_per_token: f64,
     /// Most precise format available on disk; conversion only goes downward (ADR 0024).
     pub source_format: Format,
+    /// Weight roles. Empty: the unit is one role at `source_format`. Parameters not covered by
+    /// the roles (norms, router) stay at F32.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roles: Vec<RoleSize>,
 }
 
 impl UnitSize {
+    /// Bytes with every role (or the whole unit) at `format`.
     pub fn bytes(&self, format: Format) -> u64 {
-        format.bytes(self.params)
+        self.bytes_with(format, &BTreeMap::new())
+    }
+
+    /// The format of each role: `overrides`, else `default`. Empty without roles.
+    pub fn role_formats(
+        &self,
+        default: Format,
+        overrides: &BTreeMap<String, Format>,
+    ) -> BTreeMap<String, Format> {
+        let pick = |r: &RoleSize| {
+            (
+                r.name.clone(),
+                overrides.get(&r.name).copied().unwrap_or(default),
+            )
+        };
+        self.roles.iter().map(pick).collect()
+    }
+
+    /// Bytes with roles at `overrides` or `default`; the uncovered parameters at F32.
+    pub fn bytes_with(&self, default: Format, overrides: &BTreeMap<String, Format>) -> u64 {
+        if self.roles.is_empty() {
+            return default.bytes(self.params);
+        }
+        let mut covered = 0u64;
+        let mut bytes = 0u64;
+        for r in &self.roles {
+            let f = overrides.get(&r.name).copied().unwrap_or(default);
+            covered = covered.saturating_add(r.params);
+            bytes = bytes.saturating_add(f.bytes(r.params));
+        }
+        bytes.saturating_add(Format::F32.bytes(self.params.saturating_sub(covered)))
     }
 }
 
@@ -54,6 +99,20 @@ pub enum UnitKind {
     Mlp,
     Expert,
     Head,
+}
+
+impl UnitKind {
+    /// Valid role names of a unit kind (ADR 0041); embed and head have none.
+    pub const fn roles(self) -> &'static [&'static str] {
+        match self {
+            Self::Attn => &["attn.q", "attn.k", "attn.v", "attn.o"],
+            Self::Mlp => &["mlp.gate", "mlp.up", "mlp.down"],
+            Self::Expert => &["expert.gate", "expert.up", "expert.down"],
+            Self::Embed | Self::Head => &[],
+        }
+    }
+
+    pub const ALL: [UnitKind; 5] = [Self::Embed, Self::Attn, Self::Mlp, Self::Expert, Self::Head];
 }
 
 /// One unit of the model. Serialized as `embed`, `layer.3.attn`, `layer.3.mlp`,

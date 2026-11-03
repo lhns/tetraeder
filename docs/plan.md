@@ -445,6 +445,7 @@ Every layer emits OpenTelemetry metrics, traces and logs from the first commit; 
 | `tetraeder.link.bytes`, `.latency` | counter, histogram | source, destination, transport | detector, cost model |
 | `tetraeder.expert.cache.requests` | counter | layer, tier, result (hit, miss, cpu) | detector, hot-set sizing, CUDA-graph survival |
 | `tetraeder.expert.load.duration` | histogram | tier, source | detector |
+| `tetraeder.convert.duration`, `.bytes`, `.cache` | histogram (seconds per converted tensor), counter (bytes written), counter | format; result (hit, miss) | conversion panel and alert (ADR 0041) |
 | `tetraeder.expert.routing` | summary: top 16 experts per layer | layer, expert | planner (placement) |
 | `tetraeder.kv.blocks` | gauge | device, tier, state | detector, planner |
 | `tetraeder.kv.prefix.hits` | counter | node | advisor |
