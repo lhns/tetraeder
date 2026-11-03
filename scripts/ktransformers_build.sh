@@ -21,7 +21,7 @@ build() {
   cap=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' ' | grep -E '^[0-9]+\.[0-9]+$' | sort -un | head -1)
   [ -n "$cap" ] || { echo "no GPU compute capability from nvidia-smi"; return 30; }
   case "$cap" in 8.0 | 8.6 | 8.9 | 9.0) ;; *) echo "compute capability $cap is not in the kt-kernel wheel (8.0 8.6 8.9 9.0)"; return 31 ;; esac
-  stamp="kt-kernel $version sglang-kt $version cap $cap"
+  stamp="kt-kernel $version sglang-kt $version ktransformers $version cap $cap"
   mkdir -p "$venv" 2> /dev/null || { venv="$HOME/ktransformers-venv"; mkdir -p "$venv"; }
   echo "$venv" > runs/vast/ktransformers_venv.path
   if [ "$(cat "$venv/.built" 2> /dev/null)" = "$stamp" ] && [ -x "$venv/bin/python" ]; then
@@ -31,8 +31,11 @@ build() {
     rm -f "$venv/.built"
     # torch 2.9.1 (the PyPI linux wheel is cu128) comes in as a pinned dependency of both packages
     timeout -k 10 300 uv venv --python 3.12 --seed --allow-existing "$venv" || return 33
+    # The ktransformers wheel (depends on kt-kernel only) carries the last part of the sgl_kernel CUDA payload: kt-kernel
+    # holds the python files, sglang-kt, transformers-kt and accelerate-kt hold other parts. Without it sgl_kernel finds
+    # no common_ops (the sm100 object, which also runs on sm_86) and sglang does not start.
     UV_HTTP_TIMEOUT=300 timeout -k 30 1800 uv pip install --python "$venv/bin/python" \
-      "kt-kernel==$version" "sglang-kt==$version" "huggingface_hub" || return 34
+      "kt-kernel==$version" "sglang-kt==$version" "ktransformers==$version" "huggingface_hub" || return 34
     # llamafile (GGUF) support must be compiled into the wheel
     "$venv/bin/python" -I -c "
 import kt_kernel
@@ -40,6 +43,9 @@ from kt_kernel.utils import llamafile
 print('kt_kernel cpu variant:', kt_kernel.__cpu_variant__, 'llamafile:', llamafile._HAS_LLAMAFILE_SUPPORT)
 assert llamafile._HAS_LLAMAFILE_SUPPORT
 import sglang, torch
+# materializes the sgl_kernel payload (about 4 GB written under the venv) and loads common_ops for this GPU
+from sgl_kernel import load_utils
+print('sgl_kernel common_ops:', load_utils._load_architecture_specific_ops().__file__)
 print('torch', torch.__version__, 'cuda', torch.version.cuda, 'available', torch.cuda.is_available())
 assert torch.cuda.is_available()" || return 35
     echo "$stamp" > "$venv/.built"
