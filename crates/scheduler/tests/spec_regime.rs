@@ -345,7 +345,13 @@ fn spec_regime() {
     let mut m = Qwen3Moe::load(&path, &opts).expect("builder loads");
     let mut draft = draft_gguf.as_ref().map(|p| {
         let d = DraftModel::load(p, n_ctx as u32, draft_gpu_layers, draft_threads, p_min)
-            .expect("draft model loads");
+            .unwrap_or_else(|e| {
+                panic!(
+                    "draft model loads: {e:?}. At 32K the draft needs about 4.4 GB of VRAM (0.6 GB of \
+                     weights, 3.8 GB of F16 KV) beside the builder's expert slots: lower \
+                     TETRAEDER_EXIT_VRAM_SLOT_BYTES by that much (scripts/spec_run.sh does)"
+                )
+            });
         d.check_vocab(m.n_vocab()).expect("draft shares the vocab");
         d
     });

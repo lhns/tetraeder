@@ -52,9 +52,14 @@ time.sleep(10**9)
   sleep 60
 fi
 ram_bytes=$((mem - ${RAM_RESERVE_GB:-20} * 1000000000))
-vram_bytes="${VRAM_SLOT_BYTES:-5500000000}"
+# default: the expert VRAM llama.cpp's tuned -ot fits on a 24 GB card at 32K (scripts/llama_fit.sh, 7 layers)
+vram_bytes="${VRAM_SLOT_BYTES:-10966007808}"
+# The draft shares the card with the builder: about 0.6 GB of weights, 3.8 GB of F16 KV at 32K and its compute
+# buffer (ADR 0043). The builder's expert slots give that up, so VRAM_SLOT_BYTES can stay the fitted exit budget.
+draft_vram="${DRAFT_VRAM_BYTES:-5000000000}"
+spec_vram=$((vram_bytes - draft_vram))
 natural=/root/exit_prompt.txt
-[ -f "$natural" ] || cat AGENTS.md docs/adr/*.md > "$natural"
+[ -f "$natural" ] || cp bench/prompts/exit_prompt.txt "$natural"  # frozen, as in exit_run.sh
 code=/root/spec_code_prompt.txt
 [ -f "$code" ] || cat crates/model/src/*.rs crates/memory/src/*.rs > "$code"
 variants="${SPEC_VARIANTS:-plain,ngram:a,draft:a,draft:3}"
@@ -65,9 +70,14 @@ builder() {
   local name=$1 min=$2
   shift 2
   want "$name" || return 0
+  if [ "$spec_vram" -lt 1000000000 ]; then
+    echo "[$(date +%T)] $name: expert VRAM $vram_bytes B minus the draft's $draft_vram B leaves under 1 GB for the" \
+      "builder's slots; give the box more VRAM or lower DRAFT_VRAM_BYTES (q8_0 draft KV)"
+    return 30
+  fi
   echo "[$(date +%T)] start $name"
   env TETRAEDER_EXIT_GGUF="$big" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
-    TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
+    TETRAEDER_EXIT_VRAM_SLOT_BYTES="$spec_vram" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
     TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PROMPT_FILE="$natural" \
     TETRAEDER_EXIT_SPEC_VARIANTS="$variants" TETRAEDER_EXIT_SPEC_DRAFT_GGUF="$draft" \
     TETRAEDER_EXIT_OUT="$date_dir/spec-$name-$stamp.json" TETRAEDER_EXIT_MACHINE="vast $(hostname)" "$@" \
