@@ -98,11 +98,6 @@ impl AlignedBuf {
         unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        // SAFETY: as above, and &mut self is exclusive.
-        unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
-    }
-
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr.as_ptr()
     }
@@ -253,21 +248,23 @@ impl DirectFile {
         self.read_batch(&mut [ReadReq { offset, dst }])
     }
 
+    fn check_range(&self, offset: u64, len: usize) -> io::Result<()> {
+        if offset.checked_add(len as u64).is_none_or(|e| e > self.size) {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                format!(
+                    "range {offset}+{len} is past the end of the file ({} bytes)",
+                    self.size
+                ),
+            ));
+        }
+        Ok(())
+    }
+
     /// Read every range; the device sees them all at once (up to the queue depth).
     pub fn read_batch(&self, reqs: &mut [ReadReq<'_>]) -> io::Result<ReadStats> {
         for r in reqs.iter() {
-            let end = r.offset.checked_add(r.dst.len() as u64);
-            if end.is_none_or(|e| e > self.size) {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    format!(
-                        "range {}+{} is past the end of the file ({} bytes)",
-                        r.offset,
-                        r.dst.len(),
-                        self.size
-                    ),
-                ));
-            }
+            self.check_range(r.offset, r.dst.len())?;
         }
         if self.direct {
             self.read_direct(reqs)
@@ -338,16 +335,7 @@ impl DirectFile {
         // Per range: offset and length of its device read, and where the range starts in it.
         let mut spans: Vec<(u64, usize, usize)> = Vec::with_capacity(ranges.len());
         for r in ranges {
-            let end = r.offset.checked_add(r.len as u64);
-            if end.is_none_or(|e| e > self.size) {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    format!(
-                        "range {}+{} is past the end of the file ({} bytes)",
-                        r.offset, r.len, self.size
-                    ),
-                ));
-            }
+            self.check_range(r.offset, r.len)?;
             stats.requested += r.len as u64;
             spans.push(if !self.direct || r.len == 0 {
                 (r.offset, r.len, 0)
