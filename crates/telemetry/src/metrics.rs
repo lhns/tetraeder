@@ -403,6 +403,8 @@ impl Metrics {
         }
         self.spec_drafted.add(drafted, &a);
         self.spec_accepted.add(accepted, &a);
+    }
+
     /// Relative step time error of a stage: `|measured - predicted| / predicted`.
     pub fn plan_residual(&self, stage: u16, residual: f64) {
         self.plan_residual
