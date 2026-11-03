@@ -1,6 +1,8 @@
 //! Tetraeder command line entry point.
 
+mod advise;
 mod bench;
+mod doctor;
 mod engine_args;
 mod plan;
 mod run;
@@ -26,6 +28,10 @@ enum Command {
     Bench(bench::BenchArgs),
     /// Planner inputs and tools.
     Plan(plan::PlanArgs),
+    /// Detector report of an observation file (faults, limits, verdict).
+    Doctor(doctor::DoctorArgs),
+    /// Ranked improvement actions for an observation file; report only.
+    Advise(advise::AdviseArgs),
     /// OpenAI and Anthropic APIs over an engine.
     Serve(serve::ServeArgs),
 }
@@ -39,6 +45,8 @@ fn main() -> std::process::ExitCode {
         Some(Command::Run(args)) => run::run(&args),
         Some(Command::Bench(args)) => bench::run(&args),
         Some(Command::Plan(args)) => plan::run(&args),
+        Some(Command::Doctor(args)) => doctor::run(&args),
+        Some(Command::Advise(args)) => advise::run(&args),
         Some(Command::Serve(args)) => serve::run(&args),
         None => {
             println!("tetraeder {}", env!("CARGO_PKG_VERSION"));

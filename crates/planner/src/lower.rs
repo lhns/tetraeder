@@ -1,7 +1,9 @@
 //! A candidate as llama-bench arguments.
 
+use crate::builder::slot_row_bytes;
 use crate::candidate::{Candidate, Placement};
 use crate::layout::ModelLayout;
+use std::collections::BTreeMap;
 
 /// llama-bench `-ngl` for a dense placement. llama.cpp offloads the last `n - 1` layers and the
 /// output head for `-ngl n` (the input layer never), so `g` layers plus the head are `g + 1`;
@@ -105,6 +107,9 @@ pub fn cpu_experts_pattern(from: u32, n_layer: u32) -> String {
 /// (llama-bench separates several patterns with `;`; one range needs only one). `-b` is
 /// `max(2048, ub)`.
 pub fn to_variant_args(c: &Candidate, layout: &ModelLayout) -> Vec<String> {
+    if matches!(c.placement, Placement::Builder { .. }) {
+        return Vec::new();
+    }
     let mut a = Vec::new();
     let mut push = |flag: &str, v: String| {
         a.push(flag.to_string());
@@ -114,6 +119,7 @@ pub fn to_variant_args(c: &Candidate, layout: &ModelLayout) -> Vec<String> {
         Placement::Dense { gpu_layers } => {
             push("-ngl", dense_ngl(gpu_layers, layout.n_layer).to_string());
         }
+        Placement::Builder { .. } => unreachable!("returned above"),
         Placement::Moe { gpu_expert_layers } => {
             push("-ngl", "99".into());
             if gpu_expert_layers < layout.n_layer {
@@ -132,6 +138,35 @@ pub fn to_variant_args(c: &Candidate, layout: &ModelLayout) -> Vec<String> {
     }
     push("-fa", "1".into());
     a
+}
+
+/// The environment of the `exit_regime` test binary that runs a builder candidate
+/// (crates/model/tests/exit_regime.rs). Slot byte budgets buy exactly the planned slot counts
+/// per layer (ADR 0037: `floor(bytes / slot row bytes)`), the request is the candidate's
+/// prompt and generation length, and the ubatch list holds the one ubatch.
+///
+/// # Panics
+/// If the candidate is not a builder candidate.
+pub fn to_exit_regime_env(c: &Candidate, layout: &ModelLayout) -> BTreeMap<String, String> {
+    let Placement::Builder {
+        vram_slots,
+        ram_slots,
+    } = c.placement
+    else {
+        panic!("{} is not a builder candidate", c.id);
+    };
+    let row = slot_row_bytes(layout);
+    let kv = |k: &str, v: String| (format!("TETRAEDER_EXIT_{k}"), v);
+    BTreeMap::from([
+        kv("GPU", "1".into()),
+        kv("VRAM_SLOT_BYTES", (u64::from(vram_slots) * row).to_string()),
+        kv("RAM_SLOT_BYTES", (u64::from(ram_slots) * row).to_string()),
+        kv("THREADS", c.threads().to_string()),
+        kv("UBATCH", c.ubatch().to_string()),
+        kv("OP_OFFLOAD", u8::from(c.op_offload()).to_string()),
+        kv("PREFILL", c.prompt.to_string()),
+        kv("DECODE", c.r#gen.to_string()),
+    ])
 }
 
 /// [`to_variant_args`] plus `-t`: a complete llama-bench command line apart from the model and
@@ -281,5 +316,55 @@ mod tests {
         );
         assert_eq!(dense_ngl(64, 64), 65);
         assert_eq!(dense_ngl(0, 64), 0);
+    }
+
+    // hardware: none
+    #[test]
+    fn builder_env() {
+        use crate::builder::{build_builder_candidate, slot_row_bytes};
+        let l = fixtures::moe();
+        let w = Workload {
+            prompt: 2048,
+            r#gen: 128,
+        };
+        let c = build_builder_candidate("c00", &l, (16, 60), (7, 2048, false), &w);
+        let row = slot_row_bytes(&l);
+        let env = to_exit_regime_env(&c, &l);
+        let get = |k: &str| env[&format!("TETRAEDER_EXIT_{k}")].as_str();
+        assert_eq!(get("VRAM_SLOT_BYTES"), (16 * row).to_string());
+        assert_eq!(get("RAM_SLOT_BYTES"), (60 * row).to_string());
+        assert_eq!(
+            [get("GPU"), get("THREADS"), get("UBATCH"), get("OP_OFFLOAD")],
+            ["1", "7", "2048", "0"]
+        );
+        assert_eq!((get("PREFILL"), get("DECODE")), ("2048", "128"));
+        assert_eq!(env.len(), 8);
+        assert!(to_variant_args(&c, &l).is_empty());
+        let on = build_builder_candidate("c01", &l, (8, 30), (15, 256, true), &w);
+        assert_eq!(
+            to_exit_regime_env(&on, &l)["TETRAEDER_EXIT_OP_OFFLOAD"],
+            "1"
+        );
+    }
+
+    // hardware: none
+    #[test]
+    #[should_panic(expected = "not a builder candidate")]
+    fn env_of_a_libllama_candidate_panics() {
+        let l = fixtures::moe();
+        let w = Workload {
+            prompt: 2048,
+            r#gen: 128,
+        };
+        let c = build_candidate(
+            "c00",
+            &l,
+            Placement::Moe {
+                gpu_expert_layers: 4,
+            },
+            (15, 512, true),
+            &w,
+        );
+        to_exit_regime_env(&c, &l);
     }
 }
