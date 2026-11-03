@@ -1,0 +1,317 @@
+{
+  "fixture": "partial-planner-dense",
+  "candidates": [
+    {
+      "id": "c00",
+      "description": "-ngl 59 -b 2048 -ub 512 -fa 1 -t 9",
+      "predicted_s": 10.992624421056474,
+      "measured_s": 11.248197661685033
+    },
+    {
+      "id": "c01",
+      "description": "-ngl 59 -b 2048 -ub 512 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 42.807129845588925,
+      "measured_s": 41.966248409224676
+    },
+    {
+      "id": "c02",
+      "description": "-ngl 59 -b 2048 -ub 512 -fa 1 -t 4",
+      "predicted_s": 17.63177857121106,
+      "measured_s": 14.847904712239796
+    },
+    {
+      "id": "c03",
+      "description": "-ngl 54 -b 2048 -ub 512 -fa 1 -t 9",
+      "predicted_s": 16.27250255181346,
+      "measured_s": 16.27065920458412
+    },
+    {
+      "id": "c04",
+      "description": "-ngl 54 -b 2048 -ub 512 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 73.3947863525914,
+      "measured_s": 74.95297430413599
+    },
+    {
+      "id": "c05",
+      "description": "-ngl 54 -b 2048 -ub 2048 -fa 1 -t 9",
+      "predicted_s": 16.132457141073942,
+      "measured_s": 14.233769745709983
+    },
+    {
+      "id": "c06",
+      "description": "-ngl 54 -b 2048 -ub 2048 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 73.37428181364425,
+      "measured_s": 74.05318906400159
+    },
+    {
+      "id": "c07",
+      "description": "-ngl 54 -b 2048 -ub 512 -fa 1 -t 4",
+      "predicted_s": 28.23175575610576,
+      "measured_s": 23.419688274823315
+    },
+    {
+      "id": "c08",
+      "description": "-ngl 54 -b 2048 -ub 512 -nopo 1 -fa 1 -t 4",
+      "predicted_s": 145.41778729434088,
+      "measured_s": 146.86338874672262
+    },
+    {
+      "id": "c09",
+      "description": "-ngl 54 -b 2048 -ub 2048 -fa 1 -t 4",
+      "predicted_s": 28.091710345366238,
+      "measured_s": 21.98239782463878
+    },
+    {
+      "id": "c10",
+      "description": "-ngl 49 -b 2048 -ub 512 -fa 1 -t 9",
+      "predicted_s": 21.338506185651692,
+      "measured_s": 21.157583617196288
+    },
+    {
+      "id": "c11",
+      "description": "-ngl 49 -b 2048 -ub 512 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 102.56420891985344,
+      "measured_s": null
+    },
+    {
+      "id": "c12",
+      "description": "-ngl 49 -b 2048 -ub 2048 -fa 1 -t 9",
+      "predicted_s": 21.148698817626077,
+      "measured_s": null
+    },
+    {
+      "id": "c13",
+      "description": "-ngl 49 -b 2048 -ub 2048 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 102.54436507125763,
+      "measured_s": null
+    },
+    {
+      "id": "c14",
+      "description": "-ngl 49 -b 2048 -ub 512 -fa 1 -t 4",
+      "predicted_s": 38.405329039757234,
+      "measured_s": null
+    },
+    {
+      "id": "c15",
+      "description": "-ngl 49 -b 2048 -ub 512 -nopo 1 -fa 1 -t 4",
+      "predicted_s": 205.0393571171997,
+      "measured_s": null
+    },
+    {
+      "id": "c16",
+      "description": "-ngl 49 -b 2048 -ub 2048 -fa 1 -t 4",
+      "predicted_s": 38.21552167173162,
+      "measured_s": null
+    },
+    {
+      "id": "c17",
+      "description": "-ngl 44 -b 2048 -ub 512 -fa 1 -t 9",
+      "predicted_s": 26.5114470679493,
+      "measured_s": null
+    },
+    {
+      "id": "c18",
+      "description": "-ngl 44 -b 2048 -ub 512 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 132.44274845698567,
+      "measured_s": null
+    },
+    {
+      "id": "c19",
+      "description": "-ngl 44 -b 2048 -ub 2048 -fa 1 -t 9",
+      "predicted_s": 26.270618025250982,
+      "measured_s": null
+    },
+    {
+      "id": "c20",
+      "description": "-ngl 44 -b 2048 -ub 2048 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 132.42356529874118,
+      "measured_s": null
+    },
+    {
+      "id": "c21",
+      "description": "-ngl 44 -b 2048 -ub 512 -fa 1 -t 4",
+      "predicted_s": 48.792104274030315,
+      "measured_s": null
+    },
+    {
+      "id": "c22",
+      "description": "-ngl 44 -b 2048 -ub 512 -nopo 1 -fa 1 -t 4",
+      "predicted_s": 266.10949640690467,
+      "measured_s": null
+    },
+    {
+      "id": "c23",
+      "description": "-ngl 44 -b 2048 -ub 2048 -fa 1 -t 4",
+      "predicted_s": 48.55127523133199,
+      "measured_s": null
+    }
+  ],
+  "failed": [
+    "c11",
+    "c12",
+    "c13",
+    "c14",
+    "c15",
+    "c16",
+    "c17",
+    "c18",
+    "c19",
+    "c20",
+    "c21",
+    "c22",
+    "c23"
+  ],
+  "analytic_pick": "c00",
+  "final_pick": "c00",
+  "best": "c00",
+  "regret_analytic": 0.0,
+  "regret_final": 0.0,
+  "spearman": 0.990909090909091,
+  "band": 0.05834051066361279,
+  "anchor_residuals": [
+    [
+      "anchor-cpu-t9:pp",
+      -0.038901492288541444
+    ],
+    [
+      "anchor-cpu-t9:tg",
+      0.00026525482233619315
+    ],
+    [
+      "anchor-cpu-t4:pp",
+      0.000256299837114332
+    ],
+    [
+      "anchor-cpu-t4:tg",
+      -0.00016495971936450007
+    ],
+    [
+      "anchor-cpu-t2:pp",
+      0.00010249008389758769
+    ],
+    [
+      "anchor-cpu-t2:tg",
+      -0.00038416668818406173
+    ],
+    [
+      "anchor-gpu-small-opo-on:pp",
+      -0.03537872136423257
+    ],
+    [
+      "anchor-gpu-small-opo-on:tg",
+      -0.05053231173516199
+    ],
+    [
+      "anchor-gpu-small-opo-off:pp",
+      0.05670212538294737
+    ],
+    [
+      "anchor-gpu-small-opo-off:tg",
+      0.052997640528501255
+    ],
+    [
+      "anchor-gpu-large:pp",
+      0.006964901866748178
+    ],
+    [
+      "anchor-gpu-large:tg",
+      0.0014468019598831395
+    ],
+    [
+      "anchor-gpu-eager:pp",
+      0.008809942891741689
+    ],
+    [
+      "anchor-gpu-eager:tg",
+      -0.005379807770882663
+    ]
+  ],
+  "baselines": {},
+  "pick_s": 11.248197661685033,
+  "calibrated": {
+    "devices": [
+      {
+        "id": "cpu0",
+        "kind": "cpu",
+        "name": "Box CPU",
+        "tier": "ram",
+        "capacity_bytes": 64000000000,
+        "bandwidth_bytes_per_s": {
+          "value": 40000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "compute": {
+          "flops_per_s": 600000000000.0,
+          "c0_graph_s": 2.907841872349275e-6,
+          "c0_eager_s": 2.907841872349275e-6
+        },
+        "threads": 9,
+        "thread_curve": [
+          {
+            "threads": 2,
+            "flops_per_s": 120345323178.45218,
+            "bytes_per_s": 13037261429.619873
+          },
+          {
+            "threads": 4,
+            "flops_per_s": 206378738918.22647,
+            "bytes_per_s": 20949440478.51196
+          },
+          {
+            "threads": 9,
+            "flops_per_s": 421729907646.9348,
+            "bytes_per_s": 41474592247.25349
+          }
+        ]
+      },
+      {
+        "id": "gpu0",
+        "kind": "gpu",
+        "name": "RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 1404104665756.2524,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 86831046174849.16,
+          "c0_graph_s": 4.743092848260458e-6,
+          "c0_eager_s": 7.4981014799735486e-6
+        },
+        "pcie": {
+          "gen_current": 4,
+          "width_current": 16,
+          "gen_max": 4,
+          "width_max": 16
+        },
+        "index": 0
+      }
+    ],
+    "links": [
+      {
+        "id": "pcie-gpu0",
+        "a": "gpu0",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.000014989587035227493,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "beta_bytes_per_s": {
+          "value": 83694200874.68071,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        }
+      }
+    ],
+    "lane_groups": []
+  }
+}

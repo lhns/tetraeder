@@ -19,10 +19,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-/// Request size of the CPU-only anchors: a 32B dense model at the fixture prompt on a few
-/// threads would take tens of minutes.
-pub const CPU_ANCHOR_PROMPT: u32 = 256;
-pub const CPU_ANCHOR_GEN: u32 = 32;
+/// Request size of the CPU-only anchors, at the candidates' thread counts only: a 32B dense model
+/// ran pp256 at 1.7 tok/s on 2 threads (box 58943840), which cost 25 minutes of a 3 h box.
+pub const CPU_ANCHOR_PROMPT: u32 = 64;
+pub const CPU_ANCHOR_GEN: u32 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,8 +93,8 @@ fn variant(
 
 /// Build the campaign of one fixture.
 ///
-/// Anchors: CPU only (`-ngl 0`, device `cpu`, pp256 tg32) at threads {quota, quota / 2,
-/// max(2, quota / 4)}; the smallest GPU placement (MoE: all experts on the CPU) with op offload
+/// Anchors: CPU only (`-ngl 0`, device `cpu`, pp64 tg16) at threads {quota, quota / 2}; the
+/// smallest GPU placement (MoE: all experts on the CPU) with op offload
 /// on and off at ubatch 512; the largest GPU placement at ubatch 512, also with CUDA graphs
 /// off (`anchor-gpu-eager`). Baselines: `base-fit` (`-fitt 1024`), `base-ot-all` (MoE), and
 /// `base-ot-hand`: MoE `-ncmoe n` with the smallest `n` that fits by the same estimate, dense
@@ -114,13 +114,13 @@ pub fn build(
         prompt: CPU_ANCHOR_PROMPT,
         r#gen: CPU_ANCHOR_GEN,
     };
-    let mut cpu_threads = vec![q, thread_values(q)[1], (q / 4).max(2)];
+    let mut cpu_threads = vec![q, thread_values(q)[1]];
     cpu_threads.dedup();
     cpu_threads.sort_unstable_by(|a, b| b.cmp(a));
     cpu_threads.dedup();
     for t in cpu_threads {
         let args = [
-            "-ngl", "0", "-fa", "1", "-b", "2048", "-ub", "512", "-p", "256", "-n", "32",
+            "-ngl", "0", "-fa", "1", "-b", "2048", "-ub", "512", "-p", "64", "-n", "16",
         ];
         vs.push(variant(
             &format!("anchor-cpu-t{t}"),
@@ -547,14 +547,11 @@ mod tests {
                 .unwrap_or_else(|| panic!("{id}"))
         };
         let cpu: Vec<_> = c.variants.iter().filter(|v| v.device == "cpu").collect();
-        assert_eq!(
-            cpu.iter().map(|v| v.threads).collect::<Vec<_>>(),
-            [15, 7, 3]
-        );
+        assert_eq!(cpu.iter().map(|v| v.threads).collect::<Vec<_>>(), [15, 7]);
         for v in &cpu {
             assert!(v.args.windows(2).any(|w| w == ["-ngl", "0"]));
-            assert_eq!((v.prompt, v.r#gen), (256, 32));
-            assert!(v.args.windows(2).any(|w| w == ["-p", "256"]));
+            assert_eq!((v.prompt, v.r#gen), (64, 16));
+            assert!(v.args.windows(2).any(|w| w == ["-p", "64"]));
         }
         assert_eq!(
             get("anchor-gpu-small-opo-on").args[..4],
@@ -697,7 +694,7 @@ mod tests {
         let f = CandidatesFile::new(&c, &l, &BUDGET, &en);
         assert_eq!(f.candidates.len(), en.candidates.len());
         assert!(f.anchors.iter().all(|a| a.prompt > 0 && a.r#gen > 0));
-        assert!(f.anchors.iter().any(|a| a.prompt == 256));
+        assert!(f.anchors.iter().any(|a| a.prompt == 64));
         assert!(
             f.candidates
                 .iter()

@@ -1,0 +1,350 @@
+{
+  "model": "Qwen3 32B Awq Compatible Instruct",
+  "arch": "qwen3",
+  "n_layer": 64,
+  "n_embd": 5120,
+  "n_vocab": 151936,
+  "n_head": 64,
+  "n_head_kv": 8,
+  "head_dim": 128,
+  "n_expert": 0,
+  "n_expert_used": 0,
+  "layers": [
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 53105664,
+      "ffn_bytes": 221204480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    },
+    {
+      "attn_bytes": 54457344,
+      "ffn_bytes": 254996480,
+      "expert_bytes": 0
+    }
+  ],
+  "embed_bytes": 437575680,
+  "output_bytes": 638151680,
+  "tensor_types": {
+    "F32": {
+      "count": 257,
+      "bytes": 2707456
+    },
+    "Q4_K": {
+      "count": 385,
+      "bytes": 15537070080
+    },
+    "Q6_K": {
+      "count": 65,
+      "bytes": 4216396800
+    }
+  }
+}
