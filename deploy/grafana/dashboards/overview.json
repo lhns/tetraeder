@@ -763,6 +763,367 @@
           }
         }
       ]
+    },
+    {
+      "id": 23,
+      "title": "Planner and detector",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 57,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 24,
+      "title": "Predicted vs measured step time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Planner prediction for the running plan against the measured decode step time, per stage (ADR 0042).",
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg by (tetraeder_stage) (tetraeder_plan_predicted_step_seconds)",
+          "legendFormat": "predicted {{tetraeder_stage}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (tetraeder_stage) (rate(tetraeder_step_duration_seconds_sum{tetraeder_phase=\"decode\"}[$__rate_interval])) / sum by (tetraeder_stage) (rate(tetraeder_step_duration_seconds_count{tetraeder_phase=\"decode\"}[$__rate_interval]))",
+          "legendFormat": "measured {{tetraeder_stage}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "Prediction residual",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Relative error |measured - predicted| / predicted of the step time per stage. Above 0.2 for 30 minutes fires TetraederPlanResidualHigh (recalibrate).",
+      "gridPos": {
+        "x": 8,
+        "y": 58,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_stage) (rate(tetraeder_plan_residual_ratio_sum[$__rate_interval])) / sum by (tetraeder_stage) (rate(tetraeder_plan_residual_ratio_count[$__rate_interval]))",
+          "legendFormat": "mean {{tetraeder_stage}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(tetraeder_plan_residual_ratio_bucket[$__rate_interval])))",
+          "legendFormat": "p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "Plan regret",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Step time of the running plan over the best known plan, minus 1. Phase 3a exit: at most 10%.",
+      "gridPos": {
+        "x": 16,
+        "y": 58,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tetraeder_plan_regret_ratio",
+          "legendFormat": "{{tetraeder_plan}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "title": "Replans by trigger and outcome",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Replanning decisions (ADR 0042): switched, knobs_applied, rejected, rolled_back.",
+      "gridPos": {
+        "x": 0,
+        "y": 66,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_replan_trigger, tetraeder_replan_outcome) (increase(tetraeder_replan_total[$__rate_interval]))",
+          "legendFormat": "{{tetraeder_replan_trigger}} / {{tetraeder_replan_outcome}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "title": "Replan duration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Drain, restart and health check of one plan switch.",
+      "gridPos": {
+        "x": 8,
+        "y": 66,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(tetraeder_replan_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p50",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(tetraeder_replan_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "title": "Bottleneck shares",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Share of the step time bound by each resource, from the detector (ADR 0041). A limit is normal; faults are below.",
+      "gridPos": {
+        "x": 16,
+        "y": 66,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tetraeder_bottleneck_share_ratio",
+          "legendFormat": "{{tetraeder_resource}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "title": "Detector faults",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Detector windows that reported a fault, by class and resource. Environment faults (not model_mismatch) fire TetraederEnvironmentFault after 10 minutes.",
+      "gridPos": {
+        "x": 0,
+        "y": 74,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_fault_class, tetraeder_resource) (increase(tetraeder_bottleneck_fault_total[$__rate_interval]))",
+          "legendFormat": "{{tetraeder_fault_class}} / {{tetraeder_resource}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "SLO burn rate",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Error ratio over the window divided by the error budget (slo.yml). Page above 14.4 (1h) or 6 (6h); ticket above 1 (3d).",
+      "gridPos": {
+        "x": 8,
+        "y": 74,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "tetraeder:sli:error_ratio_rate1h / on(sli) group_left tetraeder:slo:error_budget",
+          "legendFormat": "{{sli}} 1h",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "tetraeder:sli:error_ratio_rate6h / on(sli) group_left tetraeder:slo:error_budget",
+          "legendFormat": "{{sli}} 6h",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "tetraeder:sli:error_ratio_rate3d / on(sli) group_left tetraeder:slo:error_budget",
+          "legendFormat": "{{sli}} 3d",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "Error budget remaining",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "description": "Share of the 30 day error budget left per SLI; negative means the objective is missed.",
+      "gridPos": {
+        "x": 16,
+        "y": 74,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - tetraeder:sli:error_ratio_rate30d / on(sli) group_left tetraeder:slo:error_budget",
+          "legendFormat": "{{sli}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

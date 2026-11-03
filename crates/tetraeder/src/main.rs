@@ -2,6 +2,7 @@
 
 mod bench;
 mod engine_args;
+mod plan;
 mod run;
 mod top;
 
@@ -22,6 +23,8 @@ enum Command {
     Run(run::RunArgs),
     /// llama-bench's pp and tg tests through the engine; prints llama-bench JSON rows.
     Bench(bench::BenchArgs),
+    /// Planner inputs and tools.
+    Plan(plan::PlanArgs),
 }
 
 fn main() -> std::process::ExitCode {
@@ -32,6 +35,7 @@ fn main() -> std::process::ExitCode {
         }
         Some(Command::Run(args)) => run::run(&args),
         Some(Command::Bench(args)) => bench::run(&args),
+        Some(Command::Plan(args)) => plan::run(&args),
         None => {
             println!("tetraeder {}", env!("CARGO_PKG_VERSION"));
             Ok(())

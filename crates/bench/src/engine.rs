@@ -406,6 +406,7 @@ mod tests {
             device,
             threads: None,
             args: args.iter().map(|s| s.to_string()).collect(),
+            env: Default::default(),
         }
     }
 

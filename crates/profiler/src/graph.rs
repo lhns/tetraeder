@@ -99,6 +99,14 @@ pub struct Pcie {
     pub width_max: u32,
 }
 
+/// CPU rates at one thread count (a point of the thread curve).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ThreadPoint {
+    pub threads: u32,
+    pub flops_per_s: f64,
+    pub bytes_per_s: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Device {
     pub id: String,
@@ -130,6 +138,10 @@ pub struct Device {
     /// Disk: `ssd`, `hdd` or `unknown`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<String>,
+    /// CPU: measured or fitted rates per thread count; empty means use `compute` and
+    /// `bandwidth_bytes_per_s` scaled by threads.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub thread_curve: Vec<ThreadPoint>,
 }
 
 impl Device {
@@ -149,7 +161,42 @@ impl Device {
             index: None,
             mount: None,
             media: None,
+            thread_curve: Vec::new(),
         }
+    }
+
+    /// `(flops/s, bytes/s)` at `t` threads. From the thread curve when present: piecewise linear
+    /// between points, proportional below the first, flat above the last. Otherwise the device's
+    /// `compute` and bandwidth scaled by `min(t, threads) / threads`. `None` when neither exists.
+    pub fn cpu_rates(&self, t: u32) -> Option<(f64, f64)> {
+        if self.thread_curve.is_empty() {
+            let f = self.compute?.flops_per_s;
+            let b = self.bandwidth_bytes_per_s?.value;
+            let scale = match self.threads {
+                Some(n) if n > 0 => f64::from(t.min(n)) / f64::from(n),
+                _ => 1.0,
+            };
+            return Some((f * scale, b * scale));
+        }
+        let mut pts = self.thread_curve.clone();
+        pts.sort_by_key(|p| p.threads);
+        let t = f64::from(t);
+        let first = pts[0];
+        let last = pts[pts.len() - 1];
+        if t <= f64::from(first.threads) {
+            let k = t / f64::from(first.threads.max(1));
+            return Some((first.flops_per_s * k, first.bytes_per_s * k));
+        }
+        if t >= f64::from(last.threads) {
+            return Some((last.flops_per_s, last.bytes_per_s));
+        }
+        let i = pts.iter().position(|p| t <= f64::from(p.threads))?;
+        let (a, b) = (pts[i - 1], pts[i]);
+        let w = (t - f64::from(a.threads)) / f64::from(b.threads - a.threads);
+        Some((
+            a.flops_per_s + (b.flops_per_s - a.flops_per_s) * w,
+            a.bytes_per_s + (b.bytes_per_s - a.bytes_per_s) * w,
+        ))
     }
 }
 
@@ -280,6 +327,44 @@ mod tests {
         assert_eq!(g, again);
         let from_json = HardwareGraph::from_json(&g.to_json().unwrap()).unwrap();
         assert_eq!(g, from_json);
+    }
+
+    #[test]
+    fn cpu_rates_from_curve_and_fallback() {
+        let mut d = Device::new("cpu0", DeviceKind::Cpu, "c", Tier::Ram, 1 << 30);
+        assert!(d.cpu_rates(4).is_none());
+        d.threads = Some(8);
+        d.compute = Some(ComputeSpec {
+            flops_per_s: 8e11,
+            c0_graph_s: 1e-6,
+            c0_eager_s: 1e-6,
+        });
+        d.bandwidth_bytes_per_s = Some(Measurement::prior(8e10));
+        assert_eq!(d.cpu_rates(4), Some((4e11, 4e10)));
+        assert_eq!(d.cpu_rates(16), Some((8e11, 8e10)));
+        d.thread_curve = vec![
+            ThreadPoint {
+                threads: 8,
+                flops_per_s: 6e11,
+                bytes_per_s: 5e10,
+            },
+            ThreadPoint {
+                threads: 4,
+                flops_per_s: 4e11,
+                bytes_per_s: 4e10,
+            },
+        ];
+        assert_eq!(d.cpu_rates(2), Some((2e11, 2e10)));
+        assert_eq!(d.cpu_rates(6), Some((5e11, 4.5e10)));
+        assert_eq!(d.cpu_rates(32), Some((6e11, 5e10)));
+        let again = HardwareGraph {
+            devices: vec![d],
+            ..Default::default()
+        };
+        assert_eq!(
+            HardwareGraph::from_toml(&again.to_toml().unwrap()).unwrap(),
+            again
+        );
     }
 
     #[test]

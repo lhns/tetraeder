@@ -264,6 +264,13 @@ mod tests {
         m.expert_prefetch(2, 4, "issued");
         m.expert_prefetch_wasted_bytes(10);
         m.expert_prefetch_accuracy(4, 0.5);
+        m.plan_residual(0, 0.08);
+        m.plan_regret("p1", 0.04);
+        m.plan_predicted_step(0, 0.012);
+        m.bottleneck_share("pcie", 0.6);
+        m.bottleneck_fault("pcie_degraded", "pcie");
+        m.replan("drift", "switched");
+        m.replan_duration(Duration::from_secs(3));
         mp.force_flush().unwrap();
 
         let mut names = Vec::new();
@@ -300,6 +307,13 @@ mod tests {
             "tetraeder.expert.prefetch",
             "tetraeder.expert.prefetch.wasted",
             "tetraeder.expert.prefetch.accuracy",
+            "tetraeder.plan.residual",
+            "tetraeder.plan.regret",
+            "tetraeder.plan.predicted_step",
+            "tetraeder.bottleneck.share",
+            "tetraeder.bottleneck.fault",
+            "tetraeder.replan.total",
+            "tetraeder.replan.duration",
         ] {
             assert!(names.iter().any(|x| x == n), "missing metric {n}");
         }

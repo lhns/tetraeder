@@ -1960,12 +1960,21 @@ dependencies = [
  "clap",
  "serde_json",
  "tetraeder-engine",
+ "tetraeder-model",
+ "tetraeder-planner",
  "tetraeder-telemetry",
 ]
 
 [[package]]
 name = "tetraeder-analysis"
 version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tetraeder-costmodel",
+ "tetraeder-profiler",
+ "toml",
+]
 
 [[package]]
 name = "tetraeder-bench"
@@ -1982,6 +1991,9 @@ dependencies = [
 [[package]]
 name = "tetraeder-control"
 version = "0.0.0"
+dependencies = [
+ "tetraeder-plan",
+]
 
 [[package]]
 name = "tetraeder-costmodel"
@@ -1989,6 +2001,7 @@ version = "0.0.0"
 dependencies = [
  "proptest",
  "serde",
+ "serde_json",
  "tetraeder-plan",
  "tetraeder-profiler",
  "toml",
@@ -2096,6 +2109,15 @@ dependencies = [
 [[package]]
 name = "tetraeder-planner"
 version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "tetraeder-bench",
+ "tetraeder-plan",
+ "tetraeder-profiler",
+]
 
 [[package]]
 name = "tetraeder-profiler"

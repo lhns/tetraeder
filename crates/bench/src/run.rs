@@ -165,7 +165,7 @@ struct Resolved<'a> {
     bin: PathBuf,
     model: PathBuf,
     args: Vec<String>,
-    env: Vec<(&'static str, &'static str)>,
+    env: Vec<(String, String)>,
     threads: u32,
 }
 
@@ -215,7 +215,11 @@ fn skip_reason<'a>(
         bin,
         model,
         args,
-        env: engine::device_env(v.device),
+        env: engine::device_env(v.device)
+            .into_iter()
+            .map(|(k, x)| (k.to_string(), x.to_string()))
+            .chain(v.env.iter().map(|(k, x)| (k.clone(), x.clone())))
+            .collect(),
         threads,
     }))
 }
@@ -239,7 +243,12 @@ fn log(opts: &Options, msg: &str) {
 }
 
 fn run_one(r: &Resolved<'_>, timeout: Duration) -> Result<Measured> {
-    engine::run_llama_bench(&r.bin, &r.args, &r.env, timeout)
+    let env: Vec<(&str, &str)> = r
+        .env
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    engine::run_llama_bench(&r.bin, &r.args, &env, timeout)
         .with_context(|| format!("variant `{}` ({})", r.variant.id, r.model.display()))
 }
 

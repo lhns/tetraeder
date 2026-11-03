@@ -1,4 +1,4 @@
-# Component alerts for hard engine failures (docs/plan.md "Alerts"). SLO burn-rate alerts come in Phase 3a.
+# Component alerts for hard engine failures (docs/plan.md "Alerts"). SLO burn-rate alerts are in slo.yml (ADR 0042).
 # Client-caused outcomes of the gateway (cancelled, invalid_request, not_found, overloaded) are not engine failures;
 # overloaded has its own alert in gateway.yml.
 # Loaded by vmalert in docker-compose.yml; metric names follow -opentelemetry.usePrometheusNaming.
