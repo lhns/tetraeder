@@ -14,9 +14,9 @@
 # accept = acceptEdits plus an allowed-tools list), STREAMING=1 (final conformance stage on the streaming MoE).
 # Sessions run one at a time per server (-np 1); the engines alternate ABBA over the reps (one server start per block).
 #
-# VRAM: the 30B Q4_K_M weights are about 18.6 GB; the KV cache is about 98 KB per token (12.9 GB at 131072), so CTX
-# 131072 does not fit 24 GB. Lower CTX (Claude Code needs about 30K for its prompt plus the work, so 49152 is a floor)
-# or add `LLAMA_ARGS="-ctk q8_0 -ctv q8_0 -fa on"` / TET_ARGS for both.
+# VRAM: the 30B Q4_K_M weights are about 18.6 GB and the f16 KV cache about 98 KB per token (12.9 GB at 131072):
+# CTX 131072 needs a 48 GB card (the target: RTX A6000, L40S, A40). On 24 GB lower CTX for both engines (49152 is a
+# floor: Claude Code's own prompt is 15K to 30K tokens).
 # cargo runs with fd 8 closed: the sccache server it starts would otherwise keep the lock after the job
 exec 8> /root/tetraeder_claude_code_proxy.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
