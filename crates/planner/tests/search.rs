@@ -43,6 +43,7 @@ fn size(params: u64) -> UnitSize {
         params,
         flops_per_token: 2.0 * params as f64,
         source_format: Format::F16,
+        roles: Vec::new(),
     }
 }
 
