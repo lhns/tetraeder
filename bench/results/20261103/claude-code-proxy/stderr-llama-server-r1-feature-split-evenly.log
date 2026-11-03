@@ -1,0 +1,2 @@
+[claude-code:unrecognized_model] {"model":"qwen3-coder-30b","query_source":"sdk"}
+Ignoring 1 permissions.allow entry from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["/tmp/cc-feature-split-evenly-n1vjy_3c/repo"].hasTrustDialogAccepted: true in /tmp/cc-home-pxlcaz59/.claude/.claude.json.

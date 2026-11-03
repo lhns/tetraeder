@@ -1,0 +1,74 @@
+[10:29:03] claude_code_proxy start (threads=5 ctx=131072 reps=2 budget=240 min) out=/root/tetraeder/bench/results/20261103/claude-code-proxy
+[10:29:03] build start
+    Updating crates.io index
+ Downloading crates ...
+    Finished `release` profile [optimized] target(s) in 11m 11s
+Using CPython 3.12.3 interpreter at: /usr/bin/python3
+Creating virtual environment at: /root/ccvenv
+Activate with: source /root/ccvenv/bin/activate
+Using Python 3.12.3 environment at: /root/ccvenv
+Resolved 30 packages in 590ms
+Downloading pygments (1.2MiB)
+Downloading openai (2.3MiB)
+Downloading pydantic-core (2.1MiB)
+Downloading anthropic (2.2MiB)
+Prepared 30 packages in 421ms
+Installed 30 packages in 519ms
+[10:40:17] install node v22.11.0
+[10:40:18] node v22.11.0 npm 10.9.0
+[10:40:23] claude 2.1.317 (Claude Code)
+[10:40:23] setup done
+[10:40:23] start tetraeder: target/release/tetraeder serve -m /root/tetraeder/.hf_cache/unsloth__Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf --ctx 131072 --port 18080 --alias qwen3-coder-30b --accept-any-model --ngl -1 -t 5 --request-log /root/tetraeder/bench/results/20261103/claude-code-proxy/tetraeder-r1.reqlog
+[10:40:31] tetraeder ready
+[10:41:09] tetraeder-r1-fix-rounding: success=False turns=17 is_error=False wall=36.99s
+[10:41:54] tetraeder-r1-fix-eom-leap: success=True turns=13 is_error=False wall=43.47s
+[10:43:23] tetraeder-r1-feature-split-evenly: success=False turns=15 is_error=False wall=88.13s
+[10:48:45] tetraeder-r1-feature-late-fee: success=False turns=41 is_error=True wall=321.17s
+[10:48:59] tetraeder-r1-explain-parser: success=True turns=3 is_error=False wall=12.92s
+[10:49:40] tetraeder-r1-refactor-require-field: success=True turns=9 is_error=False wall=39.1s
+[10:52:42] tetraeder-r1-rename-compute-total: success=True turns=37 is_error=False wall=181.47s
+[10:54:33] tetraeder-r1-legacy-tier-boundary: success=True turns=36 is_error=False wall=109.33s
+[10:55:22] tetraeder-r1-write-shipping-tests: success=True turns=10 is_error=False wall=47.96s
+[10:57:59] tetraeder-r1-cli-sort-by: success=False turns=41 is_error=True wall=155.72s
+[10:58:02] start llama-server: /opt/llama.cpp/bin/llama-server -m /root/tetraeder/.hf_cache/unsloth__Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf -c 131072 -ngl 99 -t 5 --host 127.0.0.1 --port 18081 --jinja -np 1 --alias qwen3-coder-30b
+[10:58:09] llama-server ready
+[10:59:04] llama-server-r1-fix-rounding: success=True turns=23 is_error=False wall=53.87s
+[10:59:50] llama-server-r1-fix-eom-leap: success=True turns=13 is_error=False wall=45.22s
+[11:04:16] llama-server-r1-feature-split-evenly: success=True turns=1 is_error=False wall=265.13s
+[11:07:45] llama-server-r1-feature-late-fee: success=True turns=41 is_error=True wall=207.51s
+[11:08:02] llama-server-r1-explain-parser: success=True turns=3 is_error=False wall=16.09s
+[11:08:52] llama-server-r1-refactor-require-field: success=False turns=14 is_error=False wall=48.78s
+[11:10:15] llama-server-r1-rename-compute-total: success=True turns=26 is_error=False wall=81.95s
+[11:13:47] llama-server-r1-legacy-tier-boundary: success=True turns=1 is_error=False wall=211.03s
+[11:14:33] llama-server-r1-write-shipping-tests: success=True turns=9 is_error=False wall=44.57s
+[11:17:21] llama-server-r1-cli-sort-by: success=False turns=41 is_error=True wall=166.39s
+[11:17:25] start llama-server: /opt/llama.cpp/bin/llama-server -m /root/tetraeder/.hf_cache/unsloth__Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf -c 131072 -ngl 99 -t 5 --host 127.0.0.1 --port 18081 --jinja -np 1 --alias qwen3-coder-30b
+[11:17:33] llama-server ready
+[11:18:14] llama-server-r2-fix-rounding: success=False turns=15 is_error=False wall=39.63s
+[11:18:54] llama-server-r2-fix-eom-leap: success=True turns=11 is_error=False wall=39.27s
+[11:19:35] llama-server-r2-feature-split-evenly: success=True turns=13 is_error=False wall=39.29s
+[11:26:18] llama-server-r2-feature-late-fee: success=False turns=5 is_error=False wall=402.09s
+[11:27:09] llama-server-r2-explain-parser: success=True turns=1 is_error=False wall=50.4s
+[11:28:02] llama-server-r2-refactor-require-field: success=True turns=19 is_error=False wall=51.1s
+[11:29:26] llama-server-r2-rename-compute-total: success=True turns=29 is_error=False wall=82.75s
+[11:30:59] llama-server-r2-legacy-tier-boundary: success=True turns=31 is_error=False wall=92.49s
+[11:31:41] llama-server-r2-write-shipping-tests: success=True turns=9 is_error=False wall=40.4s
+[11:34:01] llama-server-r2-cli-sort-by: success=False turns=41 is_error=True wall=138.92s
+[11:34:05] start tetraeder: target/release/tetraeder serve -m /root/tetraeder/.hf_cache/unsloth__Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf --ctx 131072 --port 18080 --alias qwen3-coder-30b --accept-any-model --ngl -1 -t 5 --request-log /root/tetraeder/bench/results/20261103/claude-code-proxy/tetraeder-r2.reqlog
+[11:34:13] tetraeder ready
+[11:34:50] tetraeder-r2-fix-rounding: success=False turns=10 is_error=False wall=35.52s
+[11:35:34] tetraeder-r2-fix-eom-leap: success=True turns=10 is_error=False wall=42.6s
+[11:36:56] tetraeder-r2-feature-split-evenly: success=True turns=23 is_error=False wall=81.46s
+[11:39:56] tetraeder-r2-feature-late-fee: success=True turns=31 is_error=False wall=178.03s
+[11:41:16] tetraeder-r2-explain-parser: success=True turns=12 is_error=False wall=79.63s
+[11:41:59] tetraeder-r2-refactor-require-field: success=True turns=10 is_error=False wall=41.74s
+[11:44:16] tetraeder-r2-rename-compute-total: success=True turns=41 is_error=True wall=135.45s
+[11:46:23] tetraeder-r2-legacy-tier-boundary: success=True turns=38 is_error=False wall=126.0s
+[11:47:59] tetraeder-r2-write-shipping-tests: success=True turns=8 is_error=False wall=95.0s
+[11:50:19] tetraeder-r2-cli-sort-by: success=True turns=40 is_error=False wall=138.38s
+engine          ok/runs  turns  perr   reqs   ttft50   ttft90   tok/s   wall50
+llama-server      15/20   13.5     3    624    0.499    7.165 116.648     52.5
+tetraeder         15/20   16.0    15    495    0.423    8.252 103.023     84.8
+[11:50:22] streaming conformance start
+[11:51:31] streaming conformance rc=0
+[11:51:33] CLAUDE_CODE_PROXY_DONE rc=0

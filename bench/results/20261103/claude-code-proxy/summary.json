@@ -1,0 +1,368 @@
+{
+  "engines": {
+    "llama-server": {
+      "runs": 20,
+      "successes": 15,
+      "success_rate": 0.75,
+      "per_task": {
+        "cli-sort-by": {
+          "runs": 2,
+          "successes": 0,
+          "rate": 0.0
+        },
+        "explain-parser": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "feature-late-fee": {
+          "runs": 2,
+          "successes": 1,
+          "rate": 0.5
+        },
+        "feature-split-evenly": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "fix-eom-leap": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "fix-rounding": {
+          "runs": 2,
+          "successes": 1,
+          "rate": 0.5
+        },
+        "legacy-tier-boundary": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "refactor-require-field": {
+          "runs": 2,
+          "successes": 1,
+          "rate": 0.5
+        },
+        "rename-compute-total": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "write-shipping-tests": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        }
+      },
+      "turns_median": 13.5,
+      "timeouts": 0,
+      "is_error_sessions": 3,
+      "non_200_requests": 0,
+      "protocol_errors": 3,
+      "requests": 624,
+      "ttft_median_s": 0.499,
+      "ttft_p90_s": 7.165,
+      "decode_tok_s_median": 116.648,
+      "input_tokens_total": 718171,
+      "output_tokens_total": 142379,
+      "cache_read_tokens_total": 10550498,
+      "wall_s_median": 52.5,
+      "wall_s_total": 2116.9
+    },
+    "tetraeder": {
+      "runs": 20,
+      "successes": 15,
+      "success_rate": 0.75,
+      "per_task": {
+        "cli-sort-by": {
+          "runs": 2,
+          "successes": 1,
+          "rate": 0.5
+        },
+        "explain-parser": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "feature-late-fee": {
+          "runs": 2,
+          "successes": 1,
+          "rate": 0.5
+        },
+        "feature-split-evenly": {
+          "runs": 2,
+          "successes": 1,
+          "rate": 0.5
+        },
+        "fix-eom-leap": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "fix-rounding": {
+          "runs": 2,
+          "successes": 0,
+          "rate": 0.0
+        },
+        "legacy-tier-boundary": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "refactor-require-field": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "rename-compute-total": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        },
+        "write-shipping-tests": {
+          "runs": 2,
+          "successes": 2,
+          "rate": 1.0
+        }
+      },
+      "turns_median": 16.0,
+      "timeouts": 0,
+      "is_error_sessions": 3,
+      "non_200_requests": 12,
+      "protocol_errors": 15,
+      "requests": 495,
+      "ttft_median_s": 0.423,
+      "ttft_p90_s": 8.252,
+      "decode_tok_s_median": 103.023,
+      "input_tokens_total": 1377274,
+      "output_tokens_total": 135984,
+      "cache_read_tokens_total": 8083798,
+      "wall_s_median": 84.8,
+      "wall_s_total": 1990.1
+    }
+  },
+  "comparison": {
+    "cli-sort-by": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 0,
+        "turns_median": 41.0,
+        "wall_s_median": 152.7,
+        "requests": 100,
+        "ttft_median_s": 0.652,
+        "decode_tok_s_median": 111.558
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 1,
+        "turns_median": 40.5,
+        "wall_s_median": 147.1,
+        "requests": 80,
+        "ttft_median_s": 0.344,
+        "decode_tok_s_median": 95.264
+      },
+      "wall_ratio_tetraeder_over_llama": 0.963,
+      "decode_ratio_tetraeder_over_llama": 0.854
+    },
+    "explain-parser": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 2.0,
+        "wall_s_median": 33.2,
+        "requests": 19,
+        "ttft_median_s": 0.492,
+        "decode_tok_s_median": 121.926
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 7.5,
+        "wall_s_median": 46.3,
+        "requests": 25,
+        "ttft_median_s": 0.543,
+        "decode_tok_s_median": 113.095
+      },
+      "wall_ratio_tetraeder_over_llama": 1.395,
+      "decode_ratio_tetraeder_over_llama": 0.928
+    },
+    "feature-late-fee": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 1,
+        "turns_median": 23.0,
+        "wall_s_median": 304.8,
+        "requests": 156,
+        "ttft_median_s": 3.558,
+        "decode_tok_s_median": 118.757
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 1,
+        "turns_median": 36.0,
+        "wall_s_median": 249.6,
+        "requests": 85,
+        "ttft_median_s": 0.666,
+        "decode_tok_s_median": 100.582
+      },
+      "wall_ratio_tetraeder_over_llama": 0.819,
+      "decode_ratio_tetraeder_over_llama": 0.847
+    },
+    "feature-split-evenly": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 7.0,
+        "wall_s_median": 152.2,
+        "requests": 66,
+        "ttft_median_s": 3.792,
+        "decode_tok_s_median": 116.069
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 1,
+        "turns_median": 19.0,
+        "wall_s_median": 84.8,
+        "requests": 39,
+        "ttft_median_s": 0.336,
+        "decode_tok_s_median": 102.743
+      },
+      "wall_ratio_tetraeder_over_llama": 0.557,
+      "decode_ratio_tetraeder_over_llama": 0.885
+    },
+    "fix-eom-leap": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 12.0,
+        "wall_s_median": 42.2,
+        "requests": 24,
+        "ttft_median_s": 0.248,
+        "decode_tok_s_median": 120.387
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 11.5,
+        "wall_s_median": 43.0,
+        "requests": 23,
+        "ttft_median_s": 0.334,
+        "decode_tok_s_median": 105.914
+      },
+      "wall_ratio_tetraeder_over_llama": 1.019,
+      "decode_ratio_tetraeder_over_llama": 0.88
+    },
+    "fix-rounding": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 1,
+        "turns_median": 19.0,
+        "wall_s_median": 46.8,
+        "requests": 37,
+        "ttft_median_s": 0.235,
+        "decode_tok_s_median": 116.586
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 0,
+        "turns_median": 13.5,
+        "wall_s_median": 36.3,
+        "requests": 27,
+        "ttft_median_s": 0.185,
+        "decode_tok_s_median": 108.716
+      },
+      "wall_ratio_tetraeder_over_llama": 0.776,
+      "decode_ratio_tetraeder_over_llama": 0.932
+    },
+    "legacy-tier-boundary": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 16.0,
+        "wall_s_median": 151.8,
+        "requests": 98,
+        "ttft_median_s": 0.288,
+        "decode_tok_s_median": 110.78
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 37.0,
+        "wall_s_median": 117.7,
+        "requests": 77,
+        "ttft_median_s": 0.313,
+        "decode_tok_s_median": 93.228
+      },
+      "wall_ratio_tetraeder_over_llama": 0.775,
+      "decode_ratio_tetraeder_over_llama": 0.842
+    },
+    "refactor-require-field": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 1,
+        "turns_median": 16.5,
+        "wall_s_median": 49.9,
+        "requests": 33,
+        "ttft_median_s": 0.259,
+        "decode_tok_s_median": 117.143
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 9.5,
+        "wall_s_median": 40.4,
+        "requests": 19,
+        "ttft_median_s": 0.45,
+        "decode_tok_s_median": 108.923
+      },
+      "wall_ratio_tetraeder_over_llama": 0.81,
+      "decode_ratio_tetraeder_over_llama": 0.93
+    },
+    "rename-compute-total": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 27.5,
+        "wall_s_median": 82.3,
+        "requests": 73,
+        "ttft_median_s": 2.333,
+        "decode_tok_s_median": 118.108
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 39.0,
+        "wall_s_median": 158.5,
+        "requests": 102,
+        "ttft_median_s": 1.413,
+        "decode_tok_s_median": 107.647
+      },
+      "wall_ratio_tetraeder_over_llama": 1.926,
+      "decode_ratio_tetraeder_over_llama": 0.911
+    },
+    "write-shipping-tests": {
+      "llama-server": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 9.0,
+        "wall_s_median": 42.5,
+        "requests": 18,
+        "ttft_median_s": 0.325,
+        "decode_tok_s_median": 122.041
+      },
+      "tetraeder": {
+        "runs": 2,
+        "successes": 2,
+        "turns_median": 9.0,
+        "wall_s_median": 71.5,
+        "requests": 18,
+        "ttft_median_s": 0.364,
+        "decode_tok_s_median": 107.662
+      },
+      "wall_ratio_tetraeder_over_llama": 1.682,
+      "decode_ratio_tetraeder_over_llama": 0.882
+    }
+  }
+}
