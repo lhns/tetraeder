@@ -24,7 +24,7 @@ case "$MODEL" in
     spec="unsloth/Qwen3-8B-GGUF:Qwen3-8B-BF16.gguf"
     src="$PWD/.hf_cache/unsloth__Qwen3-8B-GGUF/Qwen3-8B-BF16.gguf"
     base=BF16; span=${SPAN:-6}; formats="${FORMATS:-Q8_0 Q6_K Q5_K Q4_K IQ4_XS Q3_K Q2_K}"
-    ppl_args="-ngl 99 -fa on"; ref_args="$ppl_args"
+    ppl_args="-ngl 99 -fa on"; ref_args="$ppl_args"; eval_chunks=${EVAL_CHUNKS:-100}
     ;;
   qwen3-30b)
     b=BF16/Qwen3-30B-A3B-BF16
@@ -34,7 +34,7 @@ case "$MODEL" in
     # Q8_0 (32 GB) on a 24 GB card: experts of the upper layers stay in RAM; big batches amortize their copies
     ot='blk\.(2[6-9]|3[0-9]|4[0-7])\.ffn_.*_exps\.=CPU'
     ppl_args="-ngl 99 -fa on -b 2048 -ub 2048 -ot ${OT:-$ot}"
-    ref_args="-ngl 99 -fa on -b 2048 -ub 2048 -ot exps=CPU"
+    ref_args="-ngl 99 -fa on -b 2048 -ub 2048 -ot exps=CPU"; eval_chunks=${EVAL_CHUNKS:-50}
     ;;
   *) echo "unknown MODEL $MODEL"; exit 1 ;;
 esac
@@ -64,7 +64,7 @@ for s in ${STEPS:-calibrate compare convert}; do
       ;;
     compare)
       python3 scripts/quality/compare_mix.py --source "$src" --profile "bench/quality/$MODEL.quality.json" \
-        --work "$W/compare" --text /root/q/wikitext-2-raw/wiki.test.raw --presets ${PRESETS:-Q4_K_M Q3_K_M Q5_K_M} \
+        --work "$W/compare" --text /root/q/wikitext-2-raw/wiki.test.raw --chunks "$eval_chunks" --presets ${PRESETS:-Q4_K_M Q3_K_M Q5_K_M} \
         --threads "$threads" --ppl-args "$ppl_args" --ref-args "$ref_args" --gpu "$gpu" \
         ${IK_TYPES:+--ik-bin /opt/ik_llama/bin --ik-types $IK_TYPES} \
         --out "$date_dir/quality-$MODEL.json" || rc=$?
