@@ -6,11 +6,15 @@
 //! - candidates, exactly the [`Enumeration`],
 //! - baselines: llama.cpp's own fit and hand-tuned `-ot` / `-ncmoe` configs.
 
+use crate::builder::{
+    BUILDER_UBATCHES, build_builder_candidate, feasible_vram_tiers, ram_slot_options,
+};
 use crate::candidate::{
-    Budget, Candidate, Enumeration, Placement, Workload, build_candidate, thread_values,
+    Budget, Candidate, EngineKind, Enumeration, Placement, Workload, build_candidate, footprint,
+    thread_values,
 };
 use crate::layout::ModelLayout;
-use crate::lower::{dense_ngl, to_llama_bench_args, to_variant_args};
+use crate::lower::{dense_ngl, to_exit_regime_env, to_llama_bench_args, to_variant_args};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -195,6 +199,7 @@ pub fn build(
                     dense_ngl(gpu_layers, layout.n_layer).to_string(),
                 ]
             }
+            Placement::Builder { .. } => vec![],
             Placement::Moe { gpu_expert_layers } => {
                 let mut a = vec!["-ngl".to_string(), "99".into()];
                 let n = layout.n_layer.saturating_sub(gpu_expert_layers);
@@ -219,6 +224,101 @@ pub fn build(
         threads: q,
         variants: vs,
         pairs,
+    }
+}
+
+/// Build the campaign of a builder fixture: the anchors and the candidates of `en`, run through
+/// the `exit_regime` test binary (`scripts/planner_builder_campaign.sh`). Variants carry the
+/// binary's environment in `env` ([`to_exit_regime_env`]) and no engine args.
+///
+/// Anchors, all at the quota's threads, ubatch 256 and op offload on unless noted, never shared
+/// with candidate runs even when a configuration coincides:
+/// - `anchor-bld-ram-all`: smallest VRAM slots (top-k), every expert in the RAM tier;
+/// - `anchor-bld-vram-small`: smallest VRAM slots, a quarter of the experts in the RAM tier, so
+///   misses read from disk;
+/// - `anchor-bld-vram-large`: the largest VRAM slots that fit, RAM tier as large as fits;
+/// - `anchor-bld-opo-off`: `anchor-bld-ram-all` with op offload off.
+///
+/// The two ends give the scorer the measured hit rate at the smallest and largest slot counts.
+/// An anchor whose estimate exceeds the budget is left out. No baselines: llama.cpp cannot run
+/// the builder's tiers.
+pub fn build_builder(
+    model_key: &str,
+    hf: &str,
+    layout: &ModelLayout,
+    budget: &Budget,
+    workload: &Workload,
+    en: &Enumeration,
+) -> Campaign {
+    let q = budget.threads.max(1);
+    let mut vs = Vec::new();
+    let mut ignore = Vec::new();
+    let tiers = feasible_vram_tiers(budget, layout, workload, &mut ignore);
+    let (n, k) = (layout.n_expert, layout.n_expert_used.max(1));
+    if let (Some(&small), Some(&large)) = (tiers.first(), tiers.last()) {
+        let ub = BUILDER_UBATCHES[0];
+        let fits = |pl: (u32, u32)| {
+            let f = footprint(
+                layout,
+                Placement::Builder {
+                    vram_slots: pl.0,
+                    ram_slots: pl.1,
+                },
+                ub,
+                workload,
+            );
+            f.gpu <= budget.gpu_bytes && f.host <= budget.ram_bytes
+        };
+        // RAM tier of the large anchor: the largest option, then smaller ones until it fits.
+        let large_ram = ram_slot_options(layout, large)
+            .into_iter()
+            .rev()
+            .find(|&r| fits((large, r)));
+        let quarter = (n.saturating_sub(small) / 4).max(k).min(n);
+        let all = n.max(k);
+        let specs = [
+            ("anchor-bld-ram-all", (small, all), true),
+            ("anchor-bld-vram-small", (small, quarter), true),
+            (
+                "anchor-bld-vram-large",
+                (large, large_ram.unwrap_or(k)),
+                true,
+            ),
+            ("anchor-bld-opo-off", (small, all), false),
+        ];
+        for (id, slots, op) in specs {
+            if !fits(slots) {
+                continue;
+            }
+            let c = build_builder_candidate("anchor", layout, slots, (q, ub, op), workload);
+            let mut v = variant(id, Group::Anchor, "cuda", q, &[], workload);
+            v.env = to_exit_regime_env(&c, layout);
+            v.placement = Some(c.placement);
+            vs.push(v);
+        }
+    }
+    for c in &en.candidates {
+        let mut v = variant(
+            &format!("cand-{}", c.id),
+            Group::Candidate,
+            "cuda",
+            c.threads(),
+            &[],
+            workload,
+        );
+        v.env = to_exit_regime_env(c, layout);
+        v.candidate = Some(c.id.clone());
+        v.placement = Some(c.placement);
+        vs.push(v);
+    }
+    Campaign {
+        name: format!("planner-{model_key}-builder"),
+        model_key: model_key.to_string(),
+        hf: hf.to_string(),
+        workload: *workload,
+        threads: q,
+        variants: vs,
+        pairs: vec![],
     }
 }
 
@@ -362,7 +462,11 @@ impl CandidatesFile {
             .iter()
             .map(|cand| CandidateEntry {
                 candidate: cand.clone(),
-                lowered_args: to_llama_bench_args(cand, layout),
+                lowered_args: if cand.engine == EngineKind::Builder {
+                    vec![]
+                } else {
+                    to_llama_bench_args(cand, layout)
+                },
                 variant: c
                     .variants
                     .iter()
@@ -485,6 +589,68 @@ mod tests {
                 }
         );
         assert_eq!(get("cand-c00").candidate.as_deref(), Some("c00"));
+    }
+
+    // hardware: none
+    #[test]
+    fn builder_campaign_has_anchors_and_env() {
+        use crate::builder::enumerate_builder;
+        let l = fixtures::moe();
+        let en = enumerate_builder(&BUDGET, &l, &WORK);
+        let c = build_builder("moe", "org/name:file.gguf", &l, &BUDGET, &WORK, &en);
+        let anchors: Vec<&str> = c
+            .variants
+            .iter()
+            .filter(|v| v.group == Group::Anchor)
+            .map(|v| v.id.as_str())
+            .collect();
+        assert_eq!(
+            anchors,
+            [
+                "anchor-bld-ram-all",
+                "anchor-bld-vram-small",
+                "anchor-bld-vram-large",
+                "anchor-bld-opo-off"
+            ]
+        );
+        let get = |id: &str| c.variants.iter().find(|v| v.id == id).unwrap();
+        let slots = |id: &str| match get(id).placement {
+            Some(Placement::Builder {
+                vram_slots,
+                ram_slots,
+            }) => (vram_slots, ram_slots),
+            p => panic!("{id}: {p:?}"),
+        };
+        assert_eq!(slots("anchor-bld-ram-all"), (8, 128));
+        assert_eq!(slots("anchor-bld-vram-small"), (8, 30));
+        assert_eq!(slots("anchor-bld-vram-large"), (64, 64));
+        assert_eq!(
+            get("anchor-bld-opo-off").env["TETRAEDER_EXIT_OP_OFFLOAD"],
+            "0"
+        );
+        assert_eq!(
+            get("anchor-bld-ram-all").env["TETRAEDER_EXIT_THREADS"],
+            "15"
+        );
+        let cands = c.variants.iter().filter(|v| v.candidate.is_some()).count();
+        assert_eq!(cands, en.candidates.len());
+        assert!(
+            c.variants
+                .iter()
+                .all(|v| v.args.is_empty() && !v.env.is_empty())
+        );
+        assert!(
+            c.variants
+                .iter()
+                .all(|v| v.prompt == 2048 && v.r#gen == 128)
+        );
+        let f = CandidatesFile::new(&c, &l, &BUDGET, &en);
+        assert_eq!(f.anchors.len(), 4);
+        assert!(f.baselines.is_empty());
+        assert!(f.candidates.iter().all(|e| e.lowered_args.is_empty()));
+        let back: CandidatesFile =
+            serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert_eq!(back, f);
     }
 
     #[test]
