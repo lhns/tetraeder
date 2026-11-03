@@ -35,6 +35,8 @@ pub struct GatewayConfig {
     pub retry_after_secs: u64,
     /// Output events buffered per request before generation waits for the client.
     pub stream_buffer: usize,
+    /// Model that unknown ids resolve to (Claude Code sends its own `claude-*` ids).
+    pub default_model: Option<String>,
 }
 
 impl Default for GatewayConfig {
@@ -44,6 +46,7 @@ impl Default for GatewayConfig {
             max_queued: 16,
             retry_after_secs: 1,
             stream_buffer: 32,
+            default_model: None,
         }
     }
 }
@@ -229,6 +232,17 @@ pub struct Gateway {
     callers: Mutex<HashSet<String>>,
 }
 
+/// Response header carrying the generation id (the request log joins costs on it).
+pub const GENERATION_ID_HEADER: &str = "x-tetraeder-generation-id";
+
+/// Adds [`GENERATION_ID_HEADER`] to a response.
+pub fn tag_generation(mut r: axum::response::Response, id: &str) -> axum::response::Response {
+    if let Ok(v) = axum::http::HeaderValue::from_str(id) {
+        r.headers_mut().insert(GENERATION_ID_HEADER, v);
+    }
+    r
+}
+
 /// Distinct caller ids kept as metric label values; later ones count as `other`.
 const MAX_CALLERS: usize = 100;
 const MAX_CALLER_LEN: usize = 64;
@@ -276,15 +290,20 @@ impl Gateway {
         self.engine.models()
     }
 
+    /// The model `id` names, or the configured default model for an unknown id.
     pub fn model(&self, id: &str) -> Result<ModelInfo, GatewayError> {
-        self.engine
-            .models()
-            .into_iter()
-            .find(|m| m.id == id)
+        let models = self.engine.models();
+        let default = self.cfg.default_model.as_deref();
+        let find = |want: &str| models.iter().find(|m| m.id == want).cloned();
+        find(id)
+            .or_else(|| default.and_then(find))
             .ok_or_else(|| GatewayError::NotFound(format!("model '{id}' not found")))
     }
 
     fn state(&self, id: &str) -> Result<Arc<ModelState>, GatewayError> {
+        let info = self.model(id)?;
+        let id = info.id.clone();
+        let id = id.as_str();
         if let Some(s) = self
             .models
             .lock()
@@ -293,7 +312,6 @@ impl Gateway {
         {
             return Ok(Arc::clone(s));
         }
-        let info = self.model(id)?;
         let vocab = self.engine.vocab(id).map_err(|e| self.engine_err(e))?;
         let (template, template_error) = match &info.chat_template {
             Some(src) => {
@@ -327,7 +345,7 @@ impl Gateway {
         let (text, _) = self.render(&st, &spec.prompt)?;
         let toks = self
             .engine
-            .tokenize(&spec.model, &text)
+            .tokenize(&st.info.id, &text)
             .map_err(|e| self.engine_err(e))?;
         Ok(toks.len() as u32)
     }
@@ -422,17 +440,17 @@ impl Gateway {
         span: tracing::Span,
     ) -> Result<Generation, GatewayError> {
         let st = self.state(&spec.model)?;
+        let model = st.info.id.clone();
         let (text, in_reasoning) = self.render(&st, &spec.prompt)?;
         let prompt = self
             .engine
-            .tokenize(&spec.model, &text)
+            .tokenize(&model, &text)
             .map_err(|e| self.engine_err(e))?;
         let ctx = st.info.context_length;
         let n_prompt = prompt.len() as u32;
         if n_prompt >= ctx {
             return Err(GatewayError::InvalidRequest(format!(
-                "prompt is {n_prompt} tokens, the context length of '{}' is {ctx}",
-                spec.model
+                "prompt is {n_prompt} tokens, the context length of '{model}' is {ctx}"
             )));
         }
         let max_tokens = match spec.max_tokens {
@@ -441,13 +459,8 @@ impl Gateway {
                     "max_tokens must be at least 1".into(),
                 ));
             }
-            Some(m) if n_prompt.saturating_add(m) > ctx => {
-                return Err(GatewayError::InvalidRequest(format!(
-                    "prompt ({n_prompt} tokens) plus max_tokens ({m}) exceeds the context length of '{}' ({ctx})",
-                    spec.model
-                )));
-            }
-            Some(m) => m,
+            // Clamped to the room left, as llama-server does.
+            Some(m) => m.min(ctx - n_prompt),
             None => ctx - n_prompt,
         };
 
@@ -459,7 +472,7 @@ impl Gateway {
         let erx = self
             .engine
             .generate(GenerateRequest {
-                model: spec.model.clone(),
+                model: model.clone(),
                 prompt,
                 params: SamplingParams {
                     max_tokens,
@@ -477,7 +490,7 @@ impl Gateway {
         let run = Run {
             gw: Arc::clone(self),
             id: id.clone(),
-            model: spec.model.clone(),
+            model: model.clone(),
             caller: spec.caller.clone().unwrap_or_else(|| "anonymous".into()),
             op,
             started,
@@ -497,7 +510,7 @@ impl Gateway {
         tokio::spawn(run.pump(erx, tx).instrument(span));
         Ok(Generation {
             id,
-            model: spec.model.clone(),
+            model,
             created: now_unix(),
             prompt_tokens: n_prompt,
             rx,

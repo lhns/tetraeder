@@ -632,6 +632,12 @@ impl Qwen3Moe {
         self.n_past = 0;
     }
 
+    /// Keeps the first `n` cached positions. Later ones stay in the buffers, masked out and
+    /// overwritten by the next steps.
+    pub fn truncate(&mut self, n: usize) {
+        self.n_past = self.n_past.min(n);
+    }
+
     /// Runs `tokens` after the tokens already in the cache and returns the logits of every
     /// position, `tokens.len() * n_vocab` values, position-major.
     pub fn eval(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {

@@ -258,6 +258,14 @@ impl Context {
         unsafe { sys::llama_memory_clear(sys::llama_get_memory(self.ptr), false) }
     }
 
+    /// Removes positions `p0..p1` of sequence `seq` from the KV cache (`p1 < 0`: to the end,
+    /// `p0 < 0`: from the start). False when the cache cannot drop that range (for example
+    /// from the middle of a recurrent state).
+    pub fn memory_seq_rm(&mut self, seq: i32, p0: i32, p1: i32) -> bool {
+        // SAFETY: as `memory_clear`.
+        unsafe { sys::llama_memory_seq_rm(sys::llama_get_memory(self.ptr), seq, p0, p1) }
+    }
+
     /// Highest position stored for sequence `seq`, or -1 when empty.
     pub fn seq_pos_max(&self, seq: i32) -> i32 {
         // SAFETY: as `memory_clear`.
