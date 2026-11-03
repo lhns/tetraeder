@@ -1,4 +1,4 @@
-# 0042. Quality profile file and calibration job
+# 0045. Quality profile file and calibration job
 
 Status: Accepted (Phase 2; read by the planner in Phase 3a)
 
@@ -9,8 +9,8 @@ ADR 0024 makes quality a measured number: per model, the KL divergence each (ten
 ## Decision
 
 - **KL** is llama-perplexity's: text cut into chunks of `ctx` tokens, the second half of each chunk scored, mean over scored tokens of KL(p\_ref || p) in nats over the full vocabulary. All numbers in a profile come from `llama-perplexity --kl-divergence` against one reference logits file.
-- **Groups** are a `UnitSel` (ADR 0027) plus optional roles (ADR 0041); an empty role list means every quantizable role of the selected units. v1 granularity: `embed`, `head`, and per role class (`attn.q+k`, `attn.v`, `attn.o`, `mlp|expert.gate+up`, `mlp|expert.down`) per span of `L` layers, `L` chosen per model so the job fits one box session and recorded in the file.
-- **Measurement:** every tensor outside the group stays at the **base** format, the group goes to the entry's format, the reference is the most precise source that runs on the box (BF16, else Q8\_0). The job converts the model once per format with the engine's converter (ADR 0041) and writes it as split GGUF, one shard per group (the first shard carries the metadata). A sample is a directory of symbolic links, one shard per group from the chosen format, so assembling a mix copies nothing and llama.cpp loads it as a split model.
+- **Groups** are a `UnitSel` (ADR 0027) plus optional roles (ADR 0044); an empty role list means every quantizable role of the selected units. v1 granularity: `embed`, `head`, and per role class (`attn.q+k`, `attn.v`, `attn.o`, `mlp|expert.gate+up`, `mlp|expert.down`) per span of `L` layers, `L` chosen per model so the job fits one box session and recorded in the file.
+- **Measurement:** every tensor outside the group stays at the **base** format, the group goes to the entry's format, the reference is the most precise source that runs on the box (BF16, else Q8\_0). The job converts the model once per format with the engine's converter (ADR 0044) and writes it as split GGUF, one shard per group (the first shard carries the metadata). A sample is a directory of symbolic links, one shard per group from the chosen format, so assembling a mix copies nothing and llama.cpp loads it as a split model.
 - **File:** JSON, `<model stem>.quality.json` next to the model; measured profiles are committed under `bench/quality/`. Rust type `tetraeder_plan::QualityProfile`. Schema 1:
 
   ```

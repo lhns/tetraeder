@@ -146,7 +146,7 @@ pub enum Issue {
         role: String,
     },
     /// Experts of one layer differ in format (per role, or per unit without roles); no phase
-    /// executes that yet (ADR 0041).
+    /// executes that yet (ADR 0044).
     PerExpertFormats {
         at: At,
         layer: u32,

@@ -264,6 +264,7 @@ mod tests {
         m.expert_prefetch(2, 4, "issued");
         m.expert_prefetch_wasted_bytes(10);
         m.expert_prefetch_accuracy(4, 0.5);
+        m.spec_step("ngram", 4, 3);
         mp.force_flush().unwrap();
 
         let mut names = Vec::new();
@@ -300,6 +301,9 @@ mod tests {
             "tetraeder.expert.prefetch",
             "tetraeder.expert.prefetch.wasted",
             "tetraeder.expert.prefetch.accuracy",
+            "tetraeder.spec.acceptance",
+            "tetraeder.spec.drafted",
+            "tetraeder.spec.accepted",
         ] {
             assert!(names.iter().any(|x| x == n), "missing metric {n}");
         }

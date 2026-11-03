@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Calibration job (ADR 0042): measures the quality profile of one model.
+"""Calibration job (ADR 0045): measures the quality profile of one model.
 
 For each format the source is converted once by the engine (`tetraeder quant export --all FMT --groups`) into a
 split GGUF with one shard per group. A sample is a directory of symbolic links (one group in the sample's format,
@@ -190,7 +190,7 @@ def _main_type(tensors):
 
 
 def _fingerprint(first):
-    """Profile fingerprint (ADR 0042): SHA-256 over each shard's header bytes and length (no mtime, so a copy
+    """Profile fingerprint (ADR 0045): SHA-256 over each shard's header bytes and length (no mtime, so a copy
     of the same file keeps its profile)."""
     import hashlib
     import os

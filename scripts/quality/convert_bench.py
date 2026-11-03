@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Conversion speed and byte parity against llama-quantize (ADR 0041), paired on one box.
+"""Conversion speed and byte parity against llama-quantize (ADR 0044), paired on one box.
 
 llama-quantize converts the source to a preset; the engine's converter (`tetraeder quant export --formats-from`)
 then does the same per-tensor work with the same thread count and an empty cache. Repeats interleave the two.

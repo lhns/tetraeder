@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 3a exit-test harness (ADR 0042): a format mix against llama.cpp presets at the same byte budget.
+"""Phase 3a exit-test harness (ADR 0045): a format mix against llama.cpp presets at the same byte budget.
 
 For each preset, llama-quantize builds it from the source; a mix within the preset's bytes is either given
 (`--mix`, tensor name to format: the planner's output) or picked from the quality profile by a reference greedy

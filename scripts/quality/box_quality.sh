@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Track B quality run on a box (ADR 0041, 0042): build the CLI, fetch the BF16 model and wikitext-2, run the
+# Track B quality run on a box (ADR 0044, 0045): build the CLI, fetch the BF16 model and wikitext-2, run the
 # calibration job, the preset comparison and the conversion benchmark for MODEL (qwen3-8b or qwen3-30b).
 # STEPS picks steps (default: calibrate compare convert). Results: bench/quality/, bench/results/<date>/.
 # One box runs both models (downloads are billed per GB, tracks-common.md): qwen3-8b first while the 30B BF16

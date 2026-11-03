@@ -463,11 +463,6 @@ impl<'a> Tensor<'a> {
         unsafe { sys::ggml_nbytes(self.ptr.as_ptr()) }
     }
 
-    pub fn nelements(self) -> usize {
-        // SAFETY: as above.
-        unsafe { sys::ggml_nelements(self.ptr.as_ptr()) as usize }
-    }
-
     pub fn set_name(self, name: &str) -> Self {
         let c = CString::new(name.replace('\0', "")).expect("NUL removed");
         // SAFETY: as above; ggml copies the name.

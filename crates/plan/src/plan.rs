@@ -65,7 +65,7 @@ pub struct Assign {
     /// Absent: open (partial plan).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<Format>,
-    /// Per-role override of `format` (ADR 0041), keyed by role name such as `attn.v`.
+    /// Per-role override of `format` (ADR 0044), keyed by role name such as `attn.v`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub role_formats: BTreeMap<String, Format>,
 }

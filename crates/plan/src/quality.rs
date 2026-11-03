@@ -1,4 +1,4 @@
-//! Quality profile: measured KL cost of each (tensor group, format) choice (ADR 0042), and the
+//! Quality profile: measured KL cost of each (tensor group, format) choice (ADR 0045), and the
 //! additive estimate of a plan's KL from it.
 
 use crate::{Format, ModelDesc, Plan, UnitKind, UnitSel};

@@ -19,6 +19,7 @@ pub mod attr {
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
     pub const FORMAT: &str = "tetraeder.format";
+    pub const METHOD: &str = "tetraeder.spec.method";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +93,9 @@ pub struct Metrics {
     convert_duration: Histogram<f64>,
     convert_bytes: Counter<u64>,
     convert_cache: Counter<u64>,
+    spec_acceptance: Histogram<f64>,
+    spec_drafted: Counter<u64>,
+    spec_accepted: Counter<u64>,
 }
 
 impl Metrics {
@@ -200,6 +204,22 @@ impl Metrics {
                 .with_description(
                     "Converted tensors found in the conversion cache (hit) or converted (miss)",
                 )
+                .build(),
+            spec_acceptance: meter
+                .f64_histogram("tetraeder.spec.acceptance")
+                .with_unit("1")
+                .with_description("Share of drafted tokens the target accepted, per verify step")
+                .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                .build(),
+            spec_drafted: meter
+                .u64_counter("tetraeder.spec.drafted")
+                .with_unit("{token}")
+                .with_description("Tokens drafted for verification")
+                .build(),
+            spec_accepted: meter
+                .u64_counter("tetraeder.spec.accepted")
+                .with_unit("{token}")
+                .with_description("Drafted tokens the target accepted")
                 .build(),
         }
     }
@@ -344,7 +364,7 @@ impl Metrics {
             .record(accuracy, &[KeyValue::new(attr::LAYER, i64::from(layer))]);
     }
 
-    /// One tensor converted to `format` (ADR 0041).
+    /// One tensor converted to `format` (ADR 0044).
     pub fn convert_duration(&self, d: Duration, format: &str) {
         self.convert_duration.record(
             d.as_secs_f64(),
@@ -365,6 +385,18 @@ impl Metrics {
                 if hit { "hit" } else { "miss" },
             )],
         );
+    }
+
+    /// One verify step that carried `drafted` > 0 draft tokens of which `accepted` matched.
+    /// `method` is the drafter: `ngram` or `draft`.
+    pub fn spec_step(&self, method: &'static str, drafted: u64, accepted: u64) {
+        let a = [KeyValue::new(attr::METHOD, method)];
+        if drafted > 0 {
+            self.spec_acceptance
+                .record(accepted as f64 / drafted as f64, &a);
+        }
+        self.spec_drafted.add(drafted, &a);
+        self.spec_accepted.add(accepted, &a);
     }
 
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {

@@ -1,4 +1,4 @@
-//! Per-role formats (ADR 0041): bytes, validation, hints, the per-expert capability, diff.
+//! Per-role formats (ADR 0044): bytes, validation, hints, the per-expert capability, diff.
 
 use std::collections::BTreeMap;
 use tetraeder_plan::*;

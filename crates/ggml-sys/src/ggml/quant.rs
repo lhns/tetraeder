@@ -1,4 +1,4 @@
-//! Row conversion between ggml storage types and f32 (ADR 0041). Pure functions on slices, safe
+//! Row conversion between ggml storage types and f32 (ADR 0044). Pure functions on slices, safe
 //! to call from several threads on disjoint buffers.
 
 use super::{GgmlError, Result, Type};

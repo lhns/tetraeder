@@ -31,7 +31,7 @@ pub struct Capabilities {
     /// More than one replica and devices with tier `Remote`.
     pub multi_node: bool,
     /// Experts of one layer and role in different formats (needs slot tensors per type,
-    /// ADR 0041). No phase runs it yet.
+    /// ADR 0044). No phase runs it yet.
     pub per_expert_formats: bool,
 }
 

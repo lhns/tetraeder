@@ -1,5 +1,5 @@
 //! `tetraeder quant export`: converts a GGUF to other tensor formats through the conversion
-//! cache and writes it as one GGUF or as shards split by tensor groups (ADR 0041, 0042).
+//! cache and writes it as one GGUF or as shards split by tensor groups (ADR 0044, 0045).
 
 use anyhow::{Context, bail};
 use clap::{Args, Subcommand};

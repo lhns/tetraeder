@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek};
 use std::path::{Path, PathBuf};
 use tetraeder_ggml_sys::ggml::Type;
 
@@ -299,7 +299,7 @@ impl Gguf {
     }
 
     /// Points tensor `name` at `len` bytes of type `ty` at offset 0 of the headerless file `path`,
-    /// which becomes an extra shard (a conversion cache file, ADR 0041).
+    /// which becomes an extra shard (a conversion cache file, ADR 0044).
     pub fn retarget(&mut self, name: &str, ty: Type, path: PathBuf) -> Result<()> {
         let i = *self
             .by_name
@@ -373,10 +373,8 @@ fn parse_file(path: &Path, shard: usize) -> Result<Shard> {
             let off = rd.u64()?;
             raw.push((name, ne, ty, off));
         }
-        let mut r = rd.r;
-        let pos = r.stream_position().map_err(io)?;
+        let pos = rd.r.stream_position().map_err(io)?;
         let data_offset = pos.div_ceil(alignment) * alignment;
-        r.seek(SeekFrom::Start(data_offset)).ok();
         let mut tensors = Vec::new();
         for (name, ne, ty, off) in raw {
             let ty = Type::from_id(ty)

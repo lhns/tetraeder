@@ -1,10 +1,11 @@
 //! Qwen3 MoE graph builder (ADR 0030), op for op like libllama's `qwen3moe` graph.
 //!
-//! A step runs as `n_layer + 1` graph segments. Segment `l` finishes layer `l - 1` (expert FFN
-//! with the host-mapped expert ids, residual) and starts layer `l` (attention, router, top-k);
-//! it ends at the top-k. The host reads the ids, maps experts to slots (identity for now,
-//! [`map_experts`]) and passes the mapped ids to the next segment through a state tensor.
-//! Activations between segments stay in backend memory, in two alternating state slots.
+//! With every expert resident a step is one graph (ADR 0036). Otherwise it runs as `n_layer + 1`
+//! graph segments. Segment `l` finishes layer `l - 1` (expert FFN with the host-mapped expert
+//! ids, residual) and starts layer `l` (attention, router, top-k); it ends at the top-k. The
+//! host reads the ids, maps experts to slots and passes the mapped ids to the next segment
+//! through a state tensor. Activations between segments stay in backend memory, in two
+//! alternating state slots.
 //!
 //! With fewer expert slots than experts (ADR 0033) the expert tensors are slot tensors; between
 //! segments the [`Streamer`] makes the routed experts resident and the host writes slot ids.
@@ -174,7 +175,7 @@ pub struct LoadOptions {
     /// RAM tier, read the predicted ones into the RAM tier while the previous layer computes
     /// (ADR 0038). Without a RAM tier the prediction is only scored. Off by default.
     pub prefetch: bool,
-    /// Target format per GGUF tensor name (ADR 0041). A tensor whose target differs from its
+    /// Target format per GGUF tensor name (ADR 0044). A tensor whose target differs from its
     /// type in the file is converted at load, through the disk cache; empty loads the file as is.
     /// Only downward conversions; the router, norms and formats that need an importance matrix
     /// are refused.
@@ -373,10 +374,6 @@ fn lap(acc: &mut Duration, t: Instant) -> Instant {
     now
 }
 
-fn f16_bits_tensor_bytes(bits: &[u16]) -> Vec<u8> {
-    bits.iter().flat_map(|b| b.to_ne_bytes()).collect()
-}
-
 impl Qwen3Moe {
     pub fn load(path: impl AsRef<Path>, opts: &LoadOptions) -> Result<Qwen3Moe> {
         let mut file = ModelFile::open(path.as_ref())?;
@@ -504,7 +501,7 @@ impl Qwen3Moe {
         Ok(model)
     }
 
-    /// What the load-time format conversion did (ADR 0041).
+    /// What the load-time format conversion did (ADR 0044).
     pub fn convert_stats(&self) -> &ConvertStats {
         &self.convert
     }
@@ -667,6 +664,20 @@ impl Qwen3Moe {
         self.n_past = 0;
     }
 
+    /// Rolls the cache back to its first `n_past` tokens. Rows above stay in the KV buffers but
+    /// `run()` masks every column above `n_past + i` and the next step overwrites them, so
+    /// nothing needs clearing (ADR 0043).
+    pub fn rewind(&mut self, n_past: usize) -> Result<()> {
+        if n_past > self.n_past {
+            return Err(ModelError::Invalid(format!(
+                "cannot rewind to {n_past}: only {} tokens cached",
+                self.n_past
+            )));
+        }
+        self.n_past = n_past;
+        Ok(())
+    }
+
     /// Runs `tokens` after the tokens already in the cache and returns the logits of every
     /// position, `tokens.len() * n_vocab` values, position-major.
     pub fn eval(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {
@@ -718,7 +729,7 @@ impl Qwen3Moe {
                 mask[i * n_kv + j] = F16_NEG_INF;
             }
         }
-        st.mask.get().set_bytes(&f16_bits_tensor_bytes(&mask), 0)?;
+        st.mask.get().set_f16_bits(&mask)?;
         let mut prof = self.profile;
         prof.steps += 1;
         prof.inputs += t0.elapsed();
