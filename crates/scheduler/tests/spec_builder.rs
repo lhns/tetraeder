@@ -3,8 +3,11 @@
 //! experts (`MissPolicy::Cpu`). Prompt and generated tokens stay below 512 KV entries: from 512
 //! the CPU flash attention takes a split-KV path for single rows that a verify step does not.
 //!
-//! The fixture's F32 router may go through llamafile sgemm for 2+ rows on AVX machines, which
-//! would break the bitwise batch-invariance test there; it asserts bit equality anyway.
+//! Bit equality is asserted where ggml's kernels are batch-invariant (no AVX2). With AVX2 the
+//! multi-row step takes other kernels for some ops (llamafile sgemm for F32 from 2 rows, ADR
+//! 0043) and its logits differ in the last bits (seen on the CI runners, 2026-11-03), so there
+//! the logits must agree to a relative 1e-4 and speculative output may leave plain greedy only
+//! at a near-tie of the plain run (top-2 margin below `NEAR_TIE`).
 //!
 //! Hardware label (AGENTS rule 9): `cpu_*` tests need no GPU.
 
@@ -54,13 +57,60 @@ fn prefill(m: &mut Qwen3Moe) -> Vec<i32> {
     h
 }
 
-/// Plain greedy continuation by one-row steps; leaves the model rewound to the prefill.
-fn plain(m: &mut Qwen3Moe) -> Vec<i32> {
-    let mut h = prefill(m);
-    let mut sp = Speculator::new(DraftLen::Fixed(0), Sampling::GREEDY, None);
-    sp.generate(m, None, &mut h, N_GEN).unwrap();
+const NEAR_TIE: f32 = 1e-3;
+
+/// ggml's CPU kernels give the same bits for one row and for a few rows.
+fn batch_invariant_kernels() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        !std::arch::is_x86_feature_detected!("avx2")
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        false
+    }
+}
+
+/// Plain greedy history by one-row steps, plus the top-2 margin of the logits that chose each
+/// history position (0 for the prompt); leaves the model rewound to the prefill.
+fn plain_with_margins(m: &mut Qwen3Moe) -> (Vec<i32>, Vec<f32>) {
+    m.rewind(0).unwrap();
+    let p = prompt();
+    let mut margins = vec![0.0; N_PROMPT];
+    let mut l = m.eval_last(&p).unwrap();
+    let mut h = p;
+    while h.len() < N_PROMPT + 1 + N_GEN + MAX_VERIFY {
+        let top = argmax(&l);
+        let second = l
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != top)
+            .map(|(_, &x)| x)
+            .fold(f32::MIN, f32::max);
+        margins.push(l[top] - second);
+        h.push(top as i32);
+        l = m.eval(&[top as i32]).unwrap();
+    }
     m.rewind(N_PROMPT).unwrap();
-    h
+    (h, margins)
+}
+
+/// `got` equals plain greedy `want` over their common length, or (without batch-invariant
+/// kernels) first differs where plain greedy was a near-tie.
+fn assert_agrees(got: &[i32], want: &[i32], margins: &[f32], what: &str) {
+    let n = got.len().min(want.len());
+    let Some(i) = (0..n).find(|&i| got[i] != want[i]) else {
+        return;
+    };
+    assert!(
+        !batch_invariant_kernels() && margins[i] < NEAR_TIE,
+        "{what}: differs from plain greedy at {i} (plain top-2 margin {})",
+        margins[i]
+    );
+    eprintln!(
+        "{what}: leaves plain greedy at a near-tie, position {i}, margin {}",
+        margins[i]
+    );
 }
 
 struct Oracle(Vec<i32>);
@@ -107,11 +157,24 @@ fn batch_invariance(streaming: bool) {
     m.rewind(N_PROMPT).unwrap();
     for (i, &t) in toks.iter().enumerate() {
         let one = m.eval(&[t]).unwrap();
-        assert_eq!(
-            bits(&one),
-            bits(&batched[i * nv..(i + 1) * nv]),
-            "row {i} of the {MAX_VERIFY}-row step differs from its one-row step"
-        );
+        let row = &batched[i * nv..(i + 1) * nv];
+        if batch_invariant_kernels() {
+            assert_eq!(
+                bits(&one),
+                bits(row),
+                "row {i} of the {MAX_VERIFY}-row step differs from its one-row step"
+            );
+        } else {
+            let scale = one.iter().fold(0f32, |a, x| a.max(x.abs()));
+            let diff = one
+                .iter()
+                .zip(row)
+                .fold(0f32, |a, (x, y)| a.max((x - y).abs()));
+            assert!(
+                diff <= 1e-4 * scale,
+                "row {i}: max difference {diff} of {scale}"
+            );
+        }
     }
 }
 
@@ -127,7 +190,7 @@ fn cpu_batch_invariance_streaming() {
 
 fn speculative_equals_plain(streaming: bool) {
     let mut m = load(&fixture(), streaming);
-    let want = plain(&mut m);
+    let (want, margins) = plain_with_margins(&mut m);
     let lens = [
         DraftLen::Fixed(2),
         DraftLen::Fixed(6),
@@ -144,13 +207,8 @@ fn speculative_equals_plain(streaming: bool) {
             let mut sp = Speculator::new(len, Sampling::GREEDY, None);
             sp.generate(&mut m, Some(d.as_mut()), &mut h, N_GEN)
                 .unwrap();
-            let n = want.len();
-            assert_eq!(
-                &h[..n],
-                &want[..],
-                "{len:?} {} (streaming {streaming})",
-                d.method()
-            );
+            let what = format!("{len:?} {} (streaming {streaming})", d.method());
+            assert_agrees(&h, &want, &margins, &what);
             assert_eq!(m.n_past(), h.len() - 1);
             let st = sp.stats();
             assert_eq!(st.emitted, st.accepted + st.steps);
@@ -177,14 +235,14 @@ fn cpu_speculative_equals_plain_streaming() {
 fn cpu_draft_model_equals_plain_and_is_accepted() {
     let path = fixture();
     let mut m = load(&path, false);
-    let want = plain(&mut m);
+    let (want, margins) = plain_with_margins(&mut m);
     let mut d = DraftModel::load(&path, 256, 0, 2, 0.0).unwrap();
     d.check_vocab(m.n_vocab()).unwrap();
     assert!(d.check_vocab(m.n_vocab() + 1).is_err());
     let mut h = prefill(&mut m);
     let mut sp = Speculator::new(DraftLen::Fixed(4), Sampling::GREEDY, None);
     sp.generate(&mut m, Some(&mut d), &mut h, N_GEN).unwrap();
-    assert_eq!(&h[..want.len()], &want[..]);
+    assert_agrees(&h, &want, &margins, "draft model");
     let st = sp.stats();
     assert!(st.drafted > 0);
     let rate = st.accepted as f64 / st.drafted as f64;
