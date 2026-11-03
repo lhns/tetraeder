@@ -97,8 +97,8 @@ impl Backend for MoeBackend {
     }
 
     fn truncate(&mut self, keep: usize) -> Result<(), String> {
-        self.model.truncate(keep);
-        Ok(())
+        let keep = keep.min(self.model.n_past());
+        self.model.rewind(keep).map_err(|e| e.to_string())
     }
 
     fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String> {

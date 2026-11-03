@@ -43,4 +43,5 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0037](0037-split-gguf-and-slot-tiers-from-byte-budgets.md) | Split GGUF files; expert slot tiers sized from byte budgets and reported |
 | [0038](0038-predicted-next-layer-expert-prefetch.md) | Predicted next-layer expert prefetch into the RAM tier |
 | [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | No AVX2 repack of the builder's CPU weights for now |
+| [0043](0043-speculative-decoding-in-the-scheduler.md) | Speculative decoding in the scheduler: n-gram and draft-model drafts, batched verification |
 | [0046](0046-serving-real-engines-behind-the-gateway.md) | Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log |

@@ -18,6 +18,7 @@ pub mod attr {
     pub const LAYER: &str = "tetraeder.layer";
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
+    pub const METHOD: &str = "tetraeder.spec.method";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +91,9 @@ pub struct Metrics {
     prefetch_accuracy: Histogram<f64>,
     batch_size: Histogram<f64>,
     prefix_hits: Counter<u64>,
+    spec_acceptance: Histogram<f64>,
+    spec_drafted: Counter<u64>,
+    spec_accepted: Counter<u64>,
 }
 
 impl Metrics {
@@ -189,6 +193,22 @@ impl Metrics {
                 .u64_counter("tetraeder.kv.prefix.hits")
                 .with_unit("{request}")
                 .with_description("Requests that reused a cached prompt prefix")
+                .build(),
+            spec_acceptance: meter
+                .f64_histogram("tetraeder.spec.acceptance")
+                .with_unit("1")
+                .with_description("Share of drafted tokens the target accepted, per verify step")
+                .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                .build(),
+            spec_drafted: meter
+                .u64_counter("tetraeder.spec.drafted")
+                .with_unit("{token}")
+                .with_description("Tokens drafted for verification")
+                .build(),
+            spec_accepted: meter
+                .u64_counter("tetraeder.spec.accepted")
+                .with_unit("{token}")
+                .with_description("Drafted tokens the target accepted")
                 .build(),
         }
     }
@@ -341,6 +361,18 @@ impl Metrics {
     /// A request that reused a cached prompt prefix.
     pub fn kv_prefix_hit(&self) {
         self.prefix_hits.add(1, &[]);
+    }
+
+    /// One verify step that carried `drafted` > 0 draft tokens of which `accepted` matched.
+    /// `method` is the drafter: `ngram` or `draft`.
+    pub fn spec_step(&self, method: &'static str, drafted: u64, accepted: u64) {
+        let a = [KeyValue::new(attr::METHOD, method)];
+        if drafted > 0 {
+            self.spec_acceptance
+                .record(accepted as f64 / drafted as f64, &a);
+        }
+        self.spec_drafted.add(drafted, &a);
+        self.spec_accepted.add(accepted, &a);
     }
 
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {

@@ -24,3 +24,14 @@ groups:
         annotations:
           summary: "Expert prefetch predicts fewer than 40% of the routed experts"
           description: "Turn LoadOptions::prefetch off, or check the model: wasted prefetch bytes compete with the reads of the step."
+      # Speculative decoding (ADR 0043): rejected drafts still cost verify rows and expert reads.
+      - alert: TetraederSpecAcceptanceLow
+        expr: |
+          sum by (tetraeder_spec_method) (rate(tetraeder_spec_accepted_total[10m])) / sum by (tetraeder_spec_method) (rate(tetraeder_spec_drafted_total[10m])) < 0.3
+            and on(tetraeder_spec_method) sum by (tetraeder_spec_method) (rate(tetraeder_spec_drafted_total[10m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Speculative decoding ({{ $labels.tetraeder_spec_method }}) accepts fewer than 30% of its drafts"
+          description: "Drafts are issued but mostly rejected, so verify steps cost more than they save; switch the drafter off or shorten the draft length."
