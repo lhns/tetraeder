@@ -55,7 +55,8 @@ pub const N_GREEDY: usize = 12;
 
 /// Prefetch counters between two stats snapshots, per `per` (tokens): experts issued, used and
 /// wasted, bytes, the worker's read time against the time the step waited for it, and the
-/// prediction accuracy (hits over slots scored) per layer and overall (ADR 0038).
+/// prediction accuracy (hits over slots scored) per layer and overall, for the prediction one
+/// layer ahead and, with prefetch depth 2, two layers ahead (ADR 0038).
 pub fn prefetch_json(
     a: &tetraeder_model::ExpertStats,
     b: &tetraeder_model::ExpertStats,
@@ -65,6 +66,21 @@ pub fn prefetch_json(
     let read = (y.prefetch_read_time - x.prefetch_read_time).as_secs_f64();
     let wait = (y.prefetch_wait_time - x.prefetch_wait_time).as_secs_f64();
     let (mut hits, mut total) = (0u64, 0u64);
+    let (mut hits2, mut total2) = (0u64, 0u64);
+    let accuracy2: Vec<Option<f64>> = a
+        .layers
+        .iter()
+        .zip(&b.layers)
+        .map(|(p, q)| {
+            let (h, t) = (
+                q.predicted2_hits - p.predicted2_hits,
+                q.predicted2_total - p.predicted2_total,
+            );
+            hits2 += h;
+            total2 += t;
+            (t > 0).then(|| h as f64 / t as f64)
+        })
+        .collect();
     let accuracy: Vec<Option<f64>> = a
         .layers
         .iter()
@@ -90,6 +106,8 @@ pub fn prefetch_json(
         "overlap": if read > 0.0 { Some(1.0 - wait / read) } else { None },
         "accuracy_mean": if total > 0 { Some(hits as f64 / total as f64) } else { None },
         "accuracy": accuracy,
+        "accuracy2_mean": if total2 > 0 { Some(hits2 as f64 / total2 as f64) } else { None },
+        "accuracy2": accuracy2,
     })
 }
 

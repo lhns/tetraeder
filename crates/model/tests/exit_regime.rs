@@ -23,21 +23,39 @@
 //! - `TETRAEDER_EXIT_PREFETCH=1`: predicted next-layer expert prefetch into the RAM tier
 //!   (ADR 0038); the JSON gets `prefill_prefetch` and `decode_prefetch` (counters, overlap and
 //!   prediction accuracy per layer and mean).
+//! - `TETRAEDER_EXIT_PREFETCH_DEPTH` (1): layers ahead that the prefetch predicts and reads, 1 or
+//!   2; depth 2 adds `accuracy2` and `accuracy2_mean` to the prefetch JSON.
+//! - `TETRAEDER_EXIT_CPU_POLL`: ggml threadpool polling level 0 to 100 (default: ggml's 50).
+//! - `TETRAEDER_EXIT_PREFETCH_THREADS`: CPU compute threads while a prefetch read is in flight
+//!   (default: all).
 //! - `TETRAEDER_EXIT_REFRESH_HOT=1`: rebuild the hot set from the whole prefill before decode
 //!   (by default it comes from the first ubatch).
 //! - `TETRAEDER_EXIT_PROMPT_FILE`: text tokenized with the model's vocab (libllama, vocab
 //!   only), repeated to length. Default: deterministic pseudo-random token ids.
+//! - `TETRAEDER_EXIT_ENGINE=libllama`: the reference instead of the builder: libllama with
+//!   every layer on the GPU and the overrides of `TETRAEDER_EXIT_REF_OT` (default `exps=CPU`,
+//!   a `;` list of `regex=BUFFER_TYPE` as `llama-bench -ot`, first match wins). Same tokens,
+//!   ubatch, context and threads, so it is also the llama.cpp baseline on the real prompt
+//!   (llama-bench decodes random tokens); the JSON has the same speed and output fields.
 //! - `TETRAEDER_EXIT_OUT` (JSON file), `TETRAEDER_EXIT_MACHINE` (a note).
+//!
+//! Every run records `prompt` (token count and an FNV-1a hash of the token ids), `first_top`
+//! (the 10 largest logits after the prefill, `[id, logit]`) and `margins` (top-1 minus top-2
+//! logit at each greedy step), so two runs can be shown to have had the same input and a
+//! differing greedy token can be told apart from a near-tie.
 
 mod common;
 
 use common::synth::{MoeSpec, quantized_moe_at};
-use common::{argmax, prefetch_json};
+use common::{argmax, prefetch_json, top_k};
 use serde_json::{Value, json};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tetraeder_ggml_sys::ggml::Backend;
-use tetraeder_ggml_sys::llama::{Ftype, Model, ModelParams};
+use tetraeder_ggml_sys::llama::{
+    Batch, Context, ContextParams, FlashAttn, Ftype, Model, ModelParams, resolve_buffer_type,
+};
 use tetraeder_memory::process;
 use tetraeder_model::{
     BackendChoice, ExpertStats, IoCounters, LoadOptions, MissPolicy, ModelFile, Qwen3Moe,
@@ -112,6 +130,141 @@ fn prompt(path: &PathBuf, n: usize, n_vocab: usize) -> Vec<i32> {
             (x % n_vocab as u64) as i32
         })
         .collect()
+}
+
+/// FNV-1a over the token ids (little-endian i32), as hex.
+fn tokens_hash(tokens: &[i32]) -> String {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for b in tokens.iter().flat_map(|t| t.to_le_bytes()) {
+        h = (h ^ b as u64).wrapping_mul(0x100_0000_01b3);
+    }
+    format!("{h:016x}")
+}
+
+/// The 10 largest logits as `[id, logit]`.
+fn top_json(logits: &[f32]) -> Value {
+    json!(
+        top_k(logits, 10)
+            .into_iter()
+            .map(|i| json!([i, logits[i]]))
+            .collect::<Vec<_>>()
+    )
+}
+
+/// Top-1 minus top-2 logit.
+fn margin(logits: &[f32]) -> f32 {
+    let t = top_k(logits, 2);
+    logits[t[0]] - logits[t[1]]
+}
+
+/// Greedy decode of `n` tokens from `last` (the prefill's last logits) through `step`.
+fn greedy_decode(
+    last: &[f32],
+    n: usize,
+    mut step: impl FnMut(i32) -> Vec<f32>,
+) -> (Vec<i32>, Vec<f32>) {
+    let mut next = argmax(last) as i32;
+    let mut margins = vec![margin(last)];
+    let mut greedy = Vec::new();
+    for _ in 0..n {
+        greedy.push(next);
+        let l = step(next);
+        margins.push(margin(&l));
+        next = argmax(&l) as i32;
+    }
+    margins.truncate(n);
+    (greedy, margins)
+}
+
+/// The libllama reference run (`TETRAEDER_EXIT_ENGINE=libllama`), one per ubatch size.
+fn reference_run(
+    path: &PathBuf,
+    tokens: &[i32],
+    ub: usize,
+    n_decode: usize,
+    n_ctx: usize,
+    threads: usize,
+) -> Value {
+    let patterns = std::env::var("TETRAEDER_EXIT_REF_OT").unwrap_or_else(|_| "exps=CPU".into());
+    let overrides = patterns
+        .split(';')
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let (re, buft) = p.rsplit_once('=').expect("override is regex=BUFFER_TYPE");
+            (
+                re.to_string(),
+                resolve_buffer_type(buft).expect("buffer type"),
+            )
+        })
+        .collect();
+    let t0 = Instant::now();
+    let model = Arc::new(
+        Model::load(
+            path,
+            &ModelParams {
+                n_gpu_layers: 999,
+                buffer_overrides: overrides,
+                ..ModelParams::default()
+            },
+        )
+        .expect("libllama loads the model"),
+    );
+    let mut ctx = Context::new(
+        &model,
+        &ContextParams {
+            n_ctx: n_ctx as u32,
+            n_batch: ub as u32,
+            n_ubatch: ub as u32,
+            n_threads: threads as i32,
+            n_threads_batch: threads as i32,
+            flash_attn: FlashAttn::On,
+            ..ContextParams::default()
+        },
+    )
+    .expect("libllama context");
+    let load_s = t0.elapsed().as_secs_f64();
+    let mut batch = Batch::new(ub.max(1));
+    let t0 = Instant::now();
+    let mut pos = 0;
+    let n_chunks = tokens.len().div_ceil(ub.max(1));
+    for (c, chunk) in tokens.chunks(ub.max(1)).enumerate() {
+        batch.clear();
+        for (i, &t) in chunk.iter().enumerate() {
+            let last = c + 1 == n_chunks && i + 1 == chunk.len();
+            batch.push(t, pos, 0, last).unwrap();
+            pos += 1;
+        }
+        ctx.decode(&batch).expect("libllama prefill");
+    }
+    let prefill_s = t0.elapsed().as_secs_f64();
+    let last = ctx.logits_ith(-1).unwrap().to_vec();
+    let t0 = Instant::now();
+    let (greedy, margins) = greedy_decode(&last, n_decode, |t| {
+        batch.clear();
+        batch.push(t, pos, 0, true).unwrap();
+        pos += 1;
+        ctx.decode(&batch).expect("libllama decode");
+        ctx.logits_ith(-1).unwrap().to_vec()
+    });
+    let decode_s = t0.elapsed().as_secs_f64();
+    let run = json!({
+        "engine": "libllama",
+        "ref_ot": patterns,
+        "ubatch": ub,
+        "load_s": load_s,
+        "prefill_tokens": tokens.len(),
+        "prefill_s": prefill_s,
+        "prefill_tok_s": tokens.len() as f64 / prefill_s,
+        "decode_tokens": n_decode,
+        "decode_tok_s": n_decode as f64 / decode_s,
+        "first_top": top_json(&last),
+        "greedy": greedy,
+        "margins": margins,
+        "rss_bytes": process::current_rss(),
+        "peak_rss_bytes": process::peak_rss(),
+    });
+    eprintln!("{run}");
+    run
 }
 
 fn add_profile(a: &mut StepProfile, b: &StepProfile) {
@@ -213,6 +366,8 @@ fn exit_regime() {
         .map(|c| c as usize)
         .unwrap_or(n_prefill + n_decode);
     let tokens = prompt(&path, n_prefill, h.n_vocab as usize);
+    let prompt_info = json!({"tokens": tokens.len(), "fnv1a64": tokens_hash(&tokens)});
+    let reference = std::env::var("TETRAEDER_EXIT_ENGINE").is_ok_and(|v| v == "libllama");
 
     let mut opts = LoadOptions::new(if gpu {
         BackendChoice::Gpu { index: 0 }
@@ -225,6 +380,11 @@ fn exit_regime() {
     opts.miss = MissPolicy::Cpu;
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
     opts.prefetch = env_flag("TETRAEDER_EXIT_PREFETCH");
+    if let Some(d) = env_u64("TETRAEDER_EXIT_PREFETCH_DEPTH") {
+        opts.prefetch_depth = d as usize;
+    }
+    opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
+    opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
     let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
@@ -243,6 +403,10 @@ fn exit_regime() {
     let mut runs = Vec::new();
     let mut io_backend = None;
     for &ub in &ubatches {
+        if reference {
+            runs.push(reference_run(&path, &tokens, ub, n_decode, n_ctx, threads));
+            continue;
+        }
         let t0 = Instant::now();
         let mut m = Qwen3Moe::load(&path, &opts).expect("builder loads");
         let load_s = t0.elapsed().as_secs_f64();
@@ -268,7 +432,9 @@ fn exit_regime() {
         let refresh_s = t.elapsed().as_secs_f64();
         let s1 = m.expert_stats().unwrap();
 
+        let first_top = top_json(&last);
         let mut next = argmax(&last) as i32;
+        let mut margins = vec![margin(&last)];
         let mut greedy = Vec::new();
         // Decode in windows (each with its own profile and reads) so a detector run gets repeated
         // samples from one load; the wall-clock bounds let a host sampler align with them.
@@ -284,7 +450,9 @@ fn exit_regime() {
             let tw = Instant::now();
             for _ in 0..n {
                 greedy.push(next);
-                next = argmax(&m.eval(&[next]).expect("decode")) as i32;
+                let l = m.eval(&[next]).expect("decode");
+                margins.push(margin(&l));
+                next = argmax(&l) as i32;
             }
             let wall = tw.elapsed().as_secs_f64();
             let p = m.take_profile();
@@ -302,6 +470,7 @@ fn exit_regime() {
             sw = se;
             done += n;
         }
+        margins.truncate(n_decode);
         let decode_s = t0.elapsed().as_secs_f64();
         let s2 = m.expert_stats().unwrap();
 
@@ -314,6 +483,7 @@ fn exit_regime() {
             })
             .collect();
         let run = json!({
+            "engine": "tetraeder",
             "ubatch": ub,
             "load_s": load_s,
             "prefill_tokens": n_prefill,
@@ -330,8 +500,10 @@ fn exit_regime() {
             "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64),
             "decode_prefetch": prefetch_json(&s1, &s2, n_decode.max(1) as f64),
             "decode_layers": layers_json(&s1, &s2),
+            "first_top": first_top,
             "decode_windows": windows,
             "greedy": greedy,
+            "margins": margins,
             "max_splits": m.max_splits(),
             "memory": memory,
             "rss_bytes": process::current_rss(),
@@ -348,6 +520,7 @@ fn exit_regime() {
             "gpu_devices_visible": Backend::gpu_count(),
         },
         "model": model_info,
+        "prompt": prompt_info,
         "options": {
             "gpu": gpu,
             "threads": threads,
@@ -355,6 +528,9 @@ fn exit_regime() {
             "op_offload": opts.op_offload,
             "refresh_hot": refresh_hot,
             "prefetch": opts.prefetch,
+            "prefetch_depth": opts.prefetch_depth,
+            "cpu_poll": opts.cpu_poll,
+            "prefetch_threads": opts.prefetch_threads,
             "expert_slots": opts.expert_slots,
             "expert_slot_bytes": opts.expert_slot_bytes,
             "ram_slots": opts.ram_slots,

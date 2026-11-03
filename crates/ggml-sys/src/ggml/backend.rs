@@ -42,6 +42,12 @@ impl Backend {
     /// The CPU backend with `n_threads` compute threads in a threadpool of its own that lives as
     /// long as the backend (as libllama with an attached pool and llama-bench run).
     pub fn cpu(n_threads: i32) -> Result<Backend> {
+        Self::cpu_with_poll(n_threads, None)
+    }
+
+    /// [`Backend::cpu`] with the threadpool's `poll` level (0 to 100, clamped): how long idle
+    /// workers spin before they sleep. `None`: ggml's default (50).
+    pub fn cpu_with_poll(n_threads: i32, poll: Option<u32>) -> Result<Backend> {
         crate::llama::init();
         let n = n_threads.max(1);
         // SAFETY: plain constructor; null means failure.
@@ -50,6 +56,9 @@ impl Backend {
         // SAFETY: `params` is a valid in-out struct; null means failure.
         let pool = NonNull::new(unsafe {
             let mut params = sys::ggml_threadpool_params_default(n);
+            if let Some(p) = poll {
+                params.poll = p.min(100);
+            }
             sys::ggml_threadpool_new(&mut params)
         });
         // Owned from here, so a failure below frees both.
@@ -69,6 +78,17 @@ impl Backend {
         Ok(Backend {
             inner: Rc::new(inner),
         })
+    }
+
+    /// Compute threads of the next graphs on a CPU backend; keep it within the threadpool's size.
+    /// No effect on a GPU backend.
+    pub fn set_cpu_threads(&self, n_threads: i32) {
+        if self.inner.is_cpu {
+            // SAFETY: live CPU backend; only the thread count of later graph computes changes.
+            unsafe {
+                sys::ggml_backend_cpu_set_n_threads(self.inner.ptr.as_ptr(), n_threads.max(1))
+            };
+        }
     }
 
     /// The `index`-th GPU device (discrete GPUs first, then integrated), if the build has one.
