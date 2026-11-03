@@ -7,13 +7,21 @@
 //! - [`campaign`]: the bench spec that measures the candidates, anchors and baselines.
 //! - [`score`]: calibration from the anchors, regret and rank correlation over the candidates.
 //!
+//! Phase 3a, milestone B: the search.
+//! - [`quality`]: the [`QualityModel`] trait, null and table models.
+//! - [`objective`]: [`Scored`], [`choose`] (limits, quality, cost, speed; Pareto front, tradeoff).
+//! - [`search`]: skeletons, pruning, layer DP, expert tiers, format knapsack, scoring.
+//!
 //! This crate does not depend on ggml, the engine or the model crate.
 
 pub mod campaign;
 pub mod candidate;
 pub mod layout;
 pub mod lower;
+pub mod objective;
+pub mod quality;
 pub mod score;
+pub mod search;
 
 pub use campaign::{Campaign, CampaignVariant, CandidateEntry, CandidatesFile, Group};
 pub use candidate::{
@@ -22,3 +30,6 @@ pub use candidate::{
 };
 pub use layout::{LayerBytes, ModelLayout, ModelMeta, TensorRec, TypeSummary, build_layout};
 pub use lower::{range_regex, to_llama_bench_args, to_variant_args};
+pub use objective::{Choice, Scored, StageTime, choose, pareto_front, resource_cost};
+pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
+pub use search::{SearchInput, SearchResult, Split, search, split_layers};
