@@ -197,6 +197,9 @@ EOF
       exit_regime drift-small 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_EXIT_RAM_SLOT_BYTES=30000000000
       exit_regime drift-nooffload 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_EXIT_OP_OFFLOAD=0
       exit_regime drift-nooffload-on 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_OP_OFFLOAD=0
+      # the RAM groups on the CPU (exact over slot counts on the synthetic fixtures) with the smaller RAM tier: equal
+      # to drift-nooffload unless an expert's bytes depend on the slot count
+      exit_regime drift-nooffload-small 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_EXIT_OP_OFFLOAD=0         TETRAEDER_EXIT_RAM_SLOT_BYTES=30000000000
       exit_regime drift-nofuse 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0 GGML_CUDA_DISABLE_FUSION=1
       # libllama's own sensitivity to how the same tokens are batched: the yardstick for the builder's drift
       exit_regime drift-ref-ub512 15 "${short[@]}" TETRAEDER_EXIT_UBATCH=512 TETRAEDER_EXIT_ENGINE=libllama         TETRAEDER_EXIT_REF_OT="$ot_fit"
