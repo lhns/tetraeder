@@ -266,6 +266,7 @@ fn assign(
         home: Some(vec![device.to_string()]),
         compute: None,
         format: Some(fmt),
+        role_formats: Default::default(),
     }
 }
 

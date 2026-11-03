@@ -9,3 +9,4 @@ Dockerfile text eol=lf
 *.toml text eol=lf
 crates/tetraeder/GIT_SHA export-subst
 *.gguf binary
+bench/prompts/*.txt -text

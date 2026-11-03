@@ -24,9 +24,9 @@ serde = "1"
 serde_json = "1"
 tetraeder-analysis = { path = "../analysis" }
 tetraeder-engine = { path = "../engine" }
-tetraeder-gateway = { path = "../gateway" }
 tetraeder-model = { path = "../model" }
 tetraeder-plan = { path = "../plan" }
+tetraeder-gateway = { path = "../gateway" }
 tetraeder-planner = { path = "../planner" }
 tetraeder-scheduler = { path = "../scheduler" }
 opentelemetry = "0.33.1"

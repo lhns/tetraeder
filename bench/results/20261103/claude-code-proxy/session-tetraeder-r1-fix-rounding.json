@@ -1,0 +1,109 @@
+{
+  "engine": "tetraeder",
+  "rep": 1,
+  "task": "fix-rounding",
+  "started": "2026-11-03T10:40:31",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 31505,
+    "stop_reason": "end_turn",
+    "session_id": "4c8672f5-e3c3-416a-8047-d8ee34c4afeb",
+    "total_cost_usd": 0.1665998,
+    "usage": {
+      "input_tokens": 16948,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 235439,
+      "output_tokens": 2586,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 16948,
+        "outputTokens": 2586,
+        "cacheReadInputTokens": 235439,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.1665998,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 17,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully fixed the tax rounding issue in the invoicing system. \n\n## Problem Summary\nThe issue was in the `round_half_up` function in `invoicing/money.py`. It was supposed to implement \"round half away from zero\" behavior, but was incorrectly using Python's built-in `round()` function which implements \"banker's rounding\" (round half to even). This caused 12.5 cents to be rounded down to 12 instead of up to 13.\n\n## Solution\nI modified the `round_half_up` function to properly implement \"round half away from zero\" behavior:\n- For exact half values (like 12.5): rounds away from zero (12.5 \u2192 13 for positive, -12.5 \u2192 -13 for negative)\n- For non-half values: uses normal rounding behavior\n\n## Verification\n- \u2705 The originally failing test now passes: `test_reduced_rate_on_250_cents_rounds_up`\n- \u2705 All regression tests pass\n- \u2705 Full test suite (85 tests) passes completely\n- \u2705 Specific test cases now work correctly:\n  - `apply_rate(250, 500)` returns `13` (12.5 rounds up)\n  - Other rounding cases also work as expected\n\nThe fix ensures tax calculations now properly round half-cent amounts away from zero, matching the expected behavior described in the test cases.",
+    "ttft_ms": 4091,
+    "type": "result",
+    "duration_ms": 36606,
+    "uuid": "6063a58a-f707-437a-94ae-fdc8ac264e16",
+    "ttft_stream_ms": 140,
+    "time_to_request_ms": 100,
+    "first_content_frame_ms": 3526,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 36.99,
+  "check": {
+    "passed": false,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 1,
+        "output_tail": ".....................F.................................................. [ 74%]\n.........................                                                [100%]\n=================================== FAILURES ===================================\n__________________________ test_exact_for_huge_values __________________________\n\n    def test_exact_for_huge_values():\n        # float division would lose precision here\n        n = 10**22 + 5\n>       assert round_half_up(n, 10) == 10**21 + 1\nE       assert 1000000000000000000000 == ((10 ** 21) + 1)\nE        +  where 1000000000000000000000 = round_half_up(10000000000000000000005, 10)\n\ntests/test_hidden_rounding.py:17: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_hidden_rounding.py::test_exact_for_huge_values - assert 100...\n1 failed, 96 passed in 0.26s\n"
+      }
+    ]
+  },
+  "success": false
+}

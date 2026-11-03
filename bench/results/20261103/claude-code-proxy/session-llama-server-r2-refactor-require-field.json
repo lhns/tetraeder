@@ -1,0 +1,114 @@
+{
+  "engine": "llama-server",
+  "rep": 2,
+  "task": "refactor-require-field",
+  "started": "2026-11-03T11:27:10",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 48562,
+    "stop_reason": "end_turn",
+    "session_id": "1c07702d-7153-4f17-92e6-9a543edb624d",
+    "total_cost_usd": 0.23629900000000004,
+    "usage": {
+      "input_tokens": 21241,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 319175,
+      "output_tokens": 4375,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 21241,
+        "outputTokens": 4375,
+        "cacheReadInputTokens": 319175,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.23629900000000004,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 19,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully refactored the invoicing/parsing.py file to eliminate the repeated pattern of checking for missing or blank header fields. The implementation meets all requirements:\n\n## Summary of Changes\n\n1. **Added a helper function `_require_field()`** that encapsulates the common logic for checking if header fields are present and not blank\n2. **Refactored three functions** (`parse_number`, `parse_customer`, and `parse_issued`) to use this helper instead of repeating the same code\n3. **Preserved all existing behavior** - error messages and functionality remain exactly the same\n4. **Verified all tests pass** - both the specific parsing tests and the full test suite (83 tests)\n\nThe refactoring reduces code duplication while maintaining identical behavior, making the code more maintainable without any functional changes. All existing tests continue to pass, confirming that no behavior was altered.",
+    "ttft_ms": 5239,
+    "type": "result",
+    "duration_ms": 50693,
+    "uuid": "552736f8-ec8a-4ee8-8e65-812fb41d7ff6",
+    "ttft_stream_ms": 4444,
+    "time_to_request_ms": 100,
+    "first_content_frame_ms": 4445,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 51.1,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 86%]\n...........                                                              [100%]\n83 passed in 0.22s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/refactor_require.py ",
+        "exit_code": 0,
+        "output_tail": "new helpers and call counts: {'_require_field': 3}\n"
+      }
+    ]
+  },
+  "success": true
+}

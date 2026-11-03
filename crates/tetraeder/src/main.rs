@@ -5,6 +5,7 @@ mod bench;
 mod doctor;
 mod engine_args;
 mod plan;
+mod quant;
 mod run;
 mod serve;
 mod top;
@@ -26,6 +27,9 @@ enum Command {
     Run(run::RunArgs),
     /// llama-bench's pp and tg tests through the engine; prints llama-bench JSON rows.
     Bench(bench::BenchArgs),
+    /// Quantization tools: convert tensor formats and export a GGUF.
+    #[command(subcommand)]
+    Quant(quant::QuantCommand),
     /// Planner inputs and tools.
     Plan(plan::PlanArgs),
     /// Detector report of an observation file (faults, limits, verdict).
@@ -44,6 +48,7 @@ fn main() -> std::process::ExitCode {
         }
         Some(Command::Run(args)) => run::run(&args),
         Some(Command::Bench(args)) => bench::run(&args),
+        Some(Command::Quant(cmd)) => quant::run(&cmd),
         Some(Command::Plan(args)) => plan::run(&args),
         Some(Command::Doctor(args)) => doctor::run(&args),
         Some(Command::Advise(args)) => advise::run(&args),

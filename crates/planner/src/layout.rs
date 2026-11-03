@@ -114,6 +114,7 @@ impl ModelLayout {
                 params: bytes.div_ceil(block) * elems,
                 flops_per_token: 2.0 * (bytes as f64 * elems as f64 / block as f64),
                 source_format: f,
+                roles: Vec::new(),
             }
         };
         let attn = avg(self.layers.iter().map(|l| l.attn_bytes).sum(), n);
