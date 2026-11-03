@@ -15,7 +15,7 @@ The Claude Code proxy run (bench/results/20261103/claude-code-proxy, ADR 0046 "M
 
 1. `live` = longest common prefix of the live sequence and the prompt; `best` = the longest common prefix over the saved entries.
 2. Before the live sequence loses 512 or more tokens (truncation or restore), it is saved, unless an entry already holds it; an entry that is a prefix of it is replaced.
-3. If `best` exceeds `live` by at least 64 tokens, that entry is restored into the KV cache.
+3. If `best` exceeds `live` by at least 64 tokens, that entry is restored into the KV cache and leaves the cache (it is the live sequence now, saved again when it is dropped).
 4. Then truncate to the common prefix and evaluate the rest, as in ADR 0046.
 
 Backends gain `snapshot() -> Snapshot` (the cached rows as host bytes plus their tokens) and `restore(&Snapshot)`. libllama: `llama_state_seq_get_size/get_data/set_data` for sequence 0 (new ggml-sys bindings, Rule 7). The MoE builder: copies of rows `0..n_past` of every layer's K and V tensors through the backend tensor get/set, then `n_past = n`. `EngineStats.cached_tokens` counts tokens from either source.
