@@ -13,17 +13,27 @@
 //! - [`objective`]: [`Scored`], [`choose`] (limits, quality, cost, speed; Pareto front, tradeoff).
 //! - [`search`]: skeletons, pruning, layer DP, expert tiers, format knapsack, scoring.
 //!
+//! Phase 3a, milestone C: explain, diff, what-if.
+//! - [`explain`]: why the search chose its plan (binding resource, runner-up, formats, front).
+//! - [`diff`]: [`plan_diff`], what moves between two plans and how long the switch takes.
+//! - [`whatif`]: the priors database, hardware changes, [`what_if`] and [`rank_purchases`].
+//! - [`cli`]: the `explain`, `diff` and `what-if` subcommands as functions.
+//!
 //! This crate does not depend on ggml, the engine or the model crate.
 
 pub mod builder;
 pub mod campaign;
 pub mod candidate;
+pub mod cli;
+pub mod diff;
+pub mod explain;
 pub mod layout;
 pub mod lower;
 pub mod objective;
 pub mod quality;
 pub mod score;
 pub mod search;
+pub mod whatif;
 
 pub use builder::{build_builder_candidate, enumerate_builder};
 pub use campaign::{Campaign, CampaignVariant, CandidateEntry, CandidatesFile, Group};
@@ -31,8 +41,11 @@ pub use candidate::{
     Budget, Candidate, EngineKind, Enumeration, Footprint, Placement, Workload, build_candidate,
     build_plan, enumerate, footprint,
 };
+pub use diff::{PlanSwitch, plan_diff};
+pub use explain::{Explanation, explain};
 pub use layout::{LayerBytes, ModelLayout, ModelMeta, TensorRec, TypeSummary, build_layout};
 pub use lower::{range_regex, to_exit_regime_env, to_llama_bench_args, to_variant_args};
-pub use objective::{Choice, Scored, StageTime, choose, pareto_front, resource_cost};
+pub use objective::{Choice, SPEED_BAND, Scored, StageTime, choose, pareto_front, resource_cost};
 pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
 pub use search::{SearchInput, SearchResult, Split, search, split_layers};
+pub use whatif::{Change, WhatIf, apply, rank_purchases, what_if};
