@@ -5,6 +5,7 @@
 //! - [`candidate`]: [`enumerate`] the executable candidate plans for one GPU plus the CPU.
 //! - [`lower`]: a candidate as llama-bench arguments.
 //! - [`campaign`]: the bench spec that measures the candidates, anchors and baselines.
+//! - [`score`]: calibration from the anchors, regret and rank correlation over the candidates.
 //!
 //! This crate does not depend on ggml, the engine or the model crate.
 
@@ -12,6 +13,7 @@ pub mod campaign;
 pub mod candidate;
 pub mod layout;
 pub mod lower;
+pub mod score;
 
 pub use campaign::{Campaign, CampaignVariant, CandidateEntry, CandidatesFile, Group};
 pub use candidate::{
