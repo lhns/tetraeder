@@ -96,3 +96,38 @@ fn expert_slabs_tile_the_stacked_tensors() {
     assert!(f.expert_slabs(0, 8).is_err());
     assert!(f.expert_slabs(2, 0).is_err());
 }
+
+/// A plan's unit and role formats map onto GGUF tensor names (`tetraeder quant formats`);
+/// experts of one layer and role with different formats are refused (one stacked tensor).
+#[test]
+fn tensor_formats_from_a_plan() {
+    let f = open();
+    let toml = |extra: &str| {
+        format!(
+            "model = \"x\"\n[[replicas]]\n[[replicas.stages]]\nlayers = [0, 2]\ndevices = [\"cpu0\"]\n\
+             tp = 1\nep = 1\n[[replicas.stages.assign]]\nunits = {{}}\nhome = [\"cpu0\"]\nformat = \"Q8_0\"\n\
+             role_formats = {{ \"attn.v\" = \"F16\", \"expert.down\" = \"Q4_0\" }}\n{extra}"
+        )
+    };
+    let plan = tetraeder_plan::Plan::from_toml(&toml("")).unwrap();
+    let m = f.tensor_formats(&plan).unwrap();
+    assert_eq!(m["token_embd.weight"], Format::Q8_0);
+    assert_eq!(m["output.weight"], Format::Q8_0);
+    assert_eq!(m["blk.1.attn_v.weight"], Format::F16);
+    assert_eq!(m["blk.1.attn_q.weight"], Format::Q8_0);
+    assert_eq!(m["blk.0.ffn_down_exps.weight"], Format::Q4_0);
+    assert_eq!(m["blk.0.ffn_gate_exps.weight"], Format::Q8_0);
+    assert!(!m.keys().any(|k| k.contains("norm") || k.contains("ffn_gate_inp")));
+    assert_eq!(m.len(), 2 + 2 * 7);
+
+    // experts 0..4 of every layer in Q4_K: the first matching rule wins, so they differ from 4..8
+    let split = toml(
+        "[[replicas.stages.assign]]\nunits = { kinds = [\"expert\"], experts = [0, 4] }\nhome = [\"cpu0\"]\nformat = \"Q4_K\"\n",
+    )
+    .replacen("units = {}", "units = { kinds = [\"expert\"], experts = [4, 8] }", 1);
+    let split = format!(
+        "{split}[[replicas.stages.assign]]\nunits = {{ kinds = [\"embed\", \"attn\", \"mlp\", \"head\"] }}\nhome = [\"cpu0\"]\nformat = \"Q8_0\"\n"
+    );
+    let plan = tetraeder_plan::Plan::from_toml(&split).unwrap();
+    assert!(f.tensor_formats(&plan).is_err());
+}
