@@ -51,7 +51,8 @@ fi
 ram_bytes=$((mem - ${RAM_RESERVE_GB:-8} * 1000000000))
 # expert VRAM: VRAM_SLOT_BYTES if set, else what llama.cpp's tuned -ot puts on the GPU (stage llama-fit), else 5.5 GB
 vram_bytes="${VRAM_SLOT_BYTES:-5500000000}"
-ot_fit='blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU'
+# OT_FIT: the tuned llama.cpp -ot when the llama-fit stage is skipped
+ot_fit="${OT_FIT:-blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU}"
 ik_bench="${IK_BENCH:-/opt/ik_llama/bin/llama-bench}"
 bench="${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}"
 # natural text for the prompt (random token ids spread routing pessimistically), frozen: it was built from the
@@ -196,7 +197,8 @@ EOF
       # are joined with ';'), then ik_llama.cpp with the same overrides (it was OOM-killed at 128 GB with mmap)
       baseline "$bench" exit-llama-ot-fit-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot "$ot_fit"
       # (ik's llama-bench has no -d: -gp 32768,32 is decode after a 32K prompt)
-      baseline "$ik_bench" exit-ik-ot-fit-d32k 40 -ub 2048 -p 2048 -n 0 -gp 32768,32 -ot "$ot_fit"
+      # (and its -ot takes ',' between overrides)
+      baseline "$ik_bench" exit-ik-ot-fit-d32k 40 -ub 2048 -p 2048 -n 0 -gp 32768,32 -ot "${ot_fit//;/,}"
       # other tracks' stages (speculative decoding) go here
       ktransformers
       # Colibri last; 32K deep is out of reach (2046 tokens took 895 s), so only the short profile by default
