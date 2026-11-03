@@ -131,14 +131,15 @@ ktransformers() {
   echo "[$(date +%T)] done ktransformers rc=$?"
 }
 
-# llama_fit: the most layers' experts llama.cpp keeps on the GPU at ctx 33024, ubatch 2048 (scripts/llama_fit.sh); the
+# llama_fit: the most layers' experts llama.cpp keeps on the GPU at ubatch 2048 and llama-bench's context for
+# -p 2048 -n 32 -d 32768 (34848; at 33024 eight layers fit llama-server but not llama-bench) (scripts/llama_fit.sh); the
 # builder then gets the same expert bytes as VRAM slots (from the smoke run's per-layer expert sizes), so both engines
 # use the same VRAM for experts
 llama_fit() {
   want llama-fit || return 0
   echo "[$(date +%T)] start llama-fit"
   local f="$date_dir/exit-llama-fit-$stamp.json"
-  bash scripts/llama_fit.sh "$model" "$threads" 2048 33024 "$f" || return 0
+  FIT_MAX="${FIT_MAX:-9}" bash scripts/llama_fit.sh "$model" "$threads" 2048 34848 "$f" || return 0
   local n
   n=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['layers'])" "$f") || return 0
   [ "$n" -ge 0 ] || return 0
@@ -189,7 +190,8 @@ EOF
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
       # are joined with ';'), then ik_llama.cpp with the same overrides (it was OOM-killed at 128 GB with mmap)
       baseline "$bench" exit-llama-ot-fit-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot "$ot_fit"
-      baseline "$ik_bench" exit-ik-ot-fit-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot "$ot_fit"
+      # (ik's llama-bench has no -d: -gp 32768,32 is decode after a 32K prompt)
+      baseline "$ik_bench" exit-ik-ot-fit-d32k 40 -ub 2048 -p 2048 -n 0 -gp 32768,32 -ot "$ot_fit"
       # other tracks' stages (speculative decoding) go here
       ktransformers
       # Colibri last; 32K deep is out of reach (2046 tokens took 895 s), so only the short profile by default
