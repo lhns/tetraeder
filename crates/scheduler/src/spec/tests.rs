@@ -146,7 +146,10 @@ fn spec(len: DraftLen, s: Sampling, d: &mut dyn Drafter) -> (Vec<i32>, SpecStats
 
 fn check(len: DraftLen, s: Sampling, d: &mut dyn Drafter, want: &[i32]) -> SpecStats {
     let (h, st, t) = spec(len, s, d);
-    assert_eq!(&h[..want.len()], want, "{len:?} {s:?}");
+    // `want` runs past N so the oracle covers the overshoot; compare the common length.
+    let n = h.len().min(want.len());
+    assert!(n >= PROMPT.len() + N);
+    assert_eq!(&h[..n], &want[..n], "{len:?} {s:?}");
     assert_eq!(st.emitted, st.accepted + st.steps);
     assert_eq!(st.emitted as usize, h.len() - PROMPT.len());
     assert_eq!(st.by_batch.iter().map(|b| b.steps).sum::<u64>(), st.steps);
@@ -274,9 +277,9 @@ fn choose_is_deterministic_per_position_and_follows_the_distribution() {
     for pos in 0..4000 {
         counts[choose(&l, pos, &s) as usize] += 1;
     }
-    // softmax = [0.09, 0.67, 0.09, 0.24]
+    // softmax = [0.083, 0.610, 0.083, 0.224]
     assert!(
-        (counts[1] as f64 / 4000.0 - 0.665).abs() < 0.03,
+        (counts[1] as f64 / 4000.0 - 0.610).abs() < 0.03,
         "{counts:?}"
     );
     assert!(counts[3] > counts[0]);
