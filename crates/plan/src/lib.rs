@@ -16,6 +16,7 @@ mod migrate;
 mod model;
 mod phase;
 mod plan;
+mod quality;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 mod validate;
@@ -27,10 +28,11 @@ pub use hints::{
     Forbid, FormatFloor, Freeze, Hints, Level, Objective, Pin, Prefer, Stability, WorkloadHints,
 };
 pub use migrate::{MigrationDag, State, Step};
-pub use model::{ModelDesc, UnitId, UnitKind, UnitSize};
+pub use model::{ModelDesc, RoleSize, UnitId, UnitKind, UnitSize};
 pub use phase::{Capabilities, ComputeOverride, Phase};
 pub use plan::{
     Assign, DeviceBytes, Knobs, PhaseBudget, PhaseBytes, Plan, Replica, SlotCache, Span, Stage,
-    UnitSel,
+    UnitFormats, UnitSel,
 };
+pub use quality::{EstimateError, QUALITY_SCHEMA, QualityError, QualityIssue, QualityProfile};
 pub use validate::{At, Context, Issue, validate, validate_partial};

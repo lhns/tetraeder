@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "model": {
+    "name": "small-moe",
+    "arch": "qwen3moe",
+    "source": "small-moe-f16.gguf",
+    "source_format": "F16",
+    "fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+    "layers": 4,
+    "experts": 8
+  },
+  "ggml": "b11976",
+  "calibration": {
+    "text": "wikitext-2-raw/wiki.train.raw",
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "ctx": 512,
+    "chunks": 32,
+    "scored_tokens": 8192
+  },
+  "imatrix": null,
+  "reference": {
+    "format": "F16"
+  },
+  "base": {
+    "format": "Q8_0",
+    "kl": 0.002,
+    "bytes": 471750000
+  },
+  "layer_span": 2,
+  "groups": [
+    {
+      "id": "embed",
+      "units": {
+        "kinds": [
+          "embed"
+        ]
+      },
+      "roles": [],
+      "params": 100000000,
+      "entries": [
+        {
+          "format": "Q6_K",
+          "bytes": 82031250,
+          "kl": 0.0031,
+          "ppl": 6.031
+        },
+        {
+          "format": "Q4_K",
+          "bytes": 56250000,
+          "kl": 0.009,
+          "ppl": 6.09
+        }
+      ]
+    },
+    {
+      "id": "head",
+      "units": {
+        "kinds": [
+          "head"
+        ]
+      },
+      "roles": [],
+      "params": 100000000,
+      "entries": [
+        {
+          "format": "Q6_K",
+          "bytes": 82031250,
+          "kl": 0.0042,
+          "ppl": 6.042
+        },
+        {
+          "format": "Q4_K",
+          "bytes": 56250000,
+          "kl": 0.012,
+          "ppl": 6.12
+        }
+      ]
+    },
+    {
+      "id": "attn.qk.0",
+      "units": {
+        "kinds": [
+          "attn"
+        ],
+        "layers": [
+          0,
+          2
+        ]
+      },
+      "roles": [
+        "attn.q",
+        "attn.k"
+      ],
+      "params": 20000000,
+      "entries": [
+        {
+          "format": "Q6_K",
+          "bytes": 16406250,
+          "kl": 0.005,
+          "ppl": 6.05
+        },
+        {
+          "format": "Q4_K",
+          "bytes": 11250000,
+          "kl": 0.02,
+          "ppl": 6.2
+        }
+      ]
+    },
+    {
+      "id": "attn.qk.1",
+      "units": {
+        "kinds": [
+          "attn"
+        ],
+        "layers": [
+          2,
+          4
+        ]
+      },
+      "roles": [
+        "attn.q",
+        "attn.k"
+      ],
+      "params": 20000000,
+      "entries": [
+        {
+          "format": "Q6_K",
+          "bytes": 16406250,
+          "kl": 0.004,
+          "ppl": 6.04
+        },
+        {
+          "format": "Q4_K",
+          "bytes": 11250000,
+          "kl": 0.015,
+          "ppl": 6.15
+        }
+      ]
+    },
+    {
+      "id": "attn.v",
+      "units": {
+        "kinds": [
+          "attn"
+        ]
+      },
+      "roles": [
+        "attn.v"
+      ],
+      "params": 8000000,
+      "entries": [
+        {
+          "format": "Q6_K",
+          "bytes": 6562500,
+          "kl": 0.003,
+          "ppl": 6.03
+        },
+        {
+          "format": "Q4_K",
+          "bytes": 4500000,
+          "kl": 0.03,
+          "ppl": 6.3
+        }
+      ]
+    },
+    {
+      "id": "expert.down",
+      "units": {
+        "kinds": [
+          "expert"
+        ]
+      },
+      "roles": [
+        "expert.down"
+      ],
+      "params": 51200000,
+      "entries": [
+        {
+          "format": "Q6_K",
+          "bytes": 42000000,
+          "kl": 0.0042,
+          "ppl": 6.045
+        },
+        {
+          "format": "Q4_K",
+          "bytes": 28800000,
+          "kl": 0.018,
+          "ppl": 6.18
+        }
+      ]
+    },
+    {
+      "id": "expert.gateup",
+      "units": {
+        "kinds": [
+          "expert"
+        ]
+      },
+      "roles": [
+        "expert.gate",
+        "expert.up"
+      ],
+      "params": 108800000,
+      "entries": [
+        {
+          "format": "Q6_K",
+          "bytes": 89250000,
+          "kl": 0.006,
+          "ppl": 6.06
+        },
+        {
+          "format": "Q4_K",
+          "bytes": 61200000,
+          "kl": 0.025,
+          "ppl": 6.25
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "name": "mix-a",
+      "formats": {
+        "embed": "Q4_K",
+        "expert.down": "Q6_K"
+      },
+      "estimate": 0.0115,
+      "measured": 0.0119
+    }
+  ],
+  "cost": {
+    "seconds": 1800.0,
+    "gpu": "RTX 3090",
+    "host": "vast-0",
+    "threads": 8
+  }
+}

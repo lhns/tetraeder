@@ -47,6 +47,8 @@ pub enum GgmlType {
     Q4K,
     Q5K,
     Q6K,
+    Iq4Xs,
+    Iq4Nl,
 }
 
 impl GgmlType {
@@ -65,6 +67,8 @@ impl GgmlType {
             Self::Q4K => sys::GGML_TYPE_Q4_K,
             Self::Q5K => sys::GGML_TYPE_Q5_K,
             Self::Q6K => sys::GGML_TYPE_Q6_K,
+            Self::Iq4Xs => sys::GGML_TYPE_IQ4_XS,
+            Self::Iq4Nl => sys::GGML_TYPE_IQ4_NL,
         }) as _
     }
 }

@@ -15,7 +15,7 @@ pub enum ShardChange {
         key: ShardKey,
         from: Placement,
     },
-    /// Same key, different home, compute, format or stage.
+    /// Same key, different home, compute, format (default or any role) or stage.
     Change {
         key: ShardKey,
         from: Placement,
@@ -67,7 +67,9 @@ impl PlanDiff {
             .map(|c| match c {
                 ShardChange::Add { to, .. } => to.bytes,
                 ShardChange::Change { from, to, .. }
-                    if from.home != to.home || from.format != to.format =>
+                    if from.home != to.home
+                        || from.format != to.format
+                        || from.roles != to.roles =>
                 {
                     to.bytes
                 }

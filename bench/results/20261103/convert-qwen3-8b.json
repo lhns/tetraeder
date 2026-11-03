@@ -1,0 +1,79 @@
+{
+ "schema": 1,
+ "source": "Qwen3-8B-BF16.gguf",
+ "preset": "Q4_K_M",
+ "threads": 11,
+ "gpu": "NVIDIA GeForce RTX 3090, 580.173.02",
+ "host": "2e01839a4205",
+ "rows": [
+  {
+   "tool": "llama-quantize",
+   "repeat": 0,
+   "seconds": 71.02747178077698,
+   "source_bytes": 16382087168,
+   "gb_per_s_in": 0.23064437966428764
+  },
+  {
+   "tool": "tetraeder",
+   "repeat": 0,
+   "seconds": 88.30582213401794,
+   "source_bytes": 16382087168,
+   "gb_per_s_in": 0.18551536888629622,
+   "bytes_in": 16382087168,
+   "bytes_out": 5027784288,
+   "cache_hits": 0,
+   "convert_seconds": 80.152473731,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-8B-GGUF/Qwen3-8B-BF16.gguf",
+   "out": [
+    "/root/q/qwen3-8b/convert/cb-ours.gguf"
+   ],
+   "tensors_converted": 254,
+   "threads": 11,
+   "write_seconds": 8.097071011
+  },
+  {
+   "tool": "llama-quantize",
+   "repeat": 1,
+   "seconds": 76.85665249824524,
+   "source_bytes": 16382087168,
+   "gb_per_s_in": 0.21315119297414142
+  },
+  {
+   "tool": "tetraeder",
+   "repeat": 1,
+   "seconds": 86.13508319854736,
+   "source_bytes": 16382087168,
+   "gb_per_s_in": 0.19019064659446777,
+   "bytes_in": 16382087168,
+   "bytes_out": 5027784288,
+   "cache_hits": 0,
+   "convert_seconds": 81.226233194,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-8B-GGUF/Qwen3-8B-BF16.gguf",
+   "out": [
+    "/root/q/qwen3-8b/convert/cb-ours.gguf"
+   ],
+   "tensors_converted": 254,
+   "threads": 11,
+   "write_seconds": 4.820250113
+  },
+  {
+   "tool": "tetraeder-warm-cache",
+   "repeat": 0,
+   "seconds": 8.417707681655884,
+   "bytes_in": 16382087168,
+   "bytes_out": 5027784288,
+   "cache_hits": 254,
+   "convert_seconds": 0.019100839,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-8B-GGUF/Qwen3-8B-BF16.gguf",
+   "out": [
+    "/root/q/qwen3-8b/convert/cb-ours.gguf"
+   ],
+   "tensors_converted": 0,
+   "threads": 11,
+   "write_seconds": 8.340891255
+  }
+ ],
+ "tensors": 399,
+ "tensors_differing": [],
+ "byte_identical": true
+}

@@ -20,6 +20,7 @@ tetraeder-ggml-sys = { path = "../ggml-sys" }
 tetraeder-memory = { path = "../memory" }
 tetraeder-plan = { path = "../plan" }
 tetraeder-telemetry = { path = "../telemetry" }
+sha2 = "0.10"
 thiserror = "2"
 tracing = "0.1"
 

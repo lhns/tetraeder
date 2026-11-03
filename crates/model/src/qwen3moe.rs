@@ -19,6 +19,7 @@
 //! RAM slot tensors, which sit in a CPU buffer marked as weights, so the scheduler computes them
 //! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
+use crate::convert::{ConvertError, ConvertOptions, ConvertStats};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, Streamer, StreamerConfig};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
@@ -27,11 +28,12 @@ use tetraeder_ggml_sys::ggml::{
 };
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::metrics::MemoryMetrics;
-use tetraeder_plan::ModelDesc;
+use tetraeder_plan::{Format, ModelDesc};
 use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 
+use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -42,6 +44,8 @@ pub enum ModelError {
     Gguf(#[from] GgufError),
     #[error(transparent)]
     Ggml(#[from] GgmlError),
+    #[error(transparent)]
+    Convert(#[from] ConvertError),
     #[error("cannot read weights: {0}")]
     Io(#[from] std::io::Error),
     #[error("{0}")]
@@ -177,6 +181,14 @@ pub struct LoadOptions {
     /// 0038). Otherwise no effect. On by default (235B at 32K: decode 2.83 to 3.14 tok/s, greedy
     /// identical).
     pub prefetch: bool,
+    /// Target format per GGUF tensor name (ADR 0047). A tensor whose target differs from its
+    /// type in the file is converted at load, through the disk cache; empty loads the file as is.
+    /// Only downward conversions; the router, norms and formats that need an importance matrix
+    /// are refused.
+    pub formats: BTreeMap<String, Format>,
+    /// Conversion cache directory; `None`: `$TETRAEDER_CACHE_DIR`, else `.tetraeder-cache` next
+    /// to the model's first shard.
+    pub convert_cache: Option<PathBuf>,
     /// Layers ahead that `prefetch` predicts and reads, 1 or 2 (ADR 0038). Depth 2 also
     /// predicts layer L+2 from layer L's FFN input, tops up L+1 from the fresher depth-1
     /// prediction and reads L+2 meanwhile.
@@ -206,6 +218,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("op_offload_min_tokens", &self.op_offload_min_tokens)
             .field("reuse_step_graph", &self.reuse_step_graph)
             .field("prefetch", &self.prefetch)
+            .field("formats", &self.formats.len())
             .field("prefetch_depth", &self.prefetch_depth)
             .field("cpu_poll", &self.cpu_poll)
             .field("prefetch_threads", &self.prefetch_threads)
@@ -231,6 +244,8 @@ impl LoadOptions {
             op_offload: false,
             op_offload_min_tokens: 32,
             reuse_step_graph: true,
+            formats: BTreeMap::new(),
+            convert_cache: None,
             prefetch: true,
             prefetch_depth: 1,
             cpu_poll: None,
@@ -373,6 +388,7 @@ pub struct Qwen3Moe {
     telemetry: Option<Arc<Telemetry>>,
     routing: Option<Vec<RoutingStep>>,
     profile: StepProfile,
+    convert: ConvertStats,
 }
 
 impl std::fmt::Debug for Qwen3Moe {
@@ -394,7 +410,26 @@ fn lap(acc: &mut Duration, t: Instant) -> Instant {
 
 impl Qwen3Moe {
     pub fn load(path: impl AsRef<Path>, opts: &LoadOptions) -> Result<Qwen3Moe> {
-        let file = ModelFile::open(path.as_ref())?;
+        let mut file = ModelFile::open(path.as_ref())?;
+        // `cpu` holds the RAM tier and runs the CPU groups.
+        let threads_for = |own: Option<usize>| {
+            opts.cpu_threads
+                .or(own)
+                .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))
+        };
+        let convert_threads = match opts.backend {
+            BackendChoice::Cpu { threads } => threads_for(threads),
+            BackendChoice::Gpu { .. } => threads_for(None),
+        };
+        let convert = crate::convert::convert(
+            &mut file.gguf,
+            &opts.formats,
+            &ConvertOptions {
+                cache: opts.convert_cache.clone(),
+                threads: convert_threads,
+                telemetry: opts.telemetry.clone(),
+            },
+        )?;
         let h = &file.hparams;
         if h.n_head % h.n_head_kv != 0 || h.n_expert_used > h.n_expert || h.n_rot != h.head_dim {
             return Err(ModelError::Invalid("unsupported hyperparameters".into()));
@@ -413,12 +448,6 @@ impl Qwen3Moe {
                 "the cpu miss policy needs ram_slots".into(),
             ));
         }
-        // `cpu` holds the RAM tier and runs the CPU groups.
-        let threads_for = |own: Option<usize>| {
-            opts.cpu_threads
-                .or(own)
-                .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))
-        };
         let (primary, cpu, backends, cpu_threads) = match opts.backend {
             BackendChoice::Cpu { threads } => {
                 let n = threads_for(threads) as i32;
@@ -526,11 +555,17 @@ impl Qwen3Moe {
             telemetry: opts.telemetry.clone(),
             routing: opts.record_routing.then(Vec::new),
             profile: StepProfile::default(),
+            convert,
         };
         if cpu_hot && opts.routing_profile.is_some() {
             model.refresh_hot_set()?;
         }
         Ok(model)
+    }
+
+    /// What the load-time format conversion did (ADR 0047).
+    pub fn convert_stats(&self) -> &ConvertStats {
+        &self.convert
     }
 
     pub fn hparams(&self) -> &Hparams {
