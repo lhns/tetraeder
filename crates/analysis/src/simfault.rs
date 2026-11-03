@@ -291,7 +291,7 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
         env.slots_planned = Some(SLOTS);
         env.slots_actual = Some(SLOTS);
     }
-    if spec.seed % 3 == 0
+    if spec.seed.is_multiple_of(3)
         && let Some(g) = gpus.first()
     {
         env.throttle.push(Throttle {
@@ -311,7 +311,7 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
                 env.throttle.clear();
                 env.throttle.push(Throttle {
                     device: g.clone(),
-                    reason: if spec.seed % 2 == 0 {
+                    reason: if spec.seed.is_multiple_of(2) {
                         ThrottleReason::Power
                     } else {
                         ThrottleReason::Thermal
@@ -330,7 +330,7 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
                     && let Some(r) = find(&mut res, &d.id)
                 {
                     r.rate *= 0.3;
-                    if spec.seed % 2 == 0 {
+                    if spec.seed.is_multiple_of(2) {
                         env.io_max_bytes_per_s = Some(d.rate * 0.3);
                     }
                 }
