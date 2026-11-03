@@ -12,14 +12,25 @@ publish = false
 workspace = true
 
 [features]
-cuda = ["tetraeder-ggml-sys/cuda", "tetraeder-model/cuda"]
+# Forwarded to the backends: build ggml with CUDA or Vulkan.
+cuda = ["tetraeder-ggml-sys/cuda", "tetraeder-engine/cuda", "tetraeder-model/cuda"]
+vulkan = ["tetraeder-engine/vulkan"]
 
 [dependencies]
+tetraeder-engine = { path = "../engine" }
 tetraeder-ggml-sys = { path = "../ggml-sys" }
+tetraeder-gateway = { path = "../gateway" }
 tetraeder-model = { path = "../model" }
 tetraeder-telemetry = { path = "../telemetry" }
 thiserror = "2"
+tokio = { version = "1.54.1", features = ["sync"] }
+tokio-util = "0.7.20"
+tracing = "0.1"
 
 [dev-dependencies]
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time"] }
+axum = { version = "0.8.9", default-features = false }
+tower = { version = "0.5.3", features = ["util"] }
+http-body-util = "0.1"
 serde_json = "1"
 tetraeder-memory = { path = "../memory" }

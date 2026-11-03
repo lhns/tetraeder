@@ -146,6 +146,7 @@ pub fn gen_plan(
             prefill_micro_batches: rng.range(1, 8) as u32,
             cuda_graphs: rng.chance(2),
             max_batch: rng.chance(2).then(|| rng.range(1, 64) as u32),
+            ..Default::default()
         },
         replicas,
     };

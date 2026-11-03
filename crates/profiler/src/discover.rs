@@ -2,6 +2,7 @@
 
 use crate::gpu::{GpuInfo, discover_gpus, pcie_prior_bytes_per_s};
 use crate::graph::{Device, DeviceKind, HardwareGraph, Link, LinkKind, Measurement, Tier};
+use crate::pcie::{PcieClass, PcieTopology, lane_groups};
 use crate::probe::{probe_disk_read, probe_ram_read};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -91,8 +92,75 @@ pub fn discover(opts: &DiscoverOpts) -> HardwareGraph {
         let (gpus, notes) = discover_gpus();
         g.notes.extend(notes);
         add_gpus(opts, &gpus, &mut g);
+        add_pcie_topology(&gpus, &mut g);
     }
     g
+}
+
+fn add_pcie_topology(gpus: &[GpuInfo], g: &mut HardwareGraph) {
+    if cfg!(target_os = "linux") {
+        apply_topology(&crate::pcie::pcie_topology(Path::new("/sys")), gpus, g);
+    } else {
+        g.notes
+            .push("pcie topology: only read on Linux (sysfs), no lane groups".into());
+    }
+}
+
+/// Matches NVML GPUs to the topology's GPU-class devices (both in PCI bus order), fills missing
+/// `Device.pcie` and adds the lane groups that contain a GPU, tagging those GPUs' host links.
+fn apply_topology(t: &PcieTopology, gpus: &[GpuInfo], g: &mut HardwareGraph) {
+    let pci_gpus: Vec<&str> = t
+        .devices
+        .iter()
+        .filter(|d| d.class == PcieClass::Gpu)
+        .map(|d| d.bdf.as_str())
+        .collect();
+    if pci_gpus.len() != gpus.len() {
+        if !gpus.is_empty() {
+            g.notes.push(format!(
+                "pcie topology: {} GPUs from NVML but {} PCI display devices, not matched",
+                gpus.len(),
+                pci_gpus.len()
+            ));
+        }
+        return;
+    }
+    let mut by_index: Vec<&GpuInfo> = gpus.iter().collect();
+    by_index.sort_by_key(|x| x.index);
+    let bdf_to_id: Vec<(&str, String)> = pci_gpus
+        .iter()
+        .zip(&by_index)
+        .map(|(b, x)| (*b, format!("gpu{}", x.index)))
+        .collect();
+    for (bdf, id) in &bdf_to_id {
+        let link = t
+            .devices
+            .iter()
+            .find(|d| d.bdf == *bdf)
+            .and_then(|d| d.link);
+        if let Some(dev) = g.devices.iter_mut().find(|d| d.id == *id)
+            && dev.pcie.is_none()
+        {
+            dev.pcie = link;
+        }
+    }
+    for (lg, members) in lane_groups(t) {
+        let ids: Vec<&String> = bdf_to_id
+            .iter()
+            .filter(|(b, _)| members.iter().any(|m| m == b))
+            .map(|(_, id)| id)
+            .collect();
+        if ids.is_empty() {
+            continue;
+        }
+        for id in ids {
+            let link_id = format!("pcie-{id}");
+            if let Some(l) = g.links.iter_mut().find(|l| l.id == link_id) {
+                l.lane_group = Some(lg.id.clone());
+            }
+        }
+        g.lane_groups.push(lg);
+    }
 }
 
 fn discover_host(opts: &DiscoverOpts, g: &mut HardwareGraph) {
@@ -376,6 +444,82 @@ mod tests {
                 .value,
             7.0e9
         );
+    }
+
+    #[test]
+    fn topology_fills_pcie_and_lane_groups() {
+        use crate::graph::Pcie;
+        use crate::pcie::PcieDevice;
+        let link = |w| {
+            Some(Pcie {
+                gen_current: 4,
+                width_current: w,
+                gen_max: 4,
+                width_max: 16,
+            })
+        };
+        let dev = |bdf: &str, class, up: &[&str], w| PcieDevice {
+            bdf: bdf.into(),
+            class,
+            upstream: up.iter().map(|s| s.to_string()).collect(),
+            link: link(w),
+        };
+        let t = PcieTopology {
+            devices: vec![
+                dev("0000:01:00.0", PcieClass::Other, &["0000:00:01.0"], 8),
+                dev(
+                    "0000:03:00.0",
+                    PcieClass::Gpu,
+                    &["0000:01:00.0", "0000:00:01.0"],
+                    8,
+                ),
+                dev(
+                    "0000:04:00.0",
+                    PcieClass::Gpu,
+                    &["0000:01:00.0", "0000:00:01.0"],
+                    8,
+                ),
+                dev(
+                    "0000:05:00.0",
+                    PcieClass::Nvme,
+                    &["0000:01:00.0", "0000:00:01.0"],
+                    4,
+                ),
+            ],
+        };
+        let gpus: Vec<GpuInfo> = (0..2)
+            .map(|index| GpuInfo {
+                index,
+                name: "G".into(),
+                vram_bytes: 1 << 30,
+                pcie: None,
+                p2p_peers: Vec::new(),
+            })
+            .collect();
+        let mut g = HardwareGraph::default();
+        g.devices.push(Device::new(
+            "cpu0",
+            DeviceKind::Cpu,
+            "c",
+            Tier::Ram,
+            1 << 30,
+        ));
+        add_gpus(&DiscoverOpts::default(), &gpus, &mut g);
+        apply_topology(&t, &gpus, &mut g);
+        g.validate().unwrap();
+        assert_eq!(g.device("gpu1").unwrap().pcie.unwrap().width_current, 8);
+        assert_eq!(g.lane_groups.len(), 1);
+        assert_eq!(g.lane_groups[0].id, "pcie-0000:01:00.0");
+        assert_eq!(
+            g.link_between("gpu0", "cpu0")
+                .unwrap()
+                .lane_group
+                .as_deref(),
+            Some("pcie-0000:01:00.0")
+        );
+        let mut g2 = HardwareGraph::default();
+        apply_topology(&t, &gpus[..1], &mut g2);
+        assert_eq!(g2.notes.len(), 1, "count mismatch is noted");
     }
 
     #[test]

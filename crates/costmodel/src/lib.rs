@@ -9,6 +9,8 @@
 //! - pipeline `t_token = sum_s (t_s + alpha_s + a / beta_s)` ([`pipeline_token_time`]);
 //! - memory `W + KV(batch x context) + workspace <= capacity` ([`check_memory`]).
 
+pub mod calib;
+pub mod predict;
 pub mod sim;
 
 use tetraeder_profiler::Device;

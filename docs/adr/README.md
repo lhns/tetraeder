@@ -44,5 +44,9 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0038](0038-predicted-next-layer-expert-prefetch.md) | Predicted next-layer expert prefetch into the RAM tier |
 | [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | No AVX2 repack of the builder's CPU weights for now |
 | [0043](0043-speculative-decoding-in-the-scheduler.md) | Speculative decoding in the scheduler: n-gram and draft-model drafts, batched verification |
+| [0040](0040-planner-candidates-calibration-and-scoring.md) | Planner: executable candidates, a cost model calibrated from anchor runs, scored by regret and rank (Proposed) |
+| [0041](0041-detector-observation-faults-and-limits.md) | Bottleneck detector: one observation type, faults separate from the limiting resource, advisor report only (Proposed) |
+| [0042](0042-slo-burn-rate-alerts-and-drain-restart-replanning.md) | SLO burn-rate alerts and drain-and-restart replanning (Proposed) |
+| [0046](0046-serving-real-engines-behind-the-gateway.md) | Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log |
 | [0047](0047-formats-per-role-and-load-time-conversion-cache.md) | Formats per tensor role in the plan; load-time conversion into a per-tensor disk cache |
 | [0048](0048-quality-profile-file-and-calibration-job.md) | Quality profile file and calibration job |

@@ -1,0 +1,162 @@
+# SLO burn-rate alerts (ADR 0042, docs/plan.md "Alerts"). Loaded by vmalert in docker-compose.yml;
+# metric names follow -opentelemetry.usePrometheusNaming.
+#
+# SLIs (good = not counted in the error ratio):
+#   ttft          first token within 2 s            (histogram bucket le=2)
+#   tpot          output token within 100 ms         (histogram bucket le=0.1)
+#   availability  request without an engine error   (client-caused error types excluded, as in engine.yml)
+# Objective: 99% over 30 days for each SLI. To change it, edit the `tetraeder:slo:error_budget` rule of that
+# SLI (budget = 1 - objective, e.g. 0.001 for 99.9%); burn rates and alerts follow. To change a threshold, edit the
+# bucket regex in the `tetraeder:sli:error_ratio_rate*` expr of that SLI (buckets are in LATENCY_BOUNDS in
+# crates/telemetry/src/metrics.rs). No traffic yields no data and therefore no alert.
+# Burn rate = error ratio / error budget. Page: 14.4 over 1h and 5m, 6 over 6h and 30m. Ticket: 1 over 3d and 6h.
+groups:
+  - name: tetraeder-slo-record
+    rules:
+      - record: tetraeder:slo:error_budget
+        expr: vector(0.01)
+        labels:
+          sli: ttft
+      - record: tetraeder:slo:error_budget
+        expr: vector(0.01)
+        labels:
+          sli: tpot
+      - record: tetraeder:slo:error_budget
+        expr: vector(0.01)
+        labels:
+          sli: availability
+      - record: tetraeder:sli:error_ratio_rate5m
+        expr: 1 - sum(rate(gen_ai_server_time_to_first_token_seconds_bucket{le=~`2(\.0)?`}[5m])) / sum(rate(gen_ai_server_time_to_first_token_seconds_count[5m]))
+        labels:
+          sli: ttft
+      - record: tetraeder:sli:error_ratio_rate5m
+        expr: 1 - sum(rate(gen_ai_server_time_per_output_token_seconds_bucket{le=~`0\.1`}[5m])) / sum(rate(gen_ai_server_time_per_output_token_seconds_count[5m]))
+        labels:
+          sli: tpot
+      - record: tetraeder:sli:error_ratio_rate5m
+        expr: sum(rate(gen_ai_server_request_duration_seconds_count{error_type!="", error_type!~"cancelled|invalid_request|not_found|overloaded"}[5m])) / sum(rate(gen_ai_server_request_duration_seconds_count[5m]))
+        labels:
+          sli: availability
+      - record: tetraeder:sli:error_ratio_rate30m
+        expr: 1 - sum(rate(gen_ai_server_time_to_first_token_seconds_bucket{le=~`2(\.0)?`}[30m])) / sum(rate(gen_ai_server_time_to_first_token_seconds_count[30m]))
+        labels:
+          sli: ttft
+      - record: tetraeder:sli:error_ratio_rate30m
+        expr: 1 - sum(rate(gen_ai_server_time_per_output_token_seconds_bucket{le=~`0\.1`}[30m])) / sum(rate(gen_ai_server_time_per_output_token_seconds_count[30m]))
+        labels:
+          sli: tpot
+      - record: tetraeder:sli:error_ratio_rate30m
+        expr: sum(rate(gen_ai_server_request_duration_seconds_count{error_type!="", error_type!~"cancelled|invalid_request|not_found|overloaded"}[30m])) / sum(rate(gen_ai_server_request_duration_seconds_count[30m]))
+        labels:
+          sli: availability
+      - record: tetraeder:sli:error_ratio_rate1h
+        expr: 1 - sum(rate(gen_ai_server_time_to_first_token_seconds_bucket{le=~`2(\.0)?`}[1h])) / sum(rate(gen_ai_server_time_to_first_token_seconds_count[1h]))
+        labels:
+          sli: ttft
+      - record: tetraeder:sli:error_ratio_rate1h
+        expr: 1 - sum(rate(gen_ai_server_time_per_output_token_seconds_bucket{le=~`0\.1`}[1h])) / sum(rate(gen_ai_server_time_per_output_token_seconds_count[1h]))
+        labels:
+          sli: tpot
+      - record: tetraeder:sli:error_ratio_rate1h
+        expr: sum(rate(gen_ai_server_request_duration_seconds_count{error_type!="", error_type!~"cancelled|invalid_request|not_found|overloaded"}[1h])) / sum(rate(gen_ai_server_request_duration_seconds_count[1h]))
+        labels:
+          sli: availability
+      - record: tetraeder:sli:error_ratio_rate6h
+        expr: 1 - sum(rate(gen_ai_server_time_to_first_token_seconds_bucket{le=~`2(\.0)?`}[6h])) / sum(rate(gen_ai_server_time_to_first_token_seconds_count[6h]))
+        labels:
+          sli: ttft
+      - record: tetraeder:sli:error_ratio_rate6h
+        expr: 1 - sum(rate(gen_ai_server_time_per_output_token_seconds_bucket{le=~`0\.1`}[6h])) / sum(rate(gen_ai_server_time_per_output_token_seconds_count[6h]))
+        labels:
+          sli: tpot
+      - record: tetraeder:sli:error_ratio_rate6h
+        expr: sum(rate(gen_ai_server_request_duration_seconds_count{error_type!="", error_type!~"cancelled|invalid_request|not_found|overloaded"}[6h])) / sum(rate(gen_ai_server_request_duration_seconds_count[6h]))
+        labels:
+          sli: availability
+      - record: tetraeder:sli:error_ratio_rate1d
+        expr: 1 - sum(rate(gen_ai_server_time_to_first_token_seconds_bucket{le=~`2(\.0)?`}[1d])) / sum(rate(gen_ai_server_time_to_first_token_seconds_count[1d]))
+        labels:
+          sli: ttft
+      - record: tetraeder:sli:error_ratio_rate1d
+        expr: 1 - sum(rate(gen_ai_server_time_per_output_token_seconds_bucket{le=~`0\.1`}[1d])) / sum(rate(gen_ai_server_time_per_output_token_seconds_count[1d]))
+        labels:
+          sli: tpot
+      - record: tetraeder:sli:error_ratio_rate1d
+        expr: sum(rate(gen_ai_server_request_duration_seconds_count{error_type!="", error_type!~"cancelled|invalid_request|not_found|overloaded"}[1d])) / sum(rate(gen_ai_server_request_duration_seconds_count[1d]))
+        labels:
+          sli: availability
+      - record: tetraeder:sli:error_ratio_rate3d
+        expr: 1 - sum(rate(gen_ai_server_time_to_first_token_seconds_bucket{le=~`2(\.0)?`}[3d])) / sum(rate(gen_ai_server_time_to_first_token_seconds_count[3d]))
+        labels:
+          sli: ttft
+      - record: tetraeder:sli:error_ratio_rate3d
+        expr: 1 - sum(rate(gen_ai_server_time_per_output_token_seconds_bucket{le=~`0\.1`}[3d])) / sum(rate(gen_ai_server_time_per_output_token_seconds_count[3d]))
+        labels:
+          sli: tpot
+      - record: tetraeder:sli:error_ratio_rate3d
+        expr: sum(rate(gen_ai_server_request_duration_seconds_count{error_type!="", error_type!~"cancelled|invalid_request|not_found|overloaded"}[3d])) / sum(rate(gen_ai_server_request_duration_seconds_count[3d]))
+        labels:
+          sli: availability
+      - record: tetraeder:sli:error_ratio_rate30d
+        expr: 1 - sum(rate(gen_ai_server_time_to_first_token_seconds_bucket{le=~`2(\.0)?`}[30d])) / sum(rate(gen_ai_server_time_to_first_token_seconds_count[30d]))
+        labels:
+          sli: ttft
+      - record: tetraeder:sli:error_ratio_rate30d
+        expr: 1 - sum(rate(gen_ai_server_time_per_output_token_seconds_bucket{le=~`0\.1`}[30d])) / sum(rate(gen_ai_server_time_per_output_token_seconds_count[30d]))
+        labels:
+          sli: tpot
+      - record: tetraeder:sli:error_ratio_rate30d
+        expr: sum(rate(gen_ai_server_request_duration_seconds_count{error_type!="", error_type!~"cancelled|invalid_request|not_found|overloaded"}[30d])) / sum(rate(gen_ai_server_request_duration_seconds_count[30d]))
+        labels:
+          sli: availability
+  - name: tetraeder-slo-alerts
+    rules:
+      - alert: TetraederSloBurnFast
+        expr: (tetraeder:sli:error_ratio_rate1h / on(sli) group_left tetraeder:slo:error_budget) > 14.4 and on(sli) (tetraeder:sli:error_ratio_rate5m / on(sli) group_left tetraeder:slo:error_budget) > 14.4
+        labels:
+          severity: page
+        annotations:
+          summary: "SLO {{ $labels.sli }} burns its error budget at more than 14.4x over 1h and 5m"
+          description: "At this rate the 30 day budget is gone in about 2 days. Check the SLO row of the Tetraeder planner dashboard."
+      - alert: TetraederSloBurnSlow
+        expr: (tetraeder:sli:error_ratio_rate6h / on(sli) group_left tetraeder:slo:error_budget) > 6 and on(sli) (tetraeder:sli:error_ratio_rate30m / on(sli) group_left tetraeder:slo:error_budget) > 6
+        labels:
+          severity: page
+        annotations:
+          summary: "SLO {{ $labels.sli }} burns its error budget at more than 6x over 6h and 30m"
+          description: "At this rate the 30 day budget is gone in 5 days. Check the SLO row of the Tetraeder planner dashboard."
+      - alert: TetraederSloBurnTicket
+        expr: (tetraeder:sli:error_ratio_rate3d / on(sli) group_left tetraeder:slo:error_budget) > 1 and on(sli) (tetraeder:sli:error_ratio_rate6h / on(sli) group_left tetraeder:slo:error_budget) > 1
+        labels:
+          severity: ticket
+        annotations:
+          summary: "SLO {{ $labels.sli }} burns its error budget at more than 1x over 3d and 6h"
+          description: "At this rate the 30 day budget is gone in 30 days. Check the SLO row of the Tetraeder planner dashboard."
+      # Mean relative error |measured - predicted| / predicted of the step time per stage (cost model, ADR 0009).
+      - alert: TetraederPlanResidualHigh
+        expr: |
+          sum by (tetraeder_stage) (rate(tetraeder_plan_residual_ratio_sum[10m]))
+            / sum by (tetraeder_stage) (rate(tetraeder_plan_residual_ratio_count[10m])) > 0.2
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Measured step time of stage {{ $labels.tetraeder_stage }} is off the plan's prediction by more than 20%"
+          description: "Recalibrate the cost model (bench calibrate) or check the bottleneck report; the planner's choices are unreliable until then."
+      # Detector faults other than model_mismatch come from the environment (ADR 0041).
+      - alert: TetraederEnvironmentFault
+        expr: sum by (tetraeder_fault_class, tetraeder_resource) (increase(tetraeder_bottleneck_fault_total{tetraeder_fault_class!="model_mismatch"}[5m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Environment fault {{ $labels.tetraeder_fault_class }} on {{ $labels.tetraeder_resource }}"
+          description: "The bottleneck detector has reported this fault for 10 minutes; see `tetraeder top` or the advisor report for the fix."
+      # A rolled back switch means the new plan failed to start or to become healthy (ADR 0042).
+      - alert: TetraederReplanFailed
+        expr: sum by (tetraeder_replan_trigger) (increase(tetraeder_replan_total{tetraeder_replan_outcome="rolled_back"}[15m])) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "Replan ({{ $labels.tetraeder_replan_trigger }}) failed and rolled back to the old plan"
+          description: "The engine restarted with the previous plan; read the control log for the restart or health error before the next trigger retries."

@@ -16,7 +16,8 @@
 //!   (a quarter of the experts) are slot counts.
 //! - `TETRAEDER_EXIT_PREFILL` (256) prompt tokens, run in ubatches of each size in
 //!   `TETRAEDER_EXIT_UBATCH` (comma list, "64,256"), one cold load per size.
-//! - `TETRAEDER_EXIT_DECODE` (32) greedy tokens after the prefill.
+//! - `TETRAEDER_EXIT_DECODE` (32) greedy tokens after the prefill, in
+//!   `TETRAEDER_EXIT_DECODE_WINDOWS` (1) windows reported one by one (`decode_windows`).
 //! - `TETRAEDER_EXIT_CTX` (prefill + decode, rounded up), `TETRAEDER_EXIT_THREADS`.
 //! - `TETRAEDER_EXIT_OP_OFFLOAD=1`: large CPU-group matmuls run on the GPU (ggml op offload).
 //! - `TETRAEDER_EXIT_PREFETCH=1`: predicted next-layer expert prefetch into the RAM tier
@@ -113,6 +114,24 @@ fn prompt(path: &PathBuf, n: usize, n_vocab: usize) -> Vec<i32> {
         .collect()
 }
 
+fn add_profile(a: &mut StepProfile, b: &StepProfile) {
+    a.steps += b.steps;
+    a.graphs += b.graphs;
+    a.inputs += b.inputs;
+    a.build += b.build;
+    a.alloc += b.alloc;
+    a.compute += b.compute;
+    a.readback += b.readback;
+    a.streamer += b.streamer;
+    a.total += b.total;
+}
+
+fn unix_s() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
+}
+
 fn profile_json(p: &StepProfile, per: f64) -> Value {
     let ms = |d: Duration| d.as_secs_f64() * 1e3 / per;
     json!({
@@ -181,6 +200,7 @@ fn exit_regime() {
     let h = file.hparams.clone();
     let n_prefill = env_u64("TETRAEDER_EXIT_PREFILL").unwrap_or(256) as usize;
     let n_decode = env_u64("TETRAEDER_EXIT_DECODE").unwrap_or(32) as usize;
+    let n_windows = env_u64("TETRAEDER_EXIT_DECODE_WINDOWS").unwrap_or(1) as usize;
     let ubatches: Vec<usize> = std::env::var("TETRAEDER_EXIT_UBATCH")
         .unwrap_or_else(|_| "64,256".into())
         .split(',')
@@ -250,13 +270,39 @@ fn exit_regime() {
 
         let mut next = argmax(&last) as i32;
         let mut greedy = Vec::new();
+        // Decode in windows (each with its own profile and reads) so a detector run gets repeated
+        // samples from one load; the wall-clock bounds let a host sampler align with them.
+        let mut windows = Vec::new();
+        let mut tg = StepProfile::default();
+        let mut sw = s1.clone();
         let t0 = Instant::now();
-        for _ in 0..n_decode {
-            greedy.push(next);
-            next = argmax(&m.eval(&[next]).expect("decode")) as i32;
+        let per_window = n_decode.div_ceil(n_windows.max(1)).max(1);
+        let mut done = 0;
+        while done < n_decode {
+            let n = per_window.min(n_decode - done);
+            let start = unix_s();
+            let tw = Instant::now();
+            for _ in 0..n {
+                greedy.push(next);
+                next = argmax(&m.eval(&[next]).expect("decode")) as i32;
+            }
+            let wall = tw.elapsed().as_secs_f64();
+            let p = m.take_profile();
+            let se = m.expert_stats().unwrap();
+            windows.push(json!({
+                "start_unix_s": start,
+                "end_unix_s": unix_s(),
+                "tokens": n,
+                "wall_s": wall,
+                "profile_per_token": profile_json(&p, n as f64),
+                "io": io_json(&sw.io, &se.io, n as f64),
+                "layers": layers_json(&sw, &se),
+            }));
+            add_profile(&mut tg, &p);
+            sw = se;
+            done += n;
         }
         let decode_s = t0.elapsed().as_secs_f64();
-        let tg = m.take_profile();
         let s2 = m.expert_stats().unwrap();
 
         let memory: Vec<Value> = m
@@ -284,6 +330,7 @@ fn exit_regime() {
             "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64),
             "decode_prefetch": prefetch_json(&s1, &s2, n_decode.max(1) as f64),
             "decode_layers": layers_json(&s1, &s2),
+            "decode_windows": windows,
             "greedy": greedy,
             "max_splits": m.max_splits(),
             "memory": memory,

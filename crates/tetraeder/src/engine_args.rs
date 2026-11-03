@@ -4,11 +4,26 @@ use clap::Args;
 use std::path::PathBuf;
 use tetraeder_engine::{BufferOverride, ContextConfig, FlashAttn, LoadMode, Placement, SplitMode};
 
+/// The model file and its placement flags.
 #[derive(Args, Debug, Clone)]
 pub struct ModelArgs {
     /// GGUF model file.
     #[arg(short = 'm', long)]
     pub model: PathBuf,
+    #[command(flatten)]
+    pub place: PlacementArgs,
+}
+
+impl std::ops::Deref for ModelArgs {
+    type Target = PlacementArgs;
+    fn deref(&self) -> &PlacementArgs {
+        &self.place
+    }
+}
+
+/// Placement and context flags without the model path (`serve` makes `-m` optional).
+#[derive(Args, Debug, Clone)]
+pub struct PlacementArgs {
     /// Layers on GPU; -1 = all, 0 = CPU only.
     #[arg(long = "ngl", alias = "n-gpu-layers", default_value_t = -1, allow_hyphen_values = true)]
     pub ngl: i32,
@@ -50,7 +65,7 @@ fn parse_flash_attn(s: &str) -> Result<FlashAttn, String> {
     }
 }
 
-impl ModelArgs {
+impl PlacementArgs {
     pub fn placement(&self) -> Placement {
         Placement {
             n_gpu_layers: self.ngl,

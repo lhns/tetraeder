@@ -1,0 +1,106 @@
+{
+  "label": "q30b-llama-server-mt-r1",
+  "base_url": "http://127.0.0.1:18081",
+  "model": "qwen3-30b-a3b",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 512,
+    "max_tokens": 64,
+    "concurrency": 1,
+    "requests": 8,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 8
+  },
+  "started": "2026-11-03T06:36:11",
+  "results": [
+    {
+      "ttft_s": 0.5059432699927129,
+      "total_s": 0.9875080169877037,
+      "completion_tokens": 64,
+      "prompt_tokens": 421,
+      "usage_from": "usage",
+      "decode_tps": 131.08175356701594,
+      "text_head": "Okay, the user wants me to continue the story from the given"
+    },
+    {
+      "ttft_s": 0.07149931800086051,
+      "total_s": 0.5574503759853542,
+      "completion_tokens": 64,
+      "prompt_tokens": 455,
+      "usage_from": "usage",
+      "decode_tps": 129.87062676213426,
+      "text_head": "Okay, the user has already provided a long paragraph about t"
+    },
+    {
+      "ttft_s": 0.07254953595111147,
+      "total_s": 0.5582316069630906,
+      "completion_tokens": 64,
+      "prompt_tokens": 488,
+      "usage_from": "usage",
+      "decode_tps": 129.88431967945218,
+      "text_head": "Okay, the user is asking me to continue the story in two sen"
+    },
+    {
+      "ttft_s": 0.07068217598134652,
+      "total_s": 0.5515351560316049,
+      "completion_tokens": 64,
+      "prompt_tokens": 523,
+      "usage_from": "usage",
+      "decode_tps": 131.23028017558306,
+      "text_head": "Okay, the user has been asking me to continue the story in t"
+    },
+    {
+      "ttft_s": 0.07644885301124305,
+      "total_s": 0.5555018049781211,
+      "completion_tokens": 64,
+      "prompt_tokens": 558,
+      "usage_from": "usage",
+      "decode_tps": 131.7363296382266,
+      "text_head": "Okay, the user has been asking me to continue the story in t"
+    },
+    {
+      "ttft_s": 0.07454148097895086,
+      "total_s": 0.553595484001562,
+      "completion_tokens": 64,
+      "prompt_tokens": 593,
+      "usage_from": "usage",
+      "decode_tps": 131.73532390882403,
+      "text_head": "Okay, the user has been asking me to continue the story in t"
+    },
+    {
+      "ttft_s": 0.07573488395428285,
+      "total_s": 0.5638588639558293,
+      "completion_tokens": 64,
+      "prompt_tokens": 628,
+      "usage_from": "usage",
+      "decode_tps": 129.2698394833453,
+      "text_head": "Okay, the user has been asking me to continue the story in t"
+    },
+    {
+      "ttft_s": 0.07721223396947607,
+      "total_s": 0.5715367539669387,
+      "completion_tokens": 64,
+      "prompt_tokens": 663,
+      "usage_from": "usage",
+      "decode_tps": 127.65868512090911,
+      "text_head": "Okay, the user has been asking me to continue the story in t"
+    }
+  ],
+  "summary": {
+    "turns": 8,
+    "errors": 0,
+    "ttft_per_turn_s": [
+      0.5059432699927129,
+      0.07149931800086051,
+      0.07254953595111147,
+      0.07068217598134652,
+      0.07644885301124305,
+      0.07454148097895086,
+      0.07573488395428285,
+      0.07721223396947607
+    ],
+    "ttft_first_s": 0.5059432699927129,
+    "ttft_later_median_s": 0.07454148097895086
+  }
+}

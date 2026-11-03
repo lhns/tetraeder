@@ -20,6 +20,11 @@ pub mod attr {
     pub const SOURCE: &str = "tetraeder.source";
     pub const FORMAT: &str = "tetraeder.format";
     pub const METHOD: &str = "tetraeder.spec.method";
+    pub const PLAN: &str = "tetraeder.plan";
+    pub const RESOURCE: &str = "tetraeder.resource";
+    pub const FAULT_CLASS: &str = "tetraeder.fault.class";
+    pub const REPLAN_TRIGGER: &str = "tetraeder.replan.trigger";
+    pub const REPLAN_OUTCOME: &str = "tetraeder.replan.outcome";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,9 +98,18 @@ pub struct Metrics {
     convert_duration: Histogram<f64>,
     convert_bytes: Counter<u64>,
     convert_cache: Counter<u64>,
+    batch_size: Histogram<f64>,
+    prefix_hits: Counter<u64>,
     spec_acceptance: Histogram<f64>,
     spec_drafted: Counter<u64>,
     spec_accepted: Counter<u64>,
+    plan_residual: Histogram<f64>,
+    plan_regret: Gauge<f64>,
+    plan_predicted_step: Gauge<f64>,
+    bottleneck_share: Gauge<f64>,
+    bottleneck_fault: Counter<u64>,
+    replan_total: Counter<u64>,
+    replan_duration: Histogram<f64>,
 }
 
 impl Metrics {
@@ -205,6 +219,17 @@ impl Metrics {
                     "Converted tensors found in the conversion cache (hit) or converted (miss)",
                 )
                 .build(),
+            batch_size: meter
+                .f64_histogram("tetraeder.scheduler.batch.size")
+                .with_unit("{request}")
+                .with_description("Requests decoded together per scheduler step")
+                .with_boundaries(vec![1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0])
+                .build(),
+            prefix_hits: meter
+                .u64_counter("tetraeder.kv.prefix.hits")
+                .with_unit("{request}")
+                .with_description("Requests that reused a cached prompt prefix")
+                .build(),
             spec_acceptance: meter
                 .f64_histogram("tetraeder.spec.acceptance")
                 .with_unit("1")
@@ -220,6 +245,47 @@ impl Metrics {
                 .u64_counter("tetraeder.spec.accepted")
                 .with_unit("{token}")
                 .with_description("Drafted tokens the target accepted")
+                .build(),
+            plan_residual: meter
+                .f64_histogram("tetraeder.plan.residual")
+                .with_unit("1")
+                .with_description(
+                    "Relative error |measured - predicted| / predicted of the step time",
+                )
+                .with_boundaries(vec![0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0])
+                .build(),
+            plan_regret: meter
+                .f64_gauge("tetraeder.plan.regret")
+                .with_unit("1")
+                .with_description("Step time of the plan over the best known plan, minus 1")
+                .build(),
+            plan_predicted_step: meter
+                .f64_gauge("tetraeder.plan.predicted_step")
+                .with_unit("s")
+                .with_description("Step time the planner predicted for the running plan")
+                .build(),
+            bottleneck_share: meter
+                .f64_gauge("tetraeder.bottleneck.share")
+                .with_unit("1")
+                .with_description("Share of the step time bound by a resource, 0 to 1")
+                .build(),
+            bottleneck_fault: meter
+                .u64_counter("tetraeder.bottleneck.fault")
+                .with_unit("{fault}")
+                .with_description("Detector windows that reported a fault, by class and resource")
+                .build(),
+            replan_total: meter
+                .u64_counter("tetraeder.replan.total")
+                .with_unit("{replan}")
+                .with_description("Replanning decisions by trigger and outcome")
+                .build(),
+            replan_duration: meter
+                .f64_histogram("tetraeder.replan.duration")
+                .with_unit("s")
+                .with_description("Drain, restart and health check of one plan switch")
+                .with_boundaries(vec![
+                    0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+                ])
                 .build(),
         }
     }
@@ -387,6 +453,16 @@ impl Metrics {
         );
     }
 
+    /// Requests in one scheduler step.
+    pub fn scheduler_batch(&self, size: u32) {
+        self.batch_size.record(f64::from(size), &[]);
+    }
+
+    /// A request that reused a cached prompt prefix.
+    pub fn kv_prefix_hit(&self) {
+        self.prefix_hits.add(1, &[]);
+    }
+
     /// One verify step that carried `drafted` > 0 draft tokens of which `accepted` matched.
     /// `method` is the drafter: `ngram` or `draft`.
     pub fn spec_step(&self, method: &'static str, drafted: u64, accepted: u64) {
@@ -397,6 +473,56 @@ impl Metrics {
         }
         self.spec_drafted.add(drafted, &a);
         self.spec_accepted.add(accepted, &a);
+    }
+
+    /// Relative step time error of a stage: `|measured - predicted| / predicted`.
+    pub fn plan_residual(&self, stage: u16, residual: f64) {
+        self.plan_residual
+            .record(residual, &[KeyValue::new(attr::STAGE, i64::from(stage))]);
+    }
+
+    /// Regret of the running `plan` (a plan id) against the best known one, as a fraction.
+    pub fn plan_regret(&self, plan: &str, regret: f64) {
+        self.plan_regret
+            .record(regret, &[KeyValue::new(attr::PLAN, plan.to_owned())]);
+    }
+
+    pub fn plan_predicted_step(&self, stage: u16, seconds: f64) {
+        self.plan_predicted_step
+            .record(seconds, &[KeyValue::new(attr::STAGE, i64::from(stage))]);
+    }
+
+    /// Share of the step time bound by `resource` (ADR 0041), 0 to 1.
+    pub fn bottleneck_share(&self, resource: &str, share: f64) {
+        self.bottleneck_share
+            .record(share, &[KeyValue::new(attr::RESOURCE, resource.to_owned())]);
+    }
+
+    /// One detector window reported a fault of `class` (ADR 0041) hitting `resource`.
+    pub fn bottleneck_fault(&self, class: &str, resource: &str) {
+        self.bottleneck_fault.add(
+            1,
+            &[
+                KeyValue::new(attr::FAULT_CLASS, class.to_owned()),
+                KeyValue::new(attr::RESOURCE, resource.to_owned()),
+            ],
+        );
+    }
+
+    /// `trigger`: `drift`, `slo_burn`, `load_shift`, `device_change`. `outcome`: `switched`,
+    /// `knobs_applied`, `rejected`, `rolled_back` (ADR 0042).
+    pub fn replan(&self, trigger: &str, outcome: &str) {
+        self.replan_total.add(
+            1,
+            &[
+                KeyValue::new(attr::REPLAN_TRIGGER, trigger.to_owned()),
+                KeyValue::new(attr::REPLAN_OUTCOME, outcome.to_owned()),
+            ],
+        );
+    }
+
+    pub fn replan_duration(&self, d: Duration) {
+        self.replan_duration.record(d.as_secs_f64(), &[]);
     }
 
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {

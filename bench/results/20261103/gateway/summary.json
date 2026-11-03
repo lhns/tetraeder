@@ -1,0 +1,382 @@
+{
+  "dir": "/root/tetraeder/bench/results/20261103/gateway",
+  "env": {
+    "host": "71bda01138f9",
+    "vast_container": "",
+    "gpu": "NVIDIA GeForce RTX 3090",
+    "driver": "610.57.04",
+    "vram": "24576 MiB",
+    "clock_sm_mhz": "210 MHz",
+    "clock_sm_max_mhz": "2130 MHz",
+    "clock_mem_mhz": "405 MHz",
+    "throttle_reasons_active": "0x0000000000000001",
+    "cpu_quota_cores": "11",
+    "threads": "11",
+    "git_commit": "",
+    "llama_cpp": "version: 0.8.0-dev (build 1, commit 2e0d86b) built with GNU 13.3.0 for Linux x86_64 ",
+    "see": "nvidia-smi-clock-performance.txt"
+  },
+  "models": {
+    "q30b": {
+      "engines": {
+        "llama-server": {
+          "c1": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 129.4217490131535,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 107.73874721438423,
+            "ttft_median_s": 0.20253317648894154,
+            "ttft_p90_s": 0.20806530548725277
+          },
+          "c4": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 62.5800012260224,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 191.58071414649652,
+            "ttft_median_s": 0.7004008302319562,
+            "ttft_p90_s": 0.711807323503308
+          },
+          "mt": {
+            "reps": 2,
+            "errors": 0,
+            "ttft_first_s": 0.49455145350657403,
+            "ttft_later_median_s": 0.07386548849171959,
+            "turns": 8.0,
+            "ttft_per_turn_s": [
+              0.49455145350657403,
+              0.07039221251034178,
+              0.07151530749979429,
+              0.07152403000509366,
+              0.07597048801835626,
+              0.07476713397772983,
+              0.07446218997938558,
+              0.07639612350612879
+            ]
+          },
+          "p4096": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 122.21141130423294,
+            "prompt_tokens_median": 3130.75,
+            "throughput_tps": 40.82839684954986,
+            "ttft_median_s": 1.1007858305092668,
+            "ttft_p90_s": 1.1054406024923082
+          }
+        },
+        "tetraeder": {
+          "c1": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 129.76997294330053,
+            "prompt_tokens_median": 406.0,
+            "throughput_tps": 112.3619785205218,
+            "ttft_median_s": 0.15023415823816322,
+            "ttft_p90_s": 0.19745718149351887
+          },
+          "c4": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 129.45734910698943,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 113.4211535677018,
+            "ttft_median_s": 3.521752628759714,
+            "ttft_p90_s": 3.5289944910036866
+          },
+          "mt": {
+            "reps": 2,
+            "errors": 0,
+            "ttft_first_s": 0.18459626351250336,
+            "ttft_later_median_s": 0.06931167503353208,
+            "turns": 8.0,
+            "ttft_per_turn_s": [
+              0.18459626351250336,
+              0.06913807499222457,
+              0.06872751953778788,
+              0.06939635798335075,
+              0.07031496401759796,
+              0.06962936700438149,
+              0.06832853649393655,
+              0.06902716198237613
+            ]
+          },
+          "p4096": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 121.42690466095324,
+            "prompt_tokens_median": 3129.75,
+            "throughput_tps": 46.55221217349869,
+            "ttft_median_s": 0.8509559865051415,
+            "ttft_p90_s": 0.8755904919817112
+          }
+        },
+        "tetraeder-llama": {
+          "c1": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 132.5398451211636,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 115.41994763677553,
+            "ttft_median_s": 0.14549834975332487,
+            "ttft_p90_s": 0.1806867915438488
+          },
+          "c4": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 132.47452324132826,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 116.01803916535157,
+            "ttft_median_s": 3.44176633025927,
+            "ttft_p90_s": 3.4450179200212006
+          },
+          "mt": {
+            "reps": 2,
+            "errors": 0,
+            "ttft_first_s": 0.18120253348024562,
+            "ttft_later_median_s": 0.065931257995544,
+            "turns": 8.0,
+            "ttft_per_turn_s": [
+              0.18120253348024562,
+              0.06509504150017165,
+              0.06554499099729583,
+              0.06617588549852371,
+              0.06643065699608997,
+              0.06633680051891133,
+              0.065931257995544,
+              0.06612461298936978
+            ]
+          },
+          "p4096": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 124.79239774457741,
+            "prompt_tokens_median": 3130.25,
+            "throughput_tps": 47.778161945999976,
+            "ttft_median_s": 0.8266672964964528,
+            "ttft_p90_s": 0.8616101064835675
+          }
+        }
+      },
+      "ratios_vs_llama-server": {
+        "tetraeder": {
+          "c1": {
+            "ttft_median_s": 0.7417492123107983,
+            "decode_tps_median": 1.002691427228334,
+            "throughput_tps": 1.0429112608826303,
+            "pairs": 2
+          },
+          "c4": {
+            "ttft_median_s": 5.028446099557695,
+            "decode_tps_median": 2.0687134211916876,
+            "throughput_tps": 0.5920280818664151,
+            "pairs": 2
+          },
+          "mt": {
+            "ttft_first_s": 0.3735061956507545,
+            "ttft_later_median_s": 0.9384749101580562,
+            "pairs": 2
+          },
+          "p4096": {
+            "ttft_median_s": 0.7730440904553599,
+            "decode_tps_median": 0.9935825904016058,
+            "throughput_tps": 1.1401914692817665,
+            "pairs": 2
+          }
+        },
+        "tetraeder-llama": {
+          "c1": {
+            "ttft_median_s": 0.7184022356668609,
+            "decode_tps_median": 1.024092896937035,
+            "throughput_tps": 1.071298039298771,
+            "pairs": 2
+          },
+          "c4": {
+            "ttft_median_s": 4.914184535126328,
+            "decode_tps_median": 2.1169401922267133,
+            "throughput_tps": 0.6055842559038025,
+            "pairs": 2
+          },
+          "mt": {
+            "ttft_first_s": 0.3666179316816844,
+            "ttft_later_median_s": 0.8926930283402346,
+            "pairs": 2
+          },
+          "p4096": {
+            "ttft_median_s": 0.7509792313848891,
+            "decode_tps_median": 1.0211191166346536,
+            "throughput_tps": 1.1702192212539726,
+            "pairs": 2
+          }
+        }
+      },
+      "api_overhead": {
+        "tetraeder": {
+          "bench_tg_tps": 138.46334496685282,
+          "bench_pp_tps": 3689.824378835212,
+          "serve_decode_tps": 129.76997294330053,
+          "decode_ratio": 0.9372153545356469,
+          "serve_prefill_tps": 2702.4479969220865,
+          "prefill_ratio": 0.7324055888468014
+        },
+        "tetraeder-llama": {
+          "bench_tg_tps": 138.46334496685282,
+          "bench_pp_tps": 3689.824378835212,
+          "serve_decode_tps": 132.5398451211636,
+          "decode_ratio": 0.9572197259346346,
+          "serve_prefill_tps": 2783.536725238666,
+          "prefill_ratio": 0.754381899909654
+        },
+        "llama-server": {
+          "bench_tg_tps": 138.576685,
+          "bench_pp_tps": 3689.782551,
+          "serve_decode_tps": 129.4217490131535,
+          "decode_ratio": 0.9339359576479513,
+          "serve_prefill_tps": 1999.6723846481186,
+          "prefill_ratio": 0.5419485720387968
+        }
+      }
+    },
+    "q8b": {
+      "engines": {
+        "llama-server": {
+          "c1": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 79.79350462615261,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 70.47320156378603,
+            "ttft_median_s": 0.22464946750551462,
+            "ttft_p90_s": 0.22901146902586333
+          },
+          "c4": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 62.61169040980649,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 184.58293392882746,
+            "ttft_median_s": 0.7950878362316871,
+            "ttft_p90_s": 0.8173855089989956
+          },
+          "mt": {
+            "reps": 2,
+            "errors": 0,
+            "ttft_first_s": 0.6155859784630593,
+            "ttft_later_median_s": 0.06375456749810837,
+            "turns": 8.0,
+            "ttft_per_turn_s": [
+              0.6155859784630593,
+              0.061322011024458334,
+              0.06103772300411947,
+              0.06225890151108615,
+              0.06379850799567066,
+              0.06511244451394305,
+              0.06483552200370468,
+              0.06720555247738957
+            ]
+          },
+          "p4096": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 75.68450390424539,
+            "prompt_tokens_median": 3130.5,
+            "throughput_tps": 30.937091636468928,
+            "ttft_median_s": 1.313929208990885,
+            "ttft_p90_s": 1.317162406485295
+          }
+        },
+        "tetraeder": {
+          "c1": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 81.10652357626344,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 74.666424424598,
+            "ttft_median_s": 0.14264474250376225,
+            "ttft_p90_s": 0.17766197348828427
+          },
+          "c4": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 80.96502896069758,
+            "prompt_tokens_median": 405.0,
+            "throughput_tps": 74.83075621393712,
+            "ttft_median_s": 5.262572858002386,
+            "ttft_p90_s": 5.265019123500679
+          },
+          "mt": {
+            "reps": 2,
+            "errors": 0,
+            "ttft_first_s": 0.17840719196829014,
+            "ttft_later_median_s": 0.056595218484289944,
+            "turns": 8.0,
+            "ttft_per_turn_s": [
+              0.17840719196829014,
+              0.056323381984839216,
+              0.055890127492602915,
+              0.05641952302539721,
+              0.056595218484289944,
+              0.05682925949804485,
+              0.057087291526841,
+              0.057131264999043196
+            ]
+          },
+          "p4096": {
+            "reps": 2,
+            "errors": 0,
+            "decode_tps_median": 76.73300204180377,
+            "prompt_tokens_median": 3130.5,
+            "throughput_tps": 37.05475323152898,
+            "ttft_median_s": 0.8979807157447794,
+            "ttft_p90_s": 0.9313839900132734
+          }
+        }
+      },
+      "ratios_vs_llama-server": {
+        "tetraeder": {
+          "c1": {
+            "ttft_median_s": 0.6349937668641286,
+            "decode_tps_median": 1.016455217554631,
+            "throughput_tps": 1.0595032284926682,
+            "pairs": 2
+          },
+          "c4": {
+            "ttft_median_s": 6.618915983550599,
+            "decode_tps_median": 1.2931337566142806,
+            "throughput_tps": 0.4054067062735784,
+            "pairs": 2
+          },
+          "mt": {
+            "ttft_first_s": 0.28985021614232176,
+            "ttft_later_median_s": 0.887772096214634,
+            "pairs": 2
+          },
+          "p4096": {
+            "ttft_median_s": 0.6834321377058334,
+            "decode_tps_median": 1.0138546337156278,
+            "throughput_tps": 1.1977483135370626,
+            "pairs": 2
+          }
+        }
+      },
+      "api_overhead": {
+        "tetraeder": {
+          "bench_tg_tps": 82.59890374791989,
+          "bench_pp_tps": 3979.9910681120327,
+          "serve_decode_tps": 81.10652357626344,
+          "decode_ratio": 0.9819322036499301,
+          "serve_prefill_tps": 2839.221361343326,
+          "prefill_ratio": 0.7133738022910068
+        },
+        "llama-server": {
+          "bench_tg_tps": 82.601744,
+          "bench_pp_tps": 3982.965505,
+          "serve_decode_tps": 79.79350462615261,
+          "decode_ratio": 0.9660026624395801,
+          "serve_prefill_tps": 1802.8086355916164,
+          "prefill_ratio": 0.4526297386528876
+        }
+      }
+    }
+  }
+}

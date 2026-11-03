@@ -154,6 +154,16 @@ pub struct Knobs {
     /// Sequences per step; absent: the scheduler decides.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_batch: Option<u32>,
+    /// CPU threads of the run; absent: the engine default (ADR 0040).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threads: Option<u32>,
+    /// Physical batch size (`-ub`); absent: the engine default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ubatch: Option<u32>,
+    /// ggml op offload of CPU-resident weights to the GPU in large batches; absent: the engine
+    /// default (on).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub op_offload: Option<bool>,
 }
 
 fn one() -> u32 {
@@ -170,6 +180,9 @@ impl Default for Knobs {
             prefill_micro_batches: 1,
             cuda_graphs: true,
             max_batch: None,
+            threads: None,
+            ubatch: None,
+            op_offload: None,
         }
     }
 }
@@ -252,5 +265,27 @@ mod tests {
         };
         assert!(experts.matches(UnitId::Expert(40, 7)));
         assert!(!experts.matches(UnitId::Expert(40, 8)) && !experts.matches(UnitId::Mlp(1)));
+    }
+
+    #[test]
+    fn run_knobs_are_optional_and_additive() {
+        let old: Knobs = toml::from_str("prefill_micro_batches = 2").unwrap();
+        assert_eq!(
+            (old.threads, old.ubatch, old.op_offload),
+            (None, None, None)
+        );
+        let k = Knobs {
+            threads: Some(8),
+            ubatch: Some(2048),
+            op_offload: Some(false),
+            ..Default::default()
+        };
+        let s = toml::to_string(&k).unwrap();
+        assert_eq!(toml::from_str::<Knobs>(&s).unwrap(), k);
+        assert!(
+            !toml::to_string(&Knobs::default())
+                .unwrap()
+                .contains("ubatch")
+        );
     }
 }
