@@ -8,7 +8,7 @@
 //! 0043) and its logits differ in the last bits (seen on the CI runners, 2026-11-03), so there
 //! the logits must agree to a relative 1e-4 and speculative output may leave plain greedy only
 //! at a near-tie of the plain run (top-2 margin below `NEAR_TIE` of the largest logit; the
-//! last-bit differences add up over the decoded tokens: 3.7e-4 seen).
+//! last-bit differences add up over the decoded tokens).
 //!
 //! Hardware label (AGENTS rule 9): `cpu_*` tests need no GPU.
 
