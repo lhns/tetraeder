@@ -2126,12 +2126,14 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "proptest",
  "serde",
  "serde_json",
  "tetraeder-bench",
  "tetraeder-costmodel",
  "tetraeder-plan",
  "tetraeder-profiler",
+ "toml",
 ]
 
 [[package]]
