@@ -9,7 +9,7 @@ mkdir -p runs/vast
 log=runs/vast/quality-round2.log
 say() { echo "[$(date +%T)] $*" >> "$log"; }
 say start
-(IK_JOBS=4 bash scripts/quality/ik_build.sh > runs/vast/ik_build.log 2>&1 9>&- &)
+(IK_JOBS=4 bash scripts/quality/ik_build.sh >> runs/vast/ik_build.log 2>&1 9>&- &)
 (MODEL=qwen3-30b-bf16 FETCH_ONLY=1 bash scripts/quality/box_quality.sh 9>&- &)
 MODEL=qwen3-8b FETCH_ONLY=1 bash scripts/quality/box_quality.sh 9>&-
 until grep -q "FETCH_DONE\|fetch failed" runs/vast/quality-qwen3-30b-bf16-fetch.log 2> /dev/null; do sleep 10; done
