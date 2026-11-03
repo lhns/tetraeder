@@ -30,7 +30,7 @@ groups:
       - alert: TetraederConvertCacheNeverHits
         expr: |
           sum(increase(tetraeder_convert_cache_total{tetraeder_result="miss"}[1h])) > 0
-            and on() sum(increase(tetraeder_convert_cache_total{tetraeder_result="miss"}[23h] offset 1h)) > 0
+            and on() sum(increase(tetraeder_convert_cache_total{tetraeder_result="miss"}[24h])) > sum(increase(tetraeder_convert_cache_total{tetraeder_result="miss"}[1h]))
             and on() (sum(increase(tetraeder_convert_cache_total{tetraeder_result="hit"}[24h])) or vector(0)) == 0
         for: 5m
         labels:
