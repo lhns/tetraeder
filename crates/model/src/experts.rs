@@ -5,6 +5,7 @@
 
 use crate::hparams::ModelFile;
 use crate::qwen3moe::{ModelError, Result};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -74,12 +75,21 @@ pub struct LayerExpertStats {
     /// top-k, and the predicted slots scored (tokens times k). Zero without prefetch.
     pub predicted_hits: u64,
     pub predicted_total: u64,
+    /// The same for the prediction made two layers ahead (`prefetch_depth` 2).
+    pub predicted2_hits: u64,
+    pub predicted2_total: u64,
 }
 
 impl LayerExpertStats {
     /// Share of predicted experts that the router chose, `None` when nothing was scored.
     pub fn prediction_accuracy(&self) -> Option<f64> {
         (self.predicted_total > 0).then(|| self.predicted_hits as f64 / self.predicted_total as f64)
+    }
+
+    /// [`Self::prediction_accuracy`] of the two-layer-ahead prediction.
+    pub fn prediction2_accuracy(&self) -> Option<f64> {
+        (self.predicted2_total > 0)
+            .then(|| self.predicted2_hits as f64 / self.predicted2_total as f64)
     }
 }
 
@@ -138,18 +148,27 @@ pub(crate) struct SlotUse {
 struct InFlight {
     il: usize,
     ticket: Ticket,
-    experts: usize,
+    experts: Vec<u32>,
 }
+
+/// Cap on the reader's bounce buffer per shard: its reads are a few experts, not a layer step.
+const READER_BOUNCE: usize = 64 << 20;
 
 pub(crate) struct Streamer {
     /// The background reader writes into the RAM tier's memory: it comes first so that it is
     /// dropped, which waits for its jobs, before the RAM tier is freed.
     reader: Option<Reader>,
-    inflight: Option<InFlight>,
+    /// Reads in flight, oldest first (the reader runs them in this order).
+    inflight: VecDeque<InFlight>,
+    /// The reader's own direct files, one per shard, so its reads never wait for the bounce
+    /// buffer of a synchronous read on the main thread (prefetch depth 2 overlaps them).
+    reader_dio: Vec<Arc<DirectFile>>,
     /// Per layer and expert: read by a prefetch and not routed since.
     prefetched: Vec<Vec<bool>>,
     /// Prediction scores per layer: hits and slots scored.
     predicted: Vec<(u64, u64)>,
+    /// The same for the prediction two layers ahead.
+    predicted2: Vec<(u64, u64)>,
     /// One direct file per shard.
     dio: Vec<Arc<DirectFile>>,
     /// Bytes of one expert's gate, up and down slab, per layer: quantization mixes such as
@@ -252,9 +271,27 @@ impl Streamer {
         let prefetch_reads = cfg.prefetch && ram.is_some();
         Ok(Streamer {
             reader: prefetch_reads.then(Reader::new),
-            inflight: None,
+            inflight: VecDeque::new(),
+            reader_dio: if prefetch_reads {
+                let cap = match cfg.io.bounce_bytes {
+                    0 => READER_BOUNCE,
+                    n => n.min(READER_BOUNCE),
+                };
+                let io = IoOptions {
+                    bounce_bytes: cap,
+                    ..cfg.io
+                };
+                file.gguf
+                    .paths
+                    .iter()
+                    .map(|p| DirectFile::open_with(p, io).map(Arc::new))
+                    .collect::<std::io::Result<Vec<_>>>()?
+            } else {
+                Vec::new()
+            },
             prefetched: vec![vec![false; n_expert as usize]; layers],
             predicted: vec![(0, 0); layers],
+            predicted2: vec![(0, 0); layers],
             dio: file
                 .gguf
                 .paths
@@ -277,9 +314,13 @@ impl Streamer {
         })
     }
 
-    /// Bytes held by the shards' bounce buffers for direct reads.
+    /// Bytes held by the shards' bounce buffers for direct reads, the reader's included.
     pub(crate) fn bounce_bytes(&self) -> u64 {
-        self.dio.iter().map(|d| d.bounce_capacity() as u64).sum()
+        self.dio
+            .iter()
+            .chain(&self.reader_dio)
+            .map(|d| d.bounce_capacity() as u64)
+            .sum()
     }
 
     pub(crate) fn io_backend(&self) -> String {
@@ -300,6 +341,8 @@ impl Streamer {
                     mixed_steps: self.mixed[il],
                     predicted_hits: self.predicted[il].0,
                     predicted_total: self.predicted[il].1,
+                    predicted2_hits: self.predicted2[il].0,
+                    predicted2_total: self.predicted2[il].1,
                 })
                 .collect(),
             io: self.io,
@@ -419,11 +462,13 @@ impl Streamer {
         })
     }
 
-    /// Scores the prediction made one layer step ago for layer `il` against the real routing:
-    /// per token, the predicted ids that the router also chose (both `[n_used, n_tokens]`).
+    /// Scores the prediction made `depth` (1 or 2) layer steps ago for layer `il` against the
+    /// real routing: per token, the predicted ids that the router also chose (both
+    /// `[n_used, n_tokens]`).
     pub(crate) fn score_prediction(
         &mut self,
         il: usize,
+        depth: u32,
         predicted: &[i32],
         actual: &[i32],
         n_used: usize,
@@ -433,17 +478,24 @@ impl Streamer {
             hits += p.iter().filter(|e| a.contains(e)).count() as u64;
             total += p.len() as u64;
         }
-        self.predicted[il].0 += hits;
-        self.predicted[il].1 += total;
-        self.metrics.prediction_accuracy(il as u32, hits, total);
+        let score = if depth == 1 {
+            &mut self.predicted[il]
+        } else {
+            &mut self.predicted2[il]
+        };
+        score.0 += hits;
+        score.1 += total;
+        self.metrics
+            .prediction_accuracy(il as u32, depth, hits, total);
     }
 
     /// Reads ahead the experts of layer `il` that `predicted` (`[n_used, n_tokens]`) names and
     /// that no tier holds yet, into free or least recently used RAM slots, on the background
     /// reader (ADR 0038). Experts the prediction needs that are resident already are pinned, so
     /// the new ones never evict them; at most `RAM slots - those` are read. The slots stay
-    /// pinned until [`Streamer::finish_prefetch`]. Call it when this thread has no read of its own
-    /// to do until then: the shard's bounce buffer serves one read at a time.
+    /// pinned until [`Streamer::finish_prefetch`]. Reads already in flight for the layer count as
+    /// resident (their slots are assigned) and stay pinned, so a later call tops the layer up.
+    /// The reader has its own direct files, so the main thread's reads may run meanwhile.
     pub(crate) fn start_prefetch(
         &mut self,
         file: &ModelFile,
@@ -453,7 +505,6 @@ impl Streamer {
         let (Some(reader), Some(ram)) = (&self.reader, &mut self.ram) else {
             return Ok(());
         };
-        debug_assert!(self.inflight.is_none(), "one prefetch in flight");
         // Distinct predicted experts, the most predicted first.
         let mut votes = vec![0u32; self.n_expert as usize];
         for &e in predicted {
@@ -471,7 +522,17 @@ impl Streamer {
         let (resident, mut missing): (Vec<u32>, Vec<u32>) = wanted
             .into_iter()
             .partition(|&e| layer.slot_of(e).is_some());
-        missing.truncate(ram.slots.saturating_sub(resident.len()));
+        // Everything pinned before this call: the predicted resident experts and every read of
+        // this layer still in flight.
+        let mut pins = resident;
+        for f in self.inflight.iter().filter(|f| f.il == il) {
+            for &e in &f.experts {
+                if !pins.contains(&e) {
+                    pins.push(e);
+                }
+            }
+        }
+        missing.truncate(ram.slots.saturating_sub(pins.len()));
         if missing.is_empty() {
             return Ok(());
         }
@@ -480,11 +541,12 @@ impl Streamer {
         let dst = [dg.get(), du.get(), dd.get()];
         let sizes = self.sizes[il];
         let total: usize = sizes.iter().sum();
-        let pins: Vec<u32> = resident.iter().chain(&missing).copied().collect();
+        pins.extend(&missing);
         let layer = ram.cache.layer_mut(il);
         layer.set_hot_set(&pins);
-        let mut ranges: Vec<Vec<Range>> = (0..self.dio.len()).map(|_| Vec::new()).collect();
-        let mut dsts: Vec<Vec<HostDst>> = (0..self.dio.len()).map(|_| Vec::new()).collect();
+        let n_shards = self.reader_dio.len();
+        let mut ranges: Vec<Vec<Range>> = (0..n_shards).map(|_| Vec::new()).collect();
+        let mut dsts: Vec<Vec<HostDst>> = (0..n_shards).map(|_| Vec::new()).collect();
         let mut staged = Ok(());
         for &e in &missing {
             let slot = match layer.lookup(e) {
@@ -529,12 +591,13 @@ impl Streamer {
             }
         }
         if let Err(e) = staged {
-            layer.set_hot_set(&[]);
+            // Reads of this layer in flight write into slots about to be cleared: wait first.
+            let _ = self.finish_prefetch(il);
             self.clear_layer(il);
             return Err(e);
         }
         let jobs: Vec<ReadJob> = self
-            .dio
+            .reader_dio
             .iter()
             .zip(ranges)
             .zip(dsts)
@@ -548,58 +611,72 @@ impl Streamer {
         self.io.prefetch_issued += missing.len() as u64;
         self.metrics
             .prefetch_issued(il as u32, missing.len() as u64);
-        self.inflight = Some(InFlight {
+        self.inflight.push_back(InFlight {
             il,
             ticket: reader.submit(jobs),
-            experts: missing.len(),
+            experts: missing,
         });
         Ok(())
     }
 
-    /// Waits for the prefetch in flight, if any, and unpins its slots. On an error the layer's
-    /// tables are cleared (slots were assigned before the bytes arrived) and the error returned.
-    pub(crate) fn finish_prefetch(&mut self) -> Result<()> {
-        let Some(InFlight {
-            il,
-            ticket,
-            experts,
-        }) = self.inflight.take()
-        else {
+    /// A prefetch read is in flight.
+    pub(crate) fn prefetch_in_flight(&self) -> bool {
+        !self.inflight.is_empty()
+    }
+
+    /// Waits for every prefetch read of layer `il`, if any, and unpins its slots. The reader is
+    /// FIFO, so reads of later layers keep running. On an error the layer's tables are cleared
+    /// (slots were assigned before the bytes arrived) and the first error returned.
+    pub(crate) fn finish_prefetch(&mut self, il: usize) -> Result<()> {
+        let (mine, rest): (VecDeque<_>, VecDeque<_>) = std::mem::take(&mut self.inflight)
+            .into_iter()
+            .partition(|f| f.il == il);
+        self.inflight = rest;
+        if mine.is_empty() {
             return Ok(());
-        };
+        }
         let reader = self.reader.as_ref().expect("a prefetch needs the reader");
-        let t0 = Instant::now();
-        let done = reader.wait(ticket);
-        self.io.prefetch_wait_time += t0.elapsed();
+        let mut failure = None;
+        for f in mine {
+            let t0 = Instant::now();
+            let done = reader.wait(f.ticket);
+            self.io.prefetch_wait_time += t0.elapsed();
+            match done {
+                Ok(d) => {
+                    let experts = f.experts.len();
+                    self.io.batches += 1;
+                    self.io.experts_read += experts as u64;
+                    self.io.bytes_read += d.stats.requested;
+                    self.io.prefetch_bytes += d.stats.requested;
+                    self.io.prefetch_read_time += d.took;
+                    self.metrics
+                        .tier_read(&self.device, "nvme", d.stats.requested);
+                    let took = d.took / experts.max(1) as u32;
+                    for _ in 0..experts {
+                        self.metrics.expert_load(Tier::Ram, "nvme", took);
+                    }
+                }
+                Err(e) => failure = failure.or(Some(e)),
+            }
+        }
         if let Some(ram) = &mut self.ram {
             ram.cache.layer_mut(il).set_hot_set(&[]);
         }
-        match done {
-            Ok(d) => {
-                self.io.batches += 1;
-                self.io.experts_read += experts as u64;
-                self.io.bytes_read += d.stats.requested;
-                self.io.prefetch_bytes += d.stats.requested;
-                self.io.prefetch_read_time += d.took;
-                self.metrics
-                    .tier_read(&self.device, "nvme", d.stats.requested);
-                let took = d.took / experts.max(1) as u32;
-                for _ in 0..experts {
-                    self.metrics.expert_load(Tier::Ram, "nvme", took);
-                }
-                Ok(())
-            }
-            Err(e) => {
+        match failure {
+            None => Ok(()),
+            Some(e) => {
                 self.clear_layer(il);
                 Err(e.into())
             }
         }
     }
 
-    /// [`Streamer::finish_prefetch`] for code that must not race with the reader and has no use
-    /// for the result (the start of a step, the hot set refresh).
+    /// [`Streamer::finish_prefetch`] for every layer, for code that must not race with the
+    /// reader and has no use for the result (the start of a step, the hot set refresh).
     pub(crate) fn settle(&mut self) {
-        let _ = self.finish_prefetch();
+        while let Some(il) = self.inflight.front().map(|f| f.il) {
+            let _ = self.finish_prefetch(il);
+        }
     }
 
     /// Makes `experts` (at most the RAM slot count) resident in the RAM slots of layer `il` and

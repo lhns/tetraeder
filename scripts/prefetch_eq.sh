@@ -28,7 +28,7 @@ case "$mem" in '' | max) mem=$total ;; esac
 [ "$mem" -gt "$total" ] && mem=$total
 ram_bytes=$((mem - ${RAM_RESERVE_GB:-20} * 1000000000))
 prompt=/root/exit_prompt.txt
-[ -f "$prompt" ] || cat AGENTS.md docs/adr/*.md > "$prompt"
+cp bench/prompts/exit_prompt.txt "$prompt"  # frozen, as in exit_run.sh
 
 run() {
   local name=$1

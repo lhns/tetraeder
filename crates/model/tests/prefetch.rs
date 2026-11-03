@@ -81,6 +81,10 @@ fn check_counters(s: &ExpertStats, what: &str) {
     assert!(io.experts_read >= io.prefetch_issued, "{what}");
     for (il, l) in s.layers.iter().enumerate() {
         assert!(l.predicted_hits <= l.predicted_total, "{what}: layer {il}");
+        assert!(
+            l.predicted2_hits <= l.predicted2_total,
+            "{what}: layer {il} depth 2"
+        );
         if let Some(a) = l.prediction_accuracy() {
             assert!((0.0..=1.0).contains(&a), "{what}: layer {il} accuracy {a}");
         }
@@ -142,26 +146,118 @@ fn cpu_prefetch_is_exact_and_counted() {
     }
 }
 
-/// hardware: cpu. The prediction is scored without a RAM tier too (compute slots only, upload
-/// policy), and it changes no logit.
+/// hardware: cpu. Prefetch with the upload policy (no RAM tier, nothing to prefetch) runs no
+/// prediction at all: nothing is scored, nothing is issued, and the logits are unchanged.
 #[test]
-fn cpu_prediction_is_scored_without_a_ram_tier() {
+fn cpu_upload_policy_runs_no_prediction() {
     let path = fixture();
     let plain = LoadOptions {
         expert_slots: Some(SLOTS),
         ..LoadOptions::new(CPU)
     };
-    let scored = LoadOptions {
-        prefetch: true,
-        ..plain.clone()
-    };
     let want = sequence(&mut load(&path, &plain));
-    let mut m = load(&path, &scored);
-    assert_bitwise(&want, &sequence(&mut m), "scored");
+    for depth in [1, 2] {
+        let o = LoadOptions {
+            prefetch: true,
+            prefetch_depth: depth,
+            ..plain.clone()
+        };
+        let mut m = load(&path, &o);
+        assert_bitwise(&want, &sequence(&mut m), "upload policy");
+        let s = m.expert_stats().unwrap();
+        assert_eq!(s.io.prefetch_issued, 0);
+        assert!(
+            s.layers
+                .iter()
+                .all(|l| l.predicted_total == 0 && l.predicted2_total == 0),
+            "depth {depth}: no prediction under the upload policy"
+        );
+        check_counters(&s, "upload policy");
+    }
+}
+
+/// hardware: cpu. Depth 2 gives the logits of the run without prefetch with 32, 12 and 4 RAM
+/// slots, the counters add up, and both predictions are scored where they exist.
+#[test]
+fn cpu_depth2_is_exact_and_counted() {
+    let path = fixture();
+    let want = sequence(&mut load(&path, &opts(32, false)));
+    for ram in [32, 12, 4] {
+        let o = LoadOptions {
+            prefetch_depth: 2,
+            ..opts(ram, true)
+        };
+        let mut m = load(&path, &o);
+        assert_bitwise(&want, &sequence(&mut m), &format!("depth 2, ram {ram}"));
+        let s = m.expert_stats().unwrap();
+        check_counters(&s, &format!("depth 2, ram {ram}"));
+        eprintln!(
+            "depth 2, ram {ram}: issued {} used {} wasted {} accuracy2 {:?}",
+            s.io.prefetch_issued,
+            s.io.prefetch_used,
+            s.io.prefetch_wasted,
+            s.layers
+                .iter()
+                .map(|l| l.prediction2_accuracy())
+                .collect::<Vec<_>>()
+        );
+        assert!(s.io.prefetch_issued > 0, "ram {ram}");
+        assert!(s.io.prefetch_used > 0, "ram {ram}");
+        assert!(s.layers[1..].iter().all(|l| l.predicted_total > 0));
+        assert!(s.layers[..2].iter().all(|l| l.predicted2_total == 0));
+        assert!(s.layers[2..].iter().all(|l| l.predicted2_total > 0));
+    }
+}
+
+/// hardware: cpu. A depth-1 run has no depth-2 score.
+#[test]
+fn cpu_depth1_scores_no_depth2() {
+    let path = fixture();
+    let mut m = load(&path, &opts(12, true));
+    sequence(&mut m);
     let s = m.expert_stats().unwrap();
-    assert_eq!(s.io.prefetch_issued, 0);
-    assert!(s.layers[1..].iter().all(|l| l.predicted_total > 0));
-    check_counters(&s, "no ram tier");
+    assert!(s.layers.iter().all(|l| l.predicted2_total == 0));
+}
+
+/// hardware: cpu. The polling level and the thread count while a read is in flight change speed,
+/// not results.
+#[test]
+fn cpu_poll_and_prefetch_threads_are_exact() {
+    let path = fixture();
+    let want = sequence(&mut load(&path, &opts(12, false)));
+    for (poll, threads, depth) in [
+        (Some(0), None, 1),
+        (Some(100), None, 2),
+        (None, Some(1), 1),
+        (Some(0), Some(1), 2),
+        // More than the pool has is clamped.
+        (None, Some(64), 1),
+    ] {
+        let o = LoadOptions {
+            cpu_poll: poll,
+            prefetch_threads: threads,
+            prefetch_depth: depth,
+            ..opts(12, true)
+        };
+        let mut m = load(&path, &o);
+        let what = format!("poll {poll:?} threads {threads:?} depth {depth}");
+        assert_bitwise(&want, &sequence(&mut m), &what);
+        check_counters(&m.expert_stats().unwrap(), &what);
+    }
+}
+
+/// hardware: cpu. A prefetch depth other than 1 or 2 is refused at load.
+#[test]
+fn cpu_invalid_prefetch_depth_is_rejected() {
+    let path = fixture();
+    for depth in [0, 3] {
+        let o = LoadOptions {
+            prefetch_depth: depth,
+            ..opts(12, true)
+        };
+        let err = Qwen3Moe::load(&path, &o).unwrap_err().to_string();
+        assert!(err.contains("prefetch_depth"), "depth {depth}: {err}");
+    }
 }
 
 /// hardware: cpu. The hot set refresh and `reset` after prefetching work, and nothing stays in
