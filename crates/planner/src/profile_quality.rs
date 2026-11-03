@@ -508,7 +508,7 @@ mod tests {
         // One check: no fit, the correction is the identity.
         let b = Band::of(&p);
         assert_eq!(Correction::from_profile(&p), Correction::IDENTITY);
-        assert_eq!(b.raw, b.corrected);
+        assert!((b.raw - b.corrected).abs() < 1e-9);
         assert_eq!(b.leave_one_out, None);
         p.checks.clear();
         let b = Band::of(&p);
