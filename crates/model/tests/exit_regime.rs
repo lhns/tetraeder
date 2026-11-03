@@ -20,8 +20,8 @@
 //!   `TETRAEDER_EXIT_DECODE_WINDOWS` (1) windows reported one by one (`decode_windows`).
 //! - `TETRAEDER_EXIT_CTX` (prefill + decode, rounded up), `TETRAEDER_EXIT_THREADS`.
 //! - `TETRAEDER_EXIT_OP_OFFLOAD=1`: large CPU-group matmuls run on the GPU (ggml op offload).
-//! - `TETRAEDER_EXIT_PREFETCH=1`: predicted next-layer expert prefetch into the RAM tier
-//!   (ADR 0038); the JSON gets `prefill_prefetch` and `decode_prefetch` (counters, overlap and
+//! - `TETRAEDER_EXIT_PREFETCH`: `0` turns the predicted expert prefetch into the RAM tier off,
+//!   `1` on; unset follows `LoadOptions` (on, ADR 0038). The JSON gets `prefill_prefetch` and `decode_prefetch` (counters, overlap and
 //!   prediction accuracy per layer and mean).
 //! - `TETRAEDER_EXIT_PREFETCH_DEPTH` (1): layers ahead that the prefetch predicts and reads, 1 or
 //!   2; depth 2 adds `accuracy2` and `accuracy2_mean` to the prefetch JSON.
@@ -379,7 +379,10 @@ fn exit_regime() {
     opts.n_ctx = n_ctx;
     opts.miss = MissPolicy::Cpu;
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
-    opts.prefetch = env_flag("TETRAEDER_EXIT_PREFETCH");
+    // Unset follows LoadOptions (prefetch on); `0` turns it off, `1` on.
+    if let Ok(v) = std::env::var("TETRAEDER_EXIT_PREFETCH") {
+        opts.prefetch = v == "1";
+    }
     if let Some(d) = env_u64("TETRAEDER_EXIT_PREFETCH_DEPTH") {
         opts.prefetch_depth = d as usize;
     }

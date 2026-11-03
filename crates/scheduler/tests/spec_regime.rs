@@ -326,7 +326,10 @@ fn spec_regime() {
     opts.n_ctx = n_ctx;
     opts.miss = MissPolicy::Cpu;
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
-    opts.prefetch = env_flag("TETRAEDER_EXIT_PREFETCH");
+    // Unset follows LoadOptions (prefetch on); `0` turns it off, `1` on.
+    if let Ok(v) = std::env::var("TETRAEDER_EXIT_PREFETCH") {
+        opts.prefetch = v == "1";
+    }
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
         None => opts.expert_slots = Some(env_u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize),
