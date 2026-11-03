@@ -28,6 +28,8 @@ build() {
     echo "already built: $stamp"
   else
     command -v uv > /dev/null 2>&1 || { curl -LsSf https://astral.sh/uv/install.sh | sh || return 32; }
+    # triton compiles a small C helper against Python.h at server start (missing on the box image: sglang died)
+    [ -f /usr/include/python3.12/Python.h ] || DEBIAN_FRONTEND=noninteractive timeout -k 10 600 apt-get install -y -q python3.12-dev || return 32
     rm -f "$venv/.built"
     # torch 2.9.1 (the PyPI linux wheel is cu128) comes in as a pinned dependency of both packages
     timeout -k 10 300 uv venv --python 3.12 --seed --allow-existing "$venv" || return 33
