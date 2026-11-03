@@ -10,7 +10,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 RULE_FILES = sorted((ROOT / "deploy" / "alerts").glob("*.yml"))
-METRICS_RS = ROOT / "crates" / "telemetry" / "src" / "metrics.rs"
+# Metric names are declared in the telemetry crate and in some crates of their own (the gateway).
+CRATES = ROOT / "crates"
 # Name parts that -opentelemetry.usePrometheusNaming appends (unit, type, histogram series).
 SUFFIX = re.compile(r"^(_(seconds|ratio|bytes|watts|celsius|segment|token|request|expert|layer))*(_total|_bucket|_sum|_count)?$")
 TOKEN = re.compile(r"[A-Za-z_:][A-Za-z0-9_:]*")
@@ -22,7 +23,7 @@ FUNCS = {
 
 
 def _emitted_bases() -> set[str]:
-    text = METRICS_RS.read_text(encoding="utf-8")
+    text = "\n".join(f.read_text(encoding="utf-8") for f in CRATES.glob("*/src/**/*.rs"))
     return {m.replace(".", "_") for m in re.findall(r'"((?:tetraeder|gen_ai)\.[a-z_.]+)"', text)}
 
 
@@ -62,7 +63,7 @@ def test_structure(path):
 
 def test_expr_series_are_emitted_or_recorded():
     bases = _emitted_bases()
-    assert "tetraeder_plan_residual" in bases, "metrics.rs not parsed"
+    assert "tetraeder_plan_residual" in bases, "crate sources not parsed"
     recorded = {r["record"] for f in RULE_FILES for r in _rules(f) if "record" in r}
     for f in RULE_FILES:
         for r in _rules(f):
