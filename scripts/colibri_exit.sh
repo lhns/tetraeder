@@ -40,7 +40,7 @@ rc=0
   fi
   # prompt text: the exit-run file, repeated, cut by bytes until Colibri's tokenizer counts about $prefill tokens
   base=/root/exit_prompt.txt
-  [ -f "$base" ] || cat AGENTS.md docs/adr/*.md > "$base"
+  [ -f "$base" ] || cp bench/prompts/exit_prompt.txt "$base"
   prompt="$work/prompt-$prefill.txt"
   if [ $rc = 0 ]; then
     bytes=$((prefill * 4)) # first guess for English text

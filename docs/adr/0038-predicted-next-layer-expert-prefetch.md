@@ -53,3 +53,20 @@ On the 30B (moe_check, `slots32_ram32_cpupolicy_prefetch`): accuracy 0.89, warm 
 Output: greedy tokens are equal with prefetch off and on in every same-conditions pair (8, 2048, 8192 and 32768 token prefills, op offload off and on). The first 32K run on the box (`main`, off) differed from all later 32K runs, off and on alike, and equals the previous box's first run: a first-run effect unrelated to prefetch, open.
 
 Decision: accepted, the gate (accuracy at least 0.6) holds. Most of the read still waits: the step waits for 71% of the decode prefetch time, likely because the reader thread competes with ggml's spinning CPU threads for a 5.8-core quota. Next levers: a lower ggml thread count while a prefetch is in flight, and reading two layers ahead. Default stays off until prediction runs only where it can prefetch (today it also adds its graph nodes and readback under `MissPolicy::Upload`).
+
+## Levers (2026-11-03)
+
+All off by default; measured later in one box session.
+
+- **Gating.** The prediction nodes and their readback now run only with `prefetch` on, `MissPolicy::Cpu` and a RAM tier, where the reads can be prefetched. Prefetch on with `Upload` (or no RAM tier) predicts nothing and costs nothing; accuracy is no longer scored there.
+- **`LoadOptions::prefetch_depth`** (1 or 2, others rejected at load). Depth 2: segment L also predicts layer L+2 from the same input (`rms_norm(ffn_inp_L) * ffn_norm[L+2]`, `gate_inp[L+2]`, softmax, top-k), placed after the real router like the depth-1 prediction, into a second state tensor. After layer L is staged: first a top-up for L+1 from the fresh depth-1 prediction (experts neither resident nor already in flight), then the reads for L+2.
+- **Reader.** Several reads can be in flight: `inflight` is a queue. `finish_prefetch(il)` waits for the tickets of layer `il` only (the reader is FIFO) and unpins that layer; `settle` waits for all. A layer's pins are its in-flight experts plus the resident predicted ones, and the read budget is `RAM slots - pins`. The reader has its own `DirectFile` per shard (64 MiB bounce cap, counted in `memory()` as `io`) so it never shares a bounce buffer with the synchronous reads of the layer being staged.
+- **Scoring.** `LayerExpertStats::predicted2_hits/_total` and `tetraeder.expert.prefetch.accuracy` with a `tetraeder.prefetch.depth` label; the panel splits by depth, the alert watches depth 1.
+- **`LoadOptions::cpu_poll`**: the ggml threadpool poll level (0 to 100, default 50) of the CPU backend. Lower leaves cores to the reader under a tight quota.
+- **`LoadOptions::prefetch_threads`**: CPU compute threads while a prefetch read is in flight (threadpool size unchanged; restored after the last wait).
+- Harness: `TETRAEDER_EXIT_PREFETCH_DEPTH`, `TETRAEDER_EXIT_CPU_POLL`, `TETRAEDER_EXIT_PREFETCH_THREADS`, recorded in the JSON `options`.
+
+## Correction and default on (2026-11-03)
+
+- **No first-run divergence.** Only one run ever produced `[4370, 69415, ...]`: box 58813464 (`exit-main-120520`). Every 32K run on box 58872072, its first included, gave `[7294, 59549, ...]`. The two boxes ran different commits, and `exit_run.sh` built the prompt from the checkout (`cat AGENTS.md docs/adr/*.md`): 87,924 against 98,881 bytes, first difference at byte 78,551 (about token 20K). 8K prefills shared their text and agreed across boxes. The prompt is now frozen in `bench/prompts/exit_prompt.txt` (the 0956ccf text) and its token hash is in every exit JSON. On box 58900330 the frozen prompt gives `[7294, 59549, ...]` again, and libllama with the same token ids gives the same 64 greedy tokens (top-1 margin 12.9, no near-tie).
+- **Default on.** Box 58900330 (RTX 3090, 15 threads, 91.6 GB, bench/results/20261103/exit-main-*-021753.json), 32K, same expert VRAM as llama.cpp's best `-ot` (10.97 GB): decode 2.83 tok/s off, 3.14 on (+11%); prefill 72.2 and 75.8; read time hidden 59% (29% on the 5-thread box). Prediction now runs only where it prefetches (Levers above), so `LoadOptions::prefetch` defaults to true.

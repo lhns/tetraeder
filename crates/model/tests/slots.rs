@@ -352,8 +352,11 @@ fn cpu_telemetry_reports_steps_and_cache() {
 /// that were computed on the CPU, and the hit and miss counts still agree with the model's.
 #[test]
 fn cpu_telemetry_reports_cpu_experts() {
+    // Prefetch lookups count as RAM misses in the slot stats but are not cache requests (ADR
+    // 0038); its own counters are checked in tests/prefetch.rs.
     let o = LoadOptions {
         miss: MissPolicy::Cpu,
+        prefetch: false,
         ..opts(3, Some(8))
     };
     check_telemetry(o);
