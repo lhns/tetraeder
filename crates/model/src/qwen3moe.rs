@@ -930,16 +930,13 @@ impl Qwen3Moe {
                 // Resident experts run from the compute slots, the others from the RAM slots
                 // on the CPU, in chunks of the RAM slot count (ADR 0035).
                 let plan = streamer.plan_cpu(seg, &chosen)?;
+                // The next layers' reads start before this layer's own misses are read: the
+                // reader has direct files of its own, and the device serves both at once.
+                prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
+                set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
                 if plan.cpu.is_empty() {
                     let ids = map_ids(&chosen, &plan.compute, &plan.compute_slots);
                     slot.ids_map.get().set_i32(&ids)?;
-                    prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
-                    set_compute_threads(
-                        &self.cpu,
-                        self.cpu_threads,
-                        self.prefetch_threads,
-                        streamer,
-                    );
                     continue;
                 }
                 let cap_ram = group_cap(ExpertSrc::Ram, self.gpu, offload);
@@ -972,8 +969,6 @@ impl Qwen3Moe {
                         });
                     }
                 }
-                prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
-                set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
                 continue;
             }
             let chunks = streamer.plan(seg, &chosen)?;
@@ -1327,8 +1322,8 @@ fn load_weights(
     Ok((weights, buffer_size))
 }
 
-/// Starts the prefetch reads after layer `seg` is staged: a top-up of layer `seg + 1` from the
-/// fresh prediction, then layer `seg + 2` at depth 2.
+/// Starts the prefetch reads once layer `seg` is planned, before its own misses are read: a
+/// top-up of layer `seg + 1` from the fresh prediction, then layer `seg + 2` at depth 2.
 fn prefetch_ahead(
     streamer: &mut Streamer,
     file: &ModelFile,

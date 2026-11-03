@@ -241,6 +241,32 @@ fn batch_with_sub_batches_and_oversized_ranges() {
     }
 }
 
+/// One-block device reads (`chunk_bytes`): every range is split into many reads that run at
+/// once, and the bytes are the same.
+#[test]
+fn small_chunks_equal_buffered_reads() {
+    let (path, _) = data();
+    let ranges = [range(5, 100), range(4090, 20_000), range(100, SIZE - 100)];
+    for buffered in [false, true] {
+        let f = DirectFile::open_with(
+            path,
+            IoOptions {
+                buffered,
+                chunk_bytes: 4096,
+                queue_depth: 4,
+                ..IoOptions::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(collect(&f, &ranges), expect(&ranges), "{f:?}");
+        assert_eq!(
+            read(&f, 7, SIZE - 7),
+            expect(&[range(7, SIZE - 7)])[0],
+            "{f:?}"
+        );
+    }
+}
+
 #[test]
 fn bounce_buffer_is_reused_across_calls() {
     let ranges = [range(10, 3000), range(6000, 3000)];
