@@ -10,6 +10,7 @@
 //!
 //! Phase 3a, milestone B: the search.
 //! - [`quality`]: the [`QualityModel`] trait, null and table models.
+//! - [`profile_quality`]: the measured profile as a quality model, its correction, and the mix at a byte budget.
 //! - [`objective`]: [`Scored`], [`choose`] (limits, quality, cost, speed; Pareto front, tradeoff).
 //! - [`search`]: skeletons, pruning, layer DP, expert tiers, format knapsack, scoring.
 //!
@@ -30,6 +31,7 @@ pub mod explain;
 pub mod layout;
 pub mod lower;
 pub mod objective;
+pub mod profile_quality;
 pub mod quality;
 pub mod score;
 pub mod search;
@@ -46,6 +48,10 @@ pub use explain::{Explanation, explain};
 pub use layout::{LayerBytes, ModelLayout, ModelMeta, TensorRec, TypeSummary, build_layout};
 pub use lower::{range_regex, to_exit_regime_env, to_llama_bench_args, to_variant_args};
 pub use objective::{Choice, SPEED_BAND, Scored, StageTime, choose, pareto_front, resource_cost};
+pub use profile_quality::{
+    Band, Correction, Mix, MixError, ProfileQuality, estimate_mix, group_of_tensor, mix_at_budget,
+    tensor_formats,
+};
 pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
 pub use search::{SearchInput, SearchResult, Split, search, split_layers};
 pub use whatif::{Change, WhatIf, apply, rank_purchases, what_if};
