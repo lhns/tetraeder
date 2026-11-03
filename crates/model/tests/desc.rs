@@ -117,7 +117,10 @@ fn tensor_formats_from_a_plan() {
     assert_eq!(m["blk.1.attn_q.weight"], Format::Q8_0);
     assert_eq!(m["blk.0.ffn_down_exps.weight"], Format::Q4_0);
     assert_eq!(m["blk.0.ffn_gate_exps.weight"], Format::Q8_0);
-    assert!(!m.keys().any(|k| k.contains("norm") || k.contains("ffn_gate_inp")));
+    assert!(
+        !m.keys()
+            .any(|k| k.contains("norm") || k.contains("ffn_gate_inp"))
+    );
     assert_eq!(m.len(), 2 + 2 * 7);
 
     // experts 0..4 of every layer in Q4_K: the first matching rule wins, so they differ from 4..8
