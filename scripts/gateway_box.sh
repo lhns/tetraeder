@@ -112,7 +112,7 @@ build() {
 # ---- b. conformance on real models -------------------------------------------------------------------------
 conformance() {
   local m=$1 f=${MODEL_FILE[$1]} alias=${MODEL_ALIAS[$1]}
-  [ -f "$out/conformance-$m.junit.xml" ] && { say "conformance $m: done before"; return 0; }
+  grep -qs " passed" "$out/conformance-$m.pytest.log" && { say "conformance $m: done before"; return 0; }
   [ -f "$f" ] || { say "conformance $m: missing $f"; return 1; }
   say "conformance $m start"
   start_server "$out/conformance-$m.server.log" "$tet" serve -m "$f" --ctx 32768 --port "$port_tet" --alias "$alias" \
@@ -121,7 +121,7 @@ conformance() {
     TETRAEDER_BASE_URL="http://127.0.0.1:$port_tet" TETRAEDER_MODEL="$alias" \
       TETRAEDER_REQUEST_LOG="$out/conformance-$m.reqlog.jsonl" \
       timeout -k 30 25m "$py" -m pytest tests/conformance -q -p no:cacheprovider \
-      --junitxml="$out/conformance-$m.junit.xml" > "$out/conformance-$m.pytest.txt" 2>&1
+      --junitxml="$out/conformance-$m.junit.xml" > "$out/conformance-$m.pytest.log" 2>&1
     say "conformance $m rc=$? (junit: $out/conformance-$m.junit.xml)"
   fi
   stop_server
