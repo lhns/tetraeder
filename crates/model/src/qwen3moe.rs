@@ -1645,7 +1645,7 @@ fn sum_experts<'a>(h: &Hparams, ctx: &'a Context, experts: Tensor<'a>) -> Tensor
 
 #[cfg(test)]
 mod tests {
-    use super::{ExpertSrc, MAX_GROUP_ROWS, group_cap, group_pairs, split_group};
+    use super::{ExpertSrc, MAX_GROUP_ROWS, group_cap, group_pairs, offloads, split_group};
 
     /// Top-8 of 32 experts, 24 tokens, skewed like a real router: low ids are popular.
     fn routing() -> (Vec<i32>, usize) {
