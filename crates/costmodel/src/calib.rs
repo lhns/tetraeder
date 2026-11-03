@@ -166,12 +166,14 @@ fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
         }
         a.swap(c, p);
         b.swap(c, p);
-        for r in c + 1..n {
-            let k = a[r][c] / a[c][c];
-            for j in c..n {
-                a[r][j] -= k * a[c][j];
+        let (top, rest) = a.split_at_mut(c + 1);
+        let pivot = &top[c];
+        for (i, row) in rest.iter_mut().enumerate() {
+            let k = row[c] / pivot[c];
+            for (x, y) in row[c..n].iter_mut().zip(&pivot[c..n]) {
+                *x -= k * y;
             }
-            b[r] -= k * b[c];
+            b[c + 1 + i] -= k * b[c];
         }
     }
     let mut x = vec![0.0; n];
