@@ -30,7 +30,7 @@ fallback = "nvidia/cuda:12.8.1-devel-ubuntu24.04"  # plain CUDA image; the provi
 
 [push]
 # everything the box builds; tests/test_taxameter_config.py checks it against Cargo.toml and build.rs
-paths = ["crates", "xtask", "patches", "bench", "scripts", "docs/adr", "tests/fixtures", "vendor/PIN", "Cargo.toml",
+paths = ["crates", "xtask", "patches", "bench", "scripts", "docs/adr", "tests/fixtures", "tests/conformance", "vendor/PIN", "Cargo.toml",
          "Cargo.lock", "rust-toolchain.toml", "AGENTS.md"]
 submodules = ["vendor/llama.cpp"]
 

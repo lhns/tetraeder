@@ -1,0 +1,65 @@
+{
+  "label": "q8b-tetraeder-p4096-r1",
+  "base_url": "http://127.0.0.1:18080",
+  "model": "qwen3-8b",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 4096,
+    "max_tokens": 64,
+    "concurrency": 1,
+    "requests": 4,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 0
+  },
+  "started": "2026-11-03T06:35:01",
+  "results": [
+    {
+      "ttft_s": 0.9291846560081467,
+      "total_s": 1.7494973560096696,
+      "completion_tokens": 64,
+      "prompt_tokens": 3129,
+      "usage_from": "usage",
+      "decode_tps": 76.86108953607287,
+      "text_head": "Okay, let's see. The user provided a long text that repeats "
+    },
+    {
+      "ttft_s": 0.8975460180081427,
+      "total_s": 1.7189755830331706,
+      "completion_tokens": 64,
+      "prompt_tokens": 3131,
+      "usage_from": "usage",
+      "decode_tps": 76.74267251841302,
+      "text_head": "Okay, let's see. The user provided a long text that repeats "
+    },
+    {
+      "ttft_s": 0.891989823023323,
+      "total_s": 1.713360861002002,
+      "completion_tokens": 64,
+      "prompt_tokens": 3131,
+      "usage_from": "usage",
+      "decode_tps": 76.74419127471033,
+      "text_head": "Okay, let's see. The user provided a long text that repeats "
+    },
+    {
+      "ttft_s": 0.8940526639926247,
+      "total_s": 1.715218331955839,
+      "completion_tokens": 64,
+      "prompt_tokens": 3131,
+      "usage_from": "usage",
+      "decode_tps": 76.75579913966081,
+      "text_head": "Okay, let's see. The user provided a long text that repeats "
+    }
+  ],
+  "summary": {
+    "requests": 4,
+    "errors": 0,
+    "wall_s": 6.897326128964778,
+    "completion_tokens": 256,
+    "prompt_tokens_median": 3131.0,
+    "ttft_median_s": 0.8957993410003837,
+    "ttft_p90_s": 0.9291846560081467,
+    "decode_tps_median": 76.74999520718558,
+    "throughput_tps": 37.11583231144431
+  }
+}

@@ -10,3 +10,19 @@ publish = false
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "tetraeder-plan"
+path = "src/bin/tetraeder-plan.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tetraeder-costmodel = { path = "../costmodel" }
+tetraeder-plan = { path = "../plan" }
+tetraeder-profiler = { path = "../profiler" }
+
+[dev-dependencies]
+tetraeder-bench = { path = "../bench" }

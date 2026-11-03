@@ -38,6 +38,20 @@ pub const CHATML_TEMPLATE: &str = r##"{%- if tools %}{{ '<|im_start|>system\n' }
 {%- endfor %}
 {%- if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"##;
 
+/// The script behind `tetraeder serve --fake`: answers the text after the last `FAKE:` in the
+/// prompt's last user turn verbatim, else echoes that turn.
+pub fn serve_script(prompt: &str) -> String {
+    const START: &str = "<|im_start|>user\n";
+    let turn = prompt.rfind(START).map_or(prompt, |i| {
+        let rest = &prompt[i + START.len()..];
+        &rest[..rest.find("<|im_end|>").unwrap_or(rest.len())]
+    });
+    match turn.rfind("FAKE:") {
+        Some(i) => turn[i + "FAKE:".len()..].to_owned(),
+        None => format!("You said: {turn}"),
+    }
+}
+
 type Script = dyn Fn(&str) -> String + Send + Sync;
 
 pub struct FakeEngine {
@@ -109,6 +123,11 @@ impl FakeEngine {
     pub fn fixed(text: &str) -> Self {
         let t = text.to_owned();
         Self::new(move |_| t.clone())
+    }
+
+    /// Renames the served model.
+    pub fn set_model_id(&mut self, id: &str) {
+        self.models[0].id = id.to_owned();
     }
 
     pub fn set_context_length(&mut self, n: u32) {
@@ -249,5 +268,22 @@ impl Engine for FakeEngine {
             let _ = tx.blocking_send(GenEvent::Finished { reason, stats });
         });
         Ok(rx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::serve_script;
+
+    #[test]
+    fn serve_script_answers_the_last_user_turn() {
+        let p = |t: &str| {
+            format!(
+                "<|im_start|>user\nold FAKE:no<|im_end|>\n<|im_start|>assistant\nx<|im_end|>\n<|im_start|>user\n{t}<|im_end|>\n<|im_start|>assistant\n"
+            )
+        };
+        assert_eq!(serve_script(&p("hello")), "You said: hello");
+        assert_eq!(serve_script(&p("a FAKE:b FAKE:c\nd")), "c\nd");
+        assert_eq!(serve_script("no template"), "You said: no template");
     }
 }

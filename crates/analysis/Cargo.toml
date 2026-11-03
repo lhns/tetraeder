@@ -10,3 +10,10 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+tetraeder-costmodel = { path = "../costmodel" }
+tetraeder-profiler = { path = "../profiler" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"

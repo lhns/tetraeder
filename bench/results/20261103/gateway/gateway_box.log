@@ -1,0 +1,89 @@
+[06:06:38] gateway_box start (threads=11 reps=3 budget=100 min) out=/root/tetraeder/bench/results/20261103/gateway
+[06:06:39] build start
+    Updating crates.io index
+ Downloading crates ...
+    Finished `release` profile [optimized] target(s) in 10m 47s
+The virtual environment was not created successfully because ensurepip is not
+available.  On Debian/Ubuntu systems, you need to install the python3-venv
+package using the following command.
+
+    apt install python3.12-venv
+
+You may need to use sudo with that command.  After installing the python3-venv
+package, recreate your virtual environment.
+
+Failing command: /root/gwvenv/bin/python3
+
+[06:17:26] python env failed
+[06:17:26] GATEWAY_BOX_DONE rc=1
+[06:28:57] gateway_box start (threads=11 reps=3 budget=100 min) out=/root/tetraeder/bench/results/20261103/gateway
+[06:28:57] build start
+[06:32:20] gateway_box start (threads=11 reps=2 budget=55 min) out=/root/tetraeder/bench/results/20261103/gateway
+[06:32:20] build start
+    Finished `release` profile [optimized] target(s) in 49.86s
+Using CPython 3.12.3 interpreter at: /usr/bin/python3
+Creating virtual environment at: /root/gwvenv
+Activate with: source /root/gwvenv/bin/activate
+Using Python 3.12.3 environment at: /root/gwvenv
+Resolved 30 packages in 830ms
+Downloading pydantic-core (2.1MiB)
+Downloading openai (2.3MiB)
+Downloading pygments (1.2MiB)
+Downloading anthropic (2.2MiB)
+Prepared 30 packages in 554ms
+Installed 30 packages in 673ms
+[06:33:14] build done
+[06:33:14] conformance q8b start
+[06:33:21] conformance q8b rc=4 (junit: /root/tetraeder/bench/results/20261103/gateway/conformance-q8b.junit.xml)
+[06:33:25] conformance q30b start
+[06:33:32] conformance q30b rc=4 (junit: /root/tetraeder/bench/results/20261103/gateway/conformance-q30b.junit.xml)
+[06:33:36] pass q8b llama-server-np1 r1 (c1 p4096 mt) start
+[06:34:15] pass q8b llama-server-np1 r1 done
+[06:34:15] pass q8b llama-server-np4 r1 (c4) start
+[06:34:35] pass q8b llama-server-np4 r1 done
+[06:34:35] pass q8b tetraeder r1 (c1 p4096 mt c4) start
+[06:35:40] pass q8b tetraeder r1 done
+[06:35:40] pass q30b llama-server-np1 r1 (c1 p4096 mt) start
+[06:36:15] pass q30b llama-server-np1 r1 done
+[06:36:15] pass q30b llama-server-np4 r1 (c4) start
+[06:36:40] pass q30b llama-server-np4 r1 done
+[06:36:40] pass q30b tetraeder r1 (c1 p4096 mt c4) start
+[06:37:30] pass q30b tetraeder r1 done
+[06:37:30] pass q30b tetraeder-llama r1 (c1 p4096 mt c4) start
+[06:38:20] pass q30b tetraeder-llama r1 done
+[06:38:20] pass q8b llama-server-np1 r2 (c1 p4096 mt) start
+[06:38:59] pass q8b llama-server-np1 r2 done
+[06:38:59] pass q8b llama-server-np4 r2 (c4) start
+[06:39:19] pass q8b llama-server-np4 r2 done
+[06:39:19] pass q8b tetraeder r2 (c1 p4096 mt c4) start
+[06:40:24] pass q8b tetraeder r2 done
+[06:40:24] pass q30b llama-server-np1 r2 (c1 p4096 mt) start
+[06:40:59] pass q30b llama-server-np1 r2 done
+[06:40:59] pass q30b llama-server-np4 r2 (c4) start
+[06:41:24] pass q30b llama-server-np4 r2 done
+[06:41:24] pass q30b tetraeder r2 (c1 p4096 mt c4) start
+[06:42:13] pass q30b tetraeder r2 done
+[06:42:13] pass q30b tetraeder-llama r2 (c1 p4096 mt c4) start
+[06:43:04] pass q30b tetraeder-llama r2 done
+[06:43:04] overhead q8b tetraeder bench
+[06:43:14] overhead q8b llama-bench
+[06:43:22] overhead q30b tetraeder bench
+[06:43:40] overhead q30b llama-bench
+q30b tetraeder c1 {'ttft_median_s': 0.742, 'decode_tps_median': 1.003, 'throughput_tps': 1.043}
+q30b tetraeder c4 {'ttft_median_s': 5.028, 'decode_tps_median': 2.069, 'throughput_tps': 0.592}
+q30b tetraeder mt {'ttft_first_s': 0.374, 'ttft_later_median_s': 0.938}
+q30b tetraeder p4096 {'ttft_median_s': 0.773, 'decode_tps_median': 0.994, 'throughput_tps': 1.14}
+q30b tetraeder-llama c1 {'ttft_median_s': 0.718, 'decode_tps_median': 1.024, 'throughput_tps': 1.071}
+q30b tetraeder-llama c4 {'ttft_median_s': 4.914, 'decode_tps_median': 2.117, 'throughput_tps': 0.606}
+q30b tetraeder-llama mt {'ttft_first_s': 0.367, 'ttft_later_median_s': 0.893}
+q30b tetraeder-llama p4096 {'ttft_median_s': 0.751, 'decode_tps_median': 1.021, 'throughput_tps': 1.17}
+q8b tetraeder c1 {'ttft_median_s': 0.635, 'decode_tps_median': 1.016, 'throughput_tps': 1.06}
+q8b tetraeder c4 {'ttft_median_s': 6.619, 'decode_tps_median': 1.293, 'throughput_tps': 0.405}
+q8b tetraeder mt {'ttft_first_s': 0.29, 'ttft_later_median_s': 0.888}
+q8b tetraeder p4096 {'ttft_median_s': 0.683, 'decode_tps_median': 1.014, 'throughput_tps': 1.198}
+[06:43:51] GATEWAY_BOX_DONE rc=0
+[06:43:52] conformance2 q8b start
+[06:45:01] conformance2 q8b rc=0
+[06:45:06] conformance2 q30b start
+[06:45:56] conformance2 q30b rc=0
+[06:46:01] CONF2_DONE

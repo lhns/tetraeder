@@ -95,6 +95,8 @@ pub struct Engine {
     threads_batch: i32,
     chunk: usize,
     rng: u64,
+    /// Positions of sequence 0 held in the KV cache.
+    n_past: usize,
 }
 
 fn default_threads() -> i32 {
@@ -167,6 +169,7 @@ impl Engine {
             threads_batch,
             chunk,
             rng: 0x9E37_79B9_7F4A_7C15,
+            n_past: 0,
         })
     }
 
@@ -191,6 +194,63 @@ impl Engine {
 
     pub fn n_ctx(&self) -> usize {
         self.ctx.n_ctx() as usize
+    }
+
+    /// Positions held in the KV cache.
+    pub fn n_past(&self) -> usize {
+        self.n_past
+    }
+
+    /// Keeps the first `keep` cached positions and drops the rest.
+    pub fn truncate(&mut self, keep: usize) -> Result<()> {
+        if keep >= self.n_past {
+            return Ok(());
+        }
+        if !self.ctx.memory_seq_rm(0, keep as i32, -1) {
+            return Err(EngineError::InvalidRequest(format!(
+                "the KV cache cannot drop positions {keep}.."
+            )));
+        }
+        self.n_past = keep;
+        Ok(())
+    }
+
+    /// Appends `tokens` after the cached ones and returns the logits of the last one
+    /// (`n_vocab` values, valid until the next call). Chunks by `n_batch`; each chunk is a
+    /// timed step, prefill for several tokens and decode for one.
+    pub fn eval(&mut self, tokens: &[Token]) -> Result<&[f32]> {
+        if tokens.is_empty() {
+            return Err(EngineError::EmptyPrompt);
+        }
+        let needed = self.n_past + tokens.len();
+        if needed > self.n_ctx() {
+            return Err(EngineError::ContextTooSmall {
+                needed,
+                n_ctx: self.n_ctx(),
+            });
+        }
+        self.ctx.set_threads(self.threads, self.threads_batch);
+        let phase = if tokens.len() > 1 {
+            Phase::Prefill
+        } else {
+            Phase::Decode
+        };
+        let span = self.span(phase);
+        let _e = span.enter();
+        let n = tokens.len();
+        let mut pos = 0;
+        while pos < n {
+            let end = (pos + self.chunk).min(n);
+            self.batch.clear();
+            for (i, &t) in tokens[pos..end].iter().enumerate() {
+                self.batch
+                    .push(t, (self.n_past + pos + i) as i32, 0, pos + i == n - 1)?;
+            }
+            self.step(phase)?;
+            pos = end;
+        }
+        self.n_past += n;
+        Ok(self.ctx.logits_ith(-1)?)
     }
 
     pub fn tokenize(
@@ -349,6 +409,7 @@ impl Engine {
         };
 
         self.ctx.memory_clear();
+        self.n_past = 0;
         self.ctx.set_threads(self.threads, self.threads_batch);
 
         // Prefill in n_batch chunks; logits only for the last prompt token.
@@ -368,6 +429,7 @@ impl Engine {
                 prefill_steps += 1;
                 pos = end;
             }
+            self.n_past = n;
         }
 
         let mut tokens = Vec::new();
@@ -418,6 +480,7 @@ impl Engine {
                 self.batch.push(tok, pos, 0, true)?;
                 pos += 1;
                 self.step(Phase::Decode)?;
+                self.n_past += 1;
                 decode_steps += 1;
             }
         }

@@ -157,6 +157,10 @@ pub struct Variant {
     /// workload defaults (`-r` defaults to 1: the harness repeats).
     #[serde(default)]
     pub args: Vec<String>,
+    /// Extra environment for the engine process, e.g. `GGML_CUDA_DISABLE_GRAPHS = "1"`; applied after the
+    /// device environment.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
 }
 
 /// True if `args` sets any of the flag spellings.
@@ -347,6 +351,20 @@ class = "cuda"
 device = "cuda"
 band = 0.08
 "#;
+
+    #[test]
+    fn variant_env_is_optional() {
+        assert!(Spec::parse(MIN).unwrap().variant[0].env.is_empty());
+        let s = Spec::parse(&MIN.replace(
+            "device = \"cpu\"
+[[pair]]",
+            "device = \"cpu\"
+env = { GGML_CUDA_DISABLE_GRAPHS = \"1\" }
+[[pair]]",
+        ))
+        .unwrap();
+        assert_eq!(s.variant[0].env["GGML_CUDA_DISABLE_GRAPHS"], "1");
+    }
 
     #[test]
     fn parses_and_resolves() {

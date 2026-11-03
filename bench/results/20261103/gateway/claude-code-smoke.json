@@ -1,0 +1,10 @@
+{
+  "what": "Claude Code (headless, claude -p) against tetraeder serve --fake --accept-any-model --ctx 200000, ANTHROPIC_BASE_URL set; the request log line, without the request body",
+  "machine": "local Windows VM, no GPU",
+  "requests": [
+    {"path": "/v1/messages", "query": "beta=true", "status": 200, "stream": true, "max_tokens": 32000, "tools": 14,
+     "logged_headers": ["anthropic-version", "anthropic-beta", "user-agent"],
+     "usage": {"prompt_tokens": 57459, "cached_tokens": 0, "completion_tokens": 9182}}
+  ],
+  "note": "fake engine with a byte-level vocabulary, so token counts are bytes; with a real Qwen3 tokenizer the same prompt is roughly a quarter of that"
+}
