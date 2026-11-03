@@ -163,6 +163,7 @@ fn export(a: &ExportArgs) -> anyhow::Result<()> {
             cache: a.cache.clone(),
             threads,
             telemetry: None,
+            chunk_rows: None,
         },
     )?;
     let convert_seconds = t0.elapsed().as_secs_f64();
