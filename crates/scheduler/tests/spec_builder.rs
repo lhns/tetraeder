@@ -7,7 +7,8 @@
 //! multi-row step takes other kernels for some ops (llamafile sgemm for F32 from 2 rows, ADR
 //! 0043) and its logits differ in the last bits (seen on the CI runners, 2026-11-03), so there
 //! the logits must agree to a relative 1e-4 and speculative output may leave plain greedy only
-//! at a near-tie of the plain run (top-2 margin below `NEAR_TIE`).
+//! at a near-tie of the plain run (top-2 margin below `NEAR_TIE` of the largest logit; the
+//! last-bit differences add up over the decoded tokens: 3.7e-4 seen).
 //!
 //! Hardware label (AGENTS rule 9): `cpu_*` tests need no GPU.
 
@@ -71,8 +72,8 @@ fn batch_invariant_kernels() -> bool {
     }
 }
 
-/// Plain greedy history by one-row steps, plus the top-2 margin of the logits that chose each
-/// history position (0 for the prompt); leaves the model rewound to the prefill.
+/// Plain greedy history by one-row steps, plus the top-2 margin, relative to the largest
+/// logit, of the logits that chose each history position (0 for the prompt); leaves the model rewound to the prefill.
 fn plain_with_margins(m: &mut Qwen3Moe) -> (Vec<i32>, Vec<f32>) {
     m.rewind(0).unwrap();
     let p = prompt();
@@ -87,7 +88,8 @@ fn plain_with_margins(m: &mut Qwen3Moe) -> (Vec<i32>, Vec<f32>) {
             .filter(|&(j, _)| j != top)
             .map(|(_, &x)| x)
             .fold(f32::MIN, f32::max);
-        margins.push(l[top] - second);
+        let scale = l.iter().fold(0f32, |a, x| a.max(x.abs()));
+        margins.push((l[top] - second) / scale);
         h.push(top as i32);
         l = m.eval(&[top as i32]).unwrap();
     }
@@ -104,7 +106,7 @@ fn assert_agrees(got: &[i32], want: &[i32], margins: &[f32], what: &str) {
     };
     assert!(
         !batch_invariant_kernels() && margins[i] < NEAR_TIE,
-        "{what}: differs from plain greedy at {i} (plain top-2 margin {})",
+        "{what}: differs from plain greedy at {i} (plain top-2 margin {} of the largest logit)",
         margins[i]
     );
     eprintln!(
