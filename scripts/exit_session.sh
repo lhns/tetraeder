@@ -16,8 +16,10 @@ step() {
   echo "[$(date +%T)] done rc=$?" >> "$log"
 }
 levers="d2:TETRAEDER_EXIT_PREFETCH_DEPTH=2 d2poll0:TETRAEDER_EXIT_PREFETCH_DEPTH=2,TETRAEDER_EXIT_CPU_POLL=0"
-levers="$levers d2t14:TETRAEDER_EXIT_PREFETCH_DEPTH=2,TETRAEDER_EXIT_PREFETCH_THREADS=14"
-step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nooffload-on drift-nofuse drift-ref-ub512 drift-ref-nofuse main-prefetch d2 d2poll0 d2t14 ktransformers main-repeat" \
+# one compute thread fewer while a prefetch read is in flight
+fewer=$(($(bash scripts/cpu_quota.sh) - 1))
+levers="$levers d2fewer:TETRAEDER_EXIT_PREFETCH_DEPTH=2,TETRAEDER_EXIT_PREFETCH_THREADS=$fewer"
+step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nooffload-on drift-nofuse drift-ref-ub512 drift-ref-nofuse main-prefetch d2 d2poll0 d2fewer ktransformers main-repeat" \
   VARIANTS="$levers" bash scripts/exit_run.sh
 step spec_run env STAGES=main-builder bash scripts/spec_run.sh
 # exit_run.sh takes a new stamp and keeps the earlier results
