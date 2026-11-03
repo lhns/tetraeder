@@ -96,6 +96,15 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Score a measured fixture directory (ADR 0040): calibrate on its anchors, predict the
+    /// candidates, report regret and rank correlation as JSON.
+    Score {
+        /// `bench/results/<date>/planner-<fixture>`.
+        dir: PathBuf,
+        /// Write the JSON here instead of stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 /// Inputs every planning subcommand reads.
@@ -125,6 +134,19 @@ fn read_opt(p: &Option<PathBuf>) -> Result<Option<String>> {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::Score { dir, out } => {
+            let s = tetraeder_planner::score::score_dir(&dir).map_err(anyhow::Error::msg)?;
+            let json = serde_json::to_string_pretty(&s)?;
+            match out {
+                Some(p) => {
+                    std::fs::write(&p, json).with_context(|| format!("write {}", p.display()))
+                }
+                None => {
+                    println!("{json}");
+                    Ok(())
+                }
+            }
+        }
         Command::Explain {
             common,
             hints,
