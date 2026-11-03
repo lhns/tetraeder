@@ -11,10 +11,12 @@ use std::ffi::{CStr, c_char};
 
 mod backend;
 mod context;
+mod quant;
 mod sched;
 
 pub use backend::{Backend, Buffer};
 pub use context::{Context, Graph, OwnedGraph, OwnedTensor, RopeParams, Tensor};
+pub use quant::{quantize, to_f32};
 pub use sched::Sched;
 
 use crate::raw as sys;
@@ -60,8 +62,27 @@ impl Type {
         (!name.is_null() && blck > 0).then_some(Type(id))
     }
 
+    /// The type with this ggml name (`q4_K`, `IQ4_XS`, ...), case-insensitive.
+    pub fn from_name(name: &str) -> Option<Type> {
+        (0..sys::GGML_TYPE_COUNT as u32)
+            .filter_map(Type::from_id)
+            .find(|t| t.name().eq_ignore_ascii_case(name))
+    }
+
     pub fn id(self) -> u32 {
         self.0
+    }
+
+    /// Block-quantized (ggml's `is_quantized`; F32, F16 and BF16 are not).
+    pub fn is_quantized(self) -> bool {
+        // SAFETY: valid id; ggml returns a static traits struct.
+        unsafe { (*sys::ggml_get_type_traits(self.0 as _)).is_quantized }
+    }
+
+    /// The type cannot be quantized to without an importance matrix.
+    pub fn requires_imatrix(self) -> bool {
+        // SAFETY: valid id; pure lookup.
+        unsafe { sys::ggml_quantize_requires_imatrix(self.0 as _) }
     }
 
     /// ggml's lower-case name, for example `f16` or `q4_K`.
@@ -109,5 +130,11 @@ mod tests {
         assert_eq!(Type::from_id(100_000), None);
         let q8 = Type::from_id(sys::GGML_TYPE_Q8_0 as u32).unwrap();
         assert_eq!((q8.block_size(), q8.row_size(64)), (32, 34 * 2));
+        assert_eq!(Type::from_name("Q8_0"), Some(q8));
+        assert_eq!(Type::from_name("iq4_xs").unwrap().name(), "iq4_xs");
+        assert_eq!(Type::from_name("nope"), None);
+        assert!(q8.is_quantized() && !Type::F16.is_quantized());
+        assert!(Type::from_name("iq2_xxs").unwrap().requires_imatrix());
+        assert!(!q8.requires_imatrix());
     }
 }

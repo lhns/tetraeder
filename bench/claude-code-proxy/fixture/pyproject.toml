@@ -1,0 +1,10 @@
+[project]
+name = "invoicing"
+version = "0.4.0"
+description = "Small invoicing toolkit: parse, price, tax and report invoices."
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -48,3 +48,5 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0041](0041-detector-observation-faults-and-limits.md) | Bottleneck detector: one observation type, faults separate from the limiting resource, advisor report only (Proposed) |
 | [0042](0042-slo-burn-rate-alerts-and-drain-restart-replanning.md) | SLO burn-rate alerts and drain-and-restart replanning (Proposed) |
 | [0046](0046-serving-real-engines-behind-the-gateway.md) | Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log |
+| [0047](0047-formats-per-role-and-load-time-conversion-cache.md) | Formats per tensor role in the plan; load-time conversion into a per-tensor disk cache |
+| [0048](0048-quality-profile-file-and-calibration-job.md) | Quality profile file and calibration job |
