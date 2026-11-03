@@ -207,10 +207,12 @@ class Server:
 def server_cmd(args, engine: str, port: int, reqlog: Path) -> list[str]:
     if engine == "tetraeder":
         cmd = [args.tet_bin, "serve", "-m", args.model, "--ctx", str(args.ctx), "--port", str(port), "--alias", args.alias,
-               "--accept-any-model", "--ngl", "-1", "-t", str(args.threads), "--request-log", str(reqlog)]
+               "--accept-any-model", "--ngl", "-1", "-t", str(args.threads), "--request-log", str(reqlog),
+               "--cache-ram", str(args.cache_ram)]
         return cmd + shlex.split(args.tet_args)
     cmd = [args.llama_bin, "-m", args.model, "-c", str(args.ctx), "-ngl", "99", "-t", str(args.threads),
-           "--host", "127.0.0.1", "--port", str(port), "--jinja", "-np", "1", "--alias", args.alias]
+           "--host", "127.0.0.1", "--port", str(port), "--jinja", "-np", "1", "--alias", args.alias,
+           "--cache-ram", str(args.cache_ram)]
     return cmd + shlex.split(args.llama_args)
 
 
@@ -387,7 +389,7 @@ def run_all(args) -> int:
             upstream = args.url
         else:
             port = args.tet_port if engine == "tetraeder" else args.llama_port
-            server = Server(engine, server_cmd(args, engine, port, out / f"{engine}-r{rep}.reqlog"), port,
+            server = Server(engine, server_cmd(args, engine, port, out / f"{engine}-r{rep}.reqlog.jsonl"), port,
                             out / f"server-{engine}-r{rep}.log")
             if not server.start():
                 server.stop()
@@ -415,6 +417,7 @@ def main(argv=None) -> int:
     ap.add_argument("--model", help="GGUF file")
     ap.add_argument("--alias", default="qwen3-coder")
     ap.add_argument("--ctx", type=int, default=131072)
+    ap.add_argument("--cache-ram", type=int, default=8192, help="prompt cache in host RAM, MiB, for both engines (ADR 0049)")
     ap.add_argument("--threads", type=int, default=os.cpu_count() or 4)
     ap.add_argument("--tet-bin", default="target/release/tetraeder")
     ap.add_argument("--llama-bin", default="/opt/llama.cpp/bin/llama-server")

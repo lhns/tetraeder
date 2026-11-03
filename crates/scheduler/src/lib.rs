@@ -5,11 +5,15 @@
 
 mod backend;
 mod load;
+mod prefix_cache;
 pub mod sample;
 mod scheduler;
 
 pub use backend::{Backend, LlamaBackend, MOE_CHUNK, MoeBackend};
 pub use load::{Loaded, architecture, chat_template, load_llama, load_moe, model_id};
-pub use scheduler::{PREFILL_CHUNK, Scheduler, SchedulerConfig, build_vocab};
+pub use prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS};
+pub use scheduler::{
+    DEFAULT_CACHE_RAM_BYTES, PREFILL_CHUNK, Scheduler, SchedulerConfig, build_vocab,
+};
 
 pub mod spec;

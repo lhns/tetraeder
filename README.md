@@ -29,7 +29,7 @@ tetraeder serve -m Qwen3-30B-A3B-Q4_K_M.gguf --engine moe --alias qwen --ctx 655
 tetraeder serve --fake
 ```
 
-One request generates at a time; others queue (`--max-queued`). The last conversation's KV cache is kept, so an agent that resends its whole history only pays for the new tokens.
+One request generates at a time; others queue (`--max-queued`). The last conversation's KV cache is kept, so an agent that resends its whole history only pays for the new tokens. Sequences that a different prompt evicts are kept in host RAM (`--cache-ram <MiB>`, default 8192, 0 off) and restored when their prefix comes back.
 
 Claude Code:
 

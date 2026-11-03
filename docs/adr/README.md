@@ -50,3 +50,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0046](0046-serving-real-engines-behind-the-gateway.md) | Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log |
 | [0047](0047-formats-per-role-and-load-time-conversion-cache.md) | Formats per tensor role in the plan; load-time conversion into a per-tensor disk cache |
 | [0048](0048-quality-profile-file-and-calibration-job.md) | Quality profile file and calibration job |
+| [0049](0049-multi-entry-prefix-cache-and-lenient-anthropic-input.md) | Multi-entry prefix cache in host RAM; lenient Anthropic input |

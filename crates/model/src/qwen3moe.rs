@@ -741,6 +741,47 @@ impl Qwen3Moe {
         Ok(())
     }
 
+    /// Bytes of one cached position across all layers (K and V).
+    fn kv_row_bytes(&self) -> usize {
+        self.kv
+            .k
+            .iter()
+            .chain(&self.kv.v)
+            .map(|t| t.get().nbytes() / self.kv.n_ctx)
+            .sum()
+    }
+
+    /// Copies the K and V rows of the cached positions to host bytes, layer by layer (ADR 0049).
+    /// The cache is `[n_embd_kv, n_ctx]` per layer, so the rows of positions `0..n_past` are
+    /// one contiguous range.
+    pub fn kv_snapshot(&self) -> Result<Vec<u8>> {
+        let mut out = Vec::with_capacity(self.n_past * self.kv_row_bytes());
+        for t in self.kv.k.iter().chain(&self.kv.v) {
+            let row = t.get().nbytes() / self.kv.n_ctx;
+            out.extend_from_slice(&t.get().get_bytes(0, self.n_past * row)?);
+        }
+        Ok(out)
+    }
+
+    /// Writes a [`Qwen3Moe::kv_snapshot`] of `n` positions back and sets the cache length to `n`.
+    pub fn kv_restore(&mut self, bytes: &[u8], n: usize) -> Result<()> {
+        if n > self.kv.n_ctx || bytes.len() != n * self.kv_row_bytes() {
+            return Err(ModelError::Invalid(format!(
+                "a KV snapshot of {} bytes does not hold {n} positions",
+                bytes.len()
+            )));
+        }
+        let mut rest = bytes;
+        for t in self.kv.k.iter().chain(&self.kv.v) {
+            let len = n * (t.get().nbytes() / self.kv.n_ctx);
+            let (head, tail) = rest.split_at(len);
+            t.get().set_bytes(head, 0)?;
+            rest = tail;
+        }
+        self.n_past = n;
+        Ok(())
+    }
+
     /// Runs `tokens` after the tokens already in the cache and returns the logits of every
     /// position, `tokens.len() * n_vocab` values, position-major.
     pub fn eval(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {

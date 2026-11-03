@@ -46,41 +46,116 @@ struct MessagesRequest {
     output_format: Option<Value>,
 }
 
-/// Text of a string or an array of text blocks; other blocks are rejected.
-fn text_of(v: &Value, what: &str) -> Result<String, GatewayError> {
-    match v {
-        Value::Null => Ok(String::new()),
-        Value::String(s) => Ok(s.clone()),
-        Value::Array(blocks) => {
-            let mut out = String::new();
-            for b in blocks {
-                match b.get("type").and_then(Value::as_str) {
-                    Some("text") => {
-                        out.push_str(b.get("text").and_then(Value::as_str).unwrap_or(""))
-                    }
-                    Some(t) => {
-                        return Err(GatewayError::InvalidRequest(format!(
-                            "{what}: block type '{t}' is not supported here"
-                        )));
-                    }
-                    None => {
-                        return Err(GatewayError::InvalidRequest(format!(
-                            "{what}: block without type"
-                        )));
-                    }
-                }
-            }
-            Ok(out)
+/// Text of one content block that is not a message part of its own. Text is kept; `tool_reference`,
+/// image and document blocks become short text; anything else is dropped with a warning.
+fn block_text(b: &Value, what: &str) -> Option<String> {
+    let str_of = |k: &str| b.get(k).and_then(Value::as_str);
+    match str_of("type") {
+        Some("text") => Some(str_of("text").unwrap_or_default().to_owned()),
+        // Claude Code's tool search answers with references to tools it sends with defer_loading.
+        Some("tool_reference") => Some(format!(
+            "Tool {} loaded.",
+            str_of("tool_name").unwrap_or("?")
+        )),
+        Some("image") => Some("[image]".to_owned()),
+        Some("document") => {
+            let src = b.get("source");
+            let text = src.and_then(|s| match s.get("type").and_then(Value::as_str) {
+                Some("text") => s.get("data").and_then(Value::as_str).map(str::to_owned),
+                Some("content") => s.get("content").map(|c| flat_text(c, what, "")),
+                _ => None,
+            });
+            Some(text.unwrap_or_else(|| "[document]".to_owned()))
         }
-        _ => Err(GatewayError::InvalidRequest(format!(
-            "{what} must be a string or an array of blocks"
-        ))),
+        t => {
+            tracing::warn!(
+                block_type = t.unwrap_or("none"),
+                what,
+                "dropping unsupported content block"
+            );
+            None
+        }
     }
 }
 
+/// Text of a string or an array of blocks, blocks joined by `sep`.
+fn flat_text(v: &Value, what: &str, sep: &str) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .filter_map(|b| block_text(b, what))
+            .collect::<Vec<_>>()
+            .join(sep),
+        Value::Null => String::new(),
+        other => {
+            tracing::warn!(
+                what,
+                "content is neither a string nor blocks; using its JSON text"
+            );
+            other.to_string()
+        }
+    }
+}
+
+/// `input` of a `tool_use` as the arguments object templates iterate over.
+fn tool_input(v: Option<&Value>) -> Value {
+    match v {
+        None | Some(Value::Null) => json!({}),
+        Some(o @ Value::Object(_)) => o.clone(),
+        Some(Value::String(s)) => match serde_json::from_str::<Value>(s) {
+            Ok(o @ Value::Object(_)) => o,
+            _ => json!({"input": s}),
+        },
+        Some(other) => json!({"input": other}),
+    }
+}
+
+fn push_user_text(out: &mut Vec<ChatMessage>, text: String) {
+    if !text.is_empty() {
+        out.push(ChatMessage::new("user", text));
+    }
+}
+
+/// Merges neighbours that templates with strict alternation reject and drops empty assistants.
+fn normalize(msgs: Vec<ChatMessage>) -> Vec<ChatMessage> {
+    let mut out: Vec<ChatMessage> = Vec::new();
+    for m in msgs {
+        if m.role == "assistant"
+            && m.content.is_empty()
+            && m.tool_calls.is_empty()
+            && m.reasoning_content.as_deref().is_none_or(str::is_empty)
+        {
+            continue;
+        }
+        match out.last_mut() {
+            Some(prev) if prev.role == m.role && (m.role == "user" || m.role == "assistant") => {
+                if !m.content.is_empty() {
+                    if !prev.content.is_empty() {
+                        prev.content.push_str("\n\n");
+                    }
+                    prev.content.push_str(&m.content);
+                }
+                prev.tool_calls.extend(m.tool_calls);
+                if let Some(r) = m.reasoning_content {
+                    prev.reasoning_content
+                        .get_or_insert_with(String::new)
+                        .push_str(&r);
+                }
+            }
+            _ => out.push(m),
+        }
+    }
+    out
+}
+
 /// Converts Anthropic messages to the HF shape: `tool_result` blocks become `tool` messages,
-/// `tool_use` blocks become `tool_calls`, `thinking` becomes `reasoning_content`.
-fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, GatewayError> {
+/// `tool_use` blocks become `tool_calls`, `thinking` becomes `reasoning_content`. Lenient like
+/// llama-server (ADR 0049). Returns the messages and the prefill text of a final assistant message.
+fn messages(
+    system: Option<&Value>,
+    raw: &[Value],
+) -> Result<(Vec<ChatMessage>, Option<String>), GatewayError> {
     if raw.is_empty() {
         return Err(GatewayError::InvalidRequest(
             "messages: at least one message is required".into(),
@@ -88,7 +163,7 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
     }
     let mut out = Vec::new();
     if let Some(s) = system {
-        let s = text_of(s, "system")?;
+        let s = flat_text(s, "system", "");
         if !s.is_empty() {
             out.push(ChatMessage::new("system", s));
         }
@@ -99,6 +174,7 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
         let blocks: Vec<Value> = match m.get("content") {
             Some(Value::String(s)) => vec![json!({"type": "text", "text": s})],
             Some(Value::Array(a)) => a.clone(),
+            None | Some(Value::Null) => Vec::new(),
             _ => {
                 return Err(GatewayError::InvalidRequest(
                     "messages: content must be a string or an array of blocks".into(),
@@ -109,53 +185,38 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
             "user" => {
                 let mut text = String::new();
                 for b in &blocks {
-                    match b.get("type").and_then(Value::as_str) {
-                        Some("text") => {
-                            text.push_str(b.get("text").and_then(Value::as_str).unwrap_or(""))
-                        }
-                        Some("tool_result") => {
-                            // Keep the order of the blocks: earlier text is its own message.
-                            if !text.is_empty() {
-                                out.push(ChatMessage::new("user", std::mem::take(&mut text)));
-                            }
-                            let id = b
-                                .get("tool_use_id")
-                                .and_then(Value::as_str)
-                                .unwrap_or_default();
-                            let mut t = ChatMessage::new(
-                                "tool",
-                                text_of(
-                                    b.get("content").unwrap_or(&Value::Null),
-                                    "tool_result content",
-                                )?,
-                            );
-                            t.tool_call_id = Some(id.to_owned());
-                            t.name = names.iter().find(|(i, _)| i == id).map(|(_, n)| n.clone());
-                            out.push(t);
-                        }
-                        Some(t) => {
-                            return Err(GatewayError::InvalidRequest(format!(
-                                "messages: block type '{t}' is not supported"
-                            )));
-                        }
-                        None => {
-                            return Err(GatewayError::InvalidRequest(
-                                "messages: block without type".into(),
-                            ));
-                        }
+                    if b.get("type").and_then(Value::as_str) == Some("tool_result") {
+                        // Keep the order of the blocks: earlier text is its own message.
+                        push_user_text(&mut out, std::mem::take(&mut text));
+                        let id = b
+                            .get("tool_use_id")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default();
+                        let body = flat_text(
+                            b.get("content").unwrap_or(&Value::Null),
+                            "tool_result content",
+                            "\n",
+                        );
+                        let is_error = b.get("is_error").and_then(Value::as_bool).unwrap_or(false);
+                        let body = if is_error {
+                            format!("Error: {body}")
+                        } else {
+                            body
+                        };
+                        let mut t = ChatMessage::new("tool", body);
+                        t.tool_call_id = Some(id.to_owned());
+                        t.name = names.iter().find(|(i, _)| i == id).map(|(_, n)| n.clone());
+                        out.push(t);
+                    } else if let Some(t) = block_text(b, "message") {
+                        text.push_str(&t);
                     }
                 }
-                if !text.is_empty() {
-                    out.push(ChatMessage::new("user", text));
-                }
+                push_user_text(&mut out, text);
             }
             "assistant" => {
                 let mut a = ChatMessage::new("assistant", "");
                 for b in &blocks {
                     match b.get("type").and_then(Value::as_str) {
-                        Some("text") => a
-                            .content
-                            .push_str(b.get("text").and_then(Value::as_str).unwrap_or("")),
                         Some("thinking") => {
                             let t = b.get("thinking").and_then(Value::as_str).unwrap_or("");
                             a.reasoning_content
@@ -178,36 +239,39 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
                             a.tool_calls.push(ToolCall {
                                 id,
                                 name,
-                                arguments: b.get("input").cloned().unwrap_or_else(|| json!({})),
+                                arguments: tool_input(b.get("input")),
                             });
                         }
-                        Some(t) => {
-                            return Err(GatewayError::InvalidRequest(format!(
-                                "messages: block type '{t}' is not supported"
-                            )));
-                        }
-                        None => {
-                            return Err(GatewayError::InvalidRequest(
-                                "messages: block without type".into(),
-                            ));
+                        _ => {
+                            if let Some(t) = block_text(b, "message") {
+                                a.content.push_str(&t);
+                            }
                         }
                     }
                 }
                 out.push(a);
             }
             "system" => {
-                // Templates allow one leading system message and want alternating turns:
-                // a mid-conversation system message becomes a tagged user turn.
-                let text = format!(
-                    "<system>\n{}\n</system>",
-                    text_of(&m["content"], "system message")?
-                );
+                let text = flat_text(&m["content"], "system message", "");
+                let only_system = out.len() == 1 && out[0].role == "system";
                 match out.last_mut() {
-                    Some(prev) if prev.role == "user" => {
+                    None => out.push(ChatMessage::new("system", text)),
+                    Some(prev) if only_system => {
                         prev.content.push_str("\n\n");
                         prev.content.push_str(&text);
                     }
-                    _ => out.push(ChatMessage::new("user", text)),
+                    // Templates allow one leading system message and want alternating turns:
+                    // a mid-conversation system message becomes a tagged user turn.
+                    _ => {
+                        let text = format!("<system>\n{text}\n</system>");
+                        match out.last_mut() {
+                            Some(prev) if prev.role == "user" => {
+                                prev.content.push_str("\n\n");
+                                prev.content.push_str(&text);
+                            }
+                            _ => out.push(ChatMessage::new("user", text)),
+                        }
+                    }
                 }
             }
             r => {
@@ -217,18 +281,26 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
             }
         }
     }
-    if raw
+    let mut out = normalize(out);
+    // A final assistant message with text is a prefill the reply continues.
+    let mut prefill = None;
+    if out
         .last()
-        .and_then(|m| m.get("role"))
-        .and_then(Value::as_str)
-        == Some("assistant")
+        .is_some_and(|m| m.role == "assistant" && m.tool_calls.is_empty())
+        && raw
+            .last()
+            .and_then(|m| m.get("role"))
+            .and_then(Value::as_str)
+            == Some("assistant")
     {
-        return Err(GatewayError::InvalidRequest(
-            "This model does not support assistant message prefill. The conversation must end with a user message."
-                .into(),
-        ));
+        let last = out.pop().expect("checked above");
+        let text = last.content.trim_end().to_owned();
+        if !text.is_empty() {
+            out.push(last);
+            prefill = Some(text);
+        }
     }
-    Ok(out)
+    Ok((out, prefill))
 }
 
 /// Custom tools only; Anthropic-defined tools (with a `type` other than `custom`) are skipped.
@@ -252,9 +324,10 @@ fn tools(raw: &[Value]) -> Result<Vec<ToolDef>, GatewayError> {
                 .get("description")
                 .and_then(Value::as_str)
                 .map(str::to_owned),
-            parameters: t.get("input_schema").cloned().ok_or_else(|| {
-                GatewayError::InvalidRequest(format!("tools.{name}: input_schema is required"))
-            })?,
+            parameters: t
+                .get("input_schema")
+                .cloned()
+                .unwrap_or_else(|| json!({"type": "object", "properties": {}})),
         });
     }
     Ok(out)
@@ -333,10 +406,12 @@ fn spec(req: MessagesRequest) -> Result<GenerateSpec, GatewayError> {
         _ => {}
     }
     let format = output_format(&req)?;
+    let (messages, prefill) = messages(req.system.as_ref(), &req.messages)?;
     let mut s = GenerateSpec::new(
         req.model,
         Prompt::Chat {
-            messages: messages(req.system.as_ref(), &req.messages)?,
+            messages,
+            prefill,
             tools,
             tool_choice: choice,
             parallel_tool_calls: parallel,

@@ -101,6 +101,9 @@ pub struct Metrics {
     convert_cache: Counter<u64>,
     batch_size: Histogram<f64>,
     prefix_hits: Counter<u64>,
+    prefix_evictions: Counter<u64>,
+    prefix_bytes: Gauge<u64>,
+    prefix_restore: Histogram<f64>,
     spec_acceptance: Histogram<f64>,
     spec_drafted: Counter<u64>,
     spec_accepted: Counter<u64>,
@@ -229,7 +232,25 @@ impl Metrics {
             prefix_hits: meter
                 .u64_counter("tetraeder.kv.prefix.hits")
                 .with_unit("{request}")
-                .with_description("Requests that reused a cached prompt prefix")
+                .with_description(
+                    "Requests that reused a cached prompt prefix, by source (live sequence or host RAM)",
+                )
+                .build(),
+            prefix_evictions: meter
+                .u64_counter("tetraeder.kv.prefix.evictions")
+                .with_unit("{entry}")
+                .with_description("Saved sequences dropped from the host RAM prefix cache")
+                .build(),
+            prefix_bytes: meter
+                .u64_gauge("tetraeder.kv.prefix.bytes")
+                .with_unit("By")
+                .with_description("Host bytes held by the prefix cache")
+                .build(),
+            prefix_restore: meter
+                .f64_histogram("tetraeder.kv.prefix.restore.duration")
+                .with_unit("s")
+                .with_description("Time to restore a saved sequence into the KV cache")
+                .with_boundaries(LATENCY_BOUNDS.to_vec())
                 .build(),
             spec_acceptance: meter
                 .f64_histogram("tetraeder.spec.acceptance")
@@ -464,9 +485,25 @@ impl Metrics {
         self.batch_size.record(f64::from(size), &[]);
     }
 
-    /// A request that reused a cached prompt prefix.
-    pub fn kv_prefix_hit(&self) {
-        self.prefix_hits.add(1, &[]);
+    /// A request that reused a cached prompt prefix; `source` is `live` or `ram`.
+    pub fn kv_prefix_hit(&self, source: &'static str) {
+        self.prefix_hits
+            .add(1, &[KeyValue::new(attr::SOURCE, source)]);
+    }
+
+    /// Saved sequences evicted from the prefix cache.
+    pub fn kv_prefix_evicted(&self, entries: u64) {
+        self.prefix_evictions.add(entries, &[]);
+    }
+
+    /// Host bytes the prefix cache holds now.
+    pub fn kv_prefix_bytes(&self, bytes: u64) {
+        self.prefix_bytes.record(bytes, &[]);
+    }
+
+    /// One saved sequence restored into the KV cache.
+    pub fn kv_prefix_restore(&self, d: Duration) {
+        self.prefix_restore.record(d.as_secs_f64(), &[]);
     }
 
     /// One verify step that carried `drafted` > 0 draft tokens of which `accepted` matched.

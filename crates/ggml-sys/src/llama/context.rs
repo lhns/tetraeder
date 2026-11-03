@@ -279,6 +279,34 @@ impl Context {
         unsafe { sys::llama_memory_seq_rm(sys::llama_get_memory(self.ptr), seq, p0, p1) }
     }
 
+    /// Copies the KV cache of sequence `seq` (positions, K and V) to host bytes.
+    pub fn state_seq_get(&mut self, seq: i32) -> Result<Vec<u8>> {
+        // SAFETY: live context.
+        let size = unsafe { sys::llama_state_seq_get_size(self.ptr, seq) };
+        let mut out = vec![0u8; size];
+        // SAFETY: live context; `out` has `size` writable bytes.
+        let n = unsafe { sys::llama_state_seq_get_data(self.ptr, out.as_mut_ptr(), size, seq) };
+        if n != size {
+            return Err(LlamaError::Invalid(format!(
+                "state_seq_get wrote {n} of {size} bytes"
+            )));
+        }
+        Ok(out)
+    }
+
+    /// Loads bytes from [`Context::state_seq_get`] into sequence `seq`, which must be empty.
+    /// Returns the bytes read.
+    pub fn state_seq_set(&mut self, seq: i32, data: &[u8]) -> Result<usize> {
+        // SAFETY: live context; `data` has `data.len()` readable bytes, which libllama only reads.
+        let n = unsafe { sys::llama_state_seq_set_data(self.ptr, data.as_ptr(), data.len(), seq) };
+        if n == 0 {
+            return Err(LlamaError::Invalid(
+                "state_seq_set rejected the snapshot".into(),
+            ));
+        }
+        Ok(n)
+    }
+
     pub fn set_threads(&mut self, n_threads: i32, n_threads_batch: i32) {
         // SAFETY: live context.
         unsafe { sys::llama_set_n_threads(self.ptr, n_threads, n_threads_batch) }

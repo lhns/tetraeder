@@ -337,3 +337,156 @@ async fn gateway_serves_completions_over_the_scheduler() {
     assert_eq!(v["usage"]["completion_tokens"], 5, "{v}");
     assert_eq!(v["choices"][0]["finish_reason"], "length");
 }
+
+// ---- prefix cache in host RAM (ADR 0049) ----
+
+type Make = fn(&dyn Fn(&mut SchedulerConfig)) -> Scheduler;
+
+fn llama_with(f: &dyn Fn(&mut SchedulerConfig)) -> Scheduler {
+    let p = fixture();
+    let path = p.clone();
+    let mut cfg = SchedulerConfig::new(p);
+    f(&mut cfg);
+    Scheduler::start(cfg, move || {
+        load_llama(&path, &Placement::cpu(), &ctx_cfg(), None)
+    })
+    .expect("llama scheduler")
+}
+
+fn moe_with(f: &dyn Fn(&mut SchedulerConfig)) -> Scheduler {
+    let p = fixture();
+    let path = p.clone();
+    let mut cfg = SchedulerConfig::new(p);
+    f(&mut cfg);
+    Scheduler::start(cfg, move || {
+        let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
+        o.n_ctx = CTX as usize;
+        load_moe(&path, &o)
+    })
+    .expect("moe scheduler")
+}
+
+/// Small thresholds so prompts that fit the 256-token fixture context cross them.
+fn small_cache(bytes: usize) -> impl Fn(&mut SchedulerConfig) {
+    move |c| {
+        c.cache_ram_bytes = bytes;
+        c.cache_save_min = 32;
+        c.cache_restore_gain = 16;
+    }
+}
+
+/// `n` tokens of text that starts with `lead`, so prompts with different leads share no prefix.
+fn long_prompt(s: &Scheduler, lead: &str, n: usize) -> Vec<u32> {
+    let text: String = (0..n).map(|i| format!("{lead}{i} ")).collect();
+    let mut t = prompt(s, &text);
+    assert!(t.len() >= n, "{} tokens", t.len());
+    t.truncate(n);
+    t
+}
+
+const MEG: usize = 1 << 20;
+
+#[test]
+fn ram_restore_serves_the_evicted_prefix_and_matches_a_cold_run() {
+    for make in [llama_with as Make, moe_with] {
+        let s = make(&small_cache(64 * MEG));
+        let a = long_prompt(&s, "alpha", 100);
+        let b = long_prompt(&s, "zulu", 100);
+        run(&s, &a, 6);
+        let other = run(&s, &b, 6);
+        assert!(other.stats.cached_tokens < 16);
+        let mut a2 = a.clone();
+        a2.extend(prompt(&s, "and some more words"));
+        let warm = run(&s, &a2, 8);
+        assert!(
+            warm.stats.cached_tokens as usize >= a.len() - 1,
+            "cached {} of {}",
+            warm.stats.cached_tokens,
+            a2.len()
+        );
+        let cold = run(&make(&small_cache(0)), &a2, 8);
+        assert_eq!(cold.stats.cached_tokens, 0);
+        assert_eq!(warm.tokens, cold.tokens);
+    }
+}
+
+#[test]
+fn a_zero_budget_disables_the_cache() {
+    for make in [llama_with as Make, moe_with] {
+        let s = make(&small_cache(0));
+        let a = long_prompt(&s, "alpha", 100);
+        run(&s, &a, 4);
+        run(&s, &long_prompt(&s, "zulu", 100), 4);
+        let mut a2 = a.clone();
+        a2.extend(prompt(&s, "and some more words"));
+        assert!(run(&s, &a2, 4).stats.cached_tokens < 16);
+    }
+}
+
+#[test]
+fn least_recently_used_sequences_are_evicted() {
+    for (i, make) in [llama_with as Make, moe_with].into_iter().enumerate() {
+        // Size one entry from a snapshot, then allow one and a half.
+        let probe = make(&small_cache(0));
+        let a = long_prompt(&probe, "alpha", 100);
+        let size = snapshot_size(i, &a);
+        let s = make(&small_cache(size * 3 / 2));
+        let (a, b, c) = (
+            long_prompt(&s, "alpha", 100),
+            long_prompt(&s, "zulu", 100),
+            long_prompt(&s, "mike", 100),
+        );
+        run(&s, &a, 4);
+        run(&s, &b, 4); // saves A
+        run(&s, &c, 4); // saves B, which evicts A
+        let mut a2 = a.clone();
+        a2.extend(prompt(&s, "tail one"));
+        assert!(run(&s, &a2, 4).stats.cached_tokens < 16, "A was kept");
+        // Running A2 saved C and evicted B.
+        let mut c2 = c.clone();
+        c2.extend(prompt(&s, "tail two"));
+        let hit = run(&s, &c2, 4);
+        assert!(
+            hit.stats.cached_tokens as usize >= c.len() - 1,
+            "backend {i}: cached {} of {}, entry size {size}",
+            hit.stats.cached_tokens,
+            c2.len()
+        );
+    }
+}
+
+fn snapshot_size(backend: usize, prompt: &[u32]) -> usize {
+    let toks: Vec<i32> = prompt.iter().map(|&t| t as i32).collect();
+    let mut b = backends().remove(backend);
+    b.eval(&toks).unwrap();
+    b.snapshot().unwrap().len()
+}
+
+fn backends() -> Vec<Box<dyn tetraeder_scheduler::Backend>> {
+    let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
+    o.n_ctx = CTX as usize;
+    vec![
+        load_llama(&fixture(), &Placement::cpu(), &ctx_cfg(), None)
+            .unwrap()
+            .backend,
+        load_moe(&fixture(), &o).unwrap().backend,
+    ]
+}
+
+#[test]
+fn snapshot_and_restore_round_trip_gives_identical_logits() {
+    let toks: Vec<i32> = (1..=60).collect();
+    for i in 0..2 {
+        let mut x = backends().remove(i);
+        x.eval(&toks).unwrap();
+        let snap = x.snapshot().unwrap();
+        let want = x.eval(&[7]).unwrap().to_vec();
+        // Same backend after a rollback, and a fresh one.
+        x.restore(&snap, toks.len()).unwrap();
+        assert_eq!(x.n_past(), toks.len());
+        assert_eq!(x.eval(&[7]).unwrap(), &want[..]);
+        let mut y = backends().remove(i);
+        y.restore(&snap, toks.len()).unwrap();
+        assert_eq!(y.eval(&[7]).unwrap(), &want[..]);
+    }
+}

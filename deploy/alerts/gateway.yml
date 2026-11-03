@@ -32,3 +32,13 @@ groups:
           severity: critical
         annotations:
           summary: "Requests are queued but the engine has produced no output tokens for 5 minutes"
+      # The host RAM prefix cache drops saved sequences faster than it reuses them (ADR 0049).
+      - alert: PrefixCacheThrash
+        expr: |
+          sum(rate(tetraeder_kv_prefix_evictions_total[15m]))
+            > sum(rate(tetraeder_kv_prefix_hits_total{tetraeder_source="ram"}[15m]))
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The prefix cache evicts more sequences than it restores; raise --cache-ram"
