@@ -1969,6 +1969,7 @@ dependencies = [
  "anyhow",
  "clap",
  "opentelemetry",
+ "serde",
  "serde_json",
  "tetraeder-analysis",
  "tetraeder-engine",
