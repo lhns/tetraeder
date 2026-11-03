@@ -17,7 +17,7 @@ step() {
 }
 levers="d2:TETRAEDER_EXIT_PREFETCH_DEPTH=2 d2poll0:TETRAEDER_EXIT_PREFETCH_DEPTH=2,TETRAEDER_EXIT_CPU_POLL=0"
 levers="$levers d2t14:TETRAEDER_EXIT_PREFETCH_DEPTH=2,TETRAEDER_EXIT_PREFETCH_THREADS=14"
-step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nofuse drift-ref-nofuse main-prefetch d2 d2poll0 d2t14 ktransformers main-repeat" \
+step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nofuse drift-ref-ub512 drift-ref-nofuse main-prefetch d2 d2poll0 d2t14 ktransformers main-repeat" \
   VARIANTS="$levers" bash scripts/exit_run.sh
 step spec_run env STAGES=main-builder bash scripts/spec_run.sh
 # exit_run.sh takes a new stamp and keeps the earlier results
