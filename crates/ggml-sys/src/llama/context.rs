@@ -264,6 +264,13 @@ impl Context {
         unsafe { sys::llama_memory_seq_pos_max(sys::llama_get_memory(self.ptr), seq) }
     }
 
+    /// Removes positions `p0..p1` of sequence `seq` from the KV cache (`p1 = -1`: to the end).
+    /// Returns false when libllama cannot remove that range.
+    pub fn seq_rm(&mut self, seq: i32, p0: i32, p1: i32) -> bool {
+        // SAFETY: as `memory_clear`.
+        unsafe { sys::llama_memory_seq_rm(sys::llama_get_memory(self.ptr), seq, p0, p1) }
+    }
+
     pub fn set_threads(&mut self, n_threads: i32, n_threads_batch: i32) {
         // SAFETY: live context.
         unsafe { sys::llama_set_n_threads(self.ptr, n_threads, n_threads_batch) }

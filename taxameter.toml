@@ -17,6 +17,10 @@ min_reliability = 0.99
 min_inet_mbps = 500
 min_cuda = 12.8  # a host with max CUDA 12.5 left the CUDA 12.8 image stuck in loading
 interruptible = false
+# traffic is billed per GB (taxameter ADR 0010): rank offers by price plus the expected download spread over the box
+# hours; the nightly fetches about 25 GB (8B + 30B), an exit box about 160 GB (pass --download-gb 160 to create);
+# CPU-bound runs pass --min-cpu-cores 11
+expected_download_gb = 25
 
 [image]
 name = "ghcr.io/lhns/tetraeder-box"
@@ -35,7 +39,7 @@ submodules = ["vendor/llama.cpp"]
 # cargo/rustc/nvcc/cmake/ninja, the engine and bench binaries and test binaries (deps/) under target/, bench.sh,
 # llama.cpp tools, the exit-run scripts (a long CPU-bound test once looked idle to the GPU check)
 # (the [x] brackets keep the pattern from matching its own command line)
-busy = '(^|/)(cargo|rustc|nvcc|cmake|ninja)( |$)|target/(release|debug)/tetraede[r]|target/(release|debug)/dep[s]/|bench[.]s[h]|(^|/)llama-|scripts/exit_(box|run)[.]s[h]'
+busy = '(^|/)(cargo|rustc|nvcc|cmake|ninja)( |$)|target/(release|debug)/tetraede[r]|target/(release|debug)/dep[s]/|bench[.]s[h]|(^|/)llama-|scripts/(exit_(box|run)|spec_run)[.]s[h]'
 batch = 'nightl[y][.]sh'
 batch_log = "runs/vast/nightly.log"
 batch_done = "^NIGHTLY_DONE"

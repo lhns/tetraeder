@@ -13,7 +13,7 @@ dev = ["pytest>=8", "taxameter"]
 package = false
 
 [tool.uv.sources]
-taxameter = { git = "https://github.com/lhns/taxameter", tag = "v0.3.0" }
+taxameter = { git = "https://github.com/lhns/taxameter", tag = "v0.3.1" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

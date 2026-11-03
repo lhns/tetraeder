@@ -45,14 +45,6 @@ impl MemoryMetrics {
         t.metrics().memory_capacity(device, tier, kind, capacity);
     }
 
-    /// Slot bytes in use under the current phase budget.
-    pub fn slots_in_use(&self, device: &str, tier: &str, bytes: u64) {
-        if let Some(t) = &self.telemetry {
-            t.metrics()
-                .memory_used(device, tier, Purpose::Slots.as_str(), bytes);
-        }
-    }
-
     /// `tetraeder.expert.cache.requests`: a bypass counts as a miss (the expert was not in a
     /// slot).
     pub fn lookup(&self, layer: u32, tier: Tier, result: &Lookup) {

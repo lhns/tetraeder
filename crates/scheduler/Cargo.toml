@@ -10,3 +10,16 @@ publish = false
 
 [lints]
 workspace = true
+
+[features]
+cuda = ["tetraeder-ggml-sys/cuda", "tetraeder-model/cuda"]
+
+[dependencies]
+tetraeder-ggml-sys = { path = "../ggml-sys" }
+tetraeder-model = { path = "../model" }
+tetraeder-telemetry = { path = "../telemetry" }
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"
+tetraeder-memory = { path = "../memory" }

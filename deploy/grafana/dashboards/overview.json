@@ -763,6 +763,83 @@
           }
         }
       ]
+    },
+    {
+      "id": 23,
+      "title": "Speculation acceptance",
+      "description": "Share of drafted tokens the target accepted, per drafting method (ADR 0043). Below about 0.3 speculation likely costs more than it saves.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 49,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_spec_method) (rate(tetraeder_spec_accepted_total[$__rate_interval])) / sum by (tetraeder_spec_method) (rate(tetraeder_spec_drafted_total[$__rate_interval]))",
+          "legendFormat": "{{tetraeder_spec_method}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "Drafted and accepted tokens",
+      "description": "Tokens drafted for verification and accepted by the target per second, per drafting method (ADR 0043).",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 57,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_spec_method) (rate(tetraeder_spec_drafted_total[$__rate_interval]))",
+          "legendFormat": "drafted {{tetraeder_spec_method}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (tetraeder_spec_method) (rate(tetraeder_spec_accepted_total[$__rate_interval]))",
+          "legendFormat": "accepted {{tetraeder_spec_method}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

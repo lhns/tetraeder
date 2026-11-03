@@ -454,7 +454,7 @@ impl Streamer {
         }
         self.metrics.layer_step(rest.is_empty());
         let layer = self.ram.as_ref().expect("RAM tier").cache.layer(il);
-        let order = hits_first(&rest, |e| layer.slot_of(e).is_some());
+        let order = hits_first(&rest, |&e| e, |e| layer.slot_of(e).is_some());
         Ok(CpuPlan {
             compute,
             compute_slots,
@@ -816,7 +816,7 @@ impl Streamer {
                     let ram = self.ram.as_ref().expect("RAM tier");
                     let n = ram.slots.max(1);
                     let layer = ram.cache.layer(il);
-                    let ordered = ram_hits_first(&loads, |e| layer.slot_of(e).is_some());
+                    let ordered = hits_first(&loads, |l| l.0, |e| layer.slot_of(e).is_some());
                     for group in ordered.chunks(n) {
                         self.load_via_ram(file, il, dst, group)?;
                     }
@@ -926,16 +926,14 @@ fn note_wasted(
     }
 }
 
-/// `experts` with those for which `resident` holds first (stable).
-fn hits_first(experts: &[u32], resident: impl Fn(u32) -> bool) -> Vec<u32> {
-    let (hits, misses): (Vec<_>, Vec<_>) = experts.iter().partition(|&&e| resident(e));
-    hits.into_iter().chain(misses).copied().collect()
-}
-
-/// RAM hits first across all loads of a chunk, then the misses, so the misses of one RAM group
-/// cannot evict a hit that waits in a later group (ADR 0033).
-fn ram_hits_first(loads: &[(u32, u32)], in_ram: impl Fn(u32) -> bool) -> Vec<(u32, u32)> {
-    let (hits, misses): (Vec<_>, Vec<_>) = loads.iter().partition(|&&(e, _)| in_ram(e));
+/// `items` with those whose expert `resident` holds first (stable). Across all loads of a chunk,
+/// so the misses of one RAM group cannot evict a hit that waits in a later group.
+fn hits_first<T: Copy>(
+    items: &[T],
+    expert: impl Fn(&T) -> u32,
+    resident: impl Fn(u32) -> bool,
+) -> Vec<T> {
+    let (hits, misses): (Vec<_>, Vec<_>) = items.iter().partition(|t| resident(expert(t)));
     hits.into_iter().chain(misses).copied().collect()
 }
 
@@ -1043,7 +1041,7 @@ mod tests {
     fn ram_hits_first_across_groups() {
         let in_order = |l: &[(u32, u32)], _: &SlotCache| l.to_vec();
         let hits_first = |l: &[(u32, u32)], c: &SlotCache| {
-            ram_hits_first(l, |e| c.layer(0).slot_of(e).is_some())
+            super::hits_first(l, |l| l.0, |e| c.layer(0).slot_of(e).is_some())
         };
         assert_eq!(ram_reads(in_order), 3);
         assert_eq!(ram_reads(hits_first), 2);
