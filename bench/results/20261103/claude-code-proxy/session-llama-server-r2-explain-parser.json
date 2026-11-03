@@ -1,0 +1,121 @@
+{
+  "engine": "llama-server",
+  "rep": 2,
+  "task": "explain-parser",
+  "started": "2026-11-03T11:26:18",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 55756,
+    "stop_reason": "end_turn",
+    "session_id": "440cf9fc-3606-4d30-bbdb-51ef6d7d20b0",
+    "total_cost_usd": 0.2081376,
+    "usage": {
+      "input_tokens": 727,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 15033,
+      "output_tokens": 186,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 26202,
+        "outputTokens": 3606,
+        "cacheReadInputTokens": 156048,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.2081376,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "origin": {
+      "kind": "task-notification",
+      "producer": "session-task",
+      "runId": "0mw0lrg7c-61c32e24"
+    },
+    "subagent_stats": {
+      "spawned": 1,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 1
+      },
+      "started_in_background": 1,
+      "max_depth": 1,
+      "spawned_by_subagents": 0,
+      "completed": 1,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {
+        "general-purpose": 1
+      }
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 1,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've verified that the NOTES.md file accurately reflects the invoice parsing functionality. The documentation correctly describes all aspects of the parsing.py implementation including:\n\n1. The input format requirements\n2. Each function's behavior and signatures\n3. Validation rules and error conditions\n4. Return values and data types\n5. Error reporting mechanisms\n\nAll functions match the actual implementation:\n- `split_headers()` properly separates headers and item lines\n- Field extraction functions handle missing fields with appropriate errors\n- `parse_terms()` validates terms with proper defaults\n- `parse_item()` correctly handles item line parsing with 3-4 field validation\n- `parse_discount_field()` processes discount information\n- `parse_invoice_text()` serves as the main entry point coordinating all parsing\n\nThe parser raises `ParseError` exceptions with readable messages including line numbers and specific error details, exactly as documented. No discrepancies were found between the documentation and actual implementation.",
+    "ttft_ms": 3436,
+    "type": "result",
+    "duration_ms": 3441,
+    "uuid": "325e8727-6986-4250-b13a-7dec8ae64219",
+    "ttft_stream_ms": 1867,
+    "time_to_request_ms": 24,
+    "first_content_frame_ms": 1868,
+    "queued_turn_count": 0,
+    "result_index": 1
+  },
+  "wall_s": 50.4,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/explain_notes.py ",
+        "exit_code": 0,
+        "output_tail": ""
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 86%]\n...........                                                              [100%]\n83 passed in 0.22s\n"
+      }
+    ]
+  },
+  "success": true
+}

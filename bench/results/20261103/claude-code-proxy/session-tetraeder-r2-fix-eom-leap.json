@@ -1,0 +1,109 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "fix-eom-leap",
+  "started": "2026-11-03T11:34:50",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 37841,
+    "stop_reason": "end_turn",
+    "session_id": "ae0d389d-5520-491b-837f-f67255b7ae9b",
+    "total_cost_usd": 0.16356559999999998,
+    "usage": {
+      "input_tokens": 18671,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 136708,
+      "output_tokens": 3077,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 18671,
+        "outputTokens": 3077,
+        "cacheReadInputTokens": 136708,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.16356559999999998,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 10,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully fixed the bug in the date calculation for invoices with 'eom' (end of month) payment terms. Here's what I accomplished:\n\n## Problem Analysis\nThe issue was in the `end_of_month` function in `invoicing/dates.py`. The original code used a static array `_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]` that hardcoded February as having 28 days, which fails for leap years.\n\n## Solution Implemented\nI replaced the static `_DAYS` array with `calendar.monthrange(d.year, d.month)[1]` to properly calculate the number of days in any given month, including leap year handling for February.\n\n## Changes Made\n- Modified `invoicing/dates.py` to use `calendar.monthrange()` instead of the static `_DAYS` array\n- This change makes the function properly handle leap years (like 2024, 2020, 2000) where February has 29 days\n- Non-leap years (like 1900, 2023) continue to correctly return 28 days for February\n\n## Verification\n- The previously failing tests now pass:\n  - `test_end_of_month_leap_february` \n  - `test_eom_terms_in_leap_year`\n- All 85 tests in the full test suite pass\n- The fix works correctly for various leap years and non-leap years\n- Other months continue to function properly\n\nThe fix is general and will work for all future leap years correctly, not just 2024.",
+    "ttft_ms": 4406,
+    "type": "result",
+    "duration_ms": 41936,
+    "uuid": "680c8f09-d22b-4be5-a834-b9dced447b39",
+    "ttft_stream_ms": 202,
+    "time_to_request_ms": 147,
+    "first_content_frame_ms": 3526,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 42.6,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 78%]\n....................                                                     [100%]\n92 passed in 0.24s\n"
+      }
+    ]
+  },
+  "success": true
+}

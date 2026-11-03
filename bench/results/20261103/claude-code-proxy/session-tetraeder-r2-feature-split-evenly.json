@@ -1,0 +1,114 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "feature-split-evenly",
+  "started": "2026-11-03T11:35:34",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 78036,
+    "stop_reason": "end_turn",
+    "session_id": "037ee9aa-cc53-4e90-bcf8-ab1ce5aa94bb",
+    "total_cost_usd": 0.36286700000000005,
+    "usage": {
+      "input_tokens": 44770,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 323735,
+      "output_tokens": 5952,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 44770,
+        "outputTokens": 5952,
+        "cacheReadInputTokens": 323735,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.36286700000000005,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 23,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully implemented the `split_evenly` function as requested. Let me provide a final summary of what was accomplished:\n\n## Implementation Summary\n\nI've added the `split_evenly` function to `invoicing/money.py` with the following specifications:\n- Takes `total_cents` and `parts` as parameters\n- Splits an amount in cents into `parts` integers that add up to the total exactly\n- Distributes remainder cents one by one to the first parts (e.g., splitting 100 cents into 3 parts gives [34, 33, 33])\n- Handles negative totals correctly by preserving the sign (e.g., -100 cents into 3 parts gives [-34, -33, -33])\n- Raises `ValueError` when `parts` is less than 1\n\n## Tests Added\nI've also added comprehensive tests to `tests/test_money.py` covering:\n- Various splitting scenarios \n- Negative totals\n- Edge cases (0 cents, single part)\n- Invalid parts (0 or negative values)\n\n## Verification Results\n\u2705 All 18 tests in `test_money.py` pass\n\u2705 All 85 tests in the entire test suite pass\n\nThe implementation correctly handles all requirements:\n- Splitting 100 cents three ways gives [34, 33, 33]\n- Splitting -100 cents three ways gives [-34, -33, -33]\n- Negative totals are handled correctly\n- ValueError is raised for parts < 1\n- The remainder is distributed one by one to the first parts\n\nThe function is now ready for use and all tests pass, confirming the implementation works as specified in the requirements.",
+    "ttft_ms": 4050,
+    "type": "result",
+    "duration_ms": 81057,
+    "uuid": "0b194676-5959-4494-b4eb-78e5faeec18f",
+    "ttft_stream_ms": 145,
+    "time_to_request_ms": 103,
+    "first_content_frame_ms": 3421,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 81.46,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 75%]\n.......................                                                  [100%]\n95 passed in 0.24s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/added_tests.py --pattern split_evenly --min 2",
+        "exit_code": 0,
+        "output_tail": "2 matching tests: ['tests/test_money.py::test_split_evenly', 'tests/test_money.py::test_split_evenly_invalid_parts']\n"
+      }
+    ]
+  },
+  "success": true
+}
