@@ -1,0 +1,141 @@
+{
+  "fixture": "fixture",
+  "tasks": [
+    {
+      "id": "fix-rounding",
+      "prompt": "Our test suite is failing: tests/test_regression_tax_rounding.py and a few others. Tax on some invoices is off by one cent, for example 5% on $2.50 should be $0.13 but we get $0.12. Please find the root cause and fix it in the code (do not change the tests), then run the whole suite to confirm it passes.",
+      "setup": {
+        "replace": [
+          {
+            "path": "invoicing/money.py",
+            "old": "    sign = -1 if numerator < 0 else 1\n    q, r = divmod(abs(numerator), denominator)\n    if r * 2 >= denominator:\n        q += 1\n    return sign * q\n",
+            "new": "    return round(numerator / denominator)\n"
+          }
+        ],
+        "files": {
+          "tests/test_regression_tax_rounding.py": "setup/fix-rounding/test_regression_tax_rounding.py"
+        }
+      },
+      "hidden": {
+        "tests/test_hidden_rounding.py": "hidden/fix-rounding/test_hidden_rounding.py"
+      },
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests"
+      ]
+    },
+    {
+      "id": "fix-eom-leap",
+      "prompt": "tests/test_dates_eom.py fails. Invoices with 'eom' (end of month) payment terms issued in February of a leap year get the wrong due date. Fix the bug in the code, keep the fix general (not just for 2024), and make sure the whole test suite passes.",
+      "setup": {
+        "replace": [
+          {
+            "path": "invoicing/dates.py",
+            "old": "_TERMS_RE = re.compile(r\"^net(\\d{1,3})$\")\n",
+            "new": "_TERMS_RE = re.compile(r\"^net(\\d{1,3})$\")\n_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]\n"
+          },
+          {
+            "path": "invoicing/dates.py",
+            "old": "    last = calendar.monthrange(d.year, d.month)[1]\n    return date(d.year, d.month, last)\n",
+            "new": "    return date(d.year, d.month, _DAYS[d.month - 1])\n"
+          }
+        ],
+        "files": {
+          "tests/test_dates_eom.py": "setup/fix-eom-leap/test_dates_eom.py"
+        }
+      },
+      "hidden": {
+        "tests/test_hidden_eom.py": "hidden/fix-eom-leap/test_hidden_eom.py"
+      },
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests"
+      ]
+    },
+    {
+      "id": "feature-split-evenly",
+      "prompt": "Add a function `split_evenly(total_cents, parts)` to invoicing/money.py. It splits an amount in cents into `parts` integers that add up to the total exactly. The remainder cents are handed out one each to the first parts, so splitting 100 three ways gives [34, 33, 33]. A negative total is split the same way on its magnitude and keeps its sign: -100 three ways is [-34, -33, -33]. Raise ValueError when parts is less than 1. Add tests for it to tests/test_money.py and make sure the whole suite passes.",
+      "hidden": {
+        "tests/test_hidden_split.py": "hidden/feature-split-evenly/test_hidden_split.py"
+      },
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests",
+        "{python} {kit}/checks/added_tests.py --pattern split_evenly --min 2"
+      ]
+    },
+    {
+      "id": "feature-late-fee",
+      "prompt": "Add late fees. Create a new module invoicing/fees.py with `late_fee(invoice, today, monthly_rate_bp=150)` that returns the fee in cents. It is 0 when the invoice is not past its due date. Otherwise count the started 30-day periods past the due date (1 to 30 days late is 1 period, 31 to 60 days is 2, and so on) and charge, per period, `monthly_rate_bp` basis points of the invoice's grand total (use the existing money helpers so rounding is half up). Write tests in a new tests/test_fees.py and run the whole suite.",
+      "hidden": {
+        "tests/test_hidden_fees.py": "hidden/feature-late-fee/test_hidden_fees.py"
+      },
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests",
+        "{python} {kit}/checks/added_tests.py --pattern late_fee --min 2"
+      ]
+    },
+    {
+      "id": "explain-parser",
+      "prompt": "I'm new to this codebase. Please read invoicing/parsing.py and write a NOTES.md in the repo root that explains how the invoice text parser works: the input format, what each function does and how they fit together, and how errors are reported. Do not change any code.",
+      "check": [
+        "{python} {kit}/checks/explain_notes.py ",
+        "{python} -m pytest -q -p no:cacheprovider tests"
+      ]
+    },
+    {
+      "id": "refactor-require-field",
+      "prompt": "invoicing/parsing.py repeats the same 'header is missing or blank, raise ParseError(\"missing field: ...\")' check in several functions. Factor that out into one small helper function and use it everywhere it applies, without changing behaviour or any error message. The existing tests must keep passing.",
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests",
+        "{python} {kit}/checks/refactor_require.py "
+      ]
+    },
+    {
+      "id": "rename-compute-total",
+      "prompt": "Rename the function `compute_total` to `invoice_total` everywhere in the project: the definition in invoicing/models.py, every import and call in the other modules, and the tests. Do not leave an alias under the old name. Run the test suite when you are done.",
+      "hidden": {
+        "tests/test_hidden_rename.py": "hidden/rename-compute-total/test_hidden_rename.py"
+      },
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests",
+        "{python} {kit}/checks/no_old_name.py --name compute_total"
+      ]
+    },
+    {
+      "id": "legacy-tier-boundary",
+      "prompt": "A customer on the Growth plan complained about their May statement from the old billing engine in legacy/. They stored exactly 110 GB (the plan includes 10 GB, so 100 GB are billable) and the storage line came to $20.00, but the plan's first tier covers up to and including 100 billable GB at $0.25 per GB, so it should be $25.00. We suspect the same thing happens for other usage that lands exactly on a tier limit, on other plans and meters too. Find the cause and fix it. All existing tests must still pass.",
+      "setup": {
+        "replace": [
+          {
+            "path": "legacy/pricing/volume.py",
+            "old": "if tier.up_to is None or units <= tier.up_to:",
+            "new": "if tier.up_to is None or units < tier.up_to:"
+          }
+        ]
+      },
+      "hidden": {
+        "tests/test_hidden_tier_boundary.py": "hidden/legacy-tier-boundary/test_hidden_tier_boundary.py"
+      },
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests"
+      ]
+    },
+    {
+      "id": "write-shipping-tests",
+      "prompt": "invoicing/shipping.py has no tests at all. Write a thorough test file tests/test_shipping.py for it: every public function, the band boundaries, the zones, the free-shipping rule and the error cases. Do not modify shipping.py. Run the suite to check that your tests pass.",
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests",
+        "{python} {kit}/checks/new_tests.py --module invoicing.shipping --min 3 --unchanged invoicing/shipping.py"
+      ]
+    },
+    {
+      "id": "cli-sort-by",
+      "prompt": "Add a `--sort-by` option to the `list` command of the CLI with the choices number, issued, customer and total. number, issued and customer sort ascending; total sorts largest first; ties are broken by invoice number. Without the option the file order is kept. The sorting belongs in `format_list` in invoicing/report.py, which should take an optional `sort_by` argument, and cli.py should pass the option through. Add tests and run the whole suite.",
+      "hidden": {
+        "tests/test_hidden_cli_sort.py": "hidden/cli-sort-by/test_hidden_cli_sort.py"
+      },
+      "check": [
+        "{python} -m pytest -q -p no:cacheprovider tests",
+        "{python} {kit}/checks/added_tests.py --pattern sort_by|sort-by --min 2"
+      ]
+    }
+  ]
+}
