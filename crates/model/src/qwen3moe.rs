@@ -162,14 +162,20 @@ pub struct LoadOptions {
     /// memory on the GPU, copying the weights per op, as llama.cpp does by default. Only
     /// matters with a GPU backend.
     pub op_offload: bool,
+    /// With `op_offload`, the fewest tokens a streamed step needs to offload (ADR 0044). ggml
+    /// counts a pair group's rows (tokens times experts) as its batch, so without this gate a
+    /// 7-token step at top-8 would copy every routed RAM expert to the GPU. Default 32, the
+    /// CUDA threshold applied to tokens, as libllama gets it.
+    pub op_offload_min_tokens: usize,
     /// Keep the whole-step graph and its scheduler allocation across steps with the same token
     /// count, padded KV length, `last_only` and routing recording, so ggml-cuda can replay a
     /// captured CUDA graph (ADR 0036). Only with every expert resident; on by default (30B decode
     /// 160 to 203 tok/s on the RTX 3090, greedy identical).
     pub reuse_step_graph: bool,
-    /// Predict each layer's experts from the previous layer and, with `MissPolicy::Cpu` and a
-    /// RAM tier, read the predicted ones into the RAM tier while the previous layer computes
-    /// (ADR 0038). Without a RAM tier the prediction is only scored. Off by default.
+    /// With `MissPolicy::Cpu` and a RAM tier: predict each layer's experts from an earlier
+    /// layer and read the predicted ones into the RAM tier while earlier layers compute (ADR
+    /// 0038). Otherwise no effect. On by default (235B at 32K: decode 2.83 to 3.14 tok/s, greedy
+    /// identical).
     pub prefetch: bool,
     /// Layers ahead that `prefetch` predicts and reads, 1 or 2 (ADR 0038). Depth 2 also
     /// predicts layer L+2 from layer L's FFN input, tops up L+1 from the fresher depth-1
@@ -197,6 +203,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("miss", &self.miss)
             .field("telemetry", &self.telemetry.is_some())
             .field("op_offload", &self.op_offload)
+            .field("op_offload_min_tokens", &self.op_offload_min_tokens)
             .field("reuse_step_graph", &self.reuse_step_graph)
             .field("prefetch", &self.prefetch)
             .field("prefetch_depth", &self.prefetch_depth)
@@ -222,8 +229,9 @@ impl LoadOptions {
             miss: MissPolicy::Upload,
             routing_profile: None,
             op_offload: false,
+            op_offload_min_tokens: 32,
             reuse_step_graph: true,
-            prefetch: false,
+            prefetch: true,
             prefetch_depth: 1,
             cpu_poll: None,
             prefetch_threads: None,
@@ -327,6 +335,9 @@ struct StepGraph {
 pub struct Qwen3Moe {
     file: ModelFile,
     sched: Sched,
+    /// The scheduler without op offload for small streamed steps (ADR 0044), with `op_offload`
+    /// on a GPU backend.
+    sched_small: Option<Sched>,
     primary: Backend,
     cpu: Backend,
     /// Size of the weights buffer on the primary backend (slot tensors included) and of the KV
@@ -354,6 +365,7 @@ pub struct Qwen3Moe {
     /// Pair groups may run on a GPU backend (the primary is not the CPU).
     gpu: bool,
     op_offload: bool,
+    op_offload_min_tokens: usize,
     /// The hot set still has to be built from the first prefill's routing.
     hot_pending: bool,
     streamer: Option<Streamer>,
@@ -425,6 +437,17 @@ impl Qwen3Moe {
             step_nodes(h).max(SEGMENT_NODES) * 4,
             opts.op_offload,
         )?;
+        // Streamed steps below `op_offload_min_tokens` use a scheduler without op offload
+        // (ADR 0044); its compute buffers are sized by those small steps.
+        let sched_small = if opts.op_offload && !backends[0].is_cpu() {
+            Some(Sched::new(
+                &backends,
+                step_nodes(h).max(SEGMENT_NODES) * 4,
+                false,
+            )?)
+        } else {
+            None
+        };
         let slots = match expert_slots {
             Some(0) => {
                 return Err(ModelError::Invalid(
@@ -468,6 +491,7 @@ impl Qwen3Moe {
         let mut model = Qwen3Moe {
             file,
             sched,
+            sched_small,
             primary,
             cpu,
             weights_bytes: weights_bytes as u64,
@@ -495,6 +519,7 @@ impl Qwen3Moe {
                 .map(|t| (t as i32).clamp(1, cpu_threads)),
             gpu: !opts_primary_is_cpu,
             op_offload: opts.op_offload,
+            op_offload_min_tokens: opts.op_offload_min_tokens,
             hot_pending: cpu_hot && opts.routing_profile.is_none(),
             streamer,
             metrics,
@@ -627,10 +652,11 @@ impl Qwen3Moe {
             let io = st.bounce_bytes();
             push("host", "ram", "io", io, io);
         }
-        let work = self.sched.buffer_size(&self.primary) as u64;
+        let scheds = || std::iter::once(&self.sched).chain(&self.sched_small);
+        let work = scheds().map(|s| s.buffer_size(&self.primary) as u64).sum();
         push(&device, tier, "workspace", work, work);
         if !self.primary.is_cpu() {
-            let work = self.sched.buffer_size(&self.cpu) as u64;
+            let work = scheds().map(|s| s.buffer_size(&self.cpu) as u64).sum();
             push(&self.cpu.name(), "ram", "workspace", work, work);
         }
         out
@@ -820,6 +846,11 @@ impl Qwen3Moe {
             streamer.settle();
         }
         self.cpu.set_cpu_threads(self.cpu_threads);
+        let offload = offloads(self.op_offload, self.op_offload_min_tokens, n);
+        let sched = match &mut self.sched_small {
+            Some(small) if !offload => small,
+            _ => &mut self.sched,
+        };
         for seg in 0..=n_layer {
             let groups = std::mem::take(&mut pending);
             {
@@ -845,14 +876,14 @@ impl Qwen3Moe {
                     &specs,
                 );
                 let t = lap(&mut prof.build, t);
-                self.sched.alloc_graph(&graph)?;
-                self.max_splits = self.max_splits.max(self.sched.n_splits());
+                sched.alloc_graph(&graph)?;
+                self.max_splits = self.max_splits.max(sched.n_splits());
                 for (g, i) in groups.iter().zip(&inputs) {
                     i.write(&g.pairs)?;
                     self.groups_run += 1;
                 }
                 let t = lap(&mut prof.alloc, t);
-                self.sched.compute(&graph)?;
+                sched.compute(&graph)?;
                 self.segments_run += 1;
                 prof.graphs += 1;
                 if let Some(l) = out {
@@ -911,8 +942,8 @@ impl Qwen3Moe {
                     );
                     continue;
                 }
-                let cap_ram = group_cap(ExpertSrc::Ram, self.gpu, self.op_offload);
-                let cap_compute = group_cap(ExpertSrc::Compute, self.gpu, self.op_offload);
+                let cap_ram = group_cap(ExpertSrc::Ram, self.gpu, offload);
+                let cap_compute = group_cap(ExpertSrc::Compute, self.gpu, offload);
                 let last = plan.cpu.len() - 1;
                 for (i, chunk) in plan.cpu.iter().enumerate() {
                     let slots = streamer.stage_ram(&self.file, seg, chunk)?;
@@ -927,7 +958,7 @@ impl Qwen3Moe {
                         }
                         let exps = streamer.ram_exps(seg).expect("RAM tier");
                         let splits =
-                            run_group_graph(&h, &mut self.sched, exps, slot, &pairs, &mut prof)?;
+                            run_group_graph(&h, sched, exps, slot, &pairs, &mut prof)?;
                         self.max_splits = self.max_splits.max(splits);
                         self.groups_run += 1;
                         self.group_graphs_run += 1;
@@ -956,7 +987,7 @@ impl Qwen3Moe {
             }
             // More distinct experts than slots: one pair group per chunk (ADR 0035). All
             // but the last run as graphs of their own; the last goes into the next segment.
-            let cap = group_cap(ExpertSrc::Compute, self.gpu, self.op_offload);
+            let cap = group_cap(ExpertSrc::Compute, self.gpu, offload);
             let last = chunks.len() - 1;
             for (i, chunk) in chunks.iter().enumerate() {
                 let slots = streamer.make_resident(&self.file, seg, &layer.exps(), chunk)?;
@@ -971,7 +1002,7 @@ impl Qwen3Moe {
                     }
                     let splits = run_group_graph(
                         &h,
-                        &mut self.sched,
+                        sched,
                         layer.exps(),
                         slot,
                         &pairs,
@@ -1074,6 +1105,11 @@ fn group_pairs(chosen: &[i32], n_used: usize, experts: &[u32], slots: &[u32]) ->
 /// `n_rows * 4 B <= shared memory per block` (about 25k rows on Ampere); ubatch 4096 at top-8 is
 /// 32k rows and aborted on the box.
 const MAX_GROUP_ROWS: usize = 16384;
+
+/// Whether a streamed step of `n` tokens runs with op offload (ADR 0044).
+fn offloads(op_offload: bool, min_tokens: usize, n: usize) -> bool {
+    op_offload && n >= min_tokens
+}
 
 /// The row cap of a group that can run on CUDA: compute-tier groups on a GPU backend, and RAM
 /// groups when `op_offload` lets ggml run their matmuls there. CPU-only groups are never split:
@@ -1725,6 +1761,18 @@ mod tests {
         assert_eq!(group_cap(ExpertSrc::Ram, true, false), None);
         assert_eq!(group_cap(ExpertSrc::Ram, false, true), None);
         assert_eq!(group_cap(ExpertSrc::Compute, false, false), None);
+    }
+
+    /// Op offload follows the step's tokens, not its pair rows (ADR 0044): a 7-token
+    /// speculative verify step (56 pairs at top-8) stays on the CPU, a prefill ubatch offloads.
+    #[test]
+    fn offload_is_gated_by_step_tokens() {
+        assert!(!offloads(true, 32, 1));
+        assert!(!offloads(true, 32, 7));
+        assert!(offloads(true, 32, 32));
+        assert!(offloads(true, 32, 2048));
+        assert!(!offloads(false, 32, 2048));
+        assert!(offloads(true, 0, 1));
     }
 
     /// Two tokens, top-2: the group of expert 5 holds the pairs that chose it.

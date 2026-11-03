@@ -65,3 +65,8 @@ All off by default; measured later in one box session.
 - **`LoadOptions::cpu_poll`**: the ggml threadpool poll level (0 to 100, default 50) of the CPU backend. Lower leaves cores to the reader under a tight quota.
 - **`LoadOptions::prefetch_threads`**: CPU compute threads while a prefetch read is in flight (threadpool size unchanged; restored after the last wait).
 - Harness: `TETRAEDER_EXIT_PREFETCH_DEPTH`, `TETRAEDER_EXIT_CPU_POLL`, `TETRAEDER_EXIT_PREFETCH_THREADS`, recorded in the JSON `options`.
+
+## Correction and default on (2026-11-03)
+
+- **No first-run divergence.** Only one run ever produced `[4370, 69415, ...]`: box 58813464 (`exit-main-120520`). Every 32K run on box 58872072, its first included, gave `[7294, 59549, ...]`. The two boxes ran different commits, and `exit_run.sh` built the prompt from the checkout (`cat AGENTS.md docs/adr/*.md`): 87,924 against 98,881 bytes, first difference at byte 78,551 (about token 20K). 8K prefills shared their text and agreed across boxes. The prompt is now frozen in `bench/prompts/exit_prompt.txt` (the 0956ccf text) and its token hash is in every exit JSON. On box 58900330 the frozen prompt gives `[7294, 59549, ...]` again, and libllama with the same token ids gives the same 64 greedy tokens (top-1 margin 12.9, no near-tie).
+- **Default on.** Box 58900330 (RTX 3090, 15 threads, 91.6 GB, bench/results/20261103/exit-main-*-021753.json), 32K, same expert VRAM as llama.cpp's best `-ot` (10.97 GB): decode 2.83 tok/s off, 3.14 on (+11%); prefill 72.2 and 75.8; read time hidden 59% (29% on the 5-thread box). Prediction now runs only where it prefetches (Levers above), so `LoadOptions::prefetch` defaults to true.
