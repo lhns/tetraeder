@@ -56,7 +56,7 @@ pub enum EngineKind {
 }
 
 /// Where the weights live. Both keep the embedding on the CPU, as llama.cpp does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Placement {
     /// The last `gpu_layers` layers and the output head on the GPU, the rest on the CPU.
