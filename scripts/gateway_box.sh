@@ -18,6 +18,7 @@
 # Deviation from the spec's "-np 4 -c 131072": 32K per slot needs 13 GB (30B) or 19 GB (8B) of KV beside the
 # weights and does not fit 24 GB. The -np 4 config uses -c 32768 (8K per slot), enough for every request here
 # (at most 4.2K prompt + 128 generated).
+# cargo runs with fd 8 closed: the sccache server it starts would otherwise keep the lock after the job
 exec 8> /root/tetraeder_gateway_box.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
@@ -92,7 +93,7 @@ over_budget() { [ $(($(date +%s) - t_start)) -gt "$budget_s" ]; }
 # ---- a. build ----------------------------------------------------------------------------------------------
 build() {
   say "build start"
-  timeout -k 30 50m cargo build --release -p tetraeder --features cuda || { say "build failed"; return 1; }
+  timeout -k 30 50m cargo build --release -p tetraeder --features cuda 8>&- || { say "build failed"; return 1; }
   if [ ! -x "$py" ] || ! "$py" -c 'import openai, anthropic, jsonschema, pytest, httpx, pydantic' 2> /dev/null; then
     # the box image has python3 without ensurepip (no venv module): fetch uv then
     if ! command -v uv > /dev/null 2>&1 && ! python3 -c 'import ensurepip' 2> /dev/null; then
