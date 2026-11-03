@@ -160,23 +160,25 @@ missing() { # missing MODEL ENGINE REP TESTS...: success if any output is absent
 server_pass() {
   local m=$1 engine=$2 rep=$3 f=${MODEL_FILE[$1]} alias=${MODEL_ALIAS[$1]}
   shift 3
-  missing "$m" "$engine" "$rep" "$@" || return 0
+  local fname=$engine # engine name in result files: both llama-server configs are one engine
+  case $engine in llama-server-*) fname=llama-server ;; esac
+  missing "$m" "$fname" "$rep" "$@" || return 0
   over_budget && { say "budget spent: skip $m $engine r$rep"; return 0; }
   say "pass $m $engine r$rep ($*) start"
   local slog="$out/server-$m-$engine-r$rep.log"
   case $engine in
     llama-server-np1)
       start_server "$slog" "$llama_bin/llama-server" -m "$f" -ngl 99 -c 32768 -t "$threads" --port "$port_ll" -np 1
-      wait_ready "http://127.0.0.1:$port_ll/health" 600 && run_tests "$m" llama-server "$rep" "http://127.0.0.1:$port_ll" "$@" ;;
+      wait_ready "http://127.0.0.1:$port_ll/health" 600 && run_tests "$m" "$fname" "$rep" "http://127.0.0.1:$port_ll" "$@" ;;
     llama-server-np4)
       start_server "$slog" "$llama_bin/llama-server" -m "$f" -ngl 99 -c "$c4_ctx" -t "$threads" --port "$port_ll" -np 4
-      wait_ready "http://127.0.0.1:$port_ll/health" 600 && run_tests "$m" llama-server "$rep" "http://127.0.0.1:$port_ll" "$@" ;;
+      wait_ready "http://127.0.0.1:$port_ll/health" 600 && run_tests "$m" "$fname" "$rep" "http://127.0.0.1:$port_ll" "$@" ;;
     tetraeder | tetraeder-llama)
       local eng=auto
       [ "$engine" = tetraeder-llama ] && eng=llama
       start_server "$slog" "$tet" serve -m "$f" --engine "$eng" --ngl -1 -t "$threads" --ctx 32768 --port "$port_tet" \
         --alias "$alias" --accept-any-model
-      wait_ready "http://127.0.0.1:$port_tet/v1/models" 600 && run_tests "$m" "$engine" "$rep" "http://127.0.0.1:$port_tet" "$@" ;;
+      wait_ready "http://127.0.0.1:$port_tet/v1/models" 600 && run_tests "$m" "$fname" "$rep" "http://127.0.0.1:$port_tet" "$@" ;;
   esac
   stop_server
   say "pass $m $engine r$rep done"

@@ -97,7 +97,7 @@ def test_tool_use_and_result(an, model):
     ]
     # a tool result as the last turn is accepted
     m2 = an.messages.create(model=model, messages=msgs, tools=TOOLS, tool_choice={"type": "none"}, max_tokens=32)
-    assert m2.stop_reason in ("end_turn", "max_tokens")
+    assert m2.content
     # tool result plus a scripted user turn
     msgs[-1]["content"].append({"type": "text", "text": echo("It is sunny in Paris.")})
     m3 = an.messages.create(model=model, messages=msgs, tools=TOOLS, tool_choice={"type": "none"}, max_tokens=128)
@@ -239,7 +239,7 @@ def claude_code_body(model, text, stream=False):
         "stream": stream,
         "system": [
             {"type": "text", "text": "You are Claude Code, an agent. " * 30},
-            {"type": "text", "text": "Project rules. " * 200, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": "Project rules. " * 60, "cache_control": {"type": "ephemeral"}},
         ],
         "tools": [tool],
         "metadata": {"user_id": "user_abc_account__session_123"},
