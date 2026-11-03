@@ -1,0 +1,32 @@
+vram_hold: holding 5430 MiB, free now 18432 MiB
+[11:48:41] pairs: info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off,info-anchor-gpu-large-vs-anchor-gpu-eager,info-cand-c00-vs-cand-c01,info-cand-c02-vs-cand-c03,info-cand-c04-vs-cand-c05,info-cand-c06-vs-cand-c07,info-cand-c08-vs-cand-c09,info-cand-c10-vs-cand-c11,info-cand-c12-vs-cand-c13,info-cand-c14-vs-cand-c15,info-cand-c16-vs-cand-c17,info-cand-c18-vs-cand-c19,info-cand-c20-vs-cand-c21,info-cand-c22-vs-cand-c23,info-base-fit-vs-base-ot-hand
+[11:48:41Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off (Info): anchor-gpu-small-opo-on vs anchor-gpu-small-opo-off
+[11:49:17Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off rep 1/1 a anchor-gpu-small-opo-on: pp Some(393.091638) tg Some(6.376591) t/s
+[11:53:41Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off rep 1/1 b anchor-gpu-small-opo-off: pp Some(17.381874) tg Some(5.749447) t/s
+[11:53:41Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off -> Ok 
+[11:53:41Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager (Info): anchor-gpu-large vs anchor-gpu-eager
+[11:53:59Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager rep 1/1 a anchor-gpu-large: pp Some(736.561834) tg Some(15.527659) t/s
+[11:54:19Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager rep 1/1 b anchor-gpu-eager: pp Some(731.130603) tg Some(14.751782) t/s
+[11:54:19Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager -> Ok 
+[11:54:19Z] pair info-cand-c00-vs-cand-c01 (Info): cand-c00 vs cand-c01
+[11:54:38Z] pair info-cand-c00-vs-cand-c01 rep 1/1 a cand-c00: pp Some(725.200411) tg Some(15.19441) t/s
+[11:55:59Z] pair info-cand-c00-vs-cand-c01 rep 1/1 b cand-c01: pp Some(60.777705) tg Some(15.478226) t/s
+[11:55:59Z] pair info-cand-c00-vs-cand-c01 -> Ok 
+[11:55:59Z] pair info-cand-c02-vs-cand-c03 (Info): cand-c02 vs cand-c03
+[11:56:22Z] pair info-cand-c02-vs-cand-c03 rep 1/1 a cand-c02: pp Some(738.606052) tg Some(10.600314) t/s
+[11:56:47Z] pair info-cand-c02-vs-cand-c03 rep 1/1 b cand-c03: pp Some(565.571395) tg Some(10.118943) t/s
+[11:56:47Z] pair info-cand-c02-vs-cand-c03 -> Ok 
+[11:56:47Z] pair info-cand-c04-vs-cand-c05 (Info): cand-c04 vs cand-c05
+[11:59:09Z] pair info-cand-c04-vs-cand-c05 rep 1/1 a cand-c04: pp Some(33.325704) tg Some(9.482248) t/s
+[11:59:31Z] pair info-cand-c04-vs-cand-c05 rep 1/1 b cand-c05: pp Some(909.844824) tg Some(10.681945) t/s
+[11:59:31Z] pair info-cand-c04-vs-cand-c05 -> Ok 
+[11:59:31Z] pair info-cand-c06-vs-cand-c07 (Info): cand-c06 vs cand-c07
+[12:01:51Z] pair info-cand-c06-vs-cand-c07 rep 1/1 a cand-c06: pp Some(33.331885) tg Some(10.150256) t/s
+[12:02:23Z] pair info-cand-c06-vs-cand-c07 rep 1/1 b cand-c07: pp Some(559.264555) tg Some(6.478475) t/s
+[12:02:23Z] pair info-cand-c06-vs-cand-c07 -> Ok 
+[12:02:23Z] pair info-cand-c08-vs-cand-c09 (Info): cand-c08 vs cand-c09
+[12:07:02Z] pair info-cand-c08-vs-cand-c09 rep 1/1 a cand-c08: pp Some(16.07577) tg Some(6.575334) t/s
+[12:07:31Z] pair info-cand-c08-vs-cand-c09 rep 1/1 b cand-c09: pp Some(942.944881) tg Some(6.461227) t/s
+[12:07:31Z] pair info-cand-c08-vs-cand-c09 -> Ok 
+[12:07:31Z] pair info-cand-c10-vs-cand-c11 (Info): cand-c10 vs cand-c11
+[12:08:02Z] pair info-cand-c10-vs-cand-c11 rep 1/1 a cand-c10: pp Some(450.629132) tg Some(7.70489) t/s

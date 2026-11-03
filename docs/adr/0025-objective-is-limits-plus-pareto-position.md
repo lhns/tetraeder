@@ -17,4 +17,5 @@ Users want to say "fast" or "good" and how much slow hardware the engine may use
 
 - The simulator and cost model must score quality loss and resource cost next to latency and throughput.
 - `plan explain` shows the front and where the chosen plan sits; `plan what-if` shows how it moves with other hardware.
-- The tie-break order (quality, then cost, then speed) is the default; a hint can change it later if a real workload needs that.
+- Default without a speed limit: when the hints set neither `target_tok_s` nor `p95_ttft_ms`, the order is quality, then speed, then cost, and cost only breaks ties within 5% of the fastest plan at that quality (`objective::SPEED_BAND`). Cost first with no speed limit picks a CPU-only plan for every model. With a speed limit the order above holds.
+- The tie-break order (quality, then cost, then speed) applies with a speed limit; a hint can change it later if a real workload needs that.

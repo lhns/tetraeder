@@ -60,7 +60,7 @@ fetch_pid=$!
 
 echo "[$(date +%T)] start build"
 timeout -k 30 40m cargo build --release -p tetraeder -p tetraeder-bench -p tetraeder-planner \
-  --features tetraeder-ggml-sys/cuda 8>&- || { rc=10; exit; }
+  --features tetraeder/cuda 8>&- || { rc=10; exit; }
 echo "[$(date +%T)] done build"
 wait "$fetch_pid"
 mem=$(cat /sys/fs/cgroup/memory.max 2> /dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2> /dev/null)

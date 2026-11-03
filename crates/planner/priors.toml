@@ -1,0 +1,108 @@
+# Priors database for `plan what-if` (docs/plan.md "Explain, diff, what-if").
+# Spec-sheet numbers for hardware the box does not have. Every number it yields is Source::Prior.
+# Prices are rough European list or used-market prices in EUR, for ranking purchases only.
+# `flops_per_s` is dense FP16 tensor throughput with FP32 accumulate.
+
+[[gpu]]
+class = "rtx3090"
+aliases = ["3090"]
+match_name = ["rtx 3090"]
+name = "NVIDIA GeForce RTX 3090"
+capacity_bytes = 25769803776
+bandwidth_bytes_per_s = 9.36e11
+flops_per_s = 7.1e13
+c0_graph_s = 5.0e-6
+c0_eager_s = 2.0e-5
+pcie_gen = 4
+pcie_width = 16
+price_eur = 800.0
+
+[[gpu]]
+class = "rtx4090"
+aliases = ["4090"]
+match_name = ["rtx 4090"]
+name = "NVIDIA GeForce RTX 4090"
+capacity_bytes = 25769803776
+bandwidth_bytes_per_s = 1.008e12
+flops_per_s = 1.65e14
+c0_graph_s = 5.0e-6
+c0_eager_s = 2.0e-5
+pcie_gen = 4
+pcie_width = 16
+price_eur = 1800.0
+
+[[gpu]]
+class = "rtx4060ti16"
+aliases = ["4060ti", "4060ti16", "4060ti16gb"]
+match_name = ["rtx 4060 ti"]
+name = "NVIDIA GeForce RTX 4060 Ti 16GB"
+capacity_bytes = 17179869184
+bandwidth_bytes_per_s = 2.88e11
+flops_per_s = 4.4e13
+c0_graph_s = 5.0e-6
+c0_eager_s = 2.0e-5
+pcie_gen = 4
+pcie_width = 8
+price_eur = 450.0
+
+[[gpu]]
+class = "a100_40"
+aliases = ["a100", "a10040", "a10040gb"]
+match_name = ["a100"]
+name = "NVIDIA A100 40GB"
+capacity_bytes = 42949672960
+bandwidth_bytes_per_s = 1.555e12
+flops_per_s = 3.12e14
+c0_graph_s = 5.0e-6
+c0_eager_s = 2.0e-5
+pcie_gen = 4
+pcie_width = 16
+price_eur = 8000.0
+
+# Generic RAM: capacity is added per GB; bandwidth is per channel, times the channel count.
+[[ram]]
+class = "ddr4"
+bandwidth_per_channel_bytes_per_s = 2.56e10
+default_channels = 2
+price_eur_per_gb = 3.0
+
+[[ram]]
+class = "ddr5"
+bandwidth_per_channel_bytes_per_s = 4.48e10
+default_channels = 2
+price_eur_per_gb = 4.5
+
+# One NVMe drive, sequential read.
+[[nvme]]
+class = "gen3"
+capacity_bytes = 2000000000000
+bandwidth_bytes_per_s = 3.4e9
+alpha_s = 1.0e-4
+price_eur = 100.0
+
+[[nvme]]
+class = "gen4"
+capacity_bytes = 2000000000000
+bandwidth_bytes_per_s = 7.0e9
+alpha_s = 1.0e-4
+price_eur = 170.0
+
+[[nvme]]
+class = "gen5"
+capacity_bytes = 2000000000000
+bandwidth_bytes_per_s = 12.0e9
+alpha_s = 1.0e-4
+price_eur = 300.0
+
+# Network upgrade of the existing network links (a NIC pair).
+[[net]]
+class = "10gbe"
+bandwidth_bytes_per_s = 1.25e9
+alpha_s = 1.0e-4
+price_eur = 150.0
+
+[[net]]
+class = "25gbe"
+bandwidth_bytes_per_s = 3.125e9
+alpha_s = 5.0e-5
+price_eur = 250.0

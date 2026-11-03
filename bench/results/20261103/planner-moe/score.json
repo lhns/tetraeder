@@ -1,0 +1,307 @@
+{
+  "fixture": "planner-moe",
+  "candidates": [
+    {
+      "id": "c00",
+      "description": "-ngl 99 -ot blk\\.(3[5-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -fa 1 -t 9",
+      "predicted_s": 4.390770852601088,
+      "measured_s": 4.0763219125195755
+    },
+    {
+      "id": "c01",
+      "description": "-ngl 99 -ot blk\\.(3[5-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 10.43982496910888,
+      "measured_s": 10.09459125662465
+    },
+    {
+      "id": "c02",
+      "description": "-ngl 99 -ot blk\\.(3[5-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -fa 1 -t 4",
+      "predicted_s": 5.299404261676565,
+      "measured_s": 5.312129121627223
+    },
+    {
+      "id": "c03",
+      "description": "-ngl 99 -ot blk\\.(3[1-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -fa 1 -t 9",
+      "predicted_s": 5.416457162191497,
+      "measured_s": 5.437510322347377
+    },
+    {
+      "id": "c04",
+      "description": "-ngl 99 -ot blk\\.(3[1-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 13.213112182038417,
+      "measured_s": 13.23291411193949
+    },
+    {
+      "id": "c05",
+      "description": "-ngl 99 -ot blk\\.(3[1-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 2048 -fa 1 -t 9",
+      "predicted_s": 3.449459720683915,
+      "measured_s": 3.1419509995480044
+    },
+    {
+      "id": "c06",
+      "description": "-ngl 99 -ot blk\\.(3[1-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 2048 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 13.191845274857485,
+      "measured_s": 12.775662452349692
+    },
+    {
+      "id": "c07",
+      "description": "-ngl 99 -ot blk\\.(3[1-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -fa 1 -t 4",
+      "predicted_s": 6.58758466722211,
+      "measured_s": 6.625473546003885
+    },
+    {
+      "id": "c08",
+      "description": "-ngl 99 -ot blk\\.(3[1-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -nopo 1 -fa 1 -t 4",
+      "predicted_s": 25.487815397426942,
+      "measured_s": 20.70388672058645
+    },
+    {
+      "id": "c09",
+      "description": "-ngl 99 -ot blk\\.(3[1-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 2048 -fa 1 -t 4",
+      "predicted_s": 4.620587225714528,
+      "measured_s": 4.894414984073515
+    },
+    {
+      "id": "c10",
+      "description": "-ngl 99 -ot blk\\.(2[7-9]|3[0-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -fa 1 -t 9",
+      "predicted_s": 6.442143471781906,
+      "measured_s": 7.027410822531943
+    },
+    {
+      "id": "c11",
+      "description": "-ngl 99 -ot blk\\.(2[7-9]|3[0-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 15.986399394967952,
+      "measured_s": 16.468738065566424
+    },
+    {
+      "id": "c12",
+      "description": "-ngl 99 -ot blk\\.(2[7-9]|3[0-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 2048 -fa 1 -t 9",
+      "predicted_s": 4.037113209515607,
+      "measured_s": 4.473097662578456
+    },
+    {
+      "id": "c13",
+      "description": "-ngl 99 -ot blk\\.(2[7-9]|3[0-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 2048 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 15.963155599692131,
+      "measured_s": 15.5346869298399
+    },
+    {
+      "id": "c14",
+      "description": "-ngl 99 -ot blk\\.(2[7-9]|3[0-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -fa 1 -t 4",
+      "predicted_s": 7.875765072767658,
+      "measured_s": 7.67769509532491
+    },
+    {
+      "id": "c15",
+      "description": "-ngl 99 -ot blk\\.(2[7-9]|3[0-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 512 -nopo 1 -fa 1 -t 4",
+      "predicted_s": 31.01232919311599,
+      "measured_s": 26.070561544988745
+    },
+    {
+      "id": "c16",
+      "description": "-ngl 99 -ot blk\\.(2[7-9]|3[0-9]|4[0-7])\\.ffn_(up|down|gate)_exps=CPU -b 2048 -ub 2048 -fa 1 -t 4",
+      "predicted_s": 5.47073481050136,
+      "measured_s": 5.694516263873383
+    },
+    {
+      "id": "c17",
+      "description": "-ngl 99 -ot exps=CPU -b 2048 -ub 512 -fa 1 -t 9",
+      "predicted_s": 13.577986875523411,
+      "measured_s": 14.299093514166167
+    },
+    {
+      "id": "c18",
+      "description": "-ngl 99 -ot exps=CPU -b 2048 -ub 512 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 35.320380207635075,
+      "measured_s": 37.41005604930894
+    },
+    {
+      "id": "c19",
+      "description": "-ngl 99 -ot exps=CPU -b 2048 -ub 2048 -fa 1 -t 9",
+      "predicted_s": 8.115971376244017,
+      "measured_s": 8.358187541803701
+    },
+    {
+      "id": "c20",
+      "description": "-ngl 99 -ot exps=CPU -b 2048 -ub 2048 -nopo 1 -fa 1 -t 9",
+      "predicted_s": 35.28379241771874,
+      "measured_s": 34.458501496539085
+    },
+    {
+      "id": "c21",
+      "description": "-ngl 99 -ot exps=CPU -b 2048 -ub 512 -fa 1 -t 4",
+      "predicted_s": 16.843799708142516,
+      "measured_s": 15.575589065711679
+    },
+    {
+      "id": "c22",
+      "description": "-ngl 99 -ot exps=CPU -b 2048 -ub 512 -nopo 1 -fa 1 -t 4",
+      "predicted_s": 69.54968752491044,
+      "measured_s": 59.047851218876
+    },
+    {
+      "id": "c23",
+      "description": "-ngl 99 -ot exps=CPU -b 2048 -ub 2048 -fa 1 -t 4",
+      "predicted_s": 11.381784208863122,
+      "measured_s": 10.877893363340204
+    }
+  ],
+  "failed": [],
+  "analytic_pick": "c05",
+  "final_pick": "c05",
+  "best": "c05",
+  "regret_analytic": 0.0,
+  "regret_final": 0.0,
+  "spearman": 0.9973913043478261,
+  "band": 0.09205238675643757,
+  "anchor_residuals": [
+    [
+      "anchor-cpu-t9:pp",
+      -0.0865041031019082
+    ],
+    [
+      "anchor-cpu-t9:tg",
+      -0.0070429300722469924
+    ],
+    [
+      "anchor-cpu-t4:pp",
+      0.0006947913451877615
+    ],
+    [
+      "anchor-cpu-t4:tg",
+      -0.00003632667729845715
+    ],
+    [
+      "anchor-cpu-t2:pp",
+      0.0005481063962847914
+    ],
+    [
+      "anchor-cpu-t2:tg",
+      -0.00022346623244456844
+    ],
+    [
+      "anchor-gpu-small-opo-on:pp",
+      0.03315068342861919
+    ],
+    [
+      "anchor-gpu-small-opo-on:tg",
+      -0.0029737716241114475
+    ],
+    [
+      "anchor-gpu-small-opo-off:pp",
+      0.08805884939221609
+    ],
+    [
+      "anchor-gpu-small-opo-off:tg",
+      0.021635313613859675
+    ],
+    [
+      "anchor-gpu-large:pp",
+      -0.0012879210924886478
+    ],
+    [
+      "anchor-gpu-large:tg",
+      -0.0075083285209026004
+    ],
+    [
+      "anchor-gpu-eager:pp",
+      -0.03325950382465341
+    ],
+    [
+      "anchor-gpu-eager:tg",
+      -0.004822128683339477
+    ]
+  ],
+  "baselines": {
+    "base-fit": 4.518901292823629,
+    "base-ot-all": 13.997344930040265,
+    "base-ot-hand": 4.668498245069824
+  },
+  "pick_s": 3.1419509995480044,
+  "calibrated": {
+    "devices": [
+      {
+        "id": "cpu0",
+        "kind": "cpu",
+        "name": "Box CPU",
+        "tier": "ram",
+        "capacity_bytes": 64000000000,
+        "bandwidth_bytes_per_s": {
+          "value": 40000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "compute": {
+          "flops_per_s": 600000000000.0,
+          "c0_graph_s": 2.363052215882531e-6,
+          "c0_eager_s": 2.363052215882531e-6
+        },
+        "threads": 9,
+        "thread_curve": [
+          {
+            "threads": 2,
+            "flops_per_s": 77079546862.18767,
+            "bytes_per_s": 11060749863.196928
+          },
+          {
+            "threads": 4,
+            "flops_per_s": 133141135660.76805,
+            "bytes_per_s": 18411548724.069504
+          },
+          {
+            "threads": 9,
+            "flops_per_s": 275111816131.6906,
+            "bytes_per_s": 32198703097.02408
+          }
+        ]
+      },
+      {
+        "id": "gpu0",
+        "kind": "gpu",
+        "name": "RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 1422485861063.195,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 129911032546130.69,
+          "c0_graph_s": 2.5702757564539918e-6,
+          "c0_eager_s": 3.1502509828090596e-6
+        },
+        "pcie": {
+          "gen_current": 4,
+          "width_current": 16,
+          "gen_max": 4,
+          "width_max": 16
+        },
+        "index": 0
+      }
+    ],
+    "links": [
+      {
+        "id": "pcie-gpu0",
+        "a": "gpu0",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.0000834064549899611,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "beta_bytes_per_s": {
+          "value": 9706500260.513784,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        }
+      }
+    ],
+    "lane_groups": []
+  }
+}

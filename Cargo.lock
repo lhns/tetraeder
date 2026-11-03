@@ -2028,12 +2028,15 @@ dependencies = [
  "anyhow",
  "clap",
  "opentelemetry",
+ "serde",
  "serde_json",
+ "tetraeder-analysis",
  "tetraeder-engine",
  "tetraeder-gateway",
  "tetraeder-model",
  "tetraeder-plan",
  "tetraeder-planner",
+ "tetraeder-profiler",
  "tetraeder-scheduler",
  "tetraeder-telemetry",
  "tokio",
@@ -2187,12 +2190,14 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "proptest",
  "serde",
  "serde_json",
  "tetraeder-bench",
  "tetraeder-costmodel",
  "tetraeder-plan",
  "tetraeder-profiler",
+ "toml",
 ]
 
 [[package]]

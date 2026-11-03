@@ -1,0 +1,340 @@
+[10:27:47] start: cuda ok, threads 9, archs 86
+name, driver_version, memory.total [MiB], memory.free [MiB], clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 24576 MiB, 24126 MiB, 210 MHz, 2100 MHz, 0x0000000000000004
+[10:27:47] start build
+[10:27:47] have moe
+[10:27:47] have dense
+[10:27:47] FETCH_DONE
+error: none of the selected packages contains this feature: tetraeder-ggml-sys/cuda
+selected packages: tetraeder-bench, tetraeder-planner, tetraeder
+[10:27:47] PLANNER_DONE rc=10
+[10:34:18] start: cuda ok, threads 9, archs 86
+name, driver_version, memory.total [MiB], memory.free [MiB], clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 24576 MiB, 24126 MiB, 210 MHz, 2100 MHz, 0x0000000000000004
+[10:34:18] start build
+[10:34:18] have moe
+[10:34:18] have dense
+[10:34:18] FETCH_DONE
+ Downloading crates ...
+  Downloaded ahash v0.8.12
+  Downloaded anstyle-query v1.1.5
+  Downloaded bytemuck_derive v1.12.1
+  Downloaded anstyle v1.0.14
+  Downloaded anstyle-parse v1.0.0
+  Downloaded anstream v1.0.0
+  Downloaded clap_derive v4.6.7
+  Downloaded axum-core v0.5.6
+  Downloaded borrow-or-share v0.2.4
+  Downloaded bytemuck v1.25.2
+  Downloaded strsim v0.11.1
+  Downloaded signal-hook-registry v1.4.8
+  Downloaded referencing v0.29.1
+  Downloaded strum v0.28.0
+  Downloaded clap_lex v1.1.1
+  Downloaded strum_macros v0.28.0
+  Downloaded utf8parse v0.2.2
+  Downloaded ref-cast-impl v1.0.27
+  Downloaded ref-cast v1.0.27
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded tokio-macros v2.7.2
+  Downloaded serde_path_to_error v0.1.20
+  Downloaded lock_api v0.4.14
+  Downloaded scopeguard v1.2.0
+  Downloaded version_check v0.9.5
+  Downloaded serde_urlencoded v0.7.1
+  Downloaded mime v0.3.17
+  Downloaded heck v0.5.0
+  Downloaded matchit v0.8.4
+  Downloaded errno v0.3.14
+  Downloaded parking_lot_core v0.9.12
+  Downloaded fluent-uri v0.3.2
+  Downloaded colorchoice v1.0.5
+  Downloaded toktrie v1.9.1
+  Downloaded parking_lot v0.12.5
+  Downloaded foldhash v0.2.0
+  Downloaded minijinja-contrib v3.0.4
+  Downloaded ryu v1.0.23
+  Downloaded getrandom v0.4.3
+  Downloaded derivre v0.3.13
+  Downloaded clap_builder v4.6.7
+  Downloaded clap v4.6.7
+  Downloaded uuid v1.29.0
+  Downloaded axum v0.8.9
+  Downloaded minijinja v3.0.4
+  Downloaded tokio-util v0.7.20
+  Downloaded llguidance v1.9.1
+   Compiling serde_core v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling foldhash v0.2.0
+   Compiling errno v0.3.14
+   Compiling tokio-macros v2.7.2
+   Compiling heck v0.5.0
+   Compiling form_urlencoded v1.2.2
+   Compiling regex-syntax v0.8.11
+   Compiling opentelemetry v0.33.1
+   Compiling signal-hook-registry v1.4.8
+   Compiling anyhow v1.0.104
+   Compiling utf8parse v0.2.2
+   Compiling url v2.5.8
+   Compiling anstyle-parse v1.0.0
+   Compiling anstyle v1.0.14
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling tokio v1.54.1
+   Compiling anstyle-query v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling version_check v0.9.5
+   Compiling anstream v1.0.0
+   Compiling clap_lex v1.1.1
+   Compiling strsim v0.11.1
+   Compiling ahash v0.8.12
+   Compiling clap_derive v4.6.7
+   Compiling ref-cast v1.0.27
+   Compiling parking_lot_core v0.9.12
+   Compiling ref-cast-impl v1.0.27
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling clap_builder v4.6.7
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling strum_macros v0.28.0
+   Compiling serde v1.0.229
+   Compiling regex-automata v0.4.18
+   Compiling bytemuck_derive v1.12.1
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling toml_edit v0.22.27
+   Compiling bytemuck v1.25.2
+   Compiling borrow-or-share v0.2.4
+   Compiling hyper v1.12.0
+   Compiling tower v0.5.3
+   Compiling clap v4.6.7
+   Compiling getrandom v0.4.3
+   Compiling opentelemetry-proto v0.33.1
+   Compiling fluent-uri v0.3.2
+   Compiling strum v0.28.0
+   Compiling parking_lot v0.12.5
+   Compiling matchers v0.2.0
+   Compiling tower-http v0.6.11
+   Compiling ryu v1.0.23
+   Compiling tracing-subscriber v0.3.23
+   Compiling toml v0.8.23
+   Compiling mime v0.3.17
+   Compiling llguidance v1.9.1
+   Compiling referencing v0.29.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling axum-core v0.5.6
+   Compiling derivre v0.3.13
+   Compiling hyper-util v0.1.21
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling toktrie v1.9.1
+   Compiling minijinja v3.0.4
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling reqwest v0.13.5
+   Compiling serde_path_to_error v0.1.20
+   Compiling matchit v0.8.4
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling uuid v1.29.0
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling axum v0.8.9
+   Compiling tokio-util v0.7.20
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling opentelemetry-http v0.33.1
+   Compiling tetraeder-costmodel v0.0.0 (/root/tetraeder/crates/costmodel)
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling minijinja-contrib v3.0.4
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-gateway v0.0.0 (/root/tetraeder/crates/gateway)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 8m 51s
+[10:43:10] done build
+[10:43:10] container memory 91748302848 B, ram budget 83748302848 B
+[10:43:10] fixture moe: balloon to 14336 MiB free
+vram_hold: holding 9526 MiB, free now 14336 MiB
+24 candidates, 7 anchors, 3 baselines, 8 dropped
+[10:43:33] start bench moe
+[10:43:33Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 (Info): anchor-cpu-t9 vs anchor-cpu-t4
+[10:44:15Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 1/2 a anchor-cpu-t9: pp Some(43.744147) tg Some(15.266902) t/s
+[10:45:15Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 1/2 b anchor-cpu-t4: pp Some(18.235701) tg Some(8.931349) t/s
+[10:46:13Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 2/2 b anchor-cpu-t4: pp Some(20.173787) tg Some(9.551588) t/s
+[10:46:56Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 2/2 a anchor-cpu-t9: pp Some(41.675724) tg Some(17.251237) t/s
+[10:46:56Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 -> Ok 
+[10:46:56Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 (Info): anchor-cpu-t2 vs anchor-cpu-t9
+[10:48:17Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 rep 1/2 a anchor-cpu-t2: pp Some(11.023481) tg Some(5.66871) t/s
+[10:48:58Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 rep 1/2 b anchor-cpu-t9: pp Some(42.843388) tg Some(15.419605) t/s
+[10:49:40Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 rep 2/2 b anchor-cpu-t9: pp Some(43.727351) tg Some(16.283088) t/s
+[10:50:59Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 rep 2/2 a anchor-cpu-t2: pp Some(11.218947) tg Some(5.597703) t/s
+[10:50:59Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 -> Ok 
+[10:50:59Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off (Info): anchor-gpu-small-opo-on vs anchor-gpu-small-opo-off
+[10:51:24Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off rep 1/2 a anchor-gpu-small-opo-on: pp Some(259.306942) tg Some(22.242252) t/s
+[10:52:37Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off rep 1/2 b anchor-gpu-small-opo-off: pp Some(63.535451) tg Some(22.504309) t/s
+[10:53:50Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off rep 2/2 b anchor-gpu-small-opo-off: pp Some(64.419094) tg Some(19.1981) t/s
+[10:54:15Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off rep 2/2 a anchor-gpu-small-opo-on: pp Some(264.088825) tg Some(20.499147) t/s
+[10:54:15Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off -> Ok 
+[10:54:15Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager (Info): anchor-gpu-large vs anchor-gpu-eager
+[10:54:27Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager rep 1/2 a anchor-gpu-large: pp Some(933.675278) tg Some(58.386795) t/s
+[10:54:38Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager rep 1/2 b anchor-gpu-eager: pp Some(977.37291) tg Some(60.259671) t/s
+[10:54:50Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager rep 2/2 b anchor-gpu-eager: pp Some(939.503358) tg Some(51.729199) t/s
+[10:55:02Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager rep 2/2 a anchor-gpu-large: pp Some(925.825664) tg Some(59.64839) t/s
+[10:55:02Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager -> Ok 
+[10:55:02Z] pair info-cand-c00-vs-cand-c01 (Info): cand-c00 vs cand-c01
+[10:55:13Z] pair info-cand-c00-vs-cand-c01 rep 1/2 a cand-c00: pp Some(927.155927) tg Some(58.358191) t/s
+[10:55:37Z] pair info-cand-c00-vs-cand-c01 rep 1/2 b cand-c01: pp Some(248.59332) tg Some(71.242462) t/s
+[10:56:00Z] pair info-cand-c00-vs-cand-c01 rep 2/2 b cand-c01: pp Some(248.723951) tg Some(66.51042) t/s
+[10:56:10Z] pair info-cand-c00-vs-cand-c01 rep 2/2 a cand-c00: pp Some(997.856046) tg Some(73.022029) t/s
+[10:56:10Z] pair info-cand-c00-vs-cand-c01 -> Ok 
+[10:56:10Z] pair info-cand-c02-vs-cand-c03 (Info): cand-c02 vs cand-c03
+[10:56:23Z] pair info-cand-c02-vs-cand-c03 rep 1/2 a cand-c02: pp Some(914.253047) tg Some(40.747272) t/s
+[10:56:36Z] pair info-cand-c02-vs-cand-c03 rep 1/2 b cand-c03: pp Some(728.161505) tg Some(43.882905) t/s
+[10:56:49Z] pair info-cand-c02-vs-cand-c03 rep 2/2 b cand-c03: pp Some(775.909427) tg Some(50.434664) t/s
+[10:57:01Z] pair info-cand-c02-vs-cand-c03 rep 2/2 a cand-c02: pp Some(946.121506) tg Some(41.556674) t/s
+[10:57:01Z] pair info-cand-c02-vs-cand-c03 -> Ok 
+[10:57:01Z] pair info-cand-c04-vs-cand-c05 (Info): cand-c04 vs cand-c05
+[10:57:29Z] pair info-cand-c04-vs-cand-c05 rep 1/2 a cand-c04: pp Some(194.00767) tg Some(60.399873) t/s
+[10:57:38Z] pair info-cand-c04-vs-cand-c05 rep 1/2 b cand-c05: pp Some(2063.264846) tg Some(59.733874) t/s
+[10:57:47Z] pair info-cand-c04-vs-cand-c05 rep 2/2 b cand-c05: pp Some(2078.758915) tg Some(59.166534) t/s
+[10:58:17Z] pair info-cand-c04-vs-cand-c05 rep 2/2 a cand-c04: pp Some(188.960812) tg Some(40.486151) t/s
+[10:58:17Z] pair info-cand-c04-vs-cand-c05 -> Ok 
+[10:58:17Z] pair info-cand-c06-vs-cand-c07 (Info): cand-c06 vs cand-c07
+[10:58:44Z] pair info-cand-c06-vs-cand-c07 rep 1/2 a cand-c06: pp Some(199.333004) tg Some(48.260032) t/s
+[10:58:58Z] pair info-cand-c06-vs-cand-c07 rep 1/2 b cand-c07: pp Some(730.869914) tg Some(33.534357) t/s
+[10:59:13Z] pair info-cand-c06-vs-cand-c07 rep 2/2 b cand-c07: pp Some(696.2842) tg Some(34.633673) t/s
+[10:59:40Z] pair info-cand-c06-vs-cand-c07 rep 2/2 a cand-c06: pp Some(204.475098) tg Some(48.995888) t/s
+[10:59:40Z] pair info-cand-c06-vs-cand-c07 -> Ok 
+[10:59:40Z] pair info-cand-c08-vs-cand-c09 (Info): cand-c08 vs cand-c09
+[11:00:22Z] pair info-cand-c08-vs-cand-c09 rep 1/2 a cand-c08: pp Some(122.421052) tg Some(33.274046) t/s
+[11:00:33Z] pair info-cand-c08-vs-cand-c09 rep 1/2 b cand-c09: pp Some(1967.45097) tg Some(33.155635) t/s
+[11:00:44Z] pair info-cand-c08-vs-cand-c09 rep 2/2 b cand-c09: pp Some(1993.402985) tg Some(33.160548) t/s
+[11:01:27Z] pair info-cand-c08-vs-cand-c09 rep 2/2 a cand-c08: pp Some(120.451347) tg Some(33.408878) t/s
+[11:01:27Z] pair info-cand-c08-vs-cand-c09 -> Ok 
+[11:01:27Z] pair info-cand-c10-vs-cand-c11 (Info): cand-c10 vs cand-c11
+[11:01:42Z] pair info-cand-c10-vs-cand-c11 rep 1/2 a cand-c10: pp Some(545.740309) tg Some(38.853136) t/s
+[11:02:16Z] pair info-cand-c10-vs-cand-c11 rep 1/2 b cand-c11: pp Some(153.738262) tg Some(41.075814) t/s
+[11:02:50Z] pair info-cand-c10-vs-cand-c11 rep 2/2 b cand-c11: pp Some(152.765761) tg Some(41.368431) t/s
+[11:03:05Z] pair info-cand-c10-vs-cand-c11 rep 2/2 a cand-c10: pp Some(610.441145) tg Some(34.610562) t/s
+[11:03:05Z] pair info-cand-c10-vs-cand-c11 -> Ok 
+[11:03:05Z] pair info-cand-c12-vs-cand-c13 (Info): cand-c12 vs cand-c13
+[11:03:15Z] pair info-cand-c12-vs-cand-c13 rep 1/2 a cand-c12: pp Some(1682.626726) tg Some(38.631894) t/s
+[11:03:47Z] pair info-cand-c12-vs-cand-c13 rep 1/2 b cand-c13: pp Some(164.465034) tg Some(40.124625) t/s
+[11:04:20Z] pair info-cand-c12-vs-cand-c13 rep 2/2 b cand-c13: pp Some(166.514046) tg Some(40.906434) t/s
+[11:04:30Z] pair info-cand-c12-vs-cand-c13 rep 2/2 a cand-c12: pp Some(1670.399007) tg Some(40.100649) t/s
+[11:04:30Z] pair info-cand-c12-vs-cand-c13 -> Ok 
+[11:04:30Z] pair info-cand-c14-vs-cand-c15 (Info): cand-c14 vs cand-c15
+[11:04:45Z] pair info-cand-c14-vs-cand-c15 rep 1/2 a cand-c14: pp Some(594.520169) tg Some(29.949687) t/s
+[11:05:38Z] pair info-cand-c14-vs-cand-c15 rep 1/2 b cand-c15: pp Some(95.154938) tg Some(28.129638) t/s
+[11:06:31Z] pair info-cand-c14-vs-cand-c15 rep 2/2 b cand-c15: pp Some(94.133372) tg Some(29.637139) t/s
+[11:06:46Z] pair info-cand-c14-vs-cand-c15 rep 2/2 a cand-c14: pp Some(610.208953) tg Some(29.894708) t/s
+[11:06:46Z] pair info-cand-c14-vs-cand-c15 -> Ok 
+[11:06:46Z] pair info-cand-c16-vs-cand-c17 (Info): cand-c16 vs cand-c17
+[11:06:57Z] pair info-cand-c16-vs-cand-c17 rep 1/2 a cand-c16: pp Some(1678.004181) tg Some(28.650807) t/s
+[11:07:22Z] pair info-cand-c16-vs-cand-c17 rep 1/2 b cand-c17: pp Some(265.477083) tg Some(20.495399) t/s
+[11:07:48Z] pair info-cand-c16-vs-cand-c17 rep 2/2 b cand-c17: pp Some(263.532427) tg Some(18.550886) t/s
+[11:07:59Z] pair info-cand-c16-vs-cand-c17 rep 2/2 a cand-c16: pp Some(1723.692138) tg Some(28.359563) t/s
+[11:07:59Z] pair info-cand-c16-vs-cand-c17 -> Ok 
+[11:07:59Z] pair info-cand-c18-vs-cand-c19 (Info): cand-c18 vs cand-c19
+[11:09:11Z] pair info-cand-c18-vs-cand-c19 rep 1/2 a cand-c18: pp Some(65.198292) tg Some(22.586111) t/s
+[11:09:24Z] pair info-cand-c18-vs-cand-c19 rep 1/2 b cand-c19: pp Some(824.433891) tg Some(23.359801) t/s
+[11:09:39Z] pair info-cand-c18-vs-cand-c19 rep 2/2 b cand-c19: pp Some(850.423183) tg Some(19.937522) t/s
+[11:10:51Z] pair info-cand-c18-vs-cand-c19 rep 2/2 a cand-c18: pp Some(64.652079) tg Some(21.054789) t/s
+[11:10:51Z] pair info-cand-c18-vs-cand-c19 -> Ok 
+[11:10:51Z] pair info-cand-c20-vs-cand-c21 (Info): cand-c20 vs cand-c21
+[11:11:57Z] pair info-cand-c20-vs-cand-c21 rep 1/2 a cand-c20: pp Some(73.329366) tg Some(22.637075) t/s
+[11:12:23Z] pair info-cand-c20-vs-cand-c21 rep 1/2 b cand-c21: pp Some(259.82375) tg Some(16.553643) t/s
+[11:12:50Z] pair info-cand-c20-vs-cand-c21 rep 2/2 b cand-c21: pp Some(263.926631) tg Some(16.457021) t/s
+[11:13:58Z] pair info-cand-c20-vs-cand-c21 rep 2/2 a cand-c20: pp Some(69.031869) tg Some(22.380847) t/s
+[11:13:58Z] pair info-cand-c20-vs-cand-c21 -> Ok 
+[11:13:58Z] pair info-cand-c22-vs-cand-c23 (Info): cand-c22 vs cand-c23
+[11:15:51Z] pair info-cand-c22-vs-cand-c23 rep 1/2 a cand-c22: pp Some(40.155088) tg Some(15.950231) t/s
+[11:16:08Z] pair info-cand-c22-vs-cand-c23 rep 1/2 b cand-c23: pp Some(851.656886) tg Some(15.161101) t/s
+[11:16:24Z] pair info-cand-c22-vs-cand-c23 rep 2/2 b cand-c23: pp Some(800.171906) tg Some(15.321558) t/s
+[11:18:18Z] pair info-cand-c22-vs-cand-c23 rep 2/2 a cand-c22: pp Some(40.141891) tg Some(15.901599) t/s
+[11:18:18Z] pair info-cand-c22-vs-cand-c23 -> Ok 
+[11:18:18Z] pair info-base-fit-vs-base-ot-all (Info): base-fit vs base-ot-all
+[11:18:40Z] pair info-base-fit-vs-base-ot-all rep 1/2 a base-fit: pp Some(882.511176) tg Some(52.074266) t/s
+[11:19:05Z] pair info-base-fit-vs-base-ot-all rep 1/2 b base-ot-all: pp Some(267.374836) tg Some(19.176322) t/s
+[11:19:29Z] pair info-base-fit-vs-base-ot-all rep 2/2 b base-ot-all: pp Some(270.747388) tg Some(20.913308) t/s
+[11:19:49Z] pair info-base-fit-vs-base-ot-all rep 2/2 a base-fit: pp Some(904.405684) tg Some(57.498686) t/s
+[11:19:49Z] pair info-base-fit-vs-base-ot-all -> Ok 
+[11:19:49Z] pair info-base-ot-hand-vs-base-fit (Info): base-ot-hand vs base-fit
+[11:20:01Z] pair info-base-ot-hand-vs-base-fit rep 1/2 a base-ot-hand: pp Some(722.293099) tg Some(68.679623) t/s
+[11:20:21Z] pair info-base-ot-hand-vs-base-fit rep 1/2 b base-fit: pp Some(905.434073) tg Some(58.05021) t/s
+[11:20:41Z] pair info-base-ot-hand-vs-base-fit rep 2/2 b base-fit: pp Some(879.30551) tg Some(57.470429) t/s
+[11:20:53Z] pair info-base-ot-hand-vs-base-fit rep 2/2 a base-ot-hand: pp Some(719.089671) tg Some(71.45747) t/s
+[11:20:53Z] pair info-base-ot-hand-vs-base-fit -> Ok 
+spec planner-moe on 744f1ba65ca1 (2 repeats)
+info-anchor-cpu-t9-vs-anchor-cpu-t4 Ok
+    pp: a 42.71 (rel IQR 2.4%)  b 19.20 (rel IQR 5.0%)  ratio 0.450 [0.417, 0.484]  band -10%
+    tg: a 16.26 (rel IQR 6.1%)  b 9.24 (rel IQR 3.4%)  ratio 0.569 [0.554, 0.585]  band -10%
+info-anchor-cpu-t2-vs-anchor-cpu-t9 Ok
+    pp: a 11.12 (rel IQR 0.9%)  b 43.29 (rel IQR 1.0%)  ratio 3.892 [3.887, 3.898]  band -10%
+    tg: a 5.63 (rel IQR 0.6%)  b 15.85 (rel IQR 2.7%)  ratio 2.815 [2.720, 2.909]  band -10%
+info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off Ok
+    pp: a 261.70 (rel IQR 0.9%)  b 63.98 (rel IQR 0.7%)  ratio 0.244 [0.244, 0.245]  band -8%
+    tg: a 21.37 (rel IQR 4.1%)  b 20.85 (rel IQR 7.9%)  ratio 0.974 [0.937, 1.012]  band -8%
+info-anchor-gpu-large-vs-anchor-gpu-eager Ok
+    pp: a 929.75 (rel IQR 0.4%)  b 958.44 (rel IQR 2.0%)  ratio 1.031 [1.015, 1.047]  band -8%
+    tg: a 59.02 (rel IQR 1.1%)  b 55.99 (rel IQR 7.6%)  ratio 0.950 [0.867, 1.032]  band -8%
+info-cand-c00-vs-cand-c01    Ok
+    pp: a 962.51 (rel IQR 3.7%)  b 248.66 (rel IQR 0.0%)  ratio 0.259 [0.249, 0.268]  band -8%
+    tg: a 65.69 (rel IQR 11.2%)  b 68.88 (rel IQR 3.4%)  ratio 1.066 [0.911, 1.221]  band -8%
+info-cand-c02-vs-cand-c03    Ok
+    pp: a 930.19 (rel IQR 1.7%)  b 752.04 (rel IQR 3.2%)  ratio 0.808 [0.796, 0.820]  band -8%
+    tg: a 41.15 (rel IQR 1.0%)  b 47.16 (rel IQR 6.9%)  ratio 1.145 [1.077, 1.214]  band -8%
+info-cand-c04-vs-cand-c05    Ok
+    pp: a 191.48 (rel IQR 1.3%)  b 2071.01 (rel IQR 0.4%)  ratio 10.818 [10.635, 11.001]  band -8%
+    tg: a 50.44 (rel IQR 19.7%)  b 59.45 (rel IQR 0.5%)  ratio 1.225 [0.989, 1.461]  band -8%
+info-cand-c06-vs-cand-c07    Ok
+    pp: a 201.90 (rel IQR 1.3%)  b 713.58 (rel IQR 2.4%)  ratio 3.536 [3.405, 3.667]  band -8%
+    tg: a 48.63 (rel IQR 0.8%)  b 34.08 (rel IQR 1.6%)  ratio 0.701 [0.695, 0.707]  band -8%
+info-cand-c08-vs-cand-c09    Ok
+    pp: a 121.44 (rel IQR 0.8%)  b 1980.43 (rel IQR 0.7%)  ratio 16.310 [16.071, 16.549]  band -8%
+    tg: a 33.34 (rel IQR 0.2%)  b 33.16 (rel IQR 0.0%)  ratio 0.995 [0.993, 0.996]  band -8%
+info-cand-c10-vs-cand-c11    Ok
+    pp: a 578.09 (rel IQR 5.6%)  b 153.25 (rel IQR 0.3%)  ratio 0.266 [0.250, 0.282]  band -8%
+    tg: a 36.73 (rel IQR 5.8%)  b 41.22 (rel IQR 0.4%)  ratio 1.126 [1.057, 1.195]  band -8%
+info-cand-c12-vs-cand-c13    Ok
+    pp: a 1676.51 (rel IQR 0.4%)  b 165.49 (rel IQR 0.6%)  ratio 0.099 [0.098, 0.100]  band -8%
+    tg: a 39.37 (rel IQR 1.9%)  b 40.52 (rel IQR 1.0%)  ratio 1.029 [1.020, 1.039]  band -8%
+info-cand-c14-vs-cand-c15    Ok
+    pp: a 602.36 (rel IQR 1.3%)  b 94.64 (rel IQR 0.5%)  ratio 0.157 [0.154, 0.160]  band -8%
+    tg: a 29.92 (rel IQR 0.1%)  b 28.88 (rel IQR 2.6%)  ratio 0.965 [0.939, 0.991]  band -8%
+info-cand-c16-vs-cand-c17    Ok
+    pp: a 1700.85 (rel IQR 1.3%)  b 264.50 (rel IQR 0.4%)  ratio 0.156 [0.153, 0.158]  band -8%
+    tg: a 28.51 (rel IQR 0.5%)  b 19.52 (rel IQR 5.0%)  ratio 0.685 [0.654, 0.715]  band -8%
+info-cand-c18-vs-cand-c19    Ok
+    pp: a 64.93 (rel IQR 0.4%)  b 837.43 (rel IQR 1.6%)  ratio 12.899 [12.645, 13.154]  band -8%
+    tg: a 21.82 (rel IQR 3.5%)  b 21.65 (rel IQR 7.9%)  ratio 0.991 [0.947, 1.034]  band -8%
+info-cand-c20-vs-cand-c21    Ok
+    pp: a 71.18 (rel IQR 3.0%)  b 261.88 (rel IQR 0.8%)  ratio 3.683 [3.543, 3.823]  band -8%
+    tg: a 22.51 (rel IQR 0.6%)  b 16.51 (rel IQR 0.3%)  ratio 0.733 [0.731, 0.735]  band -8%
+info-cand-c22-vs-cand-c23    Ok
+    pp: a 40.15 (rel IQR 0.0%)  b 825.91 (rel IQR 3.1%)  ratio 20.571 [19.934, 21.209]  band -8%
+    tg: a 15.93 (rel IQR 0.2%)  b 15.24 (rel IQR 0.5%)  ratio 0.957 [0.951, 0.964]  band -8%
+info-base-fit-vs-base-ot-all Ok
+    pp: a 893.46 (rel IQR 1.2%)  b 269.06 (rel IQR 0.6%)  ratio 0.301 [0.299, 0.303]  band -8%
+    tg: a 54.79 (rel IQR 5.0%)  b 20.04 (rel IQR 4.3%)  ratio 0.366 [0.364, 0.368]  band -8%
+info-base-ot-hand-vs-base-fit Ok
+    pp: a 720.69 (rel IQR 0.2%)  b 892.37 (rel IQR 1.5%)  ratio 1.238 [1.223, 1.254]  band -8%
+    tg: a 70.07 (rel IQR 2.0%)  b 57.76 (rel IQR 0.5%)  ratio 0.825 [0.804, 0.845]  band -8%
+results: /root/tetraeder/bench/results/20261103/planner-moe/planner-moe-112053.json
+[11:20:53] done bench moe rc=0
+[11:20:54] fixture dense: balloon to 18432 MiB free
+vram_hold: holding 5430 MiB, free now 18432 MiB
+24 candidates, 7 anchors, 2 baselines, 8 dropped
+[11:21:12] start bench dense
+[11:21:12Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 (Info): anchor-cpu-t9 vs anchor-cpu-t4
+[11:23:14Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 1/2 a anchor-cpu-t9: pp Some(6.405119) tg Some(2.283474) t/s
+[11:27:05Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 1/2 b anchor-cpu-t4: pp Some(2.996493) tg Some(1.04757) t/s
+[11:30:54Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 2/2 b anchor-cpu-t4: pp Some(2.987401) tg Some(1.110675) t/s
+[11:32:56Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 2/2 a anchor-cpu-t9: pp Some(6.390837) tg Some(2.101214) t/s
+[11:32:56Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 -> Ok 
+[11:32:56Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 (Info): anchor-cpu-t2 vs anchor-cpu-t9
+[11:39:09Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 rep 1/2 a anchor-cpu-t2: pp Some(1.744996) tg Some(0.672935) t/s
+[11:41:08Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 rep 1/2 b anchor-cpu-t9: pp Some(6.285968) tg Some(2.149605) t/s
+[11:43:09Z] pair info-anchor-cpu-t2-vs-anchor-cpu-t9 rep 2/2 b anchor-cpu-t9: pp Some(6.324727) tg Some(2.05539) t/s
+[11:48:34] PLANNER_DONE rc=0
+Terminated

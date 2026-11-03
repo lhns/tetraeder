@@ -1,0 +1,116 @@
+{
+ "id": "t2",
+ "batch": 1,
+ "windows": [
+  {
+   "tokens": 12,
+   "wall_s": 9.5,
+   "busy_s": {
+    "gpu:gpu0": 3.8000000000000003,
+    "cpu": 5.25,
+    "disk:nvme0": 4.0,
+    "host": 0.264
+   },
+   "split_s": {
+    "compute": 4.8,
+    "expert_load_wait": 4.2,
+    "host": 0.264
+   },
+   "bytes": {
+    "disk:nvme0": 8400000000.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 9.5,
+   "busy_s": {
+    "gpu:gpu0": 3.8000000000000003,
+    "cpu": 5.25,
+    "disk:nvme0": 4.0,
+    "host": 0.264
+   },
+   "split_s": {
+    "compute": 4.8,
+    "expert_load_wait": 4.2,
+    "host": 0.264
+   },
+   "bytes": {
+    "disk:nvme0": 8400000000.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 9.5,
+   "busy_s": {
+    "gpu:gpu0": 3.8000000000000003,
+    "cpu": 5.25,
+    "disk:nvme0": 4.0,
+    "host": 0.264
+   },
+   "split_s": {
+    "compute": 4.8,
+    "expert_load_wait": 4.2,
+    "host": 0.264
+   },
+   "bytes": {
+    "disk:nvme0": 8400000000.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 9.5,
+   "busy_s": {
+    "gpu:gpu0": 3.8000000000000003,
+    "cpu": 5.25,
+    "disk:nvme0": 4.0,
+    "host": 0.264
+   },
+   "split_s": {
+    "compute": 4.8,
+    "expert_load_wait": 4.2,
+    "host": 0.264
+   },
+   "bytes": {
+    "disk:nvme0": 8400000000.0
+   }
+  }
+ ],
+ "env": {
+  "throttle": [],
+  "pcie": [
+   {
+    "device": "gpu0",
+    "gen_current": 4,
+    "width_current": 16,
+    "gen_max": 4,
+    "width_max": 16
+   }
+  ],
+  "cpu_quota_cores": 12.0,
+  "cpu_other_cores": 5.95,
+  "swap_in_bytes_per_s": 0.0,
+  "vram_other_bytes": {
+   "gpu0": 6000000000
+  },
+  "vram_total_bytes": {
+   "gpu0": 25769803776
+  },
+  "disk_other_read_bytes_per_s": 100000000.0,
+  "io_max_bytes_per_s": null,
+  "expert_hit_rate": 0.4,
+  "slots_planned": 64,
+  "slots_actual": 32
+ },
+ "expected": {
+  "rates": {
+   "disk:nvme0": 2100000000.0
+  },
+  "busy_s_per_token": {
+   "gpu:gpu0": 0.3166666666666667,
+   "cpu": 0.4375,
+   "disk:nvme0": 0.3333333333333333,
+   "host": 0.022000000000000002
+  },
+  "band": 0.1
+ }
+}

@@ -3,9 +3,11 @@
 //! [`enumerate`] depends only on capacities, the model layout and the workload, never on a
 //! calibration or cost model, so the measured set of a fixture is fixed before scoring.
 
-use crate::layout::ModelLayout;
+use crate::layout::{LayerBytes, ModelLayout};
 use serde::{Deserialize, Serialize};
-use tetraeder_plan::{Assign, DeviceBytes, Knobs, Plan, Replica, Span, Stage, UnitKind, UnitSel};
+use tetraeder_plan::{
+    Assign, DeviceBytes, Knobs, Plan, Replica, SlotCache, Span, Stage, UnitKind, UnitSel,
+};
 
 /// Device ids in every candidate plan.
 pub const GPU: &str = "gpu0";
@@ -24,6 +26,9 @@ pub const MAX_CANDIDATES: usize = 24;
 pub const PLACEMENTS: usize = 4;
 
 pub const UBATCHES: [u32; 2] = [512, 2048];
+
+/// Bounce buffers of the builder's expert reads (ADR 0037: at most 256 MiB).
+pub const BUILDER_IO: u64 = 256 << 20;
 
 /// Memory the engine may use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +58,8 @@ impl Workload {
 #[serde(rename_all = "kebab-case")]
 pub enum EngineKind {
     LlamaBench,
+    /// The own MoE builder, run through the `exit_regime` test binary (ADR 0040).
+    Builder,
 }
 
 /// Where the weights live. Both keep the embedding on the CPU, as llama.cpp does.
@@ -64,6 +71,9 @@ pub enum Placement {
     /// Attention, FFN and head of all layers on the GPU; the experts of layers
     /// `[0, gpu_expert_layers)` on the GPU, the experts of the others on the CPU.
     Moe { gpu_expert_layers: u32 },
+    /// Own MoE builder: dense weights on the GPU, `vram_slots` expert slots per layer in VRAM
+    /// and `ram_slots` in the RAM tier; the experts live in the file (ADR 0031, 0037).
+    Builder { vram_slots: u32, ram_slots: u32 },
 }
 
 impl Placement {
@@ -71,6 +81,10 @@ impl Placement {
         match self {
             Self::Dense { gpu_layers } => format!("dense gpu_layers={gpu_layers}"),
             Self::Moe { gpu_expert_layers } => format!("moe gpu_expert_layers={gpu_expert_layers}"),
+            Self::Builder {
+                vram_slots,
+                ram_slots,
+            } => format!("builder vram_slots={vram_slots} ram_slots={ram_slots}"),
         }
     }
 
@@ -79,6 +93,7 @@ impl Placement {
         match *self {
             Self::Dense { gpu_layers } => gpu_layers,
             Self::Moe { gpu_expert_layers } => gpu_expert_layers,
+            Self::Builder { vram_slots, .. } => vram_slots,
         }
     }
 }
@@ -189,12 +204,31 @@ pub fn footprint(
             f.weights_gpu += layout.output_bytes;
             l
         }
+        Placement::Builder {
+            vram_slots,
+            ram_slots,
+        } => {
+            f.weights_gpu += layout
+                .layers
+                .iter()
+                .map(LayerBytes::dense_bytes)
+                .sum::<u64>()
+                + layout.output_bytes;
+            f.weights_gpu += crate::builder::vram_slot_bytes(layout, vram_slots);
+            f.weights_host += crate::builder::ram_slot_bytes(layout, ram_slots) + BUILDER_IO;
+            l
+        }
     };
     f.kv_gpu = layer_kv * gpu_layers as u64;
     f.kv_host = layer_kv * (l - gpu_layers) as u64;
     if gpu_layers > 0 {
         f.compute_gpu =
             u64::from(ubatch) * (4 * u64::from(layout.n_vocab) + 64 * u64::from(layout.n_embd));
+        if matches!(placement, Placement::Builder { .. }) {
+            // Overflow passes keep an f32 accumulator of n_used FFN outputs per row (ADR 0034).
+            f.compute_gpu +=
+                u64::from(ubatch) * u64::from(layout.n_expert_used) * u64::from(layout.n_embd) * 4;
+        }
         f.gpu = f.weights_gpu + f.kv_gpu + f.compute_gpu + CUDA_RESERVE;
     }
     f.host = f.weights_host + f.kv_host + HOST_RESERVE;
@@ -247,6 +281,7 @@ pub fn build_plan(
     use UnitKind::{Attn, Embed, Expert, Head, Mlp};
     let (l, fmt) = (layout.n_layer, layout.main_format());
     let mut rules = vec![assign(&[Embed], None, CPU, fmt)];
+    let mut expert_cache = Vec::new();
     match placement {
         Placement::Dense { gpu_layers } => {
             let g = gpu_layers.min(l);
@@ -267,6 +302,24 @@ pub fn build_plan(
             if k < l {
                 rules.push(assign(&[Expert], Some(Span(k, l)), CPU, fmt));
             }
+        }
+        Placement::Builder {
+            vram_slots,
+            ram_slots,
+        } => {
+            // The experts' home is the host tier; the slot caches are what the builder sizes.
+            rules.push(assign(&[Attn, Mlp, Head], None, GPU, fmt));
+            rules.push(assign(&[Expert], None, CPU, fmt));
+            expert_cache = vec![
+                SlotCache {
+                    device: GPU.to_string(),
+                    slots: vram_slots,
+                },
+                SlotCache {
+                    device: CPU.to_string(),
+                    slots: ram_slots,
+                },
+            ];
         }
     }
     let f = footprint(layout, placement, ubatch, workload);
@@ -295,6 +348,7 @@ pub fn build_plan(
                 } else {
                     vec![]
                 },
+                expert_cache,
                 ..Default::default()
             }],
         }],
@@ -398,32 +452,35 @@ fn placements(
     out
 }
 
-/// One row of the knob grid: indices into the placement list and the knob value lists.
+/// Knob dimensions of a grid row: threads, ubatch, op offload and one extra (the builder's RAM
+/// tier; always 0 for libllama). Every dimension has fewer than [`DIM_VALUES`] values.
+pub(crate) const DIMS: usize = 4;
+pub(crate) const DIM_VALUES: usize = 4;
+
+/// One row of the knob grid: the placement index and an index into each knob value list.
 #[derive(Clone, Copy)]
-struct Row {
-    p: usize,
-    t: usize,
-    u: usize,
-    o: usize,
+pub(crate) struct Row {
+    pub p: usize,
+    pub k: [usize; DIMS],
 }
 
 impl Row {
     /// How many settings differ from the first value of their list.
     fn non_default(&self) -> usize {
-        self.t + self.u + self.o
+        self.k.iter().sum()
     }
 }
 
 /// Thin to `cap` rows, deterministically. Round by round, every placement in order gives up
 /// one row: the one with the most non-first knob values (ties: the later one in enumeration
 /// order). A row is kept if removing it would leave a placement or a knob value unrepresented.
-fn thin(mut rows: Vec<Row>, n_placements: usize, cap: usize) -> Vec<Row> {
+pub(crate) fn thin(mut rows: Vec<Row>, n_placements: usize, cap: usize) -> Vec<Row> {
     let covered = |rows: &[Row]| {
-        let mut c = [[0usize; 2]; 3];
+        let mut c = [[0usize; DIM_VALUES]; DIMS];
         for r in rows {
-            c[0][r.t] += 1;
-            c[1][r.u] += 1;
-            c[2][r.o] += 1;
+            for (d, &v) in r.k.iter().enumerate() {
+                c[d][v] += 1;
+            }
         }
         c
     };
@@ -439,7 +496,7 @@ fn thin(mut rows: Vec<Row>, n_placements: usize, cap: usize) -> Vec<Row> {
             for i in order {
                 let r = rows[i];
                 let last_of_placement = rows.iter().filter(|x| x.p == p).count() == 1;
-                let last_value = before[0][r.t] == 1 || before[1][r.u] == 1 || before[2][r.o] == 1;
+                let last_value = r.k.iter().enumerate().any(|(d, &v)| before[d][v] == 1);
                 if !last_of_placement && !last_value {
                     rows.remove(i);
                     removed = true;
@@ -473,7 +530,7 @@ pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> 
                     let desc =
                         format!("{} threads={th} ubatch={ub} op_offload={op}", pl.describe());
                     match fits(budget, &footprint(layout, pl, ub, workload)) {
-                        Ok(()) => rows.push(Row { p, t, u, o }),
+                        Ok(()) => rows.push(Row { p, k: [t, u, o, 0] }),
                         Err(e) => dropped.push((desc, e)),
                     }
                 }
@@ -484,14 +541,14 @@ pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> 
     let kept = thin(rows.clone(), places.len(), MAX_CANDIDATES);
     if kept.len() < n {
         for r in &rows {
-            let key = |x: &Row| (x.p, x.t, x.u, x.o);
+            let key = |x: &Row| (x.p, x.k);
             if !kept.iter().any(|k| key(k) == key(r)) {
                 let desc = format!(
                     "{} threads={} ubatch={} op_offload={}",
                     places[r.p].describe(),
-                    threads[r.t],
-                    UBATCHES[r.u],
-                    ops[r.o]
+                    threads[r.k[0]],
+                    UBATCHES[r.k[1]],
+                    ops[r.k[2]]
                 );
                 dropped.push((desc, format!("thinned to {MAX_CANDIDATES}")));
             }
@@ -501,7 +558,7 @@ pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> 
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            let knobs = (threads[r.t], UBATCHES[r.u], ops[r.o]);
+            let knobs = (threads[r.k[0]], UBATCHES[r.k[1]], ops[r.k[2]]);
             build_candidate(&format!("c{i:02}"), layout, places[r.p], knobs, workload)
         })
         .collect();

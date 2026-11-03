@@ -20,7 +20,7 @@ import subprocess
 import sys
 import time
 
-CLK = os.sysconf("SC_CLK_TCK")
+CLK = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
 
 
 def read(path, default=""):

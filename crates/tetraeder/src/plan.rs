@@ -4,7 +4,6 @@ use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use std::path::{Path, PathBuf};
 use tetraeder_model::Gguf;
-use tetraeder_model::gguf::Value;
 use tetraeder_planner::{ModelMeta, TensorRec, build_layout};
 
 #[derive(Args)]
@@ -47,11 +46,10 @@ fn layout(path: &Path) -> Result<tetraeder_planner::ModelLayout> {
     let key = |k: &str| format!("{arch}.{k}");
     let n_embd = g.u64(&key("embedding_length"))? as u32;
     let n_head = g.u64(&key("attention.head_count"))? as u32;
-    // Per-layer arrays (hybrid models) are skipped by the reader; fall back to MHA.
-    let n_head_kv = match g.get(&key("attention.head_count_kv")) {
-        Some(Value::U64(v)) => *v as u32,
-        _ => n_head,
-    };
+    // Per-layer arrays (hybrid models) do not read as one number; fall back to MHA.
+    let n_head_kv = g
+        .u64(&key("attention.head_count_kv"))
+        .map_or(n_head, |v| v as u32);
     let meta = ModelMeta {
         model: g
             .str("general.name")
@@ -83,4 +81,26 @@ fn layout(path: &Path) -> Result<tetraeder_planner::ModelLayout> {
         })
         .collect();
     build_layout(&meta, &tensors).map_err(anyhow::Error::msg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// hardware: none. The tiny MoE fixture (`cargo xtask tiny-moe`): 2 layers, 4 heads, 2 KV heads.
+    #[test]
+    fn layout_of_the_tiny_moe() {
+        let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/tiny-qwen3moe-f16.gguf");
+        let l = layout(&p).unwrap();
+        assert_eq!((l.n_layer, l.n_head, l.n_head_kv), (2, 4, 2));
+        assert_eq!((l.n_expert, l.n_expert_used), (8, 2));
+        assert_eq!(l.layers.len(), 2);
+        assert!(
+            l.layers
+                .iter()
+                .all(|x| x.expert_bytes > 0 && x.attn_bytes > 0)
+        );
+        assert!(l.embed_bytes > 0);
+    }
 }

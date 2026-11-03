@@ -1,0 +1,150 @@
+{
+ "source": "log",
+ "pairs": [
+  {
+   "id": "info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "anchor-gpu-small-opo-on",
+     "pp_ts": 393.091638,
+     "tg_ts": 6.376591
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "anchor-gpu-small-opo-off",
+     "pp_ts": 17.381874,
+     "tg_ts": 5.749447
+    }
+   ]
+  },
+  {
+   "id": "info-anchor-gpu-large-vs-anchor-gpu-eager",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "anchor-gpu-large",
+     "pp_ts": 736.561834,
+     "tg_ts": 15.527659
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "anchor-gpu-eager",
+     "pp_ts": 731.130603,
+     "tg_ts": 14.751782
+    }
+   ]
+  },
+  {
+   "id": "info-cand-c00-vs-cand-c01",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "cand-c00",
+     "pp_ts": 725.200411,
+     "tg_ts": 15.19441
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "cand-c01",
+     "pp_ts": 60.777705,
+     "tg_ts": 15.478226
+    }
+   ]
+  },
+  {
+   "id": "info-cand-c02-vs-cand-c03",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "cand-c02",
+     "pp_ts": 738.606052,
+     "tg_ts": 10.600314
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "cand-c03",
+     "pp_ts": 565.571395,
+     "tg_ts": 10.118943
+    }
+   ]
+  },
+  {
+   "id": "info-cand-c04-vs-cand-c05",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "cand-c04",
+     "pp_ts": 33.325704,
+     "tg_ts": 9.482248
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "cand-c05",
+     "pp_ts": 909.844824,
+     "tg_ts": 10.681945
+    }
+   ]
+  },
+  {
+   "id": "info-cand-c06-vs-cand-c07",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "cand-c06",
+     "pp_ts": 33.331885,
+     "tg_ts": 10.150256
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "cand-c07",
+     "pp_ts": 559.264555,
+     "tg_ts": 6.478475
+    }
+   ]
+  },
+  {
+   "id": "info-cand-c08-vs-cand-c09",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "cand-c08",
+     "pp_ts": 16.07577,
+     "tg_ts": 6.575334
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "cand-c09",
+     "pp_ts": 942.944881,
+     "tg_ts": 6.461227
+    }
+   ]
+  },
+  {
+   "id": "info-cand-c10-vs-cand-c11",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "cand-c10",
+     "pp_ts": 450.629132,
+     "tg_ts": 7.70489
+    }
+   ]
+  }
+ ]
+}

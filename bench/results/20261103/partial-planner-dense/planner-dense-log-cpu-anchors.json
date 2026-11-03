@@ -1,0 +1,64 @@
+{
+ "source": "log",
+ "pairs": [
+  {
+   "id": "info-anchor-cpu-t9-vs-anchor-cpu-t4",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "anchor-cpu-t9",
+     "pp_ts": 6.405119,
+     "tg_ts": 2.283474
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "anchor-cpu-t4",
+     "pp_ts": 2.996493,
+     "tg_ts": 1.04757
+    },
+    {
+     "rep": 2,
+     "side": "b",
+     "variant": "anchor-cpu-t4",
+     "pp_ts": 2.987401,
+     "tg_ts": 1.110675
+    },
+    {
+     "rep": 2,
+     "side": "a",
+     "variant": "anchor-cpu-t9",
+     "pp_ts": 6.390837,
+     "tg_ts": 2.101214
+    }
+   ]
+  },
+  {
+   "id": "info-anchor-cpu-t2-vs-anchor-cpu-t9",
+   "samples": [
+    {
+     "rep": 1,
+     "side": "a",
+     "variant": "anchor-cpu-t2",
+     "pp_ts": 1.744996,
+     "tg_ts": 0.672935
+    },
+    {
+     "rep": 1,
+     "side": "b",
+     "variant": "anchor-cpu-t9",
+     "pp_ts": 6.285968,
+     "tg_ts": 2.149605
+    },
+    {
+     "rep": 2,
+     "side": "b",
+     "variant": "anchor-cpu-t9",
+     "pp_ts": 6.324727,
+     "tg_ts": 2.05539
+    }
+   ]
+  }
+ ]
+}
