@@ -53,3 +53,15 @@ On the 30B (moe_check, `slots32_ram32_cpupolicy_prefetch`): accuracy 0.89, warm 
 Output: greedy tokens are equal with prefetch off and on in every same-conditions pair (8, 2048, 8192 and 32768 token prefills, op offload off and on). The first 32K run on the box (`main`, off) differed from all later 32K runs, off and on alike, and equals the previous box's first run: a first-run effect unrelated to prefetch, open.
 
 Decision: accepted, the gate (accuracy at least 0.6) holds. Most of the read still waits: the step waits for 71% of the decode prefetch time, likely because the reader thread competes with ggml's spinning CPU threads for a 5.8-core quota. Next levers: a lower ggml thread count while a prefetch is in flight, and reading two layers ahead. Default stays off until prediction runs only where it can prefetch (today it also adds its graph nodes and readback under `MissPolicy::Upload`).
+
+## Levers (2026-11-03)
+
+All off by default; measured later in one box session.
+
+- **Gating.** The prediction nodes and their readback now run only with `prefetch` on, `MissPolicy::Cpu` and a RAM tier, where the reads can be prefetched. Prefetch on with `Upload` (or no RAM tier) predicts nothing and costs nothing; accuracy is no longer scored there.
+- **`LoadOptions::prefetch_depth`** (1 or 2, others rejected at load). Depth 2: segment L also predicts layer L+2 from the same input (`rms_norm(ffn_inp_L) * ffn_norm[L+2]`, `gate_inp[L+2]`, softmax, top-k), placed after the real router like the depth-1 prediction, into a second state tensor. After layer L is staged: first a top-up for L+1 from the fresh depth-1 prediction (experts neither resident nor already in flight), then the reads for L+2.
+- **Reader.** Several reads can be in flight: `inflight` is a queue. `finish_prefetch(il)` waits for the tickets of layer `il` only (the reader is FIFO) and unpins that layer; `settle` waits for all. A layer's pins are its in-flight experts plus the resident predicted ones, and the read budget is `RAM slots - pins`. The reader has its own `DirectFile` per shard (64 MiB bounce cap, counted in `memory()` as `io`) so it never shares a bounce buffer with the synchronous reads of the layer being staged.
+- **Scoring.** `LayerExpertStats::predicted2_hits/_total` and `tetraeder.expert.prefetch.accuracy` with a `tetraeder.prefetch.depth` label; the panel splits by depth, the alert watches depth 1.
+- **`LoadOptions::cpu_poll`**: the ggml threadpool poll level (0 to 100, default 50) of the CPU backend. Lower leaves cores to the reader under a tight quota.
+- **`LoadOptions::prefetch_threads`**: CPU compute threads while a prefetch read is in flight (threadpool size unchanged; restored after the last wait).
+- Harness: `TETRAEDER_EXIT_PREFETCH_DEPTH`, `TETRAEDER_EXIT_CPU_POLL`, `TETRAEDER_EXIT_PREFETCH_THREADS`, recorded in the JSON `options`.

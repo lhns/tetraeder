@@ -16,6 +16,7 @@ pub mod attr {
     pub const TIER: &str = "tetraeder.memory.tier";
     pub const KIND: &str = "tetraeder.memory.kind";
     pub const LAYER: &str = "tetraeder.layer";
+    pub const DEPTH: &str = "tetraeder.prefetch.depth";
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
 }
@@ -314,10 +315,15 @@ impl Metrics {
         self.prefetch_wasted_bytes.add(bytes, &[]);
     }
 
-    /// One layer step's prediction: `accuracy` in 0 to 1.
-    pub fn expert_prefetch_accuracy(&self, layer: u32, accuracy: f64) {
-        self.prefetch_accuracy
-            .record(accuracy, &[KeyValue::new(attr::LAYER, i64::from(layer))]);
+    /// One layer step's prediction made `depth` layers ahead: `accuracy` in 0 to 1.
+    pub fn expert_prefetch_accuracy(&self, layer: u32, depth: u32, accuracy: f64) {
+        self.prefetch_accuracy.record(
+            accuracy,
+            &[
+                KeyValue::new(attr::LAYER, i64::from(layer)),
+                KeyValue::new(attr::DEPTH, i64::from(depth)),
+            ],
+        );
     }
 
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {

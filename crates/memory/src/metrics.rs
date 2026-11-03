@@ -112,12 +112,12 @@ impl MemoryMetrics {
         }
     }
 
-    /// `tetraeder.expert.prefetch.accuracy` of one layer step: `hits` of `total` predicted
-    /// experts were routed.
-    pub fn prediction_accuracy(&self, layer: u32, hits: u64, total: u64) {
+    /// `tetraeder.expert.prefetch.accuracy` of one layer step: `hits` of `total` experts
+    /// predicted `depth` layers ahead were routed.
+    pub fn prediction_accuracy(&self, layer: u32, depth: u32, hits: u64, total: u64) {
         if let (Some(t), true) = (&self.telemetry, total > 0) {
             t.metrics()
-                .expert_prefetch_accuracy(layer, hits as f64 / total as f64);
+                .expert_prefetch_accuracy(layer, depth, hits as f64 / total as f64);
         }
     }
 

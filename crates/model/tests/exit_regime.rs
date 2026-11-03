@@ -22,6 +22,11 @@
 //! - `TETRAEDER_EXIT_PREFETCH=1`: predicted next-layer expert prefetch into the RAM tier
 //!   (ADR 0038); the JSON gets `prefill_prefetch` and `decode_prefetch` (counters, overlap and
 //!   prediction accuracy per layer and mean).
+//! - `TETRAEDER_EXIT_PREFETCH_DEPTH` (1): layers ahead that the prefetch predicts and reads, 1 or
+//!   2; depth 2 adds `accuracy2` and `accuracy2_mean` to the prefetch JSON.
+//! - `TETRAEDER_EXIT_CPU_POLL`: ggml threadpool polling level 0 to 100 (default: ggml's 50).
+//! - `TETRAEDER_EXIT_PREFETCH_THREADS`: CPU compute threads while a prefetch read is in flight
+//!   (default: all).
 //! - `TETRAEDER_EXIT_REFRESH_HOT=1`: rebuild the hot set from the whole prefill before decode
 //!   (by default it comes from the first ubatch).
 //! - `TETRAEDER_EXIT_PROMPT_FILE`: text tokenized with the model's vocab (libllama, vocab
@@ -44,9 +49,9 @@ use common::synth::{MoeSpec, quantized_moe_at};
 use common::{argmax, prefetch_json, top_k};
 use serde_json::{Value, json};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tetraeder_ggml_sys::ggml::Backend;
-use std::sync::Arc;
 use tetraeder_ggml_sys::llama::{
     Batch, Context, ContextParams, FlashAttn, Ftype, Model, ModelParams, resolve_buffer_type,
 };
@@ -185,7 +190,10 @@ fn reference_run(
         .filter(|p| !p.is_empty())
         .map(|p| {
             let (re, buft) = p.rsplit_once('=').expect("override is regex=BUFFER_TYPE");
-            (re.to_string(), resolve_buffer_type(buft).expect("buffer type"))
+            (
+                re.to_string(),
+                resolve_buffer_type(buft).expect("buffer type"),
+            )
         })
         .collect();
     let t0 = Instant::now();
@@ -352,6 +360,11 @@ fn exit_regime() {
     opts.miss = MissPolicy::Cpu;
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
     opts.prefetch = env_flag("TETRAEDER_EXIT_PREFETCH");
+    if let Some(d) = env_u64("TETRAEDER_EXIT_PREFETCH_DEPTH") {
+        opts.prefetch_depth = d as usize;
+    }
+    opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
+    opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
     let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
@@ -401,8 +414,7 @@ fn exit_regime() {
 
         let first_top = top_json(&last);
         let t0 = Instant::now();
-        let (greedy, margins) =
-            greedy_decode(&last, n_decode, |t| m.eval(&[t]).expect("decode"));
+        let (greedy, margins) = greedy_decode(&last, n_decode, |t| m.eval(&[t]).expect("decode"));
         let decode_s = t0.elapsed().as_secs_f64();
         let tg = m.take_profile();
         let s2 = m.expert_stats().unwrap();
@@ -460,6 +472,9 @@ fn exit_regime() {
             "op_offload": opts.op_offload,
             "refresh_hot": refresh_hot,
             "prefetch": opts.prefetch,
+            "prefetch_depth": opts.prefetch_depth,
+            "cpu_poll": opts.cpu_poll,
+            "prefetch_threads": opts.prefetch_threads,
             "expert_slots": opts.expert_slots,
             "expert_slot_bytes": opts.expert_slot_bytes,
             "ram_slots": opts.ram_slots,

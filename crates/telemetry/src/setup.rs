@@ -263,7 +263,7 @@ mod tests {
         m.expert_layer_hit(true);
         m.expert_prefetch(2, 4, "issued");
         m.expert_prefetch_wasted_bytes(10);
-        m.expert_prefetch_accuracy(4, 0.5);
+        m.expert_prefetch_accuracy(4, 1, 0.5);
         mp.force_flush().unwrap();
 
         let mut names = Vec::new();

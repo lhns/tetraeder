@@ -170,6 +170,17 @@ pub struct LoadOptions {
     /// RAM tier, read the predicted ones into the RAM tier while the previous layer computes
     /// (ADR 0038). Without a RAM tier the prediction is only scored. Off by default.
     pub prefetch: bool,
+    /// Layers ahead that `prefetch` predicts and reads, 1 or 2 (ADR 0038). Depth 2 also
+    /// predicts layer L+2 from layer L's FFN input, tops up L+1 from the fresher depth-1
+    /// prediction and reads L+2 meanwhile.
+    pub prefetch_depth: usize,
+    /// Polling level (0 to 100) of the CPU backend's ggml threadpool: how long idle workers
+    /// spin before they sleep. `None`: ggml's default (50). A lower level leaves cores to the
+    /// prefetch reader when the CPU quota is tight.
+    pub cpu_poll: Option<u32>,
+    /// Compute threads of CPU graphs while a prefetch read is in flight (at most the full
+    /// count, which the threadpool keeps). `None`: the full count.
+    pub prefetch_threads: Option<usize>,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -187,6 +198,9 @@ impl std::fmt::Debug for LoadOptions {
             .field("op_offload", &self.op_offload)
             .field("reuse_step_graph", &self.reuse_step_graph)
             .field("prefetch", &self.prefetch)
+            .field("prefetch_depth", &self.prefetch_depth)
+            .field("cpu_poll", &self.cpu_poll)
+            .field("prefetch_threads", &self.prefetch_threads)
             .finish_non_exhaustive()
     }
 }
@@ -209,6 +223,9 @@ impl LoadOptions {
             op_offload: false,
             reuse_step_graph: true,
             prefetch: false,
+            prefetch_depth: 1,
+            cpu_poll: None,
+            prefetch_threads: None,
         }
     }
 }
@@ -278,6 +295,8 @@ struct Slot {
     ids_map: OwnedTensor,
     /// The next layer's predicted top-k ids `[n_used, n]` (ADR 0038), with prefetch on.
     pred: OwnedTensor,
+    /// Layer L+2's, with prefetch depth 2.
+    pred2: OwnedTensor,
     /// Unweighted expert outputs per (token, choice), filled by pair groups (ADR 0035).
     acc: OwnedTensor,
 }
@@ -325,9 +344,12 @@ pub struct Qwen3Moe {
     group_graphs_run: u64,
     max_splits: usize,
     policy: MissPolicy,
-    /// Each segment also predicts the next layer's experts (ADR 0038): scored always, prefetched
-    /// with the cpu miss policy and a RAM tier.
-    predict: bool,
+    /// Each segment also predicts the experts of this many layers ahead (ADR 0038), 0 for none:
+    /// only with prefetch, the cpu miss policy and a RAM tier, where the reads can be prefetched.
+    predict_depth: usize,
+    /// Threads of the CPU backend, and the count while a prefetch read is in flight.
+    cpu_threads: i32,
+    prefetch_threads: Option<i32>,
     /// Pair groups may run on a GPU backend (the primary is not the CPU).
     gpu: bool,
     op_offload: bool,
@@ -371,6 +393,12 @@ impl Qwen3Moe {
         let expert_slots =
             resolve_tier(&file, "expert", opts.expert_slots, opts.expert_slot_bytes)?;
         let ram_slots = resolve_tier(&file, "ram", opts.ram_slots, opts.ram_slot_bytes)?;
+        if !(1..=2).contains(&opts.prefetch_depth) {
+            return Err(ModelError::Invalid(format!(
+                "prefetch_depth must be 1 or 2, not {}",
+                opts.prefetch_depth
+            )));
+        }
         if opts.miss == MissPolicy::Cpu && ram_slots.is_none() {
             return Err(ModelError::Invalid(
                 "the cpu miss policy needs ram_slots".into(),
@@ -382,16 +410,17 @@ impl Qwen3Moe {
                 .or(own)
                 .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))
         };
-        let (primary, cpu, backends) = match opts.backend {
+        let (primary, cpu, backends, cpu_threads) = match opts.backend {
             BackendChoice::Cpu { threads } => {
-                let n = threads_for(threads);
-                let cpu = Backend::cpu(n as i32)?;
-                (cpu.clone(), cpu.clone(), vec![cpu])
+                let n = threads_for(threads) as i32;
+                let cpu = Backend::cpu_with_poll(n, opts.cpu_poll)?;
+                (cpu.clone(), cpu.clone(), vec![cpu], n)
             }
             BackendChoice::Gpu { index } => {
                 let gpu = Backend::gpu(index)?;
-                let cpu = Backend::cpu(threads_for(None) as i32)?;
-                (gpu.clone(), cpu.clone(), vec![gpu, cpu])
+                let n = threads_for(None) as i32;
+                let cpu = Backend::cpu_with_poll(n, opts.cpu_poll)?;
+                (gpu.clone(), cpu.clone(), vec![gpu, cpu], n)
             }
         };
         let sched = Sched::new(
@@ -458,7 +487,15 @@ impl Qwen3Moe {
             group_graphs_run: 0,
             max_splits: 0,
             policy: opts.miss,
-            predict: opts.prefetch && streamer.is_some(),
+            predict_depth: if opts.prefetch && cpu_hot {
+                opts.prefetch_depth
+            } else {
+                0
+            },
+            cpu_threads,
+            prefetch_threads: opts
+                .prefetch_threads
+                .map(|t| (t as i32).clamp(1, cpu_threads)),
             gpu: !opts_primary_is_cpu,
             op_offload: opts.op_offload,
             hot_pending: cpu_hot && opts.routing_profile.is_none(),
@@ -763,12 +800,15 @@ impl Qwen3Moe {
         let mut logits = Vec::new();
         // The pair groups of the previous layer step that run inside this segment.
         let mut pending: Vec<PendingGroup> = Vec::new();
-        // The previous segment's prediction of this layer's experts (ADR 0038).
+        // The predictions of the experts of a layer (ADR 0038): the next layer's from the
+        // previous segment, and, at depth 2, per target layer the one made two segments ago.
         let mut predicted: Option<Vec<i32>> = None;
+        let mut predicted2: Vec<Option<Vec<i32>>> = vec![None; n_layer + 2];
         if let Some(streamer) = &mut self.streamer {
             // A step that failed may have left a prefetch in flight.
             streamer.settle();
         }
+        self.cpu.set_cpu_threads(self.cpu_threads);
         for seg in 0..=n_layer {
             let groups = std::mem::take(&mut pending);
             {
@@ -790,7 +830,7 @@ impl Qwen3Moe {
                     &ctx,
                     seg,
                     last_only,
-                    self.predict,
+                    self.predict_depth,
                     &specs,
                 );
                 let t = lap(&mut prof.build, t);
@@ -827,15 +867,22 @@ impl Qwen3Moe {
                 .as_mut()
                 .expect("a resident step returned above");
             if let Some(p) = predicted.take() {
-                streamer.score_prediction(seg, &p, &chosen, nu);
+                streamer.score_prediction(seg, 1, &p, &chosen, nu);
             }
-            // Layer `seg + 1`'s predicted experts, read with this layer's routing.
-            if self.predict && seg + 1 < n_layer {
+            if let Some(p) = &predicted2[seg] {
+                streamer.score_prediction(seg, 2, p, &chosen, nu);
+            }
+            // The predicted experts of the next layers, read back with this layer's routing.
+            if self.predict_depth >= 1 && seg + 1 < n_layer {
                 predicted = Some(slot.pred.get().get_i32()?);
             }
+            if self.predict_depth >= 2 && seg + 2 < n_layer {
+                predicted2[seg + 2] = Some(slot.pred2.get().get_i32()?);
+            }
             lap(&mut prof.readback, t);
-            // The reads started a layer ago must have landed before the layer is planned.
-            streamer.finish_prefetch()?;
+            // The reads started for this layer must have landed before it is planned.
+            streamer.finish_prefetch(seg)?;
+            set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
             let layer = &self.weights.layers[seg];
             if self.policy == MissPolicy::Cpu {
                 // Resident experts run from the compute slots, the others from the RAM slots
@@ -844,9 +891,13 @@ impl Qwen3Moe {
                 if plan.cpu.is_empty() {
                     let ids = map_ids(&chosen, &plan.compute, &plan.compute_slots);
                     slot.ids_map.get().set_i32(&ids)?;
-                    if let Some(p) = &predicted {
-                        streamer.start_prefetch(&self.file, seg + 1, p)?;
-                    }
+                    prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
+                    set_compute_threads(
+                        &self.cpu,
+                        self.cpu_threads,
+                        self.prefetch_threads,
+                        streamer,
+                    );
                     continue;
                 }
                 let cap_ram = group_cap(ExpertSrc::Ram, self.gpu, self.op_offload);
@@ -880,9 +931,8 @@ impl Qwen3Moe {
                         });
                     }
                 }
-                if let Some(p) = &predicted {
-                    streamer.start_prefetch(&self.file, seg + 1, p)?;
-                }
+                prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
+                set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
                 continue;
             }
             let chunks = streamer.plan(seg, &chosen)?;
@@ -1238,6 +1288,34 @@ fn load_weights(
     Ok((weights, buffer_size))
 }
 
+/// Starts the prefetch reads after layer `seg` is staged: a top-up of layer `seg + 1` from the
+/// fresh prediction, then layer `seg + 2` at depth 2.
+fn prefetch_ahead(
+    streamer: &mut Streamer,
+    file: &ModelFile,
+    seg: usize,
+    predicted: &Option<Vec<i32>>,
+    predicted2: &[Option<Vec<i32>>],
+) -> Result<()> {
+    if let Some(p) = predicted {
+        streamer.start_prefetch(file, seg + 1, p)?;
+    }
+    if let Some(p) = &predicted2[seg + 2] {
+        streamer.start_prefetch(file, seg + 2, p)?;
+    }
+    Ok(())
+}
+
+/// The CPU backend's compute threads for the next graphs: `reduced` while a prefetch read is in
+/// flight (`LoadOptions::prefetch_threads`), `full` otherwise.
+fn set_compute_threads(cpu: &Backend, full: i32, reduced: Option<i32>, streamer: &Streamer) {
+    let n = match reduced {
+        Some(t) if streamer.prefetch_in_flight() => t,
+        _ => full,
+    };
+    cpu.set_cpu_threads(n);
+}
+
 fn alloc_kv(h: &Hparams, n_ctx: usize, backend: &Backend) -> Result<(Kv, usize)> {
     let ctx = Rc::new(Context::new(2 * h.n_layer as usize + 4, 0)?);
     let n_embd_kv = (h.n_head_kv * h.head_dim) as i64;
@@ -1270,6 +1348,7 @@ fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<
             ids: t(Type::I32, &[nu, nt], "ids"),
             ids_map: t(Type::I32, &[nu, nt], "ids_mapped"),
             pred: t(Type::I32, &[nu, nt], "predicted"),
+            pred2: t(Type::I32, &[nu, nt], "predicted2"),
             acc: t(Type::F32, &[ne, nu, nt], "moe_acc"),
         }
     };
@@ -1295,7 +1374,7 @@ fn build_segment<'a>(
     ctx: &'a Context,
     seg: usize,
     last_only: bool,
-    predict: bool,
+    predict_depth: usize,
     groups: &[([Tensor<'a>; 3], usize)],
 ) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
@@ -1335,15 +1414,31 @@ fn build_segment<'a>(
     g.expand(ctx.cpy(xn, s.xn.get()));
     g.expand(ctx.cpy(weights, s.w.get()));
     g.expand(ctx.cpy(ids, s.ids.get()));
-    if predict && seg + 1 < n_layer {
+    if predict_depth >= 1 && seg + 1 < n_layer {
         // After the real router so its nodes stay consecutive for the CUDA topk-moe fusion.
-        let next = &w.layers[seg + 1];
-        let xp = ctx.mul(ctx.rms_norm(ffn_inp, h.rms_eps), next.ffn_norm.get());
-        let probs = ctx.soft_max(ctx.mul_mat(next.gate_inp.get(), xp));
-        let pred = ctx.argsort_top_k(probs, h.n_expert_used as i32);
-        g.expand(ctx.cpy(pred, s.pred.get()));
+        let normed = ctx.rms_norm(ffn_inp, h.rms_eps);
+        add_prediction(h, ctx, &mut g, &w.layers[seg + 1], normed, s.pred.get());
+        if predict_depth >= 2 && seg + 2 < n_layer {
+            add_prediction(h, ctx, &mut g, &w.layers[seg + 2], normed, s.pred2.get());
+        }
     }
     (g, None, inputs)
+}
+
+/// The top-k experts `layer`'s router would choose for `normed` (the RMS-normalized FFN input
+/// of an earlier layer), copied to `out`.
+fn add_prediction<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    g: &mut Graph<'a>,
+    layer: &'a Layer,
+    normed: Tensor<'a>,
+    out: Tensor<'a>,
+) {
+    let xp = ctx.mul(normed, layer.ffn_norm.get());
+    let probs = ctx.soft_max(ctx.mul_mat(layer.gate_inp.get(), xp));
+    let pred = ctx.argsort_top_k(probs, h.n_expert_used as i32);
+    g.expand(ctx.cpy(pred, out));
 }
 
 /// Nodes and tensors of a whole-step graph.
@@ -1734,7 +1829,7 @@ mod graph_order {
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
             let (g, _, _) =
-                build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, false, &[]);
+                build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, 0, &[]);
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router.
                 let what = format!("segment {seg}");
