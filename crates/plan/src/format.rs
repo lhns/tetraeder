@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// A ggml weight format. Names are ggml's, upper case, as in GGUF tooling.
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Format {
     F32,
     F16,

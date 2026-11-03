@@ -132,6 +132,25 @@ pub enum Issue {
         source: Format,
         target: Format,
     },
+    /// A role format whose role is more precise than the role's source format.
+    RoleUpconvert {
+        unit: UnitId,
+        role: String,
+        source: Format,
+        target: Format,
+    },
+    /// `role_formats` of a rule names a role none of the unit kinds it selects has.
+    UnknownRole {
+        at: At,
+        rule: usize,
+        role: String,
+    },
+    /// Experts of one layer differ in format (per role, or per unit without roles); no phase
+    /// executes that yet (ADR 0047).
+    PerExpertFormats {
+        at: At,
+        layer: u32,
+    },
     /// A slot cache in a stage of a dense model or on an unknown device.
     SlotCache {
         at: At,
@@ -419,10 +438,31 @@ impl<'a> Checker<'a> {
             "expert_tiers",
         );
 
+        for (i, a) in st.assign.iter().enumerate() {
+            let kinds: &[UnitKind] = if a.units.kinds.is_empty() {
+                &UnitKind::ALL
+            } else {
+                &a.units.kinds
+            };
+            for role in a.role_formats.keys() {
+                if !kinds.iter().any(|k| k.roles().contains(&role.as_str())) {
+                    self.issues.push(Issue::UnknownRole {
+                        at,
+                        rule: i,
+                        role: role.clone(),
+                    });
+                }
+            }
+        }
+
         let rules = st.assign.len();
         let mut first_unit: Vec<Option<UnitId>> = vec![None; rules];
         // Once per (rule, unit kind): the format check (true) and the shard count check (false).
         let mut checked: BTreeSet<(usize, UnitKind, bool)> = BTreeSet::new();
+        let mut checked_roles: BTreeSet<(usize, UnitKind, String)> = BTreeSet::new();
+        type ExpertFormats = (Option<Format>, BTreeMap<String, Format>);
+        let mut expert_formats: BTreeMap<u32, ExpertFormats> = BTreeMap::new();
+        let mut mixed_layers: BTreeSet<u32> = BTreeSet::new();
         let mut max_expert = 0u64;
         let mut expert_compute: BTreeMap<(u32, u32), String> = BTreeMap::new();
 
@@ -467,17 +507,38 @@ impl<'a> Checker<'a> {
                 };
                 self.flag_if(comp != home && moved, "compute_override");
             }
-            if let Some(f) = a.format {
-                self.flag_if(
-                    f != size.source_format && !caps.convert_formats,
-                    "format_conversion",
-                );
-                if !size.source_format.at_least(f) && checked.insert((fi, kind, true)) {
-                    self.issues.push(Issue::Upconvert {
-                        unit: u,
-                        source: size.source_format,
-                        target: f,
-                    });
+            if size.roles.is_empty() {
+                if let Some(f) = a.format {
+                    self.flag_if(
+                        f != size.source_format && !caps.convert_formats,
+                        "format_conversion",
+                    );
+                    if !size.source_format.at_least(f) && checked.insert((fi, kind, true)) {
+                        self.issues.push(Issue::Upconvert {
+                            unit: u,
+                            source: size.source_format,
+                            target: f,
+                        });
+                    }
+                }
+            } else {
+                for role in &size.roles {
+                    let Some(f) = a.role_formats.get(&role.name).copied().or(a.format) else {
+                        continue;
+                    };
+                    self.flag_if(
+                        f != role.source_format && !caps.convert_formats,
+                        "format_conversion",
+                    );
+                    let new = checked_roles.insert((fi, kind, role.name.clone()));
+                    if !role.source_format.at_least(f) && new {
+                        self.issues.push(Issue::RoleUpconvert {
+                            unit: u,
+                            role: role.name.clone(),
+                            source: role.source_format,
+                            target: f,
+                        });
+                    }
                 }
             }
             let Some(home) = &a.home else { continue };
@@ -505,7 +566,15 @@ impl<'a> Checker<'a> {
             let (Some(format), true) = (a.format, of > 0) else {
                 continue;
             };
-            let bytes = size.bytes(format).div_ceil(of as u64);
+            let bytes = size.bytes_with(format, &a.role_formats).div_ceil(of as u64);
+            let roles = size.role_formats(format, &a.role_formats);
+            if let UnitId::Expert(l, _) = u {
+                let key = (size.roles.is_empty().then_some(format), roles.clone());
+                let first = expert_formats.entry(l).or_insert_with(|| key.clone());
+                if *first != key && mixed_layers.insert(l) && !caps.per_expert_formats {
+                    self.issues.push(Issue::PerExpertFormats { at, layer: l });
+                }
+            }
             for (i, h) in home.iter().enumerate() {
                 let comp = a.compute.as_ref().and_then(|c| c.get(i)).unwrap_or(h);
                 let key = ShardKey {
@@ -519,6 +588,7 @@ impl<'a> Checker<'a> {
                     home: h.clone(),
                     compute: comp.clone(),
                     format,
+                    roles: roles.clone(),
                     bytes,
                 };
                 if i == 0
@@ -839,11 +909,11 @@ impl<'a> Checker<'a> {
             report(format!("forbid {:?} {:?}", f.device, f.tier), bad);
         }
         if let Some(min) = h.min_format {
-            let bad = violating(&|_, pl| !pl.format.at_least(min));
+            let bad = violating(&|_, pl| !pl.all_at_least(min));
             report(format!("min_format {min:?}"), bad);
         }
         for f in &h.format_floor {
-            let bad = violating(&|k, pl| f.units.matches(k.unit) && !pl.format.at_least(f.format));
+            let bad = violating(&|k, pl| f.units.matches(k.unit) && !pl.all_at_least(f.format));
             report(format!("format_floor {:?}", f.format), bad);
         }
         self.issues.extend(out);

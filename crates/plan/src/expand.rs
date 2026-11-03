@@ -21,9 +21,25 @@ pub struct Placement {
     pub home: String,
     /// Always set: the home when the plan names no compute device.
     pub compute: String,
+    /// The unit's default format.
     pub format: Format,
-    /// `ceil(format.bytes(params) / of)`.
+    /// Resolved format of each role the unit's size describes; empty without roles.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub roles: BTreeMap<String, Format>,
+    /// Sum over roles at their formats (uncovered parameters at F32) or `format.bytes(params)`
+    /// without roles, divided by the shard count, rounded up.
     pub bytes: u64,
+}
+
+impl Placement {
+    /// Every role format (the unit format without roles) is at least as precise as `min`.
+    pub fn all_at_least(&self, min: Format) -> bool {
+        if self.roles.is_empty() {
+            self.format.at_least(min)
+        } else {
+            self.roles.values().all(|f| f.at_least(min))
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
-# Small MoE model for plan tests: 4 layers, 8 experts per layer, top-2.
+# Small MoE model for plan tests: 4 layers, 8 experts per layer, top-2. Roles cover each unit.
 name = "small-moe"
 layers = 4
 heads = 8
@@ -8,8 +8,77 @@ experts_used = 2
 kv_bytes_per_token_per_layer = 4096
 activation_bytes_per_token = 4096
 
-embed = { params = 100_000_000, flops_per_token = 0.0, source_format = "F16" }
-attn = { params = 20_000_000, flops_per_token = 4.0e7, source_format = "F16" }
-mlp = { params = 1_000_000, flops_per_token = 2.0e6, source_format = "F16" }
-expert = { params = 5_000_000, flops_per_token = 1.0e7, source_format = "F16" }
-head = { params = 100_000_000, flops_per_token = 2.0e8, source_format = "F16" }
+[embed]
+params = 100_000_000
+flops_per_token = 0.0
+source_format = "F16"
+
+[attn]
+params = 20_000_000
+flops_per_token = 4.0e7
+source_format = "F16"
+
+[[attn.roles]]
+name = "attn.q"
+params = 8_000_000
+source_format = "F16"
+
+[[attn.roles]]
+name = "attn.k"
+params = 2_000_000
+source_format = "F16"
+
+[[attn.roles]]
+name = "attn.v"
+params = 2_000_000
+source_format = "F16"
+
+[[attn.roles]]
+name = "attn.o"
+params = 8_000_000
+source_format = "F16"
+
+[mlp]
+params = 1_000_000
+flops_per_token = 2.0e6
+source_format = "F16"
+
+[[mlp.roles]]
+name = "mlp.gate"
+params = 400_000
+source_format = "F16"
+
+[[mlp.roles]]
+name = "mlp.up"
+params = 400_000
+source_format = "F16"
+
+[[mlp.roles]]
+name = "mlp.down"
+params = 200_000
+source_format = "F16"
+
+[expert]
+params = 5_000_000
+flops_per_token = 1.0e7
+source_format = "F16"
+
+[[expert.roles]]
+name = "expert.gate"
+params = 1_700_000
+source_format = "F16"
+
+[[expert.roles]]
+name = "expert.up"
+params = 1_700_000
+source_format = "F16"
+
+[[expert.roles]]
+name = "expert.down"
+params = 1_600_000
+source_format = "F16"
+
+[head]
+params = 100_000_000
+flops_per_token = 2.0e8
+source_format = "F16"
