@@ -578,37 +578,39 @@ fn quality_ladder_comes_from_the_quality_model() {
 }
 
 #[test]
-fn target_speed_picks_the_cheapest_hardware_that_reaches_it() {
+fn without_a_speed_limit_the_fastest_plan_wins_and_a_target_picks_the_cheapest_hardware() {
     let hw = &hardware()[0].1;
     let m = dense_small();
     let q = NullQuality::new(&m);
     let base = run(hw, &m, &Hints::default(), 3, &q, None, true);
-    let cheapest = &base.scored[base.choice.chosen.unwrap()];
-    // Without limits all plans tie on quality: the cheapest hardware wins.
-    let min_cost = base
+    let chosen = &base.scored[base.choice.chosen.unwrap()];
+    // All plans tie on quality: the choice is within the speed band of the fastest plan, and the
+    // cheapest of those.
+    let fastest = base.scored.iter().map(|s| s.tok_s).fold(0.0, f64::max);
+    assert!(chosen.tok_s >= fastest * (1.0 - tetraeder_planner::objective::SPEED_BAND));
+    let band_cost = base
         .scored
         .iter()
+        .filter(|s| s.tok_s >= fastest * (1.0 - tetraeder_planner::objective::SPEED_BAND))
         .map(|s| s.resource_cost)
         .fold(f64::MAX, f64::min);
-    assert_eq!(cheapest.resource_cost, min_cost);
-    // Ask for more speed than that plan has: the choice must reach it.
-    let want = cheapest.tok_s * 1.5;
-    if base.scored.iter().any(|s| s.tok_s >= want) {
-        let hints = Hints {
-            target_tok_s: Some(want),
-            ..Default::default()
-        };
-        let res = run(hw, &m, &hints, 3, &q, None, true);
-        let i = check_result(&res, hw, &m, 3, &hints).unwrap();
-        assert!(res.choice.feasible && res.scored[i].tok_s >= want);
-        let ok_cost = res
-            .scored
-            .iter()
-            .filter(|s| s.tok_s >= want)
-            .map(|s| s.resource_cost)
-            .fold(f64::MAX, f64::min);
-        assert_eq!(res.scored[i].resource_cost, ok_cost);
-    }
+    assert_eq!(chosen.resource_cost, band_cost);
+    // With a target the cheapest hardware that reaches it wins.
+    let want = fastest * 0.5;
+    let hints = Hints {
+        target_tok_s: Some(want),
+        ..Default::default()
+    };
+    let res = run(hw, &m, &hints, 3, &q, None, true);
+    let i = check_result(&res, hw, &m, 3, &hints).unwrap();
+    assert!(res.choice.feasible && res.scored[i].tok_s >= want);
+    let ok_cost = res
+        .scored
+        .iter()
+        .filter(|s| s.tok_s >= want)
+        .map(|s| s.resource_cost)
+        .fold(f64::MAX, f64::min);
+    assert_eq!(res.scored[i].resource_cost, ok_cost);
 }
 
 #[test]

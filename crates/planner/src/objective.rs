@@ -1,5 +1,9 @@
 //! The objective (ADR 0025): hard limits, then quality, then resource cost, then speed; the
 //! Pareto front of speed against quality; `tradeoff` as a position on that front.
+//!
+//! With no speed limit (`target_tok_s`, `p95_ttft_ms`) the order is quality, then speed, then
+//! cost: cost only breaks ties inside a [`SPEED_BAND`] of the fastest plan at that quality.
+//! Otherwise "cheapest first" would pick a CPU-only plan for every model.
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -137,7 +141,7 @@ pub fn violations(s: &Scored, h: &Hints) -> Vec<(String, f64)> {
 /// Losses closer than this are equal (summation order noise).
 const QEPS: f64 = 1e-12;
 
-fn cmp_loss(a: f64, b: f64) -> Ordering {
+pub(crate) fn cmp_loss(a: f64, b: f64) -> Ordering {
     if (a - b).abs() <= QEPS * (1.0 + a.abs() + b.abs()) {
         Ordering::Equal
     } else {
@@ -145,13 +149,57 @@ fn cmp_loss(a: f64, b: f64) -> Ordering {
     }
 }
 
-/// Quality first, then resource cost, then speed, then index.
-fn cmp_objective(scored: &[Scored], a: usize, b: usize) -> Ordering {
+/// Plans within this fraction of the fastest plan at the best quality count as equally fast, so
+/// resource cost can decide between them (default order only; 5% is the benchmark noise band).
+pub const SPEED_BAND: f64 = 0.05;
+
+/// The hints set a speed limit, so ADR 0025's order (quality, cost, speed) applies.
+pub fn has_speed_limit(h: &Hints) -> bool {
+    h.target_tok_s.is_some() || h.p95_ttft_ms.is_some()
+}
+
+/// Quality first, then resource cost, then speed, then index (plans compared in a speed-limited
+/// run; also the tie-break inside the speed band).
+fn cmp_cost_first(scored: &[Scored], a: usize, b: usize) -> Ordering {
     let (x, y) = (&scored[a], &scored[b]);
     cmp_loss(x.quality_loss, y.quality_loss)
         .then(cmp_loss(x.resource_cost, y.resource_cost))
         .then(y.tok_s.total_cmp(&x.tok_s))
         .then(a.cmp(&b))
+}
+
+/// The best plan of `pool` by the objective order for `hints`.
+fn best_of(scored: &[Scored], pool: &[usize], hints: &Hints) -> Option<usize> {
+    if has_speed_limit(hints) {
+        return pool
+            .iter()
+            .copied()
+            .min_by(|&a, &b| cmp_cost_first(scored, a, b));
+    }
+    let loss = pool
+        .iter()
+        .map(|&i| scored[i].quality_loss)
+        .min_by(f64::total_cmp)?;
+    let top: Vec<usize> = pool
+        .iter()
+        .copied()
+        .filter(|&i| cmp_loss(scored[i].quality_loss, loss).is_eq())
+        .collect();
+    let fastest = top.iter().map(|&i| scored[i].tok_s).fold(0.0, f64::max);
+    top.into_iter()
+        .filter(|&i| scored[i].tok_s >= fastest * (1.0 - SPEED_BAND))
+        .min_by(|&a, &b| cmp_cost_first(scored, a, b))
+}
+
+/// `pool` ordered best first by the objective order for `hints` (repeated [`best_of`]).
+pub fn objective_order(scored: &[Scored], pool: &[usize], hints: &Hints) -> Vec<usize> {
+    let mut left = pool.to_vec();
+    let mut out = Vec::with_capacity(left.len());
+    while let Some(i) = best_of(scored, &left, hints) {
+        left.retain(|&x| x != i);
+        out.push(i);
+    }
+    out
 }
 
 /// Indices of `pool` not dominated in (tok/s up, loss down), fastest first. Of plans with the
@@ -202,7 +250,7 @@ pub fn choose(scored: &[Scored], hints: &Hints) -> Choice {
         let closest = all
             .iter()
             .copied()
-            .min_by(|&a, &b| key(a).total_cmp(&key(b)).then(cmp_objective(scored, a, b)))
+            .min_by(|&a, &b| key(a).total_cmp(&key(b)).then(cmp_cost_first(scored, a, b)))
             .expect("scored is not empty");
         return Choice {
             chosen: Some(closest),
@@ -216,11 +264,7 @@ pub fn choose(scored: &[Scored], hints: &Hints) -> Choice {
         };
     }
     let front = pareto_front(scored, &ok);
-    let by_objective = ok
-        .iter()
-        .copied()
-        .min_by(|&a, &b| cmp_objective(scored, a, b))
-        .expect("ok is not empty");
+    let by_objective = best_of(scored, &ok, hints).expect("ok is not empty");
     let chosen = match hints.tradeoff {
         None => by_objective,
         Some(t) => {
@@ -275,17 +319,52 @@ mod tests {
     }
 
     #[test]
-    fn order_is_quality_then_cost_then_speed() {
+    fn no_speed_limit_orders_quality_then_speed_then_cost() {
         let v = [
             s(50.0, 0.02, 1.0),
             s(10.0, 0.01, 2.0),
             s(20.0, 0.01, 1.0),
-            s(30.0, 0.01, 1.0),
+            s(30.0, 0.01, 3.0),
         ];
         let c = choose(&v, &Hints::default());
+        // best quality group is 1..=3; the fastest of it wins although it costs the most
         assert_eq!(c.chosen, Some(3));
         assert!(c.feasible && c.failing.is_empty() && c.closest.is_none());
         assert_eq!(c.front, vec![0, 3]);
+        // a quality limit alone is not a speed limit
+        let h = Hints {
+            max_quality_loss: Some(0.015),
+            ..Default::default()
+        };
+        assert_eq!(choose(&v, &h).chosen, Some(3));
+    }
+
+    #[test]
+    fn cost_breaks_ties_inside_the_speed_band_only() {
+        let in_band = [s(40.0, 0.01, 3.0), s(39.0, 0.01, 1.0), s(30.0, 0.01, 0.5)];
+        assert_eq!(choose(&in_band, &Hints::default()).chosen, Some(1));
+        let outside = [s(40.0, 0.01, 3.0), s(37.0, 0.01, 1.0)];
+        assert_eq!(choose(&outside, &Hints::default()).chosen, Some(0));
+        let order = objective_order(&in_band, &[0, 1, 2], &Hints::default());
+        assert_eq!(order, vec![1, 0, 2]);
+    }
+
+    #[test]
+    fn a_speed_limit_restores_quality_then_cost_then_speed() {
+        let v = [s(40.0, 0.01, 3.0), s(12.0, 0.01, 1.0), s(30.0, 0.01, 1.0)];
+        for h in [
+            Hints {
+                target_tok_s: Some(10.0),
+                ..Default::default()
+            },
+            Hints {
+                p95_ttft_ms: Some(500.0),
+                ..Default::default()
+            },
+        ] {
+            // plan 2: cheapest, then faster of the two cheapest
+            assert_eq!(choose(&v, &h).chosen, Some(2));
+        }
     }
 
     #[test]
