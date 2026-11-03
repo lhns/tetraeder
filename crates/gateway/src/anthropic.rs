@@ -199,16 +199,12 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
                 // Templates allow one leading system message and want alternating turns:
                 // a mid-conversation system message becomes a tagged user turn.
                 let text = format!(
-                    "<system>
-{}
-</system>",
+                    "<system>\n{}\n</system>",
                     text_of(&m["content"], "system message")?
                 );
                 match out.last_mut() {
                     Some(prev) if prev.role == "user" => {
-                        prev.content.push_str("
-
-");
+                        prev.content.push_str("\n\n");
                         prev.content.push_str(&text);
                     }
                     _ => out.push(ChatMessage::new("user", text)),

@@ -130,7 +130,9 @@ fn model_info_and_vocab_come_from_libllama() {
         assert_eq!(m.context_length, CTX);
         let v = s.vocab(&m.id).unwrap();
         assert!(v.len() >= 256);
-        assert_eq!(v.bytes(b'A' as u32), b"A");
+        let a = s.tokenize(&m.id, "A").unwrap();
+        assert_eq!(a.len(), 1);
+        assert_eq!(v.bytes(a[0]), b"A");
         assert!(s.vocab("other").is_err());
         assert!(s.tokenize("other", "x").is_err());
     }
@@ -297,9 +299,17 @@ fn dropped_receiver_stops_generation() {
 fn context_limit_ends_with_length() {
     let s = moe_sched();
     let p = prompt(&s, "Hello");
-    let out = run(&s, &p, 10_000);
+    // The mask keeps the fixture from sampling its end-of-generation token.
+    let out = drain(start(
+        &s,
+        &p,
+        greedy(10_000),
+        Some(Box::new(Only(vec![65, 66, 67], 0))),
+        CancellationToken::new(),
+    ));
     assert_eq!(out.reason, FinishReason::Length);
-    assert_eq!(p.len() + out.tokens.len(), CTX as usize);
+    // The last token is sampled but never evaluated, so it needs no KV slot.
+    assert_eq!(p.len() + out.tokens.len(), CTX as usize + 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

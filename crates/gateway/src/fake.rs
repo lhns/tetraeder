@@ -41,8 +41,7 @@ pub const CHATML_TEMPLATE: &str = r##"{%- if tools %}{{ '<|im_start|>system\n' }
 /// The script behind `tetraeder serve --fake`: answers the text after the last `FAKE:` in the
 /// prompt's last user turn verbatim, else echoes that turn.
 pub fn serve_script(prompt: &str) -> String {
-    const START: &str = "<|im_start|>user
-";
+    const START: &str = "<|im_start|>user\n";
     let turn = prompt.rfind(START).map_or(prompt, |i| {
         let rest = &prompt[i + START.len()..];
         &rest[..rest.find("<|im_end|>").unwrap_or(rest.len())]
