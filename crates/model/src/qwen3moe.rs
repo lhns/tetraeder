@@ -1890,6 +1890,35 @@ mod graph_order {
         all
     }
 
+    /// The expert prediction (ADR 0038) only appends nodes to a segment: the segment's own ops,
+    /// and with them the CUDA fusion windows of the router and the norms, keep their order.
+    #[test]
+    fn prediction_only_appends_to_a_segment() {
+        let m = model();
+        let h = m.file.hparams.clone();
+        let n_layer = h.n_layer as usize;
+        for (n, last_only) in [(1, false), (5, true)] {
+            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary).unwrap();
+            for seg in 0..=n_layer {
+                let build = |depth: usize| {
+                    let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
+                    let (g, _, _) =
+                        build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, last_only, depth, &[]);
+                    ops(&g, |_| false)
+                };
+                let plain = build(0);
+                for depth in [1, 2] {
+                    let pred = build(depth);
+                    assert_eq!(
+                        &pred[..plain.len()],
+                        &plain[..],
+                        "segment {seg}, n {n}, depth {depth}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn whole_step_graph_orders_ops_like_the_segments_and_libllama() {
         let m = model();
