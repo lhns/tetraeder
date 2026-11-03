@@ -46,6 +46,11 @@ pub struct CampaignVariant {
     pub candidate: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+    /// Where the weights go, for the scorer's features; absent for CPU-only anchors (all on the
+    /// CPU) and `base-fit` (llama.cpp decides). `base-ot-hand` on a MoE moves the experts of the
+    /// first layers (`-ncmoe`), recorded as the same count of layers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement: Option<Placement>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +83,7 @@ fn variant(
         r#gen: w.r#gen,
         candidate: None,
         env: BTreeMap::new(),
+        placement: None,
     }
 }
 
@@ -129,6 +135,7 @@ pub fn build(
     let gpu_variant = |id: &str, pl: Placement, op: bool| {
         let mut v = variant(id, Group::Anchor, "cuda", q, &[], workload);
         v.args = lower(pl, op);
+        v.placement = Some(pl);
         v
     };
     if let (Some(&large), Some(&small)) = (en.placements.first(), en.placements.last()) {
@@ -153,6 +160,7 @@ pub fn build(
         );
         v.args = to_variant_args(c, layout);
         v.candidate = Some(c.id.clone());
+        v.placement = Some(c.placement);
         vs.push(v);
     }
 
@@ -165,14 +173,18 @@ pub fn build(
         workload,
     ));
     if layout.is_moe() {
-        vs.push(variant(
+        let mut v = variant(
             "base-ot-all",
             Group::Baseline,
             "cuda",
             q,
             &["-ngl", "99", "-ot", "exps=CPU", "-fa", "1"],
             workload,
-        ));
+        );
+        v.placement = Some(Placement::Moe {
+            gpu_expert_layers: 0,
+        });
+        vs.push(v);
     }
     if let Some(&large) = en.placements.first() {
         let mut v = variant("base-ot-hand", Group::Baseline, "cuda", q, &[], workload);
@@ -194,6 +206,7 @@ pub fn build(
         };
         args.extend(["-fa".to_string(), "1".to_string()]);
         v.args = args;
+        v.placement = Some(large);
         vs.push(v);
     }
 
