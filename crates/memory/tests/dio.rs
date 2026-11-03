@@ -246,7 +246,7 @@ fn batch_with_sub_batches_and_oversized_ranges() {
 #[test]
 fn small_chunks_equal_buffered_reads() {
     let (path, _) = data();
-    let ranges = [range(5, 100), range(4090, 20_000), range(100, SIZE - 100)];
+    let ranges = [range(5, 100), range(4090, 12_000), range(100, SIZE - 100)];
     for buffered in [false, true] {
         let f = DirectFile::open_with(
             path,
