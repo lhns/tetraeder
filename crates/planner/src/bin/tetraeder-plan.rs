@@ -96,6 +96,21 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Formats per quality group (or per tensor) within a byte budget, from a quality profile
+    /// (ADR 0048). Writes the `--mix` file of scripts/quality/compare_mix.py.
+    Mix {
+        /// `bench/quality/<model>.quality.json`.
+        #[arg(long)]
+        profile: PathBuf,
+        #[arg(long)]
+        budget_bytes: u64,
+        /// Tensor names of the model (JSON array of names or of objects with `name`); the output
+        /// is then `{tensor: format}`, else `{group id: format}`.
+        #[arg(long)]
+        tensors: Option<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Score a measured fixture directory (ADR 0040): calibrate on its anchors, predict the
     /// candidates, report regret and rank correlation as JSON.
     Score {
@@ -146,6 +161,21 @@ fn main() -> Result<()> {
                     Ok(())
                 }
             }
+        }
+        Command::Mix {
+            profile,
+            budget_bytes,
+            tensors,
+            out,
+        } => {
+            let (json, summary) = cli::mix_cmd(
+                &read(&profile)?,
+                budget_bytes,
+                read_opt(&tensors)?.as_deref(),
+            )?;
+            std::fs::write(&out, json).with_context(|| format!("write {}", out.display()))?;
+            print!("{summary}");
+            Ok(())
         }
         Command::Explain {
             common,

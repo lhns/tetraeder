@@ -574,6 +574,7 @@ pub(crate) fn build_plan(
                     home: Some(home.clone()),
                     compute: None,
                     format: Some(f),
+                    ..Default::default()
                 });
             }
         }
@@ -591,6 +592,7 @@ pub(crate) fn build_plan(
                     home: Some(vec![g.primary().to_string()]),
                     compute: None,
                     format: Some(fmt(item)),
+                    ..Default::default()
                 });
             }
         }
@@ -635,6 +637,7 @@ pub(crate) fn build_plan(
                         home: Some(vec![h]),
                         compute: c.map(|c| vec![c]),
                         format: Some(f),
+                        ..Default::default()
                     });
                 }
             }

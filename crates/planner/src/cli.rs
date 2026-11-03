@@ -4,12 +4,13 @@
 
 use crate::diff::plan_diff;
 use crate::explain::explain;
+use crate::profile_quality::{Band, mix_at_budget, tensor_formats};
 use crate::quality::BitsQuality;
 use crate::search::{SearchInput, search};
 use crate::whatif::{Change, default_candidates, rank_purchases, what_if};
 use anyhow::{Context, Result, anyhow};
 use std::collections::BTreeMap;
-use tetraeder_plan::{Hints, ModelDesc, Phase, Plan};
+use tetraeder_plan::{Hints, ModelDesc, Phase, Plan, QualityProfile};
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
 /// Prompt tokens, generated tokens and concurrency of the workload the CLI plans for.
@@ -147,4 +148,35 @@ pub fn what_if_cmd(
         let w = what_if(inp, &changes).map_err(|e| anyhow!(e))?;
         if as_json { json(&w) } else { Ok(w.to_text()) }
     })
+}
+
+/// `mix`: the format mix within `budget` bytes. Returns the mix JSON and a summary. With a tensor
+/// list (JSON array of names or of objects with a `name`, such as the tensor records of a
+/// layout) the JSON is `{tensor: format}` as `compare_mix.py --mix` reads it; without, it is
+/// `{group id: format}`.
+pub fn mix_cmd(profile: &str, budget: u64, tensors: Option<&str>) -> Result<(String, String)> {
+    let profile = QualityProfile::from_json(profile).map_err(|e| anyhow!(e))?;
+    let mix = mix_at_budget(&profile, budget).map_err(|e| anyhow!(e))?;
+    let band = Band::of(&profile);
+    let formats = match tensors {
+        None => mix.formats.clone(),
+        Some(t) => {
+            let v: Vec<serde_json::Value> = serde_json::from_str(t).context("parse tensor list")?;
+            let names: Vec<&str> = v
+                .iter()
+                .filter_map(|x| x.as_str().or_else(|| x.get("name")?.as_str()))
+                .collect();
+            tensor_formats(&profile, &mix, names)
+        }
+    };
+    let summary = format!(
+        "{} bytes of {budget}, estimate {:.5}, corrected {:.5} (band {:.0}% corrected, {:.0}% raw)
+",
+        mix.bytes,
+        mix.estimate,
+        mix.corrected,
+        band.corrected * 100.0,
+        band.raw * 100.0
+    );
+    Ok((json(&formats)?, summary))
 }

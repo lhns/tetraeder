@@ -40,7 +40,10 @@ impl Sources {
             embed: m.embed.source_format,
             attn: m.attn.source_format,
             mlp: m.mlp.source_format,
-            expert: m.expert.map_or(m.mlp.source_format, |e| e.source_format),
+            expert: m
+                .expert
+                .as_ref()
+                .map_or(m.mlp.source_format, |e| e.source_format),
             head: m.head.source_format,
         }
     }
@@ -172,7 +175,10 @@ impl BitsQuality {
             (UnitKind::Embed, model.embed.params),
             (UnitKind::Attn, model.attn.params),
             (UnitKind::Mlp, model.mlp.params),
-            (UnitKind::Expert, model.expert.map_or(0, |e| e.params)),
+            (
+                UnitKind::Expert,
+                model.expert.as_ref().map_or(0, |e| e.params),
+            ),
             (UnitKind::Head, model.head.params),
         ];
         let total = (sizes[0].1 + sizes[4].1) as f64
