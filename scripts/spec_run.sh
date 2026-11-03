@@ -121,16 +121,16 @@ if [ $rc = 0 ]; then
     builder s30-builder 20 TETRAEDER_EXIT_GGUF="$m30" TETRAEDER_EXIT_PREFILL=4096 TETRAEDER_EXIT_UBATCH=2048 \
       TETRAEDER_EXIT_CTX=4864 TETRAEDER_EXIT_VRAM_SLOT_BYTES=2000000000 TETRAEDER_EXIT_RAM_SLOT_BYTES=6000000000
     llama s30-llama-off 15 "$m30" "$natural" 4096 4864 'exps=CPU'
-    llama s30-llama-on 15 "$m30" "$natural" 4096 4864 'exps=CPU' -md "$draft" -ngld 99
+    llama s30-llama-on 15 "$m30" "$natural" 4096 4864 'exps=CPU' -md "$draft" -ngld 99 --spec-type draft-simple
     # the exit regime: 32K natural-text prefill, then 4 rounds of 32-token blocks per variant
     builder main-builder 60 TETRAEDER_EXIT_PREFILL=32768 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_CTX=33280 || rc=23
     llama main-llama-off 45 "$big" "$natural" 32768 33280 "$samevram"
-    llama main-llama-on 45 "$big" "$natural" 32768 33280 "$samevram" -md "$draft" -ngld 99
+    llama main-llama-on 45 "$big" "$natural" 32768 33280 "$samevram" -md "$draft" -ngld 99 --spec-type draft-simple
     # code-like text at 4K
     builder code-builder 25 TETRAEDER_EXIT_PROMPT_FILE="$code" TETRAEDER_EXIT_PREFILL=4096 TETRAEDER_EXIT_UBATCH=2048 \
       TETRAEDER_EXIT_CTX=4864 || rc=24
     llama code-llama-off 20 "$big" "$code" 4096 4864 "$samevram"
-    llama code-llama-on 20 "$big" "$code" 4096 4864 "$samevram" -md "$draft" -ngld 99
+    llama code-llama-on 20 "$big" "$code" 4096 4864 "$samevram" -md "$draft" -ngld 99 --spec-type draft-simple
   } >> "$log" 2>&1
 fi
 touch "$date_dir/DONE"

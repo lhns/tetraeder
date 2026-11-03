@@ -4,7 +4,8 @@ Starts llama-server with the given args (with or without -md), tokenizes the pro
 repeats it to --prompt-tokens tokens (as tests/exit_regime.rs does), sends one /completion of --decode tokens at
 temperature 0 and writes the server's timings (prompt, decode, draft_n, draft_n_accepted) and the tokens as JSON.
 Per-request speculative settings are compiled out of this llama-server (server-schema.cpp, `#if 0`), so a run
-without a draft model is a separate server start.
+without a draft model is a separate server start. A plain draft GGUF needs `--spec-type draft-simple`: without it the
+pinned server loads the draft and never drafts.
 
 usage: python3 spec_llama.py --server BIN --prompt-file F --prompt-tokens N --decode N --out F.json -- <server args>
 """
@@ -94,6 +95,8 @@ def main():
             "tokens": r.get("tokens"),
         }
         json.dump(out, open(a.out, "w"), indent=1)
+        if "-md" in args and not dn:
+            sys.exit("a draft model was given but nothing was drafted (missing --spec-type?)")
         print("result:", {k: out[k] for k in ("prefill_tok_s", "decode_tok_s", "draft_n", "acceptance")}, flush=True)
     finally:
         proc.terminate()
