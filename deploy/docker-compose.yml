@@ -32,7 +32,8 @@ services:
   vmalert:
     image: victoriametrics/vmalert:v1.108.1
     # No Alertmanager in the local stack: alerts are visible in vmalert's UI on :8880.
-    command: ["-rule=/etc/alerts/*.yml", "-datasource.url=http://victoriametrics:8428", "-notifier.blackhole"]
+    # remoteWrite stores the recording rules of slo.yml (error ratios) so the dashboards can query them.
+    command: ["-rule=/etc/alerts/*.yml", "-datasource.url=http://victoriametrics:8428", "-remoteWrite.url=http://victoriametrics:8428", "-notifier.blackhole"]
     volumes:
       - ./alerts:/etc/alerts:ro
     ports:

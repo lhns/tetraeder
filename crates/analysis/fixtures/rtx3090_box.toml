@@ -1,0 +1,54 @@
+# Simulator fixture: a single RTX 3090 box (the Vast.ai target), PCIe 4 x16, CPU RAM and an NVMe
+# on chipset lanes.
+[[devices]]
+id = "cpu0"
+kind = "cpu"
+name = "Fixture CPU"
+tier = "ram"
+capacity_bytes = 64424509440
+cores = 8
+threads = 15
+numa_nodes = 1
+bandwidth_bytes_per_s = { value = 6.0e10, source = "prior" }
+compute = { flops_per_s = 1.0e12, c0_graph_s = 2.0e-6, c0_eager_s = 5.0e-6 }
+
+[[devices]]
+id = "gpu0"
+kind = "gpu"
+name = "Fixture RTX 3090"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 0
+bandwidth_bytes_per_s = { value = 9.36e11, source = "prior" }
+compute = { flops_per_s = 7.1e13, c0_graph_s = 5.0e-6, c0_eager_s = 2.0e-5 }
+pcie = { gen_current = 4, width_current = 16, gen_max = 4, width_max = 16 }
+
+[[devices]]
+id = "nvme0"
+kind = "disk"
+name = "Fixture NVMe"
+tier = "nvme"
+capacity_bytes = 2000000000000
+bandwidth_bytes_per_s = { value = 3.0e9, source = "prior" }
+media = "ssd"
+
+[[links]]
+id = "pcie-gpu0"
+a = "gpu0"
+b = "cpu0"
+kind = "pcie"
+alpha_s = { value = 1.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 2.5e10, source = "prior" }
+
+[[links]]
+id = "nvme-cpu"
+a = "nvme0"
+b = "cpu0"
+kind = "storage"
+lane_group = "chipset"
+alpha_s = { value = 1.0e-4, source = "prior" }
+beta_bytes_per_s = { value = 3.0e9, source = "prior" }
+
+[[lane_groups]]
+id = "chipset"
+capacity_bytes_per_s = 3.5e9

@@ -1,0 +1,31 @@
+# Spec-sheet prior of an RTX 3090 Vast box: the starting point of the anchor fit (ADR 0040), not a measurement.
+# GPU: 936 GB/s, about 71 TFLOPS fp16 tensor; quantized matmul reaches far less, so the priors are rough.
+# CPU: one socket share of a server, threads set from the container quota at scoring time.
+[[devices]]
+id = "cpu0"
+kind = "cpu"
+name = "Box CPU"
+tier = "ram"
+capacity_bytes = 64000000000
+threads = 12
+bandwidth_bytes_per_s = { value = 4.0e10, source = "prior" }
+compute = { flops_per_s = 6.0e11, c0_graph_s = 3.0e-6, c0_eager_s = 3.0e-6 }
+
+[[devices]]
+id = "gpu0"
+kind = "gpu"
+name = "RTX 3090"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 0
+bandwidth_bytes_per_s = { value = 8.0e11, source = "prior" }
+compute = { flops_per_s = 4.0e13, c0_graph_s = 4.0e-6, c0_eager_s = 1.5e-5 }
+pcie = { gen_current = 4, width_current = 16, gen_max = 4, width_max = 16 }
+
+[[links]]
+id = "pcie-gpu0"
+a = "gpu0"
+b = "cpu0"
+kind = "pcie"
+alpha_s = { value = 1.5e-5, source = "prior" }
+beta_bytes_per_s = { value = 2.0e10, source = "prior" }

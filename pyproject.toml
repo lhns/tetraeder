@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [dependency-groups]
-dev = ["pytest>=8", "taxameter"]
+dev = ["pytest>=8", "taxameter", "pyyaml>=6"]
 
 [tool.uv]
 package = false

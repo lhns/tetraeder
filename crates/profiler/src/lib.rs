@@ -6,12 +6,14 @@
 mod discover;
 mod gpu;
 mod graph;
+mod pcie;
 mod probe;
 
 pub use discover::{DeviceProbe, DiscoverOpts, discover, numa_node_count};
 pub use gpu::{GpuInfo, discover_gpus, pcie_lane_bytes_per_s, pcie_prior_bytes_per_s};
 pub use graph::{
     ComputeSpec, Device, DeviceKind, HardwareGraph, LaneGroup, Link, LinkKind, Measurement, Pcie,
-    Source, Tier,
+    Source, ThreadPoint, Tier,
 };
+pub use pcie::{PcieClass, PcieDevice, PcieTopology, lane_groups, pcie_topology};
 pub use probe::{probe_disk_read, probe_ram_read};

@@ -1,0 +1,123 @@
+{
+  "_doc": {
+    "_about": "Example Observation. Keys starting with _ are comments and are ignored by the reader. Only id and windows are required; every other field may be omitted when the sampler lacks it. Resource ids: gpu:<dev>, cpu, ram, disk:<dev>, link:<link id>, host.",
+    "id": "free text name of the run",
+    "batch": "batch size or concurrency; 1 = stages run one after another (serialized), more = resources overlap (load). Default 1",
+    "windows": "repeated windows of the same steady state; 8 or more give a useful confidence interval",
+    "windows[].tokens": "tokens decoded in the window",
+    "windows[].wall_s": "wall seconds of the window",
+    "windows[].busy_s": "resource id -> seconds the resource was busy (GPU kernels, CPU expert work, disk reads, link transfers, host scheduling)",
+    "windows[].bytes": "resource id -> work moved: bytes for gpu, cpu, disk and links, tokens handled for host. bytes / busy_s is compared with expected.rates",
+    "windows[].split_s": "step time split in seconds: compute, cpu_experts, expert_load_wait, transfer_wait, host",
+    "env.throttle": "GPU throttle reasons seen during the run: device (gpu id), reason = thermal | power | clocks | sw",
+    "env.pcie": "per GPU: link (link id, resource link:<id>), gen_current, width_current, gen_max, width_max",
+    "env.cpu_quota_cores": "CPU quota in cores (cgroup or host threads)",
+    "env.cpu_other_cores": "cores used by processes other than the engine",
+    "env.swap_in_bytes_per_s": "swap-in rate",
+    "env.vram_other_bytes": "gpu id -> VRAM bytes held by other processes",
+    "env.vram_total_bytes": "gpu id -> VRAM capacity",
+    "env.disk_other_read_bytes_per_s": "read rate of other processes on the engine's disk",
+    "env.io_max_bytes_per_s": "io.max read limit of the cgroup, null if none",
+    "env.expert_hit_rate": "share of expert uses served from VRAM",
+    "env.slots_planned": "VRAM expert slots the plan asked for",
+    "env.slots_actual": "VRAM expert slots that fit",
+    "expected.rates": "calibrated work per busy second per resource (same unit as windows[].bytes); omit expected to skip rate checks",
+    "expected.band": "relative error band from the calibration anchors; a rate more than this far below expected is a fault. Default 0.1"
+  },
+  "id": "rtx3090-run-001",
+  "batch": 1,
+  "windows": [
+    {
+      "tokens": 64,
+      "wall_s": 6.4,
+      "busy_s": {
+        "gpu:gpu0": 1.6,
+        "cpu": 1.6,
+        "disk:nvme0": 1.6,
+        "link:pcie-gpu0": 1.28,
+        "host": 0.256
+      },
+      "bytes": {
+        "gpu:gpu0": 1497600000000.0,
+        "cpu": 96000000000.0,
+        "disk:nvme0": 4800000000.0,
+        "link:pcie-gpu0": 1600000000000.0,
+        "host": 64
+      },
+      "split_s": {
+        "compute": 1.6,
+        "cpu_experts": 1.6,
+        "expert_load_wait": 2.88,
+        "transfer_wait": 0.0,
+        "host": 0.256
+      }
+    },
+    {
+      "tokens": 64,
+      "wall_s": 6.5,
+      "busy_s": {
+        "gpu:gpu0": 1.62,
+        "cpu": 1.58,
+        "disk:nvme0": 1.65,
+        "link:pcie-gpu0": 1.3,
+        "host": 0.25
+      },
+      "bytes": {
+        "gpu:gpu0": 1497600000000.0,
+        "cpu": 96000000000.0,
+        "disk:nvme0": 4800000000.0,
+        "link:pcie-gpu0": 1600000000000.0,
+        "host": 64
+      },
+      "split_s": {
+        "compute": 1.62,
+        "cpu_experts": 1.58,
+        "expert_load_wait": 2.95,
+        "transfer_wait": 0.0,
+        "host": 0.25
+      }
+    }
+  ],
+  "env": {
+    "throttle": [
+      {
+        "device": "gpu0",
+        "reason": "sw"
+      }
+    ],
+    "pcie": [
+      {
+        "device": "gpu0",
+        "link": "pcie-gpu0",
+        "gen_current": 4,
+        "width_current": 16,
+        "gen_max": 4,
+        "width_max": 16
+      }
+    ],
+    "cpu_quota_cores": 15.0,
+    "cpu_other_cores": 0.1,
+    "swap_in_bytes_per_s": 0.0,
+    "vram_other_bytes": {
+      "gpu0": 300000000
+    },
+    "vram_total_bytes": {
+      "gpu0": 25769803776
+    },
+    "disk_other_read_bytes_per_s": 0.0,
+    "io_max_bytes_per_s": null,
+    "expert_hit_rate": 0.9,
+    "slots_planned": 64,
+    "slots_actual": 64
+  },
+  "expected": {
+    "rates": {
+      "gpu:gpu0": 936000000000.0,
+      "cpu": 60000000000.0,
+      "disk:nvme0": 3000000000.0,
+      "link:pcie-gpu0": 25000000000.0,
+      "host": 250.0
+    },
+    "band": 0.1
+  }
+}
