@@ -4,7 +4,7 @@
 //! Inputs are the files the box campaign writes into `bench/results/<date>/planner-<fixture>/`:
 //! `layout.json`, `candidates.json` and the harness results (`planner-<fixture>-<time>.json`).
 
-use crate::{CampaignVariant, CandidatesFile, Group, ModelLayout, Placement};
+use crate::{CampaignVariant, CandidatesFile, ModelLayout, Placement};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
