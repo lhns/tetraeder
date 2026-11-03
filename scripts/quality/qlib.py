@@ -190,7 +190,10 @@ def assemble(mix_dir, shard_dirs, choice, count, name="mix"):
         if link.is_symlink() or link.exists():
             link.unlink()
         target = Path(shard_dirs[choice[no]]) / shard_name("m", no, count)
-        os.symlink(target.resolve(), link)
+        try:
+            os.symlink(target.resolve(), link)
+        except OSError:  # no symlink right (Windows): a hard link copies nothing either
+            os.link(target.resolve(), link)
     return mix_dir / shard_name(name, 0, count)
 
 
