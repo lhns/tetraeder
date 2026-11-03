@@ -1,4 +1,4 @@
-//! Load-time format conversion with its disk cache (ADR 0044): byte parity with libllama's
+//! Load-time format conversion with its disk cache (ADR 0047): byte parity with libllama's
 //! quantizer per format, the cache, the builder on converted weights against libllama, refused
 //! conversions and the GGUF export.
 //!

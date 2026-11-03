@@ -299,7 +299,7 @@ impl Gguf {
     }
 
     /// Points tensor `name` at `len` bytes of type `ty` at offset 0 of the headerless file `path`,
-    /// which becomes an extra shard (a conversion cache file, ADR 0044).
+    /// which becomes an extra shard (a conversion cache file, ADR 0047).
     pub fn retarget(&mut self, name: &str, ty: Type, path: PathBuf) -> Result<()> {
         let i = *self
             .by_name

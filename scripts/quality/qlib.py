@@ -1,4 +1,4 @@
-"""Shared helpers of the quality scripts (ADR 0045): GGUF headers, profile groups, llama-perplexity runs.
+"""Shared helpers of the quality scripts (ADR 0048): GGUF headers, profile groups, llama-perplexity runs.
 
 Stdlib only, so the scripts run on a box without a virtualenv.
 """
@@ -128,7 +128,7 @@ def data_digest(first):
     return out
 
 
-# Role classes of ADR 0045: tensor suffix -> (class, roles, unit kind).
+# Role classes of ADR 0048: tensor suffix -> (class, roles, unit kind).
 _CLASSES = {
     "attn_q": ("attn.q+k", ["attn.q", "attn.k"], "attn"),
     "attn_k": ("attn.q+k", ["attn.q", "attn.k"], "attn"),
@@ -144,7 +144,7 @@ _CLASSES = {
 
 
 def build_groups(tensors, n_layer, span):
-    """Profile groups (ADR 0045 v1): embed, head, and per role class per `span` layers. Each group gets its
+    """Profile groups (ADR 0048 v1): embed, head, and per role class per `span` layers. Each group gets its
     `units` selector, roles, params and tensor names; tensors outside every group (norms, router) are left out."""
     groups = {}
 
@@ -255,7 +255,7 @@ def bpw(fmt):
 
 
 def estimate(profile, choice):
-    """ADR 0045 estimate for a whole-group choice {group id: format}."""
+    """ADR 0048 estimate for a whole-group choice {group id: format}."""
     base = profile["base"]
     q = base["kl"]
     for g in profile["groups"]:

@@ -1,7 +1,7 @@
 # Phase 2 plan for model_small_moe.toml on crates/costmodel/fixtures/two_gpu_cpu_nvme.toml.
 # Stage 0 runs layers 0..2 on gpu0. Stage 1 runs layers 2..4 on gpu1; its experts 4..8 live on
 # the NVMe and compute on the CPU, with a slot cache of 2 experts per layer on gpu1. All experts
-# of a layer share one format (ADR 0044: per-expert formats are not executable yet).
+# of a layer share one format (ADR 0047: per-expert formats are not executable yet).
 model = "small-moe"
 
 [knobs]

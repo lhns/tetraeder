@@ -1,4 +1,4 @@
-//! Load-time format conversion with a per-tensor disk cache (ADR 0044).
+//! Load-time format conversion with a per-tensor disk cache (ADR 0047).
 //!
 //! A tensor whose target format differs from its type in the file is dequantized to f32 with
 //! ggml's type traits and quantized with `ggml_quantize_chunk`, rows split over threads. The

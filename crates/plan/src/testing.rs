@@ -273,7 +273,7 @@ fn gen_stages(
             } else {
                 vec![Span(0, cut), Span(cut, m.experts)]
             };
-            // All experts of a layer and role share one format (ADR 0044).
+            // All experts of a layer and role share one format (ADR 0047).
             let expert_format = *rng.pick(&formats);
             let expert_roles = gen_role_formats(rng, &[UnitKind::Expert], &formats);
             for span in spans {

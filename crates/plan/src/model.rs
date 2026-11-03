@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
 
-/// One weight role of a unit (ADR 0044), named `<kind>.<role>` such as `attn.q`.
+/// One weight role of a unit (ADR 0047), named `<kind>.<role>` such as `attn.q`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RoleSize {
     pub name: String,
@@ -102,7 +102,7 @@ pub enum UnitKind {
 }
 
 impl UnitKind {
-    /// Valid role names of a unit kind (ADR 0044); embed and head have none.
+    /// Valid role names of a unit kind (ADR 0047); embed and head have none.
     pub const fn roles(self) -> &'static [&'static str] {
         match self {
             Self::Attn => &["attn.q", "attn.k", "attn.v", "attn.o"],

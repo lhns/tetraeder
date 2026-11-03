@@ -175,7 +175,7 @@ pub struct LoadOptions {
     /// RAM tier, read the predicted ones into the RAM tier while the previous layer computes
     /// (ADR 0038). Without a RAM tier the prediction is only scored. Off by default.
     pub prefetch: bool,
-    /// Target format per GGUF tensor name (ADR 0044). A tensor whose target differs from its
+    /// Target format per GGUF tensor name (ADR 0047). A tensor whose target differs from its
     /// type in the file is converted at load, through the disk cache; empty loads the file as is.
     /// Only downward conversions; the router, norms and formats that need an importance matrix
     /// are refused.
@@ -501,7 +501,7 @@ impl Qwen3Moe {
         Ok(model)
     }
 
-    /// What the load-time format conversion did (ADR 0044).
+    /// What the load-time format conversion did (ADR 0047).
     pub fn convert_stats(&self) -> &ConvertStats {
         &self.convert
     }

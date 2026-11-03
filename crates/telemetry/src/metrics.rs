@@ -364,7 +364,7 @@ impl Metrics {
             .record(accuracy, &[KeyValue::new(attr::LAYER, i64::from(layer))]);
     }
 
-    /// One tensor converted to `format` (ADR 0044).
+    /// One tensor converted to `format` (ADR 0047).
     pub fn convert_duration(&self, d: Duration, format: &str) {
         self.convert_duration.record(
             d.as_secs_f64(),

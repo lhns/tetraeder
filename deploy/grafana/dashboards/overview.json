@@ -844,7 +844,7 @@
     {
       "id": 25,
       "title": "Format conversion",
-      "description": "Tensors per second found in the conversion cache (hit) or converted at load (miss), and the mean seconds to convert one tensor (ADR 0044). A load of a new plan misses once per changed tensor; misses on every start mean the cache is not reused.",
+      "description": "Tensors per second found in the conversion cache (hit) or converted at load (miss), and the mean seconds to convert one tensor (ADR 0047). A load of a new plan misses once per changed tensor; misses on every start mean the cache is not reused.",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
