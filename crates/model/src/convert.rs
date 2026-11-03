@@ -74,6 +74,9 @@ pub struct ConvertOptions {
     pub threads: usize,
     /// Conversion metrics go here when set.
     pub telemetry: Option<Arc<Telemetry>>,
+    /// Rows per chunk; `None`: about 64 MB of f32 rows. The bytes do not depend on it (tests
+    /// set it small to cross chunk boundaries).
+    pub chunk_rows: Option<usize>,
 }
 
 /// What one [`convert`] call did.
@@ -236,32 +239,50 @@ pub fn convert(
     let dir = std::path::absolute(&dir).unwrap_or(dir);
     let fp = fingerprint(g)?;
     let threads = opts.threads.max(1);
+    // Hits are looked up first; the misses go through one pipeline.
+    let mut misses = Vec::new();
+    let mut targets = Vec::new();
     for job in jobs {
-        let name = job.src.name.as_str();
         let rows = job.src.ne[1] * job.src.ne[2] * job.src.ne[3];
         let nbytes = job.ty.row_size(job.src.ne[0] as i64) as u64 * rows;
-        let path = dir.join(format!("{}.bin", cache_key(&fp, name, job.format)));
+        let path = dir.join(format!("{}.bin", cache_key(&fp, &job.src.name, job.format)));
         let hit = path.metadata().is_ok_and(|m| m.len() == nbytes);
-        if !hit {
-            let t0 = Instant::now();
-            std::fs::create_dir_all(&dir).map_err(io(&dir))?;
-            convert_to_file(&g.paths[job.src.shard], &job, threads, &path)?;
-            let d = t0.elapsed();
-            stats.converted += 1;
-            stats.bytes_written += nbytes;
-            tracing::debug!(tensor = name, format = ?job.format, secs = d.as_secs_f64(), "converted");
-            if let Some(t) = &opts.telemetry {
-                t.metrics()
-                    .convert_duration(d, &format!("{:?}", job.format));
-                t.metrics().convert_bytes(nbytes);
-            }
-        } else {
+        if hit {
             stats.cache_hits += 1;
         }
         if let Some(t) = &opts.telemetry {
             t.metrics().convert_cache(hit);
         }
-        g.retarget(name, job.ty, path)?;
+        targets.push((job.src.name.clone(), job.ty, path.clone()));
+        if !hit {
+            misses.push((job, path, nbytes));
+        }
+    }
+    if !misses.is_empty() {
+        std::fs::create_dir_all(&dir).map_err(io(&dir))?;
+        let sources: Vec<PathBuf> = misses
+            .iter()
+            .map(|(j, _, _)| g.paths[j.src.shard].clone())
+            .collect();
+        pipeline(
+            &misses,
+            &sources,
+            threads,
+            opts.chunk_rows,
+            |job, nbytes, d| {
+                stats.converted += 1;
+                stats.bytes_written += nbytes;
+                tracing::debug!(tensor = %job.src.name, format = ?job.format, secs = d.as_secs_f64(), "converted");
+                if let Some(t) = &opts.telemetry {
+                    t.metrics()
+                        .convert_duration(d, &format!("{:?}", job.format));
+                    t.metrics().convert_bytes(nbytes);
+                }
+            },
+        )?;
+    }
+    for (name, ty, path) in targets {
+        g.retarget(&name, ty, path)?;
     }
     stats.seconds = start.elapsed().as_secs_f64();
     tracing::info!(
@@ -275,60 +296,177 @@ pub fn convert(
     Ok(stats)
 }
 
-/// Converts one tensor from `src` into `path` (through a temporary file).
-fn convert_to_file(src: &Path, job: &Job, threads: usize, path: &Path) -> Result<()> {
-    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
-    let res = (|| {
-        let mut out = File::create(&tmp).map_err(io(&tmp))?;
-        convert_rows(src, job, threads, &mut out, &tmp)?;
-        out.sync_all().map_err(io(&tmp))?;
-        drop(out);
-        std::fs::rename(&tmp, path).map_err(io(path))
-    })();
-    if res.is_err() {
-        std::fs::remove_file(&tmp).ok();
-    }
-    res
+/// Rows of one piece of a chunk on its way through the pipeline, with the buffers it owns.
+struct Piece {
+    job: usize,
+    rows: usize,
+    src: Vec<u8>,
+    dst: Vec<u8>,
 }
 
-/// Streams the tensor in chunks of rows: read, convert on `threads` threads, write.
-fn convert_rows(src: &Path, job: &Job, threads: usize, out: &mut File, dst: &Path) -> Result<()> {
-    let t = &job.src;
-    let n_per_row = t.ne[0] as usize;
-    let rows = (t.ne[1] * t.ne[2] * t.ne[3]) as usize;
-    let (src_row, dst_row) = (
-        t.ty.row_size(n_per_row as i64),
-        job.ty.row_size(n_per_row as i64),
-    );
-    let chunk = (CHUNK_F32_BYTES / (4 * n_per_row)).max(threads).min(rows);
-    let mut f = File::open(src).map_err(io(src))?;
-    f.seek(SeekFrom::Start(t.offset)).map_err(io(src))?;
-    let mut src_buf = vec![0u8; chunk * src_row];
-    let mut dst_buf = vec![0u8; chunk * dst_row];
-    let mut done = 0;
-    while done < rows {
-        let n = chunk.min(rows - done);
-        f.read_exact(&mut src_buf[..n * src_row]).map_err(io(src))?;
-        let per = n.div_ceil(threads);
-        let work = |s: &[u8], d: &mut [u8]| -> Result<()> {
-            let r = s.len() / src_row;
-            let mut f32s = vec![0f32; r * n_per_row];
-            ggml::to_f32(t.ty, s, &mut f32s)?;
-            ggml::quantize(job.ty, &f32s, r, n_per_row, None, d)?;
+/// What the writer does next: write `pieces` pieces of `job` (one chunk), and finish the job's
+/// file after its last chunk.
+struct ChunkPlan {
+    job: usize,
+    pieces: usize,
+    last: bool,
+}
+
+/// Buffer pairs per worker: one converting while the reader fills the other and the writer drains
+/// the previous chunk.
+const BUFFERS_PER_WORKER: usize = 2;
+
+/// Converts every job into its cache file. A reader thread streams chunks of rows, `threads`
+/// workers (spawned once for all jobs) convert their piece of each chunk, and this thread writes
+/// the pieces in order, so reading, converting and writing overlap. Each row is quantized on its
+/// own, so the bytes do not depend on how rows are split. `done(job, bytes, time)` runs after a
+/// job's file is in place.
+fn pipeline(
+    jobs: &[(Job, PathBuf, u64)],
+    sources: &[PathBuf],
+    threads: usize,
+    chunk_rows: Option<usize>,
+    mut done: impl FnMut(&Job, u64, std::time::Duration),
+) -> Result<()> {
+    use std::sync::mpsc::{Receiver, Sender, channel, sync_channel};
+    std::thread::scope(|sc| -> Result<()> {
+        let (plan_tx, plan_rx) = sync_channel::<Result<ChunkPlan>>(BUFFERS_PER_WORKER);
+        let mut work_tx: Vec<Sender<Piece>> = Vec::new();
+        let mut out_rx: Vec<Receiver<Result<Piece>>> = Vec::new();
+        let mut free_tx: Vec<Sender<Piece>> = Vec::new();
+        let mut free_rx: Vec<Receiver<Piece>> = Vec::new();
+        for _ in 0..threads {
+            let (wt, wr) = channel::<Piece>();
+            let (ot, or) = channel::<Result<Piece>>();
+            let (ft, fr) = channel::<Piece>();
+            for _ in 0..BUFFERS_PER_WORKER {
+                ft.send(Piece {
+                    job: 0,
+                    rows: 0,
+                    src: Vec::new(),
+                    dst: Vec::new(),
+                })
+                .expect("receiver alive");
+            }
+            sc.spawn(move || {
+                let mut f32s: Vec<f32> = Vec::new();
+                for mut p in wr {
+                    let job = &jobs[p.job].0;
+                    let n = job.src.ne[0] as usize;
+                    f32s.resize(p.rows * n, 0.0);
+                    let r = ggml::to_f32(job.src.ty, &p.src, &mut f32s)
+                        .and_then(|_| ggml::quantize(job.ty, &f32s, p.rows, n, None, &mut p.dst))
+                        .map(|_| p)
+                        .map_err(ConvertError::from);
+                    if ot.send(r).is_err() {
+                        break;
+                    }
+                }
+            });
+            work_tx.push(wt);
+            out_rx.push(or);
+            free_tx.push(ft);
+            free_rx.push(fr);
+        }
+        // Reader: chunks of rows, one piece per worker.
+        sc.spawn(move || {
+            let res = (|| -> Result<()> {
+                for (ji, (job, _, _)) in jobs.iter().enumerate() {
+                    let t = &job.src;
+                    let n_per_row = t.ne[0] as usize;
+                    let rows = (t.ne[1] * t.ne[2] * t.ne[3]) as usize;
+                    let (src_row, dst_row) = (
+                        t.ty.row_size(n_per_row as i64),
+                        job.ty.row_size(n_per_row as i64),
+                    );
+                    let chunk = chunk_rows
+                        .unwrap_or((CHUNK_F32_BYTES / (4 * n_per_row)).max(threads))
+                        .clamp(1, rows);
+                    let src_path = &sources[ji];
+                    let mut f = File::open(src_path).map_err(io(src_path))?;
+                    f.seek(SeekFrom::Start(t.offset)).map_err(io(src_path))?;
+                    let mut done_rows = 0;
+                    while done_rows < rows {
+                        let n = chunk.min(rows - done_rows);
+                        let per = n.div_ceil(threads);
+                        let pieces = n.div_ceil(per);
+                        let last = done_rows + n == rows;
+                        let plan = ChunkPlan {
+                            job: ji,
+                            pieces,
+                            last,
+                        };
+                        if plan_tx.send(Ok(plan)).is_err() {
+                            return Ok(());
+                        }
+                        for (w, rx) in free_rx.iter().enumerate().take(pieces) {
+                            let Ok(mut p) = rx.recv() else {
+                                return Ok(());
+                            };
+                            let r = per.min(n - w * per);
+                            p.job = ji;
+                            p.rows = r;
+                            p.src.resize(r * src_row, 0);
+                            p.dst.resize(r * dst_row, 0);
+                            f.read_exact(&mut p.src).map_err(io(src_path))?;
+                            if work_tx[w].send(p).is_err() {
+                                return Ok(());
+                            }
+                        }
+                        done_rows += n;
+                    }
+                }
+                Ok(())
+            })();
+            if let Err(e) = res {
+                plan_tx.send(Err(e)).ok();
+            }
+            // Dropping the work senders here ends the workers.
+        });
+        // Writer: this thread.
+        let mut cur: Option<(usize, File, PathBuf, Instant)> = None;
+        let res = (|| -> Result<()> {
+            for plan in plan_rx.iter() {
+                let plan = plan?;
+                if cur.as_ref().is_none_or(|c| c.0 != plan.job) {
+                    let path = &jobs[plan.job].1;
+                    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+                    let f = File::create(&tmp).map_err(io(&tmp))?;
+                    cur = Some((plan.job, f, tmp, Instant::now()));
+                }
+                let (_, f, tmp, _) = cur.as_mut().expect("set above");
+                for (w, rx) in out_rx.iter().enumerate().take(plan.pieces) {
+                    let Ok(p) = rx.recv() else {
+                        // The reader stopped inside this chunk; its error follows the plan.
+                        return match plan_rx.recv() {
+                            Ok(Err(e)) => Err(e),
+                            _ => Err(refuse(&jobs[plan.job].0.src.name, "conversion stopped")),
+                        };
+                    };
+                    let p = p?;
+                    f.write_all(&p.dst).map_err(io(tmp))?;
+                    free_tx[w].send(p).ok();
+                }
+                if plan.last {
+                    let (ji, f, tmp, t0) = cur.take().expect("set above");
+                    f.sync_all().map_err(io(&tmp))?;
+                    drop(f);
+                    let (job, path, nbytes) = &jobs[ji];
+                    std::fs::rename(&tmp, path).map_err(io(path))?;
+                    done(job, *nbytes, t0.elapsed());
+                }
+            }
             Ok(())
-        };
-        let pieces = src_buf[..n * src_row]
-            .chunks(per * src_row)
-            .zip(dst_buf[..n * dst_row].chunks_mut(per * dst_row));
-        let work = &work;
-        std::thread::scope(|sc| {
-            let handles: Vec<_> = pieces.map(|(s, d)| sc.spawn(move || work(s, d))).collect();
-            handles
-                .into_iter()
-                .try_for_each(|h| h.join().expect("conversion thread panicked"))
-        })?;
-        out.write_all(&dst_buf[..n * dst_row]).map_err(io(dst))?;
-        done += n;
-    }
-    Ok(())
+        })();
+        if let Some((_, f, tmp, _)) = cur.take() {
+            drop(f);
+            std::fs::remove_file(tmp).ok();
+        }
+        // On an error the plan receiver and the buffer queues go away, so the reader stops and
+        // the workers follow.
+        drop(plan_rx);
+        drop(free_tx);
+        drop(out_rx);
+        res
+    })
 }

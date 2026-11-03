@@ -56,6 +56,7 @@ fn opts(cache: &str) -> ConvertOptions {
         cache: Some(work_dir().join(cache)),
         threads: 2,
         telemetry: None,
+        chunk_rows: None,
     }
 }
 
@@ -141,20 +142,27 @@ fn cpu_bytes_match_libllama_q4_k_m() {
     let kinds: std::collections::BTreeSet<_> = map.values().map(|f| format!("{f:?}")).collect();
     assert!(kinds.len() >= 3, "a mix of formats: {kinds:?}");
     assert_same_as(&reference, &map, "cache-q4km");
-    // The thread count does not change the bytes.
-    let mut g = Gguf::open(f32_model()).unwrap();
-    let one = ConvertOptions {
-        threads: 1,
-        ..opts("cache-q4km-1t")
-    };
-    convert::convert(&mut g, &map, &one).unwrap();
+    // Neither the thread count nor the chunking of the pipeline changes the bytes: one chunk
+    // per tensor, and chunks of 5 rows split unevenly over 3 and 7 workers.
     let want = Gguf::open(&reference).unwrap();
-    for t in &want.tensors {
-        assert!(
-            tensor_bytes(&g, &t.name) == tensor_bytes(&want, &t.name),
-            "{}",
-            t.name
-        );
+    for (threads, chunk_rows) in [(1, None), (3, Some(5)), (7, Some(5)), (2, Some(1))] {
+        let mut g = Gguf::open(f32_model()).unwrap();
+        let o = ConvertOptions {
+            threads,
+            chunk_rows,
+            ..opts(&format!(
+                "cache-q4km-{threads}t-{}",
+                chunk_rows.unwrap_or(0)
+            ))
+        };
+        convert::convert(&mut g, &map, &o).unwrap();
+        for t in &want.tensors {
+            assert!(
+                tensor_bytes(&g, &t.name) == tensor_bytes(&want, &t.name),
+                "{} with {threads} threads, chunks {chunk_rows:?}",
+                t.name
+            );
+        }
     }
 }
 

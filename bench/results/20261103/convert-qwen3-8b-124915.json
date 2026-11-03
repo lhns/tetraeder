@@ -1,0 +1,79 @@
+{
+ "schema": 1,
+ "source": "Qwen3-8B-BF16.gguf",
+ "preset": "Q4_K_M",
+ "threads": 10,
+ "gpu": "NVIDIA GeForce RTX 3090, 615.71.10",
+ "host": "77976c3f5f9c",
+ "rows": [
+  {
+   "tool": "llama-quantize",
+   "repeat": 0,
+   "seconds": 112.33684134483337,
+   "source_bytes": 16382087168,
+   "gb_per_s_in": 0.14583004980274397
+  },
+  {
+   "tool": "tetraeder",
+   "repeat": 0,
+   "seconds": 79.34122800827026,
+   "source_bytes": 16382087168,
+   "gb_per_s_in": 0.20647635005463222,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-8B-GGUF/Qwen3-8B-BF16.gguf",
+   "out": [
+    "/root/q/qwen3-8b/convert/cb-ours.gguf"
+   ],
+   "convert_seconds": 76.822940868,
+   "write_seconds": 2.469650217,
+   "bytes_in": 16382087168,
+   "bytes_out": 5027784288,
+   "threads": 10,
+   "tensors_converted": 254,
+   "cache_hits": 0
+  },
+  {
+   "tool": "llama-quantize",
+   "repeat": 1,
+   "seconds": 73.54823708534241,
+   "source_bytes": 16382087168,
+   "gb_per_s_in": 0.2227393587828745
+  },
+  {
+   "tool": "tetraeder",
+   "repeat": 1,
+   "seconds": 64.0207748413086,
+   "source_bytes": 16382087168,
+   "gb_per_s_in": 0.2558870492993419,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-8B-GGUF/Qwen3-8B-BF16.gguf",
+   "out": [
+    "/root/q/qwen3-8b/convert/cb-ours.gguf"
+   ],
+   "convert_seconds": 62.413868826,
+   "write_seconds": 1.5741519259999999,
+   "bytes_in": 16382087168,
+   "bytes_out": 5027784288,
+   "threads": 10,
+   "tensors_converted": 254,
+   "cache_hits": 0
+  },
+  {
+   "tool": "tetraeder-warm-cache",
+   "repeat": 0,
+   "seconds": 2.8587136268615723,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-8B-GGUF/Qwen3-8B-BF16.gguf",
+   "out": [
+    "/root/q/qwen3-8b/convert/cb-ours.gguf"
+   ],
+   "convert_seconds": 0.014291143,
+   "write_seconds": 2.798197674,
+   "bytes_in": 16382087168,
+   "bytes_out": 5027784288,
+   "threads": 10,
+   "tensors_converted": 0,
+   "cache_hits": 254
+  }
+ ],
+ "tensors": 399,
+ "tensors_differing": [],
+ "byte_identical": true
+}

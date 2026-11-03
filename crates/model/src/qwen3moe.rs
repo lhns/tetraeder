@@ -428,6 +428,7 @@ impl Qwen3Moe {
                 cache: opts.convert_cache.clone(),
                 threads: convert_threads,
                 telemetry: opts.telemetry.clone(),
+                chunk_rows: None,
             },
         )?;
         let h = &file.hparams;

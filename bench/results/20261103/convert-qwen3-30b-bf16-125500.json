@@ -1,0 +1,79 @@
+{
+ "schema": 1,
+ "source": "Qwen3-30B-A3B-BF16-00001-of-00002.gguf",
+ "preset": "Q4_K_M",
+ "threads": 10,
+ "gpu": "NVIDIA GeForce RTX 3090, 615.71.10",
+ "host": "77976c3f5f9c",
+ "rows": [
+  {
+   "tool": "llama-quantize",
+   "repeat": 0,
+   "seconds": 286.9412579536438,
+   "source_bytes": 61089832960,
+   "gb_per_s_in": 0.21290013641004266
+  },
+  {
+   "tool": "tetraeder",
+   "repeat": 0,
+   "seconds": 254.44963002204895,
+   "source_bytes": 61089832960,
+   "gb_per_s_in": 0.24008615361203847,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-30B-A3B-GGUF/BF16/Qwen3-30B-A3B-BF16-00001-of-00002.gguf",
+   "out": [
+    "/root/q/qwen3-30b-bf16/convert/cb-ours.gguf"
+   ],
+   "convert_seconds": 235.377881423,
+   "write_seconds": 19.01293967,
+   "bytes_in": 61089832960,
+   "bytes_out": 18556686656,
+   "threads": 10,
+   "tensors_converted": 338,
+   "cache_hits": 0
+  },
+  {
+   "tool": "llama-quantize",
+   "repeat": 1,
+   "seconds": 284.8997550010681,
+   "source_bytes": 61089832960,
+   "gb_per_s_in": 0.21442571250990008
+  },
+  {
+   "tool": "tetraeder",
+   "repeat": 1,
+   "seconds": 241.78247547149658,
+   "source_bytes": 61089832960,
+   "gb_per_s_in": 0.252664436663036,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-30B-A3B-GGUF/BF16/Qwen3-30B-A3B-BF16-00001-of-00002.gguf",
+   "out": [
+    "/root/q/qwen3-30b-bf16/convert/cb-ours.gguf"
+   ],
+   "convert_seconds": 234.550046487,
+   "write_seconds": 7.189441068,
+   "bytes_in": 61089832960,
+   "bytes_out": 18556686656,
+   "threads": 10,
+   "tensors_converted": 338,
+   "cache_hits": 0
+  },
+  {
+   "tool": "tetraeder-warm-cache",
+   "repeat": 0,
+   "seconds": 17.916041374206543,
+   "model": "/root/tetraeder/.hf_cache/unsloth__Qwen3-30B-A3B-GGUF/BF16/Qwen3-30B-A3B-BF16-00001-of-00002.gguf",
+   "out": [
+    "/root/q/qwen3-30b-bf16/convert/cb-ours.gguf"
+   ],
+   "convert_seconds": 0.017947939,
+   "write_seconds": 17.862247529,
+   "bytes_in": 61089832960,
+   "bytes_out": 18556686656,
+   "threads": 10,
+   "tensors_converted": 0,
+   "cache_hits": 338
+  }
+ ],
+ "tensors": 579,
+ "tensors_differing": [],
+ "byte_identical": true
+}
