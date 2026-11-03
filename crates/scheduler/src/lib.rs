@@ -1,4 +1,4 @@
-//! The serving scheduler (ADR 0040): one worker thread over a [`Backend`], prefix reuse of the
+//! The serving scheduler (ADR 0046): one worker thread over a [`Backend`], prefix reuse of the
 //! last sequence and Rust sampling, behind the gateway's `Engine` trait. Phase 4 replaces the
 //! loop with continuous batching, chunked prefill and priorities.
 

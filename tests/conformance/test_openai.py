@@ -1,4 +1,4 @@
-"""OpenAI SDK against /v1/chat/completions, /v1/completions and /v1/models (ADR 0028, 0040)."""
+"""OpenAI SDK against /v1/chat/completions, /v1/completions and /v1/models (ADR 0028, 0046)."""
 
 import json
 

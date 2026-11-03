@@ -1,4 +1,4 @@
-//! Sampling over a logits row (ADR 0040): mask, greedy, or temperature with top-k and top-p.
+//! Sampling over a logits row (ADR 0046): mask, greedy, or temperature with top-k and top-p.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use tetraeder_gateway::engine::TokenMask;

@@ -1,4 +1,4 @@
-//! Request log (ADR 0040): one JSON line per generation or `count_tokens` request.
+//! Request log (ADR 0046): one JSON line per generation or `count_tokens` request.
 //!
 //! An axum middleware reads the request body, wraps the response body to time the first
 //! byte and capture the text, and writes the line when the body ends or is dropped (client

@@ -1,4 +1,4 @@
-//! ADR 0040: context clamp, default model, mid-conversation system messages, generation id
+//! ADR 0046: context clamp, default model, mid-conversation system messages, generation id
 //! header and the request log.
 
 mod common;

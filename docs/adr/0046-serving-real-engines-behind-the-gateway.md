@@ -1,4 +1,4 @@
-# 0040. Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log
+# 0046. Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log
 
 Status: Accepted (Phase 3b). Partly supersedes ADR 0028 (mask hook, context check); Phase 4 replaces the scheduler loop.
 

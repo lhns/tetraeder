@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay a `tetraeder serve --request-log` file (ADR 0040) against a base URL.
+"""Replay a `tetraeder serve --request-log` file (ADR 0046) against a base URL.
 
 Each logged `request` body is resent to its `path` (+ query) with the logged inter-arrival times divided by
 `--speed` (0 = as fast as possible, bounded by `--concurrency`). Records per request status, TTFT, total time and

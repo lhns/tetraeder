@@ -50,7 +50,7 @@ pub fn router(gw: Arc<Gateway>) -> Router {
     router_with(gw, None)
 }
 
-/// [`router`] with an optional request log (ADR 0040). The log must also be the gateway's
+/// [`router`] with an optional request log (ADR 0046). The log must also be the gateway's
 /// cost sink to fill `usage` and `cost`.
 pub fn router_with(gw: Arc<Gateway>, log: Option<Arc<RequestLog>>) -> Router {
     let app = Router::new()

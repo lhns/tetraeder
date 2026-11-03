@@ -1,4 +1,4 @@
-//! The engines as seen by the scheduler: tokens in, last-position logits out (ADR 0040).
+//! The engines as seen by the scheduler: tokens in, last-position logits out (ADR 0046).
 
 use tetraeder_engine::Engine;
 use tetraeder_model::Qwen3Moe;

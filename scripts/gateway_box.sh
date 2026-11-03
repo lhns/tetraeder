@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 3b gateway exit tests on a GPU box (ADR 0040): build, SDK conformance on real models, paired benchmark of
+# Phase 3b gateway exit tests on a GPU box (ADR 0046): build, SDK conformance on real models, paired benchmark of
 # `tetraeder serve` against llama-server on the same box, API overhead, env and summary.
 # Started detached by `taxameter run scripts/gateway_box.sh`; ends with GATEWAY_BOX_DONE in runs/vast/gateway_box.log.
 # Results: bench/results/<date>/gateway/ (rerun resumes: stages and runs whose output exists are skipped).
@@ -94,6 +94,11 @@ build() {
   say "build start"
   timeout -k 30 50m cargo build --release -p tetraeder --features cuda || { say "build failed"; return 1; }
   if [ ! -x "$py" ] || ! "$py" -c 'import openai, anthropic, jsonschema, pytest, httpx, pydantic' 2> /dev/null; then
+    # the box image has python3 without ensurepip (no venv module): fetch uv then
+    if ! command -v uv > /dev/null 2>&1 && ! python3 -c 'import ensurepip' 2> /dev/null; then
+      curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/root/.local/bin sh > /dev/null 2>&1
+      export PATH="/root/.local/bin:$PATH"
+    fi
     if command -v uv > /dev/null 2>&1; then
       uv venv --allow-existing "$venv" && uv pip install --python "$py" openai anthropic jsonschema pytest httpx pydantic
     else

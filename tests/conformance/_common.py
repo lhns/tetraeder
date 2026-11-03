@@ -1,4 +1,4 @@
-"""Shared helpers for the SDK conformance suite (ADR 0040)."""
+"""Shared helpers for the SDK conformance suite (ADR 0046)."""
 
 import os
 

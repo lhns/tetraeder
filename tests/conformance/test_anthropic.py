@@ -1,4 +1,4 @@
-"""Anthropic SDK against /v1/messages, /v1/messages/count_tokens and /v1/models (ADR 0028, 0040)."""
+"""Anthropic SDK against /v1/messages, /v1/messages/count_tokens and /v1/models (ADR 0028, 0046)."""
 
 import json
 

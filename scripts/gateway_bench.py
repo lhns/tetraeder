@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load client for an OpenAI-compatible streaming endpoint (llama-server or `tetraeder serve`, ADR 0040).
+"""Load client for an OpenAI-compatible streaming endpoint (llama-server or `tetraeder serve`, ADR 0046).
 
 Per request: TTFT (first non-empty content delta), completion tokens (usage chunk, else delta count) and decode
 tok/s = (n - 1) / (t_last - t_first). Aggregates: median/p90 TTFT, median decode tok/s, total throughput

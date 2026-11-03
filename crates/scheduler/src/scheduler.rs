@@ -1,5 +1,5 @@
 //! The one-sequence scheduler: a worker thread owning the backend, a job queue, prefix reuse
-//! of the last sequence, Rust sampling over the logits (ADR 0040).
+//! of the last sequence, Rust sampling over the logits (ADR 0046).
 
 use crate::backend::Backend;
 use crate::load::{Loaded, model_id};

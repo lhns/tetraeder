@@ -1,4 +1,4 @@
-"""The request log of ADR 0040: one JSON line per generation or count_tokens request, no credentials."""
+"""The request log of ADR 0046: one JSON line per generation or count_tokens request, no credentials."""
 
 import json
 import time

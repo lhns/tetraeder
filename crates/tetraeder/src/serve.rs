@@ -1,4 +1,4 @@
-//! `tetraeder serve`: the OpenAI and Anthropic APIs over an engine (ADR 0028, ADR 0040).
+//! `tetraeder serve`: the OpenAI and Anthropic APIs over an engine (ADR 0028, ADR 0046).
 
 use crate::engine_args::PlacementArgs;
 use anyhow::Context as _;
