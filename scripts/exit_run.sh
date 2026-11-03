@@ -90,7 +90,7 @@ exit_regime() {
   echo "[$(date +%T)] start $name"
   env TETRAEDER_EXIT_GGUF="$model" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
     TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
-    TETRAEDER_EXIT_PROMPT_FILE="$prompt" TETRAEDER_EXIT_OUT="$date_dir/exit-$name-$stamp.json" \
+    TETRAEDER_EXIT_OUT="$date_dir/exit-$name-$stamp.json" \
     TETRAEDER_EXIT_MACHINE="vast $(hostname)" "$@" \
     timeout -k 30 "${min}m" cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
     --test exit_regime -- --ignored --nocapture
