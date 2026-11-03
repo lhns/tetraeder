@@ -128,11 +128,6 @@ impl LayerSlots {
         self.stats
     }
 
-    /// True when every expert of `top_k` is resident: the layer can run without the host.
-    pub fn all_resident(&self, top_k: &[u32]) -> bool {
-        top_k.iter().all(|e| self.table.contains_key(e))
-    }
-
     /// Hit: the slot. Miss: a slot assigned to the expert (a free one, else the least recently
     /// used unpinned one). An out-of-range expert is a bypass.
     pub fn lookup(&mut self, expert: u32) -> Lookup {

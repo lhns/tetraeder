@@ -195,10 +195,10 @@ impl ModelFile {
             get("ffn_up_exps")?,
             get("ffn_down_exps")?,
         ];
+        let expert_params = stacked.iter().map(|t| t.n_elements()).sum::<u64>() / n_exp;
         let expert = UnitSize {
-            params: stacked.iter().map(|t| t.n_elements()).sum::<u64>() / n_exp,
-            flops_per_token: 2.0
-                * (stacked.iter().map(|t| t.n_elements()).sum::<u64>() / n_exp) as f64,
+            params: expert_params,
+            flops_per_token: 2.0 * expert_params as f64,
             source_format: main_format(&stacked)?,
         };
         let head = if h.tied_output {
