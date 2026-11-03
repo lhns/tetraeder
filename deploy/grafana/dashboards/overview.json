@@ -1333,6 +1333,74 @@
           }
         }
       ]
+    },
+    {
+      "id": 38,
+      "title": "Prefix cache (host RAM)",
+      "description": "Prefix hits per second by source (live sequence or a saved sequence restored from host RAM), saved sequences evicted per second, and host bytes held (ADR 0049). Evictions above RAM hits mean --cache-ram is too small for the traffic.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 98,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "bytes held"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_source) (rate(tetraeder_kv_prefix_hits_total[$__rate_interval]))",
+          "legendFormat": "hits {{tetraeder_source}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(tetraeder_kv_prefix_evictions_total[$__rate_interval]))",
+          "legendFormat": "evictions",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "max(tetraeder_kv_prefix_bytes_bytes)",
+          "legendFormat": "bytes held",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

@@ -16,8 +16,7 @@ async fn prompt_of(body: Value) -> String {
     let (app, _) = app(engine);
     let (s, _, v) = post(&app, "/v1/messages", &body, true).await;
     assert_eq!(s, 200, "{body} -> {v}");
-    let p = prompts.lock().unwrap()[0].clone();
-    p
+    prompts.lock().unwrap()[0].clone()
 }
 
 fn body(messages: Value) -> Value {

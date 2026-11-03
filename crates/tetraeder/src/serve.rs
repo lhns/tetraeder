@@ -57,6 +57,9 @@ pub struct ServeArgs {
     /// Requests that may wait for the engine; more get 429/529.
     #[arg(long, default_value_t = 16)]
     pub max_queued: usize,
+    /// Host RAM for saved sequences (prefix cache), in MiB; 0 turns it off.
+    #[arg(long, default_value_t = 8192)]
+    pub cache_ram: usize,
     /// Append one JSON line per request (prompts included) to this file.
     #[arg(long)]
     pub request_log: Option<PathBuf>,
@@ -178,6 +181,7 @@ fn build_engine(
     cfg.top_k = a.top_k;
     cfg.top_p = a.top_p;
     cfg.metrics = Some(telemetry.metrics().clone());
+    cfg.cache_ram_bytes = a.cache_ram << 20;
     cfg.chat_template = match &a.chat_template_file {
         Some(f) => Some(
             std::fs::read_to_string(f)

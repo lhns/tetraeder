@@ -3,6 +3,7 @@
 
 use crate::backend::Backend;
 use crate::load::{Loaded, model_id};
+use crate::prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS, common_prefix};
 use crate::sample::{SampleParams, Sampler, counter_seed};
 use std::path::PathBuf;
 use std::sync::mpsc as std_mpsc;
@@ -36,7 +37,16 @@ pub struct SchedulerConfig {
     pub top_p: f32,
     /// Scheduler metrics are recorded here when set.
     pub metrics: Option<Metrics>,
+    /// Host bytes for saved sequences (the prefix cache); 0 turns it off.
+    pub cache_ram_bytes: usize,
+    /// A live sequence is saved before it loses this many tokens.
+    pub cache_save_min: usize,
+    /// A saved sequence is restored when it beats the live one by this many tokens.
+    pub cache_restore_gain: usize,
 }
+
+/// Default prefix cache budget, like llama-server's `--cache-ram`.
+pub const DEFAULT_CACHE_RAM_BYTES: usize = 8192 << 20;
 
 impl SchedulerConfig {
     pub fn new(model_path: impl Into<PathBuf>) -> Self {
@@ -48,6 +58,9 @@ impl SchedulerConfig {
             top_k: 40,
             top_p: 0.95,
             metrics: None,
+            cache_ram_bytes: DEFAULT_CACHE_RAM_BYTES,
+            cache_save_min: SAVE_MIN_TOKENS,
+            cache_restore_gain: RESTORE_MIN_GAIN,
         }
     }
 }
@@ -84,6 +97,11 @@ impl Scheduler {
             top_p: cfg.top_p,
         };
         let metrics = cfg.metrics.clone();
+        let (cache_ram, save_min, restore_gain) = (
+            cfg.cache_ram_bytes,
+            cfg.cache_save_min,
+            cfg.cache_restore_gain,
+        );
         let vocab_cell: Arc<std::sync::OnceLock<Arc<Vocab>>> = Arc::default();
         let worker_vocab = Arc::clone(&vocab_cell);
         std::thread::Builder::new()
@@ -103,6 +121,9 @@ impl Scheduler {
                 let mut w = Worker {
                     backend: loaded.backend,
                     cached: Vec::new(),
+                    cache: PrefixCache::new(cache_ram),
+                    save_min,
+                    restore_gain,
                     vocab,
                     defaults,
                     metrics,
@@ -225,6 +246,10 @@ struct Worker {
     backend: Box<dyn Backend>,
     /// The tokens in the backend's KV cache, in order.
     cached: Vec<i32>,
+    /// Sequences evicted from the KV cache, kept in host RAM.
+    cache: PrefixCache,
+    save_min: usize,
+    restore_gain: usize,
     vocab: Arc<Vocab>,
     defaults: SampleParams,
     metrics: Option<Metrics>,
@@ -286,13 +311,51 @@ impl Worker {
         }
         let toks: Vec<i32> = prompt.iter().map(|&t| t as i32).collect();
         // Keep the shared prefix, but evaluate at least the last prompt token for logits.
-        let common = self
-            .cached
-            .iter()
-            .zip(&toks)
-            .take_while(|(a, b)| a == b)
-            .count()
-            .min(toks.len() - 1);
+        let last = toks.len() - 1;
+        let live = common_prefix(&self.cached, &toks).min(last);
+        let ram = if self.cache.enabled() {
+            self.cache
+                .best(&toks)
+                .map(|(i, n)| (i, n.min(last)))
+                .filter(|&(_, n)| n >= live + self.restore_gain)
+        } else {
+            None
+        };
+        // Take the entry out first: saving the live sequence may evict it.
+        let picked = ram.map(|(i, _)| self.cache.take(i));
+        if picked.is_some()
+            && let Some(m) = &self.metrics
+        {
+            m.kv_prefix_bytes(self.cache.bytes() as u64);
+        }
+        // The live sequence is saved before truncation or a restore drops much of it.
+        let lost = if picked.is_some() {
+            self.cached.len()
+        } else {
+            self.cached.len() - live.min(self.cached.len())
+        };
+        if self.cache.enabled() && lost >= self.save_min && !self.cache.holds(&self.cached) {
+            self.save_live();
+        }
+        let mut restored = false;
+        if let Some((etoks, bytes)) = picked {
+            let t0 = Instant::now();
+            match self.backend.restore(&bytes, etoks.len()) {
+                Ok(()) => {
+                    self.cached = etoks;
+                    restored = true;
+                    if let Some(m) = &self.metrics {
+                        m.kv_prefix_restore(t0.elapsed());
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("cannot restore a saved sequence: {e}");
+                    self.backend.truncate(0)?;
+                    self.cached.clear();
+                }
+            }
+        }
+        let common = common_prefix(&self.cached, &toks).min(last);
         if common < self.cached.len() {
             self.backend.truncate(common)?;
             self.cached.truncate(common);
@@ -301,7 +364,7 @@ impl Worker {
         if common > 0
             && let Some(m) = &self.metrics
         {
-            m.kv_prefix_hit();
+            m.kv_prefix_hit(if restored { "ram" } else { "live" });
         }
 
         let mut sampler = Sampler::new(
@@ -347,6 +410,20 @@ impl Worker {
             _ => None,
         };
         Ok(reason)
+    }
+
+    /// Copies the live sequence into the prefix cache.
+    fn save_live(&mut self) {
+        match self.backend.snapshot() {
+            Ok(bytes) => {
+                let evicted = self.cache.insert(self.cached.clone(), bytes);
+                if let Some(m) = &self.metrics {
+                    m.kv_prefix_evicted(evicted as u64);
+                    m.kv_prefix_bytes(self.cache.bytes() as u64);
+                }
+            }
+            Err(e) => tracing::warn!("cannot save the live sequence: {e}"),
+        }
     }
 
     /// Evaluates `tokens` in chunks (checking for cancellation between them) and samples the

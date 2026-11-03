@@ -215,6 +215,20 @@ impl Engine {
         Ok(())
     }
 
+    /// The KV cache of sequence 0 as host bytes, with the positions it holds (ADR 0049).
+    pub fn snapshot(&mut self) -> Result<(Vec<u8>, usize)> {
+        Ok((self.ctx.state_seq_get(0)?, self.n_past))
+    }
+
+    /// Replaces the KV cache with a [`Engine::snapshot`] of `n` positions.
+    pub fn restore(&mut self, bytes: &[u8], n: usize) -> Result<()> {
+        self.ctx.memory_clear();
+        self.n_past = 0;
+        self.ctx.state_seq_set(0, bytes)?;
+        self.n_past = n;
+        Ok(())
+    }
+
     /// Appends `tokens` after the cached ones and returns the logits of the last one
     /// (`n_vocab` values, valid until the next call). Chunks by `n_batch`; each chunk is a
     /// timed step, prefill for several tokens and decode for one.

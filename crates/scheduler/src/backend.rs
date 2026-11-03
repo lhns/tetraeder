@@ -14,6 +14,10 @@ pub trait Backend {
     /// Appends `tokens` and returns the logits of the last one (`n_vocab` values, valid until
     /// the next call). Prefill is chunked inside.
     fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String>;
+    /// The cached positions as host bytes, for the prefix cache (ADR 0049).
+    fn snapshot(&mut self) -> Result<Vec<u8>, String>;
+    /// Replaces the cache with a [`Backend::snapshot`] of `n` positions.
+    fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String>;
     /// Whether steps run on a GPU, so wall time counts as device time.
     fn on_gpu(&self) -> bool;
     /// Weight bytes read from storage since load; `None` when the backend does not stream.
@@ -55,6 +59,17 @@ impl Backend for LlamaBackend {
 
     fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String> {
         self.engine.eval(tokens).map_err(|e| e.to_string())
+    }
+
+    fn snapshot(&mut self) -> Result<Vec<u8>, String> {
+        self.engine
+            .snapshot()
+            .map(|(bytes, _)| bytes)
+            .map_err(|e| e.to_string())
+    }
+
+    fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String> {
+        self.engine.restore(bytes, n).map_err(|e| e.to_string())
     }
 
     fn on_gpu(&self) -> bool {
@@ -109,6 +124,14 @@ impl Backend for MoeBackend {
             self.logits = self.model.eval_last(chunk).map_err(|e| e.to_string())?;
         }
         Ok(&self.logits)
+    }
+
+    fn snapshot(&mut self) -> Result<Vec<u8>, String> {
+        self.model.kv_snapshot().map_err(|e| e.to_string())
+    }
+
+    fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String> {
+        self.model.kv_restore(bytes, n).map_err(|e| e.to_string())
     }
 
     fn on_gpu(&self) -> bool {
