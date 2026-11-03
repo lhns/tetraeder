@@ -39,6 +39,18 @@ case "$MODEL" in
     ppl_args="-ngl 99 -fa on -b 2048 -ub 2048 -ot ${OT:-$ot}"
     ref_args="$ppl_args"; eval_chunks=${EVAL_CHUNKS:-50}
     ;;
+  qwen3-30b-bf16)
+    # BF16 source and reference (61 GB): needs a disk of about 200 GB. Formats are converted and measured one at a
+    # time (--drop-shards); the base is Q8_0 because BF16 does not fit next to the KV cache on a 24 GB card.
+    b=BF16/Qwen3-30B-A3B-BF16
+    spec="unsloth/Qwen3-30B-A3B-GGUF:$b-00001-of-00002.gguf+$b-00002-of-00002.gguf"
+    src="$PWD/.hf_cache/unsloth__Qwen3-30B-A3B-GGUF/$b-00001-of-00002.gguf"
+    base=Q8_0; span=${SPAN:-12}; formats="${FORMATS:-Q6_K Q5_K Q4_K Q3_K Q2_K}"
+    drop=1
+    ot='blk\.(2[6-9]|3[0-9]|4[0-7])\.ffn_.*_exps\.=CPU'
+    ppl_args="-ngl 99 -fa on -b 2048 -ub 2048 -ot ${OT:-$ot}"
+    ref_args="-ngl 99 -fa on -b 2048 -ub 2048 -ot exps=CPU"; eval_chunks=${EVAL_CHUNKS:-50}
+    ;;
   *) echo "unknown MODEL $MODEL"; exit 1 ;;
 esac
 
@@ -68,6 +80,7 @@ g=qlib.build_groups(ts, qlib.arch_layers(kv)[1], $span); json.dump([{'id':x['id'
   src=$(ls "$shards1"*.gguf)
   extra="--drop-shards"
 fi
+[ -n "${drop:-}" ] && extra="--drop-shards"
 
 for s in ${STEPS:-calibrate compare convert}; do
   echo "[$(date +%T)] step $s"
@@ -82,14 +95,15 @@ for s in ${STEPS:-calibrate compare convert}; do
       ;;
     compare)
       python3 scripts/quality/compare_mix.py --source "$src" --profile "bench/quality/$MODEL.quality.json" \
-        --work "$W/compare" --text /root/q/wikitext-2-raw/wiki.test.raw --chunks "$eval_chunks" --presets ${PRESETS:-Q4_K_M Q3_K_M Q5_K_M} \
+        --work "$W/compare${TAG:+-$TAG}" --text /root/q/wikitext-2-raw/wiki.test.raw --chunks "$eval_chunks" --presets ${PRESETS:-Q4_K_M Q3_K_M Q5_K_M} \
         --threads "$threads" --ppl-args "$ppl_args" --ref-args "$ref_args" --gpu "$gpu" \
-        ${IK_TYPES:+--ik-bin /opt/ik_llama/bin --ik-types $IK_TYPES} ${small_disk:+--allow-requantize --cleanup} \
-        --out "$date_dir/quality-$MODEL.json" || rc=$?
+        ${IK_TYPES:+--ik-bin ${IK_BIN:-/root/ik/bin} --ik-types $IK_TYPES} ${small_disk:+--allow-requantize} \
+        ${small_disk:+--cleanup} ${drop:+--cleanup} \
+        --out "$date_dir/quality-$MODEL${TAG:+-$TAG}.json" || rc=$?
       ;;
     convert)
       python3 scripts/quality/convert_bench.py --source "$src" --work "$W/convert" --threads "$threads" \
-        --gpu "$gpu" --out "$date_dir/convert-$MODEL.json" || rc=$?
+        --gpu "$gpu" --out "$date_dir/convert-$MODEL-$(date +%H%M%S).json" || rc=$?
       rm -rf "$W/convert"
       ;;
   esac
