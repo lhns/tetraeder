@@ -148,7 +148,7 @@ llama_fit() {
     vram_bytes=$(python3 -c "
 import json, sys
 d = json.load(open(sys.argv[1]))
-print(sum(d['expert_bytes_per_layer'][:int(sys.argv[2])]) * int(sys.argv[3]))" "$date_dir/exit-smoke-$stamp.json" "$n" 128)
+print(sum(d['expert_bytes_per_layer'][:int(sys.argv[2])]) * int(sys.argv[3]))" "$(ls -t "$date_dir"/exit-smoke-*.json | head -1)" "$n" 128)
   fi
   echo "[$(date +%T)] done llama-fit: $n layers, -ot $ot_fit, builder vram slots $vram_bytes B"
 }
