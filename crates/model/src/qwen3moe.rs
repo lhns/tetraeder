@@ -957,8 +957,7 @@ impl Qwen3Moe {
                             continue;
                         }
                         let exps = streamer.ram_exps(seg).expect("RAM tier");
-                        let splits =
-                            run_group_graph(&h, sched, exps, slot, &pairs, &mut prof)?;
+                        let splits = run_group_graph(&h, sched, exps, slot, &pairs, &mut prof)?;
                         self.max_splits = self.max_splits.max(splits);
                         self.groups_run += 1;
                         self.group_graphs_run += 1;
@@ -1000,14 +999,7 @@ impl Qwen3Moe {
                         });
                         continue;
                     }
-                    let splits = run_group_graph(
-                        &h,
-                        sched,
-                        layer.exps(),
-                        slot,
-                        &pairs,
-                        &mut prof,
-                    )?;
+                    let splits = run_group_graph(&h, sched, layer.exps(), slot, &pairs, &mut prof)?;
                     self.max_splits = self.max_splits.max(splits);
                     self.groups_run += 1;
                     self.group_graphs_run += 1;
@@ -1887,8 +1879,7 @@ mod graph_order {
         let mut all = Vec::new();
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-            let (g, _, _) =
-                build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, 0, &[]);
+            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, 0, &[]);
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router.
                 let what = format!("segment {seg}");
