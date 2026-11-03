@@ -5,7 +5,7 @@
 # Results: bench/results/<date>/gateway/ (rerun resumes: stages and runs whose output exists are skipped).
 #
 # Models (assumed downloaded, .hf_cache/<org>__<model>/): Qwen3-30B-A3B-Q4_K_M (MoE, builder + libllama) and
-# Qwen3-8B-Q4_K_M (dense, libllama), on one RTX 3090 (24 GB). Env knobs: REPS (3), MODELS ("q30b q8b"),
+# Qwen3-8B-Q4_K_M (dense, libllama), on one RTX 3090 (24 GB). Env knobs: REPS (3), MODELS ("q8b q30b"),
 # BUDGET_MIN (100: benchmark runs that would start after this many minutes since the script began are skipped, so
 # a slow box still ends with complete repetitions), THREADS, C4_CTX (32768 total for -np 4, see below).
 #
@@ -227,20 +227,19 @@ EOF
   rc=0
   build || rc=1
   if [ "$rc" = 0 ]; then
-    for m in ${MODELS:-q30b q8b}; do conformance "$m"; done
+    for m in ${MODELS:-q8b q30b}; do conformance "$m"; done
     # repetitions outermost: a spent budget still leaves complete pairs for every engine
     for rep in $(seq 1 "$reps"); do
-      for m in ${MODELS:-q30b q8b}; do
-        for eng in llama-server-np1 tetraeder tetraeder-llama; do
-          server_pass "$m" "$eng" "$rep" c1 p4096 mt
-        done
-        # c=4: llama-server batches 4 slots, tetraeder serves one sequence at a time until Phase 4
+      for m in ${MODELS:-q8b q30b}; do
+        # c=4: llama-server batches 4 slots (-np 4), tetraeder serves one sequence at a time until Phase 4
+        server_pass "$m" llama-server-np1 "$rep" c1 p4096 mt
         server_pass "$m" llama-server-np4 "$rep" c4
-        server_pass "$m" tetraeder "$rep" c4
-        server_pass "$m" tetraeder-llama "$rep" c4
+        server_pass "$m" tetraeder "$rep" c1 p4096 mt c4
+        # the 8B is libllama under engine auto already; the 30B also runs libllama on the same file
+        [ "$m" = q30b ] && server_pass "$m" tetraeder-llama "$rep" c1 p4096 mt c4
       done
     done
-    for m in ${MODELS:-q30b q8b}; do overhead "$m"; done
+    for m in ${MODELS:-q8b q30b}; do overhead "$m"; done
     env_json
     "$py" scripts/gateway_summary.py "$out" || rc=1
   fi
