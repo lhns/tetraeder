@@ -335,10 +335,67 @@ fn search_is_deterministic_and_serializable() {
     let near = |x: f64, y: f64| (x - y).abs() <= 1e-12 * x.abs().max(y.abs());
     for (x, y) in back.scored.iter().zip(&a.scored) {
         assert_eq!((&x.desc, &x.plan), (&y.desc, &y.plan));
+        assert_eq!(
+            (x.simulated, x.headroom_bytes),
+            (y.simulated, y.headroom_bytes)
+        );
         assert!(near(x.tok_s, y.tok_s) && near(x.ttft_s, y.ttft_s));
-        assert!(near(x.quality_loss, y.quality_loss) && x.headroom_bytes == y.headroom_bytes);
+        assert!(near(x.quality_loss, y.quality_loss) && near(x.resource_cost, y.resource_cost));
+        assert_eq!(x.tpot_s.is_some(), y.tpot_s.is_some());
+        if let (Some(p), Some(q)) = (x.tpot_s, y.tpot_s) {
+            assert!(near(p, q));
+        }
         assert_eq!(x.stage_times.len(), y.stage_times.len());
+        for (s, u) in x.stage_times.iter().zip(&y.stage_times) {
+            assert_eq!(
+                (s.stage, s.layers, &s.devices),
+                (u.stage, u.layers, &u.devices)
+            );
+            assert!(near(s.compute_s, u.compute_s) && near(s.hop_s, u.hop_s));
+        }
     }
+}
+
+#[test]
+fn experts_spill_to_nvme_when_ram_is_full() {
+    // 8 GiB of RAM next to a 24 GB GPU: a 40 GB MoE has to put experts on the NVMe.
+    let mut hw = hardware()[0].1.clone();
+    hw.devices
+        .iter_mut()
+        .find(|d| d.id == "cpu0")
+        .unwrap()
+        .capacity_bytes = 8 << 30;
+    let m = moe_big();
+    let q = NullQuality::new(&m);
+    let hints = Hints::default();
+    let res = run(&hw, &m, &hints, 3, &q, None, true);
+    check_result(&res, &hw, &m, 3, &hints).unwrap();
+    let on_nvme = |s: &tetraeder_planner::Scored| {
+        s.plan.replicas[0].stages.iter().any(|st| {
+            st.assign.iter().any(|a| {
+                a.home.as_deref() == Some(&["nvme0".to_string()][..])
+                    && a.compute.as_deref() == Some(&[st.devices[0].clone()][..])
+            }) && (!st.expert_cache.is_empty() || st.devices[0] == "cpu0")
+        })
+    };
+    assert!(res.scored.iter().any(on_nvme), "{:#?}", res.pruned);
+    // Forbidding the tier removes those plans; what is left (or nothing) still validates.
+    let hints = Hints {
+        forbid: vec![Forbid {
+            units: None,
+            device: None,
+            tier: Some(Tier::Nvme),
+        }],
+        ..Default::default()
+    };
+    let res = run(&hw, &m, &hints, 3, &q, None, true);
+    check_result(&res, &hw, &m, 3, &hints);
+    assert!(!res.scored.iter().any(on_nvme));
+    // Phase 1 has no expert tiers: nothing on the NVMe, whatever the memory.
+    let hints = Hints::default();
+    let res = run(&hw, &m, &hints, 1, &q, None, true);
+    check_result(&res, &hw, &m, 1, &hints);
+    assert!(!res.scored.iter().any(on_nvme));
 }
 
 #[test]
