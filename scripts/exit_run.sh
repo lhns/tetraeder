@@ -87,8 +87,11 @@ exit_regime() {
   local name=$1 min=$2
   shift 2
   want "$name" || return 0
+  # RANDOM_PROMPT=1: pseudo-random token ids instead of the prompt text, as llama-bench uses
+  local text=(TETRAEDER_EXIT_PROMPT_FILE="$prompt")
+  [[ " $* " == *" RANDOM_PROMPT=1 "* ]] && text=()
   echo "[$(date +%T)] start $name"
-  env TETRAEDER_EXIT_GGUF="$model" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
+  env "${text[@]}" TETRAEDER_EXIT_GGUF="$model" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
     TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
     TETRAEDER_EXIT_OUT="$date_dir/exit-$name-$stamp.json" \
     TETRAEDER_EXIT_MACHINE="vast $(hostname)" "$@" \
@@ -179,6 +182,8 @@ EOF
       # prefetch off and on (ADR 0038), paired
       exit_regime main 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=0 || rc=23
       exit_regime main-prefetch 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
+      # the same on random token ids, the pair of llama-bench (random ids route differently from text)
+      exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
       # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
       for v in ${VARIANTS:-}; do
         IFS=',' read -ra extra <<< "${v#*:}"
