@@ -1,0 +1,3503 @@
+{
+  "model": "qwen3-30b-a3b",
+  "budget": {
+    "gpu_bytes": 14000000000,
+    "ram_bytes": 60000000000,
+    "threads": 15
+  },
+  "workload": {
+    "prompt": 2048,
+    "gen": 128
+  },
+  "candidates": [
+    {
+      "candidate": {
+        "id": "c00",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 64
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 16
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=64 ram_slots=16; estimate gpu 10538 MiB, host 4414 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c00",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c00",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "2038431744",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "8153726976"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c01",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": false
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 64
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 16
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=64 ram_slots=16; estimate gpu 10538 MiB, host 4414 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c01",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c01",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "0",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "2038431744",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "8153726976"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c02",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 2048,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 1647312896
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 64
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 16
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=64 ram_slots=16; estimate gpu 11913 MiB, host 4414 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c02",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c02",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "2038431744",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "2048",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "8153726976"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c03",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 2048,
+            "op_offload": false
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 1647312896
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 64
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 16
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=64 ram_slots=16; estimate gpu 11913 MiB, host 4414 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c03",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c03",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "0",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "2038431744",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "2048",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "8153726976"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c04",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 7,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 64
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 16
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=64 ram_slots=16; estimate gpu 10538 MiB, host 4414 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c04",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 7,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c04",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "2038431744",
+          "TETRAEDER_EXIT_THREADS": "7",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "8153726976"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 16
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c05",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 64
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 32
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 32
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=64 ram_slots=32; estimate gpu 10538 MiB, host 6358 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c05",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c05",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "4076863488",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "8153726976"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 64,
+          "ram_slots": 32
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c06",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 32
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 24
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=32 ram_slots=24; estimate gpu 6650 MiB, host 5386 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c06",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c06",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3057647616",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "4076863488"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c07",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": false
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 32
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 24
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=32 ram_slots=24; estimate gpu 6650 MiB, host 5386 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c07",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c07",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "0",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3057647616",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "4076863488"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c08",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 2048,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 1647312896
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 32
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 24
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=32 ram_slots=24; estimate gpu 8025 MiB, host 5386 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c08",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c08",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3057647616",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "2048",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "4076863488"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c09",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 2048,
+            "op_offload": false
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 1647312896
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 32
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 24
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=32 ram_slots=24; estimate gpu 8025 MiB, host 5386 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c09",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c09",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "0",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3057647616",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "2048",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "4076863488"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c10",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 7,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 32
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 24
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=32 ram_slots=24; estimate gpu 6650 MiB, host 5386 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c10",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 7,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c10",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3057647616",
+          "TETRAEDER_EXIT_THREADS": "7",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "4076863488"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 24
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c11",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 32
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 48
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 48
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=32 ram_slots=48; estimate gpu 6650 MiB, host 8302 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c11",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c11",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "6115295232",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "4076863488"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 32,
+          "ram_slots": 48
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c12",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 16
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 28
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=16 ram_slots=28; estimate gpu 4706 MiB, host 5872 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c12",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c12",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3567255552",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "2038431744"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c13",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": false
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 16
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 28
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=16 ram_slots=28; estimate gpu 4706 MiB, host 5872 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c13",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c13",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "0",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3567255552",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "2038431744"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c14",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 2048,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 1647312896
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 16
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 28
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=16 ram_slots=28; estimate gpu 6081 MiB, host 5872 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c14",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c14",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3567255552",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "2048",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "2038431744"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c15",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 2048,
+            "op_offload": false
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 1647312896
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 16
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 28
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=16 ram_slots=28; estimate gpu 6081 MiB, host 5872 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c15",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c15",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "0",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3567255552",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "2048",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "2038431744"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c16",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 7,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 16
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 28
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=16 ram_slots=28; estimate gpu 4706 MiB, host 5872 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c16",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 7,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c16",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3567255552",
+          "TETRAEDER_EXIT_THREADS": "7",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "2038431744"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 28
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c17",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 16
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 56
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 56
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=16 ram_slots=56; estimate gpu 4706 MiB, host 9274 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c17",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c17",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "7134511104",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "2038431744"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 16,
+          "ram_slots": 56
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c18",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 8
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 30
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 30
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=8 ram_slots=30; estimate gpu 3734 MiB, host 6115 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c18",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c18",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3822059520",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 30
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c19",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": false
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 8
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 30
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 30
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=8 ram_slots=30; estimate gpu 3734 MiB, host 6115 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c19",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c19",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "0",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3822059520",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 30
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c20",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 2048,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 1647312896
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 8
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 30
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 30
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=8 ram_slots=30; estimate gpu 5109 MiB, host 6115 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c20",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c20",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3822059520",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "2048",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 30
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c21",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 7,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 8
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 30
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 30
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=8 ram_slots=30; estimate gpu 3734 MiB, host 6115 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c21",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 7,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c21",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3822059520",
+          "TETRAEDER_EXIT_THREADS": "7",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 30
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c22",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 8
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 60
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 60
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=8 ram_slots=60; estimate gpu 3734 MiB, host 9760 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c22",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c22",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "7644119040",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 60
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "c23",
+        "plan": {
+          "model": "qwen3-30b-a3b",
+          "knobs": {
+            "prefill_micro_batches": 1,
+            "cuda_graphs": true,
+            "threads": 15,
+            "ubatch": 256,
+            "op_offload": true
+          },
+          "replicas": [
+            {
+              "stages": [
+                {
+                  "layers": [
+                    0,
+                    48
+                  ],
+                  "devices": [
+                    "gpu0",
+                    "cpu0"
+                  ],
+                  "tp": 1,
+                  "ep": 1,
+                  "assign": [
+                    {
+                      "units": {
+                        "kinds": [
+                          "embed"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "attn",
+                          "mlp",
+                          "head"
+                        ]
+                      },
+                      "home": [
+                        "gpu0"
+                      ],
+                      "format": "Q4_K"
+                    },
+                    {
+                      "units": {
+                        "kinds": [
+                          "expert"
+                        ]
+                      },
+                      "home": [
+                        "cpu0"
+                      ],
+                      "format": "Q4_K"
+                    }
+                  ],
+                  "kv": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 226492416
+                    }
+                  ],
+                  "workspace": [
+                    {
+                      "device": "gpu0",
+                      "bytes": 205914112
+                    }
+                  ],
+                  "expert_cache": [
+                    {
+                      "device": "gpu0",
+                      "slots": 8
+                    },
+                    {
+                      "device": "cpu0",
+                      "slots": 120
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "engine": "builder",
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 120
+        },
+        "prompt": 2048,
+        "gen": 128,
+        "notes": [
+          "builder vram_slots=8 ram_slots=120; estimate gpu 3734 MiB, host 17050 MiB"
+        ]
+      },
+      "lowered_args": [],
+      "variant": {
+        "id": "cand-c23",
+        "group": "candidate",
+        "device": "cuda",
+        "threads": 15,
+        "args": [],
+        "prompt": 2048,
+        "gen": 128,
+        "candidate": "c23",
+        "env": {
+          "TETRAEDER_EXIT_DECODE": "128",
+          "TETRAEDER_EXIT_GPU": "1",
+          "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+          "TETRAEDER_EXIT_PREFILL": "2048",
+          "TETRAEDER_EXIT_RAM_SLOT_BYTES": "15288238080",
+          "TETRAEDER_EXIT_THREADS": "15",
+          "TETRAEDER_EXIT_UBATCH": "256",
+          "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+        },
+        "placement": {
+          "kind": "builder",
+          "vram_slots": 8,
+          "ram_slots": 120
+        }
+      }
+    }
+  ],
+  "anchors": [
+    {
+      "id": "anchor-bld-ram-all",
+      "group": "anchor",
+      "device": "cuda",
+      "threads": 15,
+      "args": [],
+      "prompt": 2048,
+      "gen": 128,
+      "env": {
+        "TETRAEDER_EXIT_DECODE": "128",
+        "TETRAEDER_EXIT_GPU": "1",
+        "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+        "TETRAEDER_EXIT_PREFILL": "2048",
+        "TETRAEDER_EXIT_RAM_SLOT_BYTES": "16307453952",
+        "TETRAEDER_EXIT_THREADS": "15",
+        "TETRAEDER_EXIT_UBATCH": "256",
+        "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+      },
+      "placement": {
+        "kind": "builder",
+        "vram_slots": 8,
+        "ram_slots": 128
+      }
+    },
+    {
+      "id": "anchor-bld-vram-small",
+      "group": "anchor",
+      "device": "cuda",
+      "threads": 15,
+      "args": [],
+      "prompt": 2048,
+      "gen": 128,
+      "env": {
+        "TETRAEDER_EXIT_DECODE": "128",
+        "TETRAEDER_EXIT_GPU": "1",
+        "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+        "TETRAEDER_EXIT_PREFILL": "2048",
+        "TETRAEDER_EXIT_RAM_SLOT_BYTES": "3822059520",
+        "TETRAEDER_EXIT_THREADS": "15",
+        "TETRAEDER_EXIT_UBATCH": "256",
+        "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+      },
+      "placement": {
+        "kind": "builder",
+        "vram_slots": 8,
+        "ram_slots": 30
+      }
+    },
+    {
+      "id": "anchor-bld-vram-large",
+      "group": "anchor",
+      "device": "cuda",
+      "threads": 15,
+      "args": [],
+      "prompt": 2048,
+      "gen": 128,
+      "env": {
+        "TETRAEDER_EXIT_DECODE": "128",
+        "TETRAEDER_EXIT_GPU": "1",
+        "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+        "TETRAEDER_EXIT_PREFILL": "2048",
+        "TETRAEDER_EXIT_RAM_SLOT_BYTES": "8153726976",
+        "TETRAEDER_EXIT_THREADS": "15",
+        "TETRAEDER_EXIT_UBATCH": "256",
+        "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "8153726976"
+      },
+      "placement": {
+        "kind": "builder",
+        "vram_slots": 64,
+        "ram_slots": 64
+      }
+    },
+    {
+      "id": "anchor-bld-opo-off",
+      "group": "anchor",
+      "device": "cuda",
+      "threads": 15,
+      "args": [],
+      "prompt": 2048,
+      "gen": 128,
+      "env": {
+        "TETRAEDER_EXIT_DECODE": "128",
+        "TETRAEDER_EXIT_GPU": "1",
+        "TETRAEDER_EXIT_OP_OFFLOAD": "0",
+        "TETRAEDER_EXIT_PREFILL": "2048",
+        "TETRAEDER_EXIT_RAM_SLOT_BYTES": "16307453952",
+        "TETRAEDER_EXIT_THREADS": "15",
+        "TETRAEDER_EXIT_UBATCH": "256",
+        "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "1019215872"
+      },
+      "placement": {
+        "kind": "builder",
+        "vram_slots": 8,
+        "ram_slots": 128
+      }
+    }
+  ],
+  "baselines": [],
+  "dropped": [
+    [
+      "builder vram_slots=128 ram_slots=8",
+      "gpu estimate 19204208640 B > budget 14000000000 B"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=16 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=16 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=16 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=32 threads=15 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=32 threads=15 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=32 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=32 threads=7 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=32 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=32 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=32 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=64 threads=15 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=64 threads=15 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=64 threads=15 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=64 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=64 threads=7 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=64 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=64 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=64 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=24 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=24 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=24 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=48 threads=15 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=48 threads=15 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=48 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=48 threads=7 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=48 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=48 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=48 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=96 threads=15 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=96 threads=15 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=96 threads=15 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=96 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=96 threads=7 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=96 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=96 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=32 ram_slots=96 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=28 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=28 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=28 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=56 threads=15 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=56 threads=15 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=56 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=56 threads=7 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=56 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=56 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=56 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=112 threads=15 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=112 threads=15 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=112 threads=15 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=112 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=112 threads=7 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=112 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=112 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=16 ram_slots=112 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=30 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=30 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=30 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=30 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=60 threads=15 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=60 threads=15 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=60 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=60 threads=7 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=60 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=60 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=60 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=120 threads=15 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=120 threads=15 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=120 threads=15 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=120 threads=7 ubatch=256 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=120 threads=7 ubatch=256 op_offload=false",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=120 threads=7 ubatch=2048 op_offload=true",
+      "thinned to 24"
+    ],
+    [
+      "builder vram_slots=8 ram_slots=120 threads=7 ubatch=2048 op_offload=false",
+      "thinned to 24"
+    ]
+  ]
+}
