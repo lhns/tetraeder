@@ -293,6 +293,19 @@ impl Model {
         unsafe { sys::llama_vocab_bos(self.vocab) }
     }
 
+    /// End-of-sequence token, or a negative value when the vocabulary has none.
+    pub fn eos(&self) -> Token {
+        // SAFETY: as `n_vocab`.
+        unsafe { sys::llama_vocab_eos(self.vocab) }
+    }
+
+    /// Control tokens (`<|im_start|>`, BOS, EOS, ...): their text is syntax, not content.
+    pub fn is_control(&self, token: Token) -> bool {
+        // SAFETY: as `n_vocab`.
+        let attr = unsafe { sys::llama_vocab_get_attr(self.vocab, token) } as i64;
+        attr & sys::LLAMA_TOKEN_ATTR_CONTROL as i64 != 0
+    }
+
     pub fn is_eog(&self, token: Token) -> bool {
         // SAFETY: as `n_vocab`.
         unsafe { sys::llama_vocab_is_eog(self.vocab, token) }

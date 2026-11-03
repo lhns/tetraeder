@@ -1,0 +1,10 @@
+{
+  "box": "vast 58924111, host 116365, RTX 3090, 11 threads",
+  "suite": "tests/conformance (openai 3.42.1 and anthropic 2.4.0 SDKs), real-model mode: fake-only tests skipped",
+  "launched": "2026-11-03 07:32 local, branch track-d-gateway",
+  "runs": {
+    "q8b": {"model": "Qwen3-8B-Q4_K_M", "engine": "libllama (scheduler)", "pytest_rc": 0, "requests_logged": 49},
+    "q30b": {"model": "Qwen3-30B-A3B-Q4_K_M", "engine": "Qwen3 MoE builder (scheduler)", "pytest_rc": 0, "requests_logged": 48}
+  },
+  "note": "pytest rc 0 (all collected real-model tests passed) from runs/vast/gateway_box.log, lines conformance2; the junit XML was not fetched (the results filter takes json, jsonl and log only; the script now writes conformance-<m>.pytest.log). The 400 lines in the request logs are the error-mapping tests."
+}

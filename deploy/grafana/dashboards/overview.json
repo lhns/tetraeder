@@ -1201,6 +1201,79 @@
           }
         }
       ]
+    },
+    {
+      "id": 35,
+      "title": "Prompt tokens from the prefix cache",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 90,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(tetraeder_tokens_total{tetraeder_token_direction=\"input\",tetraeder_token_cache=\"hit\"}[$__rate_interval])) / sum(rate(tetraeder_tokens_total{tetraeder_token_direction=\"input\"}[$__rate_interval]))",
+          "legendFormat": "cached share",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "title": "Scheduler batch size",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 90,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(tetraeder_scheduler_batch_size_sum[$__rate_interval])) / sum(rate(tetraeder_scheduler_batch_size_count[$__rate_interval]))",
+          "legendFormat": "requests per step",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(tetraeder_kv_prefix_hits_total[$__rate_interval]))",
+          "legendFormat": "prefix hits/s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

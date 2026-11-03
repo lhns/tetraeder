@@ -8,7 +8,9 @@ use crate::chat::{
     ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
 };
 use crate::error::{GatewayError, OpenAiError};
-use crate::gateway::{Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt};
+use crate::gateway::{
+    Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, tag_generation,
+};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -360,9 +362,10 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     spec.format = response_format(req.response_format)?;
     spec.caller = req.user;
     let generation = gw.generate(spec, Operation::Chat).await?;
+    let gid = generation.id.clone();
     if req.stream {
         let usage = req.stream_options.is_some_and(|o| o.include_usage);
-        return Ok(sse(chat_stream(generation, usage)));
+        return Ok(tag_generation(sse(chat_stream(generation, usage)), &gid));
     }
     let (id, model, created) = (
         format!("chatcmpl-{}", generation.id),
@@ -382,7 +385,7 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         message["reasoning_content"] = Value::String(r);
     }
     let finish = c.finish.as_ref().map_or("stop", Finish::openai_reason);
-    Ok(Json(json!({
+    let resp = Json(json!({
         "id": id,
         "object": "chat.completion",
         "created": created,
@@ -390,7 +393,8 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         "choices": [{"index": 0, "message": message, "logprobs": null, "finish_reason": finish}],
         "usage": usage_json(&c.usage),
     }))
-    .into_response())
+    .into_response();
+    Ok(tag_generation(resp, &gid))
 }
 
 struct ChatStream {
@@ -510,10 +514,14 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
     spec.stop = stop_list(req.stop)?;
     spec.caller = req.user;
     let generation = gw.generate(spec, Operation::TextCompletion).await?;
+    let gid = generation.id.clone();
     let echo = req.echo.then_some(prompt);
     if req.stream {
         let usage = req.stream_options.is_some_and(|o| o.include_usage);
-        return Ok(sse(completion_stream(generation, usage, echo)));
+        return Ok(tag_generation(
+            sse(completion_stream(generation, usage, echo)),
+            &gid,
+        ));
     }
     let (id, model, created) = (
         format!("cmpl-{}", generation.id),
@@ -522,7 +530,7 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
     );
     let c = generation.collect().await?;
     let text = echo.unwrap_or_default() + &c.text;
-    Ok(Json(json!({
+    let resp = Json(json!({
         "id": id,
         "object": "text_completion",
         "created": created,
@@ -531,7 +539,8 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
                      "finish_reason": c.finish.as_ref().map_or("stop", Finish::openai_reason)}],
         "usage": usage_json(&c.usage),
     }))
-    .into_response())
+    .into_response();
+    Ok(tag_generation(resp, &gid))
 }
 
 fn completion_stream(

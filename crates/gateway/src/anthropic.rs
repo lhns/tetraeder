@@ -7,7 +7,9 @@ use crate::chat::{
     ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
 };
 use crate::error::{AnthropicError, GatewayError};
-use crate::gateway::{Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, new_id};
+use crate::gateway::{
+    Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, new_id, tag_generation,
+};
 use crate::openai::{parse_body, sse};
 use axum::Json;
 use axum::body::Bytes;
@@ -192,6 +194,21 @@ fn messages(system: Option<&Value>, raw: &[Value]) -> Result<Vec<ChatMessage>, G
                     }
                 }
                 out.push(a);
+            }
+            "system" => {
+                // Templates allow one leading system message and want alternating turns:
+                // a mid-conversation system message becomes a tagged user turn.
+                let text = format!(
+                    "<system>\n{}\n</system>",
+                    text_of(&m["content"], "system message")?
+                );
+                match out.last_mut() {
+                    Some(prev) if prev.role == "user" => {
+                        prev.content.push_str("\n\n");
+                        prev.content.push_str(&text);
+                    }
+                    _ => out.push(ChatMessage::new("user", text)),
+                }
             }
             r => {
                 return Err(GatewayError::InvalidRequest(format!(
@@ -392,8 +409,10 @@ async fn messages_inner(
     }
     let stream = req.stream;
     let generation = gw.generate(spec(req)?, Operation::Chat).await?;
+    let gid = generation.id.clone();
     if stream {
-        return Ok(sse(message_stream(generation, request_id.to_owned())));
+        let events = message_stream(generation, request_id.to_owned());
+        return Ok(tag_generation(sse(events), &gid));
     }
     let (id, model) = (format!("msg_{}", generation.id), generation.model.clone());
     let mut content: Vec<Value> = Vec::new();
@@ -417,7 +436,7 @@ async fn messages_inner(
         return Err(GatewayError::Internal("generation ended early".into()));
     };
     let (reason, seq) = stop_reason(&finish);
-    Ok(Json(json!({
+    let resp = Json(json!({
         "id": id,
         "type": "message",
         "role": "assistant",
@@ -427,7 +446,8 @@ async fn messages_inner(
         "stop_sequence": seq,
         "usage": usage_json(&usage),
     }))
-    .into_response())
+    .into_response();
+    Ok(tag_generation(resp, &gid))
 }
 
 /// Appends a segment to the content, merging with the previous block of the same kind.

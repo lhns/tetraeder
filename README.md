@@ -16,6 +16,29 @@ Targets Windows and Linux. Build and test: `cargo build --workspace && cargo tes
 
 A tetrahedron (German: Tetraeder) has four faces, one for each of the four parallel modes the engine combines: tensor, pipeline, expert and data parallel. The core idea of the project is that all four are shapes of one placement plan, which the planner chooses together. Four also fits the four memory tiers (VRAM, RAM, NVMe, remote node) and the four milestones.
 
+## Serving and Claude Code
+
+`tetraeder serve` runs the OpenAI API (`/v1/chat/completions`, `/v1/completions`) and the Anthropic API (`/v1/messages`, `/v1/messages/count_tokens`) on one port. It prints `listening on http://host:port` to stderr when it is ready.
+
+```
+# dense model through libllama
+tetraeder serve -m model.gguf --alias qwen --ctx 65536 --port 8080
+# Qwen3 MoE through the builder on GPU 0, experts streamed from disk if slots are short
+tetraeder serve -m Qwen3-30B-A3B-Q4_K_M.gguf --engine moe --alias qwen --ctx 65536 --expert-slots 64
+# scripted engine, no model (SDK tests)
+tetraeder serve --fake
+```
+
+One request generates at a time; others queue (`--max-queued`). The last conversation's KV cache is kept, so an agent that resends its whole history only pays for the new tokens.
+
+Claude Code:
+
+```
+ANTHROPIC_BASE_URL=http://127.0.0.1:8080 ANTHROPIC_AUTH_TOKEN=local ANTHROPIC_MODEL=qwen ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen claude
+```
+
+Claude Code also asks for its own `claude-*` model ids; `--accept-any-model` (or `--default-model <id>`) maps unknown ids to the served model. It sends 15K to 30K tokens of system prompt and tools on each turn, so start with `--ctx 65536` or more. `--request-log <file>` appends one JSON line per request (prompt, response, token counts, timings) for replay; it contains your code, so keep it local.
+
 ## Vast boxes
 
 All GPU work runs on ephemeral Vast.ai boxes through [taxameter](https://github.com/lhns/taxameter), a git dependency pinned by tag in `pyproject.toml`, configured in `taxameter.toml` (ADR 0021, 0029). Needs `uv`, `ssh`, `scp`, `tar` (Git Bash on Windows), the API key in `~/.config/vastai/vast_api_key` and the registered SSH key `~/.ssh/lrn_vast_ed25519`. State lives in `.vast/` (git-ignored). Rules for agents are in [AGENTS.md](AGENTS.md).

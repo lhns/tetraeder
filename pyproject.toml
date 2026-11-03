@@ -8,8 +8,11 @@ dependencies = []
 
 [dependency-groups]
 dev = ["pytest>=8", "taxameter", "pyyaml>=6"]
+# SDK clients and schema validation for tests/conformance (ADR 0046)
+conformance = ["openai>=1.60", "anthropic>=0.50", "jsonschema>=4", "pydantic>=2", "httpx"]
 
 [tool.uv]
+default-groups = ["dev", "conformance"]
 package = false
 
 [tool.uv.sources]

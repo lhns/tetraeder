@@ -2,6 +2,7 @@
 
 use crate::error::{AnthropicError, GatewayError, OpenAiError};
 use crate::gateway::{Gateway, new_id};
+use crate::reqlog::{RequestLog, log_requests};
 use crate::{anthropic, openai};
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Path, State};
@@ -46,7 +47,13 @@ async fn not_found(h: HeaderMap, uri: Uri) -> Response {
 /// Routes: `/v1/chat/completions`, `/v1/completions`, `/v1/messages`,
 /// `/v1/messages/count_tokens`, `/v1/models`, `/v1/models/{id}`.
 pub fn router(gw: Arc<Gateway>) -> Router {
-    Router::new()
+    router_with(gw, None)
+}
+
+/// [`router`] with an optional request log (ADR 0046). The log must also be the gateway's
+/// cost sink to fill `usage` and `cost`.
+pub fn router_with(gw: Arc<Gateway>, log: Option<Arc<RequestLog>>) -> Router {
+    let app = Router::new()
         .route("/v1/chat/completions", post(openai::chat_completions))
         .route("/v1/completions", post(openai::completions))
         .route("/v1/messages", post(anthropic::messages_handler))
@@ -55,10 +62,23 @@ pub fn router(gw: Arc<Gateway>) -> Router {
         .route("/v1/models/{id}", get(model))
         .fallback(not_found)
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
-        .with_state(gw)
+        .with_state(gw);
+    match log {
+        Some(log) => app.layer(axum::middleware::from_fn_with_state(log, log_requests)),
+        None => app,
+    }
 }
 
 /// Serves the router on `listener` until the future is dropped or fails.
 pub async fn serve(listener: tokio::net::TcpListener, gw: Arc<Gateway>) -> std::io::Result<()> {
     axum::serve(listener, router(gw)).await
+}
+
+/// [`serve`] with a request log.
+pub async fn serve_with(
+    listener: tokio::net::TcpListener,
+    gw: Arc<Gateway>,
+    log: Option<Arc<RequestLog>>,
+) -> std::io::Result<()> {
+    axum::serve(listener, router_with(gw, log)).await
 }

@@ -47,3 +47,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0040](0040-planner-candidates-calibration-and-scoring.md) | Planner: executable candidates, a cost model calibrated from anchor runs, scored by regret and rank (Proposed) |
 | [0041](0041-detector-observation-faults-and-limits.md) | Bottleneck detector: one observation type, faults separate from the limiting resource, advisor report only (Proposed) |
 | [0042](0042-slo-burn-rate-alerts-and-drain-restart-replanning.md) | SLO burn-rate alerts and drain-and-restart replanning (Proposed) |
+| [0046](0046-serving-real-engines-behind-the-gateway.md) | Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log |

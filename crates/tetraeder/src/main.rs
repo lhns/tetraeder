@@ -4,6 +4,7 @@ mod bench;
 mod engine_args;
 mod plan;
 mod run;
+mod serve;
 mod top;
 
 use clap::{Parser, Subcommand};
@@ -25,6 +26,8 @@ enum Command {
     Bench(bench::BenchArgs),
     /// Planner inputs and tools.
     Plan(plan::PlanArgs),
+    /// OpenAI and Anthropic APIs over an engine.
+    Serve(serve::ServeArgs),
 }
 
 fn main() -> std::process::ExitCode {
@@ -36,6 +39,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::Run(args)) => run::run(&args),
         Some(Command::Bench(args)) => bench::run(&args),
         Some(Command::Plan(args)) => plan::run(&args),
+        Some(Command::Serve(args)) => serve::run(&args),
         None => {
             println!("tetraeder {}", env!("CARGO_PKG_VERSION"));
             Ok(())

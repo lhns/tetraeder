@@ -94,6 +94,8 @@ pub struct Metrics {
     prefetch: Counter<u64>,
     prefetch_wasted_bytes: Counter<u64>,
     prefetch_accuracy: Histogram<f64>,
+    batch_size: Histogram<f64>,
+    prefix_hits: Counter<u64>,
     spec_acceptance: Histogram<f64>,
     spec_drafted: Counter<u64>,
     spec_accepted: Counter<u64>,
@@ -192,6 +194,17 @@ impl Metrics {
                 .with_unit("1")
                 .with_description("Share of predicted experts the router chose, per layer step")
                 .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                .build(),
+            batch_size: meter
+                .f64_histogram("tetraeder.scheduler.batch.size")
+                .with_unit("{request}")
+                .with_description("Requests decoded together per scheduler step")
+                .with_boundaries(vec![1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0])
+                .build(),
+            prefix_hits: meter
+                .u64_counter("tetraeder.kv.prefix.hits")
+                .with_unit("{request}")
+                .with_description("Requests that reused a cached prompt prefix")
                 .build(),
             spec_acceptance: meter
                 .f64_histogram("tetraeder.spec.acceptance")
@@ -391,6 +404,16 @@ impl Metrics {
     pub fn expert_prefetch_accuracy(&self, layer: u32, accuracy: f64) {
         self.prefetch_accuracy
             .record(accuracy, &[KeyValue::new(attr::LAYER, i64::from(layer))]);
+    }
+
+    /// Requests in one scheduler step.
+    pub fn scheduler_batch(&self, size: u32) {
+        self.batch_size.record(f64::from(size), &[]);
+    }
+
+    /// A request that reused a cached prompt prefix.
+    pub fn kv_prefix_hit(&self) {
+        self.prefix_hits.add(1, &[]);
     }
 
     /// One verify step that carried `drafted` > 0 draft tokens of which `accepted` matched.
