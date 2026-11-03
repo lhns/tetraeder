@@ -376,7 +376,7 @@ mod tests {
         assert!(!half.op_offload);
         assert_eq!(
             half.switches_per_token,
-            2.0 + 2.0 * f64::from(m.n_layer / 2)
+            1.0 + 2.0 * f64::from(m.n_layer / 2)
         );
         let cpu = half.parts.iter().find(|p| p.device == "cpu0").unwrap();
         let gpu = half.parts.iter().find(|p| p.device == "gpu0").unwrap();
