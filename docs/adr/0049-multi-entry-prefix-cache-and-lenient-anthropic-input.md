@@ -7,7 +7,7 @@ Status: Accepted (Phase 3b). Extends ADR 0046; Phase 4's `kvcache` prefix tree r
 The Claude Code proxy run (bench/results/20261103/claude-code-proxy, ADR 0046 "Measured") found two gaps against llama-server on the same model and tasks:
 
 - Prompt tokens served from cache: 85% against 94%. ADR 0046 keeps one sequence; Claude Code interleaves side requests with a different prefix, which evict the main conversation (some requests reused 22 tokens). llama-server keeps evicted prompts in host RAM: its logs show `selected slot by LCP similarity` before every task and `making room for prompt cache entry, removing oldest entry (size = 1261 to 6760 MiB)` (server-llama-server-r1.log), the prompt cache of `--cache-ram` (default 8192 MiB, llama.cpp PR 16391).
-- 12 requests (4 bursts of 3) got a 400 in about 2 ms that llama-server accepted: rejected while converting or rendering the request. ADR 0028 rejects images, unknown content blocks and assistant prefill; llama-server accepts more.
+- 12 requests (4 bursts of 3, Claude Code's retries) got a 400 that llama-server accepted: `tool_result content: block type 'tool_reference' is not supported here` (the proxy logs' `error_message`). Claude Code's tool search answers with `tool_reference` blocks for tools sent with `defer_loading: true`. ADR 0028 also rejects images, other unknown blocks and assistant prefill; llama-server accepts more.
 
 ## Decision
 
@@ -22,7 +22,7 @@ Backends gain `snapshot() -> Snapshot` (the cached rows as host bytes plus their
 
 Metrics: `tetraeder.kv.prefix.hits` gains `source` (`live`, `ram`); new `tetraeder.kv.prefix.evictions` (counter), `tetraeder.kv.prefix.bytes` (gauge, host bytes held), `tetraeder.kv.prefix.restore.duration` (histogram). Dashboard panel for hits by source, evictions and bytes; alert `PrefixCacheThrash` when evictions outnumber RAM hits for 15 minutes.
 
-**Lenient Anthropic input.** What llama-server accepts is accepted: unknown content block types are dropped with a warning; image and document blocks become a text placeholder (document text sources become their text); `tool_result` content lists keep their text, `is_error` is kept as an `Error:` prefix; empty text blocks and `cache_control` anywhere are ignored. A final assistant message is a prefill: the prompt is rendered without the generation prompt and cut after the prefill text (llama-server's `continue_final_message`); the response continues it. Template render errors are fixed by normalizing messages before rendering, not by rejecting them. Each shape found in Claude Code traffic gets a conformance test.
+**Lenient Anthropic input.** What llama-server accepts is accepted: unknown content block types are dropped with a warning; a `tool_reference` becomes a line naming the loaded tool, and tools with `defer_loading` are rendered like the others; image and document blocks become a text placeholder (document text sources become their text); `tool_result` content lists keep their text, `is_error` is kept as an `Error:` prefix; empty text blocks and `cache_control` anywhere are ignored. A final assistant message is a prefill: the prompt is rendered without the generation prompt and cut after the prefill text (llama-server's `continue_final_message`); the response continues it. Template render errors are fixed by normalizing messages before rendering, not by rejecting them. Each shape found in Claude Code traffic gets a conformance test.
 
 ## Consequences
 
