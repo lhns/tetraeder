@@ -15,6 +15,19 @@ use tetraeder_plan::Format;
 pub enum QuantCommand {
     /// Convert tensors to target formats and write a GGUF, optionally split by tensor groups.
     Export(ExportArgs),
+    /// Print the tensor formats a plan assigns (`{"tensor": "FORMAT"}`), the input of
+    /// `export --formats` and of scripts/quality/compare_mix.py `--mix`.
+    Formats(FormatsArgs),
+}
+
+#[derive(Args)]
+pub struct FormatsArgs {
+    /// Source GGUF (the first shard of a split model).
+    #[arg(long)]
+    model: PathBuf,
+    /// Plan TOML (ADR 0027); formats of its first replica.
+    #[arg(long)]
+    plan: PathBuf,
 }
 
 #[derive(Args)]
@@ -56,7 +69,20 @@ fn parse_format(s: &str) -> Result<Format, String> {
 pub fn run(cmd: &QuantCommand) -> anyhow::Result<()> {
     match cmd {
         QuantCommand::Export(a) => export(a),
+        QuantCommand::Formats(a) => plan_formats(a),
     }
+}
+
+fn plan_formats(a: &FormatsArgs) -> anyhow::Result<()> {
+    let file = tetraeder_model::ModelFile::open(&a.model)
+        .with_context(|| format!("opening {}", a.model.display()))?;
+    let s = std::fs::read_to_string(&a.plan)
+        .with_context(|| format!("reading {}", a.plan.display()))?;
+    let plan = tetraeder_plan::Plan::from_toml(&s)
+        .with_context(|| format!("parsing {}", a.plan.display()))?;
+    let map = file.tensor_formats(&plan)?;
+    println!("{}", serde_json::to_string_pretty(&map)?);
+    Ok(())
 }
 
 fn read_json(path: &Path) -> anyhow::Result<serde_json::Value> {

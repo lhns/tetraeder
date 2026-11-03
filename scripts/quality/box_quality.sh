@@ -27,14 +27,17 @@ case "$MODEL" in
     ppl_args="-ngl 99 -fa on"; ref_args="$ppl_args"; eval_chunks=${EVAL_CHUNKS:-100}
     ;;
   qwen3-30b)
-    b=BF16/Qwen3-30B-A3B-BF16
-    spec="unsloth/Qwen3-30B-A3B-GGUF:$b-00001-of-00002.gguf+$b-00002-of-00002.gguf"
-    src="$PWD/.hf_cache/unsloth__Qwen3-30B-A3B-GGUF/$b-00001-of-00002.gguf"
+    # An 80 GB disk holds neither the BF16 (61 GB) nor one copy per format: the source is Q8_0, split once into
+    # the group shards (then deleted), every format is converted from those shards one at a time (--drop-shards),
+    # and the presets are requantized from the same Q8_0. KL is measured against Q8_0 logits on both sides.
+    spec="Qwen/Qwen3-30B-A3B-GGUF:Qwen3-30B-A3B-Q8_0.gguf"
+    src="$PWD/.hf_cache/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q8_0.gguf"
     base=Q8_0; span=${SPAN:-12}; formats="${FORMATS:-Q6_K Q4_K Q3_K Q2_K}"
+    small_disk=1
     # Q8_0 (32 GB) on a 24 GB card: experts of the upper layers stay in RAM; big batches amortize their copies
     ot='blk\.(2[6-9]|3[0-9]|4[0-7])\.ffn_.*_exps\.=CPU'
     ppl_args="-ngl 99 -fa on -b 2048 -ub 2048 -ot ${OT:-$ot}"
-    ref_args="-ngl 99 -fa on -b 2048 -ub 2048 -ot exps=CPU"; eval_chunks=${EVAL_CHUNKS:-50}
+    ref_args="$ppl_args"; eval_chunks=${EVAL_CHUNKS:-50}
     ;;
   *) echo "unknown MODEL $MODEL"; exit 1 ;;
 esac
@@ -43,13 +46,28 @@ if [ ! -f /root/q/wikitext-2-raw/wiki.test.raw ]; then
   (cd /root/q && curl -fsSL -o wt.zip https://huggingface.co/datasets/ggml-org/ci/resolve/main/wikitext-2-raw-v1.zip \
     && python3 -c "import zipfile; zipfile.ZipFile('wt.zip').extractall('.')") || { echo "wikitext fetch failed"; exit 1; }
 fi
-if [ ! -f "$src" ]; then
+shards1="$W/shards/$base/m-00001-of-"
+if [ ! -f "$src" ] && ! ls "$shards1"* > /dev/null 2>&1; then
   echo "[$(date +%T)] fetch $spec"
   TAXAMETER_DIR="$PWD" bash "${TAXAMETER_HOME:-/root/.taxameter}/box.sh" models "$spec" || { echo "fetch failed"; exit 1; }
 fi
 [ -n "${FETCH_ONLY:-}" ] && { echo "[$(date +%T)] FETCH_DONE"; exit 0; }
 echo "[$(date +%T)] build"
 cargo build --release -p tetraeder -j 3 || { echo "build failed"; exit 1; }
+extra=""
+if [ -n "${small_disk:-}" ]; then
+  # the base shards replace the source file
+  if ! [ -f "$W/shards/$base/DONE" ]; then
+    python3 -c "import json,sys; sys.path.insert(0,'scripts/quality'); import qlib; kv,ts=qlib.read_model('$src'); \
+g=qlib.build_groups(ts, qlib.arch_layers(kv)[1], $span); json.dump([{'id':x['id'],'tensors':x['tensors']} for x in g], open('$W/groups.json','w'))"
+    mkdir -p "$W/shards/$base"
+    target/release/tetraeder quant export --model "$src" --groups "$W/groups.json" --out "$W/shards/$base/m" \
+      --threads "$threads" > "$W/shards/$base/export.json" || { echo "base split failed"; exit 1; }
+    tail -1 "$W/shards/$base/export.json" > "$W/shards/$base/DONE" && rm -f "$src"
+  fi
+  src=$(ls "$shards1"*.gguf)
+  extra="--drop-shards"
+fi
 
 for s in ${STEPS:-calibrate compare convert}; do
   echo "[$(date +%T)] step $s"
@@ -58,15 +76,15 @@ for s in ${STEPS:-calibrate compare convert}; do
     calibrate)
       python3 scripts/quality/calibrate.py --source "$src" --work "$W" --text /root/q/wikitext-2-raw/wiki.train.raw \
         --base "$base" --formats $formats --span "$span" --threads "$threads" --ppl-args "$ppl_args" \
-        --ref-args "$ref_args" --gpu "$gpu" --out "bench/quality/$MODEL.quality.json" || rc=$?
+        --ref-args "$ref_args" --gpu "$gpu" $extra --out "bench/quality/$MODEL.quality.json" || rc=$?
       # the per-format shards are not needed after the profile; the compare step needs the disk
-      [ "$rc" = 0 ] && [ -z "${KEEP_SHARDS:-}" ] && rm -rf "$W/shards" "$W/mix"
+      [ "$rc" = 0 ] && [ -z "${KEEP_SHARDS:-}" ] && [ -z "${small_disk:-}" ] && rm -rf "$W/shards" "$W/mix"
       ;;
     compare)
       python3 scripts/quality/compare_mix.py --source "$src" --profile "bench/quality/$MODEL.quality.json" \
         --work "$W/compare" --text /root/q/wikitext-2-raw/wiki.test.raw --chunks "$eval_chunks" --presets ${PRESETS:-Q4_K_M Q3_K_M Q5_K_M} \
         --threads "$threads" --ppl-args "$ppl_args" --ref-args "$ref_args" --gpu "$gpu" \
-        ${IK_TYPES:+--ik-bin /opt/ik_llama/bin --ik-types $IK_TYPES} \
+        ${IK_TYPES:+--ik-bin /opt/ik_llama/bin --ik-types $IK_TYPES} ${small_disk:+--allow-requantize --cleanup} \
         --out "$date_dir/quality-$MODEL.json" || rc=$?
       ;;
     convert)

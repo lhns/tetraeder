@@ -100,6 +100,8 @@ def main():
     ap.add_argument("--ik-bin", help="ik_llama.cpp bin dir with llama-quantize and llama-perplexity")
     ap.add_argument("--ik-types", nargs="*", default=[])
     ap.add_argument("--threads", type=int, required=True)
+    ap.add_argument("--allow-requantize", action="store_true", help="the source is already quantized (Q8_0)")
+    ap.add_argument("--cleanup", action="store_true", help="delete each model file after its evaluation (small disks)")
     ap.add_argument("--ppl-args", default="-ngl 99 -fa on")
     ap.add_argument("--ref-args", default=None)
     ap.add_argument("--llama-bin", default="/opt/llama.cpp/bin")
@@ -138,6 +140,8 @@ def main():
         r = {"name": name, "bytes": qlib.tensor_bytes(model), **qlib.parse_kld(text), "eval_seconds": dt, **extra}
         res["rows"].append(r)
         save()
+        if a.cleanup and Path(model) != Path(a.source):
+            Path(model).unlink(missing_ok=True)
         print(f"[{time.strftime('%T')}] {name}: {r['bytes'] / 1e9:.3f} GB, KL {r['kl']:.5f}, PPL {r.get('ppl')}",
               flush=True)
         return r
@@ -145,7 +149,8 @@ def main():
     def quantize(bin_dir, kind, out_path):
         if not out_path.exists():
             t = time.time()
-            cmd = [str(Path(bin_dir) / "llama-quantize"), a.source, str(out_path), kind, str(a.threads)]
+            cmd = [str(Path(bin_dir) / "llama-quantize")] + (["--allow-requantize"] if a.allow_requantize else [])
+            cmd += [a.source, str(out_path), kind, str(a.threads)]
             p = subprocess.run(cmd, capture_output=True, text=True)
             (work / "logs" / f"quantize-{out_path.stem}.log").write_text(p.stdout + p.stderr)
             if p.returncode != 0:
@@ -170,11 +175,11 @@ def main():
     budgets = []
     for preset in a.presets:
         pp = work / f"preset-{preset}.gguf"
-        secs = quantize(a.llama_bin, preset, pp)
-        b = qlib.tensor_bytes(pp)
-        budgets.append((preset, b))
         if f"preset-{preset}" not in done:
+            secs = quantize(a.llama_bin, preset, pp)
             evaluate(f"preset-{preset}", pp, a.llama_bin, ref, {"tool": "llama.cpp", "quantize_seconds": secs})
+        b = next(r["bytes"] for r in res["rows"] if r["name"] == f"preset-{preset}")
+        budgets.append((preset, b))
         name = f"greedy-at-{preset}"
         if name not in done:
             choice, est_bytes = greedy_mix(profile, b)
@@ -191,12 +196,12 @@ def main():
         ik_ref = ref_logits(a.ik_bin, "-ik")
         for kind in a.ik_types:
             pp = work / f"ik-{kind}.gguf"
-            secs = quantize(a.ik_bin, kind, pp)
             if f"ik-{kind}" not in done:
+                secs = quantize(a.ik_bin, kind, pp)
                 evaluate(f"ik-{kind}", pp, a.ik_bin, ik_ref, {"tool": "ik_llama.cpp", "quantize_seconds": secs})
             name = f"greedy-at-ik-{kind}"
             if name not in done:
-                b = qlib.tensor_bytes(pp)
+                b = next(r["bytes"] for r in res["rows"] if r["name"] == f"ik-{kind}")
                 choice, _ = greedy_mix(profile, b)
                 mp = export(name, tensor_map(a.source, profile, choice))
                 # evaluated with ik_llama's tools too, so both sides share one reference file

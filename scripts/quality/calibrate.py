@@ -40,6 +40,9 @@ def main():
     ap.add_argument("--ppl-args", default="-ngl 99 -fa on", help="extra llama-perplexity args (offload)")
     ap.add_argument("--ref-args", default=None, help="llama-perplexity args for the reference run")
     ap.add_argument("--checks", type=int, default=4, help="random whole-mix additivity checks")
+    ap.add_argument("--drop-shards", action="store_true",
+                    help="small disks: convert one format at a time, delete it after its samples; checks are then "
+                         "uniform mixes only")
     ap.add_argument("--llama-bin", default="/opt/llama.cpp/bin")
     ap.add_argument("--tetraeder", default="target/release/tetraeder")
     ap.add_argument("--gpu", default="")
@@ -57,11 +60,15 @@ def main():
     groups_file.write_text(json.dumps([{"id": g["id"], "tensors": g["tensors"]} for g in groups]))
     print(f"[{time.strftime('%T')}] {arch}: {n_layer} layers, {len(groups)} groups, span {a.span}", flush=True)
 
-    # 1. One converted split model per format, shard i+1 = group i.
+    # 1. One converted split model per format, shard i+1 = group i (made when first needed).
     convert = {}
-    for fmt in [a.base] + [f for f in a.formats if f != a.base]:
+    shard_dirs = {}
+    fmts_all = [a.base] + [f for f in a.formats if f != a.base]
+
+    def ensure_shards(fmt):
         d = work / "shards" / fmt
         done = d / "DONE"
+        shard_dirs[fmt] = d
         if not done.exists():
             d.mkdir(parents=True, exist_ok=True)
             cmd = [a.tetraeder, "quant", "export", "--model", a.source, "--all", fmt, "--groups", str(groups_file),
@@ -78,7 +85,9 @@ def main():
             done.write_text(json.dumps(stats))
             print(f"[{time.strftime('%T')}] exported {fmt} in {stats['wall_seconds']:.0f} s", flush=True)
         convert[fmt] = json.loads(done.read_text())
-    shard_dirs = {f: work / "shards" / f for f in convert}
+
+    for fmt in fmts_all if not a.drop_shards else [a.base]:
+        ensure_shards(fmt)
 
     def group_bytes(fmt):
         _, ts = qlib.read_model(shard_dirs[fmt] / qlib.shard_name("m", 0, count))
@@ -133,6 +142,17 @@ def main():
         qlib.write_json(out, prof)
 
     base_choice = [a.base] * count
+
+    def check(name, mix):
+        """Additivity check: measured KL of a whole mix against the profile's estimate."""
+        choice = [a.base] + [mix[g["id"]] for g in groups]
+        r = measure(f"check-{name}", choice)
+        prof["checks"].append({"name": name, "formats": mix, "estimate": qlib.estimate(prof, mix),
+                               "measured": r["kl"], "ppl": r.get("ppl")})
+        save()
+        c = prof["checks"][-1]
+        print(f"[{time.strftime('%T')}] check {name}: estimate {c['estimate']:.5f} measured {c['measured']:.5f}",
+              flush=True)
     if prof["base"]["kl"] is None:
         r = measure("base", base_choice)
         prof["base"]["kl"] = r["kl"]
@@ -147,6 +167,9 @@ def main():
     for fmt in a.formats:
         if fmt == a.base:
             continue
+        if a.drop_shards and f"uniform-{fmt}" in {c["name"] for c in prof["checks"]}:
+            continue
+        ensure_shards(fmt)
         fb, _ = group_bytes(fmt)
         for i, g in enumerate(prof["groups"]):
             if any(e["format"] == fmt for e in g["entries"]):
@@ -158,8 +181,15 @@ def main():
                                  "kl_err": r.get("kl_err"), "same_top_p": r.get("same_top_p")})
             save()
             print(f"[{time.strftime('%T')}] {g['id']} {fmt}: KL {r['kl']:.6f} ({r['seconds']:.0f} s)", flush=True)
+        if a.drop_shards:
+            check(f"uniform-{fmt}", {g["id"]: fmt for g in groups})
+            shutil.rmtree(shard_dirs.pop(fmt))
 
     # 4. Additivity checks on whole mixes: uniform formats and random mixes.
+    if a.drop_shards:
+        save()
+        print("CALIBRATE_DONE", flush=True)
+        return
     rng = random.Random(42)
     fmts = [f for f in a.formats if f != a.base]
     wanted = [(f"uniform-{f}", {g["id"]: f for g in groups}) for f in fmts[:2]]
@@ -167,16 +197,8 @@ def main():
         wanted.append((f"random-{k}", {g["id"]: rng.choice(fmts + [a.base]) for g in groups}))
     have = {c["name"] for c in prof["checks"]}
     for name, mix in wanted:
-        if name in have:
-            continue
-        choice = [a.base] + [mix[g["id"]] for g in groups]
-        r = measure(f"check-{name}", choice)
-        prof["checks"].append({"name": name, "formats": mix, "estimate": qlib.estimate(prof, mix),
-                               "measured": r["kl"], "ppl": r.get("ppl")})
-        save()
-        c = prof["checks"][-1]
-        print(f"[{time.strftime('%T')}] check {name}: estimate {c['estimate']:.5f} measured {c['measured']:.5f}",
-              flush=True)
+        if name not in have:
+            check(name, mix)
     save()
     print("CALIBRATE_DONE", flush=True)
 

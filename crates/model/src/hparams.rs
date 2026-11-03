@@ -3,7 +3,8 @@
 use crate::convert::format_of;
 use crate::gguf::{Gguf, GgufError, Slab, TensorInfo};
 use std::path::Path;
-use tetraeder_plan::{Format, ModelDesc, RoleSize, UnitSize};
+use std::collections::BTreeMap;
+use tetraeder_plan::{Format, ModelDesc, Plan, RoleSize, UnitId, UnitSize};
 
 pub const ARCH: &str = "qwen3moe";
 
@@ -260,6 +261,56 @@ fn roles(kind: &str, parts: &[(&str, &TensorInfo, u64)]) -> Result<Vec<RoleSize>
             })
         })
         .collect()
+}
+
+/// GGUF tensor of each weight role (ADR 0047).
+const ROLE_TENSORS: [(&str, &str); 7] = [
+    ("attn.q", "attn_q"),
+    ("attn.k", "attn_k"),
+    ("attn.v", "attn_v"),
+    ("attn.o", "attn_output"),
+    ("expert.gate", "ffn_gate_exps"),
+    ("expert.up", "ffn_up_exps"),
+    ("expert.down", "ffn_down_exps"),
+];
+
+impl ModelFile {
+    /// Target format of every weight tensor the plan's first replica assigns (`LoadOptions::formats`,
+    /// `tetraeder quant formats`). Norms and the router are not listed; they keep their format.
+    /// Experts of one layer and role share a stacked tensor, so they must share a format.
+    pub fn tensor_formats(&self, plan: &Plan) -> Result<BTreeMap<String, Format>, GgufError> {
+        let desc = self.model_desc()?;
+        let mut out: BTreeMap<String, Format> = BTreeMap::new();
+        for (unit, uf) in plan.unit_formats(&desc, 0) {
+            let (layer, kind) = match unit {
+                UnitId::Embed => {
+                    out.insert(names::TOK_EMBD.into(), uf.format);
+                    continue;
+                }
+                UnitId::Head => {
+                    if !self.hparams.tied_output {
+                        out.insert(names::OUTPUT.into(), uf.format);
+                    }
+                    continue;
+                }
+                UnitId::Mlp(_) => continue,
+                UnitId::Attn(l) => (l, "attn."),
+                UnitId::Expert(l, _) => (l, "expert."),
+            };
+            for (role, tensor) in ROLE_TENSORS.iter().filter(|(r, _)| r.starts_with(kind)) {
+                let f = uf.roles.get(*role).copied().unwrap_or(uf.format);
+                let name = names::layer(layer, tensor);
+                if let Some(prev) = out.insert(name.clone(), f)
+                    && prev != f
+                {
+                    return Err(GgufError::Corrupt(format!(
+                        "experts of `{name}` get both {prev:?} and {f:?}; one stacked tensor has one format"
+                    )));
+                }
+            }
+        }
+        Ok(out)
+    }
 }
 
 fn plan_format(t: &TensorInfo) -> Result<Format, GgufError> {
