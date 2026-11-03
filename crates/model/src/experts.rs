@@ -153,6 +153,11 @@ struct InFlight {
 
 /// Cap on the reader's bounce buffer per shard: its reads are a few experts, not a layer step.
 const READER_BOUNCE: usize = 64 << 20;
+/// The reader's device read size and queue depth: a prefetch is a few experts of a few MB, which
+/// as whole-slab reads keep only about three requests in flight (box 58958565: 3.2 GB/s for the
+/// reader against 5.2 GB/s for the synchronous reads of the same layer steps).
+const READER_CHUNK: usize = 1 << 20;
+const READER_QUEUE_DEPTH: usize = 16;
 
 pub(crate) struct Streamer {
     /// The background reader writes into the RAM tier's memory: it comes first so that it is
@@ -279,6 +284,11 @@ impl Streamer {
                 };
                 let io = IoOptions {
                     bounce_bytes: cap,
+                    chunk_bytes: match cfg.io.chunk_bytes {
+                        0 => READER_CHUNK,
+                        n => n,
+                    },
+                    queue_depth: cfg.io.queue_depth.max(READER_QUEUE_DEPTH),
                     ..cfg.io
                 };
                 file.gguf

@@ -76,11 +76,19 @@ fi
 {
   echo "[$(date +%T)] start: threads $threads, memory $mem B (balloon ${balloon} B), ram tier $ram_bytes B, vram slots $vram_bytes B"
   nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks_throttle_reasons.active --format=csv
+  # build while the model downloads
+  cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run || rc=21
+  if want gpu-tests; then
+    # GPU checks on the synthetic fixtures (no model needed): logits against RAM slots and prefetch (ADR 0045)
+    echo "[$(date +%T)] start gpu-tests"
+    timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_experts       -- gpu_ --nocapture --test-threads 1 > "$date_dir/gpu-tests-$stamp.log" 2>&1
+    echo "[$(date +%T)] done gpu-tests rc=$?"
+    tail -20 "$date_dir/gpu-tests-$stamp.log"
+  fi
   echo "[$(date +%T)] waiting for the model"
   for _ in $(seq 1 1440); do grep -q FETCH_DONE runs/vast/fetch_exit.log 2> /dev/null && break; sleep 5; done
   grep FETCH_DONE runs/vast/fetch_exit.log | tail -1
   grep -q "FETCH_DONE rc=0" runs/vast/fetch_exit.log || { echo "model fetch failed"; rc=20; }
-  cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run || rc=21
 } >> "$log" 2>&1
 
 # exit_regime <name> <minutes> [ENV=VALUE...]: one harness run, JSON to exit-<name>-<stamp>.json
@@ -180,6 +188,22 @@ EOF
       # needs 4 B of shared memory per row (about 25k rows on Ampere); ubatch 4096 at top-8 is 32k (abort, 2026-11-02)
       deep=(TETRAEDER_EXIT_PREFILL=32768 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=64 TETRAEDER_EXIT_CTX=33024
         TETRAEDER_EXIT_OP_OFFLOAD=1)
+      # logit drift against libllama at 2K (ADR 0045): prefetch off and on, a smaller RAM tier, CUDA fusion off
+      short=(TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_UBATCH=2048 TETRAEDER_EXIT_DECODE=8 TETRAEDER_EXIT_CTX=4096
+        TETRAEDER_EXIT_OP_OFFLOAD=1)
+      exit_regime drift-ref 15 "${short[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit"
+      exit_regime drift-off 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0
+      exit_regime drift-on 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=1
+      exit_regime drift-small 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_EXIT_RAM_SLOT_BYTES=30000000000
+      exit_regime drift-nooffload 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_EXIT_OP_OFFLOAD=0
+      exit_regime drift-nooffload-on 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_OP_OFFLOAD=0
+      # the RAM groups on the CPU (exact over slot counts on the synthetic fixtures) with the smaller RAM tier: equal
+      # to drift-nooffload unless an expert's bytes depend on the slot count
+      exit_regime drift-nooffload-small 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_EXIT_OP_OFFLOAD=0         TETRAEDER_EXIT_RAM_SLOT_BYTES=30000000000
+      exit_regime drift-nofuse 15 "${short[@]}" TETRAEDER_EXIT_PREFETCH=0 GGML_CUDA_DISABLE_FUSION=1
+      # libllama's own sensitivity to how the same tokens are batched: the yardstick for the builder's drift
+      exit_regime drift-ref-ub512 15 "${short[@]}" TETRAEDER_EXIT_UBATCH=512 TETRAEDER_EXIT_ENGINE=libllama         TETRAEDER_EXIT_REF_OT="$ot_fit"
+      exit_regime drift-ref-nofuse 15 "${short[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit"         GGML_CUDA_DISABLE_FUSION=1
       # prefetch off and on (ADR 0038), paired
       exit_regime main 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=0 || rc=23
       exit_regime main-prefetch 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
@@ -193,6 +217,9 @@ EOF
       # llama.cpp on the same prompt tokens through libllama (exit_regime's reference engine): logit parity of the
       # builder at 32K (greedy, first-token top-10, margins) and the tuned -ot baseline on real text
       exit_regime reference 60 "${deep[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit" || rc=28
+      # KTransformers, then the default builder again: a second pair for the noise band
+      ktransformers
+      exit_regime main-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
       # are joined with ';'), then ik_llama.cpp with the same overrides (it was OOM-killed at 128 GB with mmap)
       baseline "$bench" exit-llama-ot-fit-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot "$ot_fit"
@@ -200,7 +227,6 @@ EOF
       # (and its -ot takes ',' between overrides)
       baseline "$ik_bench" exit-ik-ot-fit-d32k 40 -ub 2048 -p 2048 -n 0 -gp 32768,32 -ot "${ot_fit//;/,}"
       # other tracks' stages (speculative decoding) go here
-      ktransformers
       # Colibri last; 32K deep is out of reach (2046 tokens took 895 s), so only the short profile by default
       colibri short
       [ -n "${STAGES:-}" ] && colibri deep

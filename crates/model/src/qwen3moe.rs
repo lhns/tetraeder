@@ -1006,16 +1006,13 @@ impl Qwen3Moe {
                 // Resident experts run from the compute slots, the others from the RAM slots
                 // on the CPU, in chunks of the RAM slot count (ADR 0035).
                 let plan = streamer.plan_cpu(seg, &chosen)?;
+                // The next layers' reads start before this layer's own misses are read: the
+                // reader has direct files of its own, and the device serves both at once.
+                prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
+                set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
                 if plan.cpu.is_empty() {
                     let ids = map_ids(&chosen, &plan.compute, &plan.compute_slots);
                     slot.ids_map.get().set_i32(&ids)?;
-                    prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
-                    set_compute_threads(
-                        &self.cpu,
-                        self.cpu_threads,
-                        self.prefetch_threads,
-                        streamer,
-                    );
                     continue;
                 }
                 let cap_ram = group_cap(ExpertSrc::Ram, self.gpu, offload);
@@ -1048,8 +1045,6 @@ impl Qwen3Moe {
                         });
                     }
                 }
-                prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
-                set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
                 continue;
             }
             let chunks = streamer.plan(seg, &chosen)?;
@@ -1403,8 +1398,8 @@ fn load_weights(
     Ok((weights, buffer_size))
 }
 
-/// Starts the prefetch reads after layer `seg` is staged: a top-up of layer `seg + 1` from the
-/// fresh prediction, then layer `seg + 2` at depth 2.
+/// Starts the prefetch reads once layer `seg` is planned, before its own misses are read: a
+/// top-up of layer `seg + 1` from the fresh prediction, then layer `seg + 2` at depth 2.
 fn prefetch_ahead(
     streamer: &mut Streamer,
     file: &ModelFile,
@@ -1964,6 +1959,35 @@ mod graph_order {
             all.extend(ops(&g, to_state));
         }
         all
+    }
+
+    /// The expert prediction (ADR 0038) only appends nodes to a segment: the segment's own ops,
+    /// and with them the CUDA fusion windows of the router and the norms, keep their order.
+    #[test]
+    fn prediction_only_appends_to_a_segment() {
+        let m = model();
+        let h = m.file.hparams.clone();
+        let n_layer = h.n_layer as usize;
+        for (n, last_only) in [(1, false), (5, true)] {
+            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary).unwrap();
+            for seg in 0..=n_layer {
+                let build = |depth: usize| {
+                    let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
+                    let (g, _, _) =
+                        build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, last_only, depth, &[]);
+                    ops(&g, |_| false)
+                };
+                let plain = build(0);
+                for depth in [1, 2] {
+                    let pred = build(depth);
+                    assert_eq!(
+                        &pred[..plain.len()],
+                        &plain[..],
+                        "segment {seg}, n {n}, depth {depth}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

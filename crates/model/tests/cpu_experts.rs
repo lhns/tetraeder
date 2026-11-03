@@ -313,3 +313,106 @@ fn gpu_cpu_groups_match_resident() {
     );
     assert!(m.max_splits() > 1, "a mixed segment runs on both backends");
 }
+
+/// hardware: gpu (skips without a GPU device). The cpu miss policy with op offload on a GPU, as in
+/// the Phase 2 exit run: one prefill of 512 tokens (every RAM group above the 32-row offload
+/// threshold) and a few decode steps, for RAM slot counts that split the CPU experts into one,
+/// two or four groups, prefetch off and at depth 1 and 2, and the first configuration twice.
+/// Every configuration must give the same logits as the first one bit for bit: the RAM tier
+/// changes where an expert's bytes come from, not the expert matmul. Prints the largest
+/// difference per configuration either way (ADR 0045, the 235B logit offset).
+#[test]
+fn gpu_cpu_policy_logits_do_not_depend_on_ram_slots_or_prefetch() {
+    if !Backend::gpu_available() {
+        eprintln!("skip: no GPU device in this build or on this machine");
+        return;
+    }
+    let path = fixture();
+    let gpu = BackendChoice::Gpu { index: 0 };
+    let long: Vec<i32> = (0..512).map(|i| (i * 37 + 5) % 256).collect();
+    let run = |ram: usize, prefetch: bool, depth: usize| {
+        let o = LoadOptions {
+            op_offload: true,
+            prefetch,
+            prefetch_depth: depth,
+            ..opts(gpu, Some(ram))
+        };
+        let mut m = load(&path, &o);
+        let n_vocab = m.n_vocab();
+        let mut all = vec![m.eval(&long).unwrap()];
+        let mut next = argmax(&all[0][(long.len() - 1) * n_vocab..]) as i32;
+        for _ in 0..N_DECODE {
+            let l = m.eval(&[next]).unwrap();
+            next = argmax(&l) as i32;
+            all.push(l);
+        }
+        all
+    };
+    let want = run(32, false, 1);
+    let mut bad = Vec::new();
+    for (ram, prefetch, depth) in [
+        (32, false, 1),
+        (12, false, 1),
+        (6, false, 1),
+        (32, true, 1),
+        (12, true, 1),
+        (6, true, 1),
+        (12, true, 2),
+    ] {
+        let got = run(ram, prefetch, depth);
+        let mut worst = 0f32;
+        let mut bitwise = true;
+        for (a, b) in want.iter().zip(&got) {
+            for (x, y) in a.iter().zip(b) {
+                bitwise &= x.to_bits() == y.to_bits();
+                worst = worst.max((x - y).abs());
+            }
+        }
+        eprintln!(
+            "ram {ram} prefetch {prefetch} depth {depth}: bitwise {bitwise}, max |delta| {worst:e}"
+        );
+        if !bitwise {
+            bad.push((ram, prefetch, depth, worst));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "logits depend on the configuration: {bad:?}"
+    );
+}
+
+/// hardware: cpu. A 512-token prefill (about 128 pairs per expert, several RAM rounds and group
+/// graphs per layer) and decode under the cpu miss policy, prefetch off and at depth 1 and 2,
+/// against the resident builder: bitwise equal for every RAM slot count.
+#[test]
+fn cpu_long_prefill_is_exact_for_every_ram_slot_count() {
+    let path = fixture();
+    let long: Vec<i32> = (0..512).map(|i| (i * 37 + 5) % 256).collect();
+    let run = |o: &LoadOptions| {
+        let mut m = load(&path, o);
+        let n_vocab = m.n_vocab();
+        let mut all = vec![m.eval(&long).unwrap()];
+        let mut next = argmax(&all[0][(long.len() - 1) * n_vocab..]) as i32;
+        for _ in 0..N_DECODE {
+            let l = m.eval(&[next]).unwrap();
+            next = argmax(&l) as i32;
+            all.push(l);
+        }
+        all
+    };
+    let want = run(&opts(CPU, None));
+    for (ram, prefetch, depth) in [(12, false, 1), (6, false, 1), (12, true, 1), (6, true, 2)] {
+        let o = LoadOptions {
+            prefetch,
+            prefetch_depth: depth,
+            ..opts(CPU, Some(ram))
+        };
+        let got = run(&o);
+        for (i, (a, b)) in want.iter().zip(&got).enumerate() {
+            assert!(
+                a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits()),
+                "ram {ram} prefetch {prefetch} depth {depth}: eval {i} differs"
+            );
+        }
+    }
+}

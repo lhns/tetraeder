@@ -59,6 +59,9 @@ pub struct Options {
     /// Cap in bytes on the aligned bytes of one sub-batch of [`DirectFile::read_batch_with`].
     /// 0: 256 MiB. A single range larger than the cap gets a buffer of its own size.
     pub bounce_bytes: usize,
+    /// Largest single device read in bytes (a multiple of [`ALIGN`]). 0: 64 MiB. Smaller reads
+    /// put more of a small batch in flight at once (a few experts of a few MB each).
+    pub chunk_bytes: usize,
 }
 
 /// Default [`Options::bounce_bytes`].
@@ -154,6 +157,7 @@ pub struct DirectFile {
     /// Bounce buffer of `read_batch_with`: grown when a batch needs more, never shrunk.
     bounce: Mutex<Option<AlignedBuf>>,
     bounce_cap: usize,
+    chunk: usize,
 }
 
 impl std::fmt::Debug for DirectFile {
@@ -205,6 +209,11 @@ impl DirectFile {
                 DEFAULT_BOUNCE
             } else {
                 opts.bounce_bytes.next_multiple_of(ALIGN)
+            },
+            chunk: if opts.chunk_bytes == 0 {
+                MAX_CHUNK
+            } else {
+                opts.chunk_bytes.next_multiple_of(ALIGN).min(MAX_CHUNK)
             },
         };
         // Some mounts open with O_DIRECT and fail the first read.
@@ -281,7 +290,7 @@ impl DirectFile {
             stats.requested += r.dst.len() as u64;
             let mut at = 0;
             while at < r.dst.len() {
-                let n = (r.dst.len() - at).min(MAX_CHUNK);
+                let n = (r.dst.len() - at).min(self.chunk);
                 // SAFETY: dst is exclusively borrowed for this call and the jobs finish in it.
                 jobs.push(unsafe { Job::new(r.offset + at as u64, r.dst[at..].as_mut_ptr(), n) });
                 at += n;
@@ -376,7 +385,7 @@ impl DirectFile {
                     let first = jobs.len();
                     let mut at = 0;
                     while at < len {
-                        let n = (len - at).min(MAX_CHUNK);
+                        let n = (len - at).min(self.chunk);
                         // SAFETY: the guard keeps the buffer alive past the engine call, and
                         // the regions of the sub-batch do not overlap (`pos` advances by the
                         // aligned length).

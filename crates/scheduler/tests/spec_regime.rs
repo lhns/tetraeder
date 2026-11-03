@@ -326,7 +326,10 @@ fn spec_regime() {
     opts.n_ctx = n_ctx;
     opts.miss = MissPolicy::Cpu;
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
-    opts.prefetch = env_flag("TETRAEDER_EXIT_PREFETCH");
+    // Unset follows LoadOptions (prefetch on); `0` turns it off, `1` on.
+    if let Ok(v) = std::env::var("TETRAEDER_EXIT_PREFETCH") {
+        opts.prefetch = v == "1";
+    }
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
         None => opts.expert_slots = Some(env_u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize),
@@ -342,7 +345,13 @@ fn spec_regime() {
     let mut m = Qwen3Moe::load(&path, &opts).expect("builder loads");
     let mut draft = draft_gguf.as_ref().map(|p| {
         let d = DraftModel::load(p, n_ctx as u32, draft_gpu_layers, draft_threads, p_min)
-            .expect("draft model loads");
+            .unwrap_or_else(|e| {
+                panic!(
+                    "draft model loads: {e:?}. At 32K the draft needs about 4.4 GB of VRAM (0.6 GB of \
+                     weights, 3.8 GB of F16 KV) beside the builder's expert slots: lower \
+                     TETRAEDER_EXIT_VRAM_SLOT_BYTES by that much (scripts/spec_run.sh does)"
+                )
+            });
         d.check_vocab(m.n_vocab()).expect("draft shares the vocab");
         d
     });
