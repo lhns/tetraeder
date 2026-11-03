@@ -347,6 +347,7 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         req.model,
         Prompt::Chat {
             messages: messages(&req.messages)?,
+            prefill: None,
             tools,
             tool_choice: choice,
             parallel_tool_calls: req.parallel_tool_calls.unwrap_or(true),

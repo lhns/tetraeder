@@ -146,7 +146,14 @@ fn build_engine(
     telemetry: &Arc<Telemetry>,
 ) -> anyhow::Result<Arc<dyn GatewayEngine>> {
     if a.fake {
-        let mut e = FakeEngine::new(serve_script);
+        let mut e = match &a.chat_template_file {
+            Some(f) => {
+                let t = std::fs::read_to_string(f)
+                    .with_context(|| format!("cannot read chat template {}", f.display()))?;
+                FakeEngine::with_template(Some(t), serve_script)
+            }
+            None => FakeEngine::new(serve_script),
+        };
         e.set_model_id(a.alias.as_deref().unwrap_or("fake"));
         e.set_context_length(a.ctx);
         e.token_delay = Duration::from_millis(a.fake_token_ms);

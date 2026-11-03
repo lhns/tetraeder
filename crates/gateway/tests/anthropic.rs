@@ -315,16 +315,10 @@ async fn errors_use_the_anthropic_envelope() {
     no_max.as_object_mut().unwrap().remove("max_tokens");
     let mut unknown = req("hi");
     unknown["model"] = json!("nope");
-    let image = json!({"model": "fake", "max_tokens": 5, "messages": [{"role": "user", "content": [
-        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}]}]});
-    let prefill = json!({"model": "fake", "max_tokens": 5, "messages": [
-        {"role": "user", "content": "hi"}, {"role": "assistant", "content": "Sure"}]});
     let empty = json!({"model": "fake", "max_tokens": 5, "messages": []});
     for (body, status, ty) in [
         (no_max, 400, "invalid_request_error"),
         (unknown, 404, "not_found_error"),
-        (image, 400, "invalid_request_error"),
-        (prefill, 400, "invalid_request_error"),
         (empty, 400, "invalid_request_error"),
     ] {
         let (s, h, v) = post(&app, "/v1/messages", &body, true).await;

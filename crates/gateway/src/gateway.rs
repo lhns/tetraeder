@@ -70,6 +70,8 @@ impl Operation {
 pub enum Prompt {
     Chat {
         messages: Vec<ChatMessage>,
+        /// Text of a final assistant message the reply continues (Anthropic prefill).
+        prefill: Option<String>,
         tools: Vec<ToolDef>,
         tool_choice: ToolChoice,
         parallel_tool_calls: bool,
@@ -356,6 +358,7 @@ impl Gateway {
             Prompt::Text(t) => Ok((t.clone(), false)),
             Prompt::Chat {
                 messages,
+                prefill,
                 tools,
                 tool_choice,
                 kwargs,
@@ -378,9 +381,22 @@ impl Gateway {
                 } else {
                     tools
                 };
-                let text = tpl
-                    .render(messages, tools, true, kwargs)
-                    .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
+                let render = |msgs: &[ChatMessage], gen_prompt: bool| {
+                    tpl.render(msgs, tools, gen_prompt, kwargs)
+                        .map_err(|e| GatewayError::InvalidRequest(e.to_string()))
+                };
+                let text = match prefill {
+                    // Render the final assistant message and cut after its text; if the
+                    // template altered the text, fall back to the conversation without it.
+                    Some(p) => {
+                        let full = render(messages, false)?;
+                        match full.rfind(p.as_str()) {
+                            Some(i) => full[..i + p.len()].to_owned(),
+                            None => render(&messages[..messages.len() - 1], true)?,
+                        }
+                    }
+                    None => render(messages, true)?,
+                };
                 let open = st.think && text.trim_end().ends_with("<think>");
                 Ok((text, open))
             }

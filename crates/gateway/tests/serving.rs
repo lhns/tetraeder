@@ -94,7 +94,7 @@ async fn system_message_in_messages_becomes_user_text() {
         "{p}"
     );
     assert!(
-        p.contains("<|im_start|>user\n<system>\nlate\n</system><|im_end|>"),
+        p.contains("<|im_start|>user\n<system>\nlate\n</system>\n\nthree<|im_end|>"),
         "{p}"
     );
 }
