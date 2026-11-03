@@ -1,6 +1,6 @@
 # 0043. Speculative decoding in the scheduler: n-gram and draft-model drafts, batched verification
 
-Status: Proposed (pulled forward from Phase 4 for the Phase 2 exit regime).
+Status: Proposed (pulled forward from Phase 4 for the Phase 2 exit regime). Measured 2026-11-03: not a gain yet in the exit regime, see Results.
 
 ## Context
 
@@ -37,3 +37,25 @@ Plan rows 27 and 52 put speculative decoding (n-gram, draft model, MTP where the
 - Measurement (`crates/scheduler/tests/spec_regime.rs`, the exit regime's `TETRAEDER_EXIT_*` knobs plus `TETRAEDER_EXIT_SPEC_*`, driven by `scripts/spec_run.sh`): one prefill, then one long greedy decode whose 32-token blocks rotate between plain, n-gram and draft model, so every method sees the same cache history and none decodes tokens another already pulled into the RAM tier; then a plain replay of the whole continuation from the prefill checks the tokens. llama.cpp runs `llama-server` with the same `-ot` placement, once without and once with `-md` and the same draft (per-request speculative settings are compiled out of the pinned server, so these are two runs, each with its own prefill, which also resets the page cache to a post-prefill state). Reported per method: tok/s, acceptance, tokens per step, per-token profile and disk bytes per emitted token.
 - Speculation trades extra expert reads per step for fewer steps. If the expert union grows nearly linearly with k at the 235B's routing, the gain is small and adaptive k should fall back towards plain decoding; the measurement decides the default.
 - A draft model costs VRAM: Qwen3-0.6B Q8_0 is 0.6 GB plus 3.8 GB of F16 KV at 32K (28 layers, 8 KV heads of 128), inside the about 7 GB the exit placement leaves free on a 24 GB card.
+
+## Results (2026-11-03, box 58895206, host 34031, RTX 3090, 91.7 GB container, 5 threads)
+
+Files in bench/results/20261103/. Draft: Qwen3-0.6B Q8_0, fully on the GPU, greedy, p_min 0. Builder: `spec_regime.rs` with op offload and prefetch on (the exit configuration), 32K prefill of the exit prompt, then 3 rounds of 32-token blocks rotating plain, n-gram (adaptive), draft (adaptive, max 6) and draft (fixed 3, llama.cpp's default). llama.cpp: `llama-server` with the same `-ot` (layers 0 to 3 experts on the GPU), 128 tokens, once without and once with `-md ... --spec-type draft-simple` (n_max 3).
+
+| 235B, 32K natural text | tok/s | tokens per step | acceptance | verify step ms (rows) |
+|---|---|---|---|---|
+| builder plain | 2.67 | 1 | | 375 (1) |
+| builder draft, k=3 | 1.76 | 3.88 | 0.96 | 2178 (4) |
+| builder draft, adaptive | 1.13 | 6.87 | 0.98 | 6032 (7) |
+| builder n-gram, adaptive | 1.12 | 6.69 | 0.95 | 5943 (7) |
+| llama.cpp, no draft | 2.53 | 1 | | |
+| llama.cpp, draft n_max 3 | 2.47 | | 0.97 | |
+| llama.cpp code text 4K, no draft / draft | 3.13 / 2.64 | | 0.55 | |
+
+- **Exact on the box.** The plain replay of all 403 continuation tokens (every method mixed) equals the speculative output: on this text and this build, the CUDA and CPU kernel differences listed above did not flip a token.
+- **Verification costs more than it saves, in both engines.** Acceptance is very high (the continuation of the ADR text is predictable), yet a 4-row step costs 5.8x a 1-row step in the builder and llama.cpp gains nothing (0.98x natural, 0.84x code).
+- **Cause in the builder: op offload.** A CPU pair group with 4 or 7 tokens has 32 or 56 rows, which crosses ggml's op-offload batch threshold (32), so the step uploads every CPU-routed expert to the GPU over PCIe. A 1K-depth diagnostic (`spec-diag-tiled0` vs `spec-diag-nooffload`): 7-row steps 5560 ms with offload, 1087 ms without; 1-row steps unchanged. Without offload a verify step costs about 1.5x (4 rows) and 2.2x (7 rows) a 1-row step. With the main run's acceptance that projects to about 2.5x (k=3) to 3x (k=6) the plain decode rate, not measured yet.
+- **Forcing the tiled K-quant kernel for every row count** (`GGML_CPU_TILED_MM_FORCE=1`, `spec-diag-tiled1`) makes 1-row steps 2x slower; no help.
+- The adaptive policy behaves as designed: it picked k=6 on the high-acceptance main text (where its cost model was misled by the offload pathology only after the first steps) and mostly k=0 on the 1K diagnostic text with 0.14 n-gram acceptance.
+
+Decisions from this: (1) op offload must not apply to decode or verify steps: the threshold should count tokens, not pair rows, or the builder should offload only prefill ubatches (a change in `qwen3moe.rs`, owned by the Phase 2 track); (2) rerun the main pair with that fix before choosing defaults; speculation stays off by default until then.
