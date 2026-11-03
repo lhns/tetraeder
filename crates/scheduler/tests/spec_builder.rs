@@ -98,11 +98,11 @@ fn plain_with_margins(m: &mut Qwen3Moe) -> (Vec<i32>, Vec<f32>) {
 }
 
 /// `got` equals plain greedy `want` over their common length, or (without batch-invariant
-/// kernels) first differs where plain greedy was a near-tie.
-fn assert_agrees(got: &[i32], want: &[i32], margins: &[f32], what: &str) {
+/// kernels) first differs where plain greedy was a near-tie. Returns whether it is equal.
+fn assert_agrees(got: &[i32], want: &[i32], margins: &[f32], what: &str) -> bool {
     let n = got.len().min(want.len());
     let Some(i) = (0..n).find(|&i| got[i] != want[i]) else {
-        return;
+        return true;
     };
     assert!(
         !batch_invariant_kernels() && margins[i] < NEAR_TIE,
@@ -113,6 +113,7 @@ fn assert_agrees(got: &[i32], want: &[i32], margins: &[f32], what: &str) {
         "{what}: leaves plain greedy at a near-tie, position {i}, margin {}",
         margins[i]
     );
+    false
 }
 
 struct Oracle(Vec<i32>);
@@ -210,11 +211,11 @@ fn speculative_equals_plain(streaming: bool) {
             sp.generate(&mut m, Some(d.as_mut()), &mut h, N_GEN)
                 .unwrap();
             let what = format!("{len:?} {} (streaming {streaming})", d.method());
-            assert_agrees(&h, &want, &margins, &what);
+            let equal = assert_agrees(&h, &want, &margins, &what);
             assert_eq!(m.n_past(), h.len() - 1);
             let st = sp.stats();
             assert_eq!(st.emitted, st.accepted + st.steps);
-            if *all_accepted {
+            if *all_accepted && equal {
                 assert_eq!(st.accepted, st.drafted);
                 assert!(st.steps < N_GEN as u64, "the oracle must save steps");
             }
