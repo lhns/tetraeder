@@ -632,6 +632,20 @@ impl Qwen3Moe {
         self.n_past = 0;
     }
 
+    /// Rolls the cache back to its first `n_past` tokens. Rows above stay in the KV buffers but
+    /// `run()` masks every column above `n_past + i` and the next step overwrites them, so
+    /// nothing needs clearing (ADR 0043).
+    pub fn rewind(&mut self, n_past: usize) -> Result<()> {
+        if n_past > self.n_past {
+            return Err(ModelError::Invalid(format!(
+                "cannot rewind to {n_past}: only {} tokens cached",
+                self.n_past
+            )));
+        }
+        self.n_past = n_past;
+        Ok(())
+    }
+
     /// Runs `tokens` after the tokens already in the cache and returns the logits of every
     /// position, `tokens.len() * n_vocab` values, position-major.
     pub fn eval(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {

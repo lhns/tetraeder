@@ -245,3 +245,38 @@ fn gguf_listing_of_a_missing_file_is_an_error() {
         Err(LlamaError::Gguf(_))
     ));
 }
+
+#[test]
+fn seq_rm_rolls_the_cache_back_and_decoding_resumes() {
+    let path = require_model!();
+    let model = Arc::new(Model::load(&path, &cpu_params()).unwrap());
+    let prompt = model
+        .tokenize("The capital of France is", true, true)
+        .unwrap();
+    let mut ctx = Context::new(&model, &small_ctx()).unwrap();
+    let mut batch = Batch::new(128);
+    let n = prompt.len();
+    let feed = |ctx: &mut Context, batch: &mut Batch, from: usize| {
+        batch.clear();
+        for (i, &t) in prompt.iter().enumerate().skip(from) {
+            batch.push(t, i as i32, 0, i == n - 1).unwrap();
+        }
+        ctx.decode(batch).unwrap();
+        ctx.logits_ith(-1).unwrap().to_vec()
+    };
+    let first = feed(&mut ctx, &mut batch, 0);
+    assert_eq!(ctx.seq_pos_max(0), n as i32 - 1);
+    assert!(ctx.seq_rm(0, 2, -1));
+    assert_eq!(ctx.seq_pos_max(0), 1);
+    let again = feed(&mut ctx, &mut batch, 2);
+    assert_eq!(ctx.seq_pos_max(0), n as i32 - 1);
+    assert_eq!(first.len(), again.len());
+    let top = |l: &[f32]| {
+        l.iter()
+            .enumerate()
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .unwrap()
+            .0
+    };
+    assert_eq!(top(&first), top(&again));
+}
