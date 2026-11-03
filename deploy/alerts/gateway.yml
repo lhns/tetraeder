@@ -22,3 +22,13 @@ groups:
           severity: critical
         annotations:
           summary: "More than 1% of gateway requests fail with internal errors"
+      # Requests wait but the engine produces no output: a hung worker or a stuck backend.
+      - alert: GatewayStalled
+        expr: |
+          max(tetraeder_scheduler_queue_depth) > 0
+            and (sum(rate(tetraeder_tokens_total{tetraeder_token_direction="output"}[5m])) or vector(0)) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Requests are queued but the engine has produced no output tokens for 5 minutes"
