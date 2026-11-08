@@ -22,7 +22,7 @@ State at the end of the 2026-11-03 parallel-tracks session. Everything below is 
 5. **Planner dense fixture and detector campaign:** `taxameter run scripts/c_session.sh --env FIXTURES=dense --env FIXTURE_MIN=70` (Qwen3-30B-A3B and Qwen3-32B only), then score as `planner-dense`; the detector campaign follows in the same script. Then write the CI test that scores `detector/obs-*.json` against `manifest.jsonl`.
 6. **Builder slot-count candidates:** `scripts/planner_builder_campaign.sh` on Qwen3-30B-A3B, commit as `planner-moe-builder`.
 7. **ik_llama quant types** (IQ4_KS, IQ4_K on the 8B): add `llama-quantize` and `llama-perplexity` to the ik install in `docker/box/Dockerfile`, then a 15-minute run (command in Track B's report, `scripts/quality/box_quality.sh`). ik_llama inference on the 235B: record "cannot run within 128 GB".
-8. **Levers from Strata and Unsloth** (`docs/plan.md`, "Levers from Strata and llama.cpp's expert cache"), local work first:
+8. **Levers from Strata and Unsloth** (`docs/plan.md`, "Levers from Strata and llama.cpp's expert cache"), local work first. The first three are designed in ADR 0050 with briefs in `docs/levers-briefs.md` (the builder's CPU and GPU expert work and its own miss reads are serial today; low-bit KV is worth about 3% of decode here, its main value is draft-model room):
    - Low-bit KV in the builder: more expert slots, and room for the draft model. Likely the largest.
    - Check whether the builder's CPU and GPU expert work overlap within a layer; a possible part of the KTransformers gap.
    - Message-boundary and near-tail checkpoints for the prefix cache.
