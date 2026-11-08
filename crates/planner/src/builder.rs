@@ -27,10 +27,9 @@ pub fn slot_row_bytes(layout: &ModelLayout) -> u64 {
         .sum()
 }
 
-/// VRAM bytes of `slots` slots per layer: the slots plus the `n_used` zero parking entries that
-/// masked pairs use in overflow passes (ADR 0034).
+/// VRAM bytes of `slots` slots per layer. ADR 0035 removed ADR 0034's parking entries.
 pub fn vram_slot_bytes(layout: &ModelLayout, slots: u32) -> u64 {
-    u64::from(slots + layout.n_expert_used) * slot_row_bytes(layout)
+    u64::from(slots) * slot_row_bytes(layout)
 }
 
 /// Host bytes of `slots` RAM-tier slots per layer.
@@ -424,5 +423,14 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
             let f = footprint(&l, c.placement, c.ubatch(), &WORK);
             assert!(f.host <= b.ram_bytes, "{}", c.id);
         }
+    }
+
+    // hardware: none
+    #[test]
+    fn vram_slot_bytes_has_no_parking_rows() {
+        // ADR 0035 removed ADR 0034's parking entries: `slots` slots take `slots` rows.
+        let l = fixtures::moe();
+        assert_eq!(vram_slot_bytes(&l, 8), 8 * slot_row_bytes(&l));
+        assert_eq!(vram_slot_bytes(&l, 8), ram_slot_bytes(&l, 8));
     }
 }

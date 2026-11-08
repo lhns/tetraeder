@@ -225,7 +225,7 @@ pub fn footprint(
         f.compute_gpu =
             u64::from(ubatch) * (4 * u64::from(layout.n_vocab) + 64 * u64::from(layout.n_embd));
         if matches!(placement, Placement::Builder { .. }) {
-            // Overflow passes keep an f32 accumulator of n_used FFN outputs per row (ADR 0034).
+            // Pair groups write an f32 accumulator of n_used FFN outputs per row (ADR 0035).
             f.compute_gpu +=
                 u64::from(ubatch) * u64::from(layout.n_expert_used) * u64::from(layout.n_embd) * 4;
         }
