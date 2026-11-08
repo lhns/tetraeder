@@ -12,6 +12,10 @@
 # the 24 GB card with a bf16 KV cache at 32K, so the KV cache is fp8 (KT_KV_DTYPE=auto to change).
 # Same prompt text as scripts/exit_run.sh (/root/exit_prompt.txt), repeated and cut to the token count with the model's
 # tokenizer.
+# Host sampling (scripts/engine_sample.py, same columns as the builder in exit_run.sh): disk reads, major faults, CPU,
+# GPU, RSS and page cache, split into prefill and decode, written under "host" in the result JSON next to
+# kt_cpu_variant (the variant kt-kernel picked). KT_KERNEL_CPU_VARIANT=avx2 forces the AVX2 kernels (kt-kernel's
+# _cpu_detect.py reads it); HOST_DISK_DEV (MAJ:MIN) skips the disk probe.
 exec 8> /root/tetraeder_ktransformers_exit.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 [ $# -ge 4 ] || { echo "usage: $0 <model-first-shard> <threads> <ram-limit-bytes> <out-json> [deep|short]" >&2; exit 2; }
@@ -45,8 +49,11 @@ commit="v0.7.2 a02efe36b5802e7ca79a6b29146e01cf3b97d305 ($version)"
 srv_log="$work/server-$profile.log"
 res="$work/result-$profile.json"
 rss_file="$work/peak_rss_kb-$profile"
+samples="$work/samples-$profile.jsonl"
+summary="$work/host-$profile.json"
+variant_file="$work/cpu_variant-$profile"
 cmd_file="$work/command-$profile.txt"
-rm -f "$res" "$rss_file"
+rm -f "$res" "$rss_file" "$samples" "$summary" "$variant_file"
 : > "$srv_log"
 rc=0
 {
@@ -165,7 +172,8 @@ meta, t0, first, end = gen(ids, decode, True)
 n = meta["completion_tokens"]
 res = {"prompt_tokens": meta.get("prompt_tokens"), "decode_tokens": n, "ttft_s": first - t0, "total_s": end - t0,
        "prefill_tok_s": meta.get("prompt_tokens", len(ids)) / (first - t0),
-       "decode_tok_s": (n - 1) / (end - first) if n > 1 and end > first else None, "cached_tokens": meta.get("cached_tokens")}
+       "decode_tok_s": (n - 1) / (end - first) if n > 1 and end > first else None, "cached_tokens": meta.get("cached_tokens"),
+       "t_start": t0, "t_first": first, "t_end": end}
 json.dump(res, open(out, "w"))
 print(json.dumps(res), flush=True)
 EOF
@@ -206,9 +214,19 @@ EOF
     done
     if [ $up = 1 ]; then
       echo "[$(date +%T)] server up, request"
+    # the variant kt-kernel picks on this CPU (and with KT_KERNEL_CPU_VARIANT, if set)
+    "$py" -I -c "import kt_kernel; print(kt_kernel.__cpu_variant__)" > "$variant_file" 2>> "$log"
+    echo "[$(date +%T)] kt_kernel cpu variant: $(cat "$variant_file") (KT_KERNEL_CPU_VARIANT=${KT_KERNEL_CPU_VARIANT:-unset})"
+    disk="${HOST_DISK_DEV:-$(python3 scripts/engine_sample.py probe-disk "$model")}"
+    echo "[$(date +%T)] sampling disk $disk"
+    python3 scripts/engine_sample.py sample --pid "$pid" --disk "$disk" --out "$samples" 8>&- &
+    spid=$!
       timeout -k 30 50m "$py" -I "$work/client.py" "$cfg" "$base" "http://127.0.0.1:$port" "$prefill" "$decode" "$res" 3000
       rc=$?
       echo "[$(date +%T)] client rc=$rc"
+      kill "$spid" 2> /dev/null
+      python3 scripts/engine_sample.py summarize --samples "$samples" --threads "$threads" --kt-json "$res" --out "$summary" \
+        || echo "host summary failed"
     else
       echo "[$(date +%T)] server did not come up"
       rc=43
@@ -216,15 +234,15 @@ EOF
     kill -TERM -- "-$pid" 2> /dev/null
     sleep 15
     kill -KILL -- "-$pid" 2> /dev/null
-    kill "$mon" 2> /dev/null
+    kill "$mon" "${spid:-}" 2> /dev/null
     wait 2> /dev/null
   fi
 } >> "$log" 2>&1
 
 # JSON from the client result, the server log tail and the polled RSS
-python3 -I - "$out_json" "$res" "$srv_log" "$rss_file" "$cmd_file" "$rc" "$profile" "$commit" "$threads" "$ram_bytes" "$model" "$prefill" "$decode" << 'EOF'
+python3 -I - "$out_json" "$res" "$srv_log" "$rss_file" "$cmd_file" "$rc" "$profile" "$commit" "$threads" "$ram_bytes" "$model" "$prefill" "$decode" "$summary" "$variant_file" "${KT_KERNEL_CPU_VARIANT:-}" << 'EOF'
 import json, os, subprocess, sys
-out, res, srv, rss, cmd, rc, profile, commit, threads, ram, model, want_pre, want_dec = sys.argv[1:14]
+out, res, srv, rss, cmd, rc, profile, commit, threads, ram, model, want_pre, want_dec, summary, variant, variant_env = sys.argv[1:17]
 rc = int(rc)
 def read(p):
     try:
@@ -242,6 +260,10 @@ try:
 except OSError:
     gpu = None
 rss_kb = read(rss).strip()
+try:
+    host = json.loads(read(summary))
+except ValueError:
+    host = {}
 d = {
     "engine": "ktransformers",
     "engine_arch": "kt-kernel LLAMAFILE (GGUF experts in place, CPU) + sglang-kt (GPU attention, bf16 from GGUF, fp8 KV)",
@@ -261,6 +283,10 @@ d = {
     "decode_tok_s": r.get("decode_tok_s"),
     "cached_tokens": r.get("cached_tokens"),
     "peak_rss_gb": int(rss_kb) / 1e6 if rss_kb.isdigit() else None,
+    "kt_cpu_variant": read(variant).strip() or None,
+    "kt_cpu_variant_forced": variant_env or None,
+    "host": host.get("host"),
+    "env": host.get("env"),
     "engine_rc": rc,
     "gpu": gpu,
     "raw_tail": read(srv).splitlines()[-40:],
