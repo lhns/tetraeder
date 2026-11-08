@@ -52,6 +52,10 @@ Decode and prefill in tok/s after a 32K prefill unless noted:
 - Not taken (the coordinator's FreeToken levers): splitting decode misses between CPU and PCIe gains little here because the CPU expert path already reads about 8 GB of weights per token in 225 ms, near the boxes' DRAM bandwidth, and PCIe DMA reads the same DRAM; prefill double buffering is not needed while prefill leads every baseline by 1.6x or more.
 - Box cost of the exit work on 2026-11-03: about 2.9 USD (58894536 0.14, 58897870 and 58899229 about 0.05, 58900330 0.97 plus 0.92 traffic, 58930011 0.83, no traffic).
 
+## Addendum (2026-11-05): llama.cpp's best setup was not measured
+
+The llama.cpp rows above use `-ot`. The pinned build (b11976) also has a GPU cache of host experts (`--moe-cache-mib`, `llama_context_params.moe_cache_size`, ggml-org/llama.cpp#29887), which that pull request reports at 1.57x to 2.20x over `--fit` on other hardware and models. So "decode beats llama.cpp" here means beats `-ot`, not the best tuned llama.cpp the exit test asks for. The cache may help less at this regime's 8% of experts in VRAM, but only a paired run can say. `llama-bench` has no flag for it: run it through the libllama reference engine of `exit_regime` (needs the parameter set) or `llama-server`. Until then the llama.cpp part of this verdict is open. Since ggml-org/llama.cpp#30966 (merged 2026-11-07, after our pin) the cache can also compute a share of misses on the CPU (`--moe-cache-cpu-share`, tuned by `scripts/moe-cache-tune.py`); the baseline to beat is that tuned pair, built from a commit after the PR.
+
 ## Addendum (2026-11-03, box 58958565): the decode tie does not hold at a 26-core quota
 
 Box C, 58958565: RTX 3090, Xeon Gold 6330N, 26-core quota, 91.4 GB container RAM, direct reads at about 5.2 GB/s. Same frozen prompt, 32K, 7-layer `-ot` and 10.97 GB of builder expert slots (`bench/results/20261103/*-120800.json`):

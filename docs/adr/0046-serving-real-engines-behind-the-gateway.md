@@ -47,3 +47,7 @@ ADR 0028 built the gateway against a fake engine and left `tetraeder serve` for 
 - API overhead: `serve` decode is 0.94 to 0.98 of `tetraeder bench` tg128; llama-server's is 0.93 to 0.97 of llama-bench.
 
 - Claude Code proxy for the week of use (bench/results/20261103/claude-code-proxy, RTX A6000, Qwen3-Coder-30B-A3B Q4_K_M, 128K context, 10 tasks x 2 reps per engine, ABBA): tasks solved 15 of 20 on both engines; decode 0.88 of llama-server; prompt tokens served from cache 85% against 94%, because Claude Code's side requests evict the single cached sequence (llama-server keeps several prompts in host RAM). 12 requests (4 bursts of 3) got a 400 that llama-server accepted: `tool_result` content with `tool_reference` blocks (ADR 0049).
+
+## Addendum (2026-11-08): the week of use became a proxy run
+
+On 2026-11-03 the user replaced the exit test's week of Claude Code use with a proxy run of a few hours: the same tasks against Tetraeder and llama-server on one box, ABBA. The bar: tasks solved at least llama-server's, prompt tokens served from cache at least its share (94% in the first run), and no 400 for a request llama-server accepts. The plan's Phase 3b exit test says so now. The first run (above) missed the cache and 400 parts; ADR 0049 fixed both, a rerun is open.

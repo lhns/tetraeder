@@ -259,6 +259,24 @@ The design follows Colibri, ported to ggml through the own graph builder (Phase 
 6. Streamed experts are computed where it is cheapest: on the GPU after upload at larger batch, on the CPU where they sit at batch 1.
 7. **Routing profiles:** hot sets differ by workload (code versus chat), so the planner keeps one profile per workload class and switches the pinned set when traffic changes.
 
+### Levers from Strata and llama.cpp's expert cache
+
+Read on 2026-11-05 from their docs and pull requests; their numbers are self-reported, on other models and hardware, and none is measured here yet. Each lever needs a paired run before it changes a default (Rule 3).
+
+| Lever | Source and claim | Where it fits |
+|---|---|---|
+| Low-bit KV: int8, or 8-bit keys with 4-bit values | Strata: each freed GB holds about 700 more experts on its model | The builder's KV is F16; a smaller one leaves VRAM for expert slots and a draft model |
+| KV partly in RAM, only the most-read part in VRAM | Strata: 50.9 to 62.6 tok/s at 262K | Long contexts; needs a plan option and a streamed-KV path |
+| CPU and GPU expert work overlapping within a layer | Strata's core design | Check first whether the builder's segments overlap them at all |
+| GPU cache of host experts, LRU, misses uploaded | llama.cpp `--moe-cache-mib` (#29887): 1.57x to 2.20x over `--fit` | First a baseline to beat. Unsloth enables it only when 35% to 75% of the experts fit in VRAM |
+| Misses computed on the CPU instead of uploaded | llama.cpp `--moe-cache-cpu-share` (#30966, 2026-11-07) with `scripts/moe-cache-tune.py`: users report about 1.5x to 1.8x over `-cmoe` | The same design as Strata; the tuned pair is the Phase 2 llama.cpp baseline. Newer than our engine pin, so the box image builds a separate baseline copy |
+| Fast tiers kept by routing frequency | Lottery Ticket (a small subnetwork carries most of the work); our recorded routing | Score an offline replay of recorded routing against the LRU first; build only if the hit rate wins |
+| Drafter built into the model (MTP) | Strata: 2.4 to 3.2 tokens per pass, 1.6x to 1.8x | Speculative decoding (ADR 0043), for models that ship the layers |
+| Message-boundary and near-tail prompt checkpoints | Strata: first edit of a long history 33% faster (combined with larger chunks) | Prefix cache (ADR 0049) |
+| Tool-call repair across model formats | Unsloth `tool_healing`, `tool_call_parser` | Gateway. Ideas only: Unsloth's `studio/` files read here are AGPL-3.0 |
+
+Strata also reports what did not pay: batched DMA gave no clear model speedup, and overlapping KV uploads gave 4% to 5% on prefill only. Strata keeps every expert in RAM outside its low-RAM modes, so it does not remove the disk reads of a model larger than RAM.
+
 ### Experts across nodes
 
 When several machines hold experts, each computes its own and only activations cross the network (dispatch and combine, a few KB per token per MoE layer). Throughput is bounded by the slowest tier:
@@ -540,11 +558,11 @@ Phases 8 and 9 (backend parity, breadth) can run in parallel with M3 and M4.
 
 | Phase | Deliverables | Exit test |
 | --- | --- | --- |
-| 0. Foundations | Repo, AGENTS.md, ADRs, CI plus a nightly GPU host; benchmark spec and harness with llama.cpp (also with expert offload overrides), ik\_llama.cpp, KTransformers, Colibri and vLLM as baselines; reference logits; simulator skeleton; hardware discovery; telemetry skeleton and first dashboard. Spikes: two ggml backends in one process (CUDA plus Vulkan or HIP); QUIC versus TCP with TLS versus RDMA latency; exemplars in opentelemetry-rust | Harness runs the spec; dashboard shows live GPU and host metrics; each spike ends in an ADR |
+| 0. Foundations | Repo, AGENTS.md, ADRs, CI plus a nightly GPU host; benchmark spec and harness with llama.cpp (also with expert offload overrides and its GPU expert cache), ik\_llama.cpp, KTransformers, Colibri, Strata and vLLM as baselines; reference logits; simulator skeleton; hardware discovery; telemetry skeleton and first dashboard. Spikes: two ggml backends in one process (CUDA plus Vulkan or HIP); QUIC versus TCP with TLS versus RDMA latency; exemplars in opentelemetry-rust | Harness runs the spec; dashboard shows live GPU and host metrics; each spike ends in an ADR |
 | 1. Engine core on libllama | Rust drives libllama for dense models; placement through llama.cpp parameters; mixed GPU sizes and CPU; step timing; OpenTelemetry metrics and traces | Within 5% of llama.cpp at the same parameters; production telemetry overhead under 2% |
-| 2. Own MoE builder, tiers, expert streaming | Plan IR and validator; Qwen3 MoE graph builder in Rust (CUDA, CPU); per-device arenas with measured reserve; VRAM, RAM and NVMe tiers; slot cache with prefetch, one segment per MoE layer (ADR 0030); prefill and decode memory budgets (ADR 0031); aligned direct I/O on Linux and Windows; format per unit in the plan IR; load-time conversion with a disk cache; quality profile format and calibration job | Logit parity with libllama; a MoE larger than RAM (Qwen3-235B-A22B Q4\_K\_M on a box with at most 128 GB RAM) at least as fast as the best tuned baseline that runs it (Colibri, llama.cpp with expert overrides, ik\_llama.cpp), reporting per-layer full-hit rate and decode speed right after a 32K prefill |
+| 2. Own MoE builder, tiers, expert streaming | Plan IR and validator; Qwen3 MoE graph builder in Rust (CUDA, CPU); per-device arenas with measured reserve; VRAM, RAM and NVMe tiers; slot cache with prefetch, one segment per MoE layer (ADR 0030); prefill and decode memory budgets (ADR 0031); aligned direct I/O on Linux and Windows; format per unit in the plan IR; load-time conversion with a disk cache; quality profile format and calibration job | Logit parity with libllama; a MoE larger than RAM (Qwen3-235B-A22B Q4\_K\_M on a box with at most 128 GB RAM) at least as fast as the best tuned baseline that runs it (Colibri, KTransformers, llama.cpp with expert overrides and with `--moe-cache-mib` plus `--moe-cache-cpu-share` as its tuner picks them, ik\_llama.cpp), reporting per-layer full-hit rate and decode speed right after a 32K prefill |
 | 3a. Planner and detector | Profiler with PCIe topology; cost model with c0 per graph mode; simulator; planner with hints, explain, what-if; formats per unit from the quality profile, limits and Pareto front (ADR 0025); bottleneck detector and advisor (report only); SLO burn-rate alerts; drain-and-restart replanning | Regret at most 10% and rank correlation at least 0.8 over at least 20 candidates per fixture; detector: correct top-1 in 9 of 10 single-fault runs, at most 1 false positive in 10 no-fault runs, both faults in the top 3 on two-fault fixtures; at the byte budget of a llama.cpp preset (Q4\_K\_M), the planner's format mix has no higher KL divergence than the preset on every profiled model, and summed profile estimates stay within a stated band of the measured divergence |
-| 3b. Gateway | OpenAI and Anthropic API, streaming, tool calls, structured output (llguidance), chat templates, cancellation, backpressure, per-request cost accounting | Conformance tests for both APIs; a week of Claude Code use logged |
+| 3b. Gateway | OpenAI and Anthropic API, streaming, tool calls, structured output (llguidance), chat templates, cancellation, backpressure, per-request cost accounting | Conformance tests for both APIs; a Claude Code proxy run of a few hours (decided 2026-11-03 instead of a week of use, ADR 0046 addendum): tasks solved at least llama-server's, prompt-cache reuse at least its share, no request it accepts rejected |
 | 4. Own KV and scheduler | Qwen3 dense builder; chunked or paged KV (decided by experiment); prefix cache; continuous batching; chunked prefill; speculative decoding (n-gram, draft, self-speculative with a low-bit copy; MTP where available) | At least llama.cpp server throughput at concurrency 4; prefix hits cut time to first token on a Claude Code replay |
 | 5. Own executor, multi-GPU | Executor replacing ggml's backend scheduler; worker process per device; all-reduce patch; tensor, expert and tensor-times-pipeline parallel | Planner picks the measured winner among layer split, tensor and expert parallel; predictions within 15% |
 | 6. Multi-node | Transport chosen in Phase 0; discovery; mTLS; pipeline and experts across nodes; remote KV; replicas; failover | A model larger than any single node runs within 15% of prediction; killing a node with a replica keeps new requests flowing, in-flight requests on it fail cleanly |
@@ -553,6 +571,8 @@ Phases 8 and 9 (backend parity, breadth) can run in parallel with M3 and M4.
 | 9. Breadth | Several models, natively ternary families (BitNet) with an own builder, batched multi-LoRA, context parallel, multimodal, embeddings, auth and quotas, Windows and Linux packages, container image | Feature tests per item; packages install cleanly on both systems |
 
 ## Effort
+
+Status 2026-11-08: every M1 feature is implemented (Phase 0 started 2026-10-29, with parallel Claude Code tracks); M1 waits on exit-test measurements and the Phase 2 decode gap (`docs/m1-open.md`). The estimate below is the original one.
 
 M1 is about 9 to 14 full-time person-months and the whole plan about 29 to 43, so at about 10 hours a week M1 alone takes 3 to 4.5 years; this is the main cost of building an own engine, and the plan is built so that each milestone is worth having if you stop there.
 
@@ -717,11 +737,13 @@ Every link below was checked by Fable on 2026-10-29; venues marked "unverified" 
 
 | Project | Role in Tetraeder |
 | --- | --- |
-| [llama.cpp](https://github.com/ggml-org/llama.cpp) | libllama in Phases 1 to 3, parity reference, fallback, baseline |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) | libllama in Phases 1 to 3, parity reference, fallback, baseline; tuned baselines include `-ot` and `--moe-cache-mib` |
 | [ggml](https://github.com/ggml-org/ggml) | Kernel base (patch queue) |
 | [ik\_llama.cpp](https://github.com/ikawrakow/ik_llama.cpp) | Reference for MoE on CPU plus GPU, baseline |
 | [KTransformers](https://github.com/kvcache-ai/ktransformers) | Reference for expert tiering, baseline |
 | [Colibri](https://github.com/JustVugg/colibri) | Reference design for NVMe expert streaming, baseline |
+| [Strata](https://github.com/Niko1221/Strata) | Reference for expert tiering, low-bit KV, MTP drafting and prompt checkpoints. Baseline on models both engines run; none yet, because the builder runs only `qwen3moe` and Strata documents Qwen3.8, Qwen3.6 and DeepSeek-V4.1 |
+| [Unsloth](https://github.com/unslothai/unsloth) | Not an engine: a desktop app over llama.cpp (own fork), MLX, vLLM and SGLang. Reference for automatic fit, drafter selection and tool-call repair. The `unsloth-studio` GitHub org is not this project and looks like an impersonation: do not run its release |
 | [PowerInfer](https://github.com/SJTU-IPADS/PowerInfer) | Reference for hot and cold parts across GPU and CPU |
 | [vLLM](https://github.com/vllm-project/vllm) | Baseline, optional backend for peak NVIDIA throughput |
 | [SGLang](https://github.com/sgl-project/sglang) | Reference for prefix cache and scheduling, baseline |
@@ -800,6 +822,8 @@ Every link below was checked by Fable on 2026-10-29; venues marked "unverified" 
 | [Operational analysis of queueing networks](https://researchr.org/publication/DenningB78) | ACM Computing Surveys 1978 | Utilization law, bottleneck analysis |
 | [Critical path analysis](https://ftp1.cs.wisc.edu/par-distr-sys/papers/CritPath-ICDCS1988.pdf) | ICDCS 1988 | Critical path profiling |
 | [Universal Scalability Law](https://arxiv.org/abs/0808.1431) | arXiv 2008 | Contention and coherency in scaling |
+| [Lottery Ticket Hypothesis](https://arxiv.org/abs/1803.03635) | ICLR 2019 | Sparse subnetworks carry the model; motivates keeping the most-routed experts in the fast tiers |
+| [SwaT](https://arxiv.org/abs/2610.15095) | arXiv 2026 | KV-cache transfer across model families without prefill; reference for remote KV and agent traffic (Phases 4, 6) |
 
 ## Reviews
 
