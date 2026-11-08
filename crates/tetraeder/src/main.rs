@@ -2,6 +2,7 @@
 
 mod advise;
 mod bench;
+mod detector_score;
 mod doctor;
 mod engine_args;
 mod plan;
@@ -34,6 +35,8 @@ enum Command {
     Plan(plan::PlanArgs),
     /// Detector report of an observation file (faults, limits, verdict).
     Doctor(doctor::DoctorArgs),
+    /// Score a detector campaign directory against its manifest (Phase 3a exit test).
+    DetectorScore(detector_score::ScoreArgs),
     /// Ranked improvement actions for an observation file; report only.
     Advise(advise::AdviseArgs),
     /// OpenAI and Anthropic APIs over an engine.
@@ -51,6 +54,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::Quant(cmd)) => quant::run(&cmd),
         Some(Command::Plan(args)) => plan::run(&args),
         Some(Command::Doctor(args)) => doctor::run(&args),
+        Some(Command::DetectorScore(args)) => detector_score::run(&args),
         Some(Command::Advise(args)) => advise::run(&args),
         Some(Command::Serve(args)) => serve::run(&args),
         None => {
