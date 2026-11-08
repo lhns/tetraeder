@@ -5,6 +5,8 @@ FROM nvidia/cuda:12.8.1-devel-ubuntu24.04
 ARG LLAMA_TAG
 ARG LLAMA_COMMIT
 ARG IK_COMMIT
+ARG LLAMA_BASELINE_TAG
+ARG LLAMA_BASELINE_COMMIT
 ARG RUST_VERSION=1.95.0
 ARG SCCACHE_VERSION=0.10.0
 # Ampere (8.6), Ada (8.9), Hopper (9.0), Blackwell (12.0)
@@ -12,6 +14,8 @@ ARG CUDA_ARCHS="86;89;90;120"
 # ik_llama.cpp compiles many more CUDA kernels: for all four archs the image build ran past 3 h on the CI runner.
 # The boxes are RTX 3090 (taxameter.toml offers), so that baseline is built for Ampere only.
 ARG IK_CUDA_ARCHS="86"
+# The llama.cpp baseline build (a commit after the MoE cache, #30966) is Ampere only for the same reason.
+ARG BASELINE_CUDA_ARCHS="86"
 
 # GGML_NATIVE=OFF (llama.cpp below and box-side Rust builds): the image is built on a CI runner and runs on any
 # Vast host, so ggml CPU code targets its portable AVX2 baseline instead of the build machine's ISA.
@@ -90,6 +94,32 @@ RUN test -n "${IK_COMMIT}" && \
     done && \
     echo "commit=${IK_COMMIT}" > /opt/ik_llama/PIN && \
     sccache --show-stats && rm -rf /tmp/ik_llama.cpp
+
+# llama.cpp baseline (baseline_commit in vendor/PIN): a newer commit with the GPU expert cache and CPU share of misses
+# (llama-server --moe-cache-mib, --moe-cache-cpu-share), only for the exit pairing. The engine, ggml-sys and parity
+# stay on the pin above. Tools only, plus the cache tuner and its docs, in /opt/llama.cpp-baseline (not on PATH).
+RUN test -n "${LLAMA_BASELINE_COMMIT}" && \
+    git init /tmp/llama.cpp-baseline && cd /tmp/llama.cpp-baseline && \
+    git remote add origin https://github.com/ggml-org/llama.cpp && \
+    git fetch --depth 1 origin "${LLAMA_BASELINE_COMMIT}" && git checkout -q FETCH_HEAD && \
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DGGML_CUDA=ON \
+        -DGGML_NATIVE=OFF \
+        -DGGML_OPENMP=OFF \
+        -DCMAKE_CUDA_ARCHITECTURES="${BASELINE_CUDA_ARCHS}" \
+        -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined \
+        -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_SERVER=ON \
+        -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF && \
+    cmake --build build -j"$(nproc)" --target llama-server llama-bench llama-cli && \
+    for b in llama-server llama-bench llama-cli; do \
+        install -D "build/bin/$b" "/opt/llama.cpp-baseline/bin/$b"; \
+    done && \
+    install -D scripts/moe-cache-tune.py /opt/llama.cpp-baseline/scripts/moe-cache-tune.py && \
+    install -D docs/moe-cache.md /opt/llama.cpp-baseline/scripts/moe-cache.md && \
+    echo "tag=${LLAMA_BASELINE_TAG} commit=${LLAMA_BASELINE_COMMIT}" > /opt/llama.cpp-baseline/PIN && \
+    sccache --show-stats && rm -rf /tmp/llama.cpp-baseline
 
 # ik_llama's binaries are not on PATH: its names collide with llama.cpp's; the harness uses /opt/ik_llama/bin.
 ENV PATH=/opt/llama.cpp/bin:$PATH \

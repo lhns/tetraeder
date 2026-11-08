@@ -59,8 +59,8 @@ def test_image_tag_comes_from_vendor_pin(cfg):
     assert cfg.image_ref() == f"ghcr.io/lhns/tetraeder-box:{_pin('image_tag')}"
 
 
-def test_image_tag_encodes_both_pins():
-    assert _pin("image_tag") == f"{_pin('tag')}-ik{_pin('ik_commit')[:8]}"
+def test_image_tag_encodes_all_pins():
+    assert _pin("image_tag") == f"{_pin('tag')}-ik{_pin('ik_commit')[:8]}-bl{_pin('baseline_commit')[:8]}"
 
 
 def test_bench_spec_llama_pin_matches_vendor_pin():
