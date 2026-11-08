@@ -78,7 +78,7 @@ At a 26-core quota the decode step is 257 ms: compute 112, streamer 128. The str
 1. **Depth 2, actually on** (implemented above; never measured because the harness ran it with prefetch off). It doubles the window. Expected: the 95 ms wait drops to about 40.
 2. **Reader queue depth** (implemented): the reader's device reads are 1 MiB at queue depth 16 (`IoOptions::chunk_bytes`, new) instead of whole slabs, three requests per expert. Expected: 3.2 to about 5 GB/s.
 3. **Reads start before the layer's own misses** (implemented): `prefetch_ahead` runs right after the layer is planned, not after its synchronous reads. The reader has its own direct files, so both proceed at once. That adds the synchronous read time to the window.
-4. **RAM tier by frequency** (not implemented): the LRU RAM tier hits 93.2% with 77 of 128 slots per layer. Keeping the most-routed experts, as the VRAM hot set does, should cut the misses; measure first from recorded routing, offline.
+4. **RAM tier by frequency** (not implemented): the LRU RAM tier hits 93.2% with 77 of 128 slots per layer. Keeping the most-routed experts, as the VRAM hot set does, should cut the misses; measure first from recorded routing, offline. Recorder, replay and threshold: ADR 0050 (c).
 5. **RAM reserve** 8 to 5 GB (not changed): peak RSS was 84.9 of 91.4 GB, so about 3.6% more slots, a small gain.
 
 Together, 1 to 3 should bring the streamer near the synchronous misses alone: about 150 to 170 ms per token, or 6 to 6.7 tok/s, against KTransformers' 5.04 on the same box. They are measured when boxes are allowed again.
