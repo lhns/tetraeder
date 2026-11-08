@@ -69,6 +69,6 @@ The VRAM tier already pins the most routed experts (`refresh_hot_set`, `experts.
 - None of the three closes the 1.34x gap alone (257 to 191 ms needs 66 ms). Their sum, 25 to 35 ms, matters if ADR 0038's levers 1 to 3 land near 170 ms rather than 150; they are ranked (a), (c) if the replay passes, (b) for decode speed, and (b) first for draft-model room.
 - (a) adds 1.4 graphs per layer step and a second reader thread; under a tight CPU quota the urgent reader competes with ggml's spinning threads as the prefetch reader does (ADR 0038). The alert catches it.
 - (b) touches the plan IR (a new optional field) and the planner's footprint; the planner does not enumerate KV formats until the quality numbers exist per model. The `bench/quality` profiles gain no KV entries in this ADR.
-- (c) adds a binary trace format owned by `memory`; `tetraeder-bench` gains a dependency on `tetraeder-memory` without default features (no ggml build).
+- (c) adds a binary trace format owned by `memory`; `tetraeder-bench` gains a dependency on `tetraeder-memory` without default features (no ggml build when built alone; in a workspace build feature unification links ggml anyway).
 - All box measurements wait for the hold on box runs to lift; local tests use the synthetic MoE of `tests/common/synth.rs`.
 - Implementation briefs: `docs/levers-briefs.md`.
