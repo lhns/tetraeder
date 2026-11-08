@@ -52,4 +52,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0048](0048-quality-profile-file-and-calibration-job.md) | Quality profile file and calibration job |
 | [0049](0049-multi-entry-prefix-cache-and-lenient-anthropic-input.md) | Multi-entry prefix cache in host RAM; lenient Anthropic input |
 | [0050](0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md) | Decode levers: miss reads under CPU expert work, low-bit KV per attention unit, RAM tier by routing frequency (Proposed) |
-| [0051](0051-no-prompt-checkpoints-tool-call-outcomes.md) | No prompt checkpoints; tool-call outcomes counted, empty calls dropped |
+| [0051](0051-no-prompt-checkpoints-tool-call-outcomes.md) | No prompt checkpoints; tool-call outcomes counted, empty calls dropped (Proposed) |
