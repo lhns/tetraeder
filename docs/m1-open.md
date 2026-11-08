@@ -23,8 +23,10 @@ State at the end of the 2026-11-03 parallel-tracks session. Everything below is 
 6. **Builder slot-count candidates:** `scripts/planner_builder_campaign.sh` on Qwen3-30B-A3B, commit as `planner-moe-builder`.
 7. **ik_llama quant types** (IQ4_KS, IQ4_K on the 8B): add `llama-quantize` and `llama-perplexity` to the ik install in `docker/box/Dockerfile`, then a 15-minute run (command in Track B's report, `scripts/quality/box_quality.sh`). ik_llama inference on the 235B: record "cannot run within 128 GB".
 8. **Levers from Strata and Unsloth** (`docs/plan.md`, "Levers from Strata and llama.cpp's expert cache"), local work first. The first three are designed in ADR 0050 with briefs in `docs/levers-briefs.md` (the builder's CPU and GPU expert work and its own miss reads are serial today; low-bit KV is worth about 3% of decode here, its main value is draft-model room):
-   - Low-bit KV in the builder: more expert slots, and room for the draft model. Likely the largest.
-   - Check whether the builder's CPU and GPU expert work overlap within a layer; a possible part of the KTransformers gap.
+   - Low-bit KV in the builder (ADR 0050 b): about 3% of decode; more expert slots, room for the draft model.
+   - Miss reads under the CPU hit group (ADR 0050 a): serial today, about 6% of decode.
+   - Fast tiers by routing frequency (ADR 0050 c): recorder and replay first; built only if the replay beats LRU by 10% of disk bytes.
+   - Together about 25 to 35 ms of the 66 ms per token the KTransformers gap needs; the rest has to come from the implemented, unmeasured ADR 0038 levers (item 1).
    - Message-boundary and near-tail checkpoints for the prefix cache.
    - Tool-call repair in the gateway, written from scratch (Unsloth's `studio/` files read are AGPL-3.0).
    - Recheck the llama-server and planner baselines with the expert cache on. Pair against Strata once both engines run one model.
