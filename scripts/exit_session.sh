@@ -20,7 +20,7 @@ levers="d2:TETRAEDER_EXIT_PREFETCH=1,TETRAEDER_EXIT_PREFETCH_DEPTH=2"
 # one compute thread fewer while a prefetch read is in flight
 fewer=$(($(bash scripts/cpu_quota.sh) - 1))
 levers="$levers d2fewer:TETRAEDER_EXIT_PREFETCH=1,TETRAEDER_EXIT_PREFETCH_DEPTH=2,TETRAEDER_EXIT_PREFETCH_THREADS=$fewer"
-step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nooffload-on drift-nofuse drift-ref-ub512 drift-ref-nofuse main-prefetch d2 d2fewer ktransformers main-repeat" \
+step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nooffload-on drift-nofuse drift-ref-ub512 drift-ref-nofuse main-prefetch d2 d2fewer llamacpp-cache ktransformers main-repeat llamacpp-cache-repeat" \
   VARIANTS="$levers" bash scripts/exit_run.sh
 step spec_run env STAGES=main-builder bash scripts/spec_run.sh
 # exit_run.sh takes a new stamp and keeps the earlier results

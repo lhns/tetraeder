@@ -28,6 +28,8 @@ jobs:
             echo "tag=$(sed -n 's/^tag=//p' vendor/PIN)"
             echo "commit=$(sed -n 's/^commit=//p' vendor/PIN)"
             echo "ik_commit=$(sed -n 's/^ik_commit=//p' vendor/PIN)"
+            echo "baseline_tag=$(sed -n 's/^baseline_tag=//p' vendor/PIN)"
+            echo "baseline_commit=$(sed -n 's/^baseline_commit=//p' vendor/PIN)"
             echo "image_tag=$(sed -n 's/^image_tag=//p' vendor/PIN)"
             echo "rust=$(grep -m1 channel rust-toolchain.toml | cut -d'"' -f2)"
           } >> "$GITHUB_OUTPUT"
@@ -51,6 +53,8 @@ jobs:
             LLAMA_TAG=${{ steps.pin.outputs.tag }}
             LLAMA_COMMIT=${{ steps.pin.outputs.commit }}
             IK_COMMIT=${{ steps.pin.outputs.ik_commit }}
+            LLAMA_BASELINE_TAG=${{ steps.pin.outputs.baseline_tag }}
+            LLAMA_BASELINE_COMMIT=${{ steps.pin.outputs.baseline_commit }}
             RUST_VERSION=${{ steps.pin.outputs.rust }}
           tags: |
             ghcr.io/lhns/tetraeder-box:${{ steps.pin.outputs.image_tag }}

@@ -143,6 +143,21 @@ ktransformers() {
   echo "[$(date +%T)] done ktransformers rc=$?"
 }
 
+# llamacpp_cache [suffix]: llama.cpp's tuned expert cache with a CPU share of the misses (#30966, baseline build, ADR
+# 0021 pairing), one llama-server run per share in CPU_SHARES at the builder's expert bytes (vram_bytes as the cache
+# size). Stage llamacpp-cache; with suffix "repeat", stage llamacpp-cache-repeat for the second pass of the pairs.
+llamacpp_cache() {
+  local name=llamacpp-cache${1:+-$1} s
+  want "$name" || return 0
+  local mib=$((vram_bytes / 1048576))
+  for s in ${CPU_SHARES:-0 0.5 0.9}; do
+    echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode ${LOAD_MODE:-auto}"
+    timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
+      "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
+    echo "[$(date +%T)] done $name s$s rc=$?"
+  done
+}
+
 # llama_fit: the most layers' experts llama.cpp keeps on the GPU at ubatch 2048 and llama-bench's context for
 # -p 2048 -n 32 -d 32768 (34848; at 33024 eight layers fit llama-server but not llama-bench) (scripts/llama_fit.sh); the
 # builder then gets the same expert bytes as VRAM slots (from the smoke run's per-layer expert sizes), so both engines
@@ -214,12 +229,15 @@ EOF
         IFS=',' read -ra extra <<< "${v#*:}"
         exit_regime "${v%%:*}" 60 "${deep[@]}" "${extra[@]}" || rc=27
       done
+      # llama.cpp's expert cache with CPU share, first pass (the second follows main-repeat, so the pairs interleave)
+      llamacpp_cache
       # llama.cpp on the same prompt tokens through libllama (exit_regime's reference engine): logit parity of the
       # builder at 32K (greedy, first-token top-10, margins) and the tuned -ot baseline on real text
       exit_regime reference 60 "${deep[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit" || rc=28
       # KTransformers, then the default builder again: a second pair for the noise band
       ktransformers
       exit_regime main-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
+      llamacpp_cache repeat
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
       # are joined with ';'), then ik_llama.cpp with the same overrides (it was OOM-killed at 128 GB with mmap)
       baseline "$bench" exit-llama-ot-fit-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot "$ot_fit"
