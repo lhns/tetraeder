@@ -570,7 +570,11 @@ impl Qwen3Moe {
         let cpu_hot = opts.miss == MissPolicy::Cpu && streamer.is_some();
         let overlap = opts.overlap && cpu_hot && ram_slots.is_some();
         let sched_cpu = if overlap {
-            Some(Sched::new(std::slice::from_ref(&cpu), SEGMENT_NODES * 4, false)?)
+            Some(Sched::new(
+                std::slice::from_ref(&cpu),
+                SEGMENT_NODES * 4,
+                false,
+            )?)
         } else {
             None
         };
