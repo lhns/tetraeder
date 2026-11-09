@@ -124,6 +124,7 @@ streaming() {
       --task-timeout "${TASK_TIMEOUT:-900}" --permissions "${PERMISSIONS:-skip}" --tet-bin "$tet" --tet-args "${TET_ARGS:-}" --llama-args "${LLAMA_ARGS:-}" \
       ${TASKS:+--tasks "$TASKS"} 8>&- || rc=1
     "$py" scripts/claude_code_proxy_summary.py "$out" || rc=1
+    "$py" scripts/claude_code_cache_classes.py "$out" > "$out/cache_classes.txt" || rc=1
     [ "${STREAMING:-0}" = 1 ] && { streaming || rc=1; }
   fi
   GW_OUT="$out" GW_THREADS="$threads" GW_CTX="$ctx" GW_MODEL="$model" GW_COMMIT="$(git rev-parse HEAD 2> /dev/null)" \

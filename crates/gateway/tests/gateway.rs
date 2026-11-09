@@ -370,3 +370,29 @@ async fn engine_overload_uses_the_configured_retry_after() {
     assert_eq!(s, 429);
     assert_eq!(h["retry-after"], "7");
 }
+
+#[tokio::test]
+async fn tool_call_outcomes_are_recorded() {
+    let exp = InMemoryMetricExporter::default();
+    let mp = SdkMeterProvider::builder()
+        .with_reader(PeriodicReader::builder(exp.clone()).build())
+        .build();
+    let gw = Arc::new(
+        Gateway::new(
+            Arc::new(FakeEngine::fixed(WEATHER_CALL)),
+            GatewayConfig::default(),
+        )
+        .with_meter(&mp.meter("test")),
+    );
+    let app = router(gw);
+    let body = json!({"model": "fake", "messages": [{"role": "user", "content": "weather?"}],
+                      "tools": [weather_tool_openai()]});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200, "{v}");
+    mp.force_flush().unwrap();
+    let calls = points(&exp, "tetraeder.gateway.tool_calls");
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert!(has(&calls[0].0, "tetraeder.outcome", "parsed"));
+    assert!(has(&calls[0].0, "tetraeder.class", "ok"));
+    assert_eq!(calls[0].1, 1);
+}

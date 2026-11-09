@@ -42,3 +42,13 @@ groups:
           severity: warning
         annotations:
           summary: "The prefix cache evicts more sequences than it restores; raise --cache-ram"
+      # Tool calls the parser had to repair or could not parse (ADR 0051): a template or model regression.
+      - alert: ToolCallFailures
+        expr: |
+          sum(rate(tetraeder_gateway_tool_calls_total{tetraeder_outcome=~"failed|repaired"}[30m]))
+            / sum(rate(tetraeder_gateway_tool_calls_total[30m])) > 0.02
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 2% of tool calls fail to parse or need repair"

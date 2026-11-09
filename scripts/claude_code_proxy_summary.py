@@ -65,6 +65,12 @@ def engine_stats(sessions, requests):
     def tok(key):
         return sum(r.get(key) or 0 for r in requests)
 
+    errors_by_class = {}
+    for r in requests:
+        for cls, n in (r.get("tool_errors") or {}).items():
+            errors_by_class[cls] = errors_by_class.get(cls, 0) + n
+    tool_uses = tok("tool_uses")
+    tool_errors = sum(errors_by_class.values())
     return {
         "runs": len(sessions),
         "successes": successes,
@@ -84,6 +90,11 @@ def engine_stats(sessions, requests):
         "cache_read_tokens_total": tok("cache_read_tokens"),
         "wall_s_median": _r(median(wall), 1),
         "wall_s_total": _r(sum(wall), 1),
+        "tool_uses_total": tool_uses,
+        "tool_errors_by_class": dict(sorted(errors_by_class.items())),
+        "tool_names_unknown_total": tok("tool_names_unknown"),
+        "leaked_markers_total": tok("leaked_markers"),
+        "tool_error_rate": _r(tool_errors / tool_uses) if tool_uses else None,
     }
 
 
@@ -128,12 +139,12 @@ def summarize(sessions, requests):
 
 def format_table(summary):
     lines = []
-    head = f"{'engine':<14}{'ok/runs':>9}{'turns':>7}{'perr':>6}{'reqs':>7}{'ttft50':>9}{'ttft90':>9}{'tok/s':>8}{'wall50':>9}"
+    head = f"{'engine':<14}{'ok/runs':>9}{'turns':>7}{'perr':>6}{'terr':>6}{'reqs':>7}{'ttft50':>9}{'ttft90':>9}{'tok/s':>8}{'wall50':>9}"
     lines.append(head)
     for e, s in summary["engines"].items():
         lines.append(
             f"{e:<14}{str(s['successes']) + '/' + str(s['runs']):>9}{str(s['turns_median']):>7}"
-            f"{s['protocol_errors']:>6}{s['requests']:>7}{str(s['ttft_median_s']):>9}{str(s['ttft_p90_s']):>9}"
+            f"{s['protocol_errors']:>6}{sum(s['tool_errors_by_class'].values()):>6}{s['requests']:>7}{str(s['ttft_median_s']):>9}{str(s['ttft_p90_s']):>9}"
             f"{str(s['decode_tok_s_median']):>8}{str(s['wall_s_median']):>9}"
         )
     return "\n".join(lines)

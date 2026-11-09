@@ -10,7 +10,7 @@ use crate::error::GatewayError;
 use crate::template::ChatTemplate;
 use crate::toolcall::{OutputParser, ToolFormat};
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Gauge, Histogram, Meter};
+use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -179,6 +179,8 @@ struct GatewayMetrics {
     genai: tetraeder_telemetry::Metrics,
     request_cost: Histogram<f64>,
     queue_depth: Gauge<u64>,
+    /// Tool calls by parser outcome and class (ADR 0051).
+    tool_calls: Counter<u64>,
 }
 
 impl GatewayMetrics {
@@ -193,6 +195,11 @@ impl GatewayMetrics {
                 .u64_gauge("tetraeder.scheduler.queue.depth")
                 .with_unit("{request}")
                 .with_description("Requests waiting for a generation slot")
+                .build(),
+            tool_calls: meter
+                .u64_counter("tetraeder.gateway.tool_calls")
+                .with_unit("{call}")
+                .with_description("Tool calls by parser outcome and class")
                 .build(),
         }
     }
