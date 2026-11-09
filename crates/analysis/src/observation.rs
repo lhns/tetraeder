@@ -107,6 +107,13 @@ pub struct EnvSignals {
     pub cpu_other_cores: f64,
     #[serde(default)]
     pub swap_in_bytes_per_s: f64,
+    /// Major page faults per second of the engine's processes (pages read back from swap or file).
+    #[serde(default)]
+    pub major_faults_per_s: f64,
+    /// Share of wall time in which some engine task stalled on memory (PSI `memory.pressure`
+    /// "some" of the engine's cgroup). `None` when the kernel does not expose PSI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_stall_share: Option<f64>,
     /// GPU device id to VRAM bytes held by other processes.
     #[serde(default)]
     pub vram_other_bytes: BTreeMap<String, u64>,

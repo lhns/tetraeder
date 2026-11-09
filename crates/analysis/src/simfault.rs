@@ -26,6 +26,9 @@ const T_HOST: f64 = 0.004;
 const ACT_BYTES: f64 = 65536.0;
 const SLOTS: u32 = 64;
 const HIT_RATE: f64 = 0.9;
+/// Swapping slows the CPU and host work by this factor: the stall lands in whatever touches the
+/// swapped pages (the CPU testbed run: compute 60x and CPU busy time 2.5x slower, host 2x).
+const SWAP_SLOWDOWN: f64 = 3.0;
 
 #[derive(Debug, Clone)]
 pub struct SimSpec {
@@ -291,6 +294,11 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
         env.slots_planned = Some(SLOTS);
         env.slots_actual = Some(SLOTS);
     }
+    // Memory signals use their own stream so the other signals stay as they were. PSI is there on
+    // even seeds only, so both detector paths (with and without PSI) are exercised.
+    let mut mem_rng = Rng(spec.seed ^ 0x5DEE_CE66_D1CE_4E5B);
+    env.major_faults_per_s = 200.0 * mem_rng.unit();
+    let psi = spec.seed.is_multiple_of(2);
     if spec.seed.is_multiple_of(3)
         && let Some(g) = gpus.first()
     {
@@ -378,9 +386,12 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
                 }
             }
             FaultClass::Swapping => {
-                env.swap_in_bytes_per_s = 3e8;
-                if let Some(r) = find(&mut res, "host") {
-                    r.rate /= 8.0;
+                env.swap_in_bytes_per_s = 2e8 * (0.9 + 0.2 * mem_rng.unit());
+                env.major_faults_per_s += env.swap_in_bytes_per_s / 4096.0;
+                for r in &mut res {
+                    if r.id == "cpu" || r.id == "host" {
+                        r.rate /= SWAP_SLOWDOWN;
+                    }
                 }
             }
             FaultClass::ModelMismatch => {}
@@ -388,15 +399,21 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
     }
 
     let serialized = spec.batch <= 1;
+    let swapping = spec.faults.contains(&FaultClass::Swapping);
     let tokens = spec.tokens_per_window as f64;
     let mut windows = Vec::new();
+    let mut stall_shares = Vec::new();
     for _ in 0..spec.windows {
+        let mut stalled = 0.0;
         let mut busy_s = BTreeMap::new();
         let mut bytes = BTreeMap::new();
         let mut split_s: BTreeMap<String, f64> = BTreeMap::new();
         for r in &res {
             let b = r.busy() * tokens * (spec.noise * rng.normal()).exp();
             busy_s.insert(r.id.clone(), b);
+            if swapping && (r.id == "cpu" || r.id == "host") {
+                stalled += b * (1.0 - 1.0 / SWAP_SLOWDOWN);
+            }
             bytes.insert(r.id.clone(), r.units * tokens);
             let key = if r.id.starts_with("gpu:") {
                 "compute"
@@ -420,6 +437,7 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
         } else {
             busy_s.values().copied().fold(0.0, f64::max)
         };
+        stall_shares.push((stalled / wall_s).min(1.0));
         windows.push(Window {
             tokens: spec.tokens_per_window,
             wall_s,
@@ -427,6 +445,11 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
             bytes,
             split_s,
         });
+    }
+
+    if psi {
+        let mean = stall_shares.iter().sum::<f64>() / stall_shares.len().max(1) as f64;
+        env.memory_stall_share = Some(mean + 0.01 * mem_rng.unit());
     }
 
     let expected = spec.expected.then(|| Expected {

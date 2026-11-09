@@ -2,8 +2,9 @@
 # Nightly fault testbed on a GitHub CPU runner (ADR 0041 addendum, docs/testing.md section "Fault testbed").
 # The real engine (tests/exit_regime.rs, CPU backend, synthetic MoE, small RAM tier so misses read from disk) in decode
 # windows, scripts/detector_sample.py sampling next to it, and three real faults:
-#   cpu   thread-capped busy loops next to the engine               -> FaultClass::CpuCotenant
+#   cpu   busy loops next to the engine (half the threads; 1 in pairs) -> FaultClass::CpuCotenant
 #   disk  systemd-run scope with IOReadBandwidthMax (cgroup io.max) -> FaultClass::DiskSlow
+#         (in a pair the cap shrinks with the partner fault's pace, so it still binds)
 #   mem   systemd-run scope with MemoryMax below the engine's RSS   -> FaultClass::Swapping (manifest name "mem")
 # Same schedule shape and manifest format as scripts/detector_campaign.sh, so `tetraeder detector-score` reads the output.
 # Needs Linux with sudo, systemd, cgroup v2 and GNU time. VRAM pressure, PCIe and GPU throttle stay box-only.
@@ -101,9 +102,28 @@ run_one() {
   for f in "$@"; do
     case "$f" in
       cpu)
-        for _ in $(seq 1 $(((threads + 1) / 2))); do python3 -c 'while True: pass' & fault_pids+=($!); done ;;
+        # Half the threads alone; one loop in a pair, or the engine turns so CPU-bound that the partner costs nothing.
+        for _ in $(seq 1 $(($# > 1 ? 1 : (threads + 1) / 2))); do python3 -c 'while True: pass' & fault_pids+=($!); done ;;
       disk)
-        rate=$(python3 -c "import json; print(int(json.load(open('$out/calib.json'))['rates']['disk:nvme0'] * 0.3))")
+        # 0.3 x the calibrated rate. In a pair, also times the partner's pace over the calibration pace (its single
+        # runs): a partner that slows decode 5x cuts the read demand 5x, and a fixed cap no longer binds (first run:
+        # cpu+disk 1.34 s/token, cpu alone 1.36).
+        rate=$(python3 - "$out" "$@" << 'PY'
+import json, statistics, sys
+out, faults = sys.argv[1], sys.argv[2:]
+rate = json.load(open(f"{out}/calib.json"))["rates"]["disk:nvme0"] * 0.3
+partner = [f for f in faults if f != "disk"]
+if partner:
+    tok = {}
+    for line in open(f"{out}/manifest.jsonl"):
+        m = json.loads(line)
+        h = json.load(open(f"{out}/harness-{m['id'][4:]}.json"))["runs"][-1]
+        tok.setdefault(m["label"], []).append(h["decode_tok_s"])
+    if tok.get(partner[0]) and tok.get("calib"):
+        rate *= min(1.0, statistics.median(tok[partner[0]]) / statistics.median(tok["calib"]))
+print(int(rate))
+PY
+)
         if [ "$disk_mode" = scope ]; then
           props+=(-p "IOReadBandwidthMax=$disk_node $rate")
         else
