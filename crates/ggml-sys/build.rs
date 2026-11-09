@@ -1,7 +1,14 @@
-//! Builds vendor/llama.cpp (ggml + libllama, static) with cmake and generates bindings with bindgen.
+//! Builds vendor/llama.cpp (ggml + libllama) with cmake and generates bindings with bindgen.
 //!
-//! Env: `TETRAEDER_CUDA_ARCHS` (default "86;89;90;120"), `TETRAEDER_GGML_NATIVE` (ON/OFF, ggml
-//! default when unset), `LIBCLANG_PATH` for bindgen.
+//! Two modes (ADR 0052):
+//! - default (DL): shared libllama, ggml and ggml-base; every backend is a loadable module
+//!   (`ggml-cpu-<tag>` per x86 level, `ggml-cuda`, `ggml-vulkan`) that `llama::init()` loads at
+//!   run time, so one build runs at the best ISA of each host. Sets `cfg(ggml_dl)`.
+//! - `TETRAEDER_GGML_NATIVE=ON`: static build with the native ISA of the build machine.
+//!
+//! Env: `TETRAEDER_GGML_NATIVE` (ON: static native; OFF or unset: DL), `TETRAEDER_CUDA_ARCHS`
+//! (default "86;89;90;120"), `LIBCLANG_PATH` for bindgen. Run time (DL): `TETRAEDER_GGML_BACKEND_DIR`,
+//! `TETRAEDER_GGML_CPU_VARIANT`.
 use std::path::{Path, PathBuf};
 
 fn main() {
@@ -19,6 +26,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=TETRAEDER_CUDA_ARCHS");
     println!("cargo:rerun-if-env-changed=TETRAEDER_GGML_NATIVE");
     println!("cargo:rerun-if-env-changed=LIBCLANG_PATH");
+    println!("cargo:rerun-if-env-changed=CUDA_PATH");
+    println!("cargo:rerun-if-env-changed=CUDA_HOME");
+    println!("cargo::rustc-check-cfg=cfg(ggml_dl)");
 
     if !src.join("CMakeLists.txt").is_file() {
         panic!(
@@ -27,12 +37,16 @@ fn main() {
         );
     }
 
+    check_patches(&src);
+
+    let native = std::env::var("TETRAEDER_GGML_NATIVE").is_ok_and(|v| v == "ON");
+    let dl = !native;
     let cuda = cfg!(feature = "cuda");
     let vulkan = cfg!(feature = "vulkan");
 
     let mut cfg = cmake::Config::new(&src);
     cfg.profile("Release")
-        .define("BUILD_SHARED_LIBS", "OFF")
+        .define("BUILD_SHARED_LIBS", onoff(dl))
         .define("GGML_OPENMP", "OFF")
         .define("LLAMA_BUILD_COMMON", "OFF")
         .define("LLAMA_BUILD_TESTS", "OFF")
@@ -48,10 +62,13 @@ fn main() {
         .define("GGML_CUDA_NCCL", "OFF")
         .define("GGML_VULKAN", onoff(vulkan))
         .build_target("install");
-    // ggml default: native ISA. Set TETRAEDER_GGML_NATIVE=OFF for portable binaries (AVX2 etc.
-    // then come from ggml's own defaults).
-    if let Ok(v) = std::env::var("TETRAEDER_GGML_NATIVE") {
-        cfg.define("GGML_NATIVE", v);
+    if dl {
+        // GGML_CPU_ALL_VARIANTS builds one ggml-cpu module per x86 level; ggml scores them at load.
+        cfg.define("GGML_BACKEND_DL", "ON")
+            .define("GGML_CPU_ALL_VARIANTS", "ON")
+            .define("GGML_NATIVE", "OFF");
+    } else {
+        cfg.define("GGML_NATIVE", "ON");
     }
     if cuda {
         let archs = std::env::var("TETRAEDER_CUDA_ARCHS").unwrap_or_else(|_| "86;89;90;120".into());
@@ -73,23 +90,37 @@ fn main() {
     }
     let out = cfg.build();
 
-    for dir in ["lib", "lib64"] {
+    // DL: Windows DLLs and all modules install to bin. The link-search dirs inside target/ also
+    // end up on PATH / LD_LIBRARY_PATH for `cargo test` and `cargo run`.
+    for dir in ["lib", "lib64", "bin"] {
         let p = out.join(dir);
         if p.is_dir() {
             println!("cargo:rustc-link-search=native={}", p.display());
         }
     }
-    // Order matters for GNU ld: dependents before dependencies.
-    println!("cargo:rustc-link-lib=static=llama");
-    println!("cargo:rustc-link-lib=static=ggml");
-    if cuda {
-        println!("cargo:rustc-link-lib=static=ggml-cuda");
+    if dl {
+        println!("cargo::rustc-cfg=ggml_dl");
+        println!(
+            "cargo:rustc-env=TETRAEDER_GGML_MODULE_DIR={}",
+            out.join("bin").display()
+        );
+        for l in ["llama", "ggml", "ggml-base"] {
+            println!("cargo:rustc-link-lib=dylib={l}");
+        }
+        copy_runtime_files(&out, &env("CARGO_CFG_TARGET_OS"));
+    } else {
+        // Order matters for GNU ld: dependents before dependencies.
+        println!("cargo:rustc-link-lib=static=llama");
+        println!("cargo:rustc-link-lib=static=ggml");
+        if cuda {
+            println!("cargo:rustc-link-lib=static=ggml-cuda");
+        }
+        if vulkan {
+            println!("cargo:rustc-link-lib=static=ggml-vulkan");
+        }
+        println!("cargo:rustc-link-lib=static=ggml-cpu");
+        println!("cargo:rustc-link-lib=static=ggml-base");
     }
-    if vulkan {
-        println!("cargo:rustc-link-lib=static=ggml-vulkan");
-    }
-    println!("cargo:rustc-link-lib=static=ggml-cpu");
-    println!("cargo:rustc-link-lib=static=ggml-base");
 
     let target_os = env("CARGO_CFG_TARGET_OS");
     match target_os.as_str() {
@@ -103,10 +134,11 @@ fn main() {
         "windows" => println!("cargo:rustc-link-lib=advapi32"),
         _ => {}
     }
-    if cuda {
+    // In DL mode the GPU modules link their own libraries.
+    if cuda && !dl {
         link_cuda(&target_os);
     }
-    if vulkan {
+    if vulkan && !dl {
         link_vulkan(&target_os);
     }
 
@@ -119,6 +151,86 @@ fn env(k: &str) -> String {
 
 fn onoff(b: bool) -> &'static str {
     if b { "ON" } else { "OFF" }
+}
+
+/// Fails the build when a patch of `patches/series` is not applied to `vendor/llama.cpp`
+/// (an unpatched tree would build without the fix and fail later in odd ways). Silent without git.
+fn check_patches(src: &Path) {
+    let root = src.parent().and_then(Path::parent).expect("workspace root");
+    let Ok(series) = std::fs::read_to_string(root.join("patches/series")) else {
+        return;
+    };
+    for line in series.lines() {
+        let name = line.split('#').next().unwrap_or("").trim();
+        if name.is_empty() {
+            continue;
+        }
+        let patch = root.join("patches").join(name);
+        let check = std::process::Command::new("git")
+            .arg("-C")
+            .arg(src)
+            .args(["apply", "--reverse", "--check"])
+            .arg(&patch)
+            .output();
+        match check {
+            Err(_) => return, // no git
+            Ok(o) if !o.status.success() => panic!(
+                "patch {name} is not applied to vendor/llama.cpp: run patches/apply.sh (or \
+                 patches/apply.ps1)."
+            ),
+            Ok(_) => {}
+        }
+    }
+}
+
+/// Copies the shared libraries and modules next to the binaries so they run without Cargo's
+/// library path (pytest and the box scripts call `target/<profile>/tetraeder`). `OUT_DIR` is
+/// `target[/<triple>]/<profile>/build/<pkg>/out`, so the profile dir is its fourth ancestor.
+fn copy_runtime_files(out: &Path, target_os: &str) {
+    let dest = PathBuf::from(env("OUT_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("profile dir")
+        .to_path_buf();
+    let mut files = Vec::new();
+    let list = |dir: PathBuf, keep: &dyn Fn(&str) -> bool, files: &mut Vec<PathBuf>| {
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if keep(&name) {
+                files.push(e.path());
+            }
+        }
+    };
+    if target_os == "windows" {
+        list(out.join("bin"), &|n| n.ends_with(".dll"), &mut files);
+    } else {
+        // Real files under every name, SONAME names included: symlinks do not survive all copies.
+        let core = |n: &str| {
+            ["libllama.so", "libggml.so", "libggml-base.so"].iter().any(|p| {
+                n.strip_prefix(p)
+                    .is_some_and(|r| r.is_empty() || r.starts_with('.'))
+            })
+        };
+        for d in ["lib", "lib64"] {
+            list(out.join(d), &core, &mut files);
+        }
+        list(
+            out.join("bin"),
+            &|n| n.starts_with("libggml-") && n.ends_with(".so"),
+            &mut files,
+        );
+    }
+    for f in files {
+        let to = dest.join(f.file_name().expect("file name"));
+        let same = match (std::fs::read(&f), std::fs::read(&to)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+        if !same {
+            std::fs::copy(&f, &to)
+                .unwrap_or_else(|e| panic!("copy {} to {}: {e}", f.display(), to.display()));
+        }
+    }
 }
 
 fn link_cuda(target_os: &str) {
