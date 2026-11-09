@@ -384,6 +384,8 @@ mod tests {
     fn default_params_follow_libllama() {
         let m = ModelParams::default();
         assert!(m.tensor_split.is_empty() && m.buffer_overrides.is_empty() && !m.vocab_only);
+        // Weight repacking stays on unless asked (llama.cpp's default).
+        assert!(m.extra_bufts);
         let c = ContextParams::default();
         assert!(c.n_batch > 0 && c.n_ubatch > 0);
     }

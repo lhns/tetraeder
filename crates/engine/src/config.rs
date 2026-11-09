@@ -92,6 +92,7 @@ impl Placement {
             buffer_overrides,
             load_mode: self.load_mode,
             vocab_only: false,
+            extra_bufts: true,
         })
     }
 }
