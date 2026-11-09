@@ -26,6 +26,10 @@ use tetraeder_profiler::HardwareGraph;
 /// 1e-9 until CI shows the largest difference between Linux and Windows fits; then it becomes
 /// ten times that difference, with the measured value recorded here.
 pub const PRED_TOL: f64 = 1e-9;
+/// Relative tolerance of "the same fit" for `calib.json`. The fit is a numerical minimizer
+/// whose weakly constrained parameters differ more between Linux and Windows than the
+/// predictions made from them, so it has a tolerance of its own.
+pub const CALIB_TOL: f64 = 1e-9;
 /// Median candidate error allowed per session, MoE: ADR 0040's 9.2% (the anchor band).
 pub const MOE_BAND: f64 = 0.092;
 /// Median candidate error allowed per session, dense: ADR 0040's 5.8%.
@@ -375,22 +379,37 @@ fn close(a: f64, b: f64) -> bool {
     (a - b).abs() <= PRED_TOL * a.abs().max(b.abs())
 }
 
-/// Equality of two JSON values with numbers compared within [`PRED_TOL`].
-fn json_close(a: &Value, b: &Value) -> bool {
+/// The largest relative difference between the numbers of two JSON values and where it is;
+/// infinite for a difference in shape or in a non-number.
+fn json_diff(a: &Value, b: &Value, path: &str) -> (f64, String) {
+    let worse = |x: (f64, String), y: (f64, String)| if y.0 > x.0 { y } else { x };
     match (a, b) {
         (Value::Number(x), Value::Number(y)) => match (x.as_f64(), y.as_f64()) {
-            (Some(x), Some(y)) => close(x, y),
-            _ => x == y,
+            (Some(x), Some(y)) => {
+                let m = x.abs().max(y.abs());
+                (if m == 0.0 { 0.0 } else { (x - y).abs() / m }, path.into())
+            }
+            _ => (if x == y { 0.0 } else { f64::INFINITY }, path.into()),
         },
-        (Value::Array(x), Value::Array(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(a, b)| json_close(a, b))
+        (Value::Array(x), Value::Array(y)) if x.len() == y.len() => x
+            .iter()
+            .zip(y)
+            .enumerate()
+            .map(|(i, (a, b))| json_diff(a, b, &format!("{path}[{i}]")))
+            .fold((0.0, String::new()), worse),
+        (Value::Object(x), Value::Object(y)) if x.len() == y.len() => {
+            let mut acc = (0.0, String::new());
+            for (k, v) in x {
+                let d = match y.get(k) {
+                    Some(w) => json_diff(v, w, &format!("{path}.{k}")),
+                    None => (f64::INFINITY, format!("{path}.{k}")),
+                };
+                acc = worse(acc, d);
+            }
+            acc
         }
-        (Value::Object(x), Value::Object(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| y.get(k).is_some_and(|w| json_close(v, w)))
-        }
-        _ => a == b,
+        _ if a == b => (0.0, String::new()),
+        _ => (f64::INFINITY, path.into()),
     }
 }
 
@@ -480,12 +499,16 @@ pub fn check(current: &Ledger, snapshot: &Ledger) -> Vec<String> {
                     s.name,
                     s.dir.display()
                 )),
-                Some(have) if !json_close(have, &want) => out.push(format!(
-                    "session {}: calib.json in {} is not the current fit: run `tetraeder-plan ledger --write`",
-                    s.name,
-                    s.dir.display()
-                )),
-                Some(_) => {}
+                Some(have) => {
+                    let (d, at) = json_diff(have, &want, "");
+                    if d > CALIB_TOL {
+                        out.push(format!(
+                            "session {}: calib.json in {} is not the current fit (differs by {d:.3e} at {at}, tolerance {CALIB_TOL:e}): run `tetraeder-plan ledger --write`",
+                            s.name,
+                            s.dir.display()
+                        ));
+                    }
+                }
             }
         }
     }
