@@ -42,7 +42,7 @@ fn load(name: &str) -> QualityProfile {
 fn measured_profiles_load_and_validate() {
     for (file, layers, experts, groups) in [
         ("qwen3-8b.quality.json", 36, 0, 32),
-        ("qwen3-30b.quality.json", 48, 128, 22),
+        ("qwen3-30b-bf16.quality.json", 48, 128, 22),
     ] {
         let q = load(file);
         assert_eq!(q.groups.len(), groups, "{file}");

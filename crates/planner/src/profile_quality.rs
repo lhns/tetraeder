@@ -16,7 +16,7 @@ use crate::quality::QualityModel;
 use std::collections::BTreeMap;
 use std::fmt;
 use tetraeder_plan::{
-    EstimateError, Format, ModelDesc, QualityGroup, QualityProfile, RoleSize, UnitId,
+    EstimateError, Format, GroupEntry, ModelDesc, QualityGroup, QualityProfile, RoleSize, UnitId,
 };
 
 /// Estimated KL of a mix `{group id: format}`: `base.kl + sum (kl(group, format) - base.kl)`.
@@ -24,6 +24,23 @@ use tetraeder_plan::{
 pub fn estimate_mix(
     profile: &QualityProfile,
     mix: &BTreeMap<String, Format>,
+) -> Result<f64, EstimateError> {
+    sum_mix(profile, mix, |_, e| e.kl - profile.base.kl)
+}
+
+/// [`estimate_mix`] with the profile's per-format scale on each delta (`format_scale`, the cap on
+/// formats the plain sum underestimates). Equal to `estimate_mix` when the profile has none.
+pub fn estimate_mix_scaled(
+    profile: &QualityProfile,
+    mix: &BTreeMap<String, Format>,
+) -> Result<f64, EstimateError> {
+    sum_mix(profile, mix, |p, e| p.delta(e))
+}
+
+fn sum_mix(
+    profile: &QualityProfile,
+    mix: &BTreeMap<String, Format>,
+    delta: impl Fn(&QualityProfile, &GroupEntry) -> f64,
 ) -> Result<f64, EstimateError> {
     let mut kl = profile.base.kl;
     for g in &profile.groups {
@@ -38,7 +55,7 @@ pub fn estimate_mix(
             group: g.id.clone(),
             format,
         })?;
-        kl += e.kl - profile.base.kl;
+        kl += delta(profile, e);
     }
     Ok(kl)
 }
@@ -92,8 +109,18 @@ impl Correction {
     }
 }
 
-/// `(estimate, measured)` of every check whose formats the profile can estimate.
+/// `(scaled estimate, measured)` of every check whose formats the profile can estimate; the
+/// correction is fitted on the scaled estimate.
 fn check_points(profile: &QualityProfile) -> Vec<(f64, f64)> {
+    profile
+        .checks
+        .iter()
+        .filter_map(|c| Some((estimate_mix_scaled(profile, &c.formats).ok()?, c.measured)))
+        .collect()
+}
+
+/// `(plain ADR sum, measured)` of the same checks.
+fn raw_points(profile: &QualityProfile) -> Vec<(f64, f64)> {
     profile
         .checks
         .iter()
@@ -104,9 +131,11 @@ fn check_points(profile: &QualityProfile) -> Vec<(f64, f64)> {
 /// Largest relative error `|measured - predicted| / measured` over the profile's checks.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Band {
-    /// The summed estimate as is.
+    /// The plain ADR 0048 sum.
     pub raw: f64,
-    /// The corrected estimate, on the checks the correction was fitted on (in-sample).
+    /// The sum with the profile's per-format scale; equals `raw` without one.
+    pub scaled: f64,
+    /// The scaled sum through the correction, on the checks the correction was fitted on (in-sample).
     pub corrected: f64,
     /// The corrected estimate with each check left out of its own fit; `None` below three
     /// checks.
@@ -139,7 +168,8 @@ impl Band {
                 .fold(0.0, f64::max)
         });
         Self {
-            raw: max_rel(&pts, |e| e),
+            raw: max_rel(&raw_points(profile), |e| e),
+            scaled: max_rel(&pts, |e| e),
             corrected: max_rel(&pts, |e| c.apply(e)),
             leave_one_out: loo,
         }
@@ -155,7 +185,7 @@ pub struct Mix {
     pub bytes: u64,
     /// ADR 0048 sum.
     pub estimate: f64,
-    /// [`Correction`] of the estimate.
+    /// [`Correction`] of the scaled estimate.
     pub corrected: f64,
 }
 
@@ -291,8 +321,9 @@ pub fn mix_at_budget(profile: &QualityProfile, budget: u64) -> Result<Mix, MixEr
         .map(|(g, c)| (g.id.clone(), c.2))
         .collect();
     let estimate = estimate_mix(profile, &formats).expect("chosen formats have entries");
+    let scaled = estimate_mix_scaled(profile, &formats).expect("chosen formats have entries");
     Ok(Mix {
-        corrected: Correction::from_profile(profile).apply(estimate),
+        corrected: Correction::from_profile(profile).apply(scaled),
         formats,
         bytes: total,
         estimate,
@@ -394,9 +425,10 @@ impl ProfileQuality {
         estimate_mix(&self.profile, mix)
     }
 
-    /// The estimate mapped to the measured scale.
+    /// The scaled estimate mapped to the measured scale.
     pub fn corrected(&self, mix: &BTreeMap<String, Format>) -> Result<f64, EstimateError> {
-        Ok(self.correction.apply(self.estimate(mix)?))
+        let scaled = estimate_mix_scaled(&self.profile, mix)?;
+        Ok(self.correction.apply(scaled))
     }
 
     /// Error band of the estimate and of the corrected estimate over the profile's checks.
@@ -430,7 +462,7 @@ impl QualityModel for ProfileQuality {
             }
             covered = true;
             let e = g.entries.iter().find(|e| e.format == f)?;
-            loss += params as f64 / total as f64 * (e.kl - base.kl);
+            loss += params as f64 / total as f64 * self.profile.delta(e);
         }
         covered.then_some(loss)
     }
