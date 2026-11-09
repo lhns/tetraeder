@@ -3,9 +3,11 @@
 //! - [`trace`]: the `tetraeder-routing` v1 file the builder's recorder writes.
 //! - [`sim`]: drives the real [`crate::slots::SlotCache`] per tier through a trace in the engine's
 //!   call order and scores RAM-tier policies.
+//! - [`timed`]: the same replay on a virtual clock with a disk model (ADR 0056).
 //! - [`prefetch_plan`]: the prefetch selection, shared by the engine's `Streamer` and the replay.
 
 pub mod sim;
+pub mod timed;
 pub mod trace;
 
 /// Version of the replay's counters. Bump it when the outcome for an existing trace and

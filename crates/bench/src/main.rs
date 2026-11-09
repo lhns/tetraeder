@@ -115,6 +115,10 @@ enum Cmd {
         policies: Vec<String>,
         #[arg(long)]
         out: PathBuf,
+        /// Also replay every configuration on a virtual clock with this time model
+        /// (`tetraeder-plan explain --time-model`, ADR 0056); adds `timed` to the output.
+        #[arg(long)]
+        timed: Option<PathBuf>,
     },
     /// Parse and validate a spec.
     Check { spec: PathBuf },
@@ -283,13 +287,14 @@ fn real_main() -> Result<u8> {
             ram,
             policies,
             out,
+            timed,
         } => {
             let policies = policies
                 .iter()
                 .map(|p| tetraeder_memory::replay::sim::Policy::parse(p))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(anyhow::Error::msg)?;
-            let n = replay::run(&trace, &vram, &ram, &policies, &out)?;
+            let n = replay::run_timed(&trace, &vram, &ram, &policies, &out, timed.as_deref())?;
             println!("replay: {n} configurations -> {}", out.display());
             Ok(0)
         }

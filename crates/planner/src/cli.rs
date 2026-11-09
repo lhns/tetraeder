@@ -6,10 +6,12 @@ use crate::diff::plan_diff;
 use crate::explain::explain;
 use crate::profile_quality::{Band, mix_at_budget, tensor_formats};
 use crate::quality::BitsQuality;
+use crate::score::{builder_time_model, read_tier_replay};
 use crate::search::{SearchInput, search};
 use crate::whatif::{Change, default_candidates, rank_purchases, what_if};
 use anyhow::{Context, Result, anyhow};
 use std::collections::BTreeMap;
+use std::path::Path;
 use tetraeder_plan::{Hints, ModelDesc, Phase, Plan, QualityProfile};
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
@@ -90,6 +92,23 @@ pub fn explain_cmd(
         let e = explain(inp, &search(inp));
         if as_json { json(&e) } else { Ok(e.to_text()) }
     })
+}
+
+/// `explain --time-model`: the time model (ADR 0056) of one candidate of a builder fixture
+/// directory (`layout.json`, `candidates.json`, `tier-replay.json`) on the hardware graph `hw`,
+/// as JSON for `tetraeder-bench replay --timed`.
+pub fn time_model_cmd(hw: &str, fixture: &Path, candidate: &str) -> Result<String> {
+    let hw = HardwareGraph::from_toml(hw).context("parse hardware")?;
+    hw.validate().map_err(|e| anyhow!("hardware: {e}"))?;
+    let read = |name: &str| {
+        let p = fixture.join(name);
+        std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display()))
+    };
+    let layout = serde_json::from_str(&read("layout.json")?).context("parse layout.json")?;
+    let cands = serde_json::from_str(&read("candidates.json")?).context("parse candidates.json")?;
+    let outs = read_tier_replay(&fixture.join("tier-replay.json")).map_err(|e| anyhow!(e))?;
+    let m = builder_time_model(&hw, &layout, &cands, &outs, candidate).map_err(|e| anyhow!(e))?;
+    json(&m)
 }
 
 /// `diff`: what moves between two plan files and how long the switch takes.

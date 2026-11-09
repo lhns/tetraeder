@@ -238,7 +238,27 @@ enum Ram {
     Belady(Belady),
 }
 
-struct Sim<'a> {
+/// Observer of the replay's calls, in the engine's order and with their sizes, for the virtual
+/// clock of [`super::timed`] (ADR 0056). The replay's counters never depend on it: a replay
+/// without one ([`replay`]) counts bytes only.
+pub trait Timing {
+    /// A layer step begins (before the previous step's stranded reads are settled).
+    fn layer_begin(&mut self, step: u32, layer: usize, decode: bool);
+    /// Reads of `experts` of `layer` (`bytes` each) are queued as prefetches.
+    fn prefetch_submit(&mut self, layer: usize, experts: &[u32], bytes: u64);
+    /// The prefetch reads of `layer` are completed before the layer is planned (`settle`: also
+    /// at a step boundary and before a hot-set refresh, whatever the read path).
+    fn prefetch_land(&mut self, layer: usize, settle: bool);
+    /// One expert of `layer` is read synchronously because the RAM tier missed it.
+    fn miss_submit(&mut self, layer: usize, expert: u32, bytes: u64);
+    /// A CPU group of `layer`: `(expert, routed pairs)`. `compute` is false for the loads of a
+    /// hot-set refresh, which read but compute nothing.
+    fn cpu_group(&mut self, layer: usize, experts: &[(u32, u32)], compute: bool);
+    /// The layer step is done (the GPU part runs here).
+    fn layer_end(&mut self, layer: usize);
+}
+
+struct Sim<'a, 't> {
     h: &'a TraceHeader,
     cfg: Config,
     prefetch_on: bool,
@@ -259,6 +279,9 @@ struct Sim<'a> {
     /// Count invariant violations ([`replay_checked`]).
     check: bool,
     violations: u64,
+    timing: Option<&'t mut dyn Timing>,
+    /// Also prefetch two layers ahead from the recorded depth-2 predictions.
+    depth2: bool,
 }
 
 /// `items` with those `resident` holds first (stable): the engine's `hits_first`.
@@ -267,7 +290,7 @@ fn hits_first(items: &[u32], resident: impl Fn(u32) -> bool) -> Vec<u32> {
     hits.into_iter().chain(misses).collect()
 }
 
-impl<'a> Sim<'a> {
+impl<'a, 't> Sim<'a, 't> {
     fn new(trace: &'a Trace, cfg: Config, belady_times: Option<AccessLog>, log: bool) -> Self {
         let h = &trace.header;
         let layers = h.n_layer as usize;
@@ -313,6 +336,8 @@ impl<'a> Sim<'a> {
             log: log.then(|| vec![HashMap::new(); layers]),
             check: false,
             violations: 0,
+            timing: None,
+            depth2: true,
         }
     }
 
@@ -365,6 +390,13 @@ impl<'a> Sim<'a> {
         }
     }
 
+    fn note_miss(&mut self, il: usize, e: u32) {
+        let bytes = self.expert_bytes(il);
+        if let Some(t) = self.timing.as_mut() {
+            t.miss_submit(il, e, bytes);
+        }
+    }
+
     /// `Streamer::fill_ram`: RAM hits first, then the misses; each miss is a synchronous read.
     fn fill_ram(&mut self, il: usize, experts: &[u32]) {
         let mut order: Vec<usize> = (0..experts.len()).collect();
@@ -390,10 +422,12 @@ impl<'a> Sim<'a> {
                     }
                     self.acc[self.phase].misses += 1;
                     self.acc[self.phase].sync_bytes += self.expert_bytes(il);
+                    self.note_miss(il, e);
                 }
                 Look::Bypass => {
                     self.acc[self.phase].misses += 1;
                     self.acc[self.phase].sync_bytes += self.expert_bytes(il);
+                    self.note_miss(il, e);
                 }
             }
         }
@@ -449,13 +483,20 @@ impl<'a> Sim<'a> {
         }
         self.acc[self.phase].issued += read.len() as u64;
         if !read.is_empty() {
+            let bytes = self.expert_bytes(il);
+            if let Some(t) = self.timing.as_mut() {
+                t.prefetch_submit(il, &read, bytes);
+            }
             self.inflight.push_back((il, read));
         }
     }
 
     /// `Streamer::finish_prefetch`: the reads of layer `il` land; their pins are released (the
     /// frequency pins stay).
-    fn finish_prefetch(&mut self, il: usize) {
+    fn finish_prefetch(&mut self, il: usize, settle: bool) {
+        if let Some(t) = self.timing.as_mut() {
+            t.prefetch_land(il, settle);
+        }
         let mut mine = 0u64;
         self.inflight.retain(|f| {
             if f.0 == il {
@@ -475,7 +516,7 @@ impl<'a> Sim<'a> {
 
     fn settle(&mut self) {
         while let Some(il) = self.inflight.front().map(|f| f.0) {
-            self.finish_prefetch(il);
+            self.finish_prefetch(il, true);
         }
     }
 
@@ -520,6 +561,10 @@ impl<'a> Sim<'a> {
             let ordered = hits_first(&loads, |e| self.ram_has(il, e));
             for group in ordered.chunks(self.ram_slots) {
                 self.fill_ram(il, group);
+                if let Some(t) = self.timing.as_mut() {
+                    let g: Vec<(u32, u32)> = group.iter().map(|&e| (e, 0)).collect();
+                    t.cpu_group(il, &g, false);
+                }
             }
         }
         self.refresh_freq_pins();
@@ -533,6 +578,9 @@ impl<'a> Sim<'a> {
 
     /// One layer step of the run loop.
     fn layer_step(&mut self, s: &LayerStep) {
+        if let Some(t) = self.timing.as_mut() {
+            t.layer_begin(s.step, s.layer as usize, s.n_tokens == 1);
+        }
         if self.cur_step != Some(s.step) {
             self.settle();
             self.cur_step = Some(s.step);
@@ -548,16 +596,18 @@ impl<'a> Sim<'a> {
         let il = s.layer as usize;
         self.ev += 1;
         self.set_event();
-        self.finish_prefetch(il);
+        self.finish_prefetch(il, false);
         if il == 0 {
             self.acc[self.phase].tokens += u64::from(s.n_tokens);
         }
         // plan_cpu: count the pairs, partition by VRAM residency, look up the resident ones.
         let mut seen = vec![false; self.h.n_expert as usize];
+        let mut pairs_of = vec![0u32; self.h.n_expert as usize];
         let mut distinct = Vec::new();
         let mut vram_pairs = 0u64;
         for &e in &s.ids {
             self.counts[il][e as usize] += 1;
+            pairs_of[e as usize] += 1;
             if self.vram.layer(il).slot_of(u32::from(e)).is_some() {
                 vram_pairs += 1;
             }
@@ -581,12 +631,19 @@ impl<'a> Sim<'a> {
             if let Some(p) = &s.predicted {
                 self.start_prefetch(il + 1, p);
             }
-            if let Some(p) = &s.predicted2 {
+            if let (Some(p), true) = (&s.predicted2, self.depth2) {
                 self.start_prefetch(il + 2, p);
             }
         }
         for chunk in order.chunks(self.ram_slots) {
             self.fill_ram(il, chunk);
+            if let Some(t) = self.timing.as_mut() {
+                let g: Vec<(u32, u32)> = chunk.iter().map(|&e| (e, pairs_of[e as usize])).collect();
+                t.cpu_group(il, &g, true);
+            }
+        }
+        if let Some(t) = self.timing.as_mut() {
+            t.layer_end(il);
         }
         self.check_pins();
     }
@@ -658,9 +715,14 @@ fn run(
     times: Option<AccessLog>,
     log: bool,
     check: bool,
+    timing: Option<(&mut dyn Timing, bool)>,
 ) -> (Outcome, Option<AccessLog>, u64) {
     let mut sim = Sim::new(trace, cfg, times, log);
     sim.check = check;
+    if let Some((t, depth2)) = timing {
+        sim.timing = Some(t);
+        sim.depth2 = depth2;
+    }
     for r in &trace.records {
         match r {
             Record::Step(s) => sim.layer_step(s),
@@ -682,16 +744,37 @@ pub fn replay(trace: &Trace, cfg: &Config) -> Outcome {
             prefetch: false,
             ..*cfg
         };
-        let (_, log, _) = run(trace, probe, None, true, false);
-        return run(trace, *cfg, log, false, false).0;
+        let (_, log, _) = run(trace, probe, None, true, false, None);
+        return run(trace, *cfg, log, false, false, None).0;
     }
-    run(trace, *cfg, None, false, false).0
+    run(trace, *cfg, None, false, false, None).0
+}
+
+/// [`replay`] that also reports its calls to `timing`, for the virtual clock. `depth2` false
+/// ignores the recorded depth-2 predictions (prefetch depth 1). Bytes equal [`replay`]'s when
+/// `depth2` is true.
+pub fn replay_timing(
+    trace: &Trace,
+    cfg: &Config,
+    timing: &mut dyn Timing,
+    depth2: bool,
+) -> Outcome {
+    let mut times = None;
+    if cfg.policy == Policy::Belady {
+        let probe = Config {
+            policy: Policy::Lru,
+            prefetch: false,
+            ..*cfg
+        };
+        times = run(trace, probe, None, true, false, None).1;
+    }
+    run(trace, *cfg, times, false, false, Some((timing, depth2))).0
 }
 
 /// [`replay`] for an LRU or frequency policy that also counts violations of the pin invariants:
 /// more pins than active slots, pins the slot table had to drop, a pinned expert evicted.
 pub fn replay_checked(trace: &Trace, cfg: &Config) -> (Outcome, u64) {
-    let (out, _, violations) = run(trace, *cfg, None, false, true);
+    let (out, _, violations) = run(trace, *cfg, None, false, true, None);
     (out, violations)
 }
 

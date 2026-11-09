@@ -795,6 +795,67 @@ pub fn predict_builder(
     (ok, dropped)
 }
 
+/// The virtual-clock time model of one builder candidate (ADR 0056): its features from the
+/// routing replay, its prediction on `hw` (a calibrated graph), then
+/// [`crate::timemodel::time_model`]. The service's workers and chunk come from the variant's
+/// environment and the disk, else the service defaults; prefetch depth 2.
+pub fn builder_time_model(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    cands: &CandidatesFile,
+    outs: &[TierOutcome],
+    id: &str,
+) -> Result<crate::timemodel::TimeModel, String> {
+    let v = match cands.candidates.iter().find(|e| e.candidate.id == id) {
+        Some(e) => &e.variant,
+        None => cands
+            .anchors
+            .iter()
+            .find(|a| a.id == id)
+            .ok_or_else(|| format!("no candidate or anchor {id}"))?,
+    };
+    let o = outcome_of(outs, v).ok_or_else(|| format!("{id}: no replay outcome"))?;
+    let env = |k: &str| v.env.get(k).map(String::as_str);
+    let ub = env("TETRAEDER_EXIT_UBATCH")
+        .and_then(|x| x.parse().ok())
+        .unwrap_or(256);
+    let op = env("TETRAEDER_EXIT_OP_OFFLOAD").is_none_or(|x| x == "1");
+    let (path, depth) = read_path(&v.env, layout, o);
+    let slots = variant_slots(v).map_or(0, |x| x.0);
+    let f = builder_features_tier(
+        layout,
+        slots,
+        o,
+        (v.threads, ub, op),
+        path,
+        (depth, READER_DEPTH),
+        BUILDER_DISK,
+    );
+    let workers = env("TETRAEDER_EXIT_IO_WORKERS")
+        .and_then(|x| x.parse().ok())
+        .unwrap_or(SERVICE_WORKERS);
+    let chunk_bytes = hw
+        .device(BUILDER_DISK)
+        .and_then(|d| d.queue_chunk_bytes)
+        .unwrap_or(SERVICE_CHUNK as u64);
+    let cpu_pairs = f64::from(layout.n_expert_used)
+        * f64::from(layout.n_layer)
+        * (1.0 - o.decode.vram_share).max(0.0);
+    crate::timemodel::time_model(
+        hw,
+        &f,
+        layout.n_layer,
+        cpu_pairs,
+        v.prompt,
+        v.r#gen,
+        crate::timemodel::IoShape {
+            workers,
+            chunk_bytes,
+            prefetch_depth: 2,
+        },
+    )
+}
+
 /// Calibrates on the anchors, predicts the candidates, compares.
 pub fn score(
     fixture: &str,
@@ -1392,6 +1453,21 @@ mod tests {
                 .unwrap();
             assert_eq!(ram, most);
         }
+    }
+
+    // hardware: none
+    #[test]
+    fn time_model_of_a_builder_candidate_reads_the_graph() {
+        let (l, b, file) = synthetic_enumeration();
+        let outs = truth_replay(&l, &file);
+        let g = graph(RTX3090_PRIOR, b.threads);
+        let id = &file.candidates[0].candidate.id;
+        let m = builder_time_model(&g, &l, &file, &outs, id).unwrap();
+        assert!(m.gpu_layer_s > 0.0, "{m:?}");
+        assert!(m.cpu_group_s >= 0.0 && m.cpu_expert_s >= 0.0, "{m:?}");
+        assert_eq!(m.curve, g.device(BUILDER_DISK).unwrap().queue_curve);
+        assert_eq!((m.workers, m.prefetch_depth), (SERVICE_WORKERS, 2));
+        assert!(builder_time_model(&g, &l, &file, &outs, "nope").is_err());
     }
 
     // hardware: none

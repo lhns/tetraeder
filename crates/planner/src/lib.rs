@@ -38,6 +38,7 @@ pub mod quality;
 pub mod score;
 pub mod search;
 pub mod serve;
+pub mod timemodel;
 pub mod whatif;
 
 pub use builder::{build_builder_candidate, enumerate_builder};
@@ -67,4 +68,5 @@ pub use serve::{
     Picked, Proposed, ServeInput, budget_of, candidates, correct_for_drift, fill_knobs, pick,
     predict_plan, propose, regret,
 };
+pub use timemodel::{IoShape, TimeModel, time_model};
 pub use whatif::{Change, Priors, WhatIf, apply, fill_from_priors, rank_purchases, what_if};

@@ -68,6 +68,16 @@ enum Command {
         hints: Option<PathBuf>,
         #[arg(long)]
         json: bool,
+        /// Instead of the search: write the time model of a builder candidate for
+        /// `tetraeder-bench replay --timed` (ADR 0056); needs `--fixture` and `--candidate`.
+        #[arg(long, requires_all = ["fixture", "candidate"])]
+        time_model: Option<PathBuf>,
+        /// Builder fixture directory (layout.json, candidates.json, tier-replay.json).
+        #[arg(long)]
+        fixture: Option<PathBuf>,
+        /// Candidate (or anchor) id in the fixture.
+        #[arg(long)]
+        candidate: Option<String>,
     },
     /// What moves between two plan files and how long the switch takes.
     Diff {
@@ -204,7 +214,16 @@ fn main() -> Result<()> {
             common,
             hints,
             json,
+            time_model,
+            fixture,
+            candidate,
         } => {
+            if let (Some(out), Some(fixture), Some(candidate)) = (time_model, fixture, candidate) {
+                let text = cli::time_model_cmd(&read(&common.hw)?, &fixture, &candidate)?;
+                std::fs::write(&out, text).with_context(|| format!("write {}", out.display()))?;
+                println!("time model of {candidate} -> {}", out.display());
+                return Ok(());
+            }
             let out = cli::explain_cmd(
                 &read(&common.hw)?,
                 &read(&common.model)?,
