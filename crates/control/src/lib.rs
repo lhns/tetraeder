@@ -4,5 +4,5 @@ mod replan;
 
 pub use replan::{
     Clock, Config, EngineControl, FakeClock, Outcome, OutcomeHook, PlanSource, Proposal, Replanner,
-    Trigger,
+    SystemClock, Trigger,
 };

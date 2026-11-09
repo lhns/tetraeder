@@ -32,8 +32,12 @@ services:
   vmalert:
     image: victoriametrics/vmalert:v1.108.1
     # No Alertmanager in the local stack: alerts are visible in vmalert's UI on :8880.
+    # `tetraeder serve --plan` receives the SLO burn alerts on its admin listener (:8081, ADR 0055);
+    # the container reaches it only if serve is started with `--admin 0.0.0.0:8081` (no authentication,
+    # so only on a trusted network). Without it, or with serve stopped, the notifier only logs errors.
     # remoteWrite stores the recording rules of slo.yml (error ratios) so the dashboards can query them.
-    command: ["-rule=/etc/alerts/*.yml", "-datasource.url=http://victoriametrics:8428", "-remoteWrite.url=http://victoriametrics:8428", "-notifier.blackhole"]
+    command: ["-rule=/etc/alerts/*.yml", "-datasource.url=http://victoriametrics:8428", "-remoteWrite.url=http://victoriametrics:8428", "-notifier.url=http://host.docker.internal:8081"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - ./alerts:/etc/alerts:ro
     ports:

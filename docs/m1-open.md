@@ -35,7 +35,7 @@ State at the end of the 2026-11-03 parallel-tracks session. Everything below is 
 9. **Smaller:**
    - imatrix and IQ formats below 4 bits.
    - Per-expert formats need typed slots.
-   - Replanner hook and plan metrics not wired into the engine: needs three decisions first: how `serve` gets a `Plan` and a hardware graph, how a `Plan` lowers to load options for the restart, and where the predicted step time for `plan.residual` comes from.
+   - Replanning in `serve --plan` (ADR 0055): part A is in; part B (op offload switch in libllama, builder prefill chunk from the plan, `Scheduler::shutdown` join) waits for `track-r` and `track-s`, and the box benchmark (switch time and refused requests, paired against restarting llama-server) waits for the hold.
    - `DRAIN_S`/`RELOAD_S` are guesses.
    - The small-RAM fusion-off drift check.
 

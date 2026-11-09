@@ -104,3 +104,35 @@ Groups are per expert, so each expert keeps all its rows, its row order and its 
 - Memory: 16 workers times the shard count times one chunk of bounce (about 80 MB at 5 shards) replaces the reader's 64 MiB per shard; reported as `io`.
 - Option B is not built. It returns if the third bullet above holds.
 - All box measurements wait for the hold to lift; local tests use the synthetic MoE of `crates/model/tests/common/synth.rs` with an injected per-chunk delay.
+
+## Implementation notes
+
+Built as in Brief A, both behind default-off options (`IoOptions::service`, `LoadOptions::overlap`).
+
+- `memory::io::IoService` (`crates/memory/src/io.rs`), `HostDst::sub`, `IoOptions::{service, workers}`. In the model: `Prefetcher` enum in the streamer (reader or service), `Streamer::{begin_step, stage_overlap, wait_landed, finish_overlap}`, `LoadOptions::overlap`, `State.host` (`xn_host`, `cpu_out_host`), `Slot.cpu_out`, `sched_cpu`, `ExpertSrc::Copied`. `expert_rows` is now the one definition of the expert FFN ops for segment groups and CPU groups.
+- Metrics, panel "Expert reads under compute" (id 54), alert `TetraederExpertReadsNotHidden`. Harness env `TETRAEDER_EXIT_IO_SERVICE`, `_IO_WORKERS`, `_OVERLAP`, `_IO_DELAY_MS`; JSON `decode_overlap`. Box stages `main-iosvc`, `main-overlap`, `main-overlap-d2`, `main-overlap-ram`, `main-overlap-repeat`, replay counts 79, 81, 83 (written, not run).
+
+Deviations and local choices:
+
+- `tetraeder.io.inflight` is sampled by the streamer after each submit (`io.inflight()`), not inside the service, which has no metrics handle.
+- The wait for leftover units in `start_prefetch` is `begin_step` (settle at the start of every `run`) plus a settle at the end of an overlapped step. Leftovers are long landed, so it is free, and `ExpertStats` is complete when a step returns.
+- `batches` counts one per submitting call (prefetch call, or miss batch), not per landing. A unit's `took` runs from submit to its last chunk, so `read_time` and `prefetch_read_time` sum latencies and exceed device time when units overlap.
+- Pinned mispredicted reads can leave too few RAM slots for a layer step on a very small tier (RAM slots below experts routed plus experts stranded in flight). `stage_overlap` then waits for the stranded reads first. The fixture (12 RAM slots, top-8) takes that path; production tiers (77 or more) do not.
+- With `overlap` and no op offload, any step with one CPU chunk takes the overlap path, prefill included (the brief gates only on `!offloads`).
+- In the gated case `plan_cpu` runs before `finish_prefetch` (it does not depend on it); `finish_prefetch` runs only when the step is not overlapped and has CPU experts. A step with no CPU experts leaves its layer's reads for the next settle.
+- `LoadOptions::io_delay` (hidden) injects the per-chunk delay; the test-only delay applies to the service only.
+- The branch is based on `origin/track-u-parallel-reads-adr` (this ADR and the brief were not on `main` yet).
+
+Tests: `crates/memory/src/io.rs` (7 unit tests), `crates/model/tests/overlap.rs` (bitwise service and overlap at depth 1, 2 and off, cache counters equal, pending groups, read error and recovery, GPU case skipped without a device), proptest `overlap_groups_partition_all_pairs`. `replay_fidelity.rs` was not extended (open item).
+
+Local synthetic exit regime (release, 2 threads, 64 prefill, 32 decode, 2 VRAM slots, RAM tier a quarter of the experts, prefetch depth 1; greedy tokens identical in all five runs), decode per token:
+
+| Run | tok/s | total ms | streamer ms | read_wait ms | hidden share |
+|---|---|---|---|---|---|
+| reader (serial) | 6.50 | 153.8 | 13.0 | | |
+| service | 6.73 | 148.6 | 14.7 | | |
+| service + overlap | 6.21 | 161.0 | 64.7 (cpu_ready 32.8, cpu_landed 26.2) | 1.5 | 0.96 |
+| service, 3 ms per chunk | 6.41 | 156.0 | 12.8 | | |
+| service + overlap, 3 ms per chunk | 6.34 | 157.7 | 66.5 (cpu_ready 31.2, cpu_landed 25.7) | 6.0 | 0.87 |
+
+On this machine reads are already hidden by the prefetch (the page cache is warm and 16 workers absorb the delay), so overlap has nothing to win and costs its extra graphs; the numbers say nothing about box C. The box pairs decide.

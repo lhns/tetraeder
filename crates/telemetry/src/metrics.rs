@@ -20,12 +20,15 @@ pub mod attr {
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
     pub const FORMAT: &str = "tetraeder.format";
+    pub const IO_CLASS: &str = "tetraeder.io.class";
+    pub const PART: &str = "tetraeder.part";
     pub const METHOD: &str = "tetraeder.spec.method";
     pub const PLAN: &str = "tetraeder.plan";
     pub const RESOURCE: &str = "tetraeder.resource";
     pub const FAULT_CLASS: &str = "tetraeder.fault.class";
     pub const REPLAN_TRIGGER: &str = "tetraeder.replan.trigger";
     pub const REPLAN_OUTCOME: &str = "tetraeder.replan.outcome";
+    pub const LOAD_OUTCOME: &str = "tetraeder.load.outcome";
     pub const CPU_TIER: &str = "tetraeder.cpu.tier";
     pub const CPU_ISA: &str = "tetraeder.cpu.isa";
     pub const CPU_DISPATCH: &str = "tetraeder.cpu.dispatch";
@@ -101,6 +104,9 @@ pub struct Metrics {
     prefetch: Counter<u64>,
     prefetch_wasted_bytes: Counter<u64>,
     prefetch_accuracy: Histogram<f64>,
+    io_inflight: Histogram<f64>,
+    read_hidden: Histogram<f64>,
+    layer_part: Histogram<f64>,
     convert_duration: Histogram<f64>,
     convert_bytes: Counter<u64>,
     convert_cache: Counter<u64>,
@@ -119,6 +125,8 @@ pub struct Metrics {
     bottleneck_fault: Counter<u64>,
     replan_total: Counter<u64>,
     replan_duration: Histogram<f64>,
+    engine_load: Histogram<f64>,
+    replan_admitting: Gauge<u64>,
     cpu_variant: Gauge<u64>,
     cpu_isa_missing: Gauge<u64>,
 }
@@ -218,6 +226,24 @@ impl Metrics {
                 .with_description("Share of predicted experts the router chose, per layer step")
                 .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
                 .build(),
+            io_inflight: meter
+                .f64_histogram("tetraeder.io.inflight")
+                .with_unit("{chunk}")
+                .with_description("Expert read chunks queued or running in the I/O service, at each submit")
+                .with_boundaries(vec![0.0, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 64.0])
+                .build(),
+            read_hidden: meter
+                .f64_histogram("tetraeder.moe.read.hidden")
+                .with_unit("1")
+                .with_description(
+                    "Share of the expert read span of a decode layer step the main thread did not wait for",
+                )
+                .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                .build(),
+            layer_part: hist(
+                "tetraeder.moe.layer.duration",
+                "Time of one part of a decode layer step with expert reads in flight",
+            ),
             convert_duration: meter
                 .f64_histogram("tetraeder.convert.duration")
                 .with_unit("s")
@@ -323,6 +349,18 @@ impl Metrics {
                 .with_boundaries(vec![
                     0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
                 ])
+                .build(),
+            engine_load: meter
+                .f64_histogram("tetraeder.engine.load.duration")
+                .with_unit("s")
+                .with_description("Time to load the model into an engine, by outcome")
+                .with_boundaries(vec![
+                    0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+                ])
+                .build(),
+            replan_admitting: meter
+                .u64_gauge("tetraeder.replan.admitting")
+                .with_description("1 while the server admits new requests, 0 during a plan switch")
                 .build(),
             cpu_variant: meter
                 .u64_gauge("tetraeder.cpu.variant")
@@ -482,6 +520,24 @@ impl Metrics {
         );
     }
 
+    /// Chunks in flight in the I/O service after a submit of class `urgent` or `prefetch`
+    /// (ADR 0054).
+    pub fn io_inflight(&self, class: &'static str, chunks: u64) {
+        self.io_inflight
+            .record(chunks as f64, &[KeyValue::new(attr::IO_CLASS, class)]);
+    }
+
+    /// One decode layer step with experts in flight: `1 - read_wait / read_span`.
+    pub fn read_hidden(&self, share: f64) {
+        self.read_hidden.record(share, &[]);
+    }
+
+    /// Time of `part` (`cpu_ready`, `read_wait`, `cpu_landed`, `copy`) of one decode layer step.
+    pub fn layer_part(&self, part: &'static str, d: Duration) {
+        self.layer_part
+            .record(d.as_secs_f64(), &[KeyValue::new(attr::PART, part)]);
+    }
+
     /// One tensor converted to `format` (ADR 0047).
     pub fn convert_duration(&self, d: Duration, format: &str) {
         self.convert_duration.record(
@@ -591,6 +647,19 @@ impl Metrics {
 
     pub fn replan_duration(&self, d: Duration) {
         self.replan_duration.record(d.as_secs_f64(), &[]);
+    }
+
+    /// One engine load; `outcome` is `ok` or `failed` (ADR 0055).
+    pub fn engine_load(&self, d: Duration, outcome: &str) {
+        self.engine_load.record(
+            d.as_secs_f64(),
+            &[KeyValue::new(attr::LOAD_OUTCOME, outcome.to_owned())],
+        );
+    }
+
+    /// Whether new requests are admitted (ADR 0055).
+    pub fn replan_admitting(&self, on: bool) {
+        self.replan_admitting.record(u64::from(on), &[]);
     }
 
     /// Once at engine start (ADR 0052): the CPU backend variant that is loaded. `isa` and

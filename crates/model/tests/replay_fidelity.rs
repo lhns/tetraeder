@@ -27,8 +27,17 @@ fn prompt() -> Vec<i32> {
     (0..N_PROMPT as i32).map(|i| (i * 37 + 5) % 256).collect()
 }
 
-fn opts(ram: usize, depth: usize, prefetch: bool) -> LoadOptions {
+/// `overlap`: the I/O service and arrival-order compute (ADR 0054), with a per-chunk delay so
+/// reads are in flight when a layer is planned.
+fn opts(ram: usize, depth: usize, prefetch: bool, overlap: bool) -> LoadOptions {
     LoadOptions {
+        io: tetraeder_memory::IoOptions {
+            service: overlap,
+            workers: 4,
+            ..Default::default()
+        },
+        overlap,
+        io_delay: overlap.then_some(std::time::Duration::from_millis(2)),
         expert_slots: Some(VRAM),
         ram_slots: Some(ram),
         miss: MissPolicy::Cpu,
@@ -61,17 +70,20 @@ fn ram_hit_rate_mean(a: &ExpertStats, b: &ExpertStats) -> f64 {
 fn cpu_replay_matches_the_engine_exactly() {
     let path = fixture();
     let dir = std::env::temp_dir();
-    for (ram, depth, prefetch) in [
-        (12, 1, true),
-        (12, 2, true),
-        (20, 1, true),
-        (20, 2, true),
-        (12, 1, false),
+    for (ram, depth, prefetch, overlap) in [
+        (12, 1, true, false),
+        (12, 2, true, false),
+        (20, 1, true, false),
+        (20, 2, true, false),
+        (12, 1, false, false),
+        (12, 1, true, true),
+        (12, 2, true, true),
+        (20, 1, true, true),
     ] {
-        let what = format!("ram {ram} depth {depth} prefetch {prefetch}");
-        let mut m = Qwen3Moe::load(&path, &opts(ram, depth, prefetch)).unwrap();
+        let what = format!("ram {ram} depth {depth} prefetch {prefetch} overlap {overlap}");
+        let mut m = Qwen3Moe::load(&path, &opts(ram, depth, prefetch, overlap)).unwrap();
         let trace_path = dir.join(format!(
-            "tetraeder-fidelity-{}-{ram}-{depth}-{prefetch}.trace",
+            "tetraeder-fidelity-{}-{ram}-{depth}-{prefetch}-{overlap}.trace",
             std::process::id()
         ));
         let mut rec =

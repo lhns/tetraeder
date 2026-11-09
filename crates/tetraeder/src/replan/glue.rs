@@ -1,0 +1,196 @@
+//! A lowered plan as the load options of the two serving engines (ADR 0055).
+
+use crate::engine_args::PlacementArgs;
+use std::sync::Arc;
+use tetraeder_engine::{BufferOverride, ContextConfig, Placement};
+use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy};
+use tetraeder_planner::Lowered;
+use tetraeder_telemetry::Telemetry;
+
+/// Placement and context of a libllama plan. `base` supplies what a plan does not say
+/// (`--flash-attn`, `--load-mode`); the placement flags are not used with `--plan`.
+pub fn llama_options(
+    l: &Lowered,
+    base: &PlacementArgs,
+    ctx: u32,
+) -> Result<(Placement, ContextConfig), String> {
+    let Lowered::Llama {
+        n_gpu_layers,
+        cpu_patterns,
+        threads,
+        batch,
+        ubatch,
+        ..
+    } = l
+    else {
+        return Err("not a libllama plan".into());
+    };
+    let overrides = cpu_patterns
+        .iter()
+        .map(|p| BufferOverride::parse(p).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let placement = Placement {
+        n_gpu_layers: *n_gpu_layers,
+        overrides,
+        ..base.placement()
+    };
+    let cfg = ContextConfig {
+        n_batch: *batch,
+        n_ubatch: *ubatch,
+        threads: i32::try_from(*threads).ok(),
+        ..base.context(ctx)
+    };
+    Ok((placement, cfg))
+}
+
+/// Load options of a builder plan. A RAM tier means misses run on the CPU, as in the campaign;
+/// otherwise `miss` (the `--miss` flag) decides.
+pub fn builder_options(
+    l: &Lowered,
+    ctx: u32,
+    miss: MissPolicy,
+    prefetch: bool,
+    telemetry: Arc<Telemetry>,
+) -> Result<LoadOptions, String> {
+    let Lowered::Builder {
+        gpu,
+        expert_slots,
+        ram_slots,
+        threads,
+        op_offload,
+        ..
+    } = l
+    else {
+        return Err("not a builder plan".into());
+    };
+    let threads = *threads as usize;
+    let backend = match gpu {
+        Some(i) => BackendChoice::Gpu { index: *i as usize },
+        None => BackendChoice::Cpu {
+            threads: Some(threads),
+        },
+    };
+    let mut o = LoadOptions::new(backend);
+    o.cpu_threads = Some(threads);
+    o.n_ctx = ctx as usize;
+    o.expert_slots = expert_slots.map(|s| s as usize);
+    o.ram_slots = ram_slots.map(|s| s as usize);
+    o.op_offload = *op_offload;
+    o.miss = if ram_slots.is_some() {
+        MissPolicy::Cpu
+    } else {
+        miss
+    };
+    o.prefetch = prefetch;
+    o.telemetry = Some(telemetry);
+    Ok(o)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use tetraeder_engine::FlashAttn;
+    use tetraeder_telemetry::TelemetryConfig;
+
+    #[derive(Parser)]
+    struct P {
+        #[command(flatten)]
+        place: PlacementArgs,
+    }
+
+    fn base(extra: &[&str]) -> PlacementArgs {
+        let mut args = vec!["x"];
+        args.extend(extra);
+        P::parse_from(args).place
+    }
+
+    // hardware: none
+    #[test]
+    fn llama_options_follow_the_lowered_plan() {
+        let l = Lowered::Llama {
+            n_gpu_layers: 99,
+            cpu_patterns: vec![r"blk\.(2[4-9])\.ffn_(up|down|gate)_exps=CPU".into()],
+            threads: 6,
+            batch: 2048,
+            ubatch: 512,
+            op_offload: true,
+        };
+        let (p, c) = llama_options(&l, &base(&["--flash-attn", "on"]), 4096).unwrap();
+        assert_eq!(p.n_gpu_layers, 99);
+        assert_eq!(p.overrides.len(), 1);
+        assert_eq!(p.overrides[0].buffer, "CPU");
+        assert_eq!(
+            p.overrides[0].pattern,
+            r"blk\.(2[4-9])\.ffn_(up|down|gate)_exps"
+        );
+        assert_eq!(
+            (c.n_ctx, c.n_batch, c.n_ubatch, c.threads),
+            (4096, 2048, 512, Some(6))
+        );
+        assert_eq!(c.flash_attn, FlashAttn::On);
+        let cpu = Lowered::Llama {
+            n_gpu_layers: 0,
+            cpu_patterns: vec![],
+            threads: 2,
+            batch: 2048,
+            ubatch: 512,
+            op_offload: false,
+        };
+        let (p, _) = llama_options(&cpu, &base(&[]), 256).unwrap();
+        assert_eq!((p.n_gpu_layers, p.overrides.len()), (0, 0));
+        assert!(
+            llama_options(
+                &Lowered::Builder {
+                    gpu: None,
+                    expert_slots: None,
+                    ram_slots: None,
+                    threads: 1,
+                    ubatch: 512,
+                    op_offload: true
+                },
+                &base(&[]),
+                256
+            )
+            .is_err()
+        );
+    }
+
+    // hardware: none
+    #[test]
+    fn builder_options_follow_the_lowered_plan() {
+        let tel = Arc::new(Telemetry::new(&TelemetryConfig::from_env()).unwrap());
+        let gpu = Lowered::Builder {
+            gpu: Some(1),
+            expert_slots: Some(16),
+            ram_slots: Some(60),
+            threads: 7,
+            ubatch: 512,
+            op_offload: false,
+        };
+        let o = builder_options(&gpu, 4096, MissPolicy::Upload, true, Arc::clone(&tel)).unwrap();
+        assert!(matches!(o.backend, BackendChoice::Gpu { index: 1 }));
+        assert_eq!(
+            (o.cpu_threads, o.n_ctx, o.expert_slots, o.ram_slots),
+            (Some(7), 4096, Some(16), Some(60))
+        );
+        assert_eq!(
+            (o.op_offload, o.miss, o.prefetch),
+            (false, MissPolicy::Cpu, true)
+        );
+        let cpu = Lowered::Builder {
+            gpu: None,
+            expert_slots: None,
+            ram_slots: None,
+            threads: 2,
+            ubatch: 512,
+            op_offload: true,
+        };
+        let o = builder_options(&cpu, 256, MissPolicy::Upload, false, tel).unwrap();
+        assert!(matches!(o.backend, BackendChoice::Cpu { threads: Some(2) }));
+        assert_eq!(
+            (o.expert_slots, o.ram_slots, o.miss),
+            (None, None, MissPolicy::Upload)
+        );
+    }
+}
