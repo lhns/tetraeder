@@ -12,7 +12,7 @@ Plain, short docs and comments; no em dashes.
 5. Property tests on plans: memory never exceeded, every unit computed exactly once, every migration DAG ends in its target plan.
 6. Every new component ships with its metrics, a dashboard panel and an alert rule in the same PR.
 7. `unsafe` only in `ggml-sys` and `memory`, each block with a safety comment.
-8. A ggml change goes into the patch queue with an ADR and backend tests; nothing is upstreamed; never edit vendored ggml in place.
+8. A ggml change goes into the patch queue with an ADR and backend tests; nothing is upstreamed; never edit vendored ggml in place. Code or binaries taken from another project get a row in `docs/sources.md` (repo, path, commit, license, how to update); copied code keeps its copyright notice.
 9. Tests are labelled by the hardware they need and skip cleanly without it.
 10. Small PRs naming the phase and exit test they move.
 11. Every change builds and tests on Windows and Linux (`cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check`).
