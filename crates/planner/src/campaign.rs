@@ -712,7 +712,9 @@ mod tests {
                 let mut want: Vec<&str> = en.candidates.iter().map(|x| x.id.as_str()).collect();
                 want.sort_unstable();
                 assert_eq!(ids, want);
-                let cost = |id: &str| prior_request_s(&l, get(id), b.threads).unwrap();
+                // as the sort key: a variant the prior cannot predict goes last
+                let cost =
+                    |id: &str| prior_request_s(&l, get(id), b.threads).unwrap_or(f64::INFINITY);
                 let order: Vec<f64> = c
                     .variants
                     .iter()
