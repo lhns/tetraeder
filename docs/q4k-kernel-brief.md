@@ -27,8 +27,10 @@ main after that merge. If it is not merged when you start, stop and report.
 
 ### 1. Failing tests
 
-- `crates/ggml-sys/tests/iqk_kernels.rs` (hardware label `avx512_vnni`; skip with a printed reason unless
-  `cpu::backend_info().isa` contains `"IQK_MM"`):
+- `crates/ggml-sys/tests/iqk_kernels.rs` (hardware label `avx512_vnni`). One gate for every test: skip with a printed
+  reason when the loaded variant's `cpu::backend_info().tier` is below `avx512_vnni`; otherwise run, and assert
+  `isa` contains `"IQK_MM"` unless `GGML_CPU_IQK_MM=0` is set. So on icelake the tests fail before the patch (feature
+  missing) and pass after, and the env-off arm still runs the reference checks.
   - `q4k_mul_mat_id_decode_matches_reference` and `q6k_mul_mat_id_decode_matches_reference`: experts
     `[ne00, ne01, 16]` with ne00 in {256, 1536, 4096}, ne01 = 96, 4 of 16 experts used, one token; also the down shape
     (src1 `[ne00, 4, 1]`, one row per slot). Random weights through `quantize`, random activations. Reference in f64:
@@ -37,10 +39,9 @@ main after that merge. If it is not merged when you start, stop and report.
     |y - ref| <= 1e-5 * sum|w*x| + 1e-6 per output. Run the same graph with `use_ref` on (ggml's own vec_dot) and
     assert the same bound, and report max |iqk - vec_dot|.
   - `iqk_is_deterministic_across_threads`: 1, 3 and 8 threads give bitwise equal outputs.
-  - `iqk_off_by_env`: documented as run by CI with `GGML_CPU_IQK_MM=0`: then `IQK_MM` is absent and the reference
-    tests still pass (the skip must not trigger in that mode: check the variant tier instead of the feature).
+  - `iqk_off_by_env`: run by CI with `GGML_CPU_IQK_MM=0`: asserts `IQK_MM` is absent; the reference tests above
+    pass in the same run.
 - `src/ggml/cpu.rs` unit test: `IQK_MM` is in the tracked list; host has it iff the five AVX-512 flags are detected.
-- These fail before the patch (no `IQK_MM`); under SDE they must fail before and pass after.
 
 ### 2. Patch 0002 (in `vendor/llama.cpp`, then `git -C vendor/llama.cpp diff > patches/0002-iqk-avx512-q4k-q6k-decode.patch`)
 
@@ -54,10 +55,13 @@ to check it applies after 0001.
   `llama.cpp/ggml-common.h` (each one `#include` of the real header in `ggml/src/`), and `sgemm.h` (empty or the
   minimum the file needs; do not pull in llamafile's sgemm). If the file compiles without one of them, drop it.
 - `ggml/src/ggml-cpu/iqk/iqk-mm.h` and `iqk-mm.cpp` (our code, a short header comment naming ADR 0053): the
-  interface in the ADR. `iqk-mm.cpp` is the whole file under the five-flag `#if`; inside it
-  `#define iqk_mul_mat ggml_iqk_mul_mat` and `#define iqk_mul_mat_moe ggml_iqk_mul_mat_moe_unused` before
-  `#include "iqk_mul_mat.inc"`, plus `ggml_cpu_iqk_mm_enabled()` (`std::call_once`, `getenv("GGML_CPU_IQK_MM")`,
-  on unless `"0"`), mirroring `tiled.cpp:572-581`. Compile warnings from the copied file: silence them per file in
+  interface in the ADR. Linkage: `ggml-cpu.c` is C and the `.inc` defines its entry points with C++ linkage, so
+  `iqk-mm.h` wraps its declarations in `#ifdef __cplusplus extern "C" {`. `iqk-mm.cpp` is the whole file under the
+  five-flag `#if`; inside it `#define iqk_mul_mat iqk_mul_mat_impl` and
+  `#define iqk_mul_mat_moe iqk_mul_mat_moe_unused` before `#include "iqk_mul_mat.inc"`, then
+  `extern "C" bool ggml_iqk_mul_mat(...)` as a thin wrapper calling `iqk_mul_mat_impl`, and
+  `extern "C" bool ggml_cpu_iqk_mm_enabled(void)` (`std::call_once`, `getenv("GGML_CPU_IQK_MM")`, on unless `"0"`),
+  mirroring `tiled.cpp:572-581`. Compile warnings from the copied file: silence them per file in
   CMake (`set_source_files_properties`), never by editing it.
 - `ggml/src/ggml-cpu/CMakeLists.txt`: add `iqk/iqk-mm.cpp` and `iqk/iqk-mm.h` to the source list next to `tiled`
   (line 44), and `ggml-cpu/iqk` to that target's include dirs so `"llama.cpp/ggml-impl.h"` and `"sgemm.h"` resolve.
