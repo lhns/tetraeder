@@ -30,7 +30,7 @@ B3 first: its cache tuner gives B1 the llama.cpp CPU share. B3-planner and B3-de
 | Session | Box | Script time (estimate / budget) | Box hours | Box cost | Download | Traffic cost | Total |
 |---|---|---|---|---|---|---|---|
 | B1 `b1-exit` | RTX 3090, about 91 GB RAM, 24 to 26 core quota, 220 GB disk | 115 / 120 min (the guard drops `ktransformers-avx2` and the cache repeat) | 2.4 | at most 1.08 | 142 GB | 0.92 to 3.69 | 2.0 to 4.8 USD |
-| B1b `b1b-levers` | as B1 | 124 / 120 min (the guard drops `anchors-builder-short`, 12 more, if the download was slow) | 2.0 | at most 0.90 | 142 GB | 0.92 to 3.69 | 1.8 to 4.6 USD |
+| B1b `b1b-levers` | as B1 | 103 / 120 min core (through the trace); the optional tail `main-overlap-ram` (to 112) and `anchors-builder-short` (to 124) runs only while the deadline guard allows, cut last-first | 2.0 | at most 0.90 | 142 GB | 0.92 to 3.69 | 1.8 to 4.6 USD |
 | B2 `b2-proxy` | 48 GB Ampere card (RTX A6000, A40), 64 GB RAM, 8+ cores, 100 GB disk | 82 min proxy, 40 kv-quality, hook / 260 min | 2.5 to 4.8 | 1.25 to 2.40 | 38 GB | 0.50 to 1.00 | 1.8 to 3.4 USD |
 | B3 `b3-planner` | RTX 3090, 32+ GB RAM, 9+ cores, 100 GB disk | 106 to 120 / 120 min | 2.0 to 2.4 | at most 1.08 | 38 GB | 0.50 to 1.00 | 1.3 to 2.1 USD |
 | B3 `b3-detector` | RTX 3090, 32+ GB RAM, 9+ cores, 80 GB disk | 65 to 110 / 120 min | 1.5 to 2.3 | at most 1.04 | 19 GB | 0.25 to 0.50 | 0.9 to 1.5 USD |
