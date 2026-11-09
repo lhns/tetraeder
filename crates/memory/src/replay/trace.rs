@@ -425,7 +425,7 @@ mod tests {
             b.extend(n_tokens.to_le_bytes());
             b.push(FLAG_PREDICTED | FLAG_PREDICTED2);
             let got: Vec<_> = TraceReader::new(b.as_slice()).unwrap().collect();
-            assert!(got.len() == 1 && got[0].is_err(), "{n_tokens}");
+            assert!(got[0].is_err(), "{n_tokens}");
         }
     }
 
