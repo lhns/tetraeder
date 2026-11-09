@@ -371,11 +371,11 @@ impl OutputParser {
         }
         if text.starts_with('[') {
             return match first_json(text) {
-                Json::Done(Value::Array(items), n) => {
+                Json::Done(Value::Array(items), used) => {
                     let calls: Option<Vec<ToolCall>> =
                         items.iter().map(|v| call_from_json(v, false)).collect();
                     match calls {
-                        Some(c) if !c.is_empty() => Step::Calls(c, base + n),
+                        Some(c) if !c.is_empty() => Step::Calls(c, base + used),
                         _ => Step::Fail(n, "bad_json"),
                     }
                 }
