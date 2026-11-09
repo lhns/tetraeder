@@ -1,4 +1,4 @@
-//! Low-bit KV cache of the builder (ADR 0050 b) on the K-quant synthetic model (head size 64, so
+//! Low-bit KV cache of the builder (ADR 0050 b) on the Q8_0 synthetic model (head size 64, so
 //! Q8_0 and Q4_0 blocks divide it): parity against libllama with the same `type_k` and `type_v`,
 //! resident and streamed, the prefix-cache snapshot and the memory report.
 //!
@@ -16,8 +16,10 @@ use tetraeder_plan::KvFormat;
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 const FORMATS: [KvFormat; 3] = [KvFormat::Q8_0, KvFormat::Q8_0_Q4_0, KvFormat::Q4_0];
 
+/// Q8_0 weights: the K-quant `mul_mat_id` kernels of AVX builds depend on the row count, so the
+/// builder and libllama only agree bit for bit on formats without them (see `multipass.rs`).
 fn model_path() -> PathBuf {
-    quantized_moe(&MoeSpec::REALISH, Ftype::Q4KM, "kv")
+    quantized_moe(&MoeSpec::REALISH, Ftype::Q8_0, "kv-q8")
 }
 
 fn streamed(kv: KvFormat) -> LoadOptions {
