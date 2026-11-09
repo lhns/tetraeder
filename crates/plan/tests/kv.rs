@@ -1,4 +1,6 @@
 //! KV cache format per attention unit (ADR 0050 b): IR, sizes, validator, token capacity.
+//!
+//! Hardware label: none (simulated hardware fixture only).
 
 use std::collections::BTreeMap;
 use tetraeder_plan::*;

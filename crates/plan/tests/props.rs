@@ -2,6 +2,8 @@
 //! once, every migration DAG ends in its target plan. Each case runs on every hardware fixture
 //! (rule 4). Cases are built from a seed through a small deterministic generator, so a failing
 //! seed reproduces exactly.
+//!
+//! Hardware label: none (simulated hardware fixtures only).
 
 use proptest::prelude::*;
 use std::collections::BTreeMap;
