@@ -809,7 +809,7 @@ impl Qwen3Moe {
         self.run(tokens, true, out)
     }
 
-    fn run(&mut self, tokens: &[i32], last_only: bool, out: &mut Vec<f32>) -> Result<()> {
+    fn run(&mut self, tokens: &[i32], last_only: bool, logits: &mut Vec<f32>) -> Result<()> {
         let t0 = Instant::now();
         let h = self.file.hparams.clone();
         let n = tokens.len();
@@ -906,7 +906,7 @@ impl Qwen3Moe {
             self.sched.compute(&step.graph.get())?;
             self.segments_run += 1;
             prof.graphs += 1;
-            step.logits.get().get_f32_into(out)?;
+            step.logits.get().get_f32_into(logits)?;
             let t = lap(&mut prof.compute, t);
             if let Some(log) = &mut self.routing {
                 for (layer, (ids, w)) in step.routed.iter().enumerate() {
@@ -979,7 +979,7 @@ impl Qwen3Moe {
                 self.segments_run += 1;
                 prof.graphs += 1;
                 if let Some(l) = out {
-                    l.get_f32_into(out)?;
+                    l.get_f32_into(logits)?;
                 }
                 lap(&mut prof.compute, t);
             }
