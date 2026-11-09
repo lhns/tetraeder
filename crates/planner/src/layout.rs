@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use tetraeder_plan::{Format, ModelDesc, UnitSize};
+use tetraeder_plan::{Format, KvFormat, ModelDesc, UnitSize};
 
 /// One tensor of the file. `ty` is the ggml type name in upper case (`Q4_K`, `F32`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,7 +141,12 @@ impl ModelLayout {
 
     /// K and V in f16 for one token of one layer.
     pub fn kv_bytes_per_token_per_layer(&self) -> u64 {
-        2 * u64::from(self.n_head_kv) * u64::from(self.head_dim) * 2
+        self.kv_bytes_per_token_per_layer_as(KvFormat::default())
+    }
+
+    /// K and V in `kv` for one token of one layer.
+    pub fn kv_bytes_per_token_per_layer_as(&self, kv: KvFormat) -> u64 {
+        kv.bytes(u64::from(self.n_head_kv) * u64::from(self.head_dim))
     }
 }
 

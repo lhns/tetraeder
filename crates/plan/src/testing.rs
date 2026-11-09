@@ -253,6 +253,7 @@ fn gen_stages(
             compute: comp,
             format: Some(*rng.pick(&formats)),
             role_formats: gen_role_formats(rng, &[UnitKind::Attn, UnitKind::Mlp], &formats),
+            kv_format: rng.chance(2).then(|| *rng.pick(&KvFormat::ALLOWED)),
         });
         if s == 0 || s + 2 == bounds.len() {
             assign.push(Assign {
@@ -261,6 +262,7 @@ fn gen_stages(
                 compute: None,
                 format: Some(*rng.pick(&formats)),
                 role_formats: BTreeMap::new(),
+                kv_format: None,
             });
         }
         if m.is_moe() {
@@ -289,6 +291,7 @@ fn gen_stages(
                     compute: comp.map(|c| vec![c]),
                     format: Some(expert_format),
                     role_formats: expert_roles.clone(),
+                    kv_format: None,
                 });
             }
         }

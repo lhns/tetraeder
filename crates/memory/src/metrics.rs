@@ -45,6 +45,30 @@ impl MemoryMetrics {
         t.metrics().memory_capacity(device, tier, kind, capacity);
     }
 
+    /// The KV cache buffer with its format and token counts (ADR 0050 b).
+    #[allow(clippy::too_many_arguments)]
+    pub fn kv(
+        &self,
+        device: &str,
+        tier: &str,
+        format: &str,
+        used: u64,
+        capacity: u64,
+        tokens: u64,
+        capacity_tokens: u64,
+    ) {
+        let Some(t) = &self.telemetry else { return };
+        t.metrics().kv_cache(
+            device,
+            tier,
+            format,
+            used,
+            capacity,
+            tokens,
+            capacity_tokens,
+        );
+    }
+
     /// `tetraeder.expert.cache.requests`: a bypass counts as a miss (the expert was not in a
     /// slot).
     pub fn lookup(&self, layer: u32, tier: Tier, result: &Lookup) {

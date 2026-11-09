@@ -295,3 +295,67 @@ proptest! {
         }
     }
 }
+
+/// Selects attention units, so a `kv_format` on it is valid.
+fn selects_attn(a: &Assign) -> bool {
+    (a.units.kinds.is_empty() || a.units.kinds.contains(&UnitKind::Attn))
+        && a.units.experts.is_none()
+}
+
+fn set_kv(plan: &mut Plan, fmt: KvFormat) {
+    for st in plan.replicas.iter_mut().flat_map(|r| &mut r.stages) {
+        for a in st.assign.iter_mut().filter(|a| selects_attn(a)) {
+            a.kv_format = Some(fmt);
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(48))]
+
+    /// Property 1 for the KV budget (ADR 0050 b): the tokens a stage holds never need more bytes
+    /// than its budget, in every allowed format, and Q8_0 holds at least 1.88x the F16 tokens.
+    #[test]
+    fn kv_tokens_fit_the_budget(seed in any::<u64>()) {
+        for hw in hardware() {
+            let mut rng = Rng(seed);
+            let m = gen_model(&mut rng);
+            let phase = rng.range(2, 6) as u8;
+            let mut plan = gen_plan(&mut rng, &m, &hw, phase, false);
+            let mut tokens_of = std::collections::HashMap::new();
+            for fmt in KvFormat::ALLOWED {
+                set_kv(&mut plan, fmt);
+                prop_assert!(validate_with(&plan, &m, &hw, phase, &BTreeMap::new()).is_ok());
+                for (r, rep) in plan.replicas.iter().enumerate() {
+                    for (s, st) in rep.stages.iter().enumerate() {
+                        let kv = st.kv.as_deref().unwrap_or_default();
+                        let per_token = u128::from(st.layers.len())
+                            * u128::from(m.kv_bytes_per_token_per_layer_as(fmt));
+                        for (i, d) in kv.iter().enumerate() {
+                            // a device listed twice counts its first budget
+                            if kv.iter().position(|x| x.device == d.device) != Some(i) {
+                                continue;
+                            }
+                            let tokens = plan.kv_tokens(&m, r, s, &d.device);
+                            // the devices that hold a budget share every layer's KV evenly
+                            prop_assert!(
+                                u128::from(tokens) * per_token
+                                    <= u128::from(d.bytes) * kv.len() as u128
+                            );
+                            tokens_of.insert((fmt, r, s, d.device.clone()), tokens);
+                        }
+                    }
+                }
+            }
+            for ((fmt, r, s, dev), q8) in &tokens_of {
+                if *fmt != KvFormat::Q8_0 {
+                    continue;
+                }
+                let f16 = tokens_of[&(KvFormat::F16, *r, *s, dev.clone())];
+                if f16 >= 500 {
+                    prop_assert!(*q8 as f64 >= 1.88 * f16 as f64, "{f16} F16 tokens, {q8} Q8_0");
+                }
+            }
+        }
+    }
+}
