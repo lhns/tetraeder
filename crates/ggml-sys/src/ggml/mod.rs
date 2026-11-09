@@ -120,7 +120,10 @@ pub(crate) fn cstr(p: *const c_char) -> String {
 /// for the attention rotation (`ggml_gen_hadamard` in llama-kv-cache.cpp), row-major in F32.
 /// It is symmetric and its own inverse.
 pub fn hadamard_matrix(n: usize) -> Vec<f32> {
-    assert!(n.is_power_of_two(), "Hadamard size {n} is not a power of two");
+    assert!(
+        n.is_power_of_two(),
+        "Hadamard size {n} is not a power of two"
+    );
     let mut d = vec![0f32; n * n];
     // `1.0 / sqrtf(n)` is a double division in C; the result is stored as float.
     d[0] = (1.0f64 / f64::from((n as f32).sqrt())) as f32;
