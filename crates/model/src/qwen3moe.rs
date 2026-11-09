@@ -1529,7 +1529,7 @@ fn kv_types(h: &Hparams, fmt: KvFormat) -> Result<(Type, Type)> {
 /// largest power of two dividing the head size, at least 64.
 fn rot_size_k(head_dim: usize) -> usize {
     let mut n = 64;
-    while head_dim % (2 * n) == 0 {
+    while head_dim.is_multiple_of(2 * n) {
         n *= 2;
     }
     n
@@ -1548,12 +1548,12 @@ fn alloc_rot(
     backend: &Backend,
 ) -> Result<(Option<OwnedTensor>, Option<OwnedTensor>)> {
     let hd = h.head_dim as usize;
-    if want == Some(true) && hd % 64 != 0 {
+    if want == Some(true) && !hd.is_multiple_of(64) {
         return Err(ModelError::Invalid(format!(
             "KV rotation needs a head size that is a multiple of 64, not {hd}"
         )));
     }
-    let on = |t: Type| hd % 64 == 0 && want.unwrap_or_else(|| t.is_quantized());
+    let on = |t: Type| hd.is_multiple_of(64) && want.unwrap_or_else(|| t.is_quantized());
     let (k, v) = (on(types.0), on(types.1));
     if !k && !v {
         return Ok((None, None));
