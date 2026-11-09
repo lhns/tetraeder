@@ -433,7 +433,7 @@ impl Worker {
             stats.gpu_seconds = Some(times.eval.as_secs_f64());
         }
         if let Some((t0, c0)) = after_prefill {
-            stats.profile = Some(self.decode_profile(&times, &t0, &c0, emit));
+            stats.profile = Some(self.profile_of(&times, &t0, &c0, emit));
         }
         stats.bytes_streamed = match (bytes0, self.backend.bytes_streamed_total()) {
             (Some(a), Some(b)) => Some(b.saturating_sub(a)),
@@ -443,7 +443,7 @@ impl Worker {
     }
 
     /// The decode profile of a request: everything after the step that ended its prefill.
-    fn decode_profile(
+    fn profile_of(
         &self,
         end: &StepTimes,
         prefill: &StepTimes,

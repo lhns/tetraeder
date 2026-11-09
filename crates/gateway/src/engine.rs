@@ -132,7 +132,7 @@ pub struct DecodeProfile {
     pub eval_s: f64,
     /// Constraint mask and sampling over the logits.
     pub sample_s: f64,
-    /// Handing the token to the gateway (waits when its buffer is full).
+    /// Handing each emitted token to the gateway (waits when its buffer is full).
     pub emit_s: f64,
     /// Gateway work per token: detokenize, stop strings, tool-call parsing, queueing the
     /// segments for the HTTP response. Filled by the gateway, over all tokens.
