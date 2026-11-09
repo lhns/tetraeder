@@ -13,13 +13,13 @@
 //! run's), `TETRAEDER_GAP_ENGINES` (`llama,moe`), `TETRAEDER_GAP_OUT` (JSON file).
 
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tetraeder_engine::{ContextConfig, FlashAttn, Placement};
 use tetraeder_ggml_sys::ggml::Backend as GgmlBackend;
 use tetraeder_model::{BackendChoice, LoadOptions};
 use tetraeder_scheduler::sample::{SampleParams, Sampler, greedy};
-use tetraeder_scheduler::{Backend as _, Loaded, PREFILL_CHUNK, load_llama, load_moe};
+use tetraeder_scheduler::{Loaded, PREFILL_CHUNK, load_llama, load_moe};
 
 /// Decode steps left out of the steady numbers: graph capture after a depth change.
 const WARMUP_STEPS: usize = 4;
@@ -45,7 +45,7 @@ const SERVE_SAMPLING: SampleParams = SampleParams {
     top_p: 0.95,
 };
 
-fn load(engine: &str, path: &PathBuf, n_ctx: usize, threads: i32) -> Loaded {
+fn load(engine: &str, path: &Path, n_ctx: usize, threads: i32) -> Loaded {
     match engine {
         // `tetraeder serve --engine llama` with the proxy run's flags.
         "llama" => load_llama(
