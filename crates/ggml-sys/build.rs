@@ -7,8 +7,13 @@
 //! - `TETRAEDER_GGML_NATIVE=ON`: static build with the native ISA of the build machine.
 //!
 //! Env: `TETRAEDER_GGML_NATIVE` (ON: static native; OFF or unset: DL), `TETRAEDER_CUDA_ARCHS`
-//! (default "86;89;90;120"), `LIBCLANG_PATH` for bindgen. Run time (DL): `TETRAEDER_GGML_BACKEND_DIR`,
+//! (default "86;89;90;120"), `TETRAEDER_GGML_BUILD_DIR` (see below), `LIBCLANG_PATH` for bindgen. Run time (DL): `TETRAEDER_GGML_BACKEND_DIR`,
 //! `TETRAEDER_GGML_CPU_VARIANT`.
+//!
+//! Cargo runs this script once per build flavor (clippy, build, test: separate `OUT_DIR`s), and each run
+//! compiled all 14 CPU variants again. `TETRAEDER_GGML_BUILD_DIR` points every run at one cmake tree
+//! (one subdirectory per configuration), so the later runs only relink. CI sets it; unset, the build
+//! stays in `OUT_DIR`.
 use std::path::{Path, PathBuf};
 
 fn main() {
@@ -25,6 +30,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../../patches");
     println!("cargo:rerun-if-env-changed=TETRAEDER_CUDA_ARCHS");
     println!("cargo:rerun-if-env-changed=TETRAEDER_GGML_NATIVE");
+    println!("cargo:rerun-if-env-changed=TETRAEDER_GGML_BUILD_DIR");
     println!("cargo:rerun-if-env-changed=LIBCLANG_PATH");
     println!("cargo:rerun-if-env-changed=CUDA_PATH");
     println!("cargo:rerun-if-env-changed=CUDA_HOME");
@@ -45,6 +51,20 @@ fn main() {
     let vulkan = cfg!(feature = "vulkan");
 
     let mut cfg = cmake::Config::new(&src);
+    if let Ok(base) = std::env::var("TETRAEDER_GGML_BUILD_DIR") {
+        // Everything that changes the cmake configuration is in the name, so trees never mix.
+        let archs = std::env::var("TETRAEDER_CUDA_ARCHS").unwrap_or_default();
+        let name = format!(
+            "{}-{}-cuda{}-vk{}-{}-{}",
+            env("CARGO_CFG_TARGET_OS"),
+            if native { "native" } else { "dl" },
+            u8::from(cuda),
+            u8::from(vulkan),
+            archs.replace(';', "_"),
+            env("PROFILE"),
+        );
+        cfg.out_dir(Path::new(&base).join(name));
+    }
     cfg.profile("Release")
         .define("BUILD_SHARED_LIBS", onoff(dl))
         .define("GGML_OPENMP", "OFF")

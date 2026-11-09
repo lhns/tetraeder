@@ -5,9 +5,16 @@ on:
     # Phase and track branches get CI before they have a PR.
     branches: [main, "phase*", "track-*"]
   pull_request:
+  # record_golden: only the golden-linux job runs (records the Linux golden, uploads it as an artifact).
+  workflow_dispatch:
+    inputs:
+      record_golden:
+        description: Record the Linux golden (only that job runs)
+        type: boolean
+        default: false
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -18,6 +25,7 @@ env:
 
 jobs:
   test:
+    if: ${{ !inputs.record_golden }}
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -46,9 +54,18 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
+      # Caches are saved on main only: every branch entry is evicted within the hour by the 10 GB repository
+      # limit and pushes main's entries (the sccache of the CUDA jobs) out with it. Branches restore main's.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # One cmake tree for clippy, build and test: each is a separate build script run (own OUT_DIR) and
+      # compiled the 14 CPU variants of ggml again (3 x 4 min on Linux).
+      - name: Shared ggml build dir
+        shell: bash
+        run: echo "TETRAEDER_GGML_BUILD_DIR=$(cygpath -m "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")/ggml-build" >> "$GITHUB_ENV"
       # Qwen3-0.6B Q8_0 for the engine and ggml-sys tests and the golden (about 0.6 GB)
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: model
         with:
           path: .hf_cache
@@ -57,6 +74,11 @@ jobs:
         if: steps.model.outputs.cache-hit != 'true'
         shell: bash
         run: cargo xtask fetch-model
+      - uses: actions/cache/save@v4
+        if: steps.model.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        with:
+          path: .hf_cache
+          key: model-qwen3-0.6b-q8_0
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build -p tetraeder
@@ -106,6 +128,7 @@ jobs:
           for f in scripts/*.sh patches/*.sh; do bash -n "$f"; done
 
   cuda-build:
+    if: ${{ !inputs.record_golden }}
     name: cuda compile-only (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -156,6 +179,7 @@ jobs:
         run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: cuda
       # Link the binary, not just the -sys crate: missing CUDA link libraries only show up here.
       - run: cargo build -p tetraeder -p tetraeder-ggml-sys -p tetraeder-model --features tetraeder-ggml-sys/cuda
@@ -169,6 +193,7 @@ jobs:
         run: '"$SCCACHE_PATH" --show-stats || true'
 
   vulkan-build:
+    if: ${{ !inputs.record_golden }}
     name: vulkan compile-only (ubuntu-latest)
     runs-on: ubuntu-latest
     steps:
@@ -189,6 +214,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build libvulkan-dev glslc spirv-headers
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: vulkan
       - run: cargo build -p tetraeder-ggml-sys --features vulkan
       - name: Vulkan module
@@ -197,6 +223,7 @@ jobs:
   # The static native build stays supported (comparison arm, quick local builds). No rust-cache: a
   # native build restored on a runner with an older CPU would die with SIGILL.
   native-static:
+    if: ${{ !inputs.record_golden }}
     name: native static (ubuntu-latest)
     runs-on: ubuntu-latest
     env:
@@ -220,6 +247,7 @@ jobs:
   # AVX-512 VNNI kernels (ADR 0053, patch 0002) on a runner without the hardware: Intel SDE emulates
   # Ice Lake server. The iqk tests must run, not skip.
   avx512-sde:
+    if: ${{ !inputs.record_golden }}
     name: avx512 under Intel SDE (ubuntu-latest)
     runs-on: ubuntu-latest
     env:
@@ -256,6 +284,7 @@ jobs:
           "$SDE_DIR/sde64" -icx -- /bin/true
       - uses: Swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           key: sde
       - name: Build tests
         run: cargo test --release -p tetraeder-ggml-sys --test iqk_kernels --test ggml --test cpu_dispatch --test smoke --no-run
@@ -280,3 +309,53 @@ jobs:
             echo "== $t"
             "$SDE_DIR/sde64" -icx -- "$bin" --test-threads=1
           done
+
+  # Records the Linux golden (workflow_dispatch with record_golden). Float results differ per OS (libm), so
+  # the golden is per OS and CPU tier (docs/testing.md). Steps: cross-check against the Windows file (prints the
+  # logits at the first flipped token), record llama-simple and our run pinned to sse42, check the new files,
+  # upload them. Commit them from the artifact.
+  golden-linux:
+    name: record golden (ubuntu-latest)
+    if: ${{ inputs.record_golden }}
+    runs-on: ubuntu-latest
+    env:
+      TETRAEDER_GGML_CPU_VARIANT: sse42
+      TETRAEDER_REQUIRE_MODELS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: libclang (bindgen)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - uses: actions/cache/restore@v4
+        id: model
+        with:
+          path: .hf_cache
+          key: model-qwen3-0.6b-q8_0
+      - name: Fetch test model
+        if: steps.model.outputs.cache-hit != 'true'
+        run: cargo xtask fetch-model
+      - name: Runner
+        run: grep -m1 'model name' /proc/cpuinfo
+      - name: Cross-check against the Windows golden
+        continue-on-error: true
+        env:
+          TETRAEDER_GOLDEN_OS: windows
+        run: cargo test -p tetraeder-engine --test golden -- --nocapture
+      - name: llama-simple (sse42)
+        env:
+          TETRAEDER_LLAMA_TOOLS_ISA: sse42
+        run: cargo xtask llama-tools
+      - name: Record
+        run: cargo xtask golden
+      - name: Check the new files
+        run: cargo test -p tetraeder-engine --test golden -- --nocapture
+      - uses: actions/upload-artifact@v4
+        with:
+          name: golden-linux
+          path: bench/golden/*-sse42-linux.json

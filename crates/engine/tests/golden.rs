@@ -32,12 +32,22 @@ fn golden_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bench/golden")
 }
 
+/// `<variant>-<os>`, the suffix of the golden file names. Float results differ per CPU tier (ADR 0052)
+/// and per OS (libm differs in the last ulp, which can flip a near-tied greedy token). The variant is
+/// `TETRAEDER_GGML_CPU_VARIANT` (default `sse42`, the tier the first golden was recorded on), the OS
+/// `std::env::consts::OS`; `TETRAEDER_GOLDEN_OS` overrides it to compare against another OS's file.
+fn tag() -> String {
+    let variant = std::env::var("TETRAEDER_GGML_CPU_VARIANT").unwrap_or_else(|_| "sse42".into());
+    let os = std::env::var("TETRAEDER_GOLDEN_OS").unwrap_or_else(|_| std::env::consts::OS.into());
+    format!("{variant}-{os}")
+}
+
 fn simple_path() -> PathBuf {
-    golden_dir().join("qwen3-0.6b-q8_0.llama-simple.json")
+    golden_dir().join(format!("qwen3-0.6b-q8_0.llama-simple-{}.json", tag()))
 }
 
 fn bench_path() -> PathBuf {
-    golden_dir().join("qwen3-0.6b-q8_0-cpu.json")
+    golden_dir().join(format!("qwen3-0.6b-q8_0-cpu-{}.json", tag()))
 }
 
 fn load_simple() -> Option<SimpleGolden> {
@@ -88,7 +98,10 @@ fn bench_case(eng: &mut Engine, c: &SimpleCase, n: u32) -> golden::Case {
 fn matches_llama_simple() {
     let path = require_model!();
     let (Some(simple), Ok(bench)) = (load_simple(), Golden::load(&bench_path())) else {
-        common::skip_or_fail("golden files not recorded (run `cargo xtask golden`)");
+        common::skip_or_fail(&format!(
+            "golden files for {} not recorded (run `cargo xtask golden`)",
+            tag()
+        ));
         return;
     };
     let mut eng = engine(&path);
@@ -125,7 +138,10 @@ fn matches_llama_simple() {
 fn matches_bench_golden() {
     let path = require_model!();
     let (Some(simple), Ok(expected)) = (load_simple(), Golden::load(&bench_path())) else {
-        common::skip_or_fail("golden files not recorded (run `cargo xtask golden`)");
+        common::skip_or_fail(&format!(
+            "golden files for {} not recorded (run `cargo xtask golden`)",
+            tag()
+        ));
         return;
     };
     let mut eng = engine(&path);
@@ -142,6 +158,25 @@ fn matches_bench_golden() {
     // with a native-ISA ggml build and CI builds portable (GGML_NATIVE=OFF): different SIMD
     // kernels sum in a different order.
     let cmp = expected.compare(&actual, Tolerance { logit_abs: 0.05 });
+    // A flipped greedy token is a near-tie if the two logits at that position are close: print both top-k
+    // lists, which tells a last-ulp difference from a real bug.
+    for m in &cmp.mismatches {
+        if let golden::Mismatch::TokenDiverged { case, pos, .. } = m {
+            let top = |g: &Golden| {
+                g.cases.iter().find(|c| &c.id == case).map(|c| {
+                    c.top[*pos]
+                        .iter()
+                        .map(|t| (t.id, t.logit))
+                        .collect::<Vec<_>>()
+                })
+            };
+            eprintln!(
+                "diverged {case} at {pos}\n  expected top-k {:?}\n  actual   top-k {:?}",
+                top(&expected),
+                top(&actual)
+            );
+        }
+    }
     assert!(cmp.ok(), "mismatches: {:#?}", cmp.mismatches);
     eprintln!(
         "golden: {} positions, max logit diff {}",
