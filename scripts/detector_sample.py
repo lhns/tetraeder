@@ -4,7 +4,7 @@ sample:  python3 detector_sample.py sample --pid PID --disk MAJ:MIN --out s.json
          Every 0.5 s until PID exits: wall time, CPU used by the container cgroup and by PID's process tree,
          container CPU throttling, disk sectors read (whole device and by PID), swap-ins, GPU state.
 observe: python3 detector_sample.py observe --harness h.json --samples s.jsonl --threads N --quota Q
-         [--calib calib.json] [--vram-other-bytes B] [--planned-slot-bytes B] --id ID --out obs.json
+         [--calib calib.json] [--io-max-bytes B] [--vram-other-bytes B] [--planned-slot-bytes B] --id ID --out obs.json
          Builds one analysis::Observation (crates/analysis/fixtures/observation_example.json) from the harness
          decode windows and the samples inside each window.
 calib:   python3 detector_sample.py calib --obs a.json b.json ... --out calib.json
@@ -183,7 +183,7 @@ def observe(a):
             "tokens": n,
             "wall_s": w["wall_s"],
             "busy_s": {
-                "gpu:gpu0": util * w["wall_s"],
+                **({"gpu:gpu0": util * w["wall_s"]} if gs else {}),  # no GPU on a CPU runner
                 "cpu": own_cpu / max(a.threads, 1),
                 "disk:nvme0": io["read_s"],
                 "host": ms("inputs_ms") + ms("build_ms") + ms("alloc_ms") + ms("readback_ms"),
@@ -196,8 +196,8 @@ def observe(a):
             "bytes": {"disk:nvme0": float(io["bytes"])},
         })
     g0 = next((s["gpu"] for s in samples if s.get("gpu")), None) or {}
-    io_max = None
-    for line in read("/sys/fs/cgroup/io.max").splitlines():
+    io_max = a.io_max_bytes  # the cgroup the engine ran in, when it is not the container's own (fault testbed)
+    for line in read("/sys/fs/cgroup/io.max").splitlines() if io_max is None else []:
         for kv in line.split()[1:]:
             k, _, v = kv.partition("=")
             if k == "rbps" and v != "max":
@@ -265,6 +265,7 @@ def main():
     o.add_argument("--threads", type=int, required=True)
     o.add_argument("--quota", type=float, required=True)
     o.add_argument("--calib")
+    o.add_argument("--io-max-bytes", type=float)
     o.add_argument("--vram-other-bytes", type=float, default=0)
     o.add_argument("--planned-slot-bytes", type=float)
     o.add_argument("--id", required=True)

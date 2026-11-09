@@ -22,3 +22,17 @@ ADR 0013 orders the detector (environment first, regime, ranked shares with conf
 
 - The thresholds are fixed numbers in code and tuned on simulated fixtures only; the box runs are a held-out check.
 - Faults the container cannot produce (power limit, clocks, PCIe width) are tested in the simulator only until real hardware allows them.
+
+## Addendum 2026-11-09: nightly fault testbed on CPU runners
+
+`.github/workflows/nightly.yml` runs `scripts/fault_testbed.sh` on `ubuntu-latest` (schedule plus `workflow_dispatch`, never a PR gate). It runs the real engine (`exit_regime`, CPU backend, the synthetic MoE from `tests/common/synth.rs`, a RAM tier of a quarter of the experts so misses read from disk) in decode windows, with `detector_sample.py` sampling next to it, and feeds the real observations to `tetraeder detector-score`. Same schedule shape and manifest as `detector_campaign.sh`: 3 calibration runs, shuffled rounds of no fault and each fault, then fault pairs.
+
+Covered, 3 of the 8 fault classes:
+
+| Injected fault | Manifest name | Detector class |
+|---|---|---|
+| `systemd-run --scope -p IOReadBandwidthMax=<disk> <0.3 x calibrated rate>` (cgroup `io.max`; direct readers if the runner does not enforce it) | `disk` | `DiskSlow` |
+| thread-capped busy loops next to the engine | `cpu` | `CpuCotenant` |
+| `-p MemoryMax=<0.4 x calibrated peak RSS>` with swap on | `mem` | `Swapping` |
+
+The scorer reads `mem` as `Swapping`. Runner noise is large (shared host, no clock control), so the job prints the score and uploads the results but fails only on harness errors, not on the exit bars. Box-only: VRAM pressure, PCIe degradation, GPU throttle, and the slow link and model-mismatch classes.
