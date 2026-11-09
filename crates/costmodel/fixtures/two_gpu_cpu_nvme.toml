@@ -42,6 +42,14 @@ tier = "nvme"
 capacity_bytes = 2000000000000
 bandwidth_bytes_per_s = { value = 5.0e9, source = "prior" }
 media = "ssd"
+# Prior queue curve (ADR 0056): the shape of the RTX 3090 prior scaled to this disk's 5 GB/s.
+queue_chunk_bytes = 1048576
+queue_curve = [
+  { depth = 1, bytes_per_s = 9.3e8 },
+  { depth = 4, bytes_per_s = 2.8e9 },
+  { depth = 16, bytes_per_s = 4.8e9 },
+  { depth = 32, bytes_per_s = 5.0e9 },
+]
 
 [[links]]
 id = "pcie-gpu0"

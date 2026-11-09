@@ -1,0 +1,246 @@
+{
+  "outcomes": [
+    {
+      "decode": {
+        "disk_bytes_per_token": 0.0,
+        "full_hit_share": 0.38749999999999996,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "vram_share": 0.38749999999999996
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 0.0,
+        "full_hit_share": 0.38749999999999996,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "vram_share": 0.38749999999999996
+      },
+      "ram_slots": 128,
+      "vram_slots": 8
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 468202291.20000005,
+        "full_hit_share": 0.38749999999999996,
+        "prefetch_bytes_per_token": 187280916.48000002,
+        "ram_hit_rate_engine_mean": 0.25,
+        "sync_miss_bytes_per_token": 280921374.72,
+        "vram_share": 0.38749999999999996
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 3657830.4000000004,
+        "full_hit_share": 0.38749999999999996,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 0.25,
+        "sync_miss_bytes_per_token": 3657830.4000000004,
+        "vram_share": 0.38749999999999996
+      },
+      "ram_slots": 30,
+      "vram_slots": 8
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 0.0,
+        "full_hit_share": 0.6499999999999999,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "vram_share": 0.6499999999999999
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 0.0,
+        "full_hit_share": 0.6499999999999999,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "vram_share": 0.6499999999999999
+      },
+      "ram_slots": 64,
+      "vram_slots": 64
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 267544166.4000001,
+        "full_hit_share": 0.6499999999999999,
+        "prefetch_bytes_per_token": 107017666.56000005,
+        "ram_hit_rate_engine_mean": 0.25,
+        "sync_miss_bytes_per_token": 160526499.84000006,
+        "vram_share": 0.6499999999999999
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 2090188.8000000007,
+        "full_hit_share": 0.6499999999999999,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 0.25,
+        "sync_miss_bytes_per_token": 2090188.8000000007,
+        "vram_share": 0.6499999999999999
+      },
+      "ram_slots": 16,
+      "vram_slots": 64
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 178362777.60000005,
+        "full_hit_share": 0.6499999999999999,
+        "prefetch_bytes_per_token": 71345111.04000002,
+        "ram_hit_rate_engine_mean": 0.5,
+        "sync_miss_bytes_per_token": 107017666.56000003,
+        "vram_share": 0.6499999999999999
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 1393459.2000000004,
+        "full_hit_share": 0.6499999999999999,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 0.5,
+        "sync_miss_bytes_per_token": 1393459.2000000004,
+        "vram_share": 0.6499999999999999
+      },
+      "ram_slots": 32,
+      "vram_slots": 64
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 382205952.0,
+        "full_hit_share": 0.5,
+        "prefetch_bytes_per_token": 152882380.8,
+        "ram_hit_rate_engine_mean": 0.25,
+        "sync_miss_bytes_per_token": 229323571.2,
+        "vram_share": 0.5
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 2985984.0,
+        "full_hit_share": 0.5,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 0.25,
+        "sync_miss_bytes_per_token": 2985984.0,
+        "vram_share": 0.5
+      },
+      "ram_slots": 24,
+      "vram_slots": 32
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 254803968.0,
+        "full_hit_share": 0.5,
+        "prefetch_bytes_per_token": 101921587.2,
+        "ram_hit_rate_engine_mean": 0.5,
+        "sync_miss_bytes_per_token": 152882380.79999998,
+        "vram_share": 0.5
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 1990656.0,
+        "full_hit_share": 0.5,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 0.5,
+        "sync_miss_bytes_per_token": 1990656.0,
+        "vram_share": 0.5
+      },
+      "ram_slots": 48,
+      "vram_slots": 32
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 439536844.79999995,
+        "full_hit_share": 0.425,
+        "prefetch_bytes_per_token": 175814737.92,
+        "ram_hit_rate_engine_mean": 0.25,
+        "sync_miss_bytes_per_token": 263722106.87999997,
+        "vram_share": 0.425
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 3433881.5999999996,
+        "full_hit_share": 0.425,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 0.25,
+        "sync_miss_bytes_per_token": 3433881.5999999996,
+        "vram_share": 0.425
+      },
+      "ram_slots": 28,
+      "vram_slots": 16
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 293024563.2,
+        "full_hit_share": 0.425,
+        "prefetch_bytes_per_token": 117209825.28,
+        "ram_hit_rate_engine_mean": 0.5,
+        "sync_miss_bytes_per_token": 175814737.92,
+        "vram_share": 0.425
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 2289254.4,
+        "full_hit_share": 0.425,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 0.5,
+        "sync_miss_bytes_per_token": 2289254.4,
+        "vram_share": 0.425
+      },
+      "ram_slots": 56,
+      "vram_slots": 16
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 312134860.8,
+        "full_hit_share": 0.38749999999999996,
+        "prefetch_bytes_per_token": 124853944.32000001,
+        "ram_hit_rate_engine_mean": 0.5,
+        "sync_miss_bytes_per_token": 187280916.48,
+        "vram_share": 0.38749999999999996
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 2438553.6,
+        "full_hit_share": 0.38749999999999996,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 0.5,
+        "sync_miss_bytes_per_token": 2438553.6,
+        "vram_share": 0.38749999999999996
+      },
+      "ram_slots": 60,
+      "vram_slots": 8
+    },
+    {
+      "decode": {
+        "disk_bytes_per_token": 0.0,
+        "full_hit_share": 0.38749999999999996,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "vram_share": 0.38749999999999996
+      },
+      "policy": "lru",
+      "prefetch": true,
+      "prefill": {
+        "disk_bytes_per_token": 0.0,
+        "full_hit_share": 0.38749999999999996,
+        "prefetch_bytes_per_token": 0.0,
+        "ram_hit_rate_engine_mean": 1.0,
+        "sync_miss_bytes_per_token": 0.0,
+        "vram_share": 0.38749999999999996
+      },
+      "ram_slots": 120,
+      "vram_slots": 8
+    }
+  ]
+}

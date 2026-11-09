@@ -109,7 +109,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=64 ram_slots=16; estimate gpu 10538 MiB, host 4414 MiB"
+          "builder vram_slots=64 ram_slots=16; estimate gpu 9566 MiB, host 4414 MiB"
         ]
       },
       "lowered_args": [],
@@ -238,7 +238,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=64 ram_slots=16; estimate gpu 10538 MiB, host 4414 MiB"
+          "builder vram_slots=64 ram_slots=16; estimate gpu 9566 MiB, host 4414 MiB"
         ]
       },
       "lowered_args": [],
@@ -367,7 +367,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=64 ram_slots=16; estimate gpu 11913 MiB, host 4414 MiB"
+          "builder vram_slots=64 ram_slots=16; estimate gpu 10941 MiB, host 4414 MiB"
         ]
       },
       "lowered_args": [],
@@ -496,7 +496,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=64 ram_slots=16; estimate gpu 11913 MiB, host 4414 MiB"
+          "builder vram_slots=64 ram_slots=16; estimate gpu 10941 MiB, host 4414 MiB"
         ]
       },
       "lowered_args": [],
@@ -625,7 +625,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=64 ram_slots=16; estimate gpu 10538 MiB, host 4414 MiB"
+          "builder vram_slots=64 ram_slots=16; estimate gpu 9566 MiB, host 4414 MiB"
         ]
       },
       "lowered_args": [],
@@ -754,7 +754,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=64 ram_slots=32; estimate gpu 10538 MiB, host 6358 MiB"
+          "builder vram_slots=64 ram_slots=32; estimate gpu 9566 MiB, host 6358 MiB"
         ]
       },
       "lowered_args": [],
@@ -883,7 +883,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=32 ram_slots=24; estimate gpu 6650 MiB, host 5386 MiB"
+          "builder vram_slots=32 ram_slots=24; estimate gpu 5678 MiB, host 5386 MiB"
         ]
       },
       "lowered_args": [],
@@ -1012,7 +1012,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=32 ram_slots=24; estimate gpu 6650 MiB, host 5386 MiB"
+          "builder vram_slots=32 ram_slots=24; estimate gpu 5678 MiB, host 5386 MiB"
         ]
       },
       "lowered_args": [],
@@ -1141,7 +1141,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=32 ram_slots=24; estimate gpu 8025 MiB, host 5386 MiB"
+          "builder vram_slots=32 ram_slots=24; estimate gpu 7053 MiB, host 5386 MiB"
         ]
       },
       "lowered_args": [],
@@ -1270,7 +1270,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=32 ram_slots=24; estimate gpu 8025 MiB, host 5386 MiB"
+          "builder vram_slots=32 ram_slots=24; estimate gpu 7053 MiB, host 5386 MiB"
         ]
       },
       "lowered_args": [],
@@ -1399,7 +1399,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=32 ram_slots=24; estimate gpu 6650 MiB, host 5386 MiB"
+          "builder vram_slots=32 ram_slots=24; estimate gpu 5678 MiB, host 5386 MiB"
         ]
       },
       "lowered_args": [],
@@ -1528,7 +1528,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=32 ram_slots=48; estimate gpu 6650 MiB, host 8302 MiB"
+          "builder vram_slots=32 ram_slots=48; estimate gpu 5678 MiB, host 8302 MiB"
         ]
       },
       "lowered_args": [],
@@ -1657,7 +1657,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=16 ram_slots=28; estimate gpu 4706 MiB, host 5872 MiB"
+          "builder vram_slots=16 ram_slots=28; estimate gpu 3734 MiB, host 5872 MiB"
         ]
       },
       "lowered_args": [],
@@ -1786,7 +1786,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=16 ram_slots=28; estimate gpu 4706 MiB, host 5872 MiB"
+          "builder vram_slots=16 ram_slots=28; estimate gpu 3734 MiB, host 5872 MiB"
         ]
       },
       "lowered_args": [],
@@ -1915,7 +1915,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=16 ram_slots=28; estimate gpu 6081 MiB, host 5872 MiB"
+          "builder vram_slots=16 ram_slots=28; estimate gpu 5109 MiB, host 5872 MiB"
         ]
       },
       "lowered_args": [],
@@ -2044,7 +2044,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=16 ram_slots=28; estimate gpu 6081 MiB, host 5872 MiB"
+          "builder vram_slots=16 ram_slots=28; estimate gpu 5109 MiB, host 5872 MiB"
         ]
       },
       "lowered_args": [],
@@ -2173,7 +2173,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=16 ram_slots=28; estimate gpu 4706 MiB, host 5872 MiB"
+          "builder vram_slots=16 ram_slots=28; estimate gpu 3734 MiB, host 5872 MiB"
         ]
       },
       "lowered_args": [],
@@ -2302,7 +2302,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=16 ram_slots=56; estimate gpu 4706 MiB, host 9274 MiB"
+          "builder vram_slots=16 ram_slots=56; estimate gpu 3734 MiB, host 9274 MiB"
         ]
       },
       "lowered_args": [],
@@ -2431,7 +2431,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=8 ram_slots=30; estimate gpu 3734 MiB, host 6115 MiB"
+          "builder vram_slots=8 ram_slots=30; estimate gpu 2762 MiB, host 6115 MiB"
         ]
       },
       "lowered_args": [],
@@ -2560,7 +2560,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=8 ram_slots=30; estimate gpu 3734 MiB, host 6115 MiB"
+          "builder vram_slots=8 ram_slots=30; estimate gpu 2762 MiB, host 6115 MiB"
         ]
       },
       "lowered_args": [],
@@ -2689,7 +2689,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=8 ram_slots=30; estimate gpu 5109 MiB, host 6115 MiB"
+          "builder vram_slots=8 ram_slots=30; estimate gpu 4137 MiB, host 6115 MiB"
         ]
       },
       "lowered_args": [],
@@ -2818,7 +2818,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=8 ram_slots=30; estimate gpu 3734 MiB, host 6115 MiB"
+          "builder vram_slots=8 ram_slots=30; estimate gpu 2762 MiB, host 6115 MiB"
         ]
       },
       "lowered_args": [],
@@ -2947,7 +2947,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=8 ram_slots=60; estimate gpu 3734 MiB, host 9760 MiB"
+          "builder vram_slots=8 ram_slots=60; estimate gpu 2762 MiB, host 9760 MiB"
         ]
       },
       "lowered_args": [],
@@ -3076,7 +3076,7 @@
         "prompt": 2048,
         "gen": 128,
         "notes": [
-          "builder vram_slots=8 ram_slots=120; estimate gpu 3734 MiB, host 17050 MiB"
+          "builder vram_slots=8 ram_slots=120; estimate gpu 2762 MiB, host 17050 MiB"
         ]
       },
       "lowered_args": [],
@@ -3209,7 +3209,7 @@
   "dropped": [
     [
       "builder vram_slots=128 ram_slots=8",
-      "gpu estimate 19204208640 B > budget 14000000000 B"
+      "gpu estimate 18184992768 B > budget 14000000000 B"
     ],
     [
       "builder vram_slots=64 ram_slots=16 threads=7 ubatch=256 op_offload=false",

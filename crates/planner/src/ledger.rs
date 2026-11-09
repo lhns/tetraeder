@@ -63,6 +63,10 @@ pub struct SessionRecord {
     pub anchors: Vec<String>,
     /// The fit's anchor band (ADR 0040), for the record.
     pub fit_band: f64,
+    /// Builder fixtures: where the RAM tier came from (`replay`, `hitmodel`, or `hitmodel
+    /// (fidelity gate failed: ...)`), so a failed fidelity gate shows in the ledger (ADR 0056).
+    #[serde(default)]
+    pub tier_source: String,
     /// The fixture directory; not part of the snapshot.
     #[serde(skip)]
     pub dir: PathBuf,
@@ -362,6 +366,7 @@ fn evaluate_dir(root: &Path, dir: &Path, ledger: &mut Ledger) {
         class: class.into(),
         anchors: anchors.clone(),
         fit_band: s.band,
+        tier_source: s.tier_source.clone(),
         dir: dir.to_path_buf(),
         recomputed: Some(Calib {
             cost_model_version: MODEL_VERSION,
@@ -678,6 +683,7 @@ mod tests {
             class: "moe".into(),
             anchors: vec!["a".into()],
             fit_band: 0.05,
+            tier_source: String::new(),
             dir: PathBuf::from("d/f"),
             recomputed: None,
             stored: None,

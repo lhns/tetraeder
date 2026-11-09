@@ -1,1 +1,1 @@
-{"runs":[{"decode_layers":{"full_hit_rate_mean":0.5},"decode_tok_s":47.49167379213737,"prefill_tok_s":318.0127824938369}]}
+{"runs":[{"decode_layers":{"full_hit_rate_mean":0.5,"ram_hit_rate_mean":0.25},"decode_tok_s":4.277798404577553,"prefill_tok_s":269.6984044406553}]}

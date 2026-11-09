@@ -107,6 +107,13 @@ pub struct ThreadPoint {
     pub bytes_per_s: f64,
 }
 
+/// Disk read rate at one queue depth (a point of the queue curve, ADR 0056).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct QueuePoint {
+    pub depth: u32,
+    pub bytes_per_s: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Device {
     pub id: String,
@@ -138,10 +145,19 @@ pub struct Device {
     /// Disk: `ssd`, `hdd` or `unknown`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<String>,
+    /// Disk: the chunk size the queue curve was measured with. Kept before the array-of-tables
+    /// fields so TOML output stays valid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_chunk_bytes: Option<u64>,
     /// CPU: measured or fitted rates per thread count; empty means use `compute` and
     /// `bandwidth_bytes_per_s` scaled by threads.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub thread_curve: Vec<ThreadPoint>,
+    /// Disk: measured read bytes per second by queue depth at `queue_chunk_bytes` per read
+    /// (`tetraeder-bench disk-curve`); empty means use `bandwidth_bytes_per_s`. Measured, never
+    /// fitted: anchors cannot separate disk time from CPU time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub queue_curve: Vec<QueuePoint>,
 }
 
 impl Device {
@@ -162,7 +178,33 @@ impl Device {
             mount: None,
             media: None,
             thread_curve: Vec::new(),
+            queue_curve: Vec::new(),
+            queue_chunk_bytes: None,
         }
+    }
+
+    /// Disk read bytes per second at queue depth `depth`. From the queue curve when present:
+    /// piecewise linear between points, proportional below the first, flat above the last (like
+    /// [`Device::cpu_rates`]). Otherwise the device's `bandwidth_bytes_per_s`; `None` without one.
+    pub fn disk_rate(&self, depth: u32) -> Option<f64> {
+        if self.queue_curve.is_empty() {
+            return self.bandwidth_bytes_per_s.map(|b| b.value);
+        }
+        let mut pts = self.queue_curve.clone();
+        pts.sort_by_key(|p| p.depth);
+        let d = f64::from(depth);
+        let first = pts[0];
+        let last = pts[pts.len() - 1];
+        if d <= f64::from(first.depth) {
+            return Some(first.bytes_per_s * d / f64::from(first.depth.max(1)));
+        }
+        if d >= f64::from(last.depth) {
+            return Some(last.bytes_per_s);
+        }
+        let i = pts.iter().position(|p| d <= f64::from(p.depth))?;
+        let (a, b) = (pts[i - 1], pts[i]);
+        let w = (d - f64::from(a.depth)) / f64::from(b.depth - a.depth);
+        Some(a.bytes_per_s + (b.bytes_per_s - a.bytes_per_s) * w)
     }
 
     /// `(flops/s, bytes/s)` at `t` threads. From the thread curve when present: piecewise linear
@@ -357,6 +399,39 @@ mod tests {
         assert_eq!(d.cpu_rates(2), Some((2e11, 2e10)));
         assert_eq!(d.cpu_rates(6), Some((5e11, 4.5e10)));
         assert_eq!(d.cpu_rates(32), Some((6e11, 5e10)));
+        let again = HardwareGraph {
+            devices: vec![d],
+            ..Default::default()
+        };
+        assert_eq!(
+            HardwareGraph::from_toml(&again.to_toml().unwrap()).unwrap(),
+            again
+        );
+    }
+
+    #[test]
+    fn disk_rate_from_curve_and_fallback() {
+        let mut d = Device::new("nvme0", DeviceKind::Disk, "n", Tier::Nvme, 1 << 40);
+        assert_eq!(d.disk_rate(4), None);
+        d.bandwidth_bytes_per_s = Some(Measurement::prior(3e9));
+        assert_eq!(d.disk_rate(1), Some(3e9));
+        assert_eq!(d.disk_rate(64), Some(3e9));
+        // unsorted on purpose
+        d.queue_curve = vec![
+            QueuePoint {
+                depth: 4,
+                bytes_per_s: 3e9,
+            },
+            QueuePoint {
+                depth: 2,
+                bytes_per_s: 2e9,
+            },
+        ];
+        d.queue_chunk_bytes = Some(1 << 20);
+        assert_eq!(d.disk_rate(1), Some(1e9));
+        assert_eq!(d.disk_rate(2), Some(2e9));
+        assert_eq!(d.disk_rate(3), Some(2.5e9));
+        assert_eq!(d.disk_rate(32), Some(3e9));
         let again = HardwareGraph {
             devices: vec![d],
             ..Default::default()

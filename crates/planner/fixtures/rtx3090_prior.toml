@@ -29,3 +29,29 @@ b = "cpu0"
 kind = "pcie"
 alpha_s = { value = 1.5e-5, source = "prior" }
 beta_bytes_per_s = { value = 2.0e10, source = "prior" }
+
+# Box NVMe (ADR 0056). The curve is a prior: box C measured 5.0 to 5.2 GB/s at depth 16 (ADR 0054);
+# a session replaces it with `tetraeder-bench disk-curve`. 1 MiB reads.
+[[devices]]
+id = "nvme0"
+kind = "disk"
+name = "Box NVMe"
+tier = "nvme"
+capacity_bytes = 2000000000000
+bandwidth_bytes_per_s = { value = 5.0e9, source = "prior" }
+media = "ssd"
+queue_chunk_bytes = 1048576
+queue_curve = [
+  { depth = 1, bytes_per_s = 1.0e9 },
+  { depth = 4, bytes_per_s = 3.0e9 },
+  { depth = 16, bytes_per_s = 5.2e9 },
+  { depth = 32, bytes_per_s = 5.4e9 },
+]
+
+[[links]]
+id = "nvme-cpu0"
+a = "nvme0"
+b = "cpu0"
+kind = "storage"
+alpha_s = { value = 1.0e-4, source = "prior" }
+beta_bytes_per_s = { value = 5.0e9, source = "prior" }

@@ -78,6 +78,39 @@
           "width_max": 16
         },
         "index": 0
+      },
+      {
+        "id": "nvme0",
+        "kind": "disk",
+        "name": "Box NVMe",
+        "tier": "nvme",
+        "capacity_bytes": 2000000000000,
+        "bandwidth_bytes_per_s": {
+          "value": 5000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "media": "ssd",
+        "queue_chunk_bytes": 1048576,
+        "queue_curve": [
+          {
+            "depth": 1,
+            "bytes_per_s": 1000000000.0
+          },
+          {
+            "depth": 4,
+            "bytes_per_s": 3000000000.0
+          },
+          {
+            "depth": 16,
+            "bytes_per_s": 5200000000.0
+          },
+          {
+            "depth": 32,
+            "bytes_per_s": 5400000000.0
+          }
+        ]
       }
     ],
     "links": [
@@ -97,6 +130,24 @@
           "spread": 0.0,
           "samples": 0,
           "source": "measured"
+        }
+      },
+      {
+        "id": "nvme-cpu0",
+        "a": "nvme0",
+        "b": "cpu0",
+        "kind": "storage",
+        "alpha_s": {
+          "value": 0.0001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 5000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
         }
       }
     ],
