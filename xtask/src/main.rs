@@ -109,6 +109,29 @@ fn llama_tools() -> Res<()> {
     if let Ok(native) = std::env::var("TETRAEDER_GGML_NATIVE") {
         cfg.arg(format!("-DGGML_NATIVE={native}"));
     }
+    // SSE4.2 only, what the engine's sse42 module is (ggml_add_cpu_backend_variant(sse42 SSE42)), so the
+    // reference text of the golden comes from the tier the engine is pinned to.
+    if std::env::var("TETRAEDER_LLAMA_TOOLS_ISA").is_ok_and(|v| v == "sse42") {
+        cfg.arg("-DGGML_NATIVE=OFF");
+        for off in [
+            "AVX",
+            "AVX_VNNI",
+            "AVX2",
+            "BMI2",
+            "AVX512",
+            "AVX512_VBMI",
+            "AVX512_VNNI",
+            "AVX512_BF16",
+            "FMA",
+            "F16C",
+            "AMX_TILE",
+            "AMX_INT8",
+            "AMX_BF16",
+        ] {
+            cfg.arg(format!("-DGGML_{off}=OFF"));
+        }
+        cfg.arg("-DGGML_SSE42=ON");
+    }
     run(&mut cfg)?;
 
     let mut b = Command::new("cmake");
@@ -149,6 +172,12 @@ fn json_str(s: &str) -> String {
     }
     o.push('"');
     o
+}
+
+/// `<cpu variant>-<os>`, the suffix of the golden file names (same rule as crates/engine/tests/golden.rs).
+fn golden_tag() -> String {
+    let variant = std::env::var("TETRAEDER_GGML_CPU_VARIANT").unwrap_or_else(|_| "sse42".into());
+    format!("{variant}-{}", std::env::consts::OS)
 }
 
 fn golden() -> Res<()> {
@@ -195,7 +224,10 @@ fn golden() -> Res<()> {
     );
     let dir = root().join("bench/golden");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join("qwen3-0.6b-q8_0.llama-simple.json");
+    let path = dir.join(format!(
+        "qwen3-0.6b-q8_0.llama-simple-{}.json",
+        golden_tag()
+    ));
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
     eprintln!("wrote {}", path.display());
 
