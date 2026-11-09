@@ -517,19 +517,23 @@ fn decode_profile_reports_steps_stages_and_graph_reuse() {
         .unwrap()
     };
     for (s, reuse_key) in [(&llama, "n_reused"), (&moe, "steps")] {
-        let pr = prompt(s, "Once upon a time");
-        let out = run(s, &pr, 8);
+        let pr = prompt(s, "Hello");
+        // A constraint without end-of-generation tokens: the tiny model always runs to the limit.
+        let out = drain(start(
+            s,
+            &pr,
+            greedy(8),
+            Some(Box::new(Only(vec![65, 66, 67], 0))),
+            CancellationToken::new(),
+        ));
+        assert_eq!(
+            (out.reason, out.stats.generated_tokens),
+            (FinishReason::Length, 8)
+        );
         let prof = out.stats.profile.expect("profile on");
-        // The first token comes from the prefill step and each later one from a decode step; at
-        // the length limit no further step runs, an end-of-generation token takes one more.
-        let n = out.stats.generated_tokens;
-        let want = if out.reason == FinishReason::Length {
-            n - 1
-        } else {
-            n
-        };
-        assert_eq!(prof.decode_steps, want, "{:?}", out.reason);
-        assert!(n >= 3, "too short to check: {n} tokens");
+        // The first token comes from the prefill step, the other 7 from decode steps; at the
+        // length limit no further step runs.
+        assert_eq!(prof.decode_steps, 7);
         assert!(prof.eval_s > 0.0 && prof.sample_s > 0.0 && prof.prefill_s > 0.0);
         let get = |k: &str| prof.backend.iter().find(|(n, _)| n == k).map(|(_, v)| *v);
         assert!(
