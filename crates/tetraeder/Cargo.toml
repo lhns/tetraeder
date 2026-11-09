@@ -27,6 +27,7 @@ tetraeder-engine = { path = "../engine" }
 tetraeder-model = { path = "../model" }
 tetraeder-plan = { path = "../plan" }
 tetraeder-gateway = { path = "../gateway" }
+tetraeder-ggml-sys = { path = "../ggml-sys" }
 tetraeder-planner = { path = "../planner" }
 tetraeder-scheduler = { path = "../scheduler" }
 opentelemetry = "0.33.1"

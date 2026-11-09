@@ -1,4 +1,6 @@
 //! Output parsing: formats, streaming at every chunking, fallbacks and reasoning.
+//!
+//! Hardware label: none (pure host code).
 
 use serde_json::{Value, json};
 use tetraeder_gateway::chat::{Segment, ToolCall, ToolDef};
@@ -387,6 +389,20 @@ fn mistral_malformed_is_text() {
         "[TOOL_CALLS]a[ARGS]{\"x\": ",
         "[TOOL_CALLS]a[ARGS]nope",
         "[TOOL_CALLS][1, 2]",
+    ] {
+        assert_eq!(s.parse(input), vec![t(input)], "{input:?}");
+    }
+}
+
+#[test]
+fn mistral_bad_array_with_non_ascii_is_text() {
+    // A nameless item or an empty array falls back to text at the block length, not the JSON
+    // length; the wrong offset lands inside a multi-byte char and panics.
+    let s = Setup::new(ToolFormat::Mistral);
+    for input in [
+        "[TOOL_CALLS][{\"arguments\":{}}] \u{e9}\u{e9}\u{e9}",
+        "[TOOL_CALLS][{\"arguments\":{\"q\":\"\u{4e16}\u{754c}\"}}]",
+        "[TOOL_CALLS][] \u{1f600}",
     ] {
         assert_eq!(s.parse(input), vec![t(input)], "{input:?}");
     }

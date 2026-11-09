@@ -284,8 +284,17 @@ pub fn read_builder_runs(dir: &Path) -> Result<BTreeMap<String, BuilderRun>, Str
 
 /// Median pp and tg tokens per second per variant over every sample in the harness results.
 pub fn measured(results: &Value) -> BTreeMap<String, (Option<f64>, Option<f64>)> {
+    measured_all(std::slice::from_ref(results))
+}
+
+/// [`measured`] over the samples of several results files pooled (a resumed run writes its
+/// later repeats to a file of its own).
+pub fn measured_all(files: &[Value]) -> BTreeMap<String, (Option<f64>, Option<f64>)> {
     let mut acc: BTreeMap<String, (Vec<f64>, Vec<f64>)> = BTreeMap::new();
-    for pair in results["pairs"].as_array().into_iter().flatten() {
+    for pair in files
+        .iter()
+        .flat_map(|r| r["pairs"].as_array().into_iter().flatten())
+    {
         for s in pair["samples"].as_array().into_iter().flatten() {
             let Some(v) = s["variant"].as_str() else {
                 continue;
@@ -412,7 +421,7 @@ pub fn score_dir(dir: &Path) -> Result<Score, String> {
         let runs = read_builder_runs(dir)?;
         return score_builder(&fixture, &layout, &cands, &runs, cands.budget.threads);
     }
-    let mut results = BTreeMap::new();
+    let mut files = Vec::new();
     for e in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let p = e.map_err(|e| e.to_string())?.path();
         let name = p
@@ -421,10 +430,14 @@ pub fn score_dir(dir: &Path) -> Result<Score, String> {
             .to_string_lossy()
             .to_string();
         if name.starts_with("planner-") && name.ends_with(".json") {
-            let v: Value = serde_json::from_str(&read(&p)?).map_err(|e| e.to_string())?;
-            results.extend(measured(&v));
+            let text = read(&p)?;
+            // a run killed before its first checkpoint leaves its claimed file empty
+            if !text.trim().is_empty() {
+                files.push(serde_json::from_str(&text).map_err(|e| e.to_string())?);
+            }
         }
     }
+    let results = measured_all(&files);
     score(&fixture, &layout, &cands, &results, cands.budget.threads)
 }
 
@@ -581,6 +594,27 @@ fn score_with(
 mod tests {
     use super::*;
     use crate::layout::fixtures;
+
+    // hardware: none
+    #[test]
+    fn samples_pool_over_results_files() {
+        let file = |samples: &[(&str, f64)]| {
+            let s: Vec<Value> = samples
+                .iter()
+                .map(|(v, x)| serde_json::json!({"variant": v, "pp_ts": x, "tg_ts": x}))
+                .collect();
+            serde_json::json!({"pairs": [{"samples": s}]})
+        };
+        // a resumed run writes a second file with the later repeats of the same variants
+        let files = [
+            file(&[("a", 1.0), ("b", 10.0)]),
+            file(&[("a", 3.0), ("a", 5.0)]),
+        ];
+        let m = measured_all(&files);
+        assert_eq!(m["a"], (Some(3.0), Some(3.0)));
+        assert_eq!(m["b"], (Some(10.0), Some(10.0)));
+        assert_eq!(measured(&files[1])["a"], (Some(4.0), Some(4.0)));
+    }
 
     #[test]
     fn spearman_basics() {

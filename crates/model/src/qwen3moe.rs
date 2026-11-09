@@ -25,6 +25,7 @@ use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, OwnedGraph, OwnedTensor, RopeParams, Sched, Tensor, Type,
+    hadamard_matrix,
 };
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::metrics::MemoryMetrics;
@@ -223,6 +224,10 @@ pub struct LoadOptions {
     /// still in flight when the layer is planned.
     #[doc(hidden)]
     pub io_delay: Option<Duration>,
+    /// Hadamard rotation of Q, K, V and the attention output, as libllama does for a quantized
+    /// cache (ADR 0050 addendum). `None`: on exactly when the format is quantized (libllama's
+    /// default), off for F16. `Some(true)` needs a head size that is a multiple of 64.
+    pub kv_rotation: Option<bool>,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -248,6 +253,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("kv", &self.kv)
             .field("io", &self.io)
             .field("overlap", &self.overlap)
+            .field("kv_rotation", &self.kv_rotation)
             .finish_non_exhaustive()
     }
 }
@@ -279,6 +285,7 @@ impl LoadOptions {
             kv: KvFormat::default(),
             overlap: false,
             io_delay: None,
+            kv_rotation: None,
         }
     }
 }
@@ -335,6 +342,10 @@ struct Kv {
     v: Vec<OwnedTensor>,
     n_ctx: usize,
     fmt: KvFormat,
+    /// Hadamard matrices for K (and Q) and for V, F32 `[n, n]` in a context of their own so the
+    /// KV buffer stays exactly the cache. `None`: that side is not rotated.
+    rot_k: Option<OwnedTensor>,
+    rot_v: Option<OwnedTensor>,
 }
 
 /// Activations that cross segment boundaries, one slot per layer parity.
@@ -537,7 +548,13 @@ impl Qwen3Moe {
             _ => None,
         };
         let (weights, weights_bytes) = load_weights(&file, &primary, slots)?;
-        let (kv, kv_bytes) = alloc_kv(h, pad(opts.n_ctx.max(1), KV_PAD), &primary, opts.kv)?;
+        let (kv, kv_bytes) = alloc_kv(
+            h,
+            pad(opts.n_ctx.max(1), KV_PAD),
+            &primary,
+            opts.kv,
+            opts.kv_rotation,
+        )?;
         let metrics = MemoryMetrics::new(opts.telemetry.clone());
         let streamer = slots
             .map(|n| {
@@ -657,6 +674,12 @@ impl Qwen3Moe {
     /// Format of the K and V cache.
     pub fn kv_format(&self) -> KvFormat {
         self.kv.fmt
+    }
+
+    /// Whether Q, K and V are rotated before they meet the cache (see
+    /// [`LoadOptions::kv_rotation`]): the K side and the V side.
+    pub fn kv_rotated(&self) -> (bool, bool) {
+        (self.kv.rot_k.is_some(), self.kv.rot_v.is_some())
     }
 
     pub fn n_ctx(&self) -> usize {
@@ -818,9 +841,31 @@ impl Qwen3Moe {
         std::mem::take(&mut self.profile)
     }
 
+    /// Publishes memory use and KV tokens held; also after the cache shrinks, so the gauge
+    /// does not keep a dropped sequence's length.
+    fn report_memory(&self) {
+        for m in self.memory() {
+            match &m.format {
+                Some(f) => self.metrics.kv(
+                    &m.device,
+                    m.tier,
+                    f,
+                    m.used,
+                    m.capacity,
+                    self.n_past as u64,
+                    self.kv.n_ctx as u64,
+                ),
+                None => self
+                    .metrics
+                    .buffer(&m.device, m.tier, m.kind, m.used, m.capacity),
+            }
+        }
+    }
+
     /// Forgets the KV cache; the next `eval` starts at position 0.
     pub fn reset(&mut self) {
         self.n_past = 0;
+        self.report_memory();
     }
 
     /// Rolls the cache back to its first `n_past` tokens. Rows above stay in the KV buffers but
@@ -834,6 +879,7 @@ impl Qwen3Moe {
             )));
         }
         self.n_past = n_past;
+        self.report_memory();
         Ok(())
     }
 
@@ -875,6 +921,7 @@ impl Qwen3Moe {
             rest = tail;
         }
         self.n_past = n;
+        self.report_memory();
         Ok(())
     }
 
@@ -956,12 +1003,13 @@ impl Qwen3Moe {
                 let ctx = Rc::new(Context::new(step_nodes(&h), step_nodes(&h))?);
                 let (graph, out, routed) =
                     build_step(&h, &self.weights, &self.kv, st, &ctx, last_only, record);
-                let deps = [
+                let mut deps = vec![
                     &self.weights.tok_embd,
                     &self.kv.k[0],
                     &self.kv.v[0],
                     &st.tokens,
                 ];
+                deps.extend(self.kv.rot_k.iter().chain(&self.kv.rot_v));
                 let routed = routed
                     .into_iter()
                     .map(|(ids, w)| Ok((ctx.keep(ids)?, ctx.keep(w)?)))
@@ -1290,22 +1338,7 @@ impl Qwen3Moe {
                 tokens: n as u32,
                 segments: graphs,
             });
-            for m in self.memory() {
-                match &m.format {
-                    Some(f) => self.metrics.kv(
-                        &m.device,
-                        m.tier,
-                        f,
-                        m.used,
-                        m.capacity,
-                        self.n_past as u64,
-                        self.kv.n_ctx as u64,
-                    ),
-                    None => self
-                        .metrics
-                        .buffer(&m.device, m.tier, m.kind, m.used, m.capacity),
-                }
-            }
+            self.report_memory();
         }
         if n > 1 && self.hot_pending {
             // The first prefill's routing decides the hot set (ADR 0035).
@@ -1837,8 +1870,67 @@ fn kv_types(h: &Hparams, fmt: KvFormat) -> Result<(Type, Type)> {
     Ok((ty(fmt.k)?, ty(fmt.v)?))
 }
 
-fn alloc_kv(h: &Hparams, n_ctx: usize, backend: &Backend, fmt: KvFormat) -> Result<(Kv, usize)> {
+/// Side of the Hadamard matrix for K, as libllama picks it (llama-kv-cache.cpp:329-337): the
+/// largest power of two dividing the head size, at least 64.
+fn rot_size_k(head_dim: usize) -> usize {
+    let mut n = 64;
+    while head_dim.is_multiple_of(2 * n) {
+        n *= 2;
+    }
+    n
+}
+
+/// V uses the smallest matrix (llama-kv-cache.cpp:338-345).
+const ROT_SIZE_V: usize = 64;
+
+/// The Hadamard matrices of a KV format: libllama rotates a side when its type is quantized and
+/// the head size is a multiple of 64 (llama-kv-cache.cpp:310-327). `want` overrides the quantized
+/// test for both sides; asking for rotation with another head size is an error.
+fn alloc_rot(
+    h: &Hparams,
+    types: (Type, Type),
+    want: Option<bool>,
+    backend: &Backend,
+) -> Result<(Option<OwnedTensor>, Option<OwnedTensor>)> {
+    let hd = h.head_dim as usize;
+    if want == Some(true) && !hd.is_multiple_of(64) {
+        return Err(ModelError::Invalid(format!(
+            "KV rotation needs a head size that is a multiple of 64, not {hd}"
+        )));
+    }
+    let on = |t: Type| hd.is_multiple_of(64) && want.unwrap_or_else(|| t.is_quantized());
+    let (k, v) = (on(types.0), on(types.1));
+    if !k && !v {
+        return Ok((None, None));
+    }
+    let ctx = Rc::new(Context::new(2, 0)?);
+    let mk = |n: usize, name: &str| {
+        let t = ctx.new_persistent(Type::F32, &[n as i64, n as i64]);
+        t.get().set_name(name);
+        (n, t)
+    };
+    let rk = k.then(|| mk(rot_size_k(hd), "kv_rot_k"));
+    let rv = v.then(|| mk(ROT_SIZE_V, "kv_rot_v"));
+    ctx.alloc_tensors(backend)?;
+    let fill = |r: Option<(usize, OwnedTensor)>| -> Result<Option<OwnedTensor>> {
+        r.map(|(n, t)| {
+            t.get().set_f32(&hadamard_matrix(n))?;
+            Ok::<_, ModelError>(t)
+        })
+        .transpose()
+    };
+    Ok((fill(rk)?, fill(rv)?))
+}
+
+fn alloc_kv(
+    h: &Hparams,
+    n_ctx: usize,
+    backend: &Backend,
+    fmt: KvFormat,
+    rotation: Option<bool>,
+) -> Result<(Kv, usize)> {
     let (tk, tv) = kv_types(h, fmt)?;
+    let (rot_k, rot_v) = alloc_rot(h, (tk, tv), rotation, backend)?;
     let ctx = Rc::new(Context::new(2 * h.n_layer as usize + 4, 0)?);
     let n_embd_kv = (h.n_head_kv * h.head_dim) as i64;
     let mk = |kind: &str, ty: Type, il: u32| {
@@ -1851,7 +1943,17 @@ fn alloc_kv(h: &Hparams, n_ctx: usize, backend: &Backend, fmt: KvFormat) -> Resu
     let bytes = ctx.alloc_tensors(backend)?;
     // Padding rows are masked, but 0 * NaN is NaN: never leave them uninitialized.
     ctx.clear_buffer(0);
-    Ok((Kv { k, v, n_ctx, fmt }, bytes))
+    Ok((
+        Kv {
+            k,
+            v,
+            n_ctx,
+            fmt,
+            rot_k,
+            rot_v,
+        },
+        bytes,
+    ))
 }
 
 /// `host`: with overlapped decode, the CPU backend that holds the host buffers (ADR 0054).
@@ -2084,6 +2186,19 @@ fn attention_and_router<'a>(
     let q = ctx.rope_ext(q, st.pos.get(), &rope);
     let k = ctx.mul(ctx.rms_norm(k, h.rms_eps), lw.k_norm.get());
     let k = ctx.rope_ext(k, st.pos.get(), &rope);
+    // Rotation as in libllama's `build_attn` (llama-graph.cpp:3246-3253): Q and K after RoPE with
+    // the K matrix, V with the V matrix. Q.K is unchanged because the matrix is orthonormal.
+    let (q, k) = match &kv.rot_k {
+        Some(r) => (
+            ctx.mul_mat_hadamard(q, r.get()),
+            ctx.mul_mat_hadamard(k, r.get()),
+        ),
+        None => (q, k),
+    };
+    let v = match &kv.rot_v {
+        Some(r) => ctx.mul_mat_hadamard(v, r.get()),
+        None => v,
+    };
 
     // Store K and V in the cache rows of these positions; the cache must be written before the
     // attention reads it, so the stores enter the graph first.
@@ -2105,6 +2220,11 @@ fn attention_and_router<'a>(
     let q = ctx.permute(q, [0, 2, 1, 3]);
     let attn = ctx.flash_attn_ext(q, kview, vview, st.mask.get(), 1.0 / (hd as f32).sqrt());
     let attn = ctx.reshape(attn, &[hd * nh, n]);
+    // Undo the V rotation (llama-graph.cpp:3291-3293); the matrix is its own inverse.
+    let attn = match &kv.rot_v {
+        Some(r) => ctx.mul_mat_hadamard(attn, r.get()),
+        None => attn,
+    };
     let ffn_inp = ctx.add(ctx.mul_mat(lw.wo.get(), attn), x);
 
     let xn = ctx.mul(ctx.rms_norm(ffn_inp, h.rms_eps), lw.ffn_norm.get());

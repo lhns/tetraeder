@@ -10,7 +10,7 @@
 
 use crate::raw as sys;
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -38,6 +38,8 @@ pub type Token = i32;
 pub enum LlamaError {
     #[error("cannot load model `{path}` (libllama gave no reason; see the `llama` log target)")]
     ModelLoad { path: String },
+    #[error("ggml backends not loaded: {0}")]
+    BackendLoad(String),
     #[error("cannot create context (see the `llama` log target; usually out of memory)")]
     ContextInit,
     #[error("invalid argument: {0}")]
@@ -143,17 +145,136 @@ unsafe extern "C" fn log_callback(
     }
 }
 
+/// Where the ggml backends came from (ADR 0052).
+#[derive(Debug)]
+pub(crate) struct Loaded {
+    /// DL build: the directory the modules were loaded from.
+    pub module_dir: Option<PathBuf>,
+    /// `TETRAEDER_GGML_CPU_VARIANT`, when set.
+    pub forced: Option<String>,
+}
+
 /// Initializes libllama once and routes its logs to `tracing` (target `llama`: error, warn,
 /// info as debug, rest as trace). Called by every constructor; safe to call repeatedly.
+/// A module load error is kept for the constructors (`init_checked`); `init` ignores it.
 pub fn init() {
-    static INIT: OnceLock<()> = OnceLock::new();
+    let _ = init_checked();
+}
+
+/// Like [`init`], but returns the backend load error (DL build: a CPU or GPU module that is
+/// missing or does not load).
+pub(crate) fn init_checked() -> std::result::Result<&'static Loaded, String> {
+    static INIT: OnceLock<std::result::Result<Loaded, String>> = OnceLock::new();
     INIT.get_or_init(|| {
         // SAFETY: called once; the callback is a plain function that needs no user data.
-        unsafe {
-            sys::llama_log_set(Some(log_callback), std::ptr::null_mut());
-            sys::llama_backend_init();
+        unsafe { sys::llama_log_set(Some(log_callback), std::ptr::null_mut()) };
+        let loaded = load_backends();
+        // SAFETY: called once. With backends registered it skips its own load.
+        unsafe { sys::llama_backend_init() };
+        loaded
+    })
+    .as_ref()
+    .map_err(Clone::clone)
+}
+
+#[cfg(not(ggml_dl))]
+fn load_backends() -> std::result::Result<Loaded, String> {
+    Ok(Loaded {
+        module_dir: None,
+        forced: None,
+    })
+}
+
+/// Loads the ggml modules: the best CPU variant and the GPU modules of this build, or with
+/// `TETRAEDER_GGML_CPU_VARIANT=<tag>` that one CPU module and the GPU modules.
+#[cfg(ggml_dl)]
+fn load_backends() -> std::result::Result<Loaded, String> {
+    use crate::ggml::cpu;
+    let env_dir = std::env::var_os("TETRAEDER_GGML_BACKEND_DIR").map(PathBuf::from);
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf));
+    let dir = cpu::resolve_module_dir(
+        env_dir.as_deref(),
+        exe_dir.as_deref(),
+        Path::new(env!("TETRAEDER_GGML_MODULE_DIR")),
+        cpu::dir_has_cpu_module,
+    );
+    let forced = std::env::var("TETRAEDER_GGML_CPU_VARIANT")
+        .ok()
+        .filter(|v| !v.is_empty());
+    let load_file = |file: &Path| -> bool {
+        let Ok(c) = path_cstring(file) else {
+            return false;
+        };
+        // SAFETY: valid C string; null means the module is missing or not usable here.
+        !unsafe { sys::ggml_backend_load(c.as_ptr()) }.is_null()
+    };
+    if let Some(tag) = &forced {
+        let file = dir.join(cpu::cpu_module_file_name(tag));
+        if !load_file(&file) {
+            return Err(format!(
+                "cannot load CPU module {} (TETRAEDER_GGML_CPU_VARIANT={tag}): the file is missing, \
+                 or this CPU cannot run it",
+                file.display()
+            ));
         }
-    });
+        for gpu in ["ggml-cuda", "ggml-vulkan"] {
+            let file = dir.join(cpu::module_file_name(gpu));
+            if file.is_file() {
+                load_file(&file);
+            }
+        }
+    } else {
+        let c = path_cstring(&dir).map_err(|e| e.to_string())?;
+        // SAFETY: valid C string.
+        unsafe { sys::ggml_backend_load_all_from_path(c.as_ptr()) };
+    }
+    // SAFETY: registry query.
+    if unsafe { sys::ggml_backend_dev_by_type(sys::GGML_BACKEND_DEVICE_TYPE_CPU) }.is_null() {
+        return Err(format!(
+            "no CPU backend after loading modules from {}: no usable {} there (set \
+             TETRAEDER_GGML_BACKEND_DIR to the directory with the ggml modules)",
+            dir.display(),
+            cpu::cpu_module_file_name("<variant>")
+        ));
+    }
+    for (feature, reg, module) in [
+        (cfg!(feature = "cuda"), c"CUDA", "ggml-cuda"),
+        (cfg!(feature = "vulkan"), c"Vulkan", "ggml-vulkan"),
+    ] {
+        // SAFETY: registry query with a valid C string.
+        if feature && unsafe { sys::ggml_backend_reg_by_name(reg.as_ptr()) }.is_null() {
+            return Err(format!(
+                "{} module not loaded: {} in {} is missing or failed to load (driver or runtime \
+                 library not found?)",
+                reg.to_string_lossy(),
+                cpu::module_file_name(module),
+                dir.display()
+            ));
+        }
+    }
+    tracing::info!(
+        dir = %dir.display(),
+        forced = forced.as_deref().unwrap_or("none"),
+        backends = %registry_names().join(", "),
+        "ggml modules loaded"
+    );
+    Ok(Loaded {
+        module_dir: Some(dir),
+        forced,
+    })
+}
+
+/// Names of the registered ggml backends.
+#[cfg(ggml_dl)]
+fn registry_names() -> Vec<String> {
+    // SAFETY: registry queries; names are static strings.
+    unsafe {
+        (0..sys::ggml_backend_reg_count())
+            .map(|i| cstr_lossy(sys::ggml_backend_reg_name(sys::ggml_backend_reg_get(i))))
+            .collect()
+    }
 }
 
 /// Turns off libllama's Hadamard rotation of a quantized KV cache for the whole process

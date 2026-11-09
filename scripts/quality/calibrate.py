@@ -21,7 +21,48 @@ import subprocess
 import time
 from pathlib import Path
 
+import compare_mix
 import qlib
+
+# Byte budgets of the knapsack checks as fractions of the way from the smallest mix to the base model. On the
+# Qwen3-30B-A3B (base Q8_0) they land near the Q3_K_M, Q4_K_M and Q5_K_M presets, where the planner operates.
+KNAPSACK_FRACTIONS = (0.2, 0.35, 0.5)
+
+# A uniform check whose measured KL is more than this above the estimate (relative to measured) gets a
+# format scale. ADR 0048 measured the sum within 14% elsewhere; Q2_K on the 30B was 25% under.
+UNDER_BAND = 0.15
+
+
+def knapsack_check_mixes(prof, fractions=KNAPSACK_FRACTIONS):
+    """Whole-model mixes shaped like the planner's knapsack: `compare_mix.greedy_mix` at budgets between the
+    smallest mix and the base model. Uniform and random mixes spread KL evenly over groups; these concentrate
+    cheap formats on tolerant groups, which is where the summed estimate was found to drift (ADR 0040).
+    Returns {check name: {group id: format}}, without mixes that repeat."""
+    base = prof["base"]
+    base_group_bytes = sum(next(e["bytes"] for e in g["entries"] if e["format"] == base["format"])
+                           for g in prof["groups"])
+    lo = base["bytes"] - base_group_bytes + sum(min(e["bytes"] for e in g["entries"]) for g in prof["groups"])
+    out = {}
+    for f in fractions:
+        mix, _ = compare_mix.greedy_mix(prof, int(lo + f * (base["bytes"] - lo)))
+        if mix not in out.values():
+            out[f"knapsack-{round(f * 100)}"] = mix
+    return out
+
+
+def fit_format_scale(prof):
+    """Per-format factor on the KL delta, from the uniform checks: (measured - base) / (estimate - base) for each
+    format the sum underestimates by more than UNDER_BAND. Never below 1, so it only raises an estimate."""
+    base_kl = prof["base"]["kl"]
+    scale = {}
+    for c in prof["checks"]:
+        fmt = c["name"].removeprefix("uniform-")
+        if fmt == c["name"] or c["measured"] <= 0:
+            continue
+        est = qlib.estimate(prof, c["formats"])
+        if (c["measured"] - est) / c["measured"] > UNDER_BAND and est > base_kl:
+            scale[fmt] = round((c["measured"] - base_kl) / (est - base_kl), 4)
+    return scale
 
 
 def main():
@@ -40,6 +81,9 @@ def main():
     ap.add_argument("--ppl-args", default="-ngl 99 -fa on", help="extra llama-perplexity args (offload)")
     ap.add_argument("--ref-args", default=None, help="llama-perplexity args for the reference run")
     ap.add_argument("--checks", type=int, default=4, help="random whole-mix additivity checks")
+    ap.add_argument("--knapsack-fractions", type=float, nargs="*", default=list(KNAPSACK_FRACTIONS),
+                    help="knapsack-shaped checks at these fractions between the smallest mix and the base "
+                         "(none: skip); not with --drop-shards")
     ap.add_argument("--drop-shards", action="store_true",
                     help="small disks: convert one format at a time, delete it after its samples; checks are then "
                          "uniform mixes only")
@@ -143,6 +187,13 @@ def main():
 
     base_choice = [a.base] * count
 
+    def set_format_scale():
+        scale = fit_format_scale(prof)
+        if scale:
+            prof["format_scale"] = scale
+            print(f"format scale {scale}", flush=True)
+        save()
+
     def check(name, mix):
         """Additivity check: measured KL of a whole mix against the profile's estimate."""
         choice = [a.base] + [mix[g["id"]] for g in groups]
@@ -185,9 +236,9 @@ def main():
             check(f"uniform-{fmt}", {g["id"]: fmt for g in groups})
             shutil.rmtree(shard_dirs.pop(fmt))
 
-    # 4. Additivity checks on whole mixes: uniform formats and random mixes.
+    # 4. Additivity checks on whole mixes: uniform formats, random mixes and knapsack-shaped mixes.
     if a.drop_shards:
-        save()
+        set_format_scale()
         print("CALIBRATE_DONE", flush=True)
         return
     rng = random.Random(42)
@@ -195,11 +246,12 @@ def main():
     wanted = [(f"uniform-{f}", {g["id"]: f for g in groups}) for f in fmts[:2]]
     for k in range(a.checks):
         wanted.append((f"random-{k}", {g["id"]: rng.choice(fmts + [a.base]) for g in groups}))
+    wanted += knapsack_check_mixes(prof, a.knapsack_fractions).items()
     have = {c["name"] for c in prof["checks"]}
     for name, mix in wanted:
         if name not in have:
             check(name, mix)
-    save()
+    set_format_scale()
     print("CALIBRATE_DONE", flush=True)
 
 

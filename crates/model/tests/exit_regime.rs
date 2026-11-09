@@ -34,9 +34,10 @@
 //!   the hidden share (`1 - wait / span`) and the main thread's wait in `urgent_wait_ms`.
 //! - `TETRAEDER_EXIT_IO_DELAY_MS`: test only, the service's sleep before each chunk, to see
 //!   the effect of overlap on a fast local disk.
-//! - `TETRAEDER_EXIT_REF_ATTN_ROT=1`: keep libllama's Hadamard rotation of a quantized KV cache on
-//!   in the reference engine (default off, so logits compare with the builder's plain cache; on
-//!   is what llama.cpp ships, for speed pairs).
+//! - `TETRAEDER_EXIT_KV_ROT` (0/1): Hadamard rotation of Q, K and V (ADR 0050 addendum). Unset:
+//!   on for a quantized KV format, off for f16, as libllama. The reference engine follows it;
+//!   `TETRAEDER_EXIT_REF_ATTN_ROT` (0/1) overrides the reference alone. The JSON options record
+//!   `kv_rotation` as resolved.
 //! - `TETRAEDER_EXIT_KV`: K and V cache format, `f16` (default), `q8_0`, `q8_0/q4_0` or `q4_0`
 //!   (ADR 0050 b); both engines use it (`LoadOptions::kv`, libllama `type_k` and `type_v`).
 //! - `TETRAEDER_EXIT_CPU_POLL`: ggml threadpool polling level 0 to 100 (default: ggml's 50).
@@ -206,10 +207,13 @@ fn reference_run(
     threads: usize,
     kv: KvFormat,
 ) -> Value {
-    // libllama rotates a quantized cache by default; the builder does not
-    if std::env::var("TETRAEDER_EXIT_REF_ATTN_ROT").is_ok_and(|v| v == "1") {
-        // keep llama.cpp's shipped behaviour for speed pairs
-    } else {
+    // The reference rotates a quantized cache like the builder does (TETRAEDER_EXIT_KV_ROT), so
+    // both store the same values; TETRAEDER_EXIT_REF_ATTN_ROT=0/1 overrides the reference alone.
+    let ref_rot = env_u64("TETRAEDER_EXIT_REF_ATTN_ROT")
+        .map(|v| v == 1)
+        .or(env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1))
+        .unwrap_or(kv != KvFormat::F16);
+    if !ref_rot {
         tetraeder_ggml_sys::llama::disable_attn_rot();
     }
     let patterns = std::env::var("TETRAEDER_EXIT_REF_OT").unwrap_or_else(|_| "exps=CPU".into());
@@ -467,6 +471,7 @@ fn exit_regime() {
         opts.overlap = v == "1";
     }
     opts.io_delay = env_u64("TETRAEDER_EXIT_IO_DELAY_MS").map(Duration::from_millis);
+    opts.kv_rotation = env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
     opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
     let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
@@ -653,6 +658,7 @@ fn exit_regime() {
             "overlap": opts.overlap,
             "io_delay_ms": opts.io_delay.map(|d| d.as_millis() as u64),
             "kv": opts.kv.to_string(),
+            "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
             "cpu_poll": opts.cpu_poll,
             "prefetch_threads": opts.prefetch_threads,
             "expert_slots": opts.expert_slots,

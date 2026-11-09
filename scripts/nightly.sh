@@ -29,6 +29,7 @@ case "$BENCH_SPEC" in phase0) bench_default=45;; phase2-baseline) bench_default=
 BENCH_MIN="${BENCH_MIN:-$bench_default}"  # the phase0 spec took 31 min on an RTX 3090 box; phase2-baseline is estimated at 60 with the ik_llama variants
 exec 8> /root/tetraeder_nightly.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
+bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 [ -f "bench/spec/$BENCH_SPEC.toml" ] || { echo "no spec bench/spec/$BENCH_SPEC.toml"; exit 2; }
 # Image toolchain lives in /opt/cargo (RUSTUP_HOME/CARGO_HOME); a rustup under $HOME is the fallback
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi

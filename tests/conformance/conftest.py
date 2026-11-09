@@ -46,7 +46,7 @@ def server(tmp_path_factory):
         return
     binary = find_binary()
     if binary is None:
-        pytest.skip("no tetraeder binary: run `cargo build -p tetraeder` (or set TETRAEDER_BIN / TETRAEDER_BASE_URL)")
+        pytest.skip("no tetraeder binary: run `cargo build -p tetraeder` first, as CI does (or set TETRAEDER_BIN / TETRAEDER_BASE_URL)")
     log = tmp_path_factory.mktemp("serve") / "requests.jsonl"
     port = free_port()
     proc = subprocess.Popen(
@@ -72,7 +72,10 @@ def server(tmp_path_factory):
             except queue.Empty:
                 pytest.fail("tetraeder serve --fake did not print 'listening on' within 60 s")
             if line is None:
-                pytest.fail("tetraeder serve --fake exited early:\n" + "".join(tail[-20:]))
+                pytest.fail(
+                    "tetraeder serve --fake exited early (stale binary? rebuild with `cargo build -p tetraeder`; "
+                    "CI builds it before pytest):\n" + "".join(tail[-20:])
+                )
             m = READY.search(line)
             if m:
                 break

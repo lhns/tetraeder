@@ -5,7 +5,11 @@ fn cpu_add_two_tensors() {
     // SAFETY: all pointers come from ggml and are used only while their owning context/backend
     // is alive; the context is created with no_alloc so tensor data lives in the backend buffer.
     unsafe {
-        let backend = sys::ggml_backend_cpu_init();
+        tetraeder_ggml_sys::llama::init();
+        let backend = sys::ggml_backend_dev_init(
+            sys::ggml_backend_dev_by_type(sys::GGML_BACKEND_DEVICE_TYPE_CPU),
+            std::ptr::null(),
+        );
         assert!(!backend.is_null(), "cpu backend init failed");
 
         let params = sys::ggml_init_params {
