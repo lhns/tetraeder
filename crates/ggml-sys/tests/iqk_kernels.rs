@@ -7,7 +7,6 @@
 //! Reference: weights dequantized by ggml, the activation through ggml's `Q8_K` quantizer and
 //! back, a dot product in f64. Bound per output: 1e-5 * sum|w*x| + 1e-6.
 
-use tetraeder_ggml_sys as sys;
 use tetraeder_ggml_sys::cpu;
 use tetraeder_ggml_sys::ggml::{Backend, Context, Sched, Tensor, Type, quantize, to_f32};
 
@@ -47,20 +46,23 @@ fn noise(n: usize, mut s: u64) -> Vec<f32> {
         .collect()
 }
 
+// ggml-base exports (GGML_API in ggml-quants.h); the public type traits have no Q8_K entries.
+unsafe extern "C" {
+    fn quantize_row_q8_K_ref(x: *const f32, y: *mut std::ffi::c_void, k: i64);
+    fn dequantize_row_q8_K(x: *const std::ffi::c_void, y: *mut f32, k: i64);
+}
+
 /// ggml's `Q8_K` round trip of one row, as the kernels see the activation.
 fn q8k_roundtrip(x: &[f32]) -> Vec<f32> {
     let q8k = Type::from_name("q8_K").unwrap();
     let mut blocks = vec![0u8; q8k.row_size(x.len() as i64)];
-    // SAFETY: `from_float_ref` of Q8_K reads `x.len()` floats and writes whole Q8_K blocks into
-    // `blocks`, which holds exactly `x.len() / 256` of them.
-    unsafe {
-        let f = (*sys::ggml_get_type_traits(q8k.id() as _))
-            .from_float_ref
-            .expect("q8_K quantizer");
-        f(x.as_ptr(), blocks.as_mut_ptr().cast(), x.len() as i64);
-    }
     let mut out = vec![0f32; x.len()];
-    to_f32(q8k, &blocks, &mut out).unwrap();
+    // SAFETY: `x.len()` is a multiple of 256; `blocks` holds exactly `x.len() / 256` Q8_K blocks
+    // and `out` has `x.len()` floats, which is all the two functions read and write.
+    unsafe {
+        quantize_row_q8_K_ref(x.as_ptr(), blocks.as_mut_ptr().cast(), x.len() as i64);
+        dequantize_row_q8_K(blocks.as_ptr().cast(), out.as_mut_ptr(), x.len() as i64);
+    }
     out
 }
 
