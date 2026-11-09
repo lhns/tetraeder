@@ -335,6 +335,8 @@ pub fn predict(
             b: f.parts.get(1).map_or(String::new(), |p| p.device.clone()),
         })
     };
+    // A plan on one device has no link to cross, whatever `switches_per_token` says.
+    let has_hops = f.switches_per_token > 0.0 && f.parts.len() > 1;
     let gpu = devs
         .iter()
         .position(|(d, _)| d.kind == DeviceKind::Gpu)
@@ -349,7 +351,7 @@ pub fn predict(
         part_s.push(t);
         add(&mut tg, format!("compute:{}", d.id), t);
     }
-    if f.switches_per_token > 0.0 {
+    if has_hops {
         let h = need_hop()?;
         let t = f.switches_per_token * (h.alpha + f.activation_bytes_per_token / h.beta);
         add(&mut tg, "switches".into(), t);
@@ -406,7 +408,7 @@ pub fn predict(
                 );
             }
         }
-        if f.switches_per_token > 0.0 {
+        if has_hops {
             let h = need_hop()?;
             add(
                 &mut pp,
@@ -639,6 +641,20 @@ mod tests {
             Err(PredictError::NoLink { .. })
         ));
         assert!(predict(&hw, &f, 0, 10).is_err());
+    }
+
+    #[test]
+    fn a_single_part_plan_needs_no_link() {
+        let mut f = features(6.0, 0.0);
+        assert_eq!(f.parts.len(), 1);
+        f.switches_per_token = 1.0;
+        let mut nolink = hw();
+        nolink.links.clear();
+        for g in [hw(), nolink] {
+            let p = predict(&g, &f, 100, 20).unwrap();
+            assert!(!p.tg_breakdown.iter().any(|e| e.0 == "switches"));
+            assert!(!p.pp_breakdown.iter().any(|e| e.0 == "switches"));
+        }
     }
 
     #[test]

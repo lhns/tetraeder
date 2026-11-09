@@ -388,6 +388,8 @@ mod tests {
         assert!(m.extra_bufts);
         let c = ContextParams::default();
         assert!(c.n_batch > 0 && c.n_ubatch > 0);
+        // libllama offloads host ops by default.
+        assert!(c.op_offload);
     }
 
     #[test]

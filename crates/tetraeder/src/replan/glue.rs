@@ -20,6 +20,7 @@ pub fn llama_options(
         threads,
         batch,
         ubatch,
+        op_offload,
         ..
     } = l
     else {
@@ -38,9 +39,18 @@ pub fn llama_options(
         n_batch: *batch,
         n_ubatch: *ubatch,
         threads: i32::try_from(*threads).ok(),
+        op_offload: *op_offload,
         ..base.context(ctx)
     };
     Ok((placement, cfg))
+}
+
+/// Prompt tokens per backend call of a builder plan: its ubatch.
+pub fn builder_chunk(l: &Lowered) -> Result<usize, String> {
+    match l {
+        Lowered::Builder { ubatch, .. } => Ok((*ubatch as usize).max(1)),
+        Lowered::Llama { .. } => Err("not a builder plan".into()),
+    }
 }
 
 /// Load options of a builder plan. A RAM tier means misses run on the CPU, as in the campaign;
@@ -129,6 +139,7 @@ mod tests {
             (4096, 2048, 512, Some(6))
         );
         assert_eq!(c.flash_attn, FlashAttn::On);
+        assert!(c.op_offload);
         let cpu = Lowered::Llama {
             n_gpu_layers: 0,
             cpu_patterns: vec![],
@@ -137,7 +148,8 @@ mod tests {
             ubatch: 512,
             op_offload: false,
         };
-        let (p, _) = llama_options(&cpu, &base(&[]), 256).unwrap();
+        let (p, c) = llama_options(&cpu, &base(&[]), 256).unwrap();
+        assert!(!c.op_offload);
         assert_eq!((p.n_gpu_layers, p.overrides.len()), (0, 0));
         assert!(
             llama_options(
@@ -178,14 +190,16 @@ mod tests {
             (o.op_offload, o.miss, o.prefetch),
             (false, MissPolicy::Cpu, true)
         );
+        assert_eq!(builder_chunk(&gpu).unwrap(), 512);
         let cpu = Lowered::Builder {
             gpu: None,
             expert_slots: None,
             ram_slots: None,
             threads: 2,
-            ubatch: 512,
+            ubatch: 64,
             op_offload: true,
         };
+        assert_eq!(builder_chunk(&cpu).unwrap(), 64);
         let o = builder_options(&cpu, 256, MissPolicy::Upload, false, tel).unwrap();
         assert!(matches!(o.backend, BackendChoice::Cpu { threads: Some(2) }));
         assert_eq!(

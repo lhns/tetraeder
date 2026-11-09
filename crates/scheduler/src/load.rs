@@ -1,6 +1,6 @@
 //! Loading the backends for the scheduler and reading model facts from the GGUF.
 
-use crate::backend::{Backend, LlamaBackend, MoeBackend};
+use crate::backend::{Backend, LlamaBackend, MOE_CHUNK, MoeBackend};
 use std::path::Path;
 use std::sync::Arc;
 use tetraeder_engine::{ContextConfig, Engine, Placement};
@@ -31,6 +31,11 @@ pub fn load_llama(
 
 /// The Qwen3 MoE builder; libllama loads only the vocabulary, for tokenizing.
 pub fn load_moe(path: &Path, opts: &LoadOptions) -> Result<Loaded, String> {
+    load_moe_chunked(path, opts, MOE_CHUNK)
+}
+
+/// [`load_moe`] with `chunk` tokens per backend call.
+pub fn load_moe_chunked(path: &Path, opts: &LoadOptions, chunk: usize) -> Result<Loaded, String> {
     let tokenizer = Arc::new(
         Model::load(
             path,
@@ -44,7 +49,7 @@ pub fn load_moe(path: &Path, opts: &LoadOptions) -> Result<Loaded, String> {
     let on_gpu = matches!(opts.backend, tetraeder_model::BackendChoice::Gpu { .. });
     let model = Qwen3Moe::load(path, opts).map_err(|e| e.to_string())?;
     Ok(Loaded {
-        backend: Box::new(MoeBackend::new(model, on_gpu)),
+        backend: Box::new(MoeBackend::with_chunk(model, on_gpu, chunk)),
         tokenizer,
     })
 }
