@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use tetraeder_costmodel::calib::{Anchor, fit};
 use tetraeder_costmodel::predict::{DevicePart, ReadPath, RunFeatures, TierFeatures, predict};
-use tetraeder_profiler::HardwareGraph;
+use tetraeder_profiler::{HardwareGraph, QueuePoint};
 
 /// Spec-sheet prior of the RTX 3090 box (the fit replaces what the anchors measure).
 pub const RTX3090_PRIOR: &str = include_str!("../fixtures/rtx3090_prior.toml");
@@ -594,13 +594,21 @@ pub fn score_dir(dir: &Path) -> Result<Score, String> {
         } else {
             None
         };
-        return score_builder_tier(
+        // the box stage `disk-curve` measures the disk under load: the session's own nvme0
+        let curve_file = dir.join("disk-curve-loaded.json");
+        let disk = if curve_file.is_file() {
+            Some(read_disk_curve(&curve_file)?)
+        } else {
+            None
+        };
+        return score_builder_curve(
             &fixture,
             &layout,
             &cands,
             &runs,
             cands.budget.threads,
             replay.as_deref(),
+            disk.as_ref(),
         );
     }
     let files = read_harness_files(dir)?;
@@ -696,6 +704,42 @@ pub fn score_builder_tier(
     quota: u32,
     replay: Option<&[TierOutcome]>,
 ) -> Result<Score, String> {
+    score_builder_curve(fixture, layout, cands, runs, quota, replay, None)
+}
+
+/// A disk's measured read rate by queue depth (`tetraeder-bench disk-curve`): the session's own
+/// `nvme0` in place of the prior's (ADR 0056).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiskCurve {
+    pub curve: Vec<QueuePoint>,
+    pub chunk_bytes: Option<u64>,
+}
+
+/// Reads the `queue_curve` and `queue_chunk_bytes` of a `disk-curve` output.
+pub fn read_disk_curve(path: &Path) -> Result<DiskCurve, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let v: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let curve: Vec<QueuePoint> = serde_json::from_value(v["queue_curve"].clone())
+        .map_err(|e| format!("{}: queue_curve: {e}", path.display()))?;
+    if curve.is_empty() {
+        return Err(format!("{}: empty queue_curve", path.display()));
+    }
+    Ok(DiskCurve {
+        curve,
+        chunk_bytes: v["queue_chunk_bytes"].as_u64(),
+    })
+}
+
+/// [`score_builder_tier`] with the session's measured disk curve in place of the prior's.
+pub fn score_builder_curve(
+    fixture: &str,
+    layout: &ModelLayout,
+    cands: &CandidatesFile,
+    runs: &BTreeMap<String, BuilderRun>,
+    quota: u32,
+    replay: Option<&[TierOutcome]>,
+    disk: Option<&DiskCurve>,
+) -> Result<Score, String> {
     let n = f64::from(layout.n_expert.max(1));
     let points: Vec<(f64, f64)> = cands
         .anchors
@@ -747,7 +791,7 @@ pub fn score_builder_tier(
         .iter()
         .map(|(k, r)| (k.clone(), (r.pp_tok_s, r.tg_tok_s)))
         .collect();
-    score_with(fixture, cands, &measured, quota, &feat, &source)
+    score_with(fixture, cands, &measured, quota, &feat, &source, disk)
 }
 
 /// `(scored, dropped)` of [`predict_builder`]: request seconds per candidate id, and the
@@ -865,7 +909,7 @@ pub fn score(
     quota: u32,
 ) -> Result<Score, String> {
     let feat = |v: &CampaignVariant| features(layout, v.placement, v.threads, &v.args, &v.env);
-    score_with(fixture, cands, measured, quota, &feat, "")
+    score_with(fixture, cands, measured, quota, &feat, "", None)
 }
 
 fn score_with(
@@ -875,10 +919,18 @@ fn score_with(
     quota: u32,
     feat: &dyn Fn(&CampaignVariant) -> RunFeatures,
     tier_source: &str,
+    disk: Option<&DiskCurve>,
 ) -> Result<Score, String> {
     let mut prior = HardwareGraph::from_toml(RTX3090_PRIOR).map_err(|e| e.to_string())?;
     if let Some(c) = prior.devices.iter_mut().find(|d| d.id == "cpu0") {
         c.threads = Some(quota);
+    }
+    if let (Some(d), Some(n)) = (
+        disk,
+        prior.devices.iter_mut().find(|d| d.id == BUILDER_DISK),
+    ) {
+        n.queue_curve = d.curve.clone();
+        n.queue_chunk_bytes = d.chunk_bytes;
     }
     let anchors: Vec<Anchor> = cands
         .anchors
@@ -1453,6 +1505,62 @@ mod tests {
                 .unwrap();
             assert_eq!(ram, most);
         }
+    }
+
+    /// A session's measured disk curve replaces the prior's `nvme0`: a quarter of the rate makes
+    /// the candidates that read from disk slower, and one file parses into the curve.
+    // hardware: none
+    #[test]
+    fn a_measured_disk_curve_replaces_the_prior_in_the_score() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/builder-synthetic");
+        let layout: ModelLayout =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("layout.json")).unwrap())
+                .unwrap();
+        let cands: CandidatesFile =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("candidates.json")).unwrap())
+                .unwrap();
+        let runs = read_builder_runs(&dir).unwrap();
+        let outs = read_tier_replay(&dir.join("tier-replay.json")).unwrap();
+        let prior = HardwareGraph::from_toml(RTX3090_PRIOR).unwrap();
+        let slow = DiskCurve {
+            curve: prior
+                .device(BUILDER_DISK)
+                .unwrap()
+                .queue_curve
+                .iter()
+                .map(|p| QueuePoint {
+                    depth: p.depth,
+                    bytes_per_s: p.bytes_per_s * 0.25,
+                })
+                .collect(),
+            chunk_bytes: Some(1 << 20),
+        };
+        let q = cands.budget.threads;
+        let base = score_builder_curve("s", &layout, &cands, &runs, q, Some(&outs), None).unwrap();
+        let same = score_builder_tier("s", &layout, &cands, &runs, q, Some(&outs)).unwrap();
+        let times =
+            |s: &Score| -> Vec<f64> { s.candidates.iter().map(|c| c.predicted_s).collect() };
+        assert_eq!(times(&base), times(&same));
+        let slowed =
+            score_builder_curve("s", &layout, &cands, &runs, q, Some(&outs), Some(&slow)).unwrap();
+        // the fit re-balances the other rates, so not every candidate slows; the numbers move
+        assert_ne!(times(&slowed), times(&base));
+        // the file form
+        let tmp = std::env::temp_dir().join(format!("tetraeder-curve-{}.json", std::process::id()));
+        std::fs::write(
+            &tmp,
+            serde_json::json!({
+                "queue_chunk_bytes": 1 << 20,
+                "queue_curve": [{"depth": 1, "bytes_per_s": 1.0e9}, {"depth": 16, "bytes_per_s": 4.0e9}],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let d = read_disk_curve(&tmp).unwrap();
+        assert_eq!((d.curve.len(), d.chunk_bytes), (2, Some(1 << 20)));
+        std::fs::write(&tmp, r#"{"queue_curve": []}"#).unwrap();
+        assert!(read_disk_curve(&tmp).is_err());
+        let _ = std::fs::remove_file(tmp);
     }
 
     // hardware: none

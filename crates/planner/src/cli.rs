@@ -2,8 +2,12 @@
 //! contents to output text, so tests need no files. Inputs are TOML: hardware graph, model
 //! description, hints and plans.
 
+use crate::builder::{build_builder_candidate, slot_row_bytes};
+use crate::campaign::{self, CandidatesFile};
+use crate::candidate::{Budget, Enumeration, Workload};
 use crate::diff::plan_diff;
 use crate::explain::explain;
+use crate::layout::ModelLayout;
 use crate::profile_quality::{Band, mix_at_budget, tensor_formats};
 use crate::quality::BitsQuality;
 use crate::score::{builder_time_model, read_tier_replay};
@@ -111,6 +115,92 @@ pub fn time_model_cmd(hw: &str, fixture: &Path, candidate: &str) -> Result<Strin
     json(&m)
 }
 
+/// A builder run of an exit session as a variant of a ledger directory (ADR 0056): its tiers in
+/// bytes (the `TETRAEDER_EXIT_*_SLOT_BYTES` it ran with), threads, ubatch, op offload and the
+/// request it measured.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StageSpec {
+    pub id: String,
+    pub vram_bytes: u64,
+    pub ram_bytes: u64,
+    pub threads: u32,
+    pub ubatch: u32,
+    pub op_offload: bool,
+    pub prompt: u32,
+    pub r#gen: u32,
+}
+
+impl std::str::FromStr for StageSpec {
+    type Err = String;
+
+    /// `id=VRAM_BYTES,RAM_BYTES,THREADS,UBATCH,OP_OFFLOAD(0|1),PROMPT,GEN`.
+    fn from_str(s: &str) -> Result<Self, String> {
+        let (id, rest) = s.split_once('=').ok_or_else(|| {
+            format!("stage {s:?}: expected id=vram,ram,threads,ubatch,op,prompt,gen")
+        })?;
+        let f: Vec<&str> = rest.split(',').collect();
+        let [vram, ram, threads, ubatch, op, prompt, gen_] = f[..] else {
+            return Err(format!("stage {s:?}: expected 7 numbers after the id"));
+        };
+        let num = |v: &str| {
+            v.parse::<u64>()
+                .map_err(|e| format!("stage {s:?}: {v:?}: {e}"))
+        };
+        Ok(Self {
+            id: id.to_string(),
+            vram_bytes: num(vram)?,
+            ram_bytes: num(ram)?,
+            threads: num(threads)? as u32,
+            ubatch: num(ubatch)? as u32,
+            op_offload: num(op)? != 0,
+            prompt: num(prompt)? as u32,
+            r#gen: num(gen_)? as u32,
+        })
+    }
+}
+
+/// The `candidates.json` of a ledger directory (`ledger-<session>/`): the four builder anchors
+/// at the `anchor` workload and the session's builder stages as candidates, each with its own
+/// request, so the ledger reads the directory like a fixture (results are `<variant id>.r1.json`;
+/// a stage `main` is variant `cand-main`).
+pub fn ledger_candidates(
+    layout: &ModelLayout,
+    budget: &Budget,
+    anchor: &Workload,
+    (model_key, hf): (&str, &str),
+    stages: &[StageSpec],
+) -> CandidatesFile {
+    let row = slot_row_bytes(layout).max(1);
+    let candidates = stages
+        .iter()
+        .map(|s| {
+            let slots = |b: u64| u32::try_from(b / row).unwrap_or(u32::MAX);
+            build_builder_candidate(
+                &s.id,
+                layout,
+                (slots(s.vram_bytes), slots(s.ram_bytes)),
+                (s.threads, s.ubatch, s.op_offload),
+                &Workload {
+                    prompt: s.prompt,
+                    r#gen: s.r#gen,
+                },
+            )
+        })
+        .collect();
+    let en = Enumeration {
+        candidates,
+        dropped: vec![],
+        placements: vec![],
+    };
+    let c = campaign::build_builder(model_key, hf, layout, budget, anchor, &en);
+    let mut file = CandidatesFile::new(&c, layout, budget, &en);
+    for (e, s) in file.candidates.iter_mut().zip(stages) {
+        e.variant.prompt = s.prompt;
+        e.variant.r#gen = s.r#gen;
+    }
+    file
+}
+
 /// `diff`: what moves between two plan files and how long the switch takes.
 pub fn diff_cmd(hw: &str, model: &str, old: &str, new: &str, as_json: bool) -> Result<String> {
     let (hw, model) = load(hw, model)?;
@@ -198,4 +288,67 @@ pub fn mix_cmd(profile: &str, budget: u64, tensors: Option<&str>) -> Result<(Str
         band.raw * 100.0
     );
     Ok((json(&formats)?, summary))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::candidate::Placement;
+    use crate::layout::fixtures;
+
+    // hardware: none
+    #[test]
+    fn a_ledger_directory_has_the_anchors_and_the_stages_with_their_own_request() {
+        let layout = fixtures::moe();
+        let budget = Budget {
+            gpu_bytes: 14_000_000_000,
+            ram_bytes: 60_000_000_000,
+            threads: 15,
+        };
+        let row = slot_row_bytes(&layout);
+        let spec = format!("main={},{},15,2048,1,32768,64", 64 * row, 32 * row);
+        let stage: StageSpec = spec.parse().unwrap();
+        assert_eq!(
+            (stage.threads, stage.ubatch, stage.op_offload),
+            (15, 2048, true)
+        );
+        let f = ledger_candidates(
+            &layout,
+            &budget,
+            &Workload {
+                prompt: 512,
+                r#gen: 32,
+            },
+            ("moe", "org/m:f.gguf"),
+            &[stage],
+        );
+        assert!(!f.anchors.is_empty());
+        assert!(f.anchors.iter().all(|a| (a.prompt, a.r#gen) == (512, 32)));
+        let [c] = &f.candidates[..] else {
+            panic!("{:?}", f.candidates.len());
+        };
+        assert_eq!(c.variant.id, "cand-main");
+        assert_eq!((c.variant.prompt, c.variant.r#gen), (32768, 64));
+        assert_eq!(
+            c.candidate.placement,
+            Placement::Builder {
+                vram_slots: 64,
+                ram_slots: 32
+            }
+        );
+        assert_eq!(c.variant.placement, Some(c.candidate.placement));
+    }
+
+    // hardware: none
+    #[test]
+    fn malformed_stages_are_refused() {
+        for bad in [
+            "main",
+            "main=1,2,3",
+            "main=a,2,3,4,5,6,7",
+            "=1,2,3,4,5,6,7,8",
+        ] {
+            assert!(bad.parse::<StageSpec>().is_err(), "{bad}");
+        }
+    }
 }

@@ -1,5 +1,6 @@
 //! Benchmark harness: pinned TOML spec, paired interleaved runs, JSON results, noise-band gate, golden data.
 
+pub mod disk_curve;
 pub mod engine;
 pub mod env;
 pub mod golden;

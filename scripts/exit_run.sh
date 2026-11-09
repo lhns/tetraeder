@@ -74,6 +74,8 @@ rc=0
 stage_min() {
   case "$1" in
     smoke) echo 3 ;;
+    disk-curve) echo 2 ;;
+    anchors-builder-short) echo 12 ;;
     gpu-tests) echo 20 ;;
     drift-ref*) echo 9 ;;
     drift-*) echo 4 ;;
@@ -271,6 +273,57 @@ llamacpp_cache() {
   done
 }
 
+# disk_curve: the model disk's read rate by queue depth, idle and beside quota-1 spinning threads (ADR 0056; about 2
+# min). The largest shard, random 1 MiB chunks through the I/O service, direct I/O. disk-curve-loaded-<stamp>.json
+# is the session's nvme0 curve for the graph; its decode sampler check: `read_mb_s` at `disk_queue_depth_mean` of a
+# builder stage should lie within 20% of the loaded curve at that depth (reported, not gated)
+disk_curve() {
+  want disk-curve || return 0
+  echo "[$(date +%T)] start disk-curve"
+  local shard load=$((threads > 1 ? threads - 1 : 1))
+  shard=$(ls -S "$(dirname "$model")"/*.gguf | head -1)
+  cargo build --release -p tetraeder-bench --bin tetraeder-bench || { echo "bench build failed"; return 0; }
+  target/release/tetraeder-bench disk-curve --file "$shard" --seconds 4 --out "$date_dir/disk-curve-idle-$stamp.json" \
+    || echo "disk-curve idle failed"
+  target/release/tetraeder-bench disk-curve --file "$shard" --seconds 4 --load-threads "$load" \
+    --out "$date_dir/disk-curve-loaded-$stamp.json" || echo "disk-curve loaded failed"
+  echo "[$(date +%T)] done disk-curve"
+}
+
+# anchors_builder_short: the four builder anchors at pp512 tg32 and this session's builder stages (main, main-prefetch,
+# ...), written as a planner fixture directory ledger-<session>/ (layout.json, candidates.json, <variant>.r1.json) that
+# `tetraeder-plan ledger` reads like a fixture (ADR 0056). Opt in: STAGES names it, or ANCHORS_BUILDER_SHORT=1. About
+# 12 min on the 235B: four runs of 2 min and the planner build (4 min the first time)
+anchors_builder_short() {
+  [[ " ${STAGES:-} " == *" anchors-builder-short "* || "${ANCHORS_BUILDER_SHORT:-0}" = 1 ]] || return 0
+  want anchors-builder-short || return 0
+  local session=${TETRAEDER_SESSION:-$stamp} d id kv free_mib saved=${STAGES:-} st
+  d="$date_dir/ledger-$session"
+  mkdir -p "$d"
+  echo "[$(date +%T)] start anchors-builder-short: $d"
+  cargo build --release -p tetraeder -p tetraeder-planner --features tetraeder-ggml-sys/cuda \
+    || { echo "planner build failed"; return 0; }
+  free_mib=$(nvidia-smi -i 0 --query-gpu=memory.free --format=csv,noheader,nounits | head -1)
+  target/release/tetraeder plan layout "$model" --out "$d/layout.json" || return 0
+  local stage_args=()
+  while read -r st; do
+    [ -n "$st" ] && stage_args+=(--stage "$st")
+  done < <(python3 scripts/ledger_stages.py "$date_dir" main main-prefetch main-repeat main-iosvc main-overlap \
+    main-overlap-d2 main-overlap-ram --copy-to "$d")
+  target/release/tetraeder-plan ledger-dir --layout "$d/layout.json" --gpu-bytes $((free_mib * 1048576)) \
+    --ram-bytes "$ram_bytes" --threads "$threads" --prompt 512 --gen 32 --model-key moe235 \
+    --hf "Qwen/Qwen3-235B-A22B-GGUF:Q4_K_M" "${stage_args[@]}" --out "$d/candidates.json" || return 0
+  while IFS=$'\t' read -r id kv; do
+    [ -s "$d/$id.r1.json" ] && continue
+    # exit_regime asks want() for its name: let the anchor runs through a STAGES filter
+    STAGES="${saved:+$saved }ledger-$id"
+    # shellcheck disable=SC2086  # kv is a KEY=VALUE list without spaces inside
+    exit_regime "ledger-$id" 10 $kv && cp "$date_dir/exit-ledger-$id-$stamp.json" "$d/$id.r1.json"
+  done < <(python3 scripts/ledger_stages.py --anchors "$d/candidates.json")
+  STAGES=$saved
+  echo "[$(date +%T)] done anchors-builder-short"
+}
+
 # llama_fit: the most layers' experts llama.cpp keeps on the GPU at ubatch 2048 and llama-bench's context for
 # -p 2048 -n 32 -d 32768 (34848; at 33024 eight layers fit llama-server but not llama-bench) (scripts/llama_fit.sh); the
 # builder then gets the same expert bytes as VRAM slots (from the smoke run's per-layer expert sizes), so both engines
@@ -311,6 +364,7 @@ for r in d.get("runs") or []:
         print("  memory:", m)
 EOF
     if [ $rc = 0 ]; then
+      disk_curve
       llama_fit
       # ubatch 2048: a pair group passes one row per (token, expert) pair to CUDA's mul_mat_id, whose id helper
       # needs 4 B of shared memory per row (about 25k rows on Ampere); ubatch 4096 at top-8 is 32k (abort, 2026-11-02)
@@ -388,6 +442,8 @@ EOF
       exit_regime main-native-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_GGML_NATIVE=ON         CARGO_TARGET_DIR="$native_target" || rc=29
       ktransformers avx2
       llamacpp_cache repeat
+      # the ledger's view of this session: the anchors at pp512 tg32 and the builder stages above (ADR 0056)
+      anchors_builder_short
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
       # are joined with ';'), then ik_llama.cpp with the same overrides (it was OOM-killed at 128 GB with mmap)
       baseline "$bench" exit-llama-ot-fit-d32k 40 -ub 2048 -p 2048 -n 32 -d 32768 -ot "$ot_fit"

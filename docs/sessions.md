@@ -29,10 +29,10 @@ B3 first: its cache tuner gives B1 the llama.cpp CPU share. B3-planner and B3-de
 
 | Session | Box | Script time (estimate / budget) | Box hours | Box cost | Download | Traffic cost | Total |
 |---|---|---|---|---|---|---|---|
-| B1 `b1-exit` | RTX 3090, about 91 GB RAM, 24 to 26 core quota, 220 GB disk | 113 / 120 min (the guard drops `ktransformers-avx2` and the cache repeat) | 2.4 | at most 1.08 | 142 GB | 0.92 to 3.69 | 2.0 to 4.8 USD |
-| B1b `b1b-levers` | as B1, 240 GB disk (native build) | 110 / 120 min (119 with `main-overlap-ram`) | 2.0 | at most 0.90 | 142 GB | 0.92 to 3.69 | 1.8 to 4.6 USD |
+| B1 `b1-exit` | RTX 3090, about 91 GB RAM, 24 to 26 core quota, 220 GB disk | 115 / 120 min (the guard drops `ktransformers-avx2` and the cache repeat) | 2.4 | at most 1.08 | 142 GB | 0.92 to 3.69 | 2.0 to 4.8 USD |
+| B1b `b1b-levers` | as B1, 240 GB disk (native build) | 112 / 120 min (the guard drops `main-overlap-ram`, 121, and `anchors-builder-short`, 12 more) | 2.0 | at most 0.90 | 142 GB | 0.92 to 3.69 | 1.8 to 4.6 USD |
 | B2 `b2-proxy` | 48 GB Ampere card (RTX A6000, A40), 64 GB RAM, 8+ cores, 100 GB disk | 82 min proxy, 40 kv-quality, hook / 260 min | 2.5 to 4.8 | 1.25 to 2.40 | 38 GB | 0.50 to 1.00 | 1.8 to 3.4 USD |
-| B3 `b3-planner` | RTX 3090, 32+ GB RAM, 9+ cores, 100 GB disk | 96 to 120 / 120 min | 2.0 to 2.4 | at most 1.08 | 38 GB | 0.50 to 1.00 | 1.3 to 2.1 USD |
+| B3 `b3-planner` | RTX 3090, 32+ GB RAM, 9+ cores, 100 GB disk | 106 to 120 / 120 min | 2.0 to 2.4 | at most 1.08 | 38 GB | 0.50 to 1.00 | 1.3 to 2.1 USD |
 | B3 `b3-detector` | RTX 3090, 32+ GB RAM, 9+ cores, 80 GB disk | 65 to 110 / 120 min | 1.5 to 2.3 | at most 1.04 | 19 GB | 0.25 to 0.50 | 0.9 to 1.5 USD |
 
 Every session except `b1-exit` (the verdict session, `NOISE_STAGE=1` opts in) now ends with the A/A pair of the "Noise bands" section when 12 minutes of its budget are left: it adds the 8B model (about 5 GB, 0.07 to 0.13 USD of traffic) and up to 12 minutes; `b1b-levers` and `b2-proxy` may skip it when the deadline is near.
@@ -52,6 +52,7 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 - **Detector campaign**: 3 + 40 + 9 = 52 runs of a 256-token prefill and 96 decode tokens on the 30B with misses from disk, plus the sampler. No box evidence; the 30B builder decodes 7 to 40 tok/s with slots and disk misses (`20261102/builder-real-202732.json`), so a run is 40 to 90 s with load and teardown: 35 to 78 min, plus a 10 min `exit_regime` build.
 - **kernels-cpu**: 9 llama-bench runs of 64 tokens on the 30B (CPU only, about 15 tok/s at 9 threads from the planner CPU anchors) and up to 3 x 180 s of `objdump`: 10 to 15 min.
 - **Low-bit KV and trace** (B1b): each `kv-*` stage is a builder 32K run, 9 min; the trace is one with 256 decode tokens plus the replay, about 15 min. **kv-quality** (B2): never run; 30B download, a model-crate build and 8K and 32K runs per format, capped at the time left (estimate 40 min).
+- **ADR 0056 stages**: `disk-curve` is 6 depths x 4 s, twice (idle, loaded), plus the load of the file: 1 minute of reads, 2 with the bench build (cached after the first stage). `trace` is the box-C style run (`exit-trace` stage: 15 min on the 235B for 32K plus 256 decode tokens; the 30B at prefill 2048 and decode 128 with every expert in the RAM tier: 3 min) plus the replay of about 150 configurations (seconds). `anchors-builder-short`: four 235B runs at pp512 tg32 (prefill about 30 s at the box-C rate of 70 tok/s, decode 32 tokens at 3 to 4 tok/s, load 7 s: about 1.5 to 2 min with the ledger run's teardown) plus the CUDA build of the `tetraeder` and `tetraeder-plan` binaries beside the cached test binary, 4 min the first time. None has run.
 - **moe-cache tuner**: its script ships in the box image, not the repo; no run count known. Capped at `TUNE_MIN` = 25 min; a relaunch resumes from its finished runs.
 
 ## B1: Phase 2 exit verdict (`b1-exit`)
@@ -66,14 +67,15 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 |---|---|---|---|---|
 | 0 | download 142 GB, KT install, build (parallel) | 20 (to 38) | 20 | |
 | 1 | balloon, `smoke` | 3 | 23 | gate: KV fits, direct I/O, split |
-| 2 | `main-prefetch` (builder, levers) | 9 | 32 | builder decode for the verdict |
-| 3 | `ktransformers` | 25 | 57 | KT decode for the verdict |
-| 4 | `llamacpp-cache` at the tuned share S, mmap | 15 | 72 | llama.cpp's best tuned setup (ADR 0045 addendum 2026-11-05) |
-| 5 | `llamacpp-cache-dio`, same S, `--load-mode dio` | 15 | 87 | whether mmap streams or thrashes here; the faster of 4 and 5 is llama.cpp's number |
-| 6 | `main-repeat` (builder, levers) | 9 | 96 | noise band of builder over KT |
-| 7 | `ktransformers-repeat` | 17 | 113 | noise band |
-| 8 | `ktransformers-avx2` | 20 | 133 | KT kernel ISA; runs only if the download was fast |
-| 9 | `llamacpp-cache-repeat` | 16 | 149 | cache noise band; usually cut |
+| 1b | `disk-curve` (idle and loaded) | 2 | 25 | the box's `nvme0` queue curve for the tier term (ADR 0056) |
+| 2 | `main-prefetch` (builder, levers) | 9 | 34 | builder decode for the verdict |
+| 3 | `ktransformers` | 25 | 59 | KT decode for the verdict |
+| 4 | `llamacpp-cache` at the tuned share S, mmap | 15 | 74 | llama.cpp's best tuned setup (ADR 0045 addendum 2026-11-05) |
+| 5 | `llamacpp-cache-dio`, same S, `--load-mode dio` | 15 | 89 | whether mmap streams or thrashes here; the faster of 4 and 5 is llama.cpp's number |
+| 6 | `main-repeat` (builder, levers) | 9 | 98 | noise band of builder over KT |
+| 7 | `ktransformers-repeat` | 17 | 115 | noise band |
+| 8 | `ktransformers-avx2` | 20 | 135 | KT kernel ISA; runs only if the download was fast |
+| 9 | `llamacpp-cache-repeat` | 16 | 151 | cache noise band; usually cut |
 
 **Verify after fetch.** Every stage JSON has numbers (`decode_tok_s`, KT `ok: true`) and a `host` block. In `exit-llamacpp-cache-s<S>-*.json` read `warmup.majflt`, `run_stat.majflt` and `log_load_mode`: if major faults run into the millions and decode is far below the builder's, llama-server thrashed mmap; compare with `exit-llamacpp-cache-s<S>-dio-*.json`. Both carry `prompt.fnv1a64`, which must equal the builder's (`c743c72b8ffceadd` for the frozen prompt; same token ids, BOS by the vocab's rule, special text not parsed).
 
@@ -87,12 +89,14 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 |---|---|---|---|---|
 | 0 | download, portable and native builds | 20 (to 38) | 20 | |
 | 1 | `smoke` | 3 | 23 | |
-| 2 | `main-prefetch` (builder, levers) | 9 | 32 | the pair for every stage below |
-| 3 | `kv-q8`, `kv-q8-slots`, `kv-q8q4`, `kv-q8q4-slots` | 36 | 68 | ADR 0050 b: decode with low-bit KV, and with the freed bytes as expert slots |
-| 3b | `main-iosvc`, `main-overlap` | 18 | 86 | ADR 0054: the persistent I/O service alone, then with experts computed in arrival order; decode at least 15% above `main-prefetch` and hidden share at least 0.5 |
-| 4 | `trace` and the replay | 15 | 101 | ADR 0050 c: frequency tiers against LRU (`replay-235b.json`; the trace stays in `runs/vast/`, git-ignored) |
-| 5 | `main-native-repeat` (native ISA, levers) | 9 | 110 | ADR 0045 hypothesis 3 |
-| 6 | `main-overlap-ram` (RAM tier with a 4 GB reserve) | 9 | 119 | ADR 0054 section 3; only if the deadline allows; peak RSS under 90 GB |
+| 1b | `disk-curve` (idle and loaded) | 2 | 25 | the box's `nvme0` queue curve for the tier term (ADR 0056) |
+| 2 | `main-prefetch` (builder, levers) | 9 | 34 | the pair for every stage below |
+| 3 | `kv-q8`, `kv-q8-slots`, `kv-q8q4`, `kv-q8q4-slots` | 36 | 70 | ADR 0050 b: decode with low-bit KV, and with the freed bytes as expert slots |
+| 3b | `main-iosvc`, `main-overlap` | 18 | 88 | ADR 0054: the persistent I/O service alone, then with experts computed in arrival order; decode at least 15% above `main-prefetch` and hidden share at least 0.5 |
+| 4 | `trace` and the replay | 15 | 103 | ADR 0050 c: frequency tiers against LRU (`replay-235b.json`; the trace stays in `runs/vast/`, git-ignored) |
+| 5 | `main-native-repeat` (native ISA, levers) | 9 | 112 | ADR 0045 hypothesis 3 |
+| 6 | `main-overlap-ram` (RAM tier with a 4 GB reserve) | 9 | 121 | ADR 0054 section 3; the deadline guard drops it unless the download was fast; peak RSS under 90 GB |
+| 7 | `anchors-builder-short` (the four builder anchors at pp512 tg32, planner build) | 12 | 133 | ADR 0056: ledger coverage of the 235B session, `ledger-<session>/`; last, cut first |
 
 **Verify.** Every stage JSON has `decode_tok_s`; `replay-235b.json` exists. kv-quality (the KL bar for the kv-* formats) runs in B2.
 
@@ -122,9 +126,9 @@ As one session B3 is 170 to 215 min of script time, more than one box allows, so
 |---|---|---|---|---|
 | 0 | fetch 30B (32B in the background) | 2 to 5 | 5 | |
 | 1 | `moe_cache_tune.sh` on the 30B | at most 25 | 30 | S for B1's `llamacpp-cache` |
-| 2 | planner build | 9 | 39 | |
-| 3 | dense pass 1: anchors, baselines, 24 candidates once, cheapest first | 57 (20 candidates by 33) | 96 | planner dense exit test |
-| 4 | dense pass 2: second repeats while time is left | 24 | 120 | repeat spread |
+| 2 | planner build, then the builder fixture's session stages (`planner_builder_campaign.sh` with `STAGES="disk-curve trace"`): build 9 plus 3 for the `exit_regime` binary, `disk-curve` 2, `trace` and replay 5; skipped with fewer than 25 min left | 19 | 49 | ADR 0056: the 30B's disk curve and `tier-replay.json` for the builder fixture; the 3.7 h of candidate runs are not part of this session |
+| 3 | dense pass 1: anchors, baselines, 24 candidates once, cheapest first (the build is cached) | 57 (20 candidates by 33) | 106 | planner dense exit test |
+| 4 | dense pass 2: second repeats while time is left | 24 (14 fit) | 120 | repeat spread |
 
 **Verify after fetch.** `cargo run -p tetraeder-planner --bin tetraeder-plan -- score bench/results/<date>/planner-dense --out bench/results/<date>/planner-dense/score.json`: at least 20 candidates with `measured_s`, regret at most 10%, Spearman at least 0.8 (the scorer pools the samples of every `planner-dense-*.json` of the passes). Once committed, `cargo test -p tetraeder-planner committed_fixtures_meet_the_exit_test` is the CI verdict. `moe-cache-tune/tune.json` has a `cpu_share`.
 
@@ -197,6 +201,20 @@ schtasks /Create /TN tetraeder-gpu-smoke /SC WEEKLY /D SUN /ST 03:00 /F /TR "cmd
 Run it from a checkout on `main` that is pushed and clean (the wrapper refuses uncommitted changes). Also run it by hand before merging a branch that touches `ggml-sys`, `model`, `memory` or the patch queue.
 
 **Relation to `nightly.sh`.** Not superseded as a script, superseded as a schedule. The nightly's job was "does the GPU code build and run, and is the Tetraeder engine within the noise band of llama.cpp"; the first half is the smoke at about a fifth of the cost. The second half (the Phase 1 gate pairs, `MOE_CHECK`, `GAP_PAIR`, the Phase 2 baseline spec) stays in `nightly.sh` for on-demand runs before a release or after a change to the bench or the engine's hot path; it should not come back as a daily job (`nightly_wait_min` 170, 1 to 2 USD a night).
+
+## ADR 0056 stages (disk curve, trace, ledger directory)
+
+Three stages feed the tier term and the calibration ledger. All are written into the scripts and the profiles above; none has run (box runs are on hold).
+
+| Stage | Where | Minutes | Decides | Output |
+|---|---|---|---|---|
+| `disk-curve` | `exit_run.sh` (b1-exit, b1b-levers), `planner_builder_campaign.sh` (b3-planner) | 2 | the `nvme0` queue curve of the box, idle and beside `quota - 1` spinning threads (ADR 0054's starvation case): the tier term charges disk reads from it | `disk-curve-idle-<stamp>.json`, `disk-curve-loaded-<stamp>.json` next to the exit results; `planner-moe-builder/disk-curve-{idle,loaded}.json` |
+| `trace` (builder fixture) | `planner_builder_campaign.sh` (b3-planner); `trace` of `exit_run.sh` for the 235B as before | 5 on the 30B | `tier-replay.json`: bytes per token for every slot pair of the fixture's anchors and candidates, so RAM options stop tying | `planner-moe-builder/tier-replay.json`; `routing.trace` when it compresses to under 20 MB |
+| `anchors-builder-short` | `exit_run.sh` (last stage of b1b-levers; `ANCHORS_BUILDER_SHORT=1` elsewhere) | 12 (4 more for the first planner build) | ledger coverage of the session: the four builder anchors at pp512 tg32 plus the session's builder stages as variants | `ledger-<session>/` (`layout.json`, `candidates.json`, `<variant>.r1.json`) |
+
+**What each session must export.** `session.sh` exports `TETRAEDER_GIT_COMMIT` and `TETRAEDER_SESSION` (part A); every result then carries them, and a result without them never enters the ledger. For the tier term the fetch must bring `disk-curve-loaded-*.json` (the scorer reads `disk-curve-loaded.json` of a fixture directory; copy the exit session's file there under that name) and, for the builder fixture, `tier-replay.json`.
+
+**Verify after fetch.** `python3 scripts/disk_check.py bench/results/<date>/exit-<stage>-<stamp>.json bench/results/<date>/disk-curve-loaded-<stamp>.json`: the sampler's decode `read_mb_s` at `disk_queue_depth_mean` should lie within 20% of the loaded curve at that depth (reported, not gated). `cargo test -p tetraeder-bench committed_tier_replays_are_current` replays a committed `tier-replay.json` against its trace; `cargo run -p tetraeder-planner --bin tetraeder-plan -- ledger` shows the ledger rows of a new `ledger-<session>/` (add `--write` to snapshot, with `--accept-worse` for a reviewed regression).
 
 ## Noise bands
 

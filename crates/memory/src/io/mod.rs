@@ -5,6 +5,7 @@
 //!   no clock; the caller passes `now` in seconds.
 //! - [`disk`]: a processor-sharing disk model over a measured queue-depth curve.
 //! - [`service`]: [`IoService`], worker threads driving a [`Queue`] on the real clock.
+//! - [`probe`]: the disk's read rate by queue depth through the service (`tetraeder-bench disk-curve`).
 //! - `sim` (tests, feature `sim`): [`sim::SimIo`], the same queue driven by a [`disk::Disk`] and
 //!   a virtual clock.
 //!
@@ -12,6 +13,7 @@
 //! virtual clock.
 
 pub mod disk;
+pub mod probe;
 pub mod queue;
 pub mod service;
 #[cfg(any(test, feature = "sim"))]

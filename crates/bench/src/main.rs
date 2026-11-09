@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use tetraeder_bench::disk_curve;
 use tetraeder_bench::golden::{Golden, Tolerance};
 use tetraeder_bench::noise;
 use tetraeder_bench::quality::{self, ParityFile, ParityOptions};
@@ -119,6 +120,29 @@ enum Cmd {
         /// (`tetraeder-plan explain --time-model`, ADR 0056); adds `timed` to the output.
         #[arg(long)]
         timed: Option<PathBuf>,
+    },
+    /// A disk's read rate by queue depth through the I/O service (ADR 0056): random aligned
+    /// chunks of one file, direct I/O, `workers = depth`; per depth bytes per second and p50 and
+    /// p99 chunk latency, and a `queue_curve` for the hardware graph.
+    DiskCurve {
+        /// The file to read (the largest model shard).
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long, default_value_t = 1 << 20)]
+        chunk_bytes: usize,
+        #[arg(long, value_delimiter = ',', default_value = "1,2,4,8,16,32")]
+        depths: Vec<usize>,
+        /// Seconds per depth.
+        #[arg(long, default_value_t = 4.0)]
+        seconds: f64,
+        /// Run beside this many spinning threads (the CPU quota minus one: ADR 0054's case).
+        #[arg(long, default_value_t = 0)]
+        load_threads: usize,
+        /// Read through the page cache (a filesystem that refuses direct I/O).
+        #[arg(long)]
+        buffered: bool,
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Parse and validate a spec.
     Check { spec: PathBuf },
@@ -296,6 +320,29 @@ fn real_main() -> Result<u8> {
                 .map_err(anyhow::Error::msg)?;
             let n = replay::run_timed(&trace, &vram, &ram, &policies, &out, timed.as_deref())?;
             println!("replay: {n} configurations -> {}", out.display());
+            Ok(0)
+        }
+        Cmd::DiskCurve {
+            file,
+            chunk_bytes,
+            depths,
+            seconds,
+            load_threads,
+            buffered,
+            out,
+        } => {
+            disk_curve::run(
+                &disk_curve::Args {
+                    file: &file,
+                    chunk_bytes,
+                    depths: &depths,
+                    seconds,
+                    load_threads,
+                    buffered,
+                },
+                &out,
+            )?;
+            println!("disk-curve -> {}", out.display());
             Ok(0)
         }
         Cmd::Check { spec } => {
