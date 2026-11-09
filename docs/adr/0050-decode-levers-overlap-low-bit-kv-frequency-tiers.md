@@ -1,6 +1,6 @@
 # 0050. Decode levers: miss reads under CPU expert work, low-bit KV per attention unit, RAM tier by routing frequency
 
-Status: Proposed (Phase 2 follow-up). Extends ADR 0035 (groups), 0038 (prefetch, "Reads that hide" item 4), 0031 and 0027 (KV in the plan). Does not change the prefetch levers of ADR 0038 (depth 2, reader 1 MiB at QD16, reads before the layer's own misses), which are implemented and measured first.
+Status: Proposed (Phase 2 follow-up). (a) stage 1 superseded by ADR 0054 (I/O service, experts computed in arrival order); stage 2 keeps its gate on that path. Extends ADR 0035 (groups), 0038 (prefetch, "Reads that hide" item 4), 0031 and 0027 (KV in the plan). Does not change the prefetch levers of ADR 0038 (depth 2, reader 1 MiB at QD16, reads before the layer's own misses), which are implemented and measured first.
 
 ## Context
 
