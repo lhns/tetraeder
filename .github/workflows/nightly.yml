@@ -7,9 +7,6 @@ on:
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
-  # First runs on the track branch, before the workflow is on main (remove after the merge).
-  push:
-    branches: [track-ac-fault-testbed]
 
 concurrency:
   group: nightly-${{ github.ref }}

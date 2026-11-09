@@ -36,3 +36,8 @@ Covered, 3 of the 8 fault classes:
 | `-p MemoryMax=<0.4 x calibrated peak RSS>` with swap on | `mem` | `Swapping` |
 
 The scorer reads `mem` as `Swapping`. Runner noise is large (shared host, no clock control), so the job prints the score and uploads the results but fails only on harness errors, not on the exit bars. Box-only: VRAM pressure, PCIe degradation, GPU throttle, and the slow link and model-mismatch classes.
+
+First testbed run (2026-11-09, 4-core runner, 33 runs): single top-1 12/18 (cpu 6/6, disk 6/6, mem 0/6), no-fault false positives 0/6, pair top-3 0/6. Two findings, both left open:
+
+- `mem` is not detected although the signal is real (swap-in 190 MB/s, decode 5x slower). The detector assumes paging shows up as host time; here the stall is inside compute (0.48 s/token compute, 0.002 host), so the `host` share test fails. The Swapping rule needs a different share test (swap-in rate with the slowdown on cpu or wall time).
+- A strong CPU co-tenant (2 busy loops on 4 threads, 9x slower) hides the other fault in a pair: the engine becomes CPU-bound, the disk share falls below material (0.017 s/token). The pair schedule needs a lighter co-tenant, or the pair bar needs the second fault to be material first.
