@@ -70,7 +70,13 @@ CI runner and on the box".
   `llama/context.rs:29,41` use the threadpool procs. `tests/smoke.rs:8` uses `Backend::cpu` or the device route.
 - `llama/mod.rs` `init()`: under `cfg(ggml_dl)` resolve dir, load, store the outcome in a `OnceLock<Result<..>>`;
   then `llama_backend_init`. Constructors (`Backend::cpu*`, `gpu*`, model load) return the stored load error.
-  Log at info: dir, forced variant, tier.
+  Log at info: dir, forced variant, tier, loaded registry names.
+- Under `#[cfg(feature = "cuda")]` (and `vulkan`), after loading, `ggml_backend_reg_by_name("CUDA")` (`"Vulkan"`) null
+  is a load error naming the module file and dir. A machine without a GPU still loads the CUDA module (it registers
+  zero devices); a module that fails to dlopen does not. The `gpu_*` skip message distinguishes "CUDA module not
+  loaded" (an error, not a skip) from "no GPU device".
+- Grep `ggml_backend_dev_(count|by_type|by_name|get)` and `ggml_backend_reg_` across `crates/`: every public entry that
+  reaches one must call `llama::init()` first (today `llama/devices.rs` does; `memory` does not).
 - `crates/memory/src/ggml.rs`: call `tetraeder_ggml_sys::llama::init()` at the top of `available`, `bind`, `bind_cpu`.
 - `crates/scheduler/tests/spec_builder.rs:67`: base the AVX2 check on `cpu::backend_info().isa` (the loaded kernels),
   not the host.
@@ -105,12 +111,15 @@ CI runner and on the box".
 ### 6. CI and image
 
 - `ci.yml`: remove `TETRAEDER_GGML_NATIVE: "OFF"` (the comment's reason is gone). After `cargo build -p tetraeder`,
-  run `target/debug/tetraeder info --json` (logs which variant each runner gets). New job `native-static`
-  (ubuntu-latest): `TETRAEDER_GGML_NATIVE=ON cargo test -p tetraeder-ggml-sys` and `cargo build -p tetraeder`, so the
-  comparison mode keeps building. CUDA and Vulkan compile-only jobs: same commands, plus a step that checks
+  run `target/debug/tetraeder info --json` (logs which variant each runner gets; include the registry names). New job
+  `native-static` (ubuntu-latest) WITHOUT rust-cache: a native build restored on a runner with an older CPU is a
+  SIGILL (the reason for the removed env line). It runs `TETRAEDER_GGML_NATIVE=ON cargo test -p tetraeder-ggml-sys`
+  and `cargo build -p tetraeder`, so the comparison mode keeps building. CUDA and Vulkan compile-only jobs: same commands, plus a step that checks
   `target/debug/libggml-cuda.so` / `target/debug/ggml-cuda.dll` (Vulkan: `ggml-vulkan`) exists.
 - `docker/box/Dockerfile`: drop `TETRAEDER_GGML_NATIVE=OFF` from `ENV` and fix the comment (baselines keep their own
   `-DGGML_NATIVE=OFF`). Do not trigger the image build. `scripts/exit_run.sh` `main-native` stages stay as they are.
+- `xtask/src/main.rs:95` comment ("same ggml options as build.rs") is stale: the reference tools stay static; fix the
+  comment, keep the tools static.
 - `crates/ggml-sys/build.rs` doc comment and README "Vast boxes"/build section: the two modes and the env vars.
 
 ## Done criteria
