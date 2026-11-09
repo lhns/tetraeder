@@ -80,7 +80,7 @@ fn a_slowing_disk_re_picks_a_plan_with_fewer_disk_reads() {
             r#gen: 128,
         },
         engine: ServeEngine::Builder,
-        applies: Applies::today(),
+        applies: Applies::all(),
         tier: None,
     };
     let slots = |p: &Plan| match recognize(p, &layout).unwrap().0 {

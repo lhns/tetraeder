@@ -154,6 +154,7 @@ impl SwitchableEngine {
 
     /// Takes the drain, cut and health waits from `clock` (the replanner's), so a fake clock
     /// runs them in microseconds.
+    #[cfg(test)]
     pub fn with_clock(mut self, clock: Arc<dyn Clock + Send + Sync>) -> Self {
         self.clock = clock;
         self
@@ -280,6 +281,26 @@ async fn forward(
     let _ = tokio::time::timeout(CUT_NOTICE, tx.send(err)).await;
 }
 
+/// How long a restart waits for other holders of the old scheduler to let go.
+const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
+
+/// Joins the scheduler's worker once `old` is the last `Arc`; waits up to `wait` for the others.
+fn shutdown_scheduler(mut old: Arc<Scheduler>, wait: Duration) -> Result<(), String> {
+    let deadline = Instant::now() + wait;
+    loop {
+        match Arc::try_unwrap(old) {
+            Ok(s) => return s.shutdown(),
+            Err(a) if Instant::now() >= deadline => {
+                // Still held: the worker ends when the last holder drops it.
+                drop(a);
+                return Ok(());
+            }
+            Err(a) => old = a,
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 /// `EngineControl` over the shared engine; the replanner owns one.
 pub struct Control(pub Arc<SwitchableEngine>);
 
@@ -313,10 +334,12 @@ impl EngineControl for Control {
                 || e.in_flight() == 0,
             );
         }
-        // Drop the old scheduler before loading: two models would not fit one box. Its worker
-        // thread ends once its queue is empty (ADR 0055: part B makes this a join).
+        // Stop the old scheduler before loading: two models would not fit one box. The join
+        // returns once its backend is released (ADR 0055).
         let old = e.sched.write().unwrap_or_else(|x| x.into_inner()).take();
-        drop(old);
+        if let Some(old) = old {
+            shutdown_scheduler(old, SHUTDOWN_WAIT)?;
+        }
         let t0 = Instant::now();
         let loaded = (e.loader)(&lowered);
         let took = t0.elapsed();
@@ -399,7 +422,7 @@ impl EngineControl for Control {
 mod tests {
     use super::*;
     use crate::engine_args::PlacementArgs;
-    use crate::replan::glue::{builder_options, llama_options};
+    use crate::replan::glue::{builder_chunk, builder_options, llama_options};
     use clap::Parser;
     use std::path::PathBuf;
     use tetraeder_control::{Clock, Config, FakeClock, PlanSource, Proposal, Replanner, Trigger};
@@ -407,7 +430,7 @@ mod tests {
     use tetraeder_model::MissPolicy;
     use tetraeder_plan::{Knobs, KvFormat};
     use tetraeder_planner::{ModelLayout, Placement, ServeEngine, Workload, build_plan, lower};
-    use tetraeder_scheduler::{SchedulerConfig, load_llama, load_moe};
+    use tetraeder_scheduler::{SchedulerConfig, load_llama, load_moe_chunked};
     use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
     const CTX: u32 = 256;
@@ -454,7 +477,7 @@ mod tests {
                 return Err("scripted load failure".into());
             }
             let path = fixture();
-            let cfg = SchedulerConfig::new(&path);
+            let mut cfg = SchedulerConfig::new(&path);
             match engine {
                 ServeEngine::Llama => {
                     let (pl, cc) = llama_options(l, &base, CTX)?;
@@ -462,7 +485,9 @@ mod tests {
                 }
                 ServeEngine::Builder => {
                     let o = builder_options(l, CTX, MissPolicy::Upload, false, Arc::clone(&tel))?;
-                    Scheduler::start(cfg, move || load_moe(&path, &o))
+                    let chunk = builder_chunk(l)?;
+                    cfg.prefill_chunk = chunk;
+                    Scheduler::start(cfg, move || load_moe_chunked(&path, &o, chunk))
                 }
             }
         })

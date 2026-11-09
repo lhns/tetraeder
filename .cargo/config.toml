@@ -1,6 +1,12 @@
 [alias]
 xtask = "run --package xtask --"
 
+# Local builds and boxes link one native ggml CPU variant (fast to build); CI and release packaging build the
+# multi-variant DL ggml (ADR 0052, addendum 2026-11-09). CI sets TETRAEDER_GGML_NATIVE=OFF explicitly: a process
+# env var wins over this table (no `force`). Set it to OFF locally to test the DL build.
+[env]
+TETRAEDER_GGML_NATIVE = "ON"
+
 # ADR 0052: the default build links shared libllama/ggml; binaries find them next to themselves (or one level up, for test binaries in deps/).
 [target.'cfg(target_os = "linux")']
 rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN:$ORIGIN/.."]

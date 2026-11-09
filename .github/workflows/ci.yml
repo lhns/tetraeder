@@ -12,6 +12,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Explicit: .cargo/config.toml [env] makes local builds native (one CPU variant); CI and releases
+  # build the DL multi-variant ggml (ADR 0052). A process env var wins over config [env].
+  TETRAEDER_GGML_NATIVE: "OFF"
 
 jobs:
   test:
@@ -44,6 +47,16 @@ jobs:
         shell: bash
         run: echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
+      # Qwen3-0.6B Q8_0 for the engine and ggml-sys tests and the golden (about 0.6 GB)
+      - uses: actions/cache@v4
+        id: model
+        with:
+          path: .hf_cache
+          key: model-qwen3-0.6b-q8_0
+      - name: Fetch test model
+        if: steps.model.outputs.cache-hit != 'true'
+        shell: bash
+        run: cargo xtask fetch-model
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build -p tetraeder
@@ -54,7 +67,32 @@ jobs:
           bin=target/debug/tetraeder
           [ -f "$bin.exe" ] && bin="$bin.exe"
           "$bin" info --json
-      - run: cargo test --workspace
+      # A test that needs the model fails instead of skipping; the skipped ones are listed below.
+      - name: cargo test
+        shell: bash
+        env:
+          TETRAEDER_REQUIRE_MODELS: "1"
+        run: |
+          cargo test --workspace -- --nocapture --skip matches_llama_simple --skip matches_bench_golden 2>&1 | tee test.log
+      # The golden was recorded on a CPU without AVX (SSE4.2): float results differ per CPU tier (ADR 0052),
+      # so it runs pinned to that tier. Goldens for more tiers are a later item (docs/testing.md).
+      - name: golden (SSE4.2 tier)
+        # Windows only: the file was recorded on Windows, and glibc's libm differs from MSVC's in the last
+        # ulp, which flips greedy tokens on Linux. A Linux golden is a later item (docs/testing.md).
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          TETRAEDER_REQUIRE_MODELS: "1"
+          TETRAEDER_GGML_CPU_VARIANT: sse42
+        run: cargo test -p tetraeder-engine --test golden -- --nocapture 2>&1 | tee -a test.log
+      - name: Skipped tests
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Skipped tests (${{ runner.os }})"
+            grep -a -E '^skipped?:' test.log | sort -u || echo "none"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: astral-sh/setup-uv@v5
       # SDK conformance suite (tests/conformance) against `tetraeder serve --fake`
       - name: pytest
@@ -90,6 +128,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: patches/apply.ps1
+      - uses: ./.github/actions/sccache
       - name: Toolchain
         shell: bash
         run: rustup show active-toolchain || rustup toolchain install
@@ -124,6 +163,10 @@ jobs:
       - name: CUDA module
         shell: bash
         run: test -f target/debug/libggml-cuda.so -o -f target/debug/ggml-cuda.dll
+      - name: sccache stats
+        if: always()
+        shell: bash
+        run: '"$SCCACHE_PATH" --show-stats || true'
 
   vulkan-build:
     name: vulkan compile-only (ubuntu-latest)

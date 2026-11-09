@@ -13,7 +13,7 @@ use crate::score::{
 };
 use crate::{Enumeration, enumerate_builder};
 use std::collections::BTreeMap;
-use tetraeder_costmodel::predict::{DevicePart, Prediction, ReadPath, predict};
+use tetraeder_costmodel::predict::{Prediction, ReadPath, predict};
 use tetraeder_plan::{KvFormat, Plan};
 use tetraeder_profiler::{DeviceKind, HardwareGraph, Source};
 
@@ -243,7 +243,7 @@ pub fn predict_plan_tier(
     let threads = knobs.threads.unwrap_or(1);
     let ubatch = knobs.ubatch.unwrap_or(DEFAULT_UBATCH);
     let op = knobs.op_offload.unwrap_or(true);
-    let mut f = match placement {
+    let f = match placement {
         Placement::Builder {
             vram_slots,
             ram_slots,
@@ -273,19 +273,6 @@ pub fn predict_plan_tier(
             features(layout, Some(p), threads, &llama_args(&l), &BTreeMap::new())
         }
     };
-    // With every layer on the GPU the embedding (always on the CPU) still hops to it, but the
-    // cost model finds links between the parts it is given: add the CPU as an empty part.
-    if f.switches_per_token > 0.0 && f.parts.iter().all(|p| p.device != CPU) {
-        f.parts.push(DevicePart {
-            device: CPU.to_string(),
-            weight_bytes_per_token: 0.0,
-            params_per_token: 0.0,
-            resident_matmul_bytes: 0.0,
-            ops_per_token: 0.0,
-            kv_bytes_per_ctx_token: 0.0,
-            attn_flops_per_ctx_token: 0.0,
-        });
-    }
     predict(hw, &f, w.prompt, w.r#gen).map_err(|e| e.to_string())
 }
 

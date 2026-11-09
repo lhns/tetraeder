@@ -420,3 +420,15 @@ fn nothing_fits_is_an_error() {
     let e = pick(&inp).unwrap_err();
     assert!(e.contains("no executable plan"), "{e}");
 }
+
+/// A fully resident plan (one part on the GPU) has no hop; every candidate predicts.
+#[test]
+fn every_candidate_predicts_including_fully_resident_ones() {
+    for c in cases() {
+        let inp = input(&c.hw, &c.layout, c.engine);
+        for p in candidates(&inp) {
+            let pred = predict_plan(&c.hw, &c.layout, &p, &inp.workload);
+            assert!(pred.is_ok(), "{}: {:?}", c.name, pred.err());
+        }
+    }
+}

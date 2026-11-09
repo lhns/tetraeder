@@ -130,6 +130,7 @@ impl Engine {
             n_threads: threads,
             n_threads_batch: threads_batch,
             flash_attn: cfg.flash_attn,
+            op_offload: cfg.op_offload,
             ..ContextParams::default()
         };
         let mut ctx = Context::new(&model, &cparams)?;

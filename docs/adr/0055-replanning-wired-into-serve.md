@@ -57,3 +57,12 @@ Choices the ADR left to the code:
 Measured on the Windows dev VM (CPU, tiny MoE fixture, `replan_cpu`): `--plan auto` with `cpu_only.toml` at 2 threads picks `cpu`, threads 2, ubatch 2048 on libllama and ubatch 512 on the builder (the builder projection). A `device_change` after the file drops to 1 thread switches (drain, load, health) in 33 ms on libllama and 17 ms on the builder; greedy output over 16 tokens is identical before and after on both engines; a second trigger is rejected by the dwell. These are tiny-model numbers; the box benchmark above is still open.
 
 Open (part B, needs `track-r-a6000-gap` and `track-s-kv-rotation` in main): the op offload switch of libllama and the builder prefill chunk from the plan (`Applies::all()`), and `Scheduler::shutdown` joining the worker so a GPU restart does not race the old backend's memory release.
+
+## Implementation notes (part B)
+
+Where: `ggml-sys` (`ContextParams.op_offload`), `engine` (`ContextConfig.op_offload`, default on), `scheduler` (`SchedulerConfig.prefill_chunk`, `MoeBackend::with_chunk`, `load_moe_chunked`, `Scheduler::shutdown`), `tetraeder` (`replan::{glue, start, engine, source}`). `serve` now builds its input with `Applies::all()`. Tests: `crates/scheduler/tests/replan_part_b.rs`, the unit tests of `replan::glue`, `crates/tetraeder/tests/replan_cpu.rs`.
+
+- The plan's libllama `op_offload` reaches the context through `glue::llama_options`; the plan flag file `--plan <file>` and `--plan auto` honour it. Plain `serve` flags keep libllama's default (on).
+- The builder's ubatch is both the scheduler's prefill chunk and the backend's chunk (`glue::builder_chunk`). Plain `serve` keeps `PREFILL_CHUNK` and `MOE_CHUNK`.
+- `Scheduler::shutdown` lets the running job finish, then joins the worker. `SwitchableEngine::restart` calls it when it holds the last `Arc`, and waits up to 10 s for other holders; after that the worker still ends when the last holder drops.
+- Cost model: `predict` skips the switch term for a plan with one part (nothing to cross), so a fully resident builder plan predicts without a link. `predict_plan` no longer adds an empty `cpu0` part; the embedding hop of such plans is not charged anymore (one alpha per token, a few microseconds).

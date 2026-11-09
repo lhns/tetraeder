@@ -171,7 +171,7 @@ mod tests {
                 r#gen: 128,
             },
             engine: ServeEngine::Llama,
-            applies: Applies::today(),
+            applies: Applies::all(),
             tier: None,
         };
         let cur = tetraeder_planner::pick(&inp).unwrap().plan;

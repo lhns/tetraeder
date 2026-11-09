@@ -2,7 +2,7 @@
 
 use super::control::{self, ReplanHandle, plan_label};
 use super::engine::{Loader, Lowerer, SwitchableEngine};
-use super::glue::{builder_options, llama_options};
+use super::glue::{builder_chunk, builder_options, llama_options};
 use super::source::{HwSource, PlannerSource, Shared, band_of};
 use crate::serve::{EngineKind, SchedParts, ServeArgs};
 use anyhow::Context as _;
@@ -13,7 +13,7 @@ use tetraeder_planner::{
     Applies, Lowered, Placement, ServeEngine, ServeInput, Workload, budget_of, fill_knobs, lower,
     pick, predict_plan_for, read_tier_replay, recognize,
 };
-use tetraeder_scheduler::{Scheduler, load_llama, load_moe};
+use tetraeder_scheduler::{Scheduler, load_llama, load_moe_chunked};
 use tetraeder_telemetry::Telemetry;
 
 /// What `serve` needs once the plan is chosen and loaded.
@@ -70,7 +70,7 @@ pub fn start(
     let quota = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
     let budget = budget_of(&hw, quota, a.plan_vram, a.plan_ram);
     let band = band_of(&hw);
-    let applies = Applies::today();
+    let applies = Applies::all();
     let tier = match &a.tier_replay {
         Some(p) => Some(read_tier_replay(p).map_err(anyhow::Error::msg)?),
         None => None,
@@ -120,7 +120,7 @@ pub fn start(
     let tel = Arc::clone(telemetry);
     let model_path = path.clone();
     let loader: Loader = Box::new(move |l: &Lowered| {
-        let cfg = parts.config(&model_path, tel.metrics().clone());
+        let mut cfg = parts.config(&model_path, tel.metrics().clone());
         let p = model_path.clone();
         let t = Arc::clone(&tel);
         match l {
@@ -130,7 +130,9 @@ pub fn start(
             }
             Lowered::Builder { .. } => {
                 let o = builder_options(l, ctx, miss, prefetch, Arc::clone(&t))?;
-                Scheduler::start(cfg, move || load_moe(&p, &o))
+                let chunk = builder_chunk(l)?;
+                cfg.prefill_chunk = chunk;
+                Scheduler::start(cfg, move || load_moe_chunked(&p, &o, chunk))
             }
         }
     });

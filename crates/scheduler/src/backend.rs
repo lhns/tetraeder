@@ -105,14 +105,21 @@ pub struct MoeBackend {
     model: Qwen3Moe,
     on_gpu: bool,
     logits: Vec<f32>,
+    chunk: usize,
 }
 
 impl MoeBackend {
     pub fn new(model: Qwen3Moe, on_gpu: bool) -> Self {
+        Self::with_chunk(model, on_gpu, MOE_CHUNK)
+    }
+
+    /// Like `new`, with `chunk` tokens per `eval_last` call (the plan's ubatch).
+    pub fn with_chunk(model: Qwen3Moe, on_gpu: bool, chunk: usize) -> Self {
         Self {
             model,
             on_gpu,
             logits: Vec::new(),
+            chunk: chunk.max(1),
         }
     }
 
@@ -139,7 +146,7 @@ impl Backend for MoeBackend {
         if tokens.is_empty() {
             return Err("no tokens".into());
         }
-        for chunk in tokens.chunks(MOE_CHUNK) {
+        for chunk in tokens.chunks(self.chunk) {
             // Into the kept buffer: no 600 KB allocation per decode token.
             self.model
                 .eval_last_into(chunk, &mut self.logits)

@@ -46,6 +46,9 @@ pub struct SchedulerConfig {
     /// Report where each request's decode time went ([`DecodeProfile`]); default from
     /// `TETRAEDER_DECODE_PROFILE=1`. Off, it costs nothing beyond the timers that exist anyway.
     pub decode_profile: bool,
+    /// Prompt tokens per backend call; default [`PREFILL_CHUNK`]. The builder's plan sets it
+    /// (ADR 0055).
+    pub prefill_chunk: usize,
 }
 
 /// Default prefix cache budget, like llama-server's `--cache-ram`.
@@ -65,6 +68,7 @@ impl SchedulerConfig {
             cache_save_min: SAVE_MIN_TOKENS,
             cache_restore_gain: RESTORE_MIN_GAIN,
             decode_profile: std::env::var_os("TETRAEDER_DECODE_PROFILE").is_some_and(|v| v == "1"),
+            prefill_chunk: PREFILL_CHUNK,
         }
     }
 }
@@ -83,6 +87,7 @@ pub struct Scheduler {
     vocab: Arc<Vocab>,
     tokenizer: Arc<Model>,
     queue: Mutex<std_mpsc::Sender<Job>>,
+    worker: std::thread::JoinHandle<()>,
 }
 
 impl Scheduler {
@@ -102,6 +107,7 @@ impl Scheduler {
         };
         let metrics = cfg.metrics.clone();
         let decode_profile = cfg.decode_profile;
+        let prefill_chunk = cfg.prefill_chunk.max(1);
         let (cache_ram, save_min, restore_gain) = (
             cfg.cache_ram_bytes,
             cfg.cache_save_min,
@@ -109,7 +115,7 @@ impl Scheduler {
         );
         let vocab_cell: Arc<std::sync::OnceLock<Arc<Vocab>>> = Arc::default();
         let worker_vocab = Arc::clone(&vocab_cell);
-        std::thread::Builder::new()
+        let worker = std::thread::Builder::new()
             .name("tetraeder-scheduler".into())
             .spawn(move || {
                 let loaded = match load() {
@@ -133,6 +139,7 @@ impl Scheduler {
                     defaults,
                     metrics,
                     decode_profile,
+                    prefill_chunk,
                 };
                 for job in job_rx {
                     w.run(job);
@@ -171,7 +178,18 @@ impl Scheduler {
             vocab,
             tokenizer,
             queue: Mutex::new(job_tx),
+            worker,
         })
+    }
+
+    /// Stops accepting jobs, lets the running one finish and joins the worker, so the
+    /// backend (and its memory) is gone when this returns.
+    pub fn shutdown(self) -> Result<(), String> {
+        let Self { queue, worker, .. } = self;
+        drop(queue);
+        worker
+            .join()
+            .map_err(|_| "the scheduler thread panicked".to_owned())
     }
 
     fn check(&self, model: &str) -> Result<(), EngineError> {
@@ -260,6 +278,7 @@ struct Worker {
     defaults: SampleParams,
     metrics: Option<Metrics>,
     decode_profile: bool,
+    prefill_chunk: usize,
 }
 
 /// Time of the steps of one request so far.
@@ -505,8 +524,8 @@ impl Worker {
         cancel: &CancellationToken,
         times: &mut StepTimes,
     ) -> Result<Step, String> {
-        let n_chunks = tokens.chunks(PREFILL_CHUNK).count();
-        for (i, chunk) in tokens.chunks(PREFILL_CHUNK).enumerate() {
+        let n_chunks = tokens.chunks(self.prefill_chunk).count();
+        for (i, chunk) in tokens.chunks(self.prefill_chunk).enumerate() {
             if cancel.is_cancelled() {
                 return Ok(Step::Cancelled);
             }

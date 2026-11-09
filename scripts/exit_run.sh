@@ -5,13 +5,15 @@
 # EXIT_RUN_DONE rc=N in runs/vast/exit_run.log. Every stage has a time limit; a failed smoke gate stops the run.
 # Every builder run and the KTransformers runs are sampled by scripts/engine_sample.py (disk reads and queue depth,
 # major faults, CPU and GPU busy, RSS and page cache, prefill and decode apart): "host" and the CPU flags in "env" of the
-# result JSON. Stages main-native / main-native-repeat are main / main-repeat with ggml built for the native ISA
-# (TETRAEDER_GGML_NATIVE=ON, own cargo target dir NATIVE_TARGET_DIR); ktransformers-avx2 forces kt-kernel's AVX2 kernels.
+# result JSON. ggml is built once for the native ISA of the box (TETRAEDER_GGML_NATIVE=ON, ADR 0052 addendum
+# 2026-11-09: a DL build would compile 14 CPU variants on a fresh box); "ggml_system_info" in each result records
+# the ISA. ktransformers-avx2 forces kt-kernel's AVX2 kernels.
 # Session profiles (scripts/session.sh) set RESULTS_DATE, RESUME=1 (skip stages with a result) and DEADLINE (skip stages
 # that would end after it).
 exec 8> /root/tetraeder_exit_run.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
+export TETRAEDER_GGML_NATIVE="${TETRAEDER_GGML_NATIVE:-ON}"
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
@@ -67,7 +69,6 @@ bench="${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}"
 # checkout's AGENTS.md and ADRs, so every ADR edit changed the 32K prompt (ADR 0038, Results). Copied for the scripts
 # that read /root/exit_prompt.txt (Colibri, KTransformers).
 prompt=/root/exit_prompt.txt
-native_target="${NATIVE_TARGET_DIR:-$PWD/target-native}"
 cp bench/prompts/exit_prompt.txt "$prompt"
 rc=0
 # Minutes a stage takes on the 91 GB / 3090 class (docs/sessions.md has the sources); the deadline guard uses them.
@@ -120,10 +121,6 @@ EOF
 # STAGES (space list of stage names, default all) lets a relaunch skip stages that already ran
 want() {
   [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]] || return 1
-  if [[ "$1" == *native* ]] && [ -n "${no_native:-}" ]; then
-    echo "[$(date +%T)] skip $1: no native build"
-    return 1
-  fi
   if stage_done "$1"; then
     echo "[$(date +%T)] skip $1: result in $date_dir"
     return 1
@@ -145,30 +142,14 @@ fi
   nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks_throttle_reasons.active --format=csv
   # build while the model downloads
   cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run || rc=21
-  # the native-ISA builder in its own target dir: the normal build stays as it is (a failure only fails those stages).
-  # Only the exit_regime test binary, but ggml and CUDA once more: about 10 min and NATIVE_GB (default 15) of disk,
-  # which must fit beside the rest of the model download (142 GB); else the native stages are skipped
-  if want main-native || want main-native-repeat; then
-    have=$(du -sb "$(dirname "$model")" 2> /dev/null | cut -f1)
-    free=$(df -B1 --output=avail . | tail -1)
-    need=$(( (${NATIVE_GB:-15} + 142) * 1000000000 - ${have:-0} ))
-    if [ "$free" -lt "$need" ]; then
-      no_native=1
-      echo "native build skipped: $((free / 1000000000)) GB free, need $((need / 1000000000)) GB with the model download"
-    else
-      TETRAEDER_GGML_NATIVE=ON CARGO_TARGET_DIR="$native_target" \
-        cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run \
-        || { no_native=1; echo "native build failed"; }
-    fi
-  fi
   echo "cpu: $(grep -m1 'model name' /proc/cpuinfo)"
   echo "avx512 flags: $(grep -o -w 'avx512[a-z_0-9]*' /proc/cpuinfo | sort -u | tr '\n' ' ')"
   if want gpu-tests; then
     # GPU checks on the synthetic fixtures (no model needed): logits against RAM slots and prefetch (ADR 0045)
     echo "[$(date +%T)] start gpu-tests"
-    timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_experts       -- gpu_ --nocapture --test-threads 1 > "$date_dir/gpu-tests-$stamp.log" 2>&1
+    TETRAEDER_REQUIRE_GPU=1 timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_experts       -- gpu_ --nocapture --test-threads 1 > "$date_dir/gpu-tests-$stamp.log" 2>&1
     # ADR 0054: the service and arrival-order compute give the serial logits on the GPU builder
-    timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test overlap       -- gpu_ --nocapture --test-threads 1 >> "$date_dir/gpu-tests-$stamp.log" 2>&1
+    TETRAEDER_REQUIRE_GPU=1 timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test overlap       -- gpu_ --nocapture --test-threads 1 >> "$date_dir/gpu-tests-$stamp.log" 2>&1
     echo "[$(date +%T)] done gpu-tests rc=$?"
     tail -20 "$date_dir/gpu-tests-$stamp.log"
   fi
@@ -388,9 +369,6 @@ EOF
       exit_regime drift-ref-nofuse 15 "${short[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit"         GGML_CUDA_DISABLE_FUSION=1
       # prefetch off and on (ADR 0038), paired
       exit_regime main 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=0 || rc=23
-      # the same with ggml built for the native ISA (AVX-512 on the box CPU): is the AVX2 kernel the gap?
-      exit_regime main-native 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_GGML_NATIVE=ON \
-        CARGO_TARGET_DIR="$native_target" || rc=29
       exit_regime main-prefetch 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
       # Low-bit KV (ADR 0050 b), paired with `main-prefetch` right before: the same VRAM slot bytes, then the slot
       # bytes raised by the freed KV (94 layers x 33024 positions x the per-token bytes saved; F16/F16 is 2048 B,
@@ -432,14 +410,13 @@ EOF
       exit_regime reference 60 "${deep[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit" || rc=28
       # The verdict: KTransformers and llama.cpp's expert cache (mmap, then dio: does mmap stream or thrash) after the
       # builder; then the builder and KTransformers again, a second pair for the noise band; the diagnosis stages
-      # (native ISA, KT on AVX2) and the cache repeat last, so a deadline cuts them first
+      # (KT on AVX2) and the cache repeat last, so a deadline cuts them first
       ktransformers
       llamacpp_cache
       llamacpp_cache dio
       exit_regime main-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
       exit_regime main-overlap-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 || rc=30
       ktransformers repeat
-      exit_regime main-native-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_GGML_NATIVE=ON         CARGO_TARGET_DIR="$native_target" || rc=29
       ktransformers avx2
       llamacpp_cache repeat
       # the ledger's view of this session: the anchors at pp512 tg32 and the builder stages above (ADR 0056)

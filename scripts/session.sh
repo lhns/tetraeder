@@ -3,8 +3,7 @@
 #   SESSION=b1-exit      Phase 2 exit verdict: builder with the ADR 0038 levers, KTransformers, llama.cpp's expert
 #                        cache at the tuned CPU share (mmap and dio), a builder/KT repeat pair; ktransformers-avx2 and
 #                        the cache repeat only if time is left
-#   SESSION=b1b-levers   the lever stages on a second 235B box: builder, low-bit KV (kv-*), routing trace and replay,
-#                        the native-ISA builder
+#   SESSION=b1b-levers   the lever stages on a second 235B box: builder, low-bit KV (kv-*), routing trace and replay
 #   SESSION=b2-proxy     Claude Code proxy rerun (48 GB card), then KV quality on the 30B and the scripts in B2_STAGES
 #   SESSION=b3-planner   llama.cpp's cache tuner on the 30B, the disk curve and routing trace of the builder fixture
 #                        (ADR 0056), then the planner dense fixture
@@ -192,9 +191,9 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
         stages="smoke disk-curve main-prefetch ktransformers llamacpp-cache llamacpp-cache-dio main-repeat ktransformers-repeat"
         stages="$stages ktransformers-avx2 llamacpp-cache-repeat"
       else
-        # each lever stage pairs with main-prefetch on this box: kv-* right after it, the trace, the native ISA
+        # each lever stage pairs with main-prefetch on this box: kv-* right after it, the trace
         # main-iosvc and main-overlap (ADR 0054) follow the kv stages; main-overlap-ram runs if the deadline allows
-        stages="smoke disk-curve main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots main-iosvc main-overlap trace main-native-repeat main-overlap-ram"
+        stages="smoke disk-curve main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots main-iosvc main-overlap trace main-overlap-ram"
         # the ledger directory of this session (ADR 0056): last, the deadline cuts it first
         stages="$stages anchors-builder-short"
       fi
