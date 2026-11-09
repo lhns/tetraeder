@@ -60,7 +60,8 @@ fn prefill(m: &mut Qwen3Moe) -> Vec<i32> {
 
 /// Top-2 margin below which plain greedy counts as a near-tie. The AVX-512 variants (ADR 0052)
 /// differ more between one row and a few rows than AVX2: CI runners flipped a token at a margin
-/// of 0.0044 on both Linux and Windows.
+/// of 0.0044 on both Linux and Windows. Widening it only skips positions where the top-2 logits
+/// are a numeric tie; verification batches are not bitwise batch-invariant on AVX-512 variants.
 fn near_tie() -> f32 {
     let info = tetraeder_ggml_sys::cpu::backend_info().expect("CPU backend");
     if info.isa.iter().any(|f| f == "AVX512") {

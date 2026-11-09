@@ -3,6 +3,7 @@
 use super::batch::Batch;
 use super::model::Model;
 use super::{LlamaError, Result, init};
+use crate::ggml::Type;
 use crate::raw as sys;
 use std::sync::Arc;
 
@@ -53,7 +54,7 @@ pub enum FlashAttn {
     Off,
 }
 
-/// Context parameters. `Default` is libllama's defaults; K/V cache types stay default.
+/// Context parameters. `Default` is libllama's defaults (F16 K and V cache).
 #[derive(Debug, Clone)]
 pub struct ContextParams {
     /// 0 = from the model (can be huge: size the KV cache deliberately).
@@ -66,6 +67,11 @@ pub struct ContextParams {
     pub offload_kqv: bool,
     pub swa_full: bool,
     pub no_perf: bool,
+    /// K cache type. Quantized types need flash attention and a head size that is a multiple
+    /// of the block size.
+    pub type_k: Type,
+    /// V cache type, as `type_k`.
+    pub type_v: Type,
 }
 
 impl Default for ContextParams {
@@ -90,6 +96,8 @@ impl Default for ContextParams {
             offload_kqv: d.offload_kqv,
             swa_full: d.swa_full,
             no_perf: d.no_perf,
+            type_k: Type::F16,
+            type_v: Type::F16,
         }
     }
 }
@@ -138,6 +146,8 @@ impl Context {
         p.offload_kqv = params.offload_kqv;
         p.swa_full = params.swa_full;
         p.no_perf = params.no_perf;
+        p.type_k = params.type_k.raw() as _;
+        p.type_v = params.type_v.raw() as _;
         // SAFETY: the model is live; the context keeps the Arc.
         let ptr = unsafe { sys::llama_init_from_model(model.ptr, p) };
         if ptr.is_null() {

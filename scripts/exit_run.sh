@@ -261,6 +261,13 @@ EOF
       exit_regime main-prefetch 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
+      # routing trace for the RAM-tier replay (ADR 0050 (c)): the prefetch levers of ADR 0038 (depth 2, so the trace
+      # carries both predictions), 256 decode tokens on the frozen prompt; then the replay on the box. The trace stays
+      # on the box, the replay JSON is fetched: bench/results/<date>/replay-235b.json
+      if want trace; then
+        exit_regime trace 90 "${deep[@]}" TETRAEDER_EXIT_DECODE=256 TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2           TETRAEDER_EXIT_ROUTING_OUT="$date_dir/routing-235b-$stamp.trace" || rc=29
+        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$date_dir/routing-235b-$stamp.trace"           --vram 10,12,13 --ram 48,64,77,96,110 --out "$date_dir/replay-235b.json" || rc=29
+      fi
       # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
       for v in ${VARIANTS:-}; do
         IFS=',' read -ra extra <<< "${v#*:}"
@@ -268,6 +275,20 @@ EOF
       done
       # llama.cpp's expert cache with CPU share, first pass (the second follows main-repeat, so the pairs interleave)
       llamacpp_cache
+      # Low-bit KV (ADR 0050 b), paired with `main-prefetch` in the same session: the same VRAM slot bytes, then the
+      # slot bytes raised by the freed KV (94 layers x 33024 positions x the per-token bytes saved; F16/F16 is 2048 B,
+      # Q8_0/Q8_0 1088 B, Q8_0/Q4_0 832 B at n_embd_kv 512)
+      kv_free() { echo $((94 * 33024 * (2048 - $1))); }
+      exit_regime kv-q8 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0 || rc=29
+      exit_regime kv-q8-slots 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0         TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 1088))) || rc=29
+      exit_regime kv-q8q4 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0/q4_0 || rc=29
+      exit_regime kv-q8q4-slots 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0/q4_0         TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 832))) || rc=29
+      # KL acceptance of the KV formats on Qwen3-30B-A3B Q4_K_M (needs TETRAEDER_KV_QUALITY_GGUF on the box)
+      if want kv-quality; then
+        echo "[$(date +%T)] start kv-quality"
+        TETRAEDER_KV_QUALITY_OUT="$date_dir/kv-quality-$stamp.json" timeout -k 30 60m cargo test --release -p tetraeder-model           --features tetraeder-ggml-sys/cuda --test kv_quality -- --ignored --nocapture > "$date_dir/kv-quality-$stamp.log" 2>&1 || rc=29
+        echo "[$(date +%T)] done kv-quality"
+      fi
       # llama.cpp on the same prompt tokens through libllama (exit_regime's reference engine): logit parity of the
       # builder at 32K (greedy, first-token top-10, margins) and the tuned -ot baseline on real text
       exit_regime reference 60 "${deep[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit" || rc=28

@@ -72,3 +72,43 @@ The VRAM tier already pins the most routed experts (`refresh_hot_set`, `experts.
 - (c) adds a binary trace format owned by `memory`; `tetraeder-bench` gains a dependency on `tetraeder-memory` without default features (no ggml build when built alone; in a workspace build feature unification links ggml anyway).
 - All box measurements wait for the hold on box runs to lift; local tests use the synthetic MoE of `tests/common/synth.rs`.
 - Implementation briefs: `docs/levers-briefs.md`.
+
+
+## Implementation notes
+
+### (c) first half: recorder and replay (Brief C1, branch `track-i-routing-replay`)
+
+Built: the recorder, the trace format, the replay scorer and `tetraeder-bench replay`. No engine behavior changed; no runtime metric (bench tooling, results are JSON).
+
+- `RoutingStep` gained `n_tokens`, `predicted`, `predicted2` and `refresh: bool`. The run loop fills the predictions from the readbacks it already does (this layer's `pred` for layer + 1 and `pred2` for layer + 2, the same values `prefetch_ahead` uses). A hot-set refresh pushes a marker (`refresh = true`, empty ids). The resident whole-step path sets the predictions to `None`.
+- `memory::replay::trace`: `tetraeder-routing` v1 as in (c), plus `expert_bytes` per layer and an optional `profile` in the header. A truncated file is an error.
+- `memory::replay::prefetch_plan` is the selection of `Streamer::start_prefetch`, now shared; `tests/prefetch.rs` is unchanged and green.
+- `memory::replay::sim` drives the real `SlotCache` for both tiers in the engine's call order, including the refresh through the RAM tier. Policies `lru`, `freq:P`, `belady`. `memory` gained `serde` and `serde_json`.
+- Harness: `TETRAEDER_EXIT_ROUTING_OUT` in `exit_regime.rs` (`tests/common/trace.rs`). Box stage: `trace` in `scripts/exit_run.sh`, called by `scripts/exit_session.sh` (written, not run: box runs are on hold).
+- Fidelity (`crates/model/tests/replay_fidelity.rs`, label `cpu`): per layer, the replay's RAM hits and misses equal `ExpertStats` exactly, as do the prefetch issued, used and wasted counts and the decode hit rate, for depth 1, depth 2 and prefetch off. On the synthetic exit regime (8 layers, 16 experts, 2 VRAM and 4 RAM slots, 128 prompt tokens, 48 decode tokens) the replay gives the harness's decode `ram_hit_rate_mean` 0.3452 against 0.3452 measured and the decode disk bytes per token 88515072 against 88515072. Result: `bench/results/20261109-local/replay-synthetic.json`.
+
+Deviations and choices:
+
+- Depth-2 prefetch uses the prediction made at layer L for layer L + 2 in the same layer step, as `prefetch_ahead` does (`predicted2[seg + 2]` is set at `seg`). The brief said "recorded two layers back"; the code and the replay agree, the brief was loose.
+- `freq:P` pins the top experts by routing count so far leaving out the experts pinned in the VRAM tier: those never reach the RAM tier, so counting them would waste pins. Pins that are not resident yet are not prefetched; they protect an expert once it is loaded. Frequency pins count against the prefetch budget (they are passed to `prefetch_plan` like reads in flight). With `freq:1` every slot can be pinned and a miss is read without being cached (bypass), so it can beat `belady`, which always caches the missed expert. The stop rule "belady within 10% of lru" therefore reads `belady` as the always-caching optimum, not as a bound on every policy.
+- The refresh's RAM lookups and reads count in the phase of the step before the marker (prefill). `ram_hit_rate` counts the routed and refresh lookups; `ram_hit_rate_engine_mean` also counts the prefetch's own lookups as misses, which is what the harness reports and what the 0.5-point gate compares.
+- `belady` first replays `lru` without prefetch to learn when each expert is looked up (that set does not depend on the RAM policy), then evicts the expert used farthest ahead; it runs without prefetch.
+- The box stage uses the ADR 0038 levers (prefetch on, depth 2) rather than `main` (prefetch off): a trace without prefetch has no predictions to replay.
+- `memory` had no `Win32_Security` feature on `windows-sys`, so `--no-default-features` (which the bench dependency uses) did not compile on Windows by itself; added.
+- Local `cargo build --workspace` needs `vendor/llama.cpp`; a fresh worktree has it empty, so the local runs used a copy of the main checkout's.
+
+Open: the replay on the 235B trace (decision threshold of (c)) waits for the box. C2 stays gated on it.
+
+### (b) low-bit KV (Brief B, branch `track-j-lowbit-kv`)
+
+Built from `docs/levers-briefs.md` Brief B. Decisions held; local checks only (CPU, synthetic model); the GPU parity and the KL acceptance wait for the box.
+
+- **Plan IR.** `KvFormat` (`crates/plan/src/kv.rs`), `Assign.kv_format`, `Plan::kv_formats`, `Plan::kv_tokens`, `ModelDesc::kv_bytes_per_token_per_layer_as`, `Issue::KvFormat`. `kv_tokens` divides the budget of a device by the stage's per-token bytes and assumes the devices that hold a budget share each layer's KV evenly. The property test `kv_tokens_fit_the_budget` covers memory never exceeded and the 1.88x Q8_0 gain.
+- **Planner.** `footprint` and `build_plan` take a `KvFormat`; `feasible_vram_tiers_kv` is the format-aware tier list (the old name keeps F16). Enumeration is unchanged. Related fix in a separate commit: `vram_slot_bytes` no longer adds ADR 0034's `n_used` parking rows (ADR 0035 removed them). The `n_used` f32 accumulator in `footprint` stays, because ADR 0035's pair groups write one.
+- **Builder.** `LoadOptions::kv`; K and V caches are allocated by type, views use the cache's own strides (V and K may differ in type), a pair outside `ALLOWED` or a head size that is not a block multiple is a load error. Per-layer formats are not representable in `LoadOptions`. `MemoryUse.format` carries the KV format; `finish_step` sets `tetraeder.kv.tokens` and `tetraeder.kv.capacity` and the `tetraeder.format` attribute on the `kv` memory gauges.
+- **Prefix cache.** Entries are keyed by the KV format (`Backend::kv_format`); a snapshot of one format is never restored into another.
+- **ggml-sys.** `GGML_CUDA_FA_QUANTS` adds `q8_0-q4_0` to the default list when CUDA is on; `ContextParams` has `type_k` and `type_v`.
+- **Harness.** `TETRAEDER_EXIT_KV` (both engines, recorded in the JSON `options.kv`). Box stages `kv-q8`, `kv-q8-slots`, `kv-q8q4`, `kv-q8q4-slots` in `scripts/exit_run.sh` (listed in `scripts/exit_session.sh`) and `kv-quality` (test `crates/model/tests/kv_quality.rs`, ignored). Not run.
+- **Deviation: libllama rotates a quantized cache.** At the pin, libllama applies a Hadamard rotation to K, V and Q whenever `type_k` or `type_v` is quantized and the head size is a multiple of 64 (`llama-kv-cache.cpp`, `LLAMA_ATTN_ROT_DISABLE`). The builder stores plain values, so with default settings its logits do not match libllama's (synthetic model, head size 64: 0.19 on a logit of 25 at position 0, Q4_K_M weights). Parity therefore runs the reference with the rotation off (`llama::disable_attn_rot()`, an environment variable, because `llama_model_set_attn_rot` has C++ linkage; on Windows it also needs `_putenv_s`); with it off the deltas are exactly 0 for all three formats, resident and streamed. The exit harness reference does the same unless `TETRAEDER_EXIT_REF_ATTN_ROT=1`. Consequences to settle on the box: (1) llama.cpp's quantized KV is better than the builder's at equal bits, so a speed pair against `llama-bench -ctk q8_0` compares different quality; (2) the KL bounds above are for the plain cache and may fail for Q8_0/Q4_0; if they do, the follow-up is the same rotation in the builder (a Hadamard rotation of Q, K, V and the attention output, as libllama does), not a looser bound.
+- **Local KL (informative).** Synthetic random-weight model (head size 64, Q8_0 weights), 2K context, last 256 positions, builder against its own F16 cache: Q8_0/Q8_0 mean KL 0.119 and top-1 0.906; Q8_0/Q4_0 1.172 and 0.648; Q4_0/Q4_0 1.721 and 0.574. Random weights give flat, outlier-heavy attention, so these say nothing about Qwen3; the acceptance is `kv_quality.rs` on the box.
+- **Tests.** `crates/plan/tests/kv.rs`, `props.rs`, `crates/planner/src/builder.rs`, `crates/model/tests/kv_format.rs` (parity against libllama with the same `type_k`/`type_v`, resident and streamed, snapshot roundtrip, memory report, refusals, KL at 2K), `crates/scheduler/src/prefix_cache.rs`. The tiny fixture has head size 16, so the parity tests use the synthetic MoE of `tests/common/synth.rs` with head size 64 and Q8_0 weights: with Q4_K_M weights even the F16 control differs from libllama on AVX hosts (CI), because the K-quant `mul_mat_id` kernel depends on the row count (see `multipass.rs`).

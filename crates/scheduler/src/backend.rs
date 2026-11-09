@@ -18,6 +18,10 @@ pub trait Backend {
     fn snapshot(&mut self) -> Result<Vec<u8>, String>;
     /// Replaces the cache with a [`Backend::snapshot`] of `n` positions.
     fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String>;
+    /// The KV cache format the snapshots are in, keying the prefix cache (ADR 0050 b).
+    fn kv_format(&self) -> String {
+        "f16/f16".into()
+    }
     /// Whether steps run on a GPU, so wall time counts as device time.
     fn on_gpu(&self) -> bool;
     /// Weight bytes read from storage since load; `None` when the backend does not stream.
@@ -132,6 +136,10 @@ impl Backend for MoeBackend {
 
     fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String> {
         self.model.kv_restore(bytes, n).map_err(|e| e.to_string())
+    }
+
+    fn kv_format(&self) -> String {
+        self.model.kv_format().to_string()
     }
 
     fn on_gpu(&self) -> bool {

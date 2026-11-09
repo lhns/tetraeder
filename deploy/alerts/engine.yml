@@ -58,3 +58,12 @@ groups:
         annotations:
           summary: "The CPU backend lacks features the host CPU has"
           description: "Modules missing next to the binary or TETRAEDER_GGML_CPU_VARIANT set; check `tetraeder info`."
+      # Low-bit KV (ADR 0050 b). The cache holds a fixed number of tokens; a sequence past it fails with "context full".
+      - alert: TetraederKvNearFull
+        expr: max(tetraeder_kv_tokens) / max(tetraeder_kv_capacity) > 0.95
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KV cache above 95% of its token capacity"
+          description: "Requests are about to fail with context full. Raise n_ctx, or use a smaller KV format (the plan's kv_format) to hold more tokens in the same bytes."

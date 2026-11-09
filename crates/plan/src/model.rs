@@ -1,6 +1,6 @@
 //! What gets placed: the model as units with sizes (docs/plan.md, "The placement plan").
 
-use crate::Format;
+use crate::{Format, KvFormat};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -86,6 +86,8 @@ pub struct ModelDesc {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expert: Option<UnitSize>,
     pub head: UnitSize,
+    /// K plus V of one token of one layer in F16, so `n_embd_kv` is a quarter of it. Other
+    /// formats: [`ModelDesc::kv_bytes_per_token_per_layer_as`].
     pub kv_bytes_per_token_per_layer: u64,
     /// Activation bytes per token crossing a stage boundary.
     pub activation_bytes_per_token: u64,
@@ -196,6 +198,11 @@ impl<'de> Deserialize<'de> for UnitId {
 }
 
 impl ModelDesc {
+    /// Bytes of K and V for one token of one layer in `fmt`.
+    pub fn kv_bytes_per_token_per_layer_as(&self, fmt: KvFormat) -> u64 {
+        fmt.bytes(self.kv_bytes_per_token_per_layer / 4)
+    }
+
     pub fn is_moe(&self) -> bool {
         self.experts > 0
     }

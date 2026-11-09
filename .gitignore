@@ -5,3 +5,6 @@ runs/
 __pycache__/
 .venv/
 .pytest_cache/
+
+# agent worktrees (Claude Code)
+.claude/worktrees/

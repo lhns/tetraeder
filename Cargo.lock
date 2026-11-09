@@ -2063,6 +2063,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tetraeder-memory",
  "toml",
 ]
 
@@ -2150,6 +2151,8 @@ dependencies = [
  "io-uring",
  "libc",
  "proptest",
+ "serde",
+ "serde_json",
  "tetraeder-ggml-sys",
  "tetraeder-plan",
  "tetraeder-profiler",

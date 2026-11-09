@@ -73,6 +73,11 @@ fn main() {
     if cuda {
         let archs = std::env::var("TETRAEDER_CUDA_ARCHS").unwrap_or_else(|_| "86;89;90;120".into());
         cfg.define("CMAKE_CUDA_ARCHITECTURES", archs);
+        // ggml's default list plus q8_0-q4_0 (K Q8_0, V Q4_0 KV cache, ADR 0050).
+        cfg.define(
+            "GGML_CUDA_FA_QUANTS",
+            "q4_0-q4_0;q8_0-q8_0;f16-f16;bf16-bf16;q8_0-q4_0",
+        );
     }
     // cmake-rs replaces CMAKE_<LANG>_FLAGS_RELEASE on MSVC with its own flags, which drop /O2 and
     // /DNDEBUG: ggml would build unoptimized with asserts on. Restore CMake's MSVC Release defaults.
