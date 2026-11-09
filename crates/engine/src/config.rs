@@ -109,6 +109,8 @@ pub struct ContextConfig {
     /// `None`: same as `threads`.
     pub threads_batch: Option<i32>,
     pub flash_attn: FlashAttn,
+    /// libllama offloads large host-side ops to the device (default on, like libllama).
+    pub op_offload: bool,
 }
 
 impl Default for ContextConfig {
@@ -121,6 +123,7 @@ impl Default for ContextConfig {
             threads: None,
             threads_batch: None,
             flash_attn: d.flash_attn,
+            op_offload: d.op_offload,
         }
     }
 }

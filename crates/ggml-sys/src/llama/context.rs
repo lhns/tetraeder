@@ -65,6 +65,8 @@ pub struct ContextParams {
     pub n_threads_batch: i32,
     pub flash_attn: FlashAttn,
     pub offload_kqv: bool,
+    /// Lets the scheduler run large host-side ops on the device (libllama's `op_offload`).
+    pub op_offload: bool,
     pub swa_full: bool,
     pub no_perf: bool,
     /// K cache type. Quantized types need flash attention and a head size that is a multiple
@@ -94,6 +96,7 @@ impl Default for ContextParams {
                 FlashAttn::Auto
             },
             offload_kqv: d.offload_kqv,
+            op_offload: d.op_offload,
             swa_full: d.swa_full,
             no_perf: d.no_perf,
             type_k: Type::F16,
@@ -144,6 +147,7 @@ impl Context {
             FlashAttn::Off => sys::LLAMA_FLASH_ATTN_TYPE_DISABLED,
         }) as _;
         p.offload_kqv = params.offload_kqv;
+        p.op_offload = params.op_offload;
         p.swa_full = params.swa_full;
         p.no_perf = params.no_perf;
         p.type_k = params.type_k.raw() as _;

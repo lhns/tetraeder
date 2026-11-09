@@ -61,6 +61,7 @@ fn load(engine: &str, path: &Path, n_ctx: usize, threads: i32) -> Loaded {
                 threads: Some(threads),
                 threads_batch: None,
                 flash_attn: FlashAttn::Auto,
+                op_offload: true,
             },
             None,
         )

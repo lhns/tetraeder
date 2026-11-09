@@ -85,6 +85,7 @@ impl PlacementArgs {
             threads: self.threads,
             threads_batch: None,
             flash_attn: self.flash_attn,
+            op_offload: true,
         }
     }
 }
