@@ -10,7 +10,7 @@
 #   SESSION=b3-detector  detector campaign, then kernels-cpu
 #   SESSION=gpu-smoke    weekly GPU smoke (scripts/gpu_smoke.sh drives it): the gpu_* tests on the synthetic fixtures,
 #                        the Qwen3-0.6B golden, one A/A pair for the measured noise band; TETRAEDER_REQUIRE_GPU=1
-# Every profile ends with an A/A pair (noise_stage, NOISE_STAGE=0 turns it off) when 12 minutes are left: the sessions
+# Every profile but b1-exit (the verdict session; NOISE_STAGE=1 opts in) ends with an A/A pair (noise_stage, NOISE_STAGE=0 turns it off) when 12 minutes are left: the sessions
 # are the source of the measured noise bands (docs/sessions.md, "Noise bands").
 # Each profile fits its box cap with 20% margin: DEADLINE is SESSION_MIN (default per profile) after the first launch,
 # and every stage that would end later is skipped. Results go to one directory (RESULTS_DATE, fixed at the first
@@ -234,7 +234,8 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
       ;;
   esac
   # the A/A pair for the measured noise band; gpu-smoke ran it already
-  if [ "$name" != gpu-smoke ]; then step noise noise_stage "$results/noise"; fi
+  # b1-exit is the verdict session: no extra GPU stage unless NOISE_STAGE=1 is passed for it
+  if [ "$name" != gpu-smoke ]; then NOISE_STAGE="${NOISE_STAGE:-$([ "$name" = b1-exit ] && echo 0 || echo 1)}" step noise noise_stage "$results/noise"; fi
   touch "$results/DONE"
   echo "[$(date +%T)] SESSION_DONE ($(left_min) min before the deadline)"
 } >> "$log" 2>&1

@@ -35,7 +35,7 @@ B3 first: its cache tuner gives B1 the llama.cpp CPU share. B3-planner and B3-de
 | B3 `b3-planner` | RTX 3090, 32+ GB RAM, 9+ cores, 100 GB disk | 96 to 120 / 120 min | 2.0 to 2.4 | at most 1.08 | 38 GB | 0.50 to 1.00 | 1.3 to 2.1 USD |
 | B3 `b3-detector` | RTX 3090, 32+ GB RAM, 9+ cores, 80 GB disk | 65 to 110 / 120 min | 1.5 to 2.3 | at most 1.04 | 19 GB | 0.25 to 0.50 | 0.9 to 1.5 USD |
 
-Every session now ends with the A/A pair of the "Noise bands" section when 12 minutes of its budget are left: it adds the 8B model (about 5 GB, 0.07 to 0.13 USD of traffic) and up to 12 minutes; `b1-exit` at 113 of 120 minutes will mostly skip it.
+Every session except `b1-exit` (the verdict session, `NOISE_STAGE=1` opts in) now ends with the A/A pair of the "Noise bands" section when 12 minutes of its budget are left: it adds the 8B model (about 5 GB, 0.07 to 0.13 USD of traffic) and up to 12 minutes; `b1b-levers` and `b2-proxy` may skip it when the deadline is near.
 
 Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); box 58900330 paid 0.92 USD for the same 142 GB (ADR 0045), so the low end exists. Rank offers with `--download-gb`.
 
@@ -202,7 +202,7 @@ Run it from a checkout on `main` that is pushed and clean (the wrapper refuses u
 
 Gates compare the paired ratio of a candidate with `1 - band`. The band is per device and GPU class, from `tetraeder-bench`:
 
-- **Sample.** One A/A pair (`role = "noise"`, the same variant twice, interleaved ABBA) per session. Every profile of `session.sh` ends with `noise-cuda-dense` (`noise_stage`, off with `NOISE_STAGE=0`, skipped with fewer than 12 minutes left); `gpu-smoke` always runs it, so a class gets about one sample a week. `nightly.sh` runs `noise-cuda-dense` and `noise-cpu-dense` as before.
+- **Sample.** One A/A pair (`role = "noise"`, the same variant twice, interleaved ABBA) per session. Every profile of `session.sh` except `b1-exit` ends with `noise-cuda-dense` (`noise_stage`, off with `NOISE_STAGE=0`, skipped with fewer than 12 minutes left); `gpu-smoke` always runs it, so a class gets about one sample a week. `nightly.sh` runs `noise-cuda-dense` and `noise-cpu-dense` as before.
 - **Statistic.** A session's `d` is the largest `|median paired ratio - 1|` over its metrics (`pp_ts`, `tg_ts`): what the verdict compares with the band.
 - **Band.** `band = clamp(1.25 * p95(d), 0.02, 0.25)` over the sessions of the class, p95 by nearest rank (the maximum below 20 sessions). The floor keeps a lucky quiet streak from gating on noise; the margin covers hosts not seen yet.
 - **Class.** `cpu`, or the GPU name without vendor words: "NVIDIA GeForce RTX 3090" is `rtx-3090`, "NVIDIA RTX A6000" is `rtx-a6000`.
