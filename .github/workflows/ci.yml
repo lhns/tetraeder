@@ -123,7 +123,7 @@ jobs:
       # The default build loads CUDA as a module (ADR 0052): it must exist next to the binary.
       - name: CUDA module
         shell: bash
-        run: ls -l target/debug/libggml-cuda.so target/debug/ggml-cuda.dll 2>/dev/null | grep . || { echo "no ggml-cuda module in target/debug"; exit 1; }
+        run: test -f target/debug/libggml-cuda.so -o -f target/debug/ggml-cuda.dll
 
   vulkan-build:
     name: vulkan compile-only (ubuntu-latest)
