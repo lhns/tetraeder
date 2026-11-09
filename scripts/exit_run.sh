@@ -209,6 +209,13 @@ EOF
       exit_regime main-prefetch 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
+      # routing trace for the RAM-tier replay (ADR 0050 (c)): the prefetch levers of ADR 0038 (depth 2, so the trace
+      # carries both predictions), 256 decode tokens on the frozen prompt; then the replay on the box. The trace stays
+      # on the box, the replay JSON is fetched: bench/results/<date>/replay-235b.json
+      if want trace; then
+        exit_regime trace 90 "${deep[@]}" TETRAEDER_EXIT_DECODE=256 TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2           TETRAEDER_EXIT_ROUTING_OUT="$date_dir/routing-235b-$stamp.trace" || rc=29
+        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$date_dir/routing-235b-$stamp.trace"           --vram 10,12,13 --ram 48,64,77,96,110 --out "$date_dir/replay-235b.json" || rc=29
+      fi
       # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
       for v in ${VARIANTS:-}; do
         IFS=',' read -ra extra <<< "${v#*:}"

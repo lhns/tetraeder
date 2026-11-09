@@ -654,7 +654,11 @@ impl Qwen3Moe {
             return Ok(());
         };
         let layers = &self.weights.layers;
-        streamer.refresh_hot_set(&self.file, |il| layers[il].exps())
+        streamer.refresh_hot_set(&self.file, |il| layers[il].exps())?;
+        if let Some(log) = &mut self.routing {
+            log.push(RoutingStep::refresh_marker());
+        }
+        Ok(())
     }
 
     /// Every buffer the builder owns with its capacity and used bytes (ADR 0037): the weights,
@@ -707,6 +711,18 @@ impl Qwen3Moe {
     /// Expert cache and read counters; `None` when every expert is resident.
     pub fn expert_stats(&self) -> Option<ExpertStats> {
         self.streamer.as_ref().map(Streamer::stats)
+    }
+
+    /// Slots per layer of the compute tier and of the RAM tier, as resolved at load; `None` when
+    /// every expert is resident.
+    pub fn tier_slots(&self) -> Option<(usize, Option<usize>)> {
+        self.streamer.as_ref().map(Streamer::tier_slots)
+    }
+
+    /// Layers ahead that the prefetch predicts and reads: 0 when prefetch is off or does not
+    /// apply (ADR 0038).
+    pub fn prefetch_depth(&self) -> usize {
+        self.predict_depth
     }
 
     /// The routing recorded since the last call (empty unless `record_routing` is set), one
@@ -898,6 +914,10 @@ impl Qwen3Moe {
                         layer,
                         ids: ids.get().get_i32()?,
                         weights: w.get().get_f32()?,
+                        n_tokens: n,
+                        predicted: None,
+                        predicted2: None,
+                        refresh: false,
                     });
                 }
             }
@@ -974,13 +994,6 @@ impl Qwen3Moe {
             let t = Instant::now();
             let slot = &st.slots[seg % 2];
             let chosen = slot.ids.get().get_i32()?;
-            if let Some(log) = &mut self.routing {
-                log.push(RoutingStep {
-                    layer: seg,
-                    ids: chosen.clone(),
-                    weights: slot.w.get().get_f32()?,
-                });
-            }
             let streamer = self
                 .streamer
                 .as_mut()
@@ -997,6 +1010,18 @@ impl Qwen3Moe {
             }
             if self.predict_depth >= 2 && seg + 2 < n_layer {
                 predicted2[seg + 2] = Some(slot.pred2.get().get_i32()?);
+            }
+            if let Some(log) = &mut self.routing {
+                // This layer's predictions (for layers seg + 1 and seg + 2), as read above.
+                log.push(RoutingStep {
+                    layer: seg,
+                    ids: chosen.clone(),
+                    weights: slot.w.get().get_f32()?,
+                    n_tokens: n,
+                    predicted: predicted.clone(),
+                    predicted2: predicted2.get(seg + 2).cloned().flatten(),
+                    refresh: false,
+                });
             }
             lap(&mut prof.readback, t);
             // The reads started for this layer must have landed before it is planned.

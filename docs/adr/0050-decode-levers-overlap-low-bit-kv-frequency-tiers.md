@@ -72,3 +72,29 @@ The VRAM tier already pins the most routed experts (`refresh_hot_set`, `experts.
 - (c) adds a binary trace format owned by `memory`; `tetraeder-bench` gains a dependency on `tetraeder-memory` without default features (no ggml build when built alone; in a workspace build feature unification links ggml anyway).
 - All box measurements wait for the hold on box runs to lift; local tests use the synthetic MoE of `tests/common/synth.rs`.
 - Implementation briefs: `docs/levers-briefs.md`.
+
+
+## Implementation notes
+
+### (c) first half: recorder and replay (Brief C1, branch `track-i-routing-replay`)
+
+Built: the recorder, the trace format, the replay scorer and `tetraeder-bench replay`. No engine behavior changed; no runtime metric (bench tooling, results are JSON).
+
+- `RoutingStep` gained `n_tokens`, `predicted`, `predicted2` and `refresh: bool`. The run loop fills the predictions from the readbacks it already does (this layer's `pred` for layer + 1 and `pred2` for layer + 2, the same values `prefetch_ahead` uses). A hot-set refresh pushes a marker (`refresh = true`, empty ids). The resident whole-step path sets the predictions to `None`.
+- `memory::replay::trace`: `tetraeder-routing` v1 as in (c), plus `expert_bytes` per layer and an optional `profile` in the header. A truncated file is an error.
+- `memory::replay::prefetch_plan` is the selection of `Streamer::start_prefetch`, now shared; `tests/prefetch.rs` is unchanged and green.
+- `memory::replay::sim` drives the real `SlotCache` for both tiers in the engine's call order, including the refresh through the RAM tier. Policies `lru`, `freq:P`, `belady`. `memory` gained `serde` and `serde_json`.
+- Harness: `TETRAEDER_EXIT_ROUTING_OUT` in `exit_regime.rs` (`tests/common/trace.rs`). Box stage: `trace` in `scripts/exit_run.sh`, called by `scripts/exit_session.sh` (written, not run: box runs are on hold).
+- Fidelity (`crates/model/tests/replay_fidelity.rs`, label `cpu`): per layer, the replay's RAM hits and misses equal `ExpertStats` exactly, as do the prefetch issued, used and wasted counts and the decode hit rate, for depth 1, depth 2 and prefetch off. On the synthetic exit regime (8 layers, 16 experts, 2 VRAM and 4 RAM slots, 128 prompt tokens, 48 decode tokens) the replay gives the harness's decode `ram_hit_rate_mean` 0.3452 against 0.3452 measured and the decode disk bytes per token 88515072 against 88515072. Result: `bench/results/20261109-local/replay-synthetic.json`.
+
+Deviations and choices:
+
+- Depth-2 prefetch uses the prediction made at layer L for layer L + 2 in the same layer step, as `prefetch_ahead` does (`predicted2[seg + 2]` is set at `seg`). The brief said "recorded two layers back"; the code and the replay agree, the brief was loose.
+- `freq:P` pins the top experts by routing count so far leaving out the experts pinned in the VRAM tier: those never reach the RAM tier, so counting them would waste pins. Pins that are not resident yet are not prefetched; they protect an expert once it is loaded. Frequency pins count against the prefetch budget (they are passed to `prefetch_plan` like reads in flight). With `freq:1` every slot can be pinned and a miss is read without being cached (bypass), so it can beat `belady`, which always caches the missed expert. The stop rule "belady within 10% of lru" therefore reads `belady` as the always-caching optimum, not as a bound on every policy.
+- The refresh's RAM lookups and reads count in the phase of the step before the marker (prefill). `ram_hit_rate` counts the routed and refresh lookups; `ram_hit_rate_engine_mean` also counts the prefetch's own lookups as misses, which is what the harness reports and what the 0.5-point gate compares.
+- `belady` first replays `lru` without prefetch to learn when each expert is looked up (that set does not depend on the RAM policy), then evicts the expert used farthest ahead; it runs without prefetch.
+- The box stage uses the ADR 0038 levers (prefetch on, depth 2) rather than `main` (prefetch off): a trace without prefetch has no predictions to replay.
+- `memory` had no `Win32_Security` feature on `windows-sys`, so `--no-default-features` (which the bench dependency uses) did not compile on Windows by itself; added.
+- Local `cargo build --workspace` needs `vendor/llama.cpp`; a fresh worktree has it empty, so the local runs used a copy of the main checkout's.
+
+Open: the replay on the 235B trace (decision threshold of (c)) waits for the box. C2 stays gated on it.

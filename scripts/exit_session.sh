@@ -22,6 +22,8 @@ fewer=$(($(bash scripts/cpu_quota.sh) - 1))
 levers="$levers d2fewer:TETRAEDER_EXIT_PREFETCH=1,TETRAEDER_EXIT_PREFETCH_DEPTH=2,TETRAEDER_EXIT_PREFETCH_THREADS=$fewer"
 step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nooffload-on drift-nofuse drift-ref-ub512 drift-ref-nofuse main-prefetch d2 d2fewer ktransformers main-repeat" \
   VARIANTS="$levers" bash scripts/exit_run.sh
+# routing trace and replay for ADR 0050 (c) (written, not yet run: box runs on hold)
+step exit_trace env STAGES=trace bash scripts/exit_run.sh
 step spec_run env STAGES=main-builder bash scripts/spec_run.sh
 # exit_run.sh takes a new stamp and keeps the earlier results
 step ik env STAGES=exit-ik-ot-fit-d32k bash scripts/exit_run.sh
