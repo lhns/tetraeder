@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Box session profiles (docs/sessions.md has box requirements, estimates and the fetch steps):
-#   SESSION=b1-exit      Phase 2 exit verdict: builder with the ADR 0038 levers, llama.cpp's expert cache at the tuned
-#                        CPU share, KTransformers, a repeat pair, then main-native and ktransformers-avx2
-#   SESSION=b2-proxy     Claude Code proxy rerun (48 GB card), then the stage scripts in B2_STAGES
+#   SESSION=b1-exit      Phase 2 exit verdict: builder with the ADR 0038 levers, KTransformers, llama.cpp's expert
+#                        cache at the tuned CPU share (mmap and dio), a builder/KT repeat pair; ktransformers-avx2 and
+#                        the cache repeat only if time is left
+#   SESSION=b1b-levers   the lever stages on a second 235B box: builder, low-bit KV (kv-*), routing trace and replay,
+#                        the native-ISA builder
+#   SESSION=b2-proxy     Claude Code proxy rerun (48 GB card), then KV quality on the 30B and the scripts in B2_STAGES
 #   SESSION=b3-planner   llama.cpp's cache tuner on the 30B, then the planner dense fixture
 #   SESSION=b3-detector  detector campaign, then kernels-cpu
 # Each profile fits its box cap with 20% margin: DEADLINE is SESSION_MIN (default per profile) after the first launch,
@@ -19,9 +22,9 @@ log="runs/vast/session-$name.log"
 # minutes for this script: the box cap less 20% (144 of 180 min; b2 has the 6 h proxy exception: 288), less about 25
 # for provisioning before and fetch, verify and destroy after
 case "$name" in
-  b1-exit | b3-planner | b3-detector) budget=120 ;;
+  b1-exit | b1b-levers | b3-planner | b3-detector) budget=120 ;;
   b2-proxy) budget=260 ;;
-  *) echo "SESSION must be b1-exit, b2-proxy, b3-planner or b3-detector, not '$name'" >&2; exit 2 ;;
+  *) echo "SESSION must be b1-exit, b1b-levers, b2-proxy, b3-planner or b3-detector, not '$name'" >&2; exit 2 ;;
 esac
 state="runs/vast/session-$name.start"
 [ -s "$state" ] || echo "$(date +%s) $(date +%Y%m%d)" > "$state"
@@ -53,35 +56,46 @@ f32="Qwen__Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf"
 {
   echo "[$(date +%T)] session $name: results $results, deadline $(date -d "@$DEADLINE" +%T) ($(left_min) min left)"
   case "$name" in
-    b1-exit)
+    b1-exit | b1b-levers)
       # the 7-layer -ot llama.cpp fits on a 24 GB card at 32K and the same expert bytes as builder slots (ADR 0045)
       export VRAM_SLOT_BYTES="${VRAM_SLOT_BYTES:-10966007808}"
       export OT_FIT="${OT_FIT:-blk\.[0-6]\.ffn_.*_exps=CUDA0;exps=CPU}"
-      # llama.cpp's CPU share of misses: MOE_CPU_SHARE, else the newest committed tuner result (B3), else 0.5
-      share="${MOE_CPU_SHARE:-}"
-      if [ -z "$share" ]; then
-        share=$(python3 -I -c '
+      (bash scripts/fetch_exit_model.sh 8>&- &)
+      share=0.5
+      if [ "$name" = b1-exit ]; then
+        # llama.cpp's CPU share of misses: MOE_CPU_SHARE, else the newest committed tuner result (B3), else 0.5
+        share="${MOE_CPU_SHARE:-}"
+        if [ -z "$share" ]; then
+          share=$(python3 -I -c '
 import glob, json
 for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=True):
     s = json.load(open(f)).get("cpu_share")
     if s is not None:
         print(s)
         break')
+        fi
+        [ -n "$share" ] || { share=0.5; echo "no tuned CPU share (run b3-planner first): using $share"; }
+        echo "llama.cpp cache: $((VRAM_SLOT_BYTES / 1048576)) MiB, cpu share $share"
+        # code order in exit_run.sh: smoke, main-prefetch, ktransformers, llamacpp-cache (mmap), llamacpp-cache-dio,
+        # main-repeat, ktransformers-repeat, then ktransformers-avx2 and llamacpp-cache-repeat if the deadline allows
+        stages="smoke main-prefetch ktransformers llamacpp-cache llamacpp-cache-dio main-repeat ktransformers-repeat"
+        stages="$stages ktransformers-avx2 llamacpp-cache-repeat"
+      else
+        # each lever stage pairs with main-prefetch on this box: kv-* right after it, the trace, the native ISA
+        stages="smoke main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots trace main-native-repeat"
       fi
-      [ -n "$share" ] || { share=0.5; echo "no tuned CPU share (run b3-planner first): using $share"; }
-      echo "llama.cpp cache: $((VRAM_SLOT_BYTES / 1048576)) MiB, cpu share $share, load mode ${LOAD_MODE:-auto}"
-      (bash scripts/fetch_exit_model.sh 8>&- &)
-      # levers (ADR 0038): prefetch on in every builder stage below, depth 2. Code order in exit_run.sh: smoke,
-      # main-prefetch, llamacpp-cache, ktransformers, main-repeat, ktransformers-repeat, main-native-repeat,
-      # ktransformers-avx2 (the verdict pair first, the noise pair next, the diagnosis last).
-      step exit_run env TETRAEDER_EXIT_PREFETCH_DEPTH=2 CPU_SHARES="$share" \
-        STAGES="smoke main-prefetch llamacpp-cache ktransformers main-repeat ktransformers-repeat main-native-repeat ktransformers-avx2" \
-        bash scripts/exit_run.sh
+      # levers (ADR 0038): prefetch on in every builder stage, depth 2
+      step exit_run env TETRAEDER_EXIT_PREFETCH_DEPTH=2 CPU_SHARES="$share" STAGES="$stages" bash scripts/exit_run.sh
       ;;
     b2-proxy)
       # the proxy run took 82 min with REPS=2 (2026-11-03); BUDGET_MIN is when the last block may start
       step proxy env REPS="${REPS:-2}" BUDGET_MIN="${BUDGET_MIN:-150}" STREAMING="${STREAMING:-1}" \
         bash scripts/claude_code_proxy.sh
+      # KV-format KL acceptance (ADR 0050 b) on the 30B: fits the 48 GB card with every expert resident; fails loudly
+      # when it writes no result
+      if [ "$(left_min)" -ge 40 ]; then
+        step kv_quality env KV_QUALITY_MIN=$(($(left_min) - 5)) bash scripts/kv_quality.sh "$PWD/$results/kv-quality.json"
+      fi
       # hook for further A6000 stages (resident decode profiling, track-r-a6000-gap): each script runs if present,
       # with the time left as its limit
       for s in ${B2_STAGES:-scripts/a6000_gap.sh}; do

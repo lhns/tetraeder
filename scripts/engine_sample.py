@@ -25,6 +25,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import detector_sample as ds  # noqa: E402
 
 
+# the probe reads 2 GB; a device must show at least about half of it
+PROBE_MIN_BYTES = 1_000_000_000
+
+
 def probe_disk(a):
     """The device whose read counter moves most while reading 256 x 8 MB of the model with O_DIRECT."""
 
@@ -32,9 +36,17 @@ def probe_disk(a):
         return {f"{f[0]}:{f[1]}": int(f[5]) for f in (ln.split() for ln in ds.read("/proc/diskstats").splitlines()) if len(f) > 5}
 
     x = snap()
-    subprocess.run(["dd", f"if={a.model}", "of=/dev/null", "bs=8M", "count=256", "iflag=direct"], capture_output=True)
+    r = subprocess.run(["dd", f"if={a.model}", "of=/dev/null", "bs=8M", "count=256", "iflag=direct"], capture_output=True)
     y = snap()
-    print(max(y, key=lambda k: y[k] - x.get(k, 0)))
+    best = max(y, key=lambda k: y[k] - x.get(k, 0), default=None)
+    moved = (y[best] - x.get(best, 0)) * 512 if best else 0
+    # a failed read, or no device that moved about the 2 GB read, gives no device ("none": the disk fields stay null)
+    if r.returncode != 0 or moved < PROBE_MIN_BYTES:
+        print(f"probe-disk: no device (dd rc {r.returncode}, largest read delta {moved} B): disk fields null",
+              file=sys.stderr)
+        print("none")
+        return
+    print(best)
 
 
 def disk_stats(majmin):
@@ -117,8 +129,9 @@ def sample(a):
     with open(a.out, "w") as out:
         while os.path.exists(f"/proc/{a.pid}"):
             pids = ds.tree(a.pid)
-            ops, inflight, weighted_ms = disk_stats(a.disk)
-            rec = {"t": time.time(), "disk_read_bytes": ds.disk_read_bytes(a.disk), "disk_read_ops": ops,
+            ops, inflight, weighted_ms = disk_stats(a.disk) if a.disk != "none" else (None, None, None)
+            rb = ds.disk_read_bytes(a.disk) if a.disk != "none" else None
+            rec = {"t": time.time(), "disk_read_bytes": rb, "disk_read_ops": ops,
                    "disk_inflight": inflight, "disk_weighted_ms": weighted_ms,
                    "cg_io": cgroup_io(), "majflt": majflt(pids), "cpus": stat_jiffies(),
                    "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": ds.proc_cpu_s(pids),

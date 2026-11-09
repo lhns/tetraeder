@@ -8,6 +8,8 @@
 # a DECODE-token greedy generation right after a PREFILL-token prompt (the same token ids as exit_regime: the prompt
 # file through the model's vocab, repeated to length). Called by exit_run.sh (stages llamacpp-cache*).
 [ $# -ge 7 ] || { echo "usage: $0 <model> <threads> <cache-mib> <cpu-share> <ctx> <prompt-file> <out-json>" >&2; exit 2; }
+# one llama-server at a time (fixed port, 142 GB model): a duplicate launch exits
+exec 9> /root/tetraeder_llamacpp_cache.lock; flock -n 9 || { echo "llamacpp_cache.sh already running" >&2; exit 4; }
 model=$1 threads=$2 mib=$3 share=$4 ctx=$5 prompt=$6 out=$7
 server="${LLAMA_BASELINE_SERVER:-/opt/llama.cpp-baseline/bin/llama-server}"
 [ -x "$server" ] || { echo "missing $server" >&2; exit 3; }
@@ -44,7 +46,8 @@ def proc_stat(pid):
 
 
 def tokens(n):
-    t = http("/tokenize", {"content": open(prompt).read(), "add_special": True})["tokens"]
+    # as exit_regime's prompt(): the vocab's own BOS rule (add_special), special-token text not parsed, cycled to n
+    t = http("/tokenize", {"content": open(prompt).read(), "add_special": True, "parse_special": False})["tokens"]
     assert t, "empty prompt file"
     return [t[i % len(t)] for i in range(n)]
 
@@ -86,7 +89,14 @@ try:
     print("warmup:", json.dumps(res["warmup"]), flush=True)
     # measured run: PREFILL-token prompt, then DECODE-token greedy generation
     before = proc_stat(proc.pid)
-    g = gen(tokens(prefill), decode)
+    toks = tokens(prefill)
+    # the builder's hash of its token ids (exit_regime's tokens_hash, JSON "prompt.fnv1a64"): equal means both
+    # engines saw the same prompt (c743c72b8ffceadd for the frozen 32K prompt)
+    h = 0xCBF29CE484222325
+    for b in b"".join(t.to_bytes(4, "little", signed=True) for t in toks):
+        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    res["prompt"] = {"tokens": len(toks), "fnv1a64": f"{h:016x}"}
+    g = gen(toks, decode)
     after = proc_stat(proc.pid)
     t = g["timings"]
     res["timings"] = {k: t.get(k) for k in ("prompt_n", "prompt_ms", "prompt_per_second", "predicted_n", "predicted_ms",

@@ -8,3 +8,6 @@ __pycache__/
 
 # agent worktrees (Claude Code)
 .claude/worktrees/
+
+# routing traces (tens of MB, kept on the box)
+*.trace

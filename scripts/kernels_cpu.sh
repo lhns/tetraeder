@@ -32,6 +32,8 @@ rc=0
     [baseline]=/opt/llama.cpp-baseline/bin/llama-bench
   )
   declare -A pins=([mainline]=/opt/llama.cpp/PIN [ik]=/opt/ik_llama/PIN [baseline]=/opt/llama.cpp-baseline/PIN)
+  # page cache warm before the interleaved loop, so the first binary does not pay the disk read
+  [ $rc = 0 ] && cat "$gguf" > /dev/null
   # a bench run per binary, one repeat per call and interleaved, so box drift hits all three alike
   if [ $rc = 0 ]; then
     for r in $(seq "$reps"); do
@@ -49,7 +51,10 @@ rc=0
   for name in mainline ik baseline; do
     bin=${bins[$name]}
     [ -x "$bin" ] || continue
-    z=$(timeout 180 objdump -d --no-show-raw-insn "$bin" 2> /dev/null | grep -c zmm)
+    # the count is only valid when objdump finished: a timeout (rc 124) or failure records the rc, not a count
+    res=$(timeout 180 objdump -d --no-show-raw-insn "$bin" 2> /dev/null | grep -c zmm; echo "${PIPESTATUS[0]}")
+    z=${res%%$'\n'*} orc=${res##*$'\n'}
+    [ "$orc" = 0 ] || z="objdump rc $orc"
     echo "$name pin: $(cat "${pins[$name]}" 2> /dev/null); zmm instructions: $z"
     echo "$z" > "$out_dir/zmm-$name-$stamp.txt"
   done
@@ -82,6 +87,7 @@ for name, pin in pins.items():
     z = read(f"{d}/zmm-{name}-{stamp}.txt").strip()
     tps_sorted = sorted(tps)
     res["engines"][name] = {"pin": read(pin).strip(), "zmm_instructions": int(z) if z.isdigit() else None,
+                            "zmm_error": None if z.isdigit() else (z or "no count"),
                             "decode_tok_s": tps, "median_tok_s": tps_sorted[len(tps) // 2] if tps else None}
 json.dump(res, open(f"{d}/kernels-cpu-{stamp}.json", "w"), indent=1)
 print(json.dumps({k: v["median_tok_s"] for k, v in res["engines"].items()}))

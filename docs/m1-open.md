@@ -1,6 +1,6 @@
 # M1: open items (2026-11-03, baselines updated 2026-11-08)
 
-**Next box runs: [`docs/sessions.md`](sessions.md)** has the four launch-ready sessions (`scripts/session.sh` profiles `b1-exit`, `b2-proxy`, `b3-planner`, `b3-detector`) for items 1, 3, 4 and 5 below, with box requirements, time and cost estimates and what each result decides.
+**Next box runs: [`docs/sessions.md`](sessions.md)** has the five launch-ready sessions (`scripts/session.sh` profiles `b1-exit`, `b1b-levers`, `b2-proxy`, `b3-planner`, `b3-detector`) for items 1, 3, 4, 5 and the ADR 0050 levers below, with box requirements, time and cost estimates and what each result decides.
 
 State at the end of the 2026-11-03 parallel-tracks session. Everything below is on main; details in the ADRs and `bench/results/20261103/`. Boxes: none up. Box work was paused by the user mid-session; ask before renting.
 

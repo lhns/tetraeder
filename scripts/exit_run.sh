@@ -80,7 +80,8 @@ stage_min() {
     ktransformers) echo 25 ;;
     ktransformers-*) echo 20 ;;
     llamacpp-cache*) echo 16 ;;
-    reference) echo 15 ;;
+    reference | trace) echo 15 ;;
+    kv-quality) echo 30 ;;
     exit-*) echo 40 ;;
     colibri-*) echo 60 ;;
     *) echo 10 ;;
@@ -116,6 +117,10 @@ EOF
 # STAGES (space list of stage names, default all) lets a relaunch skip stages that already ran
 want() {
   [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]] || return 1
+  if [[ "$1" == *native* ]] && [ -n "${no_native:-}" ]; then
+    echo "[$(date +%T)] skip $1: no native build"
+    return 1
+  fi
   if stage_done "$1"; then
     echo "[$(date +%T)] skip $1: result in $date_dir"
     return 1
@@ -137,11 +142,21 @@ fi
   nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks_throttle_reasons.active --format=csv
   # build while the model downloads
   cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run || rc=21
-  # the native-ISA builder in its own target dir: the normal build stays as it is (a failure only fails those stages)
+  # the native-ISA builder in its own target dir: the normal build stays as it is (a failure only fails those stages).
+  # Only the exit_regime test binary, but ggml and CUDA once more: about 10 min and NATIVE_GB (default 15) of disk,
+  # which must fit beside the rest of the model download (142 GB); else the native stages are skipped
   if want main-native || want main-native-repeat; then
-    TETRAEDER_GGML_NATIVE=ON CARGO_TARGET_DIR="$native_target" \
-      cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run \
-      || echo "native build failed"
+    have=$(du -sb "$(dirname "$model")" 2> /dev/null | cut -f1)
+    free=$(df -B1 --output=avail . | tail -1)
+    need=$(( (${NATIVE_GB:-15} + 142) * 1000000000 - ${have:-0} ))
+    if [ "$free" -lt "$need" ]; then
+      no_native=1
+      echo "native build skipped: $((free / 1000000000)) GB free, need $((need / 1000000000)) GB with the model download"
+    else
+      TETRAEDER_GGML_NATIVE=ON CARGO_TARGET_DIR="$native_target" \
+        cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run \
+        || { no_native=1; echo "native build failed"; }
+    fi
   fi
   echo "cpu: $(grep -m1 'model name' /proc/cpuinfo)"
   echo "avx512 flags: $(grep -o -w 'avx512[a-z_0-9]*' /proc/cpuinfo | sort -u | tr '\n' ' ')"
@@ -227,23 +242,27 @@ ktransformers() {
   kt_build_pid=
   echo "[$(date +%T)] start $name"
   ensure_disk
-  HOST_DISK_DEV="$HOST_DISK_DEV" KT_KERNEL_CPU_VARIANT="$variant" \
+  # KT_KERNEL_CPU_VARIANT only for a variant: set but empty is not the same as kt-kernel's own pick
+  HOST_DISK_DEV="$HOST_DISK_DEV" ${variant:+env KT_KERNEL_CPU_VARIANT=$variant} \
     bash scripts/ktransformers_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-$name-$stamp.json" deep 8>&-
   echo "[$(date +%T)] done $name rc=$?"
 }
 
 # llamacpp_cache [suffix]: llama.cpp's tuned expert cache with a CPU share of the misses (#30966, baseline build, ADR
 # 0021 pairing), one llama-server run per share in CPU_SHARES at the builder's expert bytes (vram_bytes as the cache
-# size). Stage llamacpp-cache; with suffix "repeat", stage llamacpp-cache-repeat for the second pass of the pairs.
+# size). Stage llamacpp-cache; with suffix "repeat", stage llamacpp-cache-repeat for the second pass of the pairs; with
+# suffix "dio", stage llamacpp-cache-dio: the same shares with --load-mode dio, the pair that shows whether mmap
+# streams or thrashes in this regime (m1-open item 1).
 llamacpp_cache() {
-  local name=llamacpp-cache${1:+-$1} s
+  local name=llamacpp-cache${1:+-$1} s mode=${LOAD_MODE:-auto}
+  [ "${1:-}" = dio ] && mode=dio
   want "$name" || return 0
   local mib=$((vram_bytes / 1048576))
   for s in ${CPU_SHARES:-0 0.5 0.9}; do
     stage_done "llamacpp-cache-s$s${1:+-$1}" && { echo "[$(date +%T)] skip $name s$s: result in $date_dir"; continue; }
     fits "$name" || continue
-    echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode ${LOAD_MODE:-auto}"
-    timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
+    echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode $mode"
+    LOAD_MODE=$mode timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
       "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
     echo "[$(date +%T)] done $name s$s rc=$?"
   done
@@ -316,46 +335,47 @@ EOF
       exit_regime main-native 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_GGML_NATIVE=ON \
         CARGO_TARGET_DIR="$native_target" || rc=29
       exit_regime main-prefetch 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
-      # the same on random token ids, the pair of llama-bench (random ids route differently from text)
-      exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
-      # routing trace for the RAM-tier replay (ADR 0050 (c)): the prefetch levers of ADR 0038 (depth 2, so the trace
-      # carries both predictions), 256 decode tokens on the frozen prompt; then the replay on the box. The trace stays
-      # on the box, the replay JSON is fetched: bench/results/<date>/replay-235b.json
-      if want trace; then
-        exit_regime trace 90 "${deep[@]}" TETRAEDER_EXIT_DECODE=256 TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2           TETRAEDER_EXIT_ROUTING_OUT="$date_dir/routing-235b-$stamp.trace" || rc=29
-        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$date_dir/routing-235b-$stamp.trace"           --vram 10,12,13 --ram 48,64,77,96,110 --out "$date_dir/replay-235b.json" || rc=29
-      fi
-      # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
-      for v in ${VARIANTS:-}; do
-        IFS=',' read -ra extra <<< "${v#*:}"
-        exit_regime "${v%%:*}" 60 "${deep[@]}" "${extra[@]}" || rc=27
-      done
-      # llama.cpp's expert cache with CPU share, first pass (the second follows main-repeat, so the pairs interleave)
-      llamacpp_cache
-      # Low-bit KV (ADR 0050 b), paired with `main-prefetch` in the same session: the same VRAM slot bytes, then the
-      # slot bytes raised by the freed KV (94 layers x 33024 positions x the per-token bytes saved; F16/F16 is 2048 B,
+      # Low-bit KV (ADR 0050 b), paired with `main-prefetch` right before: the same VRAM slot bytes, then the slot
+      # bytes raised by the freed KV (94 layers x 33024 positions x the per-token bytes saved; F16/F16 is 2048 B,
       # Q8_0/Q8_0 1088 B, Q8_0/Q4_0 832 B at n_embd_kv 512)
       kv_free() { echo $((94 * 33024 * (2048 - $1))); }
       exit_regime kv-q8 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0 || rc=29
       exit_regime kv-q8-slots 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0         TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 1088))) || rc=29
       exit_regime kv-q8q4 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0/q4_0 || rc=29
       exit_regime kv-q8q4-slots 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0/q4_0         TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 832))) || rc=29
-      # KL acceptance of the KV formats on Qwen3-30B-A3B Q4_K_M (needs TETRAEDER_KV_QUALITY_GGUF on the box)
+      # the same on random token ids, the pair of llama-bench (random ids route differently from text)
+      exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
+      # routing trace for the RAM-tier replay (ADR 0050 (c)): the prefetch levers of ADR 0038 (depth 2, so the trace
+      # carries both predictions), 256 decode tokens on the frozen prompt; then the replay on the box. The trace (tens
+      # of MB) stays in runs/vast/ on the box; only the replay JSON goes to bench/results/<date>/replay-235b.json
+      if want trace; then
+        trace="$PWD/runs/vast/routing-235b-$stamp.trace"
+        exit_regime trace 90 "${deep[@]}" TETRAEDER_EXIT_DECODE=256 TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2           TETRAEDER_EXIT_ROUTING_OUT="$trace" || rc=29
+        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace"           --vram 10,12,13 --ram 48,64,77,96,110 --out "$date_dir/replay-235b.json" || rc=29
+      fi
+      # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
+      for v in ${VARIANTS:-}; do
+        IFS=',' read -ra extra <<< "${v#*:}"
+        exit_regime "${v%%:*}" 60 "${deep[@]}" "${extra[@]}" || rc=27
+      done
+      # KL acceptance of the KV formats on Qwen3-30B-A3B Q4_K_M (scripts/kv_quality.sh fetches it if missing)
       if want kv-quality; then
         echo "[$(date +%T)] start kv-quality"
-        TETRAEDER_KV_QUALITY_OUT="$date_dir/kv-quality-$stamp.json" timeout -k 30 60m cargo test --release -p tetraeder-model           --features tetraeder-ggml-sys/cuda --test kv_quality -- --ignored --nocapture > "$date_dir/kv-quality-$stamp.log" 2>&1 || rc=29
+        bash scripts/kv_quality.sh "$date_dir/kv-quality-$stamp.json" 8>&- || rc=29
         echo "[$(date +%T)] done kv-quality"
       fi
       # llama.cpp on the same prompt tokens through libllama (exit_regime's reference engine): logit parity of the
       # builder at 32K (greedy, first-token top-10, margins) and the tuned -ot baseline on real text
       exit_regime reference 60 "${deep[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit" || rc=28
-      # KTransformers, then the default builder and KTransformers again: a second pair for the noise band; the
-      # diagnosis stages (native ISA, KT on AVX2) after the pairs, so a deadline cuts them first
+      # The verdict: KTransformers and llama.cpp's expert cache (mmap, then dio: does mmap stream or thrash) after the
+      # builder; then the builder and KTransformers again, a second pair for the noise band; the diagnosis stages
+      # (native ISA, KT on AVX2) and the cache repeat last, so a deadline cuts them first
       ktransformers
+      llamacpp_cache
+      llamacpp_cache dio
       exit_regime main-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
       ktransformers repeat
-      exit_regime main-native-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_GGML_NATIVE=ON \
-        CARGO_TARGET_DIR="$native_target" || rc=29
+      exit_regime main-native-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_GGML_NATIVE=ON         CARGO_TARGET_DIR="$native_target" || rc=29
       ktransformers avx2
       llamacpp_cache repeat
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
