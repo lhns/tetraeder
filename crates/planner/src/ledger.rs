@@ -22,14 +22,16 @@ use std::path::{Path, PathBuf};
 use tetraeder_costmodel::MODEL_VERSION;
 use tetraeder_profiler::HardwareGraph;
 
-/// Relative tolerance of "the same prediction" and "the same fit" (ADR 0056 section 3).
-/// 1e-9 until CI shows the largest difference between Linux and Windows fits; then it becomes
-/// ten times that difference, with the measured value recorded here.
+/// Relative tolerance of "the same prediction" (ADR 0056 section 3). Linux CI, Windows CI and
+/// the machine that wrote the snapshot agree on every committed prediction within it.
 pub const PRED_TOL: f64 = 1e-9;
 /// Relative tolerance of "the same fit" for `calib.json`. The fit is a numerical minimizer
 /// whose weakly constrained parameters differ more between Linux and Windows than the
-/// predictions made from them, so it has a tolerance of its own.
-pub const CALIB_TOL: f64 = 1e-9;
+/// predictions made from them, so it has a tolerance of its own. Measured on CI against a
+/// snapshot written on a third machine (2026-11-09): the largest relative difference of a fitted
+/// rate was 5.5e-8 (Linux, dense) and 2.6e-8 (Windows, dense), while every prediction agreed
+/// within `PRED_TOL`; ten times the largest.
+pub const CALIB_TOL: f64 = 5.5e-7;
 /// Median candidate error allowed per session, MoE: ADR 0040's 9.2% (the anchor band).
 pub const MOE_BAND: f64 = 0.092;
 /// Median candidate error allowed per session, dense: ADR 0040's 5.8%.
