@@ -114,6 +114,27 @@ pub struct QueuePoint {
     pub bytes_per_s: f64,
 }
 
+/// Bytes per second at queue depth `depth` from a queue curve: piecewise linear between points
+/// (in any order), proportional below the first, flat above the last. `None` for an empty curve.
+/// The one formula of [`Device::disk_rate`], the planner and the I/O simulator (ADR 0056).
+pub fn curve_rate(curve: &[QueuePoint], depth: u32) -> Option<f64> {
+    let mut pts = curve.to_vec();
+    pts.sort_by_key(|p| p.depth);
+    let first = *pts.first()?;
+    let last = pts[pts.len() - 1];
+    let d = f64::from(depth);
+    if d <= f64::from(first.depth) {
+        return Some(first.bytes_per_s * d / f64::from(first.depth.max(1)));
+    }
+    if d >= f64::from(last.depth) {
+        return Some(last.bytes_per_s);
+    }
+    let i = pts.iter().position(|p| d <= f64::from(p.depth))?;
+    let (a, b) = (pts[i - 1], pts[i]);
+    let w = (d - f64::from(a.depth)) / f64::from(b.depth - a.depth);
+    Some(a.bytes_per_s + (b.bytes_per_s - a.bytes_per_s) * w)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Device {
     pub id: String,
@@ -190,21 +211,7 @@ impl Device {
         if self.queue_curve.is_empty() {
             return self.bandwidth_bytes_per_s.map(|b| b.value);
         }
-        let mut pts = self.queue_curve.clone();
-        pts.sort_by_key(|p| p.depth);
-        let d = f64::from(depth);
-        let first = pts[0];
-        let last = pts[pts.len() - 1];
-        if d <= f64::from(first.depth) {
-            return Some(first.bytes_per_s * d / f64::from(first.depth.max(1)));
-        }
-        if d >= f64::from(last.depth) {
-            return Some(last.bytes_per_s);
-        }
-        let i = pts.iter().position(|p| d <= f64::from(p.depth))?;
-        let (a, b) = (pts[i - 1], pts[i]);
-        let w = (d - f64::from(a.depth)) / f64::from(b.depth - a.depth);
-        Some(a.bytes_per_s + (b.bytes_per_s - a.bytes_per_s) * w)
+        curve_rate(&self.queue_curve, depth)
     }
 
     /// `(flops/s, bytes/s)` at `t` threads. From the thread curve when present: piecewise linear

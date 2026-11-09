@@ -10,7 +10,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tetraeder_ggml_sys::ggml::{Backend, Context, OwnedTensor, Tensor};
-use tetraeder_memory::io::{Deadline, IoService, Part, ServiceOptions, UnitDone, UnitId};
+use tetraeder_memory::io::{
+    Deadline, Io, IoFactory, IoService, Part, ServiceOptions, UnitDone, UnitId,
+};
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_memory::reader::{HostDst, ReadJob, Reader, Ticket, copy_sink, tensor_dst};
 use tetraeder_memory::replay::prefetch_plan;
@@ -65,6 +67,9 @@ pub struct IoCounters {
     pub pending_experts: u64,
     pub overlap_span: Duration,
     pub overlap_wait: Duration,
+    /// CPU expert groups run because their reads had landed (after the resident group). One
+    /// group per wake-up of a wait: experts that land together form one.
+    pub landed_groups: u64,
 }
 
 /// Cache counters of one MoE layer.
@@ -217,7 +222,7 @@ enum Prefetcher {
     },
     /// Persistent workers, one unit per expert, earliest deadline first.
     Service {
-        io: IoService,
+        io: Box<dyn Io>,
         inflight: Vec<InFlightUnit>,
     },
 }
@@ -291,8 +296,8 @@ pub(crate) struct StreamerConfig {
     pub prefetch: bool,
     /// Decode computes experts as they land (ADR 0054): the service reads the misses too.
     pub overlap: bool,
-    /// Test only: the service's per-chunk delay (`LoadOptions::io_delay`).
-    pub service_delay: Option<Duration>,
+    /// Test only: builds the reads in place of the I/O service (`LoadOptions::io_factory`).
+    pub io_factory: Option<IoFactory>,
 }
 
 fn invalid(msg: impl Into<String>) -> ModelError {
@@ -364,14 +369,19 @@ impl Streamer {
             None => vec![vec![0; n_expert as usize]; layers],
         };
         let prefetcher = if ram.is_some() && cfg.io.service && (cfg.prefetch || cfg.overlap) {
-            let opts = ServiceOptions {
-                workers: cfg.io.workers,
-                chunk_bytes: cfg.io.chunk_bytes,
-                buffered: cfg.io.buffered,
-                delay: cfg.service_delay,
+            let io: Box<dyn Io> = match &cfg.io_factory {
+                Some(make) => make(&file.gguf.paths)?,
+                None => Box::new(IoService::new(
+                    &file.gguf.paths,
+                    ServiceOptions {
+                        workers: cfg.io.workers,
+                        chunk_bytes: cfg.io.chunk_bytes,
+                        buffered: cfg.io.buffered,
+                    },
+                )?),
             };
             Some(Prefetcher::Service {
-                io: IoService::new(&file.gguf.paths, opts)?,
+                io,
                 inflight: Vec::new(),
             })
         } else if cfg.prefetch && ram.is_some() {
@@ -768,7 +778,7 @@ impl Streamer {
                 let order = self.step * self.sizes.len() as u64 + il as u64;
                 self.io.batches += 1;
                 for (&expert, parts) in missing.iter().zip(staged_experts) {
-                    let unit = submit_expert(io, order, false, parts);
+                    let unit = submit_expert(io.as_ref(), order, false, parts);
                     self.metrics.io_inflight(false, io.inflight());
                     inflight.push(InFlightUnit {
                         il,
@@ -1058,7 +1068,7 @@ impl Streamer {
                         tensor_dst(dst[p], slots[i] as usize * sizes[p], sizes[p])?,
                     ));
                 }
-                let unit = submit_expert(io, order, true, parts);
+                let unit = submit_expert(io.as_ref(), order, true, parts);
                 self.metrics.io_inflight(true, io.inflight());
                 inflight.push(InFlightUnit {
                     il,
@@ -1132,6 +1142,7 @@ impl Streamer {
             })
             .collect();
         self.io.urgent_wait_time += waited;
+        self.io.landed_groups += u64::from(!landed.is_empty());
         if let Some(sp) = &mut self.span {
             sp.wait += waited;
             sp.last = Instant::now();
@@ -1447,7 +1458,7 @@ fn land(
 
 /// One expert's slabs as a unit of the service.
 fn submit_expert(
-    io: &IoService,
+    io: &dyn Io,
     order: u64,
     urgent: bool,
     parts: Vec<(usize, Range, HostDst)>,

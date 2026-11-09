@@ -27,8 +27,8 @@ fn prompt() -> Vec<i32> {
     (0..N_PROMPT as i32).map(|i| (i * 37 + 5) % 256).collect()
 }
 
-/// `overlap`: the I/O service and arrival-order compute (ADR 0054), with a per-chunk delay so
-/// reads are in flight when a layer is planned.
+/// `overlap`: the I/O service and arrival-order compute (ADR 0054), on `SimIo` (a virtual clock)
+/// so reads are in flight when a layer is planned.
 fn opts(ram: usize, depth: usize, prefetch: bool, overlap: bool) -> LoadOptions {
     LoadOptions {
         io: tetraeder_memory::IoOptions {
@@ -37,7 +37,13 @@ fn opts(ram: usize, depth: usize, prefetch: bool, overlap: bool) -> LoadOptions 
             ..Default::default()
         },
         overlap,
-        io_delay: overlap.then_some(std::time::Duration::from_millis(2)),
+        io_factory: overlap.then(|| -> tetraeder_memory::io::IoFactory {
+            std::sync::Arc::new(|paths| {
+                let clock = tetraeder_memory::io::sim::SimClock::new();
+                let io = tetraeder_memory::io::sim::SimIo::flat(paths, clock, 1e8, 4, 4096)?;
+                Ok(Box::new(io))
+            })
+        }),
         expert_slots: Some(VRAM),
         ram_slots: Some(ram),
         miss: MissPolicy::Cpu,
