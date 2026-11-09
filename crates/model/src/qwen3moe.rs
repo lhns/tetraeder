@@ -2632,7 +2632,7 @@ mod graph_order {
         let m = model();
         let h = m.file.hparams.clone();
         for n in [1, 5, 33] {
-            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary).unwrap();
+            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary, None).unwrap();
             assert_eq!(st.mask.get().ne(), [pad(n, KV_PAD) as i64, n as i64, 1, 1]);
         }
         // Decode after a prefill still matches a single evaluation of the whole sequence.
