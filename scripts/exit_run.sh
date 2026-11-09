@@ -290,10 +290,10 @@ disk_curve() {
   echo "[$(date +%T)] done disk-curve"
 }
 
-# anchors_builder_short: the four builder anchors at pp512 tg32 and this session's builder stages (main, main-prefetch,
+# anchors_builder_short: the builder anchors that fit (two on the 91 GB class) at pp512 tg32 and this session's builder stages (main, main-prefetch,
 # ...), written as a planner fixture directory ledger-<session>/ (layout.json, candidates.json, <variant>.r1.json) that
 # `tetraeder-plan ledger` reads like a fixture (ADR 0056). Opt in: STAGES names it, or ANCHORS_BUILDER_SHORT=1. About
-# 12 min on the 235B: four runs of 2 min and the planner build (4 min the first time)
+# 8 to 12 min on the 235B: two to four runs of 2 min and the planner build (4 min the first time)
 anchors_builder_short() {
   [[ " ${STAGES:-} " == *" anchors-builder-short "* || "${ANCHORS_BUILDER_SHORT:-0}" = 1 ]] || return 0
   want anchors-builder-short || return 0

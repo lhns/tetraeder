@@ -4,7 +4,8 @@
   ledger_stages.py <results dir> <stage>... [--copy-to DIR]
       One `--stage` argument for `tetraeder-plan ledger-dir` per builder stage that has a result
       `exit-<stage>-<stamp>.json` in the results dir (the newest), as
-      `<stage>=<vram bytes>,<ram bytes>,<threads>,<ubatch>,<op offload>,<prompt>,<gen>`. With
+      `<stage>=<vram bytes>,<ram bytes>,<threads>,<ubatch>,<op offload>,<prompt>,<gen>[,KEY=VALUE...]`,
+      the extras being the read path and prefetch the run used. With
       --copy-to the result is copied to `DIR/cand-<stage>.r1.json`, where the ledger finds it.
   ledger_stages.py --anchors <candidates.json>
       `<variant id> TAB <KEY=VALUE ...>` per anchor of a ledger directory's candidates.json.
@@ -49,7 +50,17 @@ def stages(results, names, copy_to):
             r.get("prefill_tokens") or 0,
             r.get("decode_tokens") or 0,
         ]
-        print(f"{name}=" + ",".join(str(int(x)) for x in fields))
+        # the read path and the prefetch of the run, which the cost model reads from the variant's env
+        extra = []
+        if o.get("io_service"):
+            extra.append("TETRAEDER_EXIT_IO_SERVICE=1")
+            if o.get("io_workers"):
+                extra.append(f"TETRAEDER_EXIT_IO_WORKERS={int(o['io_workers'])}")
+        if o.get("overlap"):
+            extra.append("TETRAEDER_EXIT_OVERLAP=1")
+        if o.get("prefetch") is not None:
+            extra.append(f"TETRAEDER_EXIT_PREFETCH={int(bool(o['prefetch']))}")
+        print(f"{name}=" + ",".join([str(int(x)) for x in fields] + extra))
         if copy_to:
             os.makedirs(copy_to, exist_ok=True)
             shutil.copyfile(path, os.path.join(copy_to, f"cand-{name}.r1.json"))
