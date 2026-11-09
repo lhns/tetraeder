@@ -29,6 +29,8 @@ A gate whose candidate is a Tetraeder build must also produce the reference outp
 
 Exit-run baseline from Colibri (pinned v2.1.0, `qwen36` engine reads the Qwen3 MoE GGUF in place): `scripts/colibri_build.sh`, then `scripts/colibri_exit.sh <first-shard> <threads> <ram-bytes> <out.json> [deep|short]`. It is not wired into `scripts/exit_run.sh`; its JSON has its own shape (prefill and decode tok/s from the engine's TTFT and total time).
 
+llama.cpp expert cache with a CPU share of the misses (#30966; baseline build in `/opt/llama.cpp-baseline`, `baseline_commit` in `vendor/PIN`): `scripts/llamacpp_cache.sh` runs one llama-server and measures decode tok/s after a 32K prefill. `scripts/exit_run.sh` calls it in stages `llamacpp-cache` and `llamacpp-cache-repeat` (shares from `CPU_SHARES`). `scripts/moe_cache_tune.sh` runs llama.cpp's tuner on the 30B (`TUNE=1` in `scripts/c_session.sh`).
+
 ## Claude Code against both servers
 
 `scripts/claude_code_proxy.sh` (`uv run taxameter run scripts/claude_code_proxy.sh`) runs real headless Claude Code sessions on 10 coding tasks against `tetraeder serve` and `llama-server`, ABBA over the reps, and scores them. Kit: `bench/claude-code-proxy/` (`fixture/` is the Python project the sessions work on, `tasks.json` the prompts, setup, hidden tests and checks, `solutions/` the reference fixes that `tests/test_claude_code_proxy.py` replays without Claude). Every request goes through `scripts/anthropic_proxy.py`, which logs tokens, TTFT and decode tok/s identically for both engines. Output: `bench/results/<date>/claude-code-proxy/` (`session-*.json`, `proxy-*.jsonl`, `summary.json`). The `*.reqlog` files and `diff-*.patch` stay on the box. Sessions are not deterministic: compare success rates over reps, not single runs.

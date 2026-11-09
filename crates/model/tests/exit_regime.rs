@@ -569,6 +569,8 @@ fn exit_regime() {
             "os": std::env::consts::OS,
             "available_parallelism": std::thread::available_parallelism().map_or(1, usize::from),
             "gpu_devices_visible": Backend::gpu_count(),
+            // the CPU features ggml was compiled with (TETRAEDER_GGML_NATIVE)
+            "ggml_system_info": tetraeder_ggml_sys::llama::system_info(),
         },
         "model": model_info,
         "prompt": prompt_info,
