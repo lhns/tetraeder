@@ -36,7 +36,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: patches/apply.ps1
+      # Linux only: the Windows job uses the Visual Studio generator, which ignores compiler launchers
+      # (and Ninja in an MSVC shell puts Git's /usr/bin/link before link.exe for bash steps).
       - uses: ./.github/actions/sccache
+        if: runner.os == 'Linux'
       - name: Toolchain
         shell: bash
         run: rustup show active-toolchain || rustup toolchain install
@@ -47,13 +50,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
-      # Visual Studio generators ignore compiler launchers: Ninja in an MSVC shell, as the CUDA job.
-      - uses: ilammy/msvc-dev-cmd@v1
-        if: runner.os == 'Windows'
-      - name: Ninja generator
-        if: runner.os == 'Windows'
-        shell: bash
-        run: echo "CMAKE_GENERATOR=Ninja" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
       # Qwen3-0.6B Q8_0 for the engine and ggml-sys tests and the golden (about 0.6 GB)
       - uses: actions/cache@v4
@@ -81,8 +77,15 @@ jobs:
         env:
           TETRAEDER_REQUIRE_MODELS: "1"
         run: |
-          set -o pipefail
-          cargo test --workspace -- --nocapture 2>&1 | tee test.log
+          cargo test --workspace -- --nocapture --skip matches_llama_simple --skip matches_bench_golden 2>&1 | tee test.log
+      # The golden was recorded on a CPU without AVX (SSE4.2): float results differ per CPU tier (ADR 0052),
+      # so it runs pinned to that tier. Goldens for more tiers are a later item (docs/testing.md).
+      - name: golden (SSE4.2 tier)
+        shell: bash
+        env:
+          TETRAEDER_REQUIRE_MODELS: "1"
+          TETRAEDER_GGML_CPU_VARIANT: sse42
+        run: cargo test -p tetraeder-engine --test golden -- --nocapture 2>&1 | tee -a test.log
       - name: Skipped tests
         if: always()
         shell: bash

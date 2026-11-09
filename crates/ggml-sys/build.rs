@@ -86,6 +86,10 @@ fn main() {
         let static_crt = std::env::var("CARGO_CFG_TARGET_FEATURE")
             .is_ok_and(|f| f.split(',').any(|x| x == "crt-static"));
         let crt = if static_crt { "/MT" } else { "/MD" };
+        // Debug builds (and CMake's compiler checks) default to /Zi with a shared PDB, which sccache cannot
+        // cache; embed the debug info (/Z7) instead. Needs policy CMP0141 (CMake 3.25).
+        cfg.define("CMAKE_POLICY_DEFAULT_CMP0141", "NEW")
+            .define("CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "Embedded");
         for lang in ["C", "CXX"] {
             cfg.define(
                 format!("CMAKE_{lang}_FLAGS_RELEASE"),
