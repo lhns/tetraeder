@@ -82,7 +82,8 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
         stages="$stages ktransformers-avx2 llamacpp-cache-repeat"
       else
         # each lever stage pairs with main-prefetch on this box: kv-* right after it, the trace, the native ISA
-        stages="smoke main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots trace main-native-repeat"
+        # main-iosvc and main-overlap (ADR 0054) follow the kv stages; main-overlap-ram runs if the deadline allows
+        stages="smoke main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots main-iosvc main-overlap trace main-native-repeat main-overlap-ram"
       fi
       # levers (ADR 0038): prefetch on in every builder stage, depth 2
       step exit_run env TETRAEDER_EXIT_PREFETCH_DEPTH=2 CPU_SHARES="$share" STAGES="$stages" bash scripts/exit_run.sh

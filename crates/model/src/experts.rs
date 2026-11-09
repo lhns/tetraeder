@@ -10,6 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tetraeder_ggml_sys::ggml::{Backend, Context, OwnedTensor, Tensor};
+use tetraeder_memory::io::{Deadline, IoService, Part, ServiceOptions, UnitDone, UnitId};
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_memory::reader::{HostDst, ReadJob, Reader, Ticket, copy_sink, tensor_dst};
 use tetraeder_memory::replay::prefetch_plan;
@@ -54,6 +55,16 @@ pub struct IoCounters {
     /// Worker time of the prefetch reads, and the time the step waited for them to finish.
     pub prefetch_read_time: Duration,
     pub prefetch_wait_time: Duration,
+    /// Overlapped decode (ADR 0054). Time the main thread blocked waiting for an expert of the
+    /// layer being computed (`read_wait`); layer steps that had experts still in flight when the
+    /// CPU group started, and those experts; the summed spans of those steps (from planning to
+    /// the last landing) and the part of them the main thread waited. `1 - wait / span` is the
+    /// hidden share. Their reads are counted in `experts_read` and `bytes_read` as usual.
+    pub urgent_wait_time: Duration,
+    pub pending_steps: u64,
+    pub pending_experts: u64,
+    pub overlap_span: Duration,
+    pub overlap_wait: Duration,
 }
 
 /// Cache counters of one MoE layer.
@@ -177,6 +188,57 @@ struct InFlight {
     experts: Vec<u32>,
 }
 
+/// One expert's read through the I/O service, from submit until its layer step is done with it.
+struct InFlightUnit {
+    il: usize,
+    expert: u32,
+    unit: UnitId,
+    /// Read ahead for a prediction, as opposed to a miss of the layer being computed.
+    prefetch: bool,
+    /// The layer step routed to it.
+    routed: bool,
+    /// The bytes are in the slot and counted; the entry stays (its expert stays pinned and
+    /// counts as in flight for `prefetch_plan`, as in the reader path) until the layer's step
+    /// has finished with it.
+    landed: bool,
+}
+
+/// What reads the prefetch (and, with overlap, the misses) of a decode step (ADR 0054). Declared
+/// first in the streamer so it drops, waiting for its reads, before the RAM tier is freed.
+enum Prefetcher {
+    /// One background thread, one job per prefetch call (ADR 0038).
+    Reader {
+        reader: Reader,
+        /// Its own direct files, one per shard, so its reads never wait for the bounce buffer of
+        /// a synchronous read on the main thread (prefetch depth 2 overlaps them).
+        dio: Vec<Arc<DirectFile>>,
+        /// Reads in flight, oldest first (the reader runs them in this order).
+        inflight: VecDeque<InFlight>,
+    },
+    /// Persistent workers, one unit per expert, earliest deadline first.
+    Service {
+        io: IoService,
+        inflight: Vec<InFlightUnit>,
+    },
+}
+
+/// The experts of a layer step under overlap (ADR 0054), split by whether their bytes are in
+/// the RAM slots yet. `slots` is per expert in the order given to `stage_overlap`; `ready` and
+/// `pending` partition those experts.
+pub(crate) struct StagedLayer {
+    pub slots: Vec<u32>,
+    pub ready: Vec<u32>,
+    pub pending: Vec<u32>,
+}
+
+/// Timing of the current layer step's reads for the hidden share.
+struct OverlapSpan {
+    start: Instant,
+    last: Instant,
+    wait: Duration,
+    pending: u64,
+}
+
 /// Cap on the reader's bounce buffer per shard: its reads are a few experts, not a layer step.
 const READER_BOUNCE: usize = 64 << 20;
 /// The reader's device read size and queue depth: a prefetch is a few experts of a few MB, which
@@ -186,14 +248,12 @@ const READER_CHUNK: usize = 1 << 20;
 const READER_QUEUE_DEPTH: usize = 16;
 
 pub(crate) struct Streamer {
-    /// The background reader writes into the RAM tier's memory: it comes first so that it is
+    /// The background reads write into the RAM tier's memory: it comes first so that it is
     /// dropped, which waits for its jobs, before the RAM tier is freed.
-    reader: Option<Reader>,
-    /// Reads in flight, oldest first (the reader runs them in this order).
-    inflight: VecDeque<InFlight>,
-    /// The reader's own direct files, one per shard, so its reads never wait for the bounce
-    /// buffer of a synchronous read on the main thread (prefetch depth 2 overlaps them).
-    reader_dio: Vec<Arc<DirectFile>>,
+    prefetcher: Option<Prefetcher>,
+    /// Steps begun since load, for the service's deadlines.
+    step: u64,
+    span: Option<OverlapSpan>,
     /// Per layer and expert: read by a prefetch and not routed since.
     prefetched: Vec<Vec<bool>>,
     /// Prediction scores per layer: hits and slots scored.
@@ -229,6 +289,10 @@ pub(crate) struct StreamerConfig {
     pub profile: Option<Vec<Vec<u64>>>,
     /// Prefetch into the RAM tier when there is one (ADR 0038).
     pub prefetch: bool,
+    /// Decode computes experts as they land (ADR 0054): the service reads the misses too.
+    pub overlap: bool,
+    /// Test only: the service's per-chunk delay (`LoadOptions::io_delay`).
+    pub service_delay: Option<Duration>,
 }
 
 fn invalid(msg: impl Into<String>) -> ModelError {
@@ -299,32 +363,48 @@ impl Streamer {
             }
             None => vec![vec![0; n_expert as usize]; layers],
         };
-        let prefetch_reads = cfg.prefetch && ram.is_some();
-        Ok(Streamer {
-            reader: prefetch_reads.then(Reader::new),
-            inflight: VecDeque::new(),
-            reader_dio: if prefetch_reads {
-                let cap = match cfg.io.bounce_bytes {
-                    0 => READER_BOUNCE,
-                    n => n.min(READER_BOUNCE),
-                };
-                let io = IoOptions {
-                    bounce_bytes: cap,
-                    chunk_bytes: match cfg.io.chunk_bytes {
-                        0 => READER_CHUNK,
-                        n => n,
-                    },
-                    queue_depth: cfg.io.queue_depth.max(READER_QUEUE_DEPTH),
-                    ..cfg.io
-                };
-                file.gguf
+        let prefetcher = if ram.is_some() && cfg.io.service && (cfg.prefetch || cfg.overlap) {
+            let opts = ServiceOptions {
+                workers: cfg.io.workers,
+                chunk_bytes: cfg.io.chunk_bytes,
+                buffered: cfg.io.buffered,
+                delay: cfg.service_delay,
+            };
+            Some(Prefetcher::Service {
+                io: IoService::new(&file.gguf.paths, opts)?,
+                inflight: Vec::new(),
+            })
+        } else if cfg.prefetch && ram.is_some() {
+            let cap = match cfg.io.bounce_bytes {
+                0 => READER_BOUNCE,
+                n => n.min(READER_BOUNCE),
+            };
+            let io = IoOptions {
+                bounce_bytes: cap,
+                chunk_bytes: match cfg.io.chunk_bytes {
+                    0 => READER_CHUNK,
+                    n => n,
+                },
+                queue_depth: cfg.io.queue_depth.max(READER_QUEUE_DEPTH),
+                ..cfg.io
+            };
+            Some(Prefetcher::Reader {
+                reader: Reader::new(),
+                dio: file
+                    .gguf
                     .paths
                     .iter()
                     .map(|p| DirectFile::open_with(p, io).map(Arc::new))
-                    .collect::<std::io::Result<Vec<_>>>()?
-            } else {
-                Vec::new()
-            },
+                    .collect::<std::io::Result<Vec<_>>>()?,
+                inflight: VecDeque::new(),
+            })
+        } else {
+            None
+        };
+        Ok(Streamer {
+            prefetcher,
+            step: 0,
+            span: None,
             prefetched: vec![vec![false; n_expert as usize]; layers],
             predicted: vec![(0, 0); layers],
             predicted2: vec![(0, 0); layers],
@@ -350,13 +430,17 @@ impl Streamer {
         })
     }
 
-    /// Bytes held by the shards' bounce buffers for direct reads, the reader's included.
+    /// Bytes held by the shards' bounce buffers for direct reads, the reader's or the service's
+    /// included.
     pub(crate) fn bounce_bytes(&self) -> u64 {
-        self.dio
-            .iter()
-            .chain(&self.reader_dio)
-            .map(|d| d.bounce_capacity() as u64)
-            .sum()
+        let own: u64 = self.dio.iter().map(|d| d.bounce_capacity() as u64).sum();
+        own + match &self.prefetcher {
+            Some(Prefetcher::Reader { dio, .. }) => {
+                dio.iter().map(|d| d.bounce_capacity() as u64).sum()
+            }
+            Some(Prefetcher::Service { io, .. }) => io.bounce_bytes(),
+            None => 0,
+        }
     }
 
     /// Slots per layer of the compute tier and of the RAM tier.
@@ -530,28 +614,43 @@ impl Streamer {
             .prediction_accuracy(il as u32, depth, hits, total);
     }
 
+    /// Starts a decode or prefill step: new deadlines for the service, and waits for the reads
+    /// of an earlier step (a step that failed, or experts mispredicted under overlap, which are
+    /// long landed), so nothing in flight spans two steps.
+    pub(crate) fn begin_step(&mut self) {
+        self.settle();
+        self.step += 1;
+    }
+
     /// Reads ahead the experts of layer `il` that `predicted` (`[n_used, n_tokens]`) names and
     /// that no tier holds yet, into free or least recently used RAM slots, on the background
-    /// reader (ADR 0038). Experts the prediction needs that are resident already are pinned, so
+    /// reads (ADR 0038). Experts the prediction needs that are resident already are pinned, so
     /// the new ones never evict them; at most `RAM slots - those` are read. The slots stay
     /// pinned until [`Streamer::finish_prefetch`]. Reads already in flight for the layer count as
     /// resident (their slots are assigned) and stay pinned, so a later call tops the layer up.
-    /// The reader has its own direct files, so the main thread's reads may run meanwhile.
+    /// The background reads have their own direct files, so the main thread's reads may run
+    /// meanwhile.
     pub(crate) fn start_prefetch(
         &mut self,
         file: &ModelFile,
         il: usize,
         predicted: &[i32],
     ) -> Result<()> {
-        let (Some(reader), Some(ram)) = (&self.reader, &mut self.ram) else {
+        let (Some(pf), Some(ram)) = (&mut self.prefetcher, &mut self.ram) else {
             return Ok(());
         };
-        let inflight: Vec<u32> = self
-            .inflight
-            .iter()
-            .filter(|f| f.il == il)
-            .flat_map(|f| f.experts.iter().copied())
-            .collect();
+        let inflight: Vec<u32> = match &*pf {
+            Prefetcher::Reader { inflight, .. } => inflight
+                .iter()
+                .filter(|f| f.il == il)
+                .flat_map(|f| f.experts.iter().copied())
+                .collect(),
+            Prefetcher::Service { inflight, .. } => inflight
+                .iter()
+                .filter(|u| u.il == il)
+                .map(|u| u.expert)
+                .collect(),
+        };
         // The experts to pin (resident predicted ones and reads still in flight for the layer)
         // and to read; the selection is shared with the replay (ADR 0050).
         let (mut pins, missing) = prefetch_plan(
@@ -573,9 +672,9 @@ impl Streamer {
         pins.extend(&missing);
         let layer = ram.cache.layer_mut(il);
         layer.set_hot_set(&pins);
-        let n_shards = self.reader_dio.len();
-        let mut ranges: Vec<Vec<Range>> = (0..n_shards).map(|_| Vec::new()).collect();
-        let mut dsts: Vec<Vec<HostDst>> = (0..n_shards).map(|_| Vec::new()).collect();
+        // Per missing expert its slabs: shard, range and destination.
+        let mut staged_experts: Vec<Vec<(usize, Range, HostDst)>> =
+            Vec::with_capacity(missing.len());
         let mut staged = Ok(());
         for &e in &missing {
             let slot = match layer.lookup(e) {
@@ -594,24 +693,29 @@ impl Streamer {
             self.prefetched[il][e as usize] = true;
             match file.expert_slabs(il as u32, e) {
                 Ok(slabs) => {
+                    let mut parts = Vec::with_capacity(3);
                     for (p, part) in slabs.parts.iter().enumerate() {
                         // The slot is pinned and nothing else touches it until
-                        // `finish_prefetch` has waited; the RAM tier outlives the reader.
+                        // `finish_prefetch` has waited; the RAM tier outlives the reads.
                         match tensor_dst(dst[p], slot * sizes[p], sizes[p]) {
-                            Ok(d) => dsts[part.shard].push(d),
+                            Ok(d) => parts.push((
+                                part.shard,
+                                Range {
+                                    offset: part.offset,
+                                    len: part.len as usize,
+                                },
+                                d,
+                            )),
                             Err(err) => {
                                 staged = Err(err.into());
                                 break;
                             }
                         }
-                        ranges[part.shard].push(Range {
-                            offset: part.offset,
-                            len: part.len as usize,
-                        });
                     }
                     if staged.is_err() {
                         break;
                     }
+                    staged_experts.push(parts);
                 }
                 Err(err) => {
                     staged = Err(err.into());
@@ -625,67 +729,133 @@ impl Streamer {
             self.clear_layer(il);
             return Err(e);
         }
-        let jobs: Vec<ReadJob> = self
-            .reader_dio
-            .iter()
-            .zip(ranges)
-            .zip(dsts)
-            .filter(|((_, r), _)| !r.is_empty())
-            .map(|((f, ranges), dsts)| ReadJob {
-                file: f.clone(),
-                ranges,
-                sink: copy_sink(dsts),
-            })
-            .collect();
         self.io.prefetch_issued += missing.len() as u64;
         self.metrics
             .prefetch_issued(il as u32, missing.len() as u64);
-        self.inflight.push_back(InFlight {
-            il,
-            ticket: reader.submit(jobs),
-            experts: missing,
-        });
+        match pf {
+            Prefetcher::Reader {
+                reader,
+                dio,
+                inflight,
+            } => {
+                let n_shards = dio.len();
+                let mut ranges: Vec<Vec<Range>> = (0..n_shards).map(|_| Vec::new()).collect();
+                let mut dsts: Vec<Vec<HostDst>> = (0..n_shards).map(|_| Vec::new()).collect();
+                for parts in staged_experts {
+                    for (shard, range, d) in parts {
+                        ranges[shard].push(range);
+                        dsts[shard].push(d);
+                    }
+                }
+                let jobs: Vec<ReadJob> = dio
+                    .iter()
+                    .zip(ranges)
+                    .zip(dsts)
+                    .filter(|((_, r), _)| !r.is_empty())
+                    .map(|((f, ranges), dsts)| ReadJob {
+                        file: f.clone(),
+                        ranges,
+                        sink: copy_sink(dsts),
+                    })
+                    .collect();
+                inflight.push_back(InFlight {
+                    il,
+                    ticket: reader.submit(jobs),
+                    experts: missing,
+                });
+            }
+            Prefetcher::Service { io, inflight } => {
+                let order = self.step * self.sizes.len() as u64 + il as u64;
+                self.io.batches += 1;
+                for (&expert, parts) in missing.iter().zip(staged_experts) {
+                    let unit = submit_expert(io, order, false, parts);
+                    self.metrics.io_inflight(false, io.inflight());
+                    inflight.push(InFlightUnit {
+                        il,
+                        expert,
+                        unit,
+                        prefetch: true,
+                        routed: false,
+                        landed: false,
+                    });
+                }
+            }
+        }
         Ok(())
     }
 
-    /// A prefetch read is in flight.
+    /// A background read is running or queued.
     pub(crate) fn prefetch_in_flight(&self) -> bool {
-        !self.inflight.is_empty()
+        match &self.prefetcher {
+            Some(Prefetcher::Reader { inflight, .. }) => !inflight.is_empty(),
+            Some(Prefetcher::Service { io, .. }) => io.inflight() > 0,
+            None => false,
+        }
     }
 
     /// Waits for every prefetch read of layer `il`, if any, and unpins its slots. The reader is
     /// FIFO, so reads of later layers keep running. On an error the layer's tables are cleared
     /// (slots were assigned before the bytes arrived) and the first error returned.
     pub(crate) fn finish_prefetch(&mut self, il: usize) -> Result<()> {
-        let (mine, rest): (VecDeque<_>, VecDeque<_>) = std::mem::take(&mut self.inflight)
-            .into_iter()
-            .partition(|f| f.il == il);
-        self.inflight = rest;
-        if mine.is_empty() {
-            return Ok(());
-        }
-        let reader = self.reader.as_ref().expect("a prefetch needs the reader");
         let mut failure = None;
-        for f in mine {
-            let t0 = Instant::now();
-            let done = reader.wait(f.ticket);
-            self.io.prefetch_wait_time += t0.elapsed();
-            match done {
-                Ok(d) => {
-                    let experts = f.experts.len();
-                    self.io.batches += 1;
-                    self.io.experts_read += experts as u64;
-                    self.io.bytes_read += d.stats.requested;
-                    self.io.prefetch_bytes += d.stats.requested;
-                    self.io.prefetch_read_time += d.took;
-                    self.metrics
-                        .tier_read(&self.device, "nvme", d.stats.requested);
-                    let took = d.took / experts.max(1) as u32;
-                    for _ in 0..experts {
-                        self.metrics.expert_load(Tier::Ram, "nvme", took);
+        match &mut self.prefetcher {
+            None => return Ok(()),
+            Some(Prefetcher::Reader {
+                reader, inflight, ..
+            }) => {
+                let (mine, rest): (VecDeque<_>, VecDeque<_>) = std::mem::take(inflight)
+                    .into_iter()
+                    .partition(|f| f.il == il);
+                *inflight = rest;
+                if mine.is_empty() {
+                    return Ok(());
+                }
+                for f in mine {
+                    let t0 = Instant::now();
+                    let done = reader.wait(f.ticket);
+                    self.io.prefetch_wait_time += t0.elapsed();
+                    match done {
+                        Ok(d) => {
+                            let experts = f.experts.len();
+                            self.io.batches += 1;
+                            self.io.experts_read += experts as u64;
+                            self.io.bytes_read += d.stats.requested;
+                            self.io.prefetch_bytes += d.stats.requested;
+                            self.io.prefetch_read_time += d.took;
+                            self.metrics
+                                .tier_read(&self.device, "nvme", d.stats.requested);
+                            let took = d.took / experts.max(1) as u32;
+                            for _ in 0..experts {
+                                self.metrics.expert_load(Tier::Ram, "nvme", took);
+                            }
+                        }
+                        Err(e) => failure = failure.or(Some(e)),
                     }
                 }
-                Err(e) => failure = failure.or(Some(e)),
+            }
+            Some(Prefetcher::Service { io, inflight }) => {
+                let ids: Vec<UnitId> = inflight
+                    .iter()
+                    .filter(|u| u.il == il && !u.landed)
+                    .map(|u| u.unit)
+                    .collect();
+                let had = inflight.iter().any(|u| u.il == il);
+                inflight.retain(|u| u.il != il);
+                if !had {
+                    return Ok(());
+                }
+                let t0 = Instant::now();
+                let done = io.wait_all(&ids);
+                if !ids.is_empty() {
+                    self.io.prefetch_wait_time += t0.elapsed();
+                }
+                // Units that landed before were counted when they were reaped.
+                for (_, r) in done {
+                    match r {
+                        Ok(d) => account_unit(&mut self.io, &self.metrics, &self.device, true, &d),
+                        Err(e) => failure = failure.or(Some(e)),
+                    }
+                }
             }
         }
         if let Some(ram) = &mut self.ram {
@@ -701,10 +871,301 @@ impl Streamer {
     }
 
     /// [`Streamer::finish_prefetch`] for every layer, for code that must not race with the
-    /// reader and has no use for the result (the start of a step, the hot set refresh).
+    /// reads and has no use for the result (the start of a step, the hot set refresh).
     pub(crate) fn settle(&mut self) {
-        while let Some(il) = self.inflight.front().map(|f| f.il) {
+        let layers: Vec<usize> = match &self.prefetcher {
+            Some(Prefetcher::Reader { inflight, .. }) => {
+                let mut v: Vec<usize> = inflight.iter().map(|f| f.il).collect();
+                v.dedup();
+                v
+            }
+            Some(Prefetcher::Service { inflight, .. }) => {
+                let mut v: Vec<usize> = inflight.iter().map(|u| u.il).collect();
+                v.sort_unstable();
+                v.dedup();
+                v
+            }
+            None => return,
+        };
+        for il in layers {
             let _ = self.finish_prefetch(il);
+        }
+        self.span = None;
+    }
+
+    /// Counts the units of the service that have landed without blocking. On a failed unit the
+    /// layer it belongs to is drained and cleared and the error returned.
+    fn reap(&mut self) -> Result<()> {
+        let Some(Prefetcher::Service { io, inflight }) = &mut self.prefetcher else {
+            return Ok(());
+        };
+        let ids: Vec<UnitId> = inflight
+            .iter()
+            .filter(|u| !u.landed)
+            .map(|u| u.unit)
+            .collect();
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let done = io.poll(&ids);
+        let failed = land(inflight, done, &mut self.io, &self.metrics, &self.device);
+        match failed {
+            None => Ok(()),
+            Some((il, e)) => {
+                self.drain_layer(il);
+                Err(e.into())
+            }
+        }
+    }
+
+    /// Waits for every unit of layer `il` and forgets them, then clears the layer's tables: the
+    /// recovery after a failed read, with no unit left that could write into a cleared slot.
+    fn drain_layer(&mut self, il: usize) {
+        if let Some(Prefetcher::Service { io, inflight }) = &mut self.prefetcher {
+            let ids: Vec<UnitId> = inflight
+                .iter()
+                .filter(|u| u.il == il && !u.landed)
+                .map(|u| u.unit)
+                .collect();
+            let _ = io.wait_all(&ids);
+            inflight.retain(|u| u.il != il);
+        }
+        self.span = None;
+        self.clear_layer(il);
+    }
+
+    /// Overlapped decode (ADR 0054): the RAM lookups of the CPU experts of layer `il`, with the
+    /// counters and order of `fill_ram`, without waiting for any read. An expert whose prefetch
+    /// is in flight has its slot already and is a hit; the misses get urgent units. Experts
+    /// whose bytes are in their slots are `ready`, the others `pending`. Needs the service.
+    /// On an error the layer's units are waited for and its tables cleared.
+    pub(crate) fn stage_overlap(
+        &mut self,
+        file: &ModelFile,
+        il: usize,
+        experts: &[u32],
+    ) -> Result<StagedLayer> {
+        let t0 = Instant::now();
+        self.reap()?;
+        let r = self.stage_overlap_inner(file, il, experts, t0);
+        if r.is_err() {
+            self.drain_layer(il);
+        }
+        r
+    }
+
+    fn stage_overlap_inner(
+        &mut self,
+        file: &ModelFile,
+        il: usize,
+        experts: &[u32],
+        t0: Instant,
+    ) -> Result<StagedLayer> {
+        let order = self.step * self.sizes.len() as u64 + il as u64;
+        let Some(Prefetcher::Service { io, inflight }) = &mut self.prefetcher else {
+            return Err(invalid("overlap needs the I/O service"));
+        };
+        let ram = self.ram.as_mut().expect("RAM tier");
+        let sizes = self.sizes[il];
+        // Landed reads of this layer are done: unpin everything except the reads in flight, as
+        // `finish_prefetch` does before its lookups, so the victims are the same.
+        inflight.retain(|u| !(u.il == il && u.landed));
+        // Reads in flight for experts this step does not route (mispredicted) stay pinned, so
+        // their slots cannot be reused while they write. If that leaves too few slots for the
+        // step's own experts, wait for them first (small RAM tiers only: the tier holds many
+        // more experts than a layer step routes plus predicts).
+        let stranded: Vec<UnitId> = inflight
+            .iter()
+            .filter(|u| u.il == il && !u.landed && !experts.contains(&u.expert))
+            .map(|u| u.unit)
+            .collect();
+        if experts.len() + stranded.len() > ram.slots {
+            let t = Instant::now();
+            let done = io.wait_all(&stranded);
+            self.io.prefetch_wait_time += t.elapsed();
+            if let Some((_, e)) = land(inflight, done, &mut self.io, &self.metrics, &self.device) {
+                return Err(e.into());
+            }
+            inflight.retain(|u| !(u.il == il && u.landed));
+        }
+        let mut pins: Vec<u32> = inflight
+            .iter()
+            .filter(|u| u.il == il)
+            .map(|u| u.expert)
+            .collect();
+        let layer = ram.cache.layer_mut(il);
+        layer.set_hot_set(&pins);
+        let mut idx: Vec<usize> = (0..experts.len()).collect();
+        idx.sort_by_key(|&i| layer.slot_of(experts[i]).is_none());
+        let mut slots = vec![0u32; experts.len()];
+        let mut misses: Vec<usize> = Vec::new();
+        let mut pending = vec![false; experts.len()];
+        for &i in &idx {
+            let e = experts[i];
+            let res = layer.lookup(e);
+            self.metrics.lookup(il as u32, Tier::Ram, &res);
+            match res {
+                Lookup::Hit(s) => {
+                    if std::mem::take(&mut self.prefetched[il][e as usize]) {
+                        self.io.prefetch_used += 1;
+                        self.metrics.prefetch_used(il as u32);
+                    }
+                    slots[i] = s;
+                    if let Some(u) = inflight.iter_mut().find(|u| u.il == il && u.expert == e) {
+                        u.routed = true;
+                        pending[i] = true;
+                    }
+                }
+                Lookup::Miss { slot, evicted } => {
+                    if let Some(old) = evicted {
+                        let bytes = sizes.iter().sum();
+                        note_wasted(
+                            &mut self.prefetched[il],
+                            il,
+                            old,
+                            bytes,
+                            &mut self.io,
+                            &self.metrics,
+                        );
+                    }
+                    slots[i] = slot;
+                    misses.push(i);
+                    pending[i] = true;
+                    // Pinned from the moment it has a slot: its unit writes there.
+                    pins.push(e);
+                    layer.set_hot_set(&pins);
+                }
+                Lookup::Bypass => return Err(invalid("no free RAM expert slot (all pinned)")),
+            }
+        }
+        if !misses.is_empty() {
+            let [dg, du, dd] = &ram.tensors[il];
+            let dst = [dg.get(), du.get(), dd.get()];
+            self.io.batches += 1;
+            for &i in &misses {
+                let slabs = file.expert_slabs(il as u32, experts[i])?;
+                let mut parts = Vec::with_capacity(3);
+                for (p, part) in slabs.parts.iter().enumerate() {
+                    // The slot is pinned and nothing else touches it until the unit has landed
+                    // (`wait_landed`, `drain_layer` or `finish_prefetch`); the RAM tier
+                    // outlives the service.
+                    parts.push((
+                        part.shard,
+                        Range {
+                            offset: part.offset,
+                            len: part.len as usize,
+                        },
+                        tensor_dst(dst[p], slots[i] as usize * sizes[p], sizes[p])?,
+                    ));
+                }
+                let unit = submit_expert(io, order, true, parts);
+                self.metrics.io_inflight(true, io.inflight());
+                inflight.push(InFlightUnit {
+                    il,
+                    expert: experts[i],
+                    unit,
+                    prefetch: false,
+                    routed: true,
+                    landed: false,
+                });
+            }
+        }
+        // An in-flight unit may have landed since the reap: its expert is ready.
+        let mut ready = Vec::new();
+        let mut waiting = Vec::new();
+        for (i, &e) in experts.iter().enumerate() {
+            let in_flight = pending[i]
+                && inflight
+                    .iter()
+                    .any(|u| u.il == il && u.expert == e && !u.landed);
+            if in_flight {
+                waiting.push(e);
+            } else {
+                ready.push(e);
+            }
+        }
+        self.span = (!waiting.is_empty()).then(|| OverlapSpan {
+            start: t0,
+            last: Instant::now(),
+            wait: Duration::ZERO,
+            pending: waiting.len() as u64,
+        });
+        Ok(StagedLayer {
+            slots,
+            ready,
+            pending: waiting,
+        })
+    }
+
+    /// Blocks until at least one of the `pending` experts of layer `il` has landed and returns
+    /// every one of them that has (and so is ready to compute). The time blocked is
+    /// `urgent_wait_time`. On an error the layer's units are waited for, its tables cleared.
+    pub(crate) fn wait_landed(&mut self, il: usize, pending: &[u32]) -> Result<Vec<u32>> {
+        let r = self.wait_landed_inner(il, pending);
+        if r.is_err() {
+            self.drain_layer(il);
+        }
+        r
+    }
+
+    fn wait_landed_inner(&mut self, il: usize, pending: &[u32]) -> Result<Vec<u32>> {
+        let Some(Prefetcher::Service { io, inflight }) = &mut self.prefetcher else {
+            return Err(invalid("overlap needs the I/O service"));
+        };
+        let is_open = |u: &InFlightUnit| u.il == il && !u.landed && pending.contains(&u.expert);
+        let ids: Vec<UnitId> = inflight
+            .iter()
+            .filter(|u| is_open(u))
+            .map(|u| u.unit)
+            .collect();
+        let t0 = Instant::now();
+        let done = io.wait_any(&ids);
+        let waited = t0.elapsed();
+        let failed = land(inflight, done, &mut self.io, &self.metrics, &self.device);
+        let landed: Vec<u32> = pending
+            .iter()
+            .copied()
+            .filter(|&e| {
+                !inflight
+                    .iter()
+                    .any(|u| u.il == il && u.expert == e && !u.landed)
+            })
+            .collect();
+        self.io.urgent_wait_time += waited;
+        if let Some(sp) = &mut self.span {
+            sp.wait += waited;
+            sp.last = Instant::now();
+        }
+        match failed {
+            None => Ok(landed),
+            Some((_, e)) => Err(e.into()),
+        }
+    }
+
+    /// Ends the layer's overlapped step: counts its read span, forgets the experts that landed
+    /// and unpins everything but reads still in flight (mispredicted prefetches stay pinned
+    /// until they land and the next `begin_step` or `finish_prefetch` of the layer collects
+    /// them).
+    pub(crate) fn finish_overlap(&mut self, il: usize) {
+        if let Some(sp) = self.span.take() {
+            let span = sp.last.saturating_duration_since(sp.start);
+            self.io.pending_steps += 1;
+            self.io.pending_experts += sp.pending;
+            self.io.overlap_span += span;
+            self.io.overlap_wait += sp.wait;
+            self.metrics.read_hidden(sp.wait, span);
+        }
+        let Some(Prefetcher::Service { inflight, .. }) = &mut self.prefetcher else {
+            return;
+        };
+        inflight.retain(|u| !(u.il == il && u.landed));
+        let pins: Vec<u32> = inflight
+            .iter()
+            .filter(|u| u.il == il)
+            .map(|u| u.expert)
+            .collect();
+        if let Some(ram) = &mut self.ram {
+            ram.cache.layer_mut(il).set_hot_set(&pins);
         }
     }
 
@@ -937,6 +1398,67 @@ impl Streamer {
             self.metrics.expert_load(Tier::Vram, source, took);
         }
     }
+}
+
+/// Counts a landed unit: one expert read through the service.
+fn account_unit(
+    counters: &mut IoCounters,
+    m: &MemoryMetrics,
+    device: &str,
+    prefetch: bool,
+    d: &UnitDone,
+) {
+    counters.experts_read += 1;
+    counters.bytes_read += d.requested;
+    if prefetch {
+        counters.prefetch_bytes += d.requested;
+        counters.prefetch_read_time += d.took;
+    } else {
+        counters.read_time += d.took;
+    }
+    m.tier_read(device, "nvme", d.requested);
+    m.expert_load(Tier::Ram, "nvme", d.took);
+}
+
+/// Marks the entries of the units in `done` landed and counts them. Returns the layer and error
+/// of the first unit that failed.
+fn land(
+    inflight: &mut [InFlightUnit],
+    done: Vec<(UnitId, std::io::Result<UnitDone>)>,
+    counters: &mut IoCounters,
+    m: &MemoryMetrics,
+    device: &str,
+) -> Option<(usize, std::io::Error)> {
+    let mut failed = None;
+    for (id, r) in done {
+        let Some(u) = inflight.iter_mut().find(|u| u.unit == id) else {
+            continue;
+        };
+        u.landed = true;
+        match r {
+            Ok(d) => account_unit(counters, m, device, u.prefetch, &d),
+            Err(e) => {
+                failed.get_or_insert((u.il, e));
+            }
+        }
+    }
+    failed
+}
+
+/// One expert's slabs as a unit of the service.
+fn submit_expert(
+    io: &IoService,
+    order: u64,
+    urgent: bool,
+    parts: Vec<(usize, Range, HostDst)>,
+) -> UnitId {
+    io.submit(
+        Deadline { order, urgent },
+        parts
+            .into_iter()
+            .map(|(shard, range, dst)| Part { shard, range, dst })
+            .collect(),
+    )
 }
 
 /// A prefetched expert left its slot before it was routed: count it as wasted.

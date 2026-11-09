@@ -8,6 +8,7 @@ mod engine_args;
 mod info;
 mod plan;
 mod quant;
+mod replan;
 mod run;
 mod serve;
 mod top;
@@ -21,6 +22,8 @@ struct Cli {
     command: Option<Command>,
 }
 
+// `serve` has many flags; the variants are built once, so the size difference does not matter.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Command {
     /// Terminal view of host and GPU metrics and step statistics.

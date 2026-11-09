@@ -137,6 +137,30 @@ impl MemoryMetrics {
         }
     }
 
+    /// `tetraeder.io.inflight`: chunks in the I/O service after a submit (ADR 0054).
+    pub fn io_inflight(&self, urgent: bool, chunks: usize) {
+        if let Some(t) = &self.telemetry {
+            let class = if urgent { "urgent" } else { "prefetch" };
+            t.metrics().io_inflight(class, chunks as u64);
+        }
+    }
+
+    /// `tetraeder.moe.read.hidden` and the layer step's wait part, for a decode layer step
+    /// with experts in flight whose reads spanned `span`, of which the main thread waited `wait`.
+    pub fn read_hidden(&self, wait: Duration, span: Duration) {
+        if let (Some(t), false) = (&self.telemetry, span.is_zero()) {
+            let share = 1.0 - wait.as_secs_f64() / span.as_secs_f64();
+            t.metrics().read_hidden(share.clamp(0.0, 1.0));
+        }
+    }
+
+    /// `tetraeder.moe.layer.duration` of one part: `cpu_ready`, `read_wait`, `cpu_landed`, `copy`.
+    pub fn layer_part(&self, part: &'static str, d: Duration) {
+        if let Some(t) = &self.telemetry {
+            t.metrics().layer_part(part, d);
+        }
+    }
+
     /// `tetraeder.tier.read.bytes`.
     pub fn tier_read(&self, device: &str, tier: &str, bytes: u64) {
         if let Some(t) = &self.telemetry {

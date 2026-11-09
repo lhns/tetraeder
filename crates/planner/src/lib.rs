@@ -35,18 +35,22 @@ pub mod profile_quality;
 pub mod quality;
 pub mod score;
 pub mod search;
+pub mod serve;
 pub mod whatif;
 
 pub use builder::{build_builder_candidate, enumerate_builder};
 pub use campaign::{Campaign, CampaignVariant, CandidateEntry, CandidatesFile, Group};
 pub use candidate::{
     Budget, Candidate, EngineKind, Enumeration, Footprint, Placement, Workload, build_candidate,
-    build_plan, enumerate, footprint,
+    build_plan, enumerate, enumerate_cpu, footprint,
 };
 pub use diff::{PlanSwitch, plan_diff};
 pub use explain::{Explanation, explain};
 pub use layout::{LayerBytes, ModelLayout, ModelMeta, TensorRec, TypeSummary, build_layout};
-pub use lower::{range_regex, to_exit_regime_env, to_llama_bench_args, to_variant_args};
+pub use lower::{
+    Applies, Lowered, SERVE_BUILDER_UBATCH, ServeEngine, llama_args, lower, range_regex, recognize,
+    to_exit_regime_env, to_llama_bench_args, to_variant_args,
+};
 pub use objective::{Choice, SPEED_BAND, Scored, StageTime, choose, pareto_front, resource_cost};
 pub use profile_quality::{
     Band, Correction, Mix, MixError, ProfileQuality, estimate_mix, estimate_mix_scaled,
@@ -54,4 +58,8 @@ pub use profile_quality::{
 };
 pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
 pub use search::{SearchInput, SearchResult, Split, search, split_layers};
-pub use whatif::{Change, WhatIf, apply, rank_purchases, what_if};
+pub use serve::{
+    Picked, Proposed, ServeInput, budget_of, candidates, correct_for_drift, fill_knobs, pick,
+    predict_plan, propose, regret,
+};
+pub use whatif::{Change, Priors, WhatIf, apply, fill_from_priors, rank_purchases, what_if};

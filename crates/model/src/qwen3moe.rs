@@ -20,7 +20,7 @@
 //! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
 use crate::convert::{ConvertError, ConvertOptions, ConvertStats, ggml_type};
-use crate::experts::{ExpertStats, MissPolicy, RoutingStep, Streamer, StreamerConfig};
+use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer, StreamerConfig};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use tetraeder_ggml_sys::ggml::{
@@ -75,6 +75,15 @@ pub struct StepProfile {
     /// Streamer work between segments: planning, staging, uploads and standalone group graphs.
     pub streamer: Duration,
     pub total: Duration,
+    /// Overlapped decode (ADR 0054), all inside `streamer` so `total` still adds up. The CPU
+    /// experts of layer steps with reads in flight: the first group graph (the experts already
+    /// resident) and the later ones (experts computed as they land); the time the main thread
+    /// blocked waiting for an expert; and the host copies around them (`xn` out, the group
+    /// outputs into the accumulator's source).
+    pub cpu_ready: Duration,
+    pub read_wait: Duration,
+    pub cpu_landed: Duration,
+    pub copy: Duration,
 }
 
 /// One buffer the builder owns (ADR 0037).
@@ -206,6 +215,15 @@ pub struct LoadOptions {
     /// Format of the K and V cache of every layer (ADR 0050 b). Quantized formats need a head
     /// size that is a multiple of their block size (32). Per-layer formats are not supported.
     pub kv: KvFormat,
+    /// Decode computes the CPU experts of a layer in arrival order (ADR 0054): the resident ones
+    /// first, the others as their reads land, instead of waiting for the whole layer's reads.
+    /// Needs `io.service`. Applies to `MissPolicy::Cpu` steps without op offload that have one
+    /// CPU chunk; other steps run as without it. Logits are bitwise unchanged.
+    pub overlap: bool,
+    /// Test only: each I/O service worker sleeps this long before each chunk, so reads are
+    /// still in flight when the layer is planned.
+    #[doc(hidden)]
+    pub io_delay: Option<Duration>,
     /// Hadamard rotation of Q, K, V and the attention output, as libllama does for a quantized
     /// cache (ADR 0050 addendum). `None`: on exactly when the format is quantized (libllama's
     /// default), off for F16. `Some(true)` needs a head size that is a multiple of 64.
@@ -233,6 +251,8 @@ impl std::fmt::Debug for LoadOptions {
             .field("cpu_poll", &self.cpu_poll)
             .field("prefetch_threads", &self.prefetch_threads)
             .field("kv", &self.kv)
+            .field("io", &self.io)
+            .field("overlap", &self.overlap)
             .field("kv_rotation", &self.kv_rotation)
             .finish_non_exhaustive()
     }
@@ -263,6 +283,8 @@ impl LoadOptions {
             cpu_poll: None,
             prefetch_threads: None,
             kv: KvFormat::default(),
+            overlap: false,
+            io_delay: None,
             kv_rotation: None,
         }
     }
@@ -342,6 +364,16 @@ struct Slot {
     pred2: OwnedTensor,
     /// Unweighted expert outputs per (token, choice), filled by pair groups (ADR 0035).
     acc: OwnedTensor,
+    /// The CPU experts' outputs of an overlapped layer step, in the order they were computed
+    /// (ADR 0054), `[n_embd, n_used * n_tokens]`; with overlap only.
+    cpu_out: Option<OwnedTensor>,
+}
+
+/// Host buffers of overlapped decode, in CPU memory: the normed hidden state the CPU groups
+/// read and their output rows.
+struct HostBufs {
+    xn: OwnedTensor,
+    out: OwnedTensor,
 }
 
 /// Per-step inputs and slots; reallocated when the token count or the padded KV length changes.
@@ -352,6 +384,7 @@ struct State {
     pos: OwnedTensor,
     mask: OwnedTensor,
     slots: [Slot; 2],
+    host: Option<HostBufs>,
 }
 
 /// A whole-step graph kept across steps (`LoadOptions::reuse_step_graph`). It holds the contexts
@@ -372,6 +405,8 @@ pub struct Qwen3Moe {
     /// The scheduler without op offload for small streamed steps (ADR 0044), with `op_offload`
     /// on a GPU backend.
     sched_small: Option<Sched>,
+    /// CPU-only scheduler for the group graphs of overlapped decode (ADR 0054).
+    sched_cpu: Option<Sched>,
     primary: Backend,
     cpu: Backend,
     /// Size of the weights buffer on the primary backend (slot tensors included) and of the KV
@@ -390,6 +425,9 @@ pub struct Qwen3Moe {
     group_graphs_run: u64,
     max_splits: usize,
     policy: MissPolicy,
+    /// Overlapped decode is possible: the option is on and the model streams through a RAM tier
+    /// under the cpu miss policy.
+    overlap: bool,
     /// Each segment also predicts the experts of this many layers ahead (ADR 0038), 0 for none:
     /// only with prefetch, the cpu miss policy and a RAM tier, where the reads can be prefetched.
     predict_depth: usize,
@@ -463,6 +501,9 @@ impl Qwen3Moe {
                 opts.prefetch_depth
             )));
         }
+        if opts.overlap && !opts.io.service {
+            return Err(ModelError::Invalid("overlap needs io.service".into()));
+        }
         if opts.miss == MissPolicy::Cpu && ram_slots.is_none() {
             return Err(ModelError::Invalid(
                 "the cpu miss policy needs ram_slots".into(),
@@ -524,6 +565,8 @@ impl Qwen3Moe {
                     io: opts.io,
                     profile: opts.routing_profile.clone(),
                     prefetch: opts.prefetch,
+                    overlap: opts.overlap,
+                    service_delay: opts.io_delay,
                 };
                 Streamer::new(
                     &file,
@@ -542,11 +585,22 @@ impl Qwen3Moe {
             "qwen3moe loaded"
         );
         let cpu_hot = opts.miss == MissPolicy::Cpu && streamer.is_some();
+        let overlap = opts.overlap && cpu_hot && ram_slots.is_some();
+        let sched_cpu = if overlap {
+            Some(Sched::new(
+                std::slice::from_ref(&cpu),
+                SEGMENT_NODES * 4,
+                false,
+            )?)
+        } else {
+            None
+        };
         let opts_primary_is_cpu = primary.is_cpu();
         let mut model = Qwen3Moe {
             file,
             sched,
             sched_small,
+            sched_cpu,
             primary,
             cpu,
             weights_bytes: weights_bytes as u64,
@@ -563,6 +617,7 @@ impl Qwen3Moe {
             group_graphs_run: 0,
             max_splits: 0,
             policy: opts.miss,
+            overlap,
             predict_depth: if opts.prefetch && cpu_hot {
                 opts.prefetch_depth
             } else {
@@ -730,10 +785,20 @@ impl Qwen3Moe {
             push("host", "ram", "io", io, io);
         }
         let scheds = || std::iter::once(&self.sched).chain(&self.sched_small);
-        let work = scheds().map(|s| s.buffer_size(&self.primary) as u64).sum();
+        let mut work: u64 = scheds().map(|s| s.buffer_size(&self.primary) as u64).sum();
+        if self.primary.is_cpu() {
+            work += self
+                .sched_cpu
+                .iter()
+                .map(|s| s.buffer_size(&self.cpu) as u64)
+                .sum::<u64>();
+        }
         push(&device, tier, "workspace", work, work);
         if !self.primary.is_cpu() {
-            let work = scheds().map(|s| s.buffer_size(&self.cpu) as u64).sum();
+            let work = scheds()
+                .chain(&self.sched_cpu)
+                .map(|s| s.buffer_size(&self.cpu) as u64)
+                .sum();
             push(&self.cpu.name(), "ram", "workspace", work, work);
         }
         out
@@ -899,7 +964,8 @@ impl Qwen3Moe {
             // The kept graph holds the old state's context: drop it first, then free the buffers.
             self.step = None;
             self.state = None;
-            self.state = Some(alloc_state(&h, n, n_kv, &self.primary)?);
+            let host = self.overlap.then_some(&self.cpu);
+            self.state = Some(alloc_state(&h, n, n_kv, &self.primary, host)?);
         }
         let st = self.state.as_ref().expect("state allocated above");
         st.tokens.get().set_i32(tokens)?;
@@ -1002,7 +1068,7 @@ impl Qwen3Moe {
         let mut predicted2: Vec<Option<Vec<i32>>> = vec![None; n_layer + 2];
         if let Some(streamer) = &mut self.streamer {
             // A step that failed may have left a prefetch in flight.
-            streamer.settle();
+            streamer.begin_step();
         }
         self.cpu.set_cpu_threads(self.cpu_threads);
         let offload = offloads(self.op_offload, self.op_offload_min_tokens, n);
@@ -1015,12 +1081,18 @@ impl Qwen3Moe {
             {
                 let t = Instant::now();
                 let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
-                let specs: Vec<([Tensor<'_>; 3], usize)> = groups
+                let specs: Vec<GroupSpec<'_>> = groups
                     .iter()
                     .map(|g| {
-                        let lw = &self.weights.layers[seg - 1];
-                        let exps = group_exps(g.src, lw, self.streamer.as_ref(), seg - 1);
-                        (exps, g.pairs.pairs.len())
+                        let n = g.pairs.pairs.len();
+                        match g.src {
+                            ExpertSrc::Copied => GroupSpec::Copied(n),
+                            src => {
+                                let lw = &self.weights.layers[seg - 1];
+                                let exps = group_exps(src, lw, self.streamer.as_ref(), seg - 1);
+                                GroupSpec::Exps(exps, n)
+                            }
+                        }
                     })
                     .collect();
                 let (graph, out, inputs) = build_segment(
@@ -1086,14 +1158,22 @@ impl Qwen3Moe {
                 });
             }
             lap(&mut prof.readback, t);
-            // The reads started for this layer must have landed before it is planned.
-            streamer.finish_prefetch(seg)?;
-            set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
+            // Under overlap a layer does not wait for its reads before it is planned (ADR 0054).
+            let gate = self.overlap && self.policy == MissPolicy::Cpu && !offload;
+            if !gate {
+                // The reads started for this layer must have landed before it is planned.
+                streamer.finish_prefetch(seg)?;
+                set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
+            }
             let layer = &self.weights.layers[seg];
             if self.policy == MissPolicy::Cpu {
                 // Resident experts run from the compute slots, the others from the RAM slots
                 // on the CPU, in chunks of the RAM slot count (ADR 0035).
                 let plan = streamer.plan_cpu(seg, &chosen)?;
+                let overlapped = gate && plan.cpu.len() == 1;
+                if gate && !overlapped && !plan.cpu.is_empty() {
+                    streamer.finish_prefetch(seg)?;
+                }
                 // The next layers' reads start before this layer's own misses are read: the
                 // reader has direct files of its own, and the device serves both at once.
                 prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
@@ -1105,6 +1185,61 @@ impl Qwen3Moe {
                 }
                 let cap_ram = group_cap(ExpertSrc::Ram, self.gpu, offload);
                 let cap_compute = group_cap(ExpertSrc::Compute, self.gpu, offload);
+                if overlapped {
+                    let chunk = &plan.cpu[0];
+                    let staged = streamer.stage_overlap(&self.file, seg, chunk)?;
+                    set_compute_threads(
+                        &self.cpu,
+                        self.cpu_threads,
+                        self.prefetch_threads,
+                        streamer,
+                    );
+                    if staged.pending.is_empty() {
+                        // Everything is in its slot: the usual path, the group in the next segment.
+                        streamer.finish_overlap(seg);
+                        let pairs = group_pairs(&chosen, nu, chunk, &staged.slots);
+                        for pairs in split_group(pairs, cap_ram) {
+                            pending.push(PendingGroup {
+                                src: ExpertSrc::Ram,
+                                pairs,
+                            });
+                        }
+                    } else {
+                        let sched_cpu = self
+                            .sched_cpu
+                            .as_mut()
+                            .expect("overlap has a cpu scheduler");
+                        let host = st.host.as_ref().expect("overlap has host buffers");
+                        let ctx = OverlapCtx {
+                            h: &h,
+                            chosen: &chosen,
+                            nu,
+                            chunk,
+                            slots: &staged.slots,
+                            host,
+                            metrics: &self.metrics,
+                        };
+                        let (pairs, graphs) = run_overlap_layer(
+                            &ctx, streamer, seg, sched_cpu, slot, &staged, &mut prof,
+                        )?;
+                        self.groups_run += graphs;
+                        self.group_graphs_run += graphs;
+                        pending.push(PendingGroup {
+                            src: ExpertSrc::Copied,
+                            pairs,
+                        });
+                    }
+                    if !plan.compute.is_empty() {
+                        let pairs = group_pairs(&chosen, nu, &plan.compute, &plan.compute_slots);
+                        for pairs in split_group(pairs, cap_compute) {
+                            pending.push(PendingGroup {
+                                src: ExpertSrc::Compute,
+                                pairs,
+                            });
+                        }
+                    }
+                    continue;
+                }
                 let last = plan.cpu.len() - 1;
                 for (i, chunk) in plan.cpu.iter().enumerate() {
                     let slots = streamer.stage_ram(&self.file, seg, chunk)?;
@@ -1163,6 +1298,13 @@ impl Qwen3Moe {
                     self.groups_run += 1;
                     self.group_graphs_run += 1;
                 }
+            }
+        }
+        if self.overlap {
+            // Mispredicted prefetches are still pinned and uncounted: collect them, so the
+            // counters and the cache are settled when the step returns (ADR 0054).
+            if let Some(streamer) = &mut self.streamer {
+                streamer.settle();
             }
         }
         // Segment graphs plus the standalone group graphs of this step (ADR 0035).
@@ -1268,6 +1410,7 @@ fn group_cap(src: ExpertSrc, gpu: bool, op_offload: bool) -> Option<usize> {
         && match src {
             ExpertSrc::Compute => true,
             ExpertSrc::Ram => op_offload,
+            ExpertSrc::Copied => false,
         };
     on_gpu.then_some(MAX_GROUP_ROWS)
 }
@@ -1298,6 +1441,18 @@ enum ExpertSrc {
     Compute,
     /// The RAM slot tensors, computed on the CPU.
     Ram,
+    /// Outputs the CPU already computed in arrival order and copied to the slot's `cpu_out`
+    /// (ADR 0054); the segment only scatters them into `acc`.
+    Copied,
+}
+
+/// A pair group as the segment builder sees it.
+#[derive(Clone, Copy)]
+enum GroupSpec<'a> {
+    /// Expert matmuls over these tensors for this many pairs.
+    Exps([Tensor<'a>; 3], usize),
+    /// This many rows of `cpu_out`.
+    Copied(usize),
 }
 
 /// A pair group waiting to be built into the next segment.
@@ -1317,6 +1472,7 @@ fn group_exps<'a>(
         ExpertSrc::Ram => streamer
             .and_then(|s| s.ram_exps(il))
             .expect("a RAM group needs the RAM tier"),
+        ExpertSrc::Copied => unreachable!("a copied group has no expert tensors"),
     }
 }
 
@@ -1346,17 +1502,22 @@ fn run_group_graph(
     Ok(splits)
 }
 
-/// Index tensors of a group in a graph; filled after the graph is allocated.
+/// Index tensors of a group in a graph; filled after the graph is allocated. A copied group has
+/// only `pairs`.
 struct GroupInputs<'a> {
-    tokens: Tensor<'a>,
-    ids: Tensor<'a>,
+    tokens: Option<Tensor<'a>>,
+    ids: Option<Tensor<'a>>,
     pairs: Tensor<'a>,
 }
 
 impl GroupInputs<'_> {
     fn write(&self, g: &PairGroup) -> Result<()> {
-        self.tokens.set_i32(&g.tokens)?;
-        self.ids.set_i32(&g.ids)?;
+        if let Some(t) = self.tokens {
+            t.set_i32(&g.tokens)?;
+        }
+        if let Some(t) = self.ids {
+            t.set_i32(&g.ids)?;
+        }
         self.pairs.set_i32(&g.pairs)?;
         Ok(())
     }
@@ -1366,6 +1527,29 @@ impl GroupInputs<'_> {
 fn acc_rows(s: &Slot) -> i64 {
     let ne = s.acc.get().ne();
     ne[1] * ne[2]
+}
+
+/// The expert FFN of `n_pairs` pairs: gather the pairs' rows of `x` (`[n_embd, n_tokens]`), run
+/// the expert matmuls with one expert per row, and return the unweighted outputs
+/// `[n_embd, n_pairs]` with the token and expert id index tensors to fill. One definition for
+/// the groups of the segments and of the CPU graphs, so they run the same ops.
+fn expert_rows<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    exps: [Tensor<'a>; 3],
+    x: Tensor<'a>,
+    n_pairs: usize,
+) -> (Tensor<'a>, Tensor<'a>, Tensor<'a>) {
+    let [gate_exps, up_exps, down_exps] = exps;
+    let p = n_pairs as i64;
+    let index = |ne: &[i64]| ctx.new_tensor(Type::I32, ne).set_input();
+    let (tokens, ids) = (index(&[p]), index(&[1, p]));
+    let xg = ctx.reshape(ctx.get_rows(x, tokens), &[h.n_embd as i64, 1, p]);
+    let up = ctx.mul_mat_id(up_exps, xg, ids);
+    let gate = ctx.mul_mat_id(gate_exps, xg, ids);
+    let act = ctx.swiglu_split(gate, up);
+    let out = ctx.mul_mat_id(down_exps, act, ids);
+    (ctx.reshape(out, &[h.n_embd as i64, p]), tokens, ids)
 }
 
 /// Adds the expert FFN of a group of `n_pairs` pairs: gather the pairs' inputs, run the expert
@@ -1380,20 +1564,172 @@ fn add_group<'a>(
     dst: Tensor<'a>,
     n_pairs: usize,
 ) -> (Tensor<'a>, GroupInputs<'a>) {
-    let [gate_exps, up_exps, down_exps] = exps;
-    let p = n_pairs as i64;
-    let index = |ne: &[i64]| ctx.new_tensor(Type::I32, ne).set_input();
-    let (tokens, ids, pairs) = (index(&[p]), index(&[1, p]), index(&[p]));
-    let xg = ctx.reshape(ctx.get_rows(s.xn.get(), tokens), &[h.n_embd as i64, 1, p]);
-    let up = ctx.mul_mat_id(up_exps, xg, ids);
-    let gate = ctx.mul_mat_id(gate_exps, xg, ids);
-    let act = ctx.swiglu_split(gate, up);
-    let out = ctx.mul_mat_id(down_exps, act, ids);
-    let out = ctx.reshape(out, &[h.n_embd as i64, p]);
+    let (out, tokens, ids) = expert_rows(h, ctx, exps, s.xn.get(), n_pairs);
+    let pairs = ctx.new_tensor(Type::I32, &[n_pairs as i64]).set_input();
     (
         ctx.set_rows(dst, out, pairs),
-        GroupInputs { tokens, ids, pairs },
+        GroupInputs {
+            tokens: Some(tokens),
+            ids: Some(ids),
+            pairs,
+        },
     )
+}
+
+/// Scatters `n_pairs` rows of the slot's `cpu_out` into the rows `pairs` of `dst`.
+fn add_copied<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    s: &'a Slot,
+    dst: Tensor<'a>,
+    n_pairs: usize,
+) -> (Tensor<'a>, GroupInputs<'a>) {
+    let cpu_out = s.cpu_out.as_ref().expect("overlap allocates cpu_out").get();
+    let row = h.n_embd as usize * 4;
+    let src = ctx.view(cpu_out, &[h.n_embd as i64, n_pairs as i64], &[row], 0);
+    let pairs = ctx.new_tensor(Type::I32, &[n_pairs as i64]).set_input();
+    (
+        ctx.set_rows(dst, src, pairs),
+        GroupInputs {
+            tokens: None,
+            ids: None,
+            pairs,
+        },
+    )
+}
+
+/// What the CPU groups of an overlapped layer step need.
+struct OverlapCtx<'a> {
+    h: &'a Hparams,
+    chosen: &'a [i32],
+    nu: usize,
+    /// The CPU experts of the layer step and their RAM slots, same order.
+    chunk: &'a [u32],
+    slots: &'a [u32],
+    host: &'a HostBufs,
+    metrics: &'a MemoryMetrics,
+}
+
+/// One CPU group graph on the CPU scheduler: the experts' outputs for `group` land in rows
+/// `row0..` of the host output buffer. Runs the ops of `add_group` on the host copy of `xn`.
+fn run_cpu_group(
+    h: &Hparams,
+    sched: &mut Sched,
+    exps: [Tensor<'_>; 3],
+    host: &HostBufs,
+    group: &PairGroup,
+    row0: usize,
+) -> Result<()> {
+    let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
+    let mut g = ctx.new_graph(SEGMENT_NODES);
+    let p = group.pairs.len();
+    let (out, tokens, ids) = expert_rows(h, &ctx, exps, host.xn.get(), p);
+    let row = h.n_embd as usize * 4;
+    let dst = ctx.view(
+        host.out.get(),
+        &[h.n_embd as i64, p as i64],
+        &[row],
+        row0 * row,
+    );
+    g.expand(ctx.cpy(out, dst));
+    sched.alloc_graph(&g)?;
+    tokens.set_i32(&group.tokens)?;
+    ids.set_i32(&group.ids)?;
+    sched.compute(&g)?;
+    Ok(())
+}
+
+/// Computes `subset` (experts of the layer's CPU chunk) as one group and appends its pairs to
+/// `all`, whose rows are the host output buffer's rows in order. Returns the time it took.
+fn compute_subset(
+    c: &OverlapCtx<'_>,
+    streamer: &Streamer,
+    seg: usize,
+    sched: &mut Sched,
+    subset: &[u32],
+    all: &mut PairGroup,
+) -> Result<Duration> {
+    let t = Instant::now();
+    let slots: Vec<u32> = subset
+        .iter()
+        .map(|e| {
+            let i = c
+                .chunk
+                .iter()
+                .position(|x| x == e)
+                .expect("a subset of the chunk");
+            c.slots[i]
+        })
+        .collect();
+    let g = group_pairs(c.chosen, c.nu, subset, &slots);
+    let exps = streamer.ram_exps(seg).expect("RAM tier");
+    run_cpu_group(c.h, sched, exps, c.host, &g, all.pairs.len())?;
+    all.tokens.extend(&g.tokens);
+    all.pairs.extend(&g.pairs);
+    all.ids.extend(&g.ids);
+    Ok(t.elapsed())
+}
+
+/// The CPU experts of an overlapped layer step (ADR 0054): `xn` to the host, the ready experts
+/// as one group, then the others in groups as they land, the outputs into `cpu_out` of the
+/// slot. Returns the concatenated pairs in the order their rows were written, and the number of
+/// graphs run.
+fn run_overlap_layer(
+    c: &OverlapCtx<'_>,
+    streamer: &mut Streamer,
+    seg: usize,
+    sched: &mut Sched,
+    slot: &Slot,
+    staged: &StagedLayer,
+    prof: &mut StepProfile,
+) -> Result<(PairGroup, u64)> {
+    let t = Instant::now();
+    let xn = slot.xn.get();
+    c.host
+        .xn
+        .get()
+        .set_bytes(&xn.get_bytes(0, xn.nbytes())?, 0)?;
+    let mut copy = t.elapsed();
+    let mut all = PairGroup::default();
+    let mut graphs = 0;
+    if !staged.ready.is_empty() {
+        let d = compute_subset(c, streamer, seg, sched, &staged.ready, &mut all)?;
+        prof.cpu_ready += d;
+        c.metrics.layer_part("cpu_ready", d);
+        graphs += 1;
+    }
+    let mut pending = staged.pending.clone();
+    while !pending.is_empty() {
+        let t = Instant::now();
+        let landed = streamer.wait_landed(seg, &pending)?;
+        let w = t.elapsed();
+        prof.read_wait += w;
+        c.metrics.layer_part("read_wait", w);
+        if landed.is_empty() {
+            return Err(ModelError::Invalid("no expert landed".into()));
+        }
+        pending.retain(|e| !landed.contains(e));
+        let d = compute_subset(c, streamer, seg, sched, &landed, &mut all)?;
+        prof.cpu_landed += d;
+        c.metrics.layer_part("cpu_landed", d);
+        graphs += 1;
+    }
+    let t = Instant::now();
+    let bytes = c
+        .host
+        .out
+        .get()
+        .get_bytes(0, all.pairs.len() * c.h.n_embd as usize * 4)?;
+    slot.cpu_out
+        .as_ref()
+        .expect("overlap allocates cpu_out")
+        .get()
+        .set_bytes(&bytes, 0)?;
+    copy += t.elapsed();
+    prof.copy += copy;
+    c.metrics.layer_part("copy", copy);
+    streamer.finish_overlap(seg);
+    Ok((all, graphs))
 }
 
 /// With `slots`, the expert tensors have that many entries and are left empty (zeros) for the
@@ -1620,7 +1956,14 @@ fn alloc_kv(
     ))
 }
 
-fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<State> {
+/// `host`: with overlapped decode, the CPU backend that holds the host buffers (ADR 0054).
+fn alloc_state(
+    h: &Hparams,
+    n: usize,
+    n_kv: usize,
+    backend: &Backend,
+    host: Option<&Backend>,
+) -> Result<State> {
     let ctx = Rc::new(Context::new(32, 0)?);
     let (ne, nu, nt) = (h.n_embd as i64, h.n_expert_used as i64, n as i64);
     let slot = |i: usize| {
@@ -1638,6 +1981,7 @@ fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<
             pred: t(Type::I32, &[nu, nt], "predicted"),
             pred2: t(Type::I32, &[nu, nt], "predicted2"),
             acc: t(Type::F32, &[ne, nu, nt], "moe_acc"),
+            cpu_out: host.map(|_| t(Type::F32, &[ne, nu * nt], "cpu_out")),
         }
     };
     let state = State {
@@ -1647,8 +1991,24 @@ fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<
         pos: ctx.new_persistent(Type::I32, &[nt]),
         mask: ctx.new_persistent(Type::F16, &[n_kv as i64, pad(n, MASK_PAD) as i64]),
         slots: [slot(0), slot(1)],
+        host: None,
     };
     ctx.alloc_tensors(backend)?;
+    let host = match host {
+        Some(cpu) => {
+            let hctx = Rc::new(Context::new(4, 0)?);
+            let bufs = HostBufs {
+                xn: hctx.new_persistent(Type::F32, &[ne, nt]),
+                out: hctx.new_persistent(Type::F32, &[ne, nu * nt]),
+            };
+            bufs.xn.get().set_name("xn_host");
+            bufs.out.get().set_name("cpu_out_host");
+            hctx.alloc_tensors(cpu)?;
+            Some(bufs)
+        }
+        None => None,
+    };
+    let state = State { host, ..state };
     Ok(state)
 }
 
@@ -1663,7 +2023,7 @@ fn build_segment<'a>(
     seg: usize,
     last_only: bool,
     predict_depth: usize,
-    groups: &[([Tensor<'a>; 3], usize)],
+    groups: &[GroupSpec<'a>],
 ) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
     let n_layer = h.n_layer as usize;
@@ -1677,8 +2037,11 @@ fn build_segment<'a>(
             // The earlier groups are in `acc`; these complete it, then the same weighting
             // and sum as a single pass (ADR 0034).
             let mut acc = ctx.reshape(s.acc.get(), &[h.n_embd as i64, acc_rows(s)]);
-            for &(exps, n_pairs) in groups {
-                let (done, i) = add_group(h, ctx, exps, s, acc, n_pairs);
+            for &spec in groups {
+                let (done, i) = match spec {
+                    GroupSpec::Exps(exps, n_pairs) => add_group(h, ctx, exps, s, acc, n_pairs),
+                    GroupSpec::Copied(n_pairs) => add_copied(h, ctx, s, acc, n_pairs),
+                };
                 acc = done;
                 inputs.push(i);
             }
@@ -1975,6 +2338,67 @@ mod tests {
         }
     }
 
+    proptest::proptest! {
+        /// Rule 5, every unit computed exactly once: for random routings and a random split of
+        /// the distinct experts into the compute-tier group and the CPU groups of an overlapped
+        /// layer (ready, then arrival order), the groups' pairs partition all pairs, and each
+        /// expert's pairs are all in the group of that expert (ADR 0054).
+        #[test]
+        fn overlap_groups_partition_all_pairs(
+            n_tokens in 1usize..12,
+            n_used in 1usize..6,
+            n_groups in 1usize..5,
+            seed in proptest::prelude::any::<u64>(),
+        ) {
+            let mut x = seed | 1;
+            let mut next = |m: u64| {
+                x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                (x >> 33) % m
+            };
+            let mut chosen = Vec::new();
+            for _ in 0..n_tokens {
+                let mut token: Vec<i32> = Vec::new();
+                while token.len() < n_used {
+                    let e = next(12) as i32;
+                    if !token.contains(&e) {
+                        token.push(e);
+                    }
+                }
+                chosen.extend(token);
+            }
+            let mut distinct: Vec<u32> = Vec::new();
+            for &e in &chosen {
+                if !distinct.contains(&(e as u32)) {
+                    distinct.push(e as u32);
+                }
+            }
+            // Group 0 is the compute tier, 1.. the ready group and the arrival groups.
+            let mut members: Vec<Vec<u32>> = vec![Vec::new(); n_groups + 1];
+            for &e in &distinct {
+                members[next(n_groups as u64 + 1) as usize].push(e);
+            }
+            let mut seen = vec![0u32; chosen.len()];
+            for (gi, experts) in members.iter().enumerate() {
+                // Slots are arbitrary numbers, unrelated to the expert ids.
+                let slots: Vec<u32> = (0..experts.len() as u32).rev().collect();
+                let g = group_pairs(&chosen, n_used, experts, &slots);
+                for &pair in &g.pairs {
+                    seen[pair as usize] += 1;
+                    proptest::prop_assert!(
+                        experts.contains(&(chosen[pair as usize] as u32)),
+                        "group {} holds a pair of another expert", gi
+                    );
+                }
+                for &e in experts {
+                    let want = chosen.iter().filter(|&&c| c as u32 == e).count();
+                    let got = g.pairs.iter().filter(|&&p| chosen[p as usize] as u32 == e).count();
+                    proptest::prop_assert_eq!(got, want);
+                }
+            }
+            proptest::prop_assert!(seen.iter().all(|&n| n == 1));
+        }
+    }
+
     /// A group over the cap splits into consecutive sub-groups that concatenate to the original.
     #[test]
     fn split_keeps_order_and_covers_every_pair() {
@@ -2166,7 +2590,7 @@ mod graph_order {
         let h = m.file.hparams.clone();
         let n_layer = h.n_layer as usize;
         for (n, last_only) in [(1, false), (5, true)] {
-            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary).unwrap();
+            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary, None).unwrap();
             for seg in 0..=n_layer {
                 let build = |depth: usize| {
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
@@ -2192,7 +2616,7 @@ mod graph_order {
         let m = model();
         let h = m.file.hparams.clone();
         for (n, last_only) in [(1, false), (5, true)] {
-            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary).unwrap();
+            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary, None).unwrap();
             let segments = segment_ops(&m, &st, last_only);
             for record in [false, true] {
                 let what = format!("step n={n} record={record}");

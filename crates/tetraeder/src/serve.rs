@@ -1,9 +1,11 @@
 //! `tetraeder serve`: the OpenAI and Anthropic APIs over an engine (ADR 0028, ADR 0046).
 
 use crate::engine_args::PlacementArgs;
+use crate::replan;
 use anyhow::Context as _;
 use clap::{Args, ValueEnum};
-use std::path::PathBuf;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tetraeder_gateway::engine::Engine as GatewayEngine;
@@ -11,6 +13,7 @@ use tetraeder_gateway::fake::{FakeEngine, serve_script};
 use tetraeder_gateway::gateway::{Gateway, GatewayConfig};
 use tetraeder_gateway::reqlog::RequestLog;
 use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy};
+use tetraeder_planner::Workload;
 use tetraeder_scheduler::{Scheduler, SchedulerConfig};
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
@@ -84,6 +87,47 @@ pub struct ServeArgs {
     /// MoE builder: read predicted experts ahead into the RAM tier.
     #[arg(long)]
     pub prefetch: bool,
+    /// Serve a plan and replan by drain and restart (ADR 0055): `auto` picks one of the
+    /// executable candidates for this box and model, or a plan TOML file. Replaces the
+    /// placement flags.
+    #[arg(
+        long,
+        value_name = "auto|FILE",
+        conflicts_with_all = [
+            "ngl", "override_tensor", "split_mode", "tensor_split", "main_gpu", "threads",
+            "batch", "ubatch", "expert_slots", "ram_slots", "fake",
+        ]
+    )]
+    pub plan: Option<String>,
+    /// Hardware graph (TOML or JSON, typically from `tetraeder-plan score`); default: discover
+    /// the box and take GPU rates from the priors.
+    #[arg(long, value_name = "FILE", requires = "plan")]
+    pub hw: Option<PathBuf>,
+    /// Request shape the plan is chosen for, `PROMPT:GENERATED` tokens.
+    #[arg(long, default_value = "2048:128", value_parser = replan::start::parse_workload)]
+    pub plan_workload: Workload,
+    /// GPU memory the plan may use, in bytes (default: the GPU capacity).
+    #[arg(long, requires = "plan")]
+    pub plan_vram: Option<u64>,
+    /// Host memory the plan may use, in bytes (default: the RAM capacity).
+    #[arg(long, requires = "plan")]
+    pub plan_ram: Option<u64>,
+    /// Admin listener of `--plan`: `POST /admin/replan`, `POST /api/v2/alerts` (the SLO burn
+    /// alerts of vmalert) and `GET /admin/plan`. No authentication: keep it on loopback.
+    #[arg(long, default_value = "127.0.0.1:8081")]
+    pub admin: SocketAddr,
+    /// Seconds between residual checks of the step time against the prediction.
+    #[arg(long, default_value_t = 60)]
+    pub replan_tick: u64,
+    /// Seconds a switch waits for requests to finish before it cuts them.
+    #[arg(long, default_value_t = 120)]
+    pub drain_timeout: u64,
+    /// Seconds after a switch before the next one.
+    #[arg(long, default_value_t = 600)]
+    pub replan_dwell: u64,
+    /// Plan hints TOML; only `[stability]` (switch rate, freeze windows in UTC) is read.
+    #[arg(long, value_name = "FILE")]
+    pub hints: Option<PathBuf>,
 }
 
 fn parse_miss(s: &str) -> Result<MissPolicy, String> {
@@ -98,7 +142,17 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
     let telemetry = Arc::new(Telemetry::new(&TelemetryConfig::from_env())?);
     telemetry.install_global()?;
     crate::info::record_cpu_backend(telemetry.metrics());
-    let engine = build_engine(a, &telemetry)?;
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let planned = match &a.plan {
+        Some(spec) => Some(replan::start(a, spec, &telemetry, rt.handle().clone())?),
+        None => None,
+    };
+    let engine: Arc<dyn GatewayEngine> = match &planned {
+        Some(p) => p.engine.clone(),
+        None => build_engine(a, &telemetry)?,
+    };
     let served = engine
         .models()
         .first()
@@ -125,19 +179,36 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
         None => None,
     };
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
     let res = rt.block_on(async {
         let listener = tokio::net::TcpListener::bind((a.host.as_str(), a.port))
             .await
             .with_context(|| format!("cannot listen on {}:{}", a.host, a.port))?;
         let addr = listener.local_addr()?;
         eprintln!("listening on http://{addr}");
+        let armed = planned
+            .as_ref()
+            .and_then(|p| p.replan.clone().map(|h| (h, p.dwell_s)));
+        let admin = match armed {
+            Some((h, dwell)) => {
+                let l = tokio::net::TcpListener::bind(a.admin)
+                    .await
+                    .with_context(|| format!("cannot listen on {}", a.admin))?;
+                eprintln!("admin on http://{}", l.local_addr()?);
+                Some((l, replan::admin::router(h, dwell)))
+            }
+            None => None,
+        };
+        let admin_server = async {
+            match admin {
+                Some((l, app)) => axum::serve(l, app).await.context("admin server failed"),
+                None => std::future::pending().await,
+            }
+        };
         tokio::select! {
             r = tetraeder_gateway::server::serve_with(listener, Arc::new(gw), log) => {
                 r.context("server failed")
             }
+            r = admin_server => r,
             _ = tokio::signal::ctrl_c() => Ok(()),
         }
     });
@@ -176,20 +247,7 @@ fn build_engine(
                 == "qwen3moe"
         }
     };
-    let mut cfg = SchedulerConfig::new(&path);
-    cfg.alias = a.alias.clone();
-    cfg.temperature = a.temp;
-    cfg.top_k = a.top_k;
-    cfg.top_p = a.top_p;
-    cfg.metrics = Some(telemetry.metrics().clone());
-    cfg.cache_ram_bytes = a.cache_ram << 20;
-    cfg.chat_template = match &a.chat_template_file {
-        Some(f) => Some(
-            std::fs::read_to_string(f)
-                .with_context(|| format!("cannot read chat template {}", f.display()))?,
-        ),
-        None => tetraeder_scheduler::chat_template(&path),
-    };
+    let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
     let tel = Arc::clone(telemetry);
     let a = a.clone_load_args();
     let engine = Scheduler::start(cfg, move || {
@@ -206,6 +264,48 @@ fn build_engine(
     })
     .map_err(anyhow::Error::msg)?;
     Ok(Arc::new(engine))
+}
+
+/// The parts of a `SchedulerConfig` that do not change when the engine is reloaded.
+pub struct SchedParts {
+    alias: Option<String>,
+    temperature: f32,
+    top_k: u32,
+    top_p: f32,
+    cache_ram_bytes: usize,
+    chat_template: Option<String>,
+}
+
+impl SchedParts {
+    pub fn new(a: &ServeArgs) -> anyhow::Result<Self> {
+        let path = a.model.clone().context("-m is required")?;
+        Ok(Self {
+            alias: a.alias.clone(),
+            temperature: a.temp,
+            top_k: a.top_k,
+            top_p: a.top_p,
+            cache_ram_bytes: a.cache_ram << 20,
+            chat_template: match &a.chat_template_file {
+                Some(f) => Some(
+                    std::fs::read_to_string(f)
+                        .with_context(|| format!("cannot read chat template {}", f.display()))?,
+                ),
+                None => tetraeder_scheduler::chat_template(&path),
+            },
+        })
+    }
+
+    pub fn config(&self, path: &Path, metrics: tetraeder_telemetry::Metrics) -> SchedulerConfig {
+        let mut cfg = SchedulerConfig::new(path);
+        cfg.alias = self.alias.clone();
+        cfg.temperature = self.temperature;
+        cfg.top_k = self.top_k;
+        cfg.top_p = self.top_p;
+        cfg.metrics = Some(metrics);
+        cfg.cache_ram_bytes = self.cache_ram_bytes;
+        cfg.chat_template = self.chat_template.clone();
+        cfg
+    }
 }
 
 /// What the worker thread needs to load a model.

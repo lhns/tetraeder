@@ -1,6 +1,6 @@
 # 0040. Planner: executable candidates, a cost model calibrated from anchor runs, scored by regret and rank
 
-Status: Proposed (Phase 3a)
+Status: Proposed (Phase 3a). "Builder scoring" amended by ADR 0056: the RAM tier and disk reads become cost-model features.
 
 ## Context
 
