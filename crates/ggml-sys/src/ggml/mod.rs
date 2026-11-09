@@ -11,6 +11,7 @@ use std::ffi::{CStr, c_char};
 
 mod backend;
 mod context;
+pub mod cpu;
 mod quant;
 mod sched;
 

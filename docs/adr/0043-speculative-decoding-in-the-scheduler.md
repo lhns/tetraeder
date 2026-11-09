@@ -59,3 +59,5 @@ Files in bench/results/20261103/. Draft: Qwen3-0.6B Q8_0, fully on the GPU, gree
 - The adaptive policy behaves as designed: it picked k=6 on the high-acceptance main text (where its cost model was misled by the offload pathology only after the first steps) and mostly k=0 on the 1K diagnostic text with 0.14 n-gram acceptance.
 
 Decisions from this: (1) op offload must not apply to decode or verify steps: the threshold should count tokens, not pair rows, or the builder should offload only prefill ubatches (a change in `qwen3moe.rs`, owned by the Phase 2 track); (2) rerun the main pair with that fix before choosing defaults; speculation stays off by default until then.
+
+- **AVX-512 variants (ADR 0052).** Verification batches are not bitwise batch-invariant on AVX-512 variants: CI runners flipped a token at a top-2 margin of 0.0044. `spec_builder` accepts a departure from plain greedy there when the margin is below 1e-2 of the largest logit (1e-3 otherwise); this only skips numeric ties.

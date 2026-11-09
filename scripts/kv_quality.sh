@@ -6,6 +6,7 @@
 # kv-quality) and scripts/session.sh (b2-proxy). Env: KV_QUALITY_MIN (time limit, default 60).
 exec 7> /root/tetraeder_kv_quality.lock; flock -n 7 || exit 0
 cd "$(dirname "$0")/.." || exit 1
+bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 out=${1:?usage: $0 <out-json>}
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"

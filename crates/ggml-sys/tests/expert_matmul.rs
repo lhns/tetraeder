@@ -14,7 +14,6 @@
 use std::time::Instant;
 use tetraeder_ggml_sys::ggml::{Backend, Context, Sched, Tensor, Type, quantize};
 use tetraeder_ggml_sys::llama::system_info;
-use tetraeder_ggml_sys::raw as sys;
 
 const EMBD: i64 = 4096;
 const FF: i64 = 1536;
@@ -145,18 +144,18 @@ fn cpu_decode_expert_matmul_q4k() {
     let layer_ms = g.median_ms + u.median_ms + d.median_ms;
 
     let sysinfo = system_info();
-    // SAFETY: argument-free queries of the compile-time feature set.
-    let feat = unsafe {
-        serde_like(&[
-            ("avx2", sys::ggml_cpu_has_avx2()),
-            ("fma", sys::ggml_cpu_has_fma()),
-            ("avx512", sys::ggml_cpu_has_avx512()),
-            ("avx512_vnni", sys::ggml_cpu_has_avx512_vnni()),
-            ("avx512_bf16", sys::ggml_cpu_has_avx512_bf16()),
-            ("amx_int8", sys::ggml_cpu_has_amx_int8()),
-            ("llamafile", sys::ggml_cpu_has_llamafile()),
-        ])
-    };
+    // Features of the loaded CPU backend (the variant ggml picked), not of the host.
+    let info = tetraeder_ggml_sys::cpu::backend_info().unwrap();
+    let has = |f: &str| i32::from(info.isa.iter().any(|x| x == f));
+    let feat = serde_like(&[
+        ("avx2", has("AVX2")),
+        ("fma", has("FMA")),
+        ("avx512", has("AVX512")),
+        ("avx512_vnni", has("AVX512_VNNI")),
+        ("avx512_bf16", has("AVX512_BF16")),
+        ("amx_int8", has("AMX_INT8")),
+        ("llamafile", has("LLAMAFILE")),
+    ]);
     let op = |s: &Stats| {
         format!(
             "{{\"median_ms\":{:.4},\"min_ms\":{:.4},\"mean_ms\":{:.4},\"gb_s\":{:.2}}}",

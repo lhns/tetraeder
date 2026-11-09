@@ -26,6 +26,9 @@ pub mod attr {
     pub const FAULT_CLASS: &str = "tetraeder.fault.class";
     pub const REPLAN_TRIGGER: &str = "tetraeder.replan.trigger";
     pub const REPLAN_OUTCOME: &str = "tetraeder.replan.outcome";
+    pub const CPU_TIER: &str = "tetraeder.cpu.tier";
+    pub const CPU_ISA: &str = "tetraeder.cpu.isa";
+    pub const CPU_DISPATCH: &str = "tetraeder.cpu.dispatch";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +119,8 @@ pub struct Metrics {
     bottleneck_fault: Counter<u64>,
     replan_total: Counter<u64>,
     replan_duration: Histogram<f64>,
+    cpu_variant: Gauge<u64>,
+    cpu_isa_missing: Gauge<u64>,
 }
 
 impl Metrics {
@@ -318,6 +323,16 @@ impl Metrics {
                 .with_boundaries(vec![
                     0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
                 ])
+                .build(),
+            cpu_variant: meter
+                .u64_gauge("tetraeder.cpu.variant")
+                .with_unit("1")
+                .with_description("CPU backend variant in use: value 1, labelled by tier, ISA and dispatch")
+                .build(),
+            cpu_isa_missing: meter
+                .u64_gauge("tetraeder.cpu.isa.missing")
+                .with_unit("{feature}")
+                .with_description("Host CPU features the loaded CPU backend lacks (a lower variant than the host could run)")
                 .build(),
         }
     }
@@ -576,6 +591,23 @@ impl Metrics {
 
     pub fn replan_duration(&self, d: Duration) {
         self.replan_duration.record(d.as_secs_f64(), &[]);
+    }
+
+    /// Once at engine start (ADR 0052): the CPU backend variant that is loaded. `isa` and
+    /// `missing` are ggml feature names; `dispatch` is `dl` or `static`.
+    pub fn cpu_backend(&self, tier: &str, isa: &[String], dispatch: &str, missing: &[String]) {
+        self.cpu_variant.record(
+            1,
+            &[
+                KeyValue::new(attr::CPU_TIER, tier.to_owned()),
+                KeyValue::new(attr::CPU_ISA, isa.join(",")),
+                KeyValue::new(attr::CPU_DISPATCH, dispatch.to_owned()),
+            ],
+        );
+        self.cpu_isa_missing.record(
+            missing.len() as u64,
+            &[KeyValue::new(attr::CPU_ISA, missing.join(","))],
+        );
     }
 
     /// The KV cache (ADR 0050 b): `memory.used` and `.capacity` of kind `kv` with the cache

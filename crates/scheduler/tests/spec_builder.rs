@@ -7,7 +7,7 @@
 //! multi-row step takes other kernels for some ops (llamafile sgemm for F32 from 2 rows, ADR
 //! 0043) and its logits differ in the last bits (seen on the CI runners, 2026-11-03), so there
 //! the logits must agree to a relative 1e-4 and speculative output may leave plain greedy only
-//! at a near-tie of the plain run (top-2 margin below `NEAR_TIE` of the largest logit; the
+//! at a near-tie of the plain run (top-2 margin below `near_tie()` of the largest logit; the
 //! last-bit differences add up over the decoded tokens).
 //!
 //! Hardware label (AGENTS rule 9): `cpu_*` tests need no GPU.
@@ -58,13 +58,26 @@ fn prefill(m: &mut Qwen3Moe) -> Vec<i32> {
     h
 }
 
-const NEAR_TIE: f32 = 1e-3;
+/// Top-2 margin below which plain greedy counts as a near-tie. The AVX-512 variants (ADR 0052)
+/// differ more between one row and a few rows than AVX2: CI runners flipped a token at a margin
+/// of 0.0044 on both Linux and Windows. Widening it only skips positions where the top-2 logits
+/// are a numeric tie; verification batches are not bitwise batch-invariant on AVX-512 variants.
+fn near_tie() -> f32 {
+    let info = tetraeder_ggml_sys::cpu::backend_info().expect("CPU backend");
+    if info.isa.iter().any(|f| f == "AVX512") {
+        1e-2
+    } else {
+        1e-3
+    }
+}
 
-/// ggml's CPU kernels give the same bits for one row and for a few rows.
+/// ggml's CPU kernels give the same bits for one row and for a few rows. Decided by the loaded
+/// CPU backend (ADR 0052), not the host: a forced low variant is batch-invariant on an AVX2 host.
 fn batch_invariant_kernels() -> bool {
     #[cfg(target_arch = "x86_64")]
     {
-        !std::arch::is_x86_feature_detected!("avx2")
+        let info = tetraeder_ggml_sys::cpu::backend_info().expect("CPU backend");
+        !info.isa.iter().any(|f| f == "AVX2")
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
@@ -105,7 +118,7 @@ fn assert_agrees(got: &[i32], want: &[i32], margins: &[f32], what: &str) -> bool
         return true;
     };
     assert!(
-        !batch_invariant_kernels() && margins[i] < NEAR_TIE,
+        !batch_invariant_kernels() && margins[i] < near_tie(),
         "{what}: differs from plain greedy at {i} (plain top-2 margin {} of the largest logit)",
         margins[i]
     );
