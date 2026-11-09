@@ -6,7 +6,14 @@ use std::sync::Mutex;
 #[derive(Debug)]
 pub struct StepRing {
     cap: usize,
-    inner: Mutex<VecDeque<StepSample>>,
+    inner: Mutex<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    q: VecDeque<StepSample>,
+    /// Samples pushed since creation (the deque forgets evicted ones).
+    pushed: u64,
 }
 
 /// Summary of the samples currently in the ring.
@@ -25,22 +32,32 @@ impl StepRing {
         let cap = cap.max(1);
         Self {
             cap,
-            inner: Mutex::new(VecDeque::with_capacity(cap)),
+            inner: Mutex::new(Inner {
+                q: VecDeque::with_capacity(cap),
+                pushed: 0,
+            }),
         }
     }
 
     pub fn push(&self, s: StepSample) {
-        let mut q = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        if q.len() == self.cap {
-            q.pop_front();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if g.q.len() == self.cap {
+            g.q.pop_front();
         }
-        q.push_back(s);
+        g.q.push_back(s);
+        g.pushed += 1;
+    }
+
+    /// Samples pushed since creation; a reader that remembers it knows how many of the newest
+    /// samples in [`Self::snapshot`] it has not seen.
+    pub fn pushed(&self) -> u64 {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).pushed
     }
 
     /// Copy of the buffer, oldest first.
     pub fn snapshot(&self) -> Vec<StepSample> {
-        let q = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        q.iter().copied().collect()
+        let g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.q.iter().copied().collect()
     }
 
     pub fn stats(&self) -> StepStats {
@@ -97,5 +114,15 @@ mod tests {
         assert_eq!(st.p50_ms, 2.0);
         assert_eq!(st.max_ms, 3.0);
         assert_eq!(st.tokens, 3);
+    }
+
+    #[test]
+    fn pushed_counts_evicted_samples_too() {
+        let r = StepRing::new(2);
+        assert_eq!(r.pushed(), 0);
+        for ms in 1..=5 {
+            r.push(step(ms));
+        }
+        assert_eq!((r.pushed(), r.snapshot().len()), (5, 2));
     }
 }

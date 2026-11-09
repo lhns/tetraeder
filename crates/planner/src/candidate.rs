@@ -74,6 +74,9 @@ pub enum Placement {
     /// Own MoE builder: dense weights on the GPU, `vram_slots` expert slots per layer in VRAM
     /// and `ram_slots` in the RAM tier; the experts live in the file (ADR 0031, 0037).
     Builder { vram_slots: u32, ram_slots: u32 },
+    /// Every unit on the CPU, no GPU in the stage (a box without a usable GPU, ADR 0055).
+    /// `enumerate` and `enumerate_builder` never emit it; [`enumerate_cpu`] does.
+    Cpu,
 }
 
 impl Placement {
@@ -85,6 +88,7 @@ impl Placement {
                 vram_slots,
                 ram_slots,
             } => format!("builder vram_slots={vram_slots} ram_slots={ram_slots}"),
+            Self::Cpu => "cpu".to_string(),
         }
     }
 
@@ -94,6 +98,7 @@ impl Placement {
             Self::Dense { gpu_layers } => gpu_layers,
             Self::Moe { gpu_expert_layers } => gpu_expert_layers,
             Self::Builder { vram_slots, .. } => vram_slots,
+            Self::Cpu => 0,
         }
     }
 }
@@ -219,6 +224,13 @@ pub fn footprint(
             f.weights_host += crate::builder::ram_slot_bytes(layout, ram_slots) + BUILDER_IO;
             l
         }
+        Placement::Cpu => {
+            for b in &layout.layers {
+                f.weights_host += b.attn_bytes + b.ffn_bytes + b.expert_bytes;
+            }
+            f.weights_host += layout.output_bytes;
+            0
+        }
     };
     f.kv_gpu = layer_kv * gpu_layers as u64;
     f.kv_host = layer_kv * (l - gpu_layers) as u64;
@@ -306,6 +318,12 @@ pub fn build_plan(
                 rules.push(assign(&[Expert], Some(Span(k, l)), CPU, fmt));
             }
         }
+        Placement::Cpu => {
+            rules.push(assign(&[Attn, Mlp, Head], None, CPU, fmt));
+            if layout.n_expert > 0 {
+                rules.push(assign(&[Expert], None, CPU, fmt));
+            }
+        }
         Placement::Builder {
             vram_slots,
             ram_slots,
@@ -345,7 +363,11 @@ pub fn build_plan(
         replicas: vec![Replica {
             stages: vec![Stage {
                 layers: Span(0, l),
-                devices: vec![GPU.to_string(), CPU.to_string()],
+                devices: if placement == Placement::Cpu {
+                    vec![CPU.to_string()]
+                } else {
+                    vec![GPU.to_string(), CPU.to_string()]
+                },
                 tp: Some(1),
                 ep: Some(1),
                 assign: rules,
@@ -591,6 +613,42 @@ pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> 
     }
 }
 
+/// Candidates for a box without a GPU: [`Placement::Cpu`] times threads in {quota, quota / 2}
+/// times [`UBATCHES`], op offload off. A combination whose host estimate exceeds the RAM budget
+/// is dropped. Ids `c00`... in that order.
+pub fn enumerate_cpu(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> Enumeration {
+    let mut dropped = Vec::new();
+    let mut candidates = Vec::new();
+    for th in thread_values(budget.threads) {
+        for ub in UBATCHES {
+            let f = footprint(layout, Placement::Cpu, ub, workload, KvFormat::default());
+            match fits(budget, &f) {
+                Ok(()) => {
+                    let id = format!("c{:02}", candidates.len());
+                    candidates.push(build_candidate(
+                        &id,
+                        layout,
+                        Placement::Cpu,
+                        (th, ub, false),
+                        workload,
+                    ));
+                }
+                Err(e) => dropped.push((format!("cpu threads={th} ubatch={ub}"), e)),
+            }
+        }
+    }
+    let placements = if candidates.is_empty() {
+        vec![]
+    } else {
+        vec![Placement::Cpu]
+    };
+    Enumeration {
+        candidates,
+        dropped,
+        placements,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -766,6 +824,40 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
                 .iter()
                 .any(|(_, why)| why.starts_with("gpu estimate"))
         );
+    }
+
+    #[test]
+    fn cpu_candidates_are_valid_and_fit() {
+        for l in [fixtures::dense(), fixtures::moe()] {
+            let en = enumerate_cpu(&BUDGET, &l, &WORK);
+            assert_eq!(en.candidates.len(), 4);
+            assert_eq!(en, enumerate_cpu(&BUDGET, &l, &WORK));
+            let ids: Vec<_> = en.candidates.iter().map(|c| c.id.as_str()).collect();
+            assert_eq!(ids, ["c00", "c01", "c02", "c03"]);
+            let (hw, model) = (hw(&BUDGET), l.to_model_desc());
+            let reserve = BTreeMap::from([("cpu0".to_string(), HOST_RESERVE)]);
+            let ctx = Context {
+                hw: &hw,
+                model: &model,
+                phase: Phase(3),
+                reserve: &reserve,
+                hints: None,
+            };
+            for c in &en.candidates {
+                assert_eq!((c.placement, c.op_offload()), (Placement::Cpu, false));
+                validate(&c.plan, &ctx).unwrap_or_else(|e| panic!("{}: {e:#?}", c.id));
+                let f = footprint(&l, c.placement, c.ubatch(), &WORK, KvFormat::default());
+                assert_eq!((f.gpu, f.weights_gpu, f.kv_gpu), (0, 0, 0));
+                assert!(f.host <= BUDGET.ram_bytes);
+            }
+            let small = Budget {
+                ram_bytes: 1 << 30,
+                ..BUDGET
+            };
+            let en = enumerate_cpu(&small, &l, &WORK);
+            assert!(en.candidates.is_empty() && en.placements.is_empty());
+            assert_eq!(en.dropped.len(), 4);
+        }
     }
 
     #[test]

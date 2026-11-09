@@ -214,9 +214,10 @@ pub fn build_layout(meta: &ModelMeta, tensors: &[TensorRec]) -> Result<ModelLayo
     })
 }
 
-/// Synthetic layouts shaped like the models of the exit test, shared by the tests.
-#[cfg(test)]
-pub(crate) mod fixtures {
+/// Synthetic layouts shaped like the models of the exit test, shared by the tests (also the
+/// integration tests of this crate, hence public).
+#[doc(hidden)]
+pub mod fixtures {
     use super::*;
 
     fn rec(name: &str, ty: &str, dims: &[u64]) -> TensorRec {
