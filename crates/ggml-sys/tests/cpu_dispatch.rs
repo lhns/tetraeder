@@ -23,8 +23,15 @@ fn cpu_backend_reports_variant() {
     let info = cpu::backend_info().expect("CPU backend must load");
     eprintln!("{info:#?}");
     let dl = cfg!(ggml_dl);
-    assert_eq!(info.dispatch, if dl { Dispatch::Dl } else { Dispatch::Static });
-    assert_eq!(info.module_dir.is_some(), dl, "module dir only in a DL build");
+    assert_eq!(
+        info.dispatch,
+        if dl { Dispatch::Dl } else { Dispatch::Static }
+    );
+    assert_eq!(
+        info.module_dir.is_some(),
+        dl,
+        "module dir only in a DL build"
+    );
     if info.forced.is_none() {
         assert!(info.missing.is_empty(), "best module not loaded: {info:?}");
     }

@@ -211,7 +211,10 @@ fn cpu_proc(name: &CStr) -> Option<*mut c_void> {
         if dev.is_null() {
             return None;
         }
-        sys::ggml_backend_reg_get_proc_address(sys::ggml_backend_dev_backend_reg(dev), name.as_ptr())
+        sys::ggml_backend_reg_get_proc_address(
+            sys::ggml_backend_dev_backend_reg(dev),
+            name.as_ptr(),
+        )
     };
     (!p.is_null()).then_some(p)
 }
@@ -235,9 +238,8 @@ pub(crate) fn procs() -> Result<&'static CpuProcs> {
     PROCS
         .get_or_init(|| {
             let get = |name: &CStr| {
-                cpu_proc(name).ok_or_else(|| {
-                    format!("CPU backend entry point {}", name.to_string_lossy())
-                })
+                cpu_proc(name)
+                    .ok_or_else(|| format!("CPU backend entry point {}", name.to_string_lossy()))
             };
             // SAFETY: the CPU registry returns these functions with exactly these signatures
             // (ggml-cpu.cpp, ggml_backend_cpu_get_proc_address).
@@ -355,7 +357,10 @@ mod tests {
         assert!(missing(&spr, &v(&["AVX512_VNNI"]), &TRACKED).is_empty());
         // Untracked features (LLAMAFILE, SSE3) never count as extra.
         let low = v(&["AVX", "AVX2"]);
-        assert_eq!(extra(&low, &v(&["AVX2", "AVX512_VBMI", "SSE3"])), v(&["AVX512_VBMI"]));
+        assert_eq!(
+            extra(&low, &v(&["AVX2", "AVX512_VBMI", "SSE3"])),
+            v(&["AVX512_VBMI"])
+        );
     }
 
     #[test]
@@ -383,9 +388,6 @@ mod tests {
     #[test]
     fn provided_is_subset() {
         assert!(provided().iter().all(|f| TRACKED.contains(f)));
-        assert_eq!(
-            provided().contains(&"AMX_INT8"),
-            !cfg!(target_env = "msvc")
-        );
+        assert_eq!(provided().contains(&"AMX_INT8"), !cfg!(target_env = "msvc"));
     }
 }

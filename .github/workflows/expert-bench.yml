@@ -21,7 +21,7 @@ jobs:
           submodules: true
           fetch-depth: 1
       - name: Patch queue
-        run: patches/apply.sh
+        run: bash patches/apply.sh
       - name: Toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - name: libclang (bindgen)

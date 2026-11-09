@@ -206,10 +206,12 @@ fn copy_runtime_files(out: &Path, target_os: &str) {
     } else {
         // Real files under every name, SONAME names included: symlinks do not survive all copies.
         let core = |n: &str| {
-            ["libllama.so", "libggml.so", "libggml-base.so"].iter().any(|p| {
-                n.strip_prefix(p)
-                    .is_some_and(|r| r.is_empty() || r.starts_with('.'))
-            })
+            ["libllama.so", "libggml.so", "libggml-base.so"]
+                .iter()
+                .any(|p| {
+                    n.strip_prefix(p)
+                        .is_some_and(|r| r.is_empty() || r.starts_with('.'))
+                })
         };
         for d in ["lib", "lib64"] {
             list(out.join(d), &core, &mut files);

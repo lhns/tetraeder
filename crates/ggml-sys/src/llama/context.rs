@@ -23,8 +23,8 @@ impl ThreadPool {
         if n_threads < 1 {
             return Err(LlamaError::Invalid("n_threads must be at least 1".into()));
         }
-        let procs = crate::ggml::cpu::procs()
-            .map_err(|e| LlamaError::BackendLoad(e.to_string()))?;
+        let procs =
+            crate::ggml::cpu::procs().map_err(|e| LlamaError::BackendLoad(e.to_string()))?;
         // SAFETY: `params` is a valid in-out struct; null means failure.
         let ptr = unsafe {
             let mut params = sys::ggml_threadpool_params_default(n_threads);
