@@ -1,0 +1,156 @@
+{
+  "cost_model_version": 1,
+  "session": "20261103-744f1ba65ca1-planner",
+  "key": {
+    "engine_commit": "pre-0056",
+    "host_id": "744f1ba65ca1",
+    "cpu_variant": null
+  },
+  "anchors": [
+    "anchor-cpu-t9",
+    "anchor-cpu-t4",
+    "anchor-cpu-t2",
+    "anchor-gpu-small-opo-on",
+    "anchor-gpu-small-opo-off",
+    "anchor-gpu-large",
+    "anchor-gpu-eager"
+  ],
+  "band": 0.09205238675643757,
+  "hw": {
+    "devices": [
+      {
+        "id": "cpu0",
+        "kind": "cpu",
+        "name": "Box CPU",
+        "tier": "ram",
+        "capacity_bytes": 64000000000,
+        "bandwidth_bytes_per_s": {
+          "value": 40000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "compute": {
+          "flops_per_s": 600000000000.0,
+          "c0_graph_s": 2.363052215882531e-6,
+          "c0_eager_s": 2.363052215882531e-6
+        },
+        "threads": 9,
+        "thread_curve": [
+          {
+            "threads": 2,
+            "flops_per_s": 77079546862.18767,
+            "bytes_per_s": 11060749863.196928
+          },
+          {
+            "threads": 4,
+            "flops_per_s": 133141135660.76805,
+            "bytes_per_s": 18411548724.069504
+          },
+          {
+            "threads": 9,
+            "flops_per_s": 275111816131.6906,
+            "bytes_per_s": 32198703097.02408
+          }
+        ]
+      },
+      {
+        "id": "gpu0",
+        "kind": "gpu",
+        "name": "RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 1422485861063.195,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 129911032546130.69,
+          "c0_graph_s": 2.5702757564539918e-6,
+          "c0_eager_s": 3.1502509828090596e-6
+        },
+        "pcie": {
+          "gen_current": 4,
+          "width_current": 16,
+          "gen_max": 4,
+          "width_max": 16
+        },
+        "index": 0
+      },
+      {
+        "id": "nvme0",
+        "kind": "disk",
+        "name": "Box NVMe",
+        "tier": "nvme",
+        "capacity_bytes": 2000000000000,
+        "bandwidth_bytes_per_s": {
+          "value": 5000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "media": "ssd",
+        "queue_chunk_bytes": 1048576,
+        "queue_curve": [
+          {
+            "depth": 1,
+            "bytes_per_s": 1000000000.0
+          },
+          {
+            "depth": 4,
+            "bytes_per_s": 3000000000.0
+          },
+          {
+            "depth": 16,
+            "bytes_per_s": 5200000000.0
+          },
+          {
+            "depth": 32,
+            "bytes_per_s": 5400000000.0
+          }
+        ]
+      }
+    ],
+    "links": [
+      {
+        "id": "pcie-gpu0",
+        "a": "gpu0",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.0000834064549899611,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "beta_bytes_per_s": {
+          "value": 9706500260.513784,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        }
+      },
+      {
+        "id": "nvme-cpu0",
+        "a": "nvme0",
+        "b": "cpu0",
+        "kind": "storage",
+        "alpha_s": {
+          "value": 0.0001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 5000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      }
+    ],
+    "lane_groups": []
+  }
+}

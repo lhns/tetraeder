@@ -36,6 +36,12 @@ state="runs/vast/session-$name.start"
 read -r start RESULTS_DATE < "$state"
 DEADLINE=$((start + ${SESSION_MIN:-$budget} * 60))
 export RESULTS_DATE DEADLINE RESUME=1
+# Provenance of every result (ADR 0056): the commit taxameter pushed (the box checkout may not be a git
+# repo for later stages) and a session name that survives a relaunch (built from the start time).
+TETRAEDER_GIT_COMMIT="${TETRAEDER_GIT_COMMIT:-$(git rev-parse HEAD 2> /dev/null)}"
+host_id="${CONTAINER_ID:-$(hostname)}"
+TETRAEDER_SESSION="$RESULTS_DATE-$host_id-$(date -u -d "@$start" +%H%M%S)"
+export TETRAEDER_GIT_COMMIT TETRAEDER_SESSION
 results="bench/results/$RESULTS_DATE"
 mkdir -p "$results"
 models_dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}"

@@ -7,6 +7,7 @@
 //! - [`lower`]: a candidate as llama-bench arguments or `exit_regime` environment.
 //! - [`campaign`]: the bench spec that measures the candidates, anchors and baselines.
 //! - [`score`]: calibration from the anchors, regret and rank correlation over the candidates.
+//! - [`ledger`]: CI re-prediction of the committed fixtures with their own session's calibration (ADR 0056).
 //!
 //! Phase 3a, milestone B: the search.
 //! - [`quality`]: the [`QualityModel`] trait, null and table models.
@@ -29,6 +30,7 @@ pub mod cli;
 pub mod diff;
 pub mod explain;
 pub mod layout;
+pub mod ledger;
 pub mod lower;
 pub mod objective;
 pub mod profile_quality;
@@ -47,6 +49,9 @@ pub use candidate::{
 pub use diff::{PlanSwitch, plan_diff};
 pub use explain::{Explanation, explain};
 pub use layout::{LayerBytes, ModelLayout, ModelMeta, TensorRec, TypeSummary, build_layout};
+pub use ledger::{
+    Ledger, LedgerEntry, SessionKey, check as ledger_check, evaluate as ledger_evaluate,
+};
 pub use lower::{
     Applies, Lowered, SERVE_BUILDER_UBATCH, ServeEngine, llama_args, lower, range_regex, recognize,
     to_exit_regime_env, to_llama_bench_args, to_variant_args,

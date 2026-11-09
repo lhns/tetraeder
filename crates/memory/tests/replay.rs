@@ -342,3 +342,49 @@ fn policy_names_parse_and_roundtrip() {
     assert!(Policy::parse("freq:2").is_err());
     assert!(Policy::parse("mru").is_err());
 }
+
+#[test]
+fn full_hit_share_counts_layer_steps_without_a_vram_miss() {
+    // Expert 3 is routed in both steps; the marker after step 0 makes it VRAM-resident, so step 0
+    // had a miss and step 1 had none.
+    let steps: Vec<Vec<Vec<u16>>> = [3, 3].iter().map(|&e| vec![vec![e]]).collect();
+    let t = decode_trace(header(1, 8, 1), &steps, Some(0));
+    let o = replay(&t, &cfg(1, 4, Policy::Lru, false));
+    assert_eq!(o.decode.full_hit_share, 0.5);
+    assert_eq!(o.decode.vram_share, 0.5);
+}
+
+#[test]
+fn full_hit_share_is_one_with_every_expert_in_vram() {
+    // A prefill step touches all four experts, then the marker makes all of them resident
+    // (4 VRAM slots for 4 experts); every decode step afterwards is a full hit.
+    let mut records = vec![Record::Step(LayerStep {
+        step: 0,
+        layer: 0,
+        n_tokens: 2,
+        ids: vec![0, 1, 2, 3],
+        predicted: None,
+        predicted2: None,
+    })];
+    records.push(Record::HotRefresh { step: 0 });
+    for (s, e) in [2u16, 0, 3].into_iter().enumerate() {
+        records.push(Record::Step(LayerStep {
+            step: s as u32 + 1,
+            layer: 0,
+            n_tokens: 1,
+            ids: vec![e],
+            predicted: None,
+            predicted2: None,
+        }));
+    }
+    let t = Trace {
+        header: header(1, 4, 1),
+        records,
+    };
+    let o = replay(&t, &cfg(4, 4, Policy::Lru, false));
+    assert_eq!(o.decode.full_hit_share, 1.0);
+    assert_eq!(o.decode.vram_share, 1.0);
+    // no VRAM slots: no step is a full hit
+    let none = replay(&t, &cfg(0, 4, Policy::Lru, false));
+    assert_eq!(none.decode.full_hit_share, 0.0);
+}

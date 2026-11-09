@@ -100,6 +100,9 @@ pub struct PhaseOutcome {
     /// Routed (token, expert) pairs and the share that found their expert in VRAM.
     pub pairs: u64,
     pub vram_share: f64,
+    /// Layer steps in which every routed expert of every token was in VRAM, over layer steps
+    /// (what a step without a CPU hop is; the planner's switch count, ADR 0056).
+    pub full_hit_share: f64,
     /// RAM lookups of the CPU experts (and of the refresh), hits and misses.
     pub ram_lookups: u64,
     pub ram_hits: u64,
@@ -136,6 +139,8 @@ struct Acc {
     tokens: u64,
     pairs: u64,
     vram_pairs: u64,
+    layer_steps: u64,
+    full_steps: u64,
     hits: u64,
     misses: u64,
     sync_bytes: u64,
@@ -563,6 +568,8 @@ impl<'a> Sim<'a> {
         let acc = &mut self.acc[self.phase];
         acc.pairs += s.ids.len() as u64;
         acc.vram_pairs += vram_pairs;
+        acc.layer_steps += 1;
+        acc.full_steps += u64::from(vram_pairs == s.ids.len() as u64);
         let (compute, rest): (Vec<u32>, Vec<u32>) = distinct
             .into_iter()
             .partition(|&e| self.vram.layer(il).slot_of(e).is_some());
@@ -604,6 +611,7 @@ impl<'a> Sim<'a> {
                 tokens: a.tokens,
                 pairs: a.pairs,
                 vram_share: a.vram_pairs as f64 / a.pairs.max(1) as f64,
+                full_hit_share: a.full_steps as f64 / a.layer_steps.max(1) as f64,
                 ram_lookups: a.hits + a.misses,
                 ram_hits: a.hits,
                 ram_hit_rate: rate(a.hits, a.misses),

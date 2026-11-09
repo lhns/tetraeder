@@ -8,6 +8,11 @@
 pub mod sim;
 pub mod trace;
 
+/// Version of the replay's counters. Bump it when the outcome for an existing trace and
+/// configuration changes; a committed `tier-replay.json` records it and a bench test replays the
+/// committed file again (ADR 0056).
+pub const REPLAY_VERSION: u32 = 1;
+
 use crate::slots::LayerSlots;
 
 /// Which experts a prefetch of one layer reads, and which it pins (ADR 0038).

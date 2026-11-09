@@ -13,6 +13,11 @@ pub mod calib;
 pub mod predict;
 pub mod sim;
 
+/// Version of the prediction formulas. Bump when `predict` changes any output for a
+/// configuration that already exists (ADR 0056); `tetraeder-plan ledger --write` then
+/// records the new predictions of the committed results under the ratchet.
+pub const MODEL_VERSION: u32 = 1;
+
 use tetraeder_profiler::Device;
 
 /// Whether a step runs as a captured CUDA graph (small c0) or op by op.

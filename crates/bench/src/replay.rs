@@ -3,8 +3,16 @@
 use anyhow::{Context, Result};
 use serde_json::json;
 use std::path::Path;
+use tetraeder_memory::replay::REPLAY_VERSION;
 use tetraeder_memory::replay::sim::{Policy, Trace, replay_matrix};
 use tetraeder_memory::replay::trace::Record;
+
+/// FNV-1a 64 of a byte string, the trace file's fingerprint in the output.
+pub fn fnv1a64(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
 
 /// Replays `trace_path` for every combination of the lists (prefetch on and off when the trace
 /// carries predictions) and writes the outcomes to `out`. Returns the number of configurations.
@@ -17,6 +25,10 @@ pub fn run(
 ) -> Result<usize> {
     let trace =
         Trace::load(trace_path).with_context(|| format!("read trace {}", trace_path.display()))?;
+    let fingerprint = fnv1a64(
+        &std::fs::read(trace_path)
+            .with_context(|| format!("read trace {}", trace_path.display()))?,
+    );
     let has_predictions = trace
         .records
         .iter()
@@ -35,7 +47,9 @@ pub fn run(
     let doc = json!({
         "tool": "tetraeder-bench replay",
         "adr": "0050 (c)",
+        "replay_version": REPLAY_VERSION,
         "trace": {
+            "fnv1a64": format!("{fingerprint:016x}"),
             "file": trace_path.file_name().map(|n| n.to_string_lossy().into_owned()),
             "header": header,
             "records": trace.records.len(),

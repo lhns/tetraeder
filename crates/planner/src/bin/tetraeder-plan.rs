@@ -120,6 +120,19 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Calibration ledger (ADR 0056): re-predict every committed fixture with its session's fit and
+    /// print the error per session. `--write` runs the ratchet and rewrites `bench/ledger.json` and
+    /// each session's `calib.json`; run it after a cost model version bump or a new fixture.
+    Ledger {
+        /// Results root; the ledger is `ledger.json` beside it.
+        #[arg(long, default_value = "bench/results")]
+        root: PathBuf,
+        #[arg(long)]
+        write: bool,
+        /// `id=reason` (or `path/id=reason`): let this result's error rise past the ratchet.
+        #[arg(long)]
+        accept_worse: Vec<String>,
+    },
 }
 
 /// Inputs every planning subcommand reads.
@@ -149,6 +162,16 @@ fn read_opt(p: &Option<PathBuf>) -> Result<Option<String>> {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::Ledger {
+            root,
+            write,
+            accept_worse,
+        } => {
+            let t = tetraeder_planner::ledger::ledger_cmd(&root, write, &accept_worse)
+                .map_err(anyhow::Error::msg)?;
+            print!("{t}");
+            Ok(())
+        }
         Command::Score { dir, out } => {
             let s = tetraeder_planner::score::score_dir(&dir).map_err(anyhow::Error::msg)?;
             let json = serde_json::to_string_pretty(&s)?;

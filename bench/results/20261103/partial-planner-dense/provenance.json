@@ -1,0 +1,7 @@
+{
+  "engine_commit": "pre-0056",
+  "host_id": "744f1ba65ca1",
+  "cpu_variant": null,
+  "session": "20261103-744f1ba65ca1-planner-dense",
+  "note": "The dense harness files carry no env block. The host id is assumed to be the planner-moe box (same RTX 3090, driver 595.71.05, 9 threads, same night, campaign log 10:27 to 10:34 against 10:43 for the MoE run)."
+}
