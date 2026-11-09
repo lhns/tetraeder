@@ -1,10 +1,12 @@
-name: sccache for ggml
+name: sccache for ggml CUDA
 description: >
-  sccache with a local disk cache that actions/cache saves and restores, as the CMake compiler launcher for
-  C, C++ and CUDA, so ggml is not rebuilt from scratch on every run (rust-cache drops workspace crate outputs and
-  tetraeder-ggml-sys is one). The GitHub cache backend of sccache lost most writes on Linux (65 to 93 write
-  errors per job, no hits on a second run), a restored directory does not. Do not use it with
-  TETRAEDER_GGML_NATIVE=ON: -march=native objects from one runner CPU would be served to another.
+  sccache with a local disk cache as the CMake compiler launcher for C, C++ and CUDA, so ggml-cuda is not
+  rebuilt from scratch on every run (rust-cache drops workspace crate outputs and tetraeder-ggml-sys is one).
+  The directory is saved by actions/cache on main only and restored everywhere: a cache written by every
+  branch is evicted within the hour by the 10 GB repository limit (measured: the Linux caches of the previous
+  run were gone), while main's entry is read, and so kept fresh, by every branch. Use it only for the CUDA
+  jobs: for the CPU variants it made a Linux job three times slower (no gain from other jobs' objects), and
+  it must not be used with TETRAEDER_GGML_NATIVE=ON (-march=native objects would move between runner CPUs).
 runs:
   using: composite
   steps:
@@ -23,6 +25,13 @@ runs:
           echo "CMAKE_CUDA_COMPILER_LAUNCHER=$p"
         } >> "$GITHUB_ENV"
     - uses: actions/cache@v4
+      if: github.ref == 'refs/heads/main'
+      with:
+        path: ~/.cache/sccache-ci
+        key: sccache-${{ github.job }}-${{ runner.os }}-${{ github.sha }}
+        restore-keys: sccache-${{ github.job }}-${{ runner.os }}-
+    - uses: actions/cache/restore@v4
+      if: github.ref != 'refs/heads/main'
       with:
         path: ~/.cache/sccache-ci
         key: sccache-${{ github.job }}-${{ runner.os }}-${{ github.sha }}

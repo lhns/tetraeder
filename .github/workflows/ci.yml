@@ -36,10 +36,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: patches/apply.ps1
-      # Linux only: the Windows job uses the Visual Studio generator, which ignores compiler launchers
-      # (and Ninja in an MSVC shell puts Git's /usr/bin/link before link.exe for bash steps).
-      - uses: ./.github/actions/sccache
-        if: runner.os == 'Linux'
       - name: Toolchain
         shell: bash
         run: rustup show active-toolchain || rustup toolchain install
@@ -187,7 +183,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: patches/apply.ps1
-      - uses: ./.github/actions/sccache
       - name: Toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - name: Vulkan SDK and libclang
@@ -198,9 +193,6 @@ jobs:
       - run: cargo build -p tetraeder-ggml-sys --features vulkan
       - name: Vulkan module
         run: ls -l target/debug/libggml-vulkan.so
-      - name: sccache stats
-        if: always()
-        run: '"$SCCACHE_PATH" --show-stats || true'
 
   # The static native build stays supported (comparison arm, quick local builds). No rust-cache: a
   # native build restored on a runner with an older CPU would die with SIGILL.
