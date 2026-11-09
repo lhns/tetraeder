@@ -42,7 +42,34 @@ impl HostDst {
         Self { ptr, len }
     }
 
-    fn write(&self, bytes: &[u8]) -> io::Result<()> {
+    /// The bytes `offset..offset + len` of this destination, for a worker that fills only that
+    /// part. Bounds-checked; the sub-range keeps the contract of [`HostDst::new`], and ranges that
+    /// do not overlap may be filled on different threads at once.
+    pub fn sub(&self, offset: usize, len: usize) -> io::Result<HostDst> {
+        if offset.checked_add(len).is_none_or(|end| end > self.len) {
+            return Err(io::Error::other(format!(
+                "sub-range {offset}+{len} outside a destination of {}",
+                self.len
+            )));
+        }
+        // SAFETY: `offset + len <= self.len`, so the pointer stays inside the allocation that
+        // `new` vouched for; the caller of `new` keeps it valid and unaliased.
+        Ok(HostDst {
+            ptr: unsafe { self.ptr.add(offset) },
+            len,
+        })
+    }
+
+    /// Length in bytes.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub(crate) fn write(&self, bytes: &[u8]) -> io::Result<()> {
         if bytes.len() != self.len {
             return Err(io::Error::other(format!(
                 "range of {} bytes for a destination of {}",

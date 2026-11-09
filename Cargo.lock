@@ -2173,6 +2173,7 @@ version = "0.0.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
+ "proptest",
  "serde_json",
  "sha2",
  "tetraeder-ggml-sys",
