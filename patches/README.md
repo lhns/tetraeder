@@ -5,6 +5,7 @@ Never edit `vendor/llama.cpp` in place; the working tree there is disposable.
 
 - `series` lists patch file names, one per line, applied in order (`#` comments allowed).
 - Each patch has an ADR in `docs/adr/` and tests on every backend it touches.
+- Each patch has a row in `docs/sources.md`: own code, an upstream backport, or code copied from another fork (repo, path, commit, license). `tests/test_sources.py` checks it.
 - Name patches `NNNN-short-title.patch`; keep them small and upstream-clean.
 - Apply with `patches/apply.sh` or `patches/apply.ps1`: both reset the submodule to the pin and
   apply the series with `git -C vendor/llama.cpp apply`. Safe to rerun.
