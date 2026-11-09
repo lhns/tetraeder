@@ -490,3 +490,58 @@ fn snapshot_and_restore_round_trip_gives_identical_logits() {
         assert_eq!(y.eval(&[7]).unwrap(), &want[..]);
     }
 }
+
+/// `decode_profile` on: every decode step is counted, the stages are timed and the backend's
+/// counters change over the decode (the builder keeps its step graph, libllama reuses its own).
+#[test]
+fn decode_profile_reports_steps_stages_and_graph_reuse() {
+    let p = fixture();
+    let llama = {
+        let path = p.clone();
+        let mut cfg = SchedulerConfig::new(p.clone());
+        cfg.decode_profile = true;
+        Scheduler::start(cfg, move || {
+            load_llama(&path, &Placement::cpu(), &ctx_cfg(), None)
+        })
+        .unwrap()
+    };
+    let moe = {
+        let path = p.clone();
+        let mut cfg = SchedulerConfig::new(p.clone());
+        cfg.decode_profile = true;
+        Scheduler::start(cfg, move || {
+            let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
+            o.n_ctx = CTX as usize;
+            load_moe(&path, &o)
+        })
+        .unwrap()
+    };
+    for (s, reuse_key) in [(&llama, "n_reused"), (&moe, "steps")] {
+        let pr = prompt(s, "Once upon a time");
+        let out = run(s, &pr, 8);
+        let prof = out.stats.profile.expect("profile on");
+        // The first token comes from the prefill step and each later one from a decode step; at
+        // the length limit no further step runs, an end-of-generation token takes one more.
+        let n = out.stats.generated_tokens;
+        let want = if out.reason == FinishReason::Length {
+            n - 1
+        } else {
+            n
+        };
+        assert_eq!(prof.decode_steps, want, "{:?}", out.reason);
+        assert!(n >= 3, "too short to check: {n} tokens");
+        assert!(prof.eval_s > 0.0 && prof.sample_s > 0.0 && prof.prefill_s > 0.0);
+        let get = |k: &str| prof.backend.iter().find(|(n, _)| n == k).map(|(_, v)| *v);
+        assert!(
+            get(reuse_key).is_some_and(|v| v > 0.0),
+            "{:?}",
+            prof.backend
+        );
+    }
+    // Off by default (unless the environment turns it on).
+    if std::env::var_os("TETRAEDER_DECODE_PROFILE").is_none() {
+        let s = llama_sched();
+        let pr = prompt(&s, "Once upon a time");
+        assert!(run(&s, &pr, 3).stats.profile.is_none());
+    }
+}

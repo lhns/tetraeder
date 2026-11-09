@@ -37,7 +37,7 @@ Claude Code:
 ANTHROPIC_BASE_URL=http://127.0.0.1:8080 ANTHROPIC_AUTH_TOKEN=local ANTHROPIC_MODEL=qwen ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen claude
 ```
 
-Claude Code also asks for its own `claude-*` model ids; `--accept-any-model` (or `--default-model <id>`) maps unknown ids to the served model. It sends 15K to 30K tokens of system prompt and tools on each turn, so start with `--ctx 65536` or more. `--request-log <file>` appends one JSON line per request (prompt, response, token counts, timings) for replay; it contains your code, so keep it local.
+Claude Code also asks for its own `claude-*` model ids; `--accept-any-model` (or `--default-model <id>`) maps unknown ids to the served model. It sends 15K to 30K tokens of system prompt and tools on each turn, so start with `--ctx 65536` or more. `--request-log <file>` appends one JSON line per request (prompt, response, token counts, timings) for replay; it contains your code, so keep it local. With `TETRAEDER_DECODE_PROFILE=1` each line also gets a `profile`: decode steps and the time per stage (eval, sampling, hand-off, gateway) and the engine's graph counters.
 
 ## Vast boxes
 

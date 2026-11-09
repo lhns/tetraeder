@@ -10,8 +10,8 @@ use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tetraeder_gateway::engine::{
-    Engine, EngineError, EngineStats, FinishReason, GenEvent, GenerateRequest, ModelInfo,
-    SamplingParams, TokenConstraint, TokenId, Vocab,
+    DecodeProfile, Engine, EngineError, EngineStats, FinishReason, GenEvent, GenerateRequest,
+    ModelInfo, SamplingParams, TokenConstraint, TokenId, Vocab,
 };
 use tetraeder_ggml_sys::llama::Model;
 use tetraeder_telemetry::Metrics;
@@ -43,6 +43,9 @@ pub struct SchedulerConfig {
     pub cache_save_min: usize,
     /// A saved sequence is restored when it beats the live one by this many tokens.
     pub cache_restore_gain: usize,
+    /// Report where each request's decode time went ([`DecodeProfile`]); default from
+    /// `TETRAEDER_DECODE_PROFILE=1`. Off, it costs nothing beyond the timers that exist anyway.
+    pub decode_profile: bool,
 }
 
 /// Default prefix cache budget, like llama-server's `--cache-ram`.
@@ -61,6 +64,7 @@ impl SchedulerConfig {
             cache_ram_bytes: DEFAULT_CACHE_RAM_BYTES,
             cache_save_min: SAVE_MIN_TOKENS,
             cache_restore_gain: RESTORE_MIN_GAIN,
+            decode_profile: std::env::var_os("TETRAEDER_DECODE_PROFILE").is_some_and(|v| v == "1"),
         }
     }
 }
@@ -97,6 +101,7 @@ impl Scheduler {
             top_p: cfg.top_p,
         };
         let metrics = cfg.metrics.clone();
+        let decode_profile = cfg.decode_profile;
         let (cache_ram, save_min, restore_gain) = (
             cfg.cache_ram_bytes,
             cfg.cache_save_min,
@@ -127,6 +132,7 @@ impl Scheduler {
                     vocab,
                     defaults,
                     metrics,
+                    decode_profile,
                 };
                 for job in job_rx {
                     w.run(job);
@@ -253,6 +259,18 @@ struct Worker {
     vocab: Arc<Vocab>,
     defaults: SampleParams,
     metrics: Option<Metrics>,
+    decode_profile: bool,
+}
+
+/// Time of the steps of one request so far.
+#[derive(Debug, Clone, Copy, Default)]
+struct StepTimes {
+    /// Steps that sampled a token.
+    steps: u32,
+    /// Backend `eval` calls (device time on a GPU backend).
+    eval: Duration,
+    /// Constraint mask, sampling and commit.
+    sample: Duration,
 }
 
 enum Step {
@@ -376,21 +394,30 @@ impl Worker {
             params.seed.unwrap_or_else(counter_seed),
         );
         let bytes0 = self.backend.bytes_streamed_total();
-        let mut gpu = Duration::ZERO;
+        let mut times = StepTimes::default();
+        // With the decode profile: the times and backend counters when the prefill step ended.
+        let mut after_prefill: Option<(StepTimes, Vec<(&'static str, f64)>)> = None;
+        let mut emit = Duration::ZERO;
         let mut pending = toks[common..].to_vec();
         let reason = loop {
             if stats.generated_tokens >= params.max_tokens {
                 break FinishReason::Length;
             }
-            let tok = match self.step(&pending, &mut sampler, constraint, cancel, &mut gpu)? {
+            let tok = match self.step(&pending, &mut sampler, constraint, cancel, &mut times)? {
                 Step::Cancelled => break FinishReason::Cancelled,
                 Step::Token(t) => t,
             };
+            if self.decode_profile && after_prefill.is_none() {
+                after_prefill = Some((times, self.backend.counters()));
+            }
             if self.vocab.is_eog(tok) {
                 break FinishReason::EndOfGeneration;
             }
             stats.generated_tokens += 1;
-            if tx.blocking_send(GenEvent::Token(tok)).is_err() {
+            let t_emit = Instant::now();
+            let sent = tx.blocking_send(GenEvent::Token(tok));
+            emit += t_emit.elapsed();
+            if sent.is_err() {
                 break FinishReason::Cancelled;
             }
             if cancel.is_cancelled() {
@@ -403,13 +430,49 @@ impl Worker {
             pending.push(tok as i32);
         };
         if self.backend.on_gpu() {
-            stats.gpu_seconds = Some(gpu.as_secs_f64());
+            stats.gpu_seconds = Some(times.eval.as_secs_f64());
+        }
+        if let Some((t0, c0)) = after_prefill {
+            stats.profile = Some(self.decode_profile(&times, &t0, &c0, emit));
         }
         stats.bytes_streamed = match (bytes0, self.backend.bytes_streamed_total()) {
             (Some(a), Some(b)) => Some(b.saturating_sub(a)),
             _ => None,
         };
         Ok(reason)
+    }
+
+    /// The decode profile of a request: everything after the step that ended its prefill.
+    fn decode_profile(
+        &self,
+        end: &StepTimes,
+        prefill: &StepTimes,
+        counters0: &[(&'static str, f64)],
+        emit: Duration,
+    ) -> DecodeProfile {
+        let steps = end.steps - prefill.steps;
+        let p = DecodeProfile {
+            prefill_s: (prefill.eval + prefill.sample).as_secs_f64(),
+            decode_steps: steps,
+            eval_s: (end.eval - prefill.eval).as_secs_f64(),
+            sample_s: (end.sample - prefill.sample).as_secs_f64(),
+            emit_s: emit.as_secs_f64(),
+            gateway_s: 0.0,
+            backend: self
+                .backend
+                .counters()
+                .into_iter()
+                .zip(counters0)
+                .map(|((k, v), (_, v0))| (k.to_owned(), v - v0))
+                .collect(),
+        };
+        if let Some(m) = self.metrics.as_ref().filter(|_| steps > 0) {
+            let per = |s: f64| s / f64::from(steps);
+            m.decode_stage("eval", per(p.eval_s));
+            m.decode_stage("sample", per(p.sample_s));
+            m.decode_stage("emit", per(p.emit_s));
+        }
+        p
     }
 
     /// Copies the live sequence into the prefix cache.
@@ -434,7 +497,7 @@ impl Worker {
         sampler: &mut Sampler,
         constraint: &mut Option<Box<dyn TokenConstraint>>,
         cancel: &CancellationToken,
-        gpu: &mut Duration,
+        times: &mut StepTimes,
     ) -> Result<Step, String> {
         let n_chunks = tokens.chunks(PREFILL_CHUNK).count();
         for (i, chunk) in tokens.chunks(PREFILL_CHUNK).enumerate() {
@@ -443,7 +506,7 @@ impl Worker {
             }
             let t0 = Instant::now();
             let logits = self.backend.eval(chunk)?;
-            *gpu += t0.elapsed();
+            times.eval += t0.elapsed();
             self.cached.extend_from_slice(chunk);
             if let Some(m) = &self.metrics {
                 m.scheduler_batch(1);
@@ -451,6 +514,7 @@ impl Worker {
             if i + 1 < n_chunks {
                 continue;
             }
+            let t0 = Instant::now();
             let mask = match constraint.as_mut() {
                 Some(c) => c.mask()?,
                 None => None,
@@ -461,6 +525,8 @@ impl Worker {
             if let Some(c) = constraint.as_mut() {
                 c.commit(tok)?;
             }
+            times.sample += t0.elapsed();
+            times.steps += 1;
             return Ok(Step::Token(tok));
         }
         Err("no tokens to evaluate".into())

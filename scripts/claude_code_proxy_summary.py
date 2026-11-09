@@ -4,14 +4,24 @@
     python scripts/claude_code_proxy_summary.py bench/results/<date>/claude-code-proxy
 
 Reads session-<engine>-r<rep>-<task>.json and proxy-*.jsonl; the engine, rep and task come from the file contents.
+Server-side decode (docs/m1-open.md item 4) comes from llama-server's per-task timing lines in server-llama-server-*.log
+and from the `profile` of tetraeder's request log (tetraeder-*.reqlog.jsonl, serve with TETRAEDER_DECODE_PROFILE=1).
 """
 
 import glob
 import json
 import math
 import os
+import re
 import statistics
 import sys
+
+# Context depth bins (prompt tokens incl. cached) for the decode comparison; the gap may depend on depth.
+DEPTH_BINS = [0, 10000, 20000, 30000, 40000, 60000, 100000, 1 << 31]
+# Requests with fewer output tokens are dominated by the first-token latency.
+MIN_DECODE_TOKENS = 20
+# llama-server's per-task decode line ("prompt eval time" is the prefill line).
+LLAMA_EVAL = re.compile(r"(?<!prompt )eval time =\s*([\d.]+) ms /\s*(\d+) tokens")
 
 
 def percentile(values, p):
@@ -113,6 +123,65 @@ def _task_row(sessions, requests):
     }
 
 
+def decode_by_depth(requests):
+    """Client-side decode tok/s median per engine and context depth bin, with the tetraeder/llama-server ratio."""
+    rows = []
+    for lo, hi in zip(DEPTH_BINS, DEPTH_BINS[1:]):
+        row = {"depth_from": lo, "depth_to": hi}
+        for r in requests:
+            if not r.get("decode_tok_s") or (r.get("output_tokens") or 0) < MIN_DECODE_TOKENS:
+                continue
+            depth = sum(r.get(k) or 0 for k in ("input_tokens", "cache_read_tokens", "cache_creation_tokens"))
+            if lo <= depth < hi:
+                row.setdefault(r["engine"], []).append(r["decode_tok_s"])
+        for e in [k for k in row if not k.startswith("depth")]:
+            row[e] = {"n": len(row[e]), "tok_s_median": _r(median(row[e]))}
+        a, b = row.get("tetraeder"), row.get("llama-server")
+        if a and b:
+            row["ratio_tetraeder_over_llama"] = _r(a["tok_s_median"] / b["tok_s_median"])
+        if len(row) > 2:
+            rows.append(row)
+    return rows
+
+
+def server_decode(path):
+    """Server-side decode per request: llama-server's timing lines and tetraeder's request log profiles."""
+    out = {}
+    llama = []
+    for f in sorted(glob.glob(os.path.join(path, "server-llama-server-*.log"))):
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            for m in map(LLAMA_EVAL.search, fh):
+                if m and int(m.group(2)) >= MIN_DECODE_TOKENS and float(m.group(1)) > 0:
+                    llama.append(int(m.group(2)) / (float(m.group(1)) / 1e3))
+    if llama:
+        out["llama-server"] = {"requests": len(llama), "tok_s_median": _r(median(llama))}
+    profiles = []
+    for f in sorted(glob.glob(os.path.join(path, "tetraeder-*.reqlog*"))):
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                p = (json.loads(line) if line.strip() else {}).get("profile")
+                if p and p.get("decode_steps", 0) >= MIN_DECODE_TOKENS:
+                    profiles.append(p)
+    if profiles:
+        per_tok = lambda p, k: p[k] / p["decode_steps"] * 1e3  # noqa: E731
+        stages = ("eval_s", "sample_s", "emit_s", "gateway_s")
+        counters = {}
+        for p in profiles:
+            for k, v in (p.get("backend") or {}).items():
+                counters[k] = counters.get(k, 0) + v
+        out["tetraeder"] = {
+            "requests": len(profiles),
+            # The worker's loop: eval, sample and hand-off; the gateway runs beside it.
+            "tok_s_median": _r(median([p["decode_steps"] / (p["eval_s"] + p["sample_s"] + p["emit_s"]) for p in profiles])),
+            "ms_per_token_median": {k[:-2]: _r(median([per_tok(p, k) for p in profiles]), 4) for k in stages},
+            "backend_counters_total": {k: _r(v) for k, v in counters.items()},
+        }
+    a, b = out.get("tetraeder"), out.get("llama-server")
+    if a and b:
+        out["ratio_tetraeder_over_llama"] = _r(a["tok_s_median"] / b["tok_s_median"])
+    return out
+
+
 def summarize(sessions, requests):
     engines = sorted({s["engine"] for s in sessions} | {r["engine"] for r in requests})
     out = {"engines": {}, "comparison": {}}
@@ -134,6 +203,7 @@ def summarize(sessions, requests):
         if a and b and a["decode_tok_s_median"] and b["decode_tok_s_median"]:
             row["decode_ratio_tetraeder_over_llama"] = _r(a["decode_tok_s_median"] / b["decode_tok_s_median"])
         out["comparison"][task] = row
+    out["decode_by_depth"] = decode_by_depth(requests)
     return out
 
 
@@ -161,6 +231,7 @@ def main(argv=None):
         print(f"no session-*.json in {path}", file=sys.stderr)
         return 1
     summary = summarize(sessions, requests)
+    summary["server_decode"] = server_decode(path)
     with open(os.path.join(path, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
         f.write("\n")

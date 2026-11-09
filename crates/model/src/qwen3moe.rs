@@ -255,7 +255,6 @@ impl LoadOptions {
 }
 
 const KV_PAD: usize = 256;
-const MASK_PAD: usize = 32;
 /// Upper bound of nodes in one segment; the scheduler's hash tables are sized for it.
 const SEGMENT_NODES: usize = 1024;
 /// Upper bound of nodes per layer in a whole-step graph (about 70 are used).
@@ -718,6 +717,11 @@ impl Qwen3Moe {
             .unwrap_or_default()
     }
 
+    /// The time breakdown since load or the last [`Qwen3Moe::take_profile`].
+    pub fn profile(&self) -> StepProfile {
+        self.profile
+    }
+
     /// The time breakdown since load or the last call, then starts a new one.
     pub fn take_profile(&mut self) -> StepProfile {
         std::mem::take(&mut self.profile)
@@ -828,7 +832,9 @@ impl Qwen3Moe {
         st.tokens.get().set_i32(tokens)?;
         let pos: Vec<i32> = (self.n_past..self.n_past + n).map(|p| p as i32).collect();
         st.pos.get().set_i32(&pos)?;
-        let mut mask = vec![0u16; n_kv * pad(n, MASK_PAD)];
+        // `[n_kv, n]` as libllama builds it at the pin (no row padding since GGML_KQ_MASK_PAD
+        // went away): a decode step writes and uploads one row, not 32.
+        let mut mask = vec![0u16; n_kv * n];
         for i in 0..n {
             for j in (self.n_past + i + 1)..n_kv {
                 mask[i * n_kv + j] = F16_NEG_INF;
@@ -1468,7 +1474,7 @@ fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<
         n_kv,
         tokens: ctx.new_persistent(Type::I32, &[nt]),
         pos: ctx.new_persistent(Type::I32, &[nt]),
-        mask: ctx.new_persistent(Type::F16, &[n_kv as i64, pad(n, MASK_PAD) as i64]),
+        mask: ctx.new_persistent(Type::F16, &[n_kv as i64, nt]),
         slots: [slot(0), slot(1)],
     };
     ctx.alloc_tensors(backend)?;
@@ -1989,6 +1995,32 @@ mod graph_order {
                 }
             }
         }
+    }
+
+    /// The attention mask is `[n_kv, n]` like libllama's `attn_inp_kq_mask` at the pin: a decode
+    /// step at 100K positions writes and uploads 200 KB, not 6.4 MB (32 padding rows before).
+    #[test]
+    fn mask_has_one_row_per_token_like_libllama() {
+        let m = model();
+        let h = m.file.hparams.clone();
+        for n in [1, 5, 33] {
+            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary).unwrap();
+            assert_eq!(st.mask.get().ne(), [pad(n, KV_PAD) as i64, n as i64, 1, 1]);
+        }
+        // Decode after a prefill still matches a single evaluation of the whole sequence.
+        let mut a = model();
+        let whole = a.eval(&[1, 2, 3, 4]).unwrap();
+        let mut b = model();
+        b.eval(&[1, 2, 3]).unwrap();
+        let last = b.eval(&[4]).unwrap();
+        let nv = a.n_vocab();
+        let want = &whole[3 * nv..];
+        let diff = want
+            .iter()
+            .zip(&last)
+            .map(|(x, y)| (x - y).abs())
+            .fold(0.0f32, f32::max);
+        assert!(diff < 1e-3, "max logit difference {diff}");
     }
 
     #[test]

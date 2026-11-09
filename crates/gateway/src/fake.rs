@@ -205,6 +205,7 @@ impl Engine for FakeEngine {
             generated_tokens: 0,
             gpu_seconds: self.gpu_seconds,
             bytes_streamed: self.bytes_streamed,
+            profile: None,
         };
         std::thread::spawn(move || {
             let mut pos = 0;

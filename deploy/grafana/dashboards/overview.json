@@ -1434,6 +1434,39 @@
           }
         }
       ]
+    },
+    {
+      "id": 40,
+      "title": "Decode time per token by stage",
+      "description": "Mean host seconds per decoded token by stage (eval: backend step and logits readback; sample: constraint mask and sampling; emit: hand-off to the gateway), only while serve runs with TETRAEDER_DECODE_PROFILE=1 (docs/m1-open.md item 4). Sample above about 0.3 ms means the sampler, not the GPU, limits decode.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 98,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_stage) (rate(tetraeder_scheduler_decode_stage_seconds_sum[$__rate_interval])) / sum by (tetraeder_stage) (rate(tetraeder_scheduler_decode_stage_seconds_count[$__rate_interval]))",
+          "legendFormat": "{{tetraeder_stage}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }
