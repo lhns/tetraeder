@@ -3,7 +3,7 @@
 # on 10 coding tasks, both engines behind the same logging proxy, scored by task checks.
 # Started detached by `taxameter run scripts/claude_code_proxy.sh`; ends with CLAUDE_CODE_PROXY_DONE in
 # runs/vast/claude_code_proxy.log. Results: bench/results/<date>/claude-code-proxy/ (summary.json; a rerun on the
-# same day resumes: sessions whose output exists are skipped).
+# same day, or with the same RESULTS_DATE, resumes: sessions whose output exists are skipped).
 #
 # Model (assumed downloaded): Qwen3-Coder-30B-A3B-Instruct-Q4_K_M (provision with
 #   --models unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf).
@@ -31,7 +31,7 @@ if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
   [ -n "$archs" ] && export TETRAEDER_CUDA_ARCHS="$archs"
 fi
 log=runs/vast/claude_code_proxy.log
-out="$PWD/bench/results/$(date +%Y%m%d)/claude-code-proxy"
+out="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/claude-code-proxy"
 mkdir -p "$out" runs/vast
 t_start=$(date +%s)
 threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
