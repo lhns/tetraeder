@@ -728,6 +728,187 @@ mod tests {
         assert!(t0.elapsed() < Duration::from_secs(5));
     }
 
+    type Events = Arc<Mutex<Vec<String>>>;
+
+    fn note(events: &Events, what: impl Into<String>) {
+        events.lock().unwrap().push(what.into());
+    }
+
+    /// A backend that answers every step at once with the same token, so a request with a large
+    /// budget fills its buffers and then waits for its reader. Notes when it is dropped.
+    struct Endless {
+        logits: Vec<f32>,
+        n_past: usize,
+        events: Events,
+        name: &'static str,
+    }
+
+    impl Drop for Endless {
+        fn drop(&mut self) {
+            note(&self.events, format!("{} backend dropped", self.name));
+        }
+    }
+
+    impl tetraeder_scheduler::Backend for Endless {
+        fn n_ctx(&self) -> usize {
+            CTX as usize
+        }
+        fn n_past(&self) -> usize {
+            self.n_past
+        }
+        fn truncate(&mut self, keep: usize) -> Result<(), String> {
+            self.n_past = keep;
+            Ok(())
+        }
+        fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String> {
+            self.n_past += tokens.len();
+            Ok(&self.logits)
+        }
+        fn snapshot(&mut self) -> Result<Vec<u8>, String> {
+            Ok(Vec::new())
+        }
+        fn restore(&mut self, _: &[u8], n: usize) -> Result<(), String> {
+            self.n_past = n;
+            Ok(())
+        }
+        fn on_gpu(&self) -> bool {
+            false
+        }
+        fn bytes_streamed_total(&self) -> Option<u64> {
+            None
+        }
+    }
+
+    /// The tiny model's tokenizer over an `Endless` backend: no weights, no compute.
+    fn endless(events: &Events, name: &'static str) -> Result<Scheduler, String> {
+        let path = fixture();
+        let events = Arc::clone(events);
+        Scheduler::start(SchedulerConfig::new(&path), move || {
+            let tokenizer = Arc::new(
+                tetraeder_ggml_sys::llama::Model::load(
+                    &path,
+                    &tetraeder_ggml_sys::llama::ModelParams {
+                        vocab_only: true,
+                        ..Default::default()
+                    },
+                )
+                .map_err(|e| e.to_string())?,
+            );
+            let mut logits = vec![0.0; tokenizer.n_vocab() as usize];
+            logits[65] = 1.0;
+            Ok(tetraeder_scheduler::Loaded {
+                backend: Box::new(Endless {
+                    logits,
+                    n_past: 0,
+                    events,
+                    name,
+                }),
+                tokenizer,
+            })
+        })
+    }
+
+    // hardware: none (the tokenizer comes from the tiny fixture; no weights load)
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn restart_cuts_in_flight_requests_on_the_fake_clock() {
+        let events: Events = Arc::default();
+        let l = layout();
+        let first = Lowered::Llama {
+            n_gpu_layers: 0,
+            cpu_patterns: Vec::new(),
+            threads: 2,
+            batch: 64,
+            ubatch: 64,
+            op_offload: false,
+        };
+        let loads = Arc::new(AtomicUsize::new(0));
+        let loader: Loader = {
+            let (events, loads) = (Arc::clone(&events), Arc::clone(&loads));
+            Box::new(move |_| {
+                let n = loads.fetch_add(1, Ordering::SeqCst);
+                if n > 0 {
+                    note(&events, "load");
+                }
+                endless(&events, if n == 0 { "old" } else { "new" })
+            })
+        };
+        let lower_fn: Lowerer = {
+            let first = first.clone();
+            Box::new(move |_| Ok(first.clone()))
+        };
+        let e = SwitchableEngine::new(
+            tokio::runtime::Handle::current(),
+            loader,
+            lower_fn,
+            &first,
+            None,
+        )
+        .unwrap();
+        // The hook sees the first cut-wait sleep: it counts the cut tokens, then lets the
+        // runtime unwind the requests (a yield loop, no sleep), so the cut wait ends at its
+        // next poll of fake time.
+        let flight = Arc::clone(&e.flight);
+        let hook_events = Arc::clone(&events);
+        let (clock, fake) = scripted(move |_| {
+            let cut = flight
+                .cuts
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| t.is_cancelled())
+                .count();
+            let seen = hook_events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|x| x.starts_with("cut"));
+            if cut > 0 && !seen {
+                note(&hook_events, format!("cut {cut}"));
+                let giveup = Instant::now() + Duration::from_secs(10);
+                while flight.count.load(Ordering::SeqCst) > 0 && Instant::now() < giveup {
+                    std::thread::yield_now();
+                }
+            }
+        });
+        let e = Arc::new(e.with_clock(clock));
+        let rx1 = request(&e, 100_000).unwrap();
+        let rx2 = request(&e, 100_000).unwrap();
+        assert_eq!(e.in_flight(), 2);
+        let mut c = Control(Arc::clone(&e));
+        c.stop_admitting();
+        let t0 = Instant::now();
+        let start = fake.now_s();
+        assert!(
+            !c.wait_drained(0.2),
+            "the requests never finish by themselves"
+        );
+        note(&events, "drain timed out");
+        let drained_at = fake.now_s() - start;
+        assert!((0.2..0.25).contains(&drained_at), "{drained_at}");
+        c.restart(&plan(&l, 1)).unwrap();
+        // Unwound within one poll of the cut wait, not after CUT_WAIT.
+        let cut_took = fake.now_s() - start - drained_at;
+        assert!(cut_took < 1.0, "{cut_took} fake seconds");
+        assert_eq!(e.in_flight(), 0);
+        assert_eq!(
+            *events.lock().unwrap(),
+            ["drain timed out", "cut 2", "old backend dropped", "load"]
+        );
+        for rx in [rx1, rx2] {
+            let (_, end) = collect(rx).await;
+            assert!(
+                matches!(end, Some(GenEvent::Error(_)) | None),
+                "cut request ended with {end:?}"
+            );
+        }
+        // The new scheduler serves, and no wall-clock wait happened.
+        c.resume();
+        let (tokens, end) = collect(request(&e, 4).unwrap()).await;
+        assert_eq!(tokens.len(), 4);
+        assert!(matches!(end, Some(GenEvent::Finished { .. })), "{end:?}");
+        assert!(t0.elapsed() < Duration::from_secs(2), "{:?}", t0.elapsed());
+    }
+
     struct ScriptedPlan(Option<Plan>);
 
     impl PlanSource for ScriptedPlan {
