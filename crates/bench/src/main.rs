@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use tetraeder_bench::golden::{Golden, Tolerance};
+use tetraeder_bench::noise;
 use tetraeder_bench::quality::{self, ParityFile, ParityOptions};
 use tetraeder_bench::replay;
 use tetraeder_bench::run::{self, Options};
@@ -16,6 +17,24 @@ use tetraeder_bench::{env, spec::Spec};
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+enum NoiseCmd {
+    /// Scan results for A/A pairs and rewrite `<out>/<class>.json` (idempotent; sessions already in a file stay).
+    Update {
+        #[arg(long, default_value = "bench/results")]
+        results: PathBuf,
+        #[arg(long, default_value = "bench/noise")]
+        out: PathBuf,
+    },
+    /// Print the band a run on this class would use.
+    Show {
+        /// Class slug, e.g. rtx-3090 or cpu.
+        class: String,
+        #[arg(long, default_value = "bench/noise")]
+        dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -50,6 +69,15 @@ enum Cmd {
         /// lack (a relaunch after a kill, or `--repeats 1` first and the spec's repeats later).
         #[arg(long)]
         resume: bool,
+        /// Measured noise bands (`noise update` writes them); a class with enough sessions replaces the spec's
+        /// provisional band. A missing directory means provisional bands only.
+        #[arg(long, default_value = "bench/noise")]
+        noise_dir: PathBuf,
+    },
+    /// Measured noise bands per device and GPU class from the A/A pairs of committed results (see `noise.rs`).
+    Noise {
+        #[command(subcommand)]
+        cmd: NoiseCmd,
     },
     /// Greedy golden check of the Tetraeder build against llama-simple for every Tetraeder gate of a spec;
     /// writes parity.json. Exit 0 all ok, 1 outputs differ, 2 a check could not run.
@@ -101,6 +129,12 @@ enum Cmd {
     },
 }
 
+fn noise_class_of(path: &std::path::Path) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
 fn main() -> ExitCode {
     match real_main() {
         Ok(code) => ExitCode::from(code),
@@ -123,6 +157,7 @@ fn real_main() -> Result<u8> {
             strict,
             parity,
             resume,
+            noise_dir,
         } => {
             let text = std::fs::read_to_string(&spec)
                 .with_context(|| format!("read {}", spec.display()))?;
@@ -158,6 +193,7 @@ fn real_main() -> Result<u8> {
                 parity,
                 checkpoint: Some(path.clone()),
                 done_reps,
+                noise_dir: Some(noise_dir),
             };
             let results = run::run_spec(&parsed, &text, &opts)?;
             run::write_results_at(&results, &path)?;
@@ -165,6 +201,45 @@ fn real_main() -> Result<u8> {
             println!("results: {}", path.display());
             Ok(results.exit_code as u8)
         }
+        Cmd::Noise { cmd } => match cmd {
+            NoiseCmd::Update { results, out } => {
+                let (y, mo, d, ..) = env::utc_parts(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |t| t.as_secs()),
+                );
+                let today = format!("{y:04}-{mo:02}-{d:02}");
+                for p in noise::update(&results, &out, std::path::Path::new("."), &today)? {
+                    let f =
+                        noise::load(&out, &noise_class_of(&p))?.context("written file vanished")?;
+                    println!(
+                        "{}: n={} hosts={} p95 d={:.4} band={:.4}",
+                        p.display(),
+                        f.n,
+                        f.n_hosts,
+                        f.d_p95,
+                        f.band
+                    );
+                }
+                Ok(0)
+            }
+            NoiseCmd::Show { class, dir } => {
+                match noise::load(&dir, &class)? {
+                    Some(f) => println!(
+                        "{class}: n={} band={:.4} ({})",
+                        f.n,
+                        f.band,
+                        if f.n >= noise::MIN_SESSIONS {
+                            "used"
+                        } else {
+                            "too few sessions, provisional band stays"
+                        }
+                    ),
+                    None => println!("{class}: no measured file, provisional band"),
+                }
+                Ok(0)
+            }
+        },
         Cmd::Parity {
             spec,
             out_dir,

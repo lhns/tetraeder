@@ -177,8 +177,10 @@ a = "llama-cpu-moe"
 b = "llama-cpu-moe"
 role = "noise"
 
-# Allowed drop of the paired ratio per device and GPU class. PROVISIONAL: replace with bands measured from the
-# noise-* pairs over several nights on each class (p95 of |ratio - 1| plus margin).
+# Allowed drop of the paired ratio per device and GPU class. PROVISIONAL starting values: a run uses the band measured
+# from the noise-* pairs of that class (bench/noise/<class>.json, written by `tetraeder-bench noise update`, at least
+# 3 sessions) and falls back to these otherwise; each result records which one in `band_source`. docs/sessions.md,
+# "Noise bands". Do not tune these by hand once a class has a measured file.
 [[noise_band]]
 class = "cpu"
 device = "cpu"

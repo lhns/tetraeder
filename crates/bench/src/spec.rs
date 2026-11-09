@@ -196,7 +196,7 @@ pub struct Pair {
     pub role: Role,
 }
 
-/// Allowed drop of the paired ratio, per device and GPU class. Provisional until measured on the nightly box.
+/// Allowed drop of the paired ratio, per device and GPU class. The provisional fallback of the measured bands (`noise.rs`).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NoiseBand {

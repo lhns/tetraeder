@@ -1,6 +1,6 @@
 # Box sessions for the open M1 exit tests
 
-Five launch-ready sessions, each a profile of `scripts/session.sh`. Written 2026-11-09 while box runs are on hold; nothing here has run yet. Rules: AGENTS.md "GPU work on Vast.ai" and the caps there (3 h and 0.45 USD/h per box, two boxes, 1.0 USD/h per account; B2 has the user's 48 GB exception, 6 h at 0.50 USD/h).
+Five exit sessions and a weekly GPU smoke, each a profile of `scripts/session.sh`. Written 2026-11-09 while box runs are on hold; nothing here has run yet. Rules: AGENTS.md "GPU work on Vast.ai" and the caps there (3 h and 0.45 USD/h per box, two boxes, 1.0 USD/h per account; B2 has the user's 48 GB exception, 6 h at 0.50 USD/h).
 
 ## How a profile keeps its cap
 
@@ -34,6 +34,8 @@ B3 first: its cache tuner gives B1 the llama.cpp CPU share. B3-planner and B3-de
 | B2 `b2-proxy` | 48 GB Ampere card (RTX A6000, A40), 64 GB RAM, 8+ cores, 100 GB disk | 82 min proxy, 40 kv-quality, hook / 260 min | 2.5 to 4.8 | 1.25 to 2.40 | 38 GB | 0.50 to 1.00 | 1.8 to 3.4 USD |
 | B3 `b3-planner` | RTX 3090, 32+ GB RAM, 9+ cores, 100 GB disk | 96 to 120 / 120 min | 2.0 to 2.4 | at most 1.08 | 38 GB | 0.50 to 1.00 | 1.3 to 2.1 USD |
 | B3 `b3-detector` | RTX 3090, 32+ GB RAM, 9+ cores, 80 GB disk | 65 to 110 / 120 min | 1.5 to 2.3 | at most 1.04 | 19 GB | 0.25 to 0.50 | 0.9 to 1.5 USD |
+
+Every session except `b1-exit` (the verdict session, `NOISE_STAGE=1` opts in) now ends with the A/A pair of the "Noise bands" section when 12 minutes of its budget are left: it adds the 8B model (about 5 GB, 0.07 to 0.13 USD of traffic) and up to 12 minutes; `b1b-levers` and `b2-proxy` may skip it when the deadline is near.
 
 Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); box 58900330 paid 0.92 USD for the same 142 GB (ADR 0045), so the low end exists. Rank offers with `--download-gb`.
 
@@ -145,3 +147,65 @@ kernels-cpu is more telling on B1's CPU class; if B1 has time left it can run th
 **Verify after fetch.** `tetraeder detector-score bench/results/<date>/detector` writes `score.json`; commit the campaign directory (obs, manifest, calib, harness, score.json) and `cargo test -p tetraeder-analysis --test campaign` gives the verdict: single-fault top-1 at least 90%, at most 1 false positive in the no-fault runs, both faults of a pair in the top 3 in at least 90%.
 
 **Result.** Phase 3a detector exit test on real hardware (ADR 0041). kernels-cpu answers whether ik's kernels beat mainline at the same AVX2 ISA (ADR 0045 table).
+
+## GPU smoke (`gpu-smoke`, weekly)
+
+A cheap RTX 3090-class box that checks the GPU code between exit sessions, so a CUDA regression shows up for under 0.30 USD and not on a 2 to 5 USD exit box. Driven from the local machine by `scripts/gpu_smoke.sh`; the box side is `SESSION=gpu-smoke` of `scripts/session.sh`.
+
+**What it runs** (all with `TETRAEDER_REQUIRE_GPU=1`, results in `bench/results/<date>/gpu-smoke/`):
+
+| # | Stage | Estimate | Output |
+|---|---|---|---|
+| 0 | provision (push, deps, 0.6B and 8B models), `cuda: ok` check | 12 (box 25 with fetch and destroy) | |
+| 1 | CUDA test build (sm_86 only), the five `gpu_*` tests of `cpu_experts`, `quantized`, `slots` and `parity` (synthetic fixtures, no download) | 10 build, 1 run | `gpu-tests.log` |
+| 2 | Qwen3-0.6B golden (`engine/tests/golden.rs`, CPU placement of the CUDA build) | 2 | `golden.log` |
+| 3 | A/A pair `noise-cuda-dense` of `phase0.toml` (Qwen3-8B, 8 repeats): the noise-band sample | 4 | `phase0-<HHMMSS>.json` |
+| 4 | `summary.json`, `DONE` | | `ok: true` only when every stage passed |
+
+`gpu_cuda_graphs_decode` and `gpu_real_moe_streaming` need the 30B and stay in `nightly.sh` (`MOE_CHECK=1`). There is no GPU placement of the 0.6B golden yet (the golden is recorded for CPU).
+
+**Skips fail.** `Backend::gpu_available()` panics when `TETRAEDER_REQUIRE_GPU` is set (not empty, not `0`) and there is no GPU, which covers every GPU test and `exit_regime`. A test that skips for a missing model prints `skip:`; `summary.json` is not `ok` if any such line is in the logs, or if fewer than `GPU_SMOKE_MIN_TESTS` (5) tests passed. Track `track-aa-test-infra` adds the same variable for models and GPU; when it merges, keep one definition (the panic in `gpu_available` is the GPU half).
+
+**Cost** (script budget 30 min, `SESSION_MIN`, `GPU_SMOKE_SESSION_MIN` for a cold build on a new image tag; box life about 42 min = 0.70 h):
+
+| Item | Value | Source |
+|---|---|---|
+| Box | price cap `(0.30 - traffic) / 0.75 h` = 0.19 USD/h with the 8B, 0.37 with `GPU_SMOKE_NOISE=0`; 0.13 USD for 0.70 h at the cap | `scripts/gpu_smoke.sh` computes it and passes `--max-price` to `create --auto` |
+| Traffic | 6 GB (0.6 GB + about 5 GB 8B, `phase0.toml` note) at 0.013 to 0.026 USD/GB = 0.08 to 0.16 USD | `inet_down_cost` range above; the box image pull is not counted here (open) |
+| Total | 0.21 to 0.29 USD per run, about 1.0 to 1.3 USD per month (4.3 runs) | |
+| Time | build 10 min (8:51 and 11:11 in the two build logs cited above), tests about 1 min (`gpu-tests-120800.log`: two tests in 4.0 s), golden 2, A/A pair 4 (the whole `phase0` spec took 31 min), provisioning and teardown 25 (estimate above) | |
+
+The box price itself has no committed sample (nobody measured the 3090 offers' price here); if no offer fits the cap, `create` fails and the wrapper exits 3 without renting. Raise `GPU_SMOKE_BUDGET_USD` only with the user's go (AGENTS.md: ask before raising caps).
+
+**Run it** (dry run is the default and prints every command; `--run` rents a box):
+
+```bash
+git merge origin/main && uv sync && git push        # the box gets committed HEAD only
+scripts/gpu_smoke.sh                                # dry run
+scripts/gpu_smoke.sh --run                          # create, provision, cuda check, run, wait, fetch, verify, destroy
+cargo run -p tetraeder-bench -- noise update        # fold the new A/A pair into bench/noise/, then commit both
+```
+
+It passes `--id` to every call after `create`, destroys the box on every exit path after a fetch (and with `--force` only when the fetch failed), writes `cost.json` next to the results (box id, minutes, price cap, taxameter's destroy output with `inet_down_billed` and `inet_down_cost`) and logs to `runs/vast/gpu-smoke-<stamp>.local.log`. Exit codes are at the top of the script. Verify: `summary.json` has `"ok": true`, `DONE` exists, an A/A results JSON is next to it.
+
+**Weekly schedule (not registered).** Box runs are on hold; nothing here may be scheduled until the user lifts the hold and says so. Then, once, from a prompt (the time is an example; it needs the machine on, `uv`, Git Bash and the API key file as in the README section "Vast boxes"):
+
+```bat
+schtasks /Create /TN tetraeder-gpu-smoke /SC WEEKLY /D SUN /ST 03:00 /F /TR "cmd /c cd /d <repo> && bash scripts/gpu_smoke.sh --run >> .vast\gpu-smoke.out 2>&1"
+```
+
+Run it from a checkout on `main` that is pushed and clean (the wrapper refuses uncommitted changes). Also run it by hand before merging a branch that touches `ggml-sys`, `model`, `memory` or the patch queue.
+
+**Relation to `nightly.sh`.** Not superseded as a script, superseded as a schedule. The nightly's job was "does the GPU code build and run, and is the Tetraeder engine within the noise band of llama.cpp"; the first half is the smoke at about a fifth of the cost. The second half (the Phase 1 gate pairs, `MOE_CHECK`, `GAP_PAIR`, the Phase 2 baseline spec) stays in `nightly.sh` for on-demand runs before a release or after a change to the bench or the engine's hot path; it should not come back as a daily job (`nightly_wait_min` 170, 1 to 2 USD a night).
+
+## Noise bands
+
+Gates compare the paired ratio of a candidate with `1 - band`. The band is per device and GPU class, from `tetraeder-bench`:
+
+- **Sample.** One A/A pair (`role = "noise"`, the same variant twice, interleaved ABBA) per session. Every profile of `session.sh` except `b1-exit` ends with `noise-cuda-dense` (`noise_stage`, off with `NOISE_STAGE=0`, skipped with fewer than 12 minutes left); `gpu-smoke` always runs it, so a class gets about one sample a week. `nightly.sh` runs `noise-cuda-dense` and `noise-cpu-dense` as before.
+- **Statistic.** A session's `d` is the largest `|median paired ratio - 1|` over its metrics (`pp_ts`, `tg_ts`): what the verdict compares with the band.
+- **Band.** `band = clamp(1.25 * p95(d), 0.02, 0.25)` over the sessions of the class, p95 by nearest rank (the maximum below 20 sessions). The floor keeps a lucky quiet streak from gating on noise; the margin covers hosts not seen yet.
+- **Class.** `cpu`, or the GPU name without vendor words: "NVIDIA GeForce RTX 3090" is `rtx-3090`, "NVIDIA RTX A6000" is `rtx-a6000`.
+- **File.** `tetraeder-bench noise update [--results bench/results] [--out bench/noise]` scans all harness results, adds the A/A sessions it has not seen (by file and pair) and rewrites `bench/noise/<class>.json`: `n`, `n_hosts`, `d_p95`, `band`, the parameters, and per session the date, `host_id`, GPU, driver, threads, repeats and ratios. `noise show <class>` prints what a run would use. Commit the files with the results they came from.
+- **Use.** `tetraeder-bench run` (default `--noise-dir bench/noise`) uses the class file when it has at least 3 sessions and otherwise the spec's provisional `[[noise_band]]`. Each pair result records `band`, `noise_class` and `band_source` (`measured rtx-3090 n=5` or `provisional rtx-3090 (measured n=2 < 3)`), and the summary text prints it. A corrupt file is an error for the pair, not a silent fallback.
+- **Caveat.** Sessions on one box are correlated; `n_hosts` says how many distinct boxes the band rests on. Treat a band from fewer than 3 hosts as provisional in spirit.

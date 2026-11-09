@@ -29,3 +29,7 @@ What the b11976 C API does and does not offer:
 - Per-device KV and workspace bytes are not reported until a patch or the own KV cache (Phase 4) provides them.
 - The exit test (within 5%, overhead under 2%) needs a paired GPU run; CPU pairs run locally. The overhead pair is reported, not gated, until a band below the box noise is measured.
 - When llama-bench's timed loop changes on a rebase, `bench_prompt`/`bench_gen` must follow.
+
+## Addendum 2026-11-09: measured noise bands
+
+The spec's `[[noise_band]]` values are provisional starting points. `tetraeder-bench noise update` builds `bench/noise/<class>.json` from the A/A pairs of committed results (class `cpu` or the GPU name without vendor words, e.g. `rtx-3090`). Per session, `d` is the largest `|median paired ratio - 1|` over the metrics. Band = `clamp(1.25 * p95(d), 0.02, 0.25)`, p95 by nearest rank. A run uses a class file with at least 3 sessions and otherwise the spec band; each pair result records `band_source`. Sessions on one box are correlated, so `n_hosts` is stored. Sessions: `scripts/session.sh` (docs/sessions.md, "Noise bands").
