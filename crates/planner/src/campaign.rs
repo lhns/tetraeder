@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tetraeder_costmodel::predict::predict;
+use tetraeder_plan::KvFormat;
 use tetraeder_profiler::HardwareGraph;
 
 /// Request size of the CPU-only anchors, at the candidates' thread counts only: a 32B dense model
@@ -296,6 +297,7 @@ pub fn build_builder(
                 },
                 ub,
                 workload,
+                KvFormat::default(),
             );
             f.gpu <= budget.gpu_bytes && f.host <= budget.ram_bytes
         };

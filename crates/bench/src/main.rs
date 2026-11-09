@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use tetraeder_bench::golden::{Golden, Tolerance};
 use tetraeder_bench::quality::{self, ParityFile, ParityOptions};
+use tetraeder_bench::replay;
 use tetraeder_bench::run::{self, Options};
 use tetraeder_bench::{env, spec::Spec};
 
@@ -65,6 +66,27 @@ enum Cmd {
         tetraeder: Option<PathBuf>,
         #[arg(long, env = "TETRAEDER_MODELS_DIR", default_value = ".hf_cache")]
         models_dir: PathBuf,
+    },
+    /// Score RAM-tier policies offline on a routing trace written by the exit regime
+    /// (`TETRAEDER_EXIT_ROUTING_OUT`, ADR 0050 (c)); writes one JSON file.
+    Replay {
+        #[arg(long)]
+        trace: PathBuf,
+        /// VRAM slots per layer, comma separated.
+        #[arg(long, value_delimiter = ',', required = true)]
+        vram: Vec<u32>,
+        /// RAM slots per layer, comma separated.
+        #[arg(long, value_delimiter = ',', required = true)]
+        ram: Vec<u32>,
+        /// `lru`, `freq:<share>` or `belady`, comma separated.
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_values_t = ["lru", "freq:0.25", "freq:0.5", "freq:0.75", "freq:1", "belady"].map(String::from)
+        )]
+        policies: Vec<String>,
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Parse and validate a spec.
     Check { spec: PathBuf },
@@ -179,6 +201,22 @@ fn real_main() -> Result<u8> {
             } else {
                 u8::from(!file.all_ok())
             })
+        }
+        Cmd::Replay {
+            trace,
+            vram,
+            ram,
+            policies,
+            out,
+        } => {
+            let policies = policies
+                .iter()
+                .map(|p| tetraeder_memory::replay::sim::Policy::parse(p))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(anyhow::Error::msg)?;
+            let n = replay::run(&trace, &vram, &ram, &policies, &out)?;
+            println!("replay: {n} configurations -> {}", out.display());
+            Ok(0)
         }
         Cmd::Check { spec } => {
             let s = Spec::load(&spec)?;

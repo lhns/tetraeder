@@ -25,6 +25,11 @@
 //!   prediction accuracy per layer and mean).
 //! - `TETRAEDER_EXIT_PREFETCH_DEPTH` (1): layers ahead that the prefetch predicts and reads, 1 or
 //!   2; depth 2 adds `accuracy2` and `accuracy2_mean` to the prefetch JSON.
+//! - `TETRAEDER_EXIT_REF_ATTN_ROT=1`: keep libllama's Hadamard rotation of a quantized KV cache on
+//!   in the reference engine (default off, so logits compare with the builder's plain cache; on
+//!   is what llama.cpp ships, for speed pairs).
+//! - `TETRAEDER_EXIT_KV`: K and V cache format, `f16` (default), `q8_0`, `q8_0/q4_0` or `q4_0`
+//!   (ADR 0050 b); both engines use it (`LoadOptions::kv`, libllama `type_k` and `type_v`).
 //! - `TETRAEDER_EXIT_CPU_POLL`: ggml threadpool polling level 0 to 100 (default: ggml's 50).
 //! - `TETRAEDER_EXIT_PREFETCH_THREADS`: CPU compute threads while a prefetch read is in flight
 //!   (default: all).
@@ -37,6 +42,9 @@
 //!   a `;` list of `regex=BUFFER_TYPE` as `llama-bench -ot`, first match wins). Same tokens,
 //!   ubatch, context and threads, so it is also the llama.cpp baseline on the real prompt
 //!   (llama-bench decodes random tokens); the JSON has the same speed and output fields.
+//! - `TETRAEDER_EXIT_ROUTING_OUT`: write the routing of the run (with the predictions) as a
+//!   `tetraeder-routing` trace for `tetraeder-bench replay` (ADR 0050 (c)). One file per ubatch
+//!   size: with several, the size is inserted before the extension.
 //! - `TETRAEDER_EXIT_OUT` (JSON file), `TETRAEDER_EXIT_MACHINE` (a note).
 //!
 //! Every run records `prompt` (token count and an FNV-1a hash of the token ids), `first_top`
@@ -47,6 +55,7 @@
 mod common;
 
 use common::synth::{MoeSpec, quantized_moe_at};
+use common::trace::RoutingRecorder;
 use common::{argmax, prefetch_json, top_k};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -57,10 +66,12 @@ use tetraeder_ggml_sys::llama::{
     Batch, Context, ContextParams, FlashAttn, Ftype, Model, ModelParams, resolve_buffer_type,
 };
 use tetraeder_memory::process;
+use tetraeder_model::convert::ggml_type;
 use tetraeder_model::{
     BackendChoice, ExpertStats, IoCounters, LoadOptions, MissPolicy, ModelFile, Qwen3Moe,
     StepProfile,
 };
+use tetraeder_plan::KvFormat;
 
 /// Expert of about 2.6 MB (three slabs) like Qwen3-30B-A3B, top-4 of 16, so a RAM tier of a
 /// quarter of the experts reads from disk every step. About 350 MB as Q4_K_M, 2.6 GB as the F32
@@ -184,7 +195,14 @@ fn reference_run(
     n_decode: usize,
     n_ctx: usize,
     threads: usize,
+    kv: KvFormat,
 ) -> Value {
+    // libllama rotates a quantized cache by default; the builder does not
+    if std::env::var("TETRAEDER_EXIT_REF_ATTN_ROT").is_ok_and(|v| v == "1") {
+        // keep llama.cpp's shipped behaviour for speed pairs
+    } else {
+        tetraeder_ggml_sys::llama::disable_attn_rot();
+    }
     let patterns = std::env::var("TETRAEDER_EXIT_REF_OT").unwrap_or_else(|_| "exps=CPU".into());
     let overrides = patterns
         .split(';')
@@ -218,6 +236,8 @@ fn reference_run(
             n_threads: threads as i32,
             n_threads_batch: threads as i32,
             flash_attn: FlashAttn::On,
+            type_k: ggml_type(kv.k).expect("K type"),
+            type_v: ggml_type(kv.v).expect("V type"),
             ..ContextParams::default()
         },
     )
@@ -265,6 +285,20 @@ fn reference_run(
     });
     eprintln!("{run}");
     run
+}
+
+/// `base`, or with several ubatch sizes `stem.ub<size>.ext`.
+fn trace_path(base: &std::path::Path, ub: usize, many: bool) -> PathBuf {
+    if !many {
+        return base.to_path_buf();
+    }
+    let stem = base
+        .file_stem()
+        .map_or(String::new(), |s| s.to_string_lossy().into_owned());
+    let ext = base
+        .extension()
+        .map_or(String::new(), |e| format!(".{}", e.to_string_lossy()));
+    base.with_file_name(format!("{stem}.ub{ub}{ext}"))
 }
 
 fn add_profile(a: &mut StepProfile, b: &StepProfile) {
@@ -386,9 +420,16 @@ fn exit_regime() {
     if let Some(d) = env_u64("TETRAEDER_EXIT_PREFETCH_DEPTH") {
         opts.prefetch_depth = d as usize;
     }
+    if let Ok(v) = std::env::var("TETRAEDER_EXIT_KV") {
+        opts.kv = v
+            .parse()
+            .expect("TETRAEDER_EXIT_KV is f16, q8_0, q8_0/q4_0 or q4_0");
+    }
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
     opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
     let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
+    let routing_out = std::env::var_os("TETRAEDER_EXIT_ROUTING_OUT").map(PathBuf::from);
+    opts.record_routing = routing_out.is_some() && !reference;
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
         None => opts.expert_slots = Some(env_u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize),
@@ -407,7 +448,9 @@ fn exit_regime() {
     let mut io_backend = None;
     for &ub in &ubatches {
         if reference {
-            runs.push(reference_run(&path, &tokens, ub, n_decode, n_ctx, threads));
+            runs.push(reference_run(
+                &path, &tokens, ub, n_decode, n_ctx, threads, opts.kv,
+            ));
             continue;
         }
         let t0 = Instant::now();
@@ -415,6 +458,22 @@ fn exit_regime() {
         let load_s = t0.elapsed().as_secs_f64();
         io_backend = m.io_backend();
         let s0 = m.expert_stats().expect("the exit regime streams experts");
+        let mut recorder = routing_out.as_ref().map(|p| {
+            let path = trace_path(p, ub, ubatches.len() > 1);
+            let hot = if refresh_hot {
+                "refresh"
+            } else {
+                "first_prefill"
+            };
+            RoutingRecorder::create(
+                &path,
+                &m,
+                ub,
+                prompt_info["fnv1a64"].as_str().unwrap_or_default(),
+                hot,
+                None,
+            )
+        });
 
         m.take_profile();
         let t0 = Instant::now();
@@ -424,6 +483,9 @@ fn exit_regime() {
             let t = Instant::now();
             last = m.eval_last(chunk).expect("prefill");
             ubatch_s.push(t.elapsed().as_secs_f64());
+            if let Some(r) = &mut recorder {
+                r.drain(&mut m);
+            }
         }
         let prefill_s = t0.elapsed().as_secs_f64();
         let pp = m.take_profile();
@@ -431,6 +493,9 @@ fn exit_regime() {
         let t = Instant::now();
         if refresh_hot {
             m.refresh_hot_set().expect("hot set refresh");
+            if let Some(r) = &mut recorder {
+                r.drain(&mut m);
+            }
         }
         let refresh_s = t.elapsed().as_secs_f64();
         let s1 = m.expert_stats().unwrap();
@@ -454,6 +519,9 @@ fn exit_regime() {
             for _ in 0..n {
                 greedy.push(next);
                 let l = m.eval(&[next]).expect("decode");
+                if let Some(r) = &mut recorder {
+                    r.drain(&mut m);
+                }
                 margins.push(margin(&l));
                 next = argmax(&l) as i32;
             }
@@ -477,6 +545,9 @@ fn exit_regime() {
         let decode_s = t0.elapsed().as_secs_f64();
         let s2 = m.expert_stats().unwrap();
 
+        if let Some(r) = recorder.take() {
+            r.finish();
+        }
         let memory: Vec<Value> = m
             .memory()
             .iter()
@@ -534,6 +605,7 @@ fn exit_regime() {
             "refresh_hot": refresh_hot,
             "prefetch": opts.prefetch,
             "prefetch_depth": opts.prefetch_depth,
+            "kv": opts.kv.to_string(),
             "cpu_poll": opts.cpu_poll,
             "prefetch_threads": opts.prefetch_threads,
             "expert_slots": opts.expert_slots,
