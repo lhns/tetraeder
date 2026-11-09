@@ -10,7 +10,7 @@ State as of 2026-11-09 and the roadmap. Rules are in `AGENTS.md`; this file says
 | Cost model and DES simulator | analytic roofline plus FIFO devices and links, one op per layer, M=1 decode, no tiers, disk or experts; models time only | CI (planner search) |
 | Fault simulator, routing replay | detector signals from nominal busy times; replay counts bytes, not time | CI |
 | Synthetic models | `REALISH` MoE, a tiny f16 fixture, the slab-sized `exit_regime` model (ignored by default) | CI (CPU) |
-| CPU parity | builder against libllama on the synthetic models; Qwen3-0.6B golden (`crates/engine/tests/golden.rs`) | CI, golden since this branch |
+| CPU parity | builder against libllama on the synthetic models; Qwen3-0.6B golden (`crates/engine/tests/golden.rs`), run pinned to the SSE4.2 tier it was recorded on, Windows only (glibc and MSVC libm differ in the last ulp, which flips greedy tokens; a Linux golden is open) | CI (Windows), box |
 | Fakes | `FakeDevice`, fake llama-bench, `serve --fake` | CI |
 | CUDA and Vulkan jobs | compile and link only, no GPU, not path-filtered | CI |
 | GPU tests (`gpu_*`), real-model runs | logits against libllama on GPU, 235B decode, speculative, KV formats | Vast boxes only |
@@ -23,8 +23,8 @@ Never tested end to end: the speedup of the prefetch levers, I/O overlap on a re
 
 A skipped test used to count as passed. Now:
 - `TETRAEDER_REQUIRE_MODELS=1` (set in the CI test job) makes tests that need the Qwen3-0.6B GGUF fail when it is missing. CI fetches it with `cargo xtask fetch-model` and caches `.hf_cache`.
-- `TETRAEDER_REQUIRE_GPU=1` (set in the box scripts that run GPU tests: `exit_run.sh` gpu-tests, `moe_check.sh`, `graphs_check.sh`, `nightly.sh`) makes a missing GPU fail the test.
-- Every skip prints `skip: <test>: <reason>`. The CI test job lists them in its step summary ("Skipped tests").
+- `TETRAEDER_REQUIRE_GPU=1` (set in the box scripts that run GPU tests: `exit_run.sh` gpu-tests, `moe_check.sh`, `graphs_check.sh`, `nightly.sh`) makes a missing GPU fail the test. It is implemented in `Backend::gpu_available()` (branch `track-ad-gpu-smoke`), so every GPU test and `exit_regime` honors it.
+- Skips print `skip: ...`; the CI test job lists those lines in its step summary ("Skipped tests").
 
 ## Build modes
 
@@ -33,7 +33,7 @@ A skipped test used to count as passed. Now:
 | CI, release packaging | DL, 14 CPU variants (`TETRAEDER_GGML_NATIVE=OFF`, set in `ci.yml`) | exercises the dispatch; ships one binary for every x86 host |
 | Local dev, boxes | native, one variant (`.cargo/config.toml` `[env]`, `docker/box/Dockerfile`) | build time; ADR 0052 addendum |
 
-CI compiles ggml through sccache (`.github/actions/sccache`): rust-cache does not keep workspace crate outputs, so `tetraeder-ggml-sys` was rebuilt from scratch on every run. The native-static job does not use it (`-march=native` objects must not move between runner CPUs).
+CI compiles ggml through sccache (`.github/actions/sccache`, local disk cache saved by actions/cache; the GitHub backend of sccache lost most writes on Linux): rust-cache does not keep workspace crate outputs, so `tetraeder-ggml-sys` was rebuilt from scratch on every run. The native-static job does not use it (`-march=native` objects must not move between runner CPUs).
 
 ## Local builds for parallel agents
 
