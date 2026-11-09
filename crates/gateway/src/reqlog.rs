@@ -6,6 +6,7 @@
 //! `x-tetraeder-generation-id` response header. Only three request headers are logged;
 //! keys and authorization never are.
 
+use crate::engine::DecodeProfile;
 use crate::gateway::{CostSink, GENERATION_ID_HEADER, RequestCost};
 use axum::body::{Body, Bytes};
 use axum::extract::{Request, State};
@@ -147,11 +148,30 @@ impl Drop for Pending {
                 "gpu_seconds": c.gpu_seconds,
                 "bytes_streamed": c.bytes_streamed,
             })),
+            "profile": cost.as_ref().and_then(|c| c.profile.as_ref()).map(profile_json),
             "error_type": error_type,
             "response": response,
         });
         self.log.write(&line);
     }
+}
+
+/// A decode profile as one JSON object; backend counters are flattened under `backend`.
+fn profile_json(p: &DecodeProfile) -> Value {
+    let backend: serde_json::Map<String, Value> = p
+        .backend
+        .iter()
+        .map(|(k, v)| (k.clone(), json!(v)))
+        .collect();
+    json!({
+        "prefill_s": p.prefill_s,
+        "decode_steps": p.decode_steps,
+        "eval_s": p.eval_s,
+        "sample_s": p.sample_s,
+        "emit_s": p.emit_s,
+        "gateway_s": p.gateway_s,
+        "backend": backend,
+    })
 }
 
 /// The middleware; add with `axum::middleware::from_fn_with_state`.

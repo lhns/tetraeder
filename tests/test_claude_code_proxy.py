@@ -157,6 +157,37 @@ def test_summary_main_writes_file(tmp_path):
     assert data["engines"]["tetraeder"]["successes"] == 1
 
 
+def test_decode_by_depth_bins_and_ratio():
+    rows = summary.decode_by_depth([
+        req("tetraeder", "a", tps=90, inp=500, cache=12000, out=50),
+        req("llama-server", "a", tps=100, inp=500, cache=12000, out=50),
+        req("llama-server", "a", tps=10, inp=500, cache=12000, out=5),  # too short, left out
+        req("llama-server", "a", tps=80, inp=35000, out=50),
+    ])
+    assert [(r["depth_from"], r.get("ratio_tetraeder_over_llama")) for r in rows] == [(10000, 0.9), (30000, None)]
+    assert rows[0]["llama-server"] == {"n": 1, "tok_s_median": 100}
+
+
+def test_server_decode_reads_llama_timings_and_tetraeder_profiles(tmp_path):
+    (tmp_path / "server-llama-server-r1.log").write_text(
+        "slot print_timing: id  0 | task 0 | prompt eval time =    3288.39 ms / 11220 tokens\n"
+        "slot print_timing: id  0 | task 0 |        eval time =     500.00 ms /    50 tokens\n"
+        "slot print_timing: id  0 | task 1 |        eval time =     100.00 ms /     5 tokens\n"
+    )
+    prof = {"prefill_s": 0.1, "decode_steps": 50, "eval_s": 0.5, "sample_s": 0.05, "emit_s": 0.0,
+            "gateway_s": 0.01, "backend": {"step_graphs_built": 1.0}}
+    (tmp_path / "tetraeder-r1.reqlog.jsonl").write_text(
+        json.dumps({"profile": prof}) + "\n" + json.dumps({"profile": None}) + "\n"
+    )
+    s = summary.server_decode(str(tmp_path))
+    assert s["llama-server"] == {"requests": 1, "tok_s_median": 100.0}
+    t = s["tetraeder"]
+    assert t["requests"] == 1 and t["tok_s_median"] == 90.909
+    assert t["ms_per_token_median"] == {"eval": 10.0, "sample": 1.0, "emit": 0.0, "gateway": 0.2}
+    assert t["backend_counters_total"] == {"step_graphs_built": 1.0}
+    assert s["ratio_tetraeder_over_llama"] == 0.909
+
+
 # ---- logging proxy -------------------------------------------------------------------------------------------
 
 SSE = [

@@ -291,7 +291,6 @@ impl LoadOptions {
 }
 
 const KV_PAD: usize = 256;
-const MASK_PAD: usize = 32;
 /// Upper bound of nodes in one segment; the scheduler's hash tables are sized for it.
 const SEGMENT_NODES: usize = 1024;
 /// Upper bound of nodes per layer in a whole-step graph (about 70 are used).
@@ -836,6 +835,11 @@ impl Qwen3Moe {
             .unwrap_or_default()
     }
 
+    /// The time breakdown since load or the last [`Qwen3Moe::take_profile`].
+    pub fn profile(&self) -> StepProfile {
+        self.profile
+    }
+
     /// The time breakdown since load or the last call, then starts a new one.
     pub fn take_profile(&mut self) -> StepProfile {
         std::mem::take(&mut self.profile)
@@ -928,16 +932,26 @@ impl Qwen3Moe {
     /// Runs `tokens` after the tokens already in the cache and returns the logits of every
     /// position, `tokens.len() * n_vocab` values, position-major.
     pub fn eval(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {
-        self.run(tokens, false)
+        let mut out = Vec::new();
+        self.run(tokens, false, &mut out)?;
+        Ok(out)
     }
 
     /// Like [`Qwen3Moe::eval`] but only for the last position (`n_vocab` values): prefill does
     /// not need the head for the other positions.
     pub fn eval_last(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {
-        self.run(tokens, true)
+        let mut out = Vec::new();
+        self.run(tokens, true, &mut out)?;
+        Ok(out)
     }
 
-    fn run(&mut self, tokens: &[i32], last_only: bool) -> Result<Vec<f32>> {
+    /// Like [`Qwen3Moe::eval_last`] but into `out`, whose allocation is reused: a decode step
+    /// then reads its 151K logits without allocating.
+    pub fn eval_last_into(&mut self, tokens: &[i32], out: &mut Vec<f32>) -> Result<()> {
+        self.run(tokens, true, out)
+    }
+
+    fn run(&mut self, tokens: &[i32], last_only: bool, logits: &mut Vec<f32>) -> Result<()> {
         let t0 = Instant::now();
         let h = self.file.hparams.clone();
         let n = tokens.len();
@@ -971,7 +985,9 @@ impl Qwen3Moe {
         st.tokens.get().set_i32(tokens)?;
         let pos: Vec<i32> = (self.n_past..self.n_past + n).map(|p| p as i32).collect();
         st.pos.get().set_i32(&pos)?;
-        let mut mask = vec![0u16; n_kv * pad(n, MASK_PAD)];
+        // `[n_kv, n]` as libllama builds it at the pin (no row padding since GGML_KQ_MASK_PAD
+        // went away): a decode step writes and uploads one row, not 32.
+        let mut mask = vec![0u16; n_kv * n];
         for i in 0..n {
             for j in (self.n_past + i + 1)..n_kv {
                 mask[i * n_kv + j] = F16_NEG_INF;
@@ -1034,7 +1050,7 @@ impl Qwen3Moe {
             self.sched.compute(&step.graph.get())?;
             self.segments_run += 1;
             prof.graphs += 1;
-            let logits = step.logits.get().get_f32()?;
+            step.logits.get().get_f32_into(logits)?;
             let t = lap(&mut prof.compute, t);
             if let Some(log) = &mut self.routing {
                 for (layer, (ids, w)) in step.routed.iter().enumerate() {
@@ -1053,13 +1069,12 @@ impl Qwen3Moe {
                 self.metrics.layer_step(true);
             }
             lap(&mut prof.readback, t);
-            return self.finish_step(n, t0, prof, 1, logits);
+            return self.finish_step(n, t0, prof, 1);
         }
 
         let graphs_before = self.group_graphs_run;
         let nu = h.n_expert_used as usize;
         let n_layer = h.n_layer as usize;
-        let mut logits = Vec::new();
         // The pair groups of the previous layer step that run inside this segment.
         let mut pending: Vec<PendingGroup> = Vec::new();
         // The predictions of the experts of a layer (ADR 0038): the next layer's from the
@@ -1118,7 +1133,7 @@ impl Qwen3Moe {
                 self.segments_run += 1;
                 prof.graphs += 1;
                 if let Some(l) = out {
-                    logits = l.get_f32()?;
+                    l.get_f32_into(logits)?;
                 }
                 lap(&mut prof.compute, t);
             }
@@ -1314,7 +1329,7 @@ impl Qwen3Moe {
         let timed = |p: &StepProfile| p.inputs + p.build + p.alloc + p.compute + p.readback;
         let others = timed(&prof) - timed(&self.profile);
         prof.streamer += t0.elapsed().saturating_sub(others);
-        self.finish_step(n, t0, prof, graphs, logits)
+        self.finish_step(n, t0, prof, graphs)
     }
 
     /// Bookkeeping after a step that computed `graphs` graphs.
@@ -1324,8 +1339,7 @@ impl Qwen3Moe {
         t0: Instant,
         mut prof: StepProfile,
         graphs: u32,
-        logits: Vec<f32>,
-    ) -> Result<Vec<f32>> {
+    ) -> Result<()> {
         self.n_past += n;
         prof.total += t0.elapsed();
         self.profile = prof;
@@ -1345,7 +1359,7 @@ impl Qwen3Moe {
             self.hot_pending = false;
             self.refresh_hot_set()?;
         }
-        Ok(logits)
+        Ok(())
     }
 }
 
@@ -1989,7 +2003,7 @@ fn alloc_state(
         n_kv,
         tokens: ctx.new_persistent(Type::I32, &[nt]),
         pos: ctx.new_persistent(Type::I32, &[nt]),
-        mask: ctx.new_persistent(Type::F16, &[n_kv as i64, pad(n, MASK_PAD) as i64]),
+        mask: ctx.new_persistent(Type::F16, &[n_kv as i64, nt]),
         slots: [slot(0), slot(1)],
         host: None,
     };
@@ -2609,6 +2623,32 @@ mod graph_order {
                 }
             }
         }
+    }
+
+    /// The attention mask is `[n_kv, n]` like libllama's `attn_inp_kq_mask` at the pin: a decode
+    /// step at 100K positions writes and uploads 200 KB, not 6.4 MB (32 padding rows before).
+    #[test]
+    fn mask_has_one_row_per_token_like_libllama() {
+        let m = model();
+        let h = m.file.hparams.clone();
+        for n in [1, 5, 33] {
+            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary, None).unwrap();
+            assert_eq!(st.mask.get().ne(), [pad(n, KV_PAD) as i64, n as i64, 1, 1]);
+        }
+        // Decode after a prefill still matches a single evaluation of the whole sequence.
+        let mut a = model();
+        let whole = a.eval(&[1, 2, 3, 4]).unwrap();
+        let mut b = model();
+        b.eval(&[1, 2, 3]).unwrap();
+        let last = b.eval(&[4]).unwrap();
+        let nv = a.n_vocab();
+        let want = &whole[3 * nv..];
+        let diff = want
+            .iter()
+            .zip(&last)
+            .map(|(x, y)| (x - y).abs())
+            .fold(0.0f32, f32::max);
+        assert!(diff < 1e-3, "max logit difference {diff}");
     }
 
     #[test]

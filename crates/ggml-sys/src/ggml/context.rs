@@ -591,49 +591,60 @@ impl<'a> Tensor<'a> {
     }
 
     pub fn set_f32(self, data: &[f32]) -> Result<()> {
-        self.set_bytes(
-            &data
-                .iter()
-                .flat_map(|x| x.to_ne_bytes())
-                .collect::<Vec<_>>(),
-            0,
-        )
+        self.set_bytes(pod_bytes(data), 0)
     }
 
     pub fn set_i32(self, data: &[i32]) -> Result<()> {
-        self.set_bytes(
-            &data
-                .iter()
-                .flat_map(|x| x.to_ne_bytes())
-                .collect::<Vec<_>>(),
-            0,
-        )
+        self.set_bytes(pod_bytes(data), 0)
     }
 
     /// Writes F16 data given as raw IEEE half bits.
     pub fn set_f16_bits(self, data: &[u16]) -> Result<()> {
-        self.set_bytes(
-            &data
-                .iter()
-                .flat_map(|x| x.to_ne_bytes())
-                .collect::<Vec<_>>(),
-            0,
-        )
+        self.set_bytes(pod_bytes(data), 0)
     }
 
+    /// The whole tensor as `f32`, read straight into the result (decode reads 151K logits per
+    /// token; a byte copy and conversion cost as much as the transfer).
     pub fn get_f32(self) -> Result<Vec<f32>> {
-        let b = self.get_bytes(0, self.nbytes())?;
-        Ok(b.chunks_exact(4)
-            .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
-            .collect())
+        let mut out = vec![0f32; self.nbytes() / 4];
+        self.read_into(&mut out)?;
+        Ok(out)
+    }
+
+    /// [`Tensor::get_f32`] into `out`, reusing its allocation.
+    pub fn get_f32_into(self, out: &mut Vec<f32>) -> Result<()> {
+        out.resize(self.nbytes() / 4, 0.0);
+        self.read_into(out)
     }
 
     pub fn get_i32(self) -> Result<Vec<i32>> {
-        let b = self.get_bytes(0, self.nbytes())?;
-        Ok(b.chunks_exact(4)
-            .map(|c| i32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
-            .collect())
+        let mut out = vec![0i32; self.nbytes() / 4];
+        self.read_into(&mut out)?;
+        Ok(out)
     }
+
+    /// Reads the first `size_of_val(out)` bytes of the tensor into `out`.
+    fn read_into<T: Pod>(self, out: &mut [T]) -> Result<()> {
+        let len = std::mem::size_of_val(out);
+        self.check_range(0, len)?;
+        // SAFETY: the range is inside the tensor; `out` has `len` writable bytes, and every bit
+        // pattern is a valid `T` (`Pod`).
+        unsafe { sys::ggml_backend_tensor_get(self.ptr.as_ptr(), out.as_mut_ptr().cast(), 0, len) };
+        Ok(())
+    }
+}
+
+/// Plain numbers without padding, for which any bytes are a valid value.
+trait Pod: Copy {}
+impl Pod for f32 {}
+impl Pod for i32 {}
+impl Pod for u16 {}
+
+/// The bytes of a slice of plain numbers, without a copy.
+fn pod_bytes<T: Pod>(data: &[T]) -> &[u8] {
+    // SAFETY: `T` has no padding, so all `size_of_val(data)` bytes are initialized; `u8` has
+    // alignment 1 and the borrow keeps `data` alive.
+    unsafe { std::slice::from_raw_parts(data.as_ptr().cast(), std::mem::size_of_val(data)) }
 }
 
 /// A tensor that owns a share of its context. [`OwnedTensor::get`] lends a [`Tensor`] bound to

@@ -51,3 +51,15 @@ ADR 0028 built the gateway against a fake engine and left `tetraeder serve` for 
 ## Addendum (2026-11-08): the week of use became a proxy run
 
 On 2026-11-03 the user replaced the exit test's week of Claude Code use with a proxy run of a few hours: the same tasks against Tetraeder and llama-server on one box, ABBA. The bar: tasks solved at least llama-server's, prompt tokens served from cache at least its share (94% in the first run), and no 400 for a request llama-server accepts. The plan's Phase 3b exit test says so now. The first run (above) missed the cache and 400 parts; ADR 0049 fixed both, a rerun is open.
+
+## Addendum (2026-11-09): the A6000 decode gap
+
+The proxy run's `tetraeder serve` had no `--engine`, so `auto` served the Qwen3 MoE builder (all experts resident), not libllama; llama-server ran libllama at the same pin. Settings otherwise match: flash attention on both (the builder always uses `flash_attn_ext`, llama-server `auto`), F16 KV, KV length padded to 256, 128K context, 5 threads, one slot, full-vocab logits to the host per token on both. The gap does not grow with depth: 0.90, 0.91, 0.89 and 0.91 at 0-10K, 10-20K, 20-30K and 30-40K tokens (summary.json `decode_by_depth`), about 1 ms per token. The 3090 gateway bench (1.00 to 1.02) sampled greedily; Claude Code's requests take the temperature path.
+
+Per-token host costs the code shows, fixed (tests in `sample.rs`, `qwen3moe.rs`, `scheduler.rs`):
+
+- Sampling with temperature collected all 152K logits as candidates and ran `select_nth_unstable` for top-k 40: 2 ms per token on the local VM. Now one pass that rejects a logit with one compare against the k-th best (libllama uses a heap partial sort for k <= 128); same candidates, same order, same tokens per seed.
+- The builder's KQ mask had 32 padding rows (`[n_kv, pad(n, 32)]`); libllama's is `[n_kv, n]` at the pin. At 36K positions the decode step built, converted and uploaded 2.4 MB instead of 74 KB; the conversion (`flat_map` into a byte vector in `ggml-sys`) alone took 2 ms locally. Now `[n_kv, n]`.
+- `ggml-sys` tensor reads and writes copied through a byte vector; they now read into and write from the typed slice, and the builder backend reads each step's 151K logits into one kept buffer instead of a new 600 KB vector.
+
+Not proven, left as measurements: graph rebuild and state reallocation every 256 positions, synchronous input uploads from pageable memory, per-token telemetry in `finish_step`, the gateway's per-token work. `TETRAEDER_DECODE_PROFILE=1` makes serve report per request the decode steps, eval, sample, hand-off and gateway time and the backend's counters (builder step profile and whole-step graph builds, libllama `n_reused`) in the request log and as `tetraeder.scheduler.decode.stage`; `scripts/claude_code_proxy.sh` turns it on and its summary adds `server_decode` (llama-server from its timing lines). `scripts/decode_gap.sh` reproduces the gap without Claude Code: llama-bench `-d` and both serve engines with the serve sampler at depths 0, 20K and 100K (`crates/scheduler/tests/decode_gap.rs`).

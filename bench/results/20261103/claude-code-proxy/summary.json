@@ -69,7 +69,12 @@
       "output_tokens_total": 142379,
       "cache_read_tokens_total": 10550498,
       "wall_s_median": 52.5,
-      "wall_s_total": 2116.9
+      "wall_s_total": 2116.9,
+      "tool_uses_total": 0,
+      "tool_errors_by_class": {},
+      "tool_names_unknown_total": 0,
+      "leaked_markers_total": 0,
+      "tool_error_rate": null
     },
     "tetraeder": {
       "runs": 20,
@@ -140,7 +145,12 @@
       "output_tokens_total": 135984,
       "cache_read_tokens_total": 8083798,
       "wall_s_median": 84.8,
-      "wall_s_total": 1990.1
+      "wall_s_total": 1990.1,
+      "tool_uses_total": 0,
+      "tool_errors_by_class": {},
+      "tool_names_unknown_total": 0,
+      "leaked_markers_total": 0,
+      "tool_error_rate": null
     }
   },
   "comparison": {
@@ -363,6 +373,82 @@
       },
       "wall_ratio_tetraeder_over_llama": 1.682,
       "decode_ratio_tetraeder_over_llama": 0.882
+    }
+  },
+  "decode_by_depth": [
+    {
+      "depth_from": 0,
+      "depth_to": 10000,
+      "llama-server": {
+        "n": 96,
+        "tok_s_median": 142.656
+      },
+      "tetraeder": {
+        "n": 29,
+        "tok_s_median": 128.186
+      },
+      "ratio_tetraeder_over_llama": 0.899
+    },
+    {
+      "depth_from": 10000,
+      "depth_to": 20000,
+      "llama-server": {
+        "n": 315,
+        "tok_s_median": 120.978
+      },
+      "tetraeder": {
+        "n": 207,
+        "tok_s_median": 110.114
+      },
+      "ratio_tetraeder_over_llama": 0.91
+    },
+    {
+      "depth_from": 20000,
+      "depth_to": 30000,
+      "llama-server": {
+        "n": 152,
+        "tok_s_median": 106.05
+      },
+      "tetraeder": {
+        "n": 111,
+        "tok_s_median": 93.988
+      },
+      "ratio_tetraeder_over_llama": 0.886
+    },
+    {
+      "depth_from": 30000,
+      "depth_to": 40000,
+      "llama-server": {
+        "n": 50,
+        "tok_s_median": 91.766
+      },
+      "tetraeder": {
+        "n": 54,
+        "tok_s_median": 83.65
+      },
+      "ratio_tetraeder_over_llama": 0.912
+    },
+    {
+      "depth_from": 40000,
+      "depth_to": 60000,
+      "llama-server": {
+        "n": 6,
+        "tok_s_median": 83.44
+      }
+    },
+    {
+      "depth_from": 60000,
+      "depth_to": 100000,
+      "llama-server": {
+        "n": 5,
+        "tok_s_median": 63.112
+      }
+    }
+  ],
+  "server_decode": {
+    "llama-server": {
+      "requests": 624,
+      "tok_s_median": 113.458
     }
   }
 }

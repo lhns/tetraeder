@@ -3,7 +3,7 @@
 use super::pump::Run;
 use super::record_error;
 use crate::chat::Usage;
-use crate::engine::EngineStats;
+use crate::engine::{DecodeProfile, EngineStats};
 use opentelemetry::KeyValue;
 use std::time::{Duration, Instant};
 use tetraeder_telemetry::{CacheResult, Direction};
@@ -20,6 +20,8 @@ pub struct RequestCost {
     pub completion_tokens: u32,
     pub gpu_seconds: Option<f64>,
     pub bytes_streamed: Option<u64>,
+    /// The engine's decode profile plus the gateway's share (`TETRAEDER_DECODE_PROFILE=1`).
+    pub profile: Option<DecodeProfile>,
     pub duration: Duration,
     /// `error.type` when the request did not complete (`cancelled`, `internal`, ...).
     pub error_type: Option<&'static str>,
@@ -108,6 +110,7 @@ impl Run {
                 completion_tokens: usage.completion_tokens,
                 gpu_seconds: stats.gpu_seconds,
                 bytes_streamed: stats.bytes_streamed,
+                profile: stats.profile.clone(),
                 duration,
                 error_type,
             });

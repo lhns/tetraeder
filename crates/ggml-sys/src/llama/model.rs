@@ -115,6 +115,10 @@ pub struct ModelParams {
     pub buffer_overrides: Vec<(String, BufferType)>,
     pub load_mode: LoadMode,
     pub vocab_only: bool,
+    /// Let the CPU backend repack weights into its extra buffer types (AMX, AVX2 Q4_K 8x8):
+    /// libllama's default. Off, CPU weights stay in their file layout and run the plain kernels,
+    /// as the MoE builder's do, so a parity reference matches on every CPU tier.
+    pub extra_bufts: bool,
 }
 
 impl Default for ModelParams {
@@ -130,6 +134,7 @@ impl Default for ModelParams {
             buffer_overrides: Vec::new(),
             load_mode: LoadMode::from_raw(d.load_mode),
             vocab_only: false,
+            extra_bufts: d.use_extra_bufts,
         }
     }
 }
@@ -213,6 +218,7 @@ impl Model {
         p.load_mode = params.load_mode.raw();
         p.main_gpu = params.main_gpu;
         p.vocab_only = params.vocab_only;
+        p.use_extra_bufts = params.extra_bufts;
         if !split.is_empty() {
             p.tensor_split = split.as_ptr();
         }

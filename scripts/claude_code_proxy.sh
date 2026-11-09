@@ -11,7 +11,10 @@
 # a block that started in time may run GRACE_MIN (30) longer), CTX (131072), THREADS, MODEL, ALIAS, TASKS (comma
 # separated ids), TASK_TIMEOUT (900 s per session), TET_ARGS / LLAMA_ARGS (extra server arguments), NODE_VERSION,
 # CLAUDE_CODE_VERSION (npm tag, default latest), PERMISSIONS (skip = --dangerously-skip-permissions with IS_SANDBOX=1,
-# accept = acceptEdits plus an allowed-tools list), STREAMING=1 (final conformance stage on the streaming MoE).
+# accept = acceptEdits plus an allowed-tools list), STREAMING=1 (final conformance stage on the streaming MoE),
+# DECODE_PROFILE (1: tetraeder serve reports per-request decode stages into its request log and summary.json
+# `server_decode`; near-zero cost), MICROBENCH=1 (then scripts/decode_gap.sh: both engines and llama-bench at fixed
+# depths without Claude Code, docs/m1-open.md item 4).
 # Sessions run one at a time per server (-np 1); the engines alternate ABBA over the reps (one server start per block).
 #
 # VRAM: the 30B Q4_K_M weights are about 18.6 GB and the f16 KV cache about 98 KB per token (12.9 GB at 131072):
@@ -32,6 +35,7 @@ if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
   [ -n "$archs" ] && export TETRAEDER_CUDA_ARCHS="$archs"
 fi
 log=runs/vast/claude_code_proxy.log
+export TETRAEDER_DECODE_PROFILE="${DECODE_PROFILE:-1}"
 out="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/claude-code-proxy"
 mkdir -p "$out" runs/vast
 t_start=$(date +%s)
@@ -127,6 +131,10 @@ streaming() {
     "$py" scripts/claude_code_proxy_summary.py "$out" || rc=1
     "$py" scripts/claude_code_cache_classes.py "$out" > "$out/cache_classes.txt" || rc=1
     [ "${STREAMING:-0}" = 1 ] && { streaming || rc=1; }
+    if [ "${MICROBENCH:-0}" = 1 ]; then
+      say "decode_gap stage (log runs/vast/decode_gap.log)"
+      bash scripts/decode_gap.sh 8>&- || rc=1
+    fi
   fi
   GW_OUT="$out" GW_THREADS="$threads" GW_CTX="$ctx" GW_MODEL="$model" GW_COMMIT="$(git rev-parse HEAD 2> /dev/null)" \
     GW_HOST="$(hostname)" GW_CLAUDE="$(claude --version 2> /dev/null | head -1)" \

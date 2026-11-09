@@ -79,6 +79,8 @@ impl Run {
         let mut call_done = false;
         let mut stats = EngineStats::default();
         let mut buf = Vec::new();
+        // Gateway time per token, for the decode profile; two clock reads per token.
+        let mut gateway = std::time::Duration::ZERO;
 
         let outcome = loop {
             let Some(ev) = erx.recv().await else {
@@ -87,12 +89,15 @@ impl Run {
                 ));
             };
             buf.clear();
+            // Only the token arm reaches the send below; the others break or continue.
+            let tok_start: Instant;
             match ev {
                 GenEvent::Token(id) => {
                     if stop_hit.is_some() || call_done {
                         continue;
                     }
                     let now = Instant::now();
+                    tok_start = now;
                     if first.is_none() {
                         first = Some(now);
                         if let Some(m) = &self.gw.metrics {
@@ -147,7 +152,9 @@ impl Run {
                 }
             }
             saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
-            if !self.send_all(&tx, &mut buf).await {
+            let sent = self.send_all(&tx, &mut buf).await;
+            gateway += tok_start.elapsed();
+            if !sent {
                 self.cancel.cancel();
                 break Outcome::ClientGone;
             }
@@ -165,6 +172,9 @@ impl Run {
                     stats = s;
                 }
             }
+        }
+        if let Some(p) = stats.profile.as_mut() {
+            p.gateway_s = gateway.as_secs_f64();
         }
         let usage = Usage {
             prompt_tokens: self.prompt_tokens,

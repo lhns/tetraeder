@@ -173,6 +173,9 @@ pub fn libllama_reference_kv_default_rot(
             path,
             &ModelParams {
                 n_gpu_layers: 0,
+                // The builder's CPU weights stay in file layout; without this an AMX or AVX2
+                // CPU tier repacks libllama's and the reference runs other kernels (ADR 0052).
+                extra_bufts: false,
                 ..ModelParams::default()
             },
         )

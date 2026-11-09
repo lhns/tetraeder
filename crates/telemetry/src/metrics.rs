@@ -111,6 +111,7 @@ pub struct Metrics {
     convert_bytes: Counter<u64>,
     convert_cache: Counter<u64>,
     batch_size: Histogram<f64>,
+    decode_stage: Histogram<f64>,
     prefix_hits: Counter<u64>,
     prefix_evictions: Counter<u64>,
     prefix_bytes: Gauge<u64>,
@@ -263,6 +264,16 @@ impl Metrics {
                 .with_description(
                     "Converted tensors found in the conversion cache (hit) or converted (miss)",
                 )
+                .build(),
+            decode_stage: meter
+                .f64_histogram("tetraeder.scheduler.decode.stage")
+                .with_unit("s")
+                .with_description(
+                    "Mean host time per decoded token of one request, by stage (eval, sample, emit); only with TETRAEDER_DECODE_PROFILE=1",
+                )
+                .with_boundaries(vec![
+                    1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 0.1,
+                ])
                 .build(),
             batch_size: meter
                 .f64_histogram("tetraeder.scheduler.batch.size")
@@ -564,6 +575,12 @@ impl Metrics {
     /// Requests in one scheduler step.
     pub fn scheduler_batch(&self, size: u32) {
         self.batch_size.record(f64::from(size), &[]);
+    }
+
+    /// Mean seconds per decoded token of one request in `stage` (decode profile).
+    pub fn decode_stage(&self, stage: &'static str, seconds: f64) {
+        self.decode_stage
+            .record(seconds, &[KeyValue::new(attr::STAGE, stage)]);
     }
 
     /// A request that reused a cached prompt prefix; `source` is `live` or `ram`.

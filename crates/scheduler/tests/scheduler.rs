@@ -490,3 +490,79 @@ fn snapshot_and_restore_round_trip_gives_identical_logits() {
         assert_eq!(y.eval(&[7]).unwrap(), &want[..]);
     }
 }
+
+/// `decode_profile` on: every decode step is counted, the stages are timed and the backend's
+/// counters change over the decode (the builder keeps its step graph, libllama reuses its own).
+#[test]
+fn decode_profile_reports_steps_stages_and_graph_reuse() {
+    let p = fixture();
+    let llama = {
+        let path = p.clone();
+        let mut cfg = SchedulerConfig::new(p.clone());
+        cfg.decode_profile = true;
+        Scheduler::start(cfg, move || {
+            load_llama(&path, &Placement::cpu(), &ctx_cfg(), None)
+        })
+        .unwrap()
+    };
+    let moe = {
+        let path = p.clone();
+        let mut cfg = SchedulerConfig::new(p.clone());
+        cfg.decode_profile = true;
+        Scheduler::start(cfg, move || {
+            let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
+            o.n_ctx = CTX as usize;
+            load_moe(&path, &o)
+        })
+        .unwrap()
+    };
+    for (s, reuse_key) in [(&llama, "n_reused"), (&moe, "steps")] {
+        let pr = prompt(s, "Hello");
+        // A constraint without end-of-generation tokens: the tiny model always runs to the limit.
+        let out = drain(start(
+            s,
+            &pr,
+            greedy(8),
+            Some(Box::new(Only(vec![65, 66, 67], 0))),
+            CancellationToken::new(),
+        ));
+        assert_eq!(
+            (out.reason, out.stats.generated_tokens),
+            (FinishReason::Length, 8)
+        );
+        let prof = out.stats.profile.expect("profile on");
+        // The first token comes from the prefill step, the other 7 from decode steps; at the
+        // length limit no further step runs.
+        assert_eq!(prof.decode_steps, 7);
+        assert!(prof.eval_s > 0.0 && prof.sample_s > 0.0 && prof.prefill_s > 0.0);
+        let get = |k: &str| prof.backend.iter().find(|(n, _)| n == k).map(|(_, v)| *v);
+        assert!(
+            get(reuse_key).is_some_and(|v| v > 0.0),
+            "{:?}",
+            prof.backend
+        );
+    }
+    // Off by default (unless the environment turns it on).
+    if std::env::var_os("TETRAEDER_DECODE_PROFILE").is_none() {
+        let s = llama_sched();
+        let pr = prompt(&s, "Once upon a time");
+        assert!(run(&s, &pr, 3).stats.profile.is_none());
+    }
+}
+
+/// The builder backend reads each step's logits into one kept buffer: decode allocates no
+/// 600 KB vector per token, and the values equal a fresh `eval_last`.
+#[test]
+fn moe_backend_reuses_its_logits_buffer() {
+    let mut b = backends().remove(1);
+    let toks: Vec<i32> = (1..=12).collect();
+    let first = b.eval(&toks).unwrap().as_ptr();
+    let a = b.eval(&[5]).unwrap().to_vec();
+    let again = b.eval(&[6]).unwrap().as_ptr();
+    assert_eq!(first, again, "the logits buffer moved");
+    let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
+    o.n_ctx = CTX as usize;
+    let mut m = tetraeder_model::Qwen3Moe::load(fixture(), &o).unwrap();
+    m.eval_last(&toks).unwrap();
+    assert_eq!(m.eval_last(&[5]).unwrap(), a);
+}

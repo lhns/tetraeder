@@ -117,6 +117,28 @@ pub struct EngineStats {
     pub gpu_seconds: Option<f64>,
     /// Weight bytes moved between memory tiers for this request.
     pub bytes_streamed: Option<u64>,
+    /// Where the time per token went; only with `TETRAEDER_DECODE_PROFILE=1`.
+    pub profile: Option<DecodeProfile>,
+}
+
+/// Host-side time split of one request's decode (A6000 gap diagnosis, docs/m1-open.md item 4).
+/// Seconds summed over the decode steps (every step after the one that ends the prefill).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DecodeProfile {
+    /// The step that evaluates the prompt suffix and samples the first token.
+    pub prefill_s: f64,
+    pub decode_steps: u32,
+    /// Backend `eval` of one token, logits readback included.
+    pub eval_s: f64,
+    /// Constraint mask and sampling over the logits.
+    pub sample_s: f64,
+    /// Handing each emitted token to the gateway (waits when its buffer is full).
+    pub emit_s: f64,
+    /// Gateway work per token: detokenize, stop strings, tool-call parsing, queueing the
+    /// segments for the HTTP response. Filled by the gateway, over all tokens.
+    pub gateway_s: f64,
+    /// Backend counters over the decode steps, e.g. graph builds against reuses.
+    pub backend: Vec<(String, f64)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

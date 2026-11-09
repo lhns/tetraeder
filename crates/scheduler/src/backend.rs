@@ -26,6 +26,11 @@ pub trait Backend {
     fn on_gpu(&self) -> bool;
     /// Weight bytes read from storage since load; `None` when the backend does not stream.
     fn bytes_streamed_total(&self) -> Option<u64>;
+    /// Cumulative counters for the decode profile (`TETRAEDER_DECODE_PROFILE=1`), such as graph
+    /// builds against reuses; the scheduler reports their change over a request's decode.
+    fn counters(&self) -> Vec<(&'static str, f64)> {
+        Vec::new()
+    }
 }
 
 /// Tokens per `eval_last` call of the MoE builder; the scheduler also chunks to stay
@@ -83,6 +88,16 @@ impl Backend for LlamaBackend {
     fn bytes_streamed_total(&self) -> Option<u64> {
         None
     }
+
+    /// libllama's perf counters: `n_reused` of `n_eval` decodes reused the previous graph.
+    fn counters(&self) -> Vec<(&'static str, f64)> {
+        let p = self.engine.perf();
+        vec![
+            ("n_eval", f64::from(p.n_eval)),
+            ("n_reused", f64::from(p.n_reused)),
+            ("eval_s", p.eval_ms / 1e3),
+        ]
+    }
 }
 
 /// The Qwen3 MoE builder.
@@ -125,7 +140,10 @@ impl Backend for MoeBackend {
             return Err("no tokens".into());
         }
         for chunk in tokens.chunks(MOE_CHUNK) {
-            self.logits = self.model.eval_last(chunk).map_err(|e| e.to_string())?;
+            // Into the kept buffer: no 600 KB allocation per decode token.
+            self.model
+                .eval_last_into(chunk, &mut self.logits)
+                .map_err(|e| e.to_string())?;
         }
         Ok(&self.logits)
     }
@@ -148,5 +166,22 @@ impl Backend for MoeBackend {
 
     fn bytes_streamed_total(&self) -> Option<u64> {
         self.model.expert_stats().map(|s| s.io.bytes_read)
+    }
+
+    /// The builder's step profile (host timers) and whole-step graph builds.
+    fn counters(&self) -> Vec<(&'static str, f64)> {
+        let p = self.model.profile();
+        vec![
+            ("steps", p.steps as f64),
+            ("graphs", p.graphs as f64),
+            ("step_graphs_built", self.model.step_graphs_built() as f64),
+            ("inputs_s", p.inputs.as_secs_f64()),
+            ("build_s", p.build.as_secs_f64()),
+            ("alloc_s", p.alloc.as_secs_f64()),
+            ("compute_s", p.compute.as_secs_f64()),
+            ("readback_s", p.readback.as_secs_f64()),
+            ("streamer_s", p.streamer.as_secs_f64()),
+            ("total_s", p.total.as_secs_f64()),
+        ]
     }
 }

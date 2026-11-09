@@ -67,24 +67,22 @@ impl Sampler {
         }
         let c = &mut self.cand;
         c.clear();
-        c.extend(
-            logits
-                .iter()
-                .enumerate()
-                .filter(|&(i, l)| l.is_finite() && allowed(i))
-                .map(|(i, &l)| (l, i as u32)),
-        );
+        let k = self.params.top_k as usize;
+        if k > 0 && k < logits.len() {
+            top_k_sorted(c, logits, k, allowed);
+        } else {
+            c.extend(
+                logits
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, l)| l.is_finite() && allowed(i))
+                    .map(|(i, &l)| (l, i as u32)),
+            );
+            c.sort_unstable_by(by_logit);
+        }
         if c.is_empty() {
             return None;
         }
-        // Descending by logit; lower id first on ties, so greedy-like order is stable.
-        let by_logit = |a: &(f32, u32), b: &(f32, u32)| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1));
-        let k = self.params.top_k as usize;
-        if k > 0 && k < c.len() {
-            c.select_nth_unstable_by(k - 1, by_logit);
-            c.truncate(k);
-        }
-        c.sort_unstable_by(by_logit);
         let max = c[0].0;
         let inv_t = 1.0 / self.params.temperature;
         let mut sum = 0.0f32;
@@ -114,6 +112,37 @@ impl Sampler {
             }
         }
         c.last().map(|e| e.1)
+    }
+}
+
+/// Descending by logit; lower id first on ties, so greedy-like order is stable.
+fn by_logit(a: &(f32, u32), b: &(f32, u32)) -> std::cmp::Ordering {
+    b.0.total_cmp(&a.0).then(a.1.cmp(&b.1))
+}
+
+/// The `k` best allowed finite logits in `by_logit` order, in one pass that rejects most of the
+/// vocabulary with one compare. Collecting all 152K candidates and selecting cost about 1 to 2
+/// ms per token (libllama uses a heap partial sort for k <= 128).
+fn top_k_sorted(
+    c: &mut Vec<(f32, u32)>,
+    logits: &[f32],
+    k: usize,
+    allowed: impl Fn(usize) -> bool,
+) {
+    for (i, &l) in logits.iter().enumerate() {
+        // Ids ascend, so a logit equal to the worst kept one loses its tie.
+        if c.len() == k && l.total_cmp(&c[k - 1].0).is_le() {
+            continue;
+        }
+        if !l.is_finite() || !allowed(i) {
+            continue;
+        }
+        let e = (l, i as u32);
+        let at = c.partition_point(|x| by_logit(x, &e).is_lt());
+        if c.len() == k {
+            c.pop();
+        }
+        c.insert(at, e);
     }
 }
 
@@ -193,6 +222,58 @@ mod tests {
             let mut s = Sampler::new(p, 3);
             for _ in 0..20 {
                 assert_eq!(s.sample(&logits, None), Some(1));
+            }
+        }
+    }
+
+    /// The candidates the sampler used before the one-pass top-k: collect, select, sort.
+    fn reference_top_k(
+        logits: &[f32],
+        k: usize,
+        allowed: impl Fn(usize) -> bool,
+    ) -> Vec<(f32, u32)> {
+        let mut c: Vec<(f32, u32)> = logits
+            .iter()
+            .enumerate()
+            .filter(|&(i, l)| l.is_finite() && allowed(i))
+            .map(|(i, &l)| (l, i as u32))
+            .collect();
+        if k > 0 && k < c.len() {
+            c.select_nth_unstable_by(k - 1, by_logit);
+            c.truncate(k);
+        }
+        c.sort_unstable_by(by_logit);
+        c
+    }
+
+    #[test]
+    fn one_pass_top_k_equals_select_and_sort() {
+        let mut rng = SplitMix64::new(11);
+        for n in [1usize, 7, 64, 1000] {
+            // Few distinct values, signed zeros and non-finite ones: ties at the cut are common.
+            let logits: Vec<f32> = (0..n)
+                .map(|_| match rng.next_u64() % 12 {
+                    0 => f32::NEG_INFINITY,
+                    1 => f32::NAN,
+                    2 => -0.0,
+                    3 => 0.0,
+                    v => (v % 5) as f32 - 2.0,
+                })
+                .collect();
+            let words: Vec<u32> = (0..n.div_ceil(32)).map(|_| rng.next_u64() as u32).collect();
+            let m = TokenMask { words };
+            for k in [1usize, 2, 5, 40, n.saturating_sub(1), n] {
+                if k == 0 || k >= n {
+                    continue;
+                }
+                let mut c = Vec::new();
+                top_k_sorted(&mut c, &logits, k, |_| true);
+                let r = reference_top_k(&logits, k, |_| true);
+                assert_eq!(format!("{c:?}"), format!("{r:?}"), "n={n} k={k}");
+                c.clear();
+                top_k_sorted(&mut c, &logits, k, |i| m.allows(i as u32));
+                let r = reference_top_k(&logits, k, |i| m.allows(i as u32));
+                assert_eq!(format!("{c:?}"), format!("{r:?}"), "masked n={n} k={k}");
             }
         }
     }
