@@ -15,6 +15,9 @@ One row per patch in `patches/series`. A patch with code from another project na
 | Patch | Origin | Copied from (repo, path, commit) | License | ADR |
 |---|---|---|---|---|
 | `0001-msvc-avx512-vbmi-score.patch` | Own fix (one line; mirrors the non-MSVC branch of the same file; upstream commit not checked) | none | MIT (llama.cpp) | 0052 |
+| `0002-iqk-avx512-q4k-q6k-decode.patch` | Copied from KTransformers (kernel by Iwan Kawrakow, ik_llama.cpp) plus our wrapper and hook | [kvcache-ai/ktransformers](https://github.com/kvcache-ai/ktransformers) `third_party/llamafile/iqk_mul_mat.inc` at `a02efe36b5802e7ca79a6b29146e01cf3b97d305` (v0.7.2), sha256 `9bef4f7bdd6c4ce4703a72f99944703d47a9bbd789349e1865310e868d148264`. The same Q4_K/Q6_K AVX-512 kernel is in [ikawrakow/ik_llama.cpp](https://github.com/ikawrakow/ik_llama.cpp) `ggml/src/iqk/iqk_gemm_kquants.cpp` at `ed868d928cf98f83589798b2b73416d42f3e6e2e` (MIT) | Apache-2.0 (Copyright 2024 Iwan Kawrakow, Copyright 2024 KVCache.AI; header kept in the file) | 0053 |
+
+Updating `0002`: the copied file is frozen (ik moved Q4_K/Q6_K to `Q8_2_X4` activations on 2025-06-13, b7768e20, so there is no newer `Q8_K` kernel and no ik upstream path). To re-copy: clone the new `KT_VERSION` tag of kvcache-ai/ktransformers (shallow, read only); diff its `third_party/llamafile/iqk_mul_mat.inc` against `vendor/llama.cpp/ggml/src/ggml-cpu/iqk/iqk_mul_mat.inc` after `patches/apply.sh`; copy it over byte for byte (it has CRLF line endings); update the sha256 in `ggml/src/ggml-cpu/iqk/README` and here; regenerate the patch with `git -C vendor/llama.cpp -c core.autocrlf=false diff` (run `git add -N` on new files first, and diff only the files 0002 touches, since 0001 is staged); rerun `iqk_kernels` under SDE (CI job `avx512-sde`) and `expert_matmul` on a box.
 
 ## Baselines built into the box image or on the box
 

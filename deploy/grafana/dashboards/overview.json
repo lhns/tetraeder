@@ -1581,7 +1581,7 @@
     {
       "id": 41,
       "title": "CPU backend",
-      "description": "CPU backend variant in use (ADR 0052): tier, ISA features and dispatch mode, and the host features it lacks. Missing above 0 for 5 minutes fires TetraederCpuVariantBelowHost.",
+      "description": "CPU backend variant in use (ADR 0052): tier, ISA features and dispatch mode, and the host features it lacks. IQK_MM in the ISA list means the iqk AVX-512 VNNI decode kernels for Q4_K and Q6_K experts are on (ADR 0053, switch GGML_CPU_IQK_MM=0). Missing above 0 for 5 minutes fires TetraederCpuVariantBelowHost.",
       "type": "table",
       "datasource": {
         "type": "prometheus",

@@ -67,3 +67,12 @@ Rust: `CpuBackendInfo.isa` may contain `"IQK_MM"`; tracked feature list gains `I
 - MSVC: the file's guard includes `_M_X64` and MSVC defines the VNNI macros for its AVX-512 variants (ADR 0052), so the Windows build compiles it; it is not run there (no Windows box). If MSVC cannot compile it, the TU is excluded on MSVC and Windows runs ggml's kernels; that is recorded in the patch header.
 - A frozen third-party file in the queue: updates come only from a newer `KT_VERSION` (re-copy, diff, rerun tests). The weekly rebase job checks that 0002 still applies to upstream master; tiled or upstream kernels that make it redundant show up there.
 - Correction to ADR 0052's context: the pin has AVX-512 VNNI K-quant kernels (tiled, batch >= 8), just not for decode.
+
+## Implementation notes
+
+- The copied file has CRLF line endings. Patch 0002 keeps them (`.gitattributes`: `-text` for the patch), and `patches/apply.*` set `core.autocrlf=false` in the submodule and rewrite its tree, so the applied file has the same sha256 on Linux and Windows.
+- The file declares no intrinsics headers (KT's ggml did); `iqk-mm.cpp` includes `<immintrin.h>` and, on MSVC, maps `__builtin_popcount` to `__popcnt`. The file is otherwise unchanged and compiles in MSVC's AVX-512 variants, and the `iqk_kernels` reference tests pass there. But on a Windows CI runner with AVX-512 VNNI the scheduler test `cpu_batch_invariance_*` (6-row step against one-row steps, tolerance 1e-4 of the largest logit) failed with 1.4e-2 on row 5, while the same test passes with the same kernels built by GCC on a Linux AVX-512 runner. Cause not found (no Windows AVX-512 machine to debug on), so this is the brief's fallback: `iqk-mm.h` does not define `GGML_CPU_IQK_MM` under `_MSC_VER`, Windows runs ggml's kernels, `IQK_MM` is not in the MSVC `provided()` list, and the tests expect it absent there. Open: find the MSVC cause and lift the exclusion.
+- The forwarding headers resolve relative to the `.inc`, so no CMake include directory was added; `sgemm.h` is an empty stub.
+- `ggml_iqk_mul_mat` returns early when a thread's share of rows is empty (more threads than the static split covers), because the file's split gives such a thread a negative row count.
+- Parity tests get the Q8_K quantizer and dequantizers from ggml's type traits (`from_float_ref`, `to_float`), not from new bindings.
+- Bound and numbers: see the CI log of the `avx512-sde` job (max error against the f64 reference and max |iqk - vec_dot| per shape). No box numbers yet (box on hold); Status stays Proposed.
