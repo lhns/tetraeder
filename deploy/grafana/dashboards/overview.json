@@ -1485,7 +1485,7 @@
         },
         {
           "refId": "B",
-          "expr": "max(tetraeder_kv_tokens) / max(tetraeder_kv_capacity)",
+          "expr": "max by (tetraeder_device) (tetraeder_kv_tokens) / max by (tetraeder_device) (tetraeder_kv_capacity)",
           "legendFormat": "tokens held / capacity",
           "datasource": {
             "type": "prometheus",
