@@ -52,6 +52,19 @@ impl ToolFormat {
     }
 }
 
+/// How the parser decided on one tool call (ADR 0051).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CallOutcome {
+    /// `parsed`, `repaired` or `failed`.
+    pub outcome: &'static str,
+    /// `ok`, `unknown_tool`, `empty_call`, `unclosed`, `bad_json` or `bad_xml`.
+    pub class: &'static str,
+}
+
+const fn outcome(outcome: &'static str, class: &'static str) -> CallOutcome {
+    CallOutcome { outcome, class }
+}
+
 enum Mode {
     Text,
     Think,
@@ -76,6 +89,7 @@ pub struct OutputParser {
     /// Llama 3: the next non-whitespace character may start a bare JSON call.
     armed: bool,
     out: Vec<Segment>,
+    outcomes: Vec<CallOutcome>,
 }
 
 impl OutputParser {
@@ -95,7 +109,13 @@ impl OutputParser {
             think_lead: in_think,
             armed: true,
             out: Vec::new(),
+            outcomes: Vec::new(),
         }
+    }
+
+    /// Drains the outcomes of the calls decided on since the last call.
+    pub fn take_outcomes(&mut self) -> Vec<CallOutcome> {
+        std::mem::take(&mut self.outcomes)
     }
 
     /// Feeds decoded text; returns the segments that are final so far.
@@ -256,10 +276,22 @@ impl OutputParser {
             Step::Calls(calls, consumed) => {
                 self.leave_block(consumed);
                 self.strip_ws = true;
+                for c in &calls {
+                    let known = self.tools.iter().any(|t| t.name == c.name);
+                    self.outcomes
+                        .push(outcome("parsed", if known { "ok" } else { "unknown_tool" }));
+                }
                 self.out.extend(calls.into_iter().map(Segment::ToolCall));
                 true
             }
-            Step::Fail(consumed) => {
+            Step::Drop(consumed) => {
+                self.outcomes.push(outcome("repaired", "empty_call"));
+                self.leave_block(consumed);
+                self.strip_ws = true;
+                true
+            }
+            Step::Fail(consumed, class) => {
+                self.outcomes.push(outcome("failed", class));
                 let raw = self.block[..consumed].to_owned();
                 self.leave_block(consumed);
                 self.emit_text(&raw);
@@ -283,17 +315,23 @@ impl OutputParser {
             None => return Step::Wait,
         };
         let content = &self.block[TOOL_OPEN.len()..content_end];
-        let call = match self.format {
-            ToolFormat::QwenXml if content.trim_start().starts_with("<function=") => {
-                parse_xml_call(content, &self.tools)
-            }
-            _ => serde_json::from_str::<Value>(content.trim())
+        if content.trim().is_empty() {
+            return Step::Drop(consumed);
+        }
+        let xml =
+            self.format == ToolFormat::QwenXml && content.trim_start().starts_with("<function=");
+        let call = if xml {
+            parse_xml_call(content, &self.tools)
+        } else {
+            serde_json::from_str::<Value>(content.trim())
                 .ok()
-                .and_then(|v| call_from_json(&v, false)),
+                .and_then(|v| call_from_json(&v, false))
         };
         match call {
             Some(c) => Step::Calls(vec![c], consumed),
-            None => Step::Fail(consumed),
+            None if content_end == self.block.len() => Step::Fail(consumed, "unclosed"),
+            None if xml => Step::Fail(consumed, "bad_xml"),
+            None => Step::Fail(consumed, "bad_json"),
         }
     }
 
@@ -302,9 +340,15 @@ impl OutputParser {
         if !finish {
             return Step::Wait;
         }
+        let n = self.block.len();
+        let body = self.block.trim();
+        if body.is_empty() || body == PYTHON_TAG {
+            return Step::Drop(n);
+        }
         match parse_llama(&self.block) {
-            Some(calls) => Step::Calls(calls, self.block.len()),
-            None => Step::Fail(self.block.len()),
+            Some(calls) => Step::Calls(calls, n),
+            None if llama_partial(&self.block) => Step::Fail(n, "unclosed"),
+            None => Step::Fail(n, "bad_json"),
         }
     }
 
@@ -314,15 +358,16 @@ impl OutputParser {
         let lead = body.len() - body.trim_start().len();
         let text = &body[lead..];
         let base = MISTRAL_CALLS.len() + lead;
+        let n = self.block.len();
         let incomplete = || {
             if finish {
-                Step::Fail(self.block.len())
+                Step::Fail(n, "unclosed")
             } else {
                 Step::Wait
             }
         };
         if text.is_empty() {
-            return incomplete();
+            return if finish { Step::Drop(n) } else { Step::Wait };
         }
         if text.starts_with('[') {
             return match first_json(text) {
@@ -331,11 +376,11 @@ impl OutputParser {
                         items.iter().map(|v| call_from_json(v, false)).collect();
                     match calls {
                         Some(c) if !c.is_empty() => Step::Calls(c, base + n),
-                        _ => Step::Fail(self.block.len()),
+                        _ => Step::Fail(n, "bad_json"),
                     }
                 }
                 Json::Partial => incomplete(),
-                _ => Step::Fail(self.block.len()),
+                _ => Step::Fail(n, "bad_json"),
             };
         }
         let Some(ai) = text.find(MISTRAL_ARGS) else {
@@ -345,13 +390,13 @@ impl OutputParser {
             return if plausible {
                 incomplete()
             } else {
-                Step::Fail(self.block.len())
+                Step::Fail(n, "bad_json")
             };
         };
         let head = &text[..ai];
         let name = head.split_once(MISTRAL_ID).map_or(head, |(n, _)| n);
         if name.is_empty() || !name.chars().all(is_name_char) {
-            return Step::Fail(self.block.len());
+            return Step::Fail(n, "bad_json");
         }
         let after = &text[ai + MISTRAL_ARGS.len()..];
         let skipped = after.len() - after.trim_start().len();
@@ -361,7 +406,7 @@ impl OutputParser {
                 Step::Calls(vec![make_call(name, args)], used)
             }
             Json::Partial => incomplete(),
-            _ => Step::Fail(self.block.len()),
+            _ => Step::Fail(n, "bad_json"),
         }
     }
 }
@@ -371,7 +416,9 @@ enum Step {
     /// Calls parsed; this many bytes of the block are used up.
     Calls(Vec<ToolCall>, usize),
     /// Not a call; this many bytes of the block are plain text.
-    Fail(usize),
+    Fail(usize, &'static str),
+    /// An empty call opener: consumed, nothing emitted.
+    Drop(usize),
 }
 
 enum Json {
@@ -457,6 +504,20 @@ fn parse_llama(block: &str) -> Option<Vec<ToolCall>> {
         rest = &rest[n..];
     }
     (!calls.is_empty()).then_some(calls)
+}
+
+/// The block fails to parse only because the output ended inside a JSON value.
+fn llama_partial(block: &str) -> bool {
+    let mut rest = block.trim_start();
+    rest = rest.strip_prefix(PYTHON_TAG).unwrap_or(rest);
+    loop {
+        rest = rest.trim_start_matches(|c: char| c.is_whitespace() || c == ';');
+        match first_json(rest) {
+            Json::Done(_, n) if n > 0 => rest = &rest[n..],
+            Json::Partial => return !rest.is_empty(),
+            _ => return false,
+        }
+    }
 }
 
 /// Qwen3-Coder: `<function=NAME>\n<parameter=P>\nVALUE\n</parameter>\n</function>`.

@@ -27,6 +27,26 @@ HOP_BY_HOP = {
     "upgrade", "content-length", "host", "accept-encoding",
 }
 MAX_BODY_OBSERVED = 64 * 1024 * 1024
+# Text of a tool call that the engine's parser failed to turn into a tool_use block (ADR 0051).
+LEAK_MARKERS = ("<tool_call>", "<function=", "<parameter=")
+
+
+def tool_error_class(text: str) -> str:
+    """Class of an is_error tool_result by its text; the patterns are Claude Code's wording."""
+    if "InputValidationError" in text:
+        return "input_validation"
+    if "No such tool available" in text:
+        return "unknown_tool"
+    return "other"
+
+
+def result_text(content) -> str:
+    """Text of a tool_result content: a string or a list of blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and isinstance(b.get("text"), str))
+    return ""
 
 
 class Dechunker:
@@ -74,12 +94,17 @@ class Observer:
         self.status = 0
         self.stream = False
         self.model = None
+        self.tool_names = set()
+        self.tool_errors = {}
         try:
             req = json.loads(request_body)
             self.stream = bool(req.get("stream"))
             self.model = req.get("model")
+            self._scan_request(req)
         except (ValueError, AttributeError):
             pass
+        self.blocks = []  # content blocks of the response in order: {"type", "name", "text": [], "json": []}
+        self._by_index = {}
         self.is_sse = False
         self.text = b""
         self.body = bytearray()
@@ -93,6 +118,63 @@ class Observer:
         self.n_deltas = 0
         self.error_type = None
         self.error_message = None
+
+    def _scan_request(self, req: dict):
+        """Tool names, and the is_error tool results of the last user message by class (counts only)."""
+        self.tool_names = {t["name"] for t in req.get("tools") or [] if isinstance(t, dict) and "name" in t}
+        msgs = req.get("messages") or []
+        last = msgs[-1] if msgs and isinstance(msgs[-1], dict) else {}
+        if last.get("role") != "user" or not isinstance(last.get("content"), list):
+            return
+        for b in last["content"]:
+            if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("is_error") is True:
+                cls = tool_error_class(result_text(b.get("content")))
+                self.tool_errors[cls] = self.tool_errors.get(cls, 0) + 1
+
+    def _block_start(self, index, block: dict):
+        if not isinstance(block, dict):
+            return
+        b = {"type": block.get("type"), "name": block.get("name"), "text": [], "json": []}
+        if isinstance(block.get("text"), str):
+            b["text"].append(block["text"])
+        if isinstance(block.get("input"), dict) and block["input"]:
+            b["input"] = block["input"]
+        self.blocks.append(b)
+        self._by_index[index] = b
+
+    def _block_delta(self, index, delta: dict):
+        b = self._by_index.get(index)
+        if b is None or not isinstance(delta, dict):
+            return
+        if isinstance(delta.get("text"), str):
+            b["text"].append(delta["text"])
+        if isinstance(delta.get("partial_json"), str):
+            b["json"].append(delta["partial_json"])
+
+    def output(self) -> list:
+        """The assistant output: text and tool_use blocks."""
+        out = []
+        for b in self.blocks:
+            if b["type"] == "text":
+                out.append({"type": "text", "text": "".join(b["text"])})
+            elif b["type"] == "tool_use":
+                raw = "".join(b["json"])
+                try:
+                    args = json.loads(raw) if raw else b.get("input", {})
+                except ValueError:
+                    args = raw
+                out.append({"type": "tool_use", "name": b["name"], "input": args})
+        return out
+
+    def tool_stats(self) -> dict:
+        out = self.output()
+        uses = [b for b in out if b["type"] == "tool_use"]
+        return {
+            "tool_uses": len(uses),
+            "tool_errors": dict(sorted(self.tool_errors.items())),
+            "tool_names_unknown": sum(1 for b in uses if b["name"] not in self.tool_names),
+            "leaked_markers": sum(1 for b in out if b["type"] == "text" and any(m in b["text"] for m in LEAK_MARKERS)),
+        }
 
     def _usage(self, usage: dict):
         if not isinstance(usage, dict):
@@ -110,7 +192,10 @@ class Observer:
         kind = data.get("type", name)
         if kind == "message_start":
             self._usage((data.get("message") or {}).get("usage"))
+        elif kind == "content_block_start":
+            self._block_start(data.get("index"), data.get("content_block"))
         elif kind == "content_block_delta":
+            self._block_delta(data.get("index"), data.get("delta"))
             if self.t_first is None:
                 self.t_first = now
             self.t_last = now
@@ -160,6 +245,8 @@ class Observer:
         else:
             self._usage(obj.get("usage"))
             self.stop_reason = obj.get("stop_reason")
+            for i, block in enumerate(obj.get("content") or []):
+                self._block_start(i, block)
 
     def record(self, label: str, task: str, rep: str, path: str, t_end: float, req_bytes: int) -> dict:
         if self.status != 200 and self.error_type is None:
@@ -190,6 +277,7 @@ class Observer:
             "request_bytes": req_bytes,
             "error_type": self.error_type,
             "error_message": self.error_message,
+            **self.tool_stats(),
         }
 
 

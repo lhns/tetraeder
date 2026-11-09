@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# llama.cpp's best tuned setup for the exit regime: GPU expert cache with a CPU share of the misses
+# (llama.cpp #30966, docs/moe-cache.md), run through llama-server from the baseline build (/opt/llama.cpp-baseline).
+#   scripts/llamacpp_cache.sh <model-first-shard> <threads> <cache-mib> <cpu-share> <ctx> <prompt-file> <out-json>
+# Env: LOAD_MODE (default auto = mmap; the docs say none, mlock and dio pin the experts in RAM, which a model larger
+# than RAM cannot do, so dio is opt-in), PREFILL (32768), DECODE (64), UBATCH (2048), LLAMA_BASELINE_SERVER, PORT.
+# llama-server has no llama-bench-style depth run, so decode speed is the /completion timings.predicted_per_second of
+# a DECODE-token greedy generation right after a PREFILL-token prompt (the same token ids as exit_regime: the prompt
+# file through the model's vocab, repeated to length). Called by exit_run.sh (stages llamacpp-cache*).
+[ $# -ge 7 ] || { echo "usage: $0 <model> <threads> <cache-mib> <cpu-share> <ctx> <prompt-file> <out-json>" >&2; exit 2; }
+model=$1 threads=$2 mib=$3 share=$4 ctx=$5 prompt=$6 out=$7
+server="${LLAMA_BASELINE_SERVER:-/opt/llama.cpp-baseline/bin/llama-server}"
+[ -x "$server" ] || { echo "missing $server" >&2; exit 3; }
+work=/root/llamacpp_cache
+mkdir -p "$work"
+# newer llama.cpp fits tensors to free memory by itself (-fit); off, so the flags below are what runs
+fit_off=()
+"$server" --help 2>&1 | grep -q -- '--fit ' && fit_off=(-fit off)
+python3 -I - "$server" "$work/s$share.log" "${PORT:-18088}" "$model" "$threads" "$mib" "$share" "$ctx" "$prompt" "$out" \
+  "${LOAD_MODE:-auto}" "${PREFILL:-32768}" "${DECODE:-64}" "${UBATCH:-2048}" "${fit_off[@]}" << 'EOF'
+import json, os, re, signal, subprocess, sys, time, urllib.request
+
+(server, log, port, model, threads, mib, share, ctx, prompt, out, load_mode, prefill, decode, ub) = sys.argv[1:15]
+fit_off, port, prefill, decode = sys.argv[15:], int(port), int(prefill), int(decode)
+flags = ["-ngl", "99", "-fa", "on", "-c", ctx, "-b", ub, "-ub", ub, "-t", threads, "-np", "1", "-lm", load_mode,
+         "-cmoe", "--moe-cache-mib", mib, "--moe-cache-cpu-share", share, "-lv", "4", *fit_off]
+cmd = [server, "-m", model, *flags, "--host", "127.0.0.1", "--port", str(port)]
+
+
+def http(endpoint, body=None, timeout=7200):
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{endpoint}", data=json.dumps(body).encode() if body else None,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+
+def proc_stat(pid):
+    """major page faults and RSS bytes of the server (a model larger than RAM streams or thrashes here)"""
+    try:
+        f = open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()
+        return {"majflt": int(f[9]), "rss_bytes": int(f[21]) * os.sysconf("SC_PAGE_SIZE")}
+    except OSError:
+        return {"majflt": -1, "rss_bytes": -1}
+
+
+def tokens(n):
+    t = http("/tokenize", {"content": open(prompt).read(), "add_special": True})["tokens"]
+    assert t, "empty prompt file"
+    return [t[i % len(t)] for i in range(n)]
+
+
+def gen(toks, n):
+    return http("/completion", {"prompt": toks, "n_predict": n, "ignore_eos": True, "cache_prompt": False,
+                                "temperature": 0, "top_k": 1, "seed": 1})
+
+
+res = {"engine": f"llamacpp-cache-s{share}", "cache_mib": int(mib), "cpu_share": float(share), "load_mode": load_mode,
+       "flags": flags, "threads": int(threads), "ctx": int(ctx), "ubatch": int(ub), "prefill": prefill, "decode": decode,
+       "server": server, "machine": os.uname().nodename, "ok": False}
+try:
+    res["baseline_pin"] = open(os.path.join(os.path.dirname(server), "..", "PIN")).read().strip()
+except OSError:
+    pass
+with open(log, "w") as lf:
+    proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT)
+try:
+    t0 = time.time()
+    while True:
+        if proc.poll() is not None:
+            raise RuntimeError(f"llama-server exited ({proc.returncode}), see {log}")
+        try:
+            if http("/health", timeout=5).get("status") == "ok":
+                break
+        except OSError:
+            pass
+        time.sleep(2)
+    res["load_s"] = round(time.time() - t0, 1)
+    # is the model streamed or thrashed: load mode, RSS and major faults around a short warmup
+    before = proc_stat(proc.pid)
+    t1 = time.time()
+    w = gen(tokens(256), 8)
+    after = proc_stat(proc.pid)
+    res["warmup"] = {"before": before, "after": after, "s": round(time.time() - t1, 1),
+                     "majflt": after["majflt"] - before["majflt"], "decode_tok_s": w["timings"]["predicted_per_second"]}
+    res["log_load_mode"] = [l.strip() for l in open(log, errors="replace") if re.search(r"mmap|direct|dio|mlock|pinned", l, re.I)][:8]
+    print("warmup:", json.dumps(res["warmup"]), flush=True)
+    # measured run: PREFILL-token prompt, then DECODE-token greedy generation
+    before = proc_stat(proc.pid)
+    g = gen(tokens(prefill), decode)
+    after = proc_stat(proc.pid)
+    t = g["timings"]
+    res["timings"] = {k: t.get(k) for k in ("prompt_n", "prompt_ms", "prompt_per_second", "predicted_n", "predicted_ms",
+                                            "predicted_per_second")}
+    res["prefill_tok_s"], res["decode_tok_s"] = t["prompt_per_second"], t["predicted_per_second"]
+    res["run_stat"] = {"before": before, "after": after, "majflt": after["majflt"] - before["majflt"]}
+    res["ok"] = t["prompt_n"] >= prefill - 1 and t["predicted_n"] == decode
+except Exception as e:
+    res["error"] = repr(e)
+finally:
+    if proc.poll() is None:
+        proc.send_signal(signal.SIGINT)  # the cache logs its hit statistics at exit
+        try:
+            proc.wait(timeout=120)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    res["cache_log"] = [l.strip() for l in open(log, errors="replace") if "llama_moe_cache:" in l][-6:]
+    json.dump({**res, "runs": [dict(res)]}, open(out, "w"), indent=1)
+print(res["engine"], "decode tok/s:", res.get("decode_tok_s"), "ok:", res["ok"], res.get("error", ""))
+sys.exit(0 if res["ok"] else 1)
+EOF

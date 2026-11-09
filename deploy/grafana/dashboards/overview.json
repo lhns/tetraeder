@@ -1404,6 +1404,39 @@
     },
     {
       "id": 39,
+      "title": "Tool calls by outcome",
+      "description": "Tool calls per second by parser outcome (parsed, repaired, failed) and class (ok, unknown_tool, empty_call, unclosed, bad_json, bad_xml), ADR 0051. Repaired plus failed above 2% fires ToolCallFailures.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 98,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_outcome, tetraeder_class) (rate(tetraeder_gateway_tool_calls_total[$__rate_interval]))",
+          "legendFormat": "{{tetraeder_outcome}} {{tetraeder_class}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 40,
       "title": "KV cache",
       "description": "KV cache bytes by format (ADR 0050 b) and tokens held of the tokens it can hold. Near 100% means requests are about to fail with context full (alert TetraederKvNearFull).",
       "type": "timeseries",
@@ -1412,7 +1445,7 @@
         "uid": "victoriametrics"
       },
       "gridPos": {
-        "x": 12,
+        "x": 18,
         "y": 98,
         "w": 6,
         "h": 8
