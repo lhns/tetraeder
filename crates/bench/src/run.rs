@@ -419,9 +419,30 @@ fn run_pair(
     Ok(res)
 }
 
+/// The `cpu` block of `info --json` of the spec's Tetraeder binary, once per run; `None` if the
+/// binary is absent or fails (older builds have no `info`).
+fn cpu_backend(spec: &Spec) -> Option<serde_json::Value> {
+    let engine = spec
+        .engine
+        .iter()
+        .find(|e| e.runnable && e.kind == EngineKind::Tetraeder)?;
+    let configured = engine
+        .bin_env
+        .as_ref()
+        .and_then(|k| std::env::var(k).ok())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| engine.bin.clone());
+    let bin = engine::resolve_bin(&configured)?;
+    let args = ["info".to_string(), "--json".to_string()];
+    let out = engine::run_capture(&bin, &args, &[], Duration::from_secs(30)).ok()?;
+    let mut v: serde_json::Value = serde_json::from_str(&out.stdout).ok()?;
+    v.get_mut("cpu").map(serde_json::Value::take)
+}
+
 /// Run all (selected) pairs of a spec and build the results.
 pub fn run_spec(spec: &Spec, spec_text: &str, opts: &Options) -> Result<Results> {
-    let env = env::capture();
+    let mut env = env::capture();
+    env.cpu_backend = cpu_backend(spec);
     let cold_ok = spec.spec.page_cache == PageCache::Cold && drop_caches();
     let mut pairs = Vec::new();
     for p in spec

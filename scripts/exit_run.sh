@@ -9,6 +9,7 @@
 # (TETRAEDER_GGML_NATIVE=ON, own cargo target dir NATIVE_TARGET_DIR); ktransformers-avx2 forces kt-kernel's AVX2 kernels.
 exec 8> /root/tetraeder_exit_run.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
+bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache

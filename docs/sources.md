@@ -14,6 +14,7 @@ One row per patch in `patches/series`. A patch with code from another project na
 
 | Patch | Origin | Copied from (repo, path, commit) | License | ADR |
 |---|---|---|---|---|
+| `0001-msvc-avx512-vbmi-score.patch` | Own fix (one line; mirrors the non-MSVC branch of the same file; upstream commit not checked) | none | MIT (llama.cpp) | 0052 |
 
 ## Baselines built into the box image or on the box
 

@@ -272,6 +272,7 @@ mod tests {
         m.bottleneck_fault("pcie_degraded", "pcie");
         m.replan("drift", "switched");
         m.replan_duration(Duration::from_secs(3));
+        m.cpu_backend("avx2", &["AVX2".to_string()], "dl", &[]);
         mp.force_flush().unwrap();
 
         let mut names = Vec::new();
@@ -318,6 +319,8 @@ mod tests {
             "tetraeder.bottleneck.fault",
             "tetraeder.replan.total",
             "tetraeder.replan.duration",
+            "tetraeder.cpu.variant",
+            "tetraeder.cpu.isa.missing",
         ] {
             assert!(names.iter().any(|x| x == n), "missing metric {n}");
         }

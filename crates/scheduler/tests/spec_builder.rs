@@ -60,11 +60,13 @@ fn prefill(m: &mut Qwen3Moe) -> Vec<i32> {
 
 const NEAR_TIE: f32 = 1e-3;
 
-/// ggml's CPU kernels give the same bits for one row and for a few rows.
+/// ggml's CPU kernels give the same bits for one row and for a few rows. Decided by the loaded
+/// CPU backend (ADR 0052), not the host: a forced low variant is batch-invariant on an AVX2 host.
 fn batch_invariant_kernels() -> bool {
     #[cfg(target_arch = "x86_64")]
     {
-        !std::arch::is_x86_feature_detected!("avx2")
+        let info = tetraeder_ggml_sys::cpu::backend_info().expect("CPU backend");
+        !info.isa.iter().any(|f| f == "AVX2")
     }
     #[cfg(not(target_arch = "x86_64"))]
     {

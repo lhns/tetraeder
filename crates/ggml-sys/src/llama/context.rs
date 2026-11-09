@@ -23,10 +23,12 @@ impl ThreadPool {
         if n_threads < 1 {
             return Err(LlamaError::Invalid("n_threads must be at least 1".into()));
         }
-        // SAFETY: plain value return, then `params` is a valid in-out struct.
+        let procs = crate::ggml::cpu::procs()
+            .map_err(|e| LlamaError::BackendLoad(e.to_string()))?;
+        // SAFETY: `params` is a valid in-out struct; null means failure.
         let ptr = unsafe {
             let mut params = sys::ggml_threadpool_params_default(n_threads);
-            sys::ggml_threadpool_new(&mut params)
+            (procs.threadpool_new)(&mut params)
         };
         if ptr.is_null() {
             return Err(LlamaError::Invalid("threadpool creation failed".into()));
@@ -38,7 +40,9 @@ impl ThreadPool {
 impl Drop for ThreadPool {
     fn drop(&mut self) {
         // SAFETY: owned; contexts keep an Arc so none uses it any more.
-        unsafe { sys::ggml_threadpool_free(self.ptr) }
+        if let Ok(procs) = crate::ggml::cpu::procs() {
+            unsafe { (procs.threadpool_free)(self.ptr) }
+        }
     }
 }
 

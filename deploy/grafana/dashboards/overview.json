@@ -1434,6 +1434,57 @@
           }
         }
       ]
+    },
+    {
+      "id": 40,
+      "title": "CPU backend",
+      "description": "CPU backend variant in use (ADR 0052): tier, ISA features and dispatch mode, and the host features it lacks. Missing above 0 for 5 minutes fires TetraederCpuVariantBelowHost.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 98,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (tetraeder_cpu_tier, tetraeder_cpu_isa, tetraeder_cpu_dispatch) (tetraeder_cpu_variant)",
+          "instant": true,
+          "format": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "max by (tetraeder_cpu_isa) (tetraeder_cpu_isa_missing)",
+          "instant": true,
+          "format": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

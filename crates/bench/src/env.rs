@@ -36,6 +36,10 @@ pub struct EnvInfo {
     pub git_dirty: Option<bool>,
     pub cuda_env: String,
     pub started_utc: String,
+    /// `tetraeder info --json` `cpu` block of the spec's Tetraeder binary: which CPU variant ran
+    /// (ADR 0052). Null when there is no such binary or it fails.
+    #[serde(default)]
+    pub cpu_backend: Option<serde_json::Value>,
 }
 
 const GPU_FIELDS: &str = "name,driver_version,memory.total,clocks.sm,clocks.mem,clocks.max.sm,{THROTTLE},power.draw,temperature.gpu";
@@ -192,6 +196,7 @@ pub fn capture() -> EnvInfo {
         git_dirty,
         cuda_env: std::env::var("CUDA_ENV_STATUS").unwrap_or_default(),
         started_utc: utc_now(),
+        cpu_backend: None,
     }
 }
 

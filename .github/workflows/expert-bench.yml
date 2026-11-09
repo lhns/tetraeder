@@ -1,7 +1,7 @@
 name: expert-bench
 
 # Opt-in diagnostic (ADR 0045, "Diagnosing the KTransformers decode gap"): the decode expert matmul
-# (crates/ggml-sys/tests/expert_matmul.rs) built with portable ggml (TETRAEDER_GGML_NATIVE=OFF) and with
+# (crates/ggml-sys/tests/expert_matmul.rs) built with the default DL ggml (TETRAEDER_GGML_NATIVE=OFF, best CPU module of the runner) and with
 # the native ISA (=ON), run on the same runner, interleaved. Not part of the normal CI.
 on:
   workflow_dispatch:
@@ -20,6 +20,8 @@ jobs:
         with:
           submodules: true
           fetch-depth: 1
+      - name: Patch queue
+        run: patches/apply.sh
       - name: Toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - name: libclang (bindgen)
