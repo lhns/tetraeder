@@ -2033,6 +2033,7 @@ dependencies = [
  "tetraeder-analysis",
  "tetraeder-engine",
  "tetraeder-gateway",
+ "tetraeder-ggml-sys",
  "tetraeder-model",
  "tetraeder-plan",
  "tetraeder-planner",
