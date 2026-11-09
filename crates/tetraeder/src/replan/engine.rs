@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
-use tetraeder_control::EngineControl;
+use tetraeder_control::{Clock, EngineControl, SystemClock};
 use tetraeder_gateway::engine::{
     Engine, EngineError, GenEvent, GenerateRequest, ModelInfo, SamplingParams, TokenId, Vocab,
 };
@@ -24,6 +24,50 @@ const CUT_NOTICE: Duration = Duration::from_secs(1);
 const CUT_WAIT: Duration = Duration::from_secs(10);
 /// Deadline of the one-token health generation.
 const HEALTH_DEADLINE: Duration = Duration::from_secs(60);
+/// Polling period of the drain and cut waits, and of the health wait.
+const DRAIN_POLL_S: f64 = 0.01;
+const HEALTH_POLL_S: f64 = 0.002;
+
+/// Polls `done` every `step_s` of `clock` time until it holds (true) or `timeout_s` has passed
+/// (false). The clock sleeps, so a fake clock makes this instant (ADR 0056).
+fn wait_until(
+    clock: &dyn Clock,
+    timeout_s: f64,
+    step_s: f64,
+    mut done: impl FnMut() -> bool,
+) -> bool {
+    let deadline = clock.now_s() + timeout_s.max(0.0);
+    loop {
+        if done() {
+            return true;
+        }
+        if clock.now_s() >= deadline {
+            return false;
+        }
+        clock.sleep(step_s);
+    }
+}
+
+/// Waits for the one-token health generation to finish: true on `Finished`, false on an error,
+/// a closed channel or `deadline_s` of `clock` time.
+fn await_finish(rx: &mut mpsc::Receiver<GenEvent>, clock: &dyn Clock, deadline_s: f64) -> bool {
+    let deadline = clock.now_s() + deadline_s;
+    loop {
+        match rx.try_recv() {
+            Ok(GenEvent::Finished { .. }) => return true,
+            Ok(GenEvent::Error(_)) | Err(mpsc::error::TryRecvError::Disconnected) => {
+                return false;
+            }
+            Ok(GenEvent::Token(_)) => {}
+            Err(mpsc::error::TryRecvError::Empty) => {
+                if clock.now_s() >= deadline {
+                    return false;
+                }
+                clock.sleep(HEALTH_POLL_S);
+            }
+        }
+    }
+}
 
 pub type Loader = Box<dyn Fn(&Lowered) -> Result<Scheduler, String> + Send + Sync>;
 pub type Lowerer = Box<dyn Fn(&Plan) -> Result<Lowered, String> + Send + Sync>;
@@ -65,6 +109,8 @@ pub struct SwitchableEngine {
     metrics: Option<Metrics>,
     /// Seconds the last successful load took (the switch cost the planner uses).
     last_load_s: Arc<Mutex<f64>>,
+    /// Time for the drain, cut and health waits: the replanner's clock.
+    clock: Arc<dyn Clock + Send + Sync>,
 }
 
 impl SwitchableEngine {
@@ -102,7 +148,21 @@ impl SwitchableEngine {
             lower,
             metrics,
             last_load_s: Arc::new(Mutex::new(t0.elapsed().as_secs_f64())),
+            clock: Arc::new(SystemClock::new()),
         })
+    }
+
+    /// Takes the drain, cut and health waits from `clock` (the replanner's), so a fake clock
+    /// runs them in microseconds.
+    #[cfg(test)]
+    pub fn with_clock(mut self, clock: Arc<dyn Clock + Send + Sync>) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// The clock of the waits, for the replanner to share.
+    pub fn clock(&self) -> Arc<dyn Clock + Send + Sync> {
+        Arc::clone(&self.clock)
     }
 
     /// Shared with the planner source, which adds it to the switch cost.
@@ -257,16 +317,9 @@ impl EngineControl for Control {
     }
 
     fn wait_drained(&mut self, timeout_s: f64) -> bool {
-        let deadline = Instant::now() + Duration::from_secs_f64(timeout_s.max(0.0));
-        loop {
-            if self.0.in_flight() == 0 {
-                return true;
-            }
-            if Instant::now() >= deadline {
-                return false;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        wait_until(self.0.clock.as_ref(), timeout_s, DRAIN_POLL_S, || {
+            self.0.in_flight() == 0
+        })
     }
 
     fn restart(&mut self, plan: &Plan) -> Result<(), String> {
@@ -274,10 +327,12 @@ impl EngineControl for Control {
         let lowered = (e.lower)(plan)?;
         if e.in_flight() > 0 {
             e.cut_all();
-            let deadline = Instant::now() + CUT_WAIT;
-            while e.in_flight() > 0 && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(10));
-            }
+            wait_until(
+                e.clock.as_ref(),
+                CUT_WAIT.as_secs_f64(),
+                DRAIN_POLL_S,
+                || e.in_flight() == 0,
+            );
         }
         // Stop the old scheduler before loading: two models would not fit one box. The join
         // returns once its backend is released (ADR 0055).
@@ -337,22 +392,11 @@ impl EngineControl for Control {
             return false;
         };
         // try_recv, not blocking_recv: this may run on a runtime thread (tests).
-        let deadline = Instant::now() + HEALTH_DEADLINE;
-        let ok = loop {
-            match rx.try_recv() {
-                Ok(GenEvent::Finished { .. }) => break true,
-                Ok(GenEvent::Error(_)) | Err(mpsc::error::TryRecvError::Disconnected) => {
-                    break false;
-                }
-                Ok(GenEvent::Token(_)) => {}
-                Err(mpsc::error::TryRecvError::Empty) => {
-                    if Instant::now() >= deadline {
-                        break false;
-                    }
-                    std::thread::sleep(Duration::from_millis(2));
-                }
-            }
-        };
+        let ok = await_finish(
+            &mut rx,
+            self.0.clock.as_ref(),
+            HEALTH_DEADLINE.as_secs_f64(),
+        );
         cancel.cancel();
         ok
     }
@@ -381,7 +425,7 @@ mod tests {
     use crate::replan::glue::{builder_chunk, builder_options, llama_options};
     use clap::Parser;
     use std::path::PathBuf;
-    use tetraeder_control::{Config, FakeClock, PlanSource, Proposal, Replanner, Trigger};
+    use tetraeder_control::{Clock, Config, FakeClock, PlanSource, Proposal, Replanner, Trigger};
     use tetraeder_gateway::engine::FinishReason;
     use tetraeder_model::MissPolicy;
     use tetraeder_plan::{Knobs, KvFormat};
@@ -575,9 +619,118 @@ mod tests {
         assert!(c.healthy());
     }
 
-    struct Scripted(Option<Plan>);
+    /// A fake clock that runs `on_sleep(n)` at the n-th sleep, to script what happens meanwhile.
+    struct Scripted {
+        clock: FakeClock,
+        sleeps: std::sync::atomic::AtomicU32,
+        on_sleep: Box<dyn Fn(u32) + Send + Sync>,
+    }
 
-    impl PlanSource for Scripted {
+    impl Clock for Scripted {
+        fn now_s(&self) -> f64 {
+            self.clock.now_s()
+        }
+        fn local_hhmm(&self) -> (u8, u8) {
+            self.clock.local_hhmm()
+        }
+        fn sleep(&self, s: f64) {
+            let n = self.sleeps.fetch_add(1, Ordering::SeqCst) + 1;
+            (self.on_sleep)(n);
+            self.clock.sleep(s);
+        }
+    }
+
+    fn scripted(on_sleep: impl Fn(u32) + Send + Sync + 'static) -> (Arc<Scripted>, FakeClock) {
+        let clock = FakeClock::at(12, 0);
+        let s = Scripted {
+            clock: clock.clone(),
+            sleeps: Default::default(),
+            on_sleep: Box::new(on_sleep),
+        };
+        (Arc::new(s), clock)
+    }
+
+    // hardware: none
+    #[test]
+    fn wait_until_runs_on_the_clock_without_sleeping() {
+        let t0 = Instant::now();
+        let clock = FakeClock::at(0, 0);
+        let start = clock.now_s();
+        let mut polls = 0;
+        // never holds: gives up after the timeout in fake time
+        assert!(!wait_until(&clock, 30.0, 0.01, || {
+            polls += 1;
+            false
+        }));
+        assert!(clock.now_s() - start >= 30.0 && clock.now_s() - start < 30.1);
+        assert!(polls > 2900 && polls < 3100, "{polls}");
+        // holds at the fifth poll
+        let clock = FakeClock::at(0, 0);
+        let mut n = 0;
+        assert!(wait_until(&clock, 30.0, 0.01, || {
+            n += 1;
+            n == 5
+        }));
+        assert!((clock.now_s() - 0.04).abs() < 1e-9);
+        // a zero timeout still looks once
+        assert!(wait_until(&clock, 0.0, 0.01, || true));
+        assert!(t0.elapsed() < Duration::from_secs(2));
+    }
+
+    // hardware: none
+    #[test]
+    fn the_health_wait_ends_on_finish_error_or_the_deadline() {
+        let clock = FakeClock::at(0, 0);
+        let (tx, mut rx) = mpsc::channel(4);
+        // nothing arrives: false after the deadline, in fake time
+        assert!(!await_finish(&mut rx, &clock, 60.0));
+        assert!(clock.now_s() >= 60.0);
+        tx.try_send(GenEvent::Token(1)).unwrap();
+        tx.try_send(GenEvent::Finished {
+            reason: FinishReason::Length,
+            stats: Default::default(),
+        })
+        .unwrap();
+        assert!(await_finish(&mut rx, &clock, 60.0));
+        tx.try_send(GenEvent::Error("scripted".into())).unwrap();
+        assert!(!await_finish(&mut rx, &clock, 60.0));
+        drop(tx);
+        assert!(!await_finish(&mut rx, &clock, 60.0));
+    }
+
+    // hardware: cpu
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn drain_waits_follow_the_engine_clock() {
+        let (e, _) = rig(ServeEngine::Llama, None);
+        let flight = Arc::clone(&e.flight);
+        // one request that stays in flight until the third sleep
+        flight.count.fetch_add(1, Ordering::SeqCst);
+        let release = Arc::clone(&flight);
+        let (clock, fake) = scripted(move |n| {
+            if n == 3 {
+                release.count.fetch_sub(1, Ordering::SeqCst);
+            }
+        });
+        let Ok(owned) = Arc::try_unwrap(e) else {
+            panic!("the rig has one owner");
+        };
+        let e = Arc::new(owned.with_clock(clock));
+        let mut c = Control(Arc::clone(&e));
+        let t0 = Instant::now();
+        let before = fake.now_s();
+        assert!(c.wait_drained(30.0));
+        assert!((fake.now_s() - before - 0.03).abs() < 1e-9);
+        // never released: gives up at the timeout, in fake time
+        flight.count.fetch_add(1, Ordering::SeqCst);
+        assert!(!c.wait_drained(5.0));
+        assert!(fake.now_s() - before >= 5.0);
+        flight.count.fetch_sub(1, Ordering::SeqCst);
+        assert!(t0.elapsed() < Duration::from_secs(5));
+    }
+
+    struct ScriptedPlan(Option<Plan>);
+
+    impl PlanSource for ScriptedPlan {
         fn propose(&mut self, _: &Plan, _: &Trigger) -> Option<Proposal> {
             self.0.clone().map(|plan| Proposal {
                 plan,
@@ -598,7 +751,7 @@ mod tests {
         let mut r = Replanner::new(
             Config::default(),
             old.clone(),
-            Scripted(Some(plan(&l, 3))),
+            ScriptedPlan(Some(plan(&l, 3))),
             Control(Arc::clone(&e)),
             FakeClock::at(12, 0),
         );

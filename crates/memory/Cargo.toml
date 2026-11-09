@@ -19,6 +19,8 @@ default = ["ggml", "metrics"]
 # Arenas on ggml backends. Off, the crate builds without the ggml C build (cross-checks).
 ggml = ["dep:tetraeder-ggml-sys"]
 metrics = ["dep:tetraeder-telemetry"]
+# The I/O simulator on a virtual clock (tests of crates that read through `io::Io`, ADR 0056).
+sim = []
 
 [dependencies]
 tetraeder-plan = { path = "../plan" }

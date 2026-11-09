@@ -7,10 +7,13 @@ use crate::candidate::{
 };
 use crate::layout::ModelLayout;
 use crate::lower::{Applies, ServeEngine, llama_args, llama_lowered, recognize};
-use crate::score::{builder_features, features};
+use crate::score::{
+    BUILDER_DISK, READER_DEPTH, TierOutcome, TierPhase, builder_features, builder_features_tier,
+    features,
+};
 use crate::{Enumeration, enumerate_builder};
 use std::collections::BTreeMap;
-use tetraeder_costmodel::predict::{Prediction, predict};
+use tetraeder_costmodel::predict::{Prediction, ReadPath, predict};
 use tetraeder_plan::{KvFormat, Plan};
 use tetraeder_profiler::{DeviceKind, HardwareGraph, Source};
 
@@ -28,6 +31,10 @@ pub struct ServeInput {
     pub workload: Workload,
     pub engine: ServeEngine,
     pub applies: Applies,
+    /// Routing replay outcomes of the builder's slot counts (`serve --tier-replay`, ADR 0056):
+    /// builder candidates are predicted from their replayed disk bytes, and those without an
+    /// outcome are left out. `None`: the uniform routing prior, no disk term.
+    pub tier: Option<Vec<TierOutcome>>,
 }
 
 #[derive(Debug, Clone)]
@@ -118,8 +125,22 @@ fn fits(inp: &ServeInput, plan: &Plan, w: &Workload) -> bool {
     f.gpu <= inp.budget.gpu_bytes && f.host <= inp.budget.ram_bytes
 }
 
+/// The replay outcome of a builder slot pair: LRU, with the prefetch on if there is one.
+fn tier_outcome(tier: &[TierOutcome], vram: u32, ram: u32) -> Option<&TierOutcome> {
+    let of = |o: &&TierOutcome| o.vram_slots == vram && o.ram_slots == ram && o.policy == "lru";
+    tier.iter().filter(of).max_by_key(|o| u8::from(o.prefetch))
+}
+
+/// The replay applies: the graph has the disk the builder reads from.
+fn has_disk(hw: &HardwareGraph) -> bool {
+    hw.device(BUILDER_DISK)
+        .is_some_and(|d| d.kind == DeviceKind::Disk && d.disk_rate(1).is_some())
+}
+
 /// The enumerator's candidates for the engine and the GPU presence, each projected with
 /// `applies`, deduplicated in order, and dropped when the projected footprint no longer fits.
+/// With a tier replay, builder candidates without an outcome in it are dropped too (unless that
+/// leaves none): their disk reads are unknown.
 pub fn candidates(inp: &ServeInput) -> Vec<Plan> {
     let w = sizing(inp);
     let mut out: Vec<Plan> = Vec::new();
@@ -129,25 +150,123 @@ pub fn candidates(inp: &ServeInput) -> Vec<Plan> {
             out.push(plan);
         }
     }
+    if let (Some(tier), true) = (&inp.tier, has_disk(&inp.hw)) {
+        let known: Vec<Plan> = out
+            .iter()
+            .filter(|p| match recognize(p, &inp.layout) {
+                Ok((
+                    Placement::Builder {
+                        vram_slots,
+                        ram_slots,
+                    },
+                    _,
+                )) => tier_outcome(tier, vram_slots, ram_slots).is_some(),
+                _ => true,
+            })
+            .cloned()
+            .collect();
+        if !known.is_empty() {
+            return known;
+        }
+    }
     out
 }
 
-/// The cost model's prediction for a plan on a graph.
+/// A stand-in routing replay for dry runs and tests: the uniform routing prior of
+/// [`predict_plan`] with the disk reads of a RAM tier that holds a share of the experts outside
+/// VRAM (the share of its slots over those experts), for each `(vram_slots, ram_slots)`. The
+/// real file comes from `tetraeder-bench replay` on a recorded trace.
+pub fn uniform_tier(layout: &ModelLayout, slots: &[(u32, u32)]) -> Vec<TierOutcome> {
+    let n = f64::from(layout.n_expert.max(1));
+    let experts: f64 = layout.layers.iter().map(|b| b.expert_bytes as f64).sum();
+    let active = experts * f64::from(layout.n_expert_used) / n;
+    slots
+        .iter()
+        .map(|&(vram_slots, ram_slots)| {
+            let share = (f64::from(vram_slots) / n).clamp(0.0, 1.0);
+            let outside = f64::from(layout.n_expert.saturating_sub(vram_slots).max(1));
+            let held = (f64::from(ram_slots) / outside).clamp(0.0, 1.0);
+            let disk = (1.0 - share) * active * (1.0 - held);
+            let prefill = (1.0 - share) * experts * (1.0 - held) / 2048.0;
+            let phase = |sync: f64, prefetch: f64| TierPhase {
+                vram_share: share,
+                full_hit_share: Some(share),
+                sync_miss_bytes_per_token: sync,
+                prefetch_bytes_per_token: prefetch,
+                disk_bytes_per_token: sync + prefetch,
+                ram_hit_rate_engine_mean: held,
+            };
+            TierOutcome {
+                vram_slots,
+                ram_slots,
+                policy: "lru".into(),
+                prefetch: true,
+                decode: phase(0.6 * disk, 0.4 * disk),
+                prefill: phase(prefill, 0.0),
+            }
+        })
+        .collect()
+}
+
+/// The cost model's prediction for a plan on a graph, with the uniform routing prior.
 pub fn predict_plan(
     hw: &HardwareGraph,
     layout: &ModelLayout,
     plan: &Plan,
     w: &Workload,
 ) -> Result<Prediction, String> {
+    predict_plan_tier(hw, layout, plan, w, None)
+}
+
+/// [`predict_plan`] on the input's graph and its tier replay.
+pub fn predict_plan_for(inp: &ServeInput, plan: &Plan) -> Result<Prediction, String> {
+    predict_plan_tier(
+        &inp.hw,
+        &inp.layout,
+        plan,
+        &inp.workload,
+        inp.tier.as_deref(),
+    )
+}
+
+/// [`predict_plan`] that takes a builder plan's VRAM share and disk bytes from `tier` when it
+/// has an outcome for the plan's slot counts and the graph has the disk (ADR 0056); the builder
+/// reads through the reader thread at its default depth.
+pub fn predict_plan_tier(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    plan: &Plan,
+    w: &Workload,
+    tier: Option<&[TierOutcome]>,
+) -> Result<Prediction, String> {
     let (placement, knobs) = recognize(plan, layout)?;
     let threads = knobs.threads.unwrap_or(1);
     let ubatch = knobs.ubatch.unwrap_or(DEFAULT_UBATCH);
     let op = knobs.op_offload.unwrap_or(true);
     let f = match placement {
-        Placement::Builder { vram_slots, .. } => {
-            // Uniform routing prior: the hit rate equals the slot share.
-            let hit = f64::from(vram_slots) / f64::from(layout.n_expert.max(1));
-            builder_features(layout, vram_slots, hit, (threads, ubatch, op))
+        Placement::Builder {
+            vram_slots,
+            ram_slots,
+        } => {
+            let replayed = tier
+                .filter(|_| has_disk(hw))
+                .and_then(|t| tier_outcome(t, vram_slots, ram_slots));
+            match replayed {
+                Some(o) => builder_features_tier(
+                    layout,
+                    vram_slots,
+                    o,
+                    (threads, ubatch, op),
+                    ReadPath::Reader,
+                    (READER_DEPTH, READER_DEPTH),
+                    BUILDER_DISK,
+                ),
+                None => {
+                    // Uniform routing prior: the hit rate equals the slot share.
+                    let hit = f64::from(vram_slots) / f64::from(layout.n_expert.max(1));
+                    builder_features(layout, vram_slots, hit, (threads, ubatch, op))
+                }
+            }
         }
         p => {
             let l = llama_lowered(p, &knobs, layout).expect("not a builder placement");
@@ -172,7 +291,7 @@ pub fn pick(inp: &ServeInput) -> Result<Picked, String> {
     let placement_of = |p: &Plan| recognize(p, &inp.layout).map(|r| r.0);
     let mut best: Option<(&Plan, Prediction)> = None;
     for p in &cands {
-        match predict_plan(&inp.hw, &inp.layout, p, &inp.workload) {
+        match predict_plan_for(inp, p) {
             Ok(pred) => {
                 if best.as_ref().is_none_or(|b| pred.request_s < b.1.request_s) {
                     best = Some((p, pred));
@@ -227,6 +346,10 @@ pub fn correct_for_drift(
         p.flops_per_s /= k;
         p.bytes_per_s /= k;
     }
+    // A disk binds as `read:<disk>`: its measured queue curve scales like its bandwidth.
+    for p in &mut d.queue_curve {
+        p.bytes_per_s /= k;
+    }
     Some(g)
 }
 
@@ -255,7 +378,7 @@ pub fn propose(inp: &ServeInput, current: &Plan) -> Option<Proposed> {
     }
     let prediction = picked.prediction?;
     let gain = if still_fits(inp, current) {
-        let cur = predict_plan(&inp.hw, &inp.layout, current, &inp.workload).ok()?;
+        let cur = predict_plan_for(inp, current).ok()?;
         1.0 - prediction.request_s / cur.request_s
     } else {
         1.0
@@ -270,6 +393,6 @@ pub fn propose(inp: &ServeInput, current: &Plan) -> Option<Proposed> {
 /// The running plan's predicted request time over the best candidate's, minus 1.
 pub fn regret(inp: &ServeInput, current: &Plan) -> Option<f64> {
     let best = pick(inp).ok()?.prediction?;
-    let cur = predict_plan(&inp.hw, &inp.layout, current, &inp.workload).ok()?;
+    let cur = predict_plan_for(inp, current).ok()?;
     Some(cur.request_s / best.request_s - 1.0)
 }

@@ -32,8 +32,6 @@
 //!   (needs the service), `0` off; unset follows `LoadOptions`. The JSON gets `decode_overlap`:
 //!   layer steps with experts in flight and those experts per token, `read_wait` ms per token,
 //!   the hidden share (`1 - wait / span`) and the main thread's wait in `urgent_wait_ms`.
-//! - `TETRAEDER_EXIT_IO_DELAY_MS`: test only, the service's sleep before each chunk, to see
-//!   the effect of overlap on a fast local disk.
 //! - `TETRAEDER_EXIT_KV_ROT` (0/1): Hadamard rotation of Q, K and V (ADR 0050 addendum). Unset:
 //!   on for a quantized KV format, off for f16, as libllama. The reference engine follows it;
 //!   `TETRAEDER_EXIT_REF_ATTN_ROT` (0/1) overrides the reference alone. The JSON options record
@@ -518,7 +516,6 @@ fn exit_regime() {
     if let Ok(v) = std::env::var("TETRAEDER_EXIT_OVERLAP") {
         opts.overlap = v == "1";
     }
-    opts.io_delay = env_u64("TETRAEDER_EXIT_IO_DELAY_MS").map(Duration::from_millis);
     opts.kv_rotation = env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
     opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
@@ -706,7 +703,6 @@ fn exit_regime() {
             "io_workers": opts.io.workers,
             "io_chunk_bytes": opts.io.chunk_bytes,
             "overlap": opts.overlap,
-            "io_delay_ms": opts.io_delay.map(|d| d.as_millis() as u64),
             "kv": opts.kv.to_string(),
             "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
             "cpu_poll": opts.cpu_poll,

@@ -10,6 +10,11 @@
 # Log runs/vast/planner_builder_campaign.log, ends with PLANNER_BUILDER_DONE rc=N.
 # START (default 0) resumes at a global run index (a finished run with a result file is skipped anyway);
 # a relaunch reuses candidates.json. OUT_DIR overrides the result directory (resume after midnight).
+# STAGES (a space list, default all): disk-curve (about 2 min: the disk's read rate by queue depth, idle and beside
+# quota-1 spinning threads; disk-curve-loaded.json is the fixture's nvme0 for the scorer), runs (the anchors and
+# candidates above), trace (about 5 min: one builder run with the routing recorder on the fixture prompt, then
+# `tetraeder-bench replay` over the slot counts of the anchors and candidates into tier-replay.json; the trace stays
+# when it compresses to under 20 MB). ADR 0056.
 exec 8> /root/tetraeder_planner_builder_campaign.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
@@ -51,7 +56,7 @@ if [ ! -s "$gguf" ]; then
   fetch_pid=$!
 fi
 echo "[$(date +%T)] start build"
-timeout -k 30 40m cargo build --release -p tetraeder -p tetraeder-planner --features tetraeder-ggml-sys/cuda 8>&- \
+timeout -k 30 40m cargo build --release -p tetraeder -p tetraeder-planner -p tetraeder-bench --features tetraeder-ggml-sys/cuda 8>&- \
   || { echo "build failed"; rc=10; exit; }
 bin=$(timeout -k 30 40m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime \
   --no-run --message-format=json 8>&- | python3 -c '
@@ -65,6 +70,21 @@ for l in sys.stdin:
 echo "[$(date +%T)] done build: $bin"
 [ -n "${fetch_pid:-}" ] && wait "$fetch_pid"
 [ -s "$gguf" ] || { echo "no model"; rc=20; exit; }
+
+# stage <name>: whether STAGES (default all) names it
+stage() { [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]]; }
+
+# ADR 0056, disk-curve: the disk idle, then beside quota-1 spinning threads (ADR 0054's starvation case); the loaded
+# curve is the fixture's nvme0 (planner score reads disk-curve-loaded.json)
+if stage disk-curve && [ ! -s "$out/disk-curve-loaded.json" ]; then
+  load=$((threads > 1 ? threads - 1 : 1))
+  echo "[$(date +%T)] start disk-curve: $gguf, $load load threads"
+  target/release/tetraeder-bench disk-curve --file "$gguf" --seconds 4 --out "$out/disk-curve-idle.json" 8>&- \
+    || echo "disk-curve idle failed"
+  target/release/tetraeder-bench disk-curve --file "$gguf" --seconds 4 --load-threads "$load" \
+    --out "$out/disk-curve-loaded.json" 8>&- || echo "disk-curve loaded failed"
+  echo "[$(date +%T)] done disk-curve"
+fi
 
 # VRAM balloon: the engine gets the fixture's free VRAM
 free_target="${FREE_MOE_MIB:-14336}"
@@ -102,7 +122,7 @@ echo "[$(date +%T)] $total_runs variants x $reps reps; about 4 min per run, $(( 
 cat AGENTS.md docs/adr/*.md > /root/builder_prompt.txt  # prompt text, routed like real text
 
 n=0
-for rep in $(seq 1 "$reps"); do
+for rep in $(stage runs && seq 1 "$reps"); do
   while IFS=$'\t' read -r id kv; do
     idx=$n
     n=$((n + 1))
@@ -124,3 +144,41 @@ for rep in $(seq 1 "$reps"); do
     fi
   done < "$out/runs.txt"
 done
+
+# ADR 0056, trace: the routing of one builder run on the fixture prompt (every expert in the RAM tier, so the run is
+# short; routing does not depend on the tiers), prefetch depth 2 so the trace carries both predictions; then the
+# replay over the slot counts of the anchors and candidates (LRU, prefetch on and off) into tier-replay.json
+if stage trace && [ ! -s "$out/tier-replay.json" ]; then
+  trace="$out/routing.trace"
+  kv=$(awk -F'\t' '$1 == "anchor-bld-ram-all" { print $2 }' "$out/runs.txt")
+  [ -n "$kv" ] || kv=$(awk -F'\t' 'NR == 1 { print $2 }' "$out/runs.txt")
+  echo "[$(date +%T)] start trace: $kv"
+  # shellcheck disable=SC2086
+  env TETRAEDER_EXIT_GGUF="$gguf" TETRAEDER_EXIT_PROMPT_FILE=/root/builder_prompt.txt \
+    TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_DECODE=128 $kv TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2 \
+    TETRAEDER_EXIT_ROUTING_OUT="$trace" TETRAEDER_EXIT_OUT="$out/trace-run.json" \
+    timeout -k 10 "${RUN_TIMEOUT:-900}" "$bin" --ignored --exact exit_regime --nocapture \
+    < /dev/null > "$out/log-trace.txt" 2>&1 8>&-
+  if [ -s "$trace" ]; then
+    # the VRAM and RAM slot counts per layer of every variant
+    read -r vram ram < <(python3 - "$out/candidates.json" << 'EOF'
+import json, sys
+f = json.load(open(sys.argv[1]))
+vs = f["anchors"] + [c["variant"] for c in f["candidates"]]
+slots = [v["placement"] for v in vs if (v.get("placement") or {}).get("kind") == "builder"]
+print(",".join(str(x) for x in sorted({s["vram_slots"] for s in slots})),
+      ",".join(str(x) for x in sorted({s["ram_slots"] for s in slots})))
+EOF
+)
+    target/release/tetraeder-bench replay --trace "$trace" --vram "$vram" --ram "$ram" --policies lru \
+      --out "$out/tier-replay.json" 8>&- || { echo "replay failed"; rc=2; }
+    gz=$(gzip -c "$trace" | wc -c)
+    if [ "$gz" -ge 20000000 ]; then
+      rm -f "$trace"
+      echo "trace dropped: $gz bytes compressed (limit 20 MB); tier-replay.json keeps its fnv1a64"
+    fi
+  else
+    echo "trace run wrote no trace"; tail -3 "$out/log-trace.txt"; rc=2
+  fi
+  echo "[$(date +%T)] done trace"
+fi

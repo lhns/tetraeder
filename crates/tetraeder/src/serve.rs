@@ -112,6 +112,12 @@ pub struct ServeArgs {
     /// Host memory the plan may use, in bytes (default: the RAM capacity).
     #[arg(long, requires = "plan")]
     pub plan_ram: Option<u64>,
+    /// Routing replay of the builder (`tetraeder-bench replay` on a recorded trace): the builder
+    /// candidates of `--plan auto` are predicted from its disk bytes per token, so a larger RAM
+    /// tier wins when the disk is slow and a drifting disk re-picks (ADR 0056). Without it the
+    /// uniform routing prior is used and the disk costs nothing.
+    #[arg(long, requires = "plan")]
+    pub tier_replay: Option<PathBuf>,
     /// Admin listener of `--plan`: `POST /admin/replan`, `POST /api/v2/alerts` (the SLO burn
     /// alerts of vmalert) and `GET /admin/plan`. No authentication: keep it on loopback.
     #[arg(long, default_value = "127.0.0.1:8081")]

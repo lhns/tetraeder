@@ -25,6 +25,7 @@ thiserror = "2"
 tracing = "0.1"
 
 [dev-dependencies]
+tetraeder-memory = { path = "../memory", features = ["sim"] }
 toml = "0.8"
 opentelemetry = "0.33.1"
 opentelemetry_sdk = { version = "0.33.1", features = ["testing"] }

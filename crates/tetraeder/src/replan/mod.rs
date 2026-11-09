@@ -2,6 +2,8 @@
 //! load options, served behind a gate, and replanned by drain and restart (ADR 0055, ADR 0042).
 
 pub mod admin;
+#[cfg(test)]
+mod closed_loop;
 pub mod control;
 pub mod engine;
 pub mod glue;

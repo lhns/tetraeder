@@ -2,14 +2,20 @@
 //! contents to output text, so tests need no files. Inputs are TOML: hardware graph, model
 //! description, hints and plans.
 
+use crate::builder::{build_builder_candidate, slot_row_bytes};
+use crate::campaign::{self, CandidatesFile};
+use crate::candidate::{Budget, Enumeration, Workload};
 use crate::diff::plan_diff;
 use crate::explain::explain;
+use crate::layout::ModelLayout;
 use crate::profile_quality::{Band, mix_at_budget, tensor_formats};
 use crate::quality::BitsQuality;
+use crate::score::{builder_time_model, read_tier_replay};
 use crate::search::{SearchInput, search};
 use crate::whatif::{Change, default_candidates, rank_purchases, what_if};
 use anyhow::{Context, Result, anyhow};
 use std::collections::BTreeMap;
+use std::path::Path;
 use tetraeder_plan::{Hints, ModelDesc, Phase, Plan, QualityProfile};
 use tetraeder_profiler::{DeviceKind, HardwareGraph};
 
@@ -90,6 +96,136 @@ pub fn explain_cmd(
         let e = explain(inp, &search(inp));
         if as_json { json(&e) } else { Ok(e.to_text()) }
     })
+}
+
+/// A hardware graph as TOML, as JSON, or as a session's `calib.json` (`tetraeder-plan ledger
+/// --write`), whose fitted graph is its `hw` field.
+fn parse_graph(text: &str) -> Result<HardwareGraph> {
+    if !text.trim_start().starts_with('{') {
+        return HardwareGraph::from_toml(text).context("parse hardware");
+    }
+    let v: serde_json::Value = serde_json::from_str(text).context("parse hardware JSON")?;
+    let graph = v.get("hw").cloned().unwrap_or(v);
+    serde_json::from_value(graph).context("parse hardware JSON")
+}
+
+/// `explain --time-model`: the time model (ADR 0056) of one candidate of a builder fixture
+/// directory (`layout.json`, `candidates.json`, `tier-replay.json`) on the hardware graph `hw`,
+/// as JSON for `tetraeder-bench replay --timed`.
+pub fn time_model_cmd(hw: &str, fixture: &Path, candidate: &str) -> Result<String> {
+    let hw = parse_graph(hw)?;
+    hw.validate().map_err(|e| anyhow!("hardware: {e}"))?;
+    let read = |name: &str| {
+        let p = fixture.join(name);
+        std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display()))
+    };
+    let layout = serde_json::from_str(&read("layout.json")?).context("parse layout.json")?;
+    let cands = serde_json::from_str(&read("candidates.json")?).context("parse candidates.json")?;
+    let outs = read_tier_replay(&fixture.join("tier-replay.json")).map_err(|e| anyhow!(e))?;
+    let m = builder_time_model(&hw, &layout, &cands, &outs, candidate).map_err(|e| anyhow!(e))?;
+    json(&m)
+}
+
+/// A builder run of an exit session as a variant of a ledger directory (ADR 0056): its tiers in
+/// bytes (the `TETRAEDER_EXIT_*_SLOT_BYTES` it ran with), threads, ubatch, op offload and the
+/// request it measured.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StageSpec {
+    pub id: String,
+    pub vram_bytes: u64,
+    pub ram_bytes: u64,
+    pub threads: u32,
+    pub ubatch: u32,
+    pub op_offload: bool,
+    pub prompt: u32,
+    pub r#gen: u32,
+    /// The rest of the run's environment that the cost model reads: the read path
+    /// (`TETRAEDER_EXIT_IO_SERVICE`, `_OVERLAP`, `_IO_WORKERS`) and the prefetch.
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
+impl std::str::FromStr for StageSpec {
+    type Err = String;
+
+    /// `id=VRAM_BYTES,RAM_BYTES,THREADS,UBATCH,OP_OFFLOAD(0|1),PROMPT,GEN[,KEY=VALUE...]`.
+    fn from_str(s: &str) -> Result<Self, String> {
+        let (id, rest) = s.split_once('=').ok_or_else(|| {
+            format!("stage {s:?}: expected id=vram,ram,threads,ubatch,op,prompt,gen")
+        })?;
+        let f: Vec<&str> = rest.split(',').collect();
+        if f.len() < 7 {
+            return Err(format!("stage {s:?}: expected 7 numbers after the id"));
+        }
+        let [vram, ram, threads, ubatch, op, prompt, gen_] = f[..7] else {
+            unreachable!("seven items");
+        };
+        let mut env = std::collections::BTreeMap::new();
+        for kv in &f[7..] {
+            let (k, v) = kv
+                .split_once('=')
+                .ok_or_else(|| format!("stage {s:?}: {kv:?} is not KEY=VALUE"))?;
+            env.insert(k.to_string(), v.to_string());
+        }
+        let num = |v: &str| {
+            v.parse::<u64>()
+                .map_err(|e| format!("stage {s:?}: {v:?}: {e}"))
+        };
+        Ok(Self {
+            env,
+            id: id.to_string(),
+            vram_bytes: num(vram)?,
+            ram_bytes: num(ram)?,
+            threads: num(threads)? as u32,
+            ubatch: num(ubatch)? as u32,
+            op_offload: num(op)? != 0,
+            prompt: num(prompt)? as u32,
+            r#gen: num(gen_)? as u32,
+        })
+    }
+}
+
+/// The `candidates.json` of a ledger directory (`ledger-<session>/`): the builder anchors that
+/// fit the budget (two of the four need the whole model in the RAM tier) at the `anchor` workload and the session's builder stages as candidates, each with its own
+/// request, so the ledger reads the directory like a fixture (results are `<variant id>.r1.json`;
+/// a stage `main` is variant `cand-main`).
+pub fn ledger_candidates(
+    layout: &ModelLayout,
+    budget: &Budget,
+    anchor: &Workload,
+    (model_key, hf): (&str, &str),
+    stages: &[StageSpec],
+) -> CandidatesFile {
+    let row = slot_row_bytes(layout).max(1);
+    let candidates = stages
+        .iter()
+        .map(|s| {
+            let slots = |b: u64| u32::try_from(b / row).unwrap_or(u32::MAX);
+            build_builder_candidate(
+                &s.id,
+                layout,
+                (slots(s.vram_bytes), slots(s.ram_bytes)),
+                (s.threads, s.ubatch, s.op_offload),
+                &Workload {
+                    prompt: s.prompt,
+                    r#gen: s.r#gen,
+                },
+            )
+        })
+        .collect();
+    let en = Enumeration {
+        candidates,
+        dropped: vec![],
+        placements: vec![],
+    };
+    let c = campaign::build_builder(model_key, hf, layout, budget, anchor, &en);
+    let mut file = CandidatesFile::new(&c, layout, budget, &en);
+    for (e, s) in file.candidates.iter_mut().zip(stages) {
+        e.variant.prompt = s.prompt;
+        e.variant.r#gen = s.r#gen;
+        // the read path and prefetch the stage ran with, which `score::read_path` reads
+        e.variant.env.extend(s.env.clone());
+    }
+    file
 }
 
 /// `diff`: what moves between two plan files and how long the switch takes.
@@ -179,4 +315,87 @@ pub fn mix_cmd(profile: &str, budget: u64, tensors: Option<&str>) -> Result<(Str
         band.raw * 100.0
     );
     Ok((json(&formats)?, summary))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::candidate::Placement;
+    use crate::layout::fixtures;
+
+    // hardware: none
+    #[test]
+    fn a_ledger_directory_has_the_anchors_and_the_stages_with_their_own_request() {
+        let layout = fixtures::moe();
+        let budget = Budget {
+            gpu_bytes: 14_000_000_000,
+            ram_bytes: 60_000_000_000,
+            threads: 15,
+        };
+        let row = slot_row_bytes(&layout);
+        let spec = format!(
+            "main-overlap={},{},15,2048,1,32768,64,TETRAEDER_EXIT_IO_SERVICE=1,TETRAEDER_EXIT_OVERLAP=1",
+            64 * row,
+            32 * row
+        );
+        let stage: StageSpec = spec.parse().unwrap();
+        assert_eq!(
+            (stage.threads, stage.ubatch, stage.op_offload),
+            (15, 2048, true)
+        );
+        let f = ledger_candidates(
+            &layout,
+            &budget,
+            &Workload {
+                prompt: 512,
+                r#gen: 32,
+            },
+            ("moe", "org/m:f.gguf"),
+            &[stage],
+        );
+        assert!(!f.anchors.is_empty());
+        assert!(f.anchors.iter().all(|a| (a.prompt, a.r#gen) == (512, 32)));
+        let [c] = &f.candidates[..] else {
+            panic!("{:?}", f.candidates.len());
+        };
+        assert_eq!(c.variant.id, "cand-main-overlap");
+        // the read path travels with the variant
+        assert_eq!(c.variant.env["TETRAEDER_EXIT_OVERLAP"], "1");
+        assert_eq!(c.variant.env["TETRAEDER_EXIT_IO_SERVICE"], "1");
+        assert_eq!((c.variant.prompt, c.variant.r#gen), (32768, 64));
+        assert_eq!(
+            c.candidate.placement,
+            Placement::Builder {
+                vram_slots: 64,
+                ram_slots: 32
+            }
+        );
+        assert_eq!(c.variant.placement, Some(c.candidate.placement));
+    }
+
+    // hardware: none
+    #[test]
+    fn a_graph_is_read_from_toml_json_or_a_calib_file() {
+        let toml = include_str!("../fixtures/rtx3090_prior.toml");
+        let g = HardwareGraph::from_toml(toml).unwrap();
+        let json = serde_json::to_string(&g).unwrap();
+        let calib = format!(r#"{{"cost_model_version": 1, "hw": {json}}}"#);
+        for text in [toml.to_string(), json, calib] {
+            assert_eq!(parse_graph(&text).unwrap().devices.len(), g.devices.len());
+        }
+        assert!(parse_graph("{ not json").is_err());
+    }
+
+    // hardware: none
+    #[test]
+    fn malformed_stages_are_refused() {
+        for bad in [
+            "main",
+            "main=1,2,3",
+            "main=a,2,3,4,5,6,7",
+            "=1,2,3,4,5,6,7,8",
+        ] {
+            assert!(bad.parse::<StageSpec>().is_err(), "{bad}");
+        }
+    }
 }

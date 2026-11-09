@@ -59,6 +59,33 @@ enum Command {
         #[arg(long)]
         out_spec: Option<PathBuf>,
     },
+    /// The `candidates.json` of a ledger directory (ADR 0056): the builder anchors plus the
+    /// session's builder stages as candidates with their own request.
+    LedgerDir {
+        #[arg(long)]
+        layout: PathBuf,
+        /// Free VRAM for the engine, bytes.
+        #[arg(long)]
+        gpu_bytes: u64,
+        #[arg(long)]
+        ram_bytes: u64,
+        #[arg(long)]
+        threads: u32,
+        /// The anchors' request.
+        #[arg(long, default_value_t = 512)]
+        prompt: u32,
+        #[arg(long, default_value_t = 32)]
+        r#gen: u32,
+        #[arg(long)]
+        model_key: String,
+        #[arg(long)]
+        hf: String,
+        /// `id=VRAM_BYTES,RAM_BYTES,THREADS,UBATCH,OP_OFFLOAD,PROMPT,GEN`, repeatable.
+        #[arg(long = "stage")]
+        stages: Vec<cli::StageSpec>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Why the search chose its plan: stages, binding resource, runner-up, formats, front.
     Explain {
         #[command(flatten)]
@@ -68,6 +95,16 @@ enum Command {
         hints: Option<PathBuf>,
         #[arg(long)]
         json: bool,
+        /// Instead of the search: write the time model of a builder candidate for
+        /// `tetraeder-bench replay --timed` (ADR 0056); needs `--fixture` and `--candidate`.
+        #[arg(long, requires_all = ["fixture", "candidate"])]
+        time_model: Option<PathBuf>,
+        /// Builder fixture directory (layout.json, candidates.json, tier-replay.json).
+        #[arg(long)]
+        fixture: Option<PathBuf>,
+        /// Candidate (or anchor) id in the fixture.
+        #[arg(long)]
+        candidate: Option<String>,
     },
     /// What moves between two plan files and how long the switch takes.
     Diff {
@@ -200,11 +237,56 @@ fn main() -> Result<()> {
             print!("{summary}");
             Ok(())
         }
+        Command::LedgerDir {
+            layout,
+            gpu_bytes,
+            ram_bytes,
+            threads,
+            prompt,
+            r#gen,
+            model_key,
+            hf,
+            stages,
+            out,
+        } => {
+            let text = read(&layout)?;
+            let layout: ModelLayout = serde_json::from_str(&text).context("parse layout")?;
+            let budget = Budget {
+                gpu_bytes,
+                ram_bytes,
+                threads,
+            };
+            let file = cli::ledger_candidates(
+                &layout,
+                &budget,
+                &Workload { prompt, r#gen },
+                (&model_key, &hf),
+                &stages,
+            );
+            std::fs::write(&out, serde_json::to_string_pretty(&file)?)
+                .with_context(|| format!("write {}", out.display()))?;
+            println!(
+                "{} anchors, {} stages -> {}",
+                file.anchors.len(),
+                file.candidates.len(),
+                out.display()
+            );
+            Ok(())
+        }
         Command::Explain {
             common,
             hints,
             json,
+            time_model,
+            fixture,
+            candidate,
         } => {
+            if let (Some(out), Some(fixture), Some(candidate)) = (time_model, fixture, candidate) {
+                let text = cli::time_model_cmd(&read(&common.hw)?, &fixture, &candidate)?;
+                std::fs::write(&out, text).with_context(|| format!("write {}", out.display()))?;
+                println!("time model of {candidate} -> {}", out.display());
+                return Ok(());
+            }
             let out = cli::explain_cmd(
                 &read(&common.hw)?,
                 &read(&common.model)?,

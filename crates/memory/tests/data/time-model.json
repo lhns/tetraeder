@@ -1,0 +1,16 @@
+{
+  "gpu_layer_s": 0.0004,
+  "cpu_expert_s": 0.00002,
+  "cpu_group_s": 0.00005,
+  "curve": [
+    { "depth": 1, "bytes_per_s": 1000000000.0 },
+    { "depth": 4, "bytes_per_s": 3000000000.0 },
+    { "depth": 16, "bytes_per_s": 5200000000.0 },
+    { "depth": 32, "bytes_per_s": 5400000000.0 }
+  ],
+  "chunk_bytes": 1048576,
+  "workers": 16,
+  "path": "service_overlap",
+  "sync_depth": 16,
+  "prefetch_depth": 2
+}

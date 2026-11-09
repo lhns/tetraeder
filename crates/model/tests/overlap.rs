@@ -2,8 +2,10 @@
 //! `prefetch.rs`: top-8 of 32 experts, Q4_K_M, `MissPolicy::Cpu`, small VRAM and RAM tiers so most
 //! decode layer steps have hits and misses. The service and overlap only move reads and group
 //! boundaries, never an expert's rows, so the logits must equal the serial path bit for bit and
-//! the cache counters must not change. `io_delay` makes each chunk take a while, so experts are
-//! still in flight when a layer is planned.
+//! the cache counters must not change. The reads run on `SimIo`, the I/O service on a virtual
+//! clock (ADR 0056): a unit lands only when a wait moves the clock to its time on the disk
+//! curve, so experts are in flight when a layer is planned, deterministically and without
+//! sleeping.
 //!
 //! Hardware labels: `cpu_*` need no GPU; `gpu_*` skip without a GPU device.
 
@@ -12,10 +14,13 @@ mod common;
 use common::argmax;
 use common::synth::{MoeSpec, quantized_moe};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::Ftype;
 use tetraeder_memory::IoOptions;
+use tetraeder_memory::io::IoFactory;
+use tetraeder_memory::io::sim::{SimClock, SimIo};
 use tetraeder_model::{BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
@@ -23,7 +28,16 @@ const N_PROMPT: usize = 64;
 const N_DECODE: usize = 16;
 const SLOTS: usize = 8;
 const RAM: usize = 12;
-const DELAY: Duration = Duration::from_millis(2);
+/// The simulated disk: 100 MB/s flat, four reads at a time, 4 KiB pieces.
+const DISK_BYTES_PER_S: f64 = 1e8;
+
+/// The expert reads on a virtual clock instead of the threaded service.
+fn sim_io() -> IoFactory {
+    Arc::new(|paths| {
+        let io = SimIo::flat(paths, SimClock::new(), DISK_BYTES_PER_S, 4, 4096)?;
+        Ok(Box::new(io))
+    })
+}
 
 fn fixture() -> PathBuf {
     quantized_moe(&MoeSpec::REALISH, Ftype::Q4KM, "q4km-prefetch")
@@ -39,7 +53,8 @@ struct Cfg {
     overlap: bool,
     prefetch: bool,
     depth: usize,
-    delay: bool,
+    /// Reads on `SimIo`; else the threaded service (when `service`).
+    sim: bool,
 }
 
 impl Cfg {
@@ -48,12 +63,12 @@ impl Cfg {
         overlap: false,
         prefetch: true,
         depth: 1,
-        delay: false,
+        sim: false,
     };
     fn service(self) -> Cfg {
         Cfg {
             service: true,
-            delay: true,
+            sim: true,
             ..self
         }
     }
@@ -78,7 +93,7 @@ fn opts(backend: BackendChoice, c: Cfg) -> LoadOptions {
             ..IoOptions::default()
         },
         overlap: c.overlap,
-        io_delay: c.delay.then_some(DELAY),
+        io_factory: (c.service && c.sim).then(sim_io),
         ..LoadOptions::new(backend)
     }
 }
@@ -209,9 +224,10 @@ fn cpu_overlap_keeps_cache_behaviour() {
     }
 }
 
-/// hardware: cpu. With a delay experts are still in flight when their layer is computed: the
-/// main thread waits for some (`read_wait`) and computes them as a later group (`cpu_landed`).
-/// Without a delay the counts still equal the serial run's.
+/// hardware: cpu. On the virtual clock experts are still in flight when their layer is computed:
+/// the main thread waits for some and computes them as later groups (`cpu_landed`, counted in
+/// `landed_groups`). With the threaded service, whenever the reads land, the logits and the
+/// counts equal the serial run's.
 #[test]
 fn cpu_overlap_runs_pending_groups() {
     let path = fixture();
@@ -219,24 +235,23 @@ fn cpu_overlap_runs_pending_groups() {
     sequence(&mut slow);
     let p = slow.take_profile();
     let s = slow.expert_stats().unwrap();
-    assert!(p.read_wait > Duration::ZERO, "{p:?}");
     assert!(p.cpu_landed > Duration::ZERO, "{p:?}");
     assert!(s.io.pending_steps > 0 && s.io.pending_experts >= s.io.pending_steps);
-    assert!(s.io.urgent_wait_time > Duration::ZERO);
+    assert!(s.io.landed_groups > 0, "{:?}", s.io);
     assert!(s.io.overlap_span >= s.io.overlap_wait);
 
-    let fast = Cfg {
-        delay: false,
+    let threaded = Cfg {
+        sim: false,
         ..Cfg::SERIAL.overlap()
     };
     let mut serial = load(&path, CPU, Cfg::SERIAL);
     let want = sequence(&mut serial);
-    let mut quick = load(&path, CPU, fast);
-    assert_bitwise(&want, &sequence(&mut quick), "no delay");
+    let mut quick = load(&path, CPU, threaded);
+    assert_bitwise(&want, &sequence(&mut quick), "threaded service");
     assert_eq!(
         cache_view(&serial.expert_stats().unwrap()),
         cache_view(&quick.expert_stats().unwrap()),
-        "no delay"
+        "threaded service"
     );
 }
 

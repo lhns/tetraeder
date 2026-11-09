@@ -110,7 +110,7 @@ Groups are per expert, so each expert keeps all its rows, its row order and its 
 Built as in Brief A, both behind default-off options (`IoOptions::service`, `LoadOptions::overlap`).
 
 - `memory::io::IoService` (`crates/memory/src/io.rs`), `HostDst::sub`, `IoOptions::{service, workers}`. In the model: `Prefetcher` enum in the streamer (reader or service), `Streamer::{begin_step, stage_overlap, wait_landed, finish_overlap}`, `LoadOptions::overlap`, `State.host` (`xn_host`, `cpu_out_host`), `Slot.cpu_out`, `sched_cpu`, `ExpertSrc::Copied`. `expert_rows` is now the one definition of the expert FFN ops for segment groups and CPU groups.
-- Metrics, panel "Expert reads under compute" (id 54), alert `TetraederExpertReadsNotHidden`. Harness env `TETRAEDER_EXIT_IO_SERVICE`, `_IO_WORKERS`, `_OVERLAP`, `_IO_DELAY_MS`; JSON `decode_overlap`. Box stages `main-iosvc`, `main-overlap`, `main-overlap-d2`, `main-overlap-ram`, `main-overlap-repeat`, replay counts 79, 81, 83 (written, not run).
+- Metrics, panel "Expert reads under compute" (id 54), alert `TetraederExpertReadsNotHidden`. Harness env `TETRAEDER_EXIT_IO_SERVICE`, `_IO_WORKERS`, `_OVERLAP`; JSON `decode_overlap`. Box stages `main-iosvc`, `main-overlap`, `main-overlap-d2`, `main-overlap-ram`, `main-overlap-repeat`, replay counts 79, 81, 83 (written, not run).
 
 Deviations and local choices:
 
@@ -120,7 +120,7 @@ Deviations and local choices:
 - Pinned mispredicted reads can leave too few RAM slots for a layer step on a very small tier (RAM slots below experts routed plus experts stranded in flight). `stage_overlap` then waits for the stranded reads first. The fixture (12 RAM slots, top-8) takes that path; production tiers (77 or more) do not.
 - With `overlap` and no op offload, any step with one CPU chunk takes the overlap path, prefill included (the brief gates only on `!offloads`).
 - In the gated case `plan_cpu` runs before `finish_prefetch` (it does not depend on it); `finish_prefetch` runs only when the step is not overlapped and has CPU experts. A step with no CPU experts leaves its layer's reads for the next settle.
-- `LoadOptions::io_delay` (hidden) injects the per-chunk delay; the test-only delay applies to the service only.
+- `LoadOptions::io_delay` (a per-chunk sleep) is gone; ADR 0056 replaces it with `LoadOptions::io_factory` and the virtual-clock `SimIo`.
 - The branch is based on `origin/track-u-parallel-reads-adr` (this ADR and the brief were not on `main` yet).
 
 Tests: `crates/memory/src/io.rs` (7 unit tests), `crates/model/tests/overlap.rs` (bitwise service and overlap at depth 1, 2 and off, cache counters equal, pending groups, read error and recovery, GPU case skipped without a device), proptest `overlap_groups_partition_all_pairs`. `replay_fidelity.rs` was not extended (open item).

@@ -94,6 +94,44 @@ fn replay_output_has_the_fields_the_planner_reads() {
     assert_eq!(doc["outcomes"], doc2["outcomes"]);
 }
 
+/// `replay --timed`: a timing per outcome beside the byte outcomes, every read landed, and the
+/// byte outcomes are the same as without a time model.
+#[test]
+fn timed_replay_writes_a_timing_for_every_outcome() {
+    let dir = tempfile::tempdir().unwrap();
+    let (trace, model, plain, timed) = (
+        dir.path().join("t.trace"),
+        dir.path().join("time-model.json"),
+        dir.path().join("plain.json"),
+        dir.path().join("timed.json"),
+    );
+    write_trace(&trace);
+    std::fs::write(
+        &model,
+        include_str!("../../memory/tests/data/time-model.json"),
+    )
+    .unwrap();
+    let grid = (&[0, 2][..], &[2, 4][..], &[Policy::Lru][..]);
+    replay::run(&trace, grid.0, grid.1, grid.2, &plain).unwrap();
+    replay::run_timed(&trace, grid.0, grid.1, grid.2, &timed, Some(&model)).unwrap();
+    let read =
+        |p: &Path| -> Value { serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap() };
+    let (a, b) = (read(&plain), read(&timed));
+    assert_eq!(a["outcomes"], b["outcomes"]);
+    assert_eq!(b["time_model"]["path"], "service_overlap");
+    let t = b["timed"].as_array().unwrap();
+    assert_eq!(t.len(), b["outcomes"].as_array().unwrap().len());
+    for (o, e) in b["outcomes"].as_array().unwrap().iter().zip(t) {
+        assert_eq!(e["vram_slots"], o["vram_slots"]);
+        assert_eq!(e["ram_slots"], o["ram_slots"]);
+        let tm = &e["timing"];
+        assert_eq!(tm["units_submitted"], tm["units_landed"]);
+        assert_eq!(tm["decode"]["tokens"], 12);
+        assert!(tm["decode"]["step_s_mean"].as_f64().unwrap() > 0.0);
+    }
+    assert!(a.get("timed").is_none());
+}
+
 /// Every committed `tier-replay.json` whose directory also holds the trace it names replays to
 /// exactly the committed outcomes. Skips cleanly when none is committed.
 #[test]

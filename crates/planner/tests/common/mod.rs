@@ -53,6 +53,7 @@ pub fn input(
         workload: WORK,
         engine,
         applies: Applies::today(),
+        tier: None,
     }
 }
 

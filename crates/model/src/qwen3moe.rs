@@ -28,6 +28,7 @@ use tetraeder_ggml_sys::ggml::{
     hadamard_matrix,
 };
 use tetraeder_memory::IoOptions;
+use tetraeder_memory::io::IoFactory;
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_plan::{Format, KvFormat, ModelDesc};
 use tetraeder_telemetry::{Phase, StepSample, Telemetry};
@@ -220,10 +221,11 @@ pub struct LoadOptions {
     /// Needs `io.service`. Applies to `MissPolicy::Cpu` steps without op offload that have one
     /// CPU chunk; other steps run as without it. Logits are bitwise unchanged.
     pub overlap: bool,
-    /// Test only: each I/O service worker sleeps this long before each chunk, so reads are
-    /// still in flight when the layer is planned.
+    /// Test only: builds the expert reads in place of the I/O service, for example a simulator
+    /// on a virtual clock (`tetraeder_memory::io::sim::SimIo`), so reads are still in flight
+    /// when a layer is planned without any sleeping.
     #[doc(hidden)]
-    pub io_delay: Option<Duration>,
+    pub io_factory: Option<IoFactory>,
     /// Hadamard rotation of Q, K, V and the attention output, as libllama does for a quantized
     /// cache (ADR 0050 addendum). `None`: on exactly when the format is quantized (libllama's
     /// default), off for F16. `Some(true)` needs a head size that is a multiple of 64.
@@ -253,6 +255,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("kv", &self.kv)
             .field("io", &self.io)
             .field("overlap", &self.overlap)
+            .field("io_factory", &self.io_factory.is_some())
             .field("kv_rotation", &self.kv_rotation)
             .finish_non_exhaustive()
     }
@@ -284,7 +287,7 @@ impl LoadOptions {
             prefetch_threads: None,
             kv: KvFormat::default(),
             overlap: false,
-            io_delay: None,
+            io_factory: None,
             kv_rotation: None,
         }
     }
@@ -565,7 +568,7 @@ impl Qwen3Moe {
                     profile: opts.routing_profile.clone(),
                     prefetch: opts.prefetch,
                     overlap: opts.overlap,
-                    service_delay: opts.io_delay,
+                    io_factory: opts.io_factory.clone(),
                 };
                 Streamer::new(
                     &file,

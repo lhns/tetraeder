@@ -11,7 +11,7 @@ use std::time::Duration;
 use tetraeder_plan::{Hints, Plan, Stability};
 use tetraeder_planner::{
     Applies, Lowered, Placement, ServeEngine, ServeInput, Workload, budget_of, fill_knobs, lower,
-    pick, predict_plan, recognize,
+    pick, predict_plan_for, read_tier_replay, recognize,
 };
 use tetraeder_scheduler::{Scheduler, load_llama, load_moe_chunked};
 use tetraeder_telemetry::Telemetry;
@@ -71,6 +71,10 @@ pub fn start(
     let budget = budget_of(&hw, quota, a.plan_vram, a.plan_ram);
     let band = band_of(&hw);
     let applies = Applies::all();
+    let tier = match &a.tier_replay {
+        Some(p) => Some(read_tier_replay(p).map_err(anyhow::Error::msg)?),
+        None => None,
+    };
     let inp = ServeInput {
         hw,
         layout: layout.clone(),
@@ -79,6 +83,7 @@ pub fn start(
         workload: a.plan_workload,
         engine: flag,
         applies,
+        tier,
     };
 
     let (plan, prediction) = if spec == "auto" {
@@ -98,7 +103,7 @@ pub fn start(
         for n in changed {
             eprintln!("plan: {n}");
         }
-        let pred = predict_plan(&inp.hw, &layout, &projected, &inp.workload);
+        let pred = predict_plan_for(&inp, &projected);
         if let Err(e) = &pred {
             eprintln!("plan: no prediction ({e}); replanning is off");
         }

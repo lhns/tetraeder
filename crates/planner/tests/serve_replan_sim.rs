@@ -9,7 +9,8 @@ use tetraeder_plan::{KvFormat, Plan};
 use tetraeder_planner::layout::fixtures;
 use tetraeder_planner::{
     ModelLayout, Priors, ServeEngine, ServeInput, Workload, candidates, correct_for_drift,
-    fill_from_priors, footprint, lower, pick, predict_plan, propose, recognize, regret,
+    fill_from_priors, footprint, lower, pick, predict_plan, predict_plan_for, propose, recognize,
+    regret, uniform_tier,
 };
 use tetraeder_profiler::{ComputeSpec, Device, DeviceKind, HardwareGraph, Tier};
 
@@ -206,6 +207,140 @@ fn quota_cut_forces_fewer_threads() {
         assert_eq!(p.gain, 1.0, "{}", c.name);
         assert!(p.plan.knobs.threads.unwrap() <= t / 2, "{}", c.name);
     }
+}
+
+/// The builder on the RTX 3090 prior with a (uniform stand-in) tier replay: the candidates,
+/// their slot pairs, and the running plan, the fastest one the disk binds.
+fn builder_with_tier() -> (ServeInput, Plan) {
+    let (_, hw) = graphs()
+        .into_iter()
+        .find(|g| g.0 == "rtx3090_prior")
+        .unwrap();
+    let layout = fixtures::moe();
+    let mut inp = input(&hw, &layout, ServeEngine::Builder);
+    let slots_of = |p: &Plan, l: &ModelLayout| match recognize(p, l).unwrap().0 {
+        tetraeder_planner::Placement::Builder {
+            vram_slots,
+            ram_slots,
+        } => (vram_slots, ram_slots),
+        other => panic!("{other:?}"),
+    };
+    let pairs: Vec<(u32, u32)> = candidates(&inp)
+        .iter()
+        .map(|p| slots_of(p, &layout))
+        .collect();
+    inp.tier = Some(uniform_tier(&layout, &pairs));
+    let cur = candidates(&inp)
+        .into_iter()
+        .filter_map(|p| {
+            let pred = predict_plan_for(&inp, &p).ok()?;
+            (pred.binding == "read:nvme0").then_some((pred.tg_tok_s, p))
+        })
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .expect("a plan the disk binds")
+        .1;
+    (inp, cur)
+}
+
+fn builder_slots(inp: &ServeInput, p: &Plan) -> (u32, u32) {
+    match recognize(p, &inp.layout).unwrap().0 {
+        tetraeder_planner::Placement::Builder {
+            vram_slots,
+            ram_slots,
+        } => (vram_slots, ram_slots),
+        other => panic!("{other:?}"),
+    }
+}
+
+fn disk_bytes(inp: &ServeInput, p: &Plan) -> f64 {
+    let (v, r) = builder_slots(inp, p);
+    let t = inp.tier.as_ref().unwrap();
+    t.iter()
+        .find(|o| o.vram_slots == v && o.ram_slots == r)
+        .unwrap()
+        .decode
+        .disk_bytes_per_token
+}
+
+/// A slow NVMe (curve x0.25) shows in the step time as a `read:nvme0` term; the drift
+/// correction scales the curve down by the measured factor, and the planner then proposes a plan
+/// that reads fewer bytes from the disk (more RAM slots, or more VRAM slots).
+// hardware: none
+#[test]
+fn a_slow_disk_moves_the_builder_plan_to_fewer_disk_bytes() {
+    let (inp, cur) = builder_with_tier();
+    let pred = predict_plan_for(&inp, &cur).unwrap();
+    assert_eq!(pred.binding, "read:nvme0", "{:?}", pred.tg_breakdown);
+    // the box's disk delivers a quarter of the curve
+    let mut truth = inp.hw.clone();
+    for d in &mut truth.devices {
+        for q in &mut d.queue_curve {
+            q.bytes_per_s *= 0.25;
+        }
+    }
+    let slow = ServeInput {
+        hw: truth,
+        ..inp.clone()
+    };
+    let measured = 1.0 / predict_plan_for(&slow, &cur).unwrap().tg_tok_s;
+    assert!(measured > 1.0 / pred.tg_tok_s * 1.2, "the drift is visible");
+    let corrected = correct_for_drift(&inp.hw, &pred, measured).expect("a read binding corrects");
+    let curve = |g: &HardwareGraph| g.device("nvme0").unwrap().queue_curve.clone();
+    for (old, new) in curve(&inp.hw).iter().zip(curve(&corrected)) {
+        assert!(new.bytes_per_s < old.bytes_per_s, "{old:?} {new:?}");
+    }
+    let inp2 = ServeInput {
+        hw: corrected,
+        ..inp.clone()
+    };
+    let p = propose(&inp2, &cur).expect("a proposal");
+    let (v0, r0) = builder_slots(&inp, &cur);
+    let (v1, r1) = builder_slots(&inp, &p.plan);
+    assert!(v1 > v0 || r1 > r0, "{:?} -> {:?}", (v0, r0), (v1, r1));
+    assert!(disk_bytes(&inp, &p.plan) < disk_bytes(&inp, &cur));
+    assert!(p.gain > 0.0);
+}
+
+/// `read:<disk>` binding on a graph with a plain bandwidth (no curve) scales the bandwidth.
+// hardware: none
+#[test]
+fn a_read_binding_scales_a_disk_bandwidth_without_a_curve() {
+    let (inp, cur) = builder_with_tier();
+    let mut hw = inp.hw.clone();
+    let d = hw.devices.iter_mut().find(|d| d.id == "nvme0").unwrap();
+    d.queue_curve.clear();
+    d.bandwidth_bytes_per_s = Some(tetraeder_profiler::Measurement::prior(3.0e9));
+    let inp = ServeInput { hw, ..inp };
+    let pred = predict_plan_for(&inp, &cur).unwrap();
+    assert_eq!(pred.binding, "read:nvme0");
+    let t = 1.0 / pred.tg_tok_s;
+    let g = correct_for_drift(&inp.hw, &pred, t * 1.5).unwrap();
+    let bw = |g: &HardwareGraph| {
+        g.device("nvme0")
+            .unwrap()
+            .bandwidth_bytes_per_s
+            .unwrap()
+            .value
+    };
+    assert!(bw(&g) < bw(&inp.hw));
+}
+
+/// Without a tier file the builder candidates tie on RAM slots and nothing changes; with one,
+/// candidates without an outcome are left out of the enumeration.
+// hardware: none
+#[test]
+fn a_tier_file_filters_candidates_without_an_outcome() {
+    let (inp, _) = builder_with_tier();
+    let all = candidates(&inp);
+    let mut few = inp.clone();
+    let keep = uniform_tier(&inp.layout, &[builder_slots(&inp, &all[0])]);
+    few.tier = Some(keep);
+    let some = candidates(&few);
+    assert_eq!(some.len(), 1);
+    assert_eq!(some[0], all[0]);
+    let mut none = inp.clone();
+    none.tier = None;
+    assert_eq!(candidates(&none).len(), all.len());
 }
 
 #[test]

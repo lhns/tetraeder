@@ -5,7 +5,8 @@
 #                        the cache repeat only if time is left
 #   SESSION=b1b-levers   the lever stages on a second 235B box: builder, low-bit KV (kv-*), routing trace and replay
 #   SESSION=b2-proxy     Claude Code proxy rerun (48 GB card), then KV quality on the 30B and the scripts in B2_STAGES
-#   SESSION=b3-planner   llama.cpp's cache tuner on the 30B, then the planner dense fixture
+#   SESSION=b3-planner   llama.cpp's cache tuner on the 30B, the disk curve and routing trace of the builder fixture
+#                        (ADR 0056), then the planner dense fixture
 #   SESSION=b3-detector  detector campaign, then kernels-cpu
 #   SESSION=gpu-smoke    weekly GPU smoke (scripts/gpu_smoke.sh drives it): the gpu_* tests on the synthetic fixtures,
 #                        the Qwen3-0.6B golden, one A/A pair for the measured noise band; TETRAEDER_REQUIRE_GPU=1
@@ -187,12 +188,14 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
         echo "llama.cpp cache: $((VRAM_SLOT_BYTES / 1048576)) MiB, cpu share $share"
         # code order in exit_run.sh: smoke, main-prefetch, ktransformers, llamacpp-cache (mmap), llamacpp-cache-dio,
         # main-repeat, ktransformers-repeat, then ktransformers-avx2 and llamacpp-cache-repeat if the deadline allows
-        stages="smoke main-prefetch ktransformers llamacpp-cache llamacpp-cache-dio main-repeat ktransformers-repeat"
+        stages="smoke disk-curve main-prefetch ktransformers llamacpp-cache llamacpp-cache-dio main-repeat ktransformers-repeat"
         stages="$stages ktransformers-avx2 llamacpp-cache-repeat"
       else
         # each lever stage pairs with main-prefetch on this box: kv-* right after it, the trace
         # main-iosvc and main-overlap (ADR 0054) follow the kv stages; main-overlap-ram runs if the deadline allows
-        stages="smoke main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots main-iosvc main-overlap trace main-overlap-ram"
+        stages="smoke disk-curve main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots main-iosvc main-overlap trace main-overlap-ram"
+        # the ledger directory of this session (ADR 0056): last, the deadline cuts it first
+        stages="$stages anchors-builder-short"
       fi
       # levers (ADR 0038): prefetch on in every builder stage, depth 2
       step exit_run env TETRAEDER_EXIT_PREFETCH_DEPTH=2 CPU_SHARES="$share" STAGES="$stages" bash scripts/exit_run.sh
@@ -222,6 +225,15 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
       [ "$(left_min)" -ge 30 ] && step moe_cache_tune env TUNE_MIN="${TUNE_MIN:-25}" bash scripts/moe_cache_tune.sh
       # the planner campaign waits for the download (its own fetch skips a file that exists, even a partial one)
       while pgrep -f 'box[.]sh models' > /dev/null; do sleep 5; done
+      # ADR 0056, the builder fixture's session stages on the 30B: the disk curve (2 min) and the routing trace with its
+      # replay (5 min), plus the campaign's extra build (3 min); the candidates themselves are not run here (planner-moe-builder is
+      # 3.7 h of runs). Needs the deadline: skipped with fewer than 25 minutes left
+      if [ "$(left_min)" -ge 25 ]; then
+        step planner_builder env OUT_DIR="$PWD/$results/planner-moe-builder" STAGES="disk-curve trace" \
+          bash scripts/planner_builder_campaign.sh
+      else
+        echo "skip planner_builder (disk-curve, trace): $(left_min) min left"
+      fi
       # the fixture runs until the deadline (FIXTURE_MIN is only the upper bound)
       step planner env FIXTURES=dense FIXTURE_MIN="${FIXTURE_MIN:-240}" bash scripts/planner_campaign.sh
       ;;
