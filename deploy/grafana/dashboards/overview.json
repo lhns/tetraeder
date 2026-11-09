@@ -1544,6 +1544,86 @@
           }
         }
       ]
+    },
+    {
+      "id": 70,
+      "title": "Admission and engine loads",
+      "description": "1 while the server admits requests, 0 during a plan switch (alert TetraederAdmissionStopped), and the time to load the model into an engine by outcome (ADR 0055).",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 114,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "admitting"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "stepAfter"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(tetraeder_replan_admitting)",
+          "legendFormat": "admitting",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.5, sum by (le, tetraeder_load_outcome) (rate(tetraeder_engine_load_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "load p50 {{tetraeder_load_outcome}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.95, sum by (le, tetraeder_load_outcome) (rate(tetraeder_engine_load_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "load p95 {{tetraeder_load_outcome}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

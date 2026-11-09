@@ -26,6 +26,7 @@ pub mod attr {
     pub const FAULT_CLASS: &str = "tetraeder.fault.class";
     pub const REPLAN_TRIGGER: &str = "tetraeder.replan.trigger";
     pub const REPLAN_OUTCOME: &str = "tetraeder.replan.outcome";
+    pub const LOAD_OUTCOME: &str = "tetraeder.load.outcome";
     pub const CPU_TIER: &str = "tetraeder.cpu.tier";
     pub const CPU_ISA: &str = "tetraeder.cpu.isa";
     pub const CPU_DISPATCH: &str = "tetraeder.cpu.dispatch";
@@ -119,6 +120,8 @@ pub struct Metrics {
     bottleneck_fault: Counter<u64>,
     replan_total: Counter<u64>,
     replan_duration: Histogram<f64>,
+    engine_load: Histogram<f64>,
+    replan_admitting: Gauge<u64>,
     cpu_variant: Gauge<u64>,
     cpu_isa_missing: Gauge<u64>,
 }
@@ -323,6 +326,18 @@ impl Metrics {
                 .with_boundaries(vec![
                     0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
                 ])
+                .build(),
+            engine_load: meter
+                .f64_histogram("tetraeder.engine.load.duration")
+                .with_unit("s")
+                .with_description("Time to load the model into an engine, by outcome")
+                .with_boundaries(vec![
+                    0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+                ])
+                .build(),
+            replan_admitting: meter
+                .u64_gauge("tetraeder.replan.admitting")
+                .with_description("1 while the server admits new requests, 0 during a plan switch")
                 .build(),
             cpu_variant: meter
                 .u64_gauge("tetraeder.cpu.variant")
@@ -591,6 +606,19 @@ impl Metrics {
 
     pub fn replan_duration(&self, d: Duration) {
         self.replan_duration.record(d.as_secs_f64(), &[]);
+    }
+
+    /// One engine load; `outcome` is `ok` or `failed` (ADR 0055).
+    pub fn engine_load(&self, d: Duration, outcome: &str) {
+        self.engine_load.record(
+            d.as_secs_f64(),
+            &[KeyValue::new(attr::LOAD_OUTCOME, outcome.to_owned())],
+        );
+    }
+
+    /// Whether new requests are admitted (ADR 0055).
+    pub fn replan_admitting(&self, on: bool) {
+        self.replan_admitting.record(u64::from(on), &[]);
     }
 
     /// Once at engine start (ADR 0052): the CPU backend variant that is loaded. `isa` and

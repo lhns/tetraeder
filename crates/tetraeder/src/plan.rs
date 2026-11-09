@@ -40,7 +40,7 @@ pub fn run(a: &PlanArgs) -> Result<()> {
     }
 }
 
-fn layout(path: &Path) -> Result<tetraeder_planner::ModelLayout> {
+pub(crate) fn layout(path: &Path) -> Result<tetraeder_planner::ModelLayout> {
     let g = Gguf::open(path).with_context(|| format!("open {}", path.display()))?;
     let arch = g.str("general.architecture")?.to_string();
     let key = |k: &str| format!("{arch}.{k}");
