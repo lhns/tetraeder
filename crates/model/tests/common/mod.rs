@@ -3,6 +3,7 @@
 
 pub mod split;
 pub mod synth;
+pub mod trace;
 
 /// The CPU quota of the container (cgroup v2 `cpu.max`), if any.
 pub fn cpu_quota() -> Option<f64> {

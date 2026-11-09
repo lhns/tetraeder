@@ -37,6 +37,9 @@
 //!   a `;` list of `regex=BUFFER_TYPE` as `llama-bench -ot`, first match wins). Same tokens,
 //!   ubatch, context and threads, so it is also the llama.cpp baseline on the real prompt
 //!   (llama-bench decodes random tokens); the JSON has the same speed and output fields.
+//! - `TETRAEDER_EXIT_ROUTING_OUT`: write the routing of the run (with the predictions) as a
+//!   `tetraeder-routing` trace for `tetraeder-bench replay` (ADR 0050 (c)). One file per ubatch
+//!   size: with several, the size is inserted before the extension.
 //! - `TETRAEDER_EXIT_OUT` (JSON file), `TETRAEDER_EXIT_MACHINE` (a note).
 //!
 //! Every run records `prompt` (token count and an FNV-1a hash of the token ids), `first_top`
@@ -47,6 +50,7 @@
 mod common;
 
 use common::synth::{MoeSpec, quantized_moe_at};
+use common::trace::RoutingRecorder;
 use common::{argmax, prefetch_json, top_k};
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -267,6 +271,20 @@ fn reference_run(
     run
 }
 
+/// `base`, or with several ubatch sizes `stem.ub<size>.ext`.
+fn trace_path(base: &std::path::Path, ub: usize, many: bool) -> PathBuf {
+    if !many {
+        return base.to_path_buf();
+    }
+    let stem = base
+        .file_stem()
+        .map_or(String::new(), |s| s.to_string_lossy().into_owned());
+    let ext = base
+        .extension()
+        .map_or(String::new(), |e| format!(".{}", e.to_string_lossy()));
+    base.with_file_name(format!("{stem}.ub{ub}{ext}"))
+}
+
 fn add_profile(a: &mut StepProfile, b: &StepProfile) {
     a.steps += b.steps;
     a.graphs += b.graphs;
@@ -389,6 +407,8 @@ fn exit_regime() {
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
     opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
     let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
+    let routing_out = std::env::var_os("TETRAEDER_EXIT_ROUTING_OUT").map(PathBuf::from);
+    opts.record_routing = routing_out.is_some() && !reference;
     match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
         Some(b) => opts.expert_slot_bytes = Some(b),
         None => opts.expert_slots = Some(env_u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize),
@@ -415,6 +435,22 @@ fn exit_regime() {
         let load_s = t0.elapsed().as_secs_f64();
         io_backend = m.io_backend();
         let s0 = m.expert_stats().expect("the exit regime streams experts");
+        let mut recorder = routing_out.as_ref().map(|p| {
+            let path = trace_path(p, ub, ubatches.len() > 1);
+            let hot = if refresh_hot {
+                "refresh"
+            } else {
+                "first_prefill"
+            };
+            RoutingRecorder::create(
+                &path,
+                &m,
+                ub,
+                prompt_info["fnv1a64"].as_str().unwrap_or_default(),
+                hot,
+                None,
+            )
+        });
 
         m.take_profile();
         let t0 = Instant::now();
@@ -424,6 +460,9 @@ fn exit_regime() {
             let t = Instant::now();
             last = m.eval_last(chunk).expect("prefill");
             ubatch_s.push(t.elapsed().as_secs_f64());
+            if let Some(r) = &mut recorder {
+                r.drain(&mut m);
+            }
         }
         let prefill_s = t0.elapsed().as_secs_f64();
         let pp = m.take_profile();
@@ -431,6 +470,9 @@ fn exit_regime() {
         let t = Instant::now();
         if refresh_hot {
             m.refresh_hot_set().expect("hot set refresh");
+            if let Some(r) = &mut recorder {
+                r.drain(&mut m);
+            }
         }
         let refresh_s = t.elapsed().as_secs_f64();
         let s1 = m.expert_stats().unwrap();
@@ -454,6 +496,9 @@ fn exit_regime() {
             for _ in 0..n {
                 greedy.push(next);
                 let l = m.eval(&[next]).expect("decode");
+                if let Some(r) = &mut recorder {
+                    r.drain(&mut m);
+                }
                 margins.push(margin(&l));
                 next = argmax(&l) as i32;
             }
@@ -477,6 +522,9 @@ fn exit_regime() {
         let decode_s = t0.elapsed().as_secs_f64();
         let s2 = m.expert_stats().unwrap();
 
+        if let Some(r) = recorder.take() {
+            r.finish();
+        }
         let memory: Vec<Value> = m
             .memory()
             .iter()
