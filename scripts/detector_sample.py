@@ -2,9 +2,10 @@
 
 sample:  python3 detector_sample.py sample --pid PID --disk MAJ:MIN --out s.jsonl
          Every 0.5 s until PID exits: wall time, CPU used by the container cgroup and by PID's process tree,
-         container CPU throttling, disk sectors read (whole device and by PID), swap-ins, GPU state.
+         container CPU throttling, disk sectors read (whole device and by PID), swap-ins, major faults of
+         PID's tree, memory PSI of the engine's cgroup, GPU state.
 observe: python3 detector_sample.py observe --harness h.json --samples s.jsonl --threads N --quota Q
-         [--calib calib.json] [--vram-other-bytes B] [--planned-slot-bytes B] --id ID --out obs.json
+         [--calib calib.json] [--io-max-bytes B] [--vram-other-bytes B] [--planned-slot-bytes B] --id ID --out obs.json
          Builds one analysis::Observation (crates/analysis/fixtures/observation_example.json) from the harness
          decode windows and the samples inside each window.
 calib:   python3 detector_sample.py calib --obs a.json b.json ... --out calib.json
@@ -77,6 +78,38 @@ def proc_cpu_s(pids):
     return s
 
 
+def proc_majflt(pids):
+    n = 0
+    for p in pids:
+        st = read(f"/proc/{p}/stat")
+        if st:
+            n += int(st.rsplit(")", 1)[1].split()[9])
+    return n
+
+
+def engine_cgroup(pids):
+    """cgroup v2 path of the busiest process in the tree (the engine, not sudo or systemd-run)."""
+    best, path = -1.0, None
+    for p in pids:
+        st = read(f"/proc/{p}/stat")
+        cg = [line[3:] for line in read(f"/proc/{p}/cgroup").splitlines() if line.startswith("0::")]
+        if st and cg:
+            f = st.rsplit(")", 1)[1].split()
+            cpu = int(f[11]) + int(f[12])
+            if cpu > best:
+                best, path = cpu, cg[0]
+    return path
+
+
+def memory_some_usec(cg):
+    """PSI memory "some" total of cgroup cg (system-wide if the cgroup has none), or None without PSI."""
+    for path in ([f"/sys/fs/cgroup{cg.rstrip('/')}/memory.pressure"] if cg else []) + ["/proc/pressure/memory"]:
+        for line in read(path).splitlines():
+            if line.startswith("some "):
+                return int(line.rsplit("total=", 1)[1]), path
+    return None, None
+
+
 def proc_read_bytes(pids):
     b = 0
     for p in pids:
@@ -123,9 +156,13 @@ def sample(a):
     with open(a.out, "w") as out:
         while os.path.exists(f"/proc/{a.pid}"):
             pids = tree(a.pid)
+            psi, psi_src = memory_some_usec(engine_cgroup(pids))
             rec = {"t": time.time(), "cg_cpu_usec": cgroup_cpu_usec(), "cg_throttled_usec": cgroup_throttled_usec(),
                    "own_cpu_s": proc_cpu_s(pids), "own_read_bytes": proc_read_bytes(pids),
-                   "disk_read_bytes": disk_read_bytes(a.disk), "pswpin": pswpin()}
+                   "disk_read_bytes": disk_read_bytes(a.disk), "pswpin": pswpin(),
+                   "own_majflt": proc_majflt(pids), "mem_some_usec": psi, "psi_src": psi_src}
+            if not os.path.exists(f"/proc/{a.pid}"):
+                break  # the tree is gone: its counters read 0, which would end the last window negative
             if n % 4 == 0:  # nvidia-smi takes about 50 ms; every 2 s is enough
                 rec["gpu"] = gpu()
             out.write(json.dumps(rec) + "\n")
@@ -150,10 +187,16 @@ def window_samples(samples, t0, t1):
 
 def observe(a):
     h = json.load(open(a.harness))
-    samples = [json.loads(line) for line in open(a.samples) if line.strip()]
+    samples = []
+    for line in open(a.samples):
+        s = json.loads(line) if line.strip() else None
+        # own counters only grow; a smaller value is a sample taken while the tree exited
+        if s and (not samples or s["own_cpu_s"] >= samples[-1]["own_cpu_s"]):
+            samples.append(s)
     run = h["runs"][-1]
     windows = []
     env_other, env_swap, env_disk_other, throttles, pcie = [], [], [], set(), None
+    env_majflt, env_stall = [], []
     for w in run["decode_windows"]:
         first, last, inside = window_samples(samples, w["start_unix_s"], w["end_unix_s"])
         dt = max(last["t"] - first["t"], 1e-3) if first and last else w["wall_s"]
@@ -165,6 +208,11 @@ def observe(a):
         env_other.append(max(0.0, cg - own_cpu - 0.05 * dt) / dt)
         if first and last:
             env_swap.append((last["pswpin"] - first["pswpin"]) * 4096 / dt)
+            if "own_majflt" in first:
+                env_majflt.append(max(0, last["own_majflt"] - first["own_majflt"]) / dt)
+            # PSI deltas only within one cgroup (the engine moves into its scope right after start)
+            if first.get("mem_some_usec") is not None and last.get("mem_some_usec") is not None                     and first.get("psi_src") == last.get("psi_src"):
+                env_stall.append(min(1.0, (last["mem_some_usec"] - first["mem_some_usec"]) / 1e6 / dt))
             if first["disk_read_bytes"] is not None:
                 dev = last["disk_read_bytes"] - first["disk_read_bytes"]
                 own = last["own_read_bytes"] - first["own_read_bytes"]
@@ -183,7 +231,7 @@ def observe(a):
             "tokens": n,
             "wall_s": w["wall_s"],
             "busy_s": {
-                "gpu:gpu0": util * w["wall_s"],
+                **({"gpu:gpu0": util * w["wall_s"]} if gs else {}),  # no GPU on a CPU runner
                 "cpu": own_cpu / max(a.threads, 1),
                 "disk:nvme0": io["read_s"],
                 "host": ms("inputs_ms") + ms("build_ms") + ms("alloc_ms") + ms("readback_ms"),
@@ -196,8 +244,8 @@ def observe(a):
             "bytes": {"disk:nvme0": float(io["bytes"])},
         })
     g0 = next((s["gpu"] for s in samples if s.get("gpu")), None) or {}
-    io_max = None
-    for line in read("/sys/fs/cgroup/io.max").splitlines():
+    io_max = a.io_max_bytes  # the cgroup the engine ran in, when it is not the container's own (fault testbed)
+    for line in read("/sys/fs/cgroup/io.max").splitlines() if io_max is None else []:
         for kv in line.split()[1:]:
             k, _, v = kv.partition("=")
             if k == "rbps" and v != "max":
@@ -218,6 +266,8 @@ def observe(a):
             "cpu_quota_cores": a.quota,
             "cpu_other_cores": statistics.median(env_other) if env_other else 0.0,
             "swap_in_bytes_per_s": statistics.median(env_swap) if env_swap else 0.0,
+            "major_faults_per_s": statistics.median(env_majflt) if env_majflt else 0.0,
+            "memory_stall_share": statistics.median(env_stall) if env_stall else None,
             "vram_other_bytes": {"gpu0": int(a.vram_other_bytes)},
             "vram_total_bytes": {"gpu0": int((g0.get("mem_total_mib") or 0) * 1048576)},
             "disk_other_read_bytes_per_s": statistics.median(env_disk_other) if env_disk_other else 0.0,
@@ -265,6 +315,7 @@ def main():
     o.add_argument("--threads", type=int, required=True)
     o.add_argument("--quota", type=float, required=True)
     o.add_argument("--calib")
+    o.add_argument("--io-max-bytes", type=float)
     o.add_argument("--vram-other-bytes", type=float, default=0)
     o.add_argument("--planned-slot-bytes", type=float)
     o.add_argument("--id", required=True)

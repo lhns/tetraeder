@@ -14,6 +14,8 @@
     "env.cpu_quota_cores": "CPU quota in cores (cgroup or host threads)",
     "env.cpu_other_cores": "cores used by processes other than the engine",
     "env.swap_in_bytes_per_s": "swap-in rate",
+    "env.major_faults_per_s": "major page faults per second of the engine processes",
+    "env.memory_stall_share": "share of wall time some engine task stalled on memory (PSI memory.pressure some of its cgroup); omit without PSI",
     "env.vram_other_bytes": "gpu id -> VRAM bytes held by other processes",
     "env.vram_total_bytes": "gpu id -> VRAM capacity",
     "env.disk_other_read_bytes_per_s": "read rate of other processes on the engine's disk",
@@ -98,6 +100,8 @@
     "cpu_quota_cores": 15.0,
     "cpu_other_cores": 0.1,
     "swap_in_bytes_per_s": 0.0,
+    "major_faults_per_s": 3.0,
+    "memory_stall_share": 0.0,
     "vram_other_bytes": {
       "gpu0": 300000000
     },

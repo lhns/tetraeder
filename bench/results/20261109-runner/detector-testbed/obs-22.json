@@ -1,0 +1,171 @@
+{
+ "id": "run-22",
+ "batch": 1,
+ "windows": [
+  {
+   "tokens": 8,
+   "wall_s": 10.650584658,
+   "busy_s": {
+    "cpu": 5.9350000000000005,
+    "disk:nvme0": 0.09634735,
+    "host": 0.009772838999999998
+   },
+   "split_s": {
+    "compute": 10.518404541,
+    "expert_load_wait": 0.122283686,
+    "host": 0.009772838999999998
+   },
+   "bytes": {
+    "disk:nvme0": 528777216.0
+   }
+  },
+  {
+   "tokens": 8,
+   "wall_s": 11.658980002,
+   "busy_s": {
+    "cpu": 6.3725,
+    "disk:nvme0": 0.073579888,
+    "host": 0.0080328
+   },
+   "split_s": {
+    "compute": 11.547363417,
+    "expert_load_wait": 0.103454203,
+    "host": 0.0080328
+   },
+   "bytes": {
+    "disk:nvme0": 464080896.0
+   }
+  },
+  {
+   "tokens": 8,
+   "wall_s": 10.02399276,
+   "busy_s": {
+    "cpu": 5.302499999999998,
+    "disk:nvme0": 0.112014103,
+    "host": 0.006729197
+   },
+   "split_s": {
+    "compute": 9.885172081,
+    "expert_load_wait": 0.131966318,
+    "host": 0.006729197
+   },
+   "bytes": {
+    "disk:nvme0": 473923584.0
+   }
+  },
+  {
+   "tokens": 8,
+   "wall_s": 9.43775228,
+   "busy_s": {
+    "cpu": 5.227499999999999,
+    "disk:nvme0": 0.122181719,
+    "host": 0.006654953
+   },
+   "split_s": {
+    "compute": 9.27565016,
+    "expert_load_wait": 0.155322203,
+    "host": 0.006654953
+   },
+   "bytes": {
+    "disk:nvme0": 550010880.0
+   }
+  },
+  {
+   "tokens": 8,
+   "wall_s": 11.149216571,
+   "busy_s": {
+    "cpu": 5.66,
+    "disk:nvme0": 0.113631073,
+    "host": 0.006591656
+   },
+   "split_s": {
+    "compute": 11.009189434,
+    "expert_load_wait": 0.133317349,
+    "host": 0.006591656
+   },
+   "bytes": {
+    "disk:nvme0": 495341568.0
+   }
+  },
+  {
+   "tokens": 8,
+   "wall_s": 10.944966417,
+   "busy_s": {
+    "cpu": 5.882499999999997,
+    "disk:nvme0": 0.121522848,
+    "host": 0.006694239
+   },
+   "split_s": {
+    "compute": 10.796320724,
+    "expert_load_wait": 0.141835308,
+    "host": 0.006694239
+   },
+   "bytes": {
+    "disk:nvme0": 540205056.0
+   }
+  },
+  {
+   "tokens": 8,
+   "wall_s": 11.23399228,
+   "busy_s": {
+    "cpu": 5.877499999999998,
+    "disk:nvme0": 0.125868183,
+    "host": 0.0067166199999999995
+   },
+   "split_s": {
+    "compute": 11.079662463,
+    "expert_load_wait": 0.1474963,
+    "host": 0.0067166199999999995
+   },
+   "bytes": {
+    "disk:nvme0": 537145344.0
+   }
+  },
+  {
+   "tokens": 8,
+   "wall_s": 11.147995565,
+   "busy_s": {
+    "cpu": 5.642499999999998,
+    "disk:nvme0": 0.10879571,
+    "host": 0.006596619
+   },
+   "split_s": {
+    "compute": 11.012736231000002,
+    "expert_load_wait": 0.128539624,
+    "host": 0.006596619
+   },
+   "bytes": {
+    "disk:nvme0": 514289664.0
+   }
+  }
+ ],
+ "env": {
+  "throttle": [],
+  "pcie": [],
+  "cpu_quota_cores": 4.0,
+  "cpu_other_cores": 1.922133380497869,
+  "swap_in_bytes_per_s": 0.0,
+  "vram_other_bytes": {
+   "gpu0": 0
+  },
+  "vram_total_bytes": {
+   "gpu0": 0
+  },
+  "disk_other_read_bytes_per_s": 0.0,
+  "io_max_bytes_per_s": null,
+  "expert_hit_rate": 0.0,
+  "slots_planned": null,
+  "slots_actual": 2
+ },
+ "expected": {
+  "rates": {
+   "disk:nvme0": 671649764.3210347
+  },
+  "busy_s_per_token": {
+   "cpu": 0.14921874999999996,
+   "disk:nvme0": 0.09575920762500001,
+   "host": 0.000824305125
+  },
+  "band": 0.2809504914717668
+ }
+}

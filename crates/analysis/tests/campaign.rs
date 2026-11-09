@@ -19,6 +19,7 @@ fn fault(name: &str) -> FaultClass {
     match name {
         "cpu" => FaultClass::CpuCotenant,
         "disk" => FaultClass::DiskSlow,
+        "mem" => FaultClass::Swapping,
         _ => FaultClass::VramPressure,
     }
 }
@@ -71,6 +72,21 @@ fn scorer_passes_a_clean_campaign() {
         (12, 10, 6)
     );
     assert_eq!(s.false_positives, 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The CPU-runner testbed (scripts/fault_testbed.sh) labels RAM pressure "mem".
+#[test]
+fn scorer_reads_the_mem_label_of_the_fault_testbed() {
+    let mut runs: Vec<Run> = vec![("calib", &[], &[])];
+    for _ in 0..4 {
+        runs.push(("mem", &["mem"], &["mem"]));
+    }
+    runs.push(("cpu+mem", &["cpu", "mem"], &["cpu", "mem"]));
+    let dir = campaign("mem", &runs);
+    let s = score_dir(&dir).unwrap();
+    assert_eq!((s.single_top1.runs, s.single_top1.ok), (4, 4), "{s:#?}");
+    assert_eq!(s.pair_top3.ok, 1, "{s:#?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
