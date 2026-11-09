@@ -41,3 +41,14 @@ Panel "Tool calls by outcome" (rate by outcome and class) in the gateway rows of
 - Nothing to build for the prefix cache; the rerun shows whether ADR 0049 reaches llama-server's share. Risk: the 8 GiB default holds about 87K tokens of the 30B's f16 KV (98,304 bytes per token); the run's largest prompt was 70.8K, so a long main conversation plus a subagent can evict. `PrefixCacheThrash` fires then; raise `--cache-ram` if the box has the RAM.
 - Tool-call repair stays one rule until data asks for more; every later rule comes with a fixture and a class label.
 - The proxy's new counts make both engines' tool-call failures comparable without keeping prompts.
+
+## Implementation notes
+
+Built (briefs G1 and G2).
+
+- Parser (`crates/gateway/src/toolcall.rs`): `OutputParser::take_outcomes()` returns `CallOutcome { outcome, class }`, one per decided call. Classes as built: `parsed/ok`, `parsed/unknown_tool`, `repaired/empty_call`, `failed/unclosed`, `failed/bad_json`, `failed/bad_xml`. `Step::Fail` carries the class, `Step::Drop` is the empty-call repair (block consumed, nothing emitted).
+- A tagged block that fails to parse and has no `</tool_call>` is `unclosed`; with the closing tag it is `bad_xml` (QwenXml content starting with `<function=`) or `bad_json`. A tagged block without the closing tag that parses stays `parsed/ok`, as before. Llama 3 is `unclosed` when the output ends inside a JSON value, else `bad_json`; Mistral is `unclosed` when the JSON is partial at the end.
+- Behaviour change: a bare `[TOOL_CALLS]` at the end of output was text, now it is dropped (the Mistral case of the repair). The one existing test asserting it (`mistral_malformed_is_text`) lost that input.
+- Gateway: counter `tetraeder.gateway.tool_calls` (`{call}`, attributes `tetraeder.outcome`, `tetraeder.class`), recorded by `Run::record_outcomes` after every push and after `finish`. Panel "Tool calls by outcome" (overview.json, id 39, appended after the prefix cache panel) and alert `ToolCallFailures`.
+- Proxy (`scripts/anthropic_proxy.py`): the Observer keeps per-block text only while the response streams and writes counts, never bodies: `tool_uses`, `tool_errors` by class, `tool_names_unknown`, `leaked_markers`. Leaked markers are found on the whole text block, so delta boundaries need no tail buffer. The `is_error` patterns (`InputValidationError`, `No such tool available`) are unchecked against Claude Code's real wording until the rerun's request log; adjust then.
+- Summary: per-engine totals, `tool_error_rate`, a `terr` table column; `claude_code_proxy.sh` also writes `cache_classes.txt`. `scripts/toolcall_fixtures.py` extracts failing outputs from a request log (reuses the Observer).
