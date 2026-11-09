@@ -109,7 +109,7 @@ new file mode 100644
 index 000000000..d3f587821
 --- /dev/null
 +++ b/ggml/src/ggml-cpu/iqk/iqk-mm.cpp
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,51 @@
 +// iqk AVX-512 VNNI matmul entry points (Tetraeder patch 0002, ADR 0053).
 +// Wraps the verbatim iqk_mul_mat.inc (see README) behind a C interface for ggml-cpu.c.
 +
@@ -121,6 +121,12 @@ index 000000000..d3f587821
 +
 +#include <cstdlib>
 +#include <mutex>
++// The file uses intrinsics and GCC builtins without declaring them (ggml's own headers did that for KT).
++#include <immintrin.h>
++#ifdef _MSC_VER
++#include <intrin.h>
++#define __builtin_popcount(x) __popcnt(x)
++#endif
 +
 +// The file defines iqk_mul_mat and iqk_mul_mat_moe with C++ linkage. Rename them so they cannot
 +// clash with other copies; the moe entry is broken in this version and unused.
