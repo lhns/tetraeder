@@ -156,6 +156,32 @@ pub fn init() {
     });
 }
 
+/// Turns off libllama's Hadamard rotation of a quantized KV cache for the whole process
+/// (`LLAMA_ATTN_ROT_DISABLE`, read when a context is created). Without it a cache with
+/// `type_k` or `type_v` below 8 bits stores rotated values that Tetraeder's builder does not
+/// produce, so logits only compare with it off (ADR 0050 b). Call before the first libllama
+/// context exists; later calls do nothing. libllama's `llama_model_set_attn_rot` has C++
+/// linkage, so the environment variable is the only handle.
+pub fn disable_attn_rot() {
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        // SAFETY: `set_var` races with a concurrent `getenv`. Callers run this before any
+        // libllama context is created (the tests do it first thing, behind this `OnceLock`),
+        // and libllama reads the variable only when it creates a context.
+        unsafe { std::env::set_var("LLAMA_ATTN_ROT_DISABLE", "1") };
+        // The MSVC runtime's `getenv`, which libllama calls, keeps its own copy of the
+        // environment that `SetEnvironmentVariableW` (std's `set_var`) does not update.
+        #[cfg(windows)]
+        // SAFETY: both arguments are NUL-terminated literals; `_putenv_s` copies them.
+        unsafe {
+            unsafe extern "C" {
+                fn _putenv_s(name: *const c_char, value: *const c_char) -> std::ffi::c_int;
+            }
+            _putenv_s(c"LLAMA_ATTN_ROT_DISABLE".as_ptr(), c"1".as_ptr());
+        }
+    });
+}
+
 fn cstr_lossy(p: *const c_char) -> String {
     if p.is_null() {
         return String::new();

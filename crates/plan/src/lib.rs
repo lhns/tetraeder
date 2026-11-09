@@ -12,6 +12,7 @@ mod diff;
 mod expand;
 mod format;
 mod hints;
+mod kv;
 mod migrate;
 mod model;
 mod phase;
@@ -27,6 +28,7 @@ pub use format::Format;
 pub use hints::{
     Forbid, FormatFloor, Freeze, Hints, Level, Objective, Pin, Prefer, Stability, WorkloadHints,
 };
+pub use kv::KvFormat;
 pub use migrate::{MigrationDag, State, Step};
 pub use model::{ModelDesc, RoleSize, UnitId, UnitKind, UnitSize};
 pub use phase::{Capabilities, ComputeOverride, Phase};

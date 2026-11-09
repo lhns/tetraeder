@@ -257,6 +257,7 @@ mod tests {
         m.device_busy("gpu0", 0.5);
         m.memory_used("gpu0", "vram", "weights", 1);
         m.memory_capacity("gpu0", "vram", "weights", 2);
+        m.kv_cache("gpu0", "vram", "q8_0/q4_0", 3, 4, 5, 6);
         m.expert_cache_requests(3, 4, "vram", CacheResult::Hit);
         m.expert_load_duration(Duration::from_millis(2), "vram", "nvme");
         m.tier_read_bytes(4096, "nvme0", "nvme");
@@ -301,6 +302,8 @@ mod tests {
             "tetraeder.device.busy",
             "tetraeder.memory.used",
             "tetraeder.memory.capacity",
+            "tetraeder.kv.tokens",
+            "tetraeder.kv.capacity",
             "tetraeder.expert.cache.requests",
             "tetraeder.expert.load.duration",
             "tetraeder.tier.read.bytes",

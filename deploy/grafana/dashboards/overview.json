@@ -1401,6 +1401,65 @@
           }
         }
       ]
+    },
+    {
+      "id": 39,
+      "title": "KV cache",
+      "description": "KV cache bytes by format (ADR 0050 b) and tokens held of the tokens it can hold. Near 100% means requests are about to fail with context full (alert TetraederKvNearFull).",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 98,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tokens held / capacity"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_format) (tetraeder_memory_capacity_bytes{tetraeder_memory_kind=\"kv\"})",
+          "legendFormat": "capacity {{tetraeder_format}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "max(tetraeder_kv_tokens) / max(tetraeder_kv_capacity)",
+          "legendFormat": "tokens held / capacity",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }
