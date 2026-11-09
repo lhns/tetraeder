@@ -17,9 +17,11 @@ ARG IK_CUDA_ARCHS="86"
 # The llama.cpp baseline build (a commit after the MoE cache, #30966) is Ampere only for the same reason.
 ARG BASELINE_CUDA_ARCHS="86"
 
-# Our Rust builds use the default DL ggml (ADR 0052): the best CPU module is picked on each Vast host, so the image
-# needs no TETRAEDER_GGML_NATIVE. The baselines below keep their own -DGGML_NATIVE=OFF (portable AVX2).
+# Our Rust builds on a box use the native ISA ggml (ADR 0052 addendum 2026-11-09): one CPU variant instead of 14, so a
+# fresh box does not pay for 14 variants plus CUDA. CI and releases build the DL default. The baselines below keep
+# their own -DGGML_NATIVE=OFF (portable AVX2).
 ENV DEBIAN_FRONTEND=noninteractive \
+    TETRAEDER_GGML_NATIVE=ON \
     NVIDIA_DRIVER_CAPABILITIES=all \
     RUSTUP_HOME=/opt/rustup \
     CARGO_HOME=/opt/cargo \

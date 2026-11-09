@@ -5,6 +5,23 @@ pub mod split;
 pub mod synth;
 pub mod trace;
 
+/// True when a GPU backend is present. Without one the calling test prints `skip: <test>: ...`
+/// (CI lists these lines) and should return; with `TETRAEDER_REQUIRE_GPU=1` (box test stages)
+/// a missing GPU fails the test instead.
+pub fn gpu_or_skip() -> bool {
+    if tetraeder_ggml_sys::ggml::Backend::gpu_available() {
+        return true;
+    }
+    let test = std::thread::current().name().unwrap_or("?").to_string();
+    let reason = "no GPU device in this build or on this machine";
+    assert!(
+        std::env::var_os("TETRAEDER_REQUIRE_GPU").is_none(),
+        "{test}: {reason} (TETRAEDER_REQUIRE_GPU is set)"
+    );
+    eprintln!("skip: {test}: {reason}");
+    false
+}
+
 /// The CPU quota of the container (cgroup v2 `cpu.max`), if any.
 pub fn cpu_quota() -> Option<f64> {
     let s = std::fs::read_to_string("/sys/fs/cgroup/cpu.max").ok()?;

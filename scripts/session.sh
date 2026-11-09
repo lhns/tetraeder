@@ -3,8 +3,7 @@
 #   SESSION=b1-exit      Phase 2 exit verdict: builder with the ADR 0038 levers, KTransformers, llama.cpp's expert
 #                        cache at the tuned CPU share (mmap and dio), a builder/KT repeat pair; ktransformers-avx2 and
 #                        the cache repeat only if time is left
-#   SESSION=b1b-levers   the lever stages on a second 235B box: builder, low-bit KV (kv-*), routing trace and replay,
-#                        the native-ISA builder
+#   SESSION=b1b-levers   the lever stages on a second 235B box: builder, low-bit KV (kv-*), routing trace and replay
 #   SESSION=b2-proxy     Claude Code proxy rerun (48 GB card), then KV quality on the 30B and the scripts in B2_STAGES
 #   SESSION=b3-planner   llama.cpp's cache tuner on the 30B, then the planner dense fixture
 #   SESSION=b3-detector  detector campaign, then kernels-cpu
@@ -81,8 +80,8 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
         stages="smoke main-prefetch ktransformers llamacpp-cache llamacpp-cache-dio main-repeat ktransformers-repeat"
         stages="$stages ktransformers-avx2 llamacpp-cache-repeat"
       else
-        # each lever stage pairs with main-prefetch on this box: kv-* right after it, the trace, the native ISA
-        stages="smoke main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots trace main-native-repeat"
+        # each lever stage pairs with main-prefetch on this box: kv-* right after it, then the trace
+        stages="smoke main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots trace"
       fi
       # levers (ADR 0038): prefetch on in every builder stage, depth 2
       step exit_run env TETRAEDER_EXIT_PREFETCH_DEPTH=2 CPU_SHARES="$share" STAGES="$stages" bash scripts/exit_run.sh

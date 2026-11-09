@@ -12,7 +12,6 @@ mod common;
 
 use common::*;
 use std::sync::Arc;
-use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy, ModelError, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
@@ -69,8 +68,7 @@ fn cpu_slot_counts_match_libllama() {
 /// builder on GPU 0 against the CPU libllama reference, within `TOL_GPU`.
 #[test]
 fn gpu_slot_counts_match_libllama() {
-    if !Backend::gpu_available() {
-        eprintln!("skip: no GPU device in this build or on this machine");
+    if !common::gpu_or_skip() {
         return;
     }
     let r = libllama_reference(&PROMPT, N_GREEDY);

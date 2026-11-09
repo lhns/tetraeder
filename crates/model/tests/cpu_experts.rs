@@ -16,7 +16,6 @@ mod common;
 use common::synth::{MoeSpec, quantized_moe};
 use common::{TOL_GPU, argmax};
 use std::path::{Path, PathBuf};
-use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::Ftype;
 use tetraeder_model::{BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 
@@ -246,8 +245,7 @@ fn cpu_miss_policy_cpu_needs_ram_slots() {
 /// and the scheduler splits a mixed segment between the backends.
 #[test]
 fn gpu_cpu_groups_match_resident() {
-    if !Backend::gpu_available() {
-        eprintln!("skip: no GPU device in this build or on this machine");
+    if !common::gpu_or_skip() {
         return;
     }
     let gpu = BackendChoice::Gpu { index: 0 };
@@ -323,8 +321,7 @@ fn gpu_cpu_groups_match_resident() {
 /// difference per configuration either way (ADR 0045, the 235B logit offset).
 #[test]
 fn gpu_cpu_policy_logits_do_not_depend_on_ram_slots_or_prefetch() {
-    if !Backend::gpu_available() {
-        eprintln!("skip: no GPU device in this build or on this machine");
+    if !common::gpu_or_skip() {
         return;
     }
     let path = fixture();

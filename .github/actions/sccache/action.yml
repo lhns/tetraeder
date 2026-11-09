@@ -1,0 +1,20 @@
+name: sccache for ggml
+description: >
+  sccache (GitHub Actions cache backend) as the CMake compiler launcher for C, C++ and CUDA, so
+  ggml is not rebuilt from scratch on every run (rust-cache drops workspace crate outputs and
+  tetraeder-ggml-sys is one). Do not use it with TETRAEDER_GGML_NATIVE=ON: -march=native objects
+  from one runner CPU would be served to another.
+runs:
+  using: composite
+  steps:
+    - uses: mozilla-actions/sccache-action@v0.0.9
+    - name: Set launchers
+      shell: bash
+      run: |
+        p=$(cygpath -m "$SCCACHE_PATH" 2>/dev/null || echo "$SCCACHE_PATH")
+        {
+          echo "SCCACHE_GHA_ENABLED=true"
+          echo "CMAKE_C_COMPILER_LAUNCHER=$p"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=$p"
+          echo "CMAKE_CUDA_COMPILER_LAUNCHER=$p"
+        } >> "$GITHUB_ENV"

@@ -14,7 +14,6 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
-use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
 use tetraeder_model::{BackendChoice, LayerExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 
@@ -369,8 +368,7 @@ fn gpu_real_moe_streaming() {
         eprintln!("skip: TETRAEDER_MOE_GGUF not set");
         return;
     };
-    if !Backend::gpu_available() {
-        eprintln!("skip: no GPU device in this build or on this machine");
+    if !common::gpu_or_skip() {
         return;
     }
     assert!(path.is_file(), "TETRAEDER_MOE_GGUF names no file: {path:?}");

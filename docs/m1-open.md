@@ -45,4 +45,4 @@ State at the end of the 2026-11-03 parallel-tracks session. Everything below is 
   - worktrees `../tetraeder-a-cleanup`, `../tetraeder-c-search`, `../tetraeder-c-cli` (merged; git refuses worktrees with submodules);
   - the stray paths `C:\c\Users\pierr\AppData\Local\Temp\claude\...\scratchpad\smoke\` and the empty `C:\ccbench_work`.
 - taxameter 0.3.2 fixed the "Permission denied (publickey)" boxes (onstart installs the key); it held on every box since.
-- The shared local cargo lock starved most builds; tracks used CI (`track-*` branches) as the compile loop. With several tracks, plan for that.
+- The shared local cargo lock starved most builds; tracks used CI (`track-*` branches) as the compile loop. With several tracks, plan for that. `scripts/dev-cargo.sh` (slot lock, per-worktree target, sccache) replaces the single lock; see [testing.md](testing.md#local-builds-for-parallel-agents). The test and benchmark setup and its roadmap are in [testing.md](testing.md).

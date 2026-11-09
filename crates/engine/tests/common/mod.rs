@@ -1,5 +1,6 @@
 //! Shared test helpers. Models are found via `TETRAEDER_MODELS_DIR`, else the nearest
-//! `.hf_cache` above this crate. Tests skip (pass) when the model file is missing.
+//! `.hf_cache` above this crate. Tests skip (pass) when the model file is missing, unless
+//! `TETRAEDER_REQUIRE_MODELS` is set (CI): then they fail.
 #![allow(dead_code)]
 
 use std::path::PathBuf;
@@ -19,17 +20,28 @@ pub fn model_path() -> Option<PathBuf> {
     p.is_file().then_some(p)
 }
 
-/// Returns the model path or prints a skip reason and returns from the calling test.
+/// Skip a test for a missing resource: prints `skip: <test>: <reason>` (CI lists these lines), or
+/// panics when `TETRAEDER_REQUIRE_MODELS` is set.
+pub fn skip_or_fail(reason: &str) {
+    let test = std::thread::current().name().unwrap_or("?").to_string();
+    assert!(
+        std::env::var_os("TETRAEDER_REQUIRE_MODELS").is_none(),
+        "{test}: {reason} (TETRAEDER_REQUIRE_MODELS is set)"
+    );
+    eprintln!("skip: {test}: {reason}");
+}
+
+/// Returns the model path or skips (see [`skip_or_fail`]) and returns from the calling test.
 #[macro_export]
 macro_rules! require_model {
     () => {
         match $crate::common::model_path() {
             Some(p) => p,
             None => {
-                eprintln!(
-                    "skip: {} not found (run `cargo xtask fetch-model`)",
+                $crate::common::skip_or_fail(&format!(
+                    "{} not found (run `cargo xtask fetch-model`)",
                     $crate::common::MODEL
-                );
+                ));
                 return;
             }
         }

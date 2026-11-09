@@ -7,7 +7,6 @@
 mod common;
 
 use common::*;
-use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Ftype, QuantizeParams, gguf_tensor_types, quantize};
 use tetraeder_model::{BackendChoice, LoadOptions, Qwen3Moe};
 
@@ -57,8 +56,7 @@ fn cpu_q8_0_matches_libllama() {
 /// be off on the scale of the logits.
 #[test]
 fn gpu_q8_0_pair_groups_match_resident() {
-    if !Backend::gpu_available() {
-        eprintln!("skip: no GPU device in this build or on this machine");
+    if !common::gpu_or_skip() {
         return;
     }
     let path = std::env::temp_dir().join(format!("tetraeder-q8g-{}.gguf", std::process::id()));

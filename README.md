@@ -7,6 +7,7 @@ You set limits such as a target tok/s, a quality floor and which devices it may 
 - Design, phases and exit tests: [docs/plan.md](docs/plan.md)
 - Decisions: [docs/adr/](docs/adr/README.md)
 - Rules for contributors and agents: [AGENTS.md](AGENTS.md)
+- Tests, benchmarks, build modes and the testing roadmap: [docs/testing.md](docs/testing.md)
 
 Status: Phase 0 (foundations). Workspace stubs and Vast tooling only; no engine yet.
 
@@ -59,7 +60,7 @@ $T watchdog --dry-run        # report what the cost-control loop would do
 
 ### ggml build modes (ADR 0052)
 
-By default `crates/ggml-sys` builds libllama, ggml and ggml-base as shared libraries and every backend as a loadable module (`ggml-cpu-<tag>` per x86 level, `ggml-cuda`, `ggml-vulkan`). `llama::init()` loads them, so one build runs at the best CPU level of each host, including the box and the AVX-less dev VM. `tetraeder info [--json]` shows which variant was loaded. `TETRAEDER_GGML_NATIVE=ON` builds the static native-ISA version instead (comparison arm, fast local builds); unset or `OFF` is the default. Run-time env: `TETRAEDER_GGML_BACKEND_DIR` (module directory; default: next to the executable, else the build dir) and `TETRAEDER_GGML_CPU_VARIANT=<tag>` (load that CPU module only, for paired ISA runs). Binaries need the libraries and modules next to them (`target/<profile>/`, copied by `build.rs`). The patch queue must be applied first (`patches/apply.sh` or `patches/apply.ps1`; box scripts call `scripts/ensure_patches.sh`).
+By default `crates/ggml-sys` builds libllama, ggml and ggml-base as shared libraries and every backend as a loadable module (`ggml-cpu-<tag>` per x86 level, `ggml-cuda`, `ggml-vulkan`). `llama::init()` loads them, so one build runs at the best CPU level of each host, including the box and the AVX-less dev VM. `tetraeder info [--json]` shows which variant was loaded. `TETRAEDER_GGML_NATIVE=ON` builds the static native-ISA version instead: it is the default in `.cargo/config.toml` `[env]` (local dev and boxes, for build time), while CI sets `OFF` explicitly and builds the DL version (`OFF` is also the build.rs default without the config). Run-time env: `TETRAEDER_GGML_BACKEND_DIR` (module directory; default: next to the executable, else the build dir) and `TETRAEDER_GGML_CPU_VARIANT=<tag>` (load that CPU module only, for paired ISA runs). Binaries need the libraries and modules next to them (`target/<profile>/`, copied by `build.rs`). The patch queue must be applied first (`patches/apply.sh` or `patches/apply.ps1`; box scripts call `scripts/ensure_patches.sh`).
 
 `scripts/nightly.sh` builds ggml CUDA only for the box GPU (`TETRAEDER_CUDA_ARCHS` from `nvidia-smi`, unless set), tests with `--release` to reuse that build, then runs `bench/spec/phase0.toml`. Both engines get the same explicit thread count (default `available_parallelism()`, quota aware), CPU variants run with the GPU hidden, and `env.json` records the container CPU quota.
 

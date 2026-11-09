@@ -382,10 +382,11 @@ fn layers_json(a: &ExpertStats, b: &ExpertStats) -> Value {
 #[ignore = "slow exit-regime benchmark; run with --ignored in release"]
 fn exit_regime() {
     let gpu = env_flag("TETRAEDER_EXIT_GPU");
-    if gpu && !Backend::gpu_available() {
-        eprintln!("skip: TETRAEDER_EXIT_GPU=1 but no GPU in this build");
-        return;
-    }
+    // Asked for explicitly: a run without a GPU would write a CPU result under a GPU name.
+    assert!(
+        !gpu || Backend::gpu_available(),
+        "TETRAEDER_EXIT_GPU=1 but no GPU in this build"
+    );
     let (path, model_info) = model_path();
     let file = ModelFile::open(&path).expect("model opens");
     let h = file.hparams.clone();

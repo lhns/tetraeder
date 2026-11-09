@@ -79,7 +79,7 @@ fi
 echo "[$(date +%T)] cuda archs: ${TETRAEDER_CUDA_ARCHS:-default}"
 stage build "$BUILD_MIN" cargo build --release --workspace --features "$cuda_feat" || fail_stage 10 $?
 # --release reuses the ggml build of the stage above (a debug test build compiled ggml again, 5.5 min)
-stage test "$TEST_MIN" cargo test --release --workspace --features "$cuda_feat" || fail_stage 11 $?
+stage test "$TEST_MIN" env TETRAEDER_REQUIRE_GPU=1 cargo test --release --workspace --features "$cuda_feat" || fail_stage 11 $?
 
 parity_check() {  # quality next to speed: greedy golden check of the Tetraeder build against llama-simple (ADR 0026).
   # Writes $date_dir/parity.json; the bench attaches it to every Tetraeder gate. Its exit code is not the night's:
@@ -97,7 +97,7 @@ if [ "${MOE_CHECK:-0}" = 1 ]; then
   # same path rule as the bench: <models-dir>/<org>__<repo>/<file>; same build as the stages above (release, same features)
   moe_gguf="${MOE_GGUF:-$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf}"
   if [ -f "$moe_gguf" ]; then
-    stage gpu-moe "$MOE_MIN" env TETRAEDER_MOE_GGUF="$moe_gguf" TETRAEDER_REAL_OUT="$(abs "$date_dir")/builder-real-$(date +%H%M%S).json" \
+    stage gpu-moe "$MOE_MIN" env TETRAEDER_REQUIRE_GPU=1 TETRAEDER_MOE_GGUF="$moe_gguf" TETRAEDER_REAL_OUT="$(abs "$date_dir")/builder-real-$(date +%H%M%S).json" \
       cargo test --release -p tetraeder-model --features "$cuda_feat" --test real_moe -- --nocapture \
       || echo "gpu-moe rc=$? (not the night's)"
   else

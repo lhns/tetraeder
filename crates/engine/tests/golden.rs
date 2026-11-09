@@ -2,7 +2,7 @@
 //!
 //! `matches_llama_simple`: our greedy text equals what the vendored `llama-simple` prints.
 //! `matches_bench_golden`: tokens equal exactly and top-k logits agree within a tolerance.
-//! Both skip without the model or the golden files. `cargo xtask golden` records the files.
+//! Both skip without the model or the golden files (fail if `TETRAEDER_REQUIRE_MODELS` is set). `cargo xtask golden` records the files.
 
 mod common;
 
@@ -88,7 +88,7 @@ fn bench_case(eng: &mut Engine, c: &SimpleCase, n: u32) -> golden::Case {
 fn matches_llama_simple() {
     let path = require_model!();
     let (Some(simple), Ok(bench)) = (load_simple(), Golden::load(&bench_path())) else {
-        eprintln!("skip: golden files not recorded (run `cargo xtask golden`)");
+        common::skip_or_fail("golden files not recorded (run `cargo xtask golden`)");
         return;
     };
     let mut eng = engine(&path);
@@ -125,7 +125,7 @@ fn matches_llama_simple() {
 fn matches_bench_golden() {
     let path = require_model!();
     let (Some(simple), Ok(expected)) = (load_simple(), Golden::load(&bench_path())) else {
-        eprintln!("skip: golden files not recorded (run `cargo xtask golden`)");
+        common::skip_or_fail("golden files not recorded (run `cargo xtask golden`)");
         return;
     };
     let mut eng = engine(&path);

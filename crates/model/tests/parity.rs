@@ -6,7 +6,6 @@
 mod common;
 
 use common::*;
-use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_model::{BackendChoice, LoadOptions, Qwen3Moe};
 
 fn check_parity(backend: BackendChoice, tol: f32) {
@@ -63,8 +62,7 @@ fn cpu_rejects_bad_input() {
 /// hardware: gpu (CUDA build; skips without a GPU device)
 #[test]
 fn gpu_matches_libllama() {
-    if !Backend::gpu_available() {
-        eprintln!("skip: no GPU device in this build or on this machine");
+    if !common::gpu_or_skip() {
         return;
     }
     // libllama stays on the CPU as the reference; the builder runs on GPU 0.
