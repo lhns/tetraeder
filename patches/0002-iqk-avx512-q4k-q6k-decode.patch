@@ -5,7 +5,7 @@ Adds KTransformers v0.7.2 (a02efe36) third_party/llamafile/iqk_mul_mat.inc uncha
 ggml-cpu/iqk/iqk_mul_mat.inc, a wrapper TU (iqk-mm.cpp), and a hook in
 ggml_compute_forward_mul_mat_id for one row per expert. Compiled only where AVX512F, VNNI,
 VL, BW and DQ are defined. GGML_CPU_IQK_MM=0 turns it off; feature IQK_MM reports it.
-No MSVC exclusion (see ADR 0053 implementation notes).
+Excluded on MSVC (!defined(_MSC_VER) in iqk-mm.h): see ADR 0053 implementation notes.
 The patch apply steps run with core.autocrlf=false: the copied file must keep its CRLF.
 
 diff --git a/ggml/src/ggml-cpu/CMakeLists.txt b/ggml/src/ggml-cpu/CMakeLists.txt
@@ -166,7 +166,7 @@ new file mode 100644
 index 000000000..783926dd2
 --- /dev/null
 +++ b/ggml/src/ggml-cpu/iqk/iqk-mm.h
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,30 @@
 +#pragma once
 +
 +// iqk AVX-512 VNNI matmul for Q4_K and Q6_K x Q8_K, one activation row (expert decode).
@@ -174,7 +174,9 @@ index 000000000..783926dd2
 +
 +#include <stdbool.h>
 +
-+#if defined(__AVX512F__) && defined(__AVX512VNNI__) && defined(__AVX512VL__) && defined(__AVX512BW__) && defined(__AVX512DQ__)
++// Not on MSVC: the MSVC build passes the kernel tests but breaks the 6-row vs 1-row batch invariance
++// check on Sapphire Rapids (CI, ADR 0053 implementation notes), so Windows keeps ggml's kernels.
++#if defined(__AVX512F__) && defined(__AVX512VNNI__) && defined(__AVX512VL__) && defined(__AVX512BW__) && defined(__AVX512DQ__) && !defined(_MSC_VER)
 +#define GGML_CPU_IQK_MM 1
 +
 +#ifdef __cplusplus

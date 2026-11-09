@@ -24,14 +24,15 @@ fn gate() -> Option<bool> {
         );
         return None;
     }
-    let off = cpu::iqk_off_by_env();
+    // MSVC builds exclude the kernels (patch 0002); the reference checks still run.
+    let expected = !cpu::iqk_off_by_env() && !cfg!(target_env = "msvc");
     let has = info.isa.iter().any(|f| f == "IQK_MM");
     assert_eq!(
-        has, !off,
-        "IQK_MM feature must be present unless GGML_CPU_IQK_MM=0: {:?}",
+        has, expected,
+        "IQK_MM feature must be present unless GGML_CPU_IQK_MM=0 or MSVC: {:?}",
         info.isa
     );
-    Some(!off)
+    Some(expected)
 }
 
 /// Deterministic floats in [-1, 1).

@@ -64,12 +64,15 @@ pub const TRACKED: [&str; 12] = [
     "IQK_MM",
 ];
 
-/// Tracked features this build has a module for. MSVC builds have no BF16 and no AMX variants.
+/// Tracked features this build has a module for. MSVC builds have no BF16 and no AMX variants,
+/// and no iqk kernels (patch 0002).
 pub fn provided() -> Vec<&'static str> {
     TRACKED
         .iter()
         .copied()
-        .filter(|f| !(cfg!(target_env = "msvc") && matches!(*f, "AVX512_BF16" | "AMX_INT8")))
+        .filter(|f| {
+            !(cfg!(target_env = "msvc") && matches!(*f, "AVX512_BF16" | "AMX_INT8" | "IQK_MM"))
+        })
         .collect()
 }
 
@@ -433,7 +436,7 @@ mod tests {
         assert!(host.is_empty());
         // A VNNI host running a backend without the kernels is below the host, unless switched off.
         let isa = v(&["AVX512", "AVX512_VNNI"]);
-        assert_eq!(missing(&v(&["IQK_MM"]), &isa, &provided()), v(&["IQK_MM"]));
+        assert_eq!(missing(&v(&["IQK_MM"]), &isa, &TRACKED), v(&["IQK_MM"]));
         assert_eq!(extra(&v(&[]), &v(&["IQK_MM"])), v(&["IQK_MM"]));
     }
 
