@@ -1252,6 +1252,13 @@ impl Qwen3Moe {
                 }
             }
         }
+        if self.overlap {
+            // Mispredicted prefetches are still pinned and uncounted: collect them, so the
+            // counters and the cache are settled when the step returns (ADR 0054).
+            if let Some(streamer) = &mut self.streamer {
+                streamer.settle();
+            }
+        }
         // Segment graphs plus the standalone group graphs of this step (ADR 0035).
         let graphs = h.n_layer + 1 + (self.group_graphs_run - graphs_before) as u32;
         prof.graphs += self.group_graphs_run - graphs_before;
