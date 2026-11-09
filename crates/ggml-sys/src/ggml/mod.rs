@@ -116,9 +116,53 @@ pub(crate) fn cstr(p: *const c_char) -> String {
     unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
 }
 
+/// The `n` by `n` orthonormal Walsh-Hadamard matrix (`n` a power of two) as libllama builds it
+/// for the attention rotation (`ggml_gen_hadamard` in llama-kv-cache.cpp), row-major in F32.
+/// It is symmetric and its own inverse.
+pub fn hadamard_matrix(n: usize) -> Vec<f32> {
+    assert!(
+        n.is_power_of_two(),
+        "Hadamard size {n} is not a power of two"
+    );
+    let mut d = vec![0f32; n * n];
+    // `1.0 / sqrtf(n)` is a double division in C; the result is stored as float.
+    d[0] = (1.0f64 / f64::from((n as f32).sqrt())) as f32;
+    let mut s = 1;
+    while s < n {
+        for i in 0..s {
+            for j in 0..s {
+                let v = d[i * n + j];
+                d[(i + s) * n + j] = v;
+                d[i * n + j + s] = v;
+                d[(i + s) * n + j + s] = -v;
+            }
+        }
+        s *= 2;
+    }
+    d
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Symmetric, orthonormal (its square is the identity) and entries of one magnitude.
+    #[test]
+    fn hadamard_matrix_is_its_own_inverse() {
+        for n in [64usize, 128] {
+            let h = hadamard_matrix(n);
+            let mag = 1.0 / (n as f32).sqrt();
+            for i in 0..n {
+                for j in 0..n {
+                    assert_eq!(h[i * n + j], h[j * n + i]);
+                    assert!((h[i * n + j].abs() - mag).abs() < 1e-7);
+                    let dot: f32 = (0..n).map(|k| h[i * n + k] * h[k * n + j]).sum();
+                    let want = if i == j { 1.0 } else { 0.0 };
+                    assert!((dot - want).abs() < 1e-5, "n={n} ({i},{j}): {dot}");
+                }
+            }
+        }
+    }
 
     #[test]
     #[allow(clippy::unnecessary_cast)] // see `impl Type`

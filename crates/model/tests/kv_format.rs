@@ -28,6 +28,7 @@ fn streamed(kv: KvFormat) -> LoadOptions {
         ram_slots: Some(16),
         miss: MissPolicy::Cpu,
         kv,
+        kv_rotation: Some(false),
         ..LoadOptions::new(CPU)
     }
 }
@@ -56,7 +57,7 @@ fn cpu_f16_kv_matches_libllama_on_the_synthetic_model() {
     eprintln!("f16: max |delta| over the top-{TOP_K} logits: {worst:e}");
 }
 
-/// hardware: cpu
+/// hardware: cpu. Rotation off on both sides (`kv_rotation.rs` has it on).
 #[test]
 fn cpu_quantized_kv_matches_libllama_resident() {
     let path = model_path();
@@ -64,6 +65,7 @@ fn cpu_quantized_kv_matches_libllama_resident() {
         let r = libllama_reference_kv(&path, &PROMPT, N_GREEDY, kv);
         let o = LoadOptions {
             kv,
+            kv_rotation: Some(false),
             ..LoadOptions::new(CPU)
         };
         let mut m = Qwen3Moe::load(&path, &o).unwrap();
@@ -91,6 +93,7 @@ fn cpu_quantized_kv_changes_the_logits() {
     let run = |kv| {
         let o = LoadOptions {
             kv,
+            kv_rotation: Some(false),
             ..LoadOptions::new(CPU)
         };
         Qwen3Moe::load(&path, &o)
@@ -198,14 +201,15 @@ fn mean_kl(p: &[f32], q: &[f32], n_vocab: usize) -> (f64, f64) {
 
 /// hardware: cpu. Informative: KL of the quantized caches against F16 at 2K context on the
 /// random-weight model (flat logits, so the numbers say little about a real model; the
-/// acceptance is `kv_quality.rs`).
+/// acceptance is `kv_quality.rs`), with the Hadamard rotation off and on (ADR 0050 addendum).
 #[test]
 fn cpu_quantized_kv_kl_at_2k() {
     let path = model_path();
     let tokens: Vec<i32> = (0..2048i32).map(|i| (i * 37 + 5) % 256).collect();
-    let run = |kv| {
+    let run = |kv, rotation| {
         let o = LoadOptions {
             kv,
+            kv_rotation: Some(rotation),
             n_ctx: 2048,
             ..LoadOptions::new(CPU)
         };
@@ -213,11 +217,19 @@ fn cpu_quantized_kv_kl_at_2k() {
         m.eval_last(&tokens[..1792]).unwrap();
         (m.n_vocab(), m.eval(&tokens[1792..]).unwrap())
     };
-    let (n_vocab, base) = run(KvFormat::F16);
+    let (n_vocab, base) = run(KvFormat::F16, false);
     for kv in FORMATS {
-        let (_, q) = run(kv);
-        let (kl, top1) = mean_kl(&base, &q, n_vocab);
-        eprintln!("KV {kv} vs f16 at 2K, last 256 positions: mean KL {kl:.6}, top-1 {top1:.4}");
-        assert!(kl.is_finite() && kl >= 0.0, "{kv}: KL {kl}");
+        let mut kls = [0.0; 2];
+        for (i, rotation) in [false, true].into_iter().enumerate() {
+            let (_, q) = run(kv, rotation);
+            let (kl, top1) = mean_kl(&base, &q, n_vocab);
+            eprintln!(
+                "KV {kv} vs f16 at 2K, last 256 positions, rotation {}: mean KL {kl:.6}, top-1 {top1:.4}",
+                if rotation { "on" } else { "off" }
+            );
+            assert!(kl.is_finite() && kl >= 0.0, "{kv}: KL {kl}");
+            kls[i] = kl;
+        }
+        assert_ne!(kls[0], kls[1], "{kv}: the rotation changes the logits");
     }
 }
