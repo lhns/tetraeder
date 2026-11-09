@@ -725,7 +725,9 @@ mod tests {
                     .map(|p| cost(&p.1).max(cost(&p.2)))
                     .collect();
                 // an odd last variant pairs with the first; otherwise pairs grow in cost
-                let n = pair_cost.len() - usize::from(en.candidates.len() % 2 == 1);
+                let n = pair_cost
+                    .len()
+                    .saturating_sub(usize::from(en.candidates.len() % 2 == 1));
                 assert!(
                     pair_cost[..n].windows(2).all(|w| w[0] <= w[1] + 1e-3),
                     "{pair_cost:?}"

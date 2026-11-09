@@ -20,6 +20,7 @@ $T ssh --id <id> --timeout 540 -- 'for i in $(seq 100); do grep -q SESSION_DONE 
 ```
 
 - **Fetch, verify, destroy:** `$T fetch --id <id>` (checks `bench/results/*/DONE`), then the profile's verify list below, then `$T destroy --id <id> --yes`. Report the box id, hours, `inet_down_billed` and `inet_down_cost`.
+- Resume works on the same box only: a new box gets a new start file and date and starts over, as pairing needs (same-box runs only).
 - If the session log stops advancing after `run`, relaunch with the same command (the flock makes a duplicate a no-op, `RESUME=1` skips finished work), or start it by hand: `ssh -- 'cd /root/tetraeder && (SESSION=<name> nohup setsid bash scripts/session.sh > /root/session.out 2>&1 < /dev/null &); sleep 30; tail runs/vast/session-<name>.log'`.
 
 ## Order and cost
@@ -29,7 +30,7 @@ B3 first: its cache tuner gives B1 the llama.cpp CPU share. B3-planner and B3-de
 | Session | Box | Script time (estimate / budget) | Box hours | Box cost | Download | Traffic cost | Total |
 |---|---|---|---|---|---|---|---|
 | B1 `b1-exit` | RTX 3090, about 91 GB RAM, 24 to 26 core quota, 220 GB disk | 127 / 120 min (the guard drops `ktransformers-avx2`) | 2.4 | at most 1.08 | 142 GB | 0.92 to 3.69 | 2.0 to 4.8 USD |
-| B2 `b2-proxy` | 48 GB card (RTX A6000, A40, L40S), 64 GB RAM, 8+ cores, 80 GB disk | 82 min proxy + hook / 260 min | 1.8 to 4.8 | 0.90 to 2.40 | 19 GB | 0.25 to 0.50 | 1.2 to 2.9 USD |
+| B2 `b2-proxy` | 48 GB Ampere card (RTX A6000, A40), 64 GB RAM, 8+ cores, 80 GB disk | 82 min proxy + hook / 260 min | 1.8 to 4.8 | 0.90 to 2.40 | 19 GB | 0.25 to 0.50 | 1.2 to 2.9 USD |
 | B3 `b3-planner` | RTX 3090, 32+ GB RAM, 9+ cores, 100 GB disk | 96 to 120 / 120 min | 2.0 to 2.4 | at most 1.08 | 38 GB | 0.50 to 1.00 | 1.3 to 2.1 USD |
 | B3 `b3-detector` | RTX 3090, 32+ GB RAM, 9+ cores, 80 GB disk | 65 to 110 / 120 min | 1.5 to 2.3 | at most 1.04 | 19 GB | 0.25 to 0.50 | 0.9 to 1.5 USD |
 
@@ -69,13 +70,13 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 | 7 | `main-native-repeat` (native ISA, levers) | 9 | 107 | ADR 0045 hypothesis 3 (paired with 5) |
 | 8 | `ktransformers-avx2` | 20 | 127 | KT kernel ISA; skipped by the deadline unless the download was fast |
 
-**Verify after fetch.** Every stage JSON has numbers (`decode_tok_s`, KT `ok: true`) and a `host` block. In `exit-llamacpp-cache-s<S>-*.json` read `warmup.majflt`, `run_stat.majflt` and `log_load_mode`: if major faults run into the millions and decode is far below the builder's, llama-server thrashed mmap; rerun that stage alone with `LOAD_MODE=dio` (`STAGES=llamacpp-cache`, same `RESULTS_DATE`) before calling the verdict.
+**Verify after fetch.** Every stage JSON has numbers (`decode_tok_s`, KT `ok: true`) and a `host` block. In `exit-llamacpp-cache-s<S>-*.json` read `warmup.majflt`, `run_stat.majflt` and `log_load_mode`: if major faults run into the millions and decode is far below the builder's, llama-server thrashed mmap; rerun that stage alone on the same box before calling the verdict: `ssh -- 'cd /root/tetraeder && (RESULTS_DATE=<date> RESUME=0 LOAD_MODE=dio STAGES=llamacpp-cache CPU_SHARES=<S> VRAM_SLOT_BYTES=10966007808 nohup setsid bash scripts/exit_run.sh > /root/dio.out 2>&1 < /dev/null &)'` (`RESUME=0`: the thrashing run has `ok: true` and would be skipped).
 
 **Result.** Phase 2 decode clause: builder `main-prefetch` and `main-repeat` decode at least KTransformers' and the llama.cpp cache's, with the two builder/KT ratios as the noise band (the bar is paired ratios only, never absolute tok/s across boxes). Read the gap stages with the table in ADR 0045, "Diagnosing the KTransformers decode gap". Commit the JSONs and update ADR 0045 and `docs/m1-open.md` item 1.
 
 ## B2: Claude Code proxy rerun (`b2-proxy`)
 
-**Box.** 48 GB card (CTX 131072 needs it), Ampere (A6000, A40) or Ada (L40S; the baseline llama.cpp is not used here), 64 GB RAM, 8+ cores, 80 GB disk, at most 0.50 USD/h (the user's exception, up to 6 h). `$T offers --gpu "RTX A6000,A40,L40S" --min-vram 48 --max-price 0.50 --download-gb 20`, then `create` with the same `--gpu`, `--min-vram` and `--max-price`.
+**Box.** 48 GB card (CTX 131072 needs it), Ampere: RTX A6000 (the first run) or A40 (the box image's CUDA builds target sm_86; an Ada L40S is unverified), 64 GB RAM, 8+ cores, 80 GB disk, at most 0.50 USD/h (the user's exception, up to 6 h). `$T offers --gpu "RTX A6000,A40" --min-vram 48 --max-price 0.50 --download-gb 20`, then `create` with the same flags. 0.50 is above `max_price_per_hour = 0.45` in `taxameter.toml`; if taxameter refuses the flag over the config cap, use a local `.vast/config.json` override for this box only (untested).
 
 **Launch.** `$T provision --id <id> --models unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`, then `$T run --id <id> scripts/session.sh --env SESSION=b2-proxy`. Defaults: `REPS=2 BUDGET_MIN=150 STREAMING=1` (BUDGET_MIN is when the last block may start; the run took 82 min before).
 
