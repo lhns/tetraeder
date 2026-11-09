@@ -6,6 +6,7 @@ use crate::decode::{StopMatcher, Utf8Decoder};
 use crate::engine::{EngineStats, FinishReason, GenEvent, Vocab};
 use crate::error::GatewayError;
 use crate::toolcall::OutputParser;
+use opentelemetry::KeyValue;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{OwnedSemaphorePermit, mpsc};
@@ -44,6 +45,23 @@ impl Run {
         match &mut self.parser {
             Some(p) => out.extend(p.push(text)),
             None => out.push(Segment::Text(text.to_owned())),
+        }
+        self.record_outcomes();
+    }
+
+    /// Counts the tool calls the parser decided on since the last call.
+    fn record_outcomes(&mut self) {
+        let (Some(p), Some(m)) = (self.parser.as_mut(), &self.gw.metrics) else {
+            return;
+        };
+        for o in p.take_outcomes() {
+            m.tool_calls.add(
+                1,
+                &[
+                    KeyValue::new("tetraeder.outcome", o.outcome),
+                    KeyValue::new("tetraeder.class", o.class),
+                ],
+            );
         }
     }
 
@@ -110,6 +128,7 @@ impl Run {
                     if let Some(p) = self.parser.as_mut().filter(|_| !call_done) {
                         buf.extend(p.finish());
                     }
+                    self.record_outcomes();
                     saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
                     let finish = match (stop_hit.take(), reason) {
                         (Some(s), _) => Finish::StopSequence(s),

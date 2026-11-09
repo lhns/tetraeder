@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 use tetraeder_gateway::chat::{Segment, ToolCall, ToolDef};
-use tetraeder_gateway::toolcall::{OutputParser, ToolFormat};
+use tetraeder_gateway::toolcall::{CallOutcome, OutputParser, ToolFormat};
 
 fn tool(name: &str, parameters: Value) -> ToolDef {
     ToolDef {
@@ -387,7 +387,6 @@ fn mistral_malformed_is_text() {
         "[TOOL_CALLS]a[ARGS]{\"x\": ",
         "[TOOL_CALLS]a[ARGS]nope",
         "[TOOL_CALLS][1, 2]",
-        "[TOOL_CALLS]",
     ] {
         assert_eq!(s.parse(input), vec![t(input)], "{input:?}");
     }
@@ -546,4 +545,122 @@ fn detect_on_fixture_templates() {
     ] {
         assert_eq!(ToolFormat::detect(src), want, "{name}");
     }
+}
+
+// Tool-call outcomes and the empty-call repair (ADR 0051).
+
+fn o(outcome: &'static str, class: &'static str) -> CallOutcome {
+    CallOutcome { outcome, class }
+}
+
+impl Setup {
+    /// Outcomes for one chunking.
+    fn outcomes_of<'a>(&self, chunks: impl IntoIterator<Item = &'a str>) -> Vec<CallOutcome> {
+        let mut p = OutputParser::new(self.format, &self.tools, self.reasoning, self.in_reasoning);
+        let mut out = Vec::new();
+        for c in chunks {
+            p.push(c);
+            out.extend(p.take_outcomes());
+        }
+        p.finish();
+        out.extend(p.take_outcomes());
+        out
+    }
+
+    /// Outcomes of `input`; every chunking must agree.
+    fn outcomes(&self, input: &str) -> Vec<CallOutcome> {
+        let whole = self.outcomes_of([input]);
+        let chars: Vec<String> = input.chars().map(String::from).collect();
+        assert_eq!(self.outcomes_of(chars.iter().map(String::as_str)), whole);
+        for seed in 1..=40u64 {
+            let chunks = random_chunks(input, seed);
+            assert_eq!(
+                self.outcomes_of(chunks.iter().map(String::as_str)),
+                whole,
+                "chunks {chunks:?}"
+            );
+        }
+        whole
+    }
+}
+
+#[test]
+fn qwen_xml_trailing_empty_opener_is_dropped() {
+    let text = "The test suite is now ready to ensure the shipping module works correctly and to catch any future changes that might break existing functionality.\n";
+    let input = format!("{text}<tool_call>");
+    let s = Setup::new(ToolFormat::QwenXml);
+    assert_eq!(s.parse(&input), vec![t(text)]);
+    assert_eq!(s.outcomes(&input), vec![o("repaired", "empty_call")]);
+}
+
+#[test]
+fn empty_closed_call_is_dropped() {
+    let h = Setup::new(ToolFormat::Hermes);
+    assert_eq!(h.parse("<tool_call>\n</tool_call>"), vec![]);
+    assert_eq!(
+        h.outcomes("<tool_call>\n</tool_call>"),
+        vec![o("repaired", "empty_call")]
+    );
+    let q = Setup::new(ToolFormat::QwenXml);
+    assert_eq!(q.parse("<tool_call> </tool_call>after"), vec![t("after")]);
+    assert_eq!(
+        q.outcomes("<tool_call> </tool_call>after"),
+        vec![o("repaired", "empty_call")]
+    );
+}
+
+#[test]
+fn mistral_and_llama3_empty_calls_are_dropped() {
+    let m = Setup::new(ToolFormat::Mistral);
+    assert_eq!(m.parse("[TOOL_CALLS]  "), vec![]);
+    assert_eq!(
+        m.outcomes("[TOOL_CALLS]  "),
+        vec![o("repaired", "empty_call")]
+    );
+    let l = Setup::new(ToolFormat::Llama3);
+    assert_eq!(l.parse("<|python_tag|>"), vec![]);
+    assert_eq!(
+        l.outcomes("<|python_tag|>"),
+        vec![o("repaired", "empty_call")]
+    );
+}
+
+#[test]
+fn outcomes_by_class() {
+    let h = Setup::new(ToolFormat::Hermes);
+    assert_eq!(h.outcomes(HERMES_A), vec![o("parsed", "ok")]);
+    assert_eq!(h.outcomes(HERMES_B), vec![o("parsed", "unknown_tool")]);
+    let two = format!("{HERMES_A}{HERMES_B}");
+    assert_eq!(
+        h.outcomes(&two),
+        vec![o("parsed", "ok"), o("parsed", "unknown_tool")]
+    );
+    let bad_json = "<tool_call>{\"name\": </tool_call>";
+    assert_eq!(h.outcomes(bad_json), vec![o("failed", "bad_json")]);
+    assert_eq!(h.parse(bad_json), vec![t(bad_json)]);
+
+    let q = Setup::new(ToolFormat::QwenXml);
+    let unclosed = "<tool_call>\n<function=read>\n<parameter=path>\na";
+    assert_eq!(q.outcomes(unclosed), vec![o("failed", "unclosed")]);
+    assert_eq!(q.parse(unclosed), vec![t(unclosed)]);
+    let bad_xml = "<tool_call><function=read><parameter=path>x</tool_call>";
+    assert_eq!(q.outcomes(bad_xml), vec![o("failed", "bad_xml")]);
+    assert_eq!(q.parse(bad_xml), vec![t(bad_xml)]);
+
+    let m = Setup::new(ToolFormat::Mistral);
+    assert_eq!(
+        m.outcomes("[TOOL_CALLS]get_weather[ARGS]{\"city\": "),
+        vec![o("failed", "unclosed")]
+    );
+    assert_eq!(
+        m.outcomes("[TOOL_CALLS][1, 2]"),
+        vec![o("failed", "bad_json")]
+    );
+    let l = Setup::new(ToolFormat::Llama3);
+    assert_eq!(
+        l.outcomes("{\"name\": \"get_weather\", \"parameters\": "),
+        vec![o("failed", "unclosed")]
+    );
+    assert_eq!(l.outcomes("{\"a\": 1}"), vec![o("failed", "bad_json")]);
+    assert_eq!(l.outcomes("Hello there"), vec![]);
 }

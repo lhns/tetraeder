@@ -1,0 +1,60 @@
+name: expert-bench
+
+# Opt-in diagnostic (ADR 0045, "Diagnosing the KTransformers decode gap"): the decode expert matmul
+# (crates/ggml-sys/tests/expert_matmul.rs) built with portable ggml (TETRAEDER_GGML_NATIVE=OFF) and with
+# the native ISA (=ON), run on the same runner, interleaved. Not part of the normal CI.
+on:
+  workflow_dispatch:
+  push:
+    branches: [track-l-kt-diag]
+
+concurrency:
+  group: expert-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  expert-matmul:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: libclang (bindgen)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - name: Runner CPU
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          echo "threads: $(nproc)"
+          echo "avx512 flags: $(grep -o -w 'avx512[a-z_0-9]*' /proc/cpuinfo | sort -u | tr '\n' ' ')"
+          echo "other: $(grep -m1 '^flags' /proc/cpuinfo | grep -o -w -E 'avx2|fma|amx_[a-z0-9]*|avx_vnni' | sort -u | tr '\n' ' ')"
+      # Separate target dirs: the ggml build differs per setting, and the test binaries are run directly below.
+      - name: Build, native OFF
+        env:
+          TETRAEDER_GGML_NATIVE: "OFF"
+          CARGO_TARGET_DIR: target-off
+        run: cargo test --release -p tetraeder-ggml-sys --test expert_matmul --no-run
+      - name: Build, native ON
+        env:
+          TETRAEDER_GGML_NATIVE: "ON"
+          CARGO_TARGET_DIR: target-on
+        run: cargo test --release -p tetraeder-ggml-sys --test expert_matmul --no-run
+      - name: Run, interleaved
+        run: |
+          bin() { find "target-$1/release/deps" -maxdepth 1 -type f -name 'expert_matmul-*' ! -name '*.d' | head -1; }
+          for round in 1 2 3; do
+            for v in off on; do
+              echo "== round $round native $v"
+              TETRAEDER_GGML_NATIVE=$v "$(bin $v)" --ignored --nocapture 2>&1 | grep -E '^(EXPERT_MATMUL|system_info)'
+            done
+          done | tee expert-bench.txt
+          {
+            echo '### Decode expert matmul (Q4_K, 8 of 128 experts, 1 token)'
+            echo '```'
+            grep -m1 'model name' /proc/cpuinfo
+            echo "avx512: $(grep -o -w 'avx512[a-z_0-9]*' /proc/cpuinfo | sort -u | tr '\n' ' ')"
+            cat expert-bench.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

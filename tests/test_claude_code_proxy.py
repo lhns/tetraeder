@@ -317,3 +317,107 @@ def test_proxy_json_and_error_and_other_paths(proxy):
     assert (err["status"], err["error_type"], err["error_message"]) == (529, "overloaded_error", "busy")
     time.sleep(0.2)
     assert len(log_lines(log)) == 2, "count_tokens and GET must not be logged"
+
+
+# ---- tool-call evidence (ADR 0051) -----------------------------------------------------------------------------
+
+anthropic_proxy = load("anthropic_proxy")
+toolcall_fixtures = load("toolcall_fixtures")
+
+TOOL_REQ = {
+    "model": "m",
+    "stream": True,
+    "tools": [{"name": "Read"}, {"name": "Edit"}],
+    "messages": [
+        {"role": "user", "content": "old turn"},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "a", "is_error": True,
+             "content": "<tool_use_error>InputValidationError: Read failed</tool_use_error>"},
+            {"type": "tool_result", "tool_use_id": "b", "is_error": True, "content": [{"type": "text", "text": "boom"}]},
+            {"type": "tool_result", "tool_use_id": "c", "content": "fine"},
+        ]},
+    ],
+}
+SSE_TOOLS = [
+    ("message_start", {"type": "message_start", "message": {"usage": {"input_tokens": 5}}}),
+    ("content_block_start", {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
+    ("content_block_delta", {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "done <tool"}}),
+    ("content_block_delta", {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "_call>"}}),
+    ("content_block_start", {"type": "content_block_start", "index": 1,
+                             "content_block": {"type": "tool_use", "id": "t", "name": "Nope", "input": {}}}),
+    ("content_block_delta", {"type": "content_block_delta", "index": 1,
+                             "delta": {"type": "input_json_delta", "partial_json": "{\"x\": 1}"}}),
+    ("message_delta", {"type": "message_delta", "delta": {"stop_reason": "tool_use"}, "usage": {"output_tokens": 9}}),
+]
+JSON_TOOLS = {
+    "type": "message", "stop_reason": "tool_use", "usage": {"input_tokens": 5, "output_tokens": 9},
+    "content": [{"type": "text", "text": "done <tool_call>"},
+                {"type": "tool_use", "id": "t", "name": "Nope", "input": {"x": 1}},
+                {"type": "tool_use", "id": "u", "name": "Read", "input": {}}],
+}
+EXPECT = {"tool_errors": {"input_validation": 1, "other": 1}, "tool_uses": 1, "tool_names_unknown": 1, "leaked_markers": 1}
+
+
+def sse_bytes(events):
+    return "".join(f"event: {e}\ndata: {json.dumps(d)}\n\n" for e, d in events).encode()
+
+
+def test_observer_counts_tool_evidence_streamed():
+    obs = anthropic_proxy.Observer(0.0, json.dumps(TOOL_REQ).encode())
+    obs.status, obs.is_sse = 200, True
+    data = sse_bytes(SSE_TOOLS)
+    for i in range(0, len(data), 7):  # arbitrary network chunks
+        obs.feed_body(data[i:i + 7], 0.0)
+    obs.finish()
+    rec = obs.record("e", "t", "1", "/v1/messages", 1.0, 10)
+    assert {k: rec[k] for k in EXPECT} == EXPECT
+    assert "InputValidationError" not in json.dumps(rec)
+
+
+def test_observer_counts_tool_evidence_json():
+    obs = anthropic_proxy.Observer(0.0, json.dumps({**TOOL_REQ, "stream": False}).encode())
+    obs.status = 200
+    obs.feed_body(json.dumps(JSON_TOOLS).encode(), 0.0)
+    obs.finish()
+    rec = obs.record("e", "t", "1", "/v1/messages", 1.0, 10)
+    assert {k: rec[k] for k in EXPECT | {"tool_uses": 2}} == EXPECT | {"tool_uses": 2}
+
+
+def test_observer_classes_unknown_tool_errors_and_plain_requests():
+    req = {"tools": [], "messages": [{"role": "user", "content": [
+        {"type": "tool_result", "is_error": True, "content": "Error: No such tool available: Foo"}]}]}
+    assert anthropic_proxy.Observer(0.0, json.dumps(req).encode()).tool_errors == {"unknown_tool": 1}
+    obs = anthropic_proxy.Observer(0.0, b"{}")
+    assert obs.tool_stats() == {"tool_uses": 0, "tool_errors": {}, "tool_names_unknown": 0, "leaked_markers": 0}
+
+
+def test_engine_stats_tool_totals_and_old_rows():
+    old = req("tetraeder", "a")
+    new = {**req("tetraeder", "a"), "tool_uses": 4, "tool_errors": {"input_validation": 1, "other": 1},
+           "tool_names_unknown": 1, "leaked_markers": 2}
+    s = summary.engine_stats([session("tetraeder", 1, "a", True)], [old, new])
+    assert (s["tool_uses_total"], s["tool_names_unknown_total"], s["leaked_markers_total"]) == (4, 1, 2)
+    assert s["tool_errors_by_class"] == {"input_validation": 1, "other": 1}
+    assert s["tool_error_rate"] == 0.5
+    s = summary.engine_stats([session("tetraeder", 1, "a", True)], [old])
+    assert (s["tool_uses_total"], s["tool_errors_by_class"], s["tool_error_rate"]) == (0, {}, None)
+    table = summary.format_table({"engines": {"tetraeder": summary.engine_stats([session("tetraeder", 1, "a", True)], [new])}})
+    assert "terr" in table.splitlines()[0]
+
+
+def test_toolcall_fixtures_keep_failures_and_no_prompts(tmp_path):
+    secret = "SECRET PROMPT"
+    req_ok = {**TOOL_REQ, "system": secret, "messages": [{"role": "user", "content": secret}]}
+    good = {"path": "/v1/messages", "status": 200, "generation_id": "g1", "request": req_ok,
+            "response": {"type": "message", "stop_reason": "end_turn", "content": [{"type": "text", "text": "hi"}]}}
+    bad = {"path": "/v1/messages", "status": 200, "generation_id": "g2", "request": req_ok,
+           "response": sse_bytes(SSE_TOOLS).decode()}
+    src, dst = tmp_path / "r.jsonl", tmp_path / "f.json"
+    src.write_text(json.dumps(good) + "\n" + json.dumps(bad) + "\n")
+    assert toolcall_fixtures.main([str(src), str(dst)]) == 0
+    got = json.loads(dst.read_text())
+    assert len(got) == 1 and got[0]["generation_id"] == "g2" and got[0]["stop_reason"] == "tool_use"
+    assert got[0]["tools"] == ["Edit", "Read"]
+    assert got[0]["output"] == [{"type": "text", "text": "done <tool_call>"},
+                                {"type": "tool_use", "name": "Nope", "input": {"x": 1}}]
+    assert secret not in dst.read_text()
