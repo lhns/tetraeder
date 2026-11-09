@@ -149,19 +149,19 @@ impl Applies {
             .flat_map(|r| &r.stages)
             .any(|s| s.devices.iter().any(|d| d == GPU));
         match engine {
-            ServeEngine::Llama if !self.llama_op_offload && has_gpu => {
-                if p.knobs.op_offload != Some(true) {
-                    notes.push("op_offload: libllama always offloads, set to true".into());
-                    p.knobs.op_offload = Some(true);
-                }
+            ServeEngine::Llama
+                if !self.llama_op_offload && has_gpu && p.knobs.op_offload != Some(true) =>
+            {
+                notes.push("op_offload: libllama always offloads, set to true".into());
+                p.knobs.op_offload = Some(true);
             }
-            ServeEngine::Builder if !self.builder_ubatch => {
-                if p.knobs.ubatch != Some(SERVE_BUILDER_UBATCH) {
-                    notes.push(format!(
-                        "ubatch: the builder chunks prefill at {SERVE_BUILDER_UBATCH}, set to {SERVE_BUILDER_UBATCH}"
-                    ));
-                    p.knobs.ubatch = Some(SERVE_BUILDER_UBATCH);
-                }
+            ServeEngine::Builder
+                if !self.builder_ubatch && p.knobs.ubatch != Some(SERVE_BUILDER_UBATCH) =>
+            {
+                notes.push(format!(
+                    "ubatch: the builder chunks prefill at {SERVE_BUILDER_UBATCH}, set to {SERVE_BUILDER_UBATCH}"
+                ));
+                p.knobs.ubatch = Some(SERVE_BUILDER_UBATCH);
             }
             _ => {}
         }
