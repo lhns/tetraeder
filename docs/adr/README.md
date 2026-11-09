@@ -57,3 +57,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0053](0053-iqk-avx512-vnni-q4k-decode-kernel.md) | iqk AVX-512 VNNI kernels for Q4_K/Q6_K expert decode, copied as patch 0002 (Proposed) |
 | [0054](0054-expert-reads-io-service-and-arrival-order-compute.md) | Decode expert reads: persistent I/O service, experts computed in arrival order, RAM tier sized to the container (Proposed) |
 | [0055](0055-replanning-wired-into-serve.md) | Replanning wired into serve: plan from file or the executable enumerators, lowering from the plan, decode-step residual from the step ring (Proposed) |
+| [0056](0056-tier-and-disk-cost-term-virtual-clock-calibration-ledger.md) | Cost model: RAM-tier and disk term from replayed routing, virtual clock for I/O tests, calibration ledger in CI (Proposed) |

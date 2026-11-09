@@ -1,6 +1,6 @@
 # 0055. Replanning wired into serve: plan from file or the executable enumerators, lowering from the plan, decode-step residual from the step ring
 
-Status: Proposed (Phase 3a). Implements ADR 0042's replanner in `tetraeder serve`; builds on ADR 0040 (candidates, cost model) and ADR 0046 (scheduler).
+Status: Accepted (Phase 3a); part A implemented, part B open. Implements ADR 0042's replanner in `tetraeder serve`; builds on ADR 0040 (candidates, cost model) and ADR 0046 (scheduler).
 
 ## Context
 
@@ -34,3 +34,26 @@ Status: Proposed (Phase 3a). Implements ADR 0042's replanner in `tetraeder serve
 - One forwarding hop per token and a dropped prefix cache per switch.
 - Until `Scheduler::shutdown` joins the worker (part B), a GPU restart can race the old backend's memory release; the rollback path covers a failed load.
 - Benchmark (after the box hold lifts): switch time and requests refused per switch, paired against restarting llama-server with the equivalent flags on the same box.
+
+## Implementation notes (part A)
+
+Where: `planner` (`Placement::Cpu`, `enumerate_cpu`, `lower::{recognize, lower, Applies, Lowered}`, `serve` for pick, drift correction, propose and regret, `fill_from_priors` in `whatif`), `control` (`SystemClock`), `telemetry` (`StepRing::pushed`, `engine.load.duration`, `replan.admitting`), `tetraeder` (`serve` flags and `replan/`: `engine`, `monitor`, `source`, `control`, `admin`, `glue`, `start`). Panel id 70 and alert `TetraederAdmissionStopped` are in the same change. Tests: `crates/planner/tests/{serve_lowering,serve_replan_sim}.rs`, the unit tests of `replan/*`, `crates/tetraeder/tests/replan_cpu.rs`.
+
+Choices the ADR left to the code:
+
+- `recognize` reads the assign rules and the stage's device list, not a rebuilt plan, so it does not need the workload; it returns the plan's own knobs. A `Dense` plan with zero GPU layers keeps `[gpu0, cpu0]` in its stage, `Cpu` has `[cpu0]`.
+- `candidates` falls back to `enumerate_cpu` when the GPU enumerator returns nothing (a VRAM shrink below every GPU placement), so there is always an executable plan on a box that has RAM.
+- `Applies::project` changes `op_offload` only in plans that have a GPU in the stage; a CPU plan has no offload to switch.
+- `predict_plan` adds an empty `cpu0` part when every layer is on the GPU: the cost model finds the embedding hop between the parts it is given, and an all-GPU plan has one part. `score::features` is unchanged.
+- `correct_for_drift` scales rates by one factor, so the corrected step lands between the old prediction and the measurement when the per-op cost is a large part of the step (the per-op term is not scaled). A second drift trigger corrects the rest.
+- The residual band is the largest bandwidth spread in the graph (0 for priors and files without spreads).
+- Without a prediction (a device without rates) the plan runs, no replan thread and no admin listener start, and a warning says so. `--plan <file>` knobs the file leaves out are filled from the budget (threads), 512 and on, with a message each.
+- The control thread and `PlannerSource` share one `Shared` (the planner's belief, the last median, the last proposal) instead of the source owning the input, so the regret gauge and the monitor read the corrected graph.
+- `glue` functions return `Result` (a wrong `Lowered` variant is an error, not a panic). `SchedParts` in `serve.rs` is the part of `SchedulerConfig` that survives a reload; the loader builds a fresh config per load.
+- The admin route parses bodies itself so every bad body is 400; `?wait=1` waits for the outcome without a timeout (a switch can take the drain timeout plus the load).
+- No gateway change: `gateway/pump.rs` already turns a channel that closes without `Finished` or `Error` into an error for the client.
+- vmalert reaches the admin listener from the compose stack only if `serve` listens beyond loopback (`--admin 0.0.0.0:8081`); the route has no authentication, so that is for trusted networks only.
+
+Measured on the Windows dev VM (CPU, tiny MoE fixture, `replan_cpu`): `--plan auto` with `cpu_only.toml` at 2 threads picks `cpu`, threads 2, ubatch 2048 on libllama and ubatch 512 on the builder (the builder projection). A `device_change` after the file drops to 1 thread switches (drain, load, health) in 33 ms on libllama and 17 ms on the builder; greedy output over 16 tokens is identical before and after on both engines; a second trigger is rejected by the dwell. These are tiny-model numbers; the box benchmark above is still open.
+
+Open (part B, needs `track-r-a6000-gap` and `track-s-kv-rotation` in main): the op offload switch of libllama and the builder prefill chunk from the plan (`Applies::all()`), and `Scheduler::shutdown` joining the worker so a GPU restart does not race the old backend's memory release.

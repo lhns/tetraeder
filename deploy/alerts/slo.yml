@@ -160,3 +160,12 @@ groups:
         annotations:
           summary: "Replan ({{ $labels.tetraeder_replan_trigger }}) failed and rolled back to the old plan"
           description: "The engine restarted with the previous plan; read the control log for the restart or health error before the next trigger retries."
+      # The server stopped admitting requests for a plan switch and never resumed (ADR 0055).
+      - alert: TetraederAdmissionStopped
+        expr: max(tetraeder_replan_admitting) == 0
+        for: 15m
+        labels:
+          severity: page
+        annotations:
+          summary: "The server has refused new requests for 15 minutes"
+          description: "A plan switch stopped admission and did not resume; check GET /admin/plan and the replan log, restart serve if the engine is stuck."

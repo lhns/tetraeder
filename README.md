@@ -28,7 +28,11 @@ tetraeder serve -m model.gguf --alias qwen --ctx 65536 --port 8080
 tetraeder serve -m Qwen3-30B-A3B-Q4_K_M.gguf --engine moe --alias qwen --ctx 65536 --expert-slots 64
 # scripted engine, no model (SDK tests)
 tetraeder serve --fake
+# a plan chosen for this box (or a plan TOML file), replanned by drain and restart
+tetraeder serve -m model.gguf --plan auto --hw calibrated-graph.toml
 ```
+
+`--plan auto|<file>` replaces the placement flags: it picks the fastest predicted plan among the ones this box can run (`--hw` is a hardware graph, by default the box is discovered and GPU rates come from the priors; `--plan-workload P:N`, `--plan-vram`, `--plan-ram`), lowers it to the engine, compares the measured decode step with the prediction every `--replan-tick` seconds, and on drift, on `POST /admin/replan`, or on an SLO burn alert posted to `/api/v2/alerts` (vmalert's notifier) it stops admitting, drains, restarts the engine on the new plan and resumes (ADR 0055). The admin listener (`--admin`, default `127.0.0.1:8081`, no authentication) also serves `GET /admin/plan`. Replanning needs a graph the cost model can predict with; otherwise the first plan runs and replanning is off.
 
 One request generates at a time; others queue (`--max-queued`). The last conversation's KV cache is kept, so an agent that resends its whole history only pays for the new tokens. Sequences that a different prompt evicts are kept in host RAM (`--cache-ram <MiB>`, default 8192, 0 off) and restored when their prefix comes back.
 

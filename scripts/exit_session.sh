@@ -26,7 +26,8 @@ levers="d2:TETRAEDER_EXIT_PREFETCH=1,TETRAEDER_EXIT_PREFETCH_DEPTH=2"
 # one compute thread fewer while a prefetch read is in flight
 fewer=$(($(bash scripts/cpu_quota.sh) - 1))
 levers="$levers d2fewer:TETRAEDER_EXIT_PREFETCH=1,TETRAEDER_EXIT_PREFETCH_DEPTH=2,TETRAEDER_EXIT_PREFETCH_THREADS=$fewer"
-step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nooffload-on drift-nofuse drift-ref-ub512 drift-ref-nofuse main main-prefetch kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots d2 d2fewer llamacpp-cache ktransformers ktransformers-avx2 main-repeat llamacpp-cache-repeat" \
+# ADR 0054: main-iosvc, main-overlap, main-overlap-d2, main-overlap-ram and main-overlap-repeat pair with main-prefetch and main-repeat
+step exit_run env STAGES="gpu-tests smoke drift-ref drift-off drift-on drift-small drift-nooffload drift-nooffload-on drift-nofuse drift-ref-ub512 drift-ref-nofuse main main-prefetch main-iosvc main-overlap main-overlap-d2 main-overlap-ram kv-q8 kv-q8-slots kv-q8q4 kv-q8q4-slots d2 d2fewer llamacpp-cache ktransformers ktransformers-avx2 main-repeat main-overlap-repeat llamacpp-cache-repeat" \
   VARIANTS="$levers" bash scripts/exit_run.sh
 # routing trace and replay for ADR 0050 (c) (written, not yet run: box runs on hold)
 step exit_trace env STAGES=trace bash scripts/exit_run.sh

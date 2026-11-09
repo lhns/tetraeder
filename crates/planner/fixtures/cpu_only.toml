@@ -1,0 +1,12 @@
+# Simulator fixture: a box without a GPU, 8 threads, rates set (a calibrated CPU-only graph).
+[[devices]]
+id = "cpu0"
+kind = "cpu"
+name = "Fixture CPU"
+tier = "ram"
+capacity_bytes = 68719476736
+cores = 8
+threads = 8
+numa_nodes = 1
+bandwidth_bytes_per_s = { value = 4.0e10, source = "prior" }
+compute = { flops_per_s = 4.0e11, c0_graph_s = 2.0e-6, c0_eager_s = 5.0e-6 }

@@ -62,6 +62,12 @@ pub struct Options {
     /// Largest single device read in bytes (a multiple of [`ALIGN`]). 0: 64 MiB. Smaller reads
     /// put more of a small batch in flight at once (a few experts of a few MB each).
     pub chunk_bytes: usize,
+    /// Expert prefetch and the misses of overlapped decode steps go through the persistent
+    /// [`crate::io::IoService`] instead of the single reader thread (ADR 0054). The model
+    /// builder reads it; `DirectFile` ignores it.
+    pub service: bool,
+    /// Worker threads of the service. 0: 16.
+    pub workers: usize,
 }
 
 /// Default [`Options::bounce_bytes`].

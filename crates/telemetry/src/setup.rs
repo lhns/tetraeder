@@ -265,6 +265,9 @@ mod tests {
         m.expert_prefetch(2, 4, "issued");
         m.expert_prefetch_wasted_bytes(10);
         m.expert_prefetch_accuracy(4, 1, 0.5);
+        m.io_inflight("urgent", 3);
+        m.read_hidden(0.7);
+        m.layer_part("read_wait", Duration::from_millis(1));
         m.spec_step("ngram", 4, 3);
         m.plan_residual(0, 0.08);
         m.plan_regret("p1", 0.04);
@@ -312,6 +315,9 @@ mod tests {
             "tetraeder.expert.prefetch",
             "tetraeder.expert.prefetch.wasted",
             "tetraeder.expert.prefetch.accuracy",
+            "tetraeder.io.inflight",
+            "tetraeder.moe.read.hidden",
+            "tetraeder.moe.layer.duration",
             "tetraeder.spec.acceptance",
             "tetraeder.spec.drafted",
             "tetraeder.spec.accepted",
