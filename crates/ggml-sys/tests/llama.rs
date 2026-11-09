@@ -1,5 +1,6 @@
 //! Tests of the safe libllama wrapper. They need the Qwen3-0.6B Q8_0 GGUF (`cargo xtask
-//! fetch-model`); without it they print a skip reason and pass. Model dir: `TETRAEDER_MODELS_DIR`,
+//! fetch-model`); without it they print a skip reason and pass,
+//! unless `TETRAEDER_REQUIRE_MODELS` is set (CI): then they fail. Model dir: `TETRAEDER_MODELS_DIR`,
 //! else the nearest `.hf_cache` above this crate.
 
 use std::path::PathBuf;
@@ -28,7 +29,13 @@ macro_rules! require_model {
         match model_path() {
             Some(p) => p,
             None => {
-                eprintln!("skip: {MODEL} not found (run `cargo xtask fetch-model`)");
+                let test = std::thread::current().name().unwrap_or("?").to_string();
+                let reason = format!("{MODEL} not found (run `cargo xtask fetch-model`)");
+                assert!(
+                    std::env::var_os("TETRAEDER_REQUIRE_MODELS").is_none(),
+                    "{test}: {reason} (TETRAEDER_REQUIRE_MODELS is set)"
+                );
+                eprintln!("skip: {test}: {reason}");
                 return;
             }
         }

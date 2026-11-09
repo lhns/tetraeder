@@ -32,7 +32,7 @@ log=runs/vast/graphs_check.log
     shift
     [ "$rc" -eq 0 ] || return
     echo "[$(date +%T)] run $name"
-    TETRAEDER_GRAPHS_OUT="$date_dir/cuda-graphs-$name.json" env -u GGML_CUDA_DISABLE_GRAPHS -u GGML_CUDA_GRAPH_DEBUG "$@" \
+    TETRAEDER_REQUIRE_GPU=1 TETRAEDER_GRAPHS_OUT="$date_dir/cuda-graphs-$name.json" env -u GGML_CUDA_DISABLE_GRAPHS -u GGML_CUDA_GRAPH_DEBUG "$@" \
       timeout -k 30 "${GRAPHS_MIN:-15}m" cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
       --test gpu_graphs -- --nocapture
     rc=$?
