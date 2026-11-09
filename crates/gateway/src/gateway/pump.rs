@@ -89,14 +89,15 @@ impl Run {
                 ));
             };
             buf.clear();
-            let mut tok_start = None;
+            // Only the token arm reaches the send below; the others break or continue.
+            let tok_start: Instant;
             match ev {
                 GenEvent::Token(id) => {
                     if stop_hit.is_some() || call_done {
                         continue;
                     }
                     let now = Instant::now();
-                    tok_start = Some(now);
+                    tok_start = now;
                     if first.is_none() {
                         first = Some(now);
                         if let Some(m) = &self.gw.metrics {
@@ -152,9 +153,7 @@ impl Run {
             }
             saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
             let sent = self.send_all(&tx, &mut buf).await;
-            if let Some(t) = tok_start.take() {
-                gateway += t.elapsed();
-            }
+            gateway += tok_start.elapsed();
             if !sent {
                 self.cancel.cancel();
                 break Outcome::ClientGone;
