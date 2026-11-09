@@ -589,6 +589,12 @@ impl<'a> Tensor<'a> {
         Ok(out)
     }
 
+    /// [`Tensor::get_f32`] into `out`, reusing its allocation.
+    pub fn get_f32_into(self, out: &mut Vec<f32>) -> Result<()> {
+        out.resize(self.nbytes() / 4, 0.0);
+        self.read_into(out)
+    }
+
     pub fn get_i32(self) -> Result<Vec<i32>> {
         let mut out = vec![0i32; self.nbytes() / 4];
         self.read_into(&mut out)?;

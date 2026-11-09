@@ -790,16 +790,26 @@ impl Qwen3Moe {
     /// Runs `tokens` after the tokens already in the cache and returns the logits of every
     /// position, `tokens.len() * n_vocab` values, position-major.
     pub fn eval(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {
-        self.run(tokens, false)
+        let mut out = Vec::new();
+        self.run(tokens, false, &mut out)?;
+        Ok(out)
     }
 
     /// Like [`Qwen3Moe::eval`] but only for the last position (`n_vocab` values): prefill does
     /// not need the head for the other positions.
     pub fn eval_last(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {
-        self.run(tokens, true)
+        let mut out = Vec::new();
+        self.run(tokens, true, &mut out)?;
+        Ok(out)
     }
 
-    fn run(&mut self, tokens: &[i32], last_only: bool) -> Result<Vec<f32>> {
+    /// Like [`Qwen3Moe::eval_last`] but into `out`, whose allocation is reused: a decode step
+    /// then reads its 151K logits without allocating.
+    pub fn eval_last_into(&mut self, tokens: &[i32], out: &mut Vec<f32>) -> Result<()> {
+        self.run(tokens, true, out)
+    }
+
+    fn run(&mut self, tokens: &[i32], last_only: bool, out: &mut Vec<f32>) -> Result<()> {
         let t0 = Instant::now();
         let h = self.file.hparams.clone();
         let n = tokens.len();
@@ -896,7 +906,7 @@ impl Qwen3Moe {
             self.sched.compute(&step.graph.get())?;
             self.segments_run += 1;
             prof.graphs += 1;
-            let logits = step.logits.get().get_f32()?;
+            step.logits.get().get_f32_into(out)?;
             let t = lap(&mut prof.compute, t);
             if let Some(log) = &mut self.routing {
                 for (layer, (ids, w)) in step.routed.iter().enumerate() {
@@ -911,13 +921,12 @@ impl Qwen3Moe {
                 self.metrics.layer_step(true);
             }
             lap(&mut prof.readback, t);
-            return self.finish_step(n, t0, prof, 1, logits);
+            return self.finish_step(n, t0, prof, 1);
         }
 
         let graphs_before = self.group_graphs_run;
         let nu = h.n_expert_used as usize;
         let n_layer = h.n_layer as usize;
-        let mut logits = Vec::new();
         // The pair groups of the previous layer step that run inside this segment.
         let mut pending: Vec<PendingGroup> = Vec::new();
         // The predictions of the experts of a layer (ADR 0038): the next layer's from the
@@ -970,7 +979,7 @@ impl Qwen3Moe {
                 self.segments_run += 1;
                 prof.graphs += 1;
                 if let Some(l) = out {
-                    logits = l.get_f32()?;
+                    l.get_f32_into(out)?;
                 }
                 lap(&mut prof.compute, t);
             }
@@ -1091,7 +1100,7 @@ impl Qwen3Moe {
         let timed = |p: &StepProfile| p.inputs + p.build + p.alloc + p.compute + p.readback;
         let others = timed(&prof) - timed(&self.profile);
         prof.streamer += t0.elapsed().saturating_sub(others);
-        self.finish_step(n, t0, prof, graphs, logits)
+        self.finish_step(n, t0, prof, graphs)
     }
 
     /// Bookkeeping after a step that computed `graphs` graphs.
@@ -1101,8 +1110,7 @@ impl Qwen3Moe {
         t0: Instant,
         mut prof: StepProfile,
         graphs: u32,
-        logits: Vec<f32>,
-    ) -> Result<Vec<f32>> {
+    ) -> Result<()> {
         self.n_past += n;
         prof.total += t0.elapsed();
         self.profile = prof;
@@ -1125,7 +1133,7 @@ impl Qwen3Moe {
             self.hot_pending = false;
             self.refresh_hot_set()?;
         }
-        Ok(logits)
+        Ok(())
     }
 }
 

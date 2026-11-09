@@ -545,3 +545,20 @@ fn decode_profile_reports_steps_stages_and_graph_reuse() {
         assert!(run(&s, &pr, 3).stats.profile.is_none());
     }
 }
+
+/// The builder backend reads each step's logits into one kept buffer: decode allocates no
+/// 600 KB vector per token, and the values equal a fresh `eval_last`.
+#[test]
+fn moe_backend_reuses_its_logits_buffer() {
+    let mut b = backends().remove(1);
+    let toks: Vec<i32> = (1..=12).collect();
+    let first = b.eval(&toks).unwrap().as_ptr();
+    let a = b.eval(&[5]).unwrap().to_vec();
+    let again = b.eval(&[6]).unwrap().as_ptr();
+    assert_eq!(first, again, "the logits buffer moved");
+    let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
+    o.n_ctx = CTX as usize;
+    let mut m = tetraeder_model::Qwen3Moe::load(fixture(), &o).unwrap();
+    m.eval_last(&toks).unwrap();
+    assert_eq!(m.eval_last(&[5]).unwrap(), a);
+}

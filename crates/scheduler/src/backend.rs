@@ -136,7 +136,10 @@ impl Backend for MoeBackend {
             return Err("no tokens".into());
         }
         for chunk in tokens.chunks(MOE_CHUNK) {
-            self.logits = self.model.eval_last(chunk).map_err(|e| e.to_string())?;
+            // Into the kept buffer: no 600 KB allocation per decode token.
+            self.model
+                .eval_last_into(chunk, &mut self.logits)
+                .map_err(|e| e.to_string())?;
         }
         Ok(&self.logits)
     }
