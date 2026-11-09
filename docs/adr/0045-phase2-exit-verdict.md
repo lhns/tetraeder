@@ -88,3 +88,44 @@ Box C, 58958565: RTX 3090, Xeon Gold 6330N, 26-core quota, 91.4 GB container RAM
 - The CPU paths are exact for any RAM slot count, with prefetch off and at depths 1 and 2 (`cpu_long_prefill_is_exact_for_every_ram_slot_count`). On a GPU the synthetic fixture is bit-identical over RAM slots and prefetch (`gpu_cpu_policy_logits_do_not_depend_on_ram_slots_or_prefetch`, `gpu-tests-120800.log`). Expert bytes do not depend on the configuration.
 - At 32K the offsets grow over 16 ubatches but are deterministic per configuration across boxes: prefetch off gives 37.892 on boxes A and C, prefetch on 39.486 on both. Prefetch changes which experts are RAM hits, hence the hits-first chunk composition and the batches the fused CUDA kernels see.
 - Greedy output equals libllama's in every pair. Conclusion: rounding of fused GPU kernels over a different op batching, not a defect. Open: the small-RAM run with fusion off was cancelled with the session hold; it should equal 27.915.
+
+## Addendum (2026-11-09): Diagnosing the KTransformers decode gap
+
+On the 26-core box KTransformers decodes 5.04 tok/s (198 ms per token) against our 3.77 (257 ms: compute 112, streamer 128). We only measured KTransformers end to end. From its source (v0.7.2): experts run in place from an `np.memmap` of the GGUF (no repack, one `MADV_WILLNEED` at load, no prefetch); 26 pinned, spinning workers take 32-row tasks (384 gate/up and 128 down per layer), so misses page-fault in parallel inside the compute; the kernels are iqk Q4_K x Q8_K, VNNI on AVX-512, chosen at runtime from `/proc/cpuinfo` (`KT_KERNEL_CPU_VARIANT` overrides). Our run used `--kt-num-gpu-experts 0` and no deferral, so GPU experts and deferred experts are ruled out. Our box builds use `TETRAEDER_GGML_NATIVE=OFF`, so our CPU experts run AVX2 kernels on an AVX-512 Xeon.
+
+Hypotheses:
+
+1. **Parallel faulting I/O.** 26 threads fault pages concurrently inside compute, so the disk queue is deep and I/O overlaps compute; we have one reader plus synchronous misses.
+2. **Page cache against a fixed RAM tier.** KTransformers' cache grows to the container limit (peak RSS 100 GB against our 83 GB budget), so more experts are resident and fewer bytes are read per token.
+3. **Kernel ISA.** AVX-512 VNNI iqk kernels against our AVX2 ggml kernels.
+
+Minor, no stage: fp8 KV on the KT side. The sampler's GPU busy % shows whether the GPU part matters at all.
+
+### What is measured
+
+All stages are written, not run (box runs are on hold). `scripts/engine_sample.py` samples a process tree once a second and fills the same `host` block in the result JSON of the builder (every `exit_regime` stage, `exit-*.json`) and of KTransformers (`exit-ktransformers*.json`), for prefill and decode apart: read bytes, read ops, read bytes per token, read MB/s, disk queue depth (mean, from the time-weighted in-flight counter of `/proc/diskstats`) and in-flight max, major faults and faults per token, CPU busy % (cgroup CPU time over wall time times threads, and the mean of the busiest CPUs of `/proc/stat`), GPU busy % and memory, RSS max, page cache (cgroup `file`) and anon max. `env` has the CPU model and avx512 flags; the builder's `env.ggml_system_info` is the ISA ggml was compiled with. KTransformers has `kt_cpu_variant` (what kt-kernel picked) and `kt_cpu_variant_forced`. The builder reads with direct I/O, so its major faults are near zero by design; KT's are its reads.
+
+Stages (`scripts/exit_session.sh`): `main` and `main-native` (same args, ggml built with `TETRAEDER_GGML_NATIVE=ON` in its own target dir), `main-repeat` and `main-native-repeat`, `ktransformers` and `ktransformers-avx2` (`KT_KERNEL_CPU_VARIANT=avx2`), and `kernels-cpu` (`scripts/kernels_cpu.sh`: CPU-only decode of Qwen3-30B-A3B Q4_K_M with mainline llama.cpp, ik_llama.cpp and the llama.cpp baseline build; all three are portable AVX2 builds). Before a box: `crates/ggml-sys/tests/expert_matmul.rs` (Q4_K `mul_mat_id`, Qwen3-235B shapes, one token), built with native OFF and ON by the `expert-bench` workflow. It bounds what AVX-512 buys in the expert matmul alone.
+
+### How to read the numbers
+
+Compare only pairs from one session. The gap is 59 ms per token.
+
+| Observation | Verdict |
+|---|---|
+| `main-native` decode at least 10% above `main`, with the compute per token (`decode_profile_per_token`) down by a third of the gap or more | Hypothesis 3 holds on our side. If it closes most of the gap, the fix is runtime ISA dispatch (`GGML_CPU_ALL_VARIANTS` with `GGML_BACKEND_DL`), not a native build: the box image is built on a CI runner and must run on any host. |
+| `main-native` within 3% of `main` | Hypothesis 3 rejected for the compute path as built. |
+| `ktransformers-avx2` more than 15% slower than `ktransformers` (check `kt_cpu_variant` differs) | The ISA matters to KT too; KT on AVX2 against our AVX2 isolates the kernel code from the ISA. |
+| `ktransformers-avx2` about as fast as `ktransformers` | The ISA is not why KT is fast; look at I/O. |
+| `kernels-cpu`: ik beats mainline by a lot at the same AVX2 ISA | The kernel code (iqk) is a lever independent of the ISA. Check `zmm_instructions` to confirm none of the three has AVX-512 code. |
+| `kernels-cpu`: ik within 10% of mainline | Kernel code is not the lever; the ISA (via `main-native`) is the only compute lever. |
+| KT decode `read_bytes_per_token` about equal to ours (about 511 MB), KT `read_mb_s` higher, KT `disk_queue_depth_mean` much deeper than ours, `majflt_per_token` in the thousands, `cpu_busy_pct` near 100% | Hypothesis 1: same bytes, but faults overlap compute and fill the disk queue. The lever is concurrency of our misses (several readers, or reads issued from the compute threads), not more cache. |
+| KT `read_bytes_per_token` well below ours (under 70%), KT `cache_file_gb_max` above our RAM tier, its `read_mb_s` not higher | Hypothesis 2: more resident experts. The lever is a larger RAM tier (smaller reserve, bounce buffers counted) or the page cache for the tail. |
+| Our `main` decode has `disk_queue_depth_mean` near the reader depth (16) and `read_mb_s` at the device rate (5.2 GB/s) | The disk is saturated: only fewer bytes (hypothesis 2, ADR 0050 a to c) help, not deeper queues. |
+| KT bytes per token similar to ours, KT disk throughput at or below ours, CPU busy lower than ours | Neither I/O hypothesis; the gap is in compute, back to 3. |
+
+Order: `main-native` against `main` first (pre-box estimate: the microbench's native over portable ratio times the CPU-expert share of the 112 ms compute), then bytes per token and queue depth to separate 1 from 2. The effects can add up, so a partial result from each is still a result.
+
+### Runtime ISA dispatch
+
+`crates/ggml-sys/build.rs` builds ggml static (`BUILD_SHARED_LIBS=OFF`) and links `ggml-cpu` and `ggml-base` as static libraries. `GGML_CPU_ALL_VARIANTS=ON` needs `GGML_BACKEND_DL=ON`, which builds the backends as loadable `libggml-cpu-<isa>.so` plugins that ggml picks from at start; so it needs a shared build (and CUDA as a loadable backend too), a plugin directory next to the binary and a linking change in `build.rs`. That is a build and packaging change for its own ADR; it is not implemented here.

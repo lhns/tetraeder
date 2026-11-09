@@ -3,6 +3,10 @@
 # (tests/exit_regime.rs) against llama.cpp with expert offload (-ot) on the same box and threads.
 # Waits for scripts/fetch_exit_model.sh. Started detached by `taxameter run scripts/exit_run.sh`; ends with
 # EXIT_RUN_DONE rc=N in runs/vast/exit_run.log. Every stage has a time limit; a failed smoke gate stops the run.
+# Every builder run and the KTransformers runs are sampled by scripts/engine_sample.py (disk reads and queue depth,
+# major faults, CPU and GPU busy, RSS and page cache, prefill and decode apart): "host" and the CPU flags in "env" of the
+# result JSON. Stages main-native / main-native-repeat are main / main-repeat with ggml built for the native ISA
+# (TETRAEDER_GGML_NATIVE=ON, own cargo target dir NATIVE_TARGET_DIR); ktransformers-avx2 forces kt-kernel's AVX2 kernels.
 exec 8> /root/tetraeder_exit_run.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
@@ -59,12 +63,13 @@ bench="${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}"
 # checkout's AGENTS.md and ADRs, so every ADR edit changed the 32K prompt (ADR 0038, Results). Copied for the scripts
 # that read /root/exit_prompt.txt (Colibri, KTransformers).
 prompt=/root/exit_prompt.txt
+native_target="${NATIVE_TARGET_DIR:-$PWD/target-native}"
 cp bench/prompts/exit_prompt.txt "$prompt"
 rc=0
 # STAGES (space list of stage names, default all) lets a relaunch skip stages that already ran
 want() { [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]]; }
 # KTransformers installs while the model downloads (its own log and lock)
-if want ktransformers; then
+if want ktransformers || want ktransformers-avx2; then
   bash scripts/ktransformers_build.sh 8>&- &
   kt_build_pid=$!
 fi
@@ -78,6 +83,14 @@ fi
   nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks_throttle_reasons.active --format=csv
   # build while the model downloads
   cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run || rc=21
+  # the native-ISA builder in its own target dir: the normal build stays as it is (a failure only fails those stages)
+  if want main-native || want main-native-repeat; then
+    TETRAEDER_GGML_NATIVE=ON CARGO_TARGET_DIR="$native_target" \
+      cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run \
+      || echo "native build failed"
+  fi
+  echo "cpu: $(grep -m1 'model name' /proc/cpuinfo)"
+  echo "avx512 flags: $(grep -o -w 'avx512[a-z_0-9]*' /proc/cpuinfo | sort -u | tr '\n' ' ')"
   if want gpu-tests; then
     # GPU checks on the synthetic fixtures (no model needed): logits against RAM slots and prefetch (ADR 0045)
     echo "[$(date +%T)] start gpu-tests"
@@ -91,7 +104,12 @@ fi
   grep -q "FETCH_DONE rc=0" runs/vast/fetch_exit.log || { echo "model fetch failed"; rc=20; }
 } >> "$log" 2>&1
 
-# exit_regime <name> <minutes> [ENV=VALUE...]: one harness run, JSON to exit-<name>-<stamp>.json
+# MAJ:MIN of the model's block device, probed once (a 2 GB direct read)
+ensure_disk() {
+  [ -n "${HOST_DISK_DEV:-}" ] || HOST_DISK_DEV=$(python3 scripts/engine_sample.py probe-disk "$model")
+}
+
+# exit_regime <name> <minutes> [ENV=VALUE...]: one harness run, JSON to exit-<name>-<stamp>.json, sampled alongside
 exit_regime() {
   local name=$1 min=$2
   shift 2
@@ -100,13 +118,24 @@ exit_regime() {
   local text=(TETRAEDER_EXIT_PROMPT_FILE="$prompt")
   [[ " $* " == *" RANDOM_PROMPT=1 "* ]] && text=()
   echo "[$(date +%T)] start $name"
+  local json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
+  ensure_disk
   env "${text[@]}" TETRAEDER_EXIT_GGUF="$model" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
     TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
-    TETRAEDER_EXIT_OUT="$date_dir/exit-$name-$stamp.json" \
+    TETRAEDER_EXIT_OUT="$json" \
     TETRAEDER_EXIT_MACHINE="vast $(hostname)" "$@" \
     timeout -k 30 "${min}m" cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
-    --test exit_regime -- --ignored --nocapture
+    --test exit_regime -- --ignored --nocapture &
+  local pid=$!
+  python3 scripts/engine_sample.py sample --pid "$pid" --disk "$HOST_DISK_DEV" --out "$samples" 8>&- &
+  local spid=$!
+  wait "$pid"
   local r=$?
+  wait "$spid"
+  if [ -s "$json" ]; then
+    python3 scripts/engine_sample.py summarize --samples "$samples" --threads "$threads" --builder-json "$json" \
+      --out "$samples.summary" --merge-into "$json" > /dev/null || echo "host summary failed for $name"
+  fi
   echo "[$(date +%T)] done $name rc=$r"
   return $r
 }
@@ -133,14 +162,18 @@ colibri() {
   echo "[$(date +%T)] done colibri-$1 rc=$?"
 }
 
-# ktransformers: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads and RAM
+# ktransformers [avx2]: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads and RAM;
+# with avx2 (stage ktransformers-avx2) kt-kernel is forced to its AVX2 kernels, as our portable ggml build runs
 ktransformers() {
-  want ktransformers || return 0
+  local name=ktransformers${1:+-$1}
+  want "$name" || return 0
   [ -n "${kt_build_pid:-}" ] && wait "$kt_build_pid"
   kt_build_pid=
-  echo "[$(date +%T)] start ktransformers"
-  bash scripts/ktransformers_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-ktransformers-$stamp.json" deep 8>&-
-  echo "[$(date +%T)] done ktransformers rc=$?"
+  echo "[$(date +%T)] start $name"
+  ensure_disk
+  HOST_DISK_DEV="$HOST_DISK_DEV" KT_KERNEL_CPU_VARIANT="${1:-}" \
+    bash scripts/ktransformers_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-$name-$stamp.json" deep 8>&-
+  echo "[$(date +%T)] done $name rc=$?"
 }
 
 # llamacpp_cache [suffix]: llama.cpp's tuned expert cache with a CPU share of the misses (#30966, baseline build, ADR
@@ -221,6 +254,9 @@ EOF
       exit_regime drift-ref-nofuse 15 "${short[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit"         GGML_CUDA_DISABLE_FUSION=1
       # prefetch off and on (ADR 0038), paired
       exit_regime main 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=0 || rc=23
+      # the same with ggml built for the native ISA (AVX-512 on the box CPU): is the AVX2 kernel the gap?
+      exit_regime main-native 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=0 TETRAEDER_GGML_NATIVE=ON \
+        CARGO_TARGET_DIR="$native_target" || rc=29
       exit_regime main-prefetch 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
@@ -236,7 +272,10 @@ EOF
       exit_regime reference 60 "${deep[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit" || rc=28
       # KTransformers, then the default builder again: a second pair for the noise band
       ktransformers
+      ktransformers avx2
       exit_regime main-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
+      exit_regime main-native-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_GGML_NATIVE=ON \
+        CARGO_TARGET_DIR="$native_target" || rc=29
       llamacpp_cache repeat
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
       # are joined with ';'), then ik_llama.cpp with the same overrides (it was OOM-killed at 128 GB with mmap)

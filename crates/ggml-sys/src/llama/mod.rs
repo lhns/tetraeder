@@ -156,6 +156,16 @@ pub fn init() {
     });
 }
 
+/// libllama's system info line: the CPU features ggml was compiled with (`AVX2 = 1 | AVX512 = 0 | ...`)
+/// and the backends it found. Tells whether `TETRAEDER_GGML_NATIVE` took effect.
+pub fn system_info() -> String {
+    init();
+    // SAFETY: returns a static NUL-terminated string.
+    cstr_lossy(unsafe { sys::llama_print_system_info() })
+        .trim()
+        .to_string()
+}
+
 fn cstr_lossy(p: *const c_char) -> String {
     if p.is_null() {
         return String::new();
