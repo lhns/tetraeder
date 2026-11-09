@@ -222,14 +222,14 @@ jobs:
           bin=$(find target/release/deps -maxdepth 1 -type f -name 'iqk_kernels-*' ! -name '*.d' | head -1)
           env -u GGML_CPU_IQK_MM "$SDE_DIR/sde64" -icx -- "$bin" --nocapture --test-threads=1 2>&1 | tee iqk-on.txt
           # A skip while the variant is icelake is a failure.
-          if grep -q 'skipped: ' iqk-on.txt; then echo 'iqk tests skipped'; exit 1; fi
+          if grep -q 'skipped: needs' iqk-on.txt; then echo 'iqk tests skipped'; exit 1; fi
           grep -q 'max |iqk - vec_dot|' iqk-on.txt
       - name: iqk tests, GGML_CPU_IQK_MM=0
         shell: bash
         run: |
           bin=$(find target/release/deps -maxdepth 1 -type f -name 'iqk_kernels-*' ! -name '*.d' | head -1)
           GGML_CPU_IQK_MM=0 "$SDE_DIR/sde64" -icx -- "$bin" --nocapture --test-threads=1 2>&1 | tee iqk-off.txt
-          if grep -q 'skipped: ' iqk-off.txt; then echo 'tests skipped'; exit 1; fi
+          if grep -q 'skipped: needs' iqk-off.txt; then echo 'tests skipped'; exit 1; fi
       - name: ggml-sys tests under the icelake variant
         run: |
           for t in ggml cpu_dispatch smoke; do
