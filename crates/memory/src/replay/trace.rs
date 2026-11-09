@@ -15,6 +15,9 @@ use std::path::Path;
 pub const FORMAT: &str = "tetraeder-routing";
 pub const VERSION: u32 = 1;
 
+/// Most tokens one layer step may carry (2^20, far above any batch); a larger count in a file is
+/// a corrupt record, rejected before anything is allocated.
+const MAX_STEP_TOKENS: u32 = 1 << 20;
 const KIND_STEP: u8 = 0;
 const KIND_REFRESH: u8 = 1;
 const FLAG_PREDICTED: u8 = 1;
@@ -147,6 +150,9 @@ impl<W: Write> TraceWriter<W> {
         predicted: Option<&[i32]>,
         predicted2: Option<&[i32]>,
     ) -> io::Result<()> {
+        if n_tokens > MAX_STEP_TOKENS {
+            return Err(bad(format!("{n_tokens} tokens in one step")));
+        }
         let n = n_tokens as usize * self.header.n_used as usize;
         for v in std::iter::once(ids).chain(predicted).chain(predicted2) {
             if v.len() != n {
@@ -231,8 +237,13 @@ impl<R: Read> TraceReader<R> {
 
     fn read_ids(&mut self, n: usize) -> io::Result<Vec<u16>> {
         let w = usize::from(self.header.id_bytes);
-        let mut raw = vec![0u8; n * w];
-        self.input.read_exact(&mut raw)?;
+        let want = n as u64 * w as u64;
+        // `take` + `read_to_end` allocate only what the file really holds.
+        let mut raw = Vec::new();
+        (&mut self.input).take(want).read_to_end(&mut raw)?;
+        if raw.len() as u64 != want {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
         let ids: Vec<u16> = if w == 1 {
             raw.iter().map(|&b| u16::from(b)).collect()
         } else {
@@ -261,6 +272,9 @@ impl<R: Read> TraceReader<R> {
                 self.input.read_exact(&mut b)?;
                 let layer = u16::from_le_bytes(b);
                 let n_tokens = self.read_u32()?;
+                if n_tokens > MAX_STEP_TOKENS {
+                    return Err(bad(format!("{n_tokens} tokens in one step")));
+                }
                 let mut f = [0u8; 1];
                 self.input.read_exact(&mut f)?;
                 let n = n_tokens as usize * self.header.n_used as usize;
@@ -398,6 +412,21 @@ mod tests {
         assert!(w.layer_step(0, 0, 1, &[0, 16], None, None).is_err());
         assert!(w.layer_step(0, 0, 1, &[-1, 2], None, None).is_err());
         assert!(w.layer_step(0, 0, 1, &[0, 1, 2], None, None).is_err());
+    }
+
+    #[test]
+    fn corrupt_token_count_is_an_error_not_a_huge_allocation() {
+        let bytes = TraceWriter::new(Vec::new(), header(128)).unwrap().out;
+        for n_tokens in [u32::MAX, MAX_STEP_TOKENS + 1, MAX_STEP_TOKENS] {
+            let mut b = bytes.clone();
+            b.push(KIND_STEP);
+            b.extend(0u32.to_le_bytes());
+            b.extend(0u16.to_le_bytes());
+            b.extend(n_tokens.to_le_bytes());
+            b.push(FLAG_PREDICTED | FLAG_PREDICTED2);
+            let got: Vec<_> = TraceReader::new(b.as_slice()).unwrap().collect();
+            assert!(got[0].is_err(), "{n_tokens}");
+        }
     }
 
     #[test]

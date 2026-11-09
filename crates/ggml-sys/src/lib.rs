@@ -5,6 +5,7 @@
 //! `memory` are the only places where `unsafe` is allowed.
 
 pub mod ggml;
+pub use ggml::cpu;
 pub mod llama;
 
 #[allow(

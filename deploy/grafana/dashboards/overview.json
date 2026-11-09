@@ -1485,7 +1485,7 @@
         },
         {
           "refId": "B",
-          "expr": "max(tetraeder_kv_tokens) / max(tetraeder_kv_capacity)",
+          "expr": "max by (tetraeder_device) (tetraeder_kv_tokens) / max by (tetraeder_device) (tetraeder_kv_capacity)",
           "legendFormat": "tokens held / capacity",
           "datasource": {
             "type": "prometheus",
@@ -1496,6 +1496,57 @@
     },
     {
       "id": 41,
+      "title": "CPU backend",
+      "description": "CPU backend variant in use (ADR 0052): tier, ISA features and dispatch mode, and the host features it lacks. Missing above 0 for 5 minutes fires TetraederCpuVariantBelowHost.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 106,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (tetraeder_cpu_tier, tetraeder_cpu_isa, tetraeder_cpu_dispatch) (tetraeder_cpu_variant)",
+          "instant": true,
+          "format": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "max by (tetraeder_cpu_isa) (tetraeder_cpu_isa_missing)",
+          "instant": true,
+          "format": "table",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 42,
       "title": "Decode time per token by stage",
       "description": "Mean host seconds per decoded token by stage (eval: backend step and logits readback; sample: constraint mask and sampling; emit: hand-off to the gateway), only while serve runs with TETRAEDER_DECODE_PROFILE=1 (docs/m1-open.md item 4). Sample above about 0.3 ms means the sampler, not the GPU, limits decode.",
       "type": "timeseries",
@@ -1504,7 +1555,7 @@
         "uid": "victoriametrics"
       },
       "gridPos": {
-        "x": 0,
+        "x": 6,
         "y": 106,
         "w": 6,
         "h": 8

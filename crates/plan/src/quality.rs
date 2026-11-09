@@ -105,6 +105,11 @@ pub struct QualityProfile {
     pub checks: Vec<QualityCheck>,
     #[serde(default)]
     pub cost: Option<CalibrationCost>,
+    /// Factor on the KL delta of a format in the estimate, for formats whose uniform check
+    /// shows the sum underestimating (`scripts/quality/calibrate.py` fits it; at least 1, so it
+    /// only raises an estimate). Formats not listed count 1.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub format_scale: BTreeMap<Format, f64>,
 }
 
 #[derive(Debug)]
@@ -157,6 +162,11 @@ pub enum QualityIssue {
         format: Format,
         kl: f64,
     },
+    /// A `format_scale` below 1 or not finite.
+    BadScale {
+        format: Format,
+        scale: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -199,6 +209,16 @@ impl QualityProfile {
         serde_json::to_string_pretty(self)
     }
 
+    /// Factor on `format`'s KL delta in the estimate (1 when unlisted).
+    pub fn scale(&self, format: Format) -> f64 {
+        self.format_scale.get(&format).copied().unwrap_or(1.0)
+    }
+
+    /// KL increase over the base of a group entry, with the format's scale applied.
+    pub fn delta(&self, e: &GroupEntry) -> f64 {
+        self.scale(e.format) * (e.kl - self.base.kl)
+    }
+
     pub fn group(&self, id: &str) -> Option<&QualityGroup> {
         self.groups.iter().find(|g| g.id == id)
     }
@@ -216,6 +236,11 @@ impl QualityProfile {
                 format: self.base.format,
                 kl: self.base.kl,
             });
+        }
+        for (&format, &scale) in &self.format_scale {
+            if !scale.is_finite() || scale < 1.0 {
+                out.push(QualityIssue::BadScale { format, scale });
+            }
         }
         let mut ids = BTreeSet::new();
         for g in &self.groups {
@@ -268,8 +293,8 @@ impl QualityProfile {
         out
     }
 
-    /// Estimated KL of replica 0 of `plan`: `base.kl + sum w * (kl(group, format) - base.kl)`,
-    /// `w` being the share of a group's params the plan puts in that format. A group covers the
+    /// Estimated KL of replica 0 of `plan`: `base.kl + sum w * scale(format) * (kl(group, format)
+    /// - base.kl)`, `w` being the share of a group's params the plan puts in that format. A group covers the
     /// units its selector matches and, in a unit with described roles, its roles (all when
     /// empty); a unit without roles counts as a whole. Formats at least as precise as the base
     /// count as the base; roles outside every group add nothing. Params come from `desc`, so
@@ -305,7 +330,7 @@ impl QualityProfile {
                     group: g.id.clone(),
                     format,
                 })?;
-                kl += params as f64 / total as f64 * (entry.kl - self.base.kl);
+                kl += params as f64 / total as f64 * self.delta(entry);
             }
         }
         Ok(kl)
@@ -424,6 +449,41 @@ mod tests {
         attn.role_formats.insert("attn.o".into(), Format::Q4_K);
         attn.role_formats.insert("mlp.down".into(), Format::Q4_K);
         close(p.estimate(&pl, &d).unwrap(), p.base.kl);
+    }
+
+    #[test]
+    fn format_scale_raises_the_delta_of_its_format_only() {
+        let d = desc();
+        let mut p = profile();
+        p.format_scale.insert(Format::Q4_K, 1.5);
+        // Head at Q4_K: the scale applies to its delta.
+        let e = p
+            .estimate(&plan(Format::Q4_K, Format::Q8_0, &[]), &d)
+            .unwrap();
+        close(e, p.base.kl + 1.5 * (kl("head", Format::Q4_K) - p.base.kl));
+        // Another format is not touched.
+        let e = p
+            .estimate(&plan(Format::Q6_K, Format::Q8_0, &[]), &d)
+            .unwrap();
+        close(e, kl("head", Format::Q6_K));
+        // Round trip keeps it; an empty map is not written.
+        assert_eq!(QualityProfile::from_json(&p.to_json().unwrap()).unwrap(), p);
+        assert!(!profile().to_json().unwrap().contains("format_scale"));
+    }
+
+    #[test]
+    fn validate_rejects_a_scale_below_one() {
+        let mut p = profile();
+        p.format_scale.insert(Format::Q4_K, 0.9);
+        p.format_scale.insert(Format::Q6_K, f64::NAN);
+        let found = p.validate(&desc());
+        assert_eq!(
+            found
+                .iter()
+                .filter(|i| matches!(i, QualityIssue::BadScale { .. }))
+                .count(),
+            2
+        );
     }
 
     #[test]

@@ -6,9 +6,12 @@
 #   disk contention or throttle, VRAM pressure in a shuffled order per round, then PAIR_ROUNDS (3) rounds of the three
 #   two-fault pairs. The fault label goes only to manifest.jsonl, never into an observation.
 # Results: bench/results/<date>/detector/ (obs-NN.json, harness-NN.json, samples-NN.jsonl, calib.json, manifest.jsonl).
-# Log runs/vast/detector_campaign.log, ends with DETECTOR_DONE rc=N. START (default 0) resumes at a run number.
+# Log runs/vast/detector_campaign.log, ends with DETECTOR_DONE rc=N. START resumes at a run number (default: after the
+# last run with an observation, so a relaunch resumes). DEADLINE (epoch seconds, scripts/session.sh): no run starts
+# later than RUN_MIN (default 3) minutes before it.
 exec 8> /root/tetraeder_detector_campaign.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
+bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
@@ -16,7 +19,7 @@ command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
 mkdir -p runs/vast
 log=runs/vast/detector_campaign.log
-out="$PWD/bench/results/$(date +%Y%m%d)/detector"
+out="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/detector"
 mkdir -p "$out"
 models_dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}"
 gguf="$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf"
@@ -155,10 +158,18 @@ for _ in range(int(sys.argv[1])):
 for _ in range(int(sys.argv[2])):
     s = ["cpu+disk", "cpu+vram", "disk+vram"]; r.shuffle(s); print("\n".join(s))
 EOF
+if [ -z "${START:-}" ]; then
+  last=$(find "$out" -maxdepth 1 -name 'obs-[0-9]*.json' -printf '%f\n' 2> /dev/null | tr -dc '0-9\n' | sort -n | tail -1)
+  START=$(( ${last:+10#$last + 1} + 0 ))
+  [ "$START" -gt 0 ] && echo "[$(date +%T)] resume at run $START"
+fi
 n=0
 calib_obs=()
 while read -r label; do
-  if [ "$n" -lt "${START:-0}" ]; then
+  if [ -n "${DEADLINE:-}" ] && [ $(($(date +%s) + ${RUN_MIN:-3} * 60)) -gt "$DEADLINE" ]; then
+    echo "[$(date +%T)] deadline: stop before run $n"; break
+  fi
+  if [ "$n" -lt "$START" ]; then
     [ "$label" = calib ] && calib_obs+=("$out/obs-$(printf %02d "$n").json")
     n=$((n + 1)); continue
   fi

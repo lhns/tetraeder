@@ -24,7 +24,7 @@ jobs:
           PIN_REF: master
         run: |
           set +e
-          patches/apply.sh 2>&1 | tee apply.log
+          bash patches/apply.sh 2>&1 | tee apply.log
           echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           echo "head=$(git -C vendor/llama.cpp rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: Swatinem/rust-cache@v2

@@ -97,6 +97,7 @@ fn parse_miss(s: &str) -> Result<MissPolicy, String> {
 pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
     let telemetry = Arc::new(Telemetry::new(&TelemetryConfig::from_env())?);
     telemetry.install_global()?;
+    crate::info::record_cpu_backend(telemetry.metrics());
     let engine = build_engine(a, &telemetry)?;
     let served = engine
         .models()

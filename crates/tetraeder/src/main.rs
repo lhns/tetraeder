@@ -5,6 +5,7 @@ mod bench;
 mod detector_score;
 mod doctor;
 mod engine_args;
+mod info;
 mod plan;
 mod quant;
 mod run;
@@ -41,6 +42,8 @@ enum Command {
     Advise(advise::AdviseArgs),
     /// OpenAI and Anthropic APIs over an engine.
     Serve(serve::ServeArgs),
+    /// The CPU backend this binary loaded: variant, ISA, module directory.
+    Info(info::InfoArgs),
 }
 
 fn main() -> std::process::ExitCode {
@@ -57,6 +60,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::DetectorScore(args)) => detector_score::run(&args),
         Some(Command::Advise(args)) => advise::run(&args),
         Some(Command::Serve(args)) => serve::run(&args),
+        Some(Command::Info(args)) => info::run(&args),
         None => {
             println!("tetraeder {}", env!("CARGO_PKG_VERSION"));
             Ok(())

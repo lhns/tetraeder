@@ -2,13 +2,14 @@
 # Runs llama.cpp's cache tuner (scripts/moe-cache-tune.py, #30966) with the baseline llama-server on Qwen3-30B-A3B
 # Q4_K_M and writes its run directory and report to bench/results/<date>/moe-cache-tune/. Its recommendation is a
 # starting point for the 235B sweep (exit_run.sh stage llamacpp-cache), not a replacement for it.
-# Env: THREADS (default: CPU quota), CTX (32768), MAX_MIB (tuner --max-mib), LOAD_MODE (default auto).
+# Env: THREADS (default: CPU quota), CTX (32768), MAX_MIB (tuner --max-mib), LOAD_MODE (default auto), TUNE_MIN (time
+# limit, default 30; the tuner keeps its finished runs, so a relaunch resumes), RESULTS_DATE.
 exec 8> /root/tetraeder_moe_cache_tune.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p runs/vast
 log=runs/vast/moe_cache_tune.log
 base="${LLAMA_BASELINE_DIR:-/opt/llama.cpp-baseline}"
-out="$PWD/bench/results/$(date +%Y%m%d)/moe-cache-tune"
+out="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/moe-cache-tune"
 mkdir -p "$out"
 models_dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}"
 gguf="$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf"
@@ -19,7 +20,7 @@ max=()
 [ -n "${MAX_MIB:-}" ] && max=(--max-mib "$MAX_MIB")
 echo "[$(date +%T)] moe-cache-tune start: threads $threads" >> "$log"
 # the tuner reuses the runs in --out while the command stays the same, so a relaunch resumes
-python3 "$base/scripts/moe-cache-tune.py" "${max[@]}" --out "$out/runs" -- \
+timeout -k 30 "${TUNE_MIN:-30}m" python3 "$base/scripts/moe-cache-tune.py" "${max[@]}" --out "$out/runs" -- \
   "$base/bin/llama-server" -m "$gguf" -cmoe -t "$threads" -c "${CTX:-32768}" -lm "${LOAD_MODE:-auto}" \
   > "$out/report.txt" 2>> "$log"
 rc=$?

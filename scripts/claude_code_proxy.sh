@@ -3,7 +3,7 @@
 # on 10 coding tasks, both engines behind the same logging proxy, scored by task checks.
 # Started detached by `taxameter run scripts/claude_code_proxy.sh`; ends with CLAUDE_CODE_PROXY_DONE in
 # runs/vast/claude_code_proxy.log. Results: bench/results/<date>/claude-code-proxy/ (summary.json; a rerun on the
-# same day resumes: sessions whose output exists are skipped).
+# same day, or with the same RESULTS_DATE, resumes: sessions whose output exists are skipped).
 #
 # Model (assumed downloaded): Qwen3-Coder-30B-A3B-Instruct-Q4_K_M (provision with
 #   --models unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf).
@@ -23,6 +23,7 @@
 # cargo runs with fd 8 closed: the sccache server it starts would otherwise keep the lock after the job
 exec 8> /root/tetraeder_claude_code_proxy.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
+bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:/opt/node/bin:/root/.local/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
@@ -35,7 +36,7 @@ if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
 fi
 log=runs/vast/claude_code_proxy.log
 export TETRAEDER_DECODE_PROFILE="${DECODE_PROFILE:-1}"
-out="$PWD/bench/results/$(date +%Y%m%d)/claude-code-proxy"
+out="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/claude-code-proxy"
 mkdir -p "$out" runs/vast
 t_start=$(date +%s)
 threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"

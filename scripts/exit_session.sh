@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# The full stage list, far beyond one 3 h box: for box runs use the profiles of scripts/session.sh (b1-exit,
+# b1b-levers; docs/sessions.md), which keep each pair on one box and fit the cap. This list stays as the reference.
 # The kv-* stages (ADR 0050 b, written, not yet run) pair with main-prefetch; kv-quality needs the 30B GGUF too and is
 # started on its own: STAGES=kv-quality TETRAEDER_KV_QUALITY_GGUF=... bash scripts/exit_run.sh.
 # Track A box session of 2026-11-03 (ADR 0045 follow-ups), in order of value: GPU logit checks on the synthetic

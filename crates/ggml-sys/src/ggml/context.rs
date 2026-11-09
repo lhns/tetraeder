@@ -249,6 +249,28 @@ impl Context {
         self.t(unsafe { sys::ggml_mul_mat(self.ptr.as_ptr(), a.raw(), b.raw()) })
     }
 
+    /// Orthonormal Hadamard rotation of every `n`-element group of `cur`, `n` the side of the
+    /// square matrix `rot` (F32, `[n, n]`, see `hadamard_matrix`). The same ops as libllama's
+    /// `llama_mul_mat_hadamard` (llama-impl.h), including the hint that lets a backend use a
+    /// fast transform instead of reading `rot`. `n` must divide the element count of `cur`.
+    pub fn mul_mat_hadamard<'a>(&'a self, cur: Tensor<'a>, rot: Tensor<'a>) -> Tensor<'a> {
+        let c = self.ptr.as_ptr();
+        let n = rot.ne()[0];
+        let ne = cur.ne();
+        let rows = ne.iter().product::<i64>() / n;
+        // SAFETY: see `get_rows`; the hint is set on the `mul_mat` node made right here.
+        self.t(unsafe {
+            let flat = if sys::ggml_is_contiguous(cur.raw()) {
+                sys::ggml_reshape_2d(c, cur.raw(), n, rows)
+            } else {
+                sys::ggml_cont_2d(c, cur.raw(), n, rows)
+            };
+            let res = sys::ggml_mul_mat(c, rot.raw(), flat);
+            sys::ggml_mul_mat_set_hint(res, sys::GGML_HINT_SRC0_IS_HADAMARD as _);
+            sys::ggml_reshape_4d(c, res, ne[0], ne[1], ne[2], ne[3])
+        })
+    }
+
     /// Per-token expert matmul: `experts` is the stacked `[k, n, n_expert]` weight, `b` is
     /// `[k, n_used or 1, n_tokens]`, `ids` is I32 `[n_used, n_tokens]`.
     pub fn mul_mat_id<'a>(

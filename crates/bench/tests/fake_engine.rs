@@ -308,6 +308,114 @@ fn missing_binary_or_model_is_skipped_with_reason() {
     );
 }
 
+/// A second pair `q` whose b side hangs: the run is killed while it measures `q`.
+const HANGING_PAIR: &str = r#"
+[[variant]]
+id = "vhang"
+engine = "fake"
+model = "m"
+device = "cpu"
+args = ['--fake-sleep-ms', '30000']
+[[pair]]
+id = "q"
+a = "va"
+b = "vhang"
+role = "info"
+"#;
+
+#[test]
+fn results_are_written_after_every_pair() {
+    let f = Fixture::new("info", &[], &[], HANGING_PAIR);
+    let mut child = Command::new(BENCH)
+        .arg("run")
+        .arg(f.dir.path().join("spec.toml"))
+        .arg("--out-dir")
+        .arg(f.dir.path().join("out"))
+        .env_remove("CONTAINER_ID")
+        .env("TETRAEDER_MODELS_DIR", f.dir.path().join("models"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    // pair p finishes in well under a second; q then hangs on its b side
+    let t0 = std::time::Instant::now();
+    let partial = || -> Option<Value> {
+        std::fs::read_dir(f.dir.path().join("out"))
+            .ok()?
+            .filter_map(|e| std::fs::read(e.ok()?.path()).ok())
+            .filter_map(|b| serde_json::from_slice::<Value>(&b).ok())
+            .find(|r| r["pairs"].as_array().is_some_and(|p| !p.is_empty()))
+    };
+    let done = loop {
+        if let Some(r) = partial() {
+            break r;
+        }
+        assert!(t0.elapsed().as_secs() < 20, "no partial results written");
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    child.kill().unwrap();
+    child.wait().unwrap();
+    let pairs = done["pairs"].as_array().unwrap();
+    assert_eq!(pairs.len(), 1);
+    assert_eq!(pairs[0]["id"], "p");
+    assert_eq!(pairs[0]["samples"].as_array().unwrap().len(), 6);
+    // the file on disk after the kill still parses and keeps the finished pair
+    assert_eq!(f.results()["pairs"][0]["id"], "p");
+}
+
+#[test]
+fn resume_runs_only_the_missing_repeats() {
+    let f = Fixture::new("info", &["--fake-tag", "A"], &["--fake-tag", "B"], "");
+    let log = f.dir.path().join("calls.log");
+    let envs = [("FAKE_LOG", log.to_str().unwrap())];
+    let o = f.run(&["--repeats", "1", "--resume"], &envs);
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap().replace('\n', ""),
+        "ABAB"
+    ); // warmup, rep 0
+    std::fs::remove_file(&log).unwrap();
+    // the spec's 3 repeats: reps 1 and 2 are missing, in their ABBA order (BA, AB)
+    let o = f.run(&["--resume"], &envs);
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap().replace('\n', ""),
+        "ABBAAB"
+    );
+    let r = f.results();
+    let reps: Vec<u64> = r["pairs"][0]["samples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["rep"].as_u64().unwrap())
+        .collect();
+    assert_eq!(reps, [1, 1, 2, 2]);
+    std::fs::remove_file(&log).unwrap();
+    // nothing left to run: no engine call, no pair in the new file
+    let o = f.run(&["--resume"], &envs);
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    assert!(!log.exists());
+    assert!(f.results()["pairs"].as_array().unwrap().is_empty());
+    // without --resume everything runs again
+    let o = f.run(&["--repeats", "1"], &envs);
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap().replace('\n', ""),
+        "ABAB"
+    );
+    std::fs::remove_file(&log).unwrap();
+    // results of another spec text do not count
+    let spec = f.dir.path().join("spec.toml");
+    let text = std::fs::read_to_string(&spec).unwrap() + "\n# changed\n";
+    std::fs::write(&spec, text).unwrap();
+    let o = f.run(&["--repeats", "1", "--resume"], &envs);
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap().replace('\n', ""),
+        "ABAB"
+    );
+}
+
 #[test]
 fn host_id_prefers_container_id() {
     let f = Fixture::new("info", &[], &[], "");

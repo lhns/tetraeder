@@ -145,16 +145,29 @@ pub fn libllama_reference_at(path: &Path, prompt: &[i32], n_greedy: usize) -> Re
 }
 
 /// Like [`libllama_reference_at`] with the K and V cache types of `kv` (ADR 0050 b). libllama's
-/// Hadamard rotation of a quantized cache is off: the builder stores plain values, so only then
-/// do the logits compare.
+/// Hadamard rotation of a quantized cache is off, so it compares with a builder run with
+/// `kv_rotation: Some(false)`.
 pub fn libllama_reference_kv(
     path: &Path,
     prompt: &[i32],
     n_greedy: usize,
     kv: KvFormat,
 ) -> Reference {
-    let ty = |f| tetraeder_model::convert::ggml_type(f).expect("ggml type of the KV format");
     tetraeder_ggml_sys::llama::disable_attn_rot();
+    libllama_reference_kv_default_rot(path, prompt, n_greedy, kv)
+}
+
+/// Like [`libllama_reference_kv`] with libllama's default rotation (on for a quantized cache),
+/// unless the process turned it off. It is a process-wide setting read when a context is
+/// created: a test binary uses either this or [`libllama_reference_kv`], never both
+/// (`kv_rotation.rs` is the one that keeps it on).
+pub fn libllama_reference_kv_default_rot(
+    path: &Path,
+    prompt: &[i32],
+    n_greedy: usize,
+    kv: KvFormat,
+) -> Reference {
+    let ty = |f| tetraeder_model::convert::ggml_type(f).expect("ggml type of the KV format");
     let model = Arc::new(
         Model::load(
             path,
