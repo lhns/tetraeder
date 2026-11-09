@@ -63,10 +63,11 @@ pub use profile_quality::{
     group_of_tensor, mix_at_budget, tensor_formats,
 };
 pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
+pub use score::{TierOutcome, read_tier_replay};
 pub use search::{SearchInput, SearchResult, Split, search, split_layers};
 pub use serve::{
     Picked, Proposed, ServeInput, budget_of, candidates, correct_for_drift, fill_knobs, pick,
-    predict_plan, propose, regret,
+    predict_plan, predict_plan_for, predict_plan_tier, propose, regret, uniform_tier,
 };
 pub use timemodel::{IoShape, TimeModel, time_model};
 pub use whatif::{Change, Priors, WhatIf, apply, fill_from_priors, rank_purchases, what_if};

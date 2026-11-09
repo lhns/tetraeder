@@ -6,7 +6,7 @@ use tetraeder_control::{PlanSource, Proposal, Trigger};
 use tetraeder_plan::Plan;
 use tetraeder_planner::diff::DRAIN_S;
 use tetraeder_planner::{
-    Priors, Proposed, ServeInput, budget_of, correct_for_drift, fill_from_priors, predict_plan,
+    Priors, Proposed, ServeInput, budget_of, correct_for_drift, fill_from_priors, predict_plan_for,
     propose,
 };
 use tetraeder_profiler::{DiscoverOpts, HardwareGraph, discover};
@@ -110,7 +110,7 @@ fn correct(s: &mut Shared, current: &Plan) {
     let Some(measured) = s.measured_step_s else {
         return;
     };
-    let Ok(pred) = predict_plan(&s.inp.hw, &s.inp.layout, current, &s.inp.workload) else {
+    let Ok(pred) = predict_plan_for(&s.inp, current) else {
         return;
     };
     if let Some(g) = correct_for_drift(&s.inp.hw, &pred, measured) {
@@ -172,6 +172,7 @@ mod tests {
             },
             engine: ServeEngine::Llama,
             applies: Applies::today(),
+            tier: None,
         };
         let cur = tetraeder_planner::pick(&inp).unwrap().plan;
         let shared = Shared::new(inp);
@@ -221,7 +222,7 @@ mod tests {
             .clone();
         let pred = {
             let s = shared.lock().unwrap();
-            predict_plan(&s.inp.hw, &s.inp.layout, &cur, &s.inp.workload).unwrap()
+            predict_plan_for(&s.inp, &cur).unwrap()
         };
         // the box is twice as slow as predicted
         shared.lock().unwrap().measured_step_s = Some(2.0 / pred.tg_tok_s);
@@ -239,7 +240,7 @@ mod tests {
                 < before.bandwidth_bytes_per_s.unwrap().value
         );
         let s = shared.lock().unwrap();
-        let again = predict_plan(&s.inp.hw, &s.inp.layout, &cur, &s.inp.workload).unwrap();
+        let again = predict_plan_for(&s.inp, &cur).unwrap();
         // one factor on the rates leaves the per-op cost, so the step lands between the old
         // prediction and the measurement
         let (old, measured, new) = (

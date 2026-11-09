@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tetraeder_control::{Config, Outcome, Replanner, SystemClock, Trigger};
+use tetraeder_control::{Config, Outcome, Replanner, Trigger};
 use tetraeder_costmodel::predict::Prediction;
 use tetraeder_plan::{Plan, Stability};
 use tetraeder_planner::{Placement, recognize, regret};
@@ -150,7 +150,7 @@ fn run(p: Params, rx: &mpsc::Receiver<Cmd>, status: &Mutex<Status>) {
         p.plan,
         p.source,
         Control(Arc::clone(&engine)),
-        SystemClock::new(),
+        engine.clock(),
     );
     if let Some(m) = m.clone() {
         r.on_outcome(Box::new(move |t, o, took| {

@@ -282,7 +282,7 @@ pub fn read_tier_replay(path: &Path) -> Result<Vec<TierOutcome>, String> {
 pub const BUILDER_DISK: &str = "nvme0";
 /// The reader's direct-I/O queue depth (`READER_QUEUE_DEPTH`), also the depth of the synchronous
 /// prefill reads.
-const READER_DEPTH: u32 = 16;
+pub(crate) const READER_DEPTH: u32 = 16;
 /// The service's default workers and chunk size (ADR 0054).
 const SERVICE_WORKERS: u32 = 16;
 const SERVICE_CHUNK: f64 = 1_048_576.0;

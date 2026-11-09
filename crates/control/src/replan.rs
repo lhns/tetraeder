@@ -1,9 +1,7 @@
 //! Replanning by drain and restart (ADR 0042, ADR 0009). Synchronous; the clock, the planner and the
 //! engine are traits, so the decision logic is tested with fakes.
 
-use std::cell::Cell;
 use std::collections::VecDeque;
-use std::rc::Rc;
 use tetraeder_plan::{Plan, Stability};
 
 /// What asked for a new plan.
@@ -69,32 +67,62 @@ pub trait Clock {
     fn now_s(&self) -> f64;
     /// Local wall clock for the freeze windows.
     fn local_hhmm(&self) -> (u8, u8);
+    /// Waits `s` seconds of this clock's time. The default blocks the thread; a test clock
+    /// advances its time instead, so a polling loop that sleeps runs in microseconds
+    /// (ADR 0056).
+    fn sleep(&self, s: f64) {
+        std::thread::sleep(std::time::Duration::from_secs_f64(s.max(0.0)));
+    }
 }
 
-/// Test clock: `now_s` counts from midnight of day 0 and local time equals it.
+/// A shared clock is a clock: the engine wrapper and the replanner hold the same one.
+impl<C: Clock + ?Sized> Clock for std::sync::Arc<C> {
+    fn now_s(&self) -> f64 {
+        (**self).now_s()
+    }
+
+    fn local_hhmm(&self) -> (u8, u8) {
+        (**self).local_hhmm()
+    }
+
+    fn sleep(&self, s: f64) {
+        (**self).sleep(s);
+    }
+}
+
+/// Test clock: `now_s` counts from midnight of day 0 and local time equals it. Clones share the
+/// time, also across threads; `sleep` advances it.
 #[derive(Debug, Clone, Default)]
-pub struct FakeClock(Rc<Cell<f64>>);
+pub struct FakeClock(std::sync::Arc<std::sync::Mutex<f64>>);
 
 impl FakeClock {
     pub fn at(hh: u8, mm: u8) -> Self {
-        Self(Rc::new(Cell::new(
+        Self(std::sync::Arc::new(std::sync::Mutex::new(
             f64::from(hh) * 3600.0 + f64::from(mm) * 60.0,
         )))
     }
 
     pub fn advance(&self, s: f64) {
-        self.0.set(self.0.get() + s);
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) += s;
+    }
+
+    fn get(&self) -> f64 {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
 impl Clock for FakeClock {
     fn now_s(&self) -> f64 {
-        self.0.get()
+        self.get()
     }
 
     fn local_hhmm(&self) -> (u8, u8) {
-        let m = (self.0.get() / 60.0) as u64 % 1440;
+        let m = (self.get() / 60.0) as u64 % 1440;
         ((m / 60) as u8, (m % 60) as u8)
+    }
+
+    fn sleep(&self, s: f64) {
+        self.advance(s.max(0.0));
     }
 }
 
@@ -340,6 +368,7 @@ fn parse_hhmm(s: &str) -> Option<u32> {
 mod tests {
     use super::*;
     use std::cell::RefCell;
+    use std::rc::Rc;
     use tetraeder_plan::{Freeze, Knobs};
 
     fn plan(name: &str) -> Plan {
@@ -734,6 +763,25 @@ mod tests {
                 ("device_change".to_owned(), "rejected".to_owned())
             ]
         );
+    }
+
+    #[test]
+    fn fake_clock_sleep_advances_time_and_crosses_threads() {
+        let c = FakeClock::at(12, 0);
+        let t0 = c.now_s();
+        c.sleep(2.5);
+        assert!((c.now_s() - t0 - 2.5).abs() < 1e-9);
+        // Negative sleeps do not run time backwards; clones share the time.
+        c.sleep(-1.0);
+        let shared = std::sync::Arc::new(c.clone());
+        let c2 = std::sync::Arc::clone(&shared);
+        std::thread::spawn(move || c2.sleep(60.0)).join().unwrap();
+        assert!((c.now_s() - t0 - 62.5).abs() < 1e-9);
+        assert_eq!(c.local_hhmm(), (12, 1));
+        // An `Arc<dyn Clock>` is a clock too.
+        let dynamic: std::sync::Arc<dyn Clock + Send + Sync> = shared;
+        dynamic.sleep(1.0);
+        assert!((c.now_s() - t0 - 63.5).abs() < 1e-9);
     }
 
     #[test]
