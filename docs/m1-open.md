@@ -31,14 +31,11 @@ State at the end of the 2026-11-03 parallel-tracks session. Everything below is 
    - Tool-call repair in the gateway (ADR 0051, briefs G1 and G2 in `docs/gateway-briefs.md`): the first run shows one failure (an empty `<tool_call>` leaked as text, 1 of 483 responses). Build outcome counts and that one repair; further classes only from the rerun's numbers.
    - Recheck the llama-server and planner baselines with the expert cache on. Pair against Strata once both engines run one model.
 9. **Smaller:**
-   - Quality: Q2_K underestimated about 25% on the 30B (cap it or measure pairs).
-   - Quality: calibration `checks` should include knapsack-like mixes.
    - imatrix and IQ formats below 4 bits.
    - Per-expert formats need typed slots.
-   - Replanner hook and plan metrics not wired into the engine.
+   - Replanner hook and plan metrics not wired into the engine: needs three decisions first: how `serve` gets a `Plan` and a hardware graph, how a `Plan` lowers to load options for the restart, and where the predicted step time for `plan.residual` comes from.
    - `DRAIN_S`/`RELOAD_S` are guesses.
    - The small-RAM fusion-off drift check.
-   - Old Q8_0-reference profile `bench/quality/qwen3-30b.quality.json` can go once the planner uses the BF16 one.
 
 ## Housekeeping for the user
 

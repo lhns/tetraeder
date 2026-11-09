@@ -8,7 +8,9 @@
 
 use std::collections::BTreeMap;
 use tetraeder_plan::{Format, QualityProfile};
-use tetraeder_planner::{Band, Correction, cli, estimate_mix, group_of_tensor, mix_at_budget};
+use tetraeder_planner::{
+    Band, Correction, cli, estimate_mix, estimate_mix_scaled, group_of_tensor, mix_at_budget,
+};
 
 struct Case {
     name: &'static str,
@@ -30,9 +32,9 @@ const CASES: [Case; 2] = [
     Case {
         name: "qwen3-30b",
         moe: true,
-        profile: include_str!("../../../bench/quality/qwen3-30b.quality.json"),
-        result: include_str!("../../../bench/results/20261103/quality-qwen3-30b.json"),
-        band: 0.31,
+        profile: include_str!("../../../bench/quality/qwen3-30b-bf16.quality.json"),
+        result: include_str!("../../../bench/results/20261103/quality-qwen3-30b-bf16.json"),
+        band: 0.10,
     },
 ];
 
@@ -99,7 +101,8 @@ fn checks_stay_within_the_stated_band() {
             // The recorded estimate is the ADR 0048 sum.
             let e = estimate_mix(&p, &k.formats).unwrap();
             assert!((e - k.estimate).abs() < 1e-5, "{} {}", c.name, k.name);
-            let err = (k.measured - corr.apply(e)).abs() / k.measured;
+            let scaled = estimate_mix_scaled(&p, &k.formats).unwrap();
+            let err = (k.measured - corr.apply(scaled)).abs() / k.measured;
             assert!(
                 err <= c.band,
                 "{} {}: {err:.3} > {}",
@@ -118,6 +121,7 @@ fn checks_stay_within_the_stated_band() {
             band.corrected
         );
         assert!(band.corrected < band.raw, "{}", c.name);
+        assert!(band.scaled <= band.raw, "{}", c.name);
         eprintln!(
             "{}: band corrected {:.3}, raw {:.3}, leave-one-out {:?}; a={:.4} b={:.4}",
             c.name, band.corrected, band.raw, band.leave_one_out, corr.a, corr.b
@@ -212,4 +216,25 @@ fn cli_mix_writes_the_compare_mix_shape() {
         let by_group: BTreeMap<String, Format> = serde_json::from_str(&out).unwrap();
         assert_eq!(by_group, mix.formats);
     }
+}
+
+/// The 30B sum underestimates uniform Q2_K by 25% (ADR 0048); the profile's `format_scale` caps
+/// that, and leaves every mix without Q2_K as it was.
+#[test]
+fn q2_k_scale_closes_the_underestimate_on_the_30b() {
+    let p = QualityProfile::from_json(CASES[1].profile).unwrap();
+    assert_eq!(p.format_scale.keys().collect::<Vec<_>>(), [&Format::Q2_K]);
+    let rel = |est: f64, m: f64| (m - est).abs() / m;
+    for k in &p.checks {
+        let raw = estimate_mix(&p, &k.formats).unwrap();
+        let scaled = estimate_mix_scaled(&p, &k.formats).unwrap();
+        if k.formats.values().any(|f| *f == Format::Q2_K) {
+            assert!(rel(raw, k.measured) > 0.2, "{}", k.name);
+            assert!(rel(scaled, k.measured) < 0.01, "{}", k.name);
+        } else {
+            assert_eq!(raw, scaled, "{}", k.name);
+        }
+    }
+    let band = Band::of(&p);
+    assert!(band.raw > 0.25 && band.scaled < 0.14, "{band:?}");
 }

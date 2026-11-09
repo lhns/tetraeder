@@ -1809,5 +1809,8 @@
    "cache_hits": 0,
    "wall_seconds": 228.87543416023254
   }
+ },
+ "format_scale": {
+  "Q2_K": 1.3412
  }
 }
