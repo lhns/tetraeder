@@ -30,7 +30,7 @@ B3 first: its cache tuner gives B1 the llama.cpp CPU share. B3-planner and B3-de
 | Session | Box | Script time (estimate / budget) | Box hours | Box cost | Download | Traffic cost | Total |
 |---|---|---|---|---|---|---|---|
 | B1 `b1-exit` | RTX 3090, about 91 GB RAM, 24 to 26 core quota, 220 GB disk | 113 / 120 min (the guard drops `ktransformers-avx2` and the cache repeat) | 2.4 | at most 1.08 | 142 GB | 0.92 to 3.69 | 2.0 to 4.8 USD |
-| B1b `b1b-levers` | as B1, 240 GB disk (native build) | 92 / 120 min | 2.0 | at most 0.90 | 142 GB | 0.92 to 3.69 | 1.8 to 4.6 USD |
+| B1b `b1b-levers` | as B1, 240 GB disk (native build) | 110 / 120 min (119 with `main-overlap-ram`) | 2.0 | at most 0.90 | 142 GB | 0.92 to 3.69 | 1.8 to 4.6 USD |
 | B2 `b2-proxy` | 48 GB Ampere card (RTX A6000, A40), 64 GB RAM, 8+ cores, 100 GB disk | 82 min proxy, 40 kv-quality, hook / 260 min | 2.5 to 4.8 | 1.25 to 2.40 | 38 GB | 0.50 to 1.00 | 1.8 to 3.4 USD |
 | B3 `b3-planner` | RTX 3090, 32+ GB RAM, 9+ cores, 100 GB disk | 96 to 120 / 120 min | 2.0 to 2.4 | at most 1.08 | 38 GB | 0.50 to 1.00 | 1.3 to 2.1 USD |
 | B3 `b3-detector` | RTX 3090, 32+ GB RAM, 9+ cores, 80 GB disk | 65 to 110 / 120 min | 1.5 to 2.3 | at most 1.04 | 19 GB | 0.25 to 0.50 | 0.9 to 1.5 USD |
@@ -87,8 +87,10 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 | 1 | `smoke` | 3 | 23 | |
 | 2 | `main-prefetch` (builder, levers) | 9 | 32 | the pair for every stage below |
 | 3 | `kv-q8`, `kv-q8-slots`, `kv-q8q4`, `kv-q8q4-slots` | 36 | 68 | ADR 0050 b: decode with low-bit KV, and with the freed bytes as expert slots |
-| 4 | `trace` and the replay | 15 | 83 | ADR 0050 c: frequency tiers against LRU (`replay-235b.json`; the trace stays in `runs/vast/`, git-ignored) |
-| 5 | `main-native-repeat` (native ISA, levers) | 9 | 92 | ADR 0045 hypothesis 3 |
+| 3b | `main-iosvc`, `main-overlap` | 18 | 86 | ADR 0054: the persistent I/O service alone, then with experts computed in arrival order; decode at least 15% above `main-prefetch` and hidden share at least 0.5 |
+| 4 | `trace` and the replay | 15 | 101 | ADR 0050 c: frequency tiers against LRU (`replay-235b.json`; the trace stays in `runs/vast/`, git-ignored) |
+| 5 | `main-native-repeat` (native ISA, levers) | 9 | 110 | ADR 0045 hypothesis 3 |
+| 6 | `main-overlap-ram` (RAM tier with a 4 GB reserve) | 9 | 119 | ADR 0054 section 3; only if the deadline allows; peak RSS under 90 GB |
 
 **Verify.** Every stage JSON has `decode_tok_s`; `replay-235b.json` exists. kv-quality (the KL bar for the kv-* formats) runs in B2.
 

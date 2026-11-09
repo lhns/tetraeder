@@ -20,6 +20,8 @@ pub mod attr {
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
     pub const FORMAT: &str = "tetraeder.format";
+    pub const IO_CLASS: &str = "tetraeder.io.class";
+    pub const PART: &str = "tetraeder.part";
     pub const METHOD: &str = "tetraeder.spec.method";
     pub const PLAN: &str = "tetraeder.plan";
     pub const RESOURCE: &str = "tetraeder.resource";
@@ -102,6 +104,9 @@ pub struct Metrics {
     prefetch: Counter<u64>,
     prefetch_wasted_bytes: Counter<u64>,
     prefetch_accuracy: Histogram<f64>,
+    io_inflight: Histogram<f64>,
+    read_hidden: Histogram<f64>,
+    layer_part: Histogram<f64>,
     convert_duration: Histogram<f64>,
     convert_bytes: Counter<u64>,
     convert_cache: Counter<u64>,
@@ -221,6 +226,24 @@ impl Metrics {
                 .with_description("Share of predicted experts the router chose, per layer step")
                 .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
                 .build(),
+            io_inflight: meter
+                .f64_histogram("tetraeder.io.inflight")
+                .with_unit("{chunk}")
+                .with_description("Expert read chunks queued or running in the I/O service, at each submit")
+                .with_boundaries(vec![0.0, 1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 64.0])
+                .build(),
+            read_hidden: meter
+                .f64_histogram("tetraeder.moe.read.hidden")
+                .with_unit("1")
+                .with_description(
+                    "Share of the expert read span of a decode layer step the main thread did not wait for",
+                )
+                .with_boundaries(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+                .build(),
+            layer_part: hist(
+                "tetraeder.moe.layer.duration",
+                "Time of one part of a decode layer step with expert reads in flight",
+            ),
             convert_duration: meter
                 .f64_histogram("tetraeder.convert.duration")
                 .with_unit("s")
@@ -495,6 +518,24 @@ impl Metrics {
                 KeyValue::new(attr::DEPTH, i64::from(depth)),
             ],
         );
+    }
+
+    /// Chunks in flight in the I/O service after a submit of class `urgent` or `prefetch`
+    /// (ADR 0054).
+    pub fn io_inflight(&self, class: &'static str, chunks: u64) {
+        self.io_inflight
+            .record(chunks as f64, &[KeyValue::new(attr::IO_CLASS, class)]);
+    }
+
+    /// One decode layer step with experts in flight: `1 - read_wait / read_span`.
+    pub fn read_hidden(&self, share: f64) {
+        self.read_hidden.record(share, &[]);
+    }
+
+    /// Time of `part` (`cpu_ready`, `read_wait`, `cpu_landed`, `copy`) of one decode layer step.
+    pub fn layer_part(&self, part: &'static str, d: Duration) {
+        self.layer_part
+            .record(d.as_secs_f64(), &[KeyValue::new(attr::PART, part)]);
     }
 
     /// One tensor converted to `format` (ADR 0047).

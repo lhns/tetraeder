@@ -24,6 +24,19 @@ groups:
         annotations:
           summary: "Expert prefetch predicts fewer than 40% of the routed experts"
           description: "Turn LoadOptions::prefetch off, or check the model: wasted prefetch bytes compete with the reads of the step."
+      # Expert reads under compute (ADR 0054). With overlap on, the main thread should wait for under 70% of a layer step's
+      # read span. Few chunks in flight (tetraeder_io_inflight) means the I/O workers are starved by the CPU quota: lower
+      # prefetch_threads. Many in flight means the disk is saturated: grow the RAM tier (ADR 0050 c).
+      - alert: TetraederExpertReadsNotHidden
+        expr: |
+          histogram_quantile(0.5, sum by (le) (rate(tetraeder_moe_read_hidden_ratio_bucket[10m]))) < 0.3
+            and on() sum(rate(tetraeder_io_inflight_count[10m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Decode waits for most of its expert reads (hidden share below 30%)"
+          description: "The median share of a layer step's read span hidden behind compute is below 0.3 for 15 minutes. Check chunks in flight on the Expert reads under compute panel: low means starved workers, high means a saturated disk."
       # Conversion cache (ADR 0047). The first load of a plan converts every tensor, which is expected. Misses again in the
       # last hour, after misses earlier in the day and no hit in 24 hours, mean the cache is not reused: the directory is
       # not persistent, not writable, or the source file changes between loads (the key hashes its header, length and mtime).
