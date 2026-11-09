@@ -46,7 +46,7 @@ def server(tmp_path_factory):
         return
     binary = find_binary()
     if binary is None:
-        pytest.skip("no tetraeder binary: run `cargo build -p tetraeder` (or set TETRAEDER_BIN / TETRAEDER_BASE_URL)")
+        pytest.skip("no tetraeder binary: run `cargo build -p tetraeder` first, as CI does (or set TETRAEDER_BIN / TETRAEDER_BASE_URL)")
     log = tmp_path_factory.mktemp("serve") / "requests.jsonl"
     port = free_port()
     proc = subprocess.Popen(

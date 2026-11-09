@@ -93,3 +93,9 @@ def test_dashboards_are_valid_json_with_unique_panel_ids():
         d = json.loads(p.read_text(encoding="utf-8"))
         ids = [x["id"] for x in d["panels"]]
         assert len(ids) == len(set(ids)), p.name
+
+
+def test_kv_near_full_compares_per_device():
+    # Tokens and capacity must be matched per device, not as a global max over both.
+    rule = next(r for f in RULE_FILES for r in _rules(f) if r.get("alert") == "TetraederKvNearFull")
+    assert rule["expr"].count("by (tetraeder_device)") == 2, rule["expr"]

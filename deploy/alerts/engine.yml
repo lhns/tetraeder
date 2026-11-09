@@ -51,7 +51,7 @@ groups:
           description: "Drafts are issued but mostly rejected, so verify steps cost more than they save; switch the drafter off or shorten the draft length."
       # Low-bit KV (ADR 0050 b). The cache holds a fixed number of tokens; a sequence past it fails with "context full".
       - alert: TetraederKvNearFull
-        expr: max(tetraeder_kv_tokens) / max(tetraeder_kv_capacity) > 0.95
+        expr: max by (tetraeder_device) (tetraeder_kv_tokens) / max by (tetraeder_device) (tetraeder_kv_capacity) > 0.95
         for: 10m
         labels:
           severity: warning

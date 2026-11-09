@@ -1,4 +1,6 @@
 //! KV cache format of an attention unit (ADR 0050 b): K and V each in one ggml format.
+//!
+//! Hardware label: none (pure host code, tests included).
 
 use crate::Format;
 use serde::{Deserialize, Serialize};

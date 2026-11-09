@@ -753,9 +753,31 @@ impl Qwen3Moe {
         std::mem::take(&mut self.profile)
     }
 
+    /// Publishes memory use and KV tokens held; also after the cache shrinks, so the gauge
+    /// does not keep a dropped sequence's length.
+    fn report_memory(&self) {
+        for m in self.memory() {
+            match &m.format {
+                Some(f) => self.metrics.kv(
+                    &m.device,
+                    m.tier,
+                    f,
+                    m.used,
+                    m.capacity,
+                    self.n_past as u64,
+                    self.kv.n_ctx as u64,
+                ),
+                None => self
+                    .metrics
+                    .buffer(&m.device, m.tier, m.kind, m.used, m.capacity),
+            }
+        }
+    }
+
     /// Forgets the KV cache; the next `eval` starts at position 0.
     pub fn reset(&mut self) {
         self.n_past = 0;
+        self.report_memory();
     }
 
     /// Rolls the cache back to its first `n_past` tokens. Rows above stay in the KV buffers but
@@ -769,6 +791,7 @@ impl Qwen3Moe {
             )));
         }
         self.n_past = n_past;
+        self.report_memory();
         Ok(())
     }
 
@@ -810,6 +833,7 @@ impl Qwen3Moe {
             rest = tail;
         }
         self.n_past = n;
+        self.report_memory();
         Ok(())
     }
 
@@ -1148,22 +1172,7 @@ impl Qwen3Moe {
                 tokens: n as u32,
                 segments: graphs,
             });
-            for m in self.memory() {
-                match &m.format {
-                    Some(f) => self.metrics.kv(
-                        &m.device,
-                        m.tier,
-                        f,
-                        m.used,
-                        m.capacity,
-                        self.n_past as u64,
-                        self.kv.n_ctx as u64,
-                    ),
-                    None => self
-                        .metrics
-                        .buffer(&m.device, m.tier, m.kind, m.used, m.capacity),
-                }
-            }
+            self.report_memory();
         }
         if n > 1 && self.hot_pending {
             // The first prefill's routing decides the hot set (ADR 0035).

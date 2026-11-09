@@ -15,6 +15,9 @@ use std::path::Path;
 pub const FORMAT: &str = "tetraeder-routing";
 pub const VERSION: u32 = 1;
 
+/// Most tokens one layer step may carry (2^20, far above any batch); a larger count in a file is
+/// a corrupt record, rejected before anything is allocated.
+const MAX_STEP_TOKENS: u32 = 1 << 20;
 const KIND_STEP: u8 = 0;
 const KIND_REFRESH: u8 = 1;
 const FLAG_PREDICTED: u8 = 1;
