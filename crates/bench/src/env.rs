@@ -34,6 +34,10 @@ pub struct EnvInfo {
     pub gpus: Vec<GpuSnap>,
     pub git_commit: String,
     pub git_dirty: Option<bool>,
+    /// `TETRAEDER_SESSION` (`<date>-<host_id>-<HHMMSS>`, exported by scripts/session.sh): the
+    /// session a result belongs to for the calibration ledger (ADR 0056).
+    #[serde(default)]
+    pub session: Option<String>,
     pub cuda_env: String,
     pub started_utc: String,
     /// `tetraeder info --json` `cpu` block of the spec's Tetraeder binary: which CPU variant ran
@@ -166,8 +170,11 @@ fn cpu_quota() -> Option<f64> {
 }
 
 fn git_commit() -> (String, Option<bool>) {
-    let commit = run("git", &["rev-parse", "HEAD"])
-        .or_else(|| std::env::var("TETRAEDER_GIT_COMMIT").ok())
+    // The box checkout may not be a git repo; session.sh exports the commit taxameter pushed.
+    let commit = std::env::var("TETRAEDER_GIT_COMMIT")
+        .ok()
+        .filter(|c| !c.is_empty())
+        .or_else(|| run("git", &["rev-parse", "HEAD"]))
         .unwrap_or_else(|| "unknown".into());
     let dirty = run("git", &["status", "--porcelain"]).map(|s| !s.is_empty());
     (commit, dirty)
@@ -194,6 +201,9 @@ pub fn capture() -> EnvInfo {
         gpus: gpu_snapshot(),
         git_commit,
         git_dirty,
+        session: std::env::var("TETRAEDER_SESSION")
+            .ok()
+            .filter(|s| !s.is_empty()),
         cuda_env: std::env::var("CUDA_ENV_STATUS").unwrap_or_default(),
         started_utc: utc_now(),
         cpu_backend: None,
@@ -297,6 +307,19 @@ mod tests {
             None
         );
         assert_eq!(parse_cfs("250000", "100000"), Some(2.5));
+    }
+
+    #[test]
+    fn old_env_without_session_still_parses() {
+        // the env block of bench/results/20261103/planner-moe, before ADR 0056
+        let old = r#"{"host_id": "744f1ba65ca1", "hostname": "744f1ba65ca1", "os": "linux",
+            "arch": "x86_64", "cpu": "Xeon", "cpus": 9, "cpu_quota": 9.6, "ram_gb": 251.8,
+            "gpus": [], "git_commit": "unknown", "git_dirty": null, "cuda_env": "ok",
+            "started_utc": "2026-11-03T10:43:33Z"}"#;
+        let e: EnvInfo = serde_json::from_str(old).unwrap();
+        assert_eq!(e.session, None);
+        assert_eq!(e.host_id, "744f1ba65ca1");
+        assert!(e.cpu_backend.is_none());
     }
 
     #[test]

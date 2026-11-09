@@ -256,8 +256,9 @@ pub fn builder_run(files: &[Value]) -> BuilderRun {
     }
 }
 
-/// Reads `<variant id>.r<k>.json` files (the campaign script's output names) of a directory.
-pub fn read_builder_runs(dir: &Path) -> Result<BTreeMap<String, BuilderRun>, String> {
+/// The `exit_regime` JSON files of a builder fixture directory, `<variant id>.r<k>.json` (the
+/// campaign script's output names), by variant id.
+pub(crate) fn read_builder_files(dir: &Path) -> Result<BTreeMap<String, Vec<Value>>, String> {
     let mut by_id: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     for e in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let p = e.map_err(|e| e.to_string())?.path();
@@ -276,10 +277,37 @@ pub fn read_builder_runs(dir: &Path) -> Result<BTreeMap<String, BuilderRun>, Str
         let v: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", p.display()))?;
         by_id.entry(id.to_string()).or_default().push(v);
     }
-    Ok(by_id
+    Ok(by_id)
+}
+
+/// Builder results of a fixture directory, per variant id.
+pub fn read_builder_runs(dir: &Path) -> Result<BTreeMap<String, BuilderRun>, String> {
+    Ok(read_builder_files(dir)?
         .into_iter()
         .map(|(id, files)| (id, builder_run(&files)))
         .collect())
+}
+
+/// The harness results (`planner-*.json`) of a llama-bench fixture directory, sorted by name.
+pub(crate) fn read_harness_files(dir: &Path) -> Result<Vec<Value>, String> {
+    let mut paths = Vec::new();
+    for e in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let p = e.map_err(|e| e.to_string())?.path();
+        let name = p.file_name().unwrap_or_default().to_string_lossy();
+        if name.starts_with("planner-") && name.ends_with(".json") {
+            paths.push(p);
+        }
+    }
+    paths.sort();
+    let mut files = Vec::new();
+    for p in paths {
+        let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+        // a run killed before its first checkpoint leaves its claimed file empty
+        if !text.trim().is_empty() {
+            files.push(serde_json::from_str(&text).map_err(|e| e.to_string())?);
+        }
+    }
+    Ok(files)
 }
 
 /// Median pp and tg tokens per second per variant over every sample in the harness results.
@@ -397,7 +425,7 @@ fn describe(v: &CampaignVariant) -> String {
     }
 }
 
-fn request_s(v: &CampaignVariant, pp: Option<f64>, tg: Option<f64>) -> Option<f64> {
+pub(crate) fn request_s(v: &CampaignVariant, pp: Option<f64>, tg: Option<f64>) -> Option<f64> {
     Some(f64::from(v.prompt) / pp? + f64::from(v.r#gen) / tg?)
 }
 
@@ -421,22 +449,7 @@ pub fn score_dir(dir: &Path) -> Result<Score, String> {
         let runs = read_builder_runs(dir)?;
         return score_builder(&fixture, &layout, &cands, &runs, cands.budget.threads);
     }
-    let mut files = Vec::new();
-    for e in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-        let p = e.map_err(|e| e.to_string())?.path();
-        let name = p
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        if name.starts_with("planner-") && name.ends_with(".json") {
-            let text = read(&p)?;
-            // a run killed before its first checkpoint leaves its claimed file empty
-            if !text.trim().is_empty() {
-                files.push(serde_json::from_str(&text).map_err(|e| e.to_string())?);
-            }
-        }
-    }
+    let files = read_harness_files(dir)?;
     let results = measured_all(&files);
     score(&fixture, &layout, &cands, &results, cands.budget.threads)
 }
@@ -848,6 +861,22 @@ mod tests {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/builder-synthetic");
         std::fs::remove_dir_all(&dir).ok();
         write_synthetic_builder(&dir);
+    }
+
+    /// ADR 0056 section 3: every committed fixture re-predicted with its own session's fit matches
+    /// the snapshot `bench/ledger.json`. After a model change: `tetraeder-plan ledger --write`.
+    /// Skips cleanly when no snapshot is committed.
+    #[test]
+    fn committed_results_match_the_ledger() {
+        use crate::ledger::{Ledger, check, evaluate};
+        let bench = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench");
+        let Ok(text) = std::fs::read_to_string(bench.join("ledger.json")) else {
+            eprintln!("skip: no bench/ledger.json");
+            return;
+        };
+        let snapshot: Ledger = serde_json::from_str(&text).unwrap();
+        let problems = check(&evaluate(&bench.join("results")), &snapshot);
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
     }
 
     /// The exit test (ADR 0040) on every committed measured fixture: regret at most 10% and

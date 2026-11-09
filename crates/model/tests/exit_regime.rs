@@ -97,6 +97,54 @@ fn env_flag(key: &str) -> bool {
     std::env::var(key).is_ok_and(|v| v == "1")
 }
 
+fn git_out(args: &[&str]) -> Option<String> {
+    let o = std::process::Command::new("git").args(args).output().ok()?;
+    o.status
+        .success()
+        .then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
+/// Who produced the result, for the calibration ledger (ADR 0056): the engine build, the
+/// session and the host. The commit comes from `TETRAEDER_GIT_COMMIT` (the box checkout may not
+/// be a git repo), else git.
+fn provenance(threads: usize) -> Value {
+    let commit = std::env::var("TETRAEDER_GIT_COMMIT")
+        .ok()
+        .filter(|c| !c.is_empty())
+        .or_else(|| git_out(&["rev-parse", "HEAD"]));
+    let host = std::env::var("CONTAINER_ID")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            ["HOSTNAME", "COMPUTERNAME"]
+                .iter()
+                .filter_map(|k| std::env::var(k).ok())
+                .find(|v| !v.is_empty())
+        })
+        .or_else(|| {
+            let o = std::process::Command::new("hostname").output().ok()?;
+            Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+        });
+    // cgroup v2 `cpu.max` (`<quota|max> <period>`); null when unlimited or unknown
+    let quota = std::fs::read_to_string("/sys/fs/cgroup/cpu.max")
+        .ok()
+        .and_then(|t| {
+            let mut f = t.split_whitespace();
+            let q: f64 = f.next()?.parse().ok()?;
+            let p: f64 = f.next().unwrap_or("100000").parse().ok()?;
+            (q > 0.0 && p > 0.0).then(|| (q / p * 100.0).round() / 100.0)
+        });
+    json!({
+        "engine_commit": commit,
+        "engine_dirty": git_out(&["status", "--porcelain"]).map(|s| !s.is_empty()),
+        "session": std::env::var("TETRAEDER_SESSION").ok().filter(|s| !s.is_empty()),
+        "host_id": host,
+        "cpu_quota": quota,
+        "threads": threads,
+        "cpu_variant": tetraeder_ggml_sys::cpu::backend_info().ok().map(|i| i.tier),
+    })
+}
+
 fn model_path() -> (PathBuf, Value) {
     if let Some(p) = std::env::var_os("TETRAEDER_EXIT_GGUF") {
         let p = PathBuf::from(p);
@@ -593,6 +641,7 @@ fn exit_regime() {
     }
     let out = json!({
         "machine": std::env::var("TETRAEDER_EXIT_MACHINE").ok(),
+        "provenance": provenance(threads),
         "env": {
             "os": std::env::consts::OS,
             "available_parallelism": std::thread::available_parallelism().map_or(1, usize::from),

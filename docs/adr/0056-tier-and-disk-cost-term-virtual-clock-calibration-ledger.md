@@ -110,3 +110,7 @@ A prediction, to be checked by the `b3-planner` session on the builder fixture: 
 - `control::Clock` gains one method; the binary's three poll loops change.
 - Every box script exports `TETRAEDER_GIT_COMMIT` and `TETRAEDER_SESSION`; results without them never enter the ledger.
 - A cost-model change that moves any committed prediction needs a version bump and a reviewed snapshot.
+
+## Implementation notes
+
+- **Part A (provenance and ledger).** `MODEL_VERSION` is in `costmodel`; `EnvInfo` gains `session` and prefers `TETRAEDER_GIT_COMMIT`; `exit_regime` writes `provenance` (the io options are omitted until `track-w-iosvc` merges); `scripts/session.sh` exports both variables. `planner::ledger` has `evaluate`, `check`, `write` and `tetraeder-plan ledger [--write] [--accept-worse id=reason]`. Refresh after a version bump or a new fixture: `cargo run -p tetraeder-planner --bin tetraeder-plan -- ledger --write`. `err` is `|predicted - measured| / measured` on the request time. Committed medians: MoE 0.043, dense 0.021. The dense harness files carry no `env`, so its `provenance.json` assumes the `planner-moe` host (noted in the file). A snapshot entry that is missing now, or whose status changed, fails the check; an entry that is new is listed but not a failure until `--write`.
