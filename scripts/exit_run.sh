@@ -7,6 +7,8 @@
 # major faults, CPU and GPU busy, RSS and page cache, prefill and decode apart): "host" and the CPU flags in "env" of the
 # result JSON. Stages main-native / main-native-repeat are main / main-repeat with ggml built for the native ISA
 # (TETRAEDER_GGML_NATIVE=ON, own cargo target dir NATIVE_TARGET_DIR); ktransformers-avx2 forces kt-kernel's AVX2 kernels.
+# Session profiles (scripts/session.sh) set RESULTS_DATE, RESUME=1 (skip stages with a result) and DEADLINE (skip stages
+# that would end after it).
 exec 8> /root/tetraeder_exit_run.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
@@ -14,7 +16,8 @@ export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BU
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 # shellcheck disable=SC1091
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
-date_dir="$PWD/bench/results/$(date +%Y%m%d)"
+# RESULTS_DATE (scripts/session.sh) pins the results directory of a session that crosses midnight or resumes
+date_dir="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}"
 mkdir -p "$date_dir" runs/vast
 log=runs/vast/exit_run.log
 stamp=$(date +%H%M%S)
@@ -66,10 +69,61 @@ prompt=/root/exit_prompt.txt
 native_target="${NATIVE_TARGET_DIR:-$PWD/target-native}"
 cp bench/prompts/exit_prompt.txt "$prompt"
 rc=0
+# Minutes a stage takes on the 91 GB / 3090 class (docs/sessions.md has the sources); the deadline guard uses them.
+stage_min() {
+  case "$1" in
+    smoke) echo 3 ;;
+    gpu-tests) echo 20 ;;
+    drift-ref*) echo 9 ;;
+    drift-*) echo 4 ;;
+    llama-fit) echo 10 ;;
+    ktransformers) echo 25 ;;
+    ktransformers-*) echo 20 ;;
+    llamacpp-cache*) echo 16 ;;
+    reference) echo 15 ;;
+    exit-*) echo 40 ;;
+    colibri-*) echo 60 ;;
+    *) echo 10 ;;
+  esac
+}
+# DEADLINE (epoch seconds, from scripts/session.sh): a stage that would end after it is skipped, so the box cap holds
+fits() {
+  [ -n "${DEADLINE:-}" ] || return 0
+  local m
+  m=$(stage_min "$1")
+  [ $(($(date +%s) + m * 60)) -le "$DEADLINE" ] && return 0
+  echo "[$(date +%T)] skip $1: needs about $m min, deadline $(date -d "@$DEADLINE" +%T)"
+  return 1
+}
+# RESUME=1: a stage whose result file (exit-<name>-<stamp>.json) with numbers is already in date_dir is not rerun
+stage_done() {
+  [ "${RESUME:-0}" = 1 ] || return 1
+  python3 -I - "$date_dir" "$1" << 'EOF'
+import glob, json, os, re, sys
+d, name = sys.argv[1:3]
+for f in glob.glob(os.path.join(d, f"exit-{name}-*.json")):
+    if not re.fullmatch(rf"exit-{re.escape(name)}-\d+\.json", os.path.basename(f)):
+        continue
+    try:
+        j = json.load(open(f))
+    except ValueError:
+        continue
+    if j.get("ok") is True or any(r.get("decode_tok_s") for r in j.get("runs") or []):
+        sys.exit(0)
+sys.exit(1)
+EOF
+}
 # STAGES (space list of stage names, default all) lets a relaunch skip stages that already ran
-want() { [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]]; }
+want() {
+  [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]] || return 1
+  if stage_done "$1"; then
+    echo "[$(date +%T)] skip $1: result in $date_dir"
+    return 1
+  fi
+  fits "$1"
+}
 # KTransformers installs while the model downloads (its own log and lock)
-if want ktransformers || want ktransformers-avx2; then
+if want ktransformers || want ktransformers-avx2 || want ktransformers-repeat; then
   bash scripts/ktransformers_build.sh 8>&- &
   kt_build_pid=$!
 fi
@@ -162,16 +216,18 @@ colibri() {
   echo "[$(date +%T)] done colibri-$1 rc=$?"
 }
 
-# ktransformers [avx2]: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads and RAM;
-# with avx2 (stage ktransformers-avx2) kt-kernel is forced to its AVX2 kernels, as our portable ggml build runs
+# ktransformers [avx2|repeat]: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads
+# and RAM; with avx2 (stage ktransformers-avx2) kt-kernel is forced to its AVX2 kernels, as our portable ggml build
+# runs; repeat (stage ktransformers-repeat) is the second default run of a noise-band pair
 ktransformers() {
-  local name=ktransformers${1:+-$1}
+  local name=ktransformers${1:+-$1} variant=${1:-}
+  [ "$variant" = repeat ] && variant=
   want "$name" || return 0
   [ -n "${kt_build_pid:-}" ] && wait "$kt_build_pid"
   kt_build_pid=
   echo "[$(date +%T)] start $name"
   ensure_disk
-  HOST_DISK_DEV="$HOST_DISK_DEV" KT_KERNEL_CPU_VARIANT="${1:-}" \
+  HOST_DISK_DEV="$HOST_DISK_DEV" KT_KERNEL_CPU_VARIANT="$variant" \
     bash scripts/ktransformers_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-$name-$stamp.json" deep 8>&-
   echo "[$(date +%T)] done $name rc=$?"
 }
@@ -184,6 +240,8 @@ llamacpp_cache() {
   want "$name" || return 0
   local mib=$((vram_bytes / 1048576))
   for s in ${CPU_SHARES:-0 0.5 0.9}; do
+    stage_done "llamacpp-cache-s$s${1:+-$1}" && { echo "[$(date +%T)] skip $name s$s: result in $date_dir"; continue; }
+    fits "$name" || continue
     echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode ${LOAD_MODE:-auto}"
     timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
       "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
@@ -270,12 +328,14 @@ EOF
       # llama.cpp on the same prompt tokens through libllama (exit_regime's reference engine): logit parity of the
       # builder at 32K (greedy, first-token top-10, margins) and the tuned -ot baseline on real text
       exit_regime reference 60 "${deep[@]}" TETRAEDER_EXIT_ENGINE=libllama TETRAEDER_EXIT_REF_OT="$ot_fit" || rc=28
-      # KTransformers, then the default builder again: a second pair for the noise band
+      # KTransformers, then the default builder and KTransformers again: a second pair for the noise band; the
+      # diagnosis stages (native ISA, KT on AVX2) after the pairs, so a deadline cuts them first
       ktransformers
-      ktransformers avx2
       exit_regime main-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
+      ktransformers repeat
       exit_regime main-native-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_GGML_NATIVE=ON \
         CARGO_TARGET_DIR="$native_target" || rc=29
+      ktransformers avx2
       llamacpp_cache repeat
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
       # are joined with ';'), then ik_llama.cpp with the same overrides (it was OOM-killed at 128 GB with mmap)

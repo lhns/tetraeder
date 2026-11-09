@@ -45,6 +45,10 @@ enum Cmd {
         /// a gate without one is an error).
         #[arg(long)]
         parity: Option<PathBuf>,
+        /// Run only the repeats that earlier results of the same spec text in the results directory
+        /// lack (a relaunch after a kill, or `--repeats 1` first and the spec's repeats later).
+        #[arg(long)]
+        resume: bool,
     },
     /// Greedy golden check of the Tetraeder build against llama-simple for every Tetraeder gate of a spec;
     /// writes parity.json. Exit 0 all ok, 1 outputs differ, 2 a check could not run.
@@ -96,6 +100,7 @@ fn real_main() -> Result<u8> {
             only,
             strict,
             parity,
+            resume,
         } => {
             let text = std::fs::read_to_string(&spec)
                 .with_context(|| format!("read {}", spec.display()))?;
@@ -113,6 +118,14 @@ fn real_main() -> Result<u8> {
                     None
                 }
             };
+            let done_reps = if resume {
+                let earlier = run::read_results_dir(&dir, &parsed.spec.name);
+                run::recorded_reps(&earlier, &run::spec_hash(&text))
+            } else {
+                Default::default()
+            };
+            // claimed before the run and rewritten after every pair
+            let path = run::reserve_results_path(&parsed.spec.name, &dir)?;
             let opts = Options {
                 llama_bench,
                 models_dir,
@@ -121,9 +134,11 @@ fn real_main() -> Result<u8> {
                 strict,
                 quiet: false,
                 parity,
+                checkpoint: Some(path.clone()),
+                done_reps,
             };
             let results = run::run_spec(&parsed, &text, &opts)?;
-            let path = run::write_results(&results, &dir)?;
+            run::write_results_at(&results, &path)?;
             print!("{}", run::summary_text(&results));
             println!("results: {}", path.display());
             Ok(results.exit_code as u8)

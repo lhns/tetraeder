@@ -15,9 +15,12 @@ use crate::candidate::{
 };
 use crate::layout::ModelLayout;
 use crate::lower::{dense_ngl, to_exit_regime_env, to_llama_bench_args, to_variant_args};
+use crate::score::{RTX3090_PRIOR, features};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use tetraeder_costmodel::predict::predict;
+use tetraeder_profiler::HardwareGraph;
 
 /// Request size of the CPU-only anchors, at the candidates' thread counts only: a 32B dense model
 /// ran pp256 at 1.7 tok/s on 2 threads (box 58943840), which cost 25 minutes of a 3 h box.
@@ -91,7 +94,21 @@ fn variant(
     }
 }
 
+/// Request seconds of a libllama variant under the uncalibrated RTX 3090 prior
+/// ([`crate::score::RTX3090_PRIOR`]): only used to order the runs, never to score.
+pub fn prior_request_s(layout: &ModelLayout, v: &CampaignVariant, quota: u32) -> Option<f64> {
+    let mut hw = HardwareGraph::from_toml(RTX3090_PRIOR).ok()?;
+    if let Some(c) = hw.devices.iter_mut().find(|d| d.id == "cpu0") {
+        c.threads = Some(quota);
+    }
+    let f = features(layout, v.placement, v.threads, &v.args, &v.env);
+    Some(predict(&hw, &f, v.prompt, v.r#gen).ok()?.request_s)
+}
+
 /// Build the campaign of one fixture.
+///
+/// Pair order: anchors, baselines, then the candidates cheapest first by
+/// [`prior_request_s`], so a run cut short keeps the anchors, the bar and the most candidates.
 ///
 /// Anchors: CPU only (`-ngl 0`, device `cpu`, pp64 tg16) at threads {quota, quota / 2}; the
 /// smallest GPU placement (MoE: all experts on the CPU) with op offload
@@ -153,20 +170,31 @@ pub fn build(
         vs.push(eager);
     }
 
-    for c in &en.candidates {
-        let mut v = variant(
-            &format!("cand-{}", c.id),
-            Group::Candidate,
-            "cuda",
-            c.threads(),
-            &[],
-            workload,
-        );
-        v.args = to_variant_args(c, layout);
-        v.candidate = Some(c.id.clone());
-        v.placement = Some(c.placement);
-        vs.push(v);
-    }
+    let mut cands: Vec<CampaignVariant> = en
+        .candidates
+        .iter()
+        .map(|c| {
+            let mut v = variant(
+                &format!("cand-{}", c.id),
+                Group::Candidate,
+                "cuda",
+                c.threads(),
+                &[],
+                workload,
+            );
+            v.args = to_variant_args(c, layout);
+            v.candidate = Some(c.id.clone());
+            v.placement = Some(c.placement);
+            v
+        })
+        .collect();
+    // Cheapest first by the uncalibrated prior, so a box session cut short still has the most
+    // candidates measured (the dense fixture's op-offload-off candidates take up to 25x longer).
+    // Only the order changes: the measured set is still the whole enumeration.
+    cands.sort_by_cached_key(|v| {
+        let s = prior_request_s(layout, v, q).unwrap_or(f64::INFINITY);
+        (s * 1e3) as u64
+    });
 
     vs.push(variant(
         "base-fit",
@@ -214,6 +242,8 @@ pub fn build(
         v.placement = Some(large);
         vs.push(v);
     }
+    // candidates last: anchors calibrate and baselines are the bar, both short
+    vs.extend(cands);
 
     let pairs = pair_up(&vs);
     Campaign {
@@ -648,6 +678,95 @@ mod tests {
         let back: CandidatesFile =
             serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert_eq!(back, f);
+    }
+
+    // hardware: none. Every simulated fixture (dense, MoE) at a tight and a roomy budget.
+    #[test]
+    fn candidate_pairs_run_cheapest_first_after_anchors_and_baselines() {
+        let roomy = Budget {
+            gpu_bytes: 22_000_000_000,
+            ram_bytes: 120_000_000_000,
+            threads: 9,
+        };
+        for l in [fixtures::dense(), fixtures::moe()] {
+            for b in [BUDGET, roomy] {
+                let en = enumerate(&b, &l, &WORK);
+                let c = build("m", "org/name:file.gguf", &l, &b, &WORK, &en);
+                let get = |id: &str| c.variants.iter().find(|v| v.id == id).unwrap();
+                let group = |p: &(String, String, String)| get(&p.1).group;
+                let groups: Vec<Group> = c.pairs.iter().map(group).collect();
+                let first_cand = groups.iter().position(|g| *g == Group::Candidate);
+                let last_other = groups.iter().rposition(|g| *g != Group::Candidate);
+                if let (Some(f), Some(o)) = (first_cand, last_other) {
+                    assert!(o < f, "{groups:?}");
+                }
+                // the measured set is still exactly the enumeration
+                let mut ids: Vec<&str> = c
+                    .variants
+                    .iter()
+                    .filter_map(|v| v.candidate.as_deref())
+                    .collect();
+                ids.sort_unstable();
+                let mut want: Vec<&str> = en.candidates.iter().map(|x| x.id.as_str()).collect();
+                want.sort_unstable();
+                assert_eq!(ids, want);
+                let cost = |id: &str| prior_request_s(&l, get(id), b.threads).unwrap();
+                let order: Vec<f64> = c
+                    .variants
+                    .iter()
+                    .filter(|v| v.group == Group::Candidate)
+                    .map(|v| cost(&v.id))
+                    .collect();
+                assert!(order.windows(2).all(|w| w[0] <= w[1] + 1e-3), "{order:?}");
+                let pair_cost: Vec<f64> = c
+                    .pairs
+                    .iter()
+                    .filter(|p| group(p) == Group::Candidate)
+                    .map(|p| cost(&p.1).max(cost(&p.2)))
+                    .collect();
+                // an odd last variant pairs with the first; otherwise pairs grow in cost
+                let n = pair_cost.len() - usize::from(en.candidates.len() % 2 == 1);
+                assert!(
+                    pair_cost[..n].windows(2).all(|w| w[0] <= w[1] + 1e-3),
+                    "{pair_cost:?}"
+                );
+            }
+        }
+    }
+
+    /// The prior order against the committed partial dense fixture (box 58943840): the 11
+    /// measured candidates rank alike under the uncalibrated prior and on the box.
+    #[test]
+    fn prior_order_matches_the_measured_dense_candidates() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../bench/results/20261103/partial-planner-dense");
+        let Ok(text) = std::fs::read_to_string(dir.join("candidates.json")) else {
+            eprintln!("skip: no committed dense fixture");
+            return;
+        };
+        let cands: CandidatesFile = serde_json::from_str(&text).unwrap();
+        let layout: ModelLayout =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("layout.json")).unwrap())
+                .unwrap();
+        let files: Vec<serde_json::Value> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("planner-"))
+            .map(|e| serde_json::from_slice(&std::fs::read(e.path()).unwrap()).unwrap())
+            .collect();
+        let m = crate::score::measured_all(&files);
+        let (mut prior, mut meas) = (Vec::new(), Vec::new());
+        for e in &cands.candidates {
+            let v = &e.variant;
+            let Some(&(Some(pp), Some(tg))) = m.get(&v.id) else {
+                continue;
+            };
+            prior.push(prior_request_s(&layout, v, cands.budget.threads).unwrap());
+            meas.push(f64::from(v.prompt) / pp + f64::from(v.r#gen) / tg);
+        }
+        assert!(prior.len() >= 10, "{} measured", prior.len());
+        let rho = crate::score::spearman(&prior, &meas);
+        assert!(rho >= 0.8, "spearman {rho}");
     }
 
     #[test]

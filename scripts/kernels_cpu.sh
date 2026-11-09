@@ -10,7 +10,7 @@ exec 8> /root/tetraeder_kernels_cpu.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p runs/vast
 log=runs/vast/kernels_cpu.log
-out_dir="$PWD/bench/results/$(date +%Y%m%d)/kernels-cpu"
+out_dir="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/kernels-cpu"
 mkdir -p "$out_dir"
 stamp=$(date +%H%M%S)
 threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
