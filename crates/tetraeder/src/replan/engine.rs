@@ -686,12 +686,10 @@ mod tests {
                 release.count.fetch_sub(1, Ordering::SeqCst);
             }
         });
-        let e = Arc::new(
-            Arc::try_unwrap(e)
-                .ok()
-                .expect("one owner")
-                .with_clock(clock),
-        );
+        let Ok(owned) = Arc::try_unwrap(e) else {
+            panic!("the rig has one owner");
+        };
+        let e = Arc::new(owned.with_clock(clock));
         let mut c = Control(Arc::clone(&e));
         let t0 = Instant::now();
         let before = fake.now_s();
