@@ -1,4 +1,4 @@
-//! Decode expert matmul on the CPU: ggml `mul_mat_id` with Q4_K experts at Qwen3-235B-A22B shapes
+//! Decode expert matmul on the CPU: ggml `mul_mat_id` with Q4_K experts (and the Q4_K_M mix, Q6_K down) at Qwen3-235B-A22B shapes
 //! (n_embd 4096, expert ffn 1536, 8 of 128 experts, one token; gate, up and down), timed per call.
 //! Diagnostic for the KTransformers decode gap (ADR 0045, "Diagnosing the KTransformers decode gap"):
 //! build it with `TETRAEDER_GGML_NATIVE=OFF` and `=ON` and compare, to see what AVX-512 kernels
@@ -116,10 +116,21 @@ fn cpu_model() -> Option<String> {
         .map(|m| m.trim().to_string())
 }
 
-/// hardware: cpu.
+/// hardware: cpu. All experts Q4_K.
 #[test]
 #[ignore = "diagnostic benchmark: about 1.5 GB, release only"]
 fn cpu_decode_expert_matmul_q4k() {
+    decode_expert_matmul("q4_K", "q4_K");
+}
+
+/// hardware: cpu. Q4_K_M mix: gate and up Q4_K, down Q6_K (ADR 0053).
+#[test]
+#[ignore = "diagnostic benchmark: about 1.7 GB, release only"]
+fn cpu_decode_expert_matmul_q4km() {
+    decode_expert_matmul("q4_K", "q6_K");
+}
+
+fn decode_expert_matmul(gate_up: &str, down_ty: &str) {
     let threads = env_usize(
         "TETRAEDER_BENCH_THREADS",
         std::thread::available_parallelism().map_or(1, |n| n.get()),
@@ -127,12 +138,13 @@ fn cpu_decode_expert_matmul_q4k() {
     let calls = env_usize("TETRAEDER_BENCH_CALLS", 64);
     let cpu = Backend::cpu(threads as i32).unwrap();
     let mut sched = Sched::new(std::slice::from_ref(&cpu), 64, false).unwrap();
-    let q4k = Type::from_name("q4_K").unwrap();
+    let q4k = Type::from_name(gate_up).unwrap();
+    let qdown = Type::from_name(down_ty).unwrap();
 
     let wctx = Context::new(4, 0).unwrap();
     let gate = wctx.new_tensor(q4k, &[EMBD, FF, EXPERTS]);
     let up = wctx.new_tensor(q4k, &[EMBD, FF, EXPERTS]);
-    let down = wctx.new_tensor(q4k, &[FF, EMBD, EXPERTS]);
+    let down = wctx.new_tensor(qdown, &[FF, EMBD, EXPERTS]);
     wctx.alloc_weights(&cpu).unwrap();
     fill_experts(gate, EMBD, FF, 1);
     fill_experts(up, EMBD, FF, 2);
@@ -155,7 +167,9 @@ fn cpu_decode_expert_matmul_q4k() {
         ("avx512_bf16", has("AVX512_BF16")),
         ("amx_int8", has("AMX_INT8")),
         ("llamafile", has("LLAMAFILE")),
+        ("iqk_mm", has("IQK_MM")),
     ]);
+    let tiled_force = i32::from(std::env::var("GGML_CPU_TILED_MM_FORCE").is_ok_and(|v| v == "1"));
     let op = |s: &Stats| {
         format!(
             "{{\"median_ms\":{:.4},\"min_ms\":{:.4},\"mean_ms\":{:.4},\"gb_s\":{:.2}}}",
@@ -163,9 +177,12 @@ fn cpu_decode_expert_matmul_q4k() {
         )
     };
     println!(
-        "EXPERT_MATMUL {{\"native\":\"{}\",\"threads\":{threads},\"calls\":{calls},\"cpu\":\"{}\",\
-         \"ggml_features\":{feat},\"gate\":{},\"up\":{},\"down\":{},\"layer_ms\":{layer_ms:.4},\
+        "EXPERT_MATMUL {{\"mix\":\"{gate_up}+{down_ty}\",\"tier\":\"{}\",\"iqk_mm\":{},\
+         \"tiled_force\":{tiled_force},\"native\":\"{}\",\"threads\":{threads},\"calls\":{calls},\
+         \"cpu\":\"{}\",\"ggml_features\":{feat},\"gate\":{},\"up\":{},\"down\":{},\"layer_ms\":{layer_ms:.4},\
          \"tokens_per_s_94_layers\":{:.3}}}",
+        info.tier,
+        has("IQK_MM"),
         std::env::var("TETRAEDER_GGML_NATIVE").unwrap_or_else(|_| "unset".into()),
         cpu_model().unwrap_or_default(),
         op(&g),

@@ -1,2 +1,3 @@
 # ADR 0052
 0001-msvc-avx512-vbmi-score.patch
+0002-iqk-avx512-q4k-q6k-decode.patch

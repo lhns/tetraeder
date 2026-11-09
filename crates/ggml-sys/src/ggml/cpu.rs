@@ -48,7 +48,7 @@ pub struct CpuBackendInfo {
 }
 
 /// The features compared between host and backend, in ggml's names.
-pub const TRACKED: [&str; 11] = [
+pub const TRACKED: [&str; 12] = [
     "AVX",
     "AVX2",
     "FMA",
@@ -60,6 +60,8 @@ pub const TRACKED: [&str; 11] = [
     "AVX512_VNNI",
     "AVX512_BF16",
     "AMX_INT8",
+    // Our iqk kernels (patch 0002, ADR 0053): in the AVX-512 VNNI variants.
+    "IQK_MM",
 ];
 
 /// Tracked features this build has a module for. MSVC builds have no BF16 and no AMX variants.
@@ -139,8 +141,27 @@ pub fn host_features() -> Vec<String> {
         add(d!("avx512bf16"), "AVX512_BF16");
         // `amx-int8` is not stable in is_x86_feature_detected! (Rust 1.95).
         add(cpuinfo_has_flag("amx_int8"), "AMX_INT8");
+        add(iqk_host_flags(), "IQK_MM");
     }
     v.into_iter().map(String::from).collect()
+}
+
+/// The five flags the iqk kernels are compiled for (patch 0002).
+#[cfg(target_arch = "x86_64")]
+fn iqk_host_flags() -> bool {
+    use std::arch::is_x86_feature_detected as d;
+    d!("avx512f") && d!("avx512vnni") && d!("avx512vl") && d!("avx512bw") && d!("avx512dq")
+}
+
+/// True when `GGML_CPU_IQK_MM` switches the kernels off (ggml reads it with `atoi`).
+pub fn iqk_off_by_env() -> bool {
+    std::env::var("GGML_CPU_IQK_MM").is_ok_and(|v| atoi_is_zero(&v))
+}
+
+fn atoi_is_zero(v: &str) -> bool {
+    let t = v.trim_start();
+    let t = t.strip_prefix(['+', '-']).unwrap_or(t);
+    t.chars().take_while(char::is_ascii_digit).all(|c| c == '0')
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -223,6 +244,7 @@ type NewPool = unsafe extern "C" fn(*mut sys::ggml_threadpool_params) -> sys::gg
 type FreePool = unsafe extern "C" fn(sys::ggml_threadpool_t);
 type SetPool = unsafe extern "C" fn(sys::ggml_backend_t, sys::ggml_threadpool_t);
 type SetThreads = unsafe extern "C" fn(sys::ggml_backend_t, c_int);
+type SetUseRef = unsafe extern "C" fn(sys::ggml_backend_t, bool);
 
 /// CPU-only entry points, resolved once through the CPU registry.
 pub(crate) struct CpuProcs {
@@ -230,6 +252,7 @@ pub(crate) struct CpuProcs {
     pub set_threadpool: SetPool,
     pub threadpool_new: NewPool,
     pub threadpool_free: FreePool,
+    pub set_use_ref: SetUseRef,
 }
 
 pub(crate) fn procs() -> Result<&'static CpuProcs> {
@@ -256,6 +279,9 @@ pub(crate) fn procs() -> Result<&'static CpuProcs> {
                     )?),
                     threadpool_free: std::mem::transmute::<*mut c_void, FreePool>(get(
                         c"ggml_threadpool_free",
+                    )?),
+                    set_use_ref: std::mem::transmute::<*mut c_void, SetUseRef>(get(
+                        c"ggml_backend_cpu_set_use_ref",
                     )?),
                 })
             }
@@ -305,7 +331,10 @@ pub fn backend_info() -> Result<&'static CpuBackendInfo> {
             forced: loaded.forced.clone(),
             tier: tier(&isa),
             missing: if comparable {
-                missing(&host_isa, &isa, &provided())
+                let mut m = missing(&host_isa, &isa, &provided());
+                // Turned off on purpose.
+                m.retain(|f| !(f == "IQK_MM" && iqk_off_by_env()));
+                m
             } else {
                 Vec::new()
             },
@@ -383,6 +412,29 @@ mod tests {
             assert_eq!(cpu_module_file_name("haswell"), "libggml-cpu-haswell.so");
             assert_eq!(module_file_name("ggml-cuda"), "libggml-cuda.so");
         }
+    }
+
+    #[test]
+    fn iqk_env_parsing_matches_atoi() {
+        assert!(atoi_is_zero("0"));
+        assert!(atoi_is_zero("abc"));
+        assert!(atoi_is_zero(""));
+        assert!(!atoi_is_zero("1"));
+        assert!(!atoi_is_zero(" 2x"));
+    }
+
+    #[test]
+    fn iqk_mm_tracked_and_host_flag() {
+        assert!(TRACKED.contains(&"IQK_MM"));
+        let host = host_features();
+        #[cfg(target_arch = "x86_64")]
+        assert_eq!(host.contains(&"IQK_MM".to_string()), iqk_host_flags());
+        #[cfg(not(target_arch = "x86_64"))]
+        assert!(host.is_empty());
+        // A VNNI host running a backend without the kernels is below the host, unless switched off.
+        let isa = v(&["AVX512", "AVX512_VNNI"]);
+        assert_eq!(missing(&v(&["IQK_MM"]), &isa, &provided()), v(&["IQK_MM"]));
+        assert_eq!(extra(&v(&[]), &v(&["IQK_MM"])), v(&["IQK_MM"]));
     }
 
     #[test]

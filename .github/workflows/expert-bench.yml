@@ -48,12 +48,15 @@ jobs:
           bin() { find "target-$1/release/deps" -maxdepth 1 -type f -name 'expert_matmul-*' ! -name '*.d' | head -1; }
           for round in 1 2 3; do
             for v in off on; do
-              echo "== round $round native $v"
-              TETRAEDER_GGML_NATIVE=$v "$(bin $v)" --ignored --nocapture 2>&1 | grep -E '^(EXPERT_MATMUL|system_info)'
+              # iqk arms (ADR 0053): free numbers on runners with AVX-512 VNNI, no-ops elsewhere.
+              for iqk in 1 0; do
+                echo "== round $round native $v GGML_CPU_IQK_MM=$iqk"
+                GGML_CPU_IQK_MM=$iqk TETRAEDER_GGML_NATIVE=$v "$(bin $v)" --ignored --nocapture --test-threads=1 2>&1 | grep -E '^(EXPERT_MATMUL|system_info)'
+              done
             done
           done | tee expert-bench.txt
           {
-            echo '### Decode expert matmul (Q4_K, 8 of 128 experts, 1 token)'
+            echo '### Decode expert matmul (Q4_K and Q4_K_M mix, 8 of 128 experts, 1 token)'
             echo '```'
             grep -m1 'model name' /proc/cpuinfo
             echo "avx512: $(grep -o -w 'avx512[a-z_0-9]*' /proc/cpuinfo | sort -u | tr '\n' ' ')"

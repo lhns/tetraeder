@@ -14,7 +14,12 @@ if ($LASTEXITCODE -ne 0) {
     Invoke-Git -C $sub fetch --depth 1 origin $ref
     $ref = 'FETCH_HEAD'
 }
+# Patches are byte exact (ADR 0053 copies a CRLF file): no line-ending conversion in the submodule.
+$crlfReset = (& git -C $sub config --get core.autocrlf) -ne 'false'
+if ($crlfReset) { Invoke-Git -C $sub config core.autocrlf false }
 Invoke-Git -C $sub checkout -q --detach $ref
+# Empty index: the reset below rewrites every file without conversion.
+if ($crlfReset) { Invoke-Git -C $sub rm -rqf --cached . }
 Invoke-Git -C $sub reset -q --hard
 Invoke-Git -C $sub clean -qfdx
 
@@ -23,7 +28,7 @@ foreach ($line in Get-Content (Join-Path $root 'patches/series')) {
     $p = ($line -replace '#.*$', '').Trim()
     if (-not $p) { continue }
     Write-Host "apply $p"
-    Invoke-Git -C $sub apply --index (Join-Path $root "patches/$p")
+    Invoke-Git -C $sub apply --whitespace=nowarn --index (Join-Path $root "patches/$p")
     $n++
 }
 Write-Host "ok: $(git -C $sub rev-parse --short HEAD) + $n patches"
