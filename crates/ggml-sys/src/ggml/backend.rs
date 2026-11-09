@@ -47,21 +47,6 @@ fn require_gpu() -> bool {
     flag_set(std::env::var_os("TETRAEDER_REQUIRE_GPU").as_deref())
 }
 
-#[cfg(test)]
-mod flag_tests {
-    use super::flag_set;
-    use std::ffi::OsStr;
-
-    #[test]
-    fn require_gpu_flag_values() {
-        assert!(!flag_set(None));
-        assert!(!flag_set(Some(OsStr::new(""))));
-        assert!(!flag_set(Some(OsStr::new("0"))));
-        assert!(flag_set(Some(OsStr::new("1"))));
-        assert!(flag_set(Some(OsStr::new("true"))));
-    }
-}
-
 impl Backend {
     /// The CPU backend with `n_threads` compute threads in a threadpool of its own that lives as
     /// long as the backend (as libllama with an attached pool and llama-bench run).
@@ -258,5 +243,20 @@ impl Drop for Buffer {
     fn drop(&mut self) {
         // SAFETY: owned; the owning Context frees it before its tensors are dropped.
         unsafe { sys::ggml_backend_buffer_free(self.ptr.as_ptr()) }
+    }
+}
+
+#[cfg(test)]
+mod flag_tests {
+    use super::flag_set;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn require_gpu_flag_values() {
+        assert!(!flag_set(None));
+        assert!(!flag_set(Some(OsStr::new(""))));
+        assert!(!flag_set(Some(OsStr::new("0"))));
+        assert!(flag_set(Some(OsStr::new("1"))));
+        assert!(flag_set(Some(OsStr::new("true"))));
     }
 }
