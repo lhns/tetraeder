@@ -37,6 +37,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
 use tetraeder_model::Qwen3Moe;
+use tetraeder_plan::KvFormat;
 
 pub fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/tiny-qwen3moe-f16.gguf")
@@ -140,6 +141,20 @@ pub fn libllama_reference(prompt: &[i32], n_greedy: usize) -> Reference {
 
 /// Like [`libllama_reference`] for another GGUF (same shape, for example a quantized copy).
 pub fn libllama_reference_at(path: &Path, prompt: &[i32], n_greedy: usize) -> Reference {
+    libllama_reference_kv(path, prompt, n_greedy, KvFormat::default())
+}
+
+/// Like [`libllama_reference_at`] with the K and V cache types of `kv` (ADR 0050 b). libllama's
+/// Hadamard rotation of a quantized cache is off: the builder stores plain values, so only then
+/// do the logits compare.
+pub fn libllama_reference_kv(
+    path: &Path,
+    prompt: &[i32],
+    n_greedy: usize,
+    kv: KvFormat,
+) -> Reference {
+    let ty = |f| tetraeder_model::convert::ggml_type(f).expect("ggml type of the KV format");
+    tetraeder_ggml_sys::llama::disable_attn_rot();
     let model = Arc::new(
         Model::load(
             path,
@@ -160,6 +175,8 @@ pub fn libllama_reference_at(path: &Path, prompt: &[i32], n_greedy: usize) -> Re
             n_threads: 2,
             n_threads_batch: 2,
             flash_attn: FlashAttn::On,
+            type_k: ty(kv.k),
+            type_v: ty(kv.v),
             ..ContextParams::default()
         },
     )

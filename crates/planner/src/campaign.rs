@@ -18,6 +18,7 @@ use crate::lower::{dense_ngl, to_exit_regime_env, to_llama_bench_args, to_varian
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use tetraeder_plan::KvFormat;
 
 /// Request size of the CPU-only anchors, at the candidates' thread counts only: a 32B dense model
 /// ran pp256 at 1.7 tok/s on 2 threads (box 58943840), which cost 25 minutes of a 3 h box.
@@ -266,6 +267,7 @@ pub fn build_builder(
                 },
                 ub,
                 workload,
+                KvFormat::default(),
             );
             f.gpu <= budget.gpu_bytes && f.host <= budget.ram_bytes
         };

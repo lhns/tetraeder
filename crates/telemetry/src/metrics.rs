@@ -89,6 +89,8 @@ pub struct Metrics {
     device_temp: Gauge<f64>,
     mem_used: Gauge<u64>,
     mem_capacity: Gauge<u64>,
+    kv_tokens: Gauge<u64>,
+    kv_capacity: Gauge<u64>,
     expert_requests: Counter<u64>,
     expert_load: Histogram<f64>,
     tier_read: Counter<u64>,
@@ -167,6 +169,14 @@ impl Metrics {
             mem_capacity: meter
                 .u64_gauge("tetraeder.memory.capacity")
                 .with_unit("By")
+                .build(),
+            kv_tokens: meter
+                .u64_gauge("tetraeder.kv.tokens")
+                .with_description("Positions held in the KV cache")
+                .build(),
+            kv_capacity: meter
+                .u64_gauge("tetraeder.kv.capacity")
+                .with_description("Positions the KV cache holds")
                 .build(),
             expert_requests: meter
                 .u64_counter("tetraeder.expert.cache.requests")
@@ -566,6 +576,28 @@ impl Metrics {
 
     pub fn replan_duration(&self, d: Duration) {
         self.replan_duration.record(d.as_secs_f64(), &[]);
+    }
+
+    /// The KV cache (ADR 0050 b): `memory.used` and `.capacity` of kind `kv` with the cache
+    /// `format` (for example `q8_0/q4_0`), and the positions held and held at most.
+    #[allow(clippy::too_many_arguments)]
+    pub fn kv_cache(
+        &self,
+        device: &str,
+        tier: &str,
+        format: &str,
+        used: u64,
+        capacity: u64,
+        tokens: u64,
+        capacity_tokens: u64,
+    ) {
+        let mut attrs = mem_attrs(device, tier, "kv").to_vec();
+        attrs.push(KeyValue::new(attr::FORMAT, format.to_owned()));
+        self.mem_used.record(used, &attrs);
+        self.mem_capacity.record(capacity, &attrs);
+        let dev = [KeyValue::new(attr::DEVICE, device.to_owned())];
+        self.kv_tokens.record(tokens, &dev);
+        self.kv_capacity.record(capacity_tokens, &dev);
     }
 
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {

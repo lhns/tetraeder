@@ -151,6 +151,13 @@ pub enum Issue {
         at: At,
         layer: u32,
     },
+    /// A `kv_format` pair no flash-attention kernel supports, or on a rule that selects no
+    /// attention unit (ADR 0050 b).
+    KvFormat {
+        at: At,
+        rule: usize,
+        detail: String,
+    },
     /// A slot cache in a stage of a dense model or on an unknown device.
     SlotCache {
         at: At,
@@ -444,6 +451,22 @@ impl<'a> Checker<'a> {
             } else {
                 &a.units.kinds
             };
+            if let Some(kv) = a.kv_format {
+                let detail = if !kv.is_allowed() {
+                    Some(format!("{kv} is not one of the supported KV format pairs"))
+                } else if !kinds.contains(&UnitKind::Attn) || a.units.experts.is_some() {
+                    Some("the rule selects no attention unit".to_string())
+                } else {
+                    None
+                };
+                if let Some(detail) = detail {
+                    self.issues.push(Issue::KvFormat {
+                        at,
+                        rule: i,
+                        detail,
+                    });
+                }
+            }
             for role in a.role_formats.keys() {
                 if !kinds.iter().any(|k| k.roles().contains(&role.as_str())) {
                     self.issues.push(Issue::UnknownRole {

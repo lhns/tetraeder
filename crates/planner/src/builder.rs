@@ -11,7 +11,7 @@ use crate::candidate::{
     Workload, build_plan, footprint, thin, thread_values,
 };
 use crate::layout::ModelLayout;
-use tetraeder_plan::Knobs;
+use tetraeder_plan::{Knobs, KvFormat};
 
 /// Ubatch values of builder candidates.
 pub const BUILDER_UBATCHES: [u32; 2] = [256, 2048];
@@ -27,10 +27,9 @@ pub fn slot_row_bytes(layout: &ModelLayout) -> u64 {
         .sum()
 }
 
-/// VRAM bytes of `slots` slots per layer: the slots plus the `n_used` zero parking entries that
-/// masked pairs use in overflow passes (ADR 0034).
+/// VRAM bytes of `slots` slots per layer. ADR 0035 removed ADR 0034's parking entries.
 pub fn vram_slot_bytes(layout: &ModelLayout, slots: u32) -> u64 {
-    u64::from(slots + layout.n_expert_used) * slot_row_bytes(layout)
+    u64::from(slots) * slot_row_bytes(layout)
 }
 
 /// Host bytes of `slots` RAM-tier slots per layer.
@@ -71,8 +70,9 @@ fn fits_at(
     pl: Placement,
     ubatch: u32,
     w: &Workload,
+    kv: KvFormat,
 ) -> Result<Footprint, String> {
-    let f = footprint(layout, pl, ubatch, w);
+    let f = footprint(layout, pl, ubatch, w, kv);
     if f.gpu > budget.gpu_bytes {
         return Err(format!(
             "gpu estimate {} B > budget {} B",
@@ -96,6 +96,18 @@ pub fn feasible_vram_tiers(
     w: &Workload,
     dropped: &mut Vec<(String, String)>,
 ) -> Vec<u32> {
+    feasible_vram_tiers_kv(budget, layout, w, KvFormat::default(), dropped)
+}
+
+/// [`feasible_vram_tiers`] with the KV cache in `kv`: a smaller format leaves room for more
+/// slots (ADR 0050 b).
+pub fn feasible_vram_tiers_kv(
+    budget: &Budget,
+    layout: &ModelLayout,
+    w: &Workload,
+    kv: KvFormat,
+    dropped: &mut Vec<(String, String)>,
+) -> Vec<u32> {
     let mut out = Vec::new();
     for v in vram_slot_tiers(layout) {
         let r = ram_slot_options(layout, v)[0];
@@ -103,7 +115,7 @@ pub fn feasible_vram_tiers(
             vram_slots: v,
             ram_slots: r,
         };
-        match fits_at(budget, layout, pl, BUILDER_UBATCHES[0], w) {
+        match fits_at(budget, layout, pl, BUILDER_UBATCHES[0], w, kv) {
             Ok(_) => out.push(v),
             Err(e) => dropped.push((pl.describe(), e)),
         }
@@ -129,10 +141,17 @@ pub fn build_builder_candidate(
         op_offload: Some(op_offload),
         ..Default::default()
     };
-    let f = footprint(layout, placement, ubatch, workload);
+    let f = footprint(layout, placement, ubatch, workload, KvFormat::default());
     Candidate {
         id: id.to_string(),
-        plan: build_plan(layout, placement, knobs, ubatch, workload),
+        plan: build_plan(
+            layout,
+            placement,
+            knobs,
+            ubatch,
+            workload,
+            KvFormat::default(),
+        ),
         engine: EngineKind::Builder,
         placement,
         prompt: workload.prompt,
@@ -199,7 +218,7 @@ pub fn enumerate_builder(budget: &Budget, layout: &ModelLayout, w: &Workload) ->
                             p,
                             k: [t, u, o, ri],
                         };
-                        match fits_at(budget, layout, pl, ub, w) {
+                        match fits_at(budget, layout, pl, ub, w, KvFormat::default()) {
                             Ok(_) => rows.push(row),
                             Err(e) => dropped.push((describe(desc_of(&row, &rams)), e)),
                         }
@@ -370,7 +389,7 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
                 .map(|s| (s.device.as_str(), s.slots))
                 .collect();
             assert_eq!(slots, BTreeMap::from([(GPU, vram_slots), (CPU, ram_slots)]));
-            let f = footprint(&l, c.placement, c.ubatch(), &WORK);
+            let f = footprint(&l, c.placement, c.ubatch(), &WORK, KvFormat::default());
             assert!(
                 f.gpu <= BUDGET.gpu_bytes && f.host <= BUDGET.ram_bytes,
                 "{}",
@@ -421,8 +440,51 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
         let en = enumerate_builder(&b, &l, &WORK);
         assert!(!en.candidates.is_empty());
         for c in &en.candidates {
-            let f = footprint(&l, c.placement, c.ubatch(), &WORK);
+            let f = footprint(&l, c.placement, c.ubatch(), &WORK, KvFormat::default());
             assert!(f.host <= b.ram_bytes, "{}", c.id);
         }
+    }
+
+    // hardware: none
+    #[test]
+    fn vram_slot_bytes_has_no_parking_rows() {
+        // ADR 0035 removed ADR 0034's parking entries: `slots` slots take `slots` rows.
+        let l = fixtures::moe();
+        assert_eq!(vram_slot_bytes(&l, 8), 8 * slot_row_bytes(&l));
+        assert_eq!(vram_slot_bytes(&l, 8), ram_slot_bytes(&l, 8));
+    }
+
+    // hardware: none
+    #[test]
+    fn q8_kv_shrinks_the_cache_and_fits_at_least_as_many_slots() {
+        let l = fixtures::moe();
+        let pl = Placement::Builder {
+            vram_slots: 16,
+            ram_slots: 30,
+        };
+        let f16 = footprint(&l, pl, 256, &WORK, KvFormat::F16);
+        let q8 = footprint(&l, pl, 256, &WORK, KvFormat::Q8_0);
+        // 34 / 64 of the F16 bytes
+        assert_eq!(q8.kv_gpu * 32, f16.kv_gpu * 17);
+        assert_eq!(q8.weights_gpu, f16.weights_gpu);
+
+        // A card that holds the 32-slot tier only with the smaller cache.
+        let at32 = Placement::Builder {
+            vram_slots: 32,
+            ram_slots: 30,
+        };
+        let gap = footprint(&l, at32, BUILDER_UBATCHES[0], &WORK, KvFormat::F16).gpu
+            - footprint(&l, at32, BUILDER_UBATCHES[0], &WORK, KvFormat::Q8_0).gpu;
+        assert!(gap > 0);
+        let tight = Budget {
+            gpu_bytes: footprint(&l, at32, BUILDER_UBATCHES[0], &WORK, KvFormat::Q8_0).gpu,
+            ..BUDGET
+        };
+        let tiers = |kv| feasible_vram_tiers_kv(&tight, &l, &WORK, kv, &mut Vec::new());
+        let (a, b) = (tiers(KvFormat::F16), tiers(KvFormat::Q8_0));
+        assert!(
+            b.len() >= a.len() && b.contains(&32) && !a.contains(&32),
+            "{a:?} {b:?}"
+        );
     }
 }
