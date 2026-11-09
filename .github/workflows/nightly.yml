@@ -1,0 +1,59 @@
+name: nightly
+
+# Fault testbed (ADR 0041 addendum, docs/testing.md): the real engine on the synthetic MoE model with three real faults
+# (cgroup io.max, a CPU co-tenant, MemoryMax), scored by the bottleneck detector. Runner noise is expected, so the
+# detector bars are reported, not enforced; the job fails only when the harness does. Never gates a PR.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fault-testbed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build time
+      - uses: Swatinem/rust-cache@v2
+      - name: Runner
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          echo "threads: $(nproc)"
+          free -m
+          stat -fc 'cgroup fs: %T' /sys/fs/cgroup
+          cat /sys/fs/cgroup/cgroup.controllers
+          lsblk -o NAME,MAJ:MIN,TYPE,SIZE,MOUNTPOINT
+      - name: Fault testbed
+        env:
+          OUT: ${{ github.workspace }}/testbed-results
+        run: bash scripts/fault_testbed.sh
+      - name: Score
+        if: always()
+        run: |
+          cargo build --release -p tetraeder
+          out=testbed-results
+          # An exit code with a score.json means the bars were missed (reported); no score.json means a harness error.
+          target/release/tetraeder detector-score "$out" || true
+          [ -s "$out/score.json" ] || { echo "no score.json: harness error"; exit 1; }
+          python3 scripts/detector_summary.py "$out/score.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: detector-testbed
+          path: testbed-results

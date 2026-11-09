@@ -178,14 +178,41 @@ fn pcie_below_max_fires_only_on_a_material_slow_link() {
 }
 
 #[test]
-fn swapping_needs_rate_and_host_time() {
+fn swapping_needs_paging_and_a_stall() {
     let mut o = healthy(1);
+    assert_eq!(o.env.memory_stall_share, None, "odd seeds have no PSI");
     o.env.swap_in_bytes_per_s = 3e8;
-    assert!(classes(&o).is_empty(), "swap rate without host time");
+    assert!(
+        classes(&o).is_empty(),
+        "swap-in while the CPU runs at its rate"
+    );
+    // PSI alone can show the stall.
+    o.env.memory_stall_share = Some(0.4);
+    let r = detect(&o);
+    assert_eq!(classes(&o), vec![FaultClass::Swapping]);
+    assert!((r.faults[0].cost_share - 0.4).abs() < 1e-9);
+    assert_eq!(r.faults[0].resource, "ram");
+    // The stall lands in compute on the CPU, not in host time (the CPU testbed run); PSI may
+    // count only a little of it (5% at a 5x slowdown on the testbed).
+    o.env.memory_stall_share = Some(0.05);
     for w in &mut o.windows {
-        *w.busy_s.get_mut("host").unwrap() *= 8.0;
+        *w.busy_s.get_mut("cpu").unwrap() *= 3.0;
         w.wall_s = w.busy_s.values().sum();
     }
+    let r = detect(&o);
+    assert_eq!(classes(&o), vec![FaultClass::Swapping], "{r:?}");
+    assert!(r.faults[0].cost_share > 0.3, "{r:?}");
+    o.env.memory_stall_share = None;
+    assert_eq!(classes(&o), vec![FaultClass::Swapping]);
+    // A stray page is not paging.
+    o.env.swap_in_bytes_per_s = 1e6;
+    assert!(!classes(&o).contains(&FaultClass::Swapping));
+    // Refaults of a mapped file without swap: major faults count only with a PSI memory stall.
+    o.env.major_faults_per_s = 1e5;
+    assert!(!classes(&o).contains(&FaultClass::Swapping));
+    o.env.memory_stall_share = Some(0.0);
+    assert!(!classes(&o).contains(&FaultClass::Swapping));
+    o.env.memory_stall_share = Some(0.05);
     assert_eq!(classes(&o), vec![FaultClass::Swapping]);
 }
 

@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::observation::{Expected, Observation};
+use crate::observation::{EnvSignals, Expected, Observation};
 
 /// A resource must hold this share of the step for an environment fault on it to matter.
 pub const MATERIAL_SHARE: f64 = 0.10;
@@ -25,13 +25,20 @@ pub const VRAM_OTHER_FRAC: f64 = 0.05;
 pub const SLOT_DEFICIT: f64 = 0.10;
 /// An expert hit rate below this is low.
 pub const HIT_RATE_LOW: f64 = 0.75;
-/// Swap-in rate that is paging, not a stray page: 20 MB/s.
-pub const SWAP_IN_MIN_BPS: f64 = 20e6;
+/// Swap-in (or major-fault) rate that is paging, not a stray page: 5 MB/s. Low because the rate
+/// falls with the pace it slows (and under an io.max that also caps swap-in); the rule also needs
+/// a stall.
+pub const SWAP_IN_MIN_BPS: f64 = 5e6;
+/// PSI memory stall share that marks major faults as refaults.
+pub const PSI_MIN_SHARE: f64 = 0.01;
+/// Bytes per major fault (one base page).
+pub const PAGE_BYTES: f64 = 4096.0;
 /// Without a calibrated disk rate, other readers above this are contention: 100 MB/s.
 pub const DISK_OTHER_MIN_BPS: f64 = 100e6;
 /// Cost assumed for a throttled GPU when no calibrated rate says how slow it is.
 pub const THROTTLE_DEFAULT_LOSS: f64 = 0.3;
-/// Cost assumed for swapping when there is no calibrated host rate.
+/// Share of a stalled resource's time assumed lost to swapping when neither PSI nor a
+/// calibrated rate says how much.
 pub const SWAP_DEFAULT_LOSS: f64 = 0.5;
 /// Batch sizes up to this run the stages one after another.
 pub const SERIALIZED_MAX_BATCH: u32 = 1;
@@ -377,21 +384,67 @@ fn env_checks(
         }
     }
 
-    // Swapping: paging shows up as host time.
-    if env.swap_in_bytes_per_s >= SWAP_IN_MIN_BPS && agg.occ("host") >= MATERIAL_SHARE {
-        let cost = agg
-            .excess_share(exp, "host")
-            .unwrap_or(agg.occ("host") * SWAP_DEFAULT_LOSS);
-        let mut evidence = vec![format!("swap-in {:.0} MB/s", env.swap_in_bytes_per_s / 1e6)];
-        evidence.extend(slowdown_evidence(agg, exp, "host"));
-        claimed.insert("host".into());
-        faults.push(Fault {
-            class: FaultClass::Swapping,
-            resource: "host".into(),
-            cost_share: cost,
-            evidence,
-        });
+    swapping(env, agg, exp, faults, claimed);
+}
+
+/// Swapping: pages come back from swap (or refault from the file) while the engine stalls on
+/// them. The stall has no resource of its own: it lands in whatever touches the pages, compute
+/// on the CPU and host work (a memory-capped CPU run: 0.5 s/token in compute, 0.002 in host).
+/// PSI says how long tasks stalled on memory; without it, the CPU or host must be material and
+/// slower than calibrated (or uncalibrated).
+fn swapping(
+    env: &EnvSignals,
+    agg: &Agg,
+    exp: Option<&Expected>,
+    faults: &mut Vec<Fault>,
+    claimed: &mut BTreeSet<String>,
+) {
+    let faulted_bps = env.major_faults_per_s * PAGE_BYTES;
+    let psi = env.memory_stall_share.unwrap_or(0.0);
+    // Major faults alone also count first reads of a mapped file; a memory stall in PSI says
+    // they are refaults.
+    let paging = env.swap_in_bytes_per_s >= SWAP_IN_MIN_BPS
+        || (psi >= PSI_MIN_SHARE && faulted_bps >= SWAP_IN_MIN_BPS);
+    if !paging {
+        return;
     }
+    let mut evidence = vec![format!(
+        "swap-in {:.0} MB/s, major faults {:.0} MB/s",
+        env.swap_in_bytes_per_s / 1e6,
+        faulted_bps / 1e6
+    )];
+    let stalled: Vec<&str> = ["cpu", "host"]
+        .into_iter()
+        .filter(|r| agg.occ(r) >= MATERIAL_SHARE && slow_or_unknown(agg, exp, r))
+        .collect();
+    if psi < MATERIAL_SHARE && stalled.is_empty() {
+        return;
+    }
+    if env.memory_stall_share.is_some() {
+        evidence.push(format!(
+            "tasks stalled on memory {:.0}% of the time",
+            psi * 100.0
+        ));
+    }
+    // PSI counts only some paging stalls (5% on the testbed at a 5x slowdown), so it is a floor.
+    let estimate: f64 = stalled
+        .iter()
+        .map(|r| {
+            agg.excess_share(exp, r)
+                .unwrap_or(agg.occ(r) * SWAP_DEFAULT_LOSS)
+        })
+        .sum();
+    let cost = psi.max(estimate);
+    for r in ["cpu", "host"] {
+        evidence.extend(slowdown_evidence(agg, exp, r));
+        claimed.insert(r.into());
+    }
+    faults.push(Fault {
+        class: FaultClass::Swapping,
+        resource: "ram".into(),
+        cost_share: cost.min(1.0),
+        evidence,
+    });
 }
 
 /// Resources slower than calibrated beyond the band that no environment fault explains.

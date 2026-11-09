@@ -66,6 +66,8 @@ fn fault_class(name: &str) -> Result<FaultClass, String> {
         "cpu" => Ok(FaultClass::CpuCotenant),
         "disk" => Ok(FaultClass::DiskSlow),
         "vram" => Ok(FaultClass::VramPressure),
+        // RAM pressure: MemoryMax below the working set (scripts/fault_testbed.sh)
+        "mem" => Ok(FaultClass::Swapping),
         "throttle" => Ok(FaultClass::GpuThrottle),
         other => Err(format!("unknown fault name {other:?} in manifest")),
     }
