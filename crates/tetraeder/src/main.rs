@@ -21,6 +21,8 @@ struct Cli {
     command: Option<Command>,
 }
 
+// `serve` has many flags; the variants are built once, so the size difference does not matter.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Command {
     /// Terminal view of host and GPU metrics and step statistics.

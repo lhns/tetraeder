@@ -443,7 +443,8 @@ mod tests {
 
     fn request(e: &SwitchableEngine, max: u32) -> Result<mpsc::Receiver<GenEvent>, EngineError> {
         let id = e.models()[0].id.clone();
-        let prompt = e.tokenize(&id, "Hello there").unwrap();
+        // through the scheduler: the gate refuses tokenizing while it is closed
+        let prompt = e.scheduler().unwrap().tokenize(&id, "Hello there").unwrap();
         e.generate(GenerateRequest {
             model: id,
             prompt,
