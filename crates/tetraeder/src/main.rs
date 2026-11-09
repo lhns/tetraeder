@@ -7,6 +7,7 @@ mod doctor;
 mod engine_args;
 mod plan;
 mod quant;
+mod replan;
 mod run;
 mod serve;
 mod top;

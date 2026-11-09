@@ -41,7 +41,7 @@ pub fn features(
     let attn_layer = 4.0 * f64::from(layout.n_head) * f64::from(layout.head_dim);
     // Per layer: (dense on GPU, experts on GPU).
     let (on_gpu, out_gpu): (Vec<(bool, bool)>, bool) = match placement {
-        None => (vec![(false, false); l], false),
+        None | Some(Placement::Cpu) => (vec![(false, false); l], false),
         Some(Placement::Dense { gpu_layers }) => {
             let g = (gpu_layers as usize).min(l);
             ((0..l).map(|i| (i >= l - g, i >= l - g)).collect(), g > 0)
@@ -103,7 +103,7 @@ pub fn features(
         activation_bytes_per_token: 4.0 * f64::from(layout.n_embd),
         threads,
         ubatch: flag("-ub").unwrap_or(512),
-        op_offload: placement.is_some() && flag("-nopo") != Some(1),
+        op_offload: !matches!(placement, None | Some(Placement::Cpu)) && flag("-nopo") != Some(1),
         graphs: env.get("GGML_CUDA_DISABLE_GRAPHS").is_none_or(|v| v != "1"),
     }
 }

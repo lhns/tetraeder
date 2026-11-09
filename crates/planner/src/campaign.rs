@@ -201,6 +201,7 @@ pub fn build(
                 ]
             }
             Placement::Builder { .. } => vec![],
+            Placement::Cpu => vec!["-ngl".into(), "0".into()],
             Placement::Moe { gpu_expert_layers } => {
                 let mut a = vec!["-ngl".to_string(), "99".into()];
                 let n = layout.n_layer.saturating_sub(gpu_expert_layers);
