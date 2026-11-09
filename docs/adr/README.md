@@ -55,3 +55,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0051](0051-no-prompt-checkpoints-tool-call-outcomes.md) | No prompt checkpoints; tool-call outcomes counted, empty calls dropped (Proposed) |
 | [0053](0053-iqk-avx512-vnni-q4k-decode-kernel.md) | iqk AVX-512 VNNI kernels for Q4_K/Q6_K expert decode, copied as patch 0002 (Proposed) |
 | [0054](0054-expert-reads-io-service-and-arrival-order-compute.md) | Decode expert reads: persistent I/O service, experts computed in arrival order, RAM tier sized to the container (Proposed) |
+| [0055](0055-replanning-wired-into-serve.md) | Replanning wired into serve: plan from file or the executable enumerators, lowering from the plan, decode-step residual from the step ring (Proposed) |
