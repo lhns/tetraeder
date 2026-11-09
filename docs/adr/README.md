@@ -53,3 +53,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0049](0049-multi-entry-prefix-cache-and-lenient-anthropic-input.md) | Multi-entry prefix cache in host RAM; lenient Anthropic input |
 | [0050](0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md) | Decode levers: miss reads under CPU expert work, low-bit KV per attention unit, RAM tier by routing frequency (Proposed) |
 | [0051](0051-no-prompt-checkpoints-tool-call-outcomes.md) | No prompt checkpoints; tool-call outcomes counted, empty calls dropped (Proposed) |
+| [0053](0053-iqk-avx512-vnni-q4k-decode-kernel.md) | iqk AVX-512 VNNI kernels for Q4_K/Q6_K expert decode, copied as patch 0002 (Proposed) |
