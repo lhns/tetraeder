@@ -46,7 +46,7 @@ fn trace(decode: u32, seed: u64, warm: bool) -> Trace {
                 (0..n)
                     .map(|_| {
                         let r = rng.next() >> 8;
-                        (if r % 4 == 0 { r % 16 } else { r % 6 }) as u16
+                        (if r.is_multiple_of(4) { r % 16 } else { r % 6 }) as u16
                     })
                     .collect()
             })
@@ -55,7 +55,7 @@ fn trace(decode: u32, seed: u64, warm: bool) -> Trace {
             right
                 .iter()
                 .map(|&e| {
-                    if rng.next() % 4 == 0 {
+                    if rng.next().is_multiple_of(4) {
                         (rng.next() % u64::from(N_EXPERT)) as u16
                     } else {
                         e
