@@ -161,6 +161,8 @@ def sample(a):
                    "own_cpu_s": proc_cpu_s(pids), "own_read_bytes": proc_read_bytes(pids),
                    "disk_read_bytes": disk_read_bytes(a.disk), "pswpin": pswpin(),
                    "own_majflt": proc_majflt(pids), "mem_some_usec": psi, "psi_src": psi_src}
+            if not os.path.exists(f"/proc/{a.pid}"):
+                break  # the tree is gone: its counters read 0, which would end the last window negative
             if n % 4 == 0:  # nvidia-smi takes about 50 ms; every 2 s is enough
                 rec["gpu"] = gpu()
             out.write(json.dumps(rec) + "\n")
@@ -185,7 +187,12 @@ def window_samples(samples, t0, t1):
 
 def observe(a):
     h = json.load(open(a.harness))
-    samples = [json.loads(line) for line in open(a.samples) if line.strip()]
+    samples = []
+    for line in open(a.samples):
+        s = json.loads(line) if line.strip() else None
+        # own counters only grow; a smaller value is a sample taken while the tree exited
+        if s and (not samples or s["own_cpu_s"] >= samples[-1]["own_cpu_s"]):
+            samples.append(s)
     run = h["runs"][-1]
     windows = []
     env_other, env_swap, env_disk_other, throttles, pcie = [], [], [], set(), None

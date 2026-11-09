@@ -25,8 +25,12 @@ pub const VRAM_OTHER_FRAC: f64 = 0.05;
 pub const SLOT_DEFICIT: f64 = 0.10;
 /// An expert hit rate below this is low.
 pub const HIT_RATE_LOW: f64 = 0.75;
-/// Swap-in (or major-fault) rate that is paging, not a stray page: 20 MB/s.
-pub const SWAP_IN_MIN_BPS: f64 = 20e6;
+/// Swap-in (or major-fault) rate that is paging, not a stray page: 5 MB/s. Low because the rate
+/// falls with the pace it slows (and under an io.max that also caps swap-in); the rule also needs
+/// a stall.
+pub const SWAP_IN_MIN_BPS: f64 = 5e6;
+/// PSI memory stall share that marks major faults as refaults.
+pub const PSI_MIN_SHARE: f64 = 0.01;
 /// Bytes per major fault (one base page).
 pub const PAGE_BYTES: f64 = 4096.0;
 /// Without a calibrated disk rate, other readers above this are contention: 100 MB/s.
@@ -396,9 +400,11 @@ fn swapping(
     claimed: &mut BTreeSet<String>,
 ) {
     let faulted_bps = env.major_faults_per_s * PAGE_BYTES;
-    // Major faults alone also count first reads of a mapped file; only PSI tells them apart.
+    let psi = env.memory_stall_share.unwrap_or(0.0);
+    // Major faults alone also count first reads of a mapped file; a memory stall in PSI says
+    // they are refaults.
     let paging = env.swap_in_bytes_per_s >= SWAP_IN_MIN_BPS
-        || (env.memory_stall_share.is_some() && faulted_bps >= SWAP_IN_MIN_BPS);
+        || (psi >= PSI_MIN_SHARE && faulted_bps >= SWAP_IN_MIN_BPS);
     if !paging {
         return;
     }
@@ -411,24 +417,24 @@ fn swapping(
         .into_iter()
         .filter(|r| agg.occ(r) >= MATERIAL_SHARE && slow_or_unknown(agg, exp, r))
         .collect();
-    let cost = match env.memory_stall_share {
-        Some(s) if s >= MATERIAL_SHARE => {
-            evidence.push(format!(
-                "tasks stalled on memory {:.0}% of the time",
-                s * 100.0
-            ));
-            s
-        }
-        Some(_) => return,
-        None if stalled.is_empty() => return,
-        None => stalled
-            .iter()
-            .map(|r| {
-                agg.excess_share(exp, r)
-                    .unwrap_or(agg.occ(r) * SWAP_DEFAULT_LOSS)
-            })
-            .sum(),
-    };
+    if psi < MATERIAL_SHARE && stalled.is_empty() {
+        return;
+    }
+    if env.memory_stall_share.is_some() {
+        evidence.push(format!(
+            "tasks stalled on memory {:.0}% of the time",
+            psi * 100.0
+        ));
+    }
+    // PSI counts only some paging stalls (5% on the testbed at a 5x slowdown), so it is a floor.
+    let estimate: f64 = stalled
+        .iter()
+        .map(|r| {
+            agg.excess_share(exp, r)
+                .unwrap_or(agg.occ(r) * SWAP_DEFAULT_LOSS)
+        })
+        .sum();
+    let cost = psi.max(estimate);
     for r in ["cpu", "host"] {
         evidence.extend(slowdown_evidence(agg, exp, r));
         claimed.insert(r.into());

@@ -29,6 +29,8 @@ const HIT_RATE: f64 = 0.9;
 /// Swapping slows the CPU and host work by this factor: the stall lands in whatever touches the
 /// swapped pages (the CPU testbed run: compute 60x and CPU busy time 2.5x slower, host 2x).
 const SWAP_SLOWDOWN: f64 = 3.0;
+/// Share of the paging stall that memory PSI reports.
+const PSI_SEEN: f64 = 0.1;
 
 #[derive(Debug, Clone)]
 pub struct SimSpec {
@@ -449,7 +451,8 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
 
     if psi {
         let mean = stall_shares.iter().sum::<f64>() / stall_shares.len().max(1) as f64;
-        env.memory_stall_share = Some(mean + 0.01 * mem_rng.unit());
+        // PSI counts only part of a paging stall (4% to 5% at a 5x slowdown on the testbed).
+        env.memory_stall_share = Some(PSI_SEEN * mean + 0.005 * mem_rng.unit());
     }
 
     let expected = spec.expected.then(|| Expected {
