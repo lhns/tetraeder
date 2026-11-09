@@ -92,6 +92,35 @@ pub struct Priors {
     pub net: Vec<NetClass>,
 }
 
+/// Fills the compute and bandwidth a discovered GPU lacks from the class `priors` has for its
+/// name (`Source::Prior`). CPUs are not filled. Returns a note per GPU it could not fill.
+pub fn fill_from_priors(hw: &mut HardwareGraph, priors: &Priors) -> Vec<String> {
+    let mut notes = Vec::new();
+    for d in hw.devices.iter_mut().filter(|d| d.kind == DeviceKind::Gpu) {
+        if d.compute.is_some() && d.bandwidth_bytes_per_s.is_some() {
+            continue;
+        }
+        let lower = d.name.to_lowercase();
+        let class = priors
+            .gpu
+            .iter()
+            .find(|c| c.match_name.iter().any(|m| lower.contains(m)))
+            .or_else(|| priors.gpu_class(&d.name));
+        let Some(c) = class else {
+            notes.push(format!("{}: no prior for GPU `{}`", d.id, d.name));
+            continue;
+        };
+        d.compute.get_or_insert(ComputeSpec {
+            flops_per_s: c.flops_per_s,
+            c0_graph_s: c.c0_graph_s,
+            c0_eager_s: c.c0_eager_s,
+        });
+        d.bandwidth_bytes_per_s
+            .get_or_insert(Measurement::prior(c.bandwidth_bytes_per_s));
+    }
+    notes
+}
+
 fn norm(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_ascii_alphanumeric())

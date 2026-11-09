@@ -25,6 +25,15 @@
 //!   prediction accuracy per layer and mean).
 //! - `TETRAEDER_EXIT_PREFETCH_DEPTH` (1): layers ahead that the prefetch predicts and reads, 1 or
 //!   2; depth 2 adds `accuracy2` and `accuracy2_mean` to the prefetch JSON.
+//! - `TETRAEDER_EXIT_IO_SERVICE`: `1` reads the prefetch (and, with overlap, the misses) through
+//!   the persistent I/O service instead of the single reader thread (ADR 0054), `0` the reader;
+//!   unset follows `LoadOptions`. `TETRAEDER_EXIT_IO_WORKERS` (default 16) sets its workers.
+//! - `TETRAEDER_EXIT_OVERLAP`: `1` computes the CPU experts of a decode layer in arrival order
+//!   (needs the service), `0` off; unset follows `LoadOptions`. The JSON gets `decode_overlap`:
+//!   layer steps with experts in flight and those experts per token, `read_wait` ms per token,
+//!   the hidden share (`1 - wait / span`) and the main thread's wait in `urgent_wait_ms`.
+//! - `TETRAEDER_EXIT_IO_DELAY_MS`: test only, the service's sleep before each chunk, to see
+//!   the effect of overlap on a fast local disk.
 //! - `TETRAEDER_EXIT_KV_ROT` (0/1): Hadamard rotation of Q, K and V (ADR 0050 addendum). Unset:
 //!   on for a quantized KV format, off for f16, as libllama. The reference engine follows it;
 //!   `TETRAEDER_EXIT_REF_ATTN_ROT` (0/1) overrides the reference alone. The JSON options record
@@ -363,6 +372,10 @@ fn add_profile(a: &mut StepProfile, b: &StepProfile) {
     a.readback += b.readback;
     a.streamer += b.streamer;
     a.total += b.total;
+    a.cpu_ready += b.cpu_ready;
+    a.read_wait += b.read_wait;
+    a.cpu_landed += b.cpu_landed;
+    a.copy += b.copy;
 }
 
 fn unix_s() -> f64 {
@@ -382,6 +395,10 @@ fn profile_json(p: &StepProfile, per: f64) -> Value {
         "readback_ms": ms(p.readback),
         "streamer_ms": ms(p.streamer),
         "total_ms": ms(p.total),
+        "cpu_ready_ms": ms(p.cpu_ready),
+        "read_wait_ms": ms(p.read_wait),
+        "cpu_landed_ms": ms(p.cpu_landed),
+        "copy_ms": ms(p.copy),
     })
 }
 
@@ -398,6 +415,21 @@ fn io_json(a: &IoCounters, b: &IoCounters, per: f64) -> Value {
         "read_ms_per_token": secs * 1e3 / per,
         "read_gb_s": if secs > 0.0 { bytes as f64 / secs / 1e9 } else { 0.0 },
         "uploads": b.uploads - a.uploads,
+    })
+}
+
+/// Overlapped decode between two counter snapshots, per `per` (tokens): layer steps that had
+/// experts in flight, how many, the main thread's wait and the hidden share of the read span.
+fn overlap_json(a: &IoCounters, b: &IoCounters, per: f64) -> Value {
+    let span = (b.overlap_span - a.overlap_span).as_secs_f64();
+    let wait = (b.overlap_wait - a.overlap_wait).as_secs_f64();
+    json!({
+        "pending_steps_per_token": (b.pending_steps - a.pending_steps) as f64 / per,
+        "pending_experts_per_token": (b.pending_experts - a.pending_experts) as f64 / per,
+        "read_wait_ms_per_token": wait * 1e3 / per,
+        "read_span_ms_per_token": span * 1e3 / per,
+        "hidden_share": if span > 0.0 { Some(1.0 - wait / span) } else { None },
+        "urgent_wait_ms_per_token": (b.urgent_wait_time - a.urgent_wait_time).as_secs_f64() * 1e3 / per,
     })
 }
 
@@ -477,6 +509,16 @@ fn exit_regime() {
             .parse()
             .expect("TETRAEDER_EXIT_KV is f16, q8_0, q8_0/q4_0 or q4_0");
     }
+    if let Ok(v) = std::env::var("TETRAEDER_EXIT_IO_SERVICE") {
+        opts.io.service = v == "1";
+    }
+    if let Some(w) = env_u64("TETRAEDER_EXIT_IO_WORKERS") {
+        opts.io.workers = w as usize;
+    }
+    if let Ok(v) = std::env::var("TETRAEDER_EXIT_OVERLAP") {
+        opts.overlap = v == "1";
+    }
+    opts.io_delay = env_u64("TETRAEDER_EXIT_IO_DELAY_MS").map(Duration::from_millis);
     opts.kv_rotation = env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
     opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
@@ -626,6 +668,7 @@ fn exit_regime() {
             "decode_profile_per_token": profile_json(&tg, n_decode.max(1) as f64),
             "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64),
             "decode_prefetch": prefetch_json(&s1, &s2, n_decode.max(1) as f64),
+            "decode_overlap": overlap_json(&s1.io, &s2.io, n_decode.max(1) as f64),
             "decode_layers": layers_json(&s1, &s2),
             "first_top": first_top,
             "decode_windows": windows,
@@ -659,6 +702,11 @@ fn exit_regime() {
             "refresh_hot": refresh_hot,
             "prefetch": opts.prefetch,
             "prefetch_depth": opts.prefetch_depth,
+            "io_service": opts.io.service,
+            "io_workers": opts.io.workers,
+            "io_chunk_bytes": opts.io.chunk_bytes,
+            "overlap": opts.overlap,
+            "io_delay_ms": opts.io_delay.map(|d| d.as_millis() as u64),
             "kv": opts.kv.to_string(),
             "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
             "cpu_poll": opts.cpu_poll,

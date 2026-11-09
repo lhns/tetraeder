@@ -97,6 +97,15 @@ impl Backend {
         }
     }
 
+    /// Makes a CPU backend use ggml's reference kernels (plain `vec_dot`, no tiled or iqk paths)
+    /// for later graph computes. For in-process A/B tests. No effect on a GPU backend.
+    pub fn set_cpu_use_ref(&self, use_ref: bool) {
+        if let (true, Ok(procs)) = (self.inner.is_cpu, cpu::procs()) {
+            // SAFETY: live CPU backend; only a flag of later graph computes changes.
+            unsafe { (procs.set_use_ref)(self.inner.ptr.as_ptr(), use_ref) };
+        }
+    }
+
     /// The `index`-th GPU device (discrete GPUs first, then integrated), if the build has one.
     pub fn gpu(index: usize) -> Result<Backend> {
         crate::llama::init_checked().map_err(GgmlError::NoBackend)?;

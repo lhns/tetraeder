@@ -10,3 +10,4 @@ Dockerfile text eol=lf
 crates/tetraeder/GIT_SHA export-subst
 *.gguf binary
 bench/prompts/*.txt -text
+patches/0002-iqk-avx512-q4k-q6k-decode.patch -text

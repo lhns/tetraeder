@@ -173,3 +173,67 @@ jobs:
       - run: cargo build -p tetraeder
       - name: CPU backend
         run: target/debug/tetraeder info --json
+
+  # AVX-512 VNNI kernels (ADR 0053, patch 0002) on a runner without the hardware: Intel SDE emulates
+  # Ice Lake server. The iqk tests must run, not skip.
+  avx512-sde:
+    name: avx512 under Intel SDE (ubuntu-latest)
+    runs-on: ubuntu-latest
+    env:
+      SDE_URL: https://downloadmirror.intel.com/859732/sde-external-9.58.0-2025-06-16-lin.tar.xz
+      SDE_SHA256: f849acecad4c9b108259c643b2688fd65c35723cd23368abe5dd64b917cc18c0
+      SDE_DIR: sde-external-9.58.0-2025-06-16-lin
+      TETRAEDER_GGML_CPU_VARIANT: icelake
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: libclang (bindgen)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - name: Intel SDE (cached tarball)
+        uses: actions/cache@v4
+        id: sde-cache
+        with:
+          path: sde.tar.xz
+          key: sde-${{ env.SDE_SHA256 }}
+      - name: Fetch Intel SDE
+        if: steps.sde-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL --retry 3 -o sde.tar.xz "$SDE_URL"
+      - name: Unpack Intel SDE
+        run: |
+          echo "$SDE_SHA256  sde.tar.xz" | sha256sum -c -
+          tar -xf sde.tar.xz
+          # SDE attaches with ptrace.
+          sudo sysctl -w kernel.yama.ptrace_scope=0
+          "$SDE_DIR/sde64" -icx -- /bin/true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: sde
+      - name: Build tests
+        run: cargo test --release -p tetraeder-ggml-sys --test iqk_kernels --test ggml --test cpu_dispatch --test smoke --no-run
+      - name: iqk tests, kernels on
+        shell: bash
+        run: |
+          bin=$(find target/release/deps -maxdepth 1 -type f -name 'iqk_kernels-*' ! -name '*.d' | head -1)
+          env -u GGML_CPU_IQK_MM "$SDE_DIR/sde64" -icx -- "$bin" --nocapture --test-threads=1 2>&1 | tee iqk-on.txt
+          # A skip while the variant is icelake is a failure.
+          if grep -q 'skipped: needs' iqk-on.txt; then echo 'iqk tests skipped'; exit 1; fi
+          grep -q 'max |iqk - vec_dot|' iqk-on.txt
+      - name: iqk tests, GGML_CPU_IQK_MM=0
+        shell: bash
+        run: |
+          bin=$(find target/release/deps -maxdepth 1 -type f -name 'iqk_kernels-*' ! -name '*.d' | head -1)
+          GGML_CPU_IQK_MM=0 "$SDE_DIR/sde64" -icx -- "$bin" --nocapture --test-threads=1 2>&1 | tee iqk-off.txt
+          if grep -q 'skipped: needs' iqk-off.txt; then echo 'tests skipped'; exit 1; fi
+      - name: ggml-sys tests under the icelake variant
+        run: |
+          for t in ggml cpu_dispatch smoke; do
+            bin=$(find target/release/deps -maxdepth 1 -type f -name "$t-*" ! -name '*.d' | head -1)
+            echo "== $t"
+            "$SDE_DIR/sde64" -icx -- "$bin" --test-threads=1
+          done

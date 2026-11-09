@@ -98,6 +98,41 @@ impl Clock for FakeClock {
     }
 }
 
+/// The process clock: monotonic seconds since creation, and the wall clock for freeze windows.
+/// Freeze windows are read in UTC (ADR 0055): the process knows no time zone.
+#[derive(Debug, Clone, Copy)]
+pub struct SystemClock {
+    origin: std::time::Instant,
+}
+
+impl SystemClock {
+    pub fn new() -> Self {
+        Self {
+            origin: std::time::Instant::now(),
+        }
+    }
+}
+
+impl Default for SystemClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clock for SystemClock {
+    fn now_s(&self) -> f64 {
+        self.origin.elapsed().as_secs_f64()
+    }
+
+    fn local_hhmm(&self) -> (u8, u8) {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let minute = secs / 60 % 1440;
+        ((minute / 60) as u8, (minute % 60) as u8)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
     Switched,
@@ -699,5 +734,16 @@ mod tests {
                 ("device_change".to_owned(), "rejected".to_owned())
             ]
         );
+    }
+
+    #[test]
+    fn system_clock_is_monotonic_and_utc_hhmm_is_in_range() {
+        let c = SystemClock::new();
+        let a = c.now_s();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let b = c.now_s();
+        assert!(a >= 0.0 && b > a);
+        let (h, m) = c.local_hhmm();
+        assert!(h < 24 && m < 60);
     }
 }

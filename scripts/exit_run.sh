@@ -165,6 +165,8 @@ fi
     # GPU checks on the synthetic fixtures (no model needed): logits against RAM slots and prefetch (ADR 0045)
     echo "[$(date +%T)] start gpu-tests"
     timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_experts       -- gpu_ --nocapture --test-threads 1 > "$date_dir/gpu-tests-$stamp.log" 2>&1
+    # ADR 0054: the service and arrival-order compute give the serial logits on the GPU builder
+    timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test overlap       -- gpu_ --nocapture --test-threads 1 >> "$date_dir/gpu-tests-$stamp.log" 2>&1
     echo "[$(date +%T)] done gpu-tests rc=$?"
     tail -20 "$date_dir/gpu-tests-$stamp.log"
   fi
@@ -344,6 +346,12 @@ EOF
       exit_regime kv-q8-slots 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0         TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 1088))) || rc=29
       exit_regime kv-q8q4 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0/q4_0 || rc=29
       exit_regime kv-q8q4-slots 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0/q4_0         TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 832))) || rc=29
+      # ADR 0054, paired with main-prefetch on the same box: the persistent I/O service alone, with experts computed
+      # in arrival order, at prefetch depth 2, and with the RAM tier sized to the container (4 GB reserve instead of 8)
+      exit_regime main-iosvc 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 || rc=30
+      exit_regime main-overlap 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 || rc=30
+      exit_regime main-overlap-d2 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 || rc=30
+      exit_regime main-overlap-ram 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 TETRAEDER_EXIT_RAM_SLOT_BYTES=$((mem - 4000000000)) || rc=30
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
       # routing trace for the RAM-tier replay (ADR 0050 (c)): the prefetch levers of ADR 0038 (depth 2, so the trace
@@ -352,7 +360,7 @@ EOF
       if want trace; then
         trace="$PWD/runs/vast/routing-235b-$stamp.trace"
         exit_regime trace 90 "${deep[@]}" TETRAEDER_EXIT_DECODE=256 TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2           TETRAEDER_EXIT_ROUTING_OUT="$trace" || rc=29
-        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace"           --vram 10,12,13 --ram 48,64,77,96,110 --out "$date_dir/replay-235b.json" || rc=29
+        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace"           --vram 10,12,13 --ram 48,64,77,79,81,83,96,110 --out "$date_dir/replay-235b.json" || rc=29
       fi
       # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
       for v in ${VARIANTS:-}; do
@@ -375,6 +383,7 @@ EOF
       llamacpp_cache
       llamacpp_cache dio
       exit_regime main-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 || rc=26
+      exit_regime main-overlap-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 || rc=30
       ktransformers repeat
       exit_regime main-native-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_GGML_NATIVE=ON         CARGO_TARGET_DIR="$native_target" || rc=29
       ktransformers avx2

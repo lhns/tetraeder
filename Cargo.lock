@@ -2026,11 +2026,15 @@ name = "tetraeder"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
+ "http-body-util",
  "opentelemetry",
  "serde",
  "serde_json",
  "tetraeder-analysis",
+ "tetraeder-control",
+ "tetraeder-costmodel",
  "tetraeder-engine",
  "tetraeder-gateway",
  "tetraeder-ggml-sys",
@@ -2041,6 +2045,9 @@ dependencies = [
  "tetraeder-scheduler",
  "tetraeder-telemetry",
  "tokio",
+ "tokio-util",
+ "toml",
+ "tower",
 ]
 
 [[package]]
@@ -2166,6 +2173,7 @@ version = "0.0.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
+ "proptest",
  "serde_json",
  "sha2",
  "tetraeder-ggml-sys",

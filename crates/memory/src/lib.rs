@@ -5,10 +5,11 @@
 //! - [`slots`]: host-side expert slot cache (pinned hot set, LRU, phase budgets).
 //! - [`dio`]: aligned direct reads of file ranges.
 //! - [`reader`]: a worker thread running those reads in the background (ADR 0038).
+//! - [`io`]: a persistent pool of read workers with per-expert completion (ADR 0054).
 //! - [`replay`]: routing traces and the offline replay of the RAM tier (ADR 0050).
 //! - [`metrics`]: the catalog metrics for all of the above.
 //!
-//! `unsafe` lives in `dio` (aligned buffers, raw I/O), `reader` (raw host destinations) and `ggml`
+//! `unsafe` lives in `dio` (aligned buffers, raw I/O), `reader` (raw host destinations, also used by `io`) and `ggml`
 //! (raw backend calls), each
 //! block with a safety comment.
 
@@ -17,6 +18,7 @@ pub mod dio;
 pub mod fake;
 #[cfg(feature = "ggml")]
 pub mod ggml;
+pub mod io;
 #[cfg(feature = "metrics")]
 pub mod metrics;
 pub mod process;
