@@ -564,3 +564,100 @@ fn parity_subcommand_compares_against_the_reference() {
     );
     assert_eq!(code(&o), 2, "{}", text_of(&o));
 }
+
+fn noise_file(dir: &Path, n: usize, band: f64) -> std::path::PathBuf {
+    let sessions: Vec<Value> = (0..n)
+        .map(|i| {
+            serde_json::json!({
+                "file": format!("r{i}.json"), "date": "2026-11-09", "host_id": format!("h{i}"),
+                "gpu": "", "driver": "", "pair": "noise-cpu-dense", "threads": 2, "repeats": 3,
+                "ratios": {"tg": 1.0}, "d": 0.0
+            })
+        })
+        .collect();
+    let f = serde_json::json!({
+        "schema": 1, "class": "cpu", "device": "cpu", "updated": "2026-11-09", "quantile": 0.95,
+        "margin": 1.25, "floor": 0.02, "ceil": 0.25, "n": n, "n_hosts": n, "d_p95": 0.0,
+        "band": band, "sessions": sessions
+    });
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("cpu.json");
+    std::fs::write(&path, f.to_string()).unwrap();
+    path
+}
+
+#[test]
+fn measured_band_replaces_the_provisional_one_and_is_recorded() {
+    // ratio 0.93 is a regression at the spec's 0.05 band and fine at a measured 0.10
+    let f = Fixture::new("gate", &["--fake-tg", "100"], &["--fake-tg", "93"], "");
+    let nd = f.dir.path().join("noise");
+    noise_file(&nd, 3, 0.10);
+    let o = f.run(&["--noise-dir", nd.to_str().unwrap()], &[]);
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    let p = &f.results()["pairs"][0];
+    assert_eq!(p["band"], 0.10);
+    assert_eq!(p["band_source"], "measured cpu n=3");
+    assert!(text_of(&o).contains("measured cpu n=3"));
+}
+
+#[test]
+fn too_few_sessions_or_no_file_fall_back_to_the_provisional_band() {
+    let f = Fixture::new("gate", &["--fake-tg", "100"], &["--fake-tg", "93"], "");
+    let nd = f.dir.path().join("noise");
+    noise_file(&nd, 2, 0.10);
+    let o = f.run(&["--noise-dir", nd.to_str().unwrap()], &[]);
+    assert_eq!(code(&o), 1, "{}", text_of(&o));
+    let p = &f.results()["pairs"][0];
+    assert_eq!(p["band"], 0.05);
+    assert_eq!(p["band_source"], "provisional cpu (measured n=2 < 3)");
+
+    let missing = f.dir.path().join("none");
+    let o = f.run(&["--noise-dir", missing.to_str().unwrap()], &[]);
+    assert_eq!(code(&o), 1, "{}", text_of(&o));
+    assert_eq!(f.results()["pairs"][0]["band_source"], "provisional cpu");
+}
+
+#[test]
+fn a_corrupt_measured_file_is_an_error_not_a_silent_fallback() {
+    let f = Fixture::new("gate", &["--fake-tg", "100"], &["--fake-tg", "100"], "");
+    let nd = f.dir.path().join("noise");
+    std::fs::create_dir_all(&nd).unwrap();
+    std::fs::write(nd.join("cpu.json"), "{ nope").unwrap();
+    let o = f.run(&["--noise-dir", nd.to_str().unwrap()], &[]);
+    assert_eq!(code(&o), 2, "{}", text_of(&o));
+    assert_eq!(f.results()["pairs"][0]["status"], "error");
+}
+
+#[test]
+fn noise_update_builds_a_class_file_from_aa_pairs_and_is_idempotent() {
+    let f = Fixture::new(
+        "noise",
+        &["--fake-tg", "100", "--fake-jitter", "0.001"],
+        &[],
+        "",
+    );
+    for _ in 0..3 {
+        assert_eq!(code(&f.run(&[], &[])), 0);
+    }
+    let nd = f.dir.path().join("noise");
+    let update = || {
+        let o = Command::new(BENCH)
+            .args(["noise", "update", "--results"])
+            .arg(f.dir.path().join("out"))
+            .arg("--out")
+            .arg(&nd)
+            .output()
+            .unwrap();
+        assert_eq!(code(&o), 0, "{}", text_of(&o));
+    };
+    update();
+    update();
+    let v: Value = serde_json::from_slice(&std::fs::read(nd.join("cpu.json")).unwrap()).unwrap();
+    assert_eq!(v["class"], "cpu");
+    assert_eq!(v["n"], 3);
+    assert!(v["band"].as_f64().unwrap() >= 0.02);
+    // and a run now picks it up
+    let o = f.run(&["--noise-dir", nd.to_str().unwrap()], &[]);
+    assert_eq!(code(&o), 0, "{}", text_of(&o));
+    assert_eq!(f.results()["pairs"][0]["band_source"], "measured cpu n=3");
+}

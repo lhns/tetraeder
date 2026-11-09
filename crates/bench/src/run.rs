@@ -2,6 +2,7 @@
 
 use crate::engine::{self, Measured, Settings};
 use crate::env::{self, EnvInfo, GpuSnap};
+use crate::noise;
 use crate::quality::{self, ParityFile, Quality};
 use crate::spec::{self, Device, EngineKind, PageCache, Pair, Role, Spec, Variant};
 use crate::stats::{self, Ratio, Summary};
@@ -31,6 +32,8 @@ pub struct Options {
     /// Repeats already recorded per pair id (`--resume`, see [`recorded_reps`]): a pair runs only
     /// the repeats after these, in their ABBA order, and is left out when none remain.
     pub done_reps: BTreeMap<String, usize>,
+    /// Directory of measured noise bands (`bench/noise`, see [`crate::noise`]); `None` uses the spec's only.
+    pub noise_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,6 +95,9 @@ pub struct PairResult {
     pub reason: String,
     pub noise_class: Option<String>,
     pub band: Option<f64>,
+    /// Where `band` came from: `measured <class> n=<n>` or `provisional <class>` (the spec's band).
+    #[serde(default)]
+    pub band_source: Option<String>,
     pub metrics: BTreeMap<String, MetricResult>,
     /// Output parity of the candidate, for gates with a Tetraeder candidate; a failed or missing one makes the
     /// pair an error.
@@ -268,6 +274,7 @@ fn base_result(p: &Pair, device: Device) -> PairResult {
         reason: String::new(),
         noise_class: None,
         band: None,
+        band_source: None,
         metrics: BTreeMap::new(),
         quality: None,
         samples: Vec::new(),
@@ -294,13 +301,25 @@ fn run_pair(
     );
     let mut res = base_result(p, va.device);
     let gpu_name = env.gpus.first().map(|g| g.name.as_str());
-    let band = if va.device == Device::Cuda {
-        spec.band_for(va.device, gpu_name)
-    } else {
-        spec.band_for(va.device, None)
+    let gpu_name = (va.device == Device::Cuda).then_some(gpu_name).flatten();
+    let class = noise::class_slug(va.device, gpu_name);
+    let measured = match opts.noise_dir.as_deref().map(|d| noise::load(d, &class)) {
+        Some(Err(e)) => {
+            res.status = Status::Error;
+            res.reason = format!("measured noise band: {e:#}");
+            return Ok(res);
+        }
+        Some(Ok(f)) => f,
+        None => None,
     };
-    res.noise_class = band.map(|b| b.0.to_string());
-    res.band = band.map(|b| b.1);
+    let chosen = noise::choose(
+        &class,
+        spec.band_for(va.device, gpu_name),
+        measured.as_ref(),
+    );
+    res.noise_class = chosen.as_ref().map(|c| c.class.clone());
+    res.band = chosen.as_ref().map(|c| c.band);
+    res.band_source = chosen.map(|c| c.source);
 
     let has_gpu = !env.gpus.is_empty();
     let (ra, rb) = (
@@ -604,7 +623,7 @@ pub fn summary_text(r: &Results) -> String {
         out.push('\n');
         for (name, m) in &p.metrics {
             out += &format!(
-                "    {name}: a {:.2} (rel IQR {:.1}%)  b {:.2} (rel IQR {:.1}%)  ratio {:.3} [{:.3}, {:.3}]  band -{:.0}%\n",
+                "    {name}: a {:.2} (rel IQR {:.1}%)  b {:.2} (rel IQR {:.1}%)  ratio {:.3} [{:.3}, {:.3}]  band -{:.1}% ({})\n",
                 m.a.median,
                 m.a.rel_iqr * 100.0,
                 m.b.median,
@@ -612,7 +631,8 @@ pub fn summary_text(r: &Results) -> String {
                 m.ratio.median,
                 m.ratio.ci_lo,
                 m.ratio.ci_hi,
-                p.band.unwrap_or(0.0) * 100.0
+                p.band.unwrap_or(0.0) * 100.0,
+                p.band_source.as_deref().unwrap_or("none")
             );
         }
     }

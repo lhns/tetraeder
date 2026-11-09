@@ -3,6 +3,7 @@
 pub mod engine;
 pub mod env;
 pub mod golden;
+pub mod noise;
 pub mod quality;
 pub mod replay;
 pub mod run;

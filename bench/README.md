@@ -2,10 +2,12 @@
 
 - `spec/*.toml`: pinned benchmark specs. `phase0.toml` is the nightly gate, `phase2-baseline.toml` the tuned llama.cpp and ik_llama.cpp baselines for Phase 2 (engine `kind = "ik-llama"`, binary `/opt/ik_llama/bin/llama-bench` or `$IK_LLAMA_BENCH`; `--llama-bench` only overrides the llama.cpp one), `smoke.toml` a CPU-only check for dev machines.
 - `golden/`: greedy token sequences and top-k logits per position (format: `crates/bench/src/golden.rs`). Full logits are a nightly artifact, not in git.
+- `noise/<class>.json`: measured noise bands per device and GPU class (`cpu`, `rtx-3090`, ...), written by `tetraeder-bench noise update`.
 - `results/<YYYYMMDD>/<spec>-<HHMMSS>.json`: output (UTC, one file per run) of `tetraeder-bench run <spec>`, plus `env.json`, `parity.json` and the `DONE` marker from `scripts/nightly.sh`.
 
 Run: `tetraeder-bench run bench/spec/phase0.toml`. Exit 0 ok, 1 regression beyond the noise band, 2 error (or a skipped pair under `--strict`), 3 inconclusive (a noise pair outside its band). Precedence: 2, then 1, then 3.
 Comparisons are paired and interleaved in one session, with alternating order (A,B then B,A ...); never compare absolute tok/s across nights.
+Bands: a run uses the measured noise band of its device and GPU class (`noise/<class>.json`, made by `tetraeder-bench noise update` from the A/A pairs of committed results, at least 3 sessions) and otherwise the spec's provisional `[[noise_band]]`; `pairs[].band_source` says which. See `docs/sessions.md`, "Noise bands".
 
 ## Result fields
 
