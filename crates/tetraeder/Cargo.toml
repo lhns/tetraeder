@@ -30,6 +30,7 @@ tetraeder-engine = { path = "../engine" }
 tetraeder-model = { path = "../model" }
 tetraeder-plan = { path = "../plan" }
 tetraeder-gateway = { path = "../gateway" }
+tetraeder-ggml-sys = { path = "../ggml-sys" }
 tetraeder-planner = { path = "../planner" }
 tetraeder-profiler = { path = "../profiler" }
 tetraeder-scheduler = { path = "../scheduler" }

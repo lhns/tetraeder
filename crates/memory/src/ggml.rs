@@ -33,6 +33,8 @@ impl GgmlAllocator {
 
     /// Names of the ggml devices of this build (`CPU`, `CUDA0`, ...).
     pub fn available() -> Vec<String> {
+        // The registry is empty until the backend modules are loaded.
+        tetraeder_ggml_sys::llama::init();
         // SAFETY: device handles are static registry entries; the name is a valid C string.
         unsafe {
             (0..raw::ggml_backend_dev_count())
@@ -46,6 +48,7 @@ impl GgmlAllocator {
 
     /// Serve plan device `id` from the ggml device called `ggml_name`.
     pub fn bind(&mut self, id: &str, ggml_name: &str) -> Result<(), ArenaError> {
+        tetraeder_ggml_sys::llama::init();
         let c = CString::new(ggml_name).map_err(|_| ArenaError::UnknownDevice(ggml_name.into()))?;
         // SAFETY: c is a valid C string for the call.
         let dev = unsafe { raw::ggml_backend_dev_by_name(c.as_ptr()) };
@@ -54,6 +57,7 @@ impl GgmlAllocator {
 
     /// Serve plan device `id` from ggml's CPU device.
     pub fn bind_cpu(&mut self, id: &str) -> Result<(), ArenaError> {
+        tetraeder_ggml_sys::llama::init();
         // SAFETY: plain lookup in the registry.
         let dev = unsafe { raw::ggml_backend_dev_by_type(raw::GGML_BACKEND_DEVICE_TYPE_CPU) };
         self.insert(id, dev, "CPU")

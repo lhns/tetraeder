@@ -1,7 +1,7 @@
 //! Model parameters, loading and the vocabulary calls.
 
 use super::devices::BufferType;
-use super::{LlamaError, Result, Token, init, path_cstring};
+use super::{LlamaError, Result, Token, init, init_checked, path_cstring};
 use crate::raw as sys;
 use std::ffi::{CString, c_char};
 use std::path::Path;
@@ -162,7 +162,7 @@ impl std::fmt::Debug for Model {
 
 impl Model {
     pub fn load(path: impl AsRef<Path>, params: &ModelParams) -> Result<Model> {
-        init();
+        init_checked().map_err(LlamaError::BackendLoad)?;
         let path = path.as_ref();
         let cpath = path_cstring(path)?;
 

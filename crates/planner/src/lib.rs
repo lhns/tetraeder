@@ -53,8 +53,8 @@ pub use lower::{
 };
 pub use objective::{Choice, SPEED_BAND, Scored, StageTime, choose, pareto_front, resource_cost};
 pub use profile_quality::{
-    Band, Correction, Mix, MixError, ProfileQuality, estimate_mix, group_of_tensor, mix_at_budget,
-    tensor_formats,
+    Band, Correction, Mix, MixError, ProfileQuality, estimate_mix, estimate_mix_scaled,
+    group_of_tensor, mix_at_budget, tensor_formats,
 };
 pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
 pub use search::{SearchInput, SearchResult, Split, search, split_layers};

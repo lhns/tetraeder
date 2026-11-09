@@ -1,6 +1,6 @@
 # 0050. Decode levers: miss reads under CPU expert work, low-bit KV per attention unit, RAM tier by routing frequency
 
-Status: Proposed (Phase 2 follow-up). Extends ADR 0035 (groups), 0038 (prefetch, "Reads that hide" item 4), 0031 and 0027 (KV in the plan). Does not change the prefetch levers of ADR 0038 (depth 2, reader 1 MiB at QD16, reads before the layer's own misses), which are implemented and measured first.
+Status: Proposed (Phase 2 follow-up). (a) stage 1 superseded by ADR 0054 (I/O service, experts computed in arrival order); stage 2 keeps its gate on that path. Extends ADR 0035 (groups), 0038 (prefetch, "Reads that hide" item 4), 0031 and 0027 (KV in the plan). Does not change the prefetch levers of ADR 0038 (depth 2, reader 1 MiB at QD16, reads before the layer's own misses), which are implemented and measured first.
 
 ## Context
 
@@ -112,3 +112,24 @@ Built from `docs/levers-briefs.md` Brief B. Decisions held; local checks only (C
 - **Deviation: libllama rotates a quantized cache.** At the pin, libllama applies a Hadamard rotation to K, V and Q whenever `type_k` or `type_v` is quantized and the head size is a multiple of 64 (`llama-kv-cache.cpp`, `LLAMA_ATTN_ROT_DISABLE`). The builder stores plain values, so with default settings its logits do not match libllama's (synthetic model, head size 64: 0.19 on a logit of 25 at position 0, Q4_K_M weights). Parity therefore runs the reference with the rotation off (`llama::disable_attn_rot()`, an environment variable, because `llama_model_set_attn_rot` has C++ linkage; on Windows it also needs `_putenv_s`); with it off the deltas are exactly 0 for all three formats, resident and streamed. The exit harness reference does the same unless `TETRAEDER_EXIT_REF_ATTN_ROT=1`. Consequences to settle on the box: (1) llama.cpp's quantized KV is better than the builder's at equal bits, so a speed pair against `llama-bench -ctk q8_0` compares different quality; (2) the KL bounds above are for the plain cache and may fail for Q8_0/Q4_0; if they do, the follow-up is the same rotation in the builder (a Hadamard rotation of Q, K, V and the attention output, as libllama does), not a looser bound.
 - **Local KL (informative).** Synthetic random-weight model (head size 64, Q8_0 weights), 2K context, last 256 positions, builder against its own F16 cache: Q8_0/Q8_0 mean KL 0.119 and top-1 0.906; Q8_0/Q4_0 1.172 and 0.648; Q4_0/Q4_0 1.721 and 0.574. Random weights give flat, outlier-heavy attention, so these say nothing about Qwen3; the acceptance is `kv_quality.rs` on the box.
 - **Tests.** `crates/plan/tests/kv.rs`, `props.rs`, `crates/planner/src/builder.rs`, `crates/model/tests/kv_format.rs` (parity against libllama with the same `type_k`/`type_v`, resident and streamed, snapshot roundtrip, memory report, refusals, KL at 2K), `crates/scheduler/src/prefix_cache.rs`. The tiny fixture has head size 16, so the parity tests use the synthetic MoE of `tests/common/synth.rs` with head size 64 and Q8_0 weights: with Q4_K_M weights even the F16 control differs from libllama on AVX hosts (CI), because the K-quant `mul_mat_id` kernel depends on the row count (see `multipass.rs`).
+
+## Addendum 2026-11-09: Hadamard rotation of a quantized KV cache in the builder (branch `track-s-kv-rotation`)
+
+**Decision.** The builder rotates Q, K and V like libllama does, so a quantized-KV builder matches libllama with its default settings and a speed pair against `llama-bench -ctk q8_0` compares equal quality. This settles consequence (1) of the deviation note above; the "follow-up" in (2) is this change.
+
+- `LoadOptions::kv_rotation: Option<bool>`: `None` rotates exactly when the K (V) type is quantized and the head size is a multiple of 64, as libllama (off for F16). `Some(true)` forces both sides (error if the head size is not a multiple of 64), `Some(false)` turns both off. `Qwen3Moe::kv_rotated()` reports the result.
+- Same construction as libllama, no new transform: the orthonormal Walsh-Hadamard matrix of `ggml_gen_hadamard` (`llama-kv-cache.cpp:21-54`, `ggml_sys::ggml::hadamard_matrix`); K matrix side = largest power of two dividing the head size, at least 64, V side 64 (`:329-345`); Q and K multiplied by the K matrix after RoPE, V by the V matrix before the cache write, the attention output by the V matrix again (the matrix is its own inverse) before `wo` (`llama-graph.cpp:3246-3253`, `:3291-3293`); each as `llama_mul_mat_hadamard` (`llama-impl.h:57-75`: reshape to `[n, rows]`, `mul_mat`, hint `GGML_HINT_SRC0_IS_HADAMARD`), here `Context::mul_mat_hadamard`. The hint matters: the CPU path then uses the FWHT kernel, so results match bit for bit.
+- The matrices are F32 tensors in a context of their own (the KV buffer and the memory report stay exactly the cache).
+- Exit harness: `TETRAEDER_EXIT_KV_ROT` (0/1) sets `kv_rotation`; the reference engine follows it (`TETRAEDER_EXIT_REF_ATTN_ROT` overrides the reference alone, so a pair that keeps llama.cpp's default needs no setting). The JSON options record `kv_rotation` as resolved. With `TETRAEDER_EXIT_KV_ROT=1` and `f16`, the builder rotates and libllama does not; do not pair that.
+
+**Tests.** `crates/model/tests/kv_rotation.rs`: builder against libllama with its rotation on, Q8_0 synthetic model, resident and streamed, all three formats: max delta 0 (bitwise) on Windows locally; defaults and the head-size error. `kv_format.rs` keeps the rotation-off parity (`kv_rotation: Some(false)`, delta 0). libllama's switch is process-wide, so the two live in separate test binaries.
+
+**Local KL (informative).** Synthetic random-weight model, head size 64, Q8_0 weights, 2K context, last 256 positions, against the unrotated F16 cache (`kv_format.rs::cpu_quantized_kv_kl_at_2k`):
+
+| format | rotation off: KL / top-1 | rotation on: KL / top-1 |
+|---|---|---|
+| Q8_0/Q8_0 | 0.119 / 0.906 | 0.159 / 0.879 |
+| Q8_0/Q4_0 | 1.172 / 0.648 | 1.995 / 0.551 |
+| Q4_0/Q4_0 | 1.721 / 0.574 | 2.453 / 0.543 |
+
+Rotation is worse here. Random weights have no channel outliers, which is what the rotation spreads out, and the model's flat logits make KL noisy; this says nothing about Qwen3. The KL acceptance with rotation on is `kv_quality.rs` on the box (the default is now rotated for Q8_0/Q4_0); open until it runs.

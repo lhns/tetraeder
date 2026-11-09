@@ -94,7 +94,7 @@ fn llama_tools() -> Res<()> {
         .args([
             "-DCMAKE_BUILD_TYPE=Release",
             "-DBUILD_SHARED_LIBS=OFF",
-            // Same ggml options as crates/ggml-sys/build.rs so the reference matches our build.
+            // Reference tools stay static (not the DL build of crates/ggml-sys/build.rs); TETRAEDER_GGML_NATIVE below picks the ISA.
             "-DGGML_OPENMP=OFF",
             "-DLLAMA_BUILD_COMMON=ON",
             "-DLLAMA_BUILD_TOOLS=ON",

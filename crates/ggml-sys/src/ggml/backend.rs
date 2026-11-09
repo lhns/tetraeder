@@ -1,6 +1,6 @@
 //! Backend and buffer handles.
 
-use super::{GgmlError, Result, cstr};
+use super::{GgmlError, Result, cpu, cstr};
 use crate::raw as sys;
 use std::ptr::NonNull;
 use std::rc::Rc;
@@ -19,8 +19,8 @@ impl Drop for BackendInner {
         // goes first: it uses the pool until it is freed and never frees the pool itself.
         unsafe {
             sys::ggml_backend_free(self.ptr.as_ptr());
-            if let Some(pool) = self.pool {
-                sys::ggml_threadpool_free(pool.as_ptr());
+            if let (Some(pool), Ok(procs)) = (self.pool, cpu::procs()) {
+                (procs.threadpool_free)(pool.as_ptr());
             }
         }
     }
@@ -48,10 +48,17 @@ impl Backend {
     /// [`Backend::cpu`] with the threadpool's `poll` level (0 to 100, clamped): how long idle
     /// workers spin before they sleep. `None`: ggml's default (50).
     pub fn cpu_with_poll(n_threads: i32, poll: Option<u32>) -> Result<Backend> {
-        crate::llama::init();
+        let procs = cpu::procs()?;
         let n = n_threads.max(1);
-        // SAFETY: plain constructor; null means failure.
-        let ptr = unsafe { sys::ggml_backend_cpu_init() };
+        // SAFETY: registry lookup, then the plain constructor; null means failure.
+        let ptr = unsafe {
+            let dev = sys::ggml_backend_dev_by_type(sys::GGML_BACKEND_DEVICE_TYPE_CPU);
+            if dev.is_null() {
+                std::ptr::null_mut()
+            } else {
+                sys::ggml_backend_dev_init(dev, std::ptr::null())
+            }
+        };
         let ptr = NonNull::new(ptr).ok_or_else(|| GgmlError::NoBackend("CPU".into()))?;
         // SAFETY: `params` is a valid in-out struct; null means failure.
         let pool = NonNull::new(unsafe {
@@ -59,7 +66,7 @@ impl Backend {
             if let Some(p) = poll {
                 params.poll = p.min(100);
             }
-            sys::ggml_threadpool_new(&mut params)
+            (procs.threadpool_new)(&mut params)
         });
         // Owned from here, so a failure below frees both.
         let inner = BackendInner {
@@ -72,8 +79,8 @@ impl Backend {
         };
         // SAFETY: live CPU backend and pool; the pool outlives the backend (freed after it).
         unsafe {
-            sys::ggml_backend_cpu_set_n_threads(ptr.as_ptr(), n);
-            sys::ggml_backend_cpu_set_threadpool(ptr.as_ptr(), pool.as_ptr());
+            (procs.set_n_threads)(ptr.as_ptr(), n);
+            (procs.set_threadpool)(ptr.as_ptr(), pool.as_ptr());
         }
         Ok(Backend {
             inner: Rc::new(inner),
@@ -83,17 +90,16 @@ impl Backend {
     /// Compute threads of the next graphs on a CPU backend; keep it within the threadpool's size.
     /// No effect on a GPU backend.
     pub fn set_cpu_threads(&self, n_threads: i32) {
-        if self.inner.is_cpu {
+        // A CPU backend exists only after `cpu::procs()` succeeded.
+        if let (true, Ok(procs)) = (self.inner.is_cpu, cpu::procs()) {
             // SAFETY: live CPU backend; only the thread count of later graph computes changes.
-            unsafe {
-                sys::ggml_backend_cpu_set_n_threads(self.inner.ptr.as_ptr(), n_threads.max(1))
-            };
+            unsafe { (procs.set_n_threads)(self.inner.ptr.as_ptr(), n_threads.max(1)) };
         }
     }
 
     /// The `index`-th GPU device (discrete GPUs first, then integrated), if the build has one.
     pub fn gpu(index: usize) -> Result<Backend> {
-        crate::llama::init();
+        crate::llama::init_checked().map_err(GgmlError::NoBackend)?;
         // SAFETY: the registry is initialized; device handles are valid for the process.
         let dev = unsafe {
             let n = sys::ggml_backend_dev_count();
@@ -129,6 +135,7 @@ impl Backend {
     }
 
     pub fn gpu_count() -> usize {
+        // A failed module load leaves no GPU; the constructors report the error.
         crate::llama::init();
         // SAFETY: registry queries only.
         unsafe {

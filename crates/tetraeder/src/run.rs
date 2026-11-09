@@ -36,6 +36,7 @@ pub fn run(a: &RunArgs) -> anyhow::Result<()> {
     // OTLP export only when OTEL_EXPORTER_OTLP_ENDPOINT is set (ADR 0012).
     let telemetry = Arc::new(Telemetry::new(&TelemetryConfig::from_env())?);
     telemetry.install_global()?;
+    crate::info::record_cpu_backend(telemetry.metrics());
     let mut engine = Engine::load(
         &a.model.model,
         &a.model.placement(),

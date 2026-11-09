@@ -1,2 +1,6 @@
 [alias]
 xtask = "run --package xtask --"
+
+# ADR 0052: the default build links shared libllama/ggml; binaries find them next to themselves (or one level up, for test binaries in deps/).
+[target.'cfg(target_os = "linux")']
+rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN:$ORIGIN/.."]

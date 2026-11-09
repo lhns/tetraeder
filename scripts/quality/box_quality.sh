@@ -6,6 +6,7 @@
 # downloads (FETCH_ONLY=1 MODEL=qwen3-30b), then qwen3-30b. Ends with QUALITY_DONE in runs/vast/quality-$MODEL.log. Resumable: every step skips finished work.
 exec 8> "/root/tetraeder_quality${FETCH_ONLY:+_fetch_$MODEL}.lock"; flock -n 8 || exit 0
 cd "$(dirname "$0")/../.." || exit 1
+bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 mkdir -p runs/vast bench/quality
 MODEL="${MODEL:-qwen3-8b}"
 log="runs/vast/quality-$MODEL${FETCH_ONLY:+-fetch}.log"

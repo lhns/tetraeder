@@ -12,8 +12,6 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # Portable ggml CPU code: cached build output may run on a runner with a different CPU.
-  TETRAEDER_GGML_NATIVE: "OFF"
 
 jobs:
   test:
@@ -28,6 +26,13 @@ jobs:
         with:
           submodules: true
           fetch-depth: 1
+      - name: Patch queue
+        if: runner.os == 'Linux'
+        run: bash patches/apply.sh
+      - name: Patch queue
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: patches/apply.ps1
       - name: Toolchain
         shell: bash
         run: rustup show active-toolchain || rustup toolchain install
@@ -41,10 +46,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo build -p tetraeder
+      # Which CPU variant each runner loads (ADR 0052): tier, ISA, missing, extra, registry names.
+      - name: CPU backend
+        shell: bash
+        run: |
+          bin=target/debug/tetraeder
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          "$bin" info --json
       - run: cargo test --workspace
       - uses: astral-sh/setup-uv@v5
       # SDK conformance suite (tests/conformance) against `tetraeder serve --fake`
-      - run: cargo build -p tetraeder
       - name: pytest
         shell: bash
         env:
@@ -71,6 +83,13 @@ jobs:
         with:
           submodules: true
           fetch-depth: 1
+      - name: Patch queue
+        if: runner.os == 'Linux'
+        run: bash patches/apply.sh
+      - name: Patch queue
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: patches/apply.ps1
       - name: Toolchain
         shell: bash
         run: rustup show active-toolchain || rustup toolchain install
@@ -101,6 +120,10 @@ jobs:
           key: cuda
       # Link the binary, not just the -sys crate: missing CUDA link libraries only show up here.
       - run: cargo build -p tetraeder -p tetraeder-ggml-sys -p tetraeder-model --features tetraeder-ggml-sys/cuda
+      # The default build loads CUDA as a module (ADR 0052): it must exist next to the binary.
+      - name: CUDA module
+        shell: bash
+        run: test -f target/debug/libggml-cuda.so -o -f target/debug/ggml-cuda.dll
 
   vulkan-build:
     name: vulkan compile-only (ubuntu-latest)
@@ -110,6 +133,13 @@ jobs:
         with:
           submodules: true
           fetch-depth: 1
+      - name: Patch queue
+        if: runner.os == 'Linux'
+        run: bash patches/apply.sh
+      - name: Patch queue
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: patches/apply.ps1
       - name: Toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - name: Vulkan SDK and libclang
@@ -118,3 +148,28 @@ jobs:
         with:
           key: vulkan
       - run: cargo build -p tetraeder-ggml-sys --features vulkan
+      - name: Vulkan module
+        run: ls -l target/debug/libggml-vulkan.so
+
+  # The static native build stays supported (comparison arm, quick local builds). No rust-cache: a
+  # native build restored on a runner with an older CPU would die with SIGILL.
+  native-static:
+    name: native static (ubuntu-latest)
+    runs-on: ubuntu-latest
+    env:
+      TETRAEDER_GGML_NATIVE: "ON"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: libclang (bindgen)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - run: cargo test -p tetraeder-ggml-sys
+      - run: cargo build -p tetraeder
+      - name: CPU backend
+        run: target/debug/tetraeder info --json

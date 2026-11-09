@@ -1,6 +1,6 @@
 # 0035. Expert pairs computed in compact groups per backend; non-resident experts on the CPU
 
-Status: Accepted (Phase 2). Supersedes ADR 0034 and the overflow passes of ADR 0033.
+Status: Accepted (Phase 2). Supersedes ADR 0034 and the overflow passes of ADR 0033. The reason given against a memory map is superseded by ADR 0054; the decision stands.
 
 ## Context
 

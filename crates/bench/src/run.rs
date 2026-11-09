@@ -7,7 +7,7 @@ use crate::spec::{self, Device, EngineKind, PageCache, Pair, Role, Spec, Variant
 use crate::stats::{self, Ratio, Summary};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -26,6 +26,11 @@ pub struct Options {
     pub quiet: bool,
     /// Parity results (`tetraeder-bench parity`) for the quality of gate pairs with a Tetraeder candidate.
     pub parity: Option<ParityFile>,
+    /// Rewritten with the results so far after every pair, so a killed run keeps what it measured.
+    pub checkpoint: Option<PathBuf>,
+    /// Repeats already recorded per pair id (`--resume`, see [`recorded_reps`]): a pair runs only
+    /// the repeats after these, in their ABBA order, and is left out when none remain.
+    pub done_reps: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,6 +286,7 @@ fn run_pair(
     opts: &Options,
     env: &EnvInfo,
     cold_ok: bool,
+    first_rep: usize,
 ) -> Result<PairResult> {
     let (va, vb) = (
         spec.variant(&p.a).context("variant a")?,
@@ -330,7 +336,7 @@ fn run_pair(
             }
         }
         // Interleaved with alternating order (A,B then B,A ...) so drift and order effects hit both sides alike.
-        for rep in 0..repeats {
+        for rep in first_rep..repeats {
             let order = order_for(rep);
             let sides = if order == 0 {
                 [("a", &ra), ("b", &rb)]
@@ -419,49 +425,138 @@ fn run_pair(
     Ok(res)
 }
 
+/// Hash of the spec text that results carry, so a resume only counts runs of the same spec.
+pub fn spec_hash(spec_text: &str) -> String {
+    format!("{:016x}", fnv1a(spec_text))
+}
+
+/// The `cpu` block of `info --json` of the spec's Tetraeder binary, once per run; `None` if the
+/// binary is absent or fails (older builds have no `info`).
+fn cpu_backend(spec: &Spec) -> Option<serde_json::Value> {
+    let engine = spec
+        .engine
+        .iter()
+        .find(|e| e.runnable && e.kind == EngineKind::Tetraeder)?;
+    let configured = engine
+        .bin_env
+        .as_ref()
+        .and_then(|k| std::env::var(k).ok())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| engine.bin.clone());
+    let bin = engine::resolve_bin(&configured)?;
+    let args = ["info".to_string(), "--json".to_string()];
+    let out = engine::run_capture(&bin, &args, &[], Duration::from_secs(30)).ok()?;
+    let mut v: serde_json::Value = serde_json::from_str(&out.stdout).ok()?;
+    v.get_mut("cpu").map(serde_json::Value::take)
+}
+
 /// Run all (selected) pairs of a spec and build the results.
 pub fn run_spec(spec: &Spec, spec_text: &str, opts: &Options) -> Result<Results> {
-    let env = env::capture();
+    let mut env = env::capture();
+    env.cpu_backend = cpu_backend(spec);
     let cold_ok = spec.spec.page_cache == PageCache::Cold && drop_caches();
-    let mut pairs = Vec::new();
+    let repeats = opts.repeats.unwrap_or(spec.spec.repeats);
+    let mut results = Results {
+        schema: RESULTS_SCHEMA,
+        spec: spec.spec.name.clone(),
+        spec_fnv1a: spec_hash(spec_text),
+        pins: spec.pins.clone(),
+        repeats,
+        warmup: spec.spec.warmup,
+        page_cache: spec.spec.page_cache,
+        page_cache_applied: cold_ok,
+        env,
+        pairs: Vec::new(),
+        exit_code: 0,
+    };
+    // a failed checkpoint only warns: the final write reports a lasting problem
+    let checkpoint = |r: &Results| {
+        if let Some(path) = &opts.checkpoint
+            && let Err(e) = write_results_at(r, path)
+        {
+            log(opts, &format!("warning: checkpoint: {e:#}"));
+        }
+    };
+    checkpoint(&results);
     for p in spec
         .pair
         .iter()
         .filter(|p| opts.only.is_empty() || opts.only.contains(&p.id))
     {
+        let done = opts.done_reps.get(&p.id).copied().unwrap_or(0);
+        if done >= repeats {
+            log(
+                opts,
+                &format!("pair {}: {done} repeats recorded before", p.id),
+            );
+            continue;
+        }
         log(
             opts,
             &format!("pair {} ({:?}): {} vs {}", p.id, p.role, p.a, p.b),
         );
-        let r = run_pair(spec, p, opts, &env, cold_ok)?;
+        let r = run_pair(spec, p, opts, &results.env, cold_ok, done)?;
         log(
             opts,
             &format!("pair {} -> {:?} {}", p.id, r.status, r.reason),
         );
-        pairs.push(r);
+        results.pairs.push(r);
+        results.exit_code = exit_code(&results.pairs, opts.strict);
+        checkpoint(&results);
     }
-    let exit_code = exit_code(&pairs, opts.strict);
-    Ok(Results {
-        schema: RESULTS_SCHEMA,
-        spec: spec.spec.name.clone(),
-        spec_fnv1a: format!("{:016x}", fnv1a(spec_text)),
-        pins: spec.pins.clone(),
-        repeats: opts.repeats.unwrap_or(spec.spec.repeats),
-        warmup: spec.spec.warmup,
-        page_cache: spec.spec.page_cache,
-        page_cache_applied: cold_ok,
-        env,
-        pairs,
-        exit_code,
-    })
+    Ok(results)
 }
 
-pub fn write_results(results: &Results, out_dir: &Path) -> Result<PathBuf> {
+/// Repeats recorded per pair id over earlier results of the same spec text: a repeat counts
+/// when both sides have a sample in it. Results of another spec text are ignored.
+pub fn recorded_reps(earlier: &[Results], spec_fnv1a: &str) -> BTreeMap<String, usize> {
+    let mut out = BTreeMap::new();
+    for r in earlier.iter().filter(|r| r.spec_fnv1a == spec_fnv1a) {
+        for p in &r.pairs {
+            let side_reps = |side: &str| -> BTreeSet<usize> {
+                p.samples
+                    .iter()
+                    .filter(|s| s.side == side)
+                    .map(|s| s.rep)
+                    .collect()
+            };
+            let n = side_reps("a").intersection(&side_reps("b")).count();
+            *out.entry(p.id.clone()).or_insert(0) += n;
+        }
+    }
+    out
+}
+
+/// The results files of a spec in a directory (`<spec>-*.json`); unreadable ones are skipped.
+pub fn read_results_dir(dir: &Path, spec_name: &str) -> Vec<Results> {
+    let prefix = format!("{spec_name}-");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name().is_some_and(|n| {
+                let n = n.to_string_lossy();
+                n.starts_with(&prefix) && n.ends_with(".json")
+            })
+        })
+        .collect();
+    paths.sort();
+    paths
+        .iter()
+        .filter_map(|p| serde_json::from_slice(&std::fs::read(p).ok()?).ok())
+        .collect()
+}
+
+/// Claims a new results file name for a run of `spec_name` (created empty).
+///
+/// One file per run: a second run on the same UTC day must not overwrite the first, so a name
+/// taken within the same second gets a counter.
+pub fn reserve_results_path(spec_name: &str, out_dir: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(out_dir).with_context(|| format!("create {}", out_dir.display()))?;
-    // One file per run: a second run on the same UTC day must not overwrite the first, so a
-    // name taken within the same second gets a counter.
-    let stem = format!("{}-{}", results.spec, env::time_name());
-    let body = serde_json::to_string_pretty(results)? + "\n";
+    let stem = format!("{spec_name}-{}", env::time_name());
     for n in 0..1000 {
         let name = if n == 0 {
             format!("{stem}.json")
@@ -474,12 +569,7 @@ pub fn write_results(results: &Results, out_dir: &Path) -> Result<PathBuf> {
             .create_new(true)
             .open(&path)
         {
-            Ok(mut f) => {
-                use std::io::Write;
-                f.write_all(body.as_bytes())
-                    .with_context(|| format!("write {}", path.display()))?;
-                return Ok(path);
-            }
+            Ok(_) => return Ok(path),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e).with_context(|| format!("create {}", path.display())),
         }
@@ -488,6 +578,16 @@ pub fn write_results(results: &Results, out_dir: &Path) -> Result<PathBuf> {
         "no free results file name for {stem} in {}",
         out_dir.display()
     )
+}
+
+/// Writes the results to `path` through a temporary file and a rename, so a reader (or a kill)
+/// never sees half a file.
+pub fn write_results_at(results: &Results, path: &Path) -> Result<()> {
+    let body = serde_json::to_string_pretty(results)? + "\n";
+    let name = path.file_name().context("results path")?.to_string_lossy();
+    let tmp = path.with_file_name(format!(".{name}.tmp"));
+    std::fs::write(&tmp, body).with_context(|| format!("write {}", tmp.display()))?;
+    std::fs::rename(&tmp, path).with_context(|| format!("rename to {}", path.display()))
 }
 
 /// Human-readable summary, one line per pair and metric.

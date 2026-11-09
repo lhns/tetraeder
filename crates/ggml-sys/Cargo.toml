@@ -17,6 +17,7 @@ cuda = []
 vulkan = []
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 tracing = "0.1"
 

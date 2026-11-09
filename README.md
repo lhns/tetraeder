@@ -61,6 +61,10 @@ $T nightly                   # all of the above in one go: create, provision, ru
 $T watchdog --dry-run        # report what the cost-control loop would do
 ```
 
+### ggml build modes (ADR 0052)
+
+By default `crates/ggml-sys` builds libllama, ggml and ggml-base as shared libraries and every backend as a loadable module (`ggml-cpu-<tag>` per x86 level, `ggml-cuda`, `ggml-vulkan`). `llama::init()` loads them, so one build runs at the best CPU level of each host, including the box and the AVX-less dev VM. `tetraeder info [--json]` shows which variant was loaded. `TETRAEDER_GGML_NATIVE=ON` builds the static native-ISA version instead (comparison arm, fast local builds); unset or `OFF` is the default. Run-time env: `TETRAEDER_GGML_BACKEND_DIR` (module directory; default: next to the executable, else the build dir) and `TETRAEDER_GGML_CPU_VARIANT=<tag>` (load that CPU module only, for paired ISA runs). Binaries need the libraries and modules next to them (`target/<profile>/`, copied by `build.rs`). The patch queue must be applied first (`patches/apply.sh` or `patches/apply.ps1`; box scripts call `scripts/ensure_patches.sh`).
+
 `scripts/nightly.sh` builds ggml CUDA only for the box GPU (`TETRAEDER_CUDA_ARCHS` from `nvidia-smi`, unless set), tests with `--release` to reuse that build, then runs `bench/spec/phase0.toml`. Both engines get the same explicit thread count (default `available_parallelism()`, quota aware), CPU variants run with the GPU hidden, and `env.json` records the container CPU quota.
 
 Optional nightly stages take env vars, so launch with `$T run scripts/nightly.sh --env MOE_CHECK=1 --env GAP_PAIR=gate-tetraeder-cuda-dense` (add `--env BENCH_SPEC=phase2-baseline` for the Phase 2 baseline). `MOE_CHECK=1` runs the builder on the real Qwen3-30B-A3B (`crates/model/tests/real_moe.rs`, writes `builder-real-<HHMMSS>.json`); `GAP_PAIR=<phase0 pair id>` repeats that pair 10 times into `bench/results/<date>/gap/`. Neither changes the verdict. `nightly_wait_min` in `taxameter.toml` covers all stage limits.
