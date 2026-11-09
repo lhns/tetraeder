@@ -331,9 +331,10 @@ impl Worker {
         // Keep the shared prefix, but evaluate at least the last prompt token for logits.
         let last = toks.len() - 1;
         let live = common_prefix(&self.cached, &toks).min(last);
+        let fmt = self.backend.kv_format();
         let ram = if self.cache.enabled() {
             self.cache
-                .best(&toks)
+                .best(&fmt, &toks)
                 .map(|(i, n)| (i, n.min(last)))
                 .filter(|&(_, n)| n >= live + self.restore_gain)
         } else {
@@ -352,7 +353,10 @@ impl Worker {
         } else {
             self.cached.len() - live.min(self.cached.len())
         };
-        if self.cache.enabled() && lost >= self.save_min && !self.cache.holds(&self.cached) {
+        if self.cache.enabled()
+            && lost >= self.save_min
+            && !self.cache.holds(&self.backend.kv_format(), &self.cached)
+        {
             self.save_live();
         }
         let mut restored = false;
@@ -479,7 +483,9 @@ impl Worker {
     fn save_live(&mut self) {
         match self.backend.snapshot() {
             Ok(bytes) => {
-                let evicted = self.cache.insert(self.cached.clone(), bytes);
+                let evicted =
+                    self.cache
+                        .insert(&self.backend.kv_format(), self.cached.clone(), bytes);
                 if let Some(m) = &self.metrics {
                     m.kv_prefix_evicted(evicted as u64);
                     m.kv_prefix_bytes(self.cache.bytes() as u64);

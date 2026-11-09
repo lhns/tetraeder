@@ -19,7 +19,7 @@
 //! RAM slot tensors, which sit in a CPU buffer marked as weights, so the scheduler computes them
 //! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
-use crate::convert::{ConvertError, ConvertOptions, ConvertStats};
+use crate::convert::{ConvertError, ConvertOptions, ConvertStats, ggml_type};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, Streamer, StreamerConfig};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
@@ -28,7 +28,7 @@ use tetraeder_ggml_sys::ggml::{
 };
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::metrics::MemoryMetrics;
-use tetraeder_plan::{Format, ModelDesc};
+use tetraeder_plan::{Format, KvFormat, ModelDesc};
 use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 
 use std::collections::BTreeMap;
@@ -85,6 +85,8 @@ pub struct MemoryUse {
     pub tier: &'static str,
     /// `weights`, `slots`, `kv` or `workspace`.
     pub kind: &'static str,
+    /// The KV format (`q8_0/q4_0`) of the `kv` buffer.
+    pub format: Option<String>,
     /// Size of the buffer.
     pub capacity: u64,
     /// Bytes holding data: for slots the resident experts, otherwise the whole buffer (the
@@ -200,6 +202,9 @@ pub struct LoadOptions {
     /// Compute threads of CPU graphs while a prefetch read is in flight (at most the full
     /// count, which the threadpool keeps). `None`: the full count.
     pub prefetch_threads: Option<usize>,
+    /// Format of the K and V cache of every layer (ADR 0050 b). Quantized formats need a head
+    /// size that is a multiple of their block size (32). Per-layer formats are not supported.
+    pub kv: KvFormat,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -222,6 +227,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("prefetch_depth", &self.prefetch_depth)
             .field("cpu_poll", &self.cpu_poll)
             .field("prefetch_threads", &self.prefetch_threads)
+            .field("kv", &self.kv)
             .finish_non_exhaustive()
     }
 }
@@ -250,6 +256,7 @@ impl LoadOptions {
             prefetch_depth: 1,
             cpu_poll: None,
             prefetch_threads: None,
+            kv: KvFormat::default(),
         }
     }
 }
@@ -299,11 +306,12 @@ struct Weights {
     layers: Vec<Layer>,
 }
 
-/// Contiguous per-layer F16 KV cache: `[n_embd_kv, n_ctx]` for K and for V.
+/// Contiguous per-layer KV cache: `[n_embd_kv, n_ctx]` for K and for V, in the types of `fmt`.
 struct Kv {
     k: Vec<OwnedTensor>,
     v: Vec<OwnedTensor>,
     n_ctx: usize,
+    fmt: KvFormat,
 }
 
 /// Activations that cross segment boundaries, one slot per layer parity.
@@ -487,7 +495,7 @@ impl Qwen3Moe {
             _ => None,
         };
         let (weights, weights_bytes) = load_weights(&file, &primary, slots)?;
-        let (kv, kv_bytes) = alloc_kv(h, pad(opts.n_ctx.max(1), KV_PAD), &primary)?;
+        let (kv, kv_bytes) = alloc_kv(h, pad(opts.n_ctx.max(1), KV_PAD), &primary, opts.kv)?;
         let metrics = MemoryMetrics::new(opts.telemetry.clone());
         let streamer = slots
             .map(|n| {
@@ -590,6 +598,11 @@ impl Qwen3Moe {
         self.n_past
     }
 
+    /// Format of the K and V cache.
+    pub fn kv_format(&self) -> KvFormat {
+        self.kv.fmt
+    }
+
     pub fn n_ctx(&self) -> usize {
         self.kv.n_ctx
     }
@@ -653,7 +666,11 @@ impl Qwen3Moe {
             return Ok(());
         };
         let layers = &self.weights.layers;
-        streamer.refresh_hot_set(&self.file, |il| layers[il].exps())
+        streamer.refresh_hot_set(&self.file, |il| layers[il].exps())?;
+        if let Some(log) = &mut self.routing {
+            log.push(RoutingStep::refresh_marker());
+        }
+        Ok(())
     }
 
     /// Every buffer the builder owns with its capacity and used bytes (ADR 0037): the weights,
@@ -668,6 +685,7 @@ impl Qwen3Moe {
                 device: device.to_string(),
                 tier,
                 kind,
+                format: (kind == "kv").then(|| self.kv.fmt.to_string()),
                 capacity,
                 used,
             });
@@ -706,6 +724,18 @@ impl Qwen3Moe {
     /// Expert cache and read counters; `None` when every expert is resident.
     pub fn expert_stats(&self) -> Option<ExpertStats> {
         self.streamer.as_ref().map(Streamer::stats)
+    }
+
+    /// Slots per layer of the compute tier and of the RAM tier, as resolved at load; `None` when
+    /// every expert is resident.
+    pub fn tier_slots(&self) -> Option<(usize, Option<usize>)> {
+        self.streamer.as_ref().map(Streamer::tier_slots)
+    }
+
+    /// Layers ahead that the prefetch predicts and reads: 0 when prefetch is off or does not
+    /// apply (ADR 0038).
+    pub fn prefetch_depth(&self) -> usize {
+        self.predict_depth
     }
 
     /// The routing recorded since the last call (empty unless `record_routing` is set), one
@@ -914,6 +944,10 @@ impl Qwen3Moe {
                         layer,
                         ids: ids.get().get_i32()?,
                         weights: w.get().get_f32()?,
+                        n_tokens: n,
+                        predicted: None,
+                        predicted2: None,
+                        refresh: false,
                     });
                 }
             }
@@ -989,13 +1023,6 @@ impl Qwen3Moe {
             let t = Instant::now();
             let slot = &st.slots[seg % 2];
             let chosen = slot.ids.get().get_i32()?;
-            if let Some(log) = &mut self.routing {
-                log.push(RoutingStep {
-                    layer: seg,
-                    ids: chosen.clone(),
-                    weights: slot.w.get().get_f32()?,
-                });
-            }
             let streamer = self
                 .streamer
                 .as_mut()
@@ -1012,6 +1039,18 @@ impl Qwen3Moe {
             }
             if self.predict_depth >= 2 && seg + 2 < n_layer {
                 predicted2[seg + 2] = Some(slot.pred2.get().get_i32()?);
+            }
+            if let Some(log) = &mut self.routing {
+                // This layer's predictions (for layers seg + 1 and seg + 2), as read above.
+                log.push(RoutingStep {
+                    layer: seg,
+                    ids: chosen.clone(),
+                    weights: slot.w.get().get_f32()?,
+                    n_tokens: n,
+                    predicted: predicted.clone(),
+                    predicted2: predicted2.get(seg + 2).cloned().flatten(),
+                    refresh: false,
+                });
             }
             lap(&mut prof.readback, t);
             // The reads started for this layer must have landed before it is planned.
@@ -1124,8 +1163,20 @@ impl Qwen3Moe {
                 segments: graphs,
             });
             for m in self.memory() {
-                self.metrics
-                    .buffer(&m.device, m.tier, m.kind, m.used, m.capacity);
+                match &m.format {
+                    Some(f) => self.metrics.kv(
+                        &m.device,
+                        m.tier,
+                        f,
+                        m.used,
+                        m.capacity,
+                        self.n_past as u64,
+                        self.kv.n_ctx as u64,
+                    ),
+                    None => self
+                        .metrics
+                        .buffer(&m.device, m.tier, m.kind, m.used, m.capacity),
+                }
             }
         }
         if n > 1 && self.hot_pending {
@@ -1441,20 +1492,44 @@ fn set_compute_threads(cpu: &Backend, full: i32, reduced: Option<i32>, streamer:
     cpu.set_cpu_threads(n);
 }
 
-fn alloc_kv(h: &Hparams, n_ctx: usize, backend: &Backend) -> Result<(Kv, usize)> {
+/// The ggml types of a KV format; a quantized type needs the head size to be a whole number of
+/// blocks, because attention views one head's row at a time.
+fn kv_types(h: &Hparams, fmt: KvFormat) -> Result<(Type, Type)> {
+    if !fmt.is_allowed() {
+        return Err(ModelError::Invalid(format!(
+            "KV format {fmt} is not one of the supported pairs"
+        )));
+    }
+    let ty = |f: Format| {
+        let t =
+            ggml_type(f).ok_or_else(|| ModelError::Invalid(format!("no ggml type for {f:?}")))?;
+        if h.head_dim as i64 % t.block_size() != 0 {
+            return Err(ModelError::Invalid(format!(
+                "KV format {fmt}: head size {} is not a multiple of the {f:?} block size {}",
+                h.head_dim,
+                t.block_size()
+            )));
+        }
+        Ok(t)
+    };
+    Ok((ty(fmt.k)?, ty(fmt.v)?))
+}
+
+fn alloc_kv(h: &Hparams, n_ctx: usize, backend: &Backend, fmt: KvFormat) -> Result<(Kv, usize)> {
+    let (tk, tv) = kv_types(h, fmt)?;
     let ctx = Rc::new(Context::new(2 * h.n_layer as usize + 4, 0)?);
     let n_embd_kv = (h.n_head_kv * h.head_dim) as i64;
-    let mk = |kind: &str, il: u32| {
-        let t = ctx.new_persistent(Type::F16, &[n_embd_kv, n_ctx as i64]);
+    let mk = |kind: &str, ty: Type, il: u32| {
+        let t = ctx.new_persistent(ty, &[n_embd_kv, n_ctx as i64]);
         t.get().set_name(&format!("{kind}_cache_{il}"));
         t
     };
-    let k = (0..h.n_layer).map(|il| mk("k", il)).collect();
-    let v = (0..h.n_layer).map(|il| mk("v", il)).collect();
+    let k = (0..h.n_layer).map(|il| mk("k", tk, il)).collect();
+    let v = (0..h.n_layer).map(|il| mk("v", tv, il)).collect();
     let bytes = ctx.alloc_tensors(backend)?;
     // Padding rows are masked, but 0 * NaN is NaN: never leave them uninitialized.
     ctx.clear_buffer(0);
-    Ok((Kv { k, v, n_ctx }, bytes))
+    Ok((Kv { k, v, n_ctx, fmt }, bytes))
 }
 
 fn alloc_state(h: &Hparams, n: usize, n_kv: usize, backend: &Backend) -> Result<State> {
@@ -1675,8 +1750,9 @@ fn attention_and_router<'a>(
     }
 
     let n_kv = st.n_kv as i64;
-    let kview = ctx.view(kc, &[hd, n_kv, nkv], &[row, hd as usize * 2], 0);
-    let vview = ctx.view(vc, &[hd, n_kv, nkv], &[row, hd as usize * 2], 0);
+    // The head stride is one head's row in the cache type (2 bytes per element for F16).
+    let kview = ctx.view(kc, &[hd, n_kv, nkv], &[row, kc.ty().row_size(hd)], 0);
+    let vview = ctx.view(vc, &[hd, n_kv, nkv], &[vc.nb()[1], vc.ty().row_size(hd)], 0);
     let q = ctx.permute(q, [0, 2, 1, 3]);
     let attn = ctx.flash_attn_ext(q, kview, vview, st.mask.get(), 1.0 / (hd as f32).sqrt());
     let attn = ctx.reshape(attn, &[hd * nh, n]);

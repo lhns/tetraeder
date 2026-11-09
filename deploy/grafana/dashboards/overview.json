@@ -1437,8 +1437,8 @@
     },
     {
       "id": 40,
-      "title": "Decode time per token by stage",
-      "description": "Mean host seconds per decoded token by stage (eval: backend step and logits readback; sample: constraint mask and sampling; emit: hand-off to the gateway), only while serve runs with TETRAEDER_DECODE_PROFILE=1 (docs/m1-open.md item 4). Sample above about 0.3 ms means the sampler, not the GPU, limits decode.",
+      "title": "KV cache",
+      "description": "KV cache bytes by format (ADR 0050 b) and tokens held of the tokens it can hold. Near 100% means requests are about to fail with context full (alert TetraederKvNearFull).",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -1447,6 +1447,65 @@
       "gridPos": {
         "x": 18,
         "y": 98,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tokens held / capacity"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_format) (tetraeder_memory_capacity_bytes{tetraeder_memory_kind=\"kv\"})",
+          "legendFormat": "capacity {{tetraeder_format}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "max(tetraeder_kv_tokens) / max(tetraeder_kv_capacity)",
+          "legendFormat": "tokens held / capacity",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "title": "Decode time per token by stage",
+      "description": "Mean host seconds per decoded token by stage (eval: backend step and logits readback; sample: constraint mask and sampling; emit: hand-off to the gateway), only while serve runs with TETRAEDER_DECODE_PROFILE=1 (docs/m1-open.md item 4). Sample above about 0.3 ms means the sampler, not the GPU, limits decode.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 106,
         "w": 6,
         "h": 8
       },

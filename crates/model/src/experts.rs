@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use tetraeder_ggml_sys::ggml::{Backend, Context, OwnedTensor, Tensor};
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_memory::reader::{HostDst, ReadJob, Reader, Ticket, copy_sink, tensor_dst};
+use tetraeder_memory::replay::prefetch_plan;
 use tetraeder_memory::slots::{LayerStats, Lookup, SlotCache, Tier, hot_from_counts};
 use tetraeder_memory::{DirectFile, IoOptions, Range};
 
@@ -107,6 +108,31 @@ pub struct RoutingStep {
     pub ids: Vec<i32>,
     /// The router weights of `ids`, same layout.
     pub weights: Vec<f32>,
+    /// Tokens of the step (`ids` is `[n_used, n_tokens]`).
+    pub n_tokens: usize,
+    /// The experts this layer predicted for the next layer, and for the layer after (ADR 0038),
+    /// same layout as `ids`; `None` where the step made no prediction (prefetch off, the last
+    /// layers, or the resident whole-step path).
+    pub predicted: Option<Vec<i32>>,
+    pub predicted2: Option<Vec<i32>>,
+    /// A marker, not a layer step: the hot set was rebuilt here (`refresh_hot_set`); `ids` and
+    /// the rest are empty. The routing replay (ADR 0050) rebuilds its VRAM tier at markers.
+    pub refresh: bool,
+}
+
+impl RoutingStep {
+    /// The hot-set refresh marker.
+    pub(crate) fn refresh_marker() -> Self {
+        Self {
+            layer: 0,
+            ids: Vec::new(),
+            weights: Vec::new(),
+            n_tokens: 0,
+            predicted: None,
+            predicted2: None,
+            refresh: true,
+        }
+    }
 }
 
 /// Host copies of experts between the file and the compute tier: per layer a gate, up and down
@@ -333,6 +359,11 @@ impl Streamer {
             .sum()
     }
 
+    /// Slots per layer of the compute tier and of the RAM tier.
+    pub(crate) fn tier_slots(&self) -> (usize, Option<usize>) {
+        (self.slots, self.ram.as_ref().map(|r| r.slots))
+    }
+
     pub(crate) fn io_backend(&self) -> String {
         let d = &self.dio[0];
         let mode = if d.is_direct() { "direct" } else { "buffered" };
@@ -515,34 +546,22 @@ impl Streamer {
         let (Some(reader), Some(ram)) = (&self.reader, &mut self.ram) else {
             return Ok(());
         };
-        // Distinct predicted experts, the most predicted first.
-        let mut votes = vec![0u32; self.n_expert as usize];
-        for &e in predicted {
-            if let Some(v) = usize::try_from(e).ok().and_then(|e| votes.get_mut(e)) {
-                *v += 1;
-            }
-        }
-        let mut wanted: Vec<u32> = (0..self.n_expert)
-            .filter(|&e| votes[e as usize] > 0)
+        let inflight: Vec<u32> = self
+            .inflight
+            .iter()
+            .filter(|f| f.il == il)
+            .flat_map(|f| f.experts.iter().copied())
             .collect();
-        wanted.sort_by_key(|&e| std::cmp::Reverse(votes[e as usize]));
-        let in_compute = self.compute.layer(il);
-        wanted.retain(|&e| in_compute.slot_of(e).is_none());
-        let layer = ram.cache.layer(il);
-        let (resident, mut missing): (Vec<u32>, Vec<u32>) = wanted
-            .into_iter()
-            .partition(|&e| layer.slot_of(e).is_some());
-        // Everything pinned before this call: the predicted resident experts and every read of
-        // this layer still in flight.
-        let mut pins = resident;
-        for f in self.inflight.iter().filter(|f| f.il == il) {
-            for &e in &f.experts {
-                if !pins.contains(&e) {
-                    pins.push(e);
-                }
-            }
-        }
-        missing.truncate(ram.slots.saturating_sub(pins.len()));
+        // The experts to pin (resident predicted ones and reads still in flight for the layer)
+        // and to read; the selection is shared with the replay (ADR 0050).
+        let (mut pins, missing) = prefetch_plan(
+            predicted,
+            self.n_expert,
+            self.compute.layer(il),
+            ram.cache.layer(il),
+            &inflight,
+            ram.slots,
+        );
         if missing.is_empty() {
             return Ok(());
         }

@@ -6,7 +6,7 @@
 use crate::layout::{LayerBytes, ModelLayout};
 use serde::{Deserialize, Serialize};
 use tetraeder_plan::{
-    Assign, DeviceBytes, Knobs, Plan, Replica, SlotCache, Span, Stage, UnitKind, UnitSel,
+    Assign, DeviceBytes, Knobs, KvFormat, Plan, Replica, SlotCache, Span, Stage, UnitKind, UnitSel,
 };
 
 /// Device ids in every candidate plan.
@@ -155,7 +155,7 @@ pub struct Footprint {
 ///
 /// - weights: from the layout, per layer; the embedding is always on the host. A dense
 ///   placement with at least one GPU layer also puts the output head on the GPU.
-/// - KV: f16, `2 * n_head_kv * head_dim * 2 B` per token per layer, for `n_ctx` tokens
+/// - KV: `kv` (F16: `2 * n_head_kv * head_dim * 2 B`) per token per layer, for `n_ctx` tokens
 ///   ([`Workload::n_ctx`]), on the side of its layer (MoE: all on the GPU).
 /// - compute buffers (GPU): `ubatch * (4 * n_vocab + 64 * n_embd)` bytes, an upper bound for
 ///   logits and activations with flash attention.
@@ -167,13 +167,14 @@ pub fn footprint(
     placement: Placement,
     ubatch: u32,
     workload: &Workload,
+    kv: KvFormat,
 ) -> Footprint {
     let l = layout.n_layer as usize;
     let mut f = Footprint {
         weights_host: layout.embed_bytes,
         ..Default::default()
     };
-    let layer_kv = layout.kv_bytes_per_token_per_layer() * workload.n_ctx();
+    let layer_kv = layout.kv_bytes_per_token_per_layer_as(kv) * workload.n_ctx();
     let gpu_layers = match placement {
         Placement::Dense { gpu_layers } => {
             let g = (gpu_layers as usize).min(l);
@@ -225,7 +226,7 @@ pub fn footprint(
         f.compute_gpu =
             u64::from(ubatch) * (4 * u64::from(layout.n_vocab) + 64 * u64::from(layout.n_embd));
         if matches!(placement, Placement::Builder { .. }) {
-            // Overflow passes keep an f32 accumulator of n_used FFN outputs per row (ADR 0034).
+            // Pair groups write an f32 accumulator of n_used FFN outputs per row (ADR 0035).
             f.compute_gpu +=
                 u64::from(ubatch) * u64::from(layout.n_expert_used) * u64::from(layout.n_embd) * 4;
         }
@@ -267,6 +268,7 @@ fn assign(
         compute: None,
         format: Some(fmt),
         role_formats: Default::default(),
+        kv_format: None,
     }
 }
 
@@ -277,6 +279,7 @@ pub fn build_plan(
     knobs: Knobs,
     ubatch: u32,
     workload: &Workload,
+    kv: KvFormat,
 ) -> Plan {
     use UnitKind::{Attn, Embed, Expert, Head, Mlp};
     let (l, fmt) = (layout.n_layer, layout.main_format());
@@ -322,7 +325,11 @@ pub fn build_plan(
             ];
         }
     }
-    let f = footprint(layout, placement, ubatch, workload);
+    let f = footprint(layout, placement, ubatch, workload, kv);
+    // F16/F16 stays implicit, so plans without a low-bit KV are unchanged.
+    for r in rules.iter_mut().filter(|r| r.units.kinds.contains(&Attn)) {
+        r.kv_format = (kv != KvFormat::default()).then_some(kv);
+    }
     let bytes = |device: &str, bytes: u64| DeviceBytes {
         device: device.to_string(),
         bytes,
@@ -369,10 +376,17 @@ pub fn build_candidate(
         op_offload: Some(op_offload),
         ..Default::default()
     };
-    let f = footprint(layout, placement, ubatch, workload);
+    let f = footprint(layout, placement, ubatch, workload, KvFormat::default());
     Candidate {
         id: id.to_string(),
-        plan: build_plan(layout, placement, knobs, ubatch, workload),
+        plan: build_plan(
+            layout,
+            placement,
+            knobs,
+            ubatch,
+            workload,
+            KvFormat::default(),
+        ),
         engine: EngineKind::LlamaBench,
         placement,
         prompt: workload.prompt,
@@ -422,7 +436,12 @@ fn placements(
         }
     };
     let lo = u32::from(!layout.is_moe());
-    let ok = |x: u32| fits(budget, &footprint(layout, mk(x), ub, workload));
+    let ok = |x: u32| {
+        fits(
+            budget,
+            &footprint(layout, mk(x), ub, workload, KvFormat::default()),
+        )
+    };
     let Some(max) = (lo..=l).rev().find(|&x| ok(x).is_ok()) else {
         let why = ok(lo).err().unwrap_or_default();
         dropped.push(("all placements".into(), why));
@@ -529,7 +548,10 @@ pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> 
                 for (o, &op) in ops.iter().enumerate() {
                     let desc =
                         format!("{} threads={th} ubatch={ub} op_offload={op}", pl.describe());
-                    match fits(budget, &footprint(layout, pl, ub, workload)) {
+                    match fits(
+                        budget,
+                        &footprint(layout, pl, ub, workload, KvFormat::default()),
+                    ) {
                         Ok(()) => rows.push(Row { p, k: [t, u, o, 0] }),
                         Err(e) => dropped.push((desc, e)),
                     }
@@ -654,7 +676,7 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
             BTreeSet::new(),
         );
         for c in &en.candidates {
-            let f = footprint(layout, c.placement, c.ubatch(), &WORK);
+            let f = footprint(layout, c.placement, c.ubatch(), &WORK, KvFormat::default());
             assert!(
                 f.gpu <= BUDGET.gpu_bytes && f.host <= BUDGET.ram_bytes,
                 "{}",
@@ -688,7 +710,7 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
         let bigger = Placement::Dense {
             gpu_layers: gs[0] + 1,
         };
-        let f = footprint(&l, bigger, 512, &WORK);
+        let f = footprint(&l, bigger, 512, &WORK, KvFormat::default());
         assert!(f.gpu > BUDGET.gpu_bytes);
         assert!(en.dropped.iter().any(|(_, why)| why.contains("thinned")));
     }
@@ -728,19 +750,17 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
         let en = check(&l);
         let top = en.placements[0];
         // a budget just above the ubatch 512 estimate of the top placement but below 2048's
-        let f512 = footprint(&l, top, 512, &WORK).gpu;
-        let f2048 = footprint(&l, top, 2048, &WORK).gpu;
+        let f512 = footprint(&l, top, 512, &WORK, KvFormat::default()).gpu;
+        let f2048 = footprint(&l, top, 2048, &WORK, KvFormat::default()).gpu;
         let b = Budget {
             gpu_bytes: f512,
             ..BUDGET
         };
         let en = enumerate(&b, &l, &WORK);
         assert!(f2048 > f512);
-        assert!(
-            en.candidates
-                .iter()
-                .all(|c| footprint(&l, c.placement, c.ubatch(), &WORK).gpu <= f512)
-        );
+        assert!(en.candidates.iter().all(|c| {
+            footprint(&l, c.placement, c.ubatch(), &WORK, KvFormat::default()).gpu <= f512
+        }));
         assert!(
             en.dropped
                 .iter()

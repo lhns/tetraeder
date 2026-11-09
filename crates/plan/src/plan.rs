@@ -1,6 +1,6 @@
 //! The placement plan as written by the planner or by hand (ADR 0027).
 
-use crate::{Format, ModelDesc, UnitId, UnitKind};
+use crate::{Format, KvFormat, ModelDesc, UnitId, UnitKind};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -68,6 +68,10 @@ pub struct Assign {
     /// Per-role override of `format` (ADR 0047), keyed by role name such as `attn.v`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub role_formats: BTreeMap<String, Format>,
+    /// K and V cache format of the attention units the rule selects (ADR 0050 b). Absent:
+    /// F16/F16. Only valid on a rule that can select attention units.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kv_format: Option<KvFormat>,
 }
 
 /// A unit's default format and resolved role formats.
@@ -225,6 +229,49 @@ impl Plan {
             }
         }
         out
+    }
+
+    /// KV format of every layer one replica assigns: the format of the first rule that matches
+    /// the layer's attention unit in the stage holding the layer, F16/F16 when it gives none.
+    /// Layers no rule selects are left out.
+    pub fn kv_formats(&self, desc: &ModelDesc, replica: usize) -> BTreeMap<u32, KvFormat> {
+        let mut out = BTreeMap::new();
+        let Some(rep) = self.replicas.get(replica) else {
+            return out;
+        };
+        for st in &rep.stages {
+            for l in (st.layers.0..st.layers.1).filter(|&l| l < desc.layers) {
+                if let Some(a) = st.assign.iter().find(|a| a.units.matches(UnitId::Attn(l))) {
+                    out.insert(l, a.kv_format.unwrap_or_default());
+                }
+            }
+        }
+        out
+    }
+
+    /// Tokens the KV budget of `device` in stage `stage` of `replica` holds: the budget over the
+    /// bytes one token takes in the stage's layers at their formats. The devices that hold a
+    /// budget share every layer's KV evenly. 0 without a budget on the device.
+    pub fn kv_tokens(&self, desc: &ModelDesc, replica: usize, stage: usize, device: &str) -> u64 {
+        let Some(st) = self.replicas.get(replica).and_then(|r| r.stages.get(stage)) else {
+            return 0;
+        };
+        let Some(kv) = &st.kv else { return 0 };
+        let Some(budget) = kv.iter().find(|d| d.device == device) else {
+            return 0;
+        };
+        let formats = self.kv_formats(desc, replica);
+        let per_token: u128 = (st.layers.0..st.layers.1)
+            .map(|l| {
+                let f = formats.get(&l).copied().unwrap_or_default();
+                u128::from(desc.kv_bytes_per_token_per_layer_as(f))
+            })
+            .sum();
+        if per_token == 0 {
+            return 0;
+        }
+        let tokens = u128::from(budget.bytes) * kv.len() as u128 / per_token;
+        u64::try_from(tokens).unwrap_or(u64::MAX)
     }
 
     pub fn to_toml(&self) -> Result<String, toml::ser::Error> {

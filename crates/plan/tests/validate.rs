@@ -233,6 +233,7 @@ fn tp_plan(tp: u32, homes: [&str; 2]) -> Plan {
             compute: None,
             format: Some(Format::Q8_0),
             role_formats: BTreeMap::new(),
+            kv_format: None,
         },
         Assign {
             units: UnitSel {
@@ -243,6 +244,7 @@ fn tp_plan(tp: u32, homes: [&str; 2]) -> Plan {
             compute: None,
             format: Some(Format::Q8_0),
             role_formats: BTreeMap::new(),
+            kv_format: None,
         },
     ];
     p
