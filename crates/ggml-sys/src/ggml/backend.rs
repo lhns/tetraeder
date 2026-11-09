@@ -38,6 +38,30 @@ impl std::fmt::Debug for Backend {
     }
 }
 
+/// `TETRAEDER_REQUIRE_GPU` is set to anything but empty or `0`.
+fn flag_set(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|v| !v.is_empty() && v != "0")
+}
+
+fn require_gpu() -> bool {
+    flag_set(std::env::var_os("TETRAEDER_REQUIRE_GPU").as_deref())
+}
+
+#[cfg(test)]
+mod flag_tests {
+    use super::flag_set;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn require_gpu_flag_values() {
+        assert!(!flag_set(None));
+        assert!(!flag_set(Some(OsStr::new(""))));
+        assert!(!flag_set(Some(OsStr::new("0"))));
+        assert!(flag_set(Some(OsStr::new("1"))));
+        assert!(flag_set(Some(OsStr::new("true"))));
+    }
+}
+
 impl Backend {
     /// The CPU backend with `n_threads` compute threads in a threadpool of its own that lives as
     /// long as the backend (as libllama with an attached pool and llama-bench run).
@@ -129,9 +153,15 @@ impl Backend {
         })
     }
 
-    /// True when the build has at least one GPU device.
+    /// True when the build has at least one GPU device. Tests use it to skip GPU checks; with
+    /// `TETRAEDER_REQUIRE_GPU=1` (set on GPU boxes) a missing GPU panics instead, so a skip cannot pass for a run.
     pub fn gpu_available() -> bool {
-        Backend::gpu_count() > 0
+        let present = Backend::gpu_count() > 0;
+        assert!(
+            present || !require_gpu(),
+            "TETRAEDER_REQUIRE_GPU is set but this build or machine has no GPU device"
+        );
+        present
     }
 
     pub fn gpu_count() -> usize {
