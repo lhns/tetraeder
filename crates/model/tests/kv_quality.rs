@@ -13,11 +13,15 @@
 //! - `TETRAEDER_KV_QUALITY_SLOTS`: expert slots per layer when the model does not fit (default:
 //!   every expert resident).
 //!
-//! Gating rows (the builder's default rotation, ADR 0050 addendum), at every depth: Q8_0/Q8_0
-//! mean KL at most 0.003 and top-1 at least 0.99; Q8_0/Q4_0 at most 0.015 and 0.97. Informative
-//! rows: the builder's F16 cache again (run-to-run floor) and rotated (rounding of the rotation
-//! alone), both formats with the rotation off, and libllama with F16 and both formats (its
-//! default rotation) against the same builder F16 reference.
+//! Any perturbation of this model, even F16 rounding, costs about 0.007 mean KL against the
+//! reference (20261110b), so the gate is on the cost above that floor (ADR 0050 note
+//! 2026-11-10b, bounds provisional): the floor row is the builder's F16 cache with the rotation
+//! forced on, and each gating row (the builder's default rotation) is paired with it position by
+//! position. At every depth, Q8_0/Q8_0 excess mean KL at most 0.003 and excess top-1 loss at most
+//! 0.01; Q8_0/Q4_0 at most 0.015 and 0.03. The ADR's absolute bounds are reported (`abs_pass`).
+//! Informative rows: the reference again (determinism) and at half the ubatch, both formats with
+//! the rotation off, libllama with F16 and both formats (its default rotation), and each engine's
+//! formats against that engine's own F16 row.
 //!
 //! Hardware labels (AGENTS rule 9) per test.
 
@@ -101,15 +105,15 @@ fn tokenize(gguf: &PathBuf, text: &str) -> Vec<i32> {
     vocab.tokenize(text, vocab.add_bos(), false).unwrap()
 }
 
-/// Logits of the positions `from..` of `tokens`: the prefix runs in ubatches that keep only the
-/// last row, the tail in one all-position step per ubatch.
-fn scored_logits(m: &mut Qwen3Moe, tokens: &[i32], from: usize) -> Vec<f32> {
+/// Logits of the positions `from..` of `tokens`: the prefix runs in ubatches of `ubatch` that keep
+/// only the last row, the tail in one all-position step per ubatch.
+fn scored_logits(m: &mut Qwen3Moe, tokens: &[i32], from: usize, ubatch: usize) -> Vec<f32> {
     m.reset();
-    for c in tokens[..from].chunks(UBATCH) {
+    for c in tokens[..from].chunks(ubatch) {
         m.eval_last(c).unwrap();
     }
     let mut out = Vec::new();
-    for c in tokens[from..].chunks(UBATCH) {
+    for c in tokens[from..].chunks(ubatch) {
         out.extend(m.eval(c).unwrap());
     }
     out
@@ -210,20 +214,34 @@ fn load(gguf: &PathBuf, n_ctx: usize, kv: KvFormat, rotation: Option<bool>) -> Q
     Qwen3Moe::load(gguf, &o).expect("builder loads")
 }
 
-/// Mean, median, p99 and max KL and the top-1 agreement of one variant on one set.
-fn score(refs: &[Vec<f32>], got: &[Vec<f32>], n_vocab: usize) -> Value {
-    let mut kls = Vec::new();
-    let mut agree = 0usize;
+/// Per-position KL and argmax agreement of one variant against a reference, over one set.
+struct Scored {
+    kl: Vec<f64>,
+    agree: Vec<bool>,
+}
+
+fn score(refs: &[Vec<f32>], got: &[Vec<f32>], n_vocab: usize) -> Scored {
+    let (mut kl, mut agree) = (Vec::new(), Vec::new());
     for (p, q) in refs.iter().zip(got) {
         assert_eq!(p.len(), q.len(), "scored rows differ");
         for (pr, qr) in p.chunks(n_vocab).zip(q.chunks(n_vocab)) {
-            let (kl, same) = kl_row(pr, qr);
-            kls.push(kl);
-            agree += usize::from(same);
+            let (k, same) = kl_row(pr, qr);
+            kl.push(k);
+            agree.push(same);
         }
     }
-    let n = kls.len();
-    let mean = kls.iter().sum::<f64>() / n as f64;
+    Scored { kl, agree }
+}
+
+fn top1(s: &Scored) -> f64 {
+    s.agree.iter().filter(|&&a| a).count() as f64 / s.agree.len() as f64
+}
+
+/// Mean, median, p99 and max KL and the top-1 agreement.
+fn summary(s: &Scored) -> Value {
+    let n = s.kl.len();
+    let mean = s.kl.iter().sum::<f64>() / n as f64;
+    let mut kls = s.kl.clone();
     kls.sort_by(f64::total_cmp);
     json!({
         "positions": n,
@@ -231,8 +249,45 @@ fn score(refs: &[Vec<f32>], got: &[Vec<f32>], n_vocab: usize) -> Value {
         "median_kl": kls[n / 2],
         "p99_kl": kls[(n * 99 / 100).min(n - 1)],
         "max_kl": kls[n - 1],
-        "top1_agreement": agree as f64 / n as f64,
+        "top1_agreement": top1(s),
     })
+}
+
+/// Cost of a variant above the floor, both scored against the same reference on the same
+/// positions: the mean per-position KL difference, its standard error, and the extra share of
+/// positions that lose the reference's argmax.
+fn excess(got: &Scored, floor: &Scored) -> (f64, f64, f64) {
+    assert_eq!(got.kl.len(), floor.kl.len(), "scored positions differ");
+    let d: Vec<f64> = got.kl.iter().zip(&floor.kl).map(|(a, b)| a - b).collect();
+    let n = d.len() as f64;
+    let mean = d.iter().sum::<f64>() / n;
+    let var = d.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0).max(1.0);
+    (mean, (var / n).sqrt(), top1(floor) - top1(got))
+}
+
+/// hardware: cpu. The excess is the paired per-position difference.
+#[test]
+fn cpu_excess_is_the_paired_difference() {
+    let floor = Scored {
+        kl: vec![0.01, 0.02, 0.0, 0.03],
+        agree: vec![true, true, true, false],
+    };
+    let got = Scored {
+        kl: vec![0.02, 0.03, 0.01, 0.04],
+        agree: vec![true, false, true, false],
+    };
+    let (mean, se, top) = excess(&got, &floor);
+    assert!((mean - 0.01).abs() < 1e-12, "{mean}");
+    assert!(se < 1e-9, "{se}");
+    assert!((top - 0.25).abs() < 1e-12, "{top}");
+    let got = Scored {
+        kl: vec![0.03, 0.02, 0.0, 0.03],
+        agree: floor.agree.clone(),
+    };
+    let (mean, se, top) = excess(&got, &floor);
+    assert!((mean - 0.005).abs() < 1e-12, "{mean}");
+    assert!((se - 0.005).abs() < 1e-12, "{se}");
+    assert_eq!(top, 0.0);
 }
 
 /// hardware: cpu. At the short depth the sequence is the prompt prefix, as in the 20261110 run.
@@ -288,8 +343,40 @@ enum Engine {
     Libllama,
 }
 
-/// Gating bounds of a row: mean KL at most, top-1 agreement at least.
-type Bounds = Option<(f64, f64)>;
+impl Engine {
+    fn name(&self) -> &'static str {
+        match self {
+            Engine::Builder(_) => "builder",
+            Engine::Libllama => "libllama",
+        }
+    }
+}
+
+/// What a row is for.
+enum Role {
+    /// The builder's F16 cache with the rotation forced on: as close to the reference as the
+    /// arithmetic allows, so its KL is the floor any perturbation reaches. Gating rows are
+    /// paired with it.
+    Floor,
+    /// Gating on the cost above the floor (ADR 0050 note 2026-11-10b): excess mean KL at most,
+    /// excess top-1 loss at most. The ADR's absolute bounds (mean KL at most, top-1 at least)
+    /// are reported next to it, not gated.
+    Gate {
+        excess: (f64, f64),
+        absolute: (f64, f64),
+    },
+    Info,
+}
+
+struct Variant {
+    kv: KvFormat,
+    engine: Engine,
+    ubatch: usize,
+    role: Role,
+    /// Keep the logits as this engine's own baseline: later rows of the engine are also scored
+    /// against it (same engine, same batching, only the KV format differs).
+    base: bool,
+}
 
 /// hardware: gpu (uses the first GPU when the build has one, else the CPU; slow either way).
 #[test]
@@ -361,44 +448,74 @@ fn kv_quality() {
         .map(|s| {
             s.seqs
                 .iter()
-                .map(|(t, from)| scored_logits(&mut m, t, *from))
+                .map(|(t, from)| scored_logits(&mut m, t, *from, UBATCH))
                 .collect()
         })
         .collect();
     drop(m);
 
-    let variants: Vec<(KvFormat, Engine, Bounds)> = vec![
-        (KvFormat::Q8_0, Engine::Builder(None), Some((0.003, 0.99))),
-        (
-            KvFormat::Q8_0_Q4_0,
-            Engine::Builder(None),
-            Some((0.015, 0.97)),
+    let v = |kv, engine, ubatch, role, base| Variant {
+        kv,
+        engine,
+        ubatch,
+        role,
+        base,
+    };
+    let gate = |excess, absolute| Role::Gate { excess, absolute };
+    // The floor runs first: the gating rows need it. Host memory: the reference, one baseline
+    // and the current row, about 3.7 GB each (6144 positions of 151936 F32 logits).
+    let (f16, q8, q4) = (KvFormat::F16, KvFormat::Q8_0, KvFormat::Q8_0_Q4_0);
+    use Engine::{Builder, Libllama};
+    let variants = vec![
+        v(f16, Builder(Some(true)), UBATCH, Role::Floor, true),
+        v(
+            q8,
+            Builder(None),
+            UBATCH,
+            gate((0.003, 0.01), (0.003, 0.99)),
+            false,
         ),
-        (KvFormat::F16, Engine::Builder(None), None),
-        (KvFormat::F16, Engine::Builder(Some(true)), None),
-        (KvFormat::Q8_0, Engine::Builder(Some(false)), None),
-        (KvFormat::Q8_0_Q4_0, Engine::Builder(Some(false)), None),
-        (KvFormat::F16, Engine::Libllama, None),
-        (KvFormat::Q8_0, Engine::Libllama, None),
-        (KvFormat::Q8_0_Q4_0, Engine::Libllama, None),
+        v(
+            q4,
+            Builder(None),
+            UBATCH,
+            gate((0.015, 0.03), (0.015, 0.97)),
+            false,
+        ),
+        // The reference again (determinism) and at another ubatch (batching dependence).
+        v(f16, Builder(None), UBATCH, Role::Info, false),
+        v(f16, Builder(None), UBATCH / 2, Role::Info, false),
+        v(q8, Builder(Some(false)), UBATCH, Role::Info, false),
+        v(q4, Builder(Some(false)), UBATCH, Role::Info, false),
+        v(f16, Libllama, UBATCH, Role::Info, true),
+        v(q8, Libllama, UBATCH, Role::Info, false),
+        v(q4, Libllama, UBATCH, Role::Info, false),
     ];
     let mut libllama: Option<Arc<Model>> = None;
     let mut results = Vec::new();
-    for (kv, engine, bounds) in &variants {
-        let (engine_name, rotation, got): (&str, Value, Vec<Vec<Vec<f32>>>) = match engine {
+    // Per set: the floor row's per-position scores against the reference.
+    let mut floor: Option<Vec<Scored>> = None;
+    // An engine's own F16 baseline: its name, a label and its logits.
+    let mut own_base: Option<(&str, String, Vec<Vec<Vec<f32>>>)> = None;
+    for var in &variants {
+        let (kv, engine_name, ubatch) = (var.kv, var.engine.name(), var.ubatch);
+        if own_base.as_ref().is_some_and(|b| b.0 != engine_name) {
+            own_base = None;
+        }
+        let (rotation, got): (Value, Vec<Vec<Vec<f32>>>) = match &var.engine {
             Engine::Builder(rot) => {
-                let mut m = load(&gguf, n_ctx, *kv, *rot);
+                let mut m = load(&gguf, n_ctx, kv, *rot);
                 let (k, v) = m.kv_rotated();
                 let got = sets
                     .iter()
                     .map(|s| {
                         s.seqs
                             .iter()
-                            .map(|(t, from)| scored_logits(&mut m, t, *from))
+                            .map(|(t, from)| scored_logits(&mut m, t, *from, ubatch))
                             .collect()
                     })
                     .collect();
-                ("builder", json!({"k": k, "v": v}), got)
+                (json!({"k": k, "v": v}), got)
             }
             Engine::Libllama => {
                 let model: &Arc<Model> = libllama.get_or_insert_with(|| {
@@ -418,45 +535,94 @@ fn kv_quality() {
                     .map(|s| {
                         s.seqs
                             .iter()
-                            .map(|(t, from)| libllama_logits(model, *kv, n_ctx, t, *from))
+                            .map(|(t, from)| libllama_logits(model, kv, n_ctx, t, *from))
                             .collect()
                     })
                     .collect();
-                ("libllama", json!("default"), got)
+                (json!("default"), got)
             }
         };
-        for ((set, refs), got) in sets.iter().zip(&reference).zip(&got) {
-            let mut r = score(refs, got, n_vocab);
-            let (kl, top1) = (
-                r["mean_kl"].as_f64().unwrap(),
-                r["top1_agreement"].as_f64().unwrap(),
-            );
+        let label = format!("{engine_name} {kv} rot {rotation} ubatch {ubatch}");
+        let row = |s: &Scored, set: &str, reference: &str| {
+            let mut r = summary(s);
             eprintln!(
-                "{engine_name} {kv} rot {rotation} {}: mean KL {kl:.5}, median {:.6}, p99 {:.4}, max {:.3}, top-1 {top1:.4}{}",
-                set.name,
+                "{label} {set} vs {reference}: mean KL {:.5}, median {:.6}, p99 {:.4}, max {:.3}, top-1 {:.4}",
+                r["mean_kl"].as_f64().unwrap(),
                 r["median_kl"].as_f64().unwrap(),
                 r["p99_kl"].as_f64().unwrap(),
                 r["max_kl"].as_f64().unwrap(),
-                if bounds.is_some() { " (gating)" } else { "" },
+                r["top1_agreement"].as_f64().unwrap(),
             );
             let o = r.as_object_mut().unwrap();
             o.insert("engine".into(), json!(engine_name));
             o.insert("kv".into(), json!(kv.to_string()));
             o.insert("rotation".into(), rotation.clone());
-            o.insert("set".into(), json!(set.name));
-            o.insert("gating".into(), json!(bounds.is_some()));
-            if let Some((kl_max, top1_min)) = bounds {
-                o.insert("bound_kl".into(), json!(kl_max));
-                o.insert("bound_top1".into(), json!(top1_min));
-                o.insert("pass".into(), json!(kl <= *kl_max && top1 >= *top1_min));
+            o.insert("ubatch".into(), json!(ubatch));
+            o.insert("set".into(), json!(set));
+            o.insert("reference".into(), json!(reference));
+            o.insert("gating".into(), json!(false));
+            r
+        };
+        let mut scored = Vec::new();
+        for (i, ((set, refs), got)) in sets.iter().zip(&reference).zip(&got).enumerate() {
+            let s = score(refs, got, n_vocab);
+            let mut r = row(&s, &set.name, "builder f16");
+            if let Role::Gate {
+                excess: (ex_kl, ex_top1),
+                absolute: (abs_kl, abs_top1),
+            } = var.role
+            {
+                let f = &floor
+                    .as_ref()
+                    .expect("the floor row runs before gating rows")[i];
+                let (d, se, d_top1) = excess(&s, f);
+                let (kl, agree) = (
+                    r["mean_kl"].as_f64().unwrap(),
+                    r["top1_agreement"].as_f64().unwrap(),
+                );
+                let pass = d <= ex_kl && d_top1 <= ex_top1;
+                // The bound lies within two standard errors of the excess: one run cannot tell.
+                let marginal = (d - ex_kl).abs() <= 2.0 * se;
+                eprintln!(
+                    "  gating: excess KL {d:.5} +- {se:.5} (bound {ex_kl}), excess top-1 loss {d_top1:.4} (bound {ex_top1}): {}{}",
+                    if pass { "pass" } else { "FAIL" },
+                    if marginal { " (marginal)" } else { "" },
+                );
+                let o = r.as_object_mut().unwrap();
+                o.insert("gating".into(), json!(true));
+                o.insert(
+                    "floor_mean_kl".into(),
+                    json!(f.kl.iter().sum::<f64>() / f.kl.len() as f64),
+                );
+                o.insert("floor_top1".into(), json!(top1(f)));
+                o.insert("excess_kl".into(), json!(d));
+                o.insert("excess_kl_se".into(), json!(se));
+                o.insert("excess_top1_loss".into(), json!(d_top1));
+                o.insert("bound_excess_kl".into(), json!(ex_kl));
+                o.insert("bound_excess_top1_loss".into(), json!(ex_top1));
+                o.insert("marginal".into(), json!(marginal));
+                o.insert("pass".into(), json!(pass));
+                o.insert("abs_bound_kl".into(), json!(abs_kl));
+                o.insert("abs_bound_top1".into(), json!(abs_top1));
+                o.insert("abs_pass".into(), json!(kl <= abs_kl && agree >= abs_top1));
             }
             results.push(r);
+            if let Some((_, name, logits)) = &own_base {
+                results.push(row(&score(&logits[i], &got[i], n_vocab), &set.name, name));
+            }
+            scored.push(s);
+        }
+        if matches!(var.role, Role::Floor) {
+            floor = Some(scored);
+        }
+        if var.base {
+            own_base = Some((engine_name, label.clone(), got));
         }
     }
     if let Some(p) = std::env::var_os("TETRAEDER_KV_QUALITY_OUT") {
         let out = json!({
             "model": gguf.display().to_string(),
-            "reference": "builder F16/F16 KV",
+            "reference": "builder F16/F16 KV, rotation off, ubatch 2048 (rows with another \"reference\" are same-engine diagnostics)",
             "backend": if gpu() { "gpu" } else { "cpu" },
             "prompt": {"tokens": base.len(), "fnv1a64": tokens_hash(&base)},
             "sets": set_info,
