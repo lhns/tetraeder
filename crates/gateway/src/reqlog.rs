@@ -149,6 +149,7 @@ impl Drop for Pending {
                 "bytes_streamed": c.bytes_streamed,
             })),
             "profile": cost.as_ref().and_then(|c| c.profile.as_ref()).map(profile_json),
+            "tool_outcomes": cost.as_ref().map(|c| &c.tool_outcomes),
             "error_type": error_type,
             "response": response,
         });

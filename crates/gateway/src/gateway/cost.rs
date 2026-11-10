@@ -5,6 +5,7 @@ use super::record_error;
 use crate::chat::Usage;
 use crate::engine::{DecodeProfile, EngineStats};
 use opentelemetry::KeyValue;
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 use tetraeder_telemetry::{CacheResult, Direction};
 
@@ -22,6 +23,8 @@ pub struct RequestCost {
     pub bytes_streamed: Option<u64>,
     /// The engine's decode profile plus the gateway's share (`TETRAEDER_DECODE_PROFILE=1`).
     pub profile: Option<DecodeProfile>,
+    /// Tool-call outcomes, keyed `outcome/class` (`parsed/ok`, `repaired/no_opener`, ...).
+    pub tool_outcomes: BTreeMap<String, u32>,
     pub duration: Duration,
     /// `error.type` when the request did not complete (`cancelled`, `internal`, ...).
     pub error_type: Option<&'static str>,
@@ -111,6 +114,7 @@ impl Run {
                 gpu_seconds: stats.gpu_seconds,
                 bytes_streamed: stats.bytes_streamed,
                 profile: stats.profile.clone(),
+                tool_outcomes: self.tool_outcomes.clone(),
                 duration,
                 error_type,
             });

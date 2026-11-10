@@ -188,6 +188,30 @@ def test_server_decode_reads_llama_timings_and_tetraeder_profiles(tmp_path):
     assert s["ratio_tetraeder_over_llama"] == 0.909
 
 
+def test_toolcall_outcomes_sum_per_engine_and_skip_bad_lines(tmp_path):
+    def w(name, *lines):
+        (tmp_path / name).write_text("\n".join(lines) + "\n")
+
+    w("tetraeder-r1.reqlog.jsonl", json.dumps({"tool_outcomes": {"parsed/ok": 2, "repaired/no_opener": 1}}),
+      "not json", json.dumps({"tool_outcomes": None}), json.dumps({"tool_outcomes": {}}))
+    w("tetraeder-r2.reqlog.jsonl", json.dumps({"tool_outcomes": {"parsed/ok": 1, "failed/bad_xml": 1}}))
+    w("llama-server-r1.reqlog.jsonl", json.dumps({"usage": {}}))
+    assert summary.toolcall_outcomes(str(tmp_path)) == {
+        "tetraeder": {"failed/bad_xml": 1, "parsed/ok": 3, "repaired/no_opener": 1},
+        "llama-server": None,
+    }
+
+
+def test_summary_main_puts_toolcall_outcomes_next_to_call_error_rate(tmp_path):
+    for e in ("tetraeder", "llama-server"):
+        (tmp_path / f"session-{e}-r1-a.json").write_text(json.dumps(session(e, 1, "a", True)))
+    (tmp_path / "tetraeder-r1.reqlog.jsonl").write_text(json.dumps({"tool_outcomes": {"parsed/ok": 4}}) + "\n")
+    assert summary.main([str(tmp_path)]) == 0
+    engines = json.loads((tmp_path / "summary.json").read_text())["engines"]
+    assert engines["tetraeder"]["toolcall_outcomes"] == {"parsed/ok": 4}
+    assert engines["llama-server"]["toolcall_outcomes"] is None
+
+
 # ---- logging proxy -------------------------------------------------------------------------------------------
 
 SSE = [
