@@ -1,0 +1,15 @@
+[21:06:48] start
+[21:09:54] fetch done: [21:09:54] FETCH_DONE
+[21:44:45] IK_BUILD_DONE rc=0 21:44:43
+[21:52:26] compare done: [21:52:26] step compare rc=1
+[21:52:26] IK_QUALITY_DONE
+[21:56:29] start
+[21:56:31] fetch done: [21:56:31] FETCH_DONE
+[21:56:31] IK_BUILD_DONE rc=0 21:44:43
+[21:57:07] compare done: [21:57:07] step compare rc=1
+[21:57:07] IK_QUALITY_DONE
+[22:00:55] start
+[22:00:57] fetch done: [22:00:57] FETCH_DONE
+[22:00:57] IK_BUILD_DONE rc=0 21:56:35
+[22:04:20] compare done: [22:04:20] step compare rc=0
+[22:04:20] IK_QUALITY_DONE
