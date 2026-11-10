@@ -232,6 +232,9 @@ def claude_env(args, base_url: str, home: Path) -> dict:
         ANTHROPIC_DEFAULT_HAIKU_MODEL=args.alias,
         ANTHROPIC_SMALL_FAST_MODEL=args.alias,
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1",
+        # drops the per-session billing header at the prompt start, which changes on cron-woken turns and breaks the
+        # prefix cache for both engines alike (2026-11-10 rerun); reported switch, check the reqlog's first system line
+        CLAUDE_CODE_ATTRIBUTION_HEADER="0",
         DISABLE_AUTOUPDATER="1",
         DISABLE_TELEMETRY="1",
         CLAUDE_CONFIG_DIR=str(home / ".claude"),
