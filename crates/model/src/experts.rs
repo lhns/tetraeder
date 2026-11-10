@@ -62,11 +62,25 @@ pub struct IoCounters {
     /// CPU group started, and those experts; the summed spans of those steps (from planning to
     /// the last landing) and the part of them the main thread waited. `1 - wait / span` is the
     /// hidden share. Their reads are counted in `experts_read` and `bytes_read` as usual.
+    /// Despite its name, `urgent_wait_time` is every wait for a pending expert, a late prefetch
+    /// as well as a miss (it equals `overlap_wait`).
     pub urgent_wait_time: Duration,
     pub pending_steps: u64,
     pub pending_experts: u64,
     pub overlap_span: Duration,
     pub overlap_wait: Duration,
+    /// The pending experts by where their read came from: misses of the layer step itself
+    /// (urgent), and prefetches issued two layer steps ahead (depth 2); the rest are depth-1
+    /// prefetches. `pending_lead` sums, over the pending prefetches, the time from their submit
+    /// to the layer's plan.
+    pub pending_urgent: u64,
+    pub pending_ahead: u64,
+    pub pending_lead: Duration,
+    /// The pending steps that had at least one urgent miss, with their span and wait (the other
+    /// pending steps only waited for late prefetches).
+    pub urgent_steps: u64,
+    pub urgent_steps_span: Duration,
+    pub urgent_steps_wait: Duration,
     /// CPU expert groups run because their reads had landed (after the resident group). One
     /// group per wake-up of a wait: experts that land together form one.
     pub landed_groups: u64,
@@ -198,8 +212,10 @@ struct InFlightUnit {
     il: usize,
     expert: u32,
     unit: UnitId,
-    /// Read ahead for a prediction, as opposed to a miss of the layer being computed.
-    prefetch: bool,
+    /// 0: a miss of the layer being computed (urgent); 1 or 2: read ahead for the prediction
+    /// made that many layer steps before.
+    depth: u8,
+    submitted: Instant,
     /// The layer step routed to it.
     routed: bool,
     /// The bytes are in the slot and counted; the entry stays (its expert stays pinned and
@@ -242,6 +258,9 @@ struct OverlapSpan {
     last: Instant,
     wait: Duration,
     pending: u64,
+    urgent: u64,
+    ahead: u64,
+    lead: Duration,
 }
 
 /// Cap on the reader's bounce buffer per shard: its reads are a few experts, not a layer step.
@@ -639,12 +658,14 @@ impl Streamer {
     /// pinned until [`Streamer::finish_prefetch`]. Reads already in flight for the layer count as
     /// resident (their slots are assigned) and stay pinned, so a later call tops the layer up.
     /// The background reads have their own direct files, so the main thread's reads may run
-    /// meanwhile.
+    /// meanwhile. `depth`: the layer steps between the prediction and layer `il` (1 or 2), for
+    /// the counters only.
     pub(crate) fn start_prefetch(
         &mut self,
         file: &ModelFile,
         il: usize,
         predicted: &[i32],
+        depth: u8,
     ) -> Result<()> {
         let (Some(pf), Some(ram)) = (&mut self.prefetcher, &mut self.ram) else {
             return Ok(());
@@ -784,7 +805,8 @@ impl Streamer {
                         il,
                         expert,
                         unit,
-                        prefetch: true,
+                        depth,
+                        submitted: Instant::now(),
                         routed: false,
                         landed: false,
                     });
@@ -1074,7 +1096,8 @@ impl Streamer {
                     il,
                     expert: experts[i],
                     unit,
-                    prefetch: false,
+                    depth: 0,
+                    submitted: Instant::now(),
                     routed: true,
                     landed: false,
                 });
@@ -1083,22 +1106,34 @@ impl Streamer {
         // An in-flight unit may have landed since the reap: its expert is ready.
         let mut ready = Vec::new();
         let mut waiting = Vec::new();
+        let (mut urgent, mut ahead, mut lead) = (0, 0, Duration::ZERO);
+        let now = Instant::now();
         for (i, &e) in experts.iter().enumerate() {
-            let in_flight = pending[i]
-                && inflight
-                    .iter()
-                    .any(|u| u.il == il && u.expert == e && !u.landed);
-            if in_flight {
-                waiting.push(e);
-            } else {
-                ready.push(e);
+            let unit = inflight
+                .iter()
+                .find(|u| u.il == il && u.expert == e && !u.landed);
+            match unit.filter(|_| pending[i]) {
+                Some(u) => {
+                    waiting.push(e);
+                    match u.depth {
+                        0 => urgent += 1,
+                        d => {
+                            ahead += u64::from(d >= 2);
+                            lead += now.saturating_duration_since(u.submitted);
+                        }
+                    }
+                }
+                None => ready.push(e),
             }
         }
         self.span = (!waiting.is_empty()).then(|| OverlapSpan {
             start: t0,
-            last: Instant::now(),
+            last: now,
             wait: Duration::ZERO,
             pending: waiting.len() as u64,
+            urgent,
+            ahead,
+            lead,
         });
         Ok(StagedLayer {
             slots,
@@ -1164,6 +1199,14 @@ impl Streamer {
             self.io.pending_experts += sp.pending;
             self.io.overlap_span += span;
             self.io.overlap_wait += sp.wait;
+            self.io.pending_urgent += sp.urgent;
+            self.io.pending_ahead += sp.ahead;
+            self.io.pending_lead += sp.lead;
+            if sp.urgent > 0 {
+                self.io.urgent_steps += 1;
+                self.io.urgent_steps_span += span;
+                self.io.urgent_steps_wait += sp.wait;
+            }
             self.metrics.read_hidden(sp.wait, span);
         }
         let Some(Prefetcher::Service { inflight, .. }) = &mut self.prefetcher else {
@@ -1447,7 +1490,7 @@ fn land(
         };
         u.landed = true;
         match r {
-            Ok(d) => account_unit(counters, m, device, u.prefetch, &d),
+            Ok(d) => account_unit(counters, m, device, u.depth > 0, &d),
             Err(e) => {
                 failed.get_or_insert((u.il, e));
             }

@@ -389,6 +389,15 @@ EOF
       exit_regime main-overlap 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 || rc=30
       exit_regime main-overlap-d2 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 || rc=30
       exit_regime main-overlap-ram 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 TETRAEDER_EXIT_RAM_SLOT_BYTES=$((mem - 4000000000)) || rc=30
+      # Hidden share levers (ADR 0054), each paired with main-overlap: misses submitted before the next layers'
+      # prefetch; fewer workers, so deadline order applies (the disk curve is flat from depth 4); idle ggml threads
+      # that sleep instead of spinning while the main thread waits for a read
+      ovl=(TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1)
+      exit_regime main-overlap-uf 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_URGENT_FIRST=1 || rc=30
+      exit_regime main-overlap-w4 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_IO_WORKERS=4 || rc=30
+      exit_regime main-overlap-uf-w4 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_URGENT_FIRST=1 TETRAEDER_EXIT_IO_WORKERS=4 || rc=30
+      exit_regime main-overlap-w8 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_IO_WORKERS=8 || rc=30
+      exit_regime main-overlap-poll0 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 || rc=30
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
       # routing trace for the RAM-tier replay (ADR 0050 (c)): the prefetch levers of ADR 0038 (depth 2, so the trace

@@ -353,8 +353,14 @@ fn cpu_urgent_first_submits_misses_before_prefetch() {
         }
         let io = &s.io;
         assert!(io.pending_urgent > 0, "{what}: {io:?}");
-        assert!(io.pending_urgent + io.pending_ahead <= io.pending_experts, "{what}");
-        assert!(io.urgent_steps > 0 && io.urgent_steps <= io.pending_steps, "{what}");
+        assert!(
+            io.pending_urgent + io.pending_ahead <= io.pending_experts,
+            "{what}"
+        );
+        assert!(
+            io.urgent_steps > 0 && io.urgent_steps <= io.pending_steps,
+            "{what}"
+        );
         assert!(io.urgent_steps_wait <= io.overlap_wait, "{what}");
         assert!(io.urgent_steps_span <= io.overlap_span, "{what}");
     }
