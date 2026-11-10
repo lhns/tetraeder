@@ -1,0 +1,109 @@
+{
+  "engine": "llama-server",
+  "rep": 2,
+  "task": "fix-eom-leap",
+  "started": "2026-11-10T13:23:28",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 31785,
+    "stop_reason": "end_turn",
+    "session_id": "5a83e995-5ee4-41da-8773-cd818a72d388",
+    "total_cost_usd": 0.1449004,
+    "usage": {
+      "input_tokens": 15027,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 125062,
+      "output_tokens": 2989,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 15027,
+        "outputTokens": 2989,
+        "cacheReadInputTokens": 125062,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.1449004,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 10,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully fixed the bug in the dates end-of-month (eom) payment terms logic. The issue was that the `end_of_month` function in `invoicing/dates.py` was using a hardcoded February day count of 28, which didn't account for leap years. \n\nI replaced the hardcoded approach with `calendar.monthrange()` which properly handles leap years, ensuring that invoices with 'eom' payment terms issued in February of leap years now get the correct due date (29 days instead of 28).\n\nAll tests now pass including the previously failing test `test_eom_terms_in_leap_year`, and the complete test suite of 85 tests passes with no regressions.\n\nThe fix is general and works for all years, not just 2024, maintaining backward compatibility while correctly handling leap year edge cases.",
+    "ttft_ms": 5240,
+    "type": "result",
+    "duration_ms": 33864,
+    "uuid": "94968be3-159a-4a31-a8eb-ab65fe118f1e",
+    "ttft_stream_ms": 4683,
+    "time_to_request_ms": 93,
+    "first_content_frame_ms": 4684,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 34.22,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 78%]\n....................                                                     [100%]\n92 passed in 0.23s\n"
+      }
+    ]
+  },
+  "success": true
+}

@@ -1,0 +1,151 @@
+ Downloading crates ...
+  Downloaded autocfg v1.5.1
+  Downloaded toml_datetime v1.1.2+spec-1.1.0
+  Downloaded cpufeatures v0.3.1
+  Downloaded wait-timeout v0.2.1
+  Downloaded unarray v0.1.4
+  Downloaded toml_parser v1.1.5+spec-1.1.0
+  Downloaded tempfile v3.27.0
+  Downloaded rand_core v0.10.1
+  Downloaded num-traits v0.2.19
+  Downloaded toml_edit v0.25.17+spec-1.1.0
+  Downloaded rand v0.10.3
+  Downloaded borsh v1.8.1
+  Downloaded winnow v1.0.4
+  Downloaded fastrand v2.5.0
+  Downloaded borsh-derive v1.8.1
+  Downloaded bit-vec v0.10.1
+  Downloaded bit-set v0.11.1
+  Downloaded proptest v1.12.0
+  Downloaded rusty-fork v0.3.1
+  Downloaded quick-error v1.2.3
+  Downloaded core_detect v1.0.0
+  Downloaded rand_xorshift v0.5.0
+  Downloaded proc-macro-crate v3.5.0
+  Downloaded fnv v1.0.7
+  Downloaded cfg_aliases v0.2.2
+  Downloaded chacha20 v0.10.2
+  Downloaded rustix v1.1.6
+  Downloaded linux-raw-sys v0.12.1
+   Compiling serde_core v1.0.229
+   Compiling tokio v1.54.1
+   Compiling bitflags v2.13.2
+   Compiling opentelemetry v0.33.1
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling serde_json v1.0.154
+   Compiling rustix v1.1.6
+   Compiling autocfg v1.5.1
+   Compiling url v2.5.8
+   Compiling linux-raw-sys v0.12.1
+   Compiling num-traits v0.2.19
+   Compiling fastrand v2.5.0
+   Compiling io-uring v0.7.15
+   Compiling wait-timeout v0.2.1
+   Compiling fnv v1.0.7
+   Compiling bit-vec v0.10.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling cpufeatures v0.3.1
+   Compiling quick-error v1.2.3
+   Compiling chacha20 v0.10.2
+   Compiling bit-set v0.11.1
+   Compiling rand v0.10.3
+   Compiling rand_xorshift v0.5.0
+   Compiling unarray v0.1.4
+   Compiling core_detect v1.0.0
+   Compiling serde v1.0.229
+   Compiling hyper v1.12.0
+   Compiling tower v0.5.3
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling tempfile v3.27.0
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling toml_edit v0.22.27
+   Compiling tower-http v0.6.11
+   Compiling rusty-fork v0.3.1
+   Compiling proptest v1.12.0
+   Compiling hyper-util v0.1.21
+   Compiling reqwest v0.13.5
+   Compiling toml v0.8.23
+   Compiling opentelemetry-proto v0.33.1
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling opentelemetry-http v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 21.83s
+     Running tests/kv_quality.rs (target/release/deps/kv_quality-52d0cf1ca3413323)
+
+running 1 test
+exit_prompt_8k: 8192 tokens, scored from 7168, repeated 8-grams 0.0029
+exit_prompt_32k: 32768 tokens, scored from 31744, repeated 8-grams 0.0244
+builder f16/f16 rot {"k":true,"v":true} ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.00926, median 0.005213, p99 0.0650, max 0.234, top-1 0.9600
+builder f16/f16 rot {"k":true,"v":true} ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.00891, median 0.004425, p99 0.0547, max 0.602, top-1 0.9551
+test kv_quality has been running for over 60 seconds
+builder f16/f16 rot {"k":true,"v":true} ubatch 2048 calibration_512 vs builder f16: mean KL 0.00678, median 0.002747, p99 0.0729, max 0.582, top-1 0.9631
+builder q8_0/q8_0 rot {"k":true,"v":true} ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.01070, median 0.005286, p99 0.0933, max 0.398, top-1 0.9580
+  gating: excess KL 0.00144 +- 0.00052 (bound 0.003), excess top-1 loss 0.0020 (bound 0.01): pass
+builder q8_0/q8_0 rot {"k":true,"v":true} ubatch 2048 exit_prompt_8k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.00984, median 0.005248, p99 0.0764, max 0.138, top-1 0.9531
+builder q8_0/q8_0 rot {"k":true,"v":true} ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.00954, median 0.004625, p99 0.0741, max 0.313, top-1 0.9629
+  gating: excess KL 0.00063 +- 0.00079 (bound 0.003), excess top-1 loss -0.0078 (bound 0.01): pass
+builder q8_0/q8_0 rot {"k":true,"v":true} ubatch 2048 exit_prompt_32k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01119, median 0.004872, p99 0.0919, max 0.645, top-1 0.9551
+builder q8_0/q8_0 rot {"k":true,"v":true} ubatch 2048 calibration_512 vs builder f16: mean KL 0.00749, median 0.002846, p99 0.0767, max 0.895, top-1 0.9678
+  gating: excess KL 0.00071 +- 0.00028 (bound 0.003), excess top-1 loss -0.0046 (bound 0.01): pass
+builder q8_0/q8_0 rot {"k":true,"v":true} ubatch 2048 calibration_512 vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.00634, median 0.002896, p99 0.0586, max 0.274, top-1 0.9661
+builder q8_0/q4_0 rot {"k":true,"v":true} ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.01689, median 0.009392, p99 0.1136, max 0.561, top-1 0.9326
+  gating: excess KL 0.00763 +- 0.00072 (bound 0.015), excess top-1 loss 0.0273 (bound 0.03): pass
+builder q8_0/q4_0 rot {"k":true,"v":true} ubatch 2048 exit_prompt_8k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01646, median 0.009039, p99 0.1115, max 0.289, top-1 0.9336
+builder q8_0/q4_0 rot {"k":true,"v":true} ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.01452, median 0.007196, p99 0.0905, max 0.296, top-1 0.9463
+  gating: excess KL 0.00561 +- 0.00086 (bound 0.015), excess top-1 loss 0.0088 (bound 0.03): pass
+builder q8_0/q4_0 rot {"k":true,"v":true} ubatch 2048 exit_prompt_32k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01841, median 0.007850, p99 0.1137, max 2.263, top-1 0.9482
+builder q8_0/q4_0 rot {"k":true,"v":true} ubatch 2048 calibration_512 vs builder f16: mean KL 0.01450, median 0.004815, p99 0.1306, max 8.463, top-1 0.9529
+  gating: excess KL 0.00772 +- 0.00214 (bound 0.015), excess top-1 loss 0.0103 (bound 0.03): pass
+builder q8_0/q4_0 rot {"k":true,"v":true} ubatch 2048 calibration_512 vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01271, median 0.005025, p99 0.1098, max 3.750, top-1 0.9502
+builder f16/f16 rot {"k":false,"v":false} ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.00000, median 0.000000, p99 0.0000, max 0.000, top-1 1.0000
+builder f16/f16 rot {"k":false,"v":false} ubatch 2048 exit_prompt_8k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.00925, median 0.005144, p99 0.0691, max 0.172, top-1 0.9600
+builder f16/f16 rot {"k":false,"v":false} ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.00000, median 0.000000, p99 0.0000, max 0.000, top-1 1.0000
+builder f16/f16 rot {"k":false,"v":false} ubatch 2048 exit_prompt_32k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01065, median 0.004453, p99 0.0559, max 2.252, top-1 0.9551
+builder f16/f16 rot {"k":false,"v":false} ubatch 2048 calibration_512 vs builder f16: mean KL 0.00000, median 0.000000, p99 0.0000, max 0.000, top-1 1.0000
+builder f16/f16 rot {"k":false,"v":false} ubatch 2048 calibration_512 vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.00662, median 0.002733, p99 0.0729, max 0.437, top-1 0.9631
+builder f16/f16 rot {"k":false,"v":false} ubatch 128 exit_prompt_8k vs builder f16: mean KL 0.00986, median 0.004925, p99 0.0815, max 0.156, top-1 0.9580
+builder f16/f16 rot {"k":false,"v":false} ubatch 128 exit_prompt_8k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.00893, median 0.004664, p99 0.0649, max 0.122, top-1 0.9492
+builder f16/f16 rot {"k":false,"v":false} ubatch 128 exit_prompt_32k vs builder f16: mean KL 0.00930, median 0.004629, p99 0.0610, max 0.522, top-1 0.9609
+builder f16/f16 rot {"k":false,"v":false} ubatch 128 exit_prompt_32k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01091, median 0.005434, p99 0.0697, max 1.180, top-1 0.9609
+builder f16/f16 rot {"k":false,"v":false} ubatch 128 calibration_512 vs builder f16: mean KL 0.00690, median 0.002706, p99 0.0743, max 0.675, top-1 0.9644
+builder f16/f16 rot {"k":false,"v":false} ubatch 128 calibration_512 vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.00627, median 0.002744, p99 0.0686, max 0.491, top-1 0.9646
+builder q8_0/q8_0 rot {"k":false,"v":false} ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.01137, median 0.005690, p99 0.0896, max 0.296, top-1 0.9512
+builder q8_0/q8_0 rot {"k":false,"v":false} ubatch 2048 exit_prompt_8k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01096, median 0.005657, p99 0.0817, max 0.175, top-1 0.9561
+builder q8_0/q8_0 rot {"k":false,"v":false} ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.01131, median 0.005192, p99 0.0927, max 0.741, top-1 0.9424
+builder q8_0/q8_0 rot {"k":false,"v":false} ubatch 2048 exit_prompt_32k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01120, median 0.005565, p99 0.0934, max 0.298, top-1 0.9482
+builder q8_0/q8_0 rot {"k":false,"v":false} ubatch 2048 calibration_512 vs builder f16: mean KL 0.00855, median 0.003201, p99 0.0972, max 1.566, top-1 0.9634
+builder q8_0/q8_0 rot {"k":false,"v":false} ubatch 2048 calibration_512 vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.00781, median 0.003330, p99 0.0760, max 0.508, top-1 0.9597
+builder q8_0/q4_0 rot {"k":false,"v":false} ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.01950, median 0.010877, p99 0.1332, max 0.593, top-1 0.9365
+builder q8_0/q4_0 rot {"k":false,"v":false} ubatch 2048 exit_prompt_8k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01817, median 0.010897, p99 0.1088, max 0.448, top-1 0.9326
+builder q8_0/q4_0 rot {"k":false,"v":false} ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.02008, median 0.010271, p99 0.1590, max 1.256, top-1 0.9346
+builder q8_0/q4_0 rot {"k":false,"v":false} ubatch 2048 exit_prompt_32k vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.02038, median 0.009692, p99 0.1553, max 0.916, top-1 0.9424
+builder q8_0/q4_0 rot {"k":false,"v":false} ubatch 2048 calibration_512 vs builder f16: mean KL 0.01457, median 0.005976, p99 0.1400, max 1.351, top-1 0.9436
+builder q8_0/q4_0 rot {"k":false,"v":false} ubatch 2048 calibration_512 vs builder f16/f16 rot {"k":true,"v":true} ubatch 2048: mean KL 0.01449, median 0.006075, p99 0.1389, max 1.207, top-1 0.9463
+libllama f16/f16 rot "default" ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.00792, median 0.004314, p99 0.0597, max 0.139, top-1 0.9580
+libllama f16/f16 rot "default" ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.00723, median 0.003593, p99 0.0542, max 0.151, top-1 0.9600
+libllama f16/f16 rot "default" ubatch 2048 calibration_512 vs builder f16: mean KL 0.00774, median 0.002599, p99 0.0749, max 3.581, top-1 0.9678
+libllama q8_0/q8_0 rot "default" ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.01032, median 0.005525, p99 0.0740, max 0.219, top-1 0.9561
+libllama q8_0/q8_0 rot "default" ubatch 2048 exit_prompt_8k vs libllama f16/f16 rot "default" ubatch 2048: mean KL 0.01027, median 0.005479, p99 0.0710, max 0.302, top-1 0.9502
+libllama q8_0/q8_0 rot "default" ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.00941, median 0.004676, p99 0.0763, max 0.268, top-1 0.9580
+libllama q8_0/q8_0 rot "default" ubatch 2048 exit_prompt_32k vs libllama f16/f16 rot "default" ubatch 2048: mean KL 0.01166, median 0.004790, p99 0.0954, max 0.723, top-1 0.9600
+libllama q8_0/q8_0 rot "default" ubatch 2048 calibration_512 vs builder f16: mean KL 0.00756, median 0.002928, p99 0.0705, max 1.419, top-1 0.9683
+libllama q8_0/q8_0 rot "default" ubatch 2048 calibration_512 vs libllama f16/f16 rot "default" ubatch 2048: mean KL 0.00728, median 0.002870, p99 0.0649, max 2.090, top-1 0.9692
+libllama q8_0/q4_0 rot "default" ubatch 2048 exit_prompt_8k vs builder f16: mean KL 0.01658, median 0.008854, p99 0.1288, max 0.459, top-1 0.9502
+libllama q8_0/q4_0 rot "default" ubatch 2048 exit_prompt_8k vs libllama f16/f16 rot "default" ubatch 2048: mean KL 0.01628, median 0.009081, p99 0.1168, max 0.446, top-1 0.9385
+libllama q8_0/q4_0 rot "default" ubatch 2048 exit_prompt_32k vs builder f16: mean KL 0.01491, median 0.007723, p99 0.0982, max 0.486, top-1 0.9434
+libllama q8_0/q4_0 rot "default" ubatch 2048 exit_prompt_32k vs libllama f16/f16 rot "default" ubatch 2048: mean KL 0.01599, median 0.007540, p99 0.1027, max 0.745, top-1 0.9482
+libllama q8_0/q4_0 rot "default" ubatch 2048 calibration_512 vs builder f16: mean KL 0.01515, median 0.004845, p99 0.1276, max 8.141, top-1 0.9497
+libllama q8_0/q4_0 rot "default" ubatch 2048 calibration_512 vs libllama f16/f16 rot "default" ubatch 2048: mean KL 0.01261, median 0.004921, p99 0.1077, max 3.064, top-1 0.9541
+test kv_quality ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 647.76s
+

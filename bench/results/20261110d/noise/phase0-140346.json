@@ -1,0 +1,698 @@
+{
+  "schema": 1,
+  "spec": "phase0",
+  "spec_fnv1a": "d284355c856fda55",
+  "pins": {
+    "ik_llama_cpp": "pending",
+    "llama_cpp": "2e0d86bebc210947680e8f0d67daa79f3260c106",
+    "tetraeder": "HEAD"
+  },
+  "repeats": 8,
+  "warmup": 1,
+  "page_cache": "warm",
+  "page_cache_applied": false,
+  "env": {
+    "host_id": "1218884616ba",
+    "hostname": "1218884616ba",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": "AMD EPYC 7662 64-Core Processor",
+    "cpus": 61,
+    "cpu_quota": 61.2,
+    "ram_gb": 2003.8,
+    "gpus": [
+      {
+        "name": "NVIDIA A40",
+        "driver": "595.99.02",
+        "memory_mb": 49140.0,
+        "clocks_sm_mhz": 210.0,
+        "clocks_mem_mhz": 405.0,
+        "clocks_max_sm_mhz": 1740.0,
+        "throttle_reasons": "0x0000000000000001",
+        "power_w": 29.13,
+        "temperature_c": 26.0
+      }
+    ],
+    "git_commit": "unknown",
+    "git_dirty": null,
+    "session": "20261110d-1218884616ba-123112",
+    "cuda_env": "",
+    "started_utc": "2026-11-10T14:03:46Z",
+    "cpu_backend": {
+      "dispatch": "static",
+      "extra": [],
+      "forced": null,
+      "host_isa": [
+        "AVX",
+        "AVX2",
+        "FMA",
+        "F16C",
+        "BMI2"
+      ],
+      "isa": [
+        "SSE3",
+        "SSSE3",
+        "AVX",
+        "AVX2",
+        "F16C",
+        "FMA",
+        "BMI2",
+        "LLAMAFILE",
+        "REPACK"
+      ],
+      "missing": [],
+      "module_dir": null,
+      "tier": "avx2"
+    }
+  },
+  "pairs": [
+    {
+      "id": "noise-cuda-dense",
+      "role": "noise",
+      "a": "llama-cuda-dense",
+      "b": "llama-cuda-dense",
+      "device": "cuda",
+      "status": "ok",
+      "reason": "",
+      "noise_class": "cuda-default",
+      "band": 0.08,
+      "band_source": "provisional cuda-default",
+      "metrics": {
+        "pp": {
+          "a": {
+            "n": 8,
+            "median": 4853.948394999999,
+            "min": 4837.977192,
+            "max": 4868.417961,
+            "stddev": 9.452647806047672,
+            "rel_iqr": 0.0020262217888700057
+          },
+          "b": {
+            "n": 8,
+            "median": 4856.748273499999,
+            "min": 4830.985849,
+            "max": 4863.611968,
+            "stddev": 11.087635664182429,
+            "rel_iqr": 0.002853760730327595
+          },
+          "ratio": {
+            "n": 8,
+            "median": 0.9994167722112952,
+            "ci_lo": 0.9976300923927075,
+            "ci_hi": 1.001979749950433,
+            "confidence": 0.95
+          }
+        },
+        "tg": {
+          "a": {
+            "n": 8,
+            "median": 115.61778000000001,
+            "min": 115.502276,
+            "max": 115.645594,
+            "stddev": 0.045687653690188186,
+            "rel_iqr": 0.00031193731621560733
+          },
+          "b": {
+            "n": 8,
+            "median": 115.608179,
+            "min": 115.27274,
+            "max": 115.688193,
+            "stddev": 0.13235772946282368,
+            "rel_iqr": 0.0008547405629492864
+          },
+          "ratio": {
+            "n": 8,
+            "median": 0.9999169502610333,
+            "ci_lo": 0.9993735380377679,
+            "ci_hi": 1.0007508350278467,
+            "confidence": 0.95
+          }
+        }
+      },
+      "quality": null,
+      "samples": [
+        {
+          "rep": 0,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4868.417961,
+          "tg_ts": 115.597838,
+          "wall_s": 5.399805207,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 252.09,
+              "temperature_c": 41.0
+            }
+          ]
+        },
+        {
+          "rep": 0,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4853.132683,
+          "tg_ts": 115.547231,
+          "wall_s": 5.339468027,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 249.05,
+              "temperature_c": 43.0
+            }
+          ]
+        },
+        {
+          "rep": 1,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4846.69033,
+          "tg_ts": 115.554696,
+          "wall_s": 5.379599626,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 257.29,
+              "temperature_c": 44.0
+            }
+          ]
+        },
+        {
+          "rep": 1,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4850.17024,
+          "tg_ts": 115.627132,
+          "wall_s": 5.339114455,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 256.67,
+              "temperature_c": 45.0
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4837.977192,
+          "tg_ts": 115.57399,
+          "wall_s": 5.363803692,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 257.47,
+              "temperature_c": 46.0
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4830.985849,
+          "tg_ts": 115.660767,
+          "wall_s": 5.359528187,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 236.38,
+              "temperature_c": 46.0
+            }
+          ]
+        },
+        {
+          "rep": 3,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4847.880292,
+          "tg_ts": 115.648604,
+          "wall_s": 5.379184302,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 247.54,
+              "temperature_c": 47.0
+            }
+          ]
+        },
+        {
+          "rep": 3,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4859.396613,
+          "tg_ts": 115.502276,
+          "wall_s": 5.339152578,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 251.85,
+              "temperature_c": 47.0
+            }
+          ]
+        },
+        {
+          "rep": 4,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4857.046418,
+          "tg_ts": 115.645594,
+          "wall_s": 5.3384206370000005,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 252.21,
+              "temperature_c": 47.0
+            }
+          ]
+        },
+        {
+          "rep": 4,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4861.513629,
+          "tg_ts": 115.688193,
+          "wall_s": 5.419365088,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 264.59,
+              "temperature_c": 49.0
+            }
+          ]
+        },
+        {
+          "rep": 5,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4861.419189,
+          "tg_ts": 115.642193,
+          "wall_s": 5.339301816,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 239.53,
+              "temperature_c": 49.0
+            }
+          ]
+        },
+        {
+          "rep": 5,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4863.602818,
+          "tg_ts": 115.621727,
+          "wall_s": 5.339389758,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 237.09,
+              "temperature_c": 49.0
+            }
+          ]
+        },
+        {
+          "rep": 6,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4850.760571,
+          "tg_ts": 115.613833,
+          "wall_s": 5.359551388,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 240.32,
+              "temperature_c": 48.0
+            }
+          ]
+        },
+        {
+          "rep": 6,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4860.363864,
+          "tg_ts": 115.574165,
+          "wall_s": 5.399241091,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 253.38,
+              "temperature_c": 49.0
+            }
+          ]
+        },
+        {
+          "rep": 7,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4863.611968,
+          "tg_ts": 115.27274,
+          "wall_s": 5.361576249,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 235.18,
+              "temperature_c": 49.0
+            }
+          ]
+        },
+        {
+          "rep": 7,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4850.850372,
+          "tg_ts": 115.63037,
+          "wall_s": 5.359472618,
+          "build_commit": "2e0d86b",
+          "threads": 61,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 61,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA A40",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7251.0,
+              "clocks_max_sm_mhz": 1740.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 237.17,
+              "temperature_c": 49.0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "exit_code": 0
+}

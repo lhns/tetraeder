@@ -1,0 +1,63 @@
+=== RUN 2026-11-10T12:31:12 session.sh ===
+[12:31:12] session b2-proxy: results bench/results/20261110d, deadline 16:51:12 (260 min left)
+[12:31:12] start proxy
+vendor/llama.cpp is not a git repo here: fresh repo from https://github.com/ggml-org/llama.cpp
+From https://github.com/ggml-org/llama.cpp
+ * branch            2e0d86bebc210947680e8f0d67daa79f3260c106 -> FETCH_HEAD
+apply 0001-msvc-avx512-vbmi-score.patch
+apply 0002-iqk-avx512-q4k-q6k-decode.patch
+ok: 2e0d86b + 2 patches
+[13:49:44] done rc=0
+[13:49:44] start kv_quality
+patches: already applied
+source Qwen/Qwen3-30B-A3B-GGUF: https://huggingface.co/Qwen/Qwen3-30B-A3B-GGUF/resolve/main (modelscope 4135 KB/s, huggingface 11869 KB/s)
+connections per file: 16
+got   Qwen/Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf (18556685824 bytes)
+models_ok=1
+kv-quality rc=0
+[14:02:44] done rc=0
+[14:02:44] start noise
+source Qwen/Qwen3-8B-GGUF: https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main (modelscope 4047 KB/s, huggingface 16972 KB/s)
+connections per file: 16
+got   Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf (5027783488 bytes)
+models_ok=1
+   Compiling syn v3.0.9
+   Compiling clap_builder v4.6.7
+   Compiling serde_derive v1.0.229
+   Compiling clap_derive v4.6.7
+   Compiling clap v4.6.7
+   Compiling serde v1.0.229
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling toml_edit v0.22.27
+   Compiling toml v0.8.23
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 26.84s
+[14:03:46Z] pair noise-cuda-dense (Noise): llama-cuda-dense vs llama-cuda-dense
+[14:04:02Z] pair noise-cuda-dense rep 1/8 a llama-cuda-dense: pp Some(4868.417961) tg Some(115.597838) t/s
+[14:04:08Z] pair noise-cuda-dense rep 1/8 b llama-cuda-dense: pp Some(4853.132683) tg Some(115.547231) t/s
+[14:04:13Z] pair noise-cuda-dense rep 2/8 b llama-cuda-dense: pp Some(4846.69033) tg Some(115.554696) t/s
+[14:04:18Z] pair noise-cuda-dense rep 2/8 a llama-cuda-dense: pp Some(4850.17024) tg Some(115.627132) t/s
+[14:04:24Z] pair noise-cuda-dense rep 3/8 a llama-cuda-dense: pp Some(4837.977192) tg Some(115.57399) t/s
+[14:04:29Z] pair noise-cuda-dense rep 3/8 b llama-cuda-dense: pp Some(4830.985849) tg Some(115.660767) t/s
+[14:04:35Z] pair noise-cuda-dense rep 4/8 b llama-cuda-dense: pp Some(4847.880292) tg Some(115.648604) t/s
+[14:04:40Z] pair noise-cuda-dense rep 4/8 a llama-cuda-dense: pp Some(4859.396613) tg Some(115.502276) t/s
+[14:04:46Z] pair noise-cuda-dense rep 5/8 a llama-cuda-dense: pp Some(4857.046418) tg Some(115.645594) t/s
+[14:04:51Z] pair noise-cuda-dense rep 5/8 b llama-cuda-dense: pp Some(4861.513629) tg Some(115.688193) t/s
+[14:04:56Z] pair noise-cuda-dense rep 6/8 b llama-cuda-dense: pp Some(4861.419189) tg Some(115.642193) t/s
+[14:05:02Z] pair noise-cuda-dense rep 6/8 a llama-cuda-dense: pp Some(4863.602818) tg Some(115.621727) t/s
+[14:05:07Z] pair noise-cuda-dense rep 7/8 a llama-cuda-dense: pp Some(4850.760571) tg Some(115.613833) t/s
+[14:05:13Z] pair noise-cuda-dense rep 7/8 b llama-cuda-dense: pp Some(4860.363864) tg Some(115.574165) t/s
+[14:05:18Z] pair noise-cuda-dense rep 8/8 b llama-cuda-dense: pp Some(4863.611968) tg Some(115.27274) t/s
+[14:05:23Z] pair noise-cuda-dense rep 8/8 a llama-cuda-dense: pp Some(4850.850372) tg Some(115.63037) t/s
+[14:05:24Z] pair noise-cuda-dense -> Ok 
+spec phase0 on 1218884616ba (8 repeats)
+noise-cuda-dense             Ok
+    pp: a 4853.95 (rel IQR 0.2%)  b 4856.75 (rel IQR 0.3%)  ratio 0.999 [0.998, 1.002]  band -8.0% (provisional cuda-default)
+    tg: a 115.62 (rel IQR 0.0%)  b 115.61 (rel IQR 0.1%)  ratio 1.000 [0.999, 1.001]  band -8.0% (provisional cuda-default)
+results: bench/results/20261110d/noise/phase0-140346.json
+[14:05:24] done rc=0
+[14:05:24] SESSION_DONE (165 min before the deadline)
