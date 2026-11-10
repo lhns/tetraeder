@@ -1,4 +1,4 @@
-# M1: status and open items (2026-11-10: two closing runs pending)
+# M1: status and open items (2026-11-10: one closing run pending)
 
 Session profiles for later box runs: [`docs/sessions.md`](sessions.md) (`scripts/session.sh`).
 
@@ -12,16 +12,16 @@ State on 2026-11-10 after five box sessions (`bench/results/20261110*/`). Everyt
 | 3a Formats and quality | quality per byte at least llama.cpp presets | Pass: profile mixes beat Q3/Q4/Q5_K_M on Qwen3-8B and 30B-A3B (BF16 reference). Conversion 11 to 15% faster than llama-quantize, byte-identical (ADR 0047, 0048). |
 | 3a Planner | regret, rank, beat llama.cpp fit | Pass: MoE fixture (regret 0, Spearman 0.997, pick 1.44x llama.cpp `-fitt`) and dense fixture (2026-11-10, b3-planner: 24 candidates, regret 0, Spearman 0.997). |
 | 3a Detector | top-1 faults on real hardware | Pass on a box (2026-11-10, b3-detector): single 30/30, false positives 0/10, pairs 9/9. |
-| 3b Gateway | SDK conformance, Claude Code use, vs llama-server | **Met (2026-11-10, box 60067423, A40, `bench/results/20261110d/`, ADR 0046 addendum; rerun at the new `serve` defaults pending):** tasks 15/20 vs 14/20, prompt cache 95.8% vs 94.2%, 0 non-200s; server decode 0.992. Conformance passes. Low-bit KV passes kv-quality under the excess-over-floor gate (ADR 0050 note 2026-11-10b), all six gating rows; q8/q4 top-1 loss 0.027 at 8K is near its 0.03 bound. |
+| 3b Gateway | SDK conformance, Claude Code use, vs llama-server | **Met (2026-11-10, box 60067423, A40, `bench/results/20261110d/`, ADR 0046 addendum):** tasks 15/20 vs 14/20, prompt cache 95.8% vs 94.2%, 0 non-200s; server decode 0.992. Conformance passes. Low-bit KV passes kv-quality under the excess-over-floor gate (ADR 0050 note 2026-11-10b), all six gating rows; q8/q4 top-1 loss 0.027 at 8K is near its 0.03 bound. |
 | Speculative decoding (ADR 0043, Phase 4 pulled forward; not an M1 exit test) | faster than plain decode | Exact, but slower in the exit regime; op-offload fix (ADR 0044) in, rerun pending. |
 
 ## M1 status (2026-11-10)
 
-Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed paired same-box run; the table above names them. Two closing runs are in flight, because the verdicts were measured before `serve` changed defaults or with a deviation:
+Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed paired same-box run; the table above names them. One closing run is in flight, for the deviations below:
 
 - **Phase 2, AVX-512 (`20261110f`):** b1-exit measured the prefetch path (a tie within noise against KTransformers, 1.13x on the means); the `serve` default is now overlap, measured only on AVX2. The run pairs overlap against KTransformers twice and runs the overlap GPU parity tests.
 - **Phase 2, llama.cpp expert cache:** the exit text says "as its tuner picks them". The tuner returned no CPU share (all 30B experts fit in 24 GB), so b1-exit ran one hand-picked share, 0.9, in mmap (thrashing; dio OOM-killed at 91 GB). `20261110f` adds share 0. Not run again: `-ot` on the new baseline build (beaten 1.23x to 1.60x on the old one).
-- **Phase 3b at the new `serve` defaults (`20261110g`):** the 20261110d verdict ran before the I/O service, overlap and prefetch depth 2 became defaults; the proxy serves with a RAM tier, so its path changed.
+- Phase 3b is not affected by the new `serve` defaults: the proxy sessions serve the model resident (no RAM tier), where the I/O service, overlap and prefetch stay off, as in the 20261110d verdict run.
 
 ## Open after M1, by priority
 
