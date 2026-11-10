@@ -218,7 +218,8 @@ fn cpu_quantized_kv_kl_at_2k() {
         (m.n_vocab(), m.eval(&tokens[1792..]).unwrap())
     };
     let (n_vocab, base) = run(KvFormat::F16, false);
-    for kv in FORMATS {
+    // F16 first: rotated, it differs from the base only by rounding, the floor of the others.
+    for kv in [KvFormat::F16].into_iter().chain(FORMATS) {
         let mut kls = [0.0; 2];
         for (i, rotation) in [false, true].into_iter().enumerate() {
             let (_, q) = run(kv, rotation);
