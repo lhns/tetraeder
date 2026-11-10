@@ -34,7 +34,8 @@ case "$name" in
   *) echo "SESSION must be b1-exit, b1b-levers, b2-proxy, b3-planner, b3-detector or gpu-smoke, not '$name'" >&2; exit 2 ;;
 esac
 state="runs/vast/session-$name.start"
-[ -s "$state" ] || echo "$(date +%s) $(date +%Y%m%d)" > "$state"
+# RESULTS_DATE from the env applies only at the first launch; a relaunch keeps the date in $state
+[ -s "$state" ] || echo "$(date +%s) ${RESULTS_DATE:-$(date +%Y%m%d)}" > "$state"
 read -r start RESULTS_DATE < "$state"
 DEADLINE=$((start + ${SESSION_MIN:-$budget} * 60))
 export RESULTS_DATE DEADLINE RESUME=1
@@ -217,7 +218,9 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
       fi
       # hook for further A6000 stages (resident decode profiling, track-r's scripts/decode_gap.sh): each script runs if
       # present, with the time left as its limit
-      for s in ${B2_STAGES:-scripts/decode_gap.sh}; do
+      # MICROBENCH=0 skips the default decode-gap microbench
+      [ "${MICROBENCH:-1}" = 0 ] && b2_default="" || b2_default="scripts/decode_gap.sh"
+      for s in ${B2_STAGES-$b2_default}; do
         [ -f "$s" ] || { echo "skip $s: not in this checkout"; continue; }
         [ "$(left_min)" -ge 10 ] || { echo "skip $s: $(left_min) min left"; continue; }
         step "$s" timeout -k 30 "$(left_min)m" bash "$s"

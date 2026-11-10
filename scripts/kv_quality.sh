@@ -11,6 +11,11 @@ bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 out=${1:?usage: $0 <out-json>}
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
+# this box's GPU only (the default arch list rebuilds ggml-cuda for four archs)
+if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
+  archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')
+  [ -n "$archs" ] && export TETRAEDER_CUDA_ARCHS="$archs"
+fi
 # shellcheck source=scripts/box_libs.sh
 . scripts/box_libs.sh
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
