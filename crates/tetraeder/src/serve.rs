@@ -84,9 +84,19 @@ pub struct ServeArgs {
     /// MoE builder: what a routed expert outside the GPU slots costs, `upload` or `cpu`.
     #[arg(long, default_value = "upload", value_parser = parse_miss)]
     pub miss: MissPolicy,
-    /// MoE builder: read predicted experts ahead into the RAM tier.
-    #[arg(long)]
-    pub prefetch: bool,
+    /// MoE builder: read predicted experts ahead into the RAM tier, `on` or `off` (bare
+    /// `--prefetch` is `on`). Default: on when there is a RAM tier.
+    #[arg(
+        long,
+        value_name = "on|off",
+        value_parser = parse_on_off,
+        num_args = 0..=1,
+        default_missing_value = "on"
+    )]
+    pub prefetch: Option<bool>,
+    /// MoE builder: layers ahead the prefetch predicts, 1 or 2 (the measured 235B runs used 2).
+    #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u8).range(1..=2))]
+    pub prefetch_depth: u8,
     /// MoE builder: read experts through the persistent I/O service (ADR 0054), `on` or `off`.
     /// Default: on when there is a RAM tier.
     #[arg(long, value_name = "on|off", value_parser = parse_on_off)]
@@ -159,6 +169,11 @@ fn parse_on_off(s: &str) -> Result<bool, String> {
         "off" => Ok(false),
         _ => Err(format!("`{s}`: expected on or off")),
     }
+}
+
+/// Prefetch is on with a RAM tier unless `--prefetch off`.
+pub fn resolve_prefetch(has_ram_tier: bool, prefetch: Option<bool>) -> bool {
+    prefetch.unwrap_or(has_ram_tier)
 }
 
 /// The I/O service and overlap settings of the MoE builder (ADR 0054). Unset flags default to
@@ -364,7 +379,8 @@ struct LoadArgs {
     expert_slots: Option<usize>,
     ram_slots: Option<usize>,
     miss: MissPolicy,
-    prefetch: bool,
+    prefetch: Option<bool>,
+    prefetch_depth: u8,
     io_service: Option<bool>,
     overlap: Option<bool>,
 }
@@ -387,7 +403,8 @@ impl LoadArgs {
         o.expert_slots = self.expert_slots;
         o.ram_slots = self.ram_slots;
         o.miss = self.miss;
-        o.prefetch = self.prefetch;
+        o.prefetch = resolve_prefetch(self.ram_slots.is_some(), self.prefetch);
+        o.prefetch_depth = usize::from(self.prefetch_depth);
         (o.io.service, o.overlap) = resolve_overlap(
             self.ram_slots.is_some(),
             self.miss,
@@ -409,6 +426,7 @@ impl ServeArgs {
             ram_slots: self.ram_slots,
             miss: self.miss,
             prefetch: self.prefetch,
+            prefetch_depth: self.prefetch_depth,
             io_service: self.io_service,
             overlap: self.overlap,
         }
@@ -465,6 +483,20 @@ mod tests {
             resolve_overlap(true, Cpu, Some(false), None),
             Ok((false, false))
         );
+    }
+
+    // hardware: none
+    #[test]
+    fn prefetch_defaults_to_the_ram_tier() {
+        assert!(resolve_prefetch(true, None));
+        assert!(!resolve_prefetch(false, None));
+        assert!(!resolve_prefetch(true, Some(false)));
+        assert!(resolve_prefetch(false, Some(true)));
+        assert_eq!(parse(&[]).prefetch, None);
+        assert_eq!(parse(&["--prefetch"]).prefetch, Some(true));
+        assert_eq!(parse(&["--prefetch", "off"]).prefetch, Some(false));
+        assert_eq!(parse(&[]).prefetch_depth, 2);
+        assert!(P::try_parse_from(["x", "--prefetch-depth", "3"]).is_err());
     }
 
     // hardware: none
