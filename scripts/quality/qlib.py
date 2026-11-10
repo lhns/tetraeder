@@ -23,7 +23,8 @@ GGML_TYPES = {
     29: ("IQ1_M", 256, 56), 30: ("BF16", 1, 2), 34: ("TQ1_0", 256, 54), 35: ("TQ2_0", 256, 66),
     39: ("MXFP4", 32, 17), 40: ("NVFP4", 64, 36), 41: ("Q1_0", 128, 18), 42: ("Q2_0", 64, 18),
     # ik_llama.cpp types (ggml.h and ggml-common.h at its pin), only to size files it wrote.
-    139: ("IQ4_K", 256, 144), 144: ("IQ4_KS", 256, 136),
+    137: ("IQ2_K", 256, 76), 138: ("IQ3_K", 256, 110), 139: ("IQ4_K", 256, 144), 140: ("IQ5_K", 256, 176),
+    141: ("IQ6_K", 256, 212), 144: ("IQ4_KS", 256, 136),
 }
 # ik_llama.cpp stores one f32 scale per row for IQ4_KS in front of the blocks.
 ROW_EXTRA = {"IQ4_KS": 4}
