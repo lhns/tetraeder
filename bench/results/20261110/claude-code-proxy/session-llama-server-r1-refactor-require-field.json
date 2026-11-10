@@ -1,0 +1,114 @@
+{
+  "engine": "llama-server",
+  "rep": 1,
+  "task": "refactor-require-field",
+  "started": "2026-11-10T03:08:11",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 27349,
+    "stop_reason": "end_turn",
+    "session_id": "cf15bf9c-f4af-4d9b-8a24-64c5206c4895",
+    "total_cost_usd": 0.1534636,
+    "usage": {
+      "input_tokens": 18205,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 150818,
+      "output_tokens": 2524,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 18205,
+        "outputTokens": 2524,
+        "cacheReadInputTokens": 150818,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.1534636,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 11,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "## Summary\n\nI have successfully refactored the `invoicing/parsing.py` file to factor out the repeated 'header is missing or blank' check into a single helper function while maintaining all existing behavior.\n\n### Changes Made\n\n1. **Created a helper function `_require_field()`** (lines 44-49):\n   - Encapsulates the repeated pattern of checking if a header field is missing or blank\n   - Raises `ParseError(\"missing field: {field}\")` with the appropriate field name\n   - Returns the stripped value when the field is present\n\n2. **Refactored three functions** to use the helper:\n   - `parse_number()` (lines 52-53): Now calls `_require_field(headers, \"Invoice\")`\n   - `parse_customer()` (lines 56-57): Now calls `_require_field(headers, \"Customer\")` \n   - `parse_issued()` (lines 60-65): Now calls `_require_field(headers, \"Issued\")` and maintains its existing error handling\n\n3. **Preserved existing behavior**:\n   - All existing error messages remain unchanged\n   - All existing functionality is preserved\n   - All 83 tests continue to pass\n\n### Benefits of This Refactoring\n\n- **Reduced code duplication**: Eliminated 3 identical patterns (lines 46-48 in the original code)\n- **Improved maintainability**: If the error message format needs to change, it only needs to be updated in one place\n- **Better readability**: The intent of the code is clearer with a dedicated helper function\n- **No behavioral changes**: The exact same error messages and behavior are maintained\n\nThe refactoring fully satisfies the requirement to factor out the repeated check without changing behavior or error messages, and all existing tests continue to pass.",
+    "ttft_ms": 4460,
+    "type": "result",
+    "duration_ms": 28685,
+    "uuid": "9949236d-6b76-4f46-a9f5-c902acd98434",
+    "ttft_stream_ms": 3828,
+    "time_to_request_ms": 60,
+    "first_content_frame_ms": 3828,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 28.92,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 86%]\n...........                                                              [100%]\n83 passed in 0.14s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/refactor_require.py ",
+        "exit_code": 0,
+        "output_tail": "new helpers and call counts: {'_require_field': 3}\n"
+      }
+    ]
+  },
+  "success": true
+}

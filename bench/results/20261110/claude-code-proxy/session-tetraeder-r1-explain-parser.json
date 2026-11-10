@@ -1,0 +1,114 @@
+{
+  "engine": "tetraeder",
+  "rep": 1,
+  "task": "explain-parser",
+  "started": "2026-11-10T02:56:35",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 14620,
+    "stop_reason": "end_turn",
+    "session_id": "c1a77515-927c-44af-9c1c-42e811b3be57",
+    "total_cost_usd": 0.07302220000000001,
+    "usage": {
+      "input_tokens": 12456,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 24391,
+      "output_tokens": 916,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 12456,
+        "outputTokens": 916,
+        "cacheReadInputTokens": 24391,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.07302220000000001,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 3,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've analyzed the invoicing/parsing.py file and created a NOTES.md file that explains how the invoice text parser works. Here's what I've documented:\n\n1. The input format - how the plain-text invoice should be structured with key-value pairs\n2. The main functions and their purposes:\n   - `parse_invoice_text()` - the primary entry point\n   - `split_headers()` - separates headers from item lines\n   - `parse_item()` - processes individual item lines\n   - Various parsing functions for specific header fields\n3. Error handling - how ParseError exceptions are raised with descriptive messages\n4. How the functions work together in the parsing process\n5. Supporting components used in the parsing\n\nThe NOTES.md file provides a comprehensive overview of how this invoice text parser works without modifying any of the existing code.\n\nIs there anything specific about the parser you'd like me to explain in more detail?",
+    "ttft_ms": 7942,
+    "type": "result",
+    "duration_ms": 14755,
+    "uuid": "1c9fd3c7-bcb9-4244-ac03-0bfcd21399d9",
+    "ttft_stream_ms": 126,
+    "time_to_request_ms": 94,
+    "first_content_frame_ms": 7430,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 15.04,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/explain_notes.py ",
+        "exit_code": 0,
+        "output_tail": ""
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 86%]\n...........                                                              [100%]\n83 passed in 0.13s\n"
+      }
+    ]
+  },
+  "success": true
+}

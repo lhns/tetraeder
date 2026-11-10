@@ -1,0 +1,142 @@
+{
+  "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+  "n_ctx": 131072,
+  "threads": 34,
+  "sampling": {
+    "temperature": 0.800000011920929,
+    "top_k": 40,
+    "top_p": 0.949999988079071
+  },
+  "warmup_steps_excluded": 4,
+  "rows": [
+    {
+      "engine": "llama",
+      "depth": 0,
+      "prompt_tokens": 16,
+      "prefill_tok_s": 229.79473097341995,
+      "decode_tokens": 128,
+      "eval_ms": 5.2326485390625,
+      "eval_ms_steady": 5.168683927419354,
+      "sample_ms": 0.2167111484375,
+      "argmax_ms": 0.1847050703125,
+      "eval_tok_s": 193.47284802908908,
+      "serve_tok_s": 185.68026378480997,
+      "counters": {
+        "n_eval": 127.0,
+        "n_reused": 127.0,
+        "eval_s": 0.0
+      }
+    },
+    {
+      "engine": "llama",
+      "depth": 20000,
+      "prompt_tokens": 20000,
+      "prefill_tok_s": 3376.4430457114954,
+      "decode_tokens": 128,
+      "eval_ms": 8.030661921875,
+      "eval_ms_steady": 7.99852470967742,
+      "sample_ms": 0.2113493984375,
+      "argmax_ms": 0.1777392265625,
+      "eval_tok_s": 125.02305566301489,
+      "serve_tok_s": 121.80986663731231,
+      "counters": {
+        "n_eval": 128.0,
+        "n_reused": 127.0,
+        "eval_s": 0.0
+      }
+    },
+    {
+      "engine": "llama",
+      "depth": 100000,
+      "prompt_tokens": 100000,
+      "prefill_tok_s": 1424.0137657335092,
+      "decode_tokens": 128,
+      "eval_ms": 19.2886475,
+      "eval_ms_steady": 19.255646104838707,
+      "sample_ms": 0.19808859375,
+      "argmax_ms": 0.16843453125000002,
+      "eval_tok_s": 51.9328198366043,
+      "serve_tok_s": 51.40392102883101,
+      "counters": {
+        "n_eval": 128.0,
+        "n_reused": 126.0,
+        "eval_s": 0.0
+      }
+    },
+    {
+      "engine": "moe",
+      "depth": 0,
+      "prompt_tokens": 16,
+      "prefill_tok_s": 713.9097324502806,
+      "decode_tokens": 128,
+      "eval_ms": 5.256706226562501,
+      "eval_ms_steady": 5.224137467741936,
+      "sample_ms": 0.1553418828125,
+      "argmax_ms": 0.13694971875,
+      "eval_tok_s": 191.4191588898285,
+      "serve_tok_s": 185.88968404583753,
+      "counters": {
+        "steps": 128.0,
+        "graphs": 128.0,
+        "step_graphs_built": 1.0,
+        "inputs_s": 0.002030045,
+        "build_s": 0.000545947,
+        "alloc_s": 0.00074869,
+        "compute_s": 0.669479634,
+        "readback_s": 0.000015275000000000002,
+        "streamer_s": 0.0,
+        "total_s": 0.6728316639999999
+      }
+    },
+    {
+      "engine": "moe",
+      "depth": 20000,
+      "prompt_tokens": 20000,
+      "prefill_tok_s": 3342.542239985389,
+      "decode_tokens": 128,
+      "eval_ms": 8.0740860703125,
+      "eval_ms_steady": 8.04246504032258,
+      "sample_ms": 0.155109453125,
+      "argmax_ms": 0.137930609375,
+      "eval_tok_s": 124.33998717884266,
+      "serve_tok_s": 121.98698024499458,
+      "counters": {
+        "steps": 128.0,
+        "graphs": 128.0,
+        "step_graphs_built": 1.0,
+        "inputs_s": 0.002805090999999982,
+        "build_s": 0.0002695519999999993,
+        "alloc_s": 0.0007811970000000008,
+        "compute_s": 1.0295672490000003,
+        "readback_s": 0.000016648,
+        "streamer_s": 0.0,
+        "total_s": 1.033451274
+      }
+    },
+    {
+      "engine": "moe",
+      "depth": 100000,
+      "prompt_tokens": 100000,
+      "prefill_tok_s": 1398.7530410572938,
+      "decode_tokens": 128,
+      "eval_ms": 19.1524582421875,
+      "eval_ms_steady": 19.11126072580645,
+      "sample_ms": 0.154508640625,
+      "argmax_ms": 0.13771668750000002,
+      "eval_tok_s": 52.32517175853674,
+      "serve_tok_s": 51.9053878067977,
+      "counters": {
+        "steps": 128.0,
+        "graphs": 128.0,
+        "step_graphs_built": 2.0,
+        "inputs_s": 0.006032508000000103,
+        "build_s": 0.0005620179999999975,
+        "alloc_s": 0.0012127249999999978,
+        "compute_s": 2.4436494020000055,
+        "readback_s": 0.000012992,
+        "streamer_s": 0.0,
+        "total_s": 2.451480489000005
+      }
+    }
+  ]
+}

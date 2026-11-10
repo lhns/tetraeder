@@ -1,0 +1,102 @@
+ Downloading crates ...
+  Downloaded autocfg v1.5.1
+  Downloaded cpufeatures v0.3.1
+  Downloaded cfg_aliases v0.2.2
+  Downloaded core_detect v1.0.0
+  Downloaded chacha20 v0.10.2
+  Downloaded proc-macro-crate v3.5.0
+  Downloaded quick-error v1.2.3
+  Downloaded rand_xorshift v0.5.0
+  Downloaded num-traits v0.2.19
+  Downloaded unarray v0.1.4
+  Downloaded fnv v1.0.7
+  Downloaded wait-timeout v0.2.1
+  Downloaded toml_datetime v1.1.2+spec-1.1.0
+  Downloaded toml_parser v1.1.5+spec-1.1.0
+  Downloaded toml_edit v0.25.17+spec-1.1.0
+  Downloaded rand_core v0.10.1
+  Downloaded rand v0.10.3
+  Downloaded fastrand v2.5.0
+  Downloaded proptest v1.12.0
+  Downloaded borsh v1.8.1
+  Downloaded tempfile v3.27.0
+  Downloaded rusty-fork v0.3.1
+  Downloaded bit-vec v0.10.1
+  Downloaded bit-set v0.11.1
+  Downloaded borsh-derive v1.8.1
+  Downloaded winnow v1.0.4
+  Downloaded rustix v1.1.6
+  Downloaded linux-raw-sys v0.12.1
+   Compiling serde_core v1.0.229
+   Compiling tokio v1.54.1
+   Compiling bitflags v2.13.2
+   Compiling opentelemetry v0.33.1
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling serde_json v1.0.154
+   Compiling rustix v1.1.6
+   Compiling autocfg v1.5.1
+   Compiling url v2.5.8
+   Compiling linux-raw-sys v0.12.1
+   Compiling num-traits v0.2.19
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling fastrand v2.5.0
+   Compiling io-uring v0.7.15
+   Compiling wait-timeout v0.2.1
+   Compiling fnv v1.0.7
+   Compiling bit-vec v0.10.1
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling cpufeatures v0.3.1
+   Compiling quick-error v1.2.3
+   Compiling chacha20 v0.10.2
+   Compiling bit-set v0.11.1
+   Compiling rand v0.10.3
+   Compiling rand_xorshift v0.5.0
+   Compiling unarray v0.1.4
+   Compiling core_detect v1.0.0
+   Compiling serde v1.0.229
+   Compiling tempfile v3.27.0
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling rusty-fork v0.3.1
+   Compiling hyper v1.12.0
+   Compiling tower v0.5.3
+   Compiling toml_edit v0.22.27
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling tower-http v0.6.11
+   Compiling proptest v1.12.0
+   Compiling hyper-util v0.1.21
+   Compiling reqwest v0.13.5
+   Compiling toml v0.8.23
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling opentelemetry-proto v0.33.1
+   Compiling opentelemetry-http v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 11m 55s
+     Running tests/kv_quality.rs (target/release/deps/kv_quality-865aa2d0b21c301b)
+
+running 1 test
+q8_0/q8_0 exit_prompt_8k: mean KL 0.01070, top-1 0.9580 over 1024 positions
+q8_0/q8_0 exit_prompt_32k: mean KL 0.00087, top-1 0.9990 over 1024 positions
+q8_0/q4_0 exit_prompt_8k: mean KL 0.01689, top-1 0.9326 over 1024 positions
+q8_0/q4_0 exit_prompt_32k: mean KL 0.00004, top-1 1.0000 over 1024 positions
+
+thread 'kv_quality' (120318) panicked at crates/model/tests/kv_quality.rs:215:9:
+{"bound_kl":0.003,"bound_top1":0.99,"kv":"q8_0/q8_0","mean_kl":0.010699661012901337,"pass":false,"positions":1024,"set":"exit_prompt_8k","top1_agreement":0.9580078125}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test kv_quality ... FAILED
+
+failures:
+
+failures:
+    kv_quality
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 53.75s
+
+error: test failed, to rerun pass `-p tetraeder-model --test kv_quality`

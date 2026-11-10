@@ -1,0 +1,108 @@
+{
+  "engine": "llama-server",
+  "rep": 2,
+  "task": "cli-sort-by",
+  "started": "2026-11-10T03:22:36",
+  "timed_out": false,
+  "exit_code": 1,
+  "claude": {
+    "duration_api_ms": 296923,
+    "stop_reason": "tool_use",
+    "session_id": "690112cf-c273-4f72-b32a-50e770322031",
+    "total_cost_usd": 0.6696730000000001,
+    "usage": {
+      "input_tokens": 29534,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 884380,
+      "output_tokens": 7790,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 46570,
+        "outputTokens": 11909,
+        "cacheReadInputTokens": 1226065,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.6696730000000001,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "max_turns",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 1,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 1
+      },
+      "started_in_background": 1,
+      "max_depth": 1,
+      "spawned_by_subagents": 0,
+      "completed": 1,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {
+        "general-purpose": 1
+      }
+    },
+    "safety_stops": 0,
+    "is_error": true,
+    "num_turns": 41,
+    "subtype": "error_max_turns",
+    "errors": [
+      "Reached maximum number of turns (40)"
+    ],
+    "type": "result",
+    "duration_ms": 170026,
+    "uuid": "45a890e5-6b35-4ed5-ad63-7a1be35fa6d2",
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 170.28,
+  "check": {
+    "passed": false,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 1,
+        "output_tail": ".............F.......................................................... [ 79%]\n...................                                                      [100%]\n=================================== FAILURES ===================================\n________________________ test_sort_by[issued-expected1] ________________________\n\ninvoice_file = PosixPath('/tmp/pytest-of-root/pytest-82/test_sort_by_issued_expected1_0/invoices.json')\ncapsys = <_pytest.capture.CaptureFixture object at 0x7bff4da17650>\nkey = 'issued', expected = ['INV-001', 'INV-002', 'INV-003']\n\n    @pytest.mark.parametrize(\n        \"key,expected\",\n        [\n            (\"number\", [\"INV-001\", \"INV-002\", \"INV-003\"]),\n            (\"issued\", [\"INV-001\", \"INV-002\", \"INV-003\"]),\n            (\"customer\", [\"INV-001\", \"INV-003\", \"INV-002\"]),\n            (\"total\", [\"INV-002\", \"INV-003\", \"INV-001\"]),\n        ],\n    )\n    def test_sort_by(invoice_file, capsys, key, expected):\n>       assert numbers(capsys, str(invoice_file), \"--sort-by\", key) == expected\nE       AssertionError: assert ['INV-001', '...3', 'INV-002'] == ['INV-001', '...2', 'INV-003']\nE         \nE         At index 1 diff: 'INV-003' != 'INV-002'\nE         Use -v to get more diff\n\ntests/test_hidden_cli_sort.py:26: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_hidden_cli_sort.py::test_sort_by[issued-expected1] - Assert...\n1 failed, 90 passed in 0.16s\n"
+      }
+    ]
+  },
+  "success": false
+}
