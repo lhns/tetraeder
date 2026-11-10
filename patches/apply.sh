@@ -12,7 +12,9 @@ if ! own_repo && [ -e "$root/.git" ]; then
   git -C "$root" submodule update --init --depth 1 vendor/llama.cpp || true
 fi
 if ! own_repo; then
-  url="${PATCH_REMOTE:-$(git config -f "$root/.gitmodules" submodule.vendor/llama.cpp.url)}"
+  # taxameter does not push .gitmodules: fall back to upstream
+  url="${PATCH_REMOTE:-$(git config -f "$root/.gitmodules" submodule.vendor/llama.cpp.url 2>/dev/null || true)}"
+  url="${url:-https://github.com/ggml-org/llama.cpp}"
   echo "vendor/llama.cpp is not a git repo here: fresh repo from $url"
   mkdir -p "$sub"
   find "$sub" -mindepth 1 -delete

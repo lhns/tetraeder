@@ -60,7 +60,7 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 
 ## B1: Phase 2 exit verdict (`b1-exit`)
 
-**Box.** RTX 3090 (the llama.cpp baseline build is Ampere only, `BASELINE_CUDA_ARCHS="86"`), container RAM about 91 GB (the 235B must not fit; `exit_run.sh` balloons any larger limit down to 128 GB), CPU quota 24 to 26 (the gap to KTransformers showed at 26 and was a tie at 15, ADR 0045 addendum), NVMe at 5 GB/s or more, 220 GB disk (142 GB model, the KT stub, the build). `$T offers --min-cpu-cores 24 --download-gb 145 --min-disk 220`, pick an offer with 88 to 100 GB RAM.
+**Box.** RTX 3090 (the llama.cpp baseline build is Ampere only, `BASELINE_CUDA_ARCHS="86"`), container RAM about 91 GB (the 235B must not fit; `exit_run.sh` balloons any larger limit down to 128 GB), CPU quota 24 to 26 (the gap to KTransformers showed at 26 and was a tie at 15, ADR 0045 addendum), NVMe at 5 GB/s or more, 220 GB disk (142 GB model, the KT stub, the build). `$T offers --min-cpu-cores 24 --download-gb 145 --min-disk 220`, pick an offer with 88 to 100 GB RAM. `--min-disk` only filters hosts: the box disk comes from `[policy] disk_gb` (80), so set `{"disk_gb": 230}` in the git-ignored `.vast/config.json` before `create` (also for `b1b-levers`; the 2026-11-10 run lost a box to this).
 
 **Launch.** No models at provision (the script fetches the 235B). `$T run --id <id> scripts/session.sh --env SESSION=b1-exit --env MOE_CPU_SHARE=<tune.json cpu_share from B3>`. Defaults: `VRAM_SLOT_BYTES=10966007808`, `OT_FIT='blk\.[0-6]\.ffn_.*_exps=CUDA0;exps=CPU'` (fitted for a 24 GB card at 32K). Without `MOE_CPU_SHARE` it takes the newest committed `moe-cache-tune/tune.json`, else 0.5 (logged).
 

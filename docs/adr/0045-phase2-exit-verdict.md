@@ -129,3 +129,21 @@ Order: `main-native` against `main` first (pre-box estimate: the microbench's na
 ### Runtime ISA dispatch
 
 `crates/ggml-sys/build.rs` builds ggml static (`BUILD_SHARED_LIBS=OFF`) and links `ggml-cpu` and `ggml-base` as static libraries. `GGML_CPU_ALL_VARIANTS=ON` needs `GGML_BACKEND_DL=ON`, which builds the backends as loadable `libggml-cpu-<isa>.so` plugins that ggml picks from at start; so it needs a shared build (and CUDA as a loadable backend too), a plugin directory next to the binary and a linking change in `build.rs`. That is a build and packaging change for its own ADR; it is not implemented here.
+
+## Addendum (2026-11-10, box 60042169): verdict, met on the means
+
+Session `b1-exit`: RTX 3090, Xeon Gold 6330N (Ice Lake, AVX-512 VNNI/VBMI), 91.4 GB cgroup RAM, quota 26.9 cores, 26 threads for every engine, ggml native, `MOE_CPU_SHARE=0.9` (B3 tuner). Qwen3-235B-A22B, 32K prefill, 64 decode, same prompt hash for builder and llama.cpp. Paired ratios on this box only:
+
+| | Prefill tok/s | Decode tok/s |
+|---|---|---|
+| Builder (prefetch, repeat) | 69.5, 70.3 | 3.56, 3.31 |
+| KTransformers (avx512_vbmi, repeat) | 36.6, 39.9 | 3.40, 2.70 |
+| llama.cpp expert cache, share 0.9, mmap | 10.96 | 2.10 |
+| llama.cpp expert cache, `--load-mode dio` | OOM-killed at load | |
+
+- Prefill: 1.83x KTransformers, 6.4x the llama.cpp cache. Met.
+- Decode: 1.13x KTransformers on the means (pairs 1.05 and 1.23) and 1.57x the llama.cpp cache. KTransformers spreads 23% between its two runs, the builder 7%, so the margin over KTransformers is at worst a tie within noise. Met on the means; more pairs in `b1b-levers` will firm it up.
+- dio needs the CPU-share weights in anonymous memory, which cannot fit 142 GB into 91 GB, so mmap is llama.cpp's best here. Its mmap run thrashes (515k major faults in the timed run, prefill about 50 min).
+- Host sampler, decode: the builder reads 570 MB per token at queue depth 34 with the CPU 96 to 99% busy; KTransformers reads 146 to 250 MB per token at depth 13 to 21 with 2 to 3 thousand major faults per token, CPU 55 to 70%.
+- The 2026-11-03 box (KT 1.34x ahead) had another CPU and AVX2 builds of our ggml; since then boxes build ggml native with the iqk kernels (ADR 0052, 0053). Absolute numbers do not compare across boxes; this verdict is for this box class.
+- Not run (deadline guard): `ktransformers-avx2`, the llama.cpp cache repeat. Results: `bench/results/20261110/exit-*.json`, `disk-curve-*.json`.
