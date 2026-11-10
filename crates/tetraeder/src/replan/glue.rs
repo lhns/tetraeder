@@ -115,7 +115,8 @@ pub fn builder_options(
     };
     o.prefetch = resolve_prefetch(ram_slots.is_some(), f.prefetch);
     o.prefetch_depth = usize::from(f.prefetch_depth);
-    (o.io.service, o.overlap) = resolve_overlap(ram_slots.is_some(), o.miss, io_service, overlap)?;
+    (o.io.service, o.overlap) =
+        resolve_overlap(ram_slots.is_some(), o.miss, f.io_service, f.overlap)?;
     o.telemetry = Some(telemetry);
     Ok(o)
 }
