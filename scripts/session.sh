@@ -76,7 +76,7 @@ box_env() {
   command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
   # start the server with the lock fd closed: one started by cargo inherits fd 8 and keeps the flock (a relaunch
   # then exits silently, b1b-levers 2026-11-10)
-  [ "${RUSTC_WRAPPER:-}" = sccache ] && { sccache --start-server > /dev/null 2>&1 8>&- || true; }
+  if [ "${RUSTC_WRAPPER:-}" = sccache ]; then sccache --start-server > /dev/null 2>&1 8>&- || true; fi
   if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
     local archs
     archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')

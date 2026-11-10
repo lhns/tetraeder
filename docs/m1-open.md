@@ -28,7 +28,7 @@ Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed pa
 1. **Speculative rerun** (not an M1 exit test): `STAGES=main-builder bash scripts/spec_run.sh` (VRAM fix in; the draft now fits).
 2. **Hidden share under overlap** (ADR 0054): 0.38 to 0.42 against the 0.5 bar; read wait is all urgent misses. Then delete the `Reader` path.
 3. **Noise bands:** run `tetraeder-bench noise update` for the A/A pairs in `20261110c`, `20261110d`, `20261110e`.
-4. **`session.sh` reported `done rc=2`** for exit_run after `EXIT_RUN_DONE rc=0` on box 60072027 (first run after the sccache start change); check.
+4. (done) `rc=2` after `EXIT_RUN_DONE rc=0` came from the closing `sccache --stop-server`; `exit_run.sh` now exits 0.
 5. **Proxy harness:** save the gateway's tool-call outcome counts (`repaired/no_opener`) at the end of a run; today they are live metrics only.
 
 6. **Builder slot-count candidates:** `scripts/planner_builder_campaign.sh` on Qwen3-30B-A3B, commit as `planner-moe-builder`.

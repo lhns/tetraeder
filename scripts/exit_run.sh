@@ -21,7 +21,7 @@ export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BU
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 # start the server with the lock fd closed: one started by cargo inherits fd 8 and keeps the flock (a relaunch
 # then exits silently, b1b-levers 2026-11-10)
-[ "${RUSTC_WRAPPER:-}" = sccache ] && { sccache --start-server > /dev/null 2>&1 8>&- || true; }
+if [ "${RUSTC_WRAPPER:-}" = sccache ]; then sccache --start-server > /dev/null 2>&1 8>&- || true; fi
 # shellcheck disable=SC1091
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
 # RESULTS_DATE (scripts/session.sh) pins the results directory of a session that crosses midnight or resumes
@@ -441,4 +441,6 @@ EOF
 fi
 touch "$date_dir/DONE"
 echo "EXIT_RUN_DONE rc=$rc" >> "$log"
+# the exit status is the session's, not sccache's (stop fails when no server runs: rc=2 on box 60072027)
 command -v sccache > /dev/null 2>&1 && timeout 30 sccache --stop-server > /dev/null 2>&1
+exit 0
