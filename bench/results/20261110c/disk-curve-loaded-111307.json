@@ -1,0 +1,109 @@
+{
+  "adr": "0056",
+  "buffered": false,
+  "chunk_bytes": 1048576,
+  "file": "/root/tetraeder/.hf_cache/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00002-of-00005.gguf",
+  "load_threads": 25,
+  "points": [
+    {
+      "bytes_per_s": 2692653232.708864,
+      "chunks": 10272,
+      "depth": 1,
+      "p50_ms": 0.359614,
+      "p99_ms": 0.475143
+    },
+    {
+      "bytes_per_s": 4828993268.911783,
+      "chunks": 18422,
+      "depth": 2,
+      "p50_ms": 0.395044,
+      "p99_ms": 1.168992
+    },
+    {
+      "bytes_per_s": 7048436820.293156,
+      "chunks": 26888,
+      "depth": 4,
+      "p50_ms": 0.5632910000000001,
+      "p99_ms": 1.27783
+    },
+    {
+      "bytes_per_s": 7277060709.8539715,
+      "chunks": 27760,
+      "depth": 8,
+      "p50_ms": 1.133143,
+      "p99_ms": 1.2902809999999998
+    },
+    {
+      "bytes_per_s": 7290663167.929155,
+      "chunks": 27812,
+      "depth": 16,
+      "p50_ms": 2.283575,
+      "p99_ms": 2.394323
+    },
+    {
+      "bytes_per_s": 7184034046.296098,
+      "chunks": 27406,
+      "depth": 32,
+      "p50_ms": 4.5855310000000005,
+      "p99_ms": 7.086203
+    }
+  ],
+  "provenance": {
+    "arch": "x86_64",
+    "cpu": "AMD EPYC 7742 64-Core Processor",
+    "cpu_backend": null,
+    "cpu_quota": 30.72,
+    "cpus": 30,
+    "cuda_env": "ok",
+    "git_commit": "unknown",
+    "git_dirty": null,
+    "gpus": [
+      {
+        "clocks_max_sm_mhz": 2160.0,
+        "clocks_mem_mhz": 405.0,
+        "clocks_sm_mhz": 210.0,
+        "driver": "595.71.05",
+        "memory_mb": 24576.0,
+        "name": "NVIDIA GeForce RTX 3090",
+        "power_w": 32.18,
+        "temperature_c": 37.0,
+        "throttle_reasons": "0x0000000000000001"
+      }
+    ],
+    "host_id": "43fae09577cc",
+    "hostname": "43fae09577cc",
+    "os": "linux",
+    "ram_gb": 503.5,
+    "session": "20261110c-43fae09577cc-110238",
+    "started_utc": "2026-11-10T11:15:59Z"
+  },
+  "queue_chunk_bytes": 1048576,
+  "queue_curve": [
+    {
+      "bytes_per_s": 2692653232.708864,
+      "depth": 1
+    },
+    {
+      "bytes_per_s": 4828993268.911783,
+      "depth": 2
+    },
+    {
+      "bytes_per_s": 7048436820.293156,
+      "depth": 4
+    },
+    {
+      "bytes_per_s": 7277060709.8539715,
+      "depth": 8
+    },
+    {
+      "bytes_per_s": 7290663167.929155,
+      "depth": 16
+    },
+    {
+      "bytes_per_s": 7184034046.296098,
+      "depth": 32
+    }
+  ],
+  "seconds": 4.0,
+  "tool": "tetraeder-bench disk-curve"
+}
