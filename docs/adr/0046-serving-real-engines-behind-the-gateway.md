@@ -63,3 +63,18 @@ Per-token host costs the code shows, fixed (tests in `sample.rs`, `qwen3moe.rs`,
 - `ggml-sys` tensor reads and writes copied through a byte vector; they now read into and write from the typed slice, and the builder backend reads each step's 151K logits into one kept buffer instead of a new 600 KB vector.
 
 Not proven, left as measurements: graph rebuild and state reallocation every 256 positions, synchronous input uploads from pageable memory, per-token telemetry in `finish_step`, the gateway's per-token work. `TETRAEDER_DECODE_PROFILE=1` makes serve report per request the decode steps, eval, sample, hand-off and gateway time and the backend's counters (builder step profile and whole-step graph builds, libllama `n_reused`) in the request log and as `tetraeder.scheduler.decode.stage`; `scripts/claude_code_proxy.sh` turns it on and its summary adds `server_decode` (llama-server from its timing lines). `scripts/decode_gap.sh` reproduces the gap without Claude Code: llama-bench `-d` and both serve engines with the serve sampler at depths 0, 20K and 100K (`crates/scheduler/tests/decode_gap.rs`).
+
+## Addendum (2026-11-10, box 60067423): Phase 3b proxy bar met
+
+A40 48 GB, Qwen3-Coder-30B-A3B Q4_K_M, Claude Code 2.1.322, 10 tasks x 2 reps per engine, ABBA blocks (`bench/results/20261110d/claude-code-proxy/`). Since the 20261110b run: ADR 0057 (Python-literal arguments), the bare `<function=` repair, `CLAUDE_CODE_ATTRIBUTION_HEADER=0` for both engines (the per-session billing header is gone from the prompt start).
+
+| | Tetraeder | llama-server |
+|---|---|---|
+| Tasks solved | 15/20 | 14/20 |
+| Prompt-cache share | 95.8% | 94.2% |
+| Non-200 responses | 0 | 0 |
+| Tool-error rate (bash_exit, file, other, unknown_tool) | 10.0% (41, 11, 1, 1) | 6.8% (25, 0, 3, 0) |
+| Call error rate (validation and unknown tool per use) | 0.2% | 0 |
+| Server decode, median | 0.992 of llama-server | |
+
+All three clauses are met. The tool errors are task outcomes (failing tests, missing files), not parse errors; the one unknown tool is the model's misspelt `ScheduledWakeup`. The 20261110b run had missed the cache clause by 0.34 points; the cause was session length against a fixed uncached first request, and one billing-header change (ADR 0057 addendum), not the cache. One run per engine, so the margins carry run-to-run noise; the clauses are met in this run and the previous one met tasks and 400s too.
