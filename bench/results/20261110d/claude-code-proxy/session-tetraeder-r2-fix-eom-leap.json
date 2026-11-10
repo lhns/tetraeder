@@ -1,0 +1,109 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "fix-eom-leap",
+  "started": "2026-11-10T13:34:35",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 35236,
+    "stop_reason": "end_turn",
+    "session_id": "b5121505-ced7-4e27-b1f1-9f8e8fb62b53",
+    "total_cost_usd": 0.1682882,
+    "usage": {
+      "input_tokens": 19371,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 169621,
+      "output_tokens": 2844,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 19371,
+        "outputTokens": 2844,
+        "cacheReadInputTokens": 169621,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.1682882,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 12,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully fixed the bug in the dates handling for invoices with 'eom' (end of month) payment terms issued in February of a leap year.\n\n## Problem Summary\nThe issue was in the `end_of_month` function in `invoicing/dates.py`. It was using a hardcoded `_DAYS` list that always returned 28 days for February, regardless of whether it was a leap year or not. This meant invoices issued in February of leap years (like 2024) were getting incorrect due dates.\n\n## Solution Implemented\nI modified the `end_of_month` function to properly check for leap years using `calendar.isleap(d.year)` and return 29 days for February in leap years, while maintaining 28 days for non-leap years.\n\n## Verification\n- \u2705 Both failing tests now pass:\n  - `test_end_of_month_leap_february` \n  - `test_eom_terms_in_leap_year`\n- \u2705 All 85 tests in the entire test suite now pass, confirming no regressions\n\nThe fix is general and works for any leap year, not just 2024, and maintains all existing functionality. The solution properly handles the edge case where invoices with 'eom' payment terms issued in February of a leap year now get the correct due date (February 29th instead of February 28th).",
+    "ttft_ms": 6140,
+    "type": "result",
+    "duration_ms": 38936,
+    "uuid": "7dcf1ab6-c37c-49d6-bdcd-c839fe558e83",
+    "ttft_stream_ms": 165,
+    "time_to_request_ms": 95,
+    "first_content_frame_ms": 5383,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 39.29,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 78%]\n....................                                                     [100%]\n92 passed in 0.23s\n"
+      }
+    ]
+  },
+  "success": true
+}

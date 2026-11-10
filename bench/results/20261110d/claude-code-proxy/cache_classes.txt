@@ -1,0 +1,12 @@
+llama-server: 435 requests, 7616750 prompt tokens, cached share 0.9418, with ADR 0049 0.9418, ceiling of any prefix cache 0.9418
+  first                           237625 uncached ( 3.12% of prompt tokens)
+  suffix                          205866 uncached ( 2.70% of prompt tokens)
+  divergence                           0 uncached ( 0.00% of prompt tokens)
+  evicted                              0 uncached ( 0.00% of prompt tokens)
+  evicted, recovered by 0049           0 uncached ( 0.00% of prompt tokens)
+tetraeder: 568 requests, 11776315 prompt tokens, cached share 0.9576, with ADR 0049 0.9576, ceiling of any prefix cache 0.9577
+  first                           245129 uncached ( 2.08% of prompt tokens)
+  suffix                          252536 uncached ( 2.14% of prompt tokens)
+  divergence                        1989 uncached ( 0.02% of prompt tokens)
+  evicted                              0 uncached ( 0.00% of prompt tokens)
+  evicted, recovered by 0049           0 uncached ( 0.00% of prompt tokens)

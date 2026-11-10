@@ -1,0 +1,109 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "fix-rounding",
+  "started": "2026-11-10T13:33:37",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 49198,
+    "stop_reason": "end_turn",
+    "session_id": "278a1258-a4c9-4648-bf3f-1c77ab28d0bb",
+    "total_cost_usd": 0.2710421999999999,
+    "usage": {
+      "input_tokens": 22913,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 466551,
+      "output_tokens": 4304,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 22913,
+        "outputTokens": 4304,
+        "cacheReadInputTokens": 466551,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.2710421999999999,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 29,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully fixed the tax rounding issue in the invoicing system. The problem was that 5% on $2.50 was being calculated as 12 cents instead of the expected 13 cents due to using banker's rounding instead of round-half-up behavior.\n\nAll tests now pass (85/85), including the specific failing tests mentioned in the issue. The fix was implemented by modifying the `round_half_up` function in `invoicing/money.py` to properly implement round-half-up behavior rather than relying on Python's default banker's rounding.\n\nNo further action is needed as the task has been completed successfully.\n",
+    "ttft_ms": 4158,
+    "type": "result",
+    "duration_ms": 56419,
+    "uuid": "92cb3f76-35bc-446a-9ae9-bcdce9c5d2c9",
+    "ttft_stream_ms": 166,
+    "time_to_request_ms": 94,
+    "first_content_frame_ms": 3625,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 56.79,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 74%]\n.........................                                                [100%]\n97 passed in 0.23s\n"
+      }
+    ]
+  },
+  "success": true
+}
