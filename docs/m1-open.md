@@ -1,8 +1,8 @@
-# M1: open items (2026-11-03, updated 2026-11-10 with the box results)
+# M1: status and open items (M1 reached 2026-11-10)
 
-**Next box runs: [`docs/sessions.md`](sessions.md)** has the five launch-ready sessions (`scripts/session.sh` profiles `b1-exit`, `b1b-levers`, `b2-proxy`, `b3-planner`, `b3-detector`) for items 1, 3, 4, 5 and the ADR 0050 levers below, with box requirements, time and cost estimates and what each result decides.
+Session profiles for later box runs: [`docs/sessions.md`](sessions.md) (`scripts/session.sh`).
 
-State at the end of the 2026-11-03 parallel-tracks session. Everything below is on main; details in the ADRs and `bench/results/20261103/`. Boxes: none up. Box work was paused by the user mid-session; ask before renting.
+State on 2026-11-10 after five box sessions (`bench/results/20261110*/`). Everything below is on main. Boxes: none up.
 
 ## Where each phase stands
 
@@ -15,16 +15,19 @@ State at the end of the 2026-11-03 parallel-tracks session. Everything below is 
 | 3b Gateway | SDK conformance, Claude Code use, vs llama-server | **Met (2026-11-10, box 60067423, A40, `bench/results/20261110d/`, ADR 0046 addendum):** tasks 15/20 vs 14/20, prompt cache 95.8% vs 94.2%, 0 non-200s; server decode 0.992. Conformance passes. Low-bit KV passes kv-quality under the excess-over-floor gate (ADR 0050 note 2026-11-10b), all six gating rows; q8/q4 top-1 loss 0.027 at 8K is near its 0.03 bound. |
 | Speculative decoding (ADR 0043, Phase 4 pulled forward; not an M1 exit test) | faster than plain decode | Exact, but slower in the exit regime; op-offload fix (ADR 0044) in, rerun pending. |
 
-## Open, by priority
+## M1 status (2026-11-10)
 
-1. **Phase 2 verdict (done 2026-11-10, ADR 0045 addendum).** Met on the means; the decode margin over KTransformers is within its noise. To firm it up: more interleaved KT and builder pairs in `b1b-levers` (which also measures the ADR 0050 levers), and the stages the b1-exit guard skipped (`ktransformers-avx2`, cache repeat). Results: `bench/results/20261110/exit-*.json`.
-2. **Speculative rerun** (not an M1 exit test; useful, not blocking): `STAGES=main-builder bash scripts/spec_run.sh` (VRAM fix in; the draft now fits). Same box session as 1 if time allows.
-3. **Claude Code proxy rerun** on a 48 GB box at most 0.50 USD/h (user exception, up to 6 h): `scripts/claude_code_proxy.sh` with `REPS=2 BUDGET_MIN=240 STREAMING=1`. Bar: tasks solved at least llama-server's, prompt-cache reuse at least llama-server's in the same run (93.6% in the first; ADR 0051 estimates 94.3% for ADR 0049 on that traffic), zero 400s. Brief G2 (`docs/gateway-briefs.md`) adds per-engine tool-call failure counts first; keep the request logs local and commit only the extracted fixtures. Rerun steps: fetch `*.reqlog.jsonl` with the results but do not commit them; run `scripts/toolcall_fixtures.py <reqlog> <out.json>` on each and commit the fixtures; read `cache_classes.txt` against ADR 0051's table; compare `tool_error_rate`, `leaked_markers_total` and `tool_names_unknown_total` per engine in `summary.json`.
-4. **Resident decode gap on the A6000** (0.88x llama-server, Qwen3-Coder-30B-A3B, 128K): the run served the MoE builder (`--engine auto`), not libllama; the gap is flat over depth (0.89 to 0.91 from 0 to 40K tokens), about 1 ms per token. Fixed without a box (ADR 0046 addendum 2026-11-09): the temperature sampler's full-vocabulary top-k select (2 ms per token locally), the builder's 32-row KQ mask and byte copies in `ggml-sys`. Next box session: `scripts/decode_gap.sh` (llama-bench and both serve engines at depths 0, 20K, 100K, paired) and a proxy rerun (`TETRAEDER_DECODE_PROFILE` on by default, `server_decode` in summary.json); if a gap remains, its stage is in the profile (eval vs sample vs gateway, graph builds).
-5. **Planner dense fixture and detector campaign:** sessions `b3-planner` and `b3-detector` (`docs/sessions.md`), then score as `planner-dense`. Why only 11 of 24 dense candidates ran: the 2026-11-03 box spent its 3 h on a failed first launch and rebuild, the MoE fixture (37 min) and the CPU-only anchors at pp256 (27 min); the one-repeat rerun then got 11 candidates in 20 min before the cap, and the harness wrote its JSON only at the end, so the results were rebuilt from the log. A full repeat of the dense set takes about 57 min, 80% of it in the 10 candidates with op offload off. Fixed: results are written after every pair, `--resume` runs only missing repeats, the campaign runs one repeat of everything first (candidates cheapest first by the prior, after anchors and baselines) and the second repeat while time is left. The scorer and CI test exist (`crates/analysis/src/score.rs`, `crates/analysis/tests/campaign.rs`): `cargo test -p tetraeder-analysis --test campaign` asserts the exit bars (single top-1 at least 90%, at most 1 false positive in the no-fault runs, pairs both in the top 3 at least 90%) on every committed `bench/results/*/detector/` with a `manifest.jsonl`, and skips when none is committed. To score a fresh campaign before committing: `tetraeder detector-score bench/results/<date>/detector` (writes `score.json`). Commit the campaign directory (obs, manifest, calib, harness, score.json) and CI gives the verdict.
-6. **Builder slot-count candidates:** `scripts/planner_builder_campaign.sh` on Qwen3-30B-A3B, commit as `planner-moe-builder`.
-7. **ik_llama quant types** (IQ4_KS, IQ4_K on the 8B): add `llama-quantize` and `llama-perplexity` to the ik install in `docker/box/Dockerfile`, then a 15-minute run (command in Track B's report, `scripts/quality/box_quality.sh`). ik_llama inference on the 235B: record "cannot run within 128 GB".
-8. **Levers from Strata and Unsloth** (`docs/plan.md`, "Levers from Strata and llama.cpp's expert cache"), local work first. The first three are designed in ADR 0050 with briefs in `docs/levers-briefs.md` (the builder's CPU and GPU expert work and its own miss reads are serial today; low-bit KV is worth about 3% of decode here, its main value is draft-model room):
+Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) is met in committed paired same-box runs; the table above names the runs and ADR addenda. Done on 2026-11-10: the Phase 2 verdict (b1-exit, b1b-levers, b1c), the Claude Code proxy rerun (20261110d), the A6000 decode gap (0.992 of llama-server), the planner dense fixture (24 candidates) and the detector campaign on a box.
+
+## Open after M1, by priority
+
+1. **Speculative rerun** (not an M1 exit test): `STAGES=main-builder bash scripts/spec_run.sh` (VRAM fix in; the draft now fits).
+2. **Hidden share under overlap** (ADR 0054): 0.38 to 0.42 against the 0.5 bar; read wait is all urgent misses. Then delete the `Reader` path.
+3. **Proxy harness:** save the gateway's tool-call outcome counts (`repaired/no_opener`) at the end of a run; today they are live metrics only.
+
+4. **Builder slot-count candidates:** `scripts/planner_builder_campaign.sh` on Qwen3-30B-A3B, commit as `planner-moe-builder`.
+5. **ik_llama quant types** (IQ4_KS, IQ4_K on the 8B): add `llama-quantize` and `llama-perplexity` to the ik install in `docker/box/Dockerfile`, then a 15-minute run (command in Track B's report, `scripts/quality/box_quality.sh`). ik_llama inference on the 235B: record "cannot run within 128 GB".
+6. **Levers from Strata and Unsloth** (`docs/plan.md`, "Levers from Strata and llama.cpp's expert cache"), local work first. The first three are designed in ADR 0050 with briefs in `docs/levers-briefs.md` (the builder's CPU and GPU expert work and its own miss reads are serial today; low-bit KV is worth about 3% of decode here, its main value is draft-model room):
    - Low-bit KV in the builder (ADR 0050 b): about 3% of decode; more expert slots, room for the draft model.
    - Miss reads under the CPU hit group (ADR 0050 a): serial today, about 6% of decode.
    - Fast tiers by routing frequency (ADR 0050 c): recorder and replay first; built only if the replay beats LRU by 10% of disk bytes.
@@ -32,7 +35,7 @@ State at the end of the 2026-11-03 parallel-tracks session. Everything below is 
    - Message-boundary and near-tail checkpoints for the prefix cache: skipped (ADR 0051). Full-attention KV is already reused to the longest common prefix at any token; they pay only for recurrent or sliding-window state.
    - Tool-call repair in the gateway (ADR 0051, briefs G1 and G2 in `docs/gateway-briefs.md`): the first run shows one failure (an empty `<tool_call>` leaked as text, 1 of 483 responses). Build outcome counts and that one repair; further classes only from the rerun's numbers.
    - Recheck the llama-server and planner baselines with the expert cache on. Pair against Strata once both engines run one model.
-9. **Smaller:**
+7. **Smaller:**
    - imatrix and IQ formats below 4 bits.
    - Per-expert formats need typed slots.
    - Replanning in `serve --plan` (ADR 0055): part A is in; part B (op offload switch in libllama, builder prefill chunk from the plan, `Scheduler::shutdown` join) waits for `track-r` and `track-s`, and the box benchmark (switch time and refused requests, paired against restarting llama-server) waits for the hold.
