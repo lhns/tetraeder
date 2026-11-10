@@ -1,0 +1,109 @@
+{
+  "tool": "tetraeder-bench disk-curve",
+  "adr": "0056",
+  "file": "/root/tetraeder/.hf_cache/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf",
+  "chunk_bytes": 1048576,
+  "seconds": 4.0,
+  "load_threads": 0,
+  "buffered": false,
+  "provenance": {
+    "host_id": "3643bccb3b5f",
+    "hostname": "3643bccb3b5f",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": "Intel(R) Xeon(R) CPU E5-2673 v4 @ 2.30GHz",
+    "cpus": 9,
+    "cpu_quota": 9.6,
+    "ram_gb": 251.8,
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 3090",
+        "driver": "595.71.05",
+        "memory_mb": 24576.0,
+        "clocks_sm_mhz": 210.0,
+        "clocks_mem_mhz": 405.0,
+        "clocks_max_sm_mhz": 2100.0,
+        "throttle_reasons": "0x0000000000000001",
+        "power_w": 18.94,
+        "temperature_c": 34.0
+      }
+    ],
+    "git_commit": "unknown",
+    "git_dirty": null,
+    "session": "20261110-3643bccb3b5f-001450",
+    "cuda_env": "ok",
+    "started_utc": "2026-11-10T00:59:33Z",
+    "cpu_backend": null
+  },
+  "points": [
+    {
+      "depth": 1,
+      "chunks": 2867,
+      "bytes_per_s": 751501138.4313332,
+      "p50_ms": 0.904642,
+      "p99_ms": 2.4949619999999997
+    },
+    {
+      "depth": 2,
+      "chunks": 4188,
+      "bytes_per_s": 1097652129.7230918,
+      "p50_ms": 1.890746,
+      "p99_ms": 3.824966
+    },
+    {
+      "depth": 4,
+      "chunks": 5957,
+      "bytes_per_s": 1561423285.1462576,
+      "p50_ms": 2.560386,
+      "p99_ms": 5.475708
+    },
+    {
+      "depth": 8,
+      "chunks": 6349,
+      "bytes_per_s": 1664266340.3305135,
+      "p50_ms": 4.890585000000001,
+      "p99_ms": 8.324945
+    },
+    {
+      "depth": 16,
+      "chunks": 6650,
+      "bytes_per_s": 1743227555.4730814,
+      "p50_ms": 9.334520000000001,
+      "p99_ms": 12.92013
+    },
+    {
+      "depth": 32,
+      "chunks": 6954,
+      "bytes_per_s": 1822835154.8706517,
+      "p50_ms": 18.250072999999997,
+      "p99_ms": 22.192342
+    }
+  ],
+  "queue_chunk_bytes": 1048576,
+  "queue_curve": [
+    {
+      "depth": 1,
+      "bytes_per_s": 751501138.4313332
+    },
+    {
+      "depth": 2,
+      "bytes_per_s": 1097652129.7230918
+    },
+    {
+      "depth": 4,
+      "bytes_per_s": 1561423285.1462576
+    },
+    {
+      "depth": 8,
+      "bytes_per_s": 1664266340.3305135
+    },
+    {
+      "depth": 16,
+      "bytes_per_s": 1743227555.4730814
+    },
+    {
+      "depth": 32,
+      "bytes_per_s": 1822835154.8706517
+    }
+  ]
+}

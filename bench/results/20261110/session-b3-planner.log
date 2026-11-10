@@ -1,0 +1,206 @@
+[00:14:50] session b3-planner: results bench/results/20261110, deadline 02:14:50 (120 min left)
+[00:14:50] start moe_cache_tune
+[00:31:30] done rc=0
+[00:31:30] start planner_builder
+fatal: not a git repository (or any of the parent directories): .git
+[00:31:30] done rc=1
+[00:31:30] start planner
+fatal: not a git repository (or any of the parent directories): .git
+[00:31:30] done rc=1
+[00:31:30] start noise
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded anstream v1.0.0
+  Downloaded heck v0.5.0
+  Downloaded clap_lex v1.1.1
+  Downloaded equivalent v1.0.3
+  Downloaded bitflags v2.13.2
+  Downloaded anstyle v1.0.14
+  Downloaded cfg-if v1.0.5
+  Downloaded anstyle-parse v1.0.0
+  Downloaded anyhow v1.0.104
+  Downloaded clap_derive v4.6.7
+  Downloaded colorchoice v1.0.5
+  Downloaded anstyle-query v1.1.5
+  Downloaded utf8parse v0.2.2
+  Downloaded toml v0.8.23
+  Downloaded quote v1.0.47
+  Downloaded toml_write v0.1.2
+  Downloaded strsim v0.11.1
+  Downloaded proc-macro2 v1.0.107
+  Downloaded zmij v1.0.23
+  Downloaded serde_derive v1.0.229
+  Downloaded serde_core v1.0.229
+  Downloaded toml_datetime v0.6.11
+  Downloaded serde_spanned v0.6.9
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded itoa v1.0.18
+  Downloaded unicode-ident v1.0.27
+  Downloaded clap v4.6.7
+  Downloaded hashbrown v0.17.1
+  Downloaded serde v1.0.229
+  Downloaded io-uring v0.7.15
+  Downloaded clap_builder v4.6.7
+  Downloaded sysinfo v0.40.0
+  Downloaded serde_json v1.0.154
+  Downloaded indexmap v2.14.2
+  Downloaded libc v0.2.191
+  Downloaded toml_edit v0.22.27
+  Downloaded memchr v2.8.3
+  Downloaded winnow v0.7.15
+  Downloaded syn v3.0.9
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling libc v0.2.191
+   Compiling zmij v1.0.23
+   Compiling equivalent v1.0.3
+   Compiling hashbrown v0.17.1
+   Compiling memchr v2.8.3
+   Compiling toml_write v0.1.2
+   Compiling serde_json v1.0.154
+   Compiling winnow v0.7.15
+   Compiling utf8parse v0.2.2
+   Compiling itoa v1.0.18
+   Compiling anstyle-parse v1.0.0
+   Compiling anstyle v1.0.14
+   Compiling indexmap v2.14.2
+   Compiling io-uring v0.7.15
+   Compiling colorchoice v1.0.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling heck v0.5.0
+   Compiling anyhow v1.0.104
+   Compiling anstream v1.0.0
+   Compiling syn v3.0.9
+   Compiling clap_lex v1.1.1
+   Compiling strsim v0.11.1
+   Compiling sysinfo v0.40.0
+   Compiling bitflags v2.13.2
+   Compiling cfg-if v1.0.5
+   Compiling clap_builder v4.6.7
+   Compiling serde_derive v1.0.229
+   Compiling clap_derive v4.6.7
+   Compiling clap v4.6.7
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling toml_edit v0.22.27
+   Compiling toml v0.8.23
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 49.02s
+[00:32:19Z] pair noise-cuda-dense (Noise): llama-cuda-dense vs llama-cuda-dense
+[00:32:40Z] pair noise-cuda-dense rep 1/8 a llama-cuda-dense: pp Some(4774.976375) tg Some(138.689307) t/s
+[00:32:45Z] pair noise-cuda-dense rep 1/8 b llama-cuda-dense: pp Some(4769.825899) tg Some(138.496119) t/s
+[00:32:50Z] pair noise-cuda-dense rep 2/8 b llama-cuda-dense: pp Some(4755.078468) tg Some(138.20138) t/s
+[00:32:55Z] pair noise-cuda-dense rep 2/8 a llama-cuda-dense: pp Some(4754.94045) tg Some(138.339667) t/s
+[00:33:00Z] pair noise-cuda-dense rep 3/8 a llama-cuda-dense: pp Some(4739.48515) tg Some(137.868642) t/s
+[00:33:06Z] pair noise-cuda-dense rep 3/8 b llama-cuda-dense: pp Some(4736.691645) tg Some(137.740407) t/s
+[00:33:11Z] pair noise-cuda-dense rep 4/8 b llama-cuda-dense: pp Some(4717.523287) tg Some(137.361589) t/s
+[00:33:16Z] pair noise-cuda-dense rep 4/8 a llama-cuda-dense: pp Some(4716.836576) tg Some(137.491964) t/s
+[00:33:21Z] pair noise-cuda-dense rep 5/8 a llama-cuda-dense: pp Some(4702.704315) tg Some(137.213794) t/s
+[00:33:26Z] pair noise-cuda-dense rep 5/8 b llama-cuda-dense: pp Some(4709.487161) tg Some(137.242605) t/s
+[00:33:31Z] pair noise-cuda-dense rep 6/8 b llama-cuda-dense: pp Some(4673.830124) tg Some(136.904095) t/s
+[00:33:36Z] pair noise-cuda-dense rep 6/8 a llama-cuda-dense: pp Some(4680.276005) tg Some(136.888708) t/s
+[00:33:41Z] pair noise-cuda-dense rep 7/8 a llama-cuda-dense: pp Some(4663.757087) tg Some(136.773109) t/s
+[00:33:47Z] pair noise-cuda-dense rep 7/8 b llama-cuda-dense: pp Some(4655.536071) tg Some(136.592307) t/s
+[00:33:52Z] pair noise-cuda-dense rep 8/8 b llama-cuda-dense: pp Some(4656.298577) tg Some(136.530069) t/s
+[00:33:57Z] pair noise-cuda-dense rep 8/8 a llama-cuda-dense: pp Some(4650.659194) tg Some(136.383794) t/s
+[00:33:57Z] pair noise-cuda-dense -> Ok 
+spec phase0 on 3643bccb3b5f (8 repeats)
+noise-cuda-dense             Ok
+    pp: a 4709.77 (rel IQR 1.4%)  b 4713.51 (rel IQR 1.5%)  ratio 1.000 [0.999, 1.001]  band -5.0% (provisional rtx-3090)
+    tg: a 137.35 (rel IQR 0.8%)  b 137.30 (rel IQR 0.7%)  ratio 0.999 [0.999, 1.000]  band -5.0% (provisional rtx-3090)
+results: bench/results/20261110/noise/phase0-003219.json
+[00:33:57] done rc=0
+[00:33:57] SESSION_DONE (100 min before the deadline)
+[00:38:22] session b3-planner: results bench/results/20261110, deadline 02:14:50 (96 min left)
+[00:38:22] start moe_cache_tune
+[00:47:01] done rc=0
+[00:47:01] start planner_builder
+patches: already applied
+[00:59:59] done rc=0
+[00:59:59] start planner
+patches: already applied
+[01:00:12] done rc=0
+[01:00:12] start noise
+    Finished `release` profile [optimized] target(s) in 0.11s
+[01:00:12Z] pair noise-cuda-dense (Noise): llama-cuda-dense vs llama-cuda-dense
+[01:00:27Z] pair noise-cuda-dense rep 1/8 a llama-cuda-dense: pp Some(4780.635241) tg Some(138.612734) t/s
+[01:00:33Z] pair noise-cuda-dense rep 1/8 b llama-cuda-dense: pp Some(4774.254895) tg Some(138.337435) t/s
+[01:00:38Z] pair noise-cuda-dense rep 2/8 b llama-cuda-dense: pp Some(4765.062499) tg Some(137.989528) t/s
+[01:00:43Z] pair noise-cuda-dense rep 2/8 a llama-cuda-dense: pp Some(4746.794549) tg Some(138.022757) t/s
+[01:00:48Z] pair noise-cuda-dense rep 3/8 a llama-cuda-dense: pp Some(4738.277671) tg Some(138.123725) t/s
+[01:00:53Z] pair noise-cuda-dense rep 3/8 b llama-cuda-dense: pp Some(4736.952153) tg Some(137.730702) t/s
+[01:00:58Z] pair noise-cuda-dense rep 4/8 b llama-cuda-dense: pp Some(4735.06099) tg Some(137.685081) t/s
+[01:01:03Z] pair noise-cuda-dense rep 4/8 a llama-cuda-dense: pp Some(4725.245851) tg Some(137.746361) t/s
+[01:01:09Z] pair noise-cuda-dense rep 5/8 a llama-cuda-dense: pp Some(4711.840909) tg Some(137.441562) t/s
+[01:01:14Z] pair noise-cuda-dense rep 5/8 b llama-cuda-dense: pp Some(4699.448277) tg Some(137.177503) t/s
+[01:01:19Z] pair noise-cuda-dense rep 6/8 b llama-cuda-dense: pp Some(4684.418703) tg Some(136.97537) t/s
+[01:01:24Z] pair noise-cuda-dense rep 6/8 a llama-cuda-dense: pp Some(4673.900986) tg Some(136.898049) t/s
+[01:01:30Z] pair noise-cuda-dense rep 7/8 a llama-cuda-dense: pp Some(4664.45996) tg Some(136.768993) t/s
+[01:01:35Z] pair noise-cuda-dense rep 7/8 b llama-cuda-dense: pp Some(4646.981737) tg Some(136.67251) t/s
+[01:01:40Z] pair noise-cuda-dense rep 8/8 b llama-cuda-dense: pp Some(4653.722475) tg Some(136.431427) t/s
+[01:01:45Z] pair noise-cuda-dense rep 8/8 a llama-cuda-dense: pp Some(4618.071752) tg Some(136.384381) t/s
+[01:01:45Z] pair noise-cuda-dense -> Ok 
+spec phase0 on 3643bccb3b5f (8 repeats)
+noise-cuda-dense             Ok
+    pp: a 4718.54 (rel IQR 1.5%)  b 4717.25 (rel IQR 1.4%)  ratio 1.001 [0.997, 1.004]  band -5.0% (provisional rtx-3090)
+    tg: a 137.59 (rel IQR 0.9%)  b 137.43 (rel IQR 0.7%)  ratio 0.999 [0.998, 1.000]  band -5.0% (provisional rtx-3090)
+results: bench/results/20261110/noise/phase0-010012.json
+[01:01:45] done rc=0
+[01:01:45] SESSION_DONE (73 min before the deadline)
+[01:04:50] session b3-planner: results bench/results/20261110, deadline 02:14:50 (70 min left)
+[01:04:50] start moe_cache_tune
+Terminated
+[01:05:08] done rc=143
+[01:05:08] start planner_builder
+patches: already applied
+[01:06:49] done rc=0
+[01:06:49] start planner
+patches: already applied
+[01:06:57] done rc=0
+[01:06:57] start noise
+    Finished `release` profile [optimized] target(s) in 0.10s
+[01:06:58Z] pair noise-cuda-dense (Noise): llama-cuda-dense vs llama-cuda-dense
+[01:07:13Z] pair noise-cuda-dense rep 1/8 a llama-cuda-dense: pp Some(4790.460391) tg Some(138.366544) t/s
+[01:07:18Z] pair noise-cuda-dense rep 1/8 b llama-cuda-dense: pp Some(4780.974369) tg Some(138.433461) t/s
+[01:07:23Z] pair noise-cuda-dense rep 2/8 b llama-cuda-dense: pp Some(4761.278644) tg Some(138.031474) t/s
+[01:07:28Z] pair noise-cuda-dense rep 2/8 a llama-cuda-dense: pp Some(4747.534578) tg Some(138.134858) t/s
+[01:07:33Z] pair noise-cuda-dense rep 3/8 a llama-cuda-dense: pp Some(4755.815199) tg Some(137.915335) t/s
+[01:07:38Z] pair noise-cuda-dense rep 3/8 b llama-cuda-dense: pp Some(4745.656469) tg Some(137.772635) t/s
+[01:07:43Z] pair noise-cuda-dense rep 4/8 b llama-cuda-dense: pp Some(4734.718432) tg Some(137.707707) t/s
+[01:07:48Z] pair noise-cuda-dense rep 4/8 a llama-cuda-dense: pp Some(4723.756158) tg Some(137.683541) t/s
+[01:07:53Z] pair noise-cuda-dense rep 5/8 a llama-cuda-dense: pp Some(4700.652161) tg Some(137.157705) t/s
+[01:07:58Z] pair noise-cuda-dense rep 5/8 b llama-cuda-dense: pp Some(4698.917706) tg Some(137.242268) t/s
+[01:08:03Z] pair noise-cuda-dense rep 6/8 b llama-cuda-dense: pp Some(4666.581298) tg Some(137.224403) t/s
+[01:08:08Z] pair noise-cuda-dense rep 6/8 a llama-cuda-dense: pp Some(4665.689338) tg Some(136.939556) t/s
+[01:08:13Z] pair noise-cuda-dense rep 7/8 a llama-cuda-dense: pp Some(4579.432508) tg Some(136.630663) t/s
+[01:08:19Z] pair noise-cuda-dense rep 7/8 b llama-cuda-dense: pp Some(4663.788915) tg Some(136.752683) t/s
+[01:08:24Z] pair noise-cuda-dense rep 8/8 b llama-cuda-dense: pp Some(4655.138064) tg Some(136.520235) t/s
+[01:08:29Z] pair noise-cuda-dense rep 8/8 a llama-cuda-dense: pp Some(4644.569033) tg Some(136.650303) t/s
+[01:08:29Z] pair noise-cuda-dense -> Ok 
+spec phase0 on 3643bccb3b5f (8 repeats)
+noise-cuda-dense             Ok
+    pp: a 4712.20 (rel IQR 1.9%)  b 4716.82 (rel IQR 1.8%)  ratio 1.001 [0.999, 1.003]  band -5.0% (provisional rtx-3090)
+    tg: a 137.42 (rel IQR 0.8%)  b 137.47 (rel IQR 0.5%)  ratio 1.000 [0.999, 1.001]  band -5.0% (provisional rtx-3090)
+results: bench/results/20261110/noise/phase0-010658.json
+[01:08:29] done rc=0
+[01:08:29] SESSION_DONE (66 min before the deadline)
+[01:11:19] session b3-planner: results bench/results/20261110, deadline 02:14:50 (63 min left)
+[01:11:19] start moe_cache_tune
+[01:11:19] done rc=0
+[01:11:19] start planner_builder
+patches: already applied
+[01:14:00] done rc=0
+[01:14:00] start planner
+patches: already applied
+[02:13:12] done rc=0
+[02:13:12] start noise
+skip noise: 1 min left
+[02:13:12] done rc=0
+[02:13:12] SESSION_DONE (1 min before the deadline)
