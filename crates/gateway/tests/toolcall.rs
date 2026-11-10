@@ -297,6 +297,189 @@ fn qwen_xml_accepts_json_call_too() {
     assert_eq!(got, vec![call("get_weather", json!({"city": "Paris"}))]);
 }
 
+/// Claude Code's Edit tool as it sends it (ADR 0057 fixtures).
+fn cc_edit() -> ToolDef {
+    tool(
+        "Edit",
+        json!({"type": "object", "properties": {
+            "file_path": {"type": "string"},
+            "old_string": {"type": "string"},
+            "new_string": {"type": "string"},
+            "replace_all": {"default": false, "type": "boolean"},
+        }, "required": ["file_path", "old_string", "new_string"], "additionalProperties": false}),
+    )
+}
+
+fn cc_schedule_wakeup() -> ToolDef {
+    tool(
+        "ScheduleWakeup",
+        json!({"type": "object", "properties": {
+            "delaySeconds": {"type": "number"},
+            "reason": {"type": "string"},
+            "prompt": {"type": "string"},
+            "stop": {"type": "boolean"},
+            "noop": {"type": "boolean"},
+        }, "additionalProperties": false}),
+    )
+}
+
+fn cc_report_findings() -> ToolDef {
+    tool(
+        "ReportFindings",
+        json!({"type": "object", "properties": {
+            "level": {"type": "string", "enum": ["low", "medium", "high", "xhigh", "max"]},
+            "findings": {"type": "array", "maxItems": 32, "items": {"type": "object", "properties": {
+                "file": {"type": "string"},
+                "line": {"type": "integer"},
+                "summary": {"type": "string"},
+                "short_summary": {"type": "string", "maxLength": 60},
+                "failure_scenario": {"type": "string"},
+                "category": {"type": "string", "maxLength": 40},
+            }}},
+        }}),
+    )
+}
+
+fn claude_code_tools() -> Vec<ToolDef> {
+    vec![cc_edit(), cc_schedule_wakeup(), cc_report_findings()]
+}
+
+/// 58 of the 60 InputValidationErrors of bench/results/20261110/claude-code-proxy: Python-cased
+/// booleans (`False` 52, `True` 6) on boolean parameters. Raw text reconstructed from the request
+/// log, which holds the parsed calls only.
+#[test]
+fn qwen_xml_python_booleans_follow_schema() {
+    let edit = concat!(
+        "<tool_call>\n<function=Edit>\n",
+        "<parameter=replace_all>\nFalse\n</parameter>\n",
+        "<parameter=file_path>\n/tmp/repo/invoicing/cli.py\n</parameter>\n",
+        "<parameter=old_string>\nfrom invoicing.models import Invoice, compute_total\n</parameter>\n",
+        "<parameter=new_string>\nfrom invoicing.models import Invoice, invoice_total\n</parameter>\n",
+        "</function>\n</tool_call>"
+    );
+    let wake = concat!(
+        "<tool_call>\n<function=ScheduleWakeup>\n",
+        "<parameter=delaySeconds>\n300\n</parameter>\n",
+        "<parameter=reason>\nFinal verification complete\n</parameter>\n",
+        "<parameter=prompt>\nFinal verification complete\n</parameter>\n",
+        "<parameter=stop>\nTrue\n</parameter>\n",
+        "</function>\n</tool_call>"
+    );
+    let s = Setup::new(ToolFormat::QwenXml).tools(claude_code_tools());
+    assert_eq!(
+        s.parse(edit),
+        vec![call(
+            "Edit",
+            json!({
+                "replace_all": false,
+                "file_path": "/tmp/repo/invoicing/cli.py",
+                "old_string": "from invoicing.models import Invoice, compute_total",
+                "new_string": "from invoicing.models import Invoice, invoice_total",
+            })
+        )]
+    );
+    assert_eq!(
+        s.parse(wake),
+        vec![call(
+            "ScheduleWakeup",
+            json!({
+                "delaySeconds": 300, "reason": "Final verification complete",
+                "prompt": "Final verification complete", "stop": true,
+            })
+        )]
+    );
+    assert_eq!(s.outcomes(edit), vec![o("parsed", "ok")]);
+    assert_eq!(s.outcomes(wake), vec![o("parsed", "ok")]);
+}
+
+#[test]
+fn qwen_xml_boolean_casing_only_for_boolean_parameters() {
+    let input = concat!(
+        "<tool_call>\n<function=Edit>\n",
+        "<parameter=file_path>\nTrue\n</parameter>\n",
+        "<parameter=old_string>\nFalse\n</parameter>\n",
+        "<parameter=new_string>\nNone\n</parameter>\n",
+        "<parameter=replace_all>\nTRUE\n</parameter>\n",
+        "</function>\n</tool_call>"
+    );
+    let got = Setup::new(ToolFormat::QwenXml)
+        .tools(claude_code_tools())
+        .parse(input);
+    assert_eq!(
+        got,
+        vec![call(
+            "Edit",
+            json!({"file_path": "True", "old_string": "False", "new_string": "None", "replace_all": true})
+        )]
+    );
+}
+
+/// The other 2 InputValidationErrors: a Python `repr` list on an array parameter.
+#[test]
+fn qwen_xml_python_literal_array_follows_schema() {
+    let findings = concat!(
+        "[{'category': 'correctness', 'file': '/tmp/repo/legacy/pricing/volume.py', 'line': 15, ",
+        "'summary': 'Volume pricing select_tier function incorrectly excludes boundary values from tier selection', ",
+        "'short_summary': 'Tier boundary exclusion bug in volume pricing', ",
+        "'failure_scenario': \"When customer usage exactly equals a tier's upper limit (e.g., 100 GB for a tier ",
+        "with up_to=100), the function selects the next tier instead of the correct tier\"}]"
+    );
+    let input = format!(
+        "<tool_call>\n<function=ReportFindings>\n<parameter=findings>\n{findings}\n</parameter>\n\
+         <parameter=level>\nhigh\n</parameter>\n</function>\n</tool_call>"
+    );
+    let got = Setup::new(ToolFormat::QwenXml)
+        .tools(claude_code_tools())
+        .parse(&input);
+    assert_eq!(
+        got,
+        vec![call(
+            "ReportFindings",
+            json!({"findings": [{
+                "category": "correctness",
+                "file": "/tmp/repo/legacy/pricing/volume.py",
+                "line": 15,
+                "summary": "Volume pricing select_tier function incorrectly excludes boundary values from tier selection",
+                "short_summary": "Tier boundary exclusion bug in volume pricing",
+                "failure_scenario": "When customer usage exactly equals a tier's upper limit (e.g., 100 GB for a tier with up_to=100), the function selects the next tier instead of the correct tier",
+            }], "level": "high"})
+        )]
+    );
+}
+
+#[test]
+fn qwen_xml_python_literals_edge_cases() {
+    let s = Setup::new(ToolFormat::QwenXml).tools(vec![search_tool()]);
+    let one = |name: &str, value: &str| {
+        let input = format!(
+            "<tool_call>\n<function=search>\n<parameter={name}>\n{value}\n</parameter>\n</function>\n</tool_call>"
+        );
+        match s.parse(&input).as_slice() {
+            [Segment::ToolCall(c)] => c.arguments[name].clone(),
+            other => panic!("{other:?}"),
+        }
+    };
+    // Keywords inside strings stay text; escapes, tuples, nesting and a trailing comma.
+    assert_eq!(
+        one(
+            "tags",
+            r#"['True', "it's", 'a\'b', 'x\ny', None, False, -1.5, (1, 2), {'k': [True]},]"#
+        ),
+        json!(["True", "it's", "a'b", "x\ny", null, false, -1.5, [1, 2], {"k": [true]}])
+    );
+    assert_eq!(one("opts", "{'a': {'b': None}}"), json!({"a": {"b": null}}));
+    assert_eq!(one("maybe", "None"), json!(null));
+    assert_eq!(one("exact", "false"), json!(false));
+    // Not a whole literal, or the wrong type: the text is kept, as before.
+    assert_eq!(one("tags", "[1, 2"), json!("[1, 2"));
+    assert_eq!(one("tags", "['a'] trailing"), json!("['a'] trailing"));
+    assert_eq!(one("tags", "{'a': 1}"), json!("{'a': 1}"));
+    assert_eq!(one("opts", "{1: 'a'}"), json!("{1: 'a'}"));
+    assert_eq!(one("tags", "[Truth]"), json!("[Truth]"));
+    assert_eq!(one("exact", "yes"), json!("yes"));
+    assert_eq!(one("ratio", "nan"), json!("nan"));
+}
+
 #[test]
 fn llama3_bare_json() {
     let s = Setup::new(ToolFormat::Llama3);
