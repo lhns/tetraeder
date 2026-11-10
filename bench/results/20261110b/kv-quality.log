@@ -1,0 +1,51 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 1m 19s
+     Running tests/kv_quality.rs (target/release/deps/kv_quality-52d0cf1ca3413323)
+
+running 1 test
+exit_prompt_8k: 8192 tokens, scored from 7168, repeated 8-grams 0.0029
+exit_prompt_32k: 32768 tokens, scored from 31744, repeated 8-grams 0.0244
+test kv_quality has been running for over 60 seconds
+builder q8_0/q8_0 rot {"k":true,"v":true} exit_prompt_8k: mean KL 0.01070, median 0.005286, p99 0.0933, max 0.398, top-1 0.9580 (gating)
+builder q8_0/q8_0 rot {"k":true,"v":true} exit_prompt_32k: mean KL 0.00954, median 0.004625, p99 0.0741, max 0.313, top-1 0.9629 (gating)
+builder q8_0/q8_0 rot {"k":true,"v":true} calibration_512: mean KL 0.00749, median 0.002846, p99 0.0767, max 0.895, top-1 0.9678 (gating)
+builder q8_0/q4_0 rot {"k":true,"v":true} exit_prompt_8k: mean KL 0.01689, median 0.009392, p99 0.1136, max 0.561, top-1 0.9326 (gating)
+builder q8_0/q4_0 rot {"k":true,"v":true} exit_prompt_32k: mean KL 0.01452, median 0.007196, p99 0.0905, max 0.296, top-1 0.9463 (gating)
+builder q8_0/q4_0 rot {"k":true,"v":true} calibration_512: mean KL 0.01450, median 0.004815, p99 0.1306, max 8.463, top-1 0.9529 (gating)
+builder f16/f16 rot {"k":false,"v":false} exit_prompt_8k: mean KL 0.00000, median 0.000000, p99 0.0000, max 0.000, top-1 1.0000
+builder f16/f16 rot {"k":false,"v":false} exit_prompt_32k: mean KL 0.00000, median 0.000000, p99 0.0000, max 0.000, top-1 1.0000
+builder f16/f16 rot {"k":false,"v":false} calibration_512: mean KL 0.00000, median 0.000000, p99 0.0000, max 0.000, top-1 1.0000
+builder f16/f16 rot {"k":true,"v":true} exit_prompt_8k: mean KL 0.00926, median 0.005213, p99 0.0650, max 0.234, top-1 0.9600
+builder f16/f16 rot {"k":true,"v":true} exit_prompt_32k: mean KL 0.00891, median 0.004425, p99 0.0547, max 0.602, top-1 0.9551
+builder f16/f16 rot {"k":true,"v":true} calibration_512: mean KL 0.00678, median 0.002747, p99 0.0729, max 0.582, top-1 0.9631
+builder q8_0/q8_0 rot {"k":false,"v":false} exit_prompt_8k: mean KL 0.01137, median 0.005690, p99 0.0896, max 0.296, top-1 0.9512
+builder q8_0/q8_0 rot {"k":false,"v":false} exit_prompt_32k: mean KL 0.01131, median 0.005192, p99 0.0927, max 0.741, top-1 0.9424
+builder q8_0/q8_0 rot {"k":false,"v":false} calibration_512: mean KL 0.00855, median 0.003201, p99 0.0972, max 1.566, top-1 0.9634
+builder q8_0/q4_0 rot {"k":false,"v":false} exit_prompt_8k: mean KL 0.01950, median 0.010877, p99 0.1332, max 0.593, top-1 0.9365
+builder q8_0/q4_0 rot {"k":false,"v":false} exit_prompt_32k: mean KL 0.02008, median 0.010271, p99 0.1590, max 1.256, top-1 0.9346
+builder q8_0/q4_0 rot {"k":false,"v":false} calibration_512: mean KL 0.01457, median 0.005976, p99 0.1400, max 1.351, top-1 0.9436
+libllama f16/f16 rot "default" exit_prompt_8k: mean KL 0.00792, median 0.004314, p99 0.0597, max 0.139, top-1 0.9580
+libllama f16/f16 rot "default" exit_prompt_32k: mean KL 0.00723, median 0.003593, p99 0.0542, max 0.151, top-1 0.9600
+libllama f16/f16 rot "default" calibration_512: mean KL 0.00774, median 0.002599, p99 0.0749, max 3.581, top-1 0.9678
+libllama q8_0/q8_0 rot "default" exit_prompt_8k: mean KL 0.01032, median 0.005525, p99 0.0740, max 0.219, top-1 0.9561
+libllama q8_0/q8_0 rot "default" exit_prompt_32k: mean KL 0.00941, median 0.004676, p99 0.0763, max 0.268, top-1 0.9580
+libllama q8_0/q8_0 rot "default" calibration_512: mean KL 0.00756, median 0.002928, p99 0.0705, max 1.419, top-1 0.9683
+libllama q8_0/q4_0 rot "default" exit_prompt_8k: mean KL 0.01658, median 0.008854, p99 0.1288, max 0.459, top-1 0.9502
+libllama q8_0/q4_0 rot "default" exit_prompt_32k: mean KL 0.01491, median 0.007723, p99 0.0982, max 0.486, top-1 0.9434
+libllama q8_0/q4_0 rot "default" calibration_512: mean KL 0.01515, median 0.004845, p99 0.1276, max 8.141, top-1 0.9497
+
+thread 'kv_quality' (152366) panicked at crates/model/tests/kv_quality.rs:468:9:
+{"bound_kl":0.003,"bound_top1":0.99,"engine":"builder","gating":true,"kv":"q8_0/q8_0","max_kl":0.39754101561913024,"mean_kl":0.010699661012901337,"median_kl":0.005285776331731315,"p99_kl":0.09334480638736313,"pass":false,"positions":1024,"rotation":{"k":true,"v":true},"set":"exit_prompt_8k","top1_agreement":0.9580078125}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test kv_quality ... FAILED
+
+failures:
+
+failures:
+    kv_quality
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 450.20s
+
+error: test failed, to rerun pass `-p tetraeder-model --test kv_quality`

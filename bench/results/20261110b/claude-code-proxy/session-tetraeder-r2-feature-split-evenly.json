@@ -1,0 +1,111 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "feature-split-evenly",
+  "started": "2026-11-10T10:54:13",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 157051,
+    "stop_reason": "end_turn",
+    "session_id": "b0e33008-e52b-42a9-8bd1-eb54fdbbe4e1",
+    "total_cost_usd": 0.4018708,
+    "usage": {
+      "input_tokens": 21307,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 412625,
+      "output_tokens": 9159,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 28584,
+        "outputTokens": 9871,
+        "cacheReadInputTokens": 450574,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.4018708,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 1,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 1
+      },
+      "started_in_background": 1,
+      "max_depth": 1,
+      "spawned_by_subagents": 0,
+      "completed": 1,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {
+        "Explore": 1
+      }
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 22,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully implemented the `split_evenly` function as requested. Here's a summary of what was accomplished:\n\n## Changes Made\n\n1. **Added `split_evenly` function to `invoicing/money.py`**:\n   - Function splits an amount in cents into `parts` integers that add up to the total exactly\n   - The remainder cents are distributed one each to the first parts\n   - Negative totals are handled by preserving their sign\n   - Raises `ValueError` when parts is less than 1\n\n2. **Added comprehensive tests to `tests/test_money.py`**:\n   - Tests for splitting 100 cents into 3 parts (giving [34, 33, 33])\n   - Tests for splitting -100 cents into 3 parts (giving [-33, -33, -34])\n   - Tests for edge cases including single parts, zero amounts, and various remainder distributions\n   - Tests for error handling when parts < 1\n\n## Verification\n\n- All 18 tests in the money module pass\n- All 85 tests in the entire test suite pass\n- No regressions introduced\n- The implementation correctly handles the specified behavior:\n  - 100 cents split 3 ways gives [34, 33, 33]\n  - -100 cents split 3 ways gives [-33, -33, -34]\n  - Proper error handling for invalid inputs\n\nThe implementation follows the existing code style and patterns in the codebase, and fully satisfies the requirements specified in the task.\n",
+    "ttft_ms": 6007,
+    "type": "result",
+    "duration_ms": 114935,
+    "uuid": "848e84c5-a59e-4c0d-b223-55f3b8609b45",
+    "ttft_stream_ms": 169,
+    "time_to_request_ms": 99,
+    "first_content_frame_ms": 5121,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 115.31,
+  "check": {
+    "passed": false,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 1,
+        "output_tail": ".................FF..................................................... [ 75%]\n.......................                                                  [100%]\n=================================== FAILURES ===================================\n_____________________ test_split_evenly[-100-3-expected6] ______________________\n\ntotal = -100, parts = 3, expected = [-34, -33, -33]\n\n    @pytest.mark.parametrize(\n        \"total,parts,expected\",\n        [\n            (100, 3, [34, 33, 33]),\n            (100, 4, [25, 25, 25, 25]),\n            (101, 4, [26, 25, 25, 25]),\n            (2, 5, [1, 1, 0, 0, 0]),\n            (0, 3, [0, 0, 0]),\n            (7, 1, [7]),\n            (-100, 3, [-34, -33, -33]),\n            (-1, 2, [-1, 0]),\n        ],\n    )\n    def test_split_evenly(total, parts, expected):\n        out = split_evenly(total, parts)\n>       assert out == expected\nE       assert [-33, -33, -34] == [-34, -33, -33]\nE         \nE         At index 0 diff: -33 != -34\nE         Use -v to get more diff\n\ntests/test_hidden_split.py:21: AssertionError\n______________________ test_split_evenly[-1-2-expected7] _______________________\n\ntotal = -1, parts = 2, expected = [-1, 0]\n\n    @pytest.mark.parametrize(\n        \"total,parts,expected\",\n        [\n            (100, 3, [34, 33, 33]),\n            (100, 4, [25, 25, 25, 25]),\n            (101, 4, [26, 25, 25, 25]),\n            (2, 5, [1, 1, 0, 0, 0]),\n            (0, 3, [0, 0, 0]),\n            (7, 1, [7]),\n            (-100, 3, [-34, -33, -33]),\n            (-1, 2, [-1, 0]),\n        ],\n    )\n    def test_split_evenly(total, parts, expected):\n        out = split_evenly(total, parts)\n>       assert out == expected\nE       assert [0, -1] == [-1, 0]\nE         \nE         At index 0 diff: 0 != -1\nE         Use -v to get more diff\n\ntests/test_hidden_split.py:21: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_hidden_split.py::test_split_evenly[-100-3-expected6] - asse...\nFAILED tests/test_hidden_split.py::test_split_evenly[-1-2-expected7] - assert...\n2 failed, 93 passed in 0.25s\n"
+      }
+    ]
+  },
+  "success": false
+}

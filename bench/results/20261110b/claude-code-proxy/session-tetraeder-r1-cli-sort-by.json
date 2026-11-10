@@ -1,0 +1,106 @@
+{
+  "engine": "tetraeder",
+  "rep": 1,
+  "task": "cli-sort-by",
+  "started": "2026-11-10T10:13:28",
+  "timed_out": false,
+  "exit_code": 1,
+  "claude": {
+    "duration_api_ms": 132604,
+    "stop_reason": "tool_use",
+    "session_id": "5015ea34-d500-4a08-ad25-b7a106314826",
+    "total_cost_usd": 0.5199772,
+    "usage": {
+      "input_tokens": 28308,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 912126,
+      "output_tokens": 11216,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 28308,
+        "outputTokens": 11216,
+        "cacheReadInputTokens": 912126,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.5199772,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "max_turns",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": true,
+    "num_turns": 41,
+    "subtype": "error_max_turns",
+    "errors": [
+      "Reached maximum number of turns (40)"
+    ],
+    "type": "result",
+    "duration_ms": 141365,
+    "uuid": "6e62a6c9-15cc-4ef4-b4ac-603dc82cf74e",
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 141.74,
+  "check": {
+    "passed": false,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 1,
+        "output_tail": "...............F.F...................................................... [ 80%]\n..................                                                       [100%]\n=================================== FAILURES ===================================\n________________________ test_sort_by[total-expected3] _________________________\n\ninvoice_file = PosixPath('/tmp/pytest-of-root/pytest-25/test_sort_by_total_expected3_0/invoices.json')\ncapsys = <_pytest.capture.CaptureFixture object at 0x7033aee47830>\nkey = 'total', expected = ['INV-002', 'INV-003', 'INV-001']\n\n    @pytest.mark.parametrize(\n        \"key,expected\",\n        [\n            (\"number\", [\"INV-001\", \"INV-002\", \"INV-003\"]),\n            (\"issued\", [\"INV-001\", \"INV-002\", \"INV-003\"]),\n            (\"customer\", [\"INV-001\", \"INV-003\", \"INV-002\"]),\n            (\"total\", [\"INV-002\", \"INV-003\", \"INV-001\"]),\n        ],\n    )\n    def test_sort_by(invoice_file, capsys, key, expected):\n>       assert numbers(capsys, str(invoice_file), \"--sort-by\", key) == expected\nE       AssertionError: assert ['INV-001', '...3', 'INV-002'] == ['INV-002', '...3', 'INV-001']\nE         \nE         At index 0 diff: 'INV-001' != 'INV-002'\nE         Use -v to get more diff\n\ntests/test_hidden_cli_sort.py:26: AssertionError\n___________________________ test_format_list_sort_by ___________________________\n\nsample_invoices = [Invoice(number='INV-002', customer='Zeta Ltd', issued=datetime.date(2024, 2, 10), terms='eom', discount=None, items=[...count=Discount(kind='fixed', value=500), items=[LineItem(description='Fee', qty=1, unit_cents=5000, tax_code='zero')])]\n\n    def test_format_list_sort_by(sample_invoices):\n        lines = format_list(sample_invoices, sort_by=\"total\").splitlines()\n>       assert [l.split()[0] for l in lines] == [\"INV-002\", \"INV-003\", \"INV-001\"]\nE       AssertionError: assert ['INV-001', '...3', 'INV-002'] == ['INV-002', '...3', 'INV-001']\nE         \nE         At index 0 diff: 'INV-001' != 'INV-002'\nE         Use -v to get more diff\n\ntests/test_hidden_cli_sort.py:37: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_hidden_cli_sort.py::test_sort_by[total-expected3] - Asserti...\nFAILED tests/test_hidden_cli_sort.py::test_format_list_sort_by - AssertionErr...\n2 failed, 88 passed in 0.26s\n"
+      }
+    ]
+  },
+  "success": false
+}
