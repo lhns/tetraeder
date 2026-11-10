@@ -1,0 +1,180 @@
+{
+ "engine": "llamacpp-cache-s0.9",
+ "cache_mib": 10458,
+ "cpu_share": 0.9,
+ "load_mode": "auto",
+ "flags": [
+  "-ngl",
+  "99",
+  "-fa",
+  "on",
+  "-c",
+  "33024",
+  "-b",
+  "2048",
+  "-ub",
+  "2048",
+  "-t",
+  "26",
+  "-np",
+  "1",
+  "-lm",
+  "auto",
+  "-cmoe",
+  "--moe-cache-mib",
+  "10458",
+  "--moe-cache-cpu-share",
+  "0.9",
+  "-lv",
+  "4",
+  "-fit",
+  "off"
+ ],
+ "threads": 26,
+ "ctx": 33024,
+ "ubatch": 2048,
+ "prefill": 32768,
+ "decode": 64,
+ "server": "/opt/llama.cpp-baseline/bin/llama-server",
+ "machine": "87bfc8ff3904",
+ "ok": true,
+ "baseline_pin": "tag=b12211 commit=7d7f0287530bc8981690f361d8c1627dbae1c99a",
+ "load_s": 228.3,
+ "warmup": {
+  "before": {
+   "majflt": 37245,
+   "rss_bytes": 54354173952
+  },
+  "after": {
+   "majflt": 72312,
+   "rss_bytes": 88638226432
+  },
+  "s": 126.3,
+  "majflt": 35067,
+  "decode_tok_s": 1.224057628633156
+ },
+ "log_load_mode": [
+  "0.00.585.946 I load_tensors: loading model tensors, this can take a while... (load_mode = mmap)",
+  "0.00.592.718 W llama_model_loader: tensor overrides to CPU are used with mmap enabled - consider using --load-mode none for better performance"
+ ],
+ "prompt": {
+  "tokens": 32768,
+  "fnv1a64": "c743c72b8ffceadd"
+ },
+ "timings": {
+  "prompt_n": 32768,
+  "prompt_ms": 2989122.139,
+  "prompt_per_second": 10.962415878717628,
+  "predicted_n": 64,
+  "predicted_ms": 29942.117,
+  "predicted_per_second": 2.1040596428101592
+ },
+ "prefill_tok_s": 10.962415878717628,
+ "decode_tok_s": 2.1040596428101592,
+ "run_stat": {
+  "before": {
+   "majflt": 72312,
+   "rss_bytes": 88638226432
+  },
+  "after": {
+   "majflt": 587679,
+   "rss_bytes": 89061068800
+  },
+  "majflt": 515367
+ },
+ "cache_log": [
+  "56.13.879.758 I llama_moe_cache: ubatch <= 8: hits = 21322, misses = 33300 (29066 on the CPU), hit rate = 39.04%, uploaded = 46137.80 MiB",
+  "56.13.879.762 I llama_moe_cache: large batches: 43041 experts copied from the cache, 156167.30 MiB"
+ ],
+ "runs": [
+  {
+   "engine": "llamacpp-cache-s0.9",
+   "cache_mib": 10458,
+   "cpu_share": 0.9,
+   "load_mode": "auto",
+   "flags": [
+    "-ngl",
+    "99",
+    "-fa",
+    "on",
+    "-c",
+    "33024",
+    "-b",
+    "2048",
+    "-ub",
+    "2048",
+    "-t",
+    "26",
+    "-np",
+    "1",
+    "-lm",
+    "auto",
+    "-cmoe",
+    "--moe-cache-mib",
+    "10458",
+    "--moe-cache-cpu-share",
+    "0.9",
+    "-lv",
+    "4",
+    "-fit",
+    "off"
+   ],
+   "threads": 26,
+   "ctx": 33024,
+   "ubatch": 2048,
+   "prefill": 32768,
+   "decode": 64,
+   "server": "/opt/llama.cpp-baseline/bin/llama-server",
+   "machine": "87bfc8ff3904",
+   "ok": true,
+   "baseline_pin": "tag=b12211 commit=7d7f0287530bc8981690f361d8c1627dbae1c99a",
+   "load_s": 228.3,
+   "warmup": {
+    "before": {
+     "majflt": 37245,
+     "rss_bytes": 54354173952
+    },
+    "after": {
+     "majflt": 72312,
+     "rss_bytes": 88638226432
+    },
+    "s": 126.3,
+    "majflt": 35067,
+    "decode_tok_s": 1.224057628633156
+   },
+   "log_load_mode": [
+    "0.00.585.946 I load_tensors: loading model tensors, this can take a while... (load_mode = mmap)",
+    "0.00.592.718 W llama_model_loader: tensor overrides to CPU are used with mmap enabled - consider using --load-mode none for better performance"
+   ],
+   "prompt": {
+    "tokens": 32768,
+    "fnv1a64": "c743c72b8ffceadd"
+   },
+   "timings": {
+    "prompt_n": 32768,
+    "prompt_ms": 2989122.139,
+    "prompt_per_second": 10.962415878717628,
+    "predicted_n": 64,
+    "predicted_ms": 29942.117,
+    "predicted_per_second": 2.1040596428101592
+   },
+   "prefill_tok_s": 10.962415878717628,
+   "decode_tok_s": 2.1040596428101592,
+   "run_stat": {
+    "before": {
+     "majflt": 72312,
+     "rss_bytes": 88638226432
+    },
+    "after": {
+     "majflt": 587679,
+     "rss_bytes": 89061068800
+    },
+    "majflt": 515367
+   },
+   "cache_log": [
+    "56.13.879.758 I llama_moe_cache: ubatch <= 8: hits = 21322, misses = 33300 (29066 on the CPU), hit rate = 39.04%, uploaded = 46137.80 MiB",
+    "56.13.879.762 I llama_moe_cache: large batches: 43041 experts copied from the cache, 156167.30 MiB"
+   ]
+  }
+ ]
+}
