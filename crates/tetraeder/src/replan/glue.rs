@@ -1,7 +1,7 @@
 //! A lowered plan as the load options of the two serving engines (ADR 0055).
 
 use crate::engine_args::PlacementArgs;
-use crate::serve::resolve_overlap;
+use crate::serve::{resolve_overlap, resolve_prefetch};
 use std::sync::Arc;
 use tetraeder_engine::{BufferOverride, ContextConfig, Placement};
 use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy};
@@ -60,7 +60,8 @@ pub fn builder_options(
     l: &Lowered,
     ctx: u32,
     miss: MissPolicy,
-    prefetch: bool,
+    prefetch: Option<bool>,
+    prefetch_depth: u8,
     io_service: Option<bool>,
     overlap: Option<bool>,
     telemetry: Arc<Telemetry>,
@@ -94,7 +95,8 @@ pub fn builder_options(
     } else {
         miss
     };
-    o.prefetch = prefetch;
+    o.prefetch = resolve_prefetch(ram_slots.is_some(), prefetch);
+    o.prefetch_depth = usize::from(prefetch_depth);
     (o.io.service, o.overlap) = resolve_overlap(ram_slots.is_some(), o.miss, io_service, overlap)?;
     o.telemetry = Some(telemetry);
     Ok(o)
@@ -188,7 +190,8 @@ mod tests {
             &gpu,
             4096,
             MissPolicy::Upload,
-            true,
+            None,
+            2,
             None,
             None,
             Arc::clone(&tel),
@@ -205,6 +208,7 @@ mod tests {
         );
         // A RAM tier plans both on, as `serve` does by default.
         assert!(o.io.service && o.overlap);
+        assert_eq!(o.prefetch_depth, 2);
         assert_eq!(builder_chunk(&gpu).unwrap(), 512);
         let cpu = Lowered::Builder {
             gpu: None,
@@ -216,15 +220,25 @@ mod tests {
         };
         assert_eq!(builder_chunk(&cpu).unwrap(), 64);
         let tel2 = Arc::clone(&tel);
-        let o = builder_options(&cpu, 256, MissPolicy::Upload, false, None, None, tel).unwrap();
+        let o = builder_options(&cpu, 256, MissPolicy::Upload, None, 2, None, None, tel).unwrap();
         assert!(matches!(o.backend, BackendChoice::Cpu { threads: Some(2) }));
         assert_eq!(
             (o.expert_slots, o.ram_slots, o.miss),
             (None, None, MissPolicy::Upload)
         );
-        assert!(!o.io.service && !o.overlap);
+        assert!(!o.io.service && !o.overlap && !o.prefetch);
         assert!(
-            builder_options(&cpu, 256, MissPolicy::Upload, false, None, Some(true), tel2).is_err()
+            builder_options(
+                &cpu,
+                256,
+                MissPolicy::Upload,
+                None,
+                2,
+                None,
+                Some(true),
+                tel2
+            )
+            .is_err()
         );
     }
 }
