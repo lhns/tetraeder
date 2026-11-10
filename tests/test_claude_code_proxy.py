@@ -426,6 +426,7 @@ def test_tool_error_classes_from_claude_code_wording():
     # Texts as Claude Code sent them in bench/results/20261110b (request logs of the Tetraeder sessions).
     cases = {
         "Exit code 1\n============================= test session starts": "bash_exit",
+        "Exit code 1\nE   AssertionError: InputValidationError not raised": "bash_exit",
         "<tool_use_error>String to replace not found in file.\nString: def f():</tool_use_error>": "file",
         "<tool_use_error>No changes to make: old_string and new_string are exactly the same.</tool_use_error>": "file",
         "File does not exist. Note: your current working directory is /tmp/x/repo.": "file",
