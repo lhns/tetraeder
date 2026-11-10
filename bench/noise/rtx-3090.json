@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "class": "rtx-3090",
+  "device": "cuda",
+  "updated": "2026-11-10",
+  "quantile": 0.95,
+  "margin": 1.25,
+  "floor": 0.02,
+  "ceil": 0.25,
+  "n": 11,
+  "n_hosts": 6,
+  "d_p95": 0.06025044922840039,
+  "band": 0.07531306153550049,
+  "sessions": [
+    {
+      "file": "bench/results/20261030/phase0-161208.json",
+      "date": "2026-10-30",
+      "host_id": "3db3c714eb2d",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "595.71.05",
+      "pair": "noise-cuda-dense",
+      "threads": 0,
+      "repeats": 5,
+      "ratios": {
+        "pp": 0.9397495507715996,
+        "tg": 0.996986324124503
+      },
+      "d": 0.06025044922840039
+    },
+    {
+      "file": "bench/results/20261031/phase0-121446.json",
+      "date": "2026-10-31",
+      "host_id": "038e81a28da2",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "580.126.09",
+      "pair": "noise-cuda-dense",
+      "threads": 19,
+      "repeats": 5,
+      "ratios": {
+        "pp": 0.9983298426256676,
+        "tg": 1.0005628535396134
+      },
+      "d": 0.0016701573743324039
+    },
+    {
+      "file": "bench/results/20261110/noise/phase0-001924.json",
+      "date": "2026-11-10",
+      "host_id": "cfb76c3e4dac",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "580.178.04",
+      "pair": "noise-cuda-dense",
+      "threads": 13,
+      "repeats": 8,
+      "ratios": {
+        "pp": 1.0011681916071828,
+        "tg": 0.9999948090785392
+      },
+      "d": 0.0011681916071828446
+    },
+    {
+      "file": "bench/results/20261110/noise/phase0-002657.json",
+      "date": "2026-11-10",
+      "host_id": "cfb76c3e4dac",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "580.178.04",
+      "pair": "noise-cuda-dense",
+      "threads": 13,
+      "repeats": 8,
+      "ratios": {
+        "pp": 1.0007843758487862,
+        "tg": 0.9990867365826992
+      },
+      "d": 0.0009132634173008025
+    },
+    {
+      "file": "bench/results/20261110/noise/phase0-003219.json",
+      "date": "2026-11-10",
+      "host_id": "3643bccb3b5f",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "595.71.05",
+      "pair": "noise-cuda-dense",
+      "threads": 9,
+      "repeats": 8,
+      "ratios": {
+        "pp": 0.9997198075819363,
+        "tg": 0.9990608191378798
+      },
+      "d": 0.0009391808621201925
+    },
+    {
+      "file": "bench/results/20261110/noise/phase0-004855.json",
+      "date": "2026-11-10",
+      "host_id": "cfb76c3e4dac",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "580.178.04",
+      "pair": "noise-cuda-dense",
+      "threads": 13,
+      "repeats": 8,
+      "ratios": {
+        "pp": 1.0005852877358268,
+        "tg": 1.0007186903713667
+      },
+      "d": 0.000718690371366737
+    },
+    {
+      "file": "bench/results/20261110/noise/phase0-010012.json",
+      "date": "2026-11-10",
+      "host_id": "3643bccb3b5f",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "595.71.05",
+      "pair": "noise-cuda-dense",
+      "threads": 9,
+      "repeats": 8,
+      "ratios": {
+        "pp": 1.0008987116096937,
+        "tg": 0.9994248396901296
+      },
+      "d": 0.0008987116096936809
+    },
+    {
+      "file": "bench/results/20261110/noise/phase0-010658.json",
+      "date": "2026-11-10",
+      "host_id": "3643bccb3b5f",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "595.71.05",
+      "pair": "noise-cuda-dense",
+      "threads": 9,
+      "repeats": 8,
+      "ratios": {
+        "pp": 1.0012333709821717,
+        "tg": 1.0003295698403056
+      },
+      "d": 0.0012333709821716887
+    },
+    {
+      "file": "bench/results/20261110/noise/phase0-014220.json",
+      "date": "2026-11-10",
+      "host_id": "cfb76c3e4dac",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "580.178.04",
+      "pair": "noise-cuda-dense",
+      "threads": 13,
+      "repeats": 8,
+      "ratios": {
+        "pp": 0.9990117081691892,
+        "tg": 1.000656782760326
+      },
+      "d": 0.000988291830810839
+    },
+    {
+      "file": "bench/results/20261110c/noise/phase0-123244.json",
+      "date": "2026-11-10",
+      "host_id": "43fae09577cc",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "595.71.05",
+      "pair": "noise-cuda-dense",
+      "threads": 30,
+      "repeats": 8,
+      "ratios": {
+        "pp": 0.9999774178227384,
+        "tg": 1.0004598931813913
+      },
+      "d": 0.0004598931813912799
+    },
+    {
+      "file": "bench/results/20261110e/noise/phase0-144031.json",
+      "date": "2026-11-10",
+      "host_id": "08cd50891c55",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "595.71.05",
+      "pair": "noise-cuda-dense",
+      "threads": 30,
+      "repeats": 8,
+      "ratios": {
+        "pp": 1.0024391045945005,
+        "tg": 0.9962631674476684
+      },
+      "d": 0.0037368325523315926
+    }
+  ]
+}

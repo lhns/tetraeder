@@ -28,7 +28,7 @@ Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed pa
 
 1. **Speculative rerun** (not an M1 exit test): `STAGES=main-builder bash scripts/spec_run.sh` (VRAM fix in; the draft now fits).
 2. **Hidden share under overlap** (ADR 0054): 0.38 to 0.42 against the 0.5 bar; read wait is all urgent misses. Then delete the `Reader` path.
-3. **Noise bands:** run `tetraeder-bench noise update` for the A/A pairs in `20261110c`, `20261110d`, `20261110e` and the three overlap runs in `20261110f`.
+3. **Noise bands (done 2026-11-11):** `tetraeder-bench noise update` picked up the A/A pairs of `20261110c` and `20261110e` (rtx-3090: n=11 sessions, 6 hosts, p95 d 0.060, band 0.075) and `20261110d` (a40: n=1, band 0.020, below the 3-session minimum, provisional stays); the overlap runs of `20261110f` are builder runs without a `noise/` record, so they carry no A/A pair.
 4. (done) `rc=2` after `EXIT_RUN_DONE rc=0` came from the closing `sccache --stop-server`; `exit_run.sh` now exits 0.
 5. **Proxy harness:** save the gateway's tool-call outcome counts (`repaired/no_opener`) at the end of a run; today they are live metrics only.
 
