@@ -208,12 +208,12 @@ async fn request_log_counts_tool_call_outcomes() {
     let engine = FakeEngine::with_template(Some(CODER.to_owned()), move |_| bare.to_owned());
     let (app, path) = logged_app(engine);
 
-    let body = json!({"model": "fake", "max_tokens": 64, "messages": user("weather?"),
+    let body = json!({"model": "fake", "max_tokens": 512, "messages": user("weather?"),
         "tools": [{"name": "get_weather", "description": "Weather",
             "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}}}]});
     let (s, _, v) = post(&app, "/v1/messages", &body, true).await;
     assert_eq!(s, 200, "{v}");
-    let body = json!({"model": "fake", "max_tokens": 64, "messages": user("weather?")});
+    let body = json!({"model": "fake", "max_tokens": 512, "messages": user("weather?")});
     let (s, _, v) = post(&app, "/v1/messages", &body, true).await;
     assert_eq!(s, 200, "{v}");
 
