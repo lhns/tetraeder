@@ -146,3 +146,7 @@ Session `b1b-levers`: RTX 3090, AMD EPYC 7742 (AVX2, no AVX-512), quota 30.7 cor
 - Decode bar (at least 15% above `main-prefetch`): met. Hidden share bar (0.5): missed, 0.42. Read wait is still 24.8 ms of a 42.8 ms read span per token, all urgent misses.
 - Confound: the builder's CPU time was 106 to 116% of 26 threads, so the I/O workers used 2 to 4 of the 4.7 spare cores of quota. The gain is measured with spare cores, not in the starved case of section "Context". A box with a quota near the thread count (b1-exit had 26.9) must confirm it.
 - Decision: the service and overlap become the defaults of `serve` where they apply (RAM tier; overlap also needs the `cpu` miss policy). The `Reader` path stays until the starved-case run, then is deleted.
+
+## Addendum (2026-11-10, box 60072027): starved case
+
+Same CPU class as the previous addendum (EPYC 7742, AVX2), both engines at 30 threads = floor(quota 30.72). Decode CPU was matched: builder 27.7 to 29.0 cores, KTransformers 27.5 to 27.9. `main-overlap` decodes 1.51x and 1.53x `main-prefetch` (overlap pair 1.3% apart). Hidden share 0.42 and 0.38, still under the 0.5 bar. The decode gain holds without spare cores, so the confound of the previous addendum is closed. The `Reader` path now only serves `--io-service off`; deleting it is a cleanup, not a measurement question.

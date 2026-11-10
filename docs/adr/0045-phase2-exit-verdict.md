@@ -154,3 +154,7 @@ Session `b1b-levers`: AMD EPYC 7742 (AVX2 only, so no iqk VNNI kernels on either
 
 - Not pooled with b1-exit: different CPU class.
 - The verdict holds on both classes only with overlap, which `serve` now enables by default (ADR 0054 addendum). The builder's I/O workers used CPU beyond the 26 threads, which KTransformers did not; a quota-tight run (quota about threads plus one, as b1-exit) of `main-overlap` against KTransformers closes that question.
+
+## Addendum (2026-11-10, box 60072027): met with the CPU matched
+
+EPYC 7742 (AVX2), RTX 3090, 91 GB, both engines at 30 threads = floor(quota), decode CPU 27.5 to 29 cores on both. Decode `main-overlap`/KTransformers 1.143 and 1.181 (cross pairs 1.158, 1.166; overlap pair 1.3% apart, KT pair 2.0%, A/A 0.996). Prefill 2.3x. `main-prefetch` alone is 0.757 of KTransformers here: KTransformers gains more from the extra threads, so the overlap path (on by default in `serve`, ADR 0054) is what meets the bar on AVX2. Verdict: Phase 2 exit met on both CPU classes, against KTransformers and the llama.cpp expert cache (b1-exit), with the builder at its `serve` defaults. Results `bench/results/20261110e/`.
