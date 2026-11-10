@@ -19,6 +19,9 @@ export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BU
 # shellcheck source=scripts/box_libs.sh
 . scripts/box_libs.sh
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
+# start the server with the lock fd closed: one started by cargo inherits fd 8 and keeps the flock (a relaunch
+# then exits silently, b1b-levers 2026-11-10)
+[ "${RUSTC_WRAPPER:-}" = sccache ] && { sccache --start-server > /dev/null 2>&1 8>&- || true; }
 # shellcheck disable=SC1091
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
 # RESULTS_DATE (scripts/session.sh) pins the results directory of a session that crosses midnight or resumes
