@@ -1,0 +1,52 @@
+{"id": "run-00", "label": "calib", "faults": []}
+{"id": "run-01", "label": "calib", "faults": []}
+{"id": "run-02", "label": "calib", "faults": []}
+{"id": "run-03", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-04", "label": "disk", "faults": ["disk"]}
+{"id": "run-05", "label": "vram", "faults": ["vram"]}
+{"id": "run-06", "label": "none", "faults": []}
+{"id": "run-07", "label": "vram", "faults": ["vram"]}
+{"id": "run-08", "label": "disk", "faults": ["disk"]}
+{"id": "run-09", "label": "none", "faults": []}
+{"id": "run-10", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-11", "label": "vram", "faults": ["vram"]}
+{"id": "run-12", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-13", "label": "disk", "faults": ["disk"]}
+{"id": "run-14", "label": "none", "faults": []}
+{"id": "run-15", "label": "disk", "faults": ["disk"]}
+{"id": "run-16", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-17", "label": "vram", "faults": ["vram"]}
+{"id": "run-18", "label": "none", "faults": []}
+{"id": "run-19", "label": "disk", "faults": ["disk"]}
+{"id": "run-20", "label": "none", "faults": []}
+{"id": "run-21", "label": "vram", "faults": ["vram"]}
+{"id": "run-22", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-23", "label": "none", "faults": []}
+{"id": "run-24", "label": "vram", "faults": ["vram"]}
+{"id": "run-25", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-26", "label": "disk", "faults": ["disk"]}
+{"id": "run-27", "label": "vram", "faults": ["vram"]}
+{"id": "run-28", "label": "none", "faults": []}
+{"id": "run-29", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-30", "label": "disk", "faults": ["disk"]}
+{"id": "run-31", "label": "vram", "faults": ["vram"]}
+{"id": "run-32", "label": "none", "faults": []}
+{"id": "run-33", "label": "disk", "faults": ["disk"]}
+{"id": "run-34", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-35", "label": "disk", "faults": ["disk"]}
+{"id": "run-36", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-37", "label": "vram", "faults": ["vram"]}
+{"id": "run-38", "label": "none", "faults": []}
+{"id": "run-39", "label": "none", "faults": []}
+{"id": "run-40", "label": "vram", "faults": ["vram"]}
+{"id": "run-41", "label": "disk", "faults": ["disk"]}
+{"id": "run-42", "label": "cpu", "faults": ["cpu"]}
+{"id": "run-43", "label": "cpu+vram", "faults": ["cpu", "vram"]}
+{"id": "run-44", "label": "disk+vram", "faults": ["disk", "vram"]}
+{"id": "run-45", "label": "cpu+disk", "faults": ["cpu", "disk"]}
+{"id": "run-46", "label": "cpu+disk", "faults": ["cpu", "disk"]}
+{"id": "run-47", "label": "disk+vram", "faults": ["disk", "vram"]}
+{"id": "run-48", "label": "cpu+vram", "faults": ["cpu", "vram"]}
+{"id": "run-49", "label": "cpu+vram", "faults": ["cpu", "vram"]}
+{"id": "run-50", "label": "disk+vram", "faults": ["disk", "vram"]}
+{"id": "run-51", "label": "cpu+disk", "faults": ["cpu", "disk"]}
