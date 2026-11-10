@@ -5,7 +5,9 @@ set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 sub="$root/vendor/llama.cpp"
 ok=0
-if [ -f "$sub/CMakeLists.txt" ]; then
+# Only a vendor/llama.cpp that is its own git repo can be checked (a box checkout has none, or a pushed copy with a
+# dangling .git and maybe CRLF files); otherwise patches/apply.sh builds a fresh repo at the pin from upstream.
+if [ -f "$sub/CMakeLists.txt" ] && pre="$(git -C "$sub" rev-parse --show-prefix 2>/dev/null)" && [ -z "$pre" ]; then
   ok=1
   while IFS= read -r line || [ -n "$line" ]; do
     p="${line%%#*}"; p="$(echo "$p" | xargs)"
