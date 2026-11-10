@@ -17,9 +17,11 @@ The second Claude Code proxy run (bench/results/20261110/claude-code-proxy, box 
 | other | 7 | Read on a directory or missing file, Edit string not found or a no-op edit |
 | unknown_tool | 1 | `Explore` (not in the request's tools) |
 
-All 60 validation errors are one cause: Qwen3-Coder writes XML parameter values as Python literals (`True`, `False`, `None`, single-quoted strings), which the parser in `toolcall.rs` could not read as JSON, so it kept the text as a string. The "other" errors are the model's work on the task, the same kind llama-server has (26). The five Tetraeder sessions with `is_error` (llama-server: one) all ended at Claude Code's 40-turn limit, and each had 4 to 13 validation errors: the model retried the same Edit, often copying the failed `"False"` back from its history.
+The request log holds one more `other` result (40) than the proxy counted (39). The log confirms the proxy's `is_error` patterns, which ADR 0051 left unchecked.
 
-llama-server never sends these: llama.cpp (`common/parsers/qwen3-coder.cpp` at the pin) samples tool calls under a lazy grammar triggered by `<tool_call>` (or `<function=NAME>`) whose non-string parameters must be JSON of the schema's type, so the model cannot write `False` there. The gateway builds a grammar only for forced tool choice (ADR 0028); Claude Code uses `auto`. llama.cpp's own Python-literal reader (`normalize_quotes_to_json` in `common/chat-peg-parser.cpp`) serves other formats, not Qwen3-Coder.
+All 60 validation errors are one cause: Qwen3-Coder writes XML parameter values as Python literals (`True`, `False`, `None`, single-quoted strings), which the parser in `toolcall.rs` could not read as JSON, so it kept the text as a string. The "other" errors are the model's work on the task, the same kind llama-server has (26). The five Tetraeder sessions with `is_error` (llama-server: one) all ended at Claude Code's 40-turn limit, and each had 4 to 13 validation errors: the model retried the same Edit with the same `"False"`.
+
+llama-server never sends these: llama.cpp (`common/parsers/qwen3-coder.cpp` at the pin) samples tool calls under a lazy grammar triggered by `<tool_call>` (or `<function=NAME>`) whose non-string parameters must be JSON of the schema's type, so the model cannot write `False` there. The gateway builds a grammar only for forced tool choice (ADR 0028); Claude Code uses `auto`. The prompts do not differ here: both template engines print a JSON boolean through `| string` as `False` (the tool's `<default>False</default>` and earlier calls in the history), which likely primes the model to write it. llama-server in this run was the pin build (2e0d86b, env.json). llama.cpp's own Python-literal reader (`normalize_quotes_to_json` in `common/chat-peg-parser.cpp`) serves other formats, not Qwen3-Coder.
 
 ## Decision
 
@@ -31,6 +33,6 @@ Not done: a lazy grammar for `auto` tool choice, as llama.cpp does. It would als
 
 ## Consequences
 
-- The 60 validation errors of the run become valid calls; with all else equal the tool-error rate drops from 18.5% to about 7.4% (40 of 541), near llama-server's 5.6%, and the turn-limit sessions lose their retry loops. The next proxy run measures it.
+- The 58 boolean calls of the run become schema-valid; the 2 ReportFindings calls get the right type (their item fields are not checked here). With all else equal the tool-error rate drops from 18.5% to about 7.4% (40 of 541) at best, near llama-server's 5.6%; converted Edits can still fail for task reasons. The turn-limit sessions lose their retry loops. The next proxy run measures it.
 - A string parameter that the model fills with `False` stays `"False"`; only the schema decides.
 - Union types with `string` (`["string", "number"]`) and `anyOf` schemas still keep text; llama.cpp tries JSON first there. No fixture shows them yet.
