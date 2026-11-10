@@ -273,7 +273,7 @@ Read on 2026-11-05 from their docs and pull requests; their numbers are self-rep
 | Fast tiers kept by routing frequency | Lottery Ticket (a small subnetwork carries most of the work); our recorded routing | Score an offline replay of recorded routing against the LRU first; build only if the hit rate wins |
 | Drafter built into the model (MTP) | Strata: 2.4 to 3.2 tokens per pass, 1.6x to 1.8x | Speculative decoding (ADR 0043), for models that ship the layers |
 | Message-boundary and near-tail prompt checkpoints | Strata: first edit of a long history 33% faster (combined with larger chunks) | Prefix cache (ADR 0049). Skipped for full-attention models (ADR 0051): the cache already reuses the longest common prefix at any token; revisit with recurrent or sliding-window layers |
-| Tool-call repair across model formats | Unsloth `tool_healing`, `tool_call_parser` | Gateway. Ideas only: Unsloth's `studio/` files read here are AGPL-3.0. ADR 0051: outcome counts and the one class seen (empty call); more classes only from proxy-run data |
+| Tool-call repair across model formats | Unsloth `tool_healing`, `tool_call_parser` | Gateway. Ideas only: Unsloth's `studio/` files read here are AGPL-3.0. ADR 0051: outcome counts and the one class seen (empty call); more classes only from proxy-run data. ADR 0057: Qwen XML values written as Python literals typed by the schema (all 60 validation errors of the 20261110 run) |
 
 Strata also reports what did not pay: batched DMA gave no clear model speedup, and overlapping KV uploads gave 4% to 5% on prefill only. Strata keeps every expert in RAM outside its low-RAM modes, so it does not remove the disk reads of a model larger than RAM.
 

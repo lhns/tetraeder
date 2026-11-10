@@ -558,6 +558,8 @@ fn parse_xml_call(content: &str, tools: &[ToolDef]) -> Option<ToolCall> {
 }
 
 /// Parameter values are text; use the schema type to turn them into JSON, else keep the string.
+/// Besides JSON, a Python literal is accepted (`False`, `None`, `['a', 1]`): Qwen3-Coder writes
+/// them, and llama.cpp's grammar never lets it (ADR 0057).
 fn convert_param(raw: &str, ty: Option<&Value>) -> Value {
     let types: Vec<&str> = match ty {
         Some(Value::String(s)) => vec![s.as_str()],
@@ -567,7 +569,13 @@ fn convert_param(raw: &str, ty: Option<&Value>) -> Value {
     if types.is_empty() || types.contains(&"string") {
         return Value::String(raw.to_owned());
     }
-    let parsed = serde_json::from_str::<Value>(raw.trim()).ok();
+    let text = raw.trim();
+    let loose_bool = || {
+        ["true", "false"]
+            .iter()
+            .find(|b| text.eq_ignore_ascii_case(b))
+            .map(|b| Value::Bool(*b == "true"))
+    };
     let fits = |v: &Value| {
         types.iter().any(|t| match *t {
             "integer" => v.is_i64() || v.is_u64(),
@@ -579,8 +587,167 @@ fn convert_param(raw: &str, ty: Option<&Value>) -> Value {
             _ => false,
         })
     };
-    match parsed {
-        Some(v) if fits(&v) => v,
-        _ => Value::String(raw.to_owned()),
+    serde_json::from_str::<Value>(text)
+        .ok()
+        .filter(fits)
+        .or_else(|| python_literal(text).filter(fits))
+        .or_else(|| loose_bool().filter(fits))
+        .unwrap_or_else(|| Value::String(raw.to_owned()))
+}
+
+/// A whole Python literal (str, int, float, bool, None, list, tuple, dict with string keys) as
+/// JSON; `None` if `s` is anything else.
+fn python_literal(s: &str) -> Option<Value> {
+    let mut p = PyLit { s, i: 0 };
+    let v = p.value(0)?;
+    p.ws();
+    (p.i == s.len()).then_some(v)
+}
+
+struct PyLit<'a> {
+    s: &'a str,
+    i: usize,
+}
+
+impl PyLit<'_> {
+    const MAX_DEPTH: usize = 64;
+
+    fn peek(&self) -> Option<char> {
+        self.s[self.i..].chars().next()
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        let c = self.peek()?;
+        self.i += c.len_utf8();
+        Some(c)
+    }
+
+    fn eat(&mut self, c: char) -> bool {
+        let hit = self.peek() == Some(c);
+        if hit {
+            self.i += c.len_utf8();
+        }
+        hit
+    }
+
+    fn ws(&mut self) {
+        while self.peek().is_some_and(char::is_whitespace) {
+            self.bump();
+        }
+    }
+
+    fn value(&mut self, depth: usize) -> Option<Value> {
+        if depth > Self::MAX_DEPTH {
+            return None;
+        }
+        self.ws();
+        match self.peek()? {
+            '[' => self.seq('[', ']', depth).map(Value::Array),
+            '(' => self.seq('(', ')', depth).map(Value::Array),
+            '{' => self.dict(depth),
+            '\'' | '"' => self.string().map(Value::String),
+            _ => self.word(),
+        }
+    }
+
+    /// Items up to `close`; a trailing comma is allowed, as in Python.
+    fn seq(&mut self, open: char, close: char, depth: usize) -> Option<Vec<Value>> {
+        self.eat(open);
+        let mut items = Vec::new();
+        loop {
+            self.ws();
+            if self.eat(close) {
+                return Some(items);
+            }
+            items.push(self.value(depth + 1)?);
+            self.ws();
+            if !self.eat(',') {
+                self.ws();
+                return self.eat(close).then_some(items);
+            }
+        }
+    }
+
+    fn dict(&mut self, depth: usize) -> Option<Value> {
+        self.eat('{');
+        let mut map = Map::new();
+        loop {
+            self.ws();
+            if self.eat('}') {
+                return Some(Value::Object(map));
+            }
+            if !matches!(self.peek(), Some('\'' | '"')) {
+                return None;
+            }
+            let key = self.string()?;
+            self.ws();
+            if !self.eat(':') {
+                return None;
+            }
+            let v = self.value(depth + 1)?;
+            map.insert(key, v);
+            self.ws();
+            if !self.eat(',') {
+                self.ws();
+                return self.eat('}').then_some(Value::Object(map));
+            }
+        }
+    }
+
+    /// A single- or double-quoted string with Python's escapes.
+    fn string(&mut self) -> Option<String> {
+        let q = self.bump()?;
+        let mut out = String::new();
+        loop {
+            match self.bump()? {
+                c if c == q => return Some(out),
+                '\\' => match self.bump()? {
+                    'n' => out.push('\n'),
+                    't' => out.push('\t'),
+                    'r' => out.push('\r'),
+                    '0' => out.push('\0'),
+                    '\n' => {}
+                    'x' => out.push(self.hex(2)?),
+                    'u' => out.push(self.hex(4)?),
+                    'U' => out.push(self.hex(8)?),
+                    c @ ('\\' | '\'' | '"') => out.push(c),
+                    c => {
+                        out.push('\\');
+                        out.push(c);
+                    }
+                },
+                c => out.push(c),
+            }
+        }
+    }
+
+    fn hex(&mut self, n: usize) -> Option<char> {
+        let digits = self.s.get(self.i..self.i + n)?;
+        let code = u32::from_str_radix(digits, 16).ok()?;
+        self.i += n;
+        char::from_u32(code)
+    }
+
+    /// `True`, `False`, `None` or a finite number.
+    fn word(&mut self) -> Option<Value> {
+        let rest = &self.s[self.i..];
+        let n = rest
+            .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.' | '_')))
+            .unwrap_or(rest.len());
+        let w = &rest[..n];
+        let v = match w {
+            "True" => Value::Bool(true),
+            "False" => Value::Bool(false),
+            "None" => Value::Null,
+            _ if w.chars().all(|c| c.is_ascii_digit() || "+-.eE".contains(c)) => {
+                match serde_json::from_str::<Value>(w) {
+                    Ok(v @ Value::Number(_)) => v,
+                    _ => Value::Number(serde_json::Number::from_f64(w.parse::<f64>().ok()?)?),
+                }
+            }
+            _ => return None,
+        };
+        self.i += n;
+        Some(v)
     }
 }
