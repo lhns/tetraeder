@@ -112,6 +112,8 @@ Built as in Brief A, both behind default-off options (`IoOptions::service`, `Loa
 - `memory::io::IoService` (`crates/memory/src/io.rs`), `HostDst::sub`, `IoOptions::{service, workers}`. In the model: `Prefetcher` enum in the streamer (reader or service), `Streamer::{begin_step, stage_overlap, wait_landed, finish_overlap}`, `LoadOptions::overlap`, `State.host` (`xn_host`, `cpu_out_host`), `Slot.cpu_out`, `sched_cpu`, `ExpertSrc::Copied`. `expert_rows` is now the one definition of the expert FFN ops for segment groups and CPU groups.
 - Metrics, panel "Expert reads under compute" (id 54), alert `TetraederExpertReadsNotHidden`. Harness env `TETRAEDER_EXIT_IO_SERVICE`, `_IO_WORKERS`, `_OVERLAP`; JSON `decode_overlap`. Box stages `main-iosvc`, `main-overlap`, `main-overlap-d2`, `main-overlap-ram`, `main-overlap-repeat`, replay counts 79, 81, 83 (written, not run).
 
+Defaults in serve: `tetraeder serve` takes `--io-service on|off` and `--overlap on|off` (also with `--plan`). Unset, the service is on when the builder has a RAM tier (`--ram-slots`, or `ram_slots` in the plan) and overlap is on when the service is on and the miss policy is `cpu` (a plan with a RAM tier always misses on the CPU). Without a RAM tier both are off. `--overlap on` without the service, or without a RAM tier, is a CLI error. The box pairs on the 235B (2026-11-10) gave overlap 1.38 to 1.40x the prefetch path and the service alone 1.32x. The old `Reader` path stays for `--io-service off`. The metrics above are exported through the load options' telemetry, so the panel and alert cover a served run.
+
 Deviations and local choices:
 
 - `tetraeder.io.inflight` is sampled by the streamer after each submit (`io.inflight()`), not inside the service, which has no metrics handle.

@@ -484,7 +484,15 @@ mod tests {
                     Scheduler::start(cfg, move || load_llama(&path, &pl, &cc, None))
                 }
                 ServeEngine::Builder => {
-                    let o = builder_options(l, CTX, MissPolicy::Upload, false, Arc::clone(&tel))?;
+                    let o = builder_options(
+                        l,
+                        CTX,
+                        MissPolicy::Upload,
+                        false,
+                        Some(false),
+                        Some(false),
+                        Arc::clone(&tel),
+                    )?;
                     let chunk = builder_chunk(l)?;
                     cfg.prefill_chunk = chunk;
                     Scheduler::start(cfg, move || load_moe_chunked(&path, &o, chunk))
