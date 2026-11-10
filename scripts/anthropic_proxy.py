@@ -31,12 +31,25 @@ MAX_BODY_OBSERVED = 64 * 1024 * 1024
 LEAK_MARKERS = ("<tool_call>", "<function=", "<parameter=")
 
 
+# Claude Code's wording for file tool failures that come from the task, not the call's form.
+# Seen in bench/results/20261110b.
+FILE_ERRORS = ("String to replace not found", "No changes to make", "File does not exist", "EISDIR")
+
+
 def tool_error_class(text: str) -> str:
-    """Class of an is_error tool_result by its text; the patterns are Claude Code's wording."""
+    """Class of an is_error tool_result by its text; the patterns are Claude Code's wording.
+
+    input_validation and unknown_tool are call errors (the engine's tool-call output); bash_exit (a command
+    exited non-zero, e.g. failing tests) and file (Read/Edit on a missing path or string) are task outcomes.
+    bash_exit is checked first: command output may quote the other patterns."""
+    if text.lstrip().startswith("Exit code "):
+        return "bash_exit"
     if "InputValidationError" in text:
         return "input_validation"
     if "No such tool available" in text:
         return "unknown_tool"
+    if any(p in text for p in FILE_ERRORS):
+        return "file"
     return "other"
 
 
