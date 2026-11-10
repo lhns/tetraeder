@@ -1,0 +1,8 @@
+{
+ "rc": 0,
+ "threads": 9,
+ "model": "Qwen3-30B-A3B-Q4_K_M",
+ "cache_mib": null,
+ "cpu_share": null,
+ "report": "Qwen3-30B-A3B-Q4_K_M.gguf: 16740 MiB of experts, CUDA0 23861 MiB free, cache up to 19242 MiB\n\n  cache MiB  share   t/s  hits\n       1664      0  13.7   64%\n       1664    0.5  18.3   61%\n       1664   0.95  34.1   59%\n       4992      0  55.3   94%\n       4992    0.5  57.6   94%\n       4992   0.95  52.2   90%\n\nmachine: uploads 5.6 GiB/s, CPU 29.4 GiB/s, CPU part 5.00 ms, overlap -2.7 ms/GiB, rest 7.40 ms per token, fit within 9.9%\n\npredicted t/s, warm cache:\n  cache MiB       0   0.5    0.8    0.9   0.95   0.98\n        832     8.6  13.2   20.5   24.6   27.2  29.0*\n       1664    13.2  18.7   27.1   31.8  34.7*   36.2\n       3328    27.2  33.5   43.4  47.7*   49.4   49.2\n       4992    55.5  52.2  59.1*   61.2   61.6   60.5\n       6656   86.8*  65.6   69.1   69.9   69.8   69.0\n       8320  109.2*  73.2   74.9   75.2   75.1   74.7\n      16791  134.9*  80.6   80.6   80.6   80.6   80.6\n\nall experts fit on CUDA0 (16791 MiB): drop -cmoe, or tune a smaller cache with --max-mib\n"
+}

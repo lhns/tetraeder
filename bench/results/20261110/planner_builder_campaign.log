@@ -1,0 +1,476 @@
+[00:47:01] start: cuda ok, threads 9, reps 2, archs 86
+name, driver_version, memory.total [MiB], memory.free [MiB], clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 24576 MiB, 24126 MiB, 210 MHz, 2100 MHz, 0x0000000000000001
+[00:47:01] start build
+ Downloading crates ...
+  Downloaded generic-array v0.14.7
+  Downloaded async-trait v0.1.92
+  Downloaded find-msvc-tools v0.1.15
+  Downloaded foldhash v0.2.0
+  Downloaded bytemuck v1.25.2
+  Downloaded borrow-or-share v0.2.4
+  Downloaded futures-task v0.3.34
+  Downloaded crypto-common v0.1.7
+  Downloaded bytemuck_derive v1.12.1
+  Downloaded serde_urlencoded v0.7.1
+  Downloaded block-buffer v0.10.4
+  Downloaded httparse v1.10.1
+  Downloaded form_urlencoded v1.2.2
+  Downloaded errno v0.3.14
+  Downloaded futures-core v0.3.34
+  Downloaded futures-sink v0.3.34
+  Downloaded futures-executor v0.3.34
+  Downloaded cmake v0.1.58
+  Downloaded rustc-hash v2.1.3
+  Downloaded futures-macro v0.3.34
+  Downloaded cpufeatures v0.2.17
+  Downloaded http-body v1.1.0
+  Downloaded http-body-util v0.1.5
+  Downloaded either v1.19.0
+  Downloaded displaydoc v0.2.7
+  Downloaded futures-io v0.3.34
+  Downloaded axum-core v0.5.6
+  Downloaded httpdate v1.0.3
+  Downloaded getrandom v0.4.3
+  Downloaded glob v0.3.4
+  Downloaded cexpr v0.6.0
+  Downloaded atomic-waker v1.1.2
+  Downloaded fluent-uri v0.3.2
+  Downloaded slab v0.4.12
+  Downloaded ahash v0.8.12
+  Downloaded signal-hook-registry v1.4.8
+  Downloaded futures-channel v0.3.34
+  Downloaded icu_provider v2.4.0
+  Downloaded derivre v0.3.13
+  Downloaded serde_path_to_error v0.1.20
+  Downloaded getrandom v0.3.4
+  Downloaded digest v0.10.7
+  Downloaded clang-sys v1.9.1
+  Downloaded matchit v0.8.4
+  Downloaded parking_lot_core v0.9.12
+  Downloaded potential_utf v0.1.6
+  Downloaded idna_adapter v1.2.2
+  Downloaded percent-encoding v2.3.2
+  Downloaded shlex v2.0.1
+  Downloaded ref-cast-impl v1.0.27
+  Downloaded ref-cast v1.0.27
+  Downloaded mime v0.3.17
+  Downloaded matchers v0.2.0
+  Downloaded opentelemetry-appender-tracing v0.33.1
+  Downloaded prost-derive v0.14.4
+  Downloaded parking_lot v0.12.5
+  Downloaded lazy_static v1.5.1
+  Downloaded socket2 v0.6.5
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded rand_core v0.9.5
+  Downloaded rand_chacha v0.9.0
+  Downloaded ipnet v2.12.2
+  Downloaded pin-project-lite v0.2.17
+  Downloaded sharded-slab v0.1.7
+  Downloaded rand_core v0.10.1
+  Downloaded sha2 v0.10.9
+  Downloaded minijinja-contrib v3.0.4
+  Downloaded smallvec v1.16.4
+  Downloaded once_cell v1.21.4
+  Downloaded referencing v0.29.1
+  Downloaded shlex v1.3.0
+  Downloaded prost v0.14.4
+  Downloaded log v0.4.34
+  Downloaded version_check v0.9.5
+  Downloaded ryu v1.0.23
+  Downloaded scopeguard v1.2.0
+  Downloaded icu_properties_data v2.4.0
+  Downloaded zerofrom-derive v0.1.8
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded icu_normalizer v2.4.0
+  Downloaded utf8_iter v1.0.4
+  Downloaded icu_normalizer_data v2.4.0
+  Downloaded http v1.5.0
+  Downloaded cc v1.10.0
+  Downloaded aho-corasick v1.1.5
+  Downloaded icu_collections v2.4.0
+  Downloaded icu_properties v2.4.0
+  Downloaded idna v1.1.0
+  Downloaded reqwest v0.13.5
+  Downloaded rand v0.9.5
+  Downloaded tower-layer v0.3.3
+  Downloaded opentelemetry-otlp v0.33.1
+  Downloaded prettyplease v0.2.37
+  Downloaded regex v1.13.1
+  Downloaded nom v7.1.3
+  Downloaded sync_wrapper v1.0.2
+  Downloaded itertools v0.13.0
+  Downloaded try-lock v0.2.5
+  Downloaded mio v1.2.4
+  Downloaded opentelemetry v0.33.1
+  Downloaded want v0.3.2
+  Downloaded minimal-lexical v0.2.1
+  Downloaded zerofrom v0.1.8
+  Downloaded minijinja v3.0.4
+  Downloaded tokio-macros v2.7.2
+  Downloaded opentelemetry-proto v0.33.1
+  Downloaded opentelemetry_sdk v0.33.1
+  Downloaded strum_macros v0.28.0
+  Downloaded tracing-log v0.2.0
+  Downloaded futures-util v0.3.34
+  Downloaded zerovec-derive v0.11.7
+  Downloaded strum v0.28.0
+  Downloaded axum v0.8.9
+  Downloaded yoke-derive v0.8.4
+  Downloaded thread_local v1.1.10
+  Downloaded regex-syntax v0.8.11
+  Downloaded bindgen v0.72.1
+  Downloaded hyper v1.12.0
+  Downloaded thiserror-impl v2.0.21
+  Downloaded tower-service v0.3.3
+  Downloaded icu_locale_core v2.4.0
+  Downloaded tinystr v0.8.5
+  Downloaded hyper-util v0.1.21
+  Downloaded yoke v0.8.4
+  Downloaded toktrie v1.9.1
+  Downloaded regex-automata v0.4.18
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded tracing-attributes v0.1.31
+  Downloaded synstructure v0.14.0
+  Downloaded base64 v0.23.1
+  Downloaded bytes v1.12.1
+  Downloaded writeable v0.6.4
+  Downloaded litemap v0.8.3
+  Downloaded libloading v0.8.9
+  Downloaded lock_api v0.4.14
+  Downloaded opentelemetry-http v0.33.1
+  Downloaded llguidance v1.9.1
+  Downloaded tracing-opentelemetry v0.34.0
+  Downloaded tracing-core v0.1.36
+  Downloaded thiserror v2.0.21
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded zerotrie v0.2.5
+  Downloaded typenum v1.20.1
+  Downloaded zerovec v0.11.9
+  Downloaded tower-http v0.6.11
+  Downloaded tracing v0.1.44
+  Downloaded tokio v1.54.1
+  Downloaded uuid v1.29.0
+  Downloaded url v2.5.8
+  Downloaded tower v0.5.3
+  Downloaded tokio-util v0.7.20
+  Downloaded zerocopy v0.8.63
+  Downloaded syn v2.0.119
+   Compiling serde_core v1.0.229
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-core v0.3.34
+   Compiling once_cell v1.21.4
+   Compiling smallvec v1.16.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling syn v3.0.9
+   Compiling syn v2.0.119
+   Compiling futures-sink v0.3.34
+   Compiling bytes v1.12.1
+   Compiling percent-encoding v2.3.2
+   Compiling getrandom v0.3.4
+   Compiling tracing-core v0.1.36
+   Compiling zerocopy v0.8.63
+   Compiling errno v0.3.14
+   Compiling serde_json v1.0.154
+   Compiling litemap v0.8.3
+   Compiling slab v0.4.12
+   Compiling writeable v0.6.4
+   Compiling futures-io v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling http v1.5.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling either v1.19.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling icu_properties_data v2.4.0
+   Compiling foldhash v0.2.0
+   Compiling utf8_iter v1.0.4
+   Compiling thiserror v2.0.21
+   Compiling http-body v1.1.0
+   Compiling itertools v0.13.0
+   Compiling httparse v1.10.1
+   Compiling tower-service v0.3.3
+   Compiling form_urlencoded v1.2.2
+   Compiling futures-channel v0.3.34
+   Compiling sync_wrapper v1.0.2
+   Compiling tower-layer v0.3.3
+   Compiling glob v0.3.4
+   Compiling log v0.4.34
+   Compiling try-lock v0.2.5
+   Compiling regex-syntax v0.8.11
+   Compiling want v0.3.2
+   Compiling clang-sys v1.9.1
+   Compiling prettyplease v0.2.37
+   Compiling libc v0.2.191
+   Compiling tracing-attributes v0.1.31
+   Compiling httpdate v1.0.3
+   Compiling atomic-waker v1.1.2
+   Compiling version_check v0.9.5
+   Compiling http-body-util v0.1.5
+   Compiling rand_core v0.9.5
+   Compiling anyhow v1.0.104
+   Compiling serde_derive v1.0.229
+   Compiling synstructure v0.14.0
+   Compiling zerovec-derive v0.11.7
+   Compiling displaydoc v0.2.7
+   Compiling tracing v0.1.44
+   Compiling futures-macro v0.3.34
+   Compiling tokio-macros v2.7.2
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling thiserror-impl v2.0.21
+   Compiling tokio v1.54.1
+   Compiling futures-util v0.3.34
+   Compiling base64 v0.23.1
+   Compiling zerofrom v0.1.8
+   Compiling ppv-lite86 v0.2.21
+   Compiling opentelemetry v0.33.1
+   Compiling yoke v0.8.4
+   Compiling cfg-if v1.0.5
+   Compiling zerovec v0.11.9
+   Compiling zerotrie v0.2.5
+   Compiling serde v1.0.229
+   Compiling minimal-lexical v0.2.1
+   Compiling memchr v2.8.3
+   Compiling ipnet v2.12.2
+   Compiling toml_datetime v0.6.11
+   Compiling tinystr v0.8.5
+   Compiling potential_utf v0.1.6
+   Compiling serde_spanned v0.6.9
+   Compiling icu_locale_core v2.4.0
+   Compiling nom v7.1.3
+   Compiling icu_collections v2.4.0
+   Compiling toml_edit v0.22.27
+   Compiling regex-automata v0.4.18
+   Compiling rand_chacha v0.9.0
+   Compiling libloading v0.8.9
+   Compiling icu_provider v2.4.0
+   Compiling find-msvc-tools v0.1.15
+   Compiling bindgen v0.72.1
+   Compiling lazy_static v1.5.1
+   Compiling shlex v2.0.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling hyper v1.12.0
+   Compiling tower v0.5.3
+   Compiling cc v1.10.0
+   Compiling toml v0.8.23
+   Compiling matchers v0.2.0
+   Compiling sharded-slab v0.1.7
+   Compiling regex v1.13.1
+   Compiling prost-derive v0.14.4
+   Compiling cexpr v0.6.0
+   Compiling futures-executor v0.3.34
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling rand v0.9.5
+   Compiling idna_adapter v1.2.2
+   Compiling tracing-log v0.2.0
+   Compiling idna v1.1.0
+   Compiling thread_local v1.1.10
+   Compiling bitflags v2.13.2
+   Compiling nu-ansi-term v0.50.3
+   Compiling hyper-util v0.1.21
+   Compiling shlex v1.3.0
+   Compiling rustc-hash v2.1.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling url v2.5.8
+   Compiling cmake v0.1.58
+   Compiling prost v0.14.4
+   Compiling async-trait v0.1.92
+   Compiling generic-array v0.14.7
+   Compiling clap_derive v4.6.7
+   Compiling ahash v0.8.12
+   Compiling ref-cast v1.0.27
+   Compiling typenum v1.20.1
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling parking_lot_core v0.9.12
+   Compiling tower-http v0.6.11
+   Compiling clap v4.6.7
+   Compiling ref-cast-impl v1.0.27
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling reqwest v0.13.5
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling strum_macros v0.28.0
+   Compiling bytemuck_derive v1.12.1
+   Compiling bytemuck v1.25.2
+   Compiling opentelemetry-proto v0.33.1
+   Compiling borrow-or-share v0.2.4
+   Compiling getrandom v0.4.3
+   Compiling parking_lot v0.12.5
+   Compiling strum v0.28.0
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling block-buffer v0.10.4
+   Compiling fluent-uri v0.3.2
+   Compiling crypto-common v0.1.7
+   Compiling llguidance v1.9.1
+   Compiling mime v0.3.17
+   Compiling opentelemetry-http v0.33.1
+   Compiling ryu v1.0.23
+   Compiling digest v0.10.7
+   Compiling derivre v0.3.13
+   Compiling serde_urlencoded v0.7.1
+   Compiling toktrie v1.9.1
+   Compiling axum-core v0.5.6
+   Compiling tetraeder-costmodel v0.0.0 (/root/tetraeder/crates/costmodel)
+   Compiling referencing v0.29.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling minijinja v3.0.4
+   Compiling serde_path_to_error v0.1.20
+   Compiling cpufeatures v0.2.17
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling matchit v0.8.4
+   Compiling uuid v1.29.0
+   Compiling sha2 v0.10.9
+   Compiling tokio-util v0.7.20
+   Compiling axum v0.8.9
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling tetraeder-analysis v0.0.0 (/root/tetraeder/crates/analysis)
+   Compiling tetraeder-control v0.0.0 (/root/tetraeder/crates/control)
+   Compiling minijinja-contrib v3.0.4
+   Compiling tetraeder-gateway v0.0.0 (/root/tetraeder/crates/gateway)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 11m 34s
+ Downloading crates ...
+  Downloaded fastrand v2.5.0
+  Downloaded autocfg v1.5.1
+  Downloaded core_detect v1.0.0
+  Downloaded bit-vec v0.10.1
+  Downloaded chacha20 v0.10.2
+  Downloaded cpufeatures v0.3.1
+  Downloaded borsh-derive v1.8.1
+  Downloaded cfg_aliases v0.2.2
+  Downloaded fnv v1.0.7
+  Downloaded bit-set v0.11.1
+  Downloaded num-traits v0.2.19
+  Downloaded unarray v0.1.4
+  Downloaded quick-error v1.2.3
+  Downloaded wait-timeout v0.2.1
+  Downloaded proc-macro-crate v3.5.0
+  Downloaded rand_xorshift v0.5.0
+  Downloaded toml_datetime v1.1.2+spec-1.1.0
+  Downloaded tempfile v3.27.0
+  Downloaded rusty-fork v0.3.1
+  Downloaded toml_parser v1.1.5+spec-1.1.0
+  Downloaded borsh v1.8.1
+  Downloaded winnow v1.0.4
+  Downloaded toml_edit v0.25.17+spec-1.1.0
+  Downloaded rand v0.10.3
+  Downloaded proptest v1.12.0
+  Downloaded rustix v1.1.6
+  Downloaded linux-raw-sys v0.12.1
+   Compiling tokio v1.54.1
+   Compiling bitflags v2.13.2
+   Compiling serde v1.0.229
+   Compiling opentelemetry v0.33.1
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling rustix v1.1.6
+   Compiling linux-raw-sys v0.12.1
+   Compiling autocfg v1.5.1
+   Compiling url v2.5.8
+   Compiling fastrand v2.5.0
+   Compiling io-uring v0.7.15
+   Compiling num-traits v0.2.19
+   Compiling wait-timeout v0.2.1
+   Compiling quick-error v1.2.3
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling cpufeatures v0.3.1
+   Compiling fnv v1.0.7
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling toml_edit v0.22.27
+   Compiling bit-vec v0.10.1
+   Compiling chacha20 v0.10.2
+   Compiling bit-set v0.11.1
+   Compiling rand v0.10.3
+   Compiling rand_xorshift v0.5.0
+   Compiling core_detect v1.0.0
+   Compiling unarray v0.1.4
+   Compiling tempfile v3.27.0
+   Compiling rusty-fork v0.3.1
+   Compiling hyper v1.12.0
+   Compiling tower v0.5.3
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling proptest v1.12.0
+   Compiling tower-http v0.6.11
+   Compiling toml v0.8.23
+   Compiling hyper-util v0.1.21
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling reqwest v0.13.5
+   Compiling opentelemetry-proto v0.33.1
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling opentelemetry-http v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 32.94s
+[00:59:08] done build: /root/tetraeder/target/release/deps/exit_regime-a0ea40d2d7397e5f
+[00:59:08] start disk-curve: /root/tetraeder/.hf_cache/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf, 8 load threads
+disk-curve -> /root/tetraeder/bench/results/20261110/planner-moe-builder/disk-curve-idle.json
+disk-curve -> /root/tetraeder/bench/results/20261110/planner-moe-builder/disk-curve-loaded.json
+[00:59:57] done disk-curve
+vram_hold: holding 9526 MiB, free now 14336 MiB
+free_mib=14336 threads=9 ram_bytes=83748302848 reps=2
+target/release/tetraeder: error while loading shared libraries: libllama.so.0: cannot open shared object file: No such file or directory
+[00:59:59] PLANNER_BUILDER_DONE rc=21
+[01:05:08] start: cuda ok, threads 9, reps 2, archs 86
+name, driver_version, memory.total [MiB], memory.free [MiB], clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 24576 MiB, 24126 MiB, 210 MHz, 2100 MHz, 0x0000000000000001
+[01:05:08] start build
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 1m 35s
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 3.04s
+[01:06:46] done build: /root/tetraeder/target/release/deps/exit_regime-a0ea40d2d7397e5f
+vram_hold: holding 9526 MiB, free now 14336 MiB
+free_mib=14336 threads=9 ram_bytes=83748302848 reps=2
+target/release/tetraeder: error while loading shared libraries: libllama.so.0: cannot open shared object file: No such file or directory
+[01:06:49] PLANNER_BUILDER_DONE rc=21
+[01:11:20] start: cuda ok, threads 9, reps 2, archs 86
+name, driver_version, memory.total [MiB], memory.free [MiB], clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 24576 MiB, 24126 MiB, 210 MHz, 2100 MHz, 0x0000000000000001
+[01:11:20] start build
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 1m 35s
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 3.07s
+[01:12:58] done build: /root/tetraeder/target/release/deps/exit_regime-a0ea40d2d7397e5f
+vram_hold: holding 9526 MiB, free now 14336 MiB
+free_mib=14336 threads=9 ram_bytes=83748302848 reps=2
+24 candidates, 4 anchors, 0 baselines, 73 dropped
+[01:13:01] 28 variants x 2 reps; about 4 min per run, 3 h
+[01:13:01] start trace: TETRAEDER_EXIT_DECODE=128 TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_OP_OFFLOAD=1 TETRAEDER_EXIT_PREFILL=2048 TETRAEDER_EXIT_RAM_SLOT_BYTES=17553162240 TETRAEDER_EXIT_THREADS=9 TETRAEDER_EXIT_UBATCH=256 TETRAEDER_EXIT_VRAM_SLOT_BYTES=1097072640
+replay: 88 configurations -> /root/tetraeder/bench/results/20261110/planner-moe-builder/tier-replay.json
+[01:14:00] done trace
+[01:14:00] PLANNER_BUILDER_DONE rc=0

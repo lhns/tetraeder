@@ -1,0 +1,168 @@
+[00:59:59] start: cuda ok, threads 9, archs 86
+name, driver_version, memory.total [MiB], memory.free [MiB], clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 24576 MiB, 24126 MiB, 1695 MHz, 2100 MHz, 0x0000000000000000
+[00:59:59] have dense
+[00:59:59] start build
+[00:59:59] FETCH_DONE
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 10.56s
+[01:00:10] done build
+[01:00:10] container memory 91748302848 B, ram budget 83748302848 B
+[01:00:10] fixture dense: balloon to 18432 MiB free
+vram_hold: holding 5430 MiB, free now 18432 MiB
+target/release/tetraeder: error while loading shared libraries: libllama.so.0: cannot open shared object file: No such file or directory
+[01:00:12] PLANNER_DONE rc=21
+[01:06:49] start: cuda ok, threads 9, archs 86
+name, driver_version, memory.total [MiB], memory.free [MiB], clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 24576 MiB, 24126 MiB, 1695 MHz, 2100 MHz, 0x0000000000000000
+[01:06:49] have dense
+[01:06:49] start build
+[01:06:49] FETCH_DONE
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 6.35s
+[01:06:55] done build
+[01:06:55] container memory 91748302848 B, ram budget 83748302848 B
+[01:06:55] fixture dense: balloon to 18432 MiB free
+vram_hold: holding 5430 MiB, free now 18432 MiB
+target/release/tetraeder: error while loading shared libraries: libllama.so.0: cannot open shared object file: No such file or directory
+[01:06:57] PLANNER_DONE rc=21
+[01:14:00] start: cuda ok, threads 9, archs 86
+name, driver_version, memory.total [MiB], memory.free [MiB], clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 24576 MiB, 24126 MiB, 870 MHz, 2100 MHz, 0x0000000000000001
+[01:14:00] start build
+[01:14:00] have dense
+[01:14:00] FETCH_DONE
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 6.10s
+[01:14:06] done build
+[01:14:06] container memory 91748302848 B, ram budget 83748302848 B
+[01:14:06] fixture dense: balloon to 18432 MiB free
+vram_hold: holding 5430 MiB, free now 18432 MiB
+24 candidates, 6 anchors, 2 baselines, 8 dropped
+[01:14:23] start bench dense pass 1 (60 min left)
+[01:14:23Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 (Info): anchor-cpu-t9 vs anchor-cpu-t4
+[01:15:21Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 1/1 a anchor-cpu-t9: pp Some(6.47343) tg Some(1.977417) t/s
+[01:16:44Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 rep 1/1 b anchor-cpu-t4: pp Some(3.236162) tg Some(1.108893) t/s
+[01:16:44Z] pair info-anchor-cpu-t9-vs-anchor-cpu-t4 -> Ok 
+[01:16:44Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off (Info): anchor-gpu-small-opo-on vs anchor-gpu-small-opo-off
+[01:17:27Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off rep 1/1 a anchor-gpu-small-opo-on: pp Some(377.791635) tg Some(4.838602) t/s
+[01:21:50Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off rep 1/1 b anchor-gpu-small-opo-off: pp Some(17.59638) tg Some(5.017303) t/s
+[01:21:50Z] pair info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off -> Ok 
+[01:21:50Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager (Info): anchor-gpu-large vs anchor-gpu-eager
+[01:22:10Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager rep 1/1 a anchor-gpu-large: pp Some(755.045502) tg Some(13.731235) t/s
+[01:22:30Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager rep 1/1 b anchor-gpu-eager: pp Some(763.327625) tg Some(13.627166) t/s
+[01:22:30Z] pair info-anchor-gpu-large-vs-anchor-gpu-eager -> Ok 
+[01:22:30Z] pair info-base-fit-vs-base-ot-hand (Info): base-fit vs base-ot-hand
+[01:22:58Z] pair info-base-fit-vs-base-ot-hand rep 1/1 a base-fit: pp Some(654.361851) tg Some(13.655205) t/s
+[01:23:18Z] pair info-base-fit-vs-base-ot-hand rep 1/1 b base-ot-hand: pp Some(762.398933) tg Some(13.691502) t/s
+[01:23:18Z] pair info-base-fit-vs-base-ot-hand -> Ok 
+[01:23:18Z] pair info-cand-c00-vs-cand-c05 (Info): cand-c00 vs cand-c05
+[01:23:38Z] pair info-cand-c00-vs-cand-c05 rep 1/1 a cand-c00: pp Some(753.640959) tg Some(13.479514) t/s
+[01:24:03Z] pair info-cand-c00-vs-cand-c05 rep 1/1 b cand-c05: pp Some(956.123334) tg Some(8.322912) t/s
+[01:24:03Z] pair info-cand-c00-vs-cand-c05 -> Ok 
+[01:24:03Z] pair info-cand-c03-vs-cand-c02 (Info): cand-c03 vs cand-c02
+[01:24:31Z] pair info-cand-c03-vs-cand-c02 rep 1/1 a cand-c03: pp Some(552.225454) tg Some(8.555358) t/s
+[01:24:54Z] pair info-cand-c03-vs-cand-c02 rep 1/1 b cand-c02: pp Some(764.726338) tg Some(9.711758) t/s
+[01:24:54Z] pair info-cand-c03-vs-cand-c02 -> Ok 
+[01:24:54Z] pair info-cand-c12-vs-cand-c10 (Info): cand-c12 vs cand-c10
+[01:25:25Z] pair info-cand-c12-vs-cand-c10 rep 1/1 a cand-c12: pp Some(857.948143) tg Some(6.236506) t/s
+[01:26:00Z] pair info-cand-c12-vs-cand-c10 rep 1/1 b cand-c10: pp Some(444.890636) tg Some(6.207293) t/s
+[01:26:00Z] pair info-cand-c12-vs-cand-c10 -> Ok 
+[01:26:00Z] pair info-cand-c19-vs-cand-c17 (Info): cand-c19 vs cand-c17
+[01:26:37Z] pair info-cand-c19-vs-cand-c17 rep 1/1 a cand-c19: pp Some(794.872018) tg Some(4.883525) t/s
+[01:27:18Z] pair info-cand-c19-vs-cand-c17 rep 1/1 b cand-c17: pp Some(374.999021) tg Some(5.042776) t/s
+[01:27:18Z] pair info-cand-c19-vs-cand-c17 -> Ok 
+[01:27:18Z] pair info-cand-c09-vs-cand-c07 (Info): cand-c09 vs cand-c07
+[01:27:49Z] pair info-cand-c09-vs-cand-c07 rep 1/1 a cand-c09: pp Some(961.022317) tg Some(5.92777) t/s
+[01:28:24Z] pair info-cand-c09-vs-cand-c07 rep 1/1 b cand-c07: pp Some(572.222147) tg Some(5.814135) t/s
+[01:28:24Z] pair info-cand-c09-vs-cand-c07 -> Ok 
+[01:28:24Z] pair info-cand-c01-vs-cand-c16 (Info): cand-c01 vs cand-c16
+[01:29:46Z] pair info-cand-c01-vs-cand-c16 rep 1/1 a cand-c01: pp Some(61.216971) tg Some(13.345997) t/s
+[01:30:26Z] pair info-cand-c01-vs-cand-c16 rep 1/1 b cand-c16: pp Some(861.567223) tg Some(4.220189) t/s
+[01:30:26Z] pair info-cand-c01-vs-cand-c16 -> Ok 
+[01:30:26Z] pair info-cand-c14-vs-cand-c23 (Info): cand-c14 vs cand-c23
+[01:31:11Z] pair info-cand-c14-vs-cand-c23 rep 1/1 a cand-c14: pp Some(456.281347) tg Some(4.149815) t/s
+[01:32:01Z] pair info-cand-c14-vs-cand-c23 rep 1/1 b cand-c23: pp Some(782.042972) tg Some(3.243631) t/s
+[01:32:01Z] pair info-cand-c14-vs-cand-c23 -> Ok 
+[01:32:01Z] pair info-cand-c21-vs-cand-c06 (Info): cand-c21 vs cand-c06
+[01:33:00Z] pair info-cand-c21-vs-cand-c06 rep 1/1 a cand-c21: pp Some(352.840972) tg Some(3.177015) t/s
+[01:35:27Z] pair info-cand-c21-vs-cand-c06 rep 1/1 b cand-c06: pp Some(33.442912) tg Some(8.503104) t/s
+[01:35:27Z] pair info-cand-c21-vs-cand-c06 -> Ok 
+[01:35:27Z] pair info-cand-c04-vs-cand-c13 (Info): cand-c04 vs cand-c13
+[01:37:49Z] pair info-cand-c04-vs-cand-c13 rep 1/1 a cand-c04: pp Some(33.671624) tg Some(8.724759) t/s
+[01:41:08Z] pair info-cand-c04-vs-cand-c13 rep 1/1 b cand-c13: pp Some(23.417698) tg Some(6.431673) t/s
+[01:41:08Z] pair info-cand-c04-vs-cand-c13 -> Ok 
+[01:41:08Z] pair info-cand-c11-vs-cand-c20 (Info): cand-c11 vs cand-c20
+[01:44:30Z] pair info-cand-c11-vs-cand-c20 rep 1/1 a cand-c11: pp Some(23.20655) tg Some(6.660175) t/s
+[01:48:45Z] pair info-cand-c11-vs-cand-c20 rep 1/1 b cand-c20: pp Some(18.293377) tg Some(5.161383) t/s
+[01:48:45Z] pair info-cand-c11-vs-cand-c20 -> Ok 
+[01:48:45Z] pair info-cand-c18-vs-cand-c08 (Info): cand-c18 vs cand-c08
+[01:53:03Z] pair info-cand-c18-vs-cand-c08 rep 1/1 a cand-c18: pp Some(17.786122) tg Some(5.614193) t/s
+[01:57:34Z] pair info-cand-c18-vs-cand-c08 rep 1/1 b cand-c08: pp Some(16.796868) tg Some(5.9999) t/s
+[01:57:34Z] pair info-cand-c18-vs-cand-c08 -> Ok 
+[01:57:34Z] pair info-cand-c15-vs-cand-c22 (Info): cand-c15 vs cand-c22
+[02:04:30Z] pair info-cand-c15-vs-cand-c22 rep 1/1 a cand-c15: pp Some(10.243879) tg Some(4.115721) t/s
+[02:13:12Z] pair info-cand-c15-vs-cand-c22 rep 1/1 b cand-c22: pp Some(8.54669) tg Some(3.398773) t/s
+[02:13:12Z] pair info-cand-c15-vs-cand-c22 -> Ok 
+spec planner-dense on 3643bccb3b5f (1 repeats)
+info-anchor-cpu-t9-vs-anchor-cpu-t4 Ok
+    pp: a 6.47 (rel IQR 0.0%)  b 3.24 (rel IQR 0.0%)  ratio 0.500 [0.500, 0.500]  band -10.0% (provisional cpu)
+    tg: a 1.98 (rel IQR 0.0%)  b 1.11 (rel IQR 0.0%)  ratio 0.561 [0.561, 0.561]  band -10.0% (provisional cpu)
+info-anchor-gpu-small-opo-on-vs-anchor-gpu-small-opo-off Ok
+    pp: a 377.79 (rel IQR 0.0%)  b 17.60 (rel IQR 0.0%)  ratio 0.047 [0.047, 0.047]  band -8.0% (provisional cuda-default)
+    tg: a 4.84 (rel IQR 0.0%)  b 5.02 (rel IQR 0.0%)  ratio 1.037 [1.037, 1.037]  band -8.0% (provisional cuda-default)
+info-anchor-gpu-large-vs-anchor-gpu-eager Ok
+    pp: a 755.05 (rel IQR 0.0%)  b 763.33 (rel IQR 0.0%)  ratio 1.011 [1.011, 1.011]  band -8.0% (provisional cuda-default)
+    tg: a 13.73 (rel IQR 0.0%)  b 13.63 (rel IQR 0.0%)  ratio 0.992 [0.992, 0.992]  band -8.0% (provisional cuda-default)
+info-base-fit-vs-base-ot-hand Ok
+    pp: a 654.36 (rel IQR 0.0%)  b 762.40 (rel IQR 0.0%)  ratio 1.165 [1.165, 1.165]  band -8.0% (provisional cuda-default)
+    tg: a 13.66 (rel IQR 0.0%)  b 13.69 (rel IQR 0.0%)  ratio 1.003 [1.003, 1.003]  band -8.0% (provisional cuda-default)
+info-cand-c00-vs-cand-c05    Ok
+    pp: a 753.64 (rel IQR 0.0%)  b 956.12 (rel IQR 0.0%)  ratio 1.269 [1.269, 1.269]  band -8.0% (provisional cuda-default)
+    tg: a 13.48 (rel IQR 0.0%)  b 8.32 (rel IQR 0.0%)  ratio 0.617 [0.617, 0.617]  band -8.0% (provisional cuda-default)
+info-cand-c03-vs-cand-c02    Ok
+    pp: a 552.23 (rel IQR 0.0%)  b 764.73 (rel IQR 0.0%)  ratio 1.385 [1.385, 1.385]  band -8.0% (provisional cuda-default)
+    tg: a 8.56 (rel IQR 0.0%)  b 9.71 (rel IQR 0.0%)  ratio 1.135 [1.135, 1.135]  band -8.0% (provisional cuda-default)
+info-cand-c12-vs-cand-c10    Ok
+    pp: a 857.95 (rel IQR 0.0%)  b 444.89 (rel IQR 0.0%)  ratio 0.519 [0.519, 0.519]  band -8.0% (provisional cuda-default)
+    tg: a 6.24 (rel IQR 0.0%)  b 6.21 (rel IQR 0.0%)  ratio 0.995 [0.995, 0.995]  band -8.0% (provisional cuda-default)
+info-cand-c19-vs-cand-c17    Ok
+    pp: a 794.87 (rel IQR 0.0%)  b 375.00 (rel IQR 0.0%)  ratio 0.472 [0.472, 0.472]  band -8.0% (provisional cuda-default)
+    tg: a 4.88 (rel IQR 0.0%)  b 5.04 (rel IQR 0.0%)  ratio 1.033 [1.033, 1.033]  band -8.0% (provisional cuda-default)
+info-cand-c09-vs-cand-c07    Ok
+    pp: a 961.02 (rel IQR 0.0%)  b 572.22 (rel IQR 0.0%)  ratio 0.595 [0.595, 0.595]  band -8.0% (provisional cuda-default)
+    tg: a 5.93 (rel IQR 0.0%)  b 5.81 (rel IQR 0.0%)  ratio 0.981 [0.981, 0.981]  band -8.0% (provisional cuda-default)
+info-cand-c01-vs-cand-c16    Ok
+    pp: a 61.22 (rel IQR 0.0%)  b 861.57 (rel IQR 0.0%)  ratio 14.074 [14.074, 14.074]  band -8.0% (provisional cuda-default)
+    tg: a 13.35 (rel IQR 0.0%)  b 4.22 (rel IQR 0.0%)  ratio 0.316 [0.316, 0.316]  band -8.0% (provisional cuda-default)
+info-cand-c14-vs-cand-c23    Ok
+    pp: a 456.28 (rel IQR 0.0%)  b 782.04 (rel IQR 0.0%)  ratio 1.714 [1.714, 1.714]  band -8.0% (provisional cuda-default)
+    tg: a 4.15 (rel IQR 0.0%)  b 3.24 (rel IQR 0.0%)  ratio 0.782 [0.782, 0.782]  band -8.0% (provisional cuda-default)
+info-cand-c21-vs-cand-c06    Ok
+    pp: a 352.84 (rel IQR 0.0%)  b 33.44 (rel IQR 0.0%)  ratio 0.095 [0.095, 0.095]  band -8.0% (provisional cuda-default)
+    tg: a 3.18 (rel IQR 0.0%)  b 8.50 (rel IQR 0.0%)  ratio 2.676 [2.676, 2.676]  band -8.0% (provisional cuda-default)
+info-cand-c04-vs-cand-c13    Ok
+    pp: a 33.67 (rel IQR 0.0%)  b 23.42 (rel IQR 0.0%)  ratio 0.695 [0.695, 0.695]  band -8.0% (provisional cuda-default)
+    tg: a 8.72 (rel IQR 0.0%)  b 6.43 (rel IQR 0.0%)  ratio 0.737 [0.737, 0.737]  band -8.0% (provisional cuda-default)
+info-cand-c11-vs-cand-c20    Ok
+    pp: a 23.21 (rel IQR 0.0%)  b 18.29 (rel IQR 0.0%)  ratio 0.788 [0.788, 0.788]  band -8.0% (provisional cuda-default)
+    tg: a 6.66 (rel IQR 0.0%)  b 5.16 (rel IQR 0.0%)  ratio 0.775 [0.775, 0.775]  band -8.0% (provisional cuda-default)
+info-cand-c18-vs-cand-c08    Ok
+    pp: a 17.79 (rel IQR 0.0%)  b 16.80 (rel IQR 0.0%)  ratio 0.944 [0.944, 0.944]  band -8.0% (provisional cuda-default)
+    tg: a 5.61 (rel IQR 0.0%)  b 6.00 (rel IQR 0.0%)  ratio 1.069 [1.069, 1.069]  band -8.0% (provisional cuda-default)
+info-cand-c15-vs-cand-c22    Ok
+    pp: a 10.24 (rel IQR 0.0%)  b 8.55 (rel IQR 0.0%)  ratio 0.834 [0.834, 0.834]  band -8.0% (provisional cuda-default)
+    tg: a 4.12 (rel IQR 0.0%)  b 3.40 (rel IQR 0.0%)  ratio 0.826 [0.826, 0.826]  band -8.0% (provisional cuda-default)
+results: /root/tetraeder/bench/results/20261110/planner-dense/planner-dense-011423.json
+[02:13:12] done bench dense pass 1 rc=0
+[02:13:12] dense: no time left for pass 2
+[02:13:12] PLANNER_DONE rc=0

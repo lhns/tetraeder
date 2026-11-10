@@ -1,0 +1,673 @@
+{
+  "schema": 1,
+  "spec": "phase0",
+  "spec_fnv1a": "d284355c856fda55",
+  "pins": {
+    "ik_llama_cpp": "pending",
+    "llama_cpp": "2e0d86bebc210947680e8f0d67daa79f3260c106",
+    "tetraeder": "HEAD"
+  },
+  "repeats": 8,
+  "warmup": 1,
+  "page_cache": "warm",
+  "page_cache_applied": false,
+  "env": {
+    "host_id": "3643bccb3b5f",
+    "hostname": "3643bccb3b5f",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": "Intel(R) Xeon(R) CPU E5-2673 v4 @ 2.30GHz",
+    "cpus": 9,
+    "cpu_quota": 9.6,
+    "ram_gb": 251.8,
+    "gpus": [
+      {
+        "name": "NVIDIA GeForce RTX 3090",
+        "driver": "595.71.05",
+        "memory_mb": 24576.0,
+        "clocks_sm_mhz": 1695.0,
+        "clocks_mem_mhz": 9751.0,
+        "clocks_max_sm_mhz": 2100.0,
+        "throttle_reasons": "0x0000000000000000",
+        "power_w": 102.46,
+        "temperature_c": 41.0
+      }
+    ],
+    "git_commit": "unknown",
+    "git_dirty": null,
+    "session": "20261110-3643bccb3b5f-001450",
+    "cuda_env": "",
+    "started_utc": "2026-11-10T01:00:12Z",
+    "cpu_backend": null
+  },
+  "pairs": [
+    {
+      "id": "noise-cuda-dense",
+      "role": "noise",
+      "a": "llama-cuda-dense",
+      "b": "llama-cuda-dense",
+      "device": "cuda",
+      "status": "ok",
+      "reason": "",
+      "noise_class": "rtx-3090",
+      "band": 0.05,
+      "band_source": "provisional rtx-3090",
+      "metrics": {
+        "pp": {
+          "a": {
+            "n": 8,
+            "median": 4718.543379999999,
+            "min": 4618.071752,
+            "max": 4780.635241,
+            "stddev": 52.30750345877793,
+            "rel_iqr": 0.0145947923869677
+          },
+          "b": {
+            "n": 8,
+            "median": 4717.254633500001,
+            "min": 4646.981737,
+            "max": 4774.254895,
+            "stddev": 48.38482182563125,
+            "rel_iqr": 0.014253013399472745
+          },
+          "ratio": {
+            "n": 8,
+            "median": 1.0008987116096937,
+            "ci_lo": 0.9973698959198032,
+            "ci_hi": 1.0038484812880406,
+            "confidence": 0.95
+          }
+        },
+        "tg": {
+          "a": {
+            "n": 8,
+            "median": 137.5939615,
+            "min": 136.384381,
+            "max": 138.612734,
+            "stddev": 0.7658716032567587,
+            "rel_iqr": 0.008592048568933863
+          },
+          "b": {
+            "n": 8,
+            "median": 137.43129199999998,
+            "min": 136.431427,
+            "max": 138.337435,
+            "stddev": 0.6664545119050301,
+            "rel_iqr": 0.006517827832106913
+          },
+          "ratio": {
+            "n": 8,
+            "median": 0.9994248396901295,
+            "ci_lo": 0.9980138982036095,
+            "ci_hi": 1.0003449515234448,
+            "confidence": 0.95
+          }
+        }
+      },
+      "quality": null,
+      "samples": [
+        {
+          "rep": 0,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4780.635241,
+          "tg_ts": 138.612734,
+          "wall_s": 5.092623236,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1620.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 319.43,
+              "temperature_c": 58.0
+            }
+          ]
+        },
+        {
+          "rep": 0,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4774.254895,
+          "tg_ts": 138.337435,
+          "wall_s": 5.17440258,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1965.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 296.61,
+              "temperature_c": 57.0
+            }
+          ]
+        },
+        {
+          "rep": 1,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4765.062499,
+          "tg_ts": 137.989528,
+          "wall_s": 5.048506871,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1830.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 314.08,
+              "temperature_c": 61.0
+            }
+          ]
+        },
+        {
+          "rep": 1,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4746.794549,
+          "tg_ts": 138.022757,
+          "wall_s": 5.186909806,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1620.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 319.32,
+              "temperature_c": 62.0
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4738.277671,
+          "tg_ts": 138.123725,
+          "wall_s": 5.027406629,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1605.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 320.02,
+              "temperature_c": 63.0
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4736.952153,
+          "tg_ts": 137.730702,
+          "wall_s": 5.070564078,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1950.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 302.21,
+              "temperature_c": 63.0
+            }
+          ]
+        },
+        {
+          "rep": 3,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4735.06099,
+          "tg_ts": 137.685081,
+          "wall_s": 5.171956618,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1605.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 319.49,
+              "temperature_c": 65.0
+            }
+          ]
+        },
+        {
+          "rep": 3,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4725.245851,
+          "tg_ts": 137.746361,
+          "wall_s": 5.133179783,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1605.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 319.75,
+              "temperature_c": 66.0
+            }
+          ]
+        },
+        {
+          "rep": 4,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4711.840909,
+          "tg_ts": 137.441562,
+          "wall_s": 5.111344035,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1950.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 305.89,
+              "temperature_c": 64.0
+            }
+          ]
+        },
+        {
+          "rep": 4,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4699.448277,
+          "tg_ts": 137.177503,
+          "wall_s": 5.212855743,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1590.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 319.35,
+              "temperature_c": 68.0
+            }
+          ]
+        },
+        {
+          "rep": 5,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4684.418703,
+          "tg_ts": 136.97537,
+          "wall_s": 5.232737762,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1935.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 304.31,
+              "temperature_c": 66.0
+            }
+          ]
+        },
+        {
+          "rep": 5,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4673.900986,
+          "tg_ts": 136.898049,
+          "wall_s": 5.14874218,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1575.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 319.32,
+              "temperature_c": 69.0
+            }
+          ]
+        },
+        {
+          "rep": 6,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4664.45996,
+          "tg_ts": 136.768993,
+          "wall_s": 5.189896613,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1935.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 300.63,
+              "temperature_c": 67.0
+            }
+          ]
+        },
+        {
+          "rep": 6,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4646.981737,
+          "tg_ts": 136.67251,
+          "wall_s": 5.112198676,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1575.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 319.3,
+              "temperature_c": 70.0
+            }
+          ]
+        },
+        {
+          "rep": 7,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4653.722475,
+          "tg_ts": 136.431427,
+          "wall_s": 5.073934233,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1575.0,
+              "clocks_mem_mhz": 9501.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 319.59,
+              "temperature_c": 71.0
+            }
+          ]
+        },
+        {
+          "rep": 7,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4618.071752,
+          "tg_ts": 136.384381,
+          "wall_s": 5.133343736,
+          "build_commit": "2e0d86b",
+          "threads": 9,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 9,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA GeForce RTX 3090",
+              "driver": "595.71.05",
+              "memory_mb": 24576.0,
+              "clocks_sm_mhz": 1920.0,
+              "clocks_mem_mhz": 9751.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 287.38,
+              "temperature_c": 67.0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "exit_code": 0
+}
