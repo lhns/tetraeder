@@ -23,6 +23,8 @@ cd "$(dirname "$0")/.." || exit 1
 mkdir -p runs/vast
 name="${SESSION:-}"
 log="runs/vast/session-$name.log"
+# the log appends across relaunches: waits look only after the last header (scripts/log_done.sh)
+echo "=== RUN $(date +%FT%T) session.sh ===" >> "$log"
 # minutes for this script: the box cap less 20% (144 of 180 min; b2 has the 6 h proxy exception: 288), less about 25
 # for provisioning before and fetch, verify and destroy after
 case "$name" in
@@ -67,6 +69,8 @@ fetch() {
 box_env() {
   if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
   export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH"
+  # shellcheck source=scripts/box_libs.sh
+  . scripts/box_libs.sh
   export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
   command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
   if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then

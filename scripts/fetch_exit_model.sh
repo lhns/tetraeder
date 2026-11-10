@@ -6,6 +6,7 @@ exec 8> /root/tetraeder_fetch_exit.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p runs/vast
 log=runs/vast/fetch_exit.log
+echo "=== RUN $(date +%FT%T) fetch_exit_model.sh ===" >> "$log"
 q=Q4_K_M/Qwen3-235B-A22B-Q4_K_M
 spec="Qwen/Qwen3-235B-A22B-GGUF:$q-00001-of-00005.gguf+$q-00002-of-00005.gguf+$q-00003-of-00005.gguf"
 spec="$spec+$q-00004-of-00005.gguf+$q-00005-of-00005.gguf"

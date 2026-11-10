@@ -14,11 +14,14 @@ cd "$(dirname "$0")/.." || exit 1
 bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
+# shellcheck source=scripts/box_libs.sh
+. scripts/box_libs.sh
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 # shellcheck disable=SC1091
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
 mkdir -p runs/vast
 log=runs/vast/detector_campaign.log
+echo "=== RUN $(date +%FT%T) detector_campaign.sh ===" >> "$log"
 out="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/detector"
 mkdir -p "$out"
 models_dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}"
@@ -66,7 +69,8 @@ for l in sys.stdin:
     if m.get("reason") == "compiler-artifact" and m.get("target", {}).get("name") == "exit_regime" and m.get("executable"):
         print(m["executable"])')
 [ -x "$bin" ] || { echo "build failed"; rc=10; exit; }
-echo "[$(date +%T)] done build: $bin"
+box_libs_path
+echo "[$(date +%T)] done build: $bin (ggml $(box_ggml_mode), LD_LIBRARY_PATH $LD_LIBRARY_PATH)"
 [ -n "${fetch_pid:-}" ] && wait "$fetch_pid"
 [ -s "$gguf" ] || { echo "no model"; rc=20; exit; }
 

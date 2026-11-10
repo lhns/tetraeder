@@ -11,6 +11,8 @@ cd "$(dirname "$0")/.." || exit 1
 bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
+# shellcheck source=scripts/box_libs.sh
+. scripts/box_libs.sh
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 # shellcheck disable=SC1091
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
@@ -114,10 +116,10 @@ llama() {
 {
   echo "[$(date +%T)] start: stages '$STAGES', threads $threads, memory $mem B (balloon $balloon B), ram tier $ram_bytes B, vram slots $vram_bytes B"
   nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks_throttle_reasons.active --format=csv
-  for _ in $(seq 1 1440); do grep -q SPEC_FETCH_DONE runs/vast/fetch_spec.log 2> /dev/null && break; sleep 5; done
+  for _ in $(seq 1 1440); do bash scripts/log_done.sh runs/vast/fetch_spec.log SPEC_FETCH_DONE && break; sleep 5; done
   grep -q "SPEC_FETCH_DONE rc=0" runs/vast/fetch_spec.log || { echo "draft fetch failed"; rc=20; }
   if [[ "$STAGES" == *main-* || "$STAGES" == *code-* ]]; then
-    for _ in $(seq 1 1440); do grep -q FETCH_DONE runs/vast/fetch_exit.log 2> /dev/null && break; sleep 5; done
+    for _ in $(seq 1 1440); do bash scripts/log_done.sh runs/vast/fetch_exit.log FETCH_DONE && break; sleep 5; done
     grep -q "FETCH_DONE rc=0" runs/vast/fetch_exit.log || { echo "235B fetch failed"; rc=20; }
   fi
   if [[ "$STAGES" == *builder* ]]; then

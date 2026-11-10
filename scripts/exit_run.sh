@@ -16,6 +16,8 @@ bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 export TETRAEDER_GGML_NATIVE="${TETRAEDER_GGML_NATIVE:-ON}"
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
+# shellcheck source=scripts/box_libs.sh
+. scripts/box_libs.sh
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 # shellcheck disable=SC1091
 . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
@@ -154,7 +156,7 @@ fi
     tail -20 "$date_dir/gpu-tests-$stamp.log"
   fi
   echo "[$(date +%T)] waiting for the model"
-  for _ in $(seq 1 1440); do grep -q FETCH_DONE runs/vast/fetch_exit.log 2> /dev/null && break; sleep 5; done
+  for _ in $(seq 1 1440); do bash scripts/log_done.sh runs/vast/fetch_exit.log FETCH_DONE && break; sleep 5; done
   grep FETCH_DONE runs/vast/fetch_exit.log | tail -1
   grep -q "FETCH_DONE rc=0" runs/vast/fetch_exit.log || { echo "model fetch failed"; rc=20; }
 } >> "$log" 2>&1

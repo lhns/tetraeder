@@ -5,13 +5,20 @@
 # gap between ik and mainline is the kernel, not the ISA. Records the CPU flags, each binary's PIN and how many AVX-512
 # (zmm) instructions it contains. Result: bench/results/<date>/kernels-cpu/kernels-cpu-<stamp>.json.
 #   scripts/kernels_cpu.sh            # started detached by `taxameter run`; ends with KERNELS_CPU_DONE rc=N
-# Env: THREADS (default: the CPU quota), REPEATS (3), DECODE (64).
+# Env: RESUME=1 skips the run when the session's results directory (RESULTS_DATE) holds a kernels-cpu-*.json,THREADS (default: the CPU quota), REPEATS (3), DECODE (64).
 exec 8> /root/tetraeder_kernels_cpu.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p runs/vast
 log=runs/vast/kernels_cpu.log
+echo "=== RUN $(date +%FT%T) kernels_cpu.sh ===" >> "$log"
 out_dir="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/kernels-cpu"
 mkdir -p "$out_dir"
+# RESUME=1 (set by scripts/session.sh): a finished run of this session's results directory is not repeated
+if [ "${RESUME:-0}" = 1 ] && compgen -G "$out_dir/kernels-cpu-*.json" > /dev/null; then
+  echo "kernels-cpu: result exists in $out_dir, skipped (RESUME=1)" >> "$log"
+  echo "KERNELS_CPU_DONE rc=0" >> "$log"
+  exit 0
+fi
 stamp=$(date +%H%M%S)
 threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
 reps="${REPEATS:-3}"

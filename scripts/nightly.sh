@@ -34,6 +34,8 @@ bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
 # Image toolchain lives in /opt/cargo (RUSTUP_HOME/CARGO_HOME); a rustup under $HOME is the fallback
 if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
 export PATH="/opt/cargo/bin:$HOME/.cargo/bin:$PATH"
+# shellcheck source=scripts/box_libs.sh
+. scripts/box_libs.sh
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-8}"
 command -v sccache > /dev/null 2>&1 && export RUSTC_WRAPPER=sccache
 date_dir="bench/results/$(date +%Y%m%d)"
