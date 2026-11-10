@@ -2,7 +2,7 @@
 
 use super::control::{self, ReplanHandle, plan_label};
 use super::engine::{Loader, Lowerer, SwitchableEngine};
-use super::glue::{builder_chunk, builder_options, llama_options};
+use super::glue::{BuilderFlags, builder_chunk, builder_options, llama_options};
 use super::source::{HwSource, PlannerSource, Shared, band_of};
 use crate::serve::{EngineKind, SchedParts, ServeArgs};
 use anyhow::Context as _;
@@ -116,8 +116,14 @@ pub fn start(
 
     let parts = SchedParts::new(a)?;
     let base = a.place.clone();
-    let (ctx, miss, prefetch) = (a.ctx, a.miss, a.prefetch);
-    let (io_service, overlap) = (a.io_service, a.overlap);
+    let ctx = a.ctx;
+    let flags = BuilderFlags {
+        miss: a.miss,
+        prefetch: a.prefetch,
+        prefetch_depth: a.prefetch_depth,
+        io_service: a.io_service,
+        overlap: a.overlap,
+    };
     let tel = Arc::clone(telemetry);
     let model_path = path.clone();
     let loader: Loader = Box::new(move |l: &Lowered| {
@@ -130,8 +136,7 @@ pub fn start(
                 Scheduler::start(cfg, move || load_llama(&p, &pl, &cc, Some(t)))
             }
             Lowered::Builder { .. } => {
-                let o =
-                    builder_options(l, ctx, miss, prefetch, io_service, overlap, Arc::clone(&t))?;
+                let o = builder_options(l, ctx, flags, Arc::clone(&t))?;
                 let chunk = builder_chunk(l)?;
                 cfg.prefill_chunk = chunk;
                 Scheduler::start(cfg, move || load_moe_chunked(&p, &o, chunk))

@@ -1,7 +1,7 @@
 //! A lowered plan as the load options of the two serving engines (ADR 0055).
 
 use crate::engine_args::PlacementArgs;
-use crate::serve::resolve_overlap;
+use crate::serve::{resolve_overlap, resolve_prefetch};
 use std::sync::Arc;
 use tetraeder_engine::{BufferOverride, ContextConfig, Placement};
 use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy};
@@ -54,15 +54,34 @@ pub fn builder_chunk(l: &Lowered) -> Result<usize, String> {
     }
 }
 
+/// The serve flags that shape the load options of a builder plan.
+#[derive(Debug, Clone, Copy)]
+pub struct BuilderFlags {
+    pub miss: MissPolicy,
+    pub prefetch: Option<bool>,
+    pub prefetch_depth: u8,
+    pub io_service: Option<bool>,
+    pub overlap: Option<bool>,
+}
+
+impl Default for BuilderFlags {
+    fn default() -> Self {
+        Self {
+            miss: MissPolicy::Upload,
+            prefetch: None,
+            prefetch_depth: 2,
+            io_service: None,
+            overlap: None,
+        }
+    }
+}
+
 /// Load options of a builder plan. A RAM tier means misses run on the CPU, as in the campaign;
 /// otherwise `miss` (the `--miss` flag) decides.
 pub fn builder_options(
     l: &Lowered,
     ctx: u32,
-    miss: MissPolicy,
-    prefetch: bool,
-    io_service: Option<bool>,
-    overlap: Option<bool>,
+    f: BuilderFlags,
     telemetry: Arc<Telemetry>,
 ) -> Result<LoadOptions, String> {
     let Lowered::Builder {
@@ -92,10 +111,12 @@ pub fn builder_options(
     o.miss = if ram_slots.is_some() {
         MissPolicy::Cpu
     } else {
-        miss
+        f.miss
     };
-    o.prefetch = prefetch;
-    (o.io.service, o.overlap) = resolve_overlap(ram_slots.is_some(), o.miss, io_service, overlap)?;
+    o.prefetch = resolve_prefetch(ram_slots.is_some(), f.prefetch);
+    o.prefetch_depth = usize::from(f.prefetch_depth);
+    (o.io.service, o.overlap) =
+        resolve_overlap(ram_slots.is_some(), o.miss, f.io_service, f.overlap)?;
     o.telemetry = Some(telemetry);
     Ok(o)
 }
@@ -184,16 +205,7 @@ mod tests {
             ubatch: 512,
             op_offload: false,
         };
-        let o = builder_options(
-            &gpu,
-            4096,
-            MissPolicy::Upload,
-            true,
-            None,
-            None,
-            Arc::clone(&tel),
-        )
-        .unwrap();
+        let o = builder_options(&gpu, 4096, BuilderFlags::default(), Arc::clone(&tel)).unwrap();
         assert!(matches!(o.backend, BackendChoice::Gpu { index: 1 }));
         assert_eq!(
             (o.cpu_threads, o.n_ctx, o.expert_slots, o.ram_slots),
@@ -205,6 +217,7 @@ mod tests {
         );
         // A RAM tier plans both on, as `serve` does by default.
         assert!(o.io.service && o.overlap);
+        assert_eq!(o.prefetch_depth, 2);
         assert_eq!(builder_chunk(&gpu).unwrap(), 512);
         let cpu = Lowered::Builder {
             gpu: None,
@@ -216,15 +229,24 @@ mod tests {
         };
         assert_eq!(builder_chunk(&cpu).unwrap(), 64);
         let tel2 = Arc::clone(&tel);
-        let o = builder_options(&cpu, 256, MissPolicy::Upload, false, None, None, tel).unwrap();
+        let o = builder_options(&cpu, 256, BuilderFlags::default(), tel).unwrap();
         assert!(matches!(o.backend, BackendChoice::Cpu { threads: Some(2) }));
         assert_eq!(
             (o.expert_slots, o.ram_slots, o.miss),
             (None, None, MissPolicy::Upload)
         );
-        assert!(!o.io.service && !o.overlap);
+        assert!(!o.io.service && !o.overlap && !o.prefetch);
         assert!(
-            builder_options(&cpu, 256, MissPolicy::Upload, false, None, Some(true), tel2).is_err()
+            builder_options(
+                &cpu,
+                256,
+                BuilderFlags {
+                    overlap: Some(true),
+                    ..BuilderFlags::default()
+                },
+                tel2,
+            )
+            .is_err()
         );
     }
 }
