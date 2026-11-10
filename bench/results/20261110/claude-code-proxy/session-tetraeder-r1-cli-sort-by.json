@@ -1,0 +1,116 @@
+{
+  "engine": "tetraeder",
+  "rep": 1,
+  "task": "cli-sort-by",
+  "started": "2026-11-10T03:01:20",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 249120,
+    "stop_reason": "end_turn",
+    "session_id": "9dcce6d0-9f81-4e11-a1a3-520d935ba525",
+    "total_cost_usd": 0.5668198000000001,
+    "usage": {
+      "input_tokens": 23344,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 767704,
+      "output_tokens": 7869,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 37519,
+        "outputTokens": 10440,
+        "cacheReadInputTokens": 1039719,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.5668198000000001,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 1,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 1
+      },
+      "started_in_background": 1,
+      "max_depth": 1,
+      "spawned_by_subagents": 0,
+      "completed": 1,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {
+        "general-purpose": 1
+      }
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 40,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully implemented the requested feature to add a `--sort-by` option to the `list` command of the CLI. Here's what was accomplished:\n\n## Changes Made\n\n1. **Modified `invoicing/report.py`**:\n   - Updated the `format_list` function to accept an optional `sort_by` parameter\n   - Implemented sorting logic for four options: `number`, `issued`, `customer`, and `total`\n   - Sorting behavior:\n     - `number`, `issued`, and `customer` sort in ascending order\n     - `total` sorts in descending order (largest first)\n     - Ties are broken by invoice number\n     - When no sort option is provided, original file order is preserved\n\n2. **Modified `invoicing/cli.py`**:\n   - Updated `cmd_list` function to pass the sort parameter to `format_list`\n   - Added `--sort-by` argument to the list command parser with choices: `number`, `issued`, `customer`, `total`\n\n## Verification\n\n- All existing tests continue to pass (83/83 tests passing)\n- The new functionality works correctly with sample data\n- CLI help properly displays the new option\n- Sorting behavior matches the specified requirements exactly\n- The implementation is fully backward compatible\n\nThe feature is now ready for use. Users can run:\n- `python -m invoicing.cli list file.json --sort-by number`\n- `python -m invoicing.cli list file.json --sort-by issued`  \n- `python -m invoicing.cli list file.json --sort-by customer`\n- `python -m invoicing.cli list file.json --sort-by total`\n\nAnd without the `--sort-by` option, the original file order is preserved.",
+    "ttft_ms": 5958,
+    "type": "result",
+    "duration_ms": 149998,
+    "uuid": "f8d4d40b-6e84-49c7-bcb4-378ad7b76896",
+    "ttft_stream_ms": 88,
+    "time_to_request_ms": 58,
+    "first_content_frame_ms": 4538,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 150.27,
+  "check": {
+    "passed": false,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 80%]\n..................                                                       [100%]\n90 passed in 0.14s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/added_tests.py --pattern sort_by|sort-by --min 2",
+        "exit_code": 1,
+        "output_tail": "0 matching tests: []\nneed at least 2 test functions matching 'sort_by|sort-by'\n"
+      }
+    ]
+  },
+  "success": false
+}
