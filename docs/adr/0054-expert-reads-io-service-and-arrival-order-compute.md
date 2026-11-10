@@ -136,3 +136,11 @@ Local synthetic exit regime (release, 2 threads, 64 prefill, 32 decode, 2 VRAM s
 | service + overlap, 3 ms per chunk | 6.34 | 157.7 | 66.5 (cpu_ready 31.2, cpu_landed 25.7) | 6.0 | 0.87 |
 
 On this machine reads are already hidden by the prefetch (the page cache is warm and 16 workers absorb the delay), so overlap has nothing to win and costs its extra graphs; the numbers say nothing about box C. The box pairs decide.
+
+## Addendum (2026-11-10, box 60057461): paired result, defaults on
+
+Session `b1b-levers`: RTX 3090, AMD EPYC 7742 (AVX2, no AVX-512), quota 30.7 cores, 26 threads, RAM ballooned to 91 GB, Qwen3-235B-A22B at 32K. Decode against `main-prefetch` on this box: `main-iosvc` 1.32x, `main-overlap` 1.38x and 1.40x (1.37x against the adjacent `main-repeat`); prefill 1.11x to 1.15x. Builder noise 2.5%, A/A pair 1.000.
+
+- Decode bar (at least 15% above `main-prefetch`): met. Hidden share bar (0.5): missed, 0.42. Read wait is still 24.8 ms of a 42.8 ms read span per token, all urgent misses.
+- Confound: the builder's CPU time was 106 to 116% of 26 threads, so the I/O workers used 2 to 4 of the 4.7 spare cores of quota. The gain is measured with spare cores, not in the starved case of section "Context". A box with a quota near the thread count (b1-exit had 26.9) must confirm it.
+- Decision: the service and overlap become the defaults of `serve` where they apply (RAM tier; overlap also needs the `cpu` miss policy). The `Reader` path stays until the starved-case run, then is deleted.
