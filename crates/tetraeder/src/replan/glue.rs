@@ -54,16 +54,34 @@ pub fn builder_chunk(l: &Lowered) -> Result<usize, String> {
     }
 }
 
+/// The serve flags that shape the load options of a builder plan.
+#[derive(Debug, Clone, Copy)]
+pub struct BuilderFlags {
+    pub miss: MissPolicy,
+    pub prefetch: Option<bool>,
+    pub prefetch_depth: u8,
+    pub io_service: Option<bool>,
+    pub overlap: Option<bool>,
+}
+
+impl Default for BuilderFlags {
+    fn default() -> Self {
+        Self {
+            miss: MissPolicy::Upload,
+            prefetch: None,
+            prefetch_depth: 2,
+            io_service: None,
+            overlap: None,
+        }
+    }
+}
+
 /// Load options of a builder plan. A RAM tier means misses run on the CPU, as in the campaign;
 /// otherwise `miss` (the `--miss` flag) decides.
 pub fn builder_options(
     l: &Lowered,
     ctx: u32,
-    miss: MissPolicy,
-    prefetch: Option<bool>,
-    prefetch_depth: u8,
-    io_service: Option<bool>,
-    overlap: Option<bool>,
+    f: BuilderFlags,
     telemetry: Arc<Telemetry>,
 ) -> Result<LoadOptions, String> {
     let Lowered::Builder {
@@ -93,10 +111,10 @@ pub fn builder_options(
     o.miss = if ram_slots.is_some() {
         MissPolicy::Cpu
     } else {
-        miss
+        f.miss
     };
-    o.prefetch = resolve_prefetch(ram_slots.is_some(), prefetch);
-    o.prefetch_depth = usize::from(prefetch_depth);
+    o.prefetch = resolve_prefetch(ram_slots.is_some(), f.prefetch);
+    o.prefetch_depth = usize::from(f.prefetch_depth);
     (o.io.service, o.overlap) = resolve_overlap(ram_slots.is_some(), o.miss, io_service, overlap)?;
     o.telemetry = Some(telemetry);
     Ok(o)
@@ -186,17 +204,7 @@ mod tests {
             ubatch: 512,
             op_offload: false,
         };
-        let o = builder_options(
-            &gpu,
-            4096,
-            MissPolicy::Upload,
-            None,
-            2,
-            None,
-            None,
-            Arc::clone(&tel),
-        )
-        .unwrap();
+        let o = builder_options(&gpu, 4096, BuilderFlags::default(), Arc::clone(&tel)).unwrap();
         assert!(matches!(o.backend, BackendChoice::Gpu { index: 1 }));
         assert_eq!(
             (o.cpu_threads, o.n_ctx, o.expert_slots, o.ram_slots),
@@ -220,7 +228,7 @@ mod tests {
         };
         assert_eq!(builder_chunk(&cpu).unwrap(), 64);
         let tel2 = Arc::clone(&tel);
-        let o = builder_options(&cpu, 256, MissPolicy::Upload, None, 2, None, None, tel).unwrap();
+        let o = builder_options(&cpu, 256, BuilderFlags::default(), tel).unwrap();
         assert!(matches!(o.backend, BackendChoice::Cpu { threads: Some(2) }));
         assert_eq!(
             (o.expert_slots, o.ram_slots, o.miss),
@@ -231,12 +239,11 @@ mod tests {
             builder_options(
                 &cpu,
                 256,
-                MissPolicy::Upload,
-                None,
-                2,
-                None,
-                Some(true),
-                tel2
+                BuilderFlags {
+                    overlap: Some(true),
+                    ..BuilderFlags::default()
+                },
+                tel2,
             )
             .is_err()
         );

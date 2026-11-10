@@ -422,12 +422,11 @@ impl EngineControl for Control {
 mod tests {
     use super::*;
     use crate::engine_args::PlacementArgs;
-    use crate::replan::glue::{builder_chunk, builder_options, llama_options};
+    use crate::replan::glue::{BuilderFlags, builder_chunk, builder_options, llama_options};
     use clap::Parser;
     use std::path::PathBuf;
     use tetraeder_control::{Clock, Config, FakeClock, PlanSource, Proposal, Replanner, Trigger};
     use tetraeder_gateway::engine::FinishReason;
-    use tetraeder_model::MissPolicy;
     use tetraeder_plan::{Knobs, KvFormat};
     use tetraeder_planner::{ModelLayout, Placement, ServeEngine, Workload, build_plan, lower};
     use tetraeder_scheduler::{SchedulerConfig, load_llama, load_moe_chunked};
@@ -487,11 +486,13 @@ mod tests {
                     let o = builder_options(
                         l,
                         CTX,
-                        MissPolicy::Upload,
-                        Some(false),
-                        1,
-                        Some(false),
-                        Some(false),
+                        BuilderFlags {
+                            prefetch: Some(false),
+                            prefetch_depth: 1,
+                            io_service: Some(false),
+                            overlap: Some(false),
+                            ..BuilderFlags::default()
+                        },
                         Arc::clone(&tel),
                     )?;
                     let chunk = builder_chunk(l)?;
