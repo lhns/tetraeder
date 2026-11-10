@@ -1,0 +1,190 @@
+{
+ "id": "run-50",
+ "batch": 1,
+ "windows": [
+  {
+   "tokens": 12,
+   "wall_s": 8.340165678,
+   "busy_s": {
+    "gpu:gpu0": 0.14595289936500003,
+    "cpu": 7.813076923076922,
+    "disk:nvme0": 1.7182734160000002,
+    "host": 0.26241101699999997
+   },
+   "split_s": {
+    "compute": 0.710533361,
+    "expert_load_wait": 7.137743601999999,
+    "host": 0.26241101699999997
+   },
+   "bytes": {
+    "disk:nvme0": 1829154816.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 6.765859662,
+   "busy_s": {
+    "gpu:gpu0": 0.13531719324000002,
+    "cpu": 6.54923076923077,
+    "disk:nvme0": 1.736870976,
+    "host": 0.23065372699999995
+   },
+   "split_s": {
+    "compute": 0.655453949,
+    "expert_load_wait": 5.687111118,
+    "host": 0.23065372699999995
+   },
+   "bytes": {
+    "disk:nvme0": 1393496064.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 6.564870857,
+   "busy_s": {
+    "gpu:gpu0": 0.11488523999750001,
+    "cpu": 6.612307692307693,
+    "disk:nvme0": 1.7297991700000002,
+    "host": 0.245679849
+   },
+   "split_s": {
+    "compute": 0.704091892,
+    "expert_load_wait": 5.41579044,
+    "host": 0.245679849
+   },
+   "bytes": {
+    "disk:nvme0": 1391947776.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 7.347721844,
+   "busy_s": {
+    "gpu:gpu0": 0.12246203073333332,
+    "cpu": 7.033076923076924,
+    "disk:nvme0": 2.298437378,
+    "host": 0.23338183800000004
+   },
+   "split_s": {
+    "compute": 0.690569474,
+    "expert_load_wait": 6.2130747809999995,
+    "host": 0.23338183800000004
+   },
+   "bytes": {
+    "disk:nvme0": 1496899584.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 5.973110889,
+   "busy_s": {
+    "gpu:gpu0": 0.05973110889,
+    "cpu": 5.756153846153845,
+    "disk:nvme0": 1.551451554,
+    "host": 0.25037139399999997
+   },
+   "split_s": {
+    "compute": 0.67461723,
+    "expert_load_wait": 4.846196936,
+    "host": 0.25037139399999997
+   },
+   "bytes": {
+    "disk:nvme0": 1321205760.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 7.066158241,
+   "busy_s": {
+    "gpu:gpu0": 0.047107721606666667,
+    "cpu": 7.018461538461539,
+    "disk:nvme0": 2.14769201,
+    "host": 0.23254692300000002
+   },
+   "split_s": {
+    "compute": 0.667551129,
+    "expert_load_wait": 5.973367281,
+    "host": 0.23254692300000002
+   },
+   "bytes": {
+    "disk:nvme0": 1996922880.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 6.618721594,
+   "busy_s": {
+    "gpu:gpu0": 0.11031202656666667,
+    "cpu": 6.247692307692301,
+    "disk:nvme0": 2.004204667,
+    "host": 0.22336356699999999
+   },
+   "split_s": {
+    "compute": 0.667057835,
+    "expert_load_wait": 5.550267915,
+    "host": 0.22336356699999999
+   },
+   "bytes": {
+    "disk:nvme0": 1818279936.0
+   }
+  },
+  {
+   "tokens": 12,
+   "wall_s": 7.112630725,
+   "busy_s": {
+    "gpu:gpu0": 0.1600341913125,
+    "cpu": 6.923846153846153,
+    "disk:nvme0": 2.084457299,
+    "host": 0.24197257600000002
+   },
+   "split_s": {
+    "compute": 0.7131519749999999,
+    "expert_load_wait": 5.958176587,
+    "host": 0.24197257600000002
+   },
+   "bytes": {
+    "disk:nvme0": 1825026048.0
+   }
+  }
+ ],
+ "env": {
+  "throttle": [],
+  "pcie": [
+   {
+    "device": "gpu0",
+    "gen_current": 3,
+    "width_current": 16,
+    "gen_max": 3,
+    "width_max": 16
+   }
+  ],
+  "cpu_quota_cores": 13.0,
+  "cpu_other_cores": 0.052533564597933055,
+  "swap_in_bytes_per_s": 0.0,
+  "major_faults_per_s": 0.0,
+  "memory_stall_share": 0.0,
+  "vram_other_bytes": {
+   "gpu0": 14560526336
+  },
+  "vram_total_bytes": {
+   "gpu0": 25769803776
+  },
+  "disk_other_read_bytes_per_s": 1774229420.5111365,
+  "io_max_bytes_per_s": null,
+  "expert_hit_rate": 0.14496527777777776,
+  "slots_planned": 58,
+  "slots_actual": 34
+ },
+ "expected": {
+  "rates": {
+   "disk:nvme0": 5122541395.580541
+  },
+  "busy_s_per_token": {
+   "gpu:gpu0": 0.006761372106666667,
+   "cpu": 0.11580128205128208,
+   "disk:nvme0": 0.007609038333333333,
+   "host": 0.007912277875
+  },
+  "band": 0.49960026759627374
+ }
+}

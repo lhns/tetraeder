@@ -1,0 +1,48 @@
+{
+ "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+ "threads": 13,
+ "decode_tokens": 64,
+ "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz",
+ "cpu_flags": [
+  "avx",
+  "avx2",
+  "f16c",
+  "fma"
+ ],
+ "build": "portable AVX2 (GGML_NATIVE=OFF, docker/box/Dockerfile)",
+ "engines": {
+  "mainline": {
+   "pin": "tag=b11976 commit=2e0d86bebc210947680e8f0d67daa79f3260c106",
+   "zmm_instructions": 0,
+   "zmm_error": null,
+   "decode_tok_s": [
+    10.324628,
+    14.795176,
+    14.134173
+   ],
+   "median_tok_s": 14.134173
+  },
+  "ik": {
+   "pin": "commit=b25c3fd2c6d7e407c3a104a413d0211fe2c7a88e",
+   "zmm_instructions": 0,
+   "zmm_error": null,
+   "decode_tok_s": [
+    17.066962,
+    17.86931,
+    18.277373
+   ],
+   "median_tok_s": 17.86931
+  },
+  "baseline": {
+   "pin": "tag=b12211 commit=7d7f0287530bc8981690f361d8c1627dbae1c99a",
+   "zmm_instructions": 0,
+   "zmm_error": null,
+   "decode_tok_s": [
+    13.985576,
+    11.25519,
+    10.706707
+   ],
+   "median_tok_s": 11.25519
+  }
+ }
+}
