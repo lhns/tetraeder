@@ -19,7 +19,7 @@
 //! forced on, and each gating row (the builder's default rotation) is paired with it position by
 //! position. At every depth, Q8_0/Q8_0 excess mean KL at most 0.003 and excess top-1 loss at most
 //! 0.01; Q8_0/Q4_0 at most 0.015 and 0.03. The ADR's absolute bounds are reported (`abs_pass`).
-//! Informative rows: the reference again (determinism) and at half the ubatch, both formats with
+//! Informative rows: the reference again (determinism) and in ubatches of 128, both formats with
 //! the rotation off, libllama with F16 and both formats (its default rotation), and each engine's
 //! formats against that engine's own F16 row.
 //!
@@ -35,6 +35,11 @@ use tetraeder_model::{BackendChoice, LoadOptions, Qwen3Moe};
 use tetraeder_plan::KvFormat;
 
 const UBATCH: usize = 2048;
+/// Ubatch of the batching diagnostic: below the 256 scored positions of a calibration chunk, so
+/// the chunking of every set's prefix and scored tail changes.
+const SMALL_UBATCH: usize = 128;
+/// Scored logits per set: per sequence, its scored positions times the vocabulary.
+type Logits = Vec<Vec<Vec<f32>>>;
 const SCORED_LONG: usize = 1024;
 /// The shortest depth; its sequence is the start of the prompt, unchanged.
 const SHORT: usize = 8192;
@@ -443,7 +448,7 @@ fn kv_quality() {
     // The F16 reference logits of every scored position, kept on the host.
     let mut m = load(&gguf, n_ctx, KvFormat::F16, None);
     let n_vocab = m.n_vocab();
-    let reference: Vec<Vec<Vec<f32>>> = sets
+    let reference: Logits = sets
         .iter()
         .map(|s| {
             s.seqs
@@ -482,9 +487,9 @@ fn kv_quality() {
             gate((0.015, 0.03), (0.015, 0.97)),
             false,
         ),
-        // The reference again (determinism) and at another ubatch (batching dependence).
+        // The reference again (determinism) and in small ubatches (batching dependence).
         v(f16, Builder(None), UBATCH, Role::Info, false),
-        v(f16, Builder(None), UBATCH / 2, Role::Info, false),
+        v(f16, Builder(None), SMALL_UBATCH, Role::Info, false),
         v(q8, Builder(Some(false)), UBATCH, Role::Info, false),
         v(q4, Builder(Some(false)), UBATCH, Role::Info, false),
         v(f16, Libllama, UBATCH, Role::Info, true),
@@ -496,13 +501,13 @@ fn kv_quality() {
     // Per set: the floor row's per-position scores against the reference.
     let mut floor: Option<Vec<Scored>> = None;
     // An engine's own F16 baseline: its name, a label and its logits.
-    let mut own_base: Option<(&str, String, Vec<Vec<Vec<f32>>>)> = None;
+    let mut own_base: Option<(&str, String, Logits)> = None;
     for var in &variants {
         let (kv, engine_name, ubatch) = (var.kv, var.engine.name(), var.ubatch);
         if own_base.as_ref().is_some_and(|b| b.0 != engine_name) {
             own_base = None;
         }
-        let (rotation, got): (Value, Vec<Vec<Vec<f32>>>) = match &var.engine {
+        let (rotation, got): (Value, Logits) = match &var.engine {
             Engine::Builder(rot) => {
                 let mut m = load(&gguf, n_ctx, kv, *rot);
                 let (k, v) = m.kv_rotated();
@@ -608,7 +613,7 @@ fn kv_quality() {
             }
             results.push(r);
             if let Some((_, name, logits)) = &own_base {
-                results.push(row(&score(&logits[i], &got[i], n_vocab), &set.name, name));
+                results.push(row(&score(&logits[i], got, n_vocab), &set.name, name));
             }
             scored.push(s);
         }
