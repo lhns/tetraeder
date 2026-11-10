@@ -1,0 +1,114 @@
+{
+  "engine": "tetraeder",
+  "rep": 1,
+  "task": "write-shipping-tests",
+  "started": "2026-11-10T10:12:41",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 43714,
+    "stop_reason": "end_turn",
+    "session_id": "c1805291-ad04-4501-81b8-a75c3a271f8b",
+    "total_cost_usd": 0.1563176,
+    "usage": {
+      "input_tokens": 16180,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 100988,
+      "output_tokens": 3570,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 16180,
+        "outputTokens": 3570,
+        "cacheReadInputTokens": 100988,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.1563176,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 8,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "The test suite has been successfully created and all tests are passing. I've completed the task of writing a thorough test file for `invoicing/shipping.py` that covers every public function, band boundaries, zones, free-shipping rule, and error cases, without modifying the original shipping.py file. The tests are comprehensive and validate all aspects of the shipping module's functionality.",
+    "ttft_ms": 8773,
+    "type": "result",
+    "duration_ms": 45493,
+    "uuid": "083fb5ea-6c28-4f3f-9339-eb26f5630a3e",
+    "ttft_stream_ms": 168,
+    "time_to_request_ms": 99,
+    "first_content_frame_ms": 8107,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 45.87,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 69%]\n................................                                         [100%]\n104 passed in 0.25s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/new_tests.py --module invoicing.shipping --min 3 --unchanged invoicing/shipping.py",
+        "exit_code": 0,
+        "output_tail": "21 new test functions; files touching invoicing.shipping: ['tests/test_shipping.py']\n"
+      }
+    ]
+  },
+  "success": true
+}

@@ -1,0 +1,114 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "write-shipping-tests",
+  "started": "2026-11-10T11:01:38",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 93523,
+    "stop_reason": "end_turn",
+    "session_id": "717ecd45-8bef-461c-9d85-d016a8f0c3d2",
+    "total_cost_usd": 0.3147236,
+    "usage": {
+      "input_tokens": 24486,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 172598,
+      "output_tokens": 9113,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 24486,
+        "outputTokens": 9113,
+        "cacheReadInputTokens": 172598,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.3147236,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 11,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully created a comprehensive test suite for the shipping module. Here's what I accomplished:\n\n1. **Created thorough tests for all public functions** in `invoicing/shipping.py`:\n   - `base_price()` function with all weight bands and boundary conditions\n   - `shipping_cost()` function with domestic, EU, and world zones including free shipping logic\n   - `split_parcels()` function with parcel splitting behavior\n\n2. **Tested all edge cases and error conditions**:\n   - Invalid weights (zero, negative, over maximum)\n   - Unknown shipping zones\n   - Boundary conditions for all weight bands\n   - Free shipping threshold behavior\n\n3. **Verified all constants and configurations**:\n   - Band boundaries (500g, 2000g, 10000g, 30000g)\n   - Zone multipliers (domestic: 100%, EU: 150%, world: 220%)\n   - Free shipping threshold (10,000 cents)\n   - Maximum weight (30,000g)\n\n4. **Confirmed proper rounding behavior** using the formula `(price * pct + 50) // 100`\n\nAll 16 tests in the new `tests/test_shipping.py` file pass successfully, and the full test suite (99 tests) continues to pass, confirming no existing functionality was broken.\n\nThe test suite provides complete coverage of the shipping module's functionality as requested, with no modifications to the original `shipping.py` file.",
+    "ttft_ms": 6313,
+    "type": "result",
+    "duration_ms": 96390,
+    "uuid": "5495abbe-a0be-45f4-bbe6-a294af9cd28c",
+    "ttft_stream_ms": 169,
+    "time_to_request_ms": 98,
+    "first_content_frame_ms": 5817,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 96.76,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 72%]\n...........................                                              [100%]\n99 passed in 0.25s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/new_tests.py --module invoicing.shipping --min 3 --unchanged invoicing/shipping.py",
+        "exit_code": 0,
+        "output_tail": "16 new test functions; files touching invoicing.shipping: ['tests/test_shipping.py']\n"
+      }
+    ]
+  },
+  "success": true
+}

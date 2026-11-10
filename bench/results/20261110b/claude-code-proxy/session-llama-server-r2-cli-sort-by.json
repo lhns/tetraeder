@@ -1,0 +1,116 @@
+{
+  "engine": "llama-server",
+  "rep": 2,
+  "task": "cli-sort-by",
+  "started": "2026-11-10T10:49:21",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 100006,
+    "stop_reason": "end_turn",
+    "session_id": "4a232811-2bd4-466d-9f11-b4616c322701",
+    "total_cost_usd": 0.33723060000000005,
+    "usage": {
+      "input_tokens": 24284,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 435626,
+      "output_tokens": 5001,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 31232,
+        "outputTokens": 5882,
+        "cacheReadInputTokens": 473313,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.33723060000000005,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 1,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 1
+      },
+      "started_in_background": 1,
+      "max_depth": 1,
+      "spawned_by_subagents": 0,
+      "completed": 1,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {
+        "Explore": 1
+      }
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 24,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully implemented the `--sort-by` option for the CLI's `list` command as requested. Here's a summary of what was accomplished:\n\n## Implementation Summary\n\n### Changes Made:\n\n1. **Modified `invoicing/report.py`**:\n   - Updated `format_list` function to accept an optional `sort_by` parameter\n   - Added sorting logic for the four requested options:\n     - `number`: Sorts by invoice number (ascending)\n     - `issued`: Sorts by issued date (ascending) \n     - `customer`: Sorts by customer name (ascending)\n     - `total`: Sorts by total amount (largest first)\n\n2. **Modified `invoicing/cli.py`**:\n   - Added `--sort-by` argument to the list command parser with choices: `number`, `issued`, `customer`, `total`\n   - Updated `cmd_list` function to pass the sort parameter to `format_list`\n\n3. **Added comprehensive tests** in `tests/test_storage_report_cli.py`:\n   - Tests for `format_list` function with all sorting options\n   - Tests for CLI command with all sorting options\n\n### Key Features:\n\n- **Sorting behavior**: \n  - `number`, `issued`, and `customer` sort in ascending order\n  - `total` sorts in descending order (largest first)\n  - Ties are broken by invoice number\n- **Backward compatibility**: Default behavior unchanged when no `--sort-by` flag is provided\n- **Error handling**: Invalid sort values raise a helpful `ValueError`\n- **All existing tests pass**: No regression in existing functionality\n\n### Usage Examples:\n\n```bash\n# Default behavior (unchanged)\npython -m invoicing.cli list invoices.json\n\n# Sort by invoice number\npython -m invoicing.cli list invoices.json --sort-by number\n\n# Sort by issued date\npython -m invoicing.cli list invoices.json --sort-by issued\n\n# Sort by customer name\npython -m invoicing.cli list invoices.json --sort-by customer\n\n# Sort by total amount (largest first)\npython -m invoicing.cli list invoices.json --sort-by total\n```\n\nThe implementation is complete, tested, and ready for use. All tests pass and the functionality works exactly as specified in the requirements.",
+    "ttft_ms": 5753,
+    "type": "result",
+    "duration_ms": 82359,
+    "uuid": "98f449e7-f013-4b8e-be42-1c42a62aa705",
+    "ttft_stream_ms": 4894,
+    "time_to_request_ms": 99,
+    "first_content_frame_ms": 4894,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 82.75,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 73%]\n..........................                                               [100%]\n98 passed in 0.26s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/added_tests.py --pattern sort_by|sort-by --min 2",
+        "exit_code": 0,
+        "output_tail": "8 matching tests: ['tests/test_storage_report_cli.py::test_format_list_sorted_by_number', 'tests/test_storage_report_cli.py::test_format_list_sorted_by_issued', 'tests/test_storage_report_cli.py::test_format_list_sorted_by_customer', 'tests/test_storage_report_cli.py::test_format_list_sorted_by_total', 'tests/test_storage_report_cli.py::test_cli_list_sorted_by_number', 'tests/test_storage_report_cli.py::test_cli_list_sorted_by_issued', 'tests/test_storage_report_cli.py::test_cli_list_sorted_by_customer', 'tests/test_storage_report_cli.py::test_cli_list_sorted_by_total']\n"
+      }
+    ]
+  },
+  "success": true
+}
