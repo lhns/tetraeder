@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "class": "cpu",
+  "device": "cpu",
+  "updated": "2026-11-10",
+  "quantile": 0.95,
+  "margin": 1.25,
+  "floor": 0.02,
+  "ceil": 0.25,
+  "n": 2,
+  "n_hosts": 1,
+  "d_p95": 0.04390111062610602,
+  "band": 0.05487638828263253,
+  "sessions": [
+    {
+      "file": "bench/results/20261031/phase0-121446.json",
+      "date": "2026-10-31",
+      "host_id": "038e81a28da2",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "580.126.09",
+      "pair": "noise-cpu-dense",
+      "threads": 19,
+      "repeats": 5,
+      "ratios": {
+        "pp": 1.0081096338959126,
+        "tg": 0.956098889373894
+      },
+      "d": 0.04390111062610602
+    },
+    {
+      "file": "bench/results/20261031/phase0-121446.json",
+      "date": "2026-10-31",
+      "host_id": "038e81a28da2",
+      "gpu": "NVIDIA GeForce RTX 3090",
+      "driver": "580.126.09",
+      "pair": "noise-cpu-moe",
+      "threads": 19,
+      "repeats": 5,
+      "ratios": {
+        "pp": 0.9680155535083416,
+        "tg": 1.016432114645167
+      },
+      "d": 0.031984446491658436
+    }
+  ]
+}

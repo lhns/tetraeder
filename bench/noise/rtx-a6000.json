@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "class": "rtx-a6000",
+  "device": "cuda",
+  "updated": "2026-11-10",
+  "quantile": 0.95,
+  "margin": 1.25,
+  "floor": 0.02,
+  "ceil": 0.25,
+  "n": 1,
+  "n_hosts": 1,
+  "d_p95": 0.0003049766723841607,
+  "band": 0.02,
+  "sessions": [
+    {
+      "file": "bench/results/20261110/noise/phase0-041549.json",
+      "date": "2026-11-10",
+      "host_id": "08eba5fb6cd4",
+      "gpu": "NVIDIA RTX A6000",
+      "driver": "615.71.10",
+      "pair": "noise-cuda-dense",
+      "threads": 34,
+      "repeats": 8,
+      "ratios": {
+        "pp": 1.0003049766723842,
+        "tg": 0.9998689874228744
+      },
+      "d": 0.0003049766723841607
+    }
+  ]
+}
