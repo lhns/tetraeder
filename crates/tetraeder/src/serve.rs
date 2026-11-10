@@ -87,6 +87,15 @@ pub struct ServeArgs {
     /// MoE builder: read predicted experts ahead into the RAM tier.
     #[arg(long)]
     pub prefetch: bool,
+    /// MoE builder: read experts through the persistent I/O service (ADR 0054), `on` or `off`.
+    /// Default: on when there is a RAM tier.
+    #[arg(long, value_name = "on|off", value_parser = parse_on_off)]
+    pub io_service: Option<bool>,
+    /// MoE builder: compute the CPU experts of a decode step as their reads land (ADR 0054),
+    /// `on` or `off`. Needs the I/O service. Default: on when the service is on and `--miss` is
+    /// `cpu`.
+    #[arg(long, value_name = "on|off", value_parser = parse_on_off)]
+    pub overlap: Option<bool>,
     /// Serve a plan and replan by drain and restart (ADR 0055): `auto` picks one of the
     /// executable candidates for this box and model, or a plan TOML file. Replaces the
     /// placement flags.
@@ -142,6 +151,35 @@ fn parse_miss(s: &str) -> Result<MissPolicy, String> {
         "cpu" => Ok(MissPolicy::Cpu),
         _ => Err(format!("`{s}`: expected upload or cpu")),
     }
+}
+
+fn parse_on_off(s: &str) -> Result<bool, String> {
+    match s {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        _ => Err(format!("`{s}`: expected on or off")),
+    }
+}
+
+/// The I/O service and overlap settings of the MoE builder (ADR 0054). Unset flags default to
+/// the service on with a RAM tier and overlap on when the misses also run on the CPU; overlap
+/// without the service is an error.
+pub fn resolve_overlap(
+    has_ram_tier: bool,
+    miss: MissPolicy,
+    io_service: Option<bool>,
+    overlap: Option<bool>,
+) -> Result<(bool, bool), String> {
+    let service = io_service.unwrap_or(has_ram_tier);
+    let overlap = overlap.unwrap_or(service && miss == MissPolicy::Cpu);
+    if overlap && !service {
+        return Err(if has_ram_tier {
+            "--overlap on needs the I/O service (drop --io-service off)".into()
+        } else {
+            "--overlap on needs the I/O service, which needs a RAM tier (--ram-slots)".into()
+        });
+    }
+    Ok((service, overlap))
 }
 
 pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
@@ -255,10 +293,14 @@ fn build_engine(
     };
     let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
     let tel = Arc::clone(telemetry);
+    if moe {
+        resolve_overlap(a.ram_slots.is_some(), a.miss, a.io_service, a.overlap)
+            .map_err(anyhow::Error::msg)?;
+    }
     let a = a.clone_load_args();
     let engine = Scheduler::start(cfg, move || {
         if moe {
-            tetraeder_scheduler::load_moe(&a.path, &a.moe_options(tel))
+            tetraeder_scheduler::load_moe(&a.path, &a.moe_options(tel)?)
         } else {
             tetraeder_scheduler::load_llama(
                 &a.path,
@@ -323,11 +365,13 @@ struct LoadArgs {
     ram_slots: Option<usize>,
     miss: MissPolicy,
     prefetch: bool,
+    io_service: Option<bool>,
+    overlap: Option<bool>,
 }
 
 impl LoadArgs {
     /// `--ngl 0` keeps the MoE builder on the CPU; anything else uses GPU `main_gpu`.
-    fn moe_options(&self, telemetry: Arc<Telemetry>) -> LoadOptions {
+    fn moe_options(&self, telemetry: Arc<Telemetry>) -> Result<LoadOptions, String> {
         let backend = if self.place.ngl == 0 {
             BackendChoice::Cpu {
                 threads: self.place.threads.and_then(|t| usize::try_from(t).ok()),
@@ -344,8 +388,14 @@ impl LoadArgs {
         o.ram_slots = self.ram_slots;
         o.miss = self.miss;
         o.prefetch = self.prefetch;
+        (o.io.service, o.overlap) = resolve_overlap(
+            self.ram_slots.is_some(),
+            self.miss,
+            self.io_service,
+            self.overlap,
+        )?;
         o.telemetry = Some(telemetry);
-        o
+        Ok(o)
     }
 }
 
@@ -359,6 +409,69 @@ impl ServeArgs {
             ram_slots: self.ram_slots,
             miss: self.miss,
             prefetch: self.prefetch,
+            io_service: self.io_service,
+            overlap: self.overlap,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct P {
+        #[command(flatten)]
+        serve: ServeArgs,
+    }
+
+    fn parse(extra: &[&str]) -> ServeArgs {
+        let mut args = vec!["x", "-m", "m.gguf"];
+        args.extend(extra);
+        P::parse_from(args).serve
+    }
+
+    // hardware: none
+    #[test]
+    fn flags_parse_on_and_off() {
+        let a = parse(&[]);
+        assert_eq!((a.io_service, a.overlap), (None, None));
+        let a = parse(&["--io-service", "on", "--overlap", "off"]);
+        assert_eq!((a.io_service, a.overlap), (Some(true), Some(false)));
+        assert!(P::try_parse_from(["x", "--overlap", "maybe"]).is_err());
+    }
+
+    // hardware: none
+    #[test]
+    fn defaults_follow_the_ram_tier_and_miss_policy() {
+        use MissPolicy::{Cpu, Upload};
+        assert_eq!(resolve_overlap(true, Cpu, None, None), Ok((true, true)));
+        assert_eq!(resolve_overlap(true, Upload, None, None), Ok((true, false)));
+        assert_eq!(resolve_overlap(false, Cpu, None, None), Ok((false, false)));
+        assert_eq!(
+            resolve_overlap(false, Upload, None, None),
+            Ok((false, false))
+        );
+        assert_eq!(
+            resolve_overlap(true, Cpu, Some(true), Some(false)),
+            Ok((true, false))
+        );
+        assert_eq!(
+            resolve_overlap(true, Upload, None, Some(true)),
+            Ok((true, true))
+        );
+        assert_eq!(
+            resolve_overlap(true, Cpu, Some(false), None),
+            Ok((false, false))
+        );
+    }
+
+    // hardware: none
+    #[test]
+    fn overlap_without_the_service_is_an_error() {
+        use MissPolicy::Cpu;
+        assert!(resolve_overlap(true, Cpu, Some(false), Some(true)).is_err());
+        assert!(resolve_overlap(false, Cpu, None, Some(true)).is_err());
     }
 }

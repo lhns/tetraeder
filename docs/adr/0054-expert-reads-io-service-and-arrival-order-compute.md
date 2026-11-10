@@ -137,6 +137,8 @@ Local synthetic exit regime (release, 2 threads, 64 prefill, 32 decode, 2 VRAM s
 
 On this machine reads are already hidden by the prefetch (the page cache is warm and 16 workers absorb the delay), so overlap has nothing to win and costs its extra graphs; the numbers say nothing about box C. The box pairs decide.
 
+Defaults in serve: `tetraeder serve` takes `--io-service on|off` and `--overlap on|off` (also with `--plan`). Unset, the service is on when the builder has a RAM tier (`--ram-slots`, or `ram_slots` in the plan) and overlap is on when the service is on and the miss policy is `cpu` (a plan with a RAM tier always misses on the CPU). Without a RAM tier both are off. `--overlap on` without the service, or without a RAM tier, is a CLI error. The box pairs on the 235B (2026-11-10) gave overlap 1.38 to 1.40x the prefetch path and the service alone 1.32x. The old `Reader` path stays for `--io-service off`. The metrics above are exported through the load options' telemetry, so the panel and alert cover a served run. `--prefetch` is still opt-in; the measured path had it on.
+
 ## Addendum (2026-11-10, box 60057461): paired result, defaults on
 
 Session `b1b-levers`: RTX 3090, AMD EPYC 7742 (AVX2, no AVX-512), quota 30.7 cores, 26 threads, RAM ballooned to 91 GB, Qwen3-235B-A22B at 32K. Decode against `main-prefetch` on this box: `main-iosvc` 1.32x, `main-overlap` 1.38x and 1.40x (1.37x against the adjacent `main-repeat`); prefill 1.11x to 1.15x. Builder noise 2.5%, A/A pair 1.000.

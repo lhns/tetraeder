@@ -117,6 +117,7 @@ pub fn start(
     let parts = SchedParts::new(a)?;
     let base = a.place.clone();
     let (ctx, miss, prefetch) = (a.ctx, a.miss, a.prefetch);
+    let (io_service, overlap) = (a.io_service, a.overlap);
     let tel = Arc::clone(telemetry);
     let model_path = path.clone();
     let loader: Loader = Box::new(move |l: &Lowered| {
@@ -129,7 +130,8 @@ pub fn start(
                 Scheduler::start(cfg, move || load_llama(&p, &pl, &cc, Some(t)))
             }
             Lowered::Builder { .. } => {
-                let o = builder_options(l, ctx, miss, prefetch, Arc::clone(&t))?;
+                let o =
+                    builder_options(l, ctx, miss, prefetch, io_service, overlap, Arc::clone(&t))?;
                 let chunk = builder_chunk(l)?;
                 cfg.prefill_chunk = chunk;
                 Scheduler::start(cfg, move || load_moe_chunked(&p, &o, chunk))
