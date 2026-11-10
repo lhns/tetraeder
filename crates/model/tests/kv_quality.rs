@@ -288,6 +288,9 @@ enum Engine {
     Libllama,
 }
 
+/// Gating bounds of a row: mean KL at most, top-1 agreement at least.
+type Bounds = Option<(f64, f64)>;
+
 /// hardware: gpu (uses the first GPU when the build has one, else the CPU; slow either way).
 #[test]
 #[ignore = "box only: needs the 30B GGUF and a GPU; run with --ignored in release"]
@@ -364,8 +367,7 @@ fn kv_quality() {
         .collect();
     drop(m);
 
-    // (format, engine, gating bounds: mean KL at most, top-1 at least).
-    let variants: Vec<(KvFormat, Engine, Option<(f64, f64)>)> = vec![
+    let variants: Vec<(KvFormat, Engine, Bounds)> = vec![
         (KvFormat::Q8_0, Engine::Builder(None), Some((0.003, 0.99))),
         (
             KvFormat::Q8_0_Q4_0,
