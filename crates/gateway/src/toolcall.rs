@@ -18,6 +18,9 @@ const MISTRAL_ARGS: &str = "[ARGS]";
 const MISTRAL_ID: &str = "[CALL_ID]";
 const PYTHON_TAG: &str = "<|python_tag|>";
 const PARAM_CLOSE: &str = "</parameter>";
+const PARAM_OPEN: &str = "<parameter=";
+const FUNC_OPEN: &str = "<function=";
+const FUNC_CLOSE: &str = "</function>";
 
 /// The tool-call syntax a model family uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +60,7 @@ impl ToolFormat {
 pub struct CallOutcome {
     /// `parsed`, `repaired` or `failed`.
     pub outcome: &'static str,
-    /// `ok`, `unknown_tool`, `empty_call`, `unclosed`, `bad_json` or `bad_xml`.
+    /// `ok`, `unknown_tool`, `empty_call`, `no_opener`, `unclosed`, `bad_json` or `bad_xml`.
     pub class: &'static str,
 }
 
@@ -200,7 +203,8 @@ impl OutputParser {
         }
         if self.parse_tools {
             match self.format {
-                ToolFormat::Hermes | ToolFormat::QwenXml => markers.push(TOOL_OPEN),
+                ToolFormat::Hermes => markers.push(TOOL_OPEN),
+                ToolFormat::QwenXml => markers.extend([TOOL_OPEN, FUNC_OPEN]),
                 ToolFormat::Mistral => markers.push(MISTRAL_CALLS),
                 ToolFormat::Llama3 => {}
             }
@@ -284,6 +288,19 @@ impl OutputParser {
                 self.out.extend(calls.into_iter().map(Segment::ToolCall));
                 true
             }
+            Step::NoOpener(call, consumed) => {
+                self.leave_block(consumed);
+                self.strip_ws = true;
+                self.outcomes.push(outcome("repaired", "no_opener"));
+                self.out.push(Segment::ToolCall(call));
+                true
+            }
+            Step::Text(consumed) => {
+                let raw = self.block[..consumed].to_owned();
+                self.leave_block(consumed);
+                self.emit_text(&raw);
+                true
+            }
             Step::Drop(consumed) => {
                 self.outcomes.push(outcome("repaired", "empty_call"));
                 self.leave_block(consumed);
@@ -309,6 +326,9 @@ impl OutputParser {
 
     /// Hermes and Qwen XML: the call ends at `</tool_call>` (or at the end of the output).
     fn step_tagged(&self, finish: bool) -> Step {
+        if self.block.starts_with(FUNC_OPEN) {
+            return self.step_bare(finish);
+        }
         let (content_end, consumed) = match self.block.find(TOOL_CLOSE) {
             Some(i) => (i, i + TOOL_CLOSE.len()),
             None if finish => (self.block.len(), self.block.len()),
@@ -318,8 +338,7 @@ impl OutputParser {
         if content.trim().is_empty() {
             return Step::Drop(consumed);
         }
-        let xml =
-            self.format == ToolFormat::QwenXml && content.trim_start().starts_with("<function=");
+        let xml = self.format == ToolFormat::QwenXml && content.trim_start().starts_with(FUNC_OPEN);
         let call = if xml {
             parse_xml_call(content, &self.tools)
         } else {
@@ -332,6 +351,57 @@ impl OutputParser {
             None if content_end == self.block.len() => Step::Fail(consumed, "unclosed"),
             None if xml => Step::Fail(consumed, "bad_xml"),
             None => Step::Fail(consumed, "bad_json"),
+        }
+    }
+
+    /// Qwen XML without `<tool_call>`: Qwen3-Coder sometimes starts a call at `<function=`
+    /// (and still closes it with `</tool_call>`); llama.cpp's grammar triggers on it too. It is
+    /// a call only if the name is one of the request's tools and a `<parameter=` or
+    /// `</function>` follows; otherwise the opener is text and the rest is scanned again.
+    fn step_bare(&self, finish: bool) -> Step {
+        let b = &self.block;
+        let head = FUNC_OPEN.len();
+        let Some(gt) = b[head..].find('>') else {
+            let partial = &b[head..];
+            let maybe = !finish && self.tools.iter().any(|t| t.name.starts_with(partial));
+            return if maybe { Step::Wait } else { Step::Text(head) };
+        };
+        if !self.tools.iter().any(|t| t.name == b[head..head + gt]) {
+            return Step::Text(head);
+        }
+        let next = b[head + gt + 1..].trim_start();
+        if !(next.starts_with(PARAM_OPEN) || next.starts_with(FUNC_CLOSE)) {
+            let undecided = PARAM_OPEN.starts_with(next) || FUNC_CLOSE.starts_with(next);
+            return if !finish && undecided {
+                Step::Wait
+            } else {
+                Step::Text(head)
+            };
+        }
+        // Ends at `</function>` (swallowing an orphan `</tool_call>` after it) or `</tool_call>`.
+        let (content_end, consumed) = match (b.find(FUNC_CLOSE), b.find(TOOL_CLOSE)) {
+            (Some(f), Some(t)) if t < f => (t, t + TOOL_CLOSE.len()),
+            (Some(f), _) => {
+                let end = f + FUNC_CLOSE.len();
+                let rest = &b[end..];
+                let ws = rest.len() - rest.trim_start().len();
+                let after = &rest[ws..];
+                if after.starts_with(TOOL_CLOSE) {
+                    (end, end + ws + TOOL_CLOSE.len())
+                } else if !finish && TOOL_CLOSE.starts_with(after) {
+                    return Step::Wait;
+                } else {
+                    (end, end)
+                }
+            }
+            (None, Some(t)) => (t, t + TOOL_CLOSE.len()),
+            (None, None) if finish => (b.len(), b.len()),
+            (None, None) => return Step::Wait,
+        };
+        match parse_xml_call(&b[..content_end], &self.tools) {
+            Some(c) => Step::NoOpener(c, consumed),
+            None if content_end == b.len() => Step::Fail(consumed, "unclosed"),
+            None => Step::Fail(consumed, "bad_xml"),
         }
     }
 
@@ -419,6 +489,10 @@ enum Step {
     Fail(usize, &'static str),
     /// An empty call opener: consumed, nothing emitted.
     Drop(usize),
+    /// A Qwen XML call without `<tool_call>`, repaired.
+    NoOpener(ToolCall, usize),
+    /// Not a call attempt: this many bytes are text, the rest is scanned again; no outcome.
+    Text(usize),
 }
 
 enum Json {
@@ -522,7 +596,7 @@ fn llama_partial(block: &str) -> bool {
 
 /// Qwen3-Coder: `<function=NAME>\n<parameter=P>\nVALUE\n</parameter>\n</function>`.
 fn parse_xml_call(content: &str, tools: &[ToolDef]) -> Option<ToolCall> {
-    let rest = content.trim().strip_prefix("<function=")?;
+    let rest = content.trim().strip_prefix(FUNC_OPEN)?;
     let gt = rest.find('>')?;
     let name = rest[..gt].trim();
     if name.is_empty() {
@@ -533,9 +607,9 @@ fn parse_xml_call(content: &str, tools: &[ToolDef]) -> Option<ToolCall> {
     let mut args = Map::new();
     loop {
         body = body.trim_start();
-        let Some(p) = body.strip_prefix("<parameter=") else {
+        let Some(p) = body.strip_prefix(PARAM_OPEN) else {
             let tail = body.trim();
-            if tail.is_empty() || tail == "</function>" {
+            if tail.is_empty() || tail == FUNC_CLOSE {
                 break;
             }
             return None;

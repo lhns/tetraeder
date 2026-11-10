@@ -863,3 +863,96 @@ fn outcomes_by_class() {
     assert_eq!(l.outcomes("{\"a\": 1}"), vec![o("failed", "bad_json")]);
     assert_eq!(l.outcomes("Hello there"), vec![]);
 }
+
+fn cc_bash() -> ToolDef {
+    tool(
+        "Bash",
+        json!({"type": "object", "properties": {
+            "command": {"type": "string"},
+            "description": {"type": "string"},
+            "timeout": {"type": "number"},
+        }, "required": ["command"]}),
+    )
+}
+
+const BARE: &str = "<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n</function>";
+
+/// The leaked call of the 20261110b proxy run (tetraeder-r2-rename-compute-total, first and only
+/// response): Qwen3-Coder left out `<tool_call>` but closed it. llama.cpp's grammar also triggers
+/// on a bare `<function=NAME>` (ADR 0057).
+#[test]
+fn qwen_xml_call_without_opener_from_run_fixture() {
+    let fixtures: Value = serde_json::from_str(include_str!(
+        "../../../bench/results/20261110b/claude-code-proxy/toolcall-fixtures-r2.json"
+    ))
+    .unwrap();
+    let input = fixtures[0]["output"][0]["text"].as_str().unwrap();
+    let (prose, _) = input.split_once("<function=").unwrap();
+    let s = Setup::new(ToolFormat::QwenXml).tools(vec![cc_bash()]);
+    assert_eq!(
+        s.parse(input),
+        vec![
+            t(prose),
+            call(
+                "Bash",
+                json!({
+                    "command": "find /tmp/cc-rename-compute-total-dlaiuah3/repo -type f -name \"*.py\" | head -20",
+                    "description": "Find Python files in the repository",
+                })
+            ),
+        ]
+    );
+    assert_eq!(s.outcomes(input), vec![o("repaired", "no_opener")]);
+}
+
+#[test]
+fn qwen_xml_bare_function_variants() {
+    let s = Setup::new(ToolFormat::QwenXml);
+    let paris = || call("get_weather", json!({"city": "Paris"}));
+    // Without the orphan `</tool_call>`, then text after it.
+    assert_eq!(s.parse(BARE), vec![paris()]);
+    assert_eq!(
+        s.parse(&format!("{BARE}\nDone.")),
+        vec![paris(), t("Done.")]
+    );
+    // Closed by `</tool_call>` alone.
+    let tc = "<function=get_weather><parameter=city>Paris</parameter></tool_call>";
+    assert_eq!(s.parse(tc), vec![paris()]);
+    // A later regular call still parses.
+    let two = format!("{BARE}\n</tool_call>\n{HERMES_A}");
+    assert_eq!(s.parse(&two), vec![paris(), paris()]);
+    assert_eq!(
+        s.outcomes(&two),
+        vec![o("repaired", "no_opener"), o("parsed", "ok")]
+    );
+}
+
+#[test]
+fn qwen_xml_bare_function_in_prose_stays_text() {
+    let s = Setup::new(ToolFormat::QwenXml);
+    // Not a tool of the request: text, no outcome, and a later real call is not swallowed.
+    let prose = "Use <function=NAME> to call a tool. ";
+    let input = format!("{prose}{HERMES_A}");
+    assert_eq!(
+        s.parse(&input),
+        vec![t(prose), call("get_weather", json!({"city": "Paris"}))]
+    );
+    assert_eq!(s.outcomes(&input), vec![o("parsed", "ok")]);
+    // A known name not followed by a parameter or `</function>`: text.
+    let mention = "Call <function=get_weather> with a city.";
+    assert_eq!(s.parse(mention), vec![t(mention)]);
+    assert_eq!(s.outcomes(mention), vec![]);
+    // Output ending right after the opener: text.
+    assert_eq!(s.parse("See <function="), vec![t("See <function=")]);
+    // Other formats do not look for it.
+    let h = Setup::new(ToolFormat::Hermes);
+    assert_eq!(h.parse(BARE), vec![t(BARE)]);
+}
+
+#[test]
+fn qwen_xml_bare_function_unclosed_fails() {
+    let s = Setup::new(ToolFormat::QwenXml);
+    let input = "<function=get_weather>\n<parameter=city>\nPar";
+    assert_eq!(s.parse(input), vec![t(input)]);
+    assert_eq!(s.outcomes(input), vec![o("failed", "unclosed")]);
+}

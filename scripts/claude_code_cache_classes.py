@@ -5,11 +5,16 @@ Reads the proxy logs (proxy-<engine>-*.jsonl, scripts/anthropic_proxy.py) of a c
 The logs carry token counts, not bodies, so conversations are inferred per session: a request continues the open
 conversation with the longest last prompt that is not longer than its own; a request continuing none starts one.
 Classes of uncached tokens (ADR 0051):
-  first        first request of a conversation (Claude Code's prompts diverge after about 22 tokens)
+  first        first request of a conversation (Claude Code's prompts diverge after about 22 tokens: the system
+               prompt starts with `x-anthropic-billing-header: cc_version=X.Y.Z.<per-session hash>;`)
   suffix       at most the growth since the conversation's last prompt (+64): new turns, re-rendered output
   divergence   more than the growth, but at least 1000 tokens cached: the prompt changed mid-way
-  evicted      more than the growth with almost nothing cached: another conversation evicted this one
-With ADR 0049 an evicted conversation is restored from host RAM, so its request costs only the growth.
+  evicted      more than the growth with almost nothing cached: another conversation evicted this one, or the
+               client changed the prompt's start (Claude Code adds `cc_workload=cron;` to the billing header line
+               on a turn woken by ScheduleWakeup); only the request log tells them apart
+With ADR 0049 an evicted conversation is restored from host RAM, so its request costs only the growth; the estimate
+assumes every "evicted" request is an eviction. The first-request cost is fixed per session, so an engine whose
+sessions take fewer turns shows a lower share for the same cache (compare the ceiling, not only the share).
 
     python scripts/claude_code_cache_classes.py bench/results/20261103/claude-code-proxy
 """

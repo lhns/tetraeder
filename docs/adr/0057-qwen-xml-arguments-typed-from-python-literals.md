@@ -36,3 +36,19 @@ Not done: a lazy grammar for `auto` tool choice, as llama.cpp does. It would als
 - The 58 boolean calls of the run become schema-valid; the 2 ReportFindings calls get the right type (their item fields are not checked here). With all else equal the tool-error rate drops from 18.5% to about 7.4% (40 of 541) at best, near llama-server's 5.6%; converted Edits can still fail for task reasons. The turn-limit sessions lose their retry loops. The next proxy run measures it.
 - A string parameter that the model fills with `False` stays `"False"`; only the schema decides.
 - Union types with `string` (`["string", "number"]`) and `anyOf` schemas still keep text; llama.cpp tries JSON first there. No fixture shows them yet.
+
+## Addendum: rerun 20261110b (box 60050186, A40)
+
+Tasks 16/20 on both engines; tool errors 44 of 369 calls (11.9%) against llama-server's 27 of 550 (4.9%). No `input_validation` errors are left. Pairing each `is_error` result in the request logs with its `tool_use`:
+
+| Proxy class | Count | What it is |
+|---|---|---|
+| other | 37 | Bash exit code non-zero: 31 of 80 pytest runs, 6 of 47 python runs |
+| other | 5 | Edit string not found (2), Edit no-op (1), Read on a missing file (1) or a directory (1) |
+| unknown_tool | 2 | `Explore` (a subagent type of `Agent`, not a tool), parsed correctly |
+
+The 42 "other" errors are task outcomes; llama-server's 27 cannot be split from the committed data (no request log). The proxy now classes them `bash_exit` and `file`, and the summary adds `call_error_rate` (input_validation plus unknown_tool per tool call), the part the gateway answers for.
+
+**Bare `<function=` opener.** The one leaked marker (tetraeder-r2-rename-compute-total, first response) was a call without `<tool_call>`: `<function=Bash>...</function>\n</tool_call>`. The parser sent it as text, Claude Code ended the session after one request and the task failed. llama.cpp's grammar triggers on `<function=NAME>` as well. Decision: in the Qwen XML format, `<function=NAME>` starts a call when NAME is one of the request's tools and `<parameter=` or `</function>` follows; it ends at `</function>` (an orphan `</tool_call>` after it is consumed) or at `</tool_call>`. Otherwise only the opener is text and scanning goes on, so prose that mentions `<function=` costs no later call. Outcome `repaired`/`no_opener`, counted in `ToolCallFailures` like `empty_call` (1 of 369 calls here). Test: `qwen_xml_call_without_opener_from_run_fixture`, from `toolcall-fixtures-r2.json`.
+
+**Unknown names.** `Explore` twice against none on llama-server meets this ADR's condition for revisiting a lazy grammar under `auto`. Still not done: it needs a decode benchmark on a box (Rule 3).

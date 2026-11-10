@@ -1489,7 +1489,7 @@
     {
       "id": 39,
       "title": "Tool calls by outcome",
-      "description": "Tool calls per second by parser outcome (parsed, repaired, failed) and class (ok, unknown_tool, empty_call, unclosed, bad_json, bad_xml), ADR 0051. Repaired plus failed above 2% fires ToolCallFailures.",
+      "description": "Tool calls per second by parser outcome (parsed, repaired, failed) and class (ok, unknown_tool, empty_call, no_opener, unclosed, bad_json, bad_xml), ADR 0051, ADR 0057. Repaired plus failed above 2% fires ToolCallFailures.",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",

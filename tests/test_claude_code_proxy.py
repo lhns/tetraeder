@@ -422,6 +422,28 @@ def test_observer_classes_unknown_tool_errors_and_plain_requests():
     assert obs.tool_stats() == {"tool_uses": 0, "tool_errors": {}, "tool_names_unknown": 0, "leaked_markers": 0}
 
 
+def test_tool_error_classes_from_claude_code_wording():
+    # Texts as Claude Code sent them in bench/results/20261110b (request logs of the Tetraeder sessions).
+    cases = {
+        "Exit code 1\n============================= test session starts": "bash_exit",
+        "<tool_use_error>String to replace not found in file.\nString: def f():</tool_use_error>": "file",
+        "<tool_use_error>No changes to make: old_string and new_string are exactly the same.</tool_use_error>": "file",
+        "File does not exist. Note: your current working directory is /tmp/x/repo.": "file",
+        "EISDIR: illegal operation on a directory, read '/tmp/x/repo/legacy//'": "file",
+        "<tool_use_error>Error: No such tool available: Explore</tool_use_error>": "unknown_tool",
+        "<tool_use_error>InputValidationError: Edit failed</tool_use_error>": "input_validation",
+        "boom": "other",
+    }
+    assert {t: anthropic_proxy.tool_error_class(t) for t in cases} == cases
+
+
+def test_engine_stats_call_error_rate_counts_call_errors_only():
+    row = {**req("tetraeder", "a"), "tool_uses": 10,
+           "tool_errors": {"bash_exit": 3, "file": 1, "unknown_tool": 1, "input_validation": 1}}
+    s = summary.engine_stats([session("tetraeder", 1, "a", True)], [row])
+    assert (s["tool_error_rate"], s["call_error_rate"]) == (0.6, 0.2)
+
+
 def test_engine_stats_tool_totals_and_old_rows():
     old = req("tetraeder", "a")
     new = {**req("tetraeder", "a"), "tool_uses": 4, "tool_errors": {"input_validation": 1, "other": 1},

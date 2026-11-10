@@ -20,6 +20,8 @@ import sys
 DEPTH_BINS = [0, 10000, 20000, 30000, 40000, 60000, 100000, 1 << 31]
 # Requests with fewer output tokens are dominated by the first-token latency.
 MIN_DECODE_TOKENS = 20
+# Tool errors caused by the engine's tool-call output (anthropic_proxy.tool_error_class); the rest are task outcomes.
+CALL_ERROR_CLASSES = ("input_validation", "unknown_tool")
 # llama-server's per-task decode line ("prompt eval time" is the prefill line).
 LLAMA_EVAL = re.compile(r"(?<!prompt )eval time =\s*([\d.]+) ms /\s*(\d+) tokens")
 
@@ -81,6 +83,7 @@ def engine_stats(sessions, requests):
             errors_by_class[cls] = errors_by_class.get(cls, 0) + n
     tool_uses = tok("tool_uses")
     tool_errors = sum(errors_by_class.values())
+    call_errors = sum(errors_by_class.get(c, 0) for c in CALL_ERROR_CLASSES)
     return {
         "runs": len(sessions),
         "successes": successes,
@@ -105,6 +108,7 @@ def engine_stats(sessions, requests):
         "tool_names_unknown_total": tok("tool_names_unknown"),
         "leaked_markers_total": tok("leaked_markers"),
         "tool_error_rate": _r(tool_errors / tool_uses) if tool_uses else None,
+        "call_error_rate": _r(call_errors / tool_uses) if tool_uses else None,
     }
 
 
