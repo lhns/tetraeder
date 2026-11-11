@@ -44,7 +44,8 @@ Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed pa
    - Message-boundary and near-tail checkpoints for the prefix cache: skipped (ADR 0051). Full-attention KV is already reused to the longest common prefix at any token; they pay only for recurrent or sliding-window state.
    - Tool-call repair in the gateway (ADR 0051, briefs G1 and G2 in `docs/gateway-briefs.md`): the first run shows one failure (an empty `<tool_call>` leaked as text, 1 of 483 responses). Build outcome counts and that one repair; further classes only from the rerun's numbers.
    - Recheck the llama-server and planner baselines with the expert cache on. Pair against Strata once both engines run one model.
-9. **Smaller:**
+9. **llama.cpp FP8 KV cache** (llama.cpp #28392, merged 2026-11-10, after the baseline pin): at 32K on the 235B the KV cache is about 6 GB in f16, about 3 GB in FP8, so about 3 GB more VRAM for the expert cache. Move `LLAMA_BASELINE_COMMIT` past it and rerun `llamacpp-cache` with an FP8 KV cache and the freed VRAM in `--moe-cache-mib`, paired with the builder. KTransformers already runs `fp8_e5m2` KV. Ampere has no FP8 math, so measure whether the conversion costs decode. Also a candidate format for the builder's low-bit KV (ADR 0050 b).
+10. **Smaller:**
    - imatrix and IQ formats below 4 bits.
    - Per-expert formats need typed slots.
    - Replanning in `serve --plan` (ADR 0055): part A is in; part B (op offload switch in libllama, builder prefill chunk from the plan, `Scheduler::shutdown` join) waits for `track-r` and `track-s`, and the box benchmark (switch time and refused requests, paired against restarting llama-server) waits for the hold.
