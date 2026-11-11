@@ -1,4 +1,4 @@
-# M1: status and open items (2026-11-11: every exit test passed; three points await the owner)
+# M1: status and open items (2026-11-11: every exit test passed; four points await the owner)
 
 Session profiles for later box runs: [`docs/sessions.md`](sessions.md) (`scripts/session.sh`).
 
@@ -17,7 +17,7 @@ State on 2026-11-10 after five box sessions (`bench/results/20261110*/`). Everyt
 
 ## M1 status (2026-11-11)
 
-Open for the owner's decision before M1 is declared reached: (1) llama.cpp's tuner was not run on the 235B (it gave no share on the 30B; shares 0 and 0.9 were run by hand); (2) the Phase 3b proxy run predates the RAM-tier `serve` defaults (argued unaffected, not re-measured); (3) on AVX-512 the margin over KTransformers (1.04 to 1.12) is within its 7.8% run spread.
+Open for the owner's decision before M1 is declared reached: (1) llama.cpp's tuner was not run on the 235B (it gave no share on the 30B; shares 0 and 0.9 were run by hand); (2) the Phase 3b proxy run predates the RAM-tier `serve` defaults (argued unaffected, not re-measured); (3) on AVX-512 the margin over KTransformers (1.04 to 1.12) is within its 7.8% run spread; (4) on a slow disk (0.5 to 0.7 GB/s, `20261111b`) KTransformers decodes about 1.6x faster than the builder (ratios 0.56 to 0.62), while prefill stays 1.8x ahead, so the decode margin depends on disk bandwidth.
 
 Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed paired same-box run; the table above names them. The closing run (`20261110f`, box 60083507) is in. Deviations that remain:
 

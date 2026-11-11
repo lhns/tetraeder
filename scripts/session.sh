@@ -176,7 +176,11 @@ f32="Qwen__Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf"
   case "$name" in
     b1-exit | b1b-levers)
       # the 7-layer -ot llama.cpp fits on a 24 GB card at 32K and the same expert bytes as builder slots (ADR 0045)
-      export VRAM_SLOT_BYTES="${VRAM_SLOT_BYTES:-10966007808}"
+      # 10 layers fit a 3090 (24576 MiB); an A10 (23028 MiB) fails "graph tensors" at ubatch 2048 and takes 8 (20261111b)
+      vram_mib=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+      slot_default=10966007808
+      [ "${vram_mib:-24576}" -lt 24000 ] && slot_default=8580759552
+      export VRAM_SLOT_BYTES="${VRAM_SLOT_BYTES:-$slot_default}"
       export OT_FIT="${OT_FIT:-blk\.[0-6]\.ffn_.*_exps=CUDA0;exps=CPU}"
       (bash scripts/fetch_exit_model.sh 8>&- &)
       share=0.5
