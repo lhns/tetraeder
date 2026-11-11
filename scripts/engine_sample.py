@@ -259,9 +259,9 @@ def find_curve(directory):
     return found[-1] if found else None
 
 
-def disk_util(read_mb_s, depth, curve):
-    """Achieved read rate over the curve's rate at `depth` (linear between points, clamped to the curve's range)."""
-    if read_mb_s is None or depth is None or not curve:
+def curve_capacity(depth, curve):
+    """The curve's bytes/s at `depth` (linear between points, clamped to the curve's range); None without inputs."""
+    if depth is None or not curve:
         return None
     d = min(max(depth, curve[0][0]), curve[-1][0])
     cap = curve[-1][1]
@@ -269,44 +269,59 @@ def disk_util(read_mb_s, depth, curve):
         if d0 <= d <= d1:
             cap = b0 + (b1 - b0) * (d - d0) / (d1 - d0) if d1 > d0 else b1
             break
-    return read_mb_s * 1e6 / cap if cap else None
+    return cap
 
 
-def read_wait_share(profile):
-    """read_wait_ms over total_ms of a builder profile block, None without them."""
+def disk_util(read_mb_s, depth, curve):
+    """Achieved read rate over the curve's rate at `depth`."""
+    cap = curve_capacity(depth, curve)
+    return read_mb_s * 1e6 / cap if read_mb_s is not None and cap else None
+
+
+def read_wait_share(profile, io=None):
+    """(read_wait_ms over total_ms of a builder profile block, unreliable).
+
+    Prefetch-only runs report read_wait_ms 0 although they read (`io` bytes > 0): the share is then None and
+    unreliable, not 0."""
     try:
-        return profile["read_wait_ms"] / profile["total_ms"]
+        if profile["read_wait_ms"] == 0 and io and io.get("bytes", 0) > 0:
+            return None, True
+        return profile["read_wait_ms"] / profile["total_ms"], False
     except (KeyError, TypeError, ZeroDivisionError):
-        return None
+        return None, False
 
 
 def io_class(h):
-    """(class, missing inputs) of one host phase summary, same rule for the builder and the baselines.
+    """(class, missing inputs) of one host phase summary, same rule for the builder and the baselines. Report-only.
 
-    Stall share s is the larger of io_some_share and read_wait_share (builder only). Below IO_BOUND_SHARE the phase is
-    not I/O bound; else disk_util >= DISK_UTIL_BOUND means the disk bandwidth is the limit, a queue depth below
-    SERIAL_QUEUE_DEPTH serial reads or page faults (latency), anything else too few requests in flight."""
+    disk_util >= DISK_UTIL_BOUND is `disk_bandwidth` whatever the stall share. Else the stall share s (the larger of
+    io_some_share and read_wait_share) below IO_BOUND_SHARE is `not_io_bound`; else a queue depth below
+    SERIAL_QUEUE_DEPTH is `io_latency` (serial reads or page faults), anything else `io_under_issue`."""
+    if h.get("disk_util") is not None and h["disk_util"] >= DISK_UTIL_BOUND:
+        return "disk_bandwidth", []
     shares = [h[k] for k in ("io_some_share", "read_wait_share") if h.get(k) is not None]
     if not shares:
         return "unknown", ["io_some_share"]
     if max(shares) < IO_BOUND_SHARE:
         return "not_io_bound", []
-    missing = [k for k in ("disk_util", "disk_queue_depth_mean") if h.get(k) is None]
-    if h.get("disk_util") is None:
-        return "unknown", missing
-    if h["disk_util"] >= DISK_UTIL_BOUND:
-        return "disk_bandwidth", []
-    if h.get("disk_queue_depth_mean") is None:
-        return "unknown", missing
+    if h.get("disk_util") is None or h.get("disk_queue_depth_mean") is None:
+        return "unknown", [k for k in ("disk_util", "disk_queue_depth_mean") if h.get(k) is None]
     return ("io_latency" if h["disk_queue_depth_mean"] < SERIAL_QUEUE_DEPTH else "io_under_issue"), []
 
 
-def classify(h, curve, rw_share=None):
-    """Adds disk_util, read_wait_share, io_class and io_class_missing to a phase summary."""
+def classify(h, curve, rw=(None, False)):
+    """Adds the attribution numbers and the report-only io_class to a phase summary: bytes_per_token, disk_util,
+    tok_s_ceiling_disk (curve capacity at the observed depth over bytes_per_token), read_wait_share, io_class."""
     if "error" in h:
         return h
+    cap = curve_capacity(h.get("disk_queue_depth_mean"), curve)
+    bpt = h.get("read_bytes_per_token")
+    h["bytes_per_token"] = bpt
     h["disk_util"] = disk_util(h.get("read_mb_s"), h.get("disk_queue_depth_mean"), curve)
-    h["read_wait_share"] = rw_share
+    h["tok_s_ceiling_disk"] = cap / bpt if cap and bpt else None
+    h["read_wait_share"], unreliable = rw
+    if unreliable:
+        h["read_wait_share_unreliable"] = True
     h["io_class"], h["io_class_missing"] = io_class(h)
     return h
 
@@ -335,15 +350,41 @@ def env_info():
     return {"cpu_model": model, "cpu_avx512_flags": flags}
 
 
-def host_summary(rows, pre, dec, threads, curve, rw=(None, None)):
-    """{"prefill", "decode"} phase summaries with the I/O attribution fields; rw = read_wait_share of each phase."""
-    return {"prefill": classify(phase(rows, pre[0], pre[1], pre[2], threads), curve, rw[0]),
-            "decode": classify(phase(rows, dec[0], dec[1], dec[2], threads), curve, rw[1])}
+N_DECODE_WINDOWS = 4
 
 
-def builder_read_wait(path):
+def equal_windows(dec, n=N_DECODE_WINDOWS):
+    """n equal time slices of a decode window; the token count is split evenly (an estimate: engines that report no
+    per-token times cannot say better)."""
+    t0, t1, tokens = dec
+    step = (t1 - t0) / n
+    return [(t0 + i * step, t0 + (i + 1) * step, tokens / n, (None, False)) for i in range(n)]
+
+
+def host_summary(rows, pre, dec, threads, curve, rw=((None, False), (None, False)), windows=None):
+    """{"prefill", "decode", "decode_windows"} summaries with the I/O attribution fields. rw = read_wait_share result
+    of prefill and decode; windows = [(t0, t1, tokens, rw)] of the decode (default: 4 equal time slices, tokens
+    estimated, flagged "tokens_estimated")."""
+    est = windows is None
+    out = {"prefill": classify(phase(rows, pre[0], pre[1], pre[2], threads), curve, rw[0]),
+           "decode": classify(phase(rows, dec[0], dec[1], dec[2], threads), curve, rw[1]),
+           "decode_windows": []}
+    for t0, t1, n, wrw in windows or equal_windows(dec):
+        w = classify(phase(rows, t0, t1, n, threads), curve, wrw)
+        if est:
+            w["tokens_estimated"] = True
+        out["decode_windows"].append(w)
+    return out
+
+
+def builder_extras(path):
+    """(read-wait results of prefill and decode, per-window (t0, t1, tokens, read-wait result)) of a harness JSON."""
     run = json.loads(ds.read(path))["runs"][0]
-    return read_wait_share(run.get("prefill_profile_per_ubatch")), read_wait_share(run.get("decode_profile_per_token"))
+    rw = (read_wait_share(run.get("prefill_profile_per_ubatch"), run.get("prefill_io")),
+          read_wait_share(run.get("decode_profile_per_token"), run.get("decode_io")))
+    wins = [(w["start_unix_s"], w["end_unix_s"], w["tokens"], read_wait_share(w.get("profile_per_token"), w.get("io")))
+            for w in run["decode_windows"]]
+    return rw, wins
 
 
 def kt_summary(summary_path):
@@ -362,8 +403,8 @@ def summarize(a):
     pre, dec = windows_builder(a.builder_json) if a.builder_json else windows_kt(a.kt_json)
     curve_file = a.curve or find_curve(a.curve_dir or os.path.dirname(os.path.abspath(a.merge_into or a.out)))
     curve = load_curve(curve_file) if curve_file else []
-    rw = builder_read_wait(a.builder_json) if a.builder_json else (None, None)
-    out = {"host": host_summary(rows, pre, dec, a.threads, curve, rw), "env": env_info()}
+    rw, wins = builder_extras(a.builder_json) if a.builder_json else (((None, False),) * 2, None)
+    out = {"host": host_summary(rows, pre, dec, a.threads, curve, rw, wins), "env": env_info()}
     out["env"]["disk_curve"] = os.path.basename(curve_file) if curve else None
     json.dump(out, open(a.out, "w"), indent=1)
     print(json.dumps(out["host"]))

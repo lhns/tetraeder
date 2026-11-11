@@ -46,10 +46,44 @@ def test_class_uses_the_larger_share():
     assert cls(io_some_share=0.05, read_wait_share=0.6, disk_util=0.1, disk_queue_depth_mean=5)[0] == "io_under_issue"
 
 
+def test_class_disk_util_decides_before_the_stall_share():
+    assert cls(io_some_share=0.01, disk_util=0.95)[0] == "disk_bandwidth"
+    assert cls(disk_util=0.95)[0] == "disk_bandwidth"
+
+
 def test_class_unknown_lists_missing_inputs():
     assert cls() == ("unknown", ["io_some_share"])
+    assert cls(disk_util=0.2) == ("unknown", ["io_some_share"])
     assert cls(io_some_share=0.5, disk_queue_depth_mean=3) == ("unknown", ["disk_util"])
     assert cls(io_some_share=0.5, disk_util=0.2) == ("unknown", ["disk_queue_depth_mean"])
+
+
+def test_classify_adds_the_numbers_and_the_ceiling():
+    h = {"read_mb_s": 2500.0, "disk_queue_depth_mean": 3.0, "read_bytes_per_token": 5e8}
+    es.classify(h, CURVE, (0.4, False))
+    assert h["bytes_per_token"] == 5e8 and h["disk_util"] == pytest.approx(0.5)
+    assert h["tok_s_ceiling_disk"] == pytest.approx(10.0)  # 5e9 B/s over 5e8 B
+    assert h["io_class"] == "io_under_issue"
+    no_curve = es.classify({"read_mb_s": 1.0, "disk_queue_depth_mean": 3.0, "read_bytes_per_token": 5e8}, [])
+    assert no_curve["tok_s_ceiling_disk"] is None and no_curve["disk_util"] is None
+
+
+def test_prefetch_only_read_wait_is_unreliable_not_zero():
+    prof = {"read_wait_ms": 0.0, "total_ms": 900.0}
+    assert es.read_wait_share(prof, {"bytes": 5e9}) == (None, True)
+    assert es.read_wait_share(prof, {"bytes": 0}) == (0.0, False)
+    assert es.read_wait_share({"read_wait_ms": 90.0, "total_ms": 900.0}, {"bytes": 5e9}) == (pytest.approx(0.1), False)
+    h = es.classify({"read_mb_s": 1.0, "disk_queue_depth_mean": 3.0}, CURVE, es.read_wait_share(prof, {"bytes": 5e9}))
+    assert h["read_wait_share"] is None and h["read_wait_share_unreliable"] is True
+    assert h["io_class"] == "unknown"
+
+
+def test_host_summary_splits_baseline_decode_into_four_estimated_windows():
+    rows = [rec(t, some=t * 300_000, full=0, wms=t * 1000, rb=t * 10**8) for t in range(0, 41)]
+    out = es.host_summary(rows, (0, 10, 100), (10, 30, 8), 4, CURVE)
+    assert len(out["decode_windows"]) == 4
+    assert all(w["tokens_estimated"] and w["tokens"] == 2 for w in out["decode_windows"])
+    assert out["decode_windows"][0]["io_some_share"] == pytest.approx(0.3)
 
 
 # disk_util
@@ -162,17 +196,15 @@ def test_kt_summary_without_a_summary_is_an_error_not_empty(tmp_path):
 
 def builder_share(date, name):
     d = json.loads((RESULTS / date / name).read_text())
-    return es.read_wait_share(d["runs"][0]["decode_profile_per_token"])
+    return es.read_wait_share(d["runs"][0]["decode_profile_per_token"])[0]
 
 
-def test_regression_slow_disk_overlap_is_an_io_class():
+def test_regression_slow_disk_overlap_is_not_not_io_bound():
     s = builder_share("20261111b", "exit-main-overlap-100117.json")
     assert s == pytest.approx(0.80, abs=0.01)
-    # no committed curve for this box: unknown, but never not_io_bound; with the curve it is a disk class
+    # no committed curve for this box: unknown (missing disk_util), never not_io_bound
     host = {"read_wait_share": s, "disk_queue_depth_mean": 17.2, "read_mb_s": 514.6}
-    assert es.io_class(host)[0] == "unknown"
-    host["disk_util"] = es.disk_util(514.6, 17.2, CURVE)
-    assert es.io_class(host)[0] in ("disk_bandwidth", "io_under_issue")
+    assert es.io_class(host) == ("unknown", ["disk_util"])
 
 
 def test_regression_fast_disk_overlap_is_not_io_bound():
@@ -181,19 +213,23 @@ def test_regression_fast_disk_overlap_is_not_io_bound():
     assert es.io_class({"read_wait_share": s})[0] == "not_io_bound"
 
 
-def test_regression_w4_at_024_is_not_io_bound_under_these_thresholds():
-    # the under-issue case: only disk_util with a curve would flag it, the share alone does not
+def test_regression_w4_is_a_known_miss_without_a_disk_curve():
+    # share 0.24, slower than the default because 4 workers under-issue: the rule gives not_io_bound; only a curve's
+    # disk_util and tok_s_ceiling_disk would show it
     s = builder_share("20261111a", "exit-main-overlap-w4-025210.json")
     assert s == pytest.approx(0.24, abs=0.01)
     assert es.io_class({"read_wait_share": s})[0] == "not_io_bound"
 
 
-def test_regression_kt_20261111c_is_io_latency():
-    host = {"seconds": 120.70, "tokens": 63, "read_bytes": 8375750656, "read_mb_s": 69.39,
-            "disk_queue_depth_mean": 0.3708, "majflt_per_token": 2585.97, "cpu_busy_pct": 56.30,
-            "gpu_busy_pct": 1.30, "cache_file_gb_max": 83.49}
+def test_regression_kt_20261111c_from_its_committed_host_block():
+    d = json.loads((RESULTS / "20261111c" / "exit-ktransformers-123631.json").read_text())["host"]["decode"]
+    assert d["read_mb_s"] == pytest.approx(69.39, abs=0.01)
+    assert d["disk_queue_depth_mean"] == pytest.approx(0.371, abs=0.001)
     curve = es.load_curve(str(RESULTS / "20261111c" / "disk-curve-loaded-123631.json"))
-    host["disk_util"] = es.disk_util(host["read_mb_s"], host["disk_queue_depth_mean"], curve)
-    assert host["disk_util"] < 0.1
-    host["io_some_share"] = 0.5  # assumed: the run logged no I/O pressure
-    assert es.io_class(host) == ("io_latency", [])
+    es.classify(d, curve)
+    assert d["disk_util"] < 0.1
+    assert d["tok_s_ceiling_disk"] > 5  # the disk could feed far more tokens/s than the run made
+    # no stall share was logged: unknown (missing io_some_share), disk_util does not decide
+    assert (d["io_class"], d["io_class_missing"]) == ("unknown", ["io_some_share"])
+    d["io_some_share"] = 0.5  # with a stall share the serial reads show
+    assert es.io_class(d) == ("io_latency", [])

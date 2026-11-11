@@ -3,7 +3,7 @@
 # (tests/exit_regime.rs) against llama.cpp with expert offload (-ot) on the same box and threads.
 # Waits for scripts/fetch_exit_model.sh. Started detached by `taxameter run scripts/exit_run.sh`; ends with
 # EXIT_RUN_DONE rc=N in runs/vast/exit_run.log. Every stage has a time limit; a failed smoke gate stops the run.
-# Every builder run and the KTransformers runs are sampled by scripts/engine_sample.py (disk reads and queue depth,
+# Every builder, KTransformers and llama.cpp cache run is sampled by scripts/engine_sample.py (disk reads and queue depth,
 # major faults, CPU and GPU busy, RSS and page cache, prefill and decode apart): "host" and the CPU flags in "env" of the
 # result JSON. ggml is built once for the native ISA of the box (TETRAEDER_GGML_NATIVE=ON, ADR 0052 addendum
 # 2026-11-09: a DL build would compile 14 CPU variants on a fresh box); "ggml_system_info" in each result records
@@ -187,10 +187,10 @@ exit_regime() {
   want "$name" || return 0
   # RANDOM_PROMPT=1: pseudo-random token ids instead of the prompt text, as llama-bench uses
   local text=(TETRAEDER_EXIT_PROMPT_FILE="$prompt")
+  [[ " $* " == *" RANDOM_PROMPT=1 "* ]] && text=()
   # deep builder stages decode in 4 windows, so a warm-up after the prefill shows (run-level decode_tok_s, decode_io and
   # profile stay whole-run aggregates); a caller's own TETRAEDER_EXIT_DECODE_WINDOWS in "$@" comes later and wins
   case "$name" in main-overlap* | main-prefetch* | main-repeat) text+=(TETRAEDER_EXIT_DECODE_WINDOWS=4) ;; esac
-  [[ " $* " == *" RANDOM_PROMPT=1 "* ]] && text=()
   echo "[$(date +%T)] start $name"
   local json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
   ensure_disk

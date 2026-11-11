@@ -64,7 +64,9 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 
 **Launch.** No models at provision (the script fetches the 235B). `$T run --id <id> scripts/session.sh --env SESSION=b1-exit --env MOE_CPU_SHARE=<tune.json cpu_share from B3>`. Defaults: `VRAM_SLOT_BYTES=10966007808`, `OT_FIT='blk\.[0-6]\.ffn_.*_exps=CUDA0;exps=CPU'` (fitted for a 24 GB card at 32K). Without `MOE_CPU_SHARE` it takes the newest committed `moe-cache-tune/tune.json`, else 0.5 (logged).
 
-**Stages** (code order of `exit_run.sh`; every builder stage has prefetch on at depth 2, the ADR 0038 levers; host sampling on every builder and KT stage). The verdict triple comes first and adjacent, then the noise pair; what does not fit is cut from the end:
+**I/O attribution.** `disk-curve` is required in both B1 profiles (it is in both default stage lists; keep it in a `B1_STAGES` override): with the loaded curve every exit stage, builder or baseline, gets `host.decode.disk_util` and `io_class` (`disk_bandwidth`, `io_latency`, `io_under_issue`, `not_io_bound`, `unknown`) next to the I/O pressure shares (ADR 0056 addendum 2026-11-11).
+
+**Stages** (code order of `exit_run.sh`; every builder stage has prefetch on at depth 2, the ADR 0038 levers; host sampling on every builder, KT and llama.cpp cache stage). The verdict triple comes first and adjacent, then the noise pair; what does not fit is cut from the end:
 
 | # | Stage | Estimate | Cumulative | Decides |
 |---|---|---|---|---|
@@ -213,8 +215,6 @@ Three stages feed the tier term and the calibration ledger. All are written into
 | `disk-curve` | `exit_run.sh` (b1-exit, b1b-levers), `planner_builder_campaign.sh` (b3-planner) | 2 | the `nvme0` queue curve of the box, idle and beside `quota - 1` spinning threads (ADR 0054's starvation case): the tier term charges disk reads from it | `disk-curve-idle-<stamp>.json`, `disk-curve-loaded-<stamp>.json` next to the exit results; `planner-moe-builder/disk-curve-{idle,loaded}.json` |
 | `trace` (builder fixture) | `planner_builder_campaign.sh` (b3-planner); `trace` of `exit_run.sh` for the 235B as before | 5 on the 30B | `tier-replay.json`: bytes per token for every slot pair of the fixture's anchors and candidates, so RAM options stop tying | `planner-moe-builder/tier-replay.json`; `routing.trace` when it compresses to under 20 MB |
 | `anchors-builder-short` | `exit_run.sh` (last stage of b1b-levers; `ANCHORS_BUILDER_SHORT=1` elsewhere) | 8 to 12 (4 of them the first planner build) | ledger coverage of the session: the builder anchors that fit (two on the 91 GB class) at pp512 tg32 plus the session's builder stages as variants, with their read path | `ledger-<session>/` (`layout.json`, `candidates.json`, `<variant>.r1.json`) |
-
-**I/O attribution.** `disk-curve` is required in both B1 profiles (`session.sh` adds it to a `B1_STAGES` that lacks it): with the loaded curve every exit stage, builder or baseline, gets `host.decode.disk_util` and `io_class` (`disk_bandwidth`, `io_latency`, `io_under_issue`, `not_io_bound`, `unknown`) next to the I/O pressure shares (ADR 0056 addendum 2026-11-11).
 
 **What each session must export.** `session.sh` exports `TETRAEDER_GIT_COMMIT` and `TETRAEDER_SESSION` (part A); every result then carries them, and a result without them never enters the ledger. For the tier term the fetch must bring `disk-curve-loaded-*.json` (the scorer reads `disk-curve-loaded.json` of a fixture directory; copy the exit session's file there under that name) and, for the builder fixture, `tier-replay.json`.
 
