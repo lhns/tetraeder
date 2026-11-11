@@ -23,6 +23,7 @@ MIN_DECODE_TOKENS = 20
 # Tool errors caused by the engine's tool-call output (anthropic_proxy.tool_error_class); the rest are task outcomes.
 CALL_ERROR_CLASSES = ("input_validation", "unknown_tool")
 # llama-server's per-task decode line ("prompt eval time" is the prefill line).
+REQLOG_NAME = re.compile(r"(.+)-r\d+\.reqlog")
 LLAMA_EVAL = re.compile(r"(?<!prompt )eval time =\s*([\d.]+) ms /\s*(\d+) tokens")
 
 
@@ -109,6 +110,8 @@ def engine_stats(sessions, requests):
         "leaked_markers_total": tok("leaked_markers"),
         "tool_error_rate": _r(tool_errors / tool_uses) if tool_uses else None,
         "call_error_rate": _r(call_errors / tool_uses) if tool_uses else None,
+        # The gateway's own outcome counts (main() fills them from the request logs); None without them.
+        "toolcall_outcomes": None,
     }
 
 
@@ -186,6 +189,31 @@ def server_decode(path):
     return out
 
 
+def toolcall_outcomes(path):
+    """Gateway tool-call outcome counts (`outcome/class`) summed per engine from `<engine>-r<rep>.reqlog*`.
+
+    An engine maps to None when its logs carry no `tool_outcomes` field (llama-server, older tetraeder logs).
+    """
+    out = {}
+    for f in sorted(glob.glob(os.path.join(path, "*.reqlog*"))):
+        m = REQLOG_NAME.match(os.path.basename(f))
+        if not m:
+            continue
+        counts = out.get(m.group(1))
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    o = json.loads(line).get("tool_outcomes")
+                except (ValueError, AttributeError):
+                    continue
+                if isinstance(o, dict):
+                    counts = counts or {}
+                    for k, n in o.items():
+                        counts[k] = counts.get(k, 0) + n
+        out[m.group(1)] = counts
+    return {e: dict(sorted(c.items())) if c is not None else None for e, c in out.items()}
+
+
 def summarize(sessions, requests):
     engines = sorted({s["engine"] for s in sessions} | {r["engine"] for r in requests})
     out = {"engines": {}, "comparison": {}}
@@ -236,6 +264,9 @@ def main(argv=None):
         return 1
     summary = summarize(sessions, requests)
     summary["server_decode"] = server_decode(path)
+    outcomes = toolcall_outcomes(path)
+    for e, s in summary["engines"].items():
+        s["toolcall_outcomes"] = outcomes.get(e)
     with open(os.path.join(path, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
         f.write("\n")

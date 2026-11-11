@@ -7,6 +7,7 @@ use crate::engine::{EngineStats, FinishReason, GenEvent, Vocab};
 use crate::error::GatewayError;
 use crate::toolcall::OutputParser;
 use opentelemetry::KeyValue;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{OwnedSemaphorePermit, mpsc};
@@ -26,6 +27,8 @@ pub(super) struct Run {
     /// Parallel calls are off: generation ends after the first complete tool call.
     pub(super) single_call: bool,
     pub(super) stop: StopMatcher,
+    /// Tool-call outcomes of this run, keyed `outcome/class`.
+    pub(super) tool_outcomes: BTreeMap<String, u32>,
     pub(super) cancel: CancellationToken,
     pub(super) span: tracing::Span,
     pub(super) _permit: OwnedSemaphorePermit,
@@ -51,17 +54,23 @@ impl Run {
 
     /// Counts the tool calls the parser decided on since the last call.
     fn record_outcomes(&mut self) {
-        let (Some(p), Some(m)) = (self.parser.as_mut(), &self.gw.metrics) else {
+        let Some(p) = self.parser.as_mut() else {
             return;
         };
         for o in p.take_outcomes() {
-            m.tool_calls.add(
-                1,
-                &[
-                    KeyValue::new("tetraeder.outcome", o.outcome),
-                    KeyValue::new("tetraeder.class", o.class),
-                ],
-            );
+            *self
+                .tool_outcomes
+                .entry(format!("{}/{}", o.outcome, o.class))
+                .or_default() += 1;
+            if let Some(m) = &self.gw.metrics {
+                m.tool_calls.add(
+                    1,
+                    &[
+                        KeyValue::new("tetraeder.outcome", o.outcome),
+                        KeyValue::new("tetraeder.class", o.class),
+                    ],
+                );
+            }
         }
     }
 

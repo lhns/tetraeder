@@ -526,6 +526,7 @@ impl Gateway {
                     if !tools.is_empty() && *tool_choice != ToolChoice::None
             ),
             stop: StopMatcher::new(spec.stop.clone()),
+            tool_outcomes: Default::default(),
             cancel: cancel.clone(),
             span: span.clone(),
             _permit: permit,
