@@ -15,12 +15,13 @@ exec 9> /root/tetraeder_llamacpp_cache.lock; flock -n 9 || { echo "llamacpp_cach
 model=$1 threads=$2 mib=$3 share=$4 ctx=$5 prompt=$6 out=$7
 server="${LLAMA_BASELINE_SERVER:-/opt/llama.cpp-baseline/bin/llama-server}"
 [ -x "$server" ] || { echo "missing $server" >&2; exit 3; }
-work=/root/llamacpp_cache
+# server log and host samples go under runs/vast (fetched with the results), one pair per result file
+work="${LLAMACPP_CACHE_WORK:-$PWD/runs/vast/llamacpp_cache}"
 mkdir -p "$work"
 # newer llama.cpp fits tensors to free memory by itself (-fit); off, so the flags below are what runs
 fit_off=()
 "$server" --help 2>&1 | grep -q -- '--fit ' && fit_off=(-fit off)
-SCRIPTS_DIR=$(cd "$(dirname "$0")" && pwd) HOST_DISK_DEV="${HOST_DISK_DEV:-}" python3 -I - "$server" "$work/s$share.log" "${PORT:-18088}" "$model" "$threads" "$mib" "$share" "$ctx" "$prompt" "$out" \
+SCRIPTS_DIR=$(cd "$(dirname "$0")" && pwd) HOST_DISK_DEV="${HOST_DISK_DEV:-}" python3 -I - "$server" "$work/$(basename "$out" .json).log" "${PORT:-18088}" "$model" "$threads" "$mib" "$share" "$ctx" "$prompt" "$out" \
   "${LOAD_MODE:-auto}" "${PREFILL:-32768}" "${DECODE:-64}" "${UBATCH:-2048}" "${fit_off[@]}" << 'EOF'
 import json, os, re, signal, subprocess, sys, time, urllib.request
 
