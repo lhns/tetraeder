@@ -292,7 +292,9 @@ moe_tune() {
     return 0
   }
   echo "[$(date +%T)] start moe-tune: max $((vram_bytes / 1048576)) MiB"
-  GGUF="$model" MAX_MIB=$((vram_bytes / 1048576)) THREADS="$threads" TUNE_MIN="${TUNE_MIN:-40}"     RESULTS_DATE="$(basename "$date_dir")" bash scripts/moe_cache_tune.sh 8>&-
+  # CTX 8192: the tuner's first probe takes 10% of the expert bytes (13 GB on the 235B) whatever --max-mib says,
+  # which with the f16 KV of 32K OOMs a 24 GB card (20261111c); its pick stays capped at MAX_MIB and runs at 32K
+  GGUF="$model" MAX_MIB=$((vram_bytes / 1048576)) THREADS="$threads" TUNE_MIN="${TUNE_MIN:-40}" CTX="${TUNE_CTX:-8192}" RESULTS_DATE="$(basename "$date_dir")" bash scripts/moe_cache_tune.sh 8>&-
   echo "[$(date +%T)] done moe-tune rc=$?"
 }
 
