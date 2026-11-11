@@ -1,4 +1,4 @@
-# M1: status and open items (2026-11-10)
+# M1: status and open items (2026-11-11: M1 reached)
 
 Session profiles for later box runs: [`docs/sessions.md`](sessions.md) (`scripts/session.sh`).
 
@@ -8,18 +8,18 @@ State on 2026-11-10 after five box sessions (`bench/results/20261110*/`). Everyt
 
 | Phase | Exit test | Status |
 |---|---|---|
-| 2 MoE builder, model larger than RAM | at least as fast as the best baseline, logit parity | **Met on AVX2 at `serve` defaults; AVX-512 overlap unmeasured (see M1 status).** AVX-512 box (b1-exit, `20261110/`): prefill 1.83x KTransformers and 6.4x the llama.cpp expert cache (dio OOMs at 91 GB, mmap is its best), decode 1.13x KT on the means and 1.57x the cache. AVX2 closing run (`20261110f`, 30 threads): overlap decodes 4.6x the llama.cpp cache at share 0 and 1.66x at share 0.9, prefill 2.8x. AVX2 box with CPU matched (b1c, `20261110e/`, 30 threads = floor(quota)): ADR 0054 overlap (default in `serve`) decodes 1.14x and 1.18x KT, prefill 2.3x. `-ot` beaten earlier (1.23x to 1.60x); ik_llama cannot run the 235B in 128 GB. Parity: greedy equal; logit offset explained as GPU kernel fusion. |
+| 2 MoE builder, model larger than RAM | at least as fast as the best baseline, logit parity | **Met at `serve` defaults on AVX2 and AVX-512.** AVX-512 box (b1-exit, `20261110/`): prefill 1.83x KTransformers and 6.4x the llama.cpp expert cache (dio OOMs at 91 GB, mmap is its best), decode 1.13x KT on the means and 1.57x the cache. AVX2 closing run (`20261110f`, 30 threads): overlap decodes 4.6x the llama.cpp cache at share 0 and 1.66x at share 0.9, prefill 2.8x. AVX2 box with CPU matched (b1c, `20261110e/`, 30 threads = floor(quota)): ADR 0054 overlap (default in `serve`) decodes 1.14x and 1.18x KT, prefill 2.3x. `-ot` beaten earlier (1.23x to 1.60x); ik_llama cannot run the 235B in 128 GB. Parity: greedy equal; logit offset explained as GPU kernel fusion. |
 | 3a Formats and quality | quality per byte at least llama.cpp presets | Pass: profile mixes beat Q3/Q4/Q5_K_M on Qwen3-8B and 30B-A3B (BF16 reference). Conversion 11 to 15% faster than llama-quantize, byte-identical (ADR 0047, 0048). ik_llama.cpp types on the 8B (2026-11-10, `20261110/quality-qwen3-8b-ik.json`, ik's own perplexity tool and BF16 reference): the mix at the same or fewer bytes has KL 0.0448 vs IQ4_KS 0.0614 and 0.0384 vs IQ4_K 0.0449, top-1 higher in both. |
 | 3a Planner | regret, rank, beat llama.cpp fit | Pass: MoE fixture (regret 0, Spearman 0.997, pick 1.44x llama.cpp `-fitt`) and dense fixture (2026-11-10, b3-planner: 24 candidates, regret 0, Spearman 0.997). |
 | 3a Detector | top-1 faults on real hardware | Pass on a box (2026-11-10, b3-detector): single 30/30, false positives 0/10, pairs 9/9. |
 | 3b Gateway | SDK conformance, Claude Code use, vs llama-server | **Met (2026-11-10, box 60067423, A40, `bench/results/20261110d/`, ADR 0046 addendum):** tasks 15/20 vs 14/20, prompt cache 95.8% vs 94.2%, 0 non-200s; server decode 0.992. Conformance passes. Low-bit KV passes kv-quality under the excess-over-floor gate (ADR 0050 note 2026-11-10b), all six gating rows; q8/q4 top-1 loss 0.027 at 8K is near its 0.03 bound. |
 | Speculative decoding (ADR 0043, Phase 4 pulled forward; not an M1 exit test) | faster than plain decode | Exact, but slower in the exit regime; op-offload fix (ADR 0044) in, rerun pending. |
 
-## M1 status (2026-11-10)
+## M1 status (2026-11-11)
 
 Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed paired same-box run; the table above names them. The closing run (`20261110f`, box 60083507) is in. Deviations that remain:
 
-- **Phase 2, AVX-512:** no RTX 3090 offer on Vast had an AVX-512 CPU at the time, so the closing run ran on AVX2 (EPYC 7742, the b1c host). On AVX-512 the prefetch path ties KTransformers within noise (b1-exit, 1.13x on the means). A later attempt (`20261110h`, box 60101282, Xeon Gold 6138, 38 threads) gave no KTransformers number: its server hung at CUDA graph capture for 40 min on a disk-starved host (about 400 to 860 MB/s in use). It did measure overlap/prefetch on AVX-512: decode 1.27, prefill 1.03, greedy tokens equal, overlap GPU parity tests pass. Overlap against KTransformers on AVX-512 stays unmeasured; a retry needs a host with at least 3 GB/s disk under load.
+- **Phase 2, AVX-512 (`20261111a`, box 60151711, A10, Xeon Gold 6342 with AVX-512 VNNI, 30 threads both engines):** overlap decodes 4.29 and 4.27 tok/s, KTransformers (its avx512_vbmi kernels) 3.82 and 4.12. Adjacent pairs 1.12 and 1.04, cross pairs 1.04 and 1.12, means 1.08; overlap pair 0.4% apart, KT pair 7.8%. Prefill 1.11 and 1.21. Greedy tokens equal across all builder runs; overlap and `cpu_experts` GPU parity tests pass. A margin of 4% in the worst pair is within KT's own spread, so on AVX-512 the builder is at least as fast, not clearly faster. Earlier attempt `20261110h` (slow disk) gave no KT number.
 - **Phase 2, llama.cpp expert cache:** the exit text says "as its tuner picks them". The tuner returned no CPU share (all 30B experts fit in 24 GB), so the 235B ran shares 0 and 0.9 at the builder's slot size (10458 MiB), mmap (dio OOM-killed at 91 GB; major faults 0.26M and 0.41M per run, no thrash). Overlap decodes 4.6x share 0 and 1.66x share 0.9 (`20261110f`, three overlap runs 1.4% apart, greedy tokens equal). Not run again: `-ot` on the new baseline build (beaten 1.23x to 1.60x on the old one).
 - The overlap GPU parity tests (`gpu_overlap_logits_equal_serial`, `cpu_experts` gpu tests) pass on the box (`20261110f/gpu-tests-150632.log`).
 - Phase 3b is not affected by the new `serve` defaults: the proxy sessions serve the model resident (no RAM tier), where the I/O service, overlap and prefetch stay off, as in the 20261110d verdict run.
@@ -27,7 +27,7 @@ Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed pa
 ## Open after M1, by priority
 
 1. **Speculative rerun** (not an M1 exit test): `STAGES=main-builder bash scripts/spec_run.sh` (VRAM fix in; the draft now fits).
-2. **Hidden share under overlap** (ADR 0054): 0.38 to 0.42 against the 0.5 bar; read wait is all urgent misses. Then delete the `Reader` path.
+2. **Read wait under overlap** (ADR 0054 addenda 2026-11-11): the 0.5 hidden-share bar is misleading (`urgent_first` raised it to 0.52 while decode fell 12%). Next: judge levers on exposed wait and tok/s (`-uf-w4`, `-w8`, `-poll0` not yet run), then delete the `Reader` path.
 3. **Noise bands (done 2026-11-11):** `tetraeder-bench noise update` picked up the A/A pairs of `20261110c` and `20261110e` (rtx-3090: n=11 sessions, 6 hosts, p95 d 0.060, band 0.075) and `20261110d` (a40: n=1, band 0.020, below the 3-session minimum, provisional stays); the overlap runs of `20261110f` are builder runs without a `noise/` record, so they carry no A/A pair.
 4. (done) `rc=2` after `EXIT_RUN_DONE rc=0` came from the closing `sccache --stop-server`; `exit_run.sh` now exits 0.
 5. (done) **Proxy harness:** each request-log line carries `tool_outcomes` ({"outcome/class": n}); the proxy summary sums them per engine as `toolcall_outcomes`.
