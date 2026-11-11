@@ -86,7 +86,7 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 
 ## B1b: lever stages on a second 235B box (`b1b-levers`)
 
-**Box.** As B1. **Launch.** `$T run --id <id> scripts/session.sh --env SESSION=b1b-levers`. `--env B1_STAGES="..."` replaces the stage list (both B1 profiles; `exit_run.sh` keeps its own order). After the 2026-11-10 verdict (low-bit KV failed the old absolute kv-quality bounds, since replaced by the excess-over-floor gate; the decode margin over KTransformers was within noise) the lever run swaps the kv stages for two more KTransformers pairs: `B1_STAGES="smoke disk-curve main-prefetch main-iosvc main-overlap trace ktransformers main-repeat main-overlap-repeat ktransformers-repeat"`.
+**Box.** As B1. **Launch.** `$T run --id <id> scripts/session.sh --env SESSION=b1b-levers`. `--env B1_STAGES="..."` replaces the stage list (both B1 profiles; `exit_run.sh` runs them in the order of the list, once each; unset, in its code order; `DRY_RUN=1 STAGES="..." bash scripts/exit_run.sh` prints the sequence). After the 2026-11-10 verdict (low-bit KV failed the old absolute kv-quality bounds, since replaced by the excess-over-floor gate; the decode margin over KTransformers was within noise) the lever run swaps the kv stages for two more KTransformers pairs: `B1_STAGES="smoke disk-curve main-prefetch main-iosvc main-overlap trace ktransformers main-repeat main-overlap-repeat ktransformers-repeat"`.
 
 | # | Stage | Estimate | Cumulative | Decides |
 |---|---|---|---|---|

@@ -10,6 +10,15 @@
 # the ISA. ktransformers-avx2 forces kt-kernel's AVX2 kernels.
 # Session profiles (scripts/session.sh) set RESULTS_DATE, RESUME=1 (skip stages with a result) and DEADLINE (skip stages
 # that would end after it).
+# Stage order: with STAGES set (session.sh passes B1_STAGES there) the stages run in the order of that list, once
+# each; unset, in code order (all stages). The block below runs once per listed stage with ONLY set to its name.
+order=""
+for _s in ${STAGES:-}; do [[ " $order " == *" $_s "* ]] || order="$order $_s"; done
+# DRY_RUN=1 prints the sequence and stops before any side effect
+if [ "${DRY_RUN:-0}" = 1 ]; then
+  echo "stage order:${order:- (code order, all stages)}"
+  exit 0
+fi
 exec 8> /root/tetraeder_exit_run.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 bash scripts/ensure_patches.sh 8>&- || exit 1  # ggml patch queue (ADR 0052)
@@ -125,6 +134,7 @@ EOF
 }
 # STAGES (space list of stage names, default all) lets a relaunch skip stages that already ran
 want() {
+  [ -z "${ONLY:-}" ] || [ "$ONLY" = "$1" ] || return 1
   [ -z "${STAGES:-}" ] || [[ " $STAGES " == *" $1 "* ]] || return 1
   if stage_done "$1"; then
     echo "[$(date +%T)] skip $1: result in $date_dir"
@@ -283,7 +293,7 @@ disk_curve() {
 anchors_builder_short() {
   [[ " ${STAGES:-} " == *" anchors-builder-short "* || "${ANCHORS_BUILDER_SHORT:-0}" = 1 ]] || return 0
   want anchors-builder-short || return 0
-  local session=${TETRAEDER_SESSION:-$stamp} d id kv free_mib saved=${STAGES:-} st
+  local session=${TETRAEDER_SESSION:-$stamp} d id kv free_mib saved=${STAGES:-} st saved_only=${ONLY:-}
   d="$date_dir/ledger-$session"
   mkdir -p "$d"
   echo "[$(date +%T)] start anchors-builder-short: $d"
@@ -303,10 +313,12 @@ anchors_builder_short() {
     [ -s "$d/$id.r1.json" ] && continue
     # exit_regime asks want() for its name: let the anchor runs through a STAGES filter
     STAGES="${saved:+$saved }ledger-$id"
+    ONLY="ledger-$id"
     # shellcheck disable=SC2086  # kv is a KEY=VALUE list without spaces inside
     exit_regime "ledger-$id" 10 $kv && cp "$date_dir/exit-ledger-$id-$stamp.json" "$d/$id.r1.json"
   done < <(python3 scripts/ledger_stages.py --anchors "$d/candidates.json")
   STAGES=$saved
+  ONLY=$saved_only
   echo "[$(date +%T)] done anchors-builder-short"
 }
 
@@ -332,11 +344,14 @@ print(sum(d['expert_bytes_per_layer'][:int(sys.argv[2])]) * int(sys.argv[3]))" "
   echo "[$(date +%T)] done llama-fit: $n layers, -ot $ot_fit, builder vram slots $vram_bytes B"
 }
 
+run_stages() {
 if [ $rc = 0 ]; then
   {
     # smoke gate: real header, the full KV (a VRAM OOM shows here), direct I/O, the backend split, memory
     exit_regime smoke 20 TETRAEDER_EXIT_PREFILL=8 TETRAEDER_EXIT_UBATCH=8 TETRAEDER_EXIT_DECODE=2 \
       TETRAEDER_EXIT_CTX=33024 TETRAEDER_EXIT_OP_OFFLOAD=1 || rc=22
+    # the smoke summary prints with the smoke stage only
+    if [ -z "${ONLY:-}" ] || [ "$ONLY" = smoke ]; then
     python3 - "$date_dir/exit-smoke-$stamp.json" << 'EOF'
 import json, sys
 try:
@@ -349,6 +364,7 @@ for r in d.get("runs") or []:
     for m in r.get("memory") or []:
         print("  memory:", m)
 EOF
+    fi
     if [ $rc = 0 ]; then
       disk_curve
       llama_fit
@@ -447,6 +463,13 @@ EOF
       [ -n "${STAGES:-}" ] && colibri deep
     fi
   } >> "$log" 2>&1
+fi
+}
+if [ -n "$order" ]; then
+  for ONLY in $order; do run_stages; done
+  ONLY=
+else
+  run_stages
 fi
 touch "$date_dir/DONE"
 echo "EXIT_RUN_DONE rc=$rc" >> "$log"

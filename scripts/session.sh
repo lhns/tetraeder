@@ -205,7 +205,7 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
         # the ledger directory of this session (ADR 0056): last, the deadline cuts it first
         stages="$stages anchors-builder-short"
       fi
-      # B1_STAGES replaces the profile's list (exit_run.sh runs them in its own code order)
+      # B1_STAGES replaces the profile's list (exit_run.sh runs them in the order of the list)
       stages="${B1_STAGES:-$stages}"
       # levers (ADR 0038): prefetch on in every builder stage, depth 2
       step exit_run env TETRAEDER_EXIT_PREFETCH_DEPTH=2 CPU_SHARES="$share" STAGES="$stages" bash scripts/exit_run.sh
