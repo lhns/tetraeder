@@ -78,3 +78,18 @@ A40 48 GB, Qwen3-Coder-30B-A3B Q4_K_M, Claude Code 2.1.322, 10 tasks x 2 reps pe
 | Server decode, median | 0.992 of llama-server | |
 
 All three clauses are met. The tool errors are task outcomes (failing tests, missing files), not parse errors; the one unknown tool is the model's misspelt `ScheduledWakeup`. The 20261110b run had missed the cache clause by 0.34 points; the cause was session length against a fixed uncached first request, and one billing-header change (ADR 0057 addendum), not the cache. One run per engine, so the margins carry run-to-run noise; the clauses are met in this run and the previous one met tasks and 400s too.
+
+## Addendum (2026-11-11, box 60205005): rerun on current main
+
+RTX A6000 48 GB, Xeon W-2275, 26 threads, same harness and tasks (`bench/results/20261111d/`); main at e426f8e, so the request log now carries `tool_outcomes`. Session shortened to 130 min (BUDGET_MIN 105) to stay inside the 3 h box cap.
+
+| | Tetraeder | llama-server |
+|---|---|---|
+| Tasks solved | 15/20 | 16/20 |
+| Prompt-cache share | 95.07% | 94.52% |
+| Non-200 responses | 0 | 1 |
+| Tool-error rate | 5.1% (19 bash_exit, 5 file, 1 unknown_tool of 489) | 10.8% (58, 11, 6 other of 695) |
+| Call error rate | 0.2% | 0 |
+| Server decode, median | 1.021 of llama-server | |
+
+Tool-call outcomes: parsed/ok 486, parsed/unknown_tool 1, repaired/no_opener 2, repaired/empty_call 1, failed/bad_xml 2; two leaked markers. Tetraeder solved 0/2 of `fix-rounding` and `feature-late-fee`. Resident decode gap closed (`decode_gap.sh`: 189.8 vs 190.5 tok/s at depth 0, 123.5 vs 123.3 at 20K, 52.0 vs 51.5 at 100K); kv-quality gating rows pass under the excess-over-floor gate. Verdict: the cache and non-200 clauses are met; the tasks clause misses by one task in this run after passing by one in 20261110d. Pooled over both runs on the same harness: 30/40 each. A one-task difference in 20 is within the run-to-run spread, so the tasks clause is a tie, not a clear pass; whether a tie meets "at least as many" over pooled runs is the owner's call.
