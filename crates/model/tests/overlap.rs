@@ -5,7 +5,7 @@
 //! the cache counters must not change. The reads run on `SimIo`, the I/O service on a virtual
 //! clock (ADR 0056): a unit lands only when a wait moves the clock to its time on the disk
 //! curve, so experts are in flight when a layer is planned, deterministically and without
-//! sleeping.
+//! sleeping. The order of submits is checked through a recording wrapper around `SimIo`.
 //!
 //! Hardware labels: `cpu_*` need no GPU; `gpu_*` skip without a GPU device.
 
@@ -14,13 +14,13 @@ mod common;
 use common::argmax;
 use common::synth::{MoeSpec, quantized_moe};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::Ftype;
 use tetraeder_memory::IoOptions;
-use tetraeder_memory::io::IoFactory;
 use tetraeder_memory::io::sim::{SimClock, SimIo};
+use tetraeder_memory::io::{Deadline, Io, IoFactory, Part, UnitDone, UnitId};
 use tetraeder_model::{BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
@@ -36,6 +36,41 @@ fn sim_io() -> IoFactory {
     Arc::new(|paths| {
         let io = SimIo::flat(paths, SimClock::new(), DISK_BYTES_PER_S, 4, 4096)?;
         Ok(Box::new(io))
+    })
+}
+
+/// `SimIo` that logs every submit's deadline, in submit order.
+struct Recording {
+    inner: SimIo,
+    log: Arc<Mutex<Vec<Deadline>>>,
+}
+
+impl Io for Recording {
+    fn submit(&self, deadline: Deadline, parts: Vec<Part>) -> UnitId {
+        self.log.lock().unwrap().push(deadline);
+        self.inner.submit(deadline, parts)
+    }
+    fn poll(&self, units: &[UnitId]) -> Vec<(UnitId, std::io::Result<UnitDone>)> {
+        self.inner.poll(units)
+    }
+    fn wait_any(&self, units: &[UnitId]) -> Vec<(UnitId, std::io::Result<UnitDone>)> {
+        self.inner.wait_any(units)
+    }
+    fn wait_all(&self, units: &[UnitId]) -> Vec<(UnitId, std::io::Result<UnitDone>)> {
+        self.inner.wait_all(units)
+    }
+    fn inflight(&self) -> usize {
+        self.inner.inflight()
+    }
+}
+
+fn recording_io(log: Arc<Mutex<Vec<Deadline>>>) -> IoFactory {
+    Arc::new(move |paths| {
+        let inner = SimIo::flat(paths, SimClock::new(), DISK_BYTES_PER_S, 4, 4096)?;
+        Ok(Box::new(Recording {
+            inner,
+            log: log.clone(),
+        }))
     })
 }
 
@@ -55,6 +90,7 @@ struct Cfg {
     depth: usize,
     /// Reads on `SimIo`; else the threaded service (when `service`).
     sim: bool,
+    urgent_first: bool,
 }
 
 impl Cfg {
@@ -64,6 +100,7 @@ impl Cfg {
         prefetch: true,
         depth: 1,
         sim: false,
+        urgent_first: false,
     };
     fn service(self) -> Cfg {
         Cfg {
@@ -93,6 +130,7 @@ fn opts(backend: BackendChoice, c: Cfg) -> LoadOptions {
             ..IoOptions::default()
         },
         overlap: c.overlap,
+        urgent_first: c.urgent_first,
         io_factory: (c.service && c.sim).then(sim_io),
         ..LoadOptions::new(backend)
     }
@@ -255,6 +293,81 @@ fn cpu_overlap_runs_pending_groups() {
     );
 }
 
+/// Per submit log: pairs of (urgent miss of layer `o`, prefetch for layer `o + 2`), and how many
+/// had the prefetch submitted first. Such a prefetch is a depth-2 read issued in the same layer
+/// step, or a depth-1 top-up issued in the next one (always after the miss).
+fn order_pairs(log: &[Deadline]) -> (usize, usize) {
+    let (mut pairs, mut prefetch_first) = (0, 0);
+    for (i, u) in log.iter().enumerate().filter(|(_, d)| d.urgent) {
+        for (j, _) in log
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| !d.urgent && d.order == u.order + 2)
+        {
+            pairs += 1;
+            prefetch_first += usize::from(j < i);
+        }
+    }
+    (pairs, prefetch_first)
+}
+
+/// hardware: cpu. `urgent_first` (ADR 0054 addendum) submits a layer step's misses before the
+/// prefetch of the next layers, so the service's workers take them first; without it the
+/// prefetch goes first. The logits and the cache counters equal the serial run's either way, and
+/// the pending experts split into urgent misses, depth-1 top-ups and depth-2 reads.
+#[test]
+fn cpu_urgent_first_submits_misses_before_prefetch() {
+    let path = fixture();
+    let base = Cfg {
+        depth: 2,
+        ..Cfg::SERIAL
+    };
+    let mut serial = load(&path, CPU, base);
+    let want = sequence(&mut serial);
+    for urgent_first in [false, true] {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let o = LoadOptions {
+            io_factory: Some(recording_io(log.clone())),
+            ..opts(
+                CPU,
+                Cfg {
+                    urgent_first,
+                    ..base.overlap()
+                },
+            )
+        };
+        let mut m = Qwen3Moe::load(&path, &o).unwrap();
+        let what = format!("urgent_first {urgent_first}");
+        assert_bitwise(&want, &sequence(&mut m), &what);
+        let s = m.expert_stats().unwrap();
+        assert_eq!(
+            cache_view(&serial.expert_stats().unwrap()),
+            cache_view(&s),
+            "{what}"
+        );
+        let (pairs, prefetch_first) = order_pairs(&log.lock().unwrap());
+        assert!(pairs > 0, "{what}: no layer step with both");
+        if urgent_first {
+            assert_eq!(prefetch_first, 0, "{what}");
+        } else {
+            // Same-step pairs exist, so the check above is not vacuous.
+            assert!(prefetch_first > 0, "{what}");
+        }
+        let io = &s.io;
+        assert!(io.pending_urgent > 0, "{what}: {io:?}");
+        assert!(
+            io.pending_urgent + io.pending_ahead <= io.pending_experts,
+            "{what}"
+        );
+        assert!(
+            io.urgent_steps > 0 && io.urgent_steps <= io.pending_steps,
+            "{what}"
+        );
+        assert!(io.urgent_steps_wait <= io.overlap_wait, "{what}");
+        assert!(io.urgent_steps_span <= io.overlap_span, "{what}");
+    }
+}
+
 /// hardware: cpu. Overlap needs the service.
 #[test]
 fn cpu_overlap_without_service_is_refused() {
@@ -306,8 +419,8 @@ fn cpu_overlap_read_error_fails_the_step_and_recovers() {
     let _ = std::fs::remove_file(path);
 }
 
-/// hardware: gpu (skips without a GPU device). The GPU builder with the service and overlap gives
-/// the logits of the serial path: the CPU groups run before the segment, their rows are copied
+/// hardware: gpu (skips without a GPU device). The GPU builder with the service and overlap (with
+/// and without `urgent_first`) gives the logits of the serial path: the CPU groups run before the segment, their rows are copied
 /// to the GPU and scattered into the accumulator.
 #[test]
 fn gpu_overlap_logits_equal_serial() {
@@ -318,6 +431,16 @@ fn gpu_overlap_logits_equal_serial() {
     let path = fixture();
     let gpu = BackendChoice::Gpu { index: 0 };
     let want = sequence(&mut load(&path, gpu, Cfg::SERIAL));
-    let mut m = load(&path, gpu, Cfg::SERIAL.overlap());
-    assert_bitwise(&want, &sequence(&mut m), "gpu overlap");
+    for urgent_first in [false, true] {
+        let c = Cfg {
+            urgent_first,
+            ..Cfg::SERIAL.overlap()
+        };
+        let mut m = load(&path, gpu, c);
+        assert_bitwise(
+            &want,
+            &sequence(&mut m),
+            &format!("gpu overlap, urgent_first {urgent_first}"),
+        );
+    }
 }

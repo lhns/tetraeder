@@ -150,3 +150,13 @@ Session `b1b-levers`: RTX 3090, AMD EPYC 7742 (AVX2, no AVX-512), quota 30.7 cor
 ## Addendum (2026-11-10, box 60072027): starved case
 
 Same CPU class as the previous addendum (EPYC 7742, AVX2), both engines at 30 threads = floor(quota 30.72). Decode CPU was matched: builder 27.7 to 29.0 cores, KTransformers 27.5 to 27.9. `main-overlap` decodes 1.51x and 1.53x `main-prefetch` (overlap pair 1.3% apart). Hidden share 0.42 and 0.38, still under the 0.5 bar. The decode gain holds without spare cores, so the confound of the previous addendum is closed. The `Reader` path now only serves `--io-service off`; deleting it is a cleanup, not a measurement question.
+
+## Addendum (2026-11-11): where the read wait goes
+
+From the committed overlap runs (`bench/results/20261110c`, `e`, `f`; only host 43fae09577cc of `c` has a disk curve):
+
+- The wait is not all urgent misses: `urgent_wait_time` counts every wait in `wait_landed`, late prefetches included. Per token 6.7 experts (78 MB) are misses, but 22.7 are pending at their layer's plan: about 16 are prefetches still in flight, 39% of the 41.2 issued.
+- The disk is not the bound: decode reads 2.86 GB/s; the same host's curve gives 7.0 to 7.3 GB/s from depth 4 on, also with 25 busy threads.
+- A miss lands 3.9 ms after its submit on average (one alone needs 1.6 ms of device time: 11.6 MB at 7.2 GB/s), and `cpu_ready` hides about 0.9 ms per pending step, so steps with a miss stay near or under 0.5 even at device rate. A prefetch lands 6.3 ms after its submit, against a lead of about one layer step (1.8 ms) for a depth-1 top-up and two for depth 2. Both are means of per-unit latencies, which overlap.
+- Candidate causes: a layer step submits its misses after the next layers' prefetch, and with 16 workers every chunk of a layer step is in service at once, so deadline order never applies and the device shares its rate among them; and the workers' CPU under the quota while the ggml threads poll.
+- `LoadOptions::urgent_first` (default off, harness `TETRAEDER_EXIT_URGENT_FIRST`) submits the misses first; the cache and the logits are unchanged. `decode_overlap` splits the pending experts (urgent, depth-1, depth-2, prefetch lead) and the wait (steps with and without an urgent miss). Stages `main-overlap-uf`, `-w4`, `-uf-w4`, `-w8` and `-poll0` pair with `main-overlap`; the bar stands until they have run.

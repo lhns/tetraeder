@@ -31,7 +31,15 @@
 //! - `TETRAEDER_EXIT_OVERLAP`: `1` computes the CPU experts of a decode layer in arrival order
 //!   (needs the service), `0` off; unset follows `LoadOptions`. The JSON gets `decode_overlap`:
 //!   layer steps with experts in flight and those experts per token, `read_wait` ms per token,
-//!   the hidden share (`1 - wait / span`) and the main thread's wait in `urgent_wait_ms`.
+//!   the hidden share (`1 - wait / span`) and the main thread's wait in `urgent_wait_ms` (every
+//!   wait, despite the name). The pending experts split into `pending_urgent` (misses of the
+//!   step), `pending_top_up` (depth-1 prefetch) and `pending_ahead` (depth 2), with the mean time
+//!   from a pending prefetch's submit to its layer's plan (`pending_prefetch_lead_ms`); steps with
+//!   an urgent miss get their own wait, span and hidden share (`urgent_steps_*`), the others
+//!   `prefetch_steps_*`. `urgent_read_ms` is the mean submit-to-landing time of an urgent miss
+//!   (units in flight together each count their whole latency, so it is not device time).
+//! - `TETRAEDER_EXIT_URGENT_FIRST` (0/1, default 0): with overlap, a layer step submits its
+//!   misses before the next layers' prefetch (`LoadOptions::urgent_first`).
 //! - `TETRAEDER_EXIT_KV_ROT` (0/1): Hadamard rotation of Q, K and V (ADR 0050 addendum). Unset:
 //!   on for a quantized KV format, off for f16, as libllama. The reference engine follows it;
 //!   `TETRAEDER_EXIT_REF_ATTN_ROT` (0/1) overrides the reference alone. The JSON options record
@@ -421,7 +429,35 @@ fn io_json(a: &IoCounters, b: &IoCounters, per: f64) -> Value {
 fn overlap_json(a: &IoCounters, b: &IoCounters, per: f64) -> Value {
     let span = (b.overlap_span - a.overlap_span).as_secs_f64();
     let wait = (b.overlap_wait - a.overlap_wait).as_secs_f64();
+    let u_span = (b.urgent_steps_span - a.urgent_steps_span).as_secs_f64();
+    let u_wait = (b.urgent_steps_wait - a.urgent_steps_wait).as_secs_f64();
+    let (p_span, p_wait) = (span - u_span, wait - u_wait);
+    let hidden = |w: f64, s: f64| if s > 0.0 { Some(1.0 - w / s) } else { None };
+    let pending = b.pending_experts - a.pending_experts;
+    let urgent = b.pending_urgent - a.pending_urgent;
+    let ahead = b.pending_ahead - a.pending_ahead;
+    let prefetch = pending - urgent;
+    let lead = (b.pending_lead - a.pending_lead).as_secs_f64();
+    // With overlap every miss is an urgent unit; `read_time` sums their latencies.
+    let misses =
+        (b.experts_read - a.experts_read).saturating_sub(b.prefetch_issued - a.prefetch_issued);
+    let read = (b.read_time - a.read_time).as_secs_f64();
+    let steps = (b.pending_steps - a.pending_steps) as f64;
+    let u_steps = (b.urgent_steps - a.urgent_steps) as f64;
     json!({
+        "pending_urgent_per_token": urgent as f64 / per,
+        "pending_top_up_per_token": (prefetch - ahead) as f64 / per,
+        "pending_ahead_per_token": ahead as f64 / per,
+        "pending_prefetch_lead_ms": if prefetch > 0 { Some(lead * 1e3 / prefetch as f64) } else { None },
+        "urgent_read_ms": if misses > 0 { Some(read * 1e3 / misses as f64) } else { None },
+        "urgent_steps_per_token": u_steps / per,
+        "urgent_steps_wait_ms_per_token": u_wait * 1e3 / per,
+        "urgent_steps_span_ms_per_token": u_span * 1e3 / per,
+        "urgent_steps_hidden_share": hidden(u_wait, u_span),
+        "prefetch_steps_per_token": (steps - u_steps) / per,
+        "prefetch_steps_wait_ms_per_token": p_wait * 1e3 / per,
+        "prefetch_steps_span_ms_per_token": p_span * 1e3 / per,
+        "prefetch_steps_hidden_share": hidden(p_wait, p_span),
         "pending_steps_per_token": (b.pending_steps - a.pending_steps) as f64 / per,
         "pending_experts_per_token": (b.pending_experts - a.pending_experts) as f64 / per,
         "read_wait_ms_per_token": wait * 1e3 / per,
@@ -516,6 +552,7 @@ fn exit_regime() {
     if let Ok(v) = std::env::var("TETRAEDER_EXIT_OVERLAP") {
         opts.overlap = v == "1";
     }
+    opts.urgent_first = env_flag("TETRAEDER_EXIT_URGENT_FIRST");
     opts.kv_rotation = env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
     opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
@@ -703,6 +740,7 @@ fn exit_regime() {
             "io_workers": opts.io.workers,
             "io_chunk_bytes": opts.io.chunk_bytes,
             "overlap": opts.overlap,
+            "urgent_first": opts.urgent_first,
             "kv": opts.kv.to_string(),
             "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
             "cpu_poll": opts.cpu_poll,

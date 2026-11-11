@@ -221,6 +221,10 @@ pub struct LoadOptions {
     /// Needs `io.service`. Applies to `MissPolicy::Cpu` steps without op offload that have one
     /// CPU chunk; other steps run as without it. Logits are bitwise unchanged.
     pub overlap: bool,
+    /// With `overlap`, a layer step submits its own misses (urgent) before the prefetch of the
+    /// next layers, so the service's workers take them first (ADR 0054 addendum). Off: the
+    /// prefetch goes first, as measured on the 235B. Cache behaviour and logits are unchanged.
+    pub urgent_first: bool,
     /// Test only: builds the expert reads in place of the I/O service, for example a simulator
     /// on a virtual clock (`tetraeder_memory::io::sim::SimIo`), so reads are still in flight
     /// when a layer is planned without any sleeping.
@@ -255,6 +259,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("kv", &self.kv)
             .field("io", &self.io)
             .field("overlap", &self.overlap)
+            .field("urgent_first", &self.urgent_first)
             .field("io_factory", &self.io_factory.is_some())
             .field("kv_rotation", &self.kv_rotation)
             .finish_non_exhaustive()
@@ -287,6 +292,7 @@ impl LoadOptions {
             prefetch_threads: None,
             kv: KvFormat::default(),
             overlap: false,
+            urgent_first: false,
             io_factory: None,
             kv_rotation: None,
         }
@@ -430,6 +436,8 @@ pub struct Qwen3Moe {
     /// Overlapped decode is possible: the option is on and the model streams through a RAM tier
     /// under the cpu miss policy.
     overlap: bool,
+    /// `LoadOptions::urgent_first`.
+    urgent_first: bool,
     /// Each segment also predicts the experts of this many layers ahead (ADR 0038), 0 for none:
     /// only with prefetch, the cpu miss policy and a RAM tier, where the reads can be prefetched.
     predict_depth: usize,
@@ -620,6 +628,7 @@ impl Qwen3Moe {
             max_splits: 0,
             policy: opts.miss,
             overlap,
+            urgent_first: opts.urgent_first,
             predict_depth: if opts.prefetch && cpu_hot {
                 opts.prefetch_depth
             } else {
@@ -1192,8 +1201,16 @@ impl Qwen3Moe {
                 if gate && !overlapped && !plan.cpu.is_empty() {
                     streamer.finish_prefetch(seg)?;
                 }
-                // The next layers' reads start before this layer's own misses are read: the
-                // reader has direct files of its own, and the device serves both at once.
+                // With `urgent_first` an overlapped step submits its misses first: the workers
+                // pick chunks in deadline order but cannot take back the ones they started.
+                // Staging touches only layer `seg`, the prefetch only `seg + 1` and `seg + 2`.
+                let early = if overlapped && self.urgent_first {
+                    Some(streamer.stage_overlap(&self.file, seg, &plan.cpu[0])?)
+                } else {
+                    None
+                };
+                // Otherwise the next layers' reads start before this layer's own misses are
+                // read: the reader has direct files of its own, and the device serves both.
                 prefetch_ahead(streamer, &self.file, seg, &predicted, &predicted2)?;
                 set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
                 if plan.cpu.is_empty() {
@@ -1205,7 +1222,10 @@ impl Qwen3Moe {
                 let cap_compute = group_cap(ExpertSrc::Compute, self.gpu, offload);
                 if overlapped {
                     let chunk = &plan.cpu[0];
-                    let staged = streamer.stage_overlap(&self.file, seg, chunk)?;
+                    let staged = match early {
+                        Some(s) => s,
+                        None => streamer.stage_overlap(&self.file, seg, chunk)?,
+                    };
                     set_compute_threads(
                         &self.cpu,
                         self.cpu_threads,
@@ -1846,10 +1866,10 @@ fn prefetch_ahead(
     predicted2: &[Option<Vec<i32>>],
 ) -> Result<()> {
     if let Some(p) = predicted {
-        streamer.start_prefetch(file, seg + 1, p)?;
+        streamer.start_prefetch(file, seg + 1, p, 1)?;
     }
     if let Some(p) = &predicted2[seg + 2] {
-        streamer.start_prefetch(file, seg + 2, p)?;
+        streamer.start_prefetch(file, seg + 2, p, 2)?;
     }
     Ok(())
 }
