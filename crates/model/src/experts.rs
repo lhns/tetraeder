@@ -1126,7 +1126,7 @@ impl Streamer {
                 None => ready.push(e),
             }
         }
-        self.span = (!waiting.is_empty()).then(|| OverlapSpan {
+        self.span = (!waiting.is_empty()).then_some(OverlapSpan {
             start: t0,
             last: now,
             wait: Duration::ZERO,

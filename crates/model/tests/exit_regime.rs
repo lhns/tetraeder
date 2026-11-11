@@ -431,7 +431,7 @@ fn overlap_json(a: &IoCounters, b: &IoCounters, per: f64) -> Value {
     let u_span = (b.urgent_steps_span - a.urgent_steps_span).as_secs_f64();
     let u_wait = (b.urgent_steps_wait - a.urgent_steps_wait).as_secs_f64();
     let (p_span, p_wait) = (span - u_span, wait - u_wait);
-    let hidden = |w: f64, s: f64| (s > 0.0).then(|| 1.0 - w / s);
+    let hidden = |w: f64, s: f64| if s > 0.0 { Some(1.0 - w / s) } else { None };
     let pending = b.pending_experts - a.pending_experts;
     let urgent = b.pending_urgent - a.pending_urgent;
     let ahead = b.pending_ahead - a.pending_ahead;
