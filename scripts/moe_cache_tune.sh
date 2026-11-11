@@ -12,7 +12,8 @@ base="${LLAMA_BASELINE_DIR:-/opt/llama.cpp-baseline}"
 out="$PWD/bench/results/${RESULTS_DATE:-$(date +%Y%m%d)}/moe-cache-tune"
 mkdir -p "$out"
 models_dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}"
-gguf="$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf"
+# GGUF overrides the model (for example the 235B first shard, with MAX_MIB at the builder's slot size)
+gguf="${GGUF:-$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf}"
 threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
 [ -x "$base/bin/llama-server" ] || { echo "missing $base/bin/llama-server" >> "$log"; exit 3; }
 [ -f "$gguf" ] || { echo "missing $gguf" >> "$log"; exit 4; }
@@ -25,12 +26,12 @@ timeout -k 30 "${TUNE_MIN:-30}m" python3 "$base/scripts/moe-cache-tune.py" "${ma
   > "$out/report.txt" 2>> "$log"
 rc=$?
 echo "[$(date +%T)] moe-cache-tune done rc=$rc" >> "$log"
-python3 -I - "$out" "$rc" "$threads" << 'EOF'
-import json, re, sys
-out, rc, threads = sys.argv[1:4]
+python3 -I - "$out" "$rc" "$threads" "$gguf" << 'EOF'
+import json, os, re, sys
+out, rc, threads, gguf = sys.argv[1:5]
 text = open(f"{out}/report.txt", errors="replace").read()
 m = re.search(r"recommended: --moe-cache-mib (\d+) --moe-cache-cpu-share (\S+)", text)
-json.dump({"rc": int(rc), "threads": int(threads), "model": "Qwen3-30B-A3B-Q4_K_M",
+json.dump({"rc": int(rc), "threads": int(threads), "model": os.path.basename(gguf),
            "cache_mib": int(m.group(1)) if m else None, "cpu_share": float(m.group(2)) if m else None,
            "report": text}, open(f"{out}/tune.json", "w"), indent=1)
 EOF
