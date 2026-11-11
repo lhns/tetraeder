@@ -30,7 +30,7 @@ Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed pa
 2. **Hidden share under overlap** (ADR 0054): 0.38 to 0.42 against the 0.5 bar; read wait is all urgent misses. Then delete the `Reader` path.
 3. **Noise bands (done 2026-11-11):** `tetraeder-bench noise update` picked up the A/A pairs of `20261110c` and `20261110e` (rtx-3090: n=11 sessions, 6 hosts, p95 d 0.060, band 0.075) and `20261110d` (a40: n=1, band 0.020, below the 3-session minimum, provisional stays); the overlap runs of `20261110f` are builder runs without a `noise/` record, so they carry no A/A pair.
 4. (done) `rc=2` after `EXIT_RUN_DONE rc=0` came from the closing `sccache --stop-server`; `exit_run.sh` now exits 0.
-5. **Proxy harness:** save the gateway's tool-call outcome counts (`repaired/no_opener`) at the end of a run; today they are live metrics only.
+5. (done) **Proxy harness:** each request-log line carries `tool_outcomes` ({"outcome/class": n}); the proxy summary sums them per engine as `toolcall_outcomes`.
 
 6. **Builder slot-count candidates:** `scripts/planner_builder_campaign.sh` on Qwen3-30B-A3B, commit as `planner-moe-builder`.
 7. (done) **ik_llama quant types:** the profile mix beats IQ4_KS and IQ4_K at matched bytes (Phase 3a row). ik_llama inference on the 235B: record "cannot run within 128 GB".
