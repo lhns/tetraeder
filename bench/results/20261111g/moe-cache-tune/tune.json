@@ -1,0 +1,8 @@
+{
+ "rc": 124,
+ "threads": 23,
+ "model": "Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf",
+ "cache_mib": null,
+ "cpu_share": null,
+ "report": ""
+}
