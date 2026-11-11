@@ -1,0 +1,2 @@
+[2m2026-11-11T13:28:11.971925Z[0m [33m WARN[0m [2mllama[0m[2m:[0m load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+listening on http://127.0.0.1:18080

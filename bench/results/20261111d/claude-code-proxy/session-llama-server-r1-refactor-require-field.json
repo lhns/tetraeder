@@ -1,0 +1,114 @@
+{
+  "engine": "llama-server",
+  "rep": 1,
+  "task": "refactor-require-field",
+  "started": "2026-11-11T12:59:09",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 32107,
+    "stop_reason": "end_turn",
+    "session_id": "8e85a92b-c344-4b5c-a32a-dfc27bce4b38",
+    "total_cost_usd": 0.153795,
+    "usage": {
+      "input_tokens": 17161,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 114455,
+      "output_tokens": 3113,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 17161,
+        "outputTokens": 3113,
+        "cacheReadInputTokens": 114455,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.153795,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 9,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully completed the refactoring task. Here's a summary of what was accomplished:\n\n## Refactoring Summary\n\nI've factored out the repeated \"header is missing or blank\" check into a helper function in `invoicing/parsing.py`:\n\n### Changes Made:\n1. **Added `_require_field()` helper function** - A small utility that checks if a header field is present and not blank, raising the exact same `ParseError(\"missing field: {field}\")` message format as before.\n\n2. **Refactored three parsing functions**:\n   - `parse_number()` now uses the helper for \"Invoice\" field validation\n   - `parse_customer()` now uses the helper for \"Customer\" field validation  \n   - `parse_issued()` now uses the helper for \"Issued\" field validation\n\n### Key Points:\n- **No behavior changes** - All existing functionality preserved exactly\n- **Same error messages** - The error message format remains identical \n- **All tests pass** - Both parsing-specific tests (12 tests) and full test suite (83 tests) all pass\n- **Cleaner code** - Reduced code duplication while maintaining readability\n\nThe refactoring follows the requirement to factor out the repeated pattern without changing behavior or error messages, and all existing tests continue to pass.",
+    "ttft_ms": 4507,
+    "type": "result",
+    "duration_ms": 33719,
+    "uuid": "15585f97-2d5c-46a1-be67-de8b6d0a5add",
+    "ttft_stream_ms": 3863,
+    "time_to_request_ms": 105,
+    "first_content_frame_ms": 3864,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 34.22,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 86%]\n...........                                                              [100%]\n83 passed in 0.16s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/refactor_require.py ",
+        "exit_code": 0,
+        "output_tail": "new helpers and call counts: {'_require_field': 3}\n"
+      }
+    ]
+  },
+  "success": true
+}

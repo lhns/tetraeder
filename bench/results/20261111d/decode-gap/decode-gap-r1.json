@@ -1,0 +1,142 @@
+{
+  "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+  "n_ctx": 131072,
+  "threads": 26,
+  "sampling": {
+    "temperature": 0.800000011920929,
+    "top_k": 40,
+    "top_p": 0.949999988079071
+  },
+  "warmup_steps_excluded": 4,
+  "rows": [
+    {
+      "engine": "llama",
+      "depth": 0,
+      "prompt_tokens": 16,
+      "prefill_tok_s": 224.31039938480632,
+      "decode_tokens": 128,
+      "eval_ms": 5.32289809375,
+      "eval_ms_steady": 5.248912443548387,
+      "sample_ms": 0.2713235625,
+      "argmax_ms": 0.3370644765625,
+      "eval_tok_s": 190.51565648216007,
+      "serve_tok_s": 181.1667399576226,
+      "counters": {
+        "n_eval": 127.0,
+        "n_reused": 127.0,
+        "eval_s": 0.0
+      }
+    },
+    {
+      "engine": "llama",
+      "depth": 20000,
+      "prompt_tokens": 20000,
+      "prefill_tok_s": 3308.7794238686297,
+      "decode_tokens": 128,
+      "eval_ms": 8.153876703125,
+      "eval_ms_steady": 8.111342266129032,
+      "sample_ms": 0.2702783984375,
+      "argmax_ms": 0.3373317265625,
+      "eval_tok_s": 123.28415781143322,
+      "serve_tok_s": 119.31285705003917,
+      "counters": {
+        "n_eval": 128.0,
+        "n_reused": 127.0,
+        "eval_s": 0.0
+      }
+    },
+    {
+      "engine": "llama",
+      "depth": 100000,
+      "prompt_tokens": 100000,
+      "prefill_tok_s": 1391.5334843024905,
+      "decode_tokens": 128,
+      "eval_ms": 19.47163796875,
+      "eval_ms_steady": 19.430220919354838,
+      "sample_ms": 0.2685890546875,
+      "argmax_ms": 0.3384480546875,
+      "eval_tok_s": 51.46621873989501,
+      "serve_tok_s": 50.7639119683876,
+      "counters": {
+        "n_eval": 128.0,
+        "n_reused": 126.0,
+        "eval_s": 0.0
+      }
+    },
+    {
+      "engine": "moe",
+      "depth": 0,
+      "prompt_tokens": 16,
+      "prefill_tok_s": 698.2659046316282,
+      "decode_tokens": 128,
+      "eval_ms": 5.307577140625001,
+      "eval_ms_steady": 5.267463693548387,
+      "sample_ms": 0.18679418750000001,
+      "argmax_ms": 0.2356723671875,
+      "eval_tok_s": 189.84468772415167,
+      "serve_tok_s": 183.34452227780847,
+      "counters": {
+        "steps": 128.0,
+        "graphs": 128.0,
+        "step_graphs_built": 1.0,
+        "inputs_s": 0.002285114,
+        "build_s": 0.0007661470000000001,
+        "alloc_s": 0.0014400240000000003,
+        "compute_s": 0.6747847589999999,
+        "readback_s": 0.000021705,
+        "streamer_s": 0.0,
+        "total_s": 0.679315645
+      }
+    },
+    {
+      "engine": "moe",
+      "depth": 20000,
+      "prompt_tokens": 20000,
+      "prefill_tok_s": 3289.909308244597,
+      "decode_tokens": 128,
+      "eval_ms": 8.137627499999999,
+      "eval_ms_steady": 8.096706120967742,
+      "sample_ms": 0.18689398437500002,
+      "argmax_ms": 0.23965980468749998,
+      "eval_tok_s": 123.5070144648497,
+      "serve_tok_s": 120.72516792751594,
+      "counters": {
+        "steps": 128.0,
+        "graphs": 128.0,
+        "step_graphs_built": 1.0,
+        "inputs_s": 0.0037472840000000174,
+        "build_s": 0.0004231249999999999,
+        "alloc_s": 0.0014313570000000012,
+        "compute_s": 1.035919937,
+        "readback_s": 0.000022309999999999995,
+        "streamer_s": 0.0,
+        "total_s": 1.0415603770000006
+      }
+    },
+    {
+      "engine": "moe",
+      "depth": 100000,
+      "prompt_tokens": 100000,
+      "prefill_tok_s": 1384.1487040736738,
+      "decode_tokens": 128,
+      "eval_ms": 19.2970309296875,
+      "eval_ms_steady": 19.24536706451613,
+      "sample_ms": 0.183408125,
+      "argmax_ms": 0.23836624218750002,
+      "eval_tok_s": 51.96055739792886,
+      "serve_tok_s": 51.47058454225525,
+      "counters": {
+        "steps": 128.0,
+        "graphs": 128.0,
+        "step_graphs_built": 2.0,
+        "inputs_s": 0.00994114700000015,
+        "build_s": 0.0009067519999999968,
+        "alloc_s": 0.0022901899999999975,
+        "compute_s": 2.4567811120000016,
+        "readback_s": 0.00002359400000000002,
+        "streamer_s": 0.0,
+        "total_s": 2.4699586129999886
+      }
+    }
+  ]
+}

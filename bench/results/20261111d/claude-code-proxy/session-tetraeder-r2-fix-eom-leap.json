@@ -1,0 +1,109 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "fix-eom-leap",
+  "started": "2026-11-11T13:28:25",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 34659,
+    "stop_reason": "end_turn",
+    "session_id": "4db8d994-cf56-4cf8-a30a-e75bf92d49de",
+    "total_cost_usd": 0.16113460000000002,
+    "usage": {
+      "input_tokens": 16049,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 143893,
+      "output_tokens": 3408,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 16049,
+        "outputTokens": 3408,
+        "cacheReadInputTokens": 143893,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.16113460000000002,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 11,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully fixed the bug in the dates EOM calculation for leap years. Here's what I did:\n\n## Problem Analysis\nThe issue was in the `end_of_month` function in `invoicing/dates.py`. The original code used a hardcoded array `_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]` where February always had 28 days, regardless of whether the year was a leap year.\n\n## Solution Implemented\nI replaced the hardcoded approach with proper leap year detection using Python's `calendar` module:\n\n1. **For February**: Check if the year is a leap year using `calendar.isleap()`\n2. **For other months**: Use `calendar.monthrange()` to get accurate days for any month/year combination\n\n## Verification\n- \u2705 The previously failing tests now pass:\n  - `test_end_of_month_leap_february` \n  - `test_eom_terms_in_leap_year`\n- \u2705 All 85 tests in the full test suite pass\n- \u2705 The fix correctly handles leap year scenarios:\n  - 2024 (leap year) \u2192 February has 29 days\n  - 2023 (non-leap year) \u2192 February has 28 days  \n  - 2000 (leap year) \u2192 February has 29 days\n  - 1900 (non-leap year) \u2192 February has 28 days\n\nThe fix is general and will work for any year, not just 2024, maintaining full backward compatibility while correctly handling leap years in EOM payment term calculations.",
+    "ttft_ms": 4733,
+    "type": "result",
+    "duration_ms": 36934,
+    "uuid": "5a6aff05-ada0-4aea-b68c-2f9866e36263",
+    "ttft_stream_ms": 166,
+    "time_to_request_ms": 112,
+    "first_content_frame_ms": 4130,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 37.45,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 78%]\n....................                                                     [100%]\n92 passed in 0.17s\n"
+      }
+    ]
+  },
+  "success": true
+}

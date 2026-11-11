@@ -1,0 +1,114 @@
+{
+  "engine": "llama-server",
+  "rep": 1,
+  "task": "explain-parser",
+  "started": "2026-11-11T12:58:52",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 15143,
+    "stop_reason": "end_turn",
+    "session_id": "cd6859c3-4629-4a4d-b70c-40b54dfe960d",
+    "total_cost_usd": 0.08528820000000001,
+    "usage": {
+      "input_tokens": 13339,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 37961,
+      "output_tokens": 1217,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 13339,
+        "outputTokens": 1217,
+        "cacheReadInputTokens": 37961,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.08528820000000001,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 4,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully analyzed the invoice text parser code and created comprehensive documentation in NOTES.md. The documentation explains:\n\n1. The expected input format for invoice text\n2. Each function's purpose and behavior\n3. How the functions work together in sequence\n4. The error handling approach with clear ParseError messages\n5. Integration with other invoicing modules\n\nAll code was left unchanged as requested. The NOTES.md file provides a clear understanding of how the parser works from input parsing to error reporting.",
+    "ttft_ms": 5354,
+    "type": "result",
+    "duration_ms": 15327,
+    "uuid": "12325757-4bef-4589-a437-3498966d8e1c",
+    "ttft_stream_ms": 4823,
+    "time_to_request_ms": 88,
+    "first_content_frame_ms": 4823,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 15.99,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/explain_notes.py ",
+        "exit_code": 0,
+        "output_tail": ""
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 86%]\n...........                                                              [100%]\n83 passed in 0.16s\n"
+      }
+    ]
+  },
+  "success": true
+}

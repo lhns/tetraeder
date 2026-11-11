@@ -1,0 +1,704 @@
+{
+  "schema": 1,
+  "spec": "phase0",
+  "spec_fnv1a": "d284355c856fda55",
+  "pins": {
+    "ik_llama_cpp": "pending",
+    "llama_cpp": "2e0d86bebc210947680e8f0d67daa79f3260c106",
+    "tetraeder": "HEAD"
+  },
+  "repeats": 8,
+  "warmup": 1,
+  "page_cache": "warm",
+  "page_cache_applied": false,
+  "env": {
+    "host_id": "0dae7bfec727",
+    "hostname": "0dae7bfec727",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": "Intel(R) Xeon(R) W-2275 CPU @ 3.30GHz",
+    "cpus": 26,
+    "cpu_quota": 26.88,
+    "ram_gb": 62.5,
+    "gpus": [
+      {
+        "name": "NVIDIA RTX A6000",
+        "driver": "595.99.02",
+        "memory_mb": 49140.0,
+        "clocks_sm_mhz": 210.0,
+        "clocks_mem_mhz": 405.0,
+        "clocks_max_sm_mhz": 2100.0,
+        "throttle_reasons": "0x0000000000000001",
+        "power_w": 21.75,
+        "temperature_c": 54.0
+      }
+    ],
+    "git_commit": "unknown",
+    "git_dirty": null,
+    "session": "20261111d-0dae7bfec727-122139",
+    "cuda_env": "",
+    "started_utc": "2026-11-11T14:11:18Z",
+    "cpu_backend": {
+      "dispatch": "static",
+      "extra": [],
+      "forced": null,
+      "host_isa": [
+        "AVX",
+        "AVX2",
+        "FMA",
+        "F16C",
+        "BMI2",
+        "AVX512",
+        "AVX512_VNNI",
+        "IQK_MM"
+      ],
+      "isa": [
+        "SSE3",
+        "SSSE3",
+        "AVX",
+        "AVX2",
+        "F16C",
+        "FMA",
+        "BMI2",
+        "AVX512",
+        "AVX512_VNNI",
+        "IQK_MM",
+        "LLAMAFILE",
+        "REPACK"
+      ],
+      "missing": [],
+      "module_dir": null,
+      "tier": "avx512_vnni"
+    }
+  },
+  "pairs": [
+    {
+      "id": "noise-cuda-dense",
+      "role": "noise",
+      "a": "llama-cuda-dense",
+      "b": "llama-cuda-dense",
+      "device": "cuda",
+      "status": "ok",
+      "reason": "",
+      "noise_class": "cuda-default",
+      "band": 0.08,
+      "band_source": "provisional cuda-default (measured n=1 < 3)",
+      "metrics": {
+        "pp": {
+          "a": {
+            "n": 8,
+            "median": 4702.481021,
+            "min": 4663.633234,
+            "max": 4796.594188,
+            "stddev": 43.20984961166342,
+            "rel_iqr": 0.008968283882841103
+          },
+          "b": {
+            "n": 8,
+            "median": 4702.421065500001,
+            "min": 4667.698243,
+            "max": 4773.717626,
+            "stddev": 38.62136583427264,
+            "rel_iqr": 0.008379866392464474
+          },
+          "ratio": {
+            "n": 8,
+            "median": 1.0002248039610333,
+            "ci_lo": 0.9988325625122185,
+            "ci_hi": 1.0015476689783358,
+            "confidence": 0.95
+          }
+        },
+        "tg": {
+          "a": {
+            "n": 8,
+            "median": 119.459089,
+            "min": 119.208325,
+            "max": 120.114773,
+            "stddev": 0.30004087058646656,
+            "rel_iqr": 0.0031327586969960965
+          },
+          "b": {
+            "n": 8,
+            "median": 119.516704,
+            "min": 119.235796,
+            "max": 119.990227,
+            "stddev": 0.25946224128928397,
+            "rel_iqr": 0.0024553074187856324
+          },
+          "ratio": {
+            "n": 8,
+            "median": 0.9999226107960273,
+            "ci_lo": 0.9993032957738824,
+            "ci_hi": 1.0003982943305343,
+            "confidence": 0.95
+          }
+        }
+      },
+      "quality": null,
+      "samples": [
+        {
+          "rep": 0,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4796.594188,
+          "tg_ts": 120.114773,
+          "wall_s": 4.868147631,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1740.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.38,
+              "temperature_c": 71.0
+            }
+          ]
+        },
+        {
+          "rep": 0,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4773.717626,
+          "tg_ts": 119.990227,
+          "wall_s": 5.070336683,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1905.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 278.97,
+              "temperature_c": 71.0
+            }
+          ]
+        },
+        {
+          "rep": 1,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4757.653476,
+          "tg_ts": 119.79915,
+          "wall_s": 4.947039979,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1905.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 278.44,
+              "temperature_c": 73.0
+            }
+          ]
+        },
+        {
+          "rep": 1,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4745.384573,
+          "tg_ts": 119.769181,
+          "wall_s": 5.693901369,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1710.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.4,
+              "temperature_c": 77.0
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4716.549768,
+          "tg_ts": 119.659984,
+          "wall_s": 4.747041993,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1890.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 278.27,
+              "temperature_c": 75.0
+            }
+          ]
+        },
+        {
+          "rep": 2,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4714.290146,
+          "tg_ts": 119.595943,
+          "wall_s": 4.827442427,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1695.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.37,
+              "temperature_c": 79.0
+            }
+          ]
+        },
+        {
+          "rep": 3,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4708.920013,
+          "tg_ts": 119.525378,
+          "wall_s": 4.78872311,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1680.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 300.18,
+              "temperature_c": 80.0
+            }
+          ]
+        },
+        {
+          "rep": 3,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4703.639599,
+          "tg_ts": 119.484016,
+          "wall_s": 4.770672586,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1890.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 278.5,
+              "temperature_c": 76.0
+            }
+          ]
+        },
+        {
+          "rep": 4,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4701.322443,
+          "tg_ts": 119.434162,
+          "wall_s": 4.80815814,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1680.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.78,
+              "temperature_c": 81.0
+            }
+          ]
+        },
+        {
+          "rep": 4,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4695.922118,
+          "tg_ts": 119.385791,
+          "wall_s": 4.828792418,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1680.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.66,
+              "temperature_c": 81.0
+            }
+          ]
+        },
+        {
+          "rep": 5,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4691.645654,
+          "tg_ts": 119.50803,
+          "wall_s": 4.812632529,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1875.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 286.91,
+              "temperature_c": 78.0
+            }
+          ]
+        },
+        {
+          "rep": 5,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4684.39576,
+          "tg_ts": 119.295409,
+          "wall_s": 4.826664822,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1665.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.72,
+              "temperature_c": 82.0
+            }
+          ]
+        },
+        {
+          "rep": 6,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4673.153858,
+          "tg_ts": 119.318926,
+          "wall_s": 4.827725547,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1680.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.38,
+              "temperature_c": 82.0
+            }
+          ]
+        },
+        {
+          "rep": 6,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4667.698243,
+          "tg_ts": 119.235796,
+          "wall_s": 4.827009083,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 0,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1665.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.32,
+              "temperature_c": 82.0
+            }
+          ]
+        },
+        {
+          "rep": 7,
+          "side": "b",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4667.964311,
+          "tg_ts": 119.255805,
+          "wall_s": 4.788839954,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1875.0,
+              "clocks_mem_mhz": 8001.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000000",
+              "power_w": 277.43,
+              "temperature_c": 79.0
+            }
+          ]
+        },
+        {
+          "rep": 7,
+          "side": "a",
+          "variant": "llama-cuda-dense",
+          "pp_ts": 4663.633234,
+          "tg_ts": 119.208325,
+          "wall_s": 4.809225548,
+          "build_commit": "2e0d86b",
+          "threads": 26,
+          "order": 1,
+          "settings": {
+            "flash_attn": -1,
+            "cuda_graphs": true,
+            "n_batch": 2048,
+            "n_ubatch": 512,
+            "n_threads": 26,
+            "n_gpu_layers": 99,
+            "tensor_buft_overrides": "none"
+          },
+          "n_eval": null,
+          "n_reused": null,
+          "gpu": [
+            {
+              "name": "NVIDIA RTX A6000",
+              "driver": "595.99.02",
+              "memory_mb": 49140.0,
+              "clocks_sm_mhz": 1665.0,
+              "clocks_mem_mhz": 7601.0,
+              "clocks_max_sm_mhz": 2100.0,
+              "throttle_reasons": "0x0000000000000004",
+              "power_w": 299.37,
+              "temperature_c": 83.0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "exit_code": 0
+}
