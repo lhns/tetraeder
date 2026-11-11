@@ -97,7 +97,7 @@ stage_min() {
     llama-fit) echo 10 ;;
     ktransformers) echo 25 ;;
     ktransformers-*) echo 20 ;;
-    llamacpp-cache*) echo 16 ;;
+    llamacpp-cache*) echo 30 ;; # per share: 29 to 30 min with load and warmup on 20261111c and 20261111g
     moe-tune) echo 45 ;;
     reference | trace) echo 15 ;;
     kv-quality) echo 30 ;;
