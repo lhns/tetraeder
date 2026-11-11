@@ -1,4 +1,4 @@
-# M1: status and open items (2026-11-11: exit tests passed on fast-disk boxes; Phase 2 decode lost to KTransformers on a 0.5 GB/s disk; four points await the owner)
+# M1: status and open items (2026-11-11: exit tests passed on fast-disk boxes; two points decided by the owner, two open: the llama.cpp tuner's pick on the 235B and the AVX-512 margin)
 
 Session profiles for later box runs: [`docs/sessions.md`](sessions.md) (`scripts/session.sh`).
 
@@ -17,7 +17,7 @@ State on 2026-11-10 after five box sessions (`bench/results/20261110*/`). Everyt
 
 ## M1 status (2026-11-11)
 
-Open for the owner's decision before M1 is declared reached: (1) llama.cpp's tuner has not produced a pick on the 235B (no share on the 30B; on the 235B its first probe OOMed a 24 GB card in `20261111c`, now run at 8K context); the hand sweep covers shares 0, 0.5 and 0.9 at the largest cache that fits, and the builder decodes 1.66x to 4.6x each; (2) Phase 3b tasks: the rerun on current main (`20261111d`, A6000) solved 15/20 against llama-server's 16/20 (cache 95.1% vs 94.5%, 0 non-200s, decode 1.02); pooled with `20261110d` both engines solved 30/40, a tie within run-to-run spread; (3) on AVX-512 the margin over KTransformers (1.04 to 1.12) is within its 7.8% run spread; (4) on a slow disk (0.5 to 0.7 GB/s, `20261111b`) KTransformers decodes about 1.6x faster than the builder (ratios 0.56 to 0.62), while prefill stays 1.8x ahead, so the decode margin depends on disk bandwidth.
+Points before M1 is declared reached: (1) llama.cpp's tuner has not produced a pick on the 235B (no share on the 30B; on the 235B its first probe OOMed a 24 GB card in `20261111c`, now run at 8K context); the hand sweep covers shares 0, 0.5 and 0.9 at the largest cache that fits, and the builder decodes 1.66x to 4.6x each; (2) Phase 3b tasks: decided by the owner (ADR 0046 addendum 2026-11-11): met as no worse than llama-server beyond run-to-run spread, pooled 73/100 against 74/100 over five runs, every run within one task; (3) on AVX-512 the margin over KTransformers (1.04 to 1.12) is within its 7.8% run spread; (4) slow disks: decided by the owner (ADR 0045 addendum 2026-11-11): they bound the scope, not the result; Phase 2 is met where the builder's decode reads at 16.9 GB/s or more, and at 0.5 to 0.7 GB/s disks KTransformers decodes 1.6x faster (known limitation, post-prefill warm-up, follow-up after M1).
 
 Every M1 exit test in `docs/plan.md` (Phases 0 to 3b) has a passing committed paired same-box run; the table above names them. The closing run (`20261110f`, box 60083507) is in. Deviations that remain:
 
