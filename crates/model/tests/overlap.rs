@@ -293,8 +293,9 @@ fn cpu_overlap_runs_pending_groups() {
     );
 }
 
-/// Per submit log: pairs of (urgent miss of a layer step, prefetch two layers ahead issued in
-/// the same layer step), and how many of them had the prefetch submitted first.
+/// Per submit log: pairs of (urgent miss of layer `o`, prefetch for layer `o + 2`), and how many
+/// had the prefetch submitted first. Such a prefetch is a depth-2 read issued in the same layer
+/// step, or a depth-1 top-up issued in the next one (always after the miss).
 fn order_pairs(log: &[Deadline]) -> (usize, usize) {
     let (mut pairs, mut prefetch_first) = (0, 0);
     for (i, u) in log.iter().enumerate().filter(|(_, d)| d.urgent) {
@@ -349,7 +350,8 @@ fn cpu_urgent_first_submits_misses_before_prefetch() {
         if urgent_first {
             assert_eq!(prefetch_first, 0, "{what}");
         } else {
-            assert_eq!(prefetch_first, pairs, "{what}");
+            // Same-step pairs exist, so the check above is not vacuous.
+            assert!(prefetch_first > 0, "{what}");
         }
         let io = &s.io;
         assert!(io.pending_urgent > 0, "{what}: {io:?}");
@@ -417,8 +419,8 @@ fn cpu_overlap_read_error_fails_the_step_and_recovers() {
     let _ = std::fs::remove_file(path);
 }
 
-/// hardware: gpu (skips without a GPU device). The GPU builder with the service and overlap gives
-/// the logits of the serial path: the CPU groups run before the segment, their rows are copied
+/// hardware: gpu (skips without a GPU device). The GPU builder with the service and overlap (with
+/// and without `urgent_first`) gives the logits of the serial path: the CPU groups run before the segment, their rows are copied
 /// to the GPU and scattered into the accumulator.
 #[test]
 fn gpu_overlap_logits_equal_serial() {
@@ -429,6 +431,16 @@ fn gpu_overlap_logits_equal_serial() {
     let path = fixture();
     let gpu = BackendChoice::Gpu { index: 0 };
     let want = sequence(&mut load(&path, gpu, Cfg::SERIAL));
-    let mut m = load(&path, gpu, Cfg::SERIAL.overlap());
-    assert_bitwise(&want, &sequence(&mut m), "gpu overlap");
+    for urgent_first in [false, true] {
+        let c = Cfg {
+            urgent_first,
+            ..Cfg::SERIAL.overlap()
+        };
+        let mut m = load(&path, gpu, c);
+        assert_bitwise(
+            &want,
+            &sequence(&mut m),
+            &format!("gpu overlap, urgent_first {urgent_first}"),
+        );
+    }
 }

@@ -36,7 +36,8 @@
 //!   step), `pending_top_up` (depth-1 prefetch) and `pending_ahead` (depth 2), with the mean time
 //!   from a pending prefetch's submit to its layer's plan (`pending_prefetch_lead_ms`); steps with
 //!   an urgent miss get their own wait, span and hidden share (`urgent_steps_*`), the others
-//!   `prefetch_steps_*`. `urgent_read_ms` is the mean submit-to-landing time of an urgent miss.
+//!   `prefetch_steps_*`. `urgent_read_ms` is the mean submit-to-landing time of an urgent miss
+//!   (units in flight together each count their whole latency, so it is not device time).
 //! - `TETRAEDER_EXIT_URGENT_FIRST` (0/1, default 0): with overlap, a layer step submits its
 //!   misses before the next layers' prefetch (`LoadOptions::urgent_first`).
 //! - `TETRAEDER_EXIT_KV_ROT` (0/1): Hadamard rotation of Q, K and V (ADR 0050 addendum). Unset:
