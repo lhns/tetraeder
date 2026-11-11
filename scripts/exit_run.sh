@@ -187,6 +187,9 @@ exit_regime() {
   want "$name" || return 0
   # RANDOM_PROMPT=1: pseudo-random token ids instead of the prompt text, as llama-bench uses
   local text=(TETRAEDER_EXIT_PROMPT_FILE="$prompt")
+  # deep builder stages decode in 4 windows, so a warm-up after the prefill shows (run-level decode_tok_s, decode_io and
+  # profile stay whole-run aggregates); a caller's own TETRAEDER_EXIT_DECODE_WINDOWS in "$@" comes later and wins
+  case "$name" in main-overlap* | main-prefetch* | main-repeat) text+=(TETRAEDER_EXIT_DECODE_WINDOWS=4) ;; esac
   [[ " $* " == *" RANDOM_PROMPT=1 "* ]] && text=()
   echo "[$(date +%T)] start $name"
   local json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
@@ -273,11 +276,12 @@ if d.get("cpu_share") is not None and d.get("cache_mib"):
     read -r mib shares <<< "$tuned"
     echo "[$(date +%T)] $name: tuner picked cache $mib MiB, cpu share $shares"
   fi
+  ensure_disk
   for s in $shares; do
     stage_done "llamacpp-cache-s$s${1:+-$1}" && { echo "[$(date +%T)] skip $name s$s: result in $date_dir"; continue; }
     fits "$name" || continue
     echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode $mode"
-    LOAD_MODE=$mode timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
+    HOST_DISK_DEV="$HOST_DISK_DEV" LOAD_MODE=$mode timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
       "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
     echo "[$(date +%T)] done $name s$s rc=$?"
   done

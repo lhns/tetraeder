@@ -6,7 +6,9 @@
 # than RAM cannot do, so dio is opt-in), PREFILL (32768), DECODE (64), UBATCH (2048), LLAMA_BASELINE_SERVER, PORT.
 # llama-server has no llama-bench-style depth run, so decode speed is the /completion timings.predicted_per_second of
 # a DECODE-token greedy generation right after a PREFILL-token prompt (the same token ids as exit_regime: the prompt
-# file through the model's vocab, repeated to length). Called by exit_run.sh (stages llamacpp-cache*).
+# file through the model's vocab, repeated to length). Called by exit_run.sh (stages llamacpp-cache*). The server is
+# sampled by scripts/engine_sample.py like the other engines ("host" and "env" in the result; HOST_DISK_DEV is the
+# model's MAJ:MIN, probed when unset); the loaded disk curve is looked up next to <out-json>.
 [ $# -ge 7 ] || { echo "usage: $0 <model> <threads> <cache-mib> <cpu-share> <ctx> <prompt-file> <out-json>" >&2; exit 2; }
 # one llama-server at a time (fixed port, 142 GB model): a duplicate launch exits
 exec 9> /root/tetraeder_llamacpp_cache.lock; flock -n 9 || { echo "llamacpp_cache.sh already running" >&2; exit 4; }
@@ -18,9 +20,12 @@ mkdir -p "$work"
 # newer llama.cpp fits tensors to free memory by itself (-fit); off, so the flags below are what runs
 fit_off=()
 "$server" --help 2>&1 | grep -q -- '--fit ' && fit_off=(-fit off)
-python3 -I - "$server" "$work/s$share.log" "${PORT:-18088}" "$model" "$threads" "$mib" "$share" "$ctx" "$prompt" "$out" \
+SCRIPTS_DIR=$(cd "$(dirname "$0")" && pwd) HOST_DISK_DEV="${HOST_DISK_DEV:-}" python3 -I - "$server" "$work/s$share.log" "${PORT:-18088}" "$model" "$threads" "$mib" "$share" "$ctx" "$prompt" "$out" \
   "${LOAD_MODE:-auto}" "${PREFILL:-32768}" "${DECODE:-64}" "${UBATCH:-2048}" "${fit_off[@]}" << 'EOF'
 import json, os, re, signal, subprocess, sys, time, urllib.request
+
+sys.path.insert(0, os.environ["SCRIPTS_DIR"])
+import engine_sample as es
 
 (server, log, port, model, threads, mib, share, ctx, prompt, out, load_mode, prefill, decode, ub) = sys.argv[1:15]
 fit_off, port, prefill, decode = sys.argv[15:], int(port), int(prefill), int(decode)
@@ -57,6 +62,7 @@ def gen(toks, n):
                                 "temperature": 0, "top_k": 1, "seed": 1})
 
 
+sampler = None
 res = {"engine": f"llamacpp-cache-s{share}", "cache_mib": int(mib), "cpu_share": float(share), "load_mode": load_mode,
        "flags": flags, "threads": int(threads), "ctx": int(ctx), "ubatch": int(ub), "prefill": prefill, "decode": decode,
        "server": server, "machine": os.uname().nodename, "ok": False}
@@ -78,6 +84,15 @@ try:
             pass
         time.sleep(2)
     res["load_s"] = round(time.time() - t0, 1)
+    try:  # host sampling must never fail the run
+        sample_py = os.path.join(os.environ["SCRIPTS_DIR"], "engine_sample.py")
+        disk = os.environ.get("HOST_DISK_DEV") or subprocess.run(
+            [sys.executable, sample_py, "probe-disk", model], capture_output=True, text=True).stdout.strip() or "none"
+        samples = os.path.splitext(log)[0] + ".samples.jsonl"
+        sampler = subprocess.Popen([sys.executable, sample_py, "sample", "--pid", str(proc.pid), "--disk", disk,
+                                    "--out", samples])
+    except Exception as e:
+        res["host_error"] = repr(e)
     # is the model streamed or thrashed: load mode, RSS and major faults around a short warmup
     before = proc_stat(proc.pid)
     t1 = time.time()
@@ -96,7 +111,9 @@ try:
     for b in b"".join(t.to_bytes(4, "little", signed=True) for t in toks):
         h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
     res["prompt"] = {"tokens": len(toks), "fnv1a64": f"{h:016x}"}
+    t_a = time.time()
     g = gen(toks, decode)
+    t_b = time.time()
     after = proc_stat(proc.pid)
     t = g["timings"]
     res["timings"] = {k: t.get(k) for k in ("prompt_n", "prompt_ms", "prompt_per_second", "predicted_n", "predicted_ms",
@@ -104,9 +121,24 @@ try:
     res["prefill_tok_s"], res["decode_tok_s"] = t["prompt_per_second"], t["predicted_per_second"]
     res["run_stat"] = {"before": before, "after": after, "majflt": after["majflt"] - before["majflt"]}
     res["ok"] = t["prompt_n"] >= prefill - 1 and t["predicted_n"] == decode
+    try:
+        if sampler is not None:
+            time.sleep(2)  # one more sample after the run
+            sampler.terminate()
+            sampler.wait(timeout=30)
+            t_first = t_a + t["prompt_ms"] / 1e3
+            curve_file = es.find_curve(os.path.dirname(os.path.abspath(out)))
+            curve = es.load_curve(curve_file) if curve_file else []
+            res["host"] = es.host_summary(es.load_samples(samples), (t_a, t_first, t["prompt_n"]),
+                                          (t_first, t_b, t["predicted_n"]), int(threads), curve)
+            res["env"] = {**es.env_info(), "disk_curve": os.path.basename(curve_file) if curve else None}
+    except Exception as e:
+        res["host_error"] = repr(e)
 except Exception as e:
     res["error"] = repr(e)
 finally:
+    if sampler is not None and sampler.poll() is None:
+        sampler.terminate()
     if proc.poll() is None:
         proc.send_signal(signal.SIGINT)  # the cache logs its hit statistics at exit
         try:

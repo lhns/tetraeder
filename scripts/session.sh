@@ -211,6 +211,12 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
       fi
       # B1_STAGES replaces the profile's list (exit_run.sh runs them in the order of the list)
       stages="${B1_STAGES:-$stages}"
+      # disk-curve is required: the exit results' disk_util and io_class (ADR 0056 addendum) need the loaded curve
+      case " $stages " in
+        *" disk-curve "*) ;;
+        *" smoke "*) stages="${stages/smoke/smoke disk-curve}"; echo "B1_STAGES lacked disk-curve: added after smoke" ;;
+        *) stages="disk-curve $stages"; echo "B1_STAGES lacked disk-curve: added first" ;;
+      esac
       # levers (ADR 0038): prefetch on in every builder stage, depth 2
       step exit_run env TETRAEDER_EXIT_PREFETCH_DEPTH=2 CPU_SHARES="$share" STAGES="$stages" bash scripts/exit_run.sh
       ;;
