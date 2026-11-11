@@ -59,3 +59,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0055](0055-replanning-wired-into-serve.md) | Replanning wired into serve: plan from file or the executable enumerators, lowering from the plan, decode-step residual from the step ring (Proposed) |
 | [0056](0056-tier-and-disk-cost-term-virtual-clock-calibration-ledger.md) | Cost model: RAM-tier and disk term from replayed routing, virtual clock for I/O tests, calibration ledger in CI (Proposed) |
 | [0057](0057-qwen-xml-arguments-typed-from-python-literals.md) | Qwen XML tool arguments: Python literals typed by the schema (Proposed) |
+| [0058](0058-decode-io-attribution.md) | Decode I/O attribution: capacity and demand per window before any bottleneck label (Proposed) |
