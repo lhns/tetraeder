@@ -98,6 +98,7 @@ stage_min() {
     ktransformers) echo 25 ;;
     ktransformers-*) echo 20 ;;
     llamacpp-cache*) echo 16 ;;
+    moe-tune) echo 45 ;;
     reference | trace) echo 15 ;;
     kv-quality) echo 30 ;;
     exit-*) echo 40 ;;
@@ -255,11 +256,24 @@ ktransformers() {
 # suffix "dio", stage llamacpp-cache-dio: the same shares with --load-mode dio, the pair that shows whether mmap
 # streams or thrashes in this regime (m1-open item 1).
 llamacpp_cache() {
-  local name=llamacpp-cache${1:+-$1} s mode=${LOAD_MODE:-auto}
+  local name=llamacpp-cache${1:+-$1} s mode=${LOAD_MODE:-auto} shares=${CPU_SHARES:-0 0.5 0.9} tuned
   [ "${1:-}" = dio ] && mode=dio
   want "$name" || return 0
   local mib=$((vram_bytes / 1048576))
-  for s in ${CPU_SHARES:-0 0.5 0.9}; do
+  # the tuner's pick from this session (stage moe-tune) replaces the session's shares and cache size
+  tuned=$(python3 -I -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    sys.exit()
+if d.get("cpu_share") is not None and d.get("cache_mib"):
+    print(d["cache_mib"], d["cpu_share"])' "$date_dir/moe-cache-tune/tune.json")
+  if [ -n "$tuned" ]; then
+    read -r mib shares <<< "$tuned"
+    echo "[$(date +%T)] $name: tuner picked cache $mib MiB, cpu share $shares"
+  fi
+  for s in $shares; do
     stage_done "llamacpp-cache-s$s${1:+-$1}" && { echo "[$(date +%T)] skip $name s$s: result in $date_dir"; continue; }
     fits "$name" || continue
     echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode $mode"
@@ -267,6 +281,19 @@ llamacpp_cache() {
       "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
     echo "[$(date +%T)] done $name s$s rc=$?"
   done
+}
+
+# moe_tune: llama.cpp's cache tuner (#30966) on the 235B under this script's balloon, cache capped at the builder's
+# VRAM slot bytes; llamacpp_cache then runs the tuner's pick ("as its tuner picks them", m1-open item 1)
+moe_tune() {
+  want moe-tune || return 0
+  [ "${RESUME:-0}" = 1 ] && [ -s "$date_dir/moe-cache-tune/tune.json" ] && {
+    echo "[$(date +%T)] skip moe-tune: result in $date_dir"
+    return 0
+  }
+  echo "[$(date +%T)] start moe-tune: max $((vram_bytes / 1048576)) MiB"
+  GGUF="$model" MAX_MIB=$((vram_bytes / 1048576)) THREADS="$threads" TUNE_MIN="${TUNE_MIN:-40}"     RESULTS_DATE="$(basename "$date_dir")" bash scripts/moe_cache_tune.sh 8>&-
+  echo "[$(date +%T)] done moe-tune rc=$?"
 }
 
 # disk_curve: the model disk's read rate by queue depth, idle and beside quota-1 spinning threads (ADR 0056; about 2
@@ -444,6 +471,7 @@ EOF
       # The verdict: KTransformers and llama.cpp's expert cache (mmap, then dio: does mmap stream or thrash) after the
       # builder; then the builder and KTransformers again, a second pair for the noise band; the diagnosis stages
       # (KT on AVX2) and the cache repeat last, so a deadline cuts them first
+      moe_tune
       ktransformers
       llamacpp_cache
       llamacpp_cache dio

@@ -1,4 +1,4 @@
-# M1: status and open items (2026-11-11: every exit test passed; four points await the owner)
+# M1: status and open items (2026-11-11: exit tests passed on fast-disk boxes; Phase 2 decode lost to KTransformers on a 0.5 GB/s disk; four points await the owner)
 
 Session profiles for later box runs: [`docs/sessions.md`](sessions.md) (`scripts/session.sh`).
 
