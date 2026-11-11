@@ -1,0 +1,106 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "legacy-tier-boundary",
+  "started": "2026-11-11T13:36:41",
+  "timed_out": false,
+  "exit_code": 1,
+  "claude": {
+    "duration_api_ms": 92176,
+    "stop_reason": "tool_use",
+    "session_id": "b7f1c7e5-60e4-4e4c-a8b2-9189f9246e09",
+    "total_cost_usd": 0.4292844,
+    "usage": {
+      "input_tokens": 27520,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 826122,
+      "output_tokens": 7699,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 27520,
+        "outputTokens": 7699,
+        "cacheReadInputTokens": 826122,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.4292844,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "max_turns",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": true,
+    "num_turns": 41,
+    "subtype": "error_max_turns",
+    "errors": [
+      "Reached maximum number of turns (40)"
+    ],
+    "type": "result",
+    "duration_ms": 95647,
+    "uuid": "a248b235-b875-4332-9213-e2689a3b0559",
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 96.23,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 80%]\n..................                                                       [100%]\n90 passed in 0.17s\n"
+      }
+    ]
+  },
+  "success": true
+}

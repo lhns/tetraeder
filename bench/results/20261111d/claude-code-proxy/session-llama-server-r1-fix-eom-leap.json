@@ -1,0 +1,109 @@
+{
+  "engine": "llama-server",
+  "rep": 1,
+  "task": "fix-eom-leap",
+  "started": "2026-11-11T12:43:46",
+  "timed_out": false,
+  "exit_code": 0,
+  "claude": {
+    "duration_api_ms": 20767,
+    "stop_reason": "end_turn",
+    "session_id": "ef10a0ef-4859-4a40-a734-5a15c53cbfa5",
+    "total_cost_usd": 0.11668880000000001,
+    "usage": {
+      "input_tokens": 14731,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 107924,
+      "output_tokens": 1809,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 14731,
+        "outputTokens": 1809,
+        "cacheReadInputTokens": 107924,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.11668880000000001,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": false,
+    "num_turns": 9,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "I've successfully fixed the bug in the dates EOM functionality. The issue was that invoices with 'eom' (end of month) payment terms issued in February of a leap year were getting the wrong due date because the `end_of_month` function didn't account for leap years when calculating the last day of February.\n\n## The Fix\n\nI modified the `end_of_month` function in `invoicing/dates.py` to properly handle leap years:\n\n1. **Problem**: The function used a static array `_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]` that always returned 28 days for February\n2. **Solution**: Added leap year logic that checks `calendar.isleap(d.year)` to return 29 days for February in leap years and 28 days otherwise\n3. **Result**: Now correctly returns February 29th for leap years (like 2024) and February 28th for non-leap years\n\n## Verification\n\n- \u2705 The previously failing tests now pass:\n  - `test_end_of_month_leap_february`\n  - `test_eom_terms_in_leap_year`\n- \u2705 All 85 tests in the full test suite continue to pass\n- \u2705 The fix works for any leap year, not just 2024\n- \u2705 Edge cases handled correctly (2023 vs 2024 February, other months unaffected)\n\nThe implementation is general and robust, using Python's built-in `calendar.isleap()` function to properly identify leap years according to Gregorian calendar rules.",
+    "ttft_ms": 4660,
+    "type": "result",
+    "duration_ms": 22913,
+    "uuid": "e0a9d16f-20c5-470a-9a00-4b56eda779c1",
+    "ttft_stream_ms": 3988,
+    "time_to_request_ms": 99,
+    "first_content_frame_ms": 3989,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 23.45,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 78%]\n....................                                                     [100%]\n92 passed in 0.17s\n"
+      }
+    ]
+  },
+  "success": true
+}

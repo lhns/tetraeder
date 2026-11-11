@@ -1,0 +1,111 @@
+{
+  "engine": "tetraeder",
+  "rep": 2,
+  "task": "cli-sort-by",
+  "started": "2026-11-11T13:39:08",
+  "timed_out": false,
+  "exit_code": 1,
+  "claude": {
+    "duration_api_ms": 90955,
+    "stop_reason": "tool_use",
+    "session_id": "cbe74949-7cb9-441e-a8a3-740f8fa5488f",
+    "total_cost_usd": 0.4465998,
+    "usage": {
+      "input_tokens": 27416,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 867679,
+      "output_tokens": 8170,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 27416,
+        "outputTokens": 8170,
+        "cacheReadInputTokens": 867679,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.4465998,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "max_turns",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "safety_stops": 0,
+    "is_error": true,
+    "num_turns": 41,
+    "subtype": "error_max_turns",
+    "errors": [
+      "Reached maximum number of turns (40)"
+    ],
+    "type": "result",
+    "duration_ms": 97952,
+    "uuid": "a6c098f8-76d0-46c9-ba03-ba936b0ad190",
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 98.47,
+  "check": {
+    "passed": true,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 0,
+        "output_tail": "........................................................................ [ 76%]\n......................                                                   [100%]\n94 passed in 0.19s\n"
+      },
+      {
+        "cmd": "/root/ccvenv/bin/python /root/tetraeder/bench/claude-code-proxy/checks/added_tests.py --pattern sort_by|sort-by --min 2",
+        "exit_code": 0,
+        "output_tail": "4 matching tests: ['tests/test_storage_report_cli.py::test_format_list_sorted_by_number', 'tests/test_storage_report_cli.py::test_format_list_sorted_by_issued', 'tests/test_storage_report_cli.py::test_format_list_sorted_by_customer', 'tests/test_storage_report_cli.py::test_format_list_sorted_by_total']\n"
+      }
+    ]
+  },
+  "success": true
+}

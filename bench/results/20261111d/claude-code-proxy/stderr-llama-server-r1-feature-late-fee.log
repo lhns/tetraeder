@@ -1,0 +1,2 @@
+[claude-code:unrecognized_model] {"model":"qwen3-coder-30b","query_source":"sdk"}
+Background tasks still running 10m after the last turn (subagent "Analyze codebase behavior and requirements"); stopping them. Set CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 to wait indefinitely.

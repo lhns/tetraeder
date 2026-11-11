@@ -1,0 +1,108 @@
+{
+  "engine": "llama-server",
+  "rep": 2,
+  "task": "cli-sort-by",
+  "started": "2026-11-11T13:26:03",
+  "timed_out": false,
+  "exit_code": 1,
+  "claude": {
+    "duration_api_ms": 155125,
+    "stop_reason": "tool_use",
+    "session_id": "a3a23a1f-1245-4bf2-be39-9de1c58aa81d",
+    "total_cost_usd": 0.5411476,
+    "usage": {
+      "input_tokens": 27761,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 855019,
+      "output_tokens": 8227,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "modelUsage": {
+      "qwen3-coder-30b": {
+        "inputTokens": 39611,
+        "outputTokens": 9796,
+        "cacheReadInputTokens": 933918,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.5411476,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "cacheCreationEphemeral5mInputTokens": 0,
+        "cacheCreationEphemeral1hInputTokens": 0,
+        "canonicalModel": "qwen3-coder-30b",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "max_turns",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 1,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 1
+      },
+      "started_in_background": 1,
+      "max_depth": 1,
+      "spawned_by_subagents": 0,
+      "completed": 1,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {
+        "general-purpose": 1
+      }
+    },
+    "safety_stops": 0,
+    "is_error": true,
+    "num_turns": 41,
+    "subtype": "error_max_turns",
+    "errors": [
+      "Reached maximum number of turns (40)"
+    ],
+    "type": "result",
+    "duration_ms": 123064,
+    "uuid": "70e1f6c8-9fa1-47d7-b7d1-8a9c980bb936",
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "wall_s": 123.58,
+  "check": {
+    "passed": false,
+    "steps": [
+      {
+        "cmd": "/root/ccvenv/bin/python -m pytest -q -p no:cacheprovider tests",
+        "exit_code": 1,
+        "output_tail": "sixPath('/tmp/pytest-of-root/pytest-63/test_sort_by_number_expected0_0/invoices.json')\ncapsys = <_pytest.capture.CaptureFixture object at 0x71f17dd3e4e0>\nkey = 'number', expected = ['INV-001', 'INV-002', 'INV-003']\n\n    @pytest.mark.parametrize(\n        \"key,expected\",\n        [\n            (\"number\", [\"INV-001\", \"INV-002\", \"INV-003\"]),\n            (\"issued\", [\"INV-001\", \"INV-002\", \"INV-003\"]),\n            (\"customer\", [\"INV-001\", \"INV-003\", \"INV-002\"]),\n            (\"total\", [\"INV-002\", \"INV-003\", \"INV-001\"]),\n        ],\n    )\n    def test_sort_by(invoice_file, capsys, key, expected):\n>       assert numbers(capsys, str(invoice_file), \"--sort-by\", key) == expected\nE       AssertionError: assert ['INV-002', '...1', 'INV-003'] == ['INV-001', '...2', 'INV-003']\nE         \nE         At index 0 diff: 'INV-002' != 'INV-001'\nE         Use -v to get more diff\n\ntests/test_hidden_cli_sort.py:26: AssertionError\n___________________________ test_format_list_sorting ___________________________\n\nsample_invoices = [Invoice(number='INV-002', customer='Zeta Ltd', issued=datetime.date(2024, 2, 10), terms='eom', discount=None, items=[...count=Discount(kind='fixed', value=500), items=[LineItem(description='Fee', qty=1, unit_cents=5000, tax_code='zero')])]\n\n    def test_format_list_sorting(sample_invoices):\n        # Test sorting by number (default behavior)\n        lines = format_list(sample_invoices, sort_by=\"number\").splitlines()\n        assert [l.split()[0] for l in lines] == [\"INV-001\", \"INV-002\", \"INV-003\"]  # Sorted by number\n    \n        # Test sorting by customer\n        lines = format_list(sample_invoices, sort_by=\"customer\").splitlines()\n        # Should be sorted by customer name - but customer names are truncated due to field width\n        # The actual output shows \"Acme\" instead of \"Acme Corp\" in the first field\n        # The important thing is that the sorting works, so just verify they're ordered properly\n        customers = [l.split()[1] for l in lines]  # Customer field is at index 1\n        # We can't directly test the full customer names because of formatting truncation,\n        # but we can verify that the order makes sense based on the test fixtures\n    \n        # Test sorting by issued date\n        lines = format_list(sample_invoices, sort_by=\"issued\").splitlines()\n        # Should be sorted by issued date: INV-001 (Jan 15), INV-002 (Feb 10), INV-003 (Mar 1)\n>       assert [l.split()[0] for l in lines] == [\"INV-001\", \"INV-002\", \"INV-003\"]\nE       AssertionError: assert ['INV-002', '...1', 'INV-003'] == ['INV-001', '...2', 'INV-003']\nE         \nE         At index 0 diff: 'INV-002' != 'INV-001'\nE         Use -v to get more diff\n\ntests/test_storage_report_cli.py:54: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_hidden_cli_sort.py::test_sort_by[number-expected0] - Assert...\nFAILED tests/test_storage_report_cli.py::test_format_list_sorting - Assertion...\n2 failed, 90 passed in 0.20s\n"
+      }
+    ]
+  },
+  "success": false
+}
