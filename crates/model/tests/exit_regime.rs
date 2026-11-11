@@ -408,8 +408,10 @@ fn profile_json(p: &StepProfile, per: f64) -> Value {
     })
 }
 
-/// Reads between two counter snapshots, per `per` (tokens).
-fn io_json(a: &IoCounters, b: &IoCounters, per: f64) -> Value {
+/// Reads between two counter snapshots, per `per` (tokens) over `wall_s` of wall time.
+/// `waited_read_gb_s` is bytes (prefetch included) over the time spent in waited reads only, so it
+/// overstates the disk rate; `bytes_per_s` is bytes over wall time.
+fn io_json(a: &IoCounters, b: &IoCounters, per: f64, wall_s: f64) -> Value {
     let bytes = b.bytes_read - a.bytes_read;
     let secs = (b.read_time - a.read_time).as_secs_f64();
     json!({
@@ -419,7 +421,8 @@ fn io_json(a: &IoCounters, b: &IoCounters, per: f64) -> Value {
         "bytes_per_token": bytes as f64 / per,
         "read_s": secs,
         "read_ms_per_token": secs * 1e3 / per,
-        "read_gb_s": if secs > 0.0 { bytes as f64 / secs / 1e9 } else { 0.0 },
+        "waited_read_gb_s": if secs > 0.0 { bytes as f64 / secs / 1e9 } else { 0.0 },
+        "bytes_per_s": if wall_s > 0.0 { bytes as f64 / wall_s } else { 0.0 },
         "uploads": b.uploads - a.uploads,
     })
 }
@@ -663,7 +666,7 @@ fn exit_regime() {
                 "tokens": n,
                 "wall_s": wall,
                 "profile_per_token": profile_json(&p, n as f64),
-                "io": io_json(&sw.io, &se.io, n as f64),
+                "io": io_json(&sw.io, &se.io, n as f64, wall),
                 "layers": layers_json(&sw, &se),
             }));
             add_profile(&mut tg, &p);
@@ -695,12 +698,12 @@ fn exit_regime() {
             "hot_refresh_s": refresh_s,
             "ubatch_s": ubatch_s,
             "prefill_profile_per_ubatch": profile_json(&pp, pp.steps.max(1) as f64),
-            "prefill_io": io_json(&s0.io, &s1.io, n_prefill as f64),
+            "prefill_io": io_json(&s0.io, &s1.io, n_prefill as f64, prefill_s + refresh_s),
             "prefill_prefetch": prefetch_json(&s0, &s1, n_prefill as f64),
             "decode_tokens": n_decode,
             "decode_tok_s": n_decode as f64 / decode_s,
             "decode_profile_per_token": profile_json(&tg, n_decode.max(1) as f64),
-            "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64),
+            "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64, decode_s),
             "decode_prefetch": prefetch_json(&s1, &s2, n_decode.max(1) as f64),
             "decode_overlap": overlap_json(&s1.io, &s2.io, n_decode.max(1) as f64),
             "decode_layers": layers_json(&s1, &s2),

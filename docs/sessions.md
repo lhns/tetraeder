@@ -64,7 +64,9 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 
 **Launch.** No models at provision (the script fetches the 235B). `$T run --id <id> scripts/session.sh --env SESSION=b1-exit --env MOE_CPU_SHARE=<tune.json cpu_share from B3>`. Defaults: `VRAM_SLOT_BYTES=10966007808`, `OT_FIT='blk\.[0-6]\.ffn_.*_exps=CUDA0;exps=CPU'` (fitted for a 24 GB card at 32K). Without `MOE_CPU_SHARE` it takes the newest committed `moe-cache-tune/tune.json`, else 0.5 (logged).
 
-**Stages** (code order of `exit_run.sh`; every builder stage has prefetch on at depth 2, the ADR 0038 levers; host sampling on every builder and KT stage). The verdict triple comes first and adjacent, then the noise pair; what does not fit is cut from the end:
+**I/O attribution.** `disk-curve` is required in both B1 profiles (it is in both default stage lists; keep it in a `B1_STAGES` override): with the loaded curve every exit stage, builder or baseline, gets `host.decode.disk_util` and `io_class` (`disk_bandwidth`, `io_latency`, `io_under_issue`, `not_io_bound`, `unknown`) next to the I/O pressure shares (ADR 0056 addendum 2026-11-11).
+
+**Stages** (code order of `exit_run.sh`; every builder stage has prefetch on at depth 2, the ADR 0038 levers; host sampling on every builder, KT and llama.cpp cache stage). The verdict triple comes first and adjacent, then the noise pair; what does not fit is cut from the end:
 
 | # | Stage | Estimate | Cumulative | Decides |
 |---|---|---|---|---|

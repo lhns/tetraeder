@@ -226,7 +226,7 @@ EOF
       echo "[$(date +%T)] client rc=$rc"
       kill "$spid" 2> /dev/null
       python3 scripts/engine_sample.py summarize --samples "$samples" --threads "$threads" --kt-json "$res" --out "$summary" \
-        || echo "host summary failed"
+        --curve-dir "$(dirname "$out_json")" || echo "host summary failed"
     else
       echo "[$(date +%T)] server did not come up"
       rc=43
@@ -260,10 +260,10 @@ try:
 except OSError:
     gpu = None
 rss_kb = read(rss).strip()
-try:
-    host = json.loads(read(summary))
-except ValueError:
-    host = {}
+# a missing summary leaves a visible error in "host", not an empty field
+sys.path.insert(0, os.path.join(os.getcwd(), "scripts"))
+import engine_sample
+host = engine_sample.kt_summary(summary)
 d = {
     "engine": "ktransformers",
     "engine_arch": "kt-kernel LLAMAFILE (GGUF experts in place, CPU) + sglang-kt (GPU attention, bf16 from GGUF, fp8 KV)",

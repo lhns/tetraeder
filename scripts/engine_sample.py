@@ -7,14 +7,18 @@ sample:     python3 engine_sample.py sample --pid PID --disk MAJ:MIN --out s.jso
             Every second until PID exits: disk read bytes and ops, queue depth, major page faults of PID's process tree,
             per-CPU jiffies (/proc/stat), cgroup CPU usage, GPU util and memory, tree RSS, cgroup file and anon memory.
 summarize:  python3 engine_sample.py summarize --samples s.jsonl --threads N (--builder-json H | --kt-json R) --out sum.json
-            [--merge-into H]
+            [--merge-into H] [--curve-dir D | --curve FILE]
             Splits the samples into a prefill and a decode window and writes {"host": {"prefill": {...}, "decode":
             {...}}, "env": {...}}. The builder windows come from the harness JSON (decode_windows wall clock, prefill
             before them), KTransformers' from the client result (t_start, t_first, t_end). --merge-into sets "host"
-            and the new "env" keys in that JSON as well.
+            and the new "env" keys in that JSON as well. Each phase also gets io_some_share and io_full_share (I/O
+            pressure stall time over wall time), disk_util (read_mb_s over the loaded disk curve's rate at the mean
+            queue depth) and io_class (see io_class()). The curve is disk-curve-loaded-*.json in D (default: the
+            directory of the merged or output JSON).
 """
 
 import argparse
+import glob
 import json
 import os
 import subprocess
@@ -27,6 +31,14 @@ import detector_sample as ds  # noqa: E402
 
 # the probe reads 2 GB; a device must show at least about half of it
 PROBE_MIN_BYTES = 1_000_000_000
+
+# Provisional thresholds of io_class (ADR 0056 addendum); tune them when more paired runs exist.
+# Stall share (I/O pressure, or the builder's read wait over its step) from which a phase counts as I/O bound.
+IO_BOUND_SHARE = 0.25
+# Achieved read rate over the disk curve's rate at the same queue depth from which the disk itself is the limit.
+DISK_UTIL_BOUND = 0.7
+# Mean queue depth below which the reads are serial (one request at a time, or page faults), not too few.
+SERIAL_QUEUE_DEPTH = 2.0
 
 
 def probe_disk(a):
@@ -72,6 +84,21 @@ def cgroup_io():
             elif k == "rios":
                 ro += int(v)
     return {"rbytes": rb, "rios": ro} if seen else None
+
+
+def io_pressure():
+    """I/O pressure stall totals in usec of the container's cgroup (v2 io.pressure), else /proc/pressure/io.
+
+    {"src", "some", "full"}; src is None when neither file has a "some" line."""
+    for path in ("/sys/fs/cgroup/io.pressure", "/proc/pressure/io"):
+        got = {}
+        for line in ds.read(path).splitlines():
+            kind = line.split(" ", 1)[0]
+            if kind in ("some", "full") and "total=" in line:
+                got[kind] = int(line.rsplit("total=", 1)[1])
+        if "some" in got:
+            return {"src": path, "some": got["some"], "full": got.get("full")}
+    return {"src": None, "some": None, "full": None}
 
 
 def majflt(pids):
@@ -133,7 +160,7 @@ def sample(a):
             rb = ds.disk_read_bytes(a.disk) if a.disk != "none" else None
             rec = {"t": time.time(), "disk_read_bytes": rb, "disk_read_ops": ops,
                    "disk_inflight": inflight, "disk_weighted_ms": weighted_ms,
-                   "cg_io": cgroup_io(), "majflt": majflt(pids), "cpus": stat_jiffies(),
+                   "cg_io": cgroup_io(), "io_psi": io_pressure(), "majflt": majflt(pids), "cpus": stat_jiffies(),
                    "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": ds.proc_cpu_s(pids),
                    "rss_kb": tree_rss_kb(pids), "cg_mem": cgroup_mem(), "gpu": gpu_util()}
             out.write(json.dumps(rec) + "\n")
@@ -182,6 +209,14 @@ def phase(rows, t0, t1, tokens, threads):
     top = sorted(shares, reverse=True)[:threads] if threads else shares
     gpu = [r["gpu"]["util"] for r in inside if r.get("gpu")]
     gmem = [r["gpu"]["mem_mib"] for r in inside if r.get("gpu")]
+    psi0, psi1 = (r.get("io_psi") or {} for r in (win[0], win[-1]))
+    same_src = psi0.get("src") is not None and psi0.get("src") == psi1.get("src")
+
+    def stall(kind):
+        if not same_src or psi0.get(kind) is None or psi1.get(kind) is None or not dur:
+            return None
+        return min(1.0, (psi1[kind] - psi0[kind]) / 1e6 / dur)
+
     cgio = [r["cg_io"] for r in (win[0], win[-1])]
     cg_rb = cgio[1]["rbytes"] - cgio[0]["rbytes"] if all(cgio) else None
     n = max(tokens, 1)
@@ -196,6 +231,8 @@ def phase(rows, t0, t1, tokens, threads):
         # mean queue depth = weighted IO milliseconds per wall millisecond (all IOs of the device, not only ours)
         "disk_queue_depth_mean": wms / (dur * 1e3) if wms is not None and dur else None,
         "disk_inflight_max": max(infl) if infl else None,
+        "io_psi_src": psi0.get("src") if same_src else None,
+        "io_some_share": stall("some"), "io_full_share": stall("full"),
         "majflt": mf, "majflt_per_token": mf / n if mf is not None else None,
         "cpu_busy_pct": busy,
         "cpu_busy_pct_top_cpus": sum(top) / len(top) if top else None,
@@ -205,6 +242,88 @@ def phase(rows, t0, t1, tokens, threads):
         "cache_file_gb_max": max(fil) / 1e9 if fil else None,
         "anon_gb_max": max(an) / 1e9 if an else None,
     }
+
+
+def load_curve(path):
+    """[(depth, bytes_per_s)] of a disk-curve JSON, sorted by depth; [] if unreadable."""
+    try:
+        pts = json.loads(ds.read(path))["points"]
+        return sorted((float(p["depth"]), float(p["bytes_per_s"])) for p in pts)
+    except (ValueError, KeyError, TypeError):
+        return []
+
+
+def find_curve(directory):
+    """The newest disk-curve-loaded-*.json in the directory, or None."""
+    found = sorted(glob.glob(os.path.join(directory, "disk-curve-loaded-*.json")))
+    return found[-1] if found else None
+
+
+def curve_capacity(depth, curve):
+    """The curve's bytes/s at `depth` (linear between points, clamped to the curve's range); None without inputs."""
+    if depth is None or not curve:
+        return None
+    d = min(max(depth, curve[0][0]), curve[-1][0])
+    cap = curve[-1][1]
+    for (d0, b0), (d1, b1) in zip(curve, curve[1:]):
+        if d0 <= d <= d1:
+            cap = b0 + (b1 - b0) * (d - d0) / (d1 - d0) if d1 > d0 else b1
+            break
+    return cap
+
+
+def disk_util(read_mb_s, depth, curve):
+    """Achieved read rate over the curve's rate at `depth`."""
+    cap = curve_capacity(depth, curve)
+    return read_mb_s * 1e6 / cap if read_mb_s is not None and cap else None
+
+
+def read_wait_share(profile, io=None):
+    """(read_wait_ms over total_ms of a builder profile block, unreliable).
+
+    Prefetch-only runs report read_wait_ms 0 although they read (`io` bytes > 0): the share is then None and
+    unreliable, not 0."""
+    try:
+        if profile["read_wait_ms"] == 0 and io and io.get("bytes", 0) > 0:
+            return None, True
+        return profile["read_wait_ms"] / profile["total_ms"], False
+    except (KeyError, TypeError, ZeroDivisionError):
+        return None, False
+
+
+def io_class(h):
+    """(class, missing inputs) of one host phase summary, same rule for the builder and the baselines. Report-only.
+
+    disk_util >= DISK_UTIL_BOUND is `disk_bandwidth` whatever the stall share. Else the stall share s (the larger of
+    io_some_share and read_wait_share) below IO_BOUND_SHARE is `not_io_bound`; else a queue depth below
+    SERIAL_QUEUE_DEPTH is `io_latency` (serial reads or page faults), anything else `io_under_issue`."""
+    if h.get("disk_util") is not None and h["disk_util"] >= DISK_UTIL_BOUND:
+        return "disk_bandwidth", []
+    shares = [h[k] for k in ("io_some_share", "read_wait_share") if h.get(k) is not None]
+    if not shares:
+        return "unknown", ["io_some_share"]
+    if max(shares) < IO_BOUND_SHARE:
+        return "not_io_bound", []
+    if h.get("disk_util") is None or h.get("disk_queue_depth_mean") is None:
+        return "unknown", [k for k in ("disk_util", "disk_queue_depth_mean") if h.get(k) is None]
+    return ("io_latency" if h["disk_queue_depth_mean"] < SERIAL_QUEUE_DEPTH else "io_under_issue"), []
+
+
+def classify(h, curve, rw=(None, False)):
+    """Adds the attribution numbers and the report-only io_class to a phase summary: bytes_per_token, disk_util,
+    tok_s_ceiling_disk (curve capacity at the observed depth over bytes_per_token), read_wait_share, io_class."""
+    if "error" in h:
+        return h
+    cap = curve_capacity(h.get("disk_queue_depth_mean"), curve)
+    bpt = h.get("read_bytes_per_token")
+    h["bytes_per_token"] = bpt
+    h["disk_util"] = disk_util(h.get("read_mb_s"), h.get("disk_queue_depth_mean"), curve)
+    h["tok_s_ceiling_disk"] = cap / bpt if cap and bpt else None
+    h["read_wait_share"], unreliable = rw
+    if unreliable:
+        h["read_wait_share_unreliable"] = True
+    h["io_class"], h["io_class_missing"] = io_class(h)
+    return h
 
 
 def windows_builder(path):
@@ -231,12 +350,62 @@ def env_info():
     return {"cpu_model": model, "cpu_avx512_flags": flags}
 
 
+N_DECODE_WINDOWS = 4
+
+
+def equal_windows(dec, n=N_DECODE_WINDOWS):
+    """n equal time slices of a decode window; the token count is split evenly (an estimate: engines that report no
+    per-token times cannot say better)."""
+    t0, t1, tokens = dec
+    step = (t1 - t0) / n
+    return [(t0 + i * step, t0 + (i + 1) * step, tokens / n, (None, False)) for i in range(n)]
+
+
+def host_summary(rows, pre, dec, threads, curve, rw=((None, False), (None, False)), windows=None):
+    """{"prefill", "decode", "decode_windows"} summaries with the I/O attribution fields. rw = read_wait_share result
+    of prefill and decode; windows = [(t0, t1, tokens, rw)] of the decode (default: 4 equal time slices, tokens
+    estimated, flagged "tokens_estimated")."""
+    est = windows is None
+    out = {"prefill": classify(phase(rows, pre[0], pre[1], pre[2], threads), curve, rw[0]),
+           "decode": classify(phase(rows, dec[0], dec[1], dec[2], threads), curve, rw[1]),
+           "decode_windows": []}
+    for t0, t1, n, wrw in windows or equal_windows(dec):
+        w = classify(phase(rows, t0, t1, n, threads), curve, wrw)
+        if est:
+            w["tokens_estimated"] = True
+        out["decode_windows"].append(w)
+    return out
+
+
+def builder_extras(path):
+    """(read-wait results of prefill and decode, per-window (t0, t1, tokens, read-wait result)) of a harness JSON."""
+    run = json.loads(ds.read(path))["runs"][0]
+    rw = (read_wait_share(run.get("prefill_profile_per_ubatch"), run.get("prefill_io")),
+          read_wait_share(run.get("decode_profile_per_token"), run.get("decode_io")))
+    wins = [(w["start_unix_s"], w["end_unix_s"], w["tokens"], read_wait_share(w.get("profile_per_token"), w.get("io")))
+            for w in run["decode_windows"]]
+    return rw, wins
+
+
+def kt_summary(summary_path):
+    """The {"host", "env"} of a summarize output; a missing or broken file gives host {"error": ...}, never empty."""
+    try:
+        d = json.loads(ds.read(summary_path))
+        if d.get("host"):
+            return {"host": d["host"], "env": d.get("env")}
+    except ValueError:
+        pass
+    return {"host": {"error": f"no host summary at {summary_path}"}, "env": None}
+
+
 def summarize(a):
     rows = load_samples(a.samples)
     pre, dec = windows_builder(a.builder_json) if a.builder_json else windows_kt(a.kt_json)
-    out = {"host": {"prefill": phase(rows, pre[0], pre[1], pre[2], a.threads),
-                    "decode": phase(rows, dec[0], dec[1], dec[2], a.threads)},
-           "env": env_info()}
+    curve_file = a.curve or find_curve(a.curve_dir or os.path.dirname(os.path.abspath(a.merge_into or a.out)))
+    curve = load_curve(curve_file) if curve_file else []
+    rw, wins = builder_extras(a.builder_json) if a.builder_json else (((None, False),) * 2, None)
+    out = {"host": host_summary(rows, pre, dec, a.threads, curve, rw, wins), "env": env_info()}
+    out["env"]["disk_curve"] = os.path.basename(curve_file) if curve else None
     json.dump(out, open(a.out, "w"), indent=1)
     print(json.dumps(out["host"]))
     if a.merge_into:
@@ -264,6 +433,8 @@ def main():
     g.add_argument("--kt-json")
     m.add_argument("--out", required=True)
     m.add_argument("--merge-into")
+    m.add_argument("--curve-dir")
+    m.add_argument("--curve")
     a = ap.parse_args()
     {"probe-disk": probe_disk, "sample": sample, "summarize": summarize}[a.cmd](a)
 
