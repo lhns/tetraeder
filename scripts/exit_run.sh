@@ -61,7 +61,11 @@ case "$mem" in '' | max) mem=$total ;; esac
 [ "$mem" -gt "$total" ] && mem=$total
 emulated=$((${EMULATE_RAM_GB:-128} * 1000000000))
 balloon=$((mem - emulated))
-if [ "$balloon" -gt 0 ]; then
+# The balloon must outlive the OOM killer: engines get oom_score_adj 1000 (scripts/oom_engine.sh), the balloon -1000 when
+# the container allows it. Before and after every stage balloon_pre/balloon_post check it (scripts/balloon_guard.py);
+# a dead or shrunken balloon is restarted and the stage's result gets balloon_ok false and the reason, because the run
+# had no memory pressure (20261112f: killed during the dio cache stage, later stages ran with the model resident).
+start_balloon() {
   python3 -c "
 import sys, time
 n = int(sys.argv[1])
@@ -71,9 +75,41 @@ print('balloon holds', n, 'B', flush=True)
 time.sleep(10**9)
 " "$balloon" >> runs/vast/exit_run.log 2>&1 &
   balloon_pid=$!
+  if echo -1000 > /proc/$balloon_pid/oom_score_adj 2> /dev/null; then
+    echo "[$(date +%T)] balloon pid $balloon_pid: oom_score_adj -1000"
+  else
+    echo "[$(date +%T)] balloon pid $balloon_pid: oom_score_adj -1000 not allowed (no CAP_SYS_RESOURCE); engines run at 1000"
+  fi
+  sleep 60  # touching the pages takes a while; the run must not start before
+}
+balloon_note=""
+# balloon_pre: restart a balloon that died between stages; the next balloon_post records it
+balloon_pre() {
+  balloon_note=""
+  [ "$balloon" -gt 0 ] || return 0
+  local why
+  why=$(python3 -I scripts/balloon_guard.py check --pid "$balloon_pid" --target "$balloon") && return 0
+  balloon_note="before stage: $why"
+  echo "[$(date +%T)] BALLOON PROBLEM $balloon_note; restarting"
+  start_balloon
+}
+# balloon_post <stage> <json>: check after the stage; record balloon_ok in its JSON (a sidecar when it is no object)
+balloon_post() {
+  [ "$balloon" -gt 0 ] || return 0
+  local why ok=true
+  if ! why=$(python3 -I scripts/balloon_guard.py check --pid "$balloon_pid" --target "$balloon"); then
+    balloon_note="${balloon_note:+$balloon_note; }after stage: $why"
+    echo "[$(date +%T)] BALLOON PROBLEM in $1: $why; restarting"
+    start_balloon
+  fi
+  [ -z "$balloon_note" ] || ok=false
+  python3 -I scripts/balloon_guard.py merge --json "$2" --ok $ok --reason "$balloon_note" || true
+  [ "$ok" = true ] || rc=31
+}
+if [ "$balloon" -gt 0 ]; then
+  start_balloon
   trap 'kill $balloon_pid 2> /dev/null' EXIT
   mem=$emulated
-  sleep 60  # touching the pages takes a while; the run must not start before
 fi
 # The builder reads with direct I/O (no page cache): besides the tiers it holds the bounce buffers (1.3 GB) and about
 # 1 GB of process memory (peak RSS 72.75 GB with a 70.8 GB RAM tier, 2026-11-02), so 8 GB is left for the rest.
@@ -90,6 +126,8 @@ bench="${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}"
 prompt=/root/exit_prompt.txt
 cp bench/prompts/exit_prompt.txt "$prompt"
 rc=0
+# shellcheck source=scripts/stage_budget.sh
+. scripts/stage_budget.sh
 # Minutes a stage takes on the 91 GB / 3090 class (docs/sessions.md has the sources); the deadline guard uses them.
 stage_min() {
   case "$1" in
@@ -100,10 +138,10 @@ stage_min() {
     drift-ref*) echo 9 ;;
     drift-*) echo 4 ;;
     llama-fit) echo 10 ;;
-    main-overlap-tq4* | main-overlap-poll0*) echo 10 ;; # builder 32K stages, with their repeats
+    main-overlap* | main-prefetch* | main-repeat) budget_min 10 "$LAST_BUILDER_SEC" ;; # builder 32K stages: measured
     ktransformers) echo 25 ;;
     ktransformers-*) echo 20 ;;
-    llamacpp-cache*) echo 30 ;; # per share: 29 to 30 min with load and warmup on 20261111c and 20261111g
+    llamacpp-cache*) budget_min 30 "$LAST_CACHE_SEC" ;; # per share: 29 to 30 min with load and warmup on 20261111c and 20261111g
     moe-tune) echo 45 ;;
     reference | trace) echo 15 ;;
     kv-quality) echo 30 ;;
@@ -210,7 +248,8 @@ exit_regime() {
   # profile stay whole-run aggregates); a caller's own TETRAEDER_EXIT_DECODE_WINDOWS in "$@" comes later and wins
   case "$name" in main-overlap* | main-prefetch* | main-repeat) text+=(TETRAEDER_EXIT_DECODE_WINDOWS=4) ;; esac
   echo "[$(date +%T)] start $name"
-  local json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
+  balloon_pre
+  local t0=$SECONDS json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
   # the builder's own metrics to the collector every second (ADR 0060), with the stage as a resource attribute
   local otel=() attrs="tetraeder.stage=$name"
   if [ -n "${TETRAEDER_HOST_OTLP:-}" ] && [ "${ENGINE_OTLP:-1}" = 1 ]; then
@@ -224,7 +263,7 @@ exit_regime() {
     TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
     TETRAEDER_EXIT_OUT="$json" \
     TETRAEDER_EXIT_MACHINE="vast $(hostname)" "$@" \
-    timeout -k 30 "${min}m" cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
+    bash scripts/oom_engine.sh timeout -k 30 "${min}m" cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
     --test exit_regime -- --ignored --nocapture &
   local pid=$!
   TETRAEDER_STAGE="$name" python3 scripts/engine_sample.py sample --pid "$pid" --disk "$HOST_DISK_DEV" --out "$samples" 8>&- &
@@ -236,6 +275,8 @@ exit_regime() {
     python3 scripts/engine_sample.py summarize --samples "$samples" --threads "$threads" --builder-json "$json" \
       --out "$samples.summary" --merge-into "$json" ${membw_json:+--membw "$membw_json"} > /dev/null || echo "host summary failed for $name"
   fi
+  [ -s "$json" ] && record_stage_sec "$name" $((SECONDS - t0))
+  balloon_post "$name" "$json"
   echo "[$(date +%T)] done $name rc=$r"
   return $r
 }
@@ -248,8 +289,10 @@ baseline() {
   [ -x "$bin" ] || { echo "skip $name: $bin missing"; return 0; }
   echo "[$(date +%T)] start $name"
   membw_probe "$name"
-  timeout -k 30 "${min}m" "$bin" -m "$model" -ngl 99 -fa 1 -t "$threads" -r 1 -o json "$@" > "$date_dir/$name-$stamp.json"
+  balloon_pre
+  bash scripts/oom_engine.sh timeout -k 30 "${min}m" "$bin" -m "$model" -ngl 99 -fa 1 -t "$threads" -r 1 -o json "$@" > "$date_dir/$name-$stamp.json"
   local r=$?
+  balloon_post "$name" "$date_dir/$name-$stamp.json"
   echo "[$(date +%T)] done $name rc=$r"
 }
 
@@ -259,8 +302,11 @@ colibri() {
   [ -n "${colibri_build_pid:-}" ] && wait "$colibri_build_pid"
   colibri_build_pid=
   echo "[$(date +%T)] start colibri-$1"
-  bash scripts/colibri_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-colibri-$1-$stamp.json" "$1" 8>&-
-  echo "[$(date +%T)] done colibri-$1 rc=$?"
+  balloon_pre
+  bash scripts/oom_engine.sh bash scripts/colibri_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-colibri-$1-$stamp.json" "$1" 8>&-
+  local r=$?
+  balloon_post "colibri-$1" "$date_dir/exit-colibri-$1-$stamp.json"
+  echo "[$(date +%T)] done colibri-$1 rc=$r"
 }
 
 # ktransformers [avx2|repeat]: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads
@@ -274,10 +320,13 @@ ktransformers() {
   kt_build_pid=
   echo "[$(date +%T)] start $name"
   ensure_disk
+  balloon_pre
   # KT_KERNEL_CPU_VARIANT only for a variant: set but empty is not the same as kt-kernel's own pick
   TETRAEDER_STAGE="$name" HOST_DISK_DEV="$HOST_DISK_DEV" ${variant:+env KT_KERNEL_CPU_VARIANT=$variant} \
-    bash scripts/ktransformers_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-$name-$stamp.json" deep 8>&-
-  echo "[$(date +%T)] done $name rc=$?"
+    bash scripts/oom_engine.sh bash scripts/ktransformers_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-$name-$stamp.json" deep 8>&-
+  local r=$?
+  balloon_post "$name" "$date_dir/exit-$name-$stamp.json"
+  echo "[$(date +%T)] done $name rc=$r"
 }
 
 # llamacpp_cache [suffix]: llama.cpp's tuned expert cache with a CPU share of the misses (#30966, baseline build, ADR
@@ -286,8 +335,14 @@ ktransformers() {
 # suffix "dio", stage llamacpp-cache-dio: the same shares with --load-mode dio, the pair that shows whether mmap
 # streams or thrashes in this regime (m1-open item 1); "dio-repeat" is the second pass of that pair (opt in via STAGES).
 llamacpp_cache() {
-  local name=llamacpp-cache${1:+-$1} s mode=${LOAD_MODE:-auto} shares=${CPU_SHARES:-0 0.5 0.9} tuned
+  local name=llamacpp-cache${1:+-$1} s mode=${LOAD_MODE:-auto} shares=${CPU_SHARES:-0 0.5 0.9} tuned t0 rc_c extra=(env)
   [[ "${1:-}" == dio* ]] && mode=dio
+  # variants: poll0 passes POLL=0 (sleeping ggml threads); fp8 passes KV_TYPE (the cache script's knob; set
+  # LLAMACPP_FP8_KV_TYPE, the default "fp8" is a placeholder until the real type name is confirmed)
+  case "${1:-}" in
+    poll0*) extra+=(POLL=0) ;;
+    fp8*) extra+=(KV_TYPE="${LLAMACPP_FP8_KV_TYPE:-fp8}") ;;
+  esac
   want "$name" || return 0
   local mib=$((vram_bytes / 1048576))
   # the tuner's pick from this session (stage moe-tune) replaces the session's shares and cache size
@@ -309,9 +364,14 @@ if d.get("cpu_share") is not None and d.get("cache_mib"):
     fits "$name" || continue
     echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode $mode"
     membw_probe "llamacpp-cache-s$s${1:+-$1}"
-    TETRAEDER_STAGE="llamacpp-cache-s$s${1:+-$1}" HOST_DISK_DEV="$HOST_DISK_DEV" LOAD_MODE=$mode timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
+    balloon_pre
+    t0=$SECONDS
+    TETRAEDER_STAGE="llamacpp-cache-s$s${1:+-$1}" HOST_DISK_DEV="$HOST_DISK_DEV" LOAD_MODE=$mode "${extra[@]}" bash scripts/oom_engine.sh timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
       "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
-    echo "[$(date +%T)] done $name s$s rc=$?"
+    rc_c=$?
+    [ -s "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" ] && record_stage_sec "$name" $((SECONDS - t0))
+    balloon_post "llamacpp-cache-s$s${1:+-$1}" "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json"
+    echo "[$(date +%T)] done $name s$s rc=$rc_c"
   done
 }
 
@@ -326,8 +386,11 @@ moe_tune() {
   echo "[$(date +%T)] start moe-tune: max $((vram_bytes / 1048576)) MiB"
   # CTX 8192: the tuner's first probe takes 10% of the expert bytes (13 GB on the 235B) whatever --max-mib says,
   # which with the f16 KV of 32K OOMs a 24 GB card (20261111c); its pick stays capped at MAX_MIB and runs at 32K
-  GGUF="$model" MAX_MIB=$((vram_bytes / 1048576)) THREADS="$threads" TUNE_MIN="${TUNE_MIN:-40}" CTX="${TUNE_CTX:-8192}" RESULTS_DATE="$(basename "$date_dir")" bash scripts/moe_cache_tune.sh 8>&-
-  echo "[$(date +%T)] done moe-tune rc=$?"
+  balloon_pre
+  GGUF="$model" MAX_MIB=$((vram_bytes / 1048576)) THREADS="$threads" TUNE_MIN="${TUNE_MIN:-40}" CTX="${TUNE_CTX:-8192}" RESULTS_DATE="$(basename "$date_dir")" bash scripts/oom_engine.sh bash scripts/moe_cache_tune.sh 8>&-
+  local r=$?
+  balloon_post moe-tune "$date_dir/moe-cache-tune/tune.json"
+  echo "[$(date +%T)] done moe-tune rc=$r"
 }
 
 # disk_curve: the model disk's read rate by queue depth, idle and beside quota-1 spinning threads (ADR 0056; about 2
@@ -494,6 +557,14 @@ EOF
         # VRAM slots (LRU seeded by the hot set); the repeat is the second pass of the pair. Other shares via VARIANTS
         exit_regime main-overlap-adapt 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_ADMIT_SHARE=0.1 || rc=30
         exit_regime main-overlap-adapt-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_ADMIT_SHARE=0.1 || rc=30
+        # poll0 combined with the other levers (m1-open item 1): huge pages; the hot set rebuilt from the whole
+        # prefill (replay: VRAM share 0.253 against 0.178, no upload cost); a 0.05 admit share. Each has a repeat
+        exit_regime main-overlap-poll0-thp 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_RAM_HUGEPAGES=1 || rc=30
+        exit_regime main-overlap-poll0-thp-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_RAM_HUGEPAGES=1 || rc=30
+        exit_regime main-overlap-poll0-hot 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_REFRESH_HOT=1 || rc=30
+        exit_regime main-overlap-poll0-hot-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_REFRESH_HOT=1 || rc=30
+        exit_regime main-overlap-poll0-adapt 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_ADMIT_SHARE=0.05 || rc=30
+        exit_regime main-overlap-poll0-adapt-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_ADMIT_SHARE=0.05 || rc=30
       fi
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
@@ -533,6 +604,10 @@ EOF
       llamacpp_cache repeat
       # the second pass of the dio pair, only when STAGES names it
       [[ " ${STAGES:-} " == *" llamacpp-cache-dio-repeat "* ]] && llamacpp_cache dio-repeat
+      # opt-in cache variants: sleeping ggml threads, low-bit KV (see llamacpp_cache); each with its repeat
+      for _v in poll0 poll0-repeat fp8 fp8-repeat; do
+        [[ " ${STAGES:-} " == *" llamacpp-cache-$_v "* ]] && llamacpp_cache "$_v"
+      done
       # the ledger's view of this session: the anchors at pp512 tg32 and the builder stages above (ADR 0056)
       anchors_builder_short
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
