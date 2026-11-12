@@ -447,8 +447,12 @@ impl Gateway {
                     GatewayError::NotFound(_) => "unknown",
                     _ => spec.model.as_str(),
                 };
-                m.genai
-                    .request_duration(started.elapsed(), model, Some(e.otel_type()));
+                m.genai.request_duration(
+                    started.elapsed(),
+                    model,
+                    op.as_str(),
+                    Some(e.otel_type()),
+                );
             }
         }
         res

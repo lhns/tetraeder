@@ -18,6 +18,6 @@ pub use host::{
     DeviceKind, DeviceSample, HostMetrics, SysinfoHost, cgroup_cpu_quota, cgroup_cpu_quota_at,
     default_sources, online_cpus, online_cpus_at,
 };
-pub use metrics::{CacheResult, Direction, Metrics, Phase, StepSample, attr};
+pub use metrics::{CacheResult, Direction, Metrics, Phase, Purpose, StepSample, Tier, attr};
 pub use ring::{StepRing, StepStats};
 pub use setup::{Telemetry, TelemetryError};

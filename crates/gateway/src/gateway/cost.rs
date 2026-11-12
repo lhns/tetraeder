@@ -61,11 +61,15 @@ impl Run {
         }
         if let Some(m) = &self.gw.metrics {
             let g = &m.genai;
-            g.request_duration(duration, &self.model, error_type);
+            g.request_duration(duration, &self.model, self.op.as_str(), error_type);
             if let Some(f) = first
                 && usage.completion_tokens > 1
             {
-                g.time_per_output_token((last - f) / (usage.completion_tokens - 1), &self.model);
+                g.time_per_output_token(
+                    (last - f) / (usage.completion_tokens - 1),
+                    &self.model,
+                    self.op.as_str(),
+                );
             }
             let uncached = usage.prompt_tokens.saturating_sub(usage.cached_tokens);
             g.tokens(

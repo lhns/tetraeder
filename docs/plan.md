@@ -450,8 +450,8 @@ Every layer emits OpenTelemetry metrics, traces and logs from the first commit; 
 | Metric | Type | Key attributes | Feeds |
 | --- | --- | --- | --- |
 | `gen_ai.server.time_to_first_token` | histogram | `gen_ai.request.model`, `gen_ai.operation.name` | SLOs, dashboards |
-| `gen_ai.server.time_per_output_token` | histogram | `gen_ai.request.model` | SLOs, dashboards |
-| `gen_ai.server.request.duration` | histogram | `gen_ai.request.model`, `error.type` | SLOs |
+| `gen_ai.server.time_per_output_token` | histogram, one value per request (mean over the tokens after the first) | `gen_ai.request.model`, `gen_ai.operation.name` | SLOs, dashboards |
+| `gen_ai.server.request.duration` | histogram | `gen_ai.request.model`, `gen_ai.operation.name`, `error.type` | SLOs |
 | `tetraeder.tokens` | counter | model, direction (input, output), cache (hit, miss) | throughput, cost (no server token counter in semconv yet) |
 | `tetraeder.step.duration` | histogram | phase (prefill, decode), stage, graphs (on, off) | detector, planner |
 | `tetraeder.step.segments` | histogram | phase, stage, graphs | segments-per-step panel (ADR 0030, 0033) |
@@ -460,6 +460,7 @@ Every layer emits OpenTelemetry metrics, traces and logs from the first commit; 
 | `tetraeder.device.throttle` | gauge | device, reason (thermal, power, clocks) | detector (checked first) |
 | `tetraeder.memory.used`, `.capacity` | gauge | device, tier, kind (weights, KV, workspace, reserve) | planner, alerts |
 | `tetraeder.tier.read.bytes` | counter | device, tier | detector, cost model |
+| `tetraeder.tier.transfer.bytes`, `.duration` | counter, histogram | `tetraeder.transfer.source`, `.destination` (disk, ram, vram, remote), `.purpose` | one family for bytes moved between tiers (ADR 0063) |
 | `tetraeder.link.bytes`, `.latency` | counter, histogram | source, destination, transport | detector, cost model |
 | `tetraeder.expert.cache.requests` | counter | layer, tier, result (hit, miss, cpu) | detector, hot-set sizing, CUDA-graph survival |
 | `tetraeder.expert.load.duration` | histogram | tier, source | detector |

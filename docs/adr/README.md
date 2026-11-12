@@ -64,3 +64,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0060](0060-box-host-metrics-as-otel.md) | Box and host metrics as OTel metrics: one collector per box run, the result's host block derived from its file (Proposed) |
 | [0061](0061-cpu-threadpool-polling-from-the-cgroup-quota.md) | CPU threadpool polling chosen from the cgroup CPU quota: 0 when the quota binds, explicit level wins (Proposed) |
 | [0062](0062-cpu-quota-throttle-fault.md) | Detector fault class cpu_quota_throttle: the cgroup CPU quota throttling the engine's own threads (Proposed) |
+| [0063](0063-genai-request-metrics-and-tier-transfer-family.md) | GenAI semconv request metrics from the gateway for every engine; one tier transfer metric family (Proposed) |
