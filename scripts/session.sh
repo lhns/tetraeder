@@ -15,7 +15,8 @@
 # Each profile fits its box cap with 20% margin: DEADLINE is SESSION_MIN (default per profile) after the first launch,
 # and every stage that would end later is skipped. Results go to one directory (RESULTS_DATE, fixed at the first
 # launch) and a relaunch resumes: stages with results are not rerun. The start time and date live in
-# runs/vast/session-<name>.start (delete it to start over).
+# runs/vast/session-<name>.start (delete it to start over). SESSION_RESTART_CLOCK=1 on a relaunch counts SESSION_MIN
+# from the relaunch instead of from the first launch (results date and session name still come from the first).
 # Started detached by `taxameter run scripts/session.sh --env SESSION=<name>`; ends with SESSION_DONE in
 # runs/vast/session-<name>.log.
 exec 8> /root/tetraeder_session.lock; flock -n 8 || exit 0
@@ -39,7 +40,11 @@ state="runs/vast/session-$name.start"
 # RESULTS_DATE from the env applies only at the first launch; a relaunch keeps the date in $state
 [ -s "$state" ] || echo "$(date +%s) ${RESULTS_DATE:-$(date +%Y%m%d)}" > "$state"
 read -r start RESULTS_DATE < "$state"
-DEADLINE=$((start + ${SESSION_MIN:-$budget} * 60))
+clock=$start
+clock_src="first launch"
+if [ "${SESSION_RESTART_CLOCK:-0}" = 1 ]; then clock=$(date +%s); clock_src="this relaunch (SESSION_RESTART_CLOCK=1)"; fi
+DEADLINE=$((clock + ${SESSION_MIN:-$budget} * 60))
+echo "[$(date +%T)] deadline $(date -d "@$DEADLINE" +%T): SESSION_MIN ${SESSION_MIN:-$budget} from $clock_src ($(date -d "@$clock" +%T))"
 export RESULTS_DATE DEADLINE RESUME=1
 # Provenance of every result (ADR 0056): the commit taxameter pushed (the box checkout may not be a git
 # repo for later stages) and a session name that survives a relaunch (built from the start time).
