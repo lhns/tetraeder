@@ -3,7 +3,10 @@ the sampler's JSONL for the same counters, field for field; plus the encoder, th
 
 import importlib.util
 import json
+import os
 import pathlib
+import shutil
+import subprocess
 import sys
 import types
 
@@ -26,8 +29,8 @@ PSI_IO, PSI_CPU = "/sys/fs/cgroup/io.pressure", "/sys/fs/cgroup/cpu.pressure"
 STATES = ("user", "nice", "system", "idle", "wait", "interrupt", "softirq", "steal")
 
 
-def counters():
-    """Synthetic cumulative counters per tick, in the sampler's units, with rates that change over time."""
+def counters(constant=False):
+    """Synthetic cumulative counters per tick, in the sampler's units, with rates that change over time (or not)."""
     out = []
     c = {"rb": 10**9, "ops": 5000, "wms": 100, "rbytes": 7 * 10**8, "rios": 300, "some": 10**6, "full": 4 * 10**5,
          "csome": 2 * 10**6, "cfull": 10**5, "periods": 1000, "thr": 50, "thr_us": 70000, "maj": 20, "vol": 900,
@@ -36,7 +39,7 @@ def counters():
     states = {s: 10**5 * (j + 1) for j, s in enumerate(STATES)}
     for k in range(TICKS):
         t = T0 + k
-        r = 1 + (k % 7)  # varying rate
+        r = 1 if constant else 1 + (k % 7)
         c["rb"] += r * 3 * 10**8
         c["ops"] += r * 300
         c["wms"] += r * 2100
@@ -123,8 +126,14 @@ def hostmetrics_line(rec, t_ns):
         {"scope": {"name": scope + "cpuscraper"}, "metrics": cpu}]}]}
 
 
-def write_inputs(tmp_path, host_offset_s=0.0, host_ticks=TICKS):
-    recs = counters()
+# per-tick disk increments at rate 1: a constant-rate counter read host_offset_s early
+DISK_RATE = {"disk_read_bytes": 3 * 10**8, "disk_read_ops": 300, "disk_weighted_ms": 2100}
+
+
+def write_inputs(tmp_path, host_offset_s=0.0, host_ticks=TICKS, constant=False):
+    """Sampler JSONL, the collector's OTLP file (sampler and hostmetrics lines) and a builder result. With an offset,
+    hostmetrics scrapes that much before each tick; with constant rates its disk counters are what they were then."""
+    recs = counters(constant)
     rows = [{k: v for k, v in r.items() if k != "_states"} for r in recs]
     samples = tmp_path / "samples.jsonl"
     samples.write_text("".join(json.dumps(r) + "\n" for r in rows))
@@ -135,7 +144,11 @@ def write_inputs(tmp_path, host_offset_s=0.0, host_ticks=TICKS):
         for k, r in enumerate(recs):
             f.write(json.dumps(oh.request(oh.points(r), r["t"], res, start=T0 - 1)) + "\n")
             if k < host_ticks:
-                f.write(json.dumps(hostmetrics_line(r, int((r["t"] - host_offset_s) * 10**9))) + "\n")
+                hm = dict(r)
+                if constant:
+                    for key, rate in DISK_RATE.items():
+                        hm[key] = r[key] - int(round(host_offset_s * rate))
+                f.write(json.dumps(hostmetrics_line(hm, int(round((r["t"] - host_offset_s) * 10**9)))) + "\n")
         f.write('{"resourceMetrics": [')  # a final line cut by a stop
     results = tmp_path / "results"
     results.mkdir()
@@ -163,8 +176,8 @@ def assert_same(a, b, path=""):
             assert len(u) == len(v), f"{path}.{k}"
             for i, (x, y) in enumerate(zip(u, v)):
                 assert_same(x, y, f"{path}.{k}.{i}")
-        elif isinstance(u, float):
-            assert v == pytest.approx(u, rel=1e-9, abs=1e-12), f"{path}.{k}"
+        elif isinstance(u, (int, float)) and not isinstance(u, bool):
+            assert v == pytest.approx(u, rel=1e-9, abs=1e-9), f"{path}.{k}"
         else:
             assert u == v, f"{path}.{k}"
 
@@ -182,6 +195,18 @@ def test_otlp_host_block_equals_the_sampler_block(tmp_path):
         assert h["decode"][k] is not None, k
     assert len(h["decode_windows"]) == 4 and h["decode_windows"][0]["samples"] == 6
     assert_same(h, o)
+    assert d["host_otlp_diff"] == {}
+
+
+def test_host_block_agrees_when_hostmetrics_scrapes_off_the_tick(tmp_path):
+    # the sampler and hostmetrics run on their own clocks: disk counters are interpolated to the tick, CPU shares use
+    # the scrape times, so constant rates give the same block although every scrape is 0.4 s early
+    samples, otel, results, builder = write_inputs(tmp_path, host_offset_s=0.4, constant=True)
+    summarize_sampler(samples, builder, tmp_path)
+    es.otlp_merge(types.SimpleNamespace(otel_dir=str(otel), results=str(results)))
+    d = json.loads(builder.read_text())
+    assert d["host"]["decode"]["read_mb_s"] is not None
+    assert_same(d["host"], d["host_otlp"])
     assert d["host_otlp_diff"] == {}
 
 
@@ -293,5 +318,41 @@ def test_cgroup_limits(monkeypatch):
              "/sys/fs/cgroup/memory/memory.usage_in_bytes": "5\n",
              "/sys/fs/cgroup/memory/memory.limit_in_bytes": "9223372036854771712\n"}
     assert es.cpu_quota() is None and es.cgroup_mem_now() == {"current": 5, "max": None}
-    files = {"/sys/dev/block/259:0/uevent": "MAJOR=259\nMINOR=0\nDEVNAME=nvme0n1\nDEVTYPE=disk\n"}
-    assert es.disk_name("259:0") == "nvme0n1" and es.disk_name("8:0") is None
+    files = {"/proc/diskstats": " 259       0 nvme0n1 1 2 3\n 259       1 nvme0n1p1 1 2 3\n"}
+    assert es.disk_name("259:0") == "nvme0n1" and es.disk_name("259:1") == "nvme0n1p1" and es.disk_name("8:0") is None
+
+
+def busiest_disk():
+    """MAJ:MIN of the device with the most sectors read (not loop or ram)."""
+    best = max((ln.split() for ln in open("/proc/diskstats") if not ln.split()[2].startswith(("loop", "ram"))),
+               key=lambda f: int(f[5]))
+    return f"{best[0]}:{best[1]}"
+
+
+@pytest.mark.skipif(not (sys.platform == "linux" and os.environ.get("OTELCOL_BIN") and shutil.which("flock")),
+                    reason="needs Linux and OTELCOL_BIN (scripts/otelcol_install.sh); CI's otelcol step sets it")
+def test_box_collector_end_to_end(tmp_path):
+    # scripts/otelcol_box.sh with the real collector and config, the sampler posting for 6 s: the rows carry the
+    # Linux-only hostmetrics fields (8 CPU states, weighted I/O time) and the sampler fields
+    env = dict(os.environ, OTELCOL_STATE=str(tmp_path), TETRAEDER_SESSION="")
+    otel = tmp_path / "otel"
+    box = str(SCRIPTS / "otelcol_box.sh")
+    subprocess.run(["bash", box, "start", str(otel)], env=env, check=True, timeout=60)
+    try:
+        sleeper = subprocess.Popen(["sleep", "6"])
+        subprocess.run([sys.executable, str(SCRIPTS / "engine_sample.py"), "sample", "--pid", str(sleeper.pid),
+                        "--disk", busiest_disk(), "--out", str(tmp_path / "s.jsonl")],
+                       env=dict(env, TETRAEDER_HOST_OTLP="http://127.0.0.1:4318", TETRAEDER_STAGE="ci"),
+                       check=True, timeout=60)
+        sleeper.wait()
+    finally:
+        subprocess.run(["bash", box, "stop"], env=env, timeout=60)
+    pts = oh.read_points(sorted(otel.rglob("*.jsonl")))
+    assert any(p["resource"].get("tetraeder.stage") == "ci" for p in pts)
+    assert any(p["resource"].get("tetraeder.session") == "unknown" for p in pts if p["scope"] != oh.SCOPE)
+    rows = oh.rows(pts)
+    assert len(rows) >= 4, len(rows)
+    for r in rows[2:]:
+        assert r["cpus"] and r["cpu_steal"] is not None, r
+        assert r["disk_read_bytes"] is not None and r["disk_weighted_ms"] is not None, r
+        assert r["majflt"] is not None and r["rss_kb"] is not None

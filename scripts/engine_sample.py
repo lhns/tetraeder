@@ -277,10 +277,12 @@ def cpu_quota():
 
 
 def disk_name(majmin):
-    """Kernel name of a block device (DEVNAME in /sys/dev/block/MAJ:MIN/uevent), the device label of hostmetrics."""
-    for line in ds.read(f"/sys/dev/block/{majmin}/uevent").splitlines():
-        if line.startswith("DEVNAME="):
-            return line.split("=", 1)[1].strip()
+    """Kernel name of a block device from /proc/diskstats (third column), the file and label hostmetrics uses."""
+    maj, _, mn = majmin.partition(":")
+    for line in ds.read("/proc/diskstats").splitlines():
+        f = line.split()
+        if len(f) > 2 and f[0] == maj and f[1] == mn:
+            return f[2]
     return None
 
 

@@ -3,7 +3,7 @@
 use anyhow::{Result, anyhow};
 use clap::Args;
 use tetraeder_ggml_sys::{cpu, llama};
-use tetraeder_telemetry::Metrics;
+use tetraeder_telemetry::{Metrics, cgroup_cpu_quota};
 
 #[derive(Args)]
 pub struct InfoArgs {
@@ -44,9 +44,14 @@ pub fn run(a: &InfoArgs) -> Result<()> {
 }
 
 /// Records the CPU backend gauges once at engine start. A load error is not recorded here: the
-/// engine constructors report it.
-pub fn record_cpu_backend(m: &Metrics) {
+/// engine constructors report it. Also the compute threads (`--threads`, default all hardware
+/// threads) against the cgroup's CPU quota (ADR 0059).
+pub fn record_cpu_backend(m: &Metrics, threads: Option<i32>) {
     if let Ok(i) = cpu::backend_info() {
         m.cpu_backend(i.tier, &i.isa, i.dispatch.as_str(), &i.missing);
     }
+    let n = threads
+        .and_then(|t| u64::try_from(t).ok())
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get() as u64));
+    m.cpu_threads(n, cgroup_cpu_quota());
 }

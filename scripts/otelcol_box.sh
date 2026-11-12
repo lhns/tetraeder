@@ -4,11 +4,12 @@
 #                                        OTLP HTTP port answers (exit 1 if it does not: the run goes on without it)
 #   scripts/otelcol_box.sh stop          SIGTERM to the collector's process group, waits until it has flushed and exited
 # One collector per box: a running one is reused, and its own lock keeps a relaunch from starting a second one.
-# OTELCOL_BIN overrides the binary (default /opt/otelcol/otelcol-contrib, scripts/otelcol_install.sh).
+# OTELCOL_BIN overrides the binary (default /opt/otelcol/otelcol-contrib, scripts/otelcol_install.sh), OTELCOL_STATE
+# the directory of its pidfile and lock (default /root; the CI check uses a temp dir).
 cd "$(dirname "$0")/.." || exit 1
 bin="${OTELCOL_BIN:-/opt/otelcol/otelcol-contrib}"
-pidfile=/root/tetraeder_otelcol.pid
-lock=/root/tetraeder_otelcol.lock
+pidfile="${OTELCOL_STATE:-/root}/tetraeder_otelcol.pid"
+lock="${OTELCOL_STATE:-/root}/tetraeder_otelcol.lock"
 running() { [ -s "$pidfile" ] && kill -0 -- "-$(cat "$pidfile")" 2> /dev/null; }
 case "${1:-}" in
   start)
@@ -21,9 +22,11 @@ case "${1:-}" in
     mkdir -p "$dir"
     # its own session, so stop can signal the collector and flock together; the session leader writes the pidfile
     # (its pid is the process group). fd 8 (the caller's lock) closed. GOMAXPROCS and GOMEMLIMIT bound it beside an
-    # engine at its CPU quota.
+    # engine at its CPU quota. An empty provenance value would stop the resource processor from building, so empty
+    # and unset become "unknown".
     rm -f "$pidfile"
     TETRAEDER_OTEL_DIR="$dir" TETRAEDER_HOST_ID="${CONTAINER_ID:-$(hostname)}" GOMAXPROCS=1 GOMEMLIMIT=200MiB \
+      TETRAEDER_SESSION="${TETRAEDER_SESSION:-unknown}" TETRAEDER_GIT_COMMIT="${TETRAEDER_GIT_COMMIT:-unknown}" \
       setsid bash -c 'echo $$ > "$1"; shift; exec flock -n "$@"' _ "$pidfile" "$lock" "$bin" \
       --config=deploy/otelcol/config-file.yaml < /dev/null > "$dir/otelcol.log" 2>&1 8>&- &
     for _ in $(seq 1 30); do

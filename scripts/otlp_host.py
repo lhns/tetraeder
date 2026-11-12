@@ -5,10 +5,12 @@ request(...):    an OTLP/HTTP JSON ExportMetricsServiceRequest for those points.
 Poster:          posts requests to a collector; never raises, gives up after MAX_FAILS straight failures.
 read_points():   the data points of collector file-exporter output (OTLP JSON lines).
 rows(points):    sampler-shaped records again, sampler series on their own ticks and the hostmetrics series joined
-                 as of each tick, so engine_sample.host_summary() derives the same host block from either path.
+                 to each tick (disk counters interpolated, the rest as of the tick), so engine_sample.host_summary()
+                 derives the same host block from either path.
 Stdlib only: the box runs the system python3, often with -I.
 """
 
+import bisect
 import json
 import os
 import urllib.request
@@ -335,62 +337,83 @@ def disk_device(pts):
     return None
 
 
+def _series(pts, disk):
+    """{key: ([t_ns], [value])} of the hostmetrics points the host block reads, sorted by time."""
+    out = {}
+    for p in pts:
+        if p["scope"] == SCOPE or p["name"] not in HOSTMETRICS:
+            continue
+        a = p["attrs"]
+        if p["name"].startswith("system.disk."):
+            if disk is None or a.get("device") != disk:
+                continue
+            key = (p["name"], a.get("direction"))
+        elif p["name"] == "system.cpu.time":
+            if "cpu" in a:  # the per-CPU form, before the collector's transform
+                continue
+            key = (p["name"], a.get("state"))
+        else:
+            key = (p["name"], a.get("cpu"))
+        out.setdefault(key, []).append((p["t_ns"], p["value"]))
+    return {k: ([t for t, _ in sorted(v)], [x for _, x in sorted(v)]) for k, v in out.items()}
+
+
+def _asof(series, t):
+    """(t_ns, value) of the last point at or before t, unless older than MAX_AGE_S; else None."""
+    ts, vs = series
+    i = bisect.bisect_right(ts, t) - 1
+    if i < 0 or (t - ts[i]) / 1e9 > MAX_AGE_S:
+        return None
+    return ts[i], vs[i]
+
+
+def _at(series, t):
+    """A cumulative counter at t: linear between the points around it (the sampler and hostmetrics tick on their own
+    clocks, so an as-of value would lag up to one interval), else the as-of value."""
+    ts, vs = series
+    i = bisect.bisect_right(ts, t) - 1
+    if i >= 0 and ts[i] == t:
+        return vs[i]
+    if 0 <= i < len(ts) - 1 and (ts[i + 1] - ts[i]) / 1e9 <= 2 * MAX_AGE_S:
+        return vs[i] + (vs[i + 1] - vs[i]) * (t - ts[i]) / (ts[i + 1] - ts[i])
+    v = _asof(series, t)
+    return v[1] if v else None
+
+
 def rows(pts, disk=None):
     """Sampler-shaped records of OTLP points: one per sampler tick (all hostmetrics times if no sampler point), the
-    sampler fields from that tick's points, the disk and CPU fields from the hostmetrics points as of the tick."""
+    sampler fields from that tick's points, the disk and CPU fields from the hostmetrics points: disk counters
+    interpolated to the tick, queue length and CPU times as of it."""
     disk = disk or disk_device(pts)
     ticks = {}
-    host = []
     for p in pts:
         if p["scope"] == SCOPE:
             key = (p["name"], frozenset(p["attrs"].items()))
             ticks.setdefault(p["t_ns"], {})[key] = (p["value"], p["attrs"])
-        elif p["name"] in HOSTMETRICS:
-            a = p["attrs"]
-            if p["name"].startswith("system.disk."):
-                if disk is None or a.get("device") != disk:
-                    continue
-                key = (p["name"], a.get("direction"))
-            elif p["name"] == "system.cpu.time":
-                if "cpu" in a:  # the per-CPU form, before the collector's transform
-                    continue
-                key = (p["name"], a.get("state"))
-            else:
-                key = (p["name"], a.get("cpu"))
-            host.append((p["t_ns"], key, p["value"]))
-    host.sort(key=lambda x: x[0])
-    grid = sorted(ticks) if ticks else sorted({t for t, _, _ in host})
-    state = {}
-    i = 0
+    series = _series(pts, disk)
+    grid = sorted(ticks) if ticks else sorted({t for ts, _ in series.values() for t in ts})
+    empty = ([], [])
+    busy = sorted((k for k in series if k[0] == "tetraeder.host.cpu.busy"), key=lambda k: _cpu_index(k[1]))
     out = []
     for t in grid:
-        while i < len(host) and host[i][0] <= t:
-            state[host[i][1]] = (host[i][0], host[i][2])
-            i += 1
         rec = _record(ticks.get(t, {}))
         rec["t"] = t / 1e9
-
-        def asof(key):
-            v = state.get(key)
-            return v if v is not None and (t - v[0]) / 1e9 <= MAX_AGE_S else None
-
-        def val(key):
-            v = asof(key)
-            return v[1] if v else None
-
-        rec["disk_read_bytes"] = val(("system.disk.io", "read"))
-        rec["disk_read_ops"] = val(("system.disk.operations", "read"))
-        rec["disk_inflight"] = val(("system.disk.pending_operations", None))
-        w = val(("system.disk.weighted_io_time", None))
-        rec["disk_weighted_ms"] = int(round(w * 1e3)) if w is not None else None
+        rec["disk_read_bytes"] = _at(series.get(("system.disk.io", "read"), empty), t)
+        rec["disk_read_ops"] = _at(series.get(("system.disk.operations", "read"), empty), t)
+        q = _asof(series.get(("system.disk.pending_operations", None), empty), t)
+        rec["disk_inflight"] = q[1] if q else None
+        w = _at(series.get(("system.disk.weighted_io_time", None), empty), t)
+        rec["disk_weighted_ms"] = w * 1e3 if w is not None else None
         cpus = []
-        for key in sorted((k for k in state if k[0] == "tetraeder.host.cpu.busy"), key=lambda k: _cpu_index(k[1])):
-            v = asof(key)
+        for key in busy:
+            v = _asof(series[key], t)
             if v:
                 # a CPU accrues one second per second in all states together: busy seconds over the scrape time
                 cpus.append((v[1], v[0] / 1e9))
         rec["cpus"] = cpus
-        st = [val(("system.cpu.time", s)) for s in CPU_STATES]
-        rec["cpu_steal"] = None if any(x is None for x in st) else {"steal": st[CPU_STATES.index("steal")], "total": sum(st)}
+        st = [_asof(series.get(("system.cpu.time", s), empty), t) for s in CPU_STATES]
+        # steal over all states at one scrape: a ratio of points taken together, so no interpolation
+        rec["cpu_steal"] = None if any(x is None for x in st) else {
+            "steal": st[CPU_STATES.index("steal")][1], "total": sum(x[1] for x in st)}
         out.append(rec)
     return out

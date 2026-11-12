@@ -200,7 +200,7 @@ pub fn resolve_overlap(
 pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
     let telemetry = Arc::new(Telemetry::new(&TelemetryConfig::from_env())?);
     telemetry.install_global()?;
-    crate::info::record_cpu_backend(telemetry.metrics());
+    crate::info::record_cpu_backend(telemetry.metrics(), a.place.threads);
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;

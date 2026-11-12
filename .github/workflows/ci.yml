@@ -125,14 +125,18 @@ jobs:
         run: |
           for f in scripts/*.sh patches/*.sh; do bash -n "$f"; done
       # Both collector configs load in the pinned collector (ADR 0059): receivers, processors, env expansion.
-      # The compose config reads the host through /hostfs (its container mounts /).
-      - name: otelcol validate
+      # The compose config reads the host through /hostfs (its container mounts /). Then the box collector runs for
+      # real (scripts/otelcol_box.sh) with the sampler posting to it, and the rows must carry the Linux-only fields.
+      - name: otelcol validate and box collector
         if: runner.os == 'Linux'
+        env:
+          OTELCOL_BIN: ${{ runner.temp }}/otelcol/otelcol-contrib
         run: |
           bash scripts/otelcol_install.sh "$RUNNER_TEMP/otelcol"
           [ -e /hostfs ] || sudo ln -s / /hostfs
-          TETRAEDER_OTEL_DIR="$RUNNER_TEMP/otel" "$RUNNER_TEMP/otelcol/otelcol-contrib" validate --config=deploy/otelcol/config-file.yaml
-          "$RUNNER_TEMP/otelcol/otelcol-contrib" validate --config=deploy/otelcol/config.yaml
+          TETRAEDER_OTEL_DIR="$RUNNER_TEMP/otel" "$OTELCOL_BIN" validate --config=deploy/otelcol/config-file.yaml
+          "$OTELCOL_BIN" validate --config=deploy/otelcol/config.yaml
+          uv run pytest -q tests/test_otlp_host.py -k end_to_end -rs
 
   cuda-build:
     if: ${{ !inputs.record_golden }}
