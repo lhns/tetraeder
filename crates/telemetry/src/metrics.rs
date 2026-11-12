@@ -136,6 +136,7 @@ pub struct Metrics {
     cpu_threads: Gauge<u64>,
     cpu_quota: Gauge<f64>,
     cpu_poll: Gauge<u64>,
+    cpu_pool_pauses: Counter<u64>,
 }
 
 impl Metrics {
@@ -413,6 +414,11 @@ impl Metrics {
                 .u64_gauge("tetraeder.cpu.poll")
                 .with_unit("1")
                 .with_description("Polling level (0 to 100) of the CPU backend's ggml threadpool in effect")
+                .build(),
+            cpu_pool_pauses: meter
+                .u64_counter("tetraeder.cpu.pool.pauses")
+                .with_unit("{pause}")
+                .with_description("Times the CPU threadpool was put to sleep ahead of a GPU-only segment or a read wait")
                 .build(),
         }
     }
@@ -751,6 +757,13 @@ impl Metrics {
             u64::from(level),
             &[KeyValue::new(attr::CPU_POLL_AUTO, auto)],
         );
+    }
+
+    /// Per step (ADR 0061 addendum): threadpool pauses issued since the last report.
+    pub fn cpu_pool_pauses(&self, n: u64) {
+        if n > 0 {
+            self.cpu_pool_pauses.add(n, &[]);
+        }
     }
 
     /// The KV cache (ADR 0050 b): `memory.used` and `.capacity` of kind `kv` with the cache

@@ -1776,7 +1776,7 @@
     {
       "id": 72,
       "title": "Container CPU",
-      "description": "CPU cores the container's cgroup used against its quota, the engine's configured threads (tetraeder.cpu.threads; alert TetraederThreadsAboveQuota when they exceed the quota) and the CPU threadpool's polling level, 0 to 100 (tetraeder.cpu.poll, ADR 0061: auto picks 0 when the quota binds; alert TetraederCpuPollingUnderQuota when it spins at threads up to the quota). From the host sampler (scripts/engine_sample.py) and the builder.",
+      "description": "CPU cores the container's cgroup used against its quota, the engine's configured threads (tetraeder.cpu.threads; alert TetraederThreadsAboveQuota when they exceed the quota) and the CPU threadpool's polling level, 0 to 100 (tetraeder.cpu.poll, ADR 0061: auto picks 0 when the quota binds; alert TetraederCpuPollingUnderQuota when it spins at threads up to the quota). The pool pauses per second (tetraeder.cpu.pool.pauses, LoadOptions::pool_pause) show the threadpool being put to sleep in GPU and read-wait gaps. From the host sampler (scripts/engine_sample.py) and the builder.",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -1826,6 +1826,15 @@
           "refId": "D",
           "expr": "max(tetraeder_cpu_poll)",
           "legendFormat": "engine poll level",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "E",
+          "expr": "sum(rate(tetraeder_cpu_pool_pauses_total[$__rate_interval]))",
+          "legendFormat": "pool pauses per s",
           "datasource": {
             "type": "prometheus",
             "uid": "victoriametrics"

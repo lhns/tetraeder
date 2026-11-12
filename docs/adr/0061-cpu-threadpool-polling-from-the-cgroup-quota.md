@@ -32,3 +32,13 @@ So a pause after the last CPU graph before a GPU-only segment or a read wait is 
 - On a quota box the default changes: `main-overlap` now runs at poll 0, so stages that differ only by `TETRAEDER_EXIT_CPU_POLL=0` duplicate it. The default-polling baseline needs an explicit `TETRAEDER_EXIT_CPU_POLL=50` stage, paired and interleaved with the auto stage.
 - Next steps: (a) a paired run of auto against 50 on a quota box with a repeat, for the noise band; (b) poll 0 against 50 on a box without a quota, to test the threads clause; (c) the gap pause above, paired against poll 0.
 - Context switches at poll 0 are a known cost; `ctxsw_voluntary_per_s` in the result's `host` block tracks them.
+
+## Addendum 2026-11-12: pause the pool in the gaps (`pool_pause`)
+
+Step (c) above, built behind an option so it can be paired against poll 0 and poll 50.
+
+- `LoadOptions::pool_pause: bool` (default false). The polling level is unchanged; the builder calls `Backend::pause_cpu_pool` (ggml `ggml_threadpool_pause`) where no CPU graph follows soon: before a segment without RAM-tier groups when the primary backend is a GPU, before `finish_prefetch` (both places in `run`) and before each `wait_landed` in the overlapped layer step. The next graph compute resumes the pool by itself. All calls sit between graph computes on the one thread that issues them.
+- The CPU registry does not return `ggml_threadpool_pause` at the pin, and a `GGML_BACKEND_DL` build cannot link it directly. Patch `0003-cpu-registry-threadpool-pause.patch` adds the three-line `strcmp` branch (row in `docs/sources.md`; tested through `cpu_pool_pause_is_exact_and_counts_pauses`, which fails without it as no pause is issued). `CpuProcs::threadpool_pause` is optional, so a module without the patch makes the option a no-op.
+- Exactness: pausing moves no data; logits are bitwise equal with it on and off (`crates/model/tests/prefetch.rs`).
+- Metric (Rule 6): counter `tetraeder.cpu.pool.pauses`, added per step, series "pool pauses per s" on the Container CPU panel. No alert: a pause count has no threshold of its own.
+- Harness: `TETRAEDER_EXIT_POOL_PAUSE=1` in `exit_regime.rs`, recorded as `options.pool_pause`. The pairing for step (c) is `TETRAEDER_EXIT_CPU_POLL=50 TETRAEDER_EXIT_POOL_PAUSE=1` against the auto stage (poll 0) and against poll 50 alone, with a repeat. No benchmark result yet (Rule 3): the option stays off until one exists.

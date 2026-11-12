@@ -268,6 +268,24 @@ fn cpu_poll_auto_and_explicit_levels_are_exact() {
     }
 }
 
+/// hardware: cpu. Pausing the threadpool in the read-wait gaps (ADR 0061) changes no logits and
+/// issues pauses on a streamed fixture; off, it issues none.
+#[test]
+fn cpu_pool_pause_is_exact_and_counts_pauses() {
+    let path = fixture();
+    let mut off = load(&path, &opts(12, true));
+    let want = sequence(&mut off);
+    assert_eq!(off.cpu_pool_pauses(), 0);
+    let o = LoadOptions {
+        pool_pause: true,
+        cpu_poll: Some(50),
+        ..opts(12, true)
+    };
+    let mut on = load(&path, &o);
+    assert_bitwise(&want, &sequence(&mut on), "pool pause");
+    assert!(on.cpu_pool_pauses() > 0, "no pause was issued");
+}
+
 /// hardware: cpu. A prefetch depth other than 1 or 2 is refused at load.
 #[test]
 fn cpu_invalid_prefetch_depth_is_rejected() {

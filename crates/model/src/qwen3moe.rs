@@ -221,6 +221,10 @@ pub struct LoadOptions {
     /// the host's online CPUs, or at most as many whole cores as threads), else ggml's default
     /// (50). [`Qwen3Moe::cpu_poll`] returns the level in effect.
     pub cpu_poll: Option<u32>,
+    /// Keep the polling level but put the CPU threadpool to sleep where no CPU graph follows
+    /// soon: before a GPU-only segment and before waiting on expert reads (ADR 0061 addendum).
+    /// Off by default; the logits do not change.
+    pub pool_pause: bool,
     /// Compute threads of CPU graphs while a prefetch read is in flight (at most the full
     /// count, which the threadpool keeps). `None`: the full count.
     pub prefetch_threads: Option<usize>,
@@ -276,6 +280,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("formats", &self.formats.len())
             .field("prefetch_depth", &self.prefetch_depth)
             .field("cpu_poll", &self.cpu_poll)
+            .field("pool_pause", &self.pool_pause)
             .field("prefetch_threads", &self.prefetch_threads)
             .field("kv", &self.kv)
             .field("io", &self.io)
@@ -312,6 +317,7 @@ impl LoadOptions {
             prefetch: true,
             prefetch_depth: 1,
             cpu_poll: None,
+            pool_pause: false,
             prefetch_threads: None,
             kv: KvFormat::default(),
             overlap: false,
@@ -470,6 +476,9 @@ pub struct Qwen3Moe {
     cpu_threads: i32,
     prefetch_threads: Option<i32>,
     cpu_poll: CpuPoll,
+    pool_pause: bool,
+    /// Pauses already reported to telemetry.
+    pauses_reported: u64,
     /// Pair groups may run on a GPU backend (the primary is not the CPU).
     gpu: bool,
     op_offload: bool,
@@ -679,6 +688,8 @@ impl Qwen3Moe {
                 .prefetch_threads
                 .map(|t| (t as i32).clamp(1, cpu_threads)),
             cpu_poll,
+            pool_pause: opts.pool_pause,
+            pauses_reported: 0,
             gpu: !opts_primary_is_cpu,
             op_offload: opts.op_offload,
             op_offload_min_tokens: opts.op_offload_min_tokens,
@@ -864,6 +875,11 @@ impl Qwen3Moe {
 
     /// The CPU threadpool's polling level in effect, whether it was chosen automatically, and
     /// the quota and online CPUs it was chosen from (ADR 0061).
+    /// Threadpool pauses issued so far (`LoadOptions::pool_pause`).
+    pub fn cpu_pool_pauses(&self) -> u64 {
+        self.cpu.cpu_pool_pauses()
+    }
+
     pub fn cpu_poll(&self) -> CpuPoll {
         self.cpu_poll
     }
@@ -1195,6 +1211,10 @@ impl Qwen3Moe {
                     self.groups_run += 1;
                 }
                 let t = lap(&mut prof.alloc, t);
+                // A GPU-only segment leaves the CPU idle until the next layer's groups.
+                if self.pool_pause && self.gpu && !cpu_seg {
+                    self.cpu.pause_cpu_pool();
+                }
                 let tc = Instant::now();
                 sched.compute(&graph)?;
                 if cpu_seg {
@@ -1251,6 +1271,9 @@ impl Qwen3Moe {
             let gate = self.overlap && self.policy == MissPolicy::Cpu && !offload;
             if !gate {
                 // The reads started for this layer must have landed before it is planned.
+                if self.pool_pause {
+                    self.cpu.pause_cpu_pool();
+                }
                 streamer.finish_prefetch(seg)?;
                 set_compute_threads(&self.cpu, self.cpu_threads, self.prefetch_threads, streamer);
             }
@@ -1265,6 +1288,9 @@ impl Qwen3Moe {
                     .count() as u64;
                 let overlapped = gate && plan.cpu.len() == 1;
                 if gate && !overlapped && !plan.cpu.is_empty() {
+                    if self.pool_pause {
+                        self.cpu.pause_cpu_pool();
+                    }
                     streamer.finish_prefetch(seg)?;
                 }
                 // With `urgent_first` an overlapped step submits its misses first: the workers
@@ -1322,6 +1348,7 @@ impl Qwen3Moe {
                             slots: &staged.slots,
                             host,
                             metrics: &self.metrics,
+                            pause: self.pool_pause.then_some(&self.cpu),
                         };
                         let (pairs, graphs) = run_overlap_layer(
                             &ctx, streamer, seg, sched_cpu, slot, &staged, &mut prof,
@@ -1450,6 +1477,9 @@ impl Qwen3Moe {
                 segments: graphs,
             });
             self.report_memory();
+            let pauses = self.cpu.cpu_pool_pauses();
+            t.metrics().cpu_pool_pauses(pauses - self.pauses_reported);
+            self.pauses_reported = pauses;
         }
         if n > 1 && self.hot_pending {
             // The first prefill's routing decides the hot set (ADR 0035).
@@ -1719,6 +1749,8 @@ struct OverlapCtx<'a> {
     slots: &'a [u32],
     host: &'a HostBufs,
     metrics: &'a MemoryMetrics,
+    /// The CPU backend, when its threadpool is paused while waiting for reads.
+    pause: Option<&'a Backend>,
 }
 
 /// One CPU group graph on the CPU scheduler: the experts' outputs for `group` land in rows
@@ -1812,6 +1844,9 @@ fn run_overlap_layer(
     let mut pending = staged.pending.clone();
     while !pending.is_empty() {
         let t = Instant::now();
+        if let Some(cpu) = c.pause {
+            cpu.pause_cpu_pool();
+        }
         let landed = streamer.wait_landed(seg, &pending)?;
         let w = t.elapsed();
         prof.read_wait += w;

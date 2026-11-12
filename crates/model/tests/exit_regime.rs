@@ -56,6 +56,8 @@
 //! - `TETRAEDER_EXIT_CPU_POLL`: ggml threadpool polling level 0 to 100 (default: auto, ADR
 //!   0061: 0 when the cgroup CPU quota binds, else ggml's 50). The JSON options record the level
 //!   in effect (`cpu_poll`), `cpu_poll_auto` and `cpu_quota_detected`; null for the reference.
+//! - `TETRAEDER_EXIT_POOL_PAUSE` (0/1): pause the CPU threadpool in GPU-only segments and read
+//!   waits (ADR 0061 addendum; default off). The JSON options record `pool_pause`.
 //! - `TETRAEDER_EXIT_PREFETCH_THREADS`: CPU compute threads while a prefetch read is in flight
 //!   (default: all).
 //! - `TETRAEDER_EXIT_REFRESH_HOT=1`: rebuild the hot set from the whole prefill before decode
@@ -606,6 +608,7 @@ fn exit_regime() {
         .and_then(|v| v.parse::<f64>().ok());
     opts.kv_rotation = env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
+    opts.pool_pause = env_flag("TETRAEDER_EXIT_POOL_PAUSE");
     opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
     let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
     let routing_out = std::env::var_os("TETRAEDER_EXIT_ROUTING_OUT").map(PathBuf::from);
@@ -803,6 +806,7 @@ fn exit_regime() {
             "ram_hugepages": opts.ram_hugepages,
             "kv": opts.kv.to_string(),
             "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
+            "pool_pause": opts.pool_pause,
             "cpu_poll": cpu_poll.map(|p| p.level),
             "cpu_poll_auto": cpu_poll.map(|p| p.auto),
             "cpu_quota_detected": cpu_poll.and_then(|p| p.quota),

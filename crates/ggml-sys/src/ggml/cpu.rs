@@ -245,6 +245,7 @@ fn cpu_proc(name: &CStr) -> Option<*mut c_void> {
 
 type NewPool = unsafe extern "C" fn(*mut sys::ggml_threadpool_params) -> sys::ggml_threadpool_t;
 type FreePool = unsafe extern "C" fn(sys::ggml_threadpool_t);
+type PausePool = unsafe extern "C" fn(sys::ggml_threadpool_t);
 type SetPool = unsafe extern "C" fn(sys::ggml_backend_t, sys::ggml_threadpool_t);
 type SetThreads = unsafe extern "C" fn(sys::ggml_backend_t, c_int);
 type SetUseRef = unsafe extern "C" fn(sys::ggml_backend_t, bool);
@@ -255,6 +256,8 @@ pub(crate) struct CpuProcs {
     pub set_threadpool: SetPool,
     pub threadpool_new: NewPool,
     pub threadpool_free: FreePool,
+    /// Absent in a CPU module built without patch 0003 (ADR 0061).
+    pub threadpool_pause: Option<PausePool>,
     pub set_use_ref: SetUseRef,
 }
 
@@ -283,6 +286,8 @@ pub(crate) fn procs() -> Result<&'static CpuProcs> {
                     threadpool_free: std::mem::transmute::<*mut c_void, FreePool>(get(
                         c"ggml_threadpool_free",
                     )?),
+                    threadpool_pause: cpu_proc(c"ggml_threadpool_pause")
+                        .map(|p| std::mem::transmute::<*mut c_void, PausePool>(p)),
                     set_use_ref: std::mem::transmute::<*mut c_void, SetUseRef>(get(
                         c"ggml_backend_cpu_set_use_ref",
                     )?),

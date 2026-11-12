@@ -2,6 +2,7 @@
 
 use super::{GgmlError, Result, cpu, cstr};
 use crate::raw as sys;
+use std::cell::Cell;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
@@ -13,6 +14,8 @@ struct BackendInner {
     pool: Option<NonNull<sys::ggml_threadpool>>,
     /// The pool's polling level as ggml received it (after the clamp and its default).
     poll: Option<u32>,
+    /// Pauses issued by [`Backend::pause_cpu_pool`].
+    pauses: Cell<u64>,
 }
 
 impl Drop for BackendInner {
@@ -85,6 +88,7 @@ impl Backend {
             is_cpu: true,
             pool,
             poll: Some(params.poll),
+            pauses: Cell::new(0),
         };
         let Some(pool) = pool else {
             return Err(GgmlError::NoBackend("CPU threadpool".into()));
@@ -102,6 +106,30 @@ impl Backend {
     /// The threadpool's polling level (0 to 100) of a CPU backend; `None` for a GPU backend.
     pub fn cpu_poll(&self) -> Option<u32> {
         self.inner.poll
+    }
+
+    /// Puts the CPU threadpool's workers to sleep now instead of after their spin (ADR 0061).
+    /// The next graph compute on this backend wakes them. Call it only between graph computes
+    /// of this backend, in the thread that issues them. Returns false (and does nothing) on a
+    /// GPU backend or when the CPU module lacks `ggml_threadpool_pause`.
+    pub fn pause_cpu_pool(&self) -> bool {
+        let (Some(pool), Ok(procs)) = (self.inner.pool, cpu::procs()) else {
+            return false;
+        };
+        let Some(pause) = procs.threadpool_pause else {
+            return false;
+        };
+        // SAFETY: the pool is live (freed after the backend). `ggml_threadpool_pause` only sets
+        // a flag under the pool mutex and broadcasts; between graph computes every worker is past
+        // the final barrier and waits, and `ggml_graph_compute_kickoff` clears the flag.
+        unsafe { pause(pool.as_ptr()) };
+        self.inner.pauses.set(self.inner.pauses.get() + 1);
+        true
+    }
+
+    /// Pauses issued so far by [`Backend::pause_cpu_pool`].
+    pub fn cpu_pool_pauses(&self) -> u64 {
+        self.inner.pauses.get()
     }
 
     /// Compute threads of the next graphs on a CPU backend; keep it within the threadpool's size.
@@ -152,6 +180,7 @@ impl Backend {
                 is_cpu: false,
                 pool: None,
                 poll: None,
+                pauses: Cell::new(0),
             }),
         })
     }

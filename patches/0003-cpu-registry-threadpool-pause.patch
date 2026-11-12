@@ -1,0 +1,19 @@
+From: Tetraeder
+Subject: [PATCH] ggml-cpu: expose ggml_threadpool_pause through the CPU registry
+
+The CPU backend returns ggml_threadpool_new and _free from ggml_backend_reg_get_proc_address
+but not _pause, which a GGML_BACKEND_DL build cannot link directly. ADR 0061.
+---
+diff --git a/ggml/src/ggml-cpu/ggml-cpu.cpp b/ggml/src/ggml-cpu/ggml-cpu.cpp
+--- a/ggml/src/ggml-cpu/ggml-cpu.cpp
++++ b/ggml/src/ggml-cpu/ggml-cpu.cpp
+@@ -687,6 +687,9 @@ static void * ggml_backend_cpu_get_proc_address(ggml_backend_reg_t reg, const ch
+     if (strcmp(name, "ggml_threadpool_free") == 0) {
+         return (void *)ggml_threadpool_free;
+     }
++    if (strcmp(name, "ggml_threadpool_pause") == 0) {
++        return (void *)ggml_threadpool_pause;
++    }
+     if (strcmp(name, "ggml_backend_cpu_set_threadpool") == 0) {
+         return (void *)ggml_backend_cpu_set_threadpool;
+     }
