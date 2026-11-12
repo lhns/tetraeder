@@ -145,6 +145,7 @@ stage_min() {
     moe-tune) echo 45 ;;
     reference | trace) echo 15 ;;
     kv-quality) echo 30 ;;
+    levers-snap) echo "${SNAP_STAGE_MIN:-90}" ;; # 26 min prefill, then 15 arm-rounds of reload, first ubatch, restore, 80 tokens
     exit-*) echo 40 ;;
     colibri-*) echo 60 ;;
     *) echo 10 ;;
@@ -278,6 +279,60 @@ exit_regime() {
   [ -s "$json" ] && record_stage_sec "$name" $((SECONDS - t0))
   balloon_post "$name" "$json"
   echo "[$(date +%T)] done $name rc=$r"
+  return $r
+}
+
+# levers_snap <env...>: the multi-arm harness (tests/exit_regime.rs exit_regime_arms): one process prefills the frozen
+# prompt once, saves the KV, then reloads the model per arm and round, restores the KV and times 64 decode tokens, so the
+# arms of a pairing sit minutes apart on the same host. Result per arm and round: exit-<arm>-r<k>-<stamp>.json, plus
+# exit-levers-snap-<stamp>.json (shared prefill and snapshot numbers, greedy equality). Opt in through STAGES only.
+# SNAP_ARMS ("name:ENV=V,ENV=V;name2:...") and SNAP_ROUNDS (3) replace the arms and rounds. The RAM tier is
+# SNAP_HEADROOM_GB (7) smaller than in the other stages: restoring the 6 GB snapshot (on disk, read back whole) must fit
+# beside it, so pair these arms only with each other. SNAP_REPLAY_LAST=1 recomputes the last ubatch after each restore
+# (about 2 min per arm and round) to refill the RAM tier like the prefill's end did.
+levers_snap() {
+  local name=levers-snap min=${SNAP_STAGE_RUN_MIN:-120}
+  want "$name" || return 0
+  local arms=${SNAP_ARMS:-"main-overlap:;poll50:TETRAEDER_EXIT_CPU_POLL=50;pause50:TETRAEDER_EXIT_CPU_POLL=50,TETRAEDER_EXIT_POOL_PAUSE=1;ramfreq:TETRAEDER_EXIT_RAM_POLICY=freq:0.5;thp:TETRAEDER_EXIT_RAM_HUGEPAGES=1"}
+  echo "[$(date +%T)] start $name: $arms"
+  balloon_pre
+  local t0=$SECONDS json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
+  local otel=() attrs="tetraeder.stage=$name"
+  if [ -n "${TETRAEDER_HOST_OTLP:-}" ] && [ "${ENGINE_OTLP:-1}" = 1 ]; then
+    [ -n "${TETRAEDER_SESSION:-}" ] && attrs="$attrs,tetraeder.session=$TETRAEDER_SESSION"
+    otel=(OTEL_EXPORTER_OTLP_ENDPOINT="$TETRAEDER_HOST_OTLP" OTEL_METRIC_EXPORT_INTERVAL=1000
+      OTEL_RESOURCE_ATTRIBUTES="$attrs,host.id=${CONTAINER_ID:-$(hostname)}")
+  fi
+  ensure_disk
+  membw_probe "$name"
+  env TETRAEDER_EXIT_PROMPT_FILE="$prompt" TETRAEDER_EXIT_DECODE_WINDOWS=4 "${otel[@]}" TETRAEDER_EXIT_GGUF="$model" \
+    TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" \
+    TETRAEDER_EXIT_RAM_SLOT_BYTES=$((ram_bytes - ${SNAP_HEADROOM_GB:-7} * 1000000000)) \
+    TETRAEDER_EXIT_MACHINE="vast $(hostname)" "$@" \
+    TETRAEDER_EXIT_ARMS="$arms" TETRAEDER_EXIT_ARM_ROUNDS="${SNAP_ROUNDS:-3}" TETRAEDER_EXIT_ARM_WARMUP=16 \
+    TETRAEDER_EXIT_ARM_REPLAY_LAST="${SNAP_REPLAY_LAST:-0}" TETRAEDER_EXIT_ARMS_DIR="$date_dir" \
+    TETRAEDER_EXIT_ARMS_STAMP="$stamp" TETRAEDER_EXIT_SNAP_DIR="$PWD/runs/vast" \
+    bash scripts/oom_engine.sh timeout -k 30 "${min}m" cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
+    --test exit_regime -- --ignored --nocapture --exact exit_regime_arms &
+  local pid=$!
+  TETRAEDER_STAGE="$name" python3 scripts/engine_sample.py sample --pid "$pid" --disk "$HOST_DISK_DEV" --out "$samples" 8>&- &
+  local spid=$!
+  wait "$pid"
+  local r=$?
+  wait "$spid"
+  # one host block per arm result, cut from the shared sample file by the arm's own decode windows
+  local f
+  for f in "$date_dir"/exit-*-r[0-9]*-"$stamp".json; do
+    [ -s "$f" ] || continue
+    python3 scripts/engine_sample.py summarize --samples "$samples" --threads "$threads" --builder-json "$f" \
+      --out "$samples.$(basename "$f" .json).summary" --merge-into "$f" ${membw_json:+--membw "$membw_json"} > /dev/null \
+      || echo "host summary failed for $f"
+  done
+  if [ -s "$json" ]; then
+    python3 -I -c 'import json, sys; d = json.load(open(sys.argv[1])); print("greedy_equal_all:", d["greedy_equal_all"], "snapshot:", d["snapshot"]["bytes"], "B", d["snapshot"]["storage"], "prefill_s:", round(d["snapshot"]["prefill_s"]))' "$json" || true
+  fi
+  balloon_post "$name" "$json"
+  echo "[$(date +%T)] done $name rc=$r after $((SECONDS - t0)) s"
   return $r
 }
 
@@ -574,6 +629,9 @@ EOF
         exit_regime main-overlap-poll0-hot-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_REFRESH_HOT=1 || rc=30
         exit_regime main-overlap-poll0-adapt 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_ADMIT_SHARE=0.05 || rc=30
         exit_regime main-overlap-poll0-adapt-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 TETRAEDER_EXIT_ADMIT_SHARE=0.05 || rc=30
+        # One prefill, a KV snapshot and the lever arms (main-overlap auto, poll50, pause50, ramfreq, thp) interleaved
+        # for 3 rounds in one process (docs/sessions.md, B1b); results exit-<arm>-r<k>-<stamp>.json
+        levers_snap "${deep[@]}" "${ovl[@]}" || rc=30
       fi
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26
