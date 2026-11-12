@@ -131,6 +131,12 @@ impl LayerSlots {
     /// Hit: the slot. Miss: a slot assigned to the expert (a free one, else the least recently
     /// used unpinned one). An out-of-range expert is a bypass.
     pub fn lookup(&mut self, expert: u32) -> Lookup {
+        self.lookup_except(expert, &[])
+    }
+
+    /// [`Self::lookup`] that never evicts an expert of `protect` (the ones the current layer
+    /// step computes from their slots, ADR 0059): a bypass when only those are left.
+    pub fn lookup_except(&mut self, expert: u32, protect: &[u32]) -> Lookup {
         if expert >= self.experts {
             self.stats.bypass += 1;
             return Lookup::Bypass;
@@ -145,7 +151,9 @@ impl LayerSlots {
         let free = self.owner[..active].iter().position(Option::is_none);
         let victim = || {
             (0..active)
-                .filter(|&s| self.owner[s].is_some_and(|e| !self.pinned[e as usize]))
+                .filter(|&s| {
+                    self.owner[s].is_some_and(|e| !self.pinned[e as usize] && !protect.contains(&e))
+                })
                 .min_by_key(|&s| self.stamp[s])
         };
         let Some(slot) = free.or_else(victim) else {
@@ -235,6 +243,58 @@ impl LayerSlots {
         }
         self.active = n;
         change
+    }
+}
+
+/// Fixed-point unit of [`AdmitPolicy`] credit: one admission.
+const ADMIT_UNIT: u64 = 1_000_000;
+
+/// Decode admission into the compute tier under the CPU miss policy (ADR 0059): per layer a
+/// credit that every compute-tier miss raises by `share`; a miss is due for admission while the
+/// credit is at least one. With share `1/k`, every k-th miss of a layer. Integer credit, so the
+/// sequence is exact and deterministic.
+#[derive(Debug, Clone)]
+pub struct AdmitPolicy {
+    /// Share in millionths.
+    step: u64,
+    credit: Vec<u64>,
+}
+
+impl AdmitPolicy {
+    /// `share` is clamped to `[0, 1]`.
+    pub fn new(layers: usize, share: f64) -> Self {
+        let share = if share.is_finite() {
+            share.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        Self {
+            step: (share * ADMIT_UNIT as f64).round() as u64,
+            credit: vec![0; layers],
+        }
+    }
+
+    pub fn share(&self) -> f64 {
+        self.step as f64 / ADMIT_UNIT as f64
+    }
+
+    /// One compute-tier miss of `layer`: whether it is due for admission. Call
+    /// [`Self::settle`] for every due miss.
+    pub fn due(&mut self, layer: usize) -> bool {
+        let c = &mut self.credit[layer];
+        *c += self.step;
+        *c >= ADMIT_UNIT
+    }
+
+    /// A due miss was admitted, or not (no slot): then one admission stays due and no more, so
+    /// a blocked step is never followed by a burst.
+    pub fn settle(&mut self, layer: usize, admitted: bool) {
+        let c = &mut self.credit[layer];
+        *c = if admitted {
+            c.saturating_sub(ADMIT_UNIT)
+        } else {
+            ADMIT_UNIT
+        };
     }
 }
 
@@ -410,6 +470,56 @@ mod tests {
                 evicted: None
             }
         ));
+    }
+
+    #[test]
+    fn admit_every_kth_miss() {
+        let mut p = AdmitPolicy::new(2, 0.25);
+        let due: Vec<bool> = (0..8).map(|_| p.due(0)).collect();
+        assert_eq!(
+            due,
+            [false, false, false, true, true, true, true, true],
+            "credit is only spent by settle"
+        );
+        let mut p = AdmitPolicy::new(2, 0.25);
+        let mut admitted = Vec::new();
+        for i in 0..12 {
+            if p.due(1) {
+                p.settle(1, true);
+                admitted.push(i);
+            }
+        }
+        assert_eq!(admitted, [3, 7, 11]);
+        // Layer 0 untouched; a blocked admission stays due once.
+        assert!(!p.due(0));
+        // Credit in halves: 0.5, 1.0 (blocked, stays 1.0), 1.5, admitted to 0.5, 1.0, 0, 0.5.
+        let mut p = AdmitPolicy::new(1, 0.5);
+        assert!(!p.due(0));
+        assert!(p.due(0));
+        p.settle(0, false);
+        assert!(p.due(0));
+        p.settle(0, true);
+        assert!(p.due(0));
+        p.settle(0, true);
+        assert!(!p.due(0));
+        assert!(!AdmitPolicy::new(1, 0.0).due(0));
+        assert_eq!(AdmitPolicy::new(1, 7.0).share(), 1.0);
+    }
+
+    #[test]
+    fn lookup_except_spares_the_protected() {
+        let mut l = LayerSlots::new(8, 2);
+        l.lookup(1);
+        l.lookup(2);
+        // 1 is the LRU but protected: 2 goes.
+        assert_eq!(
+            l.lookup_except(3, &[1]),
+            Lookup::Miss {
+                slot: 1,
+                evicted: Some(2)
+            }
+        );
+        assert_eq!(l.lookup_except(4, &[1, 3]), Lookup::Bypass);
     }
 
     #[test]

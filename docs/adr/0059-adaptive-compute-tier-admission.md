@@ -1,0 +1,26 @@
+# 0059. Adaptive compute tier: decode admits a share of CPU misses into VRAM slots
+
+Status: Proposed (2026-11-12, Phase 2 exit, ADR 0045 point 1)
+
+## Context
+
+On Qwen3-235B-A22B Q4_K_M (RTX 3090, 24 threads, `bench/results/20261112a`) llama.cpp's expert cache (`--moe-cache-mib 10458 --moe-cache-cpu-share 0.95`) decodes 1.35x to 1.54x faster than the builder with the same VRAM bytes. Its decode log: 35% of expert lookups hit VRAM, 92% of misses run on the CPU, the rest (about 37 experts, 400 MB per token) are uploaded into an LRU cache. The builder's compute tier is a static hot set: `refresh_hot_set` pins the top experts after the first prefill and `plan_cpu` never admits, so every other expert runs on the CPU. The replay puts the builder's decode VRAM pair share at 0.178 (`bench/results/20261110c/replay-235b.json`), and decode is CPU-bound (406 to 465 ms of CPU-heavy compute per token).
+
+Hypothesis: raising the decode VRAM share toward llama.cpp's closes most of the gap. Estimates, not measured per expert: one CPU expert costs about 0.75 ms on that box (CPU compute per token over CPU experts per token); one synchronous upload of about 11 MB about 1 to 2 ms (pageable PCIe copy plus a host copy), so an admission pays when the expert is hit at least twice while resident (llama.cpp gets about 7 hits per upload).
+
+## Decision
+
+1. **Switch.** `LoadOptions::admit_share: Option<f64>`, off (`None`) by default. Only with `MissPolicy::Cpu`. Harness: `TETRAEDER_EXIT_ADMIT_SHARE`, recorded in the exit JSON `options.admit_share`.
+2. **Policy** (`tetraeder_memory::slots::AdmitPolicy`, pure, shared with the replay): per MoE layer an integer credit that every compute-tier miss of a decode step (one token) raises by `share`; while the credit is at least one, the miss is admitted and the credit drops by one. Share `1/k` admits every k-th miss of a layer, deterministically. A miss that cannot be admitted keeps one admission due, no more, so a blocked step never causes a burst.
+3. **Victims.** LRU among unpinned compute slots, never a pinned expert and never an expert this layer step computes from the compute tier or admitted already (`LayerSlots::lookup_except`). With the switch on, the hot set is the initial contents and is unpinned once resident (at every refresh), so the compute tier is LRU seeded by the hot set. Without that every slot is pinned and nothing could be admitted.
+4. **Timing: CPU now, GPU from the next use.** An admitted expert is uploaded from its RAM slot after its CPU chunk is staged (the bytes are known to be there; under overlap after the layer's reads landed). So any miss can be admitted, also one read from disk in the same step, not only one already in RAM when the layer is planned: under prefetch and overlap a RAM slot at plan time may still be in flight. Its pairs still run in this step's CPU group. The step's groups are those of the switch off, so parity is unchanged: bitwise on the CPU backend, the existing tolerance on a GPU. Same-step GPU compute is deferred: it saves one CPU expert per admission but needs the upload before the plan, which under prefetch and overlap is before the bytes are known to be in RAM.
+5. **Upload.** Synchronous on the main thread (`read_slot`, `write_slot`), before the next segment; it is not hidden behind compute. Its time goes to `tetraeder.expert.load.duration` (tier vram, source ram) and to `IoCounters::admit_time` (exit JSON `decode_io.admit_ms_per_token`). An async copy needs a pinned RAM tier and a `ggml_backend_tensor_set_async` binding (ggml-sys); it is the next step if the box shows the upload time matters.
+6. **Metrics (Rule 6).** No new share metric: an admitted expert still counts once as `cpu` in `tetraeder.expert.cache.requests`, and its later uses count as vram `hit`. New: `tetraeder.expert.admitted` (experts, by layer) and `tetraeder.expert.admitted.bytes` (upload bytes), plus `tetraeder.tier.read.bytes` (tier ram) as for other uploads. The "Expert cache hit rate" panel gets an admissions-per-lookup series; alert `TetraederAdmissionsWithoutHits` fires when VRAM hits per admission stay below 2 for 15 minutes (by the estimates above, uploads then cost more than they save; recalibrate from `admit_ms_per_token` after the first paired run). `IoCounters` gains `admitted` and `admitted_bytes`; admissions also count in `uploads`.
+7. **Bench.** Stages `main-overlap-adapt` and `main-overlap-adapt-repeat` (B1 `STAGES` only): `main-overlap` plus `TETRAEDER_EXIT_ADMIT_SHARE=0.1`, paired with `main-overlap` on the same box. Other shares through `VARIANTS`.
+
+## Consequences
+
+- Decode uploads again under `MissPolicy::Cpu` when the switch is on; with it off nothing changes (the flag-off tests stay as they are).
+- The upload adds up to `share x misses x 1 to 2 ms` per token on the main thread. At 0.1 and about 600 misses per token that is 60 to 120 ms, more than the CPU time it saves in the step itself; it only pays through later hits. The paired run decides; if uploads dominate, the async copy comes next.
+- The routing replay (ADR 0050) does not model admissions; a replay VRAM policy can reuse `AdmitPolicy`. A trace recorded with the switch on still shows the routing, not the tier.
+- Prefill (more than one token) never admits, so a long prompt cannot flush the tier.
