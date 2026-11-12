@@ -65,3 +65,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0061](0061-cpu-threadpool-polling-from-the-cgroup-quota.md) | CPU threadpool polling chosen from the cgroup CPU quota: 0 when the quota binds, explicit level wins (Proposed) |
 | [0062](0062-cpu-quota-throttle-fault.md) | Detector fault class cpu_quota_throttle: the cgroup CPU quota throttling the engine's own threads (Proposed) |
 | [0063](0063-genai-request-metrics-and-tier-transfer-family.md) | GenAI semconv request metrics from the gateway for every engine; one tier transfer metric family (Proposed) |
+| [0064](0064-decode-dispatch-segment-scheduler-and-one-graph-per-token.md) | Decode dispatch: a scheduler sized for one segment, then one graph per decode token with a host callback per layer (Proposed) |
