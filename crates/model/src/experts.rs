@@ -16,7 +16,7 @@ use tetraeder_memory::io::{
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_memory::reader::{HostDst, ReadJob, Reader, Ticket, copy_sink, tensor_dst};
 use tetraeder_memory::replay::prefetch_plan;
-use tetraeder_memory::slots::{LayerStats, Lookup, SlotCache, Tier, hot_from_counts};
+use tetraeder_memory::slots::{AdmitPolicy, LayerStats, Lookup, SlotCache, Tier, hot_from_counts};
 use tetraeder_memory::{DirectFile, IoOptions, Range};
 
 /// What a layer step does with a routed expert that is not resident in the compute tier.
@@ -44,6 +44,9 @@ pub struct IoCounters {
     pub read_time: Duration,
     /// Experts written into the compute tier, from any source.
     pub uploads: u64,
+    /// Decode admissions into the compute tier (ADR 0059), also in `uploads`, and their bytes.
+    pub admitted: u64,
+    pub admitted_bytes: u64,
     /// Prefetch (ADR 0038). Experts read ahead of their layer step into the RAM tier. These reads
     /// are also in `batches`, `experts_read` and `bytes_read`, but not in `read_time`.
     pub prefetch_issued: u64,
@@ -303,6 +306,8 @@ pub(crate) struct Streamer {
     mixed: Vec<u64>,
     /// Routed pairs per layer and expert, for the hot set.
     counts: Vec<Vec<u64>>,
+    /// Decode admission into the compute tier (ADR 0059); `None`: the static hot set.
+    admit: Option<AdmitPolicy>,
 }
 
 pub(crate) struct StreamerConfig {
@@ -317,6 +322,8 @@ pub(crate) struct StreamerConfig {
     pub overlap: bool,
     /// Test only: builds the reads in place of the I/O service (`LoadOptions::io_factory`).
     pub io_factory: Option<IoFactory>,
+    /// `LoadOptions::admit_share`, above 0 and under `MissPolicy::Cpu` only.
+    pub admit_share: Option<f64>,
 }
 
 fn invalid(msg: impl Into<String>) -> ModelError {
@@ -456,6 +463,7 @@ impl Streamer {
             cpu: vec![0; layers],
             mixed: vec![0; layers],
             counts,
+            admit: cfg.admit_share.map(|s| AdmitPolicy::new(layers, s)),
         })
     }
 
@@ -1387,6 +1395,63 @@ impl Streamer {
             if !change.missing.is_empty() {
                 self.make_resident(file, il, &dst(il), &change.missing)?;
             }
+            if self.admit.is_some() {
+                // The hot set is only the initial contents: decode admissions replace it by LRU.
+                self.compute.layer_mut(il).set_hot_set(&[]);
+            }
+        }
+        Ok(())
+    }
+
+    /// ADR 0059: of `misses` (routed experts of a decode step of layer `il` computed on the CPU,
+    /// whose bytes are in their RAM slots now), uploads the ones the policy says are due into
+    /// compute slots `dst`, never evicting `protect` (this step's compute-tier experts) or an
+    /// earlier admission of the step. They still run on the CPU this step; their next use hits.
+    /// No-op without admission. On an error the layer's compute table is cleared.
+    pub(crate) fn admit(
+        &mut self,
+        il: usize,
+        dst: &[Tensor<'_>; 3],
+        misses: &[u32],
+        protect: &[u32],
+    ) -> Result<()> {
+        let (Some(policy), Some(ram)) = (&mut self.admit, &self.ram) else {
+            return Ok(());
+        };
+        let sizes = self.sizes[il];
+        let total: usize = sizes.iter().sum();
+        let src = ram.exps(il);
+        let mut protect = protect.to_vec();
+        for &e in misses {
+            if !policy.due(il) {
+                continue;
+            }
+            let Some(rslot) = ram.cache.layer(il).slot_of(e) else {
+                policy.settle(il, false);
+                continue;
+            };
+            let t0 = Instant::now();
+            let cslot = match self.compute.layer_mut(il).lookup_except(e, &protect) {
+                Lookup::Miss { slot, .. } => slot,
+                _ => {
+                    policy.settle(il, false);
+                    break;
+                }
+            };
+            policy.settle(il, true);
+            protect.push(e);
+            let copied =
+                read_slot(&src, &sizes, rslot).and_then(|b| write_slot(dst, &sizes, cslot, &b));
+            if let Err(err) = copied {
+                self.compute.layer_mut(il).clear();
+                return Err(err);
+            }
+            self.io.uploads += 1;
+            self.io.admitted += 1;
+            self.io.admitted_bytes += total as u64;
+            self.metrics.admitted(il as u32, total as u64);
+            self.metrics.tier_read(&self.device, "ram", total as u64);
+            self.metrics.expert_load(Tier::Vram, "ram", t0.elapsed());
         }
         Ok(())
     }

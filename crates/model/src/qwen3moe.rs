@@ -234,6 +234,12 @@ pub struct LoadOptions {
     /// cache (ADR 0050 addendum). `None`: on exactly when the format is quantized (libllama's
     /// default), off for F16. `Some(true)` needs a head size that is a multiple of 64.
     pub kv_rotation: Option<bool>,
+    /// With `MissPolicy::Cpu`: the share (0 to 1) of a decode step's compute-tier misses that
+    /// are uploaded into a compute slot after their CPU group is staged, evicting the least
+    /// recently used unpinned slot; the hot set is then the tier's initial contents, unpinned
+    /// (ADR 0059). `None` or 0: the static hot set. The step's groups are unchanged, so logits
+    /// are too (bitwise on the CPU backend). Otherwise no effect.
+    pub admit_share: Option<f64>,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -262,6 +268,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("urgent_first", &self.urgent_first)
             .field("io_factory", &self.io_factory.is_some())
             .field("kv_rotation", &self.kv_rotation)
+            .field("admit_share", &self.admit_share)
             .finish_non_exhaustive()
     }
 }
@@ -295,6 +302,7 @@ impl LoadOptions {
             urgent_first: false,
             io_factory: None,
             kv_rotation: None,
+            admit_share: None,
         }
     }
 }
@@ -577,6 +585,9 @@ impl Qwen3Moe {
                     prefetch: opts.prefetch,
                     overlap: opts.overlap,
                     io_factory: opts.io_factory.clone(),
+                    admit_share: opts
+                        .admit_share
+                        .filter(|&s| s > 0.0 && opts.miss == MissPolicy::Cpu),
                 };
                 Streamer::new(
                     &file,
@@ -1267,6 +1278,10 @@ impl Qwen3Moe {
                             pairs,
                         });
                     }
+                    if n == 1 {
+                        // Every expert of the chunk has landed (ADR 0059).
+                        streamer.admit(seg, &layer.exps(), chunk, &plan.compute)?;
+                    }
                     if !plan.compute.is_empty() {
                         let pairs = group_pairs(&chosen, nu, &plan.compute, &plan.compute_slots);
                         for pairs in split_group(pairs, cap_compute) {
@@ -1281,6 +1296,10 @@ impl Qwen3Moe {
                 let last = plan.cpu.len() - 1;
                 for (i, chunk) in plan.cpu.iter().enumerate() {
                     let slots = streamer.stage_ram(&self.file, seg, chunk)?;
+                    if n == 1 {
+                        // Before the next chunk's reads can take these RAM slots (ADR 0059).
+                        streamer.admit(seg, &layer.exps(), chunk, &plan.compute)?;
+                    }
                     let pairs = group_pairs(&chosen, nu, chunk, &slots);
                     for pairs in split_group(pairs, cap_ram) {
                         if i == last {

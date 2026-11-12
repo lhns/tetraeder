@@ -104,6 +104,8 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 | 5 | `main-overlap-ram` (RAM tier with a 4 GB reserve) | 9 | 112 | ADR 0054 section 3; the deadline guard drops it unless the download was fast; peak RSS under 90 GB |
 | 6 | `anchors-builder-short` (the builder anchors that fit at pp512 tg32, planner build) | 8 to 12 | 124 | ADR 0056: ledger coverage of the 235B session, `ledger-<session>/`; last, cut first |
 
+**Adaptive compute tier (ADR 0059).** `main-overlap-adapt` and `main-overlap-adapt-repeat` run only when `B1_STAGES` names them: `main-overlap` plus `TETRAEDER_EXIT_ADMIT_SHARE=0.1` (decode uploads every tenth compute-tier miss into a VRAM slot, LRU seeded by the hot set). Interleave them with `main-overlap` and `main-overlap-repeat` on the same box, for example `B1_STAGES="smoke disk-curve main-overlap main-overlap-adapt main-overlap-repeat main-overlap-adapt-repeat"`, about 10 min each. Read `options.admit_share`, `decode_io.admitted`, `admitted_bytes` and `uploads` per token and the decode compute hit share against the pair; other shares go through `VARIANTS="main-overlap-adapt-s05:TETRAEDER_EXIT_PREFETCH=1,TETRAEDER_EXIT_IO_SERVICE=1,TETRAEDER_EXIT_OVERLAP=1,TETRAEDER_EXIT_ADMIT_SHARE=0.05"`.
+
 **Verify.** Every stage JSON has `decode_tok_s`; `replay-235b.json` exists. kv-quality (the KL bar for the kv-* formats) runs in B2.
 
 ## B2: Claude Code proxy rerun (`b2-proxy`)

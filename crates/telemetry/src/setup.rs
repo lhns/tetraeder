@@ -264,6 +264,7 @@ mod tests {
         m.expert_layer_hit(true);
         m.expert_prefetch(2, 4, "issued");
         m.expert_prefetch_wasted_bytes(10);
+        m.expert_admitted(4, 10);
         m.expert_prefetch_accuracy(4, 1, 0.5);
         m.io_inflight("urgent", 3);
         m.read_hidden(0.7);
@@ -314,6 +315,8 @@ mod tests {
             "tetraeder.expert.layer_hit",
             "tetraeder.expert.prefetch",
             "tetraeder.expert.prefetch.wasted",
+            "tetraeder.expert.admitted",
+            "tetraeder.expert.admitted.bytes",
             "tetraeder.expert.prefetch.accuracy",
             "tetraeder.io.inflight",
             "tetraeder.moe.read.hidden",

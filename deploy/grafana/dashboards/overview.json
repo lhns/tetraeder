@@ -507,7 +507,7 @@
     {
       "id": 16,
       "title": "Expert cache hit rate",
-      "description": "Slot lookups that found the expert resident, by tier; the second series is the share of experts computed on the CPU instead (ADR 0035).",
+      "description": "Slot lookups that found the expert resident, by tier; the second series is the share of experts computed on the CPU instead (ADR 0035); the third, decode admissions into the VRAM tier per VRAM lookup (ADR 0059, zero unless admit_share is set). Under the CPU miss policy the vram hit share is the decode VRAM pair share.",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -539,6 +539,15 @@
           "refId": "B",
           "expr": "sum by (tetraeder_memory_tier) (rate(tetraeder_expert_cache_requests_total{tetraeder_result=\"cpu\"}[$__rate_interval])) / sum by (tetraeder_memory_tier) (rate(tetraeder_expert_cache_requests_total[$__rate_interval]))",
           "legendFormat": "{{tetraeder_memory_tier}} computed on CPU",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(tetraeder_expert_admitted_total[$__rate_interval])) / sum(rate(tetraeder_expert_cache_requests_total{tetraeder_memory_tier=\"vram\"}[$__rate_interval]))",
+          "legendFormat": "vram admitted",
           "datasource": {
             "type": "prometheus",
             "uid": "victoriametrics"
@@ -624,7 +633,7 @@
     {
       "id": 19,
       "title": "Tier read bandwidth",
-      "description": "Bytes per second read from each memory tier.",
+      "description": "Bytes per second read from each memory tier; the second series is the part uploaded into VRAM slots by decode admissions (ADR 0059).",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -647,6 +656,15 @@
           "refId": "A",
           "expr": "sum by (tetraeder_device, tetraeder_memory_tier) (rate(tetraeder_tier_read_bytes_total[$__rate_interval]))",
           "legendFormat": "{{tetraeder_device}} {{tetraeder_memory_tier}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(tetraeder_expert_admitted_bytes_total[$__rate_interval]))",
+          "legendFormat": "admission uploads",
           "datasource": {
             "type": "prometheus",
             "uid": "victoriametrics"

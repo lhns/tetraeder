@@ -450,6 +450,10 @@ EOF
         exit_regime main-overlap-uf-w4 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_URGENT_FIRST=1 TETRAEDER_EXIT_IO_WORKERS=4 || rc=30
         exit_regime main-overlap-w8 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_IO_WORKERS=8 || rc=30
         exit_regime main-overlap-poll0 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 || rc=30
+        # Adaptive compute tier (ADR 0059), paired with main-overlap: decode uploads a share of the CPU misses into
+        # VRAM slots (LRU seeded by the hot set); the repeat is the second pass of the pair. Other shares via VARIANTS
+        exit_regime main-overlap-adapt 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_ADMIT_SHARE=0.1 || rc=30
+        exit_regime main-overlap-adapt-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_ADMIT_SHARE=0.1 || rc=30
       fi
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26

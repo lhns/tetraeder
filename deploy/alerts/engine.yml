@@ -37,6 +37,18 @@ groups:
         annotations:
           summary: "Decode waits for most of its expert reads (hidden share below 30%)"
           description: "The median share of a layer step's read span hidden behind compute is below 0.3 for 15 minutes. Check chunks in flight on the Expert reads under compute panel: low means starved workers, high means a saturated disk."
+      # Adaptive compute tier (ADR 0059). An upload costs about two CPU expert computes, so admissions pay only when
+      # VRAM hits come in at least twice as often. The hits include those of the hot set, so this fires late, not early.
+      - alert: TetraederAdmissionsWithoutHits
+        expr: |
+          sum(rate(tetraeder_expert_cache_requests_total{tetraeder_memory_tier="vram", tetraeder_result="hit"}[10m])) / sum(rate(tetraeder_expert_admitted_total[10m])) < 2
+            and on() sum(rate(tetraeder_expert_admitted_total[10m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Decode admissions into VRAM get fewer than 2 hits each"
+          description: "Uploads cost more decode time than the hits save. Lower LoadOptions::admit_share or turn it off; check the Expert cache hit rate panel."
       # Conversion cache (ADR 0047). The first load of a plan converts every tensor, which is expected. Misses again in the
       # last hour, after misses earlier in the day and no hit in 24 hours, mean the cache is not reused: the directory is
       # not persistent, not writable, or the source file changes between loads (the key hashes its header, length and mtime).
