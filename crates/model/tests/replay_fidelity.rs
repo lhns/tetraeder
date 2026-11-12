@@ -11,6 +11,7 @@ use common::synth::{MoeSpec, quantized_moe};
 use common::trace::RoutingRecorder;
 use std::path::PathBuf;
 use tetraeder_ggml_sys::llama::Ftype;
+use tetraeder_memory::RamPolicy;
 use tetraeder_memory::replay::sim::{Config, Policy, Trace, VramPolicy, replay};
 use tetraeder_model::{BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 
@@ -160,5 +161,134 @@ fn cpu_replay_matches_the_engine_exactly() {
             "{what}: decode hit rate {want:.4}, replay {:.4}, issued {issued} used {used} wasted {wasted}",
             out.decode.ram_hit_rate_engine_mean
         );
+    }
+}
+
+/// Decode steps of the frequency-pin tests: past `FREQ_REFRESH_STEPS`, so the pins are refreshed
+/// from decode counts at least twice.
+const N_DECODE_FREQ: usize = 40;
+const SHARE: f64 = 0.5;
+
+/// Prefill, then `N_DECODE_FREQ` greedy steps: the logits of every step, the engine stats after
+/// the prefill and at the end, and the recorded trace.
+fn run_freq(
+    path: &std::path::Path,
+    o: &LoadOptions,
+    tag: &str,
+) -> (Vec<Vec<f32>>, ExpertStats, ExpertStats, Trace) {
+    let mut m = Qwen3Moe::load(path, o).unwrap();
+    let trace_path = std::env::temp_dir().join(format!(
+        "tetraeder-fidelity-freq-{}-{tag}.trace",
+        std::process::id()
+    ));
+    let mut rec = RoutingRecorder::create(&trace_path, &m, N_PROMPT, "test", "first_prefill", None);
+    let last = m.eval_last(&prompt()).unwrap();
+    rec.drain(&mut m);
+    let s1 = m.expert_stats().unwrap();
+    let mut logits = vec![last.clone()];
+    let mut next = argmax(&last) as i32;
+    for _ in 0..N_DECODE_FREQ {
+        let l = m.eval(&[next]).unwrap();
+        rec.drain(&mut m);
+        next = argmax(&l) as i32;
+        logits.push(l);
+    }
+    rec.finish();
+    let s2 = m.expert_stats().unwrap();
+    let trace = Trace::load(&trace_path).unwrap();
+    std::fs::remove_file(&trace_path).ok();
+    (logits, s1, s2, trace)
+}
+
+fn same_bits(a: &[Vec<f32>], b: &[Vec<f32>]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(x, y)| {
+            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| p.to_bits() == q.to_bits())
+        })
+}
+
+/// hardware: cpu. `ram_policy: freq:0.5` in the engine: per layer RAM hits and misses and the
+/// prefetch counters equal the replay's `Policy::Freq` (same share, same trace), and the logits
+/// are bitwise those of the LRU run.
+#[test]
+fn cpu_freq_replay_matches_the_engine_exactly() {
+    let path = fixture();
+    // RAM tiers where the pins (half the slots) and a step's 8 experts always fit together.
+    for (ram, depth, prefetch) in [(20, 1, true), (20, 2, true), (24, 1, false)] {
+        let what = format!("ram {ram} depth {depth} prefetch {prefetch}");
+        let lru_opts = opts(ram, depth, prefetch, false);
+        let freq_opts = LoadOptions {
+            ram_policy: RamPolicy::Freq { share: SHARE },
+            ..opts(ram, depth, prefetch, false)
+        };
+        let (l_lru, _, s_lru, _) = run_freq(&path, &lru_opts, &format!("lru-{ram}-{depth}"));
+        let (l_freq, s1, s2, trace) =
+            run_freq(&path, &freq_opts, &format!("freq-{ram}-{depth}-{prefetch}"));
+        assert!(same_bits(&l_lru, &l_freq), "{what}: logits differ from LRU");
+        let out = replay(
+            &trace,
+            &Config {
+                vram_slots: VRAM as u32,
+                ram_slots: ram as u32,
+                policy: Policy::Freq { share: SHARE },
+                vram_policy: VramPolicy::Static,
+                prefetch,
+            },
+        );
+        for (il, l) in s2.layers.iter().enumerate() {
+            let r = l.ram.unwrap();
+            assert_eq!(
+                out.layer_stats[il],
+                (r.hits, r.misses),
+                "{what}: layer {il} RAM hits and misses"
+            );
+        }
+        let (issued, used, wasted) = (
+            out.prefill.prefetch_issued + out.decode.prefetch_issued,
+            out.prefill.prefetch_used + out.decode.prefetch_used,
+            out.prefill.prefetch_wasted + out.decode.prefetch_wasted,
+        );
+        assert_eq!(
+            (issued, used, wasted),
+            (
+                s2.io.prefetch_issued,
+                s2.io.prefetch_used,
+                s2.io.prefetch_wasted
+            ),
+            "{what}: prefetch counters"
+        );
+        let want = ram_hit_rate_mean(&s1, &s2);
+        assert!(
+            (out.decode.ram_hit_rate_engine_mean - want).abs() < 1e-12,
+            "{what}: decode hit rate {} against {want}",
+            out.decode.ram_hit_rate_engine_mean
+        );
+        let lru_misses: u64 = s_lru.layers.iter().map(|l| l.ram.unwrap().misses).sum();
+        let freq_misses: u64 = s2.layers.iter().map(|l| l.ram.unwrap().misses).sum();
+        eprintln!("{what}: RAM misses lru {lru_misses}, freq {freq_misses}");
+    }
+}
+
+/// hardware: cpu. Under overlap (the I/O service on a virtual clock) and in tiers so small that
+/// the pins and a step's experts cannot all fit, the pins give way and never fail a step; the
+/// logits are bitwise those of the LRU run.
+#[test]
+fn cpu_freq_pins_give_way_and_keep_logits_bitwise() {
+    let path = fixture();
+    for (ram, share, overlap) in [
+        (20, 0.5, true),
+        (12, 1.0, true),
+        (10, 1.0, false),
+        (12, 0.75, false),
+    ] {
+        let lru_opts = opts(ram, 1, true, overlap);
+        let freq_opts = LoadOptions {
+            ram_policy: RamPolicy::Freq { share },
+            ..opts(ram, 1, true, overlap)
+        };
+        let what = format!("ram {ram} share {share} overlap {overlap}");
+        let (l_lru, ..) = run_freq(&path, &lru_opts, &format!("glru-{ram}-{overlap}"));
+        let (l_freq, ..) = run_freq(&path, &freq_opts, &format!("gfreq-{ram}-{overlap}"));
+        assert!(same_bits(&l_lru, &l_freq), "{what}: logits differ from LRU");
     }
 }

@@ -308,6 +308,92 @@ pub fn hot_from_counts(counts: &[u64], k: u32) -> Vec<u32> {
     ids
 }
 
+/// Frequency pins are refreshed every this many decode steps (and at every hot-set marker).
+pub const FREQ_REFRESH_STEPS: u64 = 16;
+
+/// The RAM-tier policy of the engine (ADR 0050 (c)): LRU, or LRU with the most routed experts
+/// of each layer pinned. The replay's `Policy::Freq` has the same semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum RamPolicy {
+    #[default]
+    Lru,
+    /// Pin the top `ceil(share * slots)` experts of the layer by routing count.
+    Freq { share: f64 },
+}
+
+impl RamPolicy {
+    /// `lru` or `freq:<share in (0, 1]>`.
+    pub fn parse(s: &str) -> Result<RamPolicy, String> {
+        if s == "lru" {
+            return Ok(RamPolicy::Lru);
+        }
+        s.strip_prefix("freq:")
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| *v > 0.0 && *v <= 1.0)
+            .map(|share| RamPolicy::Freq { share })
+            .ok_or_else(|| format!("ram policy {s:?}: expected lru or freq:<share in (0, 1]>"))
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            RamPolicy::Lru => "lru".into(),
+            RamPolicy::Freq { share } => format!("freq:{share}"),
+        }
+    }
+
+    /// Experts pinned per layer of a RAM tier of `slots`.
+    pub fn pin_count(&self, slots: u32) -> u32 {
+        match self {
+            RamPolicy::Lru => 0,
+            RamPolicy::Freq { share } => (share * f64::from(slots)).ceil() as u32,
+        }
+    }
+}
+
+/// The frequency pins of a layer: the top `k` experts by routing count, leaving out those
+/// pinned in the compute tier (they never reach the RAM tier). Most routed first.
+pub fn freq_pins(counts: &[u64], compute: &LayerSlots, k: u32) -> Vec<u32> {
+    let mut c = counts.to_vec();
+    for (e, n) in c.iter_mut().enumerate() {
+        if compute.is_pinned(e as u32) {
+            *n = 0;
+        }
+    }
+    hot_from_counts(&c, k)
+}
+
+/// The pins for a layer step that stages `chunk` into `slots` RAM slots: `mandatory` (reads in
+/// flight) first, then the frequency pins that `chunk` uses, then the other frequency pins as
+/// far as the slots leave room, so the chunk's misses always find an unpinned slot. Nothing is
+/// dropped when `|mandatory + chunk + freq| <= slots`.
+pub fn pins_with_room(mandatory: &[u32], chunk: &[u32], freq: &[u32], slots: usize) -> Vec<u32> {
+    let mut out: Vec<u32> = Vec::with_capacity(slots);
+    for &e in mandatory {
+        if !out.contains(&e) {
+            out.push(e);
+        }
+    }
+    let mut used = out.clone();
+    for &e in chunk {
+        if !used.contains(&e) {
+            used.push(e);
+        }
+    }
+    let mut room = slots.saturating_sub(used.len());
+    for &e in freq {
+        if out.contains(&e) {
+            continue;
+        }
+        if chunk.contains(&e) {
+            out.push(e);
+        } else if room > 0 {
+            room -= 1;
+            out.push(e);
+        }
+    }
+    out
+}
+
 /// Slots per layer that `bytes` buy across `layers` MoE layers of `slot_bytes` each.
 pub fn slots_per_layer(bytes: u64, layers: u32, slot_bytes: u64) -> u32 {
     let per_slot_all_layers = u64::from(layers).saturating_mul(slot_bytes);
