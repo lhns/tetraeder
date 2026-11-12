@@ -130,6 +130,8 @@ pub struct Metrics {
     replan_admitting: Gauge<u64>,
     cpu_variant: Gauge<u64>,
     cpu_isa_missing: Gauge<u64>,
+    cpu_threads: Gauge<u64>,
+    cpu_quota: Gauge<f64>,
 }
 
 impl Metrics {
@@ -382,6 +384,16 @@ impl Metrics {
                 .u64_gauge("tetraeder.cpu.isa.missing")
                 .with_unit("{feature}")
                 .with_description("Host CPU features the loaded CPU backend lacks (a lower variant than the host could run)")
+                .build(),
+            cpu_threads: meter
+                .u64_gauge("tetraeder.cpu.threads")
+                .with_unit("{thread}")
+                .with_description("CPU compute threads the engine was configured with")
+                .build(),
+            cpu_quota: meter
+                .f64_gauge("tetraeder.cpu.quota")
+                .with_unit("{cpu}")
+                .with_description("CPU limit of the engine's cgroup in cores, as detected at start")
                 .build(),
         }
     }
@@ -694,6 +706,15 @@ impl Metrics {
             missing.len() as u64,
             &[KeyValue::new(attr::CPU_ISA, missing.join(","))],
         );
+    }
+
+    /// Once at engine start (ADR 0059): the configured compute threads and, when the cgroup has
+    /// one, its CPU limit in cores (`host::cgroup_cpu_quota`), so a run above its quota shows.
+    pub fn cpu_threads(&self, threads: u64, quota: Option<f64>) {
+        self.cpu_threads.record(threads, &[]);
+        if let Some(q) = quota {
+            self.cpu_quota.record(q, &[]);
+        }
     }
 
     /// The KV cache (ADR 0050 b): `memory.used` and `.capacity` of kind `kv` with the cache

@@ -14,7 +14,9 @@ pub mod top;
 pub use config::TelemetryConfig;
 #[cfg(feature = "nvml")]
 pub use host::NvmlHost;
-pub use host::{DeviceKind, DeviceSample, HostMetrics, SysinfoHost, default_sources};
+pub use host::{
+    DeviceKind, DeviceSample, HostMetrics, SysinfoHost, cgroup_cpu_quota, default_sources,
+};
 pub use metrics::{CacheResult, Direction, Metrics, Phase, StepSample, attr};
 pub use ring::{StepRing, StepStats};
 pub use setup::{Telemetry, TelemetryError};

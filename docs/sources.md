@@ -36,6 +36,7 @@ Updating `0002`: the copied file is frozen (ik moved Q4_K/Q6_K to `Q8_2_X4` acti
 | What | Source | Version | Update |
 |---|---|---|---|
 | taxameter (Vast box management) | [lhns/taxameter](https://github.com/lhns/taxameter) | tag in `pyproject.toml` | Bump the tag, `uv sync` |
+| OpenTelemetry Collector contrib (`otelcol-contrib`, box collector and CI config check, ADR 0059; Apache-2.0) | [open-telemetry/opentelemetry-collector-releases](https://github.com/open-telemetry/opentelemetry-collector-releases), release tarball `otelcol-contrib_<v>_linux_amd64.tar.gz`, installed to `/opt/otelcol` by `scripts/otelcol_install.sh` | `OTELCOL_VERSION` 0.116.1 and its `OTELCOL_SHA256` in `scripts/otelcol_install.sh` (from the release's `opentelemetry-collector-releases_otelcol-contrib_checksums.txt`); the compose image `otel/opentelemetry-collector-contrib` in `deploy/docker-compose.yml` uses the same version | Change both, with the sha256 of the new tarball; check the hostmetrics names `scripts/otlp_host.py` reads against the receiver docs of that version |
 
 ## Ideas only (no code taken)
 

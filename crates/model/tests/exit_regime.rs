@@ -62,6 +62,8 @@
 //!   `tetraeder-routing` trace for `tetraeder-bench replay` (ADR 0050 (c)). One file per ubatch
 //!   size: with several, the size is inserted before the extension.
 //! - `TETRAEDER_EXIT_OUT` (JSON file), `TETRAEDER_EXIT_MACHINE` (a note).
+//! - `OTEL_EXPORTER_OTLP_ENDPOINT`: the builder exports its metrics there (ADR 0059), every
+//!   `OTEL_METRIC_EXPORT_INTERVAL` ms, with `OTEL_RESOURCE_ATTRIBUTES`; unset, no telemetry.
 //!
 //! Every run records `prompt` (token count and an FNV-1a hash of the token ids), `first_top`
 //! (the 10 largest logits after the prefill, `[id, logit]`) and `margins` (top-1 minus top-2
@@ -88,6 +90,7 @@ use tetraeder_model::{
     StepProfile,
 };
 use tetraeder_plan::KvFormat;
+use tetraeder_telemetry::{Telemetry, TelemetryConfig, cgroup_cpu_quota};
 
 /// Expert of about 2.6 MB (three slabs) like Qwen3-30B-A3B, top-4 of 16, so a RAM tier of a
 /// quarter of the experts reads from disk every step. About 350 MB as Q4_K_M, 2.6 GB as the F32
@@ -140,15 +143,8 @@ fn provenance(threads: usize) -> Value {
             let o = std::process::Command::new("hostname").output().ok()?;
             Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
         });
-    // cgroup v2 `cpu.max` (`<quota|max> <period>`); null when unlimited or unknown
-    let quota = std::fs::read_to_string("/sys/fs/cgroup/cpu.max")
-        .ok()
-        .and_then(|t| {
-            let mut f = t.split_whitespace();
-            let q: f64 = f.next()?.parse().ok()?;
-            let p: f64 = f.next().unwrap_or("100000").parse().ok()?;
-            (q > 0.0 && p > 0.0).then(|| (q / p * 100.0).round() / 100.0)
-        });
+    // cgroup `cpu.max` (v1 cfs quota and period as fallback); null when unlimited or unknown
+    let quota = cgroup_cpu_quota();
     json!({
         "engine_commit": commit,
         "engine_dirty": git_out(&["status", "--porcelain"]).map(|s| !s.is_empty()),
@@ -524,6 +520,14 @@ fn exit_regime() {
     let prompt_info = json!({"tokens": tokens.len(), "fnv1a64": tokens_hash(&tokens)});
     let reference = std::env::var("TETRAEDER_EXIT_ENGINE").is_ok_and(|v| v == "libllama");
 
+    // ADR 0059: the builder's metrics to the box collector when the harness gives an endpoint
+    let tel_cfg = TelemetryConfig::from_env();
+    let telemetry = tel_cfg.otlp_endpoint.is_some().then(|| {
+        let t = Arc::new(Telemetry::new(&tel_cfg).expect("OTLP exporter"));
+        t.metrics().cpu_threads(threads as u64, cgroup_cpu_quota());
+        t
+    });
+
     let mut opts = LoadOptions::new(if gpu {
         BackendChoice::Gpu { index: 0 }
     } else {
@@ -533,6 +537,7 @@ fn exit_regime() {
     });
     opts.n_ctx = n_ctx;
     opts.miss = MissPolicy::Cpu;
+    opts.telemetry = telemetry.clone();
     opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
     // Unset follows LoadOptions (prefetch on); `0` turns it off, `1` on.
     if let Ok(v) = std::env::var("TETRAEDER_EXIT_PREFETCH") {
@@ -760,5 +765,9 @@ fn exit_regime() {
     });
     if let Some(p) = std::env::var_os("TETRAEDER_EXIT_OUT") {
         std::fs::write(&p, serde_json::to_string_pretty(&out).unwrap()).unwrap();
+    }
+    // the last export before the process ends
+    if let Some(t) = &telemetry {
+        t.shutdown();
     }
 }

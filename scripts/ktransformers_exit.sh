@@ -286,6 +286,7 @@ d = {
     "kt_cpu_variant": read(variant).strip() or None,
     "kt_cpu_variant_forced": variant_env or None,
     "host": host.get("host"),
+    "host_windows": host.get("windows"),
     "env": host.get("env"),
     "engine_rc": rc,
     "gpu": gpu,

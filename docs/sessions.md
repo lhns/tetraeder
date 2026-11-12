@@ -224,6 +224,15 @@ Three stages feed the tier term and the calibration ledger. All are written into
 
 **Verify after fetch.** `python3 scripts/disk_check.py bench/results/<date>/exit-<stage>-<stamp>.json bench/results/<date>/disk-curve-loaded-<stamp>.json`: the sampler's decode `read_mb_s` at `disk_queue_depth_mean` should lie within 20% of the loaded curve at that depth (reported, not gated). `cargo test -p tetraeder-bench committed_tier_replays_are_current` replays a committed `tier-replay.json` against its trace; `cargo run -p tetraeder-planner --bin tetraeder-plan -- ledger` shows the ledger rows of a new `ledger-<session>/` (add `--write` to snapshot, with `--accept-worse` for a reviewed regression).
 
+## OTLP files of a box run (ADR 0059)
+
+`exit_run.sh` starts a collector (`scripts/otelcol_box.sh`, config `deploy/otelcol/config-file.yaml`) before its first stage and stops it before `DONE`. It needs `/opt/otelcol/otelcol-contrib` (the provision hook installs it) and logs `otelcol: up, files in ...` to `runs/vast/exit_run.log`; without it the run goes on with the sampler's JSONL alone. `OTEL_COLLECTOR=0` skips it; `ENGINE_OTLP=0` keeps it but stops the builder's own export (the overhead pair of the ADR).
+
+- **Where.** `runs/vast/otel/<date>-<stamp>/metrics.jsonl` (rotated at 100 MB into `metrics-<time>.jsonl`), one directory per launch, plus `otelcol.log`. About 120 MB per box hour; `taxameter fetch` brings them with `runs/vast` (`*.jsonl`). Do not commit them; the results carry what is derived.
+- **Format.** One OTLP JSON `ExportMetricsServiceRequest` per line: `resourceMetrics[].resource.attributes` (`service.name` is `tetraeder-host-sampler`, `tetraeder` or empty for hostmetrics; `tetraeder.stage` on the sampler and builder series), then `scopeMetrics[].metrics[]` with `name`, `unit` and `sum` or `gauge` `.dataPoints[]` (`timeUnixNano` and `asInt` are strings). Counters are cumulative.
+- **Read them.** `python3 -c 'import sys; sys.path.insert(0, "scripts"); import otlp_host as oh; pts = oh.read_points(sys.argv[1:]); print(len(pts))' runs/vast/otel/*/metrics*.jsonl` gives the sampler and hostmetrics points as dicts (`name`, `attrs`, `resource`, `t_ns`, `value`); `oh.rows(pts)` turns them into sampler-shaped records. For any other series (the builder's `tetraeder.*`, `process.*`, `system.memory.usage`) use `oh.points_of(json.loads(line))` line by line. Into Grafana: point a collector with the `otlpjsonfile` receiver at the files and the compose stack's exporters.
+- **In the results.** After the collector stops, `engine_sample.py otlp-merge --otel-dir runs/vast/otel --results bench/results/<date>` writes `host_otlp` (same fields as `host`, from the OTLP path) and `host_otlp_diff` (fields more than 5% apart or null on one side) into every result with windows. Rerun it locally after fetch the same way. Until one box run shows an empty or explained `host_otlp_diff`, `host` stays the sampler's.
+
 ## Noise bands
 
 Gates compare the paired ratio of a candidate with `1 - band`. The band is per device and GPU class, from `tetraeder-bench`:

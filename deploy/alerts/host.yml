@@ -1,0 +1,51 @@
+# Box and host alerts (ADR 0059): the container's cgroup, the host CPUs and the GPU, from the hostmetrics receiver and
+# the host sampler (scripts/engine_sample.py posting OTLP). Loaded by vmalert in docker-compose.yml; metric names
+# follow -opentelemetry.usePrometheusNaming.
+groups:
+  - name: tetraeder-host
+    rules:
+      # A run whose cgroup is throttled in a fifth of its periods is measuring the quota, not the engine (ADR 0058
+      # addendum: compute per token varied 2x on the same CPU model).
+      - alert: TetraederCpuThrottled
+        expr: |
+          sum(rate(tetraeder_host_cgroup_cpu_throttled_periods_total[5m])) / sum(rate(tetraeder_host_cgroup_cpu_periods_total[5m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The container is CPU-throttled in more than 20% of its CFS periods"
+          description: "More runnable threads than the CPU quota. Check the engine threads against the quota on the Container CPU panel (scripts/clamp_threads.sh clamps exit runs); side jobs need OMP_NUM_THREADS and cargo -j capped."
+      - alert: TetraederCpuStealHigh
+        expr: |
+          sum(rate(system_cpu_time_seconds_total{state="steal"}[5m])) / sum(rate(system_cpu_time_seconds_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host CPU steal above 5%"
+          description: "The hypervisor gives the host's CPUs to other guests. Numbers from this box are not comparable with other nights; pair runs on the same box (AGENTS.md, benchmark comparability)."
+      - alert: TetraederThreadsAboveQuota
+        expr: max(tetraeder_cpu_threads) - max(tetraeder_cpu_quota) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The engine runs more compute threads than its CPU quota"
+          description: "Spinning threads above the quota get throttled. Lower the thread count to the whole-core quota (THREADS, scripts/clamp_threads.sh)."
+      - alert: TetraederContainerMemoryNearLimit
+        expr: max(container_memory_usage_bytes) / max(tetraeder_host_cgroup_memory_limit_bytes) > 0.95
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The container uses more than 95% of its memory limit"
+          description: "Page cache counts towards the limit and is reclaimed first; check the anonymous memory on the Container memory panel before the OOM killer stops a stage."
+      # 0x4 (software power cap) is the normal limit under load and not alerted; slowdown, thermal and power brake are.
+      - alert: TetraederGpuThrottled
+        expr: max by (tetraeder_gpu_throttle_reason) (tetraeder_host_gpu_throttled{tetraeder_gpu_throttle_reason=~"hw_slowdown|sw_thermal|hw_thermal|hw_power_brake"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU throttled ({{ $labels.tetraeder_gpu_throttle_reason }})"
+          description: "The GPU clocks are held down by heat or a power brake; GPU-bound numbers from this box are low. Check the GPU power, temperature and clocks panel."

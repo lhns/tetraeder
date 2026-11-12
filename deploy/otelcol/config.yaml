@@ -1,5 +1,7 @@
 # Collector for the compose stack. Tail sampling keeps every slow or failed trace
-# and a small share of the rest (docs/plan.md, Observability).
+# and a small share of the rest (docs/plan.md, Observability). Host metrics: the same hostmetrics receiver and CPU
+# transform as the box collector (config-file.yaml, ADR 0059), reading the host through the /hostfs mount; the host
+# sampler (scripts/engine_sample.py) posts here with TETRAEDER_HOST_OTLP=http://localhost:4318.
 receivers:
   otlp:
     protocols:
@@ -7,6 +9,34 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  hostmetrics:
+    collection_interval: 10s
+    root_path: /hostfs
+    scrapers:
+      cpu: {}
+      disk:
+        exclude:
+          devices: ["loop.*", "ram.*"]
+          match_type: regexp
+      memory: {}
+      network:
+        include:
+          interfaces: ["eth.*", "en.*"]
+          match_type: regexp
+      process:
+        include:
+          names: ["exit_regime-.*", "tetraeder.*", "llama-.*"]
+          match_type: regexp
+        mute_process_all_errors: true
+        metrics:
+          process.paging.faults:
+            enabled: true
+          process.context_switches:
+            enabled: true
+          process.threads:
+            enabled: true
+          process.disk.operations:
+            enabled: true
 
 processors:
   memory_limiter:
@@ -26,6 +56,30 @@ processors:
         type: probabilistic
         probabilistic: { sampling_percentage: 5 }
   batch: {}
+  # as config-file.yaml: busy seconds per CPU, per-state seconds summed over CPUs
+  metricstransform/cpu:
+    transforms:
+      - include: system.cpu.time
+        match_type: strict
+        action: insert
+        new_name: tetraeder.host.cpu.busy
+        operations:
+          - action: delete_label_value
+            label: state
+            label_value: idle
+          - action: delete_label_value
+            label: state
+            label_value: wait
+          - action: aggregate_labels
+            label_set: [cpu]
+            aggregation_type: sum
+      - include: system.cpu.time
+        match_type: strict
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [state]
+            aggregation_type: sum
 
 exporters:
   # VictoriaMetrics accepts OTLP/HTTP metrics natively.
@@ -44,6 +98,10 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
+      exporters: [otlphttp/metrics]
+    metrics/host:
+      receivers: [hostmetrics]
+      processors: [memory_limiter, metricstransform/cpu, batch]
       exporters: [otlphttp/metrics]
     traces:
       receivers: [otlp]

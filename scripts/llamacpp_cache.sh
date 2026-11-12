@@ -145,6 +145,9 @@ try:
             res["host"] = es.host_summary(es.load_samples(samples), (t_a, t_first, t["prompt_n"]),
                                           (t_first, t_b, t["predicted_n"]), int(threads), curve)
             res["env"] = {**es.env_info(), "disk_curve": os.path.basename(curve_file) if curve else None}
+            # the same windows for the OTLP path (engine_sample.py otlp-merge, ADR 0059)
+            res["host_windows"] = es.host_windows((t_a, t_first, t["prompt_n"]), (t_first, t_b, t["predicted_n"]),
+                                                  int(threads))
     except Exception as e:
         res["host_error"] = repr(e)
 except Exception as e:

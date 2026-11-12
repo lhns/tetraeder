@@ -8,6 +8,10 @@
 # result JSON. ggml is built once for the native ISA of the box (TETRAEDER_GGML_NATIVE=ON, ADR 0052 addendum
 # 2026-11-09: a DL build would compile 14 CPU variants on a fresh box); "ggml_system_info" in each result records
 # the ISA. ktransformers-avx2 forces kt-kernel's AVX2 kernels.
+# Host and engine metrics also go to a collector (ADR 0059, scripts/otelcol_box.sh) started before the first stage and
+# stopped before DONE: the sampler posts to it, the builder exports to it (OTEL_EXPORTER_OTLP_ENDPOINT), hostmetrics
+# scrapes the box, all into runs/vast/otel/<start>/; then every result gets "host_otlp" next to "host". OTEL_COLLECTOR=0
+# runs without it; ENGINE_OTLP=0 keeps the collector but turns the builder's export off (the overhead pair).
 # Session profiles (scripts/session.sh) set RESULTS_DATE, RESUME=1 (skip stages with a result) and DEADLINE (skip stages
 # that would end after it).
 # Stage order: with STAGES set (session.sh passes B1_STAGES there) the stages run in the order of that list, once
@@ -187,7 +191,7 @@ membw_probe() {
   membw_json=""
   [ "${MEMBW_PROBE:-1}" = 0 ] && return 0
   local f="$date_dir/membw-$1-$stamp.json"
-  python3 scripts/engine_sample.py membw --seconds 10 --threads "$threads" > "$f" || { echo "membw probe failed for $1"; rm -f "$f"; return 0; }
+  TETRAEDER_STAGE="$1" python3 scripts/engine_sample.py membw --seconds 10 --threads "$threads" > "$f" || { echo "membw probe failed for $1"; rm -f "$f"; return 0; }
   membw_json=$f
 }
 
@@ -204,16 +208,23 @@ exit_regime() {
   case "$name" in main-overlap* | main-prefetch* | main-repeat) text+=(TETRAEDER_EXIT_DECODE_WINDOWS=4) ;; esac
   echo "[$(date +%T)] start $name"
   local json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
+  # the builder's own metrics to the collector every second (ADR 0059), with the stage as a resource attribute
+  local otel=() attrs="tetraeder.stage=$name"
+  if [ -n "${TETRAEDER_HOST_OTLP:-}" ] && [ "${ENGINE_OTLP:-1}" = 1 ]; then
+    [ -n "${TETRAEDER_SESSION:-}" ] && attrs="$attrs,tetraeder.session=$TETRAEDER_SESSION"
+    otel=(OTEL_EXPORTER_OTLP_ENDPOINT="$TETRAEDER_HOST_OTLP" OTEL_METRIC_EXPORT_INTERVAL=1000
+      OTEL_RESOURCE_ATTRIBUTES="$attrs,host.id=${CONTAINER_ID:-$(hostname)}")
+  fi
   ensure_disk
   membw_probe "$name"
-  env "${text[@]}" TETRAEDER_EXIT_GGUF="$model" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
+  env "${text[@]}" "${otel[@]}" TETRAEDER_EXIT_GGUF="$model" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
     TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
     TETRAEDER_EXIT_OUT="$json" \
     TETRAEDER_EXIT_MACHINE="vast $(hostname)" "$@" \
     timeout -k 30 "${min}m" cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda \
     --test exit_regime -- --ignored --nocapture &
   local pid=$!
-  python3 scripts/engine_sample.py sample --pid "$pid" --disk "$HOST_DISK_DEV" --out "$samples" 8>&- &
+  TETRAEDER_STAGE="$name" python3 scripts/engine_sample.py sample --pid "$pid" --disk "$HOST_DISK_DEV" --out "$samples" 8>&- &
   local spid=$!
   wait "$pid"
   local r=$?
@@ -261,7 +272,7 @@ ktransformers() {
   echo "[$(date +%T)] start $name"
   ensure_disk
   # KT_KERNEL_CPU_VARIANT only for a variant: set but empty is not the same as kt-kernel's own pick
-  HOST_DISK_DEV="$HOST_DISK_DEV" ${variant:+env KT_KERNEL_CPU_VARIANT=$variant} \
+  TETRAEDER_STAGE="$name" HOST_DISK_DEV="$HOST_DISK_DEV" ${variant:+env KT_KERNEL_CPU_VARIANT=$variant} \
     bash scripts/ktransformers_exit.sh "$model" "$threads" "$ram_bytes" "$date_dir/exit-$name-$stamp.json" deep 8>&-
   echo "[$(date +%T)] done $name rc=$?"
 }
@@ -295,7 +306,7 @@ if d.get("cpu_share") is not None and d.get("cache_mib"):
     fits "$name" || continue
     echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode $mode"
     membw_probe "llamacpp-cache-s$s${1:+-$1}"
-    HOST_DISK_DEV="$HOST_DISK_DEV" LOAD_MODE=$mode timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
+    TETRAEDER_STAGE="llamacpp-cache-s$s${1:+-$1}" HOST_DISK_DEV="$HOST_DISK_DEV" LOAD_MODE=$mode timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
       "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
     echo "[$(date +%T)] done $name s$s rc=$?"
   done
@@ -330,6 +341,11 @@ disk_curve() {
     || echo "disk-curve idle failed"
   target/release/tetraeder-bench disk-curve --file "$shard" --seconds 4 --load-threads "$load" \
     --out "$date_dir/disk-curve-loaded-$stamp.json" || echo "disk-curve loaded failed"
+  local k
+  for k in idle loaded; do
+    [ -s "$date_dir/disk-curve-$k-$stamp.json" ] && TETRAEDER_STAGE=disk-curve \
+      python3 scripts/engine_sample.py emit-curve "$date_dir/disk-curve-$k-$stamp.json" --kind $k
+  done
   echo "[$(date +%T)] done disk-curve"
 }
 
@@ -516,11 +532,25 @@ EOF
   } >> "$log" 2>&1
 fi
 }
+# the collector for every stage alike (ADR 0059); without it the run goes on with the sampler's JSONL alone
+unset TETRAEDER_HOST_OTLP
+if [ $rc = 0 ] && [ "${OTEL_COLLECTOR:-1}" = 1 ]; then
+  if bash scripts/otelcol_box.sh start "$PWD/runs/vast/otel/$(date +%Y%m%d)-$stamp" >> "$log" 2>&1 8>&-; then
+    export TETRAEDER_HOST_OTLP=http://127.0.0.1:4318
+  fi
+fi
 if [ -n "$order" ]; then
   for ONLY in $order; do run_stages; done
   ONLY=
 else
   run_stages
+fi
+# stop before DONE so the files are complete when fetch packs them, then derive host_otlp from all of this box's files
+if [ -n "${TETRAEDER_HOST_OTLP:-}" ]; then
+  {
+    bash scripts/otelcol_box.sh stop 8>&-
+    python3 scripts/engine_sample.py otlp-merge --otel-dir runs/vast/otel --results "$date_dir" || echo "otlp-merge failed"
+  } >> "$log" 2>&1
 fi
 touch "$date_dir/DONE"
 echo "EXIT_RUN_DONE rc=$rc" >> "$log"

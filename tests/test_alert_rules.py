@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RULE_FILES = sorted((ROOT / "deploy" / "alerts").glob("*.yml"))
 # Metric names are declared in the telemetry crate and in some crates of their own (the gateway).
 CRATES = ROOT / "crates"
+HOST_NAMES = ROOT / "scripts" / "otlp_host.py"
 # Name parts that -opentelemetry.usePrometheusNaming appends (unit, type, histogram series).
 SUFFIX = re.compile(r"^(_(seconds|ratio|bytes|watts|celsius|segment|token|request|expert|layer))*(_total|_bucket|_sum|_count)?$")
 TOKEN = re.compile(r"[A-Za-z_:][A-Za-z0-9_:]*")
@@ -24,7 +25,10 @@ FUNCS = {
 
 def _emitted_bases() -> set[str]:
     text = "\n".join(f.read_text(encoding="utf-8") for f in CRATES.glob("*/src/**/*.rs"))
-    return {m.replace(".", "_") for m in re.findall(r'"((?:tetraeder|gen_ai)\.[a-z_.]+)"', text)}
+    bases = {m.replace(".", "_") for m in re.findall(r'"((?:tetraeder|gen_ai)\.[a-z_.]+)"', text)}
+    # host series (ADR 0059): the sampler's names and the hostmetrics names it reads, declared in scripts/otlp_host.py
+    host = HOST_NAMES.read_text(encoding="utf-8")
+    return bases | {m.replace(".", "_") for m in re.findall(r'"((?:tetraeder|container|hw|system|process)\.[a-z_.]+)"', host)}
 
 
 def _rules(path: Path) -> list[dict]:
@@ -48,7 +52,7 @@ def _idents(expr: str) -> set[str]:
 
 
 def test_rule_files_exist():
-    assert {p.name for p in RULE_FILES} >= {"engine.yml", "gateway.yml", "slo.yml"}
+    assert {p.name for p in RULE_FILES} >= {"engine.yml", "gateway.yml", "slo.yml", "host.yml"}
 
 
 @pytest.mark.parametrize("path", RULE_FILES, ids=lambda p: p.name)
@@ -64,6 +68,7 @@ def test_structure(path):
 def test_expr_series_are_emitted_or_recorded():
     bases = _emitted_bases()
     assert "tetraeder_plan_residual" in bases, "crate sources not parsed"
+    assert "tetraeder_host_cgroup_cpu_periods" in bases and "system_cpu_time" in bases, "otlp_host.py not parsed"
     recorded = {r["record"] for f in RULE_FILES for r in _rules(f) if "record" in r}
     for f in RULE_FILES:
         for r in _rules(f):

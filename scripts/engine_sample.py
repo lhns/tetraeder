@@ -12,12 +12,18 @@ membw:      python3 engine_sample.py membw [--seconds 10] [--threads N]
 summarize:  python3 engine_sample.py summarize --samples s.jsonl --threads N (--builder-json H | --kt-json R) --out sum.json
             [--merge-into H] [--curve-dir D | --curve FILE] [--membw FILE]
             Splits the samples into a prefill and a decode window and writes {"host": {"prefill": {...}, "decode":
-            {...}}, "env": {...}}. The builder windows come from the harness JSON (decode_windows wall clock, prefill
-            before them), KTransformers' from the client result (t_start, t_first, t_end). --merge-into sets "host"
-            and the new "env" keys in that JSON as well. Each phase also gets io_some_share and io_full_share (I/O
+            {...}}, "env": {...}, "windows": {...}}. The builder windows come from the harness JSON (decode_windows
+            wall clock, prefill before them), KTransformers' from the client result (t_start, t_first, t_end).
+            --merge-into sets "host" and the new "env" keys in that JSON as well. Each phase also gets io_some_share and io_full_share (I/O
             pressure stall time over wall time), disk_util (read_mb_s over the loaded disk curve's rate at the mean
             queue depth) and io_class (see io_class()). The curve is disk-curve-loaded-*.json in D (default: the
             directory of the merged or output JSON).
+OTLP (ADR 0059): with TETRAEDER_HOST_OTLP (or --otlp) set to a collector's base URL, sample, membw and emit-curve also
+            post their numbers as OTLP metrics (scripts/otlp_host.py); SAMPLER_OTLP=0 turns it off.
+emit-curve: python3 engine_sample.py emit-curve disk-curve-loaded-X.json --kind loaded
+otlp-merge: python3 engine_sample.py otlp-merge --otel-dir runs/vast/otel --results bench/results/D
+            Derives the host block of every result in D from the collector's OTLP files ("host_otlp", same fields
+            and math as "host") and lists the fields where the two differ ("host_otlp_diff").
 """
 
 import argparse
@@ -31,6 +37,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import detector_sample as ds  # noqa: E402
+import otlp_host as oh  # noqa: E402
 
 
 # the probe reads 2 GB; a device must show at least about half of it
@@ -244,17 +251,113 @@ def cgroup_mem():
     return {"file": int(f) if f else None, "anon": int(an) if an else None}
 
 
-def gpu_util():
+def cgroup_mem_now():
+    """memory.current and memory.max of the container's cgroup in bytes (v2, else v1 usage and limit; max None when
+    unlimited)."""
+    cur = ds.read("/sys/fs/cgroup/memory.current").strip() or ds.read("/sys/fs/cgroup/memory/memory.usage_in_bytes").strip()
+    mx = ds.read("/sys/fs/cgroup/memory.max").strip() or ds.read("/sys/fs/cgroup/memory/memory.limit_in_bytes").strip()
+    # v1 reads an unlimited limit as a huge number (page-rounded LONG_MAX)
+    lim = int(mx) if mx.isdigit() and int(mx) < 1 << 60 else None
+    return {"current": int(cur) if cur.isdigit() else None, "max": lim}
+
+
+def cpu_quota():
+    """The cgroup's CPU limit in cores (v2 cpu.max, else v1 cfs quota over period); None when unlimited or unknown."""
+    f = ds.read("/sys/fs/cgroup/cpu.max").split()
+    if len(f) == 2 and f[0] != "max":
+        q, p = f
+    else:
+        q = ds.read("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").strip() or ds.read("/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_quota_us").strip()
+        p = ds.read("/sys/fs/cgroup/cpu/cpu.cfs_period_us").strip() or ds.read("/sys/fs/cgroup/cpu,cpuacct/cpu.cfs_period_us").strip()
     try:
-        out = subprocess.run(["nvidia-smi", "-i", "0", "--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=10).stdout.strip().splitlines()[0]
-        u, m = (x.strip() for x in out.split(","))
-        return {"util": int(u), "mem_mib": int(m)}
-    except (OSError, subprocess.SubprocessError, IndexError, ValueError):
+        q, p = int(q), int(p)
+    except ValueError:
         return None
+    return round(q / p, 2) if q > 0 and p > 0 else None
+
+
+def disk_name(majmin):
+    """Kernel name of a block device (DEVNAME in /sys/dev/block/MAJ:MIN/uevent), the device label of hostmetrics."""
+    for line in ds.read(f"/sys/dev/block/{majmin}/uevent").splitlines():
+        if line.startswith("DEVNAME="):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
+GPU_QUERY = ("utilization.gpu,memory.used,memory.total,power.draw,temperature.gpu,clocks.sm,clocks.mem,"
+             "clocks_throttle_reasons.active,pcie.link.gen.current,pcie.link.width.current")
+
+
+def parse_gpu(line):
+    """One nvidia-smi CSV line of GPU_QUERY (or of its first two fields). util and memory are required; any other
+    field that reads [N/A] or similar is None on its own."""
+
+    def num(x, conv):
+        x = x.strip()
+        try:
+            return int(x, 16) if x.startswith("0x") else conv(x)
+        except ValueError:
+            return None
+
+    f = line.split(",")
+    if len(f) < 2:
+        return None
+    u, m = num(f[0], int), num(f[1], int)
+    if u is None or m is None:
+        return None
+    g = {"util": u, "mem_mib": m}
+    names = ("mem_total_mib", "power_w", "temp_c", "sm_mhz", "mem_mhz", "throttle", "pcie_gen", "pcie_width")
+    convs = (int, float, float, float, float, int, int, int)
+    for i, (k, c) in enumerate(zip(names, convs), start=2):
+        g[k] = num(f[i], c) if i < len(f) else None
+    return g
+
+
+def gpu_util():
+    """GPU 0 through nvidia-smi: the full GPU_QUERY, else util and memory alone (an older driver may reject a field)."""
+    for q in (GPU_QUERY, "utilization.gpu,memory.used"):
+        try:
+            r = subprocess.run(["nvidia-smi", "-i", "0", f"--query-gpu={q}", "--format=csv,noheader,nounits"],
+                               capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                return parse_gpu(r.stdout.strip().splitlines()[0])
+        except (OSError, subprocess.SubprocessError, IndexError):
+            return None
+    return None
+
+
+def gpu_info():
+    """{"tetraeder.gpu.name", "tetraeder.gpu.driver"} of GPU 0, for the OTLP resource; {} without nvidia-smi."""
+    try:
+        out = subprocess.run(["nvidia-smi", "-i", "0", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+                             capture_output=True, text=True, timeout=10).stdout.strip().splitlines()[0]
+        name, drv = (x.strip() for x in out.split(",", 1))
+        return {"tetraeder.gpu.name": name, "tetraeder.gpu.driver": drv}
+    except (OSError, subprocess.SubprocessError, IndexError, ValueError):
+        return {}
+
+
+def otlp_poster(a):
+    """A Poster for the collector at --otlp or TETRAEDER_HOST_OTLP; None when off."""
+    base = oh.endpoint(getattr(a, "otlp", None))
+    return oh.Poster(base) if base else None
+
+
+def sampler_resource(a):
+    """OTLP resource of a sample run: oh.resource() plus the CPU, quota, THP mode, GPU and the sampled disk."""
+    info = env_info()
+    extra = {"host.cpu.model.name": info["cpu_model"], "tetraeder.cpu.quota": cpu_quota(),
+             "tetraeder.host.thp_mode": info["thp_mode"], "process.pid": a.pid, **gpu_info()}
+    if a.disk != "none":
+        extra["tetraeder.host.disk.majmin"] = a.disk
+        extra["tetraeder.host.disk.device"] = disk_name(a.disk)
+    return oh.resource(**extra)
 
 
 def sample(a):
+    poster = otlp_poster(a)
+    res = sampler_resource(a) if poster else None
+    t_start = time.time()
     with open(a.out, "w") as out:
         while os.path.exists(f"/proc/{a.pid}"):
             pids = ds.tree(a.pid)
@@ -266,9 +369,12 @@ def sample(a):
                    "cpu_psi": cpu_pressure(), "cg_throttle": cgroup_throttle(), "cpu_steal": cpu_steal(),
                    "cpu_mhz": cpu_mhz(), "ctxsw": ctxsw(pids), "anon_huge_kb": anon_huge_kb(pids),
                    "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": ds.proc_cpu_s(pids),
-                   "rss_kb": tree_rss_kb(pids), "cg_mem": cgroup_mem(), "gpu": gpu_util()}
+                   "rss_kb": tree_rss_kb(pids), "cg_mem": cgroup_mem(), "gpu": gpu_util(),
+                   "cg_mem_now": cgroup_mem_now(), "cpu_quota": cpu_quota()}
             out.write(json.dumps(rec) + "\n")
             out.flush()
+            if poster:
+                poster.send(oh.request(oh.points(rec), rec["t"], res, start=t_start))
             time.sleep(a.interval)
 
 
@@ -527,14 +633,21 @@ def builder_extras(path):
 
 
 def kt_summary(summary_path):
-    """The {"host", "env"} of a summarize output; a missing or broken file gives host {"error": ...}, never empty."""
+    """The {"host", "env", "windows"} of a summarize output; a missing or broken file gives host {"error": ...}, never
+    empty."""
     try:
         d = json.loads(ds.read(summary_path))
         if d.get("host"):
-            return {"host": d["host"], "env": d.get("env")}
+            return {"host": d["host"], "env": d.get("env"), "windows": d.get("windows")}
     except ValueError:
         pass
-    return {"host": {"error": f"no host summary at {summary_path}"}, "env": None}
+    return {"host": {"error": f"no host summary at {summary_path}"}, "env": None, "windows": None}
+
+
+def host_windows(pre, dec, threads):
+    """The windows a host block was cut from, stored in results as "host_windows" so otlp-merge can cut the OTLP
+    path the same way (engines without a decode_windows list)."""
+    return {"prefill": list(pre), "decode": list(dec), "threads": threads}
 
 
 def summarize(a):
@@ -543,7 +656,8 @@ def summarize(a):
     curve_file = a.curve or find_curve(a.curve_dir or os.path.dirname(os.path.abspath(a.merge_into or a.out)))
     curve = load_curve(curve_file) if curve_file else []
     rw, wins = builder_extras(a.builder_json) if a.builder_json else (((None, False),) * 2, None)
-    out = {"host": host_summary(rows, pre, dec, a.threads, curve, rw, wins), "env": env_info()}
+    out = {"host": host_summary(rows, pre, dec, a.threads, curve, rw, wins), "env": env_info(),
+           "windows": host_windows(pre, dec, a.threads)}
     out["env"]["disk_curve"] = os.path.basename(curve_file) if curve else None
     membw_file = getattr(a, "membw", None)
     if membw_file:
@@ -583,7 +697,94 @@ def membw(a):
     rates = [q.get() for _ in procs]
     for p in procs:
         p.join()
-    print(json.dumps({"membw_gb_s": sum(rates) / 1e9, "threads": a.threads, "seconds": a.seconds}))
+    res = {"membw_gb_s": sum(rates) / 1e9, "threads": a.threads, "seconds": a.seconds}
+    print(json.dumps(res))
+    poster = otlp_poster(a)
+    if poster:
+        poster.send(oh.request(oh.membw_points(res), time.time(), oh.resource()))
+
+
+def emit_curve(a):
+    """Posts a disk-curve JSON's points (bytes/s by queue depth) as OTLP gauges; nothing without a collector."""
+    poster = otlp_poster(a)
+    curve = load_curve(a.curve)
+    if poster and curve:
+        poster.send(oh.request(oh.curve_points(curve, a.kind), time.time(), oh.resource()))
+
+
+# seconds of OTLP points kept around a result's windows: the bracketing samples of phase()
+PAD_S = 5.0
+# relative difference from which host_diff lists a field
+HOST_DIFF_REL = 0.05
+
+
+def result_windows(path, d):
+    """(prefill, decode, threads, read-wait results, per-window list or None) of a result JSON: the builder's
+    decode_windows, else its "host_windows"; None when it has neither."""
+    runs = d.get("runs") or []
+    dw = (runs[0].get("decode_windows") or [{}]) if runs else [{}]
+    if dw[0].get("start_unix_s") is not None:
+        pre, dec = windows_builder(path)
+        rw, wins = builder_extras(path)
+        return pre, dec, (d.get("options") or {}).get("threads"), rw, wins
+    hw = d.get("host_windows")
+    if hw and hw.get("prefill") and hw.get("decode"):
+        return tuple(hw["prefill"]), tuple(hw["decode"]), hw.get("threads"), ((None, False),) * 2, None
+    return None
+
+
+def host_diff(a, b, rel=HOST_DIFF_REL):
+    """{"<phase>.<field>": [a, b]} for the scalar fields of two host blocks that differ by more than rel, or where one
+    is null; lists and nested objects are skipped."""
+    out = {}
+
+    def cmp(prefix, x, y):
+        for k in sorted(set(x) | set(y)):
+            u, v = x.get(k), y.get(k)
+            if u == v or isinstance(u, (list, dict)) or isinstance(v, (list, dict)):
+                continue
+            num = (int, float)
+            if isinstance(u, num) and isinstance(v, num) and not isinstance(u, bool) and not isinstance(v, bool):
+                if abs(u - v) <= rel * max(abs(u), abs(v)):
+                    continue
+            out[prefix + k] = [u, v]
+
+    for ph in ("prefill", "decode"):
+        cmp(ph + ".", a.get(ph) or {}, b.get(ph) or {})
+    for i, (x, y) in enumerate(zip(a.get("decode_windows") or [], b.get("decode_windows") or [])):
+        cmp(f"decode_windows.{i}.", x, y)
+    return out
+
+
+def otlp_merge(a):
+    """host_otlp and host_otlp_diff in every result of --results that has a host block and windows."""
+    files = sorted(glob.glob(os.path.join(a.otel_dir, "**", "*.jsonl"), recursive=True))
+    results = []
+    for path in sorted(glob.glob(os.path.join(a.results, "*.json"))):
+        try:
+            d = json.loads(ds.read(path))
+            w = result_windows(path, d) if isinstance(d, dict) and "host" in d else None
+        except (ValueError, KeyError, IndexError, TypeError):
+            continue
+        if w:
+            results.append((path, d, w))
+    if not files or not results:
+        print(f"otlp-merge: {len(files)} OTLP files, {len(results)} results with windows: nothing to merge")
+        return
+    spans = [(w[0][0] - PAD_S, w[1][1] + PAD_S) for _, _, w in results]
+    pts = oh.read_points(files, keep=lambda t: any(t0 <= t <= t1 for t0, t1 in spans))
+    curve_file = find_curve(a.results)
+    curve = load_curve(curve_file) if curve_file else []
+    for (path, d, (pre, dec, threads, rw, wins)), (t0, t1) in zip(results, spans):
+        rows = oh.rows([p for p in pts if t0 <= p["t_ns"] / 1e9 <= t1])
+        if len(rows) < 2:
+            d["host_otlp"] = {"error": f"{len(rows)} OTLP rows in the windows"}
+            d.pop("host_otlp_diff", None)
+        else:
+            d["host_otlp"] = host_summary(rows, pre, dec, threads, curve, rw, wins)
+            d["host_otlp_diff"] = host_diff(d.get("host") or {}, d["host_otlp"])
+        json.dump(d, open(path, "w"), indent=2)
+        print(f"otlp-merge {os.path.basename(path)}: {len(rows)} rows, {len(d.get('host_otlp_diff') or {})} fields differ")
 
 
 def main():
@@ -596,6 +797,7 @@ def main():
     s.add_argument("--disk", required=True)
     s.add_argument("--out", required=True)
     s.add_argument("--interval", type=float, default=1.0)
+    s.add_argument("--otlp", help="collector base URL (default TETRAEDER_HOST_OTLP)")
     m = sub.add_parser("summarize")
     m.add_argument("--samples", required=True)
     m.add_argument("--threads", type=int, required=True)
@@ -611,8 +813,17 @@ def main():
     b.add_argument("--seconds", type=float, default=10.0)
     b.add_argument("--threads", type=int, default=1)
     b.add_argument("--mib", type=int, default=256, help=argparse.SUPPRESS)
+    b.add_argument("--otlp", help="collector base URL (default TETRAEDER_HOST_OTLP)")
+    c = sub.add_parser("emit-curve")
+    c.add_argument("curve")
+    c.add_argument("--kind", default="loaded", help="idle or loaded")
+    c.add_argument("--otlp", help="collector base URL (default TETRAEDER_HOST_OTLP)")
+    o = sub.add_parser("otlp-merge")
+    o.add_argument("--otel-dir", required=True, help="directory of the collector's OTLP JSON-lines files (recursive)")
+    o.add_argument("--results", required=True, help="results directory whose JSONs get host_otlp")
     a = ap.parse_args()
-    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw}[a.cmd](a)
+    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw, "emit-curve": emit_curve,
+     "otlp-merge": otlp_merge}[a.cmd](a)
 
 
 if __name__ == "__main__":

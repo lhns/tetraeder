@@ -1,7 +1,8 @@
-# Collector that writes OTLP to JSON-lines files, for a Vast box with no backend.
-# Run on the box: otelcol-contrib --config config-file.yaml
-# Copy /var/lib/otelcol/*.jsonl off the box (taxameter ssh / scp) before destroying it; taxameter fetch does not pack them.
-# Replay later by sending the files to the compose collector (otlpjsonfile receiver).
+# Collector for a Vast box with no backend (ADR 0059): OTLP from the builder and the host sampler, host metrics from the
+# hostmetrics receiver, all written as OTLP JSON lines. scripts/otelcol_box.sh starts it before the first exit stage
+# and stops it before DONE; the files land in runs/vast/otel/<start stamp>/ ($TETRAEDER_OTEL_DIR), which taxameter
+# fetch packs. `engine_sample.py otlp-merge` derives each result's host_otlp from them; docs/sessions.md shows how
+# to read them. Replay into the compose stack with the otlpjsonfile receiver.
 receivers:
   otlp:
     protocols:
@@ -9,32 +10,109 @@ receivers:
         endpoint: 127.0.0.1:4317
       http:
         endpoint: 127.0.0.1:4318
+  # 1 s: decode windows are 5 to 7 s. Disk and CPU feed the host block; the rest feeds the dashboard.
+  hostmetrics:
+    collection_interval: 1s
+    scrapers:
+      cpu: {}
+      disk:
+        exclude:
+          devices: ["loop.*", "ram.*"]
+          match_type: regexp
+      memory: {}
+      network:
+        include:
+          interfaces: ["eth.*", "en.*"]
+          match_type: regexp
+      # the builder (cargo's test binary, the tetraeder binaries) and llama.cpp. KTransformers runs as python3, like
+      # the sampler and the RAM balloon, so it is not matched; the host block takes process fields from the
+      # sampler's pid tree for every engine.
+      process:
+        include:
+          names: ["exit_regime-.*", "tetraeder.*", "llama-.*"]
+          match_type: regexp
+        mute_process_all_errors: true
+        metrics:
+          process.paging.faults:
+            enabled: true
+          process.context_switches:
+            enabled: true
+          process.threads:
+            enabled: true
+          process.disk.operations:
+            enabled: true
 
 processors:
-  batch: {}
+  # system.cpu.time per CPU and state is about 200 KB/s on a host showing 128 cores. Keep the busy seconds per CPU
+  # (tetraeder.host.cpu.busy: every state but idle and wait) and the per-state sum over CPUs (steal share).
+  metricstransform/cpu:
+    transforms:
+      - include: system.cpu.time
+        match_type: strict
+        action: insert
+        new_name: tetraeder.host.cpu.busy
+        operations:
+          - action: delete_label_value
+            label: state
+            label_value: idle
+          - action: delete_label_value
+            label: state
+            label_value: wait
+          - action: aggregate_labels
+            label_set: [cpu]
+            aggregation_type: sum
+      - include: system.cpu.time
+        match_type: strict
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [state]
+            aggregation_type: sum
+  # Box provenance on every series; the sampler and the builder set their own (insert keeps theirs).
+  resource:
+    attributes:
+      - key: host.id
+        value: "${env:TETRAEDER_HOST_ID}"
+        action: insert
+      - key: tetraeder.session
+        value: "${env:TETRAEDER_SESSION}"
+        action: insert
+      - key: tetraeder.git.commit
+        value: "${env:TETRAEDER_GIT_COMMIT}"
+        action: insert
+  batch:
+    timeout: 1s
 
 exporters:
+  # rotation writes without buffering (no flush interval); a restart truncates, hence a directory per start
   file/metrics:
-    path: /var/lib/otelcol/metrics.jsonl
-    rotation: { max_megabytes: 100, max_backups: 10 }
+    path: ${env:TETRAEDER_OTEL_DIR}/metrics.jsonl
+    rotation: { max_megabytes: 100, max_backups: 100 }
   file/traces:
-    path: /var/lib/otelcol/traces.jsonl
+    path: ${env:TETRAEDER_OTEL_DIR}/traces.jsonl
     rotation: { max_megabytes: 100, max_backups: 10 }
   file/logs:
-    path: /var/lib/otelcol/logs.jsonl
+    path: ${env:TETRAEDER_OTEL_DIR}/logs.jsonl
     rotation: { max_megabytes: 100, max_backups: 10 }
 
 service:
+  telemetry:
+    metrics:
+      level: none
   pipelines:
+    metrics/host:
+      receivers: [hostmetrics]
+      processors: [metricstransform/cpu, resource, batch]
+      exporters: [file/metrics]
     metrics:
       receivers: [otlp]
-      processors: [batch]
+      processors: [resource, batch]
       exporters: [file/metrics]
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [resource, batch]
       exporters: [file/traces]
     logs:
       receivers: [otlp]
-      processors: [batch]
+      processors: [resource, batch]
       exporters: [file/logs]

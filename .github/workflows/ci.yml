@@ -124,6 +124,15 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           for f in scripts/*.sh patches/*.sh; do bash -n "$f"; done
+      # Both collector configs load in the pinned collector (ADR 0059): receivers, processors, env expansion.
+      # The compose config reads the host through /hostfs (its container mounts /).
+      - name: otelcol validate
+        if: runner.os == 'Linux'
+        run: |
+          bash scripts/otelcol_install.sh "$RUNNER_TEMP/otelcol"
+          [ -e /hostfs ] || sudo ln -s / /hostfs
+          TETRAEDER_OTEL_DIR="$RUNNER_TEMP/otel" "$RUNNER_TEMP/otelcol/otelcol-contrib" validate --config=deploy/otelcol/config-file.yaml
+          "$RUNNER_TEMP/otelcol/otelcol-contrib" validate --config=deploy/otelcol/config.yaml
 
   cuda-build:
     if: ${{ !inputs.record_golden }}

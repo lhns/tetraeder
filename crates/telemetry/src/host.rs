@@ -118,6 +118,30 @@ impl HostMetrics for NvmlHost {
     }
 }
 
+/// The cgroup's CPU limit in cores: v2 `cpu.max` (`<quota|max> <period>`), else v1
+/// `cpu.cfs_quota_us` over `cpu.cfs_period_us`; `None` when unlimited or not on Linux.
+pub fn cgroup_cpu_quota() -> Option<f64> {
+    let read = |p: &str| std::fs::read_to_string(p).ok();
+    let v1 = || {
+        ["/sys/fs/cgroup/cpu", "/sys/fs/cgroup/cpu,cpuacct"]
+            .iter()
+            .find_map(|d| {
+                let q = read(&format!("{d}/cpu.cfs_quota_us"))?;
+                let p = read(&format!("{d}/cpu.cfs_period_us"))?;
+                Some(format!("{} {}", q.trim(), p.trim()))
+            })
+    };
+    parse_cpu_max(&read("/sys/fs/cgroup/cpu.max").or_else(v1)?)
+}
+
+/// `<quota> <period>` in microseconds as cores, rounded to 0.01; `None` for `max` or `-1`.
+fn parse_cpu_max(text: &str) -> Option<f64> {
+    let mut f = text.split_whitespace();
+    let q: f64 = f.next()?.parse().ok()?;
+    let p: f64 = f.next().unwrap_or("100000").parse().ok()?;
+    (q > 0.0 && p > 0.0).then(|| (q / p * 100.0).round() / 100.0)
+}
+
 /// Every source available on this machine: sysinfo always, NVML when built in and present.
 pub fn default_sources() -> Vec<Box<dyn HostMetrics>> {
     let mut v: Vec<Box<dyn HostMetrics>> = Vec::new();
@@ -143,6 +167,15 @@ mod tests {
         assert_eq!(s[0].id, "cpu0");
         assert!(s[0].mem_total > 0 && s[0].mem_used <= s[0].mem_total);
         assert!((0.0..=1.0).contains(&s[0].busy));
+    }
+
+    #[test]
+    fn cpu_max_parses_v2_and_v1_forms() {
+        assert_eq!(parse_cpu_max("2304000 100000\n"), Some(23.04));
+        assert_eq!(parse_cpu_max("max 100000\n"), None);
+        assert_eq!(parse_cpu_max("-1 100000"), None);
+        assert_eq!(parse_cpu_max("150000"), Some(1.5));
+        assert_eq!(parse_cpu_max(""), None);
     }
 
     #[cfg(feature = "nvml")]
