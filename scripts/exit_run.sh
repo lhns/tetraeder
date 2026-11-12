@@ -133,6 +133,7 @@ stage_min() {
   case "$1" in
     smoke) echo 3 ;;
     disk-curve) echo 2 ;;
+    dispatch-floor) echo 3 ;;
     anchors-builder-short) echo 12 ;;
     gpu-tests) echo 20 ;;
     drift-ref*) echo 9 ;;
@@ -528,6 +529,22 @@ print(sum(d['expert_bytes_per_layer'][:int(sys.argv[2])]) * int(sys.argv[3]))" "
   echo "[$(date +%T)] done llama-fit: $n layers, -ot $ot_fit, builder vram slots $vram_bytes B"
 }
 
+# dispatch_floor: the CPU dispatch floor of a graph compute at the box's threads (ADR 0064; about 3 min with the build):
+# the floor part of tests/cpu_bench.rs segment_overhead on a CPU-only scheduler, 1-node and 6-node graphs, spin gaps 0,
+# 100 and 500 us, threads 1, n/2 and n, poll 0 and 50, pool pause on and off. Opt in through STAGES only; writes
+# dispatch-floor-<stamp>.json (kickoff and barrier cost per configuration in "per_kickoff_and_barrier")
+dispatch_floor() {
+  [ -n "${STAGES:-}" ] || return 0
+  want dispatch-floor || return 0
+  echo "[$(date +%T)] start dispatch-floor: $threads threads"
+  TETRAEDER_OVERHEAD_PARTS=floor TETRAEDER_OVERHEAD_THREADS="$threads" TETRAEDER_BENCH_OUT="$date_dir/dispatch-floor-$stamp.json" \
+    timeout -k 30 10m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_bench \
+    -- --ignored --nocapture --exact segment_overhead 8>&-
+  local r=$?
+  echo "[$(date +%T)] done dispatch-floor rc=$r"
+  return 0
+}
+
 run_stages() {
 if [ $rc = 0 ]; then
   {
@@ -551,6 +568,7 @@ EOF
     fi
     if [ $rc = 0 ]; then
       disk_curve
+      dispatch_floor
       llama_fit
       # ubatch 2048: a pair group passes one row per (token, expert) pair to CUDA's mul_mat_id, whose id helper
       # needs 4 B of shared memory per row (about 25k rows on Ampere); ubatch 4096 at top-8 is 32k (abort, 2026-11-02)

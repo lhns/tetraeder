@@ -94,3 +94,47 @@ def test_ctxsw_rate_survives_an_exiting_thread(monkeypatch):
     # t0->t1: 60 + 200 + 50; t1->t2: 40 + 30 (new thread, full count)
     assert p["ctxsw_vol_per_s"] == pytest.approx((60 + 200 + 50 + 40 + 30) / 2)
     assert p["ctxsw_invol_per_s"] == pytest.approx((1 + 10 + 0 + 1 + 1) / 2)
+
+
+def stat_line(cpu, comm="engine (x)"):
+    """A /proc/PID/task/TID/stat line: pid, (comm), state, then fields 4..52 with processor (39) = cpu."""
+    rest = ["0"] * 49
+    rest[35] = str(cpu)  # rest[0] is field 4, so field 39 is rest[35]
+    return "1 (" + comm + ") S " + " ".join(rest)
+
+
+def test_placement_reads_processor_and_node(monkeypatch):
+    fake(monkeypatch, {"/proc/1/task/1/stat": stat_line(0), "/proc/1/task/2/stat": stat_line(65),
+                       "/proc/1/task/3/stat": stat_line(66)}, {1: ["1", "2", "3"]})
+    pl = es.placement([1], {0: 0, 65: 1})
+    assert pl == {"cpus": [0, 65, 66], "nodes": [0, 1, None]}
+
+
+def test_placement_without_files_is_none(monkeypatch):
+    fake(monkeypatch, {}, {1: ["1"]})
+    assert es.placement([1], {}) is None
+
+
+def test_cpu_nodes_from_sysfs(monkeypatch):
+    tree = {"/sys/devices/system/cpu": ["cpu0", "cpu1", "cpufreq", "online"],
+            "/sys/devices/system/cpu/cpu0": ["node0", "topology"], "/sys/devices/system/cpu/cpu1": ["node1"]}
+    monkeypatch.setattr(es, "sys_ls", lambda p: tree.get(p, []))
+    assert es.cpu_nodes() == {0: 0, 1: 1}
+    monkeypatch.setattr(es, "sys_ls", lambda p: [])
+    assert es.cpu_nodes() == {}
+
+
+def test_phase_reports_placement():
+    rows = [row(0.0), row(1.0, placement={"cpus": [0, 1, 64], "nodes": [0, 0, 1]}),
+            row(2.0, placement={"cpus": [0, 2, 3], "nodes": [0, 0, 0]}), row(3.0)]
+    p = es.phase(rows, 1.0, 2.0, 2, 4)
+    assert p["cpus_used"] == 5 and p["numa_nodes_used"] == 2
+    assert p["top_node_share"] == pytest.approx(5 / 6)
+
+
+def test_phase_placement_null_without_data_or_nodes():
+    p = es.phase([row(0.0), row(1.0), row(2.0)], 0.5, 1.5, 1, 4)
+    assert p["cpus_used"] is None and p["numa_nodes_used"] is None and p["top_node_share"] is None
+    rows = [row(0.0), row(1.0, placement={"cpus": [0, 1], "nodes": [None, None]}), row(2.0)]
+    p = es.phase(rows, 0.5, 1.5, 1, 4)
+    assert p["cpus_used"] == 2 and p["numa_nodes_used"] is None and p["top_node_share"] is None

@@ -531,6 +531,7 @@ fn add_profile(a: &mut StepProfile, b: &StepProfile) {
     a.segs_cpu += b.segs_cpu;
     a.segs_gpu += b.segs_gpu;
     a.cpu_pairs += b.cpu_pairs;
+    a.seg_pairs += b.seg_pairs;
 }
 
 fn unix_s() -> f64 {
@@ -561,6 +562,7 @@ fn profile_json(p: &StepProfile, per: f64) -> Value {
         "segs_cpu": p.segs_cpu as f64 / per,
         "segs_gpu": p.segs_gpu as f64 / per,
         "cpu_pairs": p.cpu_pairs as f64 / per,
+        "seg_pairs": p.seg_pairs as f64 / per,
     })
 }
 

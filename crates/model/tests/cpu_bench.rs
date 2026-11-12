@@ -4,6 +4,12 @@
 //! Hardware label: `cpu`. Ignored by default (slow, release only):
 //! `cargo test --release -p tetraeder-model --test cpu_bench -- --ignored --nocapture`
 //!
+//! `segment_overhead` (ADR 0064) measures the per-graph costs of a streamed decode step: the
+//! CPU dispatch floor, scheduler allocation and the synthetic MoE decode before and after the
+//! segment-sized scheduler. Env: `TETRAEDER_OVERHEAD_PARTS` (`floor,alloc,e2e`, default all),
+//! `TETRAEDER_OVERHEAD_THREADS` (the n of the floor's 1, n/2, n; default the bench thread
+//! count), `TETRAEDER_BENCH_OUT`.
+//!
 //! Env: `TETRAEDER_MOE_GGUF` a real model (default: a synthetic Q4_K_M MoE, generated once in
 //! the temp dir), `TETRAEDER_BENCH_THREADS` comma list (default: the available parallelism),
 //! `TETRAEDER_BENCH_PROMPT` (64), `TETRAEDER_BENCH_DECODE` (32), `TETRAEDER_BENCH_REPEATS` (3),
@@ -19,7 +25,7 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tetraeder_ggml_sys::ggml::Backend;
+use tetraeder_ggml_sys::ggml::{Backend, Context as GgmlContext, Graph, Sched, Tensor, Type};
 use tetraeder_ggml_sys::llama::{
     Batch, Context, ContextParams, FlashAttn, Ftype, Model, ModelParams, ThreadPool,
 };
@@ -201,6 +207,8 @@ fn profile_json(p: &StepProfile, per: f64) -> Value {
         "readback_ms": ms(p.readback),
         "streamer_ms": ms(p.streamer),
         "total_ms": ms(p.total),
+        "cpu_pairs": p.cpu_pairs as f64 / per,
+        "seg_pairs": p.seg_pairs as f64 / per,
     })
 }
 
@@ -214,6 +222,8 @@ fn add(a: &mut StepProfile, b: &StepProfile) {
     a.readback += b.readback;
     a.streamer += b.streamer;
     a.total += b.total;
+    a.cpu_pairs += b.cpu_pairs;
+    a.seg_pairs += b.seg_pairs;
 }
 
 /// hardware: cpu. Builder against libllama on the CPU, written as JSON (see the module docs).
@@ -368,6 +378,291 @@ fn cpu_bench_builder_vs_libllama() {
         "ratios_builder_over_libllama": ratios,
         "runs": runs,
     });
+    if let Some(p) = std::env::var_os("TETRAEDER_BENCH_OUT") {
+        std::fs::write(&p, serde_json::to_string_pretty(&out).unwrap()).unwrap();
+    }
+}
+
+// ---- segment_overhead (ADR 0064) ----
+
+const D_EMBD: i64 = 64;
+const D_FF: i64 = 32;
+const D_EXPERTS: i64 = 8;
+const D_USED: i64 = 4;
+
+/// The leaves of the chain graphs, filled after allocation: F32 ones with zeros, the I32 ones
+/// with valid ids.
+#[derive(Default)]
+struct Leaves<'a> {
+    f32s: Vec<Tensor<'a>>,
+    i32s: Vec<Tensor<'a>>,
+}
+
+impl Leaves<'_> {
+    fn fill(&self) {
+        for t in &self.f32s {
+            t.set_f32(&vec![0.0; t.nbytes() / 4]).unwrap();
+        }
+        for t in &self.i32s {
+            let ids: Vec<i32> = (0..t.nbytes() / 4)
+                .map(|i| (i as i64 % D_EXPERTS) as i32)
+                .collect();
+            t.set_i32(&ids).unwrap();
+        }
+    }
+}
+
+/// `chains` copies of the 6-node CPU group shape (`get_rows`, gate, up and down `mul_mat_id`,
+/// `swiglu`, `cpy`) on tiny tensors, sharing the weights. `extra` adds that many `add` nodes
+/// to the graph, to give a second topology.
+fn chain_graph<'a>(
+    ctx: &'a GgmlContext,
+    chains: usize,
+    extra: usize,
+    leaves: &mut Leaves<'a>,
+) -> Graph<'a> {
+    let mut g = ctx.new_graph(1024);
+    let table = ctx.new_tensor(Type::F32, &[D_EMBD, 16]);
+    let wg = ctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]);
+    let wu = ctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]);
+    let wd = ctx.new_tensor(Type::F32, &[D_FF, D_EMBD, D_EXPERTS]);
+    let ids = ctx.new_tensor(Type::I32, &[D_USED, 1]);
+    leaves.f32s.extend([table, wg, wu, wd]);
+    leaves.i32s.push(ids);
+    for _ in 0..chains {
+        let tok = ctx.new_tensor(Type::I32, &[1]);
+        let dst = ctx.new_tensor(Type::F32, &[D_EMBD, D_USED, 1]);
+        leaves.i32s.push(tok);
+        leaves.f32s.push(dst);
+        let x = ctx.get_rows(table, tok);
+        let gate = ctx.mul_mat_id(wg, x, ids);
+        let up = ctx.mul_mat_id(wu, x, ids);
+        let h = ctx.swiglu_split(gate, up);
+        let down = ctx.mul_mat_id(wd, h, ids);
+        g.expand(ctx.cpy(down, dst).set_output());
+    }
+    for _ in 0..extra {
+        let a = ctx.new_tensor(Type::F32, &[D_EMBD]);
+        let b = ctx.new_tensor(Type::F32, &[D_EMBD]);
+        leaves.f32s.extend([a, b]);
+        g.expand(ctx.add(a, b).set_output());
+    }
+    g
+}
+
+fn spin_us(us: u64) {
+    if us == 0 {
+        return;
+    }
+    let t = Instant::now();
+    while t.elapsed() < Duration::from_micros(us) {
+        std::hint::spin_loop();
+    }
+}
+
+fn pct(sorted: &[f64], q: f64) -> f64 {
+    sorted[((sorted.len() - 1) as f64 * q) as usize]
+}
+
+/// Part 1: us per compute of a 1-node and a 6-node CPU graph.
+fn dispatch_floor(n: usize) -> Value {
+    const COMPUTES: usize = 2000;
+    let mut threads = vec![1, (n / 2).max(1), n.max(1)];
+    threads.dedup();
+    let mut rows: Vec<Value> = Vec::new();
+    for &t in &threads {
+        for poll in [0u32, 50] {
+            let cpu = Backend::cpu_with_poll(t as i32, Some(poll)).unwrap();
+            let mut sched = Sched::new(std::slice::from_ref(&cpu), 4096, false).unwrap();
+            for (kind, chains, extra) in [("1_node", 0, 1), ("6_node", 1, 0)] {
+                let ctx = GgmlContext::new(256, 1024).unwrap();
+                let mut leaves = Leaves::default();
+                let g = chain_graph(&ctx, chains, extra, &mut leaves);
+                sched.alloc_graph(&g).unwrap();
+                leaves.fill();
+                for pause in [false, true] {
+                    for gap in [0u64, 100, 500] {
+                        for _ in 0..50 {
+                            sched.compute(&g).unwrap();
+                        }
+                        let mut us = Vec::with_capacity(COMPUTES);
+                        for _ in 0..COMPUTES {
+                            spin_us(gap);
+                            if pause {
+                                cpu.pause_cpu_pool();
+                            }
+                            let t0 = Instant::now();
+                            sched.compute(&g).unwrap();
+                            us.push(t0.elapsed().as_secs_f64() * 1e6);
+                        }
+                        let mean = us.iter().sum::<f64>() / us.len() as f64;
+                        us.sort_by(f64::total_cmp);
+                        let row = json!({
+                            "threads": t, "poll": poll, "pause": pause, "gap_us": gap,
+                            "graph": kind, "nodes": g.n_nodes(), "computes": COMPUTES,
+                            "mean_us": mean, "median_us": pct(&us, 0.5), "p90_us": pct(&us, 0.9),
+                        });
+                        eprintln!("{row}");
+                        rows.push(row);
+                    }
+                }
+            }
+        }
+    }
+    // Per configuration: the 1-node graph is one kickoff and one barrier; each further node of
+    // the 6-node graph adds a barrier, so (m6 - m1) / 5 is the cost per barrier.
+    let mut derived = Vec::new();
+    for a in rows.iter().filter(|r| r["graph"] == "1_node") {
+        let b = rows.iter().find(|r| {
+            r["graph"] == "6_node"
+                && ["threads", "poll", "pause", "gap_us"]
+                    .iter()
+                    .all(|k| r[*k] == a[*k])
+        });
+        if let Some(b) = b {
+            let m1 = a["median_us"].as_f64().unwrap();
+            let m6 = b["median_us"].as_f64().unwrap();
+            derived.push(json!({
+                "threads": a["threads"], "poll": a["poll"], "pause": a["pause"],
+                "gap_us": a["gap_us"],
+                "kickoff_us": m1, "barrier_us": (m6 - m1) / 5.0,
+            }));
+        }
+    }
+    json!({"rows": rows, "per_kickoff_and_barrier": derived})
+}
+
+/// Part 2: us per `alloc_graph` of a segment-sized graph (25 chains) on schedulers of 4,096
+/// and 48,640 nodes, one topology and two alternating, and per `reset` alone.
+fn alloc_cost() -> Value {
+    const ALLOCS: usize = 400;
+    let ctx_a = GgmlContext::new(1024, 1024).unwrap();
+    let ctx_b = GgmlContext::new(1024, 1024).unwrap();
+    let (mut la, mut lb) = (Leaves::default(), Leaves::default());
+    let ga = chain_graph(&ctx_a, 25, 0, &mut la);
+    let gb = chain_graph(&ctx_b, 24, 5, &mut lb);
+    let cpu = Backend::cpu(1).unwrap();
+    let mut rows = Vec::new();
+    for nodes in [4096usize, 48_640] {
+        let mut sched = Sched::new(std::slice::from_ref(&cpu), nodes, false).unwrap();
+        for k in 0..4 {
+            let g = if k % 2 == 0 { &ga } else { &gb };
+            sched.alloc_graph(g).unwrap();
+        }
+        for (topo, alternate) in [("one", false), ("two", true)] {
+            let t0 = Instant::now();
+            for i in 0..ALLOCS {
+                let g = if alternate && i % 2 == 1 { &gb } else { &ga };
+                sched.alloc_graph(g).unwrap();
+            }
+            let us = t0.elapsed().as_secs_f64() * 1e6 / ALLOCS as f64;
+            let row = json!({"sched_nodes": nodes, "topologies": topo,
+                "graph_nodes": ga.n_nodes(), "alloc_us": us});
+            eprintln!("{row}");
+            rows.push(row);
+        }
+        let t0 = Instant::now();
+        for _ in 0..ALLOCS {
+            sched.reset();
+        }
+        let us = t0.elapsed().as_secs_f64() * 1e6 / ALLOCS as f64;
+        let row = json!({"sched_nodes": nodes, "reset_us": us});
+        eprintln!("{row}");
+        rows.push(row);
+    }
+    json!(rows)
+}
+
+/// Part 3: the `builder_cpupolicy` decode with the whole-step scheduler size and with the
+/// segment size (ADR 0064 step 1), interleaved; greedy tokens must be equal.
+fn end_to_end(threads: usize, path: &std::path::Path) -> Value {
+    let n_prompt = env_usize("TETRAEDER_BENCH_PROMPT", 64);
+    let n_decode = env_usize("TETRAEDER_BENCH_DECODE", 32);
+    let repeats = env_usize("TETRAEDER_BENCH_REPEATS", 3).max(1);
+    let n_ctx = (n_prompt + n_decode + 16).next_multiple_of(256);
+    let n_expert = ModelFile::open(path).unwrap().hparams.n_expert as usize;
+    let mut engines: Vec<(&str, Builder)> = Vec::new();
+    for (name, whole) in [("whole_step_sched", true), ("segment_sched", false)] {
+        let mut o = LoadOptions::new(BackendChoice::Cpu {
+            threads: Some(threads),
+        });
+        o.n_ctx = n_ctx;
+        o.expert_slots = Some((n_expert / 4).max(1));
+        o.ram_slots = Some(n_expert);
+        o.miss = MissPolicy::Cpu;
+        o.whole_step_sched = whole;
+        let m = Qwen3Moe::load(path, &o).unwrap();
+        engines.push((name, Builder { m, last: None }));
+    }
+    let n_vocab = engines[0].1.m.n_vocab() as i64;
+    let prompt: Vec<i32> = (0..n_prompt as i64)
+        .map(|i| ((i * 7919 + 13) % n_vocab.min(256)) as i32)
+        .collect();
+    for (_, e) in &mut engines {
+        e.run(&prompt, 4);
+        e.profiles();
+    }
+    let mut tok_s: Vec<Vec<f64>> = vec![Vec::new(); 2];
+    let mut profs = vec![StepProfile::default(); 2];
+    let mut tokens: Vec<Vec<i32>> = vec![Vec::new(); 2];
+    for r in 0..repeats {
+        for k in 0..2 {
+            let i = (k + r) % 2;
+            let s = engines[i].1.run(&prompt, n_decode);
+            tok_s[i].push(n_decode as f64 / s.decode.as_secs_f64());
+            if let Some((_, dp)) = engines[i].1.profiles() {
+                add(&mut profs[i], &dp);
+            }
+            tokens[i] = s.tokens;
+        }
+    }
+    let tokens_equal = tokens[0] == tokens[1];
+    let variants: Vec<Value> = (0..2)
+        .map(|i| {
+            json!({
+                "variant": engines[i].0,
+                "decode_tok_s": tok_s[i],
+                "decode_tok_s_median": median(tok_s[i].clone()),
+                "profile_decode_per_token": profile_json(&profs[i], (repeats * n_decode) as f64),
+            })
+        })
+        .collect();
+    eprintln!("end to end: tokens_equal {tokens_equal} {variants:?}");
+    assert!(tokens_equal, "step 1 changed the greedy tokens");
+    json!({"threads": threads, "n_prompt": n_prompt, "n_decode": n_decode,
+        "repeats": repeats, "greedy_equal": tokens_equal, "variants": variants})
+}
+
+/// hardware: cpu. Per-graph costs of a streamed decode step (ADR 0064): dispatch floor,
+/// allocation, end to end. Written as JSON to `TETRAEDER_BENCH_OUT`.
+#[test]
+#[ignore = "slow CPU benchmark; run with --ignored in release"]
+fn segment_overhead() {
+    let parts =
+        std::env::var("TETRAEDER_OVERHEAD_PARTS").unwrap_or_else(|_| "floor,alloc,e2e".into());
+    let has = |p: &str| parts.split(',').any(|x| x.trim() == p);
+    let n = env_usize("TETRAEDER_OVERHEAD_THREADS", common::bench_threads());
+    let mut out = json!({
+        "env": {
+            "os": std::env::consts::OS,
+            "cpu": cpu_model(),
+            "available_parallelism": std::thread::available_parallelism().map_or(1, usize::from),
+            "cpu_quota": common::cpu_quota(),
+            "threads": n,
+        },
+        "parts": parts,
+    });
+    if has("floor") {
+        out["dispatch_floor"] = dispatch_floor(n);
+    }
+    if has("alloc") {
+        out["allocation"] = alloc_cost();
+    }
+    if has("e2e") {
+        let (path, info) = model_path();
+        out["model"] = info;
+        out["end_to_end"] = end_to_end(n, &path);
+    }
     if let Some(p) = std::env::var_os("TETRAEDER_BENCH_OUT") {
         std::fs::write(&p, serde_json::to_string_pretty(&out).unwrap()).unwrap();
     }

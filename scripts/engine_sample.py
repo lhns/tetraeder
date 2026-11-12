@@ -4,6 +4,8 @@ KTransformers decode gap"). Reuses the readers of detector_sample.py.
 probe-disk: python3 engine_sample.py probe-disk MODEL.gguf
             Prints MAJ:MIN of the block device the model's direct reads hit.
 sample:     python3 engine_sample.py sample --pid PID --disk MAJ:MIN --out s.jsonl [--interval 1]
+            Each sample also records the CPU every thread last ran on and its NUMA node ("placement"); a window reports
+            cpus_used, numa_nodes_used and top_node_share (thread samples on the most used node), null without the files.
             Every second until PID exits: disk read bytes and ops, queue depth, major page faults of PID's process tree,
             per-CPU jiffies (/proc/stat), cgroup CPU usage, GPU util and memory, tree RSS, cgroup file and anon memory.
 membw:      python3 engine_sample.py membw [--seconds 10] [--threads N]
@@ -170,6 +172,62 @@ def task_ids(pid):
         return [t for t in os.listdir(f"/proc/{pid}/task") if t.isdigit()]
     except OSError:
         return []
+
+
+def sys_ls(path):
+    """Directory entries; [] when the directory is missing."""
+    try:
+        return os.listdir(path)
+    except OSError:
+        return []
+
+
+def cpu_nodes():
+    """{cpu: NUMA node} from /sys/devices/system/cpu/cpuN/nodeK; {} without them."""
+    out = {}
+    for c in sys_ls("/sys/devices/system/cpu"):
+        if not (c.startswith("cpu") and c[3:].isdigit()):
+            continue
+        for e in sys_ls(f"/sys/devices/system/cpu/{c}"):
+            if e.startswith("node") and e[4:].isdigit():
+                out[int(c[3:])] = int(e[4:])
+                break
+    return out
+
+
+def placement(pids, nodes):
+    """Where each thread of the processes last ran: {"cpus": [cpu per thread], "nodes": [NUMA node or None per thread]},
+    from field 39 (`processor`) of /proc/PID/task/TID/stat. None when no stat file was read."""
+    cpus = []
+    for p in pids:
+        for t in task_ids(p):
+            st = ds.read(f"/proc/{p}/task/{t}/stat")
+            # fields after the command, which may contain spaces and parentheses: state is field 3, processor 39
+            try:
+                cpus.append(int(st.rsplit(")", 1)[1].split()[36]))
+            except (IndexError, ValueError):
+                pass
+    if not cpus:
+        return None
+    return {"cpus": cpus, "nodes": [nodes.get(c) for c in cpus]}
+
+
+def window_placement(rows):
+    """(cpus_used, numa_nodes_used, top_node_share) over the rows' thread samples: distinct CPUs, distinct NUMA nodes
+    and the share of thread samples on the most used node. None for each when no row has the data (nodes: no node
+    files)."""
+    cpus, nodes = set(), []
+    for r in rows:
+        pl = r.get("placement")
+        if pl:
+            cpus.update(pl["cpus"])
+            nodes.extend(n for n in pl["nodes"] if n is not None)
+    if not cpus:
+        return None, None, None
+    if not nodes:
+        return len(cpus), None, None
+    top = max(nodes.count(n) for n in set(nodes))
+    return len(cpus), len(set(nodes)), top / len(nodes)
 
 
 def ctxsw_tasks(pids):
@@ -391,6 +449,7 @@ def sample(a):
     poster = otlp_poster(a)
     res = sampler_resource(a) if poster else None
     t_start = time.time()
+    nodes = cpu_nodes()
     with open(a.out, "w") as out:
         while os.path.exists(f"/proc/{a.pid}"):
             pids = ds.tree(a.pid)
@@ -401,7 +460,7 @@ def sample(a):
                    "disk_inflight": inflight, "disk_weighted_ms": weighted_ms,
                    "cg_io": cgroup_io(), "io_psi": io_pressure(), "majflt": majflt(pids), "cpus": stat_jiffies(),
                    "cpu_psi": cpu_pressure(), "cg_throttle": cgroup_throttle(), "cpu_steal": cpu_steal(),
-                   "cpu_mhz": cpu_mhz(), "ctxsw": ctxsw_total(tasks), "ctxsw_tasks": tasks, "anon_huge_kb": anon_huge_kb(pids),
+                   "cpu_mhz": cpu_mhz(), "ctxsw": ctxsw_total(tasks), "ctxsw_tasks": tasks, "placement": placement(pids, nodes), "anon_huge_kb": anon_huge_kb(pids),
                    "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": ds.proc_cpu_s(pids),
                    "rss_kb": tree_rss_kb(pids), "cg_mem": cgroup_mem(), "gpu": gpu_util(),
                    "cg_mem_now": cgroup_mem_now(), "cpu_quota": cpu_quota()}
@@ -488,6 +547,7 @@ def phase(rows, t0, t1, tokens, threads):
         cs0, cs1 = (r.get("ctxsw") for r in (win[0], win[-1]))
         cs = (max(cs1["vol"] - cs0["vol"], 0), max(cs1["invol"] - cs0["invol"], 0)) if cs0 and cs1 else None
     ahp = win[-1].get("anon_huge_kb")
+    cpus_used, nodes_used, top_node = window_placement(inside)
 
     cgio = [r["cg_io"] for r in (win[0], win[-1])]
     cg_rb = cgio[1]["rbytes"] - cgio[0]["rbytes"] if all(cgio) else None
@@ -515,6 +575,7 @@ def phase(rows, t0, t1, tokens, threads):
         "ctxsw_vol_per_s": cs[0] / dur if cs and dur else None,
         "ctxsw_invol_per_s": cs[1] / dur if cs and dur else None,
         "anon_huge_gb": ahp * 1024 / 1e9 if ahp is not None else None,
+        "cpus_used": cpus_used, "numa_nodes_used": nodes_used, "top_node_share": top_node,
         "majflt": mf, "majflt_per_token": mf / n if mf is not None else None,
         "cpu_busy_pct": busy,
         "cpu_busy_pct_top_cpus": sum(top) / len(top) if top else None,
