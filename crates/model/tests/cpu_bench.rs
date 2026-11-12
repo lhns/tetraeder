@@ -667,3 +667,31 @@ fn segment_overhead() {
         std::fs::write(&p, serde_json::to_string_pretty(&out).unwrap()).unwrap();
     }
 }
+
+/// hardware: cpu. The graphs of `segment_overhead` build, allocate and compute on a small
+/// pool, and both scheduler sizes allocate a segment-sized graph, so a shape error shows in CI
+/// and not on a box.
+#[test]
+fn cpu_segment_overhead_graphs_compute() {
+    let cpu = Backend::cpu_with_poll(2, Some(0)).unwrap();
+    let mut sched = Sched::new(std::slice::from_ref(&cpu), 4096, false).unwrap();
+    for (chains, extra, nodes) in [(0, 1, 1), (1, 0, 6)] {
+        let ctx = GgmlContext::new(256, 1024).unwrap();
+        let mut leaves = Leaves::default();
+        let g = chain_graph(&ctx, chains, extra, &mut leaves);
+        assert_eq!(g.n_nodes(), nodes);
+        sched.alloc_graph(&g).unwrap();
+        leaves.fill();
+        sched.compute(&g).unwrap();
+        sched.compute(&g).unwrap();
+    }
+    let ctx = GgmlContext::new(1024, 1024).unwrap();
+    let mut leaves = Leaves::default();
+    let g = chain_graph(&ctx, 25, 0, &mut leaves);
+    for n in [4096usize, 48_640] {
+        let mut sched = Sched::new(std::slice::from_ref(&cpu), n, false).unwrap();
+        sched.alloc_graph(&g).unwrap();
+        leaves.fill();
+        sched.compute(&g).unwrap();
+    }
+}

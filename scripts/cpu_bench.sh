@@ -35,7 +35,7 @@ log=runs/vast/cpu_bench.log
       export TETRAEDER_MOE_GGUF="${MOE_GGUF:-$models_dir/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf}"
     fi
     TETRAEDER_BENCH_OUT="$date_dir/cpu-bench-$which-$(date +%H%M%S).json" timeout -k 30 "${BENCH_MIN:-40}m" \
-      cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_bench -- --ignored --nocapture
+      cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_bench -- --ignored --nocapture --exact cpu_bench_builder_vs_libllama
     rc=$?
     [ $rc -ne 0 ] && break
   done

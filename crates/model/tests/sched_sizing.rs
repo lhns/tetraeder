@@ -12,6 +12,13 @@ use tetraeder_ggml_sys::llama::Ftype;
 use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy, Qwen3Moe, StepProfile};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
+/// 12 layers: the whole-step size is 128 x 13 x 4 nodes, above the segment size of 1,024 x 4.
+/// With the 4 layers of `REALISH` both sizes are 4,096 and the test would compare a size with
+/// itself.
+const SPEC: MoeSpec = MoeSpec {
+    layers: 12,
+    ..MoeSpec::REALISH
+};
 const N_PROMPT: usize = 24;
 const N_DECODE: usize = 6;
 
@@ -44,7 +51,7 @@ fn run(m: &mut Qwen3Moe) -> (Vec<Vec<f32>>, StepProfile) {
 /// hardware: cpu. The segment-sized scheduler changes no logit.
 #[test]
 fn cpu_segment_sized_scheduler_is_bitwise_equal() {
-    let path = quantized_moe(&MoeSpec::REALISH, Ftype::Q4KM, "q4km-schedsize");
+    let path = quantized_moe(&SPEC, Ftype::Q4KM, "q4km-schedsize");
     let (want, _) = run(&mut Qwen3Moe::load(&path, &opts(true)).unwrap());
     let (got, _) = run(&mut Qwen3Moe::load(&path, &opts(false)).unwrap());
     assert_eq!(want.len(), got.len());
@@ -61,7 +68,7 @@ fn cpu_segment_sized_scheduler_is_bitwise_equal() {
 /// pairs are in segments.
 #[test]
 fn cpu_seg_pairs_is_part_of_cpu_pairs() {
-    let path = quantized_moe(&MoeSpec::REALISH, Ftype::Q4KM, "q4km-schedsize");
+    let path = quantized_moe(&SPEC, Ftype::Q4KM, "q4km-schedsize");
     let mut m = Qwen3Moe::load(&path, &opts(false)).unwrap();
     let (_, p) = run(&mut m);
     eprintln!("cpu_pairs {} seg_pairs {}", p.cpu_pairs, p.seg_pairs);
