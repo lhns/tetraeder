@@ -24,7 +24,7 @@ Updating `0002`: the copied file is frozen (ik moved Q4_K/Q6_K to `Q8_2_X4` acti
 | What | Source | Version | License | Update |
 |---|---|---|---|---|
 | llama.cpp at the engine pin (`/opt/llama.cpp`) | ggml-org/llama.cpp | `vendor/PIN` `commit` | MIT | Follows the engine pin |
-| llama.cpp baseline (`/opt/llama.cpp-baseline`, expert cache with CPU share, #30966) | ggml-org/llama.cpp | `vendor/PIN` `baseline_tag`, `baseline_commit` | MIT | Bump to a newer release when upstream improves the expert cache; `image_tag` changes with it |
+| llama.cpp baseline (`/opt/llama.cpp-baseline`, expert cache with CPU share, #30966) | ggml-org/llama.cpp | `vendor/PIN` `baseline_tag`, `baseline_commit` | MIT | Pinned at b12274 (202c1a229, 2026-11-10): #30966 expert cache CPU share plus #28392 FP8 KV cache (`-ctk f8_e4m3`). Bump when upstream improves the expert cache; `image_tag` changes with it |
 | ik_llama.cpp (`/opt/ik_llama`) | [ikawrakow/ik_llama.cpp](https://github.com/ikawrakow/ik_llama.cpp) | `vendor/PIN` `ik_commit`, `ik_date` | MIT | Bump `ik_commit`; `image_tag` changes with it |
 | KTransformers (kt-kernel, sglang-kt) | [kvcache-ai/ktransformers](https://github.com/kvcache-ai/ktransformers) | `KT_VERSION` in `scripts/ktransformers_build.sh` (0.7.2 = a02efe36) | Apache-2.0 | Change `KT_VERSION` |
 | Colibri | [JustVugg/colibri](https://github.com/JustVugg/colibri) | `COLIBRI_COMMIT` in `scripts/colibri_build.sh` (v2.1.0 = 704a3f68) | see its repo | Change `COLIBRI_COMMIT` |
