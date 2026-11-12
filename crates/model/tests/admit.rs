@@ -3,7 +3,9 @@
 //! on the CPU in its step and from its compute slot afterwards; on the CPU backend both tiers are
 //! CPU tensors, so the logits must equal the resident builder bit for bit, on the serial path
 //! (one and two CPU chunks per layer step) and under overlap (ADR 0054). On a GPU the logits
-//! stay within the tolerance of `cpu_experts.rs`.
+//! stay within the tolerance of `cpu_experts.rs`. Every upload mode (addendum 2026-11-12b) gives
+//! the same logits and cache counters; the test-only `Deferred` mode holds each copy until the
+//! barrier and poisons the slot meanwhile, so a slot read before its copy landed would show.
 //!
 //! Hardware labels (AGENTS rule 9): `cpu_*` need no GPU; `gpu_*` skip without a GPU device.
 
@@ -18,7 +20,9 @@ use tetraeder_ggml_sys::llama::Ftype;
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::io::IoFactory;
 use tetraeder_memory::io::sim::{SimClock, SimIo};
-use tetraeder_model::{BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
+use tetraeder_model::{AdmitUpload, BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
+
+const MODES: [AdmitUpload; 3] = [AdmitUpload::Sync, AdmitUpload::Async, AdmitUpload::Deferred];
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 const N_PROMPT: usize = 24;
@@ -194,6 +198,104 @@ fn cpu_admission_raises_compute_hits_on_repeated_routing() {
     assert!(hits_on > hits_off, "hits {hits_off} -> {hits_on}");
 }
 
+/// hardware: cpu. Every upload mode, serial with one and two CPU chunks per layer step and
+/// overlapped: logits equal the resident builder's bit for bit, also with every copy deferred to
+/// the barrier and the slot poisoned until then. Cache and admission counters are the same in all
+/// modes; only the deferred copies make the barrier wait, the synchronous ones never do.
+#[test]
+fn cpu_upload_modes_are_exact_and_count_alike() {
+    let path = fixture();
+    let (want, tokens) = sequence(&mut load(&path, &LoadOptions::new(CPU)), None);
+    type Case = (&'static str, fn() -> LoadOptions);
+    let cases: [Case; 3] = [
+        ("serial ram 12", || cpu_opts(CPU, 12, Some(1.0))),
+        ("serial ram 4", || cpu_opts(CPU, 4, Some(1.0))),
+        ("overlap ram 12", || overlap_opts(12, Some(1.0))),
+    ];
+    for (what, opts) in cases {
+        let mut first: Option<ExpertStats> = None;
+        for mode in MODES {
+            let o = LoadOptions {
+                admit_upload: mode,
+                ..opts()
+            };
+            let mut m = load(&path, &o);
+            let (got, _) = sequence(&mut m, Some(&tokens));
+            let label = format!("{what} {mode:?}");
+            assert_bitwise(&want, &got, &label);
+            let s = m.expert_stats().unwrap();
+            eprintln!(
+                "{label}: admitted {} ({} bytes), admit {:?}, wait {:?}, pinned {:?}",
+                s.io.admitted,
+                s.io.admitted_bytes,
+                s.io.admit_time,
+                s.io.admit_wait,
+                m.admit_staging_pinned()
+            );
+            assert!(s.io.admitted > 0, "{label}");
+            match mode {
+                AdmitUpload::Sync => {
+                    assert_eq!(s.io.admit_wait, std::time::Duration::ZERO, "{label}");
+                    assert_eq!(m.admit_staging_pinned(), None, "{label}");
+                }
+                // No pinned host memory on the CPU backend.
+                AdmitUpload::Async => assert_eq!(m.admit_staging_pinned(), Some(false), "{label}"),
+                AdmitUpload::Deferred => assert!(!s.io.admit_wait.is_zero(), "{label}"),
+            }
+            match &first {
+                None => first = Some(s),
+                Some(f) => {
+                    let tier = |x: &ExpertStats| -> Vec<_> {
+                        x.layers.iter().map(|l| (l.compute, l.cpu)).collect()
+                    };
+                    assert_eq!(tier(f), tier(&s), "{label}: compute-tier counters");
+                    assert_eq!(f.io.admitted, s.io.admitted, "{label}");
+                    assert_eq!(f.io.admitted_bytes, s.io.admitted_bytes, "{label}");
+                    assert_eq!(f.io.uploads, s.io.uploads, "{label}");
+                }
+            }
+        }
+    }
+}
+
+/// hardware: cpu. The same token at every decode step, so admitted experts are routed again and
+/// read from their compute slots in later steps: with every copy deferred to the barrier (the
+/// slot poisoned until then) the logits equal the synchronous copies' bit for bit, and admission
+/// raised the compute hits, so admitted slots were read.
+#[test]
+fn cpu_admitted_slots_are_read_only_after_their_copy() {
+    let path = fixture();
+    let p = prompt();
+    let run = |share: Option<f64>, mode: AdmitUpload| {
+        let o = LoadOptions {
+            admit_upload: mode,
+            ..cpu_opts(CPU, 12, share)
+        };
+        let mut m = load(&path, &o);
+        let mut logits = vec![m.eval(&p).unwrap()];
+        for _ in 0..12 {
+            logits.push(m.eval(&[p[3]]).unwrap());
+        }
+        let s = m.expert_stats().unwrap();
+        (logits, sum(&s, |l| l.compute.hits), s.io)
+    };
+    let (_, hits_off, _) = run(None, AdmitUpload::Sync);
+    let (sync, hits_sync, _) = run(Some(0.5), AdmitUpload::Sync);
+    let (deferred, hits_deferred, io) = run(Some(0.5), AdmitUpload::Deferred);
+    eprintln!(
+        "compute hits: off {hits_off}, sync {hits_sync}, deferred {hits_deferred}; admitted {}, wait {:?}",
+        io.admitted, io.admit_wait
+    );
+    assert_bitwise(&sync, &deferred, "deferred against sync");
+    assert_eq!(hits_sync, hits_deferred);
+    if io.admitted == 0 {
+        eprintln!("the hot set already holds every routed expert; nothing to admit");
+        return;
+    }
+    assert!(hits_deferred > hits_off, "admitted slots were read");
+    assert!(!io.admit_wait.is_zero(), "the barrier applied the copies");
+}
+
 /// hardware: gpu (skips without a GPU device). Admission on the GPU against admission off on the
 /// same tokens: an admitted expert moves from the CPU to the GPU kernels, so the logits stay
 /// within `TOL_GPU` plus twice the resident CPU-vs-GPU difference, as in `cpu_experts.rs`.
@@ -208,6 +310,22 @@ fn gpu_admission_matches_static_tier() {
     let (want, tokens) = sequence(&mut load(&path, &cpu_opts(gpu, 32, None)), None);
     let mut m = load(&path, &cpu_opts(gpu, 32, Some(1.0)));
     let (got, _) = sequence(&mut m, Some(&tokens));
+    // The async copies (pinned ring, own stream) land the same bytes: equal to sync bit for bit.
+    let o = LoadOptions {
+        admit_upload: AdmitUpload::Async,
+        ..cpu_opts(gpu, 32, Some(1.0))
+    };
+    let mut a = load(&path, &o);
+    let (got_async, _) = sequence(&mut a, Some(&tokens));
+    let sa = a.expert_stats().unwrap();
+    eprintln!(
+        "gpu async: pinned {:?}, admitted {}, admit {:?}, wait {:?}",
+        a.admit_staging_pinned(),
+        sa.io.admitted,
+        sa.io.admit_time,
+        sa.io.admit_wait
+    );
+    assert_bitwise(&got, &got_async, "gpu async against sync");
     let max_delta = |a: &[Vec<f32>], b: &[Vec<f32>]| {
         a.iter().zip(b).fold(0f32, |m, (x, y)| {
             x.iter().zip(y).fold(m, |m, (p, q)| m.max((p - q).abs()))

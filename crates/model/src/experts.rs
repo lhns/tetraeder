@@ -5,6 +5,7 @@
 
 use crate::hparams::ModelFile;
 use crate::qwen3moe::{ModelError, Result};
+use crate::upload::{AdmitUpload, Uploader};
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -49,10 +50,14 @@ pub struct IoCounters {
     /// Experts written into the compute tier, from any source.
     pub uploads: u64,
     /// Decode admissions into the compute tier (ADR 0059), also in `uploads`, their bytes and
-    /// the main thread's time copying them (synchronous).
+    /// the main thread's time on them: the whole copy (`AdmitUpload::Sync`), or the copy into
+    /// the staging ring and the enqueue (`Async`), waits for a ring entry included.
     pub admitted: u64,
     pub admitted_bytes: u64,
     pub admit_time: Duration,
+    /// Time the main thread waited at the barrier before a layer's compute slots are read for
+    /// admissions still in flight, plus waits for a ring entry (ADR 0059 addendum 2026-11-12b).
+    pub admit_wait: Duration,
     /// Prefetch (ADR 0038). Experts read ahead of their layer step into the RAM tier. These reads
     /// are also in `batches`, `experts_read` and `bytes_read`, but not in `read_time`.
     pub prefetch_issued: u64,
@@ -316,6 +321,10 @@ pub(crate) struct Streamer {
     counts: Vec<Vec<u64>>,
     /// Decode admission into the compute tier (ADR 0059); `None`: the static hot set.
     admit: Option<AdmitPolicy>,
+    /// The admissions' copies, with the policy.
+    uploader: Option<Uploader>,
+    /// The compute slot tensors (gate, up, down) per layer, which admissions write.
+    compute_tensors: Vec<[OwnedTensor; 3]>,
     /// RAM-tier policy (ADR 0050 (c)); `Lru` without a RAM tier.
     ram_policy: RamPolicy,
     /// Frequency pins per layer, most routed first (`RamPolicy::Freq`).
@@ -341,6 +350,8 @@ pub(crate) struct StreamerConfig {
     pub io_factory: Option<IoFactory>,
     /// `LoadOptions::admit_share`, above 0 and under `MissPolicy::Cpu` only.
     pub admit_share: Option<f64>,
+    /// `LoadOptions::admit_upload`.
+    pub admit_upload: AdmitUpload,
     /// `LoadOptions::ram_hugepages`.
     pub ram_hugepages: bool,
     /// `LoadOptions::ram_policy`.
@@ -353,10 +364,11 @@ fn invalid(msg: impl Into<String>) -> ModelError {
 
 impl Streamer {
     /// `slot_tensors[il]` are the gate, up and down slot tensors of layer `il`, `cfg.slots`
-    /// deep. The RAM tier is allocated on `cpu`.
+    /// deep, on `primary`. The RAM tier is allocated on `cpu`.
     pub(crate) fn new(
         file: &ModelFile,
-        slot_tensors: &[[Tensor<'_>; 3]],
+        slot_tensors: &[[OwnedTensor; 3]],
+        primary: &Backend,
         cpu: &Backend,
         cfg: StreamerConfig,
         metrics: MemoryMetrics,
@@ -368,7 +380,7 @@ impl Streamer {
         for (il, t) in slot_tensors.iter().enumerate() {
             let slabs = file.expert_slabs(il as u32, 0)?;
             for (tensor, part) in t.iter().zip(&slabs.parts) {
-                if tensor.nb()[2] as u64 != part.len {
+                if tensor.get().nb()[2] as u64 != part.len {
                     return Err(invalid(format!(
                         "layer {il}: slot size does not match the expert slab"
                     )));
@@ -385,7 +397,8 @@ impl Streamer {
                     .iter()
                     .enumerate()
                     .map(|(il, t)| {
-                        t.map(|src| {
+                        t.each_ref().map(|src| {
+                            let src = src.get();
                             let ne = src.ne();
                             let t = ctx.new_persistent(src.ty(), &[ne[0], ne[1], n as i64]);
                             t.get().set_name(&format!("ram_{}_{il}", src.name()));
@@ -466,6 +479,18 @@ impl Streamer {
         } else {
             None
         };
+        let admit = cfg.admit_share.map(|s| AdmitPolicy::new(layers, s));
+        let uploader = match (&admit, &ram) {
+            (Some(_), Some(_)) => {
+                let entry = sizes
+                    .iter()
+                    .map(|s| s.iter().sum::<usize>())
+                    .max()
+                    .unwrap_or(0);
+                Some(Uploader::new(cfg.admit_upload, primary, layers, entry)?)
+            }
+            _ => None,
+        };
         Ok(Streamer {
             prefetcher,
             step: 0,
@@ -492,7 +517,9 @@ impl Streamer {
             cpu: vec![0; layers],
             mixed: vec![0; layers],
             counts,
-            admit: cfg.admit_share.map(|s| AdmitPolicy::new(layers, s)),
+            admit,
+            uploader,
+            compute_tensors: slot_tensors.to_vec(),
             ram_policy,
             freq_pins: vec![Vec::new(); layers],
             pins_on: false,
@@ -520,6 +547,21 @@ impl Streamer {
 
     pub(crate) fn ram_hugepages(&self) -> Option<HugepageAdvice> {
         self.ram.as_ref().and_then(|r| r.hugepages)
+    }
+
+    /// `AdmitUpload::Async` with admission on: whether the staging ring is pinned.
+    pub(crate) fn admit_staging_pinned(&self) -> Option<bool> {
+        self.uploader.as_ref().and_then(Uploader::pinned)
+    }
+
+    /// The barrier of ADR 0059 addendum 2026-11-12b: before layer `il`'s compute slots are
+    /// looked up or written, admissions into them still in flight land. Normally free: the
+    /// layer's next use is a token after its admissions.
+    fn await_admissions(&mut self, il: usize) -> Result<()> {
+        if let Some(up) = self.uploader.as_mut().filter(|u| u.pending(il)) {
+            self.io.admit_wait += up.settle()?;
+        }
+        Ok(())
     }
 
     pub(crate) fn io_backend(&self) -> String {
@@ -600,6 +642,7 @@ impl Streamer {
     /// distinct experts in order of first appearance, resident ones first. One chunk is the
     /// usual case; more mean one pair group per chunk (ADR 0035).
     pub(crate) fn plan(&mut self, il: usize, chosen: &[i32]) -> Result<Vec<Vec<u32>>> {
+        self.await_admissions(il)?;
         let distinct = self.distinct(il, chosen)?;
         let layer = self.compute.layer(il);
         let (hits, misses): (Vec<u32>, Vec<u32>) = distinct
@@ -620,6 +663,7 @@ impl Streamer {
     /// and hit counts); the others get no slot and are counted once as `cpu`. They are chunked by
     /// the RAM slot count, RAM hits first so one chunk's reads cannot evict a hit of a later one.
     pub(crate) fn plan_cpu(&mut self, il: usize, chosen: &[i32]) -> Result<CpuPlan> {
+        self.await_admissions(il)?;
         let n = self
             .ram
             .as_ref()
@@ -1452,6 +1496,7 @@ impl Streamer {
         dst: &[Tensor<'_>; 3],
         experts: &[u32],
     ) -> Result<Vec<u32>> {
+        self.await_admissions(il)?;
         let r = self.make_resident_inner(file, il, dst, experts);
         if r.is_err() {
             self.clear_layer(il);
@@ -1507,6 +1552,9 @@ impl Streamer {
         dst: impl Fn(usize) -> [Tensor<'a>; 3],
     ) -> Result<()> {
         self.settle();
+        if let Some(up) = &mut self.uploader {
+            self.io.admit_wait += up.settle()?;
+        }
         for il in 0..self.counts.len() {
             let active = self.compute.layer(il).active();
             let hot = hot_from_counts(&self.counts[il], active);
@@ -1525,17 +1573,20 @@ impl Streamer {
 
     /// ADR 0059: of `misses` (routed experts of a decode step of layer `il` computed on the CPU,
     /// whose bytes are in their RAM slots now), uploads the ones the policy says are due into
-    /// compute slots `dst`, never evicting `protect` (this step's compute-tier experts) or an
-    /// earlier admission of the step. They still run on the CPU this step; their next use hits.
-    /// No-op without admission. On an error the layer's compute table is cleared.
+    /// compute slots, never evicting `protect` (this step's compute-tier experts) or an earlier
+    /// admission of the call. They still run on the CPU this step; their next use hits, after
+    /// the barrier (`await_admissions`). Pauses `pause`'s threadpool before the first copy: the
+    /// main thread is busy for milliseconds per expert in every mode. No-op without admission.
+    /// On an error the layer's compute table is cleared.
     pub(crate) fn admit(
         &mut self,
         il: usize,
-        dst: &[Tensor<'_>; 3],
         misses: &[u32],
         protect: &[u32],
+        mut pause: Option<&Backend>,
     ) -> Result<()> {
-        let (Some(policy), Some(ram)) = (&mut self.admit, &self.ram) else {
+        let (Some(policy), Some(ram), Some(up)) = (&mut self.admit, &self.ram, &mut self.uploader)
+        else {
             return Ok(());
         };
         let sizes = self.sizes[il];
@@ -1560,22 +1611,28 @@ impl Streamer {
             };
             policy.settle(il, true);
             protect.push(e);
-            let copied =
-                read_slot(&src, &sizes, rslot).and_then(|b| write_slot(dst, &sizes, cslot, &b));
-            if let Err(err) = copied {
-                self.compute.layer_mut(il).clear();
-                return Err(err);
+            if let Some(cpu) = pause.take() {
+                cpu.pause_cpu_pool();
             }
+            let waited = match up.copy(il, &src, rslot, &self.compute_tensors[il], cslot, &sizes) {
+                Ok(w) => w,
+                Err(err) => {
+                    self.compute.layer_mut(il).clear();
+                    return Err(err);
+                }
+            };
             self.io.uploads += 1;
             self.io.admitted += 1;
             self.io.admitted_bytes += total as u64;
             let took = t0.elapsed();
             self.io.admit_time += took;
+            self.io.admit_wait += waited;
             self.metrics.admitted(il as u32, total as u64);
             self.metrics.tier_read(&self.device, "ram", total as u64);
+            // Async: the DMA's own time is not observed, only the host part.
             self.metrics.transfer(
                 total as u64,
-                Some(took),
+                up.timed().then_some(took),
                 XferTier::Ram,
                 XferTier::Vram,
                 XferPurpose::Admission,
@@ -1628,8 +1685,7 @@ impl Streamer {
         let src = ram.exps(il);
         let upload_start = Instant::now();
         for (&(_, cslot), &(rslot, _)) in group.iter().zip(&filled) {
-            let bytes = read_slot(&src, &sizes, rslot as u32)?;
-            write_slot(dst, &sizes, cslot, &bytes)?;
+            copy_slot(&src, rslot as u32, dst, cslot, &sizes)?;
             self.io.uploads += 1;
         }
         self.metrics.transfer(
@@ -1819,23 +1875,19 @@ fn read_experts(
     Ok(requested)
 }
 
-/// Writes one expert (gate, up, down slabs back to back in `src`) into slot `slot`.
-fn write_slot(dst: &[Tensor<'_>; 3], sizes: &[usize; 3], slot: u32, src: &[u8]) -> Result<()> {
-    let mut at = 0;
-    for (t, &size) in dst.iter().zip(sizes) {
-        t.set_bytes(&src[at..at + size], slot as usize * size)?;
-        at += size;
+/// Copies one expert's slabs from slot `from` of the host tensors `src` into slot `to` of `dst`,
+/// straight from host memory (no intermediate buffer, ADR 0059 addendum 2026-11-12b).
+fn copy_slot(
+    src: &[Tensor<'_>; 3],
+    from: u32,
+    dst: &[Tensor<'_>; 3],
+    to: u32,
+    sizes: &[usize; 3],
+) -> Result<()> {
+    for ((s, d), &size) in src.iter().zip(dst).zip(sizes) {
+        s.copy_to(from as usize * size, *d, to as usize * size, size)?;
     }
     Ok(())
-}
-
-/// The bytes of slot `slot` of the three tensors, back to back.
-fn read_slot(src: &[Tensor<'_>; 3], sizes: &[usize; 3], slot: u32) -> Result<Vec<u8>> {
-    let mut out = Vec::with_capacity(sizes.iter().sum());
-    for (t, &size) in src.iter().zip(sizes) {
-        out.extend(t.get_bytes(slot as usize * size, size)?);
-    }
-    Ok(out)
 }
 
 #[cfg(test)]
