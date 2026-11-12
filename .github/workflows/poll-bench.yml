@@ -1,0 +1,57 @@
+name: poll-bench
+
+# ggml polling under a CPU quota (ADR 0061): poll 50, poll 0 and pool pause, interleaved, on the synthetic MoE exit
+# harness. Manual only. Fails loudly when the runner cannot enforce the quota. Never gates a PR.
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: Interleaved rounds under the quota
+        default: "8"
+
+concurrency:
+  group: poll-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  poll-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build time
+      - uses: Swatinem/rust-cache@v2
+      - name: Runner
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          echo "threads: $(nproc)"
+          free -m
+          stat -fc 'cgroup fs: %T' /sys/fs/cgroup
+          cat /sys/fs/cgroup/cgroup.controllers
+      - name: Poll bench
+        env:
+          OUT: ${{ github.workspace }}/poll-bench-results
+          ROUNDS: ${{ inputs.rounds }}
+        run: bash scripts/poll_bench.sh
+      - name: Summary
+        if: always()
+        run: |
+          out=poll-bench-results
+          [ -s "$out/manifest.jsonl" ] || { echo "no runs recorded"; exit 1; }
+          python3 scripts/poll_bench_summary.py "$out" --out "$out/summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: poll-bench
+          path: poll-bench-results
