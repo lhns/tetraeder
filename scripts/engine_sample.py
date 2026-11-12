@@ -867,7 +867,7 @@ def host_diff(a, b, rel=HOST_DIFF_REL):
 
 def otlp_merge(a):
     """host_otlp and host_otlp_diff in every result of --results that has a host block and windows."""
-    files = sorted(glob.glob(os.path.join(a.otel_dir, "**", "*.jsonl"), recursive=True))
+    files = sorted(f for pat in ("*.jsonl", "*.jsonl.zst") for f in glob.glob(os.path.join(a.otel_dir, "**", pat), recursive=True))
     results = []
     for path in sorted(glob.glob(os.path.join(a.results, "*.json"))):
         try:

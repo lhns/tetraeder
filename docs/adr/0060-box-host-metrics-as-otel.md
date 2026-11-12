@@ -67,3 +67,14 @@ Disk fields (`read_*`, `disk_queue_depth_mean`, `disk_inflight_max`), `cpu_busy_
 - Metric names of hostmetrics come from the 0.116.0 receiver docs and the CI `validate` step; their values on a Vast container are confirmed by the first box run, not before.
 
 Fixes after the first box comparison (20261112e): context switches are emitted per thread (tetraeder.host.process.thread.context_switches) so host_otlp uses the sampler positive-delta rule; cpu_busy_pct and the top-CPU mean divide by the threads summarize ran with (stored as host_windows.threads, else the membw probe threads), not options.threads, which a stage may lower; disk_inflight_max is an instantaneous gauge read on two clocks and may differ legitimately.
+
+## Addendum: zstd for the OTLP files (2026-11-12)
+
+Context: 530 MB per 40 minutes, 1 to 2 GB per session, too big to fetch cheaply or commit.
+
+Decision: compress after the collector stops (`otelcol_box.sh compress`: `zstd -T2 -10 --rm` on every `*.jsonl` of the run's directory, called by `exit_run.sh` after `stop`), not through the file exporter's `compression: zstd`. Why:
+- A file that is plain while the collector runs survives a crash or a killed box readable; a compressed stream cut mid-frame loses its unflushed tail. The exporter's framing (one zstd frame per export, as we understand it) was not checked against the 0.116.1 source from here, and rotation with it is unverified.
+- Rotation (100 MB) stays the exporter's plain business, and no compression CPU runs inside the collector (`GOMAXPROCS=1`, beside an engine at its quota). Compression runs when no engine does.
+- No collector config change, so the compose stack's config and CI `validate` stay as they are.
+
+Readers (`otlp_host.open_lines`, `otlp-merge`) accept `*.jsonl` and `*.jsonl.zst` in one tree: stdlib `compression.zstd` (Python 3.14), else the `zstd` CLI, which the box image (Dockerfile) and `box_deps.sh` install. No pip package, so no `docs/sources.md` row. A run that crashed before `compress` leaves plain files, which still merge. `taxameter.toml` fetches `*.zst`. The files are small enough to commit under `bench/results/<date>/otel/` when they total under 200 MB (docs/sessions.md); this replaces "the files are not committed" in the Consequences.

@@ -35,7 +35,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential pkg-config cmake ninja-build git curl ca-certificates \
-        fio rsync jq unzip python3 libclang-dev \
+        fio rsync jq unzip zstd python3 libclang-dev \
         libvulkan1 libvulkan-dev mesa-vulkan-drivers vulkan-tools glslc \
     && rm -rf /var/lib/apt/lists/*
 

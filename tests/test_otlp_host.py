@@ -413,3 +413,64 @@ def test_results_without_host_windows_take_the_membw_probe_threads(tmp_path):
     builder.write_text(json.dumps(d))
     pre, dec, threads, rw, wins = es.result_windows(str(builder), d)
     assert threads == 3
+
+
+def zstd_compress(path):
+    """path -> path.zst through the stdlib module or the CLI; skips the test when neither exists."""
+    data = pathlib.Path(path).read_bytes()
+    try:
+        from compression import zstd
+        out = zstd.compress(data)
+    except ImportError:
+        if not shutil.which("zstd"):
+            pytest.skip("needs Python 3.14 or the zstd CLI")
+        out = subprocess.run(["zstd", "-q", "-10", "-c"], input=data, capture_output=True, check=True).stdout
+    z = pathlib.Path(str(path) + ".zst")
+    z.write_bytes(out)
+    return z, len(data), len(out)
+
+
+def merged_block(tmp_path, otel, results, builder):
+    es.otlp_merge(types.SimpleNamespace(otel_dir=str(otel), results=str(results)))
+    return json.loads(builder.read_text())["host_otlp"]
+
+
+def test_zstd_file_gives_the_same_host_block_as_plain(tmp_path):
+    samples, otel, results, builder = write_inputs(tmp_path)
+    summarize_sampler(samples, builder, tmp_path)
+    plain = merged_block(tmp_path, otel, results, builder)
+    f = otel / "120000" / "metrics.jsonl"
+    z, raw, packed = zstd_compress(f)
+    f.unlink()
+    print(f"fixture {raw} -> {packed} bytes, ratio {raw / packed:.1f}")
+    assert merged_block(tmp_path, otel, results, builder) == plain
+    assert oh.read_points([z])
+
+
+def test_mixed_plain_and_zstd_directory_merges(tmp_path):
+    samples, otel, results, builder = write_inputs(tmp_path)
+    summarize_sampler(samples, builder, tmp_path)
+    plain = merged_block(tmp_path, otel, results, builder)
+    # first half compressed, the rest plain in a second run directory
+    f = otel / "120000" / "metrics.jsonl"
+    lines = f.read_text().splitlines(keepends=True)
+    half = len(lines) // 2
+    other = otel / "120001"
+    other.mkdir()
+    (other / "metrics-rest.jsonl").write_text("".join(lines[half:]))
+    f.write_text("".join(lines[:half]))
+    zstd_compress(f)
+    f.unlink()
+    assert merged_block(tmp_path, otel, results, builder) == plain
+
+
+def test_compress_command_leaves_only_zst_and_merges(tmp_path):
+    if not shutil.which("zstd") or not shutil.which("bash"):
+        pytest.skip("needs bash and the zstd CLI")
+    samples, otel, results, builder = write_inputs(tmp_path)
+    summarize_sampler(samples, builder, tmp_path)
+    plain = merged_block(tmp_path, otel, results, builder)
+    d = otel / "120000"
+    subprocess.run(["bash", str(SCRIPTS / "otelcol_box.sh"), "compress", str(d)], check=True)
+    assert [p.name for p in d.iterdir()] == ["metrics.jsonl.zst"]
+    assert merged_block(tmp_path, otel, results, builder) == plain

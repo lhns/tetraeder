@@ -17,6 +17,7 @@ command -v cmake > /dev/null 2>&1 || need="$need cmake"
 command -v ninja > /dev/null 2>&1 || need="$need ninja-build"
 command -v sccache > /dev/null 2>&1 || need="$need sccache"
 command -v python3 > /dev/null 2>&1 || need="$need python3"
+command -v zstd > /dev/null 2>&1 || need="$need zstd"
 if [ -n "$need" ]; then
   echo "installing missing packages:$need"
   # sccache is optional: retry without it if apt does not know it
