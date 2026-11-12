@@ -101,6 +101,58 @@ def io_pressure():
     return {"src": None, "some": None, "full": None}
 
 
+def cpu_pressure():
+    """CPU pressure stall totals in usec (cgroup v2 cpu.pressure, else /proc/pressure/cpu); same shape as io_pressure."""
+    for path in ("/sys/fs/cgroup/cpu.pressure", "/proc/pressure/cpu"):
+        got = {}
+        for line in ds.read(path).splitlines():
+            kind = line.split(" ", 1)[0]
+            if kind in ("some", "full") and "total=" in line:
+                got[kind] = int(line.rsplit("total=", 1)[1])
+        if "some" in got:
+            return {"src": path, "some": got["some"], "full": got.get("full")}
+    return {"src": None, "some": None, "full": None}
+
+
+def cgroup_throttle():
+    """CFS throttling counters of the container's cgroup: {"src", "periods", "throttled", "usec"}.
+
+    v2 cpu.stat (nr_periods, nr_throttled, throttled_usec), else v1 cpu.stat (throttled_time in ns). src is None
+    when no file has nr_periods (v2 without a cpu.max quota has none)."""
+    for path in ("/sys/fs/cgroup/cpu.stat", "/sys/fs/cgroup/cpu/cpu.stat", "/sys/fs/cgroup/cpu,cpuacct/cpu.stat"):
+        d = {}
+        for line in ds.read(path).splitlines():
+            k, _, v = line.partition(" ")
+            if v.strip().isdigit():
+                d[k] = int(v)
+        if "nr_periods" in d:
+            usec = d.get("throttled_usec", d["throttled_time"] // 1000 if "throttled_time" in d else None)
+            return {"src": path, "periods": d["nr_periods"], "throttled": d.get("nr_throttled"), "usec": usec}
+    return {"src": None, "periods": None, "throttled": None, "usec": None}
+
+
+def cpu_steal():
+    """Host-wide steal and total jiffies from the aggregate cpu line of /proc/stat; None without it."""
+    for line in ds.read("/proc/stat").splitlines():
+        if line.startswith("cpu "):
+            v = [int(x) for x in line.split()[1:]]
+            if len(v) >= 8:
+                return {"steal": v[7], "total": sum(v[:8])}
+    return None
+
+
+def cpu_mhz():
+    """Mean "cpu MHz" over the CPUs of /proc/cpuinfo; None without them."""
+    v = []
+    for line in ds.read("/proc/cpuinfo").splitlines():
+        if line.startswith("cpu MHz"):
+            try:
+                v.append(float(line.split(":", 1)[1]))
+            except ValueError:
+                pass
+    return sum(v) / len(v) if v else None
+
+
 def majflt(pids):
     """Major faults of the processes (the stat field covers all their threads)."""
     n = 0
@@ -161,6 +213,8 @@ def sample(a):
             rec = {"t": time.time(), "disk_read_bytes": rb, "disk_read_ops": ops,
                    "disk_inflight": inflight, "disk_weighted_ms": weighted_ms,
                    "cg_io": cgroup_io(), "io_psi": io_pressure(), "majflt": majflt(pids), "cpus": stat_jiffies(),
+                   "cpu_psi": cpu_pressure(), "cg_throttle": cgroup_throttle(), "cpu_steal": cpu_steal(),
+                   "cpu_mhz": cpu_mhz(),
                    "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": ds.proc_cpu_s(pids),
                    "rss_kb": tree_rss_kb(pids), "cg_mem": cgroup_mem(), "gpu": gpu_util()}
             out.write(json.dumps(rec) + "\n")
@@ -199,7 +253,8 @@ def phase(rows, t0, t1, tokens, threads):
     cg = delta(win, "cg_cpu_usec")
     own = delta(win, "own_cpu_s")
     # busy share of the CPUs the engine may use: cgroup CPU time over wall time times threads, else the tree's own
-    busy = (cg / 1e6 if cg is not None else own) / (dur * threads) * 100 if threads and dur else None
+    used = cg / 1e6 if cg is not None else own
+    busy = used / (dur * threads) * 100 if used is not None and threads and dur else None
     # host view: busiest `threads` CPUs of /proc/stat (the container may see every host core)
     shares = []
     first, last = win[0].get("cpus") or [], win[-1].get("cpus") or []
@@ -217,6 +272,27 @@ def phase(rows, t0, t1, tokens, threads):
             return None
         return min(1.0, (psi1[kind] - psi0[kind]) / 1e6 / dur)
 
+    cpsi0, cpsi1 = (r.get("cpu_psi") or {} for r in (win[0], win[-1]))
+    cpu_same = cpsi0.get("src") is not None and cpsi0.get("src") == cpsi1.get("src")
+
+    def cpu_stall(kind):
+        if not cpu_same or cpsi0.get(kind) is None or cpsi1.get(kind) is None or not dur:
+            return None
+        return min(1.0, (cpsi1[kind] - cpsi0[kind]) / 1e6 / dur)
+
+    th0, th1 = (r.get("cg_throttle") or {} for r in (win[0], win[-1]))
+    th_same = th0.get("src") is not None and th0.get("src") == th1.get("src")
+
+    def th_delta(k):
+        return th1[k] - th0[k] if th_same and th0.get(k) is not None and th1.get(k) is not None else None
+
+    periods, throttled, th_usec = th_delta("periods"), th_delta("throttled"), th_delta("usec")
+    st0, st1 = (r.get("cpu_steal") for r in (win[0], win[-1]))
+    steal = None
+    if st0 and st1 and st1["total"] > st0["total"]:
+        steal = (st1["steal"] - st0["steal"]) / (st1["total"] - st0["total"])
+    mhz = [m for m in (r.get("cpu_mhz") for r in (win[0], win[-1])) if m is not None]
+
     cgio = [r["cg_io"] for r in (win[0], win[-1])]
     cg_rb = cgio[1]["rbytes"] - cgio[0]["rbytes"] if all(cgio) else None
     n = max(tokens, 1)
@@ -233,6 +309,13 @@ def phase(rows, t0, t1, tokens, threads):
         "disk_inflight_max": max(infl) if infl else None,
         "io_psi_src": psi0.get("src") if same_src else None,
         "io_some_share": stall("some"), "io_full_share": stall("full"),
+        "cpu_psi_src": cpsi0.get("src") if cpu_same else None,
+        "cpu_some_share": cpu_stall("some"), "cpu_full_share": cpu_stall("full"),
+        "throttle_src": th0.get("src") if th_same else None,
+        "throttled_share": throttled / periods if throttled is not None and periods else None,
+        "throttled_ms_per_s": th_usec / 1e3 / dur if th_usec is not None and dur else None,
+        "cpu_steal_share": steal,
+        "cpu_mhz_mean": sum(mhz) / len(mhz) if mhz else None,
         "majflt": mf, "majflt_per_token": mf / n if mf is not None else None,
         "cpu_busy_pct": busy,
         "cpu_busy_pct_top_cpus": sum(top) / len(top) if top else None,

@@ -45,6 +45,7 @@ if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
 fi
 model="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf"
 threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
+threads=$(bash scripts/clamp_threads.sh "$threads")
 # RAM the container may use: the cgroup limit if set, else MemTotal. The exit test needs a model larger than RAM, but
 # Vast's cgroup limit can exceed the offer's RAM (183 GB on a "126 GB" offer, model 142 GB). So a balloon process
 # holds the difference to EMULATE_RAM_GB (default 128) as touched anonymous memory (no swap: it stays resident), and

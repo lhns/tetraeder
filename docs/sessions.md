@@ -66,6 +66,8 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 
 **I/O attribution.** `disk-curve` is required in both B1 profiles (it is in both default stage lists; keep it in a `B1_STAGES` override): with the loaded curve every exit stage, builder or baseline, gets `host.decode.disk_util` and `io_class` (`disk_bandwidth`, `io_latency`, `io_under_issue`, `not_io_bound`, `unknown`) next to the I/O pressure shares (ADR 0056 addendum 2026-11-11).
 
+**CPU attribution.** Each phase and decode window also carries `cpu_some_share`, `cpu_full_share`, `throttled_share`, `throttled_ms_per_s`, `cpu_steal_share` and `cpu_mhz_mean` (ADR 0058 addendum 2026-11-12); `session.sh` and `exit_run.sh` clamp `THREADS` to the whole-core CPU quota (`THREADS_ALLOW_OVER_QUOTA=1` keeps it).
+
 **Stages** (code order of `exit_run.sh`; every builder stage has prefetch on at depth 2, the ADR 0038 levers; host sampling on every builder, KT and llama.cpp cache stage). The verdict triple comes first and adjacent, then the noise pair; what does not fit is cut from the end:
 
 | # | Stage | Estimate | Cumulative | Decides |

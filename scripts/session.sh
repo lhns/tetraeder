@@ -25,6 +25,8 @@ name="${SESSION:-}"
 log="runs/vast/session-$name.log"
 # the log appends across relaunches: waits look only after the last header (scripts/log_done.sh)
 echo "=== RUN $(date +%FT%T) session.sh ===" >> "$log"
+# an explicit THREADS above the CPU quota is clamped to it (THREADS_ALLOW_OVER_QUOTA=1 keeps it)
+[ -n "${THREADS:-}" ] && { THREADS=$(bash scripts/clamp_threads.sh "$THREADS" 2>> "$log"); export THREADS; }
 # minutes for this script: the box cap less 20% (144 of 180 min; b2 has the 6 h proxy exception: 288), less about 25
 # for provisioning before and fetch, verify and destroy after
 case "$name" in
