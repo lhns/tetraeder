@@ -69,6 +69,8 @@ fn fault_class(name: &str) -> Result<FaultClass, String> {
         // RAM pressure: MemoryMax below the working set (scripts/fault_testbed.sh)
         "mem" => Ok(FaultClass::Swapping),
         "throttle" => Ok(FaultClass::GpuThrottle),
+        // CPU quota below the thread count with polling on (scripts/fault_testbed.sh, ADR 0062)
+        "quota" => Ok(FaultClass::CpuQuotaThrottle),
         other => Err(format!("unknown fault name {other:?} in manifest")),
     }
 }

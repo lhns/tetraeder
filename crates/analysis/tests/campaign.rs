@@ -18,6 +18,7 @@ type Run = (
 fn fault(name: &str) -> FaultClass {
     match name {
         "cpu" => FaultClass::CpuCotenant,
+        "quota" => FaultClass::CpuQuotaThrottle,
         "disk" => FaultClass::DiskSlow,
         "mem" => FaultClass::Swapping,
         _ => FaultClass::VramPressure,
