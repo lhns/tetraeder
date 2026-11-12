@@ -560,16 +560,18 @@ fn dispatch_floor(n: usize) -> Value {
 /// and 48,640 nodes, one topology and two alternating, and per `reset` alone.
 fn alloc_cost() -> Value {
     const ALLOCS: usize = 400;
-    let ctx_a = GgmlContext::new(1024, 1024).unwrap();
-    let ctx_b = GgmlContext::new(1024, 1024).unwrap();
-    let (mut la, mut lb) = (Leaves::default(), Leaves::default());
     let cpu = Backend::cpu(1).unwrap();
     let wctx = GgmlContext::new(8, 0).unwrap();
     let shared = chain_weights(&wctx, &cpu);
-    let ga = chain_graph(&ctx_a, &shared, 25, 0, &mut la);
-    let gb = chain_graph(&ctx_b, &shared, 24, 5, &mut lb);
     let mut rows = Vec::new();
     for nodes in [4096usize, 48_640] {
+        // Fresh graphs per scheduler (a graph keeps data pointers into the buffer of the
+        // scheduler that allocated it, which is freed when that scheduler drops).
+        let ctx_a = GgmlContext::new(1024, 1024).unwrap();
+        let ctx_b = GgmlContext::new(1024, 1024).unwrap();
+        let (mut la, mut lb) = (Leaves::default(), Leaves::default());
+        let ga = chain_graph(&ctx_a, &shared, 25, 0, &mut la);
+        let gb = chain_graph(&ctx_b, &shared, 24, 5, &mut lb);
         let mut sched = Sched::new(std::slice::from_ref(&cpu), nodes, false).unwrap();
         for k in 0..4 {
             let g = if k % 2 == 0 { &ga } else { &gb };
@@ -719,10 +721,12 @@ fn cpu_segment_overhead_graphs_compute() {
     }
     let wctx = GgmlContext::new(8, 0).unwrap();
     let shared = chain_weights(&wctx, &cpu);
-    let ctx = GgmlContext::new(1024, 1024).unwrap();
-    let mut leaves = Leaves::default();
-    let g = chain_graph(&ctx, &shared, 25, 0, &mut leaves);
     for n in [4096usize, 48_640] {
+        // A fresh graph per scheduler: a graph allocated by a scheduler that was dropped keeps
+        // tensor data pointers into its freed buffer, so a second scheduler must not reuse it.
+        let ctx = GgmlContext::new(1024, 1024).unwrap();
+        let mut leaves = Leaves::default();
+        let g = chain_graph(&ctx, &shared, 25, 0, &mut leaves);
         let mut sched = Sched::new(std::slice::from_ref(&cpu), n, false).unwrap();
         sched.alloc_graph(&g).unwrap();
         leaves.fill();
