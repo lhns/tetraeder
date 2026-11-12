@@ -498,21 +498,22 @@ fn layers_json(a: &ExpertStats, b: &ExpertStats) -> Value {
         }
     }
     let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len().max(1) as f64;
-    // Routed (token, expert) pairs served from the compute tier over all routed pairs.
-    let pairs: u64 = a
-        .layers
-        .iter()
-        .zip(&b.layers)
-        .map(|(x, y)| y.pairs - x.pairs)
-        .sum();
+    // The exit-JSON view of `tetraeder.expert.cache.requests`: compute-tier hits over hits plus
+    // `cpu` lookups. A decode step has one token, so its distinct experts are its pairs.
     let hits: u64 = a
         .layers
         .iter()
         .zip(&b.layers)
-        .map(|(x, y)| y.compute_pairs - x.compute_pairs)
+        .map(|(x, y)| y.compute.hits - x.compute.hits)
+        .sum();
+    let cpu: u64 = a
+        .layers
+        .iter()
+        .zip(&b.layers)
+        .map(|(x, y)| y.cpu - x.cpu)
         .sum();
     json!({
-        "vram_pair_share": if pairs > 0 { Some(hits as f64 / pairs as f64) } else { None },
+        "vram_pair_share": if hits + cpu > 0 { Some(hits as f64 / (hits + cpu) as f64) } else { None },
         "full_hit_rate_mean": mean(&full),
         "ram_hit_rate_mean": mean(&ram_hit),
         "full_hit_rate": full,
