@@ -548,6 +548,12 @@ EOF
         # ggml's default polling, explicit: since ADR 0061 main-overlap polls at 0 on a quota box, so this is its pair
         exit_regime main-overlap-poll50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 || rc=30
         exit_regime main-overlap-poll50-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 || rc=30
+        # Polling at 50 with the pool paused while the main thread waits, and the RAM tier by access frequency (the
+        # engine switches land on other branches; the variables are ignored until then). Each has a repeat
+        exit_regime main-overlap-pause50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 TETRAEDER_EXIT_POOL_PAUSE=1 || rc=30
+        exit_regime main-overlap-pause50-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 TETRAEDER_EXIT_POOL_PAUSE=1 || rc=30
+        exit_regime main-overlap-ramfreq 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_RAM_POLICY=freq:0.5 || rc=30
+        exit_regime main-overlap-ramfreq-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_RAM_POLICY=freq:0.5 || rc=30
         exit_regime main-overlap-poll0-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 || rc=30
         # four threads fewer than the quota (min 1): leaves cores to the I/O workers; the repeat is the second pass
         tq4=$((threads > 4 ? threads - 4 : 1))

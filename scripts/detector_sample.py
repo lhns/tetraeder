@@ -49,23 +49,27 @@ def cgroup_throttled_usec():
     return None
 
 
-def cgroup_cpu_periods():
-    """(nr_periods, nr_throttled) of the container's CPU cgroup (v2 cpu.stat, v1 cpu,cpuacct/cpu.stat), or None
-    without a CFS quota or off Linux."""
-    for path in ("/sys/fs/cgroup/cpu.stat", "/sys/fs/cgroup/cpu,cpuacct/cpu.stat", "/sys/fs/cgroup/cpu/cpu.stat"):
+def cgroup_cpu_periods(cg=None):
+    """(nr_periods, nr_throttled, source path) of the engine's cgroup cg if it has a quota (a systemd scope with
+    CPUQuota=, the nightly testbed), else of the container's CPU cgroup (v2 cpu.stat, v1 cpu,cpuacct/cpu.stat), or
+    None without a CFS quota or off Linux."""
+    own = [f"/sys/fs/cgroup{cg.rstrip('/')}/cpu.stat"] if cg else []
+    for path in own + ["/sys/fs/cgroup/cpu.stat", "/sys/fs/cgroup/cpu,cpuacct/cpu.stat", "/sys/fs/cgroup/cpu/cpu.stat"]:
         stat = {}
         for line in read(path).splitlines():
             k, _, v = line.partition(" ")
             if v.strip().isdigit():
                 stat[k] = int(v)
-        if "nr_periods" in stat and "nr_throttled" in stat:
-            return stat["nr_periods"], stat["nr_throttled"]
+        if stat.get("nr_periods") and "nr_throttled" in stat:
+            return stat["nr_periods"], stat["nr_throttled"], path
     return None
 
 
-def cpu_some_usec():
-    """PSI cpu "some" total of the container's cgroup (system-wide if it has none) and its source, or (None, None)."""
-    for path in ("/sys/fs/cgroup/cpu.pressure", "/proc/pressure/cpu"):
+def cpu_some_usec(cg=None):
+    """PSI cpu "some" total of the engine's cgroup cg, else the container's (system-wide if it has none), and its
+    source, or (None, None)."""
+    own = [f"/sys/fs/cgroup{cg.rstrip('/')}/cpu.pressure"] if cg else []
+    for path in own + ["/sys/fs/cgroup/cpu.pressure", "/proc/pressure/cpu"]:
         for line in read(path).splitlines():
             if line.startswith("some "):
                 return int(line.rsplit("total=", 1)[1]), path
@@ -180,10 +184,12 @@ def sample(a):
         while os.path.exists(f"/proc/{a.pid}"):
             pids = tree(a.pid)
             psi, psi_src = memory_some_usec(engine_cgroup(pids))
-            periods = cgroup_cpu_periods()
-            cpu_psi, cpu_psi_src = cpu_some_usec()
+            ecg = engine_cgroup(pids)
+            periods = cgroup_cpu_periods(ecg)
+            cpu_psi, cpu_psi_src = cpu_some_usec(ecg)
             rec = {"t": time.time(), "cg_cpu_usec": cgroup_cpu_usec(), "cg_throttled_usec": cgroup_throttled_usec(),
                    "cg_periods": periods[0] if periods else None, "cg_throttled": periods[1] if periods else None,
+                   "cg_periods_src": periods[2] if periods else None,
                    "cpu_some_usec": cpu_psi, "cpu_psi_src": cpu_psi_src,
                    "own_cpu_s": proc_cpu_s(pids), "own_read_bytes": proc_read_bytes(pids),
                    "disk_read_bytes": disk_read_bytes(a.disk), "pswpin": pswpin(),
@@ -243,7 +249,9 @@ def observe(a):
             if first.get("mem_some_usec") is not None and last.get("mem_some_usec") is not None                     and first.get("psi_src") == last.get("psi_src"):
                 env_stall.append(min(1.0, (last["mem_some_usec"] - first["mem_some_usec"]) / 1e6 / dt))
             # CFS throttling of the container over the window; pooled over windows below (ADR 0062)
-            if first.get("cg_periods") is not None and last.get("cg_periods") is not None:
+            # one cgroup only: the engine moves into its scope right after start
+            if first.get("cg_periods") is not None and last.get("cg_periods") is not None \
+                    and first.get("cg_periods_src") == last.get("cg_periods_src"):
                 thr_periods += max(0, last["cg_periods"] - first["cg_periods"])
                 thr_throttled += max(0, last["cg_throttled"] - first["cg_throttled"])
             if first.get("cpu_some_usec") is not None and last.get("cpu_some_usec") is not None                     and first.get("cpu_psi_src") == last.get("cpu_psi_src"):
