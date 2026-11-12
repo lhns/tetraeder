@@ -15,7 +15,7 @@ pub mod cpu;
 mod quant;
 mod sched;
 
-pub use backend::{Backend, Buffer};
+pub use backend::{Backend, Buffer, HugepageAdvice, advise_hugepages};
 pub use context::{Context, Graph, OwnedGraph, OwnedTensor, RopeParams, Tensor};
 pub use quant::{quantize, to_f32};
 pub use sched::Sched;

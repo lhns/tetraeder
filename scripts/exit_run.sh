@@ -487,6 +487,9 @@ EOF
         tq4=$((threads > 4 ? threads - 4 : 1))
         exit_regime main-overlap-tq4 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_THREADS="$tq4" || rc=30
         exit_regime main-overlap-tq4-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_THREADS="$tq4" || rc=30
+        # Huge pages on the RAM tier (ADR 0035 addendum), paired with main-overlap; the repeat is the second pass
+        exit_regime main-overlap-thp 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_RAM_HUGEPAGES=1 || rc=30
+        exit_regime main-overlap-thp-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_RAM_HUGEPAGES=1 || rc=30
         # Adaptive compute tier (ADR 0059), paired with main-overlap: decode uploads a share of the CPU misses into
         # VRAM slots (LRU seeded by the hot set); the repeat is the second pass of the pair. Other shares via VARIANTS
         exit_regime main-overlap-adapt 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_ADMIT_SHARE=0.1 || rc=30
@@ -500,7 +503,7 @@ EOF
       if want trace; then
         trace="$PWD/runs/vast/routing-235b-$stamp.trace"
         exit_regime trace 90 "${deep[@]}" TETRAEDER_EXIT_DECODE=256 TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2           TETRAEDER_EXIT_ROUTING_OUT="$trace" || rc=29
-        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace"           --vram 10,12,13 --ram 48,64,77,79,81,83,96,110 --out "$date_dir/replay-235b.json" || rc=29
+        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace"           --vram 10,12,13 --ram 48,64,77,79,81,83,96,110 --vram-policy static,prefill,lru,lru:0.5,freq --out "$date_dir/replay-235b.json" || rc=29
       fi
       # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
       for v in ${VARIANTS:-}; do

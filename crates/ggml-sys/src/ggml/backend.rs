@@ -246,6 +246,86 @@ impl Buffer {
         // SAFETY: live buffer.
         unsafe { sys::ggml_backend_buffer_clear(self.ptr.as_ptr(), value) }
     }
+
+    /// Asks the kernel to back this host buffer with transparent huge pages (`MADV_HUGEPAGE`,
+    /// Linux). Call it before the first touch; pages already faulted in stay small. A non-host
+    /// buffer is skipped. See [`advise_hugepages`].
+    pub fn advise_hugepages(&self) -> HugepageAdvice {
+        if !self._backend.is_cpu() {
+            tracing::info!("hugepages: skipped, not a host buffer");
+            return HugepageAdvice::default();
+        }
+        // SAFETY: live buffer; both getters only read fields.
+        let (base, len) = unsafe {
+            (
+                sys::ggml_backend_buffer_get_base(self.ptr.as_ptr()) as usize,
+                sys::ggml_backend_buffer_get_size(self.ptr.as_ptr()),
+            )
+        };
+        advise_hugepages(base, len)
+    }
+}
+
+/// Result of [`advise_hugepages`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HugepageAdvice {
+    /// `madvise` was called and returned 0.
+    pub applied: bool,
+    /// Bytes of the advised range (0 when skipped).
+    pub bytes: u64,
+    /// `errno` of a failed `madvise`, else 0.
+    pub errno: i32,
+}
+
+const HUGE_PAGE: usize = 2 << 20;
+
+/// `madvise(MADV_HUGEPAGE)` on the 2 MiB aligned part inside `[base, base + len)`. Logs and
+/// returns the default (not applied, 0 bytes) when that part is empty or off Linux.
+pub fn advise_hugepages(base: usize, len: usize) -> HugepageAdvice {
+    let start = base.next_multiple_of(HUGE_PAGE);
+    let end = base.saturating_add(len) & !(HUGE_PAGE - 1);
+    if end <= start {
+        tracing::info!(
+            len,
+            "hugepages: skipped, no 2 MiB aligned range inside the buffer"
+        );
+        return HugepageAdvice::default();
+    }
+    advise_range(start, end - start)
+}
+
+#[cfg(target_os = "linux")]
+fn advise_range(start: usize, len: usize) -> HugepageAdvice {
+    const MADV_HUGEPAGE: i32 = 14;
+    unsafe extern "C" {
+        fn madvise(addr: *mut std::ffi::c_void, len: usize, advice: i32) -> i32;
+    }
+    // SAFETY: the range is 2 MiB aligned (so page aligned) and lies inside a live allocation of
+    // this process. MADV_HUGEPAGE only sets a hint on the mapping; it never changes contents
+    // and a failure leaves the mapping as it was.
+    let rc = unsafe { madvise(start as *mut std::ffi::c_void, len, MADV_HUGEPAGE) };
+    if rc == 0 {
+        tracing::info!(bytes = len, "hugepages: MADV_HUGEPAGE applied");
+        HugepageAdvice {
+            applied: true,
+            bytes: len as u64,
+            errno: 0,
+        }
+    } else {
+        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(-1);
+        tracing::warn!(bytes = len, errno, "hugepages: madvise failed");
+        HugepageAdvice {
+            applied: false,
+            bytes: len as u64,
+            errno,
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn advise_range(_start: usize, _len: usize) -> HugepageAdvice {
+    tracing::info!("hugepages: skipped, MADV_HUGEPAGE is Linux only");
+    HugepageAdvice::default()
 }
 
 impl Drop for Buffer {

@@ -43,6 +43,10 @@
 //! - `TETRAEDER_EXIT_ADMIT_SHARE` (0 to 1, default off): decode admits that share of the
 //!   compute-tier misses into VRAM slots (`LoadOptions::admit_share`, ADR 0059); `decode_io`
 //!   gets `admitted`, `admitted_bytes` and `admit_ms_per_token` (the synchronous uploads).
+//! - `TETRAEDER_EXIT_RAM_HUGEPAGES` (0/1, default 0): `MADV_HUGEPAGE` on the RAM tier's buffer
+//!   right after allocation (`LoadOptions::ram_hugepages`, ADR 0035 addendum). Each run records
+//!   `ram_hugepages` (`applied`, `advised_bytes`, `errno`); the host sampler's `anon_huge_gb`
+//!   shows whether the kernel backed the tier with huge pages.
 //! - `TETRAEDER_EXIT_KV_ROT` (0/1): Hadamard rotation of Q, K and V (ADR 0050 addendum). Unset:
 //!   on for a quantized KV format, off for f16, as libllama. The reference engine follows it;
 //!   `TETRAEDER_EXIT_REF_ATTN_ROT` (0/1) overrides the reference alone. The JSON options record
@@ -594,6 +598,7 @@ fn exit_regime() {
         opts.overlap = v == "1";
     }
     opts.urgent_first = env_flag("TETRAEDER_EXIT_URGENT_FIRST");
+    opts.ram_hugepages = env_flag("TETRAEDER_EXIT_RAM_HUGEPAGES");
     opts.admit_share = std::env::var("TETRAEDER_EXIT_ADMIT_SHARE")
         .ok()
         .and_then(|v| v.parse::<f64>().ok());
@@ -754,6 +759,11 @@ fn exit_regime() {
             "margins": margins,
             "max_splits": m.max_splits(),
             "memory": memory,
+            "ram_hugepages": m.ram_hugepages().map(|a| json!({
+                "applied": a.applied,
+                "advised_bytes": a.bytes,
+                "errno": a.errno,
+            })),
             "rss_bytes": process::current_rss(),
             "peak_rss_bytes": process::peak_rss(),
         });
@@ -786,6 +796,7 @@ fn exit_regime() {
             "overlap": opts.overlap,
             "urgent_first": opts.urgent_first,
             "admit_share": opts.admit_share,
+            "ram_hugepages": opts.ram_hugepages,
             "kv": opts.kv.to_string(),
             "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
             "cpu_poll": opts.cpu_poll,
