@@ -1,0 +1,45 @@
+=== RUN 2026-11-12T04:13:37 fetch_exit_model.sh ===
+[04:13:37] start fetch, disk free  230G
+source Qwen/Qwen3-235B-A22B-GGUF: https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-GGUF/resolve/master (modelscope 0 KB/s, huggingface 0 KB/s)
+connections per file: 16
+=== RUN 2026-11-12T04:28:34 fetch_exit_model.sh ===
+[04:28:34] start fetch, disk free  229G
+source Qwen/Qwen3-235B-A22B-GGUF: https://huggingface.co/Qwen/Qwen3-235B-A22B-GGUF/resolve/main (TAXAMETER_MODEL_SOURCE)
+connections per file: 16
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf (29742283872 bytes)
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00002-of-00005.gguf (29974106496 bytes)
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00003-of-00005.gguf (29933980640 bytes)
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00004-of-00005.gguf (29936094304 bytes)
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00005-of-00005.gguf (22567608864 bytes)
+models_ok=1
+[04:40:41] FETCH_DONE rc=0
+=== RUN 2026-11-12T05:55:34 fetch_exit_model.sh ===
+[05:55:34] start fetch, disk free   94G
+source Qwen/Qwen3-235B-A22B-GGUF: https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-GGUF/resolve/master (modelscope 0 KB/s, huggingface 0 KB/s)
+connections per file: 16
+=== RUN 2026-11-12T06:00:45 fetch_exit_model.sh ===
+[06:00:45] start fetch, disk free  120G
+source Qwen/Qwen3-235B-A22B-GGUF: https://huggingface.co/Qwen/Qwen3-235B-A22B-GGUF/resolve/main (TAXAMETER_MODEL_SOURCE)
+connections per file: 16
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf (29742283872 bytes)
+ok    Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00002-of-00005.gguf (29974106496 bytes)
+ok    Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00003-of-00005.gguf (29933980640 bytes)
+ok    Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00004-of-00005.gguf (29936094304 bytes)
+ok    Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00005-of-00005.gguf (22567608864 bytes)
+models_ok=1
+[06:05:03] FETCH_DONE rc=0
+=== RUN 2026-11-12T06:05:57 fetch_exit_model.sh ===
+[06:05:57] start fetch, disk free   94G
+source Qwen/Qwen3-235B-A22B-GGUF: https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-GGUF/resolve/master (modelscope 0 KB/s, huggingface 0 KB/s)
+connections per file: 16
+=== RUN 2026-11-12T06:13:25 fetch_exit_model.sh ===
+[06:13:25] start fetch, disk free  119G
+source Qwen/Qwen3-235B-A22B-GGUF: https://huggingface.co/Qwen/Qwen3-235B-A22B-GGUF/resolve/main (TAXAMETER_MODEL_SOURCE)
+connections per file: 16
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf (29742283872 bytes)
+ok    Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00002-of-00005.gguf (29974106496 bytes)
+ok    Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00003-of-00005.gguf (29933980640 bytes)
+ok    Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00004-of-00005.gguf (29936094304 bytes)
+ok    Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00005-of-00005.gguf (22567608864 bytes)
+models_ok=1
+[06:16:29] FETCH_DONE rc=0

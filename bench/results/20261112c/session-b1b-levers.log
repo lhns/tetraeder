@@ -1,0 +1,46 @@
+=== RUN 2026-11-12T04:13:37 session.sh ===
+[04:13:37] session b1b-levers: results bench/results/20261112c, deadline 06:23:37 (130 min left)
+[04:13:37] start exit_run
+vendor/llama.cpp is not a git repo here: fresh repo from https://github.com/ggml-org/llama.cpp
+From https://github.com/ggml-org/llama.cpp
+ * branch            2e0d86bebc210947680e8f0d67daa79f3260c106 -> FETCH_HEAD
+apply 0001-msvc-avx512-vbmi-score.patch
+apply 0002-iqk-avx512-q4k-q6k-decode.patch
+ok: 2e0d86b + 2 patches
+[05:52:20] done rc=0
+[05:52:20] start noise
+source Qwen/Qwen3-8B-GGUF: https://modelscope.cn/models/Qwen/Qwen3-8B-GGUF/resolve/master (modelscope 0 KB/s, huggingface 0 KB/s)
+connections per file: 16
+=== RUN 2026-11-12T05:55:34 session.sh ===
+[05:55:34] session b1b-levers: results bench/results/20261112c, deadline 06:23:37 (28 min left)
+[05:55:34] start exit_run
+patches: already applied
+[06:05:05] done rc=0
+[06:05:05] start noise
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 0.66s
+[06:05:06Z] pair noise-cuda-dense (Noise): llama-cuda-dense vs llama-cuda-dense
+[06:05:07Z] pair noise-cuda-dense -> Error variant `llama-cuda-dense` (/root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf): /opt/llama.cpp/bin/llama-bench exited with exit status: 1: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24176 MiB): |   Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24176 MiB | llama_model_load: error loading model: tensor 'blk.15.ffn_down.weight' data is not within the file bounds, model is corrupted or incomplete | llama_model_load_from_file_impl: failed to load model | llama_bench: error: failed to load model '/root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf'
+spec phase0 on ada5e2f605ea (8 repeats)
+noise-cuda-dense             Error  variant `llama-cuda-dense` (/root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf): /opt/llama.cpp/bin/llama-bench exited with exit status: 1: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24176 MiB): |   Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24176 MiB | llama_model_load: error loading model: tensor 'blk.15.ffn_down.weight' data is not within the file bounds, model is corrupted or incomplete | llama_model_load_from_file_impl: failed to load model | llama_bench: error: failed to load model '/root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf'
+results: bench/results/20261112c/noise/phase0-060506.json
+[06:05:07] done rc=1
+[06:05:07] SESSION_DONE (18 min before the deadline)
+=== RUN 2026-11-12T06:05:57 session.sh ===
+[06:05:57] session b1b-levers: results bench/results/20261112c, deadline 06:43:37 (37 min left)
+[06:05:57] start exit_run
+patches: already applied
+=== RUN 2026-11-12T06:18:32 session.sh ===
+[06:18:32] session b1b-levers: results bench/results/20261112c, deadline 07:03:37 (45 min left)
+[06:18:32] start exit_run
+patches: already applied
+[06:47:02] done rc=0
+[06:47:02] start noise
+    Finished `release` profile [optimized] target(s) in 0.18s
+[06:47:02Z] pair noise-cuda-dense (Noise): llama-cuda-dense vs llama-cuda-dense
+[06:47:02Z] pair noise-cuda-dense -> Error variant `llama-cuda-dense` (/root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf): /opt/llama.cpp/bin/llama-bench exited with exit status: 1: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24176 MiB): |   Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24176 MiB | llama_model_load: error loading model: tensor 'blk.15.ffn_down.weight' data is not within the file bounds, model is corrupted or incomplete | llama_model_load_from_file_impl: failed to load model | llama_bench: error: failed to load model '/root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf'
+spec phase0 on ada5e2f605ea (8 repeats)
+noise-cuda-dense             Error  variant `llama-cuda-dense` (/root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf): /opt/llama.cpp/bin/llama-bench exited with exit status: 1: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24176 MiB): |   Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24176 MiB | llama_model_load: error loading model: tensor 'blk.15.ffn_down.weight' data is not within the file bounds, model is corrupted or incomplete | llama_model_load_from_file_impl: failed to load model | llama_bench: error: failed to load model '/root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf'
+results: bench/results/20261112c/noise/phase0-064702.json
+[06:47:02] done rc=1
+[06:47:02] SESSION_DONE (16 min before the deadline)
