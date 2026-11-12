@@ -11,7 +11,7 @@ use common::synth::{MoeSpec, quantized_moe};
 use common::trace::RoutingRecorder;
 use std::path::PathBuf;
 use tetraeder_ggml_sys::llama::Ftype;
-use tetraeder_memory::replay::sim::{Config, Policy, Trace, replay};
+use tetraeder_memory::replay::sim::{Config, Policy, Trace, VramPolicy, replay};
 use tetraeder_model::{BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
@@ -121,6 +121,7 @@ fn cpu_replay_matches_the_engine_exactly() {
                 vram_slots: VRAM as u32,
                 ram_slots: ram as u32,
                 policy: Policy::Lru,
+                vram_policy: VramPolicy::Static,
                 prefetch,
             },
         );
