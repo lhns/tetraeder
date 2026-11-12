@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde_json::json;
 use std::path::Path;
 use tetraeder_memory::replay::REPLAY_VERSION;
-use tetraeder_memory::replay::sim::{Config, Policy, Trace, replay_matrix};
+use tetraeder_memory::replay::sim::{Config, Policy, Trace, VramPolicy, replay_matrix};
 use tetraeder_memory::replay::timed::{TimeModel, replay_timed};
 use tetraeder_memory::replay::trace::Record;
 
@@ -22,9 +22,10 @@ pub fn run(
     vram: &[u32],
     ram: &[u32],
     policies: &[Policy],
+    vram_policies: &[VramPolicy],
     out: &Path,
 ) -> Result<usize> {
-    run_timed(trace_path, vram, ram, policies, out, None)
+    run_timed(trace_path, vram, ram, policies, vram_policies, out, None)
 }
 
 /// [`run`] that also replays every configuration on the virtual clock of `time_model` (ADR 0056)
@@ -34,6 +35,7 @@ pub fn run_timed(
     vram: &[u32],
     ram: &[u32],
     policies: &[Policy],
+    vram_policies: &[VramPolicy],
     out: &Path,
     time_model: Option<&Path>,
 ) -> Result<usize> {
@@ -52,7 +54,7 @@ pub fn run_timed(
     } else {
         &[false]
     };
-    let outcomes = replay_matrix(&trace, vram, ram, policies, modes);
+    let outcomes = replay_matrix(&trace, vram, ram, policies, vram_policies, modes);
     let timed = match time_model {
         None => None,
         Some(p) => {
@@ -68,6 +70,7 @@ pub fn run_timed(
                     vram_slots: o.vram_slots,
                     ram_slots: o.ram_slots,
                     policy: Policy::parse(&o.policy).map_err(anyhow::Error::msg)?,
+                    vram_policy: VramPolicy::parse(&o.vram_policy).map_err(anyhow::Error::msg)?,
                     prefetch: o.prefetch,
                 };
                 let t = replay_timed(&trace, &cfg, &m).map_err(anyhow::Error::msg)?;
@@ -75,6 +78,7 @@ pub fn run_timed(
                     "vram_slots": o.vram_slots,
                     "ram_slots": o.ram_slots,
                     "policy": o.policy,
+                    "vram_policy": o.vram_policy,
                     "prefetch": o.prefetch,
                     "timing": t,
                 }));
@@ -102,6 +106,7 @@ pub fn run_timed(
             "vram_slots": vram,
             "ram_slots": ram,
             "policies": policies.iter().map(Policy::name).collect::<Vec<_>>(),
+            "vram_policies": vram_policies.iter().map(VramPolicy::name).collect::<Vec<_>>(),
         },
         "outcomes": outcomes,
     });

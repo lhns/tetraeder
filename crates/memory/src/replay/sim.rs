@@ -67,11 +67,69 @@ impl Policy {
     }
 }
 
+/// The VRAM (compute) tier policy, ADR 0050 (c) addendum 2026-11-12. The engine as built is
+/// [`VramPolicy::Static`]; the others ask whether admitting experts during decode would raise
+/// the share of pairs served from VRAM enough to matter. Admissions copy an expert from the
+/// host to VRAM; the replay counts those bytes (`vram_admit_bytes_per_token`) and models no
+/// RAM-tier traffic or time for them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum VramPolicy {
+    /// As built: the hot set is pinned at the marker and never changes during decode.
+    Static,
+    /// Every decode miss is admitted to the compute tier, evicting the least recently used
+    /// unpinned expert. `pin` is the share of the slots that keep the marker's hot set pinned
+    /// (floor of `pin * slots`); the rest of the hot set is loaded unpinned as a warm start.
+    Lru { pin: f64 },
+    /// The per-layer top-N by routing counts (N = the slots) is pinned again every
+    /// [`FREQ_REFRESH_STEPS`] decode steps; newcomers are copied in.
+    Freq,
+    /// A static hot set like [`VramPolicy::Static`], but picked from the routing counts of the
+    /// whole prefill (all ubatches) when decode starts; the marker after the first ubatch is
+    /// ignored.
+    Prefill,
+}
+
+impl VramPolicy {
+    /// `static`, `prefill`, `lru`, `lru:<pin share in [0, 1)>` or `freq`.
+    pub fn parse(s: &str) -> Result<VramPolicy, String> {
+        match s {
+            "static" => Ok(VramPolicy::Static),
+            "lru" => Ok(VramPolicy::Lru { pin: 0.0 }),
+            "freq" => Ok(VramPolicy::Freq),
+            "prefill" => Ok(VramPolicy::Prefill),
+            _ => {
+                let pin = s
+                    .strip_prefix("lru:")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .filter(|v| (0.0..1.0).contains(v))
+                    .ok_or_else(|| {
+                        format!(
+                            "vram policy {s:?}: expected static, prefill, lru, lru:<pin share in [0, 1)> or freq"
+                        )
+                    })?;
+                Ok(VramPolicy::Lru { pin })
+            }
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            VramPolicy::Static => "static".into(),
+            VramPolicy::Lru { pin } if *pin == 0.0 => "lru".into(),
+            VramPolicy::Lru { pin } => format!("lru:{pin}"),
+            VramPolicy::Freq => "freq".into(),
+            VramPolicy::Prefill => "prefill".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Config {
     pub vram_slots: u32,
     pub ram_slots: u32,
     pub policy: Policy,
+    /// The VRAM-tier policy; [`VramPolicy::Static`] is the engine as built.
+    pub vram_policy: VramPolicy,
     /// Replay the recorded predictions as prefetch reads. Ignored by [`Policy::Belady`].
     pub prefetch: bool,
 }
@@ -114,6 +172,10 @@ pub struct PhaseOutcome {
     pub sync_miss_bytes_per_token: f64,
     pub prefetch_bytes_per_token: f64,
     pub wasted_bytes_per_token: f64,
+    /// Bytes copied to VRAM per token by admissions during decode (`lru`, `freq`); absent for
+    /// `static`, which never admits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vram_admit_bytes_per_token: Option<f64>,
     pub prefetch_issued: u64,
     pub prefetch_used: u64,
     pub prefetch_wasted: u64,
@@ -124,6 +186,9 @@ pub struct Outcome {
     pub vram_slots: u32,
     pub ram_slots: u32,
     pub policy: String,
+    /// The VRAM-tier policy name; absent for `static`, so those outcomes stay as before.
+    #[serde(skip_serializing_if = "is_static_name")]
+    pub vram_policy: String,
     pub prefetch: bool,
     pub prefill: PhaseOutcome,
     pub decode: PhaseOutcome,
@@ -133,8 +198,13 @@ pub struct Outcome {
     pub layer_stats: Vec<(u64, u64)>,
 }
 
+fn is_static_name(s: &str) -> bool {
+    s == "static"
+}
+
 #[derive(Default, Clone)]
 struct Acc {
+    admit_bytes: u64,
     steps: u64,
     tokens: u64,
     pairs: u64,
@@ -540,20 +610,41 @@ impl<'a, 't> Sim<'a, 't> {
 
     /// `Qwen3Moe::refresh_hot_set`.
     fn hot_refresh(&mut self) {
+        if self.cfg.vram_policy != VramPolicy::Prefill {
+            self.build_hot_set();
+        }
+    }
+
+    fn build_hot_set(&mut self) {
         self.settle();
         self.ev += 1;
         self.set_event();
         for il in 0..self.h.n_layer as usize {
             let active = self.vram.layer(il).active();
             let hot = hot_from_counts(&self.counts[il], active);
-            let change = self.vram.layer_mut(il).set_hot_set(&hot);
-            if change.missing.is_empty() {
+            // `lru` pins only part of the hot set; the rest is a warm start.
+            let pins = match self.cfg.vram_policy {
+                VramPolicy::Lru { pin } => {
+                    ((f64::from(active) * pin).floor() as usize).min(hot.len())
+                }
+                _ => hot.len(),
+            };
+            let change = self.vram.layer_mut(il).set_hot_set(&hot[..pins]);
+            let wanted: Vec<u32> = if pins == hot.len() {
+                change.missing
+            } else {
+                hot.iter()
+                    .copied()
+                    .filter(|&e| self.vram.layer(il).slot_of(e).is_none())
+                    .collect()
+            };
+            if wanted.is_empty() {
                 continue;
             }
             // make_resident: VRAM lookups (all misses), then the loads through the RAM tier in
             // hits-first groups of the RAM slot count.
             let mut loads = Vec::new();
-            for &e in &change.missing {
+            for &e in &wanted {
                 if matches!(self.vram.layer_mut(il).lookup(e), Lookup::Miss { .. }) {
                     loads.push(e);
                 }
@@ -570,6 +661,22 @@ impl<'a, 't> Sim<'a, 't> {
         self.refresh_freq_pins();
     }
 
+    /// `VramPolicy::Freq`: re-pick the top experts of every layer by routing count; newcomers
+    /// are copied into free or unpinned slots, and the bytes counted.
+    fn refresh_vram_freq(&mut self) {
+        for il in 0..self.h.n_layer as usize {
+            let active = self.vram.layer(il).active();
+            let hot = hot_from_counts(&self.counts[il], active);
+            let change = self.vram.layer_mut(il).set_hot_set(&hot);
+            for e in change.missing {
+                if matches!(self.vram.layer_mut(il).lookup(e), Lookup::Miss { .. }) {
+                    let bytes = self.expert_bytes(il);
+                    self.acc[DECODE].admit_bytes += bytes;
+                }
+            }
+        }
+    }
+
     fn set_event(&mut self) {
         if let Ram::Belady(b) = &mut self.ram {
             b.ev = self.ev;
@@ -584,11 +691,23 @@ impl<'a, 't> Sim<'a, 't> {
         if self.cur_step != Some(s.step) {
             self.settle();
             self.cur_step = Some(s.step);
-            self.phase = if s.n_tokens == 1 { DECODE } else { PREFILL };
+            let phase = if s.n_tokens == 1 { DECODE } else { PREFILL };
+            // `prefill`: the hot set from the counts of the whole prefill, as decode starts (its
+            // loads count in the prefill phase, like a marker's).
+            if phase == DECODE
+                && self.decode_steps == 0
+                && self.cfg.vram_policy == VramPolicy::Prefill
+            {
+                self.build_hot_set();
+            }
+            self.phase = phase;
             self.acc[self.phase].steps += 1;
             if self.phase == DECODE {
                 if self.decode_steps.is_multiple_of(FREQ_REFRESH_STEPS) {
                     self.refresh_freq_pins();
+                    if self.cfg.vram_policy == VramPolicy::Freq {
+                        self.refresh_vram_freq();
+                    }
                 }
                 self.decode_steps += 1;
             }
@@ -627,6 +746,13 @@ impl<'a, 't> Sim<'a, 't> {
             self.vram.layer_mut(il).lookup(e);
         }
         let order = hits_first(&rest, |e| self.ram_has(il, e));
+        // `lru`: the CPU experts of a decode step are admitted once the step has used them.
+        let lru = matches!(self.cfg.vram_policy, VramPolicy::Lru { .. });
+        let admit = if self.phase == DECODE && lru {
+            rest.clone()
+        } else {
+            Vec::new()
+        };
         if self.prefetch_on {
             if let Some(p) = &s.predicted {
                 self.start_prefetch(il + 1, p);
@@ -642,6 +768,12 @@ impl<'a, 't> Sim<'a, 't> {
                 t.cpu_group(il, &g, true);
             }
         }
+        for e in admit {
+            if matches!(self.vram.layer_mut(il).lookup(e), Lookup::Miss { .. }) {
+                let bytes = self.expert_bytes(il);
+                self.acc[DECODE].admit_bytes += bytes;
+            }
+        }
         if let Some(t) = self.timing.as_mut() {
             t.layer_end(il);
         }
@@ -649,6 +781,12 @@ impl<'a, 't> Sim<'a, 't> {
     }
 
     fn check_pins(&mut self) {
+        if self.check {
+            let bad = (0..self.vram.layers())
+                .filter(|&il| self.vram.layer(il).pinned_count() > self.vram.layer(il).active())
+                .count();
+            self.violations += bad as u64;
+        }
         if let (true, Ram::Slots(c)) = (self.check, &self.ram) {
             let bad = (0..c.layers())
                 .filter(|&il| c.layer(il).pinned_count() > c.layer(il).active())
@@ -659,6 +797,7 @@ impl<'a, 't> Sim<'a, 't> {
 
     fn outcome(mut self) -> (Outcome, Option<AccessLog>) {
         self.settle();
+        let adm = self.cfg.vram_policy != VramPolicy::Static;
         let phase = |a: &Acc| {
             let tok = a.tokens.max(1) as f64;
             let rate = |h: u64, m: u64| h as f64 / (h + m).max(1) as f64;
@@ -683,6 +822,7 @@ impl<'a, 't> Sim<'a, 't> {
                 sync_miss_bytes_per_token: a.sync_bytes as f64 / tok,
                 prefetch_bytes_per_token: a.prefetch_bytes as f64 / tok,
                 wasted_bytes_per_token: a.wasted_bytes as f64 / tok,
+                vram_admit_bytes_per_token: adm.then(|| a.admit_bytes as f64 / tok),
                 prefetch_issued: a.issued,
                 prefetch_used: a.used,
                 prefetch_wasted: a.wasted,
@@ -700,6 +840,7 @@ impl<'a, 't> Sim<'a, 't> {
             vram_slots: self.cfg.vram_slots,
             ram_slots: self.cfg.ram_slots,
             policy: self.cfg.policy.name(),
+            vram_policy: self.cfg.vram_policy.name(),
             prefetch: self.prefetch_on,
             prefill: phase(&self.acc[PREFILL]),
             decode: phase(&self.acc[DECODE]),
@@ -784,23 +925,27 @@ pub fn replay_matrix(
     vram: &[u32],
     ram: &[u32],
     policies: &[Policy],
+    vram_policies: &[VramPolicy],
     prefetch: &[bool],
 ) -> Vec<Outcome> {
     let mut out = Vec::new();
     for &vram_slots in vram {
         for &ram_slots in ram {
             for &policy in policies {
-                for &pf in prefetch {
-                    if policy == Policy::Belady && pf {
-                        continue;
+                for &vram_policy in vram_policies {
+                    for &pf in prefetch {
+                        if policy == Policy::Belady && pf {
+                            continue;
+                        }
+                        let cfg = Config {
+                            vram_slots,
+                            ram_slots,
+                            policy,
+                            vram_policy,
+                            prefetch: pf,
+                        };
+                        out.push(replay(trace, &cfg));
                     }
-                    let cfg = Config {
-                        vram_slots,
-                        ram_slots,
-                        policy,
-                        prefetch: pf,
-                    };
-                    out.push(replay(trace, &cfg));
                 }
             }
         }
