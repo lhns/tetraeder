@@ -29,6 +29,7 @@ CPU_STATES = ("user", "nice", "system", "idle", "wait", "interrupt", "softirq", 
 MAX_AGE_S = 2.5
 MAX_FAILS = 10
 
+THREAD_CTXSW = "tetraeder.host.process.thread.context_switches"
 GPU = {"hw.id": GPU_ID, "hw.type": "gpu"}
 READ = {"disk.io.direction": "read"}
 
@@ -77,6 +78,11 @@ def points(rec):
     if cs:
         add("tetraeder.host.process.context_switches", "counter", "{count}", cs.get("vol"), {"type": "voluntary"})
         add("tetraeder.host.process.context_switches", "counter", "{count}", cs.get("invol"), {"type": "involuntary"})
+    # per-thread counters: a thread's counter vanishes when it exits, so the rate needs per-thread deltas (see
+    # engine_sample.ctxsw_delta); the sum above falls then
+    for tid, (vol, invol) in sorted((rec.get("ctxsw_tasks") or {}).items()):
+        add(THREAD_CTXSW, "counter", "{count}", vol, {"tetraeder.thread": tid, "type": "voluntary"})
+        add(THREAD_CTXSW, "counter", "{count}", invol, {"tetraeder.thread": tid, "type": "involuntary"})
     rss = rec.get("rss_kb")
     add("tetraeder.host.process.memory.usage", "gauge", "By", rss * 1024 if rss is not None else None)
     ahp = rec.get("anon_huge_kb")
@@ -316,6 +322,11 @@ def _record(pts):
     vol = get("tetraeder.host.process.context_switches", type="voluntary")
     invol = get("tetraeder.host.process.context_switches", type="involuntary")
     rec["ctxsw"] = None if vol is None and invol is None else {"vol": vol or 0, "invol": invol or 0}
+    tasks = {}
+    for (n, _), (v, attrs) in pts.items():
+        if n == THREAD_CTXSW and "tetraeder.thread" in attrs:
+            tasks.setdefault(attrs["tetraeder.thread"], [0, 0])[0 if attrs.get("type") == "voluntary" else 1] = v
+    rec["ctxsw_tasks"] = tasks or None
     rec["anon_huge_kb"] = kb(get("tetraeder.host.process.memory.anon_huge"))
     rec["majflt"] = get("tetraeder.host.process.paging.faults", type="major") or 0
     rec["own_cpu_s"] = get("tetraeder.host.process.cpu.time")

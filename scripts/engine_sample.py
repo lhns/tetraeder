@@ -707,6 +707,7 @@ def summarize(a):
     if a.merge_into:
         d = json.loads(ds.read(a.merge_into))
         d["host"] = out["host"]
+        d["host_windows"] = out["windows"]
         d.setdefault("env", {}).update(out["env"])
         json.dump(d, open(a.merge_into, "w"), indent=2)
 
@@ -755,6 +756,16 @@ PAD_S = 5.0
 HOST_DIFF_REL = 0.05
 
 
+def summarize_threads(d):
+    """The --threads the host block was summarized with: the denominator of cpu_busy_pct and the top-CPU count. It is
+    the stage's quota-derived thread count, not options.threads (a stage may run the engine with fewer, ADR 0060).
+    Stored as host_windows.threads; results from before that carry the membw probe's threads (same value), else
+    options.threads."""
+    hw = d.get("host_windows") or {}
+    mb = (d.get("env") or {}).get("membw") or {}
+    return hw.get("threads") or mb.get("threads") or (d.get("options") or {}).get("threads")
+
+
 def result_windows(path, d):
     """(prefill, decode, threads, read-wait results, per-window list or None) of a result JSON: the builder's
     decode_windows, else its "host_windows"; None when it has neither."""
@@ -763,7 +774,7 @@ def result_windows(path, d):
     if dw[0].get("start_unix_s") is not None:
         pre, dec = windows_builder(path)
         rw, wins = builder_extras(path)
-        return pre, dec, (d.get("options") or {}).get("threads"), rw, wins
+        return pre, dec, summarize_threads(d), rw, wins
     hw = d.get("host_windows")
     if hw and hw.get("prefill") and hw.get("decode"):
         return tuple(hw["prefill"]), tuple(hw["decode"]), hw.get("threads"), ((None, False),) * 2, None

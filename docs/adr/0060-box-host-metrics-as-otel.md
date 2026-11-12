@@ -65,3 +65,5 @@ Disk fields (`read_*`, `disk_queue_depth_mean`, `disk_inflight_max`), `cpu_busy_
 - About 120 MB of OTLP per box hour at 1 s, fetched with the results and billed per GB; the files are not committed.
 - Timestamps: hostmetrics points lag a tick by up to a second, so a field over a 5 s window can differ from the sampler's by up to one interval's share; `host_otlp_diff` shows how much.
 - Metric names of hostmetrics come from the 0.116.0 receiver docs and the CI `validate` step; their values on a Vast container are confirmed by the first box run, not before.
+
+Fixes after the first box comparison (20261112e): context switches are emitted per thread (tetraeder.host.process.thread.context_switches) so host_otlp uses the sampler positive-delta rule; cpu_busy_pct and the top-CPU mean divide by the threads summarize ran with (stored as host_windows.threads, else the membw probe threads), not options.threads, which a stage may lower; disk_inflight_max is an instantaneous gauge read on two clocks and may differ legitimately.

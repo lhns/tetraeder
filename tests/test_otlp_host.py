@@ -357,3 +357,59 @@ def test_box_collector_end_to_end(tmp_path):
         assert r["cpus"] and r["cpu_steal"] is not None, r
         assert r["disk_read_bytes"] is not None and r["disk_weighted_ms"] is not None, r
         assert r["majflt"] is not None and r["rss_kb"] is not None
+
+
+def per_thread_ctxsw(k):
+    """Threads 2 and 3 exit at tick 20 (their counters vanish), thread 4 starts at tick 20: the plain sum falls."""
+    if k < 20:
+        return {"1:1": [100 + 60 * k, 1 + k], "1:2": [5000 + 200 * k, 50 + 10 * k], "1:3": [900 + 50 * k, 9]}
+    return {"1:1": [100 + 60 * k, 1 + k], "1:4": [30 + 40 * (k - 20), 1 + (k - 20)]}
+
+
+def test_ctxsw_rate_survives_exiting_threads_in_the_otlp_path(tmp_path):
+    """host_otlp used the summed counters (a falling sum read as 0); it needs the sampler's per-thread positive deltas."""
+    samples, otel, results, builder = write_inputs(tmp_path)
+    rows = [json.loads(ln) for ln in samples.read_text().splitlines()]
+    for k, r in enumerate(rows):
+        tasks = per_thread_ctxsw(k)
+        r["ctxsw_tasks"] = tasks
+        r["ctxsw"] = es.ctxsw_total(tasks)
+    assert rows[-1]["ctxsw"]["vol"] < rows[19]["ctxsw"]["vol"]
+    samples.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    res = oh.resource(env={"TETRAEDER_STAGE": "main"}, **{"tetraeder.host.disk.device": DISK})
+    with open(otel / "120000" / "metrics.jsonl", "a") as f:
+        for r in rows:
+            pts = [p for p in oh.points(r) if "context_switches" in p[0]]
+            f.write(json.dumps(oh.request(pts, r["t"], res, start=T0 - 1)) + "\n")
+    summarize_sampler(samples, builder, tmp_path)
+    es.otlp_merge(types.SimpleNamespace(otel_dir=str(otel), results=str(results)))
+    d = json.loads(builder.read_text())
+    assert d["host"]["decode"]["ctxsw_vol_per_s"] > 100
+    assert d["host_otlp"]["decode"]["ctxsw_vol_per_s"] == pytest.approx(d["host"]["decode"]["ctxsw_vol_per_s"])
+    assert d["host_otlp"]["decode"]["ctxsw_invol_per_s"] == pytest.approx(d["host"]["decode"]["ctxsw_invol_per_s"])
+
+
+def test_busy_share_uses_the_summarize_threads_not_the_engine_threads(tmp_path):
+    """The stage ran the engine with 2 threads while the sampler's summary divided by the quota (3): host_otlp must
+    use the same denominator, for cpu_busy_pct and the top-CPU mean."""
+    samples, otel, results, builder = write_inputs(tmp_path)
+    d = json.loads(builder.read_text())
+    d["options"]["threads"] = 2  # TETRAEDER_EXIT_THREADS override of a stage; summarize still gets --threads 3
+    builder.write_text(json.dumps(d))
+    summarize_sampler(samples, builder, tmp_path)
+    es.otlp_merge(types.SimpleNamespace(otel_dir=str(otel), results=str(results)))
+    d = json.loads(builder.read_text())
+    assert d["host_otlp"]["decode"]["cpu_busy_pct"] == pytest.approx(d["host"]["decode"]["cpu_busy_pct"])
+    assert d["host_otlp"]["decode"]["cpu_busy_pct_top_cpus"] == pytest.approx(d["host"]["decode"]["cpu_busy_pct_top_cpus"])
+    assert d["host_otlp_diff"] == {}
+
+
+def test_results_without_host_windows_take_the_membw_probe_threads(tmp_path):
+    """Results written before host_windows was stored: the membw probe ran at the summarize threads."""
+    samples, otel, results, builder = write_inputs(tmp_path)
+    d = json.loads(builder.read_text())
+    d["options"]["threads"] = 2
+    d["env"] = {"membw": {"membw_gb_s": 1.0, "threads": 3, "seconds": 1.0}}
+    builder.write_text(json.dumps(d))
+    pre, dec, threads, rw, wins = es.result_windows(str(builder), d)
+    assert threads == 3
