@@ -35,6 +35,18 @@ flags = ["-ngl", "99", "-fa", "on", "-c", ctx, "-b", ub, "-ub", ub, "-t", thread
 cmd = [server, "-m", model, *flags, "--host", "127.0.0.1", "--port", str(port)]
 
 
+def moe_cache_stats(path):
+    """llama.cpp's expert-cache summary lines (#30966) as numbers; decode counts include the warm-up tokens."""
+    out = {}
+    for l in open(path, errors="replace"):
+        m = re.search(r"ubatch <= (\d+): hits = (\d+), misses = (\d+) \((\d+) on the CPU\), hit rate = ([\d.]+)%, uploaded = ([\d.]+) MiB", l)
+        if m:
+            out["decode"] = {"ubatch_max": int(m[1]), "hits": int(m[2]), "misses": int(m[3]), "misses_cpu": int(m[4]),
+                             "hit_rate": float(m[5]) / 100, "uploaded_mib": float(m[6])}
+        m = re.search(r"large batches: (\d+) experts copied from the cache, ([\d.]+) MiB", l)
+        if m:
+            out["large_batches"] = {"experts_copied": int(m[1]), "copied_mib": float(m[2])}
+    return out or None
 def http(endpoint, body=None, timeout=7200):
     req = urllib.request.Request(f"http://127.0.0.1:{port}{endpoint}", data=json.dumps(body).encode() if body else None,
                                  headers={"Content-Type": "application/json"})
@@ -147,6 +159,7 @@ finally:
         except subprocess.TimeoutExpired:
             proc.kill()
     res["cache_log"] = [l.strip() for l in open(log, errors="replace") if "llama_moe_cache:" in l][-6:]
+    res["moe_cache"] = moe_cache_stats(log)
     json.dump({**res, "runs": [dict(res)]}, open(out, "w"), indent=1)
 print(res["engine"], "decode tok/s:", res.get("decode_tok_s"), "ok:", res["ok"], res.get("error", ""))
 sys.exit(0 if res["ok"] else 1)
