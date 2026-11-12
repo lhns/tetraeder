@@ -18,7 +18,6 @@ pub enum AdmitUpload {
     /// Test only: every copy waits for the barrier, and the destination slot holds `0xff`
     /// bytes (a NaN scale in every K-quant block) until then, so a read before the barrier
     /// shows in the logits.
-    #[doc(hidden)]
     Deferred,
 }
 
