@@ -3,6 +3,8 @@ name: poll-bench
 # ggml polling under a CPU quota (ADR 0061): poll 50, poll 0 and pool pause, interleaved, on the synthetic MoE exit
 # harness. Manual only. Fails loudly when the runner cannot enforce the quota. Never gates a PR.
 on:
+  push:
+    branches: [track-poll-ci-bench]
   workflow_dispatch:
     inputs:
       rounds:
