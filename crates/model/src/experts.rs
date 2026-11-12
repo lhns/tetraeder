@@ -16,7 +16,10 @@ use tetraeder_memory::io::{
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_memory::reader::{HostDst, ReadJob, Reader, Ticket, copy_sink, tensor_dst};
 use tetraeder_memory::replay::prefetch_plan;
-use tetraeder_memory::slots::{AdmitPolicy, LayerStats, Lookup, SlotCache, Tier, hot_from_counts};
+use tetraeder_memory::slots::{
+    AdmitPolicy, FREQ_REFRESH_STEPS, LayerStats, Lookup, RamPolicy, SlotCache, Tier, freq_pins,
+    hot_from_counts, pins_with_room,
+};
 use tetraeder_memory::{DirectFile, IoOptions, Range};
 
 /// What a layer step does with a routed expert that is not resident in the compute tier.
@@ -312,6 +315,15 @@ pub(crate) struct Streamer {
     counts: Vec<Vec<u64>>,
     /// Decode admission into the compute tier (ADR 0059); `None`: the static hot set.
     admit: Option<AdmitPolicy>,
+    /// RAM-tier policy (ADR 0050 (c)); `Lru` without a RAM tier.
+    ram_policy: RamPolicy,
+    /// Frequency pins per layer, most routed first (`RamPolicy::Freq`).
+    freq_pins: Vec<Vec<u32>>,
+    /// The frequency pins are held in decode steps only (a prefill step may route more distinct
+    /// experts than the unpinned slots hold). Mirrors the replay.
+    pins_on: bool,
+    /// Decode steps begun, for the pin refresh.
+    decode_steps: u64,
 }
 
 pub(crate) struct StreamerConfig {
@@ -330,6 +342,8 @@ pub(crate) struct StreamerConfig {
     pub admit_share: Option<f64>,
     /// `LoadOptions::ram_hugepages`.
     pub ram_hugepages: bool,
+    /// `LoadOptions::ram_policy`.
+    pub ram_policy: RamPolicy,
 }
 
 fn invalid(msg: impl Into<String>) -> ModelError {
@@ -392,6 +406,11 @@ impl Streamer {
                 })
             })
             .transpose()?;
+        let ram_policy = if ram.is_some() {
+            cfg.ram_policy
+        } else {
+            RamPolicy::Lru
+        };
         let counts = match cfg.profile {
             Some(p) => {
                 if p.len() != layers || p.iter().any(|c| c.len() != n_expert as usize) {
@@ -473,6 +492,10 @@ impl Streamer {
             mixed: vec![0; layers],
             counts,
             admit: cfg.admit_share.map(|s| AdmitPolicy::new(layers, s)),
+            ram_policy,
+            freq_pins: vec![Vec::new(); layers],
+            pins_on: false,
+            decode_steps: 0,
         })
     }
 
@@ -667,9 +690,55 @@ impl Streamer {
     /// Starts a decode or prefill step: new deadlines for the service, and waits for the reads
     /// of an earlier step (a step that failed, or experts mispredicted under overlap, which are
     /// long landed), so nothing in flight spans two steps.
-    pub(crate) fn begin_step(&mut self) {
+    pub(crate) fn begin_step(&mut self, n_tokens: usize) {
         self.settle();
         self.step += 1;
+        if self.ram_policy != RamPolicy::Lru {
+            self.pins_on = n_tokens == 1;
+            if self.pins_on {
+                if self.decode_steps.is_multiple_of(FREQ_REFRESH_STEPS) {
+                    self.refresh_freq_pins();
+                }
+                self.decode_steps += 1;
+            }
+            self.apply_freq_pins();
+        }
+    }
+
+    /// The frequency pins in force for layer `il`.
+    fn standing(&self, il: usize) -> &[u32] {
+        if self.pins_on {
+            &self.freq_pins[il]
+        } else {
+            &[]
+        }
+    }
+
+    /// Puts the pins in force on the RAM slot tables (all layers).
+    fn apply_freq_pins(&mut self) {
+        let Some(ram) = &mut self.ram else {
+            return;
+        };
+        for (il, pins) in self.freq_pins.iter().enumerate() {
+            let pins = if self.pins_on { pins.as_slice() } else { &[] };
+            ram.cache.layer_mut(il).set_hot_set(pins);
+        }
+    }
+
+    /// `RamPolicy::Freq`: re-picks the layer's top experts by routing count, leaving out those
+    /// pinned in the compute tier, and puts them in force.
+    fn refresh_freq_pins(&mut self) {
+        let Some(ram) = &self.ram else {
+            return;
+        };
+        if self.ram_policy == RamPolicy::Lru {
+            return;
+        }
+        let k = self.ram_policy.pin_count(ram.slots as u32);
+        for (il, pins) in self.freq_pins.iter_mut().enumerate() {
+            *pins = freq_pins(&self.counts[il], self.compute.layer(il), k);
+        }
+        self.apply_freq_pins();
     }
 
     /// Reads ahead the experts of layer `il` that `predicted` (`[n_used, n_tokens]`) names and
@@ -688,10 +757,11 @@ impl Streamer {
         predicted: &[i32],
         depth: u8,
     ) -> Result<()> {
+        let standing = self.standing(il).to_vec();
         let (Some(pf), Some(ram)) = (&mut self.prefetcher, &mut self.ram) else {
             return Ok(());
         };
-        let inflight: Vec<u32> = match &*pf {
+        let mut inflight: Vec<u32> = match &*pf {
             Prefetcher::Reader { inflight, .. } => inflight
                 .iter()
                 .filter(|f| f.il == il)
@@ -703,6 +773,8 @@ impl Streamer {
                 .map(|u| u.expert)
                 .collect(),
         };
+        // Frequency pins hold slots like reads in flight do.
+        inflight.extend(&standing);
         // The experts to pin (resident predicted ones and reads still in flight for the layer)
         // and to read; the selection is shared with the replay (ADR 0050).
         let (mut pins, missing) = prefetch_plan(
@@ -911,8 +983,9 @@ impl Streamer {
                 }
             }
         }
+        let standing = self.standing(il).to_vec();
         if let Some(ram) = &mut self.ram {
-            ram.cache.layer_mut(il).set_hot_set(&[]);
+            ram.cache.layer_mut(il).set_hot_set(&standing);
         }
         match failure {
             None => Ok(()),
@@ -1015,6 +1088,7 @@ impl Streamer {
         t0: Instant,
     ) -> Result<StagedLayer> {
         let order = self.step * self.sizes.len() as u64 + il as u64;
+        let standing = self.standing(il).to_vec();
         let Some(Prefetcher::Service { io, inflight }) = &mut self.prefetcher else {
             return Err(invalid("overlap needs the I/O service"));
         };
@@ -1047,7 +1121,8 @@ impl Streamer {
             .map(|u| u.expert)
             .collect();
         let layer = ram.cache.layer_mut(il);
-        layer.set_hot_set(&pins);
+        // The frequency pins give way as far as the step's own experts need slots.
+        layer.set_hot_set(&pins_with_room(&pins, experts, &standing, ram.slots));
         let mut idx: Vec<usize> = (0..experts.len()).collect();
         idx.sort_by_key(|&i| layer.slot_of(experts[i]).is_none());
         let mut slots = vec![0u32; experts.len()];
@@ -1086,7 +1161,7 @@ impl Streamer {
                     pending[i] = true;
                     // Pinned from the moment it has a slot: its unit writes there.
                     pins.push(e);
-                    layer.set_hot_set(&pins);
+                    layer.set_hot_set(&pins_with_room(&pins, experts, &standing, ram.slots));
                 }
                 Lookup::Bypass => return Err(invalid("no free RAM expert slot (all pinned)")),
             }
@@ -1230,6 +1305,7 @@ impl Streamer {
             }
             self.metrics.read_hidden(sp.wait, span);
         }
+        let standing = self.standing(il).to_vec();
         let Some(Prefetcher::Service { inflight, .. }) = &mut self.prefetcher else {
             return;
         };
@@ -1240,6 +1316,7 @@ impl Streamer {
             .map(|u| u.expert)
             .collect();
         if let Some(ram) = &mut self.ram {
+            let pins = pins_with_room(&pins, &[], &standing, ram.slots);
             ram.cache.layer_mut(il).set_hot_set(&pins);
         }
     }
@@ -1284,6 +1361,17 @@ impl Streamer {
         let mut order: Vec<usize> = (0..experts.len()).collect();
         order.sort_by_key(|&i| ram.cache.layer(il).slot_of(experts[i]).is_none());
         let mut out = vec![(0usize, false); experts.len()];
+        // The frequency pins give way as far as the chunk's own experts need slots; they are
+        // put back once the chunk has its slots.
+        let standing = if self.pins_on {
+            self.freq_pins[il].clone()
+        } else {
+            Vec::new()
+        };
+        if !standing.is_empty() {
+            let pins = pins_with_room(&[], experts, &standing, ram.slots);
+            ram.cache.layer_mut(il).set_hot_set(&pins);
+        }
         for &i in &order {
             let res = ram.cache.layer_mut(il).lookup(experts[i]);
             self.metrics.lookup(il as u32, Tier::Ram, &res);
@@ -1311,6 +1399,9 @@ impl Streamer {
                 }
                 Lookup::Bypass => return Err(invalid("no free RAM expert slot (all pinned)")),
             };
+        }
+        if !standing.is_empty() {
+            ram.cache.layer_mut(il).set_hot_set(&standing);
         }
         let reads: Vec<usize> = (0..experts.len()).filter(|&i| out[i].1).collect();
         if !reads.is_empty() {
@@ -1413,6 +1504,7 @@ impl Streamer {
                 self.compute.layer_mut(il).set_hot_set(&[]);
             }
         }
+        self.refresh_freq_pins();
         Ok(())
     }
 
