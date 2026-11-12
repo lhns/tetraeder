@@ -250,8 +250,8 @@ mod tests {
         let t = Telemetry::from_parts(&cfg, mp.clone(), None, None);
         let m = t.metrics();
         m.time_to_first_token(Duration::from_millis(80), "qwen3", "chat");
-        m.time_per_output_token(Duration::from_millis(20), "qwen3");
-        m.request_duration(Duration::from_secs(1), "qwen3", None);
+        m.time_per_output_token(Duration::from_millis(20), "qwen3", "chat");
+        m.request_duration(Duration::from_secs(1), "qwen3", "chat", None);
         m.tokens(7, "qwen3", Direction::Output, CacheResult::Miss);
         t.record_step(step(12));
         m.device_busy("gpu0", 0.5);
@@ -261,6 +261,13 @@ mod tests {
         m.expert_cache_requests(3, 4, "vram", CacheResult::Hit);
         m.expert_load_duration(Duration::from_millis(2), "vram", "nvme");
         m.tier_read_bytes(4096, "nvme0", "nvme");
+        m.tier_transfer(
+            4096,
+            Some(Duration::from_millis(1)),
+            crate::Tier::Disk,
+            crate::Tier::Ram,
+            crate::Purpose::ExpertMiss,
+        );
         m.expert_layer_hit(true);
         m.expert_prefetch(2, 4, "issued");
         m.expert_prefetch_wasted_bytes(10);
@@ -315,6 +322,8 @@ mod tests {
             "tetraeder.expert.cache.requests",
             "tetraeder.expert.load.duration",
             "tetraeder.tier.read.bytes",
+            "tetraeder.tier.transfer.bytes",
+            "tetraeder.tier.transfer.duration",
             "tetraeder.expert.layer_hit",
             "tetraeder.expert.prefetch",
             "tetraeder.expert.prefetch.wasted",

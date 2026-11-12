@@ -19,6 +19,9 @@ pub mod attr {
     pub const DEPTH: &str = "tetraeder.prefetch.depth";
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
+    pub const TRANSFER_SOURCE: &str = "tetraeder.transfer.source";
+    pub const TRANSFER_DESTINATION: &str = "tetraeder.transfer.destination";
+    pub const TRANSFER_PURPOSE: &str = "tetraeder.transfer.purpose";
     pub const FORMAT: &str = "tetraeder.format";
     pub const IO_CLASS: &str = "tetraeder.io.class";
     pub const PART: &str = "tetraeder.part";
@@ -46,6 +49,51 @@ impl Phase {
         match self {
             Phase::Prefill => "prefill",
             Phase::Decode => "decode",
+        }
+    }
+}
+
+/// Where bytes live or move to (ADR 0063). Backing storage is `Disk`, host memory `Ram`,
+/// device memory `Vram`, another machine `Remote`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tier {
+    Disk,
+    Ram,
+    Vram,
+    Remote,
+}
+
+impl Tier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Tier::Disk => "disk",
+            Tier::Ram => "ram",
+            Tier::Vram => "vram",
+            Tier::Remote => "remote",
+        }
+    }
+}
+
+/// Why bytes moved between tiers (`tetraeder.transfer.purpose`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    /// A routed expert that was not resident, read on the critical path.
+    ExpertMiss,
+    /// An expert read ahead of the router.
+    Prefetch,
+    /// An expert uploaded into VRAM slots by admission (ADR 0059).
+    Admission,
+    /// KV cache pages or prefix entries.
+    Kv,
+}
+
+impl Purpose {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Purpose::ExpertMiss => "expert_miss",
+            Purpose::Prefetch => "prefetch",
+            Purpose::Admission => "admission",
+            Purpose::Kv => "kv",
         }
     }
 }
@@ -101,6 +149,8 @@ pub struct Metrics {
     expert_requests: Counter<u64>,
     expert_load: Histogram<f64>,
     tier_read: Counter<u64>,
+    transfer_bytes: Counter<u64>,
+    transfer_duration: Histogram<f64>,
     layer_hit: Counter<u64>,
     prefetch: Counter<u64>,
     prefetch_wasted_bytes: Counter<u64>,
@@ -213,6 +263,15 @@ impl Metrics {
                 .with_unit("By")
                 .with_description("Bytes read from a memory tier")
                 .build(),
+            transfer_bytes: meter
+                .u64_counter("tetraeder.tier.transfer.bytes")
+                .with_unit("By")
+                .with_description("Bytes moved between memory tiers, by source, destination and purpose")
+                .build(),
+            transfer_duration: hist(
+                "tetraeder.tier.transfer.duration",
+                "Time of one transfer between memory tiers",
+            ),
             layer_hit: meter
                 .u64_counter("tetraeder.expert.layer_hit")
                 .with_unit("{layer}")
@@ -433,16 +492,29 @@ impl Metrics {
         );
     }
 
-    pub fn time_per_output_token(&self, d: Duration, model: &str) {
+    /// One value per request: the mean interval between the output tokens after the first.
+    pub fn time_per_output_token(&self, d: Duration, model: &str, operation: &str) {
         self.tpot.record(
             d.as_secs_f64(),
-            &[KeyValue::new(attr::MODEL, model.to_owned())],
+            &[
+                KeyValue::new(attr::MODEL, model.to_owned()),
+                KeyValue::new(attr::OPERATION, operation.to_owned()),
+            ],
         );
     }
 
     /// `error_type` is `None` on success.
-    pub fn request_duration(&self, d: Duration, model: &str, error_type: Option<&str>) {
-        let mut a = vec![KeyValue::new(attr::MODEL, model.to_owned())];
+    pub fn request_duration(
+        &self,
+        d: Duration,
+        model: &str,
+        operation: &str,
+        error_type: Option<&str>,
+    ) {
+        let mut a = vec![
+            KeyValue::new(attr::MODEL, model.to_owned()),
+            KeyValue::new(attr::OPERATION, operation.to_owned()),
+        ];
         if let Some(e) = error_type {
             a.push(KeyValue::new(attr::ERROR_TYPE, e.to_owned()));
         }
@@ -528,6 +600,27 @@ impl Metrics {
                 KeyValue::new(attr::TIER, tier.to_owned()),
             ],
         );
+    }
+
+    /// Bytes moved from `source` to `destination` (ADR 0063), and how long the transfer took
+    /// when the caller timed it. One family for expert reads, admission uploads and KV moves.
+    pub fn tier_transfer(
+        &self,
+        bytes: u64,
+        took: Option<Duration>,
+        source: Tier,
+        destination: Tier,
+        purpose: Purpose,
+    ) {
+        let a = [
+            KeyValue::new(attr::TRANSFER_SOURCE, source.as_str()),
+            KeyValue::new(attr::TRANSFER_DESTINATION, destination.as_str()),
+            KeyValue::new(attr::TRANSFER_PURPOSE, purpose.as_str()),
+        ];
+        self.transfer_bytes.add(bytes, &a);
+        if let Some(d) = took {
+            self.transfer_duration.record(d.as_secs_f64(), &a);
+        }
     }
 
     /// A MoE layer step: `full` when every top-k expert was resident, else partial.

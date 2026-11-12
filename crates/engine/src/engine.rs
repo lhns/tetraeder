@@ -350,9 +350,13 @@ impl Engine {
                     }
                     if r.tokens.len() > 1 {
                         let rest = r.total.saturating_sub(r.ttft);
-                        m.time_per_output_token(rest / (r.tokens.len() as u32 - 1), &self.name);
+                        m.time_per_output_token(
+                            rest / (r.tokens.len() as u32 - 1),
+                            &self.name,
+                            OPERATION,
+                        );
                     }
-                    m.request_duration(r.total, &self.name, None);
+                    m.request_duration(r.total, &self.name, OPERATION, None);
                     m.tokens(
                         r.prompt_tokens.len() as u64,
                         &self.name,
@@ -369,8 +373,12 @@ impl Engine {
             }
             Err(e) => {
                 if let Some(t) = &self.telemetry {
-                    t.metrics()
-                        .request_duration(start.elapsed(), &self.name, Some(e.kind()));
+                    t.metrics().request_duration(
+                        start.elapsed(),
+                        &self.name,
+                        OPERATION,
+                        Some(e.kind()),
+                    );
                 }
             }
         }
