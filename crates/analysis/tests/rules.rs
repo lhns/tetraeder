@@ -168,9 +168,14 @@ fn quota_throttle_needs_throttled_periods_and_a_slow_cpu() {
     assert_eq!(r.faults[0].resource, "cpu_quota");
     assert!(r.faults[0].evidence[0].contains("90%"), "{:?}", r.faults[0]);
     o.env.cpu_throttled_share = Some(0.2);
-    assert!(classes(&o).is_empty(), "below the 30% threshold");
+    // The slow CPU stays a model mismatch without the quota evidence.
+    assert_eq!(classes(&o), vec![FaultClass::ModelMismatch], "below 30%");
     o.env.cpu_throttled_share = None;
-    assert!(classes(&o).is_empty(), "no cgroup signal, no finding");
+    assert_eq!(
+        classes(&o),
+        vec![FaultClass::ModelMismatch],
+        "no cgroup signal"
+    );
 }
 
 #[test]
