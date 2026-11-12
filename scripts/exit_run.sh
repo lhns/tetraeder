@@ -545,6 +545,9 @@ EOF
         exit_regime main-overlap-uf-w4 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_URGENT_FIRST=1 TETRAEDER_EXIT_IO_WORKERS=4 || rc=30
         exit_regime main-overlap-w8 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_IO_WORKERS=8 || rc=30
         exit_regime main-overlap-poll0 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 || rc=30
+        # ggml's default polling, explicit: since ADR 0061 main-overlap polls at 0 on a quota box, so this is its pair
+        exit_regime main-overlap-poll50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 || rc=30
+        exit_regime main-overlap-poll50-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 || rc=30
         exit_regime main-overlap-poll0-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 || rc=30
         # four threads fewer than the quota (min 1): leaves cores to the I/O workers; the repeat is the second pass
         tq4=$((threads > 4 ? threads - 4 : 1))
