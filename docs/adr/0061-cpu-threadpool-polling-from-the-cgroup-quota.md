@@ -42,3 +42,7 @@ Step (c) above, built behind an option so it can be paired against poll 0 and po
 - Exactness: pausing moves no data; logits are bitwise equal with it on and off (`crates/model/tests/prefetch.rs`).
 - Metric (Rule 6): counter `tetraeder.cpu.pool.pauses`, added per step, series "pool pauses per s" on the Container CPU panel. No alert: a pause count has no threshold of its own.
 - Harness: `TETRAEDER_EXIT_POOL_PAUSE=1` in `exit_regime.rs`, recorded as `options.pool_pause`. The pairing for step (c) is `TETRAEDER_EXIT_CPU_POLL=50 TETRAEDER_EXIT_POOL_PAUSE=1` against the auto stage (poll 0) and against poll 50 alone, with a repeat. No benchmark result yet (Rule 3): the option stays off until one exists.
+
+## Note 2026-11-12: evidence
+
+The auto default rests on one pair (`20261112e`: poll 0 cut throttling from 0.80 to 0.05 and decoded 1.30x, one-sided). On `20261112f` (same host, invalid as a verdict) poll 0 left throttling at 0.30 and 0.60. Revisit the default after the testbed pairs poll 50, poll 0 and pool pause under `CPUQuota` with repeats.
