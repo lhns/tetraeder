@@ -3,7 +3,9 @@
 # (llama.cpp #30966, docs/moe-cache.md), run through llama-server from the baseline build (/opt/llama.cpp-baseline).
 #   scripts/llamacpp_cache.sh <model-first-shard> <threads> <cache-mib> <cpu-share> <ctx> <prompt-file> <out-json>
 # Env: LOAD_MODE (default auto = mmap; the docs say none, mlock and dio pin the experts in RAM, which a model larger
-# than RAM cannot do, so dio is opt-in), PREFILL (32768), DECODE (64), UBATCH (2048), LLAMA_BASELINE_SERVER, PORT.
+# than RAM cannot do, so dio is opt-in), PREFILL (32768), DECODE (64), UBATCH (2048), LLAMA_BASELINE_SERVER, PORT,
+# KV_TYPE (unset = server default f16; e.g. f8_e4m3 passes -ctk and -ctv), POLL (unset = server default; 0 passes --poll 0, idle
+# ggml threads sleep). Both are recorded in the result JSON.
 # llama-server has no llama-bench-style depth run, so decode speed is the /completion timings.predicted_per_second of
 # a DECODE-token greedy generation right after a PREFILL-token prompt (the same token ids as exit_regime: the prompt
 # file through the model's vocab, repeated to length). Called by exit_run.sh (stages llamacpp-cache*). The server is
@@ -22,16 +24,20 @@ mkdir -p "$work"
 fit_off=()
 "$server" --help 2>&1 | grep -q -- '--fit ' && fit_off=(-fit off)
 SCRIPTS_DIR=$(cd "$(dirname "$0")" && pwd) HOST_DISK_DEV="${HOST_DISK_DEV:-}" python3 -I - "$server" "$work/$(basename "$out" .json).log" "${PORT:-18088}" "$model" "$threads" "$mib" "$share" "$ctx" "$prompt" "$out" \
-  "${LOAD_MODE:-auto}" "${PREFILL:-32768}" "${DECODE:-64}" "${UBATCH:-2048}" "${fit_off[@]}" << 'EOF'
+  "${LOAD_MODE:-auto}" "${PREFILL:-32768}" "${DECODE:-64}" "${UBATCH:-2048}" "${KV_TYPE:-}" "${POLL:-}" "${fit_off[@]}" << 'EOF'
 import json, os, re, signal, subprocess, sys, time, urllib.request
 
 sys.path.insert(0, os.environ["SCRIPTS_DIR"])
 import engine_sample as es
 
-(server, log, port, model, threads, mib, share, ctx, prompt, out, load_mode, prefill, decode, ub) = sys.argv[1:15]
-fit_off, port, prefill, decode = sys.argv[15:], int(port), int(prefill), int(decode)
+(server, log, port, model, threads, mib, share, ctx, prompt, out, load_mode, prefill, decode, ub, kv_type, poll) = sys.argv[1:17]
+fit_off, port, prefill, decode = sys.argv[17:], int(port), int(prefill), int(decode)
 flags = ["-ngl", "99", "-fa", "on", "-c", ctx, "-b", ub, "-ub", ub, "-t", threads, "-np", "1", "-lm", load_mode,
          "-cmoe", "--moe-cache-mib", mib, "--moe-cache-cpu-share", share, "-lv", "4", *fit_off]
+if kv_type:
+    flags += ["-ctk", kv_type, "-ctv", kv_type]
+if poll:
+    flags += ["--poll", poll]
 cmd = [server, "-m", model, *flags, "--host", "127.0.0.1", "--port", str(port)]
 
 
@@ -78,7 +84,11 @@ def gen(toks, n):
 sampler = None
 res = {"engine": f"llamacpp-cache-s{share}", "cache_mib": int(mib), "cpu_share": float(share), "load_mode": load_mode,
        "flags": flags, "threads": int(threads), "ctx": int(ctx), "ubatch": int(ub), "prefill": prefill, "decode": decode,
-       "server": server, "machine": os.uname().nodename, "ok": False}
+       "server": server, "kv_type": kv_type or None, "poll": int(poll) if poll else None, "machine": os.uname().nodename, "ok": False}
+try:
+    res["server_version"] = subprocess.run([server, "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60).stdout.strip()[-300:] or None
+except Exception:
+    pass
 try:
     res["baseline_pin"] = open(os.path.join(os.path.dirname(server), "..", "PIN")).read().strip()
 except OSError:

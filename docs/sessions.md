@@ -96,6 +96,8 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 
 **Pairing stages** (opt in through `B1_STAGES`, 10 min each for the builder, 30 min per share for the cache): `main-overlap-tq4` runs main-overlap with `TETRAEDER_EXIT_THREADS` four below the quota (min 1), `main-overlap-poll0` with idle ggml threads sleeping; each has a `-repeat`, and `llamacpp-cache-dio-repeat` repeats the dio cache run, so one list can interleave every pair twice. `b1b-levers` now takes the llama.cpp CPU share like `b1-exit`: `MOE_CPU_SHARE`, else the newest `moe-cache-tune/tune.json`, else 0.5 (it was fixed at 0.5, so `MOE_CPU_SHARE` and `CPU_SHARES` had no effect there, 20261112c). `scripts/fetch_exit_model.sh` skips shards of the recorded size, probes both mirrors itself (0 KB/s or an error means Hugging Face) and switches mirror after 3 min under 20 MB/s.
 
+`llamacpp_cache.sh` takes two optional env knobs, `KV_TYPE` (`f8_e4m3` passes `-ctk` and `-ctv`; llama.cpp FP8 KV, #28392, baseline pin b12274) and `POLL` (`0` passes `--poll 0`), both recorded in the result JSON with the server `--version`. FP8 KV frees about 3 GB of VRAM at 32K on the 235B (KV about 6 GB in f16, 3 GB in FP8), which can go to `--moe-cache-mib`: the caller adds it to the slot-bytes MiB it passes (`exit_run.sh` derives `mib` from the builder's VRAM slot bytes), and the builder must then get the same total VRAM budget (same extra bytes in its expert slots, or the same card budget), otherwise the pair is not fair. Without a raised `mib` the FP8 run only measures the conversion cost on Ampere (no FP8 math).
+
 | # | Stage | Estimate | Cumulative | Decides |
 |---|---|---|---|---|
 | 0 | download, native build | 20 (to 38) | 20 | |
