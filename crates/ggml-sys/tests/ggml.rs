@@ -155,3 +155,85 @@ fn hugepage_advice_on_a_cpu_buffer() {
     // no buffer: nothing to advise
     assert!(!Context::new(1, 0).unwrap().advise_hugepages().applied);
 }
+
+/// A byte pattern for the copy tests.
+fn pattern(n: usize, seed: u8) -> Vec<u8> {
+    (0..n)
+        .map(|i| (i as u8).wrapping_mul(31).wrapping_add(seed))
+        .collect()
+}
+
+/// Host-to-backend copies straight from a host tensor (ADR 0059 addendum 2026-11-12b) into
+/// `dst_backend`'s memory, the async one on `stream`.
+fn host_copies(dst_backend: &Backend, stream: &Backend) {
+    let host = Context::new(1, 0).unwrap();
+    let src = host.new_tensor(Type::I8, &[256]);
+    let (bytes, pinned) = host.alloc_host_staging(dst_backend).unwrap();
+    assert!(bytes >= 256);
+    if dst_backend.is_cpu() {
+        assert!(!pinned, "the CPU device has no host buffer type of its own");
+    }
+    let want = pattern(256, 7);
+    src.set_bytes(&want, 0).unwrap();
+    let dev = Context::new(1, 0).unwrap();
+    let dst = dev.new_tensor(Type::I8, &[256]);
+    dev.alloc_tensors(dst_backend).unwrap();
+    dst.set_bytes(&[0; 256], 0).unwrap();
+
+    src.copy_to(16, dst, 100, 50).unwrap();
+    src.copy_to_async(128, stream, dst, 0, 64).unwrap();
+    stream.synchronize();
+    let got = dst.get_bytes(0, 256).unwrap();
+    assert_eq!(got[100..150], want[16..66]);
+    assert_eq!(got[0..64], want[128..192]);
+    assert!(got[64..100].iter().all(|&b| b == 0));
+
+    // Out of range on either side is an error, never a ggml abort.
+    assert!(matches!(
+        src.copy_to(250, dst, 0, 10),
+        Err(GgmlError::Invalid(_))
+    ));
+    assert!(matches!(
+        src.copy_to_async(0, stream, dst, 250, 10),
+        Err(GgmlError::Invalid(_))
+    ));
+}
+
+/// hardware: cpu. `copy_to` and `copy_to_async` on the CPU backend, where the async copy is
+/// synchronous; a CPU backend's sibling is itself.
+#[test]
+fn cpu_host_copies() {
+    let cpu = Backend::cpu(1).unwrap();
+    host_copies(&cpu, &cpu.sibling().unwrap());
+}
+
+/// hardware: gpu (skips without one). The async copy runs on a sibling instance's stream into a
+/// GPU buffer from pinned staging; a GPU tensor is no host source, and a CPU buffer is no
+/// destination for the GPU stream.
+#[test]
+fn gpu_host_copies_on_a_sibling_stream() {
+    if !Backend::gpu_available() {
+        eprintln!("skip: no GPU device");
+        return;
+    }
+    let gpu = Backend::gpu(0).unwrap();
+    let stream = gpu.sibling().unwrap();
+    host_copies(&gpu, &stream);
+    let dev = Context::new(2, 0).unwrap();
+    let a = dev.new_tensor(Type::I8, &[16]);
+    let b = dev.new_tensor(Type::I8, &[16]);
+    dev.alloc_tensors(&gpu).unwrap();
+    assert!(matches!(a.copy_to(0, b, 0, 16), Err(GgmlError::Invalid(_))));
+    let host = Context::new(1, 0).unwrap();
+    let h = host.new_tensor(Type::I8, &[16]);
+    let (_, pinned) = host.alloc_host_staging(&gpu).unwrap();
+    eprintln!("pinned staging: {pinned}");
+    let cpu = Backend::cpu(1).unwrap();
+    let plain = Context::new(1, 0).unwrap();
+    let c = plain.new_tensor(Type::I8, &[16]);
+    plain.alloc_tensors(&cpu).unwrap();
+    assert!(matches!(
+        h.copy_to_async(0, &stream, c, 0, 16),
+        Err(GgmlError::Invalid(_))
+    ));
+}

@@ -63,6 +63,18 @@ impl Context {
         Ok(size)
     }
 
+    /// Allocates all tensors created so far in host memory that `backend` can copy from
+    /// asynchronously: its device's host buffer type (pinned, `cudaMallocHost` on CUDA), else
+    /// plain CPU memory (a CPU backend, or a device without one). Returns the size and whether the
+    /// buffer is of the device's host type (CUDA falls back to plain memory when pinning fails).
+    pub fn alloc_host_staging(&self, backend: &Backend) -> Result<(usize, bool)> {
+        let buf = Buffer::alloc_host_staging(self.ptr.as_ptr(), backend)?;
+        let size = buf.size();
+        let pinned = buf.is_device_host(backend);
+        *self.buffer.borrow_mut() = Some(buf);
+        Ok((size, pinned))
+    }
+
     /// [`Buffer::advise_hugepages`] on the tensor buffer; the default (not applied) without one.
     pub fn advise_hugepages(&self) -> super::HugepageAdvice {
         self.buffer
@@ -586,6 +598,72 @@ impl<'a> Tensor<'a> {
             let host = !(*t).buffer.is_null() && sys::ggml_backend_buffer_is_host((*t).buffer);
             (host && !(*t).data.is_null()).then(|| (*t).data.cast())
         }
+    }
+
+    /// The address of `len` bytes at `offset` of a tensor in host memory, checked.
+    fn host_range(self, offset: usize, len: usize) -> Result<*const u8> {
+        self.check_range(offset, len)?;
+        let base = self.host_ptr().ok_or_else(|| {
+            GgmlError::Invalid(format!("tensor `{}` is not in host memory", self.name()))
+        })?;
+        // SAFETY: `offset + len` is inside the tensor's data (checked above).
+        Ok(unsafe { base.add(offset) }.cast_const())
+    }
+
+    /// Copies `len` bytes at `offset` of this host tensor to `dst` at `dst_offset` (any backend
+    /// buffer), blocking until done: one `ggml_backend_tensor_set` straight from this tensor's
+    /// memory, no intermediate copy.
+    pub fn copy_to(
+        self,
+        offset: usize,
+        dst: Tensor<'_>,
+        dst_offset: usize,
+        len: usize,
+    ) -> Result<()> {
+        let src = self.host_range(offset, len)?;
+        dst.check_range(dst_offset, len)?;
+        // SAFETY: both ranges are inside live tensors (checked); `src` is host memory.
+        unsafe { sys::ggml_backend_tensor_set(dst.raw(), src.cast(), dst_offset, len) };
+        Ok(())
+    }
+
+    /// Enqueues the copy of `len` bytes at `offset` of this host tensor to `dst` at
+    /// `dst_offset` on `backend`'s stream (`ggml_backend_tensor_set_async`); without an async
+    /// path (the CPU backend) it copies before returning. The copy reads this tensor's memory
+    /// until `backend` is synchronized, so the caller must not write the range nor free the
+    /// tensor before [`Backend::synchronize`]; doing so changes `dst`'s contents, not memory
+    /// safety (pinned and device buffers are freed with an implicit device synchronization,
+    /// and a pageable source is staged before the call returns). `dst` must be in a buffer
+    /// `backend` can write, else an error (ggml would abort).
+    pub fn copy_to_async(
+        self,
+        offset: usize,
+        backend: &Backend,
+        dst: Tensor<'_>,
+        dst_offset: usize,
+        len: usize,
+    ) -> Result<()> {
+        let src = self.host_range(offset, len)?;
+        dst.check_range(dst_offset, len)?;
+        if !backend.can_write(dst) {
+            return Err(GgmlError::Invalid(format!(
+                "backend `{}` cannot write tensor `{}`",
+                backend.name(),
+                dst.name()
+            )));
+        }
+        // SAFETY: both ranges are inside live tensors (checked) and `backend` supports `dst`'s
+        // buffer type, which ggml asserts. The source contract is the caller's (see above).
+        unsafe {
+            sys::ggml_backend_tensor_set_async(
+                backend.raw(),
+                dst.raw(),
+                src.cast(),
+                dst_offset,
+                len,
+            )
+        };
+        Ok(())
     }
 
     /// Reads raw bytes at `offset` (backend memory to host).

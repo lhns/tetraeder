@@ -225,6 +225,55 @@ impl Backend {
         unsafe { sys::ggml_backend_synchronize(self.inner.ptr.as_ptr()) }
     }
 
+    /// A second instance on the same device, for copies that must not queue behind this one's
+    /// work: a CUDA instance creates its own streams. A CPU backend returns itself (its copies
+    /// are synchronous anyway).
+    pub fn sibling(&self) -> Result<Backend> {
+        if self.inner.is_cpu {
+            return Ok(self.clone());
+        }
+        // SAFETY: live backend; its device handle is valid for the process; null params select
+        // the defaults, as in `Backend::gpu`.
+        let ptr = unsafe {
+            let dev = sys::ggml_backend_get_device(self.raw());
+            sys::ggml_backend_dev_init(dev, std::ptr::null())
+        };
+        let ptr = NonNull::new(ptr).ok_or_else(|| GgmlError::NoBackend(self.name()))?;
+        Ok(Backend {
+            inner: Rc::new(BackendInner {
+                ptr,
+                is_cpu: false,
+                pool: None,
+                poll: None,
+                pauses: Cell::new(0),
+            }),
+        })
+    }
+
+    /// True if `ggml_backend_tensor_set_async` on this backend may write `t`: a CPU backend
+    /// copies synchronously into any buffer; another backend needs a device buffer of a type it
+    /// supports (CUDA asserts its own device buffer type).
+    pub(crate) fn can_write(&self, t: super::Tensor<'_>) -> bool {
+        // SAFETY: live tensor and backend; the buffer is checked for null before it is read.
+        unsafe {
+            let raw = t.raw();
+            let buf = if (*raw).view_src.is_null() {
+                (*raw).buffer
+            } else {
+                (*(*raw).view_src).buffer
+            };
+            if buf.is_null() {
+                return false;
+            }
+            self.inner.is_cpu
+                || (!sys::ggml_backend_buffer_is_host(buf)
+                    && sys::ggml_backend_supports_buft(
+                        self.raw(),
+                        sys::ggml_backend_buffer_get_type(buf),
+                    ))
+        }
+    }
+
     pub(crate) fn raw(&self) -> sys::ggml_backend_t {
         self.inner.ptr.as_ptr()
     }
@@ -260,6 +309,41 @@ impl Buffer {
             ptr,
             _backend: backend.clone(),
         })
+    }
+
+    /// Allocates every tensor of `ctx` in one buffer of `backend`'s device host buffer type, or
+    /// of the CPU buffer type when the device has none (see [`super::Context::alloc_host_staging`]).
+    pub(super) fn alloc_host_staging(
+        ctx: *mut sys::ggml_context,
+        backend: &Backend,
+    ) -> Result<Buffer> {
+        // SAFETY: ctx is a live no_alloc context; both buffer types are static per device.
+        let ptr = unsafe {
+            let mut buft =
+                sys::ggml_backend_dev_host_buffer_type(sys::ggml_backend_get_device(backend.raw()));
+            if buft.is_null() {
+                buft = sys::ggml_backend_cpu_buffer_type();
+            }
+            sys::ggml_backend_alloc_ctx_tensors_from_buft(ctx, buft)
+        };
+        let ptr = NonNull::new(ptr).ok_or(GgmlError::Alloc {
+            what: "host staging buffer",
+            bytes: 0,
+        })?;
+        Ok(Buffer {
+            ptr,
+            _backend: backend.clone(),
+        })
+    }
+
+    /// True if this buffer is of `backend`'s device host buffer type (pinned on CUDA).
+    pub(super) fn is_device_host(&self, backend: &Backend) -> bool {
+        // SAFETY: live buffer and backend; the getters only read fields.
+        unsafe {
+            let host =
+                sys::ggml_backend_dev_host_buffer_type(sys::ggml_backend_get_device(backend.raw()));
+            !host.is_null() && sys::ggml_backend_buffer_get_type(self.ptr.as_ptr()) == host
+        }
     }
 
     pub fn size(&self) -> usize {
