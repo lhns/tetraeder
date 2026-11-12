@@ -412,31 +412,35 @@ impl Leaves<'_> {
     }
 }
 
+/// The shared tensors of the chains (embedding table, gate, up and down experts) in a weights
+/// buffer on `cpu`, zero filled, as the builder holds its weights.
+fn chain_weights<'a>(wctx: &'a GgmlContext, cpu: &Backend) -> Vec<Tensor<'a>> {
+    let w = vec![
+        wctx.new_tensor(Type::F32, &[D_EMBD, 16]),
+        wctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]),
+        wctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]),
+        wctx.new_tensor(Type::F32, &[D_FF, D_EMBD, D_EXPERTS]),
+    ];
+    wctx.alloc_weights(cpu).unwrap();
+    for t in &w {
+        t.set_f32(&vec![0.0; t.nbytes() / 4]).unwrap();
+    }
+    w
+}
+
 /// `chains` copies of the 6-node CPU group shape (`get_rows`, gate, up and down `mul_mat_id`,
-/// `swiglu`, `cpy`) on tiny tensors, sharing the weights. `extra` adds that many `add` nodes
-/// to the graph, to give a second topology.
+/// `swiglu`, `cpy`) on tiny tensors, sharing the weights `shared` (empty without chains).
+/// `extra` adds that many `add` nodes to the graph, to give a second topology.
 fn chain_graph<'a>(
     ctx: &'a GgmlContext,
+    shared: &[Tensor<'a>],
     chains: usize,
     extra: usize,
     leaves: &mut Leaves<'a>,
 ) -> Graph<'a> {
     let mut g = ctx.new_graph(1024);
-    // Only leaves a node reads get a buffer, so the shared tensors exist only with chains.
-    let shared: Vec<Tensor<'a>> = if chains > 0 {
-        vec![
-            ctx.new_tensor(Type::F32, &[D_EMBD, 16]),
-            ctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]),
-            ctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]),
-            ctx.new_tensor(Type::F32, &[D_FF, D_EMBD, D_EXPERTS]),
-        ]
-    } else {
-        Vec::new()
-    };
+    // Only leaves a node reads get a buffer, so the ids exist only with chains.
     let ids = (chains > 0).then(|| ctx.new_tensor(Type::I32, &[D_USED, 1]));
-    for &t in &shared {
-        leaves.f32s.push(t.set_input());
-    }
     if let Some(ids) = ids {
         leaves.i32s.push(ids.set_input());
     }
@@ -488,9 +492,15 @@ fn dispatch_floor(n: usize) -> Value {
             let cpu = Backend::cpu_with_poll(t as i32, Some(poll)).unwrap();
             let mut sched = Sched::new(std::slice::from_ref(&cpu), 4096, false).unwrap();
             for (kind, chains, extra) in [("1_node", 0, 1), ("6_node", 1, 0)] {
+                let wctx = GgmlContext::new(8, 0).unwrap();
+                let shared = if chains > 0 {
+                    chain_weights(&wctx, &cpu)
+                } else {
+                    Vec::new()
+                };
                 let ctx = GgmlContext::new(256, 1024).unwrap();
                 let mut leaves = Leaves::default();
-                let g = chain_graph(&ctx, chains, extra, &mut leaves);
+                let g = chain_graph(&ctx, &shared, chains, extra, &mut leaves);
                 sched.alloc_graph(&g).unwrap();
                 leaves.fill();
                 for pause in [false, true] {
@@ -552,9 +562,11 @@ fn alloc_cost() -> Value {
     let ctx_a = GgmlContext::new(1024, 1024).unwrap();
     let ctx_b = GgmlContext::new(1024, 1024).unwrap();
     let (mut la, mut lb) = (Leaves::default(), Leaves::default());
-    let ga = chain_graph(&ctx_a, 25, 0, &mut la);
-    let gb = chain_graph(&ctx_b, 24, 5, &mut lb);
     let cpu = Backend::cpu(1).unwrap();
+    let wctx = GgmlContext::new(8, 0).unwrap();
+    let shared = chain_weights(&wctx, &cpu);
+    let ga = chain_graph(&ctx_a, &shared, 25, 0, &mut la);
+    let gb = chain_graph(&ctx_b, &shared, 24, 5, &mut lb);
     let mut rows = Vec::new();
     for nodes in [4096usize, 48_640] {
         let mut sched = Sched::new(std::slice::from_ref(&cpu), nodes, false).unwrap();
@@ -689,18 +701,26 @@ fn cpu_segment_overhead_graphs_compute() {
     let cpu = Backend::cpu_with_poll(2, Some(0)).unwrap();
     let mut sched = Sched::new(std::slice::from_ref(&cpu), 4096, false).unwrap();
     for (chains, extra, nodes) in [(0, 1, 1), (1, 0, 6)] {
+        let wctx = GgmlContext::new(8, 0).unwrap();
+        let shared = if chains > 0 {
+            chain_weights(&wctx, &cpu)
+        } else {
+            Vec::new()
+        };
         let ctx = GgmlContext::new(256, 1024).unwrap();
         let mut leaves = Leaves::default();
-        let g = chain_graph(&ctx, chains, extra, &mut leaves);
+        let g = chain_graph(&ctx, &shared, chains, extra, &mut leaves);
         assert_eq!(g.n_nodes(), nodes);
         sched.alloc_graph(&g).unwrap();
         leaves.fill();
         sched.compute(&g).unwrap();
         sched.compute(&g).unwrap();
     }
+    let wctx = GgmlContext::new(8, 0).unwrap();
+    let shared = chain_weights(&wctx, &cpu);
     let ctx = GgmlContext::new(1024, 1024).unwrap();
     let mut leaves = Leaves::default();
-    let g = chain_graph(&ctx, 25, 0, &mut leaves);
+    let g = chain_graph(&ctx, &shared, 25, 0, &mut leaves);
     for n in [4096usize, 48_640] {
         let mut sched = Sched::new(std::slice::from_ref(&cpu), n, false).unwrap();
         sched.alloc_graph(&g).unwrap();
