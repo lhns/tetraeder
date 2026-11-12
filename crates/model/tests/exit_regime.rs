@@ -79,6 +79,11 @@
 //! - `OTEL_EXPORTER_OTLP_ENDPOINT`: the builder exports its metrics there (ADR 0060), every
 //!   `OTEL_METRIC_EXPORT_INTERVAL` ms, with `OTEL_RESOURCE_ATTRIBUTES`; unset, no telemetry.
 //!
+//! - `TETRAEDER_EXIT_ARMS` (`name:ENV=V,ENV=V;name2:...`): multi-arm mode, the test
+//!   `exit_regime_arms` (run it by name): one prefill, a KV snapshot, then the arms interleaved
+//!   for `TETRAEDER_EXIT_ARM_ROUNDS` rounds. Its docs list the other `TETRAEDER_EXIT_ARM*` and
+//!   `TETRAEDER_EXIT_SNAP_*` variables.
+//!
 //! Every run records `prompt` (token count and an FNV-1a hash of the token ids), `first_top`
 //! (the 10 largest logits after the prefill, `[id, logit]`) and `margins` (top-1 minus top-2
 //! logit at each greedy step), so two runs can be shown to have had the same input and a
@@ -127,6 +132,135 @@ fn env_u64(key: &str) -> Option<u64> {
 
 fn env_flag(key: &str) -> bool {
     std::env::var(key).is_ok_and(|v| v == "1")
+}
+
+/// Environment lookups with an overlay: a multi-arm run applies an arm's `ENV=V` pairs over the
+/// process environment without touching it.
+#[derive(Clone, Default)]
+struct Env(std::collections::BTreeMap<String, String>);
+
+impl Env {
+    fn get(&self, key: &str) -> Option<String> {
+        self.0.get(key).cloned().or_else(|| std::env::var(key).ok())
+    }
+
+    fn u64(&self, key: &str) -> Option<u64> {
+        self.get(key).and_then(|v| v.parse().ok())
+    }
+
+    fn flag(&self, key: &str) -> bool {
+        self.get(key).is_some_and(|v| v == "1")
+    }
+}
+
+/// The builder's load options from the `TETRAEDER_EXIT_*` variables in `e` (the module docs list
+/// them); the caller adds telemetry and routing recording.
+fn load_options(e: &Env, gpu: bool, threads: usize, n_ctx: usize, n_expert: u64) -> LoadOptions {
+    let mut opts = LoadOptions::new(if gpu {
+        BackendChoice::Gpu { index: 0 }
+    } else {
+        BackendChoice::Cpu {
+            threads: Some(threads),
+        }
+    });
+    opts.n_ctx = n_ctx;
+    opts.miss = MissPolicy::Cpu;
+    opts.op_offload = e.flag("TETRAEDER_EXIT_OP_OFFLOAD");
+    // Unset follows LoadOptions (prefetch on); `0` turns it off, `1` on.
+    if let Some(v) = e.get("TETRAEDER_EXIT_PREFETCH") {
+        opts.prefetch = v == "1";
+    }
+    if let Some(d) = e.u64("TETRAEDER_EXIT_PREFETCH_DEPTH") {
+        opts.prefetch_depth = d as usize;
+    }
+    if let Some(v) = e.get("TETRAEDER_EXIT_KV") {
+        opts.kv = v
+            .parse()
+            .expect("TETRAEDER_EXIT_KV is f16, q8_0, q8_0/q4_0 or q4_0");
+    }
+    if let Some(v) = e.get("TETRAEDER_EXIT_IO_SERVICE") {
+        opts.io.service = v == "1";
+    }
+    if let Some(w) = e.u64("TETRAEDER_EXIT_IO_WORKERS") {
+        opts.io.workers = w as usize;
+    }
+    if let Some(v) = e.get("TETRAEDER_EXIT_OVERLAP") {
+        opts.overlap = v == "1";
+    }
+    opts.urgent_first = e.flag("TETRAEDER_EXIT_URGENT_FIRST");
+    opts.ram_hugepages = e.flag("TETRAEDER_EXIT_RAM_HUGEPAGES");
+    opts.admit_share = e
+        .get("TETRAEDER_EXIT_ADMIT_SHARE")
+        .and_then(|v| v.parse::<f64>().ok());
+    if let Some(v) = e.get("TETRAEDER_EXIT_RAM_POLICY") {
+        opts.ram_policy =
+            tetraeder_memory::RamPolicy::parse(&v).unwrap_or_else(|err| panic!("{err}"));
+    }
+    opts.kv_rotation = e.u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
+    opts.cpu_poll = e.u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
+    opts.pool_pause = e.flag("TETRAEDER_EXIT_POOL_PAUSE");
+    opts.prefetch_threads = e.u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
+    match e.u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
+        Some(b) => opts.expert_slot_bytes = Some(b),
+        None => opts.expert_slots = Some(e.u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize),
+    }
+    match e.u64("TETRAEDER_EXIT_RAM_SLOT_BYTES") {
+        Some(b) => opts.ram_slot_bytes = Some(b),
+        None => {
+            let n = e.u64("TETRAEDER_EXIT_RAM_SLOTS").unwrap_or(n_expert / 4);
+            opts.ram_slots = Some(n as usize);
+        }
+    }
+    opts
+}
+
+/// The `options` block of a result JSON.
+fn options_json(
+    gpu: bool,
+    threads: usize,
+    n_ctx: usize,
+    opts: &LoadOptions,
+    refresh_hot: bool,
+    cpu_poll: Option<tetraeder_model::CpuPoll>,
+) -> Value {
+    json!({
+        "gpu": gpu,
+        "threads": threads,
+        "n_ctx": n_ctx,
+        "op_offload": opts.op_offload,
+        "refresh_hot": refresh_hot,
+        "prefetch": opts.prefetch,
+        "prefetch_depth": opts.prefetch_depth,
+        "io_service": opts.io.service,
+        "io_workers": opts.io.workers,
+        "io_chunk_bytes": opts.io.chunk_bytes,
+        "overlap": opts.overlap,
+        "urgent_first": opts.urgent_first,
+        "admit_share": opts.admit_share,
+        "ram_policy": opts.ram_policy.name(),
+        "ram_hugepages": opts.ram_hugepages,
+        "kv": opts.kv.to_string(),
+        "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
+        "pool_pause": opts.pool_pause,
+        "cpu_poll": cpu_poll.map(|p| p.level),
+        "cpu_poll_auto": cpu_poll.map(|p| p.auto),
+        "cpu_quota_detected": cpu_poll.and_then(|p| p.quota),
+        "prefetch_threads": opts.prefetch_threads,
+        "expert_slots": opts.expert_slots,
+        "expert_slot_bytes": opts.expert_slot_bytes,
+        "ram_slots": opts.ram_slots,
+        "ram_slot_bytes": opts.ram_slot_bytes,
+    })
+}
+
+/// ADR 0060: the builder's metrics to the box collector when the harness gives an endpoint.
+fn telemetry_for(threads: usize) -> Option<Arc<Telemetry>> {
+    let cfg = TelemetryConfig::from_env();
+    cfg.otlp_endpoint.is_some().then(|| {
+        let t = Arc::new(Telemetry::new(&cfg).expect("OTLP exporter"));
+        t.metrics().cpu_threads(threads as u64, cgroup_cpu_quota());
+        t
+    })
 }
 
 fn git_out(args: &[&str]) -> Option<String> {
@@ -565,71 +699,13 @@ fn exit_regime() {
     let reference = std::env::var("TETRAEDER_EXIT_ENGINE").is_ok_and(|v| v == "libllama");
 
     // ADR 0060: the builder's metrics to the box collector when the harness gives an endpoint
-    let tel_cfg = TelemetryConfig::from_env();
-    let telemetry = tel_cfg.otlp_endpoint.is_some().then(|| {
-        let t = Arc::new(Telemetry::new(&tel_cfg).expect("OTLP exporter"));
-        t.metrics().cpu_threads(threads as u64, cgroup_cpu_quota());
-        t
-    });
+    let telemetry = telemetry_for(threads);
 
-    let mut opts = LoadOptions::new(if gpu {
-        BackendChoice::Gpu { index: 0 }
-    } else {
-        BackendChoice::Cpu {
-            threads: Some(threads),
-        }
-    });
-    opts.n_ctx = n_ctx;
-    opts.miss = MissPolicy::Cpu;
+    let mut opts = load_options(&Env::default(), gpu, threads, n_ctx, h.n_expert as u64);
     opts.telemetry = telemetry.clone();
-    opts.op_offload = env_flag("TETRAEDER_EXIT_OP_OFFLOAD");
-    // Unset follows LoadOptions (prefetch on); `0` turns it off, `1` on.
-    if let Ok(v) = std::env::var("TETRAEDER_EXIT_PREFETCH") {
-        opts.prefetch = v == "1";
-    }
-    if let Some(d) = env_u64("TETRAEDER_EXIT_PREFETCH_DEPTH") {
-        opts.prefetch_depth = d as usize;
-    }
-    if let Ok(v) = std::env::var("TETRAEDER_EXIT_KV") {
-        opts.kv = v
-            .parse()
-            .expect("TETRAEDER_EXIT_KV is f16, q8_0, q8_0/q4_0 or q4_0");
-    }
-    if let Ok(v) = std::env::var("TETRAEDER_EXIT_IO_SERVICE") {
-        opts.io.service = v == "1";
-    }
-    if let Some(w) = env_u64("TETRAEDER_EXIT_IO_WORKERS") {
-        opts.io.workers = w as usize;
-    }
-    if let Ok(v) = std::env::var("TETRAEDER_EXIT_OVERLAP") {
-        opts.overlap = v == "1";
-    }
-    opts.urgent_first = env_flag("TETRAEDER_EXIT_URGENT_FIRST");
-    opts.ram_hugepages = env_flag("TETRAEDER_EXIT_RAM_HUGEPAGES");
-    opts.admit_share = std::env::var("TETRAEDER_EXIT_ADMIT_SHARE")
-        .ok()
-        .and_then(|v| v.parse::<f64>().ok());
-    if let Ok(v) = std::env::var("TETRAEDER_EXIT_RAM_POLICY") {
-        opts.ram_policy = tetraeder_memory::RamPolicy::parse(&v).unwrap_or_else(|e| panic!("{e}"));
-    }
-    opts.kv_rotation = env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
-    opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
-    opts.pool_pause = env_flag("TETRAEDER_EXIT_POOL_PAUSE");
-    opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
     let refresh_hot = env_flag("TETRAEDER_EXIT_REFRESH_HOT");
     let routing_out = std::env::var_os("TETRAEDER_EXIT_ROUTING_OUT").map(PathBuf::from);
     opts.record_routing = routing_out.is_some() && !reference;
-    match env_u64("TETRAEDER_EXIT_VRAM_SLOT_BYTES") {
-        Some(b) => opts.expert_slot_bytes = Some(b),
-        None => opts.expert_slots = Some(env_u64("TETRAEDER_EXIT_SLOTS").unwrap_or(2) as usize),
-    }
-    match env_u64("TETRAEDER_EXIT_RAM_SLOT_BYTES") {
-        Some(b) => opts.ram_slot_bytes = Some(b),
-        None => {
-            let n = env_u64("TETRAEDER_EXIT_RAM_SLOTS").unwrap_or(h.n_expert as u64 / 4);
-            opts.ram_slots = Some(n as usize);
-        }
-    }
     let per_layer = file.expert_bytes_per_layer().expect("expert sizes");
     let slot_bytes_all_layers: u64 = per_layer.iter().sum();
 
@@ -795,34 +871,7 @@ fn exit_regime() {
         },
         "model": model_info,
         "prompt": prompt_info,
-        "options": {
-            "gpu": gpu,
-            "threads": threads,
-            "n_ctx": n_ctx,
-            "op_offload": opts.op_offload,
-            "refresh_hot": refresh_hot,
-            "prefetch": opts.prefetch,
-            "prefetch_depth": opts.prefetch_depth,
-            "io_service": opts.io.service,
-            "io_workers": opts.io.workers,
-            "io_chunk_bytes": opts.io.chunk_bytes,
-            "overlap": opts.overlap,
-            "urgent_first": opts.urgent_first,
-            "admit_share": opts.admit_share,
-            "ram_policy": opts.ram_policy.name(),
-            "ram_hugepages": opts.ram_hugepages,
-            "kv": opts.kv.to_string(),
-            "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
-            "pool_pause": opts.pool_pause,
-            "cpu_poll": cpu_poll.map(|p| p.level),
-            "cpu_poll_auto": cpu_poll.map(|p| p.auto),
-            "cpu_quota_detected": cpu_poll.and_then(|p| p.quota),
-            "prefetch_threads": opts.prefetch_threads,
-            "expert_slots": opts.expert_slots,
-            "expert_slot_bytes": opts.expert_slot_bytes,
-            "ram_slots": opts.ram_slots,
-            "ram_slot_bytes": opts.ram_slot_bytes,
-        },
+        "options": options_json(gpu, threads, n_ctx, &opts, refresh_hot, cpu_poll),
         "io_backend": io_backend,
         "expert_bytes_per_layer": per_layer,
         "slot_bytes_all_layers": slot_bytes_all_layers,
@@ -834,5 +883,432 @@ fn exit_regime() {
     // the last export before the process ends
     if let Some(t) = &telemetry {
         t.shutdown();
+    }
+}
+
+/// One arm of the multi-arm run: a name and the `ENV=V` pairs laid over the process environment.
+struct Arm {
+    name: String,
+    env: Env,
+}
+
+/// `name:ENV=V,ENV=V;name2:...` (a bare `name` is an arm with no overrides).
+fn parse_arms(s: &str) -> Vec<Arm> {
+    let arms: Vec<Arm> = s
+        .split(';')
+        .map(str::trim)
+        .filter(|a| !a.is_empty())
+        .map(|a| {
+            let (name, rest) = a.split_once(':').unwrap_or((a, ""));
+            let mut env = Env::default();
+            for kv in rest.split(',').filter(|p| !p.trim().is_empty()) {
+                let (k, v) = kv.split_once('=').expect("an arm's env is ENV=V");
+                env.0.insert(k.trim().into(), v.trim().into());
+            }
+            Arm {
+                name: name.trim().into(),
+                env,
+            }
+        })
+        .collect();
+    for (i, a) in arms.iter().enumerate() {
+        assert!(
+            !a.name.is_empty() && arms[..i].iter().all(|b| b.name != a.name),
+            "arm names must be non-empty and unique: {:?}",
+            a.name
+        );
+        assert!(
+            !a.env.0.contains_key("TETRAEDER_EXIT_REFRESH_HOT")
+                && !a.env.0.contains_key("TETRAEDER_EXIT_ROUTING_OUT"),
+            "arm {}: the hot set refresh and the routing trace need the prefill, not a snapshot",
+            a.name
+        );
+    }
+    arms
+}
+
+/// The prefill's KV: in RAM when small, else a file (a 32K context of the 235B is about 6 GB,
+/// which the RAM tier's reserve cannot carry for the whole run).
+enum Snapshot {
+    Ram(Vec<u8>),
+    Disk(PathBuf, usize),
+}
+
+impl Snapshot {
+    fn keep(bytes: Vec<u8>, ram_max: usize, dir: &std::path::Path, stamp: &str) -> Snapshot {
+        if bytes.len() <= ram_max {
+            return Snapshot::Ram(bytes);
+        }
+        std::fs::create_dir_all(dir).expect("snapshot dir");
+        let p = dir.join(format!("kv-snapshot-{stamp}.bin"));
+        std::fs::write(&p, &bytes).expect("snapshot file");
+        Snapshot::Disk(p, bytes.len())
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Snapshot::Ram(b) => b.len(),
+            Snapshot::Disk(_, n) => *n,
+        }
+    }
+
+    fn bytes(&self) -> std::borrow::Cow<'_, [u8]> {
+        match self {
+            Snapshot::Ram(b) => b.as_slice().into(),
+            Snapshot::Disk(p, _) => std::fs::read(p).expect("snapshot file").into(),
+        }
+    }
+
+    fn storage(&self) -> &'static str {
+        match self {
+            Snapshot::Ram(_) => "ram",
+            Snapshot::Disk(..) => "disk",
+        }
+    }
+}
+
+/// hardware: cpu (default) or gpu_* (`TETRAEDER_EXIT_GPU=1`). Skips without `TETRAEDER_EXIT_ARMS`.
+///
+/// Multi-arm mode: the arms of a pairing in one process, so they sit minutes apart on the same
+/// host instead of an hour. The prompt is prefilled once with the base options (the process
+/// environment), the KV is saved, then for `TETRAEDER_EXIT_ARM_ROUNDS` rounds (default 1; odd
+/// rounds in arm order, even rounds reversed, so a drift does not favour one arm) each arm
+///   1. drops the model and loads it with the arm's options (every `LoadOptions` field is fixed at
+///      load; nothing is switchable at runtime, so every arm reloads, alike),
+///   2. runs the prompt's first ubatch (the hot set is built from the first prefill call, as in a
+///      normal run), restores the KV snapshot (the prefill is not repeated); with
+///      `TETRAEDER_EXIT_ARM_REPLAY_LAST=1` it then recomputes the last ubatch on top of the
+///      restored rows, which refills the RAM tier like the prefill's end did,
+///   3. decodes a discarded warm-up window of `TETRAEDER_EXIT_ARM_WARMUP` (16) tokens and
+///   4. times `TETRAEDER_EXIT_DECODE` tokens in `TETRAEDER_EXIT_DECODE_WINDOWS` windows.
+///
+/// `TETRAEDER_EXIT_ARMS` is `name:ENV=V,ENV=V;name2:...` (`TETRAEDER_EXIT_REFRESH_HOT` and
+/// `TETRAEDER_EXIT_ROUTING_OUT` are rejected: both need the prefill itself). Output, in
+/// `TETRAEDER_EXIT_ARMS_DIR` (default `.`) with the stamp `TETRAEDER_EXIT_ARMS_STAMP`: one
+/// `exit-<arm>-r<k>-<stamp>.json` per arm and round in the format of `exit_regime`, written as
+/// each finishes, and `exit-<TETRAEDER_EXIT_ARMS_INDEX, default levers-snap>-<stamp>.json` with
+/// `ok`, the shared prefill and snapshot numbers and, per arm and round, whether its greedy
+/// tokens (warm-up and timed) equal the first run's. In an arm's JSON `prefill_s` is the arm's
+/// preparation (load, first ubatch, restore, warm-up; `prefill_tokens` counts the tokens run in
+/// it), so the host sampler's "prefill" block describes that; the real prefill is in
+/// `snapshot.shared.prefill_*`. `TETRAEDER_EXIT_SNAP_DIR` (default `.`) and
+/// `TETRAEDER_EXIT_SNAP_RAM_MAX_GB` (2) decide where the snapshot lives.
+/// `TETRAEDER_EXIT_ARMS_EXACT=1` fails the test when greedy tokens differ between arms.
+#[test]
+#[ignore = "slow exit-regime benchmark; run with --ignored in release"]
+fn exit_regime_arms() {
+    let Ok(arms_s) = std::env::var("TETRAEDER_EXIT_ARMS") else {
+        eprintln!("skip: TETRAEDER_EXIT_ARMS is not set");
+        return;
+    };
+    let gpu = env_flag("TETRAEDER_EXIT_GPU");
+    if gpu && !Backend::gpu_available() {
+        eprintln!("skip: TETRAEDER_EXIT_GPU=1 but no GPU in this build");
+        return;
+    }
+    let arms = parse_arms(&arms_s);
+    assert!(!arms.is_empty(), "TETRAEDER_EXIT_ARMS names no arm");
+    let rounds = env_u64("TETRAEDER_EXIT_ARM_ROUNDS").unwrap_or(1).max(1) as usize;
+    let warmup = env_u64("TETRAEDER_EXIT_ARM_WARMUP").unwrap_or(16) as usize;
+    let replay_last = env_flag("TETRAEDER_EXIT_ARM_REPLAY_LAST");
+    let exact = env_flag("TETRAEDER_EXIT_ARMS_EXACT");
+    let out_dir =
+        PathBuf::from(std::env::var("TETRAEDER_EXIT_ARMS_DIR").unwrap_or_else(|_| ".".into()));
+    let snap_dir =
+        PathBuf::from(std::env::var("TETRAEDER_EXIT_SNAP_DIR").unwrap_or_else(|_| ".".into()));
+    let index_name =
+        std::env::var("TETRAEDER_EXIT_ARMS_INDEX").unwrap_or_else(|_| "levers-snap".into());
+    let stamp = std::env::var("TETRAEDER_EXIT_ARMS_STAMP")
+        .unwrap_or_else(|_| format!("{}", unix_s() as u64));
+    let ram_max = (env_u64("TETRAEDER_EXIT_SNAP_RAM_MAX_GB").unwrap_or(2) << 30) as usize;
+
+    let (path, model_info) = model_path();
+    let file = ModelFile::open(&path).expect("model opens");
+    let h = file.hparams.clone();
+    let n_prefill = env_u64("TETRAEDER_EXIT_PREFILL").unwrap_or(256) as usize;
+    let n_decode = env_u64("TETRAEDER_EXIT_DECODE").unwrap_or(32) as usize;
+    let n_windows = env_u64("TETRAEDER_EXIT_DECODE_WINDOWS").unwrap_or(1) as usize;
+    let ub = std::env::var("TETRAEDER_EXIT_UBATCH")
+        .ok()
+        .and_then(|s| s.split(',').next().and_then(|x| x.trim().parse().ok()))
+        .unwrap_or(256usize)
+        .max(1);
+    let n_ctx = env_u64("TETRAEDER_EXIT_CTX")
+        .map(|c| c as usize)
+        .unwrap_or(n_prefill + warmup + n_decode);
+    assert!(n_ctx >= n_prefill + warmup + n_decode, "context too small");
+    let threads_of = |e: &Env| {
+        e.u64("TETRAEDER_EXIT_THREADS")
+            .map(|t| t as usize)
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))
+    };
+    let tokens = prompt(&path, n_prefill, h.n_vocab as usize);
+    let prompt_info = json!({"tokens": tokens.len(), "fnv1a64": tokens_hash(&tokens)});
+    let base_threads = threads_of(&Env::default());
+    let telemetry = telemetry_for(base_threads);
+    let n_expert = h.n_expert as u64;
+    let per_layer = file.expert_bytes_per_layer().expect("expert sizes");
+    let slot_bytes_all_layers: u64 = per_layer.iter().sum();
+
+    // The one prefill, with the base options; its KV is the snapshot every arm restores.
+    let mut opts = load_options(&Env::default(), gpu, base_threads, n_ctx, n_expert);
+    opts.telemetry = telemetry.clone();
+    let t0 = Instant::now();
+    let mut m = Qwen3Moe::load(&path, &opts).expect("builder loads");
+    let base_load_s = t0.elapsed().as_secs_f64();
+    let t0 = Instant::now();
+    let mut ubatch_s = Vec::new();
+    let mut last = Vec::new();
+    for chunk in tokens.chunks(ub) {
+        let t = Instant::now();
+        last = m.eval_last(chunk).expect("prefill");
+        ubatch_s.push(t.elapsed().as_secs_f64());
+    }
+    let prefill_s = t0.elapsed().as_secs_f64();
+    let first_top = top_json(&last);
+    let first_next = argmax(&last) as i32;
+    let t = Instant::now();
+    let snapshot = Snapshot::keep(
+        m.kv_snapshot().expect("kv snapshot"),
+        ram_max,
+        &snap_dir,
+        &stamp,
+    );
+    let snapshot_s = t.elapsed().as_secs_f64();
+    drop(m);
+    let snapshot_json = json!({
+        "bytes": snapshot.len(),
+        "storage": snapshot.storage(),
+        "positions": n_prefill,
+        "save_s": snapshot_s,
+        "prefill_s": prefill_s,
+        "prefill_tok_s": n_prefill as f64 / prefill_s,
+        "prefill_ubatch_s": ubatch_s,
+        "base_load_s": base_load_s,
+        "replay_last_ubatch": replay_last,
+    });
+    eprintln!("snapshot: {snapshot_json}");
+
+    // (arm, round, greedy incl. warm-up, result file)
+    let mut results: Vec<(String, usize, Vec<i32>, String)> = Vec::new();
+    for round in 1..=rounds {
+        let order: Vec<&Arm> = if round % 2 == 1 {
+            arms.iter().collect()
+        } else {
+            arms.iter().rev().collect()
+        };
+        for arm in order {
+            let threads = threads_of(&arm.env);
+            let mut opts = load_options(&arm.env, gpu, threads, n_ctx, n_expert);
+            opts.telemetry = telemetry.clone();
+            let t_arm = Instant::now();
+            let t0 = Instant::now();
+            let mut m = Qwen3Moe::load(&path, &opts).expect("builder loads");
+            let load_s = t0.elapsed().as_secs_f64();
+            let io_backend = m.io_backend();
+            let cpu_poll = Some(m.cpu_poll());
+            let s0 = m.expert_stats().expect("the exit regime streams experts");
+            m.take_profile();
+            // the hot set comes from the first prefill call, as in a normal run
+            let t = Instant::now();
+            m.eval_last(&tokens[..ub.min(tokens.len())])
+                .expect("first ubatch");
+            let hot_s = t.elapsed().as_secs_f64();
+            let t = Instant::now();
+            m.kv_restore(&snapshot.bytes(), n_prefill)
+                .expect("kv restore");
+            let restore_s = t.elapsed().as_secs_f64();
+            let mut replay_s = 0.0;
+            if replay_last {
+                let start = (n_prefill - 1) / ub * ub;
+                let t = Instant::now();
+                m.rewind(start).expect("rewind");
+                let l = m.eval_last(&tokens[start..]).expect("replayed ubatch");
+                replay_s = t.elapsed().as_secs_f64();
+                assert_eq!(
+                    argmax(&l),
+                    argmax(&last),
+                    "the replayed ubatch changed the top token"
+                );
+            }
+            // discarded warm-up window
+            let mut next = first_next;
+            let mut cur_margin = margin(&last);
+            let mut greedy_all = Vec::new();
+            for _ in 0..warmup {
+                greedy_all.push(next);
+                let l = m.eval(&[next]).expect("warm-up decode");
+                cur_margin = margin(&l);
+                next = argmax(&l) as i32;
+            }
+            let pp = m.take_profile();
+            let s1 = m.expert_stats().unwrap();
+            let prep_s = t_arm.elapsed().as_secs_f64();
+            let prep_tokens = ub.min(tokens.len()) + warmup;
+
+            let mut margins = vec![cur_margin];
+            let mut windows = Vec::new();
+            let mut tg = StepProfile::default();
+            let mut sw = s1.clone();
+            let t0 = Instant::now();
+            let per_window = n_decode.div_ceil(n_windows.max(1)).max(1);
+            let mut done = 0;
+            let mut greedy = Vec::new();
+            while done < n_decode {
+                let n = per_window.min(n_decode - done);
+                let start = unix_s();
+                let tw = Instant::now();
+                for _ in 0..n {
+                    greedy.push(next);
+                    let l = m.eval(&[next]).expect("decode");
+                    margins.push(margin(&l));
+                    next = argmax(&l) as i32;
+                }
+                let wall = tw.elapsed().as_secs_f64();
+                let p = m.take_profile();
+                let se = m.expert_stats().unwrap();
+                windows.push(json!({
+                    "start_unix_s": start,
+                    "end_unix_s": unix_s(),
+                    "tokens": n,
+                    "wall_s": wall,
+                    "profile_per_token": profile_json(&p, n as f64),
+                    "io": io_json(&sw.io, &se.io, n as f64, wall),
+                    "layers": layers_json(&sw, &se),
+                }));
+                add_profile(&mut tg, &p);
+                sw = se;
+                done += n;
+            }
+            margins.truncate(n_decode);
+            let decode_s = t0.elapsed().as_secs_f64();
+            let s2 = m.expert_stats().unwrap();
+            greedy_all.extend(&greedy);
+
+            let memory: Vec<Value> = m
+                .memory()
+                .iter()
+                .map(|u| {
+                    json!({"device": u.device, "tier": u.tier, "kind": u.kind,
+                           "capacity": u.capacity, "used": u.used})
+                })
+                .collect();
+            let run = json!({
+                "engine": "tetraeder",
+                "ubatch": ub,
+                "load_s": load_s,
+                // the arm's preparation, not a prefill: see the test's docs
+                "prefill_tokens": prep_tokens,
+                "prefill_s": prep_s,
+                "prefill_tok_s": prep_tokens as f64 / prep_s,
+                "hot_refresh_s": 0.0,
+                "prefill_profile_per_ubatch": profile_json(&pp, pp.steps.max(1) as f64),
+                "prefill_io": io_json(&s0.io, &s1.io, prep_tokens as f64, prep_s),
+                "prefill_prefetch": prefetch_json(&s0, &s1, prep_tokens as f64),
+                "decode_tokens": n_decode,
+                "decode_tok_s": n_decode as f64 / decode_s,
+                "decode_profile_per_token": profile_json(&tg, n_decode.max(1) as f64),
+                "decode_io": io_json(&s1.io, &s2.io, n_decode.max(1) as f64, decode_s),
+                "decode_prefetch": prefetch_json(&s1, &s2, n_decode.max(1) as f64),
+                "decode_overlap": overlap_json(&s1.io, &s2.io, n_decode.max(1) as f64),
+                "decode_layers": layers_json(&s1, &s2),
+                "first_top": first_top.clone(),
+                "decode_windows": windows,
+                "greedy": greedy,
+                "warmup_greedy": &greedy_all[..warmup],
+                "margins": margins,
+                "max_splits": m.max_splits(),
+                "memory": memory,
+                "ram_hugepages": m.ram_hugepages().map(|a| json!({
+                    "applied": a.applied,
+                    "advised_bytes": a.bytes,
+                    "errno": a.errno,
+                })),
+                "rss_bytes": process::current_rss(),
+                "peak_rss_bytes": process::peak_rss(),
+            });
+            let overlay: serde_json::Map<String, Value> = arm
+                .env
+                .0
+                .iter()
+                .map(|(k, v)| (k.clone(), json!(v)))
+                .collect();
+            let out = json!({
+                "machine": std::env::var("TETRAEDER_EXIT_MACHINE").ok(),
+                "provenance": provenance(threads),
+                "env": {
+                    "os": std::env::consts::OS,
+                    "available_parallelism": std::thread::available_parallelism().map_or(1, usize::from),
+                    "gpu_devices_visible": Backend::gpu_count(),
+                    "ggml_system_info": tetraeder_ggml_sys::llama::system_info(),
+                },
+                "model": model_info.clone(),
+                "prompt": prompt_info.clone(),
+                "arm": {"name": arm.name, "round": round, "rounds": rounds, "env": overlay},
+                "snapshot": {
+                    "restore_s": restore_s,
+                    "first_ubatch_s": hot_s,
+                    "replay_last_s": replay_s,
+                    "warmup_tokens": warmup,
+                    "prep_s": prep_s,
+                    "shared": snapshot_json.clone(),
+                },
+                "options": options_json(gpu, threads, n_ctx, &opts, false, cpu_poll),
+                "io_backend": io_backend,
+                "expert_bytes_per_layer": per_layer.clone(),
+                "slot_bytes_all_layers": slot_bytes_all_layers,
+                "runs": [run],
+            });
+            let name = format!("exit-{}-r{round}-{stamp}.json", arm.name);
+            std::fs::create_dir_all(&out_dir).expect("output dir");
+            std::fs::write(
+                out_dir.join(&name),
+                serde_json::to_string_pretty(&out).unwrap(),
+            )
+            .expect("arm result");
+            eprintln!(
+                "arm {} r{round}: load {load_s:.1} s, prep {prep_s:.1} s, decode {:.3} tok/s -> {name}",
+                arm.name,
+                n_decode as f64 / decode_s
+            );
+            results.push((arm.name.clone(), round, greedy_all, name));
+            drop(m);
+        }
+    }
+
+    // greedy tokens against the first run's, per arm and round
+    let reference = results[0].2.clone();
+    let mut all_equal = true;
+    let runs: Vec<Value> = results
+        .iter()
+        .map(|(name, round, g, file)| {
+            let div = g.iter().zip(&reference).position(|(a, b)| a != b);
+            all_equal &= div.is_none() && g.len() == reference.len();
+            json!({"arm": name, "round": round, "file": file,
+                   "greedy_equal_to_first": div.is_none(), "first_divergence": div})
+        })
+        .collect();
+    let index = json!({
+        "ok": true,
+        "arms": arms.iter().map(|a| a.name.clone()).collect::<Vec<_>>(),
+        "rounds": rounds,
+        "prompt": prompt_info,
+        "snapshot": snapshot_json,
+        "greedy_equal_all": all_equal,
+        "runs": runs,
+    });
+    std::fs::write(
+        out_dir.join(format!("exit-{index_name}-{stamp}.json")),
+        serde_json::to_string_pretty(&index).unwrap(),
+    )
+    .expect("index");
+    if let Snapshot::Disk(p, _) = &snapshot {
+        let _ = std::fs::remove_file(p);
+    }
+    if let Some(t) = &telemetry {
+        t.shutdown();
+    }
+    if exact {
+        assert!(all_equal, "greedy tokens differ between arms: {index}");
     }
 }
