@@ -49,6 +49,29 @@ def cgroup_throttled_usec():
     return None
 
 
+def cgroup_cpu_periods():
+    """(nr_periods, nr_throttled) of the container's CPU cgroup (v2 cpu.stat, v1 cpu,cpuacct/cpu.stat), or None
+    without a CFS quota or off Linux."""
+    for path in ("/sys/fs/cgroup/cpu.stat", "/sys/fs/cgroup/cpu,cpuacct/cpu.stat", "/sys/fs/cgroup/cpu/cpu.stat"):
+        stat = {}
+        for line in read(path).splitlines():
+            k, _, v = line.partition(" ")
+            if v.strip().isdigit():
+                stat[k] = int(v)
+        if "nr_periods" in stat and "nr_throttled" in stat:
+            return stat["nr_periods"], stat["nr_throttled"]
+    return None
+
+
+def cpu_some_usec():
+    """PSI cpu "some" total of the container's cgroup (system-wide if it has none) and its source, or (None, None)."""
+    for path in ("/sys/fs/cgroup/cpu.pressure", "/proc/pressure/cpu"):
+        for line in read(path).splitlines():
+            if line.startswith("some "):
+                return int(line.rsplit("total=", 1)[1]), path
+    return None, None
+
+
 def tree(pid):
     """pid and all its descendants."""
     kids = {}
@@ -157,7 +180,11 @@ def sample(a):
         while os.path.exists(f"/proc/{a.pid}"):
             pids = tree(a.pid)
             psi, psi_src = memory_some_usec(engine_cgroup(pids))
+            periods = cgroup_cpu_periods()
+            cpu_psi, cpu_psi_src = cpu_some_usec()
             rec = {"t": time.time(), "cg_cpu_usec": cgroup_cpu_usec(), "cg_throttled_usec": cgroup_throttled_usec(),
+                   "cg_periods": periods[0] if periods else None, "cg_throttled": periods[1] if periods else None,
+                   "cpu_some_usec": cpu_psi, "cpu_psi_src": cpu_psi_src,
                    "own_cpu_s": proc_cpu_s(pids), "own_read_bytes": proc_read_bytes(pids),
                    "disk_read_bytes": disk_read_bytes(a.disk), "pswpin": pswpin(),
                    "own_majflt": proc_majflt(pids), "mem_some_usec": psi, "psi_src": psi_src}
@@ -197,6 +224,8 @@ def observe(a):
     windows = []
     env_other, env_swap, env_disk_other, throttles, pcie = [], [], [], set(), None
     env_majflt, env_stall = [], []
+    thr_periods = thr_throttled = 0
+    env_cpu_stall = []
     for w in run["decode_windows"]:
         first, last, inside = window_samples(samples, w["start_unix_s"], w["end_unix_s"])
         dt = max(last["t"] - first["t"], 1e-3) if first and last else w["wall_s"]
@@ -213,6 +242,12 @@ def observe(a):
             # PSI deltas only within one cgroup (the engine moves into its scope right after start)
             if first.get("mem_some_usec") is not None and last.get("mem_some_usec") is not None                     and first.get("psi_src") == last.get("psi_src"):
                 env_stall.append(min(1.0, (last["mem_some_usec"] - first["mem_some_usec"]) / 1e6 / dt))
+            # CFS throttling of the container over the window; pooled over windows below (ADR 0062)
+            if first.get("cg_periods") is not None and last.get("cg_periods") is not None:
+                thr_periods += max(0, last["cg_periods"] - first["cg_periods"])
+                thr_throttled += max(0, last["cg_throttled"] - first["cg_throttled"])
+            if first.get("cpu_some_usec") is not None and last.get("cpu_some_usec") is not None                     and first.get("cpu_psi_src") == last.get("cpu_psi_src"):
+                env_cpu_stall.append(min(1.0, (last["cpu_some_usec"] - first["cpu_some_usec"]) / 1e6 / dt))
             if first["disk_read_bytes"] is not None:
                 dev = last["disk_read_bytes"] - first["disk_read_bytes"]
                 own = last["own_read_bytes"] - first["own_read_bytes"]
@@ -264,6 +299,8 @@ def observe(a):
             "pcie": [{"device": "gpu0", "gen_current": pcie["gen"], "width_current": pcie["width"],
                       "gen_max": pcie["gen_max"], "width_max": pcie["width_max"]}] if pcie and pcie["gen"] else [],
             "cpu_quota_cores": a.quota,
+            "cpu_throttled_share": thr_throttled / thr_periods if thr_periods else None,
+            "cpu_stall_share": statistics.median(env_cpu_stall) if env_cpu_stall else None,
             "cpu_other_cores": statistics.median(env_other) if env_other else 0.0,
             "swap_in_bytes_per_s": statistics.median(env_swap) if env_swap else 0.0,
             "major_faults_per_s": statistics.median(env_majflt) if env_majflt else 0.0,

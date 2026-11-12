@@ -69,6 +69,7 @@ pub fn applicable_faults(hw: &HardwareGraph) -> Vec<FaultClass> {
         FaultClass::PcieDegraded,
         FaultClass::LinkSlow,
         FaultClass::Swapping,
+        FaultClass::CpuQuotaThrottle,
     ]
     .into_iter()
     .filter(|c| applicable(hw, *c))
@@ -114,7 +115,9 @@ pub fn applicable(hw: &HardwareGraph, class: FaultClass) -> bool {
     let gpu = has_kind(hw, DeviceKind::Gpu);
     match class {
         FaultClass::GpuThrottle => gpu,
-        FaultClass::CpuCotenant | FaultClass::Swapping => has_kind(hw, DeviceKind::Cpu),
+        FaultClass::CpuCotenant | FaultClass::Swapping | FaultClass::CpuQuotaThrottle => {
+            has_kind(hw, DeviceKind::Cpu)
+        }
         FaultClass::DiskSlow => has_kind(hw, DeviceKind::Disk),
         FaultClass::VramPressure => {
             gpu && (has_kind(hw, DeviceKind::Cpu) || has_kind(hw, DeviceKind::Disk))
@@ -301,6 +304,15 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
     let mut mem_rng = Rng(spec.seed ^ 0x5DEE_CE66_D1CE_4E5B);
     env.major_faults_per_s = 200.0 * mem_rng.unit();
     let psi = spec.seed.is_multiple_of(2);
+    // Quota signals likewise: throttling is under 5% when healthy, and PSI is there on odd seeds
+    // only (the memory PSI above is on even ones).
+    let mut cpu_rng = Rng(spec.seed ^ 0x2545_F491_4F6C_DD1D);
+    if cpu.is_some() {
+        env.cpu_throttled_share = Some(0.05 * cpu_rng.unit());
+        if !psi {
+            env.cpu_stall_share = Some(0.03 * cpu_rng.unit());
+        }
+    }
     if spec.seed.is_multiple_of(3)
         && let Some(g) = gpus.first()
     {
@@ -395,6 +407,15 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
                         r.rate /= SWAP_SLOWDOWN;
                     }
                 }
+            }
+            FaultClass::CpuQuotaThrottle => {
+                // Spinning workers burn the quota: 80% to 98% of the periods throttled, decode
+                // 1.30x slower (ADR 0045).
+                if let Some(r) = find(&mut res, "cpu") {
+                    r.rate /= 1.3;
+                }
+                env.cpu_throttled_share = Some(0.8 + 0.18 * cpu_rng.unit());
+                env.cpu_stall_share = (!psi).then(|| 0.25 + 0.1 * cpu_rng.unit());
             }
             FaultClass::ModelMismatch => {}
         }

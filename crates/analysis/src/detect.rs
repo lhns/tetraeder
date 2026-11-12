@@ -19,6 +19,13 @@ pub const RESIDUAL_MIN_SHARE: f64 = 0.05;
 pub const CPU_OTHER_FRAC: f64 = 0.15;
 /// The same, when the rate residual already shows the CPU is slow (weaker evidence is enough).
 pub const CPU_OTHER_FRAC_RESIDUAL: f64 = 0.05;
+/// Share of CFS periods throttled that marks a quota fault. The 20% of the host alert is a
+/// warning; a run throttled in 80 to 98% of its periods lost 1.30x (ADR 0045), a healthy one
+/// stays under 5%.
+pub const THROTTLED_SHARE_MIN: f64 = 0.3;
+/// Cost assumed for a quota throttle without a calibrated CPU rate: the throttled share times
+/// the CPU share times this (0.9 x 0.8 x 0.3 is about 0.23, the 1.30x of ADR 0045).
+pub const QUOTA_DEFAULT_LOSS: f64 = 0.3;
 /// VRAM held by others, as a fraction of the device, that matters.
 pub const VRAM_OTHER_FRAC: f64 = 0.05;
 /// Fewer VRAM slots than planned by this fraction is a deficit.
@@ -65,6 +72,8 @@ pub enum FaultClass {
     LinkSlow,
     Swapping,
     ModelMismatch,
+    /// The engine's own threads exceed the cgroup CPU quota (ADR 0062).
+    CpuQuotaThrottle,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -308,6 +317,37 @@ fn env_checks(
                 evidence,
             });
         }
+    }
+
+    // The cgroup CPU quota throttles the engine's own threads. Not a co-tenant: that is other
+    // processes using the cores; here the engine spends the quota on spinning workers.
+    if let Some(share) = env.cpu_throttled_share
+        && share >= THROTTLED_SHARE_MIN
+        && agg.occ("cpu") >= MATERIAL_SHARE
+        && slow_or_unknown(agg, exp, "cpu")
+    {
+        let cost = agg
+            .excess_share(exp, "cpu")
+            .unwrap_or(agg.occ("cpu") * share.min(1.0) * QUOTA_DEFAULT_LOSS);
+        let mut evidence = vec![format!(
+            "the cgroup was throttled in {:.0}% of its CFS periods (quota {:.1} cores)",
+            share * 100.0,
+            env.cpu_quota_cores
+        )];
+        if let Some(s) = env.cpu_stall_share {
+            evidence.push(format!(
+                "tasks waited for a CPU {:.0}% of the time",
+                s * 100.0
+            ));
+        }
+        evidence.extend(slowdown_evidence(agg, exp, "cpu"));
+        claimed.insert("cpu".into());
+        faults.push(Fault {
+            class: FaultClass::CpuQuotaThrottle,
+            resource: "cpu_quota".into(),
+            cost_share: cost,
+            evidence,
+        });
     }
 
     // Disk with a visible cause: io.max or other readers.
