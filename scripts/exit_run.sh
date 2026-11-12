@@ -8,7 +8,7 @@
 # result JSON. ggml is built once for the native ISA of the box (TETRAEDER_GGML_NATIVE=ON, ADR 0052 addendum
 # 2026-11-09: a DL build would compile 14 CPU variants on a fresh box); "ggml_system_info" in each result records
 # the ISA. ktransformers-avx2 forces kt-kernel's AVX2 kernels.
-# Host and engine metrics also go to a collector (ADR 0059, scripts/otelcol_box.sh) started before the first stage and
+# Host and engine metrics also go to a collector (ADR 0060, scripts/otelcol_box.sh) started before the first stage and
 # stopped before DONE: the sampler posts to it, the builder exports to it (OTEL_EXPORTER_OTLP_ENDPOINT), hostmetrics
 # scrapes the box, all into runs/vast/otel/<start>/; then every result gets "host_otlp" next to "host". OTEL_COLLECTOR=0
 # runs without it; ENGINE_OTLP=0 keeps the collector but turns the builder's export off (the overhead pair).
@@ -208,7 +208,7 @@ exit_regime() {
   case "$name" in main-overlap* | main-prefetch* | main-repeat) text+=(TETRAEDER_EXIT_DECODE_WINDOWS=4) ;; esac
   echo "[$(date +%T)] start $name"
   local json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
-  # the builder's own metrics to the collector every second (ADR 0059), with the stage as a resource attribute
+  # the builder's own metrics to the collector every second (ADR 0060), with the stage as a resource attribute
   local otel=() attrs="tetraeder.stage=$name"
   if [ -n "${TETRAEDER_HOST_OTLP:-}" ] && [ "${ENGINE_OTLP:-1}" = 1 ]; then
     [ -n "${TETRAEDER_SESSION:-}" ] && attrs="$attrs,tetraeder.session=$TETRAEDER_SESSION"
@@ -532,7 +532,7 @@ EOF
   } >> "$log" 2>&1
 fi
 }
-# the collector for every stage alike (ADR 0059); without it the run goes on with the sampler's JSONL alone
+# the collector for every stage alike (ADR 0060); without it the run goes on with the sampler's JSONL alone
 unset TETRAEDER_HOST_OTLP
 if [ $rc = 0 ] && [ "${OTEL_COLLECTOR:-1}" = 1 ]; then
   if bash scripts/otelcol_box.sh start "$PWD/runs/vast/otel/$(date +%Y%m%d)-$stamp" >> "$log" 2>&1 8>&-; then

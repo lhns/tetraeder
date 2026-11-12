@@ -1,4 +1,4 @@
-"""Host samples as OTLP metrics (ADR 0059).
+"""Host samples as OTLP metrics (ADR 0060).
 
 points(rec):     one engine_sample.py sample record as OTLP data points (the sampler's series).
 request(...):    an OTLP/HTTP JSON ExportMetricsServiceRequest for those points.

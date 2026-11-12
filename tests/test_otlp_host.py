@@ -1,4 +1,4 @@
-"""Host metrics as OTLP (ADR 0059): the host block derived from the collector's OTLP file equals the one derived from
+"""Host metrics as OTLP (ADR 0060): the host block derived from the collector's OTLP file equals the one derived from
 the sampler's JSONL for the same counters, field for field; plus the encoder, the poster and the GPU parser."""
 
 import importlib.util

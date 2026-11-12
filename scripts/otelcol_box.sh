@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The box collector of an exit run (ADR 0059), config deploy/otelcol/config-file.yaml.
+# The box collector of an exit run (ADR 0060), config deploy/otelcol/config-file.yaml.
 #   scripts/otelcol_box.sh start <dir>   OTLP JSON-lines files and the collector log go to <dir>; returns once the
 #                                        OTLP HTTP port answers (exit 1 if it does not: the run goes on without it)
 #   scripts/otelcol_box.sh stop          SIGTERM to the collector's process group, waits until it has flushed and exited

@@ -224,7 +224,7 @@ Three stages feed the tier term and the calibration ledger. All are written into
 
 **Verify after fetch.** `python3 scripts/disk_check.py bench/results/<date>/exit-<stage>-<stamp>.json bench/results/<date>/disk-curve-loaded-<stamp>.json`: the sampler's decode `read_mb_s` at `disk_queue_depth_mean` should lie within 20% of the loaded curve at that depth (reported, not gated). `cargo test -p tetraeder-bench committed_tier_replays_are_current` replays a committed `tier-replay.json` against its trace; `cargo run -p tetraeder-planner --bin tetraeder-plan -- ledger` shows the ledger rows of a new `ledger-<session>/` (add `--write` to snapshot, with `--accept-worse` for a reviewed regression).
 
-## OTLP files of a box run (ADR 0059)
+## OTLP files of a box run (ADR 0060)
 
 `exit_run.sh` starts a collector (`scripts/otelcol_box.sh`, config `deploy/otelcol/config-file.yaml`) before its first stage and stops it before `DONE`. It needs `/opt/otelcol/otelcol-contrib` (the provision hook installs it) and logs `otelcol: up, files in ...` to `runs/vast/exit_run.log`; without it the run goes on with the sampler's JSONL alone. `OTEL_COLLECTOR=0` skips it; `ENGINE_OTLP=0` keeps it but stops the builder's own export (the overhead pair of the ADR).
 

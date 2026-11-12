@@ -708,7 +708,7 @@ impl Metrics {
         );
     }
 
-    /// Once at engine start (ADR 0059): the configured compute threads and, when the cgroup has
+    /// Once at engine start (ADR 0060): the configured compute threads and, when the cgroup has
     /// one, its CPU limit in cores (`host::cgroup_cpu_quota`), so a run above its quota shows.
     pub fn cpu_threads(&self, threads: u64, quota: Option<f64>) {
         self.cpu_threads.record(threads, &[]);

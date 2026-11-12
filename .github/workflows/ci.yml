@@ -124,7 +124,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           for f in scripts/*.sh patches/*.sh; do bash -n "$f"; done
-      # Both collector configs load in the pinned collector (ADR 0059): receivers, processors, env expansion.
+      # Both collector configs load in the pinned collector (ADR 0060): receivers, processors, env expansion.
       # The compose config reads the host through /hostfs (its container mounts /). Then the box collector runs for
       # real (scripts/otelcol_box.sh) with the sampler posting to it, and the rows must carry the Linux-only fields.
       - name: otelcol validate and box collector

@@ -1,4 +1,4 @@
-# 0059. Box and host metrics as OpenTelemetry metrics: one collector per box run, the result's host block derived from its file
+# 0060. Box and host metrics as OpenTelemetry metrics: one collector per box run, the result's host block derived from its file
 
 Status: Proposed (2026-11-12, owner decision). Extends ADR 0012 (one OTel data path) and ADR 0058 (host fields per phase and decode window); the sampler path of ADR 0058 stays until a box run shows both paths agree.
 

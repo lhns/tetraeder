@@ -1,6 +1,6 @@
 # Collector for the compose stack. Tail sampling keeps every slow or failed trace
 # and a small share of the rest (docs/plan.md, Observability). Host metrics: the same hostmetrics receiver and CPU
-# transform as the box collector (config-file.yaml, ADR 0059), reading the host through the /hostfs mount; the host
+# transform as the box collector (config-file.yaml, ADR 0060), reading the host through the /hostfs mount; the host
 # sampler (scripts/engine_sample.py) posts here with TETRAEDER_HOST_OTLP=http://localhost:4318.
 receivers:
   otlp:

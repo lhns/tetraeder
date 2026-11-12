@@ -45,7 +45,7 @@ pub fn run(a: &InfoArgs) -> Result<()> {
 
 /// Records the CPU backend gauges once at engine start. A load error is not recorded here: the
 /// engine constructors report it. Also the compute threads (`--threads`, default all hardware
-/// threads) against the cgroup's CPU quota (ADR 0059).
+/// threads) against the cgroup's CPU quota (ADR 0060).
 pub fn record_cpu_backend(m: &Metrics, threads: Option<i32>) {
     if let Ok(i) = cpu::backend_info() {
         m.cpu_backend(i.tier, &i.isa, i.dispatch.as_str(), &i.missing);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs the OpenTelemetry Collector (contrib distribution) for the box runs and CI (ADR 0059; docs/sources.md).
+# Installs the OpenTelemetry Collector (contrib distribution) for the box runs and CI (ADR 0060; docs/sources.md).
 #   scripts/otelcol_install.sh [dir]   (default /opt/otelcol; the binary is <dir>/otelcol-contrib)
 # Fetches the pinned release tarball for linux amd64 and checks its sha256 before unpacking. Does nothing when
 # <dir>/PIN names that tarball (the 0.116.1 binary reports itself as 0.116.0). Same version as the compose image

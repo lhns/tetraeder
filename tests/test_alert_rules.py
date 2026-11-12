@@ -26,7 +26,7 @@ FUNCS = {
 def _emitted_bases() -> set[str]:
     text = "\n".join(f.read_text(encoding="utf-8") for f in CRATES.glob("*/src/**/*.rs"))
     bases = {m.replace(".", "_") for m in re.findall(r'"((?:tetraeder|gen_ai)\.[a-z_.]+)"', text)}
-    # host series (ADR 0059): the sampler's names and the hostmetrics names it reads, declared in scripts/otlp_host.py
+    # host series (ADR 0060): the sampler's names and the hostmetrics names it reads, declared in scripts/otlp_host.py
     host = HOST_NAMES.read_text(encoding="utf-8")
     return bases | {m.replace(".", "_") for m in re.findall(r'"((?:tetraeder|container|hw|system|process)\.[a-z_.]+)"', host)}
 

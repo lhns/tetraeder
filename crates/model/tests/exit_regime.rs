@@ -62,7 +62,7 @@
 //!   `tetraeder-routing` trace for `tetraeder-bench replay` (ADR 0050 (c)). One file per ubatch
 //!   size: with several, the size is inserted before the extension.
 //! - `TETRAEDER_EXIT_OUT` (JSON file), `TETRAEDER_EXIT_MACHINE` (a note).
-//! - `OTEL_EXPORTER_OTLP_ENDPOINT`: the builder exports its metrics there (ADR 0059), every
+//! - `OTEL_EXPORTER_OTLP_ENDPOINT`: the builder exports its metrics there (ADR 0060), every
 //!   `OTEL_METRIC_EXPORT_INTERVAL` ms, with `OTEL_RESOURCE_ATTRIBUTES`; unset, no telemetry.
 //!
 //! Every run records `prompt` (token count and an FNV-1a hash of the token ids), `first_top`
@@ -520,7 +520,7 @@ fn exit_regime() {
     let prompt_info = json!({"tokens": tokens.len(), "fnv1a64": tokens_hash(&tokens)});
     let reference = std::env::var("TETRAEDER_EXIT_ENGINE").is_ok_and(|v| v == "libllama");
 
-    // ADR 0059: the builder's metrics to the box collector when the harness gives an endpoint
+    // ADR 0060: the builder's metrics to the box collector when the harness gives an endpoint
     let tel_cfg = TelemetryConfig::from_env();
     let telemetry = tel_cfg.otlp_endpoint.is_some().then(|| {
         let t = Arc::new(Telemetry::new(&tel_cfg).expect("OTLP exporter"));

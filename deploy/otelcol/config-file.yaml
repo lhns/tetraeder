@@ -1,4 +1,4 @@
-# Collector for a Vast box with no backend (ADR 0059): OTLP from the builder and the host sampler, host metrics from the
+# Collector for a Vast box with no backend (ADR 0060): OTLP from the builder and the host sampler, host metrics from the
 # hostmetrics receiver, all written as OTLP JSON lines. scripts/otelcol_box.sh starts it before the first exit stage
 # and stops it before DONE; the files land in runs/vast/otel/<start stamp>/ ($TETRAEDER_OTEL_DIR), which taxameter
 # fetch packs. `engine_sample.py otlp-merge` derives each result's host_otlp from them; docs/sessions.md shows how

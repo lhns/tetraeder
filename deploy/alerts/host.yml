@@ -1,4 +1,4 @@
-# Box and host alerts (ADR 0059): the container's cgroup, the host CPUs and the GPU, from the hostmetrics receiver and
+# Box and host alerts (ADR 0060): the container's cgroup, the host CPUs and the GPU, from the hostmetrics receiver and
 # the host sampler (scripts/engine_sample.py posting OTLP). Loaded by vmalert in docker-compose.yml; metric names
 # follow -opentelemetry.usePrometheusNaming.
 groups:

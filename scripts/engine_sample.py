@@ -18,7 +18,7 @@ summarize:  python3 engine_sample.py summarize --samples s.jsonl --threads N (--
             pressure stall time over wall time), disk_util (read_mb_s over the loaded disk curve's rate at the mean
             queue depth) and io_class (see io_class()). The curve is disk-curve-loaded-*.json in D (default: the
             directory of the merged or output JSON).
-OTLP (ADR 0059): with TETRAEDER_HOST_OTLP (or --otlp) set to a collector's base URL, sample, membw and emit-curve also
+OTLP (ADR 0060): with TETRAEDER_HOST_OTLP (or --otlp) set to a collector's base URL, sample, membw and emit-curve also
             post their numbers as OTLP metrics (scripts/otlp_host.py); SAMPLER_OTLP=0 turns it off.
 emit-curve: python3 engine_sample.py emit-curve disk-curve-loaded-X.json --kind loaded
 otlp-merge: python3 engine_sample.py otlp-merge --otel-dir runs/vast/otel --results bench/results/D

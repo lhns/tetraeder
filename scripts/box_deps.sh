@@ -33,7 +33,7 @@ fi
 ch=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml 2>/dev/null | head -1)
 rustup toolchain install "${ch:-stable}" --profile minimal -c rustfmt -c clippy || exit 1
 command -v sccache > /dev/null 2>&1 || echo "note: sccache missing, builds will not be cached"
-# the box collector of the exit runs (ADR 0059): not in the image (its tag follows the engine pins only), so here;
+# the box collector of the exit runs (ADR 0060): not in the image (its tag follows the engine pins only), so here;
 # a failed download is not fatal, exit_run.sh then runs without it
 bash scripts/otelcol_install.sh /opt/otelcol || echo "note: otelcol-contrib missing, exit runs record no OTLP host metrics"
 echo "deps ok: $(cargo --version) $(cmake --version | head -1) ninja $(ninja --version) sccache $(command -v sccache > /dev/null 2>&1 && echo yes || echo no)"

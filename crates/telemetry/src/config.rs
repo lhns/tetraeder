@@ -29,7 +29,7 @@ impl Default for TelemetryConfig {
 
 impl TelemetryConfig {
     /// Defaults plus the standard `OTEL_EXPORTER_OTLP_ENDPOINT` (empty counts as unset) and
-    /// `OTEL_METRIC_EXPORT_INTERVAL` (milliseconds; box runs use 1000, ADR 0059) variables.
+    /// `OTEL_METRIC_EXPORT_INTERVAL` (milliseconds; box runs use 1000, ADR 0060) variables.
     /// `OTEL_RESOURCE_ATTRIBUTES` is read by the SDK's resource detector.
     pub fn from_env() -> Self {
         Self::from_vars(|k| std::env::var(k).ok())
