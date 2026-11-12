@@ -854,26 +854,14 @@ mod tests {
             None,
         )
         .unwrap();
-        // The hook sees the first cut-wait sleep: it counts the cut tokens, then lets the
-        // runtime unwind the requests (a yield loop, no sleep), so the cut wait ends at its
-        // next poll of fake time.
+        // The hook sees the first cut-wait sleep and lets the runtime unwind the requests (a
+        // yield loop, no sleep), so the cut wait ends at its next poll of fake time. It must not
+        // count cut tokens: the runtime threads may unwind the requests before the first sleep,
+        // so what the hook sees is a race. The cut itself is checked on the tokens below.
         let flight = Arc::clone(&e.flight);
-        let hook_events = Arc::clone(&events);
+        let slept = AtomicBool::new(false);
         let (clock, fake) = scripted(move |_| {
-            let cut = flight
-                .cuts
-                .lock()
-                .unwrap()
-                .values()
-                .filter(|t| t.is_cancelled())
-                .count();
-            let seen = hook_events
-                .lock()
-                .unwrap()
-                .iter()
-                .any(|x| x.starts_with("cut"));
-            if cut > 0 && !seen {
-                note(&hook_events, format!("cut {cut}"));
+            if !slept.swap(true, Ordering::SeqCst) {
                 let giveup = Instant::now() + Duration::from_secs(10);
                 while flight.count.load(Ordering::SeqCst) > 0 && Instant::now() < giveup {
                     std::thread::yield_now();
@@ -884,6 +872,9 @@ mod tests {
         let rx1 = request(&e, 100_000).unwrap();
         let rx2 = request(&e, 100_000).unwrap();
         assert_eq!(e.in_flight(), 2);
+        let tokens: Vec<CancellationToken> =
+            e.flight.cuts.lock().unwrap().values().cloned().collect();
+        assert_eq!(tokens.len(), 2);
         let mut c = Control(Arc::clone(&e));
         c.stop_admitting();
         let t0 = Instant::now();
@@ -900,9 +891,10 @@ mod tests {
         let cut_took = fake.now_s() - start - drained_at;
         assert!(cut_took < 1.0, "{cut_took} fake seconds");
         assert_eq!(e.in_flight(), 0);
+        assert!(tokens.iter().all(|t| t.is_cancelled()));
         assert_eq!(
             *events.lock().unwrap(),
-            ["drain timed out", "cut 2", "old backend dropped", "load"]
+            ["drain timed out", "old backend dropped", "load"]
         );
         for rx in [rx1, rx2] {
             let (_, end) = collect(rx).await;
