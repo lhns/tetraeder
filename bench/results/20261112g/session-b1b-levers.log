@@ -1,0 +1,45 @@
+=== RUN 2026-11-12T21:00:50 session.sh ===
+[21:00:50] session b1b-levers: results bench/results/20261112g, deadline 22:55:50 (115 min left)
+llama.cpp cache: 10458 MiB, cpu share 0.95
+[21:00:50] start exit_run
+vendor/llama.cpp is not a git repo here: fresh repo from https://github.com/ggml-org/llama.cpp
+From https://github.com/ggml-org/llama.cpp
+ * branch            2e0d86bebc210947680e8f0d67daa79f3260c106 -> FETCH_HEAD
+apply 0001-msvc-avx512-vbmi-score.patch
+apply 0002-iqk-avx512-q4k-q6k-decode.patch
+apply 0003-cpu-registry-threadpool-pause.patch
+ok: 2e0d86b + 3 patches
+[21:00:59] balloon pid 38242: oom_score_adj -1000 not allowed (no CAP_SYS_RESOURCE); engines run at 1000
+[22:39:38] done rc=0
+[22:39:38] start noise
+source Qwen/Qwen3-8B-GGUF: https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main (modelscope 1372 KB/s, huggingface 9496 KB/s)
+connections per file: 16
+got   Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf (5027783488 bytes)
+models_ok=1
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 1.06s
+[22:40:46Z] pair noise-cuda-dense (Noise): llama-cuda-dense vs llama-cuda-dense
+[22:41:02Z] pair noise-cuda-dense rep 1/8 a llama-cuda-dense: pp Some(5022.47828) tg Some(139.127521) t/s
+[22:41:08Z] pair noise-cuda-dense rep 1/8 b llama-cuda-dense: pp Some(5009.752604) tg Some(139.352351) t/s
+[22:41:13Z] pair noise-cuda-dense rep 2/8 b llama-cuda-dense: pp Some(5019.065929) tg Some(139.785689) t/s
+[22:41:19Z] pair noise-cuda-dense rep 2/8 a llama-cuda-dense: pp Some(5019.592301) tg Some(139.382966) t/s
+[22:41:24Z] pair noise-cuda-dense rep 3/8 a llama-cuda-dense: pp Some(5007.465413) tg Some(139.261252) t/s
+[22:41:29Z] pair noise-cuda-dense rep 3/8 b llama-cuda-dense: pp Some(5014.339356) tg Some(139.279535) t/s
+[22:41:35Z] pair noise-cuda-dense rep 4/8 b llama-cuda-dense: pp Some(5008.190664) tg Some(139.068186) t/s
+[22:41:40Z] pair noise-cuda-dense rep 4/8 a llama-cuda-dense: pp Some(5003.778942) tg Some(139.62016) t/s
+[22:41:46Z] pair noise-cuda-dense rep 5/8 a llama-cuda-dense: pp Some(5015.690412) tg Some(138.911119) t/s
+[22:41:51Z] pair noise-cuda-dense rep 5/8 b llama-cuda-dense: pp Some(5011.645249) tg Some(139.27055) t/s
+[22:41:57Z] pair noise-cuda-dense rep 6/8 b llama-cuda-dense: pp Some(5011.811919) tg Some(138.835685) t/s
+[22:42:02Z] pair noise-cuda-dense rep 6/8 a llama-cuda-dense: pp Some(5017.685024) tg Some(139.199922) t/s
+[22:42:07Z] pair noise-cuda-dense rep 7/8 a llama-cuda-dense: pp Some(5007.228868) tg Some(139.195868) t/s
+[22:42:13Z] pair noise-cuda-dense rep 7/8 b llama-cuda-dense: pp Some(5012.063289) tg Some(139.146499) t/s
+[22:42:18Z] pair noise-cuda-dense rep 8/8 b llama-cuda-dense: pp Some(5016.212319) tg Some(139.280542) t/s
+[22:42:23Z] pair noise-cuda-dense rep 8/8 a llama-cuda-dense: pp Some(5000.698961) tg Some(139.196251) t/s
+[22:42:24Z] pair noise-cuda-dense -> Ok 
+spec phase0 on 6b0efae78dae (8 repeats)
+noise-cuda-dense             Ok
+    pp: a 5011.58 (rel IQR 0.2%)  b 5011.94 (rel IQR 0.1%)  ratio 1.000 [0.999, 1.001]  band -7.5% (measured rtx-3090 n=11)
+    tg: a 139.20 (rel IQR 0.1%)  b 139.28 (rel IQR 0.1%)  ratio 1.000 [0.997, 1.003]  band -7.5% (measured rtx-3090 n=11)
+results: bench/results/20261112g/noise/phase0-224046.json
+[22:42:24] done rc=0
+[22:42:24] SESSION_DONE (13 min before the deadline)
