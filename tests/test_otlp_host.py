@@ -340,11 +340,12 @@ def test_box_collector_end_to_end(tmp_path):
     subprocess.run(["bash", box, "start", str(otel)], env=env, check=True, timeout=60)
     try:
         sleeper = subprocess.Popen(["sleep", "6"])
-        subprocess.run([sys.executable, str(SCRIPTS / "engine_sample.py"), "sample", "--pid", str(sleeper.pid),
-                        "--disk", busiest_disk(), "--out", str(tmp_path / "s.jsonl")],
-                       env=dict(env, TETRAEDER_HOST_OTLP="http://127.0.0.1:4318", TETRAEDER_STAGE="ci"),
-                       check=True, timeout=60)
+        sampler = subprocess.Popen([sys.executable, str(SCRIPTS / "engine_sample.py"), "sample", "--pid",
+                                    str(sleeper.pid), "--disk", busiest_disk(), "--out", str(tmp_path / "s.jsonl")],
+                                   env=dict(env, TETRAEDER_HOST_OTLP="http://127.0.0.1:4318", TETRAEDER_STAGE="ci"))
+        # reap the sleeper: the sampler runs while /proc/PID exists, and a zombie keeps it
         sleeper.wait()
+        assert sampler.wait(timeout=30) == 0
     finally:
         subprocess.run(["bash", box, "stop"], env=env, timeout=60)
     pts = oh.read_points(sorted(otel.rglob("*.jsonl")))
