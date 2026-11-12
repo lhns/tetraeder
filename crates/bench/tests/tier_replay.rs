@@ -58,7 +58,8 @@ fn replay_output_has_the_fields_the_planner_reads() {
         &[Policy::Lru],
         &[VramPolicy::Static],
         &out,
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(n, 4);
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
     assert_eq!(doc["replay_version"], REPLAY_VERSION);
@@ -103,7 +104,8 @@ fn replay_output_has_the_fields_the_planner_reads() {
         &[Policy::Lru],
         &[VramPolicy::Static],
         &again,
-    ).unwrap();
+    )
+    .unwrap();
     let doc2: Value = serde_json::from_str(&std::fs::read_to_string(&again).unwrap()).unwrap();
     assert_eq!(doc["outcomes"], doc2["outcomes"]);
 }

@@ -100,6 +100,11 @@ pub struct LayerExpertStats {
     /// Routed experts not resident in the compute tier and computed on the CPU, once per layer
     /// step ([`MissPolicy::Cpu`]).
     pub cpu: u64,
+    /// Routed (token, expert) pairs of the layer steps planned under [`MissPolicy::Cpu`], and
+    /// those whose expert was resident in the compute tier. `cpu` and the compute hits count
+    /// distinct experts per layer step, which differ from pairs when a step has several tokens.
+    pub pairs: u64,
+    pub compute_pairs: u64,
     /// Layer steps with compute-tier hits and CPU experts at once.
     pub mixed_steps: u64,
     /// Prediction scores (ADR 0038): per token, the predicted top-k experts also in the real
@@ -300,6 +305,8 @@ pub(crate) struct Streamer {
     full: Vec<u64>,
     partial: Vec<u64>,
     cpu: Vec<u64>,
+    pairs: Vec<u64>,
+    compute_pairs: Vec<u64>,
     mixed: Vec<u64>,
     /// Routed pairs per layer and expert, for the hot set.
     counts: Vec<Vec<u64>>,
@@ -454,6 +461,8 @@ impl Streamer {
             full: vec![0; layers],
             partial: vec![0; layers],
             cpu: vec![0; layers],
+            pairs: vec![0; layers],
+            compute_pairs: vec![0; layers],
             mixed: vec![0; layers],
             counts,
         })
@@ -492,6 +501,8 @@ impl Streamer {
                     full_steps: self.full[il],
                     partial_steps: self.partial[il],
                     cpu: self.cpu[il],
+                    pairs: self.pairs[il],
+                    compute_pairs: self.compute_pairs[il],
                     mixed_steps: self.mixed[il],
                     predicted_hits: self.predicted[il].0,
                     predicted_total: self.predicted[il].1,
@@ -585,6 +596,11 @@ impl Streamer {
         let (compute, rest): (Vec<u32>, Vec<u32>) = distinct
             .into_iter()
             .partition(|&e| self.compute.layer(il).slot_of(e).is_some());
+        self.pairs[il] += chosen.len() as u64;
+        self.compute_pairs[il] += chosen
+            .iter()
+            .filter(|&&e| compute.contains(&(e as u32)))
+            .count() as u64;
         let mut compute_slots = Vec::with_capacity(compute.len());
         for &e in &compute {
             let res = self.compute.layer_mut(il).lookup(e);

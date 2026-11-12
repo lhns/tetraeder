@@ -162,3 +162,18 @@ Rotation is worse here. Random weights have no channel outliers, which is what t
 **Diagnostic rows added.** The reference in ubatches of 128 (below the 256 scored positions of a calibration chunk, so the chunking of every prefix and scored tail changes): whether batching alone moves it to the floor; exactly 0 means the builder is batch independent. Each engine's formats against that engine's own F16 row (builder Q8_0 against builder F16 rotated, libllama Q8_0 against libllama F16): whether libllama sees the same floor against itself. `kv_format.rs::cpu_quantized_kv_kl_at_2k` now also prints F16 rotated against F16 on the synthetic CPU model.
 
 **Consequence.** One more builder run (a minute or two on the A40, the small ubatch is slower); peak host memory is the reference, one baseline and the current row (about 11 GB). The floor varies by about 0.0015 between perturbations (builder rotated against libllama F16 above), half the Q8_0/Q8_0 bound. The standard error treats positions as independent, but positions in one sequence share the perturbation through the cache, so it is a lower bound and `marginal` is optimistic. If the rerun shows marginal rows, the next step is more scored positions or more floor samples, not looser bounds.
+
+## Addendum 2026-11-12: an adaptive VRAM tier in the replay (branch `track-vram-policy-replay`)
+
+Question (section c): on the 235B the llama.cpp expert cache decodes 1.35x to 1.54x faster than the builder at the same VRAM budget (ADR 0045, results 20261112a). The builder's compute tier is a static hot set picked after the first prefill ubatch; every other expert runs on the CPU. The cache admits experts during decode. Would an adaptive VRAM tier raise the decode VRAM pair share (0.178 in `bench/results/20261110c/replay-235b.json`) enough to matter?
+
+Decision: the replay gets a VRAM-tier policy, `Config::vram_policy`, grid flag `tetraeder-bench replay --vram-policy` (default `static`). No change to the engine's policy in this branch.
+
+- `static`: as built; outcomes are unchanged and the JSON gains no fields.
+- `prefill`: a static hot set from the routing counts of the whole prefill, taken when decode starts; the marker after the first ubatch is ignored.
+- `lru` and `lru:<pin share>`: every decode miss is admitted after its step, evicting the least recently used unpinned expert. The marker loads the hot set; `pin` of the slots keep it pinned (`lru` pins none).
+- `freq`: every `FREQ_REFRESH_STEPS` decode steps the per-layer top-N by routing counts is pinned again and newcomers are copied in.
+
+Non-static outcomes add `vram_policy` and, per phase, `vram_admit_bytes_per_token` (bytes copied to VRAM by admissions, decode only). The replay models no RAM-tier traffic or time for admissions, so `--timed` ignores their cost; the byte count is the cost to compare against the share gained. The engine side measures the same share as `vram_pair_share` in the exit JSON.
+
+The answer needs a real trace replayed at the 235B slot counts; this addendum adds the tooling only.

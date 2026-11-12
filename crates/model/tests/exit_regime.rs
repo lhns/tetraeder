@@ -382,6 +382,11 @@ fn add_profile(a: &mut StepProfile, b: &StepProfile) {
     a.read_wait += b.read_wait;
     a.cpu_landed += b.cpu_landed;
     a.copy += b.copy;
+    a.seg_compute_cpu += b.seg_compute_cpu;
+    a.seg_compute_gpu += b.seg_compute_gpu;
+    a.segs_cpu += b.segs_cpu;
+    a.segs_gpu += b.segs_gpu;
+    a.cpu_pairs += b.cpu_pairs;
 }
 
 fn unix_s() -> f64 {
@@ -405,6 +410,13 @@ fn profile_json(p: &StepProfile, per: f64) -> Value {
         "read_wait_ms": ms(p.read_wait),
         "cpu_landed_ms": ms(p.cpu_landed),
         "copy_ms": ms(p.copy),
+        // `sched.compute` of the segments with a RAM-tier (CPU) group and of those without,
+        // and the routed pairs the CPU computed, per `per`.
+        "seg_compute_cpu_ms": ms(p.seg_compute_cpu),
+        "seg_compute_gpu_ms": ms(p.seg_compute_gpu),
+        "segs_cpu": p.segs_cpu as f64 / per,
+        "segs_gpu": p.segs_gpu as f64 / per,
+        "cpu_pairs": p.cpu_pairs as f64 / per,
     })
 }
 
@@ -486,7 +498,21 @@ fn layers_json(a: &ExpertStats, b: &ExpertStats) -> Value {
         }
     }
     let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len().max(1) as f64;
+    // Routed (token, expert) pairs served from the compute tier over all routed pairs.
+    let pairs: u64 = a
+        .layers
+        .iter()
+        .zip(&b.layers)
+        .map(|(x, y)| y.pairs - x.pairs)
+        .sum();
+    let hits: u64 = a
+        .layers
+        .iter()
+        .zip(&b.layers)
+        .map(|(x, y)| y.compute_pairs - x.compute_pairs)
+        .sum();
     json!({
+        "vram_pair_share": if pairs > 0 { Some(hits as f64 / pairs as f64) } else { None },
         "full_hit_rate_mean": mean(&full),
         "ram_hit_rate_mean": mean(&ram_hit),
         "full_hit_rate": full,

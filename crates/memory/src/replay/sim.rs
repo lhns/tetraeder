@@ -624,7 +624,9 @@ impl<'a, 't> Sim<'a, 't> {
             let hot = hot_from_counts(&self.counts[il], active);
             // `lru` pins only part of the hot set; the rest is a warm start.
             let pins = match self.cfg.vram_policy {
-                VramPolicy::Lru { pin } => ((f64::from(active) * pin).floor() as usize).min(hot.len()),
+                VramPolicy::Lru { pin } => {
+                    ((f64::from(active) * pin).floor() as usize).min(hot.len())
+                }
                 _ => hot.len(),
             };
             let change = self.vram.layer_mut(il).set_hot_set(&hot[..pins]);
