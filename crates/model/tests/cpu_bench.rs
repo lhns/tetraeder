@@ -490,7 +490,6 @@ fn dispatch_floor(n: usize) -> Value {
     for &t in &threads {
         for poll in [0u32, 50] {
             let cpu = Backend::cpu_with_poll(t as i32, Some(poll)).unwrap();
-            let mut sched = Sched::new(std::slice::from_ref(&cpu), 4096, false).unwrap();
             for (kind, chains, extra) in [("1_node", 0, 1), ("6_node", 1, 0)] {
                 let wctx = GgmlContext::new(8, 0).unwrap();
                 let shared = if chains > 0 {
@@ -501,6 +500,8 @@ fn dispatch_floor(n: usize) -> Value {
                 let ctx = GgmlContext::new(256, 1024).unwrap();
                 let mut leaves = Leaves::default();
                 let g = chain_graph(&ctx, &shared, chains, extra, &mut leaves);
+                // After the graph's context, so it drops first.
+                let mut sched = Sched::new(std::slice::from_ref(&cpu), 4096, false).unwrap();
                 sched.alloc_graph(&g).unwrap();
                 leaves.fill();
                 for pause in [false, true] {
@@ -699,7 +700,6 @@ fn segment_overhead() {
 #[test]
 fn cpu_segment_overhead_graphs_compute() {
     let cpu = Backend::cpu_with_poll(2, Some(0)).unwrap();
-    let mut sched = Sched::new(std::slice::from_ref(&cpu), 4096, false).unwrap();
     for (chains, extra, nodes) in [(0, 1, 1), (1, 0, 6)] {
         let wctx = GgmlContext::new(8, 0).unwrap();
         let shared = if chains > 0 {
@@ -710,6 +710,7 @@ fn cpu_segment_overhead_graphs_compute() {
         let ctx = GgmlContext::new(256, 1024).unwrap();
         let mut leaves = Leaves::default();
         let g = chain_graph(&ctx, &shared, chains, extra, &mut leaves);
+        let mut sched = Sched::new(std::slice::from_ref(&cpu), 4096, false).unwrap();
         assert_eq!(g.n_nodes(), nodes);
         sched.alloc_graph(&g).unwrap();
         leaves.fill();
