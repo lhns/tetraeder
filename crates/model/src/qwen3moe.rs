@@ -85,6 +85,15 @@ pub struct StepProfile {
     pub read_wait: Duration,
     pub cpu_landed: Duration,
     pub copy: Duration,
+    /// `sched.compute` of the segments only (not the logits readback), split by whether the
+    /// segment runs a RAM-tier expert group (the CPU computes it) or not, with the segment
+    /// counts. Both are part of `compute`.
+    pub seg_compute_cpu: Duration,
+    pub seg_compute_gpu: Duration,
+    pub segs_cpu: u64,
+    pub segs_gpu: u64,
+    /// Routed (token, expert) pairs computed on the CPU from the RAM tier (`MissPolicy::Cpu`).
+    pub cpu_pairs: u64,
 }
 
 /// One buffer the builder owns (ADR 0037).
@@ -1116,6 +1125,7 @@ impl Qwen3Moe {
         };
         for seg in 0..=n_layer {
             let groups = std::mem::take(&mut pending);
+            let cpu_seg = groups.iter().any(|g| matches!(g.src, ExpertSrc::Ram));
             {
                 let t = Instant::now();
                 let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES)?;
@@ -1152,7 +1162,15 @@ impl Qwen3Moe {
                     self.groups_run += 1;
                 }
                 let t = lap(&mut prof.alloc, t);
+                let tc = Instant::now();
                 sched.compute(&graph)?;
+                if cpu_seg {
+                    prof.seg_compute_cpu += tc.elapsed();
+                    prof.segs_cpu += 1;
+                } else {
+                    prof.seg_compute_gpu += tc.elapsed();
+                    prof.segs_gpu += 1;
+                }
                 self.segments_run += 1;
                 prof.graphs += 1;
                 if let Some(l) = out {
@@ -1208,6 +1226,10 @@ impl Qwen3Moe {
                 // Resident experts run from the compute slots, the others from the RAM slots
                 // on the CPU, in chunks of the RAM slot count (ADR 0035).
                 let plan = streamer.plan_cpu(seg, &chosen)?;
+                prof.cpu_pairs += chosen
+                    .iter()
+                    .filter(|&&e| !plan.compute.contains(&(e as u32)))
+                    .count() as u64;
                 let overlapped = gate && plan.cpu.len() == 1;
                 if gate && !overlapped && !plan.cpu.is_empty() {
                     streamer.finish_prefetch(seg)?;

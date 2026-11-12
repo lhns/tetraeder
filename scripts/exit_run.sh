@@ -181,6 +181,16 @@ ensure_disk() {
   [ -n "${HOST_DISK_DEV:-}" ] || HOST_DISK_DEV=$(python3 scripts/engine_sample.py probe-disk "$model")
 }
 
+# membw_probe <name>: 10 s copy-bandwidth probe at the stage's threads, JSON to membw-<name>-<stamp>.json (MEMBW_PROBE=0
+# skips it); sets $membw_json (empty when skipped or failed)
+membw_probe() {
+  membw_json=""
+  [ "${MEMBW_PROBE:-1}" = 0 ] && return 0
+  local f="$date_dir/membw-$1-$stamp.json"
+  python3 scripts/engine_sample.py membw --seconds 10 --threads "$threads" > "$f" || { echo "membw probe failed for $1"; rm -f "$f"; return 0; }
+  membw_json=$f
+}
+
 # exit_regime <name> <minutes> [ENV=VALUE...]: one harness run, JSON to exit-<name>-<stamp>.json, sampled alongside
 exit_regime() {
   local name=$1 min=$2
@@ -195,6 +205,7 @@ exit_regime() {
   echo "[$(date +%T)] start $name"
   local json="$date_dir/exit-$name-$stamp.json" samples="runs/vast/samples-$name-$stamp.jsonl"
   ensure_disk
+  membw_probe "$name"
   env "${text[@]}" TETRAEDER_EXIT_GGUF="$model" TETRAEDER_EXIT_GPU=1 TETRAEDER_EXIT_THREADS="$threads" \
     TETRAEDER_EXIT_VRAM_SLOT_BYTES="$vram_bytes" TETRAEDER_EXIT_RAM_SLOT_BYTES="$ram_bytes" \
     TETRAEDER_EXIT_OUT="$json" \
@@ -209,7 +220,7 @@ exit_regime() {
   wait "$spid"
   if [ -s "$json" ]; then
     python3 scripts/engine_sample.py summarize --samples "$samples" --threads "$threads" --builder-json "$json" \
-      --out "$samples.summary" --merge-into "$json" > /dev/null || echo "host summary failed for $name"
+      --out "$samples.summary" --merge-into "$json" ${membw_json:+--membw "$membw_json"} > /dev/null || echo "host summary failed for $name"
   fi
   echo "[$(date +%T)] done $name rc=$r"
   return $r
@@ -222,6 +233,7 @@ baseline() {
   want "$name" || return 0
   [ -x "$bin" ] || { echo "skip $name: $bin missing"; return 0; }
   echo "[$(date +%T)] start $name"
+  membw_probe "$name"
   timeout -k 30 "${min}m" "$bin" -m "$model" -ngl 99 -fa 1 -t "$threads" -r 1 -o json "$@" > "$date_dir/$name-$stamp.json"
   local r=$?
   echo "[$(date +%T)] done $name rc=$r"
@@ -282,6 +294,7 @@ if d.get("cpu_share") is not None and d.get("cache_mib"):
     stage_done "llamacpp-cache-s$s${1:+-$1}" && { echo "[$(date +%T)] skip $name s$s: result in $date_dir"; continue; }
     fits "$name" || continue
     echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode $mode"
+    membw_probe "llamacpp-cache-s$s${1:+-$1}"
     HOST_DISK_DEV="$HOST_DISK_DEV" LOAD_MODE=$mode timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
       "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
     echo "[$(date +%T)] done $name s$s rc=$?"

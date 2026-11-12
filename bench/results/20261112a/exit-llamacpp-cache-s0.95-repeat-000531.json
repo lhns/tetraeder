@@ -560,7 +560,35 @@
    "cache_log": [
     "20.37.312.689 I llama_moe_cache: ubatch <= 8: hits = 19289, misses = 35340 (32623 on the CPU), hit rate = 35.31%, uploaded = 29588.62 MiB",
     "20.37.312.714 I llama_moe_cache: large batches: 39822 experts copied from the cache, 144580.78 MiB"
-   ]
+   ],
+   "moe_cache": {
+    "decode": {
+     "ubatch_max": 8,
+     "hits": 19289,
+     "misses": 35340,
+     "misses_cpu": 32623,
+     "hit_rate": 0.3531,
+     "uploaded_mib": 29588.62
+    },
+    "large_batches": {
+     "experts_copied": 39822,
+     "copied_mib": 144580.78
+    }
+   }
   }
- ]
+ ],
+ "moe_cache": {
+  "decode": {
+   "ubatch_max": 8,
+   "hits": 19289,
+   "misses": 35340,
+   "misses_cpu": 32623,
+   "hit_rate": 0.3531,
+   "uploaded_mib": 29588.62
+  },
+  "large_batches": {
+   "experts_copied": 39822,
+   "copied_mib": 144580.78
+  }
+ }
 }
