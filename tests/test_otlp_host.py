@@ -465,8 +465,9 @@ def test_mixed_plain_and_zstd_directory_merges(tmp_path):
 
 
 def test_compress_command_leaves_only_zst_and_merges(tmp_path):
-    if not shutil.which("zstd") or not shutil.which("bash"):
-        pytest.skip("needs bash and the zstd CLI")
+    # Box-side script; on Windows runners `bash` is WSL, which cannot take Windows paths
+    if os.name == "nt" or not shutil.which("zstd") or not shutil.which("bash"):
+        pytest.skip("needs a Linux bash and the zstd CLI")
     samples, otel, results, builder = write_inputs(tmp_path)
     summarize_sampler(samples, builder, tmp_path)
     plain = merged_block(tmp_path, otel, results, builder)
