@@ -40,6 +40,9 @@
 //!   (units in flight together each count their whole latency, so it is not device time).
 //! - `TETRAEDER_EXIT_URGENT_FIRST` (0/1, default 0): with overlap, a layer step submits its
 //!   misses before the next layers' prefetch (`LoadOptions::urgent_first`).
+//! - `TETRAEDER_EXIT_ADMIT_SHARE` (0 to 1, default off): decode admits that share of the
+//!   compute-tier misses into VRAM slots (`LoadOptions::admit_share`, ADR 0059); `decode_io`
+//!   gets `admitted`, `admitted_bytes` and `admit_ms_per_token` (the synchronous uploads).
 //! - `TETRAEDER_EXIT_KV_ROT` (0/1): Hadamard rotation of Q, K and V (ADR 0050 addendum). Unset:
 //!   on for a quantized KV format, off for f16, as libllama. The reference engine follows it;
 //!   `TETRAEDER_EXIT_REF_ATTN_ROT` (0/1) overrides the reference alone. The JSON options record
@@ -378,6 +381,11 @@ fn add_profile(a: &mut StepProfile, b: &StepProfile) {
     a.read_wait += b.read_wait;
     a.cpu_landed += b.cpu_landed;
     a.copy += b.copy;
+    a.seg_compute_cpu += b.seg_compute_cpu;
+    a.seg_compute_gpu += b.seg_compute_gpu;
+    a.segs_cpu += b.segs_cpu;
+    a.segs_gpu += b.segs_gpu;
+    a.cpu_pairs += b.cpu_pairs;
 }
 
 fn unix_s() -> f64 {
@@ -401,6 +409,13 @@ fn profile_json(p: &StepProfile, per: f64) -> Value {
         "read_wait_ms": ms(p.read_wait),
         "cpu_landed_ms": ms(p.cpu_landed),
         "copy_ms": ms(p.copy),
+        // `sched.compute` of the segments with a RAM-tier (CPU) group and of those without,
+        // and the routed pairs the CPU computed, per `per`.
+        "seg_compute_cpu_ms": ms(p.seg_compute_cpu),
+        "seg_compute_gpu_ms": ms(p.seg_compute_gpu),
+        "segs_cpu": p.segs_cpu as f64 / per,
+        "segs_gpu": p.segs_gpu as f64 / per,
+        "cpu_pairs": p.cpu_pairs as f64 / per,
     })
 }
 
@@ -420,6 +435,9 @@ fn io_json(a: &IoCounters, b: &IoCounters, per: f64, wall_s: f64) -> Value {
         "waited_read_gb_s": if secs > 0.0 { bytes as f64 / secs / 1e9 } else { 0.0 },
         "bytes_per_s": if wall_s > 0.0 { bytes as f64 / wall_s } else { 0.0 },
         "uploads": b.uploads - a.uploads,
+        "admitted": b.admitted - a.admitted,
+        "admitted_bytes": b.admitted_bytes - a.admitted_bytes,
+        "admit_ms_per_token": (b.admit_time - a.admit_time).as_secs_f64() * 1e3 / per,
     })
 }
 
@@ -482,7 +500,22 @@ fn layers_json(a: &ExpertStats, b: &ExpertStats) -> Value {
         }
     }
     let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len().max(1) as f64;
+    // The exit-JSON view of `tetraeder.expert.cache.requests`: compute-tier hits over hits plus
+    // `cpu` lookups. A decode step has one token, so its distinct experts are its pairs.
+    let hits: u64 = a
+        .layers
+        .iter()
+        .zip(&b.layers)
+        .map(|(x, y)| y.compute.hits - x.compute.hits)
+        .sum();
+    let cpu: u64 = a
+        .layers
+        .iter()
+        .zip(&b.layers)
+        .map(|(x, y)| y.cpu - x.cpu)
+        .sum();
     json!({
+        "vram_pair_share": if hits + cpu > 0 { Some(hits as f64 / (hits + cpu) as f64) } else { None },
         "full_hit_rate_mean": mean(&full),
         "ram_hit_rate_mean": mean(&ram_hit),
         "full_hit_rate": full,
@@ -561,6 +594,9 @@ fn exit_regime() {
         opts.overlap = v == "1";
     }
     opts.urgent_first = env_flag("TETRAEDER_EXIT_URGENT_FIRST");
+    opts.admit_share = std::env::var("TETRAEDER_EXIT_ADMIT_SHARE")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok());
     opts.kv_rotation = env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
     opts.prefetch_threads = env_u64("TETRAEDER_EXIT_PREFETCH_THREADS").map(|t| t as usize);
@@ -749,6 +785,7 @@ fn exit_regime() {
             "io_chunk_bytes": opts.io.chunk_bytes,
             "overlap": opts.overlap,
             "urgent_first": opts.urgent_first,
+            "admit_share": opts.admit_share,
             "kv": opts.kv.to_string(),
             "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
             "cpu_poll": opts.cpu_poll,

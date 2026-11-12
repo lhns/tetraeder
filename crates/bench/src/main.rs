@@ -114,6 +114,10 @@ enum Cmd {
             default_values_t = ["lru", "freq:0.25", "freq:0.5", "freq:0.75", "freq:1", "belady"].map(String::from)
         )]
         policies: Vec<String>,
+        /// VRAM-tier policies: `static` (the engine as built), `prefill` (hot set from the whole
+        /// prefill), `lru`, `lru:<pin share>` or `freq`, comma separated (ADR 0050 (c) addendum).
+        #[arg(long, value_delimiter = ',', default_values_t = ["static"].map(String::from))]
+        vram_policy: Vec<String>,
         #[arg(long)]
         out: PathBuf,
         /// Also replay every configuration on a virtual clock with this time model
@@ -310,6 +314,7 @@ fn real_main() -> Result<u8> {
             vram,
             ram,
             policies,
+            vram_policy,
             out,
             timed,
         } => {
@@ -318,7 +323,20 @@ fn real_main() -> Result<u8> {
                 .map(|p| tetraeder_memory::replay::sim::Policy::parse(p))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(anyhow::Error::msg)?;
-            let n = replay::run_timed(&trace, &vram, &ram, &policies, &out, timed.as_deref())?;
+            let vram_policies = vram_policy
+                .iter()
+                .map(|p| tetraeder_memory::replay::sim::VramPolicy::parse(p))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(anyhow::Error::msg)?;
+            let n = replay::run_timed(
+                &trace,
+                &vram,
+                &ram,
+                &policies,
+                &vram_policies,
+                &out,
+                timed.as_deref(),
+            )?;
             println!("replay: {n} configurations -> {}", out.display());
             Ok(0)
         }

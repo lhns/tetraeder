@@ -171,6 +171,8 @@ fi
     TETRAEDER_REQUIRE_GPU=1 timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_experts       -- gpu_ --nocapture --test-threads 1 > "$date_dir/gpu-tests-$stamp.log" 2>&1
     # ADR 0054: the service and arrival-order compute give the serial logits on the GPU builder
     TETRAEDER_REQUIRE_GPU=1 timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test overlap       -- gpu_ --nocapture --test-threads 1 >> "$date_dir/gpu-tests-$stamp.log" 2>&1
+    # ADR 0059: decode admission into VRAM slots stays within the GPU tolerance of the static tier
+    TETRAEDER_REQUIRE_GPU=1 timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test admit       -- gpu_ --nocapture --test-threads 1 >> "$date_dir/gpu-tests-$stamp.log" 2>&1
     echo "[$(date +%T)] done gpu-tests rc=$?"
     tail -20 "$date_dir/gpu-tests-$stamp.log"
   fi
@@ -479,6 +481,10 @@ EOF
         exit_regime main-overlap-uf-w4 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_URGENT_FIRST=1 TETRAEDER_EXIT_IO_WORKERS=4 || rc=30
         exit_regime main-overlap-w8 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_IO_WORKERS=8 || rc=30
         exit_regime main-overlap-poll0 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 || rc=30
+        # Adaptive compute tier (ADR 0059), paired with main-overlap: decode uploads a share of the CPU misses into
+        # VRAM slots (LRU seeded by the hot set); the repeat is the second pass of the pair. Other shares via VARIANTS
+        exit_regime main-overlap-adapt 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_ADMIT_SHARE=0.1 || rc=30
+        exit_regime main-overlap-adapt-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_ADMIT_SHARE=0.1 || rc=30
       fi
       # the same on random token ids, the pair of llama-bench (random ids route differently from text)
       exit_regime main-prefetch-random 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 RANDOM_PROMPT=1 || rc=26

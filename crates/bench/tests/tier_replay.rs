@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::path::Path;
 use tetraeder_bench::replay;
 use tetraeder_memory::replay::REPLAY_VERSION;
-use tetraeder_memory::replay::sim::Policy;
+use tetraeder_memory::replay::sim::{Policy, VramPolicy};
 use tetraeder_memory::replay::trace::{TraceHeader, TraceWriter};
 
 /// What `planner::score::TierOutcome` reads from one outcome. No dependency on the planner:
@@ -51,7 +51,15 @@ fn replay_output_has_the_fields_the_planner_reads() {
         dir.path().join("tier-replay.json"),
     );
     write_trace(&trace);
-    let n = replay::run(&trace, &[0, 2], &[2, 4], &[Policy::Lru], &out).unwrap();
+    let n = replay::run(
+        &trace,
+        &[0, 2],
+        &[2, 4],
+        &[Policy::Lru],
+        &[VramPolicy::Static],
+        &out,
+    )
+    .unwrap();
     assert_eq!(n, 4);
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
     assert_eq!(doc["replay_version"], REPLAY_VERSION);
@@ -89,7 +97,15 @@ fn replay_output_has_the_fields_the_planner_reads() {
     assert_eq!(first["vram_slots"], 0);
     assert_eq!(first["decode"]["full_hit_share"], 0.0);
     let again = dir.path().join("again.json");
-    replay::run(&trace, &[0, 2], &[2, 4], &[Policy::Lru], &again).unwrap();
+    replay::run(
+        &trace,
+        &[0, 2],
+        &[2, 4],
+        &[Policy::Lru],
+        &[VramPolicy::Static],
+        &again,
+    )
+    .unwrap();
     let doc2: Value = serde_json::from_str(&std::fs::read_to_string(&again).unwrap()).unwrap();
     assert_eq!(doc["outcomes"], doc2["outcomes"]);
 }
@@ -112,8 +128,9 @@ fn timed_replay_writes_a_timing_for_every_outcome() {
     )
     .unwrap();
     let grid = (&[0, 2][..], &[2, 4][..], &[Policy::Lru][..]);
-    replay::run(&trace, grid.0, grid.1, grid.2, &plain).unwrap();
-    replay::run_timed(&trace, grid.0, grid.1, grid.2, &timed, Some(&model)).unwrap();
+    let st = &[VramPolicy::Static][..];
+    replay::run(&trace, grid.0, grid.1, grid.2, st, &plain).unwrap();
+    replay::run_timed(&trace, grid.0, grid.1, grid.2, st, &timed, Some(&model)).unwrap();
     let read =
         |p: &Path| -> Value { serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap() };
     let (a, b) = (read(&plain), read(&timed));
@@ -178,6 +195,7 @@ fn committed_tier_replays_are_current() {
                 &list("vram_slots"),
                 &list("ram_slots"),
                 &policies,
+                &[VramPolicy::Static],
                 &out,
             )
             .unwrap();

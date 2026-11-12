@@ -128,6 +128,14 @@ impl MemoryMetrics {
         }
     }
 
+    /// `tetraeder.expert.admitted` and `.bytes`: a decode admission of `layer` uploaded one
+    /// expert of `bytes` into the compute tier (ADR 0059).
+    pub fn admitted(&self, layer: u32, bytes: u64) {
+        if let Some(t) = &self.telemetry {
+            t.metrics().expert_admitted(layer, bytes);
+        }
+    }
+
     /// `tetraeder.expert.prefetch.accuracy` of one layer step: `hits` of `total` experts
     /// predicted `depth` layers ahead were routed.
     pub fn prediction_accuracy(&self, layer: u32, depth: u32, hits: u64, total: u64) {

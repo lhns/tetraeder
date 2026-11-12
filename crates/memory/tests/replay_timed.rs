@@ -5,7 +5,7 @@
 //! Hardware label: none (pure host code).
 
 use proptest::prelude::*;
-use tetraeder_memory::replay::sim::{Config, Policy, Trace, replay};
+use tetraeder_memory::replay::sim::{Config, Policy, Trace, VramPolicy, replay};
 use tetraeder_memory::replay::timed::{ReadPath, TimeModel, TimedOutcome, replay_timed};
 use tetraeder_memory::replay::trace::{LayerStep, Record, TraceHeader};
 use tetraeder_profiler::QueuePoint;
@@ -110,6 +110,7 @@ fn cfg(vram: u32, ram: u32, prefetch: bool) -> Config {
         vram_slots: vram,
         ram_slots: ram,
         policy: Policy::Lru,
+        vram_policy: VramPolicy::Static,
         prefetch,
     }
 }

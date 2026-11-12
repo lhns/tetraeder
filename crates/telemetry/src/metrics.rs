@@ -103,6 +103,8 @@ pub struct Metrics {
     layer_hit: Counter<u64>,
     prefetch: Counter<u64>,
     prefetch_wasted_bytes: Counter<u64>,
+    admitted: Counter<u64>,
+    admitted_bytes: Counter<u64>,
     prefetch_accuracy: Histogram<f64>,
     io_inflight: Histogram<f64>,
     read_hidden: Histogram<f64>,
@@ -222,6 +224,16 @@ impl Metrics {
                 .u64_counter("tetraeder.expert.prefetch.wasted")
                 .with_unit("By")
                 .with_description("Bytes of prefetched experts evicted before they were routed")
+                .build(),
+            admitted: meter
+                .u64_counter("tetraeder.expert.admitted")
+                .with_unit("{expert}")
+                .with_description("CPU-computed experts uploaded into a compute slot during decode")
+                .build(),
+            admitted_bytes: meter
+                .u64_counter("tetraeder.expert.admitted.bytes")
+                .with_unit("By")
+                .with_description("Bytes uploaded into compute slots by decode admissions")
                 .build(),
             prefetch_accuracy: meter
                 .f64_histogram("tetraeder.expert.prefetch.accuracy")
@@ -530,6 +542,14 @@ impl Metrics {
 
     pub fn expert_prefetch_wasted_bytes(&self, bytes: u64) {
         self.prefetch_wasted_bytes.add(bytes, &[]);
+    }
+
+    /// A decode admission into the compute tier of a MoE `layer` (ADR 0059): one expert of
+    /// `bytes` uploaded.
+    pub fn expert_admitted(&self, layer: u32, bytes: u64) {
+        self.admitted
+            .add(1, &[KeyValue::new(attr::LAYER, i64::from(layer))]);
+        self.admitted_bytes.add(bytes, &[]);
     }
 
     /// One layer step's prediction made `depth` layers ahead: `accuracy` in 0 to 1.

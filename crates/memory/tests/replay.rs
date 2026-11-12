@@ -6,7 +6,9 @@
 
 use proptest::prelude::*;
 use tetraeder_memory::replay::prefetch_plan;
-use tetraeder_memory::replay::sim::{Config, Outcome, Policy, Trace, replay, replay_checked};
+use tetraeder_memory::replay::sim::{
+    Config, Outcome, Policy, Trace, VramPolicy, replay, replay_checked,
+};
 use tetraeder_memory::replay::trace::{LayerStep, Record, TraceHeader};
 use tetraeder_memory::slots::{LayerSlots, Lookup};
 
@@ -62,6 +64,7 @@ fn cfg(vram: u32, ram: u32, policy: Policy, prefetch: bool) -> Config {
         vram_slots: vram,
         ram_slots: ram,
         policy,
+        vram_policy: VramPolicy::Static,
         prefetch,
     }
 }
@@ -387,4 +390,151 @@ fn full_hit_share_is_one_with_every_expert_in_vram() {
     // no VRAM slots: no step is a full hit
     let none = replay(&t, &cfg(0, 4, Policy::Lru, false));
     assert_eq!(none.decode.full_hit_share, 0.0);
+}
+
+// VRAM-tier policies (ADR 0050 (c) addendum, 2026-11-12).
+
+fn vcfg(vram: u32, vp: VramPolicy) -> Config {
+    Config {
+        vram_policy: vp,
+        ..cfg(vram, 4, Policy::Lru, false)
+    }
+}
+
+#[test]
+fn vram_policy_names_parse_back() {
+    for s in ["static", "prefill", "lru", "lru:0.5", "freq"] {
+        assert_eq!(VramPolicy::parse(s).unwrap().name(), s);
+    }
+    assert!(VramPolicy::parse("lru:1").is_err());
+    assert!(VramPolicy::parse("mru").is_err());
+}
+
+#[test]
+fn static_vram_policy_keeps_the_old_outcome_and_output() {
+    let steps: Vec<Vec<Vec<u16>>> = [3, 3, 3, 1, 3, 2, 3]
+        .iter()
+        .map(|&e| vec![vec![e]])
+        .collect();
+    let t = decode_trace(header(1, 8, 1), &steps, Some(2));
+    let o = replay(&t, &vcfg(1, VramPolicy::Static));
+    assert_eq!(o.decode.vram_share, 2.0 / 7.0);
+    assert_eq!(o.decode.vram_admit_bytes_per_token, None);
+    let j = serde_json::to_value(&o).unwrap();
+    assert!(j.get("vram_policy").is_none());
+    assert!(j["decode"].get("vram_admit_bytes_per_token").is_none());
+}
+
+#[test]
+fn lru_admits_a_repeated_non_hot_expert_and_counts_the_bytes() {
+    // Expert 3 is routed first, then expert 5 repeats; static pins 3 at the marker and serves
+    // none of the 5s from VRAM. lru admits 3 at step 0 (two hits), then 5 at step 3 (four hits).
+    let steps: Vec<Vec<Vec<u16>>> = [3, 3, 3, 5, 5, 5, 5, 5]
+        .iter()
+        .map(|&e| vec![vec![e]])
+        .collect();
+    let t = decode_trace(header(1, 8, 1), &steps, Some(2));
+    let st = replay(&t, &vcfg(1, VramPolicy::Static));
+    let lru = replay(&t, &vcfg(1, VramPolicy::Lru { pin: 0.0 }));
+    assert_eq!(st.decode.vram_share, 0.0);
+    assert_eq!(lru.decode.vram_share, 6.0 / 8.0);
+    assert!(lru.decode.vram_share > st.decode.vram_share);
+    assert_eq!(
+        lru.decode.vram_admit_bytes_per_token,
+        Some(2.0 * EXPERT_BYTES as f64 / 8.0)
+    );
+    assert_eq!(lru.vram_policy, "lru");
+}
+
+#[test]
+fn lru_never_evicts_a_pinned_expert() {
+    // Two slots. The marker after step 2 pins expert 3 (pin share 0.5 of 2 slots); 5 and 7 then
+    // compete for the other slot, and 3 is still resident at the last step. Unpinned, 7 would
+    // evict 3 (the older of the two).
+    let steps: Vec<Vec<Vec<u16>>> = [3, 3, 3, 5, 7, 7, 3]
+        .iter()
+        .map(|&e| vec![vec![e]])
+        .collect();
+    let t = decode_trace(header(1, 8, 1), &steps, Some(2));
+    let pinned = replay(&t, &vcfg(2, VramPolicy::Lru { pin: 0.5 }));
+    let free = replay(&t, &vcfg(2, VramPolicy::Lru { pin: 0.0 }));
+    assert_eq!(pinned.decode.vram_share, 4.0 / 7.0);
+    assert_eq!(free.decode.vram_share, 3.0 / 7.0);
+    assert_eq!(
+        pinned.decode.vram_admit_bytes_per_token,
+        Some(3.0 * EXPERT_BYTES as f64 / 7.0)
+    );
+}
+
+#[test]
+fn freq_repicks_the_hot_set_during_decode() {
+    // Expert 2 for 4 steps, then expert 5; at decode step 16 the counts favour 5.
+    let ids: Vec<u16> = (0..32).map(|i| if i < 4 { 2 } else { 5 }).collect();
+    let steps: Vec<Vec<Vec<u16>>> = ids.iter().map(|&e| vec![vec![e]]).collect();
+    let t = decode_trace(header(1, 8, 1), &steps, None);
+    let st = replay(&t, &vcfg(1, VramPolicy::Static));
+    let fq = replay(&t, &vcfg(1, VramPolicy::Freq));
+    assert_eq!(st.decode.vram_share, 0.0);
+    assert_eq!(fq.decode.vram_share, 16.0 / 32.0);
+    assert_eq!(
+        fq.decode.vram_admit_bytes_per_token,
+        Some(EXPERT_BYTES as f64 / 32.0)
+    );
+}
+
+#[test]
+fn prefill_policy_picks_the_hot_set_from_the_whole_prefill() {
+    let step = |s: u32, n: u32, ids: Vec<u16>| {
+        Record::Step(LayerStep {
+            step: s,
+            layer: 0,
+            n_tokens: n,
+            ids,
+            predicted: None,
+            predicted2: None,
+        })
+    };
+    let mut records = vec![
+        step(0, 2, vec![1, 1]),
+        Record::HotRefresh { step: 0 },
+        step(1, 4, vec![4, 4, 4, 4]),
+    ];
+    records.extend((2..5).map(|s| step(s, 1, vec![4])));
+    let t = Trace {
+        header: header(1, 8, 1),
+        records,
+    };
+    let st = replay(&t, &vcfg(1, VramPolicy::Static));
+    let pf = replay(&t, &vcfg(1, VramPolicy::Prefill));
+    // The marker saw only expert 1; the whole prefill favours 4.
+    assert_eq!(st.decode.vram_share, 0.0);
+    assert_eq!(pf.decode.vram_share, 1.0);
+    assert_eq!(pf.vram_policy, "prefill");
+}
+
+proptest! {
+    /// Pins never exceed the slots in either tier, and every policy sees the same pairs.
+    #[test]
+    fn vram_policies_keep_the_pin_invariants(seed in 1u64..u64::MAX, vram in 1u32..5) {
+        let mut rng = Rng(seed);
+        let mut skew = |r: &mut Rng| {
+            if r.unit() < 0.5 { r.below(3) as u16 } else { r.below(8) as u16 }
+        };
+        let steps: Vec<Vec<Vec<u16>>> = (0..60)
+            .map(|_| vec![draw_ids(&mut rng, 2, &mut skew)])
+            .collect();
+        let t = decode_trace(header(1, 8, 2), &steps, Some(5));
+        let mut pairs = None;
+        for vp in [
+            VramPolicy::Static,
+            VramPolicy::Prefill,
+            VramPolicy::Lru { pin: 0.0 },
+            VramPolicy::Lru { pin: 0.5 },
+            VramPolicy::Freq,
+        ] {
+            let (o, bad) = replay_checked(&t, &vcfg(vram, vp));
+            prop_assert_eq!(bad, 0, "{:?}", vp);
+            prop_assert_eq!(*pairs.get_or_insert(o.decode.pairs), o.decode.pairs);
+        }
+    }
 }

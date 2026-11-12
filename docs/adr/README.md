@@ -60,4 +60,5 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0056](0056-tier-and-disk-cost-term-virtual-clock-calibration-ledger.md) | Cost model: RAM-tier and disk term from replayed routing, virtual clock for I/O tests, calibration ledger in CI (Proposed) |
 | [0057](0057-qwen-xml-arguments-typed-from-python-literals.md) | Qwen XML tool arguments: Python literals typed by the schema (Proposed) |
 | [0058](0058-decode-io-attribution.md) | Decode I/O attribution: capacity and demand per window before any bottleneck label (Proposed) |
+| [0059](0059-adaptive-compute-tier-admission.md) | Adaptive compute tier: decode admits a share of CPU misses into VRAM slots (Proposed) |
 | [0060](0060-box-host-metrics-as-otel.md) | Box and host metrics as OTel metrics: one collector per box run, the result's host block derived from its file (Proposed) |
