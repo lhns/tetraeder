@@ -341,7 +341,7 @@ llamacpp_cache() {
   # LLAMACPP_FP8_KV_TYPE, the default "fp8" is a placeholder until the real type name is confirmed)
   case "${1:-}" in
     poll0*) extra+=(POLL=0) ;;
-    fp8*) extra+=(KV_TYPE="${LLAMACPP_FP8_KV_TYPE:-fp8}") ;;
+    fp8*) extra+=(KV_TYPE="${LLAMACPP_FP8_KV_TYPE:-f8_e4m3}") ;;
   esac
   want "$name" || return 0
   local mib=$((vram_bytes / 1048576))
