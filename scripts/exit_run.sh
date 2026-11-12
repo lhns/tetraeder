@@ -294,6 +294,7 @@ if d.get("cpu_share") is not None and d.get("cache_mib"):
     stage_done "llamacpp-cache-s$s${1:+-$1}" && { echo "[$(date +%T)] skip $name s$s: result in $date_dir"; continue; }
     fits "$name" || continue
     echo "[$(date +%T)] start $name s$s: cache $mib MiB, load mode $mode"
+    membw_probe "llamacpp-cache-s$s${1:+-$1}"
     HOST_DISK_DEV="$HOST_DISK_DEV" LOAD_MODE=$mode timeout -k 30 75m bash scripts/llamacpp_cache.sh "$model" "$threads" "$mib" "$s" 33024 "$prompt" \
       "$date_dir/exit-llamacpp-cache-s$s${1:+-$1}-$stamp.json" 8>&-
     echo "[$(date +%T)] done $name s$s rc=$?"
