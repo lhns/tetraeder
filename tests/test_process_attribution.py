@@ -75,3 +75,22 @@ def test_membw_probe_json_shape():
     d = json.loads(r.stdout)
     assert set(d) == {"membw_gb_s", "threads", "seconds"}
     assert d["threads"] == 2 and d["seconds"] == 0.2 and d["membw_gb_s"] > 0
+
+
+def test_ctxsw_rate_survives_an_exiting_thread(monkeypatch):
+    """Threads 2 and 3 exit mid-window (their counters vanish) and thread 4 appears: the rate is never negative."""
+    snaps = [
+        {"/proc/1/task/1/status": status(100, 1), "/proc/1/task/2/status": status(5000, 50), "/proc/1/task/3/status": status(900, 9)},
+        {"/proc/1/task/1/status": status(160, 2), "/proc/1/task/2/status": status(5200, 60), "/proc/1/task/3/status": status(950, 9)},
+        {"/proc/1/task/1/status": status(200, 3), "/proc/1/task/4/status": status(30, 1)},
+    ]
+    layouts = [{1: ["1", "2", "3"]}, {1: ["1", "2", "3"]}, {1: ["1", "4"]}]
+    rows = []
+    for t, (files, tasks) in enumerate(zip(snaps, layouts)):
+        fake(monkeypatch, files, tasks)
+        rows.append(row(float(t), ctxsw=es.ctxsw([1]), ctxsw_tasks=es.ctxsw_tasks([1])))
+    assert rows[2]["ctxsw"]["vol"] < rows[0]["ctxsw"]["vol"]  # the plain sum falls
+    p = es.phase(rows, 0.0, 2.0, 2, 4)
+    # t0->t1: 60 + 200 + 50; t1->t2: 40 + 30 (new thread, full count)
+    assert p["ctxsw_vol_per_s"] == pytest.approx((60 + 200 + 50 + 40 + 30) / 2)
+    assert p["ctxsw_invol_per_s"] == pytest.approx((1 + 10 + 0 + 1 + 1) / 2)

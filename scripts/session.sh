@@ -185,21 +185,20 @@ f32="Qwen__Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf"
       export VRAM_SLOT_BYTES="${VRAM_SLOT_BYTES:-$slot_default}"
       export OT_FIT="${OT_FIT:-blk\.[0-6]\.ffn_.*_exps=CUDA0;exps=CPU}"
       (bash scripts/fetch_exit_model.sh 8>&- &)
-      share=0.5
-      if [ "$name" = b1-exit ]; then
-        # llama.cpp's CPU share of misses: MOE_CPU_SHARE, else the newest committed tuner result (B3), else 0.5
-        share="${MOE_CPU_SHARE:-}"
-        if [ -z "$share" ]; then
-          share=$(python3 -I -c '
+      # llama.cpp's CPU share of misses (both sessions): MOE_CPU_SHARE, else the newest committed tuner result (B3), else 0.5
+      share="${MOE_CPU_SHARE:-}"
+      if [ -z "$share" ]; then
+        share=$(python3 -I -c '
 import glob, json
 for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=True):
-    s = json.load(open(f)).get("cpu_share")
-    if s is not None:
-        print(s)
-        break')
-        fi
-        [ -n "$share" ] || { share=0.5; echo "no tuned CPU share (run b3-planner first): using $share"; }
-        echo "llama.cpp cache: $((VRAM_SLOT_BYTES / 1048576)) MiB, cpu share $share"
+  s = json.load(open(f)).get("cpu_share")
+  if s is not None:
+      print(s)
+      break')
+      fi
+      [ -n "$share" ] || { share=0.5; echo "no tuned CPU share (run b3-planner first): using $share"; }
+      echo "llama.cpp cache: $((VRAM_SLOT_BYTES / 1048576)) MiB, cpu share $share"
+      if [ "$name" = b1-exit ]; then
         # code order in exit_run.sh: smoke, main-prefetch, ktransformers, llamacpp-cache (mmap), llamacpp-cache-dio,
         # main-repeat, ktransformers-repeat, then ktransformers-avx2 and llamacpp-cache-repeat if the deadline allows
         stages="smoke disk-curve main-prefetch ktransformers llamacpp-cache llamacpp-cache-dio main-repeat ktransformers-repeat"

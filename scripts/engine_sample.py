@@ -172,22 +172,53 @@ def task_ids(pid):
         return []
 
 
-def ctxsw(pids):
-    """{"vol", "invol"} context switches summed over the threads of the processes; None when no status file was read.
+def ctxsw_tasks(pids):
+    """{"pid:tid": [vol, invol]} context switches per thread; None when no status file was read.
 
     /proc/PID/status counts only the thread group leader, so each /proc/PID/task/TID/status is read (the process
     line when the task directory is unreadable)."""
-    vol = invol = 0
-    seen = False
+    out = {}
     for p in pids:
-        for path in [f"/proc/{p}/task/{t}/status" for t in task_ids(p)] or [f"/proc/{p}/status"]:
+        for t, path in [(t, f"/proc/{p}/task/{t}/status") for t in task_ids(p)] or [(p, f"/proc/{p}/status")]:
+            vol = invol = None
             for line in ds.read(path).splitlines():
                 if line.startswith("voluntary_ctxt_switches:"):
-                    vol += int(line.split()[1])
-                    seen = True
+                    vol = int(line.split()[1])
                 elif line.startswith("nonvoluntary_ctxt_switches:"):
-                    invol += int(line.split()[1])
-    return {"vol": vol, "invol": invol} if seen else None
+                    invol = int(line.split()[1])
+            if vol is not None:
+                out[f"{p}:{t}"] = [vol, invol or 0]
+    return out or None
+
+
+def ctxsw_total(tasks):
+    """{"vol", "invol"} summed over the threads of ctxsw_tasks(); None without any."""
+    if not tasks:
+        return None
+    return {"vol": sum(v[0] for v in tasks.values()), "invol": sum(v[1] for v in tasks.values())}
+
+
+def ctxsw(pids):
+    """{"vol", "invol"} context switches summed over the threads of the processes; None when no status file was read."""
+    return ctxsw_total(ctxsw_tasks(pids))
+
+
+def ctxsw_delta(rows):
+    """(vol, invol) switches over the rows, from the per-thread counters of consecutive samples.
+
+    A thread's counter vanishes when it exits, so the sum over threads can fall (negative rates, 20261112c). Per step,
+    a thread present in both samples adds its positive delta, a new thread adds its full count and a gone thread adds
+    nothing. None when fewer than two rows carry per-thread counters."""
+    seq = [r["ctxsw_tasks"] for r in rows if r.get("ctxsw_tasks")]
+    if len(seq) < 2:
+        return None
+    vol = invol = 0
+    for a, b in zip(seq, seq[1:]):
+        for k, (v, i) in b.items():
+            v0, i0 = a.get(k, (0, 0))
+            vol += max(v - v0, 0)
+            invol += max(i - i0, 0)
+    return vol, invol
 
 
 def anon_huge_kb(pids):
@@ -363,13 +394,14 @@ def sample(a):
     with open(a.out, "w") as out:
         while os.path.exists(f"/proc/{a.pid}"):
             pids = ds.tree(a.pid)
+            tasks = ctxsw_tasks(pids)
             ops, inflight, weighted_ms = disk_stats(a.disk) if a.disk != "none" else (None, None, None)
             rb = ds.disk_read_bytes(a.disk) if a.disk != "none" else None
             rec = {"t": time.time(), "disk_read_bytes": rb, "disk_read_ops": ops,
                    "disk_inflight": inflight, "disk_weighted_ms": weighted_ms,
                    "cg_io": cgroup_io(), "io_psi": io_pressure(), "majflt": majflt(pids), "cpus": stat_jiffies(),
                    "cpu_psi": cpu_pressure(), "cg_throttle": cgroup_throttle(), "cpu_steal": cpu_steal(),
-                   "cpu_mhz": cpu_mhz(), "ctxsw": ctxsw(pids), "anon_huge_kb": anon_huge_kb(pids),
+                   "cpu_mhz": cpu_mhz(), "ctxsw": ctxsw_total(tasks), "ctxsw_tasks": tasks, "anon_huge_kb": anon_huge_kb(pids),
                    "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": ds.proc_cpu_s(pids),
                    "rss_kb": tree_rss_kb(pids), "cg_mem": cgroup_mem(), "gpu": gpu_util(),
                    "cg_mem_now": cgroup_mem_now(), "cpu_quota": cpu_quota()}
@@ -451,7 +483,10 @@ def phase(rows, t0, t1, tokens, threads):
         steal = (st1["steal"] - st0["steal"]) / (st1["total"] - st0["total"])
     mhz = [m for m in (r.get("cpu_mhz") for r in (win[0], win[-1])) if m is not None]
 
-    cs0, cs1 = (r.get("ctxsw") for r in (win[0], win[-1]))
+    cs = ctxsw_delta(win)
+    if cs is None:  # rows without per-thread counters (older results): last minus first, clamped
+        cs0, cs1 = (r.get("ctxsw") for r in (win[0], win[-1]))
+        cs = (max(cs1["vol"] - cs0["vol"], 0), max(cs1["invol"] - cs0["invol"], 0)) if cs0 and cs1 else None
     ahp = win[-1].get("anon_huge_kb")
 
     cgio = [r["cg_io"] for r in (win[0], win[-1])]
@@ -477,8 +512,8 @@ def phase(rows, t0, t1, tokens, threads):
         "throttled_ms_per_s": th_usec / 1e3 / dur if th_usec is not None and dur else None,
         "cpu_steal_share": steal,
         "cpu_mhz_mean": sum(mhz) / len(mhz) if mhz else None,
-        "ctxsw_vol_per_s": (cs1["vol"] - cs0["vol"]) / dur if cs0 and cs1 and dur else None,
-        "ctxsw_invol_per_s": (cs1["invol"] - cs0["invol"]) / dur if cs0 and cs1 and dur else None,
+        "ctxsw_vol_per_s": cs[0] / dur if cs and dur else None,
+        "ctxsw_invol_per_s": cs[1] / dur if cs and dur else None,
         "anon_huge_gb": ahp * 1024 / 1e9 if ahp is not None else None,
         "majflt": mf, "majflt_per_token": mf / n if mf is not None else None,
         "cpu_busy_pct": busy,

@@ -100,6 +100,7 @@ stage_min() {
     drift-ref*) echo 9 ;;
     drift-*) echo 4 ;;
     llama-fit) echo 10 ;;
+    main-overlap-tq4* | main-overlap-poll0*) echo 10 ;; # builder 32K stages, with their repeats
     ktransformers) echo 25 ;;
     ktransformers-*) echo 20 ;;
     llamacpp-cache*) echo 30 ;; # per share: 29 to 30 min with load and warmup on 20261111c and 20261111g
@@ -283,10 +284,10 @@ ktransformers() {
 # 0021 pairing), one llama-server run per share in CPU_SHARES at the builder's expert bytes (vram_bytes as the cache
 # size). Stage llamacpp-cache; with suffix "repeat", stage llamacpp-cache-repeat for the second pass of the pairs; with
 # suffix "dio", stage llamacpp-cache-dio: the same shares with --load-mode dio, the pair that shows whether mmap
-# streams or thrashes in this regime (m1-open item 1).
+# streams or thrashes in this regime (m1-open item 1); "dio-repeat" is the second pass of that pair (opt in via STAGES).
 llamacpp_cache() {
   local name=llamacpp-cache${1:+-$1} s mode=${LOAD_MODE:-auto} shares=${CPU_SHARES:-0 0.5 0.9} tuned
-  [ "${1:-}" = dio ] && mode=dio
+  [[ "${1:-}" == dio* ]] && mode=dio
   want "$name" || return 0
   local mib=$((vram_bytes / 1048576))
   # the tuner's pick from this session (stage moe-tune) replaces the session's shares and cache size
@@ -481,6 +482,11 @@ EOF
         exit_regime main-overlap-uf-w4 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_URGENT_FIRST=1 TETRAEDER_EXIT_IO_WORKERS=4 || rc=30
         exit_regime main-overlap-w8 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_IO_WORKERS=8 || rc=30
         exit_regime main-overlap-poll0 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 || rc=30
+        exit_regime main-overlap-poll0-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=0 || rc=30
+        # four threads fewer than the quota (min 1): leaves cores to the I/O workers; the repeat is the second pass
+        tq4=$((threads > 4 ? threads - 4 : 1))
+        exit_regime main-overlap-tq4 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_THREADS="$tq4" || rc=30
+        exit_regime main-overlap-tq4-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_THREADS="$tq4" || rc=30
         # Adaptive compute tier (ADR 0059), paired with main-overlap: decode uploads a share of the CPU misses into
         # VRAM slots (LRU seeded by the hot set); the repeat is the second pass of the pair. Other shares via VARIANTS
         exit_regime main-overlap-adapt 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_ADMIT_SHARE=0.1 || rc=30
@@ -522,6 +528,8 @@ EOF
       ktransformers repeat
       ktransformers avx2
       llamacpp_cache repeat
+      # the second pass of the dio pair, only when STAGES names it
+      [[ " ${STAGES:-} " == *" llamacpp-cache-dio-repeat "* ]] && llamacpp_cache dio-repeat
       # the ledger's view of this session: the anchors at pp512 tg32 and the builder stages above (ADR 0056)
       anchors_builder_short
       # llama-bench, tuned -ot (random tokens; llama-bench takes ',' as alternative configs, so overrides in one config
