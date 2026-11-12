@@ -143,9 +143,10 @@ groups:
         annotations:
           summary: "Measured step time of stage {{ $labels.tetraeder_stage }} is off the plan's prediction by more than 20%"
           description: "Recalibrate the cost model (bench calibrate) or check the bottleneck report; the planner's choices are unreliable until then."
-      # Detector faults other than model_mismatch come from the environment (ADR 0041).
+      # Detector faults other than model_mismatch come from the environment (ADR 0041); the CPU quota
+      # throttle has its own rule with the fix in host.yml (ADR 0062).
       - alert: TetraederEnvironmentFault
-        expr: sum by (tetraeder_fault_class, tetraeder_resource) (increase(tetraeder_bottleneck_fault_total{tetraeder_fault_class!="model_mismatch"}[5m])) > 0
+        expr: sum by (tetraeder_fault_class, tetraeder_resource) (increase(tetraeder_bottleneck_fault_total{tetraeder_fault_class!~"model_mismatch|cpu_quota_throttle"}[5m])) > 0
         for: 10m
         labels:
           severity: warning

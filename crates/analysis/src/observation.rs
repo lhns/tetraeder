@@ -102,6 +102,14 @@ pub struct EnvSignals {
     /// CPU quota of the container or host, in cores.
     #[serde(default)]
     pub cpu_quota_cores: f64,
+    /// Share of the cgroup's CFS periods in which it was throttled over the run
+    /// (`nr_throttled / nr_periods` of `cpu.stat`). `None` without a cgroup CPU quota or off Linux.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_throttled_share: Option<f64>,
+    /// Share of wall time in which some task of the cgroup waited for a CPU (PSI `cpu.pressure`
+    /// "some"). `None` without PSI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_stall_share: Option<f64>,
     /// Cores used by other processes.
     #[serde(default)]
     pub cpu_other_cores: f64,

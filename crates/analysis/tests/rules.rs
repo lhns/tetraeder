@@ -150,6 +150,92 @@ fn cpu_cotenant_needs_a_slow_cpu() {
     assert_eq!(classes(&o), vec![FaultClass::CpuCotenant]);
 }
 
+fn slow_cpu(o: &mut Observation, factor: f64) {
+    for w in &mut o.windows {
+        *w.busy_s.get_mut("cpu").unwrap() *= factor;
+        w.wall_s = w.busy_s.values().sum();
+    }
+}
+
+#[test]
+fn quota_throttle_needs_throttled_periods_and_a_slow_cpu() {
+    let mut o = healthy(1);
+    o.env.cpu_throttled_share = Some(0.9);
+    assert!(classes(&o).is_empty(), "throttled but the CPU rate is fine");
+    slow_cpu(&mut o, 1.3);
+    let r = detect(&o);
+    assert_eq!(classes(&o), vec![FaultClass::CpuQuotaThrottle], "{r:?}");
+    assert_eq!(r.faults[0].resource, "cpu_quota");
+    assert!(r.faults[0].evidence[0].contains("90%"), "{:?}", r.faults[0]);
+    o.env.cpu_throttled_share = Some(0.2);
+    // The slow CPU stays a model mismatch without the quota evidence.
+    assert_eq!(classes(&o), vec![FaultClass::ModelMismatch], "below 30%");
+    o.env.cpu_throttled_share = None;
+    assert_eq!(
+        classes(&o),
+        vec![FaultClass::ModelMismatch],
+        "no cgroup signal"
+    );
+}
+
+#[test]
+fn quota_throttle_without_calibration_needs_a_material_cpu() {
+    let mut o = healthy(1);
+    o.expected = None;
+    o.env.cpu_throttled_share = Some(0.9);
+    assert_eq!(classes(&o), vec![FaultClass::CpuQuotaThrottle]);
+    for w in &mut o.windows {
+        w.busy_s.insert("cpu".into(), 0.0);
+    }
+    assert!(classes(&o).is_empty(), "an idle CPU is not throttled work");
+}
+
+#[test]
+fn quota_throttle_is_not_a_cotenant_and_not_a_model_mismatch() {
+    let mut o = healthy(1);
+    o.env.cpu_throttled_share = Some(0.9);
+    slow_cpu(&mut o, 1.3);
+    let c = classes(&o);
+    assert!(!c.contains(&FaultClass::CpuCotenant), "{c:?}");
+    assert!(!c.contains(&FaultClass::ModelMismatch), "{c:?}");
+    // Other processes using the cores are the co-tenant's evidence; both can hold at once.
+    o.env.cpu_other_cores = o.env.cpu_quota_cores / 2.0;
+    let c = classes(&o);
+    assert!(
+        c.contains(&FaultClass::CpuCotenant) && c.contains(&FaultClass::CpuQuotaThrottle),
+        "{c:?}"
+    );
+}
+
+#[test]
+fn quota_throttle_advice_lowers_polling_and_threads() {
+    let mut o = healthy(1);
+    o.env.cpu_throttled_share = Some(0.9);
+    slow_cpu(&mut o, 1.3);
+    let a = advise(&detect(&o), &o, &[]);
+    let t = a
+        .iter()
+        .find(|a| a.kind == ActionKind::Threads && a.target == "cpu_quota")
+        .expect("threads action");
+    assert!(t.why.contains("cpu_poll"), "{}", t.why);
+}
+
+#[test]
+fn simulated_quota_throttle_is_ranked_first() {
+    let hw = HardwareGraph::from_toml(BOX).unwrap();
+    for seed in 0..10 {
+        let o = simulate(&hw, &SimSpec::new(seed, &[FaultClass::CpuQuotaThrottle])).unwrap();
+        assert!(o.env.cpu_throttled_share.unwrap() >= 0.8);
+        assert_eq!(
+            classes(&o),
+            vec![FaultClass::CpuQuotaThrottle],
+            "seed {seed}"
+        );
+        let h = simulate(&hw, &SimSpec::new(seed, &[])).unwrap();
+        assert!(h.env.cpu_throttled_share.unwrap() < 0.05);
+    }
+}
+
 #[test]
 fn vram_pressure_needs_slots_or_hit_rate_and_waits() {
     let mut o = healthy(1);

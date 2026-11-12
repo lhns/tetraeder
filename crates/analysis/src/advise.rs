@@ -156,6 +156,16 @@ fn fault_actions(f: &Fault) -> Vec<Action> {
                 "fewer CPU threads avoid contention with the co-tenant".into(),
             ));
         }
+        FaultClass::CpuQuotaThrottle => {
+            v.push(env("raise the CPU quota or move to a box with more cores"));
+            v.push(act(
+                ActionKind::Threads,
+                r,
+                g * MITIGATION_FRAC,
+                SETTING_COST_S,
+                "lower ggml polling (cpu_poll 0) and keep threads below the quota".into(),
+            ));
+        }
         FaultClass::DiskSlow => {
             v.push(env("remove the io.max limit or the competing reader"));
             v.push(act(
