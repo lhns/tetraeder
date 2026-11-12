@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tetraeder_ggml_sys::ggml::{Backend, Context, OwnedTensor, Tensor};
+use tetraeder_ggml_sys::ggml::{Backend, Context, HugepageAdvice, OwnedTensor, Tensor};
 use tetraeder_memory::io::{
     Deadline, Io, IoFactory, IoService, Part, ServiceOptions, UnitDone, UnitId,
 };
@@ -179,6 +179,8 @@ struct RamTier {
     slots: usize,
     /// Size of the slot buffer.
     bytes: usize,
+    /// `Some` when `LoadOptions::ram_hugepages` asked for huge pages.
+    hugepages: Option<HugepageAdvice>,
 }
 
 impl RamTier {
@@ -326,6 +328,8 @@ pub(crate) struct StreamerConfig {
     pub io_factory: Option<IoFactory>,
     /// `LoadOptions::admit_share`, above 0 and under `MissPolicy::Cpu` only.
     pub admit_share: Option<f64>,
+    /// `LoadOptions::ram_hugepages`.
+    pub ram_hugepages: bool,
 }
 
 fn invalid(msg: impl Into<String>) -> ModelError {
@@ -377,11 +381,14 @@ impl Streamer {
                 // No zero clear: a CPU group only reads RAM slots staged for it, and touching
                 // every page at load would commit the whole tier up front (ADR 0035).
                 let bytes = ctx.alloc_weights(cpu)?;
+                // Right after allocation: ggml does not touch the buffer, so no page is faulted in yet.
+                let hugepages = cfg.ram_hugepages.then(|| ctx.advise_hugepages());
                 Ok(RamTier {
                     cache: SlotCache::new(Tier::Ram, h.n_layer, n_expert, n as u32),
                     tensors,
                     slots: n,
                     bytes,
+                    hugepages,
                 })
             })
             .transpose()?;
@@ -485,6 +492,10 @@ impl Streamer {
     /// Slots per layer of the compute tier and of the RAM tier.
     pub(crate) fn tier_slots(&self) -> (usize, Option<usize>) {
         (self.slots, self.ram.as_ref().map(|r| r.slots))
+    }
+
+    pub(crate) fn ram_hugepages(&self) -> Option<HugepageAdvice> {
+        self.ram.as_ref().and_then(|r| r.hugepages)
     }
 
     pub(crate) fn io_backend(&self) -> String {

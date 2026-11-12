@@ -132,3 +132,26 @@ fn kept_graph_computes_twice() {
         assert!(sched.is_allocated(&kept.get()));
     }
 }
+
+/// hardware: cpu. Linux only: a tensor buffer of 32 MiB through the weights path, untouched, then
+/// `MADV_HUGEPAGE` on it must return 0 for the aligned range inside. Elsewhere the call is a no-op.
+#[test]
+fn hugepage_advice_on_a_cpu_buffer() {
+    let cpu = Backend::cpu(1).unwrap();
+    let ctx = Context::new(1, 0).unwrap();
+    let _t = ctx.new_tensor(Type::F32, &[8 << 20]);
+    let bytes = ctx.alloc_weights(&cpu).unwrap();
+    assert!(bytes >= 32 << 20);
+    let a = ctx.advise_hugepages();
+    if cfg!(target_os = "linux") {
+        assert!(a.applied && a.errno == 0, "madvise failed: {a:?}");
+        // 32 MiB minus up to 2 MiB lost to alignment at each end.
+        assert!(a.bytes >= 28 << 20 && a.bytes <= bytes as u64, "{a:?}");
+        assert_eq!(a.bytes % (2 << 20), 0);
+    } else {
+        eprintln!("skipped: MADV_HUGEPAGE is Linux only");
+        assert!(!a.applied && a.bytes == 0);
+    }
+    // no buffer: nothing to advise
+    assert!(!Context::new(1, 0).unwrap().advise_hugepages().applied);
+}

@@ -63,6 +63,15 @@ impl Context {
         Ok(size)
     }
 
+    /// [`Buffer::advise_hugepages`] on the tensor buffer; the default (not applied) without one.
+    pub fn advise_hugepages(&self) -> super::HugepageAdvice {
+        self.buffer
+            .borrow()
+            .as_ref()
+            .map(Buffer::advise_hugepages)
+            .unwrap_or_default()
+    }
+
     /// Sets every byte of the tensor buffer.
     pub fn clear_buffer(&self, value: u8) {
         if let Some(b) = self.buffer.borrow().as_ref() {

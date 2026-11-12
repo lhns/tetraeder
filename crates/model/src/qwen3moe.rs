@@ -24,7 +24,7 @@ use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use tetraeder_ggml_sys::ggml::{
-    Backend, Context, GgmlError, Graph, OwnedGraph, OwnedTensor, RopeParams, Sched, Tensor, Type,
+    Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, RopeParams, Sched, Tensor, Type,
     hadamard_matrix,
 };
 use tetraeder_memory::IoOptions;
@@ -249,6 +249,10 @@ pub struct LoadOptions {
     /// (ADR 0059). `None` or 0: the static hot set. The step's groups are unchanged, so logits
     /// are too (bitwise on the CPU backend). Otherwise no effect.
     pub admit_share: Option<f64>,
+    /// Advise the kernel to back the RAM tier's host buffer with transparent huge pages
+    /// (`MADV_HUGEPAGE`, Linux, before first touch), against TLB misses of the CPU expert
+    /// matmuls over a tier of tens of GB (ADR 0035 addendum). No effect on results. Default off.
+    pub ram_hugepages: bool,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -278,6 +282,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("io_factory", &self.io_factory.is_some())
             .field("kv_rotation", &self.kv_rotation)
             .field("admit_share", &self.admit_share)
+            .field("ram_hugepages", &self.ram_hugepages)
             .finish_non_exhaustive()
     }
 }
@@ -312,6 +317,7 @@ impl LoadOptions {
             io_factory: None,
             kv_rotation: None,
             admit_share: None,
+            ram_hugepages: false,
         }
     }
 }
@@ -597,6 +603,7 @@ impl Qwen3Moe {
                     admit_share: opts
                         .admit_share
                         .filter(|&s| s > 0.0 && opts.miss == MissPolicy::Cpu),
+                    ram_hugepages: opts.ram_hugepages,
                 };
                 Streamer::new(
                     &file,
@@ -761,6 +768,12 @@ impl Qwen3Moe {
             .as_ref()
             .map(|s| s.counts().to_vec())
             .unwrap_or_default()
+    }
+
+    /// What `LoadOptions::ram_hugepages` did to the RAM tier's buffer; `None` when the option is
+    /// off or there is no RAM tier.
+    pub fn ram_hugepages(&self) -> Option<HugepageAdvice> {
+        self.streamer.as_ref().and_then(|s| s.ram_hugepages())
     }
 
     /// Rebuilds the hot set from the routing counts (ADR 0035): per layer the most routed
