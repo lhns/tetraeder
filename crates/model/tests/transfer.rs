@@ -15,7 +15,7 @@ use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMete
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tetraeder_ggml_sys::llama::Ftype;
-use tetraeder_model::{BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
+use tetraeder_model::{AdmitUpload, BackendChoice, ExpertStats, LoadOptions, MissPolicy, Qwen3Moe};
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
@@ -189,4 +189,18 @@ fn cpu_admissions_are_ram_to_vram_admission() {
     assert!(s.io.admitted_bytes > 0, "decode admitted experts");
     assert_eq!(t.bytes("ram", "vram", "admission"), s.io.admitted_bytes);
     assert!(t.timed("ram", "vram", "admission") >= s.io.admitted);
+}
+
+/// hardware: cpu. Async admissions (ADR 0059 addendum 2026-11-12b) count the same bytes, but no
+/// duration: the DMA's time is not observed on the main thread.
+#[test]
+fn cpu_async_admissions_count_bytes_untimed() {
+    let o = LoadOptions {
+        admit_upload: AdmitUpload::Async,
+        ..opts(Some(12), false, Some(1.0))
+    };
+    let (t, s) = run(&fixture(), o);
+    assert!(s.io.admitted_bytes > 0, "decode admitted experts");
+    assert_eq!(t.bytes("ram", "vram", "admission"), s.io.admitted_bytes);
+    assert_eq!(t.timed("ram", "vram", "admission"), 0);
 }

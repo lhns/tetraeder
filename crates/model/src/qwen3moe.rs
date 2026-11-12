@@ -24,6 +24,7 @@ use crate::cpu_poll::{self, CpuPoll};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer, StreamerConfig};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
+use crate::upload::AdmitUpload;
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, RopeParams, Sched,
     Tensor, Type, hadamard_matrix,
@@ -262,6 +263,11 @@ pub struct LoadOptions {
     /// (ADR 0059). `None` or 0: the static hot set. The step's groups are unchanged, so logits
     /// are too (bitwise on the CPU backend). Otherwise no effect.
     pub admit_share: Option<f64>,
+    /// With `admit_share`: how an admitted expert is copied into its compute slot (ADR 0059
+    /// addendum 2026-11-12b). `Sync` (default): a blocking copy straight from the RAM slot.
+    /// `Async`: through a pinned staging ring on a stream of its own, waited for only before the
+    /// layer's compute slots are next used. Logits are the same in both.
+    pub admit_upload: AdmitUpload,
     /// Advise the kernel to back the RAM tier's host buffer with transparent huge pages
     /// (`MADV_HUGEPAGE`, Linux, before first touch), against TLB misses of the CPU expert
     /// matmuls over a tier of tens of GB (ADR 0035 addendum). No effect on results. Default off.
@@ -301,6 +307,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("io_factory", &self.io_factory.is_some())
             .field("kv_rotation", &self.kv_rotation)
             .field("admit_share", &self.admit_share)
+            .field("admit_upload", &self.admit_upload)
             .field("ram_hugepages", &self.ram_hugepages)
             .field("ram_policy", &self.ram_policy)
             .finish_non_exhaustive()
@@ -339,6 +346,7 @@ impl LoadOptions {
             io_factory: None,
             kv_rotation: None,
             admit_share: None,
+            admit_upload: AdmitUpload::Sync,
             ram_hugepages: false,
             ram_policy: tetraeder_memory::RamPolicy::Lru,
         }
@@ -378,6 +386,14 @@ impl Layer {
             self.gate_exps.get(),
             self.up_exps.get(),
             self.down_exps.get(),
+        ]
+    }
+
+    fn exps_owned(&self) -> [OwnedTensor; 3] {
+        [
+            self.gate_exps.clone(),
+            self.up_exps.clone(),
+            self.down_exps.clone(),
         ]
     }
 }
@@ -627,7 +643,7 @@ impl Qwen3Moe {
         let metrics = MemoryMetrics::new(opts.telemetry.clone());
         let streamer = slots
             .map(|n| {
-                let tensors: Vec<_> = weights.layers.iter().map(Layer::exps).collect();
+                let tensors: Vec<_> = weights.layers.iter().map(Layer::exps_owned).collect();
                 let cfg = StreamerConfig {
                     slots: n,
                     ram_slots: ram_slots.map(|r| r.max(1)),
@@ -639,12 +655,14 @@ impl Qwen3Moe {
                     admit_share: opts
                         .admit_share
                         .filter(|&s| s > 0.0 && opts.miss == MissPolicy::Cpu),
+                    admit_upload: opts.admit_upload,
                     ram_hugepages: opts.ram_hugepages,
                     ram_policy: opts.ram_policy,
                 };
                 Streamer::new(
                     &file,
                     &tensors,
+                    &primary,
                     &cpu,
                     cfg,
                     metrics.clone(),
@@ -814,6 +832,14 @@ impl Qwen3Moe {
     /// off or there is no RAM tier.
     pub fn ram_hugepages(&self) -> Option<HugepageAdvice> {
         self.streamer.as_ref().and_then(|s| s.ram_hugepages())
+    }
+
+    /// With admission on and `AdmitUpload::Async`: whether its staging ring got the device's
+    /// pinned host memory (else plain host memory, and the copies block while staged).
+    pub fn admit_staging_pinned(&self) -> Option<bool> {
+        self.streamer
+            .as_ref()
+            .and_then(|s| s.admit_staging_pinned())
     }
 
     /// Rebuilds the hot set from the routing counts (ADR 0035): per layer the most routed
@@ -1378,7 +1404,7 @@ impl Qwen3Moe {
                     }
                     if n == 1 {
                         // Every expert of the chunk has landed (ADR 0059).
-                        streamer.admit(seg, &layer.exps(), chunk, &plan.compute)?;
+                        streamer.admit(seg, chunk, &plan.compute, Some(&self.cpu))?;
                     }
                     if !plan.compute.is_empty() {
                         let pairs = group_pairs(&chosen, nu, &plan.compute, &plan.compute_slots);
@@ -1396,7 +1422,7 @@ impl Qwen3Moe {
                     let slots = streamer.stage_ram(&self.file, seg, chunk)?;
                     if n == 1 {
                         // Before the next chunk's reads can take these RAM slots (ADR 0059).
-                        streamer.admit(seg, &layer.exps(), chunk, &plan.compute)?;
+                        streamer.admit(seg, chunk, &plan.compute, Some(&self.cpu))?;
                     }
                     let pairs = group_pairs(&chosen, nu, chunk, &slots);
                     for pairs in split_group(pairs, cap_ram) {

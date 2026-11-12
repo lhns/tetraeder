@@ -47,6 +47,8 @@ impl Type {
     pub const F32: Type = Type(sys::GGML_TYPE_F32 as u32);
     pub const F16: Type = Type(sys::GGML_TYPE_F16 as u32);
     pub const I32: Type = Type(sys::GGML_TYPE_I32 as u32);
+    /// Plain bytes, for staging buffers.
+    pub const I8: Type = Type(sys::GGML_TYPE_I8 as u32);
     pub const BF16: Type = Type(sys::GGML_TYPE_BF16 as u32);
 
     /// The type with this ggml id, if ggml knows it as a storage type.
