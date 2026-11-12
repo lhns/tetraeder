@@ -1,0 +1,1 @@
+mode=scope cores=2 of 4 want='200000 100000' probe='200000 100000 '
