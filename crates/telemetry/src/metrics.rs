@@ -747,7 +747,10 @@ impl Metrics {
     /// Once at model load (ADR 0061): the threadpool polling level in effect and whether the
     /// engine chose it from the detected CPU quota (`auto`) or was given it.
     pub fn cpu_poll(&self, level: u32, auto: bool) {
-        self.cpu_poll.record(u64::from(level), &[KeyValue::new(attr::CPU_POLL_AUTO, auto)]);
+        self.cpu_poll.record(
+            u64::from(level),
+            &[KeyValue::new(attr::CPU_POLL_AUTO, auto)],
+        );
     }
 
     /// The KV cache (ADR 0050 b): `memory.used` and `.capacity` of kind `kv` with the cache

@@ -79,7 +79,10 @@ mod tests {
         ];
         for (quota, online, threads, want) in rows {
             let p = resolve(None, quota, online, threads);
-            assert_eq!(p.level, want, "quota {quota:?} online {online:?} threads {threads}");
+            assert_eq!(
+                p.level, want,
+                "quota {quota:?} online {online:?} threads {threads}"
+            );
             assert!(p.auto);
             assert_eq!((p.quota, p.online), (quota, online));
         }
