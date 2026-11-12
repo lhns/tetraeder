@@ -206,7 +206,8 @@ fn cpu_admission_raises_compute_hits_on_repeated_routing() {
 fn cpu_upload_modes_are_exact_and_count_alike() {
     let path = fixture();
     let (want, tokens) = sequence(&mut load(&path, &LoadOptions::new(CPU)), None);
-    let cases: [(&str, fn() -> LoadOptions); 3] = [
+    type Case = (&'static str, fn() -> LoadOptions);
+    let cases: [Case; 3] = [
         ("serial ram 12", || cpu_opts(CPU, 12, Some(1.0))),
         ("serial ram 4", || cpu_opts(CPU, 4, Some(1.0))),
         ("overlap ram 12", || overlap_opts(12, Some(1.0))),
