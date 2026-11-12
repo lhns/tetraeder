@@ -11,6 +11,8 @@ struct BackendInner {
     /// The CPU backend's own threadpool. Without one, ggml creates and joins its worker threads
     /// on every graph compute.
     pool: Option<NonNull<sys::ggml_threadpool>>,
+    /// The pool's polling level as ggml received it (after the clamp and its default).
+    poll: Option<u32>,
 }
 
 impl Drop for BackendInner {
@@ -55,7 +57,8 @@ impl Backend {
     }
 
     /// [`Backend::cpu`] with the threadpool's `poll` level (0 to 100, clamped): how long idle
-    /// workers spin before they sleep. `None`: ggml's default (50).
+    /// workers spin before they sleep. `None`: ggml's default (50). The pool reads it once at
+    /// creation; [`Backend::cpu_poll`] returns the level in effect.
     pub fn cpu_with_poll(n_threads: i32, poll: Option<u32>) -> Result<Backend> {
         let procs = cpu::procs()?;
         let n = n_threads.max(1);
@@ -69,19 +72,19 @@ impl Backend {
             }
         };
         let ptr = NonNull::new(ptr).ok_or_else(|| GgmlError::NoBackend("CPU".into()))?;
+        // SAFETY: plain constructor of a value struct.
+        let mut params = unsafe { sys::ggml_threadpool_params_default(n) };
+        if let Some(p) = poll {
+            params.poll = p.min(100);
+        }
         // SAFETY: `params` is a valid in-out struct; null means failure.
-        let pool = NonNull::new(unsafe {
-            let mut params = sys::ggml_threadpool_params_default(n);
-            if let Some(p) = poll {
-                params.poll = p.min(100);
-            }
-            (procs.threadpool_new)(&mut params)
-        });
+        let pool = NonNull::new(unsafe { (procs.threadpool_new)(&mut params) });
         // Owned from here, so a failure below frees both.
         let inner = BackendInner {
             ptr,
             is_cpu: true,
             pool,
+            poll: Some(params.poll),
         };
         let Some(pool) = pool else {
             return Err(GgmlError::NoBackend("CPU threadpool".into()));
@@ -94,6 +97,11 @@ impl Backend {
         Ok(Backend {
             inner: Rc::new(inner),
         })
+    }
+
+    /// The threadpool's polling level (0 to 100) of a CPU backend; `None` for a GPU backend.
+    pub fn cpu_poll(&self) -> Option<u32> {
+        self.inner.poll
     }
 
     /// Compute threads of the next graphs on a CPU backend; keep it within the threadpool's size.
@@ -143,6 +151,7 @@ impl Backend {
                 ptr,
                 is_cpu: false,
                 pool: None,
+                poll: None,
             }),
         })
     }

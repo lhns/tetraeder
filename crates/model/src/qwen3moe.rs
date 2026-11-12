@@ -20,6 +20,7 @@
 //! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
 use crate::convert::{ConvertError, ConvertOptions, ConvertStats, ggml_type};
+use crate::cpu_poll::{self, CpuPoll};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer, StreamerConfig};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
@@ -216,8 +217,9 @@ pub struct LoadOptions {
     /// prediction and reads L+2 meanwhile.
     pub prefetch_depth: usize,
     /// Polling level (0 to 100) of the CPU backend's ggml threadpool: how long idle workers
-    /// spin before they sleep. `None`: ggml's default (50). A lower level leaves cores to the
-    /// prefetch reader when the CPU quota is tight.
+    /// spin before they sleep. `None`: auto (ADR 0061), 0 when the cgroup CPU quota binds (below
+    /// the host's online CPUs, or at most as many whole cores as threads), else ggml's default
+    /// (50). [`Qwen3Moe::cpu_poll`] returns the level in effect.
     pub cpu_poll: Option<u32>,
     /// Compute threads of CPU graphs while a prefetch read is in flight (at most the full
     /// count, which the threadpool keeps). `None`: the full count.
@@ -467,6 +469,7 @@ pub struct Qwen3Moe {
     /// Threads of the CPU backend, and the count while a prefetch read is in flight.
     cpu_threads: i32,
     prefetch_threads: Option<i32>,
+    cpu_poll: CpuPoll,
     /// Pair groups may run on a GPU backend (the primary is not the CPU).
     gpu: bool,
     op_offload: bool,
@@ -542,18 +545,28 @@ impl Qwen3Moe {
                 "the cpu miss policy needs ram_slots".into(),
             ));
         }
-        let (primary, cpu, backends, cpu_threads) = match opts.backend {
-            BackendChoice::Cpu { threads } => {
-                let n = threads_for(threads) as i32;
-                let cpu = Backend::cpu_with_poll(n, opts.cpu_poll)?;
-                (cpu.clone(), cpu.clone(), vec![cpu], n)
-            }
-            BackendChoice::Gpu { index } => {
-                let gpu = Backend::gpu(index)?;
-                let n = threads_for(None) as i32;
-                let cpu = Backend::cpu_with_poll(n, opts.cpu_poll)?;
-                (gpu.clone(), cpu.clone(), vec![gpu, cpu], n)
-            }
+        let (n, gpu) = match opts.backend {
+            BackendChoice::Cpu { threads } => (threads_for(threads), None),
+            BackendChoice::Gpu { index } => (threads_for(None), Some(Backend::gpu(index)?)),
+        };
+        let mut cpu_poll = cpu_poll::detect(opts.cpu_poll, n);
+        let cpu = Backend::cpu_with_poll(n as i32, Some(cpu_poll.level))?;
+        cpu_poll.level = cpu.cpu_poll().unwrap_or(cpu_poll.level);
+        tracing::info!(
+            level = cpu_poll.level,
+            auto = cpu_poll.auto,
+            quota = ?cpu_poll.quota,
+            online = ?cpu_poll.online,
+            threads = n,
+            "cpu threadpool polling"
+        );
+        if let Some(t) = &opts.telemetry {
+            t.metrics().cpu_poll(cpu_poll.level, cpu_poll.auto);
+        }
+        let cpu_threads = n as i32;
+        let (primary, backends) = match gpu {
+            None => (cpu.clone(), vec![cpu.clone()]),
+            Some(gpu) => (gpu.clone(), vec![gpu, cpu.clone()]),
         };
         let sched = Sched::new(
             &backends,
@@ -665,6 +678,7 @@ impl Qwen3Moe {
             prefetch_threads: opts
                 .prefetch_threads
                 .map(|t| (t as i32).clamp(1, cpu_threads)),
+            cpu_poll,
             gpu: !opts_primary_is_cpu,
             op_offload: opts.op_offload,
             op_offload_min_tokens: opts.op_offload_min_tokens,
@@ -846,6 +860,12 @@ impl Qwen3Moe {
             push(&self.cpu.name(), "ram", "workspace", work, work);
         }
         out
+    }
+
+    /// The CPU threadpool's polling level in effect, whether it was chosen automatically, and
+    /// the quota and online CPUs it was chosen from (ADR 0061).
+    pub fn cpu_poll(&self) -> CpuPoll {
+        self.cpu_poll
     }
 
     /// The expert file I/O of the first shard, e.g. `direct overlapped`; `None` when every

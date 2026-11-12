@@ -15,7 +15,8 @@ pub use config::TelemetryConfig;
 #[cfg(feature = "nvml")]
 pub use host::NvmlHost;
 pub use host::{
-    DeviceKind, DeviceSample, HostMetrics, SysinfoHost, cgroup_cpu_quota, default_sources,
+    DeviceKind, DeviceSample, HostMetrics, SysinfoHost, cgroup_cpu_quota, cgroup_cpu_quota_at,
+    default_sources, online_cpus, online_cpus_at,
 };
 pub use metrics::{CacheResult, Direction, Metrics, Phase, StepSample, attr};
 pub use ring::{StepRing, StepStats};

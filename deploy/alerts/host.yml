@@ -14,7 +14,7 @@ groups:
           severity: warning
         annotations:
           summary: "The container is CPU-throttled in more than 20% of its CFS periods"
-          description: "More runnable threads than the CPU quota. Check the engine threads against the quota on the Container CPU panel (scripts/clamp_threads.sh clamps exit runs); side jobs need OMP_NUM_THREADS and cargo -j capped."
+          description: "Spinning or runnable threads use up the CPU quota. Check the engine's poll level on the Container CPU panel (ADR 0061: polling 0 cut throttling from 0.80-0.98 to 0.05; fewer threads did not help, ADR 0045 20261112e); side jobs need OMP_NUM_THREADS and cargo -j capped."
       - alert: TetraederCpuStealHigh
         expr: |
           sum(rate(system_cpu_time_seconds_total{state="steal"}[5m])) / sum(rate(system_cpu_time_seconds_total[5m])) > 0.05
@@ -31,7 +31,16 @@ groups:
           severity: warning
         annotations:
           summary: "The engine runs more compute threads than its CPU quota"
-          description: "Spinning threads above the quota get throttled. Lower the thread count to the whole-core quota (THREADS, scripts/clamp_threads.sh)."
+          description: "Threads above the quota get throttled. Lower the thread count to the whole-core quota (THREADS, scripts/clamp_threads.sh) and keep threadpool polling at 0 (ADR 0061)."
+      # Auto polling (ADR 0061) never fires this: it picks 0 whenever threads reach the whole-core quota.
+      - alert: TetraederCpuPollingUnderQuota
+        expr: max(tetraeder_cpu_poll) > 0 and max(tetraeder_cpu_threads) + 1 > max(tetraeder_cpu_quota)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The CPU threadpool polls while its threads fill the CPU quota"
+          description: "Idle ggml workers spin between graphs and spend the quota the next graph waits for (ADR 0045 20261112e: throttled in 80-98% of periods, decode 1.30x slower). An explicit cpu_poll (TETRAEDER_EXIT_CPU_POLL) overrides the auto level; drop it unless the run measures polling."
       - alert: TetraederContainerMemoryNearLimit
         expr: max(container_memory_usage_bytes) / max(tetraeder_host_cgroup_memory_limit_bytes) > 0.95
         for: 5m

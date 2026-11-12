@@ -53,7 +53,9 @@
 //!   `kv_rotation` as resolved.
 //! - `TETRAEDER_EXIT_KV`: K and V cache format, `f16` (default), `q8_0`, `q8_0/q4_0` or `q4_0`
 //!   (ADR 0050 b); both engines use it (`LoadOptions::kv`, libllama `type_k` and `type_v`).
-//! - `TETRAEDER_EXIT_CPU_POLL`: ggml threadpool polling level 0 to 100 (default: ggml's 50).
+//! - `TETRAEDER_EXIT_CPU_POLL`: ggml threadpool polling level 0 to 100 (default: auto, ADR
+//!   0061: 0 when the cgroup CPU quota binds, else ggml's 50). The JSON options record the level
+//!   in effect (`cpu_poll`), `cpu_poll_auto` and `cpu_quota_detected`; null for the reference.
 //! - `TETRAEDER_EXIT_PREFETCH_THREADS`: CPU compute threads while a prefetch read is in flight
 //!   (default: all).
 //! - `TETRAEDER_EXIT_REFRESH_HOT=1`: rebuild the hot set from the whole prefill before decode
@@ -624,6 +626,7 @@ fn exit_regime() {
 
     let mut runs = Vec::new();
     let mut io_backend = None;
+    let mut cpu_poll = None;
     for &ub in &ubatches {
         if reference {
             runs.push(reference_run(
@@ -635,6 +638,7 @@ fn exit_regime() {
         let mut m = Qwen3Moe::load(&path, &opts).expect("builder loads");
         let load_s = t0.elapsed().as_secs_f64();
         io_backend = m.io_backend();
+        cpu_poll = Some(m.cpu_poll());
         let s0 = m.expert_stats().expect("the exit regime streams experts");
         let mut recorder = routing_out.as_ref().map(|p| {
             let path = trace_path(p, ub, ubatches.len() > 1);
@@ -799,7 +803,9 @@ fn exit_regime() {
             "ram_hugepages": opts.ram_hugepages,
             "kv": opts.kv.to_string(),
             "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),
-            "cpu_poll": opts.cpu_poll,
+            "cpu_poll": cpu_poll.map(|p| p.level),
+            "cpu_poll_auto": cpu_poll.map(|p| p.auto),
+            "cpu_quota_detected": cpu_poll.and_then(|p| p.quota),
             "prefetch_threads": opts.prefetch_threads,
             "expert_slots": opts.expert_slots,
             "expert_slot_bytes": opts.expert_slot_bytes,

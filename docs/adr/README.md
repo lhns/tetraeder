@@ -62,3 +62,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0058](0058-decode-io-attribution.md) | Decode I/O attribution: capacity and demand per window before any bottleneck label (Proposed) |
 | [0059](0059-adaptive-compute-tier-admission.md) | Adaptive compute tier: decode admits a share of CPU misses into VRAM slots (Proposed) |
 | [0060](0060-box-host-metrics-as-otel.md) | Box and host metrics as OTel metrics: one collector per box run, the result's host block derived from its file (Proposed) |
+| [0061](0061-cpu-threadpool-polling-from-the-cgroup-quota.md) | CPU threadpool polling chosen from the cgroup CPU quota: 0 when the quota binds, explicit level wins (Proposed) |

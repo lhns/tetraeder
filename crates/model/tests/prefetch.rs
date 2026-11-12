@@ -246,6 +246,28 @@ fn cpu_poll_and_prefetch_threads_are_exact() {
     }
 }
 
+/// hardware: cpu. The automatic polling level (ADR 0061) follows this machine's quota, an
+/// explicit level wins, and no level changes the logits (bitwise on the CPU backend).
+#[test]
+fn cpu_poll_auto_and_explicit_levels_are_exact() {
+    let path = fixture();
+    let mut auto = load(&path, &opts(12, false));
+    let p = auto.cpu_poll();
+    assert!(p.auto);
+    assert_eq!(p, tetraeder_model::cpu_poll::detect(None, 2));
+    let want = sequence(&mut auto);
+    for level in [0, 50, 100] {
+        let o = LoadOptions {
+            cpu_poll: Some(level),
+            ..opts(12, false)
+        };
+        let mut m = load(&path, &o);
+        let p = m.cpu_poll();
+        assert_eq!((p.level, p.auto), (level, false));
+        assert_bitwise(&want, &sequence(&mut m), &format!("poll {level}"));
+    }
+}
+
 /// hardware: cpu. A prefetch depth other than 1 or 2 is refused at load.
 #[test]
 fn cpu_invalid_prefetch_depth_is_rejected() {

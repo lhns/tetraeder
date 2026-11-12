@@ -279,6 +279,7 @@ mod tests {
         m.replan_duration(Duration::from_secs(3));
         m.cpu_backend("avx2", &["AVX2".to_string()], "dl", &[]);
         m.cpu_threads(23, Some(23.04));
+        m.cpu_poll(0, true);
         mp.force_flush().unwrap();
 
         let mut names = Vec::new();
@@ -336,6 +337,7 @@ mod tests {
             "tetraeder.cpu.isa.missing",
             "tetraeder.cpu.threads",
             "tetraeder.cpu.quota",
+            "tetraeder.cpu.poll",
         ] {
             assert!(names.iter().any(|x| x == n), "missing metric {n}");
         }
