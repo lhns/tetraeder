@@ -105,13 +105,13 @@ def points(rec):
 
 def membw_points(m):
     """The membw probe result ({"membw_gb_s", "threads", ...}) as one gauge point."""
-    return [("tetraeder.host.membw", "gauge", "By/s", m["membw_gb_s"] * 1e9, {"tetraeder.membw.threads": m["threads"]})]
+    return [("tetraeder.host.membw", "gauge", "By/s", {"tetraeder.membw.threads": m["threads"]}, m["membw_gb_s"] * 1e9)]
 
 
 def curve_points(curve, kind):
     """[(depth, bytes_per_s)] of a disk curve as gauge points, one per queue depth."""
-    return [("tetraeder.host.disk.curve.rate", "gauge", "By/s", float(b),
-             {"tetraeder.disk.curve": kind, "tetraeder.disk.queue_depth": float(d)}) for d, b in curve]
+    return [("tetraeder.host.disk.curve.rate", "gauge", "By/s",
+             {"tetraeder.disk.curve": kind, "tetraeder.disk.queue_depth": float(d)}, float(b)) for d, b in curve]
 
 
 def _value(v):
