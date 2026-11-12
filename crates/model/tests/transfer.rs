@@ -52,11 +52,12 @@ fn attr<'a>(mut kv: impl Iterator<Item = &'a KeyValue>, k: &str) -> String {
         .unwrap_or_default()
 }
 
-fn key<'a>(kv: impl Iterator<Item = &'a KeyValue> + Clone) -> Key {
+fn key<'a>(kv: impl Iterator<Item = &'a KeyValue>) -> Key {
+    let kv: Vec<&KeyValue> = kv.collect();
     (
-        attr(kv.clone(), "tetraeder.transfer.source"),
-        attr(kv.clone(), "tetraeder.transfer.destination"),
-        attr(kv, "tetraeder.transfer.purpose"),
+        attr(kv.iter().copied(), "tetraeder.transfer.source"),
+        attr(kv.iter().copied(), "tetraeder.transfer.destination"),
+        attr(kv.iter().copied(), "tetraeder.transfer.purpose"),
     )
 }
 
