@@ -6,8 +6,11 @@ probe-disk: python3 engine_sample.py probe-disk MODEL.gguf
 sample:     python3 engine_sample.py sample --pid PID --disk MAJ:MIN --out s.jsonl [--interval 1]
             Every second until PID exits: disk read bytes and ops, queue depth, major page faults of PID's process tree,
             per-CPU jiffies (/proc/stat), cgroup CPU usage, GPU util and memory, tree RSS, cgroup file and anon memory.
+membw:      python3 engine_sample.py membw [--seconds 10] [--threads N]
+            Copy bandwidth of N processes (1 by default), each copying its own buffer with bytearray slice assignment;
+            prints {"membw_gb_s", "threads", "seconds"}. membw_gb_s = bytes copied (not read plus written) per second.
 summarize:  python3 engine_sample.py summarize --samples s.jsonl --threads N (--builder-json H | --kt-json R) --out sum.json
-            [--merge-into H] [--curve-dir D | --curve FILE]
+            [--merge-into H] [--curve-dir D | --curve FILE] [--membw FILE]
             Splits the samples into a prefill and a decode window and writes {"host": {"prefill": {...}, "decode":
             {...}}, "env": {...}}. The builder windows come from the harness JSON (decode_windows wall clock, prefill
             before them), KTransformers' from the client result (t_start, t_first, t_end). --merge-into sets "host"
@@ -20,6 +23,7 @@ summarize:  python3 engine_sample.py summarize --samples s.jsonl --threads N (--
 import argparse
 import glob
 import json
+import multiprocessing
 import os
 import subprocess
 import sys
@@ -153,6 +157,52 @@ def cpu_mhz():
     return sum(v) / len(v) if v else None
 
 
+def task_ids(pid):
+    """Thread ids of a process (/proc/PID/task); [] if it is gone."""
+    try:
+        return [t for t in os.listdir(f"/proc/{pid}/task") if t.isdigit()]
+    except OSError:
+        return []
+
+
+def ctxsw(pids):
+    """{"vol", "invol"} context switches summed over the threads of the processes; None when no status file was read.
+
+    /proc/PID/status counts only the thread group leader, so each /proc/PID/task/TID/status is read (the process
+    line when the task directory is unreadable)."""
+    vol = invol = 0
+    seen = False
+    for p in pids:
+        for path in [f"/proc/{p}/task/{t}/status" for t in task_ids(p)] or [f"/proc/{p}/status"]:
+            for line in ds.read(path).splitlines():
+                if line.startswith("voluntary_ctxt_switches:"):
+                    vol += int(line.split()[1])
+                    seen = True
+                elif line.startswith("nonvoluntary_ctxt_switches:"):
+                    invol += int(line.split()[1])
+    return {"vol": vol, "invol": invol} if seen else None
+
+
+def anon_huge_kb(pids):
+    """AnonHugePages in kB summed over the processes' smaps_rollup; None when no file was read."""
+    kb = 0
+    seen = False
+    for p in pids:
+        for line in ds.read(f"/proc/{p}/smaps_rollup").splitlines():
+            if line.startswith("AnonHugePages:"):
+                kb += int(line.split()[1])
+                seen = True
+    return kb if seen else None
+
+
+def thp_mode():
+    """Active mode of /sys/kernel/mm/transparent_hugepage/enabled (the bracketed word: always, madvise, never); None without it."""
+    for w in ds.read("/sys/kernel/mm/transparent_hugepage/enabled").split():
+        if w.startswith("[") and w.endswith("]"):
+            return w[1:-1]
+    return None
+
+
 def majflt(pids):
     """Major faults of the processes (the stat field covers all their threads)."""
     n = 0
@@ -214,7 +264,7 @@ def sample(a):
                    "disk_inflight": inflight, "disk_weighted_ms": weighted_ms,
                    "cg_io": cgroup_io(), "io_psi": io_pressure(), "majflt": majflt(pids), "cpus": stat_jiffies(),
                    "cpu_psi": cpu_pressure(), "cg_throttle": cgroup_throttle(), "cpu_steal": cpu_steal(),
-                   "cpu_mhz": cpu_mhz(),
+                   "cpu_mhz": cpu_mhz(), "ctxsw": ctxsw(pids), "anon_huge_kb": anon_huge_kb(pids),
                    "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": ds.proc_cpu_s(pids),
                    "rss_kb": tree_rss_kb(pids), "cg_mem": cgroup_mem(), "gpu": gpu_util()}
             out.write(json.dumps(rec) + "\n")
@@ -293,6 +343,9 @@ def phase(rows, t0, t1, tokens, threads):
         steal = (st1["steal"] - st0["steal"]) / (st1["total"] - st0["total"])
     mhz = [m for m in (r.get("cpu_mhz") for r in (win[0], win[-1])) if m is not None]
 
+    cs0, cs1 = (r.get("ctxsw") for r in (win[0], win[-1]))
+    ahp = win[-1].get("anon_huge_kb")
+
     cgio = [r["cg_io"] for r in (win[0], win[-1])]
     cg_rb = cgio[1]["rbytes"] - cgio[0]["rbytes"] if all(cgio) else None
     n = max(tokens, 1)
@@ -316,6 +369,9 @@ def phase(rows, t0, t1, tokens, threads):
         "throttled_ms_per_s": th_usec / 1e3 / dur if th_usec is not None and dur else None,
         "cpu_steal_share": steal,
         "cpu_mhz_mean": sum(mhz) / len(mhz) if mhz else None,
+        "ctxsw_vol_per_s": (cs1["vol"] - cs0["vol"]) / dur if cs0 and cs1 and dur else None,
+        "ctxsw_invol_per_s": (cs1["invol"] - cs0["invol"]) / dur if cs0 and cs1 and dur else None,
+        "anon_huge_gb": ahp * 1024 / 1e9 if ahp is not None else None,
         "majflt": mf, "majflt_per_token": mf / n if mf is not None else None,
         "cpu_busy_pct": busy,
         "cpu_busy_pct_top_cpus": sum(top) / len(top) if top else None,
@@ -430,7 +486,7 @@ def env_info():
     flags = sorted({w for ln in ds.read("/proc/cpuinfo").splitlines() if ln.startswith("flags") for w in ln.split()
                     if w.startswith("avx512")})
     model = next((ln.split(":", 1)[1].strip() for ln in ds.read("/proc/cpuinfo").splitlines() if ln.startswith("model name")), None)
-    return {"cpu_model": model, "cpu_avx512_flags": flags}
+    return {"cpu_model": model, "cpu_avx512_flags": flags, "thp_mode": thp_mode()}
 
 
 N_DECODE_WINDOWS = 4
@@ -489,6 +545,12 @@ def summarize(a):
     rw, wins = builder_extras(a.builder_json) if a.builder_json else (((None, False),) * 2, None)
     out = {"host": host_summary(rows, pre, dec, a.threads, curve, rw, wins), "env": env_info()}
     out["env"]["disk_curve"] = os.path.basename(curve_file) if curve else None
+    membw_file = getattr(a, "membw", None)
+    if membw_file:
+        try:
+            out["env"]["membw"] = json.loads(ds.read(membw_file))
+        except ValueError:
+            out["env"]["membw"] = None
     json.dump(out, open(a.out, "w"), indent=1)
     print(json.dumps(out["host"]))
     if a.merge_into:
@@ -496,6 +558,32 @@ def summarize(a):
         d["host"] = out["host"]
         d.setdefault("env", {}).update(out["env"])
         json.dump(d, open(a.merge_into, "w"), indent=2)
+
+
+def _membw_worker(mib, seconds, q):
+    src = bytearray(mib << 20)
+    dst = bytearray(mib << 20)
+    for i in range(0, len(src), 4096):
+        src[i] = 1
+        dst[i] = 1
+    n = 0
+    t0 = time.time()
+    while time.time() - t0 < seconds:
+        dst[:] = src
+        n += 1
+    q.put(n * len(src) / (time.time() - t0))
+
+
+def membw(a):
+    """Copy bandwidth in GB/s summed over --threads processes, each copying its own --mib MiB buffer for --seconds."""
+    q = multiprocessing.Queue()
+    procs = [multiprocessing.Process(target=_membw_worker, args=(a.mib, a.seconds, q)) for _ in range(a.threads)]
+    for p in procs:
+        p.start()
+    rates = [q.get() for _ in procs]
+    for p in procs:
+        p.join()
+    print(json.dumps({"membw_gb_s": sum(rates) / 1e9, "threads": a.threads, "seconds": a.seconds}))
 
 
 def main():
@@ -518,8 +606,13 @@ def main():
     m.add_argument("--merge-into")
     m.add_argument("--curve-dir")
     m.add_argument("--curve")
+    m.add_argument("--membw", help="membw probe JSON to store as env.membw")
+    b = sub.add_parser("membw")
+    b.add_argument("--seconds", type=float, default=10.0)
+    b.add_argument("--threads", type=int, default=1)
+    b.add_argument("--mib", type=int, default=256, help=argparse.SUPPRESS)
     a = ap.parse_args()
-    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize}[a.cmd](a)
+    {"probe-disk": probe_disk, "sample": sample, "summarize": summarize, "membw": membw}[a.cmd](a)
 
 
 if __name__ == "__main__":

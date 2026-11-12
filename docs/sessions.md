@@ -68,6 +68,8 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 
 **CPU attribution.** Each phase and decode window also carries `cpu_some_share`, `cpu_full_share`, `throttled_share`, `throttled_ms_per_s`, `cpu_steal_share` and `cpu_mhz_mean` (ADR 0058 addendum 2026-11-12); `session.sh` and `exit_run.sh` clamp `THREADS` to the whole-core CPU quota (`THREADS_ALLOW_OVER_QUOTA=1` keeps it).
 
+**Process probes.** Windows also carry `ctxsw_vol_per_s`, `ctxsw_invol_per_s` and `anon_huge_gb`, `env.thp_mode` the THP setting; `exit_run.sh` runs a 10 s `engine_sample.py membw` before each builder and baseline stage (`env.membw`, or `membw-<stage>-<stamp>.json`; `MEMBW_PROBE=0` skips it).
+
 **Stages** (code order of `exit_run.sh`; every builder stage has prefetch on at depth 2, the ADR 0038 levers; host sampling on every builder, KT and llama.cpp cache stage). The verdict triple comes first and adjacent, then the noise pair; what does not fit is cut from the end:
 
 | # | Stage | Estimate | Cumulative | Decides |
