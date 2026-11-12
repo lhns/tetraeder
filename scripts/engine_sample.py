@@ -18,7 +18,8 @@ summarize:  python3 engine_sample.py summarize --samples s.jsonl --threads N (--
             wall clock, prefill before them), KTransformers' from the client result (t_start, t_first, t_end).
             --merge-into sets "host" and the new "env" keys in that JSON as well. Each phase also gets io_some_share and io_full_share (I/O
             pressure stall time over wall time), disk_util (read_mb_s over the loaded disk curve's rate at the mean
-            queue depth) and io_class (see io_class()). The curve is disk-curve-loaded-*.json in D (default: the
+            queue depth) and io_class (see io_class()). Co-tenant fields: host_busy_cores, container_cores, engine_cores,
+            outside_cores, smt_pairs_busy (siblings from /sys, stored as env.smt_siblings) and host_cpus. The curve is disk-curve-loaded-*.json in D (default: the
             directory of the merged or output JSON).
 OTLP (ADR 0060): with TETRAEDER_HOST_OTLP (or --otlp) set to a collector's base URL, sample, membw and emit-curve also
             post their numbers as OTLP metrics (scripts/otlp_host.py); SAMPLER_OTLP=0 turns it off.
@@ -193,6 +194,24 @@ def cpu_nodes():
                 out[int(c[3:])] = int(e[4:])
                 break
     return out
+
+
+def smt_siblings(root="/sys/devices/system/cpu"):
+    """SMT sibling groups [[cpu, ...]] from cpuN/topology/thread_siblings_list; [] when the files are missing."""
+    groups = set()
+    for c in sys_ls(root):
+        if c.startswith("cpu") and c[3:].isdigit():
+            txt = ds.read(f"{root}/{c}/topology/thread_siblings_list").strip()
+            cpus = []
+            for part in txt.split(",") if txt else []:
+                lo, _, hi = part.partition("-")
+                try:
+                    cpus += range(int(lo), int(hi or lo) + 1)
+                except ValueError:
+                    return []
+            if cpus:
+                groups.add(tuple(sorted(cpus)))
+    return [list(g) for g in sorted(groups)]
 
 
 def placement(pids, nodes):
@@ -487,7 +506,7 @@ def delta(rows, key):
     return v[-1] - v[0] if len(v) >= 2 else None
 
 
-def phase(rows, t0, t1, tokens, threads):
+def phase(rows, t0, t1, tokens, threads, siblings=None):
     """Summary of one window. Counters use the samples bracketing it, so a 1 s sample grid costs at most one interval."""
     inside = [r for r in rows if t0 <= r["t"] <= t1]
     before = [r for r in rows if r["t"] < t0]
@@ -505,11 +524,20 @@ def phase(rows, t0, t1, tokens, threads):
     used = cg / 1e6 if cg is not None else own
     busy = used / (dur * threads) * 100 if used is not None and threads and dur else None
     # host view: busiest `threads` CPUs of /proc/stat (the container may see every host core)
-    shares = []
+    shares, by_cpu = [], {}
     first, last = win[0].get("cpus") or [], win[-1].get("cpus") or []
-    for (b0, t0j), (b1, t1j) in zip(first, last):
+    for i, ((b0, t0j), (b1, t1j)) in enumerate(zip(first, last)):
         if t1j > t0j:
             shares.append((b1 - b0) / (t1j - t0j) * 100)
+            by_cpu[i] = shares[-1]
+    # co-tenant view (host, container and engine cores; ADR 0045, 20261112g)
+    host_cores = sum(shares) / 100 if shares else None
+    cont_cores = cg / 1e6 / dur if cg is not None and dur else None
+    eng_cores = own / dur if own is not None and dur else None
+    outside = max(0.0, host_cores - cont_cores) if host_cores is not None and cont_cores is not None else None
+    pairs = None
+    if siblings and by_cpu:
+        pairs = sum(1 for g in siblings if len(g) >= 2 and all(by_cpu.get(c, 0) > 50 for c in g))
     top = sorted(shares, reverse=True)[:threads] if threads else shares
     gpu = [r["gpu"]["util"] for r in inside if r.get("gpu")]
     gmem = [r["gpu"]["mem_mib"] for r in inside if r.get("gpu")]
@@ -578,6 +606,8 @@ def phase(rows, t0, t1, tokens, threads):
         "cpus_used": cpus_used, "numa_nodes_used": nodes_used, "top_node_share": top_node,
         "majflt": mf, "majflt_per_token": mf / n if mf is not None else None,
         "cpu_busy_pct": busy,
+        "host_busy_cores": host_cores, "container_cores": cont_cores, "engine_cores": eng_cores,
+        "outside_cores": outside, "smt_pairs_busy": pairs, "host_cpus": len(first) or None,
         "cpu_busy_pct_top_cpus": sum(top) / len(top) if top else None,
         "gpu_busy_pct": sum(gpu) / len(gpu) if gpu else None,
         "gpu_mem_max_mib": max(gmem) if gmem else None,
@@ -704,16 +734,16 @@ def equal_windows(dec, n=N_DECODE_WINDOWS):
     return [(t0 + i * step, t0 + (i + 1) * step, tokens / n, (None, False)) for i in range(n)]
 
 
-def host_summary(rows, pre, dec, threads, curve, rw=((None, False), (None, False)), windows=None):
+def host_summary(rows, pre, dec, threads, curve, rw=((None, False), (None, False)), windows=None, siblings=None):
     """{"prefill", "decode", "decode_windows"} summaries with the I/O attribution fields. rw = read_wait_share result
     of prefill and decode; windows = [(t0, t1, tokens, rw)] of the decode (default: 4 equal time slices, tokens
     estimated, flagged "tokens_estimated")."""
     est = windows is None
-    out = {"prefill": classify(phase(rows, pre[0], pre[1], pre[2], threads), curve, rw[0]),
-           "decode": classify(phase(rows, dec[0], dec[1], dec[2], threads), curve, rw[1]),
+    out = {"prefill": classify(phase(rows, pre[0], pre[1], pre[2], threads, siblings), curve, rw[0]),
+           "decode": classify(phase(rows, dec[0], dec[1], dec[2], threads, siblings), curve, rw[1]),
            "decode_windows": []}
     for t0, t1, n, wrw in windows or equal_windows(dec):
-        w = classify(phase(rows, t0, t1, n, threads), curve, wrw)
+        w = classify(phase(rows, t0, t1, n, threads, siblings), curve, wrw)
         if est:
             w["tokens_estimated"] = True
         out["decode_windows"].append(w)
@@ -754,8 +784,10 @@ def summarize(a):
     curve_file = a.curve or find_curve(a.curve_dir or os.path.dirname(os.path.abspath(a.merge_into or a.out)))
     curve = load_curve(curve_file) if curve_file else []
     rw, wins = builder_extras(a.builder_json) if a.builder_json else (((None, False),) * 2, None)
-    out = {"host": host_summary(rows, pre, dec, a.threads, curve, rw, wins), "env": env_info(),
+    sib = smt_siblings()
+    out = {"host": host_summary(rows, pre, dec, a.threads, curve, rw, wins, sib), "env": env_info(),
            "windows": host_windows(pre, dec, a.threads)}
+    out["env"]["smt_siblings"] = sib or None
     out["env"]["disk_curve"] = os.path.basename(curve_file) if curve else None
     membw_file = getattr(a, "membw", None)
     if membw_file:
@@ -890,7 +922,8 @@ def otlp_merge(a):
             d["host_otlp"] = {"error": f"{len(rows)} OTLP rows in the windows"}
             d.pop("host_otlp_diff", None)
         else:
-            d["host_otlp"] = host_summary(rows, pre, dec, threads, curve, rw, wins)
+            d["host_otlp"] = host_summary(rows, pre, dec, threads, curve, rw, wins,
+                                          (d.get("env") or {}).get("smt_siblings"))
             d["host_otlp_diff"] = host_diff(d.get("host") or {}, d["host_otlp"])
         json.dump(d, open(path, "w"), indent=2)
         print(f"otlp-merge {os.path.basename(path)}: {len(rows)} rows, {len(d.get('host_otlp_diff') or {})} fields differ")

@@ -93,8 +93,10 @@ balloon_pre() {
   echo "[$(date +%T)] BALLOON PROBLEM $balloon_note; restarting"
   start_balloon
 }
-# balloon_post <stage> <json>: check after the stage; record balloon_ok in its JSON (a sidecar when it is no object)
+# balloon_post <stage> <json>: check after the stage; record balloon_ok in its JSON (a sidecar when it is no object).
+# It also records cotenant_ok (scripts/cotenant_guard.py, from the host block); that never fails the run.
 balloon_post() {
+  python3 -I scripts/cotenant_guard.py merge --json "$2" || true
   [ "$balloon" -gt 0 ] || return 0
   local why ok=true
   if ! why=$(python3 -I scripts/balloon_guard.py check --pid "$balloon_pid" --target "$balloon"); then
