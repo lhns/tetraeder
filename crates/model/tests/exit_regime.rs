@@ -43,6 +43,9 @@
 //! - `TETRAEDER_EXIT_ADMIT_SHARE` (0 to 1, default off): decode admits that share of the
 //!   compute-tier misses into VRAM slots (`LoadOptions::admit_share`, ADR 0059); `decode_io`
 //!   gets `admitted`, `admitted_bytes` and `admit_ms_per_token` (the synchronous uploads).
+//! - `TETRAEDER_EXIT_RAM_POLICY` (`lru` default, or `freq:<share>`): the RAM-tier policy
+//!   (`LoadOptions::ram_policy`, ADR 0050 (c)); `freq` pins the top share of each layer's RAM
+//!   slots by routing count during decode. Recorded in the options as `ram_policy`.
 //! - `TETRAEDER_EXIT_RAM_HUGEPAGES` (0/1, default 0): `MADV_HUGEPAGE` on the RAM tier's buffer
 //!   right after allocation (`LoadOptions::ram_hugepages`, ADR 0035 addendum). Each run records
 //!   `ram_hugepages` (`applied`, `advised_bytes`, `errno`); the host sampler's `anon_huge_gb`
@@ -606,6 +609,9 @@ fn exit_regime() {
     opts.admit_share = std::env::var("TETRAEDER_EXIT_ADMIT_SHARE")
         .ok()
         .and_then(|v| v.parse::<f64>().ok());
+    if let Ok(v) = std::env::var("TETRAEDER_EXIT_RAM_POLICY") {
+        opts.ram_policy = tetraeder_memory::RamPolicy::parse(&v).unwrap_or_else(|e| panic!("{e}"));
+    }
     opts.kv_rotation = env_u64("TETRAEDER_EXIT_KV_ROT").map(|v| v == 1);
     opts.cpu_poll = env_u64("TETRAEDER_EXIT_CPU_POLL").map(|p| p as u32);
     opts.pool_pause = env_flag("TETRAEDER_EXIT_POOL_PAUSE");
@@ -803,6 +809,7 @@ fn exit_regime() {
             "overlap": opts.overlap,
             "urgent_first": opts.urgent_first,
             "admit_share": opts.admit_share,
+            "ram_policy": opts.ram_policy.name(),
             "ram_hugepages": opts.ram_hugepages,
             "kv": opts.kv.to_string(),
             "kv_rotation": opts.kv_rotation.unwrap_or(opts.kv != KvFormat::F16),

@@ -259,6 +259,11 @@ pub struct LoadOptions {
     /// (`MADV_HUGEPAGE`, Linux, before first touch), against TLB misses of the CPU expert
     /// matmuls over a tier of tens of GB (ADR 0035 addendum). No effect on results. Default off.
     pub ram_hugepages: bool,
+    /// RAM-tier policy (ADR 0050 (c)): `Lru` (default), or `Freq { share }`, which pins the top
+    /// share of each layer's RAM slots by routing count during decode, refreshed every 16 decode
+    /// steps and at each hot-set refresh. Fewer disk reads per token on a slow disk; results are
+    /// unchanged (bitwise on the CPU backend). Needs `ram_slots`.
+    pub ram_policy: tetraeder_memory::RamPolicy,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -290,6 +295,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("kv_rotation", &self.kv_rotation)
             .field("admit_share", &self.admit_share)
             .field("ram_hugepages", &self.ram_hugepages)
+            .field("ram_policy", &self.ram_policy)
             .finish_non_exhaustive()
     }
 }
@@ -326,6 +332,7 @@ impl LoadOptions {
             kv_rotation: None,
             admit_share: None,
             ram_hugepages: false,
+            ram_policy: tetraeder_memory::RamPolicy::Lru,
         }
     }
 }
@@ -626,6 +633,7 @@ impl Qwen3Moe {
                         .admit_share
                         .filter(|&s| s > 0.0 && opts.miss == MissPolicy::Cpu),
                     ram_hugepages: opts.ram_hugepages,
+                    ram_policy: opts.ram_policy,
                 };
                 Streamer::new(
                     &file,
@@ -1164,7 +1172,7 @@ impl Qwen3Moe {
         let mut predicted2: Vec<Option<Vec<i32>>> = vec![None; n_layer + 2];
         if let Some(streamer) = &mut self.streamer {
             // A step that failed may have left a prefetch in flight.
-            streamer.begin_step();
+            streamer.begin_step(n);
         }
         self.cpu.set_cpu_threads(self.cpu_threads);
         let offload = offloads(self.op_offload, self.op_offload_min_tokens, n);

@@ -16,14 +16,12 @@
 
 use super::prefetch_plan;
 use super::trace::{LayerStep, Record, TraceHeader, TraceReader};
-use crate::slots::{Lookup, SlotCache, Tier, hot_from_counts};
+pub use crate::slots::FREQ_REFRESH_STEPS;
+use crate::slots::{Lookup, RamPolicy, SlotCache, Tier, freq_pins, hot_from_counts};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::path::Path;
-
-/// Frequency pins are refreshed every this many decode steps (and at every hot-set marker).
-pub const FREQ_REFRESH_STEPS: u64 = 16;
 
 /// The RAM-tier policy.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -337,6 +335,9 @@ struct Sim<'a, 't> {
     ram: Ram,
     counts: Vec<Vec<u64>>,
     freq_pins: Vec<Vec<u32>>,
+    /// The frequency pins are held in decode steps only: a prefill step may route more distinct
+    /// experts than the unpinned slots hold, and the engine cannot serve a miss without a slot.
+    pins_on: bool,
     /// Per layer and expert: read by a prefetch and not routed since.
     prefetched: Vec<Vec<bool>>,
     inflight: VecDeque<(usize, Vec<u32>)>,
@@ -396,6 +397,7 @@ impl<'a, 't> Sim<'a, 't> {
                 .clone()
                 .unwrap_or_else(|| vec![vec![0; ne]; layers]),
             freq_pins: vec![Vec::new(); layers],
+            pins_on: false,
             prefetched: vec![vec![false; ne]; layers],
             inflight: VecDeque::new(),
             phase: PREFILL,
@@ -518,7 +520,7 @@ impl<'a, 't> Sim<'a, 't> {
             .flat_map(|f| f.1.iter().copied())
             .collect();
         // Frequency pins hold slots like reads in flight do.
-        inflight.extend(&self.freq_pins[il]);
+        inflight.extend(self.standing(il));
         let predicted: Vec<i32> = predicted.iter().map(|&e| i32::from(e)).collect();
         let (mut pins, missing) = prefetch_plan(
             &predicted,
@@ -580,8 +582,17 @@ impl<'a, 't> Sim<'a, 't> {
             return;
         }
         self.acc[self.phase].prefetch_bytes += mine * self.expert_bytes(il);
-        let pins = self.freq_pins[il].clone();
+        let pins = self.standing(il).to_vec();
         self.set_ram_pins(il, &pins);
+    }
+
+    /// The frequency pins in force for layer `il`.
+    fn standing(&self, il: usize) -> &[u32] {
+        if self.pins_on {
+            &self.freq_pins[il]
+        } else {
+            &[]
+        }
     }
 
     fn settle(&mut self) {
@@ -590,20 +601,25 @@ impl<'a, 't> Sim<'a, 't> {
         }
     }
 
+    /// Puts the pins in force on the slot tables (all of them, as a step starts).
+    fn apply_freq_pins(&mut self) {
+        if !matches!(self.cfg.policy, Policy::Freq { .. }) {
+            return;
+        }
+        for il in 0..self.h.n_layer as usize {
+            let pins = self.standing(il).to_vec();
+            self.set_ram_pins(il, &pins);
+        }
+    }
+
     fn refresh_freq_pins(&mut self) {
         let Policy::Freq { share } = self.cfg.policy else {
             return;
         };
-        let k = (share * f64::from(self.cfg.ram_slots)).ceil() as u32;
+        let k = RamPolicy::Freq { share }.pin_count(self.cfg.ram_slots);
         for il in 0..self.h.n_layer as usize {
-            let mut c = self.counts[il].clone();
-            for (e, n) in c.iter_mut().enumerate() {
-                if self.vram.layer(il).is_pinned(e as u32) {
-                    *n = 0;
-                }
-            }
-            self.freq_pins[il] = hot_from_counts(&c, k);
-            let pins = self.freq_pins[il].clone();
+            self.freq_pins[il] = freq_pins(&self.counts[il], self.vram.layer(il), k);
+            let pins = self.standing(il).to_vec();
             self.set_ram_pins(il, &pins);
         }
     }
@@ -702,6 +718,7 @@ impl<'a, 't> Sim<'a, 't> {
             }
             self.phase = phase;
             self.acc[self.phase].steps += 1;
+            self.pins_on = self.phase == DECODE;
             if self.phase == DECODE {
                 if self.decode_steps.is_multiple_of(FREQ_REFRESH_STEPS) {
                     self.refresh_freq_pins();
@@ -711,6 +728,7 @@ impl<'a, 't> Sim<'a, 't> {
                 }
                 self.decode_steps += 1;
             }
+            self.apply_freq_pins();
         }
         let il = s.layer as usize;
         self.ev += 1;

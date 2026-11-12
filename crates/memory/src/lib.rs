@@ -33,4 +33,4 @@ pub use arena::{
 };
 pub use dio::{AlignedBuf, DirectFile, Options as IoOptions, Range, ReadReq, ReadStats};
 pub use reserve::{ReserveReport, measure_reserve, reserve_map};
-pub use slots::{AdmitPolicy, Change, LayerSlots, Lookup, Move, SlotCache, Tier};
+pub use slots::{AdmitPolicy, Change, LayerSlots, Lookup, Move, RamPolicy, SlotCache, Tier};

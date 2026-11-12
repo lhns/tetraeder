@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 # Nightly fault testbed on a GitHub CPU runner (ADR 0041 addendum, docs/testing.md section "Fault testbed").
 # The real engine (tests/exit_regime.rs, CPU backend, synthetic MoE, small RAM tier so misses read from disk) in decode
-# windows, scripts/detector_sample.py sampling next to it, and three real faults:
+# windows, scripts/detector_sample.py sampling next to it, and four real faults:
 #   cpu   busy loops next to the engine (half the threads; 1 in pairs) -> FaultClass::CpuCotenant
 #   disk  systemd-run scope with IOReadBandwidthMax (cgroup io.max) -> FaultClass::DiskSlow
 #         (in a pair the cap shrinks with the partner fault's pace, so it still binds)
 #   mem   systemd-run scope with MemoryMax below the engine's RSS   -> FaultClass::Swapping (manifest name "mem")
+#   quota systemd-run scope with CPUQuota= at half the threads (min 1 core), ggml polling explicit at 50
+#         (TETRAEDER_EXIT_CPU_POLL=50; auto polling is 0 under a quota since ADR 0061, so the fault needs it set)
+#         -> FaultClass::CpuQuotaThrottle (ADR 0062; manifest name "quota"). Fallback when the runner does not
+#         enforce CPUQuota: a cgroup v2 child with cpu.max; if neither works the quota runs are dropped from the
+#         schedule with a logged reason. Needs THREADS >= 2. Single faults only (a pair partner would change the
+#         throttled share). QUOTA_FAULT=0 drops it.
 # Same schedule shape and manifest format as scripts/detector_campaign.sh, so `tetraeder detector-score` reads the output.
 # Needs Linux with sudo, systemd, cgroup v2 and GNU time. VRAM pressure, PCIe and GPU throttle stay box-only.
-# Env: OUT (results dir), ROUNDS (6) rounds of none,cpu,disk,mem, PAIR_ROUNDS (2) rounds of the three pairs,
+# Env: OUT (results dir), ROUNDS (6) rounds of none,cpu,disk,mem,quota, PAIR_ROUNDS (2) rounds of the three pairs,
 #      MEM_FRAC (0.4) MemoryMax as a fraction of the calibration peak RSS, DECODE (64), THREADS (nproc),
+#      QUOTA_FAULT (1) 0 drops the quota fault,
 #      BIN (a built exit_regime test binary; default: build it).
 # Results: $OUT/{obs,harness,samples,run,scope,rss}-NN, calib.json, manifest.jsonl, schedule.txt.
 # Exit code: 0 unless the build, the setup or a run failed (the detector bars are not this script's concern).
@@ -77,9 +84,11 @@ cat AGENTS.md docs/adr/*.md > "$work/prompt.txt"
 # Runs inside the scope: records the scope's limits, then the engine under GNU time (peak RSS in KB).
 cat > "$work/scope_wrap.sh" << 'EOF'
 #!/usr/bin/env bash
-# scope_wrap.sh <info-file> <rss-file> cmd...
+# scope_wrap.sh <info-file> <rss-file> cmd...   (QUOTA_CG: cgroup v2 child with cpu.max to move into)
+[ -n "$QUOTA_CG" ] && echo $$ > "$QUOTA_CG/cgroup.procs"
 cg=/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)
-{ echo "io.max: $(cat "$cg/io.max" 2> /dev/null)"; echo "memory.max: $(cat "$cg/memory.max" 2> /dev/null)"; } > "$1"
+{ echo "io.max: $(cat "$cg/io.max" 2> /dev/null)"; echo "memory.max: $(cat "$cg/memory.max" 2> /dev/null)"
+  echo "cpu.max: $(cat "$cg/cpu.max" 2> /dev/null)"; } > "$1"
 rss=$2
 shift 2
 exec /usr/bin/time -f %M -o "$rss" timeout -k 10 10m "$@"
@@ -94,9 +103,33 @@ sudo systemd-run --scope -q -p "IOReadBandwidthMax=$disk_node 100000000" bash -c
 grep -q rbps=100000000 "$work/probe.txt" && disk_mode=scope
 log "disk fault via $disk_mode (probe: $(tr '\n' ' ' < "$work/probe.txt"))"
 
+# Does the runner enforce CPUQuota on a scope? Else a cgroup v2 child with cpu.max (when writable), else no quota fault.
+quota_cores=$((threads / 2 > 0 ? threads / 2 : 1))
+quota_mode=skip
+quota_why=""
+if [ "${QUOTA_FAULT:-1}" = 0 ]; then
+  quota_why="QUOTA_FAULT=0"
+elif [ "$threads" -lt 2 ]; then
+  quota_why="THREADS=$threads: no thread count above a whole-core quota"
+else
+  # shellcheck disable=SC2024
+  sudo systemd-run --scope -q -p "CPUQuota=$((quota_cores * 100))%" bash -c \
+    'cat /sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/cpu.max' > "$work/probe-quota.txt" 2>&1
+  want="$((quota_cores * 100000)) 100000"
+  if grep -q "^$want" "$work/probe-quota.txt"; then
+    quota_mode=scope
+  elif sudo sh -c "echo +cpu > /sys/fs/cgroup/cgroup.subtree_control; mkdir -p /sys/fs/cgroup/tetraeder-quota; echo '$want' > /sys/fs/cgroup/tetraeder-quota/cpu.max" 2> /dev/null \
+    && grep -q "^$want" /sys/fs/cgroup/tetraeder-quota/cpu.max 2> /dev/null; then
+    quota_mode=cgroup
+  else
+    quota_why="neither systemd CPUQuota nor a writable cgroup v2 cpu.max (probe: $(tr '\n' ' ' < "$work/probe-quota.txt"))"
+  fi
+fi
+log "quota fault via $quota_mode, $quota_cores of $threads cores${quota_why:+ ($quota_why)}"
+
 # run_one <n> <label> [faults...]
 run_one() {
-  local n=$1 label=$2 f k rate memmax props=()
+  local n=$1 label=$2 f k rate memmax props=() env_extra=() obs_quota=$threads
   shift 2
   stop_faults
   for f in "$@"; do
@@ -138,6 +171,15 @@ import glob, statistics
 rss = [int(open(p).read().split()[-1]) * 1024 for p in glob.glob('$out/rss-*-calib.txt')]
 print(int(statistics.median(rss) * ${MEM_FRAC:-0.4}))")
         props+=(-p "MemoryMax=$memmax") ;;
+      quota)
+        # Threads above the quota, polling explicit: the idle ggml workers spin away the quota the compute waits for.
+        env_extra+=(TETRAEDER_EXIT_CPU_POLL=50)
+        obs_quota=$quota_cores
+        if [ "$quota_mode" = scope ]; then
+          props+=(-p "CPUQuota=$((quota_cores * 100))%")
+        else
+          env_extra+=(QUOTA_CG=/sys/fs/cgroup/tetraeder-quota)
+        fi ;;
     esac
   done
   sleep 2
@@ -147,7 +189,7 @@ print(int(statistics.median(rss) * ${MEM_FRAC:-0.4}))")
   sudo env TETRAEDER_EXIT_GGUF="$gguf" TETRAEDER_EXIT_THREADS="$threads" TETRAEDER_EXIT_RAM_SLOTS=4 \
     TETRAEDER_EXIT_PREFILL=256 TETRAEDER_EXIT_UBATCH=256 TETRAEDER_EXIT_DECODE="${DECODE:-64}" \
     TETRAEDER_EXIT_DECODE_WINDOWS=8 TETRAEDER_EXIT_PROMPT_FILE="$work/prompt.txt" \
-    TETRAEDER_EXIT_OUT="$out/harness-$n.json" \
+    TETRAEDER_EXIT_OUT="$out/harness-$n.json" "${env_extra[@]}" \
     systemd-run --scope -q "${props[@]}" -- "$work/scope_wrap.sh" "$out/scope-$n.txt" "$out/rss-$n-$label.txt" \
     "$bin" --ignored --exact exit_regime --nocapture > "$out/run-$n.log" 2>&1 &
   local pid=$!
@@ -167,22 +209,27 @@ print(int(statistics.median(rss) * ${MEM_FRAC:-0.4}))")
   [ -n "$io_max" ] && io_arg=(--io-max-bytes "$io_max")
   [ -s "$out/calib.json" ] && calib_arg=(--calib "$out/calib.json")
   python3 scripts/detector_sample.py observe --harness "$out/harness-$n.json" --samples "$out/samples-$n.jsonl" \
-    --threads "$threads" --quota "$threads" "${calib_arg[@]}" "${io_arg[@]}" --id "run-$n" --out "$out/obs-$n.json" || return 1
+    --threads "$threads" --quota "$obs_quota" "${calib_arg[@]}" "${io_arg[@]}" --id "run-$n" --out "$out/obs-$n.json" || return 1
   python3 -c "import json,sys; print(json.dumps({'id': 'run-$n', 'label': '$label', 'faults': sys.argv[1:]}))" "$@" \
     >> "$out/manifest.jsonl"
   log "run $n done: $(python3 -c "import json; h=json.load(open('$out/harness-$n.json'))['runs'][-1]; print('decode', round(h['decode_tok_s'], 2), 'tok/s, hit', round(h['decode_layers']['full_hit_rate_mean'], 3))")"
 }
 
-# Deterministic schedule, the shape of detector_campaign.sh with mem in place of vram.
+# Deterministic schedule, the shape of detector_campaign.sh with mem in place of vram, plus quota (singles only).
 python3 - "${ROUNDS:-6}" "${PAIR_ROUNDS:-2}" > "$out/schedule.txt" << 'EOF'
 import random, sys
 r = random.Random(20261109)
 print("calib"); print("calib"); print("calib")
 for _ in range(int(sys.argv[1])):
-    s = ["none", "cpu", "disk", "mem"]; r.shuffle(s); print("\n".join(s))
+    s = ["none", "cpu", "disk", "mem", "quota"]; r.shuffle(s); print("\n".join(s))
 for _ in range(int(sys.argv[2])):
     s = ["cpu+disk", "cpu+mem", "disk+mem"]; r.shuffle(s); print("\n".join(s))
 EOF
+if [ "$quota_mode" = skip ]; then
+  grep -vx quota "$out/schedule.txt" > "$work/schedule.tmp"
+  mv "$work/schedule.tmp" "$out/schedule.txt"
+  log "quota fault skipped: $quota_why"
+fi
 rm -f "$out/manifest.jsonl"
 n=0
 calib_obs=()
