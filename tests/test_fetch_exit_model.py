@@ -10,7 +10,9 @@ import pytest
 
 SCRIPT = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "fetch_exit_model.sh"
 NEEDS = ("bash", "du", "stat")  # flock, setsid and pkill are shimmed below
-pytestmark = pytest.mark.skipif(any(shutil.which(t) is None for t in NEEDS), reason="needs a POSIX userland")
+# Box-side Linux script; on Windows runners `bash` may resolve to WSL, which cannot run Windows paths and PATH shims.
+pytestmark = pytest.mark.skipif(os.name == "nt" or any(shutil.which(t) is None for t in NEEDS),
+                                reason="needs a POSIX userland (Linux)")
 
 SIZES = "Q4_K_M/a-1.gguf 100;Q4_K_M/a-2.gguf 200"
 # stands in for taxameter's box.sh: records its source and spec, and writes the files named in the spec unless the
