@@ -95,6 +95,9 @@ pub struct StepProfile {
     pub segs_gpu: u64,
     /// Routed (token, expert) pairs computed on the CPU from the RAM tier (`MissPolicy::Cpu`).
     pub cpu_pairs: u64,
+    /// The part of `cpu_pairs` computed inside segment graphs, as opposed to group graphs and
+    /// overlap groups (ADR 0064, step 0).
+    pub seg_pairs: u64,
 }
 
 /// One buffer the builder owns (ADR 0037).
@@ -199,6 +202,10 @@ pub struct LoadOptions {
     /// captured CUDA graph (ADR 0036). Only with every expert resident; on by default (30B decode
     /// 160 to 203 tok/s on the RTX 3090, greedy identical).
     pub reuse_step_graph: bool,
+    /// With a streamer, size the schedulers for the whole-step graph as before ADR 0064 step 1
+    /// instead of one segment. Only for the dispatch benchmark and its parity test; off by
+    /// default.
+    pub whole_step_sched: bool,
     /// With `MissPolicy::Cpu` and a RAM tier: predict each layer's experts from an earlier
     /// layer and read the predicted ones into the RAM tier while earlier layers compute (ADR
     /// 0038). Otherwise no effect. On by default (235B at 32K: decode 2.83 to 3.14 tok/s, greedy
@@ -318,6 +325,7 @@ impl LoadOptions {
             op_offload: false,
             op_offload_min_tokens: 32,
             reuse_step_graph: true,
+            whole_step_sched: false,
             formats: BTreeMap::new(),
             convert_cache: None,
             prefetch: true,
@@ -584,22 +592,6 @@ impl Qwen3Moe {
             None => (cpu.clone(), vec![cpu.clone()]),
             Some(gpu) => (gpu.clone(), vec![gpu, cpu.clone()]),
         };
-        let sched = Sched::new(
-            &backends,
-            step_nodes(h).max(SEGMENT_NODES) * 4,
-            opts.op_offload,
-        )?;
-        // Streamed steps below `op_offload_min_tokens` use a scheduler without op offload
-        // (ADR 0044); its compute buffers are sized by those small steps.
-        let sched_small = if opts.op_offload && !backends[0].is_cpu() {
-            Some(Sched::new(
-                &backends,
-                step_nodes(h).max(SEGMENT_NODES) * 4,
-                false,
-            )?)
-        } else {
-            None
-        };
         let slots = match expert_slots {
             Some(0) => {
                 return Err(ModelError::Invalid(
@@ -608,6 +600,21 @@ impl Qwen3Moe {
             }
             Some(n) if n < h.n_expert as usize => Some(n),
             _ => None,
+        };
+        // With a streamer every graph is one segment (ADR 0064, step 1): a small scheduler
+        // keeps `ggml_backend_sched_reset` at about 82 KB instead of 1.3 MB per segment.
+        let sched_nodes = if slots.is_some() && !opts.whole_step_sched {
+            SEGMENT_NODES * 4
+        } else {
+            step_nodes(h).max(SEGMENT_NODES) * 4
+        };
+        let sched = Sched::new(&backends, sched_nodes, opts.op_offload)?;
+        // Streamed steps below `op_offload_min_tokens` use a scheduler without op offload
+        // (ADR 0044); its compute buffers are sized by those small steps.
+        let sched_small = if opts.op_offload && !backends[0].is_cpu() {
+            Some(Sched::new(&backends, sched_nodes, false)?)
+        } else {
+            None
         };
         let (weights, weights_bytes) = load_weights(&file, &primary, slots)?;
         let (kv, kv_bytes) = alloc_kv(
@@ -1337,6 +1344,7 @@ impl Qwen3Moe {
                         streamer.finish_overlap(seg);
                         let pairs = group_pairs(&chosen, nu, chunk, &staged.slots);
                         for pairs in split_group(pairs, cap_ram) {
+                            prof.seg_pairs += pairs.pairs.len() as u64;
                             pending.push(PendingGroup {
                                 src: ExpertSrc::Ram,
                                 pairs,
@@ -1393,6 +1401,7 @@ impl Qwen3Moe {
                     let pairs = group_pairs(&chosen, nu, chunk, &slots);
                     for pairs in split_group(pairs, cap_ram) {
                         if i == last {
+                            prof.seg_pairs += pairs.pairs.len() as u64;
                             pending.push(PendingGroup {
                                 src: ExpertSrc::Ram,
                                 pairs,

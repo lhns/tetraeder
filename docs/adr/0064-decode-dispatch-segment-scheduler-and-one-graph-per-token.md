@@ -130,3 +130,18 @@ It cannot see CUDA syncs, H2D and D2H copies, kernel launches or parked rows; th
 - Step 1 is a sizing change with no numeric effect and can ship on the micro-benchmark alone.
 - Step 2 replaces 95 segment graphs per decode token by one kept graph plus the CPU group graphs, removes the per-segment allocations and about a third of the blocking device operations, and keeps the CPU kickoff count, ADR 0054's arrival order and ADR 0038's prediction timing.
 - On the 7642 the per-segment cost follows the quota (ADR 0061, 0062), and CPU pairs per token (1.40x the cache's) are the other candidate for the gap. Those stay the levers to pursue first; this ADR removes the dispatch the builder pays beyond llama.cpp's structure.
+
+## Addendum 2026-11-12: steps 0 and 1 built
+
+The status stays Proposed; step 2 is not built.
+
+- Step 0: `StepProfile::seg_pairs` counts the RAM-tier pairs that go into segment graphs (the last chunk of a layer step, or a fully landed overlap chunk). The exit JSON has it per token and per decode window next to `cpu_pairs`; `cpu_pairs - seg_pairs` is what the group graphs computed.
+- Step 1: with a streamer, `sched` and `sched_small` have `SEGMENT_NODES * 4` nodes. `LoadOptions::whole_step_sched` keeps the old size for the benchmark and for the test that compares logits bit for bit (`crates/model/tests/sched_sizing.rs`).
+- Micro-benchmark: `segment_overhead` in `crates/model/tests/cpu_bench.rs`, parts `floor`, `alloc` and `e2e` (`TETRAEDER_OVERHEAD_PARTS`). The `dispatch-floor` stage of `scripts/exit_run.sh` runs the floor part at the box threads.
+- Placement: `scripts/engine_sample.py` records the CPU and NUMA node each engine thread last ran on; windows report `cpus_used`, `numa_nodes_used` and `top_node_share`. It costs nothing on the 192-CPU hosts and shows whether the pool spreads over nodes.
+
+### How to judge step 1
+
+- Read `alloc_ms` per decode token of a streamed run before and after, paired on the same box (ADR 0021). Today it is about 9 to 13 ms per token on the 235B. The ADR expects 4 to 8 ms less, about 2% of decode on the 7642 hosts. Less than 1% there means the memsets were not the cost and the rest of the alloc is gallocr re-reserves from alternating topologies.
+- The `allocation` rows of the micro-benchmark give the same split offline: `alloc_us` on 4,096 against 48,640 nodes for one and for two alternating topologies, and `reset_us` for the memsets alone.
+- Greedy tokens and logits are unchanged by construction; the CPU test and the `e2e` part assert it.
