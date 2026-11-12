@@ -854,14 +854,20 @@ mod tests {
             None,
         )
         .unwrap();
-        // The hook sees the first cut-wait sleep and lets the runtime unwind the requests (a
-        // yield loop, no sleep), so the cut wait ends at its next poll of fake time. It must not
-        // count cut tokens: the runtime threads may unwind the requests before the first sleep,
-        // so what the hook sees is a race. The cut itself is checked on the tokens below.
+        // The hook sees the first cut-wait sleep (some token is cancelled) and lets the runtime
+        // unwind the requests (a yield loop, no sleep), so the cut wait ends at its next poll of
+        // fake time. It does not count the cancelled tokens: the runtime threads may already
+        // have unwound one or both requests, so that count is a race. The cut itself is checked
+        // on the tokens kept below.
         let flight = Arc::clone(&e.flight);
-        let slept = AtomicBool::new(false);
         let (clock, fake) = scripted(move |_| {
-            if !slept.swap(true, Ordering::SeqCst) {
+            let cutting = flight
+                .cuts
+                .lock()
+                .unwrap()
+                .values()
+                .any(|t| t.is_cancelled());
+            if cutting {
                 let giveup = Instant::now() + Duration::from_secs(10);
                 while flight.count.load(Ordering::SeqCst) > 0 && Instant::now() < giveup {
                     std::thread::yield_now();
