@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Usage: clamp_threads.sh N [QUOTA]. Prints N, or the whole-core CPU quota when N exceeds it (a thread count above
-# the quota gets throttled and made builder CPU compute vary 292 to 551 ms/token, ADR 0058 addendum 2026-11-12).
+# Usage: clamp_threads.sh N [QUOTA]. Prints N, or the whole-core CPU quota when N exceeds it: threads above the quota
+# get throttled (20261112a ran 24 on 23.04; ADR 0058 addendum 2026-11-12).
 # QUOTA defaults to scripts/cpu_quota.sh when that finds a quota (no nproc fallback). THREADS_ALLOW_OVER_QUOTA=1
 # keeps N. The clamp line goes to stderr.
 n="$1"
