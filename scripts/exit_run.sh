@@ -167,6 +167,8 @@ fi
     TETRAEDER_REQUIRE_GPU=1 timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test cpu_experts       -- gpu_ --nocapture --test-threads 1 > "$date_dir/gpu-tests-$stamp.log" 2>&1
     # ADR 0054: the service and arrival-order compute give the serial logits on the GPU builder
     TETRAEDER_REQUIRE_GPU=1 timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test overlap       -- gpu_ --nocapture --test-threads 1 >> "$date_dir/gpu-tests-$stamp.log" 2>&1
+    # ADR 0059: decode admission into VRAM slots stays within the GPU tolerance of the static tier
+    TETRAEDER_REQUIRE_GPU=1 timeout -k 30 20m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test admit       -- gpu_ --nocapture --test-threads 1 >> "$date_dir/gpu-tests-$stamp.log" 2>&1
     echo "[$(date +%T)] done gpu-tests rc=$?"
     tail -20 "$date_dir/gpu-tests-$stamp.log"
   fi

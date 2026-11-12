@@ -507,7 +507,7 @@
     {
       "id": 16,
       "title": "Expert cache hit rate",
-      "description": "Slot lookups that found the expert resident, by tier; the second series is the share of experts computed on the CPU instead (ADR 0035); the third, decode admissions into the VRAM tier per VRAM lookup (ADR 0059, zero unless admit_share is set). Under the CPU miss policy the vram hit share is the decode VRAM pair share.",
+      "description": "Slot lookups that found the expert resident, by tier; the second series is the share of experts computed on the CPU instead (ADR 0035); the third, decode admissions into the VRAM tier per VRAM lookup (ADR 0059, zero unless admit_share is set). Under the CPU miss policy and during decode only, the vram hit share is close to the decode VRAM pair share (prefill lookups mix in otherwise).",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",

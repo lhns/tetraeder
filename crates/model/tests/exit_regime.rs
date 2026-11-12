@@ -42,7 +42,7 @@
 //!   misses before the next layers' prefetch (`LoadOptions::urgent_first`).
 //! - `TETRAEDER_EXIT_ADMIT_SHARE` (0 to 1, default off): decode admits that share of the
 //!   compute-tier misses into VRAM slots (`LoadOptions::admit_share`, ADR 0059); `decode_io`
-//!   gets `admitted` and `admitted_bytes`.
+//!   gets `admitted`, `admitted_bytes` and `admit_ms_per_token` (the synchronous uploads).
 //! - `TETRAEDER_EXIT_KV_ROT` (0/1): Hadamard rotation of Q, K and V (ADR 0050 addendum). Unset:
 //!   on for a quantized KV format, off for f16, as libllama. The reference engine follows it;
 //!   `TETRAEDER_EXIT_REF_ATTN_ROT` (0/1) overrides the reference alone. The JSON options record
@@ -441,6 +441,7 @@ fn io_json(a: &IoCounters, b: &IoCounters, per: f64, wall_s: f64) -> Value {
         "uploads": b.uploads - a.uploads,
         "admitted": b.admitted - a.admitted,
         "admitted_bytes": b.admitted_bytes - a.admitted_bytes,
+        "admit_ms_per_token": (b.admit_time - a.admit_time).as_secs_f64() * 1e3 / per,
     })
 }
 

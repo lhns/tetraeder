@@ -44,9 +44,11 @@ pub struct IoCounters {
     pub read_time: Duration,
     /// Experts written into the compute tier, from any source.
     pub uploads: u64,
-    /// Decode admissions into the compute tier (ADR 0059), also in `uploads`, and their bytes.
+    /// Decode admissions into the compute tier (ADR 0059), also in `uploads`, their bytes and
+    /// the main thread's time copying them (synchronous).
     pub admitted: u64,
     pub admitted_bytes: u64,
+    pub admit_time: Duration,
     /// Prefetch (ADR 0038). Experts read ahead of their layer step into the RAM tier. These reads
     /// are also in `batches`, `experts_read` and `bytes_read`, but not in `read_time`.
     pub prefetch_issued: u64,
@@ -1449,9 +1451,11 @@ impl Streamer {
             self.io.uploads += 1;
             self.io.admitted += 1;
             self.io.admitted_bytes += total as u64;
+            let took = t0.elapsed();
+            self.io.admit_time += took;
             self.metrics.admitted(il as u32, total as u64);
             self.metrics.tier_read(&self.device, "ram", total as u64);
-            self.metrics.expert_load(Tier::Vram, "ram", t0.elapsed());
+            self.metrics.expert_load(Tier::Vram, "ram", took);
         }
         Ok(())
     }
