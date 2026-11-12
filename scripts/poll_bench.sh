@@ -8,7 +8,7 @@
 # ROUNDS quota rounds (A B C A B C ...), then one round per arm without a quota. Every run goes through a systemd scope.
 # The quota is a systemd CPUQuota on the scope, else a cgroup v2 child with cpu.max. If neither is enforced the script
 # says so and exits 20 before any run.
-# Env: OUT (results dir), ROUNDS (8), DECODE (64), THREADS (nproc), BIN (built exit_regime test binary; default: build).
+# Env: OUT (results dir), ROUNDS (8), RAM_SLOTS (4; 16 holds every expert of the synthetic model, so decode reads nothing), DECODE (64), THREADS (nproc), BIN (built exit_regime test binary; default: build).
 # Results: $OUT/{harness,cg,time}-NN, manifest.jsonl, quota.txt; summary: scripts/poll_bench_summary.py.
 cd "$(dirname "$0")/.." || exit 1
 out="${OUT:-$PWD/bench/results/$(date +%Y%m%d)/ci-poll}"
@@ -94,7 +94,7 @@ run_one() {
   fi
   log "run $n round $round $arm quota=$q"
   # shellcheck disable=SC2024
-  sudo env TETRAEDER_EXIT_GGUF="$gguf" TETRAEDER_EXIT_THREADS="$threads" TETRAEDER_EXIT_RAM_SLOTS=4 \
+  sudo env TETRAEDER_EXIT_GGUF="$gguf" TETRAEDER_EXIT_THREADS="$threads" TETRAEDER_EXIT_RAM_SLOTS="${RAM_SLOTS:-4}" \
     TETRAEDER_EXIT_PREFILL=256 TETRAEDER_EXIT_UBATCH=256 TETRAEDER_EXIT_DECODE="${DECODE:-64}" \
     TETRAEDER_EXIT_DECODE_WINDOWS=8 TETRAEDER_EXIT_PROMPT_FILE="$work/prompt.txt" \
     TETRAEDER_EXIT_OUT="$out/harness-$n.json" "${env_extra[@]}" \
