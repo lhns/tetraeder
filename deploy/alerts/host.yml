@@ -15,6 +15,16 @@ groups:
         annotations:
           summary: "The container is CPU-throttled in more than 20% of its CFS periods"
           description: "Spinning or runnable threads use up the CPU quota. Check the engine's poll level on the Container CPU panel (ADR 0061: polling 0 cut throttling from 0.80-0.98 to 0.05; fewer threads did not help, ADR 0045 20261112e); side jobs need OMP_NUM_THREADS and cargo -j capped."
+      # The detector's own finding (ADR 0062): throttled in 30% of the periods and the CPU slower than calibrated. The
+      # container alert above fires on the quota alone; this one says the engine lost speed to it.
+      - alert: TetraederCpuQuotaThrottleFault
+        expr: sum by (tetraeder_resource) (increase(tetraeder_bottleneck_fault_total{tetraeder_fault_class="cpu_quota_throttle"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The CPU quota throttles the engine (detector fault cpu_quota_throttle)"
+          description: "Spinning workers use up the cgroup quota and decode slows (1.30x on 20261112e). Set cpu_poll 0 and keep threads at or below the whole-core quota; see the advisor report."
       - alert: TetraederCpuStealHigh
         expr: |
           sum(rate(system_cpu_time_seconds_total{state="steal"}[5m])) / sum(rate(system_cpu_time_seconds_total[5m])) > 0.05
