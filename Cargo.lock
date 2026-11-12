@@ -2231,6 +2231,8 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "http-body-util",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "serde_json",
  "tetraeder-engine",
  "tetraeder-gateway",

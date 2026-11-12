@@ -5,7 +5,7 @@ use crate::arena::{ArenaBuffer, Arenas, Purpose};
 use crate::slots::{Lookup, Tier};
 use std::sync::Arc;
 use std::time::Duration;
-use tetraeder_telemetry::{CacheResult, Telemetry};
+use tetraeder_telemetry::{CacheResult, Purpose as XferPurpose, Telemetry, Tier as XferTier};
 
 #[derive(Clone, Default)]
 pub struct MemoryMetrics {
@@ -173,6 +173,22 @@ impl MemoryMetrics {
     pub fn tier_read(&self, device: &str, tier: &str, bytes: u64) {
         if let Some(t) = &self.telemetry {
             t.metrics().tier_read_bytes(bytes, device, tier);
+        }
+    }
+
+    /// `tetraeder.tier.transfer.bytes` and, when the caller timed the move, `.duration`
+    /// (ADR 0063).
+    pub fn transfer(
+        &self,
+        bytes: u64,
+        took: Option<Duration>,
+        source: XferTier,
+        destination: XferTier,
+        purpose: XferPurpose,
+    ) {
+        if let Some(t) = &self.telemetry {
+            t.metrics()
+                .tier_transfer(bytes, took, source, destination, purpose);
         }
     }
 }

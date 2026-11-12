@@ -21,6 +21,7 @@ use tetraeder_memory::slots::{
     hot_from_counts, pins_with_room,
 };
 use tetraeder_memory::{DirectFile, IoOptions, Range};
+use tetraeder_telemetry::{Purpose as XferPurpose, Tier as XferTier};
 
 /// What a layer step does with a routed expert that is not resident in the compute tier.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -949,6 +950,13 @@ impl Streamer {
                             self.io.prefetch_read_time += d.took;
                             self.metrics
                                 .tier_read(&self.device, "nvme", d.stats.requested);
+                            self.metrics.transfer(
+                                d.stats.requested,
+                                Some(d.took),
+                                XferTier::Disk,
+                                XferTier::Ram,
+                                XferPurpose::Prefetch,
+                            );
                             let took = d.took / experts.max(1) as u32;
                             for _ in 0..experts {
                                 self.metrics.expert_load(Tier::Ram, "nvme", took);
@@ -1419,6 +1427,13 @@ impl Streamer {
                 &mut self.io,
             )?;
             self.metrics.tier_read(&self.device, "nvme", bytes);
+            self.metrics.transfer(
+                bytes,
+                Some(t0.elapsed()),
+                XferTier::Disk,
+                XferTier::Ram,
+                XferPurpose::ExpertMiss,
+            );
             let took = t0.elapsed() / reads.len() as u32;
             for _ in &reads {
                 self.metrics.expert_load(Tier::Ram, "nvme", took);
@@ -1558,6 +1573,13 @@ impl Streamer {
             self.io.admit_time += took;
             self.metrics.admitted(il as u32, total as u64);
             self.metrics.tier_read(&self.device, "ram", total as u64);
+            self.metrics.transfer(
+                total as u64,
+                Some(took),
+                XferTier::Ram,
+                XferTier::Vram,
+                XferPurpose::Admission,
+            );
             self.metrics.expert_load(Tier::Vram, "ram", took);
         }
         Ok(())
@@ -1575,6 +1597,13 @@ impl Streamer {
         let sizes = self.sizes[il];
         let bytes = read_experts(&self.dio, file, il, loads, dst, &sizes, &mut self.io)?;
         self.metrics.tier_read(&self.device, "nvme", bytes);
+        self.metrics.transfer(
+            bytes,
+            Some(t0.elapsed()),
+            XferTier::Disk,
+            XferTier::Vram,
+            XferPurpose::ExpertMiss,
+        );
         self.io.uploads += loads.len() as u64;
         self.record_loads(loads.len(), "nvme", t0);
         Ok(())
@@ -1597,11 +1626,19 @@ impl Streamer {
         let sizes = self.sizes[il];
         let total: usize = sizes.iter().sum();
         let src = ram.exps(il);
+        let upload_start = Instant::now();
         for (&(_, cslot), &(rslot, _)) in group.iter().zip(&filled) {
             let bytes = read_slot(&src, &sizes, rslot as u32)?;
             write_slot(dst, &sizes, cslot, &bytes)?;
             self.io.uploads += 1;
         }
+        self.metrics.transfer(
+            (group.len() * total) as u64,
+            Some(upload_start.elapsed()),
+            XferTier::Ram,
+            XferTier::Vram,
+            XferPurpose::ExpertMiss,
+        );
         let n_ram = filled.iter().filter(|f| !f.1).count();
         if n_ram > 0 {
             self.metrics
@@ -1643,6 +1680,18 @@ fn account_unit(
         counters.read_time += d.took;
     }
     m.tier_read(device, "nvme", d.requested);
+    let purpose = if prefetch {
+        XferPurpose::Prefetch
+    } else {
+        XferPurpose::ExpertMiss
+    };
+    m.transfer(
+        d.requested,
+        Some(d.took),
+        XferTier::Disk,
+        XferTier::Ram,
+        purpose,
+    );
     m.expert_load(Tier::Ram, "nvme", d.took);
 }
 

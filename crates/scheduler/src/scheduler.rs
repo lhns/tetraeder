@@ -14,7 +14,7 @@ use tetraeder_gateway::engine::{
     ModelInfo, SamplingParams, TokenConstraint, TokenId, Vocab,
 };
 use tetraeder_ggml_sys::llama::Model;
-use tetraeder_telemetry::Metrics;
+use tetraeder_telemetry::{Metrics, Purpose, Tier};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -386,7 +386,15 @@ impl Worker {
                     self.cached = etoks;
                     restored = true;
                     if let Some(m) = &self.metrics {
-                        m.kv_prefix_restore(t0.elapsed());
+                        let took = t0.elapsed();
+                        m.kv_prefix_restore(took);
+                        m.tier_transfer(
+                            bytes.len() as u64,
+                            Some(took),
+                            Tier::Ram,
+                            Tier::Vram,
+                            Purpose::Kv,
+                        );
                     }
                 }
                 Err(e) => {

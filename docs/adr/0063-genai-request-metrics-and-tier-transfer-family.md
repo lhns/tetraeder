@@ -37,5 +37,5 @@ Most request metrics already exist: `gen_ai.server.time_to_first_token`, `gen_ai
 
 - `Metrics::time_per_output_token` and `request_duration` take the operation name; `crates/engine` passes `text_completion`.
 - Panels: TTFT and TPOT p50 and p95 per model (legend by `gen_ai_request_model`), "Tier transfer bandwidth" with mean transfer time. No alert rule is added; the telemetry catalog test lists the two new names.
-- Until the call sites move, the transfer series are empty on a live engine and the panel shows no data.
+- The call sites emit the family (`MemoryMetrics::transfer`): miss reads disk to RAM or VRAM, prefetch reads disk to RAM, RAM to VRAM uploads (`expert_miss`, `admission`), and the scheduler's KV prefix restore RAM to VRAM (`kv`). `tier.read.bytes` is still emitted unchanged. Tests: `crates/model/tests/transfer.rs`, `ram_restore_records_a_kv_transfer` in the scheduler tests.
 - Tests: `crates/gateway/tests/genai.rs` (fake engine, both routes, streamed and not, TPOT value, one-token reply, rejected request); the catalog test in `crates/telemetry/src/setup.rs`.
