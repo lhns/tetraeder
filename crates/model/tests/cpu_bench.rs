@@ -422,15 +422,28 @@ fn chain_graph<'a>(
     leaves: &mut Leaves<'a>,
 ) -> Graph<'a> {
     let mut g = ctx.new_graph(1024);
-    let table = ctx.new_tensor(Type::F32, &[D_EMBD, 16]);
-    let wg = ctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]);
-    let wu = ctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]);
-    let wd = ctx.new_tensor(Type::F32, &[D_FF, D_EMBD, D_EXPERTS]);
-    let ids = ctx.new_tensor(Type::I32, &[D_USED, 1]);
-    leaves.f32s.extend([table, wg, wu, wd]);
-    leaves.i32s.push(ids);
+    // Only leaves a node reads get a buffer, so the shared tensors exist only with chains.
+    let shared: Vec<Tensor<'a>> = if chains > 0 {
+        vec![
+            ctx.new_tensor(Type::F32, &[D_EMBD, 16]),
+            ctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]),
+            ctx.new_tensor(Type::F32, &[D_EMBD, D_FF, D_EXPERTS]),
+            ctx.new_tensor(Type::F32, &[D_FF, D_EMBD, D_EXPERTS]),
+        ]
+    } else {
+        Vec::new()
+    };
+    let ids = (chains > 0).then(|| ctx.new_tensor(Type::I32, &[D_USED, 1]));
+    for &t in &shared {
+        leaves.f32s.push(t.set_input());
+    }
+    if let Some(ids) = ids {
+        leaves.i32s.push(ids.set_input());
+    }
     for _ in 0..chains {
-        let tok = ctx.new_tensor(Type::I32, &[1]);
+        let (table, wg, wu, wd) = (shared[0], shared[1], shared[2], shared[3]);
+        let ids = ids.unwrap();
+        let tok = ctx.new_tensor(Type::I32, &[1]).set_input();
         let dst = ctx.new_tensor(Type::F32, &[D_EMBD, D_USED, 1]);
         leaves.i32s.push(tok);
         leaves.f32s.push(dst);
@@ -442,8 +455,8 @@ fn chain_graph<'a>(
         g.expand(ctx.cpy(down, dst).set_output());
     }
     for _ in 0..extra {
-        let a = ctx.new_tensor(Type::F32, &[D_EMBD]);
-        let b = ctx.new_tensor(Type::F32, &[D_EMBD]);
+        let a = ctx.new_tensor(Type::F32, &[D_EMBD]).set_input();
+        let b = ctx.new_tensor(Type::F32, &[D_EMBD]).set_input();
         leaves.f32s.extend([a, b]);
         g.expand(ctx.add(a, b).set_output());
     }
