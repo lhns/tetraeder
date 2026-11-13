@@ -23,7 +23,7 @@ The driver picks the box by these rules and does not ask the owner. The coordina
    - disk at least 230 GB and 3.5 GB/s, at least 24 GB VRAM, host not blocklisted (also avoid 269862: 15 to 25 MB/s downloads on 13d and 13e);
    - cgroup memory room for the 91 GB balloon (check `memory.max` after SSH; the offer's RAM column understates it);
    - point 1 (llama.cpp cache): Zen 2/3 EPYC, quota at least 24, so both engines run 24 threads without going over quota;
-   - point 3 (KTransformers): AVX-512 with VNNI and VBMI; prefer CPUs without AMX (Zen 4, Ice Lake), where KT's own pick is its avx512 kernel; quota leaves room for the KT thread rule in your task.
+   - point 3 (KTransformers): AVX-512 with VNNI and VBMI; prefer CPUs without AMX (Zen 4, Ice Lake), where KT's own pick is its avx512 kernel; threads follow `scripts/kt_threads.sh` (quota minus 4: KT busy-spins its workers and was throttled 32% at quota minus 2 on 13d). Stages: without AMX, `ktransformers` and `ktransformers-repeat` (its own pick is its best kernel); with AMX, `ktransformers-avx512` and its repeat interleaved with the builder, then `ktransformers` (amx); the faster KT kernel is the baseline.
 2. **Ranking:** lowest session cost = hourly price x planned hours + traffic (`dl$/GB` x 145 GB for the model). At 0.013 USD/GB the model alone costs 1.9 USD.
 3. **Fit before create:** download (at 100 MB/s, about 25 min) plus the measured stage budgets (`scripts/stage_budget.sh`) must end by box age 2h25m. Drop stages from B1_STAGES up front rather than letting the deadline guard cut the one that matters.
 4. **Abort gates** (destroy after fetching what exists, then try the next offer once):
