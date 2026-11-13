@@ -19,7 +19,7 @@ You drive ONE Vast box for ONE session profile of Tetraeder and bring back commi
 The driver picks the box by these rules and does not ask the owner. The coordinator asks the owner only for spend above the ceiling, credit below one session, or a verdict.
 
 1. **Hard requirements, checked on the offer** (`uv run taxameter offers ...`, whose price is all-in with disk; `vast_offers.py` is for CPU facts only, its listed price has twice been under the real one):
-   - all-in price at most the ceiling in your task (default 0.69 USD/h);
+   - all-in price at most the ceiling in your task (default 0.90 USD/h, taxameter.toml);
    - disk at least 230 GB and 3.5 GB/s, at least 24 GB VRAM, host not blocklisted (also avoid 269862: 15 to 25 MB/s downloads on 13d and 13e);
    - cgroup memory room for the 91 GB balloon (check `memory.max` after SSH; the offer's RAM column understates it);
    - point 1 (llama.cpp cache): Zen 2/3 EPYC, quota at least 24, so both engines run 24 threads without going over quota;

@@ -73,9 +73,9 @@ script = "scripts/nightly.sh"
 done_line = "NIGHTLY_DONE"
 
 [policy]
-max_price_per_hour = 0.45
+max_price_per_hour = 0.90  # raised 2026-11-13 by the user (all-in per box)
 max_instances = 2  # per project (label), parallel tracks drive one box each with --id (taxameter ADR 0009); the account cap still applies
-max_account_price_per_hour = 1.05  # raised 2026-11-10 by the user so B2 (<=0.60) can run beside a 0.45 box; all projects on the Vast account together
+max_account_price_per_hour = 1.80  # raised 2026-11-13 by the user so two 0.90 boxes run in parallel; all projects on the Vast account together
 auto_replace = false  # an automatic replacement could start a second paid box
 disk_gb = 80
 nightly_wait_min = 170  # sum of the nightly.sh stage limits, phase2-baseline with gpu-moe and gap: 165
