@@ -398,7 +398,7 @@ llamacpp_cache() {
   # variants: poll0 passes POLL=0 (sleeping ggml threads); fp8 passes KV_TYPE (the cache script's knob; set
   # LLAMACPP_FP8_KV_TYPE, the default "fp8" is a placeholder until the real type name is confirmed)
   case "${1:-}" in
-    poll0*) extra+=(POLL=0) ;;
+    poll0* | dio-poll0*) extra+=(POLL=0) ;;
     fp8*) extra+=(KV_TYPE="${LLAMACPP_FP8_KV_TYPE:-f8_e4m3}") ;;
   esac
   want "$name" || return 0
@@ -692,7 +692,7 @@ EOF
       # the second pass of the dio pair, only when STAGES names it
       [[ " ${STAGES:-} " == *" llamacpp-cache-dio-repeat "* ]] && llamacpp_cache dio-repeat
       # opt-in cache variants: sleeping ggml threads, low-bit KV (see llamacpp_cache); each with its repeat
-      for _v in poll0 poll0-repeat fp8 fp8-repeat; do
+      for _v in poll0 poll0-repeat dio-poll0 dio-poll0-repeat fp8 fp8-repeat; do
         [[ " ${STAGES:-} " == *" llamacpp-cache-$_v "* ]] && llamacpp_cache "$_v"
       done
       # the ledger's view of this session: the anchors at pp512 tg32 and the builder stages above (ADR 0056)
