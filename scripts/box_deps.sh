@@ -37,4 +37,6 @@ command -v sccache > /dev/null 2>&1 || echo "note: sccache missing, builds will 
 # the box collector of the exit runs (ADR 0060): not in the image (its tag follows the engine pins only), so here;
 # a failed download is not fatal, exit_run.sh then runs without it
 bash scripts/otelcol_install.sh /opt/otelcol || echo "note: otelcol-contrib missing, exit runs record no OTLP host metrics"
+# vendor/llama.cpp at the pin with the patch queue: taxameter does not push it (taxameter.toml [push])
+bash scripts/ensure_patches.sh || exit 1
 echo "deps ok: $(cargo --version) $(cmake --version | head -1) ninja $(ninja --version) sccache $(command -v sccache > /dev/null 2>&1 && echo yes || echo no)"

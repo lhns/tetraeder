@@ -30,10 +30,19 @@ fallback = "nvidia/cuda:12.8.1-devel-ubuntu24.04"  # plain CUDA image; the provi
 
 [push]
 # everything the box builds; tests/test_taxameter_config.py checks it against Cargo.toml and build.rs
-paths = [".cargo", "crates", "xtask", "patches", "bench", "scripts", "docs/adr", "tests/fixtures", "tests/conformance", "vendor/PIN", "Cargo.toml",
+# bench without bench/results (171 MB by 2026-11-13; a box writes its own results dir and fetch brings it back)
+paths = [".cargo", "crates", "xtask", "patches", "bench/README.md", "bench/claude-code-proxy", "bench/golden",
+         "bench/ledger.json", "bench/noise", "bench/prompts", "bench/quality", "bench/spec",
+         # the committed results the crates' tests read by name (tests/test_taxameter_config.py)
+         "bench/results/20261103/quality-qwen3-8b.json", "bench/results/20261103/quality-qwen3-30b-bf16.json",
+         "bench/results/20261109-runner", "bench/results/20261102/builder-real-202732.json",
+         "bench/results/20261103/partial-planner-dense", "bench/results/20261110b/claude-code-proxy/toolcall-fixtures-r2.json",
+         "scripts", "docs/adr", "tests/fixtures", "tests/conformance", "vendor/PIN", "Cargo.toml",
          "deploy/otelcol",
          "Cargo.lock", "rust-toolchain.toml", "AGENTS.md"]
-submodules = ["vendor/llama.cpp"]
+# vendor/llama.cpp is not pushed (about 50 MB, 55 min through the ssh proxy on 20261113e): the provision hook
+# fetches the pin from upstream and applies the patch queue on the box (scripts/ensure_patches.sh)
+submodules = []
 
 [box]
 # cargo/rustc/nvcc/cmake/ninja, the engine and bench binaries and test binaries (deps/) under target/, bench.sh,

@@ -1951,6 +1951,11 @@ mod tests {
     fn committed_results_match_the_ledger() {
         use crate::ledger::{Ledger, check, evaluate};
         let bench = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bench");
+        // a box checkout (no .git) gets no bench/results (taxameter.toml [push])
+        if !bench.join("../.git").exists() {
+            eprintln!("skip: box checkout, bench/results not pushed");
+            return;
+        }
         let Ok(text) = std::fs::read_to_string(bench.join("ledger.json")) else {
             eprintln!("skip: no bench/ledger.json");
             return;

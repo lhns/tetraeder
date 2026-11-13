@@ -34,7 +34,8 @@ def test_push_paths_cover_workspace_members_and_build_rs_inputs(cfg):
     assert "../../vendor/PIN" in paths
     for p in paths:
         repo_path = p.replace("../", "")
-        if any(repo_path.startswith(s) for s in cfg.push.submodules):
+        # vendor/llama.cpp is fetched on the box at the pin (scripts/ensure_patches.sh), not pushed
+        if repo_path.startswith("vendor/llama.cpp") or any(repo_path.startswith(s) for s in cfg.push.submodules):
             continue
         assert covered(repo_path), repo_path
 
@@ -52,7 +53,8 @@ def test_push_paths_cover_files_the_crates_read_from_the_repo_root(cfg):
                 target = (base / p).resolve()
                 if target.exists() and ROOT in target.parents:
                     rel = target.relative_to(ROOT).as_posix()
-                    assert covered(rel), f"{src.relative_to(ROOT)}: {p}"
+                    # a scan of all of bench/results skips what is not there (not pushed, ADR 0021)
+                    assert covered(rel) or rel in ("bench", "bench/results"), f"{src.relative_to(ROOT)}: {p}"
 
 
 def test_image_tag_comes_from_vendor_pin(cfg):
@@ -87,3 +89,9 @@ def test_phase2_spec_ik_pin_matches_vendor_pin():
     assert spec["pins"]["ik_llama"] == _pin("ik_commit")
     assert any(e["id"] == "ik_llama" and e["kind"] == "ik-llama" for e in spec["engine"])
     assert {v["engine"] for v in spec["variant"]} <= {e["id"] for e in spec["engine"]}
+
+
+def test_push_leaves_out_results_and_the_llama_submodule(cfg):
+    # both made the push too slow through the Vast ssh proxy (20261113e)
+    assert "bench" not in cfg.push.paths and "bench/results" not in cfg.push.paths
+    assert "vendor/llama.cpp" not in cfg.push.submodules
