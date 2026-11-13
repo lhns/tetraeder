@@ -732,8 +732,15 @@ if [ -n "${TETRAEDER_HOST_OTLP:-}" ]; then
     python3 scripts/engine_sample.py otlp-merge --otel-dir runs/vast/otel --results "$date_dir" || echo "otlp-merge failed"
   } >> "$log" 2>&1
 fi
+# the fetch takes $date_dir: copy this run's otel (.zst), samples and server logs in, the log last (20261113b and c
+# lost them otherwise and the drivers copied them by hand)
+mkdir -p "$date_dir/otel" "$date_dir/samples" "$date_dir/llamacpp_cache"
+cp -p runs/vast/otel/*"$stamp"*/*.zst "$date_dir/otel/" 2> /dev/null
+cp -p runs/vast/samples-*"$stamp"*.jsonl "$date_dir/samples/" 2> /dev/null
+cp -p runs/vast/llamacpp_cache/*"$stamp"* "$date_dir/llamacpp_cache/" 2> /dev/null
 touch "$date_dir/DONE"
 echo "EXIT_RUN_DONE rc=$rc" >> "$log"
+cp -p "$log" "$date_dir/exit_run.log" 2> /dev/null
 # the exit status is the session's, not sccache's (stop fails when no server runs: rc=2 on box 60072027)
 command -v sccache > /dev/null 2>&1 && timeout 30 sccache --stop-server > /dev/null 2>&1
 exit 0
