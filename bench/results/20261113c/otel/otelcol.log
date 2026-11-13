@@ -1,0 +1,20 @@
+2026-11-13T04:51:41.138Z	info	service@v0.116.0/service.go:164	Setting up own telemetry...
+2026-11-13T04:51:41.139Z	info	service@v0.116.0/service.go:207	Skipped telemetry setup.
+2026-11-13T04:51:41.157Z	info	service@v0.116.0/service.go:230	Starting otelcol-contrib...	{"Version": "0.116.0", "NumCPU": 192}
+2026-11-13T04:51:41.157Z	info	extensions/extensions.go:39	Starting extensions...
+2026-11-13T04:51:41.158Z	info	otlpreceiver@v0.116.0/otlp.go:112	Starting GRPC server	{"kind": "receiver", "name": "otlp", "data_type": "metrics", "endpoint": "127.0.0.1:4317"}
+2026-11-13T04:51:41.159Z	info	otlpreceiver@v0.116.0/otlp.go:169	Starting HTTP server	{"kind": "receiver", "name": "otlp", "data_type": "metrics", "endpoint": "127.0.0.1:4318"}
+2026-11-13T04:51:41.159Z	info	service@v0.116.0/service.go:253	Everything is ready. Begin running and processing data.
+2026-11-13T04:58:05.174Z	error	scraperhelper/obs_metrics.go:56	Error scraping metrics	{"kind": "receiver", "name": "hostmetrics", "data_type": "metrics", "scraper": "hostmetrics", "error": "failed to read TCP connections: could not get pid(s), 0: open /proc/81168/fd: no such process"}
+go.opentelemetry.io/collector/receiver/scraperhelper.newObsMetrics.func1
+	go.opentelemetry.io/collector/receiver@v0.116.0/scraperhelper/obs_metrics.go:56
+go.opentelemetry.io/collector/scraper.ScrapeMetricsFunc.ScrapeMetrics
+	go.opentelemetry.io/collector/scraper@v0.116.0/metrics.go:24
+go.opentelemetry.io/collector/receiver/scraperhelper.(*controller).scrapeMetricsAndReport
+	go.opentelemetry.io/collector/receiver@v0.116.0/scraperhelper/scrapercontroller.go:195
+go.opentelemetry.io/collector/receiver/scraperhelper.(*controller).startScraping.func1
+	go.opentelemetry.io/collector/receiver@v0.116.0/scraperhelper/scrapercontroller.go:178
+2026-11-13T06:17:16.470Z	info	otelcol@v0.116.0/collector.go:328	Received signal from OS	{"signal": "terminated"}
+2026-11-13T06:17:16.472Z	info	service@v0.116.0/service.go:295	Starting shutdown...
+2026-11-13T06:17:16.485Z	info	extensions/extensions.go:66	Stopping extensions...
+2026-11-13T06:17:16.485Z	info	service@v0.116.0/service.go:309	Shutdown complete.

@@ -1,0 +1,473 @@
+[04:42:57] start: threads 24, memory 91000000000 B (balloon 92560568832 B), ram tier 83000000000 B, vram slots 10966007808 B
+name, driver_version, clocks.current.sm [MHz], clocks.max.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 615.78.08, 210 MHz, 2100 MHz, 0x0000000000000004
+    Updating crates.io index
+balloon holds 92560568832 B
+ Downloading crates ...
+  Downloaded anyhow v1.0.104
+  Downloaded bit-set v0.11.1
+  Downloaded autocfg v1.5.1
+  Downloaded async-trait v0.1.92
+  Downloaded form_urlencoded v1.2.2
+  Downloaded httpdate v1.0.3
+  Downloaded futures-task v0.3.34
+  Downloaded proc-macro-crate v3.5.0
+  Downloaded idna_adapter v1.2.2
+  Downloaded rand_xorshift v0.5.0
+  Downloaded quick-error v1.2.3
+  Downloaded potential_utf v0.1.6
+  Downloaded futures-macro v0.3.34
+  Downloaded rand_core v0.10.1
+  Downloaded zerofrom v0.1.8
+  Downloaded sync_wrapper v1.0.2
+  Downloaded rand_core v0.9.5
+  Downloaded prettyplease v0.2.37
+  Downloaded zerofrom-derive v0.1.8
+  Downloaded yoke-derive v0.8.4
+  Downloaded toml_datetime v1.1.2+spec-1.1.0
+  Downloaded sha2 v0.10.9
+  Downloaded opentelemetry-proto v0.33.1
+  Downloaded tracing-log v0.2.0
+  Downloaded zmij v1.0.23
+  Downloaded yoke v0.8.4
+  Downloaded url v2.5.8
+  Downloaded zerotrie v0.2.5
+  Downloaded zerovec v0.11.9
+  Downloaded regex v1.13.1
+  Downloaded typenum v1.20.1
+  Downloaded winnow v1.0.4
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded winnow v0.7.15
+  Downloaded tower-http v0.6.11
+  Downloaded serde_json v1.0.154
+  Downloaded tower v0.5.3
+  Downloaded sysinfo v0.40.0
+  Downloaded syn v2.0.119
+  Downloaded zerocopy v0.8.63
+  Downloaded syn v3.0.9
+  Downloaded regex-syntax v0.8.11
+  Downloaded serde v1.0.229
+  Downloaded opentelemetry_sdk v0.33.1
+  Downloaded icu_normalizer v2.4.0
+  Downloaded toml_edit v0.25.17+spec-1.1.0
+  Downloaded rustix v1.1.6
+  Downloaded toml_edit v0.22.27
+  Downloaded tracing v0.1.44
+  Downloaded reqwest v0.13.5
+  Downloaded tracing-opentelemetry v0.34.0
+  Downloaded tracing-core v0.1.36
+  Downloaded tracing-attributes v0.1.31
+  Downloaded toml_parser v1.1.5+spec-1.1.0
+  Downloaded toml v0.8.23
+  Downloaded socket2 v0.6.5
+  Downloaded regex-automata v0.4.18
+  Downloaded libc v0.2.191
+  Downloaded sharded-slab v0.1.7
+  Downloaded serde_derive v1.0.229
+  Downloaded serde_core v1.0.229
+  Downloaded rand v0.9.5
+  Downloaded bindgen v0.72.1
+  Downloaded zerovec-derive v0.11.7
+  Downloaded writeable v0.6.4
+  Downloaded unicode-ident v1.0.27
+  Downloaded tempfile v3.27.0
+  Downloaded smallvec v1.16.4
+  Downloaded slab v0.4.12
+  Downloaded rusty-fork v0.3.1
+  Downloaded tower-service v0.3.3
+  Downloaded tinystr v0.8.5
+  Downloaded thiserror-impl v2.0.21
+  Downloaded thiserror v2.0.21
+  Downloaded synstructure v0.14.0
+  Downloaded tokio v1.54.1
+  Downloaded shlex v2.0.1
+  Downloaded shlex v1.3.0
+  Downloaded proptest v1.12.0
+  Downloaded icu_properties_data v2.4.0
+  Downloaded itertools v0.13.0
+  Downloaded hyper v1.12.0
+  Downloaded futures-util v0.3.34
+  Downloaded cc v1.10.0
+  Downloaded icu_properties v2.4.0
+  Downloaded hashbrown v0.17.1
+  Downloaded toml_datetime v0.6.11
+  Downloaded idna v1.1.0
+  Downloaded hyper-util v0.1.21
+  Downloaded want v0.3.2
+  Downloaded try-lock v0.2.5
+  Downloaded mio v1.2.4
+  Downloaded memchr v2.8.3
+  Downloaded indexmap v2.14.2
+  Downloaded icu_collections v2.4.0
+  Downloaded http v1.5.0
+  Downloaded borsh v1.8.1
+  Downloaded wait-timeout v0.2.1
+  Downloaded utf8_iter v1.0.4
+  Downloaded tower-layer v0.3.3
+  Downloaded toml_write v0.1.2
+  Downloaded thread_local v1.1.10
+  Downloaded serde_spanned v0.6.9
+  Downloaded rustc-hash v2.1.3
+  Downloaded rand v0.10.3
+  Downloaded opentelemetry-otlp v0.33.1
+  Downloaded opentelemetry v0.33.1
+  Downloaded nom v7.1.3
+  Downloaded minimal-lexical v0.2.1
+  Downloaded io-uring v0.7.15
+  Downloaded icu_locale_core v2.4.0
+  Downloaded num-traits v0.2.19
+  Downloaded icu_normalizer_data v2.4.0
+  Downloaded bytes v1.12.1
+  Downloaded proc-macro2 v1.0.107
+  Downloaded log v0.4.34
+  Downloaded icu_provider v2.4.0
+  Downloaded httparse v1.10.1
+  Downloaded getrandom v0.4.3
+  Downloaded getrandom v0.3.4
+  Downloaded futures-channel v0.3.34
+  Downloaded clang-sys v1.9.1
+  Downloaded bitflags v2.13.2
+  Downloaded base64 v0.23.1
+  Downloaded prost v0.14.4
+  Downloaded once_cell v1.21.4
+  Downloaded litemap v0.8.3
+  Downloaded ipnet v2.12.2
+  Downloaded find-msvc-tools v0.1.15
+  Downloaded cmake v0.1.58
+  Downloaded chacha20 v0.10.2
+  Downloaded borsh-derive v1.8.1
+  Downloaded version_check v0.9.5
+  Downloaded unarray v0.1.4
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded quote v1.0.47
+  Downloaded prost-derive v0.14.4
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded pin-project-lite v0.2.17
+  Downloaded opentelemetry-http v0.33.1
+  Downloaded opentelemetry-appender-tracing v0.33.1
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded libloading v0.8.9
+  Downloaded http-body-util v0.1.5
+  Downloaded glob v0.3.4
+  Downloaded futures-executor v0.3.34
+  Downloaded futures-core v0.3.34
+  Downloaded fastrand v2.5.0
+  Downloaded either v1.19.0
+  Downloaded displaydoc v0.2.7
+  Downloaded digest v0.10.7
+  Downloaded core_detect v1.0.0
+  Downloaded rand_chacha v0.9.0
+  Downloaded crypto-common v0.1.7
+  Downloaded aho-corasick v1.1.5
+  Downloaded matchers v0.2.0
+  Downloaded cexpr v0.6.0
+  Downloaded percent-encoding v2.3.2
+  Downloaded itoa v1.0.18
+  Downloaded http-body v1.1.0
+  Downloaded lazy_static v1.5.1
+  Downloaded block-buffer v0.10.4
+  Downloaded generic-array v0.14.7
+  Downloaded cfg_aliases v0.2.2
+  Downloaded futures-sink v0.3.34
+  Downloaded futures-io v0.3.34
+  Downloaded fnv v1.0.7
+  Downloaded cfg-if v1.0.5
+  Downloaded errno v0.3.14
+  Downloaded equivalent v1.0.3
+  Downloaded cpufeatures v0.3.1
+  Downloaded cpufeatures v0.2.17
+  Downloaded bit-vec v0.10.1
+  Downloaded atomic-waker v1.1.2
+  Downloaded linux-raw-sys v0.12.1
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling pin-project-lite v0.2.17
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-core v0.3.34
+   Compiling once_cell v1.21.4
+   Compiling memchr v2.8.3
+   Compiling futures-sink v0.3.34
+   Compiling smallvec v1.16.4
+   Compiling itoa v1.0.18
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling tracing-core v0.1.36
+   Compiling bytes v1.12.1
+   Compiling icu_properties_data v2.4.0
+   Compiling thiserror v2.0.21
+   Compiling icu_normalizer_data v2.4.0
+   Compiling slab v0.4.12
+   Compiling futures-io v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling serde_core v1.0.229
+   Compiling utf8_iter v1.0.4
+   Compiling either v1.19.0
+   Compiling percent-encoding v2.3.2
+   Compiling bitflags v2.13.2
+   Compiling http v1.5.0
+   Compiling itertools v0.13.0
+   Compiling syn v3.0.9
+   Compiling syn v2.0.119
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling serde v1.0.229
+   Compiling getrandom v0.3.4
+   Compiling zerocopy v0.8.63
+   Compiling httparse v1.10.1
+   Compiling log v0.4.34
+   Compiling glob v0.3.4
+   Compiling tokio v1.54.1
+   Compiling http-body v1.1.0
+   Compiling clang-sys v1.9.1
+   Compiling futures-channel v0.3.34
+   Compiling anyhow v1.0.104
+   Compiling regex-syntax v0.8.11
+   Compiling try-lock v0.2.5
+   Compiling tower-service v0.3.3
+   Compiling prettyplease v0.2.37
+   Compiling want v0.3.2
+   Compiling rand_core v0.9.5
+   Compiling form_urlencoded v1.2.2
+   Compiling sync_wrapper v1.0.2
+   Compiling atomic-waker v1.1.2
+   Compiling tower-layer v0.3.3
+   Compiling version_check v0.9.5
+   Compiling minimal-lexical v0.2.1
+   Compiling tracing-attributes v0.1.31
+   Compiling generic-array v0.14.7
+   Compiling nom v7.1.3
+   Compiling libloading v0.8.9
+   Compiling synstructure v0.14.0
+   Compiling zerovec-derive v0.11.7
+   Compiling displaydoc v0.2.7
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling tracing v0.1.44
+   Compiling futures-macro v0.3.34
+   Compiling thiserror-impl v2.0.21
+   Compiling serde_derive v1.0.229
+   Compiling regex-automata v0.4.18
+   Compiling hyper v1.12.0
+   Compiling zerofrom v0.1.8
+   Compiling futures-util v0.3.34
+   Compiling yoke v0.8.4
+   Compiling zerovec v0.11.9
+   Compiling zerotrie v0.2.5
+   Compiling opentelemetry v0.33.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling tinystr v0.8.5
+   Compiling icu_locale_core v2.4.0
+   Compiling potential_utf v0.1.6
+   Compiling rand_chacha v0.9.0
+   Compiling icu_collections v2.4.0
+   Compiling rand_core v0.10.1
+   Compiling hashbrown v0.17.1
+   Compiling bindgen v0.72.1
+   Compiling ipnet v2.12.2
+   Compiling base64 v0.23.1
+   Compiling shlex v2.0.1
+   Compiling zmij v1.0.23
+   Compiling icu_provider v2.4.0
+   Compiling find-msvc-tools v0.1.15
+   Compiling equivalent v1.0.3
+   Compiling lazy_static v1.5.1
+   Compiling indexmap v2.14.2
+   Compiling cc v1.10.0
+   Compiling sharded-slab v0.1.7
+   Compiling serde_spanned v0.6.9
+   Compiling tower v0.5.3
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling matchers v0.2.0
+   Compiling futures-executor v0.3.34
+   Compiling hyper-util v0.1.21
+   Compiling toml_datetime v0.6.11
+   Compiling prost-derive v0.14.4
+   Compiling rand v0.9.5
+   Compiling regex v1.13.1
+   Compiling cexpr v0.6.0
+   Compiling http-body-util v0.1.5
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling toml_write v0.1.2
+   Compiling idna_adapter v1.2.2
+   Compiling serde_json v1.0.154
+   Compiling typenum v1.20.1
+   Compiling idna v1.1.0
+   Compiling shlex v1.3.0
+   Compiling getrandom v0.4.3
+   Compiling rustc-hash v2.1.3
+   Compiling nu-ansi-term v0.50.3
+   Compiling winnow v0.7.15
+   Compiling prost v0.14.4
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling cmake v0.1.58
+   Compiling tracing-subscriber v0.3.23
+   Compiling async-trait v0.1.92
+   Compiling url v2.5.8
+   Compiling sysinfo v0.40.0
+   Compiling rustix v1.1.6
+   Compiling linux-raw-sys v0.12.1
+   Compiling toml_edit v0.22.27
+   Compiling tower-http v0.6.11
+   Compiling autocfg v1.5.1
+   Compiling io-uring v0.7.15
+   Compiling httpdate v1.0.3
+   Compiling num-traits v0.2.19
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling reqwest v0.13.5
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling fastrand v2.5.0
+   Compiling digest v0.10.7
+   Compiling wait-timeout v0.2.1
+   Compiling cpufeatures v0.2.17
+   Compiling fnv v1.0.7
+   Compiling cpufeatures v0.3.1
+   Compiling quick-error v1.2.3
+   Compiling bit-vec v0.10.1
+   Compiling chacha20 v0.10.2
+   Compiling bit-set v0.11.1
+   Compiling opentelemetry-proto v0.33.1
+   Compiling sha2 v0.10.9
+   Compiling rand v0.10.3
+   Compiling tempfile v3.27.0
+   Compiling opentelemetry-http v0.33.1
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling toml v0.8.23
+   Compiling rusty-fork v0.3.1
+   Compiling rand_xorshift v0.5.0
+   Compiling unarray v0.1.4
+   Compiling core_detect v1.0.0
+   Compiling proptest v1.12.0
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 8m 43s
+  Executable tests/exit_regime.rs (target/release/deps/exit_regime-8efef844728f55ca)
+cpu: model name	: AMD EPYC 7642 48-Core Processor
+avx512 flags: 
+[04:51:40] waiting for the model
+[04:46:55] FETCH_DONE rc=0
+otelcol: up, files in /root/tetraeder/runs/vast/otel/20261113-044157
+[04:51:41] start smoke
+    Finished `release` profile [optimized] target(s) in 0.35s
+     Running tests/exit_regime.rs (target/release/deps/exit_regime-8efef844728f55ca)
+
+running 2 tests
+skip: TETRAEDER_EXIT_ARMS is not set
+test exit_regime_arms ... ok
+test exit_regime has been running for over 60 seconds
+{"decode_io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":180,"bytes":2728820736,"bytes_per_s":351033517.30543554,"bytes_per_token":1364410368.0,"experts_read":239,"read_ms_per_token":46.149191,"read_s":0.092298382,"uploads":0,"waited_read_gb_s":29.565206636016654},"decode_layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.6923076923076923,1.0,0.8,0.8333333333333334,0.9,0.8181818181818182,0.7777777777777778,0.6428571428571429,0.7857142857142857,0.9230769230769231,0.9,0.7272727272727273,0.7692307692307693,0.5555555555555556,0.8181818181818182,0.9090909090909091,0.8,0.8888888888888888,0.7777777777777778,0.625,0.75,0.8125,0.8181818181818182,0.8181818181818182,0.875,0.875,0.7857142857142857,0.8571428571428571,0.9166666666666666,0.8,0.75,0.7777777777777778,0.6666666666666666,0.7777777777777778,0.7,0.6666666666666666,0.8,0.8571428571428571,0.5384615384615384,0.75,0.8461538461538461,0.8181818181818182,0.9090909090909091,0.75,0.6666666666666666,0.6666666666666666,0.6666666666666666,0.6,0.625,0.6666666666666666,0.75,0.8333333333333334,0.5384615384615384,0.75,0.8181818181818182,0.6923076923076923,0.7647058823529411,0.6923076923076923,0.7,0.7777777777777778,0.8,0.7857142857142857,0.8461538461538461,0.875,0.8,0.75,0.7777777777777778,0.5454545454545454,0.7,0.6666666666666666,0.7777777777777778,0.7142857142857143,0.8333333333333334,0.7,0.8333333333333334,0.6666666666666666,0.9,0.8461538461538461,0.5,0.8181818181818182,0.7272727272727273,0.7692307692307693,0.8,0.6923076923076923,0.6428571428571429,0.8181818181818182,0.8333333333333334,0.8333333333333334,0.7272727272727273,0.6666666666666666,0.75,0.7,0.8461538461538461,1.0],"ram_hit_rate_mean":0.7660894339633388,"vram_pair_share":0.46808510638297873},"decode_overlap":{"hidden_share":null,"pending_ahead_per_token":0.0,"pending_experts_per_token":0.0,"pending_prefetch_lead_ms":null,"pending_steps_per_token":0.0,"pending_top_up_per_token":0.0,"pending_urgent_per_token":0.0,"prefetch_steps_hidden_share":null,"prefetch_steps_per_token":0.0,"prefetch_steps_span_ms_per_token":0.0,"prefetch_steps_wait_ms_per_token":0.0,"read_span_ms_per_token":0.0,"read_wait_ms_per_token":0.0,"urgent_read_ms":3.182702827586207,"urgent_steps_hidden_share":null,"urgent_steps_per_token":0.0,"urgent_steps_span_ms_per_token":0.0,"urgent_steps_wait_ms_per_token":0.0,"urgent_wait_ms_per_token":0.0},"decode_prefetch":{"accuracy":[null,0.875,0.6875,0.875,0.8125,0.8125,0.75,0.875,0.875,0.875,0.875,0.8125,0.8125,0.9375,0.9375,0.8125,1.0,0.9375,0.9375,0.875,0.9375,0.9375,0.9375,0.9375,0.9375,1.0,0.875,0.9375,0.9375,0.875,0.875,0.9375,0.75,0.75,0.8125,0.875,0.9375,1.0,0.875,0.9375,0.875,0.9375,1.0,0.9375,0.875,0.9375,0.9375,0.875,0.875,1.0,0.875,0.9375,0.8125,0.875,0.875,0.9375,1.0,1.0,0.9375,1.0,1.0,0.9375,0.9375,0.8125,0.875,0.875,0.8125,0.875,0.8125,0.9375,0.8125,0.9375,1.0,0.875,0.9375,0.875,0.875,0.9375,0.8125,0.9375,0.9375,0.9375,1.0,0.875,1.0,0.9375,0.9375,0.9375,0.75,0.9375,0.9375,0.9375,0.875,0.875],"accuracy2":[null,null,0.5,0.6875,0.6875,0.8125,0.6875,0.6875,0.875,0.8125,0.75,0.8125,0.8125,0.8125,0.875,0.8125,0.875,0.875,0.9375,0.8125,0.8125,0.875,0.9375,0.875,0.9375,1.0,0.875,0.9375,1.0,0.875,0.875,0.9375,0.6875,0.6875,0.875,0.8125,0.9375,0.9375,0.8125,0.875,0.875,0.875,1.0,0.875,0.875,0.8125,0.9375,0.875,0.8125,0.9375,0.75,0.8125,0.8125,0.8125,0.875,0.8125,0.875,0.9375,0.875,0.9375,0.9375,0.875,0.9375,0.8125,0.875,0.875,0.6875,0.8125,0.875,0.875,0.875,0.875,0.9375,0.875,0.9375,0.9375,0.875,0.9375,0.8125,0.875,0.9375,0.875,0.9375,0.875,0.875,0.9375,0.9375,0.9375,0.75,0.9375,0.875,0.875,0.875,0.9375],"accuracy2_mean":0.8600543478260869,"accuracy_mean":0.8998655913978495,"bytes":2396602368,"issued":210,"overlap":0.2103194669849593,"read_ms_per_token":3693.7583555,"used":204,"wait_ms_per_token":2916.889067,"wasted":0,"wasted_bytes":0},"decode_profile_per_token":{"alloc_ms":9.2400955,"build_ms":4.252669,"compute_ms":761.8667805,"copy_ms":0.0,"cpu_landed_ms":0.0,"cpu_pairs":400.0,"cpu_ready_ms":0.0,"graphs":95.0,"inputs_ms":0.27486649999999996,"read_wait_ms":0.0,"readback_ms":3.68652,"seg_compute_cpu_ms":749.4958375,"seg_compute_gpu_ms":11.9466855,"seg_pairs":400.0,"segs_cpu":94.0,"segs_gpu":1.0,"streamer_ms":3099.9888025,"total_ms":3879.3099039999997},"decode_tok_s":0.25727854723061994,"decode_tokens":2,"decode_windows":[{"end_unix_s":1794545593.5817442,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":180,"bytes":2728820736,"bytes_per_s":351035194.433163,"bytes_per_token":1364410368.0,"experts_read":239,"read_ms_per_token":46.149191,"read_s":0.092298382,"uploads":0,"waited_read_gb_s":29.565206636016654},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.6923076923076923,1.0,0.8,0.8333333333333334,0.9,0.8181818181818182,0.7777777777777778,0.6428571428571429,0.7857142857142857,0.9230769230769231,0.9,0.7272727272727273,0.7692307692307693,0.5555555555555556,0.8181818181818182,0.9090909090909091,0.8,0.8888888888888888,0.7777777777777778,0.625,0.75,0.8125,0.8181818181818182,0.8181818181818182,0.875,0.875,0.7857142857142857,0.8571428571428571,0.9166666666666666,0.8,0.75,0.7777777777777778,0.6666666666666666,0.7777777777777778,0.7,0.6666666666666666,0.8,0.8571428571428571,0.5384615384615384,0.75,0.8461538461538461,0.8181818181818182,0.9090909090909091,0.75,0.6666666666666666,0.6666666666666666,0.6666666666666666,0.6,0.625,0.6666666666666666,0.75,0.8333333333333334,0.5384615384615384,0.75,0.8181818181818182,0.6923076923076923,0.7647058823529411,0.6923076923076923,0.7,0.7777777777777778,0.8,0.7857142857142857,0.8461538461538461,0.875,0.8,0.75,0.7777777777777778,0.5454545454545454,0.7,0.6666666666666666,0.7777777777777778,0.7142857142857143,0.8333333333333334,0.7,0.8333333333333334,0.6666666666666666,0.9,0.8461538461538461,0.5,0.8181818181818182,0.7272727272727273,0.7692307692307693,0.8,0.6923076923076923,0.6428571428571429,0.8181818181818182,0.8333333333333334,0.8333333333333334,0.7272727272727273,0.6666666666666666,0.75,0.7,0.8461538461538461,1.0],"ram_hit_rate_mean":0.7660894339633388,"vram_pair_share":0.46808510638297873},"profile_per_token":{"alloc_ms":9.2400955,"build_ms":4.252669,"compute_ms":761.8667805,"copy_ms":0.0,"cpu_landed_ms":0.0,"cpu_pairs":400.0,"cpu_ready_ms":0.0,"graphs":95.0,"inputs_ms":0.27486649999999996,"read_wait_ms":0.0,"readback_ms":3.68652,"seg_compute_cpu_ms":749.4958375,"seg_compute_gpu_ms":11.9466855,"seg_pairs":400.0,"segs_cpu":94.0,"segs_gpu":1.0,"streamer_ms":3099.9888025,"total_ms":3879.3099039999997},"start_unix_s":1794545585.8080997,"tokens":2,"wall_s":7.773638596}],"engine":"tetraeder","first_top":[[565,18.353744506835938],[785,16.962844848632812],[73594,16.81299591064453],[1986,16.802146911621094],[334,16.47005844116211],[1499,16.42484474182129],[40,16.244121551513672],[2,16.045604705810547],[14374,15.933326721191406],[51,15.83008861541748]],"greedy":[565,49762],"hot_refresh_s":5e-8,"load_s":3.196716536,"margins":[1.390899658203125,0.111236572265625],"max_splits":3,"memory":[{"capacity":4855916544,"device":"CUDA0","kind":"weights","tier":"vram","used":4855916544},{"capacity":10725949440,"device":"CUDA0","kind":"slots","tier":"vram","used":10725949440},{"capacity":6357516288,"device":"CUDA0","kind":"kv","tier":"vram","used":6357516288},{"capacity":82589810688,"device":"host","kind":"slots","tier":"ram","used":44001607680},{"capacity":758247424,"device":"host","kind":"io","tier":"ram","used":758247424},{"capacity":1179648,"device":"CUDA0","kind":"workspace","tier":"vram","used":1179648},{"capacity":1966848,"device":"CPU","kind":"workspace","tier":"ram","used":1966848}],"peak_rss_bytes":45266309120,"prefill_io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":246,"bytes":41272786944,"bytes_per_s":637572960.4232674,"bytes_per_token":5159098368.0,"experts_read":3605,"read_ms_per_token":285.98916925000003,"read_s":2.287913354,"uploads":940,"waited_read_gb_s":18.039488633536774},"prefill_prefetch":{"accuracy":[null,0.640625,0.703125,0.578125,0.65625,0.8125,0.8125,0.84375,0.890625,0.828125,0.890625,0.90625,0.90625,0.890625,0.90625,0.90625,0.921875,0.9375,0.875,0.921875,0.921875,0.9375,0.890625,0.96875,0.90625,0.96875,0.9375,0.9375,0.953125,0.9375,0.921875,0.90625,0.875,0.9375,0.921875,0.90625,0.890625,0.9375,0.9375,0.9375,0.953125,0.96875,0.921875,0.953125,0.984375,0.9375,0.953125,0.9375,0.953125,0.90625,0.921875,0.96875,0.875,0.96875,0.90625,0.921875,0.953125,0.953125,0.890625,0.890625,0.921875,0.9375,0.953125,0.921875,0.90625,0.953125,0.921875,0.90625,0.9375,0.90625,0.921875,0.96875,0.921875,0.921875,0.9375,0.953125,0.90625,0.953125,0.9375,0.921875,0.96875,0.9375,0.96875,0.90625,0.953125,0.96875,0.953125,0.9375,0.90625,0.9375,0.9375,0.890625,0.765625,0.890625],"accuracy2":[null,null,0.53125,0.484375,0.546875,0.640625,0.71875,0.765625,0.859375,0.8125,0.828125,0.84375,0.828125,0.8125,0.90625,0.875,0.859375,0.9375,0.875,0.84375,0.890625,0.953125,0.875,0.90625,0.90625,0.953125,0.90625,0.953125,0.90625,0.90625,0.921875,0.921875,0.875,0.890625,0.90625,0.859375,0.875,0.859375,0.9375,0.9375,0.90625,0.921875,0.9375,0.96875,0.9375,0.953125,0.9375,0.9375,0.9375,0.9375,0.890625,0.921875,0.890625,0.890625,0.84375,0.859375,0.9375,0.890625,0.890625,0.921875,0.890625,0.890625,0.9375,0.90625,0.90625,0.90625,0.84375,0.890625,0.890625,0.875,0.90625,0.921875,0.890625,0.9375,0.890625,0.90625,0.875,0.890625,0.890625,0.875,0.921875,0.859375,0.953125,0.890625,0.921875,0.90625,0.90625,0.9375,0.90625,0.84375,0.9375,0.890625,0.703125,0.8125],"accuracy2_mean":0.877547554347826,"accuracy_mean":0.9097782258064516,"bytes":38988398592,"issued":3410,"overlap":0.14662559448476054,"read_ms_per_token":7765.78522325,"used":3081,"wait_ms_per_token":6627.12234825,"wasted":0,"wasted_bytes":0},"prefill_profile_per_ubatch":{"alloc_ms":14.511852000000001,"build_ms":963.197106,"compute_ms":4005.3111670000003,"copy_ms":0.0,"cpu_landed_ms":0.0,"cpu_pairs":6016.0,"cpu_ready_ms":0.0,"graphs":95.0,"inputs_ms":0.321692,"read_wait_ms":0.0,"readback_ms":6.806662,"seg_compute_cpu_ms":3919.8320280000003,"seg_compute_gpu_ms":85.234588,"seg_pairs":6016.0,"segs_cpu":94.0,"segs_gpu":1.0,"streamer_ms":57294.319213,"total_ms":62284.468012},"prefill_s":64.734217845,"prefill_tok_s":0.12358224546954823,"prefill_tokens":8,"ram_hugepages":null,"rss_bytes":45266309120,"ubatch":8,"ubatch_s":[64.734213615]}
+test exit_regime ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 82.45s
+
+cotenant CO-TENANT: host 32.65761213144122 cores busy, container 3.934387057557451, engine 3.373721942926283, outside 28.723225073883768, smt pairs 0 (28.7 cores busy outside the container (limit 14.4 of 96 physical))
+[04:53:21] done smoke rc=0
+smoke: {'io_backend': 'direct thread-pool', 'slot_bytes_all_layers': 1072594944, 'options': {'admit_share': None, 'cpu_poll': 0, 'cpu_poll_auto': True, 'cpu_quota_detected': 23.04, 'expert_slot_bytes': 10966007808, 'expert_slots': None, 'gpu': True, 'io_chunk_bytes': 0, 'io_service': False, 'io_workers': 0, 'kv': 'f16/f16', 'kv_rotation': False, 'n_ctx': 33024, 'op_offload': True, 'overlap': False, 'pool_pause': False, 'prefetch': True, 'prefetch_depth': 2, 'prefetch_threads': None, 'ram_hugepages': False, 'ram_policy': 'lru', 'ram_slot_bytes': 83000000000, 'ram_slots': None, 'refresh_hot': False, 'threads': 24, 'urgent_first': False}}
+  run: {'max_splits': 3, 'rss_bytes': 45266309120, 'peak_rss_bytes': 45266309120, 'decode_tok_s': 0.25727854723061994}
+  memory: {'capacity': 4855916544, 'device': 'CUDA0', 'kind': 'weights', 'tier': 'vram', 'used': 4855916544}
+  memory: {'capacity': 10725949440, 'device': 'CUDA0', 'kind': 'slots', 'tier': 'vram', 'used': 10725949440}
+  memory: {'capacity': 6357516288, 'device': 'CUDA0', 'kind': 'kv', 'tier': 'vram', 'used': 6357516288}
+  memory: {'capacity': 82589810688, 'device': 'host', 'kind': 'slots', 'tier': 'ram', 'used': 44001607680}
+  memory: {'capacity': 758247424, 'device': 'host', 'kind': 'io', 'tier': 'ram', 'used': 758247424}
+  memory: {'capacity': 1179648, 'device': 'CUDA0', 'kind': 'workspace', 'tier': 'vram', 'used': 1179648}
+  memory: {'capacity': 1966848, 'device': 'CPU', 'kind': 'workspace', 'tier': 'ram', 'used': 1966848}
+[04:53:21] start disk-curve
+ Downloading crates ...
+  Downloaded anstyle-query v1.1.5
+  Downloaded colorchoice v1.0.5
+  Downloaded clap_derive v4.6.7
+  Downloaded clap_lex v1.1.1
+  Downloaded anstyle-parse v1.0.0
+  Downloaded anstyle v1.0.14
+  Downloaded utf8parse v0.2.2
+  Downloaded strsim v0.11.1
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded anstream v1.0.0
+  Downloaded heck v0.5.0
+  Downloaded clap_builder v4.6.7
+  Downloaded clap v4.6.7
+   Compiling syn v3.0.9
+   Compiling utf8parse v0.2.2
+   Compiling colorchoice v1.0.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle-query v1.1.5
+   Compiling anstyle v1.0.14
+   Compiling heck v0.5.0
+   Compiling strsim v0.11.1
+   Compiling anstyle-parse v1.0.0
+   Compiling bitflags v2.13.2
+   Compiling clap_lex v1.1.1
+   Compiling anyhow v1.0.104
+   Compiling anstream v1.0.0
+   Compiling io-uring v0.7.15
+   Compiling clap_builder v4.6.7
+   Compiling serde_derive v1.0.229
+   Compiling clap_derive v4.6.7
+   Compiling serde v1.0.229
+   Compiling clap v4.6.7
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling toml_edit v0.22.27
+   Compiling toml v0.8.23
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 28.74s
+disk-curve -> /root/tetraeder/bench/results/20261113c/disk-curve-idle-044157.json
+disk-curve -> /root/tetraeder/bench/results/20261113c/disk-curve-loaded-044157.json
+[04:54:38] done disk-curve
+[04:54:38] start main-overlap
+    Finished `release` profile [optimized] target(s) in 0.19s
+     Running tests/exit_regime.rs (target/release/deps/exit_regime-8efef844728f55ca)
+
+running 2 tests
+skip: TETRAEDER_EXIT_ARMS is not set
+test exit_regime_arms ... ok
+test exit_regime has been running for over 60 seconds
+{"decode_io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":2326,"bytes":35157786624,"bytes_per_s":762065721.2590109,"bytes_per_token":549340416.0,"experts_read":3066,"read_ms_per_token":59.11041190625,"read_s":3.783066362,"uploads":0,"waited_read_gb_s":9.293462831408824},"decode_layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.8672985781990521,0.8488372093023255,0.7527839643652561,0.8625592417061612,0.8676844783715013,0.8987951807228916,0.9130434782608695,0.875,0.9044117647058824,0.9182561307901907,0.8984615384615384,0.9245742092457421,0.8943894389438944,0.9283582089552239,0.9347258485639687,0.9290617848970252,0.9414414414414415,0.935251798561151,0.9106699751861043,0.9354066985645934,0.955503512880562,0.9354066985645934,0.9090909090909091,0.9207459207459208,0.9045454545454545,0.924,0.9310344827586207,0.9221967963386728,0.9203296703296703,0.9201030927835051,0.9215686274509803,0.9405034324942791,0.9095744680851063,0.9441747572815534,0.9359605911330049,0.9409282700421941,0.9481641468682506,0.9305555555555556,0.9303370786516854,0.9539170506912442,0.945010183299389,0.9406593406593406,0.9255079006772009,0.9307359307359307,0.9230769230769231,0.9281314168377823,0.9381663113006397,0.9470046082949308,0.9452380952380952,0.9334811529933481,0.9527027027027027,0.941304347826087,0.9455782312925171,0.944954128440367,0.9402985074626866,0.9345991561181435,0.9314775160599572,0.9337748344370861,0.9219088937093276,0.9150197628458498,0.9288461538461539,0.9224137931034483,0.9242053789731052,0.9369565217391305,0.8975,0.9361702127659575,0.9090909090909091,0.9267782426778243,0.9247311827956989,0.9281553398058252,0.9250493096646942,0.9273743016759777,0.9344569288389513,0.9216417910447762,0.9456928838951311,0.9566854990583804,0.9404096834264432,0.941747572815534,0.9462151394422311,0.9423076923076923,0.9424184261036468,0.9333333333333333,0.958984375,0.9382022471910112,0.9343339587242027,0.950207468879668,0.9633911368015414,0.9615384615384616,0.9603024574669187,0.9767441860465116,0.9552845528455285,0.9656488549618321,0.9251824817518248,0.9169741697416974],"ram_hit_rate_mean":0.9272048518819035,"vram_pair_share":0.16508061835106383},"decode_overlap":{"hidden_share":0.8276914585670574,"pending_ahead_per_token":1.09375,"pending_experts_per_token":8.84375,"pending_prefetch_lead_ms":13.43237988888889,"pending_steps_per_token":7.3125,"pending_top_up_per_token":1.015625,"pending_urgent_per_token":6.734375,"prefetch_steps_hidden_share":0.9414813937366113,"prefetch_steps_per_token":1.59375,"prefetch_steps_span_ms_per_token":11.101603953124997,"prefetch_steps_wait_ms_per_token":0.649650390625001,"read_span_ms_per_token":65.15290971875,"read_wait_ms_per_token":11.22640284375,"urgent_read_ms":8.77741615313225,"urgent_steps_hidden_share":0.8043201305998514,"urgent_steps_per_token":5.71875,"urgent_steps_span_ms_per_token":54.051305765625,"urgent_steps_wait_ms_per_token":10.576752453125,"urgent_wait_ms_per_token":11.22640284375},"decode_prefetch":{"accuracy":[null,0.583984375,0.732421875,0.72265625,0.8125,0.771484375,0.845703125,0.830078125,0.853515625,0.875,0.87890625,0.830078125,0.896484375,0.90234375,0.876953125,0.859375,0.876953125,0.908203125,0.826171875,0.880859375,0.90234375,0.9296875,0.90625,0.90625,0.91796875,0.888671875,0.900390625,0.931640625,0.93359375,0.91015625,0.890625,0.904296875,0.875,0.892578125,0.869140625,0.892578125,0.91015625,0.939453125,0.857421875,0.875,0.896484375,0.904296875,0.892578125,0.904296875,0.91796875,0.916015625,0.916015625,0.91796875,0.876953125,0.845703125,0.861328125,0.921875,0.845703125,0.859375,0.845703125,0.9140625,0.859375,0.8359375,0.869140625,0.830078125,0.859375,0.80078125,0.908203125,0.85546875,0.8203125,0.806640625,0.822265625,0.787109375,0.828125,0.63671875,0.818359375,0.849609375,0.82421875,0.814453125,0.8046875,0.77734375,0.84765625,0.78515625,0.796875,0.712890625,0.794921875,0.791015625,0.724609375,0.75,0.791015625,0.861328125,0.822265625,0.890625,0.865234375,0.869140625,0.80859375,0.681640625,0.76171875,0.75],"accuracy2":[null,null,0.51953125,0.623046875,0.6796875,0.693359375,0.724609375,0.75,0.7890625,0.791015625,0.845703125,0.763671875,0.8359375,0.841796875,0.861328125,0.79296875,0.814453125,0.85546875,0.8046875,0.80859375,0.830078125,0.8828125,0.892578125,0.84765625,0.876953125,0.857421875,0.86328125,0.8828125,0.859375,0.87109375,0.87890625,0.861328125,0.859375,0.86328125,0.845703125,0.853515625,0.859375,0.880859375,0.833984375,0.8359375,0.83203125,0.861328125,0.875,0.869140625,0.865234375,0.900390625,0.89453125,0.904296875,0.853515625,0.81640625,0.8203125,0.869140625,0.81640625,0.791015625,0.771484375,0.84765625,0.826171875,0.751953125,0.794921875,0.763671875,0.798828125,0.763671875,0.81640625,0.80859375,0.787109375,0.763671875,0.72265625,0.693359375,0.73828125,0.548828125,0.55859375,0.75390625,0.775390625,0.673828125,0.7421875,0.701171875,0.798828125,0.6953125,0.69921875,0.66796875,0.69921875,0.701171875,0.6015625,0.6484375,0.65625,0.74609375,0.71484375,0.82421875,0.8203125,0.802734375,0.69140625,0.576171875,0.55859375,0.615234375],"accuracy2_mean":0.78173828125,"accuracy_mean":0.846732190860215,"bytes":30153719808,"issued":2635,"overlap":1.0,"read_ms_per_token":425.84162081249997,"used":2309,"wait_ms_per_token":0.0,"wasted":22,"wasted_bytes":269254656},"decode_profile_per_token":{"alloc_ms":7.044754703125,"build_ms":3.39912775,"compute_ms":618.095399671875,"copy_ms":1.459851609375,"cpu_landed_ms":12.175654,"cpu_pairs":627.859375,"cpu_ready_ms":50.3923508125,"graphs":110.859375,"inputs_ms":0.112250546875,"read_wait_ms":11.32560434375,"readback_ms":3.248056953125,"seg_compute_cpu_ms":586.3103649375,"seg_compute_gpu_ms":3.8009050468749996,"seg_pairs":578.3125,"segs_cpu":86.6875,"segs_gpu":8.3125,"streamer_ms":81.37344282812501,"total_ms":713.2733077656251},"decode_tok_s":1.3872376746061423,"decode_tokens":64,"decode_windows":[{"end_unix_s":1794547830.9556441,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":1061,"bytes":18147409920,"bytes_per_s":1226571789.044169,"bytes_per_token":1134213120.0,"experts_read":1588,"read_ms_per_token":113.7357850625,"read_s":1.819772561,"uploads":0,"waited_read_gb_s":9.972350561230384},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.85,0.84375,0.7317073170731707,0.7850467289719626,0.86,0.8017241379310345,0.8494623655913979,0.7465753424657534,0.808695652173913,0.81,0.7792207792207793,0.8532110091743119,0.7954545454545454,0.9263157894736842,0.8990825688073395,0.8527131782945736,0.8770491803278688,0.8760330578512396,0.8360655737704918,0.8632478632478633,0.923728813559322,0.8888888888888888,0.819047619047619,0.8524590163934426,0.7890625,0.8731343283582089,0.8721804511278195,0.8617886178861789,0.8775510204081632,0.8796296296296297,0.8282828282828283,0.8632478632478633,0.839622641509434,0.9181818181818182,0.8761061946902655,0.8507462686567164,0.9047619047619048,0.8487394957983193,0.8403361344537815,0.9024390243902439,0.8939393939393939,0.8548387096774194,0.8983050847457628,0.8709677419354839,0.868421052631579,0.9112903225806451,0.875968992248062,0.9067796610169492,0.9122807017543859,0.8793103448275862,0.9083333333333333,0.8527131782945736,0.8782608695652174,0.865546218487395,0.896,0.8409090909090909,0.8666666666666667,0.8869565217391304,0.88,0.8769230769230769,0.855072463768116,0.868421052631579,0.8571428571428571,0.8461538461538461,0.8409090909090909,0.8584070796460177,0.8333333333333334,0.84,0.8583333333333333,0.8320610687022901,0.8273381294964028,0.8299319727891157,0.8206896551724138,0.8333333333333334,0.863013698630137,0.8928571428571429,0.8503401360544217,0.8601398601398601,0.8652482269503546,0.8985507246376812,0.8472222222222222,0.8503401360544217,0.9104477611940298,0.8581560283687943,0.8776978417266187,0.9015151515151515,0.9185185185185185,0.92,0.9071428571428571,0.9259259259259259,0.889763779527559,0.9191176470588235,0.8344370860927153,0.8066666666666666],"ram_hit_rate_mean":0.8614673376390832,"vram_pair_share":0.16023936170212766},"profile_per_token":{"alloc_ms":7.985751937500001,"build_ms":3.70291975,"compute_ms":749.5120468125001,"copy_ms":3.0696509375,"cpu_landed_ms":23.6950395,"cpu_pairs":631.5,"cpu_ready_ms":100.80360825000001,"graphs":121.875,"inputs_ms":0.19554962499999998,"read_wait_ms":15.662287562499998,"readback_ms":3.4270973125,"seg_compute_cpu_ms":630.8109718125,"seg_compute_gpu_ms":7.7599469375,"seg_pairs":546.125,"segs_cpu":81.6875,"segs_gpu":13.3125,"streamer_ms":152.0264985,"total_ms":916.8503670625},"start_unix_s":1794547816.1604092,"tokens":16,"wall_s":14.795228524},{"end_unix_s":1794547841.896638,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":635,"bytes":8627798016,"bytes_per_s":788578203.6179985,"bytes_per_token":539237376.0,"experts_read":752,"read_ms_per_token":58.134663875,"read_s":0.930154622,"uploads":0,"waited_read_gb_s":9.27565999451648},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.9035087719298246,0.8521739130434782,0.7383177570093458,0.8421052631578947,0.7777777777777778,0.9047619047619048,0.8795180722891566,0.9038461538461539,0.9207920792079208,0.9325842696629213,0.926829268292683,0.92,0.9027777777777778,0.8809523809523809,0.9456521739130435,0.9166666666666666,0.9504950495049505,0.93,0.925531914893617,0.9504950495049505,0.9611650485436893,0.9065420560747663,0.9213483146067416,0.8785046728971962,0.912621359223301,0.8984375,0.9646017699115044,0.9035087719298246,0.8888888888888888,0.8804347826086957,0.9207920792079208,0.9439252336448598,0.9285714285714286,0.9134615384615384,0.9207920792079208,0.9626168224299065,0.9380530973451328,0.97,0.9423076923076923,0.9702970297029703,0.9487179487179487,0.9375,0.8818181818181818,0.9203539823008849,0.9108910891089109,0.9180327868852459,0.9649122807017544,0.9306930693069307,0.9150943396226415,0.9245283018867925,0.9523809523809523,0.9626168224299065,0.9523809523809523,0.9705882352941176,0.9285714285714286,0.9557522123893806,0.9459459459459459,0.918918918918919,0.9285714285714286,0.9133858267716536,0.9516129032258065,0.907563025210084,0.9150943396226415,0.9478260869565217,0.8434782608695652,0.9401709401709402,0.9009009009009009,0.9416666666666667,0.8943089430894309,0.9603174603174603,0.943089430894309,0.9253731343283582,0.9328358208955224,0.9242424242424242,0.96875,0.9621212121212122,0.9541984732824428,0.975609756097561,0.9583333333333334,0.9291338582677166,0.959349593495935,0.9328358208955224,0.937984496124031,0.9538461538461539,0.9333333333333333,0.9741379310344828,0.96875,0.967741935483871,0.9769230769230769,0.9846153846153847,0.95,0.9694656488549618,0.9333333333333333,0.9037037037037037],"ram_hit_rate_mean":0.9269782818712453,"vram_pair_share":0.18184840425531915},"profile_per_token":{"alloc_ms":7.24967325,"build_ms":3.3624549999999997,"compute_ms":576.891427875,"copy_ms":1.3174683125000002,"cpu_landed_ms":11.51922675,"cpu_pairs":615.25,"cpu_ready_ms":51.276738875,"graphs":112.5625,"inputs_ms":0.0419555625,"read_wait_ms":15.641815312500002,"readback_ms":3.107105625,"seg_compute_cpu_ms":572.974036,"seg_compute_gpu_ms":3.612578375,"seg_pairs":560.6875,"segs_cpu":85.6875,"segs_gpu":9.3125,"streamer_ms":86.369647,"total_ms":677.0224936875001},"start_unix_s":1794547830.955677,"tokens":16,"wall_s":10.940954209000001},{"end_unix_s":1794547851.9811158,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":274,"bytes":3462414336,"bytes_per_s":343342309.71099836,"bytes_per_token":216400896.0,"experts_read":300,"read_ms_per_token":24.9769096875,"read_s":0.399630555,"uploads":0,"waited_read_gb_s":8.66403805384701},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.8962264150943396,0.9230769230769231,0.79,0.94,0.9479166666666666,0.9690721649484536,0.9767441860465116,0.9568965517241379,0.9405940594059405,0.9647058823529412,0.9411764705882353,0.967741935483871,0.9365079365079365,0.987012987012987,0.9578947368421052,0.9911504424778761,0.9829059829059829,0.9797979797979798,0.96,0.98,0.9901960784313726,0.9811320754716981,0.968421052631579,1.0,0.9719626168224299,0.9834710743801653,0.963963963963964,0.9809523809523809,0.9647058823529412,0.9565217391304348,0.9587628865979382,1.0,0.9545454545454546,0.98989898989899,0.9791666666666666,1.0,0.9831932773109243,0.9809523809523809,0.9826086956521739,0.9814814814814815,0.9918032786885246,0.9916666666666667,0.9743589743589743,0.991304347826087,0.9719626168224299,0.9590163934426229,0.9821428571428571,1.0,0.9896907216494846,0.975,0.9917355371900827,0.9911504424778761,0.9829059829059829,0.991304347826087,0.9745762711864406,0.992,0.9758064516129032,0.9495798319327731,0.9322033898305084,0.928,0.9763779527559056,0.9243697478991597,0.9696969696969697,0.9727272727272728,0.9368421052631579,0.9572649572649573,0.926605504587156,0.972972972972973,0.9727272727272728,0.9682539682539683,0.9669421487603306,0.9763779527559056,1.0,0.9548872180451128,0.9921875,0.9846153846153847,0.9921875,0.9666666666666667,1.0,0.9541984732824428,0.984251968503937,0.984375,1.0,0.9624060150375939,0.9689922480620154,0.9568965517241379,0.9920634920634921,0.983739837398374,0.9846153846153847,1.0,0.991869918699187,0.9921875,0.9770992366412213,0.9767441860465116],"ram_hit_rate_mean":0.9704117982638578,"vram_pair_share":0.14910239361702127},"profile_per_token":{"alloc_ms":6.39510125,"build_ms":3.158595375,"compute_ms":577.249038875,"copy_ms":0.624071,"cpu_landed_ms":4.2959275,"cpu_pairs":639.875,"cpu_ready_ms":17.348206875000002,"graphs":101.625,"inputs_ms":0.147240875,"read_wait_ms":4.9629343125,"readback_ms":3.0327869375,"seg_compute_cpu_ms":575.3466125625,"seg_compute_gpu_ms":1.565364625,"seg_pairs":618.5625,"segs_cpu":90.875,"segs_gpu":4.125,"streamer_ms":31.4637455,"total_ms":621.4467075625},"start_unix_s":1794547841.896671,"tokens":16,"wall_s":10.084438294},{"end_unix_s":1794547862.295225,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":356,"bytes":4920164352,"bytes_per_s":477034145.741898,"bytes_per_token":307510272.0,"experts_read":426,"read_ms_per_token":39.594288999999996,"read_s":0.633508624,"uploads":0,"waited_read_gb_s":7.766530976222354},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.8137254901960784,0.782608695652174,0.7563025210084033,0.8910891089108911,0.8877551020408163,0.9381443298969072,0.9518072289156626,0.9387755102040817,0.967032967032967,0.978494623655914,0.9387755102040817,0.963302752293578,0.9625,0.9240506329113924,0.9425287356321839,0.9696969696969697,0.9615384615384616,0.9690721649484536,0.9425287356321839,0.96,0.9519230769230769,0.9772727272727273,0.9411764705882353,0.97,0.9705882352941176,0.9487179487179487,0.9345794392523364,0.9578947368421052,0.9560439560439561,0.96875,0.972972972972973,0.9622641509433962,0.9285714285714286,0.9595959595959596,0.9791666666666666,0.9646017699115044,0.9714285714285714,0.9351851851851852,0.9626168224299065,0.9705882352941176,0.95,0.98989898989899,0.9489795918367347,0.9454545454545454,0.9468085106382979,0.9243697478991597,0.9385964912280702,0.9523809523809523,0.970873786407767,0.9541284403669725,0.9591836734693877,0.972972972972973,0.9711538461538461,0.96,0.9649122807017544,0.9615384615384616,0.9375,0.9814814814814815,0.9528301886792453,0.9435483870967742,0.9389312977099237,0.9910714285714286,0.9528301886792453,0.9830508474576272,0.9705882352941176,0.983739837398374,0.9732142857142857,0.9590163934426229,0.9821428571428571,0.9545454545454546,0.9758064516129032,0.9922480620155039,1.0,0.984251968503937,0.9696969696969697,0.9922480620155039,0.9770992366412213,0.9767441860465116,0.9754098360655737,0.9919354838709677,0.9921259842519685,0.9770992366412213,0.992,0.9846153846153847,0.9615384615384616,0.9745762711864406,0.9769230769230769,0.9754098360655737,0.9767441860465116,1.0,0.9918032786885246,0.9844961240310077,0.9694656488549618,1.0],"ram_hit_rate_mean":0.9577834980189254,"vram_pair_share":0.16913231382978725},"profile_per_token":{"alloc_ms":6.548492375,"build_ms":3.372540875,"compute_ms":568.729085125,"copy_ms":0.8282161875,"cpu_landed_ms":9.19242225,"cpu_pairs":624.8125,"cpu_ready_ms":32.14084925,"graphs":107.375,"inputs_ms":0.06425612500000001,"read_wait_ms":9.035380187500001,"readback_ms":3.4252379375000004,"seg_compute_cpu_ms":566.109839375,"seg_compute_gpu_ms":2.26573025,"seg_pairs":587.875,"segs_cpu":88.5,"segs_gpu":6.5,"streamer_ms":55.633880312500004,"total_ms":637.77366275},"start_unix_s":1794547851.9811478,"tokens":16,"wall_s":10.314071636}],"engine":"tetraeder","first_top":[[7294,37.391845703125],[126126,23.972030639648438],[51216,22.512130737304688],[14134,21.916662216186523],[4316,20.968944549560547],[29935,20.604076385498047],[12336,20.50487518310547],[85019,20.152416229248047],[1878,19.45046043395996],[34756,19.41741371154785]],"greedy":[7294,59549,77582,14324,5820,5395,1565,72442,956,7294,36611,83202,90,15314,28,13327,5541,13,1163,2434,25,825,1565,376,4527,63,9390,817,1681,28654,4370,69415,48856,2644,7808,1565,4370,69415,8223,3192,7808,10431,14579,8,448,1565,30552,483,63,323,1565,18196,63,1682,44295,11,902,9390,817,16895,3019,624,12,3070],"hot_refresh_s":4e-8,"load_s":2.162031007,"margins":[13.419815063476562,12.437812805175781,10.404369354248047,10.906169891357422,14.960376739501953,12.555746078491211,9.957767486572266,13.836402893066406,16.357376098632812,11.697822570800781,16.04886245727539,13.447189331054688,9.811473846435547,13.954509735107422,12.063419342041016,14.554206848144531,12.61269760131836,7.672544479370117,13.050445556640625,16.812646865844727,14.11093807220459,13.537342071533203,11.675283432006836,11.617860794067383,14.475227355957031,14.193217277526855,11.253019332885742,16.932247161865234,14.378898620605469,13.938911437988281,9.987289428710938,9.63455581665039,13.334831237792969,13.279958724975586,13.334609985351562,12.867874145507812,14.742652893066406,9.73663330078125,12.128654479980469,12.365589141845703,12.31024169921875,13.756762504577637,13.36992073059082,12.444750785827637,15.20743465423584,13.188844680786133,15.330303192138672,15.026191711425781,13.35960865020752,11.741706848144531,13.552900314331055,11.813560485839844,11.643194198608398,15.53245735168457,11.067895889282227,13.084375381469727,16.321897506713867,10.764400482177734,15.803686141967773,3.286802291870117,16.308456420898438,11.721790313720703,17.606489181518555,16.360252380371094],"max_splits":4,"memory":[{"capacity":4855916544,"device":"CUDA0","kind":"weights","tier":"vram","used":4855916544},{"capacity":10725949440,"device":"CUDA0","kind":"slots","tier":"vram","used":10725949440},{"capacity":6357516288,"device":"CUDA0","kind":"kv","tier":"vram","used":6357516288},{"capacity":82589810688,"device":"host","kind":"slots","tier":"ram","used":82589810688},{"capacity":1413435392,"device":"host","kind":"io","tier":"ram","used":1413435392},{"capacity":765801472,"device":"CUDA0","kind":"workspace","tier":"vram","used":765801472},{"capacity":1426080,"device":"CPU","kind":"workspace","tier":"ram","used":1426080}],"peak_rss_bytes":84658077696,"prefill_io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":4650,"bytes":577269891072,"bytes_per_s":272035223.4189129,"bytes_per_token":17616879.0,"experts_read":50403,"read_ms_per_token":38.95540226541137,"read_s":1276.490621433,"uploads":940,"waited_read_gb_s":0.45223198774774515},"prefill_prefetch":{"accuracy":[null,0.66229248046875,0.7520675659179688,0.7607307434082031,0.8239402770996094,0.8066825866699219,0.8391685485839844,0.8291778564453125,0.8727607727050781,0.8601913452148438,0.8764686584472656,0.8523941040039062,0.8658218383789062,0.8946151733398438,0.8873252868652344,0.8908767700195312,0.8865089416503906,0.8930854797363281,0.8776817321777344,0.8904457092285156,0.8997459411621094,0.9332084655761719,0.9063453674316406,0.9141387939453125,0.9125442504882812,0.911285400390625,0.9095840454101562,0.9205818176269531,0.9286041259765625,0.9135169982910156,0.9098663330078125,0.8880348205566406,0.8790473937988281,0.9013862609863281,0.8992156982421875,0.8959312438964844,0.9053916931152344,0.9128074645996094,0.8982200622558594,0.8998069763183594,0.90032958984375,0.922210693359375,0.9191055297851562,0.9192733764648438,0.9182777404785156,0.9283714294433594,0.9267234802246094,0.9156990051269531,0.8945655822753906,0.8895721435546875,0.8996009826660156,0.9050445556640625,0.8863868713378906,0.8903007507324219,0.8916206359863281,0.9124526977539062,0.8939781188964844,0.8937149047851562,0.8943367004394531,0.8901863098144531,0.8836555480957031,0.8862152099609375,0.9005928039550781,0.8950347900390625,0.8674430847167969,0.8710708618164062,0.875152587890625,0.8866195678710938,0.8790016174316406,0.8630294799804688,0.8926773071289062,0.9004669189453125,0.8826713562011719,0.8844337463378906,0.876373291015625,0.8929672241210938,0.8801345825195312,0.87738037109375,0.8793106079101562,0.8724899291992188,0.8708686828613281,0.8676643371582031,0.8675956726074219,0.8577194213867188,0.8814964294433594,0.9145927429199219,0.90643310546875,0.9197921752929688,0.9163627624511719,0.9131736755371094,0.8864479064941406,0.8423271179199219,0.8688316345214844,0.8595542907714844],"accuracy2":[null,null,0.582366943359375,0.6185340881347656,0.7095451354980469,0.7225914001464844,0.7710418701171875,0.7671928405761719,0.7977180480957031,0.8011665344238281,0.8352317810058594,0.7936363220214844,0.8084945678710938,0.8321800231933594,0.8467025756835938,0.8480453491210938,0.8456573486328125,0.8413734436035156,0.8386764526367188,0.8457183837890625,0.8510055541992188,0.89837646484375,0.8828277587890625,0.875274658203125,0.87298583984375,0.8784942626953125,0.8685798645019531,0.88079833984375,0.8822593688964844,0.8860969543457031,0.8839645385742188,0.8595161437988281,0.8432579040527344,0.8554000854492188,0.8617782592773438,0.861358642578125,0.8648109436035156,0.8749542236328125,0.8694038391113281,0.8669548034667969,0.8621940612792969,0.8871231079101562,0.8891220092773438,0.88714599609375,0.8836898803710938,0.8981590270996094,0.8958930969238281,0.8954925537109375,0.8682899475097656,0.858489990234375,0.8611030578613281,0.8669967651367188,0.8565559387207031,0.8491859436035156,0.8455619812011719,0.8781700134277344,0.8620681762695312,0.8430099487304688,0.8409080505371094,0.8476524353027344,0.8334426879882812,0.8374977111816406,0.8396072387695312,0.8532676696777344,0.8428955078125,0.812103271484375,0.8220176696777344,0.8382530212402344,0.8403358459472656,0.8180465698242188,0.8237686157226562,0.8538360595703125,0.8462448120117188,0.8282966613769531,0.8284950256347656,0.8419532775878906,0.8380241394042969,0.8203659057617188,0.8226661682128906,0.8254661560058594,0.8089103698730469,0.8165016174316406,0.7867050170898438,0.8018608093261719,0.7979927062988281,0.8562965393066406,0.8665275573730469,0.8743438720703125,0.8815040588378906,0.8783187866210938,0.8382835388183594,0.7993278503417969,0.7680282592773438,0.7833328247070312],"accuracy2_mean":0.8383184930552607,"accuracy_mean":0.8846540963777931,"bytes":195145924608,"issued":17121,"overlap":0.9999726535236857,"read_ms_per_token":30.18724352282715,"used":17090,"wait_ms_per_token":0.0008255147399902344,"wasted":31,"wasted_bytes":374538240},"prefill_profile_per_ubatch":{"alloc_ms":124.79574337499999,"build_ms":348.124347125,"compute_ms":45863.76211725,"copy_ms":0.0,"cpu_landed_ms":0.0,"cpu_pairs":1089842.3125,"cpu_ready_ms":0.0,"graphs":188.625,"inputs_ms":188.54799556249998,"read_wait_ms":0.0,"readback_ms":82.33620975,"seg_compute_cpu_ms":19372.5262855,"seg_compute_gpu_ms":29.510136749999997,"seg_pairs":162988.5,"segs_cpu":94.0,"segs_gpu":1.0,"streamer_ms":84339.10174531251,"total_ms":130946.668842125},"prefill_s":2122.040976187,"prefill_tok_s":15.441737632644278,"prefill_tokens":32768,"ram_hugepages":null,"rss_bytes":84658077696,"ubatch":2048,"ubatch_s":[130.951393625,145.438724872,138.549319278,126.029565848,126.818919519,132.382089573,113.261569595,113.596720917,108.0412493,116.937070909,134.377222106,168.210508638,139.756588529,144.118606145,153.194562587,130.376825616]}
+test exit_regime ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2182.76s
+
+cotenant CO-TENANT: host 48.23907589016277 cores busy, container 19.826342498020264, engine 19.019027846313072, outside 28.41273339214251, smt pairs 0 (28.4 cores busy outside the container (limit 14.4 of 96 physical))
+[05:31:14] done main-overlap rc=0
+[05:31:15] start llamacpp-cache-dio-poll0 s0.95: cache 10458 MiB, load mode dio
+llamacpp-cache-s0.95 decode tok/s: None ok: False RuntimeError('llama-server exited (-9), see /root/tetraeder/runs/vast/llamacpp_cache/exit-llamacpp-cache-s0.95-dio-poll0-044157.log')
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[05:33:23] done llamacpp-cache-dio-poll0 s0.95 rc=1
+[05:33:23] start main-overlap-repeat
+    Finished `release` profile [optimized] target(s) in 0.37s
+     Running tests/exit_regime.rs (target/release/deps/exit_regime-8efef844728f55ca)
+
+running 2 tests
+skip: TETRAEDER_EXIT_ARMS is not set
+test exit_regime_arms ... ok
+test exit_regime has been running for over 60 seconds
+{"decode_io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":2326,"bytes":35157786624,"bytes_per_s":532719548.2646844,"bytes_per_token":549340416.0,"experts_read":3066,"read_ms_per_token":88.614031546875,"read_s":5.671298019,"uploads":0,"waited_read_gb_s":6.19924865634186},"decode_layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.8672985781990521,0.8488372093023255,0.7527839643652561,0.8625592417061612,0.8676844783715013,0.8987951807228916,0.9130434782608695,0.875,0.9044117647058824,0.9182561307901907,0.8984615384615384,0.9245742092457421,0.8943894389438944,0.9283582089552239,0.9347258485639687,0.9290617848970252,0.9414414414414415,0.935251798561151,0.9106699751861043,0.9354066985645934,0.955503512880562,0.9354066985645934,0.9090909090909091,0.9207459207459208,0.9045454545454545,0.924,0.9310344827586207,0.9221967963386728,0.9203296703296703,0.9201030927835051,0.9215686274509803,0.9405034324942791,0.9095744680851063,0.9441747572815534,0.9359605911330049,0.9409282700421941,0.9481641468682506,0.9305555555555556,0.9303370786516854,0.9539170506912442,0.945010183299389,0.9406593406593406,0.9255079006772009,0.9307359307359307,0.9230769230769231,0.9281314168377823,0.9381663113006397,0.9470046082949308,0.9452380952380952,0.9334811529933481,0.9527027027027027,0.941304347826087,0.9455782312925171,0.944954128440367,0.9402985074626866,0.9345991561181435,0.9314775160599572,0.9337748344370861,0.9219088937093276,0.9150197628458498,0.9288461538461539,0.9224137931034483,0.9242053789731052,0.9369565217391305,0.8975,0.9361702127659575,0.9090909090909091,0.9267782426778243,0.9247311827956989,0.9281553398058252,0.9250493096646942,0.9273743016759777,0.9344569288389513,0.9216417910447762,0.9456928838951311,0.9566854990583804,0.9404096834264432,0.941747572815534,0.9462151394422311,0.9423076923076923,0.9424184261036468,0.9333333333333333,0.958984375,0.9382022471910112,0.9343339587242027,0.950207468879668,0.9633911368015414,0.9615384615384616,0.9603024574669187,0.9767441860465116,0.9552845528455285,0.9656488549618321,0.9251824817518248,0.9169741697416974],"ram_hit_rate_mean":0.9272048518819035,"vram_pair_share":0.16508061835106383},"decode_overlap":{"hidden_share":0.9195408724489231,"pending_ahead_per_token":0.328125,"pending_experts_per_token":7.421875,"pending_prefetch_lead_ms":25.96967443181818,"pending_steps_per_token":6.21875,"pending_top_up_per_token":0.359375,"pending_urgent_per_token":6.734375,"prefetch_steps_hidden_share":0.9933982945261963,"prefetch_steps_per_token":0.5,"prefetch_steps_span_ms_per_token":8.27350365625,"prefetch_steps_wait_ms_per_token":0.054619234374999985,"read_span_ms_per_token":89.734024953125,"read_wait_ms_per_token":7.219921359375,"urgent_read_ms":13.158464081206496,"urgent_steps_hidden_share":0.9120395743738645,"urgent_steps_per_token":5.71875,"urgent_steps_span_ms_per_token":81.460521296875,"urgent_steps_wait_ms_per_token":7.165302125,"urgent_wait_ms_per_token":7.219921359375},"decode_prefetch":{"accuracy":[null,0.583984375,0.732421875,0.72265625,0.8125,0.771484375,0.845703125,0.830078125,0.853515625,0.875,0.87890625,0.830078125,0.896484375,0.90234375,0.876953125,0.859375,0.876953125,0.908203125,0.826171875,0.880859375,0.90234375,0.9296875,0.90625,0.90625,0.91796875,0.888671875,0.900390625,0.931640625,0.93359375,0.91015625,0.890625,0.904296875,0.875,0.892578125,0.869140625,0.892578125,0.91015625,0.939453125,0.857421875,0.875,0.896484375,0.904296875,0.892578125,0.904296875,0.91796875,0.916015625,0.916015625,0.91796875,0.876953125,0.845703125,0.861328125,0.921875,0.845703125,0.859375,0.845703125,0.9140625,0.859375,0.8359375,0.869140625,0.830078125,0.859375,0.80078125,0.908203125,0.85546875,0.8203125,0.806640625,0.822265625,0.787109375,0.828125,0.63671875,0.818359375,0.849609375,0.82421875,0.814453125,0.8046875,0.77734375,0.84765625,0.78515625,0.796875,0.712890625,0.794921875,0.791015625,0.724609375,0.75,0.791015625,0.861328125,0.822265625,0.890625,0.865234375,0.869140625,0.80859375,0.681640625,0.76171875,0.75],"accuracy2":[null,null,0.51953125,0.623046875,0.6796875,0.693359375,0.724609375,0.75,0.7890625,0.791015625,0.845703125,0.763671875,0.8359375,0.841796875,0.861328125,0.79296875,0.814453125,0.85546875,0.8046875,0.80859375,0.830078125,0.8828125,0.892578125,0.84765625,0.876953125,0.857421875,0.86328125,0.8828125,0.859375,0.87109375,0.87890625,0.861328125,0.859375,0.86328125,0.845703125,0.853515625,0.859375,0.880859375,0.833984375,0.8359375,0.83203125,0.861328125,0.875,0.869140625,0.865234375,0.900390625,0.89453125,0.904296875,0.853515625,0.81640625,0.8203125,0.869140625,0.81640625,0.791015625,0.771484375,0.84765625,0.826171875,0.751953125,0.794921875,0.763671875,0.798828125,0.763671875,0.81640625,0.80859375,0.787109375,0.763671875,0.72265625,0.693359375,0.73828125,0.548828125,0.55859375,0.75390625,0.775390625,0.673828125,0.7421875,0.701171875,0.798828125,0.6953125,0.69921875,0.66796875,0.69921875,0.701171875,0.6015625,0.6484375,0.65625,0.74609375,0.71484375,0.82421875,0.8203125,0.802734375,0.69140625,0.576171875,0.55859375,0.615234375],"accuracy2_mean":0.78173828125,"accuracy_mean":0.846732190860215,"bytes":30153719808,"issued":2635,"overlap":1.0,"read_ms_per_token":611.0833503125001,"used":2309,"wait_ms_per_token":0.0,"wasted":22,"wasted_bytes":269254656},"decode_profile_per_token":{"alloc_ms":7.695269953125,"build_ms":3.6634452187499997,"compute_ms":884.1240176875,"copy_ms":1.61856075,"cpu_landed_ms":14.015805421875,"cpu_pairs":627.859375,"cpu_ready_ms":79.07548471875,"graphs":108.3125,"inputs_ms":0.131684734375,"read_wait_ms":7.332405828125,"readback_ms":3.65974096875,"seg_compute_cpu_ms":869.664622328125,"seg_compute_gpu_ms":3.69182925,"seg_pairs":584.984375,"segs_cpu":87.78125,"segs_gpu":7.21875,"streamer_ms":108.218737875,"total_ms":1007.493202375},"decode_tok_s":0.9697439561131516,"decode_tokens":64,"decode_windows":[{"end_unix_s":1794550445.0704396,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":1061,"bytes":18147409920,"bytes_per_s":878294103.6324806,"bytes_per_token":1134213120.0,"experts_read":1588,"read_ms_per_token":193.6131376875,"read_s":3.097810203,"uploads":0,"waited_read_gb_s":5.858141309763127},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.85,0.84375,0.7317073170731707,0.7850467289719626,0.86,0.8017241379310345,0.8494623655913979,0.7465753424657534,0.808695652173913,0.81,0.7792207792207793,0.8532110091743119,0.7954545454545454,0.9263157894736842,0.8990825688073395,0.8527131782945736,0.8770491803278688,0.8760330578512396,0.8360655737704918,0.8632478632478633,0.923728813559322,0.8888888888888888,0.819047619047619,0.8524590163934426,0.7890625,0.8731343283582089,0.8721804511278195,0.8617886178861789,0.8775510204081632,0.8796296296296297,0.8282828282828283,0.8632478632478633,0.839622641509434,0.9181818181818182,0.8761061946902655,0.8507462686567164,0.9047619047619048,0.8487394957983193,0.8403361344537815,0.9024390243902439,0.8939393939393939,0.8548387096774194,0.8983050847457628,0.8709677419354839,0.868421052631579,0.9112903225806451,0.875968992248062,0.9067796610169492,0.9122807017543859,0.8793103448275862,0.9083333333333333,0.8527131782945736,0.8782608695652174,0.865546218487395,0.896,0.8409090909090909,0.8666666666666667,0.8869565217391304,0.88,0.8769230769230769,0.855072463768116,0.868421052631579,0.8571428571428571,0.8461538461538461,0.8409090909090909,0.8584070796460177,0.8333333333333334,0.84,0.8583333333333333,0.8320610687022901,0.8273381294964028,0.8299319727891157,0.8206896551724138,0.8333333333333334,0.863013698630137,0.8928571428571429,0.8503401360544217,0.8601398601398601,0.8652482269503546,0.8985507246376812,0.8472222222222222,0.8503401360544217,0.9104477611940298,0.8581560283687943,0.8776978417266187,0.9015151515151515,0.9185185185185185,0.92,0.9071428571428571,0.9259259259259259,0.889763779527559,0.9191176470588235,0.8344370860927153,0.8066666666666666],"ram_hit_rate_mean":0.8614673376390832,"vram_pair_share":0.16023936170212766},"profile_per_token":{"alloc_ms":8.9628161875,"build_ms":3.9998785,"compute_ms":1030.4794534374998,"copy_ms":3.2827830625,"cpu_landed_ms":30.707362875,"cpu_pairs":631.5,"cpu_ready_ms":178.20664975,"graphs":118.625,"inputs_ms":0.2015098125,"read_wait_ms":13.204570125,"readback_ms":3.9402584375000003,"seg_compute_cpu_ms":981.25842975,"seg_compute_gpu_ms":7.752679875,"seg_pairs":553.5,"segs_cpu":82.875,"segs_gpu":12.125,"streamer_ms":234.63757368749998,"total_ms":1282.2217544375},"start_unix_s":1794550424.4083245,"tokens":16,"wall_s":20.662110613},{"end_unix_s":1794550461.8667536,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":635,"bytes":8627798016,"bytes_per_s":513673259.55771935,"bytes_per_token":539237376.0,"experts_read":752,"read_ms_per_token":75.3202528125,"read_s":1.205124045,"uploads":0,"waited_read_gb_s":7.159261365497026},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.9035087719298246,0.8521739130434782,0.7383177570093458,0.8421052631578947,0.7777777777777778,0.9047619047619048,0.8795180722891566,0.9038461538461539,0.9207920792079208,0.9325842696629213,0.926829268292683,0.92,0.9027777777777778,0.8809523809523809,0.9456521739130435,0.9166666666666666,0.9504950495049505,0.93,0.925531914893617,0.9504950495049505,0.9611650485436893,0.9065420560747663,0.9213483146067416,0.8785046728971962,0.912621359223301,0.8984375,0.9646017699115044,0.9035087719298246,0.8888888888888888,0.8804347826086957,0.9207920792079208,0.9439252336448598,0.9285714285714286,0.9134615384615384,0.9207920792079208,0.9626168224299065,0.9380530973451328,0.97,0.9423076923076923,0.9702970297029703,0.9487179487179487,0.9375,0.8818181818181818,0.9203539823008849,0.9108910891089109,0.9180327868852459,0.9649122807017544,0.9306930693069307,0.9150943396226415,0.9245283018867925,0.9523809523809523,0.9626168224299065,0.9523809523809523,0.9705882352941176,0.9285714285714286,0.9557522123893806,0.9459459459459459,0.918918918918919,0.9285714285714286,0.9133858267716536,0.9516129032258065,0.907563025210084,0.9150943396226415,0.9478260869565217,0.8434782608695652,0.9401709401709402,0.9009009009009009,0.9416666666666667,0.8943089430894309,0.9603174603174603,0.943089430894309,0.9253731343283582,0.9328358208955224,0.9242424242424242,0.96875,0.9621212121212122,0.9541984732824428,0.975609756097561,0.9583333333333334,0.9291338582677166,0.959349593495935,0.9328358208955224,0.937984496124031,0.9538461538461539,0.9333333333333333,0.9741379310344828,0.96875,0.967741935483871,0.9769230769230769,0.9846153846153847,0.95,0.9694656488549618,0.9333333333333333,0.9037037037037037],"ram_hit_rate_mean":0.9269782818712453,"vram_pair_share":0.18184840425531915},"profile_per_token":{"alloc_ms":7.829041375,"build_ms":3.607716,"compute_ms":867.2417208124999,"copy_ms":1.52557575,"cpu_landed_ms":11.683537375,"cpu_pairs":615.25,"cpu_ready_ms":71.3763033125,"graphs":108.875,"inputs_ms":0.048048625000000005,"read_wait_ms":5.4496253125,"readback_ms":3.687225375,"seg_compute_cpu_ms":863.45682575,"seg_compute_gpu_ms":3.350530125,"seg_pairs":570.5,"segs_cpu":87.375,"segs_gpu":7.625,"streamer_ms":96.53035187500001,"total_ms":978.9443028125},"start_unix_s":1794550445.0704725,"tokens":16,"wall_s":16.79627634},{"end_unix_s":1794550476.2417507,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":274,"bytes":3462414336,"bytes_per_s":240864343.3207254,"bytes_per_token":216400896.0,"experts_read":300,"read_ms_per_token":29.332982,"read_s":0.469327712,"uploads":0,"waited_read_gb_s":7.3773916337588865},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.8962264150943396,0.9230769230769231,0.79,0.94,0.9479166666666666,0.9690721649484536,0.9767441860465116,0.9568965517241379,0.9405940594059405,0.9647058823529412,0.9411764705882353,0.967741935483871,0.9365079365079365,0.987012987012987,0.9578947368421052,0.9911504424778761,0.9829059829059829,0.9797979797979798,0.96,0.98,0.9901960784313726,0.9811320754716981,0.968421052631579,1.0,0.9719626168224299,0.9834710743801653,0.963963963963964,0.9809523809523809,0.9647058823529412,0.9565217391304348,0.9587628865979382,1.0,0.9545454545454546,0.98989898989899,0.9791666666666666,1.0,0.9831932773109243,0.9809523809523809,0.9826086956521739,0.9814814814814815,0.9918032786885246,0.9916666666666667,0.9743589743589743,0.991304347826087,0.9719626168224299,0.9590163934426229,0.9821428571428571,1.0,0.9896907216494846,0.975,0.9917355371900827,0.9911504424778761,0.9829059829059829,0.991304347826087,0.9745762711864406,0.992,0.9758064516129032,0.9495798319327731,0.9322033898305084,0.928,0.9763779527559056,0.9243697478991597,0.9696969696969697,0.9727272727272728,0.9368421052631579,0.9572649572649573,0.926605504587156,0.972972972972973,0.9727272727272728,0.9682539682539683,0.9669421487603306,0.9763779527559056,1.0,0.9548872180451128,0.9921875,0.9846153846153847,0.9921875,0.9666666666666667,1.0,0.9541984732824428,0.984251968503937,0.984375,1.0,0.9624060150375939,0.9689922480620154,0.9568965517241379,0.9920634920634921,0.983739837398374,0.9846153846153847,1.0,0.991869918699187,0.9921875,0.9770992366412213,0.9767441860465116],"ram_hit_rate_mean":0.9704117982638578,"vram_pair_share":0.14910239361702127},"profile_per_token":{"alloc_ms":7.0943725625,"build_ms":3.5874515,"compute_ms":837.4251075,"copy_ms":0.6642765625,"cpu_landed_ms":4.356998624999999,"cpu_pairs":639.875,"cpu_ready_ms":26.0053730625,"graphs":100.75,"inputs_ms":0.2155746875,"read_wait_ms":3.2373336875,"readback_ms":3.5278930625,"seg_compute_cpu_ms":835.1333536249999,"seg_compute_gpu_ms":1.5900088749999999,"seg_pairs":621.125,"segs_cpu":91.3125,"segs_gpu":3.6875,"streamer_ms":38.723691125,"total_ms":890.5746304375},"start_unix_s":1794550461.866781,"tokens":16,"wall_s":14.374955995},{"end_unix_s":1794550490.4050949,"io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":356,"bytes":4920164352,"bytes_per_s":347388390.2412955,"bytes_per_token":307510272.0,"experts_read":426,"read_ms_per_token":56.1897536875,"read_s":0.899036059,"uploads":0,"waited_read_gb_s":5.472710802581946},"layers":{"full_hit_rate":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"full_hit_rate_mean":0.0,"ram_hit_rate":[0.8137254901960784,0.782608695652174,0.7563025210084033,0.8910891089108911,0.8877551020408163,0.9381443298969072,0.9518072289156626,0.9387755102040817,0.967032967032967,0.978494623655914,0.9387755102040817,0.963302752293578,0.9625,0.9240506329113924,0.9425287356321839,0.9696969696969697,0.9615384615384616,0.9690721649484536,0.9425287356321839,0.96,0.9519230769230769,0.9772727272727273,0.9411764705882353,0.97,0.9705882352941176,0.9487179487179487,0.9345794392523364,0.9578947368421052,0.9560439560439561,0.96875,0.972972972972973,0.9622641509433962,0.9285714285714286,0.9595959595959596,0.9791666666666666,0.9646017699115044,0.9714285714285714,0.9351851851851852,0.9626168224299065,0.9705882352941176,0.95,0.98989898989899,0.9489795918367347,0.9454545454545454,0.9468085106382979,0.9243697478991597,0.9385964912280702,0.9523809523809523,0.970873786407767,0.9541284403669725,0.9591836734693877,0.972972972972973,0.9711538461538461,0.96,0.9649122807017544,0.9615384615384616,0.9375,0.9814814814814815,0.9528301886792453,0.9435483870967742,0.9389312977099237,0.9910714285714286,0.9528301886792453,0.9830508474576272,0.9705882352941176,0.983739837398374,0.9732142857142857,0.9590163934426229,0.9821428571428571,0.9545454545454546,0.9758064516129032,0.9922480620155039,1.0,0.984251968503937,0.9696969696969697,0.9922480620155039,0.9770992366412213,0.9767441860465116,0.9754098360655737,0.9919354838709677,0.9921259842519685,0.9770992366412213,0.992,0.9846153846153847,0.9615384615384616,0.9745762711864406,0.9769230769230769,0.9754098360655737,0.9767441860465116,1.0,0.9918032786885246,0.9844961240310077,0.9694656488549618,1.0],"ram_hit_rate_mean":0.9577834980189254,"vram_pair_share":0.16913231382978725},"profile_per_token":{"alloc_ms":6.894849687500001,"build_ms":3.458734875,"compute_ms":801.349789,"copy_ms":1.001607625,"cpu_landed_ms":9.3153228125,"cpu_pairs":624.8125,"cpu_ready_ms":40.71361275,"graphs":105.0,"inputs_ms":0.061605812499999996,"read_wait_ms":7.4380941875,"readback_ms":3.483587,"seg_compute_cpu_ms":798.8098801875,"seg_compute_gpu_ms":2.074098125,"seg_pairs":594.8125,"segs_cpu":89.5625,"segs_gpu":5.4375,"streamer_ms":62.9833348125,"total_ms":878.2321218124999},"start_unix_s":1794550476.2417946,"tokens":16,"wall_s":14.163295292}],"engine":"tetraeder","first_top":[[7294,37.391845703125],[126126,23.972030639648438],[51216,22.512130737304688],[14134,21.916662216186523],[4316,20.968944549560547],[29935,20.604076385498047],[12336,20.50487518310547],[85019,20.152416229248047],[1878,19.45046043395996],[34756,19.41741371154785]],"greedy":[7294,59549,77582,14324,5820,5395,1565,72442,956,7294,36611,83202,90,15314,28,13327,5541,13,1163,2434,25,825,1565,376,4527,63,9390,817,1681,28654,4370,69415,48856,2644,7808,1565,4370,69415,8223,3192,7808,10431,14579,8,448,1565,30552,483,63,323,1565,18196,63,1682,44295,11,902,9390,817,16895,3019,624,12,3070],"hot_refresh_s":4e-8,"load_s":2.9230011989999998,"margins":[13.419815063476562,12.437812805175781,10.404369354248047,10.906169891357422,14.960376739501953,12.555746078491211,9.957767486572266,13.836402893066406,16.357376098632812,11.697822570800781,16.04886245727539,13.447189331054688,9.811473846435547,13.954509735107422,12.063419342041016,14.554206848144531,12.61269760131836,7.672544479370117,13.050445556640625,16.812646865844727,14.11093807220459,13.537342071533203,11.675283432006836,11.617860794067383,14.475227355957031,14.193217277526855,11.253019332885742,16.932247161865234,14.378898620605469,13.938911437988281,9.987289428710938,9.63455581665039,13.334831237792969,13.279958724975586,13.334609985351562,12.867874145507812,14.742652893066406,9.73663330078125,12.128654479980469,12.365589141845703,12.31024169921875,13.756762504577637,13.36992073059082,12.444750785827637,15.20743465423584,13.188844680786133,15.330303192138672,15.026191711425781,13.35960865020752,11.741706848144531,13.552900314331055,11.813560485839844,11.643194198608398,15.53245735168457,11.067895889282227,13.084375381469727,16.321897506713867,10.764400482177734,15.803686141967773,3.286802291870117,16.308456420898438,11.721790313720703,17.606489181518555,16.360252380371094],"max_splits":4,"memory":[{"capacity":4855916544,"device":"CUDA0","kind":"weights","tier":"vram","used":4855916544},{"capacity":10725949440,"device":"CUDA0","kind":"slots","tier":"vram","used":10725949440},{"capacity":6357516288,"device":"CUDA0","kind":"kv","tier":"vram","used":6357516288},{"capacity":82589810688,"device":"host","kind":"slots","tier":"ram","used":82589810688},{"capacity":1413435392,"device":"host","kind":"io","tier":"ram","used":1413435392},{"capacity":765801472,"device":"CUDA0","kind":"workspace","tier":"vram","used":765801472},{"capacity":1426080,"device":"CPU","kind":"workspace","tier":"ram","used":1426080}],"peak_rss_bytes":84651196416,"prefill_io":{"admit_ms_per_token":0.0,"admitted":0,"admitted_bytes":0,"batches":4650,"bytes":577269891072,"bytes_per_s":239917911.2551284,"bytes_per_token":17616879.0,"experts_read":50403,"read_ms_per_token":41.06825963116455,"read_s":1345.724731594,"uploads":940,"waited_read_gb_s":0.4289658037184384},"prefill_prefetch":{"accuracy":[null,0.66229248046875,0.7520675659179688,0.7607307434082031,0.8239402770996094,0.8066825866699219,0.8391685485839844,0.8291778564453125,0.8727607727050781,0.8601913452148438,0.8764686584472656,0.8523941040039062,0.8658218383789062,0.8946151733398438,0.8873252868652344,0.8908767700195312,0.8865089416503906,0.8930854797363281,0.8776817321777344,0.8904457092285156,0.8997459411621094,0.9332084655761719,0.9063453674316406,0.9141387939453125,0.9125442504882812,0.911285400390625,0.9095840454101562,0.9205818176269531,0.9286041259765625,0.9135169982910156,0.9098663330078125,0.8880348205566406,0.8790473937988281,0.9013862609863281,0.8992156982421875,0.8959312438964844,0.9053916931152344,0.9128074645996094,0.8982200622558594,0.8998069763183594,0.90032958984375,0.922210693359375,0.9191055297851562,0.9192733764648438,0.9182777404785156,0.9283714294433594,0.9267234802246094,0.9156990051269531,0.8945655822753906,0.8895721435546875,0.8996009826660156,0.9050445556640625,0.8863868713378906,0.8903007507324219,0.8916206359863281,0.9124526977539062,0.8939781188964844,0.8937149047851562,0.8943367004394531,0.8901863098144531,0.8836555480957031,0.8862152099609375,0.9005928039550781,0.8950347900390625,0.8674430847167969,0.8710708618164062,0.875152587890625,0.8866195678710938,0.8790016174316406,0.8630294799804688,0.8926773071289062,0.9004669189453125,0.8826713562011719,0.8844337463378906,0.876373291015625,0.8929672241210938,0.8801345825195312,0.87738037109375,0.8793106079101562,0.8724899291992188,0.8708686828613281,0.8676643371582031,0.8675956726074219,0.8577194213867188,0.8814964294433594,0.9145927429199219,0.90643310546875,0.9197921752929688,0.9163627624511719,0.9131736755371094,0.8864479064941406,0.8423271179199219,0.8688316345214844,0.8595542907714844],"accuracy2":[null,null,0.582366943359375,0.6185340881347656,0.7095451354980469,0.7225914001464844,0.7710418701171875,0.7671928405761719,0.7977180480957031,0.8011665344238281,0.8352317810058594,0.7936363220214844,0.8084945678710938,0.8321800231933594,0.8467025756835938,0.8480453491210938,0.8456573486328125,0.8413734436035156,0.8386764526367188,0.8457183837890625,0.8510055541992188,0.89837646484375,0.8828277587890625,0.875274658203125,0.87298583984375,0.8784942626953125,0.8685798645019531,0.88079833984375,0.8822593688964844,0.8860969543457031,0.8839645385742188,0.8595161437988281,0.8432579040527344,0.8554000854492188,0.8617782592773438,0.861358642578125,0.8648109436035156,0.8749542236328125,0.8694038391113281,0.8669548034667969,0.8621940612792969,0.8871231079101562,0.8891220092773438,0.88714599609375,0.8836898803710938,0.8981590270996094,0.8958930969238281,0.8954925537109375,0.8682899475097656,0.858489990234375,0.8611030578613281,0.8669967651367188,0.8565559387207031,0.8491859436035156,0.8455619812011719,0.8781700134277344,0.8620681762695312,0.8430099487304688,0.8409080505371094,0.8476524353027344,0.8334426879882812,0.8374977111816406,0.8396072387695312,0.8532676696777344,0.8428955078125,0.812103271484375,0.8220176696777344,0.8382530212402344,0.8403358459472656,0.8180465698242188,0.8237686157226562,0.8538360595703125,0.8462448120117188,0.8282966613769531,0.8284950256347656,0.8419532775878906,0.8380241394042969,0.8203659057617188,0.8226661682128906,0.8254661560058594,0.8089103698730469,0.8165016174316406,0.7867050170898438,0.8018608093261719,0.7979927062988281,0.8562965393066406,0.8665275573730469,0.8743438720703125,0.8815040588378906,0.8783187866210938,0.8382835388183594,0.7993278503417969,0.7680282592773438,0.7833328247070312],"accuracy2_mean":0.8383184930552607,"accuracy_mean":0.8846540963777931,"bytes":195145924608,"issued":17121,"overlap":0.9999732379843495,"read_ms_per_token":25.669937852783203,"used":17090,"wait_ms_per_token":0.0006869792785644532,"wasted":31,"wasted_bytes":374538240},"prefill_profile_per_ubatch":{"alloc_ms":55.2945119375,"build_ms":534.63638125,"compute_ms":58240.508267875004,"copy_ms":0.0,"cpu_landed_ms":0.0,"cpu_pairs":1089842.3125,"cpu_ready_ms":0.0,"graphs":188.625,"inputs_ms":188.936071875,"read_wait_ms":0.0,"readback_ms":83.3804933125,"seg_compute_cpu_ms":21728.2971886875,"seg_compute_gpu_ms":28.929526562499998,"seg_pairs":162988.5,"segs_cpu":94.0,"segs_gpu":1.0,"streamer_ms":90011.89425525,"total_ms":149114.650414625},"prefill_s":2406.114191485,"prefill_tok_s":13.61863876451197,"prefill_tokens":32768,"ram_hugepages":null,"rss_bytes":84651196416,"ubatch":2048,"ubatch_s":[106.522367125,154.912758556,138.15974231,199.474659829,134.144153698,173.591504417,146.909684118,147.510934403,135.151139223,153.583458028,134.364120447,155.949058873,149.950327243,173.93438666,164.428039515,137.5278239]}
+test exit_regime ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2489.01s
+
+cotenant CO-TENANT: host 48.41840348668724 cores busy, container 20.3485950705331, engine 19.560812656647915, outside 28.06980841615414, smt pairs 0 (28.1 cores busy outside the container (limit 14.4 of 96 physical))
+[06:15:04] done main-overlap-repeat rc=0
+[06:15:04] start llamacpp-cache-dio-poll0-repeat s0.95: cache 10458 MiB, load mode dio
+llamacpp-cache-s0.95 decode tok/s: None ok: False RuntimeError('llama-server exited (-9), see /root/tetraeder/runs/vast/llamacpp_cache/exit-llamacpp-cache-s0.95-dio-poll0-repeat-044157.log')
+cotenant unknown: host None cores busy, container None, engine None, outside None, smt pairs None (no host CPU counters for the decode phase)
+[06:17:16] done llamacpp-cache-dio-poll0-repeat s0.95 rc=1
+otelcol: stopped
+otelcol: compressed /root/tetraeder/runs/vast/otel/20261113-044157 1501872 kB -> 27840 kB
+otlp-merge exit-main-overlap-044157.json: 678 rows, 18 fields differ
+otlp-merge exit-main-overlap-repeat-044157.json: 833 rows, 19 fields differ
+otlp-merge exit-smoke-044157.json: 47 rows, 15 fields differ
+EXIT_RUN_DONE rc=0
