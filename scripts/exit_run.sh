@@ -239,6 +239,21 @@ fi
     echo "[$(date +%T)] done gpu-tests rc=$?"
     tail -20 "$date_dir/gpu-tests-$stamp.log"
   fi
+  # a session that lists KT stages exists for the KT pairing: a failed KT build ends it before the model download
+  # finishes, instead of running builder-only stages (20261113h: no kt-kernel wheel for the RTX 5090). KT_OPTIONAL=1
+  # keeps the old behaviour
+  if [ -n "${kt_build_pid:-}" ] && [ "${KT_OPTIONAL:-0}" != 1 ]; then
+    wait "$kt_build_pid"
+    kt_rc=$?
+    kt_build_pid=
+    if [ "$kt_rc" != 0 ]; then
+      echo "[$(date +%T)] KT_BUILD_FAILED rc=$kt_rc: ending the session (see runs/vast/ktransformers_build.log)"
+      cp -p runs/vast/ktransformers_build.log "$date_dir/" 2> /dev/null
+      touch "$date_dir/DONE"
+      echo "EXIT_RUN_DONE rc=32"
+      exit 0
+    fi
+  fi
   echo "[$(date +%T)] waiting for the model"
   for _ in $(seq 1 1440); do bash scripts/log_done.sh runs/vast/fetch_exit.log FETCH_DONE && break; sleep 5; done
   grep FETCH_DONE runs/vast/fetch_exit.log | tail -1
