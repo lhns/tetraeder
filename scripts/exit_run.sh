@@ -18,9 +18,29 @@
 # each; unset, in code order (all stages). The block below runs once per listed stage with ONLY set to its name.
 order=""
 for _s in ${STAGES:-}; do [[ " $order " == *" $_s "* ]] || order="$order $_s"; done
+# kt_variant <stage suffix without -repeat>: the KT_KERNEL_CPU_VARIANT value a ktransformers stage forces, empty for
+# kt-kernel's own pick. Its names are in _cpu_detect.py (v0.7.2); "avx512" is not one and is silently ignored.
+# avx512_vbmi is what it picks itself on Ice Lake (20261111a) and runs on Sapphire Rapids, whose own pick is amx
+# (20261113d); KT_AVX512_VARIANT=avx512_bf16 (or another name) overrides
+kt_variant() {
+  case "$1" in
+    avx512) echo "${KT_AVX512_VARIANT:-avx512_vbmi}" ;;
+    repeat) ;;
+    *) echo "$1" ;;
+  esac
+}
 # DRY_RUN=1 prints the sequence and stops before any side effect
 if [ "${DRY_RUN:-0}" = 1 ]; then
   echo "stage order:${order:- (code order, all stages)}"
+  for _s in $order; do
+    case "$_s" in
+      ktransformers*)
+        _v=${_s#ktransformers}
+        _v=${_v#-}
+        echo "$_s forces KT_KERNEL_CPU_VARIANT=$(kt_variant "${_v%-repeat}")"
+        ;;
+    esac
+  done
   exit 0
 fi
 exec 8> /root/tetraeder_exit_run.lock; flock -n 8 || exit 0
@@ -48,7 +68,7 @@ if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
   [ -n "$archs" ] && export TETRAEDER_CUDA_ARCHS="$archs"
 fi
 model="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}/Qwen__Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf"
-threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"
+threads="${THREADS:-$(bash scripts/kt_threads.sh "${STAGES:-ktransformers}")}"
 threads=$(bash scripts/clamp_threads.sh "$threads")
 # RAM the container may use: the cgroup limit if set, else MemTotal. The exit test needs a model larger than RAM, but
 # Vast's cgroup limit can exceed the offer's RAM (183 GB on a "126 GB" offer, model 142 GB). So a balloon process
@@ -192,7 +212,7 @@ want() {
   fits "$1"
 }
 # KTransformers installs while the model downloads (its own log and lock)
-if want ktransformers || want ktransformers-avx2 || want ktransformers-repeat; then
+if want ktransformers || want ktransformers-avx2 || want ktransformers-repeat || want ktransformers-avx512 || want ktransformers-avx512-repeat; then
   bash scripts/ktransformers_build.sh 8>&- &
   kt_build_pid=$!
 fi
@@ -369,11 +389,12 @@ colibri() {
 
 # ktransformers [avx2|avx512|avx512-repeat|repeat]: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads
 # and RAM; with avx2 (stage ktransformers-avx2) kt-kernel is forced to its AVX2 kernels, as our portable ggml build
-# runs; repeat (stage ktransformers-repeat) is the second default run of a noise-band pair
+# runs; avx512 forces avx512_vbmi (the script marks the result invalid if kt-kernel logs another variant); repeat (stage ktransformers-repeat) is the second default run of a noise-band pair
 ktransformers() {
   local name=ktransformers${1:+-$1} variant=${1:-}
   variant=${variant%-repeat}
   [ "$variant" = repeat ] && variant=
+  variant=$(kt_variant "$variant")
   want "$name" || return 0
   [ -n "${kt_build_pid:-}" ] && wait "$kt_build_pid"
   kt_build_pid=
