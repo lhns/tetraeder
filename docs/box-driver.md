@@ -28,6 +28,7 @@ The driver picks the box by these rules and does not ask the owner. The coordina
 3. **Fit before create:** download (at 100 MB/s, about 25 min) plus the measured stage budgets (`scripts/stage_budget.sh`) must end by box age 2h25m. Drop stages from B1_STAGES up front rather than letting the deadline guard cut the one that matters.
 4. **Abort gates** (destroy after fetching what exists, then try the next offer once):
    - at SSH: missing ISA flags, too little `memory.max`, or no `cuda: ok`;
+   - status `loading` (image pull) or SSH refused for more than 10 minutes after create (13f lost 40 minutes to three such boxes: host 213498 rejected the key on direct and proxy ports, host 546840 never finished the pull; skip both);
    - model download under 100 MB/s after its first 5 minutes;
    - smoke with `cotenant_ok` false: recheck for 10 minutes, then destroy (13c paid 80 minutes for invalid stages).
 5. **Before paying for a stage:** grep docs/m1-open.md and ADR 0045 for it; a configuration already recorded as impossible (llama.cpp dio under the 91 GB balloon OOMs at load) is not rerun. Run `STAGES="..." pytest tests/test_stage_names.py` once it exists.
