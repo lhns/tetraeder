@@ -51,7 +51,7 @@ verify_hook = "scripts/box_verify.sh"
 dirs = ["bench/results"]
 done_marker = "DONE"
 extra = ["runs/vast", "bench/golden"]
-include = ["*.json", "*.jsonl", "DONE", "*.log"]
+include = ["*.json", "*.jsonl", "DONE", "*.log", "*.zst"]
 whole = ["bench/golden"]
 exclude = ["*.gguf", "*/target/*"]
 

@@ -13,6 +13,7 @@ Stdlib only: the box runs the system python3, often with -I.
 import bisect
 import json
 import os
+import subprocess
 import urllib.request
 
 SCOPE = "tetraeder.host.sampler"
@@ -246,13 +247,48 @@ def points_of(req):
                            "t_ns": int(dp.get("timeUnixNano", 0)), "value": value}
 
 
+def open_lines(path):
+    """Text lines of a collector file, plain or .zst (ADR 0060 addendum). Zstd goes through the stdlib module
+    (Python 3.14) or the zstd CLI, which the box image has; raises OSError when neither can read it."""
+    if not str(path).endswith(".zst"):
+        return open(path, encoding="utf-8")
+    try:
+        from compression import zstd
+        return zstd.open(path, "rt", encoding="utf-8")
+    except ImportError:
+        pass
+    try:
+        proc = subprocess.Popen(["zstd", "-dc", "--", str(path)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                text=True, encoding="utf-8")
+    except FileNotFoundError as e:
+        raise OSError("zstd CLI missing") from e
+    return _Pipe(proc)
+
+
+class _Pipe:
+    """Context manager over a zstd -dc process's stdout."""
+
+    def __init__(self, proc):
+        self.proc = proc
+
+    def __iter__(self):
+        return iter(self.proc.stdout)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.proc.stdout.close()
+        self.proc.wait()
+
+
 def read_points(paths, keep=None):
-    """Points of OTLP JSON-lines files (the collector's file exporter), sampler and hostmetrics series only.
+    """Points of OTLP JSON-lines files (the collector's file exporter), plain or .zst, sampler and hostmetrics series only.
     keep(t_s) -> bool limits them to the windows wanted. Unparseable lines (a cut final line) are skipped."""
     out = []
     for path in paths:
         try:
-            f = open(path, encoding="utf-8")
+            f = open_lines(path)
         except OSError:
             continue
         with f:

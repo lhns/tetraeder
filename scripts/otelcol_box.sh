@@ -3,6 +3,7 @@
 #   scripts/otelcol_box.sh start <dir>   OTLP JSON-lines files and the collector log go to <dir>; returns once the
 #                                        OTLP HTTP port answers (exit 1 if it does not: the run goes on without it)
 #   scripts/otelcol_box.sh stop          SIGTERM to the collector's process group, waits until it has flushed and exited
+# stop also compresses the finished files with zstd (ADR 0060 addendum); readers take plain and .zst.
 # One collector per box: a running one is reused, and its own lock keeps a relaunch from starting a second one.
 # OTELCOL_BIN overrides the binary (default /opt/otelcol/otelcol-contrib, scripts/otelcol_install.sh), OTELCOL_STATE
 # the directory of its pidfile and lock (default /root; the CI check uses a temp dir).
@@ -10,6 +11,7 @@ cd "$(dirname "$0")/.." || exit 1
 bin="${OTELCOL_BIN:-/opt/otelcol/otelcol-contrib}"
 pidfile="${OTELCOL_STATE:-/root}/tetraeder_otelcol.pid"
 lock="${OTELCOL_STATE:-/root}/tetraeder_otelcol.lock"
+dirfile="${OTELCOL_STATE:-/root}/tetraeder_otelcol.dir"
 running() { [ -s "$pidfile" ] && kill -0 -- "-$(cat "$pidfile")" 2> /dev/null; }
 case "${1:-}" in
   start)
@@ -20,6 +22,7 @@ case "${1:-}" in
     fi
     [ -x "$bin" ] || { echo "otelcol: $bin missing (scripts/otelcol_install.sh)"; exit 1; }
     mkdir -p "$dir"
+    echo "$dir" > "$dirfile"
     # its own session, so stop can signal the collector and flock together; the session leader writes the pidfile
     # (its pid is the process group). fd 8 (the caller's lock) closed. GOMAXPROCS and GOMEMLIMIT bound it beside an
     # engine at its CPU quota. An empty provenance value would stop the resource processor from building, so empty
@@ -55,8 +58,17 @@ case "${1:-}" in
     rm -f "$pidfile"
     echo "otelcol: stopped"
     ;;
+  compress)
+    # the collector is down, so every file is final; 2 threads (the box has a CPU quota). A failure leaves the plain file.
+    dir=${2:-$(cat "$dirfile" 2> /dev/null)}
+    [ -d "$dir" ] || exit 0
+    command -v zstd > /dev/null 2>&1 || { echo "otelcol: zstd missing, files stay plain"; exit 0; }
+    before=$(du -sk "$dir" | cut -f1)
+    find "$dir" -name '*.jsonl' -size +0 -exec zstd -q -T2 -10 --rm {} + || echo "otelcol: zstd failed on some file"
+    echo "otelcol: compressed $dir ${before} kB -> $(du -sk "$dir" | cut -f1) kB"
+    ;;
   *)
-    echo "usage: otelcol_box.sh start <dir> | stop" >&2
+    echo "usage: otelcol_box.sh start <dir> | stop | compress [dir]" >&2
     exit 2
     ;;
 esac

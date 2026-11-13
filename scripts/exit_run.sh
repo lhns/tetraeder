@@ -728,6 +728,7 @@ fi
 if [ -n "${TETRAEDER_HOST_OTLP:-}" ]; then
   {
     bash scripts/otelcol_box.sh stop 8>&-
+    bash scripts/otelcol_box.sh compress 8>&-
     python3 scripts/engine_sample.py otlp-merge --otel-dir runs/vast/otel --results "$date_dir" || echo "otlp-merge failed"
   } >> "$log" 2>&1
 fi
