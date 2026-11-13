@@ -367,11 +367,12 @@ colibri() {
   echo "[$(date +%T)] done colibri-$1 rc=$r"
 }
 
-# ktransformers [avx2|repeat]: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads
+# ktransformers [avx2|avx512|avx512-repeat|repeat]: the KTransformers baseline (scripts/ktransformers_exit.sh), deep profile, same threads
 # and RAM; with avx2 (stage ktransformers-avx2) kt-kernel is forced to its AVX2 kernels, as our portable ggml build
 # runs; repeat (stage ktransformers-repeat) is the second default run of a noise-band pair
 ktransformers() {
   local name=ktransformers${1:+-$1} variant=${1:-}
+  variant=${variant%-repeat}
   [ "$variant" = repeat ] && variant=
   want "$name" || return 0
   [ -n "${kt_build_pid:-}" ] && wait "$kt_build_pid"
@@ -688,6 +689,10 @@ EOF
       exit_regime main-overlap-repeat 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_IO_SERVICE=1 TETRAEDER_EXIT_OVERLAP=1 || rc=30
       ktransformers repeat
       ktransformers avx2
+      # opt-in: kt-kernel forced to avx512 (on Sapphire Rapids its own pick is amx, 20261113d), with its repeat
+      for _v in avx512 avx512-repeat; do
+        [[ " ${STAGES:-} " == *" ktransformers-$_v "* ]] && ktransformers "$_v"
+      done
       llamacpp_cache repeat
       # the second pass of the dio pair, only when STAGES names it
       [[ " ${STAGES:-} " == *" llamacpp-cache-dio-repeat "* ]] && llamacpp_cache dio-repeat
