@@ -1,0 +1,123 @@
+name: box-rehearsal
+
+# Rehearses what a Vast box does before any stage runs, without a box: the taxameter push tarball, the provision hook's
+# patch step (scripts/ensure_patches.sh) in a tree with no .git, a build of ggml-sys there, and the stage names
+# exit_run.sh accepts. Every error found here is one the box would have billed for.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "taxameter.toml"
+      - "patches/**"
+      - "vendor/PIN"
+      - "crates/ggml-sys/**"
+      - "tests/test_stage_names.py"
+      - "pyproject.toml"
+      - ".github/workflows/box-rehearsal.yml"
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "taxameter.toml"
+      - "patches/**"
+      - "vendor/PIN"
+      - "crates/ggml-sys/**"
+      - "tests/test_stage_names.py"
+      - "pyproject.toml"
+      - ".github/workflows/box-rehearsal.yml"
+  workflow_dispatch:
+    inputs:
+      stages:
+        description: Stage list (B1_STAGES) to check against exit_run.sh
+        type: string
+        default: ""
+
+concurrency:
+  group: box-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # as the box (scripts/exit_run.sh): one native CPU variant of ggml
+  TETRAEDER_GGML_NATIVE: "ON"
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      # no submodules: the box does not get vendor/llama.cpp either
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Stage names (exit_run.sh, session.sh, committed session logs, STAGES)
+        env:
+          STAGES: ${{ inputs.stages }}
+        run: uv run pytest -q tests/test_stage_names.py
+
+      - name: Push tarball (taxameter git_archive, at most 5 MB)
+        run: uv run python scripts/push_tarball.py "$RUNNER_TEMP/push.tgz" 5
+
+      - name: Unpack as the box sees it (no .git)
+        run: |
+          mkdir "$RUNNER_TEMP/box"
+          tar -xzf "$RUNNER_TEMP/push.tgz" -C "$RUNNER_TEMP/box"
+          test ! -e "$RUNNER_TEMP/box/.git"
+          echo "BOX=$RUNNER_TEMP/box" >> "$GITHUB_ENV"
+
+      - name: Shell syntax of every pushed script
+        working-directory: ${{ env.BOX }}
+        run: for f in scripts/*.sh; do bash -n "$f" || exit 1; done
+
+      - name: Dry run of exit_run.sh with a stage list
+        working-directory: ${{ env.BOX }}
+        env:
+          STAGES: ${{ inputs.stages || 'smoke disk-curve main-prefetch ktransformers llamacpp-cache' }}
+        run: DRY_RUN=1 bash scripts/exit_run.sh
+
+      - name: Patch queue (ensure_patches.sh, as the provision hook)
+        working-directory: ${{ env.BOX }}
+        run: bash scripts/ensure_patches.sh
+
+      - name: llama.cpp is at the pin with every patch applied
+        working-directory: ${{ env.BOX }}
+        run: |
+          pin=$(sed -n 's/^commit=//p' vendor/PIN)
+          sub=vendor/llama.cpp
+          # the patches commit nothing: HEAD is the pin, the patches sit in the index
+          head=$(git -C "$sub" rev-parse HEAD)
+          [ "$head" = "$pin" ] || { echo "vendor/llama.cpp is at $head, PIN says $pin"; exit 1; }
+          n=0
+          while IFS= read -r line || [ -n "$line" ]; do
+            p="${line%%#*}"; p="$(echo "$p" | xargs)"
+            [ -z "$p" ] && continue
+            git -C "$sub" apply --reverse --check "$PWD/patches/$p" || { echo "patch not applied: $p"; exit 1; }
+            n=$((n + 1))
+          done < patches/series
+          [ "$n" -gt 0 ] || { echo "empty patches/series"; exit 1; }
+          echo "ok: $n patches applied at $pin"
+          # a second run must find everything applied (the exit_run.sh start-up)
+          bash scripts/ensure_patches.sh | tee "$RUNNER_TEMP/second.log"
+          grep -q 'already applied' "$RUNNER_TEMP/second.log"
+
+      # A full release build of the workspace takes far longer than the rest of this job and adds little the box does
+      # not hit first: what the box builds is ggml (build.rs, cmake, the patched sources, native ISA) and the crates.
+      # So: build ggml-sys in release (breaks on a patch or a missing pushed file), then cargo check the workspace and
+      # its tests against that build.
+      - name: Toolchain
+        working-directory: ${{ env.BOX }}
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: libclang (bindgen), cmake, ninja
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.BOX }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build ggml-sys (release)
+        working-directory: ${{ env.BOX }}
+        run: cargo build --release -p tetraeder-ggml-sys
+      - name: Check the workspace and its tests (release)
+        working-directory: ${{ env.BOX }}
+        run: cargo check --release --workspace --all-targets
