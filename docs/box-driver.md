@@ -29,7 +29,7 @@ The driver picks the box by these rules and does not ask the owner. The coordina
 4. **No qualifying offer:** report and stop; the coordinator rechecks the offers every 30 minutes and starts a new driver when one appears. Do not relax a requirement to fill the slot.
 5. **Abort gates** (destroy after fetching what exists, then try the next offer once):
    - at SSH: missing ISA flags, too little `memory.max`, or no `cuda: ok`;
-   - status `loading` (image pull) or SSH refused for more than 10 minutes after create (13f lost 40 minutes to three such boxes: host 213498 rejected the key on direct and proxy ports, host 546840 never finished the pull; skip both; host 109790 stayed loading twice on 13j, skip it too);
+   - status `loading` (image pull) or SSH refused for more than 10 minutes after create (13f lost 40 minutes to three such boxes: host 213498 rejected the key on direct and proxy ports, host 546840 never finished the pull; skip both; host 109790 stayed loading twice on 13j and host 39788 once on 13l, skip both);
    - model download under 100 MB/s after its first 5 minutes;
    - KT sessions: `runs/vast/ktransformers_build.log` must end ok within 15 minutes of launch; a failed KT build ends the point-3 session (destroy, do not run builder-only stages);
    - smoke with `cotenant_ok` false: recheck for 10 minutes, then destroy (13c paid 80 minutes for invalid stages).
