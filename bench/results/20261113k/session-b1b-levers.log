@@ -1,0 +1,11 @@
+=== RUN 2026-11-13T15:02:21 session.sh ===
+[15:02:22] session b1b-levers: results bench/results/20261113k, deadline 17:17:22 (135 min left)
+llama.cpp cache: 10458 MiB, cpu share 0.95
+[15:02:22] start exit_run
+patches: already applied
+[15:02:22] balloon pid 5807: oom_score_adj -1000 not allowed (no CAP_SYS_RESOURCE); engines run at 1000
+[16:35:04] done rc=0
+[16:35:04] start noise
+skip noise: NOISE_STAGE=0
+[16:35:04] done rc=0
+[16:35:04] SESSION_DONE (42 min before the deadline)
