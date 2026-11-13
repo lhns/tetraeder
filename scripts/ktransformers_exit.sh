@@ -14,8 +14,13 @@
 # tokenizer.
 # Host sampling (scripts/engine_sample.py, same columns as the builder in exit_run.sh): disk reads, major faults, CPU,
 # GPU, RSS and page cache, split into prefill and decode, written under "host" in the result JSON next to
-# kt_cpu_variant (the variant kt-kernel picked). KT_KERNEL_CPU_VARIANT=avx2 forces the AVX2 kernels (kt-kernel's
-# _cpu_detect.py reads it); HOST_DISK_DEV (MAJ:MIN) skips the disk probe.
+# kt_cpu_variant (the variant kt-kernel picked). KT_KERNEL_CPU_VARIANT forces a variant (kt-kernel's _cpu_detect.py
+# reads it; v0.7.2 accepts amx, avx512_bf16, avx512_vbmi, avx512_vnni, avx512_base, avx2, and silently ignores anything
+# else). A forced run whose logged variant differs is written with ok=false; HOST_DISK_DEV (MAJ:MIN) skips the disk probe.
+case "${KT_KERNEL_CPU_VARIANT:-ok}" in
+  ok | amx | avx512_bf16 | avx512_vbmi | avx512_vnni | avx512_base | avx2) ;;
+  *) echo "KT_KERNEL_CPU_VARIANT=$KT_KERNEL_CPU_VARIANT is not a kt-kernel variant (kt-kernel would ignore it)" >&2; exit 2 ;;
+esac
 exec 8> /root/tetraeder_ktransformers_exit.lock; flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
 [ $# -ge 4 ] || { echo "usage: $0 <model-first-shard> <threads> <ram-limit-bytes> <out-json> [deep|short]" >&2; exit 2; }
@@ -294,8 +299,15 @@ d = {
 }
 # a missing speed number is a failed baseline, not a slow one
 d["ok"] = rc == 0 and d["prefill_tok_s"] is not None and d["decode_tok_s"] is not None
+# kt-kernel ignores an unknown KT_KERNEL_CPU_VARIANT without a word and falls back to its own pick: a forced run whose
+# logged variant differs is not the run that was asked for
+d["kt_cpu_variant_ok"] = not variant_env or d["kt_cpu_variant"] == variant_env.lower()
+if not d["kt_cpu_variant_ok"]:
+    d["ok"] = False
+    d["invalid_reason"] = f"KT_KERNEL_CPU_VARIANT={variant_env} forced but kt-kernel logged {d['kt_cpu_variant']}"
+    print("INVALID: " + d["invalid_reason"], file=sys.stderr)
 json.dump(d, open(out, "w"), indent=1)
-print(json.dumps({k: d[k] for k in ("ok", "prompt_tokens", "decode_tokens", "prefill_tok_s", "decode_tok_s", "engine_rc")}))
+print(json.dumps({k: d[k] for k in ("ok", "prompt_tokens", "decode_tokens", "prefill_tok_s", "decode_tok_s", "engine_rc", "kt_cpu_variant_ok")}))
 sys.exit(0 if d["ok"] else 1)
 EOF
 r=$?
