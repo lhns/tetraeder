@@ -1,0 +1,10 @@
+=== RUN 2026-11-13T10:35:27 session.sh ===
+[10:35:27] session b1-exit: results bench/results/20261113e, deadline 11:40:27 (65 min left)
+no tuned CPU share (run b3-planner first): using 0.5
+llama.cpp cache: 10458 MiB, cpu share 0.5
+[10:35:27] start exit_run
+apply 0001-msvc-avx512-vbmi-score.patch
+apply 0002-iqk-avx512-q4k-q6k-decode.patch
+apply 0003-cpu-registry-threadpool-pause.patch
+ok: 2e0d86b + 3 patches
+[10:35:29] balloon pid 6038: oom_score_adj -1000 not allowed (no CAP_SYS_RESOURCE); engines run at 1000
