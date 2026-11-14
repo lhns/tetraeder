@@ -3,6 +3,7 @@
 //!
 //! Phase 2: the Qwen3 MoE builder of ADR 0030 ([`Qwen3Moe`]).
 
+pub mod attn;
 pub mod convert;
 pub mod cpu_poll;
 pub mod experts;
@@ -12,6 +13,7 @@ pub mod hparams;
 pub mod qwen3moe;
 pub mod upload;
 
+pub use attn::{AttnHparams, F16_NEG_INF, KV_PAD, SeqEval, causal_mask};
 pub use convert::{ConvertOptions, ConvertStats};
 pub use cpu_poll::CpuPoll;
 pub use experts::{ExpertStats, IoCounters, LayerExpertStats, MissPolicy, RoutingStep};
