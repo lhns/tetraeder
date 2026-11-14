@@ -434,7 +434,7 @@ llamacpp_cache() {
   local name=llamacpp-cache${1:+-$1} s mode=${LOAD_MODE:-auto} shares=${CPU_SHARES:-0 0.5 0.9} tuned t0 rc_c extra=(env)
   [[ "${1:-}" == dio* ]] && mode=dio
   # variants: poll0 passes POLL=0 (sleeping ggml threads); fp8 passes KV_TYPE (the cache script's knob; set
-  # LLAMACPP_FP8_KV_TYPE, the default "fp8" is a placeholder until the real type name is confirmed)
+  # LLAMACPP_FP8_KV_TYPE, default f8_e4m3, the type llama.cpp #28392 adds)
   case "${1:-}" in
     poll0* | dio-poll0*) extra+=(POLL=0) ;;
     fp8*) extra+=(KV_TYPE="${LLAMACPP_FP8_KV_TYPE:-f8_e4m3}") ;;
