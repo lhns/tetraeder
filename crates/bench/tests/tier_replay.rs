@@ -228,3 +228,55 @@ fn committed_tier_replays_are_current() {
         eprintln!("skip: no tier-replay.json with its trace committed");
     }
 }
+
+/// `replay --decode-window` (ADR 0050 (c) addendum 2026-11-14): windows of the decode bytes on
+/// every outcome, global policies included; without the flag the outcomes are as before.
+#[test]
+fn decode_windows_split_the_decode_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (trace, plain, windowed) = (
+        dir.path().join("t.trace"),
+        dir.path().join("plain.json"),
+        dir.path().join("windowed.json"),
+    );
+    write_trace(&trace);
+    let policies = [
+        Policy::Lru,
+        Policy::GlobalLru,
+        Policy::GlobalFreq { share: 0.5 },
+        Policy::GlobalBelady,
+    ];
+    let st = &[VramPolicy::Static][..];
+    replay::run(&trace, &[0, 2], &[2], &policies, st, &plain).unwrap();
+    let extras = replay::Extras {
+        decode_window: Some(5),
+        ..replay::Extras::default()
+    };
+    replay::run_with(&trace, &[0, 2], &[2], &policies, st, &windowed, &extras).unwrap();
+    let read =
+        |p: &Path| -> Value { serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap() };
+    let (a, b) = (read(&plain), read(&windowed));
+    for (x, y) in a["outcomes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(b["outcomes"].as_array().unwrap())
+    {
+        assert!(x.get("decode_windows").is_none());
+        let w: Vec<f64> = y["decode_windows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect();
+        // 12 decode tokens in windows of 5, 5 and 2
+        assert_eq!(w.len(), 3, "{y}");
+        let total = (w[0] * 5.0 + w[1] * 5.0 + w[2] * 2.0) / 12.0;
+        let want = y["decode"]["disk_bytes_per_token"].as_f64().unwrap();
+        assert!((total - want).abs() < 1e-9, "{total} {want}");
+        let mut y = y.clone();
+        y.as_object_mut().unwrap().remove("decode_windows");
+        assert_eq!(x, &y);
+    }
+    assert_eq!(replay::decode_windows(&[4, 2, 6], 2), vec![3.0, 6.0]);
+}

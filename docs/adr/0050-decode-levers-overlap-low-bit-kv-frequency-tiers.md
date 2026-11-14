@@ -191,3 +191,29 @@ The 235B routing trace of `20261112c` (replay `bench/results/20261112c/replay-23
 - Results are unchanged: logits are bitwise those of LRU on the CPU backend, also under overlap and in tiers too small for the pins (`replay_fidelity.rs`). Pin invariants are property tests (`freq_pin_props.rs`).
 - Metrics (rule 6): no new series. The effect shows in `tetraeder.expert.cache.requests` for tier `ram` (hit rate) and the disk read bytes already on the panel; no alert fits.
 - To confirm on a slow disk: stage `main-overlap-ramfreq` (`TETRAEDER_EXIT_RAM_POLICY=freq:0.5`), paired with `main-overlap`, with repeats.
+
+## Addendum 2026-11-14: RAM-tier policies across layers in the replay (branch `track-ram-tier-policy`)
+
+Question: on `20261113o` the builder reads 561 MB per decode token where KTransformers reads about 160 MB with the same RAM. KTransformers runs experts in place from an mmap, so the page cache acts as one pool for all layers. Do our fixed per-layer RAM slots (77 of 128 per layer at the 83 GB tier) miss more than one pool across layers would?
+
+What the committed results already show:
+
+- 561 MB is the mean of 64 decode tokens. The four 16-token windows read 1147, 549, 215 and 335 MB per token, the same in every session since `20261111h`.
+- The 256-token trace run of `20261110c` (prefetch, no overlap) read 262 MB per token. Its replay gives 262.3 for `lru` at VRAM 10, RAM 77 with prefetch, and a decode RAM hit rate of 0.9637 against 0.9637 measured. The same configuration at 64 tokens (`main-prefetch`, same session) read 549 MB per token, so tokens 64 to 255 read about 167 MB per token. Most of the excess is in the first 32 tokens after the prefill, not in the steady state.
+- KTransformers' host disk counters show the same shape on `20261113o`: 508, 330 and 135 MB per token in its first three windows (160 over the run), and 612, 1048, 645 and 208 in the repeat (314 over the run). Its 160 is the better of two runs that differ by 2x, not a steady rate.
+- On the same trace, per-layer `belady` without prefetch reads 39.9 MB per token against 186.8 for `lru` without prefetch. Per-layer slots do not bound the result; the eviction choice and the tier's contents when decode starts do.
+
+Decision: replay only, no engine change in this branch.
+
+- Global policies:
+  - `glru`: one byte budget, `ram_slots x sum(expert_bytes)` (82.59 GB at 77, the per-layer tier's bytes; experts are 10.6 or 12.2 MB depending on the layer), LRU over every (layer, expert) in both phases (`slots::GlobalSlots`). It never evicts a pinned expert (a read in flight or a frequency pin) or an expert of the current chunk. While a step places its prefetch reads for later layers, the step's own RAM hits are pinned too; per layer the tables are separate, so this never came up. A miss with too few evictable bytes bypasses. Chunks stay `ram_slots` experts, and so does the prefetch limit per layer.
+  - `gfreq:<share>`: `glru` plus, in decode, the top experts by routing count across all layers, leaving out the VRAM hot set, pinned up to `share` of the budget. Room for a decode step and its reads in flight always stays unpinned: `4 x n_used` experts of the largest size, covering the chunk, two reads for the next layer (depth 2 from the layer before, depth 1 from this one) and one for the layer after. Global outcomes count the lookups that still found no room (`ram_bypasses`, absent at zero). Counts compare across layers because every layer routes the same pairs. Refreshed as `freq`. `gfreq:1` is the pure frequency policy; `gfreq:0.5` is LRU around a frequency core.
+  - `gbelady`: the offline optimum over the pool, without prefetch. It is the bound for the global policies.
+  - The pool also runs through the prefill, so the contents at the switch are those that a pooled tier would really hold. The first 64 tokens therefore mix the switch state with decode eviction; read the steady state from the later windows.
+- Output:
+  - Global outcomes add `ram_layer_residents` (min, mean and max experts per layer at the end), which shows how unevenly the pool spreads.
+  - `--decode-window W` adds `decode_windows` (disk bytes per token for each W decode tokens) to every outcome, so the replay compares with the exit JSON's `decode_windows`.
+  - Outcomes of the existing policies and `REPLAY_VERSION` are unchanged.
+- Trace: no 235B trace survives. `*.trace` is git-ignored, and the traces of `20261110c` and `20261112c` stayed on boxes that are now destroyed. The `trace` stage of `exit_run.sh` now also runs `--vram 10 --ram 77 --policies lru,freq:0.5,glru,gfreq:0.5,gfreq:1,belady,gbelady --decode-window 16` into `replay-235b-ram.json`. It keeps a zstd copy of the trace in the results directory, which is fetched with it, git-ignored and copied to the main checkout's `runs/traces/`.
+- Calibration gate: `lru`'s 16-token windows (VRAM 10, RAM 77, prefetch on) must come within 5% of the trace run's own `decode_windows`, which the stage now records (`TETRAEDER_EXIT_DECODE_WINDOWS=16`), before any policy delta counts. The first four should also lie near `main-overlap`'s 1147, 549, 215 and 335 MB. If they do not, overlap changes the reads and the replay misses that.
+- Build threshold: build a pool across layers in the engine only if `glru` or `gfreq` reads at most half the bytes per decode token (prefetch on, first 64 tokens and all 256) of the best per-layer policy. A shared pool needs a different arena (one slab pool with per-layer tables) and new metrics: hit rate, bytes per token, a panel and an alert, per rule 6. If only the warm-up window differs, the cheaper lever is the tier's contents at the switch, for example frequency pins taken at the end of the prefill.

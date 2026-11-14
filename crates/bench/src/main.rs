@@ -107,7 +107,8 @@ enum Cmd {
         /// RAM slots per layer, comma separated.
         #[arg(long, value_delimiter = ',', required = true)]
         ram: Vec<u32>,
-        /// `lru`, `freq:<share>` or `belady`, comma separated.
+        /// `lru`, `freq:<share>`, `belady`, or one budget across layers: `glru`,
+        /// `gfreq:<share>`, `gbelady` (ADR 0050 (c) addendum 2026-11-14); comma separated.
         #[arg(
             long,
             value_delimiter = ',',
@@ -124,6 +125,10 @@ enum Cmd {
         /// (`tetraeder-plan explain --time-model`, ADR 0056); adds `timed` to the output.
         #[arg(long)]
         timed: Option<PathBuf>,
+        /// Add `decode_windows` (disk bytes per token over each this many decode tokens) to every
+        /// outcome.
+        #[arg(long)]
+        decode_window: Option<u32>,
     },
     /// A disk's read rate by queue depth through the I/O service (ADR 0056): random aligned
     /// chunks of one file, direct I/O, `workers = depth`; per depth bytes per second and p50 and
@@ -317,6 +322,7 @@ fn real_main() -> Result<u8> {
             vram_policy,
             out,
             timed,
+            decode_window,
         } => {
             let policies = policies
                 .iter()
@@ -328,14 +334,18 @@ fn real_main() -> Result<u8> {
                 .map(|p| tetraeder_memory::replay::sim::VramPolicy::parse(p))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(anyhow::Error::msg)?;
-            let n = replay::run_timed(
+            let extras = replay::Extras {
+                time_model: timed.as_deref(),
+                decode_window,
+            };
+            let n = replay::run_with(
                 &trace,
                 &vram,
                 &ram,
                 &policies,
                 &vram_policies,
                 &out,
-                timed.as_deref(),
+                &extras,
             )?;
             println!("replay: {n} configurations -> {}", out.display());
             Ok(0)

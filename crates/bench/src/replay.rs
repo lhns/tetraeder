@@ -39,6 +39,43 @@ pub fn run_timed(
     out: &Path,
     time_model: Option<&Path>,
 ) -> Result<usize> {
+    let extras = Extras {
+        time_model,
+        ..Extras::default()
+    };
+    run_with(trace_path, vram, ram, policies, vram_policies, out, &extras)
+}
+
+/// Optional parts of the output.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Extras<'a> {
+    /// See [`run_timed`].
+    pub time_model: Option<&'a Path>,
+    /// Adds `decode_windows` to every outcome: disk bytes per token over each this many decode
+    /// tokens (the last window may be shorter), to compare with the exit JSON's windows (ADR 0050
+    /// (c) addendum 2026-11-14).
+    pub decode_window: Option<u32>,
+}
+
+/// Disk bytes per token of each `window` decode steps.
+pub fn decode_windows(step_bytes: &[u64], window: u32) -> Vec<f64> {
+    step_bytes
+        .chunks(window.max(1) as usize)
+        .map(|w| w.iter().sum::<u64>() as f64 / w.len() as f64)
+        .collect()
+}
+
+/// [`run_timed`] with every optional part.
+pub fn run_with(
+    trace_path: &Path,
+    vram: &[u32],
+    ram: &[u32],
+    policies: &[Policy],
+    vram_policies: &[VramPolicy],
+    out: &Path,
+    extras: &Extras,
+) -> Result<usize> {
+    let time_model = extras.time_model;
     let trace =
         Trace::load(trace_path).with_context(|| format!("read trace {}", trace_path.display()))?;
     let fingerprint = fnv1a64(
@@ -86,6 +123,17 @@ pub fn run_timed(
             Some((raw, v))
         }
     };
+    let mut outcome_values = Vec::with_capacity(outcomes.len());
+    for o in &outcomes {
+        let mut v = serde_json::to_value(o)?;
+        if let (Some(w), Some(m)) = (extras.decode_window, v.as_object_mut()) {
+            m.insert(
+                "decode_windows".into(),
+                json!(decode_windows(&o.decode_step_bytes, w)),
+            );
+        }
+        outcome_values.push(v);
+    }
     let mut header = serde_json::to_value(&trace.header)?;
     if let Some(h) = header.as_object_mut() {
         // The profile is the size of the model's routing table: not part of the result.
@@ -108,7 +156,7 @@ pub fn run_timed(
             "policies": policies.iter().map(Policy::name).collect::<Vec<_>>(),
             "vram_policies": vram_policies.iter().map(VramPolicy::name).collect::<Vec<_>>(),
         },
-        "outcomes": outcomes,
+        "outcomes": outcome_values,
     });
     let mut doc = doc;
     if let (Some((model, entries)), Some(d)) = (timed, doc.as_object_mut()) {

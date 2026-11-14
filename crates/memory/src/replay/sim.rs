@@ -12,12 +12,15 @@
 //!
 //! Policies for the RAM tier: [`Policy::Lru`] is the engine as built; [`Policy::Freq`] pins the
 //! most routed experts of the layer on top of LRU; [`Policy::Belady`] is the offline optimum
-//! without prefetch, an upper bound.
+//! without prefetch, an upper bound. The `Global*` policies share one byte budget across layers
+//! (ADR 0050 (c) addendum 2026-11-14).
 
-use super::prefetch_plan;
+use super::prefetch_plan_with;
 use super::trace::{LayerStep, Record, TraceHeader, TraceReader};
 pub use crate::slots::FREQ_REFRESH_STEPS;
-use crate::slots::{Lookup, RamPolicy, SlotCache, Tier, freq_pins, hot_from_counts};
+use crate::slots::{
+    GlobalLookup, GlobalSlots, Lookup, RamPolicy, SlotCache, Tier, freq_pins, hot_from_counts,
+};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
@@ -35,24 +38,39 @@ pub enum Policy {
     Freq { share: f64 },
     /// Evict the resident expert whose next use is farthest, from the trace. No prefetch.
     Belady,
+    /// One budget of `ram_slots x sum(expert_bytes)` across layers, LRU over every
+    /// (layer, expert); pinned experts and the current chunk are never evicted.
+    GlobalLru,
+    /// [`Policy::GlobalLru`] plus, in decode, the most routed experts across all layers (outside
+    /// the VRAM hot set) pinned up to `share` of the budget, always leaving room for one decode
+    /// step and its reads in flight (`4 x n_used` experts); refreshed as [`Policy::Freq`].
+    GlobalFreq { share: f64 },
+    /// [`Policy::Belady`] over the shared budget. No prefetch.
+    GlobalBelady,
+}
+
+fn share_of(s: &str, prefix: &str) -> Option<f64> {
+    s.strip_prefix(prefix)
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| *v > 0.0 && *v <= 1.0)
 }
 
 impl Policy {
-    /// `lru`, `belady` or `freq:<share>`.
+    /// `lru`, `belady`, `freq:<share>`, `glru`, `gbelady` or `gfreq:<share>`.
     pub fn parse(s: &str) -> Result<Policy, String> {
         match s {
             "lru" => Ok(Policy::Lru),
             "belady" => Ok(Policy::Belady),
-            _ => {
-                let share = s
-                    .strip_prefix("freq:")
-                    .and_then(|v| v.parse::<f64>().ok())
-                    .filter(|v| *v > 0.0 && *v <= 1.0)
-                    .ok_or_else(|| {
-                        format!("policy {s:?}: expected lru, belady or freq:<share in (0, 1]>")
-                    })?;
-                Ok(Policy::Freq { share })
-            }
+            "glru" => Ok(Policy::GlobalLru),
+            "gbelady" => Ok(Policy::GlobalBelady),
+            _ => share_of(s, "freq:")
+                .map(|share| Policy::Freq { share })
+                .or_else(|| share_of(s, "gfreq:").map(|share| Policy::GlobalFreq { share }))
+                .ok_or_else(|| {
+                    format!(
+                        "policy {s:?}: expected lru, belady, freq:<share in (0, 1]>, glru, gbelady or gfreq:<share in (0, 1]>"
+                    )
+                }),
         }
     }
 
@@ -61,7 +79,23 @@ impl Policy {
             Policy::Lru => "lru".into(),
             Policy::Freq { share } => format!("freq:{share}"),
             Policy::Belady => "belady".into(),
+            Policy::GlobalLru => "glru".into(),
+            Policy::GlobalFreq { share } => format!("gfreq:{share}"),
+            Policy::GlobalBelady => "gbelady".into(),
         }
+    }
+
+    /// An offline optimum: replayed without prefetch.
+    pub fn is_belady(&self) -> bool {
+        matches!(self, Policy::Belady | Policy::GlobalBelady)
+    }
+
+    /// One budget across layers.
+    pub fn is_global(&self) -> bool {
+        matches!(
+            self,
+            Policy::GlobalLru | Policy::GlobalFreq { .. } | Policy::GlobalBelady
+        )
     }
 }
 
@@ -128,7 +162,7 @@ pub struct Config {
     pub policy: Policy,
     /// The VRAM-tier policy; [`VramPolicy::Static`] is the engine as built.
     pub vram_policy: VramPolicy,
-    /// Replay the recorded predictions as prefetch reads. Ignored by [`Policy::Belady`].
+    /// Replay the recorded predictions as prefetch reads. Ignored by the Belady policies.
     pub prefetch: bool,
 }
 
@@ -190,10 +224,40 @@ pub struct Outcome {
     pub prefetch: bool,
     pub prefill: PhaseOutcome,
     pub decode: PhaseOutcome,
+    /// Global policies: experts per layer in the RAM tier at the end of the replay.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ram_layer_residents: Option<Spread>,
+    /// Global policies: RAM lookups that found no evictable room and read without caching, both
+    /// phases; absent at zero.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ram_bypasses: Option<u64>,
     /// Per layer, RAM-cache `(hits, misses)` over the whole replay including the prefetch's
     /// lookups: what `ExpertStats::layers[i].ram` reports.
     #[serde(skip)]
     pub layer_stats: Vec<(u64, u64)>,
+    /// Disk bytes (synchronous misses and landed prefetches) of each decode step, in order; the
+    /// bench tool folds them into `decode_windows`.
+    #[serde(skip)]
+    pub decode_step_bytes: Vec<u64>,
+}
+
+/// Min, mean and max over layers.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+pub struct Spread {
+    pub min: u32,
+    pub mean: f64,
+    pub max: u32,
+}
+
+impl Spread {
+    fn of(v: impl IntoIterator<Item = u32>) -> Option<Spread> {
+        let v: Vec<u32> = v.into_iter().collect();
+        Some(Spread {
+            min: *v.iter().min()?,
+            mean: f64::from(v.iter().sum::<u32>()) / v.len() as f64,
+            max: *v.iter().max()?,
+        })
+    }
 }
 
 fn is_static_name(s: &str) -> bool {
@@ -203,6 +267,7 @@ fn is_static_name(s: &str) -> bool {
 #[derive(Default, Clone)]
 struct Acc {
     admit_bytes: u64,
+    bypasses: u64,
     steps: u64,
     tokens: u64,
     pairs: u64,
@@ -227,8 +292,9 @@ const DECODE: usize = 1;
 /// What the RAM lookup of one expert did.
 enum Look {
     Hit,
+    /// `evicted`: the `(layer, expert)` that left (another layer only under a global policy).
     Miss {
-        evicted: Option<u32>,
+        evicted: Vec<(usize, u32)>,
     },
     /// Every slot is pinned: the expert is read without being cached.
     Bypass,
@@ -244,6 +310,14 @@ struct Belady {
     layers: Vec<BeladyLayer>,
     times: AccessLog,
     ev: u32,
+    /// [`Policy::GlobalBelady`]: one byte budget instead of `cap` per layer.
+    global: Option<Bytes>,
+}
+
+struct Bytes {
+    per_layer: Vec<u64>,
+    budget: u64,
+    used: u64,
 }
 
 #[derive(Default)]
@@ -279,9 +353,14 @@ impl Belady {
         if l.resident.contains(&e) {
             return Look::Hit;
         }
+        if self.global.is_some() {
+            return self.lookup_global(il, e, chunk);
+        }
         if l.resident.len() < self.cap {
             l.resident.push(e);
-            return Look::Miss { evicted: None };
+            return Look::Miss {
+                evicted: Vec::new(),
+            };
         }
         let victim = (0..self.layers[il].resident.len())
             .filter(|&i| !chunk.contains(&self.layers[il].resident[i]))
@@ -294,16 +373,60 @@ impl Belady {
         match victim {
             Some(i) => {
                 let old = std::mem::replace(&mut self.layers[il].resident[i], e);
-                Look::Miss { evicted: Some(old) }
+                Look::Miss {
+                    evicted: vec![(il, old)],
+                }
             }
             None => Look::Bypass,
         }
+    }
+
+    /// A miss under the shared budget: evict the residents of any layer used farthest ahead
+    /// (never the chunk) until the expert fits; a bypass evicts nothing.
+    fn lookup_global(&mut self, il: usize, e: u32, chunk: &[u32]) -> Look {
+        let g = self.global.as_ref().expect("global budget");
+        let need = g.per_layer[il];
+        let protected = self.layers[il]
+            .resident
+            .iter()
+            .filter(|x| chunk.contains(x))
+            .count() as u64
+            * need;
+        // Evicting everything but the chunk leaves `protected` bytes.
+        if protected + need > g.budget {
+            return Look::Bypass;
+        }
+        let mut evicted = Vec::new();
+        while {
+            let g = self.global.as_ref().expect("global budget");
+            g.used + need > g.budget
+        } {
+            let (l, i) = (0..self.layers.len())
+                .flat_map(|l| (0..self.layers[l].resident.len()).map(move |i| (l, i)))
+                .filter(|&(l, i)| !(l == il && chunk.contains(&self.layers[l].resident[i])))
+                .max_by_key(|&(l, i)| {
+                    (
+                        self.next_use(l, self.layers[l].resident[i]),
+                        std::cmp::Reverse((l, i)),
+                    )
+                })
+                .expect("enough evictable bytes");
+            let old = self.layers[l].resident.swap_remove(i);
+            let g = self.global.as_mut().expect("global budget");
+            g.used -= g.per_layer[l];
+            evicted.push((l, old));
+        }
+        self.layers[il].resident.push(e);
+        let g = self.global.as_mut().expect("global budget");
+        g.used += need;
+        Look::Miss { evicted }
     }
 }
 
 enum Ram {
     Slots(SlotCache),
     Belady(Belady),
+    Global(GlobalSlots),
 }
 
 /// Observer of the replay's calls, in the engine's order and with their sizes, for the virtual
@@ -353,6 +476,8 @@ struct Sim<'a, 't> {
     timing: Option<&'t mut dyn Timing>,
     /// Also prefetch two layers ahead from the recorded depth-2 predictions.
     depth2: bool,
+    /// Decode disk bytes so far at the start of every decode step.
+    decode_marks: Vec<u64>,
 }
 
 /// `items` with those `resident` holds first (stable): the engine's `hits_first`.
@@ -366,13 +491,22 @@ impl<'a, 't> Sim<'a, 't> {
         let h = &trace.header;
         let layers = h.n_layer as usize;
         let ne = h.n_expert as usize;
+        let budget = u64::from(cfg.ram_slots) * h.expert_bytes.iter().sum::<u64>();
         let ram = match (cfg.policy, belady_times) {
-            (Policy::Belady, Some(times)) => Ram::Belady(Belady {
+            (Policy::Belady | Policy::GlobalBelady, Some(times)) => Ram::Belady(Belady {
                 cap: cfg.ram_slots as usize,
                 layers: (0..layers).map(|_| BeladyLayer::default()).collect(),
                 times,
                 ev: 0,
+                global: (cfg.policy == Policy::GlobalBelady).then(|| Bytes {
+                    per_layer: h.expert_bytes.clone(),
+                    budget,
+                    used: 0,
+                }),
             }),
+            (Policy::GlobalLru | Policy::GlobalFreq { .. }, _) => {
+                Ram::Global(GlobalSlots::new(&h.expert_bytes, h.n_expert, budget))
+            }
             _ => Ram::Slots(SlotCache::new(
                 Tier::Ram,
                 h.n_layer,
@@ -388,7 +522,7 @@ impl<'a, 't> Sim<'a, 't> {
         Sim {
             h,
             cfg,
-            prefetch_on: cfg.prefetch && cfg.policy != Policy::Belady,
+            prefetch_on: cfg.prefetch && !cfg.policy.is_belady(),
             ram_slots: (cfg.ram_slots as usize).max(1),
             vram: SlotCache::new(Tier::Vram, h.n_layer, h.n_expert, cfg.vram_slots),
             ram,
@@ -410,6 +544,7 @@ impl<'a, 't> Sim<'a, 't> {
             violations: 0,
             timing: None,
             depth2: true,
+            decode_marks: Vec::new(),
         }
     }
 
@@ -417,6 +552,7 @@ impl<'a, 't> Sim<'a, 't> {
         match &self.ram {
             Ram::Slots(c) => c.layer(il).slot_of(e).is_some(),
             Ram::Belady(b) => b.layers[il].resident.contains(&e),
+            Ram::Global(g) => g.contains(il as u32, e),
         }
     }
 
@@ -428,11 +564,28 @@ impl<'a, 't> Sim<'a, 't> {
                     if self.check && evicted.is_some_and(|old| c.layer(il).is_pinned(old)) {
                         self.violations += 1;
                     }
-                    Look::Miss { evicted }
+                    Look::Miss {
+                        evicted: evicted.map(|old| (il, old)).into_iter().collect(),
+                    }
                 }
                 Lookup::Bypass => Look::Bypass,
             },
             Ram::Belady(b) => b.lookup(il, e, chunk),
+            Ram::Global(g) => match g.lookup_except(il as u32, e, chunk) {
+                GlobalLookup::Hit => Look::Hit,
+                GlobalLookup::Miss { evicted } => {
+                    if self.check {
+                        let bad = |&&(l, x): &&(u32, u32)| {
+                            g.is_pinned(l, x) || (l == il as u32 && chunk.contains(&x))
+                        };
+                        self.violations += evicted.iter().filter(bad).count() as u64;
+                    }
+                    Look::Miss {
+                        evicted: evicted.into_iter().map(|(l, x)| (l as usize, x)).collect(),
+                    }
+                }
+                GlobalLookup::Bypass => Look::Bypass,
+            },
         };
         let acc = &mut self.acc[self.phase];
         match look {
@@ -443,8 +596,12 @@ impl<'a, 't> Sim<'a, 't> {
     }
 
     fn set_ram_pins(&mut self, il: usize, pins: &[u32]) {
-        if let Ram::Slots(c) = &mut self.ram {
-            c.layer_mut(il).set_hot_set(pins);
+        match &mut self.ram {
+            Ram::Slots(c) => {
+                c.layer_mut(il).set_hot_set(pins);
+            }
+            Ram::Global(g) => g.set_pins(il as u32, pins),
+            Ram::Belady(_) => {}
         }
     }
 
@@ -489,14 +646,15 @@ impl<'a, 't> Sim<'a, 't> {
                     self.acc[self.phase].hits += 1;
                 }
                 Look::Miss { evicted } => {
-                    if let Some(old) = evicted {
-                        self.note_wasted(il, old);
+                    for (l, old) in evicted {
+                        self.note_wasted(l, old);
                     }
                     self.acc[self.phase].misses += 1;
                     self.acc[self.phase].sync_bytes += self.expert_bytes(il);
                     self.note_miss(il, e);
                 }
                 Look::Bypass => {
+                    self.acc[self.phase].bypasses += 1;
                     self.acc[self.phase].misses += 1;
                     self.acc[self.phase].sync_bytes += self.expert_bytes(il);
                     self.note_miss(il, e);
@@ -510,32 +668,43 @@ impl<'a, 't> Sim<'a, 't> {
         if il >= self.h.n_layer as usize {
             return;
         }
-        let Ram::Slots(cache) = &self.ram else {
+        if matches!(self.ram, Ram::Belady(_)) {
             return;
-        };
+        }
+        let global = matches!(self.ram, Ram::Global(_));
         let mut inflight: Vec<u32> = self
             .inflight
             .iter()
             .filter(|f| f.0 == il)
             .flat_map(|f| f.1.iter().copied())
             .collect();
-        // Frequency pins hold slots like reads in flight do.
-        inflight.extend(self.standing(il));
+        // Frequency pins hold slots like reads in flight do; in a shared pool they hold bytes of
+        // the whole budget, not of this layer's read limit.
+        if !global {
+            inflight.extend(self.standing(il));
+        }
         let predicted: Vec<i32> = predicted.iter().map(|&e| i32::from(e)).collect();
-        let (mut pins, missing) = prefetch_plan(
+        let (mut pins, missing) = prefetch_plan_with(
             &predicted,
             self.h.n_expert,
             self.vram.layer(il),
-            cache.layer(il),
+            |e| self.ram_has(il, e),
             &inflight,
             self.ram_slots,
         );
         if missing.is_empty() {
             return;
         }
+        if global {
+            for &e in self.standing(il) {
+                if !pins.contains(&e) {
+                    pins.push(e);
+                }
+            }
+        }
         pins.extend(&missing);
         // Pins beyond the slots would be dropped silently by `set_hot_set`.
-        if self.check && pins.len() > self.ram_slots {
+        if self.check && !global && pins.len() > self.ram_slots {
             self.violations += 1;
         }
         self.set_ram_pins(il, &pins);
@@ -543,8 +712,8 @@ impl<'a, 't> Sim<'a, 't> {
         for &e in &missing {
             match self.ram_lookup(il, e, &[]) {
                 Look::Miss { evicted } => {
-                    if let Some(old) = evicted {
-                        self.note_wasted(il, old);
+                    for (l, old) in evicted {
+                        self.note_wasted(l, old);
                     }
                     self.prefetched[il][e as usize] = true;
                     read.push(e);
@@ -603,7 +772,10 @@ impl<'a, 't> Sim<'a, 't> {
 
     /// Puts the pins in force on the slot tables (all of them, as a step starts).
     fn apply_freq_pins(&mut self) {
-        if !matches!(self.cfg.policy, Policy::Freq { .. }) {
+        if !matches!(
+            self.cfg.policy,
+            Policy::Freq { .. } | Policy::GlobalFreq { .. }
+        ) {
             return;
         }
         for il in 0..self.h.n_layer as usize {
@@ -613,12 +785,54 @@ impl<'a, 't> Sim<'a, 't> {
     }
 
     fn refresh_freq_pins(&mut self) {
+        if let Policy::GlobalFreq { share } = self.cfg.policy {
+            self.refresh_global_freq_pins(share);
+            return;
+        }
         let Policy::Freq { share } = self.cfg.policy else {
             return;
         };
         let k = RamPolicy::Freq { share }.pin_count(self.cfg.ram_slots);
         for il in 0..self.h.n_layer as usize {
             self.freq_pins[il] = freq_pins(&self.counts[il], self.vram.layer(il), k);
+            let pins = self.standing(il).to_vec();
+            self.set_ram_pins(il, &pins);
+        }
+    }
+
+    /// [`Policy::GlobalFreq`]: the most routed experts of all layers, outside the VRAM hot set,
+    /// until `share` of the budget, less room for a decode step and its reads in flight: the
+    /// chunk, two reads for the next layer (depth 2 from the layer before, depth 1 from this one)
+    /// and one for the layer after, `n_used` experts each.
+    fn refresh_global_freq_pins(&mut self, share: f64) {
+        let Ram::Global(g) = &self.ram else {
+            return;
+        };
+        let bytes = &self.h.expert_bytes;
+        let largest = bytes.iter().copied().max().unwrap_or(0);
+        let reserve = 4 * u64::from(self.h.n_used) * largest;
+        let cap = ((share * g.budget() as f64) as u64).min(g.budget().saturating_sub(reserve));
+        let mut ranked: Vec<(u64, usize, u32)> = Vec::new();
+        for (il, counts) in self.counts.iter().enumerate() {
+            for (e, &n) in counts.iter().enumerate() {
+                if n > 0 && !self.vram.layer(il).is_pinned(e as u32) {
+                    ranked.push((n, il, e as u32));
+                }
+            }
+        }
+        ranked.sort_by_key(|&(n, il, e)| (std::cmp::Reverse(n), il, e));
+        for p in &mut self.freq_pins {
+            p.clear();
+        }
+        let mut sum = 0u64;
+        for (_, il, e) in ranked {
+            if sum + bytes[il] > cap {
+                break;
+            }
+            sum += bytes[il];
+            self.freq_pins[il].push(e);
+        }
+        for il in 0..self.h.n_layer as usize {
             let pins = self.standing(il).to_vec();
             self.set_ram_pins(il, &pins);
         }
@@ -693,6 +907,10 @@ impl<'a, 't> Sim<'a, 't> {
         }
     }
 
+    fn decode_bytes(&self) -> u64 {
+        self.acc[DECODE].sync_bytes + self.acc[DECODE].prefetch_bytes
+    }
+
     fn set_event(&mut self) {
         if let Ram::Belady(b) = &mut self.ram {
             b.ev = self.ev;
@@ -717,6 +935,9 @@ impl<'a, 't> Sim<'a, 't> {
                 self.build_hot_set();
             }
             self.phase = phase;
+            if phase == DECODE {
+                self.decode_marks.push(self.decode_bytes());
+            }
             self.acc[self.phase].steps += 1;
             self.pins_on = self.phase == DECODE;
             if self.phase == DECODE {
@@ -772,11 +993,31 @@ impl<'a, 't> Sim<'a, 't> {
             Vec::new()
         };
         if self.prefetch_on {
+            // In a shared pool the reads for later layers could evict this step's RAM hits; they
+            // stay pinned while the reads are placed (per layer the tables are apart).
+            let global = matches!(self.ram, Ram::Global(_));
+            let hits: Vec<u32> = rest
+                .iter()
+                .copied()
+                .filter(|&e| self.ram_has(il, e))
+                .collect();
+            if global {
+                let mut pins = self.standing(il).to_vec();
+                pins.extend(&hits);
+                self.set_ram_pins(il, &pins);
+            }
             if let Some(p) = &s.predicted {
                 self.start_prefetch(il + 1, p);
             }
             if let (Some(p), true) = (&s.predicted2, self.depth2) {
                 self.start_prefetch(il + 2, p);
+            }
+            if global {
+                let pins = self.standing(il).to_vec();
+                self.set_ram_pins(il, &pins);
+            }
+            if self.check {
+                self.violations += hits.iter().filter(|&&e| !self.ram_has(il, e)).count() as u64;
             }
         }
         for chunk in order.chunks(self.ram_slots) {
@@ -811,10 +1052,27 @@ impl<'a, 't> Sim<'a, 't> {
                 .count();
             self.violations += bad as u64;
         }
+        if let (true, Ram::Global(g)) = (self.check, &self.ram) {
+            self.violations += u64::from(g.used() > g.budget());
+        }
     }
 
     fn outcome(mut self) -> (Outcome, Option<AccessLog>) {
         self.settle();
+        let end = self.decode_bytes();
+        let decode_step_bytes = self
+            .decode_marks
+            .iter()
+            .zip(self.decode_marks.iter().skip(1).chain([&end]))
+            .map(|(a, b)| b - a)
+            .collect();
+        let layers = self.h.n_layer as usize;
+        let ram_layer_residents = match &self.ram {
+            _ if !self.cfg.policy.is_global() => None,
+            Ram::Global(g) => Spread::of((0..layers).map(|il| g.residents(il as u32))),
+            Ram::Belady(b) => Spread::of(b.layers.iter().map(|l| l.resident.len() as u32)),
+            Ram::Slots(_) => None,
+        };
         let adm = self.cfg.vram_policy != VramPolicy::Static;
         let phase = |a: &Acc| {
             let tok = a.tokens.max(1) as f64;
@@ -862,7 +1120,11 @@ impl<'a, 't> Sim<'a, 't> {
             prefetch: self.prefetch_on,
             prefill: phase(&self.acc[PREFILL]),
             decode: phase(&self.acc[DECODE]),
+            ram_layer_residents,
+            ram_bypasses: Some(self.acc[PREFILL].bypasses + self.acc[DECODE].bypasses)
+                .filter(|&n| n > 0 && self.cfg.policy.is_global()),
             layer_stats,
+            decode_step_bytes,
         };
         (out, self.log)
     }
@@ -897,7 +1159,7 @@ fn run(
 /// prefetch to learn when each expert is looked up (the lookup set of a step does not depend on
 /// the RAM policy).
 pub fn replay(trace: &Trace, cfg: &Config) -> Outcome {
-    if cfg.policy == Policy::Belady {
+    if cfg.policy.is_belady() {
         let probe = Config {
             policy: Policy::Lru,
             prefetch: false,
@@ -919,7 +1181,7 @@ pub fn replay_timing(
     depth2: bool,
 ) -> Outcome {
     let mut times = None;
-    if cfg.policy == Policy::Belady {
+    if cfg.policy.is_belady() {
         let probe = Config {
             policy: Policy::Lru,
             prefetch: false,
@@ -952,7 +1214,7 @@ pub fn replay_matrix(
             for &policy in policies {
                 for &vram_policy in vram_policies {
                     for &pf in prefetch {
-                        if policy == Policy::Belady && pf {
+                        if policy.is_belady() && pf {
                             continue;
                         }
                         let cfg = Config {
