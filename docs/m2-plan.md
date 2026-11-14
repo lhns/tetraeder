@@ -145,7 +145,7 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
    - the poll 0/50 pair;
    - the ADR 0054 arms;
    - FP8 `llamacpp-cache` against the builder;
-   - gfreq against vramfill;
+   - the planner's own fill tier: by its formula 35 slots (38.4 GB) on a 49,140 MiB card, which the measured 11.9 GB besides slots puts at about 50.3 of 51.5 GB, so run `serve`'s pick once and record its peak (the harness's 22.5 GB reserve gives 26 slots);
    - trace.
    - Host 60400 or a second qualifying host, to widen point 3's scope.
 5. C4 on the C6 layout.
