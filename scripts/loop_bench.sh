@@ -60,12 +60,12 @@ pass() { # ENGINE REP
   say "pass $engine r$rep start"
   case $engine in
     llama-server)
-      start_server "$out/server-$engine-r$rep.log" "$llama_server" -m "$model" -np "$par" -c "$ctx" -t "$threads" \
+      start_server "$out/server-$engine-r$rep.log" "$llama_server" -m "$model" -np "$par" -c "$ctx" -t "$threads" -ngl 0 \
         --cont-batching --port "$port"
       ready=/health ;;
     tetraeder-llama | tetraeder-dense)
       start_server "$out/server-$engine-r$rep.log" "$tet" serve -m "$model" --engine "${engine#tetraeder-}" \
-        --parallel "$par" --ctx "$ctx" -t "$threads" --port "$port" --alias qwen3 --accept-any-model
+        --parallel "$par" --ctx "$ctx" -t "$threads" --ngl 0 --port "$port" --alias qwen3 --accept-any-model
       ready=/v1/models ;;
   esac
   if wait_ready "http://127.0.0.1:$port$ready" 300; then
