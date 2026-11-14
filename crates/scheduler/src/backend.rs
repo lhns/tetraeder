@@ -482,13 +482,29 @@ impl MoeBackend {
     /// Rows for `seq` up to `n` positions: `KvFull` (nothing changed) when the pool has none.
     fn reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
         self.check_seq(seq)?;
-        let held = self.model.pool().reserved(seq);
-        if n > self.model.n_ctx()
-            || !self.model.try_reserve(seq, n).map_err(failed)?
-        {
-            return Err(self.kv_full(seq, n.saturating_sub(held)));
+        let have = self.model.pool().reserved(seq);
+        if n <= have {
+            return Ok(());
+        }
+        if n > self.model.pool().capacity() || !self.model.try_reserve(seq, n).map_err(failed)? {
+            return Err(self.kv_full(seq, n - have));
         }
         Ok(())
+    }
+
+    /// Puts every sequence of a failed step back to its length and reservation before it.
+    /// `seq_rm` shrinks to the positions held (rounded up to 256 rows) or frees an empty
+    /// sequence; growing again takes the rows the shrink just released.
+    fn restore(&mut self, saved: &[(SeqId, usize, usize)]) {
+        for &(seq, len, reserved) in saved {
+            if self.model.seq_len(seq) == len && self.model.pool().reserved(seq) == reserved {
+                continue;
+            }
+            let _ = self.model.seq_rm(seq, len);
+            if reserved > self.model.pool().reserved(seq) {
+                let _ = self.model.try_reserve(seq, reserved);
+            }
+        }
     }
 
     /// Runs the pieces of `inputs`, at most `chunk` tokens per model step, and collects the rows
@@ -616,27 +632,35 @@ impl BatchBackend for MoeBackend {
     fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
         self.spans.clear();
         self.logits.clear();
-        // Validate everything and reserve before the step: a failure leaves lengths unchanged.
-        let mut seen: Vec<SeqId> = Vec::with_capacity(inputs.len());
+        // Validate everything and reserve before the step. A failure, here or in the step, gives
+        // back what this call reserved, so lengths and free rows are as they were.
+        let mut saved: Vec<(SeqId, usize, usize)> = Vec::with_capacity(inputs.len());
         for inp in inputs {
             self.check_seq(inp.seq)?;
-            if seen.contains(&inp.seq) {
+            if saved.iter().any(|s| s.0 == inp.seq) {
                 return Err(BackendError::Failed(format!("sequence {} twice", inp.seq)));
             }
-            seen.push(inp.seq);
             if inp.tokens.is_empty() {
                 return Err(BackendError::Failed("no tokens".into()));
             }
+            saved.push((
+                inp.seq,
+                self.model.seq_len(inp.seq),
+                self.model.pool().reserved(inp.seq),
+            ));
         }
-        for inp in inputs {
-            self.reserve(inp.seq, self.model.seq_len(inp.seq) + inp.tokens.len())?;
-        }
-        let before: Vec<usize> = inputs.iter().map(|i| self.model.seq_len(i.seq)).collect();
-        if let Err(e) = self.run(inputs) {
-            // Every sequence back at its length before the step.
-            for (inp, &len) in inputs.iter().zip(&before) {
-                let _ = self.model.seq_rm(inp.seq, len);
+        let mut result = Ok(());
+        for (inp, &(_, len, _)) in inputs.iter().zip(&saved) {
+            result = self.reserve(inp.seq, len + inp.tokens.len());
+            if result.is_err() {
+                break;
             }
+        }
+        if result.is_ok() {
+            result = self.run(inputs);
+        }
+        if let Err(e) = result {
+            self.restore(&saved);
             self.logits.clear();
             self.spans.clear();
             return Err(e);

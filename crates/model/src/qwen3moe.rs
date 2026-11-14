@@ -19,9 +19,7 @@
 //! RAM slot tensors, which sit in a CPU buffer marked as weights, so the scheduler computes them
 //! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
-use crate::attn::{
-    AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention, copy_rows,
-};
+use crate::attn::{AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention, copy_rows};
 use crate::convert::{ConvertError, ConvertOptions, ConvertStats};
 use crate::cpu_poll::{self, CpuPoll};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer, StreamerConfig};
@@ -638,13 +636,7 @@ impl Qwen3Moe {
         }
         let n_seq_max = opts.n_seq_max;
         let kv_rows = pad(opts.n_ctx.max(1), KV_PAD);
-        let (kv, kv_bytes) = alloc_kv(
-            &h.attn(),
-            kv_rows,
-            &primary,
-            opts.kv,
-            opts.kv_rotation,
-        )?;
+        let (kv, kv_bytes) = alloc_kv(&h.attn(), kv_rows, &primary, opts.kv, opts.kv_rotation)?;
         let metrics = MemoryMetrics::new(opts.telemetry.clone());
         let streamer = slots
             .map(|n| {
@@ -1318,7 +1310,7 @@ impl Qwen3Moe {
     fn run(
         &mut self,
         tokens: &[i32],
-        step: &[StepInput],
+        inputs: &[StepInput],
         plan: &StepPlan,
         logits: &mut Vec<f32>,
         t0: Instant,
@@ -1421,7 +1413,7 @@ impl Qwen3Moe {
                 self.metrics.layer_step(true);
             }
             lap(&mut prof.readback, t);
-            return self.finish_step(step, t0, prof, 1);
+            return self.finish_step(inputs, t0, prof, 1);
         }
 
         let graphs_before = self.group_graphs_run;
@@ -1725,7 +1717,7 @@ impl Qwen3Moe {
         let timed = |p: &StepProfile| p.inputs + p.build + p.alloc + p.compute + p.readback;
         let others = timed(&prof) - timed(&self.profile);
         prof.streamer += t0.elapsed().saturating_sub(others);
-        self.finish_step(step, t0, prof, graphs)
+        self.finish_step(inputs, t0, prof, graphs)
     }
 
     /// Bookkeeping after a step that computed `graphs` graphs.

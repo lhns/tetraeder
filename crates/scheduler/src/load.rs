@@ -2,7 +2,7 @@
 
 use crate::backend::{BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend};
 use crate::dense_backend::DenseBackend;
-se std::path::Path;
+use std::path::Path;
 use std::sync::Arc;
 use tetraeder_engine::{ContextConfig, Engine, Placement};
 use tetraeder_ggml_sys::llama::{Model, ModelParams};

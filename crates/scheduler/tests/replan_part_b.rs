@@ -143,7 +143,8 @@ impl BatchBackend for Fake {
         Ok(())
     }
     fn seq_rm(&mut self, _: SeqId, keep: usize) -> Result<(), BackendError> {
-        self.n_past.store(keep.min(self.seq_len(0)), Ordering::SeqCst);
+        self.n_past
+            .store(keep.min(self.seq_len(0)), Ordering::SeqCst);
         Ok(())
     }
     fn seq_cp(&mut self, _: SeqId, _: SeqId, _: usize) -> Result<(), BackendError> {
