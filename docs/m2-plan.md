@@ -145,7 +145,7 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
    - the poll 0/50 pair;
    - the ADR 0054 arms;
    - FP8 `llamacpp-cache` against the builder;
-   - the planner's own fill tier: by its formula 35 slots (38.4 GB) on a 49,140 MiB card, which the measured 11.9 GB besides slots puts at about 50.3 of 51.5 GB, so run `serve`'s pick once and record its peak (the harness's 22.5 GB reserve gives 26 slots);
+   - the planner's own fill tier, last (it may OOM): 35 slots (38.4e9 B) by its estimate on a 49,140 MiB (51.5e9 B) card. Measured besides slots: 13.9e9 B at the exit run's ubatch 2048 (40,852 MiB peak with 28.97e9 B of slots), which matches the planner formula at ubatch 2048, so 35 slots fit only at ubatch 256 (estimate 50.5e9 B); candidates are fit-checked per ubatch (`builder.rs`), so serve would pick 35 slots at ubatch 256. Record its peak and prefill rate (the harness's 22.5 GB reserve gives 26 slots at any ubatch);
    - trace.
    - Host 60400 or a second qualifying host, to widen point 3's scope.
 5. C4 on the C6 layout.
