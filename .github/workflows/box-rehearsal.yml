@@ -44,7 +44,7 @@ env:
 
 jobs:
   rehearse:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       # no submodules: the box does not get vendor/llama.cpp either

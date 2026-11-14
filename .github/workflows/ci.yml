@@ -24,6 +24,9 @@ env:
   # build the DL multi-variant ggml (ADR 0052). A process env var wins over config [env].
   TETRAEDER_GGML_NATIVE: "OFF"
 
+# Linux runners pinned to ubuntu-24.04: ubuntu-latest moved to 26.04 on 2026-11-14, whose compiler builds
+# the x64 ggml variant with AVX2 (info.rs forced_x64_variant_is_the_sse_tier) and which the CUDA toolkit action
+# cannot install on.
 jobs:
   test:
     if: ${{ !inputs.record_golden }}
@@ -32,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-latest]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,7 +150,7 @@ jobs:
       fail-fast: false
       matrix:
         # windows-2022: CUDA 12.8 supports its MSVC (newer runners crash cudafe++)
-        os: [ubuntu-latest, windows-2022]
+        os: [ubuntu-24.04, windows-2022]
     env:
       # One arch keeps the compile-only job cheap; the box image builds the full list.
       TETRAEDER_CUDA_ARCHS: "86"
@@ -206,8 +209,8 @@ jobs:
 
   vulkan-build:
     if: ${{ !inputs.record_golden }}
-    name: vulkan compile-only (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: vulkan compile-only (ubuntu-24.04)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -236,8 +239,8 @@ jobs:
   # native build restored on a runner with an older CPU would die with SIGILL.
   native-static:
     if: ${{ !inputs.record_golden }}
-    name: native static (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: native static (ubuntu-24.04)
+    runs-on: ubuntu-24.04
     env:
       TETRAEDER_GGML_NATIVE: "ON"
     steps:
@@ -260,8 +263,8 @@ jobs:
   # Ice Lake server. The iqk tests must run, not skip.
   avx512-sde:
     if: ${{ !inputs.record_golden }}
-    name: avx512 under Intel SDE (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: avx512 under Intel SDE (ubuntu-24.04)
+    runs-on: ubuntu-24.04
     env:
       SDE_URL: https://downloadmirror.intel.com/859732/sde-external-9.58.0-2025-06-16-lin.tar.xz
       SDE_SHA256: f849acecad4c9b108259c643b2688fd65c35723cd23368abe5dd64b917cc18c0
@@ -327,9 +330,9 @@ jobs:
   # logits at the first flipped token), record llama-simple and our run pinned to sse42, check the new files,
   # upload them. Commit them from the artifact.
   golden-linux:
-    name: record golden (ubuntu-latest)
+    name: record golden (ubuntu-24.04)
     if: ${{ inputs.record_golden }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       TETRAEDER_GGML_CPU_VARIANT: sse42
       TETRAEDER_REQUIRE_MODELS: "1"
