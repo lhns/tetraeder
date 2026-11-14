@@ -308,8 +308,8 @@ pub(crate) fn copy_rows(
         }
     }
     let nodes = copies.len() * kv.k.len() * 2;
-    let ctx = Context::new(3 * nodes + 8, nodes + 8)?;
-    let mut g = ctx.new_graph(nodes + 8);
+    let ctx = Context::new(4 * nodes + 8, 4 * nodes + 8)?;
+    let mut g = ctx.new_graph(4 * nodes + 8);
     for t in kv.k.iter().chain(&kv.v) {
         let t = t.get();
         let (ne0, row) = (t.ne()[0], t.nb()[1]);
@@ -349,7 +349,9 @@ mod tests {
                 assert_eq!(m, old_mask(n_past, n, n_kv), "n_past {n_past}, n {n}");
                 assert_eq!(m.len(), n_kv * n);
                 assert_eq!(m[n_past], 0);
-                assert_eq!(m[n_past + 1], F16_NEG_INF);
+                if n_past + 1 < n_kv {
+                    assert_eq!(m[n_past + 1], F16_NEG_INF);
+                }
             }
         }
     }
@@ -389,7 +391,7 @@ mod tests {
                 .map(|t| t.get().get_bytes(0, 32 * row).unwrap())
                 .collect();
         let mut sched = Sched::new(&[backend], 64, false).unwrap();
-        let copies = [(0, 10, 3), (4, 20, 1), (6, 24, 5)];
+        let copies = [(0, 10, 3), (4, 20, 1), (14, 24, 5)];
         copy_rows(&kv, &mut sched, &copies).unwrap();
         for (ti, t) in kv.k.iter().chain(&kv.v).enumerate() {
             let after = t.get().get_bytes(0, 32 * row).unwrap();
