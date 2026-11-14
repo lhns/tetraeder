@@ -12,7 +12,7 @@ use tetraeder_gateway::engine::Engine as GatewayEngine;
 use tetraeder_gateway::fake::{FakeEngine, serve_script};
 use tetraeder_gateway::gateway::{Gateway, GatewayConfig};
 use tetraeder_gateway::reqlog::RequestLog;
-use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy};
+use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, MissPolicy};
 use tetraeder_planner::Workload;
 use tetraeder_scheduler::{Scheduler, SchedulerConfig};
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
@@ -23,6 +23,8 @@ pub enum EngineKind {
     Auto,
     Llama,
     Moe,
+    /// The Qwen3 dense builder (ADR 0066), for GGUF architecture `qwen3`; `auto` keeps libllama.
+    Dense,
 }
 
 #[derive(Args)]
@@ -311,8 +313,9 @@ fn build_engine(
         return Ok((Arc::new(e), 1));
     }
     let path = a.model.clone().context("-m is required")?;
+    let dense = a.engine == EngineKind::Dense;
     let moe = match a.engine {
-        EngineKind::Llama => false,
+        EngineKind::Llama | EngineKind::Dense => false,
         EngineKind::Moe => true,
         EngineKind::Auto => {
             tetraeder_scheduler::architecture(&path)
@@ -335,6 +338,8 @@ fn build_engine(
     let engine = Scheduler::start(cfg, move || {
         if moe {
             tetraeder_scheduler::load_moe(&a.path, &a.moe_options(tel)?)
+        } else if dense {
+            tetraeder_scheduler::load_dense(&a.path, &a.dense_options(tel))
         } else {
             tetraeder_scheduler::load_llama(&a.path, &a.place.placement(), &a.llama, Some(tel))
         }
@@ -396,6 +401,7 @@ struct LoadArgs {
     path: PathBuf,
     place: PlacementArgs,
     ctx: u32,
+    parallel: usize,
     llama: tetraeder_engine::ContextConfig,
     expert_slots: Option<usize>,
     ram_slots: Option<usize>,
@@ -407,6 +413,25 @@ struct LoadArgs {
 }
 
 impl LoadArgs {
+    /// The dense builder's KV pool is `--ctx` rows shared by `--parallel` sequences.
+    fn dense_options(&self, telemetry: Arc<Telemetry>) -> DenseOptions {
+        let backend = if self.place.ngl == 0 {
+            BackendChoice::Cpu {
+                threads: self.place.threads.and_then(|t| usize::try_from(t).ok()),
+            }
+        } else {
+            BackendChoice::Gpu {
+                index: usize::try_from(self.place.main_gpu).unwrap_or(0),
+            }
+        };
+        let mut o = DenseOptions::new(backend);
+        o.threads = self.place.threads;
+        o.n_ctx_pool = self.ctx as usize;
+        o.n_seq_max = self.parallel.max(1);
+        o.telemetry = Some(telemetry);
+        o
+    }
+
     /// `--ngl 0` keeps the MoE builder on the CPU; anything else uses GPU `main_gpu`.
     fn moe_options(&self, telemetry: Arc<Telemetry>) -> Result<LoadOptions, String> {
         let backend = if self.place.ngl == 0 {
@@ -461,6 +486,7 @@ impl ServeArgs {
             path: self.model.clone().unwrap_or_default(),
             place: self.place.clone(),
             ctx: self.ctx,
+            parallel: self.parallel as usize,
             llama: self.llama_context(),
             expert_slots: self.expert_slots,
             ram_slots: self.ram_slots,

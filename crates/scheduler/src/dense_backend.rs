@@ -3,10 +3,7 @@
 
 use crate::backend::{BackendError, BatchBackend, Outputs, SeqId, SeqInput};
 use std::ops::Range;
-use std::path::Path;
-use std::sync::Arc;
-use tetraeder_ggml_sys::llama::{Model, ModelParams};
-use tetraeder_model::{BackendChoice, DenseOptions, ModelError, Qwen3, SeqEval};
+use tetraeder_model::{ModelError, Qwen3, SeqEval};
 
 pub struct DenseBackend {
     model: Qwen3,
@@ -196,30 +193,4 @@ impl BatchBackend for DenseBackend {
     fn counters(&self) -> Vec<(&'static str, f64)> {
         vec![("step_graphs_built", self.model.step_graphs_built() as f64)]
     }
-}
-
-/// A dense backend and the libllama model that tokenizes for it.
-pub struct LoadedDense {
-    pub backend: DenseBackend,
-    pub tokenizer: Arc<Model>,
-}
-
-/// The Qwen3 dense builder; libllama loads only the vocabulary, for tokenizing.
-pub fn load_dense(path: &Path, opts: &DenseOptions) -> Result<LoadedDense, String> {
-    let tokenizer = Arc::new(
-        Model::load(
-            path,
-            &ModelParams {
-                vocab_only: true,
-                ..ModelParams::default()
-            },
-        )
-        .map_err(|e| e.to_string())?,
-    );
-    let on_gpu = matches!(opts.backend, BackendChoice::Gpu { .. });
-    let model = Qwen3::load(path, opts).map_err(|e| e.to_string())?;
-    Ok(LoadedDense {
-        backend: DenseBackend::new(model, on_gpu),
-        tokenizer,
-    })
 }

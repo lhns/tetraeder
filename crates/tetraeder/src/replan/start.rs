@@ -50,6 +50,11 @@ pub fn start(
     let flag = match a.engine {
         EngineKind::Llama => ServeEngine::Llama,
         EngineKind::Moe => ServeEngine::Builder,
+        EngineKind::Dense => {
+            anyhow::bail!(
+                "--engine dense does not combine with --plan: the planner does not place it"
+            )
+        }
         EngineKind::Auto => {
             let arch = tetraeder_scheduler::architecture(&path)
                 .map_err(anyhow::Error::msg)
