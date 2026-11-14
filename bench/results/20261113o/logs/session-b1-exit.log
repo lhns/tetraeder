@@ -1,0 +1,12 @@
+=== RUN 2026-11-13T23:27:43 session.sh ===
+[23:27:43] session b1-exit: results bench/results/20261113o, deadline 01:46:43 (139 min left)
+no tuned CPU share (run b3-planner first): using 0.5
+llama.cpp cache: 10458 MiB, cpu share 0.5
+[23:27:43] start exit_run
+patches: already applied
+[23:27:44] balloon pid 5596: oom_score_adj -1000 not allowed (no CAP_SYS_RESOURCE); engines run at 1000
+[00:16:46] done rc=0
+[00:16:46] start noise
+skip noise: NOISE_STAGE=0
+[00:16:46] done rc=0
+[00:16:46] SESSION_DONE (89 min before the deadline)

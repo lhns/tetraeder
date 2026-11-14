@@ -1,0 +1,13 @@
+=== RUN 2026-11-13T23:27:43 fetch_exit_model.sh ===
+[23:27:43] start fetch, disk free  230G
+[23:27:43] round 1: missing 5 of 5 shards
+probe: modelscope 2863 KB/s, huggingface 14947 KB/s
+source Qwen/Qwen3-235B-A22B-GGUF: https://huggingface.co/Qwen/Qwen3-235B-A22B-GGUF/resolve/main (TAXAMETER_MODEL_SOURCE)
+connections per file: 16
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00001-of-00005.gguf (29742283872 bytes)
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00002-of-00005.gguf (29974106496 bytes)
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00003-of-00005.gguf (29933980640 bytes)
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00004-of-00005.gguf (29936094304 bytes)
+got   Qwen/Qwen3-235B-A22B-GGUF/Q4_K_M/Qwen3-235B-A22B-Q4_K_M-00005-of-00005.gguf (22567608864 bytes)
+models_ok=1
+[23:34:11] FETCH_DONE rc=0
