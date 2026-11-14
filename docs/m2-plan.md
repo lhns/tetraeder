@@ -77,6 +77,10 @@ The M1 dispute was over what counted, so the C1 ADR records the following before
 ### C4. MoE builder multi-sequence KV (Sonnet, after C1.5 and C6 step 1)
 Needed so that streamed MoE serves concurrency 4, and so the 30B can count on the own builder.
 
+### Phase 4 deliverables without a step yet (scheduled 2026-11-14)
+- Speculation wired into `serve` (ADR 0065: drafts only when one sequence decodes): after C2, one Sonnet task; measured in the D2 spec stage.
+- Self-speculative decoding with a low-bit copy, and MTP where a model has it: parked until after the Phase 4 verdict. Neither is in the exit test; ADR 0043 showed drafts lose at batch 1 in the streamed regime until op offload was fixed, so the D2 rerun decides whether more drafter kinds are worth building.
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 
@@ -113,7 +117,7 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
 | 8 Tool-call repair | B4 |
 | 8 Recheck llama-server and planner baselines with the expert cache | box D2 (llama-server baseline for C0) |
 | 8 Strata pairing | parked: needs both engines on one model; revisit when Strata runs Qwen3 |
-| 9 FP8-KV llama.cpp baseline | move `LLAMA_BASELINE_COMMIT` past #28392 locally; rerun `llamacpp-cache` FP8 against the builder on box D1, which checks whether point 1 holds against the newer baseline |
+| 9 FP8-KV llama.cpp baseline | pin already includes #28392 (b12274, `f8_e4m3`, 2026-11-14); still owed: rerun `llamacpp-cache` FP8 against the builder on box D1, which checks whether point 1 holds against the newer baseline |
 | 10 imatrix and IQ formats below 4 bits | parked to Phase 9 (breadth); no exit test needs them |
 | 10 Per-expert formats (typed slots) | parked until C6 decides the KV/slot layout |
 | 10 `serve --plan` part B | B4; its box benchmark on D2 |

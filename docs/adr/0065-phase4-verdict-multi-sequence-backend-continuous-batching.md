@@ -26,6 +26,14 @@ Status: Proposed (2026-11-14). Phase 4. Supersedes, from ADR 0046, the one-seque
 
 **Files** (`bench/results/<session>/phase4/`): `bench-<model>-<engine>-<test>-r<rep>.json` (gateway_bench.py), `prepass-<model>-<kvu|nokvu>.json`, `replay-<model>-<on|off>-r<rep>.json` (gateway_replay.py), `gpu-<run>.txt`, `server-*.log`, `env.json`, and `verdict.json` from `scripts/phase4_summary.py`: `{band, band_source, models: {<model>: {engine, counts, baseline_variant, baseline_kv_unified, aa: {c4, c1}, pairs: [{reps, c4_throughput_ratio, c1_decode_ratio, clean, reasons}], worst: {c4, c1}, pass}}, ttft: {log_sha256, requests, pairs: [{median_ratio, p90_ratio, clean, reasons}], pass}, phase4_pass}`. `phase4_pass` is true when every counting model and `ttft` pass. Engine names in files: `llama-server`, `tetraeder-dense`, `tetraeder-moe`, `tetraeder-llama`.
 
+**Settled 2026-11-14.**
+- Pass rule r >= 1 - b: the owner's choice ("not slower beyond noise").
+- c4 gates on `throughput_tps`, the exit test's "throughput", which includes prefill as ADR 0046 measured; decode-only rates are reported, not gated.
+- Workload size stays 16 c4 requests: in `bench/results/20261103/gateway/` a c4 run takes 11 s (llama-server) to 27 s (Tetraeder) and the two repeats agree within 0.5%.
+- c1 is not the risk: there Tetraeder already matched llama-server (Qwen3-8B 81.1 against 79.8 tok/s `decode_tps_median`, Qwen3-30B-A3B 129.9 against 129.4); the 0.41 to 0.61 gap is c4 only, which is what batching addresses.
+- Recording the Claude Code request log is the first stage of the verdict box session (`docs/m2-plan.md`, D2), before any timed run.
+- To read on the box and record, not assume: b12274's `kv_unified` with `-np 4` (the pre-pass covers both) and Qwen3-8B's `qwen3.context_length` (40960; the harness stops if it differs).
+
 ## Context
 
 The plan's Phase 4 exit test: at least llama.cpp server throughput at concurrency 4; prefix hits cut time to first token (TTFT) on a Claude Code replay. ADR 0046 measured one sequence at a time: concurrency 4 gave 0.41 (Qwen3-8B) and 0.59 to 0.61 (Qwen3-30B-A3B) of llama-server `-np 4` throughput, TTFT 4.9 to 6.6x longer.
