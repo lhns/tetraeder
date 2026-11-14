@@ -121,10 +121,19 @@ pub fn argmax(v: &[f32]) -> usize {
         .unwrap()
 }
 
+/// Indices of the `k` largest values, largest first, ties by lower index (as a stable full sort).
+/// Partial select, not a full sort: the exit harness calls it per decode token over 151,936
+/// logits, where a full sort cost 5 to 8 ms of the measured token time (ADR 0060 addendum
+/// 2026-11-14).
 pub fn top_k(v: &[f32], k: usize) -> Vec<usize> {
+    let cmp = |a: &usize, b: &usize| v[*b].total_cmp(&v[*a]).then(a.cmp(b));
     let mut idx: Vec<usize> = (0..v.len()).collect();
-    idx.sort_by(|&a, &b| v[b].total_cmp(&v[a]));
+    let k = k.min(idx.len());
+    if k > 0 && k < idx.len() {
+        idx.select_nth_unstable_by(k - 1, cmp);
+    }
     idx.truncate(k);
+    idx.sort_unstable_by(cmp);
     idx
 }
 

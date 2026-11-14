@@ -373,8 +373,17 @@ fn top_json(logits: &[f32]) -> Value {
 
 /// Top-1 minus top-2 logit.
 fn margin(logits: &[f32]) -> f32 {
-    let t = top_k(logits, 2);
-    logits[t[0]] - logits[t[1]]
+    // one pass, no allocation: it runs per decode token inside the measured time
+    let (mut a, mut b) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for &x in logits {
+        if x.total_cmp(&a).is_gt() {
+            b = a;
+            a = x;
+        } else if x.total_cmp(&b).is_gt() {
+            b = x;
+        }
+    }
+    a - b
 }
 
 /// The calling thread's counters from `/proc/thread-self/stat` (Linux; `None` elsewhere).
