@@ -1,4 +1,4 @@
-# M1: status and open items (2026-11-14: M1 reached. Phase 2 against the llama.cpp expert cache met in two clean sessions on two hosts, `20261113b` and `20261113k` (point 1); against KTransformers on AVX-512 met with the builder's free VRAM as expert slots, `20261114` and `20261114b` (point 3, owner decision 2026-11-14); points 2 and 4 decided by the owner on their paired runs)
+# M1: status and open items (2026-11-14: M1 reached. Phase 2 against the llama.cpp expert cache met in two clean sessions on two hosts, `20261113b` and `20261113k` (point 1); against KTransformers on AVX-512 met with the builder's free VRAM as expert slots, `20261114` and `20261114b` (point 3, owner decision 2026-11-14); points 2 and 4 decided by the owner on their paired runs; owner confirmed M1 reached on 2026-11-14, points 2 and 4 included)
 
 Session profiles for later box runs: [`docs/sessions.md`](sessions.md) (`scripts/session.sh`).
 
