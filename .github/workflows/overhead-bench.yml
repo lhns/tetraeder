@@ -1,0 +1,67 @@
+name: overhead-bench
+
+# CPU kickoff and barrier cost of the decode (ADR 0064): the dispatch floor per thread count, poll 0/50
+# and pool pause, plus end to end. Runs on pushes to track-dispatch-floor and manually. Never gates a PR.
+on:
+  push:
+    branches: [track-dispatch-floor]
+  workflow_dispatch:
+
+concurrency:
+  group: overhead-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  overhead-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build time
+      - uses: Swatinem/rust-cache@v2
+      - name: Runner
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          echo "threads: $(nproc)"
+          free -m
+      - name: Floor and end to end at nproc threads (grid 1, n/2, n)
+        env:
+          TETRAEDER_OVERHEAD_PARTS: floor,e2e
+          TETRAEDER_BENCH_OUT: ${{ github.workspace }}/overhead-results/n_nproc.json
+        run: |
+          mkdir -p overhead-results
+          TETRAEDER_OVERHEAD_THREADS=$(nproc) cargo test --release -p tetraeder-model --test cpu_bench -- --ignored --nocapture --exact segment_overhead
+      - name: Floor oversubscribed at 2 x nproc (extra fit points)
+        env:
+          TETRAEDER_OVERHEAD_PARTS: floor
+          TETRAEDER_BENCH_OUT: ${{ github.workspace }}/overhead-results/n_2x.json
+        run: |
+          TETRAEDER_OVERHEAD_THREADS=$(( $(nproc) * 2 )) cargo test --release -p tetraeder-model --test cpu_bench -- --ignored --nocapture --exact segment_overhead
+      - name: Summary
+        if: always()
+        run: |
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, glob
+          print("| file | threads | poll | pause | gap_us | kickoff_us | barrier_us |")
+          print("|---|---|---|---|---|---|---|")
+          for f in sorted(glob.glob("overhead-results/*.json")):
+              d = json.load(open(f))
+              for r in d.get("dispatch_floor", {}).get("per_kickoff_and_barrier", []):
+                  print(f"| {f.split('/')[-1]} | {r['threads']} | {r['poll']} | {r['pause']} | {r['gap_us']} | {r['kickoff_us']:.1f} | {r['barrier_us']:.1f} |")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: overhead-bench
+          path: overhead-results
