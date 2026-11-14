@@ -116,6 +116,51 @@ fn draw_ids(rng: &mut Rng, n_used: usize, draw: &mut impl FnMut(&mut Rng) -> u16
     ids
 }
 
+/// Four layers of 16 experts, top-2, a 3-token prefill step then decode, random predictions at
+/// depth 1 and 2, a marker after the prefill.
+fn prefetch_trace(seed: u64, n_steps: usize) -> Trace {
+    let (n_layer, n_expert, n_used) = (4u32, 16u32, 2usize);
+    let mut rng = Rng(seed);
+    let mut records = Vec::new();
+    for s in 0..n_steps {
+        let n_tokens = if s == 0 { 3 } else { 1 };
+        for il in 0..n_layer {
+            let mut ids = Vec::new();
+            for _ in 0..n_tokens {
+                ids.extend(draw_ids(&mut rng, n_used, &mut |r| {
+                    r.below(u64::from(n_expert)) as u16
+                }));
+            }
+            let pred = |r: &mut Rng| {
+                let mut p = Vec::new();
+                for _ in 0..n_tokens {
+                    p.extend(draw_ids(r, n_used, &mut |r| {
+                        r.below(u64::from(n_expert)) as u16
+                    }));
+                }
+                p
+            };
+            let predicted = (il + 1 < n_layer).then(|| pred(&mut rng));
+            let predicted2 = (il + 2 < n_layer).then(|| pred(&mut rng));
+            records.push(Record::Step(LayerStep {
+                step: s as u32,
+                layer: il as u16,
+                n_tokens,
+                ids,
+                predicted,
+                predicted2,
+            }));
+        }
+        if s == 0 {
+            records.push(Record::HotRefresh { step: 0 });
+        }
+    }
+    Trace {
+        header: header(n_layer, n_expert, n_used as u32),
+        records,
+    }
+}
+
 proptest! {
     /// Rule 5 style: without prefetch the offline optimum never has fewer RAM hits than LRU, at
     /// every slot count.
@@ -156,39 +201,7 @@ proptest! {
         ram in 2u32..14,
         n_steps in 4usize..60,
     ) {
-        let (n_layer, n_expert, n_used) = (4u32, 16u32, 2usize);
-        let mut rng = Rng(seed);
-        let mut records = Vec::new();
-        for s in 0..n_steps {
-            let n_tokens = if s == 0 { 3 } else { 1 };
-            for il in 0..n_layer {
-                let mut ids = Vec::new();
-                for _ in 0..n_tokens {
-                    ids.extend(draw_ids(&mut rng, n_used, &mut |r| r.below(u64::from(n_expert)) as u16));
-                }
-                let pred = |r: &mut Rng| {
-                    let mut p = Vec::new();
-                    for _ in 0..n_tokens {
-                        p.extend(draw_ids(r, n_used, &mut |r| r.below(u64::from(n_expert)) as u16));
-                    }
-                    p
-                };
-                let predicted = (il + 1 < n_layer).then(|| pred(&mut rng));
-                let predicted2 = (il + 2 < n_layer).then(|| pred(&mut rng));
-                records.push(Record::Step(LayerStep {
-                    step: s as u32,
-                    layer: il as u16,
-                    n_tokens,
-                    ids,
-                    predicted,
-                    predicted2,
-                }));
-            }
-            if s == 0 {
-                records.push(Record::HotRefresh { step: 0 });
-            }
-        }
-        let t = Trace { header: header(n_layer, n_expert, n_used as u32), records };
+        let t = prefetch_trace(seed, n_steps);
         for policy in [Policy::Lru, Policy::Freq { share }] {
             let (_, violations) = replay_checked(&t, &cfg(2, ram, policy, true));
             prop_assert_eq!(violations, 0, "{:?}", policy);
@@ -536,5 +549,121 @@ proptest! {
             prop_assert_eq!(bad, 0, "{:?}", vp);
             prop_assert_eq!(*pairs.get_or_insert(o.decode.pairs), o.decode.pairs);
         }
+    }
+}
+
+// RAM-tier policies across layers (ADR 0050 (c) addendum 2026-11-14).
+
+#[test]
+fn global_lru_lends_one_layers_bytes_to_another() {
+    // Layer 0 cycles through 6 experts, layer 1 always routes expert 0. Per layer, 4 slots: LRU on
+    // a cycle of 6 never hits in layer 0. One pool of the same bytes (8 experts) holds all 7.
+    let steps: Vec<Vec<Vec<u16>>> = (0..60u16).map(|s| vec![vec![s % 6], vec![0]]).collect();
+    let t = decode_trace(header(2, 8, 1), &steps, None);
+    let lru = replay(&t, &cfg(0, 4, Policy::Lru, false));
+    let glru = replay(&t, &cfg(0, 4, Policy::GlobalLru, false));
+    assert_eq!(lru.decode.ram_hits, 59);
+    assert_eq!(glru.decode.ram_hits, 120 - 7);
+    assert!(glru.decode.disk_bytes_per_token < lru.decode.disk_bytes_per_token / 5.0);
+    let spread = glru
+        .ram_layer_residents
+        .expect("global outcomes report the spread");
+    assert_eq!((spread.min, spread.max), (1, 6));
+    assert!(lru.ram_layer_residents.is_none());
+    let opt = replay(&t, &cfg(0, 4, Policy::GlobalBelady, false));
+    assert_eq!(opt.decode.ram_hits, 120 - 7);
+}
+
+#[test]
+fn existing_outcomes_gain_no_fields() {
+    let steps: Vec<Vec<Vec<u16>>> = (0..8u16).map(|s| vec![vec![s % 3]]).collect();
+    let t = decode_trace(header(1, 4, 1), &steps, None);
+    let lru = serde_json::to_value(replay(&t, &cfg(0, 2, Policy::Lru, false))).unwrap();
+    assert!(lru.get("ram_layer_residents").is_none());
+    assert!(lru.get("decode_step_bytes").is_none());
+    let g = serde_json::to_value(replay(&t, &cfg(0, 2, Policy::GlobalLru, false))).unwrap();
+    assert!(g.get("ram_layer_residents").is_some());
+    assert_eq!(g["policy"], "glru");
+}
+
+#[test]
+fn decode_step_bytes_add_up_to_the_decode_bytes() {
+    for seed in [3u64, 17, 99] {
+        let t = prefetch_trace(seed, 40);
+        for policy in [
+            Policy::Lru,
+            Policy::Freq { share: 0.5 },
+            Policy::GlobalLru,
+            Policy::GlobalFreq { share: 0.5 },
+        ] {
+            for pf in [true, false] {
+                let o = replay(&t, &cfg(2, 6, policy, pf));
+                assert_eq!(o.decode_step_bytes.len() as u64, o.decode.steps);
+                let sum: u64 = o.decode_step_bytes.iter().sum();
+                let want = o.decode.disk_bytes_per_token * o.decode.tokens as f64;
+                assert!(
+                    (sum as f64 - want).abs() < 1e-6,
+                    "{policy:?} {pf}: {sum} {want}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn global_frequency_core_helps_a_skewed_workload() {
+    let (n_expert, n_used, ram) = (128, 4, 24);
+    let skewed = zipf_trace(n_expert, n_used, 20_000, 3, true);
+    let glru = replay(&skewed, &cfg(0, ram, Policy::GlobalLru, false));
+    let core = replay(
+        &skewed,
+        &cfg(0, ram, Policy::GlobalFreq { share: 0.5 }, false),
+    );
+    eprintln!(
+        "skewed: glru {:.4} gfreq:0.5 {:.4}",
+        glru.decode.ram_hit_rate, core.decode.ram_hit_rate
+    );
+    assert!(core.decode.ram_hit_rate >= glru.decode.ram_hit_rate + 0.02);
+    // One layer: the pool is the per-layer tier.
+    let lru = replay(&skewed, &cfg(0, ram, Policy::Lru, false));
+    assert_eq!(lru.decode.ram_hits, glru.decode.ram_hits);
+}
+
+#[test]
+fn global_policy_names_parse_and_roundtrip() {
+    for s in ["glru", "gbelady", "gfreq:0.5", "gfreq:1"] {
+        let p = Policy::parse(s).unwrap();
+        assert_eq!(p.name(), s);
+        assert_eq!(Policy::parse(&p.name()).unwrap(), p);
+    }
+    assert!(Policy::parse("gfreq:0").is_err());
+    assert!(Policy::parse("gfreq:1.5").is_err());
+}
+
+proptest! {
+    /// The pool's invariants under the replay's calls, with prefetch: the budget is never
+    /// exceeded and no pinned expert is evicted. Global Belady never loses to global LRU when
+    /// every expert has the same size, and both see the same lookups.
+    #[test]
+    fn global_policies_keep_their_invariants(
+        seed in 1u64..u64::MAX,
+        ram in 2u32..14,
+        n_steps in 4usize..50,
+    ) {
+        let t = prefetch_trace(seed, n_steps);
+        for policy in [
+            Policy::GlobalLru,
+            Policy::GlobalFreq { share: 0.5 },
+            Policy::GlobalFreq { share: 1.0 },
+        ] {
+            let (_, violations) = replay_checked(&t, &cfg(2, ram, policy, true));
+            prop_assert_eq!(violations, 0, "{:?}", policy);
+        }
+        let glru = replay(&t, &cfg(2, ram, Policy::GlobalLru, false));
+        let opt = replay(&t, &cfg(2, ram, Policy::GlobalBelady, false));
+        prop_assert_eq!(glru.decode.ram_lookups + glru.prefill.ram_lookups,
+                        opt.decode.ram_lookups + opt.prefill.ram_lookups);
+        prop_assert!(total_hits(&opt) >= total_hits(&glru),
+            "ram {}: gbelady {} < glru {}", ram, total_hits(&opt), total_hits(&glru));
     }
 }

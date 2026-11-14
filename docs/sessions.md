@@ -113,7 +113,7 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 | 2 | `main-prefetch` (builder, levers) | 9 | 34 | the pair for every stage below |
 | 3 | `kv-q8`, `kv-q8-slots`, `kv-q8q4`, `kv-q8q4-slots` | 36 | 70 | ADR 0050 b: decode with low-bit KV, and with the freed bytes as expert slots |
 | 3b | `main-iosvc`, `main-overlap` | 18 | 88 | ADR 0054: the persistent I/O service alone, then with experts computed in arrival order; decode at least 15% above `main-prefetch` and hidden share at least 0.5 |
-| 4 | `trace` and the replay | 15 | 103 | ADR 0050 c: frequency tiers against LRU (`replay-235b.json`; the trace stays in `runs/vast/`, git-ignored) |
+| 4 | `trace` and the replay | 15 | 103 | ADR 0050 c: frequency tiers against LRU (`replay-235b.json`) and, addendum 2026-11-14, the RAM policies across layers with 16-token decode windows (`replay-235b-ram.json`; calibration: `lru` windows within 5% of the run's own `decode_windows`). The trace stays in `runs/vast/`; its zstd copy `routing-235b-<stamp>.trace.zst` comes back with the results, git-ignored: after the fetch, move it to the main checkout's `runs/traces/` |
 | 5 | `main-overlap-ram` (RAM tier with a 4 GB reserve) | 9 | 112 | ADR 0054 section 3; the deadline guard drops it unless the download was fast; peak RSS under 90 GB |
 | 6 | `anchors-builder-short` (the builder anchors that fit at pp512 tg32, planner build) | 8 to 12 | 124 | ADR 0056: ledger coverage of the 235B session, `ledger-<session>/`; last, cut first |
 

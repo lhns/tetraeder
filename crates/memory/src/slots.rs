@@ -403,6 +403,150 @@ pub fn slots_per_layer(bytes: u64, layers: u32, slot_bytes: u64) -> u32 {
     u32::try_from(bytes / per_slot_all_layers).unwrap_or(u32::MAX)
 }
 
+/// Result of [`GlobalSlots::lookup_except`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GlobalLookup {
+    Hit,
+    /// The expert is now resident; `evicted` are the `(layer, expert)` that made room, oldest
+    /// first.
+    Miss {
+        evicted: Vec<(u32, u32)>,
+    },
+    /// Not enough evictable bytes (or out of range): compute from the cold tier without caching.
+    Bypass,
+}
+
+/// A RAM tier as one byte budget across layers (ADR 0050 (c) addendum 2026-11-14), as the page
+/// cache under an mmap is: LRU over every (layer, expert), experts sized per layer. Pins are per
+/// layer, as in [`LayerSlots::set_hot_set`]. Host-side bookkeeping only, used by the replay.
+#[derive(Debug, Clone)]
+pub struct GlobalSlots {
+    bytes: Vec<u64>,
+    experts: u32,
+    budget: u64,
+    used: u64,
+    clock: u64,
+    /// Last use per (layer, expert), `None` when not resident.
+    stamp: Vec<Vec<Option<u64>>>,
+    /// Residents by last use: the eviction order.
+    order: std::collections::BTreeSet<(u64, u32, u32)>,
+    pinned: Vec<Vec<bool>>,
+    residents: Vec<u32>,
+}
+
+impl GlobalSlots {
+    /// `expert_bytes` per layer; `budget` in bytes.
+    pub fn new(expert_bytes: &[u64], experts: u32, budget: u64) -> Self {
+        let layers = expert_bytes.len();
+        Self {
+            bytes: expert_bytes.to_vec(),
+            experts,
+            budget,
+            used: 0,
+            clock: 0,
+            stamp: vec![vec![None; experts as usize]; layers],
+            order: std::collections::BTreeSet::new(),
+            pinned: vec![vec![false; experts as usize]; layers],
+            residents: vec![0; layers],
+        }
+    }
+
+    pub fn budget(&self) -> u64 {
+        self.budget
+    }
+
+    pub fn used(&self) -> u64 {
+        self.used
+    }
+
+    pub fn layers(&self) -> usize {
+        self.bytes.len()
+    }
+
+    /// Experts of `layer` resident.
+    pub fn residents(&self, layer: u32) -> u32 {
+        self.residents[layer as usize]
+    }
+
+    pub fn contains(&self, layer: u32, expert: u32) -> bool {
+        self.stamp
+            .get(layer as usize)
+            .and_then(|l| l.get(expert as usize))
+            .is_some_and(Option::is_some)
+    }
+
+    pub fn is_pinned(&self, layer: u32, expert: u32) -> bool {
+        self.pinned
+            .get(layer as usize)
+            .and_then(|l| l.get(expert as usize))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// Replace the pins of `layer` (out-of-range ids are ignored).
+    pub fn set_pins(&mut self, layer: u32, pins: &[u32]) {
+        let Some(p) = self.pinned.get_mut(layer as usize) else {
+            return;
+        };
+        p.fill(false);
+        for &e in pins {
+            if let Some(x) = p.get_mut(e as usize) {
+                *x = true;
+            }
+        }
+    }
+
+    /// Hit, or make room by evicting the least recently used experts of any layer that are
+    /// neither pinned nor in `protect` (experts of `layer`). Nothing is evicted on a bypass.
+    pub fn lookup_except(&mut self, layer: u32, expert: u32, protect: &[u32]) -> GlobalLookup {
+        let (l, e) = (layer as usize, expert as usize);
+        if l >= self.bytes.len() || expert >= self.experts {
+            return GlobalLookup::Bypass;
+        }
+        self.clock += 1;
+        if let Some(old) = self.stamp[l][e] {
+            self.order.remove(&(old, layer, expert));
+            self.order.insert((self.clock, layer, expert));
+            self.stamp[l][e] = Some(self.clock);
+            return GlobalLookup::Hit;
+        }
+        let need = self.bytes[l];
+        if need > self.budget {
+            return GlobalLookup::Bypass;
+        }
+        let mut free = self.budget - self.used;
+        let mut victims = Vec::new();
+        if free < need {
+            for &(_, vl, ve) in &self.order {
+                if self.pinned[vl as usize][ve as usize] || (vl == layer && protect.contains(&ve)) {
+                    continue;
+                }
+                victims.push((vl, ve));
+                free += self.bytes[vl as usize];
+                if free >= need {
+                    break;
+                }
+            }
+            if free < need {
+                return GlobalLookup::Bypass;
+            }
+        }
+        for &(vl, ve) in &victims {
+            let s = self.stamp[vl as usize][ve as usize]
+                .take()
+                .expect("a victim is resident");
+            self.order.remove(&(s, vl, ve));
+            self.used -= self.bytes[vl as usize];
+            self.residents[vl as usize] -= 1;
+        }
+        self.stamp[l][e] = Some(self.clock);
+        self.order.insert((self.clock, layer, expert));
+        self.used += need;
+        self.residents[l] += 1;
+        GlobalLookup::Miss { evicted: victims }
+    }
+}
+
 /// The slot cache of one tier: [`LayerSlots`] for every MoE layer of a stage.
 #[derive(Debug, Clone)]
 pub struct SlotCache {
