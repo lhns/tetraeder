@@ -101,3 +101,15 @@ groups:
           severity: warning
         annotations:
           summary: "More than one preemption per minute for 10 minutes"
+
+      # Preemptions while a quarter of the pool is free: holes, not size, limit the load (ADR 0067).
+      - alert: TetraederKvFragmented
+        expr: |
+          sum(rate(tetraeder_scheduler_preemptions_total[10m])) > 0
+            and sum(tetraeder_kv_blocks{tetraeder_state="free"}) / sum(tetraeder_kv_blocks) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KV pool fragmented: preemptions with more than 25% of blocks free"
+          description: "Live sequences were preempted while more than a quarter of the KV pool was free, so the free rows are in runs too small to grow into. Compare the free and relocation series on the KV pool panel; a paged layout (ADR 0067) or a larger GROW removes the holes."

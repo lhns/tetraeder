@@ -16,7 +16,6 @@ pub mod attr {
     pub const TIER: &str = "tetraeder.memory.tier";
     pub const KIND: &str = "tetraeder.memory.kind";
     pub const STEP_KIND: &str = "tetraeder.kind";
-    pub const SEQ_STATE: &str = "tetraeder.state";
     pub const LAYER: &str = "tetraeder.layer";
     pub const DEPTH: &str = "tetraeder.prefetch.depth";
     pub const RESULT: &str = "tetraeder.result";
@@ -38,6 +37,7 @@ pub mod attr {
     pub const CPU_ISA: &str = "tetraeder.cpu.isa";
     pub const CPU_DISPATCH: &str = "tetraeder.cpu.dispatch";
     pub const CPU_POLL_AUTO: &str = "tetraeder.cpu.poll.auto";
+    pub const STATE: &str = "tetraeder.state";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +148,9 @@ pub struct Metrics {
     mem_capacity: Gauge<u64>,
     kv_tokens: Gauge<u64>,
     kv_capacity: Gauge<u64>,
+    kv_blocks: Gauge<u64>,
+    kv_relocations: Counter<u64>,
+    sched_preemptions: Counter<u64>,
     expert_requests: Counter<u64>,
     expert_load: Histogram<f64>,
     tier_read: Counter<u64>,
@@ -168,7 +171,6 @@ pub struct Metrics {
     batch_size: Histogram<f64>,
     step_tokens: Histogram<f64>,
     sequences: Gauge<u64>,
-    preemptions: Counter<u64>,
     decode_stage: Histogram<f64>,
     prefix_hits: Counter<u64>,
     prefix_evictions: Counter<u64>,
@@ -253,6 +255,20 @@ impl Metrics {
             kv_capacity: meter
                 .u64_gauge("tetraeder.kv.capacity")
                 .with_description("Positions the KV cache holds")
+                .build(),
+            kv_blocks: meter
+                .u64_gauge("tetraeder.kv.blocks")
+                .with_description("KV pool in 256-row units by state: used, reserved, idle, free")
+                .build(),
+            kv_relocations: meter
+                .u64_counter("tetraeder.kv.relocations")
+                .with_unit("{relocation}")
+                .with_description("Sequences moved to another run of the KV pool to grow")
+                .build(),
+            sched_preemptions: meter
+                .u64_counter("tetraeder.scheduler.preemptions")
+                .with_unit("{preemption}")
+                .with_description("Live sequences preempted to free KV rows")
                 .build(),
             expert_requests: meter
                 .u64_counter("tetraeder.expert.cache.requests")
@@ -377,13 +393,6 @@ impl Metrics {
                 .with_unit("{sequence}")
                 .with_description(
                     "Sequences held by the scheduler, by state (prefill, decode, paused, idle)",
-                )
-                .build(),
-            preemptions: meter
-                .u64_counter("tetraeder.scheduler.preemptions")
-                .with_unit("{preemption}")
-                .with_description(
-                    "Sequences preempted and requeued because the KV pool was full (they are recomputed)",
                 )
                 .build(),
             prefix_hits: meter
@@ -753,13 +762,9 @@ impl Metrics {
     /// Sequences in `state` (`prefill`, `decode`, `paused` or `idle`).
     pub fn scheduler_sequences(&self, state: &'static str, n: u64) {
         self.sequences
-            .record(n, &[KeyValue::new(attr::SEQ_STATE, state)]);
+            .record(n, &[KeyValue::new(attr::STATE, state)]);
     }
 
-    /// A sequence was preempted for lack of KV rows.
-    pub fn scheduler_preemption(&self) {
-        self.preemptions.add(1, &[]);
-    }
 
     /// Mean seconds per decoded token of one request in `stage` (decode profile).
     pub fn decode_stage(&self, stage: &'static str, seconds: f64) {
@@ -925,6 +930,29 @@ impl Metrics {
         let dev = [KeyValue::new(attr::DEVICE, device.to_owned())];
         self.kv_tokens.record(tokens, &dev);
         self.kv_capacity.record(capacity_tokens, &dev);
+    }
+
+    /// The KV pool in 256-row units (ADR 0067): `state` is `used`, `reserved`, `idle` or `free`.
+    pub fn kv_blocks(&self, device: &str, tier: &str, state: &'static str, n: u64) {
+        self.kv_blocks.record(
+            n,
+            &[
+                KeyValue::new(attr::DEVICE, device.to_owned()),
+                KeyValue::new(attr::TIER, tier.to_owned()),
+                KeyValue::new(attr::STATE, state),
+            ],
+        );
+    }
+
+    /// A sequence moved to a new run of the KV pool.
+    pub fn kv_relocation(&self) {
+        self.kv_relocations.add(1, &[]);
+    }
+
+    /// A live sequence preempted for KV rows (the scheduler's, brief C2; defined here so the
+    /// alert `TetraederKvFragmented` has its series).
+    pub fn scheduler_preemption(&self) {
+        self.sched_preemptions.add(1, &[]);
     }
 
     pub fn memory_capacity(&self, device: &str, tier: &str, kind: &str, bytes: u64) {
