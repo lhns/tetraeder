@@ -43,7 +43,7 @@ pub enum Policy {
     GlobalLru,
     /// [`Policy::GlobalLru`] plus, in decode, the most routed experts across all layers (outside
     /// the VRAM hot set) pinned up to `share` of the budget, always leaving room for one decode
-    /// step and two prefetched layers; refreshed as [`Policy::Freq`].
+    /// step and its reads in flight (`4 x n_used` experts); refreshed as [`Policy::Freq`].
     GlobalFreq { share: f64 },
     /// [`Policy::Belady`] over the shared budget. No prefetch.
     GlobalBelady,
@@ -227,6 +227,10 @@ pub struct Outcome {
     /// Global policies: experts per layer in the RAM tier at the end of the replay.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ram_layer_residents: Option<Spread>,
+    /// Global policies: RAM lookups that found no evictable room and read without caching, both
+    /// phases; absent at zero.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ram_bypasses: Option<u64>,
     /// Per layer, RAM-cache `(hits, misses)` over the whole replay including the prefetch's
     /// lookups: what `ExpertStats::layers[i].ram` reports.
     #[serde(skip)]
@@ -263,6 +267,7 @@ fn is_static_name(s: &str) -> bool {
 #[derive(Default, Clone)]
 struct Acc {
     admit_bytes: u64,
+    bypasses: u64,
     steps: u64,
     tokens: u64,
     pairs: u64,
@@ -649,6 +654,7 @@ impl<'a, 't> Sim<'a, 't> {
                     self.note_miss(il, e);
                 }
                 Look::Bypass => {
+                    self.acc[self.phase].bypasses += 1;
                     self.acc[self.phase].misses += 1;
                     self.acc[self.phase].sync_bytes += self.expert_bytes(il);
                     self.note_miss(il, e);
@@ -795,14 +801,16 @@ impl<'a, 't> Sim<'a, 't> {
     }
 
     /// [`Policy::GlobalFreq`]: the most routed experts of all layers, outside the VRAM hot set,
-    /// until `share` of the budget, less room for one decode step and two prefetched layers.
+    /// until `share` of the budget, less room for a decode step and its reads in flight: the
+    /// chunk, two reads for the next layer (depth 2 from the layer before, depth 1 from this one)
+    /// and one for the layer after, `n_used` experts each.
     fn refresh_global_freq_pins(&mut self, share: f64) {
         let Ram::Global(g) = &self.ram else {
             return;
         };
         let bytes = &self.h.expert_bytes;
         let largest = bytes.iter().copied().max().unwrap_or(0);
-        let reserve = 3 * u64::from(self.h.n_used) * largest;
+        let reserve = 4 * u64::from(self.h.n_used) * largest;
         let cap = ((share * g.budget() as f64) as u64).min(g.budget().saturating_sub(reserve));
         let mut ranked: Vec<(u64, usize, u32)> = Vec::new();
         for (il, counts) in self.counts.iter().enumerate() {
@@ -1113,6 +1121,8 @@ impl<'a, 't> Sim<'a, 't> {
             prefill: phase(&self.acc[PREFILL]),
             decode: phase(&self.acc[DECODE]),
             ram_layer_residents,
+            ram_bypasses: Some(self.acc[PREFILL].bypasses + self.acc[DECODE].bypasses)
+                .filter(|&n| n > 0 && self.cfg.policy.is_global()),
             layer_stats,
             decode_step_bytes,
         };

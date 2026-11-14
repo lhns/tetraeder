@@ -570,6 +570,7 @@ fn global_lru_lends_one_layers_bytes_to_another() {
         .expect("global outcomes report the spread");
     assert_eq!((spread.min, spread.max), (1, 6));
     assert!(lru.ram_layer_residents.is_none());
+    assert!(glru.ram_bypasses.is_none());
     let opt = replay(&t, &cfg(0, 4, Policy::GlobalBelady, false));
     assert_eq!(opt.decode.ram_hits, 120 - 7);
 }
@@ -650,6 +651,8 @@ proptest! {
         ram in 2u32..14,
         n_steps in 4usize..50,
     ) {
+        // The Belady bound below needs one chunk per layer step (the prefill step routes 6
+        // experts per layer): with several, chunks follow each policy's residency.
         let t = prefetch_trace(seed, n_steps);
         for policy in [
             Policy::GlobalLru,
@@ -659,6 +662,7 @@ proptest! {
             let (_, violations) = replay_checked(&t, &cfg(2, ram, policy, true));
             prop_assert_eq!(violations, 0, "{:?}", policy);
         }
+        let ram = ram.max(6);
         let glru = replay(&t, &cfg(2, ram, Policy::GlobalLru, false));
         let opt = replay(&t, &cfg(2, ram, Policy::GlobalBelady, false));
         prop_assert_eq!(glru.decode.ram_lookups + glru.prefill.ram_lookups,

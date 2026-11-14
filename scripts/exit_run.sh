@@ -166,7 +166,8 @@ stage_min() {
     ktransformers-*) echo 20 ;;
     llamacpp-cache*) budget_min 30 "$LAST_CACHE_SEC" ;; # per share: 29 to 30 min with load and warmup on 20261111c and 20261111g
     moe-tune) echo 45 ;;
-    reference | trace) echo 15 ;;
+    reference) echo 15 ;;
+    trace) echo 20 ;; # 15 plus about 4 min of gbelady (24 s per RAM size at 4 of 16 ubatches, timed on a synthetic 235B trace)
     kv-quality) echo 30 ;;
     levers-snap) echo "${SNAP_STAGE_MIN:-90}" ;; # 26 min prefill, then 15 arm-rounds of reload, first ubatch, restore, 80 tokens
     exit-*) echo 40 ;;
@@ -701,11 +702,12 @@ EOF
       if want trace; then
         trace="$PWD/runs/vast/routing-235b-$stamp.trace"
         exit_regime trace 90 "${deep[@]}" TETRAEDER_EXIT_DECODE=256 TETRAEDER_EXIT_DECODE_WINDOWS=16 TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_PREFETCH_DEPTH=2           TETRAEDER_EXIT_ROUTING_OUT="$trace" || rc=29
-        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace"           --vram 10,12,13 --ram 48,64,77,79,81,83,96,110 --vram-policy static,prefill,lru,lru:0.5,freq --out "$date_dir/replay-235b.json" || rc=29
-        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace" --vram 10 --ram 77,96           --policies lru,freq:0.5,glru,gfreq:0.5,gfreq:1,belady,gbelady --decode-window 16 --out "$date_dir/replay-235b-ram.json" || rc=29
+        # the copy first, so a cut replay cannot lose the trace again
         if [ -s "$trace" ]; then
           zstd -q -f -T2 -10 "$trace" -o "$date_dir/$(basename "$trace").zst" || rc=29
         fi
+        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace"           --vram 10,12,13 --ram 48,64,77,79,81,83,96,110 --vram-policy static,prefill,lru,lru:0.5,freq --out "$date_dir/replay-235b.json" || rc=29
+        cargo run --release -p tetraeder-bench --bin tetraeder-bench -- replay --trace "$trace" --vram 10 --ram 77,96           --policies lru,freq:0.5,glru,gfreq:0.5,gfreq:1,belady,gbelady --decode-window 16 --out "$date_dir/replay-235b-ram.json" || rc=29
       fi
       # VARIANTS: extra builder runs at the same depth, "name:ENV=V,ENV=V name2:..." (stage names exit-<name>)
       for v in ${VARIANTS:-}; do
