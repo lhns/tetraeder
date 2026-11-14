@@ -2233,6 +2233,7 @@ dependencies = [
  "http-body-util",
  "opentelemetry",
  "opentelemetry_sdk",
+ "proptest",
  "serde_json",
  "tetraeder-engine",
  "tetraeder-gateway",

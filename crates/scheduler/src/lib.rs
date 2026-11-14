@@ -4,12 +4,18 @@
 //! (ADR 0043).
 
 mod backend;
+// The step planner of ADR 0065; the loop that uses it comes with C2b.
+#[allow(dead_code)]
+mod batch;
 mod load;
 mod prefix_cache;
 pub mod sample;
 mod scheduler;
 
-pub use backend::{Backend, LlamaBackend, MOE_CHUNK, MoeBackend};
+pub use backend::{
+    Backend, BackendError, BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SeqId,
+    SeqInput, SingleSeq,
+};
 pub use load::{
     Loaded, architecture, chat_template, load_llama, load_moe, load_moe_chunked, model_id,
 };
