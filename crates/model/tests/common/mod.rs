@@ -36,11 +36,16 @@ pub fn bench_threads() -> usize {
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
-use tetraeder_model::Qwen3Moe;
+use tetraeder_model::{Qwen3, Qwen3Moe};
 use tetraeder_plan::KvFormat;
 
 pub fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/tiny-qwen3moe-f16.gguf")
+}
+
+/// The tiny dense fixture (`cargo xtask tiny-dense`, ADR 0066).
+pub fn dense_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/tiny-qwen3-f16.gguf")
 }
 
 /// Largest allowed absolute difference of a reference top-k logit.
@@ -233,13 +238,53 @@ pub fn libllama_reference_kv_default_rot(
     }
 }
 
+/// What `check_against` needs of a builder: sequence 0 evaluated from scratch.
+pub trait Evaluator {
+    fn reset(&mut self);
+    /// Logits of every position of `t` after the cache.
+    fn eval(&mut self, t: &[i32]) -> Vec<f32>;
+    /// Logits of the last position only.
+    fn eval_last(&mut self, t: &[i32]) -> Vec<f32>;
+    fn n_vocab(&self) -> usize;
+}
+
+impl Evaluator for Qwen3Moe {
+    fn reset(&mut self) {
+        Qwen3Moe::reset(self);
+    }
+    fn eval(&mut self, t: &[i32]) -> Vec<f32> {
+        Qwen3Moe::eval(self, t).unwrap()
+    }
+    fn eval_last(&mut self, t: &[i32]) -> Vec<f32> {
+        Qwen3Moe::eval_last(self, t).unwrap()
+    }
+    fn n_vocab(&self) -> usize {
+        Qwen3Moe::n_vocab(self)
+    }
+}
+
+impl Evaluator for Qwen3 {
+    fn reset(&mut self) {
+        Qwen3::reset(self);
+    }
+    fn eval(&mut self, t: &[i32]) -> Vec<f32> {
+        Qwen3::eval(self, t).unwrap()
+    }
+    fn eval_last(&mut self, t: &[i32]) -> Vec<f32> {
+        Qwen3::eval_last(self, t).unwrap()
+    }
+    fn n_vocab(&self) -> usize {
+        Qwen3::n_vocab(self)
+    }
+}
+
 /// Prefill of `PROMPT` (logits of every position), then `N_GREEDY` greedy decode steps, against
 /// the reference. Panics on a difference above `tol` in a reference top-k logit or in the
 /// greedy sequence. Returns the largest logit difference seen.
-pub fn check_against(m: &mut Qwen3Moe, r: &Reference, tol: f32) -> f32 {
+pub fn check_against(m: &mut dyn Evaluator, r: &Reference, tol: f32) -> f32 {
     m.reset();
     assert_eq!(m.n_vocab(), r.n_vocab);
-    let got = m.eval(&PROMPT).unwrap();
+    let got = m.eval(&PROMPT);
     assert_eq!(got.len(), r.prompt_logits.len());
     assert!(got.iter().all(|x| x.is_finite()));
     let mut worst = 0f32;
@@ -264,14 +309,161 @@ pub fn check_against(m: &mut Qwen3Moe, r: &Reference, tol: f32) -> f32 {
     // Greedy sequence: prefill the prompt, then decode one token per step (n_tokens = 1 graphs,
     // incremental KV cache).
     m.reset();
-    let last = m.eval_last(&PROMPT).unwrap();
+    let last = m.eval_last(&PROMPT);
     assert_eq!(last.len(), r.n_vocab);
     let mut next = argmax(&last) as i32;
     let mut seq = Vec::new();
     for _ in 0..N_GREEDY {
         seq.push(next);
-        next = argmax(&m.eval(&[next]).unwrap()) as i32;
+        next = argmax(&m.eval(&[next])) as i32;
     }
     assert_eq!(seq, r.greedy);
+    worst
+}
+
+/// One step of a multi-sequence script: `(seq, first, last)` appends tokens `first..last` of the
+/// sequence's stream; `all` asks for the logits of every token, else of the last.
+#[derive(Clone, Debug)]
+pub struct Item {
+    pub seq: u32,
+    pub range: std::ops::Range<usize>,
+    pub all: bool,
+}
+
+/// Logits by (sequence, position) of a multi-sequence script.
+pub type Logits = std::collections::BTreeMap<(u32, usize), Vec<f32>>;
+
+/// Runs `steps` (token streams per sequence) on libllama with `n_seq_max` sequences in one
+/// unified KV buffer, as `scheduler`'s batches do. Returns the logits of every requested token.
+pub fn libllama_script(
+    path: &Path,
+    streams: &[Vec<i32>],
+    steps: &[Vec<Item>],
+    kv: KvFormat,
+) -> Logits {
+    tetraeder_ggml_sys::llama::disable_attn_rot();
+    let ty = |f| tetraeder_model::convert::ggml_type(f).expect("ggml type of the KV format");
+    let model = Arc::new(
+        Model::load(
+            path,
+            &ModelParams {
+                n_gpu_layers: 0,
+                extra_bufts: false,
+                ..ModelParams::default()
+            },
+        )
+        .expect("libllama loads the fixture"),
+    );
+    let mut ctx = Context::new(
+        &model,
+        &ContextParams {
+            n_ctx: 512,
+            n_batch: 64,
+            n_ubatch: 64,
+            n_threads: 2,
+            n_threads_batch: 2,
+            flash_attn: FlashAttn::On,
+            type_k: ty(kv.k),
+            type_v: ty(kv.v),
+            n_seq_max: streams.len() as u32,
+            kv_unified: true,
+            ..ContextParams::default()
+        },
+    )
+    .unwrap();
+    let mut batch = Batch::new(64);
+    let mut out = Logits::new();
+    for step in steps {
+        batch.clear();
+        let mut wanted = Vec::new();
+        for it in step {
+            for p in it.range.clone() {
+                let want = it.all || p + 1 == it.range.end;
+                if want {
+                    wanted.push((it.seq, p, batch.len() as i32));
+                }
+                batch
+                    .push(streams[it.seq as usize][p], p as i32, it.seq as i32, want)
+                    .unwrap();
+            }
+        }
+        ctx.decode(&batch).unwrap();
+        for (seq, p, i) in wanted {
+            out.insert((seq, p), ctx.logits_ith(i).unwrap().to_vec());
+        }
+    }
+    out
+}
+
+/// Runs `steps` on a builder with `n_seq_max` sequences; with `batched` off every item is its
+/// own step. Returns the logits of every requested token.
+pub fn builder_script(
+    m: &mut Qwen3,
+    streams: &[Vec<i32>],
+    steps: &[Vec<Item>],
+    batched: bool,
+) -> Logits {
+    use tetraeder_model::SeqEval;
+    let nv = m.n_vocab();
+    let mut out = Logits::new();
+    let mut run = |m: &mut Qwen3, items: &[&Item]| {
+        let inputs: Vec<SeqEval<'_>> = items
+            .iter()
+            .map(|it| SeqEval {
+                seq: it.seq,
+                tokens: &streams[it.seq as usize][it.range.clone()],
+                all_logits: it.all,
+            })
+            .collect();
+        let mut buf = Vec::new();
+        let spans = m.decode(&inputs, &mut buf).unwrap();
+        for (it, span) in items.iter().zip(spans) {
+            let first = it.range.end - span.len();
+            for (k, row) in span.enumerate() {
+                out.insert((it.seq, first + k), buf[row * nv..(row + 1) * nv].to_vec());
+            }
+        }
+    };
+    for step in steps {
+        if batched {
+            run(m, &step.iter().collect::<Vec<_>>());
+        } else {
+            for it in step {
+                run(m, &[it]);
+            }
+        }
+    }
+    out
+}
+
+/// Largest absolute logit difference between two scripts' rows over every logit, and the
+/// number of rows compared. Panics when a row is missing or the argmax differs where the
+/// reference's top-2 margin exceeds ADR 0043's near-tie bound (1e-3 of the largest logit).
+pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, what: &str) -> f32 {
+    assert_eq!(
+        want.keys().collect::<Vec<_>>(),
+        have.keys().collect::<Vec<_>>(),
+        "{what}: rows differ"
+    );
+    let mut worst = 0f32;
+    for (key, w) in want {
+        let h = &have[key];
+        assert!(
+            h.iter().all(|x| x.is_finite()),
+            "{what}: {key:?} not finite"
+        );
+        let diff = w
+            .iter()
+            .zip(h)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0f32, f32::max);
+        worst = worst.max(diff);
+        assert!(diff <= tol, "{what}: {key:?} differs by {diff:e}");
+        let top = top_k(w, 2);
+        let margin = w[top[0]] - w[top[1]];
+        if margin > 1e-3 * w[top[0]].abs() {
+            assert_eq!(top[0], argmax(h), "{what}: argmax differs at {key:?}");
+        }
+    }
     worst
 }

@@ -10,6 +10,7 @@ pub mod experts;
 pub mod gguf;
 pub mod gguf_write;
 pub mod hparams;
+pub mod qwen3;
 pub mod qwen3moe;
 pub mod upload;
 
@@ -19,6 +20,7 @@ pub use cpu_poll::CpuPoll;
 pub use experts::{ExpertStats, IoCounters, LayerExpertStats, MissPolicy, RoutingStep};
 pub use gguf::{Gguf, GgufError, Slab, TensorInfo};
 pub use hparams::{ExpertSlabs, Hparams, ModelFile};
+pub use qwen3::{ARCH_DENSE, DenseHparams, DenseOptions, Qwen3};
 pub use qwen3moe::{BackendChoice, LoadOptions, MemoryUse, ModelError, Qwen3Moe, StepProfile};
 pub use tetraeder_memory::slots::LayerStats;
 pub use upload::AdmitUpload;

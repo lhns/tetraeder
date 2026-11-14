@@ -74,6 +74,11 @@ pub struct ContextParams {
     pub type_k: Type,
     /// V cache type, as `type_k`.
     pub type_v: Type,
+    /// Most sequence ids the context holds at once (libllama default 1).
+    pub n_seq_max: u32,
+    /// One KV buffer shared by all sequences when computing attention. Needed for a
+    /// reference to a pool-style multi-sequence run with `n_seq_max > 1`.
+    pub kv_unified: bool,
 }
 
 impl Default for ContextParams {
@@ -101,6 +106,8 @@ impl Default for ContextParams {
             no_perf: d.no_perf,
             type_k: Type::F16,
             type_v: Type::F16,
+            n_seq_max: d.n_seq_max,
+            kv_unified: d.kv_unified,
         }
     }
 }
@@ -152,6 +159,8 @@ impl Context {
         p.no_perf = params.no_perf;
         p.type_k = params.type_k.raw() as _;
         p.type_v = params.type_v.raw() as _;
+        p.n_seq_max = params.n_seq_max;
+        p.kv_unified = params.kv_unified;
         // SAFETY: the model is live; the context keeps the Arc.
         let ptr = unsafe { sys::llama_init_from_model(model.ptr, p) };
         if ptr.is_null() {
