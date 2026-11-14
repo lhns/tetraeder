@@ -16,7 +16,7 @@ Qwen3 dense against Qwen3 MoE, at the pin (`src/models/qwen3.cpp`, `qwen3moe.cpp
 | Output | `output.weight`, or the token embedding when absent (Qwen3-0.6B ties it) | same |
 | GGUF keys | `qwen3.*`, `feed_forward_length` | `qwen3moe.*`, expert counts and lengths |
 
-Qwen3-8B: 36 layers, n_embd 4096, 32 heads, 8 KV heads, head 128, n_ff 12288, context 40960. A tiny dense fixture does not exist; the tiny MoE (`tests/fixtures/tiny-qwen3moe-f16.gguf`) is written by `xtask/tiny_moe.py` through the vendored gguf-py (`cargo xtask tiny-moe`). A real dense model is already in CI: Qwen3-0.6B Q8_0 with greedy goldens (`crates/engine/tests/golden.rs`, `bench/golden/qwen3-0.6b-q8_0-cpu-sse42-<os>.json`).
+Qwen3-8B: 36 layers, n_embd 4096, 32 heads, 8 KV heads, head 128, n_ff 12288, context 40960 (`qwen3.context_length`, to be read from the GGUF, not assumed). A tiny dense fixture does not exist; the tiny MoE (`tests/fixtures/tiny-qwen3moe-f16.gguf`) is written by `xtask/tiny_moe.py` through the vendored gguf-py (`cargo xtask tiny-moe`). A real dense model is already in CI: Qwen3-0.6B Q8_0 with greedy goldens (`crates/engine/tests/golden.rs`, `bench/golden/qwen3-0.6b-q8_0-cpu-sse42-<os>.json`).
 
 ## Decision
 

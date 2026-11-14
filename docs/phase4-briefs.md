@@ -8,8 +8,8 @@ Briefs for ADR 0065 (verdict, batch backend, continuous batching), ADR 0066 (own
 
 | Wave | Steps | Shared files |
 |---|---|---|
-| 1 | C1.5, C2, C3a, C6-1 in parallel | none (C2 touches `telemetry/src/metrics.rs`, `overview.json` and `engine.yml`; C6-1 too: append, do not reorder, merge textually) |
-| 2 | C3b, C4, C5 in parallel | C4 and C5 each implement a backend in their own file; both read, never change, `model/src/attn.rs` and `kvcache` |
+| 1 | C1.5, C2, C3a, C6-1 in parallel | C2 and C6-1 both append to `telemetry/src/metrics.rs`, `overview.json` and `engine.yml`: append, do not reorder, merge textually |
+| 2 | C3b, C4, C5 in parallel | C4 and C5 implement their backends in separate files and both append to `scheduler/src/{lib.rs,load.rs}` and `model/src/lib.rs`; C5 and C3b both add flags to `tetraeder/src/serve.rs`. Append only, merge textually. All three read, never change, `model/src/attn.rs` and `kvcache` |
 | 3 | verdict session (ADR 0065), run by the coordinator | |
 
 C3b needs C2. C4 needs C1.5, C2 and C6-1. C5 needs C1.5, C2 and C6-1.
@@ -96,7 +96,7 @@ C3b needs C2. C4 needs C1.5, C2 and C6-1. C5 needs C1.5, C2 and C6-1.
   pub fn seq_restore(&mut self, seq: i32, bytes: &[u8], n: usize) -> Result<()>;
   ```
   `eval`, `truncate`, `snapshot`, `restore`, `generate`, `bench_*` keep their behaviour on sequence 0.
-- `scheduler/src/backend.rs`: `SeqId`, `SeqInput`, `BackendError`, `Outputs`, `BatchBackend` exactly as ADR 0065. `impl BatchBackend for LlamaBackend` (reservations are bookkeeping against `n_ctx`; `seq_cp` counts n rows for dst). `pub struct SingleSeq<B: Backend>` implements `BatchBackend` with `n_seq_max() == 1` over the old trait; `MoeBackend` is served through it. The old `Backend` trait stays until C4. `Loaded.backend` becomes `Box<dyn BatchBackend>`.
+- `scheduler/src/backend.rs`: `SeqId`, `SeqInput`, `BackendError`, `Outputs`, `BatchBackend` exactly as ADR 0065. `impl BatchBackend for LlamaBackend` (reservations are bookkeeping against `n_ctx`; `seq_cp` counts n rows for dst; `LlamaError::NoKvSlot` maps to `BackendError::KvFull`, every other error to `Failed`). `pub struct SingleSeq<B: Backend>` implements `BatchBackend` with `n_seq_max() == 1` over the old trait; `MoeBackend` is served through it. The old `Backend` trait stays until C4. `Loaded.backend` becomes `Box<dyn BatchBackend>`.
 - `scheduler/src/batch.rs` (pure, no backend): the step planner.
   ```rust
   pub(crate) struct Live { pub seq: SeqId, pub pending: usize, pub decoding: bool,
@@ -105,11 +105,12 @@ C3b needs C2. C4 needs C1.5, C2 and C6-1. C5 needs C1.5, C2 and C6-1.
   /// Decoding, unpaused sequences take their pending tokens (1, or 1 + drafts) even beyond the
   /// budget; prefilling ones take chunks in admission order from what is left.
   pub(crate) fn plan_step(budget: usize, live: &[Live]) -> Vec<Take>;
-  /// The sequence to preempt on KvFull: the most recently admitted other live one.
+  /// The sequence to preempt on KvFull, after every idle sequence has been evicted (oldest
+  /// first, saved to RAM per ADR 0049): the most recently admitted other live one.
   pub(crate) fn victim(live: &[Live], needing: SeqId) -> Option<SeqId>;
   ```
 - `scheduler.rs`: the loop of ADR 0065 (admission, step, sampling, `try_send` with pause, cancellation, retirement to idle, preemption with requeue, errors per step). `SchedulerConfig` gains `parallel: usize` (default 4) and `step_tokens: usize` (default 512); `prefill_chunk` is removed in favour of `step_tokens`. Prefix reuse in this step: an admitted job takes the idle resident sequence with the longest common prefix (at most prompt - 1), or restores the best RAM entry into a free or evicted id when it beats that by `RESTORE_MIN_GAIN`; an evicted idle sequence of at least `SAVE_MIN_TOKENS` is saved to RAM first (ADR 0049 rules per sequence). Copying from a busy sequence is C3b.
-- `serve`: `--parallel <N>` (default 4), `--step-tokens <N>` (default 512); the gateway's `max_concurrent = parallel`; libllama gets `n_seq_max = parallel`, `kv_unified = true`, `n_batch = n_ubatch = step_tokens`, `n_ctx = --ctx`.
+- `serve`: `--parallel <N>` (default 4), `--step-tokens <N>` (default the `--ubatch` value, 512; with it, `-b` no longer applies to `serve` and its help says so); the gateway's `max_concurrent = parallel`; libllama gets `n_seq_max = parallel`, `kv_unified = true`, `n_batch = n_ubatch = step_tokens`, `n_ctx = --ctx`.
 - Telemetry (`crates/telemetry/src/metrics.rs`): `scheduler_step_tokens(kind: &'static str, n: u32)` (`tetraeder.scheduler.step.tokens`, attribute `tetraeder.kind`), `scheduler_sequences(state: &'static str, n: u64)` (`tetraeder.scheduler.sequences`, `tetraeder.state`), `scheduler_preemption()` (`tetraeder.scheduler.preemptions`); `scheduler_batch` records sequences per step. Panel "Scheduler: sequences, step tokens, preemptions" beside "Scheduler batch size" in `deploy/grafana/dashboards/overview.json`. Alert in `deploy/alerts/engine.yml`:
   ```yaml
   # The KV pool is too small for the load: sequences are preempted and recomputed (ADR 0065).
@@ -259,10 +260,10 @@ impl KvPool {
 **Tests first.**
 - `crates/kvcache/tests/pool_props.rs` (proptest, both layouts, blocks 64 and 256): random reserve, append, `seq_rm`, `seq_cp`, moves: P2 (live sequences' rows disjoint; after `seq_cp` dst rows are its own), P3 (reserved never above capacity, `Full` changes nothing, every planned row lies inside its sequence's reservation), mask rows open exactly on the sequence's own positions up to the token's, moves preserve every position's content (simulate row contents in a Vec).
 - Unit: the one-sequence equivalence above; c4 sanity pool 3072 rows on both layouts.
-- `crates/kvcache/tests/layout_sim.rs` (CI, deterministic): workload W of ADR 0067 from the committed proxy JSONL (dev-dependency `serde_json`), bisection per layout, writes `sim.json` to `TETRAEDER_KV_SIM_OUT` when set; asserts only internal consistency (W completes at the found pool, not at one unit less).
+- `crates/kvcache/tests/layout_sim.rs` (CI, deterministic): workload W of ADR 0067 from the committed proxy JSONL (dev-dependency `serde_json`; conversations by the rule of `scripts/claude_code_cache_classes.py`; Wt and R are the constants in the ADR, no model file is read), bisection per layout, writes `sim.json` to `TETRAEDER_KV_SIM_OUT` when set; asserts only internal consistency (W completes at the found pool, not at one unit less).
 - `crates/model/tests/kv_gather.rs` (ignored, label `cpu`): the three variants of ADR 0067 at the stated shapes, median of 20, `kv-gather.json` to `TETRAEDER_KV_GATHER_OUT`; first asserts on small sizes that (ii) and (iii) give the same attention output as (i) within 1e-3.
 
-**Done.** Workspace checks, `tests/test_alert_rules.py`; run the simulation and the benchmark locally, commit both JSON files under `bench/results/<date>/kv-layout/` with the computed `y_mask`, `y_gather`, `saving` and `verdict` (`chunked`, `paged_unmodified` or `step2`), and write ADR 0067's addendum with the numbers and which outcome rule applied. If the verdict is `step2`, stop there: step 2 gets its own ADR and brief.
+**Done.** Workspace checks, `tests/test_alert_rules.py`; run the simulation and the benchmark locally, commit both JSON files under `bench/results/<date>/kv-layout/` with the computed `saving`, `y_mask`, `y_gather`, `y_sparse` and `verdict` (`chunked`, `paged_unmodified` or `step2`, by ADR 0067's four outcome rules), and write ADR 0067's addendum with the numbers and which outcome rule applied. If the verdict is `step2`, stop there: step 2 gets its own ADR and brief.
 
 **Must not change.** The thresholds X and Y or the workload definition (ADR 0067: fixed before measuring). Anything in `crates/model/src` or `crates/scheduler`.
 
