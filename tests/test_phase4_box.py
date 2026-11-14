@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(
     sys.platform == "win32" or shutil.which("bash") is None, reason="needs bash on Linux (runs on the ubuntu CI job)"
 )
 
-STAGES = ["record-log", "build", "env", "prepass", "pairs", "ttft", "summary"]
+STAGES = ["record-log", "build", "gpu-parity", "env", "prepass", "pairs", "ttft", "summary"]
 
 
 def dry(tmp_path, **env):
