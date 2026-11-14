@@ -1,11 +1,12 @@
 //! Loading the backends for the scheduler and reading model facts from the GGUF.
 
 use crate::backend::{BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, SingleSeq};
+use crate::dense_backend::DenseBackend;
 use std::path::Path;
 use std::sync::Arc;
 use tetraeder_engine::{ContextConfig, Engine, Placement};
 use tetraeder_ggml_sys::llama::{Model, ModelParams};
-use tetraeder_model::{Gguf, LoadOptions, Qwen3Moe};
+use tetraeder_model::{BackendChoice, DenseOptions, Gguf, LoadOptions, Qwen3, Qwen3Moe};
 use tetraeder_telemetry::Telemetry;
 
 /// A backend and the libllama model that tokenizes for it.
@@ -60,6 +61,26 @@ pub fn load_moe_chunked(path: &Path, opts: &LoadOptions, chunk: usize) -> Result
             MoeBackend::with_chunk(model, on_gpu, chunk),
             n_vocab,
         )),
+        tokenizer,
+    })
+}
+
+/// The Qwen3 dense builder (ADR 0066); libllama loads only the vocabulary, for tokenizing.
+pub fn load_dense(path: &Path, opts: &DenseOptions) -> Result<Loaded, String> {
+    let tokenizer = Arc::new(
+        Model::load(
+            path,
+            &ModelParams {
+                vocab_only: true,
+                ..ModelParams::default()
+            },
+        )
+        .map_err(|e| e.to_string())?,
+    );
+    let on_gpu = matches!(opts.backend, BackendChoice::Gpu { .. });
+    let model = Qwen3::load(path, opts).map_err(|e| e.to_string())?;
+    Ok(Loaded {
+        backend: Box::new(DenseBackend::new(model, on_gpu)),
         tokenizer,
     })
 }

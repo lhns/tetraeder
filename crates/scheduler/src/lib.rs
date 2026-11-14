@@ -4,6 +4,7 @@
 
 mod backend;
 mod batch;
+mod dense_backend;
 mod load;
 mod prefix_cache;
 pub mod sample;
@@ -13,8 +14,10 @@ pub use backend::{
     Backend, BackendError, BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SeqId,
     SeqInput, SingleSeq,
 };
+pub use dense_backend::DenseBackend;
 pub use load::{
-    Loaded, architecture, chat_template, load_llama, load_moe, load_moe_chunked, model_id,
+    Loaded, architecture, chat_template, load_dense, load_llama, load_moe, load_moe_chunked,
+    model_id,
 };
 pub use prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS};
 pub use scheduler::{

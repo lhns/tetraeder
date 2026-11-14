@@ -250,20 +250,30 @@ fn golden() -> Res<()> {
     )
 }
 
-/// Writes the synthetic qwen3moe fixture (ADR 0030) with the vendored gguf-py through uv.
-fn tiny_moe() -> Res<()> {
+/// Writes a synthetic fixture GGUF with the vendored gguf-py through uv.
+fn tiny_fixture(script: &str, file: &str) -> Res<()> {
     let r = root();
-    let out = r.join("tests/fixtures/tiny-qwen3moe-f16.gguf");
+    let out = r.join("tests/fixtures").join(file);
     std::fs::create_dir_all(out.parent().expect("fixture dir")).map_err(|e| e.to_string())?;
     run(Command::new("uv")
         .args(["run", "--no-project", "--python", "3.12"])
         .args(["--with", "numpy", "--with"])
         .arg(r.join("vendor/llama.cpp/gguf-py"))
         .arg("python")
-        .arg(r.join("xtask/tiny_moe.py"))
+        .arg(r.join("xtask").join(script))
         .arg(&out))?;
     eprintln!("wrote {}", out.display());
     Ok(())
+}
+
+/// The synthetic qwen3moe fixture (ADR 0030).
+fn tiny_moe() -> Res<()> {
+    tiny_fixture("tiny_moe.py", "tiny-qwen3moe-f16.gguf")
+}
+
+/// The synthetic qwen3 dense fixture (ADR 0066).
+fn tiny_dense() -> Res<()> {
+    tiny_fixture("tiny_dense.py", "tiny-qwen3-f16.gguf")
 }
 
 fn main() -> ExitCode {
@@ -273,7 +283,8 @@ fn main() -> ExitCode {
         "llama-tools" => llama_tools(),
         "golden" => golden(),
         "tiny-moe" => tiny_moe(),
-        _ => Err("usage: cargo xtask <fetch-model|llama-tools|golden|tiny-moe>".into()),
+        "tiny-dense" => tiny_dense(),
+        _ => Err("usage: cargo xtask <fetch-model|llama-tools|golden|tiny-moe|tiny-dense>".into()),
     };
     match res {
         Ok(()) => ExitCode::SUCCESS,
