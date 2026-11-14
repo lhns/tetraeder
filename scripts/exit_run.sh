@@ -139,6 +139,8 @@ ram_bytes=$((mem - ${RAM_RESERVE_GB:-8} * 1000000000))
 # expert VRAM: VRAM_SLOT_BYTES if set, else what llama.cpp's tuned -ot puts on the GPU (stage llama-fit), else 5.5 GB
 vram_bytes="${VRAM_SLOT_BYTES:-5500000000}"
 . scripts/vramfill.sh
+# bytes the KV frees against F16/F16 (2048 B per token per layer): 94 layers x 33024 positions x (2048 - per-token bytes)
+kv_free() { echo $((94 * 33024 * (2048 - $1))); }
 vramfill_bytes=$(vramfill_from_smi "$vram_bytes")
 # OT_FIT: the tuned llama.cpp -ot when the llama-fit stage is skipped
 ot_fit="${OT_FIT:-blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU}"
@@ -443,6 +445,12 @@ llamacpp_cache() {
   esac
   want "$name" || return 0
   local mib=$((vram_bytes / 1048576))
+  # Pairing: FP8 cache pairs with main-overlap-kvq8-slots (both spend the VRAM their smaller KV frees on experts);
+  # F16 cache pairs with main-overlap. FP8 frees 1024 of 2048 B per token per layer (94 layers, 33024 positions).
+  if [[ "${1:-}" == fp8* ]]; then
+    mib=$(((vram_bytes + 94 * 33024 * 1024) / 1048576))
+    echo "[$(date +%T)] $name: fp8 cache $mib MiB (vram_bytes $vram_bytes + freed KV)"
+  fi
   # the tuner's pick from this session (stage moe-tune) replaces the session's shares and cache size
   tuned=$(python3 -I -c '
 import json, sys
@@ -638,7 +646,6 @@ EOF
       # Low-bit KV (ADR 0050 b), paired with `main-prefetch` right before: the same VRAM slot bytes, then the slot
       # bytes raised by the freed KV (94 layers x 33024 positions x the per-token bytes saved; F16/F16 is 2048 B,
       # Q8_0/Q8_0 1088 B, Q8_0/Q4_0 832 B at n_embd_kv 512)
-      kv_free() { echo $((94 * 33024 * (2048 - $1))); }
       exit_regime kv-q8 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0 || rc=29
       exit_regime kv-q8-slots 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0         TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 1088))) || rc=29
       exit_regime kv-q8q4 60 "${deep[@]}" TETRAEDER_EXIT_PREFETCH=1 TETRAEDER_EXIT_KV=q8_0/q4_0 || rc=29
@@ -673,6 +680,13 @@ EOF
           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
         exit_regime main-overlap-vramfill-repeat 60 "${deep[@]}" "${ovl[@]}"           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
         exit_regime main-overlap-vramfill-poll50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
+        exit_regime main-overlap-vramfill-poll50-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
+        # vramfill slots with the hot set rebuilt from the whole prefill, at the default poll
+        exit_regime main-overlap-vramfill-hot 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_REFRESH_HOT=1           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
+        exit_regime main-overlap-vramfill-hot-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_REFRESH_HOT=1           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
+        # Q8_0 KV with the freed VRAM spent on expert slots: the builder's counterpart of llamacpp-cache-fp8
+        exit_regime main-overlap-kvq8-slots 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_KV=q8_0           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 1088))) || rc=30
+        exit_regime main-overlap-kvq8-slots-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_KV=q8_0           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + $(kv_free 1088))) || rc=30
         # Polling at 50 with the pool paused while the main thread waits, and the RAM tier by access frequency (the
         # engine switches land on other branches; the variables are ignored until then). Each has a repeat
         exit_regime main-overlap-pause50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 TETRAEDER_EXIT_POOL_PAUSE=1 || rc=30
