@@ -304,3 +304,41 @@ fn batch_with_errors_propagate() {
         assert!(f.read_batch_with(&past, |_, _| Ok(())).is_err());
     }
 }
+
+/// The memory report reads the bounce size on the step thread while a prefetch reader holds the
+/// buffer for a whole batch: the size must not wait for that read.
+#[test]
+fn bounce_capacity_does_not_wait_for_a_read_in_flight() {
+    use std::sync::{Arc, mpsc};
+    use std::time::Duration;
+    let ranges = [range(0, 10)];
+    for f in files(0) {
+        let f = Arc::new(f);
+        let (entered_tx, entered) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel::<()>();
+        let reader = {
+            let f = Arc::clone(&f);
+            std::thread::spawn(move || {
+                f.read_batch_with(&ranges, |_, _| {
+                    entered_tx.send(()).unwrap();
+                    // The sink runs with the buffer held, like a slow batch.
+                    release_rx.recv_timeout(Duration::from_secs(10)).ok();
+                    Ok(())
+                })
+                .unwrap();
+            })
+        };
+        entered.recv_timeout(Duration::from_secs(10)).unwrap();
+        let (cap_tx, cap) = mpsc::channel();
+        let probe = {
+            let f = Arc::clone(&f);
+            std::thread::spawn(move || cap_tx.send(f.bounce_capacity()).unwrap())
+        };
+        let got = cap.recv_timeout(Duration::from_millis(500));
+        release.send(()).unwrap();
+        reader.join().unwrap();
+        probe.join().unwrap();
+        let got = got.expect("bounce_capacity blocked behind the read in flight");
+        assert!(got > 0, "{f:?}");
+    }
+}

@@ -78,3 +78,17 @@ Decision: compress after the collector stops (`otelcol_box.sh compress`: `zstd -
 - No collector config change, so the compose stack's config and CI `validate` stay as they are.
 
 Readers (`otlp_host.open_lines`, `otlp-merge`) accept `*.jsonl` and `*.jsonl.zst` in one tree: stdlib `compression.zstd` (Python 3.14), else the `zstd` CLI, which the box image (Dockerfile) and `box_deps.sh` install. No pip package, so no `docs/sources.md` row. A run that crashed before `compress` leaves plain files, which still merge. `taxameter.toml` fetches `*.zst`. The files are small enough to commit under `bench/results/<date>/otel/` when they total under 200 MB (docs/sessions.md); this replaces "the files are not committed" in the Consequences.
+
+## Addendum: the builder's export does not stall decode (2026-11-14)
+
+Context: from 20261112c on, one decode window per process spends 40 to 160 ms per token outside `run()` (wall minus `StepProfile::total`), against a flat 5 to 8 ms in the other windows. The 1 s engine export of this ADR started that week, so it was the first suspect.
+
+Findings:
+- The stall happens without the export. 20261112c ran a commit before e7711c6 (no `telemetry_for`, no `opts.telemetry`), and its main-overlap-repeat still has 96 ms per token in window 0. The steady gap is no larger with the export (5.4 to 8 ms) than without (7 to 8 ms).
+- Shape: at most one stalled window per process, always window 0 or 1. In 20261113o the step histogram (exported every second) shows a whole second with no step and no step time during the stalled window: a single hole of about a second on the step thread, not a cost spread over tokens. The exporter kept exporting on schedule through it.
+- Code: `PeriodicReader` exports on its own thread (`futures_executor::block_on` there). `collect` takes each instrument's lock only to copy the points, and the step path only records. `record_step` locks the ring, which nothing else takes during decode. `report_memory` reads no `/proc` or cgroup file. Its one blocking edge was `DirectFile::bounce_capacity`, which took the bounce-buffer mutex that `read_batch_with` holds for a whole batch. With the single reader thread (`TETRAEDER_EXIT_IO_SERVICE=0`) the step's memory report therefore waited for the prefetch batch in flight. The I/O service runs (all the stalled ones) read no shared file there. Fixed: the size is mirrored in an atomic.
+- Not explained by CPU throttling (zero throttled periods in every stalled window) or by cgroup anon growth (flat). The host sampler has no reclaim counter, so reclaim stays open.
+
+Decision: no exporter change. The OTLP path gets a guard test (`step_path_does_not_wait_for_a_hung_collector`: the real exporter against a collector that never answers, export every 20 ms, every step-path call under 15 ms). The exit harness reports, per decode window, the token with the most time outside `run()` and splits it into time inside `eval` (finish_step, drops) and the harness's own work (margin, argmax), with the thread's page faults (`gap` in `decode_windows`). The next box run with windows locates the hole.
+
+Consequence: the next suspect is a page-fault or allocation stall on the step thread outside `run()`. `margin` allocates and sorts a 151,936-entry index per token (`top_k`), and each token's logits come in a fresh 600 KB `Vec`. That harness work is also the steady 5 to 8 ms gap, and `decode_tok_s` counts it.

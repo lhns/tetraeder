@@ -386,4 +386,53 @@ mod tests {
         // A 10 ms decode step must not notice this; very generous bound to stay unflaky.
         assert!(off < 20_000.0 && on < 20_000.0);
     }
+
+    /// What `Qwen3Moe::finish_step` records after each step, against the real OTLP exporter
+    /// whose collector accepts connections and never answers, exporting every 20 ms: the export
+    /// runs on the reader's thread, so no call on the step path waits for it.
+    #[test]
+    fn step_path_does_not_wait_for_a_hung_collector() {
+        use std::net::TcpListener;
+        use std::time::Instant;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = Arc::clone(&accepted);
+        std::thread::spawn(move || {
+            // Hold every connection open without reading or replying.
+            let mut held = Vec::new();
+            for c in listener.incoming() {
+                held.push(c);
+                seen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
+        let cfg = TelemetryConfig {
+            otlp_endpoint: Some(format!("http://{addr}")),
+            export_interval: Duration::from_millis(20),
+            ..TelemetryConfig::default()
+        };
+        let t = Telemetry::new(&cfg).unwrap();
+        let start = Instant::now();
+        let mut worst = Duration::ZERO;
+        let mut steps = 0u32;
+        while start.elapsed() < Duration::from_millis(600) {
+            let s = Instant::now();
+            t.record_step(step(5));
+            let m = t.metrics();
+            m.memory_used("CUDA0", "vram", "weights", 1);
+            m.memory_capacity("CUDA0", "vram", "weights", 2);
+            m.kv_cache("CUDA0", "vram", "f16/f16", 3, 4, 5, 6);
+            m.cpu_pool_pauses(1);
+            worst = worst.max(s.elapsed());
+            steps += 1;
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        println!("{steps} steps, worst step-path telemetry {worst:?}");
+        // Exports start every 20 ms and hang for seconds; a blocking path would show that here.
+        assert!(worst < Duration::from_millis(15), "{worst:?}");
+        // The exporter did reach the collector, so an export was hanging meanwhile.
+        assert!(accepted.load(std::sync::atomic::Ordering::Relaxed) > 0);
+        // Shutdown waits for the hung export; leak it rather than slow the suite.
+        std::mem::forget(t);
+    }
 }

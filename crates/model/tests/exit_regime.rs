@@ -17,7 +17,8 @@
 //! - `TETRAEDER_EXIT_PREFILL` (256) prompt tokens, run in ubatches of each size in
 //!   `TETRAEDER_EXIT_UBATCH` (comma list, "64,256"), one cold load per size.
 //! - `TETRAEDER_EXIT_DECODE` (32) greedy tokens after the prefill, in
-//!   `TETRAEDER_EXIT_DECODE_WINDOWS` (1) windows reported one by one (`decode_windows`).
+//!   `TETRAEDER_EXIT_DECODE_WINDOWS` (1) windows reported one by one (`decode_windows`); each
+//!   window's `gap` names its token with the most time outside `run()` and splits it.
 //! - `TETRAEDER_EXIT_CTX` (prefill + decode, rounded up), `TETRAEDER_EXIT_THREADS`.
 //! - `TETRAEDER_EXIT_OP_OFFLOAD=1`: large CPU-group matmuls run on the GPU (ggml op offload).
 //! - `TETRAEDER_EXIT_PREFETCH`: `0` turns the predicted expert prefetch into the RAM tier off,
@@ -374,6 +375,86 @@ fn top_json(logits: &[f32]) -> Value {
 fn margin(logits: &[f32]) -> f32 {
     let t = top_k(logits, 2);
     logits[t[0]] - logits[t[1]]
+}
+
+/// Minor and major page faults of the calling thread so far (Linux; `None` elsewhere).
+fn thread_faults() -> Option<(u64, u64)> {
+    let stat = std::fs::read_to_string("/proc/thread-self/stat").ok()?;
+    // Fields after the parenthesised name: state is field 3, minflt 10, majflt 12.
+    let f: Vec<&str> = stat.rsplit_once(')')?.1.split_whitespace().collect();
+    Some((f.get(7)?.parse().ok()?, f.get(9)?.parse().ok()?))
+}
+
+/// Per decode token, the wall time outside `run()` (`StepProfile::total`), split into the part
+/// inside `eval` (step bookkeeping, telemetry, drops) and the harness's own (margin, argmax,
+/// routing drain), with the thread's page faults: a window's `gap` block says which token
+/// stalled and where.
+#[derive(Default)]
+struct GapTrace {
+    sum: Duration,
+    max: Duration,
+    max_token: usize,
+    max_in_eval: Duration,
+    max_harness: Duration,
+    max_faults: Option<(u64, u64)>,
+}
+
+impl GapTrace {
+    fn token(
+        &mut self,
+        i: usize,
+        eval: Duration,
+        step: Duration,
+        harness: Duration,
+        faults: Option<(u64, u64)>,
+    ) {
+        let in_eval = eval.saturating_sub(step);
+        let gap = in_eval + harness;
+        self.sum += gap;
+        if gap >= self.max {
+            *self = Self {
+                sum: self.sum,
+                max: gap,
+                max_token: i,
+                max_in_eval: in_eval,
+                max_harness: harness,
+                max_faults: faults,
+            };
+        }
+    }
+
+    fn json(&self) -> Value {
+        let ms = |d: Duration| d.as_secs_f64() * 1e3;
+        json!({
+            "sum_ms": ms(self.sum),
+            "max_ms": ms(self.max),
+            "max_token": self.max_token,
+            "max_in_eval_ms": ms(self.max_in_eval),
+            "max_harness_ms": ms(self.max_harness),
+            "max_minflt": self.max_faults.map(|f| f.0),
+            "max_majflt": self.max_faults.map(|f| f.1),
+        })
+    }
+}
+
+/// Decodes `token` as the window's `i`-th; `harness` gets the logits (and drops them).
+fn traced_token(
+    m: &mut Qwen3Moe,
+    gaps: &mut GapTrace,
+    i: usize,
+    token: i32,
+    harness: impl FnOnce(&mut Qwen3Moe, Vec<f32>),
+) {
+    let f0 = thread_faults();
+    let before = m.profile().total;
+    let t = Instant::now();
+    let l = m.eval(&[token]).expect("decode");
+    let eval = t.elapsed();
+    let in_run = m.profile().total.saturating_sub(before);
+    let t = Instant::now();
+    harness(m, l);
+    let faults = f0.zip(thread_faults()).map(|(a, b)| (b.0 - a.0, b.1 - a.1));
+    gaps.token(i, eval, in_run, t.elapsed(), faults);
 }
 
 /// Greedy decode of `n` tokens from `last` (the prefill's last logits) through `step`.
@@ -785,14 +866,16 @@ fn exit_regime() {
             let n = per_window.min(n_decode - done);
             let start = unix_s();
             let tw = Instant::now();
-            for _ in 0..n {
+            let mut gaps = GapTrace::default();
+            for i in 0..n {
                 greedy.push(next);
-                let l = m.eval(&[next]).expect("decode");
-                if let Some(r) = &mut recorder {
-                    r.drain(&mut m);
-                }
-                margins.push(margin(&l));
-                next = argmax(&l) as i32;
+                traced_token(&mut m, &mut gaps, i, next, |m, l| {
+                    if let Some(r) = &mut recorder {
+                        r.drain(m);
+                    }
+                    margins.push(margin(&l));
+                    next = argmax(&l) as i32;
+                });
             }
             let wall = tw.elapsed().as_secs_f64();
             let p = m.take_profile();
@@ -802,6 +885,7 @@ fn exit_regime() {
                 "end_unix_s": unix_s(),
                 "tokens": n,
                 "wall_s": wall,
+                "gap": gaps.json(),
                 "profile_per_token": profile_json(&p, n as f64),
                 "io": io_json(&sw.io, &se.io, n as f64, wall),
                 "layers": layers_json(&sw, &se),
@@ -1160,11 +1244,13 @@ fn exit_regime_arms() {
                 let n = per_window.min(n_decode - done);
                 let start = unix_s();
                 let tw = Instant::now();
-                for _ in 0..n {
+                let mut gaps = GapTrace::default();
+                for i in 0..n {
                     greedy.push(next);
-                    let l = m.eval(&[next]).expect("decode");
-                    margins.push(margin(&l));
-                    next = argmax(&l) as i32;
+                    traced_token(&mut m, &mut gaps, i, next, |_, l| {
+                        margins.push(margin(&l));
+                        next = argmax(&l) as i32;
+                    });
                 }
                 let wall = tw.elapsed().as_secs_f64();
                 let p = m.take_profile();
@@ -1174,6 +1260,7 @@ fn exit_regime_arms() {
                     "end_unix_s": unix_s(),
                     "tokens": n,
                     "wall_s": wall,
+                    "gap": gaps.json(),
                     "profile_per_token": profile_json(&p, n as f64),
                     "io": io_json(&sw.io, &se.io, n as f64, wall),
                     "layers": layers_json(&sw, &se),

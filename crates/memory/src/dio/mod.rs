@@ -15,6 +15,7 @@ use std::io;
 use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -162,6 +163,8 @@ pub struct DirectFile {
     engine: Box<dyn Engine>,
     /// Bounce buffer of `read_batch_with`: grown when a batch needs more, never shrunk.
     bounce: Mutex<Option<AlignedBuf>>,
+    /// Length of `bounce`, readable while a batch holds the lock (the step's memory report).
+    bounce_len: AtomicUsize,
     bounce_cap: usize,
     chunk: usize,
 }
@@ -211,6 +214,7 @@ impl DirectFile {
             direct,
             fallback,
             bounce: Mutex::new(None),
+            bounce_len: AtomicUsize::new(0),
             bounce_cap: if opts.bounce_bytes == 0 {
                 DEFAULT_BOUNCE
             } else {
@@ -328,10 +332,10 @@ impl DirectFile {
         })
     }
 
-    /// Size of the bounce buffer, 0 before the first `read_batch_with`.
+    /// Size of the bounce buffer, 0 before the first `read_batch_with`. Does not wait for a
+    /// batch in flight on another thread.
     pub fn bounce_capacity(&self) -> usize {
-        let g = self.bounce.lock().unwrap_or_else(|e| e.into_inner());
-        g.as_ref().map_or(0, AlignedBuf::len)
+        self.bounce_len.load(Ordering::Relaxed)
     }
 
     /// Reads every range through a bounce buffer owned by the file and hands each range's bytes
@@ -379,7 +383,9 @@ impl DirectFile {
         }
         let mut guard = self.bounce.lock().unwrap_or_else(|e| e.into_inner());
         if need > 0 && guard.as_ref().is_none_or(|b| b.len() < need) {
-            *guard = Some(AlignedBuf::zeroed(need));
+            let buf = AlignedBuf::zeroed(need);
+            self.bounce_len.store(buf.len(), Ordering::Relaxed);
+            *guard = Some(buf);
         }
         for (from, to) in batches {
             let mut jobs: Vec<Job> = Vec::new();
