@@ -2150,6 +2150,11 @@ dependencies = [
 [[package]]
 name = "tetraeder-kvcache"
 version = "0.0.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "tetraeder-memory"

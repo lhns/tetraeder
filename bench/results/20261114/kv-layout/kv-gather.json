@@ -1,0 +1,107 @@
+{
+  "cases": [
+    {
+      "block": 64,
+      "l": 2048,
+      "n_q": 1,
+      "t_contig_us": 17847.550000000003,
+      "t_gather_us": 24715.449999999997,
+      "t_mask_us": 19187.15
+    },
+    {
+      "block": 256,
+      "l": 2048,
+      "n_q": 1,
+      "t_contig_us": 14785.4,
+      "t_gather_us": 20560.95,
+      "t_mask_us": 40906.35
+    },
+    {
+      "block": 64,
+      "l": 2048,
+      "n_q": 4,
+      "t_contig_us": 66920.04999999999,
+      "t_gather_us": 73657.45,
+      "t_mask_us": 68522.4
+    },
+    {
+      "block": 256,
+      "l": 2048,
+      "n_q": 4,
+      "t_contig_us": 75055.95000000001,
+      "t_gather_us": 95685.5,
+      "t_mask_us": 79796.35
+    },
+    {
+      "block": 64,
+      "l": 8192,
+      "n_q": 1,
+      "t_contig_us": 93339.85,
+      "t_gather_us": 128569.94999999998,
+      "t_mask_us": 106130.0
+    },
+    {
+      "block": 256,
+      "l": 8192,
+      "n_q": 1,
+      "t_contig_us": 71937.25,
+      "t_gather_us": 112504.9,
+      "t_mask_us": 101987.20000000001
+    },
+    {
+      "block": 64,
+      "l": 8192,
+      "n_q": 4,
+      "t_contig_us": 327079.6,
+      "t_gather_us": 330234.30000000005,
+      "t_mask_us": 328265.0
+    },
+    {
+      "block": 256,
+      "l": 8192,
+      "n_q": 4,
+      "t_contig_us": 287861.95,
+      "t_gather_us": 318674.3,
+      "t_mask_us": 275141.5
+    },
+    {
+      "block": 64,
+      "l": 32768,
+      "n_q": 1,
+      "t_contig_us": 338360.55,
+      "t_gather_us": 458762.15,
+      "t_mask_us": 448157.65
+    },
+    {
+      "block": 256,
+      "l": 32768,
+      "n_q": 1,
+      "t_contig_us": 409975.1,
+      "t_gather_us": 598293.2,
+      "t_mask_us": 421426.3
+    },
+    {
+      "block": 64,
+      "l": 32768,
+      "n_q": 4,
+      "t_contig_us": 1240066.9,
+      "t_gather_us": 1438026.7,
+      "t_mask_us": 1097529.0
+    },
+    {
+      "block": 256,
+      "l": 32768,
+      "n_q": 4,
+      "t_contig_us": 1128483.4,
+      "t_gather_us": 1128715.35,
+      "t_mask_us": 1059005.15
+    }
+  ],
+  "cpu": "Intel64 Family 15 Model 107 Stepping 1, GenuineIntel",
+  "ggml_cpu_tier": "sse",
+  "threads": 8,
+  "y_gather": 0.18423480639307588,
+  "y_gather_block64": 0.1359474840379846,
+  "y_sparse": 0.05575897075148596,
+  "y_sparse_block64": 0.10014781662437307
+}
