@@ -77,7 +77,7 @@ fn gpu_three_sequences_match_the_cpu_builder() {
     let kv = KvFormat::F16;
     let want = builder_script(&mut load(CPU, kv, 3), &streams, &steps, true);
     let have = builder_script(&mut load(GPU, kv, 3), &streams, &steps, true);
-    let worst = compare_scripts(&want, &have, TOL_GPU, "gpu batched / cpu batched");
+    let worst = compare_scripts(&want, &have, TOL_GPU, false, "gpu batched / cpu batched");
     eprintln!("three sequences on GPU: max |delta| {worst:e}");
 }
 

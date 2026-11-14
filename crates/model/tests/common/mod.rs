@@ -56,12 +56,14 @@ pub const TOL_CPU: f32 = 1e-4;
 /// GPU builder against the CPU reference: different kernels and F16 rounding of activations,
 /// about 1e-3 relative at that scale.
 pub const TOL_GPU: f32 = 5e-3;
-/// A batched step against the same tokens decoded alone. ggml takes other matmul kernels for
-/// other row counts (tinyBLAS for a batch, the vec-dot for one row: ADR 0043), which on
-/// AVX2 and AVX-512 hosts differ in the last bits of F16 accumulation; the first CI run measured
-/// 7e-3 at logits of about 10. Same-shape comparisons (libllama, the same step split) keep
-/// `TOL_CPU`.
-pub const TOL_BATCH: f32 = 2e-2;
+/// A batched step against the same tokens decoded alone: `max(TOL_CPU, 1e-3 * largest logit)`,
+/// the rule of `engine/tests/multi_seq.rs`. ggml takes other matmul kernels for other row counts
+/// (ADR 0043), so the last bits differ on some CPUs; CI measured 7.4e-3 (Linux) and 3.5e-4
+/// (Windows) here. Same-shape comparisons (libllama, the same step split) keep `TOL_CPU`.
+pub fn tol_batch(logits: &[f32]) -> f32 {
+    let top = logits.iter().fold(0f32, |m, x| m.max(x.abs()));
+    TOL_CPU.max(1e-3 * top)
+}
 pub const TOP_K: usize = 5;
 pub const PROMPT: [i32; 6] = [12, 77, 3, 200, 41, 9];
 pub const N_GREEDY: usize = 12;
@@ -442,11 +444,32 @@ pub fn builder_script(
     out
 }
 
+/// The largest absolute logit difference over the rows both scripts have, and the first row
+/// (in key order) that differs at all.
+pub fn script_delta(want: &Logits, have: &Logits) -> (f32, Option<(u32, usize)>) {
+    let mut worst = 0f32;
+    let mut first = None;
+    for (key, w) in want {
+        let Some(h) = have.get(key) else { continue };
+        let d = w
+            .iter()
+            .zip(h)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0f32, f32::max);
+        if d > 0.0 && first.is_none() {
+            first = Some(*key);
+        }
+        worst = worst.max(d);
+    }
+    (worst, first)
+}
+
 /// Largest absolute logit difference between two scripts' rows over every logit, and the
 /// number of rows compared. Panics when a row is missing or the argmax differs where the
 /// reference's top-2 margin is above both ADR 0043's near-tie bound (1e-3 of the largest logit)
-/// and twice `tol` (a smaller margin can flip within the tolerance).
-pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, what: &str) -> f32 {
+/// and twice the row's tolerance (a smaller margin can flip within it). With `rel` the
+/// tolerance of a row is [`tol_batch`] of the reference row.
+pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, rel: bool, what: &str) -> f32 {
     assert_eq!(
         want.keys().collect::<Vec<_>>(),
         have.keys().collect::<Vec<_>>(),
@@ -465,7 +488,11 @@ pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, what: &str) -> f3
             .map(|(a, b)| (a - b).abs())
             .fold(0f32, f32::max);
         worst = worst.max(diff);
-        assert!(diff <= tol, "{what}: {key:?} differs by {diff:e}");
+        let tol = if rel { tol_batch(w) } else { tol };
+        assert!(
+            diff <= tol,
+            "{what}: {key:?} differs by {diff:e} (tolerance {tol:e})"
+        );
         let top = top_k(w, 2);
         let margin = w[top[0]] - w[top[1]];
         if margin > (1e-3 * w[top[0]].abs()).max(2.0 * tol) {

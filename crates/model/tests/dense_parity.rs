@@ -61,6 +61,27 @@ fn cpu_step_graph_reuse_is_bit_equal() {
     assert_eq!((built_a, built_b), (2, 5));
 }
 
+/// hardware: cpu. The kept graph of a batched step gives the logits of a graph built for it.
+#[test]
+fn cpu_batched_step_graph_reuse_is_bit_equal() {
+    let (streams, steps) = script();
+    let run = |reuse: bool| {
+        let o = DenseOptions {
+            reuse_step_graph: reuse,
+            ..opts(KvFormat::F16, 3)
+        };
+        let mut m = Qwen3::load(dense_fixture(), &o).unwrap();
+        let rows = builder_script(&mut m, &streams, &steps, true);
+        (rows, m.step_graphs_built())
+    };
+    let ((a, built_a), (b, built_b)) = (run(true), run(false));
+    assert_eq!(a, b);
+    assert!(
+        built_a < built_b,
+        "the kept graph was reused: {built_a} < {built_b}"
+    );
+}
+
 /// A deterministic stream of byte tokens.
 fn stream(seed: u32, len: usize) -> Vec<i32> {
     let mut x = seed;
@@ -128,7 +149,7 @@ fn alone(steps: &[Vec<Item>], seq: u32) -> Vec<Vec<Item>> {
 
 /// hardware: cpu. Batched against each sequence alone through the builder, and against libllama
 /// with `n_seq_max = 3` and a unified KV buffer, greedy equal except at a near-tie (ADR 0043).
-/// Against libllama (same step shapes) `TOL_CPU` holds; against alone runs `TOL_BATCH`.
+/// Against libllama (same step shapes) `TOL_CPU` holds; against alone runs `tol_batch`.
 #[test]
 fn cpu_multi_sequence_matches_alone_and_libllama() {
     let (streams, steps) = script();
@@ -155,23 +176,42 @@ fn cpu_multi_sequence_matches_alone_and_libllama() {
                 alone_rows.insert((s, p), row);
             }
         }
+        let reference = libllama_script(&dense_fixture(), &streams, &steps, kv);
+        let mut m2 = load(kv, 3);
+        let split = builder_script(&mut m2, &streams, &steps, false);
+        // Print every comparison before asserting any, so a failure on a host this cannot be
+        // reproduced on says which pairs differ (batch size, step shape or row placement).
+        for (name, a, b) in [
+            ("batched/alone", &alone_rows, &batched),
+            ("batched/libllama", &reference, &batched),
+            ("split/alone", &alone_rows, &split),
+            ("split/libllama", &reference, &split),
+        ] {
+            let (worst, first) = script_delta(a, b);
+            eprintln!("{kv} {name}: max |delta| {worst:e}, first differing row {first:?}");
+        }
         let w = compare_scripts(
             &alone_rows,
             &batched,
-            TOL_BATCH,
+            TOL_CPU,
+            true,
             &format!("{kv} batched/alone"),
         );
-        let reference = libllama_script(&dense_fixture(), &streams, &steps, kv);
         let l = compare_scripts(
             &reference,
             &batched,
             TOL_CPU,
+            false,
             &format!("{kv} batched/libllama"),
         );
         // The same steps one item at a time on the shared pool.
-        let mut m2 = load(kv, 3);
-        let split = builder_script(&mut m2, &streams, &steps, false);
-        let s = compare_scripts(&alone_rows, &split, TOL_CPU, &format!("{kv} split/alone"));
+        let s = compare_scripts(
+            &alone_rows,
+            &split,
+            TOL_CPU,
+            false,
+            &format!("{kv} split/alone"),
+        );
         eprintln!(
             "{kv}: {} rows, max |delta| batched vs alone {w:e}, vs libllama {l:e}, split vs alone {s:e}",
             batched.len()
@@ -180,7 +220,7 @@ fn cpu_multi_sequence_matches_alone_and_libllama() {
 }
 
 /// hardware: cpu. `seq_cp` of a prefilled prompt, then both sequences continue in one step
-/// with different tokens; each equals a fresh run of its own tokens (within `TOL_BATCH`).
+/// with different tokens; each equals a fresh run of its own tokens (within `tol_batch`).
 #[test]
 fn cpu_seq_cp_continuation() {
     let kv = KvFormat::F16;
@@ -219,7 +259,7 @@ fn cpu_seq_cp_continuation() {
             .map(|(x, y)| (x - y).abs())
             .fold(0f32, f32::max);
         eprintln!("seq_cp continuation: max |delta| {worst:e}");
-        assert!(worst <= TOL_BATCH, "{worst:e}");
+        assert!(worst <= tol_batch(&want), "{worst:e}");
     }
     // A copy into a sequence that holds positions, or from an empty one, is refused.
     assert!(m.seq_cp(0, 1, 2).is_err());

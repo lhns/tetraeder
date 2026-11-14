@@ -380,11 +380,12 @@ impl Qwen3 {
         }
     }
 
-    /// Copies the rows a layout move or `seq_cp` asks for, on the device.
-    fn apply(&mut self, copies: &[RowCopy]) -> Result<()> {
+    /// Copies the rows a layout move or `seq_cp` asks for, on the device. `moves` counts them as
+    /// relocations of a grown sequence (not those of a copy).
+    fn apply(&mut self, copies: &[RowCopy], moves: bool) -> Result<()> {
         let copies: Vec<_> = copies.iter().map(|c| (c.src, c.dst, c.n)).collect();
         copy_rows(&self.kv, &mut self.sched, &copies)?;
-        if let Some(t) = &self.telemetry {
+        if let Some(t) = self.telemetry.as_ref().filter(|_| moves) {
             for _ in &copies {
                 t.metrics().kv_relocation();
             }
@@ -398,7 +399,7 @@ impl Qwen3 {
         self.check_seq(seq)?;
         match self.pool.reserve(seq, n) {
             Ok(copies) => {
-                self.apply(&copies)?;
+                self.apply(&copies, true)?;
                 self.report_memory();
                 Ok(true)
             }
@@ -435,7 +436,7 @@ impl Qwen3 {
         self.check_seq(dst)?;
         match self.pool.seq_cp(src, dst, n) {
             Ok(copies) => {
-                self.apply(&copies)?;
+                self.apply(&copies, false)?;
                 self.report_memory();
                 Ok(true)
             }

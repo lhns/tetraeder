@@ -85,6 +85,6 @@ fn cpu_rotated_cache_batched_equals_alone() {
             .map(|(x, y)| (x - y).abs())
             .fold(0f32, f32::max);
         eprintln!("rotated batched vs alone: {worst:e}");
-        assert!(worst <= TOL_BATCH, "{worst:e}");
+        assert!(worst <= tol_batch(&want), "{worst:e}");
     }
 }

@@ -66,7 +66,8 @@ fn cpu_batch_equals_alone() {
             .fold(0f32, f32::max);
         assert_eq!(out.rows(0).len(), got[s].len());
         // Other row counts take other matmul kernels (ADR 0043): not bitwise.
-        assert!(worst <= 2e-2, "sequence {s}: {worst:e}");
+        let top = out.rows(0).iter().fold(0f32, |m, x| m.max(x.abs()));
+        assert!(worst <= 1e-4f32.max(1e-3 * top), "sequence {s}: {worst:e}");
     }
     assert_eq!(lens(&batch), vec![3, 5, 7, 9]);
 }
@@ -109,6 +110,32 @@ fn cpu_kv_full_changes_nothing() {
     b.seq_rm(1, 0).unwrap();
     b.seq_cp(0, 3, 10).unwrap();
     assert_eq!(b.seq_len(3), 10);
+}
+
+/// hardware: cpu. A failed decode gives back the rows it reserved, also for a sequence that
+/// holds positions and grew inside its slack: `reserved` and the free rows are as before.
+#[test]
+fn cpu_failed_decode_restores_reservations() {
+    let mut b = backend(1280, 4);
+    b.seq_reserve(0, 512).unwrap(); // rows 0..512
+    b.seq_reserve(1, 256).unwrap(); // 512..768
+    b.seq_reserve(3, 256).unwrap(); // 768..1024
+    b.seq_rm(1, 0).unwrap(); // 512..768 free again
+    let t = tokens(2, 100);
+    b.decode(&[input(0, &t, false)]).unwrap();
+    let (free, reserved) = (b.kv_free(), b.model().pool().reserved(0));
+    assert_eq!((free, reserved), (512, 512));
+    // Sequence 0 would grow to 768 rows in place, then sequence 2 finds 256 free rows, not 512.
+    let (grow, other) = (tokens(3, 450), tokens(4, 300));
+    let err = b
+        .decode(&[input(0, &grow, false), input(2, &other, false)])
+        .map(|_| ())
+        .unwrap_err();
+    assert!(matches!(err, BackendError::KvFull { seq: 2, .. }), "{err}");
+    assert_eq!(b.seq_len(0), 100);
+    assert_eq!(b.model().pool().reserved(0), reserved);
+    assert_eq!(b.kv_free(), free);
+    assert_eq!(b.model().pool().reserved(2), 0);
 }
 
 #[derive(Debug, Clone)]

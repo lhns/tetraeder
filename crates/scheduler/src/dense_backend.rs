@@ -54,6 +54,16 @@ impl DenseBackend {
         }
     }
 
+    /// Puts `seq`'s reservation back to `before` rows. `seq_rm` shrinks to the positions held
+    /// (rounded up to 256 rows) or frees an empty sequence; growing again takes the rows the
+    /// shrink just released, in place or, for an empty sequence, anywhere they fit.
+    fn give_back(&mut self, seq: SeqId, before: usize) {
+        let _ = self.model.seq_rm(seq, before);
+        if before > self.model.pool().reserved(seq) {
+            let _ = self.model.try_reserve(seq, before);
+        }
+    }
+
     /// Reserves, then runs the step. `grown` collects (sequence, reservation before) of every
     /// sequence this call gave more rows.
     fn step(
@@ -146,7 +156,7 @@ impl BatchBackend for DenseBackend {
             Ok(spans) => self.spans = spans,
             Err(e) => {
                 for (seq, before) in grown.into_iter().rev() {
-                    let _ = self.model.seq_rm(seq, before);
+                    self.give_back(seq, before);
                 }
                 self.logits.clear();
                 return Err(e);
