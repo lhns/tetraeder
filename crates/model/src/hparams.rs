@@ -1,5 +1,6 @@
 //! Qwen3 MoE hyperparameters, tensor index and the placement description from a GGUF header.
 
+use crate::attn::AttnHparams;
 use crate::convert::format_of;
 use crate::gguf::{Gguf, GgufError, Slab, TensorInfo};
 use std::collections::BTreeMap;
@@ -45,6 +46,22 @@ pub mod names {
 pub const EXPERT_TENSORS: [&str; 3] = ["ffn_gate_exps", "ffn_up_exps", "ffn_down_exps"];
 
 impl Hparams {
+    /// The fields attention and the KV cache read.
+    pub fn attn(&self) -> AttnHparams {
+        AttnHparams {
+            n_layer: self.n_layer,
+            n_embd: self.n_embd,
+            n_head: self.n_head,
+            n_head_kv: self.n_head_kv,
+            head_dim: self.head_dim,
+            n_rot: self.n_rot,
+            n_ctx_train: self.n_ctx_train,
+            n_vocab: self.n_vocab,
+            rms_eps: self.rms_eps,
+            rope_freq_base: self.rope_freq_base,
+        }
+    }
+
     pub fn from_gguf(g: &Gguf) -> Result<Hparams, GgufError> {
         let arch = g.str("general.architecture")?;
         if arch != ARCH {

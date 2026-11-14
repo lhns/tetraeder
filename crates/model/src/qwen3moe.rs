@@ -19,15 +19,16 @@
 //! RAM slot tensors, which sit in a CPU buffer marked as weights, so the scheduler computes them
 //! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
-use crate::convert::{ConvertError, ConvertOptions, ConvertStats, ggml_type};
+use crate::attn::{AttnStep, AttnWeights, KV_PAD, Kv, alloc_kv, attention, causal_mask};
+use crate::convert::{ConvertError, ConvertOptions, ConvertStats};
 use crate::cpu_poll::{self, CpuPoll};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer, StreamerConfig};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use crate::upload::AdmitUpload;
 use tetraeder_ggml_sys::ggml::{
-    Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, RopeParams, Sched,
-    Tensor, Type, hadamard_matrix,
+    Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, Sched, Tensor,
+    Type,
 };
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::io::IoFactory;
@@ -353,25 +354,17 @@ impl LoadOptions {
     }
 }
 
-const KV_PAD: usize = 256;
 /// Upper bound of nodes in one segment; the scheduler's hash tables are sized for it.
 const SEGMENT_NODES: usize = 1024;
 /// Upper bound of nodes per layer in a whole-step graph (about 70 are used).
 const STEP_NODES_PER_LAYER: usize = 128;
-const F16_NEG_INF: u16 = 0xFC00;
 
 fn pad(n: usize, to: usize) -> usize {
     n.div_ceil(to) * to
 }
 
 struct Layer {
-    attn_norm: OwnedTensor,
-    wq: OwnedTensor,
-    wk: OwnedTensor,
-    wv: OwnedTensor,
-    wo: OwnedTensor,
-    q_norm: OwnedTensor,
-    k_norm: OwnedTensor,
+    attn: AttnWeights,
     ffn_norm: OwnedTensor,
     gate_inp: OwnedTensor,
     /// Stacked expert weights, or slot tensors with fewer entries when streaming.
@@ -404,18 +397,6 @@ struct Weights {
     /// `None` when the output projection is tied to the token embedding.
     output: Option<OwnedTensor>,
     layers: Vec<Layer>,
-}
-
-/// Contiguous per-layer KV cache: `[n_embd_kv, n_ctx]` for K and for V, in the types of `fmt`.
-struct Kv {
-    k: Vec<OwnedTensor>,
-    v: Vec<OwnedTensor>,
-    n_ctx: usize,
-    fmt: KvFormat,
-    /// Hadamard matrices for K (and Q) and for V, F32 `[n, n]` in a context of their own so the
-    /// KV buffer stays exactly the cache. `None`: that side is not rotated.
-    rot_k: Option<OwnedTensor>,
-    rot_v: Option<OwnedTensor>,
 }
 
 /// Activations that cross segment boundaries, one slot per layer parity.
@@ -634,7 +615,7 @@ impl Qwen3Moe {
         };
         let (weights, weights_bytes) = load_weights(&file, &primary, slots)?;
         let (kv, kv_bytes) = alloc_kv(
-            h,
+            &h.attn(),
             pad(opts.n_ctx.max(1), KV_PAD),
             &primary,
             opts.kv,
@@ -779,7 +760,7 @@ impl Qwen3Moe {
     }
 
     pub fn n_ctx(&self) -> usize {
-        self.kv.n_ctx
+        self.kv.n_rows
     }
 
     /// Graphs computed so far for the steps: `n_layer + 1` segments per step when streaming,
@@ -979,7 +960,7 @@ impl Qwen3Moe {
                     m.used,
                     m.capacity,
                     self.n_past as u64,
-                    self.kv.n_ctx as u64,
+                    self.kv.n_rows as u64,
                 ),
                 None => self
                     .metrics
@@ -1015,7 +996,7 @@ impl Qwen3Moe {
             .k
             .iter()
             .chain(&self.kv.v)
-            .map(|t| t.get().nbytes() / self.kv.n_ctx)
+            .map(|t| t.get().nbytes() / self.kv.n_rows)
             .sum()
     }
 
@@ -1025,7 +1006,7 @@ impl Qwen3Moe {
     pub fn kv_snapshot(&self) -> Result<Vec<u8>> {
         let mut out = Vec::with_capacity(self.n_past * self.kv_row_bytes());
         for t in self.kv.k.iter().chain(&self.kv.v) {
-            let row = t.get().nbytes() / self.kv.n_ctx;
+            let row = t.get().nbytes() / self.kv.n_rows;
             out.extend_from_slice(&t.get().get_bytes(0, self.n_past * row)?);
         }
         Ok(out)
@@ -1033,7 +1014,7 @@ impl Qwen3Moe {
 
     /// Writes a [`Qwen3Moe::kv_snapshot`] of `n` positions back and sets the cache length to `n`.
     pub fn kv_restore(&mut self, bytes: &[u8], n: usize) -> Result<()> {
-        if n > self.kv.n_ctx || bytes.len() != n * self.kv_row_bytes() {
+        if n > self.kv.n_rows || bytes.len() != n * self.kv_row_bytes() {
             return Err(ModelError::Invalid(format!(
                 "a KV snapshot of {} bytes does not hold {n} positions",
                 bytes.len()
@@ -1041,7 +1022,7 @@ impl Qwen3Moe {
         }
         let mut rest = bytes;
         for t in self.kv.k.iter().chain(&self.kv.v) {
-            let len = n * (t.get().nbytes() / self.kv.n_ctx);
+            let len = n * (t.get().nbytes() / self.kv.n_rows);
             let (head, tail) = rest.split_at(len);
             t.get().set_bytes(head, 0)?;
             rest = tail;
@@ -1080,10 +1061,10 @@ impl Qwen3Moe {
         if n == 0 {
             return Err(ModelError::Invalid("no tokens".into()));
         }
-        if self.n_past + n > self.kv.n_ctx {
+        if self.n_past + n > self.kv.n_rows {
             return Err(ModelError::Invalid(format!(
                 "context full: {} cached + {n} new > {}",
-                self.n_past, self.kv.n_ctx
+                self.n_past, self.kv.n_rows
             )));
         }
         if let Some(&t) = tokens.iter().find(|&&t| t < 0 || t as u32 >= h.n_vocab) {
@@ -1109,12 +1090,7 @@ impl Qwen3Moe {
         st.pos.get().set_i32(&pos)?;
         // `[n_kv, n]` as libllama builds it at the pin (no row padding since GGML_KQ_MASK_PAD
         // went away): a decode step writes and uploads one row, not 32.
-        let mut mask = vec![0u16; n_kv * n];
-        for i in 0..n {
-            for j in (self.n_past + i + 1)..n_kv {
-                mask[i * n_kv + j] = F16_NEG_INF;
-            }
-        }
+        let mask = causal_mask(self.n_past, n, n_kv);
         st.mask.get().set_f16_bits(&mask)?;
         let mut prof = self.profile;
         prof.steps += 1;
@@ -1962,13 +1938,15 @@ fn load_weights(
     for il in 0..h.n_layer {
         let mut l = |w: &str| make(&names::layer(il, w));
         layers.push(Layer {
-            attn_norm: l("attn_norm")?,
-            wq: l("attn_q")?,
-            wk: l("attn_k")?,
-            wv: l("attn_v")?,
-            wo: l("attn_output")?,
-            q_norm: l("attn_q_norm")?,
-            k_norm: l("attn_k_norm")?,
+            attn: AttnWeights {
+                attn_norm: l("attn_norm")?,
+                wq: l("attn_q")?,
+                wk: l("attn_k")?,
+                wv: l("attn_v")?,
+                wo: l("attn_output")?,
+                q_norm: l("attn_q_norm")?,
+                k_norm: l("attn_k_norm")?,
+            },
             ffn_norm: l("ffn_norm")?,
             gate_inp: l("ffn_gate_inp")?,
             gate_exps: l("ffn_gate_exps")?,
@@ -2034,115 +2012,6 @@ fn set_compute_threads(cpu: &Backend, full: i32, reduced: Option<i32>, streamer:
         _ => full,
     };
     cpu.set_cpu_threads(n);
-}
-
-/// The ggml types of a KV format; a quantized type needs the head size to be a whole number of
-/// blocks, because attention views one head's row at a time.
-fn kv_types(h: &Hparams, fmt: KvFormat) -> Result<(Type, Type)> {
-    if !fmt.is_allowed() {
-        return Err(ModelError::Invalid(format!(
-            "KV format {fmt} is not one of the supported pairs"
-        )));
-    }
-    let ty = |f: Format| {
-        let t =
-            ggml_type(f).ok_or_else(|| ModelError::Invalid(format!("no ggml type for {f:?}")))?;
-        if h.head_dim as i64 % t.block_size() != 0 {
-            return Err(ModelError::Invalid(format!(
-                "KV format {fmt}: head size {} is not a multiple of the {f:?} block size {}",
-                h.head_dim,
-                t.block_size()
-            )));
-        }
-        Ok(t)
-    };
-    Ok((ty(fmt.k)?, ty(fmt.v)?))
-}
-
-/// Side of the Hadamard matrix for K, as libllama picks it (llama-kv-cache.cpp:329-337): the
-/// largest power of two dividing the head size, at least 64.
-fn rot_size_k(head_dim: usize) -> usize {
-    let mut n = 64;
-    while head_dim.is_multiple_of(2 * n) {
-        n *= 2;
-    }
-    n
-}
-
-/// V uses the smallest matrix (llama-kv-cache.cpp:338-345).
-const ROT_SIZE_V: usize = 64;
-
-/// The Hadamard matrices of a KV format: libllama rotates a side when its type is quantized and
-/// the head size is a multiple of 64 (llama-kv-cache.cpp:310-327). `want` overrides the quantized
-/// test for both sides; asking for rotation with another head size is an error.
-fn alloc_rot(
-    h: &Hparams,
-    types: (Type, Type),
-    want: Option<bool>,
-    backend: &Backend,
-) -> Result<(Option<OwnedTensor>, Option<OwnedTensor>)> {
-    let hd = h.head_dim as usize;
-    if want == Some(true) && !hd.is_multiple_of(64) {
-        return Err(ModelError::Invalid(format!(
-            "KV rotation needs a head size that is a multiple of 64, not {hd}"
-        )));
-    }
-    let on = |t: Type| hd.is_multiple_of(64) && want.unwrap_or_else(|| t.is_quantized());
-    let (k, v) = (on(types.0), on(types.1));
-    if !k && !v {
-        return Ok((None, None));
-    }
-    let ctx = Rc::new(Context::new(2, 0)?);
-    let mk = |n: usize, name: &str| {
-        let t = ctx.new_persistent(Type::F32, &[n as i64, n as i64]);
-        t.get().set_name(name);
-        (n, t)
-    };
-    let rk = k.then(|| mk(rot_size_k(hd), "kv_rot_k"));
-    let rv = v.then(|| mk(ROT_SIZE_V, "kv_rot_v"));
-    ctx.alloc_tensors(backend)?;
-    let fill = |r: Option<(usize, OwnedTensor)>| -> Result<Option<OwnedTensor>> {
-        r.map(|(n, t)| {
-            t.get().set_f32(&hadamard_matrix(n))?;
-            Ok::<_, ModelError>(t)
-        })
-        .transpose()
-    };
-    Ok((fill(rk)?, fill(rv)?))
-}
-
-fn alloc_kv(
-    h: &Hparams,
-    n_ctx: usize,
-    backend: &Backend,
-    fmt: KvFormat,
-    rotation: Option<bool>,
-) -> Result<(Kv, usize)> {
-    let (tk, tv) = kv_types(h, fmt)?;
-    let (rot_k, rot_v) = alloc_rot(h, (tk, tv), rotation, backend)?;
-    let ctx = Rc::new(Context::new(2 * h.n_layer as usize + 4, 0)?);
-    let n_embd_kv = (h.n_head_kv * h.head_dim) as i64;
-    let mk = |kind: &str, ty: Type, il: u32| {
-        let t = ctx.new_persistent(ty, &[n_embd_kv, n_ctx as i64]);
-        t.get().set_name(&format!("{kind}_cache_{il}"));
-        t
-    };
-    let k = (0..h.n_layer).map(|il| mk("k", tk, il)).collect();
-    let v = (0..h.n_layer).map(|il| mk("v", tv, il)).collect();
-    let bytes = ctx.alloc_tensors(backend)?;
-    // Padding rows are masked, but 0 * NaN is NaN: never leave them uninitialized.
-    ctx.clear_buffer(0);
-    Ok((
-        Kv {
-            k,
-            v,
-            n_ctx,
-            fmt,
-            rot_k,
-            rot_v,
-        },
-        bytes,
-    ))
 }
 
 /// `host`: with overlapped decode, the CPU backend that holds the host buffers (ADR 0054).
@@ -2354,67 +2223,14 @@ fn attention_and_router<'a>(
 ) -> (Tensor<'a>, Tensor<'a>, Tensor<'a>, Tensor<'a>) {
     let lw = &w.layers[il];
     let n = st.n_tokens as i64;
-    let (hd, nh, nkv) = (h.head_dim as i64, h.n_head as i64, h.n_head_kv as i64);
-    let rope = RopeParams {
-        n_dims: h.n_rot as i32,
-        mode: 2, // NeoX
-        n_ctx_orig: h.n_ctx_train as i32,
-        freq_base: h.rope_freq_base,
-        freq_scale: 1.0,
-        ext_factor: 0.0,
-        attn_factor: 1.0,
-        beta_fast: 32.0,
-        beta_slow: 1.0,
+    let step = AttnStep {
+        pos: st.pos.get(),
+        rows: st.pos.get(),
+        mask: st.mask.get(),
+        n_tokens: st.n_tokens,
+        n_kv: st.n_kv,
     };
-
-    let cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), lw.attn_norm.get());
-    let q = ctx.reshape(ctx.mul_mat(lw.wq.get(), cur), &[hd, nh, n]);
-    let k = ctx.reshape(ctx.mul_mat(lw.wk.get(), cur), &[hd, nkv, n]);
-    let v = ctx.mul_mat(lw.wv.get(), cur);
-    let q = ctx.mul(ctx.rms_norm(q, h.rms_eps), lw.q_norm.get());
-    let q = ctx.rope_ext(q, st.pos.get(), &rope);
-    let k = ctx.mul(ctx.rms_norm(k, h.rms_eps), lw.k_norm.get());
-    let k = ctx.rope_ext(k, st.pos.get(), &rope);
-    // Rotation as in libllama's `build_attn` (llama-graph.cpp:3246-3253): Q and K after RoPE with
-    // the K matrix, V with the V matrix. Q.K is unchanged because the matrix is orthonormal.
-    let (q, k) = match &kv.rot_k {
-        Some(r) => (
-            ctx.mul_mat_hadamard(q, r.get()),
-            ctx.mul_mat_hadamard(k, r.get()),
-        ),
-        None => (q, k),
-    };
-    let v = match &kv.rot_v {
-        Some(r) => ctx.mul_mat_hadamard(v, r.get()),
-        None => v,
-    };
-
-    // Store K and V in the cache rows of these positions; the cache must be written before the
-    // attention reads it, so the stores enter the graph first.
-    let (kc, vc) = (kv.k[il].get(), kv.v[il].get());
-    // `set_rows` with the positions as row indices, as libllama does: unlike a copy into a view
-    // at `n_past`, the node is the same every step, so ggml-cuda can replay a captured CUDA
-    // graph (ADR 0036).
-    let row = kc.nb()[1];
-    let n_embd_kv = hd * nkv;
-    for (src, cache) in [(k, kc), (v, vc)] {
-        let src = ctx.reshape(src, &[n_embd_kv, n]);
-        g.expand(ctx.set_rows(cache, src, st.pos.get()));
-    }
-
-    let n_kv = st.n_kv as i64;
-    // The head stride is one head's row in the cache type (2 bytes per element for F16).
-    let kview = ctx.view(kc, &[hd, n_kv, nkv], &[row, kc.ty().row_size(hd)], 0);
-    let vview = ctx.view(vc, &[hd, n_kv, nkv], &[vc.nb()[1], vc.ty().row_size(hd)], 0);
-    let q = ctx.permute(q, [0, 2, 1, 3]);
-    let attn = ctx.flash_attn_ext(q, kview, vview, st.mask.get(), 1.0 / (hd as f32).sqrt());
-    let attn = ctx.reshape(attn, &[hd * nh, n]);
-    // Undo the V rotation (llama-graph.cpp:3291-3293); the matrix is its own inverse.
-    let attn = match &kv.rot_v {
-        Some(r) => ctx.mul_mat_hadamard(attn, r.get()),
-        None => attn,
-    };
-    let ffn_inp = ctx.add(ctx.mul_mat(lw.wo.get(), attn), x);
+    let ffn_inp = attention(&h.attn(), ctx, g, &lw.attn, kv, il, &step, x);
 
     let xn = ctx.mul(ctx.rms_norm(ffn_inp, h.rms_eps), lw.ffn_norm.get());
     let (ne, nu) = (h.n_expert as i64, h.n_expert_used as i64);
