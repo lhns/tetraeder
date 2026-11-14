@@ -2348,6 +2348,61 @@
           }
         }
       ]
+    },
+    {
+      "id": 82,
+      "title": "KV pool: blocks by state, relocations",
+      "description": "KV pool in 256-row units by state (used, reserved, idle, free) and sequence relocations per second (ADR 0067). Preemptions while a quarter of the pool is free are holes, not size (alert TetraederKvFragmented).",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 106,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "relocations/s"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_state) (tetraeder_kv_blocks)",
+          "legendFormat": "{{tetraeder_state}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(tetraeder_kv_relocations_total[$__rate_interval]))",
+          "legendFormat": "relocations/s",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }
