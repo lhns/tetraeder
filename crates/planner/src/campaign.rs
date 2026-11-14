@@ -653,7 +653,8 @@ mod tests {
         };
         assert_eq!(slots("anchor-bld-ram-all"), (8, 128));
         assert_eq!(slots("anchor-bld-vram-small"), (8, 30));
-        assert_eq!(slots("anchor-bld-vram-large"), (64, 64));
+        // the fill tier: the most slots the 14 GB budget holds
+        assert_eq!(slots("anchor-bld-vram-large"), (95, 33));
         assert_eq!(
             get("anchor-bld-opo-off").env["TETRAEDER_EXIT_OP_OFFLOAD"],
             "0"
