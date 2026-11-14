@@ -667,6 +667,8 @@ EOF
         exit_regime main-overlap-noiqk 60 "${deep[@]}" "${ovl[@]}" GGML_CPU_IQK_MM=0 || rc=30
         exit_regime main-overlap-vramfill 60 "${deep[@]}" "${ovl[@]}" \
           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + ${VRAMFILL_EXTRA:-18000000000})) || rc=30
+        exit_regime main-overlap-vramfill-repeat 60 "${deep[@]}" "${ovl[@]}"           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + ${VRAMFILL_EXTRA:-18000000000})) || rc=30
+        exit_regime main-overlap-vramfill-poll50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + ${VRAMFILL_EXTRA:-18000000000})) || rc=30
         # Polling at 50 with the pool paused while the main thread waits, and the RAM tier by access frequency (the
         # engine switches land on other branches; the variables are ignored until then). Each has a repeat
         exit_regime main-overlap-pause50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 TETRAEDER_EXIT_POOL_PAUSE=1 || rc=30
