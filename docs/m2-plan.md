@@ -84,7 +84,8 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
 - **B0. Offline replay at the configuration we use (coordinator, local, no box).**
   - Rerun the replay from the saved trace at about 26 VRAM slots, for policies lru, freq, glru and gfreq, plus the hot-set refresh, and compare synchronous miss bytes over the first four 16-token windows.
   - The result decides B1 against the never-run `REFRESH_HOT` arm.
-- **B1. Global RAM tier, only if B0 shows at least 10% fewer synchronous misses at 26 slots.**
+- **B0 result (2026-11-14, ADR 0050 addendum): B1 is not built.** At 26 VRAM slots the best pool across layers reads 0.54 (all tokens) and 0.63 (first 64) of the best per-layer policy, short of ADR 0050's halving threshold; about 2 ms per token of synchronous reads is left. The VRAM hot-set arm (`main-overlap-poll0-hot`) goes on box D1 instead.
+- **B1 (not built). Global RAM tier, only if B0 shows at least 10% fewer synchronous misses at 26 slots.**
   - The coordinator writes the ADR 0050 (c) addendum; it is design work. A global pool changes the planner's RAM budget, the plan IR and the "memory never exceeded" property.
   - Then Sonnet ports `GlobalSlots` (`crates/memory/src/slots.rs`) and the gfreq and glru policies (`crates/memory/src/replay/sim.rs`).
   - Tests: greedy parity against LRU; engine disk bytes equal the replay on a synthetic trace; `crates/memory/tests/global_slot_props.rs`.
