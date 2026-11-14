@@ -1,0 +1,79 @@
+name: loop-bench
+
+# Scheduler loop overhead without a GPU (ADR 0065 workload, CPU only): llama-server against
+# `tetraeder serve --engine llama` and `--engine dense` on Qwen3-0.6B Q8_0, gateway_bench.py c1 and c4,
+# interleaved ABC then CBA. Never gates a PR; ratios are in the log and the loop-bench artifact.
+on:
+  push:
+    branches: [main]
+    paths:
+      - crates/scheduler/**
+      - crates/engine/**
+      - crates/model/src/qwen3.rs
+      - crates/gateway/**
+      - crates/tetraeder/src/serve.rs
+      - scripts/loop_bench*
+      - .github/workflows/loop-bench.yml
+  workflow_dispatch:
+
+concurrency:
+  group: loop-bench-${{ github.ref }}
+  # superseded runs are cancelled on work branches only; every main run finishes
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  loop-bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache/restore@v4
+        id: model
+        with:
+          path: .hf_cache
+          key: model-qwen3-0.6b-q8_0
+      - name: Fetch test model
+        if: steps.model.outputs.cache-hit != 'true'
+        run: cargo xtask fetch-model
+      # llama-server from the same vendored tree the engine links, CPU only, no native ISA (like the builder)
+      - name: llama-server
+        run: |
+          cmake -S vendor/llama.cpp -B target/llama-server-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_MTMD=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF
+          cmake --build target/llama-server-build --target llama-server --parallel 4
+      - name: tetraeder
+        run: cargo build --release -p tetraeder
+      - name: Python client
+        run: python3 -m venv .venv && .venv/bin/pip install -q httpx pytest
+      - name: Runner
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          echo "threads: $(nproc)"
+          free -m
+          target/release/tetraeder info --json | head -c 600
+      - name: Loop bench
+        run: PY=$PWD/.venv/bin/python bash scripts/loop_bench.sh loop-results
+      - name: Summary
+        if: always()
+        run: |
+          .venv/bin/python scripts/loop_bench_summary.py loop-results | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loop-bench
+          path: loop-results
