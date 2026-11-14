@@ -51,7 +51,7 @@ bench() { # ENGINE TEST REP, gateway_bench.py arguments after
   local engine=$1 test=$2 rep=$3
   shift 3
   "$py" scripts/gateway_bench.py "http://127.0.0.1:$port" --model qwen3 --temperature 0 --seed 1 \
-    --prompt-tokens 512 --max-tokens "$max_tokens" --label "$engine-$test-r$rep" \
+    --prompt-tokens 512 --max-tokens "$max_tokens" --no-keepalive --label "$engine-$test-r$rep" \
     --out "$out/$engine-$test-r$rep.json" "$@" || say "$engine $test r$rep: client reported errors"
 }
 
