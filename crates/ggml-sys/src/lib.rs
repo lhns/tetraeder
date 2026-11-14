@@ -15,6 +15,8 @@ pub mod llama;
     clippy::all,
     clippy::pedantic,
     unsafe_op_in_unsafe_fn,
+    // bindgen's bitfield getters transmute u32 to i32 (rustc 1.95 under -D warnings)
+    unnecessary_transmutes,
     dead_code
 )]
 pub mod raw {
