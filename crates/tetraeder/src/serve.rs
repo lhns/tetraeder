@@ -568,7 +568,7 @@ mod tests {
     fn no_prefix_reuse_with_cache_ram_zero_parses() {
         let a = parse(&[]);
         assert!(!a.no_prefix_reuse);
-        let a = parse(&["--no-prefix-reuse", "--cache-ram", "0"]);
+        let a = parse(&["--engine", "dense", "--no-prefix-reuse", "--cache-ram", "0"]);
         assert!(a.no_prefix_reuse);
         assert_eq!(a.cache_ram, 0);
     }
