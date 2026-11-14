@@ -66,3 +66,6 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0062](0062-cpu-quota-throttle-fault.md) | Detector fault class cpu_quota_throttle: the cgroup CPU quota throttling the engine's own threads (Proposed) |
 | [0063](0063-genai-request-metrics-and-tier-transfer-family.md) | GenAI semconv request metrics from the gateway for every engine; one tier transfer metric family (Proposed) |
 | [0064](0064-decode-dispatch-segment-scheduler-and-one-graph-per-token.md) | Decode dispatch: a scheduler sized for one segment, then one graph per decode token with a host callback per layer (Proposed) |
+| [0065](0065-phase4-verdict-multi-sequence-backend-continuous-batching.md) | Phase 4: verdict rules, a multi-sequence backend and continuous batching (Proposed) |
+| [0066](0066-own-qwen3-dense-builder.md) | Own Qwen3 dense builder on the shared attention module, multi-sequence from the start (Proposed) |
+| [0067](0067-kv-layout-experiment-chunked-vs-paged.md) | KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now (Proposed) |
