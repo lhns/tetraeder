@@ -74,10 +74,10 @@ pub struct ContextParams {
     pub type_k: Type,
     /// V cache type, as `type_k`.
     pub type_v: Type,
-    /// Most sequence ids the context holds at once (libllama default 1).
+    /// Most sequences the context holds at once (libllama's `n_seq_max`).
     pub n_seq_max: u32,
-    /// One KV buffer shared by all sequences when computing attention. Needed for a
-    /// reference to a pool-style multi-sequence run with `n_seq_max > 1`.
+    /// One KV buffer shared by all sequences (rows are found cell by cell) instead of one per
+    /// sequence; `n_ctx` is then the pool for all of them.
     pub kv_unified: bool,
 }
 
@@ -183,6 +183,12 @@ impl Context {
     pub fn n_ctx(&self) -> u32 {
         // SAFETY: live context.
         unsafe { sys::llama_n_ctx(self.ptr) }
+    }
+
+    /// Sequences the context was created for, as libllama settled it.
+    pub fn n_seq_max(&self) -> u32 {
+        // SAFETY: live context.
+        unsafe { sys::llama_n_seq_max(self.ptr) }
     }
 
     /// Largest batch `decode` accepts, as libllama settled it (may differ from the request).
@@ -291,6 +297,15 @@ impl Context {
     pub fn memory_seq_rm(&mut self, seq: i32, p0: i32, p1: i32) -> bool {
         // SAFETY: as `memory_clear`.
         unsafe { sys::llama_memory_seq_rm(sys::llama_get_memory(self.ptr), seq, p0, p1) }
+    }
+
+    /// Makes sequence `dst` share positions `p0..p1` of sequence `src` (`p0 < 0`: from 0,
+    /// `p1 < 0`: to the end). In a unified cache this only adds `dst` to the cells' sequence
+    /// sets, no data moves; `dst` should be empty.
+    pub fn memory_seq_cp(&mut self, src: i32, dst: i32, p0: i32, p1: i32) {
+        // SAFETY: as `memory_clear`; libllama asserts both ids are below `n_seq_max`, which the
+        // callers check before calling.
+        unsafe { sys::llama_memory_seq_cp(sys::llama_get_memory(self.ptr), src, dst, p0, p1) }
     }
 
     /// Highest position stored for sequence `seq`, or -1 when empty.

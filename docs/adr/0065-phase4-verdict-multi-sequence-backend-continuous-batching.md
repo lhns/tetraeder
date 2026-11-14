@@ -169,3 +169,15 @@ C1.5, C2, C3a and C6-1 share no files and run in parallel. C4, C5 and C3b run in
 - Mask attention on CUDA reads rows of idle sequences below n_kv. If that shows in decode at long contexts, the layout places live sequences low, or ADR 0067's step 2 makes attention read only finite mask entries.
 - Sampling runs serially on the worker: about 0.1 ms per sequence greedy at 152K vocabulary, more with temperature (ADR 0046 addendum). If `tetraeder.scheduler.decode.stage{stage=sample}` shows it costing the c4 ratio, sampling moves to scoped threads per sequence.
 - The verdict reads only committed fields; a dispute about a session is settled by `verdict.json`, not by prose.
+
+## Addendum: C2b, the loop (2026-11-14)
+
+Differences found while building the loop; the decisions above stand.
+
+- `BatchBackend::max_step_tokens() -> usize` (default `usize::MAX`; libllama: `n_batch`). The loop keeps its step plan under `min(--step-tokens, max_step_tokens)`, never below `--parallel` (decoders run beyond the budget), and caps `--parallel` by `n_seq_max` and `max_step_tokens`.
+- Preemption: if the most recently admitted other sequence is older than the one that needs rows, the needing sequence is requeued itself, so the oldest request always progresses. With no other sequence the request ends with `Length`.
+- The effective parallelism is `min(--parallel, backend.n_seq_max())`: the MoE builder serves one sequence until C4, `--plan` serves one.
+- Events of a finished request that its channel does not take yet wait in a drain list; its sequence is idle at once. A request that finishes with a full channel is not held back by it.
+- A RAM entry chosen for a restore is taken out of the cache before any idle sequence is evicted (the eviction may drop it) and put back when admission has to wait.
+- The decode profile's `eval_s` is the wall time of the steps the request took part in; `gpu_seconds` is its token share of those steps.
+- libllama: `n_ctx` is rounded up (to a multiple of 256 with the unified cache) and `n_batch` is clamped to the requested `n_ctx`; a step whose cells do not fit fails with `NoKvSlot` (the engine cuts every input back with `seq_rm`, lengths unchanged).

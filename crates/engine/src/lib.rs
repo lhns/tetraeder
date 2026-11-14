@@ -8,7 +8,9 @@ mod engine;
 mod stream;
 
 pub use config::{BufferOverride, ContextConfig, Placement, Sampling};
-pub use engine::{Engine, GenerateReport, GenerateRequest, Prompt, StopReason, TokenEvent};
+pub use engine::{
+    Engine, GenerateReport, GenerateRequest, Prompt, SeqEval, StopReason, TokenEvent,
+};
 pub use tetraeder_ggml_sys::llama::{FlashAttn, LoadMode, SplitMode, Token};
 
 use tetraeder_ggml_sys::llama::LlamaError;

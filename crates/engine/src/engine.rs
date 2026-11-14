@@ -95,8 +95,20 @@ pub struct Engine {
     threads_batch: i32,
     chunk: usize,
     rng: u64,
-    /// Positions of sequence 0 held in the KV cache.
-    n_past: usize,
+    /// Positions held in the KV cache per sequence (`n_past()` is sequence 0's).
+    lens: Vec<usize>,
+    /// Batch indices of the outputs of the last `decode_seqs`, in input order.
+    out_rows: Vec<i32>,
+}
+
+/// One sequence's share of a [`Engine::decode_seqs`] step.
+#[derive(Debug, Clone, Copy)]
+pub struct SeqEval<'a> {
+    pub seq: i32,
+    /// Appended at positions `seq_len(seq)..` (never empty).
+    pub tokens: &'a [Token],
+    /// Logits of every token, else of the last one.
+    pub all_logits: bool,
 }
 
 fn default_threads() -> i32 {
@@ -131,9 +143,12 @@ impl Engine {
             n_threads_batch: threads_batch,
             flash_attn: cfg.flash_attn,
             op_offload: cfg.op_offload,
+            n_seq_max: cfg.n_seq_max.max(1),
+            kv_unified: cfg.kv_unified,
             ..ContextParams::default()
         };
         let mut ctx = Context::new(&model, &cparams)?;
+        let ctx_seqs = (ctx.n_seq_max() as usize).max(1);
         ctx.attach_threadpool(Arc::new(ThreadPool::new(threads)?));
         let chunk = (ctx.n_batch() as usize).max(1);
         let batch = Batch::new(chunk);
@@ -170,7 +185,8 @@ impl Engine {
             threads_batch,
             chunk,
             rng: 0x9E37_79B9_7F4A_7C15,
-            n_past: 0,
+            lens: vec![0; ctx_seqs],
+            out_rows: Vec::new(),
         })
     }
 
@@ -199,12 +215,12 @@ impl Engine {
 
     /// Positions held in the KV cache.
     pub fn n_past(&self) -> usize {
-        self.n_past
+        self.lens[0]
     }
 
     /// Keeps the first `keep` cached positions and drops the rest.
     pub fn truncate(&mut self, keep: usize) -> Result<()> {
-        if keep >= self.n_past {
+        if keep >= self.lens[0] {
             return Ok(());
         }
         if !self.ctx.memory_seq_rm(0, keep as i32, -1) {
@@ -212,22 +228,184 @@ impl Engine {
                 "the KV cache cannot drop positions {keep}.."
             )));
         }
-        self.n_past = keep;
+        self.lens[0] = keep;
         Ok(())
     }
 
     /// The KV cache of sequence 0 as host bytes, with the positions it holds (ADR 0049).
     pub fn snapshot(&mut self) -> Result<(Vec<u8>, usize)> {
-        Ok((self.ctx.state_seq_get(0)?, self.n_past))
+        Ok((self.ctx.state_seq_get(0)?, self.lens[0]))
     }
 
     /// Replaces the KV cache with a [`Engine::snapshot`] of `n` positions.
     pub fn restore(&mut self, bytes: &[u8], n: usize) -> Result<()> {
         self.ctx.memory_clear();
-        self.n_past = 0;
+        self.lens.fill(0);
         self.ctx.state_seq_set(0, bytes)?;
-        self.n_past = n;
+        self.lens[0] = n;
         Ok(())
+    }
+
+    /// Sequences the context holds at once.
+    pub fn n_seq_max(&self) -> usize {
+        self.lens.len()
+    }
+
+    /// Largest total of tokens one `decode_seqs` takes.
+    pub fn n_batch(&self) -> usize {
+        self.chunk
+    }
+
+    /// Positions held for `seq` (0 for an id out of range).
+    pub fn seq_len(&self, seq: i32) -> usize {
+        usize::try_from(seq)
+            .ok()
+            .and_then(|s| self.lens.get(s))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn seq_index(&self, seq: i32) -> Result<usize> {
+        usize::try_from(seq)
+            .ok()
+            .filter(|&s| s < self.lens.len())
+            .ok_or_else(|| {
+                EngineError::InvalidRequest(format!(
+                    "sequence {seq} is outside 0..{}",
+                    self.lens.len()
+                ))
+            })
+    }
+
+    /// Keeps the first `keep` positions of `seq`.
+    pub fn seq_rm(&mut self, seq: i32, keep: usize) -> Result<()> {
+        let i = self.seq_index(seq)?;
+        if keep >= self.lens[i] {
+            return Ok(());
+        }
+        if !self.ctx.memory_seq_rm(seq, keep as i32, -1) {
+            return Err(EngineError::InvalidRequest(format!(
+                "the KV cache cannot drop positions {keep}.. of sequence {seq}"
+            )));
+        }
+        self.lens[i] = keep;
+        Ok(())
+    }
+
+    /// `dst`, which must be empty, becomes the first `n` positions of `src` (libllama shares the
+    /// cells, no data moves).
+    pub fn seq_cp(&mut self, src: i32, dst: i32, n: usize) -> Result<()> {
+        let (s, d) = (self.seq_index(src)?, self.seq_index(dst)?);
+        if s == d || self.lens[d] != 0 || n > self.lens[s] {
+            return Err(EngineError::InvalidRequest(format!(
+                "seq_cp {src} -> {dst} of {n}: dst must be empty and distinct, n within src"
+            )));
+        }
+        if n > 0 {
+            self.ctx.memory_seq_cp(src, dst, 0, n as i32);
+            self.lens[d] = n;
+        }
+        Ok(())
+    }
+
+    /// The KV cache of `seq` as host bytes (ADR 0049).
+    pub fn seq_snapshot(&mut self, seq: i32) -> Result<Vec<u8>> {
+        self.seq_index(seq)?;
+        Ok(self.ctx.state_seq_get(seq)?)
+    }
+
+    /// Replaces `seq` (its content is dropped first) with a snapshot of `n` positions.
+    pub fn seq_restore(&mut self, seq: i32, bytes: &[u8], n: usize) -> Result<()> {
+        let i = self.seq_index(seq)?;
+        self.seq_rm(seq, 0)?;
+        self.ctx.state_seq_set(seq, bytes)?;
+        self.lens[i] = n;
+        Ok(())
+    }
+
+    /// One timed step for several sequences: each input's tokens are appended to its sequence.
+    /// It is a prefill step if any input has more than one token. Fails with `InvalidRequest`
+    /// when the inputs are empty, repeat a sequence or total more than `n_batch` tokens. On any
+    /// error every input's sequence is cut back to its length before the call.
+    pub fn decode_seqs(&mut self, inputs: &[SeqEval<'_>]) -> Result<()> {
+        let total: usize = inputs.iter().map(|i| i.tokens.len()).sum();
+        if inputs.is_empty() || inputs.iter().any(|i| i.tokens.is_empty()) {
+            return Err(EngineError::InvalidRequest("no tokens".into()));
+        }
+        if total > self.chunk {
+            return Err(EngineError::InvalidRequest(format!(
+                "{total} tokens in one step exceed n_batch {}",
+                self.chunk
+            )));
+        }
+        let mut idx = Vec::with_capacity(inputs.len());
+        for inp in inputs {
+            let i = self.seq_index(inp.seq)?;
+            if idx.contains(&i) {
+                return Err(EngineError::InvalidRequest(format!(
+                    "sequence {} twice in one step",
+                    inp.seq
+                )));
+            }
+            let needed = self.lens[i] + inp.tokens.len();
+            if needed > self.n_ctx() {
+                return Err(EngineError::ContextTooSmall {
+                    needed,
+                    n_ctx: self.n_ctx(),
+                });
+            }
+            idx.push(i);
+        }
+        self.ctx.set_threads(self.threads, self.threads_batch);
+        let phase = if inputs.iter().any(|i| i.tokens.len() > 1) {
+            Phase::Prefill
+        } else {
+            Phase::Decode
+        };
+        let span = self.span(phase);
+        let _e = span.enter();
+        self.batch.clear();
+        self.out_rows.clear();
+        for (inp, &i) in inputs.iter().zip(&idx) {
+            let n = inp.tokens.len();
+            for (k, &t) in inp.tokens.iter().enumerate() {
+                let logits = inp.all_logits || k + 1 == n;
+                if logits {
+                    self.out_rows.push(self.batch.len() as i32);
+                }
+                self.batch
+                    .push(t, (self.lens[i] + k) as i32, inp.seq, logits)?;
+            }
+        }
+        if let Err(e) = self.step(phase) {
+            self.out_rows.clear();
+            for (inp, &i) in inputs.iter().zip(&idx) {
+                // Drop whatever the failed step wrote.
+                let _ = self.ctx.memory_seq_rm(inp.seq, self.lens[i] as i32, -1);
+            }
+            return Err(e);
+        }
+        for (inp, &i) in inputs.iter().zip(&idx) {
+            self.lens[i] += inp.tokens.len();
+        }
+        Ok(())
+    }
+
+    /// The `k`-th output of the last `decode_seqs`, in input order (the rows of an input in
+    /// token order); `n_vocab` values, valid until the next decode.
+    pub fn output_logits(&mut self, k: usize) -> Result<&[f32]> {
+        let i = *self.out_rows.get(k).ok_or_else(|| {
+            EngineError::InvalidRequest(format!(
+                "output {k} of {} in the last step",
+                self.out_rows.len()
+            ))
+        })?;
+        Ok(self.ctx.logits_ith(i)?)
+    }
+
+    /// Number of outputs of the last `decode_seqs`.
+    pub fn n_outputs(&self) -> usize {
+        self.out_rows.len()
     }
 
     /// Appends `tokens` after the cached ones and returns the logits of the last one
@@ -237,7 +415,7 @@ impl Engine {
         if tokens.is_empty() {
             return Err(EngineError::EmptyPrompt);
         }
-        let needed = self.n_past + tokens.len();
+        let needed = self.lens[0] + tokens.len();
         if needed > self.n_ctx() {
             return Err(EngineError::ContextTooSmall {
                 needed,
@@ -259,12 +437,12 @@ impl Engine {
             self.batch.clear();
             for (i, &t) in tokens[pos..end].iter().enumerate() {
                 self.batch
-                    .push(t, (self.n_past + pos + i) as i32, 0, pos + i == n - 1)?;
+                    .push(t, (self.lens[0] + pos + i) as i32, 0, pos + i == n - 1)?;
             }
             self.step(phase)?;
             pos = end;
         }
-        self.n_past += n;
+        self.lens[0] += n;
         Ok(self.ctx.logits_ith(-1)?)
     }
 
@@ -432,7 +610,7 @@ impl Engine {
         };
 
         self.ctx.memory_clear();
-        self.n_past = 0;
+        self.lens.fill(0);
         self.ctx.set_threads(self.threads, self.threads_batch);
 
         // Prefill in n_batch chunks; logits only for the last prompt token.
@@ -452,7 +630,7 @@ impl Engine {
                 prefill_steps += 1;
                 pos = end;
             }
-            self.n_past = n;
+            self.lens[0] = n;
         }
 
         let mut tokens = Vec::new();
@@ -503,7 +681,7 @@ impl Engine {
                 self.batch.push(tok, pos, 0, true)?;
                 pos += 1;
                 self.step(Phase::Decode)?;
-                self.n_past += 1;
+                self.lens[0] += 1;
                 decode_steps += 1;
             }
         }

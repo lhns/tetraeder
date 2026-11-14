@@ -6,6 +6,8 @@
 #![allow(dead_code)]
 
 use std::ops::Range;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use tetraeder_scheduler::{Backend, BackendError, BatchBackend, Outputs, SeqId, SeqInput};
 
 /// FNV-1a over the tokens.
@@ -34,6 +36,17 @@ pub fn logits_for(n_vocab: usize, tokens: &[i32]) -> Vec<f32> {
         .collect()
 }
 
+/// What a test reads from a `FakeKv` it no longer owns (the scheduler's worker does).
+#[derive(Default)]
+pub struct Probe {
+    /// Successful `decode` calls, including the injected failures.
+    pub decodes: AtomicU32,
+    /// Most inputs in one `decode`.
+    pub max_inputs: AtomicUsize,
+    /// Most tokens in one `decode`.
+    pub max_step_tokens: AtomicUsize,
+}
+
 #[derive(Default, Clone)]
 struct Seq {
     tokens: Vec<i32>,
@@ -55,6 +68,7 @@ pub struct FakeKv {
     seqs: Vec<Seq>,
     logits: Vec<f32>,
     spans: Vec<Range<usize>>,
+    probe: Arc<Probe>,
 }
 
 impl FakeKv {
@@ -71,7 +85,12 @@ impl FakeKv {
             seqs: vec![Seq::default(); n_seq_max],
             logits: Vec::new(),
             spans: Vec::new(),
+            probe: Arc::default(),
         }
+    }
+
+    pub fn probe(&self) -> Arc<Probe> {
+        Arc::clone(&self.probe)
     }
 
     pub fn with_fail_every(mut self, n: Option<u32>) -> Self {
@@ -255,6 +274,14 @@ impl BatchBackend for FakeKv {
             });
         }
         self.decodes += 1;
+        self.probe.decodes.fetch_add(1, Ordering::SeqCst);
+        self.probe
+            .max_inputs
+            .fetch_max(inputs.len(), Ordering::SeqCst);
+        self.probe.max_step_tokens.fetch_max(
+            inputs.iter().map(|i| i.tokens.len()).sum(),
+            Ordering::SeqCst,
+        );
         let before: Vec<(usize, usize)> = seen
             .iter()
             .map(|&i| (self.seqs[i].tokens.len(), self.seqs[i].rows.len()))

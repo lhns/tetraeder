@@ -11,7 +11,7 @@ use tetraeder_gateway::engine::{Engine, GenEvent, GenerateRequest, SamplingParam
 use tetraeder_ggml_sys::llama::{Model, ModelParams};
 use tetraeder_model::{BackendChoice, LoadOptions};
 use tetraeder_scheduler::{
-    Backend, Loaded, Scheduler, SchedulerConfig, load_llama, load_moe_chunked,
+    Backend, Loaded, Scheduler, SchedulerConfig, SingleSeq, load_llama, load_moe_chunked,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -76,7 +76,7 @@ fn builder_greedy_output_is_the_same_for_chunk_64_and_512() {
     let run = |chunk: usize| {
         let path = fixture();
         let mut cfg = SchedulerConfig::new(&path);
-        cfg.prefill_chunk = chunk;
+        cfg.step_tokens = chunk;
         let s = Scheduler::start(cfg, move || {
             let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
             o.n_ctx = CTX as usize;
@@ -149,7 +149,7 @@ fn fake_sched(chunk: Option<usize>) -> Rig {
     let dropped = Arc::new(AtomicBool::new(false));
     let mut cfg = SchedulerConfig::new(&path);
     if let Some(c) = chunk {
-        cfg.prefill_chunk = c;
+        cfg.step_tokens = c;
     }
     let (c, d) = (Arc::clone(&calls), Arc::clone(&dropped));
     let sched = Scheduler::start(cfg, move || {
@@ -163,15 +163,19 @@ fn fake_sched(chunk: Option<usize>) -> Rig {
             )
             .map_err(|e| e.to_string())?,
         );
-        let mut logits = vec![0.0; tokenizer.n_vocab() as usize];
+        let n_vocab = tokenizer.n_vocab() as usize;
+        let mut logits = vec![0.0; n_vocab];
         logits[65] = 1.0;
         Ok(Loaded {
-            backend: Box::new(Fake {
-                logits,
-                calls: c,
-                dropped: d,
-                n_past: Arc::default(),
-            }),
+            backend: Box::new(SingleSeq::new(
+                Fake {
+                    logits,
+                    calls: c,
+                    dropped: d,
+                    n_past: Arc::default(),
+                },
+                n_vocab,
+            )),
             tokenizer,
         })
     })

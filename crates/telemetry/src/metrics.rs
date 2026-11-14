@@ -15,6 +15,7 @@ pub mod attr {
     pub const DEVICE: &str = "tetraeder.device";
     pub const TIER: &str = "tetraeder.memory.tier";
     pub const KIND: &str = "tetraeder.memory.kind";
+    pub const STEP_KIND: &str = "tetraeder.kind";
     pub const LAYER: &str = "tetraeder.layer";
     pub const DEPTH: &str = "tetraeder.prefetch.depth";
     pub const RESULT: &str = "tetraeder.result";
@@ -168,6 +169,8 @@ pub struct Metrics {
     convert_bytes: Counter<u64>,
     convert_cache: Counter<u64>,
     batch_size: Histogram<f64>,
+    step_tokens: Histogram<f64>,
+    sequences: Gauge<u64>,
     decode_stage: Histogram<f64>,
     prefix_hits: Counter<u64>,
     prefix_evictions: Counter<u64>,
@@ -372,8 +375,25 @@ impl Metrics {
             batch_size: meter
                 .f64_histogram("tetraeder.scheduler.batch.size")
                 .with_unit("{request}")
-                .with_description("Requests decoded together per scheduler step")
+                .with_description("Sequences decoded together per scheduler step")
                 .with_boundaries(vec![1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0])
+                .build(),
+            step_tokens: meter
+                .f64_histogram("tetraeder.scheduler.step.tokens")
+                .with_unit("{token}")
+                .with_description(
+                    "Tokens per scheduler step, by kind (decode, prefill, verify): one observation per kind present",
+                )
+                .with_boundaries(vec![
+                    1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 2048.0,
+                ])
+                .build(),
+            sequences: meter
+                .u64_gauge("tetraeder.scheduler.sequences")
+                .with_unit("{sequence}")
+                .with_description(
+                    "Sequences held by the scheduler, by state (prefill, decode, paused, idle)",
+                )
                 .build(),
             prefix_hits: meter
                 .u64_counter("tetraeder.kv.prefix.hits")
@@ -728,9 +748,21 @@ impl Metrics {
         );
     }
 
-    /// Requests in one scheduler step.
+    /// Sequences in one scheduler step.
     pub fn scheduler_batch(&self, size: u32) {
         self.batch_size.record(f64::from(size), &[]);
+    }
+
+    /// Tokens of `kind` (`decode`, `prefill` or `verify`) in one scheduler step.
+    pub fn scheduler_step_tokens(&self, kind: &'static str, n: u32) {
+        self.step_tokens
+            .record(f64::from(n), &[KeyValue::new(attr::STEP_KIND, kind)]);
+    }
+
+    /// Sequences in `state` (`prefill`, `decode`, `paused` or `idle`).
+    pub fn scheduler_sequences(&self, state: &'static str, n: u64) {
+        self.sequences
+            .record(n, &[KeyValue::new(attr::STATE, state)]);
     }
 
     /// Mean seconds per decoded token of one request in `stage` (decode profile).

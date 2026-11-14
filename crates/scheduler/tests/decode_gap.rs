@@ -19,7 +19,7 @@ use tetraeder_engine::{ContextConfig, FlashAttn, Placement};
 use tetraeder_ggml_sys::ggml::Backend as GgmlBackend;
 use tetraeder_model::{BackendChoice, LoadOptions};
 use tetraeder_scheduler::sample::{SampleParams, Sampler, greedy};
-use tetraeder_scheduler::{Loaded, PREFILL_CHUNK, load_llama, load_moe};
+use tetraeder_scheduler::{BatchBackend, Loaded, STEP_TOKENS, SeqInput, load_llama, load_moe};
 
 /// Decode steps left out of the steady numbers: graph capture after a depth change.
 const WARMUP_STEPS: usize = 4;
@@ -62,6 +62,8 @@ fn load(engine: &str, path: &Path, n_ctx: usize, threads: i32) -> Loaded {
                 threads_batch: None,
                 flash_attn: FlashAttn::Auto,
                 op_offload: true,
+                n_seq_max: 1,
+                kv_unified: true,
             },
             None,
         )
@@ -75,6 +77,16 @@ fn load(engine: &str, path: &Path, n_ctx: usize, threads: i32) -> Loaded {
         }
         other => panic!("unknown engine {other}"),
     }
+}
+
+/// One step on sequence 0; the logits of its last token.
+fn step_one<'a>(b: &'a mut dyn BatchBackend, tokens: &[i32]) -> &'a [f32] {
+    let input = SeqInput {
+        seq: 0,
+        tokens,
+        all_logits: false,
+    };
+    b.decode(&[input]).expect("decode").last(0)
 }
 
 fn mean_ms(d: &[Duration]) -> f64 {
@@ -116,10 +128,11 @@ fn gpu_serve_decode_by_depth() {
                 "depth {depth} does not fit {n_ctx}"
             );
             let prompt: Vec<i32> = unit.iter().copied().cycle().take(n_prompt).collect();
-            backend.truncate(0).unwrap();
+            backend.seq_rm(0, 0).unwrap();
+            backend.seq_reserve(0, n_prompt + n_decode + 1).unwrap();
             let t = Instant::now();
-            for chunk in prompt.chunks(PREFILL_CHUNK) {
-                backend.eval(chunk).unwrap();
+            for chunk in prompt.chunks(STEP_TOKENS) {
+                step_one(&mut *backend, chunk);
             }
             let prefill_s = t.elapsed().as_secs_f64();
             let mut sampler = Sampler::new(SERVE_SAMPLING, 42);
@@ -128,7 +141,7 @@ fn gpu_serve_decode_by_depth() {
             let mut next = tokenizer.bos().max(0);
             for _ in 0..n_decode {
                 let t = Instant::now();
-                let logits = backend.eval(&[next]).unwrap();
+                let logits = step_one(&mut *backend, &[next]);
                 eval.push(t.elapsed());
                 let t = Instant::now();
                 let g = greedy(logits, |_| true).unwrap();

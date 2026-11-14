@@ -1,10 +1,14 @@
-//! The one-sequence scheduler: a worker thread owning the backend, a job queue, prefix reuse
-//! of the last sequence, Rust sampling over the logits (ADR 0046).
+//! The serving scheduler: a worker thread owning a [`BatchBackend`], a job queue, continuous
+//! batching of up to `parallel` sequences with chunked prefill under a step token budget, prefix
+//! reuse of idle resident sequences and of saved ones in host RAM, and Rust sampling over the
+//! logits (ADR 0046, ADR 0065).
 
-use crate::backend::Backend;
+use crate::backend::{BackendError, BatchBackend, SeqId, SeqInput};
+use crate::batch::{Live, plan_step, victim};
 use crate::load::{Loaded, model_id};
 use crate::prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS, common_prefix};
 use crate::sample::{SampleParams, Sampler, counter_seed};
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
@@ -18,8 +22,12 @@ use tetraeder_telemetry::{Metrics, Purpose, Tier};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-/// Prompt tokens per backend call: the unit of cancellation during prefill.
-pub const PREFILL_CHUNK: usize = 512;
+/// Default tokens per step (`--step-tokens`): the unit of cancellation during prefill.
+pub const STEP_TOKENS: usize = 512;
+/// Default sequences decoded together (`--parallel`).
+pub const PARALLEL: usize = 4;
+/// Rows reserved beyond the prompt, and the growth step of a sequence (ADR 0065).
+const GROW: usize = 1024;
 
 /// Events buffered per request before the worker waits for the gateway.
 const EVENT_BUFFER: usize = 32;
@@ -46,9 +54,12 @@ pub struct SchedulerConfig {
     /// Report where each request's decode time went ([`DecodeProfile`]); default from
     /// `TETRAEDER_DECODE_PROFILE=1`. Off, it costs nothing beyond the timers that exist anyway.
     pub decode_profile: bool,
-    /// Prompt tokens per backend call; default [`PREFILL_CHUNK`]. The builder's plan sets it
-    /// (ADR 0055).
-    pub prefill_chunk: usize,
+    /// Sequences decoded together; default [`PARALLEL`]. At most the backend's `n_seq_max`.
+    pub parallel: usize,
+    /// Tokens per step over all sequences; default [`STEP_TOKENS`]. Decoding sequences take
+    /// their token even beyond it; the rest goes to prompt chunks. The builder's plan sets it
+    /// (ADR 0055). Capped by the backend's `max_step_tokens`.
+    pub step_tokens: usize,
 }
 
 /// Default prefix cache budget, like llama-server's `--cache-ram`.
@@ -68,17 +79,10 @@ impl SchedulerConfig {
             cache_save_min: SAVE_MIN_TOKENS,
             cache_restore_gain: RESTORE_MIN_GAIN,
             decode_profile: std::env::var_os("TETRAEDER_DECODE_PROFILE").is_some_and(|v| v == "1"),
-            prefill_chunk: PREFILL_CHUNK,
+            parallel: PARALLEL,
+            step_tokens: STEP_TOKENS,
         }
     }
-}
-
-struct Job {
-    prompt: Vec<TokenId>,
-    params: SamplingParams,
-    constraint: Option<Box<dyn TokenConstraint>>,
-    cancel: CancellationToken,
-    tx: mpsc::Sender<GenEvent>,
 }
 
 /// The gateway's [`Engine`] over one backend.
@@ -86,7 +90,7 @@ pub struct Scheduler {
     info: ModelInfo,
     vocab: Arc<Vocab>,
     tokenizer: Arc<Model>,
-    queue: Mutex<std_mpsc::Sender<Job>>,
+    queue: Mutex<std_mpsc::Sender<Req>>,
     worker: std::thread::JoinHandle<()>,
 }
 
@@ -98,7 +102,7 @@ impl Scheduler {
         cfg: SchedulerConfig,
         load: impl FnOnce() -> Result<Loaded, String> + Send + 'static,
     ) -> Result<Self, String> {
-        let (job_tx, job_rx) = std_mpsc::channel::<Job>();
+        let (job_tx, job_rx) = std_mpsc::channel::<Req>();
         let (ready_tx, ready_rx) = std_mpsc::channel::<Result<(Arc<Model>, usize), String>>();
         let defaults = SampleParams {
             temperature: cfg.temperature,
@@ -107,7 +111,7 @@ impl Scheduler {
         };
         let metrics = cfg.metrics.clone();
         let decode_profile = cfg.decode_profile;
-        let prefill_chunk = cfg.prefill_chunk.max(1);
+        let (parallel, step_tokens) = (cfg.parallel.max(1), cfg.step_tokens.max(1));
         let (cache_ram, save_min, restore_gain) = (
             cfg.cache_ram_bytes,
             cfg.cache_save_min,
@@ -127,23 +131,21 @@ impl Scheduler {
                 };
                 let vocab = Arc::new(build_vocab(&loaded.tokenizer));
                 let _ = worker_vocab.set(Arc::clone(&vocab));
-                let n_ctx = loaded.backend.n_ctx();
+                let n_ctx = loaded.backend.n_ctx_seq();
                 let _ = ready_tx.send(Ok((Arc::clone(&loaded.tokenizer), n_ctx)));
-                let mut w = Worker {
-                    backend: loaded.backend,
-                    cached: Vec::new(),
-                    cache: PrefixCache::new(cache_ram),
+                let mut w = Worker::new(
+                    loaded.backend,
+                    PrefixCache::new(cache_ram),
                     save_min,
                     restore_gain,
                     vocab,
                     defaults,
                     metrics,
                     decode_profile,
-                    prefill_chunk,
-                };
-                for job in job_rx {
-                    w.run(job);
-                }
+                    parallel,
+                    step_tokens,
+                );
+                w.run(&job_rx);
             })
             .map_err(|e| format!("cannot start the scheduler thread: {e}"))?;
         let (tokenizer, n_ctx) = ready_rx
@@ -182,7 +184,7 @@ impl Scheduler {
         })
     }
 
-    /// Stops accepting jobs, lets the running one finish and joins the worker, so the
+    /// Stops accepting jobs, lets the running ones finish and joins the worker, so the
     /// backend (and its memory) is gone when this returns.
     pub fn shutdown(self) -> Result<(), String> {
         let Self { queue, worker, .. } = self;
@@ -223,13 +225,7 @@ impl Engine for Scheduler {
     fn generate(&self, req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError> {
         self.check(&req.model)?;
         let (tx, rx) = mpsc::channel(EVENT_BUFFER);
-        let job = Job {
-            prompt: req.prompt,
-            params: req.params,
-            constraint: req.constraint,
-            cancel: req.cancel,
-            tx,
-        };
+        let job = Req::new(req.prompt, req.params, req.constraint, req.cancel, tx);
         self.queue
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -266,10 +262,141 @@ pub fn build_vocab(model: &Model) -> Vocab {
     }
 }
 
+/// Time of the steps of one request so far.
+#[derive(Debug, Clone, Copy, Default)]
+struct StepTimes {
+    /// Steps that sampled a token.
+    steps: u32,
+    /// Backend `decode` calls the request took part in (the whole step's wall time).
+    eval: Duration,
+    /// Constraint mask, sampling and commit.
+    sample: Duration,
+}
+
+/// A request from arrival to its last event. It goes back to the queue front on preemption with
+/// its sampler, constraint and channel: `toks` then holds the prompt plus what was generated, and
+/// nothing is sent twice.
+struct Req {
+    /// The prompt, then the generated tokens (the last one may not be in the KV yet).
+    toks: Vec<i32>,
+    params: SamplingParams,
+    constraint: Option<Box<dyn TokenConstraint>>,
+    cancel: CancellationToken,
+    tx: mpsc::Sender<GenEvent>,
+    /// Events not yet accepted by the channel; while there are any the request is paused.
+    outbox: VecDeque<GenEvent>,
+    /// Created at the first admission, in arrival order of admissions (`counter_seed`).
+    sampler: Option<Sampler>,
+    stats: EngineStats,
+    times: StepTimes,
+    /// This request's share of the step times, by tokens.
+    gpu: Duration,
+    emit: Duration,
+    /// With the decode profile: the times and backend counters when its first token was sampled.
+    after_prefill: Option<(StepTimes, Vec<(&'static str, f64)>)>,
+    bytes0: Option<u64>,
+    /// Admitted at least once.
+    started: bool,
+}
+
+impl Req {
+    fn new(
+        prompt: Vec<TokenId>,
+        params: SamplingParams,
+        constraint: Option<Box<dyn TokenConstraint>>,
+        cancel: CancellationToken,
+        tx: mpsc::Sender<GenEvent>,
+    ) -> Self {
+        let stats = EngineStats {
+            prompt_tokens: u32::try_from(prompt.len()).unwrap_or(u32::MAX),
+            ..EngineStats::default()
+        };
+        Self {
+            toks: prompt.iter().map(|&t| t as i32).collect(),
+            params,
+            constraint,
+            cancel,
+            tx,
+            outbox: VecDeque::new(),
+            sampler: None,
+            stats,
+            times: StepTimes::default(),
+            gpu: Duration::ZERO,
+            emit: Duration::ZERO,
+            after_prefill: None,
+            bytes0: None,
+            started: false,
+        }
+    }
+
+    /// Sends what the channel takes, in order. False when the receiver is gone.
+    fn flush(&mut self) -> bool {
+        while let Some(ev) = self.outbox.pop_front() {
+            match self.tx.try_send(ev) {
+                Ok(()) => {}
+                Err(mpsc::error::TrySendError::Full(ev)) => {
+                    self.outbox.push_front(ev);
+                    break;
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => return false,
+            }
+        }
+        true
+    }
+}
+
+/// The events a retired request still has to deliver; the sequence is already free.
+struct Drain {
+    tx: mpsc::Sender<GenEvent>,
+    events: VecDeque<GenEvent>,
+}
+
+/// A running request on a sequence.
+struct Seq {
+    req: Req,
+    /// Positions of `req.toks` in the KV cache.
+    fed: usize,
+    /// Admission order, smaller is older.
+    admitted: u64,
+    /// Its first token was sampled (else it is prefilling).
+    decoding: bool,
+    /// Rows asked of the backend for this sequence.
+    reserved_to: usize,
+}
+
+impl Seq {
+    fn paused(&self) -> bool {
+        !self.req.outbox.is_empty()
+    }
+}
+
+/// A finished request's sequence, kept as a prefix until its rows or id are needed.
+struct Idle {
+    toks: Vec<i32>,
+    /// Retirement order, smaller is older.
+    order: u64,
+}
+
+enum Slot {
+    Free,
+    Idle(Idle),
+    Live(Box<Seq>),
+}
+
+enum Admission {
+    Admitted,
+    /// Not enough KV rows now; the request stays at the queue front.
+    Wait,
+}
+
 struct Worker {
-    backend: Box<dyn Backend>,
-    /// The tokens in the backend's KV cache, in order.
-    cached: Vec<i32>,
+    backend: Box<dyn BatchBackend>,
+    /// One slot per sequence id in use.
+    slots: Vec<Slot>,
+    waiting: VecDeque<Req>,
+    drains: Vec<Drain>,
+    next_admitted: u64,
+    next_order: u64,
     /// Sequences evicted from the KV cache, kept in host RAM.
     cache: PrefixCache,
     save_min: usize,
@@ -278,216 +405,187 @@ struct Worker {
     defaults: SampleParams,
     metrics: Option<Metrics>,
     decode_profile: bool,
-    prefill_chunk: usize,
+    /// Tokens per step.
+    budget: usize,
+    n_ctx_seq: usize,
 }
 
-/// Time of the steps of one request so far.
-#[derive(Debug, Clone, Copy, Default)]
-struct StepTimes {
-    /// Steps that sampled a token.
-    steps: u32,
-    /// Backend `eval` calls (device time on a GPU backend).
-    eval: Duration,
-    /// Constraint mask, sampling and commit.
-    sample: Duration,
-}
-
-enum Step {
-    Token(u32),
-    Cancelled,
+/// Mask, sample and commit one token from `logits`.
+fn sample_one(req: &mut Req, logits: &[f32]) -> Result<u32, String> {
+    let mask = match req.constraint.as_mut() {
+        Some(c) => c.mask()?,
+        None => None,
+    };
+    let sampler = req.sampler.as_mut().ok_or("no sampler")?;
+    let tok = sampler
+        .sample(logits, mask.as_ref())
+        .ok_or("the constraint allows no token")?;
+    if let Some(c) = req.constraint.as_mut() {
+        c.commit(tok)?;
+    }
+    Ok(tok)
 }
 
 impl Worker {
-    fn run(&mut self, job: Job) {
-        let Job {
-            prompt,
-            params,
-            mut constraint,
-            cancel,
-            tx,
-        } = job;
-        let mut stats = EngineStats {
-            prompt_tokens: u32::try_from(prompt.len()).unwrap_or(u32::MAX),
-            ..EngineStats::default()
-        };
-        if cancel.is_cancelled() || tx.is_closed() {
-            let _ = tx.blocking_send(GenEvent::Finished {
-                reason: FinishReason::Cancelled,
-                stats,
-            });
-            return;
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        backend: Box<dyn BatchBackend>,
+        cache: PrefixCache,
+        save_min: usize,
+        restore_gain: usize,
+        vocab: Arc<Vocab>,
+        defaults: SampleParams,
+        metrics: Option<Metrics>,
+        decode_profile: bool,
+        parallel: usize,
+        step_tokens: usize,
+    ) -> Self {
+        let max_step = backend.max_step_tokens().max(1);
+        let parallel = parallel.min(backend.n_seq_max()).min(max_step).max(1);
+        // Decoding sequences take their token even beyond the budget, so it covers them all.
+        let budget = step_tokens.min(max_step).max(parallel);
+        let n_ctx_seq = backend.n_ctx_seq();
+        Self {
+            backend,
+            slots: (0..parallel).map(|_| Slot::Free).collect(),
+            waiting: VecDeque::new(),
+            drains: Vec::new(),
+            next_admitted: 0,
+            next_order: 0,
+            cache,
+            save_min,
+            restore_gain,
+            vocab,
+            defaults,
+            metrics,
+            decode_profile,
+            budget,
+            n_ctx_seq,
         }
-        let ev = match self.generate(&prompt, &params, &mut constraint, &cancel, &tx, &mut stats) {
-            Ok(reason) => GenEvent::Finished { reason, stats },
-            Err(e) => {
-                // The cache may be half-written: start the next request cold.
-                let _ = self.backend.truncate(0);
-                self.cached.clear();
-                tracing::warn!("generation failed: {e}");
-                GenEvent::Error(e)
-            }
-        };
-        let _ = tx.blocking_send(ev);
     }
 
-    fn generate(
-        &mut self,
-        prompt: &[TokenId],
-        params: &SamplingParams,
-        constraint: &mut Option<Box<dyn TokenConstraint>>,
-        cancel: &CancellationToken,
-        tx: &mpsc::Sender<GenEvent>,
-        stats: &mut EngineStats,
-    ) -> Result<FinishReason, String> {
-        let n_ctx = self.backend.n_ctx();
-        if prompt.is_empty() || prompt.len() >= n_ctx {
-            return Err(format!(
-                "a prompt of {} tokens does not fit the context of {n_ctx}",
-                prompt.len()
-            ));
-        }
-        let toks: Vec<i32> = prompt.iter().map(|&t| t as i32).collect();
-        // Keep the shared prefix, but evaluate at least the last prompt token for logits.
-        let last = toks.len() - 1;
-        let live = common_prefix(&self.cached, &toks).min(last);
-        let fmt = self.backend.kv_format();
-        let ram = if self.cache.enabled() {
-            self.cache
-                .best(&fmt, &toks)
-                .map(|(i, n)| (i, n.min(last)))
-                .filter(|&(_, n)| n >= live + self.restore_gain)
-        } else {
-            None
-        };
-        // Take the entry out first: saving the live sequence may evict it.
-        let picked = ram.map(|(i, _)| self.cache.take(i));
-        if picked.is_some()
-            && let Some(m) = &self.metrics
-        {
-            m.kv_prefix_bytes(self.cache.bytes() as u64);
-        }
-        // The live sequence is saved before truncation or a restore drops much of it.
-        let lost = if picked.is_some() {
-            self.cached.len()
-        } else {
-            self.cached.len() - live.min(self.cached.len())
-        };
-        if self.cache.enabled()
-            && lost >= self.save_min
-            && !self.cache.holds(&self.backend.kv_format(), &self.cached)
-        {
-            self.save_live();
-        }
-        let mut restored = false;
-        if let Some((etoks, bytes)) = picked {
-            let t0 = Instant::now();
-            match self.backend.restore(&bytes, etoks.len()) {
-                Ok(()) => {
-                    self.cached = etoks;
-                    restored = true;
-                    if let Some(m) = &self.metrics {
-                        let took = t0.elapsed();
-                        m.kv_prefix_restore(took);
-                        m.tier_transfer(
-                            bytes.len() as u64,
-                            Some(took),
-                            Tier::Ram,
-                            Tier::Vram,
-                            Purpose::Kv,
-                        );
+    fn live_count(&self) -> usize {
+        self.slots
+            .iter()
+            .filter(|s| matches!(s, Slot::Live(_)))
+            .count()
+    }
+
+    fn has_work(&self) -> bool {
+        !self.waiting.is_empty() || !self.drains.is_empty() || self.live_count() > 0
+    }
+
+    /// The loop of ADR 0065: take new jobs, admit, plan one step, decode, sample, emit, retire.
+    /// Blocks on the job queue only when nothing is live.
+    fn run(&mut self, rx: &std_mpsc::Receiver<Req>) {
+        let mut closed = false;
+        loop {
+            loop {
+                match rx.try_recv() {
+                    Ok(j) => self.waiting.push_back(j),
+                    Err(std_mpsc::TryRecvError::Empty) => break,
+                    Err(std_mpsc::TryRecvError::Disconnected) => {
+                        closed = true;
+                        break;
                     }
                 }
-                Err(e) => {
-                    tracing::warn!("cannot restore a saved sequence: {e}");
-                    self.backend.truncate(0)?;
-                    self.cached.clear();
+            }
+            self.flush_drains();
+            if !self.has_work() {
+                if closed {
+                    return;
+                }
+                match rx.recv() {
+                    Ok(j) => self.waiting.push_back(j),
+                    Err(_) => return,
+                }
+                continue;
+            }
+            self.admit();
+            self.sweep();
+            let ran = self.step();
+            self.record_sequences();
+            if !ran && self.has_work() {
+                // Everything live is paused (or only events are left to deliver): wait for the
+                // consumers, but wake for new jobs.
+                if closed {
+                    std::thread::sleep(Duration::from_millis(1));
+                } else {
+                    match rx.recv_timeout(Duration::from_millis(1)) {
+                        Ok(j) => self.waiting.push_back(j),
+                        Err(std_mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(std_mpsc::RecvTimeoutError::Disconnected) => closed = true,
+                    }
                 }
             }
         }
-        let common = common_prefix(&self.cached, &toks).min(last);
-        if common < self.cached.len() {
-            self.backend.truncate(common)?;
-            self.cached.truncate(common);
-        }
-        stats.cached_tokens = common as u32;
-        if common > 0
-            && let Some(m) = &self.metrics
-        {
-            m.kv_prefix_hit(if restored { "ram" } else { "live" });
-        }
+    }
 
-        let mut sampler = Sampler::new(
-            SampleParams {
-                temperature: params.temperature.unwrap_or(self.defaults.temperature),
-                top_k: params.top_k.unwrap_or(self.defaults.top_k),
-                top_p: params.top_p.unwrap_or(self.defaults.top_p),
-            },
-            params.seed.unwrap_or_else(counter_seed),
-        );
-        let bytes0 = self.backend.bytes_streamed_total();
-        let mut times = StepTimes::default();
-        // With the decode profile: the times and backend counters when the prefill step ended.
-        let mut after_prefill: Option<(StepTimes, Vec<(&'static str, f64)>)> = None;
-        let mut emit = Duration::ZERO;
-        let mut pending = toks[common..].to_vec();
-        let reason = loop {
-            if stats.generated_tokens >= params.max_tokens {
-                break FinishReason::Length;
+    fn flush_drains(&mut self) {
+        self.drains.retain_mut(|d| {
+            while let Some(ev) = d.events.pop_front() {
+                match d.tx.try_send(ev) {
+                    Ok(()) => {}
+                    Err(mpsc::error::TrySendError::Full(ev)) => {
+                        d.events.push_front(ev);
+                        return true;
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => return false,
+                }
             }
-            let tok = match self.step(&pending, &mut sampler, constraint, cancel, &mut times)? {
-                Step::Cancelled => break FinishReason::Cancelled,
-                Step::Token(t) => t,
-            };
-            if self.decode_profile && after_prefill.is_none() {
-                after_prefill = Some((times, self.backend.counters()));
+            false
+        });
+    }
+
+    fn record_sequences(&self) {
+        let Some(m) = &self.metrics else { return };
+        let (mut prefill, mut decode, mut paused, mut idle) = (0, 0, 0, 0);
+        for s in &self.slots {
+            match s {
+                Slot::Free => {}
+                Slot::Idle(_) => idle += 1,
+                Slot::Live(s) if s.paused() => paused += 1,
+                Slot::Live(s) if s.decoding => decode += 1,
+                Slot::Live(_) => prefill += 1,
             }
-            if self.vocab.is_eog(tok) {
-                break FinishReason::EndOfGeneration;
-            }
-            stats.generated_tokens += 1;
-            let t_emit = Instant::now();
-            let sent = tx.blocking_send(GenEvent::Token(tok));
-            emit += t_emit.elapsed();
-            if sent.is_err() {
-                break FinishReason::Cancelled;
-            }
-            if cancel.is_cancelled() {
-                break FinishReason::Cancelled;
-            }
-            if self.cached.len() >= n_ctx {
-                break FinishReason::Length;
-            }
-            pending.clear();
-            pending.push(tok as i32);
-        };
+        }
+        m.scheduler_sequences("prefill", prefill);
+        m.scheduler_sequences("decode", decode);
+        m.scheduler_sequences("paused", paused);
+        m.scheduler_sequences("idle", idle);
+    }
+
+    // ---- ending requests ----
+
+    /// Fills in the stats that need the backend.
+    fn finalize(&self, req: &mut Req) {
         if self.backend.on_gpu() {
-            stats.gpu_seconds = Some(times.eval.as_secs_f64());
+            req.stats.gpu_seconds = Some(req.gpu.as_secs_f64());
         }
-        if let Some((t0, c0)) = after_prefill {
-            stats.profile = Some(self.profile_of(&times, &t0, &c0, emit));
+        if let Some((t0, c0)) = req.after_prefill.take() {
+            req.stats.profile = Some(self.profile_of(req, &t0, &c0));
         }
-        stats.bytes_streamed = match (bytes0, self.backend.bytes_streamed_total()) {
+        req.stats.bytes_streamed = match (req.bytes0, self.backend.bytes_streamed_total()) {
             (Some(a), Some(b)) => Some(b.saturating_sub(a)),
             _ => None,
         };
-        Ok(reason)
     }
 
     /// The decode profile of a request: everything after the step that ended its prefill.
     fn profile_of(
         &self,
-        end: &StepTimes,
+        req: &Req,
         prefill: &StepTimes,
         counters0: &[(&'static str, f64)],
-        emit: Duration,
     ) -> DecodeProfile {
+        let end = &req.times;
         let steps = end.steps - prefill.steps;
         let p = DecodeProfile {
             prefill_s: (prefill.eval + prefill.sample).as_secs_f64(),
             decode_steps: steps,
             eval_s: (end.eval - prefill.eval).as_secs_f64(),
             sample_s: (end.sample - prefill.sample).as_secs_f64(),
-            emit_s: emit.as_secs_f64(),
+            emit_s: req.emit.as_secs_f64(),
             gateway_s: 0.0,
             backend: self
                 .backend
@@ -506,62 +604,537 @@ impl Worker {
         p
     }
 
-    /// Copies the live sequence into the prefix cache.
-    fn save_live(&mut self) {
-        match self.backend.snapshot() {
+    /// Hands the request's remaining events, then `last`, to the drains.
+    fn hand_off(&mut self, mut req: Req, last: GenEvent) {
+        req.outbox.push_back(last);
+        let mut d = Drain {
+            tx: req.tx,
+            events: req.outbox,
+        };
+        // Try at once; what the channel does not take now waits in the drain.
+        while let Some(ev) = d.events.pop_front() {
+            match d.tx.try_send(ev) {
+                Ok(()) => {}
+                Err(mpsc::error::TrySendError::Full(ev)) => {
+                    d.events.push_front(ev);
+                    self.drains.push(d);
+                    return;
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => return,
+            }
+        }
+    }
+
+    /// A request that never got a sequence (or lost it) ends.
+    fn end_unplaced(&mut self, mut req: Req, ev: Result<FinishReason, String>) {
+        let last = match ev {
+            Ok(reason) => {
+                self.finalize(&mut req);
+                GenEvent::Finished {
+                    reason,
+                    stats: req.stats.clone(),
+                }
+            }
+            Err(e) => GenEvent::Error(e),
+        };
+        self.hand_off(req, last);
+    }
+
+    /// The request on `id` ends with `reason`; its sequence stays resident as an idle prefix.
+    fn finish(&mut self, id: usize, reason: FinishReason) {
+        let Slot::Live(seq) = std::mem::replace(&mut self.slots[id], Slot::Free) else {
+            return;
+        };
+        let Seq { mut req, fed, .. } = *seq;
+        self.finalize(&mut req);
+        let toks = req.toks[..fed.min(req.toks.len())].to_vec();
+        let stats = req.stats.clone();
+        self.hand_off(req, GenEvent::Finished { reason, stats });
+        if toks.is_empty() {
+            let _ = self.backend.seq_rm(id as SeqId, 0);
+        } else {
+            self.next_order += 1;
+            self.slots[id] = Slot::Idle(Idle {
+                toks,
+                order: self.next_order,
+            });
+        }
+    }
+
+    /// The request on `id` fails; its sequence is freed (the cache may be half-written).
+    fn fail(&mut self, id: usize, msg: String) {
+        let Slot::Live(seq) = std::mem::replace(&mut self.slots[id], Slot::Free) else {
+            return;
+        };
+        tracing::warn!("generation failed: {msg}");
+        let _ = self.backend.seq_rm(id as SeqId, 0);
+        self.hand_off(seq.req, GenEvent::Error(msg));
+    }
+
+    // ---- saving and evicting ----
+
+    /// Copies sequence `id`, holding `toks`, into the prefix cache if it is worth it.
+    fn save(&mut self, id: usize, toks: &[i32]) {
+        if !self.cache.enabled()
+            || toks.len() < self.save_min
+            || self.cache.holds(&self.backend.kv_format(), toks)
+        {
+            return;
+        }
+        match self.backend.seq_snapshot(id as SeqId) {
             Ok(bytes) => {
-                let evicted =
-                    self.cache
-                        .insert(&self.backend.kv_format(), self.cached.clone(), bytes);
+                let evicted = self
+                    .cache
+                    .insert(&self.backend.kv_format(), toks.to_vec(), bytes);
                 if let Some(m) = &self.metrics {
                     m.kv_prefix_evicted(evicted as u64);
                     m.kv_prefix_bytes(self.cache.bytes() as u64);
                 }
             }
-            Err(e) => tracing::warn!("cannot save the live sequence: {e}"),
+            Err(e) => tracing::warn!("cannot save a sequence: {e}"),
         }
     }
 
-    /// Evaluates `tokens` in chunks (checking for cancellation between them) and samples the
-    /// next token from the last logits.
-    fn step(
-        &mut self,
-        tokens: &[i32],
-        sampler: &mut Sampler,
-        constraint: &mut Option<Box<dyn TokenConstraint>>,
-        cancel: &CancellationToken,
-        times: &mut StepTimes,
-    ) -> Result<Step, String> {
-        let n_chunks = tokens.chunks(self.prefill_chunk).count();
-        for (i, chunk) in tokens.chunks(self.prefill_chunk).enumerate() {
-            if cancel.is_cancelled() {
-                return Ok(Step::Cancelled);
-            }
-            let t0 = Instant::now();
-            let logits = self.backend.eval(chunk)?;
-            times.eval += t0.elapsed();
-            self.cached.extend_from_slice(chunk);
-            if let Some(m) = &self.metrics {
-                m.scheduler_batch(1);
-            }
-            if i + 1 < n_chunks {
+    /// Saves the idle sequence on `id` (ADR 0049) and frees its id and rows.
+    fn evict(&mut self, id: usize) {
+        if let Slot::Idle(idle) = std::mem::replace(&mut self.slots[id], Slot::Free) {
+            self.save(id, &idle.toks);
+            let _ = self.backend.seq_rm(id as SeqId, 0);
+        }
+    }
+
+    fn oldest_idle(&self, except: Option<usize>) -> Option<usize> {
+        self.slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| match s {
+                Slot::Idle(x) if Some(i) != except => Some((x.order, i)),
+                _ => None,
+            })
+            .min()
+            .map(|(_, i)| i)
+    }
+
+    // ---- admission ----
+
+    fn admit(&mut self) {
+        while let Some(req) = self.waiting.front() {
+            if req.cancel.is_cancelled() || req.tx.is_closed() {
+                let req = self.waiting.pop_front().expect("front");
+                self.end_unplaced(req, Ok(FinishReason::Cancelled));
                 continue;
             }
-            let t0 = Instant::now();
-            let mask = match constraint.as_mut() {
-                Some(c) => c.mask()?,
-                None => None,
-            };
-            let tok = sampler
-                .sample(logits, mask.as_ref())
-                .ok_or("the constraint allows no token")?;
-            if let Some(c) = constraint.as_mut() {
-                c.commit(tok)?;
+            if req.stats.generated_tokens >= req.params.max_tokens {
+                let req = self.waiting.pop_front().expect("front");
+                self.end_unplaced(req, Ok(FinishReason::Length));
+                continue;
             }
-            times.sample += t0.elapsed();
-            times.steps += 1;
-            return Ok(Step::Token(tok));
+            if req.toks.is_empty() || req.toks.len() >= self.n_ctx_seq {
+                let n = req.toks.len();
+                let msg = format!(
+                    "a prompt of {n} tokens does not fit the context of {}",
+                    self.n_ctx_seq
+                );
+                let req = self.waiting.pop_front().expect("front");
+                self.end_unplaced(req, Err(msg));
+                continue;
+            }
+            if self.live_count() >= self.slots.len() {
+                break;
+            }
+            match self.place() {
+                Admission::Admitted => {}
+                Admission::Wait => break,
+            }
         }
-        Err("no tokens to evaluate".into())
+    }
+
+    /// Gives the request at the queue front a sequence: the idle one sharing the longest prefix,
+    /// or a free or evicted id with the best RAM entry restored when it beats that by
+    /// `restore_gain` (ADR 0049 per sequence).
+    fn place(&mut self) -> Admission {
+        let Some(req) = self.waiting.pop_front() else {
+            return Admission::Wait;
+        };
+        let toks = req.toks.clone();
+        let last = toks.len() - 1;
+        let fmt = self.backend.kv_format();
+        // The idle sequence sharing the longest prefix (at most prompt - 1).
+        let best_idle = self
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| match s {
+                Slot::Idle(x) => Some((i, common_prefix(&x.toks, &toks).min(last))),
+                _ => None,
+            })
+            .filter(|&(_, n)| n > 0)
+            .max_by_key(|&(_, n)| n);
+        let live_n = best_idle.map_or(0, |(_, n)| n);
+        let ram = if self.cache.enabled() {
+            self.cache
+                .best(&fmt, &toks)
+                .map(|(i, n)| (i, n.min(last)))
+                .filter(|&(_, n)| n >= live_n + self.restore_gain)
+        } else {
+            None
+        };
+        // Take the entry out first: saving a sequence below may evict it.
+        let mut picked = ram.map(|(i, _)| self.cache.take(i));
+        if picked.is_some()
+            && let Some(m) = &self.metrics
+        {
+            m.kv_prefix_bytes(self.cache.bytes() as u64);
+        }
+        // Where the request goes.
+        let id = match best_idle {
+            Some((i, _)) if ram.is_none() => i,
+            _ => match self.slots.iter().position(|s| matches!(s, Slot::Free)) {
+                Some(i) => i,
+                None => {
+                    let i = self.oldest_idle(None).expect("a free or idle id");
+                    self.evict(i);
+                    i
+                }
+            },
+        };
+        // Rows for the prompt and the first stretch of generation.
+        let remaining = (req.params.max_tokens - req.stats.generated_tokens) as usize;
+        let mut target = (toks.len() + remaining.min(GROW)).min(self.n_ctx_seq);
+        loop {
+            match self.backend.seq_reserve(id as SeqId, target) {
+                Ok(()) => break,
+                Err(BackendError::KvFull { .. }) => {
+                    if let Some(o) = self.oldest_idle(Some(id)) {
+                        self.evict(o);
+                    } else if self.live_count() > 0 {
+                        // Others will free rows; keep the order of arrival and the entry.
+                        self.waiting.push_front(req);
+                        self.put_back(picked);
+                        return Admission::Wait;
+                    } else if target > toks.len() + 1 {
+                        // Alone: what the pool still holds, the context ends the request.
+                        target = toks.len() + 1;
+                    } else {
+                        let msg = format!(
+                            "a prompt of {} tokens does not fit the KV cache",
+                            toks.len()
+                        );
+                        self.end_unplaced(req, Err(msg));
+                        self.put_back(picked);
+                        return Admission::Admitted;
+                    }
+                }
+                Err(BackendError::Failed(e)) => {
+                    self.end_unplaced(req, Err(e));
+                    self.put_back(picked);
+                    return Admission::Admitted;
+                }
+            }
+        }
+        let mut req = req;
+        let mut restored = false;
+        let mut common = 0;
+        if let Some((etoks, bytes)) = picked.take() {
+            // The chosen id is free here (an idle one was evicted above).
+            let t0 = Instant::now();
+            match self.backend.seq_restore(id as SeqId, &bytes, etoks.len()) {
+                Ok(()) => {
+                    common = common_prefix(&etoks, &toks).min(last);
+                    restored = true;
+                    if let Some(m) = &self.metrics {
+                        let took = t0.elapsed();
+                        m.kv_prefix_restore(took);
+                        m.tier_transfer(
+                            bytes.len() as u64,
+                            Some(took),
+                            Tier::Ram,
+                            Tier::Vram,
+                            Purpose::Kv,
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("cannot restore a saved sequence: {e}");
+                    let _ = self.backend.seq_rm(id as SeqId, 0);
+                }
+            }
+        } else if let Slot::Idle(idle) = std::mem::replace(&mut self.slots[id], Slot::Free) {
+            common = best_idle.map_or(0, |(_, n)| n);
+            // The sequence is saved before this request drops much of it.
+            if idle.toks.len() - common.min(idle.toks.len()) >= self.save_min {
+                self.save(id, &idle.toks);
+            }
+        }
+        let have = self.backend.seq_len(id as SeqId);
+        if common < have
+            && let Err(e) = self.backend.seq_rm(id as SeqId, common)
+        {
+            self.end_unplaced(req, Err(e.to_string()));
+            let _ = self.backend.seq_rm(id as SeqId, 0);
+            return Admission::Admitted;
+        }
+        if !req.started {
+            req.started = true;
+            req.stats.cached_tokens = common as u32;
+            req.bytes0 = self.backend.bytes_streamed_total();
+            req.sampler = Some(Sampler::new(
+                SampleParams {
+                    temperature: req.params.temperature.unwrap_or(self.defaults.temperature),
+                    top_k: req.params.top_k.unwrap_or(self.defaults.top_k),
+                    top_p: req.params.top_p.unwrap_or(self.defaults.top_p),
+                },
+                req.params.seed.unwrap_or_else(counter_seed),
+            ));
+        }
+        if common > 0
+            && let Some(m) = &self.metrics
+        {
+            m.kv_prefix_hit(if restored { "ram" } else { "live" });
+        }
+        self.next_admitted += 1;
+        self.slots[id] = Slot::Live(Box::new(Seq {
+            req,
+            fed: common,
+            admitted: self.next_admitted,
+            decoding: false,
+            reserved_to: target,
+        }));
+        Admission::Admitted
+    }
+
+    /// Returns an entry taken for a restore that did not happen.
+    fn put_back(&mut self, entry: Option<(Vec<i32>, Vec<u8>)>) {
+        if let Some((toks, bytes)) = entry {
+            self.cache.insert(&self.backend.kv_format(), toks, bytes);
+        }
+    }
+
+    // ---- per iteration ----
+
+    /// Delivers pending events and ends cancelled requests.
+    fn sweep(&mut self) {
+        for id in 0..self.slots.len() {
+            let Slot::Live(seq) = &mut self.slots[id] else {
+                continue;
+            };
+            let open = seq.req.flush();
+            if !open || seq.req.cancel.is_cancelled() || seq.req.tx.is_closed() {
+                seq.req.outbox.clear();
+                self.finish(id, FinishReason::Cancelled);
+            }
+        }
+    }
+
+    fn live_view(&self) -> Vec<Live> {
+        self.slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| match s {
+                Slot::Live(s) => Some(Live {
+                    seq: i as SeqId,
+                    pending: s.req.toks.len() - s.fed,
+                    decoding: s.decoding,
+                    paused: s.paused(),
+                    admitted: s.admitted,
+                }),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Plans and runs one step. False when nothing could run (everything paused).
+    fn step(&mut self) -> bool {
+        'plan: loop {
+            let live = self.live_view();
+            let takes = plan_step(self.budget, &live);
+            if takes.is_empty() {
+                return false;
+            }
+            // Rows for the growth of each sequence.
+            for t in &takes {
+                let id = t.seq as usize;
+                let len = self.backend.seq_len(t.seq);
+                let want = len + t.n;
+                let Slot::Live(seq) = &mut self.slots[id] else {
+                    continue;
+                };
+                if want > self.n_ctx_seq {
+                    self.finish(id, FinishReason::Length);
+                    continue 'plan;
+                }
+                if want <= seq.reserved_to {
+                    continue;
+                }
+                let grown = (want + GROW).min(self.n_ctx_seq);
+                let mut r = self.backend.seq_reserve(t.seq, grown);
+                let mut got = grown;
+                if matches!(r, Err(BackendError::KvFull { .. })) {
+                    r = self.backend.seq_reserve(t.seq, want);
+                    got = want;
+                }
+                match r {
+                    Ok(()) => seq.reserved_to = got,
+                    Err(BackendError::KvFull { .. }) => {
+                        self.make_room(id);
+                        continue 'plan;
+                    }
+                    Err(BackendError::Failed(e)) => {
+                        self.fail(id, e);
+                        continue 'plan;
+                    }
+                }
+            }
+            // The step.
+            let mut inputs = Vec::with_capacity(takes.len());
+            for t in &takes {
+                let Slot::Live(seq) = &self.slots[t.seq as usize] else {
+                    unreachable!("planned sequences are live");
+                };
+                inputs.push(SeqInput {
+                    seq: t.seq,
+                    tokens: &seq.req.toks[seq.fed..seq.fed + t.n],
+                    all_logits: false,
+                });
+            }
+            let total: usize = takes.iter().map(|t| t.n).sum();
+            let t0 = Instant::now();
+            let res = self.backend.decode(&inputs);
+            let took = t0.elapsed();
+            let out = match res {
+                Ok(out) => out,
+                Err(BackendError::KvFull { seq, .. }) => {
+                    self.make_room(seq as usize);
+                    continue 'plan;
+                }
+                Err(BackendError::Failed(e)) => {
+                    for t in &takes {
+                        self.fail(t.seq as usize, e.clone());
+                    }
+                    return true;
+                }
+            };
+            // Sample the sequences whose prompt is complete, in sequence order.
+            let mut sampled: Vec<Option<Result<u32, String>>> = Vec::with_capacity(takes.len());
+            let mut sample_times = Vec::with_capacity(takes.len());
+            for (k, t) in takes.iter().enumerate() {
+                let Slot::Live(seq) = &mut self.slots[t.seq as usize] else {
+                    unreachable!("planned sequences are live");
+                };
+                if seq.fed + t.n == seq.req.toks.len() {
+                    let t1 = Instant::now();
+                    sampled.push(Some(sample_one(&mut seq.req, out.last(k))));
+                    sample_times.push(t1.elapsed());
+                } else {
+                    sampled.push(None);
+                    sample_times.push(Duration::ZERO);
+                }
+            }
+            if let Some(m) = &self.metrics {
+                m.scheduler_batch(takes.len() as u32);
+                let (mut dec, mut pre) = (0u32, 0u32);
+                for t in &takes {
+                    let Slot::Live(seq) = &self.slots[t.seq as usize] else {
+                        continue;
+                    };
+                    if seq.decoding {
+                        dec += t.n as u32;
+                    } else {
+                        pre += t.n as u32;
+                    }
+                }
+                if dec > 0 {
+                    m.scheduler_step_tokens("decode", dec);
+                }
+                if pre > 0 {
+                    m.scheduler_step_tokens("prefill", pre);
+                }
+            }
+            for (k, t) in takes.iter().enumerate() {
+                let id = t.seq as usize;
+                let Slot::Live(seq) = &mut self.slots[id] else {
+                    continue;
+                };
+                seq.fed += t.n;
+                seq.req.times.eval += took;
+                seq.req.gpu += took.mul_f64(t.n as f64 / total as f64);
+                match sampled[k].take() {
+                    None => {}
+                    Some(Err(e)) => self.fail(id, e),
+                    Some(Ok(tok)) => {
+                        seq.req.times.sample += sample_times[k];
+                        seq.req.times.steps += 1;
+                        self.on_token(id, tok);
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
+    /// A token was sampled on `id`: emit it, or end the request.
+    fn on_token(&mut self, id: usize, tok: u32) {
+        if self.decode_profile
+            && let Slot::Live(seq) = &mut self.slots[id]
+            && seq.req.after_prefill.is_none()
+        {
+            seq.req.after_prefill = Some((seq.req.times, self.backend.counters()));
+        }
+        let Slot::Live(seq) = &mut self.slots[id] else {
+            return;
+        };
+        seq.decoding = true;
+        if self.vocab.is_eog(tok) {
+            self.finish(id, FinishReason::EndOfGeneration);
+            return;
+        }
+        seq.req.stats.generated_tokens += 1;
+        seq.req.toks.push(tok as i32);
+        let t0 = Instant::now();
+        seq.req.outbox.push_back(GenEvent::Token(tok));
+        let open = seq.req.flush();
+        seq.req.emit += t0.elapsed();
+        if !open {
+            seq.req.outbox.clear();
+            self.finish(id, FinishReason::Cancelled);
+        } else if seq.req.stats.generated_tokens >= seq.req.params.max_tokens
+            || seq.fed >= self.n_ctx_seq
+        {
+            self.finish(id, FinishReason::Length);
+        }
+    }
+
+    /// Frees rows for `needing` after `KvFull`: idle sequences first (oldest first, saved to
+    /// RAM), then the most recently admitted other live sequence is preempted and requeued. If
+    /// that one is older than `needing`, `needing` is requeued itself, so the oldest request
+    /// always progresses. With no other sequence the request ends with `Length`.
+    fn make_room(&mut self, needing: usize) {
+        if let Some(i) = self.oldest_idle(None) {
+            self.evict(i);
+            return;
+        }
+        let live = self.live_view();
+        let admitted = |id: SeqId| live.iter().find(|l| l.seq == id).map_or(0, |l| l.admitted);
+        match victim(&live, needing as SeqId) {
+            Some(v) if admitted(v) > admitted(needing as SeqId) => self.preempt(v as usize),
+            Some(_) => self.preempt(needing),
+            None => self.finish(needing, FinishReason::Length),
+        }
+    }
+
+    /// Saves the sequence on `id` if it is worth it, frees it and puts its request back at the
+    /// queue front with its generated tokens as part of the prompt.
+    fn preempt(&mut self, id: usize) {
+        let Slot::Live(seq) = std::mem::replace(&mut self.slots[id], Slot::Free) else {
+            return;
+        };
+        let Seq { req, fed, .. } = *seq;
+        let toks = req.toks[..fed].to_vec();
+        self.save(id, &toks);
+        let _ = self.backend.seq_rm(id as SeqId, 0);
+        if let Some(m) = &self.metrics {
+            m.scheduler_preemption();
+        }
+        self.waiting.push_front(req);
     }
 }

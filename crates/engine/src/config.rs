@@ -111,6 +111,11 @@ pub struct ContextConfig {
     pub flash_attn: FlashAttn,
     /// libllama offloads large host-side ops to the device (default on, like libllama).
     pub op_offload: bool,
+    /// Sequences the context holds at once (default 1).
+    pub n_seq_max: u32,
+    /// One KV pool shared by all sequences, `n_ctx` positions in total (default true). With
+    /// false, libllama gives each sequence `n_ctx / n_seq_max`.
+    pub kv_unified: bool,
 }
 
 impl Default for ContextConfig {
@@ -124,6 +129,8 @@ impl Default for ContextConfig {
             threads_batch: None,
             flash_attn: d.flash_attn,
             op_offload: d.op_offload,
+            n_seq_max: 1,
+            kv_unified: true,
         }
     }
 }

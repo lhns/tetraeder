@@ -26,6 +26,10 @@ pub enum EngineKind {
 }
 
 #[derive(Args)]
+#[command(mut_arg(
+    "batch",
+    |a| a.help("Ignored by serve: the step token budget is --step-tokens")
+))]
 pub struct ServeArgs {
     /// GGUF model file (not needed with --fake).
     #[arg(short = 'm', long, required_unless_present = "fake")]
@@ -57,6 +61,15 @@ pub struct ServeArgs {
     pub top_k: u32,
     #[arg(long, default_value_t = 0.95)]
     pub top_p: f32,
+    /// Requests decoded together (sequences in the KV cache). The MoE builder serves one until it
+    /// has a multi-sequence KV cache; `--plan` serves one.
+    #[arg(long, default_value_t = tetraeder_scheduler::PARALLEL as u32, value_parser = clap::value_parser!(u32).range(1..))]
+    pub parallel: u32,
+    /// Tokens per step over all sequences: decoding sequences take theirs, the rest goes to
+    /// prompt chunks. Default: the --ubatch value. libllama gets it as n_batch and n_ubatch
+    /// (-b does not apply to serve).
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+    pub step_tokens: Option<u32>,
     /// Requests that may wait for the engine; more get 429/529.
     #[arg(long, default_value_t = 16)]
     pub max_queued: usize,
@@ -208,8 +221,8 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
         Some(spec) => Some(replan::start(a, spec, &telemetry, rt.handle().clone())?),
         None => None,
     };
-    let engine: Arc<dyn GatewayEngine> = match &planned {
-        Some(p) => p.engine.clone(),
+    let (engine, parallel): (Arc<dyn GatewayEngine>, usize) = match &planned {
+        Some(p) => (p.engine.clone(), 1),
         None => build_engine(a, &telemetry)?,
     };
     let served = engine
@@ -219,6 +232,7 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
         .context("the engine serves no model")?;
 
     let cfg = GatewayConfig {
+        max_concurrent: parallel,
         max_queued: a.max_queued,
         default_model: if a.accept_any_model {
             Some(served.clone())
@@ -275,10 +289,11 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
     res
 }
 
+/// The engine and the number of requests the gateway lets generate at once.
 fn build_engine(
     a: &ServeArgs,
     telemetry: &Arc<Telemetry>,
-) -> anyhow::Result<Arc<dyn GatewayEngine>> {
+) -> anyhow::Result<(Arc<dyn GatewayEngine>, usize)> {
     if a.fake {
         let mut e = match &a.chat_template_file {
             Some(f) => {
@@ -293,7 +308,7 @@ fn build_engine(
         e.token_delay = Duration::from_millis(a.fake_token_ms);
         e.gpu_seconds = None;
         e.bytes_streamed = None;
-        return Ok(Arc::new(e));
+        return Ok((Arc::new(e), 1));
     }
     let path = a.model.clone().context("-m is required")?;
     let moe = match a.engine {
@@ -306,7 +321,11 @@ fn build_engine(
                 == "qwen3moe"
         }
     };
-    let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
+    let mut cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
+    if moe {
+        cfg.parallel = 1;
+    }
+    let parallel = cfg.parallel;
     let tel = Arc::clone(telemetry);
     if moe {
         resolve_overlap(a.ram_slots.is_some(), a.miss, a.io_service, a.overlap)
@@ -317,16 +336,11 @@ fn build_engine(
         if moe {
             tetraeder_scheduler::load_moe(&a.path, &a.moe_options(tel)?)
         } else {
-            tetraeder_scheduler::load_llama(
-                &a.path,
-                &a.place.placement(),
-                &a.place.context(a.ctx),
-                Some(tel),
-            )
+            tetraeder_scheduler::load_llama(&a.path, &a.place.placement(), &a.llama, Some(tel))
         }
     })
     .map_err(anyhow::Error::msg)?;
-    Ok(Arc::new(engine))
+    Ok((Arc::new(engine), parallel))
 }
 
 /// The parts of a `SchedulerConfig` that do not change when the engine is reloaded.
@@ -337,6 +351,8 @@ pub struct SchedParts {
     top_p: f32,
     cache_ram_bytes: usize,
     chat_template: Option<String>,
+    parallel: usize,
+    step_tokens: usize,
 }
 
 impl SchedParts {
@@ -348,6 +364,8 @@ impl SchedParts {
             top_k: a.top_k,
             top_p: a.top_p,
             cache_ram_bytes: a.cache_ram << 20,
+            parallel: a.parallel as usize,
+            step_tokens: a.step_tokens() as usize,
             chat_template: match &a.chat_template_file {
                 Some(f) => Some(
                     std::fs::read_to_string(f)
@@ -367,6 +385,8 @@ impl SchedParts {
         cfg.metrics = Some(metrics);
         cfg.cache_ram_bytes = self.cache_ram_bytes;
         cfg.chat_template = self.chat_template.clone();
+        cfg.parallel = self.parallel;
+        cfg.step_tokens = self.step_tokens;
         cfg
     }
 }
@@ -376,6 +396,7 @@ struct LoadArgs {
     path: PathBuf,
     place: PlacementArgs,
     ctx: u32,
+    llama: tetraeder_engine::ContextConfig,
     expert_slots: Option<usize>,
     ram_slots: Option<usize>,
     miss: MissPolicy,
@@ -417,11 +438,30 @@ impl LoadArgs {
 }
 
 impl ServeArgs {
+    /// Tokens per step: `--step-tokens`, else `--ubatch`.
+    pub fn step_tokens(&self) -> u32 {
+        self.step_tokens.unwrap_or(self.place.ubatch).max(1)
+    }
+
+    /// The libllama context of `serve`: one unified KV pool for `--parallel` sequences and a
+    /// batch of exactly one step.
+    pub fn llama_context(&self) -> tetraeder_engine::ContextConfig {
+        let step = self.step_tokens();
+        tetraeder_engine::ContextConfig {
+            n_batch: step,
+            n_ubatch: step,
+            n_seq_max: self.parallel,
+            kv_unified: true,
+            ..self.place.context(self.ctx)
+        }
+    }
+
     fn clone_load_args(&self) -> LoadArgs {
         LoadArgs {
             path: self.model.clone().unwrap_or_default(),
             place: self.place.clone(),
             ctx: self.ctx,
+            llama: self.llama_context(),
             expert_slots: self.expert_slots,
             ram_slots: self.ram_slots,
             miss: self.miss,
@@ -448,6 +488,46 @@ mod tests {
         let mut args = vec!["x", "-m", "m.gguf"];
         args.extend(extra);
         P::parse_from(args).serve
+    }
+
+    // hardware: none
+    #[test]
+    fn parallel_and_step_tokens_shape_the_llama_context() {
+        let a = parse(&[]);
+        assert_eq!((a.parallel, a.step_tokens()), (4, 512));
+        let c = a.llama_context();
+        assert_eq!(
+            (c.n_seq_max, c.n_batch, c.n_ubatch, c.kv_unified),
+            (4, 512, 512, true)
+        );
+        // The phase 4 box passes these.
+        let a = parse(&[
+            "--engine",
+            "llama",
+            "--ngl",
+            "-1",
+            "--parallel",
+            "2",
+            "--ctx",
+            "32768",
+            "-t",
+            "8",
+            "--flash-attn",
+            "on",
+            "--step-tokens",
+            "256",
+            "-b",
+            "4096",
+        ]);
+        let c = a.llama_context();
+        assert_eq!(
+            (c.n_seq_max, c.n_batch, c.n_ubatch, c.n_ctx),
+            (2, 256, 256, 32768)
+        );
+        assert_eq!(c.flash_attn, tetraeder_engine::FlashAttn::On);
+        assert!(P::try_parse_from(["x", "--parallel", "0"]).is_err());
+        // --ubatch is the default step.
+        assert_eq!(parse(&["--ubatch", "128"]).step_tokens(), 128);
     }
 
     // hardware: none

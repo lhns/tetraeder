@@ -86,6 +86,8 @@ impl PlacementArgs {
             threads_batch: None,
             flash_attn: self.flash_attn,
             op_offload: true,
+            n_seq_max: 1,
+            kv_unified: true,
         }
     }
 }

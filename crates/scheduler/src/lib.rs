@@ -1,11 +1,8 @@
-//! The serving scheduler (ADR 0046): one worker thread over a [`Backend`], prefix reuse of the
-//! last sequence and Rust sampling, behind the gateway's `Engine` trait. Phase 4 replaces the
-//! loop with continuous batching, chunked prefill and priorities; `spec` holds speculative decoding
-//! (ADR 0043).
+//! The serving scheduler (ADR 0046, ADR 0065): one worker thread over a [`BatchBackend`],
+//! continuous batching with chunked prefill, prefix reuse and Rust sampling, behind the
+//! gateway's `Engine` trait; `spec` holds speculative decoding (ADR 0043).
 
 mod backend;
-// The step planner of ADR 0065; the loop that uses it comes with C2b.
-#[allow(dead_code)]
 mod batch;
 mod dense_backend;
 mod load;
@@ -23,7 +20,7 @@ pub use load::{
 };
 pub use prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS};
 pub use scheduler::{
-    DEFAULT_CACHE_RAM_BYTES, PREFILL_CHUNK, Scheduler, SchedulerConfig, build_vocab,
+    DEFAULT_CACHE_RAM_BYTES, PARALLEL, STEP_TOKENS, Scheduler, SchedulerConfig, build_vocab,
 };
 
 pub mod spec;
