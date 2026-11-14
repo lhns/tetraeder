@@ -377,49 +377,81 @@ fn margin(logits: &[f32]) -> f32 {
     logits[t[0]] - logits[t[1]]
 }
 
-/// Minor and major page faults of the calling thread so far (Linux; `None` elsewhere).
-fn thread_faults() -> Option<(u64, u64)> {
-    let stat = std::fs::read_to_string("/proc/thread-self/stat").ok()?;
-    // Fields after the parenthesised name: state is field 3, minflt 10, majflt 12.
-    let f: Vec<&str> = stat.rsplit_once(')')?.1.split_whitespace().collect();
-    Some((f.get(7)?.parse().ok()?, f.get(9)?.parse().ok()?))
+/// The calling thread's counters from `/proc/thread-self/stat` (Linux; `None` elsewhere).
+#[derive(Clone, Copy, Default)]
+struct ThreadStat {
+    minflt: u64,
+    majflt: u64,
+    /// User and system CPU time in clock ticks (`USER_HZ`, 100 on Linux).
+    utime: u64,
+    stime: u64,
+}
+
+impl ThreadStat {
+    fn now() -> Option<Self> {
+        let stat = std::fs::read_to_string("/proc/thread-self/stat").ok()?;
+        // Fields after the parenthesised name: state is field 3, minflt 10, majflt 12,
+        // utime 14, stime 15.
+        let f: Vec<&str> = stat.rsplit_once(')')?.1.split_whitespace().collect();
+        let n = |i: usize| f.get(i)?.parse().ok();
+        Some(Self {
+            minflt: n(7)?,
+            majflt: n(9)?,
+            utime: n(11)?,
+            stime: n(12)?,
+        })
+    }
+
+    fn since(self, a: Self) -> Self {
+        Self {
+            minflt: self.minflt - a.minflt,
+            majflt: self.majflt - a.majflt,
+            utime: self.utime - a.utime,
+            stime: self.stime - a.stime,
+        }
+    }
+
+    fn json(self) -> Value {
+        json!({"minflt": self.minflt, "majflt": self.majflt,
+               "user_ms": self.utime * 10, "sys_ms": self.stime * 10})
+    }
+}
+
+/// One part of a token outside `run()`: its wall time and the thread's counters over it. A
+/// wall time far above the CPU time means the thread was blocked; close to `sys_ms`, the kernel
+/// worked for it (faults, reclaim).
+#[derive(Clone, Copy, Default)]
+struct GapPart {
+    wall: Duration,
+    stat: Option<ThreadStat>,
+}
+
+impl GapPart {
+    fn json(self) -> Value {
+        json!({"ms": self.wall.as_secs_f64() * 1e3, "thread": self.stat.map(ThreadStat::json)})
+    }
 }
 
 /// Per decode token, the wall time outside `run()` (`StepProfile::total`), split into the part
-/// inside `eval` (step bookkeeping, telemetry, drops) and the harness's own (margin, argmax,
-/// routing drain), with the thread's page faults: a window's `gap` block says which token
-/// stalled and where.
+/// inside `eval` (step bookkeeping, telemetry, drops; its thread counters cover the whole
+/// `eval`) and the harness's own (margin, argmax, routing drain): a window's `gap` block says
+/// which token stalled and where.
 #[derive(Default)]
 struct GapTrace {
     sum: Duration,
     max: Duration,
     max_token: usize,
-    max_in_eval: Duration,
-    max_harness: Duration,
-    max_faults: Option<(u64, u64)>,
+    in_eval: GapPart,
+    harness: GapPart,
 }
 
 impl GapTrace {
-    fn token(
-        &mut self,
-        i: usize,
-        eval: Duration,
-        step: Duration,
-        harness: Duration,
-        faults: Option<(u64, u64)>,
-    ) {
-        let in_eval = eval.saturating_sub(step);
-        let gap = in_eval + harness;
+    fn token(&mut self, i: usize, in_eval: GapPart, harness: GapPart) {
+        let gap = in_eval.wall + harness.wall;
         self.sum += gap;
         if gap >= self.max {
-            *self = Self {
-                sum: self.sum,
-                max: gap,
-                max_token: i,
-                max_in_eval: in_eval,
-                max_harness: harness,
-                max_faults: faults,
-            };
+            (self.max, self.max_token) = (gap, i);
+            (self.in_eval, self.harness) = (in_eval, harness);
         }
     }
 
@@ -429,10 +461,8 @@ impl GapTrace {
             "sum_ms": ms(self.sum),
             "max_ms": ms(self.max),
             "max_token": self.max_token,
-            "max_in_eval_ms": ms(self.max_in_eval),
-            "max_harness_ms": ms(self.max_harness),
-            "max_minflt": self.max_faults.map(|f| f.0),
-            "max_majflt": self.max_faults.map(|f| f.1),
+            "max_in_eval": self.in_eval.json(),
+            "max_harness": self.harness.json(),
         })
     }
 }
@@ -445,16 +475,27 @@ fn traced_token(
     token: i32,
     harness: impl FnOnce(&mut Qwen3Moe, Vec<f32>),
 ) {
-    let f0 = thread_faults();
+    let since = |a: Option<ThreadStat>, b: Option<ThreadStat>| a.zip(b).map(|(a, b)| b.since(a));
+    let s0 = ThreadStat::now();
     let before = m.profile().total;
     let t = Instant::now();
     let l = m.eval(&[token]).expect("decode");
     let eval = t.elapsed();
     let in_run = m.profile().total.saturating_sub(before);
+    let s1 = ThreadStat::now();
     let t = Instant::now();
     harness(m, l);
-    let faults = f0.zip(thread_faults()).map(|(a, b)| (b.0 - a.0, b.1 - a.1));
-    gaps.token(i, eval, in_run, t.elapsed(), faults);
+    let wall = t.elapsed();
+    let s2 = ThreadStat::now();
+    let in_eval = GapPart {
+        wall: eval.saturating_sub(in_run),
+        stat: since(s0, s1),
+    };
+    let harness = GapPart {
+        wall,
+        stat: since(s1, s2),
+    };
+    gaps.token(i, in_eval, harness);
 }
 
 /// Greedy decode of `n` tokens from `last` (the prefill's last logits) through `step`.

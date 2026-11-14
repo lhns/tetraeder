@@ -298,6 +298,17 @@ def ctxsw_delta(rows):
     return vol, invol
 
 
+def read_smaps(stage=None, env=None):
+    """Whether a sample tick reads smaps_rollup: SAMPLER_SMAPS=1 always, 0 never, unset only for stages named *thp*.
+    The kernel walks every page table of the process under its mmap lock for that file (about a second for an
+    80 GB tier on 4 KiB pages), and an mmap or munmap of the engine waits that long (ADR 0060 addendum 2026-11-14)."""
+    env = os.environ if env is None else env
+    v = env.get("SAMPLER_SMAPS")
+    if v in ("0", "1"):
+        return v == "1"
+    return "thp" in (stage if stage is not None else env.get("TETRAEDER_STAGE", ""))
+
+
 def anon_huge_kb(pids):
     """AnonHugePages in kB summed over the processes' smaps_rollup; None when no file was read."""
     kb = 0
@@ -469,6 +480,7 @@ def sample(a):
     res = sampler_resource(a) if poster else None
     t_start = time.time()
     nodes = cpu_nodes()
+    smaps = read_smaps()
     with open(a.out, "w") as out:
         while os.path.exists(f"/proc/{a.pid}"):
             pids = ds.tree(a.pid)
@@ -479,7 +491,7 @@ def sample(a):
                    "disk_inflight": inflight, "disk_weighted_ms": weighted_ms,
                    "cg_io": cgroup_io(), "io_psi": io_pressure(), "majflt": majflt(pids), "cpus": stat_jiffies(),
                    "cpu_psi": cpu_pressure(), "cg_throttle": cgroup_throttle(), "cpu_steal": cpu_steal(),
-                   "cpu_mhz": cpu_mhz(), "ctxsw": ctxsw_total(tasks), "ctxsw_tasks": tasks, "placement": placement(pids, nodes), "anon_huge_kb": anon_huge_kb(pids),
+                   "cpu_mhz": cpu_mhz(), "ctxsw": ctxsw_total(tasks), "ctxsw_tasks": tasks, "placement": placement(pids, nodes), "anon_huge_kb": anon_huge_kb(pids) if smaps else None,
                    "cg_cpu_usec": ds.cgroup_cpu_usec(), "own_cpu_s": ds.proc_cpu_s(pids),
                    "rss_kb": tree_rss_kb(pids), "cg_mem": cgroup_mem(), "gpu": gpu_util(),
                    "cg_mem_now": cgroup_mem_now(), "cpu_quota": cpu_quota()}

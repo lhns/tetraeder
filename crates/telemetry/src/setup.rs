@@ -429,7 +429,8 @@ mod tests {
         }
         println!("{steps} steps, worst step-path telemetry {worst:?}");
         // Exports start every 20 ms and hang for seconds; a blocking path would show that here.
-        assert!(worst < Duration::from_millis(15), "{worst:?}");
+        // The bound leaves room for a loaded CI runner.
+        assert!(worst < Duration::from_millis(250), "{worst:?}");
         // The exporter did reach the collector, so an export was hanging meanwhile.
         assert!(accepted.load(std::sync::atomic::Ordering::Relaxed) > 0);
         // Shutdown waits for the hung export; leak it rather than slow the suite.

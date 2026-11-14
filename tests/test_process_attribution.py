@@ -48,6 +48,15 @@ def test_anon_huge_and_thp_mode(monkeypatch):
     assert es.thp_mode() is None
 
 
+def test_smaps_rollup_only_for_thp_stages_unless_forced():
+    assert not es.read_smaps("main-overlap", {})
+    assert es.read_smaps("main-overlap-thp-repeat", {})
+    assert es.read_smaps("main-overlap", {"SAMPLER_SMAPS": "1"})
+    assert not es.read_smaps("main-overlap-thp", {"SAMPLER_SMAPS": "0"})
+    assert not es.read_smaps(None, {})
+    assert es.read_smaps(None, {"TETRAEDER_STAGE": "main-overlap-poll0-thp"})
+
+
 def row(t, **kw):
     r = {"t": t, "rss_kb": 1, "cpus": [], "cg_io": None}
     r.update(kw)
