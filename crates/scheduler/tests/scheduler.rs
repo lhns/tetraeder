@@ -16,7 +16,9 @@ use tetraeder_gateway::engine::{
 };
 use tetraeder_gateway::gateway::{Gateway, GatewayConfig};
 use tetraeder_model::{BackendChoice, LoadOptions};
-use tetraeder_scheduler::{Scheduler, SchedulerConfig, load_llama, load_moe};
+use tetraeder_scheduler::{
+    BatchBackend, Scheduler, SchedulerConfig, SeqInput, load_llama, load_moe,
+};
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
@@ -529,11 +531,22 @@ fn least_recently_used_sequences_are_evicted() {
 fn snapshot_size(backend: usize, prompt: &[u32]) -> usize {
     let toks: Vec<i32> = prompt.iter().map(|&t| t as i32).collect();
     let mut b = backends().remove(backend);
-    b.eval(&toks).unwrap();
-    b.snapshot().unwrap().len()
+    step(&mut *b, &toks);
+    b.seq_snapshot(0).unwrap().len()
 }
 
-fn backends() -> Vec<Box<dyn tetraeder_scheduler::Backend>> {
+/// One step on sequence 0 (rows reserved as needed); the logits of its last token.
+fn step<'a>(b: &'a mut dyn BatchBackend, tokens: &[i32]) -> &'a [f32] {
+    b.seq_reserve(0, b.seq_len(0) + tokens.len()).unwrap();
+    let input = SeqInput {
+        seq: 0,
+        tokens,
+        all_logits: false,
+    };
+    b.decode(&[input]).unwrap().last(0)
+}
+
+fn backends() -> Vec<Box<dyn BatchBackend>> {
     let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
     o.n_ctx = CTX as usize;
     vec![
@@ -549,16 +562,17 @@ fn snapshot_and_restore_round_trip_gives_identical_logits() {
     let toks: Vec<i32> = (1..=60).collect();
     for i in 0..2 {
         let mut x = backends().remove(i);
-        x.eval(&toks).unwrap();
-        let snap = x.snapshot().unwrap();
-        let want = x.eval(&[7]).unwrap().to_vec();
+        step(&mut *x, &toks);
+        let snap = x.seq_snapshot(0).unwrap();
+        let want = step(&mut *x, &[7]).to_vec();
         // Same backend after a rollback, and a fresh one.
-        x.restore(&snap, toks.len()).unwrap();
-        assert_eq!(x.n_past(), toks.len());
-        assert_eq!(x.eval(&[7]).unwrap(), &want[..]);
+        x.seq_rm(0, 0).unwrap();
+        x.seq_restore(0, &snap, toks.len()).unwrap();
+        assert_eq!(x.seq_len(0), toks.len());
+        assert_eq!(step(&mut *x, &[7]), &want[..]);
         let mut y = backends().remove(i);
-        y.restore(&snap, toks.len()).unwrap();
-        assert_eq!(y.eval(&[7]).unwrap(), &want[..]);
+        y.seq_restore(0, &snap, toks.len()).unwrap();
+        assert_eq!(step(&mut *y, &[7]), &want[..]);
     }
 }
 
@@ -627,13 +641,83 @@ fn decode_profile_reports_steps_stages_and_graph_reuse() {
 fn moe_backend_reuses_its_logits_buffer() {
     let mut b = backends().remove(1);
     let toks: Vec<i32> = (1..=12).collect();
-    let first = b.eval(&toks).unwrap().as_ptr();
-    let a = b.eval(&[5]).unwrap().to_vec();
-    let again = b.eval(&[6]).unwrap().as_ptr();
+    let first = step(&mut *b, &toks).as_ptr();
+    let a = step(&mut *b, &[5]).to_vec();
+    let again = step(&mut *b, &[6]).as_ptr();
     assert_eq!(first, again, "the logits buffer moved");
     let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
     o.n_ctx = CTX as usize;
     let mut m = tetraeder_model::Qwen3Moe::load(fixture(), &o).unwrap();
     m.eval_last(&toks).unwrap();
     assert_eq!(m.eval_last(&[5]).unwrap(), a);
+}
+
+// ---- continuous batching (ADR 0065) ----
+
+/// Four requests at once on a libllama context with four sequences: all finish with the tokens
+/// of a solo run, and `tetraeder.scheduler.batch.size` records a step with more than one.
+#[test]
+fn four_concurrent_requests_finish_and_share_steps() {
+    use opentelemetry::metrics::MeterProvider as _;
+    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+    use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
+
+    let exp = InMemoryMetricExporter::default();
+    let mp = SdkMeterProvider::builder()
+        .with_reader(PeriodicReader::builder(exp.clone()).build())
+        .build();
+    let metrics = tetraeder_telemetry::Metrics::new(&mp.meter("test"));
+    let p = fixture();
+    let path = p.clone();
+    let mut cfg = SchedulerConfig::new(p);
+    cfg.metrics = Some(metrics);
+    cfg.parallel = 4;
+    let s = Scheduler::start(cfg, move || {
+        let cc = ContextConfig {
+            n_seq_max: 4,
+            ..ctx_cfg()
+        };
+        load_llama(&path, &Placement::cpu(), &cc, None)
+    })
+    .expect("llama scheduler with four sequences");
+    let texts = [
+        "Hello, tiny world",
+        "Once upon a time",
+        "The quick brown fox",
+        "Zebra crossing ahead",
+    ];
+    let prompts: Vec<Vec<u32>> = texts.iter().map(|t| prompt(&s, t)).collect();
+    let rxs: Vec<_> = prompts
+        .iter()
+        .map(|p| start(&s, p, greedy(24), None, CancellationToken::new()))
+        .collect();
+    let got: Vec<Out> = rxs.into_iter().map(drain).collect();
+    let solo = llama_sched();
+    for (p, g) in prompts.iter().zip(&got) {
+        let want = run(&solo, p, 24);
+        // Batched kernels are not bitwise equal to single-row ones (ADR 0043): a near tie may
+        // flip a late token of this random-weight model, so the start must agree.
+        assert_eq!(g.tokens.len(), want.tokens.len());
+        let n = want.tokens.len().min(12);
+        assert_eq!(g.tokens[..n], want.tokens[..n]);
+        assert_eq!(g.reason, want.reason);
+    }
+    mp.force_flush().unwrap();
+    let mut widest = 0.0f64;
+    for rm in exp.get_finished_metrics().unwrap() {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                if let (
+                    "tetraeder.scheduler.batch.size",
+                    AggregatedMetrics::F64(MetricData::Histogram(h)),
+                ) = (m.name(), m.data())
+                {
+                    for dp in h.data_points() {
+                        widest = widest.max(dp.max().unwrap_or(0.0));
+                    }
+                }
+            }
+        }
+    }
+    assert!(widest > 1.0, "no step held more than one sequence");
 }

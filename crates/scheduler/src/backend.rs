@@ -1,7 +1,8 @@
 //! The engines as seen by the scheduler: tokens in, last-position logits out (ADR 0046).
 
 use std::ops::Range;
-use tetraeder_engine::Engine;
+use tetraeder_engine::{Engine, EngineError, SeqEval};
+use tetraeder_ggml_sys::llama::LlamaError;
 use tetraeder_model::Qwen3Moe;
 
 /// Positions are token counts of the single cached sequence.
@@ -144,6 +145,11 @@ pub trait BatchBackend {
     /// Cumulative counters for the decode profile, as [`Backend::counters`].
     fn counters(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
+    }
+    /// Most tokens one `decode` takes in total (libllama's `n_batch`); the scheduler keeps its
+    /// step plan under it. Additive to ADR 0065.
+    fn max_step_tokens(&self) -> usize {
+        usize::MAX
     }
 }
 
@@ -337,48 +343,206 @@ impl<B: Backend> BatchBackend for SingleSeq<B> {
 /// cancellable, this keeps the backend safe on its own.
 pub const MOE_CHUNK: usize = 512;
 
-/// The libllama engine, loaded on CPU or GPU.
+/// The libllama engine, loaded on CPU or GPU, as a [`BatchBackend`] over its unified KV pool
+/// (ADR 0065). Reservations are bookkeeping against `n_ctx`: the pool finds cells one by one, so
+/// a reservation under capacity cannot fail on fragmentation. `seq_cp` shares cells in libllama
+/// but counts `n` rows for `dst`, which over-counts and never under-counts.
 pub struct LlamaBackend {
     engine: Engine,
     on_gpu: bool,
+    n_vocab: usize,
+    /// Rows reserved per sequence (at least its length).
+    reserved: Vec<usize>,
+    logits: Vec<f32>,
+    spans: Vec<Range<usize>>,
 }
 
 impl LlamaBackend {
     pub fn new(engine: Engine, on_gpu: bool) -> Self {
-        Self { engine, on_gpu }
+        let n_vocab = usize::try_from(engine.model().n_vocab()).unwrap_or(0);
+        let reserved = vec![0; engine.n_seq_max()];
+        Self {
+            engine,
+            on_gpu,
+            n_vocab,
+            reserved,
+            logits: Vec::new(),
+            spans: Vec::new(),
+        }
     }
 
     pub fn engine(&self) -> &Engine {
         &self.engine
     }
+
+    fn index(&self, seq: SeqId) -> Result<usize, BackendError> {
+        let i = seq as usize;
+        if i < self.reserved.len() {
+            Ok(i)
+        } else {
+            Err(BackendError::Failed(format!(
+                "sequence {seq} does not exist: the context holds {}",
+                self.reserved.len()
+            )))
+        }
+    }
+
+    fn reserved_total(&self) -> usize {
+        self.reserved.iter().sum()
+    }
+
+    fn kv_full(&self, seq: SeqId, needed: usize) -> BackendError {
+        BackendError::KvFull {
+            seq,
+            needed,
+            free: self.kv_free(),
+        }
+    }
+
+    fn map_err(&self, seq: SeqId, needed: usize, e: EngineError) -> BackendError {
+        match e {
+            EngineError::Llama(LlamaError::NoKvSlot) => self.kv_full(seq, needed),
+            e => BackendError::Failed(e.to_string()),
+        }
+    }
 }
 
-impl Backend for LlamaBackend {
-    fn n_ctx(&self) -> usize {
+impl BatchBackend for LlamaBackend {
+    fn n_vocab(&self) -> usize {
+        self.n_vocab
+    }
+
+    fn n_seq_max(&self) -> usize {
+        self.reserved.len()
+    }
+
+    fn n_ctx_seq(&self) -> usize {
+        // Unified pool: one sequence may use all of it.
         self.engine.n_ctx()
     }
 
-    fn n_past(&self) -> usize {
-        self.engine.n_past()
+    fn kv_capacity(&self) -> usize {
+        self.engine.n_ctx()
     }
 
-    fn truncate(&mut self, keep: usize) -> Result<(), String> {
-        self.engine.truncate(keep).map_err(|e| e.to_string())
+    fn kv_free(&self) -> usize {
+        self.kv_capacity().saturating_sub(self.reserved_total())
     }
 
-    fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String> {
-        self.engine.eval(tokens).map_err(|e| e.to_string())
+    fn seq_len(&self, seq: SeqId) -> usize {
+        i32::try_from(seq).map_or(0, |s| self.engine.seq_len(s))
     }
 
-    fn snapshot(&mut self) -> Result<Vec<u8>, String> {
+    fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
+        let i = self.index(seq)?;
+        let need = n.saturating_sub(self.reserved[i]);
+        if n > self.n_ctx_seq() || need > self.kv_free() {
+            return Err(self.kv_full(seq, need));
+        }
+        self.reserved[i] = self.reserved[i].max(n);
+        Ok(())
+    }
+
+    fn seq_rm(&mut self, seq: SeqId, keep: usize) -> Result<(), BackendError> {
+        let i = self.index(seq)?;
         self.engine
-            .snapshot()
-            .map(|(bytes, _)| bytes)
-            .map_err(|e| e.to_string())
+            .seq_rm(seq as i32, keep)
+            .map_err(|e| BackendError::Failed(e.to_string()))?;
+        if keep == 0 {
+            self.reserved[i] = 0;
+        }
+        Ok(())
     }
 
-    fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String> {
-        self.engine.restore(bytes, n).map_err(|e| e.to_string())
+    fn seq_cp(&mut self, src: SeqId, dst: SeqId, n: usize) -> Result<(), BackendError> {
+        let (s, d) = (self.index(src)?, self.index(dst)?);
+        if s == d || self.seq_len(dst) != 0 || n > self.seq_len(src) {
+            return Err(BackendError::Failed(format!(
+                "seq_cp {src} -> {dst} of {n}: dst must be empty and distinct, n within src"
+            )));
+        }
+        let need = n.saturating_sub(self.reserved[d]);
+        if need > self.kv_free() {
+            return Err(self.kv_full(dst, need));
+        }
+        self.engine
+            .seq_cp(src as i32, dst as i32, n)
+            .map_err(|e| BackendError::Failed(e.to_string()))?;
+        self.reserved[d] = self.reserved[d].max(n);
+        Ok(())
+    }
+
+    fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
+        self.spans.clear();
+        self.logits.clear();
+        // Validate everything before touching state.
+        let mut seen: Vec<usize> = Vec::with_capacity(inputs.len());
+        let mut need_total = 0;
+        for inp in inputs {
+            let i = self.index(inp.seq)?;
+            if seen.contains(&i) {
+                return Err(BackendError::Failed(format!("sequence {} twice", inp.seq)));
+            }
+            seen.push(i);
+            if inp.tokens.is_empty() {
+                return Err(BackendError::Failed("no tokens".into()));
+            }
+            let after = self.seq_len(inp.seq) + inp.tokens.len();
+            if after > self.n_ctx_seq() {
+                return Err(self.kv_full(inp.seq, after.saturating_sub(self.reserved[i])));
+            }
+            need_total += after.saturating_sub(self.reserved[i]);
+        }
+        if need_total > self.kv_free() {
+            let first = inputs
+                .iter()
+                .find(|inp| {
+                    self.seq_len(inp.seq) + inp.tokens.len() > self.reserved[inp.seq as usize]
+                })
+                .map_or(0, |inp| inp.seq);
+            return Err(self.kv_full(first, need_total));
+        }
+        let before: Vec<(usize, usize)> = seen
+            .iter()
+            .map(|&i| (self.engine.seq_len(i as i32), self.reserved[i]))
+            .collect();
+        for (inp, &i) in inputs.iter().zip(&seen) {
+            self.reserved[i] = self.reserved[i].max(self.seq_len(inp.seq) + inp.tokens.len());
+        }
+        if let Err(e) = self.run(inputs) {
+            for (&i, &(len, res)) in seen.iter().zip(&before) {
+                let _ = self.engine.seq_rm(i as i32, len);
+                self.reserved[i] = res;
+            }
+            self.logits.clear();
+            self.spans.clear();
+            let total = inputs.iter().map(|i| i.tokens.len()).sum();
+            return Err(self.map_err(inputs[0].seq, total, e));
+        }
+        Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans))
+    }
+
+    fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
+        self.index(seq)?;
+        self.engine
+            .seq_snapshot(seq as i32)
+            .map_err(|e| BackendError::Failed(e.to_string()))
+    }
+
+    fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {
+        let i = self.index(seq)?;
+        let need = n.saturating_sub(self.reserved[i]);
+        if n > self.n_ctx_seq() || need > self.kv_free() {
+            return Err(self.kv_full(seq, need));
+        }
+        let before = self.reserved[i];
+        self.reserved[i] = before.max(n);
+        if let Err(e) = self.engine.seq_restore(seq as i32, bytes, n) {
+            let _ = self.engine.seq_rm(seq as i32, 0);
+            self.reserved[i] = before;
+            return Err(self.map_err(seq, need, e));
+        }
+        Ok(())
     }
 
     fn on_gpu(&self) -> bool {
@@ -397,6 +561,81 @@ impl Backend for LlamaBackend {
             ("n_reused", f64::from(p.n_reused)),
             ("eval_s", p.eval_ms / 1e3),
         ]
+    }
+
+    fn max_step_tokens(&self) -> usize {
+        self.engine.n_batch()
+    }
+}
+
+impl LlamaBackend {
+    /// Decodes `inputs` in as few engine calls as `n_batch` allows (one in the normal case: the
+    /// scheduler plans under `max_step_tokens`) and collects the rows of every input.
+    fn run(&mut self, inputs: &[SeqInput<'_>]) -> Result<(), EngineError> {
+        let cap = self.engine.n_batch();
+        let mut group: Vec<SeqEval<'_>> = Vec::new();
+        // For each piece of the group: (input index, whether its rows are kept).
+        let mut pieces: Vec<(usize, bool)> = Vec::new();
+        let mut used = 0;
+        let mut next_row = 0;
+        let mut spans = Vec::with_capacity(inputs.len());
+        for (n_in, inp) in inputs.iter().enumerate() {
+            let rows = if inp.all_logits { inp.tokens.len() } else { 1 };
+            spans.push(next_row..next_row + rows);
+            next_row += rows;
+            let mut rest = inp.tokens;
+            while !rest.is_empty() {
+                if used == cap {
+                    self.flush(&mut group, &mut pieces)?;
+                    used = 0;
+                }
+                let take = rest.len().min(cap - used);
+                let (head, tail) = rest.split_at(take);
+                let last = tail.is_empty();
+                group.push(SeqEval {
+                    seq: inp.seq as i32,
+                    tokens: head,
+                    all_logits: inp.all_logits,
+                });
+                // Rows are kept for all_logits inputs, and for the last piece otherwise.
+                pieces.push((n_in, inp.all_logits || last));
+                used += take;
+                rest = tail;
+            }
+        }
+        self.flush(&mut group, &mut pieces)?;
+        debug_assert_eq!(self.logits.len(), next_row * self.n_vocab);
+        self.spans = spans;
+        Ok(())
+    }
+
+    fn flush(
+        &mut self,
+        group: &mut Vec<SeqEval<'_>>,
+        pieces: &mut Vec<(usize, bool)>,
+    ) -> Result<(), EngineError> {
+        if group.is_empty() {
+            return Ok(());
+        }
+        self.engine.decode_seqs(group)?;
+        let mut k = 0;
+        for (piece, &(_, keep)) in group.iter().zip(pieces.iter()) {
+            let rows = if piece.all_logits {
+                piece.tokens.len()
+            } else {
+                1
+            };
+            if keep {
+                for r in 0..rows {
+                    let row = self.engine.output_logits(k + r)?;
+                    self.logits.extend_from_slice(row);
+                }
+            }
+            k += rows;
+        }
+        group.clear();
+        pieces.clear();
+        Ok(())
     }
 }
 

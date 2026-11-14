@@ -496,7 +496,7 @@ mod tests {
                         Arc::clone(&tel),
                     )?;
                     let chunk = builder_chunk(l)?;
-                    cfg.prefill_chunk = chunk;
+                    cfg.step_tokens = chunk;
                     Scheduler::start(cfg, move || load_moe_chunked(&path, &o, chunk))
                 }
             }
@@ -804,15 +804,19 @@ mod tests {
                 )
                 .map_err(|e| e.to_string())?,
             );
-            let mut logits = vec![0.0; tokenizer.n_vocab() as usize];
+            let n_vocab = tokenizer.n_vocab() as usize;
+            let mut logits = vec![0.0; n_vocab];
             logits[65] = 1.0;
             Ok(tetraeder_scheduler::Loaded {
-                backend: Box::new(Endless {
-                    logits,
-                    n_past: 0,
-                    events,
-                    name,
-                }),
+                backend: Box::new(tetraeder_scheduler::SingleSeq::new(
+                    Endless {
+                        logits,
+                        n_past: 0,
+                        events,
+                        name,
+                    },
+                    n_vocab,
+                )),
                 tokenizer,
             })
         })

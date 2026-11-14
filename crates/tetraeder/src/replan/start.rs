@@ -138,7 +138,7 @@ pub fn start(
             Lowered::Builder { .. } => {
                 let o = builder_options(l, ctx, flags, Arc::clone(&t))?;
                 let chunk = builder_chunk(l)?;
-                cfg.prefill_chunk = chunk;
+                cfg.step_tokens = chunk;
                 Scheduler::start(cfg, move || load_moe_chunked(&p, &o, chunk))
             }
         }

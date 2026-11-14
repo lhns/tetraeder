@@ -92,3 +92,12 @@ groups:
         annotations:
           summary: "KV cache above 95% of its token capacity"
           description: "Requests are about to fail with context full. Raise n_ctx, or use a smaller KV format (the plan's kv_format) to hold more tokens in the same bytes."
+
+      # The KV pool is too small for the load: sequences are preempted and recomputed (ADR 0065).
+      - alert: TetraederSchedulerPreempting
+        expr: sum(rate(tetraeder_scheduler_preemptions_total[10m])) * 60 > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than one preemption per minute for 10 minutes"

@@ -74,6 +74,11 @@ pub struct ContextParams {
     pub type_k: Type,
     /// V cache type, as `type_k`.
     pub type_v: Type,
+    /// Most sequences the context holds at once (libllama's `n_seq_max`).
+    pub n_seq_max: u32,
+    /// One KV buffer shared by all sequences (rows are found cell by cell) instead of one per
+    /// sequence; `n_ctx` is then the pool for all of them.
+    pub kv_unified: bool,
 }
 
 impl Default for ContextParams {
@@ -101,6 +106,8 @@ impl Default for ContextParams {
             no_perf: d.no_perf,
             type_k: Type::F16,
             type_v: Type::F16,
+            n_seq_max: d.n_seq_max,
+            kv_unified: d.kv_unified,
         }
     }
 }
@@ -152,6 +159,8 @@ impl Context {
         p.no_perf = params.no_perf;
         p.type_k = params.type_k.raw() as _;
         p.type_v = params.type_v.raw() as _;
+        p.n_seq_max = params.n_seq_max;
+        p.kv_unified = params.kv_unified;
         // SAFETY: the model is live; the context keeps the Arc.
         let ptr = unsafe { sys::llama_init_from_model(model.ptr, p) };
         if ptr.is_null() {
@@ -174,6 +183,12 @@ impl Context {
     pub fn n_ctx(&self) -> u32 {
         // SAFETY: live context.
         unsafe { sys::llama_n_ctx(self.ptr) }
+    }
+
+    /// Sequences the context was created for, as libllama settled it.
+    pub fn n_seq_max(&self) -> u32 {
+        // SAFETY: live context.
+        unsafe { sys::llama_n_seq_max(self.ptr) }
     }
 
     /// Largest batch `decode` accepts, as libllama settled it (may differ from the request).
@@ -282,6 +297,15 @@ impl Context {
     pub fn memory_seq_rm(&mut self, seq: i32, p0: i32, p1: i32) -> bool {
         // SAFETY: as `memory_clear`.
         unsafe { sys::llama_memory_seq_rm(sys::llama_get_memory(self.ptr), seq, p0, p1) }
+    }
+
+    /// Makes sequence `dst` share positions `p0..p1` of sequence `src` (`p0 < 0`: from 0,
+    /// `p1 < 0`: to the end). In a unified cache this only adds `dst` to the cells' sequence
+    /// sets, no data moves; `dst` should be empty.
+    pub fn memory_seq_cp(&mut self, src: i32, dst: i32, p0: i32, p1: i32) {
+        // SAFETY: as `memory_clear`; libllama asserts both ids are below `n_seq_max`, which the
+        // callers check before calling.
+        unsafe { sys::llama_memory_seq_cp(sys::llama_get_memory(self.ptr), src, dst, p0, p1) }
     }
 
     /// Highest position stored for sequence `seq`, or -1 when empty.

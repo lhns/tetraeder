@@ -77,5 +77,6 @@ impl Engine {
     /// Empties the KV cache between repetitions.
     pub fn bench_reset(&mut self) {
         self.ctx.memory_clear();
+        self.lens.fill(0);
     }
 }
