@@ -138,6 +138,8 @@ fi
 ram_bytes=$((mem - ${RAM_RESERVE_GB:-8} * 1000000000))
 # expert VRAM: VRAM_SLOT_BYTES if set, else what llama.cpp's tuned -ot puts on the GPU (stage llama-fit), else 5.5 GB
 vram_bytes="${VRAM_SLOT_BYTES:-5500000000}"
+. scripts/vramfill.sh
+vramfill_bytes=$(vramfill_from_smi "$vram_bytes")
 # OT_FIT: the tuned llama.cpp -ot when the llama-fit stage is skipped
 ot_fit="${OT_FIT:-blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU}"
 ik_bench="${IK_BENCH:-/opt/ik_llama/bin/llama-bench}"
@@ -223,7 +225,7 @@ if want colibri-short || want colibri-deep; then
   colibri_build_pid=$!
 fi
 {
-  echo "[$(date +%T)] start: threads $threads, memory $mem B (balloon ${balloon} B), ram tier $ram_bytes B, vram slots $vram_bytes B"
+  echo "[$(date +%T)] start: threads $threads, memory $mem B (balloon ${balloon} B), ram tier $ram_bytes B, vram slots $vram_bytes B, vramfill slots $vramfill_bytes B"
   nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks_throttle_reasons.active --format=csv
   # build while the model downloads
   cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test exit_regime --no-run || rc=21
@@ -663,12 +665,14 @@ EOF
         exit_regime main-overlap-poll50-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 || rc=30
         # Diagnostic arms for point 3 (ADR 0045 13o), not paired against a baseline: the iqk AVX-512 kernels off
         # (patch 0002 reads GGML_CPU_IQK_MM), and the free VRAM filled with expert slots (13o used 22 of 48 GB;
-        # VRAMFILL_EXTRA bytes on top of the KT-matched slots, default 18 GB, leaves about 7 GB for compute buffers)
+        # free VRAM minus a reserve, scripts/vramfill.sh; VRAMFILL_EXTRA bytes on top of the KT-matched slots overrides)
         exit_regime main-overlap-noiqk 60 "${deep[@]}" "${ovl[@]}" GGML_CPU_IQK_MM=0 || rc=30
+        vramfill_bytes=$(vramfill_from_smi "$vram_bytes")
+        echo "[$(date +%T)] vramfill slots $vramfill_bytes B"
         exit_regime main-overlap-vramfill 60 "${deep[@]}" "${ovl[@]}" \
-          TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + ${VRAMFILL_EXTRA:-18000000000})) || rc=30
-        exit_regime main-overlap-vramfill-repeat 60 "${deep[@]}" "${ovl[@]}"           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + ${VRAMFILL_EXTRA:-18000000000})) || rc=30
-        exit_regime main-overlap-vramfill-poll50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + ${VRAMFILL_EXTRA:-18000000000})) || rc=30
+          TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
+        exit_regime main-overlap-vramfill-repeat 60 "${deep[@]}" "${ovl[@]}"           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
+        exit_regime main-overlap-vramfill-poll50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50           TETRAEDER_EXIT_VRAM_SLOT_BYTES=$vramfill_bytes || rc=30
         # Polling at 50 with the pool paused while the main thread waits, and the RAM tier by access frequency (the
         # engine switches land on other branches; the variables are ignored until then). Each has a repeat
         exit_regime main-overlap-pause50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 TETRAEDER_EXIT_POOL_PAUSE=1 || rc=30

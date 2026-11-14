@@ -89,7 +89,7 @@ fn fits_at(
 }
 
 /// VRAM slot counts whose smallest-ubatch estimate fits the budget (with the RAM tier at its
-/// smallest), ascending. What does not fit goes to `dropped`.
+/// smallest), ascending: the [`vram_slot_tiers`] that fit plus the largest count that fits. What does not fit goes to `dropped`.
 pub fn feasible_vram_tiers(
     budget: &Budget,
     layout: &ModelLayout,
@@ -108,17 +108,27 @@ pub fn feasible_vram_tiers_kv(
     kv: KvFormat,
     dropped: &mut Vec<(String, String)>,
 ) -> Vec<u32> {
-    let mut out = Vec::new();
-    for v in vram_slot_tiers(layout) {
-        let r = ram_slot_options(layout, v)[0];
+    let check = |v: u32| {
         let pl = Placement::Builder {
             vram_slots: v,
-            ram_slots: r,
+            ram_slots: ram_slot_options(layout, v)[0],
         };
-        match fits_at(budget, layout, pl, BUILDER_UBATCHES[0], w, kv) {
+        fits_at(budget, layout, pl, BUILDER_UBATCHES[0], w, kv).map_err(|e| (pl.describe(), e))
+    };
+    let mut out = Vec::new();
+    for v in vram_slot_tiers(layout) {
+        match check(v) {
             Ok(_) => out.push(v),
-            Err(e) => dropped.push((pl.describe(), e)),
+            Err(e) => dropped.push(e),
         }
+    }
+    // The fill tier: the most slots the budget holds. Filling free VRAM decoded 1.51x faster
+    // than the doubling tiers on a 48 GB card (ADR 0045, 2026-11-14).
+    let (k, n) = (layout.n_expert_used.max(1), layout.n_expert.max(1));
+    if let Some(fill) = (k..=n.max(k)).rev().find(|&v| check(v).is_ok())
+        && let Err(at) = out.binary_search(&fill)
+    {
+        out.insert(at, fill);
     }
     out
 }
@@ -406,8 +416,8 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
         assert_eq!(th, BTreeSet::from([7, 15]));
         assert_eq!(ub, BTreeSet::from([256, 2048]));
         assert_eq!(op, BTreeSet::from([false, true]));
-        // 128 slots per layer do not fit in 14 GB; every smaller tier is represented
-        assert_eq!(vr, BTreeSet::from([8, 16, 32, 64]));
+        // 128 slots per layer do not fit in 14 GB; every smaller tier is represented, plus the fill tier (95)
+        assert_eq!(vr, BTreeSet::from([8, 16, 32, 64, 95]));
         assert!(
             en.dropped
                 .iter()
@@ -486,5 +496,46 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
             b.len() >= a.len() && b.contains(&32) && !a.contains(&32),
             "{a:?} {b:?}"
         );
+    }
+
+    // hardware: none
+    #[test]
+    fn fill_tier_is_the_largest_slot_count_that_fits() {
+        let l = fixtures::moe();
+        let gpu_at = |v: u32| {
+            let pl = Placement::Builder {
+                vram_slots: v,
+                ram_slots: ram_slot_options(&l, v)[0],
+            };
+            footprint(&l, pl, BUILDER_UBATCHES[0], &WORK, KvFormat::default()).gpu
+        };
+        // a card that holds 100 slots but not 101: between the 64 and 128 tiers
+        let b = Budget {
+            gpu_bytes: gpu_at(100) + 1,
+            ..BUDGET
+        };
+        assert!(gpu_at(101) > b.gpu_bytes);
+        let t = feasible_vram_tiers(&b, &l, &WORK, &mut Vec::new());
+        assert_eq!(t.last(), Some(&100), "{t:?}");
+        assert!(t.windows(2).all(|w| w[0] < w[1]), "{t:?}");
+        assert!(*t.last().unwrap() > 16 && gpu_at(100) <= b.gpu_bytes);
+        assert_eq!(&t[..t.len() - 1], [8, 16, 32, 64]);
+    }
+
+    proptest::proptest! {
+        // hardware: none
+        #[test]
+        fn no_feasible_tier_exceeds_the_budget(gpu_gb in 1u64..80, kv in 0usize..2) {
+            let l = fixtures::moe();
+            let kv = [KvFormat::F16, KvFormat::Q8_0][kv];
+            let b = Budget { gpu_bytes: gpu_gb * 1_000_000_000, ..BUDGET };
+            let t = feasible_vram_tiers_kv(&b, &l, &WORK, kv, &mut Vec::new());
+            for &v in &t {
+                let pl = Placement::Builder { vram_slots: v, ram_slots: ram_slot_options(&l, v)[0] };
+                let f = footprint(&l, pl, BUILDER_UBATCHES[0], &WORK, kv);
+                proptest::prop_assert!(f.gpu <= b.gpu_bytes && f.host <= b.ram_bytes);
+            }
+            proptest::prop_assert!(t.windows(2).all(|w| w[0] < w[1]));
+        }
     }
 }
