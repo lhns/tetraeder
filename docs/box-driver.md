@@ -13,6 +13,7 @@ You drive ONE Vast box for ONE session profile of Tetraeder and bring back commi
 - Check CPU model, cores, host RAM and disk bandwidth before `create`: see "Machine choice" below. Slow disks and low-quota hosts cut stages short.
 - `taxameter adopt <id>` takes the id as a positional argument (there is no `--id`); `taxameter status` must then show the box as `managed:active` before you run anything on it.
 - Sessions that fetch their own model (b1-exit does, docs/sessions.md) provision with `--models ,` so provisioning downloads nothing.
+- b1-exit and b1b-levers: set `.vast/config.json` to `{"disk_gb": 230}` before `create` (git-ignored; the 235B needs it). The RAM budget defaults to 91 GB in these profiles (`EMULATE_RAM_GB`); check the exit_run.log start line says `memory 91000000000 B` before the download ends.
 - Pick offers by cores and traffic price: `uv run taxameter offers --min-cpu-cores <n> --download-gb <gb>` with the GB your session fetches, then `create` with the same flags and your price cap.
 
 ## Machine choice (standing policy, owner 2026-11-13: drivers pick, nobody asks)

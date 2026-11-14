@@ -188,6 +188,9 @@ f32="Qwen__Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf"
       slot_default=10966007808
       [ "${vram_mib:-24576}" -lt 24000 ] && slot_default=8580759552
       export VRAM_SLOT_BYTES="${VRAM_SLOT_BYTES:-$slot_default}"
+      # every verdict run since 20261113b used a 91 GB budget (ADR 0045); exit_run.sh's own default is 128, and a
+      # driver that forgot EMULATE_RAM_GB=91 launched 20261114 at 128 before catching it
+      export EMULATE_RAM_GB="${EMULATE_RAM_GB:-91}"
       export OT_FIT="${OT_FIT:-blk\.[0-6]\.ffn_.*_exps=CUDA0;exps=CPU}"
       (bash scripts/fetch_exit_model.sh 8>&- &)
       # llama.cpp's CPU share of misses (both sessions): MOE_CPU_SHARE, else the newest committed tuner result (B3), else 0.5
