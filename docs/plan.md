@@ -724,7 +724,7 @@ The largest risk is calendar time; next come cost-model accuracy, ggml drift and
 
 ### Open decisions
 
-- **KV layout in Phase 4:** contiguous chunks on unmodified attention, or paged blocks with a patch; decided by the staged experiment of ADR 0067 (thresholds fixed there: paged must save at least 25% of the KV pool at no more than 3% decode cost).
+- **KV layout in Phase 4:** contiguous chunks on unmodified attention, or paged blocks with a patch; decided by the staged experiment of ADR 0067 (thresholds fixed there: paged must save at least 25% of the KV pool at no more than 3% decode cost). Decided 2026-11-14: chunked (paged saved 35.8% but its reads cost 5.6 to 18% of decode, ADR 0067 addendum).
 - **Mixed vendors in M1:** decided by the Phase 0 multi-backend spike.
 - **Transport:** decided by the Phase 0 latency measurement.
 - **Quality profile granularity:** decided for v1 in ADR 0048: per role class and span of layers (6 on Qwen3-8B, 12 on Qwen3-30B-A3B), embed and head apart.

@@ -45,3 +45,12 @@ Outputs: `bench/results/<date>/kv-layout/sim.json` (`{workload, pool_rows: {chun
 - The memory question is answered in CI from committed request counts, without a box; only outcome 3 needs GPU time.
 - The thresholds cannot be moved after the numbers are in; a later change of X or Y needs a new ADR that names the numbers it saw.
 - Prefix sharing without copies, the main reason paged caches exist elsewhere, is not priced here; if it is wanted later, it reopens this decision through a new ADR.
+
+## Addendum 2026-11-14: step 1 result, chunked
+
+`bench/results/20261114/kv-layout/` (`sim.json`, `kv-gather.json`; branch `track-c6-kv`).
+- Memory: paged needs 355 units of 256 rows for W, chunked 553: s = 35.8% (33.1% without idle prefixes), at least X.
+- Reads: y_gather 0.184 and y_sparse 0.056 (256-row blocks, 8 threads; 0.136 and 0.100 at 64-row blocks), both above Y.
+- y_mask: -0.172 with each layout at its own minimal pool, +0.087 with both at chunked's pool. The definition above does not fix the pool, but its concern is that scattered blocks make n_kv follow the pool's high-water mark, which is a comparison at one pool size; at its own smaller pool paged's n_kv is capped by the pool, so the memory saving would count a second time, in Y as well as in X. So y_mask is read at the common pool: +0.087, above Y.
+- Outcome 4: **chunked**, no patch. C4 and C5 use chunked (`--kv-layout` default `chunked`); paged stays in `kvcache` for the simulator and tests.
+- Caveats: the timings ran on an SSE-only dev VM under load from parallel builds (attention about 15 ms at L 2048, one run). A faster kernel makes gather overhead relatively larger, so the y values likely understate the cost on real hardware; the verdict does not depend on them being exact (all exceed Y). Revisit only if a later workload needs more than about 1.5x the sequences per VRAM that chunked gives.
