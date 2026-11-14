@@ -574,7 +574,7 @@ Phases 8 and 9 (backend parity, breadth) can run in parallel with M3 and M4.
 
 ## Effort
 
-Status 2026-11-08: every M1 feature is implemented (Phase 0 started 2026-10-29, with parallel Claude Code tracks); M1 waits on exit-test measurements and the Phase 2 decode gap (`docs/m1-open.md`). The estimate below is the original one.
+Status 2026-11-14: M1 reached (Phase 0 started 2026-10-29, with parallel Claude Code tracks; verdicts in `docs/m1-open.md` and ADR 0045). The plan to M2 is `docs/m2-plan.md`. The estimate below is the original one.
 
 M1 is about 9 to 14 full-time person-months and the whole plan about 29 to 43, so at about 10 hours a week M1 alone takes 3 to 4.5 years; this is the main cost of building an own engine, and the plan is built so that each milestone is worth having if you stop there.
 
