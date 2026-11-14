@@ -2247,6 +2247,7 @@ dependencies = [
  "tetraeder-ggml-sys",
  "tetraeder-memory",
  "tetraeder-model",
+ "tetraeder-plan",
  "tetraeder-telemetry",
  "thiserror 2.0.21",
  "tokio",
