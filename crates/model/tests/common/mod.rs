@@ -56,6 +56,12 @@ pub const TOL_CPU: f32 = 1e-4;
 /// GPU builder against the CPU reference: different kernels and F16 rounding of activations,
 /// about 1e-3 relative at that scale.
 pub const TOL_GPU: f32 = 5e-3;
+/// A batched step against the same tokens decoded alone. ggml takes other matmul kernels for
+/// other row counts (tinyBLAS for a batch, the vec-dot for one row: ADR 0043), which on
+/// AVX2 and AVX-512 hosts differ in the last bits of F16 accumulation; the first CI run measured
+/// 7e-3 at logits of about 10. Same-shape comparisons (libllama, the same step split) keep
+/// `TOL_CPU`.
+pub const TOL_BATCH: f32 = 2e-2;
 pub const TOP_K: usize = 5;
 pub const PROMPT: [i32; 6] = [12, 77, 3, 200, 41, 9];
 pub const N_GREEDY: usize = 12;
@@ -438,7 +444,8 @@ pub fn builder_script(
 
 /// Largest absolute logit difference between two scripts' rows over every logit, and the
 /// number of rows compared. Panics when a row is missing or the argmax differs where the
-/// reference's top-2 margin exceeds ADR 0043's near-tie bound (1e-3 of the largest logit).
+/// reference's top-2 margin is above both ADR 0043's near-tie bound (1e-3 of the largest logit)
+/// and twice `tol` (a smaller margin can flip within the tolerance).
 pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, what: &str) -> f32 {
     assert_eq!(
         want.keys().collect::<Vec<_>>(),
@@ -461,7 +468,7 @@ pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, what: &str) -> f3
         assert!(diff <= tol, "{what}: {key:?} differs by {diff:e}");
         let top = top_k(w, 2);
         let margin = w[top[0]] - w[top[1]];
-        if margin > 1e-3 * w[top[0]].abs() {
+        if margin > (1e-3 * w[top[0]].abs()).max(2.0 * tol) {
             assert_eq!(top[0], argmax(h), "{what}: argmax differs at {key:?}");
         }
     }

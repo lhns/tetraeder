@@ -127,8 +127,8 @@ fn alone(steps: &[Vec<Item>], seq: u32) -> Vec<Vec<Item>> {
 }
 
 /// hardware: cpu. Batched against each sequence alone through the builder, and against libllama
-/// with `n_seq_max = 3` and a unified KV buffer, within `TOL_CPU`; greedy equal except at a
-/// near-tie (ADR 0043).
+/// with `n_seq_max = 3` and a unified KV buffer, greedy equal except at a near-tie (ADR 0043).
+/// Against libllama (same step shapes) `TOL_CPU` holds; against alone runs `TOL_BATCH`.
 #[test]
 fn cpu_multi_sequence_matches_alone_and_libllama() {
     let (streams, steps) = script();
@@ -158,7 +158,7 @@ fn cpu_multi_sequence_matches_alone_and_libllama() {
         let w = compare_scripts(
             &alone_rows,
             &batched,
-            TOL_CPU,
+            TOL_BATCH,
             &format!("{kv} batched/alone"),
         );
         let reference = libllama_script(&dense_fixture(), &streams, &steps, kv);
@@ -180,7 +180,7 @@ fn cpu_multi_sequence_matches_alone_and_libllama() {
 }
 
 /// hardware: cpu. `seq_cp` of a prefilled prompt, then both sequences continue in one step
-/// with different tokens; each equals a fresh run of its own tokens.
+/// with different tokens; each equals a fresh run of its own tokens (within `TOL_BATCH`).
 #[test]
 fn cpu_seq_cp_continuation() {
     let kv = KvFormat::F16;
@@ -219,7 +219,7 @@ fn cpu_seq_cp_continuation() {
             .map(|(x, y)| (x - y).abs())
             .fold(0f32, f32::max);
         eprintln!("seq_cp continuation: max |delta| {worst:e}");
-        assert!(worst <= TOL_CPU, "{worst:e}");
+        assert!(worst <= TOL_BATCH, "{worst:e}");
     }
     // A copy into a sequence that holds positions, or from an empty one, is refused.
     assert!(m.seq_cp(0, 1, 2).is_err());
