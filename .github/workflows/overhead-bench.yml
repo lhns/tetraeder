@@ -9,7 +9,8 @@ on:
 
 concurrency:
   group: overhead-bench-${{ github.ref }}
-  cancel-in-progress: true
+  # superseded runs are cancelled on work branches only; every main run finishes
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_TERM_COLOR: always
