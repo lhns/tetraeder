@@ -1,39 +1,9 @@
-//! The engines as seen by the scheduler: tokens in, last-position logits out (ADR 0046).
+//! The engines as seen by the scheduler: sequences in, logits out (ADR 0046, 0065).
 
 use std::ops::Range;
 use tetraeder_engine::{Engine, EngineError, SeqEval};
 use tetraeder_ggml_sys::llama::LlamaError;
-use tetraeder_model::Qwen3Moe;
-
-/// Positions are token counts of the single cached sequence.
-pub trait Backend {
-    /// Context length in tokens.
-    fn n_ctx(&self) -> usize;
-    /// Positions currently cached.
-    fn n_past(&self) -> usize;
-    /// Keeps the first `keep` cached positions.
-    fn truncate(&mut self, keep: usize) -> Result<(), String>;
-    /// Appends `tokens` and returns the logits of the last one (`n_vocab` values, valid until
-    /// the next call). Prefill is chunked inside.
-    fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String>;
-    /// The cached positions as host bytes, for the prefix cache (ADR 0049).
-    fn snapshot(&mut self) -> Result<Vec<u8>, String>;
-    /// Replaces the cache with a [`Backend::snapshot`] of `n` positions.
-    fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String>;
-    /// The KV cache format the snapshots are in, keying the prefix cache (ADR 0050 b).
-    fn kv_format(&self) -> String {
-        "f16/f16".into()
-    }
-    /// Whether steps run on a GPU, so wall time counts as device time.
-    fn on_gpu(&self) -> bool;
-    /// Weight bytes read from storage since load; `None` when the backend does not stream.
-    fn bytes_streamed_total(&self) -> Option<u64>;
-    /// Cumulative counters for the decode profile (`TETRAEDER_DECODE_PROFILE=1`), such as graph
-    /// builds against reuses; the scheduler reports their change over a request's decode.
-    fn counters(&self) -> Vec<(&'static str, f64)> {
-        Vec::new()
-    }
-}
+use tetraeder_model::{ModelError, Qwen3Moe, SeqEval as ModelSeqEval};
 
 /// A sequence slot of a [`BatchBackend`] (ADR 0065).
 pub type SeqId = u32;
@@ -142,7 +112,8 @@ pub trait BatchBackend {
     fn on_gpu(&self) -> bool;
     /// Weight bytes read from storage since load; `None` when the backend does not stream.
     fn bytes_streamed_total(&self) -> Option<u64>;
-    /// Cumulative counters for the decode profile, as [`Backend::counters`].
+    /// Cumulative counters for the decode profile (`TETRAEDER_DECODE_PROFILE=1`), such as graph
+    /// builds against reuses; the scheduler reports their change over a request's decode.
     fn counters(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
     }
@@ -153,194 +124,8 @@ pub trait BatchBackend {
     }
 }
 
-/// [`BatchBackend`] over the one-sequence [`Backend`] (until C4 implements the trait natively).
-/// Only sequence 0 exists. The pool is the context: `n_ctx` rows, reserved by sequence 0.
-/// `seq_cp` always fails: a copy needs a second, empty sequence and there is none.
-pub struct SingleSeq<B: Backend> {
-    inner: B,
-    n_vocab: usize,
-    reserved: usize,
-    logits: Vec<f32>,
-    spans: Vec<Range<usize>>,
-}
-
-impl<B: Backend> SingleSeq<B> {
-    /// `n_vocab` is the length of the logits `inner.eval` returns.
-    pub fn new(inner: B, n_vocab: usize) -> Self {
-        Self {
-            inner,
-            n_vocab,
-            reserved: 0,
-            logits: Vec::new(),
-            spans: Vec::new(),
-        }
-    }
-
-    pub fn inner(&self) -> &B {
-        &self.inner
-    }
-
-    pub fn into_inner(self) -> B {
-        self.inner
-    }
-
-    fn check_seq(seq: SeqId) -> Result<(), BackendError> {
-        if seq == 0 {
-            Ok(())
-        } else {
-            Err(BackendError::Failed(format!(
-                "sequence {seq} does not exist: single-sequence backend"
-            )))
-        }
-    }
-}
-
-impl<B: Backend> BatchBackend for SingleSeq<B> {
-    fn n_vocab(&self) -> usize {
-        self.n_vocab
-    }
-
-    fn n_seq_max(&self) -> usize {
-        1
-    }
-
-    fn n_ctx_seq(&self) -> usize {
-        self.inner.n_ctx()
-    }
-
-    fn kv_capacity(&self) -> usize {
-        self.inner.n_ctx()
-    }
-
-    fn kv_free(&self) -> usize {
-        self.inner.n_ctx().saturating_sub(self.reserved)
-    }
-
-    fn seq_len(&self, seq: SeqId) -> usize {
-        if seq == 0 { self.inner.n_past() } else { 0 }
-    }
-
-    fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
-        Self::check_seq(seq)?;
-        if n > self.inner.n_ctx() {
-            return Err(BackendError::KvFull {
-                seq,
-                needed: n,
-                free: self.kv_free(),
-            });
-        }
-        self.reserved = self.reserved.max(n);
-        Ok(())
-    }
-
-    fn seq_rm(&mut self, seq: SeqId, keep: usize) -> Result<(), BackendError> {
-        Self::check_seq(seq)?;
-        self.inner
-            .truncate(keep.min(self.inner.n_past()))
-            .map_err(BackendError::Failed)?;
-        if keep == 0 {
-            self.reserved = 0;
-        }
-        Ok(())
-    }
-
-    fn seq_cp(&mut self, src: SeqId, dst: SeqId, _n: usize) -> Result<(), BackendError> {
-        Self::check_seq(src)?;
-        Self::check_seq(dst)?;
-        Err(BackendError::Failed(
-            "seq_cp needs two sequences: single-sequence backend".into(),
-        ))
-    }
-
-    fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
-        if inputs.len() > 1 {
-            return Err(BackendError::Failed(
-                "single-sequence backend: one input per step".into(),
-            ));
-        }
-        self.spans.clear();
-        self.logits.clear();
-        let Some(input) = inputs.first() else {
-            return Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans));
-        };
-        Self::check_seq(input.seq)?;
-        if input.tokens.is_empty() {
-            return Err(BackendError::Failed("no tokens".into()));
-        }
-        let before = self.inner.n_past();
-        let after = before + input.tokens.len();
-        if after > self.inner.n_ctx() {
-            return Err(BackendError::KvFull {
-                seq: input.seq,
-                needed: after - self.reserved.max(before),
-                free: self.kv_free(),
-            });
-        }
-        let reserved_before = self.reserved;
-        self.reserved = self.reserved.max(after);
-        let run = (|| {
-            if input.all_logits {
-                // The old trait returns the last row only: one token at a time.
-                for t in input.tokens {
-                    let row = self.inner.eval(std::slice::from_ref(t))?;
-                    self.logits.extend_from_slice(row);
-                }
-            } else {
-                let row = self.inner.eval(input.tokens)?;
-                self.logits.extend_from_slice(row);
-            }
-            Ok::<(), String>(())
-        })();
-        if let Err(e) = run {
-            // Back to the length before the step.
-            let _ = self.inner.truncate(before);
-            self.reserved = reserved_before;
-            self.logits.clear();
-            return Err(BackendError::Failed(e));
-        }
-        let rows = self.logits.len() / self.n_vocab.max(1);
-        self.spans.push(0..rows);
-        Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans))
-    }
-
-    fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
-        Self::check_seq(seq)?;
-        self.inner.snapshot().map_err(BackendError::Failed)
-    }
-
-    fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {
-        Self::check_seq(seq)?;
-        if n > self.inner.n_ctx() {
-            return Err(BackendError::KvFull {
-                seq,
-                needed: n,
-                free: self.kv_free(),
-            });
-        }
-        self.inner.restore(bytes, n).map_err(BackendError::Failed)?;
-        self.reserved = self.reserved.max(n);
-        Ok(())
-    }
-
-    fn kv_format(&self) -> String {
-        self.inner.kv_format()
-    }
-
-    fn on_gpu(&self) -> bool {
-        self.inner.on_gpu()
-    }
-
-    fn bytes_streamed_total(&self) -> Option<u64> {
-        self.inner.bytes_streamed_total()
-    }
-
-    fn counters(&self) -> Vec<(&'static str, f64)> {
-        self.inner.counters()
-    }
-}
-
-/// Tokens per `eval_last` call of the MoE builder; the scheduler also chunks to stay
-/// cancellable, this keeps the backend safe on its own.
+/// Tokens per step of the MoE builder; the scheduler plans under `max_step_tokens`, and
+/// `decode` splits a larger step itself.
 pub const MOE_CHUNK: usize = 512;
 
 /// The libllama engine, loaded on CPU or GPU, as a [`BatchBackend`] over its unified KV pool
@@ -639,11 +424,16 @@ impl LlamaBackend {
     }
 }
 
-/// The Qwen3 MoE builder.
+/// The Qwen3 MoE builder as a [`BatchBackend`] over its KV pool (ADR 0065, 0067). A step takes
+/// at most `chunk` tokens in one graph; a larger `decode` runs as several.
 pub struct MoeBackend {
     model: Qwen3Moe,
     on_gpu: bool,
+    n_vocab: usize,
     logits: Vec<f32>,
+    /// The rows of one model step, before the kept ones are copied to `logits`.
+    step_logits: Vec<f32>,
+    spans: Vec<Range<usize>>,
     chunk: usize,
 }
 
@@ -652,12 +442,16 @@ impl MoeBackend {
         Self::with_chunk(model, on_gpu, MOE_CHUNK)
     }
 
-    /// Like `new`, with `chunk` tokens per `eval_last` call (the plan's ubatch).
+    /// Like `new`, with `chunk` tokens per step (the plan's ubatch).
     pub fn with_chunk(model: Qwen3Moe, on_gpu: bool, chunk: usize) -> Self {
+        let n_vocab = model.n_vocab();
         Self {
             model,
             on_gpu,
+            n_vocab,
             logits: Vec::new(),
+            step_logits: Vec::new(),
+            spans: Vec::new(),
             chunk: chunk.max(1),
         }
     }
@@ -665,41 +459,205 @@ impl MoeBackend {
     pub fn model(&self) -> &Qwen3Moe {
         &self.model
     }
+
+    fn check_seq(&self, seq: SeqId) -> Result<(), BackendError> {
+        if (seq as usize) < self.model.n_seq_max() {
+            Ok(())
+        } else {
+            Err(BackendError::Failed(format!(
+                "sequence {seq} does not exist: the pool holds {}",
+                self.model.n_seq_max()
+            )))
+        }
+    }
+
+    fn kv_full(&self, seq: SeqId, needed: usize) -> BackendError {
+        BackendError::KvFull {
+            seq,
+            needed,
+            free: self.model.pool().free(),
+        }
+    }
+
+    /// Rows for `seq` up to `n` positions: `KvFull` (nothing changed) when the pool has none.
+    fn reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
+        self.check_seq(seq)?;
+        let held = self.model.pool().reserved(seq);
+        if n > self.model.n_ctx()
+            || !self.model.try_reserve(seq, n).map_err(failed)?
+        {
+            return Err(self.kv_full(seq, n.saturating_sub(held)));
+        }
+        Ok(())
+    }
+
+    /// Runs the pieces of `inputs`, at most `chunk` tokens per model step, and collects the rows
+    /// of every input in `self.logits`.
+    fn run(&mut self, inputs: &[SeqInput<'_>]) -> Result<(), BackendError> {
+        let cap = self.chunk;
+        let mut group: Vec<ModelSeqEval<'_>> = Vec::new();
+        // Per piece of the group: whether its rows are kept.
+        let mut keep: Vec<bool> = Vec::new();
+        let mut used = 0;
+        let mut next_row = 0;
+        let mut spans = Vec::with_capacity(inputs.len());
+        for inp in inputs {
+            let rows = if inp.all_logits { inp.tokens.len() } else { 1 };
+            spans.push(next_row..next_row + rows);
+            next_row += rows;
+            let mut rest = inp.tokens;
+            while !rest.is_empty() {
+                if used == cap {
+                    self.flush(&mut group, &mut keep)?;
+                    used = 0;
+                }
+                let take = rest.len().min(cap - used);
+                let (head, tail) = rest.split_at(take);
+                group.push(ModelSeqEval {
+                    seq: inp.seq,
+                    tokens: head,
+                    all_logits: inp.all_logits,
+                });
+                // Rows are kept for all_logits inputs, and for the last piece otherwise.
+                keep.push(inp.all_logits || tail.is_empty());
+                used += take;
+                rest = tail;
+            }
+        }
+        self.flush(&mut group, &mut keep)?;
+        debug_assert_eq!(self.logits.len(), next_row * self.n_vocab);
+        self.spans = spans;
+        Ok(())
+    }
+
+    fn flush(
+        &mut self,
+        group: &mut Vec<ModelSeqEval<'_>>,
+        keep: &mut Vec<bool>,
+    ) -> Result<(), BackendError> {
+        if group.is_empty() {
+            return Ok(());
+        }
+        let mut buf = std::mem::take(&mut self.step_logits);
+        let spans = self.model.decode(group, &mut buf).map_err(failed);
+        let spans = match spans {
+            Ok(s) => s,
+            Err(e) => {
+                self.step_logits = buf;
+                return Err(e);
+            }
+        };
+        for (r, &k) in spans.iter().zip(keep.iter()) {
+            if k {
+                self.logits
+                    .extend_from_slice(&buf[r.start * self.n_vocab..r.end * self.n_vocab]);
+            }
+        }
+        self.step_logits = buf;
+        group.clear();
+        keep.clear();
+        Ok(())
+    }
 }
 
-impl Backend for MoeBackend {
-    fn n_ctx(&self) -> usize {
+fn failed(e: ModelError) -> BackendError {
+    BackendError::Failed(e.to_string())
+}
+
+impl BatchBackend for MoeBackend {
+    fn n_vocab(&self) -> usize {
+        self.n_vocab
+    }
+
+    fn n_seq_max(&self) -> usize {
+        self.model.n_seq_max()
+    }
+
+    fn n_ctx_seq(&self) -> usize {
+        // One sequence may use all of the pool.
         self.model.n_ctx()
     }
 
-    fn n_past(&self) -> usize {
-        self.model.n_past()
+    fn kv_capacity(&self) -> usize {
+        self.model.pool().capacity()
     }
 
-    fn truncate(&mut self, keep: usize) -> Result<(), String> {
-        let keep = keep.min(self.model.n_past());
-        self.model.rewind(keep).map_err(|e| e.to_string())
+    fn kv_free(&self) -> usize {
+        self.model.pool().free()
     }
 
-    fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String> {
-        if tokens.is_empty() {
-            return Err("no tokens".into());
+    fn seq_len(&self, seq: SeqId) -> usize {
+        self.model.seq_len(seq)
+    }
+
+    fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
+        self.reserve(seq, n)
+    }
+
+    fn seq_rm(&mut self, seq: SeqId, keep: usize) -> Result<(), BackendError> {
+        self.check_seq(seq)?;
+        self.model.seq_rm(seq, keep).map_err(failed)
+    }
+
+    fn seq_cp(&mut self, src: SeqId, dst: SeqId, n: usize) -> Result<(), BackendError> {
+        self.check_seq(src)?;
+        self.check_seq(dst)?;
+        if src == dst || self.model.seq_len(dst) != 0 || n > self.model.seq_len(src) {
+            return Err(BackendError::Failed(format!(
+                "seq_cp {src} -> {dst} of {n}: dst must be empty and distinct, n within src"
+            )));
         }
-        for chunk in tokens.chunks(self.chunk) {
-            // Into the kept buffer: no 600 KB allocation per decode token.
-            self.model
-                .eval_last_into(chunk, &mut self.logits)
-                .map_err(|e| e.to_string())?;
+        if !self.model.try_seq_cp(src, dst, n).map_err(failed)? {
+            return Err(self.kv_full(dst, n));
         }
-        Ok(&self.logits)
+        Ok(())
     }
 
-    fn snapshot(&mut self) -> Result<Vec<u8>, String> {
-        self.model.kv_snapshot().map_err(|e| e.to_string())
+    fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
+        self.spans.clear();
+        self.logits.clear();
+        // Validate everything and reserve before the step: a failure leaves lengths unchanged.
+        let mut seen: Vec<SeqId> = Vec::with_capacity(inputs.len());
+        for inp in inputs {
+            self.check_seq(inp.seq)?;
+            if seen.contains(&inp.seq) {
+                return Err(BackendError::Failed(format!("sequence {} twice", inp.seq)));
+            }
+            seen.push(inp.seq);
+            if inp.tokens.is_empty() {
+                return Err(BackendError::Failed("no tokens".into()));
+            }
+        }
+        for inp in inputs {
+            self.reserve(inp.seq, self.model.seq_len(inp.seq) + inp.tokens.len())?;
+        }
+        let before: Vec<usize> = inputs.iter().map(|i| self.model.seq_len(i.seq)).collect();
+        if let Err(e) = self.run(inputs) {
+            // Every sequence back at its length before the step.
+            for (inp, &len) in inputs.iter().zip(&before) {
+                let _ = self.model.seq_rm(inp.seq, len);
+            }
+            self.logits.clear();
+            self.spans.clear();
+            return Err(e);
+        }
+        Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans))
     }
 
-    fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String> {
-        self.model.kv_restore(bytes, n).map_err(|e| e.to_string())
+    fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
+        self.check_seq(seq)?;
+        self.model.seq_snapshot(seq).map_err(failed)
+    }
+
+    fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {
+        self.check_seq(seq)?;
+        if n > self.model.n_ctx() {
+            return Err(self.kv_full(seq, n));
+        }
+        if !self.model.try_seq_restore(seq, bytes, n).map_err(failed)? {
+            return Err(self.kv_full(seq, n));
+        }
+        Ok(())
     }
 
     fn kv_format(&self) -> String {
@@ -729,5 +687,9 @@ impl Backend for MoeBackend {
             ("streamer_s", p.streamer.as_secs_f64()),
             ("total_s", p.total.as_secs_f64()),
         ]
+    }
+
+    fn max_step_tokens(&self) -> usize {
+        self.chunk
     }
 }

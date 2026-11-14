@@ -19,7 +19,9 @@
 //! RAM slot tensors, which sit in a CPU buffer marked as weights, so the scheduler computes them
 //! on the CPU. Those groups and the group of the compute-slot hits share the next segment.
 
-use crate::attn::{AttnStep, AttnWeights, KV_PAD, Kv, alloc_kv, attention, causal_mask};
+use crate::attn::{
+    AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention, copy_rows,
+};
 use crate::convert::{ConvertError, ConvertOptions, ConvertStats};
 use crate::cpu_poll::{self, CpuPoll};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer, StreamerConfig};
@@ -30,6 +32,7 @@ use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, Sched, Tensor,
     Type,
 };
+use tetraeder_kvcache::{Chunked, KvError, KvPool, RowCopy, StepInput, StepPlan};
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::io::IoFactory;
 use tetraeder_memory::metrics::MemoryMetrics;
@@ -38,6 +41,7 @@ use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -200,7 +204,7 @@ pub struct LoadOptions {
     /// CUDA threshold applied to tokens, as libllama gets it.
     pub op_offload_min_tokens: usize,
     /// Keep the whole-step graph and its scheduler allocation across steps with the same token
-    /// count, padded KV length, `last_only` and routing recording, so ggml-cuda can replay a
+    /// count, padded KV length, output count and routing recording, so ggml-cuda can replay a
     /// captured CUDA graph (ADR 0036). Only with every expert resident; on by default (30B decode
     /// 160 to 203 tok/s on the RTX 3090, greedy identical).
     pub reuse_step_graph: bool,
@@ -258,6 +262,8 @@ pub struct LoadOptions {
     /// cache (ADR 0050 addendum). `None`: on exactly when the format is quantized (libllama's
     /// default), off for F16. `Some(true)` needs a head size that is a multiple of 64.
     pub kv_rotation: Option<bool>,
+    /// Sequences the KV pool serves (ADR 0065); `n_ctx` is the rows they share. Default 1.
+    pub n_seq_max: usize,
     /// With `MissPolicy::Cpu`: the share (0 to 1) of a decode step's compute-tier misses that
     /// are uploaded into a compute slot after their CPU group is staged, evicting the least
     /// recently used unpinned slot; the hot set is then the tier's initial contents, unpinned
@@ -307,6 +313,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("urgent_first", &self.urgent_first)
             .field("io_factory", &self.io_factory.is_some())
             .field("kv_rotation", &self.kv_rotation)
+            .field("n_seq_max", &self.n_seq_max)
             .field("admit_share", &self.admit_share)
             .field("admit_upload", &self.admit_upload)
             .field("ram_hugepages", &self.ram_hugepages)
@@ -346,6 +353,7 @@ impl LoadOptions {
             urgent_first: false,
             io_factory: None,
             kv_rotation: None,
+            n_seq_max: 1,
             admit_share: None,
             admit_upload: AdmitUpload::Sync,
             ram_hugepages: false,
@@ -358,6 +366,10 @@ impl LoadOptions {
 const SEGMENT_NODES: usize = 1024;
 /// Upper bound of nodes per layer in a whole-step graph (about 70 are used).
 const STEP_NODES_PER_LAYER: usize = 128;
+
+fn kv_err(e: KvError) -> ModelError {
+    ModelError::Invalid(e.to_string())
+}
 
 fn pad(n: usize, to: usize) -> usize {
     n.div_ceil(to) * to
@@ -431,9 +443,15 @@ struct HostBufs {
 struct State {
     n_tokens: usize,
     n_kv: usize,
+    /// Tokens whose logits the step returns.
+    n_out: usize,
     tokens: OwnedTensor,
     pos: OwnedTensor,
+    /// KV rows the step writes (`set_rows` indices).
+    rows: OwnedTensor,
     mask: OwnedTensor,
+    /// Indices of the tokens whose logits are returned.
+    outputs: OwnedTensor,
     slots: [Slot; 2],
     host: Option<HostBufs>,
 }
@@ -441,8 +459,8 @@ struct State {
 /// A whole-step graph kept across steps (`LoadOptions::reuse_step_graph`). It holds the contexts
 /// of the weights, KV cache and state it reads, so the state must be dropped after it.
 struct StepGraph {
-    /// Token count, padded KV length, `last_only` and routing recording of the build.
-    key: (usize, usize, bool, bool),
+    /// Token count, padded KV length, output count and routing recording of the build.
+    key: (usize, usize, usize, bool),
     graph: OwnedGraph,
     logits: OwnedTensor,
     /// Per layer, the router's ids and weights (with routing recording).
@@ -468,7 +486,8 @@ pub struct Qwen3Moe {
     kv: Kv,
     step: Option<StepGraph>,
     state: Option<State>,
-    n_past: usize,
+    pool: KvPool,
+    n_seq_max: usize,
     reuse_step_graph: bool,
     step_graphs_built: u64,
     segments_run: u64,
@@ -510,7 +529,7 @@ impl std::fmt::Debug for Qwen3Moe {
         f.debug_struct("Qwen3Moe")
             .field("hparams", &self.file.hparams)
             .field("backend", &self.primary)
-            .field("n_past", &self.n_past)
+            .field("n_past", &self.n_past())
             .finish()
     }
 }
@@ -614,9 +633,14 @@ impl Qwen3Moe {
             None
         };
         let (weights, weights_bytes) = load_weights(&file, &primary, slots)?;
+        if opts.n_seq_max == 0 {
+            return Err(ModelError::Invalid("n_seq_max must be at least 1".into()));
+        }
+        let n_seq_max = opts.n_seq_max;
+        let kv_rows = pad(opts.n_ctx.max(1), KV_PAD);
         let (kv, kv_bytes) = alloc_kv(
             &h.attn(),
-            pad(opts.n_ctx.max(1), KV_PAD),
+            kv_rows,
             &primary,
             opts.kv,
             opts.kv_rotation,
@@ -682,7 +706,8 @@ impl Qwen3Moe {
             kv,
             step: None,
             state: None,
-            n_past: 0,
+            pool: KvPool::new(Box::new(Chunked::new(kv_rows))),
+            n_seq_max,
             reuse_step_graph: opts.reuse_step_graph,
             step_graphs_built: 0,
             segments_run: 0,
@@ -743,9 +768,19 @@ impl Qwen3Moe {
         self.file.hparams.n_vocab as usize
     }
 
-    /// Tokens in the KV cache.
+    /// Tokens held by sequence 0.
     pub fn n_past(&self) -> usize {
-        self.n_past
+        self.pool.seq_len(0)
+    }
+
+    /// Sequences the KV pool serves.
+    pub fn n_seq_max(&self) -> usize {
+        self.n_seq_max
+    }
+
+    /// The KV pool: lengths, reservations and free rows.
+    pub fn pool(&self) -> &KvPool {
+        &self.pool
     }
 
     /// Format of the K and V cache.
@@ -948,9 +983,10 @@ impl Qwen3Moe {
         std::mem::take(&mut self.profile)
     }
 
-    /// Publishes memory use and KV tokens held; also after the cache shrinks, so the gauge
-    /// does not keep a dropped sequence's length.
+    /// Publishes memory use, the KV tokens held and the pool's blocks; also after the cache
+    /// shrinks, so the gauge does not keep a dropped sequence's length.
     fn report_memory(&self) {
+        let held = self.held_tokens() as u64;
         for m in self.memory() {
             match &m.format {
                 Some(f) => self.metrics.kv(
@@ -959,7 +995,7 @@ impl Qwen3Moe {
                     f,
                     m.used,
                     m.capacity,
-                    self.n_past as u64,
+                    held,
                     self.kv.n_rows as u64,
                 ),
                 None => self
@@ -967,27 +1003,133 @@ impl Qwen3Moe {
                     .buffer(&m.device, m.tier, m.kind, m.used, m.capacity),
             }
         }
-    }
-
-    /// Forgets the KV cache; the next `eval` starts at position 0.
-    pub fn reset(&mut self) {
-        self.n_past = 0;
-        self.report_memory();
-    }
-
-    /// Rolls the cache back to its first `n_past` tokens. Rows above stay in the KV buffers but
-    /// `run()` masks every column above `n_past + i` and the next step overwrites them, so
-    /// nothing needs clearing (ADR 0043).
-    pub fn rewind(&mut self, n_past: usize) -> Result<()> {
-        if n_past > self.n_past {
-            return Err(ModelError::Invalid(format!(
-                "cannot rewind to {n_past}: only {} tokens cached",
-                self.n_past
-            )));
+        if let Some(t) = &self.telemetry {
+            let b = self.pool.blocks();
+            let device = self.primary.name();
+            let tier = if self.primary.is_cpu() { "ram" } else { "vram" };
+            let m = t.metrics();
+            m.kv_blocks(&device, tier, "used", b.used as u64);
+            m.kv_blocks(&device, tier, "reserved", b.reserved as u64);
+            m.kv_blocks(&device, tier, "free", b.free as u64);
         }
-        self.n_past = n_past;
+    }
+
+    fn held_tokens(&self) -> usize {
+        (0..self.n_seq_max as u32)
+            .map(|s| self.pool.seq_len(s))
+            .sum()
+    }
+
+    fn check_seq(&self, seq: u32) -> Result<()> {
+        if (seq as usize) < self.n_seq_max {
+            Ok(())
+        } else {
+            Err(ModelError::Invalid(format!(
+                "sequence {seq} outside 0..{}",
+                self.n_seq_max
+            )))
+        }
+    }
+
+    /// Copies the rows a layout move or `seq_cp` asks for, on the device. Applied right after
+    /// the pool call that returned them: the layout has already changed.
+    fn apply(&mut self, copies: &[RowCopy]) -> Result<()> {
+        let list: Vec<_> = copies.iter().map(|c| (c.src, c.dst, c.n)).collect();
+        copy_rows(&self.kv, &mut self.sched, &list)?;
+        if let Some(t) = &self.telemetry {
+            for _ in copies {
+                t.metrics().kv_relocation();
+            }
+        }
+        Ok(())
+    }
+
+    /// Guarantees rows for `seq` to grow to `n` positions. `Ok(false)` when the pool cannot give
+    /// them (nothing changed). A sequence the layout has to move is copied on the device.
+    pub fn try_reserve(&mut self, seq: u32, n: usize) -> Result<bool> {
+        self.check_seq(seq)?;
+        match self.pool.reserve(seq, n) {
+            Ok(copies) => {
+                self.apply(&copies)?;
+                self.report_memory();
+                Ok(true)
+            }
+            Err(KvError::Full { .. }) => Ok(false),
+            Err(e) => Err(kv_err(e)),
+        }
+    }
+
+    /// Like [`Qwen3Moe::try_reserve`]; a full pool is an error.
+    pub fn seq_reserve(&mut self, seq: u32, n: usize) -> Result<()> {
+        if self.try_reserve(seq, n)? {
+            Ok(())
+        } else {
+            Err(self.pool_full(seq, n))
+        }
+    }
+
+    fn pool_full(&self, seq: u32, n: usize) -> ModelError {
+        ModelError::Invalid(format!(
+            "KV pool full: {n} rows for sequence {seq}, {} free",
+            self.pool.free()
+        ))
+    }
+
+    /// Keeps the first `keep` positions of `seq`. The reservation shrinks to `keep` (rounded up
+    /// to 256 rows); 0 frees the sequence.
+    pub fn seq_rm(&mut self, seq: u32, keep: usize) -> Result<()> {
+        self.check_seq(seq)?;
+        self.pool.seq_rm(seq, keep);
         self.report_memory();
         Ok(())
+    }
+
+    /// `dst` (empty) becomes the first `n` positions of `src`. `Ok(false)` when the pool has no
+    /// rows for it (nothing changed).
+    pub fn try_seq_cp(&mut self, src: u32, dst: u32, n: usize) -> Result<bool> {
+        self.check_seq(src)?;
+        self.check_seq(dst)?;
+        match self.pool.seq_cp(src, dst, n) {
+            Ok(copies) => {
+                self.apply(&copies)?;
+                self.report_memory();
+                Ok(true)
+            }
+            Err(KvError::Full { .. }) => Ok(false),
+            Err(e) => Err(kv_err(e)),
+        }
+    }
+
+    pub fn seq_cp(&mut self, src: u32, dst: u32, n: usize) -> Result<()> {
+        if self.try_seq_cp(src, dst, n)? {
+            Ok(())
+        } else {
+            Err(self.pool_full(dst, n))
+        }
+    }
+
+    /// Positions held by `seq`.
+    pub fn seq_len(&self, seq: u32) -> usize {
+        self.pool.seq_len(seq)
+    }
+
+    /// Forgets the KV cache of sequence 0; the next `eval` starts at position 0.
+    pub fn reset(&mut self) {
+        self.pool.seq_rm(0, 0);
+        self.report_memory();
+    }
+
+    /// Rolls sequence 0 back to its first `n_past` tokens. Rows above stay in the KV buffers but
+    /// the mask hides them and the next step overwrites them, so nothing needs clearing
+    /// (ADR 0043).
+    pub fn rewind(&mut self, n_past: usize) -> Result<()> {
+        if n_past > self.n_past() {
+            return Err(ModelError::Invalid(format!(
+                "cannot rewind to {n_past}: only {} tokens cached",
+                self.n_past()
+            )));
+        }
+        self.seq_rm(0, n_past)
     }
 
     /// Bytes of one cached position across all layers (K and V).
@@ -1000,43 +1142,87 @@ impl Qwen3Moe {
             .sum()
     }
 
-    /// Copies the K and V rows of the cached positions to host bytes, layer by layer (ADR 0049).
-    /// The cache is `[n_embd_kv, n_ctx]` per layer, so the rows of positions `0..n_past` are
-    /// one contiguous range.
-    pub fn kv_snapshot(&self) -> Result<Vec<u8>> {
-        let mut out = Vec::with_capacity(self.n_past * self.kv_row_bytes());
+    /// The K and V rows of the positions of `seq` as host bytes, tensor by tensor, positions in
+    /// order (ADR 0049). The bytes do not depend on where the rows sit in the pool.
+    pub fn seq_snapshot(&self, seq: u32) -> Result<Vec<u8>> {
+        self.check_seq(seq)?;
+        let n = self.pool.seq_len(seq);
+        let runs = self.pool.runs(seq, n);
+        let mut out = Vec::with_capacity(n * self.kv_row_bytes());
         for t in self.kv.k.iter().chain(&self.kv.v) {
             let row = t.get().nbytes() / self.kv.n_rows;
-            out.extend_from_slice(&t.get().get_bytes(0, self.n_past * row)?);
+            for &(start, len) in &runs {
+                out.extend_from_slice(&t.get().get_bytes(start * row, len * row)?);
+            }
         }
         Ok(out)
     }
 
-    /// Writes a [`Qwen3Moe::kv_snapshot`] of `n` positions back and sets the cache length to `n`.
-    pub fn kv_restore(&mut self, bytes: &[u8], n: usize) -> Result<()> {
-        if n > self.kv.n_rows || bytes.len() != n * self.kv_row_bytes() {
+    /// Replaces `seq` by a [`Qwen3Moe::seq_snapshot`] of `n` positions. `Ok(false)` when the
+    /// pool has no rows for them (nothing changed).
+    pub fn try_seq_restore(&mut self, seq: u32, bytes: &[u8], n: usize) -> Result<bool> {
+        self.check_seq(seq)?;
+        if bytes.len() != n * self.kv_row_bytes() {
             return Err(ModelError::Invalid(format!(
                 "a KV snapshot of {} bytes does not hold {n} positions",
                 bytes.len()
             )));
         }
+        // Check the pool can hold `n` rows before anything is dropped, so a full pool changes
+        // nothing; then start from an empty sequence, which gets a run at least as good.
+        if n > 0 && n > self.pool.reserved(seq) && !self.try_reserve(seq, n)? {
+            return Ok(false);
+        }
+        self.pool.seq_rm(seq, 0);
+        if n > 0 && !self.try_reserve(seq, n)? {
+            return Err(ModelError::Invalid(format!(
+                "KV pool lost the rows of sequence {seq} while it was replaced"
+            )));
+        }
+        let runs = self.pool.runs(seq, n);
         let mut rest = bytes;
         for t in self.kv.k.iter().chain(&self.kv.v) {
-            let len = n * (t.get().nbytes() / self.kv.n_rows);
-            let (head, tail) = rest.split_at(len);
-            t.get().set_bytes(head, 0)?;
-            rest = tail;
+            let row = t.get().nbytes() / self.kv.n_rows;
+            for &(start, len) in &runs {
+                let (head, tail) = rest.split_at(len * row);
+                t.get().set_bytes(head, start * row)?;
+                rest = tail;
+            }
         }
-        self.n_past = n;
+        if n > 0 {
+            self.pool.commit(&[StepInput {
+                seq,
+                n_tokens: n,
+                all_logits: false,
+            }]);
+        }
         self.report_memory();
-        Ok(())
+        Ok(true)
     }
 
-    /// Runs `tokens` after the tokens already in the cache and returns the logits of every
+    pub fn seq_restore(&mut self, seq: u32, bytes: &[u8], n: usize) -> Result<()> {
+        if self.try_seq_restore(seq, bytes, n)? {
+            Ok(())
+        } else {
+            Err(self.pool_full(seq, n))
+        }
+    }
+
+    /// Sequence 0's cache as host bytes (ADR 0049).
+    pub fn kv_snapshot(&self) -> Result<Vec<u8>> {
+        self.seq_snapshot(0)
+    }
+
+    /// Writes a [`Qwen3Moe::kv_snapshot`] of `n` positions back and sets sequence 0's length.
+    pub fn kv_restore(&mut self, bytes: &[u8], n: usize) -> Result<()> {
+        self.seq_restore(0, bytes, n)
+    }
+
+    /// Runs `tokens` after the tokens already in sequence 0 and returns the logits of every
     /// position, `tokens.len() * n_vocab` values, position-major.
     pub fn eval(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {
         let mut out = Vec::new();
-        self.run(tokens, false, &mut out)?;
+        self.eval_seq0(tokens, true, &mut out)?;
         Ok(out)
     }
 
@@ -1044,54 +1230,122 @@ impl Qwen3Moe {
     /// not need the head for the other positions.
     pub fn eval_last(&mut self, tokens: &[i32]) -> Result<Vec<f32>> {
         let mut out = Vec::new();
-        self.run(tokens, true, &mut out)?;
+        self.eval_seq0(tokens, false, &mut out)?;
         Ok(out)
     }
 
     /// Like [`Qwen3Moe::eval_last`] but into `out`, whose allocation is reused: a decode step
     /// then reads its 151K logits without allocating.
     pub fn eval_last_into(&mut self, tokens: &[i32], out: &mut Vec<f32>) -> Result<()> {
-        self.run(tokens, true, out)
+        self.eval_seq0(tokens, false, out)
     }
 
-    fn run(&mut self, tokens: &[i32], last_only: bool, logits: &mut Vec<f32>) -> Result<()> {
+    fn eval_seq0(&mut self, tokens: &[i32], all_logits: bool, out: &mut Vec<f32>) -> Result<()> {
+        let n_past = self.pool.seq_len(0);
+        if n_past + tokens.len() > self.kv.n_rows {
+            return Err(ModelError::Invalid(format!(
+                "context full: {n_past} cached + {} new > {}",
+                tokens.len(),
+                self.kv.n_rows
+            )));
+        }
+        self.decode(
+            &[SeqEval {
+                seq: 0,
+                tokens,
+                all_logits,
+            }],
+            out,
+        )?;
+        Ok(())
+    }
+
+    /// One step: each input's tokens are appended to its sequence (sequences distinct, tokens
+    /// never empty). Rows missing for a sequence are reserved first (a full pool is an error
+    /// and leaves every sequence's length as it was). The logits of the last token of each
+    /// input, or of all its tokens with `all_logits`, go into `out`, `n_vocab` floats per row in
+    /// input and position order; the result is the row range of each input.
+    pub fn decode(
+        &mut self,
+        inputs: &[SeqEval<'_>],
+        out: &mut Vec<f32>,
+    ) -> Result<Vec<Range<usize>>> {
         let t0 = Instant::now();
+        if inputs.is_empty() {
+            return Err(ModelError::Invalid("no sequences".into()));
+        }
+        let n_vocab = self.file.hparams.n_vocab;
+        let mut step = Vec::with_capacity(inputs.len());
+        for inp in inputs {
+            self.check_seq(inp.seq)?;
+            if inp.tokens.is_empty() {
+                return Err(ModelError::Invalid("no tokens".into()));
+            }
+            if let Some(&t) = inp.tokens.iter().find(|&&t| t < 0 || t as u32 >= n_vocab) {
+                return Err(ModelError::Invalid(format!(
+                    "token {t} outside the vocabulary"
+                )));
+            }
+            step.push(StepInput {
+                seq: inp.seq,
+                n_tokens: inp.tokens.len(),
+                all_logits: inp.all_logits,
+            });
+        }
+        for s in &step {
+            let need = self.pool.seq_len(s.seq) + s.n_tokens;
+            if self.pool.reserved(s.seq) < need {
+                self.seq_reserve(s.seq, need)?;
+            }
+        }
+        let plan = self.pool.plan_step(&step).map_err(kv_err)?;
+        let tokens: Vec<i32> = inputs
+            .iter()
+            .flat_map(|i| i.tokens.iter().copied())
+            .collect();
+        self.run(&tokens, &step, &plan, out, t0)?;
+        let mut row = 0;
+        Ok(step
+            .iter()
+            .map(|s| {
+                let k = if s.all_logits { s.n_tokens } else { 1 };
+                row += k;
+                row - k..row
+            })
+            .collect())
+    }
+
+    fn run(
+        &mut self,
+        tokens: &[i32],
+        step: &[StepInput],
+        plan: &StepPlan,
+        logits: &mut Vec<f32>,
+        t0: Instant,
+    ) -> Result<()> {
         let h = self.file.hparams.clone();
         let n = tokens.len();
-        if n == 0 {
-            return Err(ModelError::Invalid("no tokens".into()));
-        }
-        if self.n_past + n > self.kv.n_rows {
-            return Err(ModelError::Invalid(format!(
-                "context full: {} cached + {n} new > {}",
-                self.n_past, self.kv.n_rows
-            )));
-        }
-        if let Some(&t) = tokens.iter().find(|&&t| t < 0 || t as u32 >= h.n_vocab) {
-            return Err(ModelError::Invalid(format!(
-                "token {t} outside the vocabulary"
-            )));
-        }
-        let n_kv = pad(self.n_past + n, KV_PAD);
+        let n_kv = plan.n_kv;
+        let n_out = plan.outputs.len();
         if self
             .state
             .as_ref()
-            .is_none_or(|s| s.n_tokens != n || s.n_kv != n_kv)
+            .is_none_or(|s| (s.n_tokens, s.n_kv, s.n_out) != (n, n_kv, n_out))
         {
             // The kept graph holds the old state's context: drop it first, then free the buffers.
             self.step = None;
             self.state = None;
             let host = self.overlap.then_some(&self.cpu);
-            self.state = Some(alloc_state(&h, n, n_kv, &self.primary, host)?);
+            self.state = Some(alloc_state(&h, (n, n_kv, n_out), &self.primary, host)?);
         }
         let st = self.state.as_ref().expect("state allocated above");
         st.tokens.get().set_i32(tokens)?;
-        let pos: Vec<i32> = (self.n_past..self.n_past + n).map(|p| p as i32).collect();
-        st.pos.get().set_i32(&pos)?;
+        st.pos.get().set_i32(&plan.pos)?;
+        st.rows.get().set_i32(&plan.rows)?;
         // `[n_kv, n]` as libllama builds it at the pin (no row padding since GGML_KQ_MASK_PAD
         // went away): a decode step writes and uploads one row, not 32.
-        let mask = causal_mask(self.n_past, n, n_kv);
-        st.mask.get().set_f16_bits(&mask)?;
+        st.mask.get().set_f16_bits(&plan.mask)?;
+        st.outputs.get().set_i32(&plan.outputs)?;
         let mut prof = self.profile;
         prof.steps += 1;
         prof.inputs += t0.elapsed();
@@ -1101,7 +1355,7 @@ impl Qwen3Moe {
             // (ADR 0036).
             let mut t = Instant::now();
             let record = self.routing.is_some();
-            let key = (n, n_kv, last_only, record);
+            let key = (n, n_kv, n_out, record);
             let reusable = self.reuse_step_graph
                 && self
                     .step
@@ -1116,7 +1370,7 @@ impl Qwen3Moe {
                 self.step = None;
                 let ctx = Rc::new(Context::new(step_nodes(&h), step_nodes(&h))?);
                 let (graph, out, routed) =
-                    build_step(&h, &self.weights, &self.kv, st, &ctx, last_only, record);
+                    build_step(&h, &self.weights, &self.kv, st, &ctx, record);
                 let mut deps = vec![
                     &self.weights.tok_embd,
                     &self.kv.k[0],
@@ -1167,7 +1421,7 @@ impl Qwen3Moe {
                 self.metrics.layer_step(true);
             }
             lap(&mut prof.readback, t);
-            return self.finish_step(n, t0, prof, 1);
+            return self.finish_step(step, t0, prof, 1);
         }
 
         let graphs_before = self.group_graphs_run;
@@ -1216,7 +1470,6 @@ impl Qwen3Moe {
                     st,
                     &ctx,
                     seg,
-                    last_only,
                     self.predict_depth,
                     &specs,
                 );
@@ -1472,23 +1725,28 @@ impl Qwen3Moe {
         let timed = |p: &StepProfile| p.inputs + p.build + p.alloc + p.compute + p.readback;
         let others = timed(&prof) - timed(&self.profile);
         prof.streamer += t0.elapsed().saturating_sub(others);
-        self.finish_step(n, t0, prof, graphs)
+        self.finish_step(step, t0, prof, graphs)
     }
 
     /// Bookkeeping after a step that computed `graphs` graphs.
     fn finish_step(
         &mut self,
-        n: usize,
+        step: &[StepInput],
         t0: Instant,
         mut prof: StepProfile,
         graphs: u32,
     ) -> Result<()> {
-        self.n_past += n;
+        let n: usize = step.iter().map(|s| s.n_tokens).sum();
+        self.pool.commit(step);
         prof.total += t0.elapsed();
         self.profile = prof;
         if let Some(t) = &self.telemetry {
             t.record_step(StepSample {
-                phase: if n > 1 { Phase::Prefill } else { Phase::Decode },
+                phase: if step.iter().all(|s| s.n_tokens == 1) {
+                    Phase::Decode
+                } else {
+                    Phase::Prefill
+                },
                 stage: 0,
                 graphs: false,
                 duration: t0.elapsed(),
@@ -2017,12 +2275,11 @@ fn set_compute_threads(cpu: &Backend, full: i32, reduced: Option<i32>, streamer:
 /// `host`: with overlapped decode, the CPU backend that holds the host buffers (ADR 0054).
 fn alloc_state(
     h: &Hparams,
-    n: usize,
-    n_kv: usize,
+    (n, n_kv, n_out): (usize, usize, usize),
     backend: &Backend,
     host: Option<&Backend>,
 ) -> Result<State> {
-    let ctx = Rc::new(Context::new(32, 0)?);
+    let ctx = Rc::new(Context::new(36, 0)?);
     let (ne, nu, nt) = (h.n_embd as i64, h.n_expert_used as i64, n as i64);
     let slot = |i: usize| {
         let t = |ty, dims: &[i64], what: &str| {
@@ -2045,9 +2302,12 @@ fn alloc_state(
     let state = State {
         n_tokens: n,
         n_kv,
+        n_out,
         tokens: ctx.new_persistent(Type::I32, &[nt]),
         pos: ctx.new_persistent(Type::I32, &[nt]),
+        rows: ctx.new_persistent(Type::I32, &[nt]),
         mask: ctx.new_persistent(Type::F16, &[n_kv as i64, nt]),
+        outputs: ctx.new_persistent(Type::I32, &[n_out as i64]),
         slots: [slot(0), slot(1)],
         host: None,
     };
@@ -2079,7 +2339,6 @@ fn build_segment<'a>(
     st: &'a State,
     ctx: &'a Context,
     seg: usize,
-    last_only: bool,
     predict_depth: usize,
     groups: &[GroupSpec<'a>],
 ) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
@@ -2112,7 +2371,7 @@ fn build_segment<'a>(
     };
 
     if seg == n_layer {
-        let logits = head(h, ctx, w, st, x, last_only);
+        let logits = head(h, ctx, w, st, x);
         g.expand(logits);
         return (g, Some(logits), inputs);
     }
@@ -2165,7 +2424,6 @@ fn build_step<'a>(
     kv: &'a Kv,
     st: &'a State,
     ctx: &'a Context,
-    last_only: bool,
     record: bool,
 ) -> (Graph<'a>, Tensor<'a>, Vec<(Tensor<'a>, Tensor<'a>)>) {
     let mut g = ctx.new_graph(step_nodes(h));
@@ -2185,24 +2443,22 @@ fn build_step<'a>(
         let experts = weighted_experts(h, ctx, &w.layers[il], xn, ids, weights);
         x = ctx.add(sum_experts(h, ctx, experts), ffn_inp);
     }
-    let logits = head(h, ctx, w, st, x, last_only);
+    let logits = head(h, ctx, w, st, x);
     g.expand(logits);
     (g, logits, routed)
 }
 
-/// Output norm and projection; only the last position when `last_only`.
+/// Output norm and projection; only the positions in `st.outputs` unless every token has one.
 fn head<'a>(
     h: &Hparams,
     ctx: &'a Context,
     w: &'a Weights,
     st: &'a State,
     x: Tensor<'a>,
-    last_only: bool,
 ) -> Tensor<'a> {
     let mut cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), w.out_norm.get());
-    if last_only && st.n_tokens > 1 {
-        let nb1 = cur.nb()[1];
-        cur = ctx.view(cur, &[h.n_embd as i64, 1], &[nb1], (st.n_tokens - 1) * nb1);
+    if st.n_out < st.n_tokens {
+        cur = ctx.get_rows(cur, st.outputs.get());
     }
     let head = w.output.as_ref().unwrap_or(&w.tok_embd);
     ctx.mul_mat(head.get(), cur).set_output()
@@ -2225,7 +2481,7 @@ fn attention_and_router<'a>(
     let n = st.n_tokens as i64;
     let step = AttnStep {
         pos: st.pos.get(),
-        rows: st.pos.get(),
+        rows: st.rows.get(),
         mask: st.mask.get(),
         n_tokens: st.n_tokens,
         n_kv: st.n_kv,
@@ -2561,7 +2817,7 @@ mod graph_order {
     }
 
     /// The segments' ops in order, without the copies into the state slots.
-    fn segment_ops(m: &Qwen3Moe, st: &State, last_only: bool) -> Ops {
+    fn segment_ops(m: &Qwen3Moe, st: &State) -> Ops {
         let h = &m.file.hparams;
         let n_layer = h.n_layer as usize;
         let to_state = |t: Tensor<'_>| {
@@ -2576,7 +2832,7 @@ mod graph_order {
         let mut all = Vec::new();
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, last_only, 0, &[]);
+            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, 0, &[]);
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router.
                 let what = format!("segment {seg}");
@@ -2594,13 +2850,13 @@ mod graph_order {
         let m = model();
         let h = m.file.hparams.clone();
         let n_layer = h.n_layer as usize;
-        for (n, last_only) in [(1, false), (5, true)] {
-            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary, None).unwrap();
+        for (n, n_out) in [(1, 1), (5, 5), (5, 1)] {
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
             for seg in 0..=n_layer {
                 let build = |depth: usize| {
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
                     let (g, _, _) =
-                        build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, last_only, depth, &[]);
+                        build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, depth, &[]);
                     ops(&g, |_| false)
                 };
                 let plain = build(0);
@@ -2623,7 +2879,7 @@ mod graph_order {
         let m = model();
         let h = m.file.hparams.clone();
         for n in [1, 5, 33] {
-            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary, None).unwrap();
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), 1), &m.primary, None).unwrap();
             assert_eq!(st.mask.get().ne(), [pad(n, KV_PAD) as i64, n as i64, 1, 1]);
         }
         // Decode after a prefill still matches a single evaluation of the whole sequence.
@@ -2646,13 +2902,13 @@ mod graph_order {
     fn whole_step_graph_orders_ops_like_the_segments_and_libllama() {
         let m = model();
         let h = m.file.hparams.clone();
-        for (n, last_only) in [(1, false), (5, true)] {
-            let st = alloc_state(&h, n, pad(n, KV_PAD), &m.primary, None).unwrap();
-            let segments = segment_ops(&m, &st, last_only);
+        for (n, n_out) in [(1, 1), (5, 5), (5, 1)] {
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
+            let segments = segment_ops(&m, &st);
             for record in [false, true] {
                 let what = format!("step n={n} record={record}");
                 let ctx = Context::new(step_nodes(&h), step_nodes(&h)).unwrap();
-                let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, last_only, record);
+                let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, record);
                 let (n_layer, n_used) = (h.n_layer as usize, h.n_expert_used as usize);
                 assert_fusable(&g, n_layer, n_used, &what);
                 // The routing outputs are extra nodes; the rest is the segments' order.

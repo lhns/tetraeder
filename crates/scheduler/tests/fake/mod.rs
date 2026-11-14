@@ -1,5 +1,5 @@
 //! Fakes for the batching tests (ADR 0065): `FakeKv`, a `BatchBackend` with its own row
-//! accounting, and `OldFake`, a one-sequence `Backend` to run under `SingleSeq`.
+//! accounting.
 //!
 //! Logits are a deterministic function of a hash of the sequence's tokens up to each position, so
 //! a request decoded in a batch can be compared with the same request decoded alone (P4).
@@ -8,7 +8,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-use tetraeder_scheduler::{Backend, BackendError, BatchBackend, Outputs, SeqId, SeqInput};
+use tetraeder_scheduler::{BackendError, BatchBackend, Outputs, SeqId, SeqInput};
 
 /// FNV-1a over the tokens.
 fn hash_tokens(tokens: &[i32]) -> u64 {
@@ -355,71 +355,6 @@ impl BatchBackend for FakeKv {
         false
     }
 
-    fn bytes_streamed_total(&self) -> Option<u64> {
-        None
-    }
-}
-
-/// A one-sequence `Backend` with the same logits function. With `fail_every`, every n-th `eval`
-/// appends its tokens and then fails, so the adapter has something to roll back.
-pub struct OldFake {
-    pub n_ctx: usize,
-    pub n_vocab: usize,
-    pub tokens: Vec<i32>,
-    pub fail_every: Option<u32>,
-    evals: u32,
-    logits: Vec<f32>,
-}
-
-impl OldFake {
-    pub fn new(n_ctx: usize, n_vocab: usize, fail_every: Option<u32>) -> Self {
-        Self {
-            n_ctx,
-            n_vocab,
-            tokens: Vec::new(),
-            fail_every,
-            evals: 0,
-            logits: Vec::new(),
-        }
-    }
-}
-
-impl Backend for OldFake {
-    fn n_ctx(&self) -> usize {
-        self.n_ctx
-    }
-    fn n_past(&self) -> usize {
-        self.tokens.len()
-    }
-    fn truncate(&mut self, keep: usize) -> Result<(), String> {
-        self.tokens.truncate(keep);
-        Ok(())
-    }
-    fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String> {
-        self.evals += 1;
-        self.tokens.extend_from_slice(tokens);
-        if self
-            .fail_every
-            .is_some_and(|n| self.evals.is_multiple_of(n))
-        {
-            return Err("injected failure".into());
-        }
-        self.logits = logits_for(self.n_vocab, &self.tokens);
-        Ok(&self.logits)
-    }
-    fn snapshot(&mut self) -> Result<Vec<u8>, String> {
-        Ok(self.tokens.iter().flat_map(|t| t.to_le_bytes()).collect())
-    }
-    fn restore(&mut self, bytes: &[u8], n: usize) -> Result<(), String> {
-        self.tokens = bytes[..n * 4]
-            .chunks(4)
-            .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
-            .collect();
-        Ok(())
-    }
-    fn on_gpu(&self) -> bool {
-        false
-    }
     fn bytes_streamed_total(&self) -> Option<u64> {
         None
     }

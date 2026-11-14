@@ -321,10 +321,7 @@ fn build_engine(
                 == "qwen3moe"
         }
     };
-    let mut cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
-    if moe {
-        cfg.parallel = 1;
-    }
+    let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
     let parallel = cfg.parallel;
     let tel = Arc::clone(telemetry);
     if moe {
@@ -421,6 +418,7 @@ impl LoadArgs {
         let mut o = LoadOptions::new(backend);
         o.cpu_threads = self.place.threads.and_then(|t| usize::try_from(t).ok());
         o.n_ctx = self.ctx as usize;
+        o.n_seq_max = self.llama.n_seq_max as usize;
         o.expert_slots = self.expert_slots;
         o.ram_slots = self.ram_slots;
         o.miss = self.miss;

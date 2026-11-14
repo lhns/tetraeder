@@ -1,6 +1,6 @@
 //! Loading the backends for the scheduler and reading model facts from the GGUF.
 
-use crate::backend::{BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, SingleSeq};
+use crate::backend::{BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend};
 use std::path::Path;
 use std::sync::Arc;
 use tetraeder_engine::{ContextConfig, Engine, Placement};
@@ -53,13 +53,8 @@ pub fn load_moe_chunked(path: &Path, opts: &LoadOptions, chunk: usize) -> Result
     );
     let on_gpu = matches!(opts.backend, tetraeder_model::BackendChoice::Gpu { .. });
     let model = Qwen3Moe::load(path, opts).map_err(|e| e.to_string())?;
-    let n_vocab = usize::try_from(tokenizer.n_vocab()).unwrap_or(0);
     Ok(Loaded {
-        // One sequence until C4 gives the builder a multi-sequence KV (ADR 0065).
-        backend: Box::new(SingleSeq::new(
-            MoeBackend::with_chunk(model, on_gpu, chunk),
-            n_vocab,
-        )),
+        backend: Box::new(MoeBackend::with_chunk(model, on_gpu, chunk)),
         tokenizer,
     })
 }

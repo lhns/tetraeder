@@ -10,8 +10,7 @@ pub mod sample;
 mod scheduler;
 
 pub use backend::{
-    Backend, BackendError, BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SeqId,
-    SeqInput, SingleSeq,
+    BackendError, BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SeqId, SeqInput,
 };
 pub use load::{
     Loaded, architecture, chat_template, load_llama, load_moe, load_moe_chunked, model_id,

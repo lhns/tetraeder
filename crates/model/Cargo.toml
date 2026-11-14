@@ -17,6 +17,7 @@ cuda = ["tetraeder-ggml-sys/cuda"]
 
 [dependencies]
 tetraeder-ggml-sys = { path = "../ggml-sys" }
+tetraeder-kvcache = { path = "../kvcache" }
 tetraeder-memory = { path = "../memory" }
 tetraeder-plan = { path = "../plan" }
 tetraeder-telemetry = { path = "../telemetry" }
