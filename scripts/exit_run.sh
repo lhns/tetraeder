@@ -661,6 +661,12 @@ EOF
         # ggml's default polling, explicit: since ADR 0061 main-overlap polls at 0 on a quota box, so this is its pair
         exit_regime main-overlap-poll50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 || rc=30
         exit_regime main-overlap-poll50-repeat 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 || rc=30
+        # Diagnostic arms for point 3 (ADR 0045 13o), not paired against a baseline: the iqk AVX-512 kernels off
+        # (patch 0002 reads GGML_CPU_IQK_MM), and the free VRAM filled with expert slots (13o used 22 of 48 GB;
+        # VRAMFILL_EXTRA bytes on top of the KT-matched slots, default 18 GB, leaves about 7 GB for compute buffers)
+        exit_regime main-overlap-noiqk 60 "${deep[@]}" "${ovl[@]}" GGML_CPU_IQK_MM=0 || rc=30
+        exit_regime main-overlap-vramfill 60 "${deep[@]}" "${ovl[@]}" \
+          TETRAEDER_EXIT_VRAM_SLOT_BYTES=$((vram_bytes + ${VRAMFILL_EXTRA:-18000000000})) || rc=30
         # Polling at 50 with the pool paused while the main thread waits, and the RAM tier by access frequency (the
         # engine switches land on other branches; the variables are ignored until then). Each has a repeat
         exit_regime main-overlap-pause50 60 "${deep[@]}" "${ovl[@]}" TETRAEDER_EXIT_CPU_POLL=50 TETRAEDER_EXIT_POOL_PAUSE=1 || rc=30
