@@ -765,7 +765,6 @@ impl Metrics {
             .record(n, &[KeyValue::new(attr::STATE, state)]);
     }
 
-
     /// Mean seconds per decoded token of one request in `stage` (decode profile).
     pub fn decode_stage(&self, stage: &'static str, seconds: f64) {
         self.decode_stage
