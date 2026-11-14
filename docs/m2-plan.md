@@ -81,6 +81,16 @@ Needed so that streamed MoE serves concurrency 4, and so the 30B can count on th
 - Speculation wired into `serve` (ADR 0065: drafts only when one sequence decodes): after C2, one Sonnet task; measured in the D2 spec stage.
 - Self-speculative decoding with a low-bit copy, and MTP where a model has it: parked until after the Phase 4 verdict. Neither is in the exit test; ADR 0043 showed drafts lose at batch 1 in the streamed regime until op offload was fixed, so the D2 rerun decides whether more drafter kinds are worth building.
 
+### Review fixes from the C2b and C5 review (2026-11-15), one worker after C3b and C4 merge
+1. A per-input `Failed` (e.g. an out-of-vocabulary token id) fails every request in the step (`scheduler.rs` step error path; `qwen3.rs` decode): validate token ids at admission, and on `Failed` retry the step without the offending input.
+2. Chunked relocation asks for `need + GROW` contiguous rows (`kvcache/src/chunked.rs`): try `need` first; add a proptest over pool size and load on the dense backend that would have caught it.
+3. libllama `seq_restore` cleanup is a no-op on an empty sequence (`engine.rs`, `seq_rm(seq, 0)` returns early): clear cells unconditionally after a failed restore; test with an injected failure if possible.
+4. A preempted request with `toks.len() == n_ctx_seq` gets an Error instead of `Length` at re-admission (`scheduler.rs` admit).
+5. libllama `decode` names `inputs[0].seq` in `KvFull` instead of the sequence that needed rows (`backend.rs`).
+6. The scheduler's `reserved_to` goes stale after a dense restore or truncation (efficiency only).
+7. A failed RAM restore drops the cache entry (`scheduler.rs` place): put it back.
+Also: document that decode-profile `eval_s` is shared step wall time and `gpu_seconds` a token share (no gate may use per-request `gpu_seconds`).
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 
@@ -145,7 +155,7 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
    - the poll 0/50 pair;
    - the ADR 0054 arms;
    - FP8 `llamacpp-cache` against the builder;
-   - the planner's own fill tier: by its formula 35 slots (38.4 GB) on a 49,140 MiB card, which the measured 11.9 GB besides slots puts at about 50.3 of 51.5 GB, so run `serve`'s pick once and record its peak (the harness's 22.5 GB reserve gives 26 slots);
+   - the planner's own fill tier, last (it may OOM): 35 slots (38.4e9 B) by its estimate on a 49,140 MiB (51.5e9 B) card. Measured besides slots: 13.9e9 B at the exit run's ubatch 2048 (40,852 MiB peak with 28.97e9 B of slots), which matches the planner formula at ubatch 2048, so 35 slots fit only at ubatch 256 (estimate 50.5e9 B); candidates are fit-checked per ubatch (`builder.rs`), so serve would pick 35 slots at ubatch 256. Record its peak and prefill rate (the harness's 22.5 GB reserve gives 26 slots at any ubatch);
    - trace.
    - Host 60400 or a second qualifying host, to widen point 3's scope.
 5. C4 on the C6 layout.
