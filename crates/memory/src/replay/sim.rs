@@ -985,11 +985,31 @@ impl<'a, 't> Sim<'a, 't> {
             Vec::new()
         };
         if self.prefetch_on {
+            // In a shared pool the reads for later layers could evict this step's RAM hits; they
+            // stay pinned while the reads are placed (per layer the tables are apart).
+            let global = matches!(self.ram, Ram::Global(_));
+            let hits: Vec<u32> = rest
+                .iter()
+                .copied()
+                .filter(|&e| self.ram_has(il, e))
+                .collect();
+            if global {
+                let mut pins = self.standing(il).to_vec();
+                pins.extend(&hits);
+                self.set_ram_pins(il, &pins);
+            }
             if let Some(p) = &s.predicted {
                 self.start_prefetch(il + 1, p);
             }
             if let (Some(p), true) = (&s.predicted2, self.depth2) {
                 self.start_prefetch(il + 2, p);
+            }
+            if global {
+                let pins = self.standing(il).to_vec();
+                self.set_ram_pins(il, &pins);
+            }
+            if self.check {
+                self.violations += hits.iter().filter(|&&e| !self.ram_has(il, e)).count() as u64;
             }
         }
         for chunk in order.chunks(self.ram_slots) {

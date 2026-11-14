@@ -205,7 +205,7 @@ What the committed results already show:
 Decision: replay only, no engine change in this branch.
 
 - Global policies:
-  - `glru`: one byte budget, `ram_slots x sum(expert_bytes)` (82.59 GB at 77, the per-layer tier's bytes; experts are 10.6 or 12.2 MB depending on the layer), LRU over every (layer, expert) in both phases (`slots::GlobalSlots`). It never evicts a pinned expert (a read in flight or a frequency pin) or an expert of the current chunk. A miss with too few evictable bytes bypasses. Chunks stay `ram_slots` experts, and so does the prefetch limit per layer.
+  - `glru`: one byte budget, `ram_slots x sum(expert_bytes)` (82.59 GB at 77, the per-layer tier's bytes; experts are 10.6 or 12.2 MB depending on the layer), LRU over every (layer, expert) in both phases (`slots::GlobalSlots`). It never evicts a pinned expert (a read in flight or a frequency pin) or an expert of the current chunk. While a step places its prefetch reads for later layers, the step's own RAM hits are pinned too; per layer the tables are separate, so this never came up. A miss with too few evictable bytes bypasses. Chunks stay `ram_slots` experts, and so does the prefetch limit per layer.
   - `gfreq:<share>`: `glru` plus, in decode, the top experts by routing count across all layers, leaving out the VRAM hot set, pinned up to `share` of the budget. Room for one decode step and two prefetched layers (`3 x n_used` experts of the largest size) always stays unpinned. Counts compare across layers because every layer routes the same pairs. Refreshed as `freq`. `gfreq:1` is the pure frequency policy; `gfreq:0.5` is LRU around a frequency core.
   - `gbelady`: the offline optimum over the pool, without prefetch. It is the bound for the global policies.
 - Output:
