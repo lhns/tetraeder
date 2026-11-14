@@ -12,3 +12,6 @@ __pycache__/
 # routing traces (tens of MB): kept on the box, zstd copies fetched with the results and kept in runs/traces/
 *.trace
 *.trace.zst
+
+# Claude Code request log of the Phase 4 TTFT verdict (clear-text prompts, ADR 0065)
+bench/private/

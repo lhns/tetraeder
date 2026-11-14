@@ -120,3 +120,36 @@ def test_summary_paired_ratios(tmp_path):
     assert m["engines"]["llama-server"]["c1"]["decode_tps_median"] == 100
     assert m["api_overhead"]["llama-server"]["decode_ratio"] == 0.8
     assert abs(m["api_overhead"]["llama-server"]["prefill_ratio"] - (512 / 0.1) / 5000) < 1e-9
+
+
+def test_replay_p90_filter_and_hash(tmp_path):
+    res = [{"status": 200, "ttft_s": t / 10, "total_s": 1.0} for t in range(1, 11)]
+    s = replay.summarize(res)
+    assert s["ttft_median_s"] == 0.6 and s["ttft_p90_s"] == 0.9
+    assert replay.summarize([])["ttft_p90_s"] is None
+    entries = [{"usage": {"prompt_tokens": n}} for n in (100, 36000, 36001, 40000)] + [{"usage": None}]
+    kept, skipped = replay.filter_prompt_tokens(entries, 36000)
+    assert skipped == 2 and [replay.entry_prompt_tokens(e) for e in kept] == [100, 36000, None]
+    f = tmp_path / "log.jsonl"
+    f.write_bytes(b"abc")
+    assert replay.file_sha256(str(f)) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+
+def test_replay_gguf_context_length(tmp_path):
+    import struct
+
+    def s(x):
+        b = x.encode()
+        return struct.pack("<Q", len(b)) + b
+
+    kv = s("general.name") + struct.pack("<I", 8) + s("m")
+    kv += s("qwen3.block_count") + struct.pack("<II", 4, 36)
+    kv += s("tokenizer.list") + struct.pack("<I", 9) + struct.pack("<IQ", 8, 2) + s("a") + s("b")
+    kv += s("qwen3.context_length") + struct.pack("<II", 4, 40960)
+    f = tmp_path / "m.gguf"
+    f.write_bytes(b"GGUF" + struct.pack("<IQQ", 3, 0, 4) + kv)
+    assert replay.gguf_context_length(str(f)) == 40960
+    log = tmp_path / "l.jsonl"
+    log.write_text("")
+    assert replay.main(["http://x", str(log), "--gguf", str(f), "--expect-context-length", "32768"]) == 2
+    assert replay.main(["http://x", str(log), "--gguf", str(f), "--max-prompt-tokens", "50000"]) == 2

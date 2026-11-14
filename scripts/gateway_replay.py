@@ -10,7 +10,10 @@ usage. Headers of the log (anthropic-version, anthropic-beta) are sent again. Ne
 
 import argparse
 import asyncio
+import hashlib
 import json
+import math
+import struct
 import sys
 import time
 
@@ -32,6 +35,57 @@ def parse_log(lines) -> list[dict]:
         out.append(e)
     out.sort(key=lambda e: e.get("ts_ms", 0))
     return out
+
+
+def entry_prompt_tokens(entry: dict) -> int | None:
+    """`usage.prompt_tokens` the request log recorded for the entry (reqlog.rs)."""
+    u = entry.get("usage")
+    n = u.get("prompt_tokens") if isinstance(u, dict) else None
+    return n if isinstance(n, int) else None
+
+
+def filter_prompt_tokens(entries: list[dict], max_tokens: int) -> tuple[list[dict], int]:
+    """(entries whose logged prompt tokens fit max_tokens, number skipped). Entries without a logged count stay."""
+    kept = [e for e in entries if (entry_prompt_tokens(e) or 0) <= max_tokens]
+    return kept, len(entries) - len(kept)
+
+
+def file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def gguf_context_length(path: str) -> int | None:
+    """The `<arch>.context_length` key of a GGUF file (v2/v3 header walk), None when absent."""
+    sizes = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8}
+    fmts = {0: "<B", 1: "<b", 2: "<H", 3: "<h", 4: "<I", 5: "<i", 10: "<Q", 11: "<q"}
+
+    def skip(f, t):
+        if t in sizes:
+            return f.read(sizes[t])
+        if t == 8:
+            f.seek(struct.unpack("<Q", f.read(8))[0], 1)
+        elif t == 9:
+            et, n = struct.unpack("<IQ", f.read(12))
+            for _ in range(n):
+                skip(f, et)
+        else:
+            raise ValueError(f"unknown GGUF type {t}")
+
+    with open(path, "rb") as f:
+        if f.read(4) != b"GGUF":
+            return None
+        _version, _n_tensors, n_kv = struct.unpack("<IQQ", f.read(20))
+        for _ in range(n_kv):
+            key = f.read(struct.unpack("<Q", f.read(8))[0]).decode("utf-8", "replace")
+            (t,) = struct.unpack("<I", f.read(4))
+            if key.endswith(".context_length") and t in fmts:
+                return struct.unpack(fmts[t], f.read(sizes[t]))[0]
+            skip(f, t)
+    return None
 
 
 def schedule(entries: list[dict], speed: float) -> list[float]:
@@ -128,12 +182,16 @@ def summarize(results: list[dict]) -> dict:
     def med(v):
         return v[len(v) // 2] if v else None
 
+    def p90(v):  # nearest rank, as gateway_bench.percentile
+        return v[min(max(math.ceil(0.9 * len(v)) - 1, 0), len(v) - 1)] if v else None
+
     return {
         "requests": len(results),
         "ok": len(ok),
         "errors": len(results) - len(ok),
         "status_mismatch": sum(1 for r in results if r.get("logged_status") != r.get("status")),
         "ttft_median_s": med(ttft),
+        "ttft_p90_s": p90(ttft),
         "total_median_s": med(tot),
     }
 
@@ -167,6 +225,11 @@ def parse_args(argv=None):
     p.add_argument("--concurrency", type=int, default=4)
     p.add_argument("--timeout", type=float, default=900)
     p.add_argument("--limit", type=int, default=0, help="replay only the first N requests")
+    p.add_argument("--max-prompt-tokens", type=int, default=0,
+                   help="skip entries whose logged usage.prompt_tokens exceed N (0 = keep all)")
+    p.add_argument("--gguf", help="model file: its context_length must be at least --max-prompt-tokens, else exit 2")
+    p.add_argument("--expect-context-length", type=int, default=0,
+                   help="with --gguf: stop unless the file's context_length equals this (ADR 0065: 40960)")
     p.add_argument("--out")
     return p.parse_args(argv)
 
@@ -175,10 +238,25 @@ def main(argv=None) -> int:
     args = parse_args(argv)
     with open(args.log, encoding="utf-8") as f:
         entries = parse_log(f)
+    if args.gguf:
+        n_ctx = gguf_context_length(args.gguf)
+        if args.expect_context_length and n_ctx != args.expect_context_length:
+            print(f"context_length of {args.gguf} is {n_ctx}, expected {args.expect_context_length}", file=sys.stderr)
+            return 2
+        if args.max_prompt_tokens and (n_ctx is None or n_ctx < args.max_prompt_tokens):
+            print(f"context_length {n_ctx} below --max-prompt-tokens {args.max_prompt_tokens}", file=sys.stderr)
+            return 2
+    skipped = 0
+    if args.max_prompt_tokens:
+        entries, skipped = filter_prompt_tokens(entries, args.max_prompt_tokens)
     if args.limit:
         entries = entries[: args.limit]
     out = asyncio.run(replay(args, entries))
-    out["params"] = {"base_url": args.base_url, "log": args.log, "speed": args.speed, "concurrency": args.concurrency}
+    out["params"] = {
+        "base_url": args.base_url, "log": args.log, "speed": args.speed, "concurrency": args.concurrency,
+        "max_prompt_tokens": args.max_prompt_tokens, "skipped": skipped, "requests": len(entries),
+        "log_sha256": file_sha256(args.log),
+    }
     if args.out:
         with open(args.out, "w") as f:
             json.dump(out, f, indent=2)
