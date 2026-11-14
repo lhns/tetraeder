@@ -48,11 +48,12 @@ jobs:
       - name: Fetch test model
         if: steps.model.outputs.cache-hit != 'true'
         run: cargo xtask fetch-model
-      # llama-server from the same vendored tree the engine links, CPU only, no native ISA (like the builder)
+      # llama-server from the same vendored tree, CPU only, built like the engine (ggml-sys build.rs): DL modules, all
+      # CPU variants, no native ISA, so both load the best variant of the runner
       - name: llama-server
         run: |
           cmake -S vendor/llama.cpp -B target/llama-server-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DLLAMA_BUILD_SERVER=ON \
+            -DBUILD_SHARED_LIBS=ON -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DLLAMA_BUILD_SERVER=ON \
             -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_APP=OFF \
             -DLLAMA_BUILD_MTMD=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF
           cmake --build target/llama-server-build --target llama-server --parallel 4
