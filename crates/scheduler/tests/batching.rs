@@ -222,7 +222,7 @@ fn shutdown(s: Arc<Scheduler>) {
 fn spec_strategy(id: u32) -> impl Strategy<Value = Spec> {
     (
         prop_oneof![3 => 1usize..60, 1 => 1usize..3000],
-        0usize..40,
+        prop_oneof![3 => 0usize..40, 1 => 0usize..400],
         1u32..90,
         any::<bool>(),
         any::<u64>(),

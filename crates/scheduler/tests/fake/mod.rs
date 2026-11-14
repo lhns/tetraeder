@@ -45,6 +45,8 @@ pub struct Probe {
     pub max_inputs: AtomicUsize,
     /// Most tokens in one `decode`.
     pub max_step_tokens: AtomicUsize,
+    /// Successful `seq_cp` calls as (src, dst, n).
+    pub seq_cps: std::sync::Mutex<Vec<(SeqId, SeqId, usize)>>,
 }
 
 #[derive(Default, Clone)]
@@ -233,6 +235,7 @@ impl BatchBackend for FakeKv {
             self.pool[r] = Some(*t);
         }
         self.seqs[d].tokens = toks;
+        self.probe.seq_cps.lock().unwrap().push((src, dst, n));
         Ok(())
     }
 
@@ -316,6 +319,10 @@ impl BatchBackend for FakeKv {
             return Err(BackendError::Failed("injected failure".into()));
         }
         Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans))
+    }
+
+    fn kv_row_bytes(&self) -> usize {
+        4
     }
 
     fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {

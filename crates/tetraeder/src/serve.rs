@@ -76,6 +76,10 @@ pub struct ServeArgs {
     /// Host RAM for saved sequences (prefix cache), in MiB; 0 turns it off.
     #[arg(long, default_value_t = 8192)]
     pub cache_ram: usize,
+    /// Reuse no prefix: every request prefills from an empty sequence (no idle, busy or RAM
+    /// reuse). For measuring what reuse is worth; `--cache-ram` is independent.
+    #[arg(long)]
+    pub no_prefix_reuse: bool,
     /// Append one JSON line per request (prompts included) to this file.
     #[arg(long)]
     pub request_log: Option<PathBuf>,
@@ -350,6 +354,7 @@ pub struct SchedParts {
     top_k: u32,
     top_p: f32,
     cache_ram_bytes: usize,
+    prefix_reuse: bool,
     chat_template: Option<String>,
     parallel: usize,
     step_tokens: usize,
@@ -364,6 +369,7 @@ impl SchedParts {
             top_k: a.top_k,
             top_p: a.top_p,
             cache_ram_bytes: a.cache_ram << 20,
+            prefix_reuse: !a.no_prefix_reuse,
             parallel: a.parallel as usize,
             step_tokens: a.step_tokens() as usize,
             chat_template: match &a.chat_template_file {
@@ -384,6 +390,7 @@ impl SchedParts {
         cfg.top_p = self.top_p;
         cfg.metrics = Some(metrics);
         cfg.cache_ram_bytes = self.cache_ram_bytes;
+        cfg.prefix_reuse = self.prefix_reuse;
         cfg.chat_template = self.chat_template.clone();
         cfg.parallel = self.parallel;
         cfg.step_tokens = self.step_tokens;
@@ -528,6 +535,16 @@ mod tests {
         assert!(P::try_parse_from(["x", "--parallel", "0"]).is_err());
         // --ubatch is the default step.
         assert_eq!(parse(&["--ubatch", "128"]).step_tokens(), 128);
+    }
+
+    // hardware: none
+    #[test]
+    fn no_prefix_reuse_with_cache_ram_zero_parses() {
+        let a = parse(&[]);
+        assert!(!a.no_prefix_reuse);
+        let a = parse(&["--no-prefix-reuse", "--cache-ram", "0"]);
+        assert!(a.no_prefix_reuse);
+        assert_eq!(a.cache_ram, 0);
     }
 
     // hardware: none

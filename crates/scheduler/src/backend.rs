@@ -146,6 +146,10 @@ pub trait BatchBackend {
     fn counters(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
     }
+    /// KV bytes per position (0 when unknown), to size `seq_cp` in the transfer metric.
+    fn kv_row_bytes(&self) -> usize {
+        0
+    }
     /// Most tokens one `decode` takes in total (libllama's `n_batch`); the scheduler keeps its
     /// step plan under it. Additive to ADR 0065.
     fn max_step_tokens(&self) -> usize {
@@ -353,6 +357,8 @@ pub struct LlamaBackend {
     n_vocab: usize,
     /// Rows reserved per sequence (at least its length).
     reserved: Vec<usize>,
+    /// KV bytes per position, learned from the last snapshot (0 before the first).
+    row_bytes: usize,
     logits: Vec<f32>,
     spans: Vec<Range<usize>>,
 }
@@ -366,6 +372,7 @@ impl LlamaBackend {
             on_gpu,
             n_vocab,
             reserved,
+            row_bytes: 0,
             logits: Vec::new(),
             spans: Vec::new(),
         }
@@ -524,9 +531,18 @@ impl BatchBackend for LlamaBackend {
 
     fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
         self.index(seq)?;
-        self.engine
+        let bytes = self
+            .engine
             .seq_snapshot(seq as i32)
-            .map_err(|e| BackendError::Failed(e.to_string()))
+            .map_err(|e| BackendError::Failed(e.to_string()))?;
+        if let Some(per_row) = bytes.len().checked_div(self.seq_len(seq)) {
+            self.row_bytes = per_row;
+        }
+        Ok(bytes)
+    }
+
+    fn kv_row_bytes(&self) -> usize {
+        self.row_bytes
     }
 
     fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {
