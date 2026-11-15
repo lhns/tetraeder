@@ -10,7 +10,6 @@
 //!
 //! Hardware label (AGENTS rule 9): `cpu_*` tests need no GPU.
 
-#[allow(dead_code)]
 mod fake;
 
 use std::path::PathBuf;
