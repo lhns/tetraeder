@@ -780,6 +780,25 @@ pub struct Graph<'a> {
 }
 
 impl<'a> Graph<'a> {
+    /// A new graph in `ctx` with nodes `[i0, i1)` of `self` (same tensors, `ggml_graph_add_node`).
+    /// Allocation stays with the graph `self` was allocated as: computing the range needs that
+    /// allocation alive. `ctx` must have room for a graph of `i1 - i0` nodes. The range is a
+    /// graph of its own, with its own id (an allocator or scheduler does not know it).
+    pub fn range(&self, ctx: &'a Context, i0: usize, i1: usize) -> Graph<'a> {
+        assert!(
+            i0 < i1 && i1 <= self.n_nodes(),
+            "node range {i0}..{i1} out of {}",
+            self.n_nodes()
+        );
+        let mut g = ctx.new_graph(i1 - i0);
+        for i in i0..i1 {
+            // SAFETY: live graphs; the node is a live tensor of the source graph, and the new
+            // graph has room for `i1 - i0` nodes.
+            unsafe { sys::ggml_graph_add_node(g.ptr.as_ptr(), self.node(i).raw()) };
+        }
+        g
+    }
+
     /// Adds `t` and everything it depends on, in dependency order.
     pub fn expand(&mut self, t: Tensor<'a>) {
         // SAFETY: the graph and the tensor belong to live contexts.
