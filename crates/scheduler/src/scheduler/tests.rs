@@ -180,9 +180,10 @@ fn reserved_to_follows_the_backend_after_a_prefix_cut() {
     assert!(held < 400 + GROW);
 }
 
-/// A saved sequence that cannot be restored stays in the cache.
+/// A saved sequence whose bytes cannot be restored is dropped (retrying would fail again), and
+/// the request still runs, from an empty sequence. Entries are kept only on KvFull.
 #[test]
-fn a_failed_restore_keeps_the_cache_entry() {
+fn a_corrupt_saved_entry_is_dropped_and_the_request_runs() {
     let mut w = worker(FakeKv::new(N_VOCAB, 1, 3200, 4000));
     let saved = prompt(4, 200);
     // Too short for 200 positions: the backend rejects it.
@@ -195,7 +196,7 @@ fn a_failed_restore_keeps_the_cache_entry() {
     longer.extend(prompt(5, 10));
     let mut rx = submit(&mut w, &longer, 3);
     w.admit();
-    assert_eq!(w.cache.len(), 1, "the entry was dropped");
+    assert_eq!(w.cache.len(), 0, "the unusable entry was kept");
     pump(&mut w);
     assert_eq!(tokens(&events(&mut rx)), 3);
 }

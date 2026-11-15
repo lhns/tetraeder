@@ -206,5 +206,5 @@ Differences found while building it; the decisions above stand.
 - A requeued request that already holds `n_ctx_seq` tokens and has generated some ends with `Length` at re-admission, as it would have live.
 - libllama `decode` names in `KvFull` the input that grew most past its reservation (libllama itself cannot say which one found no cells).
 - `BatchBackend::seq_reserved(seq)` (default: the length) lets the scheduler resync `reserved_to` after the prefix is restored or cut; the dense backend shrinks a reservation to the rows it keeps.
-- A RAM entry whose restore fails goes back into the cache.
+- A RAM entry whose restore fails with `KvFull` goes back into the cache (it may fit later); one that fails otherwise is dropped, since its bytes would fail again.
 - Decode profile: `eval_s` is the shared wall time of the steps the request took part in (concurrent requests each count a step in full) and `gpu_seconds` is a token share of those steps. Neither is the request's own cost; no gate may use per-request `gpu_seconds`.

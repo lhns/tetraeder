@@ -942,7 +942,11 @@ impl Worker {
                     tracing::warn!("cannot restore a saved sequence: {e}");
                     // Clears the cells even when the sequence looks empty.
                     let _ = self.backend.seq_rm(id as SeqId, 0);
-                    self.put_back(Some((etoks, bytes)));
+                    // Kept when the pool had no room (it may fit later); a `Failed` restore means
+                    // the bytes are unusable, so retrying them would only fail again.
+                    if matches!(e, BackendError::KvFull { .. }) {
+                        self.put_back(Some((etoks, bytes)));
+                    }
                 }
             }
         } else if let Slot::Idle(idle) = std::mem::replace(&mut self.slots[id], Slot::Free) {
