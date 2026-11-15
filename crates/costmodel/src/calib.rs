@@ -17,7 +17,7 @@
 use crate::predict::{PredictError, RunFeatures, predict};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tetraeder_profiler::{HardwareGraph, Measurement, Source, ThreadPoint};
+use tetraeder_profiler::{HardwareGraph, Measurement, RangeCosts, Source, ThreadPoint};
 
 /// One measured run: its features and the llama-bench rates (either may be absent).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,6 +78,12 @@ struct Problem<'a> {
     gpu: &'a str,
     cpu: &'a str,
     link: &'a str,
+    /// GPUs of the fitted GPU's class (same name): they take its fitted rates, so a `tp-2`
+    /// anchor on two cards identifies one set of parameters.
+    twins: Vec<String>,
+    /// Index of `c_range` (graphs), after it `c_range` (eager) and `c_step`; present only when
+    /// an anchor has `ranks` (ADR 0070), so fits without ranks are unchanged.
+    ranges_at: Option<usize>,
     /// Distinct thread counts of anchors with a CPU part; parameters `CURVE + 2k`, `CURVE + 2k + 1`.
     threads: Vec<u32>,
     x0: Vec<f64>,
@@ -101,7 +107,7 @@ impl Problem<'_> {
         };
         let val = |v: f64, i: usize| if moved(i) { x[i].exp() } else { v };
         for d in &mut hw.devices {
-            if d.id == self.gpu {
+            if d.id == self.gpu || self.twins.contains(&d.id) {
                 if let Some(c) = &mut d.compute {
                     c.flops_per_s = val(c.flops_per_s, GPU_F);
                     c.c0_graph_s = val(c.c0_graph_s, GPU_C0_GRAPH);
@@ -128,6 +134,16 @@ impl Problem<'_> {
                     d.thread_curve.sort_by_key(|p| p.threads);
                 }
             }
+        }
+        if let Some(i) = self.ranges_at
+            && (i..i + 3).any(moved)
+        {
+            let c = self.prior.range_costs_or_prior();
+            hw.range_costs = Some(RangeCosts {
+                c_range_graph_s: val(c.c_range_graph_s, i),
+                c_range_eager_s: val(c.c_range_eager_s, i + 1),
+                c_step_s: val(c.c_step_s, i + 2),
+            });
         }
         for l in &mut hw.links {
             if l.id == self.link {
@@ -347,11 +363,29 @@ pub fn fit(
         x0.push(ln(f));
         x0.push(ln(b));
     }
+    let ranges_at = anchors
+        .iter()
+        .any(|a| a.features.ranks.is_some())
+        .then_some(x0.len());
+    if ranges_at.is_some() {
+        let c = prior.range_costs_or_prior();
+        x0.extend([ln(c.c_range_graph_s), ln(c.c_range_eager_s), ln(c.c_step_s)]);
+    }
+    let twins = prior
+        .devices
+        .iter()
+        .filter(|d| {
+            d.kind == tetraeder_profiler::DeviceKind::Gpu && d.id != gpu && d.name == g.name
+        })
+        .map(|d| d.id.clone())
+        .collect();
     let prob = Problem {
         prior,
         gpu,
         cpu,
         link,
+        twins,
+        ranges_at,
         threads,
         x0: x0.clone(),
     };
@@ -653,6 +687,78 @@ mod tests {
         assert_eq!(fit.hw.links, prior.links);
         assert_eq!(fit.hw.device("cpu0"), prior.device("cpu0"));
         assert!(rel(fg.compute.unwrap().flops_per_s, 60e12) < 0.05);
+    }
+
+    /// Anchors generated from known `c_range` and `c_step` on the 2x RTX 3090 fixture: single
+    /// runs (no ranks) pin the device rates, `tp-2` runs of three depths identify the new
+    /// parameters (ADR 0070).
+    #[test]
+    fn recovers_c_range_and_c_step_from_tp2_anchors() {
+        use crate::predict::{Coll, DevicePart, Phase, RankFeatures};
+        use tetraeder_profiler::RangeCosts;
+        let prior =
+            HardwareGraph::from_toml(include_str!("../fixtures/two_3090_hoststaged.toml")).unwrap();
+        let mut truth = prior.clone();
+        truth.range_costs = Some(RangeCosts {
+            c_range_graph_s: 1e-4,
+            c_range_eager_s: 4e-5,
+            c_step_s: 8e-4,
+        });
+        let part = |dev: &str, layers: f64| DevicePart {
+            device: dev.into(),
+            weight_bytes_per_token: layers * 0.125e9,
+            params_per_token: layers * 0.25e9,
+            resident_matmul_bytes: layers * 0.125e9,
+            ops_per_token: layers * 12.0,
+            kv_bytes_per_ctx_token: layers * 1e4,
+            attn_flops_per_ctx_token: layers * 1e5,
+        };
+        let tp2 = |n: u32| {
+            let phase = || Phase {
+                repeat: n,
+                parts: vec![part("gpu0", 0.5), part("gpu1", 0.5)],
+                prefill_parts: None,
+                ranges_per_rank: 1,
+                after: Some(Coll::AllReduce {
+                    group: vec!["gpu0".into(), "gpu1".into()],
+                    bytes_per_token: 20480.0,
+                }),
+            };
+            RunFeatures {
+                parts: vec![part("gpu0", f64::from(n)), part("gpu1", f64::from(n))],
+                ranks: Some(RankFeatures {
+                    phases: vec![phase(), phase()],
+                    step_fixed: true,
+                }),
+                ..features(1.0, 0.0)
+            }
+        };
+        let mut anchors = Vec::new();
+        for n in [4u32, 8, 16] {
+            let single = features(f64::from(n) * 0.5, 0.0);
+            anchors.push(anchor(&truth, &format!("single-{n}"), single));
+            anchors.push(anchor(&truth, &format!("tp2-{n}"), tp2(n)));
+        }
+        let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
+        let c = fit
+            .hw
+            .range_costs
+            .expect("ranks anchors fit the range costs");
+        assert!(rel(c.c_range_graph_s, 1e-4) < 0.05, "{c:?}");
+        assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
+        // the twin GPU took the fitted rates of gpu0
+        assert_eq!(
+            fit.hw.device("gpu1").unwrap().compute,
+            fit.hw.device("gpu0").unwrap().compute
+        );
+    }
+
+    #[test]
+    fn anchors_without_ranks_leave_the_range_costs_alone() {
+        let t = truth();
+        let a = gpu_anchors(&t, false);
+        let fit = fit(&t, &a, "gpu0", "cpu0", "pcie").unwrap();
+        assert!(fit.hw.range_costs.is_none());
     }
 
     #[test]

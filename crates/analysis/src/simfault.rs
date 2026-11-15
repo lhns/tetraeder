@@ -204,7 +204,7 @@ fn plan(hw: &HardwareGraph) -> Vec<Res> {
                 alpha_s: 0.0,
                 rate: l.beta_bytes_per_s.value,
             }),
-            LinkKind::P2p | LinkKind::Network => v.push(Res {
+            LinkKind::P2p | LinkKind::HostStaged | LinkKind::Network => v.push(Res {
                 id: format!("link:{}", l.id),
                 units: 2.0 * ACT_BYTES,
                 alpha_s: 2.0 * l.alpha_s.value,

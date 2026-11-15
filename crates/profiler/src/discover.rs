@@ -161,6 +161,7 @@ fn apply_topology(t: &PcieTopology, gpus: &[GpuInfo], g: &mut HardwareGraph) {
         }
         g.lane_groups.push(lg);
     }
+    halve_staged_in_shared_lanes(g);
 }
 
 fn discover_host(opts: &DiscoverOpts, g: &mut HardwareGraph) {
@@ -355,6 +356,57 @@ fn add_gpus(opts: &DiscoverOpts, gpus: &[GpuInfo], g: &mut HardwareGraph) {
             });
         }
     }
+    // Every other GPU pair stages through host memory (ADR 0070). Prior: twice the larger host
+    // alpha, the smaller host beta; `apply_topology` halves it for two GPUs in one lane group.
+    for (i, gpu) in gpus.iter().enumerate() {
+        for other in &gpus[i + 1..] {
+            let (lo, hi) = if gpu.index < other.index {
+                (gpu, other)
+            } else {
+                (other, gpu)
+            };
+            if lo.p2p_peers.contains(&hi.index) {
+                continue;
+            }
+            let host = |index: u32| g.link_between(&format!("gpu{index}"), "cpu0").cloned();
+            let (Some(a), Some(b)) = (host(lo.index), host(hi.index)) else {
+                continue;
+            };
+            let alpha = 2.0 * a.alpha_s.value.max(b.alpha_s.value);
+            let beta = a.beta_bytes_per_s.value.min(b.beta_bytes_per_s.value);
+            g.links.push(Link {
+                id: format!("staged-gpu{}-gpu{}", lo.index, hi.index),
+                a: format!("gpu{}", lo.index),
+                b: format!("gpu{}", hi.index),
+                kind: LinkKind::HostStaged,
+                alpha_s: Measurement::prior(alpha),
+                beta_bytes_per_s: Measurement::prior(beta),
+                lane_group: None,
+            });
+        }
+    }
+}
+
+/// Halves the prior beta of staged GPU pairs whose two host links share a lane group: both
+/// transfers cross the same lanes twice (ADR 0070).
+fn halve_staged_in_shared_lanes(g: &mut HardwareGraph) {
+    let lane_of = |g: &HardwareGraph, dev: &str| {
+        g.link_between(dev, "cpu0")
+            .and_then(|l| l.lane_group.clone())
+    };
+    let shared: Vec<String> = g
+        .links
+        .iter()
+        .filter(|l| l.kind == LinkKind::HostStaged)
+        .filter(|l| {
+            let (x, y) = (lane_of(g, &l.a), lane_of(g, &l.b));
+            x.is_some() && x == y
+        })
+        .map(|l| l.id.clone())
+        .collect();
+    for l in g.links.iter_mut().filter(|l| shared.contains(&l.id)) {
+        l.beta_bytes_per_s.value /= 2.0;
+    }
 }
 
 #[cfg(test)]
@@ -425,6 +477,7 @@ mod tests {
             g.links.iter().filter(|l| l.kind == LinkKind::P2p).count(),
             1
         );
+        assert!(g.links.iter().all(|l| l.kind != LinkKind::HostStaged));
         let l1 = g.link_between("gpu1", "cpu0").unwrap();
         assert!((l1.beta_bytes_per_s.value - 0.8 * 1969.0e6 * 8.0).abs() < 1.0);
         let p2p = g.link_between("gpu0", "gpu1").unwrap();
@@ -516,6 +569,15 @@ mod tests {
                 .lane_group
                 .as_deref(),
             Some("pcie-0000:01:00.0")
+        );
+        // No peer access: a staged link with the prior; both GPUs share a lane group, so halved.
+        let staged = g.link_between("gpu0", "gpu1").unwrap();
+        assert_eq!(staged.kind, LinkKind::HostStaged);
+        let host = g.link_between("gpu0", "cpu0").unwrap();
+        assert_eq!(staged.alpha_s.value, 2.0 * host.alpha_s.value);
+        assert_eq!(
+            staged.beta_bytes_per_s.value,
+            host.beta_bytes_per_s.value / 2.0
         );
         let mut g2 = HardwareGraph::default();
         apply_topology(&t, &gpus[..1], &mut g2);

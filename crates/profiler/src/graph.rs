@@ -255,6 +255,8 @@ pub enum LinkKind {
     Pcie,
     /// GPU to GPU, direct (NVLink or PCIe peer-to-peer).
     P2p,
+    /// GPU to GPU without peer access: transfers stage through host memory (ADR 0070).
+    HostStaged,
     Storage,
     Network,
 }
@@ -280,8 +282,77 @@ pub struct LaneGroup {
     pub capacity_bytes_per_s: f64,
 }
 
+/// A collective the executor issues between ranks (ADR 0069, 0070).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CollectiveOp {
+    AllReduce,
+    /// One-way copy; `ranks` of its curve are `[src, dst]`.
+    Copy,
+}
+
+/// Measured (or prior) time of a collective over a rank set by message size (`tetraeder
+/// comm-probe`, ADR 0070). Never fitted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CollectiveCurve {
+    pub op: CollectiveOp,
+    /// Device ids: a set for all-reduce, `[src, dst]` for a copy.
+    pub ranks: Vec<String>,
+    /// The path the executor used: `nccl`, `internal` or `fallback`; `prior` for formula points.
+    pub comm: String,
+    /// `(bytes, seconds)`.
+    pub points: Vec<(f64, f64)>,
+}
+
+/// Seconds at `bytes` from `(bytes, seconds)` points in any order: piecewise linear between
+/// points, flat (latency) below the first, linear in bytes above the last along the last
+/// segment (proportional from the origin with a single point). `None` for no points.
+pub fn curve_time(points: &[(f64, f64)], bytes: f64) -> Option<f64> {
+    let mut pts = points.to_vec();
+    pts.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let first = *pts.first()?;
+    let last = pts[pts.len() - 1];
+    if bytes <= first.0 {
+        return Some(first.1);
+    }
+    if bytes >= last.0 {
+        if pts.len() == 1 {
+            return Some(last.1 * bytes / last.0);
+        }
+        let prev = pts[pts.len() - 2];
+        let slope = ((last.1 - prev.1) / (last.0 - prev.0)).max(0.0);
+        return Some(last.1 + slope * (bytes - last.0));
+    }
+    let i = pts.iter().position(|p| bytes <= p.0)?;
+    let (a, b) = (pts[i - 1], pts[i]);
+    Some(a.1 + (b.1 - a.1) * (bytes - a.0) / (b.0 - a.0))
+}
+
+/// Fixed costs of the multi-rank executor, fitted from anchors (ADR 0070); absent means the
+/// priors of [`RangeCosts::PRIOR`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RangeCosts {
+    /// Launch of one range as a captured CUDA graph.
+    pub c_range_graph_s: f64,
+    /// Launch of one range op by op.
+    pub c_range_eager_s: f64,
+    /// Input upload, end-of-step sync and readback.
+    pub c_step_s: f64,
+}
+
+impl RangeCosts {
+    pub const PRIOR: RangeCosts = RangeCosts {
+        c_range_graph_s: 3.0e-5,
+        c_range_eager_s: 1.0e-5,
+        c_step_s: 2.0e-4,
+    };
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HardwareGraph {
+    /// Fitted range and step costs of the multi-rank model; `None` uses the priors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range_costs: Option<RangeCosts>,
     #[serde(default)]
     pub devices: Vec<Device>,
     #[serde(default)]
@@ -291,9 +362,31 @@ pub struct HardwareGraph {
     /// Probe failures and caveats (e.g. a filesystem without O_DIRECT).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+    /// Collective curves between GPUs (ADR 0070).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collectives: Vec<CollectiveCurve>,
 }
 
 impl HardwareGraph {
+    /// Time of a collective of `bytes` over `ranks`: the matching curve interpolated by
+    /// [`curve_time`]. Ranks match as a set for all-reduce and as an ordered pair for a copy.
+    /// `None` without a matching curve.
+    pub fn collective_time(&self, op: CollectiveOp, ranks: &[String], bytes: f64) -> Option<f64> {
+        let same = |c: &CollectiveCurve| match op {
+            CollectiveOp::AllReduce => {
+                c.ranks.len() == ranks.len() && ranks.iter().all(|r| c.ranks.contains(r))
+            }
+            CollectiveOp::Copy => c.ranks == ranks,
+        };
+        let c = self.collectives.iter().find(|c| c.op == op && same(c))?;
+        curve_time(&c.points, bytes)
+    }
+
+    /// The range and step costs in use.
+    pub fn range_costs_or_prior(&self) -> RangeCosts {
+        self.range_costs.unwrap_or(RangeCosts::PRIOR)
+    }
+
     pub fn device(&self, id: &str) -> Option<&Device> {
         self.devices.iter().find(|d| d.id == id)
     }
@@ -342,6 +435,14 @@ impl HardwareGraph {
                 && self.lane_group(g).is_none()
             {
                 return Err(format!("link {} names unknown lane group {g}", l.id));
+            }
+        }
+        for c in &self.collectives {
+            if let Some(d) = c.ranks.iter().find(|r| self.device(r).is_none()) {
+                return Err(format!("collective curve names unknown device {d}"));
+            }
+            if c.op == CollectiveOp::Copy && c.ranks.len() != 2 {
+                return Err("a copy curve names exactly two devices".to_string());
             }
         }
         Ok(())
@@ -447,6 +548,76 @@ mod tests {
             HardwareGraph::from_toml(&again.to_toml().unwrap()).unwrap(),
             again
         );
+    }
+
+    fn curve(op: CollectiveOp, ranks: &[&str], points: &[(f64, f64)]) -> CollectiveCurve {
+        CollectiveCurve {
+            op,
+            ranks: ranks.iter().map(|r| r.to_string()).collect(),
+            comm: "internal".into(),
+            points: points.to_vec(),
+        }
+    }
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|r| r.to_string()).collect()
+    }
+
+    #[test]
+    fn collective_time_interpolates_and_extrapolates() {
+        let mut g = HardwareGraph::from_toml(FIXTURE).unwrap();
+        // unsorted on purpose
+        g.collectives = vec![
+            curve(
+                CollectiveOp::AllReduce,
+                &["gpu0", "gpu1"],
+                &[(4000.0, 3e-5), (1000.0, 1e-5), (2000.0, 1e-5)],
+            ),
+            curve(CollectiveOp::Copy, &["gpu0", "gpu1"], &[(1000.0, 2e-5)]),
+        ];
+        g.validate().unwrap();
+        let ar = |b: f64| g.collective_time(CollectiveOp::AllReduce, &ids(&["gpu1", "gpu0"]), b);
+        // flat below the first point (latency), exact at points, linear between
+        assert_eq!(ar(10.0), Some(1e-5));
+        assert_eq!(ar(1000.0), Some(1e-5));
+        assert_eq!(ar(2000.0), Some(1e-5));
+        assert!((ar(3000.0).unwrap() - 2e-5).abs() < 1e-18);
+        // above the last point: the last segment's slope (1e-5 per 1000 bytes)
+        assert!((ar(6000.0).unwrap() - 5e-5).abs() < 1e-18);
+        // all-reduce matches as a set, a copy as an ordered pair
+        let cp = |a: &[&str], b: f64| g.collective_time(CollectiveOp::Copy, &ids(a), b);
+        assert_eq!(cp(&["gpu0", "gpu1"], 1000.0), Some(2e-5));
+        assert_eq!(cp(&["gpu1", "gpu0"], 1000.0), None);
+        // one point: proportional above it
+        assert!((cp(&["gpu0", "gpu1"], 3000.0).unwrap() - 6e-5).abs() < 1e-18);
+        assert_eq!(
+            g.collective_time(CollectiveOp::AllReduce, &ids(&["gpu0"]), 1.0),
+            None
+        );
+    }
+
+    #[test]
+    fn collectives_and_range_costs_roundtrip() {
+        let mut g = HardwareGraph::from_toml(FIXTURE).unwrap();
+        assert_eq!(g.range_costs_or_prior(), RangeCosts::PRIOR);
+        g.collectives = vec![curve(
+            CollectiveOp::AllReduce,
+            &["gpu0", "gpu1"],
+            &[(4096.0, 1e-5), (65536.0, 2e-5)],
+        )];
+        g.range_costs = Some(RangeCosts {
+            c_range_graph_s: 1e-5,
+            c_range_eager_s: 2e-5,
+            c_step_s: 3e-4,
+        });
+        assert_eq!(HardwareGraph::from_toml(&g.to_toml().unwrap()).unwrap(), g);
+        assert_eq!(HardwareGraph::from_json(&g.to_json().unwrap()).unwrap(), g);
+        // old files have neither field
+        let old = HardwareGraph::from_toml(FIXTURE).unwrap();
+        assert!(old.collectives.is_empty() && old.range_costs.is_none());
+        let mut bad = g.clone();
+        bad.collectives[0].ranks[0] = "nope".into();
+        assert!(bad.validate().unwrap_err().contains("unknown device"));
     }
 
     #[test]

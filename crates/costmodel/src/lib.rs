@@ -12,6 +12,8 @@
 pub mod calib;
 pub mod predict;
 #[cfg(test)]
+mod ranks;
+#[cfg(test)]
 mod record;
 pub mod sim;
 
