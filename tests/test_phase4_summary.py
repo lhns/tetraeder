@@ -347,7 +347,7 @@ def test_rerun_pair_replaces_the_unclean_one(s):
     assert m["reps_used"] == [1, 3] and [p["reps"] for p in m["pairs"]] == [[1], [3]]
     assert m["pass"] is True and m["worst"]["c4"] == pytest.approx(0.95)
     assert [d["rep"] for d in m["dropped_pairs"]] == [2] and any("errors=1" in r for r in m["dropped_pairs"][0]["reasons"])
-    assert p4.rerun_reps(s.d, "q8b") == []  # rep 3 exists: only one extra pair
+    assert p4.rerun_reps(s.d, "q8b") == [2]  # unchanged after rep 3: a resumed session finishes the pair
 
 
 def test_unclean_rep_3_does_not_help(s):

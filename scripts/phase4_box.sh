@@ -211,7 +211,6 @@ build() {
   [ "$skip_gpu" = 1 ] && features=""
   # shellcheck disable=SC2086
   timeout -k 30 50m cargo build --release -p tetraeder $features 8>&- || die "build failed"
-  box_libs_path
   if [ -n "${PY:-}" ]; then
     say "build done (python: $PY)"
     return 0

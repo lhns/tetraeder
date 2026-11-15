@@ -3,7 +3,8 @@ name: phase4-rehearsal
 # CPU rehearsal of the Phase 4 verdict session (scripts/phase4_box.sh, ADR 0065 "Verdict"): the whole script end to end
 # on the runner with SKIP_GPU=1 and tiny request counts, so that rejected flags, file-name mismatches with
 # phase4_summary.py and the probe wiring show up before a paid box does. Stand-ins: Qwen3-0.6B Q8_0 for the 8B
-# (`--engine dense`), the tiny synthetic MoE fixture for the 30B (`--engine moe`, 0.6B is dense), a synthetic request
+# (`--engine dense`) and for the 30B (`--engine llama`, counts false: the 0.6B is dense and the tiny MoE fixture has
+# a 1024-token context, too short for the workload, so `--engine moe` is not rehearsed), a synthetic request
 # log from gateway_bench prompts. The verdict itself (pass or fail) means nothing on CPU: the job asserts that
 # verdict.json exists with non-null ratios.
 on:
@@ -31,7 +32,7 @@ env:
 jobs:
   rehearsal:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:
@@ -100,12 +101,12 @@ jobs:
           PY: ${{ github.workspace }}/.venv/bin/python
           BASELINE_BIN: ${{ github.workspace }}/target/llama-server-build/bin/llama-server
           MODEL_Q8B: ${{ github.workspace }}/.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
-          MODEL_Q30B: ${{ github.workspace }}/tests/fixtures/tiny-qwen3moe-f16.gguf
-          Q30B_ENGINE: moe
+          MODEL_Q30B: ${{ github.workspace }}/.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
+          Q30B_ENGINE: llama
           PHASE4_LOG: ${{ github.workspace }}/rehearsal/requests.jsonl
           THREADS: "4"
           CARGO_BUILD_JOBS: "4"
-          BUDGET_MIN: "60"
+          BUDGET_MIN: "100"
           CTX: "8192"
           NGL_LLAMA: "0"
           PROMPT_TOKENS: "512"
@@ -116,15 +117,14 @@ jobs:
           PROBE_MIN: "0"
           REPLAY_CTX: "8192"
           REPLAY_MAX_PROMPT: "6000"
-          EXPECT_CTX: "40960"
+          EXPECT_CTX: "0" # the context-length check is gateway_replay.py's own; the 0.6B value is not asserted here
           TTFT_INFO: "1"
         run: |
-          set +e
           bash scripts/phase4_box.sh
           rc=$?
-          echo "phase4_box.sh exit $rc"
           cat "$P4_LOG_FILE"
-          exit 0
+          echo "phase4_box.sh exit $rc"
+          exit $rc
       - name: Assert verdict.json
         run: |
           .venv/bin/python - <<'PY'

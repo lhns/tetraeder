@@ -165,11 +165,9 @@ def kv_unified(d: Path, model: str, variant: str | None) -> str | None:
 
 
 def rerun_reps(d: Path, model: str) -> list[int]:
-    """Unclean reps among 1 and 2 that the single rep-3 pair of phase4_box.sh can replace: none when rep 3 already has
-    results, or when both are unclean (one more pair cannot make two clean ones)."""
+    """Unclean reps among 1 and 2 that the single rep-3 pair of phase4_box.sh can replace: none when both are unclean
+    (one more pair cannot make two clean ones). Still the same after rep 3 ran, so a resumed session finishes it."""
     engine, _ = judged_engine(d, model)
-    if any(d.glob(f"bench-{model}-*-r{RERUN}.json")):
-        return []
     bad = [r for r in REPS if run_reasons(d, model, BASELINE, r)[0] or run_reasons(d, model, engine, r)[0]]
     return bad if len(bad) == 1 else []
 
