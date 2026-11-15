@@ -36,10 +36,7 @@ fn cases() -> Vec<(String, RunFeatures)> {
                 ubatch,
                 ..features(g, c)
             };
-            v.push((
-                format!("g{g}-c{c}-graphs{graphs}-t{threads}-ub{ubatch}"),
-                f,
-            ));
+            v.push((format!("g{g}-c{c}-graphs{graphs}-t{threads}-ub{ubatch}"), f));
         }
     }
     v
