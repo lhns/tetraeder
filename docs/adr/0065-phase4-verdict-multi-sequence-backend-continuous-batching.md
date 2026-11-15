@@ -181,3 +181,13 @@ Differences found while building the loop; the decisions above stand.
 - A RAM entry chosen for a restore is taken out of the cache before any idle sequence is evicted (the eviction may drop it) and put back when admission has to wait.
 - The decode profile's `eval_s` is the wall time of the steps the request took part in; `gpu_seconds` is its token share of those steps.
 - libllama: `n_ctx` is rounded up (to a multiple of 256 with the unified cache) and `n_batch` is clamped to the requested `n_ctx`; a step whose cells do not fit fails with `NoKvSlot` (the engine cuts every input back with `seq_rm`, lengths unchanged).
+
+## Addendum: C4, the MoE builder on the pool (2026-11-15)
+
+Differences found while building it; the decisions above stand.
+
+- `Qwen3Moe` has `LoadOptions::n_seq_max` (default 1) and the same `seq_*`, `decode`, `try_*` methods as `Qwen3`; `eval`, `eval_last`, `rewind`, `reset`, `kv_snapshot`, `kv_restore` are sequence-0 wrappers. One sequence stays bit-equal to before (`extract_bits`, record made on main before the change).
+- Whole-step graph key and state key use the output count instead of `last_only`. `head` selects `outputs` with `get_rows` only when fewer tokens than the step has want logits.
+- `MoeBackend` is `BatchBackend` natively; `max_step_tokens` is its chunk (512) and a larger `decode` runs as several model steps. A failed step or `KvFull` puts every input sequence back to its length and reservation. `SingleSeq` and the old `Backend` trait are gone. `serve --engine moe` honours `--parallel`.
+- Streaming code needed only the token count: experts are grouped per (token, choice) pair already. The `n == 1` decode-only admission into the compute tier does not run for a batched decode step (it has more than one token); it is a performance policy, not a correctness one.
+- Numerics: a batched step, a chunked prefill and a one-query decode over another `n_kv` use other kernel shapes, so logits differ at about 1e-3 of the largest logit (CPU flash attention for one query sums over `n_kv` in an order that depends on it once `n_kv` reaches 1024). A chunked move is therefore checked against a run whose sequence starts where the move put it, and is bit-equal there.
