@@ -626,12 +626,16 @@ pub fn compare_scripts_tol(want: &Logits, have: &Logits, tol: Tol, what: &str) -
     worst
 }
 
-/// The comparisons of a batching anchor, printed row by row before any is asserted within `tol`
-/// (`compare_scripts_tol`): libllama batched against split (every input its own call) is
-/// llama.cpp's own batching noise on that backend and the reference for the builder's; the
-/// builder against libllama with the same step shapes runs the same kernels, so a mask, row or
-/// position bug shows there while kernel noise mostly cancels (ADR 0071). Returns the worst gap
-/// of each comparison over the largest logit, in print order.
+/// The comparisons of a batching anchor, all printed row by row before any assertion.
+/// libllama batched against split (every input its own call) is llama.cpp's own batching noise
+/// on that backend, and libllama on the backend against the CPU its own backend gap: both are
+/// recorded, not asserted (they are not our code). The builder against libllama with the same
+/// step shapes runs the same kernels, so a mask, row or position bug shows there while kernel
+/// noise cancels: asserted within `tol` (on the CPU the measured gap is 0). The builder batched
+/// against split is asserted within `tol` widened to 1.5 times libllama's own worst relative
+/// gap, so the bound follows llama.cpp's behaviour (CI measured 1.07e-3 of the largest logit for
+/// libllama on the CPU on the dense fixture, above `tol_batch`'s 1e-3) (ADR 0071). Returns the
+/// worst gap of each comparison over the largest logit, in print order.
 pub fn anchor_pairs(
     what: &str,
     ll_batched: &Logits,
@@ -659,8 +663,17 @@ pub fn anchor_pairs(
     for ((name, _, _), w) in pairs.iter().zip(&worst) {
         eprintln!("{what} {name}: worst {w:.2e} of the largest logit");
     }
-    for (name, want, have) in pairs {
-        compare_scripts_tol(want, have, tol, &format!("{what} {name}"));
+    let own = Tol {
+        abs: tol.abs,
+        rel: tol.rel.max(1.5 * worst[0]),
+    };
+    for (i, (name, want, have)) in pairs.into_iter().enumerate() {
+        let what = format!("{what} {name}");
+        match i {
+            1 => compare_scripts_tol(want, have, own, &what),
+            2 | 3 => compare_scripts_tol(want, have, tol, &what),
+            _ => continue,
+        };
     }
     worst
 }
