@@ -401,3 +401,11 @@ fn cpu_batched_matches_libllama_unified_multi_sequence() {
     }
     check_steps(&theirs, &steps, &alones, TOL_CPU, "libllama");
 }
+
+/// hardware: cpu. `libllama_anchor` on the CPU, the body `gpu_multi_seq.rs` runs on CUDA.
+#[test]
+fn cpu_libllama_batched_vs_split_anchor() {
+    let (path, o) = resident();
+    let worst = libllama_anchor(&path, &o, 0, common::Tol::from(TOL_CPU), "cpu");
+    eprintln!("cpu anchor worst (of largest logit): {worst:?}");
+}

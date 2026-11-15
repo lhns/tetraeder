@@ -8,21 +8,26 @@
 //! near-tie does not make the logits incomparable afterwards.
 #![allow(dead_code)]
 
-use super::argmax;
+use super::{Item, Logits, Tol, anchor_pairs, argmax, largest, libllama_script_on};
 use std::path::Path;
 use tetraeder_model::{LoadOptions, Qwen3Moe, SeqEval};
 
-/// Equal within `tol` or 1e-3 of the largest logit: which kernels a CPU variant uses for one row
-/// and for several decides the gap (CI's runners show ~9e-3 where a dev box shows less).
-pub fn close(got: &[f32], want: &[f32], tol: f32, what: &str) {
-    assert_eq!(got.len(), want.len(), "{what}");
-    let worst = got
-        .iter()
+/// Largest |difference| of two rows.
+pub fn max_diff(got: &[f32], want: &[f32]) -> f32 {
+    got.iter()
         .zip(want)
         .map(|(x, y)| (x - y).abs())
-        .fold(0.0, f32::max);
-    let scale = want.iter().fold(0.0f32, |m, v| m.max(v.abs()));
-    let tol = tol.max(1e-3 * scale);
+        .fold(0.0, f32::max)
+}
+
+/// Equal within `tol.of(want)`. A bare `f32` is that floor or 1e-3 of the largest logit: which
+/// kernels a CPU variant uses for one row and for several decides the gap (CI's runners show
+/// ~9e-3 where a dev box shows less). The GPU passes `GPU_TOL`.
+pub fn close(got: &[f32], want: &[f32], tol: impl Into<Tol>, what: &str) {
+    assert_eq!(got.len(), want.len(), "{what}");
+    let worst = max_diff(got, want);
+    let scale = largest(want);
+    let tol = tol.into().of(want);
     assert!(
         worst <= tol,
         "{what}: max |diff| {worst} > {tol} (largest logit {scale})"
@@ -30,16 +35,27 @@ pub fn close(got: &[f32], want: &[f32], tol: f32, what: &str) {
 }
 
 /// The greedy token of `got` equals the one of `want`, or `want` has a near tie there.
-pub fn same_token(got: &[f32], want: &[f32], tol: f32, what: &str) {
+pub fn same_token(got: &[f32], want: &[f32], tol: impl Into<Tol>, what: &str) {
     let (g, w) = (argmax(got), argmax(want));
     if g != w {
         let gap = (want[w] - want[g]).abs();
-        let scale = want.iter().fold(0.0f32, |m, v| m.max(v.abs()));
         assert!(
-            gap <= 2.0 * tol.max(1e-3 * scale),
+            gap <= 2.0 * tol.into().of(want),
             "{what}: greedy {g} against {w}, gap {gap}"
         );
     }
+}
+
+/// One line per compared row (`what`, max |diff|, that over the largest logit, greedy equal),
+/// printed before any assertion so a failure shows whether the gap is flat or grows.
+pub fn print_row(what: &str, got: &[f32], want: &[f32]) {
+    let d = max_diff(got, want);
+    eprintln!(
+        "{what}: max |diff| {d:e} ({:.2e} of largest {}), greedy equal {}",
+        d / largest(want),
+        largest(want),
+        argmax(got) == argmax(want)
+    );
 }
 
 pub fn prompt(seed: i32, n: usize) -> Vec<i32> {
@@ -159,10 +175,11 @@ pub fn check_steps(
     got: &[Vec<Vec<f32>>],
     steps: &[Step],
     alones: &[Alone],
-    tol: f32,
+    tol: impl Into<Tol>,
     what: &str,
 ) -> usize {
-    let mut compared = 0;
+    let tol = tol.into();
+    let mut pairs = Vec::new();
     for (si, (s, rows)) in steps.iter().zip(got).enumerate() {
         for ((k, r), l) in s.iter().zip(rows) {
             let a = &alones[*k];
@@ -171,16 +188,24 @@ pub fn check_steps(
             }
             let want = &a.logits[r.end - a.prompt_len];
             let what = format!("{what}: step {si}, sequence {k}, {} tokens", r.end);
-            close(l, want, tol, &what);
-            same_token(l, want, tol, &what);
-            compared += 1;
+            print_row(&what, l, want);
+            pairs.push((what, l, want));
         }
     }
-    compared
+    for (what, l, want) in &pairs {
+        close(l, want, tol, what);
+        same_token(l, want, tol, what);
+    }
+    pairs.len()
 }
 
 /// Three sequences with a prefill chunk mixed into decode steps, each against itself alone.
-pub fn batched_equals_alone(path: &Path, opts: &LoadOptions, tol: f32, what: &str) -> Qwen3Moe {
+pub fn batched_equals_alone(
+    path: &Path,
+    opts: &LoadOptions,
+    tol: impl Into<Tol> + Copy,
+    what: &str,
+) -> Qwen3Moe {
     let prompts = [prompt(1, 7), prompt(2, 21), prompt(3, 24)];
     let n = 6;
     let alones: Vec<Alone> = prompts.iter().map(|p| alone(path, opts, p, n)).collect();
@@ -216,7 +241,7 @@ pub fn batched_paths_agree(
     path: &Path,
     a: &LoadOptions,
     b: &LoadOptions,
-    tol: f32,
+    tol: impl Into<Tol> + Copy,
     what: &str,
 ) -> Qwen3Moe {
     let prompts = [prompt(1, 7), prompt(2, 21), prompt(3, 24)];
@@ -239,7 +264,7 @@ pub fn batched_paths_agree(
 
 /// `seq_cp` of a whole sequence and of a prefix, then continuing the copy, against a fresh
 /// prefill of the same tokens; the source continues too.
-pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
+pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + Copy, what: &str) {
     let p = prompt(8, 25);
     let extra = [11, 12, 13];
     let mut all = p.clone();
@@ -264,6 +289,7 @@ pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
         &mut buf,
     )
     .unwrap();
+    print_row(&format!("{what}: copy continues"), &buf, &want);
     close(&buf, &want, tol, &format!("{what}: copy continues"));
     // The source is untouched and continues alone.
     assert_eq!(m.seq_len(0), p.len());
@@ -276,6 +302,7 @@ pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
         &mut buf,
     )
     .unwrap();
+    print_row(&format!("{what}: source continues"), &buf, &want);
     close(&buf, &want, tol, &format!("{what}: source continues"));
     // A prefix copy into sequence 2.
     m.seq_cp(0, 2, 10).unwrap();
@@ -288,6 +315,7 @@ pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
         &mut buf,
     )
     .unwrap();
+    print_row(&format!("{what}: prefix copy"), &buf, &want);
     close(&buf, &want, tol, &format!("{what}: prefix copy"));
     // dst must be empty, src long enough, ids in range.
     assert!(m.seq_cp(0, 1, 5).is_err());
@@ -298,7 +326,7 @@ pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
 
 /// A sequence's snapshot next to live ones: restored into another slot it decodes the same, its
 /// bytes survive the roundtrip, and the others are untouched.
-pub fn snapshot_roundtrip(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
+pub fn snapshot_roundtrip(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + Copy, what: &str) {
     let (a, b) = (prompt(9, 20), prompt(10, 14));
     let mut m = load(path, opts, 3);
     let mut buf = Vec::new();
@@ -352,7 +380,7 @@ pub fn snapshot_roundtrip(path: &Path, opts: &LoadOptions, tol: f32, what: &str)
 /// is not the sequence alone: a decode's kernel (CPU flash attention for one query) sums over
 /// `n_kv` in an order that depends on it, so a different row offset gives other low bits once
 /// `n_kv` reaches 1024. A move changes only the rows, the same as a different start does.
-pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
+pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + Copy, what: &str) {
     assert!(opts.n_ctx >= 1024);
     let p = prompt(4, 200);
     let neighbour = prompt(5, 10);
@@ -388,14 +416,19 @@ pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
     assert_eq!(m.pool().row(0, 0), Some(0));
     let nb_before = m.seq_snapshot(1).unwrap();
     let mut moved_at = None;
+    let mut got = Vec::new();
     for (j, want) in want.iter().enumerate() {
-        let got = decode_one(&mut m, toks[p.len() + j]);
+        let g = decode_one(&mut m, toks[p.len() + j]);
         if moved_at.is_none() && m.pool().row(0, 0) != Some(0) {
             moved_at = Some(j);
         }
+        print_row(&format!("{what}: step {j}"), &g, want);
+        got.push(g);
+    }
+    for (j, (g, want)) in got.iter().zip(&want).enumerate() {
         let what = format!("{what}: step {j}");
-        close(&got, want, tol, &what);
-        same_token(&got, want, tol, &what);
+        close(g, want, tol, &what);
+        same_token(g, want, tol, &what);
     }
     assert!(moved_at.is_some(), "{what}: sequence 0 moved");
     assert_eq!(m.pool().row(0, 0), Some(512));
@@ -424,4 +457,73 @@ impl EvalSeq for Qwen3Moe {
         )
         .unwrap();
     }
+}
+
+/// Every input of `steps` as a step of its own: the same token ranges, one sequence per call.
+pub fn split_steps(steps: &[Step]) -> Vec<Step> {
+    steps.iter().flatten().map(|i| vec![i.clone()]).collect()
+}
+
+/// `steps` as a libllama script (logits of each input's last token).
+pub fn script_items(steps: &[Step]) -> Vec<Vec<Item>> {
+    steps
+        .iter()
+        .map(|s| {
+            s.iter()
+                .map(|(k, r)| Item {
+                    seq: *k as u32,
+                    range: r.clone(),
+                    all: false,
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// [`run_steps`] output keyed like a script: (sequence, position of the input's last token).
+pub fn steps_logits(rows: Vec<Vec<Vec<f32>>>, steps: &[Step]) -> Logits {
+    let mut out = Logits::new();
+    for (s, rows) in steps.iter().zip(rows) {
+        for ((k, r), l) in s.iter().zip(rows) {
+            out.insert((*k as u32, r.end - 1), l);
+        }
+    }
+    out
+}
+
+/// The anchor of the batched tolerance: libllama (`n_gpu_layers`) and the builder (`opts`) run
+/// the schedule of [`batched_equals_alone`] batched and split (every input its own call), and
+/// libllama batched on the CPU. Prints every comparison, then asserts each within `tol`:
+/// libllama batched against split is llama.cpp's own batching noise on that backend; the
+/// builder against libllama with the same step shapes runs the same kernels, so a mask, row or
+/// position bug shows there while kernel noise mostly cancels. Returns the worst relative gap
+/// per comparison, in print order.
+pub fn libllama_anchor(
+    path: &Path,
+    opts: &LoadOptions,
+    n_gpu_layers: i32,
+    tol: Tol,
+    what: &str,
+) -> Vec<f32> {
+    let prompts = [prompt(1, 7), prompt(2, 21), prompt(3, 24)];
+    let toks: Vec<Vec<i32>> = prompts
+        .iter()
+        .enumerate()
+        .map(|(k, p)| {
+            let mut t = p.clone();
+            t.extend(prompt(11 + k as i32, 6));
+            t
+        })
+        .collect();
+    let lens: Vec<usize> = prompts.iter().map(Vec::len).collect();
+    let total: Vec<usize> = toks.iter().map(Vec::len).collect();
+    let steps = schedule(&lens, &total, 16);
+    let split = split_steps(&steps);
+    let kv = opts.kv;
+    let ll = |s: &[Step], ngl| libllama_script_on(path, &toks, &script_items(s), kv, ngl);
+    let ours = |s: &[Step]| steps_logits(run_steps(&mut load(path, opts, 3), &toks, s), s);
+    let (ll_b, ll_s) = (ll(&steps[..], n_gpu_layers), ll(&split[..], n_gpu_layers));
+    let ll_cpu = ll(&steps[..], 0);
+    let (our_b, our_s) = (ours(&steps[..]), ours(&split[..]));
+    anchor_pairs(what, &ll_b, &ll_s, &ll_cpu, &our_b, &our_s, tol)
 }
