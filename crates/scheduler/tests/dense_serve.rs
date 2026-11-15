@@ -7,9 +7,12 @@
 use proptest::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
-use tetraeder_gateway::engine::{Engine, GenEvent, GenerateRequest, SamplingParams};
+use tetraeder_gateway::engine::{
+    Engine, FinishReason, GenEvent, GenerateRequest, SamplingParams, TokenConstraint, TokenMask,
+};
 use tetraeder_ggml_sys::llama::{Model, ModelParams};
 use tetraeder_model::{BackendChoice, DenseOptions};
 use tetraeder_scheduler::{
@@ -26,6 +29,11 @@ fn fixture() -> PathBuf {
 struct Recording {
     inner: DenseBackend,
     widest: Arc<AtomicUsize>,
+    /// Successful `seq_cp` calls as (src, dst, n).
+    cps: Arc<Mutex<Vec<(SeqId, SeqId, usize)>>>,
+    /// `seq_cp` fails without trying, as a pool without room would.
+    fail_cp: Arc<AtomicBool>,
+    decodes: Arc<AtomicUsize>,
 }
 
 impl BatchBackend for Recording {
@@ -54,10 +62,16 @@ impl BatchBackend for Recording {
         self.inner.seq_rm(seq, keep)
     }
     fn seq_cp(&mut self, src: SeqId, dst: SeqId, n: usize) -> Result<(), BackendError> {
-        self.inner.seq_cp(src, dst, n)
+        if self.fail_cp.load(Ordering::Relaxed) {
+            return Err(BackendError::Failed("injected".into()));
+        }
+        self.inner.seq_cp(src, dst, n)?;
+        self.cps.lock().unwrap().push((src, dst, n));
+        Ok(())
     }
     fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
         self.widest.fetch_max(inputs.len(), Ordering::Relaxed);
+        self.decodes.fetch_add(1, Ordering::Relaxed);
         self.inner.decode(inputs)
     }
     fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
@@ -80,13 +94,37 @@ impl BatchBackend for Recording {
     }
 }
 
+struct Probe {
+    widest: Arc<AtomicUsize>,
+    cps: Arc<Mutex<Vec<(SeqId, SeqId, usize)>>>,
+    fail_cp: Arc<AtomicBool>,
+    decodes: Arc<AtomicUsize>,
+}
+
 fn start(parallel: usize, pool: usize) -> (Arc<Scheduler>, Arc<AtomicUsize>) {
+    let (s, p) = start_with(parallel, pool, true);
+    (s, p.widest)
+}
+
+fn start_with(parallel: usize, pool: usize, prefix_reuse: bool) -> (Arc<Scheduler>, Probe) {
     let path = fixture();
     let mut sc = SchedulerConfig::new(&path);
     sc.parallel = parallel;
     sc.step_tokens = 64;
-    let widest = Arc::new(AtomicUsize::new(0));
-    let w = Arc::clone(&widest);
+    sc.prefix_reuse = prefix_reuse;
+    sc.cache_restore_gain = 16;
+    let probe = Probe {
+        widest: Arc::default(),
+        cps: Arc::default(),
+        fail_cp: Arc::default(),
+        decodes: Arc::default(),
+    };
+    let (w, cps, fail_cp, decodes) = (
+        Arc::clone(&probe.widest),
+        Arc::clone(&probe.cps),
+        Arc::clone(&probe.fail_cp),
+        Arc::clone(&probe.decodes),
+    );
     let s = Scheduler::start(sc, move || {
         let tokenizer = Arc::new(
             Model::load(
@@ -109,12 +147,15 @@ fn start(parallel: usize, pool: usize) -> (Arc<Scheduler>, Arc<AtomicUsize>) {
             backend: Box::new(Recording {
                 inner: DenseBackend::new(model, false),
                 widest: w,
+                cps,
+                fail_cp,
+                decodes,
             }),
             tokenizer,
         })
     })
     .expect("scheduler over the dense builder");
-    (Arc::new(s), widest)
+    (Arc::new(s), probe)
 }
 
 #[derive(Debug, Clone)]
@@ -244,4 +285,113 @@ proptest! {
             prop_assert!(*c <= sp.max_tokens as usize, "{sp:?}: {c} tokens");
         }
     }
+}
+
+/// Allows a few tokens, so the tiny vocabulary's end-of-generation tokens never end a run.
+struct Only(Vec<u32>);
+
+impl TokenConstraint for Only {
+    fn mask(&mut self) -> Result<Option<TokenMask>, String> {
+        let mut words = vec![0u32; 16];
+        for &t in &self.0 {
+            words[t as usize / 32] |= 1 << (t % 32);
+        }
+        Ok(Some(TokenMask { words }))
+    }
+
+    fn commit(&mut self, _: u32) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+type Events = tokio::sync::mpsc::Receiver<GenEvent>;
+
+fn generate(s: &Scheduler, prompt: Vec<u32>, max_tokens: u32) -> Events {
+    s.generate(GenerateRequest {
+        model: s.models()[0].id.clone(),
+        prompt,
+        params: SamplingParams {
+            max_tokens,
+            temperature: Some(0.0),
+            ..SamplingParams::default()
+        },
+        constraint: Some(Box::new(Only(vec![65, 66, 67]))),
+        cancel: CancellationToken::new(),
+    })
+    .expect("generate")
+}
+
+/// Reads to the end; returns the generated tokens and `cached_tokens`.
+fn finish(mut rx: Events) -> (Vec<u32>, u32) {
+    let mut toks = Vec::new();
+    loop {
+        match rx.blocking_recv().expect("terminal event") {
+            GenEvent::Token(t) => toks.push(t),
+            GenEvent::Finished { reason, stats } => {
+                assert_eq!(reason, FinishReason::Length);
+                return (toks, stats.cached_tokens);
+            }
+            GenEvent::Error(e) => panic!("{e}"),
+        }
+    }
+}
+
+/// The first `share` tokens are common to all seeds.
+fn shared_prompt(n: usize, seed: u32, share: usize) -> Vec<u32> {
+    (0..n)
+        .map(|i| {
+            if i < share {
+                10 + (i as u32 * 7) % 150
+            } else {
+                10 + (seed * 31 + i as u32 * 13) % 150
+            }
+        })
+        .collect()
+}
+
+/// A second request sharing a long prefix with a running one (its reader is not reading, so it
+/// stays busy): returns the second one's tokens and `cached_tokens`, and the successful copies.
+fn second_over_a_busy_one(
+    prefix_reuse: bool,
+    fail_cp: bool,
+) -> (Vec<u32>, u32, Vec<(SeqId, SeqId, usize)>) {
+    let (s, probe) = start_with(2, 2048, prefix_reuse);
+    probe.fail_cp.store(fail_cp, Ordering::Relaxed);
+    let first = generate(&s, shared_prompt(600, 1, 600), 400);
+    let t0 = std::time::Instant::now();
+    while probe.decodes.load(Ordering::Relaxed) < 12 {
+        assert!(
+            t0.elapsed() < Duration::from_secs(60),
+            "first never decodes"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let (toks, cached) = finish(generate(&s, shared_prompt(640, 2, 600), 12));
+    let cps = probe.cps.lock().unwrap().clone();
+    drop(first);
+    shutdown(s);
+    (toks, cached, cps)
+}
+
+/// hardware: cpu. The own pool takes a copy into the destination the scheduler reserved: the
+/// second request starts from the shared prefix and generates what a fresh prefill does.
+#[test]
+fn cpu_a_busy_sequence_lends_its_prefix() {
+    let (with, cached, cps) = second_over_a_busy_one(true, false);
+    let (without, none, _) = second_over_a_busy_one(false, false);
+    assert!(cached >= 500, "cached {cached}");
+    assert!(cps.iter().any(|&(_, _, n)| n >= 500), "no copy: {cps:?}");
+    assert_eq!(none, 0);
+    assert_eq!(with, without);
+}
+
+/// hardware: cpu. A copy that fails does not lose the request: it prefills from scratch (no
+/// idle or RAM source here) and still generates the same tokens.
+#[test]
+fn cpu_a_failed_busy_copy_falls_back() {
+    let (got, cached, cps) = second_over_a_busy_one(true, true);
+    let (fresh, _, _) = second_over_a_busy_one(false, false);
+    assert!(cps.is_empty());
+    assert_eq!(cached, 0);
+    assert_eq!(got, fresh);
 }

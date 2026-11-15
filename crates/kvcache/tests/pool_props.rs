@@ -126,8 +126,7 @@ impl Sim {
                 let ok_input = a != b
                     && self.pool.reserved(a) > 0
                     && self.pool.seq_len(a) >= n
-                    && self.pool.seq_len(b) == 0
-                    && self.pool.reserved(b) == 0;
+                    && self.pool.seq_len(b) == 0;
                 match self.pool.seq_cp(a, b, n) {
                     Ok(copies) => {
                         assert!(ok_input);

@@ -423,6 +423,9 @@ struct Worker {
     /// After a failed multi-input step: the sequences to retry one per step, so only the one
     /// whose input the backend rejects fails.
     solo: VecDeque<SeqId>,
+    /// Set after a failed busy copy: the next placement does not offer a busy source, so the
+    /// request falls back to the idle sequence or the RAM entry.
+    no_busy: bool,
 }
 
 /// Mask, sample and commit one token from `logits`.
@@ -482,6 +485,7 @@ impl Worker {
             last_step: None,
             n_vocab,
             solo: VecDeque::new(),
+            no_busy: false,
         }
     }
 
@@ -826,12 +830,13 @@ impl Worker {
         // A busy sequence holding the longest prefix, copied when it beats the idle and RAM
         // options by `restore_gain` (a copy costs less than a restore, but more than nothing).
         let ram_n = ram.map_or(0, |(_, n)| n);
+        let busy_ok = !std::mem::take(&mut self.no_busy);
         let busy = self
             .slots
             .iter()
             .enumerate()
             .filter_map(|(i, s)| match s {
-                Slot::Live(x) if self.prefix_reuse => {
+                Slot::Live(x) if self.prefix_reuse && busy_ok => {
                     let held = x.fed.min(self.backend.seq_len(i as SeqId));
                     Some((
                         i,
@@ -918,8 +923,13 @@ impl Worker {
                     }
                 }
                 Err(e) => {
-                    // A failed copy leaves `id` empty with its reservation.
+                    // The copy left `id` empty: release it and place the request again without
+                    // the busy source, so it can still use the idle sequence or the RAM entry.
                     tracing::warn!("cannot copy a busy sequence: {e}");
+                    let _ = self.backend.seq_rm(id as SeqId, 0);
+                    self.no_busy = true;
+                    self.waiting.push_front(req);
+                    return Admission::Admitted;
                 }
             }
         } else if let Some((etoks, bytes)) = picked.take() {

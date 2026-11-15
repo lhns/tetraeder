@@ -174,6 +174,50 @@ fn cpu_failed_decode_restores_reservations() {
     assert_eq!(b.model().pool().reserved(2), 0);
 }
 
+/// hardware: cpu. On the CPU a step with decoders and a prompt chunk is two model calls. When the
+/// second fails, every input goes back to its length and reservation from before the call: the
+/// decoders of the first call (which did not grow, one of them empty with a reservation), too.
+#[test]
+fn cpu_failed_second_group_restores_every_input() {
+    let mut b = backend(2048, 4);
+    b.seq_reserve(0, 600).unwrap(); // 3 blocks, slack beyond the 5 positions
+    b.seq_reserve(2, 256).unwrap(); // reserved, empty
+    b.decode(&[
+        input(0, &tokens(1, 5), false),
+        input(1, &tokens(2, 5), false),
+    ])
+    .unwrap();
+    let snap = |b: &DenseBackend| {
+        (
+            lens(b),
+            (0..SEQS).map(|s| b.seq_reserved(s)).collect::<Vec<_>>(),
+            b.kv_free(),
+        )
+    };
+    let before = snap(&b);
+    assert_eq!(before.1[0], 768);
+    assert_eq!(before.1[2], 256);
+    let (d0, d1, d2) = (tokens(3, 1), tokens(4, 1), tokens(5, 1));
+    let mut chunk = tokens(6, 100);
+    chunk[40] = -1; // outside the vocabulary: the model rejects the chunk's call
+    let err = b
+        .decode(&[
+            input(0, &d0, false),
+            input(1, &d1, false),
+            input(2, &d2, false),
+            input(3, &chunk, false),
+        ])
+        .map(|_| ())
+        .unwrap_err();
+    assert!(matches!(err, BackendError::Failed(_)), "{err}");
+    assert_eq!(snap(&b), before);
+    // Still usable.
+    chunk[40] = 7;
+    b.decode(&[input(0, &d0, false), input(3, &chunk, false)])
+        .unwrap();
+    assert_eq!((b.seq_len(0), b.seq_len(3)), (6, 100));
+}
+
 #[derive(Debug, Clone)]
 enum Op {
     Reserve { seq: SeqId, n: usize },

@@ -213,3 +213,12 @@ Differences found while building it; the decisions above stand.
 
 - On the CPU, `LlamaBackend` and `DenseBackend` run a step's decoders (inputs under 64 tokens, ggml's flash-attention query tile) and prompt chunks as separate model calls, in input order; on a GPU a step stays one call. Mixing 3 decoders into a 402-token chunk cost 195 ms over the chunk alone, as two calls 66 ms (Qwen3-0.6B, EPYC 9V74, `crates/scheduler/tests/step_shapes.rs`). `MoeBackend` is unchanged.
 - loop-bench found the scheduler loop itself at under 3 ms per step (gap between steps 0.05 ms, sampling and emitting at most 2.7 ms at 4 sequences). What remains at c4 on the CPU is the unified KV pool: against one KV stream per sequence (llama-server's layout) a 4-sequence decode step took 74 against 61 ms and a prompt above three resident sequences 19% longer (Xeon 6975P). Not changed here: streams would cap each sequence at `n_ctx / parallel`.
+
+## Addendum: review fixes after the c4gap changes (2026-11-15)
+
+- `KvPool::seq_cp` accepts a destination that holds no positions but already reserves rows. `Worker::place` reserves the target before the copy, and the pool used to refuse that ("not empty"), so a busy-sequence copy never worked on the own pools (the FakeKv double accepted it). One rule in the pool serves the dense and the MoE backend; the destination keeps at least its reservation.
+- A failed busy copy no longer means prefilling from scratch: the id is released and the request is placed again without the busy source, so it takes the idle sequence or RAM entry it would have had.
+- `DenseBackend::decode` snapshots (length, reservation) of every input before the step and puts all of them back on any failure, also those of earlier groups that did not grow. `KvPool::rollback` only shrinks, so a rollback cannot fail on a fragmented pool (the old shrink-then-regrow could). MoE gets the same from its own change.
+- `LlamaBackend` rolls back with `Engine::seq_truncate_cells`, which cuts in libllama even when the length already equals the target. `decode_seqs` already cleaned the failed call's cells, so this guards the backend path rather than fixing an observed orphan.
+- `serve`: an explicit `--ngl` above 0 with no GPU is an error for the own builders; the default (`-1`) falls back to the CPU with a `tracing::warn!`.
+- `--ctx` of the own builders is the shared pool's rows across all sequences, not a context per slot (llama.cpp's server splits it); one request can use all of it.
