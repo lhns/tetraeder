@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(
     sys.platform == "win32" or shutil.which("bash") is None, reason="needs bash on Linux (runs on the ubuntu CI job)"
 )
 
-STAGES = ["build", "gpu-parity", "gpu-shapes", "probe", "record-log", "env", "prepass", "pairs", "ttft", "summary"]
+STAGES = ["build", "gpu-parity", "gpu-shapes", "prepass", "probe", "record-log", "env", "pairs", "ttft", "summary"]
 
 
 def dry(tmp_path, rc=0, **env):
@@ -39,10 +39,10 @@ def test_stage_order_and_names(tmp_path):
     # every stage the script documents in its header is one it runs
     header = SCRIPT.read_text().split("\n\n")[0]
     assert all(re.search(rf"^#   {s}\s", header, re.M) for s in STAGES)
-    # the gates run before anything else: no record-log and no pre-pass before the probe ends
+    # the gates run before anything else: no record-log before the probe ends
     rec = next(i for i, ln in enumerate(lines) if "STAGE record-log" in ln)
     assert next(i for i, ln in enumerate(lines) if "claude_code_proxy.sh" in ln) > rec
-    assert not any("claude_code_proxy.sh" in ln or "prepass" in ln for ln in lines[:rec])
+    assert not any("claude_code_proxy.sh" in ln for ln in lines[:rec])
 
 
 def test_existing_log_skips_recording(tmp_path):
@@ -87,10 +87,10 @@ def test_gpu_gates_in_the_plan(tmp_path):
     assert [re.search(r"server-probe-(\S+)\.log", ln).group(1) for ln in probes] == [
         "q8b-llama-server", "q8b-tetraeder-dense", "q30b-llama-server", "q30b-tetraeder-moe"]
     assert "--engine dense" in probes[1] and "--engine moe" in probes[3]
-    assert "-fa on" in probes[0] and "-kvu" in probes[0]
+    assert "-fa on" in probes[0] and "-kvu" in probes[0]  # the pre-pass default (DRY picks kvu)
     c4 = next(ln for ln in lines if "-> probe-q8b-tetraeder-dense-c4.json" in ln)
     c1 = next(ln for ln in lines if "-> probe-q8b-tetraeder-dense-c1.json" in ln)
-    assert "--concurrency 4 --requests 8 --seed 14" in c4 and "--concurrency 1 --requests 8 --seed 11" in c1
+    assert "--concurrency 4 --requests 8 --seed 94" in c4 and "--concurrency 1 --requests 8 --seed 91" in c1
     assert any("probe.json" in ln and "0.85" in ln for ln in lines)
 
 
@@ -167,12 +167,76 @@ def test_server_flags(tmp_path):
 def test_workload_seed_and_files(tmp_path):
     lines = dry(tmp_path)
     c4 = next(ln for ln in lines if "bench-q8b-tetraeder-dense-c4-r2.json" in ln)
-    assert "--prompt-tokens 512 --max-tokens 128 --concurrency 4 --requests 16 --seed 2" in c4
+    assert "--prompt-tokens 512 --max-tokens 128 --concurrency 4 --requests 16 --seed 24" in c4
     c1 = next(ln for ln in lines if "bench-q8b-llama-server-c1-r1.json" in ln)
-    assert "--concurrency 1 --requests 8 --seed 1" in c1
+    assert "--concurrency 1 --requests 8 --seed 11" in c1
     assert any("gpu-q8b-llama-server-r1.txt" in ln and "before" in ln for ln in lines)
     assert any("gpu-q8b-llama-server-r1.txt" in ln and "after" in ln for ln in lines)
     assert any("prepass-q30b-nokvu.json" in ln for ln in lines)
     replay = next(ln for ln in lines if "-> replay-q8b-on-r1.json" in ln)
     for flag in ("--speed 0", "--concurrency 1", "--max-prompt-tokens 36000", "--expect-context-length 40960"):
         assert flag in replay
+
+
+def bench_calls(lines):
+    return [ln for ln in lines if ln.startswith("PLAN gateway_bench.py")]
+
+
+def test_every_bench_call_has_no_keepalive(tmp_path):
+    calls = bench_calls(dry(tmp_path))
+    assert len(calls) > 30 and all("--no-keepalive" in ln for ln in calls)
+
+
+def test_seeds_per_test_equal_across_engines(tmp_path):
+    seeds = {}  # (model, test, rep) -> {engine: seed}
+    for ln in bench_calls(dry(tmp_path)):
+        m = re.search(r"--label (q\d+b)-(\S+)-r(\d)-(c[14]) .*--seed (\d+)", ln)
+        if m:
+            model, engine, rep, test, seed = m.groups()
+            seeds.setdefault((model, test, rep), {})[engine] = seed
+    assert seeds
+    for key, by_engine in seeds.items():
+        assert len(set(by_engine.values())) == 1, (key, by_engine)
+    # c1 and c4 of one server start never share a seed
+    for model, rep in {(k[0], k[2]) for k in seeds}:
+        assert set(seeds[(model, "c1", rep)].values()) != set(seeds[(model, "c4", rep)].values())
+
+
+def test_failed_gpu_parity_still_runs_shapes_and_probe(tmp_path):
+    lines = dry(tmp_path, rc=3, DRY_GPU_PARITY="fail", PHASE4_LOG=str(tmp_path / "none.jsonl"))
+    stages = [m.group(1) for ln in lines if (m := re.search(r"STAGE (\S+)", ln))]
+    assert stages == STAGES[: STAGES.index("probe") + 1]
+    assert any("probe q8b tetraeder-dense start" in ln for ln in lines)
+    assert any("PHASE4_BOX_DONE rc=3" in ln for ln in lines)
+    assert not any("claude_code_proxy.sh" in ln or "run q8b-" in ln for ln in lines)
+    probe = json.loads((tmp_path / "out" / "probe.json").read_text())
+    assert probe["stop"] is True and probe["gpu_parity"] == "failed"
+
+
+def write_run(out, model, name, rep, c4=100.0, c1=10.0, errors=0):
+    for test, key, v in (("c1", "decode_tps_median", c1), ("c4", "throughput_tps", c4)):
+        (out / f"bench-{model}-{name}-{test}-r{rep}.json").write_text(
+            json.dumps({"summary": {"errors": errors, key: v}}))
+    (out / f"gpu-{model}-{name}-r{rep}.txt").write_text("before: 0x1\nafter: 0x1\n")
+
+
+def test_unclean_pair_is_rerun_as_rep_3(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    for rep in (1, 2):
+        for name in ("llama-server", "tetraeder-dense", "tetraeder-llama"):
+            write_run(out, "q8b", name, rep, errors=1 if (rep, name) == (2, "tetraeder-dense") else 0)
+    names = runs(dry(tmp_path))
+    q8b = [n for n in names if n.startswith("q8b-")]
+    # rep 2 ran (judged, baseline), so the rerun has that order; the control follows
+    assert q8b == ["q8b-tetraeder-dense-r3", "q8b-llama-server-r3", "q8b-tetraeder-llama-r3"]
+    assert not [n for n in names if n.startswith("q30b-llama-server-r3")]
+
+
+def test_clean_pairs_are_not_rerun(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    for rep in (1, 2):
+        for name in ("llama-server", "tetraeder-dense", "tetraeder-llama"):
+            write_run(out, "q8b", name, rep)
+    assert not [n for n in runs(dry(tmp_path)) if n.endswith("-r3") and n.startswith("q8b")]
