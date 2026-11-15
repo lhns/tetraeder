@@ -117,6 +117,12 @@ Also: document that decode-profile `eval_s` is shared step wall time and `gpu_se
 - m1-open item 8 tool-call repair: done (ADR 0051, 0057). Item 9 FP8 KV baseline: parked until a baseline pin where CUDA writes FP8 KV.
 - ADR index carries status; 12 ADRs moved to Accepted. Still Proposed, each waiting on a box measurement: 0052 (haswell vs auto pair), 0053 (a clean `noiqk` pair), 0056 part F, 0059 async stages, 0060 sampler vs OTel agreement; candidates for a later combined box session.
 
+### Phase 5 progress and follow-ups (2026-11-15)
+- On main: E1 (ggml-sys executor bindings, NCCL on Linux), E4 (patch 0004, CUDA `mul_mat_id` skips id -1), E9 (`serve --worker`: the engine in a child process over pipes, restart with backoff, lost-sequence guard, `TetraederWorkerRestarting` alert). Running: E2, E5. Next: E3 after E2; E6, E7, E8 after E5.
+- E9 follow-ups: an "Executor" dashboard panel for `tetraeder.executor.ipc.duration` and `tetraeder.executor.worker.restarts` (Rule 6); the scheduler should treat a backend's lost sequences after a worker restart as free (today a fresh request landing on a lost idle slot can fail once); sticky CUDA errors are detected by message text until the backend trait carries a sticky signal.
+- E1 note: no backend-to-backend `ggml_backend_tensor_copy_async` binding yet (pipeline peer copies need it; E5 adds it if needed).
+- Box sessions waiting on hardware: S1 (one GPU: patch 0004 GPU tests and timing, the E1 and E5 GPU tests), then S2 (two GPUs).
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 
