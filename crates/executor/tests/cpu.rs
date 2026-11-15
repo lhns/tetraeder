@@ -5,7 +5,13 @@ mod common;
 
 use common::{LEN, all_reduce_case, bits, cpu_ranks, pipeline_case};
 use tetraeder_executor::{ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks};
-use tetraeder_ggml_sys::ggml::{Backend, Context, Gallocr, Type};
+use tetraeder_ggml_sys::ggml::{Backend, Context, Gallocr, Tensor, Type};
+
+/// `((x + y) * y * 0.5)` normalized, plus `x`: five nodes.
+fn chain<'a>(c: &'a Context, x: Tensor<'a>, y: Tensor<'a>) -> Tensor<'a> {
+    let s = c.scale(c.mul(c.add(x, y), y), 0.5);
+    c.add(c.rms_norm(s, 1e-6), x).set_output()
+}
 
 /// One rank and one range (and the same nodes cut in two or three) equal `Gallocr` plus
 /// `compute` of the graph, bit for bit.
@@ -25,9 +31,7 @@ fn one_rank_is_bit_equal_to_gallocr_and_compute() {
     y.set_f32(&yv).unwrap();
 
     let gctx = Context::new(16, 8).unwrap();
-    let a = gctx.add(x, y);
-    let c = gctx.scale(gctx.mul(a, y), 0.5);
-    let e = gctx.add(gctx.rms_norm(c, 1e-6), x).set_output();
+    let e = chain(&gctx, x, y);
     let mut g = gctx.new_graph(8);
     g.expand(e);
     assert_eq!(g.n_nodes(), 5);
@@ -40,7 +44,9 @@ fn one_rank_is_bit_equal_to_gallocr_and_compute() {
 
     let mut exec = Executor::new(Ranks::open(&[RankDevice::Cpu { threads: 1 }]).unwrap());
     for cuts in [vec![5], vec![2, 5], vec![1, 2, 5]] {
-        let rctx = Context::new(0, 8).unwrap();
+        // Fresh nodes without data, so the executor's own allocation is what runs.
+        let rctx = Context::new(16, 8).unwrap();
+        let e = chain(&rctx, x, y);
         let mut graph = rctx.new_graph(8);
         graph.expand(e);
         let ops = (0..cuts.len())
