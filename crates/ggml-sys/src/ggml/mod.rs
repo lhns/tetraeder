@@ -21,7 +21,7 @@ mod sched;
 pub use alloc::Gallocr;
 pub use backend::{Backend, Buffer, HugepageAdvice, advise_hugepages};
 pub use comm::{Comm, CommPath};
-pub use context::{Context, Graph, OwnedGraph, OwnedTensor, RopeParams, Tensor};
+pub use context::{Context, Graph, OwnedGraph, OwnedTensor, RangeGraphs, RopeParams, Tensor};
 pub use event::Event;
 pub use quant::{quantize, to_f32};
 pub use sched::Sched;

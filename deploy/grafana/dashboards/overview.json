@@ -2467,6 +2467,74 @@
           }
         }
       ]
+    },
+    {
+      "id": 84,
+      "title": "Executor: ranges per token, collective bytes, worker restarts",
+      "description": "Own executor (ADR 0069): ranges launched per generated token (ADR 0070 gives the expected count per shape), bytes moved by all-reduces and copies per second by kind and comm path (nccl, internal or fallback; alert TetraederCollectiveFallback), and worker restarts in the window (alert TetraederWorkerRestarting).",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 106,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "collective .*"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(tetraeder_executor_ranges_total[$__rate_interval])) / sum(rate(tetraeder_tokens_total{tetraeder_token_direction=\"output\"}[$__rate_interval]))",
+          "legendFormat": "ranges per token",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (tetraeder_kind, tetraeder_comm) (rate(tetraeder_executor_collective_bytes_total[$__rate_interval]))",
+          "legendFormat": "collective {{tetraeder_kind}} {{tetraeder_comm}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "sum(increase(tetraeder_executor_worker_restarts_total[$__rate_interval]))",
+          "legendFormat": "worker restarts",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

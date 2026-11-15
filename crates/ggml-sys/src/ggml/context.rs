@@ -20,12 +20,18 @@ pub struct Context {
 impl Context {
     /// Room for `max_tensors` tensors (leaves and op results) and one graph of `graph_nodes`.
     pub fn new(max_tensors: usize, graph_nodes: usize) -> Result<Context> {
+        Self::with_graphs(max_tensors, &[graph_nodes])
+    }
+
+    /// Room for `max_tensors` tensors and one graph per entry of `graph_nodes` (a zero entry
+    /// reserves nothing), for range graphs and other families of small graphs.
+    pub fn with_graphs(max_tensors: usize, graph_nodes: &[usize]) -> Result<Context> {
         crate::llama::init();
         // SAFETY: pure size arithmetic.
         let mut mem = max_tensors * unsafe { sys::ggml_tensor_overhead() } + 1024;
-        if graph_nodes > 0 {
+        for &nodes in graph_nodes.iter().filter(|&&n| n > 0) {
             // SAFETY: as above.
-            mem += unsafe { sys::ggml_graph_overhead_custom(graph_nodes, false) };
+            mem += unsafe { sys::ggml_graph_overhead_custom(nodes, false) } + 64;
         }
         let params = sys::ggml_init_params {
             mem_size: mem,
@@ -221,6 +227,12 @@ impl Context {
     pub fn add<'a>(&'a self, a: Tensor<'a>, b: Tensor<'a>) -> Tensor<'a> {
         // SAFETY: see `get_rows`.
         self.t(unsafe { sys::ggml_add(self.ptr.as_ptr(), a.raw(), b.raw()) })
+    }
+
+    /// `a + b` written into `a`: the result is a view of `a` (no data of its own).
+    pub fn add_inplace<'a>(&'a self, a: Tensor<'a>, b: Tensor<'a>) -> Tensor<'a> {
+        // SAFETY: see `get_rows`.
+        self.t(unsafe { sys::ggml_add_inplace(self.ptr.as_ptr(), a.raw(), b.raw()) })
     }
 
     pub fn mul<'a>(&'a self, a: Tensor<'a>, b: Tensor<'a>) -> Tensor<'a> {
@@ -666,6 +678,44 @@ impl<'a> Tensor<'a> {
         Ok(())
     }
 
+    /// `ggml_backend_tensor_copy_async`: copies this tensor (in a buffer `src_backend` computes
+    /// on) to `dst` (a buffer of `dst_backend`). With both backends on CUDA it is a peer copy on
+    /// the source stream and the destination stream waits for it with an event (no host wait).
+    /// Without an async path (a CPU backend) ggml synchronizes both backends and copies before
+    /// returning. Both tensors need a buffer and the same type, shape and strides.
+    pub fn copy_tensor_async(
+        self,
+        src_backend: &Backend,
+        dst_backend: &Backend,
+        dst: Tensor<'_>,
+    ) -> Result<()> {
+        self.check_range(0, 0)?;
+        dst.check_range(0, 0)?;
+        if self.ty() != dst.ty() || self.ne() != dst.ne() || self.nb() != dst.nb() {
+            return Err(GgmlError::Invalid(format!(
+                "copy of `{}` to `{}`: different layouts ({:?} {:?} and {:?} {:?})",
+                self.name(),
+                dst.name(),
+                self.ty(),
+                self.ne(),
+                dst.ty(),
+                dst.ne(),
+            )));
+        }
+        // SAFETY: both tensors are live with buffers and the same layout (checked; ggml asserts
+        // it); the backends are live. ggml either copies asynchronously between streams ordered
+        // by an event or synchronizes both backends first.
+        unsafe {
+            sys::ggml_backend_tensor_copy_async(
+                src_backend.raw(),
+                dst_backend.raw(),
+                self.raw(),
+                dst.raw(),
+            )
+        };
+        Ok(())
+    }
+
     /// Reads raw bytes at `offset` (backend memory to host).
     pub fn get_bytes(self, offset: usize, len: usize) -> Result<Vec<u8>> {
         self.check_range(offset, len)?;
@@ -805,6 +855,12 @@ impl<'a> Graph<'a> {
         unsafe { sys::ggml_build_forward_expand(self.ptr.as_ptr(), t.raw()) }
     }
 
+    /// Identity of the graph: unique per graph built in this process, kept by
+    /// [`Context::keep_graph`] and [`OwnedGraph::get`].
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
     pub fn n_nodes(&self) -> usize {
         // SAFETY: live graph.
         unsafe { sys::ggml_graph_n_nodes(self.ptr.as_ptr()) as usize }
@@ -819,5 +875,88 @@ impl<'a> Graph<'a> {
             ptr: NonNull::new(p).expect("graph nodes are non-null"),
             _ctx: PhantomData,
         }
+    }
+}
+
+/// Consecutive node ranges of one graph as graphs of their own (`ggml_graph_add_node`), kept
+/// apart from the source graph so a caller can cache them (ADR 0069). The ranges point at the
+/// source graph's tensors and use its allocation, so they are handed out only against that
+/// graph: [`RangeGraphs::get`] takes it and the result borrows it.
+pub struct RangeGraphs {
+    // Owns the memory of the range graphs; never read.
+    _ctx: Context,
+    graphs: Vec<(NonNull<sys::ggml_cgraph>, u64)>,
+    source: u64,
+}
+
+impl RangeGraphs {
+    /// Ranges `[0, cuts[0])`, `[cuts[0], cuts[1])` and so on. `cuts` is strictly increasing and
+    /// ends at `src.n_nodes()`.
+    pub fn new(src: &Graph<'_>, cuts: &[usize]) -> Result<RangeGraphs> {
+        let n = src.n_nodes();
+        let mut prev = 0;
+        for &c in cuts {
+            if c <= prev {
+                return Err(GgmlError::Invalid(format!(
+                    "range cuts {cuts:?} are not strictly increasing from 0"
+                )));
+            }
+            prev = c;
+        }
+        if prev != n {
+            return Err(GgmlError::Invalid(format!(
+                "range cuts {cuts:?} do not end at the graph's {n} nodes"
+            )));
+        }
+        let mut sizes = Vec::with_capacity(cuts.len());
+        let mut start = 0;
+        for &end in cuts {
+            sizes.push(end - start);
+            start = end;
+        }
+        let ctx = Context::with_graphs(0, &sizes)?;
+        let mut graphs = Vec::with_capacity(cuts.len());
+        let mut start = 0;
+        for &end in cuts {
+            let g = ctx.new_graph(end - start);
+            for i in start..end {
+                // SAFETY: live graphs; the node is a live tensor of the source graph and the
+                // new graph has room for `end - start` nodes.
+                unsafe { sys::ggml_graph_add_node(g.ptr.as_ptr(), src.node(i).raw()) };
+            }
+            graphs.push((g.ptr, g.id));
+            start = end;
+        }
+        Ok(RangeGraphs {
+            _ctx: ctx,
+            graphs,
+            source: src.id,
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.graphs.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.graphs.is_empty()
+    }
+
+    /// Range `i`, for the graph these ranges were cut from. The result borrows both, so the
+    /// tensors it computes stay alive for as long as it is used.
+    pub fn get<'s>(&'s self, src: &'s Graph<'_>, i: usize) -> Result<Graph<'s>> {
+        if src.id != self.source {
+            return Err(GgmlError::Invalid(
+                "range graphs were cut from another graph".into(),
+            ));
+        }
+        let &(ptr, id) = self.graphs.get(i).ok_or_else(|| {
+            GgmlError::Invalid(format!("range {i} of {} range graphs", self.graphs.len()))
+        })?;
+        Ok(Graph {
+            ptr,
+            id,
+            _ctx: PhantomData,
+        })
     }
 }
