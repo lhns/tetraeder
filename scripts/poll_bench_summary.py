@@ -16,7 +16,7 @@ from pathlib import Path
 
 BASE = "poll50"
 ARMS = ("poll50", "poll0", "pause")
-METRICS = ("decode_tok_s", "compute_ms", "throttled_share", "ctxsw_voluntary_per_s")
+METRICS = ("decode_tok_s", "compute_ms", "total_ms", "throttled_share", "ctxsw_voluntary_per_s")
 
 
 def read_cg(path: Path) -> dict:
@@ -58,6 +58,7 @@ def load_run(d: Path, m: dict) -> dict:
         "quota": m["quota"],
         "decode_tok_s": h["decode_tok_s"],
         "compute_ms": h.get("decode_profile_per_token", {}).get("compute_ms"),
+        "total_ms": h.get("decode_profile_per_token", {}).get("total_ms"),
         "throttled_share": cg["throttled_share"],
         "ctxsw_voluntary_per_s": read_ctxsw(d / f"time-{m['id']}.txt"),
         "cpu_max": cg["quota"],
@@ -115,11 +116,11 @@ def render(s: dict) -> str:
         if not g:
             continue
         lines.append(f"## {grp}")
-        lines.append("| arm | n | tok/s | compute ms | throttled share | vol ctxsw/s |")
-        lines.append("|---|---|---|---|---|---|")
+        lines.append("| arm | n | tok/s | compute ms | step ms | throttled share | vol ctxsw/s |")
+        lines.append("|---|---|---|---|---|---|---|")
         for a, v in g["arms"].items():
             lines.append(
-                f"| {a} | {v['n']} | {f(v['decode_tok_s_median'])} | {f(v['compute_ms_median'], 1)} | "
+                f"| {a} | {v['n']} | {f(v['decode_tok_s_median'])} | {f(v['compute_ms_median'], 1)} | {f(v['total_ms_median'], 1)} | "
                 f"{f(v['throttled_share_median'])} | {f(v['ctxsw_voluntary_per_s_median'], 0)} |"
             )
         for a, r in g["paired_ratio_vs_" + BASE].items():

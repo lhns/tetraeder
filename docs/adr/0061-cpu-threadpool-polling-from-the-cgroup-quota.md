@@ -1,6 +1,6 @@
 # 0061. CPU threadpool polling chosen from the cgroup CPU quota
 
-Status: Proposed (2026-11-12). Extends ADR 0036 (one CPU threadpool per backend) and the `cpu_poll` switch of ADR 0038; evidence in ADR 0045 (`20261112e`).
+Status: Accepted (2026-11-15: built; evidence in 20261112e and the pool_pause addendum). Earlier: Proposed (2026-11-12). Extends ADR 0036 (one CPU threadpool per backend) and the `cpu_poll` switch of ADR 0038; evidence in ADR 0045 (`20261112e`).
 
 ## Context
 
