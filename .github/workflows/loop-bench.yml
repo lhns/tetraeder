@@ -6,7 +6,7 @@ name: loop-bench
 # (loop-results/moe). Never gates a PR; ratios are in the log and the loop-bench artifact.
 on:
   push:
-    branches: [main, track-d2-prep]
+    branches: [main]
     paths:
       - crates/scheduler/**
       - crates/engine/**
