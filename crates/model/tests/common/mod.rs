@@ -55,15 +55,61 @@ pub fn dense_fixture() -> PathBuf {
 /// (summation order, about 1e-6 at the fixture's logit scale of 1 to 5).
 pub const TOL_CPU: f32 = 1e-4;
 /// GPU builder against the CPU reference: different kernels and F16 rounding of activations,
-/// about 1e-3 relative at that scale.
+/// about 1e-3 relative at a logit scale of 1 to 5. An absolute floor only: the F16 fixtures'
+/// logits reach 11 to 15, so the GPU checks of `gpu_dense.rs` and `gpu_multi_seq.rs` use
+/// [`GPU_TOL`].
 pub const TOL_GPU: f32 = 5e-3;
+
+/// A logit tolerance: an absolute floor and a factor of the reference row's largest |logit|.
+#[derive(Clone, Copy, Debug)]
+pub struct Tol {
+    pub abs: f32,
+    pub rel: f32,
+}
+
+impl Tol {
+    /// An absolute bound only.
+    pub const fn abs(abs: f32) -> Self {
+        Tol { abs, rel: 0.0 }
+    }
+
+    /// The bound for a row whose reference logits are `want`.
+    pub fn of(self, want: &[f32]) -> f32 {
+        self.abs.max(self.rel * largest(want))
+    }
+}
+
+/// `abs` floor and 1e-3 of the largest logit: the batched-against-alone rule ([`tol_batch`]).
+impl From<f32> for Tol {
+    fn from(abs: f32) -> Self {
+        Tol { abs, rel: 1e-3 }
+    }
+}
+
+/// CUDA against the CPU, or batched against alone on CUDA, with F16 weights:
+/// `max(TOL_GPU, 5e-3 * largest logit)`. On compute capability 8.x an F16 matmul takes mmvf for
+/// 1 row, mmf (tensor cores, F32 accumulation) for 2 to 16 rows, and cuBLAS `COMPUTE_16F` (half
+/// accumulation and half output) above 16 rows or where mmf does not fit the shape (the 260-row
+/// output head, the MoE fixture's 32-wide down experts). F16's relative half-ulp is 4.9e-4; the
+/// first box run (RTX 3090) measured 1.4e-3 to 2.4e-3 of the largest logit. libllama runs the
+/// same kernels (it sets no F32 precision on Qwen3 matmuls); `gpu_libllama_*` measure its own
+/// batched-against-alone gap as the anchor. Greedy tokens stay equal or within ADR 0043's
+/// near-tie rule.
+pub const GPU_TOL: Tol = Tol {
+    abs: TOL_GPU,
+    rel: 5e-3,
+};
+
+/// Largest |logit| of a row.
+pub fn largest(logits: &[f32]) -> f32 {
+    logits.iter().fold(0f32, |m, x| m.max(x.abs()))
+}
 /// A batched step against the same tokens decoded alone: `max(TOL_CPU, 1e-3 * largest logit)`,
 /// the rule of `engine/tests/multi_seq.rs`. ggml takes other matmul kernels for other row counts
 /// (ADR 0043), so the last bits differ on some CPUs; CI measured 7.4e-3 (Linux) and 3.5e-4
 /// (Windows) here. Same-shape comparisons (libllama, the same step split) keep `TOL_CPU`.
 pub fn tol_batch(logits: &[f32]) -> f32 {
-    let top = logits.iter().fold(0f32, |m, x| m.max(x.abs()));
-    TOL_CPU.max(1e-3 * top)
+    Tol::from(TOL_CPU).of(logits)
 }
 pub const TOP_K: usize = 5;
 pub const PROMPT: [i32; 6] = [12, 77, 3, 200, 41, 9];
@@ -291,43 +337,105 @@ impl Evaluator for Qwen3 {
 /// the reference. Panics on a difference above `tol` in a reference top-k logit or in the
 /// greedy sequence. Returns the largest logit difference seen.
 pub fn check_against(m: &mut dyn Evaluator, r: &Reference, tol: f32) -> f32 {
+    check_against_tol(m, r, Tol::abs(tol))
+}
+
+/// [`check_against`] with a bound per position (`tol.of` the reference row). Every position's
+/// worst top-k difference is printed before any assertion, so one run shows whether the gap is
+/// flat or grows along the prompt.
+pub fn check_against_tol(m: &mut dyn Evaluator, r: &Reference, tol: Tol) -> f32 {
     m.reset();
     assert_eq!(m.n_vocab(), r.n_vocab);
     let got = m.eval(&PROMPT);
     assert_eq!(got.len(), r.prompt_logits.len());
     assert!(got.iter().all(|x| x.is_finite()));
+    let nv = r.n_vocab;
     let mut worst = 0f32;
+    let mut fails = Vec::new();
     for p in 0..PROMPT.len() {
         let (want, have) = (
-            &r.prompt_logits[p * r.n_vocab..(p + 1) * r.n_vocab],
-            &got[p * r.n_vocab..(p + 1) * r.n_vocab],
+            &r.prompt_logits[p * nv..(p + 1) * nv],
+            &got[p * nv..(p + 1) * nv],
         );
         let top = top_k(want, TOP_K);
-        for &i in &top {
-            worst = worst.max((want[i] - have[i]).abs());
-            assert!(
-                (want[i] - have[i]).abs() <= tol,
-                "position {p}, token {i}: libllama {} vs builder {}",
-                want[i],
-                have[i]
-            );
+        let (i, d) = top
+            .iter()
+            .map(|&i| (i, (want[i] - have[i]).abs()))
+            .fold((top[0], 0f32), |a, b| if b.1 > a.1 { b } else { a });
+        let (bound, scale) = (tol.of(want), largest(want));
+        eprintln!(
+            "position {p}: top-{TOP_K} max |delta| {d:e} at token {i} ({:.2e} of largest {scale}), bound {bound:e}, top-1 equal {}",
+            d / scale,
+            top[0] == argmax(have)
+        );
+        worst = worst.max(d);
+        if d > bound {
+            fails.push(format!(
+                "position {p}, token {i}: libllama {} vs builder {} (bound {bound:e})",
+                want[i], have[i]
+            ));
         }
-        assert_eq!(top[0], argmax(have), "top-1 differs at position {p}");
+    }
+    // Top-1 equal, or the reference's top two within twice the bound (ADR 0043's near tie).
+    for p in 0..PROMPT.len() {
+        let (want, have) = (
+            &r.prompt_logits[p * nv..(p + 1) * nv],
+            &got[p * nv..(p + 1) * nv],
+        );
+        let (w, h) = (top_k(want, 1)[0], argmax(have));
+        if w != h {
+            let gap = want[w] - want[h];
+            eprintln!("position {p}: top-1 {h} against {w}, reference gap {gap:e}");
+            if gap > 2.0 * tol.of(want) {
+                fails.push(format!(
+                    "top-1 differs at position {p}: {h} against {w}, gap {gap:e}"
+                ));
+            }
+        }
     }
 
     // Greedy sequence: prefill the prompt, then decode one token per step (n_tokens = 1 graphs,
-    // incremental KV cache).
+    // incremental KV cache), teacher-forced with the reference's tokens so one near tie does not
+    // make the rest incomparable. Each step's top-1 equals the reference token or the builder's
+    // own top two are within twice the bound there.
     m.reset();
-    let last = m.eval_last(&PROMPT);
-    assert_eq!(last.len(), r.n_vocab);
-    let mut next = argmax(&last) as i32;
-    let mut seq = Vec::new();
-    for _ in 0..N_GREEDY {
-        seq.push(next);
-        next = argmax(&m.eval(&[next])) as i32;
+    let mut logits = m.eval_last(&PROMPT);
+    assert_eq!(logits.len(), r.n_vocab);
+    for (k, &t) in r.greedy.iter().enumerate() {
+        let h = argmax(&logits);
+        if h as i32 != t {
+            let gap = logits[h] - logits[t as usize];
+            eprintln!("greedy step {k}: builder {h} against reference {t}, builder gap {gap:e}");
+            if gap > 2.0 * tol.of(&logits) {
+                fails.push(format!("greedy step {k}: {h} against {t}, gap {gap:e}"));
+            }
+        }
+        logits = m.eval(&[t]);
     }
-    assert_eq!(seq, r.greedy);
+    assert!(fails.is_empty(), "{}", fails.join("; "));
     worst
+}
+
+/// A named part of a test for [`run_all`].
+pub type Part<'a> = (&'a str, Box<dyn FnOnce() + 'a>);
+
+/// A [`Part`] from a closure.
+pub fn part<'a>(name: &'a str, f: impl FnOnce() + 'a) -> Part<'a> {
+    (name, Box::new(f))
+}
+
+/// Runs every part, then panics with the names of those that panicked, so one failing part does
+/// not hide the numbers of the others (box runs print every comparison before asserting).
+pub fn run_all(parts: Vec<Part<'_>>) {
+    let failed: Vec<&str> = parts
+        .into_iter()
+        .filter_map(|(name, f)| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+                .is_err()
+                .then_some(name)
+        })
+        .collect();
+    assert!(failed.is_empty(), "failed: {}", failed.join(", "));
 }
 
 /// One step of a multi-sequence script: `(seq, first, last)` appends tokens `first..last` of the
@@ -351,12 +459,24 @@ pub fn libllama_script(
     kv: KvFormat,
 ) -> Logits {
     tetraeder_ggml_sys::llama::disable_attn_rot();
+    libllama_script_on(path, streams, steps, kv, 0)
+}
+
+/// [`libllama_script`] with `n_gpu_layers` (-1: all on the GPU), leaving libllama's rotation as
+/// the process has it (it matters only for a quantized cache).
+pub fn libllama_script_on(
+    path: &Path,
+    streams: &[Vec<i32>],
+    steps: &[Vec<Item>],
+    kv: KvFormat,
+    n_gpu_layers: i32,
+) -> Logits {
     let ty = |f| tetraeder_model::convert::ggml_type(f).expect("ggml type of the KV format");
     let model = Arc::new(
         Model::load(
             path,
             &ModelParams {
-                n_gpu_layers: 0,
+                n_gpu_layers,
                 extra_bufts: false,
                 ..ModelParams::default()
             },
@@ -469,8 +589,45 @@ pub fn script_delta(want: &Logits, have: &Logits) -> (f32, Option<(u32, usize)>)
 /// number of rows compared. Panics when a row is missing or the argmax differs where the
 /// reference's top-2 margin is above both ADR 0043's near-tie bound (1e-3 of the largest logit)
 /// and twice the row's tolerance (a smaller margin can flip within it). With `rel` the
-/// tolerance of a row is [`tol_batch`] of the reference row.
+/// tolerance of a row is [`tol_batch`] of the reference row, else `tol`.
 pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, rel: bool, what: &str) -> f32 {
+    let tol = if rel {
+        Tol::from(TOL_CPU)
+    } else {
+        Tol::abs(tol)
+    };
+    compare_scripts_tol(want, have, tol, what)
+}
+
+/// Every row both scripts have: `(key, max |delta|, that over the reference's largest |logit|,
+/// argmax equal)`.
+pub fn script_rows(want: &Logits, have: &Logits) -> Vec<((u32, usize), f32, f32, bool)> {
+    want.iter()
+        .filter_map(|(key, w)| {
+            let h = have.get(key)?;
+            let d = w
+                .iter()
+                .zip(h)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0f32, f32::max);
+            Some((*key, d, d / largest(w), argmax(w) == argmax(h)))
+        })
+        .collect()
+}
+
+/// Prints [`script_rows`], one line per row, and returns the worst relative difference.
+pub fn print_script_rows(what: &str, want: &Logits, have: &Logits) -> f32 {
+    let rows = script_rows(want, have);
+    for (key, d, rel, same) in &rows {
+        eprintln!("{what}: {key:?} max |delta| {d:e} ({rel:.2e} of largest), argmax equal {same}");
+    }
+    let worst = rows.iter().fold(0f32, |m, r| m.max(r.2));
+    eprintln!("{what}: {} rows, worst {worst:.2e} of largest", rows.len());
+    worst
+}
+
+/// [`compare_scripts`] with a [`Tol`] per row (`tol.of` the reference row).
+pub fn compare_scripts_tol(want: &Logits, have: &Logits, tol: Tol, what: &str) -> f32 {
     assert_eq!(
         want.keys().collect::<Vec<_>>(),
         have.keys().collect::<Vec<_>>(),
@@ -489,7 +646,7 @@ pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, rel: bool, what: 
             .map(|(a, b)| (a - b).abs())
             .fold(0f32, f32::max);
         worst = worst.max(diff);
-        let tol = if rel { tol_batch(w) } else { tol };
+        let tol = tol.of(w);
         assert!(
             diff <= tol,
             "{what}: {key:?} differs by {diff:e} (tolerance {tol:e})"
@@ -499,6 +656,58 @@ pub fn compare_scripts(want: &Logits, have: &Logits, tol: f32, rel: bool, what: 
         if margin > (1e-3 * w[top[0]].abs()).max(2.0 * tol) {
             assert_eq!(top[0], argmax(h), "{what}: argmax differs at {key:?}");
         }
+    }
+    worst
+}
+
+/// The comparisons of a batching anchor, all printed row by row before any assertion.
+/// libllama batched against split (every input its own call) is llama.cpp's own batching noise
+/// on that backend, and libllama on the backend against the CPU its own backend gap: both are
+/// recorded, not asserted (they are not our code). The builder against libllama with the same
+/// step shapes runs the same kernels, so a mask, row or position bug shows there while kernel
+/// noise cancels: asserted within `tol` (on the CPU the measured gap is 0). The builder batched
+/// against split is asserted within `tol` widened to 1.5 times libllama's own worst relative
+/// gap, so the bound follows llama.cpp's behaviour (CI measured 1.07e-3 of the largest logit for
+/// libllama on the CPU on the dense fixture, above `tol_batch`'s 1e-3) (ADR 0071). Returns the
+/// worst gap of each comparison over the largest logit, in print order.
+pub fn anchor_pairs(
+    what: &str,
+    ll_batched: &Logits,
+    ll_split: &Logits,
+    ll_cpu: &Logits,
+    ours_batched: &Logits,
+    ours_split: &Logits,
+    tol: Tol,
+) -> Vec<f32> {
+    let pairs = [
+        ("libllama batched / libllama split", ll_split, ll_batched),
+        ("builder batched / builder split", ours_split, ours_batched),
+        (
+            "builder batched / libllama batched",
+            ll_batched,
+            ours_batched,
+        ),
+        ("builder split / libllama split", ll_split, ours_split),
+        ("libllama batched / libllama on the cpu", ll_cpu, ll_batched),
+    ];
+    let worst: Vec<f32> = pairs
+        .iter()
+        .map(|(name, want, have)| print_script_rows(&format!("{what} {name}"), want, have))
+        .collect();
+    for ((name, _, _), w) in pairs.iter().zip(&worst) {
+        eprintln!("{what} {name}: worst {w:.2e} of the largest logit");
+    }
+    let own = Tol {
+        abs: tol.abs,
+        rel: tol.rel.max(1.5 * worst[0]),
+    };
+    for (i, (name, want, have)) in pairs.into_iter().enumerate() {
+        let what = format!("{what} {name}");
+        match i {
+            1 => compare_scripts_tol(want, have, own, &what),
+            2 | 3 => compare_scripts_tol(want, have, tol, &what),
+            _ => continue,
+        };
     }
     worst
 }

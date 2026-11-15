@@ -1,9 +1,12 @@
 //! The dense builder on CUDA (ADR 0066): the tiny dense fixture against the CPU reference within
-//! `TOL_GPU`, one and three sequences; Qwen3-8B Q4_K_M top-1 and 64 greedy tokens against
-//! libllama when `TETRAEDER_MODELS_DIR` has it.
+//! `GPU_TOL` (ADR 0071), one and three sequences; libllama on CUDA batched against split as the
+//! anchor of that tolerance, and the builder against it with the same step shapes; Qwen3-8B
+//! Q4_K_M top-1 and 64 greedy tokens against libllama when `TETRAEDER_MODELS_DIR` has it. The
+//! fixture's head size of 64 runs CUDA flash attention, with sequences mixed in one query tile in
+//! the multi-sequence tests.
 //!
 //! Hardware label: `gpu_*`. Without a GPU the tests skip; with `TETRAEDER_REQUIRE_GPU` set a
-//! missing GPU fails them (`Backend::gpu_available`).
+//! missing GPU fails them (`Backend::gpu_available`). `cpu_*` runs the anchor's body on the CPU.
 
 mod common;
 
@@ -46,12 +49,17 @@ fn gpu_one_sequence_matches_the_cpu_reference() {
         eprintln!("skip: no GPU");
         return;
     }
-    for kv in [KvFormat::F16, KvFormat::Q8_0] {
+    let one = |kv: KvFormat| {
         let r = libllama_reference_kv_default_rot(&dense_fixture(), &PROMPT, N_GREEDY, kv);
         let mut m = load(GPU, kv, 1);
-        let worst = check_against(&mut m, &r, TOL_GPU);
+        eprintln!("{kv} on GPU:");
+        let worst = check_against_tol(&mut m, &r, GPU_TOL);
         eprintln!("{kv} on GPU: max |delta| over the top-{TOP_K} logits: {worst:e}");
-    }
+    };
+    run_all(vec![
+        part("f16", || one(KvFormat::F16)),
+        part("q8_0", || one(KvFormat::Q8_0)),
+    ]);
 }
 
 /// hardware: gpu. Three sequences in steps with a prefill chunk mixed in, against the same
@@ -77,8 +85,73 @@ fn gpu_three_sequences_match_the_cpu_builder() {
     let kv = KvFormat::F16;
     let want = builder_script(&mut load(CPU, kv, 3), &streams, &steps, true);
     let have = builder_script(&mut load(GPU, kv, 3), &streams, &steps, true);
-    let worst = compare_scripts(&want, &have, TOL_GPU, false, "gpu batched / cpu batched");
+    print_script_rows("gpu batched / cpu batched", &want, &have);
+    let worst = compare_scripts_tol(&want, &have, GPU_TOL, "gpu batched / cpu batched");
     eprintln!("three sequences on GPU: max |delta| {worst:e}");
+}
+
+/// Three sequences whose first step has 22 rows (above mmf's 16 on CUDA, so cuBLAS) and whose
+/// second mixes a 10-token chunk (all logits) with two decode tokens, then one token each.
+fn anchor_script() -> (Vec<Vec<i32>>, Vec<Vec<Item>>) {
+    let lens = [24usize, 20, 13];
+    let streams: Vec<Vec<i32>> = lens
+        .iter()
+        .enumerate()
+        .map(|(i, &n)| stream(21 + i as u32, n))
+        .collect();
+    let it = |seq, range, all| Item { seq, range, all };
+    let mut steps = vec![
+        vec![it(0, 0..10, false), it(1, 0..8, false), it(2, 0..4, false)],
+        vec![it(0, 10..11, false), it(1, 8..18, true), it(2, 4..5, false)],
+    ];
+    let mut at = [11usize, 18, 5];
+    loop {
+        let mut step = Vec::new();
+        for s in 0..3 {
+            if at[s] < lens[s] {
+                step.push(it(s as u32, at[s]..at[s] + 1, false));
+                at[s] += 1;
+            }
+        }
+        if step.is_empty() {
+            break;
+        }
+        steps.push(step);
+    }
+    (streams, steps)
+}
+
+/// libllama (`n_gpu_layers`) and the builder on `backend`, the anchor script batched and split
+/// (every item its own call), and libllama batched on the CPU (`anchor_pairs`).
+fn dense_anchor(backend: BackendChoice, n_gpu_layers: i32, tol: Tol, what: &str) -> Vec<f32> {
+    let (streams, steps) = anchor_script();
+    let split: Vec<Vec<Item>> = steps.iter().flatten().map(|i| vec![i.clone()]).collect();
+    let kv = KvFormat::F16;
+    let ll = |s: &[Vec<Item>], ngl| libllama_script_on(&dense_fixture(), &streams, s, kv, ngl);
+    let (ll_b, ll_s) = (ll(&steps[..], n_gpu_layers), ll(&split[..], n_gpu_layers));
+    let ll_cpu = ll(&steps[..], 0);
+    let our_b = builder_script(&mut load(backend, kv, 3), &streams, &steps, true);
+    let our_s = builder_script(&mut load(backend, kv, 3), &streams, &steps, false);
+    anchor_pairs(what, &ll_b, &ll_s, &ll_cpu, &our_b, &our_s, tol)
+}
+
+/// hardware: gpu. The anchor of `GPU_TOL` on CUDA: libllama's own batching noise, and the
+/// builder against libllama with the same step shapes.
+#[test]
+fn gpu_libllama_batched_vs_split_anchor() {
+    if !Backend::gpu_available() {
+        eprintln!("skip: no GPU");
+        return;
+    }
+    let worst = dense_anchor(GPU, -1, GPU_TOL, "gpu");
+    eprintln!("gpu anchor worst (of largest logit): {worst:?}");
+}
+
+/// hardware: cpu. The anchor's body on the CPU, at the batched-against-alone CPU rule.
+#[test]
+fn cpu_libllama_batched_vs_split_anchor() {
+    let worst = dense_anchor(CPU, 0, Tol::from(TOL_CPU), "cpu");
+    eprintln!("cpu anchor worst (of largest logit): {worst:?}");
 }
 
 /// libllama on the GPU: 64 greedy tokens after `PROMPT`.
