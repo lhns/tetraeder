@@ -21,8 +21,8 @@ Facts that shape them:
 |---|---|---|---|
 | D2 | Qwen3-32B Q4_K_M (dense, 64 layers, about 19.8 GB) | 2x RTX 3090 | `single` if it fits, `layer-2`, `tp-2` |
 | M2 | Qwen3-30B-A3B Q4_K_M (MoE, 48 layers, 128 experts, top 8, about 18.6 GB) | 2x RTX 3090 | `single`, `layer-2`, `tp-2`, `ep-2` |
-| D4 | Qwen3-32B Q4_K_M | 4x RTX 3090 | `layer-4`, `tp-4`, `tp2-pp2` |
-| M4 | Qwen3-30B-A3B Q4_K_M | 4x RTX 3090 | `layer-4`, `tp-4` (if ADR 0070's block rule allows it), `ep-4`, `tp2-pp2` |
+| D4 | Qwen3-32B Q4_K_M | 4x RTX 3090 | `single` if it fits, `layer-4`, `tp-4`, `tp2-pp2` |
+| M4 | Qwen3-30B-A3B Q4_K_M | 4x RTX 3090 | `single`, `layer-4`, `tp-4` (if ADR 0070's block rule allows it), `ep-4`, `tp2-pp2` |
 
 Shapes are ADR 0070's. The candidate set of a case is exactly the output of `tetraeder-plan candidates --multi` on the box's hardware graph before calibration (ADR 0040: enumeration fixed before scoring); a shape that its memory check or ADR 0070's divisibility rules prune is listed as pruned with the reason and is not run. Knobs are equal for all candidates: CUDA graphs on, `ubatch 512`, F16 KV, flash attention, context 4096, threads from the CPU quota.
 
@@ -71,7 +71,8 @@ Engine names in files: `tetraeder-exec`, `llama-bench`, `ik-llama-bench`, `vllm`
 - Batch-1 request time is the score; batched throughput is not judged in Phase 5.
 - The judged pick is the analytic one; the close-call benchmark is reported.
 - Every candidate within 15% on both rates is the literal exit test. Owner question: if one candidate misses while the median error is under 10%, does the case fail? Default: it fails.
-- The 4x cases need a 4x box, which may cost more than the 0.90 USD/h box cap (ADR 0069 report). Without it the verdict is partial and `phase5_pass` stays false.
+- The 4x cases need a 4x box, which may cost more than the 0.90 USD/h box cap. Without it the verdict is partial and `phase5_pass` stays false.
+- One case per model per box session is allowed (D4 and M4 may run on two 4x sessions) to stay inside the 3 h box cap; each case needs its own clean A/A then.
 
 ## Consequences
 

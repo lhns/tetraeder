@@ -8,8 +8,8 @@ Briefs for ADR 0068 (verdict), ADR 0069 (own executor) and ADR 0070 (parallel sh
 
 | Wave | Steps | Where | Shared files |
 |---|---|---|---|
-| 1 | **E1, E2, E3 start now** (CI only); E4 (CI for the CPU half, the CUDA half needs session S1); E9 (CI) | CI | E2 and E5 both edit `crates/executor/{Cargo.toml,src/lib.rs}`: E2 adds `topology.rs` and its `mod`, append only. E9 alone touches `tetraeder/src/serve.rs` in wave 1 |
-| 2 | E5 (needs E1) | CI | E5 and E9 append to `telemetry/src/metrics.rs`, `overview.json`, `engine.yml`: append, do not reorder, merge textually |
+| 1 | **E1, E2 start now** (CI only); **E4 starts now** (CPU half on CI, CUDA half on session S1, one GPU); E9 (CI) | CI | E9 alone touches `tetraeder/src/serve.rs` in wave 1; E1 and E4 both edit `ggml-sys/build.rs` (separate blocks, append) |
+| 2 | E3 (needs E2's `plan::Topology`), E5 (needs E1) | CI | E5 and E9 append to `telemetry/src/metrics.rs`, `overview.json`, `engine.yml`: append, do not reorder, merge textually |
 | 3 | E6, E7, E8 in parallel (need E2, E3, E5; E7's CUDA expert parallel also needs E4) | CI, then S2 and S3 | E6 and E7 both add `--plan` handling to `tetraeder/src/bench.rs` and backends in `scheduler/src/{dense_backend.rs,backend.rs}` (separate files); append only. Both read, never change, `executor` |
 | 4 | Verdict sessions V2, V4 (ADR 0068), run by the coordinator | boxes | |
 
@@ -88,7 +88,7 @@ impl Comm {
 
 ## Brief E2: plan rules, phase 5 capabilities, executor topology (start now)
 
-**Goal.** The plan IR, validator and capability table say what Phase 5 executes (ADR 0069 capability table, ADR 0070 "IR change, one rule"), and `executor::Topology` turns a valid plan into ranks and stages.
+**Goal.** The plan IR, validator and capability table say what Phase 5 executes (ADR 0069 capability table, ADR 0070 "IR change, one rule"), and `plan::Topology` turns a valid plan into ranks and stages. It lives in `plan` (no ggml) so the planner, the executor and the builders share one slicing rule.
 
 **Read first.** ADR 0027; ADR 0069 Scope, Interfaces, Capability table; ADR 0070 Shard conventions; `crates/plan/src/{plan.rs,expand.rs,validate.rs,phase.rs,testing.rs}`; `crates/profiler/src/graph.rs` (`Device::index`).
 
@@ -96,13 +96,13 @@ impl Comm {
 - `expand`: in a stage with `ep = 1` and `tp > 1`, each expert unit has `tp` shards on the group's devices in order; with `ep = tp`, one shard. Shard bytes as today (divided by the shard count, rounded up).
 - `validate`: under phase 5 caps reject `ep > 1` with `tp != ep`; reject a stage with more than one device whose compute devices include a CPU or whose experts have a home on RAM or NVMe or slot caches; reject compute device other than home for non-expert units. Messages name the stage and the rule. Phase 4 and lower behave as today.
 - `phase.rs`: `Caps` gains `multi_gpu_cpu_compute: false` for 5 (and 6), with the existing `tp_ep: p >= 5`. One test per row of ADR 0069's table.
-- New `crates/executor/src/topology.rs` (crate depends on `tetraeder-plan` and `tetraeder-profiler`):
+- New `crates/plan/src/topology.rs`, re-exported from `plan` (the crate already depends on `tetraeder-profiler`):
   ```rust
   pub type RankId = usize;
   #[derive(Debug, Clone, PartialEq, Eq)]
   pub struct RankSpec { pub device: String, pub gpu_index: Option<usize> }
   #[derive(Debug, Clone, PartialEq, Eq)]
-  pub struct StageSpec { pub layers: plan::Span, pub ranks: Vec<RankId>, pub tp: u32, pub ep: u32,
+  pub struct StageSpec { pub layers: Span, pub ranks: Vec<RankId>, pub tp: u32, pub ep: u32,
                          pub embed: bool, pub head: bool }
   #[derive(Debug, Clone, PartialEq, Eq)]
   pub struct Topology { pub ranks: Vec<RankSpec>, pub stages: Vec<StageSpec>, pub n_layer: u32 }
@@ -121,17 +121,17 @@ impl Comm {
   ```
 
 **Tests first.**
-- `plan`: expand of `tp = 2, ep = 1` gives 2 shards per expert, `tp = ep = 2` one; validator rejects `tp = 1, ep = 2` and `tp = 4, ep = 2` in phase 5 and accepts them as before in no phase; rejects a 2-GPU stage with CPU compute or a RAM expert home. Existing property tests (Rule 5) run over generated plans that include tp and ep stages: memory never exceeded, every unit-shard computed exactly once.
-- `executor`: `from_plan` on plans for `single`, `layer-2`, `tp-2`, `ep-2`, `tp2-pp2` (write them with `plan::testing` helpers over the 2x and 4x devices of a literal `HardwareGraph`): ranks, stages, embed and head flags as ADR 0070 says; every error case collects all reasons. Property test: for random stage layouts every layer maps to exactly one stage and every rank belongs to at least one stage.
+- `plan`: expand of `tp = 2, ep = 1` gives 2 shards per expert, `tp = ep = 2` one; validator rejects `tp = 1, ep = 2` and `tp = 4, ep = 2` in phase 5, and in phases 1 to 4 rejects any `tp` or `ep` above 1 as today; rejects a 2-GPU stage with CPU compute or a RAM expert home. Existing property tests (Rule 5) run over generated plans that include tp and ep stages: memory never exceeded, every unit-shard computed exactly once.
+- `plan::Topology`: `from_plan` on plans for `single`, `layer-2`, `tp-2`, `ep-2`, `tp2-pp2` (write them with `plan::testing` helpers over the 2x and 4x devices of a literal `HardwareGraph`): ranks, stages, embed and head flags as ADR 0070 says; every error case collects all reasons. Property test: for random stage layouts every layer maps to exactly one stage and every rank belongs to at least one stage.
 - `block_slice`: 768 / 256 over 2 gives 512 and 256, rotation swaps them; over 4 errors; 25600 / 256 over 4 gives 6400 each; slices tile `[0, len)` exactly (property).
 
-**Done.** Workspace checks; `cargo test -p tetraeder-plan -p tetraeder-executor`.
+**Done.** Workspace checks; `cargo test -p tetraeder-plan`.
 
 **Must not change.** Phase 1 to 4 validation results, the TOML format of existing plans, `expand` output for stages with `tp = ep = 1`.
 
 ---
 
-## Brief E3: links, collective curves, multi-rank cost model, `enumerate_multi` (start now)
+## Brief E3: links, collective curves, multi-rank cost model, `enumerate_multi`, calibration (after E2)
 
 **Goal.** The profiler, cost model and planner price every Phase 5 shape (ADR 0070 "Cost model", "Planner"), on simulated 2x and 4x fixtures, in CI.
 
@@ -150,12 +150,14 @@ impl Comm {
 - `costmodel`: `RunFeatures::ranks: Option<RankFeatures>` and the types and formula of ADR 0070, plus `c_range` per `GraphMode` and `c_step` as new fit parameters in `calib.rs` (fitted only when an anchor has `ranks`; absent otherwise, so committed fits are unchanged). Prior when no curve: `allreduce_time` and `transfer_time` with the link's alpha and beta. Breakdown labels `allreduce:<group>`, `copy:<a>-<b>`, `ranges`.
 - `planner`:
   - `pub fn enumerate_multi(hw: &HardwareGraph, layout: &ModelLayout, hints: &Hints, phase: Phase) -> MultiCandidates` with `MultiCandidates { candidates: Vec<Candidate>, pruned: Vec<(String /*id*/, String /*reason*/)> }`, ids `single`, `layer-<g>`, `tp-<g>`, `ep-<g>`, `tp2-pp2` (ADR 0068 table), knobs: graphs on, ubatch 512, threads from the CPU quota as `planner::serve::budget_of` reads it, F16 KV, context 4096. Layer spans from the existing dynamic program. Block pruning from the layout's tensor types and shapes with `ggml` block sizes from `plan::format`.
-  - `features_multi(layout, &Candidate, &Topology-like description) -> RunFeatures` builds `ranks` per shape (ADR 0070 shares, EP Monte Carlo with seed 20261115 over the layout's routing frequencies, uniform when absent).
+  - `pub fn features_multi(layout: &ModelLayout, topo: &plan::Topology, knobs: &Knobs, layer_limit: Option<u32>, routing: Option<&[Vec<f64>]>) -> Result<RunFeatures, String>` builds `ranks` per shape with `plan::block_slice` for the shares (ADR 0070; EP Monte Carlo with seed 20261115 over `routing`, per layer per expert frequencies, uniform when `None`). `layer_limit` gives an anchor's features (first N layers plus the head, ADR 0068). A one-rank `Topology` gives `ranks: None` and today's features.
+  - `tetraeder-plan calibrate --hw hw.json --layout-dir layouts/ --anchors anchors/ --out calib.json`: reads the anchor runs (`anchors-<model>-r<k>.json`, llama-bench rows with `plan_id`, `layer_limit`), builds their features with `features_multi`, fits with `calib.rs` (existing parameters plus `c_range`, `c_step`), writes the fit and its residuals.
   - search skeletons: `P2p` or `HostStaged` links; EP group `tp = ep = g`; the existing Linux-only prune stays.
   - CLI: `tetraeder-plan candidates --multi --hw hw.json --layout l.json --out candidates.json --plans-dir plans/` and `tetraeder-plan predict --hw hw.json --layout l.json --calib calib.json --candidates candidates.json --out predict.json` (fields of ADR 0068's predict file; `sha256` of the `hw.json` bytes).
 - Fixtures `crates/costmodel/fixtures/two_3090_hoststaged.toml` and `four_3090_hoststaged.toml`: RTX 3090 priors as the existing 3090 calibration (`bench/results/20261103/planner-moe/`), host links gen4 x16 (x8 for two GPUs of the 4x fixture behind one lane group), prior collective curves from the ring formula at 10 us and 12 GB/s.
 
 **Tests first.**
+- `calibrate`: on synthetic anchors generated from known parameters on `two_3090_hoststaged`, the fit recovers `c_range` and `c_step` within 5%.
 - `profiler`: a discovered topology without peer access yields `HostStaged` links with the prior; with peer access `P2p`.
 - `costmodel`: `ranks: None` predictions bit-identical on every existing fixture and committed fit (compare against values recorded before the change); a two-phase hand-built `RankFeatures` gives the formula's value; uneven parts take the max; `collective_time` interpolates and extrapolates as specified.
 - `planner`, on both new fixtures and the existing ones (Rule 4): `enumerate_multi` for the Qwen3-32B and Qwen3-30B-A3B layouts (write literal layouts in `layout.rs` test helpers from the GGUF facts in ADR 0070) gives exactly ADR 0068's candidate ids, with `tp-4` pruned for the 30B ("3 blocks over 4 ranks"); deterministic across runs; predictions finite for every candidate; the predicted `pp_tps`, `tg_tps` per candidate and fixture are committed as a snapshot test (a change must update the snapshot on purpose).
@@ -230,7 +232,7 @@ pub enum ExecError { Invalid(Vec<String>), Ggml(GgmlError) }
 - CPU ranks: each `Backend::cpu(threads)`; tests use 1 or 2 threads per rank.
 - Fallback all-reduce (ADR 0069): star through rank 0 with a scratch tensor per rank allocated once per program in its own buffer, one-node `add` graphs; F32 only (error otherwise).
 - `AllReduce` calls `Comm::all_reduce` first when `comm` exists and every tensor is on a CUDA rank.
-- Metrics (Rule 6): `tetraeder.executor.ranges` (counter, `tetraeder.rank`), `tetraeder.executor.collective.bytes` (counter, `tetraeder.kind`, `tetraeder.comm`); panel "Executor: ranges per token, collective bytes, worker restarts" in `overview.json` (the restarts query is E9's metric; add the panel here with both queries).
+- Metrics (Rule 6): `tetraeder.executor.ranges` (counter, `tetraeder.rank`), `tetraeder.executor.collective.bytes` (counter, `tetraeder.kind`, `tetraeder.comm`); `tetraeder.executor.comm` (gauge, 1, `tetraeder.comm`); panel "Executor: ranges per token, collective bytes, worker restarts" in `overview.json` (the restarts query is E9's metric; add the panel here with both queries); alert `TetraederCollectiveFallback` in `deploy/alerts/engine.yml` (ADR 0069).
 - `tetraeder comm-probe --gpus 0,1[,2,3] --out calib-comm.json`: in `crates/tetraeder/src/comm_probe.rs`, all-reduce over every group the ADR 0068 candidates use (all GPUs; on 4, also each pair {0,1}, {2,3}) and copies per pair, sizes 4 KiB to 64 MiB in powers of 4, 20 repeats, median, with `Backend::synchronize` around each timed op; output matches `CollectiveCurve` (E3) plus `comm_path`.
 
 **Tests first** (`crates/executor/tests/`, label `cpu` unless named):
@@ -238,7 +240,7 @@ pub enum ExecError { Invalid(Vec<String>), Ggml(GgmlError) }
 - One rank, one range: bit-equal to `Gallocr` plus `compute` of the same graph.
 - 2 and 4 CPU ranks: all-reduce of distinct inputs equals the host sum exactly (small integers in F32); a pipeline program (rank 0 range, copy, rank 1 range) equals one graph on one backend bit for bit.
 - Reuse: a second `run` with new inputs and the same program allocates nothing (`prepare` counter).
-- `gpu_`: the same programs on two CUDA backends of one GPU.
+- `gpu_`: the same programs on two CUDA backends of one GPU; CUDA graph replay of kept range graphs as ADR 0069 Tests first says (`GGML_CUDA_GRAPH_DEBUG=1`, count captures and replays from ggml's log as `crates/model/tests/gpu_graphs.rs` does): one capture per range, a replay of every range on each later step. If replays do not happen, report it with the log; do not change ggml.
 - `gpu2_`, `gpu4_`: all-reduce through `Comm`; `comm-probe` writes a curve with increasing times.
 
 **Done.** Workspace checks; `uv run pytest tests/test_alert_rules.py` if dashboards or alerts changed.
@@ -255,13 +257,13 @@ pub enum ExecError { Invalid(Vec<String>), Ggml(GgmlError) }
 
 **Decisions.**
 - `attn.rs`: `pub(crate) fn attention_out(..) -> Tensor` returns `wo(attn)` without the residual and takes the rank's local head counts from the weights' shapes; `attention` becomes `attention_out(..) + x`, op order unchanged (bit-equal, the existing tests are the check).
-- `Qwen3::load_sharded(path: impl AsRef<Path>, topo: &Topology, opts: &DenseOptions) -> Result<Qwen3>`: one `Ranks` and `Executor` inside; per rank its weights (column slices read with strided reads, row slices with `executor::block_slice`), its KV tensors for its layers and KV heads; one `KvPool`. `Qwen3::load` stays and becomes `load_sharded` with `Topology::single` when the backend is a GPU; the CPU backend keeps `Sched`. `DenseOptions::force_sched: bool` (default false, for tests) keeps the old GPU path so the bit-equal check can run on a box.
+- `Qwen3::load_sharded(path: impl AsRef<Path>, topo: &Topology, opts: &DenseOptions) -> Result<Qwen3>`: one `Ranks` and `Executor` inside; per rank its weights (column slices read with strided reads, row slices with `plan::block_slice`), its KV tensors for its layers and KV heads; one `KvPool`. `Qwen3::load` stays and becomes `load_sharded` with `Topology::single` when the backend is a GPU; the CPU backend keeps `Sched`. `DenseOptions::force_sched: bool` (default false, for tests) keeps the old GPU path so the bit-equal check can run on a box.
 - Step: per rank one graph per key (n_tokens, n_kv, outputs), boundaries after each `wo` and `ffn_down` partial (all-reduce), after a stage's last layer (copy to the next stage, one hop tensor per in-flight micro-batch), head by vocab slice per rank, logits read back per output rank and concatenated in vocab order. Kept graphs as `reuse_step_graph`.
 - `DenseOptions::layer_limit: Option<u32>` (ADR 0069, calibration anchors).
 - `DenseBackend::with_topology`; `tetraeder bench --engine dense --plan p.toml` and `serve --engine dense --plan p.toml` build the topology from the plan, the hardware graph (`profiler::discover`) and `expand`; llama-bench JSON rows as today plus `plan_id`, `ranks`, `comm_path`, `ranges_per_token`.
 
 **Tests first.**
-- `cpu`, tiny dense fixture (`tests/fixtures/tiny-qwen3-f16.gguf`, 2 layers, 4 heads, 2 KV heads): `load_sharded` with one CPU rank bit-equal to `Qwen3::load` on the CPU backend through `Sched` (logits of every position and 12 greedy steps); `tp-2` (2 CPU ranks), `layer-2` (split after layer 1), and on a 4-layer variant of the fixture (`cargo xtask tiny-dense --layers 4`, add the flag) `tp2-pp2` and layer splits at layers 1, 2, 3 (Rule 2 split points): top-5 within `tol_batch`, greedy equal or ADR 0043 near-tie. Three sequences batched in one step on `tp-2` against each alone.
+- `cpu`, tiny dense fixture (`tests/fixtures/tiny-qwen3-f16.gguf`, 2 layers, 4 heads, 2 KV heads): `load_sharded` with one CPU rank bit-equal to `Qwen3::load` on the CPU backend through `Sched` (logits of every position and 12 greedy steps); `tp-2` (2 CPU ranks), `layer-2` (split after layer 1), and on a 4-layer variant of the fixture (`cargo xtask tiny-dense --layers 4`, add the flag) `tp2-pp2` and layer splits at layers 1, 2, 3 (Rule 2 split points): top-5 within `tol_batch`, greedy equal or ADR 0043 near-tie. Three sequences batched in one step on `tp-2` against each alone. Snapshots per ADR 0069 "KV snapshots and copies": a `tp-2` and a `layer-2` snapshot equal the one-rank layout byte for byte on layer 0 (whose inputs are identical) and in length and layout everywhere; restoring across shapes then decoding matches within `tol_batch`; `seq_cp` under `tp-2` equals two separate prefills of the prefix.
 - `cpu`: Qwen3-0.6B Q8_0 golden on `tp-2` CPU ranks: tokens equal to the golden file except reported near-ties (skips without the model unless `TETRAEDER_REQUIRE_MODELS=1`).
 - `gpu_`: one GPU rank bit-equal to `force_sched` on Qwen3-8B Q4_K_M.
 - `gpu2_`, `gpu4_` (`crates/model/tests/gpu_sharded.rs`): every shape against `single` on Qwen3-8B Q4_K_M within `TOL_GPU`, 64 greedy tokens equal or near-tie; ranges per decode token equal ADR 0070's count (`2 * layers + head` for tp); `layer_limit` runs.
@@ -286,7 +288,7 @@ pub enum ExecError { Invalid(Vec<String>), Ggml(GgmlError) }
 - `LoadOptions::layer_limit: Option<u32>`; `MoeBackend::with_topology`; bench and serve `--plan` as E6.
 
 **Tests first.**
-- `cpu`, tiny MoE fixture and the synthetic Q8_0 MoE (`tests/common/synth.rs`): one rank bit-equal to the current resident whole-step graph; `tp-2`, `ep-2`, `layer-2`, and `ep-4`, `tp2-pp2` on a 4-layer synthetic: within `tol_batch`, greedy equal or near-tie; EP with skewed routing (all top-k on rank 0's experts) still correct; batched 3 sequences on `ep-2`.
+- `cpu`, tiny MoE fixture and the synthetic Q8_0 MoE (`tests/common/synth.rs`): one rank bit-equal to the current resident whole-step graph; `tp-2`, `ep-2`, `layer-2`, and `ep-4`, `tp2-pp2` on a 4-layer synthetic: within `tol_batch`, greedy equal or near-tie; EP with skewed routing (all top-k on rank 0's experts) still correct; batched 3 sequences on `ep-2`; snapshot and restore across `ep-2`, `tp-2` and one rank as E6's test.
 - `cpu`: every rank's step graph keeps the CUDA fusion order (`SOFT_MAX, RESHAPE, ARGSORT, VIEW, GET_ROWS, ...` before the expert FFN).
 - `gpu2_`, `gpu4_` on Qwen3-30B-A3B Q4_K_M: every shape against `single` within `TOL_GPU`, 64 greedy tokens; `tp-4` refused at load with the block reason.
 
@@ -340,12 +342,16 @@ pub enum ExecError { Invalid(Vec<String>), Ggml(GgmlError) }
 
 All on Vast through taxameter (ADR 0021, 0029), Linux, RTX 3090 class (the image's CUDA builds are sm_86), commit before provisioning, results fetched and verified before destroy. Prices are estimates for Vast RTX 3090 offers, not quotes.
 
+**Prerequisite.** `taxameter offers` has no GPU-count filter (`uv run taxameter offers --help`: `--gpu`, `--min-vram` are per card). Renting a 2x or 4x box needs one (`--num-gpus N`, Vast's `num_gpus` search field) in taxameter, a separate project, before S0.
+
 | Session | When | Box | What | Hours | USD (box) |
 |---|---|---|---|---|---|
+| S0 | now, no Tetraeder code | 2x RTX 3090 | baselines only: `llama-bench -sm` layer, row and tensor of the baseline build on both models, pp2048 and tg128, two interleaved rounds; record the P2P matrix and the comm path `-sm tensor` logs. Tells before E5 to E7 whether tensor parallel pays on PCIe 3090s | 1 | 0.4 to 0.6 |
 | S1 | after E4 and E5 | 1x RTX 3090 | E4 `gpu_` tests and timing JSON; E1, E5 `gpu_` tests (two backends on one GPU); existing `gpu_` parity tests unchanged with patch 0004 | 1 | 0.2 to 0.3 |
 | S2 | after E6, E7, E8 | 2x RTX 3090 | `gpu2_` tests; `comm-probe`; ADR 0069 step-0 check (own `tp-2` against llama.cpp `-sm tensor`, both models, two pairs); `phase5_box.sh` rehearsal with one round | 2.5 | 0.9 to 1.5 |
 | S3 | after S2's fixes | 4x RTX 3090 | `gpu4_` tests; probe; rehearsal of D4 and M4, one round | 2 | 1.4 to 2.4 |
 | V2 | after S3 | 2x RTX 3090 | verdict cases D2, M2 (ADR 0068) | 2.5 | 0.9 to 1.5 |
-| V4 | after V2 | 4x RTX 3090 | verdict cases D4, M4 | 3 | 2.1 to 3.6 |
+| V4a | after V2 | 4x RTX 3090 | verdict case D4 | 2 | 1.4 to 2.4 |
+| V4b | after V2, may run beside V4a on a second box | 4x RTX 3090 | verdict case M4 | 2 | 1.4 to 2.4 |
 
-Traffic: about 45 GB of models per box (Qwen3-32B and Qwen3-30B-A3B, plus Qwen3-8B for S2 and S3 tests), 0.6 to 1.2 USD per box at 0.013 to 0.026 USD/GB. Total with one rerun of S2 or a verdict session: about 13 to 16 box hours, 9 to 17 USD. 2x RTX 3090 boxes fit the 0.90 USD/h cap; 4x RTX 3090 offers run about 0.70 to 1.20 USD/h, so S3 and V4 take an offer at or below 0.90 or wait for the owner to raise the cap for them. S2 and V2, and S3 and V4, cannot share a box with anything else (the verdict needs a quiet box); S1 can run beside any other project's box.
+Traffic: about 45 GB of models per box (Qwen3-32B and Qwen3-30B-A3B, plus Qwen3-8B for S2 and S3 tests), 0.6 to 1.2 USD per box at 0.013 to 0.026 USD/GB. Total with one rerun of S2 or a verdict session: about 15 to 18 box hours, 11 to 20 USD. 2x RTX 3090 boxes fit the 0.90 USD/h cap; 4x RTX 3090 offers run about 0.70 to 1.20 USD/h, so S3, V4a and V4b take an offer at or below 0.90 or wait for the owner to raise the cap for them; V4a and V4b side by side need the account cap (1.80 USD/h) and both box slots. Verdict and rehearsal boxes run nothing else (a quiet box); S1 can run beside any other project's box.
