@@ -1,0 +1,10 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+    Finished `release` profile [optimized] target(s) in 0.75s
+     Running tests/exec_bindings.rs (target/release/deps/exec_bindings-25b3e8310b19f888)
+
+running 1 test
+test gpu_comm_and_event_on_one_gpu ... comm path on one GPU: Nccl
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.33s
+

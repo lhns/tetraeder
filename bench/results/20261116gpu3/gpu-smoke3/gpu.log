@@ -1,0 +1,2 @@
+name, driver_version, compute_cap, memory.total [MiB], clocks.current.sm [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 615.71.10, 8.6, 24576 MiB, 210 MHz, 0x0000000000000004
