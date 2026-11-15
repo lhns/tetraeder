@@ -80,6 +80,9 @@ enum Command {
     Calibrate {
         #[arg(long)]
         hw: PathBuf,
+        /// `calib-comm.json` of `tetraeder comm-probe`, merged into the graph.
+        #[arg(long)]
+        comm: Option<PathBuf>,
         #[arg(long)]
         layout_dir: PathBuf,
         #[arg(long)]
@@ -92,6 +95,9 @@ enum Command {
     Predict {
         #[arg(long)]
         hw: PathBuf,
+        /// `calib-comm.json`; merged into the graph and hashed into the file.
+        #[arg(long)]
+        comm: Option<PathBuf>,
         #[arg(long)]
         layout: PathBuf,
         /// `calib.json` of `calibrate`; without it the graph itself is used.
@@ -380,11 +386,15 @@ fn main() -> Result<()> {
         }
         Command::Calibrate {
             hw,
+            comm,
             layout_dir,
             anchors,
             out,
         } => {
-            let hw = multi_cli::parse_hw(&read(&hw)?).map_err(anyhow::Error::msg)?;
+            let mut hw = multi_cli::parse_hw(&read(&hw)?).map_err(anyhow::Error::msg)?;
+            if let Some(c) = &comm {
+                multi_cli::merge_comm(&mut hw, &read(c)?).map_err(anyhow::Error::msg)?;
+            }
             let mut by_model: BTreeMap<String, Vec<String>> = BTreeMap::new();
             for e in std::fs::read_dir(&anchors).with_context(|| anchors.display().to_string())? {
                 let path = e?.path();
@@ -417,13 +427,22 @@ fn main() -> Result<()> {
         }
         Command::Predict {
             hw,
+            comm,
             layout,
             calib,
             candidates,
             out,
         } => {
             let hw_text = read(&hw)?;
-            let graph = multi_cli::parse_hw(&hw_text).map_err(anyhow::Error::msg)?;
+            let mut graph = multi_cli::parse_hw(&hw_text).map_err(anyhow::Error::msg)?;
+            let comm_sha = match &comm {
+                Some(c) => {
+                    let text = read(c)?;
+                    multi_cli::merge_comm(&mut graph, &text).map_err(anyhow::Error::msg)?;
+                    Some(multi_cli::sha256_hex(text.as_bytes()))
+                }
+                None => None,
+            };
             let layout = multi_cli::parse_layout(&read(&layout)?).map_err(anyhow::Error::msg)?;
             let cands: multi_cli::MultiFile =
                 serde_json::from_str(&read(&candidates)?).context("parse candidates")?;
@@ -450,7 +469,11 @@ fn main() -> Result<()> {
                 &calibrated,
                 &layout,
                 &cands,
-                (multi_cli::sha256_hex(hw_text.as_bytes()), calib_sha),
+                (
+                    multi_cli::sha256_hex(hw_text.as_bytes()),
+                    calib_sha,
+                    comm_sha,
+                ),
                 &commit,
             )
             .map_err(anyhow::Error::msg)?;

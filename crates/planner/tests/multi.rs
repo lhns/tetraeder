@@ -256,7 +256,8 @@ fn predict_file_carries_the_hashes_and_all_candidates() {
     let g = hw(TWO);
     let l = moe();
     let file = multi_cli::candidates_multi(&g, &l);
-    let p = multi_cli::predict_multi(&g, &l, &file, ("abc".into(), None), "deadbeef").unwrap();
+    let p =
+        multi_cli::predict_multi(&g, &l, &file, ("abc".into(), None, None), "deadbeef").unwrap();
     assert_eq!(p.candidates.len(), file.candidates.len());
     assert_eq!(
         (p.hw_sha256.as_str(), p.git_commit.as_str()),
@@ -268,4 +269,24 @@ fn predict_file_carries_the_hashes_and_all_candidates() {
             .all(|r| (r.t_s - (2048.0 / r.pp_tps + 128.0 / r.tg_tps)).abs() < 1e-9)
     );
     assert_eq!(multi_cli::sha256_hex(b"abc").len(), 64);
+}
+
+#[test]
+fn the_comm_probe_report_is_read_as_written() {
+    // As `tetraeder comm-probe` serializes it (E5): PascalCase ops, extra fields.
+    let text = r#"{"comm_path":"internal","devices":["gpu0","gpu1"],"repeats":20,"curves":[
+        {"op":"AllReduce","ranks":["gpu0","gpu1"],"comm":"internal","points":[[4096.0,3e-5],[16384.0,4e-5]]},
+        {"op":"Copy","ranks":["gpu0","gpu1"],"comm":"copy","points":[[4096.0,2e-5],[16384.0,3e-5]]}]}"#;
+    let mut g = hw(TWO);
+    let n = g.collectives.len();
+    let path = multi_cli::merge_comm(&mut g, text).unwrap();
+    assert_eq!(path, "internal");
+    // the prior curves of the same op and ranks are replaced
+    assert_eq!(g.collectives.len(), n);
+    let t = g.collective_time(
+        tetraeder_profiler::CollectiveOp::AllReduce,
+        &["gpu1".to_string(), "gpu0".to_string()],
+        4096.0,
+    );
+    assert_eq!(t, Some(3e-5));
 }

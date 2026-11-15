@@ -286,8 +286,11 @@ pub struct LaneGroup {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CollectiveOp {
+    /// `comm-probe` writes the variant names as they are; both spellings are read.
+    #[serde(alias = "AllReduce")]
     AllReduce,
     /// One-way copy; `ranks` of its curve are `[src, dst]`.
+    #[serde(alias = "Copy")]
     Copy,
 }
 

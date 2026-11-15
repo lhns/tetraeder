@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use tetraeder_costmodel::MODEL_VERSION;
 use tetraeder_costmodel::calib::{Anchor, fit};
 use tetraeder_plan::{Hints, Phase};
-use tetraeder_profiler::{DeviceKind, HardwareGraph};
+use tetraeder_profiler::{CollectiveCurve, DeviceKind, HardwareGraph};
 
 /// The phase the multi-GPU commands plan for.
 pub const PHASE: Phase = Phase(5);
@@ -52,6 +52,7 @@ pub struct PredictFile {
     pub git_commit: String,
     pub hw_sha256: String,
     pub calib_sha256: Option<String>,
+    pub comm_sha256: Option<String>,
     pub prompt: u32,
     pub r#gen: u32,
     pub candidates: Vec<PredictRow>,
@@ -66,6 +67,27 @@ pub struct CalibFile {
     pub band: f64,
     pub residuals: Vec<(String, f64)>,
     pub hw: HardwareGraph,
+}
+
+/// `calib-comm.json` of `tetraeder comm-probe` (only the curves are read).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CommReport {
+    #[serde(default)]
+    pub comm_path: String,
+    pub curves: Vec<CollectiveCurve>,
+}
+
+/// Puts the probe's curves into `hw`, replacing those of the same op and ranks. Measured
+/// curves are never fitted (ADR 0070).
+pub fn merge_comm(hw: &mut HardwareGraph, text: &str) -> Result<String, String> {
+    let r: CommReport = serde_json::from_str(text).map_err(|e| format!("comm json: {e}"))?;
+    for c in r.curves {
+        hw.collectives
+            .retain(|o| !(o.op == c.op && o.ranks == c.ranks));
+        hw.collectives.push(c);
+    }
+    hw.validate()?;
+    Ok(r.comm_path)
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -111,7 +133,7 @@ pub fn predict_multi(
     calibrated: &HardwareGraph,
     layout: &ModelLayout,
     cands: &MultiFile,
-    hashes: (String, Option<String>),
+    hashes: (String, Option<String>, Option<String>),
     git_commit: &str,
 ) -> Result<PredictFile, String> {
     let mut rows = Vec::new();
@@ -131,6 +153,7 @@ pub fn predict_multi(
         git_commit: git_commit.to_string(),
         hw_sha256: hashes.0,
         calib_sha256: hashes.1,
+        comm_sha256: hashes.2,
         prompt: PROMPT,
         r#gen: GEN,
         candidates: rows,
