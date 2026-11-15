@@ -429,7 +429,9 @@ mod tests {
     use tetraeder_gateway::engine::FinishReason;
     use tetraeder_plan::{Knobs, KvFormat};
     use tetraeder_planner::{ModelLayout, Placement, ServeEngine, Workload, build_plan, lower};
-    use tetraeder_scheduler::{SchedulerConfig, load_llama, load_moe_chunked};
+    use tetraeder_scheduler::{
+        BackendError, Outputs, SchedulerConfig, SeqId, SeqInput, load_llama, load_moe_chunked,
+    };
     use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
     const CTX: u32 = 256;
@@ -748,6 +750,8 @@ mod tests {
     /// budget fills its buffers and then waits for its reader. Notes when it is dropped.
     struct Endless {
         logits: Vec<f32>,
+        rows: Vec<f32>,
+        spans: Vec<std::ops::Range<usize>>,
         n_past: usize,
         events: Events,
         name: &'static str,
@@ -759,25 +763,60 @@ mod tests {
         }
     }
 
-    impl tetraeder_scheduler::Backend for Endless {
-        fn n_ctx(&self) -> usize {
+    impl tetraeder_scheduler::BatchBackend for Endless {
+        fn n_vocab(&self) -> usize {
+            self.logits.len()
+        }
+        fn n_seq_max(&self) -> usize {
+            1
+        }
+        fn n_ctx_seq(&self) -> usize {
             CTX as usize
         }
-        fn n_past(&self) -> usize {
-            self.n_past
+        fn kv_capacity(&self) -> usize {
+            CTX as usize
         }
-        fn truncate(&mut self, keep: usize) -> Result<(), String> {
-            self.n_past = keep;
+        fn kv_free(&self) -> usize {
+            (CTX as usize).saturating_sub(self.n_past)
+        }
+        fn seq_len(&self, seq: SeqId) -> usize {
+            if seq == 0 { self.n_past } else { 0 }
+        }
+        fn seq_reserve(&mut self, _: SeqId, n: usize) -> Result<(), BackendError> {
+            if n > CTX as usize {
+                return Err(BackendError::KvFull {
+                    seq: 0,
+                    needed: n,
+                    free: self.kv_free(),
+                });
+            }
             Ok(())
         }
-        fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String> {
-            self.n_past += tokens.len();
-            Ok(&self.logits)
+        fn seq_rm(&mut self, _: SeqId, keep: usize) -> Result<(), BackendError> {
+            self.n_past = keep.min(self.n_past);
+            Ok(())
         }
-        fn snapshot(&mut self) -> Result<Vec<u8>, String> {
+        fn seq_cp(&mut self, _: SeqId, _: SeqId, _: usize) -> Result<(), BackendError> {
+            Err(BackendError::Failed("single sequence".into()))
+        }
+        fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
+            self.rows.clear();
+            self.spans.clear();
+            for inp in inputs {
+                self.n_past += inp.tokens.len();
+                let n = if inp.all_logits { inp.tokens.len() } else { 1 };
+                let from = self.rows.len() / self.logits.len();
+                for _ in 0..n {
+                    self.rows.extend_from_slice(&self.logits);
+                }
+                self.spans.push(from..from + n);
+            }
+            Ok(Outputs::new(self.logits.len(), &self.rows, &self.spans))
+        }
+        fn seq_snapshot(&mut self, _: SeqId) -> Result<Vec<u8>, BackendError> {
             Ok(Vec::new())
         }
-        fn restore(&mut self, _: &[u8], n: usize) -> Result<(), String> {
+        fn seq_restore(&mut self, _: SeqId, _: &[u8], n: usize) -> Result<(), BackendError> {
             self.n_past = n;
             Ok(())
         }
@@ -804,19 +843,17 @@ mod tests {
                 )
                 .map_err(|e| e.to_string())?,
             );
-            let n_vocab = tokenizer.n_vocab() as usize;
-            let mut logits = vec![0.0; n_vocab];
+            let mut logits = vec![0.0; tokenizer.n_vocab() as usize];
             logits[65] = 1.0;
             Ok(tetraeder_scheduler::Loaded {
-                backend: Box::new(tetraeder_scheduler::SingleSeq::new(
-                    Endless {
-                        logits,
-                        n_past: 0,
-                        events,
-                        name,
-                    },
-                    n_vocab,
-                )),
+                backend: Box::new(Endless {
+                    logits,
+                    rows: Vec::new(),
+                    spans: Vec::new(),
+                    n_past: 0,
+                    events,
+                    name,
+                }),
                 tokenizer,
             })
         })

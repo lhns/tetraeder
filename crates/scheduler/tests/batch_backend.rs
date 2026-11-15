@@ -1,5 +1,4 @@
-//! The `BatchBackend` contract (ADR 0065, "Property tests, first") on `FakeKv` and on `SingleSeq`
-//! over a one-sequence fake.
+//! The `BatchBackend` contract (ADR 0065, "Property tests, first") on `FakeKv`.
 //!
 //! Covers P2 (rows disjoint, `seq_cp` destination owns equal contents), P3 (reservations never
 //! exceed capacity, `KvFull` changes nothing) and "a failed decode leaves every sequence at its
@@ -7,9 +6,9 @@
 
 mod fake;
 
-use fake::{FakeKv, OldFake, logits_for};
+use fake::{FakeKv, logits_for};
 use proptest::prelude::*;
-use tetraeder_scheduler::{BackendError, BatchBackend, SeqId, SeqInput, SingleSeq};
+use tetraeder_scheduler::{BackendError, BatchBackend, SeqId, SeqInput};
 
 const N_VOCAB: usize = 8;
 const SEQ_IDS: u32 = 5; // one more than the 4 slots: the last id does not exist
@@ -173,17 +172,6 @@ proptest! {
             .with_fail_every(fail_every);
         run(&mut b, &ops, check_rows);
     }
-
-    #[test]
-    fn single_seq_contract(
-        // Ids 0 and 1: the second does not exist. One input per step, as the adapter takes.
-        ops in prop::collection::vec(op_strategy(2, 1), 1..60),
-        n_ctx in 4usize..90,
-        fail_every in prop::option::of(1u32..5),
-    ) {
-        let mut b = SingleSeq::new(OldFake::new(n_ctx, N_VOCAB, fail_every), N_VOCAB);
-        run(&mut b, &ops, |_, _, _| {});
-    }
 }
 
 #[test]
@@ -300,47 +288,4 @@ fn fake_kv_seq_cp_then_diverge() {
     assert!(b.seq_cp(1, 1, 1).is_err());
     b.seq_cp(1, 2, 3).unwrap();
     assert!(b.seq_cp(1, 2, 1).is_err());
-}
-
-#[test]
-fn single_seq_is_one_sequence_zero() {
-    let mut b = SingleSeq::new(OldFake::new(16, N_VOCAB, None), N_VOCAB);
-    assert_eq!((b.n_seq_max(), b.kv_capacity(), b.n_ctx_seq()), (1, 16, 16));
-    let t = [5, 6, 7];
-    let out = b
-        .decode(&[SeqInput {
-            seq: 0,
-            tokens: &t,
-            all_logits: true,
-        }])
-        .unwrap();
-    // All-logits rows equal the per-prefix logits.
-    for k in 0..3 {
-        assert_eq!(
-            out.rows(0)[k * N_VOCAB..(k + 1) * N_VOCAB],
-            logits_for(N_VOCAB, &t[..=k])
-        );
-    }
-    assert_eq!(b.seq_len(0), 3);
-    assert_eq!(b.kv_free(), 13);
-    // Other ids and copies fail; sequence 0 is untouched.
-    assert!(matches!(b.seq_reserve(1, 1), Err(BackendError::Failed(_))));
-    assert!(matches!(b.seq_cp(0, 1, 1), Err(BackendError::Failed(_))));
-    assert!(matches!(b.seq_cp(0, 0, 1), Err(BackendError::Failed(_))));
-    assert!(matches!(
-        b.decode(&[SeqInput {
-            seq: 1,
-            tokens: &t,
-            all_logits: false
-        }]),
-        Err(BackendError::Failed(_))
-    ));
-    assert_eq!(b.seq_len(0), 3);
-    // Beyond the context: reserve is KvFull, decode is Failed (nothing changed).
-    assert!(matches!(
-        b.seq_reserve(0, 17),
-        Err(BackendError::KvFull { .. })
-    ));
-    b.seq_rm(0, 0).unwrap();
-    assert_eq!((b.seq_len(0), b.kv_free()), (0, 16));
 }

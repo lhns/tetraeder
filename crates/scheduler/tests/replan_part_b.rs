@@ -11,7 +11,8 @@ use tetraeder_gateway::engine::{Engine, GenEvent, GenerateRequest, SamplingParam
 use tetraeder_ggml_sys::llama::{Model, ModelParams};
 use tetraeder_model::{BackendChoice, LoadOptions};
 use tetraeder_scheduler::{
-    Backend, Loaded, Scheduler, SchedulerConfig, SingleSeq, load_llama, load_moe_chunked,
+    BackendError, BatchBackend, Loaded, Outputs, Scheduler, SchedulerConfig, SeqId, SeqInput,
+    load_llama, load_moe_chunked,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -92,9 +93,11 @@ fn builder_greedy_output_is_the_same_for_chunk_64_and_512() {
     assert_eq!(small, large);
 }
 
-/// A backend that records the size of every `eval` call and sets a flag when dropped.
+/// A backend that records the size of every input of a `decode` and sets a flag when dropped.
 struct Fake {
     logits: Vec<f32>,
+    rows: Vec<f32>,
+    spans: Vec<std::ops::Range<usize>>,
     calls: Arc<Mutex<Vec<usize>>>,
     dropped: Arc<AtomicBool>,
     n_past: Arc<AtomicUsize>,
@@ -106,26 +109,66 @@ impl Drop for Fake {
     }
 }
 
-impl Backend for Fake {
-    fn n_ctx(&self) -> usize {
+impl BatchBackend for Fake {
+    fn n_vocab(&self) -> usize {
+        self.logits.len()
+    }
+    fn n_seq_max(&self) -> usize {
+        1
+    }
+    fn n_ctx_seq(&self) -> usize {
         CTX as usize
     }
-    fn n_past(&self) -> usize {
-        self.n_past.load(Ordering::SeqCst)
+    fn kv_capacity(&self) -> usize {
+        CTX as usize
     }
-    fn truncate(&mut self, keep: usize) -> Result<(), String> {
-        self.n_past.store(keep, Ordering::SeqCst);
+    fn kv_free(&self) -> usize {
+        CTX as usize - self.n_past.load(Ordering::SeqCst)
+    }
+    fn seq_len(&self, seq: SeqId) -> usize {
+        if seq == 0 {
+            self.n_past.load(Ordering::SeqCst)
+        } else {
+            0
+        }
+    }
+    fn seq_reserve(&mut self, _: SeqId, n: usize) -> Result<(), BackendError> {
+        if n > CTX as usize {
+            return Err(BackendError::KvFull {
+                seq: 0,
+                needed: n,
+                free: self.kv_free(),
+            });
+        }
         Ok(())
     }
-    fn eval(&mut self, tokens: &[i32]) -> Result<&[f32], String> {
-        self.calls.lock().unwrap().push(tokens.len());
-        self.n_past.fetch_add(tokens.len(), Ordering::SeqCst);
-        Ok(&self.logits)
+    fn seq_rm(&mut self, _: SeqId, keep: usize) -> Result<(), BackendError> {
+        self.n_past
+            .store(keep.min(self.seq_len(0)), Ordering::SeqCst);
+        Ok(())
     }
-    fn snapshot(&mut self) -> Result<Vec<u8>, String> {
+    fn seq_cp(&mut self, _: SeqId, _: SeqId, _: usize) -> Result<(), BackendError> {
+        Err(BackendError::Failed("single sequence".into()))
+    }
+    fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
+        self.rows.clear();
+        self.spans.clear();
+        for inp in inputs {
+            self.calls.lock().unwrap().push(inp.tokens.len());
+            self.n_past.fetch_add(inp.tokens.len(), Ordering::SeqCst);
+            let n = if inp.all_logits { inp.tokens.len() } else { 1 };
+            let from = self.rows.len() / self.logits.len();
+            for _ in 0..n {
+                self.rows.extend_from_slice(&self.logits);
+            }
+            self.spans.push(from..from + n);
+        }
+        Ok(Outputs::new(self.logits.len(), &self.rows, &self.spans))
+    }
+    fn seq_snapshot(&mut self, _: SeqId) -> Result<Vec<u8>, BackendError> {
         Ok(Vec::new())
     }
-    fn restore(&mut self, _: &[u8], n: usize) -> Result<(), String> {
+    fn seq_restore(&mut self, _: SeqId, _: &[u8], n: usize) -> Result<(), BackendError> {
         self.n_past.store(n, Ordering::SeqCst);
         Ok(())
     }
@@ -163,19 +206,17 @@ fn fake_sched(chunk: Option<usize>) -> Rig {
             )
             .map_err(|e| e.to_string())?,
         );
-        let n_vocab = tokenizer.n_vocab() as usize;
-        let mut logits = vec![0.0; n_vocab];
+        let mut logits = vec![0.0; tokenizer.n_vocab() as usize];
         logits[65] = 1.0;
         Ok(Loaded {
-            backend: Box::new(SingleSeq::new(
-                Fake {
-                    logits,
-                    calls: c,
-                    dropped: d,
-                    n_past: Arc::default(),
-                },
-                n_vocab,
-            )),
+            backend: Box::new(Fake {
+                logits,
+                rows: Vec::new(),
+                spans: Vec::new(),
+                calls: c,
+                dropped: d,
+                n_past: Arc::default(),
+            }),
             tokenizer,
         })
     })

@@ -1,0 +1,427 @@
+//! Scenarios of `multi_seq.rs` and `gpu_multi_seq.rs` (ADR 0065, C4): several sequences in one
+//! step on the MoE builder's KV pool, each against the same sequence alone, whatever the expert
+//! path (resident, slots with uploads, RAM tier, prefetch, I/O service with overlap).
+//!
+//! A batched step uses other kernels than a one-row step, so the logits are equal within a
+//! tolerance, not bitwise (ADR 0043); the greedy token is equal or the alone run's top two are a
+//! near tie. Every batched run is teacher-forced with the alone run's tokens, so one flipped
+//! near-tie does not make the logits incomparable afterwards.
+#![allow(dead_code)]
+
+use super::argmax;
+use std::path::Path;
+use tetraeder_model::{LoadOptions, Qwen3Moe, SeqEval};
+
+/// Equal within `tol` or 1e-3 of the largest logit: which kernels a CPU variant uses for one row
+/// and for several decides the gap (CI's runners show ~9e-3 where a dev box shows less).
+pub fn close(got: &[f32], want: &[f32], tol: f32, what: &str) {
+    assert_eq!(got.len(), want.len(), "{what}");
+    let worst = got
+        .iter()
+        .zip(want)
+        .map(|(x, y)| (x - y).abs())
+        .fold(0.0, f32::max);
+    let scale = want.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    let tol = tol.max(1e-3 * scale);
+    assert!(
+        worst <= tol,
+        "{what}: max |diff| {worst} > {tol} (largest logit {scale})"
+    );
+}
+
+/// The greedy token of `got` equals the one of `want`, or `want` has a near tie there.
+pub fn same_token(got: &[f32], want: &[f32], tol: f32, what: &str) {
+    let (g, w) = (argmax(got), argmax(want));
+    if g != w {
+        let gap = (want[w] - want[g]).abs();
+        let scale = want.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        assert!(
+            gap <= 2.0 * tol.max(1e-3 * scale),
+            "{what}: greedy {g} against {w}, gap {gap}"
+        );
+    }
+}
+
+pub fn prompt(seed: i32, n: usize) -> Vec<i32> {
+    (0..n as i32)
+        .map(|i| 4 + (seed * 31 + i * 7) % 200)
+        .collect()
+}
+
+pub fn load(path: &Path, opts: &LoadOptions, n_seq_max: usize) -> Qwen3Moe {
+    let o = LoadOptions {
+        n_seq_max,
+        ..opts.clone()
+    };
+    Qwen3Moe::load(path, &o).unwrap()
+}
+
+/// One sequence alone: `toks` is the prompt followed by `steps` greedy tokens; `logits[j]` are
+/// the logits after the first `prompt.len() + j` tokens of it.
+pub struct Alone {
+    pub prompt_len: usize,
+    pub toks: Vec<i32>,
+    pub logits: Vec<Vec<f32>>,
+}
+
+pub fn alone(path: &Path, opts: &LoadOptions, prompt: &[i32], steps: usize) -> Alone {
+    let mut m = load(path, opts, 1);
+    alone_on(&mut m, prompt, steps)
+}
+
+pub fn alone_on(m: &mut Qwen3Moe, prompt: &[i32], steps: usize) -> Alone {
+    m.reset();
+    let mut l = m.eval_last(prompt).unwrap();
+    let mut toks = prompt.to_vec();
+    let mut logits = vec![l.clone()];
+    for _ in 0..steps {
+        let t = argmax(&l) as i32;
+        toks.push(t);
+        l = m.eval_last(&[t]).unwrap();
+        logits.push(l.clone());
+    }
+    Alone {
+        prompt_len: prompt.len(),
+        toks,
+        logits,
+    }
+}
+
+/// A step of the schedule: `(sequence, token range of its stream)` per input.
+pub type Step = Vec<(usize, std::ops::Range<usize>)>;
+
+/// Sequence 0 and 1 prefill in the first step; sequence 2 joins in the second with a prefill
+/// chunk of `chunk` tokens next to the decode tokens of the others, and finishes its prompt in
+/// the third. Then every sequence decodes one token per step until its stream is consumed.
+pub fn schedule(lens: &[usize], total: &[usize], chunk: usize) -> Vec<Step> {
+    let mut cursor = vec![0usize; lens.len()];
+    let mut steps = Vec::new();
+    for step in 0.. {
+        let mut s = Step::new();
+        for k in 0..lens.len() {
+            let joined = k < 2 || step >= 1;
+            if !joined || cursor[k] >= total[k] {
+                continue;
+            }
+            let end = if cursor[k] < lens[k] {
+                if k == 2 && step == 1 {
+                    chunk.min(lens[k])
+                } else {
+                    lens[k]
+                }
+            } else {
+                cursor[k] + 1
+            };
+            s.push((k, cursor[k]..end));
+            cursor[k] = end;
+        }
+        if s.is_empty() {
+            break;
+        }
+        steps.push(s);
+    }
+    steps
+}
+
+/// Runs `steps` on `m` (sequence ids 0..) and returns, per step and input, the logits of its
+/// last token.
+pub fn run_steps(m: &mut Qwen3Moe, toks: &[Vec<i32>], steps: &[Step]) -> Vec<Vec<Vec<f32>>> {
+    let nv = m.n_vocab();
+    let mut out = Vec::new();
+    for s in steps {
+        let inputs: Vec<SeqEval> = s
+            .iter()
+            .map(|(k, r)| SeqEval {
+                seq: *k as u32,
+                tokens: &toks[*k][r.clone()],
+                all_logits: false,
+            })
+            .collect();
+        let mut buf = Vec::new();
+        let spans = m.decode(&inputs, &mut buf).unwrap();
+        assert_eq!(spans.len(), s.len());
+        out.push(
+            spans
+                .iter()
+                .map(|r| {
+                    assert_eq!(r.len(), 1);
+                    buf[r.start * nv..r.end * nv].to_vec()
+                })
+                .collect(),
+        );
+    }
+    out
+}
+
+/// Compares the logits of `got` (from [`run_steps`]) with the alone runs wherever a step ends
+/// at or after a prompt.
+pub fn check_steps(
+    got: &[Vec<Vec<f32>>],
+    steps: &[Step],
+    alones: &[Alone],
+    tol: f32,
+    what: &str,
+) -> usize {
+    let mut compared = 0;
+    for (si, (s, rows)) in steps.iter().zip(got).enumerate() {
+        for ((k, r), l) in s.iter().zip(rows) {
+            let a = &alones[*k];
+            if r.end < a.prompt_len {
+                continue;
+            }
+            let want = &a.logits[r.end - a.prompt_len];
+            let what = format!("{what}: step {si}, sequence {k}, {} tokens", r.end);
+            close(l, want, tol, &what);
+            same_token(l, want, tol, &what);
+            compared += 1;
+        }
+    }
+    compared
+}
+
+/// Three sequences with a prefill chunk mixed into decode steps, each against itself alone.
+pub fn batched_equals_alone(path: &Path, opts: &LoadOptions, tol: f32, what: &str) -> Qwen3Moe {
+    let prompts = [prompt(1, 7), prompt(2, 21), prompt(3, 24)];
+    let n = 6;
+    let alones: Vec<Alone> = prompts.iter().map(|p| alone(path, opts, p, n)).collect();
+    let toks: Vec<Vec<i32>> = alones.iter().map(|a| a.toks.clone()).collect();
+    let lens: Vec<usize> = prompts.iter().map(Vec::len).collect();
+    let total: Vec<usize> = toks.iter().map(Vec::len).collect();
+    let steps = schedule(&lens, &total, 16);
+    assert!(
+        steps.iter().any(|s| s.iter().any(|(_, r)| r.len() > 1)
+            && s.iter().filter(|(_, r)| r.len() == 1).count() >= 2),
+        "a prefill chunk shares a step with decode tokens"
+    );
+    let mut m = load(path, opts, 3);
+    let got = run_steps(&mut m, &toks, &steps);
+    let compared = check_steps(&got, &steps, &alones, tol, what);
+    assert!(compared >= 3 * n, "{what}: {compared} comparisons");
+    for (k, t) in toks.iter().enumerate() {
+        assert_eq!(
+            m.seq_len(k as u32),
+            t.len(),
+            "{what}: length of sequence {k}"
+        );
+    }
+    m
+}
+
+/// The same batched steps on two configurations of one model (for example the serial streamed
+/// path and the one with prefetch, the I/O service and overlap): the logits agree within `tol`.
+/// This is for models where batched against alone is not a fair test: with 32 experts and top-8
+/// on random weights, the 1% gap between a one-row and a several-row quantized kernel on some
+/// CPUs flips a near-tied expert choice, and the logits move by a few percent.
+pub fn batched_paths_agree(
+    path: &Path,
+    a: &LoadOptions,
+    b: &LoadOptions,
+    tol: f32,
+    what: &str,
+) -> Qwen3Moe {
+    let prompts = [prompt(1, 7), prompt(2, 21), prompt(3, 24)];
+    let toks: Vec<Vec<i32>> = prompts.iter().map(|p| alone(path, b, p, 6).toks).collect();
+    let lens: Vec<usize> = prompts.iter().map(Vec::len).collect();
+    let total: Vec<usize> = toks.iter().map(Vec::len).collect();
+    let steps = schedule(&lens, &total, 16);
+    let mut m = load(path, a, 3);
+    let got = run_steps(&mut m, &toks, &steps);
+    let want = run_steps(&mut load(path, b, 3), &toks, &steps);
+    for (si, (g, w)) in got.iter().zip(&want).enumerate() {
+        for (ii, (x, y)) in g.iter().zip(w).enumerate() {
+            let what = format!("{what}: step {si}, input {ii}");
+            close(x, y, tol, &what);
+            same_token(x, y, tol, &what);
+        }
+    }
+    m
+}
+
+/// `seq_cp` of a whole sequence and of a prefix, then continuing the copy, against a fresh
+/// prefill of the same tokens; the source continues too.
+pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
+    let p = prompt(8, 25);
+    let extra = [11, 12, 13];
+    let mut all = p.clone();
+    all.extend(extra);
+    let want = {
+        let mut m = load(path, opts, 1);
+        m.eval_last(&all).unwrap()
+    };
+    let mut m = load(path, opts, 3);
+    m.eval_last(&p).unwrap();
+    m.seq_cp(0, 1, p.len()).unwrap();
+    assert_eq!(m.seq_len(1), p.len());
+    let rows = |m: &Qwen3Moe, s| (m.pool().row(s, 0), m.pool().row(s, p.len() - 1));
+    assert_ne!(rows(&m, 0).0, rows(&m, 1).0, "the copy has rows of its own");
+    let mut buf = Vec::new();
+    m.decode(
+        &[SeqEval {
+            seq: 1,
+            tokens: &extra,
+            all_logits: false,
+        }],
+        &mut buf,
+    )
+    .unwrap();
+    close(&buf, &want, tol, &format!("{what}: copy continues"));
+    // The source is untouched and continues alone.
+    assert_eq!(m.seq_len(0), p.len());
+    m.decode(
+        &[SeqEval {
+            seq: 0,
+            tokens: &extra,
+            all_logits: false,
+        }],
+        &mut buf,
+    )
+    .unwrap();
+    close(&buf, &want, tol, &format!("{what}: source continues"));
+    // A prefix copy into sequence 2.
+    m.seq_cp(0, 2, 10).unwrap();
+    m.decode(
+        &[SeqEval {
+            seq: 2,
+            tokens: &all[10..],
+            all_logits: false,
+        }],
+        &mut buf,
+    )
+    .unwrap();
+    close(&buf, &want, tol, &format!("{what}: prefix copy"));
+    // dst must be empty, src long enough, ids in range.
+    assert!(m.seq_cp(0, 1, 5).is_err());
+    assert!(m.seq_cp(0, 0, 5).is_err());
+    assert!(m.seq_cp(1, 2, 999).is_err());
+    assert!(m.seq_cp(0, 3, 1).is_err());
+}
+
+/// A sequence's snapshot next to live ones: restored into another slot it decodes the same, its
+/// bytes survive the roundtrip, and the others are untouched.
+pub fn snapshot_roundtrip(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
+    let (a, b) = (prompt(9, 20), prompt(10, 14));
+    let mut m = load(path, opts, 3);
+    let mut buf = Vec::new();
+    m.decode(
+        &[
+            SeqEval {
+                seq: 0,
+                tokens: &a,
+                all_logits: false,
+            },
+            SeqEval {
+                seq: 2,
+                tokens: &b,
+                all_logits: false,
+            },
+        ],
+        &mut buf,
+    )
+    .unwrap();
+    let snap = m.seq_snapshot(2).unwrap();
+    let step = |m: &mut Qwen3Moe, seq| {
+        let mut out = Vec::new();
+        m.decode(
+            &[SeqEval {
+                seq,
+                tokens: &[5],
+                all_logits: false,
+            }],
+            &mut out,
+        )
+        .unwrap();
+        out
+    };
+    let want = step(&mut m, 2);
+    m.seq_rm(2, 0).unwrap();
+    assert_eq!((m.seq_len(2), m.seq_len(0)), (0, a.len()));
+    m.seq_restore(1, &snap, b.len()).unwrap();
+    assert_eq!(m.seq_len(1), b.len());
+    assert_eq!(m.seq_snapshot(1).unwrap(), snap, "{what}: bytes roundtrip");
+    close(&step(&mut m, 1), &want, tol, &format!("{what}: restored"));
+    // Restoring over a live sequence replaces it.
+    m.seq_restore(0, &snap, b.len()).unwrap();
+    assert_eq!(m.seq_len(0), b.len());
+    close(&step(&mut m, 0), &want, tol, &format!("{what}: replaced"));
+    assert!(m.seq_restore(0, &snap[1..], b.len()).is_err());
+}
+
+/// A layout move in the middle of a decode (a neighbour stops sequence 0 growing in place): the
+/// logits stay within `tol` of a run whose sequence sits where the move put it from the start,
+/// and the move really happened. `opts` must have a pool of at least 2048 rows. The reference
+/// is not the sequence alone: a decode's kernel (CPU flash attention for one query) sums over
+/// `n_kv` in an order that depends on it, so a different row offset gives other low bits once
+/// `n_kv` reaches 1024. A move changes only the rows, the same as a different start does.
+pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
+    assert!(opts.n_ctx >= 2048);
+    let p = prompt(4, 200);
+    let neighbour = prompt(5, 10);
+    let n = 80;
+    let toks = alone(path, opts, &p, n).toks;
+    let decode_one = |m: &mut Qwen3Moe, t: i32| {
+        let mut buf = Vec::new();
+        m.decode(
+            &[SeqEval {
+                seq: 0,
+                tokens: &[t],
+                all_logits: false,
+            }],
+            &mut buf,
+        )
+        .unwrap();
+        buf
+    };
+    // The reference: two neighbours in the first 512 rows, sequence 0 behind them.
+    let mut r = load(path, opts, 3);
+    r.eval_seq(1, &neighbour);
+    r.eval_seq(2, &neighbour);
+    r.eval_seq(0, &p);
+    assert_eq!(r.pool().row(0, 0), Some(512));
+    let want: Vec<Vec<f32>> = (0..n)
+        .map(|j| decode_one(&mut r, toks[p.len() + j]))
+        .collect();
+
+    let mut m = load(path, opts, 2);
+    m.eval_seq(0, &p);
+    // The neighbour takes the rows behind sequence 0's 256.
+    m.eval_seq(1, &neighbour);
+    assert_eq!(m.pool().row(0, 0), Some(0));
+    let nb_before = m.seq_snapshot(1).unwrap();
+    let mut moved_at = None;
+    for (j, want) in want.iter().enumerate() {
+        let got = decode_one(&mut m, toks[p.len() + j]);
+        if moved_at.is_none() && m.pool().row(0, 0) != Some(0) {
+            moved_at = Some(j);
+        }
+        let what = format!("{what}: step {j}");
+        close(&got, want, tol, &what);
+        same_token(&got, want, tol, &what);
+    }
+    assert!(moved_at.is_some(), "{what}: sequence 0 moved");
+    assert_eq!(m.pool().row(0, 0), Some(512));
+    assert_eq!(m.seq_len(0), p.len() + n);
+    assert_eq!(
+        m.seq_snapshot(1).unwrap(),
+        nb_before,
+        "{what}: the neighbour"
+    );
+}
+
+trait EvalSeq {
+    fn eval_seq(&mut self, seq: u32, tokens: &[i32]);
+}
+
+impl EvalSeq for Qwen3Moe {
+    fn eval_seq(&mut self, seq: u32, tokens: &[i32]) {
+        let mut buf = Vec::new();
+        self.decode(
+            &[SeqEval {
+                seq,
+                tokens,
+                all_logits: false,
+            }],
+            &mut buf,
+        )
+        .unwrap();
+    }
+}

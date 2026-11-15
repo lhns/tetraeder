@@ -10,7 +10,7 @@
 #   record-log  scripts/claude_code_proxy.sh over 5 tasks, 1 rep; the tetraeder request log moves to
 #               bench/private/ (clear-text prompts, gitignored); skipped when the log exists
 #   build       release build with CUDA and the python env
-#   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_dense (fixture and Qwen3-8B on the GPU); a failure ends the
+#   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_dense gpu_multi_seq (dense fixture and Qwen3-8B, MoE fixture); a failure ends the
 #               session before any timed run; log in gpu-parity.log
 #   env         env.json
 #   prepass     per model, llama-server c4 once with -kvu and once with -no-kvu; the higher throughput is the baseline
@@ -193,9 +193,9 @@ build() {
 
 # ---- stage: gpu-parity ------------------------------------------------------------------------------------
 # No timed run on a box whose GPU builder disagrees with the CPU reference. gpu_dense covers one and three sequences;
-# the MoE builder has no multi-sequence GPU test on main yet.
+# gpu_multi_seq is the MoE builder with several sequences, resident and streamed.
 gpu_parity() {
-  local cmd="cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test gpu_dense -- --nocapture --test-threads 1"
+  local cmd="cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test gpu_dense --test gpu_multi_seq -- --nocapture --test-threads 1"
   mkdir -p "$out"
   if [ "$DRY" = 1 ]; then
     plan "TETRAEDER_REQUIRE_GPU=1 $cmd > gpu-parity.log"

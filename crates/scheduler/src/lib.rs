@@ -11,8 +11,7 @@ pub mod sample;
 mod scheduler;
 
 pub use backend::{
-    Backend, BackendError, BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SeqId,
-    SeqInput, SingleSeq,
+    BackendError, BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SeqId, SeqInput,
 };
 pub use dense_backend::DenseBackend;
 pub use load::{

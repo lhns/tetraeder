@@ -182,8 +182,23 @@ Differences found while building the loop; the decisions above stand.
 - The decode profile's `eval_s` is the wall time of the steps the request took part in; `gpu_seconds` is its token share of those steps.
 - libllama: `n_ctx` is rounded up (to a multiple of 256 with the unified cache) and `n_batch` is clamped to the requested `n_ctx`; a step whose cells do not fit fails with `NoKvSlot` (the engine cuts every input back with `seq_rm`, lengths unchanged).
 
+## Addendum: C4, the MoE builder on the pool (2026-11-15)
+
+Differences found while building it; the decisions above stand.
+
+- `Qwen3Moe` has `LoadOptions::n_seq_max` (default 1) and the same `seq_*`, `decode`, `try_*` methods as `Qwen3`; `eval`, `eval_last`, `rewind`, `reset`, `kv_snapshot`, `kv_restore` are sequence-0 wrappers. One sequence stays bit-equal to before (`extract_bits`, record made on main before the change).
+- Whole-step graph key and state key use the output count instead of `last_only`. `head` selects `outputs` with `get_rows` only when fewer tokens than the step has want logits.
+- `MoeBackend` is `BatchBackend` natively; `max_step_tokens` is its chunk (512) and a larger `decode` runs as several model steps. A failed step or `KvFull` puts every input sequence back to its length and reservation. `SingleSeq` and the old `Backend` trait are gone. `serve --engine moe` honours `--parallel`.
+- Streaming code needed only the token count: experts are grouped per (token, choice) pair already. The `n == 1` decode-only admission into the compute tier does not run for a batched decode step (it has more than one token); it is a performance policy, not a correctness one.
+- Numerics: a batched step, a chunked prefill and a one-query decode over another `n_kv` use other kernel shapes, so logits differ at about 1e-3 of the largest logit (CPU flash attention for one query sums over `n_kv` in an order that depends on it once `n_kv` reaches 1024). A chunked move is therefore checked against a run whose sequence starts where the move put it, and is bit-equal there.
+
 ## Addendum: C3b, prefix reuse across sequences (2026-11-14)
 
 - Sources of a new request's prefix, longest wins: an idle sequence, a copy of a busy one (`seq_cp`), a RAM entry. A busy copy is taken only when it beats the idle sequence and the RAM entry by `cache_restore_gain` (a tie goes to the cheaper idle or RAM source). Reuse is at most prompt - 1 tokens. Hits carry source `seq`; each copy records a VRAM to VRAM `kv` transfer.
 - `SchedulerConfig::prefix_reuse` (`serve --no-prefix-reuse`, default on): off, no idle, busy or RAM reuse and no saves; `--cache-ram` is independent.
 - `BatchBackend::kv_row_bytes() -> usize` (default 0) sizes the copy in the transfer metric. libllama learns it from the first snapshot, so copies before it record 0 bytes.
+
+## Addendum: CPU steps and the loop-bench gap (2026-11-15)
+
+- On the CPU, `LlamaBackend` and `DenseBackend` run a step's decoders (inputs under 64 tokens, ggml's flash-attention query tile) and prompt chunks as separate model calls, in input order; on a GPU a step stays one call. Mixing 3 decoders into a 402-token chunk cost 195 ms over the chunk alone, as two calls 66 ms (Qwen3-0.6B, EPYC 9V74, `crates/scheduler/tests/step_shapes.rs`). `MoeBackend` is unchanged.
+- loop-bench found the scheduler loop itself at under 3 ms per step (gap between steps 0.05 ms, sampling and emitting at most 2.7 ms at 4 sequences). What remains at c4 on the CPU is the unified KV pool: against one KV stream per sequence (llama-server's layout) a 4-sequence decode step took 74 against 61 ms and a prompt above three resident sequences 19% longer (Xeon 6975P). Not changed here: streams would cap each sequence at `n_ctx / parallel`.
