@@ -1,5 +1,6 @@
 """scripts/phase4_box.sh in DRY_RUN=1 mode: the stage order, the pair order and the server flags of ADR 0065."""
 
+import json
 import os
 import pathlib
 import re
@@ -16,13 +17,13 @@ pytestmark = pytest.mark.skipif(
     sys.platform == "win32" or shutil.which("bash") is None, reason="needs bash on Linux (runs on the ubuntu CI job)"
 )
 
-STAGES = ["record-log", "build", "gpu-parity", "env", "prepass", "pairs", "ttft", "summary"]
+STAGES = ["build", "gpu-parity", "gpu-shapes", "probe", "record-log", "env", "prepass", "pairs", "ttft", "summary"]
 
 
-def dry(tmp_path, **env):
+def dry(tmp_path, rc=0, **env):
     e = {**os.environ, "DRY_RUN": "1", "P4_OUT": str(tmp_path / "out"), "THREADS": "8", **env}
     r = subprocess.run(["bash", str(SCRIPT)], capture_output=True, text=True, env=e, cwd=ROOT, timeout=120)
-    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.returncode == rc, r.stdout + r.stderr
     return r.stdout.splitlines()
 
 
@@ -38,8 +39,10 @@ def test_stage_order_and_names(tmp_path):
     # every stage the script documents in its header is one it runs
     header = SCRIPT.read_text().split("\n\n")[0]
     assert all(re.search(rf"^#   {s}\s", header, re.M) for s in STAGES)
-    first_server = next(i for i, ln in enumerate(lines) if "PLAN server" in ln)
-    assert next(i for i, ln in enumerate(lines) if "claude_code_proxy.sh" in ln) < first_server
+    # the gates run before anything else: no record-log and no pre-pass before the probe ends
+    rec = next(i for i, ln in enumerate(lines) if "STAGE record-log" in ln)
+    assert next(i for i, ln in enumerate(lines) if "claude_code_proxy.sh" in ln) > rec
+    assert not any("claude_code_proxy.sh" in ln or "prepass" in ln for ln in lines[:rec])
 
 
 def test_existing_log_skips_recording(tmp_path):
@@ -57,9 +60,67 @@ def test_pairs_interleaved_with_control(tmp_path):
         "q8b-llama-server-r1", "q8b-tetraeder-dense-r1", "q8b-tetraeder-llama-r1",
         "q8b-tetraeder-dense-r2", "q8b-llama-server-r2", "q8b-tetraeder-llama-r2",
     ]
-    # q30b without the own MoE builder: the judged run is libllama, there is no separate control
-    q30b = [n for n in names if n.startswith("q30b-")]
+
+
+def test_q30b_on_libllama_only_by_override(tmp_path):
+    # Q30B_ENGINE=llama (a control run): the judged run is libllama, there is no separate control
+    q30b = [n for n in runs(dry(tmp_path, Q30B_ENGINE="llama")) if n.startswith("q30b-")]
     assert q30b == ["q30b-llama-server-r1", "q30b-tetraeder-llama-r1", "q30b-tetraeder-llama-r2", "q30b-llama-server-r2"]
+
+
+def test_q30b_engine_defaults_to_moe(tmp_path):
+    lines = dry(tmp_path)
+    assert any("q30b=moe" in ln for ln in lines)
+    moe = [ln for ln in lines if "PLAN server" in ln and "server-q30b-tetraeder-moe-r1.log" in ln]
+    assert moe and "--engine moe" in moe[0]
+    assert [n for n in runs(lines) if n.startswith("q30b-tetraeder")] == [
+        "q30b-tetraeder-moe-r1", "q30b-tetraeder-llama-r1", "q30b-tetraeder-moe-r2", "q30b-tetraeder-llama-r2"]
+
+
+def test_gpu_gates_in_the_plan(tmp_path):
+    lines = dry(tmp_path)
+    shapes = next(ln for ln in lines if "step_shapes" in ln)
+    for x in ("TETRAEDER_SHAPES_NGL=99", "TETRAEDER_SHAPES_ENGINES=llama,llama_streams,dense", "--features cuda",
+              "gpu-shapes.txt"):
+        assert x in shapes
+    probes = [ln for ln in lines if "PLAN server" in ln and "server-probe-" in ln]
+    assert [re.search(r"server-probe-(\S+)\.log", ln).group(1) for ln in probes] == [
+        "q8b-llama-server", "q8b-tetraeder-dense", "q30b-llama-server", "q30b-tetraeder-moe"]
+    assert "--engine dense" in probes[1] and "--engine moe" in probes[3]
+    assert "-fa on" in probes[0] and "-kvu" in probes[0]
+    c4 = next(ln for ln in lines if "-> probe-q8b-tetraeder-dense-c4.json" in ln)
+    c1 = next(ln for ln in lines if "-> probe-q8b-tetraeder-dense-c1.json" in ln)
+    assert "--concurrency 4 --requests 8 --seed 14" in c4 and "--concurrency 1 --requests 8 --seed 11" in c1
+    assert any("probe.json" in ln and "0.85" in ln for ln in lines)
+
+
+def write_probe(out, own_c4, model="q8b", engine="tetraeder-dense"):
+    out.mkdir(parents=True, exist_ok=True)
+    for name, c4 in (("llama-server", 100.0), (engine, own_c4)):
+        for test, tps in (("c1", 10.0), ("c4", c4)):
+            (out / f"probe-{model}-{name}-{test}.json").write_text(
+                json.dumps({"summary": {"errors": 0, "throughput_tps": tps}}))
+
+
+def test_low_probe_ends_the_run_before_record_log_and_pairs(tmp_path):
+    write_probe(tmp_path / "out", 80.0)
+    write_probe(tmp_path / "out", 99.0, "q30b", "tetraeder-moe")
+    lines = dry(tmp_path, rc=3, PHASE4_LOG=str(tmp_path / "none.jsonl"))
+    stages = [m.group(1) for ln in lines if (m := re.search(r"STAGE (\S+)", ln))]
+    assert stages == STAGES[: STAGES.index("probe") + 1]
+    assert any("PHASE4_BOX_DONE rc=3" in ln for ln in lines)
+    assert not any("claude_code_proxy.sh" in ln or "run q8b-" in ln for ln in lines)
+    probe = json.loads((tmp_path / "out" / "probe.json").read_text())
+    assert probe["stop"] is True and probe["models"]["q8b"]["c4_ratio"] == 0.8
+    assert (tmp_path / "out" / "DONE").exists()
+
+
+def test_good_probe_continues(tmp_path):
+    write_probe(tmp_path / "out", 92.0)
+    write_probe(tmp_path / "out", 95.0, "q30b", "tetraeder-moe")
+    lines = dry(tmp_path)
+    assert [m.group(1) for ln in lines if (m := re.search(r"STAGE (\S+)", ln))] == STAGES
+    assert json.loads((tmp_path / "out" / "probe.json").read_text())["stop"] is False
 
 
 def test_q30b_moe_has_a_control(tmp_path):

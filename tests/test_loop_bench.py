@@ -41,3 +41,12 @@ def test_main_writes_summary_and_table(tmp_path, capsys):
 
 def test_main_fails_without_results(tmp_path):
     assert lbs.main([str(tmp_path)]) == 1
+
+
+def test_script_runs_the_baseline_with_flash_attention_and_a_moe_pass():
+    text = (pathlib.Path(__file__).parent.parent / "scripts" / "loop_bench.sh").read_text()
+    cmd = text.split('"$llama_server"', 1)[1].split("ready=", 1)[0]
+    assert "-fa on" in cmd
+    assert "run_model llama-server tetraeder-llama tetraeder-dense" in text
+    assert "run_model llama-server tetraeder-llama tetraeder-moe" in text
+    assert "tiny-qwen3moe-f16.gguf" in text

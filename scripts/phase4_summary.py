@@ -3,6 +3,8 @@
 
     python scripts/phase4_summary.py bench/results/<session>/phase4          writes verdict.json there
     python scripts/phase4_summary.py DIR --pick-variant q8b                  prints kvu or nokvu (pre-pass winner)
+    python scripts/phase4_summary.py DIR --probe --probe-run q8b:tetraeder-dense [--parity failed]
+                                                                             probe.json, exit 3 on the stop rule
 
 Input files in DIR (names fixed by the ADR): bench-<model>-<engine>-<c1|c4>-r<rep>.json, prepass-<model>-<kvu|nokvu>.json,
 replay-<model>-<on|off>-r<rep>.json, gpu-<run>.txt (lines `before: <hex>` / `after: <hex>`, the clocks_throttle_reasons
@@ -264,6 +266,39 @@ def ttft_verdict(d: Path, band: float) -> dict:
     return out
 
 
+# ---- probe --------------------------------------------------------------------------------------------------
+
+# Fixed in the box plan: the pass line is about 0.925 (band 0.075), below 0.85 the pairs cannot pass.
+PROBE_MIN_C4 = 0.85
+
+
+def probe(d: Path, runs: dict[str, str], parity: str = "ok") -> dict:
+    """The stop rule of scripts/phase4_box.sh from probe-<model>-<engine>-<c1|c4>.json (judged engine and llama-server):
+    `stop` when gpu-parity failed or a judged engine's c4 throughput ratio is missing or below PROBE_MIN_C4.
+    `runs` maps model to its judged engine name."""
+    out: dict = {"threshold_c4": PROBE_MIN_C4, "gpu_parity": parity, "models": {}, "reasons": []}
+    if parity != "ok":
+        out["reasons"].append(f"gpu-parity {parity}")
+    for m, engine in runs.items():
+        e: dict = {"engine": engine}
+        for test in ("c1", "c4"):
+            tps = {}
+            for name in (BASELINE, engine):
+                j = read_json(d / f"probe-{m}-{name}-{test}.json")
+                tps[name] = ((j or {}).get("summary") or {}).get("throughput_tps")
+                e[f"{test}_{name}_errors"] = ((j or {}).get("summary") or {}).get("errors")
+            base, own = tps[BASELINE], tps[engine]
+            e[f"{test}_ratio"] = own / base if base and own is not None else None
+        c4 = e["c4_ratio"]
+        if c4 is None:
+            out["reasons"].append(f"{m}: no probe c4 ratio")
+        elif c4 < PROBE_MIN_C4:
+            out["reasons"].append(f"{m} {engine}: c4 ratio {c4:.3f} < {PROBE_MIN_C4}")
+        out["models"][m] = e
+    out["stop"] = bool(out["reasons"])
+    return out
+
+
 # ---- verdict ------------------------------------------------------------------------------------------------
 
 
@@ -280,9 +315,17 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir", type=Path)
     ap.add_argument("--pick-variant", metavar="MODEL", help="print the pre-pass winner (kvu|nokvu) and exit")
+    ap.add_argument("--probe", action="store_true", help="write probe.json; exit 3 when the stop rule fires")
+    ap.add_argument("--probe-run", action="append", default=[], metavar="MODEL:ENGINE")
+    ap.add_argument("--parity", default="ok", help="with --probe: failed when gpu-parity failed")
     ap.add_argument("--noise-dir", type=Path, default=ROOT / "bench" / "noise")
     ap.add_argument("--spec", type=Path, default=ROOT / "bench" / "spec" / "phase0.toml")
     a = ap.parse_args(argv)
+    if a.probe:
+        pr = probe(a.dir, dict(r.split(":", 1) for r in a.probe_run), a.parity)
+        (a.dir / "probe.json").write_text(json.dumps(pr, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps({"probe_stop": pr["stop"], "reasons": pr["reasons"]}))
+        return 3 if pr["stop"] else 0
     if a.pick_variant:
         v = pick_variant(a.dir, a.pick_variant)
         print(v or "")

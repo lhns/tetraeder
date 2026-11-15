@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 # Scheduler loop overhead without a GPU (CPU only): llama-server against `tetraeder serve --engine llama|dense`
-# on one model, gateway_bench.py c1 and c4 (ADR 0065), interleaved ABC then CBA. Used by loop-bench.yml.
+# on one model, gateway_bench.py c1 and c4 (ADR 0065), interleaved ABC then CBA. Then the same for
+# `--engine moe` (and llama) on a tiny synthetic MoE (MOE_MODEL, the committed fixture: its steps are so short that
+# the loop is what is measured), results in <out-dir>/moe/. Used by loop-bench.yml.
 #   scripts/loop_bench.sh <out-dir>
-# Env: MODEL (.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf), LLAMA_SERVER, TETRAEDER, PY (python3),
-# THREADS (4), CTX (8192), PARALLEL (4), MAX_TOKENS (64).
+# Env: MODEL (.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf), MOE_MODEL (tests/fixtures/tiny-qwen3moe-f16.gguf;
+# empty or missing: no MoE pass), LLAMA_SERVER, TETRAEDER, PY (python3), THREADS (4), CTX (8192), PARALLEL (4),
+# MAX_TOKENS (64). llama-server runs flash attention (`-fa on`) like the verdict baseline; tetraeder always does.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 out=${1:?usage: loop_bench.sh <out-dir>}
 mkdir -p "$out"
+base_out=$out
 model="${MODEL:-.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf}"
 llama_server="${LLAMA_SERVER:-target/llama-server-build/bin/llama-server}"
+moe_model="${MOE_MODEL-tests/fixtures/tiny-qwen3moe-f16.gguf}"
 tet="${TETRAEDER:-target/release/tetraeder}"
 py="${PY:-python3}"
 threads="${THREADS:-4}" ctx="${CTX:-8192}" par="${PARALLEL:-4}" max_tokens="${MAX_TOKENS:-64}"
@@ -63,10 +68,10 @@ pass() { # ENGINE REP
   case $engine in
     llama-server)
       start_server "$out/server-$engine-r$rep.log" "$llama_server" -m "$model" -np "$par" -c "$ctx" -t "$threads" -ngl 0 \
-        --cont-batching --port "$port"
+        -fa on --cont-batching --port "$port"
       ready=/health ;;
-    tetraeder-llama | tetraeder-dense)
-      # dense runs with the default --ngl (-1: the GPU if there is one, else the CPU)
+    tetraeder-llama | tetraeder-dense | tetraeder-moe)
+      # dense and moe run with the default --ngl (-1: the GPU if there is one, else the CPU)
       local ngl=()
       [ "$engine" = tetraeder-llama ] && ngl=(--ngl 0)
       RUST_LOG=info,tetraeder::step=debug start_server "$out/server-$engine-r$rep.log" "$tet" serve -m "$model" \
@@ -88,10 +93,21 @@ pass() { # ENGINE REP
   say "pass $engine r$rep done"
 }
 
+# The engines of one model in both orders, ABC then CBA (the first is the baseline)
+run_model() { # ENGINE...
+  local rep=1 rev=() e order
+  for e in "$@"; do rev=("$e" "${rev[@]}"); done
+  for order in "$*" "${rev[*]}"; do
+    for e in $order; do pass "$e" "$rep"; done
+    rep=$((rep + 1))
+  done
+}
+
 grep -m1 'model name' /proc/cpuinfo > "$out/cpu.txt"
-rep=1
-for order in "llama-server tetraeder-llama tetraeder-dense" "tetraeder-dense tetraeder-llama llama-server"; do
-  for e in $order; do pass "$e" "$rep"; done
-  rep=$((rep + 1))
-done
+run_model llama-server tetraeder-llama tetraeder-dense
+if [ -n "$moe_model" ] && [ -f "$moe_model" ]; then
+  model=$moe_model out=$base_out/moe
+  mkdir -p "$out"
+  run_model llama-server tetraeder-llama tetraeder-moe
+fi
 exit 0

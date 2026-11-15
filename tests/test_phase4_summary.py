@@ -299,3 +299,38 @@ def test_main_writes_verdict_json(s):
     assert set(v["models"]["q8b"]) >= {
         "engine", "counts", "baseline_variant", "baseline_kv_unified", "aa", "pairs", "worst", "pass"}
     assert v["phase4_pass"] is True
+
+
+def probe_files(tmp_path, base_c4, own_c4, engine="tetraeder-dense", model="q8b"):
+    d = tmp_path / "p"
+    d.mkdir(exist_ok=True)
+    for name, c4 in (("llama-server", base_c4), (engine, own_c4)):
+        (d / f"probe-{model}-{name}-c1.json").write_text(json.dumps(bench(tps=10.0)))
+        if c4 is not None:
+            (d / f"probe-{model}-{name}-c4.json").write_text(json.dumps(bench(tps=c4)))
+    return d
+
+
+@pytest.mark.parametrize("own,stop", [(86.0, False), (85.0, False), (84.9, True), (50.0, True)])
+def test_probe_stop_line_is_085(tmp_path, own, stop):
+    d = probe_files(tmp_path, 100.0, own)
+    args = [str(d), "--probe", "--probe-run", "q8b:tetraeder-dense"]
+    assert p4.main(args) == (3 if stop else 0)
+    pr = json.loads((d / "probe.json").read_text())
+    assert pr["stop"] is stop and pr["threshold_c4"] == 0.85
+    assert pr["models"]["q8b"]["c4_ratio"] == pytest.approx(own / 100.0)
+
+
+def test_probe_missing_c4_or_failed_parity_stops(tmp_path):
+    d = probe_files(tmp_path, 100.0, None)
+    assert p4.probe(d, {"q8b": "tetraeder-dense"})["stop"] is True
+    d = probe_files(tmp_path, 100.0, 99.0)
+    assert p4.probe(d, {"q8b": "tetraeder-dense"})["stop"] is False
+    assert p4.probe(d, {"q8b": "tetraeder-dense"}, "failed")["reasons"] == ["gpu-parity failed"]
+
+
+def test_probe_each_judged_engine_counts(tmp_path):
+    d = probe_files(tmp_path, 100.0, 99.0)
+    probe_files(tmp_path, 100.0, 60.0, engine="tetraeder-moe", model="q30b")
+    pr = p4.probe(d, {"q8b": "tetraeder-dense", "q30b": "tetraeder-moe"})
+    assert pr["stop"] and len(pr["reasons"]) == 1 and "q30b" in pr["reasons"][0]

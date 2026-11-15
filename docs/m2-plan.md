@@ -94,10 +94,10 @@ Also: document that decode-profile `eval_s` is shared step wall time and `gpu_se
 ### c4 gap on CPU (2026-11-15, `track-c4gap`, ADR 0065 addendum)
 - Most of the 0.60 to 0.65 was the benchmark: c4 reused c1's prompts (llama-server's prompt cache hit, tetraeder's did not: sequences under `SAVE_MIN_TOKENS` 512), and tetraeder was built native-static against llama-server's DL variants. Both fixed in loop-bench.
 - The loop itself costs 0.04 to 0.05 ms between steps; four sequences shared almost every decode step.
-- On CPU, mixed decode-plus-prompt steps now run as separate calls (`LlamaBackend`, `DenseBackend`; not `MoeBackend` yet).
+- On CPU, mixed decode-plus-prompt steps now run as separate calls (`LlamaBackend`, `DenseBackend`, `MoeBackend`).
 - Result on an AMX Xeon runner (run 43668812301): `--engine llama` 1.09 (c1) and 1.01 (c4) of llama-server; `--engine dense` 0.70 and 0.56, a kernel gap of the own builder on that CPU (prompt 4.97 against 1.84 ms per token alone; hypothesis: libllama repacks for AMX, the builder does not, ADR 0039).
 - Open, decided on the GPU box: the unified pool (ADR 0065 (a)) costs on CPU against one KV stream per sequence (llama-server's `-np 4` default): 4-sequence decode step 573 against 496 ms on the Xeon, 74 against 61 on another runner. D2 runs `crates/scheduler/tests/step_shapes.rs` on the GPU first; if streams win by more than the band there, ADR 0065's layout decision is revisited before the timed pairs count.
-- Later: dense builder CPU prompt kernels (repack or AMX path); `SAVE_MIN_TOKENS` for short prompts; the CPU split for `MoeBackend`.
+- Later: dense builder CPU prompt kernels (repack or AMX path); `SAVE_MIN_TOKENS` for short prompts.
 
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.

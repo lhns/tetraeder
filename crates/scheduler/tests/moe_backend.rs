@@ -99,6 +99,91 @@ fn cpu_a_step_over_the_cap_is_split_and_gives_the_same_rows() {
     assert_eq!(out.rows(0).len(), 40 * out.n_vocab());
 }
 
+/// hardware: cpu. A step mixing decoders and a prompt chunk (run as separate model calls on the
+/// CPU) gives the logits and lengths of each sequence decoded alone, rows in input order.
+#[test]
+fn cpu_mixed_step_equals_alone() {
+    let hist: Vec<Vec<i32>> = (0..3).map(|s| prompt(s, 5 + s as usize)).collect();
+    let next: Vec<Vec<i32>> = vec![vec![11], prompt(7, 3), vec![13], prompt(9, 100)];
+    fn step(s: usize, t: &[i32]) -> SeqInput<'_> {
+        SeqInput {
+            seq: s as u32,
+            tokens: t,
+            all_logits: s == 1,
+        }
+    }
+    let mut batch = backend(2048, 4, 512);
+    for (s, h) in hist.iter().enumerate() {
+        batch.decode(&[input(s as u32, h)]).unwrap();
+    }
+    let inputs: Vec<_> = next.iter().enumerate().map(|(s, t)| step(s, t)).collect();
+    let out = batch.decode(&inputs).unwrap();
+    let got: Vec<Vec<f32>> = (0..4).map(|i| out.rows(i).to_vec()).collect();
+    for (s, t) in next.iter().enumerate() {
+        let mut one = backend(256, 1, 512);
+        if let Some(h) = hist.get(s) {
+            one.decode(&[input(0, h)]).unwrap();
+        }
+        let out = one
+            .decode(&[SeqInput {
+                seq: 0,
+                tokens: t,
+                all_logits: s == 1,
+            }])
+            .unwrap();
+        assert_eq!(out.rows(0).len(), got[s].len(), "sequence {s}");
+        close(&got[s], out.rows(0), &format!("sequence {s}"));
+    }
+    assert_eq!(
+        (0..4).map(|s| batch.seq_len(s)).collect::<Vec<_>>(),
+        vec![6, 9, 8, 100]
+    );
+}
+
+/// hardware: cpu. The prompt of a mixed step finds no rows: `KvFull` before any call, the decoders
+/// are still at their lengths (a failure inside a later call goes through the same `restore`).
+#[test]
+fn cpu_mixed_step_kv_full_changes_nothing() {
+    // Two runs of 256 rows: sequences 0 and 1 hold them; sequence 2 has nowhere to go.
+    let mut b = backend(512, 3, 512);
+    let (p0, p1) = (prompt(1, 10), prompt(2, 10));
+    b.decode(&[input(0, &p0), input(1, &p1)]).unwrap();
+    let big = prompt(3, 100);
+    let err = b
+        .decode(&[input(0, &[5]), input(1, &[6]), input(2, &big)])
+        .err()
+        .unwrap();
+    assert!(matches!(err, BackendError::KvFull { seq: 2, .. }), "{err}");
+    assert_eq!((b.seq_len(0), b.seq_len(1), b.seq_len(2)), (10, 10, 0));
+    // Same lengths and the pool still works.
+    b.decode(&[input(0, &[5]), input(1, &[6])]).unwrap();
+    assert_eq!((b.seq_len(0), b.seq_len(1)), (11, 11));
+}
+
+/// hardware: cpu. The prompt call of a mixed step fails after the decoders' call ran (a token
+/// outside the vocabulary): every input is back at its length and reservation, and the pool works.
+#[test]
+fn cpu_failure_in_the_second_call_restores_lengths_and_reservations() {
+    let mut b = backend(1024, 4, 512);
+    for s in 0..2 {
+        b.decode(&[input(s, &prompt(s as i32, 10))]).unwrap();
+    }
+    b.seq_reserve(1, 300).unwrap();
+    let before: Vec<_> = (0..4).map(|s| (b.seq_len(s), b.seq_reserved(s))).collect();
+    let free = b.kv_free();
+    let mut bad = prompt(3, 100);
+    bad[50] = 1_000_000;
+    let err = b
+        .decode(&[input(0, &[5]), input(1, &[6]), input(2, &bad)])
+        .err()
+        .unwrap();
+    assert!(matches!(err, BackendError::Failed(_)), "{err}");
+    let after: Vec<_> = (0..4).map(|s| (b.seq_len(s), b.seq_reserved(s))).collect();
+    assert_eq!((after, b.kv_free()), (before, free));
+    b.decode(&[input(0, &[5]), input(1, &[6])]).unwrap();
+    assert_eq!((b.seq_len(0), b.seq_len(1)), (11, 11));
+}
+
 #[test]
 fn cpu_kv_full_changes_nothing_and_a_freed_sequence_makes_room() {
     let mut b = backend(256, 2, 64);
