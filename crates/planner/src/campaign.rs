@@ -684,6 +684,38 @@ mod tests {
         assert_eq!(back, f);
     }
 
+    // hardware: none. The anchors of the builder campaign on the 24 GB and 48 GB cards: the large
+    // anchor is the fill tier, and it has the largest RAM option that fits.
+    #[test]
+    fn builder_large_anchor_is_the_fill_tier_on_24_and_48_gb_cards() {
+        use crate::builder::enumerate_builder;
+        let l = fixtures::moe();
+        let cases: [(u64, (u32, u32)); 3] = [
+            (14336 << 20, (103, 25)),
+            (24_000_000_000, (128, 8)),
+            (48_000_000_000, (128, 8)),
+        ];
+        for (gpu_bytes, want) in cases {
+            let b = Budget { gpu_bytes, ..BUDGET };
+            let en = enumerate_builder(&b, &l, &WORK);
+            let c = build_builder("moe", "org/name:file.gguf", &l, &b, &WORK, &en);
+            let large = c
+                .variants
+                .iter()
+                .find(|v| v.id == "anchor-bld-vram-large")
+                .unwrap();
+            assert_eq!(
+                large.placement,
+                Some(Placement::Builder {
+                    vram_slots: want.0,
+                    ram_slots: want.1
+                }),
+                "{gpu_bytes}"
+            );
+            assert_eq!(c.variants.len(), 4 + en.candidates.len());
+        }
+    }
+
     // hardware: none. Every simulated fixture (dense, MoE) at a tight and a roomy budget.
     #[test]
     fn candidate_pairs_run_cheapest_first_after_anchors_and_baselines() {

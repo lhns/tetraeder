@@ -39,6 +39,7 @@ B3 first: its cache tuner gives B1 the llama.cpp CPU share. B3-planner and B3-de
 | B1b `b1b-levers` | as B1 | 103 / 120 min core (through the trace); the optional tail `main-overlap-ram` (to 112) and `anchors-builder-short` (to 124) runs only while the deadline guard allows, cut last-first | 2.0 | at most 0.90 | 142 GB | 0.92 to 3.69 | 1.8 to 4.6 USD |
 | B2 `b2-proxy` | 48 GB Ampere card (RTX A6000, A40), 64 GB RAM, 8+ cores, 100 GB disk | 82 min proxy, 40 kv-quality, hook / 260 min | 2.5 to 4.8 | 1.25 to 2.40 | 38 GB | 0.50 to 1.00 | 1.8 to 3.4 USD |
 | B3 `b3-planner` | RTX 3090, 32+ GB RAM, 9+ cores, 100 GB disk | 106 to 120 / 120 min | 2.0 to 2.4 | at most 1.08 | 38 GB | 0.50 to 1.00 | 1.3 to 2.1 USD |
+| B3 `b3-builder` | RTX 3090 or a 48 GB card, 32+ GB RAM, 9+ cores, 60 GB disk | 120 / 120 min, two sessions for two repeats | 2.0 each | at most 0.90 each | 19 GB | 0.25 to 0.50 | 1.0 to 1.7 USD each |
 | B3 `b3-detector` | RTX 3090, 32+ GB RAM, 9+ cores, 80 GB disk | 65 to 110 / 120 min | 1.5 to 2.3 | at most 1.04 | 19 GB | 0.25 to 0.50 | 0.9 to 1.5 USD |
 
 Every session except `b1-exit` (the verdict session, `NOISE_STAGE=1` opts in) now ends with the A/A pair of the "Noise bands" section when 12 minutes of its budget are left: it adds the 8B model (about 5 GB, 0.07 to 0.13 USD of traffic) and up to 12 minutes; `b1b-levers` and `b2-proxy` may skip it when the deadline is near.
@@ -163,6 +164,18 @@ As one session B3 is 170 to 215 min of script time, more than one box allows, so
 **Verify after fetch.** `cargo run -p tetraeder-planner --bin tetraeder-plan -- score bench/results/<date>/planner-dense --out bench/results/<date>/planner-dense/score.json`: at least 20 candidates with `measured_s`, regret at most 10%, Spearman at least 0.8 (the scorer pools the samples of every `planner-dense-*.json` of the passes). Once committed, `cargo test -p tetraeder-planner committed_fixtures_meet_the_exit_test` is the CI verdict. `moe-cache-tune/tune.json` has a `cpu_share`.
 
 **Result.** Phase 3a planner exit test on the dense fixture (ADR 0040); baselines `base-fit` and `base-ot-hand` are the "beat llama.cpp fit" clause. `tune.json` is B1's input.
+
+### `b3-builder`
+
+The candidate runs of the builder fixture (`planner-moe-builder`, `docs/m1-open.md` item 6): ADR 0040's builder set with the fill tier (addendum 2026-11-15), Qwen3-30B-A3B Q4_K_M, 24 candidates plus 4 anchors, prompt 2048, 128 decoded tokens, 4 min a run. `scripts/planner_builder_campaign.sh` does the work; the profile is its box driver.
+
+**Box.** RTX 3090 or a 48 GB card (same fixture on both: `FREE_MOE_MIB`, default 14336, balloons the card to 14 GiB free; `FREE_MOE_MIB=0` holds nothing and the budget is the whole card), 32+ GB RAM, 9+ cores, 60 GB disk. `$T offers --min-cpu-cores 9 --download-gb 20 --min-disk 60`.
+
+**Dry run, no box.** `DRY_RUN=1 bash scripts/planner_builder_campaign.sh` (needs a built `tetraeder-plan`) prints the fixture, the slot tiers, the 28 variants and the minutes; `FREE_MOE_MIB=0 CARD_MIB=49152` shows the unballooned 48 GB card. Candidates at 14 GiB free: VRAM slots 95 (fill), 64, 32, 16, 8; unballooned, 24 GB and 48 GB both: 128, 64, 32, 16, 8 (all experts fit, so the fill tier is the top tier).
+
+**Launch.** Commit first. `$T run --id <id> scripts/session.sh --env SESSION=b3-builder`. Order: build 12, `disk-curve` 2, `trace` and replay 5 (first, so the deadline cannot cut them), then the runs, anchors first and rep 1 of every variant before rep 2; no run starts that would end after the deadline (`partial.txt` says where it stopped). One rep is 28 x 4 = 112 min and a 120 min session has about 98 min for runs, so rep 1 needs a second session: commit the first results, then `--env SESSION=b3-builder --env RESULTS_DATE=<first date>`; `candidates.json` and finished runs are reused, and it ends rep 1 and starts rep 2 (about 26 runs). The full 2 x 28 runs need about 255 min over three sessions at most; the scorer takes what has a result.
+
+**Verify after fetch.** `bench/results/<date>/planner-moe-builder/` has `runs.txt`, `<variant>.r<k>.json`, `tier-replay.json`, `disk-curve-loaded.json`, no `rc=` other than 0 in `DONE`. Commit as `planner-moe-builder`; score with `tetraeder-plan score`.
 
 ### `b3-detector`
 
