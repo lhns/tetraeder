@@ -230,9 +230,7 @@ fn gen_stages(
             1
         };
         // From phase 5 a stage of several GPUs is GPU-only (ADR 0069 capability table).
-        let group: Vec<String> = if tp == 2 {
-            gpus[..2].to_vec()
-        } else if phase >= 5 && gpus.len() >= 2 && rng.chance(4) {
+        let group: Vec<String> = if tp == 2 || (phase >= 5 && gpus.len() >= 2 && rng.chance(4)) {
             gpus[..2].to_vec()
         } else if phase >= 5 {
             vec![rng.pick(&compute).clone()]
