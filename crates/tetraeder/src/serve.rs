@@ -12,6 +12,7 @@ use tetraeder_gateway::engine::Engine as GatewayEngine;
 use tetraeder_gateway::fake::{FakeEngine, serve_script};
 use tetraeder_gateway::gateway::{Gateway, GatewayConfig};
 use tetraeder_gateway::reqlog::RequestLog;
+use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, MissPolicy};
 use tetraeder_planner::Workload;
 use tetraeder_scheduler::{Scheduler, SchedulerConfig};
@@ -419,18 +420,31 @@ struct LoadArgs {
     overlap: Option<bool>,
 }
 
+/// Where the own builders run: `--ngl 0` or a machine without a GPU means the CPU, anything else
+/// GPU `--main-gpu`. As libllama: the default `--ngl -1` (all layers) falls back to the CPU when
+/// there is no GPU instead of failing.
+fn builder_backend(place: &PlacementArgs, gpus: usize) -> BackendChoice {
+    if place.ngl == 0 || gpus == 0 {
+        if place.ngl != 0 {
+            tracing::warn!(
+                "no GPU found, --ngl {} is ignored: running on the CPU",
+                place.ngl
+            );
+        }
+        BackendChoice::Cpu {
+            threads: place.threads.and_then(|t| usize::try_from(t).ok()),
+        }
+    } else {
+        BackendChoice::Gpu {
+            index: usize::try_from(place.main_gpu).unwrap_or(0),
+        }
+    }
+}
+
 impl LoadArgs {
     /// The dense builder's KV pool is `--ctx` rows shared by `--parallel` sequences.
     fn dense_options(&self, telemetry: Arc<Telemetry>) -> DenseOptions {
-        let backend = if self.place.ngl == 0 {
-            BackendChoice::Cpu {
-                threads: self.place.threads.and_then(|t| usize::try_from(t).ok()),
-            }
-        } else {
-            BackendChoice::Gpu {
-                index: usize::try_from(self.place.main_gpu).unwrap_or(0),
-            }
-        };
+        let backend = builder_backend(&self.place, Backend::gpu_count());
         let mut o = DenseOptions::new(backend);
         o.threads = self.place.threads;
         o.n_ctx_pool = self.ctx as usize;
@@ -439,17 +453,9 @@ impl LoadArgs {
         o
     }
 
-    /// `--ngl 0` keeps the MoE builder on the CPU; anything else uses GPU `main_gpu`.
+    /// Placed like the dense builder ([`builder_backend`]).
     fn moe_options(&self, telemetry: Arc<Telemetry>) -> Result<LoadOptions, String> {
-        let backend = if self.place.ngl == 0 {
-            BackendChoice::Cpu {
-                threads: self.place.threads.and_then(|t| usize::try_from(t).ok()),
-            }
-        } else {
-            BackendChoice::Gpu {
-                index: usize::try_from(self.place.main_gpu).unwrap_or(0),
-            }
-        };
+        let backend = builder_backend(&self.place, Backend::gpu_count());
         let mut o = LoadOptions::new(backend);
         o.cpu_threads = self.place.threads.and_then(|t| usize::try_from(t).ok());
         o.n_ctx = self.ctx as usize;
@@ -521,6 +527,20 @@ mod tests {
         let mut args = vec!["x", "-m", "m.gguf"];
         args.extend(extra);
         P::parse_from(args).serve
+    }
+
+    // hardware: none
+    #[test]
+    fn own_builders_default_to_the_gpu_and_fall_back_to_the_cpu() {
+        let cpu = BackendChoice::Cpu { threads: Some(4) };
+        let gpu = |index| BackendChoice::Gpu { index };
+        let place = |extra: &[&str]| parse(&[&["-t", "4"], extra].concat()).place;
+        // The default --ngl -1 on a machine without a GPU, as libllama does.
+        assert_eq!(builder_backend(&place(&[]), 0), cpu);
+        assert_eq!(builder_backend(&place(&["--ngl", "99"]), 0), cpu);
+        assert_eq!(builder_backend(&place(&[]), 1), gpu(0));
+        assert_eq!(builder_backend(&place(&["--main-gpu", "1"]), 2), gpu(1));
+        assert_eq!(builder_backend(&place(&["--ngl", "0"]), 1), cpu);
     }
 
     // hardware: none

@@ -47,10 +47,12 @@ wait_ready() { # URL SECONDS
   return 1
 }
 
-bench() { # ENGINE TEST REP, gateway_bench.py arguments after
-  local engine=$1 test=$2 rep=$3
-  shift 3
-  "$py" scripts/gateway_bench.py "http://127.0.0.1:$port" --model qwen3 --temperature 0 --seed 1 \
+# Each test of a pass gets its own prompts (seed): repeated prompts would measure the servers' prompt caches,
+# not the loop. The same test and rep get the same prompts on every engine.
+bench() { # ENGINE TEST REP SEED, gateway_bench.py arguments after
+  local engine=$1 test=$2 rep=$3 seed=$4
+  shift 4
+  "$py" scripts/gateway_bench.py "http://127.0.0.1:$port" --model qwen3 --temperature 0 --seed "$seed" \
     --prompt-tokens 512 --max-tokens "$max_tokens" --no-keepalive --label "$engine-$test-r$rep" \
     --out "$out/$engine-$test-r$rep.json" "$@" || say "$engine $test r$rep: client reported errors"
 }
@@ -64,15 +66,19 @@ pass() { # ENGINE REP
         --cont-batching --port "$port"
       ready=/health ;;
     tetraeder-llama | tetraeder-dense)
-      start_server "$out/server-$engine-r$rep.log" "$tet" serve -m "$model" --engine "${engine#tetraeder-}" \
-        --parallel "$par" --ctx "$ctx" -t "$threads" --ngl 0 --port "$port" --alias qwen3 --accept-any-model
+      # dense runs with the default --ngl (-1: the GPU if there is one, else the CPU)
+      local ngl=()
+      [ "$engine" = tetraeder-llama ] && ngl=(--ngl 0)
+      RUST_LOG=info,tetraeder::step=debug start_server "$out/server-$engine-r$rep.log" "$tet" serve -m "$model" \
+        --engine "${engine#tetraeder-}" --parallel "$par" --ctx "$ctx" -t "$threads" "${ngl[@]}" --port "$port" \
+        --alias qwen3 --accept-any-model
       ready=/v1/models ;;
   esac
   if wait_ready "http://127.0.0.1:$port$ready" 300; then
     "$py" scripts/gateway_bench.py "http://127.0.0.1:$port" --model qwen3 --prompt-tokens 128 --max-tokens 8 \
       --requests 1 > /dev/null 2>&1 # warm up
-    bench "$engine" c1 "$rep" --concurrency 1 --requests 8
-    bench "$engine" c4 "$rep" --concurrency 4 --requests 16
+    bench "$engine" c1 "$rep" $((rep * 10 + 1)) --concurrency 1 --requests 8
+    bench "$engine" c4 "$rep" $((rep * 10 + 4)) --concurrency 4 --requests 16
   else
     tail -n 20 "$out/server-$engine-r$rep.log"
   fi

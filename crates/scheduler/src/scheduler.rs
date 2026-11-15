@@ -415,6 +415,8 @@ struct Worker {
     /// Tokens per step.
     budget: usize,
     n_ctx_seq: usize,
+    /// End of the last step, for the step log's idle gap.
+    last_step: Option<Instant>,
 }
 
 /// Mask, sample and commit one token from `logits`.
@@ -470,6 +472,7 @@ impl Worker {
             decode_profile,
             budget,
             n_ctx_seq,
+            last_step: None,
         }
     }
 
@@ -1085,19 +1088,20 @@ impl Worker {
                     sample_times.push(Duration::ZERO);
                 }
             }
+            let (mut dec, mut pre, mut dec_seqs) = (0u32, 0u32, 0usize);
+            for t in &takes {
+                let Slot::Live(seq) = &self.slots[t.seq as usize] else {
+                    continue;
+                };
+                if seq.decoding {
+                    dec += t.n as u32;
+                    dec_seqs += 1;
+                } else {
+                    pre += t.n as u32;
+                }
+            }
             if let Some(m) = &self.metrics {
                 m.scheduler_batch(takes.len() as u32);
-                let (mut dec, mut pre) = (0u32, 0u32);
-                for t in &takes {
-                    let Slot::Live(seq) = &self.slots[t.seq as usize] else {
-                        continue;
-                    };
-                    if seq.decoding {
-                        dec += t.n as u32;
-                    } else {
-                        pre += t.n as u32;
-                    }
-                }
                 if dec > 0 {
                     m.scheduler_step_tokens("decode", dec);
                 }
@@ -1123,8 +1127,47 @@ impl Worker {
                     }
                 }
             }
+            self.log_step(t0, took, &sample_times, dec_seqs, dec, takes.len(), pre);
             return true;
         }
+    }
+
+    /// One line per step at `RUST_LOG=tetraeder::step=debug`: its shape, decode wall time, the
+    /// time before it (idle gap since the last step ended) and after it (sampling and emitting).
+    #[allow(clippy::too_many_arguments)]
+    fn log_step(
+        &mut self,
+        t0: Instant,
+        took: Duration,
+        sample_times: &[Duration],
+        dec_seqs: usize,
+        dec: u32,
+        seqs: usize,
+        pre: u32,
+    ) {
+        let end = Instant::now();
+        let gap = self.last_step.map(|l| t0.saturating_duration_since(l));
+        self.last_step = Some(end);
+        if !tracing::enabled!(target: "tetraeder::step", tracing::Level::DEBUG) {
+            return;
+        }
+        let ms = |d: Duration| d.as_secs_f64() * 1e3;
+        let paused = self
+            .slots
+            .iter()
+            .filter(|s| matches!(s, Slot::Live(s) if s.paused()))
+            .count();
+        tracing::debug!(
+            target: "tetraeder::step",
+            "step dec_seqs={dec_seqs} dec_toks={dec} pre_seqs={} pre_toks={pre} decode_ms={:.2}              gap_ms={:.2} sample_ms={:.2} post_ms={:.2} live={} paused={paused} waiting={}",
+            seqs - dec_seqs,
+            ms(took),
+            gap.map_or(-1.0, ms),
+            ms(sample_times.iter().sum()),
+            ms(end - t0 - took),
+            self.live_count(),
+            self.waiting.len(),
+        );
     }
 
     /// A token was sampled on `id`: emit it, or end the request.
