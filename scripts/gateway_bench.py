@@ -206,7 +206,9 @@ async def main_async(args) -> dict:
     chat = args.endpoint == "chat"
     url = args.base_url.rstrip("/") + ("/v1/chat/completions" if chat else "/v1/completions")
     timeout = httpx.Timeout(args.timeout, connect=30)
-    async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(max_connections=args.concurrency + 2)) as client:
+    async with httpx.AsyncClient(timeout=timeout, limits=httpx.Limits(
+        max_connections=args.concurrency + 2, max_keepalive_connections=0 if args.no_keepalive else None
+    )) as client:
         if args.multi_turn:
             body = await run_multi_turn(args, client, url)
         else:
@@ -243,6 +245,11 @@ def parse_args(argv=None):
     p.add_argument("--shared-prefix", action="store_true")
     p.add_argument("--multi-turn", type=int, default=0, metavar="K")
     p.add_argument("--seed", type=int, default=None, help="nonce seed (random per run when unset)")
+    p.add_argument(
+        "--no-keepalive",
+        action="store_true",
+        help="one connection per request (llama-server closes a keep-alive connection after 5 requests and the client sees a dropped request)",
+    )
     p.add_argument("--timeout", type=float, default=600)
     p.add_argument("--label", default="")
     p.add_argument("--out")

@@ -1427,8 +1427,8 @@
         },
         {
           "refId": "B",
-          "expr": "sum(rate(tetraeder_kv_prefix_hits_total[$__rate_interval]))",
-          "legendFormat": "prefix hits/s",
+          "expr": "sum by (tetraeder_source) (rate(tetraeder_kv_prefix_hits_total[$__rate_interval]))",
+          "legendFormat": "{{tetraeder_source}} hits/s",
           "datasource": {
             "type": "prometheus",
             "uid": "victoriametrics"

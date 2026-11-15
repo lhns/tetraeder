@@ -3,7 +3,8 @@
 //! each sequence alone. This is also where CUDA flash attention with sequences mixed in one
 //! query tile is checked against single-sequence runs (ADR 0065, "To verify on the box").
 //!
-//! Hardware label: `gpu_*` (a GPU device in the build); skips cleanly without one.
+//! Hardware label: `gpu_*` (a GPU device in the build); skips cleanly without one, and fails
+//! when `TETRAEDER_REQUIRE_GPU` is set.
 
 mod common;
 
@@ -17,6 +18,11 @@ use tetraeder_plan::KvFormat;
 
 fn base() -> Option<LoadOptions> {
     if !Backend::gpu_available() {
+        // The box's gpu-parity stage sets this: no GPU there is a failure, not a skip.
+        assert!(
+            std::env::var_os("TETRAEDER_REQUIRE_GPU").is_none(),
+            "TETRAEDER_REQUIRE_GPU is set but there is no GPU device"
+        );
         eprintln!("skip: no GPU device in this build or on this machine");
         return None;
     }

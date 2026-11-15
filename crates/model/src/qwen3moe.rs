@@ -1125,7 +1125,7 @@ impl Qwen3Moe {
     }
 
     /// Bytes of one cached position across all layers (K and V).
-    fn kv_row_bytes(&self) -> usize {
+    pub fn kv_row_bytes(&self) -> usize {
         self.kv
             .k
             .iter()

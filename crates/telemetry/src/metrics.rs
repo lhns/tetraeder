@@ -399,7 +399,7 @@ impl Metrics {
                 .u64_counter("tetraeder.kv.prefix.hits")
                 .with_unit("{request}")
                 .with_description(
-                    "Requests that reused a cached prompt prefix, by source (live sequence or host RAM)",
+                    "Requests that reused a cached prompt prefix, by source (idle or busy sequence, or host RAM)",
                 )
                 .build(),
             prefix_evictions: meter
@@ -771,7 +771,7 @@ impl Metrics {
             .record(seconds, &[KeyValue::new(attr::STAGE, stage)]);
     }
 
-    /// A request that reused a cached prompt prefix; `source` is `live` or `ram`.
+    /// A request that reused a cached prompt prefix; `source` is `live` (idle sequence), `seq` (copied from a busy one) or `ram`.
     pub fn kv_prefix_hit(&self, source: &'static str) {
         self.prefix_hits
             .add(1, &[KeyValue::new(attr::SOURCE, source)]);
