@@ -112,6 +112,11 @@ Also: document that decode-profile `eval_s` is shared step wall time and `gpu_se
 4. Tests: a failed step whose reservation moved the sequence, rolled back, for Dense and Moe; the busy-copy fallback reaching an idle or RAM source and `no_busy` clearing; a prompt chunk before a decoder in input order.
 5. Small: a stray `no_busy` can skip busy reuse once for an unrelated request; `KvPool::blocks()` omits rolled-back reserved-empty sequences from the `reserved` metric.
 
+### Housekeeping (2026-11-15, `track-housekeeping`)
+- Old tracks: track-adaptive-vram and track-vram-policy-replay are on main in later form (obsolete); track-poll-bench-cpu's `ram_slots` input is ported. The three remote branches can be deleted (owner's call).
+- m1-open item 8 tool-call repair: done (ADR 0051, 0057). Item 9 FP8 KV baseline: parked until a baseline pin where CUDA writes FP8 KV.
+- ADR index carries status; 12 ADRs moved to Accepted. Still Proposed, each waiting on a box measurement: 0052 (haswell vs auto pair), 0053 (a clean `noiqk` pair), 0056 part F, 0059 async stages, 0060 sampler vs OTel agreement; candidates for a later combined box session.
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 

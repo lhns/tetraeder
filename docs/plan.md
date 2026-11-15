@@ -166,8 +166,8 @@ The IR is richer than what can run early; the planner only proposes fields the c
 | Tensor-to-buffer overrides (offload, experts to CPU) | Yes (buffer-type overrides by regex) | Yes | Yes |
 | Expert tiers and slot cache | No | Yes, for the own MoE family | Yes |
 | Prefill and decode budgets for slots and workspace | No | Yes | Yes |
-| Compute device per shard | No (follows the buffer; ggml copies CPU weights to the GPU at larger batches, not tunable) | Partly | Yes |
-| Tensor and expert parallel | No | No | Yes |
+| Compute device per shard | No (follows the buffer; ggml copies CPU weights to the GPU at larger batches, not tunable) | Partly | Experts only, single-GPU plans; stages of several GPUs compute on GPUs only (ADR 0069) |
+| Tensor and expert parallel | No | No | Yes; expert parallel with `tp = ep` (ADR 0070) |
 | Replicas, stages across nodes | No | No | Phase 6 |
 
 The Phase 3a regret test uses only executable fields: per hardware fixture, every candidate the planner enumerates (at least 20 plans) is benchmarked, and regret and rank correlation are measured over that set.
@@ -193,7 +193,7 @@ Rust owns everything outside the kernels; ggml supplies the kernels for every ba
 1. **Phase 1, libllama for dense models.** llama.cpp loads, builds the graph, keeps the KV cache and batches. Tetraeder sets placement through its parameters (layer split, split mode, buffer-type overrides, mmap) and measures step times.
 2. **Phase 2, first own graph builder.** Qwen3 MoE, written in Rust on ggml ops, CUDA and CPU only, validated against libllama logits. It owns the expert tensors as slot tensors, reads the router's top-k back and remaps it to slots; that is what makes expert streaming possible, since libllama allocates full expert tensors and runs top-k inside its graph with no public hook.
 3. **Phase 4, own KV cache and scheduler,** plus a second builder (Qwen3 dense), still CUDA and CPU.
-4. **Phase 5, own executor** replaces ggml's backend scheduler, which issues splits one after another from one host thread. The own executor runs one worker process per device, issues per-device subgraphs concurrently with NCCL group semantics and no host sync between ranks; this is what tensor parallel and free compute placement need.
+4. **Phase 5, own executor** replaces ggml's backend scheduler across devices, which issues splits one after another from one host thread. The own executor issues per-device graphs, cut at collectives, asynchronously with no host sync between ranks, using ggml's comm API (NCCL or its internal all-reduce) at the pin; all GPU ranks of a box live in one worker process (proposed in ADR 0069; ADR 0017 had one per device).
 5. **Phase 8, backend parity:** own builders on HIP, Vulkan and Metal, with parity tests.
 6. **libllama stays** as the parity reference and as the fallback for model families without an own builder.
 
@@ -203,7 +203,8 @@ Each patch has an ADR and tests on every backend it touches. Nothing is upstream
 
 | Patch | Why | Needed in | Worth upstreaming later |
 | --- | --- | --- | --- |
-| All-reduce as a graph op | Tensor parallel without host round trips; only useful together with the own executor | Phase 5 | Medium: llama.cpp avoids an NCCL dependency |
+| All-reduce as a graph op (dropped) | Not needed: the pin has ggml's comm API (NCCL, a two-GPU internal all-reduce), called between subgraphs (ADR 0069) | | |
+| CUDA `mul_mat_id` skips id -1 | Expert parallel without computing foreign experts; matches the CPU kernel (ADR 0070) | Phase 5 | High: it aligns CUDA with existing CPU semantics |
 | Attention over chunked or paged KV | KV tiers, prefix sharing, migration; only if contiguous chunks are not enough | Phase 4, if the experiment says so | Medium |
 | Attention returning log-sum-exp | Merge partial attention for context parallel | Phase 9 | Medium |
 | Batched multi-LoRA matmul | Many adapters in one batch | Phase 9 | Medium |
@@ -221,8 +222,8 @@ Timing events inside a captured CUDA graph do not give usable per-op times, and 
 | Quantized weights, layer split, mixed GPUs | Quantized matmul per backend | ggml today |
 | Pipeline across vendors | Activation copies between backends | ggml, if the Phase 0 multi-backend spike passes |
 | RAM and NVMe tiers, CPU computing cold experts | Copies plus CPU kernels | ggml today |
-| MoE and expert parallel | Grouped expert matmul | ggml today; expert parallel needs the own executor |
-| Tensor parallel | Sliced matmul plus all-reduce | All-reduce patch plus own executor |
+| MoE and expert parallel | Grouped expert matmul | ggml today; expert parallel needs the own executor and patch 0004 (ADR 0070) |
+| Tensor parallel | Sliced matmul plus all-reduce | ggml's comm API at the pin plus own executor (ADR 0069) |
 | Quantized KV, multimodal | Various | ggml and llama.cpp today |
 | Speculative decoding | Batched verification with masks | ggml today |
 | Paged KV | Attention over scattered blocks | Patch, only if needed |

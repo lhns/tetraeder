@@ -334,3 +334,45 @@ def test_probe_each_judged_engine_counts(tmp_path):
     probe_files(tmp_path, 100.0, 60.0, engine="tetraeder-moe", model="q30b")
     pr = p4.probe(d, {"q8b": "tetraeder-dense", "q30b": "tetraeder-moe"})
     assert pr["stop"] and len(pr["reasons"]) == 1 and "q30b" in pr["reasons"][0]
+
+
+def test_rerun_pair_replaces_the_unclean_one(s):
+    s.q8b(r1=(1.0, 1.0), r2=(1.0, 1.0))
+    s.run("q8b", "tetraeder-dense", 2, 100.0, 80.0, errors=1)  # rep 2 unclean
+    assert p4.rerun_reps(s.d, "q8b") == [2]
+    s.run("q8b", "llama-server", 3, 100.0, 80.0)
+    s.run("q8b", "tetraeder-dense", 3, 95.0, 80.0)
+    s.ttft()
+    m = s.verdict()["models"]["q8b"]
+    assert m["reps_used"] == [1, 3] and [p["reps"] for p in m["pairs"]] == [[1], [3]]
+    assert m["pass"] is True and m["worst"]["c4"] == pytest.approx(0.95)
+    assert [d["rep"] for d in m["dropped_pairs"]] == [2] and any("errors=1" in r for r in m["dropped_pairs"][0]["reasons"])
+    assert p4.rerun_reps(s.d, "q8b") == [2]  # unchanged after rep 3: a resumed session finishes the pair
+
+
+def test_unclean_rep_3_does_not_help(s):
+    s.q8b()
+    s.run("q8b", "llama-server", 1, 100.0, 80.0, errors=1)
+    s.run("q8b", "llama-server", 3, 100.0, 80.0)
+    s.run("q8b", "tetraeder-dense", 3, 100.0, 80.0, throttle=(IDLE, POWER))
+    s.ttft()
+    m = s.verdict()["models"]["q8b"]
+    assert m["reps_used"] == [1, 2] and m["pass"] is None
+
+
+def test_rerun_reps_needs_exactly_one_unclean(s):
+    s.q8b()
+    assert p4.rerun_reps(s.d, "q8b") == []
+    s.run("q8b", "tetraeder-dense", 1, 100.0, 80.0, errors=1)
+    s.run("q8b", "tetraeder-dense", 2, 100.0, 80.0, errors=1)
+    assert p4.rerun_reps(s.d, "q8b") == []  # one more pair cannot give two clean ones
+    assert p4.main([str(s.d), "--rerun-reps", "q8b"]) == 0
+
+
+def test_clean_pairs_ignore_extra_rep(s):
+    s.q8b()
+    s.run("q8b", "llama-server", 3, 100.0, 80.0)
+    s.run("q8b", "tetraeder-dense", 3, 10.0, 80.0)  # a bad rep 3 is not used when 1 and 2 are clean
+    s.ttft()
+    m = s.verdict()["models"]["q8b"]
+    assert m["reps_used"] == [1, 2] and m["pass"] is True

@@ -1,6 +1,6 @@
 # 0017. One worker process per device
 
-Status: Accepted
+Status: Accepted; superseded in part by ADR 0069 (2026-11-15): one worker process per collective group, the whole box by default, instead of one per device.
 
 ## Context
 

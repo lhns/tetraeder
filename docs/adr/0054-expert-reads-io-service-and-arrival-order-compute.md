@@ -1,6 +1,6 @@
 # 0054. Decode expert reads: a persistent I/O service, experts computed in arrival order, RAM tier sized to the container
 
-Status: Proposed (Phase 2 exit follow-up, ADR 0045 hypotheses 1 and 2). Supersedes ADR 0050 (a), stage 1 (Brief A); ADR 0050 (a) stage 2 (GPU group asynchronous) keeps its gate, now measured on this path; ADR 0050 (b) and (c) are unchanged. Supersedes the reason ADR 0035 gives against a memory map (below); its decision stands. Extends ADR 0031 (direct I/O), 0038 (prefetch, pins, ordering). Brief: `docs/levers-briefs.md`, Brief A (replaced).
+Status: Accepted (2026-11-15: built and measured, paired result with the defaults on (addenda 2026-11-10 and 2026-11-11); in serve). Earlier: Proposed (Phase 2 exit follow-up, ADR 0045 hypotheses 1 and 2). Supersedes ADR 0050 (a), stage 1 (Brief A); ADR 0050 (a) stage 2 (GPU group asynchronous) keeps its gate, now measured on this path; ADR 0050 (b) and (c) are unchanged. Supersedes the reason ADR 0035 gives against a memory map (below); its decision stands. Extends ADR 0031 (direct I/O), 0038 (prefetch, pins, ordering). Brief: `docs/levers-briefs.md`, Brief A (replaced).
 
 ## Context
 

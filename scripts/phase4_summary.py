@@ -9,8 +9,13 @@
 Input files in DIR (names fixed by the ADR): bench-<model>-<engine>-<c1|c4>-r<rep>.json, prepass-<model>-<kvu|nokvu>.json,
 replay-<model>-<on|off>-r<rep>.json, gpu-<run>.txt (lines `before: <hex>` / `after: <hex>`, the clocks_throttle_reasons
 bitmask), server-*.log, env.json. A run is `<model>-<engine>-r<rep>`; replay runs are `replay-<model>-<on|off>-r<rep>`.
-Reps 1 and 2 are the judged pairs: rep 1 runs (baseline, Tetraeder), rep 2 (Tetraeder, baseline). Anything missing
-makes the pair unclean (a reason is recorded) and the verdict `null`, never true.
+Reps 1 and 2 are the judged pairs: rep 1 runs (baseline, Tetraeder), rep 2 (Tetraeder, baseline). Rep 3 is the one
+rerun pair of phase4_box.sh when rep 1 or 2 is unclean (errors, throttle, co-tenant, a missing result); the judged pairs
+are then the first two CLEAN pairs. Anything missing makes the pair unclean (a reason is recorded) and the verdict
+`null`, never true.
+
+    python scripts/phase4_summary.py DIR --rerun-reps q8b                    prints the unclean rep(s) of 1 and 2 that one
+                                                                             rep-3 pair can replace (empty: no rerun)
 """
 
 from __future__ import annotations
@@ -27,6 +32,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 EPS = 1e-9
 REPS = (1, 2)
+RERUN = 3
+ALL_REPS = (1, 2, 3)
 BASELINE = "llama-server"
 # model -> (judged engine, engine used when no judged-engine files exist, counts then)
 JUDGED = {"q8b": ("tetraeder-dense", None), "q30b": ("tetraeder-moe", "tetraeder-llama")}
@@ -145,7 +152,7 @@ def pick_variant(d: Path, model: str) -> str | None:
 def kv_unified(d: Path, model: str, variant: str | None) -> str | None:
     """Value of the `kv_unified = '...'` line of the baseline's server log (the chosen pre-pass log first)."""
     logs = ([d / f"server-prepass-{model}-{variant}.log"] if variant else []) + [
-        d / f"server-{model}-{BASELINE}-r{r}.log" for r in REPS
+        d / f"server-{model}-{BASELINE}-r{r}.log" for r in ALL_REPS
     ]
     for p in logs:
         try:
@@ -155,6 +162,14 @@ def kv_unified(d: Path, model: str, variant: str | None) -> str | None:
         if m:
             return m.group(1)
     return None
+
+
+def rerun_reps(d: Path, model: str) -> list[int]:
+    """Unclean reps among 1 and 2 that the single rep-3 pair of phase4_box.sh can replace: none when both are unclean
+    (one more pair cannot make two clean ones). Still the same after rep 3 ran, so a resumed session finishes it."""
+    engine, _ = judged_engine(d, model)
+    bad = [r for r in REPS if run_reasons(d, model, BASELINE, r)[0] or run_reasons(d, model, engine, r)[0]]
+    return bad if len(bad) == 1 else []
 
 
 def judged_engine(d: Path, model: str) -> tuple[str, bool]:
@@ -178,13 +193,18 @@ def model_verdict(d: Path, model: str, band: float) -> dict:
         "pass": None,
         "reasons": [],
     }
-    base = {r: run_reasons(d, model, BASELINE, r) for r in REPS}
-    judged = {r: run_reasons(d, model, engine, r) for r in REPS}
+    base = {r: run_reasons(d, model, BASELINE, r) for r in ALL_REPS}
+    judged = {r: run_reasons(d, model, engine, r) for r in ALL_REPS}
+    cand = [r for r in ALL_REPS if r in REPS or any(d.glob(f"bench-{model}-*-r{r}.json"))]
+    clean = [r for r in cand if not base[r][0] and not judged[r][0]]
+    reps = clean[:2] if len(clean) >= 2 else list(REPS)  # fewer than two clean pairs: the unclean first two, no verdict
+    out["reps_used"] = reps
+    out["dropped_pairs"] = [{"rep": r, "reasons": base[r][0] + judged[r][0]} for r in cand if r not in reps]
 
     # clean session: the two baseline runs agree within the band on both fields
     session_reasons = []
     for key, test, fld in (("c4", "c4", "throughput_tps"), ("c1", "c1", "decode_tps_median")):
-        r = ratio(field(base[2][1], test, fld), field(base[1][1], test, fld))
+        r = ratio(field(base[reps[1]][1], test, fld), field(base[reps[0]][1], test, fld))
         if r is None:
             session_reasons.append(f"A/A {key}: baseline results missing")
             continue
@@ -192,7 +212,7 @@ def model_verdict(d: Path, model: str, band: float) -> dict:
         if abs(r - 1) > band + EPS:
             session_reasons.append(f"A/A {key}: |B2/B1 - 1| = {abs(r - 1):.4f} > band {band}")
 
-    for rep in REPS:
+    for rep in reps:
         reasons = list(base[rep][0]) + list(judged[rep][0]) + session_reasons
         pair = {
             "reps": [rep],
@@ -272,11 +292,11 @@ def ttft_verdict(d: Path, band: float) -> dict:
 PROBE_MIN_C4 = 0.85
 
 
-def probe(d: Path, runs: dict[str, str], parity: str = "ok") -> dict:
+def probe(d: Path, runs: dict[str, str], parity: str = "ok", min_c4: float = PROBE_MIN_C4) -> dict:
     """The stop rule of scripts/phase4_box.sh from probe-<model>-<engine>-<c1|c4>.json (judged engine and llama-server):
     `stop` when gpu-parity failed or a judged engine's c4 throughput ratio is missing or below PROBE_MIN_C4.
     `runs` maps model to its judged engine name."""
-    out: dict = {"threshold_c4": PROBE_MIN_C4, "gpu_parity": parity, "models": {}, "reasons": []}
+    out: dict = {"threshold_c4": min_c4, "gpu_parity": parity, "models": {}, "reasons": []}
     if parity != "ok":
         out["reasons"].append(f"gpu-parity {parity}")
     for m, engine in runs.items():
@@ -292,8 +312,8 @@ def probe(d: Path, runs: dict[str, str], parity: str = "ok") -> dict:
         c4 = e["c4_ratio"]
         if c4 is None:
             out["reasons"].append(f"{m}: no probe c4 ratio")
-        elif c4 < PROBE_MIN_C4:
-            out["reasons"].append(f"{m} {engine}: c4 ratio {c4:.3f} < {PROBE_MIN_C4}")
+        elif c4 < min_c4:
+            out["reasons"].append(f"{m} {engine}: c4 ratio {c4:.3f} < {min_c4}")
         out["models"][m] = e
     out["stop"] = bool(out["reasons"])
     return out
@@ -315,17 +335,22 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir", type=Path)
     ap.add_argument("--pick-variant", metavar="MODEL", help="print the pre-pass winner (kvu|nokvu) and exit")
+    ap.add_argument("--rerun-reps", metavar="MODEL", help="print the unclean rep (1 or 2) a rep-3 pair replaces and exit")
     ap.add_argument("--probe", action="store_true", help="write probe.json; exit 3 when the stop rule fires")
     ap.add_argument("--probe-run", action="append", default=[], metavar="MODEL:ENGINE")
+    ap.add_argument("--probe-min", type=float, default=PROBE_MIN_C4, help="with --probe: the c4 stop line (the CPU rehearsal lowers it)")
     ap.add_argument("--parity", default="ok", help="with --probe: failed when gpu-parity failed")
     ap.add_argument("--noise-dir", type=Path, default=ROOT / "bench" / "noise")
     ap.add_argument("--spec", type=Path, default=ROOT / "bench" / "spec" / "phase0.toml")
     a = ap.parse_args(argv)
     if a.probe:
-        pr = probe(a.dir, dict(r.split(":", 1) for r in a.probe_run), a.parity)
+        pr = probe(a.dir, dict(r.split(":", 1) for r in a.probe_run), a.parity, a.probe_min)
         (a.dir / "probe.json").write_text(json.dumps(pr, indent=2) + "\n", encoding="utf-8")
         print(json.dumps({"probe_stop": pr["stop"], "reasons": pr["reasons"]}))
         return 3 if pr["stop"] else 0
+    if a.rerun_reps:
+        print(" ".join(str(r) for r in rerun_reps(a.dir, a.rerun_reps)))
+        return 0
     if a.pick_variant:
         v = pick_variant(a.dir, a.pick_variant)
         print(v or "")

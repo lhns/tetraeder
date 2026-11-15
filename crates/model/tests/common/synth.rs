@@ -135,11 +135,21 @@ impl Kv {
 
 /// Writes the F32 model to `path`.
 pub fn write_moe(path: &Path, s: &MoeSpec) {
+    write_moe_with(path, s, N_CTX, 0);
+}
+
+/// Like [`write_moe`] with a training context of `n_ctx` and a vocabulary padded to at least
+/// `n_vocab` tokens (unused `<pad_N>` entries after the 260 real ones; 0 for no padding).
+pub fn write_moe_with(path: &Path, s: &MoeSpec, n_ctx: u32, n_vocab: usize) {
     let mut rng = Rng(s.seed);
-    let tokens = vocab();
-    let n_vocab = tokens.len();
+    let mut tokens = vocab();
     let mut types = vec![1i32; 257];
     types.extend([3, 3, 3]); // control
+    while tokens.len() < n_vocab {
+        tokens.push(format!("<pad_{}>", tokens.len()));
+        types.push(1);
+    }
+    let n_vocab = tokens.len();
     let eos = tokens.iter().position(|t| t == "<|im_end|>").unwrap() as u32;
     let pad = tokens.iter().position(|t| t == "<|endoftext|>").unwrap() as u32;
     let a = |k: &str| format!("qwen3moe.{k}");
@@ -147,7 +157,7 @@ pub fn write_moe(path: &Path, s: &MoeSpec) {
         ("general.architecture".into(), Kv::Str("qwen3moe".into())),
         ("general.name".into(), Kv::Str("synth-qwen3moe".into())),
         (a("block_count"), Kv::U32(s.layers as u32)),
-        (a("context_length"), Kv::U32(N_CTX)),
+        (a("context_length"), Kv::U32(n_ctx)),
         (a("embedding_length"), Kv::U32(s.embd as u32)),
         (a("feed_forward_length"), Kv::U32((s.ff * s.used) as u32)),
         (a("attention.head_count"), Kv::U32(s.heads as u32)),
@@ -259,13 +269,24 @@ pub fn quantized_moe(spec: &MoeSpec, ftype: Ftype, name: &str) -> PathBuf {
 /// process id) and renames the result into place; the one that loses the race, or finds `out`
 /// open in another process (Windows sharing violation, OS error 32), uses the winner's file.
 pub fn quantized_moe_at(spec: &MoeSpec, ftype: Ftype, out: &Path) -> PathBuf {
+    quantized_moe_at_with(spec, ftype, out, N_CTX, 0)
+}
+
+/// [`quantized_moe_at`] with the context and vocabulary of [`write_moe_with`].
+pub fn quantized_moe_at_with(
+    spec: &MoeSpec,
+    ftype: Ftype,
+    out: &Path,
+    n_ctx: u32,
+    n_vocab: usize,
+) -> PathBuf {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !out.is_file() {
         let pid = std::process::id();
         let src = out.with_extension(format!("{pid}.f32.tmp"));
         let part = out.with_extension(format!("{pid}.part"));
-        write_moe(&src, spec);
+        write_moe_with(&src, spec, n_ctx, n_vocab);
         let mut qp = QuantizeParams::new(ftype);
         qp.nthread = 2;
         quantize(&src, &part, &qp).unwrap();

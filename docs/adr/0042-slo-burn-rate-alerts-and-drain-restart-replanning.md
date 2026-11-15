@@ -1,6 +1,6 @@
 # 0042. SLO burn-rate alerts and drain-and-restart replanning
 
-Status: Proposed (Phase 3a)
+Status: Accepted (2026-11-15: SLO rules in deploy/alerts/slo.yml and the replanner built (ADR 0055 part A)). Earlier: Proposed (Phase 3a)
 
 ## Context
 

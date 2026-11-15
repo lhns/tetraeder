@@ -1,6 +1,6 @@
 # 0058. Decode I/O attribution: report capacity and demand per window before any bottleneck label
 
-Status: Proposed (2026-11-11, owner request after the slow-disk loss in ADR 0045)
+Status: Accepted (2026-11-15: harness numbers and report-only io_class are in committed results; item 3 stays gated on a slow-disk run). Earlier: Proposed (2026-11-11, owner request after the slow-disk loss in ADR 0045)
 
 ## Context
 

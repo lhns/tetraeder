@@ -1,0 +1,142 @@
+[16:29:33] box age 0h33m of max 3h00m
+ Downloading crates ...
+  Downloaded borrow-or-share v0.2.4
+  Downloaded strum v0.28.0
+  Downloaded scopeguard v1.2.0
+  Downloaded lock_api v0.4.14
+  Downloaded mime v0.3.17
+  Downloaded strum_macros v0.28.0
+  Downloaded referencing v0.29.1
+  Downloaded derivre v0.3.13
+  Downloaded ref-cast v1.0.27
+  Downloaded bytemuck v1.25.2
+  Downloaded tokio-macros v2.7.2
+  Downloaded serde_urlencoded v0.7.1
+  Downloaded ref-cast-impl v1.0.27
+  Downloaded foldhash v0.2.0
+  Downloaded bytemuck_derive v1.12.1
+  Downloaded serde_path_to_error v0.1.20
+  Downloaded matchit v0.8.4
+  Downloaded parking_lot_core v0.9.12
+  Downloaded ahash v0.8.12
+  Downloaded minijinja-contrib v3.0.4
+  Downloaded fluent-uri v0.3.2
+  Downloaded toktrie v1.9.1
+  Downloaded parking_lot v0.12.5
+  Downloaded axum-core v0.5.6
+  Downloaded ryu v1.0.23
+  Downloaded minijinja v3.0.4
+  Downloaded uuid v1.29.0
+  Downloaded tokio-util v0.7.20
+  Downloaded axum v0.8.9
+  Downloaded llguidance v1.9.1
+   Compiling serde_core v1.0.229
+   Compiling tokio-macros v2.7.2
+   Compiling form_urlencoded v1.2.2
+   Compiling serde_json v1.0.154
+   Compiling foldhash v0.2.0
+   Compiling ahash v0.8.12
+   Compiling ref-cast v1.0.27
+   Compiling parking_lot_core v0.9.12
+   Compiling ref-cast-impl v1.0.27
+   Compiling scopeguard v1.2.0
+   Compiling strum_macros v0.28.0
+   Compiling bytemuck_derive v1.12.1
+   Compiling url v2.5.8
+   Compiling lock_api v0.4.14
+   Compiling tokio v1.54.1
+   Compiling borrow-or-share v0.2.4
+   Compiling bytemuck v1.25.2
+   Compiling parking_lot v0.12.5
+   Compiling ryu v1.0.23
+   Compiling llguidance v1.9.1
+   Compiling mime v0.3.17
+   Compiling matchit v0.8.4
+   Compiling uuid v1.29.0
+   Compiling strum v0.28.0
+   Compiling axum-core v0.5.6
+   Compiling serde v1.0.229
+   Compiling serde_path_to_error v0.1.20
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling fluent-uri v0.3.2
+   Compiling serde_urlencoded v0.7.1
+   Compiling minijinja v3.0.4
+   Compiling derivre v0.3.13
+   Compiling toml_edit v0.22.27
+   Compiling toktrie v1.9.1
+   Compiling referencing v0.29.1
+   Compiling tower v0.5.3
+   Compiling hyper v1.12.0
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling tower-http v0.6.11
+   Compiling tokio-util v0.7.20
+   Compiling hyper-util v0.1.21
+   Compiling toml v0.8.23
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling reqwest v0.13.5
+   Compiling axum v0.8.9
+   Compiling opentelemetry-proto v0.33.1
+   Compiling minijinja-contrib v3.0.4
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling opentelemetry-http v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-gateway v0.0.0 (/root/tetraeder/crates/gateway)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 27.89s
+     Running tests/step_shapes.rs (target/release/deps/step_shapes-f6d54fd9ac2e7390)
+
+running 1 test
+test step_shapes ... SHAPE engine=llama shape=alone ms=122.8 ms_per_prompt_token=0.31
+SHAPE engine=llama shape=resident ms=97.2 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed1 ms=96.6 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=split1 ms=106.4 ms_per_prompt_token=0.26
+SHAPE engine=llama shape=mixed1_prompt_first ms=98.2 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed2 ms=97.7 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=split2 ms=107.3 ms_per_prompt_token=0.27
+SHAPE engine=llama shape=mixed2_prompt_first ms=98.1 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed3 ms=97.1 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=split3 ms=109.8 ms_per_prompt_token=0.27
+SHAPE engine=llama shape=mixed3_prompt_first ms=98.6 ms_per_prompt_token=0.25
+SHAPE engine=llama shape=decode4x8 ms=192.2 ms_per_prompt_token=0.48
+SHAPE engine=llama shape=decode1x8_alone ms=96.3 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=decode1x8_resident ms=162.8 ms_per_prompt_token=0.41
+SHAPE engine=llama_streams shape=alone ms=90.2 ms_per_prompt_token=0.22
+SHAPE engine=llama_streams shape=resident ms=93.5 ms_per_prompt_token=0.23
+SHAPE engine=llama_streams shape=mixed1 ms=100.2 ms_per_prompt_token=0.25
+SHAPE engine=llama_streams shape=split1 ms=101.7 ms_per_prompt_token=0.25
+SHAPE engine=llama_streams shape=mixed1_prompt_first ms=101.5 ms_per_prompt_token=0.25
+SHAPE engine=llama_streams shape=mixed2 ms=101.6 ms_per_prompt_token=0.25
+SHAPE engine=llama_streams shape=split2 ms=102.6 ms_per_prompt_token=0.26
+SHAPE engine=llama_streams shape=mixed2_prompt_first ms=102.4 ms_per_prompt_token=0.25
+SHAPE engine=llama_streams shape=mixed3 ms=104.1 ms_per_prompt_token=0.26
+SHAPE engine=llama_streams shape=split3 ms=104.5 ms_per_prompt_token=0.26
+SHAPE engine=llama_streams shape=mixed3_prompt_first ms=104.4 ms_per_prompt_token=0.26
+SHAPE engine=llama_streams shape=decode4x8 ms=142.0 ms_per_prompt_token=0.35
+SHAPE engine=llama_streams shape=decode1x8_alone ms=103.8 ms_per_prompt_token=0.26
+SHAPE engine=llama_streams shape=decode1x8_resident ms=108.8 ms_per_prompt_token=0.27
+SHAPE engine=dense shape=alone ms=89.4 ms_per_prompt_token=0.22
+SHAPE engine=dense shape=resident ms=99.5 ms_per_prompt_token=0.25
+SHAPE engine=dense shape=mixed1 ms=100.7 ms_per_prompt_token=0.25
+SHAPE engine=dense shape=split1 ms=109.1 ms_per_prompt_token=0.27
+SHAPE engine=dense shape=mixed1_prompt_first ms=100.3 ms_per_prompt_token=0.25
+SHAPE engine=dense shape=mixed2 ms=100.4 ms_per_prompt_token=0.25
+SHAPE engine=dense shape=split2 ms=110.1 ms_per_prompt_token=0.27
+SHAPE engine=dense shape=mixed2_prompt_first ms=100.7 ms_per_prompt_token=0.25
+SHAPE engine=dense shape=mixed3 ms=100.9 ms_per_prompt_token=0.25
+SHAPE engine=dense shape=split3 ms=111.4 ms_per_prompt_token=0.28
+SHAPE engine=dense shape=mixed3_prompt_first ms=106.4 ms_per_prompt_token=0.26
+SHAPE engine=dense shape=decode4x8 ms=92.9 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=decode1x8_alone ms=62.5 ms_per_prompt_token=0.16
+SHAPE engine=dense shape=decode1x8_resident ms=65.6 ms_per_prompt_token=0.16
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 58.60s
+
+name, driver_version, compute_cap, memory.total [MiB]
+NVIDIA GeForce RTX 3090, 580.178.04, 8.6, 24576 MiB
