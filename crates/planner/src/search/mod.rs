@@ -123,6 +123,18 @@ fn skeletons(p: &Prep, pruned: &mut Vec<(String, String)>) -> Vec<Skel> {
             pruned.push((label, format!("phase {} cannot execute it", p.phase.0)));
             continue;
         }
+        if !p.caps.multi_gpu_cpu_compute {
+            // The Phase 5 executor runs GPU-resident stages with tp experts or tp = ep (ADR 0069,
+            // 0070); this search places experts on CPU tiers. `enumerate_multi` replaces it.
+            pruned.push((
+                label,
+                format!(
+                    "phase {} executes multi-GPU stages GPU-resident only",
+                    p.phase.0
+                ),
+            ));
+            continue;
+        }
         if !p.linux {
             pruned.push((label, "needs NCCL, Linux only".into()));
             continue;

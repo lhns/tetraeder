@@ -6,6 +6,7 @@
 //! - [`Hints`]: limits and device and format rules (ADR 0025), a separate input.
 //! - [`validate`] / [`validate_partial`]: checks against hardware, model, phase and hints;
 //!   [`validate`] returns the [`Expanded`] form.
+//! - [`Topology`]: ranks and stages of a valid plan, and the slicing rule (ADR 0069, 0070).
 //! - [`diff`] and [`MigrationDag`]: what changes between two plans and in which order.
 
 mod diff;
@@ -20,6 +21,7 @@ mod plan;
 mod quality;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+mod topology;
 mod validate;
 
 pub use diff::{BudgetChange, BufferChange, PlanDiff, ShardChange, diff};
@@ -40,4 +42,5 @@ pub use quality::{
     EstimateError, GroupEntry, QUALITY_SCHEMA, QualityError, QualityGroup, QualityIssue,
     QualityProfile,
 };
+pub use topology::{RankId, RankSpec, StageSpec, Topology, block_slice};
 pub use validate::{At, Context, Issue, validate, validate_partial};

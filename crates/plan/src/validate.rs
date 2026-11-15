@@ -173,6 +173,13 @@ pub enum Issue {
         phase: Phase,
         field: &'static str,
     },
+    /// A shape the Phase 5 executor cannot run (ADR 0069 capability table, ADR 0070); `rule`
+    /// names the rule.
+    Shape {
+        at: At,
+        rule: &'static str,
+        detail: String,
+    },
     /// A hard hint does not hold.
     Hint {
         detail: String,
@@ -341,6 +348,19 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// A Phase 5 shape issue, once per stage and rule.
+    fn shape(
+        &mut self,
+        seen: &mut BTreeSet<&'static str>,
+        at: At,
+        rule: &'static str,
+        detail: String,
+    ) {
+        if seen.insert(rule) {
+            self.issues.push(Issue::Shape { at, rule, detail });
+        }
+    }
+
     fn degrees(&mut self, at: At, st: &Stage) {
         let model = self.ctx.model;
         let devices = st.devices.len() as u32;
@@ -436,6 +456,38 @@ impl<'a> Checker<'a> {
             (st.tp.unwrap_or(1) > 1 || st.ep.unwrap_or(1) > 1) && !caps.tp_ep,
             "tp_ep",
         );
+        // Phase 5 executor shapes (ADR 0069, 0070).
+        let p5 = caps.tp_ep && !caps.multi_gpu_cpu_compute;
+        // "More than one GPU": a GPU plus the CPU is today's hybrid stage and stays valid.
+        let gpus = st
+            .devices
+            .iter()
+            .filter(|d| hw.device(d).is_some_and(|d| d.kind == DeviceKind::Gpu))
+            .count();
+        let multi = p5 && gpus > 1;
+        let mut shape_seen: BTreeSet<&'static str> = BTreeSet::new();
+        if p5
+            && let (Some(tp), Some(ep)) = (st.tp, st.ep)
+            && ep > 1
+            && tp != ep
+        {
+            let detail = format!("ep = {ep} needs tp = ep, got tp = {tp}");
+            self.shape(&mut shape_seen, at, "ep_needs_tp", detail);
+        }
+        if multi {
+            if let Some(d) = st
+                .devices
+                .iter()
+                .find(|d| hw.device(d).is_some_and(|d| d.kind == DeviceKind::Cpu))
+            {
+                let detail = format!("the group of {gpus} GPUs includes CPU {d}");
+                self.shape(&mut shape_seen, at, "multi_gpu_cpu_compute", detail);
+            }
+            if !st.expert_cache.is_empty() {
+                let detail = "a stage of several GPUs has no slot cache".to_string();
+                self.shape(&mut shape_seen, at, "multi_gpu_slot_cache", detail);
+            }
+        }
         self.flag_if(
             !st.phase_budgets.is_empty() && !caps.phase_budgets,
             "phase_budgets",
@@ -529,6 +581,21 @@ impl<'a> Checker<'a> {
                     ComputeOverride::Any => false,
                 };
                 self.flag_if(comp != home && moved, "compute_override");
+                if p5 && comp != home && (kind != UnitKind::Expert || multi) {
+                    let detail = format!("{u} homed on {home} computes on {comp}");
+                    self.shape(&mut shape_seen, at, "compute_is_home", detail);
+                }
+                if multi {
+                    let kind_of = |d: &str| hw.device(d).map(|d| d.kind);
+                    if kind_of(comp) == Some(DeviceKind::Cpu) {
+                        let detail = format!("{u} computes on CPU {comp}");
+                        self.shape(&mut shape_seen, at, "multi_gpu_cpu_compute", detail);
+                    }
+                    if kind == UnitKind::Expert && kind_of(home) != Some(DeviceKind::Gpu) {
+                        let detail = format!("expert {u} is homed on {home}, not a GPU");
+                        self.shape(&mut shape_seen, at, "multi_gpu_expert_home", detail);
+                    }
+                }
             }
             if size.roles.is_empty() {
                 if let Some(f) = a.format {
@@ -568,6 +635,10 @@ impl<'a> Checker<'a> {
             let of = home.len();
             if checked.insert((fi, kind, false)) {
                 let (ok, expected) = match (kind, st.tp) {
+                    // ep = 1 with tp > 1: an expert is cut like the rest (ADR 0070).
+                    (UnitKind::Expert, Some(tp)) if p5 && tp > 1 && st.ep.unwrap_or(1) == 1 => {
+                        (of == tp as usize, format!("tp = {tp}"))
+                    }
                     (UnitKind::Expert, _) => (of == 1, "1".to_string()),
                     (UnitKind::Attn | UnitKind::Mlp, Some(tp)) => {
                         (of == tp as usize, format!("tp = {tp}"))
