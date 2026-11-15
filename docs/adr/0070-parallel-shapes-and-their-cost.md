@@ -49,6 +49,8 @@ Single GPU is a one-stage, one-rank plan on the same executor (ADR 0069), so it 
 
 At the pin the CPU kernel writes a zero row for id -1 (`ggml-cpu.c`, `i02 == -1`) and CUDA does not: MMVQ indexes `ids` directly and the MMQ path's `mm_ids_helper` only compacts ids that match an expert, leaving other rows unwritten. Without the patch expert parallel would have to park foreign pairs on a local expert with weight 0 (ADR 0064 parking), which at prefill computes `(g-1)/g` of the expert work for nothing. The patch: every CUDA `mul_mat_id` path (MMVQ, MMQ through `mm_ids_helper`, MMF, the generic gather fallback) treats id -1 as no expert, reads no weights for it and writes zeros, as the CPU does. Upstream-clean (it matches existing CPU semantics); if b12274 or later upstream already has it, it is a backport and `docs/sources.md` says so. Tests: CPU against CUDA `mul_mat_id` with random -1 masks at 1, 8, 64 and 512 tokens and Q4_K, Q6_K, Q8_0 and F16 weights, zero rows exact; a `gpu_` timing check that time falls with the share of -1 ids. Until it lands, expert parallel runs on CPU ranks only.
 
+As built (E4): MMVQ and MMVF write the zero row in the kernel and read no weights; MMQ and MMF never match -1 to an expert, so a small kernel (`mmid.cu`) zeroes those rows after the matmul; the generic fallback gathers them from one extra zero row. The ids helper is unchanged. `ggml-sys/build.rs` sets `cfg(tetraeder_patch_0004)` and the `DEP_GGML_PATCH_0004` metadata when `patches/series` lists the patch. Upstream (b12274, master 2026-11-15) has no such change, so the row in `docs/sources.md` is own code.
+
 ### Cost model
 
 One formula, owned by `costmodel::predict` (as ADR 0056); the search's `stage_time` calls the same helpers.

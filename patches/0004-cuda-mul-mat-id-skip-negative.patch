@@ -1,0 +1,207 @@
+From: Tetraeder
+Subject: [PATCH] cuda: mul_mat_id treats expert id -1 as no expert
+
+As the CPU kernel does: no weights read, zero output row. MMVQ and MMVF write the zero row in the
+kernel; MMQ and MMF never match -1 to an expert and a small kernel zeroes its rows; the generic
+fallback gathers from a zero row. Results for ids without -1 are unchanged. ADR 0070.
+---
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 72e961d..4285b5f 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -2166,14 +2166,15 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+ 
+     std::vector<int32_t> ids_to_sorted_host;
+     ids_to_sorted_host.reserve(2*ne_get_rows);
+-    std::vector<int32_t> ids_from_sorted_host(ne_get_rows);
++    std::vector<int32_t> ids_from_sorted_host(ne_get_rows, -1);
+ 
+     ggml_cuda_pool_alloc<int32_t> ids_buf_dev(ctx.pool(), 2*ne_get_rows);
+ 
+     std::vector<int32_t> tokens_per_expert(ne02);
+ 
+     ggml_cuda_pool_alloc<char> src1_sorted(ctx.pool(), ne12*n_expert_used*ne10*ts_src1_sorted);
+-    ggml_cuda_pool_alloc<char>  dst_sorted(ctx.pool(), ne2 *n_expert_used* ne0*ts_dst_sorted);
++    // one extra row at the end stays zero: the target of every id -1 slot (patch 0004)
++    ggml_cuda_pool_alloc<char>  dst_sorted(ctx.pool(), (ne2*n_expert_used + 1)* ne0*ts_dst_sorted);
+ 
+     std::vector<char> ids_host(ggml_nbytes(ids));
+     CUDA_CHECK(cudaMemcpyAsync(ids_host.data(), ids->data, ggml_nbytes(ids), cudaMemcpyDeviceToHost, stream));
+@@ -2183,7 +2184,7 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+         for (int64_t i12 = 0; i12 < ne12; ++i12) { // tokens
+             for (int64_t iex = 0; iex < n_expert_used; ++iex) {
+                 const int32_t expert_to_use = *(const int32_t *)(ids_host.data() + i12*ids->nb[1] + iex*ids->nb[0]);
+-                assert(expert_to_use >= 0 && expert_to_use < ne02);
++                assert(expert_to_use < ne02);
+                 if (expert_to_use == i02) {
+                     ids_from_sorted_host[i12*n_expert_used + iex] = ids_to_sorted_host.size();
+                     ids_to_sorted_host.push_back(i12*ne11 + iex % ne11);
+@@ -2193,7 +2194,16 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+             }
+         }
+     }
+-    GGML_ASSERT(ids_to_sorted_host.size() == size_t(ne_get_rows));
++    // patch 0004: slots with id -1 compute nothing and read the zero row
++    const int64_t n_valid = ids_to_sorted_host.size();
++    GGML_ASSERT(n_valid <= ne_get_rows);
++    for (int32_t & i : ids_from_sorted_host) {
++        if (i < 0) {
++            i = n_valid;
++        }
++    }
++    CUDA_CHECK(cudaMemsetAsync((char *) dst_sorted.ptr + n_valid*ne0*ts_dst_sorted, 0, ne0*ts_dst_sorted, stream));
++    ids_to_sorted_host.resize(ne_get_rows, 0);
+ 
+     ids_to_sorted_host.insert(ids_to_sorted_host.end(), ids_from_sorted_host.begin(), ids_from_sorted_host.end());
+ 
+@@ -2203,11 +2213,13 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+     const int32_t * ids_to_sorted   = ids_buf_dev.ptr + 0*ne_get_rows;
+     const int32_t * ids_from_sorted = ids_buf_dev.ptr + 1*ne_get_rows;
+ 
+-    get_rows_cuda(src1->data, src1->type, ids_to_sorted, src1_sorted.ptr, type_src1_sorted,
+-        ne10, nb11, nb12, nb13,
+-        ne_get_rows, 1, 1, sizeof(int32_t), ne_get_rows*sizeof(int32_t), ne_get_rows*sizeof(int32_t),
+-        ne10*ts_src1_sorted, ne_get_rows*ne10*ts_src1_sorted, ne_get_rows*ne10*ts_src1_sorted, stream);
+-    CUDA_CHECK(cudaGetLastError());
++    if (n_valid > 0) {
++        get_rows_cuda(src1->data, src1->type, ids_to_sorted, src1_sorted.ptr, type_src1_sorted,
++            ne10, nb11, nb12, nb13,
++            n_valid, 1, 1, sizeof(int32_t), ne_get_rows*sizeof(int32_t), ne_get_rows*sizeof(int32_t),
++            ne10*ts_src1_sorted, ne_get_rows*ne10*ts_src1_sorted, ne_get_rows*ne10*ts_src1_sorted, stream);
++        CUDA_CHECK(cudaGetLastError());
++    }
+ 
+     char * src1_data_cur = (char *) src1_sorted.ptr;
+     char *  dst_data_cur = (char *)  dst_sorted.ptr;
+diff --git a/ggml/src/ggml-cuda/mmf.cu b/ggml/src/ggml-cuda/mmf.cu
+index 646a589..7293a3f 100644
+--- a/ggml/src/ggml-cuda/mmf.cu
++++ b/ggml/src/ggml-cuda/mmf.cu
+@@ -128,6 +128,11 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
+         default:
+             GGML_ABORT("unsupported type: %s", ggml_type_name(src0->type));
+     }
++
++    // patch 0004: expert id -1 matches no expert above; zero its dst rows
++    if (ids) {
++        ggml_cuda_mm_ids_zero_unused(ids_d, dst_d, ne0, ids->ne[0], ids->ne[1], ids_s0, ids_s1, s1, s2, ctx.stream());
++    }
+ }
+ 
+ bool ggml_cuda_should_use_mmf(enum ggml_type type, int cc, int warp_size, const int64_t * src0_ne,
+diff --git a/ggml/src/ggml-cuda/mmid.cu b/ggml/src/ggml-cuda/mmid.cu
+index 12ae14c..af0e647 100644
+--- a/ggml/src/ggml-cuda/mmid.cu
++++ b/ggml/src/ggml-cuda/mmid.cu
+@@ -177,3 +177,26 @@ void ggml_cuda_launch_mm_ids_helper(
+             break;
+     }
+ }
++
++static __global__ void mm_ids_zero_unused(
++        const int32_t * __restrict__ ids, float * __restrict__ dst, const int64_t ne0, const int n_expert_used,
++        const int64_t ids_s0, const int64_t ids_s1, const int64_t dst_s1, const int64_t dst_s2) {
++    const int it  = blockIdx.x / n_expert_used;
++    const int iex = blockIdx.x % n_expert_used;
++    if (ids[iex*ids_s0 + it*ids_s1] >= 0) {
++        return;
++    }
++    float * row = dst + it*dst_s2 + iex*dst_s1;
++    for (int64_t i0 = threadIdx.x; i0 < ne0; i0 += blockDim.x) {
++        row[i0] = 0.0f;
++    }
++}
++
++void ggml_cuda_mm_ids_zero_unused(
++        const int32_t * ids, float * dst, int64_t ne0, int n_expert_used, int n_tokens,
++        int64_t ids_s0, int64_t ids_s1, int64_t dst_s1, int64_t dst_s2, cudaStream_t stream) {
++    const int64_t n_slots = (int64_t) n_tokens*n_expert_used;
++    GGML_ASSERT(n_slots < (1ll << 31));
++    mm_ids_zero_unused<<<(unsigned) n_slots, 256, 0, stream>>>(ids, dst, ne0, n_expert_used, ids_s0, ids_s1, dst_s1, dst_s2);
++    CUDA_CHECK(cudaGetLastError());
++}
+diff --git a/ggml/src/ggml-cuda/mmid.cuh b/ggml/src/ggml-cuda/mmid.cuh
+index 74c2db4..dc283ac 100644
+--- a/ggml/src/ggml-cuda/mmid.cuh
++++ b/ggml/src/ggml-cuda/mmid.cuh
+@@ -3,3 +3,9 @@
+ void ggml_cuda_launch_mm_ids_helper(
+         const int32_t * ids, int32_t * ids_src1, int32_t * ids_dst, int32_t * expert_bounds,
+         int n_experts, int n_tokens, int n_expert_used, int nchannels_y, int si1, int sis1, bool write_inverse, cudaStream_t stream);
++
++// Patch 0004: MUL_MAT_ID treats expert id -1 as no expert. The MMQ and MMF paths never match it to an expert, so they
++// leave its dst rows unwritten; this writes zeros there. dst is [ne0, n_expert_used, n_tokens] with strides in floats.
++void ggml_cuda_mm_ids_zero_unused(
++        const int32_t * ids, float * dst, int64_t ne0, int n_expert_used, int n_tokens,
++        int64_t ids_s0, int64_t ids_s1, int64_t dst_s1, int64_t dst_s2, cudaStream_t stream);
+diff --git a/ggml/src/ggml-cuda/mmq.cu b/ggml/src/ggml-cuda/mmq.cu
+index 4af4f36..afffe48 100644
+--- a/ggml/src/ggml-cuda/mmq.cu
++++ b/ggml/src/ggml-cuda/mmq.cu
+@@ -377,6 +377,10 @@ void ggml_cuda_mul_mat_q(
+         ne12, J_best, fusion_device};
+ 
+     ggml_cuda_mul_mat_q_switch_type(ctx, args, stream, prec_src1);
++
++    // patch 0004: expert id -1 matches no expert above; zero its dst rows
++    ggml_cuda_mm_ids_zero_unused((const int32_t *) ids->data, dst_d, ne0, n_expert_used, ne12,
++        ids->nb[0]/ggml_type_size(ids->type), ids->nb[1]/ggml_type_size(ids->type), nb1/ts_dst, nb2/ts_dst, stream);
+ }
+ 
+ bool ggml_cuda_should_use_mmq(enum ggml_type type, int cc, int64_t ne11, int64_t n_experts) {
+diff --git a/ggml/src/ggml-cuda/mmvf.cu b/ggml/src/ggml-cuda/mmvf.cu
+index 752d28c..cc72f29 100644
+--- a/ggml/src/ggml-cuda/mmvf.cu
++++ b/ggml/src/ggml-cuda/mmvf.cu
+@@ -53,6 +53,14 @@ static __global__ void mul_mat_vec_f(
+         dst += token_idx*stride_col_dst;
+     }
+ 
++    // patch 0004: expert id -1 is no expert, write zeros and read no weights (ids paths run with ncols_dst == 1)
++    if (ids && channel_x < 0) {
++        if (tid == 0) {
++            dst[row] = 0.0f;
++        }
++        return;
++    }
++
+     bool use_gate = false;
+     bool use_bias = false;
+     bool use_gate_bias = false;
+diff --git a/ggml/src/ggml-cuda/mmvq.cu b/ggml/src/ggml-cuda/mmvq.cu
+index 930f1ad..a23f1b3 100644
+--- a/ggml/src/ggml-cuda/mmvq.cu
++++ b/ggml/src/ggml-cuda/mmvq.cu
+@@ -664,6 +664,15 @@ static __global__ void mul_mat_vec_q(
+     channel_y  = ncols_dst == 1 && ids ? fastmodulo(channel_dst, nchannels_y) : channel_dst;
+     sample_dst = blockIdx.z;
+ 
++    // patch 0004: expert id -1 is no expert, write zeros and read no weights
++    if (ncols_dst == 1 && ids && !shared_expert && int32_t(channel_x) < 0) {
++        if (threadIdx.y == 0 && threadIdx.x < rows_per_cuda_block &&
++                (rows_per_cuda_block == 1 || uint32_t(row0 + threadIdx.x) < stride_col_dst)) {
++            dst[sample_dst*stride_sample_dst + channel_dst*stride_channel_dst + row0 + threadIdx.x] = 0.0f;
++        }
++        return;
++    }
++
+     const uint32_t sample_x    = fastdiv(sample_dst, sample_ratio);
+     const uint32_t sample_y    = sample_dst;
+ 
+@@ -940,7 +949,15 @@ static __global__ void mul_mat_vec_q_moe(
+     }
+ 
+     ggml_cuda_pdl_sync();
+-    const uint32_t channel_x = shared_expert ? 0 : ids[channel_dst + token_idx * ids_stride];
++    const int32_t  id_x      = shared_expert ? 0 : ids[channel_dst + token_idx * ids_stride];
++    // patch 0004: expert id -1 is no expert, write zeros and read no weights
++    if (id_x < 0) {
++        if (threadIdx.x < c_rows_per_block && (c_rows_per_block == 1 || uint32_t(row0 + threadIdx.x) < nrows_x)) {
++            dst[channel_dst*stride_channel_dst + token_idx*stride_col_dst + row0 + threadIdx.x] = 0.0f;
++        }
++        return;
++    }
++    const uint32_t channel_x = id_x;
+     const uint32_t channel_y = fastmodulo(channel_dst, nchannels_y);
+ 
+     const block_q8_1 * y = ((const block_q8_1 *) vy) + channel_y*stride_channel_y + token_idx*stride_col_y;

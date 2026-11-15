@@ -2,3 +2,4 @@
 0001-msvc-avx512-vbmi-score.patch
 0002-iqk-avx512-q4k-q6k-decode.patch
 0003-cpu-registry-threadpool-pause.patch
+0004-cuda-mul-mat-id-skip-negative.patch   # ADR 0070

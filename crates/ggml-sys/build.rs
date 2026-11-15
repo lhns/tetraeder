@@ -46,6 +46,21 @@ fn main() {
 
     check_patches(&src);
 
+    // Patch 0004 (CUDA mul_mat_id skips id -1, ADR 0070): code that needs it checks this cfg; crates that depend
+    // on this one read DEP_GGML_PATCH_0004 in their build scripts.
+    println!("cargo::rustc-check-cfg=cfg(tetraeder_patch_0004)");
+    let series = std::fs::read_to_string(manifest.join("../../patches/series")).unwrap_or_default();
+    if series.lines().any(|l| {
+        l.split('#')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .starts_with("0004-")
+    }) {
+        println!("cargo::rustc-cfg=tetraeder_patch_0004");
+        println!("cargo::metadata=patch_0004=1");
+    }
+
     let native = std::env::var("TETRAEDER_GGML_NATIVE").is_ok_and(|v| v == "ON");
     let dl = !native;
     let cuda = cfg!(feature = "cuda");
