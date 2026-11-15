@@ -7,6 +7,7 @@ list checks skip. The unit tests of the set itself are in crates/planner (builde
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -71,7 +72,7 @@ def test_dry_run_lists_candidates_with_the_fill_tier() -> None:
     t = tiers(out)
     # the balloon fixture (14336 MiB free): the doubling tiers below the budget, then the fill tier above 64
     assert t[-4:] == [64, 32, 16, 8] and 64 < t[0] < 128, t
-    ids = [ln.split()[1] for ln in out.splitlines() if ln[:2].strip().isdigit()]
+    ids = re.findall(r"^\s*\d+ (anchor-bld-\S+|cand-\S+) +vram_slots=", out, re.M)
     assert ids[:4] == ["anchor-bld-ram-all", "anchor-bld-vram-small", "anchor-bld-vram-large", "anchor-bld-opo-off"]
     assert 20 <= len(ids) - 4 <= 24
     large = next(ln for ln in out.splitlines() if " anchor-bld-vram-large " in ln)
