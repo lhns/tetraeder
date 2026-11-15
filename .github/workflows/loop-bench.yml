@@ -23,6 +23,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # the multi-variant DL ggml like llama-server below; .cargo/config.toml defaults to a static native build
+  TETRAEDER_GGML_NATIVE: "OFF"
 
 jobs:
   loop-bench:
@@ -69,6 +71,10 @@ jobs:
           target/release/tetraeder info --json | head -c 600
       - name: Loop bench
         run: PY=$PWD/.venv/bin/python bash scripts/loop_bench.sh loop-results
+      - name: Step shapes (temporary)
+        run: |
+          TETRAEDER_SHAPES_GGUF=$PWD/.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf \
+            cargo test --release -p tetraeder-scheduler --test step_shapes -- --nocapture 2>&1 | tee loop-results/shapes.txt
       - name: Summary
         if: always()
         run: |
