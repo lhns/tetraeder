@@ -1,6 +1,6 @@
 # 0057. Qwen XML tool arguments: Python literals typed by the schema
 
-Status: Proposed (Phase 3b). Extends ADR 0051 (tool-call outcomes) and ADR 0028 (tool-call parser).
+Status: Accepted (2026-11-15: built; rerun 20261110b measured (addendum)). Earlier: Proposed (Phase 3b). Extends ADR 0051 (tool-call outcomes) and ADR 0028 (tool-call parser).
 
 ## Context
 

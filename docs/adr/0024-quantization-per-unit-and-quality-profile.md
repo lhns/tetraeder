@@ -1,6 +1,6 @@
 # 0024. Quantization is a planner choice per unit; quality is measured per model
 
-Status: Proposed (design; implemented in Phases 2 and 3a)
+Status: Accepted (2026-11-15: implemented in Phases 2 and 3a; profile mixes beat llama.cpp presets (ADR 0047, 0048)). Earlier: Proposed (design; implemented in Phases 2 and 3a)
 
 ## Context
 

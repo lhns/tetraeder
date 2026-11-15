@@ -1,6 +1,6 @@
 # 0025. The objective is hard limits plus a position on the speed and quality front
 
-Status: Proposed (design; implemented in Phase 3a)
+Status: Accepted (2026-11-15: planner objective and Pareto position built (crates/planner), Phase 3a planner exit passed). Earlier: Proposed (design; implemented in Phase 3a)
 
 ## Context
 

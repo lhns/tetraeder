@@ -1,6 +1,6 @@
 # 0062. Detector fault class `cpu_quota_throttle`: the cgroup CPU quota throttling the engine's own threads
 
-Status: Proposed (2026-11-12). Extends ADR 0041 (fault classes) and ADR 0013 (environment first).
+Status: Accepted (2026-11-15: class, sampler, alerts and the simulated battery are built; threshold tuned on one box day). Earlier: Proposed (2026-11-12). Extends ADR 0041 (fault classes) and ADR 0013 (environment first).
 
 ## Context
 

@@ -1,6 +1,6 @@
 # 0051. No prompt checkpoints; tool-call outcomes counted, empty calls dropped
 
-Status: Proposed (Phase 3b). Extends ADR 0049 (prefix cache) and ADR 0028 (tool-call parser). Briefs: `docs/gateway-briefs.md`.
+Status: Accepted (2026-11-15: briefs G1 and G2 built, outcomes measured in the 20261110b rerun (see Implementation notes and ADR 0057)). Earlier: Proposed (Phase 3b). Extends ADR 0049 (prefix cache) and ADR 0028 (tool-call parser). Briefs: `docs/gateway-briefs.md`.
 
 ## Context
 
