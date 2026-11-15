@@ -288,3 +288,47 @@ proptest! {
         }
     }
 }
+
+/// hardware: cpu. A step that grows sequence 0 past its run moves it (the pool copies its rows to
+/// a run with room), then finds no rows for sequence 2 and fails: every sequence is back at its
+/// length and reservation, the moved run stays where it moved, and the next step gives the
+/// logits of a backend that never failed.
+#[test]
+fn cpu_failed_step_after_a_moved_reservation_rolls_back() {
+    let (t0, t1) = (tokens(1, 10), tokens(2, 10));
+    let mut b = backend(2048, 3);
+    let mut reference = backend(2048, 3);
+    for x in [&mut b, &mut reference] {
+        x.decode(&[input(0, &t0, false), input(1, &t1, false)])
+            .unwrap();
+    }
+    let (free, reserved) = (b.kv_free(), (b.seq_reserved(0), b.seq_reserved(1)));
+    // Sequence 0 needs 310 rows: its run (rows 0..256) is followed by sequence 1's, so it moves
+    // to a run of 1536 rows, which leaves nothing for sequence 2.
+    let grow = tokens(3, 300);
+    let err = b
+        .decode(&[input(0, &grow, false), input(2, &[7], false)])
+        .map(|_| ())
+        .unwrap_err();
+    assert!(matches!(err, BackendError::KvFull { seq: 2, .. }), "{err}");
+    assert_eq!(lens(&b)[..3], [10, 10, 0]);
+    assert_eq!((b.seq_reserved(0), b.seq_reserved(1)), reserved);
+    assert_eq!((b.seq_reserved(2), b.kv_free()), (0, free));
+    // The moved rows are intact and the pool works: same logits as the reference.
+    let step = [input(0, &[5], false), input(1, &[6], false)];
+    let want: Vec<Vec<f32>> = {
+        let out = reference.decode(&step).unwrap();
+        (0..2).map(|i| out.rows(i).to_vec()).collect()
+    };
+    let out = b.decode(&step).unwrap();
+    for (i, w) in want.iter().enumerate() {
+        let worst = out
+            .rows(i)
+            .iter()
+            .zip(w)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0f32, f32::max);
+        let top = w.iter().fold(0f32, |m, x| m.max(x.abs()));
+        assert!(worst <= 1e-4f32.max(1e-3 * top), "sequence {i}: {worst:e}");
+    }
+}

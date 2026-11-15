@@ -1,0 +1,60 @@
+name: moe-shapes
+
+# Step shapes of `--engine moe` against libllama on one synthetic MoE GGUF written by the test
+# (crates/scheduler/tests/moe_shapes.rs), CPU only. Prints the SHAPE lines; never gates a PR.
+on:
+  push:
+    branches: [main, track-moe-followups]
+    paths:
+      - crates/model/src/qwen3moe.rs
+      - crates/scheduler/src/backend.rs
+      - crates/scheduler/tests/moe_shapes.rs
+      - .github/workflows/moe-shapes.yml
+  workflow_dispatch:
+
+concurrency:
+  group: moe-shapes-${{ github.ref }}
+  # superseded runs are cancelled on work branches only; every main run finishes
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # multi-variant ggml like the other CPU benches; .cargo/config.toml defaults to a static native build
+  TETRAEDER_GGML_NATIVE: "OFF"
+
+jobs:
+  moe-shapes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - uses: Swatinem/rust-cache@v2
+      - name: Runner
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          echo "threads: $(nproc)"
+          free -m
+      - name: Step shapes
+        run: |
+          mkdir -p moe-shapes-results
+          cargo test --release -p tetraeder-scheduler --test moe_shapes -- --nocapture 2>&1 | tee moe-shapes-results/shapes.txt
+      - name: Summary
+        if: always()
+        run: |
+          echo '```' | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -E '^(SHAPE|COUNTER) ' moe-shapes-results/shapes.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: moe-shapes
+          path: moe-shapes-results
