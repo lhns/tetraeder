@@ -161,7 +161,7 @@ fn add_budgets(rng: &mut Rng, plan: &mut Plan, m: &ModelDesc, hw: &HardwareGraph
     let ctx = Context {
         hw,
         model: m,
-        phase: Phase(6),
+        phase: Phase(7),
         reserve: &reserve,
         hints: None,
     };

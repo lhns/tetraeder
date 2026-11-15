@@ -267,7 +267,7 @@ proptest! {
                 let mut rng = Rng(seed);
                 let phase = rng.range(2, 6) as u8;
                 let plan = gen_plan(&mut rng, &m, &hw, phase, false);
-                validate_with(&plan, &m, &hw, 6, &none).unwrap()
+                validate_with(&plan, &m, &hw, 7, &none).unwrap()
             };
             let (ea, eb) = (build(seed_a), build(seed_b));
 
