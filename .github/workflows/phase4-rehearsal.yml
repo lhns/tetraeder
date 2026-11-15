@@ -9,7 +9,7 @@ name: phase4-rehearsal
 # verdict.json exists with non-null ratios.
 on:
   push:
-    branches: [main, track-d2-rehearsal]
+    branches: [main]
     paths:
       - scripts/phase4_*
       - scripts/gateway_bench.py
