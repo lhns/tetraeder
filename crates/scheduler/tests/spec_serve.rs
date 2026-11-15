@@ -14,7 +14,7 @@ mod fake;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tetraeder_engine::{ContextConfig, Placement};
 use tetraeder_gateway::engine::{
     Engine, FinishReason, GenEvent, GenerateRequest, SamplingParams, TokenId,
@@ -42,6 +42,9 @@ struct Seen {
     /// Decodes that held a verify input next to a one-token input of another sequence.
     verify_beside_decoder: AtomicUsize,
     widest: AtomicUsize,
+    /// While set, the first decode waits (up to 30 s), so a test can queue several requests
+    /// before the worker runs its first step.
+    hold_first_decode: AtomicBool,
 }
 
 /// Passes everything through and records what the steps looked like.
@@ -83,7 +86,14 @@ impl BatchBackend for Spy {
     }
     fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
         let s = &self.seen;
-        s.decodes.fetch_add(1, Ordering::Relaxed);
+        if s.decodes.fetch_add(1, Ordering::Relaxed) == 0 {
+            for _ in 0..3000 {
+                if !s.hold_first_decode.load(Ordering::Acquire) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
         s.widest.fetch_max(inputs.len(), Ordering::Relaxed);
         let verify = inputs.iter().any(|i| i.all_logits && i.tokens.len() > 1);
         if verify {
@@ -212,21 +222,33 @@ fn generate_at(
     max_tokens: u32,
     temperature: f32,
 ) -> Vec<TokenId> {
+    drain(submit(s, prompt, max_tokens, temperature))
+}
+
+/// Queues a request and returns its event stream.
+fn submit(
+    s: &Scheduler,
+    prompt: Vec<TokenId>,
+    max_tokens: u32,
+    temperature: f32,
+) -> tokio::sync::mpsc::Receiver<GenEvent> {
     let id = s.models()[0].id.clone();
-    let mut rx = s
-        .generate(GenerateRequest {
-            model: id,
-            prompt,
-            params: SamplingParams {
-                max_tokens,
-                temperature: Some(temperature),
-                seed: Some(7),
-                ..SamplingParams::default()
-            },
-            constraint: None,
-            cancel: CancellationToken::new(),
-        })
-        .expect("generate");
+    s.generate(GenerateRequest {
+        model: id,
+        prompt,
+        params: SamplingParams {
+            max_tokens,
+            temperature: Some(temperature),
+            seed: Some(7),
+            ..SamplingParams::default()
+        },
+        constraint: None,
+        cancel: CancellationToken::new(),
+    })
+    .expect("generate")
+}
+
+fn drain(mut rx: tokio::sync::mpsc::Receiver<GenEvent>) -> Vec<TokenId> {
     let mut out = Vec::new();
     let mut finished = false;
     while let Some(ev) = rx.blocking_recv() {
@@ -404,13 +426,16 @@ fn check_concurrent(kind: Kind) {
     shutdown(s);
 
     let (s, seen) = start(kind, 2, spec_config("draft"));
+    // Both requests are queued before the worker runs its first step, so they overlap.
+    seen.hold_first_decode.store(true, Ordering::Release);
     let handles: Vec<_> = [(2, 20), (3, 25)]
         .into_iter()
         .map(|(id, n)| {
-            let s = Arc::clone(&s);
-            std::thread::spawn(move || generate(&s, prompt(id, n), 100))
+            let rx = submit(&s, prompt(id, n), 100, 0.0);
+            std::thread::spawn(move || drain(rx))
         })
         .collect();
+    seen.hold_first_decode.store(false, Ordering::Release);
     let got: Vec<_> = handles
         .into_iter()
         .map(|h| h.join().expect("request thread"))
