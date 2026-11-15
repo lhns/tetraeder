@@ -17,6 +17,7 @@ use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Model, ModelParams};
 use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, MissPolicy};
 use tetraeder_planner::Workload;
+use tetraeder_scheduler::spec::{DraftLen, NgramDrafter, SpecConfig, SpecMethod};
 use tetraeder_scheduler::{Loaded, Scheduler, SchedulerConfig};
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
@@ -77,6 +78,18 @@ pub struct ServeArgs {
     /// (-b does not apply to serve).
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub step_tokens: Option<u32>,
+    /// Speculative decoding of a lone greedy request (ADR 0043, 0065): `ngram` (prompt lookup) or
+    /// `draft:GGUF` (a small model of the same vocabulary, run by libllama with --ngl and -t).
+    /// Off by default; sampled and constrained requests never speculate.
+    #[arg(long, value_name = "ngram|draft:GGUF", value_parser = parse_spec)]
+    pub spec: Option<SpecArg>,
+    /// Sequences may speculate while at most this many are decoding. More than 1 gives up the
+    /// bitwise equality with plain decoding that ADR 0043 states for one sequence.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+    pub spec_max_batch: u32,
+    /// Most draft tokens per step; the adaptive policy picks up to this many.
+    #[arg(long, default_value_t = 6, value_parser = clap::value_parser!(u32).range(0..=6))]
+    pub spec_max_draft: u32,
     /// Requests that may wait for the engine; more get 429/529.
     #[arg(long, default_value_t = 16)]
     pub max_queued: usize,
@@ -182,6 +195,21 @@ pub struct ServeArgs {
     /// Plan hints TOML; only `[stability]` (switch rate, freeze windows in UTC) is read.
     #[arg(long, value_name = "FILE")]
     pub hints: Option<PathBuf>,
+}
+
+/// The drafter of `--spec`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SpecArg {
+    Ngram,
+    Draft(PathBuf),
+}
+
+fn parse_spec(s: &str) -> Result<SpecArg, String> {
+    match s.split_once(':') {
+        None if s == "ngram" => Ok(SpecArg::Ngram),
+        Some(("draft", p)) if !p.is_empty() => Ok(SpecArg::Draft(p.into())),
+        _ => Err(format!("`{s}` is not `ngram` or `draft:<gguf>`")),
+    }
 }
 
 fn parse_miss(s: &str) -> Result<MissPolicy, String> {
@@ -402,6 +430,7 @@ pub struct SchedParts {
     chat_template: Option<String>,
     parallel: usize,
     step_tokens: usize,
+    spec: Option<SpecConfig>,
 }
 
 impl SchedParts {
@@ -416,6 +445,7 @@ impl SchedParts {
             prefix_reuse: !a.no_prefix_reuse,
             parallel: a.parallel as usize,
             step_tokens: a.step_tokens() as usize,
+            spec: a.spec_config(),
             chat_template: match &a.chat_template_file {
                 Some(f) => Some(
                     std::fs::read_to_string(f)
@@ -438,6 +468,7 @@ impl SchedParts {
         cfg.chat_template = self.chat_template.clone();
         cfg.parallel = self.parallel;
         cfg.step_tokens = self.step_tokens;
+        cfg.spec.clone_from(&self.spec);
         cfg
     }
 }
@@ -523,6 +554,28 @@ impl LoadArgs {
 
 impl ServeArgs {
     /// Tokens per step: `--step-tokens`, else `--ubatch`.
+    /// The speculation settings of `--spec` and its companions; `None` when it is off.
+    pub fn spec_config(&self) -> Option<SpecConfig> {
+        let method = match self.spec.as_ref()? {
+            SpecArg::Ngram => SpecMethod::Ngram(NgramDrafter::default()),
+            SpecArg::Draft(path) => SpecMethod::Draft {
+                path: path.clone(),
+                n_ctx: self.ctx,
+                n_gpu_layers: self.place.ngl,
+                threads: self.place.threads.unwrap_or_else(|| {
+                    std::thread::available_parallelism().map_or(1, |n| n.get() as i32)
+                }),
+                p_min: 0.0,
+            },
+        };
+        let mut c = SpecConfig::new(method);
+        c.len = DraftLen::Adaptive {
+            max: self.spec_max_draft as usize,
+        };
+        c.max_batch = self.spec_max_batch as usize;
+        Some(c)
+    }
+
     pub fn step_tokens(&self) -> u32 {
         self.step_tokens.unwrap_or(self.place.ubatch).max(1)
     }
@@ -632,6 +685,42 @@ mod tests {
         assert!(P::try_parse_from(["x", "--parallel", "0"]).is_err());
         // --ubatch is the default step.
         assert_eq!(parse(&["--ubatch", "128"]).step_tokens(), 128);
+    }
+
+    // hardware: none
+    #[test]
+    fn spec_flags_parse_and_default_to_off() {
+        assert!(parse(&[]).spec_config().is_none());
+        let c = parse(&["--spec", "ngram"]).spec_config().unwrap();
+        assert!(matches!(c.method, SpecMethod::Ngram(_)));
+        assert_eq!((c.max_batch, c.len), (1, DraftLen::Adaptive { max: 6 }));
+        let a = parse(&[
+            "--spec",
+            "draft:d.gguf",
+            "--spec-max-batch",
+            "2",
+            "--spec-max-draft",
+            "3",
+            "--ngl",
+            "0",
+            "-t",
+            "2",
+        ]);
+        assert_eq!(a.spec, Some(SpecArg::Draft("d.gguf".into())));
+        let c = a.spec_config().unwrap();
+        assert_eq!((c.max_batch, c.len), (2, DraftLen::Adaptive { max: 3 }));
+        assert!(matches!(
+            c.method,
+            SpecMethod::Draft {
+                n_gpu_layers: 0,
+                threads: 2,
+                ..
+            }
+        ));
+        for bad in ["draft:", "ngrams", "draft"] {
+            assert!(P::try_parse_from(["x", "--spec", bad]).is_err(), "{bad}");
+        }
+        assert!(P::try_parse_from(["x", "--spec-max-draft", "7"]).is_err());
     }
 
     // hardware: none
