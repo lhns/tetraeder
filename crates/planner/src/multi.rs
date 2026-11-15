@@ -952,11 +952,11 @@ fn ffn_phase(
     let e = layout.n_expert as usize;
     let g = st.ep as usize;
     let uniform = vec![1.0; e];
-    let freq: &[f64] = match routing.and_then(|r| r.get(l as usize)) {
-        Some(f) if f.len() == e => f,
-        _ => &uniform,
-    };
-    let is_uniform = !routing.is_some_and(|r| r.get(l as usize).is_some_and(|f| f.len() == e));
+    let given = routing
+        .and_then(|r| r.get(l as usize))
+        .filter(|f| f.len() == e);
+    let is_uniform = given.is_none();
+    let freq: &[f64] = given.map_or(&uniform[..], |f| &f[..]);
     let (dec_max, mass) = match (is_uniform, *uniform_ep) {
         (true, Some(v)) => v,
         _ => {
