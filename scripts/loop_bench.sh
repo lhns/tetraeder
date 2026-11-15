@@ -75,6 +75,8 @@ pass() { # ENGINE REP
       ready=/v1/models ;;
   esac
   if wait_ready "http://127.0.0.1:$port$ready" 300; then
+    # the ggml modules each server mapped: both must run the same CPU variant
+    grep -oE '[^ /]*(ggml|llama)[^ /]*\.so[^ ]*' "/proc/$server_pid/maps" | sort -u > "$out/modules-$engine-r$rep.txt"
     "$py" scripts/gateway_bench.py "http://127.0.0.1:$port" --model qwen3 --prompt-tokens 128 --max-tokens 8 \
       --requests 1 > /dev/null 2>&1 # warm up
     bench "$engine" c1 "$rep" $((rep * 10 + 1)) --concurrency 1 --requests 8
@@ -86,6 +88,7 @@ pass() { # ENGINE REP
   say "pass $engine r$rep done"
 }
 
+grep -m1 'model name' /proc/cpuinfo > "$out/cpu.txt"
 rep=1
 for order in "llama-server tetraeder-llama tetraeder-dense" "tetraeder-dense tetraeder-llama llama-server"; do
   for e in $order; do pass "$e" "$rep"; done

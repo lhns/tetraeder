@@ -5,18 +5,23 @@
 //!
 //! - `alone`: a prompt alone, the pool empty.
 //! - `resident`: the same with three sequences resident below it (wider `n_kv`), not stepping.
-//! - `mixed`: `resident` with the three decoding one token each in the same step.
-//! - `split`: `mixed` as two calls, the decoders then the prompt.
-//! - `decode4`: four decoders, no prompt.
+//! - `mixedK`: `resident` with K of them decoding one token each in the same step (`_prompt_first`:
+//!   the prompt chunk first).
+//! - `splitK`: `mixedK` as two `decode` calls, the decoders then the prompt.
+//! - `decode4x8`, `decode1x8_alone`, `decode1x8_resident`: eight decode steps of four sequences,
+//!   or of one alone or above three resident ones.
+//!
+//! Engines: `llama` and `dense` as serve runs them; `_one_call` without the CPU split of decoders
+//! and prompt chunks (`step_groups`); `llama_streams` with one KV stream per sequence.
 //!
 //! Hardware label: `cpu_model` (the GGUF named by `TETRAEDER_SHAPES_GGUF`); skips without it.
 //! Env: `TETRAEDER_SHAPES_THREADS` (4), `TETRAEDER_SHAPES_PROMPT` (402), `TETRAEDER_SHAPES_REPS` (3).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tetraeder_engine::{ContextConfig, Engine, FlashAttn, Placement};
-use tetraeder_model::{BackendChoice, DenseOptions};
-use tetraeder_scheduler::{BatchBackend, LlamaBackend, SeqId, SeqInput, load_dense, load_llama};
+use tetraeder_model::{BackendChoice, DenseOptions, Qwen3};
+use tetraeder_scheduler::{BatchBackend, DenseBackend, LlamaBackend, SeqId, SeqInput};
 
 const SEQS: u32 = 4;
 const CTX: usize = 8192;
@@ -143,6 +148,29 @@ fn shapes(name: &str, b: &mut dyn BatchBackend) {
     run("decode1x8_resident", &four, vec![vec![(3, vec![300])]; 8]);
 }
 
+fn llama_engine(path: &Path, threads: usize, kv_unified: bool) -> Engine {
+    Engine::load(
+        path,
+        &Placement {
+            n_gpu_layers: 0,
+            ..Placement::default()
+        },
+        &ContextConfig {
+            n_ctx: CTX as u32,
+            n_batch: 512,
+            n_ubatch: 512,
+            threads: Some(threads as i32),
+            threads_batch: None,
+            flash_attn: FlashAttn::Auto,
+            op_offload: true,
+            n_seq_max: SEQS,
+            kv_unified,
+        },
+        None,
+    )
+    .expect("libllama loads")
+}
+
 // hardware: cpu_model
 #[test]
 fn step_shapes() {
@@ -151,52 +179,21 @@ fn step_shapes() {
         return;
     };
     let threads = env_usize("TETRAEDER_SHAPES_THREADS", 4);
-    let mut llama = load_llama(
-        &path,
-        &Placement {
-            n_gpu_layers: 0,
-            ..Placement::default()
-        },
-        &ContextConfig {
-            n_ctx: CTX as u32,
-            n_batch: 512,
-            n_ubatch: 512,
-            threads: Some(threads as i32),
-            threads_batch: None,
-            flash_attn: FlashAttn::Auto,
-            op_offload: true,
-            n_seq_max: SEQS,
-            kv_unified: true,
-        },
-        None,
-    )
-    .expect("libllama loads");
-    shapes("llama", llama.backend.as_mut());
-    drop(llama);
-    // llama-server's layout: one KV stream per sequence (not what serve uses, ADR 0065).
-    let engine = Engine::load(
-        &path,
-        &Placement {
-            n_gpu_layers: 0,
-            ..Placement::default()
-        },
-        &ContextConfig {
-            n_ctx: CTX as u32,
-            n_batch: 512,
-            n_ubatch: 512,
-            threads: Some(threads as i32),
-            threads_batch: None,
-            flash_attn: FlashAttn::Auto,
-            op_offload: true,
-            n_seq_max: SEQS,
-            kv_unified: false,
-        },
-        None,
-    )
-    .expect("libllama loads");
-    let mut streams = LlamaBackend::new(engine, false);
-    shapes("llama_streams", &mut streams);
-    drop(streams);
+    // What serve runs: one KV pool, decoders and prompt chunks as separate calls on the CPU.
+    shapes(
+        "llama",
+        &mut LlamaBackend::new(llama_engine(&path, threads, true), false),
+    );
+    // `on_gpu` true on a CPU placement: every step one call.
+    shapes(
+        "llama_one_call",
+        &mut LlamaBackend::new(llama_engine(&path, threads, true), true),
+    );
+    // llama-server's layout: one KV stream per sequence (not serve's, ADR 0065).
+    shapes(
+        "llama_streams",
+        &mut LlamaBackend::new(llama_engine(&path, threads, false), false),
+    );
     let o = DenseOptions {
         n_ctx_pool: CTX,
         n_seq_max: SEQS as usize,
@@ -205,6 +202,12 @@ fn step_shapes() {
             threads: Some(threads),
         })
     };
-    let mut dense = load_dense(&path, &o).expect("the dense builder loads");
-    shapes("dense", dense.backend.as_mut());
+    shapes(
+        "dense",
+        &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), false),
+    );
+    shapes(
+        "dense_one_call",
+        &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), true),
+    );
 }

@@ -71,7 +71,8 @@ jobs:
           target/release/tetraeder info --json | head -c 600
       - name: Loop bench
         run: PY=$PWD/.venv/bin/python bash scripts/loop_bench.sh loop-results
-      - name: Step shapes (temporary)
+      # one decode per step shape on both backends (crates/scheduler/tests/step_shapes.rs)
+      - name: Step shapes
         run: |
           TETRAEDER_SHAPES_GGUF=$PWD/.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf \
             cargo test --release -p tetraeder-scheduler --test step_shapes -- --nocapture 2>&1 | tee loop-results/shapes.txt
