@@ -35,6 +35,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CUDA_PATH");
     println!("cargo:rerun-if-env-changed=CUDA_HOME");
     println!("cargo::rustc-check-cfg=cfg(ggml_dl)");
+    println!("cargo::rustc-check-cfg=cfg(tetraeder_nccl)");
 
     if !src.join("CMakeLists.txt").is_file() {
         panic!(
@@ -45,21 +46,39 @@ fn main() {
 
     check_patches(&src);
 
+    // Patch 0004 (CUDA mul_mat_id skips id -1, ADR 0070): code that needs it checks this cfg; crates that depend
+    // on this one read DEP_GGML_PATCH_0004 in their build scripts.
+    println!("cargo::rustc-check-cfg=cfg(tetraeder_patch_0004)");
+    let series = std::fs::read_to_string(manifest.join("../../patches/series")).unwrap_or_default();
+    if series.lines().any(|l| {
+        l.split('#')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .starts_with("0004-")
+    }) {
+        println!("cargo::rustc-cfg=tetraeder_patch_0004");
+        println!("cargo::metadata=patch_0004=1");
+    }
+
     let native = std::env::var("TETRAEDER_GGML_NATIVE").is_ok_and(|v| v == "ON");
     let dl = !native;
     let cuda = cfg!(feature = "cuda");
     let vulkan = cfg!(feature = "vulkan");
 
+    // NCCL for multi-GPU all-reduce (ADR 0069); the ggml-cuda cmake finds it or warns.
+    let nccl = env("CARGO_CFG_TARGET_OS") == "linux";
     let mut cfg = cmake::Config::new(&src);
     if let Ok(base) = std::env::var("TETRAEDER_GGML_BUILD_DIR") {
         // Everything that changes the cmake configuration is in the name, so trees never mix.
         let archs = std::env::var("TETRAEDER_CUDA_ARCHS").unwrap_or_default();
         let name = format!(
-            "{}-{}-cuda{}-vk{}-{}-{}",
+            "{}-{}-cuda{}-vk{}-nccl{}-{}-{}",
             env("CARGO_CFG_TARGET_OS"),
             if native { "native" } else { "dl" },
             u8::from(cuda),
             u8::from(vulkan),
+            u8::from(nccl),
             archs.replace(';', "_"),
             env("PROFILE"),
         );
@@ -78,8 +97,7 @@ fn main() {
         .define("LLAMA_CURL", "OFF")
         .define("LLAMA_OPENSSL", "OFF")
         .define("GGML_CUDA", onoff(cuda))
-        // Single-GPU until Phase 5; NCCL found on the box image would otherwise add an unlinked dependency.
-        .define("GGML_CUDA_NCCL", "OFF")
+        .define("GGML_CUDA_NCCL", onoff(nccl))
         .define("GGML_VULKAN", onoff(vulkan))
         .build_target("install");
     if dl {
@@ -118,6 +136,10 @@ fn main() {
         }
     }
     let out = cfg.build();
+
+    if cuda && nccl {
+        link_nccl(&out);
+    }
 
     // DL: Windows DLLs and all modules install to bin. The link-search dirs inside target/ also
     // end up on PATH / LD_LIBRARY_PATH for `cargo test` and `cargo run`.
@@ -283,6 +305,29 @@ fn link_cuda(target_os: &str) {
     for l in ["cudart", "cublas", "cublasLt", "cuda"] {
         println!("cargo:rustc-link-lib={l}");
     }
+}
+
+/// Links NCCL when ggml's cmake found it (`NCCL_LIBRARY` in the cache holds a path, not
+/// `NCCL_LIBRARY-NOTFOUND`) and sets `cfg(tetraeder_nccl)`, which `Comm::path` reads.
+fn link_nccl(out: &Path) {
+    let Ok(cache) = std::fs::read_to_string(out.join("build/CMakeCache.txt")) else {
+        return;
+    };
+    let lib = cache
+        .lines()
+        .find_map(|l| l.strip_prefix("NCCL_LIBRARY:"))
+        .and_then(|l| l.split_once('='))
+        .map(|(_, v)| v.trim())
+        .filter(|v| !v.is_empty() && !v.ends_with("NOTFOUND"));
+    let Some(lib) = lib else {
+        println!("cargo:warning=NCCL not found: multi-GPU all-reduce uses ggml's internal path");
+        return;
+    };
+    if let Some(dir) = Path::new(lib).parent() {
+        println!("cargo:rustc-link-search=native={}", dir.display());
+    }
+    println!("cargo:rustc-link-lib=dylib=nccl");
+    println!("cargo::rustc-cfg=tetraeder_nccl");
 }
 
 fn link_vulkan(target_os: &str) {

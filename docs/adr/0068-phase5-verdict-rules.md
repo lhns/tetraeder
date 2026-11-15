@@ -80,3 +80,9 @@ Engine names in files: `tetraeder-exec`, `llama-bench`, `ik-llama-bench`, `vllm`
 - Predictions are committed before measurements, so the cost model cannot be fitted to its own answers.
 - The baseline gate keeps a planner that picks the best of slow shapes from passing.
 - The 30B MoE fits one 3090, so `single` is a real competitor on M2; the planner has to predict when splitting does not pay.
+
+## Settled 2026-11-15 (owner delegated these to the advisor)
+- **Within 15%: strict, every candidate,** as written above; the median rule is not adopted. ADR 0056's 23% and 28% errors are to be checked for whether they came from streamed or tiered plans, which Phase 5 does not judge. The judged set is fixed now as one candidate per shape per case (layer split, tensor parallel, expert parallel where it applies, tensor times pipeline where it applies) at the planner's own settings; a wider grid is calibration, not judged. Reopened only with the S2 session's measured errors, before the verdict session, as the owner's call.
+- **Baseline gate: kept,** in the Phase 4 form: the pick is not slower than the best llama.cpp split mode (`-sm layer`, `row`, `tensor`) beyond the band. The M1 goal defined "met" as a paired same-box run against the strongest open tool, and without the gate Phase 5 could not meet it. vLLM and ik_llama.cpp stay report-only: vLLM runs other weights (AWQ or GPTQ checkpoints) and other kernels, ik_llama.cpp does not run the split modes on these models; the same reasoning as KTransformers' GPU experts under M1 point 3 (not runnable on the same weights in the regime).
+- **Compute device per shard narrowed to experts on single-GPU plans:** the design's default, accepted.
+

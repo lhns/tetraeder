@@ -567,25 +567,15 @@ impl MoeBackend {
         Ok(())
     }
 
-    /// Puts every sequence of a failed step back to its length and reservation before it.
-    /// `seq_rm` shrinks to the positions held (rounded up to 256 rows) or frees an empty
-    /// sequence; growing again takes the rows the shrink just released. Returns the sequences
-    /// whose reservation could not be put back (also logged).
-    fn restore(&mut self, saved: &[(SeqId, usize, usize)]) -> Vec<SeqId> {
-        let mut lost = Vec::new();
-        for &(seq, len, reserved) in saved {
-            if self.model.seq_len(seq) == len && self.model.pool().reserved(seq) == reserved {
-                continue;
-            }
-            let _ = self.model.seq_rm(seq, len);
-            if reserved > self.model.pool().reserved(seq)
-                && !matches!(self.model.try_reserve(seq, reserved), Ok(true))
-            {
-                tracing::warn!(seq, reserved, "rollback could not restore the reservation");
-                lost.push(seq);
+    /// Puts every sequence of a failed step back to its length and reservation before it. A
+    /// rollback never grows a reservation, so it cannot fail for lack of rows; a sequence the
+    /// step moved stays where it moved.
+    fn restore(&mut self, saved: &[(SeqId, usize, usize)]) {
+        for &(seq, len, reserved) in saved.iter().rev() {
+            if let Err(e) = self.model.rollback(seq, len, reserved) {
+                tracing::warn!("cannot roll back sequence {seq}: {e}");
             }
         }
-        lost
     }
 
     /// Runs `inputs` as `step_groups` splits them (on the CPU decoders and prompt chunks apart),
@@ -602,6 +592,13 @@ impl MoeBackend {
     /// every input to `self.logits` and their spans to `self.spans`.
     fn run_group(&mut self, inputs: &[SeqInput<'_>]) -> Result<(), BackendError> {
         let cap = self.chunk;
+        // Only a call with a prompt chunk builds the CPU hot set: a long input, or several
+        // tokens without logits for every row. A group of decoders is not a prefill however many
+        // sequences it holds, and neither is a verify step (a pending token and drafts, with the
+        // logits of every row).
+        let prefill = inputs
+            .iter()
+            .any(|i| i.tokens.len() >= SHORT_INPUT || (i.tokens.len() > 1 && !i.all_logits));
         let mut group: Vec<ModelSeqEval<'_>> = Vec::new();
         // Per piece of the group: whether its rows are kept.
         let mut keep: Vec<bool> = Vec::new();
@@ -615,7 +612,7 @@ impl MoeBackend {
             let mut rest = inp.tokens;
             while !rest.is_empty() {
                 if used == cap {
-                    self.flush(&mut group, &mut keep)?;
+                    self.flush(&mut group, &mut keep, prefill)?;
                     used = 0;
                 }
                 let take = rest.len().min(cap - used);
@@ -631,7 +628,7 @@ impl MoeBackend {
                 rest = tail;
             }
         }
-        self.flush(&mut group, &mut keep)?;
+        self.flush(&mut group, &mut keep, prefill)?;
         debug_assert_eq!(self.logits.len(), next_row * self.n_vocab);
         self.spans.extend(spans);
         Ok(())
@@ -641,12 +638,16 @@ impl MoeBackend {
         &mut self,
         group: &mut Vec<ModelSeqEval<'_>>,
         keep: &mut Vec<bool>,
+        prefill: bool,
     ) -> Result<(), BackendError> {
         if group.is_empty() {
             return Ok(());
         }
         let mut buf = std::mem::take(&mut self.step_logits);
-        let spans = self.model.decode(group, &mut buf).map_err(failed);
+        let spans = self
+            .model
+            .decode_group(group, &mut buf, prefill)
+            .map_err(failed);
         let spans = match spans {
             Ok(s) => s,
             Err(e) => {
@@ -755,14 +756,9 @@ impl BatchBackend for MoeBackend {
             result = self.run(inputs);
         }
         if let Err(e) = result {
-            let lost = self.restore(&saved);
+            self.restore(&saved);
             self.logits.clear();
             self.spans.clear();
-            if !lost.is_empty() {
-                return Err(BackendError::Failed(format!(
-                    "{e}; rollback could not restore the reservation of sequences {lost:?}"
-                )));
-            }
             return Err(e);
         }
         Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans))

@@ -1,0 +1,166 @@
+name: phase4-rehearsal
+
+# CPU rehearsal of the Phase 4 verdict session (scripts/phase4_box.sh, ADR 0065 "Verdict"): the whole script end to end
+# on the runner with SKIP_GPU=1 and tiny request counts, so that rejected flags, file-name mismatches with
+# phase4_summary.py and the probe wiring show up before a paid box does. Stand-ins: Qwen3-0.6B Q8_0 for the 8B
+# (`--engine dense`) and for the 30B (`--engine llama`, counts false: the 0.6B is dense and the tiny MoE fixture has
+# a 1024-token context, too short for the workload, so `--engine moe` is not rehearsed), a synthetic request
+# log from gateway_bench prompts. The verdict itself (pass or fail) means nothing on CPU: the job asserts that
+# verdict.json exists with non-null ratios.
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/phase4_*
+      - scripts/gateway_bench.py
+      - scripts/gateway_replay.py
+      - scripts/cotenant_guard.py
+      - scripts/engine_sample.py
+      - .github/workflows/phase4-rehearsal.yml
+  workflow_dispatch:
+
+concurrency:
+  group: phase4-rehearsal-${{ github.ref }}
+  # superseded runs are cancelled on work branches only; every main run finishes
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # the multi-variant DL ggml like llama-server below (same as loop-bench)
+  TETRAEDER_GGML_NATIVE: "OFF"
+
+jobs:
+  rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache/restore@v4
+        id: model
+        with:
+          path: .hf_cache
+          key: model-qwen3-0.6b-q8_0
+      - name: Fetch test model
+        if: steps.model.outputs.cache-hit != 'true'
+        run: cargo xtask fetch-model
+      # same CMake flags as loop-bench.yml
+      - name: llama-server
+        run: |
+          cmake -S vendor/llama.cpp -B target/llama-server-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_MTMD=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF
+          cmake --build target/llama-server-build --target llama-server --parallel 4
+      - name: Python client
+        run: python3 -m venv .venv && .venv/bin/pip install -q httpx pytest
+      # a small log in the shape of `tetraeder serve --request-log`: three conversations of three growing turns
+      - name: Synthetic request log
+        run: |
+          mkdir -p rehearsal
+          .venv/bin/python - <<'PY'
+          import json, sys
+          sys.path.insert(0, "scripts")
+          from gateway_bench import make_prompt
+          ts, out = 0, []
+          for conv in range(3):
+              msgs = []
+              for turn in range(3):
+                  msgs.append({"role": "user", "content": make_prompt(120, f"conv{conv}t{turn}")})
+                  ts += 100
+                  out.append({"ts_ms": ts, "method": "POST", "path": "/v1/chat/completions", "status": 200,
+                              "request": {"model": "qwen3-8b", "messages": list(msgs), "max_tokens": 16,
+                                          "temperature": 0, "stream": True, "stream_options": {"include_usage": True}},
+                              "usage": {"prompt_tokens": 150 * (turn + 1)}})
+                  msgs.append({"role": "assistant", "content": "ok"})
+          open("rehearsal/requests.jsonl", "w").write("".join(json.dumps(e) + "\n" for e in out))
+          PY
+          wc -l rehearsal/requests.jsonl
+      - name: Runner
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          echo "threads: $(nproc)"
+          free -m
+      # the script builds tetraeder itself (build stage, no CUDA under SKIP_GPU)
+      - name: Phase 4 box script, CPU
+        env:
+          SKIP_GPU: "1"
+          SESSION: rehearsal
+          P4_OUT: ${{ github.workspace }}/rehearsal/phase4
+          P4_LOG_FILE: ${{ github.workspace }}/rehearsal/phase4_box.log
+          P4_LOCK: ${{ runner.temp }}/phase4.lock
+          PY: ${{ github.workspace }}/.venv/bin/python
+          BASELINE_BIN: ${{ github.workspace }}/target/llama-server-build/bin/llama-server
+          MODEL_Q8B: ${{ github.workspace }}/.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
+          MODEL_Q30B: ${{ github.workspace }}/.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
+          Q30B_ENGINE: llama
+          PHASE4_LOG: ${{ github.workspace }}/rehearsal/requests.jsonl
+          THREADS: "4"
+          CARGO_BUILD_JOBS: "4"
+          BUDGET_MIN: "100"
+          CTX: "8192"
+          NGL_LLAMA: "0"
+          PROMPT_TOKENS: "512"
+          MAX_TOKENS: "32"
+          N_C1: "4"
+          N_C4: "8"
+          N_PROBE: "4"
+          PROBE_MIN: "0"
+          REPLAY_CTX: "8192"
+          REPLAY_MAX_PROMPT: "6000"
+          EXPECT_CTX: "0" # the context-length check is gateway_replay.py's own; the 0.6B value is not asserted here
+          TTFT_INFO: "1"
+        run: |
+          bash scripts/phase4_box.sh
+          rc=$?
+          cat "$P4_LOG_FILE"
+          echo "phase4_box.sh exit $rc"
+          exit $rc
+      - name: Assert verdict.json
+        run: |
+          .venv/bin/python - <<'PY'
+          import json, sys
+          d = "rehearsal/phase4/"
+          v = json.load(open(d + "verdict.json"))
+          print(json.dumps(v, indent=2)[:6000])
+          bad = []
+          for m, x in v["models"].items():
+              for k in ("c4", "c1"):
+                  if x["worst"][k] is None:
+                      bad.append(f"{m} worst {k}")
+              for p in x["pairs"]:
+                  if p["c4_throughput_ratio"] is None or p["c1_decode_ratio"] is None:
+                      bad.append(f"{m} pair {p['reps']}")
+          for p in v["ttft"]["pairs"]:
+              if p["median_ratio"] is None or p["p90_ratio"] is None:
+                  bad.append("ttft pair")
+          if bad:
+              sys.exit("null ratios: " + ", ".join(bad))
+          p = json.load(open(d + "probe.json"))
+          assert p["stop"] is False, p
+          print("verdict.json ok; phase4_pass =", v["phase4_pass"])
+          PY
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f rehearsal/phase4/verdict.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat rehearsal/phase4/verdict.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase4-rehearsal
+          path: |
+            rehearsal/phase4
+            rehearsal/phase4_box.log

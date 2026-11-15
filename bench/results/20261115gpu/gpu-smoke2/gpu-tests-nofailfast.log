@@ -1,0 +1,72 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-kvcache v0.0.0 (/root/tetraeder/crates/kvcache)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 5.29s
+     Running tests/gpu_dense.rs (target/release/deps/gpu_dense-332173769fae30c6)
+
+running 3 tests
+test gpu_one_sequence_matches_the_cpu_reference ... 
+thread 'gpu_one_sequence_matches_the_cpu_reference' (34545) panicked at crates/model/tests/common/mod.rs:308:13:
+position 1, token 171: libllama 15.239704 vs builder 15.23366
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test gpu_qwen3_8b_matches_libllama ... ok
+test gpu_three_sequences_match_the_cpu_builder ... 
+thread 'gpu_three_sequences_match_the_cpu_builder' (34591) panicked at crates/model/tests/common/mod.rs:493:9:
+gpu batched / cpu batched: (0, 5) differs by 2.1933675e-2 (tolerance 5e-3)
+FAILED
+
+failures:
+
+failures:
+    gpu_one_sequence_matches_the_cpu_reference
+    gpu_three_sequences_match_the_cpu_builder
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.11s
+
+error: test failed, to rerun pass `-p tetraeder-model --test gpu_dense`
+     Running tests/gpu_multi_seq.rs (target/release/deps/gpu_multi_seq-3f58ef776ee4d27e)
+
+running 5 tests
+test gpu_batched_matches_the_cpu_builder ... 
+thread 'gpu_batched_matches_the_cpu_builder' (34608) panicked at crates/model/tests/common/multi_seq.rs:26:5:
+gpu against cpu, step 0, input 0: max |diff| 0.022600055 > 0.011241986 (largest logit 11.241986)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test gpu_resident_batched_equals_alone ... 
+thread 'gpu_resident_batched_equals_alone' (34630) panicked at crates/model/tests/common/multi_seq.rs:26:5:
+gpu resident: step 0, sequence 0, 7 tokens: max |diff| 0.027029037 > 0.011242309 (largest logit 11.242308)
+FAILED
+test gpu_seq_cp_snapshot_and_move ... 
+thread 'gpu_seq_cp_snapshot_and_move' (34687) panicked at crates/model/tests/common/multi_seq.rs:26:5:
+gpu: copy continues: max |diff| 0.016052246 > 0.011364178 (largest logit 11.364178)
+FAILED
+test gpu_streamed_cpu_miss_batched_equals_alone ... 
+thread 'gpu_streamed_cpu_miss_batched_equals_alone' (34716) panicked at crates/model/tests/common/multi_seq.rs:26:5:
+gpu cpu miss: step 0, sequence 0, 7 tokens: max |diff| 0.025760889 > 0.011245822 (largest logit 11.245821)
+FAILED
+test gpu_streamed_upload_batched_equals_alone ... 
+thread 'gpu_streamed_upload_batched_equals_alone' (35134) panicked at crates/model/tests/common/multi_seq.rs:26:5:
+gpu upload: step 0, sequence 0, 7 tokens: max |diff| 0.027029037 > 0.011242309 (largest logit 11.242308)
+FAILED
+
+failures:
+
+failures:
+    gpu_batched_matches_the_cpu_builder
+    gpu_resident_batched_equals_alone
+    gpu_seq_cp_snapshot_and_move
+    gpu_streamed_cpu_miss_batched_equals_alone
+    gpu_streamed_upload_batched_equals_alone
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+
+error: test failed, to rerun pass `-p tetraeder-model --test gpu_multi_seq`
+error: 2 targets failed:
+    `-p tetraeder-model --test gpu_dense`
+    `-p tetraeder-model --test gpu_multi_seq`

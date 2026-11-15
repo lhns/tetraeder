@@ -1,6 +1,6 @@
 # 0069. Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box
 
-Status: Proposed (2026-11-15). Phase 5. Implements ADR 0016. Supersedes in part ADR 0017 (one worker process per device becomes one worker process per box, below) and amends the Phase 5 column of the capability table (ADR 0006, 0027). Companions: ADR 0068 (verdict), ADR 0070 (shapes and cost). Briefs: `docs/phase5-briefs.md`.
+Status: Proposed (2026-11-15). Phase 5. Implements ADR 0016. Supersedes in part ADR 0017 (one worker process per device becomes one worker process per collective group, the whole box by default, below; accepted 2026-11-15, owner delegated to the advisor) and amends the Phase 5 column of the capability table (ADR 0006, 0027). Companions: ADR 0068 (verdict), ADR 0070 (shapes and cost). Briefs: `docs/phase5-briefs.md`.
 
 ## Context
 
@@ -12,7 +12,7 @@ What the pin (b11976, 2e0d86be) already has, read from the vendored tree:
 - **Async device copies**: `ggml_backend_tensor_copy_async` on CUDA is `cudaMemcpyPeerAsync` on the source stream plus an event the destination stream waits on (`ggml-cuda.cu:2692`); without peer access the driver stages through host memory.
 - `ggml_graph_add_node`, `ggml_gallocr_*`, `ggml_backend_event_*` are public.
 
-So the plan's "all-reduce as a graph op" patch is not needed: the collective exists, and the executor calls it between subgraphs. `crates/ggml-sys/build.rs` builds with `GGML_CUDA_NCCL=OFF` today.
+So the plan's "all-reduce as a graph op" patch is not needed: the collective exists, and the executor calls it between subgraphs. `crates/ggml-sys/build.rs` built with `GGML_CUDA_NCCL=OFF` until E1 (2026-11-15); it now builds NCCL on Linux (`GGML_CUDA_NCCL=ON`, linked when CMake finds `NCCL_LIBRARY`, `cfg(tetraeder_nccl)`) and OFF elsewhere, where the collective falls back to ggml's internal path.
 
 ## Decision
 
@@ -115,3 +115,7 @@ A meta device per tensor-parallel group with a split callback built from the pla
 - Fault isolation is per box, not per device: the serving process survives a sticky CUDA error, a single GPU's fault takes down all GPUs of the box until the restart.
 - CI tests every shape's numerics on CPU ranks; only speed and the CUDA comm need boxes.
 - The MoE builder's streaming paths are untouched; multi-GPU MoE is resident only in Phase 5.
+
+## Settled 2026-11-15: process boundary
+One worker process per collective group, the whole box by default (owner delegated to the advisor). What it gives up from ADR 0017: a crash on one device takes down the other devices of its group (a tensor-parallel group fails as a unit anyway), and per-device memory isolation between processes (devices of a group share one address space). The worker stays behind the backend trait over pipes, so a finer grouping later (one process per group of fewer devices) needs no new architecture.
+
