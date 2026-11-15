@@ -2,14 +2,17 @@ name: loop-bench
 
 # Scheduler loop overhead without a GPU (ADR 0065 workload, CPU only): llama-server against
 # `tetraeder serve --engine llama` and `--engine dense` on Qwen3-0.6B Q8_0, gateway_bench.py c1 and c4,
-# interleaved ABC then CBA. Never gates a PR; ratios are in the log and the loop-bench artifact.
+# interleaved ABC then CBA; then llama-server against `--engine moe` and llama on the tiny synthetic MoE fixture
+# (loop-results/moe). Never gates a PR; ratios are in the log and the loop-bench artifact.
 on:
   push:
-    branches: [main]
+    branches: [main, track-d2-prep]
     paths:
       - crates/scheduler/**
       - crates/engine/**
       - crates/model/src/qwen3.rs
+      - crates/model/src/qwen3moe.rs
+      - tests/fixtures/tiny-qwen3moe*
       - crates/gateway/**
       - crates/tetraeder/src/serve.rs
       - scripts/loop_bench*
@@ -80,6 +83,8 @@ jobs:
         if: always()
         run: |
           .venv/bin/python scripts/loop_bench_summary.py loop-results | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "MoE (tiny synthetic model, loop overhead only)" | tee -a "$GITHUB_STEP_SUMMARY"
+          .venv/bin/python scripts/loop_bench_summary.py loop-results/moe | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

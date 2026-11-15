@@ -14,8 +14,11 @@
 //! Engines: `llama` and `dense` as serve runs them; `_one_call` without the CPU split of decoders
 //! and prompt chunks (`step_groups`); `llama_streams` with one KV stream per sequence.
 //!
-//! Hardware label: `cpu_model` (the GGUF named by `TETRAEDER_SHAPES_GGUF`); skips without it.
-//! Env: `TETRAEDER_SHAPES_THREADS` (4), `TETRAEDER_SHAPES_PROMPT` (402), `TETRAEDER_SHAPES_REPS` (3).
+//! Hardware label: `cpu_model` (the GGUF named by `TETRAEDER_SHAPES_GGUF`); skips without it. With
+//! `TETRAEDER_SHAPES_NGL` above 0 the model is offloaded and the test needs a CUDA build
+//! (`--features cuda`): `gpu_*` then, and the GPU box runs it on Qwen3-8B (phase4_box.sh, gpu-shapes).
+//! Env: `TETRAEDER_SHAPES_THREADS` (4), `TETRAEDER_SHAPES_PROMPT` (402), `TETRAEDER_SHAPES_REPS` (3),
+//! `TETRAEDER_SHAPES_NGL` (0), `TETRAEDER_SHAPES_ENGINES` (comma list of the engine names above; all).
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -148,11 +151,11 @@ fn shapes(name: &str, b: &mut dyn BatchBackend) {
     run("decode1x8_resident", &four, vec![vec![(3, vec![300])]; 8]);
 }
 
-fn llama_engine(path: &Path, threads: usize, kv_unified: bool) -> Engine {
+fn llama_engine(path: &Path, threads: usize, ngl: i32, kv_unified: bool) -> Engine {
     Engine::load(
         path,
         &Placement {
-            n_gpu_layers: 0,
+            n_gpu_layers: ngl,
             ..Placement::default()
         },
         &ContextConfig {
@@ -161,7 +164,11 @@ fn llama_engine(path: &Path, threads: usize, kv_unified: bool) -> Engine {
             n_ubatch: 512,
             threads: Some(threads as i32),
             threads_batch: None,
-            flash_attn: FlashAttn::Auto,
+            flash_attn: if ngl > 0 {
+                FlashAttn::On
+            } else {
+                FlashAttn::Auto
+            },
             op_offload: true,
             n_seq_max: SEQS,
             kv_unified,
@@ -171,7 +178,7 @@ fn llama_engine(path: &Path, threads: usize, kv_unified: bool) -> Engine {
     .expect("libllama loads")
 }
 
-// hardware: cpu_model
+// hardware: cpu_model, gpu_* with TETRAEDER_SHAPES_NGL
 #[test]
 fn step_shapes() {
     let Some(path) = std::env::var_os("TETRAEDER_SHAPES_GGUF").map(PathBuf::from) else {
@@ -179,35 +186,53 @@ fn step_shapes() {
         return;
     };
     let threads = env_usize("TETRAEDER_SHAPES_THREADS", 4);
+    let ngl = i32::try_from(env_usize("TETRAEDER_SHAPES_NGL", 0)).unwrap();
+    let on_gpu = ngl > 0;
+    let wanted = std::env::var("TETRAEDER_SHAPES_ENGINES").unwrap_or_default();
+    let want = |name: &str| wanted.is_empty() || wanted.split(',').any(|w| w.trim() == name);
     // What serve runs: one KV pool, decoders and prompt chunks as separate calls on the CPU.
-    shapes(
-        "llama",
-        &mut LlamaBackend::new(llama_engine(&path, threads, true), false),
-    );
+    if want("llama") {
+        shapes(
+            "llama",
+            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, true), on_gpu),
+        );
+    }
     // `on_gpu` true on a CPU placement: every step one call.
-    shapes(
-        "llama_one_call",
-        &mut LlamaBackend::new(llama_engine(&path, threads, true), true),
-    );
+    if want("llama_one_call") {
+        shapes(
+            "llama_one_call",
+            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, true), true),
+        );
+    }
     // llama-server's layout: one KV stream per sequence (not serve's, ADR 0065).
-    shapes(
-        "llama_streams",
-        &mut LlamaBackend::new(llama_engine(&path, threads, false), false),
-    );
+    if want("llama_streams") {
+        shapes(
+            "llama_streams",
+            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, false), on_gpu),
+        );
+    }
     let o = DenseOptions {
         n_ctx_pool: CTX,
         n_seq_max: SEQS as usize,
         threads: Some(threads as i32),
-        ..DenseOptions::new(BackendChoice::Cpu {
-            threads: Some(threads),
+        ..DenseOptions::new(if on_gpu {
+            BackendChoice::Gpu { index: 0 }
+        } else {
+            BackendChoice::Cpu {
+                threads: Some(threads),
+            }
         })
     };
-    shapes(
-        "dense",
-        &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), false),
-    );
-    shapes(
-        "dense_one_call",
-        &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), true),
-    );
+    if want("dense") {
+        shapes(
+            "dense",
+            &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), on_gpu),
+        );
+    }
+    if want("dense_one_call") {
+        shapes(
+            "dense_one_call",
+            &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), true),
+        );
+    }
 }

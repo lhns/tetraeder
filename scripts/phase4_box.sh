@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Phase 4 verdict session on a GPU box (ADR 0065, "Verdict"): record the Claude Code request log, pre-pass for the
+# Phase 4 verdict session on a GPU box (ADR 0065, "Verdict"): the gates first (neither own builder has run on CUDA:
+# parity, step shapes, a short probe against llama-server), then record the Claude Code request log, pre-pass for the
 # baseline's KV mode, interleaved pairs against llama-server per model with a libllama control after each pair, the
 # TTFT pairs, env.json and verdict.json (scripts/phase4_summary.py).
 # Started detached by `taxameter run scripts/phase4_box.sh`; ends with PHASE4_BOX_DONE in runs/vast/phase4_box.log.
@@ -7,11 +8,18 @@
 # exists is skipped; delete the files of an unclean pair to rerun it.
 #
 # Stages, in order (STAGE <name> lines in the log):
+#   build       release build with CUDA and the python env
+#   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_dense gpu_multi_seq (dense fixture and Qwen3-8B, MoE fixture); a failure
+#               writes probe.json and ends the session (rc=3) before any timed run; log in gpu-parity.log
+#   gpu-shapes  crates/scheduler/tests/step_shapes.rs on CUDA with Qwen3-8B for engines llama, llama_streams and dense
+#               (TETRAEDER_SHAPES_GGUF, _NGL, _ENGINES); records gpu-shapes.txt, never gates
+#   probe       one short c1 and c4 (the verdict workload, c4 with --requests 8) per judged engine against llama-server
+#               with the verdict baseline flags, probe-*.json; phase4_summary.py --probe writes probe.json. STOP RULE: a
+#               judged engine whose c4 throughput ratio is below 0.85 (the pass line is about 0.925, below 0.85 the
+#               pairs cannot pass) or a failed gpu-parity ends the session (PHASE4_BOX_DONE rc=3) before record-log and
+#               pairs, so the driver fetches and destroys the box
 #   record-log  scripts/claude_code_proxy.sh over 5 tasks, 1 rep; the tetraeder request log moves to
 #               bench/private/ (clear-text prompts, gitignored); skipped when the log exists
-#   build       release build with CUDA and the python env
-#   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_dense gpu_multi_seq (dense fixture and Qwen3-8B, MoE fixture); a failure ends the
-#               session before any timed run; log in gpu-parity.log
 #   env         env.json
 #   prepass     per model, llama-server c4 once with -kvu and once with -no-kvu; the higher throughput is the baseline
 #   pairs       per model, rep 1 (baseline, judged) then control, rep 2 (judged, baseline) then control
@@ -19,7 +27,7 @@
 #   summary     phase4_summary.py -> verdict.json
 #
 # Models (assumed downloaded, .hf_cache/<org>__<model>/): q8b Qwen3-8B-Q4_K_M (judged on --engine dense), q30b
-# Qwen3-30B-A3B-Q4_K_M (judged on --engine moe when Q30B_ENGINE=moe, else --engine llama with counts false).
+# Qwen3-30B-A3B-Q4_K_M (judged on --engine moe; Q30B_ENGINE=llama only for a control run: libllama, counts false).
 # Env knobs: SESSION (date), MODELS ("q8b q30b"), THREADS (CPU quota), BUDGET_MIN (150: runs that would start later
 # are skipped, loudly, and the verdict is then null), Q30B_ENGINE, PHASE4_LOG (request log on the box, default
 # bench/private/claude-code-requests.jsonl), RECORD_TASKS, TTFT_INFO (1), P4_OUT (results dir), DRY_RUN=1 (print the
@@ -55,6 +63,7 @@ t_start=$(date +%s)
 if [ "$DRY" = 1 ]; then threads="${THREADS:-8}"; else threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"; fi
 budget_s=$((${BUDGET_MIN:-150} * 60))
 models="${MODELS:-q8b q30b}"
+q30b_engine="${Q30B_ENGINE:-moe}"
 models_dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}"
 tet=target/release/tetraeder
 baseline_bin=/opt/llama.cpp-baseline/bin/llama-server
@@ -80,7 +89,7 @@ plan() { echo "PLAN $*"; }
 judged_name() { # judged_name MODEL
   case $1 in
     q8b) echo tetraeder-dense ;;
-    q30b) if [ "${Q30B_ENGINE:-llama}" = moe ]; then echo tetraeder-moe; else echo tetraeder-llama; fi ;;
+    q30b) if [ "$q30b_engine" = moe ]; then echo tetraeder-moe; else echo tetraeder-llama; fi ;;
   esac
 }
 engine_flag() { echo "${1#tetraeder-}"; } # tetraeder-dense -> dense
@@ -193,7 +202,7 @@ build() {
 
 # ---- stage: gpu-parity ------------------------------------------------------------------------------------
 # No timed run on a box whose GPU builder disagrees with the CPU reference. gpu_dense covers one and three sequences;
-# gpu_multi_seq is the MoE builder with several sequences, resident and streamed.
+# gpu_multi_seq is the MoE builder with several sequences, resident and streamed. Returns 1 on a failure (main stops).
 gpu_parity() {
   local cmd="cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test gpu_dense --test gpu_multi_seq -- --nocapture --test-threads 1"
   mkdir -p "$out"
@@ -203,8 +212,69 @@ gpu_parity() {
   fi
   say "gpu-parity start"
   # shellcheck disable=SC2086
-  TETRAEDER_REQUIRE_GPU=1 TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m $cmd > "$out/gpu-parity.log" 2>&1 8>&- || die "gpu-parity failed (see $out/gpu-parity.log)"
+  TETRAEDER_REQUIRE_GPU=1 TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m $cmd > "$out/gpu-parity.log" 2>&1 8>&- || {
+    say "gpu-parity FAILED (see $out/gpu-parity.log)"
+    return 1
+  }
   say "gpu-parity done"
+}
+
+# ---- stage: gpu-shapes ------------------------------------------------------------------------------------
+# One decode per step shape on CUDA (the test of loop-bench, on Qwen3-8B): decode4x8, decode1x8_alone and
+# decode1x8_resident per engine tell whether one KV stream per sequence (llama_streams) beats the unified pool
+# (llama, dense) on the GPU. Records only; D2's driver reads gpu-shapes.txt.
+gpu_shapes() {
+  local cmd="cargo test --release -p tetraeder-scheduler --features cuda --test step_shapes -- --nocapture --test-threads 1"
+  local engines="llama,llama_streams,dense"
+  if [ "$DRY" = 1 ]; then
+    plan "TETRAEDER_SHAPES_GGUF=<q8b> TETRAEDER_SHAPES_NGL=99 TETRAEDER_SHAPES_ENGINES=$engines $cmd > gpu-shapes.txt"
+    return 0
+  fi
+  say "gpu-shapes start"
+  # shellcheck disable=SC2086
+  TETRAEDER_REQUIRE_GPU=1 TETRAEDER_SHAPES_GGUF="${MODEL_FILE[q8b]}" TETRAEDER_SHAPES_NGL=99 \
+    TETRAEDER_SHAPES_ENGINES="$engines" TETRAEDER_SHAPES_THREADS="$threads" timeout -k 30 30m $cmd \
+    > "$out/gpu-shapes.txt" 2>&1 8>&- || say "WARNING: gpu-shapes failed (see $out/gpu-shapes.txt); it does not gate"
+  grep -E 'SHAPE engine=\S+ shape=(decode4x8|decode1x8_alone|decode1x8_resident) ' "$out/gpu-shapes.txt" | sed 's/^/  /'
+  say "gpu-shapes done"
+}
+
+# ---- stage: probe -----------------------------------------------------------------------------------------
+# probe_run MODEL NAME: one server start, c1 and c4 (8 requests) of the verdict workload; the seeds differ per test
+# (a repeated prompt would measure the prompt cache), the same on both engines. The baseline is run once with the
+# default -kvu (no pre-pass yet); the probe only has to be roughly right.
+probe_run() {
+  local m=$1 name=$2 url alias
+  local c1="$out/probe-$m-$name-c1.json" c4="$out/probe-$m-$name-c4.json"
+  [ -f "$c1" ] && [ -f "$c4" ] && { say "probe $m $name: done before"; return 0; }
+  say "probe $m $name start"
+  server_for "$m" "$name" "" "$out/server-probe-$m-$name.log"
+  warm_up "$url" "$alias"
+  bench_file "$c1" "probe-$m-$name-c1" "$url" "$alias" --prompt-tokens 512 --max-tokens 128 --concurrency 1 --requests 8 --seed 11
+  bench_file "$c4" "probe-$m-$name-c4" "$url" "$alias" --prompt-tokens 512 --max-tokens 128 --concurrency 4 --requests 8 --seed 14
+  stop_server
+  say "probe $m $name done"
+}
+
+# probe_verdict [PARITY]: probe.json from the probe files (and a failed gpu-parity). Returns 3 on the stop rule.
+probe_verdict() {
+  local args=() m
+  for m in $models; do args+=(--probe-run "$m:$(judged_name "$m")"); done
+  [ -n "${1:-}" ] && args+=(--parity "$1")
+  if [ "$DRY" = 1 ] && ! ls "$out"/probe-*-c4.json > /dev/null 2>&1 && [ -z "${1:-}" ]; then
+    plan "phase4_summary.py $out --probe ${args[*]} -> probe.json; rc 3 when a judged c4 ratio < 0.85 or gpu-parity failed"
+    return 0
+  fi
+  "$py" scripts/phase4_summary.py "$out" --probe "${args[@]}"
+}
+
+probe() {
+  local m
+  for m in $models; do
+    probe_run "$m" llama-server
+    probe_run "$m" "$(judged_name "$m")"
+  done
+  probe_verdict
 }
 
 # ---- stage: env --------------------------------------------------------------------------------------------
@@ -218,7 +288,7 @@ env_json() {
   GW_OUT="$out" GW_THREADS="$threads" GW_QUOTA="$(bash scripts/cpu_quota.sh 2> /dev/null)" \
     GW_LLAMA="$("$baseline_bin" --version 2>&1 | head -3 | tr '\n' ' ')" \
     GW_COMMIT="$(git rev-parse HEAD 2> /dev/null)" GW_HOST="$(hostname)" \
-    GW_LOG_SHA="$(sha256sum "$req_log" 2> /dev/null | cut -d' ' -f1)" GW_Q30B="${Q30B_ENGINE:-llama}" \
+    GW_LOG_SHA="$(sha256sum "$req_log" 2> /dev/null | cut -d' ' -f1)" GW_Q30B="$q30b_engine" \
     GW_GPU="$(nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks.mem,clocks_throttle_reasons.active,memory.total --format=csv,noheader 2> /dev/null)" \
     GW_VAST="${VAST_CONTAINERLABEL:-} ${CONTAINER_ID:-}" "$py" - << 'EOF'
 import json, os
@@ -448,13 +518,27 @@ summary() {
 }
 
 main() {
-  say "phase4_box start (threads=$threads models=\"$models\" budget=${BUDGET_MIN:-150} min q30b=${Q30B_ENGINE:-llama}) out=$out"
-  say "STAGE record-log"
-  record_log
+  say "phase4_box start (threads=$threads models=\"$models\" budget=${BUDGET_MIN:-150} min q30b=$q30b_engine) out=$out"
   say "STAGE build"
   build
   say "STAGE gpu-parity"
-  gpu_parity
+  local rc=0
+  if ! gpu_parity; then
+    probe_verdict failed
+    stop_session
+    return 3
+  fi
+  say "STAGE gpu-shapes"
+  gpu_shapes
+  say "STAGE probe"
+  probe || rc=$?
+  if [ "$rc" != 0 ]; then
+    say "probe below the stop line (probe.json): the session ends before record-log and the pairs"
+    stop_session
+    return 3
+  fi
+  say "STAGE record-log"
+  record_log
   say "STAGE env"
   env_json
   say "STAGE prepass"
@@ -469,6 +553,13 @@ main() {
   touch "$out/DONE"
   say "PHASE4_BOX_DONE rc=$rc"
   return $rc
+}
+
+# The stop rule ended the session: nothing timed ran beyond the probe; the driver fetches and destroys the box.
+stop_session() {
+  stop_server
+  touch "$out/DONE"
+  say "PHASE4_BOX_DONE rc=3"
 }
 
 if [ "$DRY" = 1 ]; then

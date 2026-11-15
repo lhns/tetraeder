@@ -497,7 +497,8 @@ impl LlamaBackend {
 }
 
 /// The Qwen3 MoE builder as a [`BatchBackend`] over its KV pool (ADR 0065, 0067). A step takes
-/// at most `chunk` tokens in one graph; a larger `decode` runs as several.
+/// at most `chunk` tokens in one graph; a larger `decode` runs as several. On the CPU decoders
+/// and prompt chunks of one `decode` run apart (`step_groups`), like the other backends.
 pub struct MoeBackend {
     model: Qwen3Moe,
     on_gpu: bool,
@@ -566,28 +567,44 @@ impl MoeBackend {
 
     /// Puts every sequence of a failed step back to its length and reservation before it.
     /// `seq_rm` shrinks to the positions held (rounded up to 256 rows) or frees an empty
-    /// sequence; growing again takes the rows the shrink just released.
-    fn restore(&mut self, saved: &[(SeqId, usize, usize)]) {
+    /// sequence; growing again takes the rows the shrink just released. Returns the sequences
+    /// whose reservation could not be put back (also logged).
+    fn restore(&mut self, saved: &[(SeqId, usize, usize)]) -> Vec<SeqId> {
+        let mut lost = Vec::new();
         for &(seq, len, reserved) in saved {
             if self.model.seq_len(seq) == len && self.model.pool().reserved(seq) == reserved {
                 continue;
             }
             let _ = self.model.seq_rm(seq, len);
-            if reserved > self.model.pool().reserved(seq) {
-                let _ = self.model.try_reserve(seq, reserved);
+            if reserved > self.model.pool().reserved(seq)
+                && !matches!(self.model.try_reserve(seq, reserved), Ok(true))
+            {
+                tracing::warn!(seq, reserved, "rollback could not restore the reservation");
+                lost.push(seq);
             }
         }
+        lost
     }
 
-    /// Runs the pieces of `inputs`, at most `chunk` tokens per model step, and collects the rows
-    /// of every input in `self.logits`.
+    /// Runs `inputs` as `step_groups` splits them (on the CPU decoders and prompt chunks apart),
+    /// and collects the rows of every input in `self.logits`, `self.spans` in input order.
     fn run(&mut self, inputs: &[SeqInput<'_>]) -> Result<(), BackendError> {
+        self.spans.clear();
+        for range in step_groups(inputs, self.on_gpu) {
+            self.run_group(&inputs[range])?;
+        }
+        Ok(())
+    }
+
+    /// Runs the pieces of `inputs`, at most `chunk` tokens per model step, appends the rows of
+    /// every input to `self.logits` and their spans to `self.spans`.
+    fn run_group(&mut self, inputs: &[SeqInput<'_>]) -> Result<(), BackendError> {
         let cap = self.chunk;
         let mut group: Vec<ModelSeqEval<'_>> = Vec::new();
         // Per piece of the group: whether its rows are kept.
         let mut keep: Vec<bool> = Vec::new();
         let mut used = 0;
-        let mut next_row = 0;
+        let mut next_row = self.logits.len() / self.n_vocab.max(1);
         let mut spans = Vec::with_capacity(inputs.len());
         for inp in inputs {
             let rows = if inp.all_logits { inp.tokens.len() } else { 1 };
@@ -614,7 +631,7 @@ impl MoeBackend {
         }
         self.flush(&mut group, &mut keep)?;
         debug_assert_eq!(self.logits.len(), next_row * self.n_vocab);
-        self.spans = spans;
+        self.spans.extend(spans);
         Ok(())
     }
 
@@ -736,9 +753,14 @@ impl BatchBackend for MoeBackend {
             result = self.run(inputs);
         }
         if let Err(e) = result {
-            self.restore(&saved);
+            let lost = self.restore(&saved);
             self.logits.clear();
             self.spans.clear();
+            if !lost.is_empty() {
+                return Err(BackendError::Failed(format!(
+                    "{e}; rollback could not restore the reservation of sequences {lost:?}"
+                )));
+            }
             return Err(e);
         }
         Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans))
