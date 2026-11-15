@@ -1,6 +1,6 @@
 //! Backend and buffer handles.
 
-use super::{GgmlError, Result, cpu, cstr};
+use super::{GgmlError, Graph, Result, cpu, cstr};
 use crate::raw as sys;
 use std::cell::Cell;
 use std::ptr::NonNull;
@@ -9,6 +9,8 @@ use std::rc::Rc;
 struct BackendInner {
     ptr: NonNull<sys::ggml_backend>,
     is_cpu: bool,
+    /// Index given to [`Backend::gpu`] (a sibling keeps it); None for the CPU.
+    gpu_index: Option<usize>,
     /// The CPU backend's own threadpool. Without one, ggml creates and joins its worker threads
     /// on every graph compute.
     pool: Option<NonNull<sys::ggml_threadpool>>,
@@ -48,8 +50,20 @@ fn flag_set(value: Option<&std::ffi::OsStr>) -> bool {
     value.is_some_and(|v| !v.is_empty() && v != "0")
 }
 
-fn require_gpu() -> bool {
-    flag_set(std::env::var_os("TETRAEDER_REQUIRE_GPU").as_deref())
+/// GPUs that tests must find: `TETRAEDER_REQUIRE_GPUS=<n>`, else 1 when `TETRAEDER_REQUIRE_GPU`
+/// is set, else 0. An unparsable count counts as unset.
+fn required_gpus() -> usize {
+    required_gpus_from(
+        std::env::var("TETRAEDER_REQUIRE_GPUS").ok().as_deref(),
+        flag_set(std::env::var_os("TETRAEDER_REQUIRE_GPU").as_deref()),
+    )
+}
+
+fn required_gpus_from(count: Option<&str>, flag: bool) -> usize {
+    match count.and_then(|v| v.trim().parse::<usize>().ok()) {
+        Some(n) => n,
+        None => usize::from(flag),
+    }
 }
 
 impl Backend {
@@ -86,6 +100,7 @@ impl Backend {
         let inner = BackendInner {
             ptr,
             is_cpu: true,
+            gpu_index: None,
             pool,
             poll: Some(params.poll),
             pauses: Cell::new(0),
@@ -178,6 +193,7 @@ impl Backend {
             inner: Rc::new(BackendInner {
                 ptr,
                 is_cpu: false,
+                gpu_index: Some(index),
                 pool: None,
                 poll: None,
                 pauses: Cell::new(0),
@@ -186,14 +202,27 @@ impl Backend {
     }
 
     /// True when the build has at least one GPU device. Tests use it to skip GPU checks; with
-    /// `TETRAEDER_REQUIRE_GPU=1` (set on GPU boxes) a missing GPU panics instead, so a skip cannot pass for a run.
+    /// `TETRAEDER_REQUIRE_GPU=1` or `TETRAEDER_REQUIRE_GPUS=<n>` (set on GPU boxes) a missing GPU
+    /// panics instead, so a skip cannot pass for a run.
     pub fn gpu_available() -> bool {
-        let present = Backend::gpu_count() > 0;
+        Backend::require_gpus(1)
+    }
+
+    /// For tests that need `n` GPUs: true (run) when `gpu_count() >= n`. When fewer exist it
+    /// panics if `TETRAEDER_REQUIRE_GPUS` (or `TETRAEDER_REQUIRE_GPU` for one) asks for at least
+    /// `n`, else prints `skip: needs n GPUs` and returns false.
+    pub fn require_gpus(n: usize) -> bool {
+        let present = Backend::gpu_count();
+        if present >= n {
+            return true;
+        }
+        let required = required_gpus();
         assert!(
-            present || !require_gpu(),
-            "TETRAEDER_REQUIRE_GPU is set but this build or machine has no GPU device"
+            required < n,
+            "TETRAEDER_REQUIRE_GPUS asks for {required} GPUs but this build or machine has {present}"
         );
-        present
+        eprintln!("skip: needs {n} GPUs");
+        false
     }
 
     pub fn gpu_count() -> usize {
@@ -220,6 +249,34 @@ impl Backend {
         self.inner.is_cpu
     }
 
+    /// CUDA device index of a GPU backend (the index given to [`Backend::gpu`]), None for the CPU.
+    pub fn gpu_index(&self) -> Option<usize> {
+        self.inner.gpu_index
+    }
+
+    /// `ggml_backend_graph_compute_async`: returns once enqueued on a GPU backend (wait with
+    /// [`Backend::synchronize`] or an [`super::Event`]); the CPU backend computes before
+    /// returning. The graph's nodes must have data (from a [`super::Gallocr`] or
+    /// [`super::Sched`]) that stays alive until the compute is done; a node without data is an
+    /// error.
+    pub fn compute_async(&self, g: &Graph<'_>) -> Result<()> {
+        // SAFETY: live graph and nodes; only the data field is read.
+        let unallocated = (0..g.n_nodes()).any(|i| unsafe { (*g.node(i).raw()).data.is_null() });
+        if unallocated {
+            return Err(GgmlError::Invalid(
+                "compute_async needs an allocated graph".into(),
+            ));
+        }
+        // SAFETY: live backend and graph; the nodes have data (checked); keeping that data alive
+        // until the compute finishes is the caller's contract (see above).
+        let st = unsafe { sys::ggml_backend_graph_compute_async(self.raw(), g.ptr.as_ptr()) };
+        if st as i64 == sys::GGML_STATUS_SUCCESS as i64 {
+            Ok(())
+        } else {
+            Err(GgmlError::Compute(st as i32))
+        }
+    }
+
     pub fn synchronize(&self) {
         // SAFETY: live backend.
         unsafe { sys::ggml_backend_synchronize(self.inner.ptr.as_ptr()) }
@@ -243,6 +300,7 @@ impl Backend {
             inner: Rc::new(BackendInner {
                 ptr,
                 is_cpu: false,
+                gpu_index: self.inner.gpu_index,
                 pool: None,
                 poll: None,
                 pauses: Cell::new(0),
@@ -461,6 +519,16 @@ impl Drop for Buffer {
 mod flag_tests {
     use super::flag_set;
     use std::ffi::OsStr;
+
+    #[test]
+    fn required_gpu_count() {
+        use super::required_gpus_from as r;
+        assert_eq!(r(None, false), 0);
+        assert_eq!(r(None, true), 1);
+        assert_eq!(r(Some("2"), false), 2);
+        assert_eq!(r(Some("2"), true), 2);
+        assert_eq!(r(Some("x"), true), 1);
+    }
 
     #[test]
     fn require_gpu_flag_values() {
