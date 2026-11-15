@@ -69,7 +69,7 @@ impl Format {
     ];
 
     /// `(elements per block, bytes per block)`, from the static asserts in ggml-common.h at the
-    /// pin (b11976).
+    /// pin (b12426).
     pub const fn block(self) -> (u64, u64) {
         match self {
             Self::F32 => (1, 4),

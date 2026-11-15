@@ -213,7 +213,7 @@ fn record_golden() {
     let g = Golden {
         schema: golden::SCHEMA,
         model: simple.model,
-        engine: format!("tetraeder@{sha} on libllama b11976"),
+        engine: format!("tetraeder@{sha} on libllama b12426"),
         backend: "cpu".into(),
         top_k: TOP_K,
         cases,
