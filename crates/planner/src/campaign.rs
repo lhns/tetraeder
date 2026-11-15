@@ -696,7 +696,10 @@ mod tests {
             (48_000_000_000, (128, 8)),
         ];
         for (gpu_bytes, want) in cases {
-            let b = Budget { gpu_bytes, ..BUDGET };
+            let b = Budget {
+                gpu_bytes,
+                ..BUDGET
+            };
             let en = enumerate_builder(&b, &l, &WORK);
             let c = build_builder("moe", "org/name:file.gguf", &l, &b, &WORK, &en);
             let large = c
