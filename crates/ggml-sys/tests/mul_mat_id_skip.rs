@@ -73,7 +73,11 @@ fn make_ids(s: &Shape, tokens: usize, neg_pct: usize, rng: &mut Rng) -> Vec<i32>
         for j in 0..s.used as usize {
             let pick = j + rng.below(pool.len() - j);
             pool.swap(j, pick);
-            ids.push(if rng.below(100) < neg_pct { -1 } else { pool[j] });
+            ids.push(if rng.below(100) < neg_pct {
+                -1
+            } else {
+                pool[j]
+            });
         }
     }
     ids
@@ -176,7 +180,11 @@ fn check(got: &[f32], want: &[f32], ids: &[i32], n: usize, tol: f32, what: &str)
                 .iter()
                 .zip(w)
                 .fold(0.0f32, |m, (a, b)| m.max((a - b).abs()));
-            assert!(d <= tol * scale, "{what}: slot {i}: diff {d} > {}", tol * scale);
+            assert!(
+                d <= tol * scale,
+                "{what}: slot {i}: diff {d} > {}",
+                tol * scale
+            );
         }
     }
 }

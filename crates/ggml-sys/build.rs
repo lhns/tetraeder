@@ -49,10 +49,13 @@ fn main() {
     // on this one read DEP_GGML_PATCH_0004 in their build scripts.
     println!("cargo::rustc-check-cfg=cfg(tetraeder_patch_0004)");
     let series = std::fs::read_to_string(manifest.join("../../patches/series")).unwrap_or_default();
-    if series
-        .lines()
-        .any(|l| l.split('#').next().unwrap_or("").trim().starts_with("0004-"))
-    {
+    if series.lines().any(|l| {
+        l.split('#')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .starts_with("0004-")
+    }) {
         println!("cargo::rustc-cfg=tetraeder_patch_0004");
         println!("cargo::metadata=patch_0004=1");
     }
