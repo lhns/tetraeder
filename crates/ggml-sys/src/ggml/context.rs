@@ -790,7 +790,7 @@ impl<'a> Graph<'a> {
             "node range {i0}..{i1} out of {}",
             self.n_nodes()
         );
-        let mut g = ctx.new_graph(i1 - i0);
+        let g = ctx.new_graph(i1 - i0);
         for i in i0..i1 {
             // SAFETY: live graphs; the node is a live tensor of the source graph, and the new
             // graph has room for `i1 - i0` nodes.
