@@ -311,6 +311,25 @@ impl Buffer {
         })
     }
 
+    /// Allocates every tensor of `ctx` in one buffer of a CPU extra buffer type; `backend` is the
+    /// CPU backend that computes on it.
+    pub(super) fn alloc_ctx_tensors_extra(
+        ctx: *mut sys::ggml_context,
+        buft: super::cpu::ExtraBuft,
+        backend: &Backend,
+    ) -> Result<Buffer> {
+        // SAFETY: ctx is a live no_alloc context; extra buffer types are static.
+        let ptr = unsafe { sys::ggml_backend_alloc_ctx_tensors_from_buft(ctx, buft.0) };
+        let ptr = NonNull::new(ptr).ok_or(GgmlError::Alloc {
+            what: "extra buffer type weights",
+            bytes: 0,
+        })?;
+        Ok(Buffer {
+            ptr,
+            _backend: backend.clone(),
+        })
+    }
+
     /// Allocates every tensor of `ctx` in one buffer of `backend`'s device host buffer type, or
     /// of the CPU buffer type when the device has none (see [`super::Context::alloc_host_staging`]).
     pub(super) fn alloc_host_staging(

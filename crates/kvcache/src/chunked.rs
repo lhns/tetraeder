@@ -129,6 +129,10 @@ impl Layout for Chunked {
         self.runs[i].start + pos
     }
 
+    fn run_start(&self, seq: SeqId) -> Option<usize> {
+        self.index(seq).map(|i| self.runs[i].start)
+    }
+
     fn max_row(&self, seq: SeqId, n: usize) -> Option<usize> {
         (n > 0).then(|| self.row(seq, n - 1))
     }

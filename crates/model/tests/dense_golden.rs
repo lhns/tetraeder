@@ -91,6 +91,7 @@ fn cpu_dense_matches_bench_golden() {
     let opts = DenseOptions {
         n_ctx_pool: 512,
         threads: Some(2),
+        extra_bufts: false,
         ..DenseOptions::new(BackendChoice::Cpu { threads: Some(2) })
     };
     let mut m = Qwen3::load(&path, &opts).unwrap();

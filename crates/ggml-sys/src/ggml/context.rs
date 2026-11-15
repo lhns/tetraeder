@@ -63,6 +63,20 @@ impl Context {
         Ok(size)
     }
 
+    /// Like [`Context::alloc_weights`] in a CPU extra buffer type (AMX, repack) for the CPU
+    /// `backend`. Each tensor must then be written whole, in one `set_bytes` at offset 0.
+    pub fn alloc_weights_extra(
+        &self,
+        buft: super::cpu::ExtraBuft,
+        backend: &Backend,
+    ) -> Result<usize> {
+        let buf = Buffer::alloc_ctx_tensors_extra(self.ptr.as_ptr(), buft, backend)?;
+        let size = buf.size();
+        buf.set_usage_weights();
+        *self.buffer.borrow_mut() = Some(buf);
+        Ok(size)
+    }
+
     /// Allocates all tensors created so far in host memory that `backend` can copy from
     /// asynchronously: its device's host buffer type (pinned, `cudaMallocHost` on CUDA), else
     /// plain CPU memory (a CPU backend, or a device without one). Returns the size and whether the
@@ -372,6 +386,12 @@ impl Context {
     pub fn cpy<'a>(&'a self, a: Tensor<'a>, dst: Tensor<'a>) -> Tensor<'a> {
         // SAFETY: see `get_rows`.
         self.t(unsafe { sys::ggml_cpy(self.ptr.as_ptr(), a.raw(), dst.raw()) })
+    }
+
+    /// `a` and `b` joined along dimension `dim` (other dimensions equal); the result is contiguous.
+    pub fn concat<'a>(&'a self, a: Tensor<'a>, b: Tensor<'a>, dim: i32) -> Tensor<'a> {
+        // SAFETY: see `get_rows`.
+        self.t(unsafe { sys::ggml_concat(self.ptr.as_ptr(), a.raw(), b.raw(), dim) })
     }
 
     pub fn cont<'a>(&'a self, a: Tensor<'a>) -> Tensor<'a> {

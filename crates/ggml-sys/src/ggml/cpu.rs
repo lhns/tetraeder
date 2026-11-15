@@ -227,6 +227,81 @@ pub fn resolve_module_dir(
     built.to_path_buf()
 }
 
+/// A CPU buffer type beyond plain memory (AMX tiles, weight repacking): libllama's extra buffer
+/// types (`use_extra_bufts`). Weights stored in one are converted when written, so each must be
+/// written whole, in one call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExtraBuft(pub(crate) sys::ggml_backend_buffer_type_t);
+
+impl ExtraBuft {
+    pub fn name(&self) -> String {
+        // SAFETY: extra buffer types are static for the life of the CPU module.
+        cstr(unsafe { sys::ggml_backend_buft_name(self.0) })
+    }
+
+    /// libllama's `weight_buft_supported` for a matmul weight: whether the CPU device runs
+    /// `mul_mat(w, x)` with `w` (`ty`, `[ne0, ne1]`) in this buffer type and `x` F32 `[ne0, 512]`.
+    pub fn supports_mul_mat(&self, ty: super::Type, ne: [i64; 2]) -> bool {
+        // SAFETY: a no_alloc context of its own for the probe tensors, freed below; the buffer
+        // has size 0 and only marks `w`'s buffer type for the support check, as libllama does.
+        unsafe {
+            let dev = sys::ggml_backend_dev_by_type(sys::GGML_BACKEND_DEVICE_TYPE_CPU);
+            if dev.is_null() {
+                return false;
+            }
+            let params = sys::ggml_init_params {
+                mem_size: sys::ggml_tensor_overhead() * 8,
+                mem_buffer: std::ptr::null_mut(),
+                no_alloc: true,
+            };
+            let ctx = sys::ggml_init(params);
+            if ctx.is_null() {
+                return false;
+            }
+            let w = sys::ggml_new_tensor_2d(ctx, ty.raw(), ne[0], ne[1]);
+            let x = sys::ggml_new_tensor_2d(ctx, super::Type::F32.raw(), ne[0], 512);
+            let op = sys::ggml_mul_mat(ctx, w, x);
+            let buf = sys::ggml_backend_buft_alloc_buffer(self.0, 0);
+            let ok = !buf.is_null() && {
+                (*w).buffer = buf;
+                sys::ggml_backend_dev_supports_op(dev, op)
+            };
+            if !buf.is_null() {
+                sys::ggml_backend_buffer_free(buf);
+            }
+            sys::ggml_free(ctx);
+            ok
+        }
+    }
+}
+
+/// The CPU device's extra buffer types in libllama's order (empty when it has none).
+pub fn extra_bufts() -> Vec<ExtraBuft> {
+    if crate::llama::init_checked().is_err() {
+        return Vec::new();
+    }
+    let Some(p) = cpu_proc(c"ggml_backend_dev_get_extra_bufts") else {
+        return Vec::new();
+    };
+    // SAFETY: the CPU registry returns `ggml_backend_cpu_device_get_extra_buffers_type`, which
+    // returns a static array terminated by a null entry.
+    unsafe {
+        let Some(f) =
+            std::mem::transmute::<*mut c_void, sys::ggml_backend_dev_get_extra_bufts_t>(p)
+        else {
+            return Vec::new();
+        };
+        let dev = sys::ggml_backend_dev_by_type(sys::GGML_BACKEND_DEVICE_TYPE_CPU);
+        let mut it = f(dev);
+        let mut out = Vec::new();
+        while !it.is_null() && !(*it).is_null() {
+            out.push(ExtraBuft(*it));
+            it = it.add(1);
+        }
+        out
+    }
+}
+
 /// Resolves a CPU-registry entry point.
 fn cpu_proc(name: &CStr) -> Option<*mut c_void> {
     // SAFETY: registry lookups only; the CPU device exists once `llama::init()` succeeded.
