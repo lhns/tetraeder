@@ -74,3 +74,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0068](0068-phase5-verdict-rules.md) | Proposed | Phase 5: verdict rules for the multi-GPU exit test |
 | [0069](0069-own-executor-rank-programs.md) | Proposed | Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box |
 | [0070](0070-parallel-shapes-and-their-cost.md) | Proposed | Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them |
+| [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Proposed | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
