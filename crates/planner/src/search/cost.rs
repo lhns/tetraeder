@@ -3,7 +3,7 @@
 
 use super::prep::Prep;
 use tetraeder_costmodel::{GraphMode, OpCost, OpShape, Roofline, allreduce_time};
-use tetraeder_profiler::{Device, DeviceKind, HardwareGraph};
+use tetraeder_profiler::{CollectiveOp, Device, DeviceKind, HardwareGraph};
 
 /// `(flops/s, bytes/s)` of a device; a CPU at all its threads.
 pub(crate) fn rates(dev: &Device) -> Option<(f64, f64)> {
@@ -157,9 +157,15 @@ pub(crate) fn stage_time(p: &Prep, s: &StageShape, m: f64, mode: GraphMode) -> f
             beta = beta.min(b);
         }
         if s.tp > 1 {
-            layer += 2.0 * allreduce_time(g as u32, alpha, beta, p.act * m);
+            // A measured curve of the group wins over the ring prior (ADR 0070).
+            let bytes = p.act * m;
+            let ar = hw
+                .collective_time(CollectiveOp::AllReduce, &s.group, bytes)
+                .unwrap_or_else(|| allreduce_time(g as u32, alpha, beta, bytes));
+            layer += 2.0 * ar;
         }
-        if s.ep > 1 {
+        // Expert parallel with tp = ep (phase 5) combines in the all-reduce above.
+        if s.ep > 1 && s.tp == 1 {
             layer += 2.0 * (alpha + p.act * m / beta);
         }
     }

@@ -67,6 +67,13 @@ pub struct ModelLayout {
     pub head_dim: u32,
     pub n_expert: u32,
     pub n_expert_used: u32,
+    /// Width of the dense FFN (`ffn_gate` output); 0 when unknown (older layout files), see
+    /// [`ModelLayout::ff_dim`].
+    #[serde(default)]
+    pub n_ff: u32,
+    /// Width of one routed expert; 0 when unknown, see [`ModelLayout::ff_exp_dim`].
+    #[serde(default)]
+    pub n_ff_exp: u32,
     pub layers: Vec<LayerBytes>,
     /// `token_embd.weight`; llama.cpp keeps it on the CPU.
     pub embed_bytes: u64,
@@ -80,6 +87,31 @@ pub struct ModelLayout {
 impl ModelLayout {
     pub fn is_moe(&self) -> bool {
         self.n_expert > 0
+    }
+
+    /// Dense FFN width: the recorded one, else estimated from the FFN bytes (three matrices at
+    /// the main format) and rounded to 256. 0 for a model without a dense FFN.
+    pub fn ff_dim(&self) -> u32 {
+        if self.n_ff > 0 || self.is_moe() {
+            return self.n_ff;
+        }
+        let bytes = self.layers.first().map_or(0, |l| l.ffn_bytes);
+        self.estimate_width(bytes.saturating_sub(4 * u64::from(self.n_embd)), 1)
+    }
+
+    /// Routed expert width: the recorded one, else estimated from the expert bytes of a layer.
+    pub fn ff_exp_dim(&self) -> u32 {
+        if self.n_ff_exp > 0 || !self.is_moe() {
+            return self.n_ff_exp;
+        }
+        let bytes = self.layers.first().map_or(0, |l| l.expert_bytes);
+        self.estimate_width(bytes, u64::from(self.n_expert))
+    }
+
+    fn estimate_width(&self, bytes: u64, copies: u64) -> u32 {
+        let bpw = self.main_format().bits_per_weight() / 8.0;
+        let w = bytes as f64 / (3.0 * f64::from(self.n_embd) * bpw * copies.max(1) as f64);
+        ((w / 256.0).round() as u32) * 256
     }
 
     pub fn total_bytes(&self) -> u64 {
@@ -159,6 +191,7 @@ pub fn build_layout(meta: &ModelMeta, tensors: &[TensorRec]) -> Result<ModelLayo
     let mut layers = vec![LayerBytes::default(); meta.n_layer as usize];
     let (mut embed, mut output) = (0u64, 0u64);
     let mut n_vocab = 0u64;
+    let (mut n_ff, mut n_ff_exp) = (0u64, 0u64);
     let mut types: BTreeMap<String, TypeSummary> = BTreeMap::new();
     for t in tensors {
         let s = types.entry(t.ty.clone()).or_default();
@@ -174,6 +207,11 @@ pub fn build_layout(meta: &ModelMeta, tensors: &[TensorRec]) -> Result<ModelLayo
             let l = layers
                 .get_mut(n)
                 .ok_or_else(|| format!("tensor {:?}: layer {n} >= {}", t.name, meta.n_layer))?;
+            if rest.starts_with("ffn_gate.") {
+                n_ff = n_ff.max(t.dims.get(1).copied().unwrap_or(0));
+            } else if rest.starts_with("ffn_gate_exps.") {
+                n_ff_exp = n_ff_exp.max(t.dims.get(1).copied().unwrap_or(0));
+            }
             if rest.contains("_exps") {
                 l.expert_bytes += t.bytes;
             } else if rest.starts_with("attn_") || rest.starts_with("ssm_") {
@@ -207,6 +245,8 @@ pub fn build_layout(meta: &ModelMeta, tensors: &[TensorRec]) -> Result<ModelLayo
         head_dim: meta.head_dim,
         n_expert: meta.n_expert,
         n_expert_used: meta.n_expert_used,
+        n_ff: u32::try_from(n_ff).map_err(|_| "FFN width too large".to_string())?,
+        n_ff_exp: u32::try_from(n_ff_exp).map_err(|_| "expert width too large".to_string())?,
         layers,
         embed_bytes: embed,
         output_bytes: output,
@@ -340,6 +380,21 @@ mod tests {
         assert_eq!(l.layers[0].ffn_bytes, (2048 * 128 + 2048) * 4);
         let total = l.total_bytes() as f64 / 1e9;
         assert!((16.0..20.0).contains(&total), "{total}");
+    }
+
+    #[test]
+    fn ffn_widths_follow_the_gguf_facts_of_adr_0070() {
+        let (d, m) = (dense(), moe());
+        assert_eq!((d.n_ff, d.ff_dim(), d.ff_exp_dim()), (25_600, 25_600, 0));
+        assert_eq!((m.n_ff_exp, m.ff_exp_dim(), m.ff_dim()), (768, 768, 0));
+        // an older layout file has no widths: estimated from the bytes, within a block
+        let old = |l: &ModelLayout| ModelLayout {
+            n_ff: 0,
+            n_ff_exp: 0,
+            ..l.clone()
+        };
+        assert_eq!(old(&d).ff_dim(), 25_600);
+        assert_eq!(old(&m).ff_exp_dim(), 768);
     }
 
     #[test]

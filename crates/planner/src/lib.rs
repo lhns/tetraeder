@@ -32,6 +32,8 @@ pub mod explain;
 pub mod layout;
 pub mod ledger;
 pub mod lower;
+pub mod multi;
+pub mod multi_cli;
 pub mod objective;
 pub mod profile_quality;
 pub mod quality;
@@ -56,6 +58,10 @@ pub use ledger::{
 pub use lower::{
     Applies, Lowered, SERVE_BUILDER_UBATCH, ServeEngine, llama_args, lower, range_regex, recognize,
     to_exit_regime_env, to_llama_bench_args, to_variant_args,
+};
+pub use multi::{
+    MultiCandidate, MultiCandidates, Shape, candidate_for, enumerate_multi, enumerate_multi_with,
+    expected_max_local, features_multi, predict_candidate, topology_of,
 };
 pub use objective::{Choice, SPEED_BAND, Scored, StageTime, choose, pareto_front, resource_cost};
 pub use profile_quality::{

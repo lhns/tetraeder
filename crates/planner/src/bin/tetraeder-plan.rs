@@ -4,7 +4,9 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+use tetraeder_planner::multi_cli;
 use tetraeder_planner::{
     Budget, CandidatesFile, ModelLayout, Workload, campaign, cli, enumerate, enumerate_builder,
 };
@@ -27,37 +29,78 @@ enum Engine {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Enumerate candidates for one GPU plus the CPU.
+    /// Enumerate candidates for one GPU plus the CPU, or with `--multi` the fixed Phase 5 set of
+    /// the GPUs in `--hw` (ADR 0068, 0070).
     Candidates {
         /// Model layout JSON (`tetraeder plan layout`).
         #[arg(long)]
         layout: PathBuf,
         /// Free VRAM for the engine, bytes.
-        #[arg(long)]
-        gpu_bytes: u64,
-        #[arg(long)]
-        ram_bytes: u64,
+        #[arg(long, required_unless_present = "multi")]
+        gpu_bytes: Option<u64>,
+        #[arg(long, required_unless_present = "multi")]
+        ram_bytes: Option<u64>,
         /// CPU thread quota.
-        #[arg(long)]
-        threads: u32,
+        #[arg(long, required_unless_present = "multi")]
+        threads: Option<u32>,
         #[arg(long, default_value_t = 2048)]
         prompt: u32,
         #[arg(long, default_value_t = 128)]
         r#gen: u32,
         /// Model key in the spec.
-        #[arg(long)]
-        model_key: String,
+        #[arg(long, required_unless_present = "multi")]
+        model_key: Option<String>,
         /// `org/name:file.gguf`.
-        #[arg(long)]
-        hf: String,
+        #[arg(long, required_unless_present = "multi")]
+        hf: Option<String>,
         /// Engine the candidates are for.
         #[arg(long, value_enum, default_value_t = Engine::LlamaBench)]
         engine: Engine,
-        #[arg(long)]
-        out_candidates: PathBuf,
+        #[arg(long, required_unless_present = "multi")]
+        out_candidates: Option<PathBuf>,
         /// Bench spec; required for llama-bench, ignored for the builder.
         #[arg(long)]
         out_spec: Option<PathBuf>,
+        /// The multi-GPU set: single, layer split, tensor, expert and tensor-times-pipeline
+        /// parallel (needs `--hw` and `--out`).
+        #[arg(long, requires_all = ["hw", "out"])]
+        multi: bool,
+        /// Hardware graph (`hw.json`, or TOML) of the box.
+        #[arg(long)]
+        hw: Option<PathBuf>,
+        /// `candidates.json` of `--multi`.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Directory for `<model>-<id>.toml`, one plan per candidate.
+        #[arg(long)]
+        plans_dir: Option<PathBuf>,
+    },
+    /// Fit the cost model to the anchor runs of a Phase 5 session (ADR 0068): `c_range` and
+    /// `c_step` included. Reads `anchors-<model>-r<k>.json` and `<model>.json` layouts.
+    Calibrate {
+        #[arg(long)]
+        hw: PathBuf,
+        #[arg(long)]
+        layout_dir: PathBuf,
+        #[arg(long)]
+        anchors: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Predicted `pp_tps`, `tg_tps` and `T` of the candidates of `candidates --multi`, written
+    /// before the first candidate runs.
+    Predict {
+        #[arg(long)]
+        hw: PathBuf,
+        #[arg(long)]
+        layout: PathBuf,
+        /// `calib.json` of `calibrate`; without it the graph itself is used.
+        #[arg(long)]
+        calib: Option<PathBuf>,
+        #[arg(long)]
+        candidates: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
     },
     /// The `candidates.json` of a ledger directory (ADR 0056): the builder anchors plus the
     /// session's builder stages as candidates with their own request.
@@ -335,6 +378,92 @@ fn main() -> Result<()> {
             print!("{out}");
             Ok(())
         }
+        Command::Calibrate {
+            hw,
+            layout_dir,
+            anchors,
+            out,
+        } => {
+            let hw = multi_cli::parse_hw(&read(&hw)?).map_err(anyhow::Error::msg)?;
+            let mut by_model: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for e in std::fs::read_dir(&anchors).with_context(|| anchors.display().to_string())? {
+                let path = e?.path();
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if let Some(model) = multi_cli::anchor_model(name) {
+                    by_model.entry(model).or_default().push(read(&path)?);
+                }
+            }
+            anyhow::ensure!(
+                !by_model.is_empty(),
+                "no anchors-<model>-r<k>.json in {}",
+                anchors.display()
+            );
+            let mut models = Vec::new();
+            for (model, files) in by_model {
+                let lp = layout_dir.join(format!("{model}.json"));
+                let layout = multi_cli::parse_layout(&read(&lp)?).map_err(anyhow::Error::msg)?;
+                models.push((layout, files));
+            }
+            let fit = multi_cli::calibrate(&hw, &models).map_err(anyhow::Error::msg)?;
+            std::fs::write(&out, serde_json::to_string_pretty(&fit)?)
+                .with_context(|| format!("write {}", out.display()))?;
+            println!(
+                "{} anchors, band {:.3} -> {}",
+                fit.anchors.len(),
+                fit.band,
+                out.display()
+            );
+            Ok(())
+        }
+        Command::Predict {
+            hw,
+            layout,
+            calib,
+            candidates,
+            out,
+        } => {
+            let hw_text = read(&hw)?;
+            let graph = multi_cli::parse_hw(&hw_text).map_err(anyhow::Error::msg)?;
+            let layout = multi_cli::parse_layout(&read(&layout)?).map_err(anyhow::Error::msg)?;
+            let cands: multi_cli::MultiFile =
+                serde_json::from_str(&read(&candidates)?).context("parse candidates")?;
+            let (calibrated, calib_sha) = match calib {
+                Some(p) => {
+                    let text = read(&p)?;
+                    let c: multi_cli::CalibFile =
+                        serde_json::from_str(&text).context("parse calib")?;
+                    (c.hw, Some(multi_cli::sha256_hex(text.as_bytes())))
+                }
+                None => (graph, None),
+            };
+            let commit = std::env::var("TETRAEDER_GIT_COMMIT")
+                .ok()
+                .unwrap_or_else(|| {
+                    std::process::Command::new("git")
+                        .args(["rev-parse", "HEAD"])
+                        .output()
+                        .ok()
+                        .and_then(|o| String::from_utf8(o.stdout).ok())
+                        .map_or_else(|| "unknown".to_string(), |s| s.trim().to_string())
+                });
+            let file = multi_cli::predict_multi(
+                &calibrated,
+                &layout,
+                &cands,
+                (multi_cli::sha256_hex(hw_text.as_bytes()), calib_sha),
+                &commit,
+            )
+            .map_err(anyhow::Error::msg)?;
+            std::fs::write(&out, serde_json::to_string_pretty(&file)?)
+                .with_context(|| format!("write {}", out.display()))?;
+            for r in &file.candidates {
+                println!(
+                    "{:<10} pp {:8.1} tg {:7.2} T {:7.2} s",
+                    r.id, r.pp_tps, r.tg_tps, r.t_s
+                );
+            }
+            Ok(())
+        }
         Command::Candidates {
             layout,
             gpu_bytes,
@@ -347,7 +476,44 @@ fn main() -> Result<()> {
             engine,
             out_candidates,
             out_spec,
+            multi,
+            hw,
+            out,
+            plans_dir,
         } => {
+            if multi {
+                let (Some(hw), Some(out)) = (hw, out) else {
+                    anyhow::bail!("--multi needs --hw and --out");
+                };
+                let graph = multi_cli::parse_hw(&read(&hw)?).map_err(anyhow::Error::msg)?;
+                let layout =
+                    multi_cli::parse_layout(&read(&layout)?).map_err(anyhow::Error::msg)?;
+                let file = multi_cli::candidates_multi(&graph, &layout);
+                std::fs::write(&out, serde_json::to_string_pretty(&file)?)
+                    .with_context(|| format!("write {}", out.display()))?;
+                if let Some(dir) = plans_dir {
+                    std::fs::create_dir_all(&dir)?;
+                    for c in &file.candidates {
+                        let p = dir.join(format!("{}-{}.toml", file.model, c.id));
+                        std::fs::write(&p, c.plan.to_toml()?)
+                            .with_context(|| format!("write {}", p.display()))?;
+                    }
+                }
+                for c in &file.candidates {
+                    println!("{}: {}", c.id, c.notes.join("; "));
+                }
+                for p in &file.pruned {
+                    println!("pruned {}: {}", p.id, p.reason);
+                }
+                return Ok(());
+            }
+            let (gpu_bytes, ram_bytes, threads) = (
+                gpu_bytes.context("--gpu-bytes")?,
+                ram_bytes.context("--ram-bytes")?,
+                threads.context("--threads")?,
+            );
+            let (model_key, hf) = (model_key.context("--model-key")?, hf.context("--hf")?);
+            let out_candidates = out_candidates.context("--out-candidates")?;
             let text = std::fs::read_to_string(&layout)
                 .with_context(|| format!("read {}", layout.display()))?;
             let layout: ModelLayout = serde_json::from_str(&text).context("parse layout")?;
@@ -394,5 +560,16 @@ fn main() -> Result<()> {
             );
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
+
+    #[test]
+    fn the_command_line_is_consistent() {
+        Cli::command().debug_assert();
     }
 }

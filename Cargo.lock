@@ -2214,6 +2214,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
  "tetraeder-bench",
  "tetraeder-costmodel",
  "tetraeder-plan",
