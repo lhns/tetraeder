@@ -28,6 +28,9 @@ pub struct Capabilities {
     pub phase_budgets: bool,
     /// Tensor and expert parallel degrees above 1.
     pub tp_ep: bool,
+    /// Stages of more than one GPU may compute on a CPU, home experts on RAM or NVMe or use
+    /// slot caches (ADR 0069: not in Phase 5, whose executor runs GPU-resident stages).
+    pub multi_gpu_cpu_compute: bool,
     /// More than one replica and devices with tier `Remote`.
     pub multi_node: bool,
     /// Experts of one layer and role in different formats (needs slot tensors per type,
@@ -48,6 +51,7 @@ impl Phase {
             },
             phase_budgets: p >= 2,
             tp_ep: p >= 5,
+            multi_gpu_cpu_compute: !(5..=6).contains(&p),
             multi_node: p >= 6,
             per_expert_formats: false,
         }
