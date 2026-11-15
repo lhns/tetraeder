@@ -5,7 +5,7 @@ name: loop-bench
 # interleaved ABC then CBA. Never gates a PR; ratios are in the log and the loop-bench artifact.
 on:
   push:
-    branches: [main, track-c4gap]
+    branches: [main]
     paths:
       - crates/scheduler/**
       - crates/engine/**
