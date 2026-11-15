@@ -220,3 +220,12 @@ Differences found while building it; the decisions above stand.
 - The 30B counts on `--engine moe` by default (`Q30B_ENGINE`).
 - `MoeBackend` now has the CPU decoder/prompt split. A resident MoE 4-token decode step is the whole-step graph (`build_step`, ADR 0036) on the first scheduler, keyed by (tokens, n_kv, outputs); `op_offload_min_tokens` (ADR 0044) applies only to streamed steps (segments), not to it. Rollback of a failed step restores length and reservation of every input; a reservation that cannot be put back is an error, not silent.
 - loop-bench passes `-fa on` to llama-server (tetraeder always runs flash attention) and measures `--engine moe` on the tiny synthetic MoE fixture, where steps are so short that only the loop is measured.
+
+## Addendum: review fixes after the c4gap changes (2026-11-15)
+
+- `KvPool::seq_cp` accepts a destination that holds no positions but already reserves rows. `Worker::place` reserves the target before the copy, and the pool used to refuse that ("not empty"), so a busy-sequence copy never worked on the own pools (the FakeKv double accepted it). One rule in the pool serves the dense and the MoE backend; the destination keeps at least its reservation.
+- A failed busy copy no longer means prefilling from scratch: the id is released and the request is placed again without the busy source, so it takes the idle sequence or RAM entry it would have had.
+- `DenseBackend::decode` snapshots (length, reservation) of every input before the step and puts all of them back on any failure, also those of earlier groups that did not grow. `KvPool::rollback` only shrinks, so a rollback cannot fail on a fragmented pool (the old shrink-then-regrow could). MoE gets the same from its own change.
+- `LlamaBackend` rolls back with `Engine::seq_truncate_cells`, which cuts in libllama even when the length already equals the target. `decode_seqs` already cleaned the failed call's cells, so this guards the backend path rather than fixing an observed orphan.
+- `serve`: an explicit `--ngl` above 0 with no GPU is an error for the own builders; the default (`-1`) falls back to the CPU with a `tracing::warn!`.
+- `--ctx` of the own builders is the shared pool's rows across all sequences, not a context per slot (llama.cpp's server splits it); one request can use all of it.

@@ -41,7 +41,9 @@ pub struct ServeArgs {
     pub place: PlacementArgs,
     #[arg(long, value_enum, default_value = "auto")]
     pub engine: EngineKind,
-    /// Context size in tokens (the KV cache is allocated for all of it).
+    /// Context size in tokens (the KV cache is allocated for all of it). For the own dense and
+    /// MoE builders it is one pool of rows shared by all sequences, not a context per slot as
+    /// in llama.cpp's server: one request can use all of it.
     #[arg(long, default_value_t = 32768)]
     pub ctx: u32,
     #[arg(long, default_value = "127.0.0.1")]
@@ -341,7 +343,7 @@ fn build_engine(
         if moe {
             tetraeder_scheduler::load_moe(&a.path, &a.moe_options(tel)?)
         } else if dense {
-            tetraeder_scheduler::load_dense(&a.path, &a.dense_options(tel))
+            tetraeder_scheduler::load_dense(&a.path, &a.dense_options(tel)?)
         } else {
             tetraeder_scheduler::load_llama(&a.path, &a.place.placement(), &a.llama, Some(tel))
         }
@@ -418,41 +420,48 @@ struct LoadArgs {
 }
 
 /// Where the own builders run: `--ngl 0` or a machine without a GPU means the CPU, anything else
-/// GPU `--main-gpu`. As libllama: the default `--ngl -1` (all layers) falls back to the CPU when
-/// there is no GPU instead of failing.
-fn builder_backend(place: &PlacementArgs, gpus: usize) -> BackendChoice {
+/// GPU `--main-gpu`. As libllama, the default `--ngl -1` (all layers) falls back to the CPU with a
+/// warning when there is no GPU. An explicit `--ngl` above 0 does not: the user asked for the
+/// GPU, and a broken CUDA init must not silently run a large model on the CPU.
+fn builder_backend(place: &PlacementArgs, gpus: usize) -> Result<BackendChoice, String> {
     if place.ngl == 0 || gpus == 0 {
+        if place.ngl > 0 {
+            return Err(format!(
+                "--ngl {} asks for the GPU but none was found (use --ngl 0 for the CPU)",
+                place.ngl
+            ));
+        }
         if place.ngl != 0 {
-            eprintln!(
-                "warning: no GPU found, --ngl {} is ignored: running on the CPU",
+            tracing::warn!(
+                "no GPU found, --ngl {} is ignored: running on the CPU",
                 place.ngl
             );
         }
-        BackendChoice::Cpu {
+        Ok(BackendChoice::Cpu {
             threads: place.threads.and_then(|t| usize::try_from(t).ok()),
-        }
+        })
     } else {
-        BackendChoice::Gpu {
+        Ok(BackendChoice::Gpu {
             index: usize::try_from(place.main_gpu).unwrap_or(0),
-        }
+        })
     }
 }
 
 impl LoadArgs {
     /// The dense builder's KV pool is `--ctx` rows shared by `--parallel` sequences.
-    fn dense_options(&self, telemetry: Arc<Telemetry>) -> DenseOptions {
-        let backend = builder_backend(&self.place, Backend::gpu_count());
+    fn dense_options(&self, telemetry: Arc<Telemetry>) -> Result<DenseOptions, String> {
+        let backend = builder_backend(&self.place, Backend::gpu_count())?;
         let mut o = DenseOptions::new(backend);
         o.threads = self.place.threads;
         o.n_ctx_pool = self.ctx as usize;
         o.n_seq_max = self.parallel.max(1);
         o.telemetry = Some(telemetry);
-        o
+        Ok(o)
     }
 
     /// Placed like the dense builder ([`builder_backend`]).
     fn moe_options(&self, telemetry: Arc<Telemetry>) -> Result<LoadOptions, String> {
-        let backend = builder_backend(&self.place, Backend::gpu_count());
+        let backend = builder_backend(&self.place, Backend::gpu_count())?;
         let mut o = LoadOptions::new(backend);
         o.cpu_threads = self.place.threads.and_then(|t| usize::try_from(t).ok());
         o.n_ctx = self.ctx as usize;
@@ -534,11 +543,16 @@ mod tests {
         let gpu = |index| BackendChoice::Gpu { index };
         let place = |extra: &[&str]| parse(&[&["-t", "4"], extra].concat()).place;
         // The default --ngl -1 on a machine without a GPU, as libllama does.
-        assert_eq!(builder_backend(&place(&[]), 0), cpu);
-        assert_eq!(builder_backend(&place(&["--ngl", "99"]), 0), cpu);
-        assert_eq!(builder_backend(&place(&[]), 1), gpu(0));
-        assert_eq!(builder_backend(&place(&["--main-gpu", "1"]), 2), gpu(1));
-        assert_eq!(builder_backend(&place(&["--ngl", "0"]), 1), cpu);
+        let backend = |extra: &[&str], gpus| builder_backend(&place(extra), gpus).unwrap();
+        assert_eq!(backend(&[], 0), cpu);
+        assert_eq!(backend(&["--ngl", "-1"], 0), cpu);
+        assert_eq!(backend(&[], 1), gpu(0));
+        assert_eq!(backend(&["--main-gpu", "1"], 2), gpu(1));
+        assert_eq!(backend(&["--ngl", "0"], 1), cpu);
+        assert_eq!(backend(&["--ngl", "0"], 0), cpu);
+        // An explicit --ngl above 0 without a GPU is an error, not a CPU run.
+        let err = builder_backend(&place(&["--ngl", "99"]), 0).unwrap_err();
+        assert!(err.contains("--ngl 99"), "{err}");
     }
 
     // hardware: none

@@ -429,6 +429,15 @@ impl Qwen3 {
         Ok(())
     }
 
+    /// Undoes a failed step: `seq` goes back to `len` positions and at most `reserved` rows. It
+    /// never grows, so unlike `seq_rm` followed by a reserve it cannot fail on a fragmented pool.
+    pub fn rollback(&mut self, seq: u32, len: usize, reserved: usize) -> Result<()> {
+        self.check_seq(seq)?;
+        self.pool.rollback(seq, len, reserved);
+        self.report_memory();
+        Ok(())
+    }
+
     /// `dst` (empty) becomes the first `n` positions of `src`. `Ok(false)` when the pool has no
     /// rows for it (nothing changed).
     pub fn try_seq_cp(&mut self, src: u32, dst: u32, n: usize) -> Result<bool> {

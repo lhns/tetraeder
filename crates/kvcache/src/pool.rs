@@ -95,9 +95,26 @@ impl KvPool {
         self.layout.shrink(seq, keep);
     }
 
-    /// `dst` must be empty: reserves n rows for it and returns the copies src -> dst.
+    /// Undoes a failed step for `seq`: the length goes back to `len` (when above it) and the
+    /// reservation to `reserved` rows (when above it, never below the positions kept). It never
+    /// grows anything, so it cannot fail; a reservation that moved stays where it moved.
+    pub fn rollback(&mut self, seq: SeqId, len: usize, reserved: usize) {
+        if let Some(l) = self.lens.get_mut(&seq) {
+            *l = (*l).min(len);
+            if *l == 0 {
+                self.lens.remove(&seq);
+            }
+        }
+        let keep = reserved.max(self.seq_len(seq));
+        if self.layout.reserved(seq) > keep {
+            self.layout.shrink(seq, keep);
+        }
+    }
+
+    /// `dst` must hold no positions (it may already reserve rows, as a scheduler does before the
+    /// copy): reserves up to n rows for it and returns the copies src -> dst.
     pub fn seq_cp(&mut self, src: SeqId, dst: SeqId, n: usize) -> Result<Vec<RowCopy>, KvError> {
-        if src == dst || self.seq_len(dst) > 0 || self.layout.reserved(dst) > 0 {
+        if src == dst || self.seq_len(dst) > 0 {
             return Err(KvError::Invalid(format!("sequence {dst} is not empty")));
         }
         if !self.lens.contains_key(&src) {

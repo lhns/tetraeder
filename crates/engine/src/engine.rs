@@ -294,6 +294,20 @@ impl Engine {
         Ok(())
     }
 
+    /// Rollback: drops every cell of `seq` from position `len` on in libllama and sets the length
+    /// to `len`, also when `seq_len` already says `len` (a failed step may have written cells
+    /// the length does not count, which [`Engine::seq_rm`] would leave).
+    pub fn seq_truncate_cells(&mut self, seq: i32, len: usize) -> Result<()> {
+        let i = self.seq_index(seq)?;
+        if !self.ctx.memory_seq_rm(seq, len as i32, -1) {
+            return Err(EngineError::InvalidRequest(format!(
+                "the KV cache cannot drop positions {len}.. of sequence {seq}"
+            )));
+        }
+        self.lens[i] = len;
+        Ok(())
+    }
+
     /// `dst`, which must be empty, becomes the first `n` positions of `src` (libllama shares the
     /// cells, no data moves).
     pub fn seq_cp(&mut self, src: i32, dst: i32, n: usize) -> Result<()> {

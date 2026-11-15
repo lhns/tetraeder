@@ -445,6 +445,42 @@ fn a_full_pool_fails_the_step_and_leaves_every_length() {
     close(&got, control.output_logits(0).unwrap());
 }
 
+/// A step that fails on a later ubatch (the first one fits the pool, the second does not) leaves
+/// no cells of the first behind: the sequence takes a decode at its old length.
+#[test]
+fn a_step_failing_on_a_later_ubatch_leaves_no_orphan_cells() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/tiny-qwen3moe-f16.gguf");
+    let cfg = ContextConfig {
+        n_ctx: 256,
+        n_batch: 256,
+        n_ubatch: 64,
+        threads: Some(2),
+        n_seq_max: 2,
+        ..ContextConfig::default()
+    };
+    let mut e = Engine::load(path, &Placement::cpu(), &cfg, None).unwrap();
+    let n_ctx = e.n_ctx();
+    let (a, b) = (prompt(12, n_ctx - 126), prompt(13, 200));
+    let step = |e: &mut Engine, seq, toks: &[i32]| {
+        e.decode_seqs(&[SeqEval {
+            seq,
+            tokens: toks,
+            all_logits: false,
+        }])
+    };
+    step(&mut e, 0, &a).unwrap();
+    // 126 rows are free: the first ubatch of 64 fits, the second does not.
+    assert!(step(&mut e, 1, &b).is_err());
+    assert_eq!(e.seq_len(1), 0);
+    step(&mut e, 1, &b[..50]).unwrap();
+    assert_eq!(e.seq_len(1), 50);
+    // The rollback primitive cuts at the length it is given, also when that is the length held.
+    e.seq_truncate_cells(1, 50).unwrap();
+    step(&mut e, 1, &b[50..60]).unwrap();
+    assert_eq!(e.seq_len(1), 60);
+}
+
 /// A restore that libllama rejects partway can leave cells the length does not count; clearing
 /// the sequence must drop them even though `seq_len` is 0, so a decode at position 0 works.
 #[test]

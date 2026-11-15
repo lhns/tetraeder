@@ -346,7 +346,9 @@ impl BatchBackend for LlamaBackend {
         }
         if let Err(e) = self.run(inputs) {
             for (&i, &(len, res)) in seen.iter().zip(&before) {
-                let _ = self.engine.seq_rm(i as i32, len);
+                // Unconditional: cells a failed step wrote past `len` must go even when the
+                // length says nothing is there.
+                let _ = self.engine.seq_truncate_cells(i as i32, len);
                 self.reserved[i] = res;
             }
             self.logits.clear();
