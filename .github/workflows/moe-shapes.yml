@@ -4,7 +4,7 @@ name: moe-shapes
 # (crates/scheduler/tests/moe_shapes.rs), CPU only. Prints the SHAPE lines; never gates a PR.
 on:
   push:
-    branches: [main, track-moe-followups]
+    branches: [main]
     paths:
       - crates/model/src/qwen3moe.rs
       - crates/scheduler/src/backend.rs
