@@ -105,6 +105,13 @@ Also: document that decode-profile `eval_s` is shared step wall time and `gpu_se
 - FP8 KV baseline: llama-server at b12274 aborts (`cache_k_l0 (view)` in CUDA0 cannot run SET_ROWS with f8_e4m3 K and V): the FP8 cache is not usable on CUDA at the baseline pin. Item 9 is parked until a baseline pin where CUDA writes FP8 KV; the builder's `kvq8-slots` ran (2.75 tok/s, 0.97 of main-overlap) but has nothing to pair with.
 - Cost 5.2 USD, 4.3 of it model traffic at 0.029 USD per GB: drivers must rank offers by box plus traffic (`docs/box-driver.md` rule 2).
 
+### Third review (2026-11-15, `2c2a43f..0cf081e`): no correctness bug; follow-ups, CPU only, not blocking D2
+1. MoE whole-step graph cache holds one entry, and the CPU split alternates two shapes (decoders, then a prompt chunk), so mixed CPU steps rebuild the graph each time (`qwen3moe.rs` step reuse): a two-slot cache, or measure the build cost.
+2. `hot_pending` fires on the first model call with more than one token; with the split that can be a decoder group, so the CPU hot set can come from decode routing instead of a prefill.
+3. `MoeBackend::restore` still shrinks and regrows; use a `Qwen3Moe::rollback` over `KvPool::rollback` as Dense does.
+4. Tests: a failed step whose reservation moved the sequence, rolled back, for Dense and Moe; the busy-copy fallback reaching an idle or RAM source and `no_busy` clearing; a prompt chunk before a decoder in input order.
+5. Small: a stray `no_busy` can skip busy reuse once for an unrelated request; `KvPool::blocks()` omits rolled-back reserved-empty sequences from the `reserved` metric.
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 
