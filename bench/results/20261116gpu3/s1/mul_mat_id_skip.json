@@ -1,0 +1,1 @@
+{"test":"mul_mat_id_skip","gpu":"CUDA0","tokens":512,"type":"q4_K","median_ms":{"neg_0":0.6135,"neg_50":0.6167,"neg_90":0.6186}}
