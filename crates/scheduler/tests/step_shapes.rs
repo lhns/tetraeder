@@ -14,9 +14,9 @@
 
 use std::path::PathBuf;
 use std::time::Instant;
-use tetraeder_engine::{ContextConfig, FlashAttn, Placement};
+use tetraeder_engine::{ContextConfig, Engine, FlashAttn, Placement};
 use tetraeder_model::{BackendChoice, DenseOptions};
-use tetraeder_scheduler::{BatchBackend, SeqId, SeqInput, load_dense, load_llama};
+use tetraeder_scheduler::{BatchBackend, LlamaBackend, SeqId, SeqInput, load_dense, load_llama};
 
 const SEQS: u32 = 4;
 const CTX: usize = 8192;
@@ -127,7 +127,20 @@ fn shapes(name: &str, b: &mut dyn BatchBackend) {
         }])
         .unwrap();
     };
-    run("decode4", &four, vec![dec(4)]);
+    // Eight steps per sample: decode steps are short.
+    run("decode4x8", &four, vec![dec(4); 8]);
+    let one_alone = |b: &mut dyn BatchBackend| {
+        reset(b);
+        b.seq_reserve(3, RESIDENT + 64).unwrap();
+        b.decode(&[SeqInput {
+            seq: 3,
+            tokens: &toks(5, RESIDENT),
+            all_logits: false,
+        }])
+        .unwrap();
+    };
+    run("decode1x8_alone", &one_alone, vec![vec![(3, vec![300])]; 8]);
+    run("decode1x8_resident", &four, vec![vec![(3, vec![300])]; 8]);
 }
 
 // hardware: cpu_model
@@ -160,6 +173,30 @@ fn step_shapes() {
     .expect("libllama loads");
     shapes("llama", llama.backend.as_mut());
     drop(llama);
+    // llama-server's layout: one KV stream per sequence (not what serve uses, ADR 0065).
+    let engine = Engine::load(
+        &path,
+        &Placement {
+            n_gpu_layers: 0,
+            ..Placement::default()
+        },
+        &ContextConfig {
+            n_ctx: CTX as u32,
+            n_batch: 512,
+            n_ubatch: 512,
+            threads: Some(threads as i32),
+            threads_batch: None,
+            flash_attn: FlashAttn::Auto,
+            op_offload: true,
+            n_seq_max: SEQS,
+            kv_unified: false,
+        },
+        None,
+    )
+    .expect("libllama loads");
+    let mut streams = LlamaBackend::new(engine, false);
+    shapes("llama_streams", &mut streams);
+    drop(streams);
     let o = DenseOptions {
         n_ctx_pool: CTX,
         n_seq_max: SEQS as usize,

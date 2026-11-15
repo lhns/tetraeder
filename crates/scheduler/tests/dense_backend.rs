@@ -72,6 +72,42 @@ fn cpu_batch_equals_alone() {
     assert_eq!(lens(&batch), vec![3, 5, 7, 9]);
 }
 
+/// hardware: cpu. A step mixing decoders and a prompt chunk (run as separate model calls on the
+/// CPU) gives the logits and lengths of each sequence decoded alone.
+#[test]
+fn cpu_mixed_step_equals_alone() {
+    let hist: Vec<Vec<i32>> = (0..3).map(|s| tokens(s, 5 + s)).collect();
+    let next: Vec<Vec<i32>> = vec![vec![11], tokens(7, 3), vec![13], tokens(9, 100)];
+    let mut batch = backend(2048, 4);
+    for (s, h) in hist.iter().enumerate() {
+        batch.decode(&[input(s as u32, h, false)]).unwrap();
+    }
+    let inputs: Vec<_> = next
+        .iter()
+        .enumerate()
+        .map(|(s, t)| input(s as u32, t, s == 1))
+        .collect();
+    let out = batch.decode(&inputs).unwrap();
+    let got: Vec<Vec<f32>> = (0..4).map(|i| out.rows(i).to_vec()).collect();
+    for (s, t) in next.iter().enumerate() {
+        let mut one = backend(256, 1);
+        if let Some(h) = hist.get(s) {
+            one.decode(&[input(0, h, false)]).unwrap();
+        }
+        let out = one.decode(&[input(0, t, s == 1)]).unwrap();
+        assert_eq!(out.rows(0).len(), got[s].len());
+        let worst = out
+            .rows(0)
+            .iter()
+            .zip(&got[s])
+            .map(|(a, b)| (a - b).abs())
+            .fold(0f32, f32::max);
+        let top = out.rows(0).iter().fold(0f32, |m, x| m.max(x.abs()));
+        assert!(worst <= 1e-4f32.max(1e-3 * top), "sequence {s}: {worst:e}");
+    }
+    assert_eq!(lens(&batch), vec![6, 9, 8, 100]);
+}
+
 /// hardware: cpu. `KvFull` names the shortfall and changes nothing, also when an earlier input of
 /// the same decode could be served.
 #[test]

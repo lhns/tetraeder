@@ -1,7 +1,7 @@
 //! The Qwen3 dense builder as a [`BatchBackend`] (ADR 0065, 0066): sequences over the builder's
 //! KV pool, decoded together in one step.
 
-use crate::backend::{BackendError, BatchBackend, Outputs, SeqId, SeqInput};
+use crate::backend::{BackendError, BatchBackend, Outputs, SeqId, SeqInput, step_groups};
 use std::ops::Range;
 use tetraeder_model::{ModelError, Qwen3, SeqEval};
 
@@ -87,7 +87,35 @@ impl DenseBackend {
                 all_logits: i.all_logits,
             })
             .collect();
-        self.model.decode(&evals, &mut self.logits).map_err(failed)
+        let groups = step_groups(inputs, self.on_gpu);
+        if groups.len() == 1 {
+            return self.model.decode(&evals, &mut self.logits).map_err(failed);
+        }
+        // One model call per group; a failure rolls the earlier groups back to their lengths.
+        let lens: Vec<usize> = inputs
+            .iter()
+            .map(|i| self.model.pool().seq_len(i.seq))
+            .collect();
+        let mut spans = Vec::with_capacity(inputs.len());
+        let mut rows = Vec::new();
+        for (g, range) in groups.iter().enumerate() {
+            match self.model.decode(&evals[range.clone()], &mut rows) {
+                Ok(s) => {
+                    let base = self.logits.len() / self.model.n_vocab().max(1);
+                    spans.extend(s.into_iter().map(|r| r.start + base..r.end + base));
+                    self.logits.extend_from_slice(&rows);
+                }
+                Err(e) => {
+                    for done in &groups[..g] {
+                        for k in done.clone() {
+                            let _ = self.model.seq_rm(inputs[k].seq, lens[k]);
+                        }
+                    }
+                    return Err(failed(e));
+                }
+            }
+        }
+        Ok(spans)
     }
 }
 

@@ -157,6 +157,28 @@ pub trait BatchBackend {
     }
 }
 
+/// Inputs shorter than this are decoders (1 token, or 1 + drafts); longer ones are prompt chunks.
+/// It is ggml's CPU flash-attention query tile (`GGML_FA_TILE_Q`).
+pub(crate) const SHORT_INPUT: usize = 64;
+
+/// The input ranges a step runs as, in input order. On the CPU, decoders and prompt chunks go in
+/// separate model calls: in one call, a query tile holding both runs every decoder's history
+/// through the tiled attention kernel (mixing 3 decoders into a 402-token chunk took 130 ms more
+/// than running them apart on Qwen3-0.6B, loop-bench step shapes). On a GPU one call.
+pub(crate) fn step_groups(inputs: &[SeqInput<'_>], on_gpu: bool) -> Vec<Range<usize>> {
+    let mut out: Vec<Range<usize>> = Vec::new();
+    for (i, inp) in inputs.iter().enumerate() {
+        let short = inp.tokens.len() < SHORT_INPUT;
+        match out.last_mut() {
+            Some(r) if on_gpu || (inputs[r.start].tokens.len() < SHORT_INPUT) == short => {
+                r.end = i + 1;
+            }
+            _ => out.push(i..i + 1),
+        }
+    }
+    out
+}
+
 /// [`BatchBackend`] over the one-sequence [`Backend`] (until C4 implements the trait natively).
 /// Only sequence 0 exists. The pool is the context: `n_ctx` rows, reserved by sequence 0.
 /// `seq_cp` always fails: a copy needs a second, empty sequence and there is none.
@@ -595,7 +617,15 @@ impl LlamaBackend {
         let mut used = 0;
         let mut next_row = 0;
         let mut spans = Vec::with_capacity(inputs.len());
+        let starts: Vec<usize> = step_groups(inputs, self.on_gpu)
+            .into_iter()
+            .map(|r| r.start)
+            .collect();
         for (n_in, inp) in inputs.iter().enumerate() {
+            if n_in > 0 && starts.contains(&n_in) {
+                self.flush(&mut group, &mut pieces)?;
+                used = 0;
+            }
             let rows = if inp.all_logits { inp.tokens.len() } else { 1 };
             spans.push(next_row..next_row + rows);
             next_row += rows;
@@ -745,5 +775,36 @@ impl Backend for MoeBackend {
             ("streamer_s", p.streamer.as_secs_f64()),
             ("total_s", p.total.as_secs_f64()),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn groups(lens: &[usize], on_gpu: bool) -> Vec<Range<usize>> {
+        let toks = vec![0; lens.iter().copied().max().unwrap_or(0)];
+        let inputs: Vec<SeqInput<'_>> = lens
+            .iter()
+            .enumerate()
+            .map(|(i, &n)| SeqInput {
+                seq: i as SeqId,
+                tokens: &toks[..n],
+                all_logits: false,
+            })
+            .collect();
+        step_groups(&inputs, on_gpu)
+    }
+
+    #[test]
+    fn cpu_steps_run_decoders_and_prompt_chunks_apart() {
+        assert_eq!(groups(&[1, 3, 1, 402], false), vec![0..3, 3..4]);
+        assert_eq!(groups(&[1, 300, 200], false), vec![0..1, 1..3]);
+        assert_eq!(groups(&[1, 1, 1, 1], false), vec![0..4]);
+        assert_eq!(groups(&[402], false), vec![0..1]);
+        assert_eq!(groups(&[63, 64], false), vec![0..1, 1..2]);
+        assert!(groups(&[], false).is_empty());
+        // One call on a GPU.
+        assert_eq!(groups(&[1, 1, 402], true), vec![0..3]);
     }
 }
