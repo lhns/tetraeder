@@ -181,3 +181,9 @@ Differences found while building the loop; the decisions above stand.
 - A RAM entry chosen for a restore is taken out of the cache before any idle sequence is evicted (the eviction may drop it) and put back when admission has to wait.
 - The decode profile's `eval_s` is the wall time of the steps the request took part in; `gpu_seconds` is its token share of those steps.
 - libllama: `n_ctx` is rounded up (to a multiple of 256 with the unified cache) and `n_batch` is clamped to the requested `n_ctx`; a step whose cells do not fit fails with `NoKvSlot` (the engine cuts every input back with `seq_rm`, lengths unchanged).
+
+## Addendum: C3b, prefix reuse across sequences (2026-11-14)
+
+- Sources of a new request's prefix, longest wins: an idle sequence, a copy of a busy one (`seq_cp`), a RAM entry. A busy copy is taken only when it beats the idle sequence and the RAM entry by `cache_restore_gain` (a tie goes to the cheaper idle or RAM source). Reuse is at most prompt - 1 tokens. Hits carry source `seq`; each copy records a VRAM to VRAM `kv` transfer.
+- `SchedulerConfig::prefix_reuse` (`serve --no-prefix-reuse`, default on): off, no idle, busy or RAM reuse and no saves; `--cache-ram` is independent.
+- `BatchBackend::kv_row_bytes() -> usize` (default 0) sizes the copy in the transfer metric. libllama learns it from the first snapshot, so copies before it record 0 bytes.

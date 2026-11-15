@@ -60,6 +60,9 @@ pub struct SchedulerConfig {
     /// their token even beyond it; the rest goes to prompt chunks. The builder's plan sets it
     /// (ADR 0055). Capped by the backend's `max_step_tokens`.
     pub step_tokens: usize,
+    /// Reuse prefixes: idle and busy resident sequences and the RAM cache. Off, every request
+    /// starts an empty sequence (`--no-prefix-reuse`); `cache_ram_bytes` is independent.
+    pub prefix_reuse: bool,
 }
 
 /// Default prefix cache budget, like llama-server's `--cache-ram`.
@@ -81,6 +84,7 @@ impl SchedulerConfig {
             decode_profile: std::env::var_os("TETRAEDER_DECODE_PROFILE").is_some_and(|v| v == "1"),
             parallel: PARALLEL,
             step_tokens: STEP_TOKENS,
+            prefix_reuse: true,
         }
     }
 }
@@ -112,6 +116,7 @@ impl Scheduler {
         let metrics = cfg.metrics.clone();
         let decode_profile = cfg.decode_profile;
         let (parallel, step_tokens) = (cfg.parallel.max(1), cfg.step_tokens.max(1));
+        let prefix_reuse = cfg.prefix_reuse;
         let (cache_ram, save_min, restore_gain) = (
             cfg.cache_ram_bytes,
             cfg.cache_save_min,
@@ -138,6 +143,7 @@ impl Scheduler {
                     PrefixCache::new(cache_ram),
                     save_min,
                     restore_gain,
+                    prefix_reuse,
                     vocab,
                     defaults,
                     metrics,
@@ -401,6 +407,7 @@ struct Worker {
     cache: PrefixCache,
     save_min: usize,
     restore_gain: usize,
+    prefix_reuse: bool,
     vocab: Arc<Vocab>,
     defaults: SampleParams,
     metrics: Option<Metrics>,
@@ -433,6 +440,7 @@ impl Worker {
         cache: PrefixCache,
         save_min: usize,
         restore_gain: usize,
+        prefix_reuse: bool,
         vocab: Arc<Vocab>,
         defaults: SampleParams,
         metrics: Option<Metrics>,
@@ -455,6 +463,7 @@ impl Worker {
             cache,
             save_min,
             restore_gain,
+            prefix_reuse,
             vocab,
             defaults,
             metrics,
@@ -675,7 +684,8 @@ impl Worker {
 
     /// Copies sequence `id`, holding `toks`, into the prefix cache if it is worth it.
     fn save(&mut self, id: usize, toks: &[i32]) {
-        if !self.cache.enabled()
+        if !self.prefix_reuse
+            || !self.cache.enabled()
             || toks.len() < self.save_min
             || self.cache.holds(&self.backend.kv_format(), toks)
         {
@@ -750,8 +760,10 @@ impl Worker {
     }
 
     /// Gives the request at the queue front a sequence: the idle one sharing the longest prefix,
-    /// or a free or evicted id with the best RAM entry restored when it beats that by
-    /// `restore_gain` (ADR 0049 per sequence).
+    /// or a free or evicted id that gets either a copy of a busy sequence's prefix (`seq_cp`) or
+    /// the best RAM entry, whichever beats the idle one by `restore_gain` (ADR 0049 per
+    /// sequence); ties go to the cheaper source (idle, busy copy, RAM). With `prefix_reuse` off
+    /// the id starts empty.
     fn place(&mut self) -> Admission {
         let Some(req) = self.waiting.pop_front() else {
             return Admission::Wait;
@@ -768,10 +780,10 @@ impl Worker {
                 Slot::Idle(x) => Some((i, common_prefix(&x.toks, &toks).min(last))),
                 _ => None,
             })
-            .filter(|&(_, n)| n > 0)
+            .filter(|&(_, n)| n > 0 && self.prefix_reuse)
             .max_by_key(|&(_, n)| n);
         let live_n = best_idle.map_or(0, |(_, n)| n);
-        let ram = if self.cache.enabled() {
+        let ram = if self.prefix_reuse && self.cache.enabled() {
             self.cache
                 .best(&fmt, &toks)
                 .map(|(i, n)| (i, n.min(last)))
@@ -779,6 +791,26 @@ impl Worker {
         } else {
             None
         };
+        // A busy sequence holding the longest prefix, copied when it beats the idle and RAM
+        // options by `restore_gain` (a copy costs less than a restore, but more than nothing).
+        let ram_n = ram.map_or(0, |(_, n)| n);
+        let busy = self
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| match s {
+                Slot::Live(x) if self.prefix_reuse => {
+                    let held = x.fed.min(self.backend.seq_len(i as SeqId));
+                    Some((
+                        i,
+                        common_prefix(&x.req.toks[..held.min(x.req.toks.len())], &toks).min(last),
+                    ))
+                }
+                _ => None,
+            })
+            .filter(|&(_, n)| n > 0 && n >= live_n.max(ram_n) + self.restore_gain)
+            .max_by_key(|&(_, n)| n);
+        let ram = if busy.is_some() { None } else { ram };
         // Take the entry out first: saving a sequence below may evict it.
         let mut picked = ram.map(|(i, _)| self.cache.take(i));
         if picked.is_some()
@@ -788,7 +820,7 @@ impl Worker {
         }
         // Where the request goes.
         let id = match best_idle {
-            Some((i, _)) if ram.is_none() => i,
+            Some((i, _)) if ram.is_none() && busy.is_none() => i,
             _ => match self.slots.iter().position(|s| matches!(s, Slot::Free)) {
                 Some(i) => i,
                 None => {
@@ -833,15 +865,38 @@ impl Worker {
             }
         }
         let mut req = req;
-        let mut restored = false;
+        let mut source = "live";
         let mut common = 0;
-        if let Some((etoks, bytes)) = picked.take() {
+        if let Some((src, n)) = busy {
+            // The chosen id is free here (an idle one was evicted above) and `src` is live.
+            let t0 = Instant::now();
+            match self.backend.seq_cp(src as SeqId, id as SeqId, n) {
+                Ok(()) => {
+                    common = n;
+                    source = "seq";
+                    if let Some(m) = &self.metrics {
+                        let bytes = (n * self.backend.kv_row_bytes()) as u64;
+                        m.tier_transfer(
+                            bytes,
+                            Some(t0.elapsed()),
+                            Tier::Vram,
+                            Tier::Vram,
+                            Purpose::Kv,
+                        );
+                    }
+                }
+                Err(e) => {
+                    // A failed copy leaves `id` empty with its reservation.
+                    tracing::warn!("cannot copy a busy sequence: {e}");
+                }
+            }
+        } else if let Some((etoks, bytes)) = picked.take() {
             // The chosen id is free here (an idle one was evicted above).
             let t0 = Instant::now();
             match self.backend.seq_restore(id as SeqId, &bytes, etoks.len()) {
                 Ok(()) => {
                     common = common_prefix(&etoks, &toks).min(last);
-                    restored = true;
+                    source = "ram";
                     if let Some(m) = &self.metrics {
                         let took = t0.elapsed();
                         m.kv_prefix_restore(took);
@@ -890,7 +945,7 @@ impl Worker {
         if common > 0
             && let Some(m) = &self.metrics
         {
-            m.kv_prefix_hit(if restored { "ram" } else { "live" });
+            m.kv_prefix_hit(source);
         }
         self.next_admitted += 1;
         self.slots[id] = Slot::Live(Box::new(Seq {
