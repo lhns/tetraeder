@@ -454,8 +454,18 @@ struct State {
     host: Option<HostBufs>,
 }
 
-/// A whole-step graph kept across steps (`LoadOptions::reuse_step_graph`). It holds the contexts
-/// of the weights, KV cache and state it reads, so the state must be dropped after it.
+/// A step state with the whole-step graph kept for it (`LoadOptions::reuse_step_graph`). The
+/// graph reads the state, so it is declared first and dropped first.
+struct CachedStep {
+    step: Option<StepGraph>,
+    /// The graph is allocated on `sched_alt` instead of `sched`: a scheduler holds one allocation,
+    /// so the two most recent graphs need one each.
+    alt: bool,
+    state: State,
+}
+
+/// A whole-step graph kept across steps. It holds the contexts of the weights, KV cache and state
+/// it reads, so the state must be dropped after it.
 struct StepGraph {
     /// Token count, padded KV length, output count and routing recording of the build.
     key: (usize, usize, usize, bool),
@@ -469,6 +479,10 @@ struct StepGraph {
 pub struct Qwen3Moe {
     file: ModelFile,
     sched: Sched,
+    /// The second scheduler of the two-entry step cache (built when first needed, from
+    /// `sched_proto`).
+    sched_alt: Option<Sched>,
+    sched_proto: (Vec<Backend>, usize, bool),
     /// The scheduler without op offload for small streamed steps (ADR 0044), with `op_offload`
     /// on a GPU backend.
     sched_small: Option<Sched>,
@@ -482,8 +496,10 @@ pub struct Qwen3Moe {
     kv_bytes: u64,
     weights: Weights,
     kv: Kv,
-    step: Option<StepGraph>,
-    state: Option<State>,
+    /// Most recent first: with every expert resident, `reuse_step_graph` and the CPU as primary,
+    /// the two most recent step shapes (a CPU step alternates decoders and a prompt chunk);
+    /// otherwise one.
+    steps: Vec<CachedStep>,
     pool: KvPool,
     n_seq_max: usize,
     reuse_step_graph: bool,
@@ -514,6 +530,8 @@ pub struct Qwen3Moe {
     op_offload_min_tokens: usize,
     /// The hot set still has to be built from the first prefill's routing.
     hot_pending: bool,
+    /// The current `decode` call contains a prompt chunk (see [`Qwen3Moe::decode_group`]).
+    call_prefill: bool,
     streamer: Option<Streamer>,
     metrics: MemoryMetrics,
     telemetry: Option<Arc<Telemetry>>,
@@ -623,6 +641,7 @@ impl Qwen3Moe {
             step_nodes(h).max(SEGMENT_NODES) * 4
         };
         let sched = Sched::new(&backends, sched_nodes, opts.op_offload)?;
+        let sched_proto = (backends.clone(), sched_nodes, opts.op_offload);
         // Streamed steps below `op_offload_min_tokens` use a scheduler without op offload
         // (ADR 0044); its compute buffers are sized by those small steps.
         let sched_small = if opts.op_offload && !backends[0].is_cpu() {
@@ -688,6 +707,8 @@ impl Qwen3Moe {
         let mut model = Qwen3Moe {
             file,
             sched,
+            sched_alt: None,
+            sched_proto,
             sched_small,
             sched_cpu,
             primary,
@@ -696,8 +717,7 @@ impl Qwen3Moe {
             kv_bytes: kv_bytes as u64,
             weights,
             kv,
-            step: None,
-            state: None,
+            steps: Vec::new(),
             pool: KvPool::new(Box::new(Chunked::new(kv_rows))),
             n_seq_max,
             reuse_step_graph: opts.reuse_step_graph,
@@ -725,6 +745,7 @@ impl Qwen3Moe {
             op_offload: opts.op_offload,
             op_offload_min_tokens: opts.op_offload_min_tokens,
             hot_pending: cpu_hot && opts.routing_profile.is_none(),
+            call_prefill: false,
             streamer,
             metrics,
             telemetry: opts.telemetry.clone(),
@@ -806,7 +827,9 @@ impl Qwen3Moe {
     pub fn set_reuse_step_graph(&mut self, on: bool) {
         self.reuse_step_graph = on;
         if !on {
-            self.step = None;
+            for e in &mut self.steps {
+                e.step = None;
+            }
         }
     }
 
@@ -902,7 +925,11 @@ impl Qwen3Moe {
             let io = st.bounce_bytes();
             push("host", "ram", "io", io, io);
         }
-        let scheds = || std::iter::once(&self.sched).chain(&self.sched_small);
+        let scheds = || {
+            std::iter::once(&self.sched)
+                .chain(&self.sched_alt)
+                .chain(&self.sched_small)
+        };
         let mut work: u64 = scheds().map(|s| s.buffer_size(&self.primary) as u64).sum();
         if self.primary.is_cpu() {
             work += self
@@ -1072,6 +1099,15 @@ impl Qwen3Moe {
     pub fn seq_rm(&mut self, seq: u32, keep: usize) -> Result<()> {
         self.check_seq(seq)?;
         self.pool.seq_rm(seq, keep);
+        self.report_memory();
+        Ok(())
+    }
+
+    /// Undoes a failed step: `seq` goes back to `len` positions and at most `reserved` rows. It
+    /// never grows, so unlike `seq_rm` followed by a reserve it cannot fail on a fragmented pool.
+    pub fn rollback(&mut self, seq: u32, len: usize, reserved: usize) -> Result<()> {
+        self.check_seq(seq)?;
+        self.pool.rollback(seq, len, reserved);
         self.report_memory();
         Ok(())
     }
@@ -1262,6 +1298,20 @@ impl Qwen3Moe {
         inputs: &[SeqEval<'_>],
         out: &mut Vec<f32>,
     ) -> Result<Vec<Range<usize>>> {
+        let prefill = inputs.iter().map(|i| i.tokens.len()).sum::<usize>() > 1;
+        self.decode_group(inputs, out, prefill)
+    }
+
+    /// [`Qwen3Moe::decode`] that says whether the call holds a prompt chunk. Only such a call
+    /// builds the CPU hot set from its routing (ADR 0035); a group of decoders with more than
+    /// one token in all is not a prefill. `decode` takes more than one token as a prefill.
+    pub fn decode_group(
+        &mut self,
+        inputs: &[SeqEval<'_>],
+        out: &mut Vec<f32>,
+        prefill: bool,
+    ) -> Result<Vec<Range<usize>>> {
+        self.call_prefill = prefill;
         let t0 = Instant::now();
         if inputs.is_empty() {
             return Err(ModelError::Invalid("no sequences".into()));
@@ -1307,8 +1357,63 @@ impl Qwen3Moe {
             .collect())
     }
 
+    /// The cached state of this shape, taken out of the cache (most recent first), or a new one.
+    /// A new one makes room first: the least recent entry goes, graph before state, and the new
+    /// entry takes the scheduler the other entry does not use.
+    fn take_step_state(&mut self, key: (usize, usize, usize)) -> Result<CachedStep> {
+        let at = self
+            .steps
+            .iter()
+            .position(|e| (e.state.n_tokens, e.state.n_kv, e.state.n_out) == key);
+        if let Some(i) = at {
+            return Ok(self.steps.remove(i));
+        }
+        let cap = self.step_cache_len();
+        self.steps.truncate(cap - 1);
+        let alt = self.steps.first().is_some_and(|e| !e.alt);
+        if alt && self.sched_alt.is_none() {
+            let (backends, nodes, offload) = &self.sched_proto;
+            self.sched_alt = Some(Sched::new(backends, *nodes, *offload)?);
+        }
+        let host = self.overlap.then_some(&self.cpu);
+        let state = alloc_state(&self.file.hparams, key, &self.primary, host)?;
+        Ok(CachedStep {
+            step: None,
+            alt,
+            state,
+        })
+    }
+
+    /// Entries the step cache holds: two with the whole-step graph kept on the CPU (where a step
+    /// alternates decoders and a prompt chunk), else one. A second entry costs a second scheduler
+    /// with its own compute buffers.
+    fn step_cache_len(&self) -> usize {
+        if self.streamer.is_none() && self.reuse_step_graph && self.primary.is_cpu() {
+            2
+        } else {
+            1
+        }
+    }
+
     fn run(
         &mut self,
+        tokens: &[i32],
+        inputs: &[StepInput],
+        plan: &StepPlan,
+        logits: &mut Vec<f32>,
+        t0: Instant,
+    ) -> Result<()> {
+        let key = (tokens.len(), plan.n_kv, plan.outputs.len());
+        let mut entry = self.take_step_state(key)?;
+        let r = self.run_in(&mut entry, tokens, inputs, plan, logits, t0);
+        self.steps.insert(0, entry);
+        self.steps.truncate(self.step_cache_len());
+        r
+    }
+
+    fn run_in(
+        &mut self,
+        entry: &mut CachedStep,
         tokens: &[i32],
         inputs: &[StepInput],
         plan: &StepPlan,
@@ -1319,18 +1424,7 @@ impl Qwen3Moe {
         let n = tokens.len();
         let n_kv = plan.n_kv;
         let n_out = plan.outputs.len();
-        if self
-            .state
-            .as_ref()
-            .is_none_or(|s| (s.n_tokens, s.n_kv, s.n_out) != (n, n_kv, n_out))
-        {
-            // The kept graph holds the old state's context: drop it first, then free the buffers.
-            self.step = None;
-            self.state = None;
-            let host = self.overlap.then_some(&self.cpu);
-            self.state = Some(alloc_state(&h, (n, n_kv, n_out), &self.primary, host)?);
-        }
-        let st = self.state.as_ref().expect("state allocated above");
+        let st = &entry.state;
         st.tokens.get().set_i32(tokens)?;
         st.pos.get().set_i32(&plan.pos)?;
         st.rows.get().set_i32(&plan.rows)?;
@@ -1348,18 +1442,23 @@ impl Qwen3Moe {
             let mut t = Instant::now();
             let record = self.routing.is_some();
             let key = (n, n_kv, n_out, record);
+            let sched = if entry.alt {
+                self.sched_alt.as_mut().expect("made with the entry")
+            } else {
+                &mut self.sched
+            };
             let reusable = self.reuse_step_graph
-                && self
+                && entry
                     .step
                     .as_ref()
-                    .is_some_and(|s| s.key == key && self.sched.is_allocated(&s.graph.get()));
+                    .is_some_and(|s| s.key == key && sched.is_allocated(&s.graph.get()));
             // A kept graph is computed again with the new inputs: no build, no allocation.
             // Otherwise the graph is built and allocated; it is kept only with reuse on.
             let fresh;
             let step: &StepGraph = if reusable {
-                self.step.as_ref().expect("checked above")
+                entry.step.as_ref().expect("checked above")
             } else {
-                self.step = None;
+                entry.step = None;
                 let ctx = Rc::new(Context::new(step_nodes(&h), step_nodes(&h))?);
                 let (graph, out, routed) =
                     build_step(&h, &self.weights, &self.kv, st, &ctx, record);
@@ -1381,17 +1480,17 @@ impl Qwen3Moe {
                     graph: ctx.keep_graph(graph, &deps)?,
                 };
                 t = lap(&mut prof.build, t);
-                self.sched.alloc_graph(&fresh.graph.get())?;
-                self.max_splits = self.max_splits.max(self.sched.n_splits());
+                sched.alloc_graph(&fresh.graph.get())?;
+                self.max_splits = self.max_splits.max(sched.n_splits());
                 self.step_graphs_built += 1;
                 t = lap(&mut prof.alloc, t);
                 if self.reuse_step_graph {
-                    self.step.insert(fresh)
+                    entry.step.insert(fresh)
                 } else {
                     &fresh
                 }
             };
-            self.sched.compute(&step.graph.get())?;
+            sched.compute(&step.graph.get())?;
             self.segments_run += 1;
             prof.graphs += 1;
             step.logits.get().get_f32_into(logits)?;
@@ -1750,7 +1849,7 @@ impl Qwen3Moe {
             t.metrics().cpu_pool_pauses(pauses - self.pauses_reported);
             self.pauses_reported = pauses;
         }
-        if n > 1 && self.hot_pending {
+        if n > 1 && self.call_prefill && self.hot_pending {
             // The first prefill's routing decides the hot set (ADR 0035).
             self.hot_pending = false;
             self.refresh_hot_set()?;
