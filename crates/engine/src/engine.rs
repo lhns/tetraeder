@@ -277,10 +277,12 @@ impl Engine {
             })
     }
 
-    /// Keeps the first `keep` positions of `seq`.
+    /// Keeps the first `keep` positions of `seq`. `keep == 0` always clears the sequence's cells
+    /// in libllama, also when `seq_len` says it is empty: a failed restore can leave cells
+    /// behind that the length does not count.
     pub fn seq_rm(&mut self, seq: i32, keep: usize) -> Result<()> {
         let i = self.seq_index(seq)?;
-        if keep >= self.lens[i] {
+        if keep > 0 && keep >= self.lens[i] {
             return Ok(());
         }
         if !self.ctx.memory_seq_rm(seq, keep as i32, -1) {

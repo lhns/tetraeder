@@ -120,6 +120,10 @@ impl BatchBackend for DenseBackend {
         self.model.pool().seq_len(seq)
     }
 
+    fn seq_reserved(&self, seq: SeqId) -> usize {
+        self.model.pool().reserved(seq)
+    }
+
     fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
         self.reserve(seq, n)
     }

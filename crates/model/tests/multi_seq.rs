@@ -220,12 +220,12 @@ fn cpu_snapshot_roundtrip_per_sequence() {
 #[test]
 fn cpu_chunked_move_mid_decode_keeps_the_logits() {
     for (name, (path, o)) in [("resident", resident()), ("cpu miss", cpu_miss())] {
-        let o = LoadOptions { n_ctx: 2048, ..o };
+        let o = LoadOptions { n_ctx: 1024, ..o };
         move_mid_decode(&path, &o, TOL_CPU, name);
     }
     let path = quantized_moe(&MoeSpec::REALISH, Ftype::Q8_0, "kv-q8");
     let o = LoadOptions {
-        n_ctx: 2048,
+        n_ctx: 1024,
         kv: KvFormat::Q8_0,
         kv_rotation: Some(true),
         ..base()

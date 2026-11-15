@@ -240,3 +240,52 @@ proptest! {
         run_case(Kind::Paged(256), units, ops);
     }
 }
+
+/// Whether `n` rows can be had for `seq` in `pool`: in place, or in a free gap of `n` rows with
+/// the sequence's own run still occupied (a move copies from it).
+fn chunked_has_room(pool: &KvPool, seq: SeqId, n: usize) -> bool {
+    let mut runs: Vec<(usize, usize, SeqId)> = (0..5u32)
+        .filter(|&s| pool.reserved(s) > 0)
+        .map(|s| (pool.row(s, 0).unwrap(), pool.reserved(s), s))
+        .collect();
+    runs.sort();
+    let mut cursor = 0;
+    for (i, &(start, size, s)) in runs.iter().enumerate() {
+        if start - cursor >= n {
+            return true;
+        }
+        if s == seq {
+            let next = runs.get(i + 1).map_or(pool.capacity(), |r| r.0);
+            if start + n <= next {
+                return true;
+            }
+        }
+        cursor = start + size;
+    }
+    pool.capacity() - cursor >= n
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    /// A sequence that has to move succeeds whenever a free gap of the rounded need exists, even
+    /// when the gap is smaller than need + GROW (the extra rows are a courtesy, not a demand).
+    #[test]
+    fn chunked_reserve_succeeds_whenever_a_gap_fits(
+        capacity in prop::sample::select(vec![2048usize, 3072, 4096, 6144]),
+        ops in proptest::collection::vec((0u32..5, 1usize..1800), 1..40),
+    ) {
+        let mut pool = pool(Kind::Chunked, capacity);
+        for (s, n) in ops {
+            let need = n.div_ceil(ROW_ALIGN) * ROW_ALIGN;
+            let fits = pool.reserved(s) >= need || chunked_has_room(&pool, s, need);
+            match pool.reserve(s, n) {
+                Ok(_) => prop_assert!(fits, "reserved without room?"),
+                Err(KvError::Full { .. }) => {
+                    prop_assert!(!fits, "seq {s} refused {need} rows with a gap that fits");
+                }
+                Err(e) => prop_assert!(false, "{e}"),
+            }
+        }
+    }
+}

@@ -254,19 +254,30 @@ pub fn quantized_moe(spec: &MoeSpec, ftype: Ftype, name: &str) -> PathBuf {
 }
 
 /// The model of `spec` quantized to `ftype` at `out`, written only if `out` does not exist (the
-/// F32 intermediate goes next to it, 4 bytes per weight, and is removed after).
+/// F32 intermediate goes next to it, 4 bytes per weight, and is removed after). Test binaries
+/// that cargo runs in parallel share `out`: each writes its own intermediate files (named by
+/// process id) and renames the result into place; the one that loses the race, or finds `out`
+/// open in another process (Windows sharing violation, OS error 32), uses the winner's file.
 pub fn quantized_moe_at(spec: &MoeSpec, ftype: Ftype, out: &Path) -> PathBuf {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !out.is_file() {
-        let src = out.with_extension("f32.tmp");
-        let part = out.with_extension("part");
+        let pid = std::process::id();
+        let src = out.with_extension(format!("{pid}.f32.tmp"));
+        let part = out.with_extension(format!("{pid}.part"));
         write_moe(&src, spec);
         let mut qp = QuantizeParams::new(ftype);
         qp.nthread = 2;
         quantize(&src, &part, &qp).unwrap();
         std::fs::remove_file(&src).ok();
-        std::fs::rename(&part, out).unwrap();
+        if let Err(e) = std::fs::rename(&part, out) {
+            std::fs::remove_file(&part).ok();
+            assert!(
+                out.is_file(),
+                "cannot move {} into place: {e}",
+                out.display()
+            );
+        }
     }
     out.to_path_buf()
 }

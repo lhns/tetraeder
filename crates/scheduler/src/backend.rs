@@ -94,6 +94,12 @@ pub trait BatchBackend {
     fn kv_capacity(&self) -> usize;
     fn kv_free(&self) -> usize;
     fn seq_len(&self, seq: SeqId) -> usize;
+    /// Rows currently reserved for `seq` (at least its length, 0 when it has none). The scheduler
+    /// reads it after a restore or a cut, which may change the reservation. The default is the
+    /// length, which makes the scheduler reserve again before the sequence grows.
+    fn seq_reserved(&self, seq: SeqId) -> usize {
+        self.seq_len(seq)
+    }
     /// Guarantees rows for `seq` to grow to `n` positions. KvFull changes nothing.
     fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError>;
     /// Keeps the first `keep` positions; 0 frees the sequence and its reservation.
@@ -131,6 +137,17 @@ pub trait BatchBackend {
 /// Tokens per step of the MoE builder; the scheduler plans under `max_step_tokens`, and
 /// `decode` splits a larger step itself.
 pub const MOE_CHUNK: usize = 512;
+
+/// The sequence a failed step names in `KvFull`: libllama cannot say which one found no cells,
+/// so the one that grew the most past its reservation (the first on a tie). `growth` is
+/// (sequence, rows beyond its reservation) per input, never empty.
+fn neediest(growth: &[(SeqId, usize)]) -> SeqId {
+    growth
+        .iter()
+        .rev()
+        .max_by_key(|&&(_, over)| over)
+        .map_or(0, |&(seq, _)| seq)
+}
 
 /// The libllama engine, loaded on CPU or GPU, as a [`BatchBackend`] over its unified KV pool
 /// (ADR 0065). Reservations are bookkeeping against `n_ctx`: the pool finds cells one by one, so
@@ -225,6 +242,10 @@ impl BatchBackend for LlamaBackend {
         i32::try_from(seq).map_or(0, |s| self.engine.seq_len(s))
     }
 
+    fn seq_reserved(&self, seq: SeqId) -> usize {
+        self.reserved.get(seq as usize).copied().unwrap_or(0)
+    }
+
     fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
         let i = self.index(seq)?;
         let need = n.saturating_sub(self.reserved[i]);
@@ -309,7 +330,12 @@ impl BatchBackend for LlamaBackend {
             self.logits.clear();
             self.spans.clear();
             let total = inputs.iter().map(|i| i.tokens.len()).sum();
-            return Err(self.map_err(inputs[0].seq, total, e));
+            let growth: Vec<(SeqId, usize)> = inputs
+                .iter()
+                .zip(&before)
+                .map(|(inp, &(len, res))| (inp.seq, (len + inp.tokens.len()).saturating_sub(res)))
+                .collect();
+            return Err(self.map_err(neediest(&growth), total, e));
         }
         Ok(Outputs::new(self.n_vocab, &self.logits, &self.spans))
     }
@@ -622,6 +648,10 @@ impl BatchBackend for MoeBackend {
         self.model.seq_len(seq)
     }
 
+    fn seq_reserved(&self, seq: SeqId) -> usize {
+        self.model.pool().reserved(seq)
+    }
+
     fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
         self.reserve(seq, n)
     }
@@ -735,5 +765,19 @@ impl BatchBackend for MoeBackend {
 
     fn max_step_tokens(&self) -> usize {
         self.chunk
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::neediest;
+
+    #[test]
+    fn a_failed_step_names_the_sequence_that_grew_most_past_its_reservation() {
+        // Sequence 3 comes first but fits its reservation; 5 and 7 outgrow theirs.
+        assert_eq!(neediest(&[(3, 0), (5, 40), (7, 90)]), 7);
+        // Ties go to the first.
+        assert_eq!(neediest(&[(3, 0), (5, 40), (7, 40)]), 5);
+        assert_eq!(neediest(&[(4, 0), (2, 0)]), 4);
     }
 }

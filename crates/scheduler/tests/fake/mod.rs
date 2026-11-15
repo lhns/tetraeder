@@ -64,6 +64,11 @@ pub struct FakeKv {
     kv_full_at: Option<usize>,
     /// Every n-th decode fails after writing, then rolls back.
     fail_every: Option<u32>,
+    /// A step holding this token fails with `Failed` before touching state.
+    poison: Option<i32>,
+    /// `seq_rm` to a positive length also releases the reservation beyond that length rounded up
+    /// to this many rows (the dense backend's behaviour).
+    shrink_to_multiple: Option<usize>,
     decodes: u32,
     pool: Vec<Option<i32>>,
     free_rows: Vec<usize>,
@@ -81,6 +86,8 @@ impl FakeKv {
             capacity,
             kv_full_at: None,
             fail_every: None,
+            poison: None,
+            shrink_to_multiple: None,
             decodes: 0,
             pool: vec![None; capacity],
             free_rows: (0..capacity).rev().collect(),
@@ -97,6 +104,16 @@ impl FakeKv {
 
     pub fn with_fail_every(mut self, n: Option<u32>) -> Self {
         self.fail_every = n;
+        self
+    }
+
+    pub fn with_poison(mut self, token: Option<i32>) -> Self {
+        self.poison = token;
+        self
+    }
+
+    pub fn with_shrink_on_rm(mut self, multiple: Option<usize>) -> Self {
+        self.shrink_to_multiple = multiple;
         self
     }
 
@@ -192,6 +209,10 @@ impl BatchBackend for FakeKv {
         self.seqs.get(seq as usize).map_or(0, |s| s.tokens.len())
     }
 
+    fn seq_reserved(&self, seq: SeqId) -> usize {
+        self.seqs.get(seq as usize).map_or(0, |s| s.rows.len())
+    }
+
     fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
         let i = self.seq_ok(seq)?;
         let need = n.saturating_sub(self.seqs[i].rows.len());
@@ -210,6 +231,13 @@ impl BatchBackend for FakeKv {
         let i = self.seq_ok(seq)?;
         let had = self.seqs[i].tokens.len();
         self.cut(i, keep.min(had), keep > 0);
+        if let (Some(m), true) = (self.shrink_to_multiple, keep > 0) {
+            let to = keep.div_ceil(m) * m;
+            if self.seqs[i].rows.len() > to {
+                let release = self.seqs[i].rows.split_off(to);
+                self.free_rows.extend(release);
+            }
+        }
         Ok(())
     }
 
@@ -251,6 +279,9 @@ impl BatchBackend for FakeKv {
             seen.push(i);
             if inp.tokens.is_empty() {
                 return Err(BackendError::Failed("no tokens".into()));
+            }
+            if self.poison.is_some_and(|p| inp.tokens.contains(&p)) {
+                return Err(BackendError::Failed("poisoned token".into()));
             }
             let after = self.seqs[i].tokens.len() + inp.tokens.len();
             if after > self.n_ctx_seq {
