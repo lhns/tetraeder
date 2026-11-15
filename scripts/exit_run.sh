@@ -441,7 +441,8 @@ llamacpp_cache() {
   # LLAMACPP_FP8_KV_TYPE, default f8_e4m3, the type llama.cpp #28392 adds)
   case "${1:-}" in
     poll0* | dio-poll0*) extra+=(POLL=0) ;;
-    fp8*) extra+=(KV_TYPE="${LLAMACPP_FP8_KV_TYPE:-f8_e4m3}") ;;
+    # fp8 runs at poll 0 too: the tuned baseline of the point-1 verdict (20261113b, ADR 0045)
+    fp8*) extra+=(KV_TYPE="${LLAMACPP_FP8_KV_TYPE:-f8_e4m3}" POLL=0) ;;
   esac
   want "$name" || return 0
   local mib=$((vram_bytes / 1048576))
