@@ -204,7 +204,7 @@ fn cpu_four_concurrent_requests_batch() {
         .map(|id| Spec {
             id,
             prompt_len: 20 + 5 * id as usize,
-            max_tokens: 24,
+            max_tokens: 160,
             cancel_after: None,
         })
         .collect();
