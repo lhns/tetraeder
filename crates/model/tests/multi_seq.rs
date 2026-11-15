@@ -233,6 +233,19 @@ fn cpu_chunked_move_mid_decode_keeps_the_logits() {
     move_mid_decode(&path, &o, TOL_CPU, "q8_0 kv");
 }
 
+/// hardware: cpu. The move with 8 threads, as on a box where the GPU builder's CPU attention runs
+/// with the container's ~12: ggml's CPU flash attention splits a one-query step over `n_kv` in
+/// `n_kv / threads` chunks once `n_kv` reaches 512 and accumulates V in F16, so the order of the
+/// sums depends on where a sequence's rows sit and on `n_kv` (the CUDA kernels' split does too).
+#[test]
+fn cpu_chunked_move_mid_decode_with_8_threads() {
+    let o = LoadOptions {
+        n_ctx: 1024,
+        ..LoadOptions::new(BackendChoice::Cpu { threads: Some(8) })
+    };
+    move_mid_decode(&fixture(), &o, TOL_CPU, "8 threads");
+}
+
 /// hardware: cpu. Pool limits: a full pool is an error that changes nothing, ids are checked.
 #[test]
 fn cpu_full_pool_and_bad_ids_change_nothing() {

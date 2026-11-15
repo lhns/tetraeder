@@ -262,6 +262,9 @@ pub fn libllama_reference_kv_default_rot(
             flash_attn: FlashAttn::On,
             type_k: ty(kv.k),
             type_v: ty(kv.v),
+            // A CPU reference: in a CUDA build libllama's scheduler otherwise runs host ops of
+            // 32 or more rows (the Q/K norms of a 10-token step) on the GPU.
+            op_offload: false,
             ..ContextParams::default()
         },
     )
@@ -496,6 +499,9 @@ pub fn libllama_script_on(
             type_v: ty(kv.v),
             n_seq_max: streams.len() as u32,
             kv_unified: true,
+            // `n_gpu_layers` 0 is a CPU run: no host op moved to a GPU of the build (see
+            // `libllama_reference`).
+            op_offload: n_gpu_layers != 0,
             ..ContextParams::default()
         },
     )
