@@ -123,3 +123,12 @@ groups:
         annotations:
           summary: "Two or more GPU ranks reduce through the executor's copy fallback"
           description: "ggml's comm (NCCL or its internal two-GPU path) is missing or declined, so every all-reduce is a star of copies through rank 0 and tensor parallel is far slower than predicted. Check the Executor panel's collective bytes by comm path, `tetraeder info` for the NCCL build, and GGML_CUDA_ALLREDUCE."
+
+      # The backend runs in a worker process (serve --worker, ADR 0069); each restart fails the requests that were running.
+      - alert: TetraederWorkerRestarting
+        expr: sum(increase(tetraeder_executor_worker_restarts_total[30m])) > 2
+        labels:
+          severity: page
+        annotations:
+          summary: "More than 2 worker restarts in 30 minutes"
+          description: "The worker process crashed, hit a sticky CUDA error or missed its reply deadline; its requests failed. Check the worker's stderr in the engine log. After 5 restarts in 10 minutes the process exits."

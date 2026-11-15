@@ -13,6 +13,7 @@ mod replan;
 mod run;
 mod serve;
 mod top;
+mod worker;
 
 use clap::{Parser, Subcommand};
 
@@ -46,6 +47,8 @@ enum Command {
     Advise(advise::AdviseArgs),
     /// OpenAI and Anthropic APIs over an engine.
     Serve(serve::ServeArgs),
+    /// One backend over stdin and stdout, for `serve --worker` (ADR 0069).
+    Worker(worker::WorkerArgs),
     /// The CPU backend this binary loaded: variant, ISA, module directory.
     Info(info::InfoArgs),
     /// Time the executor's all-reduces and copies between GPUs (collective curves).
@@ -66,6 +69,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::DetectorScore(args)) => detector_score::run(&args),
         Some(Command::Advise(args)) => advise::run(&args),
         Some(Command::Serve(args)) => serve::run(&args),
+        Some(Command::Worker(args)) => worker::run(&args),
         Some(Command::Info(args)) => info::run(&args),
         Some(Command::CommProbe(args)) => comm_probe::run(&args),
         None => {

@@ -8,14 +8,16 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+use tetraeder::remote_backend::{RemoteBackend, RemoteConfig};
 use tetraeder_gateway::engine::Engine as GatewayEngine;
 use tetraeder_gateway::fake::{FakeEngine, serve_script};
 use tetraeder_gateway::gateway::{Gateway, GatewayConfig};
 use tetraeder_gateway::reqlog::RequestLog;
 use tetraeder_ggml_sys::ggml::Backend;
+use tetraeder_ggml_sys::llama::{Model, ModelParams};
 use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, MissPolicy};
 use tetraeder_planner::Workload;
-use tetraeder_scheduler::{Scheduler, SchedulerConfig};
+use tetraeder_scheduler::{Loaded, Scheduler, SchedulerConfig};
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -128,6 +130,11 @@ pub struct ServeArgs {
     /// `cpu`.
     #[arg(long, value_name = "on|off", value_parser = parse_on_off)]
     pub overlap: Option<bool>,
+    /// Run the backend in a child process (`tetraeder worker`) that is restarted after a crash,
+    /// a sticky error or a missed deadline (ADR 0069). The queue survives a restart; the requests
+    /// that were running fail.
+    #[arg(long, conflicts_with_all = ["plan", "fake"])]
+    pub worker: bool,
     /// Serve a plan and replan by drain and restart (ADR 0055): `auto` picks one of the
     /// executable candidates for this box and model, or a plan TOML file. Replaces the
     /// placement flags.
@@ -320,6 +327,43 @@ fn build_engine(
         return Ok((Arc::new(e), 1));
     }
     let path = a.model.clone().context("-m is required")?;
+    let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
+    let parallel = cfg.parallel;
+    let engine = if a.worker {
+        // The backend runs in a child process (ADR 0069); the tokenizer stays here.
+        let argv = crate::worker::child_args(std::env::args())?;
+        let exe = std::env::current_exe().context("cannot find this executable")?;
+        let model = path.clone();
+        Scheduler::start(cfg, move || {
+            let tokenizer = Arc::new(
+                Model::load(
+                    &model,
+                    &ModelParams {
+                        vocab_only: true,
+                        ..ModelParams::default()
+                    },
+                )
+                .map_err(|e| e.to_string())?,
+            );
+            let backend = RemoteBackend::start(RemoteConfig::new(exe, argv))?;
+            Ok(Loaded {
+                backend: Box::new(backend),
+                tokenizer,
+            })
+        })
+    } else {
+        Scheduler::start(cfg, loader(a, Arc::clone(telemetry))?)
+    }
+    .map_err(anyhow::Error::msg)?;
+    Ok((Arc::new(engine), parallel))
+}
+
+/// Loads the backend of `a` in the calling thread (the MoE builder may not be `Send`); shared
+/// by `serve` and `worker`.
+pub type Loader = Box<dyn FnOnce() -> Result<Loaded, String> + Send>;
+
+pub fn loader(a: &ServeArgs, tel: Arc<Telemetry>) -> anyhow::Result<Loader> {
+    let path = a.model.clone().context("-m is required")?;
     let dense = a.engine == EngineKind::Dense;
     let moe = match a.engine {
         EngineKind::Llama | EngineKind::Dense => false,
@@ -331,15 +375,12 @@ fn build_engine(
                 == "qwen3moe"
         }
     };
-    let cfg = SchedParts::new(a)?.config(&path, telemetry.metrics().clone());
-    let parallel = cfg.parallel;
-    let tel = Arc::clone(telemetry);
     if moe {
         resolve_overlap(a.ram_slots.is_some(), a.miss, a.io_service, a.overlap)
             .map_err(anyhow::Error::msg)?;
     }
     let a = a.clone_load_args();
-    let engine = Scheduler::start(cfg, move || {
+    Ok(Box::new(move || {
         if moe {
             tetraeder_scheduler::load_moe(&a.path, &a.moe_options(tel)?)
         } else if dense {
@@ -347,9 +388,7 @@ fn build_engine(
         } else {
             tetraeder_scheduler::load_llama(&a.path, &a.place.placement(), &a.llama, Some(tel))
         }
-    })
-    .map_err(anyhow::Error::msg)?;
-    Ok((Arc::new(engine), parallel))
+    }))
 }
 
 /// The parts of a `SchedulerConfig` that do not change when the engine is reloaded.
