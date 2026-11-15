@@ -38,6 +38,8 @@ pub mod attr {
     pub const CPU_DISPATCH: &str = "tetraeder.cpu.dispatch";
     pub const CPU_POLL_AUTO: &str = "tetraeder.cpu.poll.auto";
     pub const STATE: &str = "tetraeder.state";
+    pub const RANK: &str = "tetraeder.rank";
+    pub const COMM: &str = "tetraeder.comm";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,6 +196,9 @@ pub struct Metrics {
     cpu_quota: Gauge<f64>,
     cpu_poll: Gauge<u64>,
     cpu_pool_pauses: Counter<u64>,
+    executor_ranges: Counter<u64>,
+    executor_collective_bytes: Counter<u64>,
+    executor_comm: Gauge<u64>,
 }
 
 impl Metrics {
@@ -516,6 +521,21 @@ impl Metrics {
                 .u64_counter("tetraeder.cpu.pool.pauses")
                 .with_unit("{pause}")
                 .with_description("Times the CPU threadpool was put to sleep ahead of a GPU-only segment or a read wait")
+                .build(),
+            executor_ranges: meter
+                .u64_counter("tetraeder.executor.ranges")
+                .with_unit("{range}")
+                .with_description("Rank graph ranges the executor launched (ADR 0069), by rank")
+                .build(),
+            executor_collective_bytes: meter
+                .u64_counter("tetraeder.executor.collective.bytes")
+                .with_unit("By")
+                .with_description("Bytes the executor's all-reduces and copies moved, by kind and comm path")
+                .build(),
+            executor_comm: meter
+                .u64_gauge("tetraeder.executor.comm")
+                .with_unit("1")
+                .with_description("1 for the all-reduce path of a plan with two or more GPU ranks: nccl, internal or fallback")
                 .build(),
         }
     }
@@ -900,6 +920,35 @@ impl Metrics {
             u64::from(level),
             &[KeyValue::new(attr::CPU_POLL_AUTO, auto)],
         );
+    }
+
+    /// The executor launched `n` ranges on `rank` (ADR 0069).
+    pub fn executor_ranges(&self, rank: usize, n: u64) {
+        if n > 0 {
+            self.executor_ranges
+                .add(n, &[KeyValue::new(attr::RANK, rank as i64)]);
+        }
+    }
+
+    /// Bytes moved by executor collectives: `kind` is `all_reduce` or `copy`, `comm` the path
+    /// (`nccl`, `internal` or `fallback`).
+    pub fn executor_collective_bytes(&self, kind: &str, comm: &str, bytes: u64) {
+        if bytes > 0 {
+            self.executor_collective_bytes.add(
+                bytes,
+                &[
+                    KeyValue::new(attr::STEP_KIND, kind.to_owned()),
+                    KeyValue::new(attr::COMM, comm.to_owned()),
+                ],
+            );
+        }
+    }
+
+    /// The all-reduce path in use. Record it only for plans with two or more GPU ranks: the
+    /// alert `TetraederCollectiveFallback` reads `fallback` as a slow tensor-parallel group.
+    pub fn executor_comm(&self, comm: &str) {
+        self.executor_comm
+            .record(1, &[KeyValue::new(attr::COMM, comm.to_owned())]);
     }
 
     /// Per step (ADR 0061 addendum): threadpool pauses issued since the last report.

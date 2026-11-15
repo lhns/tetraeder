@@ -114,6 +114,16 @@ groups:
           summary: "KV pool fragmented: preemptions with more than 25% of blocks free"
           description: "Live sequences were preempted while more than a quarter of the KV pool was free, so the free rows are in runs too small to grow into. Compare the free and relocation series on the KV pool panel; a paged layout (ADR 0067) or a larger GROW removes the holes."
 
+      # Own executor (ADR 0069): the gauge is recorded only for plans with two or more GPU ranks.
+      - alert: TetraederCollectiveFallback
+        expr: max(tetraeder_executor_comm{tetraeder_comm="fallback"}) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Two or more GPU ranks reduce through the executor's copy fallback"
+          description: "ggml's comm (NCCL or its internal two-GPU path) is missing or declined, so every all-reduce is a star of copies through rank 0 and tensor parallel is far slower than predicted. Check the Executor panel's collective bytes by comm path, `tetraeder info` for the NCCL build, and GGML_CUDA_ALLREDUCE."
+
       # The backend runs in a worker process (serve --worker, ADR 0069); each restart fails the requests that were running.
       - alert: TetraederWorkerRestarting
         expr: sum(increase(tetraeder_executor_worker_restarts_total[30m])) > 2

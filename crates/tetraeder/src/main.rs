@@ -2,6 +2,7 @@
 
 mod advise;
 mod bench;
+mod comm_probe;
 mod detector_score;
 mod doctor;
 mod engine_args;
@@ -50,6 +51,8 @@ enum Command {
     Worker(worker::WorkerArgs),
     /// The CPU backend this binary loaded: variant, ISA, module directory.
     Info(info::InfoArgs),
+    /// Time the executor's all-reduces and copies between GPUs (collective curves).
+    CommProbe(comm_probe::CommProbeArgs),
 }
 
 fn main() -> std::process::ExitCode {
@@ -68,6 +71,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::Serve(args)) => serve::run(&args),
         Some(Command::Worker(args)) => worker::run(&args),
         Some(Command::Info(args)) => info::run(&args),
+        Some(Command::CommProbe(args)) => comm_probe::run(&args),
         None => {
             println!("tetraeder {}", env!("CARGO_PKG_VERSION"));
             Ok(())

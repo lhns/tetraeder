@@ -1,6 +1,6 @@
 [package]
 name = "tetraeder-executor"
-description = "Tetraeder: One worker per device: runs plan stages, async copies and weight streaming."
+description = "Tetraeder: Own executor: per-rank graphs cut at collectives, issued from one thread (ADR 0069)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,3 +10,16 @@ publish = false
 
 [lints]
 workspace = true
+
+[features]
+# Forwarded to ggml-sys: build ggml with CUDA (the gpu_ tests skip without a GPU either way).
+cuda = ["tetraeder-ggml-sys/cuda"]
+
+[dependencies]
+tetraeder-ggml-sys = { path = "../ggml-sys" }
+tetraeder-telemetry = { path = "../telemetry" }
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+proptest = "1"
