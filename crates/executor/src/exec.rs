@@ -2,7 +2,7 @@ use crate::fallback::Scratch;
 use crate::ranks::{comm_name, group_comm};
 use crate::{ExecError, Op, Program, RankGraph, RankId, Ranks, validate};
 use std::collections::{BTreeMap, HashMap};
-use tetraeder_ggml_sys::ggml::{Comm, Gallocr, RangeGraphs, Tensor};
+use tetraeder_ggml_sys::ggml::{Comm, Gallocr, RangeGraphs, Tensor, Type};
 use tetraeder_telemetry::Metrics;
 
 /// What the executor did since the last [`Executor::take_counters`].
@@ -233,6 +233,11 @@ impl Executor {
     }
 
     fn scratch_for(&mut self, group: &[RankId], like: Tensor<'_>) -> Result<(), ExecError> {
+        if like.ty() != Type::F32 {
+            return Err(ExecError::invalid(
+                "the fallback all-reduce supports F32 tensors only",
+            ));
+        }
         let key = (group.to_vec(), like.ne());
         if !self.scratch.contains_key(&key) {
             let s = Scratch::new(&self.ranks, group, like)?;
