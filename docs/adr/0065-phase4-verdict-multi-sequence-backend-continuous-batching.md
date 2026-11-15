@@ -229,3 +229,10 @@ Differences found while building it; the decisions above stand.
 - `LlamaBackend` rolls back with `Engine::seq_truncate_cells`, which cuts in libllama even when the length already equals the target. `decode_seqs` already cleaned the failed call's cells, so this guards the backend path rather than fixing an observed orphan.
 - `serve`: an explicit `--ngl` above 0 with no GPU is an error for the own builders; the default (`-1`) falls back to the CPU with a `tracing::warn!`.
 - `--ctx` of the own builders is the shared pool's rows across all sequences, not a context per slot (llama.cpp's server splits it); one request can use all of it.
+
+## Addendum: third review follow-ups, MoE (2026-11-15)
+- The MoE whole-step graph cache holds two entries, each a step state plus its graph, most recent first. A scheduler holds one allocation and a graph cannot be re-allocated on it, so the second entry has its own scheduler (`sched_alt`, built on first use). Only on the CPU with all experts resident and graph reuse on, where the CPU split alternates decoders and a prompt chunk; a GPU runs one call per step and a second scheduler would double the compute workspace. Build plus alloc measured about 0.2 ms per graph on an 8-layer synthetic model.
+- The CPU hot set is built from the routing of a call that holds a prompt chunk (`Qwen3Moe::decode_group`): an input of at least `SHORT_INPUT` tokens, or more than one token without `all_logits`. A decoder group and a draft verify step no longer build it.
+- `MoeBackend` rolls a failed step back with `Qwen3Moe::rollback` over `KvPool::rollback`, as DenseBackend does: it never grows, so it cannot fail, and a sequence the step moved stays where it moved.
+- First CPU numbers (`moe-shapes` workflow, synthetic 8-layer 32-expert Q8_0 model, EPYC 9V45, 4 threads, one run, not interleaved): `--engine moe` against libllama on the same file takes 1.08x the time per decode step at 4 sequences and alone, 1.19x for one sequence with 3 resident, 1.10 to 1.14x on prompt shapes.
+
