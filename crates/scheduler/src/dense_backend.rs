@@ -51,33 +51,14 @@ impl DenseBackend {
         }
     }
 
-    /// Puts `seq`'s reservation back to `before` rows. `seq_rm` shrinks to the positions held
-    /// (rounded up to 256 rows) or frees an empty sequence; growing again takes the rows the
-    /// shrink just released, in place or, for an empty sequence, anywhere they fit.
-    fn give_back(&mut self, seq: SeqId, before: usize) {
-        let _ = self.model.seq_rm(seq, before);
-        if before > self.model.pool().reserved(seq) {
-            let _ = self.model.try_reserve(seq, before);
-        }
-    }
-
-    /// Reserves, then runs the step. `grown` collects (sequence, reservation before) of every
-    /// sequence this call gave more rows.
-    fn step(
-        &mut self,
-        inputs: &[SeqInput<'_>],
-        grown: &mut Vec<(SeqId, usize)>,
-    ) -> Result<Vec<Range<usize>>, BackendError> {
+    /// Reserves, then runs the step.
+    fn step(&mut self, inputs: &[SeqInput<'_>]) -> Result<Vec<Range<usize>>, BackendError> {
         for i in inputs {
             if i.tokens.is_empty() {
                 return Err(BackendError::Failed("no tokens".into()));
             }
-            let before = self.model.pool().reserved(i.seq);
             let need = self.model.pool().seq_len(i.seq) + i.tokens.len();
             self.reserve(i.seq, need)?;
-            if self.model.pool().reserved(i.seq) != before {
-                grown.push((i.seq, before));
-            }
         }
         let evals: Vec<SeqEval<'_>> = inputs
             .iter()
@@ -91,29 +72,17 @@ impl DenseBackend {
         if groups.len() == 1 {
             return self.model.decode(&evals, &mut self.logits).map_err(failed);
         }
-        // One model call per group; a failure rolls the earlier groups back to their lengths.
-        let lens: Vec<usize> = inputs
-            .iter()
-            .map(|i| self.model.pool().seq_len(i.seq))
-            .collect();
+        // One model call per group; `decode` rolls the earlier groups back on a failure.
         let mut spans = Vec::with_capacity(inputs.len());
         let mut rows = Vec::new();
-        for (g, range) in groups.iter().enumerate() {
-            match self.model.decode(&evals[range.clone()], &mut rows) {
-                Ok(s) => {
-                    let base = self.logits.len() / self.model.n_vocab().max(1);
-                    spans.extend(s.into_iter().map(|r| r.start + base..r.end + base));
-                    self.logits.extend_from_slice(&rows);
-                }
-                Err(e) => {
-                    for done in &groups[..g] {
-                        for k in done.clone() {
-                            let _ = self.model.seq_rm(inputs[k].seq, lens[k]);
-                        }
-                    }
-                    return Err(failed(e));
-                }
-            }
+        for range in &groups {
+            let s = self
+                .model
+                .decode(&evals[range.clone()], &mut rows)
+                .map_err(failed)?;
+            let base = self.logits.len() / self.model.n_vocab().max(1);
+            spans.extend(s.into_iter().map(|r| r.start + base..r.end + base));
+            self.logits.extend_from_slice(&rows);
         }
         Ok(spans)
     }
@@ -178,14 +147,20 @@ impl BatchBackend for DenseBackend {
                 &self.spans,
             ));
         }
-        // Every input's rows are reserved first. A failure, here or in the step, gives back what
-        // this call reserved, so lengths and free rows are as they were.
-        let mut grown: Vec<(SeqId, usize)> = Vec::new();
-        match self.step(inputs, &mut grown) {
+        // Every input's rows are reserved first. A failure, here or in any group of the step,
+        // puts every input back to its length and reservation from before the call (a rollback
+        // never grows a reservation, so it cannot fail for lack of rows).
+        let before: Vec<(SeqId, usize, usize)> = inputs
+            .iter()
+            .map(|i| (i.seq, self.seq_len(i.seq), self.seq_reserved(i.seq)))
+            .collect();
+        match self.step(inputs) {
             Ok(spans) => self.spans = spans,
             Err(e) => {
-                for (seq, before) in grown.into_iter().rev() {
-                    self.give_back(seq, before);
+                for &(seq, len, reserved) in before.iter().rev() {
+                    if let Err(r) = self.model.rollback(seq, len, reserved) {
+                        tracing::warn!("cannot roll back sequence {seq}: {r}");
+                    }
                 }
                 self.logits.clear();
                 return Err(e);

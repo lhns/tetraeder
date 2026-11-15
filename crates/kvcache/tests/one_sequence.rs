@@ -159,3 +159,31 @@ fn seq_cp_gives_dst_rows_of_its_own() {
         assert_eq!(pool.runs(1, 500).iter().map(|r| r.1).sum::<usize>(), 500);
     }
 }
+
+/// The scheduler reserves a destination's rows before the copy; an empty destination that
+/// already reserves rows takes the copy, keeping (at least) its reservation. One holding
+/// positions is still refused.
+#[test]
+fn seq_cp_into_a_reserved_but_empty_destination() {
+    for mut pool in layouts(4096) {
+        pool.reserve(0, 600).unwrap();
+        let step = [StepInput {
+            seq: 0,
+            n_tokens: 600,
+            all_logits: false,
+        }];
+        pool.plan_step(&step).unwrap();
+        pool.commit(&step);
+        pool.reserve(1, 1000).unwrap();
+        let before = pool.reserved(1);
+        let copies = pool.seq_cp(0, 1, 500).unwrap();
+        assert_eq!(copies.iter().map(|c| c.n).sum::<usize>(), 500);
+        assert_eq!(pool.seq_len(1), 500);
+        assert!(pool.reserved(1) >= before);
+        let src: Vec<usize> = (0..600).map(|p| pool.row(0, p).unwrap()).collect();
+        for p in 0..500 {
+            assert!(!src.contains(&pool.row(1, p).unwrap()));
+        }
+        assert!(matches!(pool.seq_cp(0, 1, 10), Err(KvError::Invalid(_))));
+    }
+}
