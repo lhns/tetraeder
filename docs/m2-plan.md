@@ -99,6 +99,12 @@ Also: document that decode-profile `eval_s` is shared step wall time and `gpu_se
 - Open, decided on the GPU box: the unified pool (ADR 0065 (a)) costs on CPU against one KV stream per sequence (llama-server's `-np 4` default): 4-sequence decode step 573 against 496 ms on the Xeon, 74 against 61 on another runner. D2 runs `crates/scheduler/tests/step_shapes.rs` on the GPU first; if streams win by more than the band there, ADR 0065's layout decision is revisited before the timed pairs count.
 - Later: dense builder CPU prompt kernels (repack or AMX path); `SAVE_MIN_TOKENS` for short prompts.
 
+### Point-1 box result (2026-11-15, `bench/results/20261115p1/`, box 60734395, host 79986, EPYC 7702, RTX 4090, quota 30.6, 24 threads)
+- Polling: poll 50 against the auto default (0 on this quota box) 0.85 and 0.95, throttled 0.92 to 0.95 of decode periods against 0.05 to 0.08. With 1.16 to 1.22x on the Zen 4 host (26 threads, quota 30.7), the effect depends on the host class, not on headroom alone. ADR 0061's default is not changed (B3 closed: no rule change).
+- C4 on the 235B: main-overlap 2.83 and 2.71 tok/s against 3.02 and 2.74 on `20261113b` (same profile, other host): no sign of a regression.
+- FP8 KV baseline: llama-server at b12274 aborts (`cache_k_l0 (view)` in CUDA0 cannot run SET_ROWS with f8_e4m3 K and V): the FP8 cache is not usable on CUDA at the baseline pin. Item 9 is parked until a baseline pin where CUDA writes FP8 KV; the builder's `kvq8-slots` ran (2.75 tok/s, 0.97 of main-overlap) but has nothing to pair with.
+- Cost 5.2 USD, 4.3 of it model traffic at 0.029 USD per GB: drivers must rank offers by box plus traffic (`docs/box-driver.md` rule 2).
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 
