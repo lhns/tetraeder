@@ -31,7 +31,7 @@ f8="$TETRAEDER_MODELS_DIR/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf"
 [ -s "$f8" ] || { echo "GPU_SMOKE2_DONE rc=7 no 8B at $f8"; exit 7; }
 
 echo "[$(date +%T)] start tests"
-timeout -k 30 40m cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test gpu_dense --test gpu_multi_seq \
+timeout -k 30 40m cargo test --release --no-fail-fast -p tetraeder-model --features tetraeder-ggml-sys/cuda --test gpu_dense --test gpu_multi_seq \
   -- --nocapture --test-threads 1 > "$out/gpu-tests.log" 2>&1 8>&-
 rc1=$?
 echo "[$(date +%T)] tests rc=$rc1"

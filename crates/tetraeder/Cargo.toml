@@ -27,6 +27,7 @@ tetraeder-analysis = { path = "../analysis" }
 tetraeder-control = { path = "../control" }
 tetraeder-costmodel = { path = "../costmodel" }
 tetraeder-engine = { path = "../engine" }
+tetraeder-executor = { path = "../executor" }
 tetraeder-model = { path = "../model" }
 tetraeder-plan = { path = "../plan" }
 tetraeder-gateway = { path = "../gateway" }

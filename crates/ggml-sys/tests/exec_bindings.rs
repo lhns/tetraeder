@@ -3,7 +3,7 @@
 //! (`TETRAEDER_REQUIRE_GPUS=<n>` turns the skip into a failure on GPU boxes).
 
 use tetraeder_ggml_sys::ggml::{
-    Backend, Comm, Context, Event, Gallocr, GgmlError, Graph, Tensor, Type,
+    Backend, Comm, Context, Event, Gallocr, GgmlError, Graph, RangeGraphs, Tensor, Type,
 };
 
 const N: usize = 8;
@@ -250,4 +250,86 @@ fn gpu2_all_reduce_sums_across_gpus() {
     let want = vec![(n + 1) as f32; n];
     assert_eq!(ts[0].get_f32().unwrap(), want);
     assert_eq!(ts[1].get_f32().unwrap(), want);
+}
+
+/// `copy_tensor_async` between two CPU backends copies before returning; a layout mismatch is an
+/// error, not a ggml abort.
+#[test]
+fn copy_tensor_async_between_cpu_backends() {
+    let (a, b) = (Backend::cpu(1).unwrap(), Backend::cpu(1).unwrap());
+    let (sc, dc) = (Context::new(2, 0).unwrap(), Context::new(2, 0).unwrap());
+    let src = sc.new_tensor(Type::F32, &[N as i64]);
+    let other = sc.new_tensor(Type::F32, &[N as i64 + 1]);
+    let dst = dc.new_tensor(Type::F32, &[N as i64]);
+    sc.alloc_tensors(&a).unwrap();
+    dc.alloc_tensors(&b).unwrap();
+    let want = xs(3.0);
+    src.set_f32(&want).unwrap();
+    src.copy_tensor_async(&a, &b, dst).unwrap();
+    b.synchronize();
+    assert_eq!(dst.get_f32().unwrap(), want);
+    assert!(matches!(
+        other.copy_tensor_async(&a, &b, dst),
+        Err(GgmlError::Invalid(_))
+    ));
+}
+
+/// `RangeGraphs` cut at uneven points gives the whole graph's bits and refuses another graph,
+/// bad cuts and a range out of bounds.
+#[test]
+fn range_graphs_cache_matches_the_whole_graph() {
+    let cpu = Backend::cpu(1).unwrap();
+    let lctx = Context::new(3, 0).unwrap();
+    let [x, y, out] = leaves(&lctx, &cpu);
+    x.set_f32(&xs(0.5)).unwrap();
+    y.set_f32(&xs(2.0)).unwrap();
+    let gctx = Context::new(16, 8).unwrap();
+    let g = chain(&gctx, x, y, out);
+    let mut galloc = Gallocr::new(&cpu).unwrap();
+    galloc.alloc_graph(&g).unwrap();
+    cpu.compute_async(&g).unwrap();
+    let whole = out.get_f32().unwrap();
+    out.set_f32(&[0.0; N]).unwrap();
+
+    assert!(RangeGraphs::new(&g, &[]).is_err());
+    assert!(RangeGraphs::new(&g, &[3, 3, 6]).is_err());
+    assert!(RangeGraphs::new(&g, &[2, 5]).is_err());
+    let ranges = RangeGraphs::new(&g, &[1, 4, 6]).unwrap();
+    assert_eq!(ranges.len(), 3);
+    for i in 0..3 {
+        cpu.compute_async(&ranges.get(&g, i).unwrap()).unwrap();
+    }
+    assert_eq!(ranges.get(&g, 1).unwrap().n_nodes(), 3);
+    assert!(ranges.get(&g, 3).is_err());
+    assert_eq!(
+        out.get_f32()
+            .unwrap()
+            .iter()
+            .map(|v| v.to_bits())
+            .collect::<Vec<_>>(),
+        whole.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+    );
+    let gctx2 = Context::new(16, 8).unwrap();
+    let g2 = chain(&gctx2, x, y, out);
+    assert!(ranges.get(&g2, 0).is_err());
+}
+
+/// `add_inplace` writes into its first operand, which is how the fallback all-reduce sums.
+#[test]
+fn add_inplace_writes_the_first_operand() {
+    let cpu = Backend::cpu(1).unwrap();
+    let ctx = Context::new(8, 4).unwrap();
+    let a = ctx.new_tensor(Type::F32, &[N as i64]);
+    let b = ctx.new_tensor(Type::F32, &[N as i64]);
+    let sum = ctx.add_inplace(a, b);
+    let mut g = ctx.new_graph(4);
+    g.expand(sum);
+    ctx.alloc_tensors(&cpu).unwrap();
+    let (av, bv) = (xs(1.0), xs(5.0));
+    a.set_f32(&av).unwrap();
+    b.set_f32(&bv).unwrap();
+    cpu.compute_async(&g).unwrap();
+    let want: Vec<f32> = av.iter().zip(&bv).map(|(a, b)| a + b).collect();
+    assert_eq!(a.get_f32().unwrap(), want);
+    assert_eq!(b.get_f32().unwrap(), bv);
 }

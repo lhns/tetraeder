@@ -2110,6 +2110,13 @@ dependencies = [
 [[package]]
 name = "tetraeder-executor"
 version = "0.0.0"
+dependencies = [
+ "proptest",
+ "tetraeder-ggml-sys",
+ "tetraeder-telemetry",
+ "thiserror 2.0.21",
+ "tracing",
+]
 
 [[package]]
 name = "tetraeder-gateway"
