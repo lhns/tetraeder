@@ -207,6 +207,36 @@ pub fn batched_equals_alone(path: &Path, opts: &LoadOptions, tol: f32, what: &st
     m
 }
 
+/// The same batched steps on two configurations of one model (for example the serial streamed
+/// path and the one with prefetch, the I/O service and overlap): the logits agree within `tol`.
+/// This is for models where batched against alone is not a fair test: with 32 experts and top-8
+/// on random weights, the 1% gap between a one-row and a several-row quantized kernel on some
+/// CPUs flips a near-tied expert choice, and the logits move by a few percent.
+pub fn batched_paths_agree(
+    path: &Path,
+    a: &LoadOptions,
+    b: &LoadOptions,
+    tol: f32,
+    what: &str,
+) -> Qwen3Moe {
+    let prompts = [prompt(1, 7), prompt(2, 21), prompt(3, 24)];
+    let toks: Vec<Vec<i32>> = prompts.iter().map(|p| alone(path, b, p, 6).toks).collect();
+    let lens: Vec<usize> = prompts.iter().map(Vec::len).collect();
+    let total: Vec<usize> = toks.iter().map(Vec::len).collect();
+    let steps = schedule(&lens, &total, 16);
+    let mut m = load(path, a, 3);
+    let got = run_steps(&mut m, &toks, &steps);
+    let want = run_steps(&mut load(path, b, 3), &toks, &steps);
+    for (si, (g, w)) in got.iter().zip(&want).enumerate() {
+        for (ii, (x, y)) in g.iter().zip(w).enumerate() {
+            let what = format!("{what}: step {si}, input {ii}");
+            close(x, y, tol, &what);
+            same_token(x, y, tol, &what);
+        }
+    }
+    m
+}
+
 /// `seq_cp` of a whole sequence and of a prefix, then continuing the copy, against a fresh
 /// prefill of the same tokens; the source continues too.
 pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {

@@ -123,12 +123,20 @@ fn cpu_streamed_cpu_miss_batched_equals_alone() {
     assert!(m.expert_groups() > 0);
 }
 
-/// hardware: cpu. Prefetch, the I/O service and overlap see 3 tokens per decode step and 24
-/// more in a mixed one: the same logits as each alone, and the reads still happen.
+/// hardware: cpu. Prefetch, the I/O service and overlap see 3 tokens per decode step and 40
+/// more in a mixed one: the same logits as the serial streamed path on the same batches, and the
+/// reads still happen.
 #[test]
-fn cpu_streamed_overlap_prefetch_batched_equals_alone() {
+fn cpu_streamed_overlap_prefetch_matches_the_serial_path() {
     let (path, o) = overlap();
-    let m = batched_equals_alone(&path, &o, TOL_CPU, "overlap");
+    let serial = LoadOptions {
+        prefetch: false,
+        io: IoOptions::default(),
+        overlap: false,
+        io_factory: None,
+        ..o.clone()
+    };
+    let m = batched_paths_agree(&path, &o, &serial, TOL_CPU, "overlap");
     let s = m.expert_stats().expect("streaming");
     assert!(s.io.experts_read > 0);
     assert!(s.io.prefetch_issued > 0, "prefetch ran with several tokens");
