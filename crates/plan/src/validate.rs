@@ -636,9 +636,7 @@ impl<'a> Checker<'a> {
             if checked.insert((fi, kind, false)) {
                 let (ok, expected) = match (kind, st.tp) {
                     // ep = 1 with tp > 1: an expert is cut like the rest (ADR 0070).
-                    (UnitKind::Expert, Some(tp))
-                        if caps.tp_ep && tp > 1 && st.ep.unwrap_or(1) == 1 =>
-                    {
+                    (UnitKind::Expert, Some(tp)) if p5 && tp > 1 && st.ep.unwrap_or(1) == 1 => {
                         (of == tp as usize, format!("tp = {tp}"))
                     }
                     (UnitKind::Expert, _) => (of == 1, "1".to_string()),
