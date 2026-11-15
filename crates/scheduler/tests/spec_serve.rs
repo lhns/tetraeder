@@ -22,6 +22,7 @@ use tetraeder_gateway::engine::{
 use tetraeder_model::{BackendChoice, DenseOptions};
 use tetraeder_scheduler::spec::{
     DraftLen, MAX_VERIFY, NgramDrafter, Sampling, SeqTarget, SpecConfig, SpecMethod, Speculator,
+    argmax,
 };
 use tetraeder_scheduler::{
     BackendError, BatchBackend, Loaded, Outputs, Scheduler, SchedulerConfig, SeqId, SeqInput,
@@ -140,44 +141,48 @@ fn spec_config(method: &str) -> Option<SpecConfig> {
     Some(c)
 }
 
-fn start(kind: Kind, parallel: usize, spec: Option<SpecConfig>) -> (Arc<Scheduler>, Arc<Seen>) {
+fn load(kind: Kind, parallel: usize) -> Result<Loaded, String> {
     let path = fixture();
-    let mut sc = SchedulerConfig::new(&path);
+    match kind {
+        Kind::Llama => load_llama(
+            &path,
+            &Placement {
+                n_gpu_layers: 0,
+                ..Placement::default()
+            },
+            &ContextConfig {
+                n_ctx: 2048,
+                n_batch: 64,
+                n_ubatch: 64,
+                threads: Some(2),
+                threads_batch: Some(2),
+                n_seq_max: parallel as u32,
+                kv_unified: true,
+                ..ContextConfig::default()
+            },
+            None,
+        ),
+        Kind::Dense => load_dense(
+            &path,
+            &DenseOptions {
+                n_seq_max: parallel,
+                n_ctx_pool: 2048,
+                threads: Some(2),
+                ..DenseOptions::new(BackendChoice::Cpu { threads: Some(2) })
+            },
+        ),
+    }
+}
+
+fn start(kind: Kind, parallel: usize, spec: Option<SpecConfig>) -> (Arc<Scheduler>, Arc<Seen>) {
+    let mut sc = SchedulerConfig::new(fixture());
     sc.parallel = parallel;
     sc.step_tokens = 64;
     sc.spec = spec;
     let seen = Arc::new(Seen::default());
     let seen2 = Arc::clone(&seen);
     let s = Scheduler::start(sc, move || {
-        let Loaded { backend, tokenizer } = match kind {
-            Kind::Llama => load_llama(
-                &path,
-                &Placement {
-                    n_gpu_layers: 0,
-                    ..Placement::default()
-                },
-                &ContextConfig {
-                    n_ctx: 2048,
-                    n_batch: 64,
-                    n_ubatch: 64,
-                    threads: Some(2),
-                    threads_batch: Some(2),
-                    n_seq_max: parallel as u32,
-                    kv_unified: true,
-                    ..ContextConfig::default()
-                },
-                None,
-            )?,
-            Kind::Dense => load_dense(
-                &path,
-                &DenseOptions {
-                    n_seq_max: parallel,
-                    n_ctx_pool: 2048,
-                    threads: Some(2),
-                    ..DenseOptions::new(BackendChoice::Cpu { threads: Some(2) })
-                },
-            )?,
-        };
+        let Loaded { backend, tokenizer } = load(kind, parallel)?;
         Ok(Loaded {
             backend: Box::new(Spy {
                 inner: backend,
@@ -249,6 +254,69 @@ fn shutdown(s: Arc<Scheduler>) {
         .expect("shutdown");
 }
 
+/// Top-2 margin, relative to the largest logit, of the one-row steps' logits that choose
+/// `want[i]` after `prompt` and `want[..i]`.
+fn plain_margin(kind: Kind, prompt: &[TokenId], want: &[TokenId], i: usize) -> f32 {
+    let Loaded { mut backend, .. } = load(kind, 1).expect("load");
+    let toks: Vec<i32> = prompt.iter().map(|&t| t as i32).collect();
+    let mut l = backend
+        .decode(&[SeqInput {
+            seq: 0,
+            tokens: &toks,
+            all_logits: false,
+        }])
+        .expect("prefill")
+        .last(0)
+        .to_vec();
+    for &t in &want[..i] {
+        l = backend
+            .decode(&[SeqInput {
+                seq: 0,
+                tokens: &[t as i32],
+                all_logits: false,
+            }])
+            .expect("decode")
+            .last(0)
+            .to_vec();
+    }
+    let top = argmax(&l);
+    let second = l
+        .iter()
+        .enumerate()
+        .filter(|&(j, _)| j != top)
+        .map(|(_, &x)| x)
+        .fold(f32::MIN, f32::max);
+    let scale = l.iter().fold(0f32, |a, x| a.max(x.abs()));
+    (l[top] - second) / scale
+}
+
+/// Top-2 margin below which plain greedy counts as a near-tie (ADR 0043, 0052): verification
+/// batches are not bitwise batch-invariant on AVX2 and AVX-512 builds, and CI runners flipped a
+/// token at a margin of 0.0044.
+fn near_tie() -> f32 {
+    let info = tetraeder_ggml_sys::cpu::backend_info().expect("CPU backend");
+    if info.isa.iter().any(|f| f == "AVX512") {
+        1e-2
+    } else {
+        1e-3
+    }
+}
+
+/// `got` equals the plain output `want`, or first leaves it where plain greedy was a near-tie.
+fn assert_agrees(kind: Kind, prompt: &[TokenId], got: &[TokenId], want: &[TokenId], what: &str) {
+    let n = got.len().min(want.len());
+    let Some(i) = (0..n).find(|&i| got[i] != want[i]) else {
+        assert_eq!(got.len(), want.len(), "{what}: lengths differ");
+        return;
+    };
+    let m = plain_margin(kind, prompt, want, i);
+    eprintln!("{what}: leaves plain greedy at token {i}, plain top-2 margin {m}");
+    assert!(
+        m < near_tie(),
+        "{what}: speculation changed the output at token {i}, where plain greedy had a margin of {m}"
+    );
+}
+
 fn one_request(kind: Kind, method: &str) -> (Vec<TokenId>, Arc<Seen>) {
     let (s, seen) = start(kind, 2, spec_config(method));
     let out = generate(&s, prompt(1, 40), 120);
@@ -264,10 +332,15 @@ fn check_exact(kind: Kind, method: &str) {
         plain.len()
     );
     assert_eq!(plain_seen.verify_decodes.load(Ordering::Relaxed), 0);
+    // The margin helper runs on the real backends (it matters only when a run diverges).
+    assert!(plain_margin(kind, &prompt(1, 40), &plain, 10) >= 0.0);
     let (spec, seen) = one_request(kind, method);
-    assert_eq!(
-        spec, plain,
-        "{kind:?} {method}: speculation changed the output"
+    assert_agrees(
+        kind,
+        &prompt(1, 40),
+        &spec,
+        &plain,
+        &format!("{kind:?} {method}"),
     );
     let verifies = seen.verify_decodes.load(Ordering::Relaxed);
     assert!(verifies > 0, "{kind:?} {method}: nothing speculated");
@@ -343,8 +416,10 @@ fn check_concurrent(kind: Kind) {
         .map(|h| h.join().expect("request thread"))
         .collect();
     shutdown(s);
-    assert_eq!(got[0], alone[0], "{kind:?}");
-    assert_eq!(got[1], alone[1], "{kind:?}");
+    for (i, (n, g)) in [(20, &got[0]), (25, &got[1])].into_iter().enumerate() {
+        let p = prompt(2 + i as u32, n);
+        assert_agrees(kind, &p, g, &alone[i], &format!("{kind:?} request {i}"));
+    }
     assert_eq!(
         seen.verify_beside_decoder.load(Ordering::Relaxed),
         0,
