@@ -22,3 +22,8 @@ Status: Proposed (2026-11-16). Provisional until the gpu-smoke3 session (`script
 - `TOL_GPU` stays the absolute floor for its other users (`parity`, `slots`, `admit`, `cpu_experts`, `kv_snapshot_decode`); they may need the relative rule once they run on CUDA.
 - Forcing F32 matmul precision in the builders would remove the cuBLAS 16F noise but diverge from libllama and cost speed; not taken.
 - Open until smoke3: the dense three-sequence failure runs on mmf (F32 accumulation) and CUDA flash attention with mixed sequences, so cuBLAS 16F does not explain it; the dense anchor decides it.
+
+## Addendum: gpu-smoke3 (2026-11-16, `bench/results/20261116gpu3/`, RTX 3090)
+- The rule holds on the dense builder: every dense GPU test passes, including the three-sequence one that was open (CUDA flash attention over mixed sequences). On CUDA libllama's own batched against split gap is 0.0895 (5.7e-3 of the largest logit), the builder's 0.0523; builder against libllama at the same shapes 0.0582 batched and 0.0312 split. No growth with position or sequence; no greedy flip.
+- MoE on CUDA: the builder batched is bit-equal to libllama batched; batched against split 0.0377 for both.
+- Not closed: `gpu_seq_cp_snapshot_and_move` fails in its move subcases (F16 KV jumps to 0.171 at step 19; q8_0 KV is off by 2.4e-2 of the largest logit from step 0, with a greedy flip at step 62) while copy, prefix copy and source continuation pass. This looks like a real fault in the device-side row move, not noise; under diagnosis (`track-gpu-move`). The verdict's gpu-parity gate stays strict until it is fixed.
