@@ -426,8 +426,8 @@ struct LoadArgs {
 fn builder_backend(place: &PlacementArgs, gpus: usize) -> BackendChoice {
     if place.ngl == 0 || gpus == 0 {
         if place.ngl != 0 {
-            tracing::warn!(
-                "no GPU found, --ngl {} is ignored: running on the CPU",
+            eprintln!(
+                "warning: no GPU found, --ngl {} is ignored: running on the CPU",
                 place.ngl
             );
         }
