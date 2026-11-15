@@ -13,6 +13,7 @@ pub use draft::DraftModel;
 pub use ngram::NgramDrafter;
 pub use policy::choose_k;
 pub use speculator::{BatchStat, SpecStats, Speculator};
+pub use target::SeqTarget;
 
 use tetraeder_ggml_sys::llama::LlamaError;
 use tetraeder_model::ModelError;
@@ -27,6 +28,8 @@ pub enum SpecError {
     Model(#[from] ModelError),
     #[error(transparent)]
     Llama(#[from] LlamaError),
+    #[error(transparent)]
+    Backend(#[from] crate::backend::BackendError),
     #[error("{0}")]
     Invalid(String),
 }
@@ -118,4 +121,58 @@ pub fn choose(logits: &[f32], pos: usize, s: &Sampling) -> i32 {
         }
     }
     last as i32
+}
+
+/// How the serving scheduler speculates (`serve --spec`, ADR 0065). Off unless set.
+#[derive(Debug, Clone)]
+pub struct SpecConfig {
+    pub method: SpecMethod,
+    pub len: DraftLen,
+    /// A sequence drafts only while at most this many sequences are decoding. Verify rows of
+    /// several sequences share the step and the bandwidth headroom speculation lives on, and
+    /// ADR 0043's bitwise exactness holds for one sequence only.
+    pub max_batch: usize,
+}
+
+#[derive(Debug, Clone)]
+pub enum SpecMethod {
+    Ngram(NgramDrafter),
+    Draft {
+        path: std::path::PathBuf,
+        n_ctx: u32,
+        n_gpu_layers: i32,
+        threads: i32,
+        p_min: f32,
+    },
+}
+
+impl SpecConfig {
+    pub fn new(method: SpecMethod) -> Self {
+        Self {
+            method,
+            len: DraftLen::Adaptive {
+                max: MAX_VERIFY - 1,
+            },
+            max_batch: 1,
+        }
+    }
+
+    /// Builds the drafter, on the thread that will use it. A draft model must share the
+    /// target's vocabulary size.
+    pub fn build_drafter(&self, target_n_vocab: usize) -> Result<Box<dyn Drafter>, SpecError> {
+        Ok(match &self.method {
+            SpecMethod::Ngram(n) => Box::new(*n),
+            SpecMethod::Draft {
+                path,
+                n_ctx,
+                n_gpu_layers,
+                threads,
+                p_min,
+            } => {
+                let d = DraftModel::load(path, *n_ctx, *n_gpu_layers, *threads, *p_min)?;
+                d.check_vocab(target_n_vocab)?;
+                Box::new(d)
+            }
+        })
+    }
 }

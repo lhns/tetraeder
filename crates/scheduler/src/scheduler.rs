@@ -8,6 +8,7 @@ use crate::batch::{Live, plan_step, victim};
 use crate::load::{Loaded, model_id};
 use crate::prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS, common_prefix};
 use crate::sample::{SampleParams, Sampler, counter_seed};
+use crate::spec::{Drafter, Sampling, SpecConfig, Speculator};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::mpsc as std_mpsc;
@@ -63,6 +64,8 @@ pub struct SchedulerConfig {
     /// Reuse prefixes: idle and busy resident sequences and the RAM cache. Off, every request
     /// starts an empty sequence (`--no-prefix-reuse`); `cache_ram_bytes` is independent.
     pub prefix_reuse: bool,
+    /// Speculative decoding of a lone greedy sequence (ADR 0043, 0065); `None` is off.
+    pub spec: Option<SpecConfig>,
 }
 
 /// Default prefix cache budget, like llama-server's `--cache-ram`.
@@ -85,6 +88,7 @@ impl SchedulerConfig {
             parallel: PARALLEL,
             step_tokens: STEP_TOKENS,
             prefix_reuse: true,
+            spec: None,
         }
     }
 }
@@ -117,6 +121,7 @@ impl Scheduler {
         let decode_profile = cfg.decode_profile;
         let (parallel, step_tokens) = (cfg.parallel.max(1), cfg.step_tokens.max(1));
         let prefix_reuse = cfg.prefix_reuse;
+        let spec_cfg = cfg.spec.clone();
         let (cache_ram, save_min, restore_gain) = (
             cfg.cache_ram_bytes,
             cfg.cache_save_min,
@@ -137,6 +142,16 @@ impl Scheduler {
                 let vocab = Arc::new(build_vocab(&loaded.tokenizer));
                 let _ = worker_vocab.set(Arc::clone(&vocab));
                 let n_ctx = loaded.backend.n_ctx_seq();
+                let spec = match spec_cfg
+                    .map(|c| c.build_drafter(loaded.backend.n_vocab()).map(|d| (c, d)))
+                    .transpose()
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = ready_tx.send(Err(format!("cannot set up speculation: {e}")));
+                        return;
+                    }
+                };
                 let _ = ready_tx.send(Ok((Arc::clone(&loaded.tokenizer), n_ctx)));
                 let mut w = Worker::new(
                     loaded.backend,
@@ -151,6 +166,9 @@ impl Scheduler {
                     parallel,
                     step_tokens,
                 );
+                if let Some((c, d)) = spec {
+                    w.set_spec(&c, d);
+                }
                 w.run(&job_rx);
             })
             .map_err(|e| format!("cannot start the scheduler thread: {e}"))?;
@@ -305,6 +323,9 @@ struct Req {
     bytes0: Option<u64>,
     /// Admitted at least once.
     started: bool,
+    /// A busy copy for this request failed: its next placement does not offer a busy source, so
+    /// it falls back to the idle sequence or the RAM entry. Cleared when it is placed.
+    no_busy: bool,
 }
 
 impl Req {
@@ -334,6 +355,7 @@ impl Req {
             after_prefill: None,
             bytes0: None,
             started: false,
+            no_busy: false,
         }
     }
 
@@ -370,6 +392,9 @@ struct Seq {
     decoding: bool,
     /// Rows asked of the backend for this sequence.
     reserved_to: usize,
+    /// Draft tokens that ride in this step after the pending token. `None`: the sequence does
+    /// not speculate in this step; `Some(empty)`: it does, with no draft.
+    drafts: Option<Vec<i32>>,
 }
 
 impl Seq {
@@ -423,9 +448,14 @@ struct Worker {
     /// After a failed multi-input step: the sequences to retry one per step, so only the one
     /// whose input the backend rejects fails.
     solo: VecDeque<SeqId>,
-    /// Set after a failed busy copy: the next placement does not offer a busy source, so the
-    /// request falls back to the idle sequence or the RAM entry.
-    no_busy: bool,
+    spec: Option<SpecState>,
+}
+
+/// Speculation in the loop: drafts for a lone greedy decoding sequence (ADR 0065).
+struct SpecState {
+    speculator: Speculator,
+    drafter: Box<dyn Drafter>,
+    max_batch: usize,
 }
 
 /// Mask, sample and commit one token from `logits`.
@@ -485,8 +515,16 @@ impl Worker {
             last_step: None,
             n_vocab,
             solo: VecDeque::new(),
-            no_busy: false,
+            spec: None,
         }
+    }
+
+    fn set_spec(&mut self, cfg: &SpecConfig, drafter: Box<dyn Drafter>) {
+        self.spec = Some(SpecState {
+            speculator: Speculator::new(cfg.len, Sampling::GREEDY, None),
+            drafter,
+            max_batch: cfg.max_batch.max(1),
+        });
     }
 
     fn live_count(&self) -> usize {
@@ -830,7 +868,7 @@ impl Worker {
         // A busy sequence holding the longest prefix, copied when it beats the idle and RAM
         // options by `restore_gain` (a copy costs less than a restore, but more than nothing).
         let ram_n = ram.map_or(0, |(_, n)| n);
-        let busy_ok = !std::mem::take(&mut self.no_busy);
+        let busy_ok = !req.no_busy;
         let busy = self
             .slots
             .iter()
@@ -927,7 +965,7 @@ impl Worker {
                     // the busy source, so it can still use the idle sequence or the RAM entry.
                     tracing::warn!("cannot copy a busy sequence: {e}");
                     let _ = self.backend.seq_rm(id as SeqId, 0);
-                    self.no_busy = true;
+                    req.no_busy = true;
                     self.waiting.push_front(req);
                     return Admission::Admitted;
                 }
@@ -998,6 +1036,7 @@ impl Worker {
         {
             m.kv_prefix_hit(source);
         }
+        req.no_busy = false;
         self.next_admitted += 1;
         self.slots[id] = Slot::Live(Box::new(Seq {
             req,
@@ -1005,6 +1044,7 @@ impl Worker {
             admitted: self.next_admitted,
             decoding: false,
             reserved_to,
+            drafts: None,
         }));
         Admission::Admitted
     }
@@ -1039,7 +1079,7 @@ impl Worker {
             .filter_map(|(i, s)| match s {
                 Slot::Live(s) => Some(Live {
                     seq: i as SeqId,
-                    pending: s.req.toks.len() - s.fed,
+                    pending: s.req.toks.len() - s.fed + s.drafts.as_ref().map_or(0, Vec::len),
                     decoding: s.decoding,
                     paused: s.paused(),
                     admitted: s.admitted,
@@ -1052,6 +1092,7 @@ impl Worker {
     /// Plans and runs one step. False when nothing could run (everything paused).
     fn step(&mut self) -> bool {
         'plan: loop {
+            self.draft();
             let live = self.live_view();
             let mut takes = plan_step(self.budget, &live);
             if takes.is_empty() {
@@ -1099,15 +1140,32 @@ impl Worker {
                 }
             }
             // The step.
+            // A sequence with drafts sends its pending token and the drafts, with the logits of
+            // every row to verify them.
+            let bufs: Vec<Option<Vec<i32>>> = takes
+                .iter()
+                .map(|t| {
+                    let Slot::Live(seq) = &self.slots[t.seq as usize] else {
+                        unreachable!("planned sequences are live");
+                    };
+                    seq.drafts.as_ref().filter(|d| !d.is_empty()).map(|d| {
+                        let mut b = vec![seq.req.toks[seq.fed]];
+                        b.extend_from_slice(d);
+                        b
+                    })
+                })
+                .collect();
             let mut inputs = Vec::with_capacity(takes.len());
-            for t in &takes {
+            for (t, buf) in takes.iter().zip(&bufs) {
                 let Slot::Live(seq) = &self.slots[t.seq as usize] else {
                     unreachable!("planned sequences are live");
                 };
                 inputs.push(SeqInput {
                     seq: t.seq,
-                    tokens: &seq.req.toks[seq.fed..seq.fed + t.n],
-                    all_logits: false,
+                    tokens: buf
+                        .as_deref()
+                        .unwrap_or_else(|| &seq.req.toks[seq.fed..seq.fed + t.n]),
+                    all_logits: buf.is_some(),
                 });
             }
             let total: usize = takes.iter().map(|t| t.n).sum();
@@ -1136,15 +1194,41 @@ impl Worker {
                 }
             };
             // Sample the sequences whose prompt is complete, in sequence order.
-            let mut sampled: Vec<Option<Result<u32, String>>> = Vec::with_capacity(takes.len());
+            let mut sampled: Vec<Option<Result<Vec<u32>, String>>> =
+                Vec::with_capacity(takes.len());
             let mut sample_times = Vec::with_capacity(takes.len());
+            let nv = self.n_vocab;
             for (k, t) in takes.iter().enumerate() {
                 let Slot::Live(seq) = &mut self.slots[t.seq as usize] else {
                     unreachable!("planned sequences are live");
                 };
-                if seq.fed + t.n == seq.req.toks.len() {
+                if let Some(d) = bufs[k].as_ref().map(|b| &b[1..]) {
+                    // Row i holds the logits after the pending token and i drafts. The token
+                    // chosen there is the one plain decoding would emit if the drafts before it
+                    // were right; the chain ends at the first draft it differs from.
                     let t1 = Instant::now();
-                    sampled.push(Some(sample_one(&mut seq.req, out.last(k))));
+                    let rows = out.rows(k);
+                    let mut chain = Ok(Vec::with_capacity(d.len() + 1));
+                    for i in 0..=d.len() {
+                        match sample_one(&mut seq.req, &rows[i * nv..(i + 1) * nv]) {
+                            Ok(tok) => {
+                                let more = d.get(i).is_some_and(|&x| x == tok as i32);
+                                chain.as_mut().expect("ok").push(tok);
+                                if !more {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                chain = Err(e);
+                                break;
+                            }
+                        }
+                    }
+                    sampled.push(Some(chain));
+                    sample_times.push(t1.elapsed());
+                } else if seq.fed + t.n == seq.req.toks.len() {
+                    let t1 = Instant::now();
+                    sampled.push(Some(sample_one(&mut seq.req, out.last(k)).map(|t| vec![t])));
                     sample_times.push(t1.elapsed());
                 } else {
                     sampled.push(None);
@@ -1177,21 +1261,129 @@ impl Worker {
                 let Slot::Live(seq) = &mut self.slots[id] else {
                     continue;
                 };
+                let before = seq.fed;
                 seq.fed += t.n;
                 seq.req.times.eval += took;
                 seq.req.gpu += took.mul_f64(t.n as f64 / total as f64);
+                let drafts = seq.drafts.take();
                 match sampled[k].take() {
                     None => {}
                     Some(Err(e)) => self.fail(id, e),
-                    Some(Ok(tok)) => {
+                    Some(Ok(chain)) => {
                         seq.req.times.sample += sample_times[k];
                         seq.req.times.steps += 1;
-                        self.on_token(id, tok);
+                        match drafts {
+                            Some(d) => {
+                                self.on_chain(id, before, &chain, d.len(), took, takes.len() == 1);
+                            }
+                            None => self.on_token(id, chain[0]),
+                        }
                     }
                 }
             }
             self.log_step(t0, took, &sample_times, dec_seqs, dec, takes.len(), pre);
             return true;
+        }
+    }
+
+    /// Proposes drafts for the sequences that speculate in the next step: decoding, not paused,
+    /// greedy and unconstrained (so the chosen token is the argmax, with no sampler state), and
+    /// at most `max_batch` of them decoding. They are kept until the step has run.
+    fn draft(&mut self) {
+        let Some(spec) = self.spec.as_mut() else {
+            return;
+        };
+        let decoding = self
+            .slots
+            .iter()
+            .filter(|s| matches!(s, Slot::Live(s) if s.decoding && !s.paused()))
+            .count();
+        for slot in &mut self.slots {
+            let Slot::Live(seq) = slot else { continue };
+            let greedy = seq
+                .req
+                .params
+                .temperature
+                .unwrap_or(self.defaults.temperature)
+                <= 0.0;
+            let eligible = decoding <= spec.max_batch
+                && seq.decoding
+                && !seq.paused()
+                && greedy
+                && seq.req.constraint.is_none()
+                && seq.req.toks.len() == seq.fed + 1;
+            if !eligible {
+                seq.drafts = None;
+            } else if seq.drafts.is_none() {
+                // Rows past the context or the token limit would only be cut again.
+                let left = seq
+                    .req
+                    .params
+                    .max_tokens
+                    .saturating_sub(seq.req.stats.generated_tokens)
+                    as usize;
+                let cap = left
+                    .saturating_sub(1)
+                    .min(self.n_ctx_seq.saturating_sub(seq.fed + 1));
+                let drafts = spec
+                    .speculator
+                    .propose(spec.drafter.as_mut(), &seq.req.toks, cap)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("drafting failed: {e}");
+                        Vec::new()
+                    });
+                seq.drafts = Some(drafts);
+            }
+        }
+    }
+
+    /// Emits the tokens a verify step chose for `id` and keeps in its KV the pending token and
+    /// the drafts that were accepted. `before` is the sequence's length before the step, `chain`
+    /// the chosen tokens (one more than the accepted drafts). Ends early when a token ends the
+    /// request; what was fed beyond that is cut like a rejected draft.
+    fn on_chain(
+        &mut self,
+        id: usize,
+        before: usize,
+        chain: &[u32],
+        drafted: usize,
+        took: Duration,
+        alone: bool,
+    ) {
+        let mut last = 0;
+        for (i, &tok) in chain.iter().enumerate() {
+            let Slot::Live(seq) = &mut self.slots[id] else {
+                break;
+            };
+            last = i;
+            seq.fed = before + 1 + i;
+            self.on_token(id, tok);
+        }
+        let accepted = chain.len() - 1;
+        if drafted > 0
+            && let (Some(m), Some(spec)) = (&self.metrics, &self.spec)
+        {
+            m.spec_step(spec.drafter.method(), drafted as u64, accepted as u64);
+        }
+        if let Some(spec) = &mut self.spec
+            && alone
+        {
+            spec.speculator.record(1 + drafted, drafted, accepted, took);
+        }
+        let keep = before + 1 + last;
+        if self.backend.seq_len(id as SeqId) > keep
+            && let Err(e) = self.backend.seq_rm(id as SeqId, keep)
+        {
+            if matches!(self.slots[id], Slot::Live(_)) {
+                self.fail(id, e.to_string());
+            } else {
+                let _ = self.backend.seq_rm(id as SeqId, 0);
+                self.slots[id] = Slot::Free;
+            }
+            return;
+        }
+        if let Slot::Live(seq) = &mut self.slots[id] {
+            seq.reserved_to = self.backend.seq_reserved(id as SeqId);
         }
     }
 

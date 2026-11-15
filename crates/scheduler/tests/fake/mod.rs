@@ -69,6 +69,9 @@ pub struct FakeKv {
     /// `seq_rm` to a positive length also releases the reservation beyond that length rounded up
     /// to this many rows (the dense backend's behaviour).
     shrink_to_multiple: Option<usize>,
+    /// The next `seq_cp` cancels this token and fails, as a request cancelled while its busy
+    /// copy fails.
+    fail_cp_cancelling: Option<tokio_util::sync::CancellationToken>,
     decodes: u32,
     pool: Vec<Option<i32>>,
     free_rows: Vec<usize>,
@@ -88,6 +91,7 @@ impl FakeKv {
             fail_every: None,
             poison: None,
             shrink_to_multiple: None,
+            fail_cp_cancelling: None,
             decodes: 0,
             pool: vec![None; capacity],
             free_rows: (0..capacity).rev().collect(),
@@ -109,6 +113,11 @@ impl FakeKv {
 
     pub fn with_poison(mut self, token: Option<i32>) -> Self {
         self.poison = token;
+        self
+    }
+
+    pub fn with_fail_cp_cancelling(mut self, token: tokio_util::sync::CancellationToken) -> Self {
+        self.fail_cp_cancelling = Some(token);
         self
     }
 
@@ -242,6 +251,10 @@ impl BatchBackend for FakeKv {
     }
 
     fn seq_cp(&mut self, src: SeqId, dst: SeqId, n: usize) -> Result<(), BackendError> {
+        if let Some(t) = self.fail_cp_cancelling.take() {
+            t.cancel();
+            return Err(BackendError::Failed("injected".into()));
+        }
         let (s, d) = (self.seq_ok(src)?, self.seq_ok(dst)?);
         if s == d || !self.seqs[d].tokens.is_empty() || n > self.seqs[s].tokens.len() {
             return Err(BackendError::Failed(format!(
