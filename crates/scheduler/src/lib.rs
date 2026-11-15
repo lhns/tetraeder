@@ -24,3 +24,6 @@ pub use scheduler::{
 };
 
 pub mod spec;
+
+#[cfg(test)]
+extern crate self as tetraeder_scheduler;

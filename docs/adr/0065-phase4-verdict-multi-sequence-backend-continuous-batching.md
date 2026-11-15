@@ -198,6 +198,17 @@ Differences found while building it; the decisions above stand.
 - `SchedulerConfig::prefix_reuse` (`serve --no-prefix-reuse`, default on): off, no idle, busy or RAM reuse and no saves; `--cache-ram` is independent.
 - `BatchBackend::kv_row_bytes() -> usize` (default 0) sizes the copy in the transfer metric. libllama learns it from the first snapshot, so copies before it record 0 bytes.
 
+## Addendum: review fixes after C3b and C4 (2026-11-15)
+
+- Token ids are checked against `n_vocab` at admission; an out-of-range one fails only that request. A step that fails with `Failed` is retried one sequence per step (lengths are unchanged by the rollback contract), so only the sequence the backend rejects fails.
+- Chunked relocation asks for `need + GROW` rows when a gap holds them and `need` otherwise; a move no longer fails while a gap of `need` exists.
+- `Engine::seq_rm(seq, 0)` always clears the sequence's cells in libllama, also when `seq_len` is 0: a restore that fails partway leaves cells the length does not count.
+- A requeued request that already holds `n_ctx_seq` tokens and has generated some ends with `Length` at re-admission, as it would have live.
+- libllama `decode` names in `KvFull` the input that grew most past its reservation (libllama itself cannot say which one found no cells).
+- `BatchBackend::seq_reserved(seq)` (default: the length) lets the scheduler resync `reserved_to` after the prefix is restored or cut; the dense backend shrinks a reservation to the rows it keeps.
+- A RAM entry whose restore fails with `KvFull` goes back into the cache (it may fit later); one that fails otherwise is dropped, since its bytes would fail again.
+- Decode profile: `eval_s` is the shared wall time of the steps the request took part in (concurrent requests each count a step in full) and `gpu_seconds` is a token share of those steps. Neither is the request's own cost; no gate may use per-request `gpu_seconds`.
+
 ## Addendum: CPU steps and the loop-bench gap (2026-11-15)
 
 - On the CPU, `LlamaBackend` and `DenseBackend` run a step's decoders (inputs under 64 tokens, ggml's flash-attention query tile) and prompt chunks as separate model calls, in input order; on a GPU a step stays one call. Mixing 3 decoders into a 402-token chunk cost 195 ms over the chunk alone, as two calls 66 ms (Qwen3-0.6B, EPYC 9V74, `crates/scheduler/tests/step_shapes.rs`). `MoeBackend` is unchanged.

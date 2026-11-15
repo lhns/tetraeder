@@ -92,13 +92,19 @@ impl Layout for Chunked {
             self.runs[i].size = need;
             return Ok(Vec::new());
         }
-        // Else move to a free run of the needed size plus GROW. The old run stays occupied
-        // while the destination is chosen, so source and destination never overlap.
-        let size = need + GROW;
-        let start = self.first_fit(size).ok_or(KvError::Full {
-            needed: size,
-            free: self.free(),
-        })?;
+        // Else move to a free run of the needed size plus GROW, or of the needed size alone when
+        // no gap holds the extra. The old run stays occupied while the destination is chosen, so
+        // source and destination never overlap.
+        let (start, size) = match self.first_fit(need + GROW) {
+            Some(start) => (start, need + GROW),
+            None => (
+                self.first_fit(need).ok_or(KvError::Full {
+                    needed: need,
+                    free: self.free(),
+                })?,
+                need,
+            ),
+        };
         self.runs.remove(i);
         self.insert(Run { seq, start, size });
         Ok(vec![RowCopy {

@@ -273,7 +273,8 @@ pub fn build_vocab(model: &Model) -> Vocab {
 struct StepTimes {
     /// Steps that sampled a token.
     steps: u32,
-    /// Backend `decode` calls the request took part in (the whole step's wall time).
+    /// Wall time of every backend `decode` the request took part in: a step shared with other
+    /// requests counts in full for each of them, so this is not the request's own cost.
     eval: Duration,
     /// Constraint mask, sampling and commit.
     sample: Duration,
@@ -295,7 +296,8 @@ struct Req {
     sampler: Option<Sampler>,
     stats: EngineStats,
     times: StepTimes,
-    /// This request's share of the step times, by tokens.
+    /// This request's share of the step times, by tokens. Shares of concurrent requests add up
+    /// to the step, so it depends on who else ran; no gate may use per-request `gpu_seconds`.
     gpu: Duration,
     emit: Duration,
     /// With the decode profile: the times and backend counters when its first token was sampled.
@@ -417,6 +419,10 @@ struct Worker {
     n_ctx_seq: usize,
     /// End of the last step, for the step log's idle gap.
     last_step: Option<Instant>,
+    n_vocab: usize,
+    /// After a failed multi-input step: the sequences to retry one per step, so only the one
+    /// whose input the backend rejects fails.
+    solo: VecDeque<SeqId>,
 }
 
 /// Mask, sample and commit one token from `logits`.
@@ -455,6 +461,7 @@ impl Worker {
         // Decoding sequences take their token even beyond the budget, so it covers them all.
         let budget = step_tokens.min(max_step).max(parallel);
         let n_ctx_seq = backend.n_ctx_seq();
+        let n_vocab = backend.n_vocab();
         Self {
             backend,
             slots: (0..parallel).map(|_| Slot::Free).collect(),
@@ -473,6 +480,8 @@ impl Worker {
             budget,
             n_ctx_seq,
             last_step: None,
+            n_vocab,
+            solo: VecDeque::new(),
         }
     }
 
@@ -595,6 +604,7 @@ impl Worker {
         let p = DecodeProfile {
             prefill_s: (prefill.eval + prefill.sample).as_secs_f64(),
             decode_steps: steps,
+            // Shared step wall time (see `StepTimes::eval`), not this request's own cost.
             eval_s: (end.eval - prefill.eval).as_secs_f64(),
             sample_s: (end.sample - prefill.sample).as_secs_f64(),
             emit_s: req.emit.as_secs_f64(),
@@ -740,6 +750,25 @@ impl Worker {
             if req.stats.generated_tokens >= req.params.max_tokens {
                 let req = self.waiting.pop_front().expect("front");
                 self.end_unplaced(req, Ok(FinishReason::Length));
+                continue;
+            }
+            if !req.toks.is_empty()
+                && req.toks.len() >= self.n_ctx_seq
+                && req.stats.generated_tokens > 0
+            {
+                // A preempted request that filled the context: it ends as it would have live.
+                let req = self.waiting.pop_front().expect("front");
+                self.end_unplaced(req, Ok(FinishReason::Length));
+                continue;
+            }
+            if let Some(&t) = req
+                .toks
+                .iter()
+                .find(|&&t| usize::try_from(t).map_or(true, |t| t >= self.n_vocab))
+            {
+                let msg = format!("token {t} outside the vocabulary of {}", self.n_vocab);
+                let req = self.waiting.pop_front().expect("front");
+                self.end_unplaced(req, Err(msg));
                 continue;
             }
             if req.toks.is_empty() || req.toks.len() >= self.n_ctx_seq {
@@ -914,7 +943,13 @@ impl Worker {
                 }
                 Err(e) => {
                     tracing::warn!("cannot restore a saved sequence: {e}");
+                    // Clears the cells even when the sequence looks empty.
                     let _ = self.backend.seq_rm(id as SeqId, 0);
+                    // Kept when the pool had no room (it may fit later); a `Failed` restore means
+                    // the bytes are unusable, so retrying them would only fail again.
+                    if matches!(e, BackendError::KvFull { .. }) {
+                        self.put_back(Some((etoks, bytes)));
+                    }
                 }
             }
         } else if let Slot::Idle(idle) = std::mem::replace(&mut self.slots[id], Slot::Free) {
@@ -932,6 +967,9 @@ impl Worker {
             let _ = self.backend.seq_rm(id as SeqId, 0);
             return Admission::Admitted;
         }
+        // The restore and the cut may have changed the reservation (the dense backend shrinks it
+        // to the rows it keeps), so ask instead of assuming `target`.
+        let reserved_to = self.backend.seq_reserved(id as SeqId);
         if !req.started {
             req.started = true;
             req.stats.cached_tokens = common as u32;
@@ -956,7 +994,7 @@ impl Worker {
             fed: common,
             admitted: self.next_admitted,
             decoding: false,
-            reserved_to: target,
+            reserved_to,
         }));
         Admission::Admitted
     }
@@ -1005,9 +1043,16 @@ impl Worker {
     fn step(&mut self) -> bool {
         'plan: loop {
             let live = self.live_view();
-            let takes = plan_step(self.budget, &live);
+            let mut takes = plan_step(self.budget, &live);
             if takes.is_empty() {
                 return false;
+            }
+            // Retrying one sequence at a time after a failed step: the next one still live.
+            while let Some(s) = self.solo.pop_front() {
+                if let Some(&t) = takes.iter().find(|t| t.seq == s) {
+                    takes = vec![t];
+                    break;
+                }
             }
             // Rows for the growth of each sequence.
             for t in &takes {
@@ -1065,10 +1110,18 @@ impl Worker {
                     self.make_room(seq as usize);
                     continue 'plan;
                 }
+                Err(BackendError::Failed(e)) if takes.len() > 1 => {
+                    // Lengths are unchanged, so each sequence runs alone in the next steps and
+                    // only the one the backend rejects fails.
+                    tracing::warn!(
+                        "step of {} sequences failed, retrying alone: {e}",
+                        takes.len()
+                    );
+                    self.solo = takes.iter().map(|t| t.seq).collect();
+                    continue 'plan;
+                }
                 Err(BackendError::Failed(e)) => {
-                    for t in &takes {
-                        self.fail(t.seq as usize, e.clone());
-                    }
+                    self.fail(takes[0].seq as usize, e);
                     return true;
                 }
             };
@@ -1236,3 +1289,6 @@ impl Worker {
         self.waiting.push_front(req);
     }
 }
+
+#[cfg(test)]
+mod tests;

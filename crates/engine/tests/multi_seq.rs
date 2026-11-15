@@ -444,3 +444,37 @@ fn a_full_pool_fails_the_step_and_leaves_every_length() {
     }
     close(&got, control.output_logits(0).unwrap());
 }
+
+/// A restore that libllama rejects partway can leave cells the length does not count; clearing
+/// the sequence must drop them even though `seq_len` is 0, so a decode at position 0 works.
+#[test]
+fn clearing_an_empty_looking_sequence_drops_cells_left_by_a_failed_restore() {
+    let a = prompt(12, 40);
+    let mut e = engine(2, 64);
+    e.decode_seqs(&[SeqEval {
+        seq: 0,
+        tokens: &a,
+        all_logits: false,
+    }])
+    .unwrap();
+    let snap = e.seq_snapshot(0).unwrap();
+    let mut saw_leftover = false;
+    // Cut the snapshot at several points: the header and cell metadata may parse, the data not.
+    for cut in (snap.len() / 8..snap.len()).step_by(snap.len() / 16) {
+        let mut e = engine(2, 64);
+        if e.seq_restore(1, &snap[..cut], a.len()).is_ok() {
+            continue;
+        }
+        assert_eq!(e.seq_len(1), 0);
+        e.seq_rm(1, 0).unwrap();
+        let p = prompt(13, 5);
+        e.decode_seqs(&[SeqEval {
+            seq: 1,
+            tokens: &p,
+            all_logits: false,
+        }])
+        .expect("a cleared sequence starts again at position 0");
+        saw_leftover = true;
+    }
+    assert!(saw_leftover, "no truncated snapshot was rejected");
+}

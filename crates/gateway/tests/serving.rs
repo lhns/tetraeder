@@ -119,7 +119,11 @@ fn logged_app(engine: FakeEngine) -> (Router, std::path::PathBuf) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let path = std::env::temp_dir().join(format!("tetraeder-reqlog-{t}.jsonl"));
+    // The clock alone can repeat on Windows; the counter and process id cannot.
+    static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pid = std::process::id();
+    let path = std::env::temp_dir().join(format!("tetraeder-reqlog-{pid}-{n}-{t}.jsonl"));
     let log = RequestLog::open(&path).unwrap();
     let gw = Gateway::new(Arc::new(engine), GatewayConfig::default()).with_cost_sink(log.clone());
     (router_with(Arc::new(gw), Some(log)), path)

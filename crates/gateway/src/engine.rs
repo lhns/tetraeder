@@ -113,7 +113,8 @@ pub struct EngineStats {
     /// Prompt tokens served from a prefix cache.
     pub cached_tokens: u32,
     pub generated_tokens: u32,
-    /// Device time attributed to this request.
+    /// Device time attributed to this request: its token share of the steps it took part in, so it
+    /// depends on who ran beside it. No gate may use it per request.
     pub gpu_seconds: Option<f64>,
     /// Weight bytes moved between memory tiers for this request.
     pub bytes_streamed: Option<u64>,
@@ -128,7 +129,9 @@ pub struct DecodeProfile {
     /// The step that evaluates the prompt suffix and samples the first token.
     pub prefill_s: f64,
     pub decode_steps: u32,
-    /// Backend `eval` of one token, logits readback included.
+    /// Backend `eval` of one token, logits readback included. The wall time of the steps the
+    /// request took part in: a step shared with other requests counts in full for each, so this
+    /// is not the request's own cost.
     pub eval_s: f64,
     /// Constraint mask and sampling over the logits.
     pub sample_s: f64,

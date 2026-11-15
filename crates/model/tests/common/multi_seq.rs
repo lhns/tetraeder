@@ -348,12 +348,12 @@ pub fn snapshot_roundtrip(path: &Path, opts: &LoadOptions, tol: f32, what: &str)
 
 /// A layout move in the middle of a decode (a neighbour stops sequence 0 growing in place): the
 /// logits stay within `tol` of a run whose sequence sits where the move put it from the start,
-/// and the move really happened. `opts` must have a pool of at least 2048 rows. The reference
+/// and the move really happened. `opts` must have a pool of at least 1024 rows (the move takes the gap behind the neighbour, 512 rows, when no gap holds the extra GROW). The reference
 /// is not the sequence alone: a decode's kernel (CPU flash attention for one query) sums over
 /// `n_kv` in an order that depends on it, so a different row offset gives other low bits once
 /// `n_kv` reaches 1024. A move changes only the rows, the same as a different start does.
 pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: f32, what: &str) {
-    assert!(opts.n_ctx >= 2048);
+    assert!(opts.n_ctx >= 1024);
     let p = prompt(4, 200);
     let neighbour = prompt(5, 10);
     let n = 80;
