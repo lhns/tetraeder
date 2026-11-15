@@ -36,13 +36,13 @@ impl Scratch {
         }
         let n = group.len();
         let root = ranks.backend(group[0]);
-        let ctx = Rc::new(Context::with_graphs(2 * n, &vec![1; n - 1])?);
+        let ctx = Rc::new(Context::with_graphs(2 * n, &vec![4; n - 1])?);
         let ne = like.ne();
         let s: Vec<OwnedTensor> = (0..n).map(|_| ctx.new_persistent(Type::F32, &ne)).collect();
         let mut adds = Vec::with_capacity(n - 1);
         for member in &s[1..] {
             let sum = ctx.add_inplace(s[0].get(), member.get());
-            let mut g = ctx.new_graph(1);
+            let mut g = ctx.new_graph(4);
             g.expand(sum);
             adds.push(ctx.keep_graph(g, &[])?);
         }

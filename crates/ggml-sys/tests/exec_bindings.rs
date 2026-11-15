@@ -318,11 +318,11 @@ fn range_graphs_cache_matches_the_whole_graph() {
 #[test]
 fn add_inplace_writes_the_first_operand() {
     let cpu = Backend::cpu(1).unwrap();
-    let ctx = Context::new(8, 1).unwrap();
+    let ctx = Context::new(8, 4).unwrap();
     let a = ctx.new_tensor(Type::F32, &[N as i64]);
     let b = ctx.new_tensor(Type::F32, &[N as i64]);
     let sum = ctx.add_inplace(a, b);
-    let mut g = ctx.new_graph(1);
+    let mut g = ctx.new_graph(4);
     g.expand(sum);
     ctx.alloc_tensors(&cpu).unwrap();
     let (av, bv) = (xs(1.0), xs(5.0));

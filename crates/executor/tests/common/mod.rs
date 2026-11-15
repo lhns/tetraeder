@@ -34,7 +34,7 @@ pub fn all_reduce_case(devices: &[RankDevice], groups: &[Vec<RankId>]) -> [ExecC
     for (r, c) in lctx.iter().enumerate() {
         c.alloc_tensors(exec.ranks().backend(r)).unwrap();
     }
-    let gctx: Vec<Context> = (0..n).map(|_| Context::new(4, 1).unwrap()).collect();
+    let gctx: Vec<Context> = (0..n).map(|_| Context::new(4, 4).unwrap()).collect();
     let ys: Vec<Tensor<'_>> = gctx
         .iter()
         .zip(&xs)
@@ -42,7 +42,7 @@ pub fn all_reduce_case(devices: &[RankDevice], groups: &[Vec<RankId>]) -> [ExecC
         .collect();
     let graphs: Vec<RankGraph<'_>> = (0..n)
         .map(|r| {
-            let mut graph = gctx[r].new_graph(1);
+            let mut graph = gctx[r].new_graph(4);
             graph.expand(ys[r]);
             RankGraph {
                 rank: r,
