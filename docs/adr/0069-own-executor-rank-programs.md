@@ -12,7 +12,7 @@ What the pin (b11976, 2e0d86be) already has, read from the vendored tree:
 - **Async device copies**: `ggml_backend_tensor_copy_async` on CUDA is `cudaMemcpyPeerAsync` on the source stream plus an event the destination stream waits on (`ggml-cuda.cu:2692`); without peer access the driver stages through host memory.
 - `ggml_graph_add_node`, `ggml_gallocr_*`, `ggml_backend_event_*` are public.
 
-So the plan's "all-reduce as a graph op" patch is not needed: the collective exists, and the executor calls it between subgraphs. `crates/ggml-sys/build.rs` builds with `GGML_CUDA_NCCL=OFF` today.
+So the plan's "all-reduce as a graph op" patch is not needed: the collective exists, and the executor calls it between subgraphs. `crates/ggml-sys/build.rs` built with `GGML_CUDA_NCCL=OFF` until E1 (2026-11-15); it now builds NCCL on Linux (`GGML_CUDA_NCCL=ON`, linked when CMake finds `NCCL_LIBRARY`, `cfg(tetraeder_nccl)`) and OFF elsewhere, where the collective falls back to ggml's internal path.
 
 ## Decision
 
