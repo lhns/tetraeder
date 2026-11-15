@@ -245,9 +245,13 @@ fn cpu_failed_step_after_a_moved_reservation_rolls_back() {
     }
     let (free, reserved) = (b.kv_free(), (b.seq_reserved(0), b.seq_reserved(1)));
     // Sequence 0 needs 310 rows: its run (rows 0..256) is followed by sequence 1's, so it moves
-    // to a run of 1536 rows, which leaves nothing for sequence 2.
+    // to a run of 1536 rows (rows 512..2048). Sequence 2 then needs 512 rows and the only gap
+    // left is 256 rows.
     let grow = prompt(3, 300);
-    let err = b.decode(&[input(0, &grow), input(2, &[7])]).err().unwrap();
+    let err = b
+        .decode(&[input(0, &grow), input(2, &prompt(8, 300))])
+        .err()
+        .unwrap();
     assert!(matches!(err, BackendError::KvFull { seq: 2, .. }), "{err}");
     assert_eq!((b.seq_len(0), b.seq_len(1), b.seq_len(2)), (10, 10, 0));
     assert_eq!((b.seq_reserved(0), b.seq_reserved(1)), reserved);
@@ -262,17 +266,27 @@ fn cpu_failed_step_after_a_moved_reservation_rolls_back() {
     for (i, w) in want.iter().enumerate() {
         close(out.rows(i), w, &format!("sequence {i}"));
     }
-    // A failure inside a call (a token outside the vocabulary) rolls back a growth too.
+}
+
+/// hardware: cpu. The same move, then a failure inside the model call (a token outside the
+/// vocabulary, after the decoders' call ran): the decoder is back at its length too.
+#[test]
+fn cpu_failure_in_a_call_after_a_moved_reservation_rolls_back() {
+    let (p0, p1) = (prompt(1, 10), prompt(2, 10));
+    let mut b = backend(2048, 2, 512);
+    b.decode(&[input(0, &p0), input(1, &p1)]).unwrap();
+    let before: Vec<_> = (0..2).map(|s| (b.seq_len(s), b.seq_reserved(s))).collect();
+    let free = b.kv_free();
     let mut bad = prompt(4, 300);
     bad[200] = 1_000_000;
-    let (len, res) = (b.seq_len(0), b.seq_reserved(0));
     assert!(matches!(
         b.decode(&[input(1, &[8]), input(0, &bad)]),
         Err(BackendError::Failed(_))
     ));
-    assert_eq!((b.seq_len(0), b.seq_len(1)), (len, 11));
-    assert_eq!(b.seq_reserved(0), res);
+    let after: Vec<_> = (0..2).map(|s| (b.seq_len(s), b.seq_reserved(s))).collect();
+    assert_eq!((after, b.kv_free()), (before, free));
     b.decode(&[input(0, &[5]), input(1, &[6])]).unwrap();
+    assert_eq!((b.seq_len(0), b.seq_len(1)), (11, 11));
 }
 
 /// hardware: cpu. The CPU hot set comes from the routing of a prompt chunk, not of a group of
@@ -288,24 +302,30 @@ fn cpu_hot_set_is_built_by_a_prompt_chunk_not_a_decoder_group() {
         miss: MissPolicy::Cpu,
         ..LoadOptions::new(BackendChoice::Cpu { threads: Some(2) })
     };
-    let mut b = MoeBackend::new(Qwen3Moe::load(&path, &o).unwrap(), false);
     let uploads = |b: &MoeBackend| b.model().expert_stats().map_or(0, |s| s.io.uploads);
-    for round in 0..2 {
-        let toks: Vec<[i32; 1]> = (0..4).map(|s| [10 + 10 * round + s]).collect();
-        let inputs: Vec<_> = toks
-            .iter()
-            .enumerate()
-            .map(|(s, t)| input(s as u32, t))
-            .collect();
-        b.decode(&inputs).unwrap();
-        assert_eq!(uploads(&b), 0, "four decoders are no prefill");
+    // A long prompt chunk and a short prompt (under 64 tokens, still a prefill).
+    for n_prompt in [100, 10] {
+        let mut b = MoeBackend::new(Qwen3Moe::load(&path, &o).unwrap(), false);
+        for round in 0..2 {
+            let toks: Vec<[i32; 1]> = (0..4).map(|s| [10 + 10 * round + s]).collect();
+            let inputs: Vec<_> = toks
+                .iter()
+                .enumerate()
+                .map(|(s, t)| input(s as u32, t))
+                .collect();
+            b.decode(&inputs).unwrap();
+            assert_eq!(uploads(&b), 0, "four decoders are no prefill");
+        }
+        // Decoders and a prompt in one step: the prompt builds the hot set.
+        let new = prompt(5, n_prompt);
+        b.seq_rm(3, 0).unwrap();
+        b.decode(&[input(0, &[30]), input(1, &[31]), input(3, &new)])
+            .unwrap();
+        assert!(
+            uploads(&b) > 0,
+            "a prompt of {n_prompt} tokens built the hot set"
+        );
     }
-    // Decoders and a prompt chunk of 100 tokens in one step: the chunk builds the hot set.
-    let long = prompt(5, 100);
-    b.seq_rm(3, 0).unwrap();
-    b.decode(&[input(0, &[30]), input(1, &[31]), input(3, &long)])
-        .unwrap();
-    assert!(uploads(&b) > 0, "the prompt chunk built the hot set");
 }
 
 #[test]

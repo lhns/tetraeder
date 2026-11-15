@@ -592,9 +592,13 @@ impl MoeBackend {
     /// every input to `self.logits` and their spans to `self.spans`.
     fn run_group(&mut self, inputs: &[SeqInput<'_>]) -> Result<(), BackendError> {
         let cap = self.chunk;
-        // Only a call with a prompt chunk builds the CPU hot set (a group of decoders is not a
-        // prefill, however many sequences it holds).
-        let prefill = inputs.iter().any(|i| i.tokens.len() >= SHORT_INPUT);
+        // Only a call with a prompt chunk builds the CPU hot set: a long input, or several
+        // tokens without logits for every row. A group of decoders is not a prefill however many
+        // sequences it holds, and neither is a verify step (a pending token and drafts, with the
+        // logits of every row).
+        let prefill = inputs
+            .iter()
+            .any(|i| i.tokens.len() >= SHORT_INPUT || (i.tokens.len() > 1 && !i.all_logits));
         let mut group: Vec<ModelSeqEval<'_>> = Vec::new();
         // Per piece of the group: whether its rows are kept.
         let mut keep: Vec<bool> = Vec::new();

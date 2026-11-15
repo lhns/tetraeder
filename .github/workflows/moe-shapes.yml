@@ -44,6 +44,8 @@ jobs:
           echo "threads: $(nproc)"
           free -m
       - name: Step shapes
+        env:
+          TETRAEDER_MOE_SHAPES: "1"
         run: |
           mkdir -p moe-shapes-results
           cargo test --release -p tetraeder-scheduler --test moe_shapes -- --nocapture 2>&1 | tee moe-shapes-results/shapes.txt

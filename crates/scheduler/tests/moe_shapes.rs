@@ -13,7 +13,8 @@
 //! It checks no numbers; it prints `SHAPE engine=... shape=... ms=...` lines. Parity is
 //! `moe_backend.rs`'s job.
 //!
-//! Hardware label: `cpu`. Env: `TETRAEDER_SHAPES_THREADS` (4), `TETRAEDER_SHAPES_PROMPT` (402),
+//! Hardware label: `cpu`. Runs only with `TETRAEDER_MOE_SHAPES` set (it writes a model of about
+//! 450 MB and takes minutes). Env: `TETRAEDER_SHAPES_THREADS` (4), `TETRAEDER_SHAPES_PROMPT` (402),
 //! `TETRAEDER_SHAPES_REPS` (3), `TETRAEDER_SHAPES_ENGINES` (`llama`, `moe`; both).
 
 #[allow(dead_code)]
@@ -199,10 +200,15 @@ fn model_path() -> PathBuf {
     if let Some(p) = std::env::var_os("TETRAEDER_SHAPES_GGUF") {
         return PathBuf::from(p);
     }
+    // The shape is in the name: a file of another spec is never reused.
+    let name = format!(
+        "tetraeder-moe-shapes-l{}-e{}-x{}-f{}-v{VOCAB}-c{CTX}.gguf",
+        SPEC.layers, SPEC.embd, SPEC.experts, SPEC.ff
+    );
     quantized_moe_at_with(
         &SPEC,
         Ftype::Q8_0,
-        &std::env::temp_dir().join("tetraeder-moe-shapes.gguf"),
+        &std::env::temp_dir().join(name),
         CTX as u32,
         VOCAB,
     )
@@ -211,6 +217,10 @@ fn model_path() -> PathBuf {
 // hardware: cpu
 #[test]
 fn moe_step_shapes() {
+    if std::env::var_os("TETRAEDER_MOE_SHAPES").is_none() {
+        eprintln!("skip: TETRAEDER_MOE_SHAPES is not set");
+        return;
+    }
     let path = model_path();
     let threads = env_usize("TETRAEDER_SHAPES_THREADS", 4);
     let wanted = std::env::var("TETRAEDER_SHAPES_ENGINES").unwrap_or_default();

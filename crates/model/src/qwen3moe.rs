@@ -496,8 +496,9 @@ pub struct Qwen3Moe {
     kv_bytes: u64,
     weights: Weights,
     kv: Kv,
-    /// Most recent first: with every expert resident and `reuse_step_graph`, the two most recent
-    /// step shapes (a CPU step alternates decoders and a prompt chunk); otherwise one.
+    /// Most recent first: with every expert resident, `reuse_step_graph` and the CPU as primary,
+    /// the two most recent step shapes (a CPU step alternates decoders and a prompt chunk);
+    /// otherwise one.
     steps: Vec<CachedStep>,
     pool: KvPool,
     n_seq_max: usize,
@@ -1383,9 +1384,11 @@ impl Qwen3Moe {
         })
     }
 
-    /// Entries the step cache holds: two with the whole-step graph kept, else one.
+    /// Entries the step cache holds: two with the whole-step graph kept on the CPU (where a step
+    /// alternates decoders and a prompt chunk), else one. A second entry costs a second scheduler
+    /// with its own compute buffers.
     fn step_cache_len(&self) -> usize {
-        if self.streamer.is_none() && self.reuse_step_graph {
+        if self.streamer.is_none() && self.reuse_step_graph && self.primary.is_cpu() {
             2
         } else {
             1

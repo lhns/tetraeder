@@ -296,18 +296,20 @@ proptest! {
 #[test]
 fn cpu_failed_step_after_a_moved_reservation_rolls_back() {
     let (t0, t1) = (tokens(1, 10), tokens(2, 10));
-    let mut b = backend(2048, 3);
-    let mut reference = backend(2048, 3);
+    let mut b = backend(2048, 4);
+    let mut reference = backend(2048, 4);
     for x in [&mut b, &mut reference] {
         x.decode(&[input(0, &t0, false), input(1, &t1, false)])
             .unwrap();
     }
     let (free, reserved) = (b.kv_free(), (b.seq_reserved(0), b.seq_reserved(1)));
     // Sequence 0 needs 310 rows: its run (rows 0..256) is followed by sequence 1's, so it moves
-    // to a run of 1536 rows, which leaves nothing for sequence 2.
+    // to a run of 1536 rows (rows 512..2048). Sequence 2 then needs 512 rows and the only gap
+    // left is 256 rows.
     let grow = tokens(3, 300);
+    let big = tokens(8, 300);
     let err = b
-        .decode(&[input(0, &grow, false), input(2, &[7], false)])
+        .decode(&[input(0, &grow, false), input(2, &big, false)])
         .map(|_| ())
         .unwrap_err();
     assert!(matches!(err, BackendError::KvFull { seq: 2, .. }), "{err}");
