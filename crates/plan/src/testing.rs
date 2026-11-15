@@ -200,7 +200,6 @@ fn gen_stages(
     let compute = ids(hw, |k| k != DeviceKind::Disk);
     let gpus = ids(hw, |k| k == DeviceKind::Gpu);
     let all = ids(hw, |_| true);
-    let disks = ids(hw, |k| k == DeviceKind::Disk);
     let source = m.attn.source_format;
     let formats: Vec<Format> = Format::ALL
         .iter()
@@ -220,11 +219,23 @@ fn gen_stages(
     let can_tp =
         phase >= 5 && gpus.len() >= 2 && m.heads.is_multiple_of(2) && m.kv_heads.is_multiple_of(2);
 
+    let can_ep = can_tp && m.is_moe() && m.experts.is_multiple_of(2);
+
     let mut stages = Vec::new();
     for (s, w) in bounds.windows(2).enumerate() {
         let tp = if can_tp && rng.chance(2) { 2 } else { 1 };
+        let ep = if tp == 2 && can_ep && rng.chance(2) {
+            2
+        } else {
+            1
+        };
+        // From phase 5 a stage of several GPUs is GPU-only (ADR 0069 capability table).
         let group: Vec<String> = if tp == 2 {
             gpus[..2].to_vec()
+        } else if phase >= 5 && gpus.len() >= 2 && rng.chance(4) {
+            gpus[..2].to_vec()
+        } else if phase >= 5 {
+            vec![rng.pick(&compute).clone()]
         } else {
             let first = rng.pick(&compute).clone();
             let mut g = vec![first];
@@ -235,17 +246,19 @@ fn gen_stages(
             }
             g
         };
+        let multi = phase >= 5 && group.len() > 1;
         let mut assign = Vec::new();
 
-        // Attention and MLP: tp shards on the group's devices.
+        // Attention and MLP: tp shards on the group's devices. From phase 5 they compute where
+        // their weights are.
         let (home, comp) = if tp == 2 {
             (group.clone(), rng.chance(2).then(|| group.clone()))
-        } else if phase >= 5 && !disks.is_empty() && rng.chance(4) {
-            (vec![disks[0].clone()], Some(vec![rng.pick(&group).clone()]))
-        } else {
+        } else if phase >= 5 {
             let d = rng.pick(&group).clone();
-            let c = (phase >= 5 && rng.chance(3)).then(|| vec![rng.pick(&group).clone()]);
+            let c = rng.chance(3).then(|| vec![d.clone()]);
             (vec![d], c)
+        } else {
+            (vec![rng.pick(&group).clone()], None)
         };
         assign.push(Assign {
             units: sel(&[UnitKind::Attn, UnitKind::Mlp], None),
@@ -271,7 +284,9 @@ fn gen_stages(
             } else {
                 rng.range(1, u64::from(m.experts) - 1) as u32
             };
-            let spans = if cut == 0 {
+            let spans = if ep == 2 {
+                vec![Span(0, m.experts / 2), Span(m.experts / 2, m.experts)]
+            } else if cut == 0 {
                 vec![Span(0, m.experts)]
             } else {
                 vec![Span(0, cut), Span(cut, m.experts)]
@@ -279,16 +294,27 @@ fn gen_stages(
             // All experts of a layer and role share one format (ADR 0047).
             let expert_format = *rng.pick(&formats);
             let expert_roles = gen_role_formats(rng, &[UnitKind::Expert], &formats);
-            for span in spans {
-                let (home, comp) = match rng.below(3) {
-                    0 => (rng.pick(&group).clone(), None),
-                    1 => (rng.pick(&all).clone(), Some(rng.pick(&group).clone())),
-                    _ => (rng.pick(&group).clone(), Some(rng.pick(&group).clone())),
+            for (i, span) in spans.into_iter().enumerate() {
+                // ep = tp: whole experts, one span per rank. ep = 1 with tp = 2: an expert is
+                // cut over the group. Other stages of several GPUs keep experts on a GPU.
+                let (home, comp) = if ep == 2 {
+                    (vec![group[i].clone()], None)
+                } else if tp == 2 {
+                    (group.clone(), None)
+                } else if multi {
+                    (vec![rng.pick(&group).clone()], None)
+                } else {
+                    let (h, c) = match rng.below(3) {
+                        0 => (rng.pick(&group).clone(), None),
+                        1 => (rng.pick(&all).clone(), Some(rng.pick(&group).clone())),
+                        _ => (rng.pick(&group).clone(), Some(rng.pick(&group).clone())),
+                    };
+                    (vec![h], c.map(|c| vec![c]))
                 };
                 assign.push(Assign {
                     units: sel(&[UnitKind::Expert], Some(span)),
-                    home: Some(vec![home]),
-                    compute: comp.map(|c| vec![c]),
+                    home: Some(home),
+                    compute: comp,
                     format: Some(expert_format),
                     role_formats: expert_roles.clone(),
                     kv_format: None,
@@ -314,7 +340,7 @@ fn gen_stages(
         } else {
             vec![]
         };
-        let expert_cache = if m.is_moe() && rng.chance(2) {
+        let expert_cache = if m.is_moe() && rng.chance(2) && !multi {
             vec![SlotCache {
                 device: rng.pick(&group).clone(),
                 slots: rng.range(1, 3) as u32,
@@ -326,7 +352,7 @@ fn gen_stages(
             layers: Span(w[0], w[1]),
             devices: group,
             tp: Some(tp),
-            ep: Some(1),
+            ep: Some(ep),
             assign,
             kv: Some(kv),
             workspace,

@@ -361,3 +361,33 @@ proptest! {
         }
     }
 }
+
+/// The generator reaches the Phase 5 shapes: cut experts (`tp = 2`, `ep = 1`: two shards) and
+/// whole experts (`tp = ep = 2`: one shard), and the accepted plans keep Rule 5's properties.
+#[test]
+fn generated_phase_5_plans_include_tp_and_ep_stages() {
+    let hw = HardwareGraph::from_toml(HARDWARE[0]).unwrap();
+    let none = BTreeMap::new();
+    let (mut cut, mut whole) = (0, 0);
+    for seed in 0..400u64 {
+        let mut rng = Rng(seed);
+        let m = gen_model(&mut rng);
+        let plan = gen_plan(&mut rng, &m, &hw, 5, false);
+        let e = validate_with(&plan, &m, &hw, 5, &none)
+            .unwrap_or_else(|i| panic!("seed {seed}: {i:#?}"));
+        check_accepted(&plan, &e, &m, &hw, &none);
+        for st in &plan.replicas[0].stages {
+            match (st.tp, st.ep) {
+                (Some(2), Some(1)) if m.is_moe() => cut += 1,
+                (Some(2), Some(2)) => whole += 1,
+                _ => {}
+            }
+        }
+        for k in e.shards.keys() {
+            if let UnitId::Expert(..) = k.unit {
+                assert!(k.of <= 2, "{k:?}");
+            }
+        }
+    }
+    assert!(cut > 0 && whole > 0, "cut {cut}, whole {whole}");
+}

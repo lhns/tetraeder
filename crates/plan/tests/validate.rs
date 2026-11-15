@@ -237,7 +237,7 @@ fn tp_plan(tp: u32, homes: [&str; 2]) -> Plan {
         },
         Assign {
             units: UnitSel {
-                kinds: vec![UnitKind::Embed, UnitKind::Expert],
+                kinds: vec![UnitKind::Embed],
                 ..Default::default()
             },
             home: Some(vec!["gpu0".into()]),
@@ -246,8 +246,145 @@ fn tp_plan(tp: u32, homes: [&str; 2]) -> Plan {
             role_formats: BTreeMap::new(),
             kv_format: None,
         },
+        // ep = 1, tp > 1: an expert is cut over the group (ADR 0070).
+        Assign {
+            units: UnitSel {
+                kinds: vec![UnitKind::Expert],
+                ..Default::default()
+            },
+            home: Some(homes.iter().map(|h| h.to_string()).collect()),
+            compute: None,
+            format: Some(Format::Q8_0),
+            role_formats: BTreeMap::new(),
+            kv_format: None,
+        },
     ];
     p
+}
+
+fn shape_rules(found: &[Issue]) -> Vec<&'static str> {
+    found
+        .iter()
+        .filter_map(|i| match i {
+            Issue::Shape { rule, .. } => Some(*rule),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn expert_shards_follow_tp_when_ep_is_one() {
+    let e = ok(&tp_plan(2, ["gpu0", "gpu1"]), 5);
+    let expert = |s| {
+        &e.shards[&ShardKey {
+            replica: 0,
+            unit: UnitId::Expert(1, 3),
+            shard: s,
+            of: 2,
+        }]
+    };
+    assert_eq!(
+        (expert(0).home.as_str(), expert(1).home.as_str()),
+        ("gpu0", "gpu1")
+    );
+    assert_eq!(expert(0).bytes, Format::Q8_0.bytes(5_000_000).div_ceil(2));
+    // One home per expert no longer fits a tp = 2 stage with ep = 1.
+    let mut p = tp_plan(2, ["gpu0", "gpu1"]);
+    stage(&mut p, 0).assign[2].home = Some(vec!["gpu0".into()]);
+    assert!(issues(&p, 5).iter().any(|i| matches!(
+        i,
+        Issue::ShardCount {
+            unit: UnitId::Expert(..),
+            ..
+        }
+    )));
+    // With ep = tp each expert is whole: spans, one per rank.
+    let mut p = tp_plan(2, ["gpu0", "gpu1"]);
+    let s = stage(&mut p, 0);
+    s.ep = Some(2);
+    let mut halves = vec![s.assign[2].clone(), s.assign[2].clone()];
+    halves[0].units.experts = Some(Span(0, 4));
+    halves[0].home = Some(vec!["gpu0".into()]);
+    halves[1].units.experts = Some(Span(4, 8));
+    halves[1].home = Some(vec!["gpu1".into()]);
+    s.assign.truncate(2);
+    s.assign.extend(halves);
+    let e = ok(&p, 5);
+    let key = |l, x| ShardKey {
+        replica: 0,
+        unit: UnitId::Expert(l, x),
+        shard: 0,
+        of: 1,
+    };
+    assert_eq!(e.shards[&key(0, 1)].home, "gpu0");
+    assert_eq!(e.shards[&key(1, 6)].home, "gpu1");
+    assert_eq!(e.shards[&key(1, 6)].bytes, Format::Q8_0.bytes(5_000_000));
+}
+
+#[test]
+fn phase_5_ep_needs_tp_equal_to_ep() {
+    // tp = 1, ep = 2
+    let mut p = plan();
+    stage(&mut p, 1).ep = Some(2);
+    let found = issues(&p, 5);
+    assert!(shape_rules(&found).contains(&"ep_needs_tp"), "{found:#?}");
+    // tp = 4, ep = 2
+    let mut p = tp_plan(2, ["gpu0", "gpu1"]);
+    let s = stage(&mut p, 0);
+    s.tp = Some(4);
+    s.ep = Some(2);
+    let found = issues(&p, 5);
+    assert!(shape_rules(&found).contains(&"ep_needs_tp"), "{found:#?}");
+    // Phase 4 and lower still reject any degree above 1, as the capability table says.
+    for phase in 1..=4 {
+        let found = issues(&tp_plan(2, ["gpu0", "gpu1"]), phase);
+        assert!(found.iter().any(|i| matches!(i, Issue::Phase { .. })));
+        assert!(shape_rules(&found).is_empty(), "{found:#?}");
+    }
+}
+
+#[test]
+fn phase_5_multi_gpu_stages_are_gpu_resident() {
+    // Experts homed on RAM and computed on the CPU, with a slot cache, in a 2-GPU stage.
+    let mut p = tp_plan(2, ["gpu0", "gpu1"]);
+    let s = stage(&mut p, 0);
+    s.assign[2].home = Some(vec!["cpu0".into(), "cpu0".into()]);
+    s.expert_cache = vec![SlotCache {
+        device: "gpu0".into(),
+        slots: 1,
+    }];
+    let rules = shape_rules(&issues(&p, 5));
+    for rule in ["multi_gpu_expert_home", "multi_gpu_slot_cache"] {
+        assert!(rules.contains(&rule), "{rule} missing in {rules:?}");
+    }
+    // CPU compute, and a CPU in the group.
+    let mut p = tp_plan(2, ["gpu0", "gpu1"]);
+    let s = stage(&mut p, 0);
+    s.devices.push("cpu0".into());
+    s.assign[0].compute = Some(vec!["gpu0".into(), "cpu0".into()]);
+    let found = issues(&p, 5);
+    assert!(
+        shape_rules(&found).contains(&"multi_gpu_cpu_compute"),
+        "{found:#?}"
+    );
+    // Compute other than home for a non-expert unit, in any stage.
+    let mut p = plan();
+    stage(&mut p, 0).assign[0].compute = Some(vec!["gpu1".into()]);
+    stage(&mut p, 0).devices.push("gpu1".into());
+    let found = issues(&p, 5);
+    assert!(
+        shape_rules(&found).contains(&"compute_is_home"),
+        "{found:#?}"
+    );
+    // The same plans are not shape errors in phases 2 to 4 and from 7 on.
+    assert!(shape_rules(&issues(&p, 4)).is_empty());
+}
+
+#[test]
+fn single_gpu_plus_cpu_stage_stays_valid_in_phase_5() {
+    // The fixture's stage 1 is gpu1 with cpu0 compute, NVMe experts and a slot cache.
+    ok(&plan(), 5);
+    ok(&plan(), 6);
 }
 
 #[test]
@@ -310,16 +447,17 @@ fn degrees_divide_heads_experts_and_devices() {
 
 #[test]
 fn expert_parallel_spreads_evenly() {
-    // ep 2 on gpu1 and cpu0: experts 0..4 compute on gpu1, 4..8 on cpu0. Even, so valid.
+    // ep 2 on gpu1 and cpu0: experts 0..4 compute on gpu1, 4..8 on cpu0. Even, so valid
+    // (phase 7: phase 5 also needs tp = ep and GPU stages, tested above).
     let mut p = plan();
     stage(&mut p, 1).ep = Some(2);
-    ok(&p, 5);
+    ok(&p, 7);
     // Move one more expert to cpu0: 3 versus 5 is uneven.
     let s = stage(&mut p, 1);
     s.assign[1].units.experts = Some(Span(0, 3));
     s.assign[2].units.experts = Some(Span(3, 8));
     assert!(
-        issues(&p, 5)
+        issues(&p, 7)
             .iter()
             .any(|i| matches!(i, Issue::ExpertSpread { .. }))
     );
@@ -452,6 +590,13 @@ fn capability_compute_device_per_shard() {
 fn capability_tensor_and_expert_parallel_from_phase_5() {
     assert!((1..=4).all(|p| !Phase(p).capabilities().tp_ep));
     assert!((5..=9).all(|p| Phase(p).capabilities().tp_ep));
+}
+
+#[test]
+fn capability_multi_gpu_cpu_compute_not_in_phase_5_and_6() {
+    assert!((1..=4).all(|p| Phase(p).capabilities().multi_gpu_cpu_compute));
+    assert!((5..=6).all(|p| !Phase(p).capabilities().multi_gpu_cpu_compute));
+    assert!((7..=9).all(|p| Phase(p).capabilities().multi_gpu_cpu_compute));
 }
 
 #[test]
