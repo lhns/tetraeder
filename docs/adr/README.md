@@ -71,3 +71,6 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0065](0065-phase4-verdict-multi-sequence-backend-continuous-batching.md) | Proposed | Phase 4: verdict rules, a multi-sequence backend and continuous batching |
 | [0066](0066-own-qwen3-dense-builder.md) | Proposed | Own Qwen3 dense builder on the shared attention module, multi-sequence from the start |
 | [0067](0067-kv-layout-experiment-chunked-vs-paged.md) | Proposed | KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now |
+| [0068](0068-phase5-verdict-rules.md) | Proposed | Phase 5: verdict rules for the multi-GPU exit test |
+| [0069](0069-own-executor-rank-programs.md) | Proposed | Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box |
+| [0070](0070-parallel-shapes-and-their-cost.md) | Proposed | Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them |
