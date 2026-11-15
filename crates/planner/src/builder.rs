@@ -522,6 +522,52 @@ beta_bytes_per_s = {{ value = 2.5e10, source = "prior" }}
         assert_eq!(&t[..t.len() - 1], [8, 16, 32, 64]);
     }
 
+    // hardware: none. The builder campaign's budgets (Qwen3-30B-A3B shape): the free VRAM left
+    // by the balloon on a 24 GB card (14336 MiB, the fixture), the whole 24 GB and 48 GB cards,
+    // and a 48 GB card ballooned to 12 GiB.
+    #[test]
+    fn fill_tier_on_24_and_48_gb_cards() {
+        let l = fixtures::moe();
+        let gpu_at = |v: u32| {
+            let pl = Placement::Builder {
+                vram_slots: v,
+                ram_slots: ram_slot_options(&l, v)[0],
+            };
+            footprint(&l, pl, BUILDER_UBATCHES[0], &WORK, KvFormat::default()).gpu
+        };
+        let cases: [(&str, u64, u32); 4] = [
+            ("24 GB card, balloon to 14336 MiB free", 14336 << 20, 103),
+            ("24 GB card, nothing held", 24_000_000_000, 128),
+            ("48 GB card, nothing held", 48_000_000_000, 128),
+            ("48 GB card, balloon to 12 GiB free", 12 << 30, 86),
+        ];
+        for (name, gpu, fill) in cases {
+            let b = Budget {
+                gpu_bytes: gpu,
+                ..BUDGET
+            };
+            let t = feasible_vram_tiers(&b, &l, &WORK, &mut Vec::new());
+            assert_eq!(t.last(), Some(&fill), "{name}: {t:?}");
+            assert!(t.windows(2).all(|w| w[0] < w[1]), "{name}: {t:?}");
+            assert_eq!(&t[..4], [8, 16, 32, 64], "{name}: {t:?}");
+            // the largest count that fits: one more does not
+            assert!(gpu_at(fill) <= gpu, "{name}");
+            assert!(fill == 128 || gpu_at(fill + 1) > gpu, "{name}");
+            // the fill tier reaches the candidates, once
+            let en = enumerate_builder(&b, &l, &WORK);
+            let vr: BTreeSet<u32> = en
+                .candidates
+                .iter()
+                .filter_map(|c| match c.placement {
+                    Placement::Builder { vram_slots, .. } => Some(vram_slots),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(vr, t.iter().copied().collect::<BTreeSet<_>>(), "{name}");
+            assert_eq!(en.candidates.len(), MAX_CANDIDATES, "{name}");
+        }
+    }
+
     proptest::proptest! {
         // hardware: none
         #[test]

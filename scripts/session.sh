@@ -8,6 +8,9 @@
 #   SESSION=b3-planner   llama.cpp's cache tuner on the 30B, the disk curve and routing trace of the builder fixture
 #                        (ADR 0056), then the planner dense fixture
 #   SESSION=b3-detector  detector campaign, then kernels-cpu
+#   SESSION=b3-builder   the builder fixture's candidate runs on the 30B (planner-moe-builder, 28 variants, fill tier):
+#                        trace and disk curve first, then the runs until the deadline; a second session (same
+#                        RESULTS_DATE, first results committed) finishes the repeats
 #   SESSION=gpu-smoke    weekly GPU smoke (scripts/gpu_smoke.sh drives it): the gpu_* tests on the synthetic fixtures,
 #                        the Qwen3-0.6B golden, one A/A pair for the measured noise band; TETRAEDER_REQUIRE_GPU=1
 # Every profile but b1-exit (the verdict session; NOISE_STAGE=1 opts in) ends with an A/A pair (noise_stage, NOISE_STAGE=0 turns it off) when 12 minutes are left: the sessions
@@ -31,10 +34,10 @@ echo "=== RUN $(date +%FT%T) session.sh ===" >> "$log"
 # minutes for this script: the box cap less 20% (144 of 180 min; b2 has the 6 h proxy exception: 288), less about 25
 # for provisioning before and fetch, verify and destroy after
 case "$name" in
-  b1-exit | b1b-levers | b3-planner | b3-detector) budget=120 ;;
+  b1-exit | b1b-levers | b3-planner | b3-builder | b3-detector) budget=120 ;;
   b2-proxy) budget=260 ;;
   gpu-smoke) budget=30 ;; # about 17 min of work (build 10, tests 3, A/A pair 4); the box lives 40 min with provisioning
-  *) echo "SESSION must be b1-exit, b1b-levers, b2-proxy, b3-planner, b3-detector or gpu-smoke, not '$name'" >&2; exit 2 ;;
+  *) echo "SESSION must be b1-exit, b1b-levers, b2-proxy, b3-planner, b3-builder, b3-detector or gpu-smoke, not '$name'" >&2; exit 2 ;;
 esac
 state="runs/vast/session-$name.start"
 # RESULTS_DATE from the env applies only at the first launch; a relaunch keeps the date in $state
@@ -263,6 +266,12 @@ for f in sorted(glob.glob("bench/results/*/moe-cache-tune/tune.json"), reverse=T
       fi
       # the fixture runs until the deadline (FIXTURE_MIN is only the upper bound)
       step planner env FIXTURES=dense FIXTURE_MIN="${FIXTURE_MIN:-240}" bash scripts/planner_campaign.sh
+      ;;
+    b3-builder)
+      # the campaign stops starting runs when fewer than RUN_MIN minutes are left (DEADLINE); its trace runs first.
+      # FREE_MOE_MIB (default 14336) is the balloon: the same fixture on a 24 GB or a 48 GB card
+      fetch "$q30" "$f30"
+      step planner_builder env OUT_DIR="$PWD/$results/planner-moe-builder" bash scripts/planner_builder_campaign.sh
       ;;
     b3-detector)
       step detector bash scripts/detector_campaign.sh
