@@ -11,7 +11,7 @@ mod common;
 
 use common::multi_seq::*;
 use common::synth::{MoeSpec, quantized_moe};
-use common::{GPU_TOL, fixture};
+use common::{GPU_TOL, fixture, part, run_all};
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::Ftype;
 use tetraeder_model::{BackendChoice, LoadOptions, MissPolicy};
@@ -69,22 +69,30 @@ fn gpu_streamed_cpu_miss_batched_equals_alone() {
 #[test]
 fn gpu_seq_cp_snapshot_and_move() {
     let Some(o) = base() else { return };
-    seq_cp_continues(&fixture(), &o, GPU_TOL, "gpu");
-    snapshot_roundtrip(&fixture(), &o, GPU_TOL, "gpu");
     let big = LoadOptions {
         n_ctx: 2048,
         ..o.clone()
     };
-    move_mid_decode(&fixture(), &big, GPU_TOL, "gpu");
     // The copy kernel on a quantized cache.
     let path = quantized_moe(&MoeSpec::REALISH, Ftype::Q8_0, "kv-q8");
     let q = LoadOptions {
         n_ctx: 2048,
         kv: KvFormat::Q8_0,
         kv_rotation: Some(true),
-        ..o
+        ..o.clone()
     };
-    move_mid_decode(&path, &q, GPU_TOL, "gpu q8_0 kv");
+    run_all(vec![
+        part("seq_cp", || {
+            seq_cp_continues(&fixture(), &o, GPU_TOL, "gpu")
+        }),
+        part("snapshot", || {
+            snapshot_roundtrip(&fixture(), &o, GPU_TOL, "gpu")
+        }),
+        part("move", || move_mid_decode(&fixture(), &big, GPU_TOL, "gpu")),
+        part("move q8_0 kv", || {
+            move_mid_decode(&path, &q, GPU_TOL, "gpu q8_0 kv")
+        }),
+    ]);
 }
 
 /// hardware: gpu. The same batched steps on the GPU builder and on the CPU builder, and the GPU

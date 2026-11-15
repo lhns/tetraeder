@@ -49,12 +49,17 @@ fn gpu_one_sequence_matches_the_cpu_reference() {
         eprintln!("skip: no GPU");
         return;
     }
-    for kv in [KvFormat::F16, KvFormat::Q8_0] {
+    let one = |kv: KvFormat| {
         let r = libllama_reference_kv_default_rot(&dense_fixture(), &PROMPT, N_GREEDY, kv);
         let mut m = load(GPU, kv, 1);
+        eprintln!("{kv} on GPU:");
         let worst = check_against_tol(&mut m, &r, GPU_TOL);
         eprintln!("{kv} on GPU: max |delta| over the top-{TOP_K} logits: {worst:e}");
-    }
+    };
+    run_all(vec![
+        part("f16", || one(KvFormat::F16)),
+        part("q8_0", || one(KvFormat::Q8_0)),
+    ]);
 }
 
 /// hardware: gpu. Three sequences in steps with a prefill chunk mixed in, against the same

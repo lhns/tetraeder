@@ -289,8 +289,7 @@ pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + C
         &mut buf,
     )
     .unwrap();
-    print_row(&format!("{what}: copy continues"), &buf, &want);
-    close(&buf, &want, tol, &format!("{what}: copy continues"));
+    let mut checks = vec![("copy continues", buf.clone())];
     // The source is untouched and continues alone.
     assert_eq!(m.seq_len(0), p.len());
     m.decode(
@@ -302,8 +301,7 @@ pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + C
         &mut buf,
     )
     .unwrap();
-    print_row(&format!("{what}: source continues"), &buf, &want);
-    close(&buf, &want, tol, &format!("{what}: source continues"));
+    checks.push(("source continues", buf.clone()));
     // A prefix copy into sequence 2.
     m.seq_cp(0, 2, 10).unwrap();
     m.decode(
@@ -315,8 +313,13 @@ pub fn seq_cp_continues(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + C
         &mut buf,
     )
     .unwrap();
-    print_row(&format!("{what}: prefix copy"), &buf, &want);
-    close(&buf, &want, tol, &format!("{what}: prefix copy"));
+    checks.push(("prefix copy", buf.clone()));
+    for (name, got) in &checks {
+        print_row(&format!("{what}: {name}"), got, &want);
+    }
+    for (name, got) in &checks {
+        close(got, &want, tol, &format!("{what}: {name}"));
+    }
     // dst must be empty, src long enough, ids in range.
     assert!(m.seq_cp(0, 1, 5).is_err());
     assert!(m.seq_cp(0, 0, 5).is_err());

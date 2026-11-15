@@ -376,32 +376,66 @@ pub fn check_against_tol(m: &mut dyn Evaluator, r: &Reference, tol: Tol) -> f32 
             ));
         }
     }
-    assert!(fails.is_empty(), "{}", fails.join("; "));
+    // Top-1 equal, or the reference's top two within twice the bound (ADR 0043's near tie).
     for p in 0..PROMPT.len() {
         let (want, have) = (
             &r.prompt_logits[p * nv..(p + 1) * nv],
             &got[p * nv..(p + 1) * nv],
         );
-        assert_eq!(
-            top_k(want, 1)[0],
-            argmax(have),
-            "top-1 differs at position {p}"
-        );
+        let (w, h) = (top_k(want, 1)[0], argmax(have));
+        if w != h {
+            let gap = want[w] - want[h];
+            eprintln!("position {p}: top-1 {h} against {w}, reference gap {gap:e}");
+            if gap > 2.0 * tol.of(want) {
+                fails.push(format!(
+                    "top-1 differs at position {p}: {h} against {w}, gap {gap:e}"
+                ));
+            }
+        }
     }
 
     // Greedy sequence: prefill the prompt, then decode one token per step (n_tokens = 1 graphs,
-    // incremental KV cache).
+    // incremental KV cache), teacher-forced with the reference's tokens so one near tie does not
+    // make the rest incomparable. Each step's top-1 equals the reference token or the builder's
+    // own top two are within twice the bound there.
     m.reset();
-    let last = m.eval_last(&PROMPT);
-    assert_eq!(last.len(), r.n_vocab);
-    let mut next = argmax(&last) as i32;
-    let mut seq = Vec::new();
-    for _ in 0..N_GREEDY {
-        seq.push(next);
-        next = argmax(&m.eval(&[next])) as i32;
+    let mut logits = m.eval_last(&PROMPT);
+    assert_eq!(logits.len(), r.n_vocab);
+    for (k, &t) in r.greedy.iter().enumerate() {
+        let h = argmax(&logits);
+        if h as i32 != t {
+            let gap = logits[h] - logits[t as usize];
+            eprintln!("greedy step {k}: builder {h} against reference {t}, builder gap {gap:e}");
+            if gap > 2.0 * tol.of(&logits) {
+                fails.push(format!("greedy step {k}: {h} against {t}, gap {gap:e}"));
+            }
+        }
+        logits = m.eval(&[t]);
     }
-    assert_eq!(seq, r.greedy);
+    assert!(fails.is_empty(), "{}", fails.join("; "));
     worst
+}
+
+/// A named part of a test for [`run_all`].
+pub type Part<'a> = (&'a str, Box<dyn FnOnce() + 'a>);
+
+/// A [`Part`] from a closure.
+pub fn part<'a>(name: &'a str, f: impl FnOnce() + 'a) -> Part<'a> {
+    (name, Box::new(f))
+}
+
+/// Runs every part, then panics with the names of those that panicked, so one failing part does
+/// not hide the numbers of the others (box runs print every comparison before asserting).
+pub fn run_all(parts: Vec<Part<'_>>) {
+    let failed: Vec<&str> = parts
+        .into_iter()
+        .filter_map(|(name, f)| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+                .is_err()
+                .then_some(name)
+        })
+        .collect();
+    assert!(failed.is_empty(), "failed: {}", failed.join(", "));
 }
 
 /// One step of a multi-sequence script: `(seq, first, last)` appends tokens `first..last` of the
