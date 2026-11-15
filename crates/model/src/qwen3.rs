@@ -166,6 +166,8 @@ struct Weights {
     /// `None` when the output projection is tied to the token embedding.
     output: Option<OwnedTensor>,
     layers: Vec<Layer>,
+    /// One weight of each extra buffer type's context, so a kept step graph holds those too.
+    extra_anchors: Vec<OwnedTensor>,
 }
 
 /// Sizes of a step's inputs: tokens, `n_kv` (0 with attention per sequence), outputs and the
@@ -717,6 +719,7 @@ impl Qwen3 {
                 &st.tokens,
             ];
             deps.extend(self.kv.rot_k.iter().chain(&self.kv.rot_v));
+            deps.extend(&self.weights.extra_anchors);
             fresh = StepGraph {
                 key,
                 logits: ctx.keep(logits)?,
@@ -846,11 +849,12 @@ fn load_weights(
         });
     }
     let mut buffer_size = ctxs[0].alloc_weights(backend)?;
-    let mut used = Vec::new();
+    let (mut used, mut extra_anchors) = (Vec::new(), Vec::new());
     for (i, (b, ctx)) in extra.iter().zip(&ctxs[1..]).enumerate() {
-        if loaded.iter().any(|l| l.4 == i + 1) {
+        if let Some(l) = loaded.iter().find(|l| l.4 == i + 1) {
             buffer_size += ctx.alloc_weights_extra(*b, backend)?;
             used.push(b.name());
+            extra_anchors.push(l.0.clone());
         }
     }
     let mut shards = gguf
@@ -885,6 +889,7 @@ fn load_weights(
             out_norm,
             output,
             layers,
+            extra_anchors,
         },
         buffer_size,
         used,

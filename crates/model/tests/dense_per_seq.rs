@@ -91,8 +91,9 @@ fn alone(kv: KvFormat, per_seq: bool, streams: &[Vec<i32>], steps: &[Vec<Item>])
 }
 
 /// hardware: cpu. Against each sequence alone (where both paths build the same graph), per
-/// KV format: attention per sequence, batched or one input per step, within `TOL_CPU` (measured:
-/// bit-equal). The masked path batched is only printed and loosely bounded: with an F16 cache a
+/// KV format: attention per sequence one input per step within `TOL_CPU`, batched within
+/// `tol_batch` (bit-equal on some CPUs; others take other matmul kernels for other row counts,
+/// ADR 0043: CI Windows measured 2.4e-3). The masked path batched is only printed and loosely bounded: with an F16 cache a
 /// decode row inside a 500-token step runs ggml's tiled kernel (F32 accumulation) over the whole
 /// pool, while alone it runs the split-KV kernel (F16 V accumulation), measured 0.118 at a largest
 /// logit of 26 here. That is the masked path's (and libllama unified's) batch dependence, which
@@ -125,7 +126,7 @@ fn cpu_per_seq_matches_alone_on_long_sequences() {
                 &reference,
                 &rows,
                 TOL_CPU,
-                !batched,
+                batched,
                 &format!("{kv} per_seq batched {batched}"),
             );
             assert_ne!(m.pool().row(2, 0), Some(0), "sequence 2 starts above row 0");
