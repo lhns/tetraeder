@@ -1,6 +1,6 @@
 # 0063. GenAI semconv request metrics from the gateway for every engine; one tier transfer metric family
 
-Status: Proposed (2026-11-12). Builds on ADR 0012 (one OTel data path), ADR 0022 (gateway telemetry) and ADR 0046 (real engines behind the gateway).
+Status: Accepted (2026-11-15: request metrics and the tier transfer family are built with gateway tests and panels). Earlier: Proposed (2026-11-12). Builds on ADR 0012 (one OTel data path), ADR 0022 (gateway telemetry) and ADR 0046 (real engines behind the gateway).
 
 ## Context
 

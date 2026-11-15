@@ -1,6 +1,6 @@
 # 0041. Bottleneck detector: one observation type, faults separate from the limiting resource, advisor report only
 
-Status: Proposed (Phase 3a)
+Status: Accepted (2026-11-15: detector passed on a box (single 30/30, no false positives in 10, pairs 9/9) and in the simulated battery). Earlier: Proposed (Phase 3a)
 
 ## Context
 
