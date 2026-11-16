@@ -9,7 +9,7 @@
 
 Input files in DIR (names fixed by the ADR): bench-<model>-<engine>-<c1|c4>-r<rep>.json, prepass-<model>-<kvu|nokvu>.json,
 replay-<model>-<on|off>-r<rep>.json, gpu-<run>.txt (lines `before: <hex>` / `after: <hex>`, the clocks_throttle_reasons
-bitmask), server-*.log, env.json. A run is `<model>-<engine>-r<rep>`; replay runs are `replay-<model>-<on|off>-r<rep>`.
+bitmask; `power-before: <limit>, <draw>` / `power-after: ...` are copied to verdict.json as is), server-*.log, env.json. A run is `<model>-<engine>-r<rep>`; replay runs are `replay-<model>-<on|off>-r<rep>`.
 Reps 1 and 2 are the judged pairs: rep 1 runs (baseline, Tetraeder), rep 2 (Tetraeder, baseline). Rep 3 is the one
 rerun pair of phase4_box.sh when rep 1 or 2 is unclean (errors, throttle, co-tenant, a missing result); the judged pairs
 are then the first two CLEAN pairs. Anything missing makes the pair unclean (a reason is recorded) and the verdict
@@ -38,8 +38,9 @@ ALL_REPS = (1, 2, 3)
 BASELINE = "llama-server"
 # model -> (judged engine, engine used when no judged-engine files exist, counts then)
 JUDGED = {"q8b": ("tetraeder-dense", None), "q30b": ("tetraeder-moe", "tetraeder-llama")}
-# clocks_throttle_reasons bits that are fine: GPU idle (0x1) and applications clocks setting (0x2)
-BENIGN_THROTTLE = 0x3
+# clocks_throttle_reasons bits that are fine: GPU idle (0x1) and applications clocks setting (0x2) before a run; after a
+# run also the SW power cap (0x4), which the card's own load sets (ADR 0065, addendum). Everything else is unclean.
+BENIGN_THROTTLE = {"before": 0x3, "after": 0x7}
 
 
 def _load_bench():
@@ -86,29 +87,40 @@ def choose_band(d: Path, noise_dir: Path, spec_path: Path) -> tuple[float, str]:
 # ---- runs ---------------------------------------------------------------------------------------------------
 
 
-def throttle_reasons(d: Path, run: str) -> list[str]:
-    """Reasons the throttle record of a run is unclean; empty when before and after show only idle / app clocks."""
+def throttle_record(d: Path, run: str) -> tuple[list[str], dict]:
+    """(reasons the throttle record of a run is unclean, the raw record). The record keeps the hex values per GPU
+    (`before`, `after`) and the raw `power-before` / `power-after` lines (`power.limit, power.draw`) as written."""
     p = d / f"gpu-{run}.txt"
+    rec: dict = {"before": [], "after": [], "power_before": [], "power_after": []}
     try:
         text = p.read_text(encoding="utf-8")
     except OSError:
-        return [f"no {p.name}"]
+        return [f"no {p.name}"], rec
     seen: dict[str, list[int]] = {"before": [], "after": []}
     bad = []
-    for m in re.finditer(r"^(before|after):\s*(\S+)", text, re.M):
+    for m in re.finditer(r"^(before|after):[ \t]*(\S+)", text, re.M):
+        rec[m.group(1)].append(m.group(2))
         try:
             seen[m.group(1)].append(int(m.group(2), 16))
         except ValueError:
             bad.append(f"{m.group(1)}: unreadable throttle value {m.group(2)!r}")
+    for m in re.finditer(r"^power-(before|after):[ \t]*(.*\S)", text, re.M):
+        rec[f"power_{m.group(1)}"].append(m.group(2))
     out = bad
     for when, vals in seen.items():
         if not vals:
             if not any(r.startswith(when) for r in bad):
                 out.append(f"no {when} throttle record")
         for v in vals:
-            if v & ~BENIGN_THROTTLE:
+            if v & ~BENIGN_THROTTLE[when]:
                 out.append(f"throttle reasons {when} the run: {v:#x}")
-    return out
+    return out, rec
+
+
+def throttle_reasons(d: Path, run: str) -> list[str]:
+    """Reasons the throttle record of a run is unclean; empty when before shows only idle / app clocks and after
+    also at most the SW power cap."""
+    return throttle_record(d, run)[0]
 
 
 def run_reasons(d: Path, model: str, engine: str, rep: int) -> tuple[list[str], dict]:
@@ -257,6 +269,10 @@ def model_verdict(d: Path, model: str, band: float) -> dict:
             "c1_decode_ratio": ratio(field(judged[rep][1], "c1", "decode_tps_median"), field(base[rep][1], "c1", "decode_tps_median")),
             "clean": not reasons,
             "reasons": reasons,
+            "throttle": {
+                "baseline": throttle_record(d, f"{model}-{BASELINE}-r{rep}")[1],
+                "judged": throttle_record(d, f"{model}-{engine}-r{rep}")[1],
+            },
         }
         out["pairs"].append(pair)
     for key, pk in (("c4", "c4_throughput_ratio"), ("c1", "c1_decode_ratio")):
@@ -298,7 +314,10 @@ def ttft_verdict(d: Path, band: float) -> dict:
         r_on, on = replay_run(d, "on", rep)
         r_off, off = replay_run(d, "off", rep)
         reasons = r_on + r_off
-        pair = {"median_ratio": None, "p90_ratio": None, "clean": False, "reasons": reasons}
+        pair = {
+            "median_ratio": None, "p90_ratio": None, "clean": False, "reasons": reasons,
+            "throttle": {m: throttle_record(d, f"replay-q8b-{m}-r{rep}")[1] for m in ("on", "off")},
+        }
         if on and off:
             for j in (on, off):
                 p = j.get("params") or {}

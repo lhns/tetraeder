@@ -36,7 +36,8 @@
 #
 # Models (assumed downloaded, .hf_cache/<org>__<model>/): q8b Qwen3-8B-Q4_K_M (judged on --engine dense), q30b
 # Qwen3-30B-A3B-Q4_K_M (judged on --engine moe; Q30B_ENGINE=llama only for a control run: libllama, counts false).
-# Env knobs: SESSION (date), MODELS ("q8b q30b"), THREADS (CPU quota), BUDGET_MIN (150: runs that would start later
+# Env knobs: COMMIT (env.json git_commit: the box checkout has no .git, so the driver passes COMMIT=$(git rev-parse HEAD)),
+# SESSION (date), MODELS ("q8b q30b"), THREADS (CPU quota), BUDGET_MIN (150: runs that would start later
 # are skipped, loudly, and the verdict is then null), Q30B_ENGINE, PHASE4_LOG (request log on the box, default
 # bench/private/claude-code-requests.jsonl), RECORD_TASKS, TTFT_INFO (1), P4_OUT (results dir), DRY_RUN=1 (print the
 # sequence and the commands, run nothing; needs no GPU, lock or build).
@@ -170,7 +171,8 @@ wait_ready() {
 
 over_budget() { [ $(($(date +%s) - t_start)) -gt "$budget_s" ]; }
 
-# gpu_note RUN before|after: the throttle reasons bitmask (hex) of every GPU, one `<when>: <hex>` line each
+# gpu_note RUN before|after: the throttle reasons bitmask (hex) of every GPU, one `<when>: <hex>` line each, then one
+# `power-<when>: <power.limit>, <power.draw>` line per GPU (informative; phase4_summary.py copies it to verdict.json)
 gpu_note() {
   local f="$out/gpu-$1.txt" when=$2 v
   if [ "$DRY" = 1 ]; then
@@ -185,6 +187,8 @@ gpu_note() {
     || v=$(nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2> /dev/null)
   [ -n "$v" ] || say "WARNING: no throttle reasons from nvidia-smi for $1 $when (the run counts as unclean)"
   echo "$v" | sed "s/^ *\([^ ]\)/$when: \1/" >> "$f"
+  nvidia-smi --query-gpu=power.limit,power.draw --format=csv,noheader 2> /dev/null \
+    | sed "s/^ *\([^ ]\)/power-$when: \1/" >> "$f" || true
 }
 
 # ---- stage: record-log -------------------------------------------------------------------------------------
@@ -353,7 +357,7 @@ env_json() {
   nvidia-smi -q -d CLOCK,PERFORMANCE > "$out/nvidia-smi-clock-performance.txt" 2>&1
   GW_OUT="$out" GW_THREADS="$threads" GW_QUOTA="$(bash scripts/cpu_quota.sh 2> /dev/null)" \
     GW_LLAMA="$("$baseline_bin" --version 2>&1 | head -3 | tr '\n' ' ')" \
-    GW_COMMIT="$(git rev-parse HEAD 2> /dev/null)" GW_HOST="$(hostname)" \
+    GW_COMMIT="${COMMIT:-$(git rev-parse HEAD 2> /dev/null)}" GW_HOST="$(hostname)" \
     GW_LOG_SHA="$(sha256sum "$req_log" 2> /dev/null | cut -d' ' -f1)" GW_Q30B="$q30b_engine" \
     GW_GPU="$(nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks.mem,clocks_throttle_reasons.active,memory.total --format=csv,noheader 2> /dev/null)" \
     GW_VAST="${VAST_CONTAINERLABEL:-} ${CONTAINER_ID:-}" "$py" - << 'EOF'
@@ -364,7 +368,9 @@ json.dump({
     "host": e["GW_HOST"], "vast_container": e["GW_VAST"].strip(), "gpu": name, "driver": drv, "vram": vram,
     "clock_sm_mhz": sm, "clock_sm_max_mhz": smmax, "clock_mem_mhz": mem, "throttle_reasons_active": throttle,
     "cpu_quota_cores": e["GW_QUOTA"], "threads": e["GW_THREADS"], "git_commit": e["GW_COMMIT"],
-    "baseline_llama_server": e["GW_LLAMA"], "request_log_sha256": e["GW_LOG_SHA"], "q30b_engine": e["GW_Q30B"],
+    "baseline_llama_server": e["GW_LLAMA"],
+    # empty when the record-log stage did not run on this box (no request log to hash): expected, not an error
+    "request_log_sha256": e["GW_LOG_SHA"], "q30b_engine": e["GW_Q30B"],
     "see": "nvidia-smi-clock-performance.txt",
 }, open(os.path.join(e["GW_OUT"], "env.json"), "w"), indent=2)
 EOF

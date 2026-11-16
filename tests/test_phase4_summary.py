@@ -14,6 +14,7 @@ spec.loader.exec_module(p4)
 IDLE = "0x0000000000000001"
 APPS = "0x0000000000000003"
 POWER = "0x0000000000000004"
+HW_SLOW = "0x0000000000000008"
 
 
 def bench(tps=None, decode=None, errors=0, completion_tokens=None, **extra):
@@ -128,12 +129,22 @@ def test_errors_make_a_pair_unclean_and_no_verdict(s):
 
 def test_unclean_pair_with_a_fail_is_still_no_verdict(s):
     s.q8b(r1=(0.5, 1.0))
-    s.run("q8b", "llama-server", 2, 100.0, 80.0, throttle=(IDLE, POWER))
+    s.run("q8b", "llama-server", 2, 100.0, 80.0, throttle=(IDLE, HW_SLOW))
     s.ttft()
     assert s.verdict()["models"]["q8b"]["pass"] is None
 
 
-@pytest.mark.parametrize("throttle,clean", [((IDLE, APPS), True), ((IDLE, POWER), False), (("0x0", "0x8"), False)])
+@pytest.mark.parametrize(
+    "throttle,clean",
+    [
+        ((IDLE, APPS), True),
+        ((IDLE, POWER), True),  # SW power cap after a run is benign (ADR 0065 addendum)
+        ((POWER, IDLE), False),  # but not before
+        ((IDLE, "0x0000000000000024"), False),
+        (("0x0000000000000600", IDLE), False),
+        (("0x0", "0x8"), False),
+    ],
+)
 def test_throttle_reasons(s, throttle, clean):
     s.q8b()
     s.run("q8b", "tetraeder-dense", 1, 100.0, 80.0, throttle=throttle)
@@ -141,6 +152,19 @@ def test_throttle_reasons(s, throttle, clean):
     m = s.verdict()["models"]["q8b"]
     assert m["pairs"][0]["clean"] is clean
     assert m["pass"] is (True if clean else None)
+    assert m["pairs"][0]["throttle"]["judged"]["before"] == [throttle[0]]
+    assert m["pairs"][0]["throttle"]["judged"]["after"] == [throttle[1]]
+
+
+def test_power_lines_are_recorded_and_ignored_by_the_gate(s):
+    s.q8b()
+    s.run("q8b", "tetraeder-dense", 1, 100.0, 80.0)
+    f = s.d / "gpu-q8b-tetraeder-dense-r1.txt"
+    f.write_text(f.read_text() + "power-before: 350.00 W, 30.10 W\npower-after: 350.00 W, 340.00 W\n")
+    s.ttft()
+    pair = s.verdict()["models"]["q8b"]["pairs"][0]
+    assert pair["clean"] is True
+    assert pair["throttle"]["judged"]["power_after"] == ["350.00 W, 340.00 W"]
 
 
 def test_missing_throttle_record_is_unclean(s):
@@ -282,7 +306,7 @@ def test_ttft_unequal_errors_is_unclean(s):
 def test_ttft_throttled_run_is_unclean(s):
     s.q8b()
     s.ttft()
-    s.replay("on", 2, [0.5] * 10, throttle=(IDLE, POWER))
+    s.replay("on", 2, [0.5] * 10, throttle=(IDLE, HW_SLOW))
     t = s.verdict()["ttft"]
     assert t["pairs"][1]["clean"] is False and t["pass"] is None
 
@@ -359,7 +383,7 @@ def test_unclean_rep_3_does_not_help(s):
     s.q8b()
     s.run("q8b", "llama-server", 1, 100.0, 80.0, errors=1)
     s.run("q8b", "llama-server", 3, 100.0, 80.0)
-    s.run("q8b", "tetraeder-dense", 3, 100.0, 80.0, throttle=(IDLE, POWER))
+    s.run("q8b", "tetraeder-dense", 3, 100.0, 80.0, throttle=(IDLE, HW_SLOW))
     s.ttft()
     m = s.verdict()["models"]["q8b"]
     assert m["reps_used"] == [1, 2] and m["pass"] is None
