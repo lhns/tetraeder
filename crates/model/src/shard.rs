@@ -83,7 +83,7 @@ impl<'g> WeightLoader<'g> {
                 info.ne[0], info.ne[1]
             )));
         }
-        if ne0.start % bs != 0 || (ne0.end - ne0.start) % bs != 0 {
+        if !ne0.start.is_multiple_of(bs) || !(ne0.end - ne0.start).is_multiple_of(bs) {
             return Err(ModelError::Invalid(format!(
                 "`{name}`: slice {ne0:?} does not cut whole blocks of {bs}"
             )));

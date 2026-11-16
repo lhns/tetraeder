@@ -609,7 +609,7 @@ fn check_topology(topo: &Topology, h: &DenseHparams, opts: &DenseOptions) -> Res
             errs.push(format!("stage {s} has no ranks"));
             continue;
         }
-        if a.n_head % tp != 0 || a.n_head_kv % tp != 0 {
+        if !a.n_head.is_multiple_of(tp) || !a.n_head_kv.is_multiple_of(tp) {
             errs.push(format!(
                 "stage {s}: tp = {tp} does not divide {} heads and {} KV heads",
                 a.n_head, a.n_head_kv

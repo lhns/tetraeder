@@ -202,7 +202,7 @@ struct SchedEngine {
 }
 
 enum Engine {
-    Sched(SchedEngine),
+    Sched(Box<SchedEngine>),
     /// Per-rank weights, KV and graphs issued by the executor (ADR 0069).
     Ranked(Box<ranked::Ranked>),
 }
@@ -311,7 +311,7 @@ impl Qwen3 {
         let kv_rotated = (kv.rot_k.is_some(), kv.rot_v.is_some());
         Ok(Qwen3 {
             h,
-            engine: Engine::Sched(SchedEngine {
+            engine: Engine::Sched(Box::new(SchedEngine {
                 sched,
                 primary,
                 weights_bytes: weights_bytes as u64,
@@ -320,7 +320,7 @@ impl Qwen3 {
                 kv,
                 step: None,
                 state: None,
-            }),
+            })),
             pool,
             n_rows: rows,
             n_seq_max: opts.n_seq_max,
