@@ -172,7 +172,7 @@ def test_ik_and_vllm_are_reported_not_gated(tmp_path):
 def test_unclean_run_rerun_in_a_later_round_passes(tmp_path):
     d = make(tmp_path / "d", rounds=(1, 2, 3))
     pp, tg = MEAS["tp-2"]
-    write_run(d, "bench", f"{MODEL}-tp-2-r2", pp, tg, throttle="before: 0x1\nafter: 0x4\n")  # hw slowdown
+    write_run(d, "bench", f"{MODEL}-tp-2-r2", pp, tg, throttle="before: 0x1\nafter: 0x8\n")  # hw slowdown
     assert [c for c in p5.need_rerun(d, MODEL)] == []  # tp-2 still has rounds 1 and 3
     write_run(d, "bench", f"{MODEL}-tp-2-r3", pp, tg, cotenant=False)  # now only round 1 is clean
     assert p5.need_rerun(d, MODEL) == [("tet", "tp-2", "")]
@@ -188,7 +188,7 @@ def test_unclean_run_rerun_in_a_later_round_passes(tmp_path):
 def test_candidate_with_one_clean_round_has_no_verdict(tmp_path):
     d = make(tmp_path / "d")
     pp, tg = MEAS["tp-2"]
-    write_run(d, "bench", f"{MODEL}-tp-2-r2", pp, tg, throttle="before: 0x1\nafter: 0x4\n")
+    write_run(d, "bench", f"{MODEL}-tp-2-r2", pp, tg, throttle="before: 0x1\nafter: 0x8\n")
     write_run(d, "bench", f"{MODEL}-tp-2-r3", pp, tg, rc=137)
     _, _, c = verdict(d, tmp_path)
     assert c["clean"] is False and c["pass"] is None

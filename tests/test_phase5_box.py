@@ -240,7 +240,7 @@ def test_unclean_configuration_is_rerun_in_a_later_round(tmp_path):
         for c in ids:
             kind, run = cfg_run(c, k)
             bad = c == "tp-2" and k in (2, 3)
-            write_done(out, run, kind, "before: 0x1\nafter: 0x4\n" if bad else "before: 0x1\nafter: 0x1\n")
+            write_done(out, run, kind, "before: 0x1\nafter: 0x8\n" if bad else "before: 0x1\nafter: 0x1\n")
     lines = dry(tmp_path, MODELS=D)
     names = timed(lines, D)
     assert names and set(n[len(D) + 1 :] for n in names) == {"tp-2-r4", "tp-2-r5"}
