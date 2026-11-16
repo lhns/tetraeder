@@ -1,6 +1,6 @@
 //! Assembles the hardware graph from the OS, probes and NVML.
 
-use crate::gpu::{GpuInfo, discover_gpus, pcie_prior_bytes_per_s};
+use crate::gpu::{GpuInfo, discover_gpus, filter_visible, pcie_prior_bytes_per_s};
 use crate::graph::{Device, DeviceKind, HardwareGraph, Link, LinkKind, Measurement, Tier};
 use crate::pcie::{PcieClass, PcieTopology, lane_groups};
 use crate::probe::{probe_disk_read, probe_ram_read};
@@ -91,8 +91,18 @@ pub fn discover(opts: &DiscoverOpts) -> HardwareGraph {
     if opts.gpus {
         let (gpus, notes) = discover_gpus();
         g.notes.extend(notes);
+        // Rank i of a plan is ggml's device i, which is the i-th visible GPU.
+        let cvd = std::env::var("CUDA_VISIBLE_DEVICES").ok();
+        let total = gpus.len();
+        let (gpus, notes) = filter_visible(gpus, cvd.as_deref());
+        g.notes.extend(notes);
         add_gpus(opts, &gpus, &mut g);
-        add_pcie_topology(&gpus, &mut g);
+        if gpus.len() == total {
+            add_pcie_topology(&gpus, &mut g);
+        } else {
+            g.notes
+                .push("pcie topology: not read while CUDA_VISIBLE_DEVICES hides GPUs".into());
+        }
     }
     g
 }

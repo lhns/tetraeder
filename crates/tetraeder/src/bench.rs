@@ -345,6 +345,10 @@ fn run_builder(
                     .map_or(serde_json::Value::Null, |p| p.plan_id.clone().into()),
             );
             o.insert("ranks".into(), m.n_ranks().into());
+            // Set only when limited: the harness merges anchors with `setdefault`.
+            if let Some(n) = a.layer_limit {
+                o.insert("layer_limit".into(), n.into());
+            }
             o.insert("comm_path".into(), m.comm_path().into());
             let ranges0 = m.ranges0();
             o.insert(
@@ -442,6 +446,60 @@ mod tests {
         assert_eq!(r["n_prompt"], 0);
         assert_eq!(r["avg_ts"], 6.0);
         assert_eq!(r["samples_ts"][1], 4.0);
+    }
+
+    #[test]
+    fn the_harness_spelling_parses() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct P {
+            #[command(flatten)]
+            bench: BenchArgs,
+        }
+        // The flags `scripts/phase5_box.sh` passes in `tet_cmd`.
+        let p = P::parse_from([
+            "x",
+            "-m",
+            "m.gguf",
+            "--engine",
+            "moe",
+            "--plan",
+            "p.toml",
+            "-p",
+            "2048",
+            "-n",
+            "128",
+            "-r",
+            "1",
+            "-t",
+            "8",
+            "--ngl",
+            "-1",
+            "--ubatch",
+            "512",
+            "--flash-attn",
+            "on",
+            "-o",
+            "json",
+            "--layer-limit",
+            "16",
+        ]);
+        let b = &p.bench;
+        assert!(b.engine == BenchEngine::Moe);
+        assert_eq!(b.layer_limit, Some(16));
+        assert_eq!(b.plan.as_deref(), Some(std::path::Path::new("p.toml")));
+        assert_eq!((b.n_prompt, b.n_gen, b.reps), (2048, 128, 1));
+        assert!(
+            P::parse_from(["x", "-m", "m.gguf", "--engine", "dense"])
+                .bench
+                .engine
+                == BenchEngine::Dense
+        );
+        assert!(P::try_parse_from(["x", "-m", "m.gguf", "--engine", "gguf"]).is_err());
+        let err = run(&P::parse_from(["x", "-m", "m.gguf", "--layer-limit", "2"]).bench)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--engine dense"), "{err}");
     }
 
     #[test]

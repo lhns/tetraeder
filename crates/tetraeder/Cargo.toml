@@ -13,8 +13,9 @@ workspace = true
 
 [features]
 # GPU metrics through NVML (library loaded at runtime; absent GPU is fine).
-nvml = ["tetraeder-telemetry/nvml"]
-cuda = ["tetraeder-engine/cuda", "tetraeder-model/cuda", "tetraeder-scheduler/cuda"]
+nvml = ["tetraeder-telemetry/nvml", "tetraeder-profiler/nvml"]
+# The hardware graph (`plan hw`, serve) sees GPUs only through NVML, so a CUDA build has it.
+cuda = ["nvml","tetraeder-engine/cuda", "tetraeder-model/cuda", "tetraeder-scheduler/cuda"]
 vulkan = ["tetraeder-engine/vulkan", "tetraeder-scheduler/vulkan"]
 
 [dependencies]

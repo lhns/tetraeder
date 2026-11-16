@@ -199,7 +199,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           key: cuda
       # Link the binary, not just the -sys crate: missing CUDA link libraries only show up here.
-      - run: cargo build -p tetraeder -p tetraeder-ggml-sys -p tetraeder-model --features tetraeder-ggml-sys/cuda
+      - run: cargo build -p tetraeder -p tetraeder-ggml-sys -p tetraeder-model --features tetraeder-ggml-sys/cuda,tetraeder/nvml
       # The default build loads CUDA as a module (ADR 0052): it must exist next to the binary.
       - name: CUDA module
         shell: bash
