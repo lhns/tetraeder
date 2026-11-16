@@ -1,0 +1,60 @@
+== gpu-q30b-b11976-r1.txt
+before: 0x0000000000000000
+before clocks: 1740 MHz, 9751 MHz, 38, 118.54 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 52, 323.99 W
+== gpu-q30b-b11976-r2.txt
+before: 0x0000000000000000
+before clocks: 1740 MHz, 9751 MHz, 42, 120.19 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 52, 309.91 W
+== gpu-q30b-b12426-r1.txt
+before: 0x0000000000000000
+before clocks: 1740 MHz, 9751 MHz, 40, 117.49 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 48, 294.14 W
+== gpu-q30b-b12426-r2.txt
+before: 0x0000000000000000
+before clocks: 1740 MHz, 9751 MHz, 43, 122.47 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 48, 292.72 W
+== gpu-q30b-tetraeder-r1.txt
+before: 0x0000000000000000
+before clocks: 1740 MHz, 9751 MHz, 42, 115.19 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 52, 308.04 W
+== gpu-q30b-tetraeder-r2.txt
+before: 0x0000000000000000
+before clocks: 1740 MHz, 9751 MHz, 42, 115.65 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 53, 326.68 W
+== gpu-q8b-b11976-r1.txt
+before: 0x0000000000000000
+before clocks: 1845 MHz, 9751 MHz, 35, 120.64 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 51, 333.07 W
+== gpu-q8b-b11976-r2.txt
+before: 0x0000000000000000
+before clocks: 1845 MHz, 9751 MHz, 41, 125.05 W
+after: 0x0000000000000004
+after clocks: 1665 MHz, 9751 MHz, 53, 333.29 W
+== gpu-q8b-b12426-r1.txt
+before: 0x0000000000000000
+before clocks: 1845 MHz, 9751 MHz, 29, 117.02 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 45, 302.56 W
+== gpu-q8b-b12426-r2.txt
+before: 0x0000000000000000
+before clocks: 1845 MHz, 9751 MHz, 42, 124.99 W
+after: 0x0000000000000000
+after clocks: 1845 MHz, 9751 MHz, 51, 291.33 W
+== gpu-q8b-tetraeder-r1.txt
+before: 0x0000000000000000
+before clocks: 1740 MHz, 9751 MHz, 39, 112.58 W
+after: 0x0000000000000004
+after clocks: 1695 MHz, 9751 MHz, 51, 333.94 W
+== gpu-q8b-tetraeder-r2.txt
+before: 0x0000000000000000
+before clocks: 1740 MHz, 9751 MHz, 40, 114.50 W
+after: 0x0000000000000004
+after clocks: 1695 MHz, 9751 MHz, 52, 334.27 W
