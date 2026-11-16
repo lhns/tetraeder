@@ -78,7 +78,7 @@ build() {
 
 # old commit in its own directory, patch queue applied at its own pin
 if [ ! -x "$work/bins/old" ]; then
-  if [ ! -d "$work/src-old/.git" ]; then
+  if [ ! -f "$work/src-old/patches/apply.sh" ]; then
     rm -rf "$work/src-old"
     mkdir -p "$work/src-old"
     git -C "$work/src-old" init -q
