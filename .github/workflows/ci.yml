@@ -113,6 +113,19 @@ jobs:
           cargo test -p tetraeder-engine --test golden -- --nocapture 2>&1 | tee -a test.log || r=1
           cargo test -p tetraeder-model --test dense_golden -- --nocapture 2>&1 | tee -a test.log || r=1
           exit ${r:-0}
+      # TEMPORARY (track-pin-adopt): batch-invariance diagnostics per forced CPU variant.
+      - name: batch diag
+        if: always()
+        shell: bash
+        env:
+          TETRAEDER_BATCH_DIAG: "1"
+        run: |
+          for v in "" haswell sse42 icelake; do
+            echo "=== variant '${v:-default}'"
+            TETRAEDER_GGML_CPU_VARIANT=$v cargo test -p tetraeder-ggml-sys --test batch_diag -- --nocapture 2>&1 | grep -a -E "^diag|panicked|error" || true
+            TETRAEDER_GGML_CPU_VARIANT=$v cargo test -p tetraeder-model --test batch_diag -- --nocapture 2>&1 | grep -a -E "^diag|panicked|error" || true
+            TETRAEDER_GGML_CPU_VARIANT=$v cargo test -p tetraeder-scheduler --test spec_builder 2>&1 | grep -a -E "^test |max difference|differs|panicked" || true
+          done
       - name: Skipped tests
         if: always()
         shell: bash
