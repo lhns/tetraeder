@@ -21,6 +21,9 @@ fn opts(n_seq_max: usize) -> DenseOptions {
     DenseOptions {
         kv: KvFormat::F16,
         kv_rotation: Some(false),
+        // CPU ranks hold weights in file layout; the scheduler path would repack them in the
+        // CPU's extra buffer types and differ in the last bits.
+        extra_bufts: false,
         n_seq_max,
         // A sequence reserves whole 256-row units.
         n_ctx_pool: 256 * n_seq_max,
