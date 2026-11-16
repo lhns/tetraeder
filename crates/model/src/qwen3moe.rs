@@ -2714,6 +2714,7 @@ fn build_step<'a>(
             // rows, after the real one, feeds the log only.
             let (li, lw) = if select {
                 let (_, lw, li) = router(h, ctx, &w.layers[il], full);
+                g.expand(lw); // the router's nodes stay consecutive, as above
                 (li, lw)
             } else {
                 (ids, weights)
