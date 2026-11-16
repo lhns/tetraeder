@@ -239,7 +239,7 @@ probe() {
 # ---- env, summary --------------------------------------------------------------------------------------------
 summary() {
   stage summary || return 0
-  GW_HOST="$(hostname)" GW_COMMIT="$(git rev-parse HEAD 2> /dev/null)" GW_THREADS="$threads" \
+  GW_HOST="$(hostname)" GW_COMMIT="${COMMIT:-$(git rev-parse HEAD 2> /dev/null)}" GW_THREADS="$threads" \
     GW_GPU="$(nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks.mem,memory.total --format=csv,noheader 2> /dev/null)" \
     GW_BASELINE="$("$baseline_bin" --version 2>&1 | head -3 | tr '\n' ' ')" GW_PIN="$(tr '\n' ' ' < vendor/PIN)" \
     GW_BPIN="$(cat /opt/llama.cpp-baseline/PIN 2> /dev/null | tr '\n' ' ')" GW_QUOTA="$(bash scripts/cpu_quota.sh 2> /dev/null)" \
