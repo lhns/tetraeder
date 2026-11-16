@@ -564,14 +564,9 @@ mod tests {
         let rx = request(&e, 200).unwrap();
         assert_eq!(e.in_flight(), 1);
         let (tokens, end) = collect(rx).await;
+        // Length or end of generation: where greedy decoding of the tiny model stops depends on the pin.
         assert!(
-            matches!(
-                end,
-                Some(GenEvent::Finished {
-                    reason: FinishReason::Length,
-                    ..
-                })
-            ),
+            matches!(end, Some(GenEvent::Finished { .. })) && !tokens.is_empty(),
             "{} tokens, {end:?}",
             tokens.len()
         );
