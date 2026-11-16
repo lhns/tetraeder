@@ -81,7 +81,7 @@ fn dense_vs_libllama(path: &Path, backend: BackendChoice, ngl: i32, tol: Tol, wh
     let want = libllama_script_on(path, &toks, &items, KvFormat::F16, ngl);
     let o = DenseOptions {
         n_seq_max: 3,
-        n_ctx_pool: 512,
+        n_ctx_pool: 1024, // rows are reserved in steps of 256 per sequence
         // as libllama_script_on loads the model
         extra_bufts: false,
         ..DenseOptions::new(backend)
