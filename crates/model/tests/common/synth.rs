@@ -144,15 +144,12 @@ pub fn write_moe_with(path: &Path, s: &MoeSpec, n_ctx: u32, n_vocab: usize) {
     write_moe_edit(path, s, n_ctx, n_vocab, &mut |_, _, _| {});
 }
 
+/// A tensor editor: name, ggml `ne`, values.
+pub type Edit = dyn FnMut(&str, &[usize], &mut [f32]);
+
 /// [`write_moe_with`] that lets `edit(name, ne, values)` change each tensor's F32 values after
 /// they are drawn (a test forces the router's choices this way).
-pub fn write_moe_edit(
-    path: &Path,
-    s: &MoeSpec,
-    n_ctx: u32,
-    n_vocab: usize,
-    edit: &mut dyn FnMut(&str, &[usize], &mut [f32]),
-) {
+pub fn write_moe_edit(path: &Path, s: &MoeSpec, n_ctx: u32, n_vocab: usize, edit: &mut Edit) {
     let mut rng = Rng(s.seed);
     let mut tokens = vocab();
     let mut types = vec![1i32; 257];
