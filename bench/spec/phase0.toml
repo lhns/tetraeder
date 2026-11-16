@@ -16,7 +16,7 @@ seed = 20240601
 
 [pins]
 # Commits the binaries must come from; the harness records the build_commit llama-bench reports next to these.
-llama_cpp = "2e0d86bebc210947680e8f0d67daa79f3260c106"   # vendor/llama.cpp submodule
+llama_cpp = "fc504f91d8cfdfcd9b0fedcf14600fd2b0e63420"   # vendor/llama.cpp submodule
 ik_llama_cpp = "pending"                                # baseline added when its exit test needs it
 tetraeder = "HEAD"                                      # recorded as env.git_commit
 
