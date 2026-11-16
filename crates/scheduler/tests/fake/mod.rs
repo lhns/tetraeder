@@ -5,9 +5,9 @@
 //! a request decoded in a batch can be compared with the same request decoded alone (P4).
 #![allow(dead_code)]
 
+use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::Arc;
-use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use tetraeder_scheduler::{BackendError, BatchBackend, Outputs, SeqId, SeqInput};
 
