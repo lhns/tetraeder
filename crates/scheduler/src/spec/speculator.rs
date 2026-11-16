@@ -62,6 +62,47 @@ impl Speculator {
         k.min(MAX_VERIFY - 1)
     }
 
+    /// Up to `cap` drafts continuing `history` (its last token pending), within the draft length
+    /// the policy picks; empty when it picks none. For callers that run the verify step
+    /// themselves, such as the batching loop.
+    pub fn propose(
+        &mut self,
+        drafter: &mut dyn Drafter,
+        history: &[i32],
+        cap: usize,
+    ) -> Result<Vec<i32>, SpecError> {
+        let t0 = Instant::now();
+        let k = self.draft_len().min(cap);
+        let mut drafts = Vec::new();
+        if k > 0 {
+            drafts = drafter.draft(history, k)?;
+            drafts.truncate(k);
+        }
+        self.stats.draft_time += t0.elapsed();
+        Ok(drafts)
+    }
+
+    /// Counts a verify step of `rows` rows (the pending token and the drafts) of which
+    /// `accepted` of `drafted` drafts matched, and feeds the adaptive policy. `eval_time` is the
+    /// target step.
+    pub fn record(&mut self, rows: usize, drafted: usize, accepted: usize, eval_time: Duration) {
+        let s = &mut self.stats;
+        s.steps += 1;
+        s.drafted += drafted as u64;
+        s.accepted += accepted as u64;
+        s.emitted += accepted as u64 + 1;
+        s.verify_time += eval_time;
+        let b = &mut s.by_batch[rows - 1];
+        b.steps += 1;
+        b.time += eval_time;
+        if let Some(a) = &mut self.adaptive {
+            a.observe_time(rows, eval_time.as_secs_f64());
+            if drafted > 0 {
+                a.observe(drafted, accepted);
+            }
+        }
+    }
+
     /// One step. Precondition: `target.n_past() == history.len() - 1` (the last history token is
     /// pending). Drafts k tokens unless `drafter` is `None`, evaluates `[last, drafts..]`,
     /// appends the accepted drafts and one chosen token to `history` and rewinds the target to
@@ -83,18 +124,12 @@ impl Speculator {
             )));
         }
 
-        let t0 = Instant::now();
         let mut method = "";
         let mut drafts = Vec::new();
         if let Some(d) = drafter {
-            let k = self.draft_len();
-            if k > 0 {
-                drafts = d.draft(history, k)?;
-                drafts.truncate(k);
-                method = d.method();
-            }
+            drafts = self.propose(d, history, usize::MAX)?;
+            method = d.method();
         }
-        self.stats.draft_time += t0.elapsed();
 
         let mut batch = Vec::with_capacity(drafts.len() + 1);
         batch.push(last);
@@ -129,21 +164,7 @@ impl Speculator {
             target.rewind(keep)?;
         }
 
-        let s = &mut self.stats;
-        s.steps += 1;
-        s.drafted += drafts.len() as u64;
-        s.accepted += accepted as u64;
-        s.emitted += emitted as u64;
-        s.verify_time += eval_time;
-        let b = &mut s.by_batch[batch.len() - 1];
-        b.steps += 1;
-        b.time += eval_time;
-        if let Some(a) = &mut self.adaptive {
-            a.observe_time(batch.len(), eval_time.as_secs_f64());
-            if !drafts.is_empty() {
-                a.observe(drafts.len(), accepted);
-            }
-        }
+        self.record(batch.len(), drafts.len(), accepted, eval_time);
         if !drafts.is_empty()
             && let Some(t) = &self.telemetry
         {

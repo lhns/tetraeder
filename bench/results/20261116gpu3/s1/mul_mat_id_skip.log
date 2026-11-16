@@ -1,0 +1,38 @@
+   Compiling either v1.19.0
+   Compiling syn v3.0.9
+   Compiling libc v0.2.191
+   Compiling getrandom v0.4.3
+   Compiling tracing-core v0.1.36
+   Compiling itertools v0.13.0
+   Compiling tracing v0.1.44
+   Compiling bindgen v0.72.1
+   Compiling tempfile v3.27.0
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.21
+   Compiling thiserror v2.0.21
+   Compiling serde v1.0.229
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+    Finished `release` profile [optimized] target(s) in 1m 16s
+     Running tests/mul_mat_id_skip.rs (target/release/deps/mul_mat_id_skip-7fd63ca054983cdc)
+
+running 2 tests
+test gpu_mul_mat_id_negative_ids_match_cpu ... 
+thread 'gpu_mul_mat_id_negative_ids_match_cpu' (36532) panicked at crates/ggml-sys/tests/mul_mat_id_skip.rs:183:13:
+q4_K tokens=1 b1=1: slot 1: diff 0.099001884 > 0.09748087
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test gpu_mul_mat_id_time_falls_with_skipped_ids ... MUL_MAT_ID_SKIP {"test":"mul_mat_id_skip","gpu":"CUDA0","tokens":512,"type":"q4_K","median_ms":{"neg_0":0.6135,"neg_50":0.6167,"neg_90":0.6186}}
+
+thread 'gpu_mul_mat_id_time_falls_with_skipped_ids' (36538) panicked at crates/ggml-sys/tests/mul_mat_id_skip.rs:315:5:
+time must fall with the share of -1 ids: [(0, 0.613498), (50, 0.616748), (90, 0.618638)]
+FAILED
+
+failures:
+
+failures:
+    gpu_mul_mat_id_negative_ids_match_cpu
+    gpu_mul_mat_id_time_falls_with_skipped_ids
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.71s
+
+error: test failed, to rerun pass `-p tetraeder-ggml-sys --test mul_mat_id_skip`

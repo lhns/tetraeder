@@ -200,3 +200,46 @@ fn a_corrupt_saved_entry_is_dropped_and_the_request_runs() {
     pump(&mut w);
     assert_eq!(tokens(&events(&mut rx)), 3);
 }
+
+/// A failed busy copy marks the request, not the worker: when that request ends before it is
+/// placed again (cancelled here, by the copy itself), the next request still gets a busy copy.
+#[test]
+fn a_failed_busy_copy_does_not_stop_the_next_request_from_copying() {
+    let cancel = CancellationToken::new();
+    let kv = FakeKv::new(N_VOCAB, 3, 3200, 6000).with_fail_cp_cancelling(cancel.clone());
+    let probe = kv.probe();
+    let mut w = worker(kv);
+    let first = prompt(1, 100);
+    let _a = submit(&mut w, &first, 200);
+    for _ in 0..3 {
+        w.admit();
+        w.step();
+    }
+    // B shares 80 tokens with the live first request; its copy fails and cancels it.
+    let mut shared = first[..80].to_vec();
+    shared.extend(prompt(7, 10));
+    let (tx, mut rb) = mpsc::channel(100);
+    let params = SamplingParams {
+        max_tokens: 5,
+        temperature: Some(0.0),
+        ..SamplingParams::default()
+    };
+    w.waiting
+        .push_back(Req::new(shared, params, None, cancel, tx));
+    w.admit();
+    assert!(w.waiting.is_empty(), "the cancelled request left the queue");
+    assert!(matches!(
+        events(&mut rb).last(),
+        Some(GenEvent::Finished {
+            reason: FinishReason::Cancelled,
+            ..
+        })
+    ));
+    assert!(probe.seq_cps.lock().unwrap().is_empty());
+    // C shares 70 tokens with the first request and copies them.
+    let mut shared = first[..70].to_vec();
+    shared.extend(prompt(8, 10));
+    let _c = submit(&mut w, &shared, 5);
+    w.admit();
+    assert_eq!(probe.seq_cps.lock().unwrap().len(), 1, "no busy copy");
+}
