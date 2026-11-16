@@ -147,7 +147,10 @@ fn cpu_dense_tp2_matches_bench_golden() {
         cases: expected.cases.iter().map(|c| run_case(&mut m, c)).collect(),
         ..expected.clone()
     };
-    let cmp = expected.compare(&actual, Tolerance { logit_abs: 0.05 });
+    // Q8_0 quantizes every activation block; a partial sum in another order moves some blocks
+    // across a rounding step, and 28 layers carry that to about 1% of a logit (measured: 0.10 on
+    // 13.6). So 0.3 absolute here, against 0.05 for the unsharded run.
+    let cmp = expected.compare(&actual, Tolerance { logit_abs: 0.3 });
     for mm in &cmp.mismatches {
         let Mismatch::TokenDiverged {
             case,
@@ -165,7 +168,7 @@ fn cpu_dense_tp2_matches_bench_golden() {
             .expect("case of the golden")
             .top[*pos];
         let gap = top[0].logit - top[1].logit;
-        let bound = 2.0 * (1e-3 * top[0].logit.abs()).max(1e-4);
+        let bound = 2.0 * (1e-2 * top[0].logit.abs());
         eprintln!("near tie in {case} at {pos}: gap {gap:e}, bound {bound:e}");
         assert!(
             *got == top[1].id && gap <= bound,
