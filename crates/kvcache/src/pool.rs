@@ -16,10 +16,26 @@ pub struct StepPlan {
     pub pos: Vec<i32>,
     pub rows: Vec<i32>,
     pub n_kv: usize,
-    /// F16 bits, `[n_kv, n_tokens]`, token-major: 0 where the token may read the row.
+    /// F16 bits, token-major, 0 where the token may read the row. Without `seqs`: `[n_kv,
+    /// n_tokens]` over rows 0..n_kv. With `seqs`: each input's `[n_kv, n_tokens]` block over its
+    /// own rows, back to back in input order.
     pub mask: Vec<u16>,
     /// Token indices whose logits are returned.
     pub outputs: Vec<i32>,
+    /// Empty: one attention over rows 0..n_kv for all tokens. Else one attention per input over
+    /// its own run of rows ([`KvPool::plan_step_per_seq`]).
+    pub seqs: Vec<SeqAttn>,
+}
+
+/// One input's attention over its own rows: tokens `first_token..+n_tokens` read rows
+/// `kv_start..+n_kv`, with the mask block at `mask_offset` (in elements).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SeqAttn {
+    pub first_token: usize,
+    pub n_tokens: usize,
+    pub kv_start: usize,
+    pub n_kv: usize,
+    pub mask_offset: usize,
 }
 
 /// Pool state in `ROW_ALIGN`-row units (rounded up).
@@ -211,7 +227,61 @@ impl KvPool {
             n_kv,
             mask,
             outputs,
+            seqs: Vec::new(),
         })
+    }
+
+    /// Like [`KvPool::plan_step`], with attention per input over its own rows: each input's
+    /// positions must be one run of rows (chunked), else `None`. An input reads
+    /// `round_up(len + n_tokens, ROW_ALIGN)` rows from the start of its run; they lie inside its
+    /// reservation, so no other sequence's rows are read.
+    pub fn plan_step_per_seq(&self, inputs: &[StepInput]) -> Result<Option<StepPlan>, KvError> {
+        let n_kv = self.step_n_kv(inputs)?;
+        let mut seqs = Vec::with_capacity(inputs.len());
+        let (mut first_token, mut mask_len) = (0, 0);
+        for inp in inputs {
+            let Some(kv_start) = self.layout.run_start(inp.seq) else {
+                return Ok(None);
+            };
+            let n = round_up(self.lens[&inp.seq] + inp.n_tokens, ROW_ALIGN);
+            if n > self.layout.reserved(inp.seq) {
+                return Ok(None);
+            }
+            seqs.push(SeqAttn {
+                first_token,
+                n_tokens: inp.n_tokens,
+                kv_start,
+                n_kv: n,
+                mask_offset: mask_len,
+            });
+            first_token += inp.n_tokens;
+            mask_len += n * inp.n_tokens;
+        }
+        let mut pos = Vec::with_capacity(first_token);
+        let mut rows = Vec::with_capacity(first_token);
+        let mut outputs = Vec::new();
+        let mut mask = vec![F16_NEG_INF; mask_len];
+        for (inp, s) in inputs.iter().zip(&seqs) {
+            let len = self.lens[&inp.seq];
+            for i in 0..inp.n_tokens {
+                let t = s.first_token + i;
+                pos.push((len + i) as i32);
+                rows.push((s.kv_start + len + i) as i32);
+                if inp.all_logits || i + 1 == inp.n_tokens {
+                    outputs.push(t as i32);
+                }
+                let at = s.mask_offset + i * s.n_kv;
+                mask[at..=at + len + i].fill(0);
+            }
+        }
+        Ok(Some(StepPlan {
+            pos,
+            rows,
+            n_kv,
+            mask,
+            outputs,
+            seqs,
+        }))
     }
 
     /// After a successful decode: lengths grow by n_tokens.

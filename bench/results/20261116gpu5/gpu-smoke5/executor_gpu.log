@@ -1,0 +1,27 @@
+   Compiling opentelemetry v0.33.1
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling opentelemetry-http v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling opentelemetry-proto v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+    Finished `release` profile [optimized] target(s) in 12.25s
+     Running tests/gpu.rs (target/release/deps/gpu-b369422f783f3330)
+
+running 2 tests
+test gpu_cuda_graphs_replay_kept_ranges ... start CudaGraphLogCounts { warmups: 0, resets: 0, reused: 0, update_failed: 0 }
+step 0: CudaGraphLogCounts { warmups: 0, resets: 0, reused: 0, update_failed: 0 }
+step 1: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 2: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 3: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 4: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 5: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 6: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 7: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+ok
+test gpu_two_backends_of_one_gpu_run_the_fallback_and_the_copy ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.31s
+

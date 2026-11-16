@@ -1,0 +1,42 @@
+    Finished `release` profile [optimized] target(s) in 0.11s
+     Running tests/mul_mat_id_skip.rs (target/release/deps/mul_mat_id_skip-7fd63ca054983cdc)
+
+running 2 tests
+test gpu_mul_mat_id_negative_ids_match_cpu ... q4_K tokens=1 b1=1: worst 5.08e-3 of the largest
+q4_K tokens=1 b1=4: worst 4.53e-3 of the largest
+q4_K tokens=8 b1=1: worst 4.81e-3 of the largest
+q4_K tokens=8 b1=4: worst 5.60e-3 of the largest
+q4_K tokens=64 b1=1: worst 6.90e-3 of the largest
+q4_K tokens=64 b1=4: worst 6.54e-3 of the largest
+q4_K tokens=512 b1=1: worst 8.71e-3 of the largest
+q4_K tokens=512 b1=4: worst 7.35e-3 of the largest
+q6_K tokens=1 b1=1: worst 5.29e-3 of the largest
+q6_K tokens=1 b1=4: worst 4.64e-3 of the largest
+q6_K tokens=8 b1=1: worst 5.52e-3 of the largest
+q6_K tokens=8 b1=4: worst 4.84e-3 of the largest
+q6_K tokens=64 b1=1: worst 4.79e-3 of the largest
+q6_K tokens=64 b1=4: worst 5.96e-3 of the largest
+q6_K tokens=512 b1=1: worst 4.62e-3 of the largest
+q6_K tokens=512 b1=4: worst 5.11e-3 of the largest
+q8_0 tokens=1 b1=1: worst 0.00e0 of the largest
+q8_0 tokens=1 b1=4: worst 1.09e-7 of the largest
+q8_0 tokens=8 b1=1: worst 1.39e-7 of the largest
+q8_0 tokens=8 b1=4: worst 1.50e-7 of the largest
+q8_0 tokens=64 b1=1: worst 2.12e-4 of the largest
+q8_0 tokens=64 b1=4: worst 2.06e-4 of the largest
+q8_0 tokens=512 b1=1: worst 2.34e-4 of the largest
+q8_0 tokens=512 b1=4: worst 2.55e-4 of the largest
+f16 tokens=1 b1=1: worst 4.76e-7 of the largest
+f16 tokens=1 b1=4: worst 3.26e-7 of the largest
+f16 tokens=8 b1=1: worst 3.54e-7 of the largest
+f16 tokens=8 b1=4: worst 3.72e-7 of the largest
+f16 tokens=64 b1=1: worst 3.86e-7 of the largest
+f16 tokens=64 b1=4: worst 4.48e-7 of the largest
+f16 tokens=512 b1=1: worst 4.12e-7 of the largest
+f16 tokens=512 b1=4: worst 4.75e-7 of the largest
+ok
+test gpu_mul_mat_id_time_follows_the_local_experts ... MUL_MAT_ID_SKIP {"test":"mul_mat_id_skip","gpu":"CUDA0","tokens":512,"type":"q4_K","experts":128,"used":8,"median_ms":{"skip_g1":0.5855,"skip_g2":0.3309,"remap_g2":0.3725,"skip_g4":0.2230,"remap_g4":0.2907,"skip_g8":0.1694,"remap_g8":0.2351,"random_neg90":0.5984}}
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.92s
+

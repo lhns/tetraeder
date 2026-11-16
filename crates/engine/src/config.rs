@@ -46,6 +46,8 @@ pub struct Placement {
     pub tensor_split: Vec<f32>,
     pub overrides: Vec<BufferOverride>,
     pub load_mode: LoadMode,
+    /// CPU extra buffer types (weight repacking, AMX), libllama's default true.
+    pub extra_bufts: bool,
 }
 
 impl Default for Placement {
@@ -58,6 +60,7 @@ impl Default for Placement {
             tensor_split: d.tensor_split,
             overrides: Vec::new(),
             load_mode: d.load_mode,
+            extra_bufts: d.extra_bufts,
         }
     }
 }
@@ -92,7 +95,7 @@ impl Placement {
             buffer_overrides,
             load_mode: self.load_mode,
             vocab_only: false,
-            extra_bufts: true,
+            extra_bufts: self.extra_bufts,
         })
     }
 }

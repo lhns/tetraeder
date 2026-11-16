@@ -236,15 +236,27 @@ pub fn libllama_reference_kv_default_rot(
     n_greedy: usize,
     kv: KvFormat,
 ) -> Reference {
+    libllama_reference_bufts(path, prompt, n_greedy, kv, false)
+}
+
+/// Like [`libllama_reference_kv_default_rot`]; `extra_bufts` puts libllama's CPU weights in
+/// the CPU extra buffer types (AMX, repack) as its default does.
+pub fn libllama_reference_bufts(
+    path: &Path,
+    prompt: &[i32],
+    n_greedy: usize,
+    kv: KvFormat,
+    extra_bufts: bool,
+) -> Reference {
     let ty = |f| tetraeder_model::convert::ggml_type(f).expect("ggml type of the KV format");
     let model = Arc::new(
         Model::load(
             path,
             &ModelParams {
                 n_gpu_layers: 0,
-                // The builder's CPU weights stay in file layout; without this an AMX or AVX2
+                // Off: the builder's CPU weights in file layout; without this an AMX or AVX2
                 // CPU tier repacks libllama's and the reference runs other kernels (ADR 0052).
-                extra_bufts: false,
+                extra_bufts,
                 ..ModelParams::default()
             },
         )

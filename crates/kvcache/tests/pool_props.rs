@@ -69,6 +69,46 @@ impl Sim {
         (self.pool.free(), seqs)
     }
 
+    /// The per-sequence plan has the masked plan's tokens, rows and outputs; each input reads a
+    /// run of its own reservation, its mask block opening exactly the token's prefix. Paged
+    /// layouts have no runs and get none.
+    fn check_per_seq(&self, inputs: &[StepInput], plan: &tetraeder_kvcache::StepPlan) {
+        let Some(ps) = self.pool.plan_step_per_seq(inputs).unwrap() else {
+            assert_eq!(self.pool.layout_name(), "paged");
+            return;
+        };
+        assert_eq!(self.pool.layout_name(), "chunked");
+        assert_eq!(
+            (&ps.pos, &ps.rows, &ps.outputs),
+            (&plan.pos, &plan.rows, &plan.outputs)
+        );
+        assert_eq!(ps.seqs.len(), inputs.len());
+        let mut t = 0;
+        let mut off = 0;
+        for (inp, s) in inputs.iter().zip(&ps.seqs) {
+            let len = self.pool.seq_len(inp.seq);
+            assert_eq!(
+                (s.first_token, s.n_tokens, s.mask_offset),
+                (t, inp.n_tokens, off)
+            );
+            assert_eq!(s.n_kv % ROW_ALIGN, 0);
+            assert!(len + inp.n_tokens <= s.n_kv && s.n_kv <= self.pool.reserved(inp.seq));
+            for p in 0..s.n_kv {
+                assert_eq!(self.pool.row(inp.seq, p), Some(s.kv_start + p));
+            }
+            for i in 0..inp.n_tokens {
+                for j in 0..s.n_kv {
+                    let v = ps.mask[off + i * s.n_kv + j];
+                    assert_eq!(v == 0, j <= len + i, "token {} col {j}", t + i);
+                    assert!(v == 0 || v == F16_NEG_INF);
+                }
+            }
+            t += inp.n_tokens;
+            off += s.n_kv * inp.n_tokens;
+        }
+        assert_eq!(ps.mask.len(), off);
+    }
+
     fn check_invariants(&self) {
         let cap = self.pool.capacity();
         let mut seen = HashSet::new();
@@ -167,6 +207,7 @@ impl Sim {
             })
             .collect();
         let plan = self.pool.plan_step(&inputs).unwrap();
+        self.check_per_seq(&inputs, &plan);
         let n_tokens: usize = inputs.iter().map(|i| i.n_tokens).sum();
         assert_eq!(plan.pos.len(), n_tokens);
         assert_eq!(plan.rows.len(), n_tokens);

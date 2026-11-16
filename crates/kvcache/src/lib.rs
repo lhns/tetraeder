@@ -10,7 +10,7 @@ mod pool;
 
 pub use chunked::{Chunked, GROW};
 pub use paged::Paged;
-pub use pool::{BlockCounts, KvPool, StepInput, StepPlan};
+pub use pool::{BlockCounts, KvPool, SeqAttn, StepInput, StepPlan};
 
 pub type SeqId = u32;
 /// Rows are allocated, and `n_kv` is padded, in units of this many rows.
@@ -52,6 +52,10 @@ pub trait Layout: Send {
     fn shrink(&mut self, seq: SeqId, keep: usize);
     /// Row of position `pos`; `seq` must hold a reservation covering it.
     fn row(&self, seq: SeqId, pos: usize) -> usize;
+    /// First row of `seq` when its whole reservation is one run (position p at row start + p).
+    fn run_start(&self, _seq: SeqId) -> Option<usize> {
+        None
+    }
     /// Highest row among positions 0..n of `seq`, if n > 0.
     fn max_row(&self, seq: SeqId, n: usize) -> Option<usize> {
         (0..n).map(|p| self.row(seq, p)).max()
