@@ -254,3 +254,10 @@ The baseline moves from b12274 (202c1a22) to b12426 (fc504f91, published 2026-11
 ## Addendum: models judged in separate sessions (2026-11-16)
 Each counting model is judged by its own two clean pairs on one box, as before; the two models need not share a session. The throughput verdict may come from one session per model (each with its own gates, pre-pass and probe), and the TTFT pairs from a further session (D2b); `phase4_pass` combines the per-model results only when every counting model has a verdict. Reason: the MoE gate is held by an open parity item (ADR 0071) that the 8B does not share.
 
+
+## Addendum: D2a rerun misses at c4 (2026-11-16, `bench/results/20261116d2a2/`, box 60919833, RTX 3090)
+- Gates pass for both models: gpu-parity (the 30B alone control is exactly 0 on every row incl. (0,19)), gpu-shapes (dense within 3% of libllama per step).
+- Qwen3-8B (own dense): probe c4 0.830, stopped by the 0.85 rule; c1 1.003.
+- Qwen3-30B-A3B (own MoE): pairs c4 0.853 and 0.845, c1 1.026 and 1.029, A/A 0.011. The pairs are flagged unclean by the throttle check (0x600 before, 0x4 after on driver 615), so `pass` is null; the c4 ratio is below the 0.925 line either way, so this is a c4 miss, not an open result. The throttle rule is not loosened for this session.
+- The libllama control through our scheduler reaches the same c4 (260.9 against 257.2 tok/s for the own MoE, 301.4 for llama-server): the builders are not the cause. Two candidates of similar size remain: our loop (about 11.9 ms per 4-row step against 10.7 ms for the pinned libllama alone, TTFT spread 0.42 to 0.74 s against 7 ms) and the pin (pinned libllama 10.7 ms per 4-row step against about 9.4 ms for llama-server b12426; 1-row steps are level). Under test: `track-c4-loop` (loop, CPU) and `track-pin-ab` (b11976 against b12426 llama-server and step shapes on one GPU).
+- Before the next verdict box: decode the 0x200 and 0x400 throttle bits of driver 615 and settle whether SW power cap after a loaded run counts; `env.json` records an empty `git_commit`.
