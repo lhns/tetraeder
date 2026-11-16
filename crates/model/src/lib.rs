@@ -12,6 +12,7 @@ pub mod gguf_write;
 pub mod hparams;
 pub mod qwen3;
 pub mod qwen3moe;
+pub(crate) mod shard;
 pub mod upload;
 
 pub use attn::{AttnHparams, F16_NEG_INF, KV_PAD, SeqEval, causal_mask};

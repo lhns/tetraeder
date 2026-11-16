@@ -9,6 +9,8 @@
 //! The KV cache is one pool per layer ([`KvPool`] over the chunked layout, ADR 0067): the pool
 //! plans positions, destination rows, `n_kv` and the mask of a step, this module runs it.
 
+mod ranked;
+
 use crate::attn::{
     AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention, copy_rows,
     rms_norm_mul,
@@ -17,18 +19,20 @@ use crate::cpu_poll;
 use crate::gguf::{Gguf, GgufError};
 use crate::hparams::names;
 use crate::qwen3moe::{BackendChoice, MemoryUse, ModelError, Result};
+use crate::shard::{gather_rows, scatter_rows};
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
+use tetraeder_executor::ExecCounters;
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, Graph, OwnedGraph, OwnedTensor, Sched, Tensor, Type,
 };
-use tetraeder_kvcache::{Chunked, KvError, KvPool, RowCopy, StepInput};
+use tetraeder_kvcache::{Chunked, KvError, KvPool, RowCopy, StepInput, StepPlan};
 use tetraeder_memory::metrics::MemoryMetrics;
-use tetraeder_plan::KvFormat;
+use tetraeder_plan::{KvFormat, Topology};
 use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 
 /// `general.architecture` of a Qwen3 dense model.
@@ -106,6 +110,13 @@ pub struct DenseOptions {
     /// Keep the step graph while (n_tokens, n_kv, n_outputs) repeat.
     pub reuse_step_graph: bool,
     pub telemetry: Option<Arc<Telemetry>>,
+    /// Keep the scheduler path on a GPU, for the bit-equality check of the executor path (a GPU
+    /// load goes through the executor with one rank otherwise, ADR 0069). The CPU backend
+    /// always uses the scheduler through [`Qwen3::load`].
+    pub force_sched: bool,
+    /// Run only the first N layers and the head (calibration anchors, ADR 0068); the logits
+    /// are meaningless, the timing is real. Executor path, one stage only.
+    pub layer_limit: Option<u32>,
 }
 
 impl DenseOptions {
@@ -119,6 +130,8 @@ impl DenseOptions {
             threads: None,
             reuse_step_graph: true,
             telemetry: None,
+            force_sched: false,
+            layer_limit: None,
         }
     }
 }
@@ -133,6 +146,8 @@ impl std::fmt::Debug for DenseOptions {
             .field("kv_rotation", &self.kv_rotation)
             .field("threads", &self.threads)
             .field("reuse_step_graph", &self.reuse_step_graph)
+            .field("force_sched", &self.force_sched)
+            .field("layer_limit", &self.layer_limit)
             .finish_non_exhaustive()
     }
 }
@@ -174,19 +189,34 @@ struct StepGraph {
     logits: OwnedTensor,
 }
 
-/// A Qwen3 dense model serving several sequences from one KV pool.
-pub struct Qwen3 {
-    h: DenseHparams,
+/// The scheduler path: weights, KV and step graph on one backend through [`Sched`].
+struct SchedEngine {
     sched: Sched,
     primary: Backend,
     weights_bytes: u64,
     kv_bytes: u64,
     weights: Weights,
     kv: Kv,
-    pool: KvPool,
-    n_seq_max: usize,
     step: Option<StepGraph>,
     state: Option<State>,
+}
+
+enum Engine {
+    Sched(SchedEngine),
+    /// Per-rank weights, KV and graphs issued by the executor (ADR 0069).
+    Ranked(Box<ranked::Ranked>),
+}
+
+/// A Qwen3 dense model serving several sequences from one KV pool.
+pub struct Qwen3 {
+    h: DenseHparams,
+    engine: Engine,
+    pool: KvPool,
+    /// Rows of every KV tensor.
+    n_rows: usize,
+    n_seq_max: usize,
+    kv_fmt: KvFormat,
+    kv_rotated: (bool, bool),
     reuse_step_graph: bool,
     step_graphs_built: u64,
     metrics: MemoryMetrics,
@@ -195,12 +225,30 @@ pub struct Qwen3 {
 
 impl std::fmt::Debug for Qwen3 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let engine = match &self.engine {
+            Engine::Sched(e) => e.primary.name(),
+            Engine::Ranked(r) => format!("{} ranks on the executor", r.n_ranks()),
+        };
         f.debug_struct("Qwen3")
             .field("hparams", &self.h)
-            .field("backend", &self.primary)
+            .field("engine", &engine)
             .field("n_seq_max", &self.n_seq_max)
             .finish()
     }
+}
+
+/// The GGUF and its hyperparameters, checked.
+fn open(path: &Path, opts: &DenseOptions) -> Result<(Gguf, DenseHparams)> {
+    let gguf = Gguf::open(path)?;
+    let h = DenseHparams::from_gguf(&gguf)?;
+    let a = &h.attn;
+    if a.n_head % a.n_head_kv != 0 || a.n_rot != a.head_dim {
+        return Err(ModelError::Invalid("unsupported hyperparameters".into()));
+    }
+    if opts.n_seq_max == 0 {
+        return Err(ModelError::Invalid("n_seq_max must be at least 1".into()));
+    }
+    Ok((gguf, h))
 }
 
 fn pad(n: usize, to: usize) -> usize {
@@ -216,16 +264,20 @@ fn step_nodes(h: &AttnHparams) -> usize {
 }
 
 impl Qwen3 {
+    /// Loads the whole model on one backend. On a GPU that is one rank of the executor; the CPU
+    /// (and `force_sched`) uses the scheduler.
     pub fn load(path: impl AsRef<Path>, opts: &DenseOptions) -> Result<Qwen3> {
-        let gguf = Gguf::open(path.as_ref())?;
-        let h = DenseHparams::from_gguf(&gguf)?;
+        let (gguf, h) = open(path.as_ref(), opts)?;
+        if let (BackendChoice::Gpu { index }, false) = (&opts.backend, opts.force_sched) {
+            let topo = Topology::single(&format!("gpu{index}"), Some(*index), h.attn.n_layer);
+            return Self::load_ranked(&gguf, h, &topo, opts);
+        }
+        if opts.layer_limit.is_some() {
+            return Err(ModelError::Invalid(
+                "layer_limit runs on the executor, not on the scheduler path".into(),
+            ));
+        }
         let a = &h.attn;
-        if a.n_head % a.n_head_kv != 0 || a.n_rot != a.head_dim {
-            return Err(ModelError::Invalid("unsupported hyperparameters".into()));
-        }
-        if opts.n_seq_max == 0 {
-            return Err(ModelError::Invalid("n_seq_max must be at least 1".into()));
-        }
         let cpu_threads = |own: Option<usize>| -> i32 {
             opts.threads.map(|t| t.max(1) as usize).or(own).map_or_else(
                 || std::thread::available_parallelism().map_or(1, usize::from) as i32,
@@ -256,23 +308,104 @@ impl Qwen3 {
             rows,
             "qwen3 dense loaded"
         );
+        let kv_rotated = (kv.rot_k.is_some(), kv.rot_v.is_some());
         Ok(Qwen3 {
             h,
-            sched,
-            primary,
-            weights_bytes: weights_bytes as u64,
-            kv_bytes: kv_bytes as u64,
-            weights,
-            kv,
+            engine: Engine::Sched(SchedEngine {
+                sched,
+                primary,
+                weights_bytes: weights_bytes as u64,
+                kv_bytes: kv_bytes as u64,
+                weights,
+                kv,
+                step: None,
+                state: None,
+            }),
             pool,
+            n_rows: rows,
             n_seq_max: opts.n_seq_max,
-            step: None,
-            state: None,
+            kv_fmt: opts.kv,
+            kv_rotated,
             reuse_step_graph: opts.reuse_step_graph,
             step_graphs_built: 0,
             metrics: MemoryMetrics::new(opts.telemetry.clone()),
             telemetry: opts.telemetry.clone(),
         })
+    }
+
+    /// Loads the model across the ranks of `topo` on the executor (ADR 0069, 0070): per rank its
+    /// slices of the weights, the KV of its layers and KV heads, one KV pool for all. With
+    /// `BackendChoice::Cpu` the ranks are CPU backends of `threads` threads each (CI stands CPU
+    /// ranks in for GPUs); with `Gpu` rank i is the GPU `RankSpec::gpu_index` (else i).
+    pub fn load_sharded(
+        path: impl AsRef<Path>,
+        topo: &Topology,
+        opts: &DenseOptions,
+    ) -> Result<Qwen3> {
+        let (gguf, h) = open(path.as_ref(), opts)?;
+        Self::load_ranked(&gguf, h, topo, opts)
+    }
+
+    fn load_ranked(
+        gguf: &Gguf,
+        h: DenseHparams,
+        topo: &Topology,
+        opts: &DenseOptions,
+    ) -> Result<Qwen3> {
+        let rows = pad(opts.n_ctx_pool.max(1), KV_PAD);
+        let ranked = ranked::Ranked::load(gguf, &h, topo, opts, rows)?;
+        let kv_rotated = ranked.kv_rotated();
+        tracing::debug!(
+            ranks = ranked.n_ranks(),
+            comm = ranked.comm_path(),
+            rows,
+            "qwen3 dense loaded on the executor"
+        );
+        Ok(Qwen3 {
+            h,
+            engine: Engine::Ranked(Box::new(ranked)),
+            pool: KvPool::new(Box::new(Chunked::new(rows))),
+            n_rows: rows,
+            n_seq_max: opts.n_seq_max,
+            kv_fmt: opts.kv,
+            kv_rotated,
+            reuse_step_graph: opts.reuse_step_graph,
+            step_graphs_built: 0,
+            metrics: MemoryMetrics::new(opts.telemetry.clone()),
+            telemetry: opts.telemetry.clone(),
+        })
+    }
+
+    /// Ranks of the executor; 1 on the scheduler path.
+    pub fn n_ranks(&self) -> usize {
+        match &self.engine {
+            Engine::Sched(_) => 1,
+            Engine::Ranked(r) => r.n_ranks(),
+        }
+    }
+
+    /// The all-reduce path of the executor (`nccl`, `internal`, `fallback`); `None` on the
+    /// scheduler path.
+    pub fn comm_path(&self) -> Option<&'static str> {
+        match &self.engine {
+            Engine::Sched(_) => None,
+            Engine::Ranked(r) => Some(r.comm_path()),
+        }
+    }
+
+    /// Ranges launched and bytes moved by the executor since load or the last
+    /// [`Qwen3::reset_exec_counters`]; `None` on the scheduler path.
+    pub fn exec_counters(&self) -> Option<&ExecCounters> {
+        match &self.engine {
+            Engine::Sched(_) => None,
+            Engine::Ranked(r) => Some(r.counters()),
+        }
+    }
+
+    pub fn reset_exec_counters(&mut self) {
+        if let Engine::Ranked(r) = &mut self.engine {
+            r.reset_counters();
+        }
     }
 
     pub fn hparams(&self) -> &DenseHparams {
@@ -292,12 +425,12 @@ impl Qwen3 {
     }
 
     pub fn kv_format(&self) -> KvFormat {
-        self.kv.fmt
+        self.kv_fmt
     }
 
     /// Whether K and V are Hadamard-rotated.
     pub fn kv_rotated(&self) -> (bool, bool) {
-        (self.kv.rot_k.is_some(), self.kv.rot_v.is_some())
+        self.kv_rotated
     }
 
     /// Whole-step graphs built so far (a reused graph does not count).
@@ -308,25 +441,32 @@ impl Qwen3 {
     pub fn set_reuse_step_graph(&mut self, on: bool) {
         self.reuse_step_graph = on;
         if !on {
-            self.step = None;
+            match &mut self.engine {
+                Engine::Sched(e) => e.step = None,
+                Engine::Ranked(r) => r.drop_step(),
+            }
         }
     }
 
     pub fn memory(&self) -> Vec<MemoryUse> {
-        let tier = if self.primary.is_cpu() { "ram" } else { "vram" };
-        let device = self.primary.name();
+        let e = match &self.engine {
+            Engine::Ranked(r) => return r.memory(),
+            Engine::Sched(e) => e,
+        };
+        let tier = if e.primary.is_cpu() { "ram" } else { "vram" };
+        let device = e.primary.name();
         let use_ = |kind, capacity: u64| MemoryUse {
             device: device.to_string(),
             tier,
             kind,
-            format: (kind == "kv").then(|| self.kv.fmt.to_string()),
+            format: (kind == "kv").then(|| self.kv_fmt.to_string()),
             capacity,
             used: capacity,
         };
-        let work = self.sched.buffer_size(&self.primary) as u64;
+        let work = e.sched.buffer_size(&e.primary) as u64;
         vec![
-            use_("weights", self.weights_bytes),
-            use_("kv", self.kv_bytes),
+            use_("weights", e.weights_bytes),
+            use_("kv", e.kv_bytes),
             use_("workspace", work),
         ]
     }
@@ -353,10 +493,13 @@ impl Qwen3 {
             }
         }
         let b = self.pool.blocks();
-        let (device, tier) = (
-            self.primary.name(),
-            if self.primary.is_cpu() { "ram" } else { "vram" },
-        );
+        let (device, tier) = match &self.engine {
+            Engine::Sched(e) => (
+                e.primary.name(),
+                if e.primary.is_cpu() { "ram" } else { "vram" },
+            ),
+            Engine::Ranked(r) => r.primary(),
+        };
         let m = t.metrics();
         m.kv_blocks(&device, tier, "used", b.used as u64);
         m.kv_blocks(&device, tier, "reserved", b.reserved as u64);
@@ -384,7 +527,10 @@ impl Qwen3 {
     /// relocations of a grown sequence (not those of a copy).
     fn apply(&mut self, copies: &[RowCopy], moves: bool) -> Result<()> {
         let copies: Vec<_> = copies.iter().map(|c| (c.src, c.dst, c.n)).collect();
-        copy_rows(&self.kv, &mut self.sched, &copies)?;
+        match &mut self.engine {
+            Engine::Sched(e) => copy_rows(&e.kv, &mut e.sched, &copies)?,
+            Engine::Ranked(r) => r.copy_rows(&copies)?,
+        }
         if let Some(t) = self.telemetry.as_ref().filter(|_| moves) {
             for _ in &copies {
                 t.metrics().kv_relocation();
@@ -465,28 +611,45 @@ impl Qwen3 {
         }
     }
 
+    /// The cache tensors in snapshot order (all K layers, then all V layers), each as the
+    /// slices of one layer across ranks in head order.
+    fn kv_groups(&self) -> Vec<Vec<Tensor<'_>>> {
+        match &self.engine {
+            Engine::Sched(e) => {
+                e.kv.k
+                    .iter()
+                    .chain(&e.kv.v)
+                    .map(|t| vec![t.get()])
+                    .collect()
+            }
+            Engine::Ranked(r) => r.kv_groups(),
+        }
+    }
+
+    fn kv_rows(&self) -> usize {
+        self.n_rows
+    }
+
     /// Bytes of one cached position across all layers (K and V).
     fn kv_row_bytes(&self) -> usize {
-        self.kv
-            .k
+        let n_rows = self.kv_rows();
+        self.kv_groups()
             .iter()
-            .chain(&self.kv.v)
-            .map(|t| t.get().nbytes() / self.kv.n_rows)
+            .flatten()
+            .map(|t| t.nbytes() / n_rows)
             .sum()
     }
 
     /// The K and V rows of the positions of `seq` as host bytes, tensor by tensor, positions in
-    /// order (ADR 0049). The format does not depend on where the rows sit in the pool.
+    /// order (ADR 0049). The format does not depend on where the rows sit in the pool, nor on
+    /// the shape: a tensor cut across ranks is joined in head order.
     pub fn seq_snapshot(&self, seq: u32) -> Result<Vec<u8>> {
         self.check_seq(seq)?;
         let n = self.pool.seq_len(seq);
         let runs = self.pool.runs(seq, n);
         let mut out = Vec::with_capacity(n * self.kv_row_bytes());
-        for t in self.kv.k.iter().chain(&self.kv.v) {
-            let row = t.get().nbytes() / self.kv.n_rows;
-            for &(start, len) in &runs {
-                out.extend_from_slice(&t.get().get_bytes(start * row, len * row)?);
-            }
+        for group in self.kv_groups() {
+            gather_rows(&group, self.kv_rows(), &runs, &mut out)?;
         }
         Ok(out)
     }
@@ -514,13 +677,8 @@ impl Qwen3 {
         }
         let runs = self.pool.runs(seq, n);
         let mut rest = bytes;
-        for t in self.kv.k.iter().chain(&self.kv.v) {
-            let row = t.get().nbytes() / self.kv.n_rows;
-            for &(start, len) in &runs {
-                let (head, tail) = rest.split_at(len * row);
-                t.get().set_bytes(head, start * row)?;
-                rest = tail;
-            }
+        for group in self.kv_groups() {
+            scatter_rows(&group, self.kv_rows(), &runs, &mut rest)?;
         }
         if n > 0 {
             self.pool.commit(&[StepInput {
@@ -632,62 +790,31 @@ impl Qwen3 {
         let n = plan.pos.len();
         let n_out = plan.outputs.len();
         let key = (n, plan.n_kv, n_out);
-        if self
-            .state
-            .as_ref()
-            .is_none_or(|s| (s.n_tokens, s.n_kv, s.n_out) != key)
-        {
-            // The kept graph holds the old state's context: drop it first, then the buffers.
-            self.step = None;
-            self.state = None;
-            self.state = Some(alloc_state(key, &self.primary)?);
-        }
-        let st = self.state.as_ref().expect("state allocated above");
         let tokens: Vec<i32> = inputs
             .iter()
             .flat_map(|i| i.tokens.iter().copied())
             .collect();
-        st.tokens.get().set_i32(&tokens)?;
-        st.pos.get().set_i32(&plan.pos)?;
-        st.rows.get().set_i32(&plan.rows)?;
-        st.mask.get().set_f16_bits(&plan.mask)?;
-        st.outputs.get().set_i32(&plan.outputs)?;
-
-        let reusable = self.reuse_step_graph
-            && self
-                .step
-                .as_ref()
-                .is_some_and(|s| s.key == key && self.sched.is_allocated(&s.graph.get()));
-        let fresh;
-        let graph: &StepGraph = if reusable {
-            self.step.as_ref().expect("checked above")
-        } else {
-            self.step = None;
-            let nodes = step_nodes(&self.h.attn);
-            let ctx = Rc::new(Context::new(nodes, nodes)?);
-            let (graph, logits) = build_step(&self.h, &self.weights, &self.kv, st, &ctx);
-            let mut deps = vec![
-                &self.weights.tok_embd,
-                &self.kv.k[0],
-                &self.kv.v[0],
-                &st.tokens,
-            ];
-            deps.extend(self.kv.rot_k.iter().chain(&self.kv.rot_v));
-            fresh = StepGraph {
+        match &mut self.engine {
+            Engine::Sched(e) => e.run(
+                &self.h,
+                &plan,
+                &tokens,
                 key,
-                logits: ctx.keep(logits)?,
-                graph: ctx.keep_graph(graph, &deps)?,
-            };
-            self.sched.alloc_graph(&fresh.graph.get())?;
-            self.step_graphs_built += 1;
-            if self.reuse_step_graph {
-                self.step.insert(fresh)
-            } else {
-                &fresh
-            }
-        };
-        self.sched.compute(&graph.graph.get())?;
-        graph.logits.get().get_f32_into(out)?;
+                self.reuse_step_graph,
+                &mut self.step_graphs_built,
+                out,
+            )?,
+            Engine::Ranked(r) => r.run(
+                &self.h,
+                &plan,
+                &tokens,
+                key,
+                self.reuse_step_graph,
+                &mut self.step_graphs_built,
+                self.telemetry.as_deref().map(Telemetry::metrics),
+                out,
+            )?,
+        }
 
         let mut row = 0;
         let ranges = step
@@ -715,6 +842,76 @@ impl Qwen3 {
             self.report_memory();
         }
         Ok(ranges)
+    }
+}
+
+impl SchedEngine {
+    /// One step through the scheduler: the inputs, the kept or fresh whole-step graph, the
+    /// logits of the output rows into `out`.
+    #[allow(clippy::too_many_arguments)]
+    fn run(
+        &mut self,
+        h: &DenseHparams,
+        plan: &StepPlan,
+        tokens: &[i32],
+        key: (usize, usize, usize),
+        reuse: bool,
+        built: &mut u64,
+        out: &mut Vec<f32>,
+    ) -> Result<()> {
+        if self
+            .state
+            .as_ref()
+            .is_none_or(|s| (s.n_tokens, s.n_kv, s.n_out) != key)
+        {
+            // The kept graph holds the old state's context: drop it first, then the buffers.
+            self.step = None;
+            self.state = None;
+            self.state = Some(alloc_state(key, &self.primary)?);
+        }
+        let st = self.state.as_ref().expect("state allocated above");
+        st.tokens.get().set_i32(tokens)?;
+        st.pos.get().set_i32(&plan.pos)?;
+        st.rows.get().set_i32(&plan.rows)?;
+        st.mask.get().set_f16_bits(&plan.mask)?;
+        st.outputs.get().set_i32(&plan.outputs)?;
+
+        let reusable = reuse
+            && self
+                .step
+                .as_ref()
+                .is_some_and(|s| s.key == key && self.sched.is_allocated(&s.graph.get()));
+        let fresh;
+        let graph: &StepGraph = if reusable {
+            self.step.as_ref().expect("checked above")
+        } else {
+            self.step = None;
+            let nodes = step_nodes(&h.attn);
+            let ctx = Rc::new(Context::new(nodes, nodes)?);
+            let (graph, logits) = build_step(h, &self.weights, &self.kv, st, &ctx);
+            let mut deps = vec![
+                &self.weights.tok_embd,
+                &self.kv.k[0],
+                &self.kv.v[0],
+                &st.tokens,
+            ];
+            deps.extend(self.kv.rot_k.iter().chain(&self.kv.rot_v));
+            fresh = StepGraph {
+                key,
+                logits: ctx.keep(logits)?,
+                graph: ctx.keep_graph(graph, &deps)?,
+            };
+            self.sched.alloc_graph(&fresh.graph.get())?;
+            *built += 1;
+            if reuse {
+                self.step.insert(fresh)
+            } else {
+                &fresh
+            }
+        };
+        self.sched.compute(&graph.graph.get())?;
+        graph.logits.get().get_f32_into(out)?;
+        Ok(())
     }
 }
 
@@ -869,11 +1066,14 @@ mod graph_order {
     #[test]
     fn layer_ops_follow_libllama_order() {
         let m = model(1);
+        let Engine::Sched(e) = &m.engine else {
+            panic!("the CPU backend uses the scheduler")
+        };
         for (n, n_out) in [(1usize, 1usize), (5, 1), (5, 5)] {
-            let st = alloc_state((n, KV_PAD, n_out), &m.primary).unwrap();
+            let st = alloc_state((n, KV_PAD, n_out), &e.primary).unwrap();
             let nodes = step_nodes(&m.h.attn);
             let ctx = Context::new(nodes, nodes).unwrap();
-            let (g, _) = build_step(&m.h, &m.weights, &m.kv, &st, &ctx);
+            let (g, _) = build_step(&m.h, &e.weights, &e.kv, &st, &ctx);
             let ops: Vec<String> = (0..g.n_nodes()).map(|i| g.node(i).op_name()).collect();
             let get_rows = ops.iter().filter(|o| *o == "GET_ROWS").count();
             // Embedding, plus the output selection when fewer rows than tokens are wanted.

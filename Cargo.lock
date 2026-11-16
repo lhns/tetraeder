@@ -2190,6 +2190,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tetraeder-bench",
+ "tetraeder-executor",
  "tetraeder-ggml-sys",
  "tetraeder-kvcache",
  "tetraeder-memory",

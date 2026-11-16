@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod multi_seq;
+pub mod shapes;
 pub mod split;
 pub mod synth;
 pub mod trace;
@@ -47,6 +48,12 @@ pub fn fixture() -> PathBuf {
 /// The tiny dense fixture (`cargo xtask tiny-dense`, ADR 0066).
 pub fn dense_fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/tiny-qwen3-f16.gguf")
+}
+
+/// The four-layer variant of the tiny dense fixture (`cargo xtask tiny-dense --layers 4`): the
+/// split-point tests of the sharded builder.
+pub fn dense_fixture_l4() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/tiny-qwen3-l4-f16.gguf")
 }
 
 /// Largest allowed absolute difference of a reference top-k logit.
@@ -291,6 +298,26 @@ pub fn libllama_reference_kv_default_rot(
     }
     Reference {
         n_vocab,
+        prompt_logits,
+        greedy,
+    }
+}
+
+/// The prompt's logits and the greedy tokens of a builder, as the reference a sharded run is
+/// checked against with [`check_against_tol`] (same builder, one rank).
+pub fn builder_reference(m: &mut Qwen3) -> Reference {
+    m.reset();
+    let prompt_logits = m.eval(&PROMPT).unwrap();
+    m.reset();
+    let mut logits = m.eval_last(&PROMPT).unwrap();
+    let mut greedy = Vec::new();
+    for _ in 0..N_GREEDY {
+        let t = argmax(&logits) as i32;
+        greedy.push(t);
+        logits = m.eval(&[t]).unwrap();
+    }
+    Reference {
+        n_vocab: m.n_vocab(),
         prompt_logits,
         greedy,
     }

@@ -13,9 +13,10 @@ workspace = true
 
 [features]
 # Forwarded to ggml-sys: build ggml with CUDA.
-cuda = ["tetraeder-ggml-sys/cuda"]
+cuda = ["tetraeder-ggml-sys/cuda", "tetraeder-executor/cuda"]
 
 [dependencies]
+tetraeder-executor = { path = "../executor" }
 tetraeder-ggml-sys = { path = "../ggml-sys" }
 tetraeder-kvcache = { path = "../kvcache" }
 tetraeder-memory = { path = "../memory" }
