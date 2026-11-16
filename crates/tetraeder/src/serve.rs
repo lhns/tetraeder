@@ -150,7 +150,8 @@ pub struct ServeArgs {
     pub worker: bool,
     /// Serve a plan and replan by drain and restart (ADR 0055): `auto` picks one of the
     /// executable candidates for this box and model, or a plan TOML file. Replaces the
-    /// placement flags.
+    /// placement flags. With `--engine dense` only a plan file is allowed: it runs as written on
+    /// the executor (ADR 0069, 0070), without replanning.
     #[arg(
         long,
         value_name = "auto|FILE",
@@ -261,9 +262,13 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+    // `--engine dense --plan FILE` runs the plan as written on the executor; every other
+    // `--plan` is the replanner's.
     let planned = match &a.plan {
-        Some(spec) => Some(replan::start(a, spec, &telemetry, rt.handle().clone())?),
-        None => None,
+        Some(spec) if a.engine != EngineKind::Dense => {
+            Some(replan::start(a, spec, &telemetry, rt.handle().clone())?)
+        }
+        _ => None,
     };
     let (engine, parallel): (Arc<dyn GatewayEngine>, usize) = match &planned {
         Some(p) => (p.engine.clone(), 1),
@@ -407,10 +412,29 @@ pub fn loader(a: &ServeArgs, tel: Arc<Telemetry>) -> anyhow::Result<Loader> {
         resolve_overlap(a.ram_slots.is_some(), a.miss, a.io_service, a.overlap)
             .map_err(anyhow::Error::msg)?;
     }
+    let exec = match (&a.plan, dense) {
+        (Some(spec), true) => {
+            anyhow::ensure!(
+                spec != "auto",
+                "--engine dense --plan runs a plan file; `auto` is the replanner's (libllama and MoE)"
+            );
+            let p = crate::sharded::load_plan(&path, std::path::Path::new(spec), a.hw.as_deref())?;
+            eprintln!(
+                "plan {}: {} ranks, {} stages",
+                p.plan_id,
+                p.topology.ranks.len(),
+                p.topology.stages.len()
+            );
+            Some(p.topology)
+        }
+        _ => None,
+    };
     let a = a.clone_load_args();
     Ok(Box::new(move || {
         if moe {
             tetraeder_scheduler::load_moe(&a.path, &a.moe_options(tel)?)
+        } else if let (true, Some(topo)) = (dense, &exec) {
+            tetraeder_scheduler::load_dense_sharded(&a.path, topo, &a.dense_options(tel)?)
         } else if dense {
             tetraeder_scheduler::load_dense(&a.path, &a.dense_options(tel)?)
         } else {

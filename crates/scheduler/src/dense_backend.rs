@@ -3,7 +3,8 @@
 
 use crate::backend::{BackendError, BatchBackend, Outputs, SeqId, SeqInput, step_groups};
 use std::ops::Range;
-use tetraeder_model::{ModelError, Qwen3, SeqEval};
+use tetraeder_model::{BackendChoice, DenseOptions, ModelError, Qwen3, SeqEval};
+use tetraeder_plan::Topology;
 
 pub struct DenseBackend {
     model: Qwen3,
@@ -20,6 +21,16 @@ impl DenseBackend {
             logits: Vec::new(),
             spans: Vec::new(),
         }
+    }
+
+    /// The model loaded across the ranks of `topo` on the executor (ADR 0069, 0070).
+    pub fn with_topology(
+        path: &std::path::Path,
+        topo: &Topology,
+        opts: &DenseOptions,
+    ) -> Result<Self, ModelError> {
+        let on_gpu = matches!(opts.backend, BackendChoice::Gpu { .. });
+        Ok(Self::new(Qwen3::load_sharded(path, topo, opts)?, on_gpu))
     }
 
     pub fn model(&self) -> &Qwen3 {

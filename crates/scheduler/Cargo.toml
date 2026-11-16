@@ -21,6 +21,7 @@ tetraeder-engine = { path = "../engine" }
 tetraeder-ggml-sys = { path = "../ggml-sys" }
 tetraeder-gateway = { path = "../gateway" }
 tetraeder-model = { path = "../model" }
+tetraeder-plan = { path = "../plan" }
 tetraeder-telemetry = { path = "../telemetry" }
 thiserror = "2"
 tokio = { version = "1.54.1", features = ["sync"] }
@@ -34,7 +35,6 @@ tower = { version = "0.5.3", features = ["util"] }
 http-body-util = "0.1"
 serde_json = "1"
 tetraeder-memory = { path = "../memory" }
-tetraeder-plan = { path = "../plan" }
 proptest = "1"
 opentelemetry = "0.33.1"
 opentelemetry_sdk = { version = "0.33.1", features = ["testing"] }

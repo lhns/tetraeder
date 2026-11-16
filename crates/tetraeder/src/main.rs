@@ -12,6 +12,7 @@ mod quant;
 mod replan;
 mod run;
 mod serve;
+mod sharded;
 mod top;
 mod worker;
 

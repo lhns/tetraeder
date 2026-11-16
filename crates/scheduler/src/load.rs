@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tetraeder_engine::{ContextConfig, Engine, Placement};
 use tetraeder_ggml_sys::llama::{Model, ModelParams};
 use tetraeder_model::{BackendChoice, DenseOptions, Gguf, LoadOptions, Qwen3, Qwen3Moe};
+use tetraeder_plan::Topology;
 use tetraeder_telemetry::Telemetry;
 
 /// A backend and the libllama model that tokenizes for it.
@@ -62,6 +63,23 @@ pub fn load_moe_chunked(path: &Path, opts: &LoadOptions, chunk: usize) -> Result
 
 /// The Qwen3 dense builder (ADR 0066); libllama loads only the vocabulary, for tokenizing.
 pub fn load_dense(path: &Path, opts: &DenseOptions) -> Result<Loaded, String> {
+    load_dense_with(path, opts, None)
+}
+
+/// The Qwen3 dense builder across the ranks of `topo` on the executor (ADR 0069, 0070).
+pub fn load_dense_sharded(
+    path: &Path,
+    topo: &Topology,
+    opts: &DenseOptions,
+) -> Result<Loaded, String> {
+    load_dense_with(path, opts, Some(topo))
+}
+
+fn load_dense_with(
+    path: &Path,
+    opts: &DenseOptions,
+    topo: Option<&Topology>,
+) -> Result<Loaded, String> {
     let tokenizer = Arc::new(
         Model::load(
             path,
@@ -73,9 +91,13 @@ pub fn load_dense(path: &Path, opts: &DenseOptions) -> Result<Loaded, String> {
         .map_err(|e| e.to_string())?,
     );
     let on_gpu = matches!(opts.backend, BackendChoice::Gpu { .. });
-    let model = Qwen3::load(path, opts).map_err(|e| e.to_string())?;
+    let backend = match topo {
+        Some(t) => DenseBackend::with_topology(path, t, opts),
+        None => Qwen3::load(path, opts).map(|m| DenseBackend::new(m, on_gpu)),
+    }
+    .map_err(|e| e.to_string())?;
     Ok(Loaded {
-        backend: Box::new(DenseBackend::new(model, on_gpu)),
+        backend: Box::new(backend),
         tokenizer,
     })
 }
