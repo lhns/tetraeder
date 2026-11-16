@@ -182,3 +182,109 @@ fn cpu_dense_tp2_matches_bench_golden() {
         cmp.positions, cmp.max_logit_diff
     );
 }
+
+/// Logits of every step of a teacher-forced run: the prompt's last position, then one row per
+/// token of `forced` (or, with `None`, its own greedy tokens, which are returned).
+fn forced_rows(
+    m: &mut Qwen3,
+    prompt: &[i32],
+    forced: Option<&[i32]>,
+    n: usize,
+) -> (Vec<Vec<f32>>, Vec<i32>) {
+    m.reset();
+    let mut logits = m.eval_last(prompt).unwrap();
+    let (mut rows, mut toks) = (Vec::new(), Vec::new());
+    for k in 0..n {
+        rows.push(logits.clone());
+        let t = forced.map_or_else(|| argmax(&logits) as i32, |f| f[k]);
+        toks.push(t);
+        logits = m.eval_last(&[t]).unwrap();
+    }
+    (rows, toks)
+}
+
+/// Worst top-5 difference of `got` against `want`, as a share of `want`'s largest logit.
+fn top5_rel(got: &[f32], want: &[f32]) -> f32 {
+    let scale = want.iter().fold(0f32, |m, x| m.max(x.abs()));
+    top_k(want, TOP_K)
+        .into_iter()
+        .map(|i| (got[i] - want[i]).abs())
+        .fold(0f32, f32::max)
+        / scale
+}
+
+/// hardware: cpu, model. What tensor-parallel noise is on the Q8_0 model, measured on the same
+/// file with the same tokens: the one-rank builder (file layout) against `tp-2`, against
+/// `layer-2` (same ops, so it must be exact: a slicing-free control) and against the same
+/// one-rank builder with the CPU's extra buffer types (repacked weights: the noise another
+/// kernel choice makes, the anchor for "normal"). Every row is printed per case and position,
+/// so a slicing bug (growing with position, or at single rows) shows against flat noise.
+#[test]
+fn cpu_dense_tp2_noise_against_the_one_rank_builder() {
+    let Some(path) = model_path() else {
+        skip_or_fail(&format!(
+            "{MODEL} not found (run `cargo xtask fetch-model`)"
+        ));
+        return;
+    };
+    let golden = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../bench/golden")
+        .join(format!("qwen3-0.6b-q8_0-cpu-{}.json", tag()));
+    let Ok(expected) = Golden::load(&golden) else {
+        skip_or_fail(&format!("golden {} not recorded", golden.display()));
+        return;
+    };
+    let n_layer = DenseHparams::from_gguf(&Gguf::open(&path).unwrap())
+        .unwrap()
+        .attn
+        .n_layer;
+    let opts = |extra_bufts: bool| DenseOptions {
+        n_ctx_pool: 512,
+        threads: Some(2),
+        extra_bufts,
+        ..DenseOptions::new(BackendChoice::Cpu { threads: Some(2) })
+    };
+    let mut one = Qwen3::load(&path, &opts(false)).unwrap();
+    let mut packed = Qwen3::load(&path, &opts(true)).unwrap();
+    let mut tp2 =
+        Qwen3::load_sharded(&path, &common::shapes::tp(n_layer, 2), &opts(false)).unwrap();
+    let mut pp2 =
+        Qwen3::load_sharded(&path, &common::shapes::layer_g(n_layer, 2), &opts(false)).unwrap();
+    let (mut worst_tp, mut worst_packed, mut worst_pp) = (0f32, 0f32, 0f32);
+    for c in &expected.cases {
+        let prompt: Vec<i32> = c.prompt_tokens.iter().map(|&t| t as i32).collect();
+        let n = c.tokens.len();
+        let (want, toks) = forced_rows(&mut one, &prompt, None, n);
+        let (tp, _) = forced_rows(&mut tp2, &prompt, Some(&toks), n);
+        let (pk, _) = forced_rows(&mut packed, &prompt, Some(&toks), n);
+        let (pp, _) = forced_rows(&mut pp2, &prompt, Some(&toks), n);
+        let line = |v: &[Vec<f32>]| -> String {
+            v.iter()
+                .zip(&want)
+                .map(|(g, w)| format!("{:.1e}", top5_rel(g, w)))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        eprintln!("{}: tp-2    {}", c.id, line(&tp));
+        eprintln!("{}: packed  {}", c.id, line(&pk));
+        eprintln!("{}: layer-2 {}", c.id, line(&pp));
+        let worst = |v: &[Vec<f32>]| {
+            v.iter()
+                .zip(&want)
+                .map(|(g, w)| top5_rel(g, w))
+                .fold(0f32, f32::max)
+        };
+        worst_tp = worst_tp.max(worst(&tp));
+        worst_packed = worst_packed.max(worst(&pk));
+        worst_pp = worst_pp.max(worst(&pp));
+    }
+    eprintln!(
+        "worst top-5 delta over the largest logit: tp-2 {worst_tp:.2e}, packed weights \
+         {worst_packed:.2e}, layer-2 {worst_pp:.2e}"
+    );
+    assert_eq!(
+        worst_pp, 0.0,
+        "a layer split keeps every op: it must be exact"
+    );
+    assert!(worst_tp < 3e-2, "tp-2 {worst_tp:e}");
+}
