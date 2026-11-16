@@ -1,0 +1,81 @@
+name: c4-diag
+
+# TEMPORARY (track-c4-budget): c4 loop diagnosis on a CPU runner, scripts/c4_diag.sh. Removed before merge.
+on:
+  push:
+    branches: [track-c4-budget]
+  workflow_dispatch:
+
+concurrency:
+  group: c4-diag-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  TETRAEDER_GGML_NATIVE: "OFF"
+
+jobs:
+  diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 1
+      - name: Patch queue
+        run: bash patches/apply.sh
+      - name: Toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache/restore@v4
+        id: model
+        with:
+          path: .hf_cache
+          key: model-qwen3-0.6b-q8_0
+      - name: Fetch test model
+        if: steps.model.outputs.cache-hit != 'true'
+        run: cargo xtask fetch-model
+      - name: llama-server
+        run: |
+          cmake -S vendor/llama.cpp -B target/llama-server-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_MTMD=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF
+          cmake --build target/llama-server-build --target llama-server --parallel 4
+      - name: tetraeder
+        run: cargo build --release -p tetraeder
+      - name: Python client
+        run: python3 -m venv .venv && .venv/bin/pip install -q httpx pytest
+      - name: Runner
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          echo "threads: $(nproc)"
+      # the before binary: main at the branch point, on the same vendored tree and patches
+      - name: tetraeder at main
+        run: |
+          git fetch --depth 1 origin 68fa45418d90674c2b4d08c4cfd451dd1df3b81e
+          git worktree add base FETCH_HEAD
+          rm -rf base/vendor/llama.cpp && ln -s "$PWD/vendor/llama.cpp" base/vendor/llama.cpp
+          cd base && CARGO_TARGET_DIR="$PWD/../target-base" cargo build --release -p tetraeder
+      - name: Qwen3-0.6B
+        run: |
+          MODEL=.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf PY=$PWD/.venv/bin/python \
+            TETRAEDER_base_llama=target-base/release/tetraeder TETRAEDER_base_dense=target-base/release/tetraeder \
+            bash scripts/c4_diag.sh diag/q06 llama-server base-llama=llama tet-llama=llama \
+            tet-llama-old=llama:--seq-slots,4,--step-tokens,512 tet-llama-s16=llama:--seq-slots,16 \
+            base-dense=dense tet-dense=dense
+      - name: Summary
+        if: always()
+        run: |
+          for d in diag/q06; do echo "$d"; .venv/bin/python scripts/loop_bench_summary.py $d; done | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: c4-diag
+          path: |
+            diag/**/*.json
+            diag/**/*.log
+            diag/**/*.txt
