@@ -3,16 +3,17 @@ Subject: [PATCH] cuda: mul_mat_id treats expert id -1 as no expert
 
 As the CPU kernel does: no weights read, zero output row. MMVQ and MMVF write the zero row in the
 kernel; MMQ and MMF never match -1 to an expert and a small kernel zeroes its rows; the generic
-fallback gathers from a zero row. mm_ids_helper counts -1 below every expert, which leaves the
-first compact rows and the -1 slots' inverse-map entries unwritten; MMQ's quantize kernels read
-src1 or scatter through them, so they now point at row 0. Results for ids without -1 are
-unchanged. ADR 0070.
+fallback gathers from a zero row. Results for ids without -1 are unchanged. ADR 0070.
+mm_ids_helper counts -1 below every expert, which leaves the first compact rows and the -1 slots'
+inverse-map entries unwritten; MMQ's quantize kernels read src1 or scatter through them, so they now
+point at row 0. Since b12426 the MMQ and MMF paths read a tile_spec table (stream-k): it is zeroed
+before the ids helper so seams past the last compacted column are empty tiles.
 ---
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
-index 72e961d..4285b5f 100644
+index 4950b9e..a367d7e 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
-@@ -2166,14 +2166,15 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+@@ -2606,14 +2606,15 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
  
      std::vector<int32_t> ids_to_sorted_host;
      ids_to_sorted_host.reserve(2*ne_get_rows);
@@ -30,7 +31,7 @@ index 72e961d..4285b5f 100644
  
      std::vector<char> ids_host(ggml_nbytes(ids));
      CUDA_CHECK(cudaMemcpyAsync(ids_host.data(), ids->data, ggml_nbytes(ids), cudaMemcpyDeviceToHost, stream));
-@@ -2183,7 +2184,7 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+@@ -2623,7 +2624,7 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
          for (int64_t i12 = 0; i12 < ne12; ++i12) { // tokens
              for (int64_t iex = 0; iex < n_expert_used; ++iex) {
                  const int32_t expert_to_use = *(const int32_t *)(ids_host.data() + i12*ids->nb[1] + iex*ids->nb[0]);
@@ -39,7 +40,7 @@ index 72e961d..4285b5f 100644
                  if (expert_to_use == i02) {
                      ids_from_sorted_host[i12*n_expert_used + iex] = ids_to_sorted_host.size();
                      ids_to_sorted_host.push_back(i12*ne11 + iex % ne11);
-@@ -2193,7 +2194,16 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+@@ -2633,7 +2634,16 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
              }
          }
      }
@@ -57,7 +58,7 @@ index 72e961d..4285b5f 100644
  
      ids_to_sorted_host.insert(ids_to_sorted_host.end(), ids_from_sorted_host.begin(), ids_from_sorted_host.end());
  
-@@ -2203,11 +2213,13 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
+@@ -2643,11 +2653,13 @@ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor *
      const int32_t * ids_to_sorted   = ids_buf_dev.ptr + 0*ne_get_rows;
      const int32_t * ids_from_sorted = ids_buf_dev.ptr + 1*ne_get_rows;
  
@@ -77,10 +78,10 @@ index 72e961d..4285b5f 100644
      char * src1_data_cur = (char *) src1_sorted.ptr;
      char *  dst_data_cur = (char *)  dst_sorted.ptr;
 diff --git a/ggml/src/ggml-cuda/mmf.cu b/ggml/src/ggml-cuda/mmf.cu
-index 646a589..7293a3f 100644
+index 040d390..f7e027c 100644
 --- a/ggml/src/ggml-cuda/mmf.cu
 +++ b/ggml/src/ggml-cuda/mmf.cu
-@@ -128,6 +128,11 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
+@@ -132,6 +132,11 @@ void ggml_cuda_mul_mat_f(ggml_backend_cuda_context & ctx, const ggml_tensor * sr
          default:
              GGML_ABORT("unsupported type: %s", ggml_type_name(src0->type));
      }
@@ -93,28 +94,21 @@ index 646a589..7293a3f 100644
  
  bool ggml_cuda_should_use_mmf(enum ggml_type type, int cc, int warp_size, const int64_t * src0_ne,
 diff --git a/ggml/src/ggml-cuda/mmid.cu b/ggml/src/ggml-cuda/mmid.cu
-index 12ae14c..af0e647 100644
+index 6b425a3..8ffe2c1 100644
 --- a/ggml/src/ggml-cuda/mmid.cu
 +++ b/ggml/src/ggml-cuda/mmid.cu
-@@ -100,6 +100,17 @@ static __global__ void mm_ids_helper(
-     }
-     nex_prev = warp_reduce_sum<warp_size>(nex_prev);
-     ggml_cuda_syncwarp();
-+    // patch 0004: id -1 counts below every expert, so the compact rows 0..nex_prev-1 of expert 0 hold no expert's
-+    // columns, and nothing writes their ids_src1 entries nor (inverse map) those of the -1 slots. The MMQ quantize
-+    // kernels read src1 (forward map) or write a compact row (inverse map) through them: point them at row 0.
-+    if (expert == 0 && nex_prev > 0) {
-+        const int n_slots = n_tokens*n_expert_used;
-+        for (int i = threadIdx.x; i < (write_inverse ? n_slots : nex_prev); i += warp_size) {
-+            if (!write_inverse || ids[(i / n_expert_used)*si1 + i % n_expert_used] < 0) {
-+                ids_src1[i] = 0;
-+            }
-+        }
-+    }
-
-     for (int itc = threadIdx.x; itc < it_compact; itc += warp_size) {
-         const mm_ids_helper_store store_it = store[itc];
-@@ -177,3 +188,26 @@ void ggml_cuda_launch_mm_ids_helper(
+@@ -159,6 +159,10 @@ static void launch_mm_ids_helper(
+     const dim3 block_size(warp_size, 1, 1);
+     const size_t nbytes_shared = n_tokens*sizeof(mm_ids_helper_store);
+     GGML_ASSERT(nbytes_shared <= smpbo);
++    // patch 0004: ids of -1 match no expert, so fewer than n_tokens*n_expert_used columns are compacted and the
++    // seam tiles past the last column are never written. Zeroed specs are empty tiles (col_low == col_high).
++    const size_t n_tiles = (size_t(n_tokens)*n_expert_used_var + tile_width - 1)/tile_width + n_experts;
++    CUDA_CHECK(cudaMemsetAsync(tile_spec, 0, n_tiles*sizeof(ggml_cuda_mm_id_tile_spec), stream));
+     mm_ids_helper<n_expert_used_template><<<num_blocks, block_size, nbytes_shared, stream>>>
+         (ids, ids_src1, ids_dst, tile_spec, n_tokens, n_expert_used_var, nchannels_y, tile_width_fd, si1, sis1, write_inverse);
+ }
+@@ -203,3 +207,40 @@ void ggml_cuda_launch_mm_ids_helper(
              break;
      }
  }
@@ -141,26 +135,54 @@ index 12ae14c..af0e647 100644
 +    mm_ids_zero_unused<<<(unsigned) n_slots, 256, 0, stream>>>(ids, dst, ne0, n_expert_used, ids_s0, ids_s1, dst_s1, dst_s2);
 +    CUDA_CHECK(cudaGetLastError());
 +}
++
++static __global__ void mm_ids_fill(int32_t * __restrict__ p, const int64_t n, const int32_t v) {
++    for (int64_t i = int64_t(blockIdx.x)*blockDim.x + threadIdx.x; i < n; i += int64_t(gridDim.x)*blockDim.x) {
++        p[i] = v;
++    }
++}
++
++void ggml_cuda_mm_ids_fill(int32_t * p, int64_t n, int32_t v, cudaStream_t stream) {
++    if (n <= 0) {
++        return;
++    }
++    mm_ids_fill<<<(unsigned) ((n + 255)/256 < 1024 ? (n + 255)/256 : 1024), 256, 0, stream>>>(p, n, v);
++    CUDA_CHECK(cudaGetLastError());
++}
 diff --git a/ggml/src/ggml-cuda/mmid.cuh b/ggml/src/ggml-cuda/mmid.cuh
-index 74c2db4..dc283ac 100644
+index dc878a7..d1db96d 100644
 --- a/ggml/src/ggml-cuda/mmid.cuh
 +++ b/ggml/src/ggml-cuda/mmid.cuh
-@@ -3,3 +3,9 @@
- void ggml_cuda_launch_mm_ids_helper(
-         const int32_t * ids, int32_t * ids_src1, int32_t * ids_dst, int32_t * expert_bounds,
-         int n_experts, int n_tokens, int n_expert_used, int nchannels_y, int si1, int sis1, bool write_inverse, cudaStream_t stream);
+@@ -14,3 +14,12 @@ void ggml_cuda_launch_mm_ids_helper(
+         int32_t * __restrict__ ids_src1, int32_t * __restrict__ ids_dst, ggml_cuda_mm_id_tile_spec * __restrict__ tile_spec,
+         const int n_experts, const int n_tokens, const int n_expert_used, const int nchannels_y, const int tile_width,
+         const int si1, const int sis1, const bool write_inverse, cudaStream_t stream);
 +
 +// Patch 0004: MUL_MAT_ID treats expert id -1 as no expert. The MMQ and MMF paths never match it to an expert, so they
 +// leave its dst rows unwritten; this writes zeros there. dst is [ne0, n_expert_used, n_tokens] with strides in floats.
 +void ggml_cuda_mm_ids_zero_unused(
 +        const int32_t * ids, float * dst, int64_t ne0, int n_expert_used, int n_tokens,
 +        int64_t ids_s0, int64_t ids_s1, int64_t dst_s1, int64_t dst_s2, cudaStream_t stream);
++
++// Patch 0004: p[0..n) = v. Compact-row maps are only written for matched ids; this gives the rest a safe value.
++void ggml_cuda_mm_ids_fill(int32_t * p, int64_t n, int32_t v, cudaStream_t stream);
 diff --git a/ggml/src/ggml-cuda/mmq.cu b/ggml/src/ggml-cuda/mmq.cu
-index 4af4f36..afffe48 100644
+index 2e61997..e5fbf8e 100644
 --- a/ggml/src/ggml-cuda/mmq.cu
 +++ b/ggml/src/ggml-cuda/mmq.cu
-@@ -377,6 +377,10 @@ void ggml_cuda_mul_mat_q(
-         ne12, J_best, fusion_device};
+@@ -330,6 +330,10 @@ void ggml_cuda_mul_mat_q(
+     const bool dedup_bcast = ne11 == 1 && n_expert_used > 1;
+ 
+     {
++        // patch 0004: mm_ids_helper counts id -1 below every expert, so the compact rows 0..n_neg-1 hold no
++        // expert's columns and nothing writes their forward-map entries nor the -1 slots' inverse-map entries.
++        // 0 is safe for both: the forward map reads src1 row 0, the inverse map scatters into the unused row 0.
++        ggml_cuda_mm_ids_fill(ids_src1.get(), ne_get_rows, 0, stream);
+         GGML_ASSERT(ids->nb[0] == ggml_element_size(ids));
+         const int si1  = ids->nb[1] / ggml_element_size(ids);
+         const int sis1 = nb12 / nb11;
+@@ -390,6 +394,10 @@ void ggml_cuda_mul_mat_q(
+         ntj, J_best, fusion_device};
  
      ggml_cuda_mul_mat_q_switch_type(ctx, args, stream, prec_src1);
 +
@@ -171,10 +193,10 @@ index 4af4f36..afffe48 100644
  
  bool ggml_cuda_should_use_mmq(enum ggml_type type, int cc, int64_t ne11, int64_t n_experts) {
 diff --git a/ggml/src/ggml-cuda/mmvf.cu b/ggml/src/ggml-cuda/mmvf.cu
-index 752d28c..cc72f29 100644
+index 154a621..375dee8 100644
 --- a/ggml/src/ggml-cuda/mmvf.cu
 +++ b/ggml/src/ggml-cuda/mmvf.cu
-@@ -53,6 +53,14 @@ static __global__ void mul_mat_vec_f(
+@@ -61,6 +61,14 @@ static __global__ void mul_mat_vec_f(
          dst += token_idx*stride_col_dst;
      }
  
@@ -190,10 +212,10 @@ index 752d28c..cc72f29 100644
      bool use_bias = false;
      bool use_gate_bias = false;
 diff --git a/ggml/src/ggml-cuda/mmvq.cu b/ggml/src/ggml-cuda/mmvq.cu
-index 930f1ad..a23f1b3 100644
+index c6d895d..c97fe27 100644
 --- a/ggml/src/ggml-cuda/mmvq.cu
 +++ b/ggml/src/ggml-cuda/mmvq.cu
-@@ -664,6 +664,15 @@ static __global__ void mul_mat_vec_q(
+@@ -661,6 +661,15 @@ static __global__ void mul_mat_vec_q(
      channel_y  = ncols_dst == 1 && ids ? fastmodulo(channel_dst, nchannels_y) : channel_dst;
      sample_dst = blockIdx.z;
  
@@ -209,7 +231,7 @@ index 930f1ad..a23f1b3 100644
      const uint32_t sample_x    = fastdiv(sample_dst, sample_ratio);
      const uint32_t sample_y    = sample_dst;
  
-@@ -940,7 +949,15 @@ static __global__ void mul_mat_vec_q_moe(
+@@ -937,7 +946,15 @@ static __global__ void mul_mat_vec_q_moe(
      }
  
      ggml_cuda_pdl_sync();
