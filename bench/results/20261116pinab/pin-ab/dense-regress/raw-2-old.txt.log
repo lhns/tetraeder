@@ -1,0 +1,34 @@
+
+running 1 test
+test step_shapes ... SHAPE engine=llama shape=alone ms=89.3 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=resident ms=86.0 ms_per_prompt_token=0.21
+SHAPE engine=llama shape=mixed1 ms=88.7 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=split1 ms=94.6 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed1_prompt_first ms=88.2 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=mixed2 ms=90.1 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=split2 ms=95.2 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed2_prompt_first ms=90.2 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=mixed3 ms=91.6 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=split3 ms=96.4 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed3_prompt_first ms=91.5 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=decode4x8 ms=71.8 ms_per_prompt_token=0.18
+SHAPE engine=llama shape=decode1x8_alone ms=59.2 ms_per_prompt_token=0.15
+SHAPE engine=llama shape=decode1x8_resident ms=59.3 ms_per_prompt_token=0.15
+SHAPE engine=dense shape=alone ms=83.9 ms_per_prompt_token=0.21
+SHAPE engine=dense shape=resident ms=92.9 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=mixed1 ms=94.0 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=split1 ms=101.6 ms_per_prompt_token=0.25
+SHAPE engine=dense shape=mixed1_prompt_first ms=92.9 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=mixed2 ms=94.2 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=split2 ms=103.8 ms_per_prompt_token=0.26
+SHAPE engine=dense shape=mixed2_prompt_first ms=92.8 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=mixed3 ms=93.7 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=split3 ms=104.9 ms_per_prompt_token=0.26
+SHAPE engine=dense shape=mixed3_prompt_first ms=93.6 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=decode4x8 ms=75.8 ms_per_prompt_token=0.19
+SHAPE engine=dense shape=decode1x8_alone ms=62.8 ms_per_prompt_token=0.16
+SHAPE engine=dense shape=decode1x8_resident ms=64.8 ms_per_prompt_token=0.16
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.73s
+

@@ -1,0 +1,338 @@
+{
+ "q30b|r1|b11976|c1": {
+  "throughput_tps": 157.92533309937477,
+  "ttft_median_s": 0.16052222019061446,
+  "ttft_p90_s": 0.16361128771677613,
+  "decode_tps_median": 195.61852275093534,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 38, 118.54 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 52, 323.99 W",
+   ""
+  ]
+ },
+ "q30b|r2|b11976|c1": {
+  "throughput_tps": 157.4441891223112,
+  "ttft_median_s": 0.1619043645914644,
+  "ttft_p90_s": 0.16458004526793957,
+  "decode_tps_median": 195.67466108978022,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 42, 120.19 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 52, 309.91 W",
+   ""
+  ]
+ },
+ "q30b|r1|b11976|c4": {
+  "throughput_tps": 237.85608433376464,
+  "ttft_median_s": 0.9572824034839869,
+  "ttft_p90_s": 0.9773812619969249,
+  "decode_tps_median": 97.4590852091722,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 38, 118.54 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 52, 323.99 W",
+   ""
+  ]
+ },
+ "q30b|r2|b11976|c4": {
+  "throughput_tps": 236.94668241655907,
+  "ttft_median_s": 0.9686375923920423,
+  "ttft_p90_s": 0.9736423380672932,
+  "decode_tps_median": 97.4755431966252,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 42, 120.19 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 52, 309.91 W",
+   ""
+  ]
+ },
+ "q30b|r1|b12426|c1": {
+  "throughput_tps": 156.75404851444253,
+  "ttft_median_s": 0.1383543226402253,
+  "ttft_p90_s": 0.14536816999316216,
+  "decode_tps_median": 188.7468636759412,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 40, 117.49 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 48, 294.14 W",
+   ""
+  ]
+ },
+ "q30b|r2|b12426|c1": {
+  "throughput_tps": 159.97353635549126,
+  "ttft_median_s": 0.14074366842396557,
+  "ttft_p90_s": 0.14754878683015704,
+  "decode_tps_median": 193.49091813430988,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 43, 122.47 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 48, 292.72 W",
+   ""
+  ]
+ },
+ "q30b|r1|b12426|c4": {
+  "throughput_tps": 285.09663609541366,
+  "ttft_median_s": 0.5236332109197974,
+  "ttft_p90_s": 0.5318385842256248,
+  "decode_tps_median": 97.8436503997355,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 40, 117.49 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 48, 294.14 W",
+   ""
+  ]
+ },
+ "q30b|r2|b12426|c4": {
+  "throughput_tps": 283.9308614005968,
+  "ttft_median_s": 0.5331317745149136,
+  "ttft_p90_s": 0.5489011215977371,
+  "decode_tps_median": 97.90961885073796,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 43, 122.47 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 48, 292.72 W",
+   ""
+  ]
+ },
+ "q30b|r1|tetraeder|c1": {
+  "throughput_tps": 156.0482017644244,
+  "ttft_median_s": 0.16739717544987798,
+  "ttft_p90_s": 0.17425874108448625,
+  "decode_tps_median": 194.99035271466843,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 42, 115.19 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 52, 308.04 W",
+   ""
+  ]
+ },
+ "q30b|r2|tetraeder|c1": {
+  "throughput_tps": 156.94069871262047,
+  "ttft_median_s": 0.16490285051986575,
+  "ttft_p90_s": 0.17313918098807335,
+  "decode_tps_median": 195.5144087665505,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 42, 115.65 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 53, 326.68 W",
+   ""
+  ]
+ },
+ "q30b|r1|tetraeder|c4": {
+  "throughput_tps": 246.2988238933728,
+  "ttft_median_s": 0.5453591344412416,
+  "ttft_p90_s": 0.7434010789729655,
+  "decode_tps_median": 83.37058776661637,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 42, 115.19 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 52, 308.04 W",
+   ""
+  ]
+ },
+ "q30b|r2|tetraeder|c4": {
+  "throughput_tps": 246.74632339113862,
+  "ttft_median_s": 0.5517010185867548,
+  "ttft_p90_s": 0.7423906582407653,
+  "decode_tps_median": 83.66656243410836,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 42, 115.65 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 53, 326.68 W",
+   ""
+  ]
+ },
+ "q8b|r1|b11976|c1": {
+  "throughput_tps": 118.23700716343656,
+  "ttft_median_s": 0.1650253515690565,
+  "ttft_p90_s": 0.17101417342200875,
+  "decode_tps_median": 138.52439690479486,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1845 MHz, 9751 MHz, 35, 120.64 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 51, 333.07 W",
+   ""
+  ]
+ },
+ "q8b|r2|b11976|c1": {
+  "throughput_tps": 117.43438721326206,
+  "ttft_median_s": 0.16744192317128181,
+  "ttft_p90_s": 0.16993153002113104,
+  "decode_tps_median": 137.60699330102358,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1845 MHz, 9751 MHz, 41, 125.05 W",
+   "after: 0x0000000000000004",
+   "after clocks: 1665 MHz, 9751 MHz, 53, 333.29 W",
+   ""
+  ]
+ },
+ "q8b|r1|b11976|c4": {
+  "throughput_tps": 267.67779310803115,
+  "ttft_median_s": 0.5644499524496496,
+  "ttft_p90_s": 0.5744344796985388,
+  "decode_tps_median": 92.70886662234483,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1845 MHz, 9751 MHz, 35, 120.64 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 51, 333.07 W",
+   ""
+  ]
+ },
+ "q8b|r2|b11976|c4": {
+  "throughput_tps": 266.60388596907126,
+  "ttft_median_s": 0.5724596502259374,
+  "ttft_p90_s": 0.5803717761300504,
+  "decode_tps_median": 92.60534486758337,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1845 MHz, 9751 MHz, 41, 125.05 W",
+   "after: 0x0000000000000004",
+   "after clocks: 1665 MHz, 9751 MHz, 53, 333.29 W",
+   ""
+  ]
+ },
+ "q8b|r1|b12426|c1": {
+  "throughput_tps": 117.60992151340767,
+  "ttft_median_s": 0.17598268552683294,
+  "ttft_p90_s": 0.19037541095167398,
+  "decode_tps_median": 139.0251899631187,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1845 MHz, 9751 MHz, 29, 117.02 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 45, 302.56 W",
+   ""
+  ]
+ },
+ "q8b|r2|b12426|c1": {
+  "throughput_tps": 118.33156445220953,
+  "ttft_median_s": 0.16694968729279935,
+  "ttft_p90_s": 0.17960922000929713,
+  "decode_tps_median": 139.20872949476433,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1845 MHz, 9751 MHz, 42, 124.99 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 51, 291.33 W",
+   ""
+  ]
+ },
+ "q8b|r1|b12426|c4": {
+  "throughput_tps": 285.6463719777054,
+  "ttft_median_s": 0.603343254653737,
+  "ttft_p90_s": 0.6292362092062831,
+  "decode_tps_median": 104.23303454334251,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1845 MHz, 9751 MHz, 29, 117.02 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 45, 302.56 W",
+   ""
+  ]
+ },
+ "q8b|r2|b12426|c4": {
+  "throughput_tps": 289.0751261505695,
+  "ttft_median_s": 0.5734070560429245,
+  "ttft_p90_s": 0.5911989058367908,
+  "decode_tps_median": 104.24374939542963,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1845 MHz, 9751 MHz, 42, 124.99 W",
+   "after: 0x0000000000000000",
+   "after clocks: 1845 MHz, 9751 MHz, 51, 291.33 W",
+   ""
+  ]
+ },
+ "q8b|r1|tetraeder|c1": {
+  "throughput_tps": 119.88481541165649,
+  "ttft_median_s": 0.1705023176036775,
+  "ttft_p90_s": 0.17438655905425549,
+  "decode_tps_median": 141.0344204832578,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 39, 112.58 W",
+   "after: 0x0000000000000004",
+   "after clocks: 1695 MHz, 9751 MHz, 51, 333.94 W",
+   ""
+  ]
+ },
+ "q8b|r2|tetraeder|c1": {
+  "throughput_tps": 119.65058925316364,
+  "ttft_median_s": 0.1684096313547343,
+  "ttft_p90_s": 0.1781679131090641,
+  "decode_tps_median": 140.88785373275286,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 40, 114.50 W",
+   "after: 0x0000000000000004",
+   "after clocks: 1695 MHz, 9751 MHz, 52, 334.27 W",
+   ""
+  ]
+ },
+ "q8b|r1|tetraeder|c4": {
+  "throughput_tps": 242.43241570887258,
+  "ttft_median_s": 0.5404497822746634,
+  "ttft_p90_s": 0.7362433611415327,
+  "decode_tps_median": 80.65214032068845,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 39, 112.58 W",
+   "after: 0x0000000000000004",
+   "after clocks: 1695 MHz, 9751 MHz, 51, 333.94 W",
+   ""
+  ]
+ },
+ "q8b|r2|tetraeder|c4": {
+  "throughput_tps": 241.57450338673775,
+  "ttft_median_s": 0.5437664475757629,
+  "ttft_p90_s": 0.7365629216656089,
+  "decode_tps_median": 80.20925453374818,
+  "errors": 0,
+  "throttle": [
+   "before: 0x0000000000000000",
+   "before clocks: 1740 MHz, 9751 MHz, 40, 114.50 W",
+   "after: 0x0000000000000004",
+   "after clocks: 1695 MHz, 9751 MHz, 52, 334.27 W",
+   ""
+  ]
+ }
+}
