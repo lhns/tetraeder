@@ -121,7 +121,8 @@ fn cpu_default_slots_reproduce_the_resident_model() {
 }
 
 /// hardware: cpu. A prefill that returns only the last row streams the last layer on that row
-/// alone: its logits equal the last row of the full output and the resident whole-step graph's,
+/// alone: its logits equal the resident whole-step graph's and the last row of the full output
+/// within tolerance,
 /// and the routing log still covers every row.
 #[test]
 fn cpu_streamed_last_only_output_matches_full_and_resident() {
@@ -137,12 +138,11 @@ fn cpu_streamed_last_only_output_matches_full_and_resident() {
         let mut last = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
         let got = last.eval_last(&PROMPT).unwrap();
         let what = format!("slots {slots} ram {ram:?}");
-        assert_eq!(
-            got,
-            all[all.len() - nv..],
-            "{what}: last row of the full output"
-        );
         assert_eq!(got, want, "{what}: resident whole-step graph");
+        // The full output runs the last layer on every row: another kernel shape, within TOL_CPU.
+        for (x, y) in got.iter().zip(&all[all.len() - nv..]) {
+            assert!((x - y).abs() <= TOL_CPU, "{what}: full output {x} vs {y}");
+        }
         let log = last.take_routing_log();
         assert_eq!(log.len(), want_log.len(), "{what}");
         for (a, b) in log.iter().zip(&want_log) {
@@ -303,7 +303,11 @@ fn cpu_cache_counts_match_an_lru_simulation() {
     for (slots, ram) in configs {
         let mut m = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
         let layers = m.hparams().n_layer as usize;
-        let mut next = argmax(&m.eval_last(&PROMPT).unwrap()) as i32;
+        // Logits for every row: with only the last row, the last layer loads the experts of that
+        // row alone, while the log (and so the simulation) covers all rows.
+        let nv = m.n_vocab();
+        let all = m.eval(&PROMPT).unwrap();
+        let mut next = argmax(&all[all.len() - nv..]) as i32;
         for _ in 0..N_GREEDY {
             next = argmax(&m.eval(&[next]).unwrap()) as i32;
         }
