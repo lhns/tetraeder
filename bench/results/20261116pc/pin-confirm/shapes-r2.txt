@@ -1,0 +1,38 @@
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests/step_shapes.rs (target/release/deps/step_shapes-8132c7da1dcde808)
+
+running 1 test
+test step_shapes ... SHAPES cpu=Some("AMD Ryzen Threadripper 7960X 24-Cores") amx_tile=false amx_int8=false avx512f=true avx512_vnni=true
+SHAPE engine=llama shape=alone ms=86.3 ms_per_prompt_token=0.21
+SHAPE engine=llama shape=resident ms=86.3 ms_per_prompt_token=0.21
+SHAPE engine=llama shape=mixed1 ms=88.9 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=split1 ms=95.0 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed1_prompt_first ms=89.0 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=mixed2 ms=90.3 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=split2 ms=95.7 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed2_prompt_first ms=90.4 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=mixed3 ms=91.8 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=split3 ms=96.8 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed3_prompt_first ms=92.3 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=decode4x8 ms=71.3 ms_per_prompt_token=0.18
+SHAPE engine=llama shape=decode1x8_alone ms=59.5 ms_per_prompt_token=0.15
+SHAPE engine=llama shape=decode1x8_resident ms=59.5 ms_per_prompt_token=0.15
+SHAPES dense weight_bufts=[]
+SHAPE engine=dense shape=alone ms=84.1 ms_per_prompt_token=0.21
+SHAPE engine=dense shape=resident ms=94.1 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=mixed1 ms=94.7 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=split1 ms=103.6 ms_per_prompt_token=0.26
+SHAPE engine=dense shape=mixed1_prompt_first ms=95.2 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=mixed2 ms=94.5 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=split2 ms=103.4 ms_per_prompt_token=0.26
+SHAPE engine=dense shape=mixed2_prompt_first ms=94.5 ms_per_prompt_token=0.23
+SHAPE engine=dense shape=mixed3 ms=95.0 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=split3 ms=107.4 ms_per_prompt_token=0.27
+SHAPE engine=dense shape=mixed3_prompt_first ms=95.3 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=decode4x8 ms=72.8 ms_per_prompt_token=0.18
+SHAPE engine=dense shape=decode1x8_alone ms=59.0 ms_per_prompt_token=0.15
+SHAPE engine=dense shape=decode1x8_resident ms=63.3 ms_per_prompt_token=0.16
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.57s
+

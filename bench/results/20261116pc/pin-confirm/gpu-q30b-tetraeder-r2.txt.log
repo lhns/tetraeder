@@ -1,0 +1,4 @@
+before: 0x0000000000000000
+before clocks: 1860 MHz, 9501 MHz, 59, 128.32 W
+after: 0x0000000000000004
+after clocks: 1890 MHz, 9501 MHz, 73, 358.50 W

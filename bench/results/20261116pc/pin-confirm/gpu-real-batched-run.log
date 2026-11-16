@@ -1,0 +1,35 @@
+=== RUN 2026-11-16T22:56:35 gpu_real_batched.sh ===
+patches: already applied
+[22:56:35] start q8b
+[22:56:43] q8b rc=0
+qwen3-8b libllama batched / libllama split: worst 1.94e-2 of the largest logit
+qwen3-8b libllama batched / libllama shifted by 7 cells: worst 0.00e0 of the largest logit
+qwen3-8b libllama batched / libllama shifted by 256 cells: worst 0.00e0 of the largest logit
+qwen3-8b builder batched / builder split: worst 1.90e-2 of the largest logit
+qwen3-8b builder batched / libllama batched: worst 1.85e-2 of the largest logit
+qwen3-8b builder split / libllama split: worst 0.00e0 of the largest logit
+qwen3-8b builder alone / libllama alone: worst 0.00e0 of the largest logit
+qwen3-8b: bound max(5e-3, 2.91e-2 of the largest logit), same shapes 2.91e-2, alone 5.00e-3
+[22:56:43] start q30b
+[22:56:59] q30b rc=0
+qwen3-30b libllama batched / libllama split: (0, 22) argmax 250 against 245: reference margin 7.704544e-2 (3.44e-3 of largest), other margin 1.3469696e-2
+qwen3-30b libllama batched / libllama split: (0, 24) argmax 222 against 243: reference margin 8.094788e-3 (4.55e-4 of largest), other margin 6.0709e-2
+qwen3-30b libllama batched / libllama split: (1, 23) argmax 217 against 205: reference margin 2.2277832e-3 (1.75e-4 of largest), other margin 3.01857e-2
+qwen3-30b libllama batched / libllama split: (1, 29) argmax 216 against 205: reference margin 1.6649246e-2 (1.28e-3 of largest), other margin 6.147957e-2
+qwen3-30b builder batched / builder split: (0, 21) argmax 232 against 223: reference margin 1.8974304e-2 (9.62e-4 of largest), other margin 3.4503937e-2
+qwen3-30b builder batched / builder split: (0, 22) argmax 250 against 245: reference margin 7.704544e-2 (3.44e-3 of largest), other margin 2.7456284e-2
+qwen3-30b builder batched / builder split: (0, 24) argmax 222 against 243: reference margin 8.094788e-3 (4.55e-4 of largest), other margin 1.6978073e-1
+qwen3-30b builder batched / builder split: (1, 27) argmax 204 against 205: reference margin 2.119255e-2 (1.83e-3 of largest), other margin 1.1397362e-1
+qwen3-30b builder batched / builder split: (1, 29) argmax 216 against 205: reference margin 1.6649246e-2 (1.28e-3 of largest), other margin 1.13931656e-1
+qwen3-30b builder batched / libllama batched: (0, 21) argmax 232 against 223: reference margin 2.3582458e-2 (1.20e-3 of largest), other margin 3.4503937e-2
+qwen3-30b builder batched / libllama batched: (1, 23) argmax 205 against 217: reference margin 3.01857e-2 (2.38e-3 of largest), other margin 3.3964157e-2
+qwen3-30b builder batched / libllama batched: (1, 27) argmax 204 against 205: reference margin 3.4210205e-2 (2.94e-3 of largest), other margin 1.1397362e-1
+qwen3-30b libllama batched / libllama split: worst 6.87e-2 of the largest logit
+qwen3-30b libllama batched / libllama shifted by 7 cells: worst 0.00e0 of the largest logit
+qwen3-30b libllama batched / libllama shifted by 256 cells: worst 0.00e0 of the largest logit
+qwen3-30b builder batched / builder split: worst 6.99e-2 of the largest logit
+qwen3-30b builder batched / libllama batched: worst 5.78e-2 of the largest logit
+qwen3-30b builder split / libllama split: worst 0.00e0 of the largest logit
+qwen3-30b builder alone / libllama alone: worst 0.00e0 of the largest logit
+qwen3-30b: bound max(5e-3, 1.03e-1 of the largest logit), same shapes 1.03e-1, alone 5.00e-3
+GPU_REAL_BATCHED_DONE rc=0

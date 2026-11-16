@@ -1,0 +1,2 @@
+after: 0x0000000000000004
+after clocks: 1665 MHz, 9501 MHz, 75, 359.04 W

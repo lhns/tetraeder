@@ -1,0 +1,5 @@
+=== RUN 2026-11-16T22:55:09 gpu_smoke6.sh ===
+[22:56:31] smoke5 rc=101
+[22:56:31] start executor_gpu
+[22:56:35] executor_gpu rc=0
+GPU_SMOKE6_DONE rc=101

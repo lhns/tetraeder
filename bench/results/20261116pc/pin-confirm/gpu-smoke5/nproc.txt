@@ -1,0 +1,3 @@
+48
+model name	: AMD Ryzen Threadripper 7960X 24-Cores
+avx512f

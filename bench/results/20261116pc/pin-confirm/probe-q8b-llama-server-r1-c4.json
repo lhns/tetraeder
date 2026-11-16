@@ -1,0 +1,101 @@
+{
+  "label": "probe-q8b-llama-server-r1-c4",
+  "base_url": "http://127.0.0.1:18081",
+  "model": "qwen3-8b",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 512,
+    "max_tokens": 128,
+    "concurrency": 4,
+    "requests": 8,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 0
+  },
+  "started": "2026-11-16T22:59:08",
+  "results": [
+    {
+      "ttft_s": 0.4118311321362853,
+      "total_s": 1.5676886532455683,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 109.97640792404141,
+      "text_head": "Okay, let's see. The user provided a long string of text tha"
+    },
+    {
+      "ttft_s": 0.3964718310162425,
+      "total_s": 1.552857968956232,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 109.9270173951321,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.3962555080652237,
+      "total_s": 1.5530268913134933,
+      "completion_tokens": 128,
+      "prompt_tokens": 403,
+      "usage_from": "usage",
+      "decode_tps": 109.89069293976107,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.3954231822863221,
+      "total_s": 1.5504109901376069,
+      "completion_tokens": 128,
+      "prompt_tokens": 405,
+      "usage_from": "usage",
+      "decode_tps": 110.01880352725118,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.4859924619086087,
+      "total_s": 1.6711241197772324,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 107.25987158539164,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.48488224670290947,
+      "total_s": 1.6698165400885046,
+      "completion_tokens": 128,
+      "prompt_tokens": 404,
+      "usage_from": "usage",
+      "decode_tps": 107.25078235220747,
+      "text_head": "Okay, let's see. The user provided a text that starts with t"
+    },
+    {
+      "ttft_s": 0.4845417607575655,
+      "total_s": 1.6699134390801191,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 107.18632241861104,
+      "text_head": "Okay, let's see. The user provided a long string of text tha"
+    },
+    {
+      "ttft_s": 0.4842844526283443,
+      "total_s": 1.6694784867577255,
+      "completion_tokens": 128,
+      "prompt_tokens": 405,
+      "usage_from": "usage",
+      "decode_tps": 107.18854407971605,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    }
+  ],
+  "summary": {
+    "requests": 8,
+    "errors": 0,
+    "wall_s": 3.238633065018803,
+    "completion_tokens": 1024,
+    "prompt_tokens_median": 405.5,
+    "ttft_median_s": 0.4480577923823148,
+    "ttft_p90_s": 0.4859924619086087,
+    "decode_tps_median": 108.57528226257635,
+    "throughput_tps": 316.18277817899536
+  }
+}

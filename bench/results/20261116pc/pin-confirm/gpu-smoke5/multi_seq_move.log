@@ -1,0 +1,329 @@
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running tests/multi_seq.rs (target/release/deps/multi_seq-29e5b5ce0c550718)
+
+running 2 tests
+test cpu_chunked_move_mid_decode_keeps_the_logits ... resident: step 0, alone: max |diff| 0e0 (0.00e0 of largest 11.941222), greedy equal true
+resident: step 1, alone: max |diff| 0e0 (0.00e0 of largest 10.654234), greedy equal true
+resident: step 2, alone: max |diff| 0e0 (0.00e0 of largest 12.466092), greedy equal true
+resident: step 3, alone: max |diff| 0e0 (0.00e0 of largest 10.625516), greedy equal true
+resident: step 4, alone: max |diff| 0e0 (0.00e0 of largest 9.785885), greedy equal true
+resident: step 5, alone: max |diff| 0e0 (0.00e0 of largest 11.845233), greedy equal true
+resident: step 6, alone: max |diff| 0e0 (0.00e0 of largest 11.218391), greedy equal true
+resident: step 7, alone: max |diff| 0e0 (0.00e0 of largest 13.1903925), greedy equal true
+resident: step 8, alone: max |diff| 0e0 (0.00e0 of largest 11.666992), greedy equal true
+resident: step 9, alone: max |diff| 0e0 (0.00e0 of largest 10.596048), greedy equal true
+resident: step 10, alone: max |diff| 0e0 (0.00e0 of largest 13.008417), greedy equal true
+resident: step 11, alone: max |diff| 0e0 (0.00e0 of largest 9.734889), greedy equal true
+resident: step 12, alone: max |diff| 0e0 (0.00e0 of largest 12.649835), greedy equal true
+resident: step 13, alone: max |diff| 0e0 (0.00e0 of largest 16.568203), greedy equal true
+resident: step 14, alone: max |diff| 0e0 (0.00e0 of largest 10.891745), greedy equal true
+resident: step 15, alone: max |diff| 0e0 (0.00e0 of largest 9.971177), greedy equal true
+resident: step 16, alone: max |diff| 0e0 (0.00e0 of largest 11.363543), greedy equal true
+resident: step 17, alone: max |diff| 0e0 (0.00e0 of largest 16.660019), greedy equal true
+resident: step 18, alone: max |diff| 0e0 (0.00e0 of largest 13.537716), greedy equal true
+resident: step 19, alone: max |diff| 0e0 (0.00e0 of largest 12.843941), greedy equal true
+resident: step 20, alone: max |diff| 0e0 (0.00e0 of largest 12.640495), greedy equal true
+resident: step 21, alone: max |diff| 0e0 (0.00e0 of largest 11.134138), greedy equal true
+resident: step 22, alone: max |diff| 0e0 (0.00e0 of largest 11.725018), greedy equal true
+resident: step 23, alone: max |diff| 0e0 (0.00e0 of largest 13.9648285), greedy equal true
+resident: step 24, alone: max |diff| 0e0 (0.00e0 of largest 11.664871), greedy equal true
+resident: step 25, alone: max |diff| 0e0 (0.00e0 of largest 10.330145), greedy equal true
+resident: step 26, alone: max |diff| 0e0 (0.00e0 of largest 11.902056), greedy equal true
+resident: step 27, alone: max |diff| 0e0 (0.00e0 of largest 10.197868), greedy equal true
+resident: step 28, alone: max |diff| 0e0 (0.00e0 of largest 13.097745), greedy equal true
+resident: step 29, alone: max |diff| 0e0 (0.00e0 of largest 13.895645), greedy equal true
+resident: step 30, alone: max |diff| 0e0 (0.00e0 of largest 13.66137), greedy equal true
+resident: step 31, alone: max |diff| 0e0 (0.00e0 of largest 12.892766), greedy equal true
+resident: step 32, alone: max |diff| 0e0 (0.00e0 of largest 12.544918), greedy equal true
+resident: step 33, alone: max |diff| 0e0 (0.00e0 of largest 12.426855), greedy equal true
+resident: step 34, alone: max |diff| 0e0 (0.00e0 of largest 10.975642), greedy equal true
+resident: step 35, alone: max |diff| 0e0 (0.00e0 of largest 12.204839), greedy equal true
+resident: step 36, alone: max |diff| 0e0 (0.00e0 of largest 14.3043375), greedy equal true
+resident: step 37, alone: max |diff| 0e0 (0.00e0 of largest 9.841996), greedy equal true
+resident: step 38, alone: max |diff| 0e0 (0.00e0 of largest 10.230473), greedy equal true
+resident: step 39, alone: max |diff| 0e0 (0.00e0 of largest 10.512869), greedy equal true
+resident: step 40, alone: max |diff| 0e0 (0.00e0 of largest 11.634038), greedy equal true
+resident: step 41, alone: max |diff| 0e0 (0.00e0 of largest 12.600959), greedy equal true
+resident: step 42, alone: max |diff| 0e0 (0.00e0 of largest 11.03566), greedy equal true
+resident: step 43, alone: max |diff| 0e0 (0.00e0 of largest 11.969225), greedy equal true
+resident: step 44, alone: max |diff| 0e0 (0.00e0 of largest 11.007624), greedy equal true
+resident: step 45, alone: max |diff| 0e0 (0.00e0 of largest 9.883801), greedy equal true
+resident: step 46, alone: max |diff| 0e0 (0.00e0 of largest 11.004612), greedy equal true
+resident: step 47, alone: max |diff| 0e0 (0.00e0 of largest 12.52395), greedy equal true
+resident: step 48, alone: max |diff| 0e0 (0.00e0 of largest 11.356616), greedy equal true
+resident: step 49, alone: max |diff| 0e0 (0.00e0 of largest 11.434029), greedy equal true
+resident: step 50, alone: max |diff| 0e0 (0.00e0 of largest 11.854288), greedy equal true
+resident: step 51, alone: max |diff| 0e0 (0.00e0 of largest 9.941273), greedy equal true
+resident: step 52, alone: max |diff| 0e0 (0.00e0 of largest 12.89193), greedy equal true
+resident: step 53, alone: max |diff| 0e0 (0.00e0 of largest 10.660485), greedy equal true
+resident: step 54, alone: max |diff| 0e0 (0.00e0 of largest 11.011559), greedy equal true
+resident: step 55, alone: max |diff| 0e0 (0.00e0 of largest 14.517927), greedy equal true
+resident: step 56, moved: max |diff| 0e0 (0.00e0 of largest 14.5192), greedy equal true
+resident: step 57, moved: max |diff| 0e0 (0.00e0 of largest 10.7249365), greedy equal true
+resident: step 58, moved: max |diff| 0e0 (0.00e0 of largest 10.819397), greedy equal true
+resident: step 59, moved: max |diff| 0e0 (0.00e0 of largest 11.503277), greedy equal true
+resident: step 60, moved: max |diff| 0e0 (0.00e0 of largest 11.550641), greedy equal true
+resident: step 61, moved: max |diff| 0e0 (0.00e0 of largest 11.666492), greedy equal true
+resident: step 62, moved: max |diff| 0e0 (0.00e0 of largest 10.532239), greedy equal true
+resident: step 63, moved: max |diff| 0e0 (0.00e0 of largest 12.010164), greedy equal true
+resident: step 64, moved: max |diff| 0e0 (0.00e0 of largest 11.002306), greedy equal true
+resident: step 65, moved: max |diff| 0e0 (0.00e0 of largest 10.738779), greedy equal true
+resident: step 66, moved: max |diff| 0e0 (0.00e0 of largest 10.284102), greedy equal true
+resident: step 67, moved: max |diff| 0e0 (0.00e0 of largest 12.681349), greedy equal true
+resident: step 68, moved: max |diff| 0e0 (0.00e0 of largest 15.661236), greedy equal true
+resident: step 69, moved: max |diff| 0e0 (0.00e0 of largest 12.017546), greedy equal true
+resident: step 70, moved: max |diff| 0e0 (0.00e0 of largest 13.107998), greedy equal true
+resident: step 71, moved: max |diff| 0e0 (0.00e0 of largest 9.718383), greedy equal true
+resident: step 72, moved: max |diff| 0e0 (0.00e0 of largest 13.44579), greedy equal true
+resident: step 73, moved: max |diff| 0e0 (0.00e0 of largest 12.393942), greedy equal true
+resident: step 74, moved: max |diff| 0e0 (0.00e0 of largest 10.77062), greedy equal true
+resident: step 75, moved: max |diff| 0e0 (0.00e0 of largest 11.286067), greedy equal true
+resident: step 76, moved: max |diff| 0e0 (0.00e0 of largest 11.02197), greedy equal true
+resident: step 77, moved: max |diff| 0e0 (0.00e0 of largest 10.935497), greedy equal true
+resident: step 78, moved: max |diff| 0e0 (0.00e0 of largest 11.416447), greedy equal true
+resident: step 79, moved: max |diff| 0e0 (0.00e0 of largest 15.463709), greedy equal true
+cpu miss: step 0, alone: max |diff| 0e0 (0.00e0 of largest 11.941222), greedy equal true
+cpu miss: step 1, alone: max |diff| 0e0 (0.00e0 of largest 10.654234), greedy equal true
+cpu miss: step 2, alone: max |diff| 0e0 (0.00e0 of largest 12.466092), greedy equal true
+cpu miss: step 3, alone: max |diff| 0e0 (0.00e0 of largest 10.625516), greedy equal true
+cpu miss: step 4, alone: max |diff| 0e0 (0.00e0 of largest 9.785885), greedy equal true
+cpu miss: step 5, alone: max |diff| 0e0 (0.00e0 of largest 11.845233), greedy equal true
+cpu miss: step 6, alone: max |diff| 0e0 (0.00e0 of largest 11.218391), greedy equal true
+cpu miss: step 7, alone: max |diff| 0e0 (0.00e0 of largest 13.1903925), greedy equal true
+cpu miss: step 8, alone: max |diff| 0e0 (0.00e0 of largest 11.666992), greedy equal true
+cpu miss: step 9, alone: max |diff| 0e0 (0.00e0 of largest 10.596048), greedy equal true
+cpu miss: step 10, alone: max |diff| 0e0 (0.00e0 of largest 13.008417), greedy equal true
+cpu miss: step 11, alone: max |diff| 0e0 (0.00e0 of largest 9.734889), greedy equal true
+cpu miss: step 12, alone: max |diff| 0e0 (0.00e0 of largest 12.649835), greedy equal true
+cpu miss: step 13, alone: max |diff| 0e0 (0.00e0 of largest 16.568203), greedy equal true
+cpu miss: step 14, alone: max |diff| 0e0 (0.00e0 of largest 10.891745), greedy equal true
+cpu miss: step 15, alone: max |diff| 0e0 (0.00e0 of largest 9.971177), greedy equal true
+cpu miss: step 16, alone: max |diff| 0e0 (0.00e0 of largest 11.363543), greedy equal true
+cpu miss: step 17, alone: max |diff| 0e0 (0.00e0 of largest 16.660019), greedy equal true
+cpu miss: step 18, alone: max |diff| 0e0 (0.00e0 of largest 13.537716), greedy equal true
+cpu miss: step 19, alone: max |diff| 0e0 (0.00e0 of largest 12.843941), greedy equal true
+cpu miss: step 20, alone: max |diff| 0e0 (0.00e0 of largest 12.640495), greedy equal true
+cpu miss: step 21, alone: max |diff| 0e0 (0.00e0 of largest 11.134138), greedy equal true
+cpu miss: step 22, alone: max |diff| 0e0 (0.00e0 of largest 11.725018), greedy equal true
+cpu miss: step 23, alone: max |diff| 0e0 (0.00e0 of largest 13.9648285), greedy equal true
+cpu miss: step 24, alone: max |diff| 0e0 (0.00e0 of largest 11.664871), greedy equal true
+cpu miss: step 25, alone: max |diff| 0e0 (0.00e0 of largest 10.330145), greedy equal true
+cpu miss: step 26, alone: max |diff| 0e0 (0.00e0 of largest 11.902056), greedy equal true
+cpu miss: step 27, alone: max |diff| 0e0 (0.00e0 of largest 10.197868), greedy equal true
+cpu miss: step 28, alone: max |diff| 0e0 (0.00e0 of largest 13.097745), greedy equal true
+cpu miss: step 29, alone: max |diff| 0e0 (0.00e0 of largest 13.895645), greedy equal true
+cpu miss: step 30, alone: max |diff| 0e0 (0.00e0 of largest 13.66137), greedy equal true
+cpu miss: step 31, alone: max |diff| 0e0 (0.00e0 of largest 12.892766), greedy equal true
+cpu miss: step 32, alone: max |diff| 0e0 (0.00e0 of largest 12.544918), greedy equal true
+cpu miss: step 33, alone: max |diff| 0e0 (0.00e0 of largest 12.426855), greedy equal true
+cpu miss: step 34, alone: max |diff| 0e0 (0.00e0 of largest 10.975642), greedy equal true
+cpu miss: step 35, alone: max |diff| 0e0 (0.00e0 of largest 12.204839), greedy equal true
+cpu miss: step 36, alone: max |diff| 0e0 (0.00e0 of largest 14.3043375), greedy equal true
+cpu miss: step 37, alone: max |diff| 0e0 (0.00e0 of largest 9.841996), greedy equal true
+cpu miss: step 38, alone: max |diff| 0e0 (0.00e0 of largest 10.230473), greedy equal true
+cpu miss: step 39, alone: max |diff| 0e0 (0.00e0 of largest 10.512869), greedy equal true
+cpu miss: step 40, alone: max |diff| 0e0 (0.00e0 of largest 11.634038), greedy equal true
+cpu miss: step 41, alone: max |diff| 0e0 (0.00e0 of largest 12.600959), greedy equal true
+cpu miss: step 42, alone: max |diff| 0e0 (0.00e0 of largest 11.03566), greedy equal true
+cpu miss: step 43, alone: max |diff| 0e0 (0.00e0 of largest 11.969225), greedy equal true
+cpu miss: step 44, alone: max |diff| 0e0 (0.00e0 of largest 11.007624), greedy equal true
+cpu miss: step 45, alone: max |diff| 0e0 (0.00e0 of largest 9.883801), greedy equal true
+cpu miss: step 46, alone: max |diff| 0e0 (0.00e0 of largest 11.004612), greedy equal true
+cpu miss: step 47, alone: max |diff| 0e0 (0.00e0 of largest 12.52395), greedy equal true
+cpu miss: step 48, alone: max |diff| 0e0 (0.00e0 of largest 11.356616), greedy equal true
+cpu miss: step 49, alone: max |diff| 0e0 (0.00e0 of largest 11.434029), greedy equal true
+cpu miss: step 50, alone: max |diff| 0e0 (0.00e0 of largest 11.854288), greedy equal true
+cpu miss: step 51, alone: max |diff| 0e0 (0.00e0 of largest 9.941273), greedy equal true
+cpu miss: step 52, alone: max |diff| 0e0 (0.00e0 of largest 12.89193), greedy equal true
+cpu miss: step 53, alone: max |diff| 0e0 (0.00e0 of largest 10.660485), greedy equal true
+cpu miss: step 54, alone: max |diff| 0e0 (0.00e0 of largest 11.011559), greedy equal true
+cpu miss: step 55, alone: max |diff| 0e0 (0.00e0 of largest 14.517927), greedy equal true
+cpu miss: step 56, moved: max |diff| 0e0 (0.00e0 of largest 14.5192), greedy equal true
+cpu miss: step 57, moved: max |diff| 0e0 (0.00e0 of largest 10.7249365), greedy equal true
+cpu miss: step 58, moved: max |diff| 0e0 (0.00e0 of largest 10.819397), greedy equal true
+cpu miss: step 59, moved: max |diff| 0e0 (0.00e0 of largest 11.503277), greedy equal true
+cpu miss: step 60, moved: max |diff| 0e0 (0.00e0 of largest 11.550641), greedy equal true
+cpu miss: step 61, moved: max |diff| 0e0 (0.00e0 of largest 11.666492), greedy equal true
+cpu miss: step 62, moved: max |diff| 0e0 (0.00e0 of largest 10.532239), greedy equal true
+cpu miss: step 63, moved: max |diff| 0e0 (0.00e0 of largest 12.010164), greedy equal true
+cpu miss: step 64, moved: max |diff| 0e0 (0.00e0 of largest 11.002306), greedy equal true
+cpu miss: step 65, moved: max |diff| 0e0 (0.00e0 of largest 10.738779), greedy equal true
+cpu miss: step 66, moved: max |diff| 0e0 (0.00e0 of largest 10.284102), greedy equal true
+cpu miss: step 67, moved: max |diff| 0e0 (0.00e0 of largest 12.681349), greedy equal true
+cpu miss: step 68, moved: max |diff| 0e0 (0.00e0 of largest 15.661236), greedy equal true
+cpu miss: step 69, moved: max |diff| 0e0 (0.00e0 of largest 12.017546), greedy equal true
+cpu miss: step 70, moved: max |diff| 0e0 (0.00e0 of largest 13.107998), greedy equal true
+cpu miss: step 71, moved: max |diff| 0e0 (0.00e0 of largest 9.718383), greedy equal true
+cpu miss: step 72, moved: max |diff| 0e0 (0.00e0 of largest 13.44579), greedy equal true
+cpu miss: step 73, moved: max |diff| 0e0 (0.00e0 of largest 12.393942), greedy equal true
+cpu miss: step 74, moved: max |diff| 0e0 (0.00e0 of largest 10.77062), greedy equal true
+cpu miss: step 75, moved: max |diff| 0e0 (0.00e0 of largest 11.286067), greedy equal true
+cpu miss: step 76, moved: max |diff| 0e0 (0.00e0 of largest 11.02197), greedy equal true
+cpu miss: step 77, moved: max |diff| 0e0 (0.00e0 of largest 10.935497), greedy equal true
+cpu miss: step 78, moved: max |diff| 0e0 (0.00e0 of largest 11.416447), greedy equal true
+cpu miss: step 79, moved: max |diff| 0e0 (0.00e0 of largest 15.463709), greedy equal true
+q8_0 kv: step 0, alone: max |diff| 0e0 (0.00e0 of largest 32.365112), greedy equal true
+q8_0 kv: step 1, alone: max |diff| 0e0 (0.00e0 of largest 23.944508), greedy equal true
+q8_0 kv: step 2, alone: max |diff| 0e0 (0.00e0 of largest 24.968937), greedy equal true
+q8_0 kv: step 3, alone: max |diff| 0e0 (0.00e0 of largest 24.67986), greedy equal true
+q8_0 kv: step 4, alone: max |diff| 0e0 (0.00e0 of largest 21.500671), greedy equal true
+q8_0 kv: step 5, alone: max |diff| 0e0 (0.00e0 of largest 25.773136), greedy equal true
+q8_0 kv: step 6, alone: max |diff| 0e0 (0.00e0 of largest 25.592121), greedy equal true
+q8_0 kv: step 7, alone: max |diff| 0e0 (0.00e0 of largest 24.93869), greedy equal true
+q8_0 kv: step 8, alone: max |diff| 0e0 (0.00e0 of largest 26.658073), greedy equal true
+q8_0 kv: step 9, alone: max |diff| 0e0 (0.00e0 of largest 29.549839), greedy equal true
+q8_0 kv: step 10, alone: max |diff| 0e0 (0.00e0 of largest 19.189117), greedy equal true
+q8_0 kv: step 11, alone: max |diff| 0e0 (0.00e0 of largest 27.531986), greedy equal true
+q8_0 kv: step 12, alone: max |diff| 0e0 (0.00e0 of largest 20.983414), greedy equal true
+q8_0 kv: step 13, alone: max |diff| 0e0 (0.00e0 of largest 21.916983), greedy equal true
+q8_0 kv: step 14, alone: max |diff| 0e0 (0.00e0 of largest 26.150326), greedy equal true
+q8_0 kv: step 15, alone: max |diff| 0e0 (0.00e0 of largest 25.938728), greedy equal true
+q8_0 kv: step 16, alone: max |diff| 0e0 (0.00e0 of largest 25.333378), greedy equal true
+q8_0 kv: step 17, alone: max |diff| 0e0 (0.00e0 of largest 26.509558), greedy equal true
+q8_0 kv: step 18, alone: max |diff| 0e0 (0.00e0 of largest 30.906448), greedy equal true
+q8_0 kv: step 19, alone: max |diff| 0e0 (0.00e0 of largest 22.616783), greedy equal true
+q8_0 kv: step 20, alone: max |diff| 0e0 (0.00e0 of largest 27.965105), greedy equal true
+q8_0 kv: step 21, alone: max |diff| 0e0 (0.00e0 of largest 27.17152), greedy equal true
+q8_0 kv: step 22, alone: max |diff| 0e0 (0.00e0 of largest 28.375557), greedy equal true
+q8_0 kv: step 23, alone: max |diff| 0e0 (0.00e0 of largest 25.245483), greedy equal true
+q8_0 kv: step 24, alone: max |diff| 0e0 (0.00e0 of largest 24.256878), greedy equal true
+q8_0 kv: step 25, alone: max |diff| 0e0 (0.00e0 of largest 22.384705), greedy equal true
+q8_0 kv: step 26, alone: max |diff| 0e0 (0.00e0 of largest 21.37819), greedy equal true
+q8_0 kv: step 27, alone: max |diff| 0e0 (0.00e0 of largest 26.277075), greedy equal true
+q8_0 kv: step 28, alone: max |diff| 0e0 (0.00e0 of largest 20.569256), greedy equal true
+q8_0 kv: step 29, alone: max |diff| 0e0 (0.00e0 of largest 25.11279), greedy equal true
+q8_0 kv: step 30, alone: max |diff| 0e0 (0.00e0 of largest 22.446777), greedy equal true
+q8_0 kv: step 31, alone: max |diff| 0e0 (0.00e0 of largest 27.946205), greedy equal true
+q8_0 kv: step 32, alone: max |diff| 0e0 (0.00e0 of largest 25.66938), greedy equal true
+q8_0 kv: step 33, alone: max |diff| 0e0 (0.00e0 of largest 20.704782), greedy equal true
+q8_0 kv: step 34, alone: max |diff| 0e0 (0.00e0 of largest 27.820576), greedy equal true
+q8_0 kv: step 35, alone: max |diff| 0e0 (0.00e0 of largest 22.702427), greedy equal true
+q8_0 kv: step 36, alone: max |diff| 0e0 (0.00e0 of largest 28.224953), greedy equal true
+q8_0 kv: step 37, alone: max |diff| 0e0 (0.00e0 of largest 24.750015), greedy equal true
+q8_0 kv: step 38, alone: max |diff| 0e0 (0.00e0 of largest 29.371311), greedy equal true
+q8_0 kv: step 39, alone: max |diff| 0e0 (0.00e0 of largest 29.265648), greedy equal true
+q8_0 kv: step 40, alone: max |diff| 0e0 (0.00e0 of largest 25.36147), greedy equal true
+q8_0 kv: step 41, alone: max |diff| 0e0 (0.00e0 of largest 23.39457), greedy equal true
+q8_0 kv: step 42, alone: max |diff| 0e0 (0.00e0 of largest 28.715162), greedy equal true
+q8_0 kv: step 43, alone: max |diff| 0e0 (0.00e0 of largest 23.155231), greedy equal true
+q8_0 kv: step 44, alone: max |diff| 0e0 (0.00e0 of largest 27.173435), greedy equal true
+q8_0 kv: step 45, alone: max |diff| 0e0 (0.00e0 of largest 32.86013), greedy equal true
+q8_0 kv: step 46, alone: max |diff| 0e0 (0.00e0 of largest 23.108086), greedy equal true
+q8_0 kv: step 47, alone: max |diff| 0e0 (0.00e0 of largest 21.61528), greedy equal true
+q8_0 kv: step 48, alone: max |diff| 0e0 (0.00e0 of largest 19.383623), greedy equal true
+q8_0 kv: step 49, alone: max |diff| 0e0 (0.00e0 of largest 26.188871), greedy equal true
+q8_0 kv: step 50, alone: max |diff| 0e0 (0.00e0 of largest 23.442806), greedy equal true
+q8_0 kv: step 51, alone: max |diff| 0e0 (0.00e0 of largest 21.851868), greedy equal true
+q8_0 kv: step 52, alone: max |diff| 0e0 (0.00e0 of largest 23.950605), greedy equal true
+q8_0 kv: step 53, alone: max |diff| 0e0 (0.00e0 of largest 24.642708), greedy equal true
+q8_0 kv: step 54, alone: max |diff| 0e0 (0.00e0 of largest 22.969912), greedy equal true
+q8_0 kv: step 55, alone: max |diff| 0e0 (0.00e0 of largest 23.502317), greedy equal true
+q8_0 kv: step 56, moved: max |diff| 0e0 (0.00e0 of largest 18.331697), greedy equal true
+q8_0 kv: step 57, moved: max |diff| 0e0 (0.00e0 of largest 24.286379), greedy equal true
+q8_0 kv: step 58, moved: max |diff| 0e0 (0.00e0 of largest 24.399475), greedy equal true
+q8_0 kv: step 59, moved: max |diff| 0e0 (0.00e0 of largest 24.124716), greedy equal true
+q8_0 kv: step 60, moved: max |diff| 0e0 (0.00e0 of largest 24.497047), greedy equal true
+q8_0 kv: step 61, moved: max |diff| 0e0 (0.00e0 of largest 20.099714), greedy equal true
+q8_0 kv: step 62, moved: max |diff| 0e0 (0.00e0 of largest 26.41876), greedy equal true
+q8_0 kv: step 63, moved: max |diff| 0e0 (0.00e0 of largest 23.998192), greedy equal true
+q8_0 kv: step 64, moved: max |diff| 0e0 (0.00e0 of largest 25.38533), greedy equal true
+q8_0 kv: step 65, moved: max |diff| 0e0 (0.00e0 of largest 25.83164), greedy equal true
+q8_0 kv: step 66, moved: max |diff| 0e0 (0.00e0 of largest 26.746616), greedy equal true
+q8_0 kv: step 67, moved: max |diff| 0e0 (0.00e0 of largest 23.566864), greedy equal true
+q8_0 kv: step 68, moved: max |diff| 0e0 (0.00e0 of largest 23.91162), greedy equal true
+q8_0 kv: step 69, moved: max |diff| 0e0 (0.00e0 of largest 21.21806), greedy equal true
+q8_0 kv: step 70, moved: max |diff| 0e0 (0.00e0 of largest 23.86947), greedy equal true
+q8_0 kv: step 71, moved: max |diff| 0e0 (0.00e0 of largest 21.117544), greedy equal true
+q8_0 kv: step 72, moved: max |diff| 0e0 (0.00e0 of largest 33.477505), greedy equal true
+q8_0 kv: step 73, moved: max |diff| 0e0 (0.00e0 of largest 25.181025), greedy equal true
+q8_0 kv: step 74, moved: max |diff| 0e0 (0.00e0 of largest 22.701363), greedy equal true
+q8_0 kv: step 75, moved: max |diff| 0e0 (0.00e0 of largest 24.86598), greedy equal true
+q8_0 kv: step 76, moved: max |diff| 0e0 (0.00e0 of largest 26.78769), greedy equal true
+q8_0 kv: step 77, moved: max |diff| 0e0 (0.00e0 of largest 26.431646), greedy equal true
+q8_0 kv: step 78, moved: max |diff| 0e0 (0.00e0 of largest 22.589832), greedy equal true
+q8_0 kv: step 79, moved: max |diff| 0e0 (0.00e0 of largest 22.32538), greedy equal true
+ok
+test cpu_chunked_move_mid_decode_with_8_threads ... 8 threads: step 0, alone: max |diff| 0e0 (0.00e0 of largest 11.941222), greedy equal true
+8 threads: step 1, alone: max |diff| 0e0 (0.00e0 of largest 10.654234), greedy equal true
+8 threads: step 2, alone: max |diff| 0e0 (0.00e0 of largest 12.466092), greedy equal true
+8 threads: step 3, alone: max |diff| 0e0 (0.00e0 of largest 10.625516), greedy equal true
+8 threads: step 4, alone: max |diff| 0e0 (0.00e0 of largest 9.785885), greedy equal true
+8 threads: step 5, alone: max |diff| 0e0 (0.00e0 of largest 11.845233), greedy equal true
+8 threads: step 6, alone: max |diff| 0e0 (0.00e0 of largest 11.218391), greedy equal true
+8 threads: step 7, alone: max |diff| 0e0 (0.00e0 of largest 13.1903925), greedy equal true
+8 threads: step 8, alone: max |diff| 0e0 (0.00e0 of largest 11.666992), greedy equal true
+8 threads: step 9, alone: max |diff| 0e0 (0.00e0 of largest 10.596048), greedy equal true
+8 threads: step 10, alone: max |diff| 0e0 (0.00e0 of largest 13.008417), greedy equal true
+8 threads: step 11, alone: max |diff| 0e0 (0.00e0 of largest 9.734889), greedy equal true
+8 threads: step 12, alone: max |diff| 0e0 (0.00e0 of largest 12.649835), greedy equal true
+8 threads: step 13, alone: max |diff| 0e0 (0.00e0 of largest 16.568203), greedy equal true
+8 threads: step 14, alone: max |diff| 0e0 (0.00e0 of largest 10.891745), greedy equal true
+8 threads: step 15, alone: max |diff| 0e0 (0.00e0 of largest 9.971177), greedy equal true
+8 threads: step 16, alone: max |diff| 0e0 (0.00e0 of largest 11.363543), greedy equal true
+8 threads: step 17, alone: max |diff| 0e0 (0.00e0 of largest 16.660019), greedy equal true
+8 threads: step 18, alone: max |diff| 0e0 (0.00e0 of largest 13.537716), greedy equal true
+8 threads: step 19, alone: max |diff| 0e0 (0.00e0 of largest 12.843941), greedy equal true
+8 threads: step 20, alone: max |diff| 0e0 (0.00e0 of largest 12.640495), greedy equal true
+8 threads: step 21, alone: max |diff| 0e0 (0.00e0 of largest 11.134138), greedy equal true
+8 threads: step 22, alone: max |diff| 0e0 (0.00e0 of largest 11.725018), greedy equal true
+8 threads: step 23, alone: max |diff| 0e0 (0.00e0 of largest 13.9648285), greedy equal true
+8 threads: step 24, alone: max |diff| 0e0 (0.00e0 of largest 11.664871), greedy equal true
+8 threads: step 25, alone: max |diff| 0e0 (0.00e0 of largest 10.330145), greedy equal true
+8 threads: step 26, alone: max |diff| 0e0 (0.00e0 of largest 11.902056), greedy equal true
+8 threads: step 27, alone: max |diff| 0e0 (0.00e0 of largest 10.197868), greedy equal true
+8 threads: step 28, alone: max |diff| 0e0 (0.00e0 of largest 13.097745), greedy equal true
+8 threads: step 29, alone: max |diff| 0e0 (0.00e0 of largest 13.895645), greedy equal true
+8 threads: step 30, alone: max |diff| 0e0 (0.00e0 of largest 13.66137), greedy equal true
+8 threads: step 31, alone: max |diff| 0e0 (0.00e0 of largest 12.892766), greedy equal true
+8 threads: step 32, alone: max |diff| 0e0 (0.00e0 of largest 12.544918), greedy equal true
+8 threads: step 33, alone: max |diff| 0e0 (0.00e0 of largest 12.426855), greedy equal true
+8 threads: step 34, alone: max |diff| 0e0 (0.00e0 of largest 10.975642), greedy equal true
+8 threads: step 35, alone: max |diff| 0e0 (0.00e0 of largest 12.204839), greedy equal true
+8 threads: step 36, alone: max |diff| 0e0 (0.00e0 of largest 14.3043375), greedy equal true
+8 threads: step 37, alone: max |diff| 0e0 (0.00e0 of largest 9.841996), greedy equal true
+8 threads: step 38, alone: max |diff| 0e0 (0.00e0 of largest 10.230473), greedy equal true
+8 threads: step 39, alone: max |diff| 0e0 (0.00e0 of largest 10.512869), greedy equal true
+8 threads: step 40, alone: max |diff| 0e0 (0.00e0 of largest 11.634038), greedy equal true
+8 threads: step 41, alone: max |diff| 0e0 (0.00e0 of largest 12.600959), greedy equal true
+8 threads: step 42, alone: max |diff| 0e0 (0.00e0 of largest 11.03566), greedy equal true
+8 threads: step 43, alone: max |diff| 0e0 (0.00e0 of largest 11.969225), greedy equal true
+8 threads: step 44, alone: max |diff| 0e0 (0.00e0 of largest 11.007624), greedy equal true
+8 threads: step 45, alone: max |diff| 0e0 (0.00e0 of largest 9.883801), greedy equal true
+8 threads: step 46, alone: max |diff| 0e0 (0.00e0 of largest 11.004612), greedy equal true
+8 threads: step 47, alone: max |diff| 0e0 (0.00e0 of largest 12.52395), greedy equal true
+8 threads: step 48, alone: max |diff| 0e0 (0.00e0 of largest 11.356616), greedy equal true
+8 threads: step 49, alone: max |diff| 0e0 (0.00e0 of largest 11.434029), greedy equal true
+8 threads: step 50, alone: max |diff| 0e0 (0.00e0 of largest 11.854288), greedy equal true
+8 threads: step 51, alone: max |diff| 0e0 (0.00e0 of largest 9.941273), greedy equal true
+8 threads: step 52, alone: max |diff| 0e0 (0.00e0 of largest 12.89193), greedy equal true
+8 threads: step 53, alone: max |diff| 0e0 (0.00e0 of largest 10.660485), greedy equal true
+8 threads: step 54, alone: max |diff| 0e0 (0.00e0 of largest 11.011559), greedy equal true
+8 threads: step 55, alone: max |diff| 0e0 (0.00e0 of largest 14.517927), greedy equal true
+8 threads: step 56, moved: max |diff| 0e0 (0.00e0 of largest 14.519201), greedy equal true
+8 threads: step 57, moved: max |diff| 0e0 (0.00e0 of largest 10.724932), greedy equal true
+8 threads: step 58, moved: max |diff| 0e0 (0.00e0 of largest 10.819398), greedy equal true
+8 threads: step 59, moved: max |diff| 0e0 (0.00e0 of largest 11.503277), greedy equal true
+8 threads: step 60, moved: max |diff| 0e0 (0.00e0 of largest 11.55064), greedy equal true
+8 threads: step 61, moved: max |diff| 0e0 (0.00e0 of largest 11.666487), greedy equal true
+8 threads: step 62, moved: max |diff| 0e0 (0.00e0 of largest 10.532238), greedy equal true
+8 threads: step 63, moved: max |diff| 0e0 (0.00e0 of largest 12.010162), greedy equal true
+8 threads: step 64, moved: max |diff| 0e0 (0.00e0 of largest 11.002309), greedy equal true
+8 threads: step 65, moved: max |diff| 0e0 (0.00e0 of largest 10.738789), greedy equal true
+8 threads: step 66, moved: max |diff| 0e0 (0.00e0 of largest 10.284103), greedy equal true
+8 threads: step 67, moved: max |diff| 0e0 (0.00e0 of largest 12.681347), greedy equal true
+8 threads: step 68, moved: max |diff| 0e0 (0.00e0 of largest 15.661235), greedy equal true
+8 threads: step 69, moved: max |diff| 0e0 (0.00e0 of largest 12.017547), greedy equal true
+8 threads: step 70, moved: max |diff| 0e0 (0.00e0 of largest 13.107996), greedy equal true
+8 threads: step 71, moved: max |diff| 0e0 (0.00e0 of largest 9.718384), greedy equal true
+8 threads: step 72, moved: max |diff| 0e0 (0.00e0 of largest 13.44579), greedy equal true
+8 threads: step 73, moved: max |diff| 0e0 (0.00e0 of largest 12.3939495), greedy equal true
+8 threads: step 74, moved: max |diff| 0e0 (0.00e0 of largest 10.770618), greedy equal true
+8 threads: step 75, moved: max |diff| 0e0 (0.00e0 of largest 11.286065), greedy equal true
+8 threads: step 76, moved: max |diff| 0e0 (0.00e0 of largest 11.021971), greedy equal true
+8 threads: step 77, moved: max |diff| 0e0 (0.00e0 of largest 10.935497), greedy equal true
+8 threads: step 78, moved: max |diff| 0e0 (0.00e0 of largest 11.416443), greedy equal true
+8 threads: step 79, moved: max |diff| 0e0 (0.00e0 of largest 15.463707), greedy equal true
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 1.24s
+

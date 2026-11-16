@@ -1,0 +1,447 @@
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running tests/gpu_dense.rs (target/release/deps/gpu_dense-6250cc83c1c3d1f0)
+
+running 5 tests
+test cpu_libllama_batched_vs_split_anchor ... cpu libllama batched / libllama split: (0, 9) max |delta| 4.2915344e-6 (2.37e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 10) max |delta| 8.583069e-6 (5.37e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 11) max |delta| 6.914139e-6 (4.34e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 12) max |delta| 7.5101852e-6 (4.53e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 13) max |delta| 8.583069e-6 (5.69e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 14) max |delta| 9.536743e-6 (5.06e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 15) max |delta| 7.1525574e-6 (3.26e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 16) max |delta| 1.1563301e-5 (6.23e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 17) max |delta| 1.1920929e-5 (5.70e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 18) max |delta| 1.0967255e-5 (6.06e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 19) max |delta| 2.6226044e-5 (1.67e-6 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 20) max |delta| 4.36306e-5 (2.71e-6 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 21) max |delta| 8.583069e-6 (4.66e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 22) max |delta| 2.0980835e-5 (1.06e-6 of largest), argmax equal true
+cpu libllama batched / libllama split: (0, 23) max |delta| 1.001358e-5 (6.49e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 7) max |delta| 3.8146973e-6 (2.44e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 18) max |delta| 2.7370453e-4 (1.79e-5 of largest), argmax equal true
+cpu libllama batched / libllama split: (1, 19) max |delta| 6.2942505e-5 (4.06e-6 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 3) max |delta| 2.861023e-6 (1.56e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 4) max |delta| 7.1525574e-6 (4.28e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 5) max |delta| 9.536743e-6 (6.11e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 6) max |delta| 1.2874603e-5 (8.26e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 7) max |delta| 7.6293945e-6 (4.42e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 8) max |delta| 1.1444092e-5 (6.76e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 9) max |delta| 1.0848045e-5 (7.08e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 10) max |delta| 1.1444092e-5 (6.76e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 11) max |delta| 1.7166138e-5 (9.96e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: (2, 12) max |delta| 1.0967255e-5 (6.57e-7 of largest), argmax equal true
+cpu libllama batched / libllama split: 38 rows, worst 1.79e-5 of largest
+cpu builder batched / builder split: (0, 9) max |delta| 4.2915344e-6 (2.37e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 10) max |delta| 8.583069e-6 (5.37e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 11) max |delta| 6.914139e-6 (4.34e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 12) max |delta| 7.5101852e-6 (4.53e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 13) max |delta| 8.583069e-6 (5.69e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 14) max |delta| 9.536743e-6 (5.06e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 15) max |delta| 7.1525574e-6 (3.26e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 16) max |delta| 1.1563301e-5 (6.23e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 17) max |delta| 1.1920929e-5 (5.70e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 18) max |delta| 1.0967255e-5 (6.06e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 19) max |delta| 2.6226044e-5 (1.67e-6 of largest), argmax equal true
+cpu builder batched / builder split: (0, 20) max |delta| 4.36306e-5 (2.71e-6 of largest), argmax equal true
+cpu builder batched / builder split: (0, 21) max |delta| 8.583069e-6 (4.66e-7 of largest), argmax equal true
+cpu builder batched / builder split: (0, 22) max |delta| 2.0980835e-5 (1.06e-6 of largest), argmax equal true
+cpu builder batched / builder split: (0, 23) max |delta| 1.001358e-5 (6.49e-7 of largest), argmax equal true
+cpu builder batched / builder split: (1, 7) max |delta| 3.8146973e-6 (2.44e-7 of largest), argmax equal true
+cpu builder batched / builder split: (1, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / builder split: (1, 18) max |delta| 2.7370453e-4 (1.79e-5 of largest), argmax equal true
+cpu builder batched / builder split: (1, 19) max |delta| 6.2942505e-5 (4.06e-6 of largest), argmax equal true
+cpu builder batched / builder split: (2, 3) max |delta| 2.861023e-6 (1.56e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 4) max |delta| 7.1525574e-6 (4.28e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 5) max |delta| 9.536743e-6 (6.11e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 6) max |delta| 1.2874603e-5 (8.26e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 7) max |delta| 7.6293945e-6 (4.42e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 8) max |delta| 1.1444092e-5 (6.76e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 9) max |delta| 1.0848045e-5 (7.08e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 10) max |delta| 1.1444092e-5 (6.76e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 11) max |delta| 1.7166138e-5 (9.96e-7 of largest), argmax equal true
+cpu builder batched / builder split: (2, 12) max |delta| 1.0967255e-5 (6.57e-7 of largest), argmax equal true
+cpu builder batched / builder split: 38 rows, worst 1.79e-5 of largest
+cpu builder batched / libllama batched: (0, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 18) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (0, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 18) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (1, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 3) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 4) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 5) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 6) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: (2, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder batched / libllama batched: 38 rows, worst 0.00e0 of largest
+cpu builder split / libllama split: (0, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 18) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (0, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 18) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (1, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 3) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 4) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 5) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 6) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: (2, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu builder split / libllama split: 38 rows, worst 0.00e0 of largest
+cpu libllama batched / libllama on the cpu: (0, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 18) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (0, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 18) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (1, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 3) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 4) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 5) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 6) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: (2, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+cpu libllama batched / libllama on the cpu: 38 rows, worst 0.00e0 of largest
+cpu libllama batched / libllama split: worst 1.79e-5 of the largest logit
+cpu builder batched / builder split: worst 1.79e-5 of the largest logit
+cpu builder batched / libllama batched: worst 0.00e0 of the largest logit
+cpu builder split / libllama split: worst 0.00e0 of the largest logit
+cpu libllama batched / libllama on the cpu: worst 0.00e0 of the largest logit
+cpu anchor worst (of largest logit): [1.7865163e-5, 1.7865163e-5, 0.0, 0.0, 0.0]
+ok
+test gpu_libllama_batched_vs_split_anchor ... gpu libllama batched / libllama split: (0, 9) max |delta| 4.848385e-2 (2.68e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 10) max |delta| 3.27096e-2 (2.05e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 11) max |delta| 2.9075384e-2 (1.83e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 12) max |delta| 2.7344942e-2 (1.65e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 13) max |delta| 4.7256947e-2 (3.13e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 14) max |delta| 3.020668e-2 (1.60e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 15) max |delta| 2.2815704e-2 (1.04e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 16) max |delta| 3.7210464e-2 (2.00e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 17) max |delta| 4.2542458e-2 (2.03e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 18) max |delta| 4.4553757e-2 (2.46e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 19) max |delta| 3.2995224e-2 (2.10e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 20) max |delta| 3.528142e-2 (2.19e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 21) max |delta| 3.7046432e-2 (2.01e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 22) max |delta| 3.941965e-2 (1.99e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 23) max |delta| 2.8362751e-2 (1.84e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 7) max |delta| 8.205271e-2 (5.25e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 8) max |delta| 3.90625e-2 (1.62e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 9) max |delta| 3.125e-2 (2.12e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 10) max |delta| 3.515625e-2 (2.15e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 11) max |delta| 3.125e-2 (1.38e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 12) max |delta| 4.0039063e-2 (2.06e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 13) max |delta| 4.6875e-2 (2.60e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 14) max |delta| 3.125e-2 (1.83e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 15) max |delta| 3.515625e-2 (1.72e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 16) max |delta| 2.34375e-2 (1.15e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 17) max |delta| 3.3203125e-2 (1.80e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 18) max |delta| 2.8873444e-2 (1.88e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 19) max |delta| 3.685093e-2 (2.38e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 3) max |delta| 4.351616e-2 (2.37e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 4) max |delta| 3.18079e-2 (1.90e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 5) max |delta| 2.893114e-2 (1.85e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 6) max |delta| 3.6378264e-2 (2.33e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 7) max |delta| 2.6869774e-2 (1.56e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 8) max |delta| 3.5657883e-2 (2.11e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 9) max |delta| 3.2634735e-2 (2.13e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 10) max |delta| 2.6532173e-2 (1.57e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 11) max |delta| 4.544401e-2 (2.63e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 12) max |delta| 2.6187897e-2 (1.57e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: 38 rows, worst 5.25e-3 of largest
+gpu builder batched / builder split: (0, 9) max |delta| 4.848385e-2 (2.68e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 10) max |delta| 3.201294e-2 (2.00e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 11) max |delta| 2.7323961e-2 (1.72e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 12) max |delta| 2.840066e-2 (1.71e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 13) max |delta| 3.767872e-2 (2.50e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 14) max |delta| 3.151703e-2 (1.67e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 15) max |delta| 2.1014214e-2 (9.59e-4 of largest), argmax equal true
+gpu builder batched / builder split: (0, 16) max |delta| 4.410553e-2 (2.38e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 17) max |delta| 3.455305e-2 (1.65e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 18) max |delta| 4.978323e-2 (2.75e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 19) max |delta| 2.6800156e-2 (1.71e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 20) max |delta| 5.147481e-2 (3.20e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 21) max |delta| 3.5274506e-2 (1.91e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 22) max |delta| 3.09906e-2 (1.57e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 23) max |delta| 2.5539398e-2 (1.66e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 7) max |delta| 5.2307606e-2 (3.35e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 8) max |delta| 4.6875e-2 (1.94e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 9) max |delta| 3.90625e-2 (2.65e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 10) max |delta| 4.1015625e-2 (2.51e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 11) max |delta| 3.125e-2 (1.38e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 12) max |delta| 2.734375e-2 (1.41e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 13) max |delta| 4.6875e-2 (2.60e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 14) max |delta| 3.125e-2 (1.83e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 15) max |delta| 3.2714844e-2 (1.60e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 16) max |delta| 2.34375e-2 (1.15e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 17) max |delta| 3.125e-2 (1.70e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 18) max |delta| 3.515172e-2 (2.29e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 19) max |delta| 3.0215025e-2 (1.95e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 3) max |delta| 4.351616e-2 (2.37e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 4) max |delta| 3.0145645e-2 (1.80e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 5) max |delta| 2.998066e-2 (1.92e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 6) max |delta| 3.2359004e-2 (2.07e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 7) max |delta| 2.8869629e-2 (1.67e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 8) max |delta| 2.9949665e-2 (1.77e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 9) max |delta| 2.7565956e-2 (1.80e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 10) max |delta| 2.221489e-2 (1.31e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 11) max |delta| 4.020703e-2 (2.33e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 12) max |delta| 2.6686668e-2 (1.60e-3 of largest), argmax equal true
+gpu builder batched / builder split: 38 rows, worst 3.35e-3 of largest
+gpu builder batched / libllama batched: (0, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 10) max |delta| 1.7578125e-2 (1.10e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 11) max |delta| 5.8948994e-3 (3.70e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 12) max |delta| 5.7473183e-3 (3.47e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 13) max |delta| 7.4563026e-3 (4.94e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 14) max |delta| 7.130623e-3 (3.78e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 15) max |delta| 5.384445e-3 (2.46e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 16) max |delta| 8.489609e-3 (4.57e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 17) max |delta| 8.092403e-3 (3.87e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 18) max |delta| 9.499073e-3 (5.25e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 19) max |delta| 1.4997721e-2 (9.56e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 20) max |delta| 1.717186e-2 (1.07e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 21) max |delta| 1.1651993e-2 (6.33e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 22) max |delta| 1.6992569e-2 (8.58e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 23) max |delta| 1.00643635e-2 (6.52e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 7) max |delta| 5.816698e-2 (3.73e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 8) max |delta| 2.734375e-2 (1.13e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 9) max |delta| 3.125e-2 (2.12e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 10) max |delta| 2.734375e-2 (1.67e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 11) max |delta| 2.34375e-2 (1.04e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 12) max |delta| 2.34375e-2 (1.21e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 13) max |delta| 2.34375e-2 (1.30e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 14) max |delta| 4.6875e-2 (2.75e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 15) max |delta| 2.734375e-2 (1.34e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 16) max |delta| 1.5625e-2 (7.65e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 17) max |delta| 3.125e-2 (1.70e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 18) max |delta| 1.0148048e-2 (6.63e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 19) max |delta| 8.58736e-3 (5.54e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 3) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 4) max |delta| 2.34375e-2 (1.40e-3 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 5) max |delta| 8.729935e-3 (5.59e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 6) max |delta| 8.048058e-3 (5.16e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 7) max |delta| 1.1031151e-2 (6.39e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 8) max |delta| 8.015633e-3 (4.74e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 9) max |delta| 8.956909e-3 (5.85e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 10) max |delta| 9.179115e-3 (5.42e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 11) max |delta| 1.258564e-2 (7.30e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 12) max |delta| 7.3213577e-3 (4.39e-4 of largest), argmax equal true
+gpu builder batched / libllama batched: 38 rows, worst 3.73e-3 of largest
+gpu builder split / libllama split: (0, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (0, 10) max |delta| 1.1769533e-2 (7.37e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 11) max |delta| 1.5367985e-2 (9.66e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 12) max |delta| 1.4450073e-2 (8.71e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 13) max |delta| 1.5206814e-2 (1.01e-3 of largest), argmax equal true
+gpu builder split / libllama split: (0, 14) max |delta| 1.4346123e-2 (7.61e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 15) max |delta| 1.2811661e-2 (5.84e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 16) max |delta| 1.5078545e-2 (8.12e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 17) max |delta| 1.4019012e-2 (6.70e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 18) max |delta| 1.3953924e-2 (7.71e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 19) max |delta| 1.454711e-2 (9.27e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 20) max |delta| 1.8370628e-2 (1.14e-3 of largest), argmax equal true
+gpu builder split / libllama split: (0, 21) max |delta| 1.4178753e-2 (7.70e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 22) max |delta| 1.8004417e-2 (9.10e-4 of largest), argmax equal true
+gpu builder split / libllama split: (0, 23) max |delta| 1.4418125e-2 (9.34e-4 of largest), argmax equal true
+gpu builder split / libllama split: (1, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 13) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 14) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 16) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 17) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 18) max |delta| 1.4153242e-2 (9.24e-4 of largest), argmax equal true
+gpu builder split / libllama split: (1, 19) max |delta| 1.8572807e-2 (1.20e-3 of largest), argmax equal true
+gpu builder split / libllama split: (2, 3) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 4) max |delta| 1.3307571e-2 (7.95e-4 of largest), argmax equal true
+gpu builder split / libllama split: (2, 5) max |delta| 2.6968002e-2 (1.73e-3 of largest), argmax equal true
+gpu builder split / libllama split: (2, 6) max |delta| 1.7203331e-2 (1.10e-3 of largest), argmax equal true
+gpu builder split / libllama split: (2, 7) max |delta| 1.2779713e-2 (7.41e-4 of largest), argmax equal true
+gpu builder split / libllama split: (2, 8) max |delta| 1.8427849e-2 (1.09e-3 of largest), argmax equal true
+gpu builder split / libllama split: (2, 9) max |delta| 1.6420364e-2 (1.07e-3 of largest), argmax equal true
+gpu builder split / libllama split: (2, 10) max |delta| 1.5240312e-2 (9.00e-4 of largest), argmax equal true
+gpu builder split / libllama split: (2, 11) max |delta| 1.4931679e-2 (8.66e-4 of largest), argmax equal true
+gpu builder split / libllama split: (2, 12) max |delta| 1.3385773e-2 (8.02e-4 of largest), argmax equal true
+gpu builder split / libllama split: 38 rows, worst 1.73e-3 of largest
+gpu libllama batched / libllama on the cpu: (0, 9) max |delta| 3.9429665e-2 (2.18e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 10) max |delta| 2.2315025e-2 (1.40e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 11) max |delta| 2.315998e-2 (1.45e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 12) max |delta| 2.3533344e-2 (1.42e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 13) max |delta| 3.786373e-2 (2.51e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 14) max |delta| 3.1305313e-2 (1.66e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 15) max |delta| 2.131617e-2 (9.72e-4 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 16) max |delta| 3.4098625e-2 (1.84e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 17) max |delta| 4.227972e-2 (2.02e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 18) max |delta| 3.307581e-2 (1.83e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 19) max |delta| 3.214121e-2 (2.05e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 20) max |delta| 4.3364048e-2 (2.69e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 21) max |delta| 4.035282e-2 (2.19e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 22) max |delta| 3.706956e-2 (1.87e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 23) max |delta| 3.165865e-2 (2.05e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 7) max |delta| 9.359646e-2 (5.99e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 8) max |delta| 4.2869568e-2 (1.78e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 9) max |delta| 3.5183907e-2 (2.38e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 10) max |delta| 4.6414375e-2 (2.84e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 11) max |delta| 2.9440641e-2 (1.30e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 12) max |delta| 3.1774044e-2 (1.64e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 13) max |delta| 3.258133e-2 (1.81e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 14) max |delta| 2.615261e-2 (1.53e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 15) max |delta| 2.5714874e-2 (1.26e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 16) max |delta| 2.316761e-2 (1.13e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 17) max |delta| 3.215027e-2 (1.75e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 18) max |delta| 2.9414654e-2 (1.92e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 19) max |delta| 2.5669575e-2 (1.66e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 3) max |delta| 4.5562625e-2 (2.48e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 4) max |delta| 2.9222727e-2 (1.75e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 5) max |delta| 3.0142784e-2 (1.93e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 6) max |delta| 2.9512882e-2 (1.89e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 7) max |delta| 2.8108478e-2 (1.63e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 8) max |delta| 2.8827667e-2 (1.70e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 9) max |delta| 2.4907589e-2 (1.63e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 10) max |delta| 2.2231579e-2 (1.31e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 11) max |delta| 3.39427e-2 (1.97e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 12) max |delta| 2.1289587e-2 (1.28e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: 38 rows, worst 5.99e-3 of largest
+gpu libllama batched / libllama split: worst 5.25e-3 of the largest logit
+gpu builder batched / builder split: worst 3.35e-3 of the largest logit
+gpu builder batched / libllama batched: worst 3.73e-3 of the largest logit
+gpu builder split / libllama split: worst 1.73e-3 of the largest logit
+gpu libllama batched / libllama on the cpu: worst 5.99e-3 of the largest logit
+gpu anchor worst (of largest logit): [0.0052489256, 0.0033461265, 0.0037255017, 0.0017259605, 0.0059853652]
+ok
+test gpu_one_sequence_matches_the_cpu_reference ... f16/f16 on GPU:
+position 0: top-5 max |delta| 7.1468353e-3 at token 106 (4.48e-4 of largest 15.960354), bound 7.980177e-2, top-1 equal true
+position 1: top-5 max |delta| 7.505417e-3 at token 171 (4.73e-4 of largest 15.872925), bound 7.936462e-2, top-1 equal true
+position 2: top-5 max |delta| 1.2325287e-2 at token 110 (6.55e-4 of largest 18.804249), bound 9.402124e-2, top-1 equal true
+position 3: top-5 max |delta| 7.843971e-3 at token 98 (4.57e-4 of largest 17.16227), bound 8.581135e-2, top-1 equal true
+position 4: top-5 max |delta| 6.134033e-3 at token 47 (3.32e-4 of largest 18.44886), bound 9.22443e-2, top-1 equal true
+position 5: top-5 max |delta| 5.6209564e-3 at token 198 (3.10e-4 of largest 18.116184), bound 9.058092e-2, top-1 equal true
+f16/f16 on GPU: max |delta| over the top-5 logits: 1.2325287e-2
+q8_0/q8_0 on GPU:
+position 0: top-5 max |delta| 5.4302216e-3 at token 106 (3.40e-4 of largest 15.964979), bound 7.9824895e-2, top-1 equal true
+position 1: top-5 max |delta| 4.149151e-2 at token 154 (2.61e-3 of largest 15.887011), bound 7.943505e-2, top-1 equal true
+position 2: top-5 max |delta| 5.668068e-2 at token 110 (3.01e-3 of largest 18.840734), bound 9.420367e-2, top-1 equal true
+position 3: top-5 max |delta| 4.6761513e-2 at token 48 (2.72e-3 of largest 17.199036), bound 8.5995175e-2, top-1 equal true
+position 4: top-5 max |delta| 3.8841248e-2 at token 27 (2.11e-3 of largest 18.396112), bound 9.198056e-2, top-1 equal true
+position 5: top-5 max |delta| 6.027317e-2 at token 150 (3.31e-3 of largest 18.207895), bound 9.103947e-2, top-1 equal true
+q8_0/q8_0 on GPU: max |delta| over the top-5 logits: 6.027317e-2
+ok
+test gpu_qwen3_8b_matches_libllama ... ok
+test gpu_three_sequences_match_the_cpu_builder ... gpu batched / cpu batched: (0, 5) max |delta| 2.3648739e-2 (1.25e-3 of largest), argmax equal true
+gpu batched / cpu batched: (0, 6) max |delta| 2.0645618e-2 (1.32e-3 of largest), argmax equal true
+gpu batched / cpu batched: (0, 7) max |delta| 2.1963596e-2 (1.26e-3 of largest), argmax equal true
+gpu batched / cpu batched: (0, 8) max |delta| 2.5978088e-2 (1.38e-3 of largest), argmax equal true
+gpu batched / cpu batched: (1, 4) max |delta| 1.4655113e-2 (9.44e-4 of largest), argmax equal true
+gpu batched / cpu batched: (1, 5) max |delta| 1.1237383e-2 (5.06e-4 of largest), argmax equal true
+gpu batched / cpu batched: (1, 6) max |delta| 1.1823177e-2 (6.44e-4 of largest), argmax equal true
+gpu batched / cpu batched: (1, 7) max |delta| 1.5295327e-2 (1.01e-3 of largest), argmax equal true
+gpu batched / cpu batched: (1, 8) max |delta| 1.3950348e-2 (6.84e-4 of largest), argmax equal true
+gpu batched / cpu batched: (1, 9) max |delta| 1.856184e-2 (1.17e-3 of largest), argmax equal true
+gpu batched / cpu batched: (1, 10) max |delta| 2.4409294e-2 (1.36e-3 of largest), argmax equal true
+gpu batched / cpu batched: (2, 3) max |delta| 1.3530731e-2 (6.30e-4 of largest), argmax equal true
+gpu batched / cpu batched: (2, 4) max |delta| 1.8596172e-2 (9.91e-4 of largest), argmax equal true
+gpu batched / cpu batched: (2, 5) max |delta| 2.3287296e-2 (1.56e-3 of largest), argmax equal true
+gpu batched / cpu batched: (2, 6) max |delta| 1.8699288e-2 (7.73e-4 of largest), argmax equal true
+gpu batched / cpu batched: 15 rows, worst 1.56e-3 of largest
+three sequences on GPU: max |delta| 2.5978088e-2
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.79s
+

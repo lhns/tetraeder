@@ -1,0 +1,14 @@
+=== RUN 2026-11-16T22:55:09 gpu_smoke5.sh ===
+[22:55:09] cuda: ok
+patches: already applied
+[22:55:09] build
+[22:56:21] build rc=0/0
+[22:56:21] start mul_mat_id_skip
+[22:56:22] mul_mat_id_skip rc=0
+[22:56:22] start gpu_multi_seq
+[22:56:24] gpu_multi_seq rc=101
+[22:56:24] start gpu_dense
+[22:56:29] gpu_dense rc=0
+[22:56:29] start multi_seq_move
+[22:56:31] multi_seq_move rc=0
+GPU_SMOKE5_DONE rc=101

@@ -1,0 +1,81 @@
+{
+  "label": "repro-3-c4",
+  "base_url": "http://127.0.0.1:18080",
+  "model": "qwen3-8b",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 512,
+    "max_tokens": 128,
+    "concurrency": 4,
+    "requests": 8,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 0
+  },
+  "started": "2026-11-16T23:04:14",
+  "results": [
+    {
+      "ttft_s": 0.40017817402258515,
+      "total_s": 1.577747043222189,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 107.9123946611538,
+      "text_head": "Okay, let's see. The user provided a long string of text tha"
+    },
+    {
+      "ttft_s": 0.39524846198037267,
+      "total_s": 1.5734263029880822,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 107.87357227301077,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.39485531486570835,
+      "total_s": 1.572669583838433,
+      "completion_tokens": 128,
+      "prompt_tokens": 403,
+      "usage_from": "usage",
+      "decode_tps": 107.89816844533948,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.3947321237064898,
+      "total_s": 1.5718322186730802,
+      "completion_tokens": 128,
+      "prompt_tokens": 405,
+      "usage_from": "usage",
+      "decode_tps": 107.94422134117856,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "error": "RemoteProtocolError: peer closed connection without sending complete message body (incomplete chunked read)",
+      "total_s": 0.45436960319057107
+    },
+    {
+      "error": "RemoteProtocolError: peer closed connection without sending complete message body (incomplete chunked read)",
+      "total_s": 0.4435344720259309
+    },
+    {
+      "error": "RemoteProtocolError: peer closed connection without sending complete message body (incomplete chunked read)",
+      "total_s": 0.442956468090415
+    },
+    {
+      "error": "RemoteProtocolError: peer closed connection without sending complete message body (incomplete chunked read)",
+      "total_s": 0.4423814797773957
+    }
+  ],
+  "summary": {
+    "requests": 8,
+    "errors": 4,
+    "wall_s": 2.0322168013080955,
+    "completion_tokens": 512,
+    "prompt_tokens_median": 405.5,
+    "ttft_median_s": 0.3950518884230405,
+    "ttft_p90_s": 0.40017817402258515,
+    "decode_tps_median": 107.90528155324664,
+    "throughput_tps": 251.94162338901847
+  }
+}

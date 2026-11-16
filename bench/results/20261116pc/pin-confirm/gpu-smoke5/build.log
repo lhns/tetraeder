@@ -1,0 +1,103 @@
+ Downloading crates ...
+  Downloaded core_detect v1.0.0
+  Downloaded bit-set v0.11.1
+  Downloaded cpufeatures v0.3.1
+  Downloaded cfg_aliases v0.2.2
+  Downloaded autocfg v1.5.1
+  Downloaded bit-vec v0.10.1
+  Downloaded quick-error v1.2.3
+  Downloaded wait-timeout v0.2.1
+  Downloaded unarray v0.1.4
+  Downloaded rand_core v0.10.1
+  Downloaded toml_parser v1.1.5+spec-1.1.0
+  Downloaded rusty-fork v0.3.1
+  Downloaded toml_edit v0.25.17+spec-1.1.0
+  Downloaded num-traits v0.2.19
+  Downloaded rand v0.10.3
+  Downloaded borsh v1.8.1
+  Downloaded toml_datetime v1.1.2+spec-1.1.0
+  Downloaded tempfile v3.27.0
+  Downloaded winnow v1.0.4
+  Downloaded proptest v1.12.0
+  Downloaded fastrand v2.5.0
+  Downloaded proc-macro-crate v3.5.0
+  Downloaded rand_xorshift v0.5.0
+  Downloaded chacha20 v0.10.2
+  Downloaded borsh-derive v1.8.1
+  Downloaded rustix v1.1.6
+  Downloaded linux-raw-sys v0.12.1
+   Compiling serde_core v1.0.229
+   Compiling tokio v1.54.1
+   Compiling bitflags v2.13.2
+   Compiling opentelemetry v0.33.1
+   Compiling form_urlencoded v1.2.2
+   Compiling serde_json v1.0.154
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling rustix v1.1.6
+   Compiling autocfg v1.5.1
+   Compiling url v2.5.8
+   Compiling linux-raw-sys v0.12.1
+   Compiling io-uring v0.7.15
+   Compiling num-traits v0.2.19
+   Compiling fastrand v2.5.0
+   Compiling clap_builder v4.6.7
+   Compiling wait-timeout v0.2.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling cpufeatures v0.3.1
+   Compiling fnv v1.0.7
+   Compiling bit-vec v0.10.1
+   Compiling quick-error v1.2.3
+   Compiling chacha20 v0.10.2
+   Compiling bit-set v0.11.1
+   Compiling rand v0.10.3
+   Compiling rand_xorshift v0.5.0
+   Compiling core_detect v1.0.0
+   Compiling unarray v0.1.4
+   Compiling serde v1.0.229
+   Compiling tempfile v3.27.0
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling hyper v1.12.0
+   Compiling tower v0.5.3
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling rusty-fork v0.3.1
+   Compiling toml_edit v0.22.27
+   Compiling proptest v1.12.0
+   Compiling clap v4.6.7
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.21
+   Compiling reqwest v0.13.5
+   Compiling toml v0.8.23
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling opentelemetry-proto v0.33.1
+   Compiling opentelemetry-http v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 18.87s
+  Executable tests/gpu_dense.rs (target/release/deps/gpu_dense-6250cc83c1c3d1f0)
+  Executable tests/gpu_multi_seq.rs (target/release/deps/gpu_multi_seq-3177a9068fa12a7a)
+  Executable tests/multi_seq.rs (target/release/deps/multi_seq-29e5b5ce0c550718)
+   Compiling syn v3.0.9
+   Compiling either v1.19.0
+   Compiling libc v0.2.191
+   Compiling tracing-core v0.1.36
+   Compiling itertools v0.13.0
+   Compiling tracing v0.1.44
+   Compiling bindgen v0.72.1
+   Compiling getrandom v0.4.3
+   Compiling tempfile v3.27.0
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.21
+   Compiling thiserror v2.0.21
+   Compiling serde v1.0.229
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+    Finished `release` profile [optimized] target(s) in 52.79s
+  Executable tests/mul_mat_id_skip.rs (target/release/deps/mul_mat_id_skip-7fd63ca054983cdc)

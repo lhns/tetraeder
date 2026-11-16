@@ -1,0 +1,402 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-kvcache v0.0.0 (/root/tetraeder/crates/kvcache)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 3.41s
+     Running tests/gpu_multi_seq.rs (target/release/deps/gpu_multi_seq-3177a9068fa12a7a)
+
+running 6 tests
+test gpu_batched_matches_the_cpu_builder ... gpu against cpu, step 0, input 0: max |diff| 2.4983883e-2 (2.22e-3 of largest 11.24851), greedy equal true
+gpu against cpu, step 0, input 1: max |diff| 1.7513514e-1 (1.61e-2 of largest 10.88249), greedy equal true
+gpu against cpu, step 1, input 0: max |diff| 2.6829958e-2 (1.82e-3 of largest 14.768934), greedy equal true
+gpu against cpu, step 1, input 1: max |diff| 2.6063037e-1 (2.02e-2 of largest 12.899704), greedy equal true
+gpu against cpu, step 1, input 2: max |diff| 1.8262863e-2 (1.58e-3 of largest 11.551481), greedy equal true
+gpu against cpu, step 2, input 0: max |diff| 1.3746977e-2 (1.22e-3 of largest 11.299549), greedy equal true
+gpu against cpu, step 2, input 1: max |diff| 2.2092259e-1 (1.72e-2 of largest 12.810852), greedy equal true
+gpu against cpu, step 2, input 2: max |diff| 1.1561394e-2 (9.93e-4 of largest 11.646075), greedy equal true
+gpu against cpu, step 3, input 0: max |diff| 1.19354725e-2 (1.00e-3 of largest 11.881256), greedy equal true
+gpu against cpu, step 3, input 1: max |diff| 1.1558342e-1 (9.26e-3 of largest 12.488258), greedy equal true
+gpu against cpu, step 3, input 2: max |diff| 1.3344526e-2 (9.76e-4 of largest 13.67946), greedy equal true
+gpu against cpu, step 4, input 0: max |diff| 4.7582626e-2 (3.77e-3 of largest 12.626312), greedy equal true
+gpu against cpu, step 4, input 1: max |diff| 7.208357e-1 (6.42e-2 of largest 11.224697), greedy equal false
+gpu against cpu, step 4, input 2: max |diff| 2.1710396e-2 (2.00e-3 of largest 10.852804), greedy equal true
+gpu against cpu, step 5, input 0: max |diff| 1.0078311e-2 (7.50e-4 of largest 13.428976), greedy equal true
+gpu against cpu, step 5, input 1: max |diff| 4.7786236e-1 (5.00e-2 of largest 9.55439), greedy equal true
+gpu against cpu, step 5, input 2: max |diff| 2.6742935e-2 (2.80e-3 of largest 9.564586), greedy equal true
+gpu against cpu, step 6, input 0: max |diff| 9.37283e-3 (7.69e-4 of largest 12.191948), greedy equal true
+gpu against cpu, step 6, input 1: max |diff| 2.5166464e-1 (2.09e-2 of largest 12.031065), greedy equal true
+gpu against cpu, step 6, input 2: max |diff| 1.8099785e-2 (1.62e-3 of largest 11.1713), greedy equal true
+gpu against cpu, step 7, input 0: max |diff| 1.1535406e-2 (1.00e-3 of largest 11.495863), greedy equal true
+gpu against cpu, step 8, input 0: max |diff| 4.0447712e-2 (4.05e-3 of largest 9.982584), greedy equal true
+
+thread 'gpu_batched_matches_the_cpu_builder' (59269) panicked at crates/model/tests/common/multi_seq.rs:31:5:
+gpu against cpu, step 0, input 1: max |diff| 0.17513514 > 0.05441245 (largest logit 10.88249)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test gpu_libllama_batched_vs_split_anchor ... gpu libllama batched / libllama split: (0, 6) max |delta| 1.6306877e-2 (1.45e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 7) max |delta| 2.3250103e-2 (1.68e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 8) max |delta| 1.5356064e-2 (1.23e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 9) max |delta| 1.6548157e-2 (1.12e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 10) max |delta| 1.580429e-2 (1.08e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 11) max |delta| 1.5035629e-2 (1.35e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (0, 12) max |delta| 1.2093544e-2 (7.52e-4 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 21) max |delta| 1.8016815e-2 (1.44e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 22) max |delta| 2.0186663e-2 (1.48e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 23) max |delta| 1.365757e-2 (1.12e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 24) max |delta| 9.38797e-3 (6.79e-4 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 25) max |delta| 1.5100479e-2 (1.32e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (1, 26) max |delta| 1.4466286e-2 (1.17e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 15) max |delta| 1.958847e-2 (1.69e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 23) max |delta| 1.1719704e-2 (1.01e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 24) max |delta| 1.6357422e-2 (1.41e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 25) max |delta| 2.587223e-2 (2.11e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 26) max |delta| 1.6921997e-2 (1.24e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 27) max |delta| 1.7126083e-2 (1.30e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 28) max |delta| 1.3199806e-2 (1.13e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: (2, 29) max |delta| 1.5877247e-2 (1.43e-3 of largest), argmax equal true
+gpu libllama batched / libllama split: 22 rows, worst 2.11e-3 of largest
+gpu builder batched / builder split: (0, 6) max |delta| 1.6306877e-2 (1.45e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 7) max |delta| 2.3250103e-2 (1.68e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 8) max |delta| 1.5356064e-2 (1.23e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 9) max |delta| 1.6548157e-2 (1.12e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 10) max |delta| 1.580429e-2 (1.08e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 11) max |delta| 1.5035629e-2 (1.35e-3 of largest), argmax equal true
+gpu builder batched / builder split: (0, 12) max |delta| 1.2093544e-2 (7.52e-4 of largest), argmax equal true
+gpu builder batched / builder split: (1, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / builder split: (1, 21) max |delta| 1.8016815e-2 (1.44e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 22) max |delta| 2.0186663e-2 (1.48e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 23) max |delta| 1.365757e-2 (1.12e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 24) max |delta| 9.38797e-3 (6.79e-4 of largest), argmax equal true
+gpu builder batched / builder split: (1, 25) max |delta| 1.5100479e-2 (1.32e-3 of largest), argmax equal true
+gpu builder batched / builder split: (1, 26) max |delta| 1.4466286e-2 (1.17e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 15) max |delta| 1.958847e-2 (1.69e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 23) max |delta| 1.1719704e-2 (1.01e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 24) max |delta| 1.6357422e-2 (1.41e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 25) max |delta| 2.587223e-2 (2.11e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 26) max |delta| 1.6921997e-2 (1.24e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 27) max |delta| 1.7126083e-2 (1.30e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 28) max |delta| 1.3199806e-2 (1.13e-3 of largest), argmax equal true
+gpu builder batched / builder split: (2, 29) max |delta| 1.5877247e-2 (1.43e-3 of largest), argmax equal true
+gpu builder batched / builder split: 22 rows, worst 2.11e-3 of largest
+gpu builder batched / libllama batched: (0, 6) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (0, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (1, 26) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 26) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 27) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 28) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: (2, 29) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder batched / libllama batched: 22 rows, worst 0.00e0 of largest
+gpu builder split / libllama split: (0, 6) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (0, 7) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (0, 8) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (0, 9) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (0, 10) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (0, 11) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (0, 12) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (1, 26) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 26) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 27) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 28) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: (2, 29) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+gpu builder split / libllama split: 22 rows, worst 0.00e0 of largest
+gpu libllama batched / libllama on the cpu: (0, 6) max |delta| 2.4983883e-2 (2.22e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 7) max |delta| 1.7290592e-2 (1.25e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 8) max |delta| 1.7014027e-2 (1.36e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 9) max |delta| 1.640439e-2 (1.11e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 10) max |delta| 1.3427258e-2 (9.17e-4 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 11) max |delta| 1.0189056e-2 (9.17e-4 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (0, 12) max |delta| 1.3573647e-2 (8.44e-4 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 20) max |delta| 1.7513514e-1 (1.61e-2 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 21) max |delta| 3.764298e-1 (2.98e-2 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 22) max |delta| 2.7321434e-1 (1.99e-2 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 23) max |delta| 1.9955397e-1 (1.63e-2 of largest), argmax equal false
+gpu libllama batched / libllama on the cpu: (1, 23) argmax 81 against 108: reference margin 3.8746834e-2 (3.16e-3 of largest), other margin 8.63266e-2
+gpu libllama batched / libllama on the cpu: (1, 24) max |delta| 9.6815825e-2 (7.02e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 25) max |delta| 1.198287e-1 (1.05e-2 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (1, 26) max |delta| 2.766466e-1 (2.22e-2 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 15) max |delta| 1.8262863e-2 (1.58e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 23) max |delta| 1.1561394e-2 (9.93e-4 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 24) max |delta| 1.8271327e-2 (1.57e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 25) max |delta| 2.6661515e-2 (2.17e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 26) max |delta| 1.7213345e-2 (1.27e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 27) max |delta| 2.6563644e-2 (2.02e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 28) max |delta| 1.6478539e-2 (1.41e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: (2, 29) max |delta| 1.7822266e-2 (1.60e-3 of largest), argmax equal true
+gpu libllama batched / libllama on the cpu: 22 rows, worst 2.98e-2 of largest
+gpu libllama batched / libllama split: worst 2.11e-3 of the largest logit
+gpu builder batched / builder split: worst 2.11e-3 of the largest logit
+gpu builder batched / libllama batched: worst 0.00e0 of the largest logit
+gpu builder split / libllama split: worst 0.00e0 of the largest logit
+gpu libllama batched / libllama on the cpu: worst 2.98e-2 of the largest logit
+gpu anchor worst (of largest logit): [0.0021069762, 0.0021069762, 0.0, 0.0, 0.029795768]
+ok
+test gpu_resident_batched_equals_alone ... gpu resident: step 0, sequence 0, 7 tokens: max |diff| 1.6306877e-2 (1.45e-3 of largest 11.243832), greedy equal true
+gpu resident: step 0, sequence 1, 21 tokens: max |diff| 0e0 (0.00e0 of largest 10.789263), greedy equal true
+gpu resident: step 1, sequence 0, 8 tokens: max |diff| 2.2770882e-2 (1.54e-3 of largest 14.77585), greedy equal true
+gpu resident: step 1, sequence 1, 22 tokens: max |diff| 1.0372162e-2 (8.02e-4 of largest 12.930838), greedy equal true
+gpu resident: step 2, sequence 0, 9 tokens: max |diff| 1.365757e-2 (1.21e-3 of largest 11.301161), greedy equal true
+gpu resident: step 2, sequence 1, 23 tokens: max |diff| 1.8627167e-2 (1.46e-3 of largest 12.7582035), greedy equal true
+gpu resident: step 2, sequence 2, 24 tokens: max |diff| 1.8614769e-2 (1.60e-3 of largest 11.663984), greedy equal true
+gpu resident: step 3, sequence 0, 10 tokens: max |diff| 1.6334534e-2 (1.37e-3 of largest 11.882194), greedy equal true
+gpu resident: step 3, sequence 1, 24 tokens: max |diff| 7.862091e-3 (6.29e-4 of largest 12.507135), greedy equal true
+gpu resident: step 3, sequence 2, 25 tokens: max |diff| 2.465415e-2 (1.80e-3 of largest 13.705023), greedy equal true
+gpu resident: step 4, sequence 0, 11 tokens: max |diff| 1.5268326e-2 (1.21e-3 of largest 12.616733), greedy equal true
+gpu resident: step 4, sequence 1, 25 tokens: max |diff| 1.753378e-2 (1.55e-3 of largest 11.315878), greedy equal true
+gpu resident: step 4, sequence 2, 26 tokens: max |diff| 9.284973e-3 (8.55e-4 of largest 10.861715), greedy equal true
+gpu resident: step 5, sequence 0, 12 tokens: max |diff| 1.7722368e-2 (1.32e-3 of largest 13.419743), greedy equal true
+gpu resident: step 5, sequence 1, 26 tokens: max |diff| 1.5995026e-2 (1.33e-3 of largest 12.062683), greedy equal true
+gpu resident: step 5, sequence 2, 27 tokens: max |diff| 1.9563675e-2 (2.05e-3 of largest 9.565809), greedy equal true
+gpu resident: step 6, sequence 0, 13 tokens: max |diff| 1.8802881e-2 (1.54e-3 of largest 12.184097), greedy equal true
+gpu resident: step 6, sequence 1, 27 tokens: max |diff| 1.4708042e-2 (1.05e-3 of largest 14.047941), greedy equal true
+gpu resident: step 6, sequence 2, 28 tokens: max |diff| 7.560611e-3 (6.77e-4 of largest 11.166023), greedy equal true
+gpu resident: step 7, sequence 2, 29 tokens: max |diff| 9.403229e-3 (8.19e-4 of largest 11.486031), greedy equal true
+gpu resident: step 8, sequence 2, 30 tokens: max |diff| 2.2484899e-2 (2.25e-3 of largest 9.984651), greedy equal true
+ok
+test gpu_seq_cp_snapshot_and_move ... gpu: copy continues: max |diff| 1.0356903e-2 (9.11e-4 of largest 11.363792), greedy equal true
+gpu: source continues: max |diff| 1.0356903e-2 (9.11e-4 of largest 11.363792), greedy equal true
+gpu: prefix copy: max |diff| 0e0 (0.00e0 of largest 11.363792), greedy equal true
+gpu: step 0, alone: max |diff| 0e0 (0.00e0 of largest 11.933032), greedy equal true
+gpu: step 1, alone: max |diff| 0e0 (0.00e0 of largest 10.653019), greedy equal true
+gpu: step 2, alone: max |diff| 0e0 (0.00e0 of largest 12.466684), greedy equal true
+gpu: step 3, alone: max |diff| 0e0 (0.00e0 of largest 10.626389), greedy equal true
+gpu: step 4, alone: max |diff| 0e0 (0.00e0 of largest 9.791487), greedy equal true
+gpu: step 5, alone: max |diff| 0e0 (0.00e0 of largest 11.853268), greedy equal true
+gpu: step 6, alone: max |diff| 0e0 (0.00e0 of largest 11.2209), greedy equal true
+gpu: step 7, alone: max |diff| 0e0 (0.00e0 of largest 13.193005), greedy equal true
+gpu: step 8, alone: max |diff| 0e0 (0.00e0 of largest 11.665221), greedy equal true
+gpu: step 9, alone: max |diff| 0e0 (0.00e0 of largest 10.598209), greedy equal true
+gpu: step 10, alone: max |diff| 0e0 (0.00e0 of largest 13.001899), greedy equal true
+gpu: step 11, alone: max |diff| 0e0 (0.00e0 of largest 9.7337), greedy equal true
+gpu: step 12, alone: max |diff| 0e0 (0.00e0 of largest 12.64706), greedy equal true
+gpu: step 13, alone: max |diff| 0e0 (0.00e0 of largest 16.566849), greedy equal true
+gpu: step 14, alone: max |diff| 0e0 (0.00e0 of largest 10.896226), greedy equal true
+gpu: step 15, alone: max |diff| 0e0 (0.00e0 of largest 9.976191), greedy equal true
+gpu: step 16, alone: max |diff| 0e0 (0.00e0 of largest 11.363876), greedy equal true
+gpu: step 17, alone: max |diff| 0e0 (0.00e0 of largest 16.660973), greedy equal true
+gpu: step 18, alone: max |diff| 0e0 (0.00e0 of largest 13.534434), greedy equal true
+gpu: step 19, alone: max |diff| 0e0 (0.00e0 of largest 12.839367), greedy equal true
+gpu: step 20, alone: max |diff| 0e0 (0.00e0 of largest 12.646436), greedy equal true
+gpu: step 21, alone: max |diff| 0e0 (0.00e0 of largest 11.128075), greedy equal true
+gpu: step 22, alone: max |diff| 0e0 (0.00e0 of largest 11.731115), greedy equal true
+gpu: step 23, alone: max |diff| 0e0 (0.00e0 of largest 13.964008), greedy equal true
+gpu: step 24, alone: max |diff| 0e0 (0.00e0 of largest 11.657553), greedy equal true
+gpu: step 25, alone: max |diff| 0e0 (0.00e0 of largest 10.334488), greedy equal true
+gpu: step 26, alone: max |diff| 0e0 (0.00e0 of largest 11.905464), greedy equal true
+gpu: step 27, alone: max |diff| 0e0 (0.00e0 of largest 10.198353), greedy equal true
+gpu: step 28, alone: max |diff| 0e0 (0.00e0 of largest 13.087671), greedy equal true
+gpu: step 29, alone: max |diff| 0e0 (0.00e0 of largest 13.899473), greedy equal true
+gpu: step 30, alone: max |diff| 0e0 (0.00e0 of largest 13.660589), greedy equal true
+gpu: step 31, alone: max |diff| 0e0 (0.00e0 of largest 12.892874), greedy equal true
+gpu: step 32, alone: max |diff| 0e0 (0.00e0 of largest 12.541808), greedy equal true
+gpu: step 33, alone: max |diff| 0e0 (0.00e0 of largest 12.433046), greedy equal true
+gpu: step 34, alone: max |diff| 0e0 (0.00e0 of largest 10.973206), greedy equal true
+gpu: step 35, alone: max |diff| 0e0 (0.00e0 of largest 12.205667), greedy equal true
+gpu: step 36, alone: max |diff| 0e0 (0.00e0 of largest 14.294555), greedy equal true
+gpu: step 37, alone: max |diff| 0e0 (0.00e0 of largest 9.857941), greedy equal true
+gpu: step 38, alone: max |diff| 0e0 (0.00e0 of largest 10.221445), greedy equal true
+gpu: step 39, alone: max |diff| 0e0 (0.00e0 of largest 10.511597), greedy equal true
+gpu: step 40, alone: max |diff| 0e0 (0.00e0 of largest 11.629104), greedy equal true
+gpu: step 41, alone: max |diff| 0e0 (0.00e0 of largest 12.600903), greedy equal true
+gpu: step 42, alone: max |diff| 0e0 (0.00e0 of largest 11.043722), greedy equal true
+gpu: step 43, alone: max |diff| 0e0 (0.00e0 of largest 11.970492), greedy equal true
+gpu: step 44, alone: max |diff| 0e0 (0.00e0 of largest 11.013952), greedy equal true
+gpu: step 45, alone: max |diff| 0e0 (0.00e0 of largest 9.889126), greedy equal true
+gpu: step 46, alone: max |diff| 0e0 (0.00e0 of largest 11.009836), greedy equal true
+gpu: step 47, alone: max |diff| 0e0 (0.00e0 of largest 12.526155), greedy equal true
+gpu: step 48, alone: max |diff| 0e0 (0.00e0 of largest 11.365295), greedy equal true
+gpu: step 49, alone: max |diff| 0e0 (0.00e0 of largest 11.435419), greedy equal true
+gpu: step 50, alone: max |diff| 0e0 (0.00e0 of largest 11.853039), greedy equal true
+gpu: step 51, alone: max |diff| 0e0 (0.00e0 of largest 9.944213), greedy equal true
+gpu: step 52, alone: max |diff| 0e0 (0.00e0 of largest 12.893038), greedy equal true
+gpu: step 53, alone: max |diff| 0e0 (0.00e0 of largest 10.658667), greedy equal true
+gpu: step 54, alone: max |diff| 0e0 (0.00e0 of largest 11.011133), greedy equal true
+gpu: step 55, alone: max |diff| 0e0 (0.00e0 of largest 14.513855), greedy equal true
+gpu: step 56, moved: max |diff| 0e0 (0.00e0 of largest 14.517549), greedy equal true
+gpu: step 57, moved: max |diff| 0e0 (0.00e0 of largest 10.726598), greedy equal true
+gpu: step 58, moved: max |diff| 0e0 (0.00e0 of largest 10.818396), greedy equal true
+gpu: step 59, moved: max |diff| 0e0 (0.00e0 of largest 11.500791), greedy equal true
+gpu: step 60, moved: max |diff| 0e0 (0.00e0 of largest 11.5563545), greedy equal true
+gpu: step 61, moved: max |diff| 0e0 (0.00e0 of largest 11.667041), greedy equal true
+gpu: step 62, moved: max |diff| 0e0 (0.00e0 of largest 10.538025), greedy equal true
+gpu: step 63, moved: max |diff| 0e0 (0.00e0 of largest 12.010056), greedy equal true
+gpu: step 64, moved: max |diff| 0e0 (0.00e0 of largest 11.0009), greedy equal true
+gpu: step 65, moved: max |diff| 0e0 (0.00e0 of largest 10.728865), greedy equal true
+gpu: step 66, moved: max |diff| 0e0 (0.00e0 of largest 10.279367), greedy equal true
+gpu: step 67, moved: max |diff| 0e0 (0.00e0 of largest 12.68482), greedy equal true
+gpu: step 68, moved: max |diff| 0e0 (0.00e0 of largest 15.667648), greedy equal true
+gpu: step 69, moved: max |diff| 0e0 (0.00e0 of largest 12.0218315), greedy equal true
+gpu: step 70, moved: max |diff| 0e0 (0.00e0 of largest 13.108177), greedy equal true
+gpu: step 71, moved: max |diff| 0e0 (0.00e0 of largest 9.712358), greedy equal true
+gpu: step 72, moved: max |diff| 0e0 (0.00e0 of largest 13.445871), greedy equal true
+gpu: step 73, moved: max |diff| 0e0 (0.00e0 of largest 12.4109), greedy equal true
+gpu: step 74, moved: max |diff| 0e0 (0.00e0 of largest 10.766192), greedy equal true
+gpu: step 75, moved: max |diff| 0e0 (0.00e0 of largest 11.290309), greedy equal true
+gpu: step 76, moved: max |diff| 0e0 (0.00e0 of largest 11.022037), greedy equal true
+gpu: step 77, moved: max |diff| 0e0 (0.00e0 of largest 10.944934), greedy equal true
+gpu: step 78, moved: max |diff| 0e0 (0.00e0 of largest 11.415583), greedy equal true
+gpu: step 79, moved: max |diff| 0e0 (0.00e0 of largest 15.458483), greedy equal true
+gpu q8_0 kv: step 0, alone: max |diff| 0e0 (0.00e0 of largest 32.17411), greedy equal true
+gpu q8_0 kv: step 1, alone: max |diff| 0e0 (0.00e0 of largest 26.862564), greedy equal true
+gpu q8_0 kv: step 2, alone: max |diff| 0e0 (0.00e0 of largest 24.987038), greedy equal true
+gpu q8_0 kv: step 3, alone: max |diff| 0e0 (0.00e0 of largest 22.290657), greedy equal true
+gpu q8_0 kv: step 4, alone: max |diff| 0e0 (0.00e0 of largest 23.932377), greedy equal true
+gpu q8_0 kv: step 5, alone: max |diff| 0e0 (0.00e0 of largest 23.938812), greedy equal true
+gpu q8_0 kv: step 6, alone: max |diff| 0e0 (0.00e0 of largest 26.352314), greedy equal true
+gpu q8_0 kv: step 7, alone: max |diff| 0e0 (0.00e0 of largest 21.720001), greedy equal true
+gpu q8_0 kv: step 8, alone: max |diff| 0e0 (0.00e0 of largest 21.895052), greedy equal true
+gpu q8_0 kv: step 9, alone: max |diff| 0e0 (0.00e0 of largest 26.03527), greedy equal true
+gpu q8_0 kv: step 10, alone: max |diff| 0e0 (0.00e0 of largest 27.438435), greedy equal true
+gpu q8_0 kv: step 11, alone: max |diff| 0e0 (0.00e0 of largest 23.560509), greedy equal true
+gpu q8_0 kv: step 12, alone: max |diff| 0e0 (0.00e0 of largest 23.318817), greedy equal true
+gpu q8_0 kv: step 13, alone: max |diff| 0e0 (0.00e0 of largest 23.555191), greedy equal true
+gpu q8_0 kv: step 14, alone: max |diff| 0e0 (0.00e0 of largest 25.26223), greedy equal true
+gpu q8_0 kv: step 15, alone: max |diff| 0e0 (0.00e0 of largest 22.69859), greedy equal true
+gpu q8_0 kv: step 16, alone: max |diff| 0e0 (0.00e0 of largest 25.121635), greedy equal true
+gpu q8_0 kv: step 17, alone: max |diff| 0e0 (0.00e0 of largest 23.024364), greedy equal true
+gpu q8_0 kv: step 18, alone: max |diff| 0e0 (0.00e0 of largest 23.521029), greedy equal true
+gpu q8_0 kv: step 19, alone: max |diff| 0e0 (0.00e0 of largest 24.727667), greedy equal true
+gpu q8_0 kv: step 20, alone: max |diff| 0e0 (0.00e0 of largest 26.275665), greedy equal true
+gpu q8_0 kv: step 21, alone: max |diff| 0e0 (0.00e0 of largest 27.604952), greedy equal true
+gpu q8_0 kv: step 22, alone: max |diff| 0e0 (0.00e0 of largest 28.842316), greedy equal true
+gpu q8_0 kv: step 23, alone: max |diff| 0e0 (0.00e0 of largest 24.554193), greedy equal true
+gpu q8_0 kv: step 24, alone: max |diff| 0e0 (0.00e0 of largest 28.809782), greedy equal true
+gpu q8_0 kv: step 25, alone: max |diff| 0e0 (0.00e0 of largest 28.42334), greedy equal true
+gpu q8_0 kv: step 26, alone: max |diff| 0e0 (0.00e0 of largest 38.934177), greedy equal true
+gpu q8_0 kv: step 27, alone: max |diff| 0e0 (0.00e0 of largest 23.16373), greedy equal true
+gpu q8_0 kv: step 28, alone: max |diff| 0e0 (0.00e0 of largest 20.182861), greedy equal true
+gpu q8_0 kv: step 29, alone: max |diff| 0e0 (0.00e0 of largest 22.718578), greedy equal true
+gpu q8_0 kv: step 30, alone: max |diff| 0e0 (0.00e0 of largest 24.96649), greedy equal true
+gpu q8_0 kv: step 31, alone: max |diff| 0e0 (0.00e0 of largest 22.35651), greedy equal true
+gpu q8_0 kv: step 32, alone: max |diff| 0e0 (0.00e0 of largest 22.388468), greedy equal true
+gpu q8_0 kv: step 33, alone: max |diff| 0e0 (0.00e0 of largest 21.480951), greedy equal true
+gpu q8_0 kv: step 34, alone: max |diff| 0e0 (0.00e0 of largest 25.794373), greedy equal true
+gpu q8_0 kv: step 35, alone: max |diff| 0e0 (0.00e0 of largest 25.663221), greedy equal true
+gpu q8_0 kv: step 36, alone: max |diff| 0e0 (0.00e0 of largest 19.128216), greedy equal true
+gpu q8_0 kv: step 37, alone: max |diff| 0e0 (0.00e0 of largest 25.785942), greedy equal true
+gpu q8_0 kv: step 38, alone: max |diff| 0e0 (0.00e0 of largest 22.43998), greedy equal true
+gpu q8_0 kv: step 39, alone: max |diff| 0e0 (0.00e0 of largest 21.860426), greedy equal true
+gpu q8_0 kv: step 40, alone: max |diff| 0e0 (0.00e0 of largest 28.73922), greedy equal true
+gpu q8_0 kv: step 41, alone: max |diff| 0e0 (0.00e0 of largest 39.16552), greedy equal true
+gpu q8_0 kv: step 42, alone: max |diff| 0e0 (0.00e0 of largest 26.564117), greedy equal true
+gpu q8_0 kv: step 43, alone: max |diff| 0e0 (0.00e0 of largest 22.838776), greedy equal true
+gpu q8_0 kv: step 44, alone: max |diff| 0e0 (0.00e0 of largest 24.211477), greedy equal true
+gpu q8_0 kv: step 45, alone: max |diff| 0e0 (0.00e0 of largest 20.835564), greedy equal true
+gpu q8_0 kv: step 46, alone: max |diff| 0e0 (0.00e0 of largest 23.77051), greedy equal true
+gpu q8_0 kv: step 47, alone: max |diff| 0e0 (0.00e0 of largest 22.311304), greedy equal true
+gpu q8_0 kv: step 48, alone: max |diff| 0e0 (0.00e0 of largest 26.327911), greedy equal true
+gpu q8_0 kv: step 49, alone: max |diff| 0e0 (0.00e0 of largest 21.01751), greedy equal true
+gpu q8_0 kv: step 50, alone: max |diff| 0e0 (0.00e0 of largest 22.76307), greedy equal true
+gpu q8_0 kv: step 51, alone: max |diff| 0e0 (0.00e0 of largest 22.21299), greedy equal true
+gpu q8_0 kv: step 52, alone: max |diff| 0e0 (0.00e0 of largest 24.94305), greedy equal true
+gpu q8_0 kv: step 53, alone: max |diff| 0e0 (0.00e0 of largest 25.32095), greedy equal true
+gpu q8_0 kv: step 54, alone: max |diff| 0e0 (0.00e0 of largest 22.365168), greedy equal true
+gpu q8_0 kv: step 55, alone: max |diff| 0e0 (0.00e0 of largest 27.517056), greedy equal true
+gpu q8_0 kv: step 56, moved: max |diff| 0e0 (0.00e0 of largest 29.669716), greedy equal true
+gpu q8_0 kv: step 57, moved: max |diff| 0e0 (0.00e0 of largest 30.241024), greedy equal true
+gpu q8_0 kv: step 58, moved: max |diff| 0e0 (0.00e0 of largest 20.630928), greedy equal true
+gpu q8_0 kv: step 59, moved: max |diff| 0e0 (0.00e0 of largest 22.125324), greedy equal true
+gpu q8_0 kv: step 60, moved: max |diff| 0e0 (0.00e0 of largest 27.00905), greedy equal true
+gpu q8_0 kv: step 61, moved: max |diff| 0e0 (0.00e0 of largest 24.266197), greedy equal true
+gpu q8_0 kv: step 62, moved: max |diff| 0e0 (0.00e0 of largest 24.266113), greedy equal true
+gpu q8_0 kv: step 63, moved: max |diff| 0e0 (0.00e0 of largest 23.557465), greedy equal true
+gpu q8_0 kv: step 64, moved: max |diff| 0e0 (0.00e0 of largest 25.56416), greedy equal true
+gpu q8_0 kv: step 65, moved: max |diff| 0e0 (0.00e0 of largest 21.56976), greedy equal true
+gpu q8_0 kv: step 66, moved: max |diff| 0e0 (0.00e0 of largest 28.169252), greedy equal true
+gpu q8_0 kv: step 67, moved: max |diff| 0e0 (0.00e0 of largest 25.567688), greedy equal true
+gpu q8_0 kv: step 68, moved: max |diff| 0e0 (0.00e0 of largest 25.152048), greedy equal true
+gpu q8_0 kv: step 69, moved: max |diff| 0e0 (0.00e0 of largest 22.787045), greedy equal true
+gpu q8_0 kv: step 70, moved: max |diff| 0e0 (0.00e0 of largest 27.214794), greedy equal true
+gpu q8_0 kv: step 71, moved: max |diff| 0e0 (0.00e0 of largest 23.883858), greedy equal true
+gpu q8_0 kv: step 72, moved: max |diff| 0e0 (0.00e0 of largest 25.44388), greedy equal true
+gpu q8_0 kv: step 73, moved: max |diff| 0e0 (0.00e0 of largest 28.448204), greedy equal true
+gpu q8_0 kv: step 74, moved: max |diff| 0e0 (0.00e0 of largest 28.641605), greedy equal true
+gpu q8_0 kv: step 75, moved: max |diff| 0e0 (0.00e0 of largest 23.9111), greedy equal true
+gpu q8_0 kv: step 76, moved: max |diff| 0e0 (0.00e0 of largest 23.45166), greedy equal true
+gpu q8_0 kv: step 77, moved: max |diff| 0e0 (0.00e0 of largest 34.624256), greedy equal true
+gpu q8_0 kv: step 78, moved: max |diff| 0e0 (0.00e0 of largest 22.27213), greedy equal true
+gpu q8_0 kv: step 79, moved: max |diff| 0e0 (0.00e0 of largest 24.768797), greedy equal true
+ok
+test gpu_streamed_cpu_miss_batched_equals_alone ... gpu cpu miss: step 0, sequence 0, 7 tokens: max |diff| 4.689789e-2 (4.17e-3 of largest 11.249918), greedy equal true
+gpu cpu miss: step 0, sequence 1, 21 tokens: max |diff| 0e0 (0.00e0 of largest 10.789261), greedy equal true
+gpu cpu miss: step 1, sequence 0, 8 tokens: max |diff| 1.9877434e-2 (1.35e-3 of largest 14.774333), greedy equal true
+gpu cpu miss: step 1, sequence 1, 22 tokens: max |diff| 8.449554e-3 (6.53e-4 of largest 12.930048), greedy equal true
+gpu cpu miss: step 2, sequence 0, 9 tokens: max |diff| 1.2866974e-2 (1.14e-3 of largest 11.299253), greedy equal true
+gpu cpu miss: step 2, sequence 1, 23 tokens: max |diff| 1.0108948e-2 (7.92e-4 of largest 12.760942), greedy equal true
+gpu cpu miss: step 2, sequence 2, 24 tokens: max |diff| 1.626587e-2 (1.39e-3 of largest 11.660707), greedy equal true
+gpu cpu miss: step 3, sequence 0, 10 tokens: max |diff| 1.0509491e-2 (8.84e-4 of largest 11.8833065), greedy equal true
+gpu cpu miss: step 3, sequence 1, 24 tokens: max |diff| 7.0972443e-3 (5.67e-4 of largest 12.506739), greedy equal true
+gpu cpu miss: step 3, sequence 2, 25 tokens: max |diff| 1.394701e-2 (1.02e-3 of largest 13.680513), greedy equal true
+gpu cpu miss: step 4, sequence 0, 11 tokens: max |diff| 1.9403458e-2 (1.54e-3 of largest 12.617888), greedy equal true
+gpu cpu miss: step 4, sequence 1, 25 tokens: max |diff| 1.22048855e-2 (1.08e-3 of largest 11.314947), greedy equal true
+gpu cpu miss: step 4, sequence 2, 26 tokens: max |diff| 1.0024548e-2 (9.23e-4 of largest 10.857769), greedy equal true
+gpu cpu miss: step 5, sequence 0, 12 tokens: max |diff| 1.4961243e-2 (1.11e-3 of largest 13.418582), greedy equal true
+gpu cpu miss: step 5, sequence 1, 26 tokens: max |diff| 1.449132e-2 (1.20e-3 of largest 12.063709), greedy equal true
+gpu cpu miss: step 5, sequence 2, 27 tokens: max |diff| 1.8875122e-2 (1.97e-3 of largest 9.564516), greedy equal true
+gpu cpu miss: step 6, sequence 0, 13 tokens: max |diff| 1.316452e-2 (1.08e-3 of largest 12.188582), greedy equal true
+gpu cpu miss: step 6, sequence 1, 27 tokens: max |diff| 1.1230469e-2 (7.99e-4 of largest 14.048668), greedy equal true
+gpu cpu miss: step 6, sequence 2, 28 tokens: max |diff| 8.918762e-3 (7.99e-4 of largest 11.168846), greedy equal true
+gpu cpu miss: step 7, sequence 2, 29 tokens: max |diff| 1.0511398e-2 (9.15e-4 of largest 11.486431), greedy equal true
+gpu cpu miss: step 8, sequence 2, 30 tokens: max |diff| 2.1365285e-2 (2.14e-3 of largest 9.98234), greedy equal true
+ok
+test gpu_streamed_upload_batched_equals_alone ... gpu upload: step 0, sequence 0, 7 tokens: max |diff| 1.734829e-2 (1.54e-3 of largest 11.243267), greedy equal true
+gpu upload: step 0, sequence 1, 21 tokens: max |diff| 4.8217773e-3 (4.47e-4 of largest 10.7905445), greedy equal true
+gpu upload: step 1, sequence 0, 8 tokens: max |diff| 2.0515442e-2 (1.39e-3 of largest 14.777629), greedy equal true
+gpu upload: step 1, sequence 1, 22 tokens: max |diff| 7.79891e-3 (6.03e-4 of largest 12.932472), greedy equal true
+gpu upload: step 2, sequence 0, 9 tokens: max |diff| 1.7356873e-2 (1.54e-3 of largest 11.302301), greedy equal true
+gpu upload: step 2, sequence 1, 23 tokens: max |diff| 1.5487671e-2 (1.21e-3 of largest 12.756121), greedy equal true
+gpu upload: step 2, sequence 2, 24 tokens: max |diff| 2.1874428e-2 (1.88e-3 of largest 11.663097), greedy equal true
+gpu upload: step 3, sequence 0, 10 tokens: max |diff| 1.5117645e-2 (1.27e-3 of largest 11.879423), greedy equal true
+gpu upload: step 3, sequence 1, 24 tokens: max |diff| 8.490562e-3 (6.79e-4 of largest 12.508628), greedy equal true
+gpu upload: step 3, sequence 2, 25 tokens: max |diff| 1.9532561e-2 (1.43e-3 of largest 13.696516), greedy equal true
+gpu upload: step 4, sequence 0, 11 tokens: max |diff| 1.9702911e-2 (1.56e-3 of largest 12.615558), greedy equal true
+gpu upload: step 4, sequence 1, 25 tokens: max |diff| 1.162529e-2 (1.03e-3 of largest 11.314301), greedy equal true
+gpu upload: step 4, sequence 2, 26 tokens: max |diff| 1.3938904e-2 (1.28e-3 of largest 10.857847), greedy equal true
+gpu upload: step 5, sequence 0, 12 tokens: max |diff| 1.1742353e-2 (8.75e-4 of largest 13.422531), greedy equal true
+gpu upload: step 5, sequence 1, 26 tokens: max |diff| 1.351738e-2 (1.12e-3 of largest 12.066166), greedy equal true
+gpu upload: step 5, sequence 2, 27 tokens: max |diff| 1.9272327e-2 (2.02e-3 of largest 9.563084), greedy equal true
+gpu upload: step 6, sequence 0, 13 tokens: max |diff| 2.1363258e-2 (1.75e-3 of largest 12.190153), greedy equal true
+gpu upload: step 6, sequence 1, 27 tokens: max |diff| 1.6630173e-2 (1.18e-3 of largest 14.046766), greedy equal true
+gpu upload: step 6, sequence 2, 28 tokens: max |diff| 7.042885e-3 (6.31e-4 of largest 11.163984), greedy equal true
+gpu upload: step 7, sequence 2, 29 tokens: max |diff| 9.780884e-3 (8.51e-4 of largest 11.488228), greedy equal true
+gpu upload: step 8, sequence 2, 30 tokens: max |diff| 2.5573254e-2 (2.56e-3 of largest 9.985596), greedy equal true
+ok
+
+failures:
+
+failures:
+    gpu_batched_matches_the_cpu_builder
+
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.99s
+
+error: test failed, to rerun pass `-p tetraeder-model --test gpu_multi_seq`
