@@ -16,6 +16,7 @@ workspace = true
 cuda = ["tetraeder-ggml-sys/cuda"]
 
 [dependencies]
+tetraeder-executor = { path = "../executor" }
 tetraeder-ggml-sys = { path = "../ggml-sys" }
 tetraeder-kvcache = { path = "../kvcache" }
 tetraeder-memory = { path = "../memory" }

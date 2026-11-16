@@ -535,6 +535,19 @@ impl MoeBackend {
         &self.model
     }
 
+    /// The builder on the executor's ranks of `topo` (ADR 0069, 0070): every expert resident,
+    /// one rank or many. `chunk` tokens per step as in [`MoeBackend::with_chunk`].
+    pub fn with_topology(
+        path: &std::path::Path,
+        topo: &tetraeder_plan::Topology,
+        opts: &tetraeder_model::LoadOptions,
+        chunk: usize,
+    ) -> Result<Self, ModelError> {
+        let model = Qwen3Moe::load_sharded(path, topo, opts)?;
+        let on_gpu = topo.ranks.iter().any(|r| r.gpu_index.is_some());
+        Ok(Self::with_chunk(model, on_gpu, chunk))
+    }
+
     fn check_seq(&self, seq: SeqId) -> Result<(), BackendError> {
         if (seq as usize) < self.model.n_seq_max() {
             Ok(())

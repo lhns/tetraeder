@@ -219,6 +219,23 @@ pub(crate) fn attention<'a>(
     st: &AttnStep<'a>,
     x: Tensor<'a>,
 ) -> Tensor<'a> {
+    ctx.add(attention_out(h, ctx, g, lw, kv, il, st, x), x)
+}
+
+/// [`attention`] without the residual: the output of `wo`, which a tensor-parallel rank holds as
+/// a partial sum (ADR 0070). `h.n_head` and `h.n_head_kv` are the rank's local head counts, and
+/// `lw` and `kv` hold its slices.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn attention_out<'a>(
+    h: &AttnHparams,
+    ctx: &'a Context,
+    g: &mut Graph<'a>,
+    lw: &'a AttnWeights,
+    kv: &'a Kv,
+    il: usize,
+    st: &AttnStep<'a>,
+    x: Tensor<'a>,
+) -> Tensor<'a> {
     let n = st.n_tokens as i64;
     let (hd, nh, nkv) = (h.head_dim as i64, h.n_head as i64, h.n_head_kv as i64);
     let rope = rope_params(h);
@@ -269,7 +286,7 @@ pub(crate) fn attention<'a>(
         Some(r) => ctx.mul_mat_hadamard(attn, r.get()),
         None => attn,
     };
-    ctx.add(ctx.mul_mat(lw.wo.get(), attn), x)
+    ctx.mul_mat(lw.wo.get(), attn)
 }
 
 /// `[n_kv, n]` F16 bits as libllama builds it (no row padding): row i is open (0.0) on columns

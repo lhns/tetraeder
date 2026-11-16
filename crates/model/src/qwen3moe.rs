@@ -25,6 +25,7 @@ use crate::cpu_poll::{self, CpuPoll};
 use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer, StreamerConfig};
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
+use crate::qwen3moe_shard::{self, Sharded};
 use crate::upload::AdmitUpload;
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, Sched, Tensor,
@@ -34,7 +35,7 @@ use tetraeder_kvcache::{Chunked, KvError, KvPool, RowCopy, StepInput, StepPlan};
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::io::IoFactory;
 use tetraeder_memory::metrics::MemoryMetrics;
-use tetraeder_plan::{Format, KvFormat, ModelDesc};
+use tetraeder_plan::{Format, KvFormat, ModelDesc, Topology};
 use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 
 use std::collections::BTreeMap;
@@ -282,6 +283,9 @@ pub struct LoadOptions {
     /// steps and at each hot-set refresh. Fewer disk reads per token on a slow disk; results are
     /// unchanged (bitwise on the CPU backend). Needs `ram_slots`.
     pub ram_policy: tetraeder_memory::RamPolicy,
+    /// Run only the first N layers plus the head (calibration anchors, ADR 0069): the logits are
+    /// meaningless, the timing is real. Only for [`Qwen3Moe::load_sharded`].
+    pub layer_limit: Option<u32>,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -316,6 +320,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("admit_upload", &self.admit_upload)
             .field("ram_hugepages", &self.ram_hugepages)
             .field("ram_policy", &self.ram_policy)
+            .field("layer_limit", &self.layer_limit)
             .finish_non_exhaustive()
     }
 }
@@ -356,6 +361,7 @@ impl LoadOptions {
             admit_upload: AdmitUpload::Sync,
             ram_hugepages: false,
             ram_policy: tetraeder_memory::RamPolicy::Lru,
+            layer_limit: None,
         }
     }
 }
@@ -373,14 +379,14 @@ fn pad(n: usize, to: usize) -> usize {
     n.div_ceil(to) * to
 }
 
-struct Layer {
-    attn: AttnWeights,
-    ffn_norm: OwnedTensor,
-    gate_inp: OwnedTensor,
+pub(crate) struct Layer {
+    pub(crate) attn: AttnWeights,
+    pub(crate) ffn_norm: OwnedTensor,
+    pub(crate) gate_inp: OwnedTensor,
     /// Stacked expert weights, or slot tensors with fewer entries when streaming.
-    gate_exps: OwnedTensor,
-    up_exps: OwnedTensor,
-    down_exps: OwnedTensor,
+    pub(crate) gate_exps: OwnedTensor,
+    pub(crate) up_exps: OwnedTensor,
+    pub(crate) down_exps: OwnedTensor,
 }
 
 impl Layer {
@@ -538,6 +544,9 @@ pub struct Qwen3Moe {
     routing: Option<Vec<RoutingStep>>,
     profile: StepProfile,
     convert: ConvertStats,
+    /// Set by [`Qwen3Moe::load_sharded`]: the weights, KV tensors and steps live on the
+    /// executor's ranks, and the fields above (scheduler, weights, KV) are placeholders.
+    shard: Option<Box<Sharded>>,
 }
 
 impl std::fmt::Debug for Qwen3Moe {
@@ -752,11 +761,111 @@ impl Qwen3Moe {
             routing: opts.record_routing.then(Vec::new),
             profile: StepProfile::default(),
             convert,
+            shard: None,
         };
         if cpu_hot && opts.routing_profile.is_some() {
             model.refresh_hot_set()?;
         }
         Ok(model)
+    }
+
+    /// Loads the model onto the ranks of `topo` and runs it on the executor (ADR 0069, 0070):
+    /// every expert resident, tensor, expert and layer parallel and tensor times pipeline. Rank
+    /// `i` of a stage reads only its slice of each tensor. Ranks without a `gpu_index` are CPU
+    /// ranks (tests). Refused, naming the option: streaming and tiers (`expert_slots` below the
+    /// expert count, `ram_slots`, the slot byte budgets), `op_offload`, `miss = cpu`, `formats`,
+    /// `record_routing`, `overlap`, `admit_share` and `routing_profile`; the streamed and CPU
+    /// expert paths stay on [`Qwen3Moe::load`].
+    pub fn load_sharded(
+        path: impl AsRef<Path>,
+        topo: &Topology,
+        opts: &LoadOptions,
+    ) -> Result<Qwen3Moe> {
+        let file = ModelFile::open(path.as_ref())?;
+        let h = file.hparams.clone();
+        qwen3moe_shard::check_options(opts, &h)?;
+        if h.n_head % h.n_head_kv != 0 || h.n_expert_used > h.n_expert || h.n_rot != h.head_dim {
+            return Err(ModelError::Invalid("unsupported hyperparameters".into()));
+        }
+        if opts.n_seq_max == 0 {
+            return Err(ModelError::Invalid("n_seq_max must be at least 1".into()));
+        }
+        let threads = opts
+            .cpu_threads
+            .or(match opts.backend {
+                BackendChoice::Cpu { threads } => threads,
+                BackendChoice::Gpu { .. } => None,
+            })
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from))
+            .max(1);
+        let kv_rows = pad(opts.n_ctx.max(1), KV_PAD);
+        let shard = Sharded::load(&file, topo, opts, threads as i32, kv_rows)?;
+
+        // Placeholders for the fields the `Sched` paths use.
+        let cpu_poll = cpu_poll::detect(opts.cpu_poll, threads);
+        let cpu = Backend::cpu(1)?;
+        let backends = vec![cpu.clone()];
+        let sched = Sched::new(&backends, SEGMENT_NODES, false)?;
+        let ph = Rc::new(Context::new(2, 0)?);
+        let weights = Weights {
+            tok_embd: ph.new_persistent(Type::F32, &[1]),
+            out_norm: ph.new_persistent(Type::F32, &[1]),
+            output: None,
+            layers: Vec::new(),
+        };
+        let kv = Kv {
+            k: Vec::new(),
+            v: Vec::new(),
+            n_rows: kv_rows,
+            fmt: opts.kv,
+            rot_k: None,
+            rot_v: None,
+        };
+        let sched_proto = (backends, SEGMENT_NODES, false);
+        Ok(Qwen3Moe {
+            file,
+            sched,
+            sched_alt: None,
+            sched_proto,
+            sched_small: None,
+            sched_cpu: None,
+            primary: cpu.clone(),
+            cpu,
+            weights_bytes: 0,
+            kv_bytes: 0,
+            weights,
+            kv,
+            steps: Vec::new(),
+            pool: KvPool::new(Box::new(Chunked::new(kv_rows))),
+            n_seq_max: opts.n_seq_max,
+            reuse_step_graph: opts.reuse_step_graph,
+            step_graphs_built: 0,
+            segments_run: 0,
+            groups_run: 0,
+            group_graphs_run: 0,
+            max_splits: 0,
+            policy: opts.miss,
+            overlap: false,
+            urgent_first: false,
+            predict_depth: 0,
+            cpu_threads: threads as i32,
+            prefetch_threads: None,
+            cpu_poll,
+            pool_pause: false,
+            pauses_reported: 0,
+            gpu: false,
+            op_offload: false,
+            op_offload_min_tokens: opts.op_offload_min_tokens,
+            hot_pending: false,
+            call_prefill: false,
+            streamer: None,
+            metrics: MemoryMetrics::new(opts.telemetry.clone()),
+            telemetry: opts.telemetry.clone(),
+            routing: None,
+            profile: StepProfile::default(),
+            convert: ConvertStats::default(),
+            shard: Some(Box::new(shard)),
+        })
     }
 
     /// What the load-time format conversion did (ADR 0047).
@@ -897,6 +1006,9 @@ impl Qwen3Moe {
     /// the compute slot tensors, the KV cache, the RAM tier and the scheduler's compute buffers.
     /// Cheap: it reads sizes and the slot tables.
     pub fn memory(&self) -> Vec<MemoryUse> {
+        if let Some(sh) = &self.shard {
+            return sh.memory();
+        }
         let tier = if self.primary.is_cpu() { "ram" } else { "vram" };
         let device = self.primary.name();
         let mut out = Vec::new();
@@ -1054,7 +1166,10 @@ impl Qwen3Moe {
     /// the pool call that returned them: the layout has already changed.
     fn apply(&mut self, copies: &[RowCopy]) -> Result<()> {
         let list: Vec<_> = copies.iter().map(|c| (c.src, c.dst, c.n)).collect();
-        copy_rows(&self.kv, &mut self.sched, &list)?;
+        match self.shard.as_mut() {
+            Some(sh) => sh.copy_rows(&list)?,
+            None => copy_rows(&self.kv, &mut self.sched, &list)?,
+        }
         if let Some(t) = &self.telemetry {
             for _ in copies {
                 t.metrics().kv_relocation();
@@ -1162,6 +1277,9 @@ impl Qwen3Moe {
 
     /// Bytes of one cached position across all layers (K and V).
     pub fn kv_row_bytes(&self) -> usize {
+        if let Some(sh) = &self.shard {
+            return sh.kv_row_bytes();
+        }
         self.kv
             .k
             .iter()
@@ -1176,6 +1294,9 @@ impl Qwen3Moe {
         self.check_seq(seq)?;
         let n = self.pool.seq_len(seq);
         let runs = self.pool.runs(seq, n);
+        if let Some(sh) = &self.shard {
+            return sh.snapshot(&runs);
+        }
         let mut out = Vec::with_capacity(n * self.kv_row_bytes());
         for t in self.kv.k.iter().chain(&self.kv.v) {
             let row = t.get().nbytes() / self.kv.n_rows;
@@ -1208,13 +1329,17 @@ impl Qwen3Moe {
             )));
         }
         let runs = self.pool.runs(seq, n);
-        let mut rest = bytes;
-        for t in self.kv.k.iter().chain(&self.kv.v) {
-            let row = t.get().nbytes() / self.kv.n_rows;
-            for &(start, len) in &runs {
-                let (head, tail) = rest.split_at(len * row);
-                t.get().set_bytes(head, start * row)?;
-                rest = tail;
+        if let Some(sh) = &self.shard {
+            sh.restore(&runs, bytes)?;
+        } else {
+            let mut rest = bytes;
+            for t in self.kv.k.iter().chain(&self.kv.v) {
+                let row = t.get().nbytes() / self.kv.n_rows;
+                for &(start, len) in &runs {
+                    let (head, tail) = rest.split_at(len * row);
+                    t.get().set_bytes(head, start * row)?;
+                    rest = tail;
+                }
             }
         }
         if n > 0 {
@@ -1403,12 +1528,37 @@ impl Qwen3Moe {
         logits: &mut Vec<f32>,
         t0: Instant,
     ) -> Result<()> {
+        if self.shard.is_some() {
+            return self.run_sharded(tokens, inputs, plan, logits, t0);
+        }
         let key = (tokens.len(), plan.n_kv, plan.outputs.len());
         let mut entry = self.take_step_state(key)?;
         let r = self.run_in(&mut entry, tokens, inputs, plan, logits, t0);
         self.steps.insert(0, entry);
         self.steps.truncate(self.step_cache_len());
         r
+    }
+
+    /// A step on the executor's ranks ([`Qwen3Moe::load_sharded`]).
+    fn run_sharded(
+        &mut self,
+        tokens: &[i32],
+        inputs: &[StepInput],
+        plan: &StepPlan,
+        logits: &mut Vec<f32>,
+        t0: Instant,
+    ) -> Result<()> {
+        let mut prof = self.profile;
+        prof.steps += 1;
+        let t = Instant::now();
+        let reuse = self.reuse_step_graph;
+        let sh = self.shard.as_mut().expect("checked by the caller");
+        sh.step(tokens, plan, reuse, logits)?;
+        self.step_graphs_built = sh.built;
+        self.segments_run += 1;
+        prof.graphs += 1;
+        prof.compute += t.elapsed();
+        self.finish_step(inputs, t0, prof, 1)
     }
 
     fn run_in(
@@ -2569,7 +2719,6 @@ fn attention_and_router<'a>(
     x: Tensor<'a>,
 ) -> (Tensor<'a>, Tensor<'a>, Tensor<'a>, Tensor<'a>) {
     let lw = &w.layers[il];
-    let n = st.n_tokens as i64;
     let step = AttnStep {
         pos: st.pos.get(),
         rows: st.rows.get(),
@@ -2578,7 +2727,19 @@ fn attention_and_router<'a>(
         n_kv: st.n_kv,
     };
     let ffn_inp = attention(&h.attn(), ctx, g, &lw.attn, kv, il, &step, x);
+    let (xn, weights, ids) = router(h, ctx, lw, ffn_inp);
+    (ffn_inp, xn, weights, ids)
+}
 
+/// The FFN norm and the router (softmax, top-k, normalized weights) of one layer for the
+/// hidden state `ffn_inp`. Returns `(normed, weights, ids)`.
+pub(crate) fn router<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    lw: &'a Layer,
+    ffn_inp: Tensor<'a>,
+) -> (Tensor<'a>, Tensor<'a>, Tensor<'a>) {
+    let n = ffn_inp.ne()[1];
     let xn = ctx.mul(ctx.rms_norm(ffn_inp, h.rms_eps), lw.ffn_norm.get());
     let (ne, nu) = (h.n_expert as i64, h.n_expert_used as i64);
     let probs = ctx.soft_max(ctx.mul_mat(lw.gate_inp.get(), xn));
@@ -2588,7 +2749,7 @@ fn attention_and_router<'a>(
     // Normalize over the selected experts; the clamp keeps the divisor representable in F16.
     let sum = ctx.clamp(ctx.sum_rows(sel), 6.103_515_6e-5, f32::INFINITY);
     let weights = ctx.reshape(ctx.div(sel, sum), &[1, nu, n]);
-    (ffn_inp, xn, weights, ids)
+    (xn, weights, ids)
 }
 
 /// Expert FFN of layer `il` for the ids in the slot's `ids_map`: `down(silu(gate) * up)`, scaled
@@ -2600,7 +2761,7 @@ fn moe_ffn<'a>(h: &Hparams, ctx: &'a Context, lw: &'a Layer, s: &'a Slot) -> Ten
 
 /// `down(silu(gate) * up)` per selected expert of the normed input `xn` `[n_embd, n]`, scaled by
 /// the router weights `w` `[1, n_used, n]`: `[n_embd, n_used, n]`.
-fn weighted_experts<'a>(
+pub(crate) fn weighted_experts<'a>(
     h: &Hparams,
     ctx: &'a Context,
     lw: &'a Layer,
@@ -2618,7 +2779,7 @@ fn weighted_experts<'a>(
 }
 
 /// Sum over the selected experts, in choice order: `[n_embd, n_used, n]` to `[n_embd, n]`.
-fn sum_experts<'a>(h: &Hparams, ctx: &'a Context, experts: Tensor<'a>) -> Tensor<'a> {
+pub(crate) fn sum_experts<'a>(h: &Hparams, ctx: &'a Context, experts: Tensor<'a>) -> Tensor<'a> {
     let n = experts.ne()[2];
     let [_, nb1, nb2, _] = experts.nb();
     let n_embd = h.n_embd as i64;

@@ -16,7 +16,7 @@ pub use backend::{
 pub use dense_backend::DenseBackend;
 pub use load::{
     Loaded, architecture, chat_template, load_dense, load_llama, load_moe, load_moe_chunked,
-    model_id,
+    load_moe_sharded, model_id,
 };
 pub use prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS};
 pub use scheduler::{
