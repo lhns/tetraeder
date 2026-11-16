@@ -110,8 +110,9 @@ jobs:
           TETRAEDER_REQUIRE_MODELS: "1"
           TETRAEDER_GGML_CPU_VARIANT: sse42
         run: |
-          cargo test -p tetraeder-engine --test golden -- --nocapture 2>&1 | tee -a test.log
-          cargo test -p tetraeder-model --test dense_golden -- --nocapture 2>&1 | tee -a test.log
+          cargo test -p tetraeder-engine --test golden -- --nocapture 2>&1 | tee -a test.log || r=1
+          cargo test -p tetraeder-model --test dense_golden -- --nocapture 2>&1 | tee -a test.log || r=1
+          exit ${r:-0}
       - name: Skipped tests
         if: always()
         shell: bash
