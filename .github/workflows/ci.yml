@@ -5,11 +5,11 @@ on:
     # Phase and track branches get CI before they have a PR.
     branches: [main, "phase*", "track-*"]
   pull_request:
-  # record_golden: only the golden-linux job runs (records the Linux golden, uploads it as an artifact).
+  # record_golden: only the golden-record jobs run (record the golden per OS, upload them as artifacts).
   workflow_dispatch:
     inputs:
       record_golden:
-        description: Record the Linux golden (only that job runs)
+        description: Record the golden per OS (only those jobs run)
         type: boolean
         default: false
 
@@ -101,7 +101,7 @@ jobs:
         run: |
           cargo test --workspace --no-fail-fast -- --nocapture --skip matches_llama_simple --skip matches_bench_golden 2>&1 | tee test.log
       # Float results differ per CPU tier (ADR 0052) and per OS, so the golden is pinned to the SSE4.2 tier and
-      # recorded per OS (bench/golden/*-sse42-<os>.json; the Linux one by the golden-linux job). Goldens for
+      # recorded per OS (bench/golden/*-sse42-<os>.json, by the golden-record jobs). Goldens for
       # more tiers are a later item (docs/testing.md).
       - name: golden (SSE4.2 tier)
         if: always()
@@ -342,28 +342,46 @@ jobs:
             "$SDE_DIR/sde64" -icx -- "$bin" --test-threads=1
           done
 
-  # Records the Linux golden (workflow_dispatch with record_golden). Float results differ per OS (libm), so
-  # the golden is per OS and CPU tier (docs/testing.md). Steps: cross-check against the Windows file (prints the
-  # logits at the first flipped token), record llama-simple and our run pinned to sse42, check the new files,
-  # upload them. Commit them from the artifact.
-  golden-linux:
-    name: record golden (ubuntu-24.04)
+  # Records the golden per OS (workflow_dispatch with record_golden). Float results differ per OS (libm,
+  # compiler), so the golden is per OS and CPU tier (docs/testing.md). Steps: cross-check against the other
+  # OS's file (prints the logits at the first flipped token), record llama-simple and our run pinned to
+  # sse42, check the new files, upload them. Commit them from the artifacts golden-linux and golden-windows.
+  golden-record:
+    name: record golden (${{ matrix.os }})
     if: ${{ inputs.record_golden }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, tag: linux, other: windows }
+          - { os: windows-latest, tag: windows, other: linux }
     env:
       TETRAEDER_GGML_CPU_VARIANT: sse42
       TETRAEDER_REQUIRE_MODELS: "1"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
           fetch-depth: 1
       - name: Patch queue
+        if: runner.os == 'Linux'
         run: bash patches/apply.sh
+      - name: Patch queue
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: patches/apply.ps1
       - name: Toolchain
         run: rustup show active-toolchain || rustup toolchain install
       - name: libclang (bindgen)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
+      - name: libclang (bindgen)
+        if: runner.os == 'Windows'
+        run: echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> "$GITHUB_ENV"
       - uses: actions/cache/restore@v4
         id: model
         with:
@@ -373,11 +391,15 @@ jobs:
         if: steps.model.outputs.cache-hit != 'true'
         run: cargo xtask fetch-model
       - name: Runner
+        if: runner.os == 'Linux'
         run: grep -m1 'model name' /proc/cpuinfo
-      - name: Cross-check against the Windows golden
+      - name: Cross-check against the other OS's golden
         continue-on-error: true
         env:
-          TETRAEDER_GOLDEN_OS: windows
+          TETRAEDER_GOLDEN_OS: ${{ matrix.other }}
+        run: cargo test -p tetraeder-engine --test golden -- --nocapture
+      - name: Cross-check against the old golden of this OS
+        continue-on-error: true
         run: cargo test -p tetraeder-engine --test golden -- --nocapture
       - name: llama-simple (sse42)
         env:
@@ -387,9 +409,11 @@ jobs:
       - name: Record
         run: cargo xtask golden
       - name: Check the new files
-        run: cargo test -p tetraeder-engine --test golden -- --nocapture
+        run: |
+          cargo test -p tetraeder-engine --test golden -- --nocapture
+          cargo test -p tetraeder-model --test dense_golden -- --nocapture
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: golden-linux
-          path: bench/golden/*-sse42-linux.json
+          name: golden-${{ matrix.tag }}
+          path: bench/golden/*-sse42-${{ matrix.tag }}.json

@@ -6,7 +6,7 @@ Everything in this repo or its builds that comes from another project: where it 
 
 | What | Source | Version | License | Update |
 |---|---|---|---|---|
-| ggml and libllama (`vendor/llama.cpp`, submodule) | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | `vendor/PIN` `tag`, `commit` | MIT | Weekly rebase job (`rebase-weekly.yml`) tries upstream master with the patch queue; bump `tag` and `commit`, rerun `patches/apply.sh`, parity tests, rebuild the box image |
+| ggml and libllama (`vendor/llama.cpp`, submodule) | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | `vendor/PIN` `tag`, `commit` | MIT | Pinned at b12426 (fc504f91d, 2026-11-15), moved from b11976 (2e0d86beb) for the c4 decode step (ADR 0073). Weekly rebase job (`rebase-weekly.yml`) tries upstream master with the patch queue. To bump: set `tag`, `commit` and `image_tag`, move the submodule, rerun `patches/apply.sh` (rebase patches that fail), re-record the goldens per OS (`ci` workflow with `record_golden`, commit both artifacts after comparing old and new values), CI on both OSes, the GPU parity suites on a box, and the box image (`box-image.yml` builds on the merge to main) |
 
 ## Patch queue (`patches/`)
 
