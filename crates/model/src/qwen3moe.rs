@@ -2693,13 +2693,33 @@ fn build_step<'a>(
     let mut g = ctx.new_graph(step_nodes(h));
     let mut x = ctx.get_rows(w.tok_embd.get(), st.tokens.get());
     let mut routed = Vec::new();
-    for il in 0..h.n_layer as usize {
-        let (ffn_inp, xn, weights, ids) = attention_and_router(h, ctx, &mut g, w, kv, st, il, x);
+    let n_layer = h.n_layer as usize;
+    for il in 0..n_layer {
+        let full = attention_block(h, ctx, &mut g, w, kv, st, il, x);
+        // libllama selects the output rows after the last layer's attention (`inp_out_ids`), so
+        // that layer's router and expert FFN run on the output rows only. CUDA's matmul kernel
+        // depends on the row count, so running all rows differs in the last bits.
+        let select = il + 1 == n_layer && st.n_out < st.n_tokens;
+        let ffn_inp = if select {
+            ctx.get_rows(full, st.outputs.get())
+        } else {
+            full
+        };
+        let (xn, weights, ids) = router(h, ctx, &w.layers[il], ffn_inp);
         // The router's nodes enter the graph before the expert FFN, consecutive as in libllama's
         // `build_moe_ffn` and in the segments, so CUDA's topk-moe fusion fires the same way.
         g.expand(weights);
         if record {
-            let r = (ctx.cont(ids).set_output(), ctx.cont(weights).set_output());
+            // The log keeps every row's routing: when rows were selected, a second router on all
+            // rows, after the real one, feeds the log only.
+            let (li, lw) = if select {
+                let (_, lw, li) = router(h, ctx, &w.layers[il], full);
+                g.expand(lw); // the router's nodes stay consecutive, as above
+                (li, lw)
+            } else {
+                (ids, weights)
+            };
+            let r = (ctx.cont(li).set_output(), ctx.cont(lw).set_output());
             g.expand(r.0);
             g.expand(r.1);
             routed.push(r);
@@ -2712,7 +2732,8 @@ fn build_step<'a>(
     (g, logits, routed)
 }
 
-/// Output norm and projection; only the positions in `st.outputs` unless every token has one.
+/// Output norm and projection; only the positions in `st.outputs` unless every token has one or
+/// `x` already holds only those rows.
 fn head<'a>(
     h: &Hparams,
     ctx: &'a Context,
@@ -2721,7 +2742,9 @@ fn head<'a>(
     x: Tensor<'a>,
 ) -> Tensor<'a> {
     let mut cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), w.out_norm.get());
-    if st.n_out < st.n_tokens {
+    // The whole-step graph already selected the rows in the last layer; `outputs` indexes the
+    // original token rows, so gathering again would read out of range.
+    if st.n_out < st.n_tokens && x.ne()[1] as usize == st.n_tokens {
         cur = ctx.get_rows(cur, st.outputs.get());
     }
     let head = w.output.as_ref().unwrap_or(&w.tok_embd);
@@ -2729,7 +2752,8 @@ fn head<'a>(
 }
 
 /// Layer `il`: attention with Q/K norm, RoPE and the KV cache, the residual, the FFN norm and the
-/// router (softmax, top-k, normalized weights). Returns `(ffn_inp, normed, weights, ids)`.
+/// router (softmax, top-k, normalized weights), all rows. Returns `(ffn_inp, normed, weights,
+/// ids)`. The segments use it; the whole-step graph selects output rows in the last layer.
 #[allow(clippy::too_many_arguments)]
 fn attention_and_router<'a>(
     h: &Hparams,
@@ -2741,6 +2765,23 @@ fn attention_and_router<'a>(
     il: usize,
     x: Tensor<'a>,
 ) -> (Tensor<'a>, Tensor<'a>, Tensor<'a>, Tensor<'a>) {
+    let ffn_inp = attention_block(h, ctx, g, w, kv, st, il, x);
+    let (xn, weights, ids) = router(h, ctx, &w.layers[il], ffn_inp);
+    (ffn_inp, xn, weights, ids)
+}
+
+/// Layer `il`'s attention with Q/K norm, RoPE, the KV cache and the residual: `ffn_inp`.
+#[allow(clippy::too_many_arguments)]
+fn attention_block<'a>(
+    h: &Hparams,
+    ctx: &'a Context,
+    g: &mut Graph<'a>,
+    w: &'a Weights,
+    kv: &'a Kv,
+    st: &'a State,
+    il: usize,
+    x: Tensor<'a>,
+) -> Tensor<'a> {
     let lw = &w.layers[il];
     let step = AttnStep {
         pos: st.pos.get(),
@@ -2749,9 +2790,7 @@ fn attention_and_router<'a>(
         n_tokens: st.n_tokens,
         n_kv: st.n_kv,
     };
-    let ffn_inp = attention(&h.attn(), ctx, g, &lw.attn, kv, il, &step, x);
-    let (xn, weights, ids) = router(h, ctx, lw, ffn_inp);
-    (ffn_inp, xn, weights, ids)
+    attention(&h.attn(), ctx, g, &lw.attn, kv, il, &step, x)
 }
 
 /// The FFN norm and the router (softmax, top-k, normalized weights) of one layer for the
@@ -3040,7 +3079,7 @@ mod graph_order {
 
     /// Every router is the topk-moe window with the links the CUDA matcher checks, and every
     /// weighted expert output is followed by its views and adds (`moe_weighted_reduction`).
-    fn assert_fusable(g: &Graph<'_>, n_layer: usize, n_used: usize, what: &str) {
+    fn assert_fusable(g: &Graph<'_>, n_layer: usize, extra: usize, n_used: usize, what: &str) {
         let n = |i: usize| g.node(i);
         let src_is = |i: usize, s: usize, t: Tensor<'_>| n(i).src(s).is_some_and(|x| x.is(t));
         let (mut routers, mut reductions) = (0, 0);
@@ -3088,7 +3127,7 @@ mod graph_order {
                 _ => {}
             }
         }
-        assert_eq!((routers, reductions), (n_layer, n_layer), "{what}");
+        assert_eq!((routers, reductions), (n_layer + extra, n_layer), "{what}");
     }
 
     /// The segments' ops in order, without the copies into the state slots.
@@ -3111,7 +3150,7 @@ mod graph_order {
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router.
                 let what = format!("segment {seg}");
-                assert_fusable(&g, 1, h.n_expert_used as usize, &what);
+                assert_fusable(&g, 1, 0, h.n_expert_used as usize, &what);
             }
             all.extend(ops(&g, to_state));
         }
@@ -3185,10 +3224,48 @@ mod graph_order {
                 let ctx = Context::new(step_nodes(&h), step_nodes(&h)).unwrap();
                 let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, record);
                 let (n_layer, n_used) = (h.n_layer as usize, h.n_expert_used as usize);
-                assert_fusable(&g, n_layer, n_used, &what);
+                // With output rows selected, a recording step has one more router, for the log.
+                let extra = usize::from(record && n_out < n);
+                assert_fusable(&g, n_layer, extra, n_used, &what);
+                if n_out < n {
+                    continue; // the last layer differs on purpose, see the next test
+                }
                 // The routing outputs are extra nodes; the rest is the segments' order.
                 let step = ops(&g, |t| t.op_name() == "CONT");
                 assert_eq!(step, segments, "{what}");
+            }
+        }
+    }
+
+    /// Like libllama's `inp_out_ids`, the last layer's router and expert FFN run on the output
+    /// rows only when there are fewer outputs than tokens; earlier layers always run all rows.
+    #[test]
+    fn last_layer_ffn_runs_on_the_output_rows_only() {
+        let m = model();
+        let h = m.file.hparams.clone();
+        let n_layer = h.n_layer as usize;
+        for (n, n_out) in [(1, 1), (5, 5), (5, 1), (5, 2)] {
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
+            let ctx = Context::new(step_nodes(&h), step_nodes(&h)).unwrap();
+            let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, false);
+            let ids: Vec<[i64; 4]> = (0..g.n_nodes())
+                .map(|i| g.node(i))
+                .filter(|t| t.op_name() == "MUL_MAT_ID")
+                .map(|t| t.ne())
+                .collect();
+            let gets = (0..g.n_nodes())
+                .filter(|&i| g.node(i).op_name() == "GET_ROWS")
+                .count();
+            // Token embedding, router selection per layer, and one output selection in all.
+            assert_eq!(
+                gets,
+                1 + n_layer + usize::from(n_out < n),
+                "n={n} out={n_out}"
+            );
+            assert_eq!(ids.len(), 3 * n_layer);
+            for (i, ne) in ids.iter().enumerate() {
+                let want = if i / 3 + 1 == n_layer { n_out } else { n } as i64;
+                assert_eq!(ne[2], want, "n={n} out={n_out}: MUL_MAT_ID {i}");
             }
         }
     }

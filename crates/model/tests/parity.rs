@@ -28,6 +28,24 @@ fn cpu_matches_libllama() {
     check_parity(BackendChoice::Cpu { threads: Some(2) }, TOL_CPU);
 }
 
+/// hardware: cpu. The last layer runs its expert FFN on the output rows only (libllama's
+/// `inp_out_ids`): the last-only prefill gives the last row of the full prefill.
+#[test]
+fn cpu_last_only_prefill_equals_last_row_of_full_prefill() {
+    let mut m = Qwen3Moe::load(
+        fixture(),
+        &LoadOptions::new(BackendChoice::Cpu { threads: Some(2) }),
+    )
+    .unwrap();
+    let nv = m.n_vocab();
+    let full = m.eval(&PROMPT).unwrap();
+    m.reset();
+    let last = m.eval_last(&PROMPT).unwrap();
+    for (a, b) in full[(PROMPT.len() - 1) * nv..].iter().zip(&last) {
+        assert!((a - b).abs() <= TOL_CPU, "{a} vs {b}");
+    }
+}
+
 /// hardware: cpu. A prompt split over several `eval` calls gives the same logits as one call:
 /// the KV cache carries over.
 #[test]
