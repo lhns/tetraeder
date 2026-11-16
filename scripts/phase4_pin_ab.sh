@@ -38,7 +38,6 @@ out="$root/bench/results/$session/pin-ab"
 mkdir -p "$out" "$(dirname "$log")"
 t_start=$(date +%s)
 threads="${THREADS:-$(bash scripts/cpu_quota.sh 8>&-)}"
-budget_s=$((${BUDGET_MIN:-90} * 60))
 models="${MODELS:-q8b q30b}"
 rounds="${ROUNDS:-2}"
 pin_old="${PIN_OLD:-d2e8696d5bfd40d84614bba42e81ae9d76e494bd}"
