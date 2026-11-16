@@ -123,6 +123,12 @@ Also: document that decode-profile `eval_s` is shared step wall time and `gpu_se
 - E1 note: no backend-to-backend `ggml_backend_tensor_copy_async` binding yet (pipeline peer copies need it; E5 adds it if needed).
 - Box sessions waiting on hardware: S1 (one GPU: patch 0004 GPU tests and timing, the E1 and E5 GPU tests), then S2 (two GPUs).
 
+### Engine pin b12426: prepared, adoption deferred until after the Phase 4 verdict (2026-11-16)
+- Branch `track-pin-b12426` (d2e8696): patches 0001 to 0003 apply unchanged; 0004 is rebased onto upstream's stream-k `tile_spec` (zeroes `tile_spec`, fills the compact-row maps, zeroes dst rows of -1 slots); no ggml-sys source change; all compile jobs green incl. CUDA.
+- Not adopted now: CPU numerics changed upstream (likely #29810, CPU flash attention V in F32): goldens shift (max 0.34 on the sse42 golden, greedy tokens change on the tiny model), the replan test and speculative near-ties follow, and on Windows batched against single-row differs by 0.315 of 31.48 (1%) in `cpu_batch_invariance_*`, real drift beyond tolerance.
+- Why defer: the Phase 4 verdict runs on CUDA, where the CPU change does not matter; the baseline is already b12426, so the verdict compares against the newest llama-server either way; the builders' CUDA parity was validated on b11976 and a pin switch would reset it.
+- To adopt after the verdict: per-OS goldens re-recorded with review, the Windows batch-invariance drift explained or fixed, one GPU session (CUDA parity on the new pin, 0004 GPU tests incl. MMQ/MMF with -1 above 16 tokens). The rebase-weekly workflow already works (failures were the fixed `apply.sh` permission).
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 
