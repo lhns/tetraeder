@@ -1,0 +1,112 @@
+{
+  "band": 0.07531306153550049,
+  "band_source": "measured rtx-3090 n=11",
+  "models": {
+    "q8b": {
+      "engine": "tetraeder-dense",
+      "counts": true,
+      "stopped": true,
+      "baseline_variant": null,
+      "baseline_kv_unified": null,
+      "aa": {
+        "c4": null,
+        "c1": null
+      },
+      "pairs": [],
+      "worst": {
+        "c4": null,
+        "c1": null
+      },
+      "pass": null,
+      "reasons": [
+        "c4 ratio 0.830 < 0.85"
+      ]
+    },
+    "q30b": {
+      "engine": "tetraeder-moe",
+      "counts": true,
+      "baseline_variant": "kvu",
+      "baseline_kv_unified": "true",
+      "aa": {
+        "c4": -0.010402645762139118,
+        "c1": -0.011380311668101828
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 0.8519398859280566,
+          "c1_decode_ratio": 1.021869179585114,
+          "clean": false,
+          "reasons": [
+            "q30b-llama-server-r1: throttle reasons before the run: 0x400",
+            "q30b-llama-server-r1: throttle reasons after the run: 0x4",
+            "q30b-tetraeder-moe-r1: throttle reasons before the run: 0x400",
+            "q30b-tetraeder-moe-r1: throttle reasons after the run: 0x4"
+          ]
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 0.8601622492331145,
+          "c1_decode_ratio": 1.0321098588841848,
+          "clean": false,
+          "reasons": [
+            "q30b-llama-server-r2: throttle reasons before the run: 0x600",
+            "q30b-llama-server-r2: throttle reasons after the run: 0x4",
+            "q30b-tetraeder-moe-r2: throttle reasons before the run: 0x600",
+            "q30b-tetraeder-moe-r2: throttle reasons after the run: 0x4"
+          ]
+        }
+      ],
+      "worst": {
+        "c4": 0.8519398859280566,
+        "c1": 1.021869179585114
+      },
+      "pass": null,
+      "reasons": [
+        "q30b-llama-server-r1: throttle reasons before the run: 0x400",
+        "q30b-llama-server-r1: throttle reasons after the run: 0x4",
+        "q30b-tetraeder-moe-r1: throttle reasons before the run: 0x400",
+        "q30b-tetraeder-moe-r1: throttle reasons after the run: 0x4",
+        "q30b-llama-server-r2: throttle reasons before the run: 0x600",
+        "q30b-llama-server-r2: throttle reasons after the run: 0x4",
+        "q30b-tetraeder-moe-r2: throttle reasons before the run: 0x600",
+        "q30b-tetraeder-moe-r2: throttle reasons after the run: 0x4"
+      ],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    }
+  },
+  "ttft": {
+    "log_sha256": null,
+    "requests": null,
+    "pairs": [
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r1: no result",
+          "replay-q8b-off-r1: no result"
+        ]
+      },
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r2: no result",
+          "replay-q8b-off-r2: no result"
+        ]
+      }
+    ],
+    "pass": null
+  },
+  "phase4_pass": null
+}

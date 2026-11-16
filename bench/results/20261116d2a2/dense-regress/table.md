@@ -1,0 +1,65 @@
+Qwen3-8B Q4_K_M, all layers on GPU, min of 3 rounds (ms per step shape); old = 030d1f3
+
+shape | engine | old | head
+--- | --- | --- | ---
+alone | dense | 86.3 | 86.9
+alone | dense_norepack | - | 87.0
+alone | llama | - | 87.5
+decode1x8_alone | dense | 58.5 | 59.8
+decode1x8_alone | dense_norepack | - | 59.2
+decode1x8_alone | llama | 58.6 | 59.4
+decode1x8_resident | dense | 62.7 | 63.4
+decode1x8_resident | dense_norepack | - | 63.4
+decode1x8_resident | llama | 61.0 | 61.8
+decode4x8 | dense | 86.5 | 86.9
+decode4x8 | dense_norepack | - | 86.8
+decode4x8 | llama | 84.8 | 85.5
+mixed1 | dense | 97.8 | 97.3
+mixed1 | dense_norepack | - | 98.0
+mixed1 | llama | 94.7 | 95.4
+mixed1_prompt_first | dense | 97.4 | 97.8
+mixed1_prompt_first | dense_norepack | - | 97.9
+mixed1_prompt_first | llama | 95.1 | 96.1
+mixed2 | dense | 98.0 | 98.1
+mixed2 | dense_norepack | - | 97.8
+mixed2 | llama | 95.2 | 95.8
+mixed2_prompt_first | dense | 97.5 | 98.3
+mixed2_prompt_first | dense_norepack | - | 97.8
+mixed2_prompt_first | llama | 95.2 | 95.9
+mixed3 | dense | 98.1 | 98.2
+mixed3 | dense_norepack | - | 98.1
+mixed3 | llama | 95.6 | 96.5
+mixed3_prompt_first | dense | 97.3 | 97.5
+mixed3_prompt_first | dense_norepack | - | 98.0
+mixed3_prompt_first | llama | 95.8 | 95.8
+resident | dense | 95.3 | 96.2
+resident | dense_norepack | - | 96.1
+resident | llama | 94.3 | 94.5
+split1 | dense | 106.9 | 107.2
+split1 | dense_norepack | - | 106.9
+split1 | llama | 104.3 | 106.0
+split2 | dense | 105.7 | 106.8
+split2 | dense_norepack | - | 106.1
+split2 | llama | 104.4 | 104.6
+split3 | dense | 107.2 | 108.0
+split3 | dense_norepack | - | 107.9
+split3 | llama | 105.6 | 106.8
+
+dense / llama ratio (min of rounds)
+
+shape | old | head | head dense_norepack
+--- | --- | --- | ---
+alone | - | 0.993 | 0.994
+decode1x8_alone | 0.998 | 1.007 | 0.997
+decode1x8_resident | 1.028 | 1.026 | 1.026
+decode4x8 | 1.020 | 1.016 | 1.015
+mixed1 | 1.033 | 1.020 | 1.027
+mixed1_prompt_first | 1.024 | 1.018 | 1.019
+mixed2 | 1.029 | 1.024 | 1.021
+mixed2_prompt_first | 1.024 | 1.025 | 1.020
+mixed3 | 1.026 | 1.018 | 1.017
+mixed3_prompt_first | 1.016 | 1.018 | 1.023
+resident | 1.011 | 1.018 | 1.017
+split1 | 1.025 | 1.011 | 1.008
+split2 | 1.012 | 1.021 | 1.014
+split3 | 1.015 | 1.011 | 1.010
