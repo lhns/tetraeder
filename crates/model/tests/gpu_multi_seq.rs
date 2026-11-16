@@ -162,7 +162,11 @@ fn gpu_batched_matches_the_cpu_builder() {
     for ((name, _, _), w) in pairs.iter().zip(&worst) {
         eprintln!("gpu {name}: worst {w:.2e} of the largest logit");
     }
-    print_routing_diff(&path, &o, &cpu, &toks, &steps);
+    // A diagnostic: its failure must not hide the assertions below.
+    let diff = || print_routing_diff(&path, &o, &cpu, &toks, &steps);
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(diff)).is_err() {
+        eprintln!("gpu routing: the routing diagnostic panicked");
+    }
 
     // libllama's own CUDA-against-CPU gap (batched, and against the CPU alone runs), widened
     // 1.5x, bounds the builder's; a builder bug shows in the strict same-backend pairs.
@@ -196,80 +200,83 @@ fn print_routing_diff(
     toks: &[Vec<i32>],
     steps: &[Step],
 ) {
-    let log = |opts: &LoadOptions| {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let o = LoadOptions {
-                record_routing: true,
-                ..opts.clone()
-            };
-            let mut m = load(path, &o, 3);
-            run_steps(&mut m, toks, steps);
-            m.take_routing_log()
-                .into_iter()
-                .filter(|r| !r.refresh)
-                .collect::<Vec<RoutingStep>>()
-        }))
-        .ok()
+    // The log of each step on its own: entries are matched by layer, on the rows of the step.
+    let log = |opts: &LoadOptions| -> Vec<Vec<RoutingStep>> {
+        let o = LoadOptions {
+            record_routing: true,
+            ..opts.clone()
+        };
+        let mut m = load(path, &o, 3);
+        (0..steps.len())
+            .map(|si| {
+                run_steps(&mut m, toks, &steps[si..=si]);
+                m.take_routing_log()
+                    .into_iter()
+                    .filter(|r| !r.refresh)
+                    .collect()
+            })
+            .collect()
     };
-    let (Some(g), Some(c)) = (log(gpu), log(cpu)) else {
-        eprintln!("gpu routing: the routing log did not run");
-        return;
+    let (g, c) = (log(gpu), log(cpu));
+    let sorted = |v: &[i32]| {
+        let mut v = v.to_vec();
+        v.sort_unstable();
+        v
     };
-    if g.len() != c.len() || g.is_empty() || g.len() % steps.len() != 0 {
-        eprintln!(
-            "gpu routing: {} cuda and {} cpu layer steps for {} steps, not compared",
-            g.len(),
-            c.len(),
-            steps.len()
-        );
-        return;
-    }
-    let per_step = g.len() / steps.len();
     let mut differ = vec![0usize; toks.len()];
     let mut first: Vec<Option<(usize, usize, usize)>> = vec![None; toks.len()];
     let mut printed = 0;
-    for (i, (x, y)) in g.iter().zip(&c).enumerate() {
-        let si = i / per_step;
+    for (si, (gs, cs)) in g.iter().zip(&c).enumerate() {
         let owners: Vec<(usize, usize)> = steps[si]
             .iter()
             .flat_map(|(k, r)| r.clone().map(move |p| (*k, p)))
             .collect();
-        if x.layer != y.layer || x.n_tokens != y.n_tokens || x.n_tokens != owners.len() {
+        let full = |r: &&RoutingStep| r.n_tokens == owners.len();
+        let layers: Vec<usize> = gs.iter().filter(full).map(|r| r.layer).collect();
+        if layers.is_empty() || layers.len() != cs.iter().filter(full).count() {
             eprintln!(
-                "gpu routing: step {si}, entry {i}: cuda layer {} with {} tokens, cpu layer {} with {}, the step has {}; stop",
-                x.layer,
-                x.n_tokens,
-                y.layer,
-                y.n_tokens,
+                "gpu routing: step {si}: {} cuda and {} cpu entries ({} and {} on all {} rows), not compared",
+                gs.len(),
+                cs.len(),
+                layers.len(),
+                cs.iter().filter(full).count(),
                 owners.len()
             );
-            return;
+            continue;
         }
-        let nu = x.ids.len() / x.n_tokens.max(1);
-        let sorted = |v: &[i32]| {
-            let mut v = v.to_vec();
-            v.sort_unstable();
-            v
-        };
-        for (t, &(k, p)) in owners.iter().enumerate() {
-            let span = t * nu..(t + 1) * nu;
-            if sorted(&x.ids[span.clone()]) == sorted(&y.ids[span.clone()]) {
+        for x in gs.iter().filter(full) {
+            let Some(y) = cs.iter().filter(full).find(|y| y.layer == x.layer) else {
+                eprintln!("gpu routing: step {si}, layer {}: no cpu entry", x.layer);
+                continue;
+            };
+            let nu = x.ids.len() / x.n_tokens.max(1);
+            let same = y.ids.len() == x.ids.len()
+                && x.weights.len() == x.ids.len()
+                && y.weights.len() == y.ids.len();
+            if nu == 0 || !same {
+                eprintln!("gpu routing: step {si}, layer {}: other layouts", x.layer);
                 continue;
             }
-            differ[k] += 1;
-            if first[k].is_none() {
-                first[k] = Some((si, x.layer, p));
-            }
-            if printed < 24 {
-                printed += 1;
-                eprintln!(
-                    "gpu routing: step {si}, layer {}, sequence {k}, position {p}: cuda {:?} weights {:?}, cpu {:?} weights {:?}",
-                    x.layer,
-                    &x.ids[span.clone()],
-                    &x.weights[span.clone()],
-                    &y.ids[span.clone()],
-                    &y.weights[span]
-                );
+            for (t, &(k, p)) in owners.iter().enumerate() {
+                let span = t * nu..(t + 1) * nu;
+                if sorted(&x.ids[span.clone()]) == sorted(&y.ids[span.clone()]) {
+                    continue;
+                }
+                differ[k] += 1;
+                if first[k].is_none() {
+                    first[k] = Some((si, x.layer, p));
+                }
+                if printed < 24 {
+                    printed += 1;
+                    eprintln!(
+                        "gpu routing: step {si}, layer {}, sequence {k}, position {p}: cuda {:?} weights {:?}, cpu {:?} weights {:?}",
+                        x.layer,
+                        &x.ids[span.clone()],
+                        &x.weights[span.clone()],
+                        &y.ids[span.clone()],
+                        &y.weights[span]
+                    );
+                }
             }
         }
     }
