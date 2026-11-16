@@ -638,6 +638,19 @@ pub fn print_script_rows(what: &str, want: &Logits, have: &Logits) -> f32 {
     let rows = script_rows(want, have);
     for (key, d, rel, same) in &rows {
         eprintln!("{what}: {key:?} max |delta| {d:e} ({rel:.2e} of largest), argmax equal {same}");
+        if !same {
+            // How near a tie the flip is: the reference's top-2 margin, and what the other run
+            // gives the reference's token against its own.
+            let (w, h) = (&want[key], &have[key]);
+            let top = top_k(w, 2);
+            let (a, b) = (top[0], argmax(h));
+            eprintln!(
+                "{what}: {key:?} argmax {a} against {b}: reference margin {:e} ({:.2e} of largest), other margin {:e}",
+                w[a] - w[top[1]],
+                (w[a] - w[top[1]]) / largest(w),
+                h[b] - h[a]
+            );
+        }
     }
     let worst = rows.iter().fold(0f32, |m, r| m.max(r.2));
     eprintln!("{what}: {} rows, worst {worst:.2e} of largest", rows.len());
