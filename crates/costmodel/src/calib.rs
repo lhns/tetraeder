@@ -62,6 +62,9 @@ impl fmt::Display for CalibError {
 impl std::error::Error for CalibError {}
 
 const LAMBDA: f64 = 1e-3;
+/// Pull of the range and step costs: residuals are small relative changes of the rates, so the
+/// usual pull would bias a parameter that explains a few percent of the step (ADR 0070).
+const LAMBDA_RANGES: f64 = 1e-9;
 const MIN_BAND: f64 = 0.05;
 
 const GPU_F: usize = 0;
@@ -396,7 +399,14 @@ pub fn fit(
             Ok(r) => r.into_iter().map(|e| e.1).collect(),
             Err(_) => vec![1e3; anchors.len() * 2],
         };
-        v.extend(x.iter().zip(&x0).map(|(a, b)| LAMBDA.sqrt() * (a - b)));
+        v.extend(x.iter().zip(&x0).enumerate().map(|(i, (a, b))| {
+            let l = if ranges_at.is_some_and(|r| i >= r) {
+                LAMBDA_RANGES
+            } else {
+                LAMBDA
+            };
+            l.sqrt() * (a - b)
+        }));
         v
     };
     let objective = |x: &[f64]| res(x).iter().map(|v| v * v).sum::<f64>();
