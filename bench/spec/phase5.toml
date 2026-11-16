@@ -1,0 +1,63 @@
+# Phase 5 verdict spec (ADR 0068): Qwen3-32B and Qwen3-30B-A3B on 2x and 4x RTX 3090 boxes.
+# Not run by `tetraeder-bench run` (that harness is single-box); scripts/phase5_box.sh reads the models, workload and
+# band from here and runs the engines itself, in rounds on one box in one session. Candidates are the plans of
+# `tetraeder-plan candidates --multi`; llama.cpp's split modes (-sm layer, row, tensor) are the gated baselines,
+# ik_llama.cpp and vLLM are reported only.
+# Band: bench/noise/<n>x-<gpu-class>.json (for example 2x-rtx-3090) when its n is at least 3, else the cuda-default below.
+
+[spec]
+name = "phase5"
+description = "Multi-GPU verdict: planner pick, prediction within 15%, gate against llama.cpp split modes (ADR 0068)"
+repeats = 3               # rounds; round k runs every configuration once, rotated (round 2 reversed)
+warmup = 0
+page_cache = "warm"
+timeout_s = 1800
+bootstrap_resamples = 10000
+confidence = 0.95
+seed = 20261115
+
+[pins]
+llama_cpp = "fc504f91d8cfdfcd9b0fedcf14600fd2b0e63420"   # vendor/PIN baseline_commit, built at /opt/llama.cpp-baseline
+ik_llama_cpp = "b25c3fd2c6d7e407c3a104a413d0211fe2c7a88e" # vendor/PIN ik_commit
+tetraeder = "HEAD"
+
+[workload]
+batch = 2048
+ubatch = 512
+prompt_len = 2048
+gen_len = 128
+
+[model.qwen3-32b]
+hf = "Qwen/Qwen3-32B-GGUF:Qwen3-32B-Q4_K_M.gguf"
+note = "dense, 64 layers, about 19.8 GB; cases D2 and D4"
+
+[model.qwen3-30b-a3b]
+hf = "Qwen/Qwen3-30B-A3B-GGUF:Qwen3-30B-A3B-Q4_K_M.gguf"
+note = "MoE, 48 layers, 128 experts, top 8, about 18.6 GB; cases M2 and M4"
+
+[[engine]]
+id = "tetraeder-exec"
+kind = "tetraeder"
+bin_env = "TETRAEDER_BIN"
+bin = "target/release/tetraeder"
+note = "`tetraeder bench --plan`: the own executor (ADR 0069); the candidates"
+
+[[engine]]
+id = "llama-bench"
+kind = "llama-bench"
+bin_env = "LLAMA_BENCH_BASELINE"
+bin = "/opt/llama.cpp-baseline/bin/llama-bench"
+note = "baseline build; -sm layer, row, tensor; gated"
+
+[[engine]]
+id = "ik-llama-bench"
+kind = "ik-llama"
+bin_env = "IK_LLAMA_BENCH"
+bin = "/opt/ik_llama/bin/llama-bench"
+note = "reported only"
+
+# Same value as phase0.toml's cuda-default; tests/test_phase5_summary.py keeps them equal.
+[[noise_band]]
+class = "cuda-default"
+device = "cuda"
+band = 0.08
