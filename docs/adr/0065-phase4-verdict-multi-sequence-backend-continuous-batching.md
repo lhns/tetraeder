@@ -251,3 +251,6 @@ The baseline moves from b12274 (202c1a22) to b12426 (fc504f91, published 2026-11
 - A pair is unclean when the engines' completion-token totals differ; a rep-3 pair replaces it, as for other unclean pairs.
 - The stop rule is per model: a failed parity or a probe c4 ratio below 0.85 skips that model's pre-pass, probe and pairs; `verdict.json` records it with `pass: null`, `stopped: true` and the reasons, and it still counts, so the overall verdict stays null rather than passing on the other model alone. The other model's pairs and the TTFT pairs still run; the session ends (rc 3) only when every judged model is stopped.
 
+## Addendum: models judged in separate sessions (2026-11-16)
+Each counting model is judged by its own two clean pairs on one box, as before; the two models need not share a session. The throughput verdict may come from one session per model (each with its own gates, pre-pass and probe), and the TTFT pairs from a further session (D2b); `phase4_pass` combines the per-model results only when every counting model has a verdict. Reason: the MoE gate is held by an open parity item (ADR 0071) that the 8B does not share.
+
