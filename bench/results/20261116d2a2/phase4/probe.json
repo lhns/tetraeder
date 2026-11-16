@@ -1,0 +1,39 @@
+{
+  "threshold_c4": 0.85,
+  "gpu_parity": "ok",
+  "models": {
+    "q8b": {
+      "engine": "tetraeder-dense",
+      "gpu_parity": "ok",
+      "reasons": [
+        "c4 ratio 0.830 < 0.85"
+      ],
+      "c1_llama-server_errors": 0,
+      "c1_tetraeder-dense_errors": 0,
+      "c1_ratio": 1.002955930621686,
+      "c4_llama-server_errors": 0,
+      "c4_tetraeder-dense_errors": 0,
+      "c4_ratio": 0.8301332000732812,
+      "stop": true
+    },
+    "q30b": {
+      "engine": "tetraeder-moe",
+      "gpu_parity": "ok",
+      "reasons": [],
+      "c1_llama-server_errors": 0,
+      "c1_tetraeder-moe_errors": 0,
+      "c1_ratio": 0.982327572088069,
+      "c4_llama-server_errors": 0,
+      "c4_tetraeder-moe_errors": 0,
+      "c4_ratio": 0.8976143545897298,
+      "stop": false
+    }
+  },
+  "reasons": [
+    "q8b tetraeder-dense: c4 ratio 0.830 < 0.85"
+  ],
+  "stopped": [
+    "q8b"
+  ],
+  "stop": false
+}
