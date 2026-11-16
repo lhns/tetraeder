@@ -3256,7 +3256,11 @@ mod graph_order {
                 .filter(|&i| g.node(i).op_name() == "GET_ROWS")
                 .count();
             // Token embedding, router selection per layer, and one output selection in all.
-            assert_eq!(gets, 1 + n_layer + usize::from(n_out < n), "n={n} out={n_out}");
+            assert_eq!(
+                gets,
+                1 + n_layer + usize::from(n_out < n),
+                "n={n} out={n_out}"
+            );
             assert_eq!(ids.len(), 3 * n_layer);
             for (i, ne) in ids.iter().enumerate() {
                 let want = if i / 3 + 1 == n_layer { n_out } else { n } as i64;
