@@ -16,8 +16,10 @@ APPS = "0x0000000000000003"
 POWER = "0x0000000000000004"
 
 
-def bench(tps=None, decode=None, errors=0, **extra):
+def bench(tps=None, decode=None, errors=0, completion_tokens=None, **extra):
     s = {"errors": errors}
+    if completion_tokens is not None:
+        s["completion_tokens"] = completion_tokens
     if tps is not None:
         s["throughput_tps"] = tps
     if decode is not None:
@@ -326,14 +328,17 @@ def test_probe_missing_c4_or_failed_parity_stops(tmp_path):
     assert p4.probe(d, {"q8b": "tetraeder-dense"})["stop"] is True
     d = probe_files(tmp_path, 100.0, 99.0)
     assert p4.probe(d, {"q8b": "tetraeder-dense"})["stop"] is False
-    assert p4.probe(d, {"q8b": "tetraeder-dense"}, "failed")["reasons"] == ["gpu-parity failed"]
+    assert p4.probe(d, {"q8b": "tetraeder-dense"}, "failed")["reasons"] == ["q8b tetraeder-dense: gpu-parity failed"]
 
 
 def test_probe_each_judged_engine_counts(tmp_path):
     d = probe_files(tmp_path, 100.0, 99.0)
     probe_files(tmp_path, 100.0, 60.0, engine="tetraeder-moe", model="q30b")
     pr = p4.probe(d, {"q8b": "tetraeder-dense", "q30b": "tetraeder-moe"})
-    assert pr["stop"] and len(pr["reasons"]) == 1 and "q30b" in pr["reasons"][0]
+    # one model below the line stops that model only; the session goes on
+    assert pr["stop"] is False and pr["stopped"] == ["q30b"] and len(pr["reasons"]) == 1 and "q30b" in pr["reasons"][0]
+    pr = p4.probe(d, {"q8b": "tetraeder-dense", "q30b": "tetraeder-moe"}, {"q8b": "failed"})
+    assert pr["stop"] is True and pr["stopped"] == ["q8b", "q30b"]  # every model stopped: the session ends
 
 
 def test_rerun_pair_replaces_the_unclean_one(s):
@@ -376,3 +381,51 @@ def test_clean_pairs_ignore_extra_rep(s):
     s.ttft()
     m = s.verdict()["models"]["q8b"]
     assert m["reps_used"] == [1, 2] and m["pass"] is True
+
+
+def test_completion_token_totals_must_match(s):
+    s.q8b()
+    s.ttft()
+    assert s.verdict()["models"]["q8b"]["pass"] is True
+    for rep in (1, 2):  # the same totals in both engines: clean
+        for eng in ("llama-server", "tetraeder-dense"):
+            s.run("q8b", eng, rep, 100.0, 80.0, completion_tokens=4096)
+    assert s.verdict()["models"]["q8b"]["pass"] is True
+    s.run("q8b", "tetraeder-dense", 2, 100.0, 80.0, completion_tokens=4000)  # stopped early: not the same work
+    m = s.verdict()["models"]["q8b"]
+    assert m["pass"] is None and not m["pairs"][1]["clean"]
+    assert any("completion tokens differ" in r for r in m["pairs"][1]["reasons"])
+    assert p4.rerun_reps(s.d, "q8b") == [2]  # one more pair replaces it
+
+
+def test_stopped_model_is_null_and_the_other_is_still_judged(s):
+    s.q8b()
+    s.ttft()
+    for rep in (1, 2):
+        s.run("q30b", "llama-server", rep, 100.0, 100.0)
+        s.run("q30b", "tetraeder-moe", rep, 100.0, 100.0)
+    s.write("probe.json", {"models": {"q30b": {"engine": "tetraeder-moe", "stop": True, "reasons": ["c4 ratio 0.800 < 0.85"]},
+                                       "q8b": {"engine": "tetraeder-dense", "stop": False, "reasons": []}}})
+    v = s.verdict()
+    q = v["models"]["q30b"]
+    assert q["pass"] is None and q["stopped"] is True and q["counts"] is True and q["pairs"] == []
+    assert q["reasons"] == ["c4 ratio 0.800 < 0.85"]
+    assert v["models"]["q8b"]["pass"] is True and v["ttft"]["pass"] is True
+    assert v["phase4_pass"] is None  # a stopped counting model never lets the rest pass
+    s.q8b(r1=(0.8, 1.0), r2=(1.0, 1.0))
+    assert s.verdict()["phase4_pass"] is False  # but a failure elsewhere still fails
+
+
+def test_stopped_30b_on_llama_does_not_count(s):
+    s.q8b()
+    s.ttft()
+    s.write("probe.json", {"models": {"q30b": {"engine": "tetraeder-llama", "stop": True, "reasons": ["x"]}}})
+    v = s.verdict()
+    assert v["models"]["q30b"]["counts"] is False and v["phase4_pass"] is True
+
+
+def test_stopped_cli(tmp_path):
+    d = probe_files(tmp_path, 100.0, 60.0)
+    assert p4.main([str(d), "--probe", "--probe-run", "q8b:tetraeder-dense", "--parity", "q8b:failed"]) == 3
+    assert json.loads((d / "probe.json").read_text())["models"]["q8b"]["gpu_parity"] == "failed"
+    assert p4.main([str(d), "--stopped"]) == 0

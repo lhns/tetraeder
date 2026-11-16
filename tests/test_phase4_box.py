@@ -104,7 +104,7 @@ def write_probe(out, own_c4, model="q8b", engine="tetraeder-dense"):
 
 def test_low_probe_ends_the_run_before_record_log_and_pairs(tmp_path):
     write_probe(tmp_path / "out", 80.0)
-    write_probe(tmp_path / "out", 99.0, "q30b", "tetraeder-moe")
+    write_probe(tmp_path / "out", 70.0, "q30b", "tetraeder-moe")
     lines = dry(tmp_path, rc=3, PHASE4_LOG=str(tmp_path / "none.jsonl"))
     stages = [m.group(1) for ln in lines if (m := re.search(r"STAGE (\S+)", ln))]
     assert stages == STAGES[: STAGES.index("probe") + 1]
@@ -112,6 +112,7 @@ def test_low_probe_ends_the_run_before_record_log_and_pairs(tmp_path):
     assert not any("claude_code_proxy.sh" in ln or "run q8b-" in ln for ln in lines)
     probe = json.loads((tmp_path / "out" / "probe.json").read_text())
     assert probe["stop"] is True and probe["models"]["q8b"]["c4_ratio"] == 0.8
+    assert probe["stopped"] == ["q8b", "q30b"]
     assert (tmp_path / "out" / "DONE").exists()
 
 
@@ -202,15 +203,68 @@ def test_seeds_per_test_equal_across_engines(tmp_path):
         assert set(seeds[(model, "c1", rep)].values()) != set(seeds[(model, "c4", rep)].values())
 
 
-def test_failed_gpu_parity_still_runs_shapes_and_probe(tmp_path):
+def test_failed_gpu_parity_of_every_model_ends_after_shapes(tmp_path):
     lines = dry(tmp_path, rc=3, DRY_GPU_PARITY="fail", PHASE4_LOG=str(tmp_path / "none.jsonl"))
     stages = [m.group(1) for ln in lines if (m := re.search(r"STAGE (\S+)", ln))]
     assert stages == STAGES[: STAGES.index("probe") + 1]
-    assert any("probe q8b tetraeder-dense start" in ln for ln in lines)
     assert any("PHASE4_BOX_DONE rc=3" in ln for ln in lines)
+    # no server of a stopped model starts: the pre-pass and probe skip it
+    assert not any("PLAN server" in ln for ln in lines)
     assert not any("claude_code_proxy.sh" in ln or "run q8b-" in ln for ln in lines)
     probe = json.loads((tmp_path / "out" / "probe.json").read_text())
-    assert probe["stop"] is True and probe["gpu_parity"] == "failed"
+    assert probe["stop"] is True and probe["gpu_parity"] == "failed" and probe["stopped"] == ["q8b", "q30b"]
+
+
+def test_gpu_parity_commands_per_model(tmp_path):
+    lines = dry(tmp_path)
+    q8b = next(ln for ln in lines if "gpu-parity-q8b.log" in ln)
+    q30b = next(ln for ln in lines if "gpu-parity-q30b.log" in ln)
+    assert "--test gpu_dense" in q8b and "--test gpu_real_batched" in q8b and "--skip gpu_qwen3_30b" in q8b
+    assert "--test gpu_multi_seq" in q30b and "--test gpu_real_batched" in q30b and "--skip gpu_qwen3_8b" in q30b
+    assert "TETRAEDER_REQUIRE_GPU=1" in q8b and "TETRAEDER_REQUIRE_GPU=1" in q30b
+
+
+def test_failed_parity_of_the_30b_skips_only_the_30b(tmp_path):
+    write_probe(tmp_path / "out", 92.0)
+    lines = dry(tmp_path, DRY_GPU_PARITY="q30b")
+    names = runs(lines)
+    assert [n for n in names if n.startswith("q8b-")] and not [n for n in names if n.startswith("q30b-")]
+    assert any(n.startswith("replay-q8b") for n in names)
+    assert not any("q30b" in ln and "PLAN server" in ln for ln in lines)
+    assert any("STOPPED q30b: gpu-parity failed" in ln for ln in lines)
+    assert any("PHASE4_BOX_DONE rc=0" in ln for ln in lines)
+    probe = json.loads((tmp_path / "out" / "probe.json").read_text())
+    assert probe["stop"] is False and probe["stopped"] == ["q30b"]
+    assert probe["models"]["q30b"]["gpu_parity"] == "failed" and probe["models"]["q8b"]["gpu_parity"] == "ok"
+
+
+def test_failed_parity_of_the_8b_skips_its_pairs_and_the_ttft(tmp_path):
+    write_probe(tmp_path / "out", 95.0, "q30b", "tetraeder-moe")
+    lines = dry(tmp_path, DRY_GPU_PARITY="q8b", PHASE4_LOG=str(tmp_path / "none.jsonl"))
+    names = runs(lines)
+    assert [n for n in names if n.startswith("q30b-")] and not [n for n in names if n.startswith("q8b-")]
+    assert not [n for n in names if n.startswith("replay")]
+    assert not any("claude_code_proxy.sh" in ln for ln in lines)  # the log is for the TTFT pairs only
+
+
+def test_low_probe_of_the_30b_skips_only_the_30b(tmp_path):
+    write_probe(tmp_path / "out", 92.0)
+    write_probe(tmp_path / "out", 80.0, "q30b", "tetraeder-moe")
+    lines = dry(tmp_path)
+    names = runs(lines)
+    assert [n for n in names if n.startswith("q8b-")] and not [n for n in names if n.startswith("q30b-")]
+    assert [n for n in names if n.startswith("replay")]  # the TTFT pairs run
+    assert not any("prepass q30b" in ln and "start" in ln for ln in lines[lines.index(next(ln for ln in lines if "STAGE probe" in ln)):])
+    probe = json.loads((tmp_path / "out" / "probe.json").read_text())
+    assert probe["stop"] is False and probe["stopped"] == ["q30b"]
+
+
+def test_low_probe_of_the_8b_keeps_the_30b_and_the_ttft(tmp_path):
+    write_probe(tmp_path / "out", 80.0)
+    write_probe(tmp_path / "out", 95.0, "q30b", "tetraeder-moe")
+    names = runs(dry(tmp_path))
+    assert [n for n in names if n.startswith("q30b-")] and not [n for n in names if n.startswith("q8b-")]
+    assert [n for n in names if n.startswith("replay")]
 
 
 def write_run(out, model, name, rep, c4=100.0, c1=10.0, errors=0):
