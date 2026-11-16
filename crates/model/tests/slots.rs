@@ -120,6 +120,40 @@ fn cpu_default_slots_reproduce_the_resident_model() {
     assert!(Qwen3Moe::load(fixture(), &opts(1, None)).is_ok());
 }
 
+/// hardware: cpu. A prefill that returns only the last row streams the last layer on that row
+/// alone: its logits equal the last row of the full output and the resident whole-step graph's,
+/// and the routing log still covers every row.
+#[test]
+fn cpu_streamed_last_only_output_matches_full_and_resident() {
+    let nv = Qwen3Moe::load(fixture(), &opts(EXPERTS, None))
+        .unwrap()
+        .n_vocab();
+    let mut resident = Qwen3Moe::load(fixture(), &opts(EXPERTS, None)).unwrap();
+    let want = resident.eval_last(&PROMPT).unwrap();
+    let want_log = resident.take_routing_log();
+    for (slots, ram) in [(4, None), (2, Some(3)), (1, None)] {
+        let mut full = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
+        let all = full.eval(&PROMPT).unwrap();
+        let mut last = Qwen3Moe::load(fixture(), &opts(slots, ram)).unwrap();
+        let got = last.eval_last(&PROMPT).unwrap();
+        let what = format!("slots {slots} ram {ram:?}");
+        assert_eq!(
+            got,
+            all[all.len() - nv..],
+            "{what}: last row of the full output"
+        );
+        assert_eq!(got, want, "{what}: resident whole-step graph");
+        let log = last.take_routing_log();
+        assert_eq!(log.len(), want_log.len(), "{what}");
+        for (a, b) in log.iter().zip(&want_log) {
+            assert_eq!((a.layer, a.n_tokens), (b.layer, b.n_tokens), "{what}");
+            assert_eq!(a.ids.len(), PROMPT.len() * 2, "{what}: layer {}", a.layer);
+            assert_eq!(a.ids, b.ids, "{what}: layer {} ids", a.layer);
+            assert_eq!(a.weights, b.weights, "{what}: layer {} weights", a.layer);
+        }
+    }
+}
+
 /// Least recently used over a list, written without `LayerSlots`.
 struct Lru {
     cap: usize,

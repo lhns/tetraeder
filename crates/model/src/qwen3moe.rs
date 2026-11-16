@@ -457,7 +457,20 @@ struct State {
     /// Indices of the tokens whose logits are returned.
     outputs: OwnedTensor,
     slots: [Slot; 2],
+    /// The last layer's slot, sized by `n_out`, when fewer rows than tokens have outputs: that
+    /// layer's router and expert FFN run on the output rows only, as in the whole-step graph.
+    last: Option<Slot>,
     host: Option<HostBufs>,
+}
+
+impl State {
+    /// The slot layer `il` writes and the next segment reads.
+    fn slot(&self, il: usize, n_layer: usize) -> &Slot {
+        match &self.last {
+            Some(s) if il + 1 == n_layer => s,
+            _ => &self.slots[il % 2],
+        }
+    }
 }
 
 /// A step state with the whole-step graph kept for it (`LoadOptions::reuse_step_graph`). The
@@ -1735,6 +1748,7 @@ impl Qwen3Moe {
                     &ctx,
                     seg,
                     self.predict_depth,
+                    self.routing.is_some(),
                     &specs,
                 );
                 let t = lap(&mut prof.build, t);
@@ -1769,17 +1783,30 @@ impl Qwen3Moe {
                 continue;
             }
             let t = Instant::now();
-            let slot = &st.slots[seg % 2];
+            let slot = st.slot(seg, n_layer);
+            // The last layer's slot holds the output rows only (`State::last`).
+            let rows_out = st.last.is_some() && seg + 1 == n_layer;
             let chosen = slot.ids.get().get_i32()?;
             let streamer = self
                 .streamer
                 .as_mut()
                 .expect("a resident step returned above");
+            // The predictions cover all rows: score the output rows against the choice.
+            let out_rows = |p: &[i32]| -> Vec<i32> {
+                if rows_out {
+                    plan.outputs
+                        .iter()
+                        .flat_map(|&r| p[r as usize * nu..][..nu].iter().copied())
+                        .collect()
+                } else {
+                    p.to_vec()
+                }
+            };
             if let Some(p) = predicted.take() {
-                streamer.score_prediction(seg, 1, &p, &chosen, nu);
+                streamer.score_prediction(seg, 1, &out_rows(&p), &chosen, nu);
             }
             if let Some(p) = &predicted2[seg] {
-                streamer.score_prediction(seg, 2, p, &chosen, nu);
+                streamer.score_prediction(seg, 2, &out_rows(p), &chosen, nu);
             }
             // The predicted experts of the next layers, read back with this layer's routing.
             if self.predict_depth >= 1 && seg + 1 < n_layer {
@@ -1790,10 +1817,16 @@ impl Qwen3Moe {
             }
             if let Some(log) = &mut self.routing {
                 // This layer's predictions (for layers seg + 1 and seg + 2), as read above.
+                let full = &st.slots[seg % 2];
+                let (ids, weights) = if rows_out {
+                    (full.ids.get().get_i32()?, full.w.get().get_f32()?)
+                } else {
+                    (chosen.clone(), slot.w.get().get_f32()?)
+                };
                 log.push(RoutingStep {
                     layer: seg,
-                    ids: chosen.clone(),
-                    weights: slot.w.get().get_f32()?,
+                    ids,
+                    weights,
                     n_tokens: n,
                     predicted: predicted.clone(),
                     predicted2: predicted2.get(seg + 2).cloned().flatten(),
@@ -2543,9 +2576,9 @@ fn alloc_state(
     backend: &Backend,
     host: Option<&Backend>,
 ) -> Result<State> {
-    let ctx = Rc::new(Context::new(36, 0)?);
+    let ctx = Rc::new(Context::new(48, 0)?);
     let (ne, nu, nt) = (h.n_embd as i64, h.n_expert_used as i64, n as i64);
-    let slot = |i: usize| {
+    let slot = |i: usize, nt: i64| {
         let t = |ty, dims: &[i64], what: &str| {
             let t = ctx.new_persistent(ty, dims);
             t.get().set_name(&format!("{what}_{i}"));
@@ -2572,7 +2605,8 @@ fn alloc_state(
         rows: ctx.new_persistent(Type::I32, &[nt]),
         mask: ctx.new_persistent(Type::F16, &[n_kv as i64, nt]),
         outputs: ctx.new_persistent(Type::I32, &[n_out as i64]),
-        slots: [slot(0), slot(1)],
+        slots: [slot(0, nt), slot(1, nt)],
+        last: (n_out < n).then(|| slot(2, n_out as i64)),
         host: None,
     };
     ctx.alloc_tensors(backend)?;
@@ -2604,6 +2638,7 @@ fn build_segment<'a>(
     ctx: &'a Context,
     seg: usize,
     predict_depth: usize,
+    record: bool,
     groups: &[GroupSpec<'a>],
 ) -> (Graph<'a>, Option<Tensor<'a>>, Vec<GroupInputs<'a>>) {
     let mut g = ctx.new_graph(SEGMENT_NODES);
@@ -2613,7 +2648,7 @@ fn build_segment<'a>(
     let x = if seg == 0 {
         ctx.get_rows(w.tok_embd.get(), st.tokens.get())
     } else {
-        let s = &st.slots[(seg - 1) % 2];
+        let s = st.slot(seg - 1, n_layer);
         let moe = if !groups.is_empty() {
             // The earlier groups are in `acc`; these complete it, then the same weighting
             // and sum as a single pass (ADR 0034).
@@ -2640,12 +2675,29 @@ fn build_segment<'a>(
         return (g, Some(logits), inputs);
     }
 
-    let s = &st.slots[seg % 2];
-    let (ffn_inp, xn, weights, ids) = attention_and_router(h, ctx, &mut g, w, kv, st, seg, x);
+    let s = st.slot(seg, n_layer);
+    let full = attention_block(h, ctx, &mut g, w, kv, st, seg, x);
+    // The whole-step graph's rule: the last layer continues on the output rows only.
+    let select = st.last.is_some() && seg + 1 == n_layer;
+    let ffn_inp = if select {
+        ctx.get_rows(full, st.outputs.get())
+    } else {
+        full
+    };
+    let (xn, weights, ids) = router(h, ctx, &w.layers[seg], ffn_inp);
     g.expand(ctx.cpy(ffn_inp, s.resid.get()));
     g.expand(ctx.cpy(xn, s.xn.get()));
     g.expand(ctx.cpy(weights, s.w.get()));
     g.expand(ctx.cpy(ids, s.ids.get()));
+    if select && record {
+        // The log keeps every row's routing: a second router on all rows, after the real one,
+        // feeds the full-size slot of this parity; the host reads it for the log only.
+        let f = &st.slots[seg % 2];
+        let (_, lw, li) = router(h, ctx, &w.layers[seg], full);
+        g.expand(lw);
+        g.expand(ctx.cpy(lw, f.w.get()));
+        g.expand(ctx.cpy(li, f.ids.get()));
+    }
     if predict_depth >= 1 && seg + 1 < n_layer {
         // After the real router so its nodes stay consecutive for the CUDA topk-moe fusion.
         let normed = ctx.rms_norm(ffn_inp, h.rms_eps);
@@ -2749,25 +2801,6 @@ fn head<'a>(
     }
     let head = w.output.as_ref().unwrap_or(&w.tok_embd);
     ctx.mul_mat(head.get(), cur).set_output()
-}
-
-/// Layer `il`: attention with Q/K norm, RoPE and the KV cache, the residual, the FFN norm and the
-/// router (softmax, top-k, normalized weights), all rows. Returns `(ffn_inp, normed, weights,
-/// ids)`. The segments use it; the whole-step graph selects output rows in the last layer.
-#[allow(clippy::too_many_arguments)]
-fn attention_and_router<'a>(
-    h: &Hparams,
-    ctx: &'a Context,
-    g: &mut Graph<'a>,
-    w: &'a Weights,
-    kv: &'a Kv,
-    st: &'a State,
-    il: usize,
-    x: Tensor<'a>,
-) -> (Tensor<'a>, Tensor<'a>, Tensor<'a>, Tensor<'a>) {
-    let ffn_inp = attention_block(h, ctx, g, w, kv, st, il, x);
-    let (xn, weights, ids) = router(h, ctx, &w.layers[il], ffn_inp);
-    (ffn_inp, xn, weights, ids)
 }
 
 /// Layer `il`'s attention with Q/K norm, RoPE, the KV cache and the residual: `ffn_inp`.
@@ -3131,7 +3164,7 @@ mod graph_order {
     }
 
     /// The segments' ops in order, without the copies into the state slots.
-    fn segment_ops(m: &Qwen3Moe, st: &State) -> Ops {
+    fn segment_ops(m: &Qwen3Moe, st: &State, record: bool) -> Ops {
         let h = &m.file.hparams;
         let n_layer = h.n_layer as usize;
         let to_state = |t: Tensor<'_>| {
@@ -3146,11 +3179,13 @@ mod graph_order {
         let mut all = Vec::new();
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, 0, &[]);
+            let (g, _, _) = build_segment(h, &m.weights, &m.kv, st, &ctx, seg, 0, record, &[]);
             if seg > 0 && seg < n_layer {
-                // A middle segment holds the previous layer's reduction and one router.
+                // A middle segment holds the previous layer's reduction and one router, and
+                // with output rows selected the last layer's also the log's router.
                 let what = format!("segment {seg}");
-                assert_fusable(&g, 1, 0, h.n_expert_used as usize, &what);
+                let extra = usize::from(record && seg + 1 == n_layer && st.last.is_some());
+                assert_fusable(&g, 1, extra, h.n_expert_used as usize, &what);
             }
             all.extend(ops(&g, to_state));
         }
@@ -3170,7 +3205,7 @@ mod graph_order {
                 let build = |depth: usize| {
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
                     let (g, _, _) =
-                        build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, depth, &[]);
+                        build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, depth, false, &[]);
                     ops(&g, |_| false)
                 };
                 let plain = build(0);
@@ -3218,8 +3253,8 @@ mod graph_order {
         let h = m.file.hparams.clone();
         for (n, n_out) in [(1, 1), (5, 5), (5, 1)] {
             let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
-            let segments = segment_ops(&m, &st);
             for record in [false, true] {
+                let segments = segment_ops(&m, &st, record);
                 let what = format!("step n={n} record={record}");
                 let ctx = Context::new(step_nodes(&h), step_nodes(&h)).unwrap();
                 let (g, _, _) = build_step(&h, &m.weights, &m.kv, &st, &ctx, record);
@@ -3227,9 +3262,6 @@ mod graph_order {
                 // With output rows selected, a recording step has one more router, for the log.
                 let extra = usize::from(record && n_out < n);
                 assert_fusable(&g, n_layer, extra, n_used, &what);
-                if n_out < n {
-                    continue; // the last layer differs on purpose, see the next test
-                }
                 // The routing outputs are extra nodes; the rest is the segments' order.
                 let step = ops(&g, |t| t.op_name() == "CONT");
                 assert_eq!(step, segments, "{what}");
@@ -3267,6 +3299,42 @@ mod graph_order {
                 let want = if i / 3 + 1 == n_layer { n_out } else { n } as i64;
                 assert_eq!(ne[2], want, "n={n} out={n_out}: MUL_MAT_ID {i}");
             }
+        }
+    }
+
+    /// The segments select the output rows like the whole-step graph: the last layer's expert
+    /// matmuls see `n_out` rows, there is one output selection, and the head does not gather.
+    #[test]
+    fn last_segment_ffn_runs_on_the_output_rows_only() {
+        let m = model();
+        let h = m.file.hparams.clone();
+        let n_layer = h.n_layer as usize;
+        for (n, n_out) in [(1, 1), (5, 5), (5, 1), (5, 2)] {
+            let st = alloc_state(&h, (n, pad(n, KV_PAD), n_out), &m.primary, None).unwrap();
+            let (mut rows, mut gets) = (Vec::new(), 0);
+            for seg in 0..=n_layer {
+                let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
+                let (g, _, _) = build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, 0, false, &[]);
+                for i in 0..g.n_nodes() {
+                    let t = g.node(i);
+                    match t.op_name().as_str() {
+                        "MUL_MAT_ID" => rows.push(t.ne()[2]),
+                        "GET_ROWS" => gets += 1,
+                        _ => {}
+                    }
+                }
+            }
+            assert_eq!(rows.len(), 3 * n_layer);
+            for (i, &r) in rows.iter().enumerate() {
+                let want = if i / 3 + 1 == n_layer { n_out } else { n } as i64;
+                assert_eq!(r, want, "n={n} out={n_out}: MUL_MAT_ID {i}");
+            }
+            // Token embedding, router selection per layer, and one output selection in all.
+            assert_eq!(
+                gets,
+                1 + n_layer + usize::from(n_out < n),
+                "n={n} out={n_out}"
+            );
         }
     }
 }
