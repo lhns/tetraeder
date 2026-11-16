@@ -137,6 +137,11 @@ Time budget: record-log (5 longest Claude Code tasks, `20261111d`) took 12.8 min
 - The dense "slowdown between boxes" was the first box, not the code: on one 3090, dense against libllama per step is 0.99 to 1.03 at both 030d1f3 and HEAD (`dense-regress/table.md`).
 - Next: `track-c4-loop` (our loop at c4, CPU) and `track-pin-ab` (pin against baseline on GPU). If the pin explains the gap, adopting b12426 moves onto the critical path ahead of the verdict, reversing the deferral above; the baseline stays at b12426.
 
+### Pin A/B: the c4 gap has two parts (2026-11-16, `bench/results/20261116pinab/`, box 60924954, RTX 3090)
+- The pin: llama-server built from b11976 reaches 0.930 (8B) and 0.834 (30B) of b12426 at c4, level at c1; libllama's 4-sequence decode step is 83.4 ms per 8 steps at b11976 against 71.8 at b12426. **Pin adoption moves onto the critical path ahead of the verdict** (reverses the deferral above; `track-pin-adopt`), then one GPU parity session on the new pin.
+- Our loop, against llama-server at the same pin: 8B 0.906, 30B 1.038 (b11976's server has a 0.96 s TTFT on the 30B). The 30B step log shows 36 to 54 ms of host time before every admitting step (the prefix-cache save of the reused idle sequence) and one 400-token prompt admitted per step under the 512 budget (mixed steps 143 to 149 ms against 97 ms for a prompt alone), where llama-server admits a wave in one step. Fixes on `track-c4-loop`: no save at admission while KV room exists, step budget 2048.
+- Then D2a again on both models.
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 
