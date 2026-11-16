@@ -1,0 +1,200 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running tests/gpu_real_batched.rs (target/release/deps/gpu_real_batched-a01bda9478e3dfdf)
+
+running 1 test
+test gpu_qwen3_30b_batched_matches_libllama ... qwen3-30b libllama batched / libllama split: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (0, 20) max |delta| 6.419401e-1 (2.18e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (0, 21) max |delta| 4.2770886e-1 (2.16e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama split: (0, 21) argmax 232 against 223: reference margin 1.7425537e-2 (8.80e-4 of largest), other margin 5.6612015e-2
+qwen3-30b libllama batched / libllama split: (0, 22) max |delta| 5.348835e-1 (2.39e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama split: (0, 22) argmax 245 against 250: reference margin 8.609772e-3 (3.84e-4 of largest), other margin 5.5051804e-2
+qwen3-30b libllama batched / libllama split: (0, 23) max |delta| 3.7358665e-1 (1.91e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (0, 24) max |delta| 3.582716e-1 (2.06e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama split: (0, 24) argmax 241 against 243: reference margin 2.863884e-3 (1.65e-4 of largest), other margin 8.9855194e-2
+qwen3-30b libllama batched / libllama split: (0, 25) max |delta| 1.7529523e-1 (1.72e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (1, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (1, 24) max |delta| 3.534853e-1 (1.49e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (1, 25) max |delta| 2.991128e-1 (2.51e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (1, 26) max |delta| 1.9250381e-1 (1.52e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (1, 27) max |delta| 2.1040237e-1 (1.79e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (1, 28) max |delta| 2.2998437e-1 (1.81e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (1, 29) max |delta| 1.5587854e-1 (1.21e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (2, 15) max |delta| 9.240576e-1 (8.15e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama split: (2, 15) argmax 189 against 188: reference margin 2.31184e-1 (2.04e-2 of largest), other margin 4.3013573e-2
+qwen3-30b libllama batched / libllama split: (2, 39) max |delta| 6.40975e-1 (3.11e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (2, 40) max |delta| 4.8203063e-1 (4.11e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (2, 41) max |delta| 3.2374573e-1 (2.49e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (2, 42) max |delta| 2.035389e-1 (1.68e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (2, 43) max |delta| 2.922609e-1 (2.24e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (2, 44) max |delta| 2.9848528e-1 (2.18e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: (2, 45) max |delta| 1.326081e0 (8.10e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama split: 22 rows, worst 8.15e-2 of largest
+qwen3-30b libllama batched / libllama shifted by 7 cells: (0, 19) max |delta| 1.701915e0 (7.56e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (0, 20) max |delta| 7.706604e-1 (2.59e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (0, 21) max |delta| 9.126015e-1 (4.58e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (0, 22) max |delta| 8.591275e-1 (3.86e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama shifted by 7 cells: (0, 22) argmax 250 against 245: reference margin 5.5051804e-2 (2.47e-3 of largest), other margin 1.3059425e-1
+qwen3-30b libllama batched / libllama shifted by 7 cells: (0, 23) max |delta| 7.067708e-1 (3.59e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (0, 24) max |delta| 2.786584e-1 (1.59e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (0, 25) max |delta| 2.2456074e-1 (2.20e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (1, 23) max |delta| 6.8132615e-1 (5.33e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (1, 24) max |delta| 5.670221e-1 (2.39e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (1, 25) max |delta| 4.2783904e-1 (3.62e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (1, 26) max |delta| 3.1845403e-1 (2.51e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (1, 27) max |delta| 5.945256e-1 (5.06e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama shifted by 7 cells: (1, 27) argmax 189 against 205: reference margin 4.23851e-2 (3.61e-3 of largest), other margin 5.5454254e-2
+qwen3-30b libllama batched / libllama shifted by 7 cells: (1, 28) max |delta| 3.99971e-1 (3.14e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (1, 29) max |delta| 5.43653e-1 (4.23e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 15) max |delta| 9.2013884e-1 (8.30e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 15) argmax 188 against 189: reference margin 4.3013573e-2 (3.88e-3 of largest), other margin 2.689829e-1
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 39) max |delta| 5.90291e-1 (2.92e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 40) max |delta| 5.095689e-1 (4.37e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 40) argmax 205 against 153: reference margin 3.3992767e-2 (2.92e-3 of largest), other margin 9.6178055e-3
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 41) max |delta| 6.531278e-1 (5.00e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 42) max |delta| 3.8908005e-1 (3.24e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 43) max |delta| 3.0382013e-1 (2.32e-2 of largest), argmax equal false
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 43) argmax 205 against 21: reference margin 1.9499207e-1 (1.49e-2 of largest), other margin 1.1816025e-2
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 44) max |delta| 5.0053406e-1 (3.64e-2 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: (2, 45) max |delta| 1.7568235e0 (1.11e-1 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 7 cells: 22 rows, worst 1.11e-1 of largest
+qwen3-30b libllama batched / libllama shifted by 256 cells: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (0, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (0, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (0, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (0, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (0, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (0, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (1, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (1, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (1, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (1, 26) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (1, 27) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (1, 28) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (1, 29) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (2, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (2, 39) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (2, 40) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (2, 41) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (2, 42) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (2, 43) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (2, 44) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: (2, 45) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b libllama batched / libllama shifted by 256 cells: 22 rows, worst 0.00e0 of largest
+qwen3-30b builder batched / builder split: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (0, 20) max |delta| 9.221325e-1 (3.11e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (0, 21) max |delta| 4.212711e-1 (2.12e-2 of largest), argmax equal false
+qwen3-30b builder batched / builder split: (0, 21) argmax 223 against 120: reference margin 4.0124893e-2 (2.02e-3 of largest), other margin 8.110809e-2
+qwen3-30b builder batched / builder split: (0, 22) max |delta| 4.2971897e-1 (1.92e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (0, 23) max |delta| 2.6987648e-1 (1.38e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (0, 24) max |delta| 1.9147468e-1 (1.09e-2 of largest), argmax equal false
+qwen3-30b builder batched / builder split: (0, 24) argmax 222 against 241: reference margin 2.1112442e-2 (1.20e-3 of largest), other margin 4.8065186e-3
+qwen3-30b builder batched / builder split: (0, 25) max |delta| 1.4397228e-1 (1.41e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (1, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (1, 24) max |delta| 6.1828136e-1 (2.61e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (1, 25) max |delta| 2.3352051e-1 (2.00e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (1, 26) max |delta| 1.5883756e-1 (1.27e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (1, 27) max |delta| 2.9231262e-1 (2.52e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (1, 28) max |delta| 2.7868557e-1 (2.18e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (1, 29) max |delta| 1.8174028e-1 (1.39e-2 of largest), argmax equal false
+qwen3-30b builder batched / builder split: (1, 29) argmax 205 against 22: reference margin 7.7186584e-2 (5.92e-3 of largest), other margin 3.0923843e-2
+qwen3-30b builder batched / builder split: (2, 15) max |delta| 9.9501514e-1 (8.77e-2 of largest), argmax equal false
+qwen3-30b builder batched / builder split: (2, 15) argmax 189 against 188: reference margin 2.650404e-1 (2.33e-2 of largest), other margin 2.4385738e-1
+qwen3-30b builder batched / builder split: (2, 39) max |delta| 6.6677856e-1 (3.23e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (2, 40) max |delta| 2.0807135e-1 (1.79e-2 of largest), argmax equal false
+qwen3-30b builder batched / builder split: (2, 40) argmax 205 against 153: reference margin 6.1694145e-2 (5.31e-3 of largest), other margin 1.3389587e-2
+qwen3-30b builder batched / builder split: (2, 41) max |delta| 5.1452494e-1 (3.98e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (2, 42) max |delta| 3.4609246e-1 (2.89e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (2, 43) max |delta| 2.5394547e-1 (1.96e-2 of largest), argmax equal false
+qwen3-30b builder batched / builder split: (2, 43) argmax 21 against 205: reference margin 8.048058e-3 (6.21e-4 of largest), other margin 1.2518883e-1
+qwen3-30b builder batched / builder split: (2, 44) max |delta| 2.14468e-1 (1.56e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: (2, 45) max |delta| 5.1059556e-1 (3.12e-2 of largest), argmax equal true
+qwen3-30b builder batched / builder split: 22 rows, worst 8.77e-2 of largest
+qwen3-30b builder batched / libllama batched: (0, 19) max |delta| 1.7419648e-1 (7.74e-3 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (0, 20) max |delta| 6.6825485e-1 (2.24e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (0, 21) max |delta| 3.8346028e-1 (1.93e-2 of largest), argmax equal false
+qwen3-30b builder batched / libllama batched: (0, 21) argmax 223 against 120: reference margin 5.6612015e-2 (2.84e-3 of largest), other margin 8.110809e-2
+qwen3-30b builder batched / libllama batched: (0, 22) max |delta| 4.4659042e-1 (2.00e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (0, 23) max |delta| 3.6449432e-1 (1.85e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (0, 24) max |delta| 2.0356548e-1 (1.16e-2 of largest), argmax equal false
+qwen3-30b builder batched / libllama batched: (0, 24) argmax 243 against 241: reference margin 1.8129349e-2 (1.03e-3 of largest), other margin 1.2401581e-2
+qwen3-30b builder batched / libllama batched: (0, 25) max |delta| 1.596874e-1 (1.57e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (1, 23) max |delta| 7.0413065e-1 (5.50e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (1, 24) max |delta| 5.9405804e-1 (2.50e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (1, 25) max |delta| 3.7702537e-1 (3.19e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (1, 26) max |delta| 3.5232973e-1 (2.77e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (1, 27) max |delta| 5.836804e-1 (4.96e-2 of largest), argmax equal false
+qwen3-30b builder batched / libllama batched: (1, 27) argmax 189 against 204: reference margin 4.23851e-2 (3.61e-3 of largest), other margin 1.4451599e-1
+qwen3-30b builder batched / libllama batched: (1, 28) max |delta| 4.110117e-1 (3.22e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (1, 29) max |delta| 5.057316e-1 (3.93e-2 of largest), argmax equal false
+qwen3-30b builder batched / libllama batched: (1, 29) argmax 205 against 22: reference margin 5.850029e-2 (4.55e-3 of largest), other margin 3.0923843e-2
+qwen3-30b builder batched / libllama batched: (2, 15) max |delta| 9.160452e-1 (8.26e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (2, 39) max |delta| 3.2388914e-1 (1.60e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (2, 40) max |delta| 5.1117694e-1 (4.39e-2 of largest), argmax equal false
+qwen3-30b builder batched / libllama batched: (2, 40) argmax 205 against 153: reference margin 3.3992767e-2 (2.92e-3 of largest), other margin 1.3389587e-2
+qwen3-30b builder batched / libllama batched: (2, 41) max |delta| 2.7696624e-1 (2.12e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (2, 42) max |delta| 2.3096317e-1 (1.92e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (2, 43) max |delta| 1.919322e-1 (1.47e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (2, 44) max |delta| 3.1006336e-1 (2.26e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: (2, 45) max |delta| 1.073839e0 (6.81e-2 of largest), argmax equal true
+qwen3-30b builder batched / libllama batched: 22 rows, worst 8.26e-2 of largest
+qwen3-30b builder split / libllama split: (0, 19) max |delta| 1.7419648e-1 (7.74e-3 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (0, 20) max |delta| 2.9559612e-1 (1.00e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (0, 21) max |delta| 2.1390605e-1 (1.08e-2 of largest), argmax equal false
+qwen3-30b builder split / libllama split: (0, 21) argmax 232 against 223: reference margin 1.7425537e-2 (8.80e-4 of largest), other margin 4.0124893e-2
+qwen3-30b builder split / libllama split: (0, 22) max |delta| 4.96068e-1 (2.21e-2 of largest), argmax equal false
+qwen3-30b builder split / libllama split: (0, 22) argmax 245 against 250: reference margin 8.609772e-3 (3.84e-4 of largest), other margin 1.0837746e-1
+qwen3-30b builder split / libllama split: (0, 23) max |delta| 2.0995808e-1 (1.07e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (0, 24) max |delta| 3.7725353e-1 (2.17e-2 of largest), argmax equal false
+qwen3-30b builder split / libllama split: (0, 24) argmax 241 against 222: reference margin 2.863884e-3 (1.65e-4 of largest), other margin 5.3848267e-2
+qwen3-30b builder split / libllama split: (0, 25) max |delta| 9.416103e-2 (9.24e-3 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (1, 23) max |delta| 7.0413065e-1 (5.50e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (1, 24) max |delta| 4.734931e-1 (2.00e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (1, 25) max |delta| 4.5786095e-1 (3.84e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (1, 26) max |delta| 3.2170796e-1 (2.53e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (1, 27) max |delta| 6.8102014e-1 (5.80e-2 of largest), argmax equal false
+qwen3-30b builder split / libllama split: (1, 27) argmax 189 against 204: reference margin 5.3170204e-2 (4.53e-3 of largest), other margin 1.1022568e-1
+qwen3-30b builder split / libllama split: (1, 28) max |delta| 3.9055264e-1 (3.07e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (1, 29) max |delta| 3.9250028e-1 (3.05e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (2, 15) max |delta| 3.6695182e-1 (3.24e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (2, 39) max |delta| 3.6401987e-1 (1.76e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (2, 40) max |delta| 2.7894986e-1 (2.38e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (2, 41) max |delta| 5.2039135e-1 (4.01e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (2, 42) max |delta| 3.2250786e-1 (2.67e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (2, 43) max |delta| 2.4341726e-1 (1.87e-2 of largest), argmax equal false
+qwen3-30b builder split / libllama split: (2, 43) argmax 205 against 21: reference margin 1.0013676e-1 (7.69e-3 of largest), other margin 8.048058e-3
+qwen3-30b builder split / libllama split: (2, 44) max |delta| 4.5133305e-1 (3.30e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: (2, 45) max |delta| 3.644873e-1 (2.23e-2 of largest), argmax equal true
+qwen3-30b builder split / libllama split: 22 rows, worst 5.80e-2 of largest
+qwen3-30b builder alone / libllama alone: (0, 19) max |delta| 1.7419648e-1 (7.74e-3 of largest), argmax equal true
+qwen3-30b builder alone / libllama alone: (0, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b builder alone / libllama alone: (0, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b builder alone / libllama alone: (0, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b builder alone / libllama alone: (0, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b builder alone / libllama alone: (0, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b builder alone / libllama alone: (0, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-30b builder alone / libllama alone: 7 rows, worst 7.74e-3 of largest
+qwen3-30b libllama batched / libllama split: worst 8.15e-2 of the largest logit
+qwen3-30b libllama batched / libllama shifted by 7 cells: worst 1.11e-1 of the largest logit
+qwen3-30b libllama batched / libllama shifted by 256 cells: worst 0.00e0 of the largest logit
+qwen3-30b builder batched / builder split: worst 8.77e-2 of the largest logit
+qwen3-30b builder batched / libllama batched: worst 8.26e-2 of the largest logit
+qwen3-30b builder split / libllama split: worst 5.80e-2 of the largest logit
+qwen3-30b builder alone / libllama alone: worst 7.74e-3 of the largest logit
+qwen3-30b: bound max(5e-3, 1.67e-1 of the largest logit), same shapes 1.67e-1, alone 5.00e-3
+
+thread 'gpu_qwen3_30b_batched_matches_libllama' (34460) panicked at crates/model/tests/common/mod.rs:681:9:
+qwen3-30b builder alone / libllama alone: (0, 19) differs by 1.7419648e-1 (tolerance 1.1249093e-1)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'gpu_qwen3_30b_batched_matches_libllama' (34460) panicked at crates/model/tests/common/mod.rs:453:5:
+failed: builder alone / libllama alone
+FAILED
+
+failures:
+
+failures:
+    gpu_qwen3_30b_batched_matches_libllama
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 24.79s
+
+error: test failed, to rerun pass `-p tetraeder-model --test gpu_real_batched`

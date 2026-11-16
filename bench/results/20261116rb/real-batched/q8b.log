@@ -1,0 +1,539 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded anstyle-parse v1.0.0
+  Downloaded atomic-waker v1.1.2
+  Downloaded async-trait v0.1.92
+  Downloaded autocfg v1.5.1
+  Downloaded futures-task v0.3.34
+  Downloaded anstyle-query v1.1.5
+  Downloaded futures-io v0.3.34
+  Downloaded displaydoc v0.2.7
+  Downloaded anstyle v1.0.14
+  Downloaded anyhow v1.0.104
+  Downloaded num-traits v0.2.19
+  Downloaded glob v0.3.4
+  Downloaded futures-channel v0.3.34
+  Downloaded once_cell v1.21.4
+  Downloaded opentelemetry-http v0.33.1
+  Downloaded opentelemetry-proto v0.33.1
+  Downloaded rustc-hash v2.1.3
+  Downloaded tower-layer v0.3.3
+  Downloaded opentelemetry v0.33.1
+  Downloaded potential_utf v0.1.6
+  Downloaded shlex v2.0.1
+  Downloaded borsh-derive v1.8.1
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded toml_write v0.1.2
+  Downloaded indexmap v2.14.2
+  Downloaded tracing-attributes v0.1.31
+  Downloaded toml v0.8.23
+  Downloaded zerotrie v0.2.5
+  Downloaded version_check v0.9.5
+  Downloaded rand_chacha v0.9.0
+  Downloaded zerofrom v0.1.8
+  Downloaded want v0.3.2
+  Downloaded strsim v0.11.1
+  Downloaded serde_spanned v0.6.9
+  Downloaded yoke-derive v0.8.4
+  Downloaded icu_properties_data v2.4.0
+  Downloaded tower v0.5.3
+  Downloaded tower-service v0.3.3
+  Downloaded slab v0.4.12
+  Downloaded tempfile v3.27.0
+  Downloaded zmij v1.0.23
+  Downloaded zerovec-derive v0.11.7
+  Downloaded icu_normalizer v2.4.0
+  Downloaded zerofrom-derive v0.1.8
+  Downloaded writeable v0.6.4
+  Downloaded serde_core v1.0.229
+  Downloaded tracing-log v0.2.0
+  Downloaded tracing-core v0.1.36
+  Downloaded yoke v0.8.4
+  Downloaded winnow v0.7.15
+  Downloaded winnow v1.0.4
+  Downloaded url v2.5.8
+  Downloaded zerovec v0.11.9
+  Downloaded tower-http v0.6.11
+  Downloaded regex v1.13.1
+  Downloaded zerocopy v0.8.63
+  Downloaded syn v2.0.119
+  Downloaded opentelemetry-otlp v0.33.1
+  Downloaded bindgen v0.72.1
+  Downloaded syn v3.0.9
+  Downloaded serde_json v1.0.154
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded hyper-util v0.1.21
+  Downloaded sysinfo v0.40.0
+  Downloaded rand v0.9.5
+  Downloaded tracing-opentelemetry v0.34.0
+  Downloaded regex-syntax v0.8.11
+  Downloaded reqwest v0.13.5
+  Downloaded socket2 v0.6.5
+  Downloaded rustix v1.1.6
+  Downloaded serde_derive v1.0.229
+  Downloaded tracing v0.1.44
+  Downloaded linux-raw-sys v0.12.1
+  Downloaded rand_core v0.9.5
+  Downloaded smallvec v1.16.4
+  Downloaded tinystr v0.8.5
+  Downloaded synstructure v0.14.0
+  Downloaded sync_wrapper v1.0.2
+  Downloaded wait-timeout v0.2.1
+  Downloaded utf8_iter v1.0.4
+  Downloaded unarray v0.1.4
+  Downloaded regex-automata v0.4.18
+  Downloaded toml_edit v0.25.17+spec-1.1.0
+  Downloaded toml_edit v0.22.27
+  Downloaded sharded-slab v0.1.7
+  Downloaded unicode-ident v1.0.27
+  Downloaded try-lock v0.2.5
+  Downloaded toml_parser v1.1.5+spec-1.1.0
+  Downloaded thiserror-impl v2.0.21
+  Downloaded proptest v1.12.0
+  Downloaded thiserror v2.0.21
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded shlex v1.3.0
+  Downloaded rand_xorshift v0.5.0
+  Downloaded rand v0.10.3
+  Downloaded prettyplease v0.2.37
+  Downloaded hyper v1.12.0
+  Downloaded utf8parse v0.2.2
+  Downloaded libc v0.2.191
+  Downloaded tokio v1.54.1
+  Downloaded typenum v1.20.1
+  Downloaded toml_datetime v1.1.2+spec-1.1.0
+  Downloaded thread_local v1.1.10
+  Downloaded rusty-fork v0.3.1
+  Downloaded quote v1.0.47
+  Downloaded serde v1.0.229
+  Downloaded prost-derive v0.14.4
+  Downloaded prost v0.14.4
+  Downloaded proc-macro-crate v3.5.0
+  Downloaded io-uring v0.7.15
+  Downloaded clap_builder v4.6.7
+  Downloaded bytes v1.12.1
+  Downloaded icu_locale_core v2.4.0
+  Downloaded toml_datetime v0.6.11
+  Downloaded opentelemetry_sdk v0.33.1
+  Downloaded nom v7.1.3
+  Downloaded memchr v2.8.3
+  Downloaded pin-project-lite v0.2.17
+  Downloaded icu_normalizer_data v2.4.0
+  Downloaded icu_collections v2.4.0
+  Downloaded http v1.5.0
+  Downloaded sha2 v0.10.9
+  Downloaded minimal-lexical v0.2.1
+  Downloaded log v0.4.34
+  Downloaded icu_properties v2.4.0
+  Downloaded httpdate v1.0.3
+  Downloaded hashbrown v0.17.1
+  Downloaded cpufeatures v0.3.1
+  Downloaded clap_lex v1.1.1
+  Downloaded cc v1.10.0
+  Downloaded bitflags v2.13.2
+  Downloaded idna v1.1.0
+  Downloaded futures-util v0.3.34
+  Downloaded chacha20 v0.10.2
+  Downloaded itertools v0.13.0
+  Downloaded httparse v1.10.1
+  Downloaded http-body-util v0.1.5
+  Downloaded getrandom v0.3.4
+  Downloaded fastrand v2.5.0
+  Downloaded quick-error v1.2.3
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded litemap v0.8.3
+  Downloaded generic-array v0.14.7
+  Downloaded futures-macro v0.3.34
+  Downloaded errno v0.3.14
+  Downloaded equivalent v1.0.3
+  Downloaded either v1.19.0
+  Downloaded crypto-common v0.1.7
+  Downloaded cmake v0.1.58
+  Downloaded clang-sys v1.9.1
+  Downloaded cexpr v0.6.0
+  Downloaded bit-vec v0.10.1
+  Downloaded bit-set v0.11.1
+  Downloaded base64 v0.23.1
+  Downloaded rand_core v0.10.1
+  Downloaded proc-macro2 v1.0.107
+  Downloaded percent-encoding v2.3.2
+  Downloaded opentelemetry-appender-tracing v0.33.1
+  Downloaded matchers v0.2.0
+  Downloaded libloading v0.8.9
+  Downloaded lazy_static v1.5.1
+  Downloaded itoa v1.0.18
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded ipnet v2.12.2
+  Downloaded icu_provider v2.4.0
+  Downloaded colorchoice v1.0.5
+  Downloaded cfg_aliases v0.2.2
+  Downloaded cfg-if v1.0.5
+  Downloaded block-buffer v0.10.4
+  Downloaded aho-corasick v1.1.5
+  Downloaded mio v1.2.4
+  Downloaded idna_adapter v1.2.2
+  Downloaded http-body v1.1.0
+  Downloaded heck v0.5.0
+  Downloaded futures-executor v0.3.34
+  Downloaded core_detect v1.0.0
+  Downloaded getrandom v0.4.3
+  Downloaded futures-sink v0.3.34
+  Downloaded find-msvc-tools v0.1.15
+  Downloaded clap v4.6.7
+  Downloaded borsh v1.8.1
+  Downloaded form_urlencoded v1.2.2
+  Downloaded digest v0.10.7
+  Downloaded fnv v1.0.7
+  Downloaded cpufeatures v0.2.17
+  Downloaded clap_derive v4.6.7
+  Downloaded futures-core v0.3.34
+  Downloaded anstream v1.0.0
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling pin-project-lite v0.2.17
+   Compiling once_cell v1.21.4
+   Compiling futures-core v0.3.34
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-sink v0.3.34
+   Compiling memchr v2.8.3
+   Compiling smallvec v1.16.4
+   Compiling itoa v1.0.18
+   Compiling thiserror v2.0.21
+   Compiling tracing-core v0.1.36
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling bytes v1.12.1
+   Compiling futures-task v0.3.34
+   Compiling icu_normalizer_data v2.4.0
+   Compiling utf8_iter v1.0.4
+   Compiling icu_properties_data v2.4.0
+   Compiling serde_core v1.0.229
+   Compiling futures-io v0.3.34
+   Compiling slab v0.4.12
+   Compiling percent-encoding v2.3.2
+   Compiling either v1.19.0
+   Compiling bitflags v2.13.2
+   Compiling http v1.5.0
+   Compiling itertools v0.13.0
+   Compiling anyhow v1.0.104
+   Compiling syn v3.0.9
+   Compiling syn v2.0.119
+   Compiling getrandom v0.3.4
+   Compiling zerocopy v0.8.63
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling serde v1.0.229
+   Compiling glob v0.3.4
+   Compiling httparse v1.10.1
+   Compiling log v0.4.34
+   Compiling tokio v1.54.1
+   Compiling clang-sys v1.9.1
+   Compiling http-body v1.1.0
+   Compiling futures-channel v0.3.34
+   Compiling tower-service v0.3.3
+   Compiling regex-syntax v0.8.11
+   Compiling prettyplease v0.2.37
+   Compiling try-lock v0.2.5
+   Compiling want v0.3.2
+   Compiling rand_core v0.9.5
+   Compiling form_urlencoded v1.2.2
+   Compiling sync_wrapper v1.0.2
+   Compiling atomic-waker v1.1.2
+   Compiling tower-layer v0.3.3
+   Compiling minimal-lexical v0.2.1
+   Compiling libloading v0.8.9
+   Compiling nom v7.1.3
+   Compiling tracing-attributes v0.1.31
+   Compiling synstructure v0.14.0
+   Compiling zerovec-derive v0.11.7
+   Compiling displaydoc v0.2.7
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling tracing v0.1.44
+   Compiling thiserror-impl v2.0.21
+   Compiling futures-macro v0.3.34
+   Compiling serde_derive v1.0.229
+   Compiling regex-automata v0.4.18
+   Compiling hyper v1.12.0
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.4
+   Compiling futures-util v0.3.34
+   Compiling zerovec v0.11.9
+   Compiling zerotrie v0.2.5
+   Compiling opentelemetry v0.33.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling tinystr v0.8.5
+   Compiling potential_utf v0.1.6
+   Compiling icu_locale_core v2.4.0
+   Compiling rand_chacha v0.9.0
+   Compiling icu_collections v2.4.0
+   Compiling find-msvc-tools v0.1.15
+   Compiling lazy_static v1.5.1
+   Compiling bindgen v0.72.1
+   Compiling ipnet v2.12.2
+   Compiling shlex v2.0.1
+   Compiling base64 v0.23.1
+   Compiling rand v0.9.5
+   Compiling cc v1.10.0
+   Compiling sharded-slab v0.1.7
+   Compiling regex v1.13.1
+   Compiling icu_provider v2.4.0
+   Compiling cexpr v0.6.0
+   Compiling prost-derive v0.14.4
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling tower v0.5.3
+   Compiling hyper-util v0.1.21
+   Compiling futures-executor v0.3.34
+   Compiling matchers v0.2.0
+   Compiling http-body-util v0.1.5
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling zmij v1.0.23
+   Compiling equivalent v1.0.3
+   Compiling nu-ansi-term v0.50.3
+   Compiling shlex v1.3.0
+   Compiling version_check v0.9.5
+   Compiling rustc-hash v2.1.3
+   Compiling hashbrown v0.17.1
+   Compiling prost v0.14.4
+   Compiling generic-array v0.14.7
+   Compiling tracing-subscriber v0.3.23
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling cmake v0.1.58
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling async-trait v0.1.92
+   Compiling indexmap v2.14.2
+   Compiling sysinfo v0.40.0
+   Compiling toml_write v0.1.2
+   Compiling winnow v0.7.15
+   Compiling rand_core v0.10.1
+   Compiling serde_json v1.0.154
+   Compiling url v2.5.8
+   Compiling httpdate v1.0.3
+   Compiling getrandom v0.4.3
+   Compiling typenum v1.20.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling io-uring v0.7.15
+   Compiling utf8parse v0.2.2
+   Compiling rustix v1.1.6
+   Compiling tower-http v0.6.11
+   Compiling anstyle-parse v1.0.0
+   Compiling toml_edit v0.22.27
+   Compiling colorchoice v1.0.5
+   Compiling anstyle v1.0.14
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling autocfg v1.5.1
+   Compiling anstyle-query v1.1.5
+   Compiling reqwest v0.13.5
+   Compiling linux-raw-sys v0.12.1
+   Compiling crypto-common v0.1.7
+   Compiling anstream v1.0.0
+   Compiling num-traits v0.2.19
+   Compiling block-buffer v0.10.4
+   Compiling fastrand v2.5.0
+   Compiling strsim v0.11.1
+   Compiling clap_lex v1.1.1
+   Compiling heck v0.5.0
+   Compiling clap_builder v4.6.7
+   Compiling clap_derive v4.6.7
+   Compiling opentelemetry-proto v0.33.1
+   Compiling digest v0.10.7
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling wait-timeout v0.2.1
+   Compiling fnv v1.0.7
+   Compiling cpufeatures v0.3.1
+   Compiling cpufeatures v0.2.17
+   Compiling opentelemetry-http v0.33.1
+   Compiling bit-vec v0.10.1
+   Compiling quick-error v1.2.3
+   Compiling sha2 v0.10.9
+   Compiling toml v0.8.23
+   Compiling bit-set v0.11.1
+   Compiling tempfile v3.27.0
+   Compiling chacha20 v0.10.2
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling rusty-fork v0.3.1
+   Compiling rand v0.10.3
+   Compiling rand_xorshift v0.5.0
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-kvcache v0.0.0 (/root/tetraeder/crates/kvcache)
+   Compiling core_detect v1.0.0
+   Compiling unarray v0.1.4
+   Compiling proptest v1.12.0
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling clap v4.6.7
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 5m 58s
+     Running tests/gpu_real_batched.rs (target/release/deps/gpu_real_batched-a01bda9478e3dfdf)
+
+running 1 test
+test gpu_qwen3_8b_batched_matches_libllama ... qwen3-8b libllama batched / libllama split: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (0, 20) max |delta| 3.155098e-1 (1.53e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (0, 21) max |delta| 2.0249987e-1 (1.25e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (0, 22) max |delta| 1.890358e-1 (1.27e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (0, 23) max |delta| 2.2459817e-1 (1.50e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (0, 24) max |delta| 1.19289875e-1 (8.44e-3 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (0, 25) max |delta| 1.4141917e-1 (1.53e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (1, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (1, 24) max |delta| 4.8645306e-1 (2.32e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (1, 25) max |delta| 2.3081732e-1 (1.83e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (1, 26) max |delta| 1.3879585e-1 (1.17e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (1, 27) max |delta| 1.391828e-1 (1.13e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (1, 28) max |delta| 1.0659301e-1 (8.33e-3 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (1, 29) max |delta| 1.24334216e-1 (9.50e-3 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (2, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (2, 39) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (2, 40) max |delta| 1.2903476e-1 (1.18e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (2, 41) max |delta| 1.1684406e-1 (8.79e-3 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (2, 42) max |delta| 1.4428174e-1 (8.76e-3 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (2, 43) max |delta| 1.6832042e-1 (1.08e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (2, 44) max |delta| 1.8585157e-1 (1.24e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: (2, 45) max |delta| 2.0795083e-1 (1.22e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama split: 22 rows, worst 2.32e-2 of largest
+qwen3-8b libllama batched / libllama shifted by 7 cells: (0, 19) max |delta| 4.7636032e-1 (2.10e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (0, 20) max |delta| 3.9742124e-1 (1.93e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (0, 21) max |delta| 2.4433517e-1 (1.51e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (0, 22) max |delta| 1.8703747e-1 (1.26e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (0, 23) max |delta| 2.2498745e-1 (1.49e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (0, 24) max |delta| 9.609771e-2 (6.82e-3 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (0, 25) max |delta| 1.4139843e-1 (1.52e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (1, 23) max |delta| 2.4801159e-1 (1.86e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (1, 24) max |delta| 5.8053017e-1 (2.77e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (1, 25) max |delta| 5.2388e-1 (4.13e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (1, 26) max |delta| 1.7540264e-1 (1.48e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (1, 27) max |delta| 1.7551756e-1 (1.42e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (1, 28) max |delta| 1.7529559e-1 (1.37e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (1, 29) max |delta| 1.7513776e-1 (1.34e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (2, 15) max |delta| 2.2662532e-1 (2.00e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (2, 39) max |delta| 1.936096e-1 (1.30e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (2, 40) max |delta| 2.4153098e-1 (2.22e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (2, 41) max |delta| 3.0342674e-1 (2.29e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (2, 42) max |delta| 4.2811108e-1 (2.61e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (2, 43) max |delta| 2.5467777e-1 (1.64e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (2, 44) max |delta| 2.6336193e-1 (1.77e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: (2, 45) max |delta| 2.7110386e-1 (1.59e-2 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 7 cells: 22 rows, worst 4.13e-2 of largest
+qwen3-8b libllama batched / libllama shifted by 256 cells: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (0, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (0, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (0, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (0, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (0, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (0, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (1, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (1, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (1, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (1, 26) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (1, 27) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (1, 28) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (1, 29) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (2, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (2, 39) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (2, 40) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (2, 41) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (2, 42) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (2, 43) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (2, 44) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: (2, 45) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b libllama batched / libllama shifted by 256 cells: 22 rows, worst 0.00e0 of largest
+qwen3-8b builder batched / builder split: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (0, 20) max |delta| 3.1746864e-1 (1.53e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (0, 21) max |delta| 2.3804295e-1 (1.47e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (0, 22) max |delta| 1.8326235e-1 (1.24e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (0, 23) max |delta| 2.3945212e-1 (1.59e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (0, 24) max |delta| 9.505677e-2 (6.75e-3 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (0, 25) max |delta| 1.22727394e-1 (1.33e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (1, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (1, 24) max |delta| 4.1282368e-1 (1.96e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (1, 25) max |delta| 2.6965457e-1 (2.16e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (1, 26) max |delta| 1.425302e-1 (1.20e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (1, 27) max |delta| 1.5497875e-1 (1.26e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (1, 28) max |delta| 1.5994227e-1 (1.25e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (1, 29) max |delta| 1.504417e-1 (1.15e-2 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (2, 15) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (2, 39) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (2, 40) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (2, 41) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (2, 42) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (2, 43) max |delta| 1.10195845e-1 (7.08e-3 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (2, 44) max |delta| 1.2574792e-1 (8.45e-3 of largest), argmax equal true
+qwen3-8b builder batched / builder split: (2, 45) max |delta| 1.1100936e-1 (6.51e-3 of largest), argmax equal true
+qwen3-8b builder batched / builder split: 22 rows, worst 2.16e-2 of largest
+qwen3-8b builder batched / libllama batched: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (0, 20) max |delta| 4.058962e-1 (1.97e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (0, 21) max |delta| 2.6396275e-1 (1.63e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (0, 22) max |delta| 1.9852161e-1 (1.33e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (0, 23) max |delta| 2.3281145e-1 (1.55e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (0, 24) max |delta| 1.012449e-1 (7.18e-3 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (0, 25) max |delta| 1.5644836e-1 (1.69e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (1, 23) max |delta| 2.5981498e-1 (1.95e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (1, 24) max |delta| 6.308191e-1 (3.01e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (1, 25) max |delta| 3.7199163e-1 (2.93e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (1, 26) max |delta| 1.6749734e-1 (1.41e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (1, 27) max |delta| 1.8148708e-1 (1.47e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (1, 28) max |delta| 1.9918507e-1 (1.56e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (1, 29) max |delta| 2.2234154e-1 (1.70e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (2, 15) max |delta| 2.3746574e-1 (2.09e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (2, 39) max |delta| 1.9134855e-1 (1.28e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (2, 40) max |delta| 2.4538445e-1 (2.26e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (2, 41) max |delta| 1.7918491e-1 (1.35e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (2, 42) max |delta| 2.2101712e-1 (1.35e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (2, 43) max |delta| 2.1700929e-1 (1.40e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (2, 44) max |delta| 2.7061987e-1 (1.82e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: (2, 45) max |delta| 2.1847248e-1 (1.29e-2 of largest), argmax equal true
+qwen3-8b builder batched / libllama batched: 22 rows, worst 3.01e-2 of largest
+qwen3-8b builder split / libllama split: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (0, 20) max |delta| 2.1670914e-1 (1.05e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (0, 21) max |delta| 1.3125229e-1 (8.09e-3 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (0, 22) max |delta| 1.6739368e-1 (1.13e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (0, 23) max |delta| 2.2274089e-1 (1.49e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (0, 24) max |delta| 1.0017443e-1 (7.09e-3 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (0, 25) max |delta| 1.1476493e-1 (1.25e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (1, 23) max |delta| 2.5981498e-1 (1.95e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (1, 24) max |delta| 3.3025312e-1 (1.58e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (1, 25) max |delta| 2.9491258e-1 (2.34e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (1, 26) max |delta| 1.5120125e-1 (1.28e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (1, 27) max |delta| 1.3261628e-1 (1.08e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (1, 28) max |delta| 1.500479e-1 (1.17e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (1, 29) max |delta| 2.024877e-1 (1.55e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (2, 15) max |delta| 2.3746574e-1 (2.09e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (2, 39) max |delta| 1.9134855e-1 (1.28e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (2, 40) max |delta| 1.7619169e-1 (1.62e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (2, 41) max |delta| 1.5727758e-1 (1.18e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (2, 42) max |delta| 2.2137833e-1 (1.34e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (2, 43) max |delta| 2.0532227e-1 (1.32e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (2, 44) max |delta| 2.2896034e-1 (1.53e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: (2, 45) max |delta| 2.0188951e-1 (1.18e-2 of largest), argmax equal true
+qwen3-8b builder split / libllama split: 22 rows, worst 2.34e-2 of largest
+qwen3-8b builder alone / libllama alone: (0, 19) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder alone / libllama alone: (0, 20) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder alone / libllama alone: (0, 21) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder alone / libllama alone: (0, 22) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder alone / libllama alone: (0, 23) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder alone / libllama alone: (0, 24) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder alone / libllama alone: (0, 25) max |delta| 0e0 (0.00e0 of largest), argmax equal true
+qwen3-8b builder alone / libllama alone: 7 rows, worst 0.00e0 of largest
+qwen3-8b libllama batched / libllama split: worst 2.32e-2 of the largest logit
+qwen3-8b libllama batched / libllama shifted by 7 cells: worst 4.13e-2 of the largest logit
+qwen3-8b libllama batched / libllama shifted by 256 cells: worst 0.00e0 of the largest logit
+qwen3-8b builder batched / builder split: worst 2.16e-2 of the largest logit
+qwen3-8b builder batched / libllama batched: worst 3.01e-2 of the largest logit
+qwen3-8b builder split / libllama split: worst 2.34e-2 of the largest logit
+qwen3-8b builder alone / libllama alone: worst 0.00e0 of the largest logit
+qwen3-8b: bound max(5e-3, 6.19e-2 of the largest logit), same shapes 6.19e-2, alone 5.00e-3
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 8.54s
+

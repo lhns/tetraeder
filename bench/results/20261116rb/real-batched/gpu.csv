@@ -1,0 +1,2 @@
+name, driver_version, clocks.current.sm [MHz], clocks.current.memory [MHz], clocks_event_reasons.active
+NVIDIA GeForce RTX 3090, 595.71.05, 210 MHz, 405 MHz, 0x0000000000000001
