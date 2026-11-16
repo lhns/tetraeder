@@ -74,6 +74,7 @@ impl PlacementArgs {
             tensor_split: self.tensor_split.clone(),
             overrides: self.override_tensor.clone(),
             load_mode: self.load_mode,
+            ..Placement::default()
         }
     }
 

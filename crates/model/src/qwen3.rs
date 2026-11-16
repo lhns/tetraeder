@@ -10,7 +10,7 @@
 //! plans positions, destination rows, `n_kv` and the mask of a step, this module runs it.
 
 use crate::attn::{
-    AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention, copy_rows,
+    AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention_seqs, copy_rows,
     rms_norm_mul,
 };
 use crate::cpu_poll;
@@ -24,9 +24,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 use tetraeder_ggml_sys::ggml::{
-    Backend, Context, Graph, OwnedGraph, OwnedTensor, Sched, Tensor, Type,
+    Backend, Context, Graph, OwnedGraph, OwnedTensor, Sched, Tensor, Type, cpu,
 };
-use tetraeder_kvcache::{Chunked, KvError, KvPool, RowCopy, StepInput};
+use tetraeder_kvcache::{Chunked, KvError, KvPool, RowCopy, SeqAttn, StepInput};
 use tetraeder_memory::metrics::MemoryMetrics;
 use tetraeder_plan::KvFormat;
 use tetraeder_telemetry::{Phase, StepSample, Telemetry};
@@ -34,8 +34,13 @@ use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 /// `general.architecture` of a Qwen3 dense model.
 pub const ARCH_DENSE: &str = "qwen3";
 
-/// Upper bound of nodes per layer in a whole-step graph (about 45 are used).
+/// Upper bound of nodes per layer in a whole-step graph (about 45 are used), plus per sequence
+/// with attention per sequence (7: Q, K, V and mask views, permute, attention, join).
 const STEP_NODES_PER_LAYER: usize = 128;
+const STEP_NODES_PER_SEQ: usize = 8;
+
+/// Env var that turns on [`DenseOptions::per_seq_attn`] in [`DenseOptions::new`] (`1`).
+pub const PER_SEQ_ATTN_ENV: &str = "TETRAEDER_DENSE_PER_SEQ_ATTN";
 
 /// Hyperparameters of a `qwen3` model (keys as llama.cpp writes them).
 #[derive(Debug, Clone, PartialEq)]
@@ -105,6 +110,12 @@ pub struct DenseOptions {
     pub threads: Option<i32>,
     /// Keep the step graph while (n_tokens, n_kv, n_outputs) repeat.
     pub reuse_step_graph: bool,
+    /// Attention per sequence over its own run of rows instead of one masked attention over
+    /// rows `0..n_kv` of the pool. `new` takes it from `TETRAEDER_DENSE_PER_SEQ_ATTN=1`.
+    pub per_seq_attn: bool,
+    /// On a CPU backend, matmul weights in the CPU's extra buffer types (AMX, repack) where they
+    /// run, as libllama's `use_extra_bufts` (default true there and here).
+    pub extra_bufts: bool,
     pub telemetry: Option<Arc<Telemetry>>,
 }
 
@@ -118,6 +129,8 @@ impl DenseOptions {
             kv_rotation: None,
             threads: None,
             reuse_step_graph: true,
+            per_seq_attn: std::env::var(PER_SEQ_ATTN_ENV).is_ok_and(|v| v == "1"),
+            extra_bufts: true,
             telemetry: None,
         }
     }
@@ -133,6 +146,8 @@ impl std::fmt::Debug for DenseOptions {
             .field("kv_rotation", &self.kv_rotation)
             .field("threads", &self.threads)
             .field("reuse_step_graph", &self.reuse_step_graph)
+            .field("per_seq_attn", &self.per_seq_attn)
+            .field("extra_bufts", &self.extra_bufts)
             .finish_non_exhaustive()
     }
 }
@@ -151,13 +166,17 @@ struct Weights {
     /// `None` when the output projection is tied to the token embedding.
     output: Option<OwnedTensor>,
     layers: Vec<Layer>,
+    /// One weight of each extra buffer type's context, so a kept step graph holds those too.
+    extra_anchors: Vec<OwnedTensor>,
 }
+
+/// Sizes of a step's inputs: tokens, `n_kv` (0 with attention per sequence), outputs and the
+/// mask shape (`[n_kv, n_tokens]`, or `[blocks, 1]` per sequence).
+type StateKey = (usize, usize, usize, [usize; 2]);
 
 /// Inputs of one step; reallocated when its sizes change.
 struct State {
-    n_tokens: usize,
-    n_kv: usize,
-    n_out: usize,
+    key: StateKey,
     tokens: OwnedTensor,
     pos: OwnedTensor,
     rows: OwnedTensor,
@@ -168,8 +187,8 @@ struct State {
 /// A step graph kept across steps. It holds the contexts of the weights, KV cache and state it
 /// reads, so the state must be dropped after it.
 struct StepGraph {
-    /// (n_tokens, n_kv, n_outputs) of the build.
-    key: (usize, usize, usize),
+    /// The state's sizes and, with attention per sequence, every input's rows and tokens.
+    key: (StateKey, Vec<SeqAttn>),
     graph: OwnedGraph,
     logits: OwnedTensor,
 }
@@ -181,6 +200,8 @@ pub struct Qwen3 {
     primary: Backend,
     weights_bytes: u64,
     kv_bytes: u64,
+    /// CPU extra buffer types holding weights (empty: none).
+    weight_bufts: Vec<String>,
     weights: Weights,
     kv: Kv,
     pool: KvPool,
@@ -188,6 +209,7 @@ pub struct Qwen3 {
     step: Option<StepGraph>,
     state: Option<State>,
     reuse_step_graph: bool,
+    per_seq_attn: bool,
     step_graphs_built: u64,
     metrics: MemoryMetrics,
     telemetry: Option<Arc<Telemetry>>,
@@ -211,8 +233,8 @@ fn kv_err(e: KvError) -> ModelError {
     ModelError::Invalid(e.to_string())
 }
 
-fn step_nodes(h: &AttnHparams) -> usize {
-    STEP_NODES_PER_LAYER * (h.n_layer as usize + 1)
+fn step_nodes(h: &AttnHparams, n_seq: usize) -> usize {
+    (STEP_NODES_PER_LAYER + STEP_NODES_PER_SEQ * n_seq) * (h.n_layer as usize + 1)
 }
 
 impl Qwen3 {
@@ -245,8 +267,8 @@ impl Qwen3 {
             None => (cpu.clone(), vec![cpu]),
             Some(gpu) => (gpu.clone(), vec![gpu, cpu]),
         };
-        let sched = Sched::new(&backends, step_nodes(a) * 4, false)?;
-        let (weights, weights_bytes) = load_weights(&gguf, &h, &primary)?;
+        let sched = Sched::new(&backends, step_nodes(a, opts.n_seq_max) * 4, false)?;
+        let (weights, weights_bytes, extra) = load_weights(&gguf, &h, &primary, opts.extra_bufts)?;
         let rows = pad(opts.n_ctx_pool.max(1), KV_PAD);
         let (kv, kv_bytes) = alloc_kv(a, rows, &primary, opts.kv, opts.kv_rotation)?;
         let pool = KvPool::new(Box::new(Chunked::new(rows)));
@@ -254,6 +276,7 @@ impl Qwen3 {
             backend = primary.name(),
             n_layer = a.n_layer,
             rows,
+            ?extra,
             "qwen3 dense loaded"
         );
         Ok(Qwen3 {
@@ -262,6 +285,7 @@ impl Qwen3 {
             primary,
             weights_bytes: weights_bytes as u64,
             kv_bytes: kv_bytes as u64,
+            weight_bufts: extra,
             weights,
             kv,
             pool,
@@ -269,6 +293,7 @@ impl Qwen3 {
             step: None,
             state: None,
             reuse_step_graph: opts.reuse_step_graph,
+            per_seq_attn: opts.per_seq_attn,
             step_graphs_built: 0,
             metrics: MemoryMetrics::new(opts.telemetry.clone()),
             telemetry: opts.telemetry.clone(),
@@ -291,6 +316,11 @@ impl Qwen3 {
         &self.pool
     }
 
+    /// Names of the CPU extra buffer types that hold weights (empty when none does).
+    pub fn weight_bufts(&self) -> &[String] {
+        &self.weight_bufts
+    }
+
     pub fn kv_format(&self) -> KvFormat {
         self.kv.fmt
     }
@@ -303,6 +333,11 @@ impl Qwen3 {
     /// Whole-step graphs built so far (a reused graph does not count).
     pub fn step_graphs_built(&self) -> u64 {
         self.step_graphs_built
+    }
+
+    /// Switches [`DenseOptions::per_seq_attn`]; the next step builds its graph.
+    pub fn set_per_seq_attn(&mut self, on: bool) {
+        self.per_seq_attn = on;
     }
 
     pub fn set_reuse_step_graph(&mut self, on: bool) {
@@ -628,19 +663,29 @@ impl Qwen3 {
                 self.seq_reserve(s.seq, need)?;
             }
         }
-        let plan = self.pool.plan_step(&step).map_err(kv_err)?;
+        // Attention per sequence needs each input in one run of rows (chunked layout).
+        let per_seq = if self.per_seq_attn {
+            self.pool.plan_step_per_seq(&step).map_err(kv_err)?
+        } else {
+            None
+        };
+        let plan = match per_seq {
+            Some(p) => p,
+            None => self.pool.plan_step(&step).map_err(kv_err)?,
+        };
         let n = plan.pos.len();
         let n_out = plan.outputs.len();
-        let key = (n, plan.n_kv, n_out);
-        if self
-            .state
-            .as_ref()
-            .is_none_or(|s| (s.n_tokens, s.n_kv, s.n_out) != key)
-        {
+        let state_key = if plan.seqs.is_empty() {
+            (n, plan.n_kv, n_out, [plan.n_kv, n])
+        } else {
+            (n, 0, n_out, [plan.mask.len(), 1])
+        };
+        let key = (state_key, plan.seqs.clone());
+        if self.state.as_ref().is_none_or(|s| s.key != state_key) {
             // The kept graph holds the old state's context: drop it first, then the buffers.
             self.step = None;
             self.state = None;
-            self.state = Some(alloc_state(key, &self.primary)?);
+            self.state = Some(alloc_state(state_key, &self.primary)?);
         }
         let st = self.state.as_ref().expect("state allocated above");
         let tokens: Vec<i32> = inputs
@@ -663,9 +708,10 @@ impl Qwen3 {
             self.step.as_ref().expect("checked above")
         } else {
             self.step = None;
-            let nodes = step_nodes(&self.h.attn);
+            let nodes = step_nodes(&self.h.attn, plan.seqs.len());
             let ctx = Rc::new(Context::new(nodes, nodes)?);
-            let (graph, logits) = build_step(&self.h, &self.weights, &self.kv, st, &ctx);
+            let (graph, logits) =
+                build_step(&self.h, &self.weights, &self.kv, st, &plan.seqs, &ctx);
             let mut deps = vec![
                 &self.weights.tok_embd,
                 &self.kv.k[0],
@@ -673,6 +719,7 @@ impl Qwen3 {
                 &st.tokens,
             ];
             deps.extend(self.kv.rot_k.iter().chain(&self.kv.rot_v));
+            deps.extend(&self.weights.extra_anchors);
             fresh = StepGraph {
                 key,
                 logits: ctx.keep(logits)?,
@@ -718,75 +765,116 @@ impl Qwen3 {
     }
 }
 
-fn alloc_state(key: (usize, usize, usize), backend: &Backend) -> Result<State> {
-    let (n, n_kv, n_out) = key;
+fn alloc_state(key: StateKey, backend: &Backend) -> Result<State> {
+    let (n, _, n_out, mask) = key;
     let ctx = Rc::new(Context::new(8, 0)?);
     let state = State {
-        n_tokens: n,
-        n_kv,
-        n_out,
+        key,
         tokens: ctx.new_persistent(Type::I32, &[n as i64]),
         pos: ctx.new_persistent(Type::I32, &[n as i64]),
         rows: ctx.new_persistent(Type::I32, &[n as i64]),
-        mask: ctx.new_persistent(Type::F16, &[n_kv as i64, n as i64]),
+        mask: ctx.new_persistent(Type::F16, &[mask[0] as i64, mask[1] as i64]),
         outputs: ctx.new_persistent(Type::I32, &[n_out as i64]),
     };
     ctx.alloc_tensors(backend)?;
     Ok(state)
 }
 
-fn load_weights(gguf: &Gguf, h: &DenseHparams, backend: &Backend) -> Result<(Weights, usize)> {
+/// Loads the weights. On a CPU backend with `extra_bufts`, a matmul weight goes into the first
+/// CPU extra buffer type that runs its matmul (AMX, repack), as libllama does with
+/// `use_extra_bufts`; everything else into the backend's buffer. Returns the bytes of all buffers
+/// and the extra buffer types used.
+fn load_weights(
+    gguf: &Gguf,
+    h: &DenseHparams,
+    backend: &Backend,
+    extra_bufts: bool,
+) -> Result<(Weights, usize, Vec<String>)> {
     let n_tensors = 3 + h.attn.n_layer as usize * 11;
-    let ctx = Rc::new(Context::new(n_tensors + 4, 0)?);
-    let mut loaded: Vec<(OwnedTensor, usize, u64, u64)> = Vec::new();
-    let mut make = |name: &str| -> Result<OwnedTensor> {
+    let extra = if extra_bufts && backend.is_cpu() {
+        cpu::extra_bufts()
+    } else {
+        Vec::new()
+    };
+    // Context 0: the backend's buffer; context i + 1: extra buffer type i.
+    let ctxs = (0..=extra.len())
+        .map(|_| Context::new(n_tensors + 4, 0).map(Rc::new))
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    // (tensor, shard, offset, bytes, context index)
+    let mut loaded: Vec<(OwnedTensor, usize, u64, u64, usize)> = Vec::new();
+    let mut make = |name: &str, matmul: bool| -> Result<OwnedTensor> {
         let info = gguf.tensor(name)?;
         let ne: Vec<i64> = info.ne.iter().map(|&x| x as i64).collect();
         let nd = ne.iter().rposition(|&x| x != 1).map_or(1, |i| i + 1);
-        let t = ctx.new_persistent(info.ty, &ne[..nd]);
+        let at = if matmul && nd == 2 {
+            extra
+                .iter()
+                .position(|b| b.supports_mul_mat(info.ty, [ne[0], ne[1]]))
+                .map_or(0, |i| i + 1)
+        } else {
+            0
+        };
+        let t = ctxs[at].new_persistent(info.ty, &ne[..nd]);
         t.get().set_name(name);
         if t.get().nbytes() as u64 != info.nbytes {
             return Err(ModelError::Invalid(format!("size mismatch for `{name}`")));
         }
-        loaded.push((t.clone(), info.shard, info.offset, info.nbytes));
+        loaded.push((t.clone(), info.shard, info.offset, info.nbytes, at));
         Ok(t)
     };
-    let tok_embd = make(names::TOK_EMBD)?;
-    let out_norm = make(names::OUTPUT_NORM)?;
+    let tok_embd = make(names::TOK_EMBD, false)?;
+    let out_norm = make(names::OUTPUT_NORM, false)?;
     let output = if h.tied_output {
         None
     } else {
-        Some(make(names::OUTPUT)?)
+        Some(make(names::OUTPUT, true)?)
     };
     let mut layers = Vec::new();
     for il in 0..h.attn.n_layer {
-        let mut l = |w: &str| make(&names::layer(il, w));
+        let mut l = |w: &str, matmul: bool| make(&names::layer(il, w), matmul);
         layers.push(Layer {
             attn: AttnWeights {
-                attn_norm: l("attn_norm")?,
-                wq: l("attn_q")?,
-                wk: l("attn_k")?,
-                wv: l("attn_v")?,
-                wo: l("attn_output")?,
-                q_norm: l("attn_q_norm")?,
-                k_norm: l("attn_k_norm")?,
+                attn_norm: l("attn_norm", false)?,
+                wq: l("attn_q", true)?,
+                wk: l("attn_k", true)?,
+                wv: l("attn_v", true)?,
+                wo: l("attn_output", true)?,
+                q_norm: l("attn_q_norm", false)?,
+                k_norm: l("attn_k_norm", false)?,
             },
-            ffn_norm: l("ffn_norm")?,
-            gate: l("ffn_gate")?,
-            up: l("ffn_up")?,
-            down: l("ffn_down")?,
+            ffn_norm: l("ffn_norm", false)?,
+            gate: l("ffn_gate", true)?,
+            up: l("ffn_up", true)?,
+            down: l("ffn_down", true)?,
         });
     }
-    let buffer_size = ctx.alloc_weights(backend)?;
+    let mut buffer_size = ctxs[0].alloc_weights(backend)?;
+    let (mut used, mut extra_anchors) = (Vec::new(), Vec::new());
+    for (i, (b, ctx)) in extra.iter().zip(&ctxs[1..]).enumerate() {
+        if let Some(l) = loaded.iter().find(|l| l.4 == i + 1) {
+            buffer_size += ctx.alloc_weights_extra(*b, backend)?;
+            used.push(b.name());
+            extra_anchors.push(l.0.clone());
+        }
+    }
     let mut shards = gguf
         .paths
         .iter()
         .map(std::fs::File::open)
         .collect::<std::io::Result<Vec<_>>>()?;
     let mut buf = vec![0u8; 16 << 20];
-    for (t, shard, offset, nbytes) in loaded {
+    for (t, shard, offset, nbytes, at) in loaded {
         let f = &mut shards[shard];
         f.seek(SeekFrom::Start(offset))?;
+        if at > 0 {
+            // An extra buffer type converts a weight as it is written: in one piece.
+            if buf.len() < nbytes as usize {
+                buf.resize(nbytes as usize, 0);
+            }
+            f.read_exact(&mut buf[..nbytes as usize])?;
+            t.get().set_bytes(&buf[..nbytes as usize], 0)?;
+            continue;
+        }
         let mut done = 0u64;
         while done < nbytes {
             let len = ((nbytes - done) as usize).min(buf.len());
@@ -801,32 +889,37 @@ fn load_weights(gguf: &Gguf, h: &DenseHparams, backend: &Backend) -> Result<(Wei
             out_norm,
             output,
             layers,
+            extra_anchors,
         },
         buffer_size,
+        used,
     ))
 }
 
 /// The whole step as one graph. Returns the graph and the logits `[n_vocab, n_outputs]`.
+/// `seqs` empty: masked attention over rows `0..n_kv`; else attention per sequence.
 fn build_step<'a>(
     h: &DenseHparams,
     w: &'a Weights,
     kv: &'a Kv,
     st: &'a State,
+    seqs: &[SeqAttn],
     ctx: &'a Context,
 ) -> (Graph<'a>, Tensor<'a>) {
     let a = &h.attn;
-    let mut g = ctx.new_graph(step_nodes(a));
+    let mut g = ctx.new_graph(step_nodes(a, seqs.len()));
     let mut x = ctx.get_rows(w.tok_embd.get(), st.tokens.get());
+    let (n_tokens, n_kv, n_out, _) = st.key;
     let step = AttnStep {
         pos: st.pos.get(),
         rows: st.rows.get(),
         mask: st.mask.get(),
-        n_tokens: st.n_tokens,
-        n_kv: st.n_kv,
+        n_tokens,
+        n_kv,
     };
     for (il, lw) in w.layers.iter().enumerate() {
-        let mut ffn_inp = attention(a, ctx, &mut g, &lw.attn, kv, il, &step, x);
-        if il + 1 == w.layers.len() && st.n_out < st.n_tokens {
+        let mut ffn_inp = attention_seqs(a, ctx, &mut g, &lw.attn, kv, il, &step, seqs, x);
+        if il + 1 == w.layers.len() && n_out < n_tokens {
             // libllama selects the output rows after attention and before the residual add;
             // `attention` adds the residual itself and a row-wise add commutes with the
             // selection, so the values are the same.
@@ -870,10 +963,10 @@ mod graph_order {
     fn layer_ops_follow_libllama_order() {
         let m = model(1);
         for (n, n_out) in [(1usize, 1usize), (5, 1), (5, 5)] {
-            let st = alloc_state((n, KV_PAD, n_out), &m.primary).unwrap();
-            let nodes = step_nodes(&m.h.attn);
+            let st = alloc_state((n, KV_PAD, n_out, [KV_PAD, n]), &m.primary).unwrap();
+            let nodes = step_nodes(&m.h.attn, 1);
             let ctx = Context::new(nodes, nodes).unwrap();
-            let (g, _) = build_step(&m.h, &m.weights, &m.kv, &st, &ctx);
+            let (g, _) = build_step(&m.h, &m.weights, &m.kv, &st, &[], &ctx);
             let ops: Vec<String> = (0..g.n_nodes()).map(|i| g.node(i).op_name()).collect();
             let get_rows = ops.iter().filter(|o| *o == "GET_ROWS").count();
             // Embedding, plus the output selection when fewer rows than tokens are wanted.

@@ -23,6 +23,7 @@ fn load(kv: KvFormat, n_seq_max: usize) -> Qwen3 {
         kv,
         n_seq_max,
         n_ctx_pool: 512,
+        extra_bufts: false,
         ..DenseOptions::new(CPU)
     };
     Qwen3::load(dense_fixture(), &o).unwrap()
@@ -38,6 +39,7 @@ fn cpu_rotation_default_follows_the_format() {
         let off = DenseOptions {
             kv,
             kv_rotation: Some(false),
+            extra_bufts: false,
             ..DenseOptions::new(CPU)
         };
         let m = Qwen3::load(dense_fixture(), &off).unwrap();
@@ -45,6 +47,7 @@ fn cpu_rotation_default_follows_the_format() {
     }
     let on = DenseOptions {
         kv_rotation: Some(true),
+        extra_bufts: false,
         ..DenseOptions::new(CPU)
     };
     let m = Qwen3::load(dense_fixture(), &on).unwrap();

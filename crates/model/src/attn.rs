@@ -6,6 +6,7 @@ use crate::qwen3moe::{ModelError, Result};
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, Graph, OwnedTensor, RopeParams, Sched, Tensor, Type, hadamard_matrix,
 };
+use tetraeder_kvcache::SeqAttn;
 use tetraeder_plan::{Format, KvFormat};
 
 use crate::convert::ggml_type;
@@ -219,6 +220,24 @@ pub(crate) fn attention<'a>(
     st: &AttnStep<'a>,
     x: Tensor<'a>,
 ) -> Tensor<'a> {
+    attention_seqs(h, ctx, g, lw, kv, il, st, &[], x)
+}
+
+/// [`attention`] with `seqs` non-empty: one flash attention per input over its own rows
+/// (`SeqAttn`), the mask being the inputs' blocks back to back (1-D), and the outputs joined in
+/// token order. Empty `seqs`: the masked attention over rows `0..n_kv`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn attention_seqs<'a>(
+    h: &AttnHparams,
+    ctx: &'a Context,
+    g: &mut Graph<'a>,
+    lw: &'a AttnWeights,
+    kv: &'a Kv,
+    il: usize,
+    st: &AttnStep<'a>,
+    seqs: &[SeqAttn],
+    x: Tensor<'a>,
+) -> Tensor<'a> {
     let n = st.n_tokens as i64;
     let (hd, nh, nkv) = (h.head_dim as i64, h.n_head as i64, h.n_head_kv as i64);
     let rope = rope_params(h);
@@ -257,12 +276,56 @@ pub(crate) fn attention<'a>(
         g.expand(ctx.set_rows(cache, src, st.rows));
     }
 
-    let n_kv = st.n_kv as i64;
-    // The head stride is one head's row in the cache type (2 bytes per element for F16).
-    let kview = ctx.view(kc, &[hd, n_kv, nkv], &[row, kc.ty().row_size(hd)], 0);
-    let vview = ctx.view(vc, &[hd, n_kv, nkv], &[vc.nb()[1], vc.ty().row_size(hd)], 0);
-    let q = ctx.permute(q, [0, 2, 1, 3]);
-    let attn = ctx.flash_attn_ext(q, kview, vview, st.mask, 1.0 / (hd as f32).sqrt());
+    let scale = 1.0 / (hd as f32).sqrt();
+    // K and V rows `start..start+n_kv`; the head stride is one head's row in the cache type
+    // (2 bytes per element for F16).
+    let kv_view = |start: usize, n_kv: usize| {
+        let n_kv = n_kv as i64;
+        let vrow = vc.nb()[1];
+        (
+            ctx.view(
+                kc,
+                &[hd, n_kv, nkv],
+                &[row, kc.ty().row_size(hd)],
+                start * row,
+            ),
+            ctx.view(
+                vc,
+                &[hd, n_kv, nkv],
+                &[vrow, vc.ty().row_size(hd)],
+                start * vrow,
+            ),
+        )
+    };
+    let attn = if seqs.is_empty() {
+        let (kview, vview) = kv_view(0, st.n_kv);
+        let q = ctx.permute(q, [0, 2, 1, 3]);
+        ctx.flash_attn_ext(q, kview, vview, st.mask, scale)
+    } else {
+        let qb = q.nb();
+        let mb = st.mask.nb()[0];
+        let parts: Vec<_> = seqs
+            .iter()
+            .map(|s| {
+                let qs = ctx.view(
+                    q,
+                    &[hd, nh, s.n_tokens as i64],
+                    &[qb[1], qb[2]],
+                    s.first_token * qb[2],
+                );
+                let qs = ctx.permute(qs, [0, 2, 1, 3]);
+                let (kview, vview) = kv_view(s.kv_start, s.n_kv);
+                let m = ctx.view(
+                    st.mask,
+                    &[s.n_kv as i64, s.n_tokens as i64],
+                    &[s.n_kv * mb],
+                    s.mask_offset * mb,
+                );
+                ctx.flash_attn_ext(qs, kview, vview, m, scale)
+            })
+            .collect();
+        concat_tokens(ctx, &parts)
+    };
     let attn = ctx.reshape(attn, &[hd * nh, n]);
     // Undo the V rotation (llama-graph.cpp:3291-3293); the matrix is its own inverse.
     let attn = match &kv.rot_v {
@@ -270,6 +333,18 @@ pub(crate) fn attention<'a>(
         None => attn,
     };
     ctx.add(ctx.mul_mat(lw.wo.get(), attn), x)
+}
+
+/// Joins attention outputs `[d, n_head, n_i]` along the tokens, pairwise so each element is
+/// copied about log2(parts) times.
+fn concat_tokens<'a>(ctx: &'a Context, parts: &[Tensor<'a>]) -> Tensor<'a> {
+    match parts {
+        [one] => *one,
+        _ => {
+            let (a, b) = parts.split_at(parts.len() / 2);
+            ctx.concat(concat_tokens(ctx, a), concat_tokens(ctx, b), 2)
+        }
+    }
 }
 
 /// `[n_kv, n]` F16 bits as libllama builds it (no row padding): row i is open (0.0) on columns
