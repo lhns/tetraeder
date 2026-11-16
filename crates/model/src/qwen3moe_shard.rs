@@ -456,8 +456,12 @@ impl Sharded {
             }
         }
         let scheds = (0..rts.len()).map(|_| None).collect();
+        let exec = Executor::new(ranks);
+        if let Some(t) = &opts.telemetry {
+            exec.ranks().record(t.metrics());
+        }
         Ok(Sharded {
-            exec: Executor::new(ranks),
+            exec,
             h,
             stages,
             ranks: rts,
@@ -677,14 +681,12 @@ impl Sharded {
 
     /// Copies KV rows on every rank. Each entry is `(src_row, dst_row, n_rows)`.
     pub(crate) fn copy_rows(&mut self, list: &[(usize, usize, usize)]) -> Result<()> {
-        for r in 0..self.ranks.len() {
-            let Some(rt) = self.ranks[r].as_ref() else {
-                continue;
-            };
-            if self.scheds[r].is_none() {
-                self.scheds[r] = Some(Sched::new(std::slice::from_ref(&rt.backend), 16384, false)?);
+        for (slot, sched) in self.ranks.iter().zip(self.scheds.iter_mut()) {
+            let Some(rt) = slot else { continue };
+            if sched.is_none() {
+                *sched = Some(Sched::new(std::slice::from_ref(&rt.backend), 16384, false)?);
             }
-            if let Some(s) = self.scheds[r].as_mut() {
+            if let Some(s) = sched.as_mut() {
                 copy_rows(&rt.kv, s, list)?;
             }
         }
@@ -783,7 +785,7 @@ impl Sharded {
         out: &mut Vec<f32>,
     ) -> Result<()> {
         let key = (tokens.len(), plan.n_kv, plan.outputs.len());
-        let mut prog = match self.cache.take() {
+        let prog = match self.cache.take() {
             Some(p) if reuse && p.key == key => p,
             _ => {
                 let p = self.build(key)?;
@@ -1198,11 +1200,11 @@ mod graph_order {
                     {
                         reductions += 1;
                         let span = 2 * n_used;
-                        for j in i + 1..i + span {
-                            let op = names[j].as_str();
+                        for (j, op) in names[i + 1..i + span].iter().enumerate() {
                             assert!(
                                 op == "VIEW" || op == "ADD",
-                                "{what}, rank {r}: node {j} after the weighting is {op}"
+                                "{what}, rank {r}: node {} after the weighting is {op}",
+                                i + 1 + j
                             );
                         }
                         assert!(!inside(i, span), "{what}, rank {r}: cut in the reduction");
