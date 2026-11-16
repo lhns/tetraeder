@@ -782,7 +782,19 @@ impl Worker {
 
     // ---- admission ----
 
+    /// Idle sequences whose rows the backend lost are free: nothing is reused from them, and no
+    /// request fails for them. Running ones fail on their next use (the backend's guard).
+    fn drop_lost_idle(&mut self) {
+        for id in 0..self.slots.len() {
+            if matches!(self.slots[id], Slot::Idle(_)) && self.backend.seq_lost(id as SeqId) {
+                self.slots[id] = Slot::Free;
+                let _ = self.backend.seq_rm(id as SeqId, 0);
+            }
+        }
+    }
+
     fn admit(&mut self) {
+        self.drop_lost_idle();
         while let Some(req) = self.waiting.front() {
             if req.cancel.is_cancelled() || req.tx.is_closed() {
                 let req = self.waiting.pop_front().expect("front");

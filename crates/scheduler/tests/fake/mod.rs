@@ -7,7 +7,8 @@
 
 use std::ops::Range;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use tetraeder_scheduler::{BackendError, BatchBackend, Outputs, SeqId, SeqInput};
 
 /// FNV-1a over the tokens.
@@ -47,6 +48,9 @@ pub struct Probe {
     pub max_step_tokens: AtomicUsize,
     /// Successful `seq_cp` calls as (src, dst, n).
     pub seq_cps: std::sync::Mutex<Vec<(SeqId, SeqId, usize)>>,
+    /// Set by a test: the backend "restarts" (loses every sequence) at its next call, like the
+    /// worker process of `serve --worker`.
+    pub restart: AtomicBool,
 }
 
 #[derive(Default, Clone)]
@@ -72,6 +76,9 @@ pub struct FakeKv {
     /// The next `seq_cp` cancels this token and fails, as a request cancelled while its busy
     /// copy fails.
     fail_cp_cancelling: Option<tokio_util::sync::CancellationToken>,
+    /// Sequences that held rows when the backend restarted and were not freed or refilled since;
+    /// using one fails, as in `RemoteBackend`.
+    lost: HashSet<u32>,
     decodes: u32,
     pool: Vec<Option<i32>>,
     free_rows: Vec<usize>,
@@ -92,6 +99,7 @@ impl FakeKv {
             poison: None,
             shrink_to_multiple: None,
             fail_cp_cancelling: None,
+            lost: HashSet::new(),
             decodes: 0,
             pool: vec![None; capacity],
             free_rows: (0..capacity).rev().collect(),
@@ -164,6 +172,31 @@ impl FakeKv {
         self.free_rows.contains(&row)
     }
 
+    /// Applies a restart a test asked for: every sequence is gone, those that held rows are lost.
+    fn apply_restart(&mut self) {
+        if !self.probe.restart.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        for (i, s) in self.seqs.iter_mut().enumerate() {
+            if !s.tokens.is_empty() || !s.rows.is_empty() {
+                self.lost.insert(i as u32);
+            }
+            *s = Seq::default();
+        }
+        self.pool.fill(None);
+        self.free_rows = (0..self.capacity).rev().collect();
+    }
+
+    fn check_lost(&self, seq: SeqId) -> Result<(), BackendError> {
+        if self.lost.contains(&seq) {
+            Err(BackendError::Failed(format!(
+                "sequence {seq} was lost when the backend restarted"
+            )))
+        } else {
+            Ok(())
+        }
+    }
+
     fn seq_ok(&self, seq: SeqId) -> Result<usize, BackendError> {
         let i = seq as usize;
         if i < self.seqs.len() {
@@ -222,7 +255,16 @@ impl BatchBackend for FakeKv {
         self.seqs.get(seq as usize).map_or(0, |s| s.rows.len())
     }
 
+    fn seq_lost(&self, seq: SeqId) -> bool {
+        let held = self
+            .seqs
+            .get(seq as usize)
+            .is_some_and(|s| !s.tokens.is_empty() || !s.rows.is_empty());
+        self.lost.contains(&seq) || (held && self.probe.restart.load(Ordering::SeqCst))
+    }
+
     fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
+        self.apply_restart();
         let i = self.seq_ok(seq)?;
         let need = n.saturating_sub(self.seqs[i].rows.len());
         if n > self.n_ctx_seq || need > self.kv_free() {
@@ -237,7 +279,11 @@ impl BatchBackend for FakeKv {
     }
 
     fn seq_rm(&mut self, seq: SeqId, keep: usize) -> Result<(), BackendError> {
+        self.apply_restart();
         let i = self.seq_ok(seq)?;
+        if keep == 0 {
+            self.lost.remove(&seq);
+        }
         let had = self.seqs[i].tokens.len();
         self.cut(i, keep.min(had), keep > 0);
         if let (Some(m), true) = (self.shrink_to_multiple, keep > 0) {
@@ -255,7 +301,10 @@ impl BatchBackend for FakeKv {
             t.cancel();
             return Err(BackendError::Failed("injected".into()));
         }
+        self.apply_restart();
+        self.check_lost(src)?;
         let (s, d) = (self.seq_ok(src)?, self.seq_ok(dst)?);
+        self.lost.remove(&dst);
         if s == d || !self.seqs[d].tokens.is_empty() || n > self.seqs[s].tokens.len() {
             return Err(BackendError::Failed(format!(
                 "seq_cp {src} -> {dst} of {n}: dst must be empty and distinct, n within src"
@@ -281,11 +330,13 @@ impl BatchBackend for FakeKv {
     }
 
     fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError> {
+        self.apply_restart();
         // Validate everything before touching state.
         let mut seen = Vec::with_capacity(inputs.len());
         let mut need_total = 0;
         for inp in inputs {
             let i = self.seq_ok(inp.seq)?;
+            self.check_lost(inp.seq)?;
             if seen.contains(&i) {
                 return Err(BackendError::Failed(format!("sequence {} twice", inp.seq)));
             }
@@ -370,6 +421,8 @@ impl BatchBackend for FakeKv {
     }
 
     fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
+        self.apply_restart();
+        self.check_lost(seq)?;
         let i = self.seq_ok(seq)?;
         Ok(self.seqs[i]
             .tokens
@@ -379,7 +432,9 @@ impl BatchBackend for FakeKv {
     }
 
     fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {
+        self.apply_restart();
         let i = self.seq_ok(seq)?;
+        self.lost.remove(&seq);
         if bytes.len() < n * 4 || n > self.n_ctx_seq {
             return Err(BackendError::Failed("bad snapshot".into()));
         }

@@ -110,6 +110,12 @@ pub trait BatchBackend {
     fn decode(&mut self, inputs: &[SeqInput<'_>]) -> Result<Outputs<'_>, BackendError>;
     fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError>;
     fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError>;
+    /// Whether `seq` held rows that the backend lost (a restarted worker process) and has not
+    /// been freed since. Its contents are gone and using it fails; `seq_rm(seq, 0)` clears the
+    /// mark. The scheduler drops idle prefixes on lost sequences. Default: nothing is ever lost.
+    fn seq_lost(&self, _seq: SeqId) -> bool {
+        false
+    }
     /// The KV cache format the snapshots are in, keying the prefix cache (ADR 0050 b).
     fn kv_format(&self) -> String {
         "f16/f16".into()
