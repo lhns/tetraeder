@@ -26,7 +26,9 @@ use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
-use tetraeder_executor::{ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks};
+use tetraeder_executor::{
+    ExecCounters, ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks,
+};
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, Graph, OwnedGraph, OwnedTensor, Sched, Tensor, Type,
 };
@@ -180,6 +182,8 @@ pub(crate) struct Sharded {
     scheds: Vec<Option<Sched>>,
     /// Step graphs built since load.
     pub(crate) built: u64,
+    /// Executor counters since load or the last clear.
+    totals: ExecCounters,
     telemetry: Option<Arc<Telemetry>>,
 }
 
@@ -471,6 +475,7 @@ impl Sharded {
             cache: None,
             scheds,
             built: 0,
+            totals: ExecCounters::default(),
             telemetry: opts.telemetry.clone(),
         })
     }
@@ -627,6 +632,22 @@ impl Sharded {
             head,
             map,
         })
+    }
+
+    pub(crate) fn n_ranks(&self) -> usize {
+        self.exec.ranks().len()
+    }
+
+    pub(crate) fn comm_path(&self) -> &'static str {
+        self.exec.ranks().comm_path()
+    }
+
+    pub(crate) fn counters(&self) -> &ExecCounters {
+        &self.totals
+    }
+
+    pub(crate) fn clear_counters(&mut self) {
+        self.totals = ExecCounters::default();
     }
 
     fn rank(&self, r: usize) -> &RankRt {
@@ -858,9 +879,20 @@ impl Sharded {
                 }
             }
         }
+        let c = self.exec.take_counters();
         if let Some(t) = &self.telemetry {
-            self.exec.take_counters().record(t.metrics());
+            c.record(t.metrics());
         }
+        if self.totals.ranges.len() < c.ranges.len() {
+            self.totals.ranges.resize(c.ranges.len(), 0);
+        }
+        for (a, b) in self.totals.ranges.iter_mut().zip(&c.ranges) {
+            *a += b;
+        }
+        for (k, v) in c.collective_bytes {
+            *self.totals.collective_bytes.entry(k).or_insert(0) += v;
+        }
+        self.totals.allocations += c.allocations;
         if reuse {
             self.cache = Some(prog);
         }

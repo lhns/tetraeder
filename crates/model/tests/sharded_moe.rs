@@ -51,9 +51,13 @@ fn synth4_f16() -> PathBuf {
 
 /// The batched-against-alone rule (`tol_batch`) for F16 weights.
 const REL_F16: f32 = 1e-3;
-/// Q8_0 weights: a few activation quantization steps (see [`synth4`]); a wrong slice or a missing
-/// partial sum is off by orders of magnitude more.
-const REL_Q8: f32 = 3e-2;
+/// Eight experts summed per token on F16 weights: the activations of the expert matmuls are
+/// rounded to F16, so partial sum noise flips roundings (measured up to 2.7e-3 of the largest
+/// logit on `tp-2`, `ep-2`, `ep-4`; the layer split is exact). The GPU rule's 5e-3 (ADR 0071).
+const REL_SYNTH_F16: f32 = 5e-3;
+/// Q8_0 weights: a few activation quantization steps (see [`synth4`]; measured up to 1.8e-2);
+/// a wrong slice or a missing partial sum is off by orders of magnitude more.
+const REL_Q8: f32 = 5e-2;
 
 // ---- topologies ---------------------------------------------------------------------------
 
@@ -229,7 +233,7 @@ fn cpu_tiny_fixture_shapes_follow_one_rank() {
 fn cpu_synthetic_two_rank_shapes_follow_one_rank() {
     shapes_follow_one_rank(
         &synth4_f16(),
-        REL_F16,
+        REL_SYNTH_F16,
         vec![
             ("tp-2", tp(4, 2)),
             ("ep-2", ep(4, 2)),
@@ -245,7 +249,7 @@ fn cpu_synthetic_two_rank_shapes_follow_one_rank() {
 fn cpu_synthetic_four_rank_shapes_follow_one_rank() {
     shapes_follow_one_rank(
         &synth4_f16(),
-        REL_F16,
+        REL_SYNTH_F16,
         vec![
             ("ep-4", ep(4, 4)),
             ("tp-4", tp(4, 4)),
@@ -357,6 +361,10 @@ fn cpu_three_sequences_batched_on_sharded_shapes() {
     let path = synth4_f16();
     let prompts = [prompt(1, 9), prompt(2, 17), prompt(3, 5)];
     let steps = 4;
+    let rule = Tol {
+        abs: TOL_CPU,
+        rel: REL_SYNTH_F16,
+    };
     let wants: Vec<Alone> = prompts.iter().map(|p| reference(&path, p, steps)).collect();
     for (name, t) in [("ep-2", ep(4, 2)), ("tp-2", tp(4, 2))] {
         let mut m = sharded(&path, &t, &opts(3));
@@ -375,8 +383,8 @@ fn cpu_three_sequences_batched_on_sharded_shapes() {
         for (i, r) in spans.iter().enumerate() {
             let row = &out[r.start * nv..r.end * nv];
             let at = format!("{name} prefill of sequence {i}");
-            top5_close(row, &wants[i].logits[0], REL_F16, &at);
-            same_token(row, &wants[i].logits[0], TOL_CPU, &at);
+            top5_close(row, &wants[i].logits[0], REL_SYNTH_F16, &at);
+            same_token(row, &wants[i].logits[0], rule, &at);
         }
         for j in 0..steps {
             let toks: Vec<[i32; 1]> = wants.iter().map(|w| [w.toks[w.prompt_len + j]]).collect();
@@ -393,8 +401,8 @@ fn cpu_three_sequences_batched_on_sharded_shapes() {
             for (i, r) in spans.iter().enumerate() {
                 let row = &out[r.start * nv..r.end * nv];
                 let at = format!("{name} decode {j} of sequence {i}");
-                top5_close(row, &wants[i].logits[j + 1], REL_F16, &at);
-                same_token(row, &wants[i].logits[j + 1], TOL_CPU, &at);
+                top5_close(row, &wants[i].logits[j + 1], REL_SYNTH_F16, &at);
+                same_token(row, &wants[i].logits[j + 1], rule, &at);
             }
         }
     }

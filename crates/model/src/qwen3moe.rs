@@ -1002,6 +1002,29 @@ impl Qwen3Moe {
         Ok(())
     }
 
+    /// Ranks of the executor; 1 on the scheduler path.
+    pub fn n_ranks(&self) -> usize {
+        self.shard.as_ref().map_or(1, |s| s.n_ranks())
+    }
+
+    /// The all-reduce path of the executor (`nccl`, `internal`, `fallback`); `None` on the
+    /// scheduler path.
+    pub fn comm_path(&self) -> Option<&'static str> {
+        self.shard.as_ref().map(|s| s.comm_path())
+    }
+
+    /// Ranges launched and bytes moved by the executor since load or the last
+    /// [`Qwen3Moe::reset_exec_counters`]; `None` on the scheduler path.
+    pub fn exec_counters(&self) -> Option<&tetraeder_executor::ExecCounters> {
+        self.shard.as_ref().map(|s| s.counters())
+    }
+
+    pub fn reset_exec_counters(&mut self) {
+        if let Some(s) = self.shard.as_mut() {
+            s.clear_counters();
+        }
+    }
+
     /// Every buffer the builder owns with its capacity and used bytes (ADR 0037): the weights,
     /// the compute slot tensors, the KV cache, the RAM tier and the scheduler's compute buffers.
     /// Cheap: it reads sizes and the slot tables.
