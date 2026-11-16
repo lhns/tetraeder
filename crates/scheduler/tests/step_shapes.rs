@@ -12,7 +12,12 @@
 //!   or of one alone or above three resident ones.
 //!
 //! Engines: `llama` and `dense` as serve runs them; `_one_call` without the CPU split of decoders
-//! and prompt chunks (`step_groups`); `llama_streams` with one KV stream per sequence.
+//! and prompt chunks (`step_groups`); `llama_streams` with one KV stream per sequence;
+//! `llama_norepack` is `llama` without CPU extra buffer types (no weight repack, no AMX), to
+//! tell libllama's repacked matmuls from the rest of a prefill gap; `dense_seq` and
+//! `dense_seq_one_call` are `dense` with attention per sequence (`DenseOptions::per_seq_attn`);
+//! `dense_norepack` is `dense` with its weights in plain CPU memory (`DenseOptions::extra_bufts`
+//! off), the builder before it used libllama's extra buffer types.
 //!
 //! Hardware label: `cpu_model` (the GGUF named by `TETRAEDER_SHAPES_GGUF`); skips without it. With
 //! `TETRAEDER_SHAPES_NGL` above 0 the model is offloaded and the test needs a CUDA build
@@ -151,11 +156,12 @@ fn shapes(name: &str, b: &mut dyn BatchBackend) {
     run("decode1x8_resident", &four, vec![vec![(3, vec![300])]; 8]);
 }
 
-fn llama_engine(path: &Path, threads: usize, ngl: i32, kv_unified: bool) -> Engine {
+fn llama_engine(path: &Path, threads: usize, ngl: i32, kv_unified: bool, repack: bool) -> Engine {
     Engine::load(
         path,
         &Placement {
             n_gpu_layers: ngl,
+            extra_bufts: repack,
             ..Placement::default()
         },
         &ContextConfig {
@@ -190,31 +196,52 @@ fn step_shapes() {
     let on_gpu = ngl > 0;
     let wanted = std::env::var("TETRAEDER_SHAPES_ENGINES").unwrap_or_default();
     let want = |name: &str| wanted.is_empty() || wanted.split(',').any(|w| w.trim() == name);
+    // Which ISA the numbers come from (AMX decides whether libllama repacks for it).
+    if let Ok(info) = std::fs::read_to_string("/proc/cpuinfo") {
+        let model = info.lines().find(|l| l.starts_with("model name"));
+        let flags = info.lines().find(|l| l.starts_with("flags")).unwrap_or("");
+        let has = |f: &str| flags.split_whitespace().any(|x| x == f);
+        println!(
+            "SHAPES cpu={:?} amx_tile={} amx_int8={} avx512f={} avx512_vnni={}",
+            model.and_then(|l| l.split(':').nth(1)).map(str::trim),
+            has("amx_tile"),
+            has("amx_int8"),
+            has("avx512f"),
+            has("avx512_vnni")
+        );
+    }
     // What serve runs: one KV pool, decoders and prompt chunks as separate calls on the CPU.
     if want("llama") {
         shapes(
             "llama",
-            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, true), on_gpu),
+            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, true, true), on_gpu),
+        );
+    }
+    if want("llama_norepack") {
+        shapes(
+            "llama_norepack",
+            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, true, false), on_gpu),
         );
     }
     // `on_gpu` true on a CPU placement: every step one call.
     if want("llama_one_call") {
         shapes(
             "llama_one_call",
-            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, true), true),
+            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, true, true), true),
         );
     }
     // llama-server's layout: one KV stream per sequence (not serve's, ADR 0065).
     if want("llama_streams") {
         shapes(
             "llama_streams",
-            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, false), on_gpu),
+            &mut LlamaBackend::new(llama_engine(&path, threads, ngl, false, true), on_gpu),
         );
     }
     let o = DenseOptions {
         n_ctx_pool: CTX,
         n_seq_max: SEQS as usize,
         threads: Some(threads as i32),
+        per_seq_attn: false,
         ..DenseOptions::new(if on_gpu {
             BackendChoice::Gpu { index: 0 }
         } else {
@@ -224,14 +251,39 @@ fn step_shapes() {
         })
     };
     if want("dense") {
+        let m = Qwen3::load(&path, &o).expect("dense loads");
+        println!("SHAPES dense weight_bufts={:?}", m.weight_bufts());
+        shapes("dense", &mut DenseBackend::new(m, on_gpu));
+    }
+    if want("dense_norepack") {
+        let o = DenseOptions {
+            extra_bufts: false,
+            ..o.clone()
+        };
         shapes(
-            "dense",
+            "dense_norepack",
             &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), on_gpu),
         );
     }
     if want("dense_one_call") {
         shapes(
             "dense_one_call",
+            &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), true),
+        );
+    }
+    let o = DenseOptions {
+        per_seq_attn: true,
+        ..o
+    };
+    if want("dense_seq") {
+        shapes(
+            "dense_seq",
+            &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), on_gpu),
+        );
+    }
+    if want("dense_seq_one_call") {
+        shapes(
+            "dense_seq_one_call",
             &mut DenseBackend::new(Qwen3::load(&path, &o).expect("dense loads"), true),
         );
     }

@@ -2,6 +2,8 @@
 //! (`cargo xtask tiny-dense`: head size 64, so the quantized KV formats run): prefill logits of
 //! every position and greedy steps, the quantized caches with rotation off (`dense_rotation.rs`
 //! has it on), several sequences in one step, `seq_cp`, a chunked move and snapshots.
+//! `cpu_per_seq_*` repeat the libllama comparisons with attention per sequence; the whole file
+//! runs with it under `TETRAEDER_DENSE_PER_SEQ_ATTN=1` (`dense_per_seq.rs` has the rest).
 //!
 //! Hardware labels (AGENTS rule 9): `cpu_*` tests need no GPU.
 
@@ -21,24 +23,43 @@ fn opts(kv: KvFormat, n_seq_max: usize) -> DenseOptions {
         n_seq_max,
         // A sequence reserves whole 256-row units.
         n_ctx_pool: 256 * n_seq_max,
+        extra_bufts: false,
         ..DenseOptions::new(CPU)
     }
 }
 
 fn load(kv: KvFormat, n_seq_max: usize) -> Qwen3 {
-    Qwen3::load(dense_fixture(), &opts(kv, n_seq_max)).unwrap()
+    load_attn(kv, n_seq_max, None)
 }
 
-/// hardware: cpu. Prefill logits of every position and 12 greedy steps, top-5 within `TOL_CPU`,
-/// for the F16 cache and the quantized formats with rotation off on both sides.
-#[test]
-fn cpu_matches_libllama() {
+/// `per_seq`: `None` keeps `DenseOptions::new`'s choice (the env var).
+fn load_attn(kv: KvFormat, n_seq_max: usize, per_seq: Option<bool>) -> Qwen3 {
+    let mut o = opts(kv, n_seq_max);
+    o.per_seq_attn = per_seq.unwrap_or(o.per_seq_attn);
+    Qwen3::load(dense_fixture(), &o).unwrap()
+}
+
+/// Prefill logits of every position and 12 greedy steps, top-5 within `TOL_CPU`, for the F16
+/// cache and the quantized formats with rotation off on both sides.
+fn matches_libllama(per_seq: Option<bool>) {
     for kv in FORMATS {
         let r = libllama_reference_kv(&dense_fixture(), &PROMPT, N_GREEDY, kv);
-        let mut m = load(kv, 1);
+        let mut m = load_attn(kv, 1, per_seq);
         let worst = check_against(&mut m, &r, TOL_CPU);
-        eprintln!("{kv}: max |delta| over the top-{TOP_K} logits: {worst:e}");
+        eprintln!("{kv} per_seq {per_seq:?}: max |delta| over the top-{TOP_K} logits: {worst:e}");
     }
+}
+
+/// hardware: cpu.
+#[test]
+fn cpu_matches_libllama() {
+    matches_libllama(None);
+}
+
+/// hardware: cpu.
+#[test]
+fn cpu_per_seq_matches_libllama() {
+    matches_libllama(Some(true));
 }
 
 /// hardware: cpu. A step graph kept for decode gives the same logits as one built per step.
@@ -152,8 +173,19 @@ fn alone(steps: &[Vec<Item>], seq: u32) -> Vec<Vec<Item>> {
 /// Against libllama (same step shapes) `TOL_CPU` holds; against alone runs `tol_batch`.
 #[test]
 fn cpu_multi_sequence_matches_alone_and_libllama() {
+    multi_sequence(None);
+}
+
+/// hardware: cpu. The same with attention per sequence.
+#[test]
+fn cpu_per_seq_multi_sequence_matches_alone_and_libllama() {
+    multi_sequence(Some(true));
+}
+
+fn multi_sequence(per_seq: Option<bool>) {
     let (streams, steps) = script();
     for kv in FORMATS {
+        let load = |kv, n| load_attn(kv, n, per_seq);
         let mut m = load(kv, 3);
         let batched = builder_script(&mut m, &streams, &steps, true);
         // Each alone: a model of its own, one sequence.
@@ -374,4 +406,50 @@ fn cpu_full_pool_and_seq_rm() {
     assert_eq!(m.pool().seq_len(0), 200);
     m.seq_rm(0, 0).unwrap();
     assert!(m.try_reserve(1, 100).unwrap());
+}
+
+/// hardware: cpu. Weights in the CPU's extra buffer types (AMX, repack; only where the host has
+/// one that runs these matmuls) against plain weights, prefill and decode: bit-equal when no
+/// extra buffer type takes a weight, else within 5% of the largest logit (a gross-error bound:
+/// AMX's F16 kernel keeps activations in F32 where the plain one rounds them to F16; CI's AMX
+/// runner measured 1.8e-2 and 1.4e-1 on the random fixture). Printed for the record: the prompt
+/// logits against libllama with its extra buffer types on, which runs the same kernels.
+#[test]
+fn cpu_extra_bufts_match_plain_weights() {
+    for kv in [KvFormat::F16, KvFormat::Q8_0] {
+        let run = |extra: bool| {
+            let o = DenseOptions {
+                extra_bufts: extra,
+                ..opts(kv, 1)
+            };
+            let mut m = Qwen3::load(dense_fixture(), &o).unwrap();
+            let mut all = m.eval(&PROMPT).unwrap();
+            for t in [5, 6, 7] {
+                all.extend(m.eval_last(&[t]).unwrap());
+            }
+            (all, m.weight_bufts().to_vec())
+        };
+        let ((on, bufts), (off, none)) = (run(true), run(false));
+        assert!(none.is_empty());
+        let worst = on
+            .iter()
+            .zip(&off)
+            .map(|(x, y)| (x - y).abs())
+            .fold(0f32, f32::max);
+        eprintln!("{kv} extra buffer types {bufts:?}: max |delta| vs plain {worst:e}");
+        if bufts.is_empty() {
+            assert_eq!(on, off, "{kv}");
+        } else {
+            let top = off.iter().fold(0f32, |m, x| m.max(x.abs()));
+            assert!(worst <= 5e-2 * top, "{kv}: {worst:e} (largest logit {top})");
+            let r = libllama_reference_bufts(&dense_fixture(), &PROMPT, 0, kv, true);
+            let n = r.prompt_logits.len();
+            let lw = r.prompt_logits[..n]
+                .iter()
+                .zip(&on[..n])
+                .map(|(x, y)| (x - y).abs())
+                .fold(0f32, f32::max);
+            eprintln!("{kv} prompt logits vs libllama with extra buffer types: max |delta| {lw:e}");
+        }
+    }
 }

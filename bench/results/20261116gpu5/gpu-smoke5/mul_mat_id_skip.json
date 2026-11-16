@@ -1,0 +1,1 @@
+{"test":"mul_mat_id_skip","gpu":"CUDA0","tokens":512,"type":"q4_K","experts":128,"used":8,"median_ms":{"skip_g1":0.5855,"skip_g2":0.3309,"remap_g2":0.3725,"skip_g4":0.2230,"remap_g4":0.2907,"skip_g8":0.1694,"remap_g8":0.2351,"random_neg90":0.5984}}

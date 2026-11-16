@@ -12,6 +12,7 @@ pub mod gguf_write;
 pub mod hparams;
 pub mod qwen3;
 pub mod qwen3moe;
+mod qwen3moe_shard;
 pub(crate) mod shard;
 pub mod upload;
 

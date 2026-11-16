@@ -5,6 +5,10 @@
 //! `memory` are the only places where `unsafe` is allowed.
 
 pub mod ggml;
+
+/// True when the patch queue of this build includes patch 0004 (CUDA `mul_mat_id` skips expert id
+/// -1, ADR 0070). Expert parallel on a GPU rank needs it.
+pub const PATCH_0004: bool = cfg!(tetraeder_patch_0004);
 pub use ggml::cpu;
 pub mod llama;
 

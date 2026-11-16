@@ -75,3 +75,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0069](0069-own-executor-rank-programs.md) | Proposed | Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box |
 | [0070](0070-parallel-shapes-and-their-cost.md) | Proposed | Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them |
 | [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Proposed | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
+| [0072](0072-dense-builder-cpu-weights-in-extra-buffer-types.md) | Proposed | Dense builder: CPU weights in libllama's extra buffer types (supersedes 0039 for the dense builder) |

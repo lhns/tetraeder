@@ -21,21 +21,39 @@ enum PlanCommand {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Discover this box and write its hardware graph as JSON (GPU rates from the priors by
+    /// name), for `tetraeder-plan candidates --hw` and `bench --hw`.
+    Hw {
+        /// Output file; stdout when absent.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 pub fn run(a: &PlanArgs) -> Result<()> {
     match &a.command {
-        PlanCommand::Layout { gguf, out } => {
-            let json = serde_json::to_string_pretty(&layout(gguf)?)?;
-            match out {
-                Some(p) => {
-                    std::fs::write(p, json).with_context(|| format!("write {}", p.display()))
-                }
-                None => {
-                    println!("{json}");
-                    Ok(())
-                }
+        PlanCommand::Layout { gguf, out } => write_out(
+            out.as_deref(),
+            &serde_json::to_string_pretty(&layout(gguf)?)?,
+        ),
+        PlanCommand::Hw { out } => {
+            let (hw, notes) = crate::replan::source::HwSource::Discover
+                .read(true)
+                .map_err(anyhow::Error::msg)?;
+            for n in notes {
+                eprintln!("hardware: {n}");
             }
+            write_out(out.as_deref(), &hw.to_json()?)
+        }
+    }
+}
+
+fn write_out(out: Option<&Path>, json: &str) -> Result<()> {
+    match out {
+        Some(p) => std::fs::write(p, json).with_context(|| format!("write {}", p.display())),
+        None => {
+            println!("{json}");
+            Ok(())
         }
     }
 }

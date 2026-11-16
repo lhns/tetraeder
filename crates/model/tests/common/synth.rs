@@ -141,6 +141,15 @@ pub fn write_moe(path: &Path, s: &MoeSpec) {
 /// Like [`write_moe`] with a training context of `n_ctx` and a vocabulary padded to at least
 /// `n_vocab` tokens (unused `<pad_N>` entries after the 260 real ones; 0 for no padding).
 pub fn write_moe_with(path: &Path, s: &MoeSpec, n_ctx: u32, n_vocab: usize) {
+    write_moe_edit(path, s, n_ctx, n_vocab, &mut |_, _, _| {});
+}
+
+/// A tensor editor: name, ggml `ne`, values.
+pub type Edit = dyn FnMut(&str, &[usize], &mut [f32]);
+
+/// [`write_moe_with`] that lets `edit(name, ne, values)` change each tensor's F32 values after
+/// they are drawn (a test forces the router's choices this way).
+pub fn write_moe_edit(path: &Path, s: &MoeSpec, n_ctx: u32, n_vocab: usize, edit: &mut Edit) {
     let mut rng = Rng(s.seed);
     let mut tokens = vocab();
     let mut types = vec![1i32; 257];
@@ -236,15 +245,20 @@ pub fn write_moe_with(path: &Path, s: &MoeSpec, n_ctx: u32, n_vocab: usize) {
 
     let mut f = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
     f.write_all(&head).unwrap();
-    for (_, ne, std) in &tensors {
+    for (name, ne, std) in &tensors {
         let n: usize = ne.iter().product();
-        let mut bytes = Vec::with_capacity(n * 4);
+        let mut vals = Vec::with_capacity(n);
         for _ in 0..n {
             let x = if *std == 0.0 {
                 1.0 + 0.1 * rng.normal()
             } else {
                 std * rng.normal()
             };
+            vals.push(x);
+        }
+        edit(name, ne, &mut vals);
+        let mut bytes = Vec::with_capacity(n * 4);
+        for x in vals {
             bytes.extend(x.to_le_bytes());
         }
         bytes.resize(bytes.len().next_multiple_of(ALIGN), 0);

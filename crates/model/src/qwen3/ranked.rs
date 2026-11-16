@@ -300,7 +300,10 @@ impl Ranked {
                 rd.state = None;
             }
             for rd in &mut self.ranks {
-                rd.state = Some(alloc_state(key, &rd.backend)?);
+                rd.state = Some(alloc_state(
+                    (key.0, key.1, key.2, [key.1, key.0]),
+                    &rd.backend,
+                )?);
             }
             self.state_key = Some(key);
         }

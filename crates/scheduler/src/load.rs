@@ -61,6 +61,31 @@ pub fn load_moe_chunked(path: &Path, opts: &LoadOptions, chunk: usize) -> Result
     })
 }
 
+/// The Qwen3 MoE builder on the executor's ranks of `topo` (ADR 0069, 0070); libllama loads only
+/// the vocabulary, for tokenizing.
+pub fn load_moe_sharded(
+    path: &Path,
+    topo: &tetraeder_plan::Topology,
+    opts: &LoadOptions,
+    chunk: usize,
+) -> Result<Loaded, String> {
+    let tokenizer = Arc::new(
+        Model::load(
+            path,
+            &ModelParams {
+                vocab_only: true,
+                ..ModelParams::default()
+            },
+        )
+        .map_err(|e| e.to_string())?,
+    );
+    let backend = MoeBackend::with_topology(path, topo, opts, chunk).map_err(|e| e.to_string())?;
+    Ok(Loaded {
+        backend: Box::new(backend),
+        tokenizer,
+    })
+}
+
 /// The Qwen3 dense builder (ADR 0066); libllama loads only the vocabulary, for tokenizing.
 pub fn load_dense(path: &Path, opts: &DenseOptions) -> Result<Loaded, String> {
     load_dense_with(path, opts, None)
