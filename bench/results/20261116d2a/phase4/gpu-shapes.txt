@@ -1,0 +1,71 @@
+   Compiling tokio v1.54.1
+   Compiling uuid v1.29.0
+   Compiling hyper v1.12.0
+   Compiling tower v0.5.3
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling tokio-util v0.7.20
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.21
+   Compiling reqwest v0.13.5
+   Compiling axum v0.8.9
+   Compiling opentelemetry-proto v0.33.1
+   Compiling opentelemetry-http v0.33.1
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-gateway v0.0.0 (/root/tetraeder/crates/gateway)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 13.77s
+     Running tests/step_shapes.rs (target/release/deps/step_shapes-1753b5168b0553f1)
+
+running 1 test
+test step_shapes ... SHAPES cpu=Some("AMD Ryzen 9 5900XT 16-Core Processor") amx_tile=false amx_int8=false avx512f=false avx512_vnni=false
+SHAPE engine=llama shape=alone ms=98.0 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=resident ms=103.5 ms_per_prompt_token=0.26
+SHAPE engine=llama shape=mixed1 ms=106.2 ms_per_prompt_token=0.26
+SHAPE engine=llama shape=split1 ms=122.4 ms_per_prompt_token=0.30
+SHAPE engine=llama shape=mixed1_prompt_first ms=109.5 ms_per_prompt_token=0.27
+SHAPE engine=llama shape=mixed2 ms=112.0 ms_per_prompt_token=0.28
+SHAPE engine=llama shape=split2 ms=124.6 ms_per_prompt_token=0.31
+SHAPE engine=llama shape=mixed2_prompt_first ms=121.4 ms_per_prompt_token=0.30
+SHAPE engine=llama shape=mixed3 ms=117.3 ms_per_prompt_token=0.29
+SHAPE engine=llama shape=split3 ms=130.1 ms_per_prompt_token=0.32
+SHAPE engine=llama shape=mixed3_prompt_first ms=124.5 ms_per_prompt_token=0.31
+SHAPE engine=llama shape=decode4x8 ms=114.0 ms_per_prompt_token=0.28
+SHAPE engine=llama shape=decode1x8_alone ms=67.1 ms_per_prompt_token=0.17
+SHAPE engine=llama shape=decode1x8_resident ms=69.5 ms_per_prompt_token=0.17
+SHAPE engine=llama_streams shape=alone ms=98.0 ms_per_prompt_token=0.24
+SHAPE engine=llama_streams shape=resident ms=106.6 ms_per_prompt_token=0.27
+SHAPE engine=llama_streams shape=mixed1 ms=120.7 ms_per_prompt_token=0.30
+SHAPE engine=llama_streams shape=split1 ms=120.9 ms_per_prompt_token=0.30
+SHAPE engine=llama_streams shape=mixed1_prompt_first ms=129.4 ms_per_prompt_token=0.32
+SHAPE engine=llama_streams shape=mixed2 ms=125.9 ms_per_prompt_token=0.31
+SHAPE engine=llama_streams shape=split2 ms=126.6 ms_per_prompt_token=0.31
+SHAPE engine=llama_streams shape=mixed2_prompt_first ms=127.3 ms_per_prompt_token=0.32
+SHAPE engine=llama_streams shape=mixed3 ms=130.3 ms_per_prompt_token=0.32
+SHAPE engine=llama_streams shape=split3 ms=130.0 ms_per_prompt_token=0.32
+SHAPE engine=llama_streams shape=mixed3_prompt_first ms=129.6 ms_per_prompt_token=0.32
+SHAPE engine=llama_streams shape=decode4x8 ms=115.2 ms_per_prompt_token=0.29
+SHAPE engine=llama_streams shape=decode1x8_alone ms=66.6 ms_per_prompt_token=0.17
+SHAPE engine=llama_streams shape=decode1x8_resident ms=70.2 ms_per_prompt_token=0.17
+SHAPES dense weight_bufts=[]
+SHAPE engine=dense shape=alone ms=96.3 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=resident ms=125.3 ms_per_prompt_token=0.31
+SHAPE engine=dense shape=mixed1 ms=128.4 ms_per_prompt_token=0.32
+SHAPE engine=dense shape=split1 ms=131.6 ms_per_prompt_token=0.33
+SHAPE engine=dense shape=mixed1_prompt_first ms=131.6 ms_per_prompt_token=0.33
+SHAPE engine=dense shape=mixed2 ms=124.9 ms_per_prompt_token=0.31
+SHAPE engine=dense shape=split2 ms=136.7 ms_per_prompt_token=0.34
+SHAPE engine=dense shape=mixed2_prompt_first ms=126.7 ms_per_prompt_token=0.32
+SHAPE engine=dense shape=mixed3 ms=127.2 ms_per_prompt_token=0.32
+SHAPE engine=dense shape=split3 ms=141.3 ms_per_prompt_token=0.35
+SHAPE engine=dense shape=mixed3_prompt_first ms=130.0 ms_per_prompt_token=0.32
+SHAPE engine=dense shape=decode4x8 ms=118.2 ms_per_prompt_token=0.29
+SHAPE engine=dense shape=decode1x8_alone ms=68.8 ms_per_prompt_token=0.17
+SHAPE engine=dense shape=decode1x8_resident ms=72.2 ms_per_prompt_token=0.18
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 63.54s
