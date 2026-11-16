@@ -46,6 +46,8 @@ pub struct Probe {
     pub max_inputs: AtomicUsize,
     /// Most tokens in one `decode`.
     pub max_step_tokens: AtomicUsize,
+    /// `seq_snapshot` calls.
+    pub snapshots: AtomicU32,
     /// Successful `seq_cp` calls as (src, dst, n).
     pub seq_cps: std::sync::Mutex<Vec<(SeqId, SeqId, usize)>>,
     /// Set by a test: the backend "restarts" (loses every sequence) at its next call, like the
@@ -421,6 +423,7 @@ impl BatchBackend for FakeKv {
     }
 
     fn seq_snapshot(&mut self, seq: SeqId) -> Result<Vec<u8>, BackendError> {
+        self.probe.snapshots.fetch_add(1, Ordering::SeqCst);
         self.apply_restart();
         self.check_lost(seq)?;
         let i = self.seq_ok(seq)?;

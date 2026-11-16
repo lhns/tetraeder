@@ -83,7 +83,8 @@ fn cpu_a_step_over_the_cap_is_split_and_gives_the_same_rows() {
     let p = prompt(3, 100);
     let mut by_hand = backend(512, 1, 512);
     let mut split = backend(512, 1, 16);
-    assert_eq!(split.max_step_tokens(), 16);
+    // The scheduler may plan past the chunk: decode splits.
+    assert_eq!(split.max_step_tokens(), usize::MAX);
     // The same pieces, one decode call each, against one call the backend splits itself: the
     // pieces are the same batches, so the rows are bit-equal. (Against the unsplit prefill they
     // differ by chunking, as for any chunked prefill.)

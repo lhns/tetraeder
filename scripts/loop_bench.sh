@@ -6,7 +6,7 @@
 #   scripts/loop_bench.sh <out-dir>
 # Env: MODEL (.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf), MOE_MODEL (tests/fixtures/tiny-qwen3moe-f16.gguf;
 # empty or missing: no MoE pass), LLAMA_SERVER, TETRAEDER, PY (python3), THREADS (4), CTX (8192), PARALLEL (4),
-# MAX_TOKENS (64). llama-server runs flash attention (`-fa on`) like the verdict baseline; tetraeder always does.
+# MAX_TOKENS (128, the verdict workload; reaches the prefix-cache save path). llama-server runs flash attention (`-fa on`) like the verdict baseline; tetraeder always does.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 out=${1:?usage: loop_bench.sh <out-dir>}
@@ -17,8 +17,10 @@ llama_server="${LLAMA_SERVER:-target/llama-server-build/bin/llama-server}"
 moe_model="${MOE_MODEL-tests/fixtures/tiny-qwen3moe-f16.gguf}"
 tet="${TETRAEDER:-target/release/tetraeder}"
 py="${PY:-python3}"
-threads="${THREADS:-4}" ctx="${CTX:-8192}" par="${PARALLEL:-4}" max_tokens="${MAX_TOKENS:-64}"
+threads="${THREADS:-4}" ctx="${CTX:-8192}" par="${PARALLEL:-4}" max_tokens="${MAX_TOKENS:-128}"
 port=18080
+# the MoE fixture has no chat template: its pass uses the completions endpoint
+endpoint=chat
 server_pid=""
 
 say() { echo "[$(date +%T)] $*"; }
@@ -58,7 +60,7 @@ bench() { # ENGINE TEST REP SEED, gateway_bench.py arguments after
   local engine=$1 test=$2 rep=$3 seed=$4
   shift 4
   "$py" scripts/gateway_bench.py "http://127.0.0.1:$port" --model qwen3 --temperature 0 --seed "$seed" \
-    --prompt-tokens 512 --max-tokens "$max_tokens" --no-keepalive --label "$engine-$test-r$rep" \
+    --prompt-tokens 512 --max-tokens "$max_tokens" --endpoint "$endpoint" --no-keepalive --label "$engine-$test-r$rep" \
     --out "$out/$engine-$test-r$rep.json" "$@" || say "$engine $test r$rep: client reported errors"
 }
 
@@ -82,7 +84,7 @@ pass() { # ENGINE REP
   if wait_ready "http://127.0.0.1:$port$ready" 300; then
     # the ggml modules each server mapped: both must run the same CPU variant
     grep -oE '[^ /]*(ggml|llama)[^ /]*\.so[^ ]*' "/proc/$server_pid/maps" | sort -u > "$out/modules-$engine-r$rep.txt"
-    "$py" scripts/gateway_bench.py "http://127.0.0.1:$port" --model qwen3 --prompt-tokens 128 --max-tokens 8 \
+    "$py" scripts/gateway_bench.py "http://127.0.0.1:$port" --model qwen3 --endpoint "$endpoint" --prompt-tokens 128 --max-tokens 8 \
       --requests 1 > /dev/null 2>&1 # warm up
     bench "$engine" c1 "$rep" $((rep * 10 + 1)) --concurrency 1 --requests 8
     bench "$engine" c4 "$rep" $((rep * 10 + 4)) --concurrency 4 --requests 16
@@ -106,7 +108,7 @@ run_model() { # ENGINE...
 grep -m1 'model name' /proc/cpuinfo > "$out/cpu.txt"
 run_model llama-server tetraeder-llama tetraeder-dense
 if [ -n "$moe_model" ] && [ -f "$moe_model" ]; then
-  model=$moe_model out=$base_out/moe
+  model=$moe_model out=$base_out/moe endpoint=completions
   mkdir -p "$out"
   run_model llama-server tetraeder-llama tetraeder-moe
 fi

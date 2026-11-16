@@ -74,8 +74,9 @@ pub struct ServeArgs {
     #[arg(long, default_value_t = tetraeder_scheduler::PARALLEL as u32, value_parser = clap::value_parser!(u32).range(1..))]
     pub parallel: u32,
     /// Tokens per step over all sequences: decoding sequences take theirs, the rest goes to
-    /// prompt chunks. Default: the --ubatch value. libllama gets it as n_batch and n_ubatch
-    /// (-b does not apply to serve).
+    /// prompt chunks. Default 2048 (llama-server's n_batch), so prompts that arrive together
+    /// share a step. libllama gets it as n_batch, and --ubatch (at most this) as n_ubatch; -b
+    /// does not apply to serve.
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub step_tokens: Option<u32>,
     /// Speculative decoding of a lone greedy request (ADR 0043, 0065): `ngram` (prompt lookup) or
@@ -594,7 +595,6 @@ impl LoadArgs {
 }
 
 impl ServeArgs {
-    /// Tokens per step: `--step-tokens`, else `--ubatch`.
     /// The speculation settings of `--spec` and its companions; `None` when it is off.
     pub fn spec_config(&self) -> Option<SpecConfig> {
         let method = match self.spec.as_ref()? {
@@ -617,17 +617,20 @@ impl ServeArgs {
         Some(c)
     }
 
+    /// Tokens per step: `--step-tokens`, else [`STEP_TOKENS`](tetraeder_scheduler::STEP_TOKENS).
     pub fn step_tokens(&self) -> u32 {
-        self.step_tokens.unwrap_or(self.place.ubatch).max(1)
+        self.step_tokens
+            .unwrap_or(tetraeder_scheduler::STEP_TOKENS as u32)
+            .max(1)
     }
 
     /// The libllama context of `serve`: one unified KV pool for `--parallel` sequences and a
-    /// batch of exactly one step.
+    /// batch of exactly one step, run in `--ubatch` pieces.
     pub fn llama_context(&self) -> tetraeder_engine::ContextConfig {
         let step = self.step_tokens();
         tetraeder_engine::ContextConfig {
             n_batch: step,
-            n_ubatch: step,
+            n_ubatch: self.place.ubatch.clamp(1, step),
             n_seq_max: self.parallel,
             kv_unified: true,
             ..self.place.context(self.ctx)
@@ -692,11 +695,11 @@ mod tests {
     #[test]
     fn parallel_and_step_tokens_shape_the_llama_context() {
         let a = parse(&[]);
-        assert_eq!((a.parallel, a.step_tokens()), (4, 512));
+        assert_eq!((a.parallel, a.step_tokens()), (4, 2048));
         let c = a.llama_context();
         assert_eq!(
             (c.n_seq_max, c.n_batch, c.n_ubatch, c.kv_unified),
-            (4, 512, 512, true)
+            (4, 2048, 512, true)
         );
         // The phase 4 box passes these.
         let a = parse(&[
@@ -724,8 +727,9 @@ mod tests {
         );
         assert_eq!(c.flash_attn, tetraeder_engine::FlashAttn::On);
         assert!(P::try_parse_from(["x", "--parallel", "0"]).is_err());
-        // --ubatch is the default step.
-        assert_eq!(parse(&["--ubatch", "128"]).step_tokens(), 128);
+        // --ubatch sets the physical batch only.
+        let a = parse(&["--ubatch", "128"]);
+        assert_eq!((a.step_tokens(), a.llama_context().n_ubatch), (2048, 128));
     }
 
     // hardware: none

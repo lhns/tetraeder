@@ -23,8 +23,9 @@ use tetraeder_telemetry::{Metrics, Purpose, Tier};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-/// Default tokens per step (`--step-tokens`): the unit of cancellation during prefill.
-pub const STEP_TOKENS: usize = 512;
+/// Default tokens per step (`--step-tokens`): the unit of cancellation during prefill. llama-server's
+/// `n_batch`, so prompts that arrive together are prefilled in one step.
+pub const STEP_TOKENS: usize = 2048;
 /// Default sequences decoded together (`--parallel`).
 pub const PARALLEL: usize = 4;
 /// Rows reserved beyond the prompt, and the growth step of a sequence (ADR 0065).
@@ -326,6 +327,8 @@ struct Req {
     /// A busy copy for this request failed: its next placement does not offer a busy source, so
     /// it falls back to the idle sequence or the RAM entry. Cleared when it is placed.
     no_busy: bool,
+    /// When the gateway handed it to the scheduler, for the admission log.
+    queued: Instant,
 }
 
 impl Req {
@@ -356,6 +359,7 @@ impl Req {
             bytes0: None,
             started: false,
             no_busy: false,
+            queued: Instant::now(),
         }
     }
 
@@ -449,6 +453,8 @@ struct Worker {
     /// whose input the backend rejects fails.
     solo: VecDeque<SeqId>,
     spec: Option<SpecState>,
+    /// Time spent saving sequences to the prefix cache, for the admission log.
+    save_time: Duration,
 }
 
 /// Speculation in the loop: drafts for a lone greedy decoding sequence (ADR 0065).
@@ -516,6 +522,7 @@ impl Worker {
             n_vocab,
             solo: VecDeque::new(),
             spec: None,
+            save_time: Duration::ZERO,
         }
     }
 
@@ -746,7 +753,10 @@ impl Worker {
         {
             return;
         }
-        match self.backend.seq_snapshot(id as SeqId) {
+        let t0 = Instant::now();
+        let snap = self.backend.seq_snapshot(id as SeqId);
+        self.save_time += t0.elapsed();
+        match snap {
             Ok(bytes) => {
                 let evicted = self
                     .cache
@@ -854,6 +864,7 @@ impl Worker {
         let Some(req) = self.waiting.pop_front() else {
             return Admission::Wait;
         };
+        let (t_place, save0) = (Instant::now(), self.save_time);
         let toks = req.toks.clone();
         let last = toks.len() - 1;
         let fmt = self.backend.kv_format();
@@ -1049,6 +1060,18 @@ impl Worker {
             m.kv_prefix_hit(source);
         }
         req.no_busy = false;
+        if tracing::enabled!(target: "tetraeder::step", tracing::Level::DEBUG) {
+            let ms = |d: Duration| d.as_secs_f64() * 1e3;
+            tracing::debug!(
+                target: "tetraeder::step",
+                "admit seq={id} queued_ms={:.2} place_ms={:.2} save_ms={:.2} prompt={} common={common} source={source} live={}",
+                ms(t_place.saturating_duration_since(req.queued)),
+                ms(t_place.elapsed()),
+                ms(self.save_time - save0),
+                toks.len(),
+                self.live_count(),
+            );
+        }
         self.next_admitted += 1;
         self.slots[id] = Slot::Live(Box::new(Seq {
             req,
@@ -1424,9 +1447,14 @@ impl Worker {
             .iter()
             .filter(|s| matches!(s, Slot::Live(s) if s.paused()))
             .count();
+        let idle = self
+            .slots
+            .iter()
+            .filter(|s| matches!(s, Slot::Idle(_)))
+            .count();
         tracing::debug!(
             target: "tetraeder::step",
-            "step dec_seqs={dec_seqs} dec_toks={dec} pre_seqs={} pre_toks={pre} decode_ms={:.2}              gap_ms={:.2} sample_ms={:.2} post_ms={:.2} live={} paused={paused} waiting={}",
+            "step dec_seqs={dec_seqs} dec_toks={dec} pre_seqs={} pre_toks={pre} decode_ms={:.2}              gap_ms={:.2} sample_ms={:.2} post_ms={:.2} live={} paused={paused} idle={idle} waiting={}",
             seqs - dec_seqs,
             ms(took),
             gap.map_or(-1.0, ms),

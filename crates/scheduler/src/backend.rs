@@ -162,8 +162,7 @@ pub(crate) fn step_groups(inputs: &[SeqInput<'_>], on_gpu: bool) -> Vec<Range<us
     out
 }
 
-/// Tokens per step of the MoE builder; the scheduler plans under `max_step_tokens`, and
-/// `decode` splits a larger step itself.
+/// Tokens per model step of the MoE builder; `decode` splits a larger scheduler step itself.
 pub const MOE_CHUNK: usize = 512;
 
 /// The sequence a failed step names in `KvFull`: libllama cannot say which one found no cells,
@@ -832,8 +831,10 @@ impl BatchBackend for MoeBackend {
         self.model.kv_row_bytes()
     }
 
+    /// No cap: `decode` runs a larger step as model steps of `chunk` tokens, so the scheduler's
+    /// budget (not the chunk) decides how many waiting prompts share a step.
     fn max_step_tokens(&self) -> usize {
-        self.chunk
+        usize::MAX
     }
 }
 

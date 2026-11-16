@@ -4,6 +4,7 @@
 //! Hardware label: none.
 
 use super::*;
+use std::sync::atomic::Ordering;
 
 #[path = "../../tests/fake/mod.rs"]
 mod fake;
@@ -14,6 +15,10 @@ const N_VOCAB: usize = 300;
 type Rx = mpsc::Receiver<GenEvent>;
 
 fn worker(kv: FakeKv) -> Worker {
+    worker_with(kv, 512)
+}
+
+fn worker_with(kv: FakeKv, step_tokens: usize) -> Worker {
     let parallel = kv.n_seq_max();
     let vocab = Arc::new(Vocab {
         tokens: vec![b"a".to_vec(); N_VOCAB],
@@ -36,7 +41,7 @@ fn worker(kv: FakeKv) -> Worker {
         None,
         false,
         parallel,
-        512,
+        step_tokens,
     )
 }
 
@@ -242,4 +247,54 @@ fn a_failed_busy_copy_does_not_stop_the_next_request_from_copying() {
     let _c = submit(&mut w, &shared, 5);
     w.admit();
     assert_eq!(probe.seq_cps.lock().unwrap().len(), 1, "no busy copy");
+}
+
+/// A request whose prompt shares only a chat-template header with the idle sequences.
+fn chat(seed: u32) -> Vec<TokenId> {
+    let mut p = vec![1, 2, 3];
+    p.extend(prompt(seed, 40));
+    p
+}
+
+/// Runs `waves` waves of `parallel` requests, each to its end, and checks every one finished.
+fn run_waves(w: &mut Worker, waves: u32, parallel: u32) {
+    for wave in 0..waves {
+        let mut rxs: Vec<Rx> = (0..parallel)
+            .map(|i| submit(w, &chat(wave * parallel + i), 10))
+            .collect();
+        pump(w);
+        for rx in &mut rxs {
+            assert_eq!(tokens(&events(rx)), 10);
+        }
+    }
+}
+
+/// When the pool has no rows for a new request, the oldest idle sequence is saved and evicted.
+#[test]
+fn under_kv_pressure_an_idle_sequence_is_still_saved() {
+    // Each request reserves 43 + 10 rows: four idle ones and one new fit, a second new does not.
+    let kv = FakeKv::new(N_VOCAB, 4, 3200, 300);
+    let probe = kv.probe();
+    let mut w = worker_with(kv, 2048);
+    run_waves(&mut w, 2, 4);
+    assert!(probe.snapshots.load(Ordering::SeqCst) > 0);
+    assert!(!w.cache.is_empty(), "the evicted sequences are in RAM");
+    // A saved prompt comes back from RAM.
+    let mut rx = submit(&mut w, &chat(0), 10);
+    pump(&mut w);
+    assert_eq!(tokens(&events(&mut rx)), 10);
+}
+
+/// Prompts that wait together are prefilled in one step under the default budget, as
+/// llama-server takes them in one `n_batch`; 512 split four 405-token prompts over four steps.
+#[test]
+fn prompts_waiting_together_share_one_step_under_the_default_budget() {
+    let kv = FakeKv::new(N_VOCAB, 4, 3200, 20_000);
+    let probe = kv.probe();
+    let mut w = worker_with(kv, STEP_TOKENS);
+    let _rxs: Vec<Rx> = (0..4).map(|i| submit(&mut w, &prompt(i, 405), 2)).collect();
+    w.admit();
+    assert!(w.step());
+    assert_eq!(probe.max_inputs.load(Ordering::SeqCst), 4);
+    assert_eq!(probe.max_step_tokens.load(Ordering::SeqCst), 4 * 405);
 }
