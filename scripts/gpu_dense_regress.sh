@@ -7,7 +7,7 @@
 # beside its binary (LD_LIBRARY_PATH per binary).
 # Started detached by `taxameter run scripts/gpu_dense_regress.sh`; log runs/vast/dense_regress.log ends with
 # DENSE_REGRESS_DONE rc=<n>. Results: bench/results/<session>/dense-regress/{shapes.txt,table.md,DONE}.
-# A rerun resumes: built binaries and finished runs are kept. Env: SESSION, OLD (030d1f3), ROUNDS (3), REPO_URL.
+# A rerun resumes: built binaries and finished runs are kept. Env: SESSION, OLD (030d1f3, full sha), ROUNDS (3), REPO_URL.
 exec 8> /root/tetraeder_dense_regress.lock
 flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
@@ -26,7 +26,7 @@ fi
 session="${SESSION:-$(date +%Y%m%d)}"
 out="$root/bench/results/$session/dense-regress"
 log="$root/runs/vast/dense_regress.log"
-old="${OLD:-030d1f3}"
+old="${OLD:-030d1f34ab7c488346db4e51c29f24e102a5138b}" # a full sha: GitHub does not fetch short ones
 rounds="${ROUNDS:-3}"
 repo_url="${REPO_URL:-https://github.com/lhns/tetraeder}"
 gguf="$root/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf"
@@ -124,7 +124,7 @@ for l in open(out + '/shapes.txt'):
     if m: d[(m[4], m[3], m[2])].append(float(m[5]))
 shapes = sorted({k[0] for k in d})
 engines = ['dense', 'dense_norepack', 'llama']
-w = [f'Qwen3-8B Q4_K_M, all layers on GPU, min of {rounds} rounds (ms per step shape); old = {old}', '']
+w = [f'Qwen3-8B Q4_K_M, all layers on GPU, min of {rounds} rounds (ms per step shape); old = {old[:7]}', '']
 w.append('shape | engine | old | head')
 w.append('--- | --- | --- | ---')
 for s in shapes:
