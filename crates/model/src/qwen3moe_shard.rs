@@ -370,14 +370,15 @@ impl Sharded {
             if s.ep != 1 && s.ep != s.tp {
                 return invalid(format!("stage {si}: ep = {} needs tp = ep", s.ep));
             }
-            if h.n_head as usize % tp != 0 || h.n_head_kv as usize % tp != 0 {
+            if !(h.n_head as usize).is_multiple_of(tp) || !(h.n_head_kv as usize).is_multiple_of(tp)
+            {
                 return invalid(format!(
                     "stage {si}: tp = {tp} does not divide {} heads and {} KV heads",
                     h.n_head, h.n_head_kv
                 ));
             }
             let ep = s.ep > 1;
-            if ep && h.n_expert as usize % tp != 0 {
+            if ep && !(h.n_expert as usize).is_multiple_of(tp) {
                 return invalid(format!(
                     "stage {si}: ep = {tp} does not divide {} experts",
                     h.n_expert
