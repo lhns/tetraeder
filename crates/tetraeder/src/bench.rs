@@ -41,12 +41,18 @@ pub struct BenchArgs {
     /// Hardware graph (TOML or JSON) the plan is validated against; default: discover this box.
     #[arg(long, value_name = "FILE", requires = "plan")]
     hw: Option<PathBuf>,
+    /// Run only the first N layers and the head (calibration anchors, ADR 0068): the timing is
+    /// real, the logits are not. Needs `--engine dense` and one stage.
+    #[arg(long, value_name = "N")]
+    layer_limit: Option<u32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum BenchEngine {
     Llama,
     Dense,
+    /// The MoE builder; its bench path comes with the sharded MoE builder.
+    Moe,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -61,6 +67,14 @@ pub fn run(a: &BenchArgs) -> anyhow::Result<()> {
     anyhow::ensure!(
         a.plan.is_none() || a.engine == BenchEngine::Dense,
         "--plan needs --engine dense"
+    );
+    anyhow::ensure!(
+        a.engine != BenchEngine::Moe,
+        "--engine moe: the sharded MoE builder's bench path is not wired yet"
+    );
+    anyhow::ensure!(
+        a.layer_limit.is_none() || a.engine == BenchEngine::Dense,
+        "--layer-limit needs --engine dense"
     );
     let telemetry = match a.telemetry {
         Switch::On => Some(Arc::new(Telemetry::new(&TelemetryConfig::from_env())?)),
@@ -176,6 +190,7 @@ fn run_dense(
         opts.threads = a.model.threads;
         opts.n_ctx_pool = (n_prompt + n_gen) as usize + 1;
         opts.telemetry = telemetry.clone();
+        opts.layer_limit = a.layer_limit;
         let mut m = match &planned {
             Some(p) => Qwen3::load_sharded(&a.model.model, &p.topology, &opts),
             None => Qwen3::load(&a.model.model, &opts),
