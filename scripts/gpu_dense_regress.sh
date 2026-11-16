@@ -7,7 +7,9 @@
 # beside its binary (LD_LIBRARY_PATH per binary).
 # Started detached by `taxameter run scripts/gpu_dense_regress.sh`; log runs/vast/dense_regress.log ends with
 # DENSE_REGRESS_DONE rc=<n>. Results: bench/results/<session>/dense-regress/{shapes.txt,table.md,DONE}.
-# A rerun resumes: built binaries and finished runs are kept. Env: SESSION, OLD (030d1f3, full sha), ROUNDS (3), REPO_URL.
+# A rerun resumes: built binaries and finished runs are kept. Env: SESSION, OLD (030d1f3, full sha), ROUNDS (3), REPO_URL,
+# ENG_OLD (dense,llama), ENG_HEAD (dense,dense_norepack,llama), OUT_DIR (results dir), ALLOW_PARTIAL=1 (a run that fails
+# after printing its decode4x8 line for llama still counts: the pin A/B, where dense may not run on the old tree).
 exec 8> /root/tetraeder_dense_regress.lock
 flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
@@ -24,10 +26,12 @@ if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
   [ -n "$archs" ] && export TETRAEDER_CUDA_ARCHS="$archs"
 fi
 session="${SESSION:-$(date +%Y%m%d)}"
-out="$root/bench/results/$session/dense-regress"
+out="${OUT_DIR:-$root/bench/results/$session/dense-regress}"
 log="$root/runs/vast/dense_regress.log"
 old="${OLD:-030d1f34ab7c488346db4e51c29f24e102a5138b}" # a full sha: GitHub does not fetch short ones
 rounds="${ROUNDS:-3}"
+eng_old="${ENG_OLD:-dense,llama}"
+eng_head="${ENG_HEAD:-dense,dense_norepack,llama}"
 repo_url="${REPO_URL:-https://github.com/lhns/tetraeder}"
 gguf="$root/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf"
 work=/root/dense-regress
@@ -102,13 +106,20 @@ run_one() {
   TETRAEDER_REQUIRE_GPU=1 TETRAEDER_SHAPES_GGUF="$gguf" TETRAEDER_SHAPES_NGL=99 TETRAEDER_SHAPES_THREADS="$threads" \
     TETRAEDER_SHAPES_ENGINES="$engines" LD_LIBRARY_PATH="$work/bins/$name.lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
     timeout -k 30 25m "$work/bins/$name" --nocapture --test-threads 1 > "$raw.tmp" 2>&1 8>&- \
-    || { tail -n 30 "$raw.tmp"; die "run $name round $round failed"; }
+    || {
+      tail -n 30 "$raw.tmp"
+      if [ "${ALLOW_PARTIAL:-0}" = 1 ] && grep -q 'SHAPE engine=llama shape=decode4x8 ' "$raw.tmp"; then
+        say "WARNING: run $name round $round failed after the llama shapes; kept as partial"
+      else
+        die "run $name round $round failed"
+      fi
+    }
   grep -q '^SHAPE' "$raw.tmp" || { tail -n 30 "$raw.tmp"; die "run $name round $round printed no SHAPE line"; }
   mv "$raw.tmp" "$raw"
 }
 for r in $(seq 1 "$rounds"); do
-  run_one "$r" old dense,llama
-  run_one "$r" head dense,dense_norepack,llama
+  run_one "$r" old "$eng_old"
+  run_one "$r" head "$eng_head"
 done
 
 : > "$out/shapes.txt"
