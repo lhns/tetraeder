@@ -10,7 +10,7 @@ mod common;
 
 use common::multi_seq::{Alone, alone_on, close, prompt, same_token};
 use common::synth::{MoeSpec, quantized_moe, write_moe_edit};
-use common::{PROMPT, TOL_CPU, argmax, fixture, tol_batch, top_k};
+use common::{PROMPT, TOL_CPU, Tol, argmax, fixture, top_k};
 use std::path::{Path, PathBuf};
 use tetraeder_ggml_sys::llama::{Ftype, QuantizeParams, quantize};
 use tetraeder_model::{BackendChoice, LoadOptions, Qwen3Moe, SeqEval};
@@ -38,9 +38,22 @@ fn opts(n_seq_max: usize) -> LoadOptions {
     }
 }
 
+/// Q8_0 weights: the activations of every matmul are quantized to 8 bits, so an ulp of partial
+/// sum noise sometimes flips a quantization step and moves the logits by a few thousandths of
+/// the largest one. Exact for most rows, never as tight as F16.
 fn synth4() -> PathBuf {
     quantized_moe(&SPEC4, Ftype::Q8_0, "sharded4")
 }
+
+fn synth4_f16() -> PathBuf {
+    quantized_moe(&SPEC4, Ftype::F16, "sharded4f16")
+}
+
+/// The batched-against-alone rule (`tol_batch`) for F16 weights.
+const REL_F16: f32 = 1e-3;
+/// Q8_0 weights: a few activation quantization steps (see [`synth4`]); a wrong slice or a missing
+/// partial sum is off by orders of magnitude more.
+const REL_Q8: f32 = 3e-2;
 
 // ---- topologies ---------------------------------------------------------------------------
 
@@ -118,10 +131,10 @@ fn sharded(path: &Path, t: &Topology, o: &LoadOptions) -> Qwen3Moe {
 
 // ---- comparisons --------------------------------------------------------------------------
 
-/// The top-5 logits of `want` are within `tol_batch` in `got`.
-fn top5_close(got: &[f32], want: &[f32], what: &str) {
+/// The top-5 logits of `want` are within `max(TOL_CPU, rel * largest)` in `got`.
+fn top5_close(got: &[f32], want: &[f32], rel: f32, what: &str) {
     assert_eq!(got.len(), want.len(), "{what}");
-    let tol = tol_batch(want);
+    let tol = Tol { abs: TOL_CPU, rel }.of(want);
     let mut worst = 0f32;
     for i in top_k(want, 5) {
         worst = worst.max((got[i] - want[i]).abs());
@@ -137,13 +150,13 @@ fn top5_close(got: &[f32], want: &[f32], what: &str) {
 
 /// `m` follows the alone run teacher-forced: the logits after the prompt and after each greedy
 /// token agree in the top 5, and the greedy token is equal or a near tie.
-fn follows(m: &mut Qwen3Moe, want: &Alone, what: &str) {
+fn follows(m: &mut Qwen3Moe, want: &Alone, rel: f32, what: &str) {
     m.reset();
     let mut got = m.eval_last(&want.toks[..want.prompt_len]).unwrap();
     for (j, w) in want.logits.iter().enumerate() {
         let at = format!("{what}, step {j}");
-        top5_close(&got, w, &at);
-        same_token(&got, w, TOL_CPU, &at);
+        top5_close(&got, w, rel, &at);
+        same_token(&got, w, Tol { abs: TOL_CPU, rel }, &at);
         if j + 1 < want.logits.len() {
             got = m.eval_last(&[want.toks[want.prompt_len + j]]).unwrap();
         }
@@ -155,12 +168,12 @@ fn reference(path: &Path, prompt: &[i32], steps: usize) -> Alone {
     alone_on(&mut m, prompt, steps)
 }
 
-fn shapes_follow_one_rank(path: &Path, shapes: Vec<(&str, Topology)>) {
+fn shapes_follow_one_rank(path: &Path, rel: f32, shapes: Vec<(&str, Topology)>) {
     let p = prompt(3, 12);
     let want = reference(path, &p, 12);
     for (name, t) in shapes {
         let mut m = sharded(path, &t, &opts(1));
-        follows(&mut m, &want, name);
+        follows(&mut m, &want, rel, name);
     }
 }
 
@@ -201,6 +214,7 @@ fn cpu_one_rank_is_bit_equal_to_the_resident_builder_q8() {
 fn cpu_tiny_fixture_shapes_follow_one_rank() {
     shapes_follow_one_rank(
         &fixture(),
+        REL_F16,
         vec![
             ("tp-2", tp(2, 2)),
             ("ep-2", ep(2, 2)),
@@ -209,12 +223,13 @@ fn cpu_tiny_fixture_shapes_follow_one_rank() {
     );
 }
 
-/// hardware: cpu. The synthetic Q8_0 MoE, 4 layers: two-way shapes and the layer split at the
-/// first, middle and last boundary (Rule 2).
+/// hardware: cpu. The synthetic MoE, 4 layers, F16 weights: two-way shapes and the layer split at
+/// the first, middle and last boundary (Rule 2), within `tol_batch`.
 #[test]
 fn cpu_synthetic_two_rank_shapes_follow_one_rank() {
     shapes_follow_one_rank(
-        &synth4(),
+        &synth4_f16(),
+        REL_F16,
         vec![
             ("tp-2", tp(4, 2)),
             ("ep-2", ep(4, 2)),
@@ -225,16 +240,35 @@ fn cpu_synthetic_two_rank_shapes_follow_one_rank() {
     );
 }
 
-/// hardware: cpu. Four ranks: `ep-4`, `tp-4`, `tp2-pp2` and a four-stage layer split.
+/// hardware: cpu. Four ranks, F16: `ep-4`, `tp-4`, `tp2-pp2` and a four-stage layer split.
 #[test]
 fn cpu_synthetic_four_rank_shapes_follow_one_rank() {
     shapes_follow_one_rank(
-        &synth4(),
+        &synth4_f16(),
+        REL_F16,
         vec![
             ("ep-4", ep(4, 4)),
             ("tp-4", tp(4, 4)),
             ("tp2-pp2", tp2_pp2(4)),
             ("layer-4", layers(4, &[1, 2, 3])),
+        ],
+    );
+}
+
+/// hardware: cpu. The same shapes on Q8_0 weights, which cuts quantized rows and columns at block
+/// boundaries (wo columns, expert down columns), within the Q8_0 bound.
+#[test]
+fn cpu_synthetic_q8_shapes_follow_one_rank() {
+    shapes_follow_one_rank(
+        &synth4(),
+        REL_Q8,
+        vec![
+            ("q8 tp-2", tp(4, 2)),
+            ("q8 ep-2", ep(4, 2)),
+            ("q8 ep-4", ep(4, 4)),
+            ("q8 tp-4", tp(4, 4)),
+            ("q8 tp2-pp2", tp2_pp2(4)),
+            ("q8 layer-2 at 2", layers(4, &[2])),
         ],
     );
 }
@@ -312,7 +346,7 @@ fn cpu_expert_parallel_with_all_routing_on_one_rank() {
     let n_layer = MoeSpec::REALISH.layers as u32;
     for (name, t) in [("ep-2", ep(n_layer, 2)), ("tp-2", tp(n_layer, 2))] {
         let mut m = sharded(&path, &t, &opts(1));
-        follows(&mut m, &want, &format!("skewed {name}"));
+        follows(&mut m, &want, REL_Q8, &format!("skewed {name}"));
     }
 }
 
@@ -320,7 +354,7 @@ fn cpu_expert_parallel_with_all_routing_on_one_rank() {
 /// `ep-2` and `tp-2`: each row against the same sequence alone on the resident builder.
 #[test]
 fn cpu_three_sequences_batched_on_sharded_shapes() {
-    let path = synth4();
+    let path = synth4_f16();
     let prompts = [prompt(1, 9), prompt(2, 17), prompt(3, 5)];
     let steps = 4;
     let wants: Vec<Alone> = prompts.iter().map(|p| reference(&path, p, steps)).collect();
@@ -341,7 +375,7 @@ fn cpu_three_sequences_batched_on_sharded_shapes() {
         for (i, r) in spans.iter().enumerate() {
             let row = &out[r.start * nv..r.end * nv];
             let at = format!("{name} prefill of sequence {i}");
-            top5_close(row, &wants[i].logits[0], &at);
+            top5_close(row, &wants[i].logits[0], REL_F16, &at);
             same_token(row, &wants[i].logits[0], TOL_CPU, &at);
         }
         for j in 0..steps {
@@ -359,7 +393,7 @@ fn cpu_three_sequences_batched_on_sharded_shapes() {
             for (i, r) in spans.iter().enumerate() {
                 let row = &out[r.start * nv..r.end * nv];
                 let at = format!("{name} decode {j} of sequence {i}");
-                top5_close(row, &wants[i].logits[j + 1], &at);
+                top5_close(row, &wants[i].logits[j + 1], REL_F16, &at);
                 same_token(row, &wants[i].logits[j + 1], TOL_CPU, &at);
             }
         }
