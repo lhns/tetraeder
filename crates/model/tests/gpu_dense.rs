@@ -26,6 +26,8 @@ fn load(backend: BackendChoice, kv: KvFormat, n_seq_max: usize) -> Qwen3 {
         kv,
         n_seq_max,
         n_ctx_pool: 256 * n_seq_max,
+        // libllama_script_on loads without the CPU extra buffer types (ADR 0072)
+        extra_bufts: false,
         ..DenseOptions::new(backend)
     };
     Qwen3::load(dense_fixture(), &o).unwrap()
