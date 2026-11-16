@@ -26,6 +26,8 @@ fn load(backend: BackendChoice, kv: KvFormat, n_seq_max: usize) -> Qwen3 {
         kv,
         n_seq_max,
         n_ctx_pool: 256 * n_seq_max,
+        // The libllama references hold weights in file layout (`extra_bufts: false`).
+        extra_bufts: false,
         ..DenseOptions::new(backend)
     };
     Qwen3::load(dense_fixture(), &o).unwrap()
