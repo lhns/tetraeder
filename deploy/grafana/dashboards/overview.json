@@ -2535,6 +2535,48 @@
           }
         }
       ]
+    },
+    {
+      "id": 85,
+      "title": "Executor: worker call latency",
+      "description": "Round trip of one call to the worker process of `serve --worker` (ADR 0069), median and p95 per call kind (decode, seq_rm, ...). A slow tail with steady restarts (previous panel, alert TetraederWorkerRestarting) points at a worker near its deadline.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 114,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, tetraeder_call) (rate(tetraeder_executor_ipc_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p50 {{tetraeder_call}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, tetraeder_call) (rate(tetraeder_executor_ipc_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "p95 {{tetraeder_call}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

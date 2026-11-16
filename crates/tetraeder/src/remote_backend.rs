@@ -567,6 +567,10 @@ impl BatchBackend for RemoteBackend {
         self.state.seqs.get(seq as usize).map_or(0, |s| s.reserved)
     }
 
+    fn seq_lost(&self, seq: SeqId) -> bool {
+        self.lost.contains(&seq)
+    }
+
     fn seq_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
         self.call(&Request::SeqReserve { seq, n }, &[]).map(|_| ())
     }
