@@ -104,3 +104,10 @@ Sharded steps split matmul reductions and add partial sums, so results differ fr
 - Collective costs come from measured curves of the path that actually runs, so NCCL, ggml's internal path and the fallback are priced alike.
 - Contiguous expert spans can be imbalanced under skewed routing; the prediction includes it, and frequency placement waits for evidence that it matters.
 - Patch 0004 is the only ggml change in Phase 5.
+
+## As built (E3, 2026-11-16)
+- `ModelLayout` carries `n_ff` and `n_ff_exp`; older layout files estimate them from bytes, rounded to 256.
+- `c_range` (graphs and eager) and `c_step` live in `HardwareGraph.range_costs`, fitted only from anchors that carry `ranks`, with a near-zero pull (`LAMBDA_RANGES`; the normal pull left `c_step` 15% off on the synthetic fit). Same-class GPUs share one set of fitted rates.
+- Without a measured curve, a copy costs `alpha + n / beta` and an all-reduce is a ring over the group's links; probe curves (`tetraeder comm-probe`) replace the prior ones with the same op and ranks. GPU pairs without peer access get a `HostStaged` link (prior: twice the larger host alpha, the smaller host beta, halved when both share a lane group).
+- `enumerate_multi` returns `MultiCandidate { id, gpus, plan, notes }`, not `Candidate`, so the single-device enums and their exhaustive matches stay unchanged. The embedding is one shard on the first stage's rank 0 (the plan IR has no replicated unit).
+- Priors only (fixtures `two_3090_hoststaged`, `four_3090_hoststaged`): Qwen3-32B single 34.6 tok/s, tp-2 41.0, layer-2 34.2; Qwen3-30B-A3B single 113, layer-2 109, tp-2 76.5, ep-2 76.8; tp-4 for the 30B pruned (3 blocks over 4 ranks of the expert down rows). S2's anchors decide the real numbers.
