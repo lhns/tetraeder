@@ -106,6 +106,7 @@ pub fn features(
         op_offload: !matches!(placement, None | Some(Placement::Cpu)) && flag("-nopo") != Some(1),
         graphs: env.get("GGML_CUDA_DISABLE_GRAPHS").is_none_or(|v| v != "1"),
         tier: None,
+        ranks: None,
     }
 }
 
@@ -215,6 +216,7 @@ fn builder_features_with(
         op_offload,
         graphs: true,
         tier,
+        ranks: None,
     }
 }
 

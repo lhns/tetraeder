@@ -510,14 +510,11 @@ fn phase_gates_parallel_degrees_and_formats() {
     let (n3, r3) = tp_plans(3, true);
     assert_eq!(n3, 0);
     assert!(r3.pruned.iter().any(|(_, w)| w.contains("cannot execute")));
-    // Phase 5 executes multi-GPU stages GPU-resident only; this search prunes them until
-    // `enumerate_multi` (ADR 0070). Phase 7 keeps the old shapes.
-    let (n5, r5) = tp_plans(5, true);
-    assert_eq!(n5, 0);
-    assert!(r5.pruned.iter().any(|(_, w)| w.contains("GPU-resident")));
-    let (n7, _) = tp_plans(7, true);
-    assert!(n7 > 0);
-    let (n5w, r5w) = tp_plans(7, false);
+    // Phase 5: groups over P2P or host-staged links, experts cut over the group (ep = 1) or whole
+    // with tp = ep (ADR 0070); `enumerate_multi` is the fixed set, the search may use the same.
+    let (n5, _) = tp_plans(5, true);
+    assert!(n5 > 0);
+    let (n5w, r5w) = tp_plans(5, false);
     assert_eq!(n5w, 0);
     assert!(r5w.pruned.iter().any(|(_, w)| w.contains("Linux")));
 
@@ -533,8 +530,8 @@ fn moe_parallel_stage_spreads_experts_evenly() {
     let hw = &hardware()[0].1;
     let m = moe_small();
     let q = BitsQuality::new(&m, 1.0);
-    let res = run(hw, &m, &Hints::default(), 7, &q, None, true);
-    check_result(&res, hw, &m, 7, &Hints::default()).unwrap();
+    let res = run(hw, &m, &Hints::default(), 5, &q, None, true);
+    check_result(&res, hw, &m, 5, &Hints::default()).unwrap();
     assert!(res.scored.iter().any(|s| {
         s.plan.replicas[0]
             .stages

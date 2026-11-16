@@ -63,7 +63,7 @@ impl Skel {
                 if g.devs.len() == 1 {
                     g.devs[0].clone()
                 } else {
-                    let kind = if g.tp > 1 { "tp" } else { "ep" };
+                    let kind = if g.ep > 1 { "ep" } else { "tp" };
                     format!("{kind}{}[{}]", g.devs.len(), g.devs.join("+"))
                 }
             })
@@ -596,7 +596,23 @@ pub(crate) fn build_plan(
                 });
             }
         }
-        if p.experts > 0 {
+        let cut_experts = g.tp > 1 && g.ep == 1 && p.caps.tp_ep && !p.caps.multi_gpu_cpu_compute;
+        if p.experts > 0 && cut_experts {
+            // Phase 5 (ADR 0070): with ep = 1 an expert has tp shards, one per rank.
+            for (sp, f) in layer_runs(&|l| p.expert_item(l)) {
+                assign.push(Assign {
+                    units: UnitSel {
+                        kinds: vec![UnitKind::Expert],
+                        layers: Some(sp),
+                        experts: None,
+                    },
+                    home: Some(g.devs.clone()),
+                    compute: None,
+                    format: Some(f),
+                    ..Default::default()
+                });
+            }
+        } else if p.experts > 0 {
             let e = p.experts;
             // Tier of every expert id.
             let mut tier_of = vec![0usize; e];

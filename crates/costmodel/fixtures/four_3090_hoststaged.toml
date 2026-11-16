@@ -1,0 +1,281 @@
+# 4 x RTX 3090, no peer access (Vast box), host links gen4. Priors only: the same 3090 numbers as
+# crates/planner/fixtures/rtx3090_prior.toml (calibrated in bench/results/20261103/planner-moe/), a
+# staged link per GPU pair (ADR 0070: twice the larger host alpha, the smaller host beta, halved in
+# a shared lane group) and prior collective curves from the ring formula at 10 us and 12 GB/s.
+[[devices]]
+id = "cpu0"
+kind = "cpu"
+name = "Box CPU"
+tier = "ram"
+capacity_bytes = 96000000000
+threads = 12
+bandwidth_bytes_per_s = { value = 4.0e10, source = "prior" }
+compute = { flops_per_s = 6.0e11, c0_graph_s = 3.0e-6, c0_eager_s = 3.0e-6 }
+
+[[devices]]
+id = "gpu0"
+kind = "gpu"
+name = "RTX 3090"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 0
+bandwidth_bytes_per_s = { value = 8.0e11, source = "prior" }
+compute = { flops_per_s = 4.0e13, c0_graph_s = 4.0e-6, c0_eager_s = 1.5e-5 }
+pcie = { gen_current = 4, width_current = 8, gen_max = 4, width_max = 16 }
+
+[[devices]]
+id = "gpu1"
+kind = "gpu"
+name = "RTX 3090"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 1
+bandwidth_bytes_per_s = { value = 8.0e11, source = "prior" }
+compute = { flops_per_s = 4.0e13, c0_graph_s = 4.0e-6, c0_eager_s = 1.5e-5 }
+pcie = { gen_current = 4, width_current = 8, gen_max = 4, width_max = 16 }
+
+[[devices]]
+id = "gpu2"
+kind = "gpu"
+name = "RTX 3090"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 2
+bandwidth_bytes_per_s = { value = 8.0e11, source = "prior" }
+compute = { flops_per_s = 4.0e13, c0_graph_s = 4.0e-6, c0_eager_s = 1.5e-5 }
+pcie = { gen_current = 4, width_current = 16, gen_max = 4, width_max = 16 }
+
+[[devices]]
+id = "gpu3"
+kind = "gpu"
+name = "RTX 3090"
+tier = "vram"
+capacity_bytes = 25769803776
+index = 3
+bandwidth_bytes_per_s = { value = 8.0e11, source = "prior" }
+compute = { flops_per_s = 4.0e13, c0_graph_s = 4.0e-6, c0_eager_s = 1.5e-5 }
+pcie = { gen_current = 4, width_current = 16, gen_max = 4, width_max = 16 }
+
+[[links]]
+id = "pcie-gpu0"
+a = "gpu0"
+b = "cpu0"
+kind = "pcie"
+lane_group = "rp0"
+alpha_s = { value = 1.5e-5, source = "prior" }
+beta_bytes_per_s = { value = 1.2e+10, source = "prior" }
+
+[[links]]
+id = "pcie-gpu1"
+a = "gpu1"
+b = "cpu0"
+kind = "pcie"
+lane_group = "rp0"
+alpha_s = { value = 1.5e-5, source = "prior" }
+beta_bytes_per_s = { value = 1.2e+10, source = "prior" }
+
+[[links]]
+id = "pcie-gpu2"
+a = "gpu2"
+b = "cpu0"
+kind = "pcie"
+alpha_s = { value = 1.5e-5, source = "prior" }
+beta_bytes_per_s = { value = 2.0e+10, source = "prior" }
+
+[[links]]
+id = "pcie-gpu3"
+a = "gpu3"
+b = "cpu0"
+kind = "pcie"
+alpha_s = { value = 1.5e-5, source = "prior" }
+beta_bytes_per_s = { value = 2.0e+10, source = "prior" }
+
+[[links]]
+id = "staged-gpu0-gpu1"
+a = "gpu0"
+b = "gpu1"
+kind = "host_staged"
+alpha_s = { value = 3.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 6.0e+09, source = "prior" }
+
+[[links]]
+id = "staged-gpu0-gpu2"
+a = "gpu0"
+b = "gpu2"
+kind = "host_staged"
+alpha_s = { value = 3.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 1.2e+10, source = "prior" }
+
+[[links]]
+id = "staged-gpu0-gpu3"
+a = "gpu0"
+b = "gpu3"
+kind = "host_staged"
+alpha_s = { value = 3.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 1.2e+10, source = "prior" }
+
+[[links]]
+id = "staged-gpu1-gpu2"
+a = "gpu1"
+b = "gpu2"
+kind = "host_staged"
+alpha_s = { value = 3.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 1.2e+10, source = "prior" }
+
+[[links]]
+id = "staged-gpu1-gpu3"
+a = "gpu1"
+b = "gpu3"
+kind = "host_staged"
+alpha_s = { value = 3.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 1.2e+10, source = "prior" }
+
+[[links]]
+id = "staged-gpu2-gpu3"
+a = "gpu2"
+b = "gpu3"
+kind = "host_staged"
+alpha_s = { value = 3.0e-5, source = "prior" }
+beta_bytes_per_s = { value = 2.0e+10, source = "prior" }
+
+[[lane_groups]]
+id = "rp0"
+capacity_bytes_per_s = 2.0e10
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu0", "gpu1"]
+comm = "prior"
+points = [[4096.0, 2.034133e-05], [16384.0, 2.136533e-05], [65536.0, 2.546133e-05], [262144.0, 4.184533e-05], [1048576.0, 1.073813e-04], [4194304.0, 3.695253e-04], [16777216.0, 1.418101e-03], [67108864.0, 5.612405e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu0", "gpu2"]
+comm = "prior"
+points = [[4096.0, 2.034133e-05], [16384.0, 2.136533e-05], [65536.0, 2.546133e-05], [262144.0, 4.184533e-05], [1048576.0, 1.073813e-04], [4194304.0, 3.695253e-04], [16777216.0, 1.418101e-03], [67108864.0, 5.612405e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu0", "gpu3"]
+comm = "prior"
+points = [[4096.0, 2.034133e-05], [16384.0, 2.136533e-05], [65536.0, 2.546133e-05], [262144.0, 4.184533e-05], [1048576.0, 1.073813e-04], [4194304.0, 3.695253e-04], [16777216.0, 1.418101e-03], [67108864.0, 5.612405e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu1", "gpu2"]
+comm = "prior"
+points = [[4096.0, 2.034133e-05], [16384.0, 2.136533e-05], [65536.0, 2.546133e-05], [262144.0, 4.184533e-05], [1048576.0, 1.073813e-04], [4194304.0, 3.695253e-04], [16777216.0, 1.418101e-03], [67108864.0, 5.612405e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu1", "gpu3"]
+comm = "prior"
+points = [[4096.0, 2.034133e-05], [16384.0, 2.136533e-05], [65536.0, 2.546133e-05], [262144.0, 4.184533e-05], [1048576.0, 1.073813e-04], [4194304.0, 3.695253e-04], [16777216.0, 1.418101e-03], [67108864.0, 5.612405e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu2", "gpu3"]
+comm = "prior"
+points = [[4096.0, 2.034133e-05], [16384.0, 2.136533e-05], [65536.0, 2.546133e-05], [262144.0, 4.184533e-05], [1048576.0, 1.073813e-04], [4194304.0, 3.695253e-04], [16777216.0, 1.418101e-03], [67108864.0, 5.612405e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu0", "gpu1", "gpu2"]
+comm = "prior"
+points = [[4096.0, 4.045511e-05], [16384.0, 4.182044e-05], [65536.0, 4.728178e-05], [262144.0, 6.912711e-05], [1048576.0, 1.565084e-04], [4194304.0, 5.060338e-04], [16777216.0, 1.904135e-03], [67108864.0, 7.496540e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu0", "gpu1", "gpu3"]
+comm = "prior"
+points = [[4096.0, 4.045511e-05], [16384.0, 4.182044e-05], [65536.0, 4.728178e-05], [262144.0, 6.912711e-05], [1048576.0, 1.565084e-04], [4194304.0, 5.060338e-04], [16777216.0, 1.904135e-03], [67108864.0, 7.496540e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu0", "gpu2", "gpu3"]
+comm = "prior"
+points = [[4096.0, 4.045511e-05], [16384.0, 4.182044e-05], [65536.0, 4.728178e-05], [262144.0, 6.912711e-05], [1048576.0, 1.565084e-04], [4194304.0, 5.060338e-04], [16777216.0, 1.904135e-03], [67108864.0, 7.496540e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu1", "gpu2", "gpu3"]
+comm = "prior"
+points = [[4096.0, 4.045511e-05], [16384.0, 4.182044e-05], [65536.0, 4.728178e-05], [262144.0, 6.912711e-05], [1048576.0, 1.565084e-04], [4194304.0, 5.060338e-04], [16777216.0, 1.904135e-03], [67108864.0, 7.496540e-03]]
+
+[[collectives]]
+op = "all_reduce"
+ranks = ["gpu0", "gpu1", "gpu2", "gpu3"]
+comm = "prior"
+points = [[4096.0, 6.051200e-05], [16384.0, 6.204800e-05], [65536.0, 6.819200e-05], [262144.0, 9.276800e-05], [1048576.0, 1.910720e-04], [4194304.0, 5.842880e-04], [16777216.0, 2.157152e-03], [67108864.0, 8.448608e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu0", "gpu1"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu0", "gpu2"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu0", "gpu3"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu1", "gpu0"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu1", "gpu2"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu1", "gpu3"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu2", "gpu0"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu2", "gpu1"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu2", "gpu3"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu3", "gpu0"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu3", "gpu1"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]
+
+[[collectives]]
+op = "copy"
+ranks = ["gpu3", "gpu2"]
+comm = "prior"
+points = [[4096.0, 1.034133e-05], [16384.0, 1.136533e-05], [65536.0, 1.546133e-05], [262144.0, 3.184533e-05], [1048576.0, 9.738133e-05], [4194304.0, 3.595253e-04], [16777216.0, 1.408101e-03], [67108864.0, 5.602405e-03]]

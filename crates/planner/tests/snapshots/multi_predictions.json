@@ -1,0 +1,17 @@
+{
+  "four_3090/qwen3-30b-a3b/ep-4": "pp 5.629e3 tg 6.097e1",
+  "four_3090/qwen3-30b-a3b/layer-4": "pp 5.029e3 tg 1.082e2",
+  "four_3090/qwen3-30b-a3b/single": "pp 5.101e3 tg 1.130e2",
+  "four_3090/qwen3-30b-a3b/tp2-pp2": "pp 5.053e3 tg 7.648e1",
+  "four_3090/qwen3-32b/layer-4": "pp 5.921e2 tg 3.410e1",
+  "four_3090/qwen3-32b/single": "pp 5.942e2 tg 3.457e1",
+  "four_3090/qwen3-32b/tp-4": "pp 1.281e3 tg 4.174e1",
+  "four_3090/qwen3-32b/tp2-pp2": "pp 9.253e2 tg 4.093e1",
+  "two_3090/qwen3-30b-a3b/ep-2": "pp 5.492e3 tg 7.678e1",
+  "two_3090/qwen3-30b-a3b/layer-2": "pp 5.067e3 tg 1.091e2",
+  "two_3090/qwen3-30b-a3b/single": "pp 5.101e3 tg 1.130e2",
+  "two_3090/qwen3-30b-a3b/tp-2": "pp 5.071e3 tg 7.654e1",
+  "two_3090/qwen3-32b/layer-2": "pp 5.934e2 tg 3.420e1",
+  "two_3090/qwen3-32b/single": "pp 5.942e2 tg 3.457e1",
+  "two_3090/qwen3-32b/tp-2": "pp 9.268e2 tg 4.095e1"
+}

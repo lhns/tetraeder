@@ -74,7 +74,7 @@ pub struct SearchResult {
     pub pruned: Vec<(String, String)>,
 }
 
-fn vendor(name: &str) -> u8 {
+pub(crate) fn vendor(name: &str) -> u8 {
     let n = name.to_lowercase();
     if ["amd", "radeon", "instinct"].iter().any(|k| n.contains(k)) {
         1
@@ -112,7 +112,7 @@ fn skeletons(p: &Prep, pruned: &mut Vec<(String, String)>) -> Vec<Skel> {
         let linked = devs.iter().enumerate().all(|(i, a)| {
             devs[i + 1..].iter().all(|b| {
                 p.hw.link_between(a, b)
-                    .is_some_and(|l| l.kind == LinkKind::P2p)
+                    .is_some_and(|l| matches!(l.kind, LinkKind::P2p | LinkKind::HostStaged))
             })
         });
         if !same_vendor || !linked {
@@ -123,23 +123,30 @@ fn skeletons(p: &Prep, pruned: &mut Vec<(String, String)>) -> Vec<Skel> {
             pruned.push((label, format!("phase {} cannot execute it", p.phase.0)));
             continue;
         }
-        if !p.caps.multi_gpu_cpu_compute {
-            // The Phase 5 executor runs GPU-resident stages with tp experts or tp = ep (ADR 0069,
-            // 0070); this search places experts on CPU tiers. `enumerate_multi` replaces it.
-            pruned.push((
-                label,
-                format!(
-                    "phase {} executes multi-GPU stages GPU-resident only",
-                    p.phase.0
-                ),
-            ));
-            continue;
-        }
         if !p.linux {
             pruned.push((label, "needs NCCL, Linux only".into()));
             continue;
         }
         let m = p.model;
+        // Phase 5 (ADR 0070): a tp group cuts every expert over its ranks (ep = 1); an expert
+        // parallel group has tp = ep = g. The tp = 1, ep = g group does not exist.
+        let p5 = p.caps.tp_ep && !p.caps.multi_gpu_cpu_compute;
+        if p5 {
+            let heads_ok = m.heads.is_multiple_of(g) && m.kv_heads.is_multiple_of(g);
+            if heads_ok {
+                units.push(Group {
+                    devs: devs.clone(),
+                    tp: g,
+                    ep: 1,
+                });
+                if moe && m.experts.is_multiple_of(g) {
+                    units.push(Group { devs, tp: g, ep: g });
+                }
+            } else {
+                pruned.push((label, format!("{g} does not divide heads and KV heads")));
+            }
+            continue;
+        }
         let experts_ok = !moe || m.experts.is_multiple_of(g);
         if m.heads.is_multiple_of(g) && m.kv_heads.is_multiple_of(g) && experts_ok {
             units.push(Group {
@@ -373,13 +380,23 @@ fn solve_skeleton(
                     let dense = [UnitId::Attn(l), UnitId::Mlp(l)]
                         .iter()
                         .all(|&u| shards.iter().all(|d| p.rules.ok(u, d, d)));
-                    // A parallel group spreads the experts evenly over its devices.
+                    // A parallel group spreads the experts evenly over its devices; cut experts
+                    // (phase 5, ep = 1) live on every device.
+                    let cut =
+                        g.tp > 1 && g.ep == 1 && p.caps.tp_ep && !p.caps.multi_gpu_cpu_compute;
                     let spread = e == 0
                         || g.devs.len() == 1
-                        || (0..e).all(|x| {
-                            let d = &g.devs[x / (e / g.devs.len())];
-                            p.rules.ok(UnitId::Expert(l, x as u32), d, d)
-                        });
+                        || (cut
+                            && (0..e).all(|x| {
+                                g.devs
+                                    .iter()
+                                    .all(|d| p.rules.ok(UnitId::Expert(l, x as u32), d, d))
+                            }))
+                        || (!cut
+                            && (0..e).all(|x| {
+                                let d = &g.devs[x / (e / g.devs.len())];
+                                p.rules.ok(UnitId::Expert(l, x as u32), d, d)
+                            }));
                     dense && spread
                 })
                 .collect()

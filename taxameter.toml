@@ -36,7 +36,7 @@ paths = [".cargo", "crates", "xtask", "patches", "bench/README.md", "bench/claud
          # the committed results the crates' tests read by name (tests/test_taxameter_config.py)
          "bench/results/20261103/quality-qwen3-8b.json", "bench/results/20261103/quality-qwen3-30b-bf16.json",
          "bench/results/20261109-runner", "bench/results/20261102/builder-real-202732.json",
-         "bench/results/20261103/partial-planner-dense", "bench/results/20261110b/claude-code-proxy/toolcall-fixtures-r2.json",
+         "bench/results/20261103/partial-planner-dense", "bench/results/20261103/planner-moe/calib.json", "bench/results/20261110b/claude-code-proxy/toolcall-fixtures-r2.json",
          "bench/results/20261111d/claude-code-proxy",
          "scripts", "docs/adr", "tests/fixtures", "tests/conformance", "vendor/PIN", "Cargo.toml",
          "deploy/otelcol",

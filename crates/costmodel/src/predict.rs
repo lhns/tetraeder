@@ -59,9 +59,10 @@
 //! `offload_compute:<dev>`, `read:<disk>`; `tg_breakdown` is seconds per token, `pp_breakdown`
 //! is seconds over the whole prompt.
 
+use crate::{allreduce_time, transfer_time};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tetraeder_profiler::{Device, DeviceKind, HardwareGraph};
+use tetraeder_profiler::{CollectiveOp, Device, DeviceKind, HardwareGraph};
 
 /// One device's share of the model for a run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -124,6 +125,52 @@ pub struct RunFeatures {
     /// The RAM tier's disk reads; `None` charges none (ADR 0056).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<TierFeatures>,
+    /// Several ranks (ADR 0070): the step time comes from these phases and `parts` only names
+    /// the devices; `None` keeps every number of the single-run model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ranks: Option<RankFeatures>,
+}
+
+/// What runs on several ranks, as phases between collectives (ADR 0070).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RankFeatures {
+    pub phases: Vec<Phase>,
+    /// Charge `c_step` once per step.
+    #[serde(default)]
+    pub step_fixed: bool,
+}
+
+/// What runs concurrently on the ranks between two collectives, `repeat` times per step.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Phase {
+    pub repeat: u32,
+    /// One part per rank with its share per layer (or per span) of bytes, params, ops and KV.
+    pub parts: Vec<DevicePart>,
+    /// Parts for a prefill step when they differ from the decode `parts` (experts: a prefill
+    /// reads every local expert).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefill_parts: Option<Vec<DevicePart>>,
+    pub ranges_per_rank: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<Coll>,
+}
+
+/// A collective that ends a phase.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Coll {
+    AllReduce {
+        /// Device ids of the group.
+        group: Vec<String>,
+        bytes_per_token: f64,
+    },
+    Copy {
+        /// `(src, dst)` pairs that copy at once.
+        pairs: Vec<(String, String)>,
+        bytes_per_token: f64,
+        /// The bytes are per step, not per token (the logit readback).
+        #[serde(default)]
+        per_step: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -316,6 +363,9 @@ pub fn predict(
     prompt: u32,
     gen_tokens: u32,
 ) -> Result<Prediction, PredictError> {
+    if let Some(r) = &f.ranks {
+        return predict_ranks(hw, f, r, prompt, gen_tokens);
+    }
     if f.parts.is_empty() || prompt == 0 || f.ubatch == 0 || f.threads == 0 {
         return Err(PredictError::Invalid(
             "need parts, a prompt, ubatch and threads".into(),
@@ -443,6 +493,189 @@ pub fn predict(
     })
 }
 
+/// Time of one rank's part for `m` tokens at mean context `ctx` (decode is `m = 1`).
+fn part_time_s(p: &DevicePart, r: &Rates, m: f64, ctx: f64) -> f64 {
+    r.c0 * p.ops_per_token
+        + ((2.0 * p.params_per_token * m + p.attn_flops_per_ctx_token * m * ctx) / r.f)
+            .max((p.weight_bytes_per_token + p.kv_bytes_per_ctx_token * ctx) / r.b)
+}
+
+/// `(alpha, beta)` of the link between two devices, beta capped by its lane group.
+fn link_between(hw: &HardwareGraph, a: &str, b: &str) -> Result<Hop, PredictError> {
+    let l = hw.link_between(a, b).ok_or_else(|| PredictError::NoLink {
+        a: a.to_string(),
+        b: b.to_string(),
+    })?;
+    let mut beta = l.beta_bytes_per_s.value;
+    if let Some(g) = l.lane_group.as_deref().and_then(|g| hw.lane_group(g)) {
+        beta = beta.min(g.capacity_bytes_per_s);
+    }
+    Ok(Hop {
+        alpha: l.alpha_s.value,
+        beta,
+    })
+}
+
+/// Seconds of a collective for a step of `m` tokens and its breakdown label: the measured curve
+/// when the graph has one, else the link prior (ring all-reduce, `alpha + n / beta` copy).
+/// The one helper the planner's search shares (ADR 0070).
+pub fn coll_time(hw: &HardwareGraph, c: &Coll, m: f64) -> Result<(String, f64), PredictError> {
+    match c {
+        Coll::AllReduce {
+            group,
+            bytes_per_token,
+        } => {
+            let bytes = bytes_per_token * m;
+            let label = format!("allreduce:{}", group.join("+"));
+            if let Some(t) = hw.collective_time(CollectiveOp::AllReduce, group, bytes) {
+                return Ok((label, t));
+            }
+            let (mut alpha, mut beta) = (0.0f64, f64::INFINITY);
+            for d in group.iter().skip(1) {
+                let h = link_between(hw, &group[0], d)?;
+                alpha = alpha.max(h.alpha);
+                beta = beta.min(h.beta);
+            }
+            Ok((
+                label,
+                allreduce_time(group.len() as u32, alpha, beta, bytes),
+            ))
+        }
+        Coll::Copy {
+            pairs,
+            bytes_per_token,
+            per_step,
+        } => {
+            let bytes = bytes_per_token * if *per_step { 1.0 } else { m };
+            let label = pairs
+                .first()
+                .map_or_else(|| "copy".to_string(), |p| format!("copy:{}-{}", p.0, p.1));
+            let mut t = 0.0f64;
+            for (a, b) in pairs {
+                let pair = [a.clone(), b.clone()];
+                let one = match hw.collective_time(CollectiveOp::Copy, &pair, bytes) {
+                    Some(t) => t,
+                    None => {
+                        let h = link_between(hw, a, b)?;
+                        transfer_time(h.alpha, h.beta, bytes)
+                    }
+                };
+                t = t.max(one);
+            }
+            Ok((label, t))
+        }
+    }
+}
+
+/// Step time with ranks (ADR 0070): `T(M) = sum_p repeat_p (max_r t(r, M) + ranges_p c_range +
+/// t_coll(after_p, M)) + c_step`, summed over the decode tokens and the prefill ubatches as in
+/// [`predict`]. Breakdown labels: `compute:<dev>` (the slowest rank of each phase), `ranges`,
+/// `allreduce:<group>`, `copy:<a>-<b>` and `step`.
+fn predict_ranks(
+    hw: &HardwareGraph,
+    f: &RunFeatures,
+    r: &RankFeatures,
+    prompt: u32,
+    gen_tokens: u32,
+) -> Result<Prediction, PredictError> {
+    if r.phases.is_empty() || prompt == 0 || f.ubatch == 0 || f.threads == 0 {
+        return Err(PredictError::Invalid(
+            "need phases, a prompt, ubatch and threads".into(),
+        ));
+    }
+    let mut rates_of: Vec<(String, Rates)> = Vec::new();
+    for ph in &r.phases {
+        if ph.parts.is_empty() || ph.prefill_parts.as_ref().is_some_and(Vec::is_empty) {
+            return Err(PredictError::Invalid("a phase has no parts".into()));
+        }
+        for p in ph.parts.iter().chain(ph.prefill_parts.iter().flatten()) {
+            if rates_of.iter().any(|e| e.0 == p.device) {
+                continue;
+            }
+            let d = hw
+                .device(&p.device)
+                .ok_or_else(|| PredictError::UnknownDevice(p.device.clone()))?;
+            rates_of.push((p.device.clone(), rates(d, f.threads, f.graphs)?));
+        }
+    }
+    let costs = hw.range_costs_or_prior();
+    let c_range = if f.graphs {
+        costs.c_range_graph_s
+    } else {
+        costs.c_range_eager_s
+    };
+    // One step of `m` tokens at mean context `ctx`, as breakdown terms.
+    let step = |m: f64,
+                ctx: f64,
+                prefill: bool,
+                out: &mut Vec<(String, f64)>|
+     -> Result<(), PredictError> {
+        for ph in &r.phases {
+            let parts = if prefill {
+                ph.prefill_parts.as_ref().unwrap_or(&ph.parts)
+            } else {
+                &ph.parts
+            };
+            let rep = f64::from(ph.repeat);
+            let mut slowest = (String::new(), 0.0f64);
+            for p in parts {
+                let rt = rates_of
+                    .iter()
+                    .find(|e| e.0 == p.device)
+                    .map(|e| e.1)
+                    .ok_or_else(|| PredictError::UnknownDevice(p.device.clone()))?;
+                let t = part_time_s(p, &rt, m, ctx);
+                if t > slowest.1 || slowest.0.is_empty() {
+                    slowest = (p.device.clone(), t);
+                }
+            }
+            add(out, format!("compute:{}", slowest.0), rep * slowest.1);
+            if ph.ranges_per_rank > 0 {
+                add(
+                    out,
+                    "ranges".into(),
+                    rep * f64::from(ph.ranges_per_rank) * c_range,
+                );
+            }
+            if let Some(c) = &ph.after {
+                let (label, t) = coll_time(hw, c, m)?;
+                add(out, label, rep * t);
+            }
+        }
+        if r.step_fixed {
+            add(out, "step".into(), costs.c_step_s);
+        }
+        Ok(())
+    };
+
+    let mut tg: Vec<(String, f64)> = Vec::new();
+    step(1.0, f64::from(gen_tokens) / 2.0, false, &mut tg)?;
+    let t_tok: f64 = tg.iter().map(|e| e.1).sum();
+
+    let mut pp: Vec<(String, f64)> = Vec::new();
+    let mut done = 0u32;
+    while done < prompt {
+        let m_tok = f.ubatch.min(prompt - done);
+        let m = f64::from(m_tok);
+        step(m, f64::from(done) + m / 2.0, true, &mut pp)?;
+        done += m_tok;
+    }
+    let t_pp: f64 = pp.iter().map(|e| e.1).sum();
+    let binding = tg
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|e| e.0.clone())
+        .unwrap_or_default();
+    Ok(Prediction {
+        pp_tok_s: f64::from(prompt) / t_pp,
+        tg_tok_s: 1.0 / t_tok,
+        request_s: t_pp + f64::from(gen_tokens) * t_tok,
+        tg_breakdown: tg,
+        pp_breakdown: pp,
+        binding,
+    })
+}
+
 #[cfg(test)]
 pub(crate) mod fixture {
     use super::*;
@@ -500,6 +733,7 @@ pub(crate) mod fixture {
                 capacity_bytes_per_s: 20e9,
             }],
             notes: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -532,6 +766,7 @@ pub(crate) mod fixture {
             op_offload: true,
             graphs: true,
             tier: None,
+            ranks: None,
         }
     }
 }
