@@ -10,7 +10,7 @@
 
 use std::path::PathBuf;
 use std::time::Instant;
-use tetraeder_ggml_sys::ggml::Backend;
+use tetraeder_ggml_sys::ggml::{Backend, advise_hugepages};
 use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, Qwen3, Qwen3Moe, SeqEval};
 
 const GPU: BackendChoice = BackendChoice::Gpu { index: 0 };
@@ -72,6 +72,20 @@ fn prefill(mut decode: impl FnMut(&[SeqEval<'_>])) {
     }]);
 }
 
+/// Milliseconds to copy `src` into a fresh `Vec`, as a save fills its snapshot; `thp` advises
+/// huge pages on it first.
+fn host_copy_ms(src: &[u8], thp: bool) -> f64 {
+    let t = Instant::now();
+    let mut v: Vec<u8> = Vec::with_capacity(src.len());
+    if thp {
+        advise_hugepages(v.as_ptr() as usize, v.capacity());
+    }
+    v.extend_from_slice(src);
+    let ms = t.elapsed().as_secs_f64() * 1e3;
+    std::hint::black_box(&v);
+    ms
+}
+
 fn median(mut v: Vec<f64>) -> f64 {
     v.sort_by(f64::total_cmp);
     v[v.len() / 2]
@@ -95,6 +109,18 @@ fn paired(what: &str, bound_ms: f64, mut snap: impl FnMut(bool) -> (Vec<u8>, f64
         mb / s,
         mb / d,
         s / d
+    );
+    // The host side alone (ADR 0074, "Consequences"): how much of a save is filling fresh
+    // snapshot memory, and what MADV_HUGEPAGE on it would change. Printed, not judged.
+    let (mut plain, mut thp) = (Vec::new(), Vec::new());
+    for _ in 0..REPEATS {
+        plain.push(host_copy_ms(&want, false));
+        thp.push(host_copy_ms(&want, true));
+    }
+    eprintln!(
+        "{what}: host copy into fresh memory {:.2} ms, with MADV_HUGEPAGE {:.2} ms",
+        median(plain),
+        median(thp)
     );
     assert!(
         s < d,

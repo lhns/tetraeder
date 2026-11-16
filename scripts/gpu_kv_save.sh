@@ -38,7 +38,7 @@ tests() { # NAME CARGO-ARGS...: one test binary, its log in the results
   say "test $name"
   TETRAEDER_REQUIRE_GPU=1 timeout -k 30 40m cargo test --release "$@" -- --nocapture --test-threads 1 > "$out/$name.log" 2>&1 8>&-
   local r=$?
-  say "test $name rc=$r $(grep -h 'MB, staged' "$out/$name.log" | tr '\n' ' ')"
+  say "test $name rc=$r $(grep -hE 'MB, staged|host copy' "$out/$name.log" | tr '\n' ' ')"
   [ $r = 0 ] || rc=1
 }
 tests gpu_kv_save -p tetraeder-model --features tetraeder-ggml-sys/cuda --test gpu_kv_save
