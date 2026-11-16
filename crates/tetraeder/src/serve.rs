@@ -150,7 +150,8 @@ pub struct ServeArgs {
     pub worker: bool,
     /// Serve a plan and replan by drain and restart (ADR 0055): `auto` picks one of the
     /// executable candidates for this box and model, or a plan TOML file. Replaces the
-    /// placement flags.
+    /// placement flags. With `--engine dense` only a plan file is allowed: it runs as written on
+    /// the executor (ADR 0069, 0070), without replanning.
     #[arg(
         long,
         value_name = "auto|FILE",
@@ -261,9 +262,13 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+    // A plan file the executor runs (see [`exec_plan`]) is served as written; every other
+    // `--plan` is the replanner's.
     let planned = match &a.plan {
-        Some(spec) => Some(replan::start(a, spec, &telemetry, rt.handle().clone())?),
-        None => None,
+        Some(spec) if exec_plan(a)?.is_none() && a.engine != EngineKind::Dense => {
+            Some(replan::start(a, spec, &telemetry, rt.handle().clone())?)
+        }
+        _ => None,
     };
     let (engine, parallel): (Arc<dyn GatewayEngine>, usize) = match &planned {
         Some(p) => (p.engine.clone(), 1),
@@ -407,16 +412,52 @@ pub fn loader(a: &ServeArgs, tel: Arc<Telemetry>) -> anyhow::Result<Loader> {
         resolve_overlap(a.ram_slots.is_some(), a.miss, a.io_service, a.overlap)
             .map_err(anyhow::Error::msg)?;
     }
+    let exec = exec_plan(a)?;
     let a = a.clone_load_args();
     Ok(Box::new(move || {
-        if moe {
+        if let (true, Some(topo)) = (moe, &exec) {
+            let chunk = tetraeder_scheduler::MOE_CHUNK;
+            tetraeder_scheduler::load_moe_sharded(&a.path, topo, &a.moe_options(tel)?, chunk)
+        } else if moe {
             tetraeder_scheduler::load_moe(&a.path, &a.moe_options(tel)?)
+        } else if let (true, Some(topo)) = (dense, &exec) {
+            tetraeder_scheduler::load_dense_sharded(&a.path, topo, &a.dense_options(tel)?)
         } else if dense {
             tetraeder_scheduler::load_dense(&a.path, &a.dense_options(tel)?)
         } else {
             tetraeder_scheduler::load_llama(&a.path, &a.place.placement(), &a.llama, Some(tel))
         }
     }))
+}
+
+/// The topology of `--plan FILE` when the executor runs it (ADR 0069): always with
+/// `--engine dense`; with `--engine moe` when the plan has more than one rank (a one-GPU MoE plan
+/// stays with the replanner and the streaming builder). `None`: not an executor plan.
+fn exec_plan(a: &ServeArgs) -> anyhow::Result<Option<tetraeder_plan::Topology>> {
+    let Some(spec) = &a.plan else { return Ok(None) };
+    let path = a.model.clone().context("-m is required")?;
+    let load = || crate::sharded::load_plan(&path, std::path::Path::new(spec), a.hw.as_deref());
+    let found = match a.engine {
+        EngineKind::Dense => {
+            anyhow::ensure!(
+                spec != "auto",
+                "--engine dense --plan runs a plan file; `auto` is the replanner's (libllama and MoE)"
+            );
+            load()?
+        }
+        EngineKind::Moe if spec != "auto" => match load() {
+            Ok(p) if p.topology.ranks.len() > 1 => p,
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    eprintln!(
+        "plan {}: {} ranks, {} stages",
+        found.plan_id,
+        found.topology.ranks.len(),
+        found.topology.stages.len()
+    );
+    Ok(Some(found.topology))
 }
 
 /// The parts of a `SchedulerConfig` that do not change when the engine is reloaded.

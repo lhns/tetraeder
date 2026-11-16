@@ -151,6 +151,14 @@ impl Executor {
         }
     }
 
+    /// Bytes of the rank's graph buffer (0 before its first graph).
+    pub fn buffer_size(&self, rank: RankId) -> usize {
+        self.gallocs
+            .get(rank)
+            .and_then(Option::as_ref)
+            .map_or(0, Gallocr::buffer_size)
+    }
+
     pub fn take_counters(&mut self) -> ExecCounters {
         let n = self.ranks.len();
         std::mem::replace(

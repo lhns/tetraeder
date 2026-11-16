@@ -1,7 +1,7 @@
 """Writes a synthetic random-weight qwen3 (dense) GGUF (ADR 0066) with the vendored gguf-py.
 
-Usage (cargo xtask tiny-dense runs this through uv): tiny_dense.py OUT.gguf
-2 layers, 128-wide, 4 heads over 2 KV heads of 64 (so CUDA flash attention, quantized KV and
+Usage (cargo xtask tiny-dense runs this through uv): tiny_dense.py OUT.gguf [n_layer]
+2 layers by default (`--layers 4` gives the four-layer variant for the split-point tests), 128-wide, 4 heads over 2 KV heads of 64 (so CUDA flash attention, quantized KV and
 the Hadamard rotation run on it), FFN 256, byte-level vocab as tiny_moe.py, untied output.
 Matrices are F16, norms F32, like llama.cpp's converter. Deterministic: fixed seed.
 """
@@ -11,7 +11,7 @@ import sys
 import numpy as np
 import gguf
 
-N_LAYER, N_EMBD, N_HEAD, N_KV, D_HEAD = 2, 128, 4, 2, 64
+N_EMBD, N_HEAD, N_KV, D_HEAD = 128, 4, 2, 64
 N_FF, N_CTX = 256, 512
 SEED = 20261114
 
@@ -29,7 +29,7 @@ def byte_to_unicode():
     return [chr(c) for c in cs]
 
 
-def main(out):
+def main(out, n_layer=2):
     rng = np.random.default_rng(SEED)
 
     def mat(*shape, std=0.08):
@@ -45,7 +45,7 @@ def main(out):
 
     w = gguf.GGUFWriter(out, "qwen3")
     w.add_name("tiny-qwen3")
-    w.add_block_count(N_LAYER)
+    w.add_block_count(n_layer)
     w.add_context_length(N_CTX)
     w.add_embedding_length(N_EMBD)
     w.add_feed_forward_length(N_FF)
@@ -69,7 +69,7 @@ def main(out):
     w.add_tensor("token_embd.weight", mat(n_vocab, N_EMBD, std=0.5))
     w.add_tensor("output_norm.weight", norm(N_EMBD))
     w.add_tensor("output.weight", mat(n_vocab, N_EMBD, std=0.5))
-    for i in range(N_LAYER):
+    for i in range(n_layer):
         p = f"blk.{i}."
         w.add_tensor(p + "attn_norm.weight", norm(N_EMBD))
         w.add_tensor(p + "attn_q.weight", mat(N_HEAD * D_HEAD, N_EMBD, std=0.2))
@@ -90,4 +90,4 @@ def main(out):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 2)

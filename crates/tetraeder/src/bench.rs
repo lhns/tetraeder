@@ -3,9 +3,14 @@
 
 use crate::engine_args::ModelArgs;
 use clap::{Args, ValueEnum};
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tetraeder_engine::{Engine, FlashAttn};
+use tetraeder_ggml_sys::ggml::Backend;
+use tetraeder_model::{
+    BackendChoice, DenseOptions, LoadOptions, ModelError, Qwen3, Qwen3Moe, SeqEval,
+};
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
 #[derive(Args)]
@@ -27,6 +32,29 @@ pub struct BenchArgs {
     /// Step telemetry: on (production mode, no exporter unless OTEL_EXPORTER_OTLP_ENDPOINT) or off.
     #[arg(long, value_enum, default_value_t = Switch::On)]
     telemetry: Switch,
+    /// `llama`: libllama through the engine. `dense`, `moe`: the own Qwen3 builders (ADR 0066,
+    /// 0030), on the executor when `--plan` is given (the dense one also on a GPU).
+    #[arg(long, value_enum, default_value_t = BenchEngine::Llama)]
+    engine: BenchEngine,
+    /// Plan TOML to run on the executor (ADR 0069, 0070); needs `--engine dense` or `moe`. The rows gain
+    /// `plan_id`, `ranks`, `comm_path` and `ranges_per_token`.
+    #[arg(long, value_name = "FILE")]
+    plan: Option<PathBuf>,
+    /// Hardware graph (TOML or JSON) the plan is validated against; default: discover this box.
+    #[arg(long, value_name = "FILE", requires = "plan")]
+    hw: Option<PathBuf>,
+    /// Run only the first N layers and the head (calibration anchors, ADR 0068): the timing is
+    /// real, the logits are not. Needs `--engine dense` or `moe`, and one stage.
+    #[arg(long, value_name = "N")]
+    layer_limit: Option<u32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum BenchEngine {
+    Llama,
+    Dense,
+    /// The Qwen3 MoE builder (ADR 0033), on the executor when `--plan` is given.
+    Moe,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -38,13 +66,27 @@ enum Switch {
 pub fn run(a: &BenchArgs) -> anyhow::Result<()> {
     anyhow::ensure!(a.output == "json", "only `-o json` is supported");
     anyhow::ensure!(a.reps > 0, "reps must be positive");
+    anyhow::ensure!(
+        a.plan.is_none() || a.engine != BenchEngine::Llama,
+        "--plan needs --engine dense or moe"
+    );
+    anyhow::ensure!(
+        a.layer_limit.is_none() || a.engine != BenchEngine::Llama,
+        "--layer-limit needs --engine dense or moe"
+    );
     let telemetry = match a.telemetry {
         Switch::On => Some(Arc::new(Telemetry::new(&TelemetryConfig::from_env())?)),
         Switch::Off => None,
     };
     let mut rows = Vec::new();
+    if a.engine != BenchEngine::Llama {
+        rows = run_builder(a, &telemetry)?;
+    }
     // Like llama-bench: one context per test, sized n_prompt + n_gen of that test.
     for (n_prompt, n_gen) in [(a.n_prompt, 0), (0, a.n_gen)] {
+        if a.engine != BenchEngine::Llama {
+            break;
+        }
         if n_prompt + n_gen == 0 {
             continue;
         }
@@ -104,6 +146,217 @@ pub fn run(a: &BenchArgs) -> anyhow::Result<()> {
     }
     println!("{}", serde_json::to_string_pretty(&rows)?);
     Ok(())
+}
+
+fn model_err(e: ModelError) -> anyhow::Error {
+    anyhow::anyhow!("{e}")
+}
+
+/// What the bench loop needs of an own builder.
+trait BenchModel {
+    fn reset(&mut self);
+    /// One sequence-0 step over `tokens`; the last token's logits go into `out`.
+    fn step(&mut self, tokens: &[i32], out: &mut Vec<f32>) -> anyhow::Result<()>;
+    fn graphs_built(&self) -> u64;
+    fn n_ranks(&self) -> usize;
+    fn comm_path(&self) -> Option<&'static str>;
+    fn reset_counters(&mut self);
+    /// Ranges launched by rank 0 since the counters were reset (`None` off the executor).
+    fn ranges0(&self) -> Option<u64>;
+}
+
+macro_rules! bench_model {
+    ($t:ty) => {
+        impl BenchModel for $t {
+            fn reset(&mut self) {
+                <$t>::reset(self);
+            }
+            fn step(&mut self, tokens: &[i32], out: &mut Vec<f32>) -> anyhow::Result<()> {
+                let item = SeqEval {
+                    seq: 0,
+                    tokens,
+                    all_logits: false,
+                };
+                self.decode(&[item], out).map_err(model_err)?;
+                Ok(())
+            }
+            fn graphs_built(&self) -> u64 {
+                self.step_graphs_built()
+            }
+            fn n_ranks(&self) -> usize {
+                <$t>::n_ranks(self)
+            }
+            fn comm_path(&self) -> Option<&'static str> {
+                <$t>::comm_path(self)
+            }
+            fn reset_counters(&mut self) {
+                self.reset_exec_counters();
+            }
+            fn ranges0(&self) -> Option<u64> {
+                self.exec_counters().and_then(|c| c.ranges.first().copied())
+            }
+        }
+    };
+}
+bench_model!(Qwen3);
+bench_model!(Qwen3Moe);
+
+/// Loads the builder of `a.engine` for a test of `n_ctx` positions: across the ranks of a plan
+/// when there is one, else on one backend.
+fn load_builder(
+    a: &BenchArgs,
+    backend: BackendChoice,
+    planned: &Option<crate::sharded::ExecPlan>,
+    n_ctx: usize,
+    telemetry: &Option<Arc<Telemetry>>,
+) -> anyhow::Result<Box<dyn BenchModel>> {
+    let path = &a.model.model;
+    if a.engine == BenchEngine::Moe {
+        let mut o = LoadOptions::new(backend);
+        o.cpu_threads = a.model.threads.and_then(|t| usize::try_from(t).ok());
+        o.n_ctx = n_ctx;
+        o.telemetry = telemetry.clone();
+        o.layer_limit = a.layer_limit;
+        let m = match planned {
+            Some(p) => Qwen3Moe::load_sharded(path, &p.topology, &o),
+            None => Qwen3Moe::load(path, &o),
+        };
+        return Ok(Box::new(m.map_err(model_err)?));
+    }
+    let mut o = DenseOptions::new(backend);
+    o.threads = a.model.threads;
+    o.n_ctx_pool = n_ctx;
+    o.telemetry = telemetry.clone();
+    o.layer_limit = a.layer_limit;
+    // A layer limit runs on the executor.
+    o.use_executor |= a.layer_limit.is_some();
+    let m = match planned {
+        Some(p) => Qwen3::load_sharded(path, &p.topology, &o),
+        None => Qwen3::load(path, &o),
+    };
+    Ok(Box::new(m.map_err(model_err)?))
+}
+
+/// The own builders' tests: llama-bench's pp and tg through [`Qwen3`] or [`Qwen3Moe`], on the
+/// executor when a plan names the ranks, else on one backend. Rows carry
+/// `plan_id`, `ranks`, `comm_path` (`null` without the executor) and `ranges_per_token`
+/// (ranges launched by rank 0 per decode call during the timed repetitions).
+fn run_builder(
+    a: &BenchArgs,
+    telemetry: &Option<Arc<Telemetry>>,
+) -> anyhow::Result<Vec<serde_json::Value>> {
+    let on_gpu = a.model.ngl != 0 && Backend::gpu_count() > 0;
+    let backend = if on_gpu {
+        BackendChoice::Gpu {
+            index: usize::try_from(a.model.main_gpu).unwrap_or(0),
+        }
+    } else {
+        BackendChoice::Cpu {
+            threads: a.model.threads.and_then(|t| usize::try_from(t).ok()),
+        }
+    };
+    let planned = match &a.plan {
+        Some(p) => Some(crate::sharded::load_plan(
+            &a.model.model,
+            p,
+            a.hw.as_deref(),
+        )?),
+        None => None,
+    };
+    let ubatch = a.model.ubatch.max(1) as usize;
+    let mut rows = Vec::new();
+    for (n_prompt, n_gen) in [(a.n_prompt, 0), (0, a.n_gen)] {
+        if n_prompt + n_gen == 0 {
+            continue;
+        }
+        let mut m = load_builder(
+            a,
+            backend,
+            &planned,
+            (n_prompt + n_gen) as usize + 1,
+            telemetry,
+        )?;
+        // Byte-level token ids, deterministic: valid in every vocabulary.
+        let mut x = 7u32;
+        let toks: Vec<i32> = (0..(n_prompt.max(n_gen) as usize))
+            .map(|_| {
+                x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                ((x >> 16) % 256) as i32
+            })
+            .collect();
+        let mut out = Vec::new();
+        let mut once = |m: &mut dyn BenchModel| -> anyhow::Result<Duration> {
+            m.reset();
+            let t0 = Instant::now();
+            if n_prompt > 0 {
+                for chunk in toks[..n_prompt as usize].chunks(ubatch) {
+                    m.step(chunk, &mut out)?;
+                }
+            } else {
+                for i in 0..n_gen as usize {
+                    m.step(&toks[i..=i], &mut out)?;
+                }
+            }
+            Ok(t0.elapsed())
+        };
+        once(&mut *m)?;
+        let built0 = m.graphs_built();
+        m.reset_counters();
+        let mut samples = Vec::with_capacity(a.reps as usize);
+        for _ in 0..a.reps {
+            samples.push(once(&mut *m)?);
+        }
+        let calls = u64::from(a.reps)
+            * if n_prompt > 0 {
+                (n_prompt as usize).div_ceil(ubatch) as u64
+            } else {
+                u64::from(n_gen)
+            };
+        let built = m.graphs_built() - built0;
+        let settings = Settings {
+            n_batch: a.model.batch,
+            n_ubatch: a.model.ubatch,
+            n_threads: a.model.threads.unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map_or(1, |n| i32::try_from(n.get()).unwrap_or(1))
+            }),
+            n_gpu_layers: if on_gpu { 99 } else { 0 },
+            flash_attn: 1,
+            tensor_buft_overrides: overrides_str(std::iter::empty()),
+            cuda_graphs: on_gpu,
+            n_eval: i32::try_from(calls).unwrap_or(i32::MAX),
+            n_reused: i32::try_from(calls.saturating_sub(built)).unwrap_or(i32::MAX),
+        };
+        let mut r = row(n_prompt, n_gen, &samples, &settings);
+        if let Some(o) = r.as_object_mut() {
+            o.insert(
+                "builder".into(),
+                if a.engine == BenchEngine::Moe {
+                    "moe"
+                } else {
+                    "dense"
+                }
+                .into(),
+            );
+            o.insert(
+                "plan_id".into(),
+                planned
+                    .as_ref()
+                    .map_or(serde_json::Value::Null, |p| p.plan_id.clone().into()),
+            );
+            o.insert("ranks".into(), m.n_ranks().into());
+            o.insert("comm_path".into(), m.comm_path().into());
+            let ranges0 = m.ranges0();
+            o.insert(
+                "ranges_per_token".into(),
+                ranges0.map_or(serde_json::Value::Null, |n| {
+                    (n as f64 / calls.max(1) as f64).into()
+                }),
+            );
+        }
+        rows.push(r);
+    }
+    Ok(rows)
 }
 
 /// Effective settings of one test, reported under llama-bench's field names (`flash_attn`: -1 auto, 0 off, 1 on).
@@ -189,5 +442,20 @@ mod tests {
         assert_eq!(r["n_prompt"], 0);
         assert_eq!(r["avg_ts"], 6.0);
         assert_eq!(r["samples_ts"][1], 4.0);
+    }
+
+    #[test]
+    fn a_plan_needs_the_dense_engine() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct P {
+            #[command(flatten)]
+            bench: BenchArgs,
+        }
+        let p = P::parse_from(["x", "-m", "m.gguf", "--plan", "p.toml"]);
+        let err = run(&p.bench).unwrap_err().to_string();
+        assert!(err.contains("--engine dense"), "{err}");
+        // --hw only goes with --plan.
+        assert!(P::try_parse_from(["x", "-m", "m.gguf", "--hw", "h.toml"]).is_err());
     }
 }

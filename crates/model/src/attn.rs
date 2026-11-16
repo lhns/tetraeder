@@ -10,6 +10,7 @@ use tetraeder_kvcache::SeqAttn;
 use tetraeder_plan::{Format, KvFormat};
 
 use crate::convert::ggml_type;
+use std::ops::Range;
 use std::rc::Rc;
 
 /// KV rows are padded to this many for the attention kernels.
@@ -155,17 +156,31 @@ pub(crate) fn alloc_kv(
     fmt: KvFormat,
     rotation: Option<bool>,
 ) -> Result<(Kv, usize)> {
+    alloc_kv_layers(h, 0..h.n_layer, h.n_head_kv, n_rows, backend, fmt, rotation)
+}
+
+/// The KV tensors of one rank (ADR 0070): the layers `layers` and `n_head_kv` KV heads of each,
+/// indexed by `il - layers.start`. `alloc_kv` is the whole model on one backend.
+pub(crate) fn alloc_kv_layers(
+    h: &AttnHparams,
+    layers: Range<u32>,
+    n_head_kv: u32,
+    n_rows: usize,
+    backend: &Backend,
+    fmt: KvFormat,
+    rotation: Option<bool>,
+) -> Result<(Kv, usize)> {
     let (tk, tv) = kv_types(h, fmt)?;
     let (rot_k, rot_v) = alloc_rot(h, (tk, tv), rotation, backend)?;
-    let ctx = Rc::new(Context::new(2 * h.n_layer as usize + 4, 0)?);
-    let n_embd_kv = (h.n_head_kv * h.head_dim) as i64;
+    let ctx = Rc::new(Context::new(2 * layers.len() + 4, 0)?);
+    let n_embd_kv = (n_head_kv * h.head_dim) as i64;
     let mk = |kind: &str, ty: Type, il: u32| {
         let t = ctx.new_persistent(ty, &[n_embd_kv, n_rows as i64]);
         t.get().set_name(&format!("{kind}_cache_{il}"));
         t
     };
-    let k = (0..h.n_layer).map(|il| mk("k", tk, il)).collect();
-    let v = (0..h.n_layer).map(|il| mk("v", tv, il)).collect();
+    let k = layers.clone().map(|il| mk("k", tk, il)).collect();
+    let v = layers.map(|il| mk("v", tv, il)).collect();
     let bytes = ctx.alloc_tensors(backend)?;
     // Padding rows are masked, but 0 * NaN is NaN: never leave them uninitialized.
     ctx.clear_buffer(0);
@@ -272,7 +287,8 @@ pub(crate) fn attention_seqs_out<'a>(
     x: Tensor<'a>,
 ) -> Tensor<'a> {
     let n = st.n_tokens as i64;
-    let (hd, nh, nkv) = (h.head_dim as i64, h.n_head as i64, h.n_head_kv as i64);
+    let hd = h.head_dim as i64;
+    let (nh, nkv) = (lw.wq.get().ne()[1] / hd, lw.wk.get().ne()[1] / hd);
     let rope = rope_params(h);
 
     let cur = rms_norm_mul(ctx, x, lw.attn_norm.get(), h.rms_eps);
@@ -392,20 +408,10 @@ pub fn causal_mask(n_past: usize, n: usize, n_kv: usize) -> Vec<u16> {
     mask
 }
 
-/// Copies KV rows on the device, every layer, K and V, in one graph of `cpy` between views.
-/// Each entry is `(src_row, dst_row, n_rows)`. The row ranges must be disjoint: no destination
-/// overlaps any source or other destination. Used by C4 and C5 for `seq_cp` and chunked moves.
-#[allow(dead_code)] // first caller arrives with C4 and C5
-pub(crate) fn copy_rows(
-    kv: &Kv,
-    sched: &mut Sched,
-    copies: &[(usize, usize, usize)],
-) -> Result<()> {
-    let copies: Vec<_> = copies.iter().filter(|c| c.2 > 0).collect();
-    if copies.is_empty() {
-        return Ok(());
-    }
-    for &&(s, d, n) in &copies {
+/// The copies that move rows, checked against the cache size.
+fn valid_copies(kv: &Kv, copies: &[(usize, usize, usize)]) -> Result<Vec<(usize, usize, usize)>> {
+    let copies: Vec<_> = copies.iter().copied().filter(|c| c.2 > 0).collect();
+    for &(s, d, n) in &copies {
         if s + n > kv.n_rows || d + n > kv.n_rows {
             return Err(ModelError::Invalid(format!(
                 "KV row copy {s}..{} to {d}..{} outside {} rows",
@@ -415,21 +421,66 @@ pub(crate) fn copy_rows(
             )));
         }
     }
-    let nodes = copies.len() * kv.k.len() * 2;
-    let ctx = Context::new(4 * nodes + 8, 4 * nodes + 8)?;
+    Ok(copies)
+}
+
+/// `cpy` between views of the cache, every layer, K and V, in one graph of `ctx`.
+fn copy_graph<'a>(
+    ctx: &'a Context,
+    kv: &'a Kv,
+    copies: &[(usize, usize, usize)],
+    nodes: usize,
+) -> Graph<'a> {
     let mut g = ctx.new_graph(4 * nodes + 8);
     for t in kv.k.iter().chain(&kv.v) {
         let t = t.get();
         let (ne0, row) = (t.ne()[0], t.nb()[1]);
-        for &&(s, d, n) in &copies {
+        for &(s, d, n) in copies {
             let n = n as i64;
             let src = ctx.view(t, &[ne0, n], &[row], s * row);
             let dst = ctx.view(t, &[ne0, n], &[row], d * row);
             g.expand(ctx.cpy(src, dst));
         }
     }
+    g
+}
+
+/// Copies KV rows on the device, every layer, K and V, in one graph of `cpy` between views.
+/// Each entry is `(src_row, dst_row, n_rows)`. The row ranges must be disjoint: no destination
+/// overlaps any source or other destination. Used by C4 and C5 for `seq_cp` and chunked moves.
+pub(crate) fn copy_rows(
+    kv: &Kv,
+    sched: &mut Sched,
+    copies: &[(usize, usize, usize)],
+) -> Result<()> {
+    let copies = valid_copies(kv, copies)?;
+    if copies.is_empty() {
+        return Ok(());
+    }
+    let nodes = copies.len() * kv.k.len() * 2;
+    let ctx = Context::new(4 * nodes + 8, 4 * nodes + 8)?;
+    let g = copy_graph(&ctx, kv, &copies, nodes);
     sched.alloc_graph(&g)?;
     sched.compute(&g)?;
+    Ok(())
+}
+
+/// [`copy_rows`] for a cache on one rank of the executor (no scheduler): the graph only has
+/// views of the cache, so it needs no allocation. Returns when the copy is done.
+pub(crate) fn copy_rows_on(
+    kv: &Kv,
+    backend: &Backend,
+    copies: &[(usize, usize, usize)],
+) -> Result<()> {
+    let copies = valid_copies(kv, copies)?;
+    if copies.is_empty() {
+        return Ok(());
+    }
+    let nodes = copies.len() * kv.k.len() * 2;
+    let ctx = Context::new(4 * nodes + 8, 4 * nodes + 8)?;
+    let g = copy_graph(&ctx, kv, &copies, nodes);
+    backend.compute_async(&g)?;
+    backend.synchronize();
     Ok(())
 }
 

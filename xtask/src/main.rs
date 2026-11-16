@@ -251,7 +251,7 @@ fn golden() -> Res<()> {
 }
 
 /// Writes a synthetic fixture GGUF with the vendored gguf-py through uv.
-fn tiny_fixture(script: &str, file: &str) -> Res<()> {
+fn tiny_fixture(script: &str, file: &str, args: &[String]) -> Res<()> {
     let r = root();
     let out = r.join("tests/fixtures").join(file);
     std::fs::create_dir_all(out.parent().expect("fixture dir")).map_err(|e| e.to_string())?;
@@ -261,19 +261,40 @@ fn tiny_fixture(script: &str, file: &str) -> Res<()> {
         .arg(r.join("vendor/llama.cpp/gguf-py"))
         .arg("python")
         .arg(r.join("xtask").join(script))
-        .arg(&out))?;
+        .arg(&out)
+        .args(args))?;
     eprintln!("wrote {}", out.display());
     Ok(())
 }
 
 /// The synthetic qwen3moe fixture (ADR 0030).
 fn tiny_moe() -> Res<()> {
-    tiny_fixture("tiny_moe.py", "tiny-qwen3moe-f16.gguf")
+    tiny_fixture("tiny_moe.py", "tiny-qwen3moe-f16.gguf", &[])
 }
 
-/// The synthetic qwen3 dense fixture (ADR 0066).
+/// The synthetic qwen3 dense fixture (ADR 0066). `--layers N` (N > 2) writes the N-layer variant
+/// `tiny-qwen3-lN-f16.gguf` (the split-point tests of the sharded builder use 4).
 fn tiny_dense() -> Res<()> {
-    tiny_fixture("tiny_dense.py", "tiny-qwen3-f16.gguf")
+    let mut args = std::env::args().skip(2);
+    let mut layers = 2u32;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--layers" => {
+                layers = args
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .filter(|&n| n >= 1)
+                    .ok_or("--layers needs a positive number")?;
+            }
+            other => return Err(format!("tiny-dense: unknown argument `{other}`")),
+        }
+    }
+    if layers == 2 {
+        tiny_fixture("tiny_dense.py", "tiny-qwen3-f16.gguf", &[])
+    } else {
+        let file = format!("tiny-qwen3-l{layers}-f16.gguf");
+        tiny_fixture("tiny_dense.py", &file, &[layers.to_string()])
+    }
 }
 
 fn main() -> ExitCode {
