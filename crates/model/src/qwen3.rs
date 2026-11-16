@@ -1147,11 +1147,15 @@ mod graph_order {
     use std::path::PathBuf;
 
     fn model(n_seq: usize) -> Qwen3 {
+        model_pool(n_seq, 512)
+    }
+
+    fn model_pool(n_seq: usize, n_ctx_pool: usize) -> Qwen3 {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/fixtures/tiny-qwen3-f16.gguf");
         let opts = DenseOptions {
             n_seq_max: n_seq,
-            n_ctx_pool: 512,
+            n_ctx_pool,
             threads: Some(1),
             ..DenseOptions::new(BackendChoice::Cpu { threads: Some(1) })
         };
@@ -1191,6 +1195,81 @@ mod graph_order {
             );
             // The head ends the graph: output norm, then the projection.
             assert_eq!(&ops[ops.len() - 3..], ["RMS_NORM", "MUL", "MUL_MAT"]);
+        }
+    }
+
+    /// hardware: cpu. The step of the session 20261116pc CUDA crash on the tiny model: four
+    /// sequences that held 533 positions keep a few (one keeps 406 and decodes), then 1207
+    /// tokens in one step. ggml-cuda reads the mask in whole 64-row query tiles once a call has
+    /// 1024 queries (`attn::MASK_ROW_PAD`), so the mask buffer must cover `pad(1207, 64)` rows;
+    /// the padding stays zero, and each sequence's logits match it run alone.
+    #[test]
+    fn long_step_mask_covers_whole_query_tiles() {
+        let n_vocab = model(1).n_vocab() as i32;
+        let toks = |seed: usize, n: usize| -> Vec<i32> {
+            (0..n)
+                .map(|i| ((seed * 7919 + i * 31 + 1) as i32) % n_vocab)
+                .collect()
+        };
+        let keep = [406usize, 3, 4, 3];
+        let step_len = [1usize, 401, 402, 403];
+        let history: Vec<Vec<i32>> = (0..4).map(|s| toks(s, 533)).collect();
+        let step: Vec<Vec<i32>> = (0..4).map(|s| toks(s + 10, step_len[s])).collect();
+        fn last(seq: u32, tokens: &[i32]) -> SeqEval<'_> {
+            SeqEval {
+                seq,
+                tokens,
+                all_logits: false,
+            }
+        }
+
+        let mut m = model_pool(4, 4096);
+        let mut out = Vec::new();
+        for (s, h) in history.iter().enumerate() {
+            m.decode(&[last(s as u32, h)], &mut out).unwrap();
+        }
+        for (s, &k) in keep.iter().enumerate() {
+            m.seq_rm(s as u32, k).unwrap();
+        }
+        let inputs: Vec<SeqEval<'_>> = (0..4).map(|s| last(s as u32, &step[s])).collect();
+        let ranges = m.decode(&inputs, &mut out).unwrap();
+        let n: usize = step_len.iter().sum();
+        assert_eq!(n, 1207);
+
+        let Engine::Sched(e) = &m.engine else {
+            panic!("the CPU backend uses the scheduler")
+        };
+        let st = e.state.as_ref().expect("a step ran");
+        let (n_tokens, n_kv, _, _) = st.key;
+        assert_eq!(n_tokens, n);
+        // The widest query tile of ggml-cuda's flash attention at the pin.
+        let rows = pad(n, 64);
+        let mask = st.mask.get();
+        assert!(
+            mask.nbytes() >= rows * n_kv * 2,
+            "mask buffer of {} bytes, the CUDA scan reads {} ({rows} rows of {n_kv})",
+            mask.nbytes(),
+            rows * n_kv * 2
+        );
+        let tail = mask.get_bytes(n * n_kv * 2, (rows - n) * n_kv * 2).unwrap();
+        assert!(tail.iter().all(|&b| b == 0), "mask padding is not zero");
+
+        let nv = m.n_vocab();
+        let top = out.iter().fold(0f32, |a, x| a.max(x.abs()));
+        for (s, r) in ranges.iter().enumerate() {
+            let mut alone = model_pool(1, 1024);
+            let mut want = Vec::new();
+            alone
+                .decode(&[last(0, &history[s][..keep[s]])], &mut want)
+                .unwrap();
+            alone.decode(&[last(0, &step[s])], &mut want).unwrap();
+            let got = &out[r.start * nv..r.end * nv];
+            let worst = got
+                .iter()
+                .zip(&want)
+                .fold(0f32, |a, (x, y)| a.max((x - y).abs()));
+            // The masked path's batch dependence (dense_per_seq.rs): loosely bounded.
+            assert!(worst <= 1e-2 * top, "sequence {s}: max |delta| {worst:e}");
         }
     }
 
