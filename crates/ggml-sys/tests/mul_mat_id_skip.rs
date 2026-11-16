@@ -165,36 +165,72 @@ fn reference(
 }
 
 /// Rows with id -1 are exactly zero; the rest match `want` within `tol` of its largest value.
-fn check(got: &[f32], want: &[f32], ids: &[i32], n: usize, tol: f32, what: &str) {
-    assert_eq!(got.len(), want.len(), "{what}: output size");
+/// Returns the worst difference over that largest value, or what failed.
+fn check(
+    got: &[f32],
+    want: &[f32],
+    ids: &[i32],
+    n: usize,
+    tol: f32,
+    what: &str,
+) -> Result<f32, String> {
+    if got.len() != want.len() {
+        return Err(format!(
+            "{what}: output size {} != {}",
+            got.len(),
+            want.len()
+        ));
+    }
     let scale = want.iter().fold(0.0f32, |m, v| m.max(v.abs())).max(1e-6);
+    let mut worst = 0.0f32;
     for (i, &id) in ids.iter().enumerate() {
         let (g, w) = (&got[i * n..(i + 1) * n], &want[i * n..(i + 1) * n]);
         if id < 0 {
-            assert!(
-                g.iter().all(|&v| v == 0.0),
-                "{what}: slot {i} has id -1 but a nonzero row"
-            );
+            if !g.iter().all(|&v| v == 0.0) {
+                return Err(format!("{what}: slot {i} has id -1 but a nonzero row"));
+            }
         } else {
             let d = g
                 .iter()
                 .zip(w)
                 .fold(0.0f32, |m, (a, b)| m.max((a - b).abs()));
-            assert!(
-                d <= tol * scale,
-                "{what}: slot {i}: diff {d} > {}",
-                tol * scale
-            );
+            worst = worst.max(d / scale);
         }
     }
+    if worst > tol {
+        return Err(format!(
+            "{what}: worst diff {worst:.2e} of the largest > {tol:.0e}"
+        ));
+    }
+    Ok(worst)
+}
+
+/// The GPU tolerance of a weight type. CUDA quantizes the activations to q8_1 (blocks of 32);
+/// the CPU reference uses the type's `vec_dot_type`. For q8_0 that is q8_0 (the same blocks and
+/// scale) and for f16 it is f16, so `TOL_GPU` holds. For the K-quants it is q8_K (blocks of 256):
+/// two independent roundings of the activations, each with a standard deviation of
+/// step/sqrt(12) with step = max|x|/127 (about 2.3e-3 for uniform [-1, 1) inputs), against
+/// weights of standard deviation 0.58, give a gap of about 5e-3 of the output's standard
+/// deviation whatever `k` (the first box run: 5.1e-3 of the largest at q4_K, 1 token). 2e-2 is
+/// about four times that.
+fn gpu_tol(ty: &str) -> f32 {
+    if ty.ends_with("_K") { 2e-2 } else { TOL_GPU }
 }
 
 const TYPES: [&str; 4] = ["q4_K", "q6_K", "q8_0", "f16"];
 const TOKENS: [usize; 4] = [1, 8, 64, 512];
 
 /// Runs every type and token count with ids that are 30% -1; `under_test` is the backend list
-/// under test and `tol` its tolerance against the reference.
-fn sweep(under_test: &[Backend], cpu: &Backend, tol: f32, against_cpu_mul_mat_id: bool) {
+/// under test and `tol` its tolerance per type against the reference. Every case runs and prints
+/// its worst gap before the failures are asserted. The warm run first leaves stale nonzero rows
+/// and stale index buffers in the backend's pool, as a decode loop does.
+fn sweep(
+    under_test: &[Backend],
+    cpu: &Backend,
+    tol: impl Fn(&str) -> f32,
+    against_cpu_mul_mat_id: bool,
+) {
+    let mut failures = Vec::new();
     let mut rng = Rng(0x9e37_79b9_7f4a_7c15);
     for name in TYPES {
         let s = Shape {
@@ -220,17 +256,28 @@ fn sweep(under_test: &[Backend], cpu: &Backend, tol: f32, against_cpu_mul_mat_id
                 } else {
                     reference(cpu, &s, &experts, b1, &b, &ids)
                 };
-                check(&got, &want, &ids, s.n as usize, tol, &what);
+                match check(&got, &want, &ids, s.n as usize, tol(name), &what) {
+                    Ok(worst) => eprintln!("{what}: worst {worst:.2e} of the largest"),
+                    Err(e) => {
+                        eprintln!("{e}");
+                        failures.push(e);
+                    }
+                }
             }
         }
     }
+    assert!(
+        failures.is_empty(),
+        "{} cases failed: {failures:#?}",
+        failures.len()
+    );
 }
 
 /// hardware: cpu.
 #[test]
 fn cpu_mul_mat_id_negative_ids_give_zero_rows() {
     let cpu = Backend::cpu(2).unwrap();
-    sweep(std::slice::from_ref(&cpu), &cpu, TOL_CPU, false);
+    sweep(std::slice::from_ref(&cpu), &cpu, |_| TOL_CPU, false);
 }
 
 /// hardware: gpu (CUDA). Same cases on the GPU against the CPU `mul_mat_id`.
@@ -241,12 +288,18 @@ fn gpu_mul_mat_id_negative_ids_match_cpu() {
     }
     let cpu = Backend::cpu(2).unwrap();
     let gpu = Backend::gpu(0).unwrap();
-    sweep(&[gpu, cpu.clone()], &cpu, TOL_GPU, true);
+    sweep(&[gpu, cpu.clone()], &cpu, gpu_tol, true);
 }
 
-/// hardware: gpu (CUDA). Skipped slots cost nothing: the time falls with the share of -1 ids.
+/// hardware: gpu (CUDA). What expert parallelism saves (ADR 0070): with `g` ranks a rank holds
+/// 128/g experts and the slots routed to the others are -1. At 512 tokens MMQ runs, and at the
+/// pin it already skips every tile of an expert without tokens (`mmq.cuh`, `jt*J >= col_diff`),
+/// so the time follows the experts this rank computes. The alternative without -1, remote slots
+/// remapped to local experts, computes every slot. Random -1 ids (the first version of this test,
+/// flat at 0.61 ms on an RTX 3090) leave nearly every expert with a token and save nothing; they
+/// are recorded for comparison. Prints `MUL_MAT_ID_SKIP {json}`.
 #[test]
-fn gpu_mul_mat_id_time_falls_with_skipped_ids() {
+fn gpu_mul_mat_id_time_follows_the_local_experts() {
     if !Backend::gpu_available() {
         return;
     }
@@ -275,36 +328,64 @@ fn gpu_mul_mat_id_time_falls_with_skipped_ids() {
     let bt = ctx.new_tensor(Type::F32, &[s.k, 1, tokens as i64]);
     let it = ctx.new_tensor(Type::I32, &[s.used, tokens as i64]);
     let y = ctx.mul_mat_id(w, bt, it).set_output();
-    let mut g = ctx.new_graph(64);
-    g.expand(y);
+    let mut graph = ctx.new_graph(64);
+    graph.expand(y);
     let mut sched = Sched::new(&backends, 64, false).unwrap();
-    sched.alloc_graph(&g).unwrap();
+    sched.alloc_graph(&graph).unwrap();
     let b: Vec<f32> = (0..s.k as usize * tokens).map(|_| rng.f32()).collect();
     bt.set_f32(&b).unwrap();
 
-    let mut medians = Vec::new();
-    for pct in [0usize, 50, 90] {
-        let ids = make_ids(&s, tokens, pct, &mut rng);
-        it.set_i32(&ids).unwrap();
+    let mut time = |ids: &[i32]| -> f64 {
+        it.set_i32(ids).unwrap();
         for _ in 0..3 {
-            sched.compute(&g).unwrap();
+            sched.compute(&graph).unwrap();
         }
         let mut ms: Vec<f64> = (0..20)
             .map(|_| {
                 let t = Instant::now();
-                sched.compute(&g).unwrap();
+                sched.compute(&graph).unwrap();
                 t.elapsed().as_secs_f64() * 1e3
             })
             .collect();
         ms.sort_by(f64::total_cmp);
-        medians.push((pct, ms[ms.len() / 2]));
-    }
-    let json = format!(
-        "{{\"test\":\"mul_mat_id_skip\",\"gpu\":\"{}\",\"tokens\":{tokens},\"type\":\"q4_K\",\"median_ms\":{{{}}}}}",
-        gpu.name(),
-        medians
+        ms[ms.len() / 2]
+    };
+    let used = s.used as usize;
+    let routed = make_ids(&s, tokens, 0, &mut rng);
+    // Rank 0 of `g` holds experts 0..128/g.
+    let on_rank = |g: i32| {
+        let local = s.experts as i32 / g;
+        let skip: Vec<i32> = routed
             .iter()
-            .map(|(p, m)| format!("\"neg_{p}\":{m:.4}"))
+            .map(|&e| if e < local { e } else { -1 })
+            .collect();
+        // Without -1: each remote slot takes a local expert the token does not use yet.
+        let mut remap = routed.clone();
+        for t in remap.chunks_mut(used) {
+            let mut free = (0..local).filter(|e| !t.contains(e)).collect::<Vec<_>>();
+            for e in t.iter_mut().filter(|e| **e >= local) {
+                *e = free.remove(0);
+            }
+        }
+        (skip, remap)
+    };
+    let mut rows: Vec<(String, f64)> = Vec::new();
+    for g in [1, 2, 4, 8] {
+        let (skip, remap) = on_rank(g);
+        rows.push((format!("skip_g{g}"), time(&skip)));
+        if g > 1 {
+            rows.push((format!("remap_g{g}"), time(&remap)));
+        }
+    }
+    let random = make_ids(&s, tokens, 90, &mut rng);
+    rows.push(("random_neg90".into(), time(&random)));
+    let ms = |k: &str| rows.iter().find(|(n, _)| n == k).unwrap().1;
+    let json = format!(
+        "{{\"test\":\"mul_mat_id_skip\",\"gpu\":\"{}\",\"tokens\":{tokens},\"type\":\"q4_K\",\"experts\":{},\"used\":{used},\"median_ms\":{{{}}}}}",
+        gpu.name(),
+        s.experts,
+        rows.iter()
+            .map(|(n, m)| format!("\"{n}\":{m:.4}"))
             .collect::<Vec<_>>()
             .join(",")
     );
@@ -312,8 +393,14 @@ fn gpu_mul_mat_id_time_falls_with_skipped_ids() {
     if let Ok(path) = std::env::var("TETRAEDER_MMID_JSON") {
         std::fs::write(path, &json).unwrap();
     }
+    for g in [2, 4, 8] {
+        assert!(
+            ms(&format!("skip_g{g}")) < ms(&format!("remap_g{g}")),
+            "-1 for remote experts must beat remapping them at g = {g}: {rows:?}"
+        );
+    }
     assert!(
-        medians[1].1 < medians[0].1 && medians[2].1 < medians[1].1,
-        "time must fall with the share of -1 ids: {medians:?}"
+        ms("skip_g8") < 0.75 * ms("skip_g1"),
+        "a rank with 1/8 of the experts must take well under the full time: {rows:?}"
     );
 }

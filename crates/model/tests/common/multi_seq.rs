@@ -441,7 +441,11 @@ pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + Co
     r.eval_seq(1, &neighbour);
     r.eval_seq(2, &neighbour);
     r.seq_restore(0, &bytes, len).unwrap();
-    assert_eq!(r.pool().row(0, 0), Some(512), "{what}: the reference's rows");
+    assert_eq!(
+        r.pool().row(0, 0),
+        Some(512),
+        "{what}: the reference's rows"
+    );
     let after_move: Vec<(Vec<f32>, Vec<f32>)> = (moved_at..n)
         .map(|j| {
             let t = toks[p.len() + j];
