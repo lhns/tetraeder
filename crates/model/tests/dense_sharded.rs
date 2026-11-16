@@ -233,6 +233,7 @@ fn cpu_three_sequences_batched_on_tp2_match_each_alone() {
     let mut batched = sharded(&path, &topo, 3);
     assert_eq!(batched.n_vocab(), nv);
     let together = run(&[0, 1, 2], &mut batched, &|s| s as u32);
+    #[allow(clippy::needless_range_loop)]
     for s in 0..3 {
         let mut alone = sharded(&path, &topo, 1);
         let rows = run(&[s], &mut alone, &|_| 0);
