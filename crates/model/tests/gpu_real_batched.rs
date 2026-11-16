@@ -110,7 +110,13 @@ fn gpu_qwen3_8b_batched_matches_libllama() {
     let Some(path) = model("Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf") else {
         return;
     };
-    dense_vs_libllama(&path, GPU, -1, GPU_TOL, "qwen3-8b batched / libllama batched");
+    dense_vs_libllama(
+        &path,
+        GPU,
+        -1,
+        GPU_TOL,
+        "qwen3-8b batched / libllama batched",
+    );
 }
 
 /// hardware: gpu, model. Qwen3-30B-A3B Q4_K_M, the MoE builder (resident) batched against
@@ -120,7 +126,13 @@ fn gpu_qwen3_30b_batched_matches_libllama() {
     let Some(path) = model("Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf") else {
         return;
     };
-    moe_vs_libllama(&path, GPU, -1, GPU_TOL, "qwen3-30b batched / libllama batched");
+    moe_vs_libllama(
+        &path,
+        GPU,
+        -1,
+        GPU_TOL,
+        "qwen3-30b batched / libllama batched",
+    );
 }
 
 /// hardware: cpu. The body of the two tests above on the tiny fixtures, so CI runs the script,
@@ -129,6 +141,18 @@ fn gpu_qwen3_30b_batched_matches_libllama() {
 fn cpu_fixtures_batched_match_libllama() {
     let cpu = || BackendChoice::Cpu { threads: Some(2) };
     let tol = Tol::from(TOL_CPU);
-    dense_vs_libllama(&dense_fixture(), cpu(), 0, tol, "cpu dense fixture batched / libllama");
-    moe_vs_libllama(&fixture(), cpu(), 0, tol, "cpu moe fixture batched / libllama");
+    dense_vs_libllama(
+        &dense_fixture(),
+        cpu(),
+        0,
+        tol,
+        "cpu dense fixture batched / libllama",
+    );
+    moe_vs_libllama(
+        &fixture(),
+        cpu(),
+        0,
+        tol,
+        "cpu moe fixture batched / libllama",
+    );
 }
