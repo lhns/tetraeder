@@ -343,8 +343,8 @@ impl Qwen3 {
                 kv,
                 step: None,
                 state: None,
+                weight_bufts: extra,
             })),
-            weight_bufts: extra,
             pool,
             n_rows: rows,
             n_seq_max: opts.n_seq_max,
@@ -389,7 +389,6 @@ impl Qwen3 {
         Ok(Qwen3 {
             h,
             engine: Engine::Ranked(Box::new(ranked)),
-            weight_bufts: Vec::new(),
             per_seq_attn: false,
             pool: KvPool::new(Box::new(Chunked::new(rows))),
             n_rows: rows,
@@ -453,7 +452,10 @@ impl Qwen3 {
 
     /// Names of the CPU extra buffer types that hold weights (empty when none does).
     pub fn weight_bufts(&self) -> &[String] {
-        &self.weight_bufts
+        match &self.engine {
+            Engine::Sched(e) => &e.weight_bufts,
+            Engine::Ranked(_) => &[],
+        }
     }
 
     pub fn kv_format(&self) -> KvFormat {
