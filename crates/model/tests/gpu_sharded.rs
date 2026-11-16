@@ -49,18 +49,22 @@ fn bits(v: &[f32]) -> Vec<u32> {
 /// hardware: gpu, model. One GPU rank on the executor equals the scheduler path bit for bit:
 /// the logits of every prompt position and 64 greedy tokens.
 #[test]
-fn gpu_one_rank_is_bit_equal_to_force_sched() {
+fn gpu_one_rank_is_bit_equal_to_the_scheduler() {
     if !Backend::gpu_available() {
         eprintln!("skip: no GPU");
         return;
     }
     let Some(path) = model() else { return };
     let sched = DenseOptions {
-        force_sched: true,
+        use_executor: false,
+        ..opts()
+    };
+    let exec = DenseOptions {
+        use_executor: true,
         ..opts()
     };
     let mut a = Qwen3::load(&path, &sched).unwrap();
-    let mut b = Qwen3::load(&path, &opts()).unwrap();
+    let mut b = Qwen3::load(&path, &exec).unwrap();
     assert_eq!(a.n_ranks(), 1);
     assert_eq!(b.n_ranks(), 1);
     assert!(a.comm_path().is_none() && b.comm_path().is_some());

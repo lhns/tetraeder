@@ -43,6 +43,9 @@ pub const ARCH_DENSE: &str = "qwen3";
 const STEP_NODES_PER_LAYER: usize = 128;
 const STEP_NODES_PER_SEQ: usize = 8;
 
+/// Env var that turns on [`DenseOptions::use_executor`] in [`DenseOptions::new`] (`1`).
+pub const EXECUTOR_ENV: &str = "TETRAEDER_DENSE_EXECUTOR";
+
 /// Env var that turns on [`DenseOptions::per_seq_attn`] in [`DenseOptions::new`] (`1`).
 pub const PER_SEQ_ATTN_ENV: &str = "TETRAEDER_DENSE_PER_SEQ_ATTN";
 
@@ -121,10 +124,11 @@ pub struct DenseOptions {
     /// run, as libllama's `use_extra_bufts` (default true there and here).
     pub extra_bufts: bool,
     pub telemetry: Option<Arc<Telemetry>>,
-    /// Keep the scheduler path on a GPU, for the bit-equality check of the executor path (a GPU
-    /// load goes through the executor with one rank otherwise, ADR 0069). The CPU backend
-    /// always uses the scheduler through [`Qwen3::load`].
-    pub force_sched: bool,
+    /// Run a one-GPU [`Qwen3::load`] on the executor with one rank (ADR 0069) instead of the
+    /// scheduler. Default off, or on with `TETRAEDER_DENSE_EXECUTOR=1`, until the executor has
+    /// shown no regression on a GPU. [`Qwen3::load_sharded`] always uses the executor; the CPU
+    /// backend always uses the scheduler through `load`.
+    pub use_executor: bool,
     /// Run only the first N layers and the head (calibration anchors, ADR 0068); the logits
     /// are meaningless, the timing is real. Executor path, one stage only.
     pub layer_limit: Option<u32>,
@@ -143,7 +147,7 @@ impl DenseOptions {
             per_seq_attn: std::env::var(PER_SEQ_ATTN_ENV).is_ok_and(|v| v == "1"),
             extra_bufts: true,
             telemetry: None,
-            force_sched: false,
+            use_executor: std::env::var(EXECUTOR_ENV).is_ok_and(|v| v == "1"),
             layer_limit: None,
         }
     }
@@ -161,7 +165,7 @@ impl std::fmt::Debug for DenseOptions {
             .field("reuse_step_graph", &self.reuse_step_graph)
             .field("per_seq_attn", &self.per_seq_attn)
             .field("extra_bufts", &self.extra_bufts)
-            .field("force_sched", &self.force_sched)
+            .field("use_executor", &self.use_executor)
             .field("layer_limit", &self.layer_limit)
             .finish_non_exhaustive()
     }
@@ -286,11 +290,11 @@ fn step_nodes(h: &AttnHparams, n_seq: usize) -> usize {
 }
 
 impl Qwen3 {
-    /// Loads the whole model on one backend. On a GPU that is one rank of the executor; the CPU
-    /// (and `force_sched`) uses the scheduler.
+    /// Loads the whole model on one backend, through the scheduler; on a GPU with
+    /// [`DenseOptions::use_executor`] as one rank of the executor.
     pub fn load(path: impl AsRef<Path>, opts: &DenseOptions) -> Result<Qwen3> {
         let (gguf, h) = open(path.as_ref(), opts)?;
-        if let (BackendChoice::Gpu { index }, false) = (&opts.backend, opts.force_sched) {
+        if let (BackendChoice::Gpu { index }, true) = (&opts.backend, opts.use_executor) {
             let topo = Topology::single(&format!("gpu{index}"), Some(*index), h.attn.n_layer);
             return Self::load_ranked(&gguf, h, &topo, opts);
         }

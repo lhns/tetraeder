@@ -228,6 +228,8 @@ fn load_builder(
     o.n_ctx_pool = n_ctx;
     o.telemetry = telemetry.clone();
     o.layer_limit = a.layer_limit;
+    // A layer limit runs on the executor.
+    o.use_executor |= a.layer_limit.is_some();
     let m = match planned {
         Some(p) => Qwen3::load_sharded(path, &p.topology, &o),
         None => Qwen3::load(path, &o),
