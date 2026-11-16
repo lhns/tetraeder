@@ -2,6 +2,7 @@
 //! steps on the spec_builder fixture and variants of it. Prints only; runs with
 //! TETRAEDER_BATCH_DIAG=1.
 
+#[allow(dead_code)]
 mod common;
 
 use common::synth::{MoeSpec, quantized_moe, write_moe};
@@ -14,7 +15,7 @@ const N_ROWS: usize = 7;
 
 fn run(name: &str, path: &Path, threads: u32, rows: usize) {
     let mut o = LoadOptions::new(BackendChoice::Cpu {
-        threads: Some(threads as usize),
+        threads: Some(threads),
     });
     o.n_ctx = 256;
     o.record_routing = true;
