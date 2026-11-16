@@ -26,6 +26,7 @@ use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use crate::qwen3moe_shard::{self, Sharded};
+use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans};
 use crate::upload::AdmitUpload;
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, Sched, Tensor,
@@ -560,6 +561,8 @@ pub struct Qwen3Moe {
     /// Set by [`Qwen3Moe::load_sharded`]: the weights, KV tensors and steps live on the
     /// executor's ranks, and the fields above (scheduler, weights, KV) are placeholders.
     shard: Option<Box<Sharded>>,
+    /// Pinned staging for snapshots of a GPU cache (ADR 0074); `None` reads straight.
+    readback: Option<Readback>,
 }
 
 impl std::fmt::Debug for Qwen3Moe {
@@ -726,6 +729,11 @@ impl Qwen3Moe {
             None
         };
         let opts_primary_is_cpu = primary.is_cpu();
+        let readback = if opts_primary_is_cpu {
+            None
+        } else {
+            Some(Readback::new(&primary, STAGING_HALF)?)
+        };
         let mut model = Qwen3Moe {
             file,
             sched,
@@ -775,6 +783,7 @@ impl Qwen3Moe {
             profile: StepProfile::default(),
             convert,
             shard: None,
+            readback,
         };
         if cpu_hot && opts.routing_profile.is_some() {
             model.refresh_hot_set()?;
@@ -878,6 +887,7 @@ impl Qwen3Moe {
             profile: StepProfile::default(),
             convert: ConvertStats::default(),
             shard: Some(Box::new(shard)),
+            readback: None,
         })
     }
 
@@ -995,6 +1005,24 @@ impl Qwen3Moe {
             .and_then(|s| s.admit_staging_pinned())
     }
 
+    /// The snapshot staging (ADR 0074) as (bytes, pinned); `None` when snapshots read straight.
+    pub fn snapshot_staging(&self) -> Option<(usize, bool)> {
+        self.readback.as_ref().map(|rb| (rb.bytes(), rb.pinned()))
+    }
+
+    /// Replaces the snapshot staging by two halves of `half` bytes, or drops it (`None`: read
+    /// straight). For tests and paired timings; not on a sharded model.
+    pub fn set_snapshot_staging(&mut self, half: Option<usize>) -> Result<()> {
+        if self.shard.is_some() {
+            return Err(ModelError::Invalid(
+                "snapshot staging is not on the sharded path".into(),
+            ));
+        }
+        self.readback = half.map(|h| Readback::new(&self.primary, h)).transpose()?;
+        self.report_memory();
+        Ok(())
+    }
+
     /// Rebuilds the hot set from the routing counts (ADR 0035): per layer the most routed
     /// experts, as many as there are compute slots, pinned and made resident. Needs
     /// `MissPolicy::Cpu`; call it between requests. Does nothing when every expert is resident.
@@ -1072,6 +1100,10 @@ impl Qwen3Moe {
         if let Some(st) = &self.streamer {
             let io = st.bounce_bytes();
             push("host", "ram", "io", io, io);
+        }
+        if let Some(rb) = &self.readback {
+            let b = rb.bytes() as u64;
+            push("host", "ram", "staging", b, b);
         }
         let scheds = || {
             std::iter::once(&self.sched)
@@ -1334,11 +1366,11 @@ impl Qwen3Moe {
             return sh.snapshot(&runs);
         }
         let mut out = Vec::with_capacity(n * self.kv_row_bytes());
-        for t in self.kv.k.iter().chain(&self.kv.v) {
-            let row = t.get().nbytes() / self.kv.n_rows;
-            for &(start, len) in &runs {
-                out.extend_from_slice(&t.get().get_bytes(start * row, len * row)?);
-            }
+        let tensors = self.kv.k.iter().chain(&self.kv.v).map(|t| t.get());
+        let spans = row_spans(tensors, self.kv.n_rows, &runs);
+        match &self.readback {
+            Some(rb) => rb.read(&spans, &mut out)?,
+            None => append_direct(&spans, &mut out)?,
         }
         Ok(out)
     }

@@ -42,6 +42,15 @@ groups:
           severity: warning
         annotations:
           summary: "The prefix cache evicts more sequences than it restores; raise --cache-ram"
+      # A save stalls every live sequence (ADR 0074): the 3090 took 41 ms per 8B save before pinned staging.
+      - alert: PrefixSaveSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(tetraeder_kv_prefix_save_duration_seconds_bucket[15m]))) > 0.025
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 prefix-cache save over 25 ms; every save stalls all live sequences"
       # Tool calls the parser had to repair or could not parse (ADR 0051): a template or model regression.
       - alert: ToolCallFailures
         expr: |

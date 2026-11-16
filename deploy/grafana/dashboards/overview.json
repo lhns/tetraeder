@@ -1890,7 +1890,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 122,
+        "y": 130,
         "w": 24,
         "h": 1
       },
@@ -1907,7 +1907,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 123,
+        "y": 131,
         "w": 8,
         "h": 8
       },
@@ -1976,7 +1976,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 123,
+        "y": 131,
         "w": 8,
         "h": 8
       },
@@ -2027,7 +2027,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 123,
+        "y": 131,
         "w": 8,
         "h": 8
       },
@@ -2086,7 +2086,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 131,
+        "y": 139,
         "w": 8,
         "h": 8
       },
@@ -2145,7 +2145,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 131,
+        "y": 139,
         "w": 8,
         "h": 8
       },
@@ -2205,7 +2205,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 131,
+        "y": 139,
         "w": 8,
         "h": 8
       },
@@ -2247,7 +2247,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 139,
+        "y": 147,
         "w": 8,
         "h": 8
       },
@@ -2289,7 +2289,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 139,
+        "y": 147,
         "w": 8,
         "h": 8
       },
@@ -2373,7 +2373,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 139,
+        "y": 147,
         "w": 8,
         "h": 8
       },
@@ -2571,6 +2571,57 @@
           "refId": "B",
           "expr": "histogram_quantile(0.95, sum by (le, tetraeder_call) (rate(tetraeder_executor_ipc_duration_seconds_bucket[$__rate_interval])))",
           "legendFormat": "p95 {{tetraeder_call}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 86,
+      "title": "Prefix cache: save and restore stalls",
+      "description": "Time to save a sequence to the host RAM prefix cache and to restore one, median and p95 (ADR 0049, 0074). A save runs on the worker thread with every live sequence stalled, on every admission that reuses an idle sequence; p95 over 25 ms fires PrefixSaveSlow. On a GPU the save reads through pinned staging; a jump points at the staging falling back to plain memory (log line `kv readback staging`, pinned=false).",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 122,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(tetraeder_kv_prefix_save_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "save p50",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(tetraeder_kv_prefix_save_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "save p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(tetraeder_kv_prefix_restore_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "restore p95",
           "datasource": {
             "type": "prometheus",
             "uid": "victoriametrics"

@@ -19,6 +19,7 @@ use crate::cpu_poll;
 use crate::gguf::{Gguf, GgufError};
 use crate::hparams::names;
 use crate::qwen3moe::{BackendChoice, MemoryUse, ModelError, Result};
+use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans};
 use crate::shard::{gather_rows, scatter_rows};
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
@@ -224,6 +225,8 @@ struct SchedEngine {
     kv: Kv,
     step: Option<StepGraph>,
     state: Option<State>,
+    /// Pinned staging for snapshots of a GPU cache (ADR 0074); `None` reads straight.
+    readback: Option<Readback>,
 }
 
 enum Engine {
@@ -336,6 +339,11 @@ impl Qwen3 {
             "qwen3 dense loaded"
         );
         let kv_rotated = (kv.rot_k.is_some(), kv.rot_v.is_some());
+        let readback = if primary.is_cpu() {
+            None
+        } else {
+            Some(Readback::new(&primary, STAGING_HALF)?)
+        };
         Ok(Qwen3 {
             h,
             engine: Engine::Sched(Box::new(SchedEngine {
@@ -348,6 +356,7 @@ impl Qwen3 {
                 step: None,
                 state: None,
                 weight_bufts: extra,
+                readback,
             })),
             pool,
             n_rows: rows,
@@ -507,11 +516,44 @@ impl Qwen3 {
             used: capacity,
         };
         let work = e.sched.buffer_size(&e.primary) as u64;
-        vec![
+        let mut out = vec![
             use_("weights", e.weights_bytes),
             use_("kv", e.kv_bytes),
             use_("workspace", work),
-        ]
+        ];
+        if let Some(rb) = &e.readback {
+            let bytes = rb.bytes() as u64;
+            out.push(MemoryUse {
+                device: "host".into(),
+                tier: "ram",
+                kind: "staging",
+                format: None,
+                capacity: bytes,
+                used: bytes,
+            });
+        }
+        out
+    }
+
+    /// The snapshot staging (ADR 0074) as (bytes, pinned); `None` when snapshots read straight.
+    pub fn snapshot_staging(&self) -> Option<(usize, bool)> {
+        match &self.engine {
+            Engine::Sched(e) => e.readback.as_ref().map(|rb| (rb.bytes(), rb.pinned())),
+            Engine::Ranked(_) => None,
+        }
+    }
+
+    /// Replaces the snapshot staging by two halves of `half` bytes, or drops it (`None`: read
+    /// straight). For tests and paired timings; the scheduler path only.
+    pub fn set_snapshot_staging(&mut self, half: Option<usize>) -> Result<()> {
+        let Engine::Sched(e) = &mut self.engine else {
+            return Err(ModelError::Invalid(
+                "snapshot staging is on the scheduler path only".into(),
+            ));
+        };
+        e.readback = half.map(|h| Readback::new(&e.primary, h)).transpose()?;
+        self.report_memory();
+        Ok(())
     }
 
     /// Publishes memory use, KV tokens held and the pool's blocks; also after a sequence is cut,
@@ -691,6 +733,15 @@ impl Qwen3 {
         let n = self.pool.seq_len(seq);
         let runs = self.pool.runs(seq, n);
         let mut out = Vec::with_capacity(n * self.kv_row_bytes());
+        if let Engine::Sched(e) = &self.engine {
+            let tensors = e.kv.k.iter().chain(&e.kv.v).map(|t| t.get());
+            let spans = row_spans(tensors, self.n_rows, &runs);
+            match &e.readback {
+                Some(rb) => rb.read(&spans, &mut out)?,
+                None => append_direct(&spans, &mut out)?,
+            }
+            return Ok(out);
+        }
         for group in self.kv_groups() {
             gather_rows(&group, self.kv_rows(), &runs, &mut out)?;
         }
