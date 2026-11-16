@@ -3,7 +3,10 @@ Subject: [PATCH] cuda: mul_mat_id treats expert id -1 as no expert
 
 As the CPU kernel does: no weights read, zero output row. MMVQ and MMVF write the zero row in the
 kernel; MMQ and MMF never match -1 to an expert and a small kernel zeroes its rows; the generic
-fallback gathers from a zero row. Results for ids without -1 are unchanged. ADR 0070.
+fallback gathers from a zero row. mm_ids_helper counts -1 below every expert, which leaves the
+first compact rows and the -1 slots' inverse-map entries unwritten; MMQ's quantize kernels read
+src1 or scatter through them, so they now point at row 0. Results for ids without -1 are
+unchanged. ADR 0070.
 ---
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
 index 72e961d..4285b5f 100644
@@ -93,7 +96,25 @@ diff --git a/ggml/src/ggml-cuda/mmid.cu b/ggml/src/ggml-cuda/mmid.cu
 index 12ae14c..af0e647 100644
 --- a/ggml/src/ggml-cuda/mmid.cu
 +++ b/ggml/src/ggml-cuda/mmid.cu
-@@ -177,3 +177,26 @@ void ggml_cuda_launch_mm_ids_helper(
+@@ -100,6 +100,17 @@ static __global__ void mm_ids_helper(
+     }
+     nex_prev = warp_reduce_sum<warp_size>(nex_prev);
+     ggml_cuda_syncwarp();
++    // patch 0004: id -1 counts below every expert, so the compact rows 0..nex_prev-1 of expert 0 hold no expert's
++    // columns, and nothing writes their ids_src1 entries nor (inverse map) those of the -1 slots. The MMQ quantize
++    // kernels read src1 (forward map) or write a compact row (inverse map) through them: point them at row 0.
++    if (expert == 0 && nex_prev > 0) {
++        const int n_slots = n_tokens*n_expert_used;
++        for (int i = threadIdx.x; i < (write_inverse ? n_slots : nex_prev); i += warp_size) {
++            if (!write_inverse || ids[(i / n_expert_used)*si1 + i % n_expert_used] < 0) {
++                ids_src1[i] = 0;
++            }
++        }
++    }
+
+     for (int itc = threadIdx.x; itc < it_compact; itc += warp_size) {
+         const mm_ids_helper_store store_it = store[itc];
+@@ -177,3 +188,26 @@ void ggml_cuda_launch_mm_ids_helper(
              break;
      }
  }

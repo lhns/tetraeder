@@ -377,18 +377,30 @@ pub fn snapshot_roundtrip(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> +
     assert!(m.seq_restore(0, &snap[1..], b.len()).is_err());
 }
 
-/// A layout move in the middle of a decode (a neighbour stops sequence 0 growing in place): the
-/// logits stay within `tol` of a run whose sequence sits where the move put it from the start,
-/// and the move really happened. `opts` must have a pool of at least 1024 rows (the move takes the gap behind the neighbour, 512 rows, when no gap holds the extra GROW). The reference
-/// is not the sequence alone: a decode's kernel (CPU flash attention for one query) sums over
-/// `n_kv` in an order that depends on it, so a different row offset gives other low bits once
-/// `n_kv` reaches 1024. A move changes only the rows, the same as a different start does.
+/// A layout move in the middle of a decode (a neighbour stops sequence 0 growing in place). The
+/// move copies the rows on the device: sequence 0's snapshot is byte-equal before and after it.
+/// The decode after the move is compared with a reference that gets the same bytes at the same
+/// rows from the host (`seq_restore`, two neighbours in the first 512 rows), so both run the same
+/// kernels on the same rows and `n_kv`: equal within `tol`, bitwise on a deterministic backend.
+/// Before the move the sequence decodes as it does alone (same rows, same `n_kv`).
+///
+/// The reference is not a run with sequence 0 at row 512 from the start: attention sums in an
+/// order that depends on the row offset and `n_kv` (ggml's CPU flash attention splits a
+/// one-query step into `n_kv / threads` chunks from `n_kv` 512 and accumulates V in F16; CUDA
+/// splits over KV blocks), so such a run differs by kernel noise before the move, and a fixture
+/// with near-tied experts turns that into percent (the first CUDA runs, ADR 0071).
+///
+/// The move is the reserve a decode of the 257th token makes (`decode` calls the same
+/// `seq_reserve`), taken explicitly so the bytes compare at an unchanged length. `opts` must have
+/// a pool of at least 1024 rows (the move takes the gap behind the neighbour, 512 rows, when no
+/// gap holds the extra GROW).
 pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + Copy, what: &str) {
     assert!(opts.n_ctx >= 1024);
     let p = prompt(4, 200);
     let neighbour = prompt(5, 10);
     let n = 80;
-    let toks = alone(path, opts, &p, n).toks;
+    let lone = alone(path, opts, &p, n);
+    let toks = &lone.toks;
     let decode_one = |m: &mut Qwen3Moe, t: i32| {
         let mut buf = Vec::new();
         m.decode(
@@ -402,15 +414,6 @@ pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + Co
         .unwrap();
         buf
     };
-    // The reference: two neighbours in the first 512 rows, sequence 0 behind them.
-    let mut r = load(path, opts, 3);
-    r.eval_seq(1, &neighbour);
-    r.eval_seq(2, &neighbour);
-    r.eval_seq(0, &p);
-    assert_eq!(r.pool().row(0, 0), Some(512));
-    let want: Vec<Vec<f32>> = (0..n)
-        .map(|j| decode_one(&mut r, toks[p.len() + j]))
-        .collect();
 
     let mut m = load(path, opts, 2);
     m.eval_seq(0, &p);
@@ -418,23 +421,55 @@ pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + Co
     m.eval_seq(1, &neighbour);
     assert_eq!(m.pool().row(0, 0), Some(0));
     let nb_before = m.seq_snapshot(1).unwrap();
-    let mut moved_at = None;
-    let mut got = Vec::new();
-    for (j, want) in want.iter().enumerate() {
+    // Decode until sequence 0 fills its rows: (logits, the alone run's after the same tokens).
+    let mut before_move: Vec<(Vec<f32>, &Vec<f32>)> = Vec::new();
+    while m.seq_len(0) < m.pool().reserved(0) {
+        let j = before_move.len();
         let g = decode_one(&mut m, toks[p.len() + j]);
-        if moved_at.is_none() && m.pool().row(0, 0) != Some(0) {
-            moved_at = Some(j);
-        }
-        print_row(&format!("{what}: step {j}"), &g, want);
-        got.push(g);
+        before_move.push((g, &lone.logits[j + 1]));
     }
-    for (j, (g, want)) in got.iter().zip(&want).enumerate() {
-        let what = format!("{what}: step {j}");
-        close(g, want, tol, &what);
-        same_token(g, want, tol, &what);
+    let moved_at = before_move.len();
+    let len = m.seq_len(0);
+    assert_eq!(len, 256, "{what}: sequence 0 fills its first run");
+    let bytes = m.seq_snapshot(0).unwrap();
+    m.seq_reserve(0, len + 1).unwrap();
+    assert_eq!(m.pool().row(0, 0), Some(512), "{what}: sequence 0 moved");
+    let same_bytes = m.seq_snapshot(0).unwrap() == bytes;
+
+    // The reference: two neighbours in the first 512 rows, the same bytes behind them.
+    let mut r = load(path, opts, 3);
+    r.eval_seq(1, &neighbour);
+    r.eval_seq(2, &neighbour);
+    r.seq_restore(0, &bytes, len).unwrap();
+    assert_eq!(
+        r.pool().row(0, 0),
+        Some(512),
+        "{what}: the reference's rows"
+    );
+    let after_move: Vec<(Vec<f32>, Vec<f32>)> = (moved_at..n)
+        .map(|j| {
+            let t = toks[p.len() + j];
+            (decode_one(&mut m, t), decode_one(&mut r, t))
+        })
+        .collect();
+
+    let rows: Vec<(String, &[f32], &[f32])> = before_move
+        .iter()
+        .enumerate()
+        .map(|(j, (g, w))| (format!("{what}: step {j}, alone"), &g[..], &w[..]))
+        .chain(after_move.iter().enumerate().map(|(k, (g, w))| {
+            let j = moved_at + k;
+            (format!("{what}: step {j}, moved"), &g[..], &w[..])
+        }))
+        .collect();
+    for (what, g, want) in &rows {
+        print_row(what, g, want);
     }
-    assert!(moved_at.is_some(), "{what}: sequence 0 moved");
-    assert_eq!(m.pool().row(0, 0), Some(512));
+    assert!(same_bytes, "{what}: the moved rows hold other bytes");
+    for (what, g, want) in &rows {
+        close(g, want, tol, what);
+        same_token(g, want, tol, what);
+    }
     assert_eq!(m.seq_len(0), p.len() + n);
     assert_eq!(
         m.seq_snapshot(1).unwrap(),
