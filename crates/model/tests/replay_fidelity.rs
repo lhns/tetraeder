@@ -55,6 +55,14 @@ fn opts(ram: usize, depth: usize, prefetch: bool, overlap: bool) -> LoadOptions 
     }
 }
 
+/// The prefill with logits for every row, returning the last. `eval_last` computes the last
+/// layer's experts for the output row only, so the trace (all rows) would show experts the engine
+/// never loaded; the replay models the engine's reads row for row.
+fn prefill(m: &mut Qwen3Moe, tokens: &[i32]) -> Vec<f32> {
+    let all = m.eval(tokens).unwrap();
+    all[all.len() - m.n_vocab()..].to_vec()
+}
+
 /// Mean over layers of the RAM-tier hit rate between two snapshots, as the exit harness reports it.
 fn ram_hit_rate_mean(a: &ExpertStats, b: &ExpertStats) -> f64 {
     let rates: Vec<f64> = a
@@ -96,7 +104,7 @@ fn cpu_replay_matches_the_engine_exactly() {
         let mut rec =
             RoutingRecorder::create(&trace_path, &m, N_PROMPT, "test", "first_prefill", None);
         let p = prompt();
-        let last = m.eval_last(&p).unwrap();
+        let last = prefill(&mut m, &p);
         rec.drain(&mut m);
         let s1 = m.expert_stats().unwrap();
         let mut next = argmax(&last) as i32;
@@ -182,7 +190,7 @@ fn run_freq(
         std::process::id()
     ));
     let mut rec = RoutingRecorder::create(&trace_path, &m, N_PROMPT, "test", "first_prefill", None);
-    let last = m.eval_last(&prompt()).unwrap();
+    let last = prefill(&mut m, &prompt());
     rec.drain(&mut m);
     let s1 = m.expert_stats().unwrap();
     let mut logits = vec![last.clone()];
