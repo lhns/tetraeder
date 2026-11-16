@@ -2731,7 +2731,8 @@ fn build_step<'a>(
     (g, logits, routed)
 }
 
-/// Output norm and projection; only the positions in `st.outputs` unless every token has one.
+/// Output norm and projection; only the positions in `st.outputs` unless every token has one or
+/// `x` already holds only those rows.
 fn head<'a>(
     h: &Hparams,
     ctx: &'a Context,
@@ -2740,7 +2741,9 @@ fn head<'a>(
     x: Tensor<'a>,
 ) -> Tensor<'a> {
     let mut cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), w.out_norm.get());
-    if st.n_out < st.n_tokens {
+    // The whole-step graph already selected the rows in the last layer; `outputs` indexes the
+    // original token rows, so gathering again would read out of range.
+    if st.n_out < st.n_tokens && x.ne()[1] as usize == st.n_tokens {
         cur = ctx.get_rows(cur, st.outputs.get());
     }
     let head = w.output.as_ref().unwrap_or(&w.tok_embd);
@@ -3249,6 +3252,11 @@ mod graph_order {
                 .filter(|t| t.op_name() == "MUL_MAT_ID")
                 .map(|t| t.ne())
                 .collect();
+            let gets = (0..g.n_nodes())
+                .filter(|&i| g.node(i).op_name() == "GET_ROWS")
+                .count();
+            // Token embedding, router selection per layer, and one output selection in all.
+            assert_eq!(gets, 1 + n_layer + usize::from(n_out < n), "n={n} out={n_out}");
             assert_eq!(ids.len(), 3 * n_layer);
             for (i, ne) in ids.iter().enumerate() {
                 let want = if i / 3 + 1 == n_layer { n_out } else { n } as i64;
