@@ -149,9 +149,12 @@ fn cpu_dense_tp2_matches_bench_golden() {
         ..expected.clone()
     };
     // Q8_0 quantizes every activation block; a partial sum in another order moves some blocks
-    // across a rounding step, and 28 layers carry that to about 1% of a logit (measured: 0.10 on
-    // 13.6). So 0.3 absolute here, against 0.05 for the unsharded run.
-    let cmp = expected.compare(&actual, Tolerance { logit_abs: 0.3 });
+    // across a rounding step. Measured against the one-rank builder on this file
+    // (`cpu_dense_tp2_noise_against_the_one_rank_builder`): tp-2 up to 1.69e-2 of the largest
+    // logit, flat over positions, with layer-2 exactly 0 (so the plumbing is exact); on the F16
+    // fixtures tp-2 is 2.9e-4. That test bounds the noise at 3e-2 of the largest logit, about 0.6
+    // at this model's logits of 13 to 20, so 0.6 absolute here, against 0.05 for the unsharded run.
+    let cmp = expected.compare(&actual, Tolerance { logit_abs: 0.6 });
     for mm in &cmp.mismatches {
         let Mismatch::TokenDiverged {
             case,
