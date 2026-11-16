@@ -575,3 +575,36 @@ fn cpu_layer_limit_runs_a_prefix() {
         assert!(l.iter().all(|x| x.is_finite()));
     }
 }
+
+/// hardware: cpu. Diagnostic, asserts nothing: the largest logit difference of each shape
+/// against one rank when only the first L layers run (L = 1 to 4), to see where a gap starts.
+#[test]
+fn cpu_diag_gap_by_layer_limit() {
+    let path = synth4();
+    let p = prompt(3, 12);
+    for l in 1..=4u32 {
+        let o = LoadOptions {
+            layer_limit: Some(l),
+            ..opts(1)
+        };
+        let mut one = sharded(&path, &single(4), &o);
+        let want = one.eval_last(&p).unwrap();
+        for (name, t) in [
+            ("tp-2", tp(4, 2)),
+            ("ep-2", ep(4, 2)),
+            ("layer-2", layers(4, &[1])),
+        ] {
+            let mut m = sharded(&path, &t, &o);
+            let got = m.eval_last(&p).unwrap();
+            let d = got
+                .iter()
+                .zip(&want)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0f32, f32::max);
+            eprintln!(
+                "DIAG limit {l}, {name}: max |diff| {d:e}, largest {}",
+                common::largest(&want)
+            );
+        }
+    }
+}
