@@ -31,7 +31,8 @@ if [ "$(git -C "$sub" config --get core.autocrlf || true)" != "false" ]; then
   git -C "$sub" config core.autocrlf false
   crlf_reset=1
 fi
-git -C "$sub" checkout -q --detach "$ref"
+# -f: a cached tree with converted line endings or a changed pin must not block the checkout; reset and clean follow.
+git -C "$sub" checkout -q -f --detach "$ref"
 # Empty index: the reset below rewrites every file without conversion.
 [ "$crlf_reset" = 1 ] && git -C "$sub" rm -rqf --cached .
 git -C "$sub" reset -q --hard
