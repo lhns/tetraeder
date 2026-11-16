@@ -238,13 +238,13 @@ def test_failed_parity_of_the_30b_skips_only_the_30b(tmp_path):
     assert probe["models"]["q30b"]["gpu_parity"] == "failed" and probe["models"]["q8b"]["gpu_parity"] == "ok"
 
 
-def test_failed_parity_of_the_8b_skips_its_pairs_and_the_ttft(tmp_path):
+def test_failed_parity_of_the_8b_skips_its_pairs_only(tmp_path):
     write_probe(tmp_path / "out", 95.0, "q30b", "tetraeder-moe")
     lines = dry(tmp_path, DRY_GPU_PARITY="q8b", PHASE4_LOG=str(tmp_path / "none.jsonl"))
     names = runs(lines)
     assert [n for n in names if n.startswith("q30b-")] and not [n for n in names if n.startswith("q8b-")]
-    assert not [n for n in names if n.startswith("replay")]
-    assert not any("claude_code_proxy.sh" in ln for ln in lines)  # the log is for the TTFT pairs only
+    assert [n for n in names if n.startswith("replay")]  # the TTFT pairs still run
+    assert any("claude_code_proxy.sh" in ln for ln in lines)
 
 
 def test_low_probe_of_the_30b_skips_only_the_30b(tmp_path):

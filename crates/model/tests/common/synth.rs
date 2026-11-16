@@ -40,6 +40,8 @@ impl MoeSpec {
 
 const N_CTX: u32 = 1024;
 
+const CHAT_TEMPLATE: &str = "{% for m in messages %}<|im_start|>{{ m.role }}\n{{ m.content }}<|im_end|>\n{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}";
+
 /// Byte-level vocab of 256 tokens plus a merge and three control tokens, like the tiny fixture.
 fn vocab() -> Vec<String> {
     let mut bs: Vec<u32> = (33..127).chain(161..173).chain(174..256).collect();
@@ -178,6 +180,11 @@ pub fn write_moe_with(path: &Path, s: &MoeSpec, n_ctx: u32, n_vocab: usize) {
         ("tokenizer.ggml.eos_token_id".into(), Kv::U32(eos)),
         ("tokenizer.ggml.padding_token_id".into(), Kv::U32(pad)),
         ("tokenizer.ggml.add_bos_token".into(), Kv::Bool(false)),
+        // ChatML, so a server accepts chat requests (the Phase 4 rehearsal serves this model)
+        (
+            "tokenizer.chat_template".into(),
+            Kv::Str(CHAT_TEMPLATE.into()),
+        ),
     ];
 
     // (name, ggml ne, std; std 0 means a norm around 1)

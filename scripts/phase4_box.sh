@@ -22,11 +22,11 @@
 #               (the picked variant), probe-*.json; phase4_summary.py --probe writes probe.json. STOP RULE, per model: a
 #               judged engine whose c4 throughput ratio is below 0.85 (the pass line is about 0.925, below 0.85 the pairs
 #               cannot pass) is stopped like a failed parity: verdict.json records the model with pass null and the
-#               reason, and its pairs are skipped; the other model's pairs and the TTFT pairs (dense 8B; not after a
-#               failed q8b parity) still run. The session ends (PHASE4_BOX_DONE rc=3, before record-log and pairs) only
+#               reason, and its pairs are skipped; the other model's pairs and the TTFT pairs (dense 8B, even after a
+#               stopped q8b: the TTFT pairs judge prefix reuse, not the c4 ratio) still run. The session ends (PHASE4_BOX_DONE rc=3, before record-log and pairs) only
 #               when every judged model is stopped, so the driver fetches and destroys the box. 0.85 or above continues
 #   record-log  scripts/claude_code_proxy.sh over 5 tasks, 1 rep; the tetraeder request log moves to
-#               bench/private/ (clear-text prompts, gitignored); skipped when the log exists or the TTFT pairs will not run
+#               bench/private/ (clear-text prompts, gitignored); skipped when the log exists
 #   env         env.json
 #   pairs       per model, rep 1 (baseline, judged) then control, rep 2 (judged, baseline) then control. If one of the two
 #               pairs is unclean (errors, throttle, co-tenant; phase4_summary.py --rerun-reps) and BUDGET_MIN allows, one
@@ -189,10 +189,6 @@ gpu_note() {
 
 # ---- stage: record-log -------------------------------------------------------------------------------------
 record_log() {
-  if ! ttft_runs; then
-    say "record-log: skipped, the TTFT pairs will not run"
-    return 0
-  fi
   if [ -s "$req_log" ]; then
     say "record-log: $req_log exists, sha256 $(sha256sum "$req_log" | cut -d' ' -f1)"
     return 0
@@ -584,17 +580,7 @@ replay_run() {
   say "run $run done"
 }
 
-# ttft_runs: the TTFT pairs need q8b (the dense engine) and its parity; a probe-stopped q8b still gets them
-ttft_runs() {
-  case " $models " in *" q8b "*) ;; *) return 1 ;; esac
-  [ -z "${parity_bad[q8b]:-}" ]
-}
-
 ttft() {
-  if ! ttft_runs; then
-    say "ttft: skipped (no q8b, or its gpu-parity failed); the verdict will be null"
-    return 0
-  fi
   if [ "$DRY" != 1 ] && [ ! -s "$req_log" ]; then
     say "ttft: no request log at $req_log, skipped (the verdict will be null)"
     return 0

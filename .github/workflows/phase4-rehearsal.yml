@@ -173,13 +173,23 @@ jobs:
               for p in x["pairs"]:
                   if p["c4_throughput_ratio"] is None or p["c1_decode_ratio"] is None:
                       bad.append(f"{m} pair {p['reps']}")
+                  # request errors leave ratios non-null: a failed request is a harness fault
+                  bad += [f"{m} pair {p['reps']}: {r}" for r in p["reasons"] if "errors=" in r or "no c" in r]
           for p in v["ttft"]["pairs"]:
               if p["median_ratio"] is None or p["p90_ratio"] is None:
                   bad.append("ttft pair")
           if bad:
               sys.exit("null ratios: " + ", ".join(bad))
           p = json.load(open(d + "probe.json"))
-          assert p["stop"] is False, p
+          assert p["stop"] is False and p["stopped"] == [], p
+          for m, x in p["models"].items():
+              for k, val in x.items():
+                  assert not k.endswith("_errors") or val == 0, (m, k, val)
+          # the baseline is the pinned commit, not the engine pin
+          pin = dict(l.strip().split("=", 1) for l in open("vendor/PIN") if "=" in l)
+          ver = json.load(open(d + "env.json"))["baseline_llama_server"]
+          print("baseline:", ver)
+          assert pin["baseline_commit"][:7] in ver, (pin["baseline_commit"], ver)
           print("verdict.json ok; phase4_pass =", v["phase4_pass"])
           PY
       - name: Summary
