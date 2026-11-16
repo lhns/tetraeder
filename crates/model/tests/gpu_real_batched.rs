@@ -26,7 +26,7 @@ use common::{
 };
 use std::path::{Path, PathBuf};
 use tetraeder_ggml_sys::ggml::Backend;
-use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, Qwen3};
+use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, Qwen3, Qwen3Moe};
 use tetraeder_plan::KvFormat;
 
 const GPU: BackendChoice = BackendChoice::Gpu { index: 0 };
@@ -78,86 +78,133 @@ fn script() -> (Vec<Vec<i32>>, Vec<Step>) {
     (toks, steps)
 }
 
-/// KV cells a fourth, dummy sequence takes ahead of the script in the shifted libllama run.
-/// Not a multiple of any kernel tile, so every sequence's cells move within the KV tiles.
-const SHIFT: usize = 7;
+/// KV cells a fourth, dummy sequence takes ahead of the script in the shifted libllama runs:
+/// 7 moves every sequence within the KV tiles; 256 moves them by a whole padding block, so the
+/// script ends above 256 cells and libllama's `n_kv` is 512 as the builder's (sequence 1's rows
+/// start at 256 there).
+const SHIFTS: [usize; 2] = [7, 256];
 
-/// libllama batched (as [`libllama_script_on`]) after a dummy sequence of [`SHIFT`] tokens took
-/// the first cells of the unified cache: the same step shapes and kernels, only the KV cells of
-/// every sequence moved. Its gap to the unshifted run is libllama's own sensitivity to where a
-/// sequence sits in the cache, which the builder's per-sequence row reservation differs in.
-fn libllama_shifted(path: &Path, toks: &[Vec<i32>], items: &[Vec<Item>], ngl: i32) -> Logits {
+/// libllama batched (as [`libllama_script_on`]) after a dummy sequence of `shift` tokens (in
+/// steps of at most 64) took the first cells of the unified cache: the same step shapes and
+/// kernels, only the KV cells of every sequence moved. Its gap to the unshifted run is
+/// libllama's own sensitivity to where a sequence sits in the cache, where the builder differs.
+fn libllama_shifted(
+    path: &Path,
+    toks: &[Vec<i32>],
+    items: &[Vec<Item>],
+    ngl: i32,
+    shift: usize,
+) -> Logits {
     let dummy = toks.len() as u32;
     let mut streams = toks.to_vec();
-    streams.push(prompt(99, SHIFT));
-    let mut steps = vec![vec![Item {
-        seq: dummy,
-        range: 0..SHIFT,
-        all: false,
-    }]];
+    streams.push(prompt(99, shift));
+    let mut steps: Vec<Vec<Item>> = (0..shift)
+        .step_by(64)
+        .map(|a| {
+            vec![Item {
+                seq: dummy,
+                range: a..shift.min(a + 64),
+                all: false,
+            }]
+        })
+        .collect();
     steps.extend(items.iter().cloned());
     let mut out = libllama_script_on(path, &streams, &steps, KvFormat::F16, ngl);
     out.retain(|(s, _), _| *s != dummy);
     out
 }
 
-/// Every item of `steps` its own call.
-fn split_items(steps: &[Vec<Item>]) -> Vec<Vec<Item>> {
-    steps.iter().flatten().map(|i| vec![i.clone()]).collect()
+/// Every input of `steps` its own call.
+fn split(steps: &[Step]) -> Vec<Step> {
+    steps.iter().flatten().map(|x| vec![x.clone()]).collect()
 }
 
-/// The five runs of the anchor (ADR 0071) for one model.
+/// Sequence 0 of [`script`] alone: its prompt, then one token per step. Its cells, `n_kv` and
+/// step shapes are the same in libllama and the builder, so it is the strict control.
+fn alone(toks: &[Vec<i32>], prompt_len: usize) -> Vec<Step> {
+    let mut steps = vec![vec![(0, 0..prompt_len)]];
+    steps.extend((prompt_len..toks[0].len()).map(|p| vec![(0, p..p + 1)]));
+    steps
+}
+
+/// The runs of one model: libllama's and the builder's.
 struct Runs {
     ll_batched: Logits,
     ll_split: Logits,
-    ll_shifted: Logits,
+    /// Per entry of [`SHIFTS`].
+    ll_shifted: Vec<Logits>,
+    ll_alone: Logits,
     ours_batched: Logits,
     ours_split: Logits,
+    ours_alone: Logits,
 }
 
-/// libllama's three runs (batched, split, batched with the KV cells shifted), one model load
-/// each; the model is dropped before the builder loads.
-fn libllama_runs(path: &Path, toks: &[Vec<i32>], items: &[Vec<Item>], ngl: i32) -> [Logits; 3] {
+/// libllama's runs, one model load each; the model is dropped before the builder loads.
+fn libllama_runs(path: &Path, toks: &[Vec<i32>], steps: &[Step], ngl: i32) -> Runs {
     let kv = KvFormat::F16;
-    [
-        libllama_script_on(path, toks, items, kv, ngl),
-        libllama_script_on(path, toks, &split_items(items), kv, ngl),
-        libllama_shifted(path, toks, items, ngl),
-    ]
+    let items = script_items(steps);
+    let alone_items = script_items(&alone(toks, steps[0][0].1.end));
+    Runs {
+        ll_batched: libllama_script_on(path, toks, &items, kv, ngl),
+        ll_split: libllama_script_on(path, toks, &script_items(&split(steps)), kv, ngl),
+        ll_shifted: SHIFTS
+            .iter()
+            .map(|&n| libllama_shifted(path, toks, &items, ngl, n))
+            .collect(),
+        ll_alone: libllama_script_on(path, &toks[..1], &alone_items, kv, ngl),
+        ours_batched: Logits::new(),
+        ours_split: Logits::new(),
+        ours_alone: Logits::new(),
+    }
 }
 
-/// Prints every comparison, then asserts. libllama's own gaps (batched against split, and
-/// against the shifted cells) are recorded, not asserted; the bound is `tol` widened to 1.5
-/// times the larger of them (ADR 0071). The builder batched against split is asserted within
-/// that bound; the builder against libllama at the same step shapes within it with
-/// `anchored`, else within `tol`. On CUDA the builder's KV rows are not libllama's cells
-/// (rows reserved per sequence against cells allocated in step order), so flash attention sums
-/// in another order there and the same-shape gap is noise of libllama's own size; on the CPU
-/// the order does not depend on the cells and the gap is 0, so `tol` stays.
+/// Prints every comparison, then asserts (ADR 0071). libllama's own gaps (batched against
+/// split and against shifted cells) are recorded, not asserted; `own` is `tol` widened to 1.5
+/// times the largest of them. Asserted: the builder batched against split within `own`; the
+/// builder against libllama at the same step shapes within `own` with `anchored`, else within
+/// `tol`; sequence 0 alone, builder against libllama, within `tol` always.
+///
+/// On CUDA the builder's KV rows are not libllama's cells (rows reserved per sequence against
+/// cells allocated in step order), so flash attention sums in another order and the batched
+/// same-shape gap is noise of libllama's own size. Alone, cells and shapes coincide, and a
+/// divergence of the builder on the real weights shows at the plain bound. On the CPU the
+/// order does not depend on the cells, the gap is 0 and `tol` stays everywhere.
 fn judge(what: &str, tol: Tol, anchored: bool, r: &Runs) {
-    let pairs = [
-        (
-            "libllama batched / libllama split",
-            &r.ll_split,
+    let mut pairs: Vec<(String, &Logits, &Logits)> = vec![(
+        "libllama batched / libllama split".to_string(),
+        &r.ll_split,
+        &r.ll_batched,
+    )];
+    for (n, l) in SHIFTS.iter().zip(&r.ll_shifted) {
+        pairs.push((
+            format!("libllama batched / libllama shifted by {n} cells"),
             &r.ll_batched,
-        ),
+            l,
+        ));
+    }
+    let n_own = pairs.len();
+    pairs.extend([
         (
-            "libllama batched / libllama shifted cells",
-            &r.ll_batched,
-            &r.ll_shifted,
-        ),
-        (
-            "builder batched / builder split",
+            "builder batched / builder split".to_string(),
             &r.ours_split,
             &r.ours_batched,
         ),
         (
-            "builder batched / libllama batched",
+            "builder batched / libllama batched".to_string(),
             &r.ll_batched,
             &r.ours_batched,
         ),
-        ("builder split / libllama split", &r.ll_split, &r.ours_split),
-    ];
+        (
+            "builder split / libllama split".to_string(),
+            &r.ll_split,
+            &r.ours_split,
+        ),
+        (
+            "builder alone / libllama alone".to_string(),
+            &r.ll_alone,
+            &r.ours_alone,
+        ),
+    ]);
     let worst: Vec<f32> = pairs
         .iter()
         .map(|(name, want, have)| print_script_rows(&format!("{what} {name}"), want, have))
@@ -167,19 +214,21 @@ fn judge(what: &str, tol: Tol, anchored: bool, r: &Runs) {
     }
     let own = Tol {
         abs: tol.abs,
-        rel: tol.rel.max(1.5 * worst[0].max(worst[1])),
+        rel: tol
+            .rel
+            .max(1.5 * worst[..n_own].iter().fold(0f32, |m, &w| m.max(w))),
     };
     let same = if anchored { own } else { tol };
     eprintln!(
-        "{what}: bound max({:e}, {:.2e} of the largest logit), same shapes max({:e}, {:.2e})",
-        own.abs, own.rel, same.abs, same.rel
+        "{what}: bound max({:e}, {:.2e} of the largest logit), same shapes {:.2e}, alone {:.2e}",
+        own.abs, own.rel, same.rel, tol.rel
     );
-    let parts = pairs[2..]
+    let bounds = [own, same, same, tol];
+    let parts = pairs[n_own..]
         .iter()
-        .enumerate()
-        .map(|(i, (name, want, have))| {
-            let t = if i == 0 { own } else { same };
-            part(*name, move || {
+        .zip(bounds)
+        .map(|((name, want, have), t)| {
+            part(name, move || {
                 compare_scripts_tol(want, have, t, &format!("{what} {name}"));
             })
         })
@@ -187,12 +236,20 @@ fn judge(what: &str, tol: Tol, anchored: bool, r: &Runs) {
     run_all(parts);
 }
 
+/// Forgets every sequence of a builder.
+macro_rules! forget {
+    ($m:expr, $n:expr) => {
+        for k in 0..$n as u32 {
+            $m.seq_rm(k, 0).unwrap();
+        }
+    };
+}
+
 /// The dense builder on `backend` against libllama on the same device.
 fn dense_vs_libllama(path: &Path, backend: BackendChoice, ngl: i32, tol: Tol, what: &str) {
     let anchored = matches!(backend, BackendChoice::Gpu { .. });
     let (toks, steps) = script();
-    let items = script_items(&steps);
-    let [ll_batched, ll_split, ll_shifted] = libllama_runs(path, &toks, &items, ngl);
+    let mut r = libllama_runs(path, &toks, &steps, ngl);
     let o = DenseOptions {
         n_seq_max: 3,
         n_ctx_pool: 1024, // rows are reserved in steps of 256 per sequence
@@ -201,47 +258,35 @@ fn dense_vs_libllama(path: &Path, backend: BackendChoice, ngl: i32, tol: Tol, wh
         ..DenseOptions::new(backend)
     };
     let mut m = Qwen3::load(path, &o).unwrap();
-    let ours_batched = builder_script(&mut m, &toks, &items, true);
-    for k in 0..toks.len() as u32 {
-        m.seq_rm(k, 0).unwrap();
-    }
-    let ours_split = builder_script(&mut m, &toks, &items, false);
+    let items = script_items(&steps);
+    r.ours_batched = builder_script(&mut m, &toks, &items, true);
+    forget!(m, toks.len());
+    r.ours_split = builder_script(&mut m, &toks, &items, false);
+    forget!(m, toks.len());
+    let alone_items = script_items(&alone(&toks, steps[0][0].1.end));
+    r.ours_alone = builder_script(&mut m, &toks, &alone_items, true);
     drop(m);
-    let runs = Runs {
-        ll_batched,
-        ll_split,
-        ll_shifted,
-        ours_batched,
-        ours_split,
-    };
-    judge(what, tol, anchored, &runs);
+    judge(what, tol, anchored, &r);
 }
 
 /// The MoE builder (resident) on `backend` against libllama on the same device.
 fn moe_vs_libllama(path: &Path, backend: BackendChoice, ngl: i32, tol: Tol, what: &str) {
     let anchored = matches!(backend, BackendChoice::Gpu { .. });
     let (toks, steps) = script();
-    let [ll_batched, ll_split, ll_shifted] = libllama_runs(path, &toks, &script_items(&steps), ngl);
+    let mut r = libllama_runs(path, &toks, &steps, ngl);
     let o = LoadOptions {
         n_ctx: 1024,
         ..LoadOptions::new(backend)
     };
     let mut m = load(path, &o, 3);
-    let ours_batched = steps_logits(run_steps(&mut m, &toks, &steps), &steps);
-    for k in 0..toks.len() as u32 {
-        m.seq_rm(k, 0).unwrap();
-    }
-    let split: Vec<Step> = steps.iter().flatten().map(|x| vec![x.clone()]).collect();
-    let ours_split = steps_logits(run_steps(&mut m, &toks, &split), &split);
+    let run = |m: &mut Qwen3Moe, s: &[Step]| steps_logits(run_steps(m, &toks, s), s);
+    r.ours_batched = run(&mut m, &steps);
+    forget!(m, toks.len());
+    r.ours_split = run(&mut m, &split(&steps));
+    forget!(m, toks.len());
+    r.ours_alone = run(&mut m, &alone(&toks, steps[0][0].1.end));
     drop(m);
-    let runs = Runs {
-        ll_batched,
-        ll_split,
-        ll_shifted,
-        ours_batched,
-        ours_split,
-    };
-    judge(what, tol, anchored, &runs);
+    judge(what, tol, anchored, &r);
 }
 
 /// hardware: gpu, model. Qwen3-8B Q4_K_M, the dense builder batched against libllama batched.
@@ -250,13 +295,7 @@ fn gpu_qwen3_8b_batched_matches_libllama() {
     let Some(path) = model("Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf") else {
         return;
     };
-    dense_vs_libllama(
-        &path,
-        GPU,
-        -1,
-        GPU_TOL,
-        "qwen3-8b batched / libllama batched",
-    );
+    dense_vs_libllama(&path, GPU, -1, GPU_TOL, "qwen3-8b");
 }
 
 /// hardware: gpu, model. Qwen3-30B-A3B Q4_K_M, the MoE builder (resident) batched against
@@ -266,13 +305,7 @@ fn gpu_qwen3_30b_batched_matches_libllama() {
     let Some(path) = model("Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf") else {
         return;
     };
-    moe_vs_libllama(
-        &path,
-        GPU,
-        -1,
-        GPU_TOL,
-        "qwen3-30b batched / libllama batched",
-    );
+    moe_vs_libllama(&path, GPU, -1, GPU_TOL, "qwen3-30b");
 }
 
 /// hardware: cpu. The body of the two tests above on the tiny fixtures, so CI runs the script,
@@ -281,18 +314,6 @@ fn gpu_qwen3_30b_batched_matches_libllama() {
 fn cpu_fixtures_batched_match_libllama() {
     let cpu = || BackendChoice::Cpu { threads: Some(2) };
     let tol = Tol::from(TOL_CPU);
-    dense_vs_libllama(
-        &dense_fixture(),
-        cpu(),
-        0,
-        tol,
-        "cpu dense fixture batched / libllama",
-    );
-    moe_vs_libllama(
-        &fixture(),
-        cpu(),
-        0,
-        tol,
-        "cpu moe fixture batched / libllama",
-    );
+    dense_vs_libllama(&dense_fixture(), cpu(), 0, tol, "cpu dense fixture");
+    moe_vs_libllama(&fixture(), cpu(), 0, tol, "cpu moe fixture");
 }
