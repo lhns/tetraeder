@@ -12,8 +12,8 @@
 mod ranked;
 
 use crate::attn::{
-    AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention_seqs, copy_rows,
-    rms_norm_mul,
+    AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, MASK_ROW_PAD, SeqEval, alloc_kv,
+    attention_seqs, copy_rows, mask_tail, mask_view, rms_norm_mul,
 };
 use crate::cpu_poll;
 use crate::gguf::{Gguf, GgufError};
@@ -190,8 +190,23 @@ struct Weights {
 }
 
 /// Sizes of a step's inputs: tokens, `n_kv` (0 with attention per sequence), outputs and the
-/// mask shape (`[n_kv, n_tokens]`, or `[blocks, 1]` per sequence).
+/// mask buffer's shape: `[n_kv, pad(n_tokens, MASK_ROW_PAD)]`, or per sequence `[blocks + tail,
+/// 1]` with the tail [`mask_tail`] of the last block. The padding is never written and stays 0.
 type StateKey = (usize, usize, usize, [usize; 2]);
+
+/// The [`StateKey`] of a step plan.
+fn state_key(plan: &StepPlan) -> StateKey {
+    let (n, n_out) = (plan.pos.len(), plan.outputs.len());
+    match plan.seqs.last() {
+        None => (n, plan.n_kv, n_out, [plan.n_kv, pad(n, MASK_ROW_PAD)]),
+        Some(s) => (
+            n,
+            0,
+            n_out,
+            [plan.mask.len() + mask_tail(s.n_tokens, s.n_kv), 1],
+        ),
+    }
+}
 
 /// Inputs of one step; reallocated when its sizes change.
 struct State {
@@ -907,12 +922,7 @@ impl SchedEngine {
         built: &mut u64,
         out: &mut Vec<f32>,
     ) -> Result<()> {
-        let (n, n_out) = (plan.pos.len(), plan.outputs.len());
-        let state_key = if plan.seqs.is_empty() {
-            (n, plan.n_kv, n_out, [plan.n_kv, n])
-        } else {
-            (n, 0, n_out, [plan.mask.len(), 1])
-        };
+        let state_key = state_key(plan);
         let key = (state_key, plan.seqs.clone());
         if self.state.as_ref().is_none_or(|s| s.key != state_key) {
             // The kept graph holds the old state's context: drop it first, then the buffers.
@@ -979,6 +989,8 @@ fn alloc_state(key: StateKey, backend: &Backend) -> Result<State> {
         outputs: ctx.new_persistent(Type::I32, &[n_out as i64]),
     };
     ctx.alloc_tensors(backend)?;
+    // The mask padding is read by ggml-cuda (MASK_ROW_PAD) but never written: keep it finite.
+    ctx.clear_buffer(0);
     Ok(state)
 }
 
@@ -1112,10 +1124,15 @@ fn build_step<'a>(
     let mut g = ctx.new_graph(step_nodes(a, seqs.len()));
     let mut x = ctx.get_rows(w.tok_embd.get(), st.tokens.get());
     let (n_tokens, n_kv, n_out, _) = st.key;
+    let mask = if seqs.is_empty() {
+        mask_view(ctx, st.mask.get(), n_kv, n_tokens)
+    } else {
+        st.mask.get()
+    };
     let step = AttnStep {
         pos: st.pos.get(),
         rows: st.rows.get(),
-        mask: st.mask.get(),
+        mask,
         n_tokens,
         n_kv,
     };
