@@ -1,4 +1,4 @@
-//! Safe wrapper over libllama (b11976, vendored; ADR 0026).
+//! Safe wrapper over libllama (b12426, vendored; ADR 0026).
 //!
 //! Every handle frees itself on drop. Parameter structs start from libllama's defaults.
 //! Buffers that libllama keeps pointers to (override patterns, tensor split) are owned by

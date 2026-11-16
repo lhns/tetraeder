@@ -99,18 +99,20 @@ jobs:
         env:
           TETRAEDER_REQUIRE_MODELS: "1"
         run: |
-          cargo test --workspace -- --nocapture --skip matches_llama_simple --skip matches_bench_golden 2>&1 | tee test.log
+          cargo test --workspace --no-fail-fast -- --nocapture --skip matches_llama_simple --skip matches_bench_golden 2>&1 | tee test.log
       # Float results differ per CPU tier (ADR 0052) and per OS, so the golden is pinned to the SSE4.2 tier and
       # recorded per OS (bench/golden/*-sse42-<os>.json; the Linux one by the golden-linux job). Goldens for
       # more tiers are a later item (docs/testing.md).
       - name: golden (SSE4.2 tier)
+        if: always()
         shell: bash
         env:
           TETRAEDER_REQUIRE_MODELS: "1"
           TETRAEDER_GGML_CPU_VARIANT: sse42
         run: |
-          cargo test -p tetraeder-engine --test golden -- --nocapture 2>&1 | tee -a test.log
-          cargo test -p tetraeder-model --test dense_golden -- --nocapture 2>&1 | tee -a test.log
+          cargo test -p tetraeder-engine --test golden -- --nocapture 2>&1 | tee -a test.log || r=1
+          cargo test -p tetraeder-model --test dense_golden -- --nocapture 2>&1 | tee -a test.log || r=1
+          exit ${r:-0}
       - name: Skipped tests
         if: always()
         shell: bash
