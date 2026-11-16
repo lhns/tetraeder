@@ -9,18 +9,22 @@
 #
 # Stages, in order (STAGE <name> lines in the log):
 #   build       release build with CUDA and the python env
-#   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_dense gpu_multi_seq (dense fixture and Qwen3-8B, MoE fixture); log in
-#               gpu-parity.log. A failure does not skip gpu-shapes, prepass and probe (cheap, and the diagnosis); the
-#               session then ends with probe.json (gpu_parity failed) and rc=3 before record-log and the pairs
+#   gpu-parity  per model, TETRAEDER_REQUIRE_GPU=1 cargo test: q8b gpu_dense (dense fixture, Qwen3-8B one sequence) and
+#               gpu_real_batched (Qwen3-8B, 3 sequences with a prompt chunk mixed in, against libllama batched);
+#               q30b gpu_multi_seq (MoE fixture) and gpu_real_batched (Qwen3-30B-A3B the same way); logs in
+#               gpu-parity-<model>.log. STOP RULE, per model: a model whose parity failed is stopped (no pre-pass, probe
+#               or pairs for it); gpu-shapes still runs
 #   gpu-shapes  crates/scheduler/tests/step_shapes.rs on CUDA with Qwen3-8B for engines llama, llama_streams and dense
 #               (TETRAEDER_SHAPES_GGUF, _NGL, _ENGINES); records gpu-shapes.txt, never gates
 #   prepass     per model, llama-server c4 once with -kvu and once with -no-kvu; the higher throughput is the baseline
 #               variant (phase4_summary.py --pick-variant), used by the probe and the pairs
 #   probe       one short c1 and c4 (the verdict workload, c4 with --requests 8) per judged engine against llama-server
-#               (the picked variant), probe-*.json; phase4_summary.py --probe writes probe.json. STOP RULE: a judged
-#               engine whose c4 throughput ratio is below 0.85 (the pass line is about 0.925, below 0.85 the pairs
-#               cannot pass) or a failed gpu-parity ends the session (PHASE4_BOX_DONE rc=3) before record-log and pairs,
-#               so the driver fetches and destroys the box. 0.85 or above continues: the pairs decide
+#               (the picked variant), probe-*.json; phase4_summary.py --probe writes probe.json. STOP RULE, per model: a
+#               judged engine whose c4 throughput ratio is below 0.85 (the pass line is about 0.925, below 0.85 the pairs
+#               cannot pass) is stopped like a failed parity: verdict.json records the model with pass null and the
+#               reason, and its pairs are skipped; the other model's pairs and the TTFT pairs (dense 8B, even after a
+#               stopped q8b: the TTFT pairs judge prefix reuse, not the c4 ratio) still run. The session ends (PHASE4_BOX_DONE rc=3, before record-log and pairs) only
+#               when every judged model is stopped, so the driver fetches and destroys the box. 0.85 or above continues
 #   record-log  scripts/claude_code_proxy.sh over 5 tasks, 1 rep; the tetraeder request log moves to
 #               bench/private/ (clear-text prompts, gitignored); skipped when the log exists
 #   env         env.json
@@ -42,7 +46,7 @@
 # nvidia-smi: throttle records are written as idle, gpu-parity and gpu-shapes are skipped), BASELINE_BIN, TET_BIN, PY,
 # MODEL_Q8B, MODEL_Q30B, P4_LOCK, CTX, NGL_LLAMA, PROMPT_TOKENS, MAX_TOKENS, N_C1, N_C4, N_PROBE, REPLAY_CTX,
 # REPLAY_MAX_PROMPT, EXPECT_CTX, REPLAY_LIMIT, PROBE_MIN (stop line, 0.85), P4_LOG_FILE.
-# DRY_RUN only: DRY_GPU_PARITY=fail plays a failed gpu-parity.
+# DRY_RUN only: DRY_GPU_PARITY plays a failed gpu-parity: `fail` (every model) or model names ("q30b", "q8b q30b").
 # A server that exits while loading (a rejected flag) ends the whole session at once: the box bills idle time.
 # cargo runs with fd 8 closed: the sccache server it starts would otherwise keep the lock after the job
 DRY="${DRY_RUN:-0}"
@@ -100,6 +104,10 @@ declare -A MODEL_FILE=(
   [q8b]="${MODEL_Q8B:-$models_dir/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf}"
 )
 declare -A MODEL_ALIAS=([q30b]=qwen3-30b-a3b [q8b]=qwen3-8b)
+
+# stopped[MODEL]=reason: the per-model stop rule (failed gpu-parity, probe below the line); parity_bad[MODEL]=1 for parity
+declare -A stopped parity_bad
+active() { local m; for m in $models; do [ -z "${stopped[$m]:-}" ] && echo "$m"; done; }
 
 say() { echo "[$(date +%T)] $*"; }
 plan() { echo "PLAN $*"; }
@@ -234,21 +242,30 @@ build() {
 # No timed run on a box whose GPU builder disagrees with the CPU reference. gpu_dense covers one and three sequences;
 # gpu_multi_seq is the MoE builder with several sequences, resident and streamed. Returns 1 on a failure (main stops).
 gpu_parity() {
-  local cmd="cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda --test gpu_dense --test gpu_multi_seq -- --nocapture --test-threads 1"
+  local base="cargo test --release -p tetraeder-model --features tetraeder-ggml-sys/cuda" m cmd bad=0
+  local tail="-- --nocapture --test-threads 1"
   mkdir -p "$out"
-  if [ "$DRY" = 1 ]; then
-    plan "TETRAEDER_REQUIRE_GPU=1 $cmd > gpu-parity.log"
-    [ "${DRY_GPU_PARITY:-ok}" = fail ] && return 1
-    return 0
-  fi
-  [ "$skip_gpu" = 1 ] && { say "gpu-parity skipped (SKIP_GPU=1)"; return 0; }
-  say "gpu-parity start"
-  # shellcheck disable=SC2086
-  TETRAEDER_REQUIRE_GPU=1 TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m $cmd > "$out/gpu-parity.log" 2>&1 8>&- || {
-    say "gpu-parity FAILED (see $out/gpu-parity.log)"
-    return 1
-  }
-  say "gpu-parity done"
+  for m in $models; do
+    case $m in
+      q8b) cmd="$base --test gpu_dense --test gpu_real_batched $tail --skip gpu_qwen3_30b" ;;
+      q30b) cmd="$base --test gpu_multi_seq --test gpu_real_batched $tail --skip gpu_qwen3_8b" ;;
+    esac
+    if [ "$DRY" = 1 ]; then
+      plan "TETRAEDER_REQUIRE_GPU=1 $cmd > gpu-parity-$m.log"
+      case " ${DRY_GPU_PARITY:-ok} " in *" fail "* | *" $m "*) parity_bad[$m]=1 stopped[$m]="gpu-parity failed" bad=1 ;; esac
+      continue
+    fi
+    [ "$skip_gpu" = 1 ] && { say "gpu-parity $m skipped (SKIP_GPU=1)"; continue; }
+    say "gpu-parity $m start"
+    # shellcheck disable=SC2086
+    if TETRAEDER_REQUIRE_GPU=1 TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m $cmd > "$out/gpu-parity-$m.log" 2>&1 8>&-; then
+      say "gpu-parity $m done"
+    else
+      say "gpu-parity $m FAILED (see $out/gpu-parity-$m.log): $m is stopped, the others go on"
+      parity_bad[$m]=1 stopped[$m]="gpu-parity failed" bad=1
+    fi
+  done
+  return $bad
 }
 
 # ---- stage: gpu-shapes ------------------------------------------------------------------------------------
@@ -296,23 +313,34 @@ probe_run() {
 # probe_verdict [PARITY]: probe.json from the probe files (and a failed gpu-parity). Returns 3 on the stop rule.
 probe_verdict() {
   local args=() m
-  for m in $models; do args+=(--probe-run "$m:$(judged_name "$m")"); done
-  [ -n "${1:-}" ] && args+=(--parity "$1")
-  if [ "$DRY" = 1 ] && ! ls "$out"/probe-*-c4.json > /dev/null 2>&1 && [ -z "${1:-}" ]; then
-    plan "phase4_summary.py $out --probe ${args[*]} -> probe.json; rc 3 when a judged c4 ratio < 0.85 or gpu-parity failed"
+  for m in $models; do
+    args+=(--probe-run "$m:$(judged_name "$m")")
+    [ -n "${parity_bad[$m]:-}" ] && args+=(--parity "$m:failed")
+  done
+  if [ "$DRY" = 1 ] && ! ls "$out"/probe-*-c4.json > /dev/null 2>&1 && [ "${#parity_bad[@]}" = 0 ]; then
+    plan "phase4_summary.py $out --probe ${args[*]} -> probe.json; a model with gpu-parity failed or a c4 ratio < 0.85 is stopped (its pairs skipped), rc 3 when all are"
     return 0
   fi
   "$py" scripts/phase4_summary.py "$out" --probe "${args[@]}" --probe-min "$probe_min"
 }
 
-# probe [PARITY]: PARITY=failed when gpu-parity failed (probe.json then says so and the rc is 3)
+# probe: the models with a failed parity are not probed (stopped already); probe_verdict then names every stopped model
 probe() {
   local m
-  for m in $models; do
+  for m in $(active); do
     probe_run "$m" llama-server
     probe_run "$m" "$(judged_name "$m")"
   done
-  probe_verdict "${1:-}"
+  probe_verdict
+}
+
+# stop_probed: probe.json's stopped models join `stopped` (DRY with no probe files: none)
+stop_probed() {
+  local m
+  [ -s "$out/probe.json" ] || return 0
+  for m in $("$py" scripts/phase4_summary.py "$out" --stopped); do
+    stopped[$m]="${stopped[$m]:-probe c4 ratio below $probe_min}"
+  done
 }
 
 # ---- stage: env --------------------------------------------------------------------------------------------
@@ -456,7 +484,7 @@ one_run() {
 # ---- stage: prepass ----------------------------------------------------------------------------------------
 prepass() {
   local m v f url alias
-  for m in $models; do
+  for m in $(active); do
     for v in kvu nokvu; do
       f="$out/prepass-$m-$v.json"
       [ -f "$f" ] && continue
@@ -499,7 +527,7 @@ unclean_reps() {
 
 pairs() {
   local m j rep bad
-  for m in $models; do
+  for m in $(active); do
     j=$(judged_name "$m")
     for rep in 1 2; do pair_runs "$m" "$j" "$rep" "$rep"; done
     bad=$(unclean_reps "$m")
@@ -581,22 +609,21 @@ main() {
   say "STAGE build"
   build
   say "STAGE gpu-parity"
-  local rc=0 parity=""
-  gpu_parity || parity=failed
-  # a failed gate does not skip the cheap diagnosis: step shapes, pre-pass and probe still run
+  local rc=0 m
+  gpu_parity || say "gpu-parity failed for:$(for m in "${!parity_bad[@]}"; do echo -n " $m"; done)"
+  # a failed model is skipped, not the session: step shapes record only; pre-pass and probe cover the other models
   say "STAGE gpu-shapes"
   gpu_shapes
   say "STAGE prepass"
   prepass
   say "STAGE probe"
-  probe "$parity" || rc=$?
-  if [ -n "$parity" ]; then
-    say "gpu-parity FAILED (probe.json, gpu-parity.log): the session ends before record-log and the pairs"
-    stop_session
-    return 3
-  fi
-  if [ "$rc" != 0 ]; then
-    say "probe below the stop line (probe.json): the session ends before record-log and the pairs"
+  probe || rc=$?
+  stop_probed
+  for m in $models; do
+    [ -n "${stopped[$m]:-}" ] && say "STOPPED $m: ${stopped[$m]} (its pairs are skipped, pass null in verdict.json)"
+  done
+  if [ -z "$(active)" ] || [ "$rc" = 3 ]; then
+    say "every judged model is stopped (probe.json): the session ends before record-log and the pairs"
     stop_session
     return 3
   fi

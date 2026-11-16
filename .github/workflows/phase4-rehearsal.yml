@@ -2,11 +2,11 @@ name: phase4-rehearsal
 
 # CPU rehearsal of the Phase 4 verdict session (scripts/phase4_box.sh, ADR 0065 "Verdict"): the whole script end to end
 # on the runner with SKIP_GPU=1 and tiny request counts, so that rejected flags, file-name mismatches with
-# phase4_summary.py and the probe wiring show up before a paid box does. Stand-ins: Qwen3-0.6B Q8_0 for the 8B
-# (`--engine dense`) and for the 30B (`--engine llama`, counts false: the 0.6B is dense and the tiny MoE fixture has
-# a 1024-token context, too short for the workload, so `--engine moe` is not rehearsed), a synthetic request
-# log from gateway_bench prompts. The verdict itself (pass or fail) means nothing on CPU: the job asserts that
-# verdict.json exists with non-null ratios.
+# phase4_summary.py and the probe wiring show up before a paid box does. Baseline: llama-server built at
+# baseline_commit of vendor/PIN (what the verdict compares against), not at the engine pin. Stand-ins: Qwen3-0.6B Q8_0
+# for the 8B (`--engine dense`), the synthetic MoE of moe_shapes.rs (8192-token context) for the 30B (`--engine moe`),
+# a synthetic request log from gateway_bench prompts. The verdict itself (pass or fail) means nothing on CPU: the job
+# asserts that verdict.json exists with non-null ratios for both models and the TTFT pairs.
 on:
   push:
     branches: [main]
@@ -53,14 +53,39 @@ jobs:
       - name: Fetch test model
         if: steps.model.outputs.cache-hit != 'true'
         run: cargo xtask fetch-model
-      # same CMake flags as loop-bench.yml
-      - name: llama-server
+      # The verdict's baseline is baseline_commit of vendor/PIN, not the vendored engine pin: build llama-server there
+      # (fetched like docker/box/Dockerfile does), with the CPU CMake flags of loop-bench.yml.
+      - name: Baseline commit
+        id: baseline
+        run: echo "commit=$(sed -n 's/^baseline_commit=//p' vendor/PIN)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: baseline-cache
+        with:
+          path: llama-baseline/build
+          key: llama-baseline-${{ steps.baseline.outputs.commit }}-cpu-v1
+      - name: llama-server at the baseline commit
+        if: steps.baseline-cache.outputs.cache-hit != 'true'
         run: |
-          cmake -S vendor/llama.cpp -B target/llama-server-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          git init llama-baseline/src
+          git -C llama-baseline/src remote add origin https://github.com/ggml-org/llama.cpp
+          git -C llama-baseline/src fetch --depth 1 origin "${{ steps.baseline.outputs.commit }}"
+          git -C llama-baseline/src checkout -q FETCH_HEAD
+          cmake -S llama-baseline/src -B llama-baseline/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=ON -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DLLAMA_BUILD_SERVER=ON \
             -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_APP=OFF \
             -DLLAMA_BUILD_MTMD=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF
-          cmake --build target/llama-server-build --target llama-server --parallel 4
+          cmake --build llama-baseline/build --target llama-server --parallel 4
+      - name: Baseline version
+        run: llama-baseline/build/bin/llama-server --version 2>&1 | head -3
+      # The 30B stand-in on `--engine moe`: the synthetic MoE of moe_shapes.rs (8192-token context, 32768-token
+      # vocabulary), written by a test of the scheduler crate. Same release profile as the box script's build.
+      - name: Synthetic MoE model
+        env:
+          TETRAEDER_SYNTH_MOE_OUT: ${{ github.workspace }}/rehearsal/synth-moe-q8_0.gguf
+        run: |
+          mkdir -p rehearsal
+          cargo test --release -p tetraeder-scheduler --test synth_moe_gen -- --nocapture
+          ls -l rehearsal/synth-moe-q8_0.gguf
       - name: Python client
         run: python3 -m venv .venv && .venv/bin/pip install -q httpx pytest
       # a small log in the shape of `tetraeder serve --request-log`: three conversations of three growing turns
@@ -99,17 +124,19 @@ jobs:
           P4_LOG_FILE: ${{ github.workspace }}/rehearsal/phase4_box.log
           P4_LOCK: ${{ runner.temp }}/phase4.lock
           PY: ${{ github.workspace }}/.venv/bin/python
-          BASELINE_BIN: ${{ github.workspace }}/target/llama-server-build/bin/llama-server
+          BASELINE_BIN: ${{ github.workspace }}/llama-baseline/build/bin/llama-server
           MODEL_Q8B: ${{ github.workspace }}/.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
-          MODEL_Q30B: ${{ github.workspace }}/.hf_cache/Qwen__Qwen3-0.6B-GGUF/Qwen3-0.6B-Q8_0.gguf
-          Q30B_ENGINE: llama
+          MODEL_Q30B: ${{ github.workspace }}/rehearsal/synth-moe-q8_0.gguf
+          Q30B_ENGINE: moe
           PHASE4_LOG: ${{ github.workspace }}/rehearsal/requests.jsonl
           THREADS: "4"
           CARGO_BUILD_JOBS: "4"
           BUDGET_MIN: "100"
           CTX: "8192"
           NGL_LLAMA: "0"
-          PROMPT_TOKENS: "512"
+          # the synthetic model's byte-level vocabulary makes a prompt of N "tokens" about 4N tokens: four sequences of
+          # about 1050 tokens fit its 8192-token context
+          PROMPT_TOKENS: "256"
           MAX_TOKENS: "32"
           N_C1: "4"
           N_C4: "8"
@@ -133,20 +160,36 @@ jobs:
           v = json.load(open(d + "verdict.json"))
           print(json.dumps(v, indent=2)[:6000])
           bad = []
+          assert set(v["models"]) == {"q8b", "q30b"}, list(v["models"])
+          q30 = v["models"]["q30b"]
+          assert q30["engine"] == "tetraeder-moe" and q30["counts"] is True, q30
+          assert v["models"]["q8b"]["engine"] == "tetraeder-dense", v["models"]["q8b"]
           for m, x in v["models"].items():
+              if x.get("stopped"):
+                  bad.append(f"{m} stopped")
               for k in ("c4", "c1"):
                   if x["worst"][k] is None:
                       bad.append(f"{m} worst {k}")
               for p in x["pairs"]:
                   if p["c4_throughput_ratio"] is None or p["c1_decode_ratio"] is None:
                       bad.append(f"{m} pair {p['reps']}")
+                  # request errors leave ratios non-null: a failed request is a harness fault
+                  bad += [f"{m} pair {p['reps']}: {r}" for r in p["reasons"] if "errors=" in r or "no c" in r]
           for p in v["ttft"]["pairs"]:
               if p["median_ratio"] is None or p["p90_ratio"] is None:
                   bad.append("ttft pair")
           if bad:
               sys.exit("null ratios: " + ", ".join(bad))
           p = json.load(open(d + "probe.json"))
-          assert p["stop"] is False, p
+          assert p["stop"] is False and p["stopped"] == [], p
+          for m, x in p["models"].items():
+              for k, val in x.items():
+                  assert not k.endswith("_errors") or val == 0, (m, k, val)
+          # the baseline is the pinned commit, not the engine pin
+          pin = dict(l.strip().split("=", 1) for l in open("vendor/PIN") if "=" in l)
+          ver = json.load(open(d + "env.json"))["baseline_llama_server"]
+          print("baseline:", ver)
+          assert pin["baseline_commit"][:7] in ver, (pin["baseline_commit"], ver)
           print("verdict.json ok; phase4_pass =", v["phase4_pass"])
           PY
       - name: Summary

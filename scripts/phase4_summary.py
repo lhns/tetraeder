@@ -3,8 +3,9 @@
 
     python scripts/phase4_summary.py bench/results/<session>/phase4          writes verdict.json there
     python scripts/phase4_summary.py DIR --pick-variant q8b                  prints kvu or nokvu (pre-pass winner)
-    python scripts/phase4_summary.py DIR --probe --probe-run q8b:tetraeder-dense [--parity failed]
-                                                                             probe.json, exit 3 on the stop rule
+    python scripts/phase4_summary.py DIR --probe --probe-run q8b:tetraeder-dense [--parity q8b:failed]
+                                                                             probe.json, exit 3 when every judged model is stopped
+    python scripts/phase4_summary.py DIR --stopped                           prints the models probe.json stopped
 
 Input files in DIR (names fixed by the ADR): bench-<model>-<engine>-<c1|c4>-r<rep>.json, prepass-<model>-<kvu|nokvu>.json,
 replay-<model>-<on|off>-r<rep>.json, gpu-<run>.txt (lines `before: <hex>` / `after: <hex>`, the clocks_throttle_reasons
@@ -168,7 +169,7 @@ def rerun_reps(d: Path, model: str) -> list[int]:
     """Unclean reps among 1 and 2 that the single rep-3 pair of phase4_box.sh can replace: none when both are unclean
     (one more pair cannot make two clean ones). Still the same after rep 3 ran, so a resumed session finishes it."""
     engine, _ = judged_engine(d, model)
-    bad = [r for r in REPS if run_reasons(d, model, BASELINE, r)[0] or run_reasons(d, model, engine, r)[0]]
+    bad = [r for r in REPS if pair_reasons(d, model, engine, r)]
     return bad if len(bad) == 1 else []
 
 
@@ -177,6 +178,42 @@ def judged_engine(d: Path, model: str) -> tuple[str, bool]:
     if fallback and not any(d.glob(f"bench-{model}-{engine}-*.json")):
         return fallback, False
     return engine, True
+
+
+def pair_reasons(d: Path, model: str, engine: str, rep: int) -> list[str]:
+    """Why the pair of rep is unclean: either run's own reasons, or unequal completion-token totals."""
+    rb, base = run_reasons(d, model, BASELINE, rep)
+    rj, own = run_reasons(d, model, engine, rep)
+    return rb + rj + [f"r{rep} {r}" for r in tokens_differ(base, own, BASELINE, engine)]
+
+
+def stopped_verdict(model: str, probe_model: dict) -> dict:
+    """A model the stop rule skipped (failed gpu-parity or probe c4 below the line): no pairs, `pass` null.
+    It counts when its probe ran the judged engine, so a skipped model never lets the others pass alone."""
+    engine = probe_model.get("engine") or JUDGED[model][0]
+    return {
+        "engine": engine,
+        "counts": engine == JUDGED[model][0],
+        "stopped": True,
+        "baseline_variant": None,
+        "baseline_kv_unified": None,
+        "aa": {"c4": None, "c1": None},
+        "pairs": [],
+        "worst": {"c4": None, "c1": None},
+        "pass": None,
+        "reasons": list(probe_model.get("reasons") or ["stopped"]),
+    }
+
+
+def tokens_differ(base: dict, own: dict, run_b: str, run_o: str) -> list[str]:
+    """Reasons when the two engines' completion-token totals differ in a test: not the same work."""
+    out = []
+    for test in ("c1", "c4"):
+        a = ((base.get(test) or {}).get("summary") or {}).get("completion_tokens")
+        b = ((own.get(test) or {}).get("summary") or {}).get("completion_tokens")
+        if test in base and test in own and a != b:
+            out.append(f"{test}: completion tokens differ ({run_b} {a}, {run_o} {b})")
+    return out
 
 
 def model_verdict(d: Path, model: str, band: float) -> dict:
@@ -196,10 +233,10 @@ def model_verdict(d: Path, model: str, band: float) -> dict:
     base = {r: run_reasons(d, model, BASELINE, r) for r in ALL_REPS}
     judged = {r: run_reasons(d, model, engine, r) for r in ALL_REPS}
     cand = [r for r in ALL_REPS if r in REPS or any(d.glob(f"bench-{model}-*-r{r}.json"))]
-    clean = [r for r in cand if not base[r][0] and not judged[r][0]]
+    clean = [r for r in cand if not pair_reasons(d, model, engine, r)]
     reps = clean[:2] if len(clean) >= 2 else list(REPS)  # fewer than two clean pairs: the unclean first two, no verdict
     out["reps_used"] = reps
-    out["dropped_pairs"] = [{"rep": r, "reasons": base[r][0] + judged[r][0]} for r in cand if r not in reps]
+    out["dropped_pairs"] = [{"rep": r, "reasons": pair_reasons(d, model, engine, r)} for r in cand if r not in reps]
 
     # clean session: the two baseline runs agree within the band on both fields
     session_reasons = []
@@ -213,7 +250,7 @@ def model_verdict(d: Path, model: str, band: float) -> dict:
             session_reasons.append(f"A/A {key}: |B2/B1 - 1| = {abs(r - 1):.4f} > band {band}")
 
     for rep in reps:
-        reasons = list(base[rep][0]) + list(judged[rep][0]) + session_reasons
+        reasons = pair_reasons(d, model, engine, rep) + session_reasons
         pair = {
             "reps": [rep],
             "c4_throughput_ratio": ratio(field(judged[rep][1], "c4", "throughput_tps"), field(base[rep][1], "c4", "throughput_tps")),
@@ -292,15 +329,24 @@ def ttft_verdict(d: Path, band: float) -> dict:
 PROBE_MIN_C4 = 0.85
 
 
-def probe(d: Path, runs: dict[str, str], parity: str = "ok", min_c4: float = PROBE_MIN_C4) -> dict:
-    """The stop rule of scripts/phase4_box.sh from probe-<model>-<engine>-<c1|c4>.json (judged engine and llama-server):
-    `stop` when gpu-parity failed or a judged engine's c4 throughput ratio is missing or below PROBE_MIN_C4.
-    `runs` maps model to its judged engine name."""
-    out: dict = {"threshold_c4": min_c4, "gpu_parity": parity, "models": {}, "reasons": []}
-    if parity != "ok":
-        out["reasons"].append(f"gpu-parity {parity}")
+def probe(d: Path, runs: dict[str, str], parity: str | dict = "ok", min_c4: float = PROBE_MIN_C4) -> dict:
+    """The per-model stop rule of scripts/phase4_box.sh from probe-<model>-<engine>-<c1|c4>.json (judged engine and
+    llama-server): a model is stopped when its gpu-parity failed (its probe did not run) or its judged engine's c4
+    throughput ratio is missing or below PROBE_MIN_C4. A stopped model's pairs are skipped; `stop` (the session ends)
+    only when every model is stopped. `runs` maps model to its judged engine name; `parity` is one status for all
+    models or {model: status}."""
+    par = parity if isinstance(parity, dict) else {m: parity for m in runs}
+    out: dict = {
+        "threshold_c4": min_c4,
+        "gpu_parity": "ok" if all(par.get(m, "ok") == "ok" for m in runs) else "failed",
+        "models": {},
+        "reasons": [],
+        "stopped": [],
+    }
     for m, engine in runs.items():
-        e: dict = {"engine": engine}
+        e: dict = {"engine": engine, "gpu_parity": par.get(m, "ok"), "reasons": []}
+        if e["gpu_parity"] != "ok":
+            e["reasons"].append(f"gpu-parity {e['gpu_parity']}")
         for test in ("c1", "c4"):
             tps = {}
             for name in (BASELINE, engine):
@@ -310,12 +356,17 @@ def probe(d: Path, runs: dict[str, str], parity: str = "ok", min_c4: float = PRO
             base, own = tps[BASELINE], tps[engine]
             e[f"{test}_ratio"] = own / base if base and own is not None else None
         c4 = e["c4_ratio"]
-        if c4 is None:
-            out["reasons"].append(f"{m}: no probe c4 ratio")
-        elif c4 < min_c4:
-            out["reasons"].append(f"{m} {engine}: c4 ratio {c4:.3f} < {min_c4}")
+        if not e["reasons"]:
+            if c4 is None:
+                e["reasons"].append("no probe c4 ratio")
+            elif c4 < min_c4:
+                e["reasons"].append(f"c4 ratio {c4:.3f} < {min_c4}")
+        e["stop"] = bool(e["reasons"])
+        if e["stop"]:
+            out["stopped"].append(m)
+            out["reasons"] += [f"{m} {engine}: {r}" for r in e["reasons"]]
         out["models"][m] = e
-    out["stop"] = bool(out["reasons"])
+    out["stop"] = bool(runs) and len(out["stopped"]) == len(runs)
     return out
 
 
@@ -324,7 +375,10 @@ def probe(d: Path, runs: dict[str, str], parity: str = "ok", min_c4: float = PRO
 
 def verdict(d: Path, noise_dir: Path = ROOT / "bench" / "noise", spec: Path = ROOT / "bench" / "spec" / "phase0.toml") -> dict:
     band, source = choose_band(d, noise_dir, spec)
-    models = {m: model_verdict(d, m, band) for m in JUDGED}
+    pr = (read_json(d / "probe.json") or {}).get("models") or {}
+    models = {
+        m: stopped_verdict(m, pr[m]) if (pr.get(m) or {}).get("stop") else model_verdict(d, m, band) for m in JUDGED
+    }
     ttft = ttft_verdict(d, band)
     judged = [m["pass"] for m in models.values() if m["counts"]] + [ttft["pass"]]
     final = False if any(p is False for p in judged) else (True if all(p is True for p in judged) else None)
@@ -339,14 +393,25 @@ def main(argv=None) -> int:
     ap.add_argument("--probe", action="store_true", help="write probe.json; exit 3 when the stop rule fires")
     ap.add_argument("--probe-run", action="append", default=[], metavar="MODEL:ENGINE")
     ap.add_argument("--probe-min", type=float, default=PROBE_MIN_C4, help="with --probe: the c4 stop line (the CPU rehearsal lowers it)")
-    ap.add_argument("--parity", default="ok", help="with --probe: failed when gpu-parity failed")
+    ap.add_argument("--parity", action="append", default=[], metavar="[MODEL:]failed",
+                    help="with --probe: a model whose gpu-parity failed (bare `failed`: all models)")
+    ap.add_argument("--stopped", action="store_true", help="print the models probe.json stopped and exit")
     ap.add_argument("--noise-dir", type=Path, default=ROOT / "bench" / "noise")
     ap.add_argument("--spec", type=Path, default=ROOT / "bench" / "spec" / "phase0.toml")
     a = ap.parse_args(argv)
+    if a.stopped:
+        print(" ".join((read_json(a.dir / "probe.json") or {}).get("stopped") or []))
+        return 0
     if a.probe:
-        pr = probe(a.dir, dict(r.split(":", 1) for r in a.probe_run), a.parity, a.probe_min)
+        runs = dict(r.split(":", 1) for r in a.probe_run)
+        par: dict = {}
+        for x in a.parity:
+            m, _, st = x.rpartition(":")
+            for k in [m] if m else runs:
+                par[k] = st
+        pr = probe(a.dir, runs, par, a.probe_min)
         (a.dir / "probe.json").write_text(json.dumps(pr, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps({"probe_stop": pr["stop"], "reasons": pr["reasons"]}))
+        print(json.dumps({"probe_stop": pr["stop"], "stopped": pr["stopped"], "reasons": pr["reasons"]}))
         return 3 if pr["stop"] else 0
     if a.rerun_reps:
         print(" ".join(str(r) for r in rerun_reps(a.dir, a.rerun_reps)))
