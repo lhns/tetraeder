@@ -1,0 +1,81 @@
+    Finished `release` profile [optimized] target(s) in 0.21s
+     Running tests/gpu_sharded.rs (target/release/deps/gpu_sharded-4594c7cc67d520fe)
+
+running 3 tests
+test gpu2_layer_limit_runs ... ok
+test gpu2_shapes_match_single ... tp-2: 2 ranks, all-reduce path Some("nccl")
+tp-2: prompt position 0: top-5 max |delta| 2.2702217e-2, bound 5.6648087e-2
+tp-2: prompt position 1: top-5 max |delta| 5.2001953e-2, bound 1.060635e-1
+tp-2: prompt position 2: top-5 max |delta| 2.8390884e-2, bound 1.1414957e-1
+tp-2: prompt position 3: top-5 max |delta| 2.487011e-1, bound 1.2488056e-1
+tp-2: prompt position 4: top-5 max |delta| 3.883457e-2, bound 9.041661e-2
+tp-2: prompt position 5: top-5 max |delta| 4.1957855e-2, bound 8.3149604e-2
+tp-2: step 0: top-5 max |delta| 3.9829254e-2, bound 8.315069e-2, top-1 equal true
+tp-2: step 16: top-5 max |delta| 8.064556e-2, bound 1.1933889e-1, top-1 equal true
+tp-2: step 32: top-5 max |delta| 5.4546356e-2, bound 1.250253e-1, top-1 equal true
+tp-2: step 42: top-5 max |delta| 1.2968445e-1, bound 1.2712976e-1, top-1 equal true
+tp-2: step 48: top-5 max |delta| 6.644249e-2, bound 1.2755075e-1, top-1 equal true
+tp-2: step 50: top-5 max |delta| 1.2966156e-1, bound 1.2745027e-1, top-1 equal true
+tp-2: step 56: top-5 max |delta| 1.7053795e-1, bound 1.325779e-1, top-1 equal true
+tp-2: ranges [4672, 4672] over 64 decode tokens
+layer-2 at 1: 2 ranks, all-reduce path Some("nccl")
+layer-2 at 1: prompt position 0: top-5 max |delta| 0e0, bound 5.6648087e-2
+layer-2 at 1: prompt position 1: top-5 max |delta| 0e0, bound 1.060635e-1
+layer-2 at 1: prompt position 2: top-5 max |delta| 0e0, bound 1.1414957e-1
+layer-2 at 1: prompt position 3: top-5 max |delta| 0e0, bound 1.2488056e-1
+layer-2 at 1: prompt position 4: top-5 max |delta| 0e0, bound 9.041661e-2
+layer-2 at 1: prompt position 5: top-5 max |delta| 0e0, bound 8.3149604e-2
+layer-2 at 1: step 0: top-5 max |delta| 0e0, bound 8.315069e-2, top-1 equal true
+layer-2 at 1: step 16: top-5 max |delta| 0e0, bound 1.1933889e-1, top-1 equal true
+layer-2 at 1: step 32: top-5 max |delta| 0e0, bound 1.250253e-1, top-1 equal true
+layer-2 at 1: step 48: top-5 max |delta| 0e0, bound 1.2755075e-1, top-1 equal true
+layer-2 at 1: ranges [64, 64] over 64 decode tokens
+layer-2 at 18: 2 ranks, all-reduce path Some("nccl")
+layer-2 at 18: prompt position 0: top-5 max |delta| 0e0, bound 5.6648087e-2
+layer-2 at 18: prompt position 1: top-5 max |delta| 0e0, bound 1.060635e-1
+layer-2 at 18: prompt position 2: top-5 max |delta| 0e0, bound 1.1414957e-1
+layer-2 at 18: prompt position 3: top-5 max |delta| 0e0, bound 1.2488056e-1
+layer-2 at 18: prompt position 4: top-5 max |delta| 0e0, bound 9.041661e-2
+layer-2 at 18: prompt position 5: top-5 max |delta| 0e0, bound 8.3149604e-2
+layer-2 at 18: step 0: top-5 max |delta| 0e0, bound 8.315069e-2, top-1 equal true
+layer-2 at 18: step 16: top-5 max |delta| 0e0, bound 1.1933889e-1, top-1 equal true
+layer-2 at 18: step 32: top-5 max |delta| 0e0, bound 1.250253e-1, top-1 equal true
+layer-2 at 18: step 48: top-5 max |delta| 0e0, bound 1.2755075e-1, top-1 equal true
+layer-2 at 18: ranges [64, 64] over 64 decode tokens
+layer-2 at 35: 2 ranks, all-reduce path Some("nccl")
+layer-2 at 35: prompt position 0: top-5 max |delta| 0e0, bound 5.6648087e-2
+layer-2 at 35: prompt position 1: top-5 max |delta| 0e0, bound 1.060635e-1
+layer-2 at 35: prompt position 2: top-5 max |delta| 0e0, bound 1.1414957e-1
+layer-2 at 35: prompt position 3: top-5 max |delta| 0e0, bound 1.2488056e-1
+layer-2 at 35: prompt position 4: top-5 max |delta| 0e0, bound 9.041661e-2
+layer-2 at 35: prompt position 5: top-5 max |delta| 0e0, bound 8.3149604e-2
+layer-2 at 35: step 0: top-5 max |delta| 0e0, bound 8.315069e-2, top-1 equal true
+layer-2 at 35: step 16: top-5 max |delta| 0e0, bound 1.1933889e-1, top-1 equal true
+layer-2 at 35: step 32: top-5 max |delta| 0e0, bound 1.250253e-1, top-1 equal true
+layer-2 at 35: step 48: top-5 max |delta| 0e0, bound 1.2755075e-1, top-1 equal true
+layer-2 at 35: ranges [64, 64] over 64 decode tokens
+
+thread 'gpu2_shapes_match_single' (49450) panicked at crates/model/tests/gpu_sharded.rs:193:5:
+tp-2: position 3: 0.2487011 > 0.12488056
+tp-2: step 42: 0.12968445 > 0.12712976
+tp-2: step 50: 0.12966156 > 0.12745027
+tp-2: step 56: 0.17053795 > 0.1325779
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test gpu_one_rank_is_bit_equal_to_the_scheduler ... prompt: max |delta| 7.293997e-1
+
+thread 'gpu_one_rank_is_bit_equal_to_the_scheduler' (49489) panicked at crates/model/tests/gpu_sharded.rs:73:5:
+assertion `left == right` failed: prompt logits
+  left: [1087090632, 1088880586, 1087786510, 1082941686, 1091124621, 1086651796, 1086603401, 1088715640, 1091837798, 1090274860, 1086149058, 1089670227, 1090616164, 1089113671, 1086052417, 1090412080, 1089748017, 1089706203, 1090650660, 1089188898, 1089706082, 1087393487, 1086931531, 1086913942, 1083859515, 1089289255, 1088367506, 1085162976, 1086333006, 1088103710, 1088625702, 1088227102, 1091178
+ right: [1087090632, 1088880586, 1087786510, 1082941686, 1091124621, 1086651796, 1086603401, 1088715640, 1091837798, 1090274860, 1086149058, 1089670227, 1090616164, 1089113671, 1086052417, 1090412080, 1089748017, 1089706203, 1090650660, 1089188898, 1089706082, 1087393487, 1086931531, 1086913942, 1083859515, 1089289255, 1088367506, 1085162976, 1086333006, 1088103710, 1088625702, 1088227102, 1091178
+FAILED
+
+failures:
+
+failures:
+    gpu2_shapes_match_single
+    gpu_one_rank_is_bit_equal_to_the_scheduler
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.54s
+
+error: test failed, to rerun pass `-p tetraeder-model --test gpu_sharded`
