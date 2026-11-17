@@ -358,3 +358,27 @@ fn the_snapshot_pool_takes_restored_buffers_back_and_changes_no_output() {
     assert_eq!((s0.recycled, s0.ready), (0, 0));
     assert!(s2.ready > 0, "{s2:?}");
 }
+
+/// A request that may generate 32000 tokens hints the snapshot pool for the prompt plus a
+/// stretch of generation, not for the whole context.
+#[test]
+fn the_size_hint_does_not_follow_a_huge_max_tokens() {
+    use tetraeder_model::snapshot_pool::{PoolConfig, SnapshotPool};
+    let pool = Arc::new(SnapshotPool::new(PoolConfig {
+        spares: 2,
+        thp: false,
+        min_bytes: 1,
+        round: 64,
+    }));
+    let kv = FakeKv::new(N_VOCAB, 2, 3200, 4000);
+    let mut w = worker_cache(kv, 2048, PrefixCache::with_pool(1 << 20, Arc::clone(&pool)));
+    let _rx = submit(&mut w, &prompt(3, 100), 32_000);
+    w.admit();
+    let row = w.backend.kv_row_bytes();
+    let target = pool.target();
+    assert!(target >= 100 * row, "the prompt is hinted ({target})");
+    assert!(
+        target <= (100 + EXPECT_AHEAD) * row + 64,
+        "hinted {target} bytes, more than prompt + {EXPECT_AHEAD} rows"
+    );
+}

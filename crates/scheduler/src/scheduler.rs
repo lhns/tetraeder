@@ -69,6 +69,9 @@ pub struct SchedulerConfig {
     pub spec: Option<SpecConfig>,
 }
 
+/// Generated tokens past the prompt that a snapshot size hint counts (ADR 0074).
+const EXPECT_AHEAD: usize = 512;
+
 /// Default prefix cache budget, like llama-server's `--cache-ram`.
 pub const DEFAULT_CACHE_RAM_BYTES: usize = 8192 << 20;
 
@@ -154,7 +157,9 @@ impl Scheduler {
                     }
                 };
                 let _ = ready_tx.send(Ok((Arc::clone(&loaded.tokenizer), n_ctx)));
-                tetraeder_model::snapshot_pool::global().set_max_bytes(cache_ram);
+                let pool = tetraeder_model::snapshot_pool::global();
+                pool.set_max_bytes(cache_ram);
+                pool.set_default_spares(parallel.max(2));
                 let mut w = Worker::new(
                     loaded.backend,
                     PrefixCache::new(cache_ram),
@@ -900,9 +905,11 @@ impl Worker {
         let (t_place, save0) = (Instant::now(), self.save_time);
         let toks = req.toks.clone();
         let last = toks.len() - 1;
-        // The most this sequence can hold when it is saved later: a spare is ready by then.
-        let at_most = toks.len() + (req.params.max_tokens - req.stats.generated_tokens) as usize;
-        self.expect_snapshot(at_most.min(self.n_ctx_seq));
+        // About what this sequence holds when it is saved later, so a spare is ready by then. Only
+        // a stretch of generation counts: clients send max_tokens of tens of thousands.
+        let ahead =
+            ((req.params.max_tokens - req.stats.generated_tokens) as usize).min(EXPECT_AHEAD);
+        self.expect_snapshot((toks.len() + ahead).min(self.n_ctx_seq));
         let fmt = self.backend.kv_format();
         // The idle sequence sharing the longest prefix (at most prompt - 1).
         let best_idle = self

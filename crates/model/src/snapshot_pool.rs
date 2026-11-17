@@ -5,7 +5,7 @@
 //! back. When none is ready a save allocates plainly, without any advice: advised memory can
 //! stall the faulting thread in direct compaction.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use tetraeder_ggml_sys::ggml::advise_hugepages;
 
@@ -90,6 +90,8 @@ impl State {
 
 struct Shared {
     cfg: PoolConfig,
+    /// Spares kept at most; starts as `cfg.spares`, see [`SnapshotPool::set_default_spares`].
+    spares: AtomicUsize,
     state: Mutex<State>,
     wake: Condvar,
     from_spare: AtomicU64,
@@ -111,6 +113,7 @@ impl SnapshotPool {
     pub fn new(cfg: PoolConfig) -> Self {
         Self {
             shared: Arc::new(Shared {
+                spares: AtomicUsize::new(cfg.spares),
                 cfg,
                 state: Mutex::new(State::default()),
                 wake: Condvar::new(),
@@ -122,7 +125,21 @@ impl SnapshotPool {
     }
 
     pub fn enabled(&self) -> bool {
-        self.shared.cfg.spares > 0
+        self.shared.spares.load(Ordering::Relaxed) > 0
+    }
+
+    /// Sets the number of spares unless `TETRAEDER_SNAPSHOT_SPARES` is set: one admission pass
+    /// can save as many sequences as the scheduler runs in parallel.
+    pub fn set_default_spares(&self, n: usize) {
+        if std::env::var(SPARES_ENV).is_err() {
+            self.shared.spares.store(n, Ordering::Relaxed);
+            self.shared.wake.notify_all();
+        }
+    }
+
+    /// Capacity the preparer aims for (0 before any hint or take).
+    pub fn target(&self) -> usize {
+        self.shared.lock().target
     }
 
     /// Caps spare buffers (each one and all together) at `bytes`: the prefix cache budget.
@@ -186,7 +203,17 @@ impl SnapshotPool {
             .enumerate()
             .filter(|(_, v)| v.capacity() >= need && v.capacity() <= limit)
             .min_by_key(|(_, v)| v.capacity())
-            .map(|(i, _)| i);
+            .map(|(i, _)| i)
+            // Else the largest spare that is too small: the read grows it by realloc, which
+            // mostly extends the mapping, so only the tail pages fault.
+            .or_else(|| {
+                st.ready
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, v)| v.capacity() < need)
+                    .max_by_key(|(_, v)| v.capacity())
+                    .map(|(i, _)| i)
+            });
         let spare = pick.map(|i| st.ready.swap_remove(i));
         drop(st);
         sh.wake.notify_all();
@@ -211,7 +238,8 @@ impl SnapshotPool {
         }
         v.clear();
         let mut st = sh.lock();
-        if v.capacity() >= st.target && st.has_room(sh.cfg.spares, v.capacity()) {
+        if v.capacity() >= st.target && st.has_room(sh.spares.load(Ordering::Relaxed), v.capacity())
+        {
             st.ready.push(v);
             sh.recycled.fetch_add(1, Ordering::Relaxed);
         } else {
@@ -266,7 +294,7 @@ fn prepare_loop(sh: &Shared) {
                     .into_iter()
                     .partition(|v| v.capacity() >= target);
                 st.ready = keep;
-                if target > 0 && st.has_room(sh.cfg.spares, target) {
+                if target > 0 && st.has_room(sh.spares.load(Ordering::Relaxed), target) {
                     break stale;
                 }
                 if !stale.is_empty() {
@@ -287,7 +315,8 @@ fn prepare_loop(sh: &Shared) {
         if st.shutdown {
             return;
         }
-        if v.capacity() >= st.target && st.has_room(sh.cfg.spares, v.capacity()) {
+        if v.capacity() >= st.target && st.has_room(sh.spares.load(Ordering::Relaxed), v.capacity())
+        {
             st.ready.push(v);
             tracing::debug!(bytes = cap, ready = st.ready.len(), "snapshot spare ready");
         } else {
@@ -371,10 +400,24 @@ mod tests {
         wait_for(&p, "regrow", |s| {
             s.ready == 2 && s.ready_bytes >= 2 * 100 * KB
         });
-        // A somewhat smaller request is served by a bigger spare.
+        // A somewhat smaller request is served by a bigger spare (the first take above used a
+        // too-small one).
         let v = p.take(60 * KB);
         assert!(v.capacity() >= 100 * KB);
-        assert_eq!(p.stats().from_spare, 1);
+        assert_eq!(p.stats().from_spare, 2);
+    }
+
+    /// hardware: cpu. With no spare that fits, the largest too-small one is taken, not a plain
+    /// allocation; a spare that is too large is never taken.
+    #[test]
+    fn a_too_small_spare_beats_a_fresh_allocation() {
+        let p = pool(2);
+        let small = |n: usize| Vec::<u8>::with_capacity(n);
+        p.recycle(small(8 * KB));
+        p.recycle(small(16 * KB));
+        let v = p.take(64 * KB);
+        assert_eq!(v.capacity(), 16 * KB, "the largest of the too-small spares");
+        assert_eq!((p.stats().from_spare, p.stats().fallback), (1, 0));
     }
 
     /// hardware: cpu. A tiny snapshot does not pin a huge spare: it allocates plainly.
