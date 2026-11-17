@@ -22,6 +22,10 @@ Status: Proposed (2026-11-17).
 - 16 MiB of pinned memory per GPU model, fixed whatever the context length.
 - The fresh snapshot memory (first-touch page faults) stays on the stall path. If the measurement shows it dominating, next steps are recycling snapshot buffers in the prefix cache or `MADV_HUGEPAGE` on them; moving the save off the worker thread needs the device-side copy ruled out above.
 
+## Addendum: the host side dominates (2026-11-17, `bench/results/20261117c/kv-save/`, box 61042290, RTX 3090)
+- Staged save 47.5 ms (8B) and 28.6 ms (30B) against 55.4 and 35.6 ms straight: `gpu_kv_save` failed its 25 and 18 ms bounds; admission `save_ms` stayed at 43 to 49 ms (8B) and 29 to 35 ms (30B).
+- Copying into fresh memory alone took 48.1 and 28.1 ms, and 15.7 and 9.0 ms with `MADV_HUGEPAGE`: the save is bound by page faults on the new snapshot, not by the device copy. Advising the snapshot before its first write (`track-save-thp`, 99988e3) was tried next.
+
 ## Addendum: the test passes, the server path stalls (2026-11-17, `bench/results/20261117d/kv-save/`, box 61046208, THP `madvise`, defrag `madvise`)
 - `gpu_kv_save` passes with the advice: staged 15.6 ms (8B) and 10.1 ms (30B). The 30B server probe saves take 10 to 13 ms.
 - The 8B server probe saves, in admission order: 17, 17, 104, 432, 2041, 1979, 771, 234, then 157, 131, 127, 140 ms. Without advice (`20261117c`) they were 43 to 49 ms. The likely cause is direct compaction (defrag `madvise` stalls the faulting thread on advised memory), not yet proven.
