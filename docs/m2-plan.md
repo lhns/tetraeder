@@ -149,6 +149,11 @@ Time budget: record-log (5 longest Claude Code tasks, `20261111d`) took 12.8 min
 - The remaining c4 loss is the admission save: 41 to 44 ms (8B) and 30 to 33 ms (30B) per reused idle sequence, serialized when several are admitted together (`track-fast-save`). Dense pays about 7% on decode with resident idle sequences, libllama nothing; a follow-up for the dense attention span.
 - Next box after these three: GPU confirmation of the fixes, then D2a on both models (pairs only for a model whose probe c4 reaches 0.925).
 
+### D2a throughput passes, provisional (2026-11-17, `bench/results/20261117d/`, box 61046208, RTX 3090, driver 595)
+- Confirmation first (`20261117c`, box 61042290): the dense crash workload is clean 4/4 (it crashed 4/4 before the mask padding); the gpu_multi_seq shift is one router near-tie (ADR 0071). The pinned-staging save alone did not get faster: the save is bound by page faults on the fresh snapshot (ADR 0074 addendum).
+- D2a at `99988e3` (`track-save-thp`, huge pages on the snapshot; not on main), `PROBE_MIN=0.925`: probes 8B c1 1.045, c4 1.042; 30B c1 1.023, c4 0.976. Pairs, all clean: 8B c4 1.070 and 1.052, c1 1.011 and 1.011; 30B c4 0.998 and 0.999, c1 1.006 and 1.011. Both per-model passes true; `phase4_pass` null (no TTFT in D2a). Same workload and N as `20261116d2a2`; the libllama control moved with the own builder (30B 259 to 294 tok/s at c4), so most of the gain is the pin and the step budget.
+- Not the verdict of record: the 8B server probe on the same box had admission saves of 104 ms to 2.0 s (10 of 12) with huge-page advice, against 43 to 49 ms without, while the pairs show no stall (8B c4 TTFT max 0.44 s). The verdict of record is a full `phase4_box.sh` session (pairs and TTFT) on the commit that merges, once the save stays off the admission path (`track-save-pool`).
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 

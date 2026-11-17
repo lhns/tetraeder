@@ -276,3 +276,7 @@ Each counting model is judged by its own two clean pairs on one box, as before; 
 - The next D2a session runs with `PROBE_MIN=0.925`, the pass line, instead of 0.85: a model whose single probe c4 ratio is below it gets no pairs, and is not re-probed in that session. One probe round per model; the 30B sat at 0.904 and 0.927 around the line, and re-probing until one passes would select on noise.
 - Why: below the pass line the pairs cannot pass, and their box time is better spent on the other model or on the cause.
 - The session runs only after a confirmation on the same box: the dense crash workload (4 of 4 runs crashed before the mask padding fix, `bench/results/20261116pc/pin-confirm/repro/`) with zero CUDA errors, the `gpu_kv_save` and `gpu_multi_seq` tests passing, and the prefix save time measured (ADR 0074).
+
+## Addendum: D2a throughput passes at 99988e3, provisional (2026-11-17, `bench/results/20261117d/`, box 61046208)
+- Probe c4 8B 1.042, 30B 0.976, both above 0.925; two clean pairs each: worst 8B c4 1.052, c1 1.011; 30B c4 0.998, c1 1.006. Per-model pass true for both, against the line 1 minus the band (0.925).
+- Provisional: the commit (`track-save-thp`) is not on main, and its huge-page advice stalled admission saves on the 8B server probe up to 2 s. The verdict of record is a full `phase4_box.sh` session (pairs and TTFT) on the commit that merges.

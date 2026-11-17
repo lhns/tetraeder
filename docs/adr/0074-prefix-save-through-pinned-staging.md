@@ -21,3 +21,9 @@ Status: Proposed (2026-11-17).
 - Expected on the 3090: the DMA runs at pinned speed and hides under the host copy, so a save costs about one host copy of its bytes into fresh snapshot memory plus one half of DMA; about 10 to 20 ms for 8B and 7 to 14 ms for 30B instead of 41 and 31 (to be measured: `crates/model/tests/gpu_kv_save.rs` times both paths paired in one process).
 - 16 MiB of pinned memory per GPU model, fixed whatever the context length.
 - The fresh snapshot memory (first-touch page faults) stays on the stall path. If the measurement shows it dominating, next steps are recycling snapshot buffers in the prefix cache or `MADV_HUGEPAGE` on them; moving the save off the worker thread needs the device-side copy ruled out above.
+
+## Addendum: the test passes, the server path stalls (2026-11-17, `bench/results/20261117d/kv-save/`, box 61046208, THP `madvise`, defrag `madvise`)
+- `gpu_kv_save` passes with the advice: staged 15.6 ms (8B) and 10.1 ms (30B). The 30B server probe saves take 10 to 13 ms.
+- The 8B server probe saves, in admission order: 17, 17, 104, 432, 2041, 1979, 771, 234, then 157, 131, 127, 140 ms. Without advice (`20261117c`) they were 43 to 49 ms. The likely cause is direct compaction (defrag `madvise` stalls the faulting thread on advised memory), not yet proven.
+- Decision: admission must not first-touch snapshot memory nor wait on a huge-page allocation. Spare snapshot buffers are prepared off the admission path; when none is ready, a save falls back to a plain allocation without advice (the old 44 ms). The advice is not merged on the admission path (`track-save-thp` stays a branch).
+- The bar, judged on the server path and not on `gpu_kv_save` alone: admission `save_ms` over the 12 nonzero admissions per model of the `gpu_kv_save.sh` probe, p95 at most 25 ms (8B) and 18 ms (30B), max at most 50 ms.
