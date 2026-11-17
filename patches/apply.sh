@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Reset vendor/llama.cpp to the pin (or $PIN_REF) and apply patches/series in order. Idempotent.
 set -euo pipefail
+# No background auto gc or maintenance: after a shallow fetch it rewrites .git/shallow while the next command reads it
+# ("shallow file has changed since we read it", CI 2026-11-17).
+export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=gc.auto GIT_CONFIG_VALUE_0=0 GIT_CONFIG_KEY_1=maintenance.auto GIT_CONFIG_VALUE_1=false
 root="$(cd "$(dirname "$0")/.." && pwd)"
 sub="$root/vendor/llama.cpp"
 ref="${PIN_REF:-$(sed -n 's/^commit=//p' "$root/vendor/PIN")}"
@@ -21,6 +24,12 @@ if ! own_repo; then
   git -C "$sub" init -q
   git -C "$sub" remote add origin "$url"
 fi
+# A detached auto gc left by the checkout's shallow submodule fetch may still be running: wait for it (at most 120 s).
+gdir="$(git -C "$sub" rev-parse --absolute-git-dir 2>/dev/null || true)"
+for _ in $(seq 1 120); do
+  [ -n "$gdir" ] && [ -e "$gdir/gc.pid" ] || break
+  sleep 1
+done
 if ! git -C "$sub" cat-file -e "$ref^{commit}" 2>/dev/null; then
   git -C "$sub" fetch --depth 1 origin "$ref"
   ref="FETCH_HEAD"
