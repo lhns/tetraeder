@@ -299,3 +299,9 @@ Each counting model is judged by its own two clean pairs on one box, as before; 
 - Throttle by the sampler rule on all four pairs: 0 disqualifying samples; 0x200/0x400 shares 0.167 against 0.111 in 8B pair 1 and 0 elsewhere. The idle gate read 0x4 on 8 of 10 samples at idle.
 - No compaction during the session (`compact_stall` and `allocstall` +0).
 - This is the throughput verdict of record for both models. `phase4_pass` stays null until the TTFT pairs (D2b, session `20261117l`) report.
+
+## Addendum: the Phase 4 exit test passes (2026-11-17)
+- Throughput: both counting models pass in `20261117k` (main 6b07795; addendum above).
+- TTFT: `bench/results/20261117l/phase4/` (box 61086097, host 34742, RTX 3090, driver 595.71; code e0758c7, the same engine as 6b07795), Qwen3-8B, the Claude Code log recorded on that box (105 requests, `log_sha256` f79b4a6d...5f7b35, kept in `bench/private/`). Pair (on, off): median 1.218 against 6.059 s (ratio 0.201), p90 3.340 against 10.445 s (0.320); pair (off, on): median 1.287 against 5.954 s (0.216), p90 3.630 against 10.249 s (0.354); every ratio at most 1 minus the band (0.925). Both pairs clean by the sampler rule (0 disqualifying samples, share 0), errors 0 on both sides; 10 requests per run without status 200 in both are excluded as the Fields rule says. `ttft.pass` true.
+- That session's own 8B throughput pairs are not used (one is unclean on a 0x4 before sample; the 8B verdict is `20261117k`'s). The informative llama-server TTFT run was skipped for time.
+- `phase4_pass`: true, combining `20261117k` (q8b, q30b) and `20261117l` (ttft) as the addendum "models judged in separate sessions" allows. The milestone M2 continues with Phase 5.

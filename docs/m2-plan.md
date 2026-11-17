@@ -156,7 +156,7 @@ Time budget: record-log (5 longest Claude Code tasks, `20261111d`) took 12.8 min
 
 ### D2a verdict of record (2026-11-17, `bench/results/20261117k/`, box 61097370)
 - Both models pass on main 6b07795: worst pairs 8B c4 1.021, c1 0.995; 30B c4 0.943, c1 0.989 (line 0.925). The way there: huge-page advice on the save path stalled admissions (`20261117d`, `h`), so the pool prepares plain spares off the admission path; the dense backend now reports its row size; the throttle rule judges BoardLimit and Reliability by a 1 Hz sampler under load (ADR 0065); `20261117e` and `g` stay null.
-- Open: D2b (TTFT on the 8B, `20261117l`), then `phase4_pass`.
+- D2b (`20261117l`): prefix reuse cuts the 8B's TTFT on the Claude Code replay to 0.20 to 0.22 of reuse off (median) and 0.32 to 0.35 (p90). Phase 4's exit test passes (ADR 0065 addendum); Phase 5 is next.
 
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
