@@ -154,6 +154,7 @@ impl Scheduler {
                     }
                 };
                 let _ = ready_tx.send(Ok((Arc::clone(&loaded.tokenizer), n_ctx)));
+                tetraeder_model::snapshot_pool::global().set_max_bytes(cache_ram);
                 let mut w = Worker::new(
                     loaded.backend,
                     PrefixCache::new(cache_ram),
@@ -455,6 +456,8 @@ struct Worker {
     spec: Option<SpecState>,
     /// Time spent saving sequences to the prefix cache, for the admission log.
     save_time: Duration,
+    /// Snapshot pool counters (spare, fallback) already reported to the metrics.
+    pool_seen: (u64, u64),
 }
 
 /// Speculation in the loop: drafts for a lone greedy decoding sequence (ADR 0065).
@@ -501,6 +504,10 @@ impl Worker {
         let budget = step_tokens.min(max_step).max(parallel);
         let n_ctx_seq = backend.n_ctx_seq();
         let n_vocab = backend.n_vocab();
+        let pool_seen = {
+            let s = cache.pool().stats();
+            (s.from_spare, s.fallback)
+        };
         Self {
             backend,
             slots: (0..parallel).map(|_| Slot::Free).collect(),
@@ -523,6 +530,7 @@ impl Worker {
             solo: VecDeque::new(),
             spec: None,
             save_time: Duration::ZERO,
+            pool_seen,
         }
     }
 
@@ -770,6 +778,20 @@ impl Worker {
             }
             Err(e) => tracing::warn!("cannot save a sequence: {e}"),
         }
+        self.report_pool();
+    }
+
+    /// Reports what the snapshot pool did since the last call (ADR 0074).
+    fn report_pool(&mut self) {
+        let s = self.cache.pool().stats();
+        if let Some(m) = &self.metrics {
+            m.kv_prefix_save_buffers(
+                s.from_spare.saturating_sub(self.pool_seen.0),
+                s.fallback.saturating_sub(self.pool_seen.1),
+            );
+            m.kv_prefix_spares(s.ready as u64, s.ready_bytes as u64);
+        }
+        self.pool_seen = (s.from_spare, s.fallback);
     }
 
     /// Saves the idle sequence on `id` (ADR 0049) and frees its id and rows.
@@ -1013,6 +1035,7 @@ impl Worker {
                             Purpose::Kv,
                         );
                     }
+                    self.cache.release(bytes);
                 }
                 Err(e) => {
                     tracing::warn!("cannot restore a saved sequence: {e}");
@@ -1022,6 +1045,8 @@ impl Worker {
                     // the bytes are unusable, so retrying them would only fail again.
                     if matches!(e, BackendError::KvFull { .. }) {
                         self.put_back(Some((etoks, bytes)));
+                    } else {
+                        self.cache.release(bytes);
                     }
                 }
             }
@@ -1066,12 +1091,15 @@ impl Worker {
             let ms = |d: Duration| d.as_secs_f64() * 1e3;
             tracing::debug!(
                 target: "tetraeder::step",
-                "admit seq={id} queued_ms={:.2} place_ms={:.2} save_ms={:.2} prompt={} common={common} source={source} live={}",
+                "admit seq={id} queued_ms={:.2} place_ms={:.2} save_ms={:.2} prompt={} common={common} source={source} live={} pool_spare={} pool_fallback={} pool_ready={}",
                 ms(t_place.saturating_duration_since(req.queued)),
                 ms(t_place.elapsed()),
                 ms(self.save_time - save0),
                 toks.len(),
                 self.live_count(),
+                self.pool_seen.0,
+                self.pool_seen.1,
+                self.cache.pool().stats().ready,
             );
         }
         self.next_admitted += 1;

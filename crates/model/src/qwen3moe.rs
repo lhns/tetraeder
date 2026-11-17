@@ -1365,7 +1365,7 @@ impl Qwen3Moe {
         if let Some(sh) = &self.shard {
             return sh.snapshot(&runs);
         }
-        let mut out = Vec::with_capacity(n * self.kv_row_bytes());
+        let mut out = crate::snapshot_pool::global().take(n * self.kv_row_bytes());
         let tensors = self.kv.k.iter().chain(&self.kv.v).map(|t| t.get());
         let spans = row_spans(tensors, self.kv.n_rows, &runs);
         match &self.readback {

@@ -2628,6 +2628,57 @@
           }
         }
       ]
+    },
+    {
+      "id": 87,
+      "title": "Prefix cache: snapshot buffer pool",
+      "description": "Saves per second by the buffer they wrote into (ADR 0074): a spare prepared off the admission path, or a plain allocation (fallback, about 44 ms per 8B save), and the spare buffers ready. PrefixSaveFallback fires when most saves fall back: the preparer cannot keep up, the snapshot outgrew the cache budget, or TETRAEDER_SNAPSHOT_SPARES=0. The spare MiB series is the host memory the spares hold.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 122,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tetraeder_buffer) (rate(tetraeder_kv_prefix_save_buffers_total[$__rate_interval]))",
+          "legendFormat": "saves/s {{tetraeder_buffer}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "max(tetraeder_kv_prefix_spares)",
+          "legendFormat": "spares ready",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "max(tetraeder_kv_prefix_spare_memory_bytes) / 1048576",
+          "legendFormat": "spare MiB",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

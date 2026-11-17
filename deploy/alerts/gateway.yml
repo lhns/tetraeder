@@ -51,6 +51,16 @@ groups:
           severity: warning
         annotations:
           summary: "p95 prefix-cache save over 25 ms; every save stalls all live sequences"
+      # Most saves wrote into a plain allocation instead of a prepared spare (ADR 0074): each costs the old 44 ms.
+      - alert: PrefixSaveFallback
+        expr: |
+          sum(rate(tetraeder_kv_prefix_save_buffers_total{tetraeder_buffer="fallback"}[10m]))
+            / sum(rate(tetraeder_kv_prefix_save_buffers_total[10m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than half of the prefix-cache saves found no spare snapshot buffer"
       # Tool calls the parser had to repair or could not parse (ADR 0051): a template or model regression.
       - alert: ToolCallFailures
         expr: |
