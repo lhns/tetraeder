@@ -1,0 +1,8 @@
+/root/tetraeder/bench/results/20261117d/phase4/server-prepass-q30b-kvu.log:0.05.382.428 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 32768, kv_unified = 'true'
+/root/tetraeder/bench/results/20261117d/phase4/server-prepass-q30b-nokvu.log:0.05.685.289 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 8192, kv_unified = 'false'
+/root/tetraeder/bench/results/20261117d/phase4/server-prepass-q8b-kvu.log:0.02.090.035 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 32768, kv_unified = 'true'
+/root/tetraeder/bench/results/20261117d/phase4/server-prepass-q8b-nokvu.log:0.02.091.601 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 8192, kv_unified = 'false'
+/root/tetraeder/bench/results/20261117d/phase4/server-q30b-llama-server-r1.log:0.05.930.706 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 8192, kv_unified = 'false'
+/root/tetraeder/bench/results/20261117d/phase4/server-q30b-llama-server-r2.log:0.05.915.966 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 8192, kv_unified = 'false'
+/root/tetraeder/bench/results/20261117d/phase4/server-q8b-llama-server-r1.log:0.02.235.157 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 8192, kv_unified = 'false'
+/root/tetraeder/bench/results/20261117d/phase4/server-q8b-llama-server-r2.log:0.02.279.513 I srv    load_model: initializing, n_slots = 4, n_ctx_slot = 8192, kv_unified = 'false'

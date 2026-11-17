@@ -1,0 +1,230 @@
+{
+  "band": 0.07531306153550049,
+  "band_source": "measured rtx-3090 n=11",
+  "models": {
+    "q8b": {
+      "engine": "tetraeder-dense",
+      "counts": true,
+      "baseline_variant": "nokvu",
+      "baseline_kv_unified": "false",
+      "aa": {
+        "c4": -0.008614875447140458,
+        "c1": -0.0003454473783255363
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 1.0702106387890764,
+          "c1_decode_ratio": 1.0111575156047679,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000000"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 1.0523112971327797,
+          "c1_decode_ratio": 1.010581466938831,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 1.0523112971327797,
+        "c1": 1.010581466938831
+      },
+      "pass": true,
+      "reasons": [],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    },
+    "q30b": {
+      "engine": "tetraeder-moe",
+      "counts": true,
+      "baseline_variant": "nokvu",
+      "baseline_kv_unified": "false",
+      "aa": {
+        "c4": -0.003745644059529596,
+        "c1": -0.008724508789724972
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 0.9982020643369842,
+          "c1_decode_ratio": 1.0061707526932644,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 0.9988342168197758,
+          "c1_decode_ratio": 1.010548340384632,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 0.9982020643369842,
+        "c1": 1.0061707526932644
+      },
+      "pass": true,
+      "reasons": [],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    }
+  },
+  "ttft": {
+    "log_sha256": null,
+    "requests": null,
+    "pairs": [
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r1: no result",
+          "replay-q8b-off-r1: no result"
+        ],
+        "throttle": {
+          "on": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          },
+          "off": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          }
+        }
+      },
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r2: no result",
+          "replay-q8b-off-r2: no result"
+        ],
+        "throttle": {
+          "on": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          },
+          "off": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          }
+        }
+      }
+    ],
+    "pass": null
+  },
+  "phase4_pass": null
+}
