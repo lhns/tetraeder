@@ -1,0 +1,22 @@
+
+running 1 test
+test gpu_slot_counts_match_libllama ... position 0: top-5 max |delta| 5.721092e-3 at token 73 (5.16e-4 of largest 11.085199), bound 5e-3, top-1 equal true
+position 1: top-5 max |delta| 5.405426e-3 at token 230 (4.99e-4 of largest 10.824917), bound 5e-3, top-1 equal true
+position 2: top-5 max |delta| 7.674217e-3 at token 97 (6.21e-4 of largest 12.349742), bound 5e-3, top-1 equal true
+position 3: top-5 max |delta| 9.54628e-3 at token 233 (8.82e-4 of largest 10.828087), bound 5e-3, top-1 equal true
+position 4: top-5 max |delta| 3.4856796e-3 at token 237 (2.90e-4 of largest 12.002251), bound 5e-3, top-1 equal true
+position 5: top-5 max |delta| 1.1561394e-2 at token 17 (8.03e-4 of largest 14.397554), bound 5e-3, top-1 equal true
+
+thread 'gpu_slot_counts_match_libllama' (67071) panicked at crates/model/tests/common/mod.rs:457:5:
+position 0, token 73: libllama 9.228614 vs builder 9.234335 (bound 5e-3); position 1, token 230: libllama 8.712341 vs builder 8.717747 (bound 5e-3); position 2, token 97: libllama 9.371486 vs builder 9.37916 (bound 5e-3); position 3, token 233: libllama 9.6551 vs builder 9.664646 (bound 5e-3); posit
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    gpu_slot_counts_match_libllama
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.70s
+
+rc=101

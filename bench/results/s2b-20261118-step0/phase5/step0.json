@@ -1,0 +1,27 @@
+{
+  "band": 0.08,
+  "band_source": "provisional cuda-default",
+  "threshold": 0.92,
+  "only": "tp-2 llama-bench:tensor",
+  "models": {
+    "qwen3-30b-a3b": {
+      "own": "tp-2",
+      "baseline": "llama-bench:tensor",
+      "rounds": [],
+      "clean_pairs": 0,
+      "ratio_pp_min": null,
+      "ratio_tg_min": null,
+      "ok": null
+    },
+    "qwen3-32b": {
+      "own": "tp-2",
+      "baseline": "llama-bench:tensor",
+      "rounds": [],
+      "clean_pairs": 0,
+      "ratio_pp_min": null,
+      "ratio_tg_min": null,
+      "ok": null
+    }
+  },
+  "step0_pass": null
+}

@@ -1,0 +1,16 @@
+
+running 1 test
+test gpu2_moe_shapes_match_single ... 
+thread 'gpu2_moe_shapes_match_single' (67123) panicked at crates/model/tests/gpu_sharded_moe.rs:103:33:
+called `Result::unwrap()` on an `Err` value: Ggml(Invalid("the last backend must be the CPU"))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    gpu2_moe_shapes_match_single
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 7.06s
+
+rc=101
