@@ -1,6 +1,6 @@
 # 0065. Phase 4: verdict rules, a multi-sequence backend and continuous batching
 
-Status: Proposed (2026-11-14). Phase 4. Supersedes, from ADR 0046, the one-sequence backend trait, the scheduler loop and "the gateway's semaphore stays at one request in generation"; ADR 0049's RAM prefix cache stays and gains resident sequences (step C3). Companions: ADR 0066 (own Qwen3 dense builder), ADR 0067 (KV layout experiment). Briefs: `docs/phase4-briefs.md`.
+Status: Accepted (2026-11-17, the Phase 4 exit test passes; see the last addendum). Proposed 2026-11-14. Phase 4. Supersedes, from ADR 0046, the one-sequence backend trait, the scheduler loop and "the gateway's semaphore stays at one request in generation"; ADR 0049's RAM prefix cache stays and gains resident sequences (step C3). Companions: ADR 0066 (own Qwen3 dense builder), ADR 0067 (KV layout experiment). Briefs: `docs/phase4-briefs.md`.
 
 ## Verdict
 
