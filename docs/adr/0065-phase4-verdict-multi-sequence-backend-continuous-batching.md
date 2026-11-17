@@ -271,3 +271,8 @@ Each counting model is judged by its own two clean pairs on one box, as before; 
 - Why: the after sample is taken right after the c4 run ends, at the same point for every engine, so a power cap still active from the load is the same for both sides of a pair; the RTX 3090 noise band (`bench/noise/rtx-3090.json`, 11 sessions from llama-bench, not filtered by throttle) already prices power capping. 0x4 after a run appeared in 13 of 22 records in `20261116d2a2` and `20261116pinab`, on drivers 580 and 615, for baseline and Tetraeder runs alike.
 - Each run now also records power limit and draw before and after; `verdict.json` keeps the raw throttle values. Unexplained bits before a run (0x200, 0x400 on driver 615) are handled by host choice: the driver destroys a box whose idle value is outside 0x3 at SSH.
 - Decided before the session it applies to; `20261116d2a2` stays a c4 miss.
+
+## Addendum: one probe decides the pairs at 0.925 (2026-11-17, before the next verdict session)
+- The next D2a session runs with `PROBE_MIN=0.925`, the pass line, instead of 0.85: a model whose single probe c4 ratio is below it gets no pairs, and is not re-probed in that session. One probe round per model; the 30B sat at 0.904 and 0.927 around the line, and re-probing until one passes would select on noise.
+- Why: below the pass line the pairs cannot pass, and their box time is better spent on the other model or on the cause.
+- The session runs only after a confirmation on the same box: the dense crash workload (4 of 4 runs crashed before the mask padding fix, `bench/results/20261116pc/pin-confirm/repro/`) with zero CUDA errors, the `gpu_kv_save` and `gpu_multi_seq` tests passing, and the prefix save time measured (ADR 0074).
