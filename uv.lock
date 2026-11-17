@@ -667,8 +667,8 @@ wheels = [
 
 [[package]]
 name = "taxameter"
-version = "0.3.2"
-source = { git = "https://github.com/lhns/taxameter?tag=v0.3.2#9001f4f81b9c4fe793bcaf9807e188b1b0c7e49d" }
+version = "0.3.3"
+source = { git = "https://github.com/lhns/taxameter?tag=v0.3.3#a1a2b24baf52a49cf39fe2e9888409a40056ffda" }
 dependencies = [
     { name = "httpx" },
 ]
@@ -705,7 +705,7 @@ conformance = [
 dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pyyaml", specifier = ">=6" },
-    { name = "taxameter", git = "https://github.com/lhns/taxameter?tag=v0.3.2" },
+    { name = "taxameter", git = "https://github.com/lhns/taxameter?tag=v0.3.3" },
 ]
 
 [[package]]

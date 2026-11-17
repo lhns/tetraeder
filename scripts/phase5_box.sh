@@ -8,7 +8,7 @@
 # whose output exists and a run whose result exists are skipped.
 #
 # Stages, in order (STAGE <name> lines in the log):
-#   gpus        nvidia-smi -L must list exactly <2|4> GPUs; taxameter cannot filter offers by GPU count (no --num-gpus), so
+#   gpus        nvidia-smi -L must list exactly <2|4> GPUs; taxameter 0.3.3 filters offers by `--num-gpus`; still,
 #               a wrong box ends the session here (PHASE5_BOX_DONE rc=1) before anything is built or downloaded
 #   env         env.json: host, GPU names, driver, clocks, throttle reasons, PCIe gen and width, topo -m, peer-access matrix
 #               (nvidia-smi topo -p2p r), NCCL version, CPU quota, commits; comm_impl is filled in by probe

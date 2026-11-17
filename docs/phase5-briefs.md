@@ -342,7 +342,7 @@ pub enum ExecError { Invalid(Vec<String>), Ggml(GgmlError) }
 
 All on Vast through taxameter (ADR 0021, 0029), Linux, RTX 3090 class (the image's CUDA builds are sm_86), commit before provisioning, results fetched and verified before destroy. Prices are estimates for Vast RTX 3090 offers, not quotes.
 
-**Prerequisite.** `taxameter offers` has no GPU-count filter (`uv run taxameter offers --help`: `--gpu`, `--min-vram` are per card). Renting a 2x or 4x box needs one (`--num-gpus N`, Vast's `num_gpus` search field) in taxameter, a separate project, before S0.
+**Prerequisite (done 2026-11-17).** taxameter 0.3.3 has `--num-gpus N` on `offers` and `create` (its ADR 0011); a 2x or 4x box is rented with it.
 
 | Session | When | Box | What | Hours | USD (box) |
 |---|---|---|---|---|---|
