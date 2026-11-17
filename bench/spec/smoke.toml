@@ -12,7 +12,7 @@ page_cache = "warm"
 seed = 7
 
 [pins]
-llama_cpp = "2e0d86bebc210947680e8f0d67daa79f3260c106"
+llama_cpp = "fc504f91d8cfdfcd9b0fedcf14600fd2b0e63420"
 
 [workload]
 batch = 512

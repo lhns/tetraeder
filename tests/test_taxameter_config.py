@@ -66,8 +66,11 @@ def test_image_tag_encodes_all_pins():
 
 
 def test_bench_spec_llama_pin_matches_vendor_pin():
-    spec = tomllib.loads((ROOT / SPEC).read_text(encoding="utf-8"))
-    assert spec["pins"]["llama_cpp"] == _pin("commit")
+    # every spec's pin labels results built from vendor/llama.cpp; a stale one mislabels them
+    for path in sorted((ROOT / "bench/spec").glob("*.toml")):
+        pins = tomllib.loads(path.read_text(encoding="utf-8")).get("pins", {})
+        if "llama_cpp" in pins:
+            assert pins["llama_cpp"] == _pin("commit"), path.name
 
 
 def test_nightly_spec_yields_models(cfg):

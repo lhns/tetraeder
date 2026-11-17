@@ -34,7 +34,7 @@ confidence = 0.95
 seed = 20240602
 
 [pins]
-llama_cpp = "2e0d86bebc210947680e8f0d67daa79f3260c106"   # vendor/llama.cpp submodule, same as phase0
+llama_cpp = "fc504f91d8cfdfcd9b0fedcf14600fd2b0e63420"   # vendor/llama.cpp submodule, same as phase0
 ik_llama = "b25c3fd2c6d7e407c3a104a413d0211fe2c7a88e"    # ik_commit in vendor/PIN, built into the box image only
 tetraeder = "HEAD"
 
