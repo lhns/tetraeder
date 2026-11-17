@@ -52,9 +52,10 @@ fn bits(v: &[f32]) -> Vec<u32> {
 
 /// hardware: gpu, model. One GPU rank on the executor equals the scheduler path bit for bit:
 /// the logits of every prompt position and 64 greedy tokens (the scheduler's, teacher forced).
-/// Ranges are views of the rank graph (ADR 0075), so the executor runs the scheduler's fused
-/// kernels; the 6-token prompt and the decode steps stay on MMVQ, where no fusion needs the
-/// scheduler's `graph_optimize`. Every row is printed before the assertion.
+/// Ranges are views of the rank graph (ADR 0075), so the executor fuses as the scheduler does.
+/// The scheduler also runs ggml-cuda's `graph_optimize`, whose allocation dependencies can change
+/// which fusions pass the memory-range check: an equal prompt with an unequal decode step points
+/// there, not at the views. Every row is printed before the assertion.
 #[test]
 fn gpu_one_rank_is_bit_equal_to_the_scheduler() {
     if !Backend::gpu_available() {
