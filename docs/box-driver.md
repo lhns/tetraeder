@@ -31,7 +31,7 @@ The driver picks the box by these rules and does not ask the owner. The coordina
 5. **Abort gates** (destroy after fetching what exists, then try the next offer once):
    - at SSH: missing ISA flags, too little `memory.max`, or no `cuda: ok`;
    - at SSH: run `scripts/idle_gate.sh` (10 samples over 30 s, at least 9 within 0x0-0x3), not a single idle read (ADR 0065 addendum);
-   - status `loading` (image pull) or SSH refused for more than 10 minutes after create (13f lost 40 minutes to three such boxes: host 213498 rejected the key on direct and proxy ports, host 546840 never finished the pull; skip both; host 109790 stayed loading twice on 13j and host 39788 once on 13l, skip both; hosts 151822 and 130210 never finished the pull on 2026-11-17, skip both);
+   - status `loading` (image pull) or SSH refused for more than 10 minutes after create (13f lost 40 minutes to three such boxes: host 213498 rejected the key on direct and proxy ports, host 546840 never finished the pull; skip both; host 109790 stayed loading twice on 13j and host 39788 once on 13l, skip both; hosts 151822, 130210, 51345, 551866 and 87657 never finished the pull on 2026-11-17 (all slow-network offers): pick offers with `--min-inet 1000` and skip them);
    - model download under 100 MB/s after its first 5 minutes;
    - KT sessions: `runs/vast/ktransformers_build.log` must end ok within 15 minutes of launch; a failed KT build ends the point-3 session (destroy, do not run builder-only stages);
    - smoke with `cotenant_ok` false: recheck for 10 minutes, then destroy (13c paid 80 minutes for invalid stages).
