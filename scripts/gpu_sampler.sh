@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # GPU session sampler (ADR 0065, addendum "BoardLimit and Reliability bits judged under load").
 # Writes $OUT/gpu-samples.csv at 1 Hz, no header, one line per GPU per second:
-#   epoch,timestamp,reasons,power_w,sm_mhz,mem_mhz,temp_c
+#   epoch,timestamp,reasons,power_w,sm_mhz,mem_mhz,temp_c,index
+# index (the GPU number) is the last column so that readers of the first seven keep working (phase4_summary.py);
+# phase5_summary.py needs it to judge each GPU of a multi-GPU box (a file without it counts as GPU 0).
 # epoch is `date +%s.%N` when the line was read; timestamp is nvidia-smi's own "YYYY/MM/DD HH:MM:SS.mmm" (box local
 # time, the same clock and zone as `started` in the bench JSONs, so phase4_summary.py matches windows on it);
 # reasons is the clock event reasons bitmask (hex).
@@ -15,7 +17,7 @@ mkdir -p "$OUT"
 stop="$OUT/gpu-sampler.stop"
 csv="$OUT/gpu-samples.csv"
 rm -f "$stop"
-q=timestamp,clocks_event_reasons.active,power.draw,clocks.sm,clocks.mem,temperature.gpu
+q=timestamp,clocks_event_reasons.active,power.draw,clocks.sm,clocks.mem,temperature.gpu,index
 # Older drivers only know clocks_throttle_reasons.
 if ! nvidia-smi --query-gpu="$q" --format=csv,noheader,nounits > /dev/null 2>&1; then
   q=${q/clocks_event_reasons/clocks_throttle_reasons}
@@ -23,7 +25,7 @@ fi
 while IFS= read -r line; do
   [ -e "$stop" ] && break
   if [ -n "${SAMPLER_PARENT:-}" ] && ! kill -0 "$SAMPLER_PARENT" 2> /dev/null; then break; fi
-  # "ts, 0x..., 28.1, 210, 405, 31" -> "epoch,ts,0x...,28.1,210,405,31"
+  # "ts, 0x..., 28.1, 210, 405, 31, 0" -> "epoch,ts,0x...,28.1,210,405,31,0"
   printf '%s,%s\n' "$(date +%s.%N)" "${line//, /,}" >> "$csv"
 done < <(nvidia-smi --query-gpu="$q" --format=csv,noheader,nounits -lms 1000 2> /dev/null)
 # nvidia-smi ends on SIGPIPE at its next write

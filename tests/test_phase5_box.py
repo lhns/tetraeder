@@ -281,3 +281,29 @@ def test_ctk_flags_are_not_passed_to_llama_bench(tmp_path):
     # f16 is the default; a rejected flag would look like three rejected split modes
     base = [ln for ln in dry(tmp_path) if "llama-bench -m" in ln]
     assert base and not any("-ctk" in ln or "-ctv" in ln for ln in base)
+
+
+def test_gpu_sampler_is_planned_and_run_windows_are_stamped(tmp_path):
+    lines = dry(tmp_path)
+    assert any("PLAN gpu_sampler.sh -> gpu-samples.csv" in ln for ln in lines)
+    src = SCRIPT.read_text()
+    assert "gpu-sampler.stop" in src and "window-$run.json" in src
+    assert src.count("stop_gpu_sampler") >= 4  # definition, die, gate stop, summary
+
+
+def test_only_runs_two_configurations_per_model_and_writes_step0(tmp_path):
+    lines = dry(tmp_path, ROUNDS="2", ONLY="tp-2 llama-bench:tensor")
+    for m in (D, M):
+        names = [n[len(m) + 1 :] for n in timed(lines, m)]
+        # two interleaved pairs: tp-2 first, then the tensor baseline swapped first
+        assert names == ["tp-2-r1", "llama-bench-tensor-r1", "llama-bench-tensor-r2", "tp-2-r2"]
+    assert not [n for n in runs(lines) if n.endswith("-aa") or "-anchor-" in n]
+    assert any("anchors skipped (ONLY)" in ln for ln in lines) and any("vllm skipped (ONLY)" in ln for ln in lines)
+    assert any("--only" in ln and "step0.json" in ln for ln in lines) and not any("-> verdict.json" in ln for ln in lines)
+    assert lines[-1].endswith("PHASE5_BOX_DONE rc=0")
+
+
+def test_only_unset_keeps_the_full_session(tmp_path):
+    lines = dry(tmp_path)
+    assert len(timed(lines, D)) == 27 and not any("skipped (ONLY)" in ln for ln in lines)
+    assert any("-> verdict.json" in ln for ln in lines)

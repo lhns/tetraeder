@@ -4,6 +4,7 @@
     python scripts/phase5_summary.py bench/results/<session>/phase5      writes verdict.json and verdict-notes.json there
     python scripts/phase5_summary.py DIR --round-order MODEL K           configurations of round K, one per line
     python scripts/phase5_summary.py DIR --need-rerun MODEL              configurations with fewer than two clean rounds
+    python scripts/phase5_summary.py DIR --only "tp-2 llama-bench:tensor"  writes step0.json (own tp-2 against -sm tensor)
     python scripts/phase5_summary.py DIR --first MODEL                   the first candidate (the A/A run repeats it)
     python scripts/phase5_summary.py --merge V.json [V.json ...] --out F  the four cases of several sessions
 
@@ -17,6 +18,8 @@ Input files in DIR (names fixed by ADR 0068 unless marked box):
   run-<run>.rc                             box: exit code of a run; gpu-<run>.txt throttle reasons before and after;
                                            cotenant-<run>.json the host check (cotenant_ok)
   gates.json                               box: {"gpu_parity", "comm_probe"} = ok | failed | skipped
+  gpu-samples.csv                          box: scripts/gpu_sampler.sh, 1 Hz, one line per GPU per second (ADR 0068 addendum
+                                           2026-11-17); window-<run>.json {"start", "end"} box-local stamps of each run
   timeline.jsonl                           box: {"t", "event": predict|run, "model", "kind", "sha256"} in order
 A run is `<model>-<id>-r<k>`, `<model>-<id>-aa` or `<model>-<engine>-<sm>-r<k>`. Anything missing makes a run unclean
 or a result null, never true.
@@ -32,6 +35,7 @@ import re
 import statistics
 import sys
 import tomllib
+from datetime import datetime, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -56,6 +60,13 @@ _p4 = _load("phase4_summary")  # throttle record format, GPU class slug: one sou
 throttle_reasons = _p4.throttle_reasons
 class_slug = _p4.class_slug
 read_json = _p4.read_json
+# Throttle by the session sampler (ADR 0068 addendum 2026-11-17): bits that are fine in a window sample; the shares of
+# samples with 0x200/0x400 and with 0x4 are compared with the session median of the GPU.
+BOARD_BITS = 0x200 | 0x400
+CAP_BIT = 0x4
+WINDOW_OK = 0x1 | 0x2 | 0x4 | 0x100 | BOARD_BITS
+SHARE_TOL = 0.10
+SAMPLE_FMT = "%Y/%m/%d %H:%M:%S"
 
 
 def p2p_class(text: str) -> str | None:
@@ -91,6 +102,138 @@ def choose_band(env: dict, noise_dir: Path, spec_path: Path) -> tuple[float, str
     band = next(float(b["band"]) for b in spec["noise_band"] if b["class"] == "cuda-default")
     why = f" (measured n={measured.get('n', 0)} < 3)" if isinstance(measured, dict) else ""
     return band, f"provisional cuda-default{why}"
+
+
+# ---- throttle by the session sampler ------------------------------------------------------------------------
+
+
+def load_samples(d: Path) -> list[tuple[datetime, int, int]] | None:
+    """(time, reasons mask, GPU index) per line of gpu-samples.csv (`epoch,timestamp,reasons,...,index`); a file
+    without the index column (older sampler) counts as GPU 0. None when there is no file or no readable line."""
+    try:
+        text = (d / "gpu-samples.csv").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    out = []
+    for line in text.splitlines():
+        f = [x.strip() for x in line.split(",")]
+        if len(f) < 3:
+            continue
+        try:
+            t = datetime.strptime(f[1].split(".")[0], SAMPLE_FMT)
+            out.append((t, int(f[2], 16), int(f[7]) if len(f) > 7 else 0))
+        except ValueError:
+            continue
+    return out or None
+
+
+def run_window(d: Path, run: str, engine: str = "") -> tuple[datetime, datetime] | None:
+    """Measured window of a run. Source by run type:
+    - vllm: the gateway_bench result (`finished` minus summary.wall_s), as Phase 4;
+    - every other run: window-<run>.json, the box-local start and end of the process (phase5_box.sh run_one), narrowed to
+      the last 2 * (sum of the rows' avg_ns) + 10 s when the result rows carry avg_ns, which cuts the model load
+      (llama-bench warms up each test once, hence the factor 2).
+    One second of slack each side for the stamps' truncation. None when there is no usable stamp."""
+    if engine == "vllm":
+        return _p4.result_window(read_json(d / f"baseline-{run}.json"))
+    w = read_json(d / f"window-{run}.json")
+    try:
+        a = datetime.strptime(w["start"], "%Y-%m-%dT%H:%M:%S")
+        b = datetime.strptime(w["end"], "%Y-%m-%dT%H:%M:%S")
+    except (TypeError, KeyError, ValueError):
+        return None
+    for kind in ("bench", "baseline"):
+        j = read_json(d / f"{kind}-{run}.json")
+        ns = [r["avg_ns"] for r in (j if isinstance(j, list) else []) if isinstance(r, dict)
+              and isinstance(r.get("avg_ns"), (int, float)) and r["avg_ns"] > 0]
+        if ns:
+            a = max(a, b - timedelta(seconds=2 * sum(ns) / 1e9 + 10))
+            break
+    return a - timedelta(seconds=1), b + timedelta(seconds=1)
+
+
+def gpu_stats(samples, win) -> dict[int, dict] | None:
+    """{gpu: {samples, share_board, share_cap, disqualifying, bad_bits}} over the samples inside the window; shares are
+    fractions of the window's samples with 0x200/0x400 and with 0x4. None without samples inside."""
+    if samples is None or win is None:
+        return None
+    per: dict[int, list[int]] = {}
+    for t, m, g in samples:
+        if win[0] <= t <= win[1]:
+            per.setdefault(g, []).append(m)
+    if not per:
+        return None
+    out = {}
+    for g, ms in sorted(per.items()):
+        bad = [m for m in ms if m & ~WINDOW_OK]
+        bits = 0
+        for m in bad:
+            bits |= m & ~WINDOW_OK
+        out[g] = {"samples": len(ms), "share_board": sum(1 for m in ms if m & BOARD_BITS) / len(ms),
+                  "share_cap": sum(1 for m in ms if m & CAP_BIT) / len(ms), "disqualifying": len(bad),
+                  "bad_bits": f"{bits:#x}"}
+    return out
+
+
+_SESSION_CACHE: dict = {}
+
+
+def _stamp(d: Path):
+    """What changes when the box adds a run or a sample: the cache key of session_sampler."""
+    parts = [d / "gpu-samples.csv", d]
+    key = [(p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else None for p in parts]
+    return (str(d), tuple(key), len(list(d.glob("window-*.json"))), len(list(d.glob("run-*.rc"))))
+
+
+def session_sampler(d: Path) -> dict | None:
+    """{runs: {run: {gpu: stats}}, median: {gpu: {share_board, share_cap}}} over the session, or None without sampler
+    data. The medians are over all measured runs (anchors excluded) that have window samples."""
+    key = _stamp(d)
+    if _SESSION_CACHE.get("key") == key:
+        return _SESSION_CACHE["val"]
+    samples = load_samples(d)
+    val = None
+    if samples is not None:
+        runs = {}
+        for rc in sorted(d.glob("run-*.rc")):
+            run = rc.stem[len("run-") :]
+            if "-anchor-" in run:
+                continue
+            st = gpu_stats(samples, run_window(d, run, "vllm" if "-vllm-" in run else ""))
+            if st:
+                runs[run] = st
+        med: dict[int, dict] = {}
+        for g in sorted({g for st in runs.values() for g in st}):
+            sel = [st[g] for st in runs.values() if g in st]
+            med[g] = {"share_board": statistics.median(x["share_board"] for x in sel),
+                      "share_cap": statistics.median(x["share_cap"] for x in sel)}
+        val = {"runs": runs, "median": med}
+    _SESSION_CACHE.update(key=key, val=val)
+    return val
+
+
+def sampler_judgement(d: Path, run: str) -> tuple[list[str], dict]:
+    """(reasons the run is unclean by the sampler rule, the record for verdict.json). The rule `sampler` applies when
+    the run has window samples; otherwise `single-sample` (the before and after records, ADR 0065)."""
+    sess = session_sampler(d)
+    st = sess["runs"].get(run) if sess else None
+    if st is None:
+        return [f"{run}: {x}" for x in throttle_reasons(d, run)], {"rule": "single-sample"}
+    reasons, gpus = [], {}
+    for g, x in st.items():
+        med = sess["median"][g]
+        gpus[str(g)] = {**x, "median_share_board": med["share_board"], "median_share_cap": med["share_cap"]}
+        if x["disqualifying"]:
+            reasons.append(f"{run}: GPU {g}: {x['disqualifying']} window sample(s) with throttle bits {x['bad_bits']}")
+        for name, key in (("0x200/0x400", "share_board"), ("0x4", "share_cap")):
+            if abs(x[key] - med[key]) > SHARE_TOL + EPS:
+                reasons.append(f"{run}: GPU {g}: share of {name} samples {x[key]:.2f} differs from the session median "
+                               f"{med[key]:.2f} by more than {SHARE_TOL}")
+    rec = {"rule": "sampler", "gpus": gpus, "disqualifying": sum(x["disqualifying"] for x in st.values()),
+           "samples": sum(x["samples"] for x in st.values())}
+    # the single before and after samples are recorded, not judged
+    rec["before_after"] = _p4.throttle_record(d, run)[1]
+    return reasons, rec
 
 
 # ---- runs ---------------------------------------------------------------------------------------------------
@@ -147,11 +290,13 @@ def run_status(d: Path, kind: str, run: str, engine: str = "") -> dict:
         else:
             pp, tg = r
             t = request_time(pp, tg)
-    reasons += [f"{run}: {x}" for x in throttle_reasons(d, run)]
+    thr, rec = sampler_judgement(d, run)
+    reasons += thr
     cot = read_json(d / f"cotenant-{run}.json")
     if isinstance(cot, dict) and cot.get("cotenant_ok") is False:
         reasons.append(f"{run}: co-tenant ({cot.get('cotenant_reason', '?')})")
-    return {"clean": not reasons, "failed": rc not in (0, None), "reasons": reasons, "pp": pp, "tg": tg, "t": t}
+    return {"clean": not reasons, "failed": rc not in (0, None), "reasons": reasons, "pp": pp, "tg": tg, "t": t,
+            "throttle": rec}
 
 
 def rounds_of(d: Path, kind: str, prefix: str) -> list[int]:
@@ -242,12 +387,17 @@ def measure_config(d: Path, model: str, cfg: tuple[str, str, str]) -> dict:
     return measure(d, "baseline", baseline_prefix(model, a, b), a)
 
 
-def round_order(d: Path, model: str, k: int, only: list[tuple[str, str, str]] | None = None) -> list[tuple[str, str, str]]:
-    """Case order rotated by k; round 2 reversed. Candidates that failed on the box twice are not run again."""
+def round_order(d: Path, model: str, k: int, only: list[tuple[str, str, str]] | None = None,
+                alternate: bool = False) -> list[tuple[str, str, str]]:
+    """Case order rotated by k; round 2 reversed. Candidates that failed on the box twice are not run again.
+    `alternate` (the ONLY knob, step-0 pairs): the given order in odd rounds, reversed in even ones, so two
+    configurations swap places every round (the rotation would repeat the order for two)."""
     cfgs = [c for c in (only if only is not None else configs(d, model))
             if not (c[0] == "tet" and measure_config(d, model, c)["failed_on_box"])]
     if not cfgs:
         return []
+    if alternate:
+        return cfgs if k % 2 else cfgs[::-1]
     if k == 2:
         return cfgs[::-1]
     r = k % len(cfgs)
@@ -442,7 +592,77 @@ def verdict(d: Path, noise_dir: Path = ROOT / "bench" / "noise", spec: Path = RO
         if s:
             shas[model] = s["sha256"]
         notes["unclean_runs"] += unclean
-    return {"band": band, "band_source": source, "predict_sha256": shas, "cases": cases, "phase5_pass": final_pass(cases)}, notes
+    return {"band": band, "band_source": source, "predict_sha256": shas, "cases": cases, "phase5_pass": final_pass(cases),
+            "throttle": throttle_record_of_session(d)}, notes
+
+
+def throttle_record_of_session(d: Path) -> dict:
+    """Per run (anchors excluded): the rule used, the shares per GPU against the session median, disqualifying and sample
+    counts (ADR 0068 addendum 2026-11-17)."""
+    runs = {}
+    for rc in sorted(d.glob("run-*.rc")):
+        run = rc.stem[len("run-") :]
+        if "-anchor-" not in run:
+            runs[run] = sampler_judgement(d, run)[1]
+    sess = session_sampler(d)
+    rules = {r["rule"] for r in runs.values()}
+    rule = "sampler" if rules == {"sampler"} else "single-sample" if rules <= {"single-sample"} else "mixed"
+    return {"rule": rule, "share_tolerance": SHARE_TOL,
+            "median_share": {str(g): m for g, m in (sess["median"] if sess else {}).items()}, "runs": runs}
+
+
+# ---- step-0 check (ADR 0069) ----------------------------------------------------------------------------------
+
+
+def parse_only(spec: str) -> list[tuple[str, str, str]]:
+    """The ONLY knob of phase5_box.sh: space-separated configuration ids. `tp-2` is a candidate (plan id), `engine:sm`
+    (for example `llama-bench:tensor`) a baseline."""
+    out = []
+    for tok in spec.split():
+        if ":" in tok:
+            e, sm = tok.split(":", 1)
+            out.append(("base", e, sm))
+        else:
+            out.append(("tet", tok, ""))
+    return out
+
+
+def step0(d: Path, spec: str, noise_dir: Path = ROOT / "bench" / "noise",
+          spec_path: Path = ROOT / "bench" / "spec" / "phase5.toml") -> dict:
+    """Own executor against the baseline of ONLY, per model and round (ADR 0069 "Step-0 check"): the ratios own / baseline
+    of pp and tg, from the pairs of rounds in which both runs are clean. Passes when every model has at least two clean
+    pairs and all their ratios are at least 1 - band; false when a clean ratio is below; null when pairs are missing."""
+    cfgs = parse_only(spec)
+    own = next((c for c in cfgs if c[0] == "tet"), None)
+    base = next((c for c in cfgs if c[0] == "base"), None)
+    env = read_json(d / "env.json") or {}
+    band, source = choose_band(env, noise_dir, spec_path)
+    models = {}
+    for m in models_in(d):
+        rounds = []
+        if own and base:
+            po, pb = f"{m}-{own[1]}", baseline_prefix(m, base[1], base[2])
+            ks = sorted(set(rounds_of(d, "bench", po)) & set(rounds_of(d, "baseline", pb)))
+            for k in ks:
+                ro = run_status(d, "bench", f"{po}-r{k}")
+                rb = run_status(d, "baseline", f"{pb}-r{k}", base[1])
+                clean = ro["clean"] and rb["clean"]
+                rounds.append({
+                    "round": k, "clean": clean,
+                    "own": {"pp_tps": ro["pp"], "tg_tps": ro["tg"]}, "baseline": {"pp_tps": rb["pp"], "tg_tps": rb["tg"]},
+                    "ratio_pp": ro["pp"] / rb["pp"] if clean else None, "ratio_tg": ro["tg"] / rb["tg"] if clean else None,
+                    "reasons": ro["reasons"] + rb["reasons"]})
+        good = [r for r in rounds if r["clean"]]
+        low = [r for r in good if min(r["ratio_pp"], r["ratio_tg"]) < 1 - band - EPS]
+        ok = False if low else (True if len(good) >= 2 else None)
+        models[m] = {"own": own[1] if own else None, "baseline": f"{base[1]}:{base[2]}" if base else None,
+                     "rounds": rounds, "clean_pairs": len(good),
+                     "ratio_pp_min": min((r["ratio_pp"] for r in good), default=None),
+                     "ratio_tg_min": min((r["ratio_tg"] for r in good), default=None), "ok": ok}
+    oks = [v["ok"] for v in models.values()]
+    passed = None if not oks else False if any(o is False for o in oks) else True if all(o is True for o in oks) else None
+    return {"band": band, "band_source": source, "threshold": 1 - band, "only": spec, "models": models,
+            "step0_pass": passed}
 
 
 def final_pass(cases: list[dict]) -> bool | None:
@@ -475,6 +695,8 @@ def main(argv=None) -> int:
     ap.add_argument("--round-order", nargs=2, metavar=("MODEL", "K"), help="print the configurations of round K and exit")
     ap.add_argument("--need-rerun", metavar="MODEL", help="print the gated configurations with fewer than two clean rounds")
     ap.add_argument("--only-need", action="store_true", help="with --round-order: only the configurations --need-rerun lists")
+    ap.add_argument("--only", metavar="IDS", help="with --round-order: only these configurations (tet ids, engine:sm); "
+                    "alone: write step0.json for them (ADR 0069 step-0 check)")
     ap.add_argument("--first", metavar="MODEL", help="print the first candidate of the case (the A/A run repeats it)")
     ap.add_argument("--p2p", metavar="FILE", help="print all|none|partial for a `nvidia-smi topo -p2p r` file and exit")
     ap.add_argument("--merge", nargs="+", type=Path, metavar="VERDICT")
@@ -504,7 +726,18 @@ def main(argv=None) -> int:
         return 0
     if a.round_order:
         model, k = a.round_order[0], int(a.round_order[1])
-        print(fmt(round_order(a.dir, model, k, need_rerun(a.dir, model) if a.only_need else None)))
+        if a.only:  # a shape the enumeration pruned, or a split mode the baseline refuses, is not run
+            have = configs(a.dir, model)
+            only = [c for c in parse_only(a.only) if c in have]
+        else:
+            only = need_rerun(a.dir, model) if a.only_need else None
+        print(fmt(round_order(a.dir, model, k, only, alternate=bool(a.only))))
+        return 0
+    if a.only:
+        v = step0(a.dir, a.only, a.noise_dir, a.spec)
+        (a.dir / "step0.json").write_text(json.dumps(v, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps({"step0_pass": v["step0_pass"], "band": v["band"],
+                          "models": {m: x["ok"] for m, x in v["models"].items()}}))
         return 0
     v, notes = verdict(a.dir, a.noise_dir, a.spec)
     (a.dir / "verdict.json").write_text(json.dumps(v, indent=2) + "\n", encoding="utf-8")

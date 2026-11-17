@@ -105,7 +105,7 @@ def test_all_pass(tmp_path):
 
 def test_schema_fields_of_the_adr(tmp_path):
     v, _, c = verdict(make(tmp_path / "d"), tmp_path)
-    assert set(v) == {"band", "band_source", "predict_sha256", "cases", "phase5_pass"}
+    assert set(v) == {"band", "band_source", "predict_sha256", "cases", "phase5_pass", "throttle"}
     assert set(c) == {"case", "model", "box_gpus", "gpu_class", "p2p", "comm_impl", "candidates", "pick", "winner_set",
                       "pick_ok", "prediction_ok", "baselines", "best_baseline", "baseline_ratio", "baseline_ok", "aa",
                       "clean", "reasons", "pass"}
@@ -415,3 +415,181 @@ def test_baseline_modes_gate(tmp_path):
     assert c["pass"] is None and "gate baseline_modes: failed" in c["reasons"]
     ok = make(tmp_path / "e", gates={"gpu_parity": "ok", "comm_probe": "ok", "baseline_modes": "ok"})
     assert verdict(ok, tmp_path)[2]["pass"] is True
+
+
+# ---- throttle by the session sampler (ADR 0068 addendum 2026-11-17) ----------------------------------------------
+
+from datetime import datetime, timedelta  # noqa: E402
+
+T0 = datetime(2026, 11, 17, 10, 0, 0)
+BOARD, CAP, IDLE = 0x600, 0x4, 0x1
+
+
+def sampler(d, shares=None, extra=None, gpus=(0, 1), windows=True, index_column=True):
+    """gpu-samples.csv for the runs of d (anchors excluded): one 100 s slot per run, one line per GPU per second.
+    shares(run, gpu) -> (share of 0x600, share of 0x4); extra(run, gpu) -> masks that replace the first samples."""
+    shares = shares or (lambda run, g: (0.5, 0.2))
+    lines = []
+    runs = sorted(p.stem[len("run-"):] for p in d.glob("run-*.rc"))
+    for i, run in enumerate(runs):
+        t = T0 + timedelta(seconds=200 * i)
+        if windows:
+            (d / f"window-{run}.json").write_text(json.dumps({
+                "start": t.strftime("%Y-%m-%dT%H:%M:%S"), "end": (t + timedelta(seconds=99)).strftime("%Y-%m-%dT%H:%M:%S")}))
+        for g in gpus:
+            board, cap = shares(run, g)
+            masks = [BOARD] * round(board * 100) + [CAP] * round(cap * 100)
+            masks += [IDLE] * (100 - len(masks))
+            ex = extra(run, g) if extra else []
+            masks[:len(ex)] = ex
+            for s, m in enumerate(masks):
+                ts = (t + timedelta(seconds=s)).strftime("%Y/%m/%d %H:%M:%S")
+                lines.append(f"{1e9 + s},{ts}.123,{m:#018x},100.0,1400,9000,60" + (f",{g}" if index_column else ""))
+    (d / "gpu-samples.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_equal_shares_on_two_gpus_are_clean(tmp_path):
+    d = make(tmp_path / "d")
+    sampler(d)
+    v, notes, c = verdict(d, tmp_path)
+    assert c["pass"] is True and not notes["unclean_runs"]
+    t = v["throttle"]
+    assert t["rule"] == "sampler" and t["median_share"]["1"] == {"share_board": 0.5, "share_cap": 0.2}
+    r = t["runs"][f"{MODEL}-tp-2-r1"]
+    assert r["rule"] == "sampler" and set(r["gpus"]) == {"0", "1"} and r["disqualifying"] == 0 and r["samples"] == 200
+    assert r["gpus"]["1"]["samples"] == 100 and r["gpus"]["1"]["share_board"] == 0.5 and r["gpus"]["1"]["share_cap"] == 0.2
+
+
+def test_one_run_off_the_median_on_one_gpu_is_unclean(tmp_path):
+    d = make(tmp_path / "d")
+    bad = f"{MODEL}-tp-2-r1"
+    sampler(d, lambda run, g: (0.8, 0.2) if (run, g) == (bad, 1) else (0.5, 0.2))  # 0.3 off on GPU 1 only
+    v, notes, c = verdict(d, tmp_path)
+    assert [u["run"] for u in notes["unclean_runs"]] == [bad]
+    assert "GPU 1" in notes["unclean_runs"][0]["reasons"][0] and "0x200/0x400" in notes["unclean_runs"][0]["reasons"][0]
+    assert c["pass"] is True  # two clean rounds of tp-2 are left
+    assert next(x for x in c["candidates"] if x["id"] == "tp-2")["measured"]["rounds_clean"] == 2
+    assert v["throttle"]["runs"][bad]["gpus"]["1"]["median_share_board"] == 0.5
+
+
+def test_cap_share_is_judged_separately_and_exactly_at_tolerance_passes(tmp_path):
+    d = make(tmp_path / "d")
+    bad = f"{MODEL}-single-r2"
+    sampler(d, lambda run, g: (0.5, 0.45) if (run, g) == (bad, 0) else (0.5, 0.2))
+    assert [u["run"] for u in verdict(d, tmp_path)[1]["unclean_runs"]] == [bad]
+    ok = make(tmp_path / "e")
+    sampler(ok, lambda run, g: (0.6, 0.3) if (run, g) == (bad, 0) else (0.5, 0.2))  # exactly 0.10 off
+    assert not verdict(ok, tmp_path)[1]["unclean_runs"]
+
+
+def test_a_disqualifying_sample_makes_the_run_unclean(tmp_path):
+    d = make(tmp_path / "d")
+    bad = f"{MODEL}-layer-2-r3"
+    sampler(d, extra=lambda run, g: [0x8 | BOARD] if (run, g) == (bad, 0) else [])
+    v, notes, c = verdict(d, tmp_path)
+    assert [u["run"] for u in notes["unclean_runs"]] == [bad]
+    assert "1 window sample(s) with throttle bits 0x8" in notes["unclean_runs"][0]["reasons"][0]
+    assert v["throttle"]["runs"][bad]["disqualifying"] == 1
+
+
+def test_without_a_csv_the_old_rule_applies(tmp_path):
+    d = make(tmp_path / "d")
+    write_run(d, "bench", f"{MODEL}-tp-2-r1", *MEAS["tp-2"], throttle="before: 0x4\nafter: 0x4\n")
+    v, notes, c = verdict(d, tmp_path)
+    assert v["throttle"]["rule"] == "single-sample" and v["throttle"]["runs"][f"{MODEL}-tp-2-r1"] == {"rule": "single-sample"}
+    assert [u["run"] for u in notes["unclean_runs"]] == [f"{MODEL}-tp-2-r1"]
+    assert "throttle reasons before" in notes["unclean_runs"][0]["reasons"][0]
+
+
+def test_with_sampler_data_a_cap_bit_before_does_not_disqualify(tmp_path):
+    d = make(tmp_path / "d")
+    write_run(d, "bench", f"{MODEL}-tp-2-r1", *MEAS["tp-2"], throttle="before: 0x4\nafter: 0x600\n")
+    sampler(d)
+    v, notes, _ = verdict(d, tmp_path)
+    assert not notes["unclean_runs"]
+    assert v["throttle"]["runs"][f"{MODEL}-tp-2-r1"]["before_after"]["before"] == ["0x4"]  # recorded, not judged
+
+
+def test_a_run_without_a_window_falls_back_to_its_single_samples(tmp_path):
+    d = make(tmp_path / "d")
+    sampler(d)
+    (d / f"window-{MODEL}-single-r1.json").unlink()
+    write_run(d, "bench", f"{MODEL}-single-r1", *MEAS["single"], throttle="before: 0x4\n")
+    v, notes, _ = verdict(d, tmp_path)
+    assert v["throttle"]["rule"] == "mixed" and v["throttle"]["runs"][f"{MODEL}-single-r1"]["rule"] == "single-sample"
+    assert [u["run"] for u in notes["unclean_runs"]] == [f"{MODEL}-single-r1"]
+
+
+def test_csv_without_index_column_counts_as_gpu_0(tmp_path):
+    d = make(tmp_path / "d")
+    sampler(d, gpus=(0,), index_column=False)
+    v, _, c = verdict(d, tmp_path)
+    assert c["pass"] is True and set(v["throttle"]["runs"][f"{MODEL}-tp-2-r1"]["gpus"]) == {"0"}
+
+
+def test_window_is_narrowed_by_avg_ns(tmp_path):
+    d = make(tmp_path / "d")
+    run = f"{MODEL}-tp-2-r1"
+    (d / f"window-{run}.json").write_text(json.dumps({"start": "2026-11-17T10:00:00", "end": "2026-11-17T10:01:39"}))
+    (d / f"bench-{run}.json").write_text(json.dumps([{"n_prompt": 2048, "n_gen": 0, "avg_ts": 1200.0, "avg_ns": 1_000_000_000},
+                                                      {"n_prompt": 0, "n_gen": 128, "avg_ts": 42.0, "avg_ns": 2_000_000_000}]))
+    a, b = p5.run_window(d, run)
+    assert (b - a).total_seconds() == 2 * 3 + 10 + 2  # 2 * sum(avg_ns) + 10 s, one second of slack each side
+    assert b == datetime(2026, 11, 17, 10, 1, 40)
+
+
+# ---- step-0 check (ADR 0069) ---------------------------------------------------------------------------------------
+
+
+def step0_of(d, tmp_path, only="tp-2 llama-bench:tensor"):
+    noise = tmp_path / "noise"
+    noise.mkdir(exist_ok=True)
+    return p5.step0(d, only, noise, ROOT / "bench" / "spec" / "phase5.toml")
+
+
+def test_step0_ratios_per_model_and_round(tmp_path):
+    d = make(tmp_path / "d", rounds=(1, 2))
+    v = step0_of(d, tmp_path)
+    m = v["models"][MODEL]
+    assert v["step0_pass"] is True and v["threshold"] == pytest.approx(0.92) and m["clean_pairs"] == 2 and m["ok"] is True
+    r = m["rounds"][0]
+    assert r["round"] == 1 and r["ratio_pp"] == pytest.approx(1.2) and r["ratio_tg"] == pytest.approx(42 / 36)
+    assert r["own"] == {"pp_tps": 1200.0, "tg_tps": 42.0} and m["baseline"] == "llama-bench:tensor" and m["own"] == "tp-2"
+
+
+def test_step0_one_rate_below_1_minus_band_fails(tmp_path):
+    d = make(tmp_path / "d", rounds=(1, 2), meas={**MEAS, "tp-2": (1200.0, 32.0)})  # tg 32 / 36 = 0.89 < 0.92
+    v = step0_of(d, tmp_path)
+    assert v["step0_pass"] is False and v["models"][MODEL]["ratio_tg_min"] == pytest.approx(32 / 36)
+    ok = make(tmp_path / "e", rounds=(1, 2), meas={**MEAS, "tp-2": (1200.0, 33.5)})  # 0.93: inside the band
+    assert step0_of(ok, tmp_path)["step0_pass"] is True
+
+
+def test_step0_unclean_pair_is_not_judged_and_missing_pairs_give_null(tmp_path):
+    d = make(tmp_path / "d", rounds=(1, 2))
+    write_run(d, "bench", f"{MODEL}-tp-2-r2", 1.0, 1.0, throttle="before: 0x8\n")  # unclean, awful rates
+    v = step0_of(d, tmp_path)
+    m = v["models"][MODEL]
+    assert m["clean_pairs"] == 1 and m["ok"] is None and v["step0_pass"] is None
+    assert m["rounds"][1]["clean"] is False and m["rounds"][1]["ratio_pp"] is None
+
+
+def test_step0_cli_writes_step0_json_and_not_verdict(tmp_path):
+    d = make(tmp_path / "d", rounds=(1, 2))
+    assert p5.main([str(d), "--only", "tp-2 llama-bench:tensor", "--spec", str(ROOT / "bench" / "spec" / "phase5.toml"),
+                    "--noise-dir", str(tmp_path / "none")]) == 0
+    assert json.loads((d / "step0.json").read_text())["step0_pass"] is True and not (d / "verdict.json").exists()
+
+
+def test_only_filters_the_round_order_and_alternates(tmp_path, capsys):
+    d = make(tmp_path / "d")
+
+    def order(k):
+        p5.main([str(d), "--round-order", MODEL, str(k), "--only", "tp-2 llama-bench:tensor ep-2 llama-bench:nonexistent"])
+        return capsys.readouterr().out.splitlines()
+
+    assert order(1) == ["tet tp-2", "base llama-bench tensor"]  # ep-2 is pruned, nonexistent is not accepted
+    assert order(2) == ["base llama-bench tensor", "tet tp-2"]
+    assert order(3) == ["tet tp-2", "base llama-bench tensor"]
+    p5.main([str(d), "--round-order", MODEL, "1"])  # ONLY unset: the full rotation
+    assert len(capsys.readouterr().out.splitlines()) == 6
