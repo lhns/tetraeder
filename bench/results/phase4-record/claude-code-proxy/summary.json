@@ -1,0 +1,286 @@
+{
+  "engines": {
+    "llama-server": {
+      "runs": 5,
+      "successes": 3,
+      "success_rate": 0.6,
+      "per_task": {
+        "explain-parser": {
+          "runs": 1,
+          "successes": 1,
+          "rate": 1.0
+        },
+        "feature-late-fee": {
+          "runs": 1,
+          "successes": 1,
+          "rate": 1.0
+        },
+        "feature-split-evenly": {
+          "runs": 1,
+          "successes": 0,
+          "rate": 0.0
+        },
+        "fix-eom-leap": {
+          "runs": 1,
+          "successes": 1,
+          "rate": 1.0
+        },
+        "fix-rounding": {
+          "runs": 1,
+          "successes": 0,
+          "rate": 0.0
+        }
+      },
+      "turns_median": 12,
+      "timeouts": 0,
+      "is_error_sessions": 0,
+      "non_200_requests": 0,
+      "protocol_errors": 0,
+      "requests": 74,
+      "ttft_median_s": 0.25,
+      "ttft_p90_s": 0.935,
+      "decode_tok_s_median": 145.268,
+      "input_tokens_total": 91265,
+      "output_tokens_total": 19082,
+      "cache_read_tokens_total": 1213811,
+      "wall_s_median": 29.5,
+      "wall_s_total": 191.3,
+      "tool_uses_total": 69,
+      "tool_errors_by_class": {
+        "bash_exit": 5
+      },
+      "tool_names_unknown_total": 0,
+      "leaked_markers_total": 0,
+      "tool_error_rate": 0.072,
+      "call_error_rate": 0.0,
+      "toolcall_outcomes": null
+    },
+    "tetraeder": {
+      "runs": 5,
+      "successes": 4,
+      "success_rate": 0.8,
+      "per_task": {
+        "explain-parser": {
+          "runs": 1,
+          "successes": 1,
+          "rate": 1.0
+        },
+        "feature-late-fee": {
+          "runs": 1,
+          "successes": 1,
+          "rate": 1.0
+        },
+        "feature-split-evenly": {
+          "runs": 1,
+          "successes": 1,
+          "rate": 1.0
+        },
+        "fix-eom-leap": {
+          "runs": 1,
+          "successes": 1,
+          "rate": 1.0
+        },
+        "fix-rounding": {
+          "runs": 1,
+          "successes": 0,
+          "rate": 0.0
+        }
+      },
+      "turns_median": 10,
+      "timeouts": 0,
+      "is_error_sessions": 1,
+      "non_200_requests": 6,
+      "protocol_errors": 7,
+      "requests": 71,
+      "ttft_median_s": 0.222,
+      "ttft_p90_s": 3.112,
+      "decode_tok_s_median": 143.059,
+      "input_tokens_total": 85373,
+      "output_tokens_total": 17501,
+      "cache_read_tokens_total": 990055,
+      "wall_s_median": 32.3,
+      "wall_s_total": 174.5,
+      "tool_uses_total": 61,
+      "tool_errors_by_class": {
+        "bash_exit": 5,
+        "file": 1
+      },
+      "tool_names_unknown_total": 0,
+      "leaked_markers_total": 0,
+      "tool_error_rate": 0.098,
+      "call_error_rate": 0.0,
+      "toolcall_outcomes": {
+        "parsed/ok": 61
+      }
+    }
+  },
+  "comparison": {
+    "explain-parser": {
+      "llama-server": {
+        "runs": 1,
+        "successes": 1,
+        "turns_median": 3,
+        "wall_s_median": 11.0,
+        "requests": 3,
+        "ttft_median_s": 0.462,
+        "decode_tok_s_median": 152.976
+      },
+      "tetraeder": {
+        "runs": 1,
+        "successes": 1,
+        "turns_median": 4,
+        "wall_s_median": 13.2,
+        "requests": 4,
+        "ttft_median_s": 0.435,
+        "decode_tok_s_median": 148.814
+      },
+      "wall_ratio_tetraeder_over_llama": 1.2,
+      "decode_ratio_tetraeder_over_llama": 0.973
+    },
+    "feature-late-fee": {
+      "llama-server": {
+        "runs": 1,
+        "successes": 1,
+        "turns_median": 30,
+        "wall_s_median": 86.5,
+        "requests": 30,
+        "ttft_median_s": 0.286,
+        "decode_tok_s_median": 134.247
+      },
+      "tetraeder": {
+        "runs": 1,
+        "successes": 1,
+        "turns_median": 27,
+        "wall_s_median": 75.7,
+        "requests": 27,
+        "ttft_median_s": 0.191,
+        "decode_tok_s_median": 135.944
+      },
+      "wall_ratio_tetraeder_over_llama": 0.875,
+      "decode_ratio_tetraeder_over_llama": 1.013
+    },
+    "feature-split-evenly": {
+      "llama-server": {
+        "runs": 1,
+        "successes": 0,
+        "turns_median": 12,
+        "wall_s_median": 28.0,
+        "requests": 12,
+        "ttft_median_s": 0.259,
+        "decode_tok_s_median": 148.729
+      },
+      "tetraeder": {
+        "runs": 1,
+        "successes": 1,
+        "turns_median": 16,
+        "wall_s_median": 34.5,
+        "requests": 20,
+        "ttft_median_s": 0.274,
+        "decode_tok_s_median": 143.879
+      },
+      "wall_ratio_tetraeder_over_llama": 1.232,
+      "decode_ratio_tetraeder_over_llama": 0.967
+    },
+    "fix-eom-leap": {
+      "llama-server": {
+        "runs": 1,
+        "successes": 1,
+        "turns_median": 11,
+        "wall_s_median": 29.5,
+        "requests": 11,
+        "ttft_median_s": 0.155,
+        "decode_tok_s_median": 150.733
+      },
+      "tetraeder": {
+        "runs": 1,
+        "successes": 1,
+        "turns_median": 10,
+        "wall_s_median": 32.3,
+        "requests": 10,
+        "ttft_median_s": 0.294,
+        "decode_tok_s_median": 140.772
+      },
+      "wall_ratio_tetraeder_over_llama": 1.095,
+      "decode_ratio_tetraeder_over_llama": 0.934
+    },
+    "fix-rounding": {
+      "llama-server": {
+        "runs": 1,
+        "successes": 0,
+        "turns_median": 18,
+        "wall_s_median": 36.3,
+        "requests": 18,
+        "ttft_median_s": 0.191,
+        "decode_tok_s_median": 145.268
+      },
+      "tetraeder": {
+        "runs": 1,
+        "successes": 0,
+        "turns_median": 10,
+        "wall_s_median": 18.9,
+        "requests": 10,
+        "ttft_median_s": 0.16,
+        "decode_tok_s_median": 148.869
+      },
+      "wall_ratio_tetraeder_over_llama": 0.521,
+      "decode_ratio_tetraeder_over_llama": 1.025
+    }
+  },
+  "decode_by_depth": [
+    {
+      "depth_from": 10000,
+      "depth_to": 20000,
+      "llama-server": {
+        "n": 50,
+        "tok_s_median": 150.555
+      },
+      "tetraeder": {
+        "n": 49,
+        "tok_s_median": 145.696
+      },
+      "ratio_tetraeder_over_llama": 0.968
+    },
+    {
+      "depth_from": 20000,
+      "depth_to": 30000,
+      "llama-server": {
+        "n": 24,
+        "tok_s_median": 130.147
+      },
+      "tetraeder": {
+        "n": 12,
+        "tok_s_median": 125.755
+      },
+      "ratio_tetraeder_over_llama": 0.966
+    }
+  ],
+  "server_decode": {
+    "llama-server": {
+      "requests": 74,
+      "tok_s_median": 142.462
+    },
+    "tetraeder": {
+      "requests": 65,
+      "tok_s_median": 142.565,
+      "ms_per_token_median": {
+        "eval": 6.8216,
+        "sample": 0.1901,
+        "emit": 0.0035,
+        "gateway": 0.002
+      },
+      "backend_counters_total": {
+        "steps": 17501.0,
+        "graphs": 17501.0,
+        "step_graphs_built": 130.0,
+        "inputs_s": 1.347,
+        "build_s": 0.056,
+        "alloc_s": 0.119,
+        "compute_s": 121.413,
+        "readback_s": 0.008,
+        "streamer_s": 0.0,
+        "total_s": 122.946
+      }
+    },
+    "ratio_tetraeder_over_llama": 1.001
+  }
+}
