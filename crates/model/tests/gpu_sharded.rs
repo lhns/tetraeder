@@ -1,5 +1,5 @@
-//! The sharded dense builder on CUDA (ADR 0069, 0070, 0071, brief E6): one GPU rank against the
-//! scheduler path bit for bit, then every shape against `single` on Qwen3-8B Q4_K_M.
+//! The sharded dense builder on CUDA (ADR 0069, 0070, 0071, 0075, brief E6): one GPU rank against
+//! the scheduler path bit for bit, then every shape against `single` on Qwen3-8B Q4_K_M.
 //!
 //! Hardware labels: `gpu_` (one GPU), `gpu2_` (two), `gpu4_` (four). A missing GPU skips; with
 //! `TETRAEDER_REQUIRE_GPUS=<n>` it fails (`Backend::require_gpus`). The model comes from
@@ -12,8 +12,12 @@ mod common;
 use common::multi_seq::max_diff;
 use common::shapes::{layer_g, single, tp, tp2pp2};
 use common::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tetraeder_ggml_sys::ggml::Backend;
+use tetraeder_ggml_sys::llama::{
+    Batch, Context, ContextParams, FlashAttn, Model, ModelParams, SplitMode,
+};
 use tetraeder_model::{BackendChoice, DenseOptions, Qwen3};
 use tetraeder_plan::Topology;
 
@@ -47,7 +51,10 @@ fn bits(v: &[f32]) -> Vec<u32> {
 }
 
 /// hardware: gpu, model. One GPU rank on the executor equals the scheduler path bit for bit:
-/// the logits of every prompt position and 64 greedy tokens.
+/// the logits of every prompt position and 64 greedy tokens (the scheduler's, teacher forced).
+/// Ranges are views of the rank graph (ADR 0075), so the executor runs the scheduler's fused
+/// kernels; the 6-token prompt and the decode steps stay on MMVQ, where no fusion needs the
+/// scheduler's `graph_optimize`. Every row is printed before the assertion.
 #[test]
 fn gpu_one_rank_is_bit_equal_to_the_scheduler() {
     if !Backend::gpu_available() {
@@ -68,47 +75,151 @@ fn gpu_one_rank_is_bit_equal_to_the_scheduler() {
     assert_eq!(a.n_ranks(), 1);
     assert_eq!(b.n_ranks(), 1);
     assert!(a.comm_path().is_none() && b.comm_path().is_some());
+    let nv = a.n_vocab();
+    let mut fails = Vec::new();
     let (la, lb) = (a.eval(&PROMPT).unwrap(), b.eval(&PROMPT).unwrap());
-    eprintln!("prompt: max |delta| {:e}", max_diff(&la, &lb));
-    assert_eq!(bits(&la), bits(&lb), "prompt logits");
+    for p in 0..PROMPT.len() {
+        let (x, y) = (&la[p * nv..(p + 1) * nv], &lb[p * nv..(p + 1) * nv]);
+        let d = max_diff(x, y);
+        eprintln!(
+            "prompt position {p}: max |delta| {d:e} ({:.2e} of largest), bit-equal {}",
+            d / largest(x),
+            bits(x) == bits(y)
+        );
+        if bits(x) != bits(y) {
+            fails.push(format!("prompt position {p}: max |delta| {d:e}"));
+        }
+    }
     a.reset();
     b.reset();
     let mut la = a.eval_last(&PROMPT).unwrap();
     let mut lb = b.eval_last(&PROMPT).unwrap();
     for step in 0..N_TOKENS {
-        assert_eq!(bits(&la), bits(&lb), "step {step}");
+        let (d, equal) = (max_diff(&la, &lb), bits(&la) == bits(&lb));
+        if step % 16 == 0 || !equal {
+            eprintln!(
+                "step {step}: max |delta| {d:e} ({:.2e} of largest), bit-equal {equal}",
+                d / largest(&la)
+            );
+        }
+        if !equal {
+            fails.push(format!("step {step}: max |delta| {d:e}"));
+        }
         let t = argmax(&la) as i32;
         la = a.eval_last(&[t]).unwrap();
         lb = b.eval_last(&[t]).unwrap();
     }
+    assert!(fails.is_empty(), "{}", fails.join("\n"));
 }
 
-/// Top-5 of `want` within `GPU_TOL` in `got`.
-fn top5_gap(got: &[f32], want: &[f32]) -> (f32, f32) {
+/// Top-5 of `want` in `got`: the worst |delta| and its bound `tol.of(want)`.
+fn top5_gap(got: &[f32], want: &[f32], tol: Tol) -> (f32, f32) {
     let worst = top_k(want, TOP_K)
         .into_iter()
         .map(|i| (got[i] - want[i]).abs())
         .fold(0f32, f32::max);
-    (worst, GPU_TOL.of(want))
+    (worst, tol.of(want))
+}
+
+/// The prompt's logits and the logits before each of `tokens` (teacher forced, the first is
+/// the prompt's last row) from libllama with every layer on the GPU: `SplitMode::None` on GPU
+/// 0, or `SplitMode::Tensor` over every visible GPU (`-sm tensor`, ADR 0069's step-0 baseline).
+fn libllama_run(path: &Path, split: SplitMode, tokens: &[i32]) -> (Vec<f32>, Vec<Vec<f32>>) {
+    let model = Arc::new(
+        Model::load(
+            path,
+            &ModelParams {
+                n_gpu_layers: -1,
+                split_mode: split,
+                main_gpu: 0,
+                ..ModelParams::default()
+            },
+        )
+        .expect("libllama loads the model"),
+    );
+    let nv = model.n_vocab() as usize;
+    let mut ctx = Context::new(
+        &model,
+        &ContextParams {
+            n_ctx: 512,
+            n_batch: 64,
+            n_ubatch: 64,
+            flash_attn: FlashAttn::On,
+            ..ContextParams::default()
+        },
+    )
+    .expect("libllama context");
+    let mut batch = Batch::new(64);
+    for (i, &t) in PROMPT.iter().enumerate() {
+        batch.push(t, i as i32, 0, true).unwrap();
+    }
+    ctx.decode(&batch).unwrap();
+    let mut prompt = Vec::with_capacity(PROMPT.len() * nv);
+    for i in 0..PROMPT.len() {
+        prompt.extend_from_slice(ctx.logits_ith(i as i32).unwrap());
+    }
+    let mut steps = vec![prompt[(PROMPT.len() - 1) * nv..].to_vec()];
+    let fed = &tokens[..tokens.len().saturating_sub(1)];
+    for (k, &t) in fed.iter().enumerate() {
+        batch.clear();
+        batch.push(t, (PROMPT.len() + k) as i32, 0, true).unwrap();
+        ctx.decode(&batch).unwrap();
+        steps.push(ctx.logits_ith(-1).unwrap().to_vec());
+    }
+    (prompt, steps)
+}
+
+/// libllama's own tensor-parallel gap on this model and box (ADR 0071's anchored rule for real
+/// models, 2026-11-16 addendum): `-sm tensor` against one GPU on the same tokens, the worst
+/// top-5 |delta| of a row as a share of its largest logit. The tensor-parallel shapes are
+/// bounded by max(`GPU_TOL`, 1.5x this share); the anchor's split degree is every visible GPU.
+fn libllama_tp_anchor(path: &Path, tokens: &[i32]) -> f32 {
+    let (p1, s1) = libllama_run(path, SplitMode::None, tokens);
+    let (pt, st) = libllama_run(path, SplitMode::Tensor, tokens);
+    let nv = s1[0].len();
+    let mut worst = 0f32;
+    let mut row = |name: String, got: &[f32], want: &[f32], print: bool| {
+        let (d, _) = top5_gap(got, want, GPU_TOL);
+        let rel = d / largest(want);
+        worst = worst.max(rel);
+        if print {
+            let top1 = argmax(got) == argmax(want);
+            eprintln!(
+                "libllama tensor / one GPU: {name}: top-5 max |delta| {d:e}                  ({rel:.2e} of largest), top-1 equal {top1}"
+            );
+        }
+    };
+    for p in 0..PROMPT.len() {
+        let r = p * nv..(p + 1) * nv;
+        row(format!("prompt position {p}"), &pt[r.clone()], &p1[r], true);
+    }
+    for (k, (g, w)) in st.iter().zip(&s1).enumerate() {
+        row(format!("step {k}"), g, w, k % 16 == 0);
+    }
+    eprintln!("libllama tensor / one GPU: worst {worst:.2e} of the largest logit");
+    worst
 }
 
 /// One shape against `single` on the model: the prompt's logits and 64 greedy tokens, teacher
-/// forced with the reference's, top-5 within `GPU_TOL` and the greedy token equal or a near tie
+/// forced with the reference's, top-5 within `tol` and the greedy token equal or a near tie
 /// (twice the bound). Returns the failures; ranges per decode token are checked against ADR
 /// 0070 for a tensor stage.
 fn check_shape(
     path: &std::path::Path,
     name: &str,
     topo: &Topology,
+    tol: Tol,
     want_prompt: &[f32],
     want_steps: &[(i32, Vec<f32>)],
 ) -> Vec<String> {
     let mut fails = Vec::new();
     let mut m = Qwen3::load_sharded(path, topo, &opts()).unwrap();
     eprintln!(
-        "{name}: {} ranks, all-reduce path {:?}",
+        "{name}: {} ranks, all-reduce path {:?}, bound max({:e}, {:.2e} of the largest logit)",
         m.n_ranks(),
-        m.comm_path()
+        m.comm_path(),
+        tol.abs,
+        tol.rel
     );
     let nv = m.n_vocab();
     let got = m.eval(&PROMPT).unwrap();
@@ -117,7 +228,7 @@ fn check_shape(
             &got[p * nv..(p + 1) * nv],
             &want_prompt[p * nv..(p + 1) * nv],
         );
-        let (d, bound) = top5_gap(g, w);
+        let (d, bound) = top5_gap(g, w, tol);
         eprintln!("{name}: prompt position {p}: top-5 max |delta| {d:e}, bound {bound:e}");
         if d > bound {
             fails.push(format!("{name}: position {p}: {d} > {bound}"));
@@ -127,7 +238,7 @@ fn check_shape(
     let mut logits = m.eval_last(&PROMPT).unwrap();
     m.reset_exec_counters();
     for (k, (t, want)) in want_steps.iter().enumerate() {
-        let (d, bound) = top5_gap(&logits, want);
+        let (d, bound) = top5_gap(&logits, want, tol);
         let (g, w) = (argmax(&logits), argmax(want));
         if k % 16 == 0 || d > bound || g != w {
             eprintln!(
@@ -170,6 +281,10 @@ fn check_shape(
     fails
 }
 
+/// Every shape against `single`. A shape with a tensor stage sums partial results across ranks
+/// (other rounding than one rank's matmul, in F32 for these sizes: NCCL reduces in BF16 only
+/// from 32768 elements on two ranks, `ggml-cuda.cu:1349`), so it is bounded by libllama's own
+/// tensor-parallel gap; layer shapes compute what `single` computes and keep `GPU_TOL`.
 fn shapes_against_single(shapes: Vec<(String, Topology)>) {
     let Some(path) = model() else { return };
     let mut one = Qwen3::load_sharded(&path, &single(36), &opts()).unwrap();
@@ -185,10 +300,25 @@ fn shapes_against_single(shapes: Vec<(String, Topology)>) {
         logits = next;
     }
     drop(one);
+    let has_tp = shapes
+        .iter()
+        .any(|(_, t)| t.stages.iter().any(|s| s.ranks.len() > 1));
+    let tp_tol = if has_tp {
+        let tokens: Vec<i32> = steps.iter().map(|(t, _)| *t).collect();
+        let own = libllama_tp_anchor(&path, &tokens);
+        Tol {
+            abs: TOL_GPU,
+            rel: GPU_TOL.rel.max(1.5 * own),
+        }
+    } else {
+        GPU_TOL
+    };
     let mut fails = Vec::new();
     for (name, topo) in &shapes {
         assert_eq!(topo.n_layer, n_layer);
-        fails.extend(check_shape(&path, name, topo, &want_prompt, &steps));
+        let tensor = topo.stages.iter().any(|s| s.ranks.len() > 1);
+        let tol = if tensor { tp_tol } else { GPU_TOL };
+        fails.extend(check_shape(&path, name, topo, tol, &want_prompt, &steps));
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));
 }

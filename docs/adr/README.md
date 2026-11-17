@@ -78,3 +78,4 @@ One file per decision: Status, Context, Decision, Consequences. Do not change an
 | [0072](0072-dense-builder-cpu-weights-in-extra-buffer-types.md) | Proposed | Dense builder: CPU weights in libllama's extra buffer types (supersedes 0039 for the dense builder) |
 | [0073](0073-engine-pin-b12426.md) | Proposed | Engine pin moves to llama.cpp b12426 before the Phase 4 verdict |
 | [0074](0074-prefix-save-through-pinned-staging.md) | Proposed | Prefix-cache save on a GPU reads through a reused pinned staging pair |
+| [0075](0075-executor-ranges-are-graph-views.md) | Proposed | Executor ranges are views of the rank graph (patch 0005) |
