@@ -252,6 +252,7 @@ def main(argv=None) -> int:
     if args.limit:
         entries = entries[: args.limit]
     out = asyncio.run(replay(args, entries))
+    out["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")  # box local time, as the nvidia-smi timestamp column
     out["params"] = {
         "base_url": args.base_url, "log": args.log, "speed": args.speed, "concurrency": args.concurrency,
         "max_prompt_tokens": args.max_prompt_tokens, "skipped": skipped, "requests": len(entries),

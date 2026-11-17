@@ -78,6 +78,14 @@ log="${P4_LOG_FILE:-runs/vast/phase4_box.log}"
 session="${SESSION:-$(date +%Y%m%d)}"
 out="${P4_OUT:-$PWD/bench/results/$session/phase4}"
 mkdir -p "$out" "$(dirname "$log")"
+# 1 Hz GPU sampler for the whole session (ADR 0065 addendum; scripts/gpu_sampler.sh -> $out/gpu-samples.csv); not in the
+# CPU rehearsal. It ends on $out/gpu-sampler.stop or when this script is gone.
+if [ "$DRY" = 1 ]; then
+  [ "$skip_gpu" = 1 ] || echo "PLAN gpu_sampler.sh -> gpu-samples.csv (stopped at the end)"
+elif [ "$skip_gpu" != 1 ]; then
+  OUT="$out" SAMPLER_PARENT=$$ setsid nohup bash scripts/gpu_sampler.sh 8>&- > /dev/null 2>&1 &
+fi
+stop_sampler() { [ "$DRY" = 1 ] || touch "$out/gpu-sampler.stop"; }
 t_start=$(date +%s)
 if [ "$DRY" = 1 ]; then threads="${THREADS:-8}"; else threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"; fi
 budget_s=$((${BUDGET_MIN:-150} * 60))
@@ -125,6 +133,7 @@ engine_flag() { echo "${1#tetraeder-}"; } # tetraeder-dense -> dense
 die() {
   say "FATAL: $*"
   stop_server
+  stop_sampler
   touch "$out/DONE"
   say "PHASE4_BOX_DONE rc=1"
   exit 1
@@ -635,6 +644,7 @@ main() {
   say "STAGE summary"
   summary
   rc=$?
+  stop_sampler
   touch "$out/DONE"
   say "PHASE4_BOX_DONE rc=$rc"
   return $rc
@@ -643,6 +653,7 @@ main() {
 # The stop rule ended the session: nothing timed ran beyond the probe; the driver fetches and destroys the box.
 stop_session() {
   stop_server
+  stop_sampler
   touch "$out/DONE"
   say "PHASE4_BOX_DONE rc=3"
 }

@@ -10,6 +10,8 @@
 Input files in DIR (names fixed by the ADR): bench-<model>-<engine>-<c1|c4>-r<rep>.json, prepass-<model>-<kvu|nokvu>.json,
 replay-<model>-<on|off>-r<rep>.json, gpu-<run>.txt (lines `before: <hex>` / `after: <hex>`, the clocks_throttle_reasons
 bitmask; `power-before: <limit>, <draw>` / `power-after: ...` are copied to verdict.json as is), server-*.log, env.json. A run is `<model>-<engine>-r<rep>`; replay runs are `replay-<model>-<on|off>-r<rep>`.
+gpu-samples.csv (scripts/gpu_sampler.sh, optional): with it a pair is judged on the share of window samples carrying
+0x200 or 0x400 (ADR 0065 addendum) instead of the single before sample; verdict.json records the rule per pair.
 Reps 1 and 2 are the judged pairs: rep 1 runs (baseline, Tetraeder), rep 2 (Tetraeder, baseline). Rep 3 is the one
 rerun pair of phase4_box.sh when rep 1 or 2 is unclean (errors, throttle, co-tenant, a missing result); the judged pairs
 are then the first two CLEAN pairs. Anything missing makes the pair unclean (a reason is recorded) and the verdict
@@ -27,6 +29,7 @@ import json
 import re
 import sys
 import tomllib
+from datetime import datetime, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -41,6 +44,15 @@ JUDGED = {"q8b": ("tetraeder-dense", None), "q30b": ("tetraeder-moe", "tetraeder
 # clocks_throttle_reasons bits that are fine: GPU idle (0x1) and applications clocks setting (0x2) before a run; after a
 # run also the SW power cap (0x4), which the card's own load sets (ADR 0065, addendum). Everything else is unclean.
 BENIGN_THROTTLE = {"before": 0x3, "after": 0x7}
+# With sampler data (gpu-samples.csv, ADR 0065 addendum "BoardLimit and Reliability bits judged under load"): 0x200
+# (BoardLimit) and 0x400 (Reliability) no longer disqualify the single "before" sample; they are judged by their share
+# of the samples in the measured window instead.
+BOARD_BITS = 0x200 | 0x400
+SAMPLER_BEFORE = BENIGN_THROTTLE["before"] | BOARD_BITS
+# bits that are fine in a window sample; anything else (0x8 HW slowdown, 0x20 SW thermal, 0x40 HW thermal, 0x80 power
+# brake, unknown) makes the run unclean
+WINDOW_OK = 0x1 | 0x2 | 0x4 | 0x100 | BOARD_BITS
+SHARE_TOL = 0.10  # max difference of the two sides' shares of samples with a board bit
 
 
 def _load_bench():
@@ -87,9 +99,10 @@ def choose_band(d: Path, noise_dir: Path, spec_path: Path) -> tuple[float, str]:
 # ---- runs ---------------------------------------------------------------------------------------------------
 
 
-def throttle_record(d: Path, run: str) -> tuple[list[str], dict]:
+def throttle_record(d: Path, run: str, relaxed: bool = False) -> tuple[list[str], dict]:
     """(reasons the throttle record of a run is unclean, the raw record). The record keeps the hex values per GPU
-    (`before`, `after`) and the raw `power-before` / `power-after` lines (`power.limit, power.draw`) as written."""
+    (`before`, `after`) and the raw `power-before` / `power-after` lines (`power.limit, power.draw`) as written.
+    `relaxed`: the pair has sampler data, so 0x200 and 0x400 do not disqualify the before sample."""
     p = d / f"gpu-{run}.txt"
     rec: dict = {"before": [], "after": [], "power_before": [], "power_after": []}
     try:
@@ -112,18 +125,95 @@ def throttle_record(d: Path, run: str) -> tuple[list[str], dict]:
             if not any(r.startswith(when) for r in bad):
                 out.append(f"no {when} throttle record")
         for v in vals:
-            if v & ~BENIGN_THROTTLE[when]:
+            ok = SAMPLER_BEFORE if relaxed and when == "before" else BENIGN_THROTTLE[when]
+            if v & ~ok:
                 out.append(f"throttle reasons {when} the run: {v:#x}")
     return out, rec
 
 
-def throttle_reasons(d: Path, run: str) -> list[str]:
+def throttle_reasons(d: Path, run: str, relaxed: bool = False) -> list[str]:
     """Reasons the throttle record of a run is unclean; empty when before shows only idle / app clocks and after
     also at most the SW power cap."""
-    return throttle_record(d, run)[0]
+    return throttle_record(d, run, relaxed)[0]
 
 
-def run_reasons(d: Path, model: str, engine: str, rep: int) -> tuple[list[str], dict]:
+# ---- sampler ------------------------------------------------------------------------------------------------
+
+
+def load_samples(d: Path) -> list[tuple[datetime, int]] | None:
+    """(time, reasons mask) per line of gpu-samples.csv (`epoch,timestamp,reasons,...`, scripts/gpu_sampler.sh); the
+    time is nvidia-smi's naive box-local timestamp, the same clock as the result files' `finished`. None when there is
+    no file or no readable line."""
+    try:
+        text = (d / "gpu-samples.csv").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    out = []
+    for line in text.splitlines():
+        f = [x.strip() for x in line.split(",")]
+        if len(f) < 3:
+            continue
+        try:
+            t = datetime.strptime(f[1].split(".")[0], "%Y/%m/%d %H:%M:%S")
+            out.append((t, int(f[2], 16)))
+        except ValueError:
+            continue
+    return out or None
+
+
+def result_window(j: dict | None) -> tuple[datetime, datetime] | None:
+    """Measured window of a bench or replay result: it ends at `finished` (replay and new bench files) or `started`
+    (older bench files stamp it after the run) and lasts wall_s. One second of slack each side for the stamp's
+    truncation."""
+    if not j:
+        return None
+    wall = (j.get("summary") or {}).get("wall_s", j.get("wall_s"))
+    stamp = j.get("finished") or j.get("started")
+    if not isinstance(wall, (int, float)) or not stamp:
+        return None
+    try:
+        end = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+    return end - timedelta(seconds=wall + 1), end + timedelta(seconds=1)
+
+
+def window_stats(samples: list[tuple[datetime, int]] | None, windows: list) -> dict | None:
+    """{samples, share, disqualifying, bad_bits} for the samples inside any of the windows (share: fraction carrying
+    0x200 or 0x400; disqualifying: samples with a bit outside WINDOW_OK). None without sampler data for the run."""
+    ws = [w for w in windows if w]
+    if samples is None or not ws:
+        return None
+    inside = [m for t, m in samples if any(a <= t <= b for a, b in ws)]
+    if not inside:
+        return None
+    bad, bits = 0, 0
+    for m in inside:
+        if m & ~WINDOW_OK:
+            bad += 1
+            bits |= m & ~WINDOW_OK
+    return {
+        "samples": len(inside),
+        "share": sum(1 for m in inside if m & BOARD_BITS) / len(inside),
+        "disqualifying": bad,
+        "bad_bits": f"{bits:#x}",
+    }
+
+
+def pair_sampler(a: dict | None, b: dict | None) -> tuple[bool, list[str]]:
+    """(the sampler rule applies, its reasons). It needs data for both sides; otherwise the old rule."""
+    if a is None or b is None:
+        return False, []
+    out = []
+    if abs(a["share"] - b["share"]) > SHARE_TOL + EPS:
+        out.append(f"board-limit share differs: {a['share']:.2f} vs {b['share']:.2f} (> {SHARE_TOL})")
+    for who, x in (("first", a), ("second", b)):
+        if x["disqualifying"]:
+            out.append(f"{who} side: {x['disqualifying']} window sample(s) with throttle bits {x['bad_bits']}")
+    return True, out
+
+
+def run_reasons(d: Path, model: str, engine: str, rep: int, relaxed: bool = False) -> tuple[list[str], dict]:
     """(reasons the run is unclean, {test: result json}) for one server start."""
     run = f"{model}-{engine}-r{rep}"
     res, reasons = {}, []
@@ -138,8 +228,26 @@ def run_reasons(d: Path, model: str, engine: str, rep: int) -> tuple[list[str], 
             reasons.append(f"{run} {test}: errors={errs}")
         if j.get("cotenant_ok") is False:
             reasons.append(f"{run} {test}: co-tenant ({j.get('cotenant_reason', '?')})")
-    reasons += [f"{run}: {r}" for r in throttle_reasons(d, run)]
+    reasons += [f"{run}: {r}" for r in throttle_reasons(d, run, relaxed)]
     return reasons, res
+
+
+def run_sampler(d: Path, model: str, engine: str, rep: int, samples) -> dict | None:
+    """Sampler stats over the c1 and c4 windows of one server start."""
+    ws = [result_window(read_json(d / f"bench-{model}-{engine}-{t}-r{rep}.json")) for t in ("c1", "c4")]
+    return window_stats(samples, ws)
+
+
+def pair_check(d: Path, model: str, engine: str, rep: int) -> tuple[list[str], dict, dict, dict]:
+    """(reasons, base results, own results, sampler record) of the pair of rep (baseline vs engine)."""
+    samples = load_samples(d)
+    sb = run_sampler(d, model, BASELINE, rep, samples)
+    sj = run_sampler(d, model, engine, rep, samples)
+    used, sreasons = pair_sampler(sb, sj)
+    rb, base = run_reasons(d, model, BASELINE, rep, used)
+    rj, own = run_reasons(d, model, engine, rep, used)
+    reasons = rb + rj + [f"r{rep} {r}" for r in sreasons] + [f"r{rep} {r}" for r in tokens_differ(base, own, BASELINE, engine)]
+    return reasons, base, own, {"rule": "sampler" if used else "single-sample", "baseline": sb, "judged": sj}
 
 
 def field(res: dict, test: str, key: str) -> float | None:
@@ -194,9 +302,7 @@ def judged_engine(d: Path, model: str) -> tuple[str, bool]:
 
 def pair_reasons(d: Path, model: str, engine: str, rep: int) -> list[str]:
     """Why the pair of rep is unclean: either run's own reasons, or unequal completion-token totals."""
-    rb, base = run_reasons(d, model, BASELINE, rep)
-    rj, own = run_reasons(d, model, engine, rep)
-    return rb + rj + [f"r{rep} {r}" for r in tokens_differ(base, own, BASELINE, engine)]
+    return pair_check(d, model, engine, rep)[0]
 
 
 def stopped_verdict(model: str, probe_model: dict) -> dict:
@@ -273,6 +379,7 @@ def model_verdict(d: Path, model: str, band: float) -> dict:
                 "baseline": throttle_record(d, f"{model}-{BASELINE}-r{rep}")[1],
                 "judged": throttle_record(d, f"{model}-{engine}-r{rep}")[1],
             },
+            "sampler": pair_check(d, model, engine, rep)[3],
         }
         out["pairs"].append(pair)
     for key, pk in (("c4", "c4_throughput_ratio"), ("c1", "c1_decode_ratio")):
@@ -297,12 +404,12 @@ def median(v: list[float]) -> float | None:
     return s[len(s) // 2] if s else None
 
 
-def replay_run(d: Path, mode: str, rep: int) -> tuple[list[str], dict | None]:
+def replay_run(d: Path, mode: str, rep: int, relaxed: bool = False) -> tuple[list[str], dict | None]:
     run = f"replay-q8b-{mode}-r{rep}"
     j = read_json(d / f"{run}.json")
     if j is None:
         return [f"{run}: no result"], None
-    reasons = [f"{run}: {r}" for r in throttle_reasons(d, run)]
+    reasons = [f"{run}: {r}" for r in throttle_reasons(d, run, relaxed)]
     if j.get("cotenant_ok") is False:
         reasons.append(f"{run}: co-tenant ({j.get('cotenant_reason', '?')})")
     return reasons, j
@@ -311,12 +418,16 @@ def replay_run(d: Path, mode: str, rep: int) -> tuple[list[str], dict | None]:
 def ttft_verdict(d: Path, band: float) -> dict:
     out = {"log_sha256": None, "requests": None, "pairs": [], "pass": None}
     for rep in REPS:
-        r_on, on = replay_run(d, "on", rep)
-        r_off, off = replay_run(d, "off", rep)
-        reasons = r_on + r_off
+        samples = load_samples(d)
+        so, sf = (window_stats(samples, [result_window(read_json(d / f"replay-q8b-{m}-r{rep}.json"))]) for m in ("on", "off"))
+        used, sreasons = pair_sampler(so, sf)
+        r_on, on = replay_run(d, "on", rep, used)
+        r_off, off = replay_run(d, "off", rep, used)
+        reasons = r_on + r_off + [f"r{rep} {r}" for r in sreasons]
         pair = {
             "median_ratio": None, "p90_ratio": None, "clean": False, "reasons": reasons,
             "throttle": {m: throttle_record(d, f"replay-q8b-{m}-r{rep}")[1] for m in ("on", "off")},
+            "sampler": {"rule": "sampler" if used else "single-sample", "on": so, "off": sf},
         }
         if on and off:
             for j in (on, off):

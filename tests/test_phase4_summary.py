@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import pathlib
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -453,3 +454,162 @@ def test_stopped_cli(tmp_path):
     assert p4.main([str(d), "--probe", "--probe-run", "q8b:tetraeder-dense", "--parity", "q8b:failed"]) == 3
     assert json.loads((d / "probe.json").read_text())["models"]["q8b"]["gpu_parity"] == "failed"
     assert p4.main([str(d), "--stopped"]) == 0
+
+
+# ---- sampler (gpu-samples.csv, ADR 0065 addendum) -------------------------------------------------------------
+
+T0 = datetime(2026, 11, 17, 10, 0, 0)
+BOARD = 0x400
+BOARD_BEFORE = "0x0000000000000400"
+
+
+def stamp_runs(s, *, replay=False):
+    """Give run k (q8b: r1 baseline, r1 judged, r2 baseline, r2 judged; replay k=4..7: off1, on1, off2, on2) a window of
+    its own: bench c1 ends at t0+10 and c4 at t0+30, 10 s each (the stamp is the end); a replay ends at t0+30 after 30 s."""
+    if not replay:
+        runs = [("llama-server", 1), ("tetraeder-dense", 1), ("llama-server", 2), ("tetraeder-dense", 2)]
+        for k, (eng, rep) in enumerate(runs):
+            t0 = T0 + timedelta(seconds=100 * k)
+            for test, off in (("c1", 10), ("c4", 30)):
+                name = f"bench-q8b-{eng}-{test}-r{rep}.json"
+                j = json.loads((s.d / name).read_text())
+                j["summary"]["wall_s"] = 10.0
+                j["started"] = (t0 + timedelta(seconds=off)).strftime("%Y-%m-%dT%H:%M:%S")
+                s.write(name, j)
+    else:
+        for k, (mode, rep) in enumerate([("off", 1), ("on", 1), ("off", 2), ("on", 2)]):
+            t0 = T0 + timedelta(seconds=100 * (k + 4))
+            name = f"replay-q8b-{mode}-r{rep}.json"
+            j = json.loads((s.d / name).read_text())
+            j["wall_s"] = 30.0
+            j["finished"] = (t0 + timedelta(seconds=30)).strftime("%Y-%m-%dT%H:%M:%S")
+            s.write(name, j)
+
+
+def write_samples(s, shares, *, first=0, extra=None, gap=None):
+    """gpu-samples.csv with 20 samples inside each run k's windows (the first round(share * 20) carry 0x400, the rest
+    0x4), an optional `gap` mask at t0+15 (between the c1 and c4 windows), and `extra` {k: mask} OR-ed into one sample."""
+    lines = []
+    for i, share in enumerate(shares):
+        k = first + i
+        t0 = T0 + timedelta(seconds=100 * k)
+        sec = list(range(1, 11)) + list(range(21, 31))
+        for n, off in enumerate(sec):
+            m = BOARD if n < round(share * 20) else 0x4
+            if n == 5:
+                m |= (extra or {}).get(k, 0)
+            t = t0 + timedelta(seconds=off)
+            lines.append(f"{1.7e9 + 100 * k + off:.3f},{t:%Y/%m/%d %H:%M:%S}.250,{m:#018x},120.5,1410,9001,45")
+        if gap is not None:
+            t = t0 + timedelta(seconds=15)
+            lines.append(f"0.0,{t:%Y/%m/%d %H:%M:%S}.500,{gap:#018x},120.5,1410,9001,45")
+    (s.d / "gpu-samples.csv").write_text("\n".join(lines) + "\n")
+
+
+def board_session(s, shares, **kw):
+    """Every run reads 0x400 before it, as in 20261117e."""
+    s.q8b()
+    for eng in ("llama-server", "tetraeder-dense"):
+        for rep in (1, 2):
+            (s.d / f"gpu-q8b-{eng}-r{rep}.txt").write_text(f"before: {BOARD_BEFORE}\nafter: {POWER}\n")
+    stamp_runs(s)
+    write_samples(s, shares, **kw)
+    return s.verdict()["models"]["q8b"]
+
+
+def test_equal_shares_pass_despite_board_bits_before(s):
+    m = board_session(s, [0.5, 0.5, 0.5, 0.5])
+    assert [p["clean"] for p in m["pairs"]] == [True, True] and m["pass"] is True
+    sam = m["pairs"][0]["sampler"]
+    assert sam["rule"] == "sampler" and sam["baseline"]["samples"] == 20
+    assert sam["baseline"]["share"] == pytest.approx(0.5) and sam["judged"]["disqualifying"] == 0
+    # raw masks are kept
+    assert m["pairs"][0]["throttle"]["judged"]["before"] == [BOARD_BEFORE]
+
+
+def test_shares_within_ten_points_pass_and_a_gap_beyond_fails(s):
+    assert board_session(s, [0.5, 0.4, 0.5, 0.5])["pass"] is True
+    m = board_session(s, [0.3, 0.0, 0.3, 0.3])
+    assert m["pairs"][0]["clean"] is False and m["pass"] is None
+    assert any("share differs" in r for r in m["pairs"][0]["reasons"])
+
+
+def test_a_disqualifying_bit_in_a_window_sample_fails(s):
+    m = board_session(s, [0.5] * 4, extra={1: 0x8})
+    assert m["pairs"][0]["clean"] is False and m["pairs"][1]["clean"] is True and m["pass"] is None
+    assert m["pairs"][0]["sampler"]["judged"]["disqualifying"] == 1
+    assert m["pairs"][0]["sampler"]["judged"]["bad_bits"] == "0x8"
+    # an unknown bit counts too
+    assert board_session(s, [0.5] * 4, extra={3: 0x1000})["pairs"][1]["clean"] is False
+
+
+def test_samples_outside_the_windows_are_ignored(s):
+    m = board_session(s, [0.5] * 4, gap=0x8)
+    assert m["pass"] is True and m["pairs"][0]["sampler"]["baseline"]["samples"] == 20
+
+
+def test_before_bits_other_than_board_still_disqualify_with_sampler_data(s):
+    s.q8b()
+    (s.d / "gpu-q8b-tetraeder-dense-r1.txt").write_text(f"before: {POWER}\nafter: {IDLE}\n")
+    stamp_runs(s)
+    write_samples(s, [0.0] * 4)
+    assert s.verdict()["models"]["q8b"]["pairs"][0]["clean"] is False
+
+
+def test_no_samples_file_keeps_the_old_rule(s):
+    board_session(s, [0.5] * 4)
+    (s.d / "gpu-samples.csv").unlink()
+    m = s.verdict()["models"]["q8b"]
+    assert [p["clean"] for p in m["pairs"]] == [False, False] and m["pass"] is None
+    assert m["pairs"][0]["sampler"]["rule"] == "single-sample"
+    assert any("0x400" in r for r in m["pairs"][0]["reasons"])
+
+
+def test_samples_for_one_side_only_keep_the_old_rule(s):
+    s.q8b()
+    stamp_runs(s)
+    write_samples(s, [0.0], first=0)  # only run 0 (rep 1 baseline) has samples
+    for eng in ("llama-server", "tetraeder-dense"):
+        (s.d / f"gpu-q8b-{eng}-r1.txt").write_text(f"before: {BOARD_BEFORE}\nafter: {IDLE}\n")
+    p = s.verdict()["models"]["q8b"]["pairs"][0]
+    assert p["sampler"]["rule"] == "single-sample" and p["clean"] is False
+
+
+def ttft_session(s, shares, **kw):
+    s.q8b()
+    s.ttft()
+    for mode in ("on", "off"):
+        for rep in (1, 2):
+            (s.d / f"gpu-replay-q8b-{mode}-r{rep}.txt").write_text(f"before: {BOARD_BEFORE}\nafter: {POWER}\n")
+    stamp_runs(s, replay=True)
+    write_samples(s, shares, first=4, **kw)
+    return s.verdict()["ttft"]
+
+
+def test_ttft_pairs_use_the_sampler_rule(s):
+    t = ttft_session(s, [0.5] * 4)
+    assert [p["clean"] for p in t["pairs"]] == [True, True] and t["pass"] is True
+    assert t["pairs"][0]["sampler"]["rule"] == "sampler"
+    assert t["pairs"][0]["sampler"]["on"]["samples"] == 20
+
+
+def test_ttft_share_gap_and_bad_bit_fail(s):
+    t = ttft_session(s, [0.3, 0.0, 0.3, 0.3])  # runs 4..7 = off1, on1, off2, on2
+    assert [p["clean"] for p in t["pairs"]] == [False, True] and t["pass"] is None
+    t = ttft_session(s, [0.5] * 4, extra={7: 0x20})
+    assert [p["clean"] for p in t["pairs"]] == [True, False]
+
+
+def test_ttft_without_samples_keeps_the_old_rule(s):
+    ttft_session(s, [0.5] * 4)
+    (s.d / "gpu-samples.csv").unlink()
+    t = s.verdict()["ttft"]
+    assert [p["clean"] for p in t["pairs"]] == [False, False] and t["pairs"][0]["sampler"]["rule"] == "single-sample"
+
+
+def test_window_ends_at_started_or_finished():
+    end = "2026-11-17T10:00:30"
+    a, b = p4.result_window({"started": end, "summary": {"wall_s": 10.0}})
+    assert (a, b) == (datetime(2026, 11, 17, 10, 0, 19), datetime(2026, 11, 17, 10, 0, 31))
+    assert p4.result_window({"started": "2026-11-17T09:00:00", "finished": end, "wall_s": 10.0}) == (a, b)
+    assert p4.result_window({"started": end}) is None
