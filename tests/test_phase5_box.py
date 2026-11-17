@@ -307,3 +307,21 @@ def test_only_unset_keeps_the_full_session(tmp_path):
     lines = dry(tmp_path)
     assert len(timed(lines, D)) == 27 and not any("skipped (ONLY)" in ln for ln in lines)
     assert any("-> verdict.json" in ln for ln in lines)
+
+
+def test_gpu_parity_runs_every_package_and_scopes_graph_debug_to_the_executor(tmp_path):
+    lines = dry(tmp_path)
+    cmds = [ln for ln in lines if "TETRAEDER_REQUIRE_GPU=1 cargo test" in ln]
+    assert len(cmds) == 2 and all("--no-fail-fast" in c for c in cmds)
+    ex, model = (next(c for c in cmds if f"-p tetraeder-{p} " in c) for p in ("executor", "model"))
+    assert "GGML_CUDA_GRAPH_DEBUG=1" in ex and "GGML_CUDA_GRAPH_DEBUG" not in model
+    assert sum("GGML_CUDA_GRAPH_DEBUG" in ln for ln in lines) == 1
+    assert all(">> gpu-parity.log.full" in c for c in cmds)
+    assert any("cut to 300 columns" in ln for ln in lines)
+
+
+def test_gate_failed_line_shows_the_probe_state(tmp_path):
+    ok = next(ln for ln in dry(tmp_path, rc=3, DRY_GPU_PARITY="fail") if "gate failed" in ln)
+    assert "gpu-parity=failed" in ok and "comm-probe=ok" in ok
+    bad = next(ln for ln in dry(tmp_path / "b", rc=3, DRY_PROBE="fail") if "gate failed" in ln)
+    assert "comm-probe=failed" in bad

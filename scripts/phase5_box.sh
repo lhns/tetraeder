@@ -15,7 +15,9 @@
 #   build       release build with CUDA: tetraeder and tetraeder-plan
 #   models      both GGUFs must be in .hf_cache (taxameter models); missing files end the session
 #   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_ gpu2_ [gpu4_] on the executor and the sharded builders; log in
-#               gpu-parity.log, result in gates.json. A failure does not skip discover to prepass (cheap, and the
+#               gpu-parity.log (cut to 300 columns; the full log stays on the box as gpu-parity.log.full), result in
+#               gates.json. Every package and test runs (--no-fail-fast); only the executor package gets
+#               GGML_CUDA_GRAPH_DEBUG=1. A failure does not skip discover to prepass (cheap, and the
 #               diagnosis); the session then ends with rc=3 before anchors
 #   discover    hw.json (the profiler's hardware graph; HW_CMD, default `tetraeder plan hw --out hw.json`)
 #   enumerate   per model layouts/<model>.json, then `tetraeder-plan candidates --multi` -> candidates-<model>.json and
@@ -301,10 +303,15 @@ models_check() {
 # No timed run on a box whose executor or sharded builders disagree with the one-rank reference. gpu_ is one GPU, gpu2_
 # two, gpu4_ four (ADR 0069, E5 to E7 tests).
 gpu_parity() {
-  local filters="gpu_ gpu2_" pkg
+  local filters="gpu_ gpu2_" pkg extra failed="" full="$out/gpu-parity.log.full"
   [ "$ngpu" = 4 ] && filters="gpu_ gpu2_ gpu4_"
   if [ "$DRY" = 1 ]; then
-    plan "TETRAEDER_REQUIRE_GPU=1 cargo test --release -p tetraeder-executor -p tetraeder-model --features tetraeder-ggml-sys/cuda -- $filters > gpu-parity.log"
+    for pkg in tetraeder-executor tetraeder-model; do
+      extra=""
+      [ "$pkg" = tetraeder-executor ] && extra="GGML_CUDA_GRAPH_DEBUG=1 "
+      plan "${extra}TETRAEDER_REQUIRE_GPU=1 cargo test --release --no-fail-fast -p $pkg --features tetraeder-ggml-sys/cuda -- $filters >> gpu-parity.log.full"
+    done
+    plan "gpu-parity.log = gpu-parity.log.full cut to 300 columns (fetch takes *.log, not *.log.full)"
     if [ "${DRY_GPU_PARITY:-ok}" = fail ]; then gate gpu_parity failed; return 1; fi
     gate gpu_parity ok
     return 0
@@ -316,17 +323,26 @@ gpu_parity() {
   fi
   [ "$(gate_value gpu_parity)" = ok ] && { say "gpu-parity: done before"; return 0; }
   say "gpu-parity start"
-  : > "$out/gpu-parity.log"
+  : > "$full"
+  # Every package runs and every test in it (--no-fail-fast): one box run shows all failures. The full log stays on
+  # the box (raw logit dumps, 20 MB on S2); results get a copy cut to 300 columns. GGML_CUDA_GRAPH_DEBUG=1 is for the
+  # executor's graph-replay test only and must never reach a timed run.
   for pkg in tetraeder-executor tetraeder-model; do
+    extra=""
+    [ "$pkg" = tetraeder-executor ] && extra="GGML_CUDA_GRAPH_DEBUG=1"
     # shellcheck disable=SC2086
-    TETRAEDER_REQUIRE_GPU=1 TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m cargo test --release -p "$pkg" \
-      --features tetraeder-ggml-sys/cuda -- --nocapture --test-threads 1 $filters >> "$out/gpu-parity.log" 2>&1 8>&- || {
+    env $extra TETRAEDER_REQUIRE_GPU=1 TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m cargo test --release \
+      --no-fail-fast -p "$pkg" --features tetraeder-ggml-sys/cuda -- --nocapture --test-threads 1 $filters >> "$full" 2>&1 8>&- || {
       say "gpu-parity FAILED in $pkg (see $out/gpu-parity.log)"
-      gate gpu_parity failed
-      return 1
+      failed="$failed $pkg"
     }
   done
-  if ! awk '/^test result: ok\. [0-9]+ passed/ { n += $4 } END { exit !(n > 0) }' "$out/gpu-parity.log"; then
+  cut -c1-300 "$full" > "$out/gpu-parity.log"
+  if [ -n "$failed" ]; then
+    gate gpu_parity failed
+    return 1
+  fi
+  if ! awk '/^test result: ok\. [0-9]+ passed/ { n += $4 } END { exit !(n > 0) }' "$full"; then
     say "gpu-parity FAILED: no test ran (the gpu_ / gpu2_ / gpu4_ filters matched nothing, see $out/gpu-parity.log)"
     gate gpu_parity failed
     return 1
@@ -825,14 +841,14 @@ main() {
   say "STAGE enumerate"
   enumerate_cands
   say "STAGE probe"
-  probe || probe_failed=1
+  probe || probe_failed=failed
   say "STAGE prepass"
   prepass
   dry_prepass_files
   local prepass_failed=""
   prepass_gate || prepass_failed=1
   if [ -n "$parity" ] || [ -n "$probe_failed" ] || [ -n "$prepass_failed" ]; then
-    say "gate failed (gpu-parity=${parity:-ok} comm-probe=${probe_failed:+failed}${prepass_failed:+ baseline-modes=failed}): the session ends before anchors"
+    say "gate failed (gpu-parity=${parity:-ok} comm-probe=${probe_failed:-ok}${prepass_failed:+ baseline-modes=failed}): the session ends before anchors"
     stop_session
     return 3
   fi
