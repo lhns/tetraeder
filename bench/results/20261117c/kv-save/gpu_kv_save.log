@@ -1,0 +1,32 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 4.94s
+     Running tests/gpu_kv_save.rs (target/release/deps/gpu_kv_save-79b1a97d41b56c1e)
+
+running 2 tests
+test gpu_qwen3_30b_save_through_pinned_staging ... qwen3-30b: 52.4 MB, staged 28.55 ms (1.84 GB/s), straight 35.63 ms (1.47 GB/s), ratio 0.801
+qwen3-30b: host copy into fresh memory 28.08 ms, with MADV_HUGEPAGE 9.01 ms
+
+thread 'gpu_qwen3_30b_save_through_pinned_staging' (33967) panicked at crates/model/tests/gpu_kv_save.rs:129:5:
+qwen3-30b: staged save 28.55 ms over 18 ms
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test gpu_qwen3_8b_save_through_pinned_staging ... qwen3-8b: 78.6 MB, staged 47.53 ms (1.65 GB/s), straight 55.41 ms (1.42 GB/s), ratio 0.858
+qwen3-8b: host copy into fresh memory 48.05 ms, with MADV_HUGEPAGE 15.69 ms
+
+thread 'gpu_qwen3_8b_save_through_pinned_staging' (34002) panicked at crates/model/tests/gpu_kv_save.rs:129:5:
+qwen3-8b: staged save 47.53 ms over 25 ms
+FAILED
+
+failures:
+
+failures:
+    gpu_qwen3_30b_save_through_pinned_staging
+    gpu_qwen3_8b_save_through_pinned_staging
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.79s
+
+error: test failed, to rerun pass `-p tetraeder-model --test gpu_kv_save`
