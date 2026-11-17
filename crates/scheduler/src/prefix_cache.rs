@@ -1,7 +1,11 @@
 //! Saved sequences in host RAM, the oldest evicted first (ADR 0049). A restored entry leaves the
 //! cache (the sequence is live again and is saved anew when it is dropped), so the age of an
 //! entry is the time since it was saved or last used. An entry is keyed by its KV format too:
-//! bytes of one format are never restored into a cache of another (ADR 0050 b).
+//! bytes of one format are never restored into a cache of another (ADR 0050 b). Buffers the cache
+//! lets go of go back to the snapshot pool instead of being freed (ADR 0074).
+
+use std::sync::Arc;
+use tetraeder_model::snapshot_pool::{self, SnapshotPool};
 
 /// A live sequence is saved before it loses at least this many tokens.
 pub const SAVE_MIN_TOKENS: usize = 512;
@@ -21,6 +25,7 @@ pub struct PrefixCache {
     entries: Vec<Entry>,
     budget: usize,
     held: usize,
+    pool: Arc<SnapshotPool>,
 }
 
 /// Length of the common prefix of `a` and `b`.
@@ -31,11 +36,26 @@ pub fn common_prefix(a: &[i32], b: &[i32]) -> usize {
 impl PrefixCache {
     /// A budget of 0 disables the cache.
     pub fn new(budget: usize) -> Self {
+        Self::with_pool(budget, snapshot_pool::global())
+    }
+
+    /// A cache that returns released buffers to `pool`.
+    pub fn with_pool(budget: usize, pool: Arc<SnapshotPool>) -> Self {
         Self {
             entries: Vec::new(),
             budget,
             held: 0,
+            pool,
         }
+    }
+
+    pub fn pool(&self) -> &Arc<SnapshotPool> {
+        &self.pool
+    }
+
+    /// Gives a buffer taken out of the cache (a restored entry's bytes) back to the pool.
+    pub fn release(&self, bytes: Vec<u8>) {
+        self.pool.recycle(bytes);
     }
 
     pub fn enabled(&self) -> bool {
@@ -85,23 +105,26 @@ impl PrefixCache {
     /// the whole budget is not stored.
     pub fn insert(&mut self, format: &str, tokens: Vec<i32>, bytes: Vec<u8>) -> usize {
         if bytes.len() > self.budget {
+            self.pool.recycle(bytes);
             return 0;
         }
         let mut dropped = 0;
-        let held = &mut self.held;
-        self.entries.retain(|e| {
-            let prefix = e.format == format && tokens.starts_with(&e.tokens);
-            if prefix {
-                *held -= e.bytes.len();
-            }
-            !prefix
-        });
+        let (replaced, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.entries)
+            .into_iter()
+            .partition(|e| e.format == format && tokens.starts_with(&e.tokens));
+        self.entries = kept;
+        for e in replaced {
+            self.held -= e.bytes.len();
+            self.pool.recycle(e.bytes);
+        }
         // Replacing a prefix is not an eviction.
         while self.held + bytes.len() > self.budget {
             if self.entries.is_empty() {
                 break;
             }
-            self.held -= self.entries.remove(0).bytes.len();
+            let e = self.entries.remove(0);
+            self.held -= e.bytes.len();
+            self.pool.recycle(e.bytes);
             dropped += 1;
         }
         self.held += bytes.len();
@@ -117,6 +140,7 @@ impl PrefixCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tetraeder_model::snapshot_pool::PoolConfig;
 
     const F: &str = "f16/f16";
 
@@ -176,5 +200,61 @@ mod tests {
         c.insert("q8_0/q8_0", seq(8, 0), vec![0; 8]);
         assert_eq!(c.len(), 2);
         assert_eq!(c.best(F, &seq(8, 0)), Some((0, 5)));
+    }
+
+    fn pooled(budget: usize, spares: usize) -> (PrefixCache, Arc<SnapshotPool>) {
+        let pool = Arc::new(SnapshotPool::new(PoolConfig {
+            spares,
+            thp: false,
+            min_bytes: 1,
+            round: 1,
+        }));
+        (PrefixCache::with_pool(budget, Arc::clone(&pool)), pool)
+    }
+
+    /// Evicted, replaced and oversized buffers are recycled, and a recycled buffer is the one
+    /// the next save gets.
+    #[test]
+    fn released_buffers_go_back_to_the_pool() {
+        let (mut c, pool) = pooled(20, 2);
+        let buf = |n: usize| {
+            let mut v = Vec::with_capacity(n);
+            v.resize(n, 5u8);
+            v
+        };
+        c.insert(F, seq(3, 0), buf(10));
+        c.insert(F, seq(3, 100), buf(10));
+        // Evicts the oldest.
+        c.insert(F, seq(3, 200), buf(10));
+        assert_eq!(pool.stats().recycled, 1);
+        // Replaces a prefix.
+        c.insert(F, seq(6, 200), buf(10));
+        assert_eq!(pool.stats().recycled, 2);
+        // Larger than the budget.
+        c.insert(F, seq(3, 300), buf(30));
+        assert_eq!(
+            pool.stats().recycled,
+            2,
+            "the pool holds at most two spares"
+        );
+        assert_eq!(c.bytes(), 20);
+        let v = pool.take(10);
+        assert!(v.is_empty() && v.capacity() >= 10);
+        assert_eq!(pool.stats().from_spare, 1);
+        // A restored entry's bytes are released by the caller.
+        let (_, bytes) = c.take(0);
+        let n = pool.stats().recycled;
+        c.release(bytes);
+        assert!(pool.stats().recycled > n || pool.stats().ready == 2);
+    }
+
+    /// With no spares the cache behaves as before and the pool stays idle.
+    #[test]
+    fn no_spares_recycles_nothing() {
+        let (mut c, pool) = pooled(10, 0);
+        c.insert(F, seq(3, 0), vec![0; 10]);
+        assert_eq!(c.insert(F, seq(3, 100), vec![0; 10]), 1);
+        c.insert(F, seq(3, 200), vec![0; 30]);
+        assert_eq!(pool.stats(), Default::default());
     }
 }

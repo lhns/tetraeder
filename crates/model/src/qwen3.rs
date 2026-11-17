@@ -747,7 +747,7 @@ impl Qwen3 {
         self.check_seq(seq)?;
         let n = self.pool.seq_len(seq);
         let runs = self.pool.runs(seq, n);
-        let mut out = Vec::with_capacity(n * self.kv_row_bytes());
+        let mut out = crate::snapshot_pool::global().take(n * self.kv_row_bytes());
         if let Engine::Sched(e) = &self.engine {
             let tensors = e.kv.k.iter().chain(&e.kv.v).map(|t| t.get());
             let spans = row_spans(tensors, self.n_rows, &runs);

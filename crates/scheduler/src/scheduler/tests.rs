@@ -19,6 +19,10 @@ fn worker(kv: FakeKv) -> Worker {
 }
 
 fn worker_with(kv: FakeKv, step_tokens: usize) -> Worker {
+    worker_cache(kv, step_tokens, PrefixCache::new(1 << 20))
+}
+
+fn worker_cache(kv: FakeKv, step_tokens: usize, cache: PrefixCache) -> Worker {
     let parallel = kv.n_seq_max();
     let vocab = Arc::new(Vocab {
         tokens: vec![b"a".to_vec(); N_VOCAB],
@@ -32,7 +36,7 @@ fn worker_with(kv: FakeKv, step_tokens: usize) -> Worker {
     };
     Worker::new(
         Box::new(kv),
-        PrefixCache::new(1 << 20),
+        cache,
         32,
         16,
         true,
@@ -297,4 +301,84 @@ fn prompts_waiting_together_share_one_step_under_the_default_budget() {
     assert!(w.step());
     assert_eq!(probe.max_inputs.load(Ordering::SeqCst), 4);
     assert_eq!(probe.max_step_tokens.load(Ordering::SeqCst), 4 * 405);
+}
+
+/// The tokens of `run_waves`, then of the first prompt again (restored from RAM), with a private
+/// snapshot pool; the pool counters and the tokens the last request took from the cache.
+fn pooled_run(
+    spares: usize,
+) -> (
+    Vec<GenEvent>,
+    tetraeder_model::snapshot_pool::PoolStats,
+    u32,
+) {
+    use tetraeder_model::snapshot_pool::{PoolConfig, SnapshotPool};
+    let pool = Arc::new(SnapshotPool::new(PoolConfig {
+        spares,
+        thp: false,
+        min_bytes: 1,
+        round: 64,
+    }));
+    let kv = FakeKv::new(N_VOCAB, 4, 3200, 300);
+    let mut w = worker_cache(kv, 2048, PrefixCache::with_pool(1 << 20, Arc::clone(&pool)));
+    run_waves(&mut w, 2, 4);
+    assert!(!w.cache.is_empty(), "the evicted sequences are in RAM");
+    let before = pool.stats().recycled;
+    let mut rx = submit(&mut w, &chat(0), 10);
+    pump(&mut w);
+    let evs = events(&mut rx);
+    let cached = evs
+        .iter()
+        .find_map(|e| match e {
+            GenEvent::Finished { stats, .. } => Some(stats.cached_tokens),
+            _ => None,
+        })
+        .unwrap();
+    let s = pool.stats();
+    // Released, unless the preparer had already filled every spare.
+    assert!(spares == 0 || s.recycled > before || s.ready == spares);
+    let toks = evs
+        .into_iter()
+        .filter(|e| matches!(e, GenEvent::Token(_)))
+        .collect();
+    (toks, s, cached)
+}
+
+/// A restored snapshot's buffer goes back to the pool, and what a request generates does not
+/// depend on the pool (ADR 0074).
+#[test]
+fn the_snapshot_pool_takes_restored_buffers_back_and_changes_no_output() {
+    let (off, s0, c0) = pooled_run(0);
+    let (on, s2, c2) = pooled_run(2);
+    assert!(
+        c0 > 3 && c2 > 3,
+        "the prompt came back from RAM ({c0}, {c2})"
+    );
+    assert_eq!((on, c2), (off, c0), "the pool changed the result");
+    assert_eq!((s0.recycled, s0.ready), (0, 0));
+    assert!(s2.ready > 0, "{s2:?}");
+}
+
+/// A request that may generate 32000 tokens hints the snapshot pool for the prompt plus a
+/// stretch of generation, not for the whole context.
+#[test]
+fn the_size_hint_does_not_follow_a_huge_max_tokens() {
+    use tetraeder_model::snapshot_pool::{PoolConfig, SnapshotPool};
+    let pool = Arc::new(SnapshotPool::new(PoolConfig {
+        spares: 2,
+        thp: false,
+        min_bytes: 1,
+        round: 64,
+    }));
+    let kv = FakeKv::new(N_VOCAB, 2, 3200, 4000);
+    let mut w = worker_cache(kv, 2048, PrefixCache::with_pool(1 << 20, Arc::clone(&pool)));
+    let _rx = submit(&mut w, &prompt(3, 100), 32_000);
+    w.admit();
+    let row = w.backend.kv_row_bytes();
+    let target = pool.target();
+    assert!(target >= 100 * row, "the prompt is hinted ({target})");
+    assert!(
+        target <= (100 + EXPECT_AHEAD) * row + 64,
+        "hinted {target} bytes, more than prompt + {EXPECT_AHEAD} rows"
+    );
 }

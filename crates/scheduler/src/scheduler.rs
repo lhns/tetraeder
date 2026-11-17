@@ -69,6 +69,9 @@ pub struct SchedulerConfig {
     pub spec: Option<SpecConfig>,
 }
 
+/// Generated tokens past the prompt that a snapshot size hint counts (ADR 0074).
+const EXPECT_AHEAD: usize = 512;
+
 /// Default prefix cache budget, like llama-server's `--cache-ram`.
 pub const DEFAULT_CACHE_RAM_BYTES: usize = 8192 << 20;
 
@@ -154,6 +157,9 @@ impl Scheduler {
                     }
                 };
                 let _ = ready_tx.send(Ok((Arc::clone(&loaded.tokenizer), n_ctx)));
+                let pool = tetraeder_model::snapshot_pool::global();
+                pool.set_max_bytes(cache_ram);
+                pool.set_default_spares(parallel.max(2));
                 let mut w = Worker::new(
                     loaded.backend,
                     PrefixCache::new(cache_ram),
@@ -455,6 +461,8 @@ struct Worker {
     spec: Option<SpecState>,
     /// Time spent saving sequences to the prefix cache, for the admission log.
     save_time: Duration,
+    /// Snapshot pool counters (spare, fallback) already reported to the metrics.
+    pool_seen: (u64, u64),
 }
 
 /// Speculation in the loop: drafts for a lone greedy decoding sequence (ADR 0065).
@@ -501,6 +509,10 @@ impl Worker {
         let budget = step_tokens.min(max_step).max(parallel);
         let n_ctx_seq = backend.n_ctx_seq();
         let n_vocab = backend.n_vocab();
+        let pool_seen = {
+            let s = cache.pool().stats();
+            (s.from_spare, s.fallback)
+        };
         Self {
             backend,
             slots: (0..parallel).map(|_| Slot::Free).collect(),
@@ -523,6 +535,7 @@ impl Worker {
             solo: VecDeque::new(),
             spec: None,
             save_time: Duration::ZERO,
+            pool_seen,
         }
     }
 
@@ -770,6 +783,29 @@ impl Worker {
             }
             Err(e) => tracing::warn!("cannot save a sequence: {e}"),
         }
+        self.report_pool();
+    }
+
+    /// A sequence of `positions` may be saved later: tell the snapshot pool its size.
+    fn expect_snapshot(&self, positions: usize) {
+        if self.prefix_reuse && self.cache.enabled() && positions >= self.save_min {
+            self.cache
+                .pool()
+                .expect(positions * self.backend.kv_row_bytes());
+        }
+    }
+
+    /// Reports what the snapshot pool did since the last call (ADR 0074).
+    fn report_pool(&mut self) {
+        let s = self.cache.pool().stats();
+        if let Some(m) = &self.metrics {
+            m.kv_prefix_save_buffers(
+                s.from_spare.saturating_sub(self.pool_seen.0),
+                s.fallback.saturating_sub(self.pool_seen.1),
+            );
+            m.kv_prefix_spares(s.ready as u64, s.ready_bytes as u64);
+        }
+        self.pool_seen = (s.from_spare, s.fallback);
     }
 
     /// Saves the idle sequence on `id` (ADR 0049) and frees its id and rows.
@@ -869,6 +905,11 @@ impl Worker {
         let (t_place, save0) = (Instant::now(), self.save_time);
         let toks = req.toks.clone();
         let last = toks.len() - 1;
+        // About what this sequence holds when it is saved later, so a spare is ready by then. Only
+        // a stretch of generation counts: clients send max_tokens of tens of thousands.
+        let ahead =
+            ((req.params.max_tokens - req.stats.generated_tokens) as usize).min(EXPECT_AHEAD);
+        self.expect_snapshot((toks.len() + ahead).min(self.n_ctx_seq));
         let fmt = self.backend.kv_format();
         // The idle sequence sharing the longest prefix (at most prompt - 1).
         let best_idle = self
@@ -1013,6 +1054,7 @@ impl Worker {
                             Purpose::Kv,
                         );
                     }
+                    self.cache.release(bytes);
                 }
                 Err(e) => {
                     tracing::warn!("cannot restore a saved sequence: {e}");
@@ -1022,6 +1064,8 @@ impl Worker {
                     // the bytes are unusable, so retrying them would only fail again.
                     if matches!(e, BackendError::KvFull { .. }) {
                         self.put_back(Some((etoks, bytes)));
+                    } else {
+                        self.cache.release(bytes);
                     }
                 }
             }
@@ -1062,16 +1106,20 @@ impl Worker {
             m.kv_prefix_hit(source);
         }
         req.no_busy = false;
+        self.report_pool();
         if tracing::enabled!(target: "tetraeder::step", tracing::Level::DEBUG) {
             let ms = |d: Duration| d.as_secs_f64() * 1e3;
             tracing::debug!(
                 target: "tetraeder::step",
-                "admit seq={id} queued_ms={:.2} place_ms={:.2} save_ms={:.2} prompt={} common={common} source={source} live={}",
+                "admit seq={id} queued_ms={:.2} place_ms={:.2} save_ms={:.2} prompt={} common={common} source={source} live={} pool_spare={} pool_fallback={} pool_ready={}",
                 ms(t_place.saturating_duration_since(req.queued)),
                 ms(t_place.elapsed()),
                 ms(self.save_time - save0),
                 toks.len(),
                 self.live_count(),
+                self.pool_seen.0,
+                self.pool_seen.1,
+                self.cache.pool().stats().ready,
             );
         }
         self.next_admitted += 1;

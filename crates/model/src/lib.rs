@@ -15,6 +15,7 @@ pub mod qwen3moe;
 mod qwen3moe_shard;
 pub(crate) mod readback;
 pub(crate) mod shard;
+pub mod snapshot_pool;
 pub mod upload;
 
 pub use attn::{AttnHparams, F16_NEG_INF, KV_PAD, SeqEval, causal_mask};

@@ -20,6 +20,7 @@ pub mod attr {
     pub const DEPTH: &str = "tetraeder.prefetch.depth";
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
+    pub const BUFFER: &str = "tetraeder.buffer";
     pub const TRANSFER_SOURCE: &str = "tetraeder.transfer.source";
     pub const TRANSFER_DESTINATION: &str = "tetraeder.transfer.destination";
     pub const TRANSFER_PURPOSE: &str = "tetraeder.transfer.purpose";
@@ -179,6 +180,9 @@ pub struct Metrics {
     prefix_bytes: Gauge<u64>,
     prefix_restore: Histogram<f64>,
     prefix_save: Histogram<f64>,
+    prefix_save_buffers: Counter<u64>,
+    prefix_spares: Gauge<u64>,
+    prefix_spare_bytes: Gauge<u64>,
     spec_acceptance: Histogram<f64>,
     spec_drafted: Counter<u64>,
     spec_accepted: Counter<u64>,
@@ -431,6 +435,23 @@ impl Metrics {
                     "Time to save a sequence to the host RAM prefix cache, a stall of every live sequence (ADR 0074)",
                 )
                 .with_boundaries(LATENCY_BOUNDS.to_vec())
+                .build(),
+            prefix_save_buffers: meter
+                .u64_counter("tetraeder.kv.prefix.save.buffers")
+                .with_unit("{save}")
+                .with_description(
+                    "Prefix-cache saves by the buffer they wrote into: a prepared spare or a plain allocation (ADR 0074)",
+                )
+                .build(),
+            prefix_spares: meter
+                .u64_gauge("tetraeder.kv.prefix.spares")
+                .with_unit("{buffer}")
+                .with_description("Spare snapshot buffers ready for the next save")
+                .build(),
+            prefix_spare_bytes: meter
+                .u64_gauge("tetraeder.kv.prefix.spare_memory")
+                .with_unit("By")
+                .with_description("Host bytes held by the spare snapshot buffers")
                 .build(),
             spec_acceptance: meter
                 .f64_histogram("tetraeder.spec.acceptance")
@@ -824,6 +845,20 @@ impl Metrics {
     /// One sequence saved to the prefix cache (the snapshot read, ADR 0074).
     pub fn kv_prefix_save(&self, d: Duration) {
         self.prefix_save.record(d.as_secs_f64(), &[]);
+    }
+
+    /// Saves since the last report that used a prepared spare and that allocated plainly.
+    pub fn kv_prefix_save_buffers(&self, spare: u64, fallback: u64) {
+        self.prefix_save_buffers
+            .add(spare, &[KeyValue::new(attr::BUFFER, "spare")]);
+        self.prefix_save_buffers
+            .add(fallback, &[KeyValue::new(attr::BUFFER, "fallback")]);
+    }
+
+    /// Spare snapshot buffers ready now and the bytes they hold.
+    pub fn kv_prefix_spares(&self, ready: u64, bytes: u64) {
+        self.prefix_spares.record(ready, &[]);
+        self.prefix_spare_bytes.record(bytes, &[]);
     }
 
     /// One verify step that carried `drafted` > 0 draft tokens of which `accepted` matched.
