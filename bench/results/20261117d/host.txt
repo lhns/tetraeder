@@ -1,0 +1,3 @@
+box 61046208, host 264182, RTX 3090, driver 595.84, 0.222 USD/h, idle throttle 0x1
+THP enabled: always [madvise] never
+THP defrag: always defer defer+madvise [madvise] never

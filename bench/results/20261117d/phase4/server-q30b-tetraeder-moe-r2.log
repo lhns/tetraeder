@@ -1,0 +1,4 @@
+[2m2026-11-17T09:21:20.555283Z[0m [33m WARN[0m [2mllama[0m[2m:[0m load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+[2m2026-11-17T09:21:20.628039Z[0m [32m INFO[0m [2mtetraeder_model::qwen3moe[0m[2m:[0m cpu threadpool polling [3mlevel[0m[2m=[0m0 [3mauto[0m[2m=[0mtrue [3mquota[0m[2m=[0mSome(15.36) [3monline[0m[2m=[0mSome(64) [3mthreads[0m[2m=[0m15
+[2m2026-11-17T09:21:24.695026Z[0m [32m INFO[0m [2mtetraeder_model::readback[0m[2m:[0m kv readback staging [3mbytes[0m[2m=[0m16777216 [3mpinned[0m[2m=[0mtrue
+listening on http://127.0.0.1:18080
