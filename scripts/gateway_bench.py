@@ -228,6 +228,8 @@ async def main_async(args) -> dict:
             "multi_turn": args.multi_turn,
         },
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        # `started` is stamped after the run, so it is the end; window = [finished - wall_s, finished] (phase4_summary.py)
+        "finished": time.strftime("%Y-%m-%dT%H:%M:%S"),
         **body,
     }
 
