@@ -1,0 +1,21 @@
+{
+  "threshold_c4": 0.925,
+  "gpu_parity": "ok",
+  "models": {
+    "q8b": {
+      "engine": "tetraeder-dense",
+      "gpu_parity": "ok",
+      "reasons": [],
+      "c1_llama-server_errors": 0,
+      "c1_tetraeder-dense_errors": 0,
+      "c1_ratio": 1.0360552629812763,
+      "c4_llama-server_errors": 0,
+      "c4_tetraeder-dense_errors": 0,
+      "c4_ratio": 1.0437441035989434,
+      "stop": false
+    }
+  },
+  "reasons": [],
+  "stopped": [],
+  "stop": false
+}

@@ -1,0 +1,373 @@
+{
+  "band": 0.07531306153550049,
+  "band_source": "measured rtx-3090 n=11",
+  "models": {
+    "q8b": {
+      "engine": "tetraeder-dense",
+      "counts": true,
+      "baseline_variant": "nokvu",
+      "baseline_kv_unified": "false",
+      "aa": {
+        "c4": -0.01281410870736166,
+        "c1": -0.004693610382592195
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 1.0526560124053288,
+          "c1_decode_ratio": 1.004986570901841,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [
+                "350.00 W, 154.66 W"
+              ],
+              "power_after": [
+                "350.00 W, 340.80 W"
+              ]
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [
+                "350.00 W, 144.86 W"
+              ],
+              "power_after": [
+                "350.00 W, 345.12 W"
+              ]
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 18,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 18,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 1.039832068227746,
+          "c1_decode_ratio": 1.0049983599346581,
+          "clean": false,
+          "reasons": [
+            "q8b-llama-server-r2: throttle reasons before the run: 0x4"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000004"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [
+                "350.00 W, 149.04 W"
+              ],
+              "power_after": [
+                "350.00 W, 349.67 W"
+              ]
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [
+                "350.00 W, 151.22 W"
+              ],
+              "power_after": [
+                "350.00 W, 349.02 W"
+              ]
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 18,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 18,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 1.039832068227746,
+        "c1": 1.004986570901841
+      },
+      "pass": null,
+      "reasons": [
+        "q8b-llama-server-r2: throttle reasons before the run: 0x4"
+      ],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": [
+        {
+          "rep": 3,
+          "reasons": [
+            "q8b-llama-server-r3 c1: co-tenant (11.0 cores busy outside the container (limit 9.6 of 64 physical))",
+            "q8b-llama-server-r3 c4: co-tenant (11.0 cores busy outside the container (limit 9.6 of 64 physical))",
+            "q8b-tetraeder-dense-r3 c1: co-tenant (9.9 cores busy outside the container (limit 9.6 of 64 physical))",
+            "q8b-tetraeder-dense-r3 c4: co-tenant (9.9 cores busy outside the container (limit 9.6 of 64 physical))"
+          ]
+        }
+      ]
+    },
+    "q30b": {
+      "engine": "tetraeder-llama",
+      "counts": false,
+      "baseline_variant": null,
+      "baseline_kv_unified": null,
+      "aa": {
+        "c4": null,
+        "c1": null
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": null,
+          "c1_decode_ratio": null,
+          "clean": false,
+          "reasons": [
+            "q30b-llama-server-r1: no c1 result",
+            "q30b-llama-server-r1: no c4 result",
+            "q30b-llama-server-r1: no gpu-q30b-llama-server-r1.txt",
+            "q30b-tetraeder-llama-r1: no c1 result",
+            "q30b-tetraeder-llama-r1: no c4 result",
+            "q30b-tetraeder-llama-r1: no gpu-q30b-tetraeder-llama-r1.txt",
+            "A/A c4: baseline results missing",
+            "A/A c1: baseline results missing"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [],
+              "after": [],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [],
+              "after": [],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "single-sample",
+            "baseline": null,
+            "judged": null
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": null,
+          "c1_decode_ratio": null,
+          "clean": false,
+          "reasons": [
+            "q30b-llama-server-r2: no c1 result",
+            "q30b-llama-server-r2: no c4 result",
+            "q30b-llama-server-r2: no gpu-q30b-llama-server-r2.txt",
+            "q30b-tetraeder-llama-r2: no c1 result",
+            "q30b-tetraeder-llama-r2: no c4 result",
+            "q30b-tetraeder-llama-r2: no gpu-q30b-tetraeder-llama-r2.txt",
+            "A/A c4: baseline results missing",
+            "A/A c1: baseline results missing"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [],
+              "after": [],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [],
+              "after": [],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "single-sample",
+            "baseline": null,
+            "judged": null
+          }
+        }
+      ],
+      "worst": {
+        "c4": null,
+        "c1": null
+      },
+      "pass": null,
+      "reasons": [
+        "A/A c4: baseline results missing",
+        "A/A c1: baseline results missing",
+        "q30b-llama-server-r1: no c1 result",
+        "q30b-llama-server-r1: no c4 result",
+        "q30b-llama-server-r1: no gpu-q30b-llama-server-r1.txt",
+        "q30b-tetraeder-llama-r1: no c1 result",
+        "q30b-tetraeder-llama-r1: no c4 result",
+        "q30b-tetraeder-llama-r1: no gpu-q30b-tetraeder-llama-r1.txt",
+        "q30b-llama-server-r2: no c1 result",
+        "q30b-llama-server-r2: no c4 result",
+        "q30b-llama-server-r2: no gpu-q30b-llama-server-r2.txt",
+        "q30b-tetraeder-llama-r2: no c1 result",
+        "q30b-tetraeder-llama-r2: no c4 result",
+        "q30b-tetraeder-llama-r2: no gpu-q30b-tetraeder-llama-r2.txt"
+      ],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    }
+  },
+  "ttft": {
+    "log_sha256": "f79b4a6d810f71632fb0633553b32d3c6c18132a137a4005e2129688f95f7b35",
+    "requests": 105,
+    "pairs": [
+      {
+        "median_ratio": 0.20104845904961152,
+        "p90_ratio": 0.3198036661616543,
+        "clean": true,
+        "reasons": [],
+        "throttle": {
+          "on": {
+            "before": [
+              "0x0000000000000000"
+            ],
+            "after": [
+              "0x0000000000000004"
+            ],
+            "power_before": [
+              "350.00 W, 120.74 W"
+            ],
+            "power_after": [
+              "350.00 W, 335.02 W"
+            ]
+          },
+          "off": {
+            "before": [
+              "0x0000000000000000"
+            ],
+            "after": [
+              "0x0000000000000004"
+            ],
+            "power_before": [
+              "350.00 W, 158.82 W"
+            ],
+            "power_after": [
+              "350.00 W, 340.71 W"
+            ]
+          }
+        },
+        "sampler": {
+          "rule": "sampler",
+          "on": {
+            "samples": 1631,
+            "share": 0.0,
+            "disqualifying": 0,
+            "bad_bits": "0x0"
+          },
+          "off": {
+            "samples": 2319,
+            "share": 0.0,
+            "disqualifying": 0,
+            "bad_bits": "0x0"
+          }
+        }
+      },
+      {
+        "median_ratio": 0.21615481845701603,
+        "p90_ratio": 0.354150498176967,
+        "clean": true,
+        "reasons": [],
+        "throttle": {
+          "on": {
+            "before": [
+              "0x0000000000000000"
+            ],
+            "after": [
+              "0x0000000000000004"
+            ],
+            "power_before": [
+              "350.00 W, 144.53 W"
+            ],
+            "power_after": [
+              "350.00 W, 332.87 W"
+            ]
+          },
+          "off": {
+            "before": [
+              "0x0000000000000000"
+            ],
+            "after": [
+              "0x0000000000000004"
+            ],
+            "power_before": [
+              "350.00 W, 120.13 W"
+            ],
+            "power_after": [
+              "350.00 W, 340.52 W"
+            ]
+          }
+        },
+        "sampler": {
+          "rule": "sampler",
+          "on": {
+            "samples": 1629,
+            "share": 0.0,
+            "disqualifying": 0,
+            "bad_bits": "0x0"
+          },
+          "off": {
+            "samples": 2316,
+            "share": 0.0,
+            "disqualifying": 0,
+            "bad_bits": "0x0"
+          }
+        }
+      }
+    ],
+    "pass": true
+  },
+  "phase4_pass": null
+}

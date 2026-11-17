@@ -1,0 +1,4 @@
+before: 0x0000000000000000
+power-before: 350.00 W, 146.82 W
+after: 0x0000000000000004
+power-after: 350.00 W, 343.92 W
