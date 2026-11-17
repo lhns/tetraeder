@@ -334,3 +334,15 @@ fn cpu_failed_step_after_a_moved_reservation_rolls_back() {
         assert!(worst <= 1e-4f32.max(1e-3 * top), "sequence {i}: {worst:e}");
     }
 }
+
+/// The snapshot pool sizes its spares from `kv_row_bytes`: it must be the bytes per position a
+/// snapshot holds, not the trait's 0 (`20261117e`: every first dense save fell back).
+#[test]
+fn cpu_kv_row_bytes_matches_a_snapshot() {
+    let mut b = backend(256, 1);
+    let t = tokens(0, 7);
+    b.decode(&[input(0, &t, false)]).unwrap();
+    let snap = b.seq_snapshot(0).unwrap();
+    assert!(b.kv_row_bytes() > 0);
+    assert_eq!(snap.len(), t.len() * b.kv_row_bytes());
+}

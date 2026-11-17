@@ -116,6 +116,12 @@ impl BatchBackend for DenseBackend {
         self.model.pool().capacity()
     }
 
+    /// The snapshot pool sizes its spares from this; the trait's 0 left the dense engine's
+    /// first save without a spare (`20261117e`, ADR 0074).
+    fn kv_row_bytes(&self) -> usize {
+        self.model.kv_row_bytes()
+    }
+
     fn kv_capacity(&self) -> usize {
         self.model.pool().capacity()
     }

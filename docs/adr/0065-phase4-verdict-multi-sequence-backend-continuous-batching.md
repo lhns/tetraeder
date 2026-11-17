@@ -280,3 +280,7 @@ Each counting model is judged by its own two clean pairs on one box, as before; 
 ## Addendum: D2a throughput passes at 99988e3, provisional (2026-11-17, `bench/results/20261117d/`, box 61046208)
 - Probe c4 8B 1.042, 30B 0.976, both above 0.925; two clean pairs each: worst 8B c4 1.052, c1 1.011; 30B c4 0.998, c1 1.006. Per-model pass true for both, against the line 1 minus the band (0.925).
 - Provisional: the commit (`track-save-thp`) is not on main, and its huge-page advice stalled admission saves on the 8B server probe up to 2 s. The verdict of record is a full `phase4_box.sh` session (pairs and TTFT) on the commit that merges.
+
+## Addendum: D2a on afda512 unclean on throttle (2026-11-17, `bench/results/20261117e/phase4/`, box 61060914, host 87485, driver 620)
+- Probes 8B c4 1.044, 30B c4 0.957; pairs 8B c4 1.054 and 1.046, c1 1.006 and 1.009; 30B c4 0.968 and 0.963, c1 0.998 and 0.972. Every run had 0x400 or 0x600 before it (idle at SSH was 0x1), so every pair is unclean and both per-model passes are null, under the rule fixed before the session. Not rerun on the same host.
+- Drivers: the bits appeared before runs on driver 615 (2026-11-16) and 620, not on 595 (host 264182: 0x0 before every run in `20261117d`). The next verdict box reads the throttle value after the prepass; outside 0x0-0x3 before a run, it is destroyed and another host taken.
