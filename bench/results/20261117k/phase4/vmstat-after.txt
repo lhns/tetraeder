@@ -1,0 +1,13 @@
+[18:14:57] box age 0h36m of max 3h00m
+  974 80306 /root/tetraeder/bench/results/20261117k/phase4/gpu-samples.csv
+allocstall_dma 0
+allocstall_dma32 0
+allocstall_normal 85868
+allocstall_movable 45505
+allocstall_device 0
+compact_stall 95852
+thp_fault_alloc 11544856
+thp_fault_fallback 694
+thp_fault_fallback_charge 0
+129627062272
+84

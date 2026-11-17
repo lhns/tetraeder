@@ -1,0 +1,300 @@
+{
+  "band": 0.07531306153550049,
+  "band_source": "measured rtx-3090 n=11",
+  "models": {
+    "q8b": {
+      "engine": "tetraeder-dense",
+      "counts": true,
+      "baseline_variant": "nokvu",
+      "baseline_kv_unified": "false",
+      "aa": {
+        "c4": -0.0004899385168073422,
+        "c1": -0.0027835005873768637
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 1.0219148215682636,
+          "c1_decode_ratio": 0.9950216119475173,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000400"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 18,
+              "share": 0.16666666666666666,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 18,
+              "share": 0.1111111111111111,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 1.0208109003849122,
+          "c1_decode_ratio": 0.9965645110558138,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 17,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 18,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 1.0208109003849122,
+        "c1": 0.9950216119475173
+      },
+      "pass": true,
+      "reasons": [],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    },
+    "q30b": {
+      "engine": "tetraeder-moe",
+      "counts": true,
+      "baseline_variant": "nokvu",
+      "baseline_kv_unified": "false",
+      "aa": {
+        "c4": 0.0031138111738393537,
+        "c1": -5.760214830885513e-05
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 0.9429120043955247,
+          "c1_decode_ratio": 0.9887353955983247,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 16,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 16,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 0.9483738068140273,
+          "c1_decode_ratio": 0.9899068096253567,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 16,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 16,
+              "share": 0.0,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 0.9429120043955247,
+        "c1": 0.9887353955983247
+      },
+      "pass": true,
+      "reasons": [],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    }
+  },
+  "ttft": {
+    "log_sha256": null,
+    "requests": null,
+    "pairs": [
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r1: no result",
+          "replay-q8b-off-r1: no result"
+        ],
+        "throttle": {
+          "on": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          },
+          "off": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          }
+        },
+        "sampler": {
+          "rule": "single-sample",
+          "on": null,
+          "off": null
+        }
+      },
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r2: no result",
+          "replay-q8b-off-r2: no result"
+        ],
+        "throttle": {
+          "on": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          },
+          "off": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          }
+        },
+        "sampler": {
+          "rule": "single-sample",
+          "on": null,
+          "off": null
+        }
+      }
+    ],
+    "pass": null
+  },
+  "phase4_pass": null
+}
