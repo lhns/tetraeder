@@ -45,6 +45,15 @@
 # DRY_RUN only: DRY_GPUS=<n> plays an `nvidia-smi -L` count, DRY_GPU_PARITY=fail a failed gpu-parity, DRY_PROBE=fail a
 # failed probe, DRY_PREPASS=fail a baseline build that accepts no split mode.
 # ROUNDS=1 (S2 and S3 rehearsals) runs one round and no reruns (RERUNS=<n> overrides).
+# ONLY="tp-2 llama-bench:tensor" (ADR 0069 step-0 check): the rounds run only these configurations (a candidate is its plan
+# id, a baseline is <engine>:<sm>), anchors, calibrate, predict, vllm, reruns and the A/A run are skipped, and the summary
+# writes step0.json (own executor against the baseline per model and round, ratios against 1 - band) instead of
+# verdict.json. Unset, the behaviour is the full session. Order on the first 2x box (S2):
+#   SESSION=<s>-step0 ROUNDS=2 ONLY="tp-2 llama-bench:tensor" bash scripts/phase5_box.sh <s>-step0 2   # round 2 reversed: two interleaved pairs
+#   SESSION=<s> ROUNDS=1 bash scripts/phase5_box.sh <s> 2                                              # the rehearsal
+# GPU throttle (ADR 0068 addendum 2026-11-17): scripts/gpu_sampler.sh runs for the whole session (1 Hz, every GPU,
+# gpu-samples.csv; not with SKIP_GPU/DRY_RUN) and run_one stamps window-<run>.json (box-local start and end); the summary
+# judges each run on the sampler's window samples per GPU.
 # cargo and every long job run with fd 8 closed: a server they start would otherwise keep the lock.
 DRY="${DRY_RUN:-0}"
 skip_gpu="${SKIP_GPU:-0}"
@@ -79,6 +88,15 @@ fi
 log="${P5_LOG_FILE:-runs/vast/phase5_box.log}"
 out="${P5_OUT:-$PWD/bench/results/$session/phase5}"
 mkdir -p "$out/plans" "$out/layouts" "$out/anchor-parts" "$(dirname "$log")"
+# 1 Hz GPU sampler for the whole session (ADR 0068 addendum; scripts/gpu_sampler.sh -> $out/gpu-samples.csv); not in the CPU
+# rehearsal. It ends on $out/gpu-sampler.stop or when this script is gone.
+if [ "$DRY" = 1 ]; then
+  [ "$skip_gpu" = 1 ] || echo "PLAN gpu_sampler.sh -> gpu-samples.csv (stopped at the end)"
+elif [ "$skip_gpu" != 1 ]; then
+  OUT="$out" SAMPLER_PARENT=$$ setsid nohup bash scripts/gpu_sampler.sh 8>&- > /dev/null 2>&1 &
+fi
+stop_gpu_sampler() { [ "$DRY" = 1 ] || touch "$out/gpu-sampler.stop"; }
+only="${ONLY:-}"
 t_start=$(date +%s)
 if [ "$DRY" = 1 ]; then threads="${THREADS:-8}"; else threads="${THREADS:-$(bash scripts/cpu_quota.sh)}"; fi
 budget_s=$((${BUDGET_MIN:-150} * 60))
@@ -116,6 +134,7 @@ summ() { "$py" scripts/phase5_summary.py "$@"; }
 die() {
   say "FATAL: $*"
   stop_server
+  stop_gpu_sampler
   touch "$out/DONE"
   say "PHASE5_BOX_DONE rc=1"
   exit 1
@@ -451,7 +470,7 @@ sampler_finish() {
 # budget is spent. stdout of CMD is FILE (llama-bench JSON rows); the exit code goes to run-<RUN>.rc, kept for every
 # run: a failed run is evidence (a candidate that fails on the box fails the case), not a hole.
 run_one() {
-  local kind=$1 model=$2 run=$3 f=$4 limit=$5 rc t0 t1
+  local kind=$1 model=$2 run=$3 f=$4 limit=$5 rc t0 t1 w0 w1
   shift 5
   if [ -f "$out/run-$run.rc" ] && [ "$kind" != anchor ]; then
     say "run $run: done before"
@@ -476,6 +495,7 @@ run_one() {
   : > "$out/gpu-$run.txt"
   gpu_note "$run" before
   t0=$(date +%s.%N)
+  w0=$(date +%Y-%m-%dT%H:%M:%S)
   setsid nohup timeout -k 30 30m "$@" < /dev/null > "$f.tmp" 2> "$out/$run.log" 8>&- &
   server_pid=$!
   sampler_start "$run" "$model" "$server_pid"
@@ -483,7 +503,10 @@ run_one() {
   rc=$?
   server_pid=""
   t1=$(date +%s.%N)
+  w1=$(date +%Y-%m-%dT%H:%M:%S)
   gpu_note "$run" after
+  # box-local start and end of the process, the clock of the sampler's timestamps (phase5_summary.py run_window)
+  printf '{"start": "%s", "end": "%s"}\n' "$w0" "$w1" > "$out/window-$run.json"
   echo "$rc" > "$out/run-$run.rc"
   [ -s "$f.tmp" ] && mv "$f.tmp" "$f"
   rm -f "$f.tmp"
@@ -676,8 +699,9 @@ predict() {
 do_round() {
   local m=$1 k=$2 only=${3:-} line cfgs=() kind a b opt=() order
   [ -n "$only" ] && opt=(--only-need)
+  [ -n "${ONLY:-}" ] && opt=(--only "$ONLY") # step-0: the ONLY configurations, no reruns
   order=$(summ "$out" --round-order "$m" "$k" "${opt[@]}") || die "phase5_summary.py --round-order $m $k failed"
-  [ -n "$order" ] || [ -n "$only" ] || die "round $m $k has no configurations (no candidates or baselines in $out)"
+  [ -n "$order" ] || [ -n "$only" ] || [ -n "${ONLY:-}" ] || die "round $m $k has no configurations (no candidates or baselines in $out)"
   order=${order//$'\r'/} # a python on Windows prints CRLF
   mapfile -t cfgs <<< "$order"
   say "round $m $k: ${#cfgs[@]} configurations"
@@ -698,6 +722,7 @@ rounds() {
   local m k first
   for m in $models; do
     for k in $(seq 1 "$n_rounds"); do do_round "$m" "$k"; done
+    [ -n "$only" ] && continue # step-0 check: two interleaved pairs, no reruns, no A/A
     # an unclean run is rerun in a later round, never dropped; at most two more rounds, only what is short
     for k in $(seq $((n_rounds + 1)) $((n_rounds + reruns))); do
       if [ "$DRY" = 1 ] && ! ls "$out"/run-"$m"-*.rc > /dev/null 2>&1; then break; fi
@@ -768,14 +793,15 @@ vllm_stage() {
 # ---- stage: summary ----------------------------------------------------------------------------------------
 summary() {
   if [ "$DRY" = 1 ]; then
-    plan "phase5_summary.py $out -> verdict.json, verdict-notes.json"
+    if [ -n "$only" ]; then plan "phase5_summary.py $out --only \"$only\" -> step0.json"; else plan "phase5_summary.py $out -> verdict.json, verdict-notes.json"; fi
     return 0
   fi
-  summ "$out"
+  if [ -n "$only" ]; then summ "$out" --only "$only"; else summ "$out"; fi
 }
 
 stop_session() { # a gate failed: nothing timed ran beyond the probe; the driver fetches and destroys the box
   stop_server
+  stop_gpu_sampler
   summary || true
   touch "$out/DONE"
   say "PHASE5_BOX_DONE rc=3"
@@ -811,17 +837,18 @@ main() {
     return 3
   fi
   say "STAGE anchors"
-  anchors
+  if [ -n "$only" ]; then say "anchors skipped (ONLY)"; else anchors; fi
   say "STAGE calibrate"
-  calibrate
+  if [ -n "$only" ]; then say "calibrate skipped (ONLY)"; else calibrate; fi
   say "STAGE predict"
-  predict
+  if [ -n "$only" ]; then say "predict skipped (ONLY)"; else predict; fi
   say "STAGE rounds"
   [ "$DRY" = 1 ] && plan "host sampler beside every run (engine_sample.py) and cotenant_guard.py merge -> cotenant-<run>.json"
   rounds
   say "STAGE vllm"
-  vllm_stage
+  if [ -n "$only" ]; then say "vllm skipped (ONLY)"; else vllm_stage; fi
   say "STAGE summary"
+  stop_gpu_sampler
   summary
   rc=$?
   touch "$out/DONE"

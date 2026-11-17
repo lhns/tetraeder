@@ -27,7 +27,7 @@ def fake_bin(tmp_path, reasons, sampler=False):
         f"""#!/usr/bin/env bash
 case "$*" in
   *-lms*)
-    while true; do echo "2026/11/17 10:00:00.123, 0x0000000000000404, 160.5, 1410, 9001, 45"; sleep 0.2; done ;;
+    while true; do echo "2026/11/17 10:00:00.123, 0x0000000000000404, 160.5, 1410, 9001, 45, 1"; sleep 0.2; done ;;
   *)
     f={tmp_path.as_posix()}/reasons; n={tmp_path.as_posix()}/n; i=$(cat $n 2>/dev/null || echo 0); echo $((i + 1)) > $n
     sed -n "$((i + 1))p" $f | grep . || tail -n1 $f ;;
@@ -78,5 +78,6 @@ def test_sampler_writes_csv_and_stops_on_the_stop_file(tmp_path):
     (out / "gpu-sampler.stop").touch()
     assert p.wait(timeout=20) == 0
     first = csv.read_text().splitlines()[0].split(",")
-    assert len(first) == 7 and float(first[0]) > 1e9
+    assert len(first) == 8 and float(first[0]) > 1e9
     assert first[1] == "2026/11/17 10:00:00.123" and first[2].strip() == "0x0000000000000404"
+    assert first[7] == "1"
