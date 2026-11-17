@@ -781,6 +781,15 @@ impl Worker {
         self.report_pool();
     }
 
+    /// A sequence of `positions` may be saved later: tell the snapshot pool its size.
+    fn expect_snapshot(&self, positions: usize) {
+        if self.prefix_reuse && self.cache.enabled() && positions >= self.save_min {
+            self.cache
+                .pool()
+                .expect(positions * self.backend.kv_row_bytes());
+        }
+    }
+
     /// Reports what the snapshot pool did since the last call (ADR 0074).
     fn report_pool(&mut self) {
         let s = self.cache.pool().stats();
@@ -891,6 +900,9 @@ impl Worker {
         let (t_place, save0) = (Instant::now(), self.save_time);
         let toks = req.toks.clone();
         let last = toks.len() - 1;
+        // The most this sequence can hold when it is saved later: a spare is ready by then.
+        let at_most = toks.len() + (req.params.max_tokens - req.stats.generated_tokens) as usize;
+        self.expect_snapshot(at_most.min(self.n_ctx_seq));
         let fmt = self.backend.kv_format();
         // The idle sequence sharing the longest prefix (at most prompt - 1).
         let best_idle = self
@@ -1087,6 +1099,7 @@ impl Worker {
             m.kv_prefix_hit(source);
         }
         req.no_busy = false;
+        self.report_pool();
         if tracing::enabled!(target: "tetraeder::step", tracing::Level::DEBUG) {
             let ms = |d: Duration| d.as_secs_f64() * 1e3;
             tracing::debug!(

@@ -217,4 +217,41 @@ mod tests {
             .unwrap();
         assert_eq!(rb.gets(), ts.len() as u64);
     }
+
+    /// hardware: cpu. A dirty recycled buffer from the snapshot pool, written by the staged and
+    /// by the direct read, holds exactly the bytes of the plain reads.
+    #[test]
+    fn pooled_buffers_hold_the_same_bytes() {
+        use crate::snapshot_pool::{PoolConfig, SnapshotPool};
+        let cpu = Backend::cpu(1).unwrap();
+        let (_ctx, ts) = tensors(&cpu, 64, &[48, 80, 48]);
+        let spans = row_spans(
+            ts.iter().map(|t| t.get()),
+            64,
+            &[(3, 10), (20, 1), (40, 17)],
+        );
+        let want = reference(&spans);
+        let pool = SnapshotPool::new(PoolConfig {
+            spares: 2,
+            thp: false,
+            min_bytes: 1,
+            round: 64,
+        });
+        let rb = Readback::new(&cpu, 100).unwrap();
+        for round in 0..3 {
+            let mut dirty = Vec::with_capacity(want.len() + 64);
+            dirty.resize(dirty.capacity(), 0xAB);
+            pool.recycle(dirty);
+            let mut out = pool.take(want.len());
+            assert!(out.is_empty(), "round {round}");
+            if round % 2 == 0 {
+                rb.read(&spans, &mut out).unwrap();
+            } else {
+                append_direct(&spans, &mut out).unwrap();
+            }
+            assert_eq!(out, want, "round {round}");
+            pool.recycle(out);
+        }
+        assert!(pool.stats().from_spare >= 3);
+    }
 }

@@ -135,35 +135,28 @@ impl SnapshotPool {
         n.next_multiple_of(self.shared.cfg.round.max(1))
     }
 
-    /// An empty buffer of capacity at least `need`, for a snapshot of about `need` bytes: a ready
-    /// spare, else a plain allocation (no advice, pages untouched). Also tells the preparer the
-    /// size to keep ready and wakes it.
-    pub fn take(&self, need: usize) -> Vec<u8> {
-        let sh = &self.shared;
+    /// Tells the pool a snapshot of about `bytes` will be saved later, so the preparer has a spare
+    /// of that size ready by then. Cheap; call it as soon as the size is known, off the save path.
+    pub fn expect(&self, bytes: usize) {
         if !self.enabled() {
-            return Vec::with_capacity(need);
+            return;
         }
-        let cap = self.round(need);
-        let mut st = sh.lock();
+        let mut st = self.shared.lock();
+        self.raise_target(&mut st, self.round(bytes));
+        drop(st);
+        self.shared.wake.notify_all();
+    }
+
+    /// Grows the target to `cap` unless the prefix cache would not keep a buffer that large, and
+    /// starts the preparer thread on first use. Returns whether `cap` is worth preparing for.
+    fn raise_target(&self, st: &mut State, cap: usize) -> bool {
         if st.max_bytes != 0 && cap > st.max_bytes {
-            // The prefix cache would not keep it; nothing to prepare.
-            drop(st);
-            sh.fallback.fetch_add(1, Ordering::Relaxed);
-            return Vec::with_capacity(need);
+            return false;
         }
         st.target = st.target.max(cap);
-        let pick = st
-            .ready
-            .iter()
-            .enumerate()
-            .filter(|(_, v)| v.capacity() >= need)
-            .min_by_key(|(_, v)| v.capacity())
-            .map(|(i, _)| i);
-        let spare = pick.map(|i| st.ready.swap_remove(i));
-        let target = st.target;
         if !st.started {
             st.started = true;
-            let s = Arc::clone(sh);
+            let s = Arc::clone(&self.shared);
             if let Err(e) = std::thread::Builder::new()
                 .name("snapshot-spares".into())
                 .spawn(move || prepare_loop(&s))
@@ -171,6 +164,30 @@ impl SnapshotPool {
                 tracing::warn!("cannot start the snapshot buffer thread: {e}");
             }
         }
+        true
+    }
+
+    /// An empty buffer of capacity at least `need`, for a snapshot of about `need` bytes: a ready
+    /// spare of at most about twice that size (the cache budget counts contents, not capacity),
+    /// else a plain allocation (no advice, pages untouched). Also tells the preparer the size to
+    /// keep ready and wakes it.
+    pub fn take(&self, need: usize) -> Vec<u8> {
+        let sh = &self.shared;
+        if !self.enabled() {
+            return Vec::with_capacity(need);
+        }
+        let cap = self.round(need);
+        let mut st = sh.lock();
+        let worth = self.raise_target(&mut st, cap);
+        let limit = 2 * need + sh.cfg.round;
+        let pick = st
+            .ready
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.capacity() >= need && v.capacity() <= limit)
+            .min_by_key(|(_, v)| v.capacity())
+            .map(|(i, _)| i);
+        let spare = pick.map(|i| st.ready.swap_remove(i));
         drop(st);
         sh.wake.notify_all();
         match spare {
@@ -180,7 +197,7 @@ impl SnapshotPool {
             }
             None => {
                 sh.fallback.fetch_add(1, Ordering::Relaxed);
-                Vec::with_capacity(target)
+                Vec::with_capacity(if worth { cap } else { need })
             }
         }
     }
@@ -354,10 +371,37 @@ mod tests {
         wait_for(&p, "regrow", |s| {
             s.ready == 2 && s.ready_bytes >= 2 * 100 * KB
         });
-        // A smaller request is served by a bigger spare.
-        let v = p.take(10 * KB);
+        // A somewhat smaller request is served by a bigger spare.
+        let v = p.take(60 * KB);
         assert!(v.capacity() >= 100 * KB);
         assert_eq!(p.stats().from_spare, 1);
+    }
+
+    /// hardware: cpu. A tiny snapshot does not pin a huge spare: it allocates plainly.
+    #[test]
+    fn a_spare_far_larger_than_the_snapshot_is_not_used() {
+        let p = pool(2);
+        drop(p.take(100 * KB));
+        wait_for(&p, "fill", |s| s.ready == 2);
+        let v = p.take(10 * KB);
+        assert!(v.capacity() < 20 * KB);
+        assert_eq!(p.stats().from_spare, 0);
+        assert_eq!(p.stats().ready, 2);
+    }
+
+    /// hardware: cpu. A hint prepares spares before the first save, so that save is served by one.
+    #[test]
+    fn expect_prepares_before_the_first_take() {
+        let p = pool(2);
+        p.expect(50 * KB);
+        wait_for(&p, "fill", |s| s.ready == 2);
+        let v = p.take(50 * KB);
+        assert!(v.capacity() >= 50 * KB);
+        assert_eq!((p.stats().from_spare, p.stats().fallback), (1, 0));
+        // Without spares a hint does nothing.
+        let off = pool(0);
+        off.expect(50 * KB);
+        assert!(!off.shared.lock().started);
     }
 
     /// hardware: cpu. Released buffers come back up to the number of spares and are reused.

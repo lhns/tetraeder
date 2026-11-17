@@ -303,9 +303,15 @@ fn prompts_waiting_together_share_one_step_under_the_default_budget() {
     assert_eq!(probe.max_step_tokens.load(Ordering::SeqCst), 4 * 405);
 }
 
-/// The tokens of the waves of `run_waves`, then of the first prompt again, with a prefix cache
-/// that holds about two snapshots, so saves evict and restores happen. Also the pool counters.
-fn pooled_run(spares: usize) -> (Vec<GenEvent>, tetraeder_model::snapshot_pool::PoolStats) {
+/// The tokens of `run_waves`, then of the first prompt again (restored from RAM), with a private
+/// snapshot pool; the pool counters and the tokens the last request took from the cache.
+fn pooled_run(
+    spares: usize,
+) -> (
+    Vec<GenEvent>,
+    tetraeder_model::snapshot_pool::PoolStats,
+    u32,
+) {
     use tetraeder_model::snapshot_pool::{PoolConfig, SnapshotPool};
     let pool = Arc::new(SnapshotPool::new(PoolConfig {
         spares,
@@ -314,41 +320,41 @@ fn pooled_run(spares: usize) -> (Vec<GenEvent>, tetraeder_model::snapshot_pool::
         round: 64,
     }));
     let kv = FakeKv::new(N_VOCAB, 4, 3200, 300);
-    let mut w = worker_cache(kv, 2048, PrefixCache::with_pool(400, Arc::clone(&pool)));
-    let mut out = Vec::new();
-    for wave in 0..3u32 {
-        let mut rxs: Vec<Rx> = (0..4)
-            .map(|i| submit(&mut w, &chat(wave * 4 + i), 10))
-            .collect();
-        pump(&mut w);
-        for rx in &mut rxs {
-            out.extend(
-                events(rx)
-                    .into_iter()
-                    .filter(|e| matches!(e, GenEvent::Token(_))),
-            );
-        }
-    }
-    for seed in [0, 1] {
-        let mut rx = submit(&mut w, &chat(seed), 10);
-        pump(&mut w);
-        out.extend(
-            events(&mut rx)
-                .into_iter()
-                .filter(|e| matches!(e, GenEvent::Token(_))),
-        );
-    }
-    (out, pool.stats())
+    let mut w = worker_cache(kv, 2048, PrefixCache::with_pool(1 << 20, Arc::clone(&pool)));
+    run_waves(&mut w, 2, 4);
+    assert!(!w.cache.is_empty(), "the evicted sequences are in RAM");
+    let before = pool.stats().recycled;
+    let mut rx = submit(&mut w, &chat(0), 10);
+    pump(&mut w);
+    let evs = events(&mut rx);
+    let cached = evs
+        .iter()
+        .find_map(|e| match e {
+            GenEvent::Finished { stats, .. } => Some(stats.cached_tokens),
+            _ => None,
+        })
+        .unwrap();
+    let s = pool.stats();
+    // Released, unless the preparer had already filled every spare.
+    assert!(spares == 0 || s.recycled > before || s.ready == spares);
+    let toks = evs
+        .into_iter()
+        .filter(|e| matches!(e, GenEvent::Token(_)))
+        .collect();
+    (toks, s, cached)
 }
 
-/// Evicted and restored snapshot buffers go back to the pool, and what a request generates does
-/// not depend on the pool (ADR 0074).
+/// A restored snapshot's buffer goes back to the pool, and what a request generates does not
+/// depend on the pool (ADR 0074).
 #[test]
-fn the_snapshot_pool_recycles_and_changes_no_output() {
-    let (off, s0) = pooled_run(0);
-    let (on, s2) = pooled_run(2);
-    assert!(!off.is_empty());
-    assert_eq!(on, off, "the pool changed the generated tokens");
+fn the_snapshot_pool_takes_restored_buffers_back_and_changes_no_output() {
+    let (off, s0, c0) = pooled_run(0);
+    let (on, s2, c2) = pooled_run(2);
+    assert!(
+        c0 > 3 && c2 > 3,
+        "the prompt came back from RAM ({c0}, {c2})"
+    );
+    assert_eq!((on, c2), (off, c0), "the pool changed the result");
     assert_eq!((s0.recycled, s0.ready), (0, 0));
-    assert!(s2.recycled > 0 && s2.ready > 0, "{s2:?}");
+    assert!(s2.ready > 0, "{s2:?}");
 }
