@@ -1,0 +1,23 @@
+   Compiling syn v3.0.9
+   Compiling either v1.19.0
+   Compiling libc v0.2.191
+   Compiling getrandom v0.4.3
+   Compiling tracing-core v0.1.36
+   Compiling itertools v0.13.0
+   Compiling tracing v0.1.44
+   Compiling bindgen v0.72.1
+   Compiling tempfile v3.27.0
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.21
+   Compiling thiserror v2.0.21
+   Compiling serde v1.0.229
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+    Finished `release` profile [optimized] target(s) in 1m 05s
+     Running tests/ggml.rs (target/release/deps/ggml-664a4c1b80a6c86a)
+
+running 2 tests
+test cpu_host_reads ... ok
+test gpu_host_reads ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.37s
+

@@ -1,0 +1,252 @@
+{
+  "band": 0.07531306153550049,
+  "band_source": "measured rtx-3090 n=11",
+  "models": {
+    "q8b": {
+      "engine": "tetraeder-dense",
+      "counts": true,
+      "baseline_variant": "nokvu",
+      "baseline_kv_unified": "false",
+      "aa": {
+        "c4": 0.007068174129327476,
+        "c1": -0.00416057259765823
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 1.0537169467352645,
+          "c1_decode_ratio": 1.006089918394286,
+          "clean": false,
+          "reasons": [
+            "q8b-llama-server-r1: throttle reasons before the run: 0x404",
+            "q8b-tetraeder-dense-r1: throttle reasons before the run: 0x400"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000404"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000400"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 1.0455792042535894,
+          "c1_decode_ratio": 1.0089729537005647,
+          "clean": false,
+          "reasons": [
+            "q8b-llama-server-r2: throttle reasons before the run: 0x604",
+            "q8b-tetraeder-dense-r2: throttle reasons before the run: 0x600"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000604"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000600"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 1.0455792042535894,
+        "c1": 1.006089918394286
+      },
+      "pass": null,
+      "reasons": [
+        "q8b-llama-server-r1: throttle reasons before the run: 0x404",
+        "q8b-tetraeder-dense-r1: throttle reasons before the run: 0x400",
+        "q8b-llama-server-r2: throttle reasons before the run: 0x604",
+        "q8b-tetraeder-dense-r2: throttle reasons before the run: 0x600"
+      ],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    },
+    "q30b": {
+      "engine": "tetraeder-moe",
+      "counts": true,
+      "baseline_variant": "nokvu",
+      "baseline_kv_unified": "false",
+      "aa": {
+        "c4": 0.00800588920202161,
+        "c1": 0.02892238497610511
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 0.9678852882522696,
+          "c1_decode_ratio": 0.9983754183911183,
+          "clean": false,
+          "reasons": [
+            "q30b-llama-server-r1: throttle reasons before the run: 0x600",
+            "q30b-tetraeder-moe-r1: throttle reasons before the run: 0x600"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000600"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000600"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 0.962534350932619,
+          "c1_decode_ratio": 0.9723013068541122,
+          "clean": false,
+          "reasons": [
+            "q30b-llama-server-r2: throttle reasons before the run: 0x600",
+            "q30b-tetraeder-moe-r2: throttle reasons before the run: 0x600"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000600"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000600"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 0.962534350932619,
+        "c1": 0.9723013068541122
+      },
+      "pass": null,
+      "reasons": [
+        "q30b-llama-server-r1: throttle reasons before the run: 0x600",
+        "q30b-tetraeder-moe-r1: throttle reasons before the run: 0x600",
+        "q30b-llama-server-r2: throttle reasons before the run: 0x600",
+        "q30b-tetraeder-moe-r2: throttle reasons before the run: 0x600"
+      ],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    }
+  },
+  "ttft": {
+    "log_sha256": null,
+    "requests": null,
+    "pairs": [
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r1: no result",
+          "replay-q8b-off-r1: no result"
+        ],
+        "throttle": {
+          "on": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          },
+          "off": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          }
+        }
+      },
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r2: no result",
+          "replay-q8b-off-r2: no result"
+        ],
+        "throttle": {
+          "on": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          },
+          "off": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          }
+        }
+      }
+    ],
+    "pass": null
+  },
+  "phase4_pass": null
+}
