@@ -335,6 +335,54 @@ fn cpu_snapshot_roundtrip() {
     }
 }
 
+/// hardware: cpu. A snapshot read through staging halves (ADR 0074; small ones cut the ranges
+/// and take many syncs) has the bytes of the straight read and restores bit-exact in place; a
+/// CPU model has no staging unless asked, and reports it as host memory when it has.
+#[test]
+fn cpu_staged_snapshot_roundtrip() {
+    for kv in FORMATS {
+        let mut m = load(kv, 3);
+        assert_eq!(m.snapshot_staging(), None, "{kv}");
+        let mut out = Vec::new();
+        m.decode(
+            &[
+                SeqEval {
+                    seq: 1,
+                    tokens: &[7, 8, 9, 10],
+                    all_logits: false,
+                },
+                SeqEval {
+                    seq: 0,
+                    tokens: &PROMPT,
+                    all_logits: false,
+                },
+            ],
+            &mut out,
+        )
+        .unwrap();
+        let direct = m.seq_snapshot(0).unwrap();
+        assert!(!direct.is_empty(), "{kv}");
+        for half in [1, 333, 4096, 1 << 20] {
+            m.set_snapshot_staging(Some(half)).unwrap();
+            assert_eq!(m.snapshot_staging(), Some((2 * half, false)), "{kv}");
+            assert!(
+                m.memory()
+                    .iter()
+                    .any(|u| u.kind == "staging" && u.capacity == 2 * half as u64),
+                "{kv}"
+            );
+            assert_eq!(m.seq_snapshot(0).unwrap(), direct, "{kv} half {half}");
+        }
+        let next = m.eval_last(&[40]).unwrap();
+        m.seq_rm(0, 0).unwrap();
+        m.seq_restore(0, &direct, PROMPT.len()).unwrap();
+        assert_eq!(m.seq_snapshot(0).unwrap(), direct, "{kv} bytes roundtrip");
+        assert_eq!(m.eval_last(&[40]).unwrap(), next, "{kv} in place");
+        m.set_snapshot_staging(None).unwrap();
+        assert!(m.memory().iter().all(|u| u.kind != "staging"), "{kv}");
+    }
+}
+
 /// hardware: cpu. A sequence that outgrows its run is moved by the layout and copied on the
 /// device mid-decode; the logits stay within `TOL_CPU` of the unmoved run.
 #[test]

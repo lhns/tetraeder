@@ -332,6 +332,27 @@ impl Backend {
         }
     }
 
+    /// True if `ggml_backend_tensor_get_async` on this backend may read `t`: a CPU backend
+    /// copies synchronously from any buffer; another backend needs `t` in its own default
+    /// buffer type (CUDA asserts exactly that, so a split buffer is refused here).
+    pub fn can_read(&self, t: super::Tensor<'_>) -> bool {
+        // SAFETY: live tensor and backend; the buffer is checked for null before it is read.
+        unsafe {
+            let raw = t.raw();
+            let buf = if (*raw).view_src.is_null() {
+                (*raw).buffer
+            } else {
+                (*(*raw).view_src).buffer
+            };
+            if buf.is_null() {
+                return false;
+            }
+            self.inner.is_cpu
+                || sys::ggml_backend_buffer_get_type(buf)
+                    == sys::ggml_backend_get_default_buffer_type(self.raw())
+        }
+    }
+
     pub(crate) fn raw(&self) -> sys::ggml_backend_t {
         self.inner.ptr.as_ptr()
     }

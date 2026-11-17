@@ -748,6 +748,67 @@ impl<'a> Tensor<'a> {
         Ok(out)
     }
 
+    /// Appends `len` bytes at `offset` (backend memory to host) to `out`, blocking: one copy
+    /// straight into `out`'s spare capacity, no zero-filled temporary.
+    pub fn get_bytes_into(self, offset: usize, len: usize, out: &mut Vec<u8>) -> Result<()> {
+        self.check_range(offset, len)?;
+        out.reserve(len);
+        let at = out.len();
+        // SAFETY: the range is inside the tensor (checked) and `reserve` left at least `len`
+        // bytes of capacity after `at`. `ggml_backend_tensor_get` writes all `len` bytes before
+        // it returns (or aborts the process), so they are initialized when the length grows.
+        unsafe {
+            sys::ggml_backend_tensor_get(
+                self.ptr.as_ptr(),
+                out.as_mut_ptr().add(at).cast(),
+                offset,
+                len,
+            );
+            out.set_len(at + len);
+        }
+        Ok(())
+    }
+
+    /// Enqueues the copy of `len` bytes at `offset` of this tensor into the host tensor `dst`
+    /// at `dst_offset` on `backend`'s stream (`ggml_backend_tensor_get_async`); without an async
+    /// path (the CPU backend) it copies before returning. The copy writes `dst` until `backend`
+    /// is synchronized, so the caller must not read or write that range of `dst` before
+    /// [`Backend::synchronize`]; doing so sees or changes the bytes being copied, not memory
+    /// safety (pinned buffers are freed with an implicit device synchronization). This tensor
+    /// must be in a buffer `backend` can read ([`Backend::can_read`]), else an error (ggml
+    /// would abort).
+    pub fn read_to_async(
+        self,
+        offset: usize,
+        backend: &Backend,
+        dst: Tensor<'_>,
+        dst_offset: usize,
+        len: usize,
+    ) -> Result<()> {
+        self.check_range(offset, len)?;
+        let out = dst.host_range(dst_offset, len)?;
+        if !backend.can_read(self) {
+            return Err(GgmlError::Invalid(format!(
+                "backend `{}` cannot read tensor `{}`",
+                backend.name(),
+                self.name()
+            )));
+        }
+        // SAFETY: both ranges are inside live tensors (checked), `dst` is host memory, and
+        // `backend` reads this tensor's buffer type, which ggml asserts. The destination
+        // contract is the caller's (see above).
+        unsafe {
+            sys::ggml_backend_tensor_get_async(
+                backend.raw(),
+                self.ptr.as_ptr(),
+                out.cast_mut().cast(),
+                offset,
+                len,
+            )
+        };
+        Ok(())
+    }
+
     pub fn set_f32(self, data: &[f32]) -> Result<()> {
         self.set_bytes(pod_bytes(data), 0)
     }

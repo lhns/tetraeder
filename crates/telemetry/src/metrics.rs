@@ -178,6 +178,7 @@ pub struct Metrics {
     prefix_evictions: Counter<u64>,
     prefix_bytes: Gauge<u64>,
     prefix_restore: Histogram<f64>,
+    prefix_save: Histogram<f64>,
     spec_acceptance: Histogram<f64>,
     spec_drafted: Counter<u64>,
     spec_accepted: Counter<u64>,
@@ -421,6 +422,14 @@ impl Metrics {
                 .f64_histogram("tetraeder.kv.prefix.restore.duration")
                 .with_unit("s")
                 .with_description("Time to restore a saved sequence into the KV cache")
+                .with_boundaries(LATENCY_BOUNDS.to_vec())
+                .build(),
+            prefix_save: meter
+                .f64_histogram("tetraeder.kv.prefix.save.duration")
+                .with_unit("s")
+                .with_description(
+                    "Time to save a sequence to the host RAM prefix cache, a stall of every live sequence (ADR 0074)",
+                )
                 .with_boundaries(LATENCY_BOUNDS.to_vec())
                 .build(),
             spec_acceptance: meter
@@ -810,6 +819,11 @@ impl Metrics {
     /// One saved sequence restored into the KV cache.
     pub fn kv_prefix_restore(&self, d: Duration) {
         self.prefix_restore.record(d.as_secs_f64(), &[]);
+    }
+
+    /// One sequence saved to the prefix cache (the snapshot read, ADR 0074).
+    pub fn kv_prefix_save(&self, d: Duration) {
+        self.prefix_save.record(d.as_secs_f64(), &[]);
     }
 
     /// One verify step that carried `drafted` > 0 draft tokens of which `accepted` matched.

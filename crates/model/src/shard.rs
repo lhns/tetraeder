@@ -171,7 +171,7 @@ pub(crate) fn gather_rows(
     let rows: Vec<usize> = slices.iter().map(|t| t.nbytes() / n_rows).collect();
     for &(start, len) in runs {
         if let [t] = slices {
-            out.extend_from_slice(&t.get_bytes(start * rows[0], len * rows[0])?);
+            t.get_bytes_into(start * rows[0], len * rows[0], out)?;
             continue;
         }
         let parts = slices

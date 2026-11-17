@@ -199,6 +199,80 @@ fn host_copies(dst_backend: &Backend, stream: &Backend) {
     ));
 }
 
+/// Backend-to-host reads (ADR 0074): `get_bytes_into` appends without a temporary, and
+/// `read_to_async` lands a range in a staging tensor once `backend` is synchronized.
+fn host_reads(backend: &Backend) {
+    let dev = Context::new(1, 0).unwrap();
+    let src = dev.new_tensor(Type::I8, &[256]);
+    dev.alloc_tensors(backend).unwrap();
+    let want = pattern(256, 3);
+    src.set_bytes(&want, 0).unwrap();
+
+    let mut out = vec![9u8];
+    src.get_bytes_into(10, 20, &mut out).unwrap();
+    src.get_bytes_into(0, 0, &mut out).unwrap();
+    assert_eq!(out[0], 9);
+    assert_eq!(out[1..], want[10..30]);
+    assert!(matches!(
+        src.get_bytes_into(250, 10, &mut out),
+        Err(GgmlError::Invalid(_))
+    ));
+    assert_eq!(out.len(), 21, "a refused read appends nothing");
+
+    let host = Context::new(1, 0).unwrap();
+    let stage = host.new_tensor(Type::I8, &[128]);
+    host.alloc_host_staging(backend).unwrap();
+    stage.set_bytes(&[0; 128], 0).unwrap();
+    assert!(backend.can_read(src));
+    src.read_to_async(100, backend, stage, 8, 64).unwrap();
+    backend.synchronize();
+    let got = stage.get_bytes(0, 128).unwrap();
+    assert_eq!(got[8..72], want[100..164]);
+    assert!(got[..8].iter().chain(&got[72..]).all(|&b| b == 0));
+    assert!(matches!(
+        src.read_to_async(0, backend, stage, 100, 64),
+        Err(GgmlError::Invalid(_))
+    ));
+}
+
+/// hardware: cpu. Backend-to-host reads on the CPU backend, where the async read is synchronous.
+#[test]
+fn cpu_host_reads() {
+    host_reads(&Backend::cpu(1).unwrap());
+}
+
+/// hardware: gpu (skips without one). The async read runs on the GPU's stream into pinned
+/// staging; a CPU tensor is not readable by the GPU stream.
+#[test]
+fn gpu_host_reads() {
+    if !Backend::gpu_available() {
+        eprintln!("skip: no GPU device");
+        return;
+    }
+    let gpu = Backend::gpu(0).unwrap();
+    host_reads(&gpu);
+    let cpu = Backend::cpu(1).unwrap();
+    let plain = Context::new(1, 0).unwrap();
+    let c = plain.new_tensor(Type::I8, &[16]);
+    plain.alloc_tensors(&cpu).unwrap();
+    assert!(!gpu.can_read(c));
+    let host = Context::new(1, 0).unwrap();
+    let h = host.new_tensor(Type::I8, &[16]);
+    host.alloc_host_staging(&gpu).unwrap();
+    assert!(matches!(
+        c.read_to_async(0, &gpu, h, 0, 16),
+        Err(GgmlError::Invalid(_))
+    ));
+    // A device tensor is no destination.
+    let dev = Context::new(1, 0).unwrap();
+    let d = dev.new_tensor(Type::I8, &[16]);
+    dev.alloc_tensors(&gpu).unwrap();
+    assert!(matches!(
+        d.read_to_async(0, &gpu, d, 0, 16),
+        Err(GgmlError::Invalid(_))
+    ));
+}
+
 /// hardware: cpu. `copy_to` and `copy_to_async` on the CPU backend, where the async copy is
 /// synchronous; a CPU backend's sibling is itself.
 #[test]

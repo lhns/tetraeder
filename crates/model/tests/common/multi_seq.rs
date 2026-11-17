@@ -350,6 +350,15 @@ pub fn snapshot_roundtrip(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> +
     )
     .unwrap();
     let snap = m.seq_snapshot(2).unwrap();
+    // The same bytes through small staging halves (cut ranges, many syncs) and read straight
+    // (ADR 0074).
+    let staged = m.snapshot_staging();
+    for half in [Some(1000), None] {
+        m.set_snapshot_staging(half).unwrap();
+        assert_eq!(m.seq_snapshot(2).unwrap(), snap, "{what}: staging {half:?}");
+    }
+    m.set_snapshot_staging(staged.map(|(bytes, _)| bytes / 2))
+        .unwrap();
     let step = |m: &mut Qwen3Moe, seq| {
         let mut out = Vec::new();
         m.decode(

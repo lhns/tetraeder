@@ -755,13 +755,15 @@ impl Worker {
         }
         let t0 = Instant::now();
         let snap = self.backend.seq_snapshot(id as SeqId);
-        self.save_time += t0.elapsed();
+        let took = t0.elapsed();
+        self.save_time += took;
         match snap {
             Ok(bytes) => {
                 let evicted = self
                     .cache
                     .insert(&self.backend.kv_format(), toks.to_vec(), bytes);
                 if let Some(m) = &self.metrics {
+                    m.kv_prefix_save(took);
                     m.kv_prefix_evicted(evicted as u64);
                     m.kv_prefix_bytes(self.cache.bytes() as u64);
                 }

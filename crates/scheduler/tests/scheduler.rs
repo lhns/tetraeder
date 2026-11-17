@@ -483,6 +483,42 @@ fn ram_restore_records_a_kv_transfer() {
     assert!(timed >= 1, "the restore was timed");
 }
 
+/// Every save into the prefix cache is timed (`tetraeder.kv.prefix.save.duration`, ADR 0074).
+#[test]
+fn saves_are_timed() {
+    use opentelemetry::metrics::MeterProvider as _;
+    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+    use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
+
+    let exp = InMemoryMetricExporter::default();
+    let mp = SdkMeterProvider::builder()
+        .with_reader(PeriodicReader::builder(exp.clone()).build())
+        .build();
+    let metrics = tetraeder_telemetry::Metrics::new(&mp.meter("test"));
+    let s = moe_with(&|c| {
+        small_cache(64 * MEG)(c);
+        c.metrics = Some(metrics.clone());
+    });
+    run(&s, &long_prompt(&s, "alpha", 100), 6);
+    run(&s, &long_prompt(&s, "zulu", 100), 6);
+    mp.force_flush().unwrap();
+    let mut saves = 0u64;
+    for rm in exp.get_finished_metrics().unwrap() {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                if let (
+                    "tetraeder.kv.prefix.save.duration",
+                    AggregatedMetrics::F64(MetricData::Histogram(h)),
+                ) = (m.name(), m.data())
+                {
+                    saves += h.data_points().map(|dp| dp.count()).sum::<u64>();
+                }
+            }
+        }
+    }
+    assert!(saves >= 1, "the second prompt saved the first sequence");
+}
+
 #[test]
 fn a_zero_budget_disables_the_cache() {
     for make in [llama_with as Make, moe_with] {
