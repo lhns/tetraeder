@@ -142,6 +142,13 @@ Time budget: record-log (5 longest Claude Code tasks, `20261111d`) took 12.8 min
 - Our loop, against llama-server at the same pin: 8B 0.906, 30B 1.038 (b11976's server has a 0.96 s TTFT on the 30B). The 30B step log shows 36 to 54 ms of host time before every admitting step (the prefix-cache save of the reused idle sequence) and one 400-token prompt admitted per step under the 512 budget (mixed steps 143 to 149 ms against 97 ms for a prompt alone), where llama-server admits a wave in one step. Fixes on `track-c4-loop`: no save at admission while KV room exists, step budget 2048.
 - Then D2a again on both models.
 
+### CUDA confirmation on b12426 (2026-11-17, `bench/results/20261116pc/`, box 60983677, RTX 3090, driver 580)
+- Holds: real-model parity (8B and 30B alone controls exactly 0 incl. (0,19), anchored gaps inside the bounds), patch 0004 GPU tests incl. id -1 above 16 tokens, gpu_dense, executor gpu tests. Step shapes: dense 72.8 ms against libllama 71.3 per 8 four-row steps; `decode1x8_resident` 63.3 against 59.0 alone for dense (libllama 59.5 both).
+- Probe against llama-server b12426: 8B c1 0.999, c4 0.986 in the clean round; 30B c1 0.990, c4 0.904 and 0.927 (pass line 0.925).
+- Broken: (1) the dense engine aborts with a CUDA illegal memory access at a fixed point of the c4 workload (4/4 with seed 94), right after 3 to 4 admissions in one pass, i.e. the first step carrying several prompts under the 2048 budget (`track-dense-crash`); (2) `gpu_batched_matches_the_cpu_builder` (MoE fixture) fails at 3x its bound at the new pin (`track-gpu-multiseq`).
+- The remaining c4 loss is the admission save: 41 to 44 ms (8B) and 30 to 33 ms (30B) per reused idle sequence, serialized when several are admitted together (`track-fast-save`). Dense pays about 7% on decode with resident idle sequences, libllama nothing; a follow-up for the dense attention span.
+- Next box after these three: GPU confirmation of the fixes, then D2a on both models (pairs only for a model whose probe c4 reaches 0.925).
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 

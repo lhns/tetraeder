@@ -18,6 +18,30 @@ pub const KV_PAD: usize = 256;
 /// F16 bits of minus infinity, the masked entries.
 pub const F16_NEG_INF: u16 = 0xFC00;
 
+/// Query rows a flash-attention mask buffer is padded to. At the pin (b12426), ggml-cuda scans
+/// the mask of a call with at least 1024 queries in tiles of up to 64 rows
+/// (`flash_attn_mask_to_KV_max`, fattn-common.cuh:669-724, launched at 1117-1133; tiles of
+/// `64/ncols2` rows, fattn.cu:190 and fattn-tile.cuh:1161) and reads the last tile whole. With a
+/// mask of exactly `n_tokens` rows that read runs past the buffer: an illegal memory access on a
+/// 1207-token step (session 20261116pc). libllama never sends 1024 queries (ubatch 512).
+pub const MASK_ROW_PAD: usize = 64;
+
+/// Elements the last attention call over a `[n_kv, n_tokens]` mask block may read past it.
+pub(crate) fn mask_tail(n_tokens: usize, n_kv: usize) -> usize {
+    (n_tokens.div_ceil(MASK_ROW_PAD) * MASK_ROW_PAD - n_tokens) * n_kv
+}
+
+/// The `[n_kv, n_tokens]` mask of a step as a view of the state's padded mask buffer.
+pub(crate) fn mask_view<'a>(
+    ctx: &'a Context,
+    buf: Tensor<'a>,
+    n_kv: usize,
+    n_tokens: usize,
+) -> Tensor<'a> {
+    let row = buf.nb()[1];
+    ctx.view(buf, &[n_kv as i64, n_tokens as i64], &[row], 0)
+}
+
 /// The hyperparameters attention and the KV cache read.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AttnHparams {

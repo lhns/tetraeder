@@ -360,8 +360,9 @@ impl Context {
     }
 
     /// Flash attention. `q` is `[d, n_tokens, n_head]`, `k` and `v` are `[d, n_kv, n_head_kv]`
-    /// (F16 or F32), `mask` is F16 `[n_kv, pad(n_tokens, 32)]`. The result is
-    /// `[d, n_head, n_tokens]`.
+    /// (F16 or F32), `mask` is F16 `[n_kv, n_tokens]` (or wider). The result is
+    /// `[d, n_head, n_tokens]`. CUDA's mask scan (from 1024 queries) reads whole query tiles of up
+    /// to 64 rows, so the mask's buffer must extend to `pad(n_tokens, 64)` zeroed rows.
     pub fn flash_attn_ext<'a>(
         &'a self,
         q: Tensor<'a>,
