@@ -334,9 +334,18 @@ fn pooled_run(
             _ => None,
         })
         .unwrap();
-    let s = pool.stats();
-    // Released, unless the preparer had already filled every spare.
-    assert!(spares == 0 || s.recycled > before || s.ready == spares);
+    // Released, unless the preparer had already filled every spare. The preparer runs on its own
+    // thread, so wait for it to settle (CI saw the check race it).
+    let settled = |s: &tetraeder_model::snapshot_pool::PoolStats| {
+        spares == 0 || s.recycled > before || s.ready == spares
+    };
+    let t0 = std::time::Instant::now();
+    let mut s = pool.stats();
+    while !settled(&s) && t0.elapsed() < std::time::Duration::from_secs(2) {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        s = pool.stats();
+    }
+    assert!(settled(&s), "{s:?}");
     let toks = evs
         .into_iter()
         .filter(|e| matches!(e, GenEvent::Token(_)))
