@@ -21,3 +21,8 @@ Status: Proposed (2026-11-17).
 - Expected on the 3090: the DMA runs at pinned speed and hides under the host copy, so a save costs about one host copy of its bytes into fresh snapshot memory plus one half of DMA; about 10 to 20 ms for 8B and 7 to 14 ms for 30B instead of 41 and 31 (to be measured: `crates/model/tests/gpu_kv_save.rs` times both paths paired in one process).
 - 16 MiB of pinned memory per GPU model, fixed whatever the context length.
 - The fresh snapshot memory (first-touch page faults) stays on the stall path. If the measurement shows it dominating, next steps are recycling snapshot buffers in the prefix cache or `MADV_HUGEPAGE` on them; moving the save off the worker thread needs the device-side copy ruled out above.
+
+## Addendum: the host side dominates; huge pages on the snapshot (2026-11-17, `bench/results/20261117c/kv-save/`, box 61042290, RTX 3090)
+- Measured: staged save 47.5 ms (8B) and 28.6 ms (30B) against 55.4 and 35.6 ms straight, so `gpu_kv_save` failed its 25 and 18 ms bounds; the server's admission `save_ms` stayed at 43 to 49 ms (8B) and 29 to 35 ms (30B), no gain over 41 to 44 and 30 to 33.
+- Why: copying into fresh memory alone took 48.1 ms (8B) and 28.1 ms (30B), and 15.7 and 9.0 ms with `MADV_HUGEPAGE`. The save is bounded by page faults on the new snapshot, not by the device copy.
+- Decision: `Readback::read` advises huge pages on the snapshot's reserved capacity before the first write. Linux only, a hint; where THP is off it changes nothing. The bounds stay; the next box reruns `gpu_kv_save`.

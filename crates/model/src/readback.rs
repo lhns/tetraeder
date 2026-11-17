@@ -5,7 +5,7 @@
 use crate::qwen3moe::Result;
 use std::cell::Cell;
 use std::rc::Rc;
-use tetraeder_ggml_sys::ggml::{Backend, Context, OwnedTensor, Tensor, Type};
+use tetraeder_ggml_sys::ggml::{Backend, Context, OwnedTensor, Tensor, Type, advise_hugepages};
 
 /// Bytes of one staging half. A save of 78 MB (Qwen3-8B, 533 tokens) takes about ten syncs;
 /// both halves are 16 MiB of pinned memory per model whatever the context length.
@@ -83,6 +83,13 @@ impl Readback {
     /// KV tensor in host memory) make the whole read direct, which keeps the order.
     pub(crate) fn read(&self, spans: &[Span<'_>], out: &mut Vec<u8>) -> Result<()> {
         out.reserve(spans.iter().map(|s| s.2).sum());
+        // A fresh snapshot is untouched memory; faulting it in 4 KiB pages cost most of a save
+        // (`gpu_kv_save`, box 61042290: 48 ms against 16 ms with huge pages on the 8B). Before
+        // the first write, so the faults take huge pages where THP allows.
+        advise_hugepages(
+            out.as_ptr() as usize + out.len(),
+            out.capacity() - out.len(),
+        );
         if !spans.iter().all(|&(t, _, _)| self.backend.can_read(t)) {
             return append_direct(spans, out);
         }

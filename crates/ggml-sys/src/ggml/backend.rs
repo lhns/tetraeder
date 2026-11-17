@@ -482,7 +482,15 @@ impl Buffer {
                 sys::ggml_backend_buffer_get_size(self.ptr.as_ptr()),
             )
         };
-        advise_hugepages(base, len)
+        // One line per buffer here; the free function logs at debug, as it runs on every KV save.
+        let a = advise_hugepages(base, len);
+        tracing::info!(
+            applied = a.applied,
+            bytes = a.bytes,
+            errno = a.errno,
+            "hugepages: buffer advised"
+        );
+        a
     }
 }
 
@@ -505,7 +513,7 @@ pub fn advise_hugepages(base: usize, len: usize) -> HugepageAdvice {
     let start = base.next_multiple_of(HUGE_PAGE);
     let end = base.saturating_add(len) & !(HUGE_PAGE - 1);
     if end <= start {
-        tracing::info!(
+        tracing::debug!(
             len,
             "hugepages: skipped, no 2 MiB aligned range inside the buffer"
         );
@@ -525,7 +533,7 @@ fn advise_range(start: usize, len: usize) -> HugepageAdvice {
     // and a failure leaves the mapping as it was.
     let rc = unsafe { madvise(start as *mut std::ffi::c_void, len, MADV_HUGEPAGE) };
     if rc == 0 {
-        tracing::info!(bytes = len, "hugepages: MADV_HUGEPAGE applied");
+        tracing::debug!(bytes = len, "hugepages: MADV_HUGEPAGE applied");
         HugepageAdvice {
             applied: true,
             bytes: len as u64,
@@ -544,7 +552,7 @@ fn advise_range(start: usize, len: usize) -> HugepageAdvice {
 
 #[cfg(not(target_os = "linux"))]
 fn advise_range(_start: usize, _len: usize) -> HugepageAdvice {
-    tracing::info!("hugepages: skipped, MADV_HUGEPAGE is Linux only");
+    tracing::debug!("hugepages: skipped, MADV_HUGEPAGE is Linux only");
     HugepageAdvice::default()
 }
 
