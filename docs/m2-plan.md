@@ -154,6 +154,10 @@ Time budget: record-log (5 longest Claude Code tasks, `20261111d`) took 12.8 min
 - D2a at `99988e3` (`track-save-thp`, huge pages on the snapshot; not on main), `PROBE_MIN=0.925`: probes 8B c1 1.045, c4 1.042; 30B c1 1.023, c4 0.976. Pairs, all clean: 8B c4 1.070 and 1.052, c1 1.011 and 1.011; 30B c4 0.998 and 0.999, c1 1.006 and 1.011. Both per-model passes true; `phase4_pass` null (no TTFT in D2a). Same workload and N as `20261116d2a2`; the libllama control moved with the own builder (30B 259 to 294 tok/s at c4), so most of the gain is the pin and the step budget.
 - Not the verdict of record: the 8B server probe on the same box had admission saves of 104 ms to 2.0 s (10 of 12) with huge-page advice, against 43 to 49 ms without, while the pairs show no stall (8B c4 TTFT max 0.44 s). The verdict of record is a full `phase4_box.sh` session (pairs and TTFT) on the commit that merges, once the save stays off the admission path (`track-save-pool`).
 
+### D2a verdict of record (2026-11-17, `bench/results/20261117k/`, box 61097370)
+- Both models pass on main 6b07795: worst pairs 8B c4 1.021, c1 0.995; 30B c4 0.943, c1 0.989 (line 0.925). The way there: huge-page advice on the save path stalled admissions (`20261117d`, `h`), so the pool prepares plain spares off the admission path; the dense backend now reports its row size; the throttle rule judges BoardLimit and Reliability by a 1 Hz sampler under load (ADR 0065); `20261117e` and `g` stay null.
+- Open: D2b (TTFT on the 8B, `20261117l`), then `phase4_pass`.
+
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
 

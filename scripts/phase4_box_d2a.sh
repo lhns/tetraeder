@@ -363,7 +363,7 @@ env_json() {
   nvidia-smi -q -d CLOCK,PERFORMANCE > "$out/nvidia-smi-clock-performance.txt" 2>&1
   GW_OUT="$out" GW_THREADS="$threads" GW_QUOTA="$(bash scripts/cpu_quota.sh 2> /dev/null)" \
     GW_LLAMA="$("$baseline_bin" --version 2>&1 | head -3 | tr '\n' ' ')" \
-    GW_COMMIT="$(git rev-parse HEAD 2> /dev/null)" GW_HOST="$(hostname)" \
+    GW_COMMIT="${COMMIT:-$(git rev-parse HEAD 2> /dev/null)}" GW_HOST="$(hostname)" \
     GW_LOG_SHA="$(sha256sum "$req_log" 2> /dev/null | cut -d' ' -f1)" GW_Q30B="$q30b_engine" \
     GW_GPU="$(nvidia-smi --query-gpu=name,driver_version,clocks.sm,clocks.max.sm,clocks.mem,clocks_throttle_reasons.active,memory.total --format=csv,noheader 2> /dev/null)" \
     GW_VAST="${VAST_CONTAINERLABEL:-} ${CONTAINER_ID:-}" "$py" - << 'EOF'

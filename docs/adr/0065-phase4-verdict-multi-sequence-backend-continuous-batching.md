@@ -292,3 +292,10 @@ Each counting model is judged by its own two clean pairs on one box, as before; 
 - The same applies to the TTFT pairs (reuse on against off on one engine): their two sides are judged as a pair.
 - Idle gate at SSH: 10 samples over 30 s; launch only if at least 9 carry no disqualifying bit (anything outside 0x1, 0x2, 0x4, 0x100, 0x200, 0x400). Amended 2026-11-17 before any session used it: driver 615 reports 0x4 at 35 W idle, which caps nothing; the sampler judges the measured windows.
 - Scope: `20261117e` and `20261117g` stay null (their raw masks stay in `verdict.json`); the strict rule can be re-applied later from the sampler data.
+
+## Addendum: D2a passes on main (2026-11-17, `bench/results/20261117k/phase4/`, box 61097370, host 49107, RTX 3090, driver 615.78)
+- Code: origin/main 6b07795 (the driver's checkout; `env.json` has an empty `git_commit` because `phase4_box_d2a.sh` ignored `COMMIT`, fixed since). It holds the step budget, the pin b12426, the mask padding, the snapshot pool with huge-page advice off, and the session sampler.
+- Probes: 8B c4 1.000, c1 1.019; 30B c4 0.929, c1 1.008 (line 0.925). Two clean pairs each, no third: 8B c4 1.022 and 1.021, c1 0.995 and 0.997; 30B c4 0.943 and 0.948, c1 0.989 and 0.990. A/A within 0.003 on both. Per-model pass true for both against 1 minus the band (0.925, band 0.0753).
+- Throttle by the sampler rule on all four pairs: 0 disqualifying samples; 0x200/0x400 shares 0.167 against 0.111 in 8B pair 1 and 0 elsewhere. The idle gate read 0x4 on 8 of 10 samples at idle.
+- No compaction during the session (`compact_stall` and `allocstall` +0).
+- This is the throughput verdict of record for both models. `phase4_pass` stays null until the TTFT pairs (D2b, session `20261117l`) report.

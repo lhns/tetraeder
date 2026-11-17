@@ -61,7 +61,7 @@ verify_hook = "scripts/box_verify.sh"
 dirs = ["bench/results"]
 done_marker = "DONE"
 extra = ["runs/vast", "bench/golden"]
-include = ["*.json", "*.jsonl", "DONE", "*.log", "*.zst", "*.txt", "*.md"]  # *.txt, *.md: gpu-*.txt throttle records, gpu-shapes.txt, summary.md
+include = ["*.json", "*.jsonl", "DONE", "*.log", "*.zst", "*.txt", "*.md", "*.csv"]  # *.txt, *.md: gpu-*.txt throttle records, gpu-shapes.txt, summary.md; *.csv: gpu-samples.csv (ADR 0065)
 whole = ["bench/golden"]
 exclude = ["*.gguf", "*/target/*"]
 
