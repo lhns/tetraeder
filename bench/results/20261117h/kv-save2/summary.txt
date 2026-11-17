@@ -1,0 +1,6 @@
+SUMMARY q8b thp1: save_ms n=12 median=11.6 p95=12.2 max=12.2 bar(p95<=25,max<=50)=PASS; pool_spare=12 pool_fallback=0 pool_ready=0; 0 CUDA error lines
+SUMMARY q8b thp0: save_ms n=12 median=11.3 p95=12.2 max=12.2 bar(p95<=25,max<=50)=PASS; pool_spare=12 pool_fallback=0 pool_ready=1; 0 CUDA error lines
+SUMMARY q8b ctl: save_ms n=12 median=45.6 p95=50.5 max=50.5 bar(p95<=25,max<=50)=FAIL; pool_spare=0 pool_fallback=0 pool_ready=0; 0 CUDA error lines
+SUMMARY q30b thp1: save_ms n=12 median=8.6 p95=9.2 max=9.2 bar(p95<=18,max<=50)=PASS; pool_spare=12 pool_fallback=0 pool_ready=0; 0 CUDA error lines
+SUMMARY q30b thp0: save_ms n=12 median=8.3 p95=8.8 max=8.8 bar(p95<=18,max<=50)=PASS; pool_spare=12 pool_fallback=0 pool_ready=1; 0 CUDA error lines
+SUMMARY q30b ctl: save_ms n=12 median=29.9 p95=31.8 max=31.8 bar(p95<=18,max<=50)=FAIL; pool_spare=0 pool_fallback=0 pool_ready=0; 0 CUDA error lines
