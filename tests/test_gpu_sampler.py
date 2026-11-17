@@ -50,13 +50,13 @@ def gate(tmp_path, reasons):
 
 
 def test_idle_gate_passes_with_nine_of_ten(tmp_path):
-    r = gate(tmp_path, ["0x0000000000000001"] * 4 + ["0x0000000000000400"] + ["0x0000000000000003"] * 5)
+    r = gate(tmp_path, ["0x0000000000000001"] * 3 + ["0x0000000000000004", "0x0000000000000600"] + ["0x8"] + ["0x0000000000000003"] * 4)
     assert r.returncode == 0, r.stdout
     assert "9/10" in r.stdout and r.stdout.count("sample ") == 10 and "BAD" in r.stdout
 
 
 def test_idle_gate_fails_with_eight_of_ten(tmp_path):
-    r = gate(tmp_path, ["0x0"] * 3 + ["0x0000000000000600", "0x8"] + ["0x0"] * 5)
+    r = gate(tmp_path, ["0x0"] * 3 + ["0x0000000000000020", "0x8"] + ["0x0"] * 5)
     assert r.returncode == 1 and "8/10" in r.stdout
 
 
