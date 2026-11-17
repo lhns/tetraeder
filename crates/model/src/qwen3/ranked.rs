@@ -10,9 +10,10 @@
 //! stage's ranks cut the head by vocabulary; the logits are read per rank and joined in vocab
 //! order.
 
-use super::{DenseHparams, DenseOptions, Layer, STEP_NODES_PER_LAYER, State, alloc_state};
+use super::{DenseHparams, DenseOptions, Layer, STEP_NODES_PER_LAYER, State, alloc_state, pad};
 use crate::attn::{
-    AttnStep, AttnWeights, Kv, alloc_kv_layers, attention_out, copy_rows_on, rms_norm_mul,
+    AttnStep, AttnWeights, Kv, MASK_ROW_PAD, alloc_kv_layers, attention_out, copy_rows_on,
+    mask_view, rms_norm_mul,
 };
 use crate::gguf::Gguf;
 use crate::hparams::names;
@@ -301,7 +302,7 @@ impl Ranked {
             }
             for rd in &mut self.ranks {
                 rd.state = Some(alloc_state(
-                    (key.0, key.1, key.2, [key.1, key.0]),
+                    (key.0, key.1, key.2, [key.1, pad(key.0, MASK_ROW_PAD)]),
                     &rd.backend,
                 )?);
             }
@@ -415,6 +416,10 @@ impl Ranked {
         let mut logits: Vec<(usize, OwnedTensor)> = Vec::new();
         let mut incoming: Vec<Option<Tensor<'_>>> = vec![None; nr];
         let st_of = |r: usize| self.ranks[r].state.as_ref().expect("state allocated");
+        // The `[n_kv, n]` mask of each rank, a view of its padded buffer.
+        let masks: Vec<Tensor<'_>> = (0..nr)
+            .map(|r| mask_view(cx[r], st_of(r).mask.get(), n_kv, n))
+            .collect();
 
         let n_stages = self.topo.stages.len();
         for (s, stage) in self.topo.stages.iter().enumerate() {
@@ -443,7 +448,7 @@ impl Ranked {
                     let step = AttnStep {
                         pos: st.pos.get(),
                         rows: st.rows.get(),
-                        mask: st.mask.get(),
+                        mask: masks[r],
                         n_tokens: n,
                         n_kv,
                     };

@@ -12,8 +12,8 @@
 mod ranked;
 
 use crate::attn::{
-    AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, SeqEval, alloc_kv, attention_seqs, copy_rows,
-    rms_norm_mul,
+    AttnHparams, AttnStep, AttnWeights, KV_PAD, Kv, MASK_ROW_PAD, SeqEval, alloc_kv,
+    attention_seqs, copy_rows, mask_tail, mask_view, rms_norm_mul,
 };
 use crate::cpu_poll;
 use crate::gguf::{Gguf, GgufError};
@@ -190,8 +190,23 @@ struct Weights {
 }
 
 /// Sizes of a step's inputs: tokens, `n_kv` (0 with attention per sequence), outputs and the
-/// mask shape (`[n_kv, n_tokens]`, or `[blocks, 1]` per sequence).
+/// mask buffer's shape: `[n_kv, pad(n_tokens, MASK_ROW_PAD)]`, or per sequence `[blocks + tail,
+/// 1]` with the tail [`mask_tail`] of the last block. The padding is never written and stays 0.
 type StateKey = (usize, usize, usize, [usize; 2]);
+
+/// The [`StateKey`] of a step plan.
+fn state_key(plan: &StepPlan) -> StateKey {
+    let (n, n_out) = (plan.pos.len(), plan.outputs.len());
+    match plan.seqs.last() {
+        None => (n, plan.n_kv, n_out, [plan.n_kv, pad(n, MASK_ROW_PAD)]),
+        Some(s) => (
+            n,
+            0,
+            n_out,
+            [plan.mask.len() + mask_tail(s.n_tokens, s.n_kv), 1],
+        ),
+    }
+}
 
 /// Inputs of one step; reallocated when its sizes change.
 struct State {
@@ -907,12 +922,7 @@ impl SchedEngine {
         built: &mut u64,
         out: &mut Vec<f32>,
     ) -> Result<()> {
-        let (n, n_out) = (plan.pos.len(), plan.outputs.len());
-        let state_key = if plan.seqs.is_empty() {
-            (n, plan.n_kv, n_out, [plan.n_kv, n])
-        } else {
-            (n, 0, n_out, [plan.mask.len(), 1])
-        };
+        let state_key = state_key(plan);
         let key = (state_key, plan.seqs.clone());
         if self.state.as_ref().is_none_or(|s| s.key != state_key) {
             // The kept graph holds the old state's context: drop it first, then the buffers.
@@ -979,6 +989,8 @@ fn alloc_state(key: StateKey, backend: &Backend) -> Result<State> {
         outputs: ctx.new_persistent(Type::I32, &[n_out as i64]),
     };
     ctx.alloc_tensors(backend)?;
+    // The mask padding is read by ggml-cuda (MASK_ROW_PAD) but never written: keep it finite.
+    ctx.clear_buffer(0);
     Ok(state)
 }
 
@@ -1112,10 +1124,15 @@ fn build_step<'a>(
     let mut g = ctx.new_graph(step_nodes(a, seqs.len()));
     let mut x = ctx.get_rows(w.tok_embd.get(), st.tokens.get());
     let (n_tokens, n_kv, n_out, _) = st.key;
+    let mask = if seqs.is_empty() {
+        mask_view(ctx, st.mask.get(), n_kv, n_tokens)
+    } else {
+        st.mask.get()
+    };
     let step = AttnStep {
         pos: st.pos.get(),
         rows: st.rows.get(),
-        mask: st.mask.get(),
+        mask,
         n_tokens,
         n_kv,
     };
@@ -1147,11 +1164,15 @@ mod graph_order {
     use std::path::PathBuf;
 
     fn model(n_seq: usize) -> Qwen3 {
+        model_pool(n_seq, 512)
+    }
+
+    fn model_pool(n_seq: usize, n_ctx_pool: usize) -> Qwen3 {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/fixtures/tiny-qwen3-f16.gguf");
         let opts = DenseOptions {
             n_seq_max: n_seq,
-            n_ctx_pool: 512,
+            n_ctx_pool,
             threads: Some(1),
             ..DenseOptions::new(BackendChoice::Cpu { threads: Some(1) })
         };
@@ -1191,6 +1212,81 @@ mod graph_order {
             );
             // The head ends the graph: output norm, then the projection.
             assert_eq!(&ops[ops.len() - 3..], ["RMS_NORM", "MUL", "MUL_MAT"]);
+        }
+    }
+
+    /// hardware: cpu. The step of the session 20261116pc CUDA crash on the tiny model: four
+    /// sequences that held 533 positions keep a few (one keeps 406 and decodes), then 1207
+    /// tokens in one step. ggml-cuda reads the mask in whole 64-row query tiles once a call has
+    /// 1024 queries (`attn::MASK_ROW_PAD`), so the mask buffer must cover `pad(1207, 64)` rows;
+    /// the padding stays zero, and each sequence's logits match it run alone.
+    #[test]
+    fn long_step_mask_covers_whole_query_tiles() {
+        let n_vocab = model(1).n_vocab() as i32;
+        let toks = |seed: usize, n: usize| -> Vec<i32> {
+            (0..n)
+                .map(|i| ((seed * 7919 + i * 31 + 1) as i32) % n_vocab)
+                .collect()
+        };
+        let keep = [406usize, 3, 4, 3];
+        let step_len = [1usize, 401, 402, 403];
+        let history: Vec<Vec<i32>> = (0..4).map(|s| toks(s, 533)).collect();
+        let step: Vec<Vec<i32>> = (0..4).map(|s| toks(s + 10, step_len[s])).collect();
+        fn last(seq: u32, tokens: &[i32]) -> SeqEval<'_> {
+            SeqEval {
+                seq,
+                tokens,
+                all_logits: false,
+            }
+        }
+
+        let mut m = model_pool(4, 4096);
+        let mut out = Vec::new();
+        for (s, h) in history.iter().enumerate() {
+            m.decode(&[last(s as u32, h)], &mut out).unwrap();
+        }
+        for (s, &k) in keep.iter().enumerate() {
+            m.seq_rm(s as u32, k).unwrap();
+        }
+        let inputs: Vec<SeqEval<'_>> = (0..4).map(|s| last(s as u32, &step[s])).collect();
+        let ranges = m.decode(&inputs, &mut out).unwrap();
+        let n: usize = step_len.iter().sum();
+        assert_eq!(n, 1207);
+
+        let Engine::Sched(e) = &m.engine else {
+            panic!("the CPU backend uses the scheduler")
+        };
+        let st = e.state.as_ref().expect("a step ran");
+        let (n_tokens, n_kv, _, _) = st.key;
+        assert_eq!(n_tokens, n);
+        // The widest query tile of ggml-cuda's flash attention at the pin.
+        let rows = pad(n, 64);
+        let mask = st.mask.get();
+        assert!(
+            mask.nbytes() >= rows * n_kv * 2,
+            "mask buffer of {} bytes, the CUDA scan reads {} ({rows} rows of {n_kv})",
+            mask.nbytes(),
+            rows * n_kv * 2
+        );
+        let tail = mask.get_bytes(n * n_kv * 2, (rows - n) * n_kv * 2).unwrap();
+        assert!(tail.iter().all(|&b| b == 0), "mask padding is not zero");
+
+        let nv = m.n_vocab();
+        let top = out.iter().fold(0f32, |a, x| a.max(x.abs()));
+        for (s, r) in ranges.iter().enumerate() {
+            let mut alone = model_pool(1, 1024);
+            let mut want = Vec::new();
+            alone
+                .decode(&[last(0, &history[s][..keep[s]])], &mut want)
+                .unwrap();
+            alone.decode(&[last(0, &step[s])], &mut want).unwrap();
+            let got = &out[r.start * nv..r.end * nv];
+            let worst = got
+                .iter()
+                .zip(&want)
+                .fold(0f32, |a, (x, y)| a.max((x - y).abs()));
+            // The masked path's batch dependence (dense_per_seq.rs): loosely bounded.
+            assert!(worst <= 1e-2 * top, "sequence {s}: max |delta| {worst:e}");
         }
     }
 
