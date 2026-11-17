@@ -309,8 +309,9 @@ gpu_parity() {
     for pkg in tetraeder-executor tetraeder-model; do
       extra=""
       [ "$pkg" = tetraeder-executor ] && extra="GGML_CUDA_GRAPH_DEBUG=1 "
-      plan "${extra}TETRAEDER_REQUIRE_GPU=1 cargo test --release --no-fail-fast -p $pkg --features tetraeder-ggml-sys/cuda -- $filters >> gpu-parity.log.full"
+      plan "${extra}TETRAEDER_REQUIRE_GPU=1 TETRAEDER_REQUIRE_GPUS=$ngpu TETRAEDER_MOE_GGUF=${MODEL_FILE[qwen3-30b-a3b]} cargo test --release --no-fail-fast -p $pkg --features tetraeder-ggml-sys/cuda -- $filters >> gpu-parity.log.full"
     done
+    plan "gpu-parity fails if the log has a skip: line (cargo counts a skipped test as passed)"
     plan "gpu-parity.log = gpu-parity.log.full cut to 300 columns (fetch takes *.log, not *.log.full)"
     if [ "${DRY_GPU_PARITY:-ok}" = fail ]; then gate gpu_parity failed; return 1; fi
     gate gpu_parity ok
@@ -327,11 +328,13 @@ gpu_parity() {
   # Every package runs and every test in it (--no-fail-fast): one box run shows all failures. The full log stays on
   # the box (raw logit dumps, 20 MB on S2); results get a copy cut to 300 columns. GGML_CUDA_GRAPH_DEBUG=1 is for the
   # executor's graph-replay test only and must never reach a timed run.
+  # The MoE tests read the 30B file from TETRAEDER_MOE_GGUF and skip (a pass for cargo) without it; REQUIRE_GPUS makes
+  # missing GPUs a failure; a skip: line in the log fails the gate below.
   for pkg in tetraeder-executor tetraeder-model; do
     extra=""
     [ "$pkg" = tetraeder-executor ] && extra="GGML_CUDA_GRAPH_DEBUG=1"
     # shellcheck disable=SC2086
-    env $extra TETRAEDER_REQUIRE_GPU=1 TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m cargo test --release \
+    env $extra TETRAEDER_REQUIRE_GPU=1 TETRAEDER_REQUIRE_GPUS="$ngpu" TETRAEDER_MOE_GGUF="$(realpath "${MODEL_FILE[qwen3-30b-a3b]}")" TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m cargo test --release \
       --no-fail-fast -p "$pkg" --features tetraeder-ggml-sys/cuda -- --nocapture --test-threads 1 $filters >> "$full" 2>&1 8>&- || {
       say "gpu-parity FAILED in $pkg (see $out/gpu-parity.log)"
       failed="$failed $pkg"
@@ -339,6 +342,12 @@ gpu_parity() {
   done
   cut -c1-300 "$full" > "$out/gpu-parity.log"
   if [ -n "$failed" ]; then
+    gate gpu_parity failed
+    return 1
+  fi
+  if grep -qE '(^|[ .])skip: ' "$full"; then
+    say "gpu-parity FAILED: tests skipped under TETRAEDER_REQUIRE_GPU: $(grep -E '(^|[ .])skip: ' "$full" | cut -c1-120 | tr '
+' ';')"
     gate gpu_parity failed
     return 1
   fi

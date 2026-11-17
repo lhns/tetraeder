@@ -318,6 +318,8 @@ def test_gpu_parity_runs_every_package_and_scopes_graph_debug_to_the_executor(tm
     assert sum("GGML_CUDA_GRAPH_DEBUG" in ln for ln in lines) == 1
     assert all(">> gpu-parity.log.full" in c for c in cmds)
     assert any("cut to 300 columns" in ln for ln in lines)
+    assert all("TETRAEDER_REQUIRE_GPUS=2 TETRAEDER_MOE_GGUF=" in c and "Qwen3-30B-A3B-Q4_K_M.gguf" in c for c in cmds)
+    assert any("fails if the log has a skip: line" in ln for ln in lines)
 
 
 def test_gate_failed_line_shows_the_probe_state(tmp_path):

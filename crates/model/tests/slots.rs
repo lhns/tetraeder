@@ -66,7 +66,7 @@ fn cpu_slot_counts_match_libllama() {
 }
 
 /// hardware: gpu (CUDA build; skips without a GPU device). The matrix of the CPU test with the
-/// builder on GPU 0 against the CPU libllama reference, within `TOL_GPU`.
+/// builder on GPU 0 against the CPU libllama reference, within `GPU_TOL` (ADR 0071).
 #[test]
 fn gpu_slot_counts_match_libllama() {
     if !Backend::gpu_available() {
@@ -78,7 +78,7 @@ fn gpu_slot_counts_match_libllama() {
         for ram in [None, Some(3)] {
             let o = opts_on(BackendChoice::Gpu { index: 0 }, slots, ram);
             let mut m = Qwen3Moe::load(fixture(), &o).unwrap();
-            let worst = check_against(&mut m, &r, TOL_GPU);
+            let worst = check_against_tol(&mut m, &r, GPU_TOL);
             eprintln!("gpu slots {slots} ram {ram:?}: max |delta| {worst:e}");
             // One segment per MoE layer plus the head when streaming, one graph per step with
             // every expert resident (ADR 0036).
