@@ -11,7 +11,9 @@ use tetraeder_ggml_sys::ggml::advise_hugepages;
 
 /// Env: spare buffers kept ready (default 2; 0 disables the pool).
 pub const SPARES_ENV: &str = "TETRAEDER_SNAPSHOT_SPARES";
-/// Env: `0` skips the huge-page advice in the preparer (default on).
+/// Env: `1` advises huge pages on the buffers the preparer makes (default off: on a host with
+/// fragmented memory the advice made each spare take 0.5 s of direct compaction, and with the
+/// pages touched off the admission path it gains nothing; `20261117h`, ADR 0074).
 pub const THP_ENV: &str = "TETRAEDER_SNAPSHOT_THP";
 
 #[derive(Debug, Clone)]
@@ -30,7 +32,7 @@ impl Default for PoolConfig {
     fn default() -> Self {
         Self {
             spares: 2,
-            thp: true,
+            thp: false,
             min_bytes: 1 << 20,
             round: 2 << 20,
         }
@@ -46,9 +48,7 @@ impl PoolConfig {
         {
             c.spares = n;
         }
-        c.thp = std::env::var(THP_ENV)
-            .map(|v| v.trim() != "0")
-            .unwrap_or(true);
+        c.thp = std::env::var(THP_ENV).is_ok_and(|v| v.trim() == "1");
         c
     }
 }
