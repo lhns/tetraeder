@@ -731,7 +731,7 @@ impl Qwen3 {
     }
 
     /// Bytes of one cached position across all layers (K and V).
-    fn kv_row_bytes(&self) -> usize {
+    pub fn kv_row_bytes(&self) -> usize {
         let n_rows = self.kv_rows();
         self.kv_groups()
             .iter()
