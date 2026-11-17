@@ -9,6 +9,9 @@ use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Ids of [`Graph`]s, unique in the process.
+static GRAPH_IDS: AtomicU64 = AtomicU64::new(1);
+
 /// A ggml context with `no_alloc`: it holds tensor and graph metadata only. Tensor data lives in
 /// the buffer from [`Context::alloc_tensors`] (weights, KV cache, state) or is assigned by a
 /// [`super::Sched`] (graph intermediates). Tensors die with the context.
@@ -213,12 +216,11 @@ impl Context {
 
     /// A new graph that can hold `nodes` nodes (the context must have been sized for it).
     pub fn new_graph<'a>(&'a self, nodes: usize) -> Graph<'a> {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
         // SAFETY: live context sized for the graph by `Context::new`.
         let ptr = unsafe { sys::ggml_new_graph_custom(self.ptr.as_ptr(), nodes, false) };
         Graph {
             ptr: NonNull::new(ptr).expect("ggml returned a null graph"),
-            id: NEXT.fetch_add(1, Ordering::Relaxed),
+            id: GRAPH_IDS.fetch_add(1, Ordering::Relaxed),
             _ctx: PhantomData,
         }
     }
@@ -912,23 +914,28 @@ pub struct Graph<'a> {
 }
 
 impl<'a> Graph<'a> {
-    /// A new graph in `ctx` with nodes `[i0, i1)` of `self` (same tensors, `ggml_graph_add_node`).
-    /// Allocation stays with the graph `self` was allocated as: computing the range needs that
-    /// allocation alive. `ctx` must have room for a graph of `i1 - i0` nodes. The range is a
-    /// graph of its own, with its own id (an allocator or scheduler does not know it).
+    /// Nodes `[i0, i1)` of `self` as a graph object in `ctx` (`ggml_graph_view_new`, patch 0005,
+    /// ADR 0075): it shares this graph's node array, use counts and visited set, so a backend
+    /// fuses in it as in the whole graph. Allocation stays with the graph `self` was allocated
+    /// as: computing the range needs that allocation alive. `ctx` must have room for one graph.
+    /// The range has its own id (an allocator or scheduler does not know it).
     pub fn range(&self, ctx: &'a Context, i0: usize, i1: usize) -> Graph<'a> {
         assert!(
             i0 < i1 && i1 <= self.n_nodes(),
             "node range {i0}..{i1} out of {}",
             self.n_nodes()
         );
-        let g = ctx.new_graph(i1 - i0);
-        for i in i0..i1 {
-            // SAFETY: live graphs; the node is a live tensor of the source graph, and the new
-            // graph has room for `i1 - i0` nodes.
-            unsafe { sys::ggml_graph_add_node(g.ptr.as_ptr(), self.node(i).raw()) };
+        // SAFETY: live context and graph; 0 <= i0 < i1 <= n_nodes (checked above), which fit
+        // in i32 because n_nodes does. The view points into this graph's arrays, which live as
+        // long as its context ('a).
+        let ptr = unsafe {
+            sys::ggml_graph_view_new(ctx.ptr.as_ptr(), self.ptr.as_ptr(), i0 as i32, i1 as i32)
+        };
+        Graph {
+            ptr: NonNull::new(ptr).expect("ggml returned a null graph view"),
+            id: GRAPH_IDS.fetch_add(1, Ordering::Relaxed),
+            _ctx: PhantomData,
         }
-        g
     }
 
     /// Adds `t` and everything it depends on, in dependency order.
@@ -960,9 +967,10 @@ impl<'a> Graph<'a> {
     }
 }
 
-/// Consecutive node ranges of one graph as graphs of their own (`ggml_graph_add_node`), kept
-/// apart from the source graph so a caller can cache them (ADR 0069). The ranges point at the
-/// source graph's tensors and use its allocation, so they are handed out only against that
+/// Consecutive node ranges of one graph as views of it (`ggml_graph_view_new`, ADR 0075), kept
+/// apart from the source graph so a caller can cache them (ADR 0069). A range shares the source
+/// graph's nodes and use counts, so a backend fuses in it as in the whole graph. The ranges point
+/// into the source graph and use its allocation, so they are handed out only against that
 /// graph: [`RangeGraphs::get`] takes it and the result borrows it.
 pub struct RangeGraphs {
     // Owns the memory of the range graphs; never read.
@@ -990,23 +998,24 @@ impl RangeGraphs {
                 "range cuts {cuts:?} do not end at the graph's {n} nodes"
             )));
         }
-        let mut sizes = Vec::with_capacity(cuts.len());
-        let mut start = 0;
-        for &end in cuts {
-            sizes.push(end - start);
-            start = end;
-        }
-        let ctx = Context::with_graphs(0, &sizes)?;
+        // A view is one small graph object: the room of a one-node graph covers it.
+        let ctx = Context::with_graphs(0, &vec![1; cuts.len()])?;
         let mut graphs = Vec::with_capacity(cuts.len());
         let mut start = 0;
         for &end in cuts {
-            let g = ctx.new_graph(end - start);
-            for i in start..end {
-                // SAFETY: live graphs; the node is a live tensor of the source graph and the
-                // new graph has room for `end - start` nodes.
-                unsafe { sys::ggml_graph_add_node(g.ptr.as_ptr(), src.node(i).raw()) };
-            }
-            graphs.push((g.ptr, g.id));
+            // SAFETY: live context with room for one more graph object, live source graph and
+            // 0 <= start < end <= n_nodes (checked above). The view points into the source
+            // graph's arrays; it is only handed out while that graph is borrowed (`get`).
+            let ptr = unsafe {
+                sys::ggml_graph_view_new(
+                    ctx.ptr.as_ptr(),
+                    src.ptr.as_ptr(),
+                    start as i32,
+                    end as i32,
+                )
+            };
+            let ptr = NonNull::new(ptr).expect("ggml returned a null graph view");
+            graphs.push((ptr, GRAPH_IDS.fetch_add(1, Ordering::Relaxed)));
             start = end;
         }
         Ok(RangeGraphs {

@@ -314,6 +314,53 @@ fn range_graphs_cache_matches_the_whole_graph() {
     assert!(ranges.get(&g2, 0).is_err());
 }
 
+/// A range keeps the whole graph's use counts, so a backend fuses in it as in the whole graph
+/// (ADR 0075). The CPU fuses `rms_norm` with the `mul` after it and then never writes the norm's
+/// own output: a sentinel there survives the whole graph and a range holding both nodes. A range
+/// filled with `ggml_graph_add_node` has no use counts, runs both ops and overwrites it; on CUDA
+/// that ran other kernels than the scheduler (the one-rank mismatch on the S2 box).
+#[test]
+fn ranges_fuse_as_the_whole_graph() {
+    let cpu = Backend::cpu(1).unwrap();
+    let ctx = Context::new(8, 4).unwrap();
+    let x = ctx.new_tensor(Type::F32, &[N as i64]);
+    let w = ctx.new_tensor(Type::F32, &[N as i64]);
+    let norm = ctx.rms_norm(x, 1e-6);
+    let y = ctx.mul(norm, w);
+    let z = ctx.scale(y, 2.0).set_output();
+    let mut g = ctx.new_graph(4);
+    g.expand(z);
+    assert_eq!(g.n_nodes(), 3);
+    // Every tensor in its own memory, so no result shares the norm's bytes.
+    ctx.alloc_tensors(&cpu).unwrap();
+    x.set_f32(&xs(0.5)).unwrap();
+    w.set_f32(&xs(2.0)).unwrap();
+    let sentinel = [7.0f32; N];
+    norm.set_f32(&sentinel).unwrap();
+    cpu.compute_async(&g).unwrap();
+    cpu.synchronize();
+    assert_eq!(
+        norm.get_f32().unwrap(),
+        sentinel,
+        "the CPU fuses rms_norm and mul in the whole graph"
+    );
+    let whole = z.get_f32().unwrap();
+    z.set_f32(&[0.0; N]).unwrap();
+
+    let ranges = RangeGraphs::new(&g, &[2, 3]).unwrap();
+    for i in 0..2 {
+        cpu.compute_async(&ranges.get(&g, i).unwrap()).unwrap();
+    }
+    cpu.synchronize();
+    assert_eq!(
+        norm.get_f32().unwrap(),
+        sentinel,
+        "a range fuses rms_norm and mul as the whole graph"
+    );
+    let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    assert_eq!(bits(&z.get_f32().unwrap()), bits(&whole));
+}
+
 /// `add_inplace` writes into its first operand, which is how the fallback all-reduce sums.
 #[test]
 fn add_inplace_writes_the_first_operand() {
