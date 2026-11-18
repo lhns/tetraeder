@@ -1,0 +1,126 @@
+{
+  "band": 0.08,
+  "band_source": "provisional cuda-default",
+  "threshold": 0.92,
+  "only": "tp-2 llama-bench:tensor",
+  "models": {
+    "qwen3-30b-a3b": {
+      "own": "tp-2",
+      "baseline": "llama-bench:tensor",
+      "rounds": [
+        {
+          "round": 1,
+          "clean": false,
+          "own": {
+            "pp_tps": 4846.852168431606,
+            "tg_tps": 181.00411503946748
+          },
+          "baseline": {
+            "pp_tps": 4463.083815,
+            "tg_tps": 175.81198
+          },
+          "ratio_pp": null,
+          "ratio_tg": null,
+          "reasons": [
+            "qwen3-30b-a3b-tp-2-r1: GPU 0: share of 0x200/0x400 samples 0.47 differs from the session median 0.36 by more than 0.1",
+            "qwen3-30b-a3b-tp-2-r1: GPU 0: share of 0x4 samples 0.00 differs from the session median 0.21 by more than 0.1",
+            "qwen3-30b-a3b-tp-2-r1: GPU 1: share of 0x4 samples 0.07 differs from the session median 0.19 by more than 0.1",
+            "qwen3-30b-a3b-tp-2-r1: co-tenant (7.1 cores busy outside the container (limit 4.8 of 32 physical))",
+            "qwen3-30b-a3b-llama-bench-tensor-r1: GPU 0: share of 0x200/0x400 samples 0.50 differs from the session median 0.36 by more than 0.1",
+            "qwen3-30b-a3b-llama-bench-tensor-r1: GPU 0: share of 0x4 samples 0.00 differs from the session median 0.21 by more than 0.1",
+            "qwen3-30b-a3b-llama-bench-tensor-r1: GPU 1: share of 0x200/0x400 samples 0.50 differs from the session median 0.36 by more than 0.1",
+            "qwen3-30b-a3b-llama-bench-tensor-r1: GPU 1: share of 0x4 samples 0.07 differs from the session median 0.19 by more than 0.1",
+            "qwen3-30b-a3b-llama-bench-tensor-r1: co-tenant (7.1 cores busy outside the container (limit 4.8 of 32 physical))"
+          ]
+        },
+        {
+          "round": 2,
+          "clean": false,
+          "own": {
+            "pp_tps": 4881.923854059196,
+            "tg_tps": 178.77681190222046
+          },
+          "baseline": {
+            "pp_tps": 4493.332655,
+            "tg_tps": 176.403574
+          },
+          "ratio_pp": null,
+          "ratio_tg": null,
+          "reasons": [
+            "qwen3-30b-a3b-tp-2-r2: GPU 0: share of 0x4 samples 0.00 differs from the session median 0.21 by more than 0.1",
+            "qwen3-30b-a3b-tp-2-r2: GPU 1: share of 0x4 samples 0.00 differs from the session median 0.19 by more than 0.1",
+            "qwen3-30b-a3b-tp-2-r2: co-tenant (6.9 cores busy outside the container (limit 4.8 of 32 physical))",
+            "qwen3-30b-a3b-llama-bench-tensor-r2: GPU 0: share of 0x200/0x400 samples 0.50 differs from the session median 0.36 by more than 0.1",
+            "qwen3-30b-a3b-llama-bench-tensor-r2: GPU 0: share of 0x4 samples 0.07 differs from the session median 0.21 by more than 0.1",
+            "qwen3-30b-a3b-llama-bench-tensor-r2: GPU 1: share of 0x200/0x400 samples 0.50 differs from the session median 0.36 by more than 0.1",
+            "qwen3-30b-a3b-llama-bench-tensor-r2: GPU 1: share of 0x4 samples 0.07 differs from the session median 0.19 by more than 0.1",
+            "qwen3-30b-a3b-llama-bench-tensor-r2: co-tenant (7.2 cores busy outside the container (limit 4.8 of 32 physical))"
+          ]
+        }
+      ],
+      "clean_pairs": 0,
+      "ratio_pp_min": null,
+      "ratio_tg_min": null,
+      "ok": null
+    },
+    "qwen3-32b": {
+      "own": "tp-2",
+      "baseline": "llama-bench:tensor",
+      "rounds": [
+        {
+          "round": 1,
+          "clean": false,
+          "own": {
+            "pp_tps": 1481.011161874922,
+            "tg_tps": 58.19490208875035
+          },
+          "baseline": {
+            "pp_tps": 1530.486494,
+            "tg_tps": 58.698273
+          },
+          "ratio_pp": null,
+          "ratio_tg": null,
+          "reasons": [
+            "qwen3-32b-tp-2-r1: GPU 0: share of 0x200/0x400 samples 0.20 differs from the session median 0.36 by more than 0.1",
+            "qwen3-32b-tp-2-r1: GPU 0: share of 0x4 samples 0.35 differs from the session median 0.21 by more than 0.1",
+            "qwen3-32b-tp-2-r1: GPU 1: share of 0x200/0x400 samples 0.20 differs from the session median 0.36 by more than 0.1",
+            "qwen3-32b-tp-2-r1: GPU 1: share of 0x4 samples 0.40 differs from the session median 0.19 by more than 0.1",
+            "qwen3-32b-tp-2-r1: co-tenant (7.9 cores busy outside the container (limit 4.8 of 32 physical))",
+            "qwen3-32b-llama-bench-tensor-r1: GPU 0: share of 0x4 samples 0.41 differs from the session median 0.21 by more than 0.1",
+            "qwen3-32b-llama-bench-tensor-r1: GPU 1: share of 0x4 samples 0.35 differs from the session median 0.19 by more than 0.1",
+            "qwen3-32b-llama-bench-tensor-r1: co-tenant (6.9 cores busy outside the container (limit 4.8 of 32 physical))"
+          ]
+        },
+        {
+          "round": 2,
+          "clean": false,
+          "own": {
+            "pp_tps": 1549.0791107796067,
+            "tg_tps": 58.62737144133424
+          },
+          "baseline": {
+            "pp_tps": 1522.214725,
+            "tg_tps": 58.593335
+          },
+          "ratio_pp": null,
+          "ratio_tg": null,
+          "reasons": [
+            "qwen3-32b-tp-2-r2: GPU 0: share of 0x200/0x400 samples 0.10 differs from the session median 0.36 by more than 0.1",
+            "qwen3-32b-tp-2-r2: GPU 0: share of 0x4 samples 0.35 differs from the session median 0.21 by more than 0.1",
+            "qwen3-32b-tp-2-r2: GPU 1: share of 0x200/0x400 samples 0.20 differs from the session median 0.36 by more than 0.1",
+            "qwen3-32b-tp-2-r2: GPU 1: share of 0x4 samples 0.35 differs from the session median 0.19 by more than 0.1",
+            "qwen3-32b-tp-2-r2: co-tenant (7.3 cores busy outside the container (limit 4.8 of 32 physical))",
+            "qwen3-32b-llama-bench-tensor-r2: GPU 0: share of 0x4 samples 0.38 differs from the session median 0.21 by more than 0.1",
+            "qwen3-32b-llama-bench-tensor-r2: GPU 1: share of 0x4 samples 0.31 differs from the session median 0.19 by more than 0.1",
+            "qwen3-32b-llama-bench-tensor-r2: co-tenant (7.0 cores busy outside the container (limit 4.8 of 32 physical))"
+          ]
+        }
+      ],
+      "clean_pairs": 0,
+      "ratio_pp_min": null,
+      "ratio_tg_min": null,
+      "ok": null
+    }
+  },
+  "step0_pass": null
+}

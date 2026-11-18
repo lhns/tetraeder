@@ -1,0 +1,8 @@
+{"t": 1794980503.038875709, "event": "run", "model": "qwen3-32b", "kind": "candidate", "run": "qwen3-32b-tp-2-r1", "sha256": ""}
+{"t": 1794980532.888957677, "event": "run", "model": "qwen3-32b", "kind": "baseline", "run": "qwen3-32b-llama-bench-tensor-r1", "sha256": ""}
+{"t": 1794980547.096960504, "event": "run", "model": "qwen3-32b", "kind": "baseline", "run": "qwen3-32b-llama-bench-tensor-r2", "sha256": ""}
+{"t": 1794980561.183873512, "event": "run", "model": "qwen3-32b", "kind": "candidate", "run": "qwen3-32b-tp-2-r2", "sha256": ""}
+{"t": 1794980591.235030907, "event": "run", "model": "qwen3-30b-a3b", "kind": "candidate", "run": "qwen3-30b-a3b-tp-2-r1", "sha256": ""}
+{"t": 1794980611.404440631, "event": "run", "model": "qwen3-30b-a3b", "kind": "baseline", "run": "qwen3-30b-a3b-llama-bench-tensor-r1", "sha256": ""}
+{"t": 1794980622.462236772, "event": "run", "model": "qwen3-30b-a3b", "kind": "baseline", "run": "qwen3-30b-a3b-llama-bench-tensor-r2", "sha256": ""}
+{"t": 1794980634.499939662, "event": "run", "model": "qwen3-30b-a3b", "kind": "candidate", "run": "qwen3-30b-a3b-tp-2-r2", "sha256": ""}
