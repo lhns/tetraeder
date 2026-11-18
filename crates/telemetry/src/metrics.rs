@@ -181,6 +181,7 @@ pub struct Metrics {
     prefix_restore: Histogram<f64>,
     prefix_save: Histogram<f64>,
     prefix_save_buffers: Counter<u64>,
+    prefix_save_skipped: Counter<u64>,
     prefix_spares: Gauge<u64>,
     prefix_spare_bytes: Gauge<u64>,
     spec_acceptance: Histogram<f64>,
@@ -441,6 +442,13 @@ impl Metrics {
                 .with_unit("{save}")
                 .with_description(
                     "Prefix-cache saves by the buffer they wrote into: a prepared spare or a plain allocation (ADR 0074)",
+                )
+                .build(),
+            prefix_save_skipped: meter
+                .u64_counter("tetraeder.kv.prefix.save.skipped")
+                .with_unit("{save}")
+                .with_description(
+                    "Saves skipped because a continuation reused its idle sequence in place and cut little of it (ADR 0074)",
                 )
                 .build(),
             prefix_spares: meter
@@ -845,6 +853,11 @@ impl Metrics {
     /// One sequence saved to the prefix cache (the snapshot read, ADR 0074).
     pub fn kv_prefix_save(&self, d: Duration) {
         self.prefix_save.record(d.as_secs_f64(), &[]);
+    }
+
+    /// One save skipped: the idle sequence was reused in place and the cut is cheap to recompute.
+    pub fn kv_prefix_save_skipped(&self) {
+        self.prefix_save_skipped.add(1, &[]);
     }
 
     /// Saves since the last report that used a prepared spare and that allocated plainly.

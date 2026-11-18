@@ -519,6 +519,104 @@ fn saves_are_timed() {
     assert!(saves >= 1, "the second prompt saved the first sequence");
 }
 
+/// (saves, skipped saves) the scheduler reported (ADR 0074).
+fn save_counts(
+    mp: &opentelemetry_sdk::metrics::SdkMeterProvider,
+    exp: &opentelemetry_sdk::metrics::InMemoryMetricExporter,
+) -> (u64, u64) {
+    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+    mp.force_flush().unwrap();
+    let (mut saves, mut skipped) = (0, 0);
+    for rm in exp.get_finished_metrics().unwrap() {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                match (m.name(), m.data()) {
+                    (
+                        "tetraeder.kv.prefix.save.duration",
+                        AggregatedMetrics::F64(MetricData::Histogram(h)),
+                    ) => saves += h.data_points().map(|dp| dp.count()).sum::<u64>(),
+                    (
+                        "tetraeder.kv.prefix.save.skipped",
+                        AggregatedMetrics::U64(MetricData::Sum(x)),
+                    ) => skipped += x.data_points().map(|dp| dp.value()).sum::<u64>(),
+                    _ => {}
+                }
+            }
+        }
+    }
+    (saves, skipped)
+}
+
+/// A scheduler reporting to an in-memory exporter, with a cache that saves cuts of 8 rows.
+fn counting_sched() -> (
+    Scheduler,
+    opentelemetry_sdk::metrics::SdkMeterProvider,
+    opentelemetry_sdk::metrics::InMemoryMetricExporter,
+) {
+    use opentelemetry::metrics::MeterProvider as _;
+    use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
+    let exp = InMemoryMetricExporter::default();
+    let mp = SdkMeterProvider::builder()
+        .with_reader(PeriodicReader::builder(exp.clone()).build())
+        .build();
+    let metrics = tetraeder_telemetry::Metrics::new(&mp.meter("test"));
+    let s = moe_with(&|c| {
+        small_cache(64 * MEG)(c);
+        c.cache_save_min = 8;
+        c.metrics = Some(metrics.clone());
+    });
+    (s, mp, exp)
+}
+
+/// A continuation that cuts at most a quarter of its idle sequence reuses it in place without
+/// a save; a later request that needs the cut tail recomputes it with the same tokens (ADR 0074).
+#[test]
+fn a_small_cut_of_the_live_sequence_is_not_saved() {
+    let (s, mp, exp) = counting_sched();
+    let a = long_prompt(&s, "alpha", 100);
+    let first = run(&s, &a, 30);
+    let mut a2 = a.clone();
+    a2.extend(prompt(&s, "and some more words"));
+    let second = run(&s, &a2, 6);
+    assert!(second.stats.cached_tokens as usize >= a.len() - 1);
+    // The idle sequence held about 130 rows and the cut is about 30: skipped.
+    assert_eq!(save_counts(&mp, &exp), (0, 1));
+    // Needs the cut tail (a's generation) again: recomputed, as on a cold scheduler.
+    let mut a3 = a.clone();
+    a3.extend(first.tokens.iter().copied());
+    a3.extend(prompt(&s, "and then a question"));
+    let warm = run(&s, &a3, 8);
+    let cold = run(&moe_with(&small_cache(0)), &a3, 8);
+    assert_eq!(warm.tokens, cold.tokens);
+    // The reply to a2 is the same as without the skip.
+    assert_eq!(
+        second.tokens,
+        run(&moe_with(&small_cache(0)), &a2, 6).tokens
+    );
+}
+
+/// A request that cuts more than a quarter of its idle sequence still saves it first.
+#[test]
+fn a_large_cut_of_the_live_sequence_is_saved() {
+    let (s, mp, exp) = counting_sched();
+    let a = long_prompt(&s, "alpha", 100);
+    run(&s, &a, 6);
+    let mut b = a[..50].to_vec();
+    b.extend(prompt(&s, "something else entirely now"));
+    let out = run(&s, &b, 6);
+    assert!(out.stats.cached_tokens >= 40);
+    assert_eq!(save_counts(&mp, &exp), (1, 0));
+}
+
+/// An idle sequence evicted for another conversation is saved as before.
+#[test]
+fn a_sequence_evicted_for_another_conversation_is_saved() {
+    let (s, mp, exp) = counting_sched();
+    run(&s, &long_prompt(&s, "alpha", 100), 30);
+    run(&s, &long_prompt(&s, "zulu", 100), 6);
+    assert_eq!(save_counts(&mp, &exp), (1, 0));
+}
+
 #[test]
 fn a_zero_budget_disables_the_cache() {
     for make in [llama_with as Make, moe_with] {
