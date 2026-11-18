@@ -2,9 +2,11 @@
 
 Status: Proposed (Phase 2 exit follow-up, ADR 0045 hypothesis 3). Builds on ADR 0011 (pin, patch queue), 0039 (no repack), 0052 (runtime ISA dispatch). Brief: `docs/q4k-kernel-brief.md`.
 
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
+
 ## Context
 
-The builder's CPU experts (Qwen3-235B Q4_K_M, one token, `mul_mat_id` over 8 of 128 experts) run ggml's `ggml_vec_dot_q4_K_q8_K` and `ggml_vec_dot_q6_K_q8_K` one row at a time (`ggml-cpu.c:1483-1544`), which are AVX2 only at our pin (`arch/x86/quants.c:2102`, `:2490`). KTransformers decodes 1.34x faster on the 26-core Ice Lake box C (ADR 0045) with ik's iqk kernels on AVX-512 VNNI. The user asked whether this is already solved upstream.
+The builder's CPU experts (Qwen3-235B Q4_K_M, one token, `mul_mat_id` over 8 of 128 experts) run ggml's `ggml_vec_dot_q4_K_q8_K` and `ggml_vec_dot_q6_K_q8_K` one row at a time (`ggml-cpu.c:1483-1544`), which are AVX2 only at our pin (`arch/x86/quants.c:2102`, `:2490`). KTransformers decodes faster on the 26-core Ice Lake box C (ADR 0045, `20261103`) with ik's iqk kernels on AVX-512 VNNI. The user asked whether this is already solved upstream.
 
 **Mainline has no AVX-512 decode kernel for K-quants, at the pin or on master.** Checked against master a0ad695 (2026-11-09, after the b12211 baseline):
 - `arch/x86/quants.c` and `arch/x86/repack.cpp` are byte-identical to the pin. The Q4_K/Q6_K dot products and `quantize_row_q8_K` (`= quantize_row_q8_K_ref`) are unchanged.
@@ -61,7 +63,7 @@ Rust: `CpuBackendInfo.isa` may contain `"IQK_MM"`; tracked feature list gains `I
 
 ## Consequences
 
-- **Expected gain, box C:** about 8 GB of CPU expert weights per token (87 of 94 layers, gate/up Q4_K, down Q4_K/Q6_K) in 112 ms of compute is about 71 GB/s, against roughly 120 to 140 GB/s of DRAM on an 8-channel 6330N. Compute halved from 15 to 26 threads (ADR 0045), so it is instruction bound, not bandwidth bound. A dpbusd GEMV does about half the integer instructions per block; estimate compute 112 to 70-85 ms, floor about 60 ms from bandwidth. Decode 257 to about 220-230 ms (3.77 to 4.3-4.5 tok/s, +12 to 19%). That closes about half of the 59 ms gap to KTransformers; the streamer's 128 ms (ADR 0045 hypotheses 1 and 2) stays the other lever. No gain on boxes without AVX-512 VNNI. The box run decides; until then this is an estimate.
+- **Expected gain, box C:** the CPU expert compute there scaled with threads (ADR 0045), so it is instruction bound, not bandwidth bound, and a dpbusd GEMV does about half the integer instructions per block. The estimate (sizing in `20261103`) closes about half of the decode gap to KTransformers; the streamer (ADR 0045 hypotheses 1 and 2) stays the other lever. No gain on boxes without AVX-512 VNNI. The box run decides; until then this is an estimate.
 - Prefill is unchanged: experts with 8 or more rows take tiled; with 2 to 7 rows they take vec_dot as before.
 - Patch 0002 depends on the ADR 0052 implementation (variants, `TETRAEDER_GGML_CPU_VARIANT`, `cpu::backend_info()`, patch-apply step) and applies after 0001.
 - MSVC: the file's guard includes `_M_X64` and MSVC defines the VNNI macros for its AVX-512 variants (ADR 0052), so the Windows build compiles it; it is not run there (no Windows box). If MSVC cannot compile it, the TU is excluded on MSVC and Windows runs ggml's kernels; that is recorded in the patch header.
@@ -71,7 +73,7 @@ Rust: `CpuBackendInfo.isa` may contain `"IQK_MM"`; tracked feature list gains `I
 ## Implementation notes
 
 - The copied file has CRLF line endings. Patch 0002 keeps them (`.gitattributes`: `-text` for the patch), and `patches/apply.*` set `core.autocrlf=false` in the submodule and rewrite its tree, so the applied file has the same sha256 on Linux and Windows.
-- The file declares no intrinsics headers (KT's ggml did); `iqk-mm.cpp` includes `<immintrin.h>` and, on MSVC, maps `__builtin_popcount` to `__popcnt`. The file is otherwise unchanged and compiles in MSVC's AVX-512 variants, and the `iqk_kernels` reference tests pass there. But on a Windows CI runner with AVX-512 VNNI the scheduler test `cpu_batch_invariance_*` (6-row step against one-row steps, tolerance 1e-4 of the largest logit) failed with 1.4e-2 on row 5, while the same test passes with the same kernels built by GCC on a Linux AVX-512 runner. Cause not found (no Windows AVX-512 machine to debug on), so this is the brief's fallback: `iqk-mm.h` does not define `GGML_CPU_IQK_MM` under `_MSC_VER`, Windows runs ggml's kernels, `IQK_MM` is not in the MSVC `provided()` list, and the tests expect it absent there. Open: find the MSVC cause and lift the exclusion.
+- The file declares no intrinsics headers (KT's ggml did); `iqk-mm.cpp` includes `<immintrin.h>` and, on MSVC, maps `__builtin_popcount` to `__popcnt`. The file is otherwise unchanged and compiles in MSVC's AVX-512 variants, and the `iqk_kernels` reference tests pass there. But on a Windows CI runner with AVX-512 VNNI the scheduler test `cpu_batch_invariance_*` (6-row step against one-row steps, tolerance 1e-4 of the largest logit) failed with 1.4e-2 on row 5 (No session directory yet.), while the same test passes with the same kernels built by GCC on a Linux AVX-512 runner. Cause not found (no Windows AVX-512 machine to debug on), so this is the brief's fallback: `iqk-mm.h` does not define `GGML_CPU_IQK_MM` under `_MSC_VER`, Windows runs ggml's kernels, `IQK_MM` is not in the MSVC `provided()` list, and the tests expect it absent there. Open: find the MSVC cause and lift the exclusion.
 - The forwarding headers resolve relative to the `.inc`, so no CMake include directory was added; `sgemm.h` is an empty stub.
 - `ggml_iqk_mul_mat` returns early when a thread's share of rows is empty (more threads than the static split covers), because the file's split gives such a thread a negative row count.
 - Parity tests get the Q8_K quantizer and dequantizers from ggml's type traits (`from_float_ref`, `to_float`), not from new bindings.
