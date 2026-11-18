@@ -238,6 +238,8 @@ def features(layout: dict, plan: dict, lim: int | None, version: int) -> dict:
     n_layer = layout["n_layer"]
     lim = min(lim or n_layer, n_layer)
     st_all = stages_of(plan)
+    if len(st_all) > 1 and plan.get("knobs", {}).get("prefill_micro_batches", 1) > 1:
+        raise NotImplementedError("pipelined prefill (ADR 0077, prefill_micro_batches > 1) is in Rust only")
     if (version == 1 or "single_ranks" in DROP) and len(st_all) == 1 and st_all[0][2] == 1:
         return features_single_v1(layout, lim, st_all[0][1][0])
     b = bpp(layout)
