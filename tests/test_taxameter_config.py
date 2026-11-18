@@ -98,3 +98,16 @@ def test_push_leaves_out_results_and_the_llama_submodule(cfg):
     # both made the push too slow through the Vast ssh proxy (20261113e)
     assert "bench" not in cfg.push.paths and "bench/results" not in cfg.push.paths
     assert "vendor/llama.cpp" not in cfg.push.submodules
+
+
+def test_submodule_gitlink_matches_vendor_pin():
+    # A gitlink behind the pin makes every checkout fetch the pin over a shallow clone, which
+    # failed intermittently in CI ("shallow file has changed"); a commit -a once reset it.
+    import subprocess
+
+    out = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-tree", "HEAD", "vendor/llama.cpp"], capture_output=True, text=True
+    )
+    if out.returncode != 0 or not out.stdout.strip():
+        return  # no git checkout (box)
+    assert out.stdout.split()[2] == _pin("commit")

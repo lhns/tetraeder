@@ -56,3 +56,6 @@ Every GPU parity test passes: the move is bit-exact after the move (F16 and q8_0
 
 ## Addendum: the b12426 gpu_multi_seq shift is one router near-tie (2026-11-17, `bench/results/20261117c/kv-save/`, box 61042290)
 - The routing printout of `gpu_batched_matches_the_cpu_builder` shows one differing (token, layer) choice over all three sequences: sequence 1, step 0, layer 0, position 12, where CUDA picks experts [3, 4] and the CPU [3, 0]. The first expert's weight agrees to 3e-4 (0.8701 against 0.8703); the second slot is a tie between experts 4 and 0 that kernel rounding decides. Sequences 0 and 2 route identically. This explains why only sequence 1 moved on the pin move and confirms the libllama anchor over a fixed bound. Crash repro on the same box: 4 of 4 dense runs clean (0 CUDA errors, steps up to 1216 prompt tokens), against 4 of 4 crashing before the mask padding.
+
+## Addendum: parity and slots use the relative rule (2026-11-18, `track-s2b-fixes`)
+- On 2x RTX 3090 (`bench/results/s2b-20261118-step0/phase5/`) `gpu_matches_libllama` and `gpu_slot_counts_match_libllama` failed at the absolute 5e-3 (top-5 deltas 3.5e-3 to 1.16e-2, 3e-4 to 9e-4 of the largest logit, top-1 equal, same with fusion off and on one GPU). As the Consequences anticipated, both now use `GPU_TOL`; the CPU paths keep `TOL_CPU`.

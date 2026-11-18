@@ -14,7 +14,7 @@
 //! router's ids to local slot indices (-1 for experts elsewhere) with `get_rows` on a per-rank
 //! table. A sequence's KV rows are the same on every rank; each rank holds its KV heads.
 
-use crate::attn::{AttnHparams, AttnStep, AttnWeights, Kv, alloc_kv, attention_out, copy_rows};
+use crate::attn::{AttnHparams, AttnStep, AttnWeights, Kv, alloc_kv, attention_out, copy_rows_on};
 use crate::experts::MissPolicy;
 use crate::gguf::TensorInfo;
 use crate::hparams::{Hparams, ModelFile, names};
@@ -29,9 +29,7 @@ use std::sync::Arc;
 use tetraeder_executor::{
     ExecCounters, ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks,
 };
-use tetraeder_ggml_sys::ggml::{
-    Backend, Context, Graph, OwnedGraph, OwnedTensor, Sched, Tensor, Type,
-};
+use tetraeder_ggml_sys::ggml::{Backend, Context, Graph, OwnedGraph, OwnedTensor, Tensor, Type};
 use tetraeder_kvcache::StepPlan;
 use tetraeder_plan::{Topology, block_slice};
 use tetraeder_telemetry::Telemetry;
@@ -179,7 +177,6 @@ pub(crate) struct Sharded {
     layer_kv: Vec<Vec<(usize, usize)>>,
     n_rows: usize,
     cache: Option<StepProg>,
-    scheds: Vec<Option<Sched>>,
     /// Step graphs built since load.
     pub(crate) built: u64,
     /// Executor counters since load or the last clear.
@@ -460,7 +457,6 @@ impl Sharded {
                 rts[r] = Some(rt);
             }
         }
-        let scheds = (0..rts.len()).map(|_| None).collect();
         let exec = Executor::new(ranks);
         if let Some(t) = &opts.telemetry {
             exec.ranks().record(t.metrics());
@@ -473,7 +469,6 @@ impl Sharded {
             layer_kv,
             n_rows: kv_rows,
             cache: None,
-            scheds,
             built: 0,
             totals: ExecCounters::default(),
             telemetry: opts.telemetry.clone(),
@@ -703,14 +698,10 @@ impl Sharded {
 
     /// Copies KV rows on every rank. Each entry is `(src_row, dst_row, n_rows)`.
     pub(crate) fn copy_rows(&mut self, list: &[(usize, usize, usize)]) -> Result<()> {
-        for (slot, sched) in self.ranks.iter().zip(self.scheds.iter_mut()) {
-            let Some(rt) = slot else { continue };
-            if sched.is_none() {
-                *sched = Some(Sched::new(std::slice::from_ref(&rt.backend), 16384, false)?);
-            }
-            if let Some(s) = sched.as_mut() {
-                copy_rows(&rt.kv, s, list)?;
-            }
+        // On the rank's own backend, like the dense path: a `Sched` needs the CPU last, and a
+        // GPU rank has none (the copy graph only views the cache).
+        for (_, rt) in self.used() {
+            copy_rows_on(&rt.kv, &rt.backend, list)?;
         }
         Ok(())
     }

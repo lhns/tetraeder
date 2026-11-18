@@ -573,7 +573,7 @@ mod tests {
                 .chain(&kv.v)
                 .map(|t| t.get().get_bytes(0, 32 * row).unwrap())
                 .collect();
-        let mut sched = Sched::new(&[backend], 64, false).unwrap();
+        let mut sched = Sched::new(std::slice::from_ref(&backend), 64, false).unwrap();
         let copies = [(0, 10, 3), (4, 20, 1), (14, 24, 5)];
         copy_rows(&kv, &mut sched, &copies).unwrap();
         for (ti, t) in kv.k.iter().chain(&kv.v).enumerate() {
@@ -585,5 +585,21 @@ mod tests {
             assert_eq!(after, want, "tensor {ti}");
         }
         assert!(copy_rows(&kv, &mut sched, &[(30, 0, 5)]).is_err());
+
+        // The same copies without a scheduler, as the sharded builders run them on one rank
+        // (a GPU rank has no CPU backend to make a `Sched` of).
+        for (t, b) in kv.k.iter().chain(&kv.v).zip(&before) {
+            t.get().set_bytes(b, 0).unwrap();
+        }
+        copy_rows_on(&kv, &backend, &copies).unwrap();
+        for (ti, t) in kv.k.iter().chain(&kv.v).enumerate() {
+            let after = t.get().get_bytes(0, 32 * row).unwrap();
+            let mut want = before[ti].clone();
+            for &(s, d, n) in &copies {
+                want[d * row..(d + n) * row].copy_from_slice(&before[ti][s * row..(s + n) * row]);
+            }
+            assert_eq!(after, want, "on tensor {ti}");
+        }
+        assert!(copy_rows_on(&kv, &backend, &[(30, 0, 5)]).is_err());
     }
 }

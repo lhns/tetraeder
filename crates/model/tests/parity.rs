@@ -9,10 +9,10 @@ use common::*;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_model::{BackendChoice, LoadOptions, Qwen3Moe};
 
-fn check_parity(backend: BackendChoice, tol: f32) {
+fn check_parity(backend: BackendChoice, tol: Tol) {
     let r = libllama_reference(&PROMPT, N_GREEDY);
     let mut m = Qwen3Moe::load(fixture(), &LoadOptions::new(backend)).unwrap();
-    let worst = check_against(&mut m, &r, tol);
+    let worst = check_against_tol(&mut m, &r, tol);
     eprintln!(
         "max |delta| over the top-{TOP_K} logits of {} positions: {worst:e}",
         PROMPT.len()
@@ -25,7 +25,7 @@ fn check_parity(backend: BackendChoice, tol: f32) {
 /// hardware: cpu
 #[test]
 fn cpu_matches_libllama() {
-    check_parity(BackendChoice::Cpu { threads: Some(2) }, TOL_CPU);
+    check_parity(BackendChoice::Cpu { threads: Some(2) }, Tol::abs(TOL_CPU));
 }
 
 /// hardware: cpu. The last layer runs its expert FFN on the output rows only (libllama's
@@ -86,5 +86,5 @@ fn gpu_matches_libllama() {
         return;
     }
     // libllama stays on the CPU as the reference; the builder runs on GPU 0.
-    check_parity(BackendChoice::Gpu { index: 0 }, TOL_GPU);
+    check_parity(BackendChoice::Gpu { index: 0 }, GPU_TOL);
 }
