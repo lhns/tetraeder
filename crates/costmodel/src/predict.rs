@@ -148,6 +148,17 @@ pub struct RankFeatures {
     /// Charge `c_step` once per step.
     #[serde(default)]
     pub step_fixed: bool,
+    /// Prefill micro-batches pipelined over the stages (ADR 0077); 1 runs the stages in turn.
+    #[serde(default = "one_u32", skip_serializing_if = "is_one")]
+    pub prefill_micro_batches: u32,
+}
+
+fn one_u32() -> u32 {
+    1
+}
+
+fn is_one(x: &u32) -> bool {
+    *x == 1
 }
 
 /// What runs concurrently on the ranks between two collectives, `repeat` times per step.
@@ -607,6 +618,26 @@ pub fn coll_time(hw: &HardwareGraph, c: &Coll, m: f64) -> Result<(String, f64), 
     }
 }
 
+/// The pipeline stages of a ranks model: indices of its phases without output rows, cut after
+/// each stage hop (a per-token copy).
+fn pipeline_stages(phases: &[Phase]) -> Vec<Vec<usize>> {
+    let mut out = vec![Vec::new()];
+    for (i, ph) in phases.iter().enumerate().filter(|(_, p)| !p.out_rows) {
+        out.last_mut().expect("one stage").push(i);
+        if matches!(
+            ph.after,
+            Some(Coll::Copy {
+                per_step: false,
+                ..
+            })
+        ) {
+            out.push(Vec::new());
+        }
+    }
+    out.retain(|s| !s.is_empty());
+    out
+}
+
 /// Step time with ranks (ADR 0070): `T(M) = sum_p repeat_p (max_r t(r, M) + ranges_p c_range +
 /// t_coll(after_p, M)) + c_step`, summed over the decode tokens and the prefill ubatches as in
 /// [`predict`]. `t(r, M)` is [`part_time_s`] (a roofline per op class); a phase with `out_rows`
@@ -646,13 +677,16 @@ fn predict_ranks(
     } else {
         costs.c_range_eager_s
     };
-    // One step of `m` tokens at mean context `ctx`, as breakdown terms.
-    let step = |m: f64,
-                ctx: f64,
-                prefill: bool,
-                out: &mut Vec<(String, f64)>|
+    // One phase for `m` tokens at mean context `ctx`, as breakdown terms; `with_after` charges
+    // the collective that ends it.
+    let phase = |ph: &Phase,
+                 m: f64,
+                 ctx: f64,
+                 prefill: bool,
+                 with_after: bool,
+                 out: &mut Vec<(String, f64)>|
      -> Result<(), PredictError> {
-        for ph in &r.phases {
+        {
             // An output-row phase prices a prefill step at its output rows, with the decode parts.
             let (m, parts) = match (prefill, ph.out_rows) {
                 (true, true) => (OUTPUTS_PER_STEP.min(m), &ph.parts),
@@ -680,10 +714,21 @@ fn predict_ranks(
                     rep * f64::from(ph.ranges_per_rank) * c_range,
                 );
             }
-            if let Some(c) = &ph.after {
+            if let Some(c) = ph.after.as_ref().filter(|_| with_after) {
                 let (label, t) = coll_time(hw, c, m)?;
                 add(out, label, rep * t);
             }
+        }
+        Ok(())
+    };
+    // One step of `m` tokens at mean context `ctx`, as breakdown terms.
+    let step = |m: f64,
+                ctx: f64,
+                prefill: bool,
+                out: &mut Vec<(String, f64)>|
+     -> Result<(), PredictError> {
+        for ph in &r.phases {
+            phase(ph, m, ctx, prefill, true, out)?;
         }
         if r.step_fixed {
             add(out, "step".into(), costs.c_step_s);
@@ -697,6 +742,52 @@ fn predict_ranks(
 
     let mut pp: Vec<(String, f64)> = Vec::new();
     let mut done = 0u32;
+    let stages = pipeline_stages(&r.phases);
+    let micro = r.prefill_micro_batches.max(1);
+    if micro > 1 && stages.len() > 1 {
+        // Pipelined prefill (ADR 0077): a step of `micro x ubatch` tokens cut into chunks as
+        // `plan::micro_batch_sizes`; stage s computes chunk c after chunk c - 1 and after the
+        // chunk's hop arrived, hops serialized per boundary (GPipe, as `sim.rs`). The output-row
+        // phases and `c_step` follow once per step.
+        let n_st = stages.len();
+        while done < prompt {
+            let n = (f.ubatch * micro).min(prompt - done);
+            let (mut free, mut link) = (vec![0.0f64; n_st], vec![0.0f64; n_st]);
+            let mut at = done;
+            for c in tetraeder_plan::micro_batch_sizes(n as usize, micro) {
+                let m = c as f64;
+                let ctx = f64::from(at) + m / 2.0;
+                let mut arrive = 0.0f64;
+                for (s, st) in stages.iter().enumerate() {
+                    let mut terms = Vec::new();
+                    let last = st[st.len() - 1];
+                    for &i in st {
+                        let hop = s + 1 < n_st && i == last;
+                        phase(&r.phases[i], m, ctx, true, !hop, &mut terms)?;
+                    }
+                    let t: f64 = terms.iter().map(|e| e.1).sum();
+                    free[s] = arrive.max(free[s]) + t;
+                    if s + 1 < n_st
+                        && let Some(h) = &r.phases[last].after
+                    {
+                        let (_, th) = coll_time(hw, h, m)?;
+                        link[s] = free[s].max(link[s]) + th;
+                        arrive = link[s];
+                    }
+                }
+                at += c as u32;
+            }
+            add(&mut pp, "pipeline".into(), free[n_st - 1]);
+            let m = f64::from(n);
+            for ph in r.phases.iter().filter(|p| p.out_rows) {
+                phase(ph, m, f64::from(done) + m / 2.0, true, true, &mut pp)?;
+            }
+            if r.step_fixed {
+                add(&mut pp, "step".into(), costs.c_step_s);
+            }
+            done += n;
+        }
+    }
     while done < prompt {
         let m_tok = f.ubatch.min(prompt - done);
         let m = f64::from(m_tok);

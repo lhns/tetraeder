@@ -814,6 +814,7 @@ mod tests {
             ranks: Some(RankFeatures {
                 phases,
                 step_fixed: true,
+                prefill_micro_batches: 1,
             }),
             ..features(1.0, 0.0)
         }

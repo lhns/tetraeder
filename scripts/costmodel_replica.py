@@ -15,7 +15,7 @@ MODEL_VERSION 2 (ADR 0070, History 2026-11-18): expert matmuls at their own rate
 last FFN) on output rows, every expert read at prefill, a roofline per op class, `single` on the ranks path, and an
 all-reduce in a step paying the fitted share of the probe's zero-byte time. Rust `predict` reproduces version 2 on the
 graphs this script writes (`crates/planner/tests/costmodel_v2.rs`). The fit is the same Levenberg-Marquardt and
-coordinate search as `calib.rs`, not bit-identical to it. Input files (ADR 0068 names): hw.json, calib-comm.json,
+coordinate search as `calib.rs`, not bit-identical to it. It does not model pipelined prefill (ADR 0077, M > 1). Input files (ADR 0068 names): hw.json, calib-comm.json,
 calib.json, layouts/<model>.json, candidates-<model>.json, anchors-<model>-r<k>.json, bench-<model>-<id>-r<k>.json.
 Standard library only.
 """

@@ -916,6 +916,13 @@ pub fn features_multi(
         ranks: Some(RankFeatures {
             phases,
             step_fixed: true,
+            // Pipelined prefill over two or more stages (ADR 0077); one stage has nothing to
+            // pipeline.
+            prefill_micro_batches: if stages.len() > 1 {
+                knobs.prefill_micro_batches.max(1)
+            } else {
+                1
+            },
         }),
     })
 }

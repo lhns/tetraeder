@@ -83,6 +83,7 @@ fn two_phase() -> RunFeatures {
         ranks: Some(RankFeatures {
             phases: vec![a, b],
             step_fixed: true,
+            prefill_micro_batches: 1,
         }),
         ..features(10.0, 0.0)
     }
@@ -199,6 +200,7 @@ fn one_phase(p: DevicePart, out_rows: bool) -> RunFeatures {
                 out_rows,
             }],
             step_fixed: false,
+            prefill_micro_batches: 1,
         }),
         ..features(10.0, 0.0)
     }
@@ -316,4 +318,62 @@ fn the_allreduce_pays_its_latency_share_and_keeps_its_bytes() {
         tg,
         3.0 * (allreduce_time(2, 1e-5, 1e10, 1000.0) - 0.5 * 2.0 * 1e-5),
     );
+}
+
+/// A `layer-2` plan: two equal one-rank stages and a hop of `n_embd x 4` bytes per token.
+fn layer2(micro: u32) -> RunFeatures {
+    let stage = |dev: &str, after: Option<Coll>| {
+        let mut p = part(dev, 1e8);
+        p.params_per_token = 1e8;
+        Phase {
+            repeat: 1,
+            parts: vec![p],
+            prefill_parts: None,
+            ranges_per_rank: 0,
+            after,
+            out_rows: false,
+        }
+    };
+    let hop = Coll::Copy {
+        pairs: vec![("gpu0".into(), "gpu1".into())],
+        bytes_per_token: 20480.0,
+        per_step: false,
+    };
+    RunFeatures {
+        parts: vec![part("gpu0", 1e8), part("gpu1", 1e8)],
+        ranks: Some(RankFeatures {
+            phases: vec![stage("gpu0", Some(hop)), stage("gpu1", None)],
+            step_fixed: false,
+            prefill_micro_batches: micro,
+        }),
+        ..features(10.0, 0.0)
+    }
+}
+
+/// ADR 0077: with M chunks the stages overlap (GPipe). Two stages of chunk time t and a hop h:
+/// one ubatch per step costs `4 (2 t + h)` for 2048 tokens, four chunks in one step
+/// `(4 + 2 - 1) t + (2 - 1) h`, the pipeline fill being one chunk time on each end stage.
+#[test]
+fn pipelined_prefill_overlaps_the_stages() {
+    let hw = graph();
+    let t = 1e-6 * 10.0 + 2.0 * 1e8 * 512.0 / 1e13;
+    let h = 1e-5 + 512.0 * 20480.0 / 1e10;
+    let pp_s = |m: u32| 2048.0 / predict(&hw, &layer2(m), 2048, 8).unwrap().pp_tok_s;
+    let (serial, piped) = (pp_s(1), pp_s(4));
+    close(serial, 4.0 * (2.0 * t + h));
+    close(piped, 5.0 * t + h);
+    close(serial - piped, 3.0 * (t + h));
+    // decode does not pipeline
+    let tg = |m: u32| predict(&hw, &layer2(m), 2048, 8).unwrap().tg_tok_s;
+    assert_eq!(tg(1).to_bits(), tg(4).to_bits());
+    // one stage has nothing to pipeline
+    let mut one = layer2(4);
+    if let Some(r) = one.ranks.as_mut() {
+        r.phases[0].after = None;
+        r.phases.truncate(1);
+    }
+    let mut one1 = one.clone();
+    one1.ranks.as_mut().unwrap().prefill_micro_batches = 1;
+    let pp = |f: &RunFeatures| predict(&hw, f, 2048, 8).unwrap().pp_tok_s;
+    assert_eq!(pp(&one).to_bits(), pp(&one1).to_bits());
 }
