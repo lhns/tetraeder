@@ -1,45 +1,32 @@
 # 0054. Decode expert reads: a persistent I/O service, experts computed in arrival order, RAM tier sized to the container
 
-Status: Accepted (2026-11-15: built and measured, paired result with the defaults on (addenda 2026-11-10 and 2026-11-11); in serve). Earlier: Proposed (Phase 2 exit follow-up, ADR 0045 hypotheses 1 and 2). Supersedes ADR 0050 (a), stage 1 (Brief A); ADR 0050 (a) stage 2 (GPU group asynchronous) keeps its gate, now measured on this path; ADR 0050 (b) and (c) are unchanged. Supersedes the reason ADR 0035 gives against a memory map (below); its decision stands. Extends ADR 0031 (direct I/O), 0038 (prefetch, pins, ordering). Brief: `docs/levers-briefs.md`, Brief A (replaced).
+Status: Accepted (2026-11-15: built and measured; in serve). Earlier: Proposed (Phase 2 exit follow-up, ADR 0045 hypotheses 1 and 2). Supersedes ADR 0050 (a), stage 1 (Brief A); ADR 0050 (a) stage 2 (GPU group asynchronous) keeps its gate, now measured on this path; ADR 0050 (b) and (c) are unchanged. Supersedes the reason ADR 0035 gives against a memory map (below); its decision stands. Extends ADR 0031 (direct I/O), 0038 (prefetch, pins, ordering). Brief: `docs/levers-briefs.md`, Brief A (replaced). Outcome: the service and arrival-order compute meet the decode bar on the paired 235B run (`20261110c`) and with CPU matched (`20261110e`), and are the `serve` defaults; the hidden share bar is missed and is no longer the measure (`20261111a`).
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
-Box C (ADR 0045 addendum, 26-core quota, `bench/results/20261103/exit-main-prefetch-120800.json`): 257 ms per decode token against KTransformers' 198 (5.04 tok/s). Per token:
+Box C (ADR 0045 addendum, 26-core quota, `20261103`): the builder decoded well behind KTransformers. Per token, compute (mostly the CPU experts) and the main thread blocked in `finish_prefetch` were the two large buckets; synchronous misses, the bounce-to-slot copy on the main thread, and allocation, build, readback and inputs were smaller.
 
-| Bucket | ms | What it is |
-|---|---|---|
-| compute | 112 | segments; the CPU experts are about 100 (7.1 per layer, 81 MB per layer from DRAM in about 1.07 ms) |
-| prefetch wait | 95 | main thread blocked in `finish_prefetch`: 36 experts, 414 MB per token |
-| synchronous misses | 19.5 | device time of 8.4 experts, 97 MB, at 5.0 GB/s |
-| rest of the streamer | 13 | mostly the bounce-to-slot copy of those 97 MB on the main thread (about 8 GB/s), lookups |
-| alloc, build, readback, inputs | 16 | 95 graphs |
+Brief A (ADR 0050 a) targets only the synchronous misses. The prefetch wait is larger, and it has a cause in our I/O path, not in the device:
 
-Brief A (ADR 0050 a) targets only the 19.5 ms row. The 95 ms row is larger, and it has a cause in our I/O path, not in the device:
-
-- **The reader is busy 131 ms per token for 414 MB (3.2 GB/s), and the step only has 257.** `Reader` is one thread running `read_batch_with`, which reads a whole sub-batch, waits for all of it, then copies every range into its slot on that same thread (`dio/mod.rs:378-430`). At 5.2 GB/s the device part is about 80 ms; the serial copy adds about 50 ms. ADR 0038 lever 2 (1 MiB chunks at depth 16, implemented, not measured) shortens the device part but leaves the copy serial, so the reader's ceiling stays near 100 to 130 ms per token. Once compute drops (ADR 0053 estimates 27 to 42 ms less), that ceiling is the step.
+- **The reader is busy for most of the step.** `Reader` is one thread running `read_batch_with`, which reads a whole sub-batch, waits for all of it, then copies every range into its slot on that same thread (`dio/mod.rs:378-430`), so the serial copy adds to the device time (`20261103`). ADR 0038 lever 2 (1 MiB chunks at depth 16, implemented, not measured) shortens the device part but leaves the copy serial, so the reader's ceiling stays. Once compute drops (ADR 0053), that ceiling is the step.
 - **There is no io_uring on the boxes.** Every box C run reports `io_backend: direct thread-pool`: Docker's default seccomp refuses io_uring, so `dio::pool::Pool` spawns up to `queue_depth` scoped threads per `read_batch_with` call and joins them, under a 26-core quota with 26 spinning ggml threads.
 - **A layer waits for all its prefetched experts before it computes any.** `finish_prefetch(seg)` blocks before `plan_cpu`, so one late expert stalls the 6.6 RAM hits that could compute meanwhile.
 
 KTransformers v0.7.2 decodes this regime from an `np.memmap` of the GGUF with no prefetch and no repack. Its 26 pinned workers split each layer into 32-row tasks; a worker that touches a missing page faults it in itself. So up to 26 reads are in flight, each one wakes exactly the thread that needs it, there is no copy, and the waiting thread gives its CPU quota back. It also has no GPU experts (`--kt-num-gpu-experts 0`), so its page cache (the container minus its own memory, about 85 GB) must also hold the 10 hot experts per layer we keep in VRAM: it holds at most as many experts per layer as our 77 RAM plus 10 VRAM slots. So its reads per token are likely not fewer than ours; the sampler stage of ADR 0045 measures it.
 
-Per layer the work fits: the reads are 5.4 MB (0.48 experts) per layer, about 1.05 ms at 5.2 GB/s, against 1.19 ms of compute. Fully overlapped, decode is bound by compute plus graph overhead, about 130 ms; after ADR 0053 by the device, about 98 ms of reads per token at today's hit rate.
+Per layer the work fits: at device rate a layer's reads take about as long as its compute (`20261103`). Fully overlapped, decode is bound by compute plus graph overhead; after ADR 0053, by the device at today's hit rate.
 
 ## Options
 
-Both options keep the VRAM hot set and the prefetch prediction (ADR 0038). Per token on box C at today's bytes:
+Both options keep the VRAM hot set and the prefetch prediction (ADR 0038). Box C's numbers for today and the per-token estimates of both options are in `20261103`.
 
-| | today (`main-prefetch`) | A: direct I/O service, arrival order (chosen) | B: page cache, compute in place on mapped pages |
-|---|---|---|---|
-| bytes read | 511 MB | 511 MB; 440 to 470 with the tier sized to the container (replay decides) | similar: the page cache holds about as many experts as RAM plus reserve; kernel LRU instead of ours |
-| device rate under compute | 3.2 GB/s (reader), 5.0 (sync) | 5.2 target: 16 persistent workers, rolling queue | unknown; up to 26 faulting threads, 128 KB readahead per fault, `MADV_WILLNEED` for predictions |
-| copies on a serial path | about 63 ms of thread time, 13 on the main thread | none serial: each worker copies its own 1 MiB chunk | none |
-| granularity of "compute as bytes arrive" | whole layer | per expert (rows of one expert must stay in one `mul_mat_id`, see Exactness) | per page, inside one `mul_mat_id` |
-| exposed wait (estimate) | 95 + 19.5 + 13 | 10 to 25 | 10 to 30 |
-| decode step (estimate) | 257 | 145 to 165 | 140 to 165 |
-| prefill (32K) | 72 tok/s | unchanged path | op offload copies whole 128-expert tensors per ubatch and refaults the uncached half: llama.cpp's mmap `-ot` prefill is 46 to 50 tok/s on the same boxes |
-| control | slot tables, pins, replay | same | kernel reclaim: no pins (a prefetched expert can be dropped before use), no frequency pins (ADR 0050 c), the replay no longer models the tier, `memory()` cannot report used tier bytes (ADR 0037) |
+- **A: direct I/O service, arrival order (chosen).** The same bytes, fewer with the tier sized to the container (the replay decides). 16 persistent workers on a rolling queue aim at device rate under compute. No serial copy: each worker copies its own 1 MiB chunk. Compute as bytes arrive is per expert (rows of one expert must stay in one `mul_mat_id`, see Exactness). Prefill keeps its path. Control stays: slot tables, pins, replay.
+- **B: page cache, compute in place on mapped pages.** Similar bytes: the page cache holds about as many experts as RAM plus reserve, with the kernel's LRU instead of ours. Device rate under compute unknown: up to 26 faulting threads, 128 KB readahead per fault, `MADV_WILLNEED` for predictions. No copies. Compute as bytes arrive is per page, inside one `mul_mat_id`. Prefill: op offload copies whole 128-expert tensors per ubatch and refaults the uncached half; llama.cpp's mmap `-ot` prefill is slower than ours on the same boxes (`20261103`). Control goes to kernel reclaim: no pins (a prefetched expert can be dropped before use), no frequency pins (ADR 0050 c), the replay no longer models the tier, `memory()` cannot report used tier bytes (ADR 0037).
+- The estimated exposed wait and decode step are about the same for both.
 
-Decode alone does not separate them; prefill and the budget and replay semantics do. llama.cpp `-ot` runs ggml's `mul_mat_id` on mapped pages with all threads faulting and decoded at 0.81x and 0.62x of the builder on boxes A and B, but it also places 7 whole layers in VRAM instead of a per-layer hot set, so those ratios are not evidence against mapped pages as such. Option A keeps every measured advantage and removes the three causes listed above.
+Decode alone does not separate them; prefill and the budget and replay semantics do. llama.cpp `-ot` runs ggml's `mul_mat_id` on mapped pages with all threads faulting and decoded slower than the builder on boxes A and B (`20261103`), but it also places 7 whole layers in VRAM instead of a per-layer hot set, so those ratios are not evidence against mapped pages as such. Option A keeps every measured advantage and removes the three causes listed above.
 
 ADR 0035 rejected a memory map because "a page-cache fault is a synchronous small random read". KTransformers shows that 26 threads faulting concurrently are a deep queue, so that reason is withdrawn as stated. A narrower hazard of option B stands: Linux turns mmap readahead off for a file once its fault misses outrun its hits by `MMAP_LOTSAMISS` (100; `mmap_miss` in `do_sync_mmap_readahead`, `mm/filemap.c`), after which every fault reads 4 KiB, the likely mechanism of the `-ot` collapse once the model exceeds RAM; KTransformers may avoid it only through `MADV_WILLNEED`. The reasons that stand are prefill, control, accounting, and that hazard.
 
@@ -65,13 +52,13 @@ ADR 0035 rejected a memory map because "a page-cache fault is a synchronous smal
 
 ### 3. RAM tier sized to the container
 
-- The harness reserve (`RAM_RESERVE_GB`, 8 GB) is a guess. Box C peaked at 84.85 of 91.4 GB with the 77-slot tier full (82.6 GB of slots, so about 2.3 GB of everything else), leaving 6.5 GB unused. Under ADR 0031 the tier stays a byte budget; only the reserve changes: 4 GB on the exit boxes, giving 81 slots instead of 77 (`floor(bytes / 1072594944)`), a peak near 89.2 GB, 2.2 GB under the limit. The run's `peak_rss_bytes` checks it; a run above 90 GB goes back to 8.
-- Priced offline before the box run: the replay of ADR 0050 (c) on the 235B trace, `tetraeder-bench replay --trace F --vram 10 --ram 77,79,81,83 --policies lru` (prefetch replayed; the `trace` stage of `exit_run.sh` gains these counts), after its fidelity gate (LRU at 77 within 0.5 points of the measured hit rate). The gain is the drop in decode disk bytes per token; at 75 MB per hit-rate point it is about 14 ms of device time per point. Prior from boxes A and B: 0.2 to 0.3 points per slot near 77, so about one point.
+- The harness reserve (`RAM_RESERVE_GB`, 8 GB) is a guess: box C left part of the container unused with the 77-slot tier full (`20261103`). Under ADR 0031 the tier stays a byte budget; only the reserve changes: 4 GB on the exit boxes, giving 81 slots instead of 77 (`floor(bytes / 1072594944)`). The run's `peak_rss_bytes` checks it; a run above 90 GB goes back to 8.
+- Priced offline before the box run: the replay of ADR 0050 (c) on the 235B trace, `tetraeder-bench replay --trace F --vram 10 --ram 77,79,81,83 --policies lru` (prefetch replayed; the `trace` stage of `exit_run.sh` gains these counts), after its fidelity gate (LRU at 77 within 0.5 points of the measured hit rate). The gain is the drop in decode disk bytes per token, as device time per hit-rate point; the prior from boxes A and B is about one point (`20261103`).
 - The page cache's advantage (it grows to free memory) is this reserve and nothing else: our direct reads leave the page cache empty, so free memory is simply unused.
 
 ### Exactness
 
-Groups are per expert, so each expert keeps all its rows, its row order and its K-quant kernel path (ADR 0035); the inputs are the same f32 bytes; the merge is a copy. Logits are bitwise equal with `overlap` and `service` on and off, on CPU and GPU builds. Computing row blocks of one expert as they arrive, across separate graphs, is not allowed: changing an expert's row count changes the CPU K-quant kernel on AVX (0.18 to 0.36 logit differences, ADR 0035 implementation notes). Row-level interleaving is free only inside one `mul_mat_id`, which is what option B gets and option A gives up.
+Groups are per expert, so each expert keeps all its rows, its row order and its K-quant kernel path (ADR 0035); the inputs are the same f32 bytes; the merge is a copy. Logits are bitwise equal with `overlap` and `service` on and off, on CPU and GPU builds. Computing row blocks of one expert as they arrive, across separate graphs, is not allowed: changing an expert's row count changes the CPU K-quant kernel on AVX (0.18 to 0.36 logit differences, ADR 0035 implementation notes). Row-level interleaving is free only inside one `mul_mat_id`, which is what option B gets and option A gives up. (No session directory yet.)
 
 ### Metrics (Rule 6)
 
@@ -85,9 +72,8 @@ Groups are per expert, so each expert keeps all its rows, its row order and its 
 
 ### Expected gain
 
-- Against `main-prefetch` on box C (257 ms; the next run will also have ADR 0038 levers 2 and 3, still with the serial copy): 145 to 165 ms per token, 6.1 to 6.9 tok/s, 1.2x to 1.37x KTransformers' 5.04. Reasoning: compute and graph overhead stay at 128 ms; the 95 + 19.5 + 13 ms of waits and copies shrink to 10 to 25 ms of exposed reads (device time 98 ms against 112 of compute, hidden per layer behind the hit group and the prefetch window) plus 2 to 5 ms for about 0.4 extra CPU-only graphs and one `xn` readback per layer step with pending experts.
-- These estimates overlap ADR 0038's for its levers 1 to 3 (150 to 170 ms): those assumed the reader reaches device rate, which the serial copy prevents. The paired run reports the service alone (`main-iosvc`) and with arrival order (`main-overlap`) apart, so each part has its own number.
-- With ADR 0053 (compute 70 to 85 ms) the gains do not add: the step becomes bound by the 98 ms of device time, about 115 to 135 ms. Then bytes per token decide, and the tier sizing (about 14 ms per hit-rate point) and ADR 0050 (c) are the next levers.
+- Decode bound by compute and graph overhead instead of reads and copies, faster than `main-prefetch` and than KTransformers on box C; the estimates are in `20261103`. They overlap ADR 0038's for its levers 1 to 3, which assumed the reader reaches device rate, which the serial copy prevents. The paired run reports the service alone (`main-iosvc`) and with arrival order (`main-overlap`) apart, so each part has its own number.
+- With ADR 0053 the gains do not add: the step becomes bound by the device's read time. Then bytes per token decide, and the tier sizing and ADR 0050 (c) are the next levers.
 
 ### What could overturn this (ADR 0045 sampler stages)
 
@@ -135,32 +121,26 @@ Local synthetic exit regime (release, 2 threads, 64 prefill, 32 decode, 2 VRAM s
 | service, 3 ms per chunk | 6.41 | 156.0 | 12.8 | | |
 | service + overlap, 3 ms per chunk | 6.34 | 157.7 | 66.5 (cpu_ready 31.2, cpu_landed 25.7) | 6.0 | 0.87 |
 
-On this machine reads are already hidden by the prefetch (the page cache is warm and 16 workers absorb the delay), so overlap has nothing to win and costs its extra graphs; the numbers say nothing about box C. The box pairs decide.
+On this machine reads are already hidden by the prefetch (the page cache is warm and 16 workers absorb the delay), so overlap has nothing to win and costs its extra graphs; the numbers say nothing about box C. The box pairs decide. (No session directory yet.)
 
-Defaults in serve: `tetraeder serve` takes `--io-service on|off` and `--overlap on|off` (also with `--plan`). Unset, the service is on when the builder has a RAM tier (`--ram-slots`, or `ram_slots` in the plan) and overlap is on when the service is on and the miss policy is `cpu` (a plan with a RAM tier always misses on the CPU). Without a RAM tier both are off. `--overlap on` without the service, or without a RAM tier, is a CLI error. The box pairs on the 235B (2026-11-10) gave overlap 1.38 to 1.40x the prefetch path and the service alone 1.32x. The old `Reader` path stays for `--io-service off`. The metrics above are exported through the load options' telemetry, so the panel and alert cover a served run. `--prefetch on|off` follows the same rule (on with a RAM tier, as in every measured 235B run) and `--prefetch-depth` defaults to 2, the depth of those runs.
+Defaults in serve: `tetraeder serve` takes `--io-service on|off` and `--overlap on|off` (also with `--plan`). Unset, the service is on when the builder has a RAM tier (`--ram-slots`, or `ram_slots` in the plan) and overlap is on when the service is on and the miss policy is `cpu` (a plan with a RAM tier always misses on the CPU). Without a RAM tier both are off. `--overlap on` without the service, or without a RAM tier, is a CLI error. The defaults follow the paired box result on the 235B (`20261110c`, addendum 2026-11-10). The old `Reader` path stays for `--io-service off`. The metrics above are exported through the load options' telemetry, so the panel and alert cover a served run. `--prefetch on|off` follows the same rule (on with a RAM tier, as in every measured 235B run) and `--prefetch-depth` defaults to 2, the depth of those runs.
 
 ## Addendum (2026-11-10, box 60057461): paired result, defaults on
 
-Session `b1b-levers`: RTX 3090, AMD EPYC 7742 (AVX2, no AVX-512), quota 30.7 cores, 26 threads, RAM ballooned to 91 GB, Qwen3-235B-A22B at 32K. Decode against `main-prefetch` on this box: `main-iosvc` 1.32x, `main-overlap` 1.38x and 1.40x (1.37x against the adjacent `main-repeat`); prefill 1.11x to 1.15x. Builder noise 2.5%, A/A pair 1.000.
+Bars of the paired run against `main-prefetch` on one box: decode at least 15% above it, hidden share at least 0.5. The decode bar was met and the hidden share bar missed (`20261110c`). The gain was measured with spare cores of quota, so a box with a quota near the thread count had to confirm it.
 
-- Decode bar (at least 15% above `main-prefetch`): met. Hidden share bar (0.5): missed, 0.42. Read wait is still 24.8 ms of a 42.8 ms read span per token, all urgent misses.
-- Confound: the builder's CPU time was 106 to 116% of 26 threads, so the I/O workers used 2 to 4 of the 4.7 spare cores of quota. The gain is measured with spare cores, not in the starved case of section "Context". A box with a quota near the thread count (b1-exit had 26.9) must confirm it.
 - Decision: the service and overlap become the defaults of `serve` where they apply (RAM tier; overlap also needs the `cpu` miss policy). The `Reader` path stays until the starved-case run, then is deleted.
 
 ## Addendum (2026-11-10, box 60072027): starved case
 
-Same CPU class as the previous addendum (EPYC 7742, AVX2), both engines at 30 threads = floor(quota 30.72). Decode CPU was matched: builder 27.7 to 29.0 cores, KTransformers 27.5 to 27.9. `main-overlap` decodes 1.51x and 1.53x `main-prefetch` (overlap pair 1.3% apart). Hidden share 0.42 and 0.38, still under the 0.5 bar. The decode gain holds without spare cores, so the confound of the previous addendum is closed. The `Reader` path now only serves `--io-service off`; deleting it is a cleanup, not a measurement question.
+With both engines at the quota's whole cores and decode CPU matched, the decode gain holds and the hidden share stays under the 0.5 bar (`20261110e`), so the spare-core confound of the previous addendum is closed. The `Reader` path now only serves `--io-service off`; deleting it is a cleanup, not a measurement question.
 
 ## Addendum (2026-11-11): where the read wait goes
 
-From the committed overlap runs (`bench/results/20261110c`, `e`, `f`; only host 43fae09577cc of `c` has a disk curve):
+From the committed overlap runs (`20261110c`, `20261110e`, `20261110f`): the wait is not all urgent misses (`urgent_wait_time` counts every wait in `wait_landed`, late prefetches included, and many prefetches are still in flight at their layer's plan), and the disk is not the bound. Candidate causes: a layer step submits its misses after the next layers' prefetch, and with 16 workers every chunk of a layer step is in service at once, so deadline order never applies and the device shares its rate among them; and the workers' CPU under the quota while the ggml threads poll.
 
-- The wait is not all urgent misses: `urgent_wait_time` counts every wait in `wait_landed`, late prefetches included. Per token 6.7 experts (78 MB) are misses, but 22.7 are pending at their layer's plan: about 16 are prefetches still in flight, 39% of the 41.2 issued.
-- The disk is not the bound: decode reads 2.86 GB/s; the same host's curve gives 7.0 to 7.3 GB/s from depth 4 on, also with 25 busy threads.
-- A miss lands 3.9 ms after its submit on average (one alone needs 1.6 ms of device time: 11.6 MB at 7.2 GB/s), and `cpu_ready` hides about 0.9 ms per pending step, so steps with a miss stay near or under 0.5 even at device rate. A prefetch lands 6.3 ms after its submit, against a lead of about one layer step (1.8 ms) for a depth-1 top-up and two for depth 2. Both are means of per-unit latencies, which overlap.
-- Candidate causes: a layer step submits its misses after the next layers' prefetch, and with 16 workers every chunk of a layer step is in service at once, so deadline order never applies and the device shares its rate among them; and the workers' CPU under the quota while the ggml threads poll.
 - `LoadOptions::urgent_first` (default off, harness `TETRAEDER_EXIT_URGENT_FIRST`) submits the misses first; the cache and the logits are unchanged. `decode_overlap` splits the pending experts (urgent, depth-1, depth-2, prefetch lead) and the wait (steps with and without an urgent miss). Stages `main-overlap-uf`, `-w4`, `-uf-w4`, `-w8` and `-poll0` pair with `main-overlap`; the bar stands until they have run.
 
 ## Addendum (2026-11-11, box 60151711): first lever results
 
-Same box, after the `main-overlap` pair (4.29 and 4.27 tok/s, hidden share 0.455 and 0.451, miss latency 4.27 ms). `main-overlap-uf` (urgent first): hidden share 0.522 but decode 3.76 tok/s (-12%), miss latency 4.67 ms. `main-overlap-w4` (4 I/O workers): hidden share 0.343, decode 2.78 tok/s (-35%), miss latency 6.29 ms, prefetch lead 12.4 ms. Greedy tokens equal in all four. Hidden share rose while throughput fell, so it is not the measure to optimize: `urgent_first` stays off, 16 workers stay. The bar question goes to exposed wait per token and decode tok/s, judged on paired runs. Results `bench/results/20261111a/`.
+`urgent_first` raised the hidden share but slowed decode, and 4 I/O workers slowed it more (`20261111a`). Hidden share rose while throughput fell, so it is not the measure to optimize: `urgent_first` stays off, 16 workers stay. The bar question goes to exposed wait per token and decode tok/s, judged on paired runs.
