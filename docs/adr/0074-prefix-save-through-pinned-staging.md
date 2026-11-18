@@ -35,6 +35,12 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 - Rule: before reusing an idle sequence in place, save it only when recomputing the cut tail would cost more than the save: cut rows times the prefill cost per row above the sequence's rows times the save cost per row. Until both costs are measured per model, the rule is: save only when the cut is more than a quarter of the sequence (prefill about 0.36 ms per token against a save of about 0.06 ms per token on the 8B; the quarter is the ratio rounded up). A sequence evicted for another conversation is still saved as before. Also skipped, whatever its size: a cut that lies wholly in the tokens the sequence generated itself (the common prefix reaches the end of its prompt). A client that resends history without those tokens verbatim (Claude Code drops the thinking) will not match them later, so saving them keeps gigabytes nobody reuses (`ttft2-20261118`: the three slowest hits saved 0.9 to 2.4 s each to keep only their own output).
 - The bar, judged on the same replay as `ttft-20261118` (one box, interleaved with llama-server, two rounds): tetraeder reuse on median and p90 TTFT each at most 1.15x llama-server's, and the sum of `save_ms` at most 10% of the sum of TTFT. The admission log gains the restore time.
 
+## Decision: a new conversation takes a free slot, not an idle one (2026-11-19, before the change)
+
+- Why: after the live no-save rules the remaining save share is six requests that share only the client's system prompt with the idle conversation; admission placed each in the idle conversation's slot (longest common prefix) and so saved that conversation first, 0.4 to 6.4 s each, although other slots were free (`ttft3-20261118`).
+- Rule: when reusing an idle sequence in place would require a save (the cut is neither small nor only its own output) and a free slot exists, the request goes to the free slot; the common prefix is copied there from the idle sequence on the device when the backend supports a row copy (`seq_cp`), else prefilled; the idle sequence stays resident. With no free slot, admission evicts as before (oldest idle, saved).
+- Restores from RAM use the pinned staging pair as saves do (the other open lever); judged by the same bar as before, on the same replay.
+
 ## Open
 
 - Request #53 of the replay (a miss) prefills about 3x slower than llama-server (`ttft-20261118`); not yet explained.
