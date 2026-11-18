@@ -122,7 +122,7 @@ fn paired(what: &str, bound_ms: f64, mut snap: impl FnMut(bool) -> (Vec<u8>, f64
         median(plain),
         median(thp)
     );
-    // Staged against straight is printed above, not a gate (ADR 0074, 2026-11-18 addendum); the
+    // Staged against straight is printed above, not a gate (ADR 0074, "The bar"); the
     // absolute bound below is.
     assert!(
         s < bound_ms,
