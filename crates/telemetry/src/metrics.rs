@@ -868,9 +868,11 @@ impl Metrics {
         self.prefix_save.record(d.as_secs_f64(), &[]);
     }
 
-    /// One save skipped: the idle sequence was reused in place and the cut is cheap to recompute.
-    pub fn kv_prefix_save_skipped(&self) {
-        self.prefix_save_skipped.add(1, &[]);
+    /// One save skipped: the idle sequence was reused in place and the cut is cheap to recompute
+    /// (`small_cut`) or only its own output (`own_output`).
+    pub fn kv_prefix_save_skipped(&self, reason: &'static str) {
+        self.prefix_save_skipped
+            .add(1, &[KeyValue::new("tetraeder.reason", reason)]);
     }
 
     /// Saves since the last report that used a prepared spare and that allocated plainly.
