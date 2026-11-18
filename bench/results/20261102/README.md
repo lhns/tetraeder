@@ -46,3 +46,8 @@ Decision: accepted, the gate (accuracy at least 0.6) holds. Most of the read sti
 ## From ADR 0043 Context (moved verbatim)
 
 The exit regime (Qwen3-235B-A22B Q4_K_M, RTX 3090, model larger than RAM, ADR 0035, 0037, 0038) decodes at 2.2 to 2.4 tok/s after a 32K prefill (bench/results/20261102/exit-main*-203803.json): per token about 450 ms, compute 190 (attention on the GPU, routed experts on the CPU) and streamer 225 to 250 (about 600 MB of missed experts read per token, plus copies), RAM tier hit rate about 0.92. Almost all of that is per expert, not per token: an expert read from disk or streamed through the CPU's memory bus costs the same for one row as for seven. A step that verifies k drafted tokens reads each needed expert once for all k+1 rows, so its cost grows with the union of routed experts, not with k. Consecutive tokens share experts, so the union grows slower than 8(k+1) per layer.
+
+## From ADR 0045 Setup (Colibri and ik_llama.cpp bullets, moved verbatim)
+
+- Colibri v2.1.0 (`scripts/colibri_exit.sh`): 2K profile only; its 32K prefill would take about 4 h (2046 tokens took 895 s on the 5-thread box).
+- ik_llama.cpp: no number. It was OOM-killed at 128 GB on 2026-11-02 (it does not keep CPU-overridden experts mapped, so the 142 GB must fit in RAM; `--no-mmap` and run-time repack need that too). Its llama-bench also lacks `-d` and `;`-joined `-ot` (both fixed in the stage, not run again).

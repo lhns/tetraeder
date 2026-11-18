@@ -1,0 +1,9 @@
+# Session 20261112g
+
+- Status: unclean, inconclusive: a co-tenant saturated the host during the builder repeat (origin of the co-tenant guard, ADR 0045).
+- Code and box: commit on main at the time of box 60402584 (see git log of the results commit); host 281790, EPYC 7452, quota 61.4, 24 threads, 91 GB balloon, llama-server b12274.
+- Raw files: this directory.
+
+## From ADR 0045 (addendum "tuner too slow for the 235B; thin margin at 23 threads", the `20261112g` paragraph, moved verbatim)
+
+`20261112g` (box 60402584, host 281790, EPYC 7452, 64 cores, 128 logical, cgroup quota 61.4, owner-approved larger box with both engines at 24 threads, 91 GB balloon, disk 7.5 GB/s; first run of the balloon guard, OOM preference and llama-server b12274, all clean): **inconclusive.** Order builder, cache 0.95 (mmap, default polling), builder; the cache repeat and the poll-0 cache stage were cut by the deadline (builder stages took 22 and 28 minutes). Decode 3.049, 2.352, 0.943 tok/s: builder over cache 1.30 adjacent before, 0.40 after. The builder repeat ran 3.2x slower than the first with the same binary, bytes per token and threads and no throttling. Cause, from the per-CPU host samples: during the first builder decode the host was busy on 40 cores, all of them ours; during the repeat it was busy on 113 of 128 logical CPUs with every SMT pair occupied, 62 of those cores outside our container. A co-tenant saturated the host. This is the first direct evidence for the builder's swings across sessions; earlier runs did not keep the per-CPU samples, so it is not shown for them. Our engine tree also used 39 to 50 cores with 24 compute threads, so about 15 cores go to threads beyond the compute pool (I/O service, prefetch, CUDA host threads, or spinning); unexplained. Results `bench/results/20261112g/`.
