@@ -1,0 +1,16 @@
+{"t": 1795011736.194463415, "event": "run", "model": "qwen3-32b", "kind": "anchor", "run": "qwen3-32b-anchor-single-L16-r1", "sha256": ""}
+{"t": 1795011743.772642153, "event": "run", "model": "qwen3-32b", "kind": "anchor", "run": "qwen3-32b-anchor-single-L32-r1", "sha256": ""}
+{"t": 1795011755.648906767, "event": "run", "model": "qwen3-32b", "kind": "anchor", "run": "qwen3-32b-anchor-tp-2-L16-r1", "sha256": ""}
+{"t": 1795011764.971103916, "event": "run", "model": "qwen3-32b", "kind": "anchor", "run": "qwen3-32b-anchor-tp-2-L32-r1", "sha256": ""}
+{"t": 1795011778.888681387, "event": "run", "model": "qwen3-32b", "kind": "anchor", "run": "qwen3-32b-anchor-single-L16-r2", "sha256": ""}
+{"t": 1795011786.102917279, "event": "run", "model": "qwen3-32b", "kind": "anchor", "run": "qwen3-32b-anchor-single-L32-r2", "sha256": ""}
+{"t": 1795011798.624598167, "event": "run", "model": "qwen3-32b", "kind": "anchor", "run": "qwen3-32b-anchor-tp-2-L16-r2", "sha256": ""}
+{"t": 1795011808.250274876, "event": "run", "model": "qwen3-32b", "kind": "anchor", "run": "qwen3-32b-anchor-tp-2-L32-r2", "sha256": ""}
+{"t": 1795011822.206970362, "event": "run", "model": "qwen3-30b-a3b", "kind": "anchor", "run": "qwen3-30b-a3b-anchor-single-L12-r1", "sha256": ""}
+{"t": 1795011827.525453939, "event": "run", "model": "qwen3-30b-a3b", "kind": "anchor", "run": "qwen3-30b-a3b-anchor-single-L24-r1", "sha256": ""}
+{"t": 1795011834.814517857, "event": "run", "model": "qwen3-30b-a3b", "kind": "anchor", "run": "qwen3-30b-a3b-anchor-tp-2-L12-r1", "sha256": ""}
+{"t": 1795011842.133616266, "event": "run", "model": "qwen3-30b-a3b", "kind": "anchor", "run": "qwen3-30b-a3b-anchor-tp-2-L24-r1", "sha256": ""}
+{"t": 1795011852.621606459, "event": "run", "model": "qwen3-30b-a3b", "kind": "anchor", "run": "qwen3-30b-a3b-anchor-single-L12-r2", "sha256": ""}
+{"t": 1795011857.574003647, "event": "run", "model": "qwen3-30b-a3b", "kind": "anchor", "run": "qwen3-30b-a3b-anchor-single-L24-r2", "sha256": ""}
+{"t": 1795011864.835836171, "event": "run", "model": "qwen3-30b-a3b", "kind": "anchor", "run": "qwen3-30b-a3b-anchor-tp-2-L12-r2", "sha256": ""}
+{"t": 1795011872.088843449, "event": "run", "model": "qwen3-30b-a3b", "kind": "anchor", "run": "qwen3-30b-a3b-anchor-tp-2-L24-r2", "sha256": ""}

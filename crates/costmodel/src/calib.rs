@@ -38,6 +38,8 @@ pub struct Fit {
     pub residuals: Vec<(String, f64)>,
     /// `exp(max |residual|) - 1`, at least 0.05.
     pub band: f64,
+    /// False when no anchor places compute on the CPU: the CPU compute term was not fitted.
+    pub cpu_compute_used: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -339,7 +341,6 @@ pub fn fit(
     let gb = g
         .bandwidth_bytes_per_s
         .ok_or_else(|| spec("gpu bandwidth"))?;
-    let cc = c.compute.ok_or_else(|| spec("cpu compute"))?;
 
     let mut threads: Vec<u32> = anchors
         .iter()
@@ -348,6 +349,14 @@ pub fn fit(
         .collect();
     threads.sort_unstable();
     threads.dedup();
+    // The CPU compute term only matters when an anchor computes on the CPU; GPU-only fits skip it
+    // (the parameter stays at its placeholder and is never written back).
+    let cpu_compute_used = !threads.is_empty();
+    let cpu_c0 = if cpu_compute_used {
+        c.compute.ok_or_else(|| spec("cpu compute"))?.c0_eager_s
+    } else {
+        c.compute.map_or(gc.c0_eager_s, |cc| cc.c0_eager_s)
+    };
 
     let ln = |v: f64| v.max(1e-30).ln();
     let mut x0 = vec![
@@ -355,7 +364,7 @@ pub fn fit(
         ln(gb.value),
         ln(gc.c0_graph_s),
         ln(gc.c0_eager_s),
-        ln(cc.c0_eager_s),
+        ln(cpu_c0),
         ln(l.alpha_s.value),
         ln(l.beta_bytes_per_s.value),
     ];
@@ -419,6 +428,7 @@ pub fn fit(
         hw,
         residuals,
         band: (worst.exp() - 1.0).max(MIN_BAND),
+        cpu_compute_used,
     })
 }
 
@@ -769,6 +779,55 @@ mod tests {
         let a = gpu_anchors(&t, false);
         let fit = fit(&t, &a, "gpu0", "cpu0", "pcie").unwrap();
         assert!(fit.hw.range_costs.is_none());
+    }
+
+    /// A hardware graph whose CPU has no compute spec (as `tetraeder plan hw` reports it).
+    fn without_cpu_compute(h: &HardwareGraph) -> HardwareGraph {
+        let mut h = h.clone();
+        for d in h.devices.iter_mut().filter(|d| d.kind == DeviceKind::Cpu) {
+            d.compute = None;
+        }
+        h
+    }
+
+    #[test]
+    fn gpu_only_anchors_fit_without_cpu_compute() {
+        let t = truth();
+        let a = gpu_anchors(&t, true);
+        let with = fit(&perturbed(&t), &a, "gpu0", "cpu0", "pcie").unwrap();
+        let without = fit(
+            &without_cpu_compute(&perturbed(&t)),
+            &a,
+            "gpu0",
+            "cpu0",
+            "pcie",
+        )
+        .unwrap();
+        assert!(!without.cpu_compute_used);
+        assert_eq!(without.hw.device("cpu0").unwrap().compute, None);
+        assert_eq!(
+            with.hw.device("gpu0").unwrap().compute,
+            without.hw.device("gpu0").unwrap().compute
+        );
+        assert_eq!(with.residuals, without.residuals);
+    }
+
+    #[test]
+    fn cpu_anchors_need_the_cpu_compute_prior() {
+        let t = truth();
+        let a = cpu_anchors(&t);
+        let err = fit(
+            &without_cpu_compute(&perturbed(&t)),
+            &a,
+            "gpu0",
+            "cpu0",
+            "pcie",
+        )
+        .unwrap_err();
+        assert_eq!(err, CalibError::MissingSpec("cpu compute".into()));
+        assert!(err.to_string().contains("cpu compute"));
+        let ok = fit(&perturbed(&t), &a, "gpu0", "cpu0", "pcie").unwrap();
+        assert!(ok.cpu_compute_used);
     }
 
     #[test]
