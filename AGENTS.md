@@ -1,6 +1,7 @@
 # Tetraeder: agent rules
 
 Rust LLM inference engine on a patched ggml. Design: `docs/plan.md`. Decisions: `docs/adr/`.
+ADRs record decisions and chosen thresholds; measurements go in `bench/results/<session>/README.md`, linked from the ADR.
 Plain, short docs and comments; no em dashes.
 
 ## Rules

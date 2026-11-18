@@ -2,6 +2,8 @@
 
 One file per decision: Status, Context, Decision, Consequences. Do not change an accepted decision; supersede it with a new ADR.
 
+An ADR holds what was chosen: the decision, its reasons in words, and the numbers we picked (pass lines, bars, tolerances). What was measured, any number a rerun could change, lives in the session's `bench/results/<session>/README.md` (status line first: commit, the rule it was judged under, clean, unclean or null), and the ADR links the session. A rule change to an Accepted ADR is a new ADR.
+
 | ADR | Status | Title |
 | --- | --- | --- |
 | [0001](0001-own-rust-engine-on-ggml.md) | Accepted | Own Rust engine on ggml, reached by a strangler path from libllama |
