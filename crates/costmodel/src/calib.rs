@@ -853,8 +853,9 @@ mod tests {
     }
 
     /// The share is identified by the tp-2 anchors: a range launch cannot cost less than nothing,
-    /// so with `c_range` near zero only the share explains the cheaper all-reduces. The host link
-    /// carries no anchor's compute and stays at the prior.
+    /// so with `c_range` near zero only the share explains the cheaper all-reduces. Singles with
+    /// two op densities pin `c0` against B, which the per-layer all-reduce cost would otherwise
+    /// trade against. The host link carries no anchor's compute and stays at the prior.
     #[test]
     fn fits_the_allreduce_latency_share_from_tp2_anchors() {
         let mut prior = two_3090();
@@ -869,7 +870,13 @@ mod tests {
             allreduce_latency_share: 0.4,
             ..RangeCosts::PRIOR
         });
-        let fit = fit(&prior, &single_and_tp2(&truth), "gpu0", "cpu0", "pcie-gpu0").unwrap();
+        let mut anchors = single_and_tp2(&truth);
+        for n in [4u32, 8, 16] {
+            let mut f = features(f64::from(n) * 0.5, 0.0);
+            f.parts[0].ops_per_token *= 4.0;
+            anchors.push(anchor(&truth, &format!("single-ops-{n}"), f));
+        }
+        let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
         let c = fit.hw.range_costs_or_prior();
         assert!(rel(c.allreduce_latency_share, 0.4) < 0.05, "{c:?}");
         assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
