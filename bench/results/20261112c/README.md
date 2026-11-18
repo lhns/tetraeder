@@ -67,6 +67,8 @@ So cheaper dispatch is worth about 5 to 27 ms of the 202 ms per token on `202611
 
 ## From ADR 0064 Decision (moved verbatim)
 
+Note: the savings are estimates built on this session's numbers, not measurements.
+
 - Expected: 4 to 8 ms of the 12.8 ms alloc per token on `20261112c` (2% to 4%). The micro-benchmark measures it on a CPU before any box run.
 Routing of layer L+1 depends on layer L's MoE output, so it cannot be computed before the graph runs; the ADR 0038 predictions are right 85% (depth 1) and 78% (depth 2) of the time on `20261112c`, so steering compute by them would break parity. The host must see each layer's ids mid-graph, as llama.cpp's callback does.
 ### Expected savings (`20261112c`, 202 ms per token)
@@ -82,5 +84,7 @@ Routing of layer L+1 depends on layer L's MoE output, so it cannot be computed b
 Step 1: 4 to 8 ms (2% to 4%). Step 2 on top: build and alloc 4 to 10 ms, syncs and copies 5 to 9 ms, parking 0 to -8 ms, so 1 to 19 ms (0.5% to 9%); up to about 30 ms more if the CPU-specific fixed part is mostly syncs and copies rather than threadpool and quota, which step 0 and the micro-benchmark decide. Neither is likely to close the 1.35x to 1.54x gap on the 7642, where the per-segment cost follows the quota.
 
 ## From ADR 0064 Consequences (moved verbatim)
+
+Note: the gains are estimates built on this session's numbers, not measurements.
 
 - On the 7642 the per-segment cost follows the quota (ADR 0061, 0062), and CPU pairs per token (1.40x the cache's) are the other candidate for the gap. Those stay the levers to pursue first; this ADR removes the dispatch the builder pays beyond llama.cpp's structure.

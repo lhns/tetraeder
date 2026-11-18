@@ -58,6 +58,8 @@ The exit regime (Qwen3-235B-A22B Q4_K_M, RTX 3090, model larger than RAM, ADR 00
 
 ## From ADR 0056 "Expected value" (moved verbatim)
 
+Note: a prediction made before the `b3-planner` session, not a measurement.
+
 A prediction, to be checked by the `b3-planner` session on the builder fixture: today the analytic pick inside a RAM tie group is the smallest RAM tier, and on the 30B that tier decodes up to 1.74x slower than the largest at the same VRAM slots. With the term, RAM-only candidates are ranked by their disk bytes, the close call compares real neighbours, and regret stays within the 10% bar with Spearman at least 0.8. If it does not, the ledger shows which anchors miss and whether the reader formula or the bytes are wrong.
 
 ## From ADR 0056 Implementation notes, part B (moved verbatim; the synthetic fixture numbers are local CI runs)

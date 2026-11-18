@@ -13,6 +13,8 @@
 
 ## From ADR 0038 (section "Reads that hide (2026-11-03, box 58958565)", moved verbatim)
 
+Note: the gains listed are expectations made before levers 1 to 3 were built and measured, not measurements.
+
 ## Reads that hide (2026-11-03, box 58958565)
 
 At a 26-core quota the decode step is 257 ms: compute 112, streamer 128. The streamer reads 414 MB per token by the prefetch reader at 3.2 GB/s, 28% hidden, and 97 MB synchronously; synchronous reads of the same layer steps reach 5.2 GB/s. Per layer the next layer's read (about 4.4 MB) has one segment (about 1.2 ms) to land. Levers, in order of expected gain:
@@ -100,6 +102,8 @@ Decode and prefill in tok/s after a 32K prefill unless noted:
 - **Pass, with decode parity against KTransformers on box A.** The builder is faster than every baseline on prefill (1.6x to 3x) on both boxes and on decode against llama.cpp with tuned expert overrides (1.23x and 1.60x), Colibri and KTransformers on box B. On box A its decode equals KTransformers' (3.14 against 3.15, one pair each, inside run-to-run noise). ik_llama.cpp and FreeToken cannot run the model within 128 GB.
 
 ## From ADR 0045 Consequences (moved verbatim)
+
+Note: the lever sizing here is an estimate made from this session, not a measurement.
 
 - Open, in order of expected gain: prefetch depth 2 (ADR 0038 Levers; implemented, not yet measured on the 235B: box B's disk made each 32K run 25 min and the window ran out), `cpu_poll`/`prefetch_threads`, a second paired KTransformers run on box A's class for a noise band.
 - Not taken (the coordinator's FreeToken levers): splitting decode misses between CPU and PCIe gains little here because the CPU expert path already reads about 8 GB of weights per token in 225 ms, near the boxes' DRAM bandwidth, and PCIe DMA reads the same DRAM; prefill double buffering is not needed while prefill leads every baseline by 1.6x or more.
@@ -232,6 +236,8 @@ The cache bar of the Phase 3b exit is llama-server's share in the same run (93.6
 - **What dispatch buys for the builder.** At this pin the x86 decode-path Q4_K and Q6_K dot products (`ggml-cpu/arch/x86/quants.c:2102-2280`, `:2490-2724`) and `quantize_row_q8_K` (`:505`) are AVX2 only: no `_mm512`, no `dpbusd`. ggml does have AVX-512 VNNI K-quant kernels (`ggml-cpu/tiled/tiled-kernel.cpp:83-207`, `_mm512_dpbusd_epi32`), but `mul_mat_id` uses them only when an expert gets 8 or more rows (`tiled.cpp:1202`), so they serve prefill, not decode. VNNI is otherwise used only through `mul_sum_us8_pairs_float` (Q4_0, Q8_0 and similar), AVX-512 in a few helpers, the repack GEMMs and llamafile sgemm (F32, F16, BF16, Q8_0, Q4_0, Q5_0, IQ4_NL). The repack Q4_K GEMV (`repack.cpp:1464`) has no `_mm512` either, and the builder does not repack (ADR 0039) nor use the AMX buffer type. So for the Qwen3 Q4_K_M experts an AVX-512 variant changes only compiler code generation (EVEX encodings, 32 vector registers, auto-vectorized float ops). So dispatch alone cannot deliver ADR 0045 hypothesis 3 for the builder. Whether KTransformers' 1.34x comes from its iqk VNNI kernels, parallel faulting I/O or the page cache is still open (none of the 0045 addendum stages have run).
 
 ## From ADR 0052 (addendum "2026-11-09: build mode per environment", mixed bullet moved whole)
+
+Note: the DL build time is an estimate, not measured.
 
 - **Boxes and local dev build native** (`TETRAEDER_GGML_NATIVE=ON`: one CPU variant, static). A fresh box with the DL default would compile 14 CPU variants plus CUDA, an estimated 30 to 40 paid minutes; the native build is the pre-dispatch 9 to 11 minutes. `.cargo/config.toml` `[env]` sets it for local builds and `docker/box/Dockerfile` for the image; `scripts/exit_run.sh` defaults it too. A process env var wins over `[env]`.
 

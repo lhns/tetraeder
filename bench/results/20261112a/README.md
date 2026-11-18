@@ -1,6 +1,6 @@
 # Session 20261112a
 
-- Status: unclean (24 threads on a 23.04 quota), loss: the llama.cpp cache at share 0.95 leads the builder, so point 1 is not met on this box (ADR 0045 paired ratios); also a diagnosis for ADR 0058 and 0059. Baseline pin b12211.
+- Status: loss, judged under ADR 0045 paired ratios: the llama.cpp cache at share 0.95 leads the builder, so point 1 is not met at 24 threads on this box. Caveat: 24 threads ran on a 23.04 quota. Also a diagnosis for ADR 0058 and 0059. Baseline pin b12211.
 - Code and box: results commits 4f36c02 and cb461df; box 60280383, host 24953, RTX 3090, EPYC 7642, quota 23.04, 24 threads.
 - Raw files: this directory.
 

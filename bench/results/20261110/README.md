@@ -64,4 +64,6 @@ Calls stay counted `parsed/ok`: the call is well formed and the value has the sc
 
 ## From ADR 0057 Consequences (moved verbatim)
 
+Note: an estimate made from this run before the rerun; measured in `20261110b`.
+
 - The 58 boolean calls of the run become schema-valid; the 2 ReportFindings calls get the right type (their item fields are not checked here). With all else equal the tool-error rate drops from 18.5% to about 7.4% (40 of 541) at best, near llama-server's 5.6%; converted Edits can still fail for task reasons. The turn-limit sessions lose their retry loops. The next proxy run measures it.

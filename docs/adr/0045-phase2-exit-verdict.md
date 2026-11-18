@@ -35,7 +35,7 @@ Current state; the addenda that led here are listed under History.
 **Pairing rules.** A stage that breaks one gives no ratio.
 
 - Paired ratios from one session on one box only; absolute rates are not compared across sessions or boxes.
-- The builder runs at its `serve` defaults (overlap on, ADR 0054; polling from the quota, ADR 0061). Both engines get the same thread count: by default the CPU quota, or on an AVX-512 CPU whose stages include KTransformers `KT_HEADROOM` (default 4) below it (`scripts/kt_threads.sh`); an explicit `THREADS` overrides it.
+- The builder runs at its `serve` defaults (overlap on, ADR 0054; polling from the quota, ADR 0061). Both engines get the same thread count (`scripts/kt_threads.sh`).
 - Each baseline runs at its best runnable configuration on the box. For the llama.cpp cache the share grid 0, 0.5, 0.8, 0.9, 0.95, 0.98 stands in for its tuner: the tuner (`scripts/moe-cache-tune.py`, run at `TUNE_CTX` 8192 by `exit_run.sh`) does not finish on the 235B within a box session (`20261111g`).
 - The RAM balloon holds the budget for every stage; a stage that ran without it is flagged and does not count (`20261112f`). The cgroup limit is at least 150 GB, so the balloon sets the 91 GB budget (`20261113g`, docs/box-driver.md).
 - A stage flagged by the co-tenant guard (`scripts/cotenant_guard.py`) does not count (`20261112g`).

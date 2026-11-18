@@ -11,7 +11,7 @@ The Phase 5 exit test (`docs/plan.md`, Roadmap): the planner picks the measured 
 Facts that shape them:
 - A winner is only meaningful when every shape runs on the same engine. All candidates run on Tetraeder's own executor (ADR 0069); llama.cpp's split modes are baselines, never candidates.
 - Only a MoE model can run all three shapes; a dense model has no expert parallel.
-- ADR 0056 measured single-GPU candidate errors of up to 23.1% (MoE) and 27.8% (dense) against anchor bands of 9.2% and 5.8%. "Every candidate within 15%" fails on that data; it holds here only if the multi-GPU cost model is better than the single-GPU one was, or the candidate set is small and the anchors well chosen. The rule stays the literal reading (below) and the risk is named. (No session directory yet.)
+- ADR 0056 found single-GPU candidate errors well above the 15% line on the committed fixtures (`20261103`), against anchor bands of 9.2% and 5.8%. "Every candidate within 15%" fails on that data; it holds here only if the multi-GPU cost model is better than the single-GPU one was, or the candidate set is small and the anchors well chosen. The rule stays the literal reading (below) and the risk is named.
 - No noise class for multi-GPU boxes exists in `bench/noise/`.
 - RTX 3090 boxes on Vast usually have no GPU peer access; transfers stage through host memory. The box image builds CUDA for sm_86 (`docker/box/Dockerfile`, baselines sm_86 only), so Ampere cards are the default class.
 
