@@ -81,3 +81,4 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0073](0073-engine-pin-b12426.md) | Proposed | Engine pin moves to llama.cpp b12426 before the Phase 4 verdict |
 | [0074](0074-prefix-save-through-pinned-staging.md) | Proposed | Prefix-cache save on a GPU: pinned staging and prepared snapshot buffers |
 | [0075](0075-executor-ranges-are-graph-views.md) | Proposed | Executor ranges are views of the rank graph (patch 0005) |
+| [0076](0076-judged-predictions-from-per-shape-anchor-lines.md) | Not adopted | Judged predictions from per-shape lines through truncated anchors |

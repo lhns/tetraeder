@@ -1,0 +1,1 @@
+{"model": "qwen3-30b-a3b", "gpus": 2, "candidates": [{"id": "single"}, {"id": "layer-2"}, {"id": "tp-2"}, {"id": "ep-2"}], "pruned": []}
