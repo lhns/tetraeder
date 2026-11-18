@@ -90,10 +90,14 @@ def test_wrong_gpu_count_stops_before_anything_else(tmp_path):
     assert dry(tmp_path, ngpu="4", rc=1, DRY_GPUS="2")  # a 2x box for a 4x session
 
 
+# a gpu-parity cargo test plan line (env assignments may sit between the flag and cargo)
+PARITY_CMD = re.compile(r"TETRAEDER_REQUIRE_GPU=1 (\S+=\S+ )*cargo test")
+
+
 def test_gates_and_probe_before_any_timed_run(tmp_path):
     lines = dry(tmp_path)
     idx = {s: next(i for i, ln in enumerate(lines) if f"STAGE {s}" in ln) for s in STAGES}
-    parity = next(i for i, ln in enumerate(lines) if "TETRAEDER_REQUIRE_GPU=1 cargo test" in ln)
+    parity = next(i for i, ln in enumerate(lines) if PARITY_CMD.search(ln))
     probe = next(i for i, ln in enumerate(lines) if "comm-probe" in ln)
     assert idx["gpu-parity"] < parity < idx["discover"] and idx["probe"] < probe < idx["prepass"]
     first_run = next(i for i, ln in enumerate(lines) if re.search(r"\brun \S+ start", ln))
@@ -311,7 +315,7 @@ def test_only_unset_keeps_the_full_session(tmp_path):
 
 def test_gpu_parity_runs_every_package_and_scopes_graph_debug_to_the_executor(tmp_path):
     lines = dry(tmp_path)
-    cmds = [ln for ln in lines if "TETRAEDER_REQUIRE_GPU=1 cargo test" in ln]
+    cmds = [ln for ln in lines if PARITY_CMD.search(ln)]
     assert len(cmds) == 2 and all("--no-fail-fast" in c for c in cmds)
     ex, model = (next(c for c in cmds if f"-p tetraeder-{p} " in c) for p in ("executor", "model"))
     assert "GGML_CUDA_GRAPH_DEBUG=1" in ex and "GGML_CUDA_GRAPH_DEBUG" not in model
