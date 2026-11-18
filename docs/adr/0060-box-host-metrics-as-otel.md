@@ -2,6 +2,8 @@
 
 Status: Proposed (2026-11-12, owner decision). Extends ADR 0012 (one OTel data path) and ADR 0058 (host fields per phase and decode window); the sampler path of ADR 0058 stays until a box run shows both paths agree.
 
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
+
 ## Context
 
 `scripts/engine_sample.py` samples host, cgroup, process-tree and GPU counters once a second into `samples-*.jsonl` and summarizes them into each result's `host` block (ADR 0056 addendum, ADR 0058 and its addenda). That is a second data path beside ADR 0012's: the fields never reach a dashboard, and a new signal means a new reader, a new JSONL column and a new summary. Box runs start no collector, and `exit_regime.rs` builds no `Telemetry`, so the builder's own metrics (step split, expert reads, prefetch) never reach a bench result either.
@@ -10,7 +12,7 @@ Constraints:
 
 - **Baselines export nothing.** llama.cpp and KTransformers have no OTLP metrics, so every signal compared across engines must come from outside the engine: collector receivers or the sampler.
 - **Decode windows are 5 to 7 s.** Host data needs a 1 s grid; the engine SDK exports every 10 s by default (`TelemetryConfig`).
-- **The builder runs at 94 to 98% of its CPU quota.** Anything added runs for every engine's stage alike, and its cost is measured, not assumed.
+- **The builder runs at 94 to 98% of its CPU quota.** Anything added runs for every engine's stage alike, and its cost is measured, not assumed. (No session directory yet.)
 - **Committed JSON stays** (Rule 3). The `host` block keeps its field names and math.
 
 ## Decision
@@ -66,11 +68,11 @@ Disk fields (`read_*`, `disk_queue_depth_mean`, `disk_inflight_max`), `cpu_busy_
 - Timestamps: hostmetrics points lag a tick by up to a second, so a field over a 5 s window can differ from the sampler's by up to one interval's share; `host_otlp_diff` shows how much.
 - Metric names of hostmetrics come from the 0.116.0 receiver docs and the CI `validate` step; their values on a Vast container are confirmed by the first box run, not before.
 
-Fixes after the first box comparison (20261112e): context switches are emitted per thread (tetraeder.host.process.thread.context_switches) so host_otlp uses the sampler positive-delta rule; cpu_busy_pct and the top-CPU mean divide by the threads summarize ran with (stored as host_windows.threads, else the membw probe threads), not options.threads, which a stage may lower; disk_inflight_max is an instantaneous gauge read on two clocks and may differ legitimately.
+Fixes after the first box comparison (`20261112e`): context switches are emitted per thread (tetraeder.host.process.thread.context_switches) so host_otlp uses the sampler positive-delta rule; cpu_busy_pct and the top-CPU mean divide by the threads summarize ran with (stored as host_windows.threads, else the membw probe threads), not options.threads, which a stage may lower; disk_inflight_max is an instantaneous gauge read on two clocks and may differ legitimately.
 
 ## Addendum: zstd for the OTLP files (2026-11-12)
 
-Context: 530 MB per 40 minutes, 1 to 2 GB per session, too big to fetch cheaply or commit.
+Context: 530 MB per 40 minutes, 1 to 2 GB per session, too big to fetch cheaply or commit. (No session directory yet.)
 
 Decision: compress after the collector stops (`otelcol_box.sh compress`: `zstd -T2 -10 --rm` on every `*.jsonl` of the run's directory, called by `exit_run.sh` after `stop`), not through the file exporter's `compression: zstd`. Why:
 - A file that is plain while the collector runs survives a crash or a killed box readable; a compressed stream cut mid-frame loses its unflushed tail. The exporter's framing (one zstd frame per export, as we understand it) was not checked against the 0.116.1 source from here, and rotation with it is unverified.
@@ -81,20 +83,9 @@ Readers (`otlp_host.open_lines`, `otlp-merge`) accept `*.jsonl` and `*.jsonl.zst
 
 ## Addendum: the builder's export does not stall decode; the sampler's smaps_rollup likely does (2026-11-14)
 
-Context: from 20261112c on, one decode window per process spends 40 to 160 ms per token outside `run()` (wall minus `StepProfile::total`). The other windows show a flat 5 to 8 ms. The 1 s engine export of this ADR started that week, so it was the first suspect.
+Context: from `20261112c` on, one decode window per process spent far longer per token outside `run()` than the others, and the 1 s engine export of this ADR started that week, so it was the first suspect. The stall also happens without the export and hits at most one early window per process, while the exporter keeps its schedule (`20261112c`, `20261113o`). The likely cause is the host sampler's `smaps_rollup` read (72ca4af): the kernel walks every page table of the engine under its mmap lock, and the RAM tier is one large mapping on 4 KiB pages, so an mmap or munmap on the step thread waits for the walk. Not proven on a box. Neither CPU throttling nor cgroup anon growth explains it; reclaim is not ruled out. One blocking edge in the step's memory report (`DirectFile::bounce_capacity` waiting on the bounce-buffer mutex with the single reader thread) did not cause these stalls and was fixed anyway: the size is now mirrored in an atomic.
 
-Findings:
-- The stall happens without the export. 20261112c ran a commit before e7711c6 (no `telemetry_for`, no `opts.telemetry`), and its main-overlap-repeat still has 96 ms per token in window 0. The steady gap is no larger with the export (5.4 to 8 ms) than without (7 to 8 ms).
-- Shape: at most one stalled window per process, always window 0 or 1. A periodic export would touch every window. In 20261113o (checked there only) the step histogram, exported every second, has one export interval with no step and no step time inside the stalled window. The four intervals around it hold 2.3 s of step time in 4 s, so the missing 1.7 s is the window's whole excess. The step thread was stalled; the exporter kept its schedule.
-- Code: `PeriodicReader` exports on its own thread (`futures_executor::block_on` there). `collect` takes each instrument's lock only to copy the points, and the step path only records. `record_step` locks the ring, which nothing else takes during decode. `report_memory` reads no `/proc` or cgroup file. Its one blocking edge was `DirectFile::bounce_capacity`, which took the bounce-buffer mutex that `read_batch_with` holds for a whole batch. With the single reader thread (`TETRAEDER_EXIT_IO_SERVICE=0`) the step's memory report therefore waited for the prefetch batch in flight. All the stalled runs used the I/O service, so this did not cause them. Fixed anyway: the size is now mirrored in an atomic.
-- Not explained by CPU throttling (zero throttled periods in every stalled window) or by cgroup anon growth (flat). The sampler has no reclaim counter, so reclaim is not ruled out.
-- The steady 5 to 8 ms is the harness: `margin` sorts a 151,936-entry index per token (`top_k`), 14 ms per token for margin plus argmax on a desktop CPU (`rustc -O`). `decode_tok_s` counts it.
-
-Likely cause: the host sampler's `smaps_rollup` read (72ca4af, between 20261112a, flat, and 20261112c, the first stall). For that file the kernel walks every page table of the engine under its mmap lock, and only drops the lock between mappings. The RAM tier is one 83 GB mapping on 4 KiB pages (`anon_huge_gb` 0), so one walk holds the lock for about a second. An mmap or munmap on the step thread waits for it, for example a 1.2 MB `top_k` index or a 600 KB logits buffer that glibc maps fresh while its threshold settles early in decode. Supporting evidence:
-- At a 1 s interval the sampler ticks every 2.2 to 2.6 s.
-- In both 20261113o runs a sampler tick starts 0.1 to 0.2 s before the hole.
-
-Not proven on a box.
+The steady gap between windows is the harness: `margin` sorts a 151,936-entry index per token (`top_k`), 14 ms per token for margin plus argmax on a desktop CPU (`rustc -O`), and `decode_tok_s` counts it. (No session directory yet.)
 
 Decision:
 - No exporter change. A guard test covers the OTLP path (`step_path_does_not_wait_for_a_hung_collector`): the real exporter against a collector that never answers, exporting every 20 ms, keeps every step-path call under 250 ms.

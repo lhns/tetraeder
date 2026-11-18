@@ -1,10 +1,12 @@
 # 0064. Decode dispatch: a scheduler sized for one segment, then one graph per decode token with a host callback per layer
 
-Status: Proposed (2026-11-12). Phase 2 exit follow-up (ADR 0045, m1-open). Builds on ADR 0035, 0036, 0038, 0054 and 0061. Step 2, if it ships, supersedes for streamed one-token decode steps the part of ADR 0036 that keeps one graph segment per MoE layer, and the ADR 0035 clause "work is exactly the routed pairs" for the GPU group of such steps (parked rows, below).
+Status: Proposed (2026-11-12). Steps 0 and 1 are built (2026-11-12 addendum); step 2 is not. The dispatch floor was measured on a CI runner (`ci-overhead-20261114`). Phase 2 exit follow-up (ADR 0045, m1-open). Builds on ADR 0035, 0036, 0038, 0054 and 0061. Step 2, if it ships, supersedes for streamed one-token decode steps the part of ADR 0036 that keeps one graph segment per MoE layer, and the ADR 0035 clause "work is exactly the routed pairs" for the GPU group of such steps (parked rows, below).
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
-A streamed decode token of Qwen3-235B-A22B (94 layers, 8 of 128 experts) runs 95 segment graphs (`run` in `crates/model/src/qwen3moe.rs`, one `build_segment` per layer boundary) plus the overlap group graphs of ADR 0054 (`run_overlap_layer`, `run_cpu_group` on `sched_cpu`). A fit over the 16 decode windows of `20261112c` (EPYC 7302P, 30 threads) gave 0.88 ms fixed per CPU-carrying segment plus 0.063 ms per CPU pair, so about 70 ms of fixed cost against 40 ms of expert work per token, and 0.44 ms per GPU-only segment. llama.cpp's expert cache (#30966) decoded 1.35x to 1.54x faster on the 7642 hosts (`20261112a`). This ADR counts both engines' dispatch per token from source, says where the fixed term goes, and designs the change that cuts it.
+A streamed decode token of Qwen3-235B-A22B (94 layers, 8 of 128 experts) runs 95 segment graphs (`run` in `crates/model/src/qwen3moe.rs`, one `build_segment` per layer boundary) plus the overlap group graphs of ADR 0054 (`run_overlap_layer`, `run_cpu_group` on `sched_cpu`). A fit over the decode windows of `20261112c` split the CPU segment cost into a fixed part per CPU-carrying segment and a slope per CPU pair, and the fixed part outweighed the expert work per token. llama.cpp's expert cache (#30966) decoded faster on the 7642 hosts (`20261112a`). This ADR counts both engines' dispatch per token from source, says where the fixed term goes, and designs the change that cuts it.
 
 Sources: llama.cpp b12274 (202c1a229) as `docs/sources.md` names it. The cache runs of `20261112a` and `c` record b12211 (7d7f028); between the two, `ggml-backend.cpp`, `llama-context.cpp` and `llama-graph.cpp` only add `hv_tensor_requires_copy` (skip copies for uncomputed select branches) and scheduler reuse across reserves, so the decode structure below holds for both. Our side: the pinned ggml (2e0d86be) and the files named.
 
@@ -12,37 +14,37 @@ Sources: llama.cpp b12274 (202c1a229) as `docs/sources.md` names it. The cache r
 
 llama.cpp (`-cmoe --moe-cache-mib 10458 --moe-cache-cpu-share 0.95`, one GPU, OpenMP off as in `docker/box/Dockerfile`):
 
-- One graph compute. `llama_context::process_ubatch` reuses the previous graph when `res->can_reuse(gparams)` holds (no build, no `ggml_backend_sched_alloc_graph`), and `graph_compute` calls `ggml_backend_sched_graph_compute_async` once. The `20261112c` log: `graph (pp bs=2048, tg bs=1): nodes = 5944 / 7153, splits = 284 / 284` and `graphs reused = 69` of about 72 decode tokens.
+- One graph compute. `llama_context::process_ubatch` reuses the previous graph when `res->can_reuse(gparams)` holds (no build, no `ggml_backend_sched_alloc_graph`), and `graph_compute` calls `ggml_backend_sched_graph_compute_async` once. The `20261112c` log shows the graph reused on almost every decode token.
 - 284 splits, 3 per layer plus 2. `build_moe_ffn` (`src/llama-graph.cpp`) puts the router, `cur` and then `build_moe_cache_slots`: a `get_rows` of the host slot map, pinned to the GPU with `ggml_backend_sched_set_tensor_backend`. A host weight read by a GPU node starts a new split (`ggml_backend_sched_split_graph`, "check if a weight is on a different and incompatible backend"). Per layer: GPU split (attention, router), GPU split (slot lookup, cached experts, which come first in the graph "so that they are computed while the misses are"), CPU split (`get_rows` of the host `cpu_map`, the three `mul_mat_id` on the host experts with `-1` for experts not on the CPU), and the merge `add` opens the next GPU split.
 - One host callback per layer. Copying the slot map into its GPU split calls `llama_context::sched_copy_experts`, which calls `llama_moe_cache::impl::copy` (`src/llama-moe-cache.cpp`): `ggml_backend_tensor_get_async` of the ids plus `ggml_backend_synchronize` (one GPU sync), the LRU plan, async uploads of the misses, the CPU map written in host memory, the slot map set async. `ggml_backend_sched_compute_splits` copies host weights last so the callback sees the split's other inputs.
 - CPU and GPU overlap inside a layer. `ggml_backend_sched_prefetch_inputs` (added by #30966, not in our pin) starts the D2H copy of the CPU split's inputs on the GPU stream before the cached-expert split, so the CPU split waits on that copy only and runs while the GPU computes the cached experts.
 - About 95 CPU threadpool kickoffs (94 CPU expert splits plus the embedding `get_rows`; `tok_embd` stays on the CPU). Workers spin between them: llama-server's default poll 50 (`common/common.h`, `cpu_params::poll`) is `1024 * 128 * 50` rounds of `ggml_thread_cpu_relax` in `ggml_graph_compute_poll_for_work` before sleeping, longer than a layer's GPU work.
 - About 2 to 3 blocking device operations per layer: the callback's sync and ids read, the merge split's copy of the CPU rows (no events: `parallel` is false with one GPU, so `ggml_backend_sched_copy_input` falls back to `ggml_backend_synchronize` and a blocking copy).
-- CPU pairs: 32,623 CPU misses of 54,629 lookups (59.7%, warm-up tokens included), about 449 of 752 pairs per token; 35.3% cache hits.
+- CPU pairs: most cache lookups miss to the CPU (`20261112c`).
 
 The builder (`main-overlap`, `20261112c`, per token):
 
-- 133.5 graph builds, scheduler allocations and computes: 95 segments plus 38.5 CPU group graphs. Build 3.2 ms, alloc 12.8 ms. Every `Sched::alloc_graph` (`crates/ggml-sys/src/ggml/sched.rs`) resets the scheduler, splits and allocates.
-- Splits: a CPU segment has 2 (CPU: `get_rows` of `xn`, the RAM group's `mul_mat_id` and `swiglu`; GPU: `set_rows` into `acc`, the compute-tier group, weighting, attention, router), a GPU-only segment 1, a group graph 1: about 78 x 2 + 17 + 38.5 = 212. (`max_splits` 4 is over the run, prefill included.)
-- Blocking device operations per CPU segment, from `ggml_backend_sched_copy_input` without events: the CPU split's `xn` input (GPU sync, D2H), the GPU split's four `set_input` index tensors (allocated on the CPU, each a GPU sync and a blocking H2D) and the RAM rows (sync, H2D), the closing `ggml_backend_sched_synchronize`, then the readback of `ids`, `pred` and `pred2` (three blocking D2H, 3.0 ms per token): about 7 syncs and 9 copies.
-- About 117 CPU kickoffs (78 CPU segments, 38.5 group graphs). The CPU group runs before the GPU work of its segment, and the GPU waits for it.
-- CPU pairs: 628 of 752 (83.5%); VRAM pair share 16.5% at a similar budget (10.97 GB of slots against the cache's 10,458 MiB).
-- The scheduler is sized for the whole-step graph: `step_nodes(h) * 4` = 128 x 95 x 4 = 48,640 nodes, so its hash set has 65,537 entries (`ggml_hash_size`). `ggml_backend_sched_reset` memsets `hv_tensor_backend_ids` (262 KB) and `hv_tensor_copies` (2 backends x 8 B, 1.05 MB) on every segment: about 1.3 MB, 124 MB per token. At 15 to 30 GB/s that is 4 to 8 ms of the 12.8 ms alloc. Alternating segment topologies also make `ggml_gallocr_alloc_graph` fail and re-reserve, which synchronizes every backend first (`ggml_backend_sched_alloc_splits`).
+- One graph build, scheduler allocation and compute per segment and per CPU group graph. Every `Sched::alloc_graph` (`crates/ggml-sys/src/ggml/sched.rs`) resets the scheduler, splits and allocates.
+- Splits: a CPU segment has 2 (CPU: `get_rows` of `xn`, the RAM group's `mul_mat_id` and `swiglu`; GPU: `set_rows` into `acc`, the compute-tier group, weighting, attention, router), a GPU-only segment 1, a group graph 1.
+- Blocking device operations per CPU segment, from `ggml_backend_sched_copy_input` without events: the CPU split's `xn` input (GPU sync, D2H), the GPU split's four `set_input` index tensors (allocated on the CPU, each a GPU sync and a blocking H2D) and the RAM rows (sync, H2D), the closing `ggml_backend_sched_synchronize`, then the readback of `ids`, `pred` and `pred2` (three blocking D2H): about 7 syncs and 9 copies.
+- One CPU kickoff per CPU segment and per group graph. The CPU group runs before the GPU work of its segment, and the GPU waits for it.
+- CPU pairs: a larger share of pairs runs on the CPU than in the cache run at a similar VRAM budget (`20261112c`).
+- The scheduler is sized for the whole-step graph: `step_nodes(h) * 4` = 128 x 95 x 4 = 48,640 nodes, so its hash set has 65,537 entries (`ggml_hash_size`). `ggml_backend_sched_reset` memsets `hv_tensor_backend_ids` (262 KB) and `hv_tensor_copies` (2 backends x 8 B, 1.05 MB) on every segment: about 1.3 MB per segment. Alternating segment topologies also make `ggml_gallocr_alloc_graph` fail and re-reserve, which synchronizes every backend first (`ggml_backend_sched_alloc_splits`).
 
-### Where the 0.88 ms goes
+### Where the fixed cost goes
 
-The fixed term is real; its parts are not yet separated:
+The fixed term is real; its parts are not yet separated (`20261112c`):
 
-- The slope is identified. The `adapt` runs vary pairs per segment: at about 87 CPU segments per token, windows with 640 and 625 pairs took 116.5 and 114.1 ms of CPU segment compute, windows with 426 and 445 pairs 97.6 and 99.2 ms: about 0.09 ms per pair. A 12.24 MB expert (Q4_K gate and up, Q6_K down, inferred from the size: 5.19 bits per weight) at 0.06 to 0.09 ms is 135 to 200 GB/s of reads. The box's probe, 66.5 GB/s, counts bytes copied (`scripts/engine_sample.py`), so it is not the read ceiling and no bandwidth model is fitted here.
-- The unthrottled `exit-trace` run of `20261112c` (no overlap, every segment a CPU segment, `throttled_share` 0.00): 127.4 ms over 94 segments, 1.36 ms each, with 6.6 pairs. At 0.06 to 0.09 ms per pair the expert work is 0.4 to 0.6 ms, leaving 0.76 to 0.95 ms fixed, of which the segment's GPU part is at most the 0.44 ms of a GPU-only segment. So the CPU-specific fixed part is about 0.3 to 0.5 ms per CPU segment, 25 to 40 ms per token over 78 CPU segments. The fit's own number, (0.88 - 0.44) x 78 = 34 ms, is inside that range.
-- The fit's windows ran at `throttled_share` 0.5 to 0.68 (poll 50, before ADR 0061). Quota stalls fall mostly while the CPU is busy, so part of this fixed term may be throttling.
-- Bottom-up, what a CPU segment pays beyond llama.cpp's per-layer structure is the build and alloc above (0.12 ms per graph) and about 4 extra syncs and 6 extra small blocking copies, roughly 10 to 15 us each: 0.1 to 0.15 ms. The rest, 0.15 to 0.35 ms, would be the threadpool and the quota: each CPU segment wakes the pool (cond broadcast when the workers sleep under poll 0 or after a pause, ADR 0061), runs about 6 barriers across 30 threads, and spends quota its spinning workers took. One graph per token does not change the kickoff count: llama.cpp also kicks the pool once per layer.
+- The slope per CPU pair is identified from windows with different pair counts. It is not a bandwidth model: the box's copy probe is not the read ceiling.
+- An unthrottled trace run with every segment a CPU segment leaves a CPU-specific fixed part per CPU segment beyond the GPU part, consistent with the fit.
+- The fit's windows ran throttled (poll 50, before ADR 0061), so part of this fixed term may be throttling.
+- Bottom-up, what a CPU segment pays beyond llama.cpp's per-layer structure is the build and alloc above and about 4 extra syncs and 6 extra small blocking copies. The rest would be the threadpool and the quota: each CPU segment wakes the pool (cond broadcast when the workers sleep under poll 0 or after a pause, ADR 0061), runs about 6 barriers across its threads, and spends quota its spinning workers took. One graph per token does not change the kickoff count: llama.cpp also kicks the pool once per layer.
 
 Which share is syncs and copies (one graph per token cuts it) and which is wake, barriers and quota (it does not) is the open question; the micro-benchmark below measures the CPU side of it.
 
-On the 7642 hosts the per-segment cost follows the CPU quota: 2.74 ms per CPU segment at `throttled_share` 0.05 (`20261112e` poll 0), 3.5 to 5.8 ms at 0.80 to 0.98, 4.9 and 8.5 ms at 0.30 and 0.60 (`20261112f`). One hypothesis for the cache's lead of 1.35x to 1.54x is its CPU pair count: we compute 628 / 449 = 1.40x more CPU pairs per token. At 0.06 to 0.09 ms per pair the 179 extra pairs are 11 to 16 ms on `20261112c`; on the 7642, with slower memory and throttling, more, but not measured. ADR 0059's `main-overlap-adapt` reached a 37.2% VRAM share and still decoded slower (2.47 and 2.65 against 4.77 and 4.33 tok/s) because of admission cost, so the share alone does not settle it. That is a placement question this ADR does not answer.
+On the 7642 hosts the per-segment cost follows the CPU quota (`20261112e`, `20261112f`). One hypothesis for the cache's lead is its lower CPU pair count per token (`20261112c`). ADR 0059's `main-overlap-adapt` reached a higher VRAM share and still decoded slower because of admission cost, so the share alone does not settle it. That is a placement question this ADR does not answer.
 
-So cheaper dispatch is worth about 5 to 27 ms of the 202 ms per token on `20261112c` bottom-up (2% to 13%, steps 1 and 2 below), with 56 ms (16 ms build and alloc plus 40 ms) as the bound if the whole CPU-specific fixed part were syncs and copies.
+So cheaper dispatch is worth a small share of decode time on `20261112c` bottom-up (steps 1 and 2 below), with a larger bound if the whole CPU-specific fixed part were syncs and copies.
 
 ## Decision
 
@@ -54,13 +56,13 @@ So cheaper dispatch is worth about 5 to 27 ms of the 202 ms per token on `202611
 ### Step 1: a scheduler sized for one segment (smallest change)
 
 - When a streamer exists, `sched` and `sched_small` are created with `SEGMENT_NODES * 4` nodes (4,099 hash entries, 82 KB of reset memsets) instead of `step_nodes(h) * 4`. The whole-step graph of ADR 0036 only runs without a streamer, so it keeps the large size there. No numeric change.
-- Expected: 4 to 8 ms of the 12.8 ms alloc per token on `20261112c` (2% to 4%). The micro-benchmark measures it on a CPU before any box run.
+- Expected: 4 to 8 ms per token less alloc (2% to 4% of decode, estimated from `20261112c`). The micro-benchmark measures it on a CPU before any box run.
 
 ### Step 2: one graph per decode token, a host callback per layer
 
 Scope: one-token decode steps with a streamer, `MissPolicy::Cpu` and no op offload (decode never offloads, ADR 0044). `LoadOptions::fused_decode: Option<bool>`, `None` meaning on with a GPU primary; a CPU primary keeps segments in production (below) and can force it for tests. Prefill, multi-token steps and `MissPolicy::Upload` keep segments.
 
-Routing of layer L+1 depends on layer L's MoE output, so it cannot be computed before the graph runs; the ADR 0038 predictions are right 85% (depth 1) and 78% (depth 2) of the time on `20261112c`, so steering compute by them would break parity. The host must see each layer's ids mid-graph, as llama.cpp's callback does.
+Routing of layer L+1 depends on layer L's MoE output, so it cannot be computed before the graph runs; the ADR 0038 predictions are often but not always right (`20261112c`), so steering compute by them would break parity. The host must see each layer's ids mid-graph, as llama.cpp's callback does.
 
 1. **Graph.** `build_decode_step` builds the whole step once per key `(n_kv, last_only, record)`, kept allocated like ADR 0036's `StepGraph`, so it is rebuilt every `KV_PAD` (256) tokens. It lives on a third scheduler, `sched_step` (primary and CPU, no op offload, `step_nodes(h) * 4` nodes), created only when fused decode is on, so prefill segments on `sched` never reset its allocation. Its cost: the compute buffers of a one-token step (the allocator reuses intermediates from layer to layer, so about one decode segment's buffers plus the step's leafs), reported as `workspace` by `memory()` (ADR 0037), and 1.3 MB of hash tables once. It reuses `attention_and_router`, `expert_rows` and the state slots. Per layer L, with P = `n_used` fixed rows (row i is pair i, token-major as the resident `mul_mat_id` visits them):
    - attention, router and predictions as in `build_segment`, ending with the copies of `resid`, `xn`, `w`, `pred`, `pred2` and, last, `ids` into slot `L % 2`;
@@ -82,17 +84,15 @@ Not in this ADR: backporting `ggml_backend_sched_prefetch_inputs` (#30966, MIT) 
 - `crates/model/src/qwen3moe.rs`: scheduler sizing (step 1); `sched_step`, `build_decode_step`, `DecodeGraph`, the per-layer host step factored out of `run`, `Slot.acc` with a dump row, host index and `cpu_out` tensors per slot set, `alloc_state` host buffers whenever fused, `StepProfile::seg_pairs`.
 - `LoadOptions::fused_decode`; `crates/telemetry` (`step.graph.builds`); `deploy/grafana/dashboards/overview.json`; `deploy/alerts`; the exit JSON in `crates/model/tests/exit_regime.rs`.
 
-### Expected savings (`20261112c`, 202 ms per token)
+### Expected savings (estimated from `20261112c`)
 
-| Item | Today | Step 1 | Step 2 |
-| --- | --- | --- | --- |
-| Build and alloc | 16.0 ms | 8 to 12 ms | about 2 to 4 ms (group graphs only; the step graph once per 256 tokens) |
-| Syncs and small blocking copies per CPU layer (readbacks included) | about 7 and 9 | same | about 4 to 5 and 6 (two split-end syncs, two input-copy syncs; `xn` out, three readbacks, index tensor and `cpu_out` in): 5 to 6 fewer x 10 to 15 us x 95, 5 to 9 ms less |
-| Readback (`ids`, `pred`, `pred2`) | 3.0 ms | same | same, inside the callback |
-| Parked GPU rows | 0 | 0 | 0 to 8 ms: up to 6.7 extra rows x 12.24 MB / 936 GB/s = 88 us per layer, less if duplicates hit L2 |
-| Empty CPU work in GPU-only layers | 0 | 0 | 0 (no CPU node in the step graph on a GPU primary) |
+- Build and alloc: step 1 removes the reset memsets; step 2 leaves only the group graphs' builds and the step graph once per 256 tokens.
+- Syncs and small blocking copies per CPU layer: step 2 drops 5 to 6 of them (two split-end syncs, two input-copy syncs; `xn` out, three readbacks, index tensor and `cpu_out` in remain).
+- Readback of `ids`, `pred` and `pred2`: unchanged, inside the callback in step 2.
+- Parked GPU rows: step 2 only, up to 8 ms per token on a 3090 (see Risks).
+- Empty CPU work in GPU-only layers: none (no CPU node in the step graph on a GPU primary).
 
-Step 1: 4 to 8 ms (2% to 4%). Step 2 on top: build and alloc 4 to 10 ms, syncs and copies 5 to 9 ms, parking 0 to -8 ms, so 1 to 19 ms (0.5% to 9%); up to about 30 ms more if the CPU-specific fixed part is mostly syncs and copies rather than threadpool and quota, which step 0 and the micro-benchmark decide. Neither is likely to close the 1.35x to 1.54x gap on the 7642, where the per-segment cost follows the quota.
+Step 1: 4 to 8 ms (2% to 4%). Step 2 on top: 1 to 19 ms (0.5% to 9%); up to about 30 ms more if the CPU-specific fixed part is mostly syncs and copies rather than threadpool and quota, which step 0 and the micro-benchmark decide. Neither is likely to close the cache's lead on the 7642 hosts, where the per-segment cost follows the quota.
 
 ### Risks
 
@@ -129,7 +129,7 @@ It cannot see CUDA syncs, H2D and D2H copies, kernel launches or parked rows; th
 
 - Step 1 is a sizing change with no numeric effect and can ship on the micro-benchmark alone.
 - Step 2 replaces 95 segment graphs per decode token by one kept graph plus the CPU group graphs, removes the per-segment allocations and about a third of the blocking device operations, and keeps the CPU kickoff count, ADR 0054's arrival order and ADR 0038's prediction timing.
-- On the 7642 the per-segment cost follows the quota (ADR 0061, 0062), and CPU pairs per token (1.40x the cache's) are the other candidate for the gap. Those stay the levers to pursue first; this ADR removes the dispatch the builder pays beyond llama.cpp's structure.
+- On the 7642 the per-segment cost follows the quota (ADR 0061, 0062), and CPU pairs per token (more than the cache's, `20261112c`) are the other candidate for the gap. Those stay the levers to pursue first; this ADR removes the dispatch the builder pays beyond llama.cpp's structure.
 
 ## Addendum 2026-11-12: steps 0 and 1 built
 
@@ -142,12 +142,12 @@ The status stays Proposed; step 2 is not built.
 
 ### How to judge step 1
 
-- Read `alloc_ms` per decode token of a streamed run before and after, paired on the same box (ADR 0021). Today it is about 9 to 13 ms per token on the 235B. The ADR expects 4 to 8 ms less, about 2% of decode on the 7642 hosts. Less than 1% there means the memsets were not the cost and the rest of the alloc is gallocr re-reserves from alternating topologies.
+- Read `alloc_ms` per decode token of a streamed run before and after, paired on the same box (ADR 0021). Today it is about 9 to 13 ms per token on the 235B. The ADR expects 4 to 8 ms less, about 2% of decode on the 7642 hosts. Less than 1% there means the memsets were not the cost and the rest of the alloc is gallocr re-reserves from alternating topologies. (No session directory yet.)
 - The `allocation` rows of the micro-benchmark give the same split offline: `alloc_us` on 4,096 against 48,640 nodes for one and for two alternating topologies, and `reset_us` for the memsets alone.
 - Greedy tokens and logits are unchanged by construction; the CPU test and the `e2e` part assert it.
 
 ### Addendum 2026-11-14: floor on the CI runner (run 43535138852)
 
-`bench/results/ci-overhead-20261114/` (Xeon 6975P-C, 4 CPUs, no quota). Per graph kickoff at 4 threads after an idle gap of 100 to 500 us: 11 to 17 us at poll 0, 1.0 to 1.3 us at poll 50; barrier 1.3 to 1.9 us either way. 8 threads on 4 CPUs (`n_2x`) cost milliseconds per kickoff, so the pool must never exceed the quota. End to end on the synthetic 48-layer model: segment scheduler 88.0 against whole-step 83.8 tok/s (alloc 0.88 against 1.22 ms per token), greedy equal.
+The dispatch floor and the end-to-end part ran on a 4-CPU CI runner without a quota (`ci-overhead-20261114`): poll 0 wake-ups cost more per kickoff than poll 50 after an idle gap, barriers cost the same either way, the segment scheduler was no slower end to end and greedy tokens were equal. Oversubscribing the CPUs costs far more per kickoff, so the pool must never exceed the quota.
 
-At about 95 segment graphs per token, poll 0 wake-ups cost about 1 to 2 ms per token at 4 threads; the 26-thread cost is not measurable on a 4-CPU runner. 20261113o ran the builder at poll 0 (auto, ADR 0061: quota 30.7 below the host) with 26 threads, while KTransformers busy-spins. With 4.7 CPUs of headroom, poll 50 is the cheap arm: the next point-3 box runs `main-overlap-poll50` and its repeat interleaved with `main-overlap`, and reads `throttled_share`.
+The 26-thread cost is not measurable on a 4-CPU runner. `20261113o` ran the builder at poll 0 (auto, ADR 0061: quota below the host) while KTransformers busy-spins; with headroom under the quota, poll 50 is the cheap arm: the next point-3 box runs `main-overlap-poll50` and its repeat interleaved with `main-overlap`, and reads `throttled_share`.

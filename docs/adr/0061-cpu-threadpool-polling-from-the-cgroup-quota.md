@@ -1,12 +1,14 @@
 # 0061. CPU threadpool polling chosen from the cgroup CPU quota
 
-Status: Accepted (2026-11-15: built; evidence in 20261112e and the pool_pause addendum). Earlier: Proposed (2026-11-12). Extends ADR 0036 (one CPU threadpool per backend) and the `cpu_poll` switch of ADR 0038; evidence in ADR 0045 (`20261112e`).
+Status: Accepted (2026-11-15: built; evidence in `20261112e` and the pool_pause addendum; the auto default was kept after the poll 50 pairs of `20261115p1`). Earlier: Proposed (2026-11-12). Extends ADR 0036 (one CPU threadpool per backend) and the `cpu_poll` switch of ADR 0038; evidence in ADR 0045 (`20261112e`).
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
 ggml's threadpool workers spin between graphs before they sleep: level `poll` (0 to 100, default 50, `ggml_threadpool_params_init`) bounds the spin at `128 * 1024 * poll` relax instructions (`ggml_graph_compute_poll_for_work`, ggml-cpu.c at the pinned commit `2e0d86be`). The builder runs about 95 segment graphs per decode token with CPU, GPU and read-wait gaps between them, so with 23 threads on a 23-core cgroup quota the idle workers spend the quota that the next CPU graph then waits for.
 
-`bench/results/20261112e` (host 130210, EPYC 7642, quota 23, 23 threads): cgroup `throttled_share` 0.80 to 0.98 in every run with the default level; `cpu_poll` 0 cut it to 0.047, CPU segment compute from 297 to 317 to 232 ms per token, and decoded 3.03 against 2.33 tok/s (1.30x, one run, one-sided). Voluntary context switches rose to about 16,000/s. 19 threads on the same quota (tq4) were still throttled in 82% of periods and decoded 0.80x, so fewer threads are not the fix. Polling off has not been measured on a host without a quota, where spinning costs nothing but power and SMT siblings, and waking a sleeping worker costs a futex round trip per graph.
+On a quota box at `threads` = quota with the default level, the cgroup throttled the builder in most CFS periods; `cpu_poll` 0 cut throttling and CPU segment compute and decoded faster in one one-sided run, at the price of many more voluntary context switches (`20261112e`). Fewer threads on the same quota (tq4) stayed throttled and decoded slower, so fewer threads are not the fix. Polling off has not been measured on a host without a quota, where spinning costs nothing but power and SMT siblings, and waking a sleeping worker costs a futex round trip per graph.
 
 ## Decision
 
@@ -25,7 +27,7 @@ Read in the vendored ggml (`ggml-cpu.c`, OpenMP off in our build, so this path i
 - The symbol is exported by the CPU backend module (`GGML_BACKEND_API` in `ggml-cpu.h`), so it resolves through `CpuProcs` like `ggml_threadpool_new`.
 - `poll` only bounds the spin between graphs. `ggml_barrier` between ops inside a graph spins without bound at any level, so neither poll 0 nor pausing touches intra-graph waits.
 
-So a pause after the last CPU graph before a GPU-only segment or a read wait is a small binding (one `CpuProcs` entry and `Backend::pause_cpu_pool`). Its use is the larger part: the builder would have to know, per segment, that the next graph is not on the CPU or that it is about to wait on reads, and the wake cost on resume equals poll 0's. Its value is as an alternative to poll 0: keep spinning between adjacent CPU graphs and sleep only in the gaps, which may avoid most of the 16,000 context switches per second. It changes the decode hot path with no benchmark yet (Rule 3), so it is not built here.
+So a pause after the last CPU graph before a GPU-only segment or a read wait is a small binding (one `CpuProcs` entry and `Backend::pause_cpu_pool`). Its use is the larger part: the builder would have to know, per segment, that the next graph is not on the CPU or that it is about to wait on reads, and the wake cost on resume equals poll 0's. Its value is as an alternative to poll 0: keep spinning between adjacent CPU graphs and sleep only in the gaps, which may avoid most of poll 0's context switches. It changes the decode hot path with no benchmark yet (Rule 3), so it is not built here.
 
 ## Consequences
 
@@ -45,6 +47,6 @@ Step (c) above, built behind an option so it can be paired against poll 0 and po
 
 ## Note 2026-11-12: evidence
 
-The auto default rests on one pair (`20261112e`: poll 0 cut throttling from 0.80 to 0.05 and decoded 1.30x, one-sided). On `20261112f` (same host, invalid as a verdict) poll 0 left throttling at 0.30 and 0.60. Revisit the default after the testbed pairs poll 50, poll 0 and pool pause under `CPUQuota` with repeats.
+The auto default rests on one one-sided pair (`20261112e`); on `20261112f` (invalid as a verdict) poll 0 did not reproduce the throttling cut. Revisit the default after the testbed pairs poll 50, poll 0 and pool pause under `CPUQuota` with repeats.
 
-CI check (`bench/results/ci-poll-20261112`, 4-core runner, quota 2 cores, threads 4, 8 interleaved rounds, synthetic MoE): poll 50 throttled in 98% of periods, poll 0 in 13%, pool pause in 15%; CPU compute per token 24.6, 13.9 and 13.1 ms. Decode tok/s did not move (ratios 1.002 to 1.003), because the synthetic run is bound by its reads, so this confirms the throttling mechanism but not the decode gain. Without a quota poll 0 cost about 6 ms per token of compute (13.8 against 7.2, one round).
+CI check (`ci-poll-20261112`, a 4-core runner under a 2-core quota, synthetic MoE): poll 0 and pool pause cut throttling and CPU compute per token against poll 50, but decode did not move because the synthetic run is bound by its reads, so it confirms the throttling mechanism, not the decode gain. Without a quota poll 0 raised CPU compute per token.
