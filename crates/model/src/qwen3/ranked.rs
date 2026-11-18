@@ -9,6 +9,11 @@
 //! copies it to the same position of the next stage (one hop tensor per rank and step). The last
 //! stage's ranks cut the head by vocabulary; the logits are read per rank and joined in vocab
 //! order.
+//!
+//! A pipelined prefill (ADR 0077) holds M micro-batches in each rank graph, one after another,
+//! each with its own inputs and hop tensors, and issues them in GPipe order. Micro-batches before
+//! the last stop on the last stage after their last layer's KV writes; the last one reads the
+//! logits.
 
 use super::{DenseHparams, DenseOptions, Layer, STEP_NODES_PER_LAYER, State, alloc_state, pad};
 use crate::attn::{
@@ -23,7 +28,7 @@ use std::collections::BTreeSet;
 use std::ops::Range;
 use std::rc::Rc;
 use tetraeder_executor::{
-    ExecCounters, ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks,
+    ExecCounters, ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks, gpipe_sort,
 };
 use tetraeder_ggml_sys::ggml::{Backend, Context, OwnedGraph, OwnedTensor, Tensor, Type};
 use tetraeder_kvcache::StepPlan;
@@ -62,8 +67,12 @@ struct RankData {
     kv_bytes: usize,
     /// Vocabulary rows of the head slice; empty off the last stage.
     vocab: Range<usize>,
-    state: Option<State>,
+    /// Inputs per micro-batch (one without pipelining).
+    states: Vec<State>,
 }
+
+/// `(n_tokens, n_kv, n_outputs)` of one micro-batch.
+type MbKey = (usize, usize, usize);
 
 enum StepOp {
     Compute {
@@ -79,7 +88,7 @@ enum StepOp {
 
 /// The graphs and program of one step key, kept while the key repeats.
 struct Step {
-    key: (usize, usize, usize),
+    key: Vec<MbKey>,
     /// In rank order.
     graphs: Vec<OwnedGraph>,
     cuts: Vec<Vec<usize>>,
@@ -95,7 +104,7 @@ pub(super) struct Ranked {
     /// Layers that run, from the first.
     n_layers: u32,
     step: Option<Step>,
-    state_key: Option<(usize, usize, usize)>,
+    state_key: Option<Vec<MbKey>>,
     totals: ExecCounters,
 }
 
@@ -131,6 +140,10 @@ impl Ranked {
         let exec = Executor::new(Ranks::open(&devices).map_err(exec_err)?);
         if let Some(t) = &opts.telemetry {
             exec.ranks().record(t.metrics());
+            if topo.stages.len() > 1 {
+                t.metrics()
+                    .executor_micro_batches_planned(topo.prefill_micro_batches.max(1));
+            }
         }
 
         let n_stages = topo.stages.len();
@@ -168,7 +181,7 @@ impl Ranked {
                     kv,
                     kv_bytes,
                     vocab,
-                    state: None,
+                    states: Vec::new(),
                 });
             }
         }
@@ -195,6 +208,16 @@ impl Ranked {
 
     pub(super) fn drop_step(&mut self) {
         self.step = None;
+    }
+
+    /// Micro-batches a one-sequence prefill step pipelines (ADR 0077): the topology's knob with
+    /// two or more stages, else 1.
+    pub(super) fn micro_batches(&self) -> u32 {
+        if self.topo.stages.len() > 1 {
+            self.topo.prefill_micro_batches.max(1)
+        } else {
+            1
+        }
     }
 
     pub(super) fn n_ranks(&self) -> usize {
@@ -280,41 +303,51 @@ impl Ranked {
         Ok(())
     }
 
-    /// Runs one step of `plan` over `tokens` and reads the logits into `out`, `n_out` rows of
-    /// `n_vocab`.
+    /// Runs one step over `tokens` and reads the logits into `out`, `n_out` rows of `n_vocab`.
+    /// `plans` holds one plan, or one per micro-batch of a pipelined prefill (ADR 0077), whose
+    /// tokens follow one another in `tokens`; the logits are the last micro-batch's.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn run(
         &mut self,
         h: &DenseHparams,
-        plan: &StepPlan,
+        plans: &[StepPlan],
         tokens: &[i32],
-        key: (usize, usize, usize),
         reuse: bool,
         built: &mut u64,
         telemetry: Option<&tetraeder_telemetry::Metrics>,
         out: &mut Vec<f32>,
     ) -> Result<()> {
-        if self.state_key != Some(key) {
-            // The kept graph holds the old state's context: drop it first, then the buffers.
+        let key: Vec<MbKey> = plans
+            .iter()
+            .map(|p| (p.pos.len(), p.n_kv, p.outputs.len()))
+            .collect();
+        if self.state_key.as_ref() != Some(&key) {
+            // The kept graph holds the old states' contexts: drop it first, then the buffers.
             self.step = None;
             for rd in &mut self.ranks {
-                rd.state = None;
+                rd.states.clear();
             }
             for rd in &mut self.ranks {
-                rd.state = Some(alloc_state(
-                    (key.0, key.1, key.2, [key.1, pad(key.0, MASK_ROW_PAD)]),
-                    &rd.backend,
-                )?);
+                for &(n, n_kv, n_out) in &key {
+                    rd.states.push(alloc_state(
+                        (n, n_kv, n_out, [n_kv, pad(n, MASK_ROW_PAD)]),
+                        &rd.backend,
+                    )?);
+                }
             }
-            self.state_key = Some(key);
+            self.state_key = Some(key.clone());
         }
         for rd in &self.ranks {
-            let st = rd.state.as_ref().expect("state allocated above");
-            st.tokens.get().set_i32(tokens)?;
-            st.pos.get().set_i32(&plan.pos)?;
-            st.rows.get().set_i32(&plan.rows)?;
-            st.mask.get().set_f16_bits(&plan.mask)?;
-            st.outputs.get().set_i32(&plan.outputs)?;
+            let mut at = 0;
+            for (st, plan) in rd.states.iter().zip(plans) {
+                let n = plan.pos.len();
+                st.tokens.get().set_i32(&tokens[at..at + n])?;
+                st.pos.get().set_i32(&plan.pos)?;
+                st.rows.get().set_i32(&plan.rows)?;
+                st.mask.get().set_f16_bits(&plan.mask)?;
+                st.outputs.get().set_i32(&plan.outputs)?;
+                at += n;
+            }
         }
 
         let reusable = reuse && self.step.as_ref().is_some_and(|s| s.key == key);
@@ -323,7 +356,7 @@ impl Ranked {
             self.step.as_ref().expect("checked above")
         } else {
             self.step = None;
-            fresh = self.build(h, key)?;
+            fresh = self.build(h, &key)?;
             *built += 1;
             if reuse {
                 self.step.insert(fresh)
@@ -368,6 +401,9 @@ impl Ranked {
         let c = self.exec.take_counters();
         if let Some(m) = telemetry {
             c.record(m);
+            if self.topo.stages.len() > 1 && tokens.len() > 1 {
+                m.executor_micro_batches(key.len());
+            }
         }
         absorb(&mut self.totals, &c);
         res?;
@@ -376,7 +412,7 @@ impl Ranked {
         if let [(_, t)] = step.logits.as_slice() {
             t.get().get_f32_into(out)?;
         } else {
-            let n_out = key.2;
+            let n_out = key.last().map_or(0, |k| k.2);
             out.clear();
             out.resize(n_out * n_vocab, 0.0);
             let mut slice = Vec::new();
@@ -392,166 +428,192 @@ impl Ranked {
         Ok(())
     }
 
-    /// Builds the rank graphs and the program of a step.
-    fn build(&self, h: &DenseHparams, key: (usize, usize, usize)) -> Result<Step> {
+    /// Builds the rank graphs and the program of a step of `keys.len()` micro-batches (one
+    /// without pipelining). Each rank graph holds the micro-batches in order; the ops are built
+    /// per (stage, micro-batch) and issued in GPipe order (ADR 0077).
+    fn build(&self, h: &DenseHparams, keys: &[MbKey]) -> Result<Step> {
         let a = &h.attn;
-        let (n, n_kv, n_out) = key;
         let nr = self.ranks.len();
+        let n_mb = keys.len();
         let n_embd = i64::from(a.n_embd);
         let ctxs = self
             .ranks
             .iter()
             .map(|rd| {
-                let nodes = nodes_for(rd.layers.len());
-                Context::new(nodes + 8, nodes).map(Rc::new)
+                let nodes = nodes_for(rd.layers.len()) * n_mb;
+                Context::new(nodes + 8 * n_mb, nodes).map(Rc::new)
             })
             .collect::<std::result::Result<Vec<_>, _>>()?;
         let cx: Vec<&Context> = ctxs.iter().map(|c| &**c).collect();
         let mut gs = Vec::with_capacity(nr);
         for (rd, c) in self.ranks.iter().zip(cx.iter().copied()) {
-            gs.push(c.new_graph(nodes_for(rd.layers.len())));
+            gs.push(c.new_graph(nodes_for(rd.layers.len()) * n_mb));
         }
         let mut cuts: Vec<Vec<usize>> = vec![Vec::new(); nr];
-        let mut ops: Vec<StepOp> = Vec::new();
+        let mut tagged: Vec<((usize, usize), StepOp)> = Vec::new();
         let mut logits: Vec<(usize, OwnedTensor)> = Vec::new();
-        let mut incoming: Vec<Option<Tensor<'_>>> = vec![None; nr];
-        let st_of = |r: usize| self.ranks[r].state.as_ref().expect("state allocated");
-        // The `[n_kv, n]` mask of each rank, a view of its padded buffer.
-        let masks: Vec<Tensor<'_>> = (0..nr)
-            .map(|r| mask_view(cx[r], st_of(r).mask.get(), n_kv, n))
-            .collect();
-
         let n_stages = self.topo.stages.len();
-        for (s, stage) in self.topo.stages.iter().enumerate() {
-            let tp = stage.ranks.len();
-            let last_stage = s + 1 == n_stages;
-            let layers = self.ranks[stage.ranks[0]].layers.clone();
-            let mut xs: Vec<Tensor<'_>> = Vec::with_capacity(tp);
-            for &r in &stage.ranks {
-                xs.push(match incoming[r].take() {
-                    Some(hop) => hop,
-                    None => {
-                        let w = self.ranks[r].weights.tok_embd.as_ref().ok_or_else(|| {
-                            ModelError::Invalid("the first stage holds no embedding".into())
-                        })?;
-                        cx[r].get_rows(w.get(), st_of(r).tokens.get())
-                    }
-                });
-            }
-            for il in layers.clone() {
-                let select = last_stage && il + 1 == layers.end && n_out < n;
-                let mut parts: Vec<Tensor<'_>> = Vec::with_capacity(tp);
-                for (i, &r) in stage.ranks.iter().enumerate() {
-                    let rd = &self.ranks[r];
-                    let at = (il - rd.layers.start) as usize;
-                    let st = st_of(r);
-                    let step = AttnStep {
-                        pos: st.pos.get(),
-                        rows: st.rows.get(),
-                        mask: masks[r],
-                        n_tokens: n,
-                        n_kv,
-                    };
-                    parts.push(attention_out(
-                        a,
-                        cx[r],
-                        &mut gs[r],
-                        &rd.weights.layers[at].attn,
-                        &rd.kv,
-                        at,
-                        &step,
-                        xs[i],
-                    ));
-                }
-                if tp > 1 {
-                    boundary(&mut gs, &mut cuts, &mut ops, &ctxs, &stage.ranks, &parts)?;
-                }
-                let mut ffn_inps: Vec<Tensor<'_>> = Vec::with_capacity(tp);
-                let mut downs: Vec<Tensor<'_>> = Vec::with_capacity(tp);
-                for (i, &r) in stage.ranks.iter().enumerate() {
-                    let rd = &self.ranks[r];
-                    let lw = &rd.weights.layers[(il - rd.layers.start) as usize];
-                    let c = cx[r];
-                    let mut ffn_inp = c.add(parts[i], xs[i]);
-                    if select {
-                        // libllama selects the output rows after attention and before the
-                        // residual add; a row-wise add commutes with the selection.
-                        ffn_inp = c.get_rows(ffn_inp, st_of(r).outputs.get());
-                    }
-                    let cur = rms_norm_mul(c, ffn_inp, lw.ffn_norm.get(), a.rms_eps);
-                    let ffn =
-                        c.swiglu_split(c.mul_mat(lw.gate.get(), cur), c.mul_mat(lw.up.get(), cur));
-                    ffn_inps.push(ffn_inp);
-                    downs.push(c.mul_mat(lw.down.get(), ffn));
-                }
-                if tp > 1 {
-                    boundary(&mut gs, &mut cuts, &mut ops, &ctxs, &stage.ranks, &downs)?;
-                }
-                for (i, &r) in stage.ranks.iter().enumerate() {
-                    xs[i] = cx[r].add(downs[i], ffn_inps[i]);
-                }
-            }
 
-            if last_stage {
-                for (i, &r) in stage.ranks.iter().enumerate() {
-                    let rd = &self.ranks[r];
-                    let c = cx[r];
-                    let norm = rd.weights.out_norm.as_ref().ok_or_else(|| {
-                        ModelError::Invalid("the last stage holds no output norm".into())
-                    })?;
-                    let cur = rms_norm_mul(c, xs[i], norm.get(), a.rms_eps);
-                    let head = rd
-                        .weights
-                        .head
-                        .as_ref()
-                        .or(rd.weights.tok_embd.as_ref())
-                        .ok_or_else(|| ModelError::Invalid("no output head".into()))?;
-                    let lg = c.mul_mat(head.get(), cur).set_output();
-                    gs[r].expand(lg);
-                    cuts[r].push(gs[r].n_nodes());
-                    ops.push(StepOp::Compute {
-                        rank: r,
-                        range: cuts[r].len() - 1,
-                    });
-                    logits.push((r, ctxs[r].keep(lg)?));
-                }
-            } else {
-                let next = &self.topo.stages[s + 1];
-                for (i, &r) in stage.ranks.iter().enumerate() {
-                    let to = next.ranks[i];
-                    gs[r].expand(xs[i]);
-                    cuts[r].push(gs[r].n_nodes());
-                    ops.push(StepOp::Compute {
-                        rank: r,
-                        range: cuts[r].len() - 1,
-                    });
-                    // The destination is an input of the next stage's graph, same layout.
-                    let hop = cx[to].new_tensor(Type::F32, &[n_embd, n as i64]);
-                    hop.set_name("hop");
-                    incoming[to] = Some(hop);
-                    ops.push(StepOp::Copy {
-                        src: (r, ctxs[r].keep(xs[i])?),
-                        dst: (to, ctxs[to].keep(hop)?),
+        for (j, &(n, n_kv, n_out)) in keys.iter().enumerate() {
+            let last_mb = j + 1 == n_mb;
+            let st_of = |r: usize| &self.ranks[r].states[j];
+            let mut incoming: Vec<Option<Tensor<'_>>> = vec![None; nr];
+            // The `[n_kv, n]` mask of each rank, a view of its padded buffer.
+            let masks: Vec<Tensor<'_>> = (0..nr)
+                .map(|r| mask_view(cx[r], st_of(r).mask.get(), n_kv, n))
+                .collect();
+            for (s, stage) in self.topo.stages.iter().enumerate() {
+                let mut ops: Vec<StepOp> = Vec::new();
+                let tp = stage.ranks.len();
+                let last_stage = s + 1 == n_stages;
+                let layers = self.ranks[stage.ranks[0]].layers.clone();
+                let mut xs: Vec<Tensor<'_>> = Vec::with_capacity(tp);
+                for &r in &stage.ranks {
+                    xs.push(match incoming[r].take() {
+                        Some(hop) => hop,
+                        None => {
+                            let w = self.ranks[r].weights.tok_embd.as_ref().ok_or_else(|| {
+                                ModelError::Invalid("the first stage holds no embedding".into())
+                            })?;
+                            cx[r].get_rows(w.get(), st_of(r).tokens.get())
+                        }
                     });
                 }
+                // A micro-batch before the last ends on the last stage after its last layer's KV
+                // writes: nothing reads its hidden state or logits.
+                let kv_only = last_stage && !last_mb;
+                for il in layers.clone() {
+                    let last_layer = il + 1 == layers.end;
+                    let select = last_stage && last_layer && n_out < n;
+                    let mut parts: Vec<Tensor<'_>> = Vec::with_capacity(tp);
+                    for (i, &r) in stage.ranks.iter().enumerate() {
+                        let rd = &self.ranks[r];
+                        let at = (il - rd.layers.start) as usize;
+                        let st = st_of(r);
+                        let step = AttnStep {
+                            pos: st.pos.get(),
+                            rows: st.rows.get(),
+                            mask: masks[r],
+                            n_tokens: n,
+                            n_kv,
+                        };
+                        parts.push(attention_out(
+                            a,
+                            cx[r],
+                            &mut gs[r],
+                            &rd.weights.layers[at].attn,
+                            &rd.kv,
+                            at,
+                            &step,
+                            xs[i],
+                        ));
+                    }
+                    if kv_only && last_layer {
+                        for &r in &stage.ranks {
+                            cuts[r].push(gs[r].n_nodes());
+                            ops.push(StepOp::Compute {
+                                rank: r,
+                                range: cuts[r].len() - 1,
+                            });
+                        }
+                        break;
+                    }
+                    if tp > 1 {
+                        boundary(&mut gs, &mut cuts, &mut ops, &ctxs, &stage.ranks, &parts)?;
+                    }
+                    let mut ffn_inps: Vec<Tensor<'_>> = Vec::with_capacity(tp);
+                    let mut downs: Vec<Tensor<'_>> = Vec::with_capacity(tp);
+                    for (i, &r) in stage.ranks.iter().enumerate() {
+                        let rd = &self.ranks[r];
+                        let lw = &rd.weights.layers[(il - rd.layers.start) as usize];
+                        let c = cx[r];
+                        let mut ffn_inp = c.add(parts[i], xs[i]);
+                        if select {
+                            // libllama selects the output rows after attention and before the
+                            // residual add; a row-wise add commutes with the selection.
+                            ffn_inp = c.get_rows(ffn_inp, st_of(r).outputs.get());
+                        }
+                        let cur = rms_norm_mul(c, ffn_inp, lw.ffn_norm.get(), a.rms_eps);
+                        let ffn = c.swiglu_split(
+                            c.mul_mat(lw.gate.get(), cur),
+                            c.mul_mat(lw.up.get(), cur),
+                        );
+                        ffn_inps.push(ffn_inp);
+                        downs.push(c.mul_mat(lw.down.get(), ffn));
+                    }
+                    if tp > 1 {
+                        boundary(&mut gs, &mut cuts, &mut ops, &ctxs, &stage.ranks, &downs)?;
+                    }
+                    for (i, &r) in stage.ranks.iter().enumerate() {
+                        xs[i] = cx[r].add(downs[i], ffn_inps[i]);
+                    }
+                }
+
+                if kv_only {
+                    // Its last range ended after the KV writes above.
+                } else if last_stage {
+                    for (i, &r) in stage.ranks.iter().enumerate() {
+                        let rd = &self.ranks[r];
+                        let c = cx[r];
+                        let norm = rd.weights.out_norm.as_ref().ok_or_else(|| {
+                            ModelError::Invalid("the last stage holds no output norm".into())
+                        })?;
+                        let cur = rms_norm_mul(c, xs[i], norm.get(), a.rms_eps);
+                        let head = rd
+                            .weights
+                            .head
+                            .as_ref()
+                            .or(rd.weights.tok_embd.as_ref())
+                            .ok_or_else(|| ModelError::Invalid("no output head".into()))?;
+                        let lg = c.mul_mat(head.get(), cur).set_output();
+                        gs[r].expand(lg);
+                        cuts[r].push(gs[r].n_nodes());
+                        ops.push(StepOp::Compute {
+                            rank: r,
+                            range: cuts[r].len() - 1,
+                        });
+                        logits.push((r, ctxs[r].keep(lg)?));
+                    }
+                } else {
+                    let next = &self.topo.stages[s + 1];
+                    for (i, &r) in stage.ranks.iter().enumerate() {
+                        let to = next.ranks[i];
+                        gs[r].expand(xs[i]);
+                        cuts[r].push(gs[r].n_nodes());
+                        ops.push(StepOp::Compute {
+                            rank: r,
+                            range: cuts[r].len() - 1,
+                        });
+                        // The destination is an input of the next stage's graph, same layout, one
+                        // per micro-batch, so no copy waits for a reader (ADR 0077).
+                        let hop = cx[to].new_tensor(Type::F32, &[n_embd, n as i64]);
+                        hop.set_name("hop");
+                        incoming[to] = Some(hop);
+                        ops.push(StepOp::Copy {
+                            src: (r, ctxs[r].keep(xs[i])?),
+                            dst: (to, ctxs[to].keep(hop)?),
+                        });
+                    }
+                }
+                tagged.extend(ops.into_iter().map(|op| ((s, j), op)));
             }
         }
 
         let mut graphs = Vec::with_capacity(nr);
         for (r, g) in gs.into_iter().enumerate() {
             let rd = &self.ranks[r];
-            let st = st_of(r);
-            let mut deps: Vec<&OwnedTensor> = vec![&rd.weights.anchor, &st.pos];
+            let mut deps: Vec<&OwnedTensor> = vec![&rd.weights.anchor];
+            deps.extend(rd.states.iter().map(|st| &st.pos));
             deps.extend(rd.kv.k.first());
             deps.extend(rd.kv.v.first());
             deps.extend(rd.kv.rot_k.iter().chain(&rd.kv.rot_v));
             graphs.push(ctxs[r].keep_graph(g, &deps)?);
         }
         Ok(Step {
-            key,
+            key: keys.to_vec(),
             graphs,
             cuts,
-            ops,
+            ops: gpipe_sort(tagged),
             logits,
         })
     }

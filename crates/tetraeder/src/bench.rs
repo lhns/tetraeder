@@ -264,6 +264,16 @@ fn run_builder(
         None => None,
     };
     let ubatch = a.model.ubatch.max(1) as usize;
+    // A plan that pipelines its prefill gets `M x ubatch` tokens per step, which the builder cuts
+    // into M micro-batches (ADR 0077); M = 1 keeps one ubatch per step.
+    let micro = planned.as_ref().map_or(1, |p| {
+        if p.topology.stages.len() > 1 {
+            p.topology.prefill_micro_batches.max(1) as usize
+        } else {
+            1
+        }
+    });
+    let prompt_step = ubatch * micro;
     let mut rows = Vec::new();
     for (n_prompt, n_gen) in [(a.n_prompt, 0), (0, a.n_gen)] {
         if n_prompt + n_gen == 0 {
@@ -289,7 +299,7 @@ fn run_builder(
             m.reset();
             let t0 = Instant::now();
             if n_prompt > 0 {
-                for chunk in toks[..n_prompt as usize].chunks(ubatch) {
+                for chunk in toks[..n_prompt as usize].chunks(prompt_step) {
                     m.step(chunk, &mut out)?;
                 }
             } else {
@@ -308,7 +318,7 @@ fn run_builder(
         }
         let calls = u64::from(a.reps)
             * if n_prompt > 0 {
-                (n_prompt as usize).div_ceil(ubatch) as u64
+                (n_prompt as usize).div_ceil(prompt_step) as u64
             } else {
                 u64::from(n_gen)
             };

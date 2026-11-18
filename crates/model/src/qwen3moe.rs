@@ -36,7 +36,7 @@ use tetraeder_kvcache::{Chunked, KvError, KvPool, RowCopy, StepInput, StepPlan};
 use tetraeder_memory::IoOptions;
 use tetraeder_memory::io::IoFactory;
 use tetraeder_memory::metrics::MemoryMetrics;
-use tetraeder_plan::{Format, KvFormat, ModelDesc, Topology};
+use tetraeder_plan::{Format, KvFormat, ModelDesc, Topology, micro_batch_sizes};
 use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 
 use std::collections::BTreeMap;
@@ -1533,12 +1533,21 @@ impl Qwen3Moe {
                 self.seq_reserve(s.seq, need)?;
             }
         }
-        let plan = self.pool.plan_step(&step).map_err(kv_err)?;
+        // A one-sequence prefill on a pipelined topology runs as micro-batches, each planned as
+        // the same chunk as a step of its own (ADR 0077).
+        let micro = self.shard.as_ref().map_or(1, |s| s.micro_batches());
+        let plans = match step.as_slice() {
+            [one] if micro > 1 && one.n_tokens > 1 && !one.all_logits => {
+                let sizes = micro_batch_sizes(one.n_tokens, micro);
+                self.pool.plan_chunks(*one, &sizes).map_err(kv_err)?
+            }
+            _ => vec![self.pool.plan_step(&step).map_err(kv_err)?],
+        };
         let tokens: Vec<i32> = inputs
             .iter()
             .flat_map(|i| i.tokens.iter().copied())
             .collect();
-        self.run(&tokens, &step, &plan, out, t0)?;
+        self.run(&tokens, &step, &plans, out, t0)?;
         let mut row = 0;
         Ok(step
             .iter()
@@ -1588,17 +1597,20 @@ impl Qwen3Moe {
         }
     }
 
+    /// `plans` holds one plan, or one per micro-batch of a pipelined prefill on the executor
+    /// (ADR 0077).
     fn run(
         &mut self,
         tokens: &[i32],
         inputs: &[StepInput],
-        plan: &StepPlan,
+        plans: &[StepPlan],
         logits: &mut Vec<f32>,
         t0: Instant,
     ) -> Result<()> {
         if self.shard.is_some() {
-            return self.run_sharded(tokens, inputs, plan, logits, t0);
+            return self.run_sharded(tokens, inputs, plans, logits, t0);
         }
+        let plan = &plans[0];
         let key = (tokens.len(), plan.n_kv, plan.outputs.len());
         let mut entry = self.take_step_state(key)?;
         let r = self.run_in(&mut entry, tokens, inputs, plan, logits, t0);
@@ -1612,7 +1624,7 @@ impl Qwen3Moe {
         &mut self,
         tokens: &[i32],
         inputs: &[StepInput],
-        plan: &StepPlan,
+        plans: &[StepPlan],
         logits: &mut Vec<f32>,
         t0: Instant,
     ) -> Result<()> {
@@ -1621,7 +1633,7 @@ impl Qwen3Moe {
         let t = Instant::now();
         let reuse = self.reuse_step_graph;
         let sh = self.shard.as_mut().expect("checked by the caller");
-        sh.step(tokens, plan, reuse, logits)?;
+        sh.step(tokens, plans, reuse, logits)?;
         self.step_graphs_built = sh.built;
         self.segments_run += 1;
         prof.graphs += 1;
