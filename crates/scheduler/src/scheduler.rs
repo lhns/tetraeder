@@ -422,6 +422,8 @@ impl Seq {
 /// A finished request's sequence, kept as a prefix until its rows or id are needed.
 struct Idle {
     toks: Vec<i32>,
+    /// Length of the request's prompt; the rest of `toks` is what it generated.
+    prompt_len: usize,
     /// Retirement order, smaller is older.
     order: u64,
 }
@@ -741,6 +743,7 @@ impl Worker {
         let Seq { mut req, fed, .. } = *seq;
         self.finalize(&mut req);
         let toks = req.toks[..fed.min(req.toks.len())].to_vec();
+        let prompt_len = req.stats.prompt_tokens as usize;
         let stats = req.stats.clone();
         self.hand_off(req, GenEvent::Finished { reason, stats });
         if toks.is_empty() {
@@ -749,6 +752,7 @@ impl Worker {
             self.next_order += 1;
             self.slots[id] = Slot::Idle(Idle {
                 toks,
+                prompt_len,
                 order: self.next_order,
             });
         }
@@ -1033,6 +1037,7 @@ impl Worker {
             }
         }
         let mut req = req;
+        let mut skipped: Option<&'static str> = None;
         let mut source = "live";
         let mut common = 0;
         if let Some((src, n)) = busy {
@@ -1100,16 +1105,27 @@ impl Worker {
         } else if let Slot::Idle(idle) = std::mem::replace(&mut self.slots[id], Slot::Free) {
             common = best_idle.map_or(0, |(_, n)| n);
             // The sequence is saved before this request drops much of it, unless the cut is
-            // small enough to recompute for less than the save costs (ADR 0074).
+            // small enough to recompute for less than the save costs, or lies wholly in the
+            // tokens the sequence generated itself, which a client may never resend (ADR 0074).
             let cut = idle.toks.len() - common.min(idle.toks.len());
             if cut >= self.save_min {
-                if cut as f64 > LIVE_SAVE_CUT_FRACTION * idle.toks.len() as f64 {
-                    self.save(id, &idle.toks);
-                } else if self.prefix_reuse
-                    && self.cache.enabled()
-                    && let Some(m) = &self.metrics
-                {
-                    m.kv_prefix_save_skipped();
+                skipped = if common >= idle.prompt_len {
+                    Some("own_output")
+                } else if cut as f64 <= LIVE_SAVE_CUT_FRACTION * idle.toks.len() as f64 {
+                    Some("small_cut")
+                } else {
+                    None
+                };
+                match skipped {
+                    None => self.save(id, &idle.toks),
+                    Some(reason) => {
+                        if self.prefix_reuse
+                            && self.cache.enabled()
+                            && let Some(m) = &self.metrics
+                        {
+                            m.kv_prefix_save_skipped(reason);
+                        }
+                    }
                 }
             }
         }
@@ -1148,7 +1164,7 @@ impl Worker {
             let ms = |d: Duration| d.as_secs_f64() * 1e3;
             tracing::debug!(
                 target: "tetraeder::step",
-                "admit seq={id} queued_ms={:.2} place_ms={:.2} save_ms={:.2} restore_ms={:.2} prompt={} common={common} source={source} live={} pool_spare={} pool_fallback={} pool_ready={}",
+                "admit seq={id} queued_ms={:.2} place_ms={:.2} save_ms={:.2} restore_ms={:.2} prompt={} common={common} source={source} live={} pool_spare={} pool_fallback={} pool_ready={}{}",
                 ms(t_place.saturating_duration_since(req.queued)),
                 ms(t_place.elapsed()),
                 ms(self.save_time - save0),
@@ -1158,6 +1174,7 @@ impl Worker {
                 self.pool_seen.0,
                 self.pool_seen.1,
                 self.cache.pool().stats().ready,
+                skipped.map_or(String::new(), |r| format!(" skipped={r}")),
             );
         }
         self.next_admitted += 1;

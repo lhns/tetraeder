@@ -13,24 +13,40 @@ import statistics
 import sys
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-ADMIT = re.compile(
-    r"admit seq=(\d+) queued_ms=([\d.]+) place_ms=([\d.]+) save_ms=([\d.]+) prompt=(\d+) common=(\d+) "
-    r"source=(\S+) live=(\d+) pool_spare=(\d+) pool_fallback=(\d+) pool_ready=(\d+)"
-)
+ADMIT = re.compile(r"admit seq=(\d+) (.*)")
+FIELD = re.compile(r"(\w+)=(\S+)")
+INT_FIELDS = ("prompt", "common", "live", "pool_spare", "pool_fallback", "pool_ready")
+
+
+def parse_admit(line):
+    """The admit fields of a log line, or None. Fields are key=value, so new ones need no change here."""
+    m = ADMIT.search(line)
+    if not m:
+        return None
+    f = dict(FIELD.findall(m.group(2)))
+    try:
+        row = dict(seq=int(m.group(1)), queued_ms=float(f["queued_ms"]), place_ms=float(f["place_ms"]),
+                   save_ms=float(f["save_ms"]), prompt=int(f["prompt"]), common=int(f["common"]),
+                   source=f["source"])
+        for k in INT_FIELDS[2:]:
+            row[k] = int(f.get(k, 0))
+    except (KeyError, ValueError):
+        return None
+    # Absent in logs from before the field existed.
+    row["restore_ms"] = float(f["restore_ms"]) if "restore_ms" in f else None
+    row["skipped"] = f.get("skipped")
+    return row
 
 
 def admits(path):
     out, keep = [], []
     for raw in open(path, encoding="utf-8", errors="replace"):
-        line = ANSI.sub("", raw.rstrip("\n"))
-        m = ADMIT.search(line)
-        if m:
-            g = m.groups()
-            out.append(dict(seq=int(g[0]), queued_ms=float(g[1]), place_ms=float(g[2]), save_ms=float(g[3]),
-                            prompt=int(g[4]), common=int(g[5]), source=g[6], live=int(g[7]),
-                            pool_spare=int(g[8]), pool_fallback=int(g[9]), pool_ready=int(g[10])))
+        line = ANSI.sub("", raw.rstrip())
+        row = parse_admit(line)
+        if row:
+            out.append(row)
             keep.append(line)
-        elif re.search(r"\b(WARN|ERROR)\b", line):
+        elif re.search(r"b(WARN|ERROR)b", line):
             keep.append(line)
     return out, keep
 
@@ -120,4 +136,5 @@ def main():
     return 0
 
 
-sys.exit(main())
+if __name__ == "__main__":
+    sys.exit(main())

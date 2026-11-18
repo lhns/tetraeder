@@ -595,6 +595,39 @@ fn a_small_cut_of_the_live_sequence_is_not_saved() {
     );
 }
 
+/// A cut that is only the tokens the sequence generated itself is not saved, however large: a
+/// client may never resend them (ADR 0074).
+#[test]
+fn a_cut_of_only_the_own_output_is_not_saved() {
+    let (s, mp, exp) = counting_sched();
+    let a = long_prompt(&s, "alpha", 40);
+    let first = run(&s, &a, 30);
+    // The idle sequence holds about 70 rows and the cut is about 30: more than a quarter.
+    assert!(first.tokens.len() * 4 > (a.len() + first.tokens.len()));
+    let mut a2 = a.clone();
+    a2.extend(prompt(&s, "and some more words"));
+    let second = run(&s, &a2, 6);
+    assert!(second.stats.cached_tokens as usize >= a.len() - 1);
+    assert_eq!(save_counts(&mp, &exp), (0, 1));
+    assert_eq!(
+        second.tokens,
+        run(&moe_with(&small_cache(0)), &a2, 6).tokens
+    );
+}
+
+/// A cut that reaches into the prompt beyond a quarter still saves.
+#[test]
+fn a_cut_into_the_prompt_is_saved() {
+    let (s, mp, exp) = counting_sched();
+    let a = long_prompt(&s, "alpha", 40);
+    run(&s, &a, 30);
+    let mut b = a[..30].to_vec();
+    b.extend(prompt(&s, "something else entirely now"));
+    let out = run(&s, &b, 6);
+    assert!(out.stats.cached_tokens >= 24);
+    assert_eq!(save_counts(&mp, &exp), (1, 0));
+}
+
 /// A request that cuts more than a quarter of its idle sequence still saves it first.
 #[test]
 fn a_large_cut_of_the_live_sequence_is_saved() {
