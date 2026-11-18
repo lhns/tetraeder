@@ -46,7 +46,7 @@ def admits(path):
         if row:
             out.append(row)
             keep.append(line)
-        elif re.search(r"b(WARN|ERROR)b", line):
+        elif re.search(r"\b(WARN|ERROR)\b", line):
             keep.append(line)
     return out, keep
 
