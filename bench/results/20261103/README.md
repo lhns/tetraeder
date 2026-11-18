@@ -180,3 +180,65 @@ The Claude Code proxy run (bench/results/20261103/claude-code-proxy, ADR 0046 "M
 
 - Prompt tokens served from cache: 85% against 94%. ADR 0046 keeps one sequence; Claude Code interleaves side requests with a different prefix, which evict the main conversation (some requests reused 22 tokens). llama-server keeps evicted prompts in host RAM: its logs show `selected slot by LCP similarity` before every task and `making room for prompt cache entry, removing oldest entry (size = 1261 to 6760 MiB)` (server-llama-server-r1.log), the prompt cache of `--cache-ram` (default 8192 MiB, llama.cpp PR 16391).
 - 12 requests (4 bursts of 3, Claude Code's retries) got a 400 that llama-server accepted: `tool_result content: block type 'tool_reference' is not supported here` (the proxy logs' `error_message`). Claude Code's tool search answers with `tool_reference` blocks for tools sent with `defer_loading: true`. ADR 0028 also rejects images, other unknown blocks and assistant prefill; llama-server accepts more.
+
+## From ADR 0050 Context (exit regime numbers, moved verbatim)
+
+Exit regime (ADR 0045 addendum, box C, 26-core quota): Qwen3-235B-A22B Q4_K_M, RTX 3090, 91.4 GB RAM, 32K prefill, 10 VRAM slots per layer (10.97 GB), 77 RAM slots per layer. Decode 3.77 tok/s against KTransformers' 5.04. Per token 257 ms: compute 112, streamer 128. The streamer reads 511 MB per token: 414 MB by the prefetch reader (3.2 GB/s, 28% hidden) and 97 MB synchronously (5.2 GB/s, about 19 ms). RAM tier hit rate 93.2%, so one point of hit rate is about 75 MB, or 14 ms per token when the read is not hidden. Levers 1 to 3 of ADR 0038 are expected to bring the step to 150 to 170 ms. This ADR designs the next three, each sized against those numbers. The bar moves too: llama.cpp's expert cache with a CPU share of misses (ggml-org/llama.cpp#30966) is the new baseline (ADR 0045 addendum).
+
+## From ADR 0050 Context ("(a) Is the layer's work overlapped today?", sizing paragraph moved verbatim)
+
+What overlap can buy is small on the GPU side: with 10 of 128 experts in VRAM, the VRAM group is one to three experts per token (tens of microseconds per layer), and attention L+1 depends on the CPU group of L. The independent work inside a layer window is the synchronous miss read (about 19 ms per token) against the CPU compute of the experts that are RAM hits (about 100 ms per token, 1.1 ms per layer). So this lever is mostly "reads under CPU work", not "GPU under CPU work", and it is not the main part of the KTransformers gap (that gap is read bytes and how much of them hide, ADR 0045 addendum).
+
+## From ADR 0050 Decision (expected gains of (a) and (b) and the size of the (c) threshold, estimates sized on this session, moved verbatim)
+
+- **Expected gain.** The 97 MB synchronous misses (about 19 ms per token on box C, plus their bounce copy) hide behind about 100 ms of hit compute, minus the extra graphs: about 1.4 more per layer (the hit graph always, the miss graph in the 38% of layer steps that miss, `1 - 0.932^6.5`), at 20 to 40 us each on a CPU-only scheduler, 3 to 5 ms per token. Net about 12 to 16 ms per token: 5 to 6% of 257 ms, 8 to 10% of a 160 ms step after the ADR 0038 levers. Stage 2: at most 2 to 4 ms.
+- **Expected gain.** Decode: GPU attention reads 6.36 GB of KV per token at 32K, about 7 to 10 ms on the RTX 3090; Q8_0 halves that (3 to 5 ms saved), Q8_0/Q4_0 saves 4 to 6 ms. Two or three more VRAM slots move about 2 to 3% of the routed pairs from the CPU to the GPU, about 3 ms of CPU expert compute. Together about 6 to 9 ms per token, 3% of 257 ms, 4 to 5% of a 160 ms step. Prefill may lose a little (F16 conversion per layer); acceptance: prefill no more than 5% slower, paired. The larger value is outside decode speed: room for the draft model of ADR 0043 and contexts beyond 32K. The replay of (c) prices the slot part offline (VRAM 10 against 12 and 13) before the box run.
+- **Decision threshold.** Build the tier policy only if, on a 235B text trace (frozen prompt, 32K, 256 decode tokens), with prefetch replayed, at VRAM 10 and RAM 77 and at the RAM count of a 128 GB box (about 100), the best `freq:P` cuts disk bytes per decode token by at least 10% against `lru` without raising synchronous miss bytes. 10% is about 51 MB, about 10 ms per token when not hidden, 4% of the step, above the noise band. If `belady` is within 10% of `lru`, stop: no online policy can pass.
+
+## From ADR 0050 Consequences (gap arithmetic, moved verbatim)
+
+- None of the three closes the 1.34x gap alone (257 to 191 ms needs 66 ms). Their sum, 25 to 35 ms, matters if ADR 0038's levers 1 to 3 land near 170 ms rather than 150; they are ranked (a), (c) if the replay passes, (b) for decode speed, and (b) first for draft-model room.
+
+## From ADR 0051 Context (cache share by class, tool calls; moved verbatim)
+
+**Cache share by class** (`scripts/claude_code_cache_classes.py`; conversations inferred from token counts, 64-token slack):
+
+| Uncached prompt tokens, share of all prompt tokens | Tetraeder | llama-server |
+|---|---|---|
+| First request of a conversation (Claude Code's prompts share 21 to 23 tokens) | 2.60% | 2.70% |
+| Turn suffix (new turns, re-rendered output) | 1.79% | 2.59% |
+| Mid-prompt divergence, shared part already cached | 0.91% | 0.58% |
+| Evicted by another conversation | 9.25% | 0.51% |
+| **Served from cache, measured** | **85.4%** | **93.6%** |
+| Served from cache with ADR 0049, estimated | 94.3% | 94.1% |
+| Ceiling of any prefix cache (first and suffix are new tokens) | 95.6% | 94.7% |
+
+The eviction loss is three sessions (r1 feature-late-fee, r1 and r2 rename-compute-total) where Claude Code alternated its main conversation (11K tokens and growing) with a subagent (5K and growing), each request re-prefilled from token 22. ADR 0049 restores the other conversation from host RAM; 8.8 of the 9.25 points come back.
+
+**Tool calls.** No HTTP error beyond the 12 `tool_reference` 400s that ADR 0049 fixed (`protocol_errors` 15 = those 12 plus 3 sessions at Claude Code's turn limit; llama-server has 3 such sessions too). Stop reason `tool_use` on 460 of 483 Tetraeder and 586 of 624 llama-server responses. One parser artifact: the last response of tetraeder-r1-write-shipping-tests (209 tokens, `end_turn`) ended with a bare `<tool_call>` before end of generation; `step_tagged` found an empty block and emitted it as text, which ended up in Claude Code's result. The task passed. No llama-server result shows a marker. Arguments Claude Code rejects (schema validation, unknown tool names) come back as `is_error` tool results in the next request body, so they are unmeasured for both engines.
+
+## From ADR 0051 Decision (mixed lines moved whole; the ADR keeps the decisions)
+
+**No prompt checkpoints.** The KV rows of a prefix do not depend on later tokens in a full-attention model, so ADR 0046 (truncate the live sequence to the longest common prefix) and ADR 0049 (restore a saved sequence, then truncate) already reuse the longest common prefix of any live or saved sequence at token granularity: editing or branching a long history keeps everything before the edit. Checkpoints only pay where state cannot be cut at an arbitrary token: recurrent or linear-attention layers, sliding-window ring buffers, caches kept in blocks. No served model has such state (qwen3moe builder, libllama dense Qwen3). On this traffic they could touch only the divergence class (0.9%), where the shared part is already cached (3,486 of 18,332 tokens after the `tool_reference` retries, 17,226 of 22,424 in r2 write-shipping-tests). Revisit with the first hybrid or sliding-window model, in Phase 4's `kvcache` prefix tree. If restore time shows up in `tetraeder.kv.prefix.restore.duration`, copy only the rows up to the common prefix; that needs no checkpoints.
+
+The cache bar of the Phase 3b exit is llama-server's share in the same run (93.6% here, quoted as 94%), not a fixed number: the estimate beats it by 0.7 points, within what one run moves.
+
+## From ADR 0051 Consequences (moved verbatim)
+
+- Nothing to build for the prefix cache; the rerun shows whether ADR 0049 reaches llama-server's share. Risk: the 8 GiB default holds about 87K tokens of the 30B's f16 KV (98,304 bytes per token); the run's largest prompt was 70.8K, so a long main conversation plus a subagent can evict. `PrefixCacheThrash` fires then; raise `--cache-ram` if the box has the RAM.
+
+## From ADR 0052 Context ("What dispatch buys for the builder", mixed bullet moved whole)
+
+- **What dispatch buys for the builder.** At this pin the x86 decode-path Q4_K and Q6_K dot products (`ggml-cpu/arch/x86/quants.c:2102-2280`, `:2490-2724`) and `quantize_row_q8_K` (`:505`) are AVX2 only: no `_mm512`, no `dpbusd`. ggml does have AVX-512 VNNI K-quant kernels (`ggml-cpu/tiled/tiled-kernel.cpp:83-207`, `_mm512_dpbusd_epi32`), but `mul_mat_id` uses them only when an expert gets 8 or more rows (`tiled.cpp:1202`), so they serve prefill, not decode. VNNI is otherwise used only through `mul_sum_us8_pairs_float` (Q4_0, Q8_0 and similar), AVX-512 in a few helpers, the repack GEMMs and llamafile sgemm (F32, F16, BF16, Q8_0, Q4_0, Q5_0, IQ4_NL). The repack Q4_K GEMV (`repack.cpp:1464`) has no `_mm512` either, and the builder does not repack (ADR 0039) nor use the AMX buffer type. So for the Qwen3 Q4_K_M experts an AVX-512 variant changes only compiler code generation (EVEX encodings, 32 vector registers, auto-vectorized float ops). So dispatch alone cannot deliver ADR 0045 hypothesis 3 for the builder. Whether KTransformers' 1.34x comes from its iqk VNNI kernels, parallel faulting I/O or the page cache is still open (none of the 0045 addendum stages have run).
+
+## From ADR 0052 (addendum "2026-11-09: build mode per environment", mixed bullet moved whole)
+
+- **Boxes and local dev build native** (`TETRAEDER_GGML_NATIVE=ON`: one CPU variant, static). A fresh box with the DL default would compile 14 CPU variants plus CUDA, an estimated 30 to 40 paid minutes; the native build is the pre-dispatch 9 to 11 minutes. `.cargo/config.toml` `[env]` sets it for local builds and `docker/box/Dockerfile` for the image; `scripts/exit_run.sh` defaults it too. A process env var wins over `[env]`.
+
+## From ADR 0053 Context (mixed paragraph moved whole)
+
+The builder's CPU experts (Qwen3-235B Q4_K_M, one token, `mul_mat_id` over 8 of 128 experts) run ggml's `ggml_vec_dot_q4_K_q8_K` and `ggml_vec_dot_q6_K_q8_K` one row at a time (`ggml-cpu.c:1483-1544`), which are AVX2 only at our pin (`arch/x86/quants.c:2102`, `:2490`). KTransformers decodes 1.34x faster on the 26-core Ice Lake box C (ADR 0045) with ik's iqk kernels on AVX-512 VNNI. The user asked whether this is already solved upstream.
+
+## From ADR 0053 Consequences ("Expected gain, box C", an estimate sized on this session, moved verbatim)
+
+- **Expected gain, box C:** about 8 GB of CPU expert weights per token (87 of 94 layers, gate/up Q4_K, down Q4_K/Q6_K) in 112 ms of compute is about 71 GB/s, against roughly 120 to 140 GB/s of DRAM on an 8-channel 6330N. Compute halved from 15 to 26 threads (ADR 0045), so it is instruction bound, not bandwidth bound. A dpbusd GEMV does about half the integer instructions per block; estimate compute 112 to 70-85 ms, floor about 60 ms from bandwidth. Decode 257 to about 220-230 ms (3.77 to 4.3-4.5 tok/s, +12 to 19%). That closes about half of the 59 ms gap to KTransformers; the streamer's 128 ms (ADR 0045 hypotheses 1 and 2) stays the other lever. No gain on boxes without AVX-512 VNNI. The box run decides; until then this is an estimate.

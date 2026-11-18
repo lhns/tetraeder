@@ -16,3 +16,8 @@ Session `b1b-levers`: AMD EPYC 7742 (AVX2 only, so no iqk VNNI kernels on either
 ## From ADR 0045 (addendum "owner decision on slow disks; correction", 2026-11-11, the correction paragraph, moved verbatim)
 
 Correction to the box 60190564 addendum: the extra decode bytes are not mainly prefetch. On `20261110c` (same box and options) the 64-token runs read 549 MB per token and the 256-token trace run 262, so tokens 65 to 256 read about 167 MB per token, the same as KTransformers; without prefetch the first 64 tokens still read 443 (`20261103`). The builder's excess is warm-up of the RAM tier in the first tokens after the 32K prefill; KTransformers' page cache shows none. Cause under diagnosis; the replay sentence above stands as data, not as the lever.
+
+## From ADR 0050 (addendum 2026-11-14 "RAM-tier policies across layers in the replay", findings on this session's trace moved verbatim)
+
+- The 256-token trace run of `20261110c` (prefetch, no overlap) read 262 MB per token. Its replay gives 262.3 for `lru` at VRAM 10, RAM 77 with prefetch, and a decode RAM hit rate of 0.9637 against 0.9637 measured. The same configuration at 64 tokens (`main-prefetch`, same session) read 549 MB per token, so tokens 64 to 255 read about 167 MB per token. Most of the excess is in the first 32 tokens after the prefill, not in the steady state.
+- On the same trace, per-layer `belady` without prefetch reads 39.9 MB per token against 186.8 for `lru` without prefetch. Per-layer slots do not bound the result; the eviction choice and the tier's contents when decode starts do.
