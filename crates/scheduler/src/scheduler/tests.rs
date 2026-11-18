@@ -391,3 +391,45 @@ fn the_size_hint_does_not_follow_a_huge_max_tokens() {
         "hinted {target} bytes, more than prompt + {EXPECT_AHEAD} rows"
     );
 }
+
+/// The finish reason and generated tokens of one request's events; panics on an error.
+fn finished(evs: &[GenEvent]) -> (FinishReason, usize) {
+    match evs.last() {
+        Some(GenEvent::Finished { reason, stats }) => (*reason, stats.generated_tokens as usize),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Session 20261117l: a Claude Code conversation in a 49152-row pool laid out as one run per
+/// sequence (ADR 0067). A side request lands after the conversation's run, the conversation
+/// moves behind it, and its next prompt of 33586 tokens cannot grow the run where it lies.
+/// Alone, with most of the pool free, it must still be served.
+#[test]
+fn a_prompt_that_fits_the_pool_is_served_when_its_own_run_cannot_grow() {
+    let kv = FakeKv::new(N_VOCAB, 4, 49_152, 49_152).with_chunked();
+    let mut w = worker_with(kv, 2048);
+    for (seed, n) in [(1, 12_000), (2, 4_000), (1, 20_000)] {
+        let mut rx = submit(&mut w, &prompt(seed, n), 1);
+        pump(&mut w);
+        assert_eq!(finished(&events(&mut rx)).1, 1);
+    }
+    let mut rx = submit(&mut w, &prompt(1, 33_586), 1100);
+    pump(&mut w);
+    assert_eq!(finished(&events(&mut rx)), (FinishReason::Length, 1100));
+}
+
+/// The same layout while generating: a lone sequence whose run cannot grow in place is moved
+/// (saved, freed and placed again) instead of ending early with `Length`.
+#[test]
+fn a_lone_sequence_whose_run_cannot_grow_keeps_generating() {
+    let kv = FakeKv::new(N_VOCAB, 4, 8192, 8192).with_chunked();
+    let mut w = worker_with(kv, 2048);
+    for (seed, n) in [(1, 1000), (2, 1000), (1, 2500)] {
+        let mut rx = submit(&mut w, &prompt(seed, n), 1);
+        pump(&mut w);
+        assert_eq!(finished(&events(&mut rx)).1, 1);
+    }
+    let mut rx = submit(&mut w, &prompt(1, 5000), 3000);
+    pump(&mut w);
+    assert_eq!(finished(&events(&mut rx)), (FinishReason::Length, 3000));
+}
