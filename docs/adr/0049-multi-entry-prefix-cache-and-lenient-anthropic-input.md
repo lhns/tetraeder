@@ -1,13 +1,15 @@
 # 0049. Multi-entry prefix cache in host RAM; lenient Anthropic input
 
-Status: Accepted (Phase 3b). Extends ADR 0046; Phase 4's `kvcache` prefix tree replaces the cache.
+Status: Accepted (Phase 3b). Extends ADR 0046; Phase 4's `kvcache` prefix tree replaces the cache. Both gaps below are closed in the proxy reruns (`20261110d`, `20261111d`, ADR 0046).
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
-The Claude Code proxy run (bench/results/20261103/claude-code-proxy, ADR 0046 "Measured") found two gaps against llama-server on the same model and tasks:
+The first Claude Code proxy run (`20261103`, ADR 0046 "Measured") found two gaps against llama-server on the same model and tasks:
 
-- Prompt tokens served from cache: 85% against 94%. ADR 0046 keeps one sequence; Claude Code interleaves side requests with a different prefix, which evict the main conversation (some requests reused 22 tokens). llama-server keeps evicted prompts in host RAM: its logs show `selected slot by LCP similarity` before every task and `making room for prompt cache entry, removing oldest entry (size = 1261 to 6760 MiB)` (server-llama-server-r1.log), the prompt cache of `--cache-ram` (default 8192 MiB, llama.cpp PR 16391).
-- 12 requests (4 bursts of 3, Claude Code's retries) got a 400 that llama-server accepted: `tool_result content: block type 'tool_reference' is not supported here` (the proxy logs' `error_message`). Claude Code's tool search answers with `tool_reference` blocks for tools sent with `defer_loading: true`. ADR 0028 also rejects images, other unknown blocks and assistant prefill; llama-server accepts more.
+- Prompt tokens served from cache: below llama-server's share. ADR 0046 keeps one sequence; Claude Code interleaves side requests with a different prefix, which evict the main conversation. llama-server keeps evicted prompts in host RAM: its logs show `selected slot by LCP similarity` before every task and `making room for prompt cache entry, removing oldest entry`, the prompt cache of `--cache-ram` (default 8192 MiB, llama.cpp PR 16391).
+- Requests (Claude Code's retries) got a 400 that llama-server accepted: `tool_result content: block type 'tool_reference' is not supported here`. Claude Code's tool search answers with `tool_reference` blocks for tools sent with `defer_loading: true`. ADR 0028 also rejects images, other unknown blocks and assistant prefill; llama-server accepts more.
 
 ## Decision
 

@@ -1,10 +1,12 @@
 # 0048. Quality profile file and calibration job
 
-Status: Accepted (Phase 2; read by the planner in Phase 3a)
+Status: Accepted (Phase 2; read by the planner in Phase 3a). Against a BF16 reference the summed estimate tracks measured KL and the profile's mixes beat llama.cpp's presets at equal bytes (`20261103`) and ik_llama.cpp's IQ4_KS and IQ4_K (`20261110`).
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
-ADR 0024 makes quality a measured number: per model, the KL divergence each (tensor group, format) choice costs. The planner (Phase 3a) reads it to pick formats, and its exit test compares the planner's mix with llama.cpp's Q4\_K\_M at the same bytes. The file is a contract between the calibration job and the planner, so its format must stay stable. libllama exposes no tensors, so a group cannot be swapped in place for dense models; rewriting a whole GGUF per sample costs about a minute on an 8B and more than a box session per model.
+ADR 0024 makes quality a measured number: per model, the KL divergence each (tensor group, format) choice costs. The planner (Phase 3a) reads it to pick formats, and its exit test compares the planner's mix with llama.cpp's Q4\_K\_M at the same bytes. The file is a contract between the calibration job and the planner, so its format must stay stable. libllama exposes no tensors, so a group cannot be swapped in place for dense models; rewriting a whole GGUF per sample costs about a minute on an 8B and more than a box session per model. (No session directory yet.)
 
 ## Decision
 
@@ -34,14 +36,10 @@ ADR 0024 makes quality a measured number: per model, the KL divergence each (ten
 - One calibration run per (model, workload, ggml pin). v1 measures k-quants, Q8\_0 and IQ4\_XS without an importance matrix; the `imatrix` field and IQ formats below 4 bits come with the imatrix input.
 - The group granularity is a measured trade-off (profiling cost against planner gain, docs/plan.md open decision); finer groups are a new profile, same schema.
 - KL on calibration text can miss agent-work losses; the tool-call check of ADR 0024 stays separate.
-- Measured 2026-11-03 (bench/quality/, bench/results/20261103/quality-*.json): against a BF16 reference the summed estimate is within 14% of the measured KL on Qwen3-8B (random mixes) and on Qwen3-30B-A3B (uniform Q6\_K to Q3\_K); Q2\_K is underestimated (30B: 0.94 against 1.25). Against a Q8\_0 reference the 30B samples showed a floor of about 0.002 and the sum overestimated light mixes about 6 times, so profiles use the most precise reference (`qwen3-30b-bf16.quality.json` supersedes `qwen3-30b.quality.json`). A greedy knapsack over the profile beats Q4\_K\_M, Q3\_K\_M and Q5\_K\_M at equal bytes on held-out text on both models.
+- The 2026-11-03 calibration (`20261103`) found the sum close to measured KL against a BF16 reference, except Q2_K, which it underestimates; against a Q8\_0 reference the 30B samples showed a floor and the sum overestimated light mixes, so profiles use the most precise reference (`qwen3-30b-bf16.quality.json` supersedes `qwen3-30b.quality.json`). A greedy knapsack over the profile beats Q4\_K\_M, Q3\_K\_M and Q5\_K\_M at equal bytes on held-out text on both models.
 
 ## Update: format scale and knapsack checks (2026-11-09)
 
-- **`format_scale`** (optional, `{format: factor >= 1}`): a factor on that format's KL delta in the estimate, for formats the sum underestimates. The job fits it from the `uniform-<format>` check, `(measured - base) / (estimate - base)`, when the sum is more than 15% under (`UNDER_BAND` in `calibrate.py`). Old files lack it and mean 1. Applied by `QualityProfile::estimate`, `estimate_mix_scaled` and `ProfileQuality::loss`; the plain sum (`estimate_mix`), the recorded `checks[].estimate` and the knapsack order stay the ADR sum, so `compare_mix.py` rows still match. Qwen3-30B-A3B: Q2_K 1.3412, giving 0% error on uniform Q2_K (from 25%), at most 13.7% over the five checks (raw 25.4%), 9.2% after the power-law correction (ADR 0040). One measured point per format, so the scale is in-sample; pairs at other mixes are not measured.
+- **`format_scale`** (optional, `{format: factor >= 1}`): a factor on that format's KL delta in the estimate, for formats the sum underestimates. The job fits it from the `uniform-<format>` check, `(measured - base) / (estimate - base)`, when the sum is more than 15% under (`UNDER_BAND` in `calibrate.py`). Old files lack it and mean 1. Applied by `QualityProfile::estimate`, `estimate_mix_scaled` and `ProfileQuality::loss`; the plain sum (`estimate_mix`), the recorded `checks[].estimate` and the knapsack order stay the ADR sum, so `compare_mix.py` rows still match. On Qwen3-30B-A3B it fixes uniform Q2_K and lowers the error over the checks (`20261103`). One measured point per format, so the scale is in-sample; pairs at other mixes are not measured.
 - **Knapsack checks**: after the uniform and random checks the job adds `knapsack-<pct>` mixes, the reference greedy at budgets 20%, 35% and 50% of the way from the smallest mix to the base (about the Q3\_K\_M, Q4\_K\_M and Q5\_K\_M sizes on the 30B). They validate the estimate where the planner operates (ADR 0040: the correction fitted on uniform and random mixes did not transfer). Not with `--drop-shards`. They run on the next box quality session; the committed profiles do not have them yet.
 - The Q8\_0-reference profile `qwen3-30b.quality.json` is deleted: the planner exit test and the profile load test use `qwen3-30b-bf16.quality.json`; its greedy mixes at the three preset budgets equal the measured `compare_mix.py` rows, and the stated 30B band is now 10% (was 31%).
-
-## Addendum (2026-11-10): ik_llama.cpp quant types
-
-Qwen3-8B, wikitext-2, ik_llama.cpp at its pin with its own perplexity tool and BF16 reference: the profile mix at the same or fewer bytes has mean KL 0.0448 against IQ4_KS 0.0614 and 0.0384 against IQ4_K 0.0449, top-1 agreement higher in both. `qlib.py` sizes ik types (IQ4_KS with its per-row f32 scale). Results `bench/results/20261110/quality-qwen3-8b-ik.json`.
