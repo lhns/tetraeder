@@ -82,3 +82,4 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0074](0074-prefix-save-through-pinned-staging.md) | Proposed | Prefix-cache save on a GPU: pinned staging and prepared snapshot buffers |
 | [0075](0075-executor-ranges-are-graph-views.md) | Proposed | Executor ranges are views of the rank graph (patch 0005) |
 | [0076](0076-judged-predictions-from-per-shape-anchor-lines.md) | Not adopted | Judged predictions from per-shape lines through truncated anchors |
+| [0077](0077-pipelined-prefill-micro-batches.md) | Proposed | Pipelined prefill: micro-batches in one rank program (GPipe order) |

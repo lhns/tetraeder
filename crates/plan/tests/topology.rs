@@ -365,3 +365,51 @@ fn block_slice_examples() {
     assert!(block_slice(768, 0, 2, 0, 0).is_err());
     assert!(block_slice(768, 256, 0, 0, 0).is_err());
 }
+
+/// ADR 0077: the knob reaches the topology; `single` takes 1.
+#[test]
+fn the_micro_batch_knob_reaches_the_topology() {
+    let mut plan = plan_of(vec![
+        stage((0, 1), &["gpu0"], 1, true, false),
+        stage((1, 4), &["gpu1"], 1, false, true),
+    ]);
+    plan.knobs.prefill_micro_batches = 4;
+    let (hw, m) = (hw(2), model());
+    let reserve = BTreeMap::new();
+    let ctx = Context {
+        hw: &hw,
+        model: &m,
+        phase: Phase(5),
+        reserve: &reserve,
+        hints: None,
+    };
+    let x = validate(&plan, &ctx).unwrap_or_else(|e| panic!("{e:#?}"));
+    let t = Topology::from_plan(&plan, &x, &hw).unwrap();
+    assert_eq!(t.prefill_micro_batches, 4);
+    assert_eq!(
+        Topology::single("gpu0", Some(0), 4).prefill_micro_batches,
+        1
+    );
+}
+
+/// ADR 0077: the engine cuts a step as `costmodel::sim` cuts a prompt: `min(m, n)` chunks whose
+/// sizes differ by at most one, the first ones larger.
+#[test]
+fn micro_batch_sizes_cut_like_the_simulator() {
+    assert_eq!(micro_batch_sizes(2048, 4), vec![512; 4]);
+    assert_eq!(micro_batch_sizes(10, 4), vec![3, 3, 2, 2]);
+    assert_eq!(micro_batch_sizes(3, 4), vec![1, 1, 1]);
+    assert_eq!(micro_batch_sizes(7, 1), vec![7]);
+    assert_eq!(micro_batch_sizes(5, 0), vec![5]);
+    for n in 1..40usize {
+        for m in 1..9u32 {
+            let s = micro_batch_sizes(n, m);
+            let k = n.min(m as usize);
+            assert_eq!(s.len(), k);
+            // sim.rs: prompt / chunks + (c < prompt % chunks).
+            for (c, &x) in s.iter().enumerate() {
+                assert_eq!(x, n / k + usize::from(c < n % k));
+            }
+        }
+    }
+}

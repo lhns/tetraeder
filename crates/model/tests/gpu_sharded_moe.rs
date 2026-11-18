@@ -60,6 +60,7 @@ fn topo(n_layer: u32, n_ranks: usize, stages: &[(u32, u32, Vec<usize>, bool)]) -
             })
             .collect(),
         n_layer,
+        prefill_micro_batches: 1,
     }
 }
 
@@ -226,6 +227,81 @@ fn gpu4_moe_shapes_match_single() {
     match Qwen3Moe::load_sharded(&path, &whole(n, 4, false), &opts()) {
         Err(e) if e.to_string().contains("blocks") => {}
         other => fails.push(format!("tp-4 refusal: {:?}", other.map(|_| ()))),
+    }
+    assert!(fails.is_empty(), "{}", fails.join("\n"));
+}
+
+/// hardware: gpu2 (two GPUs, the model). ADR 0077: `layer-2` with the prompt as one step of 4
+/// pipelined micro-batches against the same chunks as serial steps (M = 1): the last prompt row
+/// and 16 greedy tokens (the serial run's, teacher forced) within `GPU_TOL`. Prints bit-equality
+/// and the warm prefill time of both.
+#[test]
+fn gpu2_moe_pipelined_prefill_matches() {
+    let Some(path) = model() else { return };
+    if !Backend::require_gpus(2) {
+        return;
+    }
+    const M: u32 = 4;
+    let n_layer = ModelFile::open(&path).unwrap().hparams.n_layer;
+    let base = layer_split(n_layer, 2);
+    let piped_topo = Topology {
+        prefill_micro_batches: M,
+        ..base.clone()
+    };
+    let mut serial = Qwen3Moe::load_sharded(&path, &base, &opts()).unwrap();
+    let mut piped = Qwen3Moe::load_sharded(&path, &piped_topo, &opts()).unwrap();
+    let p = prompt(2, 400);
+    let sizes = tetraeder_plan::micro_batch_sizes(p.len(), M);
+    let run_serial = |m: &mut Qwen3Moe| {
+        let mut at = 0;
+        let mut l = Vec::new();
+        for &n in &sizes {
+            l = m.eval_last(&p[at..at + n]).unwrap();
+            at += n;
+        }
+        l
+    };
+    run_serial(&mut serial);
+    serial.reset();
+    piped.eval_last(&p).unwrap();
+    piped.reset();
+    let t = std::time::Instant::now();
+    let mut ls = run_serial(&mut serial);
+    let ts = t.elapsed();
+    let t = std::time::Instant::now();
+    let mut lp = piped.eval_last(&p).unwrap();
+    let tp = t.elapsed();
+    eprintln!(
+        "moe pipelined prefill: {} tokens, serial {:.1} ms, pipelined {:.1} ms ({:.2}x)",
+        p.len(),
+        ts.as_secs_f64() * 1e3,
+        tp.as_secs_f64() * 1e3,
+        ts.as_secs_f64() / tp.as_secs_f64()
+    );
+    let mut fails = Vec::new();
+    for step in 0..=16 {
+        let tol = GPU_TOL.of(&ls);
+        let worst = top_k(&ls, 5)
+            .into_iter()
+            .map(|i| (lp[i] - ls[i]).abs())
+            .fold(0f32, f32::max);
+        let (g, w) = (argmax(&lp), argmax(&ls));
+        let equal = lp.iter().zip(&ls).all(|(a, b)| a.to_bits() == b.to_bits());
+        eprintln!(
+            "step {step}: top-5 max |diff| {worst:e}, tolerance {tol:e}, bit-equal {equal}, greedy equal {}",
+            g == w
+        );
+        if worst > tol {
+            fails.push(format!("step {step}: {worst} > {tol}"));
+        }
+        if g != w && (ls[w] - ls[g]).abs() > 2.0 * tol {
+            fails.push(format!("step {step}: greedy {g} against {w}"));
+        }
+        if step < 16 {
+            let t = w as i32;
+            ls = serial.eval_last(&[t]).unwrap();
+            lp = piped.eval_last(&[t]).unwrap();
+        }
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));
 }

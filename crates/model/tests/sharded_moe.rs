@@ -10,11 +10,11 @@ mod common;
 
 use common::multi_seq::{Alone, alone_on, close, prompt, same_token};
 use common::synth::{MoeSpec, quantized_moe, write_moe_edit};
-use common::{PROMPT, TOL_CPU, Tol, argmax, fixture, top_k};
+use common::{N_GREEDY, PROMPT, TOL_CPU, Tol, argmax, fixture, top_k};
 use std::path::{Path, PathBuf};
 use tetraeder_ggml_sys::llama::{Ftype, QuantizeParams, quantize};
 use tetraeder_model::{BackendChoice, LoadOptions, Qwen3Moe, SeqEval};
-use tetraeder_plan::{RankSpec, Span, StageSpec, Topology};
+use tetraeder_plan::{RankSpec, Span, StageSpec, Topology, micro_batch_sizes};
 
 /// Four layers, eight heads with four KV heads, 32 experts: four-way tensor parallel divides it.
 const SPEC4: MoeSpec = MoeSpec {
@@ -88,6 +88,7 @@ fn topo(n_layer: u32, n_ranks: usize, stages: &[(u32, u32, Vec<usize>, bool)]) -
             })
             .collect(),
         n_layer,
+        prefill_micro_batches: 1,
     }
 }
 
@@ -649,4 +650,58 @@ fn cpu_diag_gap_by_layer_limit() {
             );
         }
     }
+}
+
+/// hardware: cpu. ADR 0077: a prompt sent as one step on a pipelined topology (M micro-batches
+/// in one program) gives logits bit-equal to the same chunks sent as serial steps on the same
+/// shape with M = 1, and greedy decode after it stays bit-equal. One stage ignores the knob.
+#[test]
+fn cpu_pipelined_prefill_is_bit_equal_to_serial_chunks() {
+    let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<u32>>();
+    let path = synth4_f16();
+    let p = prompt(5, 37);
+    for (name, base) in [
+        ("layer-2", layers(4, &[2])),
+        ("layer-4", layers(4, &[1, 2, 3])),
+        ("tp2-pp2", tp2_pp2(4)),
+    ] {
+        for m in [2u32, 4] {
+            let mut serial = sharded(&path, &base, &opts(1));
+            let piped_topo = Topology {
+                prefill_micro_batches: m,
+                ..base.clone()
+            };
+            let mut piped = sharded(&path, &piped_topo, &opts(1));
+            let mut ls = Vec::new();
+            let mut at = 0;
+            for n in micro_batch_sizes(p.len(), m) {
+                ls = serial.eval_last(&p[at..at + n]).unwrap();
+                at += n;
+            }
+            let mut lp = piped.eval_last(&p).unwrap();
+            assert_eq!(bits(&ls), bits(&lp), "{name}, M = {m}: prompt");
+            assert_eq!(serial.step_graphs_built(), u64::from(m), "{name}");
+            assert_eq!(piped.step_graphs_built(), 1, "{name}");
+            for step in 0..N_GREEDY {
+                let t = argmax(&ls) as i32;
+                ls = serial.eval_last(&[t]).unwrap();
+                lp = piped.eval_last(&[t]).unwrap();
+                assert_eq!(bits(&ls), bits(&lp), "{name}, M = {m}: step {step}");
+            }
+        }
+    }
+    let mut a = sharded(&path, &ep(4, 2), &opts(1));
+    let mut b = sharded(
+        &path,
+        &Topology {
+            prefill_micro_batches: 4,
+            ..ep(4, 2)
+        },
+        &opts(1),
+    );
+    assert_eq!(
+        bits(&a.eval_last(&p).unwrap()),
+        bits(&b.eval_last(&p).unwrap())
+    );
+    assert_eq!(a.step_graphs_built(), b.step_graphs_built());
 }

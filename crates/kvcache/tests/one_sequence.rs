@@ -187,3 +187,67 @@ fn seq_cp_into_a_reserved_but_empty_destination() {
         assert!(matches!(pool.seq_cp(0, 1, 10), Err(KvError::Invalid(_))));
     }
 }
+
+/// A pipelined prefill (ADR 0077) plans each micro-batch as the same chunk would be planned as a
+/// step of its own after the chunks before it; lengths are unchanged on return, so the step
+/// still commits once.
+#[test]
+fn chunk_plans_equal_serial_steps() {
+    for mut pool in layouts(4096) {
+        let name = pool.layout_name();
+        // Another sequence first, so the rows of sequence 0 are not its positions.
+        let other = [StepInput {
+            seq: 1,
+            n_tokens: 40,
+            all_logits: false,
+        }];
+        pool.reserve(1, 40).unwrap();
+        pool.commit(&other);
+        pool.reserve(0, 1000).unwrap();
+        let first = [StepInput {
+            seq: 0,
+            n_tokens: 300,
+            all_logits: false,
+        }];
+        pool.commit(&first);
+        let sizes = [175usize, 175, 175, 175];
+        let input = StepInput {
+            seq: 0,
+            n_tokens: 700,
+            all_logits: false,
+        };
+        let chunks = pool.plan_chunks(input, &sizes).unwrap();
+        assert_eq!(pool.seq_len(0), 300, "{name}: lengths unchanged");
+        let mut serial = Vec::new();
+        for &n in &sizes {
+            let s = [StepInput {
+                n_tokens: n,
+                ..input
+            }];
+            serial.push(pool.plan_step(&s).unwrap());
+            pool.commit(&s);
+        }
+        assert_eq!(chunks, serial, "{name}");
+        assert_eq!(pool.seq_len(0), 1000, "{name}");
+    }
+}
+
+/// Chunk plans refuse what the step would, and sizes that do not add up; lengths stay.
+#[test]
+fn chunk_plans_refuse_what_the_step_would() {
+    let mut pool = KvPool::new(Box::new(Chunked::new(1024)));
+    pool.reserve(0, 100).unwrap();
+    let input = StepInput {
+        seq: 0,
+        n_tokens: 300,
+        all_logits: false,
+    };
+    // The reservation covers 256 rows.
+    assert!(pool.plan_chunks(input, &[150, 150]).is_err());
+    assert_eq!(pool.seq_len(0), 0);
+    pool.reserve(0, 300).unwrap();
+    assert!(pool.plan_chunks(input, &[150, 100]).is_err());
+    assert!(pool.plan_chunks(input, &[]).is_err());
+    assert_eq!(pool.seq_len(0), 0);
+    assert_eq!(pool.plan_chunks(input, &[150, 150]).unwrap().len(), 2);
+}
