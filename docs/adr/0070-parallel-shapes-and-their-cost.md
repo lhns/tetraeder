@@ -2,6 +2,8 @@
 
 Status: Proposed (2026-11-15). Phase 5. Builds on ADR 0027 (plan IR), 0040 and 0056 (cost model, calibration), 0069 (executor). Adds patch `0004` to the queue (ADR 0011, Rule 8). Briefs: `docs/phase5-briefs.md`.
 
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
+
 ## Context
 
 The plan IR already has stages with a device group, `tp` and `ep` (ADR 0027), and embed and head may have 1 or `tp` shards. It does not say which dimension a shard cuts, and experts always have one shard, so the expert split llama.cpp's `-sm tensor` uses cannot be written. The planner's search (`crates/planner/src/search/cost.rs`) prices tensor parallel with a ring all-reduce formula from link priors, prices expert parallel as one dispatch and combine hop, and only forms groups over links of kind `P2p`, Linux only. None of the three all-reduce paths at the pin is a ring over P2P (NCCL picks its own algorithm, the internal path stages two GPUs through host memory, the executor's fallback is a star; ADR 0069), and the profiler's P2P links carry priors only (`crates/profiler/src/discover.rs`). Vast RTX 3090 boxes rarely have peer access, so today's search would prune tensor parallel there.
@@ -95,7 +97,7 @@ t_coll(Copy, M)      = max over pairs of copy_curve(pair)(bytes_per_token * M)
 
 ### Numerics (Rule 2)
 
-Sharded steps split matmul reductions and add partial sums, so results differ from one device in the last bits. Parity: every shape against the one-rank run of the same builder, top-5 logits within `tol_batch` (`max(TOL_CPU, 1e-3 x largest logit)`, `crates/model/tests/common/mod.rs`) on CPU ranks, `TOL_GPU` on CUDA; greedy tokens equal except where the reference's top-2 margin is below ADR 0043's near-tie bound. Per split point (Rule 2): layer split at the first, middle and last layer boundary.
+Sharded steps split matmul reductions and add partial sums, so results differ from one device in the last bits. Parity: every shape against the one-rank run of the same builder, top-5 logits within `tol_batch` (`max(TOL_CPU, 1e-3 x largest logit)`, `crates/model/tests/common/mod.rs`) on CPU ranks, `TOL_GPU` on CUDA (on real models: layer shapes `GPU_TOL`, tensor and expert shapes the bound anchored on libllama's `-sm tensor` gap, ADR 0069 History and ADR 0071); greedy tokens equal except where the reference's top-2 margin is below ADR 0043's near-tie bound. Per split point (Rule 2): layer split at the first, middle and last layer boundary.
 
 ## Consequences
 
@@ -107,13 +109,12 @@ Sharded steps split matmul reductions and add partial sums, so results differ fr
 
 ## As built (E3, 2026-11-16)
 - `ModelLayout` carries `n_ff` and `n_ff_exp`; older layout files estimate them from bytes, rounded to 256.
-- `c_range` (graphs and eager) and `c_step` live in `HardwareGraph.range_costs`, fitted only from anchors that carry `ranks`, with a near-zero pull (`LAMBDA_RANGES`; the normal pull left `c_step` 15% off on the synthetic fit). Same-class GPUs share one set of fitted rates.
+- `c_range` (graphs and eager) and `c_step` live in `HardwareGraph.range_costs`, fitted only from anchors that carry `ranks`, with a near-zero pull (`LAMBDA_RANGES`; the normal pull left `c_step` 15% off on the synthetic fit). Same-class GPUs share one set of fitted rates. (No session directory yet.)
 - Without a measured curve, a copy costs `alpha + n / beta` and an all-reduce is a ring over the group's links; probe curves (`tetraeder comm-probe`) replace the prior ones with the same op and ranks. GPU pairs without peer access get a `HostStaged` link (prior: twice the larger host alpha, the smaller host beta, halved when both share a lane group).
 - `enumerate_multi` returns `MultiCandidate { id, gpus, plan, notes }`, not `Candidate`, so the single-device enums and their exhaustive matches stay unchanged. The embedding is one shard on the first stage's rank 0 (the plan IR has no replicated unit).
-- Priors only (fixtures `two_3090_hoststaged`, `four_3090_hoststaged`): Qwen3-32B single 34.6 tok/s, tp-2 41.0, layer-2 34.2; Qwen3-30B-A3B single 113, layer-2 109, tp-2 76.5, ep-2 76.8; tp-4 for the 30B pruned (3 blocks over 4 ranks of the expert down rows). S2's anchors decide the real numbers.
+- Priors only (fixtures `two_3090_hoststaged`, `four_3090_hoststaged`): Qwen3-32B single 34.6 tok/s, tp-2 41.0, layer-2 34.2; Qwen3-30B-A3B single 113, layer-2 109, tp-2 76.5, ep-2 76.8; tp-4 for the 30B pruned (3 blocks over 4 ranks of the expert down rows). S2's anchors decide the real numbers. (No session directory yet.)
 
 ## Revised after S1 (2026-11-16, `bench/results/20261116gpu3/s1`)
-- At the pin MMQ skips every tile of an expert without tokens and `mm_ids_helper` never matches -1, so -1 slots cost nothing in MMQ even without patch 0004. The expert-parallel saving comes from the experts that get no tokens on a rank: "without it, EP wastes (g-1)/g of expert compute at prefill" holds against remapping remote slots to local experts, not against MMQ.
-- What the patch adds: defined output for -1 on MMQ and MMF (zero rows, a few microseconds); no weight reads for -1 on MMVQ and MMVF (decode), where unpatched kernels read expert -1 out of bounds; the generic path no longer asserts on -1; and `mm_ids_helper` entries left unwritten for -1 now point at row 0 (without that, MMQ's gate/up scatter wrote through stale pool indices; found by reading after S1).
-- S1's timing test used random -1 ids, which leave nearly every expert with a token, and measured flat (0.61 ms). It is replaced by time against the number of local experts (g = 1 to 8) compared with remapping. K-quant parity uses 2e-2 (q8_1 against q8_K activations, about 5e-3 expected); q8_0 and f16 keep 5e-3.
-
+- At the pin MMQ already skips every tile of an expert without tokens and `mm_ids_helper` never matches -1, so the expert-parallel saving comes from the experts that get no tokens on a rank; "without it, EP wastes (g-1)/g of expert compute at prefill" holds against remapping remote slots to local experts, not against MMQ (`20261116gpu3`).
+- The patch stays for: defined zero rows for -1 on MMQ and MMF; no weight reads for -1 on MMVQ and MMVF (decode), where unpatched kernels read expert -1 out of bounds; no assert on -1 in the generic path; `mm_ids_helper` entries left unwritten for -1 point at row 0 (else MMQ's gate/up scatter wrote through stale pool indices).
+- The timing test is time against the number of local experts (g = 1 to 8) compared with remapping; random -1 ids leave nearly every expert with a token and cannot show the saving. K-quant parity uses 2e-2 (q8_1 against q8_K activations); q8_0 and f16 keep 5e-3.
