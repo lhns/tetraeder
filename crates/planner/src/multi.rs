@@ -512,7 +512,13 @@ fn build_plan(ctx: &Ctx, stages: &[StageDef]) -> Plan {
     Plan {
         model: lay.model.clone(),
         knobs: Knobs {
-            prefill_micro_batches: 1,
+            // Pipelined prefill (ADR 0077): the judged prompt's ubatches in flight across the
+            // stages; one stage has nothing to pipeline.
+            prefill_micro_batches: if n > 1 {
+                crate::multi_cli::PROMPT.div_ceil(UBATCH)
+            } else {
+                1
+            },
             cuda_graphs: true,
             max_batch: None,
             threads: Some(ctx.threads),

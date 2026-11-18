@@ -287,3 +287,80 @@ fn gpu2_layer_limit_runs() {
         assert_eq!(m.exec_counters().unwrap().ranges, ranges, "{name}");
     }
 }
+
+/// hardware: gpu2, model. ADR 0077: `layer-2` with the prompt as one step of 4 pipelined
+/// micro-batches against the same 4 chunks as serial steps (M = 1): the last prompt row and 16
+/// greedy tokens (the serial run's, teacher forced) within `GPU_TOL`. Prints bit-equality and the
+/// warm prefill time of both.
+#[test]
+fn gpu2_pipelined_prefill_matches() {
+    if !Backend::require_gpus(2) {
+        return;
+    }
+    let Some(path) = model() else { return };
+    const M: u32 = 4;
+    let mut x = 11u32;
+    let prompt: Vec<i32> = (0..400)
+        .map(|_| {
+            x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            ((x >> 16) % 256) as i32
+        })
+        .collect();
+    let base = common::shapes::layer_split(36, 18);
+    let piped_topo = Topology {
+        prefill_micro_batches: M,
+        ..base.clone()
+    };
+    let mut serial = Qwen3::load_sharded(&path, &base, &opts()).unwrap();
+    let mut piped = Qwen3::load_sharded(&path, &piped_topo, &opts()).unwrap();
+    let sizes = tetraeder_plan::micro_batch_sizes(prompt.len(), M);
+    let run_serial = |m: &mut Qwen3| {
+        let mut at = 0;
+        let mut l = Vec::new();
+        for &n in &sizes {
+            l = m.eval_last(&prompt[at..at + n]).unwrap();
+            at += n;
+        }
+        l
+    };
+    // Warm (graphs built and allocated), then timed.
+    run_serial(&mut serial);
+    serial.reset();
+    piped.eval_last(&prompt).unwrap();
+    piped.reset();
+    let t = std::time::Instant::now();
+    let mut ls = run_serial(&mut serial);
+    let ts = t.elapsed();
+    let t = std::time::Instant::now();
+    let mut lp = piped.eval_last(&prompt).unwrap();
+    let tp = t.elapsed();
+    eprintln!(
+        "pipelined prefill: {} tokens, serial {:.1} ms, pipelined {:.1} ms ({:.2}x)",
+        prompt.len(),
+        ts.as_secs_f64() * 1e3,
+        tp.as_secs_f64() * 1e3,
+        ts.as_secs_f64() / tp.as_secs_f64()
+    );
+    let mut fails = Vec::new();
+    for step in 0..=16 {
+        let (d, bound) = top5_gap(&lp, &ls, GPU_TOL);
+        let (g, w) = (argmax(&lp), argmax(&ls));
+        eprintln!(
+            "step {step}: top-5 max |delta| {d:e}, bound {bound:e}, bit-equal {}, top-1 equal {}",
+            bits(&lp) == bits(&ls),
+            g == w
+        );
+        if d > bound {
+            fails.push(format!("step {step}: {d} > {bound}"));
+        }
+        if g != w && (ls[w] - ls[g]).abs() > 2.0 * bound {
+            fails.push(format!("step {step}: greedy {g} against {w}"));
+        }
+        if step < 16 {
+            let t = w as i32;
+            ls = serial.eval_last(&[t]).unwrap();
+            lp = piped.eval_last(&[t]).unwrap();
+        }
+    }
+    assert!(fails.is_empty(), "{}", fails.join("\n"));
+}

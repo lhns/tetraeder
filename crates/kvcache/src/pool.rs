@@ -284,6 +284,49 @@ impl KvPool {
         }))
     }
 
+    /// The plans of `input` cut into chunks of `sizes` tokens (ADR 0077): chunk j is planned as a
+    /// step of its own after chunks 0..j, so a pipelined step computes what the same chunks as
+    /// serial steps compute. Lengths are unchanged on return (the caller commits `input` once).
+    /// `sizes` must be non-empty and add up to `input.n_tokens`.
+    pub fn plan_chunks(
+        &mut self,
+        input: StepInput,
+        sizes: &[usize],
+    ) -> Result<Vec<StepPlan>, KvError> {
+        if sizes.is_empty() || sizes.iter().sum::<usize>() != input.n_tokens {
+            return Err(KvError::Invalid(format!(
+                "chunks {sizes:?} do not cut {} tokens",
+                input.n_tokens
+            )));
+        }
+        let before = self.lens.get(&input.seq).copied();
+        let mut plans = Vec::with_capacity(sizes.len());
+        let mut res = Ok(());
+        for &n in sizes {
+            let chunk = [StepInput {
+                n_tokens: n,
+                ..input
+            }];
+            match self.plan_step(&chunk) {
+                Ok(p) => plans.push(p),
+                Err(e) => {
+                    res = Err(e);
+                    break;
+                }
+            }
+            self.commit(&chunk);
+        }
+        match before {
+            Some(len) => {
+                self.lens.insert(input.seq, len);
+            }
+            None => {
+                self.lens.remove(&input.seq);
+            }
+        }
+        res.map(|()| plans)
+    }
+
     /// After a successful decode: lengths grow by n_tokens.
     pub fn commit(&mut self, inputs: &[StepInput]) {
         for inp in inputs {

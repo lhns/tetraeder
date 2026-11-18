@@ -10,7 +10,7 @@
 # Stages, in order (STAGE <name> lines in the log):
 #   gpus        nvidia-smi -L must list exactly <2|4> GPUs; taxameter 0.3.3 filters offers by `--num-gpus`; still,
 #               a wrong box ends the session here (PHASE5_BOX_DONE rc=1) before anything is built or downloaded
-#   env         env.json: host, GPU names, driver, clocks, throttle reasons, PCIe gen and width, topo -m, peer-access matrix
+#   env         env.json: host, GPU names, driver, clocks, power limits (power_limit_w, power_default_limit_w, power_max_limit_w), throttle reasons, PCIe gen and width, topo -m, peer-access matrix
 #               (nvidia-smi topo -p2p r), NCCL version, CPU quota, commits; comm_impl is filled in by probe
 #   build       release build with CUDA: tetraeder and tetraeder-plan
 #   models      both GGUFs must be in .hf_cache (taxameter models); missing files end the session
@@ -44,7 +44,7 @@
 # P5_OUT, P5_LOG_FILE, P5_LOCK, TET_BIN, PLAN_BIN, LLAMA_BENCH, IK_BENCH, HW_CMD, SKIP_GPU=1 (no nvidia-smi or CUDA: the
 # rehearsal of the plumbing; gates are written as skipped and the verdict is null), DRY_RUN=1 (print the sequence and the
 # commands, run nothing; needs no GPU, lock or build; writes a synthetic enumeration into P5_OUT).
-# DRY_RUN only: DRY_GPUS=<n> plays an `nvidia-smi -L` count, DRY_GPU_PARITY=fail a failed gpu-parity, DRY_PROBE=fail a
+# DRY_RUN only: DRY_POWER=fail plays a lowered power limit, DRY_GPUS=<n> plays an `nvidia-smi -L` count, DRY_GPU_PARITY=fail a failed gpu-parity, DRY_PROBE=fail a
 # failed probe, DRY_PREPASS=fail a baseline build that accepts no split mode.
 # ROUNDS=1 (S2 and S3 rehearsals) runs one round and no reruns (RERUNS=<n> overrides).
 # ONLY="tp-2 llama-bench:tensor" (ADR 0069 step-0 check): the rounds run only these configurations (a candidate is its plan
@@ -217,12 +217,19 @@ gpus() {
   fi
   [ "$n" = "$ngpu" ] || die "this box has $n GPU(s), the session needs $ngpu: destroy it and rent another offer"
   say "gpus: $n"
+  # power limit at default on every GPU (ADR 0068): a lowered cap changes the ranking of shapes
+  if [ "$DRY" = 1 ]; then
+    plan "scripts/power_gate.sh: power.limit == power.default_limit on every GPU (within 1 W)"
+    [ "${DRY_POWER:-}" = fail ] && die "power limit below default on a GPU: destroy the box and rent another offer"
+  else
+    bash scripts/power_gate.sh 8>&- || die "power limit below default on a GPU: destroy the box and rent another offer"
+  fi
 }
 
 # ---- stage: env --------------------------------------------------------------------------------------------
 env_json() {
   if [ "$DRY" = 1 ]; then
-    plan "env.json (host, gpu names, driver, clocks, throttle reasons, pcie gen and width, topo -m, topo -p2p r, nccl, cpu quota, commits)"
+    plan "env.json (host, gpu names, driver, clocks, power limits, throttle reasons, pcie gen and width, topo -m, topo -p2p r, nccl, cpu quota, commits)"
     return 0
   fi
   [ -f "$out/env.json" ] && return 0
@@ -235,7 +242,7 @@ env_json() {
     P5_COMMIT="$(git rev-parse HEAD 2> /dev/null)" P5_HOST="$(hostname)" P5_VAST="${VAST_CONTAINERLABEL:-} ${CONTAINER_ID:-}" \
     P5_LLAMA="$("$llama_bench" --version 2>&1 | head -3 | tr '\n' ' ')" P5_SKIP="$skip_gpu" \
     P5_P2P="$(summ --p2p "$out/topo-p2p.txt" 2> /dev/null)" \
-    P5_GPU="$(nvidia-smi --query-gpu=index,name,driver_version,clocks.sm,clocks.max.sm,clocks.mem,clocks_throttle_reasons.active,memory.total,pcie.link.gen.current,pcie.link.width.current --format=csv,noheader 2> /dev/null)" \
+    P5_GPU="$(nvidia-smi --query-gpu=index,name,driver_version,clocks.sm,clocks.max.sm,clocks.mem,clocks_throttle_reasons.active,memory.total,pcie.link.gen.current,pcie.link.width.current --format=csv,noheader 2> /dev/null)"     P5_POWER="$(nvidia-smi --query-gpu=power.limit,power.default_limit,power.max_limit --format=csv,noheader,nounits 2> /dev/null)" \
     P5_NCCL="$(ldconfig -p 2> /dev/null | grep -m1 libnccl | sed 's/^ *//')${NCCL_VERSION:+ $NCCL_VERSION}" \
     "$py" - << 'EOF'
 import json, os, re
@@ -243,10 +250,20 @@ e = os.environ
 gpus = [[x.strip() for x in ln.split(",")] for ln in e["P5_GPU"].splitlines() if ln.strip()]
 def col(i):
     return [g[i] if len(g) > i else "" for g in gpus]
+def pw(i):
+    out = []
+    for ln in e.get("P5_POWER", "").splitlines():
+        f = [x.strip().removesuffix(" W") for x in ln.split(",")]
+        try:
+            out.append(float(f[i]))
+        except (IndexError, ValueError):
+            out.append(None)
+    return out
 env = {
     "host": e["P5_HOST"], "vast_container": e["P5_VAST"].strip(), "gpu_count": len(gpus) or int(e["P5_NGPU"]),
     "gpu_names": col(1), "driver": (col(2) or [""])[0], "clock_sm_mhz": col(3), "clock_sm_max_mhz": col(4),
     "clock_mem_mhz": col(5), "throttle_reasons_active": col(6), "vram": col(7), "pcie_gen": col(8), "pcie_width": col(9),
+    "power_limit_w": pw(0), "power_default_limit_w": pw(1), "power_max_limit_w": pw(2),
     "p2p": e["P5_P2P"] or None, "nccl": e["P5_NCCL"].strip() or None,
     "comm_impl": None, "cpu_quota_cores": e["P5_QUOTA"], "threads": e["P5_THREADS"], "git_commit": e["P5_COMMIT"],
     "baseline_llama_bench": e["P5_LLAMA"], "skip_gpu": e["P5_SKIP"] == "1",

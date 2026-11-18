@@ -13,7 +13,7 @@ use common::shapes::{layer_split, single, tp, tp2pp2};
 use common::*;
 use std::path::Path;
 use tetraeder_model::{BackendChoice, DenseOptions, Qwen3, SeqEval};
-use tetraeder_plan::{KvFormat, Topology};
+use tetraeder_plan::{KvFormat, Topology, micro_batch_sizes};
 
 const CPU: BackendChoice = BackendChoice::Cpu { threads: Some(2) };
 
@@ -404,4 +404,107 @@ fn cpu_load_refuses_what_it_cannot_run() {
     assert!(err(&tp(2, 4)).contains("KV heads"), "{}", err(&tp(2, 4)));
     // The topology's layer count must be the model's.
     assert!(err(&single(3)).contains("layers"), "{}", err(&single(3)));
+}
+
+/// hardware: cpu. ADR 0077: a prompt sent as one step on a pipelined topology (M micro-batches
+/// in one program) gives logits bit-equal to the same chunks sent as serial steps on the same
+/// shape with M = 1, and greedy decode after it stays bit-equal (same KV rows). One step graph
+/// is built for the pipelined prompt, M for the serial one. One stage ignores the knob.
+#[test]
+fn cpu_pipelined_prefill_is_bit_equal_to_serial_chunks() {
+    let prompt = stream(11, 37);
+    for (name, path, base) in [
+        ("layer-2", dense_fixture(), layer_split(2, 1)),
+        ("layer-2 at 3", dense_fixture_l4(), layer_split(4, 3)),
+        ("tp2-pp2", dense_fixture_l4(), tp2pp2(4, 2)),
+    ] {
+        for m in [2u32, 4] {
+            let mut serial = sharded(&path, &base, 1);
+            let mut piped = sharded(
+                &path,
+                &Topology {
+                    prefill_micro_batches: m,
+                    ..base.clone()
+                },
+                1,
+            );
+            let mut ls = Vec::new();
+            let mut at = 0;
+            for n in micro_batch_sizes(prompt.len(), m) {
+                ls = serial.eval_last(&prompt[at..at + n]).unwrap();
+                at += n;
+            }
+            let mut lp = piped.eval_last(&prompt).unwrap();
+            assert_eq!(bits(&ls), bits(&lp), "{name}, M = {m}: prompt");
+            // Chunks of one size reuse a step graph; the serial run builds one per size.
+            assert!(serial.step_graphs_built() >= 2, "{name}");
+            assert_eq!(piped.step_graphs_built(), 1, "{name}");
+            for step in 0..N_GREEDY {
+                let t = argmax(&ls) as i32;
+                ls = serial.eval_last(&[t]).unwrap();
+                lp = piped.eval_last(&[t]).unwrap();
+                assert_eq!(bits(&ls), bits(&lp), "{name}, M = {m}: step {step}");
+            }
+        }
+    }
+    // One stage: the knob changes nothing.
+    let path = dense_fixture();
+    let mut a = sharded(&path, &tp(2, 2), 1);
+    let mut b = sharded(
+        &path,
+        &Topology {
+            prefill_micro_batches: 4,
+            ..tp(2, 2)
+        },
+        1,
+    );
+    assert_eq!(
+        bits(&a.eval_last(&prompt).unwrap()),
+        bits(&b.eval_last(&prompt).unwrap())
+    );
+    assert_eq!(a.exec_counters(), b.exec_counters());
+}
+
+/// hardware: cpu. Steps that do not pipeline on a pipelined topology build as with M = 1:
+/// all-logits prefill, batched sequences and a one-token step.
+#[test]
+fn cpu_pipelined_topology_runs_other_steps_unpipelined() {
+    let path = dense_fixture();
+    let base = layer_split(2, 1);
+    let piped = Topology {
+        prefill_micro_batches: 4,
+        ..base.clone()
+    };
+    let mut a = sharded(&path, &base, 2);
+    let mut b = sharded(&path, &piped, 2);
+    // Every position's logits.
+    assert_eq!(
+        bits(&a.eval(&PROMPT).unwrap()),
+        bits(&b.eval(&PROMPT).unwrap())
+    );
+    // A one-token step, then two sequences in one step.
+    let p1 = stream(4, 7);
+    let run = |m: &mut Qwen3| {
+        let mut out = Vec::new();
+        m.eval_last(&[7]).unwrap();
+        m.decode(
+            &[
+                SeqEval {
+                    seq: 0,
+                    tokens: &[5],
+                    all_logits: false,
+                },
+                SeqEval {
+                    seq: 1,
+                    tokens: &p1,
+                    all_logits: false,
+                },
+            ],
+            &mut out,
+        )
+        .unwrap();
+        bits(&out)
+    };
+    assert_eq!(run(&mut a), run(&mut b), "batched step");
+    assert_eq!(a.step_graphs_built(), b.step_graphs_built());
 }

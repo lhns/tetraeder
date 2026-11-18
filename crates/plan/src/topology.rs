@@ -36,6 +36,9 @@ pub struct Topology {
     pub ranks: Vec<RankSpec>,
     pub stages: Vec<StageSpec>,
     pub n_layer: u32,
+    /// Micro-batches a one-sequence prefill step pipelines through the stages (ADR 0077); 1:
+    /// none. Only shapes with two or more stages use it.
+    pub prefill_micro_batches: u32,
 }
 
 impl Topology {
@@ -158,6 +161,7 @@ impl Topology {
                 ranks,
                 stages,
                 n_layer: next_layer,
+                prefill_micro_batches: plan.knobs.prefill_micro_batches.max(1),
             })
         } else {
             Err(errs)
@@ -180,6 +184,7 @@ impl Topology {
                 head: true,
             }],
             n_layer,
+            prefill_micro_batches: 1,
         }
     }
 
@@ -194,6 +199,14 @@ impl Topology {
     pub fn is_single(&self) -> bool {
         self.ranks.len() == 1 && self.stages.len() == 1
     }
+}
+
+/// Sizes of the micro-batches of a step of `n` tokens (ADR 0077): `min(m, n)` chunks (at least
+/// one) whose sizes differ by at most one, the first ones larger, as `costmodel::sim` cuts a
+/// prompt into `prefill_micro_batches` chunks.
+pub fn micro_batch_sizes(n: usize, m: u32) -> Vec<usize> {
+    let k = n.min(m.max(1) as usize).max(1);
+    (0..k).map(|c| n / k + usize::from(c < n % k)).collect()
 }
 
 /// Range of `len` elements for slice `i` of `n`, whole blocks of `block`, extra blocks to ranks

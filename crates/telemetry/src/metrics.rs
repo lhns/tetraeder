@@ -205,6 +205,8 @@ pub struct Metrics {
     executor_ranges: Counter<u64>,
     executor_collective_bytes: Counter<u64>,
     executor_comm: Gauge<u64>,
+    executor_micro_batches: Histogram<f64>,
+    executor_micro_batches_planned: Gauge<u64>,
 }
 
 impl Metrics {
@@ -574,6 +576,17 @@ impl Metrics {
                 .u64_gauge("tetraeder.executor.comm")
                 .with_unit("1")
                 .with_description("1 for the all-reduce path of a plan with two or more GPU ranks: nccl, internal or fallback")
+                .build(),
+            executor_micro_batches: meter
+                .f64_histogram("tetraeder.executor.micro_batches")
+                .with_unit("{micro_batch}")
+                .with_description("Micro-batches a prefill step of a plan with two or more stages pipelined (ADR 0077); 1: not pipelined")
+                .with_boundaries(vec![1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 16.0])
+                .build(),
+            executor_micro_batches_planned: meter
+                .u64_gauge("tetraeder.executor.micro_batches.planned")
+                .with_unit("{micro_batch}")
+                .with_description("The plan's prefill_micro_batches, for plans with two or more stages (ADR 0077)")
                 .build(),
         }
     }
@@ -1011,6 +1024,18 @@ impl Metrics {
     pub fn executor_comm(&self, comm: &str) {
         self.executor_comm
             .record(1, &[KeyValue::new(attr::COMM, comm.to_owned())]);
+    }
+
+    /// A prefill step of a plan with two or more stages ran `n` micro-batches (ADR 0077).
+    pub fn executor_micro_batches(&self, n: usize) {
+        self.executor_micro_batches.record(n as f64, &[]);
+    }
+
+    /// The plan's `prefill_micro_batches`; record it only for plans with two or more stages
+    /// (alert `TetraederPrefillNotPipelined`).
+    pub fn executor_micro_batches_planned(&self, m: u32) {
+        self.executor_micro_batches_planned
+            .record(u64::from(m), &[]);
     }
 
     /// Per step (ADR 0061 addendum): threadpool pauses issued since the last report.

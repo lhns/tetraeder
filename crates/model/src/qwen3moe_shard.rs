@@ -27,7 +27,7 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 use tetraeder_executor::{
-    ExecCounters, ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks,
+    ExecCounters, ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks, gpipe_sort,
 };
 use tetraeder_ggml_sys::ggml::{Backend, Context, Graph, OwnedGraph, OwnedTensor, Tensor, Type};
 use tetraeder_kvcache::StepPlan;
@@ -155,9 +155,13 @@ enum OpSpec {
     },
 }
 
+/// `(n_tokens, n_kv, n_outputs)` of one micro-batch.
+type MbKey = (usize, usize, usize);
+
 /// A step graph set kept for its key (`LoadOptions::reuse_step_graph`).
 struct StepProg {
-    key: (usize, usize, usize),
+    /// One entry per micro-batch (ADR 0077); one without pipelining.
+    key: Vec<MbKey>,
     // Declared first: dropped before the state they read.
     graphs: Vec<Option<OwnedGraph>>,
     cuts: Vec<Vec<usize>>,
@@ -165,7 +169,8 @@ struct StepProg {
     /// Per head rank: its logits `[vocab slice, n_out]` and where the slice sits in the vocab.
     logits: Vec<(usize, OwnedTensor, Range<usize>)>,
     outputs: Vec<usize>,
-    states: Vec<Option<RankState>>,
+    /// Per micro-batch, per rank.
+    states: Vec<Vec<Option<RankState>>>,
 }
 
 pub(crate) struct Sharded {
@@ -177,6 +182,8 @@ pub(crate) struct Sharded {
     layer_kv: Vec<Vec<(usize, usize)>>,
     n_rows: usize,
     cache: Option<StepProg>,
+    /// Micro-batches of a pipelined one-sequence prefill (ADR 0077); 1: none.
+    micro: u32,
     /// Step graphs built since load.
     pub(crate) built: u64,
     /// Executor counters since load or the last clear.
@@ -458,8 +465,16 @@ impl Sharded {
             }
         }
         let exec = Executor::new(ranks);
+        let micro = if stages.len() > 1 {
+            topo.prefill_micro_batches.max(1)
+        } else {
+            1
+        };
         if let Some(t) = &opts.telemetry {
             exec.ranks().record(t.metrics());
+            if stages.len() > 1 {
+                t.metrics().executor_micro_batches_planned(micro);
+            }
         }
         Ok(Sharded {
             exec,
@@ -469,6 +484,7 @@ impl Sharded {
             layer_kv,
             n_rows: kv_rows,
             cache: None,
+            micro,
             built: 0,
             totals: ExecCounters::default(),
             telemetry: opts.telemetry.clone(),
@@ -788,34 +804,50 @@ impl Sharded {
         Ok(state)
     }
 
+    /// Micro-batches a one-sequence prefill step pipelines (ADR 0077): the topology's knob with
+    /// two or more stages after `layer_limit`, else 1.
+    pub(crate) fn micro_batches(&self) -> u32 {
+        self.micro
+    }
+
     /// One step: uploads the inputs, runs the program and returns the logits of the output
-    /// tokens, `n_vocab` per row, into `out`.
+    /// tokens, `n_vocab` per row, into `out`. `plans` holds one plan, or one per micro-batch of a
+    /// pipelined prefill (ADR 0077) whose tokens follow one another in `tokens`; the logits are
+    /// the last micro-batch's.
     pub(crate) fn step(
         &mut self,
         tokens: &[i32],
-        plan: &StepPlan,
+        plans: &[StepPlan],
         reuse: bool,
         out: &mut Vec<f32>,
     ) -> Result<()> {
-        let key = (tokens.len(), plan.n_kv, plan.outputs.len());
+        let key: Vec<MbKey> = plans
+            .iter()
+            .map(|p| (p.pos.len(), p.n_kv, p.outputs.len()))
+            .collect();
         let prog = match self.cache.take() {
             Some(p) if reuse && p.key == key => p,
             _ => {
-                let p = self.build(key)?;
+                let p = self.build(&key)?;
                 self.built += 1;
                 p
             }
         };
-        for st in prog.states.iter().flatten() {
-            if let Some(t) = &st.tokens {
-                t.get().set_i32(tokens)?;
+        let mut at = 0;
+        for (states, plan) in prog.states.iter().zip(plans) {
+            let n = plan.pos.len();
+            for st in states.iter().flatten() {
+                if let Some(t) = &st.tokens {
+                    t.get().set_i32(&tokens[at..at + n])?;
+                }
+                st.pos.get().set_i32(&plan.pos)?;
+                st.rows.get().set_i32(&plan.rows)?;
+                st.mask.get().set_f16_bits(&plan.mask)?;
+                if let Some(t) = &st.outputs {
+                    t.get().set_i32(&plan.outputs)?;
+                }
             }
-            st.pos.get().set_i32(&plan.pos)?;
-            st.rows.get().set_i32(&plan.rows)?;
-            st.mask.get().set_f16_bits(&plan.mask)?;
-            if let Some(t) = &st.outputs {
-                t.get().set_i32(&plan.outputs)?;
-            }
+            at += n;
         }
         {
             let graphs: Vec<RankGraph<'_>> = prog
@@ -854,7 +886,7 @@ impl Sharded {
             };
             self.exec.run(&p).map_err(exec_err)?;
         }
-        let n_out = plan.outputs.len();
+        let n_out = plans.last().map_or(0, |p| p.outputs.len());
         let nv = self.h.n_vocab as usize;
         if prog.logits.len() == 1 && prog.logits[0].2 == (0..nv) {
             prog.logits[0].1.get().get_f32_into(out)?;
@@ -873,6 +905,9 @@ impl Sharded {
         let c = self.exec.take_counters();
         if let Some(t) = &self.telemetry {
             c.record(t.metrics());
+            if self.stages.len() > 1 && tokens.len() > 1 {
+                t.metrics().executor_micro_batches(key.len());
+            }
         }
         if self.totals.ranges.len() < c.ranges.len() {
             self.totals.ranges.resize(c.ranges.len(), 0);
@@ -890,16 +925,24 @@ impl Sharded {
         Ok(())
     }
 
-    /// The rank graphs and the program for one step key.
-    fn build(&self, key: (usize, usize, usize)) -> Result<StepProg> {
-        let (n, n_kv, n_out) = key;
+    /// The rank graphs and the program for a step of `keys.len()` micro-batches (one without
+    /// pipelining). Each rank graph holds the micro-batches in order; the ops are built per
+    /// (stage, micro-batch) and issued in GPipe order (ADR 0077).
+    fn build(&self, keys: &[MbKey]) -> Result<StepProg> {
         let h = &self.h;
         let nr = self.ranks.len();
-        let mut states: Vec<Option<RankState>> = (0..nr).map(|_| None).collect();
+        let n_mb = keys.len();
+        let mut states: Vec<Vec<Option<RankState>>> = Vec::with_capacity(n_mb);
+        for &key in keys {
+            let mut per_rank: Vec<Option<RankState>> = (0..nr).map(|_| None).collect();
+            for (r, rt) in self.used() {
+                per_rank[r] = Some(self.alloc_state(rt, key)?);
+            }
+            states.push(per_rank);
+        }
         let mut ctxs: Vec<Option<Rc<Context>>> = (0..nr).map(|_| None).collect();
         for (r, rt) in self.used() {
-            states[r] = Some(self.alloc_state(rt, key)?);
-            let nodes = NODES_PER_LAYER * (rt.layers.len() + 1);
+            let nodes = NODES_PER_LAYER * (rt.layers.len() + 1) * n_mb;
             ctxs[r] = Some(Rc::new(Context::new(nodes, nodes)?));
         }
         let built = {
@@ -907,120 +950,145 @@ impl Sharded {
                 gs: (0..nr).map(|_| None).collect(),
                 cuts: vec![Vec::new(); nr],
                 ops: Vec::new(),
+                tag: (0, 0),
                 logits: Vec::new(),
             };
             for (r, rt) in self.used() {
-                let nodes = NODES_PER_LAYER * (rt.layers.len() + 1);
+                let nodes = NODES_PER_LAYER * (rt.layers.len() + 1) * n_mb;
                 b.gs[r] = Some(cx(&ctxs, r).new_graph(nodes));
             }
-            let mut xs: Vec<Option<Tensor<'_>>> = vec![None; nr];
-            for (si, st) in self.stages.iter().enumerate() {
-                let g = st.ranks.len();
-                for &r in &st.ranks {
-                    let rt = self.rank(r);
-                    let sr = states[r].as_ref().expect("state of a used rank");
-                    xs[r] = Some(match (&rt.tok_embd, &sr.hid) {
-                        (Some(emb), None) if st.embed => cx(&ctxs, r).get_rows(
-                            emb.get(),
-                            sr.tokens.as_ref().expect("embed rank has tokens").get(),
-                        ),
-                        (_, Some(hid)) => hid.get(),
-                        _ => unreachable!("a stage after the first has a hidden input"),
-                    });
-                }
-                for il in st.span.clone() {
-                    let local = (il - st.span.start) as usize;
-                    let mut parts: Vec<Tensor<'_>> = Vec::with_capacity(g);
+            for (j, &(n, n_kv, n_out)) in keys.iter().enumerate() {
+                let last_mb = j + 1 == n_mb;
+                let sts = &states[j];
+                let mut xs: Vec<Option<Tensor<'_>>> = vec![None; nr];
+                for (si, st) in self.stages.iter().enumerate() {
+                    b.tag = (si, j);
+                    let g = st.ranks.len();
                     for &r in &st.ranks {
                         let rt = self.rank(r);
-                        let sr = states[r].as_ref().expect("state of a used rank");
-                        let step = AttnStep {
-                            pos: sr.pos.get(),
-                            rows: sr.rows.get(),
-                            mask: sr.mask.get(),
-                            n_tokens: n,
-                            n_kv,
-                        };
-                        let gr = b.gs[r].as_mut().expect("graph of a used rank");
-                        parts.push(attention_out(
-                            &rt.ah,
-                            cx(&ctxs, r),
-                            gr,
-                            &rt.layers[local].w.attn,
-                            &rt.kv,
-                            rt.layers[local].kv,
-                            &step,
-                            xs[r].expect("hidden state"),
-                        ));
-                    }
-                    if g > 1 {
-                        b.reduce(&st.ranks, &parts);
-                    }
-                    let mut inps: Vec<Tensor<'_>> = Vec::with_capacity(g);
-                    let mut ms: Vec<Tensor<'_>> = Vec::with_capacity(g);
-                    for (i, &r) in st.ranks.iter().enumerate() {
-                        let rt = self.rank(r);
-                        let c = cx(&ctxs, r);
-                        let lw = &rt.layers[local].w;
-                        let ffn_inp = c.add(parts[i], xs[r].expect("hidden state"));
-                        let (xn, weights, ids) = router(h, c, lw, ffn_inp);
-                        // The router's nodes enter the graph before the expert FFN, consecutive
-                        // as in libllama's `build_moe_ffn`, so CUDA's topk-moe fusion fires.
-                        b.gs[r].as_mut().expect("graph").expand(weights);
-                        let ids = match &rt.map {
-                            Some(map) if st.ep => {
-                                let nu = i64::from(h.n_expert_used);
-                                let flat = c.reshape(c.cont(ids), &[nu * n as i64, 1]);
-                                c.reshape(c.get_rows(map.get(), flat), &[nu, n as i64])
-                            }
-                            _ => ids,
-                        };
-                        let experts = weighted_experts(h, c, lw, xn, ids, weights);
-                        ms.push(sum_experts(h, c, experts));
-                        inps.push(ffn_inp);
-                    }
-                    if g > 1 {
-                        b.reduce(&st.ranks, &ms);
-                    }
-                    for (i, &r) in st.ranks.iter().enumerate() {
-                        xs[r] = Some(cx(&ctxs, r).add(ms[i], inps[i]));
-                    }
-                }
-                if st.head {
-                    for &r in &st.ranks {
-                        let rt = self.rank(r);
-                        let sr = states[r].as_ref().expect("state of a used rank");
-                        let hr = rt.head.as_ref().expect("head rank");
-                        let c = cx(&ctxs, r);
-                        let x = xs[r].expect("hidden state");
-                        let mut cur = c.mul(c.rms_norm(x, h.rms_eps), hr.out_norm.get());
-                        if n_out < n {
-                            cur =
-                                c.get_rows(cur, sr.outputs.as_ref().expect("outputs input").get());
-                        }
-                        let logits = c.mul_mat(hr.w.get(), cur).set_output();
-                        let gr = b.gs[r].as_mut().expect("graph");
-                        gr.expand(logits);
-                        b.cut(r);
-                        b.logits.push((r, logits, hr.vocab.clone()));
-                    }
-                } else {
-                    for &r in &st.ranks {
-                        let x = xs[r].expect("hidden state");
-                        b.gs[r].as_mut().expect("graph").expand(x);
-                        b.cut(r);
-                    }
-                    let next = &self.stages[si + 1];
-                    for (k, &dst) in next.ranks.iter().enumerate() {
-                        let src = st.ranks[k % g];
-                        let hid = states[dst]
-                            .as_ref()
-                            .and_then(|s| s.hid.clone())
-                            .expect("hidden input of the next stage");
-                        b.ops.push(BOp::Copy {
-                            src: (src, xs[src].expect("hidden state")),
-                            dst: (dst, hid),
+                        let sr = sts[r].as_ref().expect("state of a used rank");
+                        xs[r] = Some(match (&rt.tok_embd, &sr.hid) {
+                            (Some(emb), None) if st.embed => cx(&ctxs, r).get_rows(
+                                emb.get(),
+                                sr.tokens.as_ref().expect("embed rank has tokens").get(),
+                            ),
+                            (_, Some(hid)) => hid.get(),
+                            _ => unreachable!("a stage after the first has a hidden input"),
                         });
+                    }
+                    // A micro-batch before the last ends on the head stage after its last
+                    // layer's KV writes: nothing reads its hidden state or logits.
+                    let kv_only = st.head && !last_mb;
+                    for il in st.span.clone() {
+                        let local = (il - st.span.start) as usize;
+                        let mut parts: Vec<Tensor<'_>> = Vec::with_capacity(g);
+                        for &r in &st.ranks {
+                            let rt = self.rank(r);
+                            let sr = sts[r].as_ref().expect("state of a used rank");
+                            let step = AttnStep {
+                                pos: sr.pos.get(),
+                                rows: sr.rows.get(),
+                                mask: sr.mask.get(),
+                                n_tokens: n,
+                                n_kv,
+                            };
+                            let gr = b.gs[r].as_mut().expect("graph of a used rank");
+                            parts.push(attention_out(
+                                &rt.ah,
+                                cx(&ctxs, r),
+                                gr,
+                                &rt.layers[local].w.attn,
+                                &rt.kv,
+                                rt.layers[local].kv,
+                                &step,
+                                xs[r].expect("hidden state"),
+                            ));
+                        }
+                        if kv_only && il + 1 == st.span.end {
+                            for &r in &st.ranks {
+                                b.cut(r);
+                            }
+                            break;
+                        }
+                        if g > 1 {
+                            b.reduce(&st.ranks, &parts);
+                        }
+                        let mut inps: Vec<Tensor<'_>> = Vec::with_capacity(g);
+                        let mut ms: Vec<Tensor<'_>> = Vec::with_capacity(g);
+                        for (i, &r) in st.ranks.iter().enumerate() {
+                            let rt = self.rank(r);
+                            let c = cx(&ctxs, r);
+                            let lw = &rt.layers[local].w;
+                            let ffn_inp = c.add(parts[i], xs[r].expect("hidden state"));
+                            let (xn, weights, ids) = router(h, c, lw, ffn_inp);
+                            // The router's nodes enter the graph before the expert FFN,
+                            // consecutive as in libllama's `build_moe_ffn`, so CUDA's topk-moe
+                            // fusion fires.
+                            b.gs[r].as_mut().expect("graph").expand(weights);
+                            let ids = match &rt.map {
+                                Some(map) if st.ep => {
+                                    let nu = i64::from(h.n_expert_used);
+                                    let flat = c.reshape(c.cont(ids), &[nu * n as i64, 1]);
+                                    c.reshape(c.get_rows(map.get(), flat), &[nu, n as i64])
+                                }
+                                _ => ids,
+                            };
+                            let experts = weighted_experts(h, c, lw, xn, ids, weights);
+                            ms.push(sum_experts(h, c, experts));
+                            inps.push(ffn_inp);
+                        }
+                        if g > 1 {
+                            b.reduce(&st.ranks, &ms);
+                        }
+                        for (i, &r) in st.ranks.iter().enumerate() {
+                            xs[r] = Some(cx(&ctxs, r).add(ms[i], inps[i]));
+                        }
+                    }
+                    if kv_only {
+                        // Its last range ended after the KV writes above.
+                    } else if st.head {
+                        for &r in &st.ranks {
+                            let rt = self.rank(r);
+                            let sr = sts[r].as_ref().expect("state of a used rank");
+                            let hr = rt.head.as_ref().expect("head rank");
+                            let c = cx(&ctxs, r);
+                            let x = xs[r].expect("hidden state");
+                            let mut cur = c.mul(c.rms_norm(x, h.rms_eps), hr.out_norm.get());
+                            if n_out < n {
+                                cur = c.get_rows(
+                                    cur,
+                                    sr.outputs.as_ref().expect("outputs input").get(),
+                                );
+                            }
+                            let logits = c.mul_mat(hr.w.get(), cur).set_output();
+                            let gr = b.gs[r].as_mut().expect("graph");
+                            gr.expand(logits);
+                            b.cut(r);
+                            b.logits.push((r, logits, hr.vocab.clone()));
+                        }
+                    } else {
+                        for &r in &st.ranks {
+                            let x = xs[r].expect("hidden state");
+                            b.gs[r].as_mut().expect("graph").expand(x);
+                            b.cut(r);
+                        }
+                        // One hidden-state input per micro-batch and rank, so no copy waits
+                        // for a reader (ADR 0077).
+                        let next = &self.stages[si + 1];
+                        for (k, &dst) in next.ranks.iter().enumerate() {
+                            let src = st.ranks[k % g];
+                            let hid = sts[dst]
+                                .as_ref()
+                                .and_then(|s| s.hid.clone())
+                                .expect("hidden input of the next stage");
+                            b.ops.push((
+                                b.tag,
+                                BOp::Copy {
+                                    src: (src, xs[src].expect("hidden state")),
+                                    dst: (dst, hid),
+                                },
+                            ));
+                        }
                     }
                 }
             }
@@ -1029,7 +1097,7 @@ impl Sharded {
         let (graphs, cuts, ops, logits) = built;
         let outputs = logits.iter().map(|l| l.0).collect();
         Ok(StepProg {
-            key,
+            key: keys.to_vec(),
             graphs,
             cuts,
             ops,
@@ -1044,7 +1112,7 @@ impl Sharded {
     fn keep(
         &self,
         ctxs: &[Option<Rc<Context>>],
-        states: &[Option<RankState>],
+        states: &[Vec<Option<RankState>>],
         b: Build<'_>,
     ) -> Result<(
         Vec<Option<OwnedGraph>>,
@@ -1057,6 +1125,7 @@ impl Sharded {
             cuts,
             ops,
             logits,
+            ..
         } = b;
         let rc = |r: usize| ctxs[r].as_ref().expect("context of a used rank");
         let mut graphs: Vec<Option<OwnedGraph>> = Vec::with_capacity(gs.len());
@@ -1066,28 +1135,34 @@ impl Sharded {
                 continue;
             };
             let rt = self.rank(r);
-            let sr = states[r].as_ref().expect("state of a used rank");
-            let mut deps: Vec<&OwnedTensor> = vec![&rt.anchor, &rt.kv.k[0], &rt.kv.v[0], &sr.pos];
+            let mut deps: Vec<&OwnedTensor> = vec![&rt.anchor, &rt.kv.k[0], &rt.kv.v[0]];
+            for mb in states {
+                deps.push(&mb[r].as_ref().expect("state of a used rank").pos);
+            }
             deps.extend(rt.kv.rot_k.iter().chain(&rt.kv.rot_v));
             graphs.push(Some(rc(r).keep_graph(g, &deps)?));
         }
         let mut specs = Vec::with_capacity(ops.len());
-        for op in ops {
-            specs.push(match op {
-                BOp::Compute(rank, range) => OpSpec::Compute { rank, range },
-                BOp::AllReduce(v) => {
-                    let mut owned = Vec::with_capacity(v.len());
-                    for (r, t) in v {
-                        owned.push((r, rc(r).keep(t)?));
+        for (tag, op) in ops {
+            specs.push((
+                tag,
+                match op {
+                    BOp::Compute(rank, range) => OpSpec::Compute { rank, range },
+                    BOp::AllReduce(v) => {
+                        let mut owned = Vec::with_capacity(v.len());
+                        for (r, t) in v {
+                            owned.push((r, rc(r).keep(t)?));
+                        }
+                        OpSpec::AllReduce(owned)
                     }
-                    OpSpec::AllReduce(owned)
-                }
-                BOp::Copy { src, dst } => OpSpec::Copy {
-                    src: (src.0, rc(src.0).keep(src.1)?),
-                    dst,
+                    BOp::Copy { src, dst } => OpSpec::Copy {
+                        src: (src.0, rc(src.0).keep(src.1)?),
+                        dst,
+                    },
                 },
-            });
+            ));
         }
+        let specs = gpipe_sort(specs);
         let mut outs = Vec::with_capacity(logits.len());
         for (r, t, vocab) in logits {
             outs.push((r, rc(r).keep(t)?, vocab));
@@ -1109,11 +1184,13 @@ enum BOp<'a> {
     },
 }
 
-/// Rank graphs, their range cuts and the program ops while a step is built.
+/// Rank graphs, their range cuts and the program ops while a step is built. Each op carries the
+/// (stage, micro-batch) it belongs to, `tag` while it is built, for the GPipe order (ADR 0077).
 struct Build<'a> {
     gs: Vec<Option<Graph<'a>>>,
     cuts: Vec<Vec<usize>>,
-    ops: Vec<BOp<'a>>,
+    ops: Vec<((usize, usize), BOp<'a>)>,
+    tag: (usize, usize),
     logits: Vec<(usize, Tensor<'a>, Range<usize>)>,
 }
 
@@ -1122,7 +1199,8 @@ impl<'a> Build<'a> {
     fn cut(&mut self, r: usize) {
         let n = self.gs[r].as_ref().expect("graph").n_nodes();
         self.cuts[r].push(n);
-        self.ops.push(BOp::Compute(r, self.cuts[r].len() - 1));
+        self.ops
+            .push((self.tag, BOp::Compute(r, self.cuts[r].len() - 1)));
     }
 
     /// Ends a range at `parts[i]` on every rank of the group and all-reduces them.
@@ -1131,8 +1209,9 @@ impl<'a> Build<'a> {
             self.gs[r].as_mut().expect("graph").expand(parts[i]);
             self.cut(r);
         }
-        self.ops.push(BOp::AllReduce(
-            ranks.iter().copied().zip(parts.iter().copied()).collect(),
+        self.ops.push((
+            self.tag,
+            BOp::AllReduce(ranks.iter().copied().zip(parts.iter().copied()).collect()),
         ));
     }
 }
@@ -1193,6 +1272,7 @@ mod graph_order {
                 head: true,
             }],
             n_layer: 2,
+            prefill_micro_batches: 1,
         }
     }
 
@@ -1258,7 +1338,7 @@ mod graph_order {
         ] {
             let sh = Sharded::load(&file, &t, &opts, 1, 256).expect("loads");
             for (n, n_out) in [(1, 1), (5, 5), (5, 1)] {
-                let prog = sh.build((n, 256, n_out)).expect("builds");
+                let prog = sh.build(&[(n, 256, n_out)]).expect("builds");
                 let what = format!("{name}, n {n}, outputs {n_out}");
                 check(&prog, 2, h.n_expert_used as usize, &what);
             }
