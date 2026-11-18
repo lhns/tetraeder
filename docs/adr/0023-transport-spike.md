@@ -10,7 +10,7 @@ The spike is `crates/transport` (`transport-bench`): one stream, ping-pong echo 
 
 ## Measurements (localhost, Windows VM)
 
-Host: QEMU Virtual CPU 2.5+, 16 vCPU, **no AES-NI and no AVX2**, shared with other jobs (about 85% load during the runs). Loopback, release build, one client, one server, one process.
+Host: QEMU Virtual CPU 2.5+, 16 vCPU, **no AES-NI and no AVX2**, shared with other jobs (about 85% load during the runs). Loopback, release build, one client, one server, one process. (No session directory yet.)
 
 AES-GCM (rustls default) is software-only here and caps TLS and QUIC at about 40 MiB/s whatever the message size, so those numbers say nothing about the protocols. The table uses ChaCha20-Poly1305 (`--cipher chacha`), which is fast in software; the AES run is listed for reference.
 
@@ -25,7 +25,7 @@ AES-GCM (rustls default) is software-only here and caps TLS and QUIC at about 40
 | TLS (AES-GCM, no AES-NI) | 8 KB | 905 us | 2073 us | 36 MiB/s |
 | QUIC (AES-GCM, no AES-NI) | 8 KB | 1160 us | 2078 us | 38 MiB/s |
 
-Reading, with that caveat: on this host TCP is the floor at about 0.3 ms per 8 KB hop (Windows loopback is slow; Linux loopback is typically under 0.1 ms). TLS adds about 0.13 ms per 8 KB hop, QUIC about 0.55 ms, in line with the plan's remark that userspace QUIC costs hundreds of microseconds per hop. At 60 hops per token that is about 8 ms (TLS over TCP) versus 33 ms (QUIC) of overhead on top of the 20 ms TCP floor, before any real network latency. These are indications only: crypto cost depends on the CPU, and the VM is noisy (TCP p99 for 1 MB varies by 10x).
+Reading, with that caveat: on this host TCP is the floor at about 0.3 ms per 8 KB hop (Windows loopback is slow; Linux loopback is typically under 0.1 ms). TLS adds about 0.13 ms per 8 KB hop, QUIC about 0.55 ms, in line with the plan's remark that userspace QUIC costs hundreds of microseconds per hop. At 60 hops per token that is about 8 ms (TLS over TCP) versus 33 ms (QUIC) of overhead on top of the 20 ms TCP floor, before any real network latency. These are indications only: crypto cost depends on the CPU, and the VM is noisy (TCP p99 for 1 MB varies by 10x). (No session directory yet.)
 
 ## Decision (proposed, not final)
 

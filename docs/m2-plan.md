@@ -1,27 +1,29 @@
 # Tetraeder after M1: plan to M2 (2026-11-14, reviewed twice with Fable)
 
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here; dated sections below keep their outcome, decisions and a session link.
+
 ## Context
-M1 is reached and the owner confirmed it (main `8e6382c`; `docs/m1-open.md`; ADR 0045 addendum 2026-11-14). The 2026-11-08 resume plan in this file is finished. Main CI is green, credit is $19.66, and no boxes are running.
+M1 is reached and the owner confirmed it (main `8e6382c`; `docs/m1-open.md`; ADR 0045 addendum 2026-11-14). The 2026-11-08 resume plan in this file is finished. Main CI is green, credit is $19.66, and no boxes are running. (No session directory yet.)
 
 The next milestone is M2, which ends after Phase 5. Its critical path is Phase 4: own KV and scheduler. Its exit test:
 - at least llama.cpp server throughput at concurrency 4;
 - prefix hits cut time to first token on a Claude Code replay.
 
-Today the gateway reaches 0.41 to 0.61 of llama-server's throughput with 4 parallel slots (`-np 4`, ADR 0046). The scheduler and both engines run one sequence at a time.
+Today the gateway reaches well under llama-server's throughput with 4 parallel slots (`-np 4`, ADR 0046, `20261103`). The scheduler and both engines run one sequence at a time.
 
 The owner chose to keep the own dense builder and the KV-layout experiment inside Phase 4. This plan includes every item still open in `docs/m1-open.md`, each either scheduled or parked with a reason.
 
 ## Facts from the read-only checks
 - **Replay (`bench/results/20261114/replay-235b-ram.json`, the real 235B trace).**
-  - At 77 RAM slots with prefetch, the global policies cut disk bytes per token compared with per-layer LRU: gfreq:0.5 reads 164 MB, glru 172 MB, LRU 266 MB. Synchronous misses fall from 47 to 27 MB.
+  - At 77 RAM slots with prefetch, the global policies (gfreq:0.5, glru) cut disk bytes per token and synchronous misses compared with per-layer LRU (`20261114`).
   - That replay ran at only 10 VRAM slots per layer. The point-3 setup is now about 26 slots, so this does not yet show what the global tier gains at the configuration we use (Track B, B0).
 - **`serve` does not fill free VRAM by itself (stated otherwise on 2026-11-14, corrected).**
   - `vram_slot_tiers` (`crates/planner/src/builder.rs`) offers only 8, 16, 32, 64 and 128 slots on the 235B, at about 1.1 GB each.
-  - On a 48 GB card the planner picks at most 16 slots. The measured winner was 26.
+  - On a 48 GB card the planner picks at most 16 slots; the measured winner had more, the about 26 slots we now use (`20261114`).
 - **Poll 50 evidence conflicts.**
-  - ADR 0061's tq4 run (19 threads on a 23 quota) stayed throttled in 82% of periods and decoded 0.80x.
-  - In `20261114` and `20261114b`, poll 50 at 26 threads on a 30.7 quota was throttled 92 to 95% but still won 1.16 to 1.22x, on one host. The default stays unchanged until a paired run settles it.
-- **20261114b per-window tok/s are sampler artifacts** (about 15 tokens over whole seconds). Use only the builder's window JSON.
+  - ADR 0061's tq4 run (19 threads on a 23 quota) stayed throttled and decoded slower (`20261112e`).
+  - In `20261114` and `20261114b`, poll 50 at 26 threads on a 30.7 quota was heavily throttled but still won, on one host. The default stays unchanged until a paired run settles it.
+- **20261114b per-window tok/s are sampler artifacts** (`20261114b`). Use only the builder's window JSON.
 - **The 55 MB routing trace exists only in a driver worktree:** `.claude/worktrees/agent-a0e200fe4acde8ff3/bench/results/20261114/routing-235b-041805.trace.zst`.
 
 ## Step 0: safeguards (coordinator)
@@ -92,18 +94,19 @@ Needed so that streamed MoE serves concurrency 4, and so the 30B can count on th
 Also: document that decode-profile `eval_s` is shared step wall time and `gpu_seconds` a token share (no gate may use per-request `gpu_seconds`).
 
 ### c4 gap on CPU (2026-11-15, `track-c4gap`, ADR 0065 addendum)
-- Most of the 0.60 to 0.65 was the benchmark: c4 reused c1's prompts (llama-server's prompt cache hit, tetraeder's did not: sequences under `SAVE_MIN_TOKENS` 512), and tetraeder was built native-static against llama-server's DL variants. Both fixed in loop-bench.
-- The loop itself costs 0.04 to 0.05 ms between steps; four sequences shared almost every decode step.
+- Most of the 0.60 to 0.65 was the benchmark: c4 reused c1's prompts (llama-server's prompt cache hit, tetraeder's did not: sequences under `SAVE_MIN_TOKENS` 512), and tetraeder was built native-static against llama-server's DL variants. Both fixed in loop-bench. (No session directory yet.)
+- The loop itself costs 0.04 to 0.05 ms between steps; four sequences shared almost every decode step. (No session directory yet.)
 - On CPU, mixed decode-plus-prompt steps now run as separate calls (`LlamaBackend`, `DenseBackend`, `MoeBackend`).
-- Result on an AMX Xeon runner (run 43668812301): `--engine llama` 1.09 (c1) and 1.01 (c4) of llama-server; `--engine dense` 0.70 and 0.56, a kernel gap of the own builder on that CPU (prompt 4.97 against 1.84 ms per token alone; hypothesis: libllama repacks for AMX, the builder does not, ADR 0039).
-- Open, decided on the GPU box: the unified pool (ADR 0065 (a)) costs on CPU against one KV stream per sequence (llama-server's `-np 4` default): 4-sequence decode step 573 against 496 ms on the Xeon, 74 against 61 on another runner. D2 runs `crates/scheduler/tests/step_shapes.rs` on the GPU first; if streams win by more than the band there, ADR 0065's layout decision is revisited before the timed pairs count.
+- Result on an AMX Xeon runner (run 43668812301): `--engine llama` 1.09 (c1) and 1.01 (c4) of llama-server; `--engine dense` 0.70 and 0.56, a kernel gap of the own builder on that CPU (prompt 4.97 against 1.84 ms per token alone; hypothesis: libllama repacks for AMX, the builder does not, ADR 0039). (No session directory yet.)
+- Open, decided on the GPU box: the unified pool (ADR 0065 (a)) costs on CPU against one KV stream per sequence (llama-server's `-np 4` default): 4-sequence decode step 573 against 496 ms on the Xeon, 74 against 61 on another runner. D2 runs `crates/scheduler/tests/step_shapes.rs` on the GPU first; if streams win by more than the band there, ADR 0065's layout decision is revisited before the timed pairs count. (No session directory yet.)
 - Later: dense builder CPU prompt kernels (repack or AMX path); `SAVE_MIN_TOKENS` for short prompts.
 
 ### Point-1 box result (2026-11-15, `bench/results/20261115p1/`, box 60734395, host 79986, EPYC 7702, RTX 4090, quota 30.6, 24 threads)
-- Polling: poll 50 against the auto default (0 on this quota box) 0.85 and 0.95, throttled 0.92 to 0.95 of decode periods against 0.05 to 0.08. With 1.16 to 1.22x on the Zen 4 host (26 threads, quota 30.7), the effect depends on the host class, not on headroom alone. ADR 0061's default is not changed (B3 closed: no rule change).
-- C4 on the 235B: main-overlap 2.83 and 2.71 tok/s against 3.02 and 2.74 on `20261113b` (same profile, other host): no sign of a regression.
-- FP8 KV baseline: llama-server at b12274 aborts (`cache_k_l0 (view)` in CUDA0 cannot run SET_ROWS with f8_e4m3 K and V): the FP8 cache is not usable on CUDA at the baseline pin. Item 9 is parked until a baseline pin where CUDA writes FP8 KV; the builder's `kvq8-slots` ran (2.75 tok/s, 0.97 of main-overlap) but has nothing to pair with.
-- Cost 5.2 USD, 4.3 of it model traffic at 0.029 USD per GB: drivers must rank offers by box plus traffic (`docs/box-driver.md` rule 2).
+Outcome (`20261115p1`):
+- Polling: poll 50 lost against the auto default on this host, while it won on the Zen 4 host (`20261114`), so the effect depends on the host class, not on headroom alone. ADR 0061's default is not changed (B3 closed: no rule change).
+- C4 on the 235B: no sign of a regression against `20261113b` (same profile, other host).
+- FP8 KV baseline: llama-server at b12274 aborts writing f8_e4m3 K and V on CUDA, so the FP8 cache is not usable on CUDA at the baseline pin. Item 9 is parked until a baseline pin where CUDA writes FP8 KV; the builder's `kvq8-slots` ran but has nothing to pair with.
+- Most of the box cost was model traffic: drivers must rank offers by box plus traffic (`docs/box-driver.md` rule 2).
 
 ### Third review (2026-11-15, `2c2a43f..0cf081e`): no correctness bug; follow-ups, CPU only, not blocking D2
 1. MoE whole-step graph cache holds one entry, and the CPU split alternates two shapes (decoders, then a prompt chunk), so mixed CPU steps rebuild the graph each time (`qwen3moe.rs` step reuse): a two-slot cache, or measure the build cost.
@@ -125,49 +128,51 @@ Also: document that decode-profile `eval_s` is shared step wall time and `gpu_se
 
 ### Engine pin b12426: prepared, adoption deferred until after the Phase 4 verdict (2026-11-16)
 - Branch `track-pin-b12426` (d2e8696): patches 0001 to 0003 apply unchanged; 0004 is rebased onto upstream's stream-k `tile_spec` (zeroes `tile_spec`, fills the compact-row maps, zeroes dst rows of -1 slots); no ggml-sys source change; all compile jobs green incl. CUDA.
-- Not adopted now: CPU numerics changed upstream (likely #29810, CPU flash attention V in F32): goldens shift (max 0.34 on the sse42 golden, greedy tokens change on the tiny model), the replan test and speculative near-ties follow, and on Windows batched against single-row differs by 0.315 of 31.48 (1%) in `cpu_batch_invariance_*`, real drift beyond tolerance.
+- Not adopted now: CPU numerics changed upstream (likely #29810, CPU flash attention V in F32): goldens shift (max 0.34 on the sse42 golden, greedy tokens change on the tiny model), the replan test and speculative near-ties follow, and on Windows batched against single-row differs by 0.315 of 31.48 (1%) in `cpu_batch_invariance_*`, real drift beyond tolerance. (No session directory yet.)
 - Why defer: the Phase 4 verdict runs on CUDA, where the CPU change does not matter; the baseline is already b12426, so the verdict compares against the newest llama-server either way; the builders' CUDA parity was validated on b11976 and a pin switch would reset it.
 - To adopt after the verdict: per-OS goldens re-recorded with review, the Windows batch-invariance drift explained or fixed, one GPU session (CUDA parity on the new pin, 0004 GPU tests incl. MMQ/MMF with -1 above 16 tokens). The rebase-weekly workflow already works (failures were the fixed `apply.sh` permission).
 
 ### D2 split into two sessions (2026-11-16)
-Time budget: record-log (5 longest Claude Code tasks, `20261111d`) took 12.8 min and replays 3.8 M prompt tokens, so each reuse-off replay of the 8B is about 13 to 20 min on a 3090 and the TTFT stage about 1 h; with build, gpu-parity, gpu-shapes, prepass, probe, both models' pairs and downloads one session would be about 2 h 45 min, over the 2 h 15 min a 3 h box leaves. So: **D2a** throughput (gates, prepass, probe, pairs for the 8B dense and the 30B MoE), **D2b** TTFT on the 8B (record-log, the reuse on/off pairs, the informative llama-server run). Both on RTX 3090 (baseline built for arch 86; the noise file has 11 sessions), `--min-inet 1000`, RAM checked at SSH, ranked by box plus about 30 GB (D2a) or 10 GB (D2b) of traffic; at SSH `/opt/llama.cpp-baseline` must report fc504f91 or the box is destroyed. Before D2a: the harness gaps (`track-d2-gaps`: rehearsal against the b12426 server, a moe stand-in, batched real-model parity, per-model stop rule). Note for reading the results: the baseline has CUDA MoE kernel work (#32067) the b11976 engine lacks, and gpu-shapes compares against the pinned libllama, not the baseline; if the 30B probe is low while the 8B passes, the deferred pin is the first suspect.
+Time budget: from the record-log timing (5 longest Claude Code tasks, `20261111d`), each reuse-off replay of the 8B is about 13 to 20 min on a 3090 and the TTFT stage about 1 h; with build, gpu-parity, gpu-shapes, prepass, probe, both models' pairs and downloads one session would be about 2 h 45 min, over the 2 h 15 min a 3 h box leaves. So: **D2a** throughput (gates, prepass, probe, pairs for the 8B dense and the 30B MoE), **D2b** TTFT on the 8B (record-log, the reuse on/off pairs, the informative llama-server run). Both on RTX 3090 (baseline built for arch 86; the noise file has 11 sessions), `--min-inet 1000`, RAM checked at SSH, ranked by box plus about 30 GB (D2a) or 10 GB (D2b) of traffic; at SSH `/opt/llama.cpp-baseline` must report fc504f91 or the box is destroyed. Before D2a: the harness gaps (`track-d2-gaps`: rehearsal against the b12426 server, a moe stand-in, batched real-model parity, per-model stop rule). Note for reading the results: the baseline has CUDA MoE kernel work (#32067) the b11976 engine lacks, and gpu-shapes compares against the pinned libllama, not the baseline; if the 30B probe is low while the 8B passes, the deferred pin is the first suspect.
 
 ### D2a rerun result and the c4 gap (2026-11-16, `bench/results/20261116d2a2/`)
-- Parity closed on GPU for both models; c4 misses (8B probe 0.830, 30B pairs 0.845 to 0.853), c1 level. Details in the ADR 0065 addendum of the same date.
-- The dense "slowdown between boxes" was the first box, not the code: on one 3090, dense against libllama per step is 0.99 to 1.03 at both 030d1f3 and HEAD (`dense-regress/table.md`).
+- Parity closed on GPU for both models; c4 misses on both (8B probe, 30B pairs), c1 level (`20261116d2a2`, ADR 0065 addendum of the same date).
+- The dense "slowdown between boxes" was the first box, not the code: on one 3090 dense and libllama are level per step at both 030d1f3 and HEAD (`20261116d2a2`, `dense-regress/table.md`).
 - Next: `track-c4-loop` (our loop at c4, CPU) and `track-pin-ab` (pin against baseline on GPU). If the pin explains the gap, adopting b12426 moves onto the critical path ahead of the verdict, reversing the deferral above; the baseline stays at b12426.
 
 ### Pin A/B: the c4 gap has two parts (2026-11-16, `bench/results/20261116pinab/`, box 60924954, RTX 3090)
-- The pin: llama-server built from b11976 reaches 0.930 (8B) and 0.834 (30B) of b12426 at c4, level at c1; libllama's 4-sequence decode step is 83.4 ms per 8 steps at b11976 against 71.8 at b12426. **Pin adoption moves onto the critical path ahead of the verdict** (reverses the deferral above; `track-pin-adopt`), then one GPU parity session on the new pin.
-- Our loop, against llama-server at the same pin: 8B 0.906, 30B 1.038 (b11976's server has a 0.96 s TTFT on the 30B). The 30B step log shows 36 to 54 ms of host time before every admitting step (the prefix-cache save of the reused idle sequence) and one 400-token prompt admitted per step under the 512 budget (mixed steps 143 to 149 ms against 97 ms for a prompt alone), where llama-server admits a wave in one step. Fixes on `track-c4-loop`: no save at admission while KV room exists, step budget 2048.
+Outcome (`20261116pinab`):
+- The pin: llama-server built from b11976 is slower than b12426 at c4 (level at c1), and so is libllama's 4-sequence decode step. **Pin adoption moves onto the critical path ahead of the verdict** (reverses the deferral above; `track-pin-adopt`), then one GPU parity session on the new pin.
+- Our loop, against llama-server at the same pin: the 8B still loses at c4, the 30B wins. The 30B step log shows host time before every admitting step (the prefix-cache save of the reused idle sequence) and one prompt admitted per step under the 512 budget, where llama-server admits a wave in one step. Fixes on `track-c4-loop`: no save at admission while KV room exists, step budget 2048.
 - Then D2a again on both models.
 
 ### CUDA confirmation on b12426 (2026-11-17, `bench/results/20261116pc/`, box 60983677, RTX 3090, driver 580)
-- Holds: real-model parity (8B and 30B alone controls exactly 0 incl. (0,19), anchored gaps inside the bounds), patch 0004 GPU tests incl. id -1 above 16 tokens, gpu_dense, executor gpu tests. Step shapes: dense 72.8 ms against libllama 71.3 per 8 four-row steps; `decode1x8_resident` 63.3 against 59.0 alone for dense (libllama 59.5 both).
-- Probe against llama-server b12426: 8B c1 0.999, c4 0.986 in the clean round; 30B c1 0.990, c4 0.904 and 0.927 (pass line 0.925).
-- Broken: (1) the dense engine aborts with a CUDA illegal memory access at a fixed point of the c4 workload (4/4 with seed 94), right after 3 to 4 admissions in one pass, i.e. the first step carrying several prompts under the 2048 budget (`track-dense-crash`); (2) `gpu_batched_matches_the_cpu_builder` (MoE fixture) fails at 3x its bound at the new pin (`track-gpu-multiseq`).
-- The remaining c4 loss is the admission save: 41 to 44 ms (8B) and 30 to 33 ms (30B) per reused idle sequence, serialized when several are admitted together (`track-fast-save`). Dense pays about 7% on decode with resident idle sequences, libllama nothing; a follow-up for the dense attention span.
+Outcome (`20261116pc`):
+- Holds: real-model parity (8B and 30B, anchored gaps inside the bounds), patch 0004 GPU tests incl. id -1 above 16 tokens, gpu_dense, executor gpu tests. Step shapes: dense close to libllama.
+- Probe against llama-server b12426: 8B level at c1 and c4; 30B level at c1, c4 one round under and one over the pass line 0.925.
+- Broken: (1) the dense engine aborts with a CUDA illegal memory access at a fixed point of the c4 workload, right after several admissions in one pass, i.e. the first step carrying several prompts under the 2048 budget (`track-dense-crash`); (2) `gpu_batched_matches_the_cpu_builder` (MoE fixture) fails its bound at the new pin (`track-gpu-multiseq`).
+- The remaining c4 loss is the admission save per reused idle sequence, serialized when several are admitted together (`track-fast-save`). Dense pays on decode with resident idle sequences, libllama nothing; a follow-up for the dense attention span.
 - Next box after these three: GPU confirmation of the fixes, then D2a on both models (pairs only for a model whose probe c4 reaches 0.925).
 
 ### D2a throughput passes, provisional (2026-11-17, `bench/results/20261117d/`, box 61046208, RTX 3090, driver 595)
-- Confirmation first (`20261117c`, box 61042290): the dense crash workload is clean 4/4 (it crashed 4/4 before the mask padding); the gpu_multi_seq shift is one router near-tie (ADR 0071). The pinned-staging save alone did not get faster: the save is bound by page faults on the fresh snapshot (ADR 0074 addendum).
-- D2a at `99988e3` (`track-save-thp`, huge pages on the snapshot; not on main), `PROBE_MIN=0.925`: probes 8B c1 1.045, c4 1.042; 30B c1 1.023, c4 0.976. Pairs, all clean: 8B c4 1.070 and 1.052, c1 1.011 and 1.011; 30B c4 0.998 and 0.999, c1 1.006 and 1.011. Both per-model passes true; `phase4_pass` null (no TTFT in D2a). Same workload and N as `20261116d2a2`; the libllama control moved with the own builder (30B 259 to 294 tok/s at c4), so most of the gain is the pin and the step budget.
-- Not the verdict of record: the 8B server probe on the same box had admission saves of 104 ms to 2.0 s (10 of 12) with huge-page advice, against 43 to 49 ms without, while the pairs show no stall (8B c4 TTFT max 0.44 s). The verdict of record is a full `phase4_box.sh` session (pairs and TTFT) on the commit that merges, once the save stays off the admission path (`track-save-pool`).
+- Confirmation first (`20261117c`, box 61042290): the dense crash workload is clean after the mask padding; the gpu_multi_seq shift is one router near-tie (ADR 0071). The pinned-staging save alone did not get faster: the save is bound by page faults on the fresh snapshot (ADR 0074).
+- D2a at `99988e3` (`track-save-thp`, huge pages on the snapshot; not on main), `PROBE_MIN=0.925`: probes and pairs pass on both models, all pairs clean; `phase4_pass` null (no TTFT in D2a). The libllama control moved with the own builder, so most of the gain is the pin and the step budget (`20261117d`).
+- Not the verdict of record: the 8B server probe on the same box stalled admission saves with huge-page advice, while the pairs show no stall (`20261117d`). The verdict of record is a full `phase4_box.sh` session (pairs and TTFT) on the commit that merges, once the save stays off the admission path (`track-save-pool`).
 
 ### D2a verdict of record (2026-11-17, `bench/results/20261117k/`, box 61097370)
-- Both models pass on main 6b07795: worst pairs 8B c4 1.021, c1 0.995; 30B c4 0.943, c1 0.989 (line 0.925). The way there: huge-page advice on the save path stalled admissions (`20261117d`, `h`), so the pool prepares plain spares off the admission path; the dense backend now reports its row size; the throttle rule judges BoardLimit and Reliability by a 1 Hz sampler under load (ADR 0065); `20261117e` and `g` stay null.
-- D2b (`20261117l`): prefix reuse cuts the 8B's TTFT on the Claude Code replay to 0.20 to 0.22 of reuse off (median) and 0.32 to 0.35 (p90). Phase 4's exit test passes (ADR 0065 addendum); Phase 5 is next.
+- Both models pass on main 6b07795 (line 0.925; `20261117k`). The way there: huge-page advice on the save path stalled admissions (`20261117d`, `h`), so the pool prepares plain spares off the admission path; the dense backend now reports its row size; the throttle rule judges BoardLimit and Reliability by a 1 Hz sampler under load (ADR 0065); `20261117e` and `g` stay null.
+- D2b (`20261117l`): prefix reuse cuts the 8B's median and p90 TTFT on the Claude Code replay well below reuse off. Phase 4's exit test passes (ADR 0065 addendum); Phase 5 is next.
 
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
-- Candidate pair (owner, 2026-11-18): `nvidia/Qwen3.5-4B-Qwen3.8-27B-Draft`, a full 4.2B draft model sharing Qwen3.8-27B's tokenizer (248,320 tokens); its card claims 5.58 tokens accepted per target step on SPEED-Bench (block 16) against 3.81 for the target's MTP head. BF16 safetensors only, NVIDIA Open Model Agreement (fine for benchmarks). Both at about 4 bits fit one RTX 3090 (about 16 plus 2.5 GB).
+- Candidate pair (owner, 2026-11-18): `nvidia/Qwen3.5-4B-Qwen3.8-27B-Draft`, a full 4.2B draft model sharing Qwen3.8-27B's tokenizer (248,320 tokens); its card claims 5.58 tokens accepted per target step on SPEED-Bench (block 16) against 3.81 for the target's MTP head. BF16 safetensors only, NVIDIA Open Model Agreement (fine for benchmarks). Both at about 4 bits fit one RTX 3090 (about 16 plus 2.5 GB). (No session directory yet.)
 - First check, before any box: whether libllama at the pin (b12426) converts and loads Qwen3.8 and the draft (architecture, likely hybrid attention, which our own Qwen3 builders do not cover), and that the converted GGUFs keep identical tokenizers. Then a libllama-engine stage: draft on and off, same prompts, tokens per step and tg tok/s.
 
 ## Track B: decode levers (parallel, off the critical path)
 - **B0. Offline replay at the configuration we use (coordinator, local, no box).**
   - Rerun the replay from the saved trace at about 26 VRAM slots, for policies lru, freq, glru and gfreq, plus the hot-set refresh, and compare synchronous miss bytes over the first four 16-token windows.
   - The result decides B1 against the never-run `REFRESH_HOT` arm.
-- **B0 result (2026-11-14, ADR 0050 addendum): B1 is not built.** At 26 VRAM slots the best pool across layers reads 0.54 (all tokens) and 0.63 (first 64) of the best per-layer policy, short of ADR 0050's halving threshold; about 2 ms per token of synchronous reads is left. The VRAM hot-set arm (`main-overlap-poll0-hot`) goes on box D1 instead.
+- **B0 result (2026-11-14, ADR 0050 addendum): B1 is not built.** At 26 VRAM slots the best pool across layers falls short of ADR 0050's halving threshold against the best per-layer policy, and little synchronous read time per token is left (`replay-20261114-v26`). The VRAM hot-set arm (`main-overlap-poll0-hot`) goes on box D1 instead.
 - **B1 (not built). Global RAM tier, only if B0 shows at least 10% fewer synchronous misses at 26 slots.**
   - The coordinator writes the ADR 0050 (c) addendum; it is design work. A global pool changes the planner's RAM budget, the plan IR and the "memory never exceeded" property.
   - Then Sonnet ports `GlobalSlots` (`crates/memory/src/slots.rs`) and the gfreq and glru policies (`crates/memory/src/replay/sim.rs`).
@@ -224,7 +229,7 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
    - the poll 0/50 pair;
    - the ADR 0054 arms;
    - FP8 `llamacpp-cache` against the builder;
-   - the planner's own fill tier, last (it may OOM): 35 slots (38.4e9 B) by its estimate on a 49,140 MiB (51.5e9 B) card. Measured besides slots: 13.9e9 B at the exit run's ubatch 2048 (40,852 MiB peak with 28.97e9 B of slots), which matches the planner formula at ubatch 2048, so 35 slots fit only at ubatch 256 (estimate 50.5e9 B); candidates are fit-checked per ubatch (`builder.rs`), so serve would pick 35 slots at ubatch 256. Record its peak and prefill rate (the harness's 22.5 GB reserve gives 26 slots at any ubatch);
+   - the planner's own fill tier, last (it may OOM): 35 slots (38.4e9 B) by its estimate on a 49,140 MiB (51.5e9 B) card. The memory measured besides slots at the exit run's ubatch 2048 (`20261114`) matches the planner formula at ubatch 2048, so 35 slots fit only at ubatch 256 (estimate 50.5e9 B); candidates are fit-checked per ubatch (`builder.rs`), so serve would pick 35 slots at ubatch 256. Record its peak and prefill rate (the harness's 22.5 GB reserve gives 26 slots at any ubatch);
    - trace.
    - Host 60400 or a second qualifying host, to widen point 3's scope.
 5. C4 on the C6 layout.
@@ -235,7 +240,7 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
    - the spec rerun;
    - `serve --plan` part B.
 
-**Budget:** "at most two boxes" probably won't hold. Phase 4 likely needs a D3 confirmation box (about $3). The total is about $8 to $10 of the $19.66.
+**Budget:** "at most two boxes" probably won't hold. Phase 4 likely needs a D3 confirmation box (about $3). The total is about $8 to $10 of the $19.66. (No session directory yet.)
 
 The coordinator reviews every diff, consult Fable at C1 and before each box, and drivers pick machines by `docs/box-driver.md` without asking the owner.
 

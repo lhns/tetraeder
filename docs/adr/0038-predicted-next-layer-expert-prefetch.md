@@ -1,14 +1,16 @@
 # 0038. Predicted next-layer expert prefetch into the RAM tier
 
-Status: Accepted (Phase 2, measured 2026-11-02, see Results). Extends ADR 0035; does not change it.
+Status: Accepted (Phase 2). Measured 2026-11-02 (`20261102`): prediction passes the accuracy gate and decode gains; default on since 2026-11-03 (`20261103`). Extends ADR 0035; does not change it.
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
-The Phase 2 exit run (ADR 0037, bench/results/20261102/exit-main-120520.json, Qwen3-235B-A22B Q4_K_M, RTX 3090, 91.6 GB box) decodes at 2.26 tok/s after a 32K prefill, 0.84x llama.cpp `-ot` (2.69). Per token: 442 ms = compute 225 (GPU attention plus the CPU groups) + streamer 206 (disk reads 141 at 5.3 GB/s for 742 MB, plus the copy from the bounce buffer into the RAM slots) + alloc 8. Every layer step has at least one CPU expert (full-hit rate 0), the RAM tier hits 90%.
+The Phase 2 exit run (ADR 0037, `20261102`, Qwen3-235B-A22B Q4_K_M, RTX 3090) decodes below llama.cpp `-ot` after a 32K prefill. Per token the time splits about evenly between compute (GPU attention plus the CPU groups) and the streamer (disk reads plus the copy from the bounce buffer into the RAM slots). Every layer step has at least one CPU expert, and the RAM tier hits most lookups.
 
 The reads cannot overlap with compute without a prediction. Segment L computes CPU group L-1, attention L and router L, so layer L's experts are known only after segment L, and group L must finish before attention L+1. The reads for layer L's misses sit strictly between segment L and segment L+1. Moving them off the critical path needs a guess of layer L+1's experts before segment L+1 starts.
 
-The bar is the best tuned baseline at 32K (plan.md, Phase 2 exit): llama.cpp `-ot` with the same expert VRAM (at depth 0: 3.16 tok/s against 2.60 for all experts on the CPU), so about 300 ms per token. Hiding a fraction A of the 206 ms streamer time gets there at A of about 0.7.
+The bar is the best tuned baseline at 32K (plan.md, Phase 2 exit): llama.cpp `-ot` with the same expert VRAM. Reaching it needs most of the streamer time hidden (`20261102`).
 
 ## Decision
 
@@ -38,21 +40,9 @@ Built behind `LoadOptions::prefetch` (default off); tests in `tests/prefetch.rs`
 
 ## Results
 
-Box 58872072 (RTX 3090, container limit 91.7 GB, 5 threads from the CPU quota, disk 3.1 GB/s), bench/results/20261102/*-203803.json and eq-*.json. Qwen3-235B-A22B Q4_K_M, 32K prefill, 64 decode tokens, op offload on, prefetch off and on in the same session:
+Paired off and on in one session on one box, 32K prefill (`20261102`): prediction accuracy is well above the gate in decode and prefill, decode and prefill gain, and greedy tokens are equal with prefetch off and on in every same-conditions pair. Most of the read still waits, likely because the reader thread competes with ggml's spinning CPU threads under a tight CPU quota.
 
-| | off | on |
-|---|---|---|
-| prefill tok/s | 57.1 | 60.6 |
-| decode tok/s | 2.19 | 2.38 (+8.4%) |
-| decode ms per token: compute, streamer | 197, 248 | 185, 225 |
-| prediction accuracy (decode, prefill) | | 0.85, 0.88 |
-| prefetch read time hidden behind compute (decode, prefill) | | 29%, 48% |
-
-On the 30B (moe_check, `slots32_ram32_cpupolicy_prefetch`): accuracy 0.89, warm decode 38.3 to 39.7 tok/s.
-
-Output: greedy tokens are equal with prefetch off and on in every same-conditions pair (8, 2048, 8192 and 32768 token prefills, op offload off and on). The first 32K run on the box (`main`, off) differed from all later 32K runs, off and on alike, and equals the previous box's first run: a first-run effect unrelated to prefetch, open.
-
-Decision: accepted, the gate (accuracy at least 0.6) holds. Most of the read still waits: the step waits for 71% of the decode prefetch time, likely because the reader thread competes with ggml's spinning CPU threads for a 5.8-core quota. Next levers: a lower ggml thread count while a prefetch is in flight, and reading two layers ahead. Default stays off until prediction runs only where it can prefetch (today it also adds its graph nodes and readback under `MissPolicy::Upload`).
+Decision: accepted, the gate (accuracy at least 0.6) holds. Next levers: a lower ggml thread count while a prefetch is in flight, and reading two layers ahead. Default stays off until prediction runs only where it can prefetch (today it also adds its graph nodes and readback under `MissPolicy::Upload`).
 
 ## Levers (2026-11-03)
 
@@ -68,17 +58,17 @@ All off by default; measured later in one box session.
 
 ## Correction and default on (2026-11-03)
 
-- **No first-run divergence.** Only one run ever produced `[4370, 69415, ...]`: box 58813464 (`exit-main-120520`). Every 32K run on box 58872072, its first included, gave `[7294, 59549, ...]`. The two boxes ran different commits, and `exit_run.sh` built the prompt from the checkout (`cat AGENTS.md docs/adr/*.md`): 87,924 against 98,881 bytes, first difference at byte 78,551 (about token 20K). 8K prefills shared their text and agreed across boxes. The prompt is now frozen in `bench/prompts/exit_prompt.txt` (the 0956ccf text) and its token hash is in every exit JSON. On box 58900330 the frozen prompt gives `[7294, 59549, ...]` again, and libllama with the same token ids gives the same 64 greedy tokens (top-1 margin 12.9, no near-tie).
-- **Default on.** Box 58900330 (RTX 3090, 15 threads, 91.6 GB, bench/results/20261103/exit-main-*-021753.json), 32K, same expert VRAM as llama.cpp's best `-ot` (10.97 GB): decode 2.83 tok/s off, 3.14 on (+11%); prefill 72.2 and 75.8; read time hidden 59% (29% on the 5-thread box). Prediction now runs only where it prefetches (Levers above), so `LoadOptions::prefetch` defaults to true.
+- **No first-run divergence** (`20261102`, `20261103`). The one 32K run that differed from all others came from a box on another commit: `exit_run.sh` built the prompt from the checkout (`cat AGENTS.md docs/adr/*.md`), so the text differed from about token 20K on. The prompt is now frozen in `bench/prompts/exit_prompt.txt` (the 0956ccf text) and its token hash is in every exit JSON; with it the boxes agree, and libllama with the same token ids gives the same greedy tokens.
+- **Default on.** On a 15-thread box at the same expert VRAM as llama.cpp's best `-ot`, prefetch gains in decode and prefill and hides more of its reads than on the 5-thread box (`20261103`). Prediction now runs only where it prefetches (Levers above), so `LoadOptions::prefetch` defaults to true.
 
 ## Reads that hide (2026-11-03, box 58958565)
 
-At a 26-core quota the decode step is 257 ms: compute 112, streamer 128. The streamer reads 414 MB per token by the prefetch reader at 3.2 GB/s, 28% hidden, and 97 MB synchronously; synchronous reads of the same layer steps reach 5.2 GB/s. Per layer the next layer's read (about 4.4 MB) has one segment (about 1.2 ms) to land. Levers, in order of expected gain:
+At a 26-core quota the prefetch reader hides little of its read, and its reads are slower than the synchronous reads of the same layer steps (`20261103`); the next layer's read has one segment to land. Levers, in order of expected gain:
 
-1. **Depth 2, actually on** (implemented above; never measured because the harness ran it with prefetch off). It doubles the window. Expected: the 95 ms wait drops to about 40.
-2. **Reader queue depth** (implemented): the reader's device reads are 1 MiB at queue depth 16 (`IoOptions::chunk_bytes`, new) instead of whole slabs, three requests per expert. Expected: 3.2 to about 5 GB/s.
+1. **Depth 2, actually on** (implemented above; never measured because the harness ran it with prefetch off). It doubles the window.
+2. **Reader queue depth** (implemented): the reader's device reads are 1 MiB at queue depth 16 (`IoOptions::chunk_bytes`, new) instead of whole slabs, three requests per expert.
 3. **Reads start before the layer's own misses** (implemented): `prefetch_ahead` runs right after the layer is planned, not after its synchronous reads. The reader has its own direct files, so both proceed at once. That adds the synchronous read time to the window.
-4. **RAM tier by frequency** (not implemented): the LRU RAM tier hits 93.2% with 77 of 128 slots per layer. Keeping the most-routed experts, as the VRAM hot set does, should cut the misses; measure first from recorded routing, offline. Recorder, replay and threshold: ADR 0050 (c).
-5. **RAM reserve** 8 to 5 GB (not changed): peak RSS was 84.9 of 91.4 GB, so about 3.6% more slots, a small gain.
+4. **RAM tier by frequency** (not implemented): keeping the most-routed experts in the RAM tier, as the VRAM hot set does, should cut the misses of the LRU tier; measure first from recorded routing, offline. Recorder, replay and threshold: ADR 0050 (c).
+5. **RAM reserve** 8 to 5 GB (not changed): a few percent more slots, a small gain.
 
-Together, 1 to 3 should bring the streamer near the synchronous misses alone: about 150 to 170 ms per token, or 6 to 6.7 tok/s, against KTransformers' 5.04 on the same box. They are measured when boxes are allowed again.
+Together, 1 to 3 should bring the streamer near the synchronous misses alone. They are measured when boxes are allowed again.
