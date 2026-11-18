@@ -29,6 +29,13 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 - A save still falls back to a plain allocation when every spare is in use.
 - Rejected: huge-page advice on the admission path (branch `track-save-thp`, never merged) and on by default in the preparer.
 
+## Decision: no save of what the live hit keeps (2026-11-18, before the change)
+
+- Why: on the Claude Code replay nearly every admission reuses the idle sequence of its own conversation in place (source `live`), and the scheduler first snapshots the whole sequence to RAM, 2 to 5 GB at those lengths, to keep only the few hundred tokens the new request cuts off. That save is most of the TTFT gap to llama-server; without it a hit costs what llama-server's does (`ttft-20261118`).
+- Rule: before reusing an idle sequence in place, save it only when recomputing the cut tail would cost more than the save: cut rows times the prefill cost per row above the sequence's rows times the save cost per row. Until both costs are measured per model, the rule is: save only when the cut is more than a quarter of the sequence (prefill about 0.36 ms per token against a save of about 0.06 ms per token on the 8B; the quarter is the ratio rounded up). A sequence evicted for another conversation is still saved as before.
+- The bar, judged on the same replay as `ttft-20261118` (one box, interleaved with llama-server, two rounds): tetraeder reuse on median and p90 TTFT each at most 1.15x llama-server's, and the sum of `save_ms` at most 10% of the sum of TTFT. The admission log gains the restore time.
+
 ## Open
 
-- The bar was set and met at about 533-token sequences (about 78 MB on the 8B). Claude Code conversations are 15K to 34K tokens, 2 to 5 GB of KV each, and in the TTFT replay prefix hits with a few hundred new tokens still take seconds (`20261117l`). The breakdown session decides the next lever: save when a sequence goes idle, pinned restores, or chunk-shared cache entries; its bar is written here before the change.
+- Request #53 of the replay (a miss) prefills about 3x slower than llama-server (`ttft-20261118`); not yet explained.
+- Long sequences evicted for another conversation still pay a multi-GB save; save at idle (off the admission path), pinned restores or chunk-shared cache entries remain the levers if the replay shows they matter.
