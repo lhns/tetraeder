@@ -34,7 +34,7 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 
 ### Issue order and sync
 
-- Ops are built per (stage, micro-batch) group and issued in GPipe wavefront order: by `stage + micro-batch`, then by stage, keeping the order inside a group (`executor::gpipe_sort`). Stage s issues micro-batch m after m-1 and after stage s-1 issued m and its copy. Issue does not block on GPUs (ADR 0069 "No blocking ranges"), so the streams overlap stage s on micro-batch m with stage s+1 on m-1; the wavefront order keeps the overlap if one range does block on the host.
+- Ops are built per (stage, micro-batch) group and issued in GPipe wavefront order: by `stage + micro-batch`, then later stages first, keeping the order inside a group (`executor::gpipe_sort`; History 2026-11-19). Stage s issues micro-batch m after m-1 and after stage s-1 issued m and its copy, and the copy into stage s for m after stage s issued m-1. Issue does not block on GPUs (ADR 0069 "No blocking ranges"), so the streams overlap stage s on micro-batch m with stage s+1 on m-1; the wavefront order keeps the overlap if one range does block on the host.
 - One sync at the end of the program, of the ranks holding logits (as today). CPU ranks compute synchronously, so CI checks results, not overlap.
 
 ### Memory
@@ -58,7 +58,7 @@ Per rank and step, against one micro-batch per step: M sets of step inputs (the 
 
 - `plan`: `micro_batch_sizes` cuts like `sim.rs`; `from_plan` carries the knob.
 - `kvcache`: `plan_chunks` equals plan-then-commit per chunk and leaves lengths unchanged.
-- `executor`, `cpu`: `gpipe_sort` puts every (stage, micro-batch) once, after (s-1, m) and (s, m-1), keeping group order; a two-rank, three-micro-batch program in that order validates and equals one graph bit for bit; validation refuses one hop tensor shared by two micro-batches and a copy issued before its source range.
+- `executor`, `cpu`: `gpipe_sort` puts every (stage, micro-batch) once, after (s-1, m) and (s, m-1), and (s-1, m) after (s, m-1), keeping group order; a two-rank, three-micro-batch program in that order validates and equals one graph bit for bit; validation refuses one hop tensor shared by two micro-batches and a copy issued before its source range.
 - `model`, `cpu`: a pipelined `layer-2` prefill (M = 2 and 4, and `tp2-pp2`) gives logits bit-equal to the same chunks as serial steps, then greedy decode bit-equal; dense and MoE tiny fixtures. One stage ignores the knob.
 - `model`, `gpu2_pipelined_prefill_matches` (dense, Qwen3-8B, `TETRAEDER_REQUIRE_GPUS` as the other `gpu2_` tests): `layer-2` with M = 4 against M = 1 on the same chunks within `GPU_TOL`, then 16 greedy tokens; `gpu2_moe_pipelined_prefill_matches` the same on the MoE model of `gpu_sharded_moe.rs`.
 - Box confirmation (next 2x session): the two `gpu2_` tests, then `tetraeder bench --engine dense|moe --plan layer2.toml -p 2048 -n 0 --ubatch 512` with `prefill_micro_batches = 1` and `= 4`, paired with llama.cpp `-sm layer -ub 512` in the same session (ADR 0068 pairing).
@@ -70,3 +70,7 @@ Per rank and step, against one micro-batch per step: M sets of step inputs (the 
 - Batched prefill (several sequences in one step) does not pipeline; splitting a multi-input step across micro-batches is left until serving needs it (the alert shows it).
 - A plan's step graph count and range count per prefill step grow with M; ranges per decode token are unchanged.
 - ADR number: 0077 was the next free number on `main` and `track-p5-power-pp` when written; `track-costmodel-v2` was not pushed then.
+
+## History
+
+- 2026-11-19, amendment "later stages first in a wavefront" (`track-pp-gap`, data from `s2g-20261118-pp`): with the order `(s + m, s)` layer-2 pp2048 at M = 4 ran 0.84 to 0.87 of `-sm layer`. A copy enqueues the destination stream's wait when it is issued (ggml-cuda `cpy_tensor_async`: record on the source stream, `cudaStreamWaitEvent` on the destination stream), so the hop into stage s+1 for m+1, issued before stage s+1's range for m, made that range wait until stage s finished m+1: stage s+1 ran one micro-batch late and the last two after stage s ended, one extra stage time per step. libllama issues per ubatch (stage 0, copy, stage 1) and has no such wait. Decision: inside a wavefront later stages issue first (`(s + m, Reverse(s))`); every other rule above holds. The stage split (planner, head bytes in the decode-balanced objective: 28/20 on the 30B, 25/23 in libllama) is left to the planner.
