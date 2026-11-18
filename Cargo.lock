@@ -2038,6 +2038,7 @@ dependencies = [
  "tetraeder-engine",
  "tetraeder-gateway",
  "tetraeder-ggml-sys",
+ "tetraeder-kvcache",
  "tetraeder-model",
  "tetraeder-plan",
  "tetraeder-planner",

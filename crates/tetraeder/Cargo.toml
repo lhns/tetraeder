@@ -29,6 +29,8 @@ tetraeder-control = { path = "../control" }
 tetraeder-costmodel = { path = "../costmodel" }
 tetraeder-engine = { path = "../engine" }
 tetraeder-executor = { path = "../executor" }
+# The scheduler's FakeKv (`--fake` worker) uses its Chunked layout.
+tetraeder-kvcache = { path = "../kvcache" }
 tetraeder-model = { path = "../model" }
 tetraeder-plan = { path = "../plan" }
 tetraeder-gateway = { path = "../gateway" }
