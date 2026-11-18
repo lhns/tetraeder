@@ -55,3 +55,7 @@ Outputs: `bench/results/<date>/kv-layout/sim.json` (`{workload, pool_rows: {chun
 - y_mask is read at the common pool, chunked's minimal one. The definition above does not fix the pool, but its concern is that scattered blocks make n_kv follow the pool's high-water mark, which is a comparison at one pool size; at its own smaller pool paged's n_kv is capped by the pool, so the memory saving would count a second time, in Y as well as in X. Read that way it is above Y.
 - Outcome 4: **chunked**, no patch. C4 and C5 use chunked (`--kv-layout` default `chunked`); paged stays in `kvcache` for the simulator and tests.
 - The timings ran on a slow, loaded dev machine; a faster kernel makes gather overhead relatively larger, so the y values likely understate the cost on real hardware. The verdict does not depend on them being exact (all exceed Y). Revisit only if a later workload needs more than about 1.5x the sequences per VRAM that chunked gives.
+
+## History
+
+- 2026-11-18: a lone request whose contiguous run cannot grow where it lies (rows after it taken, a move cannot overlap the old run) no longer fails although the pool has room: admission frees its own idle prefix (saved to RAM) and places it again from row 0, and a lone growing sequence is requeued instead of ending with `Length`. Decision unchanged; cost one snapshot and restore, or a re-prefill when `--cache-ram` cannot hold the prefix. Compaction (moving a run down over itself) would avoid that and is left open. Found in `20261117l`.

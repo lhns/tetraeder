@@ -10,6 +10,10 @@ pub enum GatewayError {
     /// Malformed or unsupported request (400).
     #[error("{0}")]
     InvalidRequest(String),
+    /// The prompt does not fit the model's context or the engine's KV cache (400; OpenAI code
+    /// `context_length_exceeded`). The message starts with Anthropic's wording for this error.
+    #[error("prompt is too long: {0}")]
+    ContextExceeded(String),
     /// Unknown model or route (404).
     #[error("{0}")]
     NotFound(String),
@@ -25,7 +29,7 @@ impl GatewayError {
     /// Value of the `error.type` metric and span attribute.
     pub fn otel_type(&self) -> &'static str {
         match self {
-            GatewayError::InvalidRequest(_) => "invalid_request",
+            GatewayError::InvalidRequest(_) | GatewayError::ContextExceeded(_) => "invalid_request",
             GatewayError::NotFound(_) => "not_found",
             GatewayError::Overloaded { .. } => "overloaded",
             GatewayError::Internal(_) => "internal",
@@ -43,6 +47,9 @@ impl GatewayError {
     pub fn openai_body(&self) -> serde_json::Value {
         let (ty, code) = match self {
             GatewayError::InvalidRequest(_) => ("invalid_request_error", None),
+            GatewayError::ContextExceeded(_) => {
+                ("invalid_request_error", Some("context_length_exceeded"))
+            }
             GatewayError::NotFound(_) => ("invalid_request_error", Some("model_not_found")),
             GatewayError::Overloaded { .. } => ("rate_limit_error", Some("rate_limit_exceeded")),
             GatewayError::Internal(_) => ("server_error", None),
@@ -52,7 +59,9 @@ impl GatewayError {
 
     pub fn openai_status(&self) -> StatusCode {
         match self {
-            GatewayError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+            GatewayError::InvalidRequest(_) | GatewayError::ContextExceeded(_) => {
+                StatusCode::BAD_REQUEST
+            }
             GatewayError::NotFound(_) => StatusCode::NOT_FOUND,
             GatewayError::Overloaded { .. } => StatusCode::TOO_MANY_REQUESTS,
             GatewayError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -62,7 +71,9 @@ impl GatewayError {
     /// Anthropic error type: `invalid_request_error`, `not_found_error`, ...
     pub fn anthropic_type(&self) -> &'static str {
         match self {
-            GatewayError::InvalidRequest(_) => "invalid_request_error",
+            GatewayError::InvalidRequest(_) | GatewayError::ContextExceeded(_) => {
+                "invalid_request_error"
+            }
             GatewayError::NotFound(_) => "not_found_error",
             GatewayError::Overloaded { .. } => "overloaded_error",
             GatewayError::Internal(_) => "api_error",
@@ -80,7 +91,9 @@ impl GatewayError {
 
     pub fn anthropic_status(&self) -> StatusCode {
         match self {
-            GatewayError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+            GatewayError::InvalidRequest(_) | GatewayError::ContextExceeded(_) => {
+                StatusCode::BAD_REQUEST
+            }
             GatewayError::NotFound(_) => StatusCode::NOT_FOUND,
             // 529 is Anthropic's "overloaded" status.
             GatewayError::Overloaded { .. } => {

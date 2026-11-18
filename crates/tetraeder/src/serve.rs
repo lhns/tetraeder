@@ -69,8 +69,8 @@ pub struct ServeArgs {
     pub top_k: u32,
     #[arg(long, default_value_t = 0.95)]
     pub top_p: f32,
-    /// Requests decoded together (sequences in the KV cache). The MoE builder serves one until it
-    /// has a multi-sequence KV cache; `--plan` serves one.
+    /// Requests decoded together (sequences in the KV cache, all builders); `--plan` with the
+    /// replanner serves one.
     #[arg(long, default_value_t = tetraeder_scheduler::PARALLEL as u32, value_parser = clap::value_parser!(u32).range(1..))]
     pub parallel: u32,
     /// Tokens per step over all sequences: decoding sequences take theirs, the rest goes to

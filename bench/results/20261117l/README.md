@@ -7,7 +7,7 @@
 ## Findings
 
 - Prefix hits with a few hundred new tokens still take seconds with reuse on (request #55: 23,684 prompt tokens, 23,492 cached, 192 new, TTFT 4.1 s); the 83 hits have a median of 1.15 s and a p90 of 2.7 s. Misses are about 1 s slower with reuse on than off (#53: 8.2 against 7.2 s). Prompts: median 17.6K, max 33.7K tokens; at about 147 KB per token (8B) a conversation is 2 to 5 GB of KV.
-- The 10 requests excluded as "status mismatch" were HTTP 500s in the recording (logged 500, 200 on replay): a 33,586-token prompt rejected with "does not fit the KV cache", retried by Claude Code (under diagnosis, `track-kv-full`).
+- The 10 requests excluded as "status mismatch" were HTTP 500s in the recording (logged 500, 200 on replay): a 33,586-token prompt rejected with "does not fit the KV cache", retried by Claude Code (cause: KV run fragmentation in the MoE builder, fixed with a 400 for real overflows, ADR 0067 History 2026-11-18).
 
 ## From docs/m2-plan.md, section "D2a verdict of record" (moved verbatim)
 

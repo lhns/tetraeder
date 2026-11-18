@@ -66,6 +66,8 @@ pub struct FakeEngine {
     pub reject: Option<EngineError>,
     /// Send `GenEvent::Error` after this many tokens.
     pub fail_after: Option<usize>,
+    /// End every generation with `GenEvent::ContextExceeded` before any token.
+    pub context_exceeded: bool,
     /// Stats the engine reports besides token counts.
     pub gpu_seconds: Option<f64>,
     pub bytes_streamed: Option<u64>,
@@ -111,6 +113,7 @@ impl FakeEngine {
             channel_capacity: 4,
             reject: None,
             fail_after: None,
+            context_exceeded: false,
             gpu_seconds: Some(0.5),
             bytes_streamed: Some(1024),
             cancelled: Arc::default(),
@@ -195,6 +198,11 @@ impl Engine for FakeEngine {
         self.started.fetch_add(1, Ordering::SeqCst);
         let script = self.encode(&(self.script)(&prompt));
         let (tx, rx) = mpsc::channel(self.channel_capacity.max(1));
+        if self.context_exceeded {
+            let msg = format!("a prompt of {} tokens does not fit", req.prompt.len());
+            let _ = tx.try_send(GenEvent::ContextExceeded(msg));
+            return Ok(rx);
+        }
         let delay = self.token_delay;
         let fail_after = self.fail_after;
         let cancelled = Arc::clone(&self.cancelled);

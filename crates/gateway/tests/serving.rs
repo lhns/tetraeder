@@ -40,8 +40,28 @@ async fn prompt_filling_the_context_is_rejected() {
     e.set_context_length(chatml_user_tokens("hi") as u32);
     let (app, _) = app(e);
     let body = json!({"model": "fake", "messages": user("hi"), "max_tokens": 1});
-    let (s, _, _) = post(&app, "/v1/chat/completions", &body, false).await;
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
     assert_eq!(s, 400);
+    assert_eq!(v["error"]["code"], "context_length_exceeded", "{v}");
+}
+
+/// A prompt the engine cannot fit (context or KV cache) is the client's error: retrying the same
+/// request cannot help, so it is 400, not 500 (session 20261117l retried one ten times).
+#[tokio::test]
+async fn a_prompt_the_engine_cannot_fit_is_a_client_error() {
+    let mut e = FakeEngine::fixed("x");
+    e.context_exceeded = true;
+    let (app, _) = app(e);
+    let body = json!({"model": "fake", "messages": user("hi"), "max_tokens": 5});
+    let (s, _, v) = post(&app, "/v1/messages", &body, true).await;
+    assert_eq!(s, 400, "{v}");
+    assert_eq!(v["error"]["type"], "invalid_request_error", "{v}");
+    let msg = v["error"]["message"].as_str().unwrap_or_default();
+    assert!(msg.starts_with("prompt is too long"), "{v}");
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 400, "{v}");
+    assert_eq!(v["error"]["type"], "invalid_request_error", "{v}");
+    assert_eq!(v["error"]["code"], "context_length_exceeded", "{v}");
 }
 
 #[tokio::test]

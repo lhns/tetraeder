@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use tetraeder_kvcache::{Chunked, Layout};
 use tetraeder_scheduler::{BackendError, BatchBackend, Outputs, SeqId, SeqInput};
 
 /// FNV-1a over the tokens.
@@ -81,6 +82,9 @@ pub struct FakeKv {
     /// Sequences that held rows when the backend restarted and were not freed or refilled since;
     /// using one fails, as in `RemoteBackend`.
     lost: HashSet<u32>,
+    /// Set by [`FakeKv::with_chunked`]: reservations must also fit one contiguous run per
+    /// sequence, as in the MoE and dense builders' pool (ADR 0067).
+    layout: Option<Chunked>,
     decodes: u32,
     pool: Vec<Option<i32>>,
     free_rows: Vec<usize>,
@@ -102,6 +106,7 @@ impl FakeKv {
             shrink_to_multiple: None,
             fail_cp_cancelling: None,
             lost: HashSet::new(),
+            layout: None,
             decodes: 0,
             pool: vec![None; capacity],
             free_rows: (0..capacity).rev().collect(),
@@ -134,6 +139,37 @@ impl FakeKv {
     pub fn with_shrink_on_rm(mut self, multiple: Option<usize>) -> Self {
         self.shrink_to_multiple = multiple;
         self
+    }
+
+    /// Reservations also need a contiguous run per sequence in a [`Chunked`] layout of the
+    /// pool, so a pool with enough free rows can still refuse one (fragmentation).
+    pub fn with_chunked(mut self) -> Self {
+        self.layout = Some(Chunked::new(self.capacity));
+        self
+    }
+
+    /// Reserves `n` rows for `seq` in the contiguous layout, if there is one.
+    fn layout_reserve(&mut self, seq: SeqId, n: usize) -> Result<(), BackendError> {
+        let Some(l) = self.layout.as_mut() else {
+            return Ok(());
+        };
+        let have = l.reserved(seq);
+        match l.reserve(seq, n) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(BackendError::KvFull {
+                seq,
+                needed: n.saturating_sub(have),
+                free: l.free(),
+            }),
+        }
+    }
+
+    /// Shrinks the layout's run of sequence `i` to the rows it reserves.
+    fn layout_sync(&mut self, i: usize) {
+        let rows = self.seqs[i].rows.len();
+        if let Some(l) = self.layout.as_mut() {
+            l.shrink(i as SeqId, rows);
+        }
     }
 
     /// Reservations see only `rows` rows of the pool.
@@ -187,6 +223,9 @@ impl FakeKv {
         }
         self.pool.fill(None);
         self.free_rows = (0..self.capacity).rev().collect();
+        if self.layout.is_some() {
+            self.layout = Some(Chunked::new(self.capacity));
+        }
     }
 
     fn check_lost(&self, seq: SeqId) -> Result<(), BackendError> {
@@ -276,6 +315,7 @@ impl BatchBackend for FakeKv {
                 free: self.kv_free(),
             });
         }
+        self.layout_reserve(seq, n)?;
         self.grow_rows(i, n);
         Ok(())
     }
@@ -295,6 +335,7 @@ impl BatchBackend for FakeKv {
                 self.free_rows.extend(release);
             }
         }
+        self.layout_sync(i);
         Ok(())
     }
 
@@ -320,6 +361,7 @@ impl BatchBackend for FakeKv {
                 free: self.kv_free(),
             });
         }
+        self.layout_reserve(dst, n)?;
         self.grow_rows(d, n);
         let toks = self.seqs[s].tokens[..n].to_vec();
         for (p, t) in toks.iter().enumerate() {
@@ -373,6 +415,18 @@ impl BatchBackend for FakeKv {
                 free: self.kv_free(),
             });
         }
+        for (k, inp) in inputs.iter().enumerate() {
+            let i = inp.seq as usize;
+            let after = self.seqs[i].tokens.len() + inp.tokens.len();
+            if after > self.seqs[i].rows.len()
+                && let Err(e) = self.layout_reserve(inp.seq, after)
+            {
+                for &j in &seen[..k] {
+                    self.layout_sync(j);
+                }
+                return Err(e);
+            }
+        }
         self.decodes += 1;
         self.probe.decodes.fetch_add(1, Ordering::SeqCst);
         self.probe
@@ -412,6 +466,7 @@ impl BatchBackend for FakeKv {
                 self.cut(i, len, true);
                 let release = self.seqs[i].rows.split_off(res);
                 self.free_rows.extend(release);
+                self.layout_sync(i);
             }
             return Err(BackendError::Failed("injected failure".into()));
         }
@@ -449,6 +504,7 @@ impl BatchBackend for FakeKv {
                 free: self.kv_free(),
             });
         }
+        self.layout_reserve(seq, n)?;
         self.cut(i, 0, true);
         self.grow_rows(i, n);
         for p in 0..n {

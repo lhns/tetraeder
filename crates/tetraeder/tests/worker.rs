@@ -339,7 +339,7 @@ fn generate(s: &Scheduler, prompt: Vec<u32>, max_tokens: u32) -> Outcome {
         match ev {
             GenEvent::Token(t) => tokens.push(t),
             GenEvent::Finished { .. } => end = Some(Ok(())),
-            GenEvent::Error(e) => end = Some(Err(e)),
+            GenEvent::Error(e) | GenEvent::ContextExceeded(e) => end = Some(Err(e)),
         }
     }
     Outcome {
