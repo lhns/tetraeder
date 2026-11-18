@@ -13,7 +13,8 @@ without anchors of its own shape is reported as unanchored, never predicted from
 
 Input files in DIR (ADR 0068 names): anchors-<model>-r<k>.json (rows with plan_id = shape id and layer_limit),
 bench-<model>-<id>-r<k>.json (candidate rows; -aa runs are ignored), layouts/<model>.json (n_layer),
-predict-<model>-<n>x.json (the session's committed prediction, shown for comparison). Standard library only.
+predict-<model>-<n>x.json (the session's committed prediction, shown for comparison). Run cleanliness (ADR 0068) is not
+judged here: every bench-*-r<k>.json counts. Standard library only.
 """
 
 from __future__ import annotations

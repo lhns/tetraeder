@@ -6,15 +6,15 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 
 ## Context
 
-- The S2f rehearsal missed every candidate: committed predictions were off by up to 61% on pp and 21% on tg, on a fit whose own anchor band was 0.486.
-- **The analytic model's structure is wrong in four places.** One FLOP rate prices dense and expert matmuls, though expert matmuls at prefill run several times slower. The head is charged for every prefill row, though the builders compute only the output rows. MoE prefill reads only the top-k share of the experts in the `single` and `tp-2` features, though every expert is read. `single` is priced on the pre-ranks path without step or readback terms, so `c_range` and `c_step` were fitted to zero.
-- **Rates depend on the shape.** The S2f GPUs were power capped at 250 W (s2e: 300 W). Under a cap, a GPU's clock follows how the shape loads it: one GPU running alone is slowed most, and a layer-split stage that idles half the time much less. No set of rates shared across shapes fits `single`, `tp-2` and `layer-2` decode together. Refits over the `single` and `tp-2` anchors missed `layer-2` tg by -22% to +66%, depending on the form, and rates fitted on one host do not carry to another.
-- **The anchors themselves extrapolate.** Per shape and rate, time is linear in the layer count. A line through the L/4 and L/2 medians predicts every full-model `single` and `tp-2` rate on S2f within 2.1%.
+- The S2f rehearsal missed every candidate by more than the 15% line, on a fit whose own anchor band was already far above it.
+- **The analytic model's structure is wrong in four places.** One FLOP rate prices dense and expert matmuls, though expert matmuls at prefill run several times slower. The head is charged for every prefill row, though the builders compute only the output rows. MoE prefill reads only the top-k share of the experts in the `single` and `tp-2` features, though every expert is read. `single` is priced on the pre-ranks path without step or readback terms. The fit also drove `c_range` and `c_step` to zero.
+- **Rates depend on the shape.** The S2f GPUs ran under a power cap (inferred from peak draw and the 0x4 bit; no limit was recorded), and the s2e host under a higher one. Under a cap, a GPU's clock follows how the shape loads it: one GPU running alone is slowed most, and a layer-split stage that idles half the time much less. No set of rates shared across shapes fits `single`, `tp-2` and `layer-2` decode together, whatever form the refits over the `single` and `tp-2` anchors took. Rates fitted on one host do not carry to another.
+- **The anchors themselves extrapolate.** Per shape and rate, time is linear in the layer count. On S2f, a line through the L/4 and L/2 medians predicts every full-model `single` and `tp-2` rate within a few percent.
 - Only `single` and `tp-2` are anchored. `--layer-limit` keeps a prefix of the plan's stages (`features_multi`, `qwen3moe_shard.rs`), so a truncated `layer-2` plan is stage 0 alone. The dense builder rejects a layer limit on more than one stage (`qwen3/ranked.rs`).
 
 ## Decision
 
-1. **Judged prediction.** For each candidate (model, shape) of a case, and for each rate: `T(L') = t_step + L' * t_layer`. It is fitted by least squares on that shape's own anchors from the same session, and evaluated at the model's L: `pp_tps = P / T_pp(L)`, `tg_tps = N / T_tg(L)`. Each line has two parameters. `t_step` is the fixed cost per request part (embedding, head, readback, sync). `t_layer` is the cost of one layer at the clocks, power and collective path the shape actually gets. No parameter is shared across shapes, models or boxes. `tetraeder-plan predict` writes these numbers into the same file, under the same rule: written before the first candidate runs, and hashed.
+1. **Judged prediction.** For each candidate (model, shape) of a case, and for each rate: `T(L') = t_step + L' * t_layer`. It is fitted by least squares on that shape's own anchors from the same session, and evaluated at the model's L: `pp_tps = P / T_pp(L)`, `tg_tps = N / T_tg(L)`. Each line has two parameters. `t_step` is the fixed cost per request part (embedding, head, readback, sync). `t_layer` is the cost of one layer at the clocks, power and collective path the shape actually gets. No parameter is shared across shapes, models or boxes. `tetraeder-plan predict` writes these numbers into the same file, under the same rule: written before the first candidate runs, and hashed. The planner's judged pick (ADR 0068 "Winner") is the candidate with the smallest `T` by these lines; the analytic model's pick is reported beside it.
 2. **Anchor plan.**
    - Every candidate shape of the case is anchored at L/4, L/2 and 3L/4: `single`, `layer-g`, `tp-g`, `ep-g` and `tp2-pp2`. Two rounds, pp2048 and tg128, as now.
    - An anchor at L' runs the candidate's shape planned for a model of L' layers. It is the same enumeration on the layout truncated to L', so spans are re-solved and the head sits on the last stage. Every stage then keeps its share, and so its duty.
@@ -32,13 +32,13 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 5. `MODEL_VERSION` becomes 2 (ADR 0056 ledger).
 
 Not taken:
-- **An analytic power term** (speed `min(1, a / duty)` per GPU). It fits the `single` and `tp-2` anchors within 4 to 7% and misses `layer-2` tg by up to 66%. The cap's time constant would also need a parameter, since layer-2 prefill gains little and decode a lot. Identifying either needs `layer-2` anchors, and with those anchors the lines predict directly.
+- **An analytic power term** (speed `min(1, a / duty)` per GPU). It fits the `single` and `tp-2` anchors closely and still misses `layer-2` tg far outside the band. The cap's time constant would also need a parameter, since layer-2 prefill gains little and decode a lot. Identifying either needs `layer-2` anchors, and with those anchors the lines predict directly.
 - **Shared rates across boxes.** Power limits differ by host.
 
 ## Consequences
 
 - The judged numbers become each shape's measured extrapolation rather than the analytic model's output. The exit test then checks that truncated runs extrapolate and that the pick is right. The analytic model's quality is reported, not judged. Owner question: is that the reading of "predictions within 15%" that Phase 5 wants? Default: yes.
-- **Unverified for `layer-2` and `ep-2` until a box session runs their anchors.** Truncating a `layer-2` plan shortens its stages' busy periods (32B prefill: about 58 ms per stage and ubatch at L/4 against about 230 ms at L). Under a power cap this may favour the truncated runs. The 3L/4 holdout shows whether it does.
+- **Unverified for `layer-2` and `ep-2` until a box session runs their anchors.** Truncating a `layer-2` plan shortens its stages' busy periods, at L/4 to a quarter of the full model's. Under a power cap this may favour the truncated runs. The 3L/4 holdout shows whether it does.
 - Rates never transfer across boxes; the procedure does, and every session refits. Evidence so far covers one box: S2f's `single` and `tp-2`.
 - Anchor runs grow from 16 to about 42 per 2x session (30B: 4 shapes, 32B: 3, times 3 truncations and 2 rounds). That is roughly 10 more minutes of box time.
 - Code needed, not yet built:
