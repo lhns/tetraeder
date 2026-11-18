@@ -1,0 +1,211 @@
+{
+  "devices": [
+    {
+      "id": "cpu0",
+      "kind": "cpu",
+      "name": "AMD EPYC 7402 24-Core Processor",
+      "tier": "ram",
+      "capacity_bytes": 134925803520,
+      "bandwidth_bytes_per_s": {
+        "value": 54308054930.88524,
+        "spread": 0.2660730864478585,
+        "samples": 5,
+        "source": "measured"
+      },
+      "cores": 24,
+      "threads": 48,
+      "numa_nodes": 1
+    },
+    {
+      "id": "disk0",
+      "kind": "disk",
+      "name": "overlay",
+      "tier": "nvme",
+      "capacity_bytes": 85899345920,
+      "mount": "/",
+      "media": "unknown"
+    },
+    {
+      "id": "disk1",
+      "kind": "disk",
+      "name": "/dev/nvme0n1",
+      "tier": "nvme",
+      "capacity_bytes": 1999422152704,
+      "mount": "/etc/hostname",
+      "media": "ssd"
+    },
+    {
+      "id": "disk2",
+      "kind": "disk",
+      "name": "/dev/mapper/ubuntu--vg-ubuntu--lv",
+      "tier": "nvme",
+      "capacity_bytes": 105089261568,
+      "mount": "/usr/bin/nvidia-cuda-mps-control",
+      "media": "unknown"
+    },
+    {
+      "id": "gpu0",
+      "kind": "gpu",
+      "name": "NVIDIA GeForce RTX 3090",
+      "tier": "vram",
+      "capacity_bytes": 25769803776,
+      "bandwidth_bytes_per_s": {
+        "value": 936000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "compute": {
+        "flops_per_s": 71000000000000.0,
+        "c0_graph_s": 5e-6,
+        "c0_eager_s": 0.00002
+      },
+      "pcie": {
+        "gen_current": 4,
+        "width_current": 16,
+        "gen_max": 4,
+        "width_max": 16
+      },
+      "index": 0
+    },
+    {
+      "id": "gpu1",
+      "kind": "gpu",
+      "name": "NVIDIA GeForce RTX 3090",
+      "tier": "vram",
+      "capacity_bytes": 25769803776,
+      "bandwidth_bytes_per_s": {
+        "value": 936000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "compute": {
+        "flops_per_s": 71000000000000.0,
+        "c0_graph_s": 5e-6,
+        "c0_eager_s": 0.00002
+      },
+      "pcie": {
+        "gen_current": 4,
+        "width_current": 16,
+        "gen_max": 4,
+        "width_max": 16
+      },
+      "index": 1
+    }
+  ],
+  "links": [
+    {
+      "id": "storage-disk0",
+      "a": "disk0",
+      "b": "cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "value": 0.001,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 500000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "storage-disk1",
+      "a": "disk1",
+      "b": "cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "value": 0.0001,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 3000000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "storage-disk2",
+      "a": "disk2",
+      "b": "cpu0",
+      "kind": "storage",
+      "alpha_s": {
+        "value": 0.001,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 500000000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "pcie-gpu0",
+      "a": "gpu0",
+      "b": "cpu0",
+      "kind": "pcie",
+      "alpha_s": {
+        "value": 0.00001,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 25203200000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "pcie-gpu1",
+      "a": "gpu1",
+      "b": "cpu0",
+      "kind": "pcie",
+      "alpha_s": {
+        "value": 0.00001,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 25203200000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    },
+    {
+      "id": "staged-gpu0-gpu1",
+      "a": "gpu0",
+      "b": "gpu1",
+      "kind": "host_staged",
+      "alpha_s": {
+        "value": 0.00002,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      },
+      "beta_bytes_per_s": {
+        "value": 25203200000.0,
+        "spread": 0.0,
+        "samples": 0,
+        "source": "prior"
+      }
+    }
+  ],
+  "lane_groups": [],
+  "notes": [
+    "pcie topology: 2 GPUs from NVML but 5 PCI display devices, not matched"
+  ]
+}
