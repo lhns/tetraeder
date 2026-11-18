@@ -19,7 +19,7 @@ use crate::cpu_poll;
 use crate::gguf::{Gguf, GgufError};
 use crate::hparams::names;
 use crate::qwen3moe::{BackendChoice, MemoryUse, ModelError, Result};
-use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans};
+use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans, write_direct};
 use crate::shard::{gather_rows, scatter_rows};
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
@@ -785,9 +785,18 @@ impl Qwen3 {
             )));
         }
         let runs = self.pool.runs(seq, n);
-        let mut rest = bytes;
-        for group in self.kv_groups() {
-            scatter_rows(&group, self.kv_rows(), &runs, &mut rest)?;
+        if let Engine::Sched(e) = &self.engine {
+            let tensors = e.kv.k.iter().chain(&e.kv.v).map(|t| t.get());
+            let spans = row_spans(tensors, self.n_rows, &runs);
+            match &e.readback {
+                Some(rb) => rb.write(&spans, bytes)?,
+                None => write_direct(&spans, bytes)?,
+            }
+        } else {
+            let mut rest = bytes;
+            for group in self.kv_groups() {
+                scatter_rows(&group, self.kv_rows(), &runs, &mut rest)?;
+            }
         }
         if n > 0 {
             self.pool.commit(&[StepInput {

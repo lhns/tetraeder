@@ -2686,6 +2686,15 @@
             "type": "prometheus",
             "uid": "victoriametrics"
           }
+        },
+        {
+          "refId": "E",
+          "expr": "sum(rate(tetraeder_kv_prefix_placed_free_total[$__rate_interval]))",
+          "legendFormat": "placed in a free slot/s (no save)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
         }
       ]
     },

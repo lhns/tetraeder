@@ -52,7 +52,8 @@ fn moe_sched() -> Scheduler {
     let path = p.clone();
     Scheduler::start(SchedulerConfig::new(p), move || {
         let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
-        o.n_ctx = CTX as usize;
+        o.n_ctx = CTX as usize * n_seq;
+        o.n_seq_max = n_seq;
         load_moe(&path, &o)
     })
     .expect("moe scheduler")
@@ -356,6 +357,11 @@ fn llama_with(f: &dyn Fn(&mut SchedulerConfig)) -> Scheduler {
 }
 
 fn moe_with(f: &dyn Fn(&mut SchedulerConfig)) -> Scheduler {
+    moe_seqs(1, f)
+}
+
+/// A MoE scheduler with `n_seq` sequence slots, each of `CTX` rows.
+fn moe_seqs(n_seq: usize, f: &dyn Fn(&mut SchedulerConfig)) -> Scheduler {
     let p = fixture();
     let path = p.clone();
     let mut cfg = SchedulerConfig::new(p);
@@ -547,8 +553,43 @@ fn save_counts(
     (saves, skipped)
 }
 
+/// Requests placed in a free slot by a prefix copy from an idle sequence (ADR 0074).
+fn placed_free_count(
+    mp: &opentelemetry_sdk::metrics::SdkMeterProvider,
+    exp: &opentelemetry_sdk::metrics::InMemoryMetricExporter,
+) -> u64 {
+    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+    mp.force_flush().unwrap();
+    let mut n = 0;
+    for rm in exp.get_finished_metrics().unwrap() {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                if let (
+                    "tetraeder.kv.prefix.placed_free",
+                    AggregatedMetrics::U64(MetricData::Sum(x)),
+                ) = (m.name(), m.data())
+                {
+                    n += x.data_points().map(|dp| dp.value()).sum::<u64>();
+                }
+            }
+        }
+    }
+    n
+}
+
 /// A scheduler reporting to an in-memory exporter, with a cache that saves cuts of 8 rows.
 fn counting_sched() -> (
+    Scheduler,
+    opentelemetry_sdk::metrics::SdkMeterProvider,
+    opentelemetry_sdk::metrics::InMemoryMetricExporter,
+) {
+    counting_sched_seqs(1)
+}
+
+/// [`counting_sched`] with `n_seq` sequence slots.
+fn counting_sched_seqs(
+    n_seq: usize,
+) -> (
     Scheduler,
     opentelemetry_sdk::metrics::SdkMeterProvider,
     opentelemetry_sdk::metrics::InMemoryMetricExporter,
@@ -560,7 +601,7 @@ fn counting_sched() -> (
         .with_reader(PeriodicReader::builder(exp.clone()).build())
         .build();
     let metrics = tetraeder_telemetry::Metrics::new(&mp.meter("test"));
-    let s = moe_with(&|c| {
+    let s = moe_seqs(n_seq, &|c| {
         small_cache(64 * MEG)(c);
         c.cache_save_min = 8;
         c.metrics = Some(metrics.clone());
@@ -648,6 +689,52 @@ fn a_sequence_evicted_for_another_conversation_is_saved() {
     run(&s, &long_prompt(&s, "alpha", 100), 30);
     run(&s, &long_prompt(&s, "zulu", 100), 6);
     assert_eq!(save_counts(&mp, &exp), (1, 0));
+}
+
+/// A new conversation sharing only a small prefix with an idle one goes to a free slot: the
+/// idle sequence is not saved, stays resident and its own continuation is a live hit; the reply
+/// equals a cold run (ADR 0074).
+#[test]
+fn a_new_conversation_takes_a_free_slot_instead_of_saving_the_idle_one() {
+    let (s, mp, exp) = counting_sched_seqs(2);
+    let a = long_prompt(&s, "alpha", 100);
+    let first = run(&s, &a, 30);
+    let mut b = a[..50].to_vec();
+    b.extend(prompt(&s, "something else entirely now"));
+    let out = run(&s, &b, 6);
+    assert!(out.stats.cached_tokens >= 40, "{}", out.stats.cached_tokens);
+    assert_eq!(
+        save_counts(&mp, &exp),
+        (0, 0),
+        "the idle sequence was not saved"
+    );
+    assert_eq!(placed_free_count(&mp, &exp), 1);
+    assert_eq!(out.tokens, run(&moe_with(&small_cache(0)), &b, 6).tokens);
+    // The idle conversation continues from its own rows, no restore.
+    let mut a2 = a.clone();
+    a2.extend(first.tokens.iter().copied());
+    a2.extend(prompt(&s, "and then a question"));
+    let warm = run(&s, &a2, 8);
+    assert!(warm.stats.cached_tokens as usize >= a.len() + 20);
+    assert_eq!(save_counts(&mp, &exp), (0, 0));
+    assert_eq!(placed_free_count(&mp, &exp), 1);
+    assert_eq!(warm.tokens, run(&moe_with(&small_cache(0)), &a2, 8).tokens);
+}
+
+/// With every slot taken, the same request evicts and saves the idle sequence as before.
+#[test]
+fn without_a_free_slot_the_idle_sequence_is_saved() {
+    let (s, mp, exp) = counting_sched_seqs(2);
+    let a = long_prompt(&s, "alpha", 100);
+    run(&s, &a, 6);
+    run(&s, &long_prompt(&s, "zulu", 100), 6);
+    let mut b = a[..50].to_vec();
+    b.extend(prompt(&s, "something else entirely now"));
+    let out = run(&s, &b, 6);
+    assert!(out.stats.cached_tokens >= 40, "{}", out.stats.cached_tokens);
+    assert_eq!(save_counts(&mp, &exp), (1, 0));
+    assert_eq!(placed_free_count(&mp, &exp), 0);
+    assert_eq!(out.tokens, run(&moe_with(&small_cache(0)), &b, 6).tokens);
 }
 
 #[test]

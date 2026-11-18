@@ -311,7 +311,7 @@ impl Backend {
     /// True if `ggml_backend_tensor_set_async` on this backend may write `t`: a CPU backend
     /// copies synchronously into any buffer; another backend needs a device buffer of a type it
     /// supports (CUDA asserts its own device buffer type).
-    pub(crate) fn can_write(&self, t: super::Tensor<'_>) -> bool {
+    pub fn can_write(&self, t: super::Tensor<'_>) -> bool {
         // SAFETY: live tensor and backend; the buffer is checked for null before it is read.
         unsafe {
             let raw = t.raw();

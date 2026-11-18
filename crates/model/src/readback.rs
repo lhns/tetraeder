@@ -29,6 +29,17 @@ pub(crate) fn row_spans<'a>(
     out
 }
 
+/// Writes `bytes`, the spans' contents in order, with one blocking copy each.
+pub(crate) fn write_direct(spans: &[Span<'_>], bytes: &[u8]) -> Result<()> {
+    let mut rest = bytes;
+    for &(t, offset, len) in spans {
+        let (head, tail) = rest.split_at(len);
+        t.set_bytes(head, offset)?;
+        rest = tail;
+    }
+    Ok(())
+}
+
 /// Appends every span to `out` with one blocking copy each.
 pub(crate) fn append_direct(spans: &[Span<'_>], out: &mut Vec<u8>) -> Result<()> {
     for &(t, offset, len) in spans {
@@ -44,6 +55,8 @@ pub(crate) struct Readback {
     pinned: bool,
     /// Device-to-host copies enqueued since load.
     gets: Cell<u64>,
+    /// Host-to-device copies enqueued since load.
+    sets: Cell<u64>,
 }
 
 impl Readback {
@@ -62,6 +75,7 @@ impl Readback {
             half,
             pinned,
             gets: Cell::new(0),
+            sets: Cell::new(0),
         })
     }
 
@@ -79,6 +93,11 @@ impl Readback {
         self.gets.get()
     }
 
+    #[cfg(test)]
+    fn sets(&self) -> u64 {
+        self.sets.get()
+    }
+
     /// Appends every span to `out`, in order. Spans the backend cannot read asynchronously (a
     /// KV tensor in host memory) make the whole read direct, which keeps the order.
     pub(crate) fn read(&self, spans: &[Span<'_>], out: &mut Vec<u8>) -> Result<()> {
@@ -92,6 +111,74 @@ impl Readback {
         // Nothing stays in flight into the staging halves, also after an error.
         self.backend.synchronize();
         r
+    }
+
+    /// Writes `bytes`, the contents of `spans` in order, back to the tensors (a restore). Each
+    /// batch is copied into one staging half and enqueued as async host-to-device copies;
+    /// while it runs, the next batch is copied into the other half. A half is refilled only
+    /// after a synchronize that followed its last enqueue. Spans the backend cannot write
+    /// asynchronously make the whole write direct.
+    pub(crate) fn write(&self, spans: &[Span<'_>], bytes: &[u8]) -> Result<()> {
+        let total: usize = spans.iter().map(|s| s.2).sum();
+        if bytes.len() != total {
+            return Err(crate::qwen3moe::ModelError::Invalid(format!(
+                "a restore of {} bytes for spans of {total}",
+                bytes.len()
+            )));
+        }
+        if !spans.iter().all(|&(t, _, _)| self.backend.can_write(t)) {
+            return write_direct(spans, bytes);
+        }
+        let r = self.pipelined_write(spans, bytes);
+        // Nothing stays in flight from the staging halves, also after an error.
+        self.backend.synchronize();
+        r
+    }
+
+    /// Batch k fills half k % 2 (host copy), then is enqueued. The next batch is filled while k
+    /// copies; the synchronize before enqueuing it frees the half after.
+    fn pipelined_write(&self, spans: &[Span<'_>], bytes: &[u8]) -> Result<()> {
+        let st = self.staging.get();
+        let half = self.half;
+        let mut rest = bytes;
+        let mut pieces = spans
+            .iter()
+            .flat_map(|&(t, offset, len)| {
+                (0..len.div_ceil(half)).map(move |i| {
+                    let at = i * half;
+                    (t, offset + at, half.min(len - at))
+                })
+            })
+            .peekable();
+        let mut cur = 0;
+        // The batch filled but not yet enqueued: (tensor, offset, staging offset, len).
+        let mut batch: Vec<(Tensor<'_>, usize, usize, usize)> = Vec::new();
+        loop {
+            batch.clear();
+            let base = cur * half;
+            let mut fill = 0;
+            while let Some(&(t, offset, len)) = pieces.peek() {
+                if fill + len > half {
+                    break;
+                }
+                let (head, tail) = rest.split_at(len);
+                st.set_bytes(head, base + fill)?;
+                rest = tail;
+                batch.push((t, offset, base + fill, len));
+                fill += len;
+                pieces.next();
+            }
+            // The previous batch (other half) finishes, so the half filled next is free.
+            self.backend.synchronize();
+            if batch.is_empty() {
+                return Ok(());
+            }
+            for &(t, offset, at, len) in &batch {
+                st.copy_to_async(at, &self.backend, t, offset, len)?;
+                self.sets.set(self.sets.get() + 1);
+            }
+            cur ^= 1;
+        }
     }
 
     /// Batch k is enqueued into half k % 2; while it copies, batch k - 1 (landed at the
@@ -197,6 +284,40 @@ mod tests {
         let mut direct = Vec::new();
         append_direct(&spans, &mut direct).unwrap();
         assert_eq!(direct, want);
+    }
+
+    /// hardware: cpu. A restore through the staging halves writes the bytes of the direct
+    /// write, for halves smaller than a row, than a span and larger than everything.
+    #[test]
+    fn staged_write_equals_direct_write() {
+        let cpu = Backend::cpu(1).unwrap();
+        let (_ctx, ts) = tensors(&cpu, 64, &[48, 80, 48]);
+        let runs = [(3, 10), (20, 1), (40, 17)];
+        let spans = row_spans(ts.iter().map(|t| t.get()), 64, &runs);
+        let total: usize = spans.iter().map(|s| s.2).sum();
+        let bytes: Vec<u8> = (0..total).map(|i| (i * 7 + 3) as u8).collect();
+        let dump = || -> Vec<Vec<u8>> {
+            ts.iter()
+                .map(|t| t.get().get_bytes(0, t.get().nbytes()).unwrap())
+                .collect()
+        };
+        let full = dump();
+        write_direct(&spans, &bytes).unwrap();
+        let want = dump();
+        for half in [1, 7, 48, 100, 480, 1 << 20] {
+            for (t, f) in ts.iter().zip(&full) {
+                t.get().set_bytes(f, 0).unwrap();
+            }
+            let rb = Readback::new(&cpu, half).unwrap();
+            rb.write(&spans, &bytes).unwrap();
+            assert!(rb.sets() >= spans.len() as u64, "half {half}");
+            assert_eq!(dump(), want, "half {half}");
+            let mut back = Vec::new();
+            rb.read(&spans, &mut back).unwrap();
+            assert_eq!(back, bytes, "half {half}");
+        }
+        let rb = Readback::new(&cpu, 100).unwrap();
+        assert!(rb.write(&spans, &bytes[1..]).is_err());
     }
 
     /// hardware: cpu. One contiguous run per sequence (the chunked layout, ADR 0067) and halves

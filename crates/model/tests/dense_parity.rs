@@ -373,7 +373,25 @@ fn cpu_staged_snapshot_roundtrip() {
             );
             assert_eq!(m.seq_snapshot(0).unwrap(), direct, "{kv} half {half}");
         }
+        // A restore through the staging halves (ADR 0074) writes the same KV: the snapshot
+        // read back is byte-identical and the next step's logits equal the unrestored run's.
         let next = m.eval_last(&[40]).unwrap();
+        for half in [1, 333, 4096, 1 << 20] {
+            m.set_snapshot_staging(Some(half)).unwrap();
+            m.seq_rm(0, 0).unwrap();
+            m.seq_restore(0, &direct, PROMPT.len()).unwrap();
+            assert_eq!(
+                m.seq_snapshot(0).unwrap(),
+                direct,
+                "{kv} restore half {half}"
+            );
+            assert_eq!(
+                m.eval_last(&[40]).unwrap(),
+                next,
+                "{kv} restore half {half}"
+            );
+        }
+        m.set_snapshot_staging(None).unwrap();
         m.seq_rm(0, 0).unwrap();
         m.seq_restore(0, &direct, PROMPT.len()).unwrap();
         assert_eq!(m.seq_snapshot(0).unwrap(), direct, "{kv} bytes roundtrip");

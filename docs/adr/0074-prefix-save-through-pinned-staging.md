@@ -39,6 +39,7 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 
 - Why: after the live no-save rules the remaining save share is six requests that share only the client's system prompt with the idle conversation; admission placed each in the idle conversation's slot (longest common prefix) and so saved that conversation first, 0.4 to 6.4 s each, although other slots were free (`ttft3-20261118`).
 - Rule: when reusing an idle sequence in place would require a save (the cut is neither small nor only its own output) and a free slot exists, the request goes to the free slot; the common prefix is copied there from the idle sequence on the device when the backend supports a row copy (`seq_cp`), else prefilled; the idle sequence stays resident. With no free slot, admission evicts as before (oldest idle, saved).
+- Implementation: the admission log says `source=copy` for such a placement and the counter `tetraeder.kv.prefix.placed_free` counts it (panel 87). A failed copy falls back to the in-place path with its save. `seq_restore` of the scheduler-path dense and unsharded MoE builders writes through the same 2x8 MiB pair (`Readback::write`: host copy into one half while the async host-to-device copies of the other run); without a GPU it writes directly.
 - Restores from RAM use the pinned staging pair as saves do (the other open lever); judged by the same bar as before, on the same replay.
 
 ## Open
