@@ -160,6 +160,8 @@ Time budget: record-log (5 longest Claude Code tasks, `20261111d`) took 12.8 min
 
 ### Speculative rerun
 One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not an exit test.
+- Candidate pair (owner, 2026-11-18): `nvidia/Qwen3.5-4B-Qwen3.8-27B-Draft`, a full 4.2B draft model sharing Qwen3.8-27B's tokenizer (248,320 tokens); its card claims 5.58 tokens accepted per target step on SPEED-Bench (block 16) against 3.81 for the target's MTP head. BF16 safetensors only, NVIDIA Open Model Agreement (fine for benchmarks). Both at about 4 bits fit one RTX 3090 (about 16 plus 2.5 GB).
+- First check, before any box: whether libllama at the pin (b12426) converts and loads Qwen3.8 and the draft (architecture, likely hybrid attention, which our own Qwen3 builders do not cover), and that the converted GGUFs keep identical tokenizers. Then a libllama-engine stage: draft on and off, same prompts, tokens per step and tg tok/s.
 
 ## Track B: decode levers (parallel, off the critical path)
 - **B0. Offline replay at the configuration we use (coordinator, local, no box).**
