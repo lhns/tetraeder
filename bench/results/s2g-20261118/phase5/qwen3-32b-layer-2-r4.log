@@ -1,0 +1,2 @@
+hardware: pcie topology: 2 GPUs from NVML but 9 PCI display devices, not matched
+steps 258 mean 34.82 ms p95 25.49 ms

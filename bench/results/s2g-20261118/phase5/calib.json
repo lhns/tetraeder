@@ -1,0 +1,428 @@
+{
+  "cost_model_version": 2,
+  "anchors": [
+    "Qwen3 30B Gptq Fp16/single/L12",
+    "Qwen3 30B Gptq Fp16/single/L24",
+    "Qwen3 30B Gptq Fp16/tp-2/L12",
+    "Qwen3 30B Gptq Fp16/tp-2/L24",
+    "Qwen3 32B Awq Compatible Instruct/single/L16",
+    "Qwen3 32B Awq Compatible Instruct/single/L32",
+    "Qwen3 32B Awq Compatible Instruct/tp-2/L16",
+    "Qwen3 32B Awq Compatible Instruct/tp-2/L32"
+  ],
+  "band": 0.10834621204170958,
+  "residuals": [
+    [
+      "Qwen3 30B Gptq Fp16/single/L12:pp",
+      -0.014144764757272664
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/single/L12:tg",
+      -0.007047253994586013
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/single/L24:pp",
+      -0.06183936190284472
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/single/L24:tg",
+      0.013201852871054852
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/tp-2/L12:pp",
+      0.10286900525945417
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/tp-2/L12:tg",
+      0.004916570816922465
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/tp-2/L24:pp",
+      0.04184261151954195
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/tp-2/L24:tg",
+      -0.018649998582154454
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/single/L16:pp",
+      -0.035398056112137415
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/single/L16:tg",
+      -0.007106665276663977
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/single/L32:pp",
+      -0.01165036039214844
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/single/L32:tg",
+      0.0040367867624718605
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-2/L16:pp",
+      0.04695034030114546
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-2/L16:tg",
+      0.00612698113648343
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-2/L32:pp",
+      0.051001443289008484
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-2/L32:tg",
+      -0.0008155121048787415
+    ]
+  ],
+  "hw": {
+    "range_costs": {
+      "c_range_graph_s": 1.9772137224675044e-10,
+      "c_range_eager_s": 0.00001,
+      "c_step_s": 0.00012610033903419918,
+      "allreduce_latency_share": 0.4678648903660161
+    },
+    "devices": [
+      {
+        "id": "cpu0",
+        "kind": "cpu",
+        "name": "AMD EPYC 7702 64-Core Processor",
+        "tier": "ram",
+        "capacity_bytes": 270075596800,
+        "bandwidth_bytes_per_s": {
+          "value": 82464279849.99258,
+          "spread": 0.2562810263971479,
+          "samples": 5,
+          "source": "measured"
+        },
+        "cores": 64,
+        "threads": 128,
+        "numa_nodes": 1
+      },
+      {
+        "id": "disk0",
+        "kind": "disk",
+        "name": "overlay",
+        "tier": "nvme",
+        "capacity_bytes": 85899345920,
+        "mount": "/",
+        "media": "unknown"
+      },
+      {
+        "id": "disk1",
+        "kind": "disk",
+        "name": "/dev/nvme0n1p3",
+        "tier": "nvme",
+        "capacity_bytes": 3930144628736,
+        "mount": "/etc/hostname",
+        "media": "ssd"
+      },
+      {
+        "id": "disk2",
+        "kind": "disk",
+        "name": "/dev/nvme0n1p2",
+        "tier": "nvme",
+        "capacity_bytes": 67049664512,
+        "mount": "/usr/bin/nvidia-cuda-mps-control",
+        "media": "ssd"
+      },
+      {
+        "id": "gpu0",
+        "kind": "gpu",
+        "name": "NVIDIA GeForce RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 819318042701.6599,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 85061040543100.27,
+          "c0_graph_s": 1.555108812445744e-6,
+          "c0_eager_s": 0.00002,
+          "expert_flops_per_s": 24309789981217.035
+        },
+        "pcie": {
+          "gen_current": 4,
+          "width_current": 16,
+          "gen_max": 4,
+          "width_max": 16
+        },
+        "index": 0
+      },
+      {
+        "id": "gpu1",
+        "kind": "gpu",
+        "name": "NVIDIA GeForce RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 819318042701.6599,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 85061040543100.27,
+          "c0_graph_s": 1.555108812445744e-6,
+          "c0_eager_s": 0.00002,
+          "expert_flops_per_s": 24309789981217.035
+        },
+        "pcie": {
+          "gen_current": 4,
+          "width_current": 16,
+          "gen_max": 4,
+          "width_max": 16
+        },
+        "index": 1
+      }
+    ],
+    "links": [
+      {
+        "id": "storage-disk0",
+        "a": "disk0",
+        "b": "cpu0",
+        "kind": "storage",
+        "alpha_s": {
+          "value": 0.001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 500000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "storage-disk1",
+        "a": "disk1",
+        "b": "cpu0",
+        "kind": "storage",
+        "alpha_s": {
+          "value": 0.0001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "storage-disk2",
+        "a": "disk2",
+        "b": "cpu0",
+        "kind": "storage",
+        "alpha_s": {
+          "value": 0.0001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3000000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "pcie-gpu0",
+        "a": "gpu0",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.00001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 25203200000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "pcie-gpu1",
+        "a": "gpu1",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.00001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 25203200000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "p2p-gpu0-gpu1",
+        "a": "gpu0",
+        "b": "gpu1",
+        "kind": "p2p",
+        "alpha_s": {
+          "value": 0.00001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 25203200000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      }
+    ],
+    "lane_groups": [],
+    "notes": [
+      "pcie topology: 2 GPUs from NVML but 9 PCI display devices, not matched"
+    ],
+    "collectives": [
+      {
+        "op": "all_reduce",
+        "ranks": [
+          "gpu0",
+          "gpu1"
+        ],
+        "comm": "nccl",
+        "points": [
+          [
+            4096.0,
+            0.0000269055
+          ],
+          [
+            16384.0,
+            0.0000332605
+          ],
+          [
+            65536.0,
+            0.000060171
+          ],
+          [
+            262144.0,
+            0.000098377
+          ],
+          [
+            1048576.0,
+            0.0001900935
+          ],
+          [
+            4194304.0,
+            0.000659951
+          ],
+          [
+            16777216.0,
+            0.00255746
+          ],
+          [
+            67108864.0,
+            0.0100553075
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu0",
+          "gpu1"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.0000128355
+          ],
+          [
+            16384.0,
+            0.0000128255
+          ],
+          [
+            65536.0,
+            0.000024195
+          ],
+          [
+            262144.0,
+            0.000037196
+          ],
+          [
+            1048576.0,
+            0.000105292
+          ],
+          [
+            4194304.0,
+            0.000385792
+          ],
+          [
+            16777216.0,
+            0.0015114415
+          ],
+          [
+            67108864.0,
+            0.0060188665
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu1",
+          "gpu0"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.0000124155
+          ],
+          [
+            16384.0,
+            0.0000127
+          ],
+          [
+            65536.0,
+            0.0000277855
+          ],
+          [
+            262144.0,
+            0.0000369105
+          ],
+          [
+            1048576.0,
+            0.000105237
+          ],
+          [
+            4194304.0,
+            0.000389112
+          ],
+          [
+            16777216.0,
+            0.0015105115
+          ],
+          [
+            67108864.0,
+            0.005997510500000001
+          ]
+        ]
+      }
+    ]
+  },
+  "cpu_compute_used": false
+}
