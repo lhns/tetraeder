@@ -864,6 +864,15 @@ mod tests {
             c_range_graph_s: 1e-9,
             ..RangeCosts::PRIOR
         });
+        // A slow all-reduce path (ten times the fixture's curve), so the share moves the anchors
+        // well above the weak pull of the prior.
+        for c in &mut prior.collectives {
+            if c.op == tetraeder_profiler::CollectiveOp::AllReduce {
+                for p in &mut c.points {
+                    p.1 *= 10.0;
+                }
+            }
+        }
         let mut truth = prior.clone();
         truth.range_costs = Some(RangeCosts {
             c_range_graph_s: 1e-9,

@@ -77,3 +77,4 @@ Per fix: version 2 refitted on this session with one fix left out (`--drop`):
 - Host link held at the prior: no change once the share is fitted (c_step 84 us instead of 82). With the multiplicative form the free link had fitted to 1.4 GB/s and stood in for c_step.
 - One factor on the whole all-reduce time (`--ar-form scale`, the form not taken) fits 0.814 here and 0.633 on S2e. Its anchor residuals stay at up to 0.13 here, with tp-2 pp high and tg low on every anchor. Candidates: 30B single tg +0.120, 30B tp-2 tg -0.112, 32B tp-2 tg -0.126, ep-2 pp +0.155. Cross-box: 30B single tg +0.213, 30B tp-2 pp +0.167 and tg -0.131, 32B tp-2 pp +0.224.
 - Not identified: `c_range` against the share (ADR 0070 History); `c_range` fits to 0 in every fit.
+- Pipelined prefill (ADR 0077) is in the model since; this session's candidate files carry `prefill_micro_batches = 1`, so the rows above are unchanged by it. New layer-N and tp-pp plans carry 4 and are predicted pipelined.
