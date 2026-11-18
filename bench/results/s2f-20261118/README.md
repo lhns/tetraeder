@@ -18,3 +18,7 @@
 - verdict.json: phase5_pass false; M2 and D2 pass null, clean false ("N clean round(s), need 2" for every configuration).
 - Throttle: capped-clock share 0 to 0.58 per GPU (board share 0); one disqualifying 0x20 SW thermal sample each on 30B ep-2 (GPU 1) and 32B layer-2 (GPU 1).
 - Stage times: build 9 min, gpu-parity 5 min, prepass to rounds 6 min, rounds 4 min; launch to done 22 min.
+
+## Power
+
+- Both GPUs peaked at about 250 W (limit lowered; `s2e` peaked at 300 W, `s2d` at 349 W). Median SM clock of loaded samples: 32B single 1350 MHz, 32B layer-2 1830 / 1740 MHz, 32B tp-2 1695 / 1740 MHz, 30B shapes 1740 to 1950 MHz. The 32B single run was power-capped; the shape ranking of this session is partly a host artifact.
