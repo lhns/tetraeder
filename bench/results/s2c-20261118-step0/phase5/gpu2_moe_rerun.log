@@ -1,0 +1,89 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 57.25s
+     Running tests/gpu_sharded_moe.rs (target/release/deps/gpu_sharded_moe-dfd4f4fde4c50551)
+
+running 1 test
+test gpu2_moe_shapes_match_single ... tp-2, step 0: top-5 max |diff| 4.7460175e-1 (tolerance 1.0387497e-1), greedy equal true
+tp-2, step 1: top-5 max |diff| 4.2345333e-1 (tolerance 5.998987e-2), greedy equal true
+tp-2, step 2: top-5 max |diff| 1.253376e-1 (tolerance 9.798153e-2), greedy equal true
+tp-2, step 3: top-5 max |diff| 6.274929e-1 (tolerance 9.603761e-2), greedy equal true
+tp-2, step 4: top-5 max |diff| 4.469223e-1 (tolerance 1.1743711e-1), greedy equal true
+tp-2, step 5: top-5 max |diff| 4.5015907e-1 (tolerance 1.2009794e-1), greedy equal true
+tp-2, step 6: top-5 max |diff| 2.1983719e-1 (tolerance 1.7517106e-1), greedy equal true
+tp-2, step 7: top-5 max |diff| 9.4973564e-1 (tolerance 1.07077494e-1), greedy equal true
+tp-2, step 8: top-5 max |diff| 1.8772259e0 (tolerance 1.9670372e-1), greedy equal true
+tp-2, step 9: top-5 max |diff| 6.5737057e-1 (tolerance 8.3096504e-2), greedy equal true
+tp-2, step 10: top-5 max |diff| 4.92136e-1 (tolerance 1.2789732e-1), greedy equal false
+tp-2, step 11: top-5 max |diff| 1.797514e-1 (tolerance 8.599922e-2), greedy equal true
+tp-2, step 12: top-5 max |diff| 4.1753006e-1 (tolerance 1.3950367e-1), greedy equal true
+tp-2, step 13: top-5 max |diff| 4.030018e-1 (tolerance 7.6080404e-2), greedy equal true
+tp-2, step 14: top-5 max |diff| 2.2294426e-1 (tolerance 1.16973124e-1), greedy equal true
+tp-2, step 15: top-5 max |diff| 4.5671463e-1 (tolerance 9.6107215e-2), greedy equal true
+tp-2, step 16: top-5 max |diff| 4.5106697e-1 (tolerance 1.3393286e-1), greedy equal true
+tp-2, step 17: top-5 max |diff| 1.6917229e-1 (tolerance 9.601302e-2), greedy equal true
+tp-2, step 18: top-5 max |diff| 2.6890755e-1 (tolerance 1.4404477e-1), greedy equal true
+tp-2, step 19: top-5 max |diff| 1.4141464e-1 (tolerance 9.765268e-2), greedy equal true
+tp-2, step 20: top-5 max |diff| 1.757145e-1 (tolerance 1.4946838e-1), greedy equal true
+tp-2, step 21: top-5 max |diff| 9.2092323e-1 (tolerance 1.0340646e-1), greedy equal true
+tp-2, step 22: top-5 max |diff| 6.4756966e-1 (tolerance 1.5393287e-1), greedy equal true
+tp-2, step 23: top-5 max |diff| 3.648777e-1 (tolerance 1.0695129e-1), greedy equal true
+tp-2, step 24: top-5 max |diff| 2.124157e-1 (tolerance 1.5704255e-1), greedy equal true
+tp-2, step 25: top-5 max |diff| 1.5483665e-1 (tolerance 1.07666396e-1), greedy equal true
+tp-2, step 26: top-5 max |diff| 9.642029e-1 (tolerance 1.6193748e-1), greedy equal true
+tp-2, step 27: top-5 max |diff| 9.951019e-2 (tolerance 1.07010655e-1), greedy equal true
+tp-2, step 28: top-5 max |diff| 3.1832504e-1 (tolerance 1.6034754e-1), greedy equal true
+tp-2, step 29: top-5 max |diff| 9.48122e-1 (tolerance 1.08510956e-1), greedy equal true
+tp-2, step 30: top-5 max |diff| 7.905998e-1 (tolerance 1.6805519e-1), greedy equal true
+tp-2, step 31: top-5 max |diff| 1.6708565e-1 (tolerance 1.1096471e-1), greedy equal true
+tp-2, step 32: top-5 max |diff| 4.103012e-1 (tolerance 1.7036709e-1), greedy equal true
+tp-2, step 33: top-5 max |diff| 5.0404453e-1 (tolerance 1.1856576e-1), greedy equal true
+tp-2, step 34: top-5 max |diff| 3.3366013e-1 (tolerance 1.6825725e-1), greedy equal true
+tp-2, step 35: top-5 max |diff| 2.064457e-1 (tolerance 1.1397389e-1), greedy equal true
+tp-2, step 36: top-5 max |diff| 7.384567e-1 (tolerance 1.6965061e-1), greedy equal true
+tp-2, step 37: top-5 max |diff| 4.512558e-1 (tolerance 1.1311957e-1), greedy equal true
+tp-2, step 38: top-5 max |diff| 4.3468094e-1 (tolerance 1.6892305e-1), greedy equal true
+tp-2, step 39: top-5 max |diff| 3.1451988e-1 (tolerance 1.1771217e-1), greedy equal true
+tp-2, step 40: top-5 max |diff| 5.117836e-1 (tolerance 1.7793609e-1), greedy equal true
+tp-2, step 41: top-5 max |diff| 1.8470478e-1 (tolerance 1.1653255e-1), greedy equal true
+tp-2, step 42: top-5 max |diff| 9.106445e-2 (tolerance 1.7104934e-1), greedy equal true
+tp-2, step 43: top-5 max |diff| 3.26087e-1 (tolerance 1.1661162e-1), greedy equal true
+tp-2, step 44: top-5 max |diff| 7.5354004e-1 (tolerance 1.722631e-1), greedy equal true
+tp-2, step 45: top-5 max |diff| 1.1922684e0 (tolerance 1.2029602e-1), greedy equal true
+tp-2, step 46: top-5 max |diff| 6.571827e-1 (tolerance 1.733677e-1), greedy equal true
+tp-2, step 47: top-5 max |diff| 1.0560818e0 (tolerance 1.1320087e-1), greedy equal true
+tp-2, step 48: top-5 max |diff| 4.491558e-1 (tolerance 1.7517968e-1), greedy equal true
+tp-2, step 49: top-5 max |diff| 1.8947983e-1 (tolerance 1.17580704e-1), greedy equal true
+tp-2, step 50: top-5 max |diff| 4.287758e-1 (tolerance 1.758882e-1), greedy equal true
+tp-2, step 51: top-5 max |diff| 3.0445576e-1 (tolerance 1.1787082e-1), greedy equal true
+tp-2, step 52: top-5 max |diff| 5.6944275e-1 (tolerance 1.7833194e-1), greedy equal true
+tp-2, step 53: top-5 max |diff| 1.0137653e-1 (tolerance 1.22374214e-1), greedy equal true
+tp-2, step 54: top-5 max |diff| 1.5312958e-1 (tolerance 1.7738391e-1), greedy equal true
+tp-2, step 55: top-5 max |diff| 2.0023346e-1 (tolerance 1.2203344e-1), greedy equal true
+tp-2, step 56: top-5 max |diff| 5.233116e-1 (tolerance 1.8539473e-1), greedy equal true
+tp-2, step 57: top-5 max |diff| 2.3668098e-1 (tolerance 1.2462172e-1), greedy equal true
+tp-2, step 58: top-5 max |diff| 1.1009216e0 (tolerance 1.8647373e-1), greedy equal true
+tp-2, step 59: top-5 max |diff| 3.56802e-1 (tolerance 1.24230534e-1), greedy equal true
+tp-2, step 60: top-5 max |diff| 1.1072845e0 (tolerance 1.8559724e-1), greedy equal true
+tp-2, step 61: top-5 max |diff| 2.1286488e-1 (tolerance 1.2601556e-1), greedy equal true
+tp-2, step 62: top-5 max |diff| 2.79644e-1 (tolerance 1.8386902e-1), greedy equal true
+tp-2, step 63: top-5 max |diff| 2.2125721e-1 (tolerance 1.2311236e-1), greedy equal true
+tp-2, step 64: top-5 max |diff| 4.0983582e-1 (tolerance 1.8147019e-1), greedy equal true
+
+thread 'gpu2_moe_shapes_match_single' (107636) panicked at crates/model/tests/gpu_sharded_moe.rs:144:5:
+tp-2: ["step 0: top-5 diff 0.47460175 > 0.10387497", "step 1: top-5 diff 0.42345333 > 0.05998987", "step 2: top-5 diff 0.1253376 > 0.09798153", "step 3: top-5 diff 0.6274929 > 0.09603761", "step 4: top-5 diff 0.4469223 > 0.11743711", "step 5: top-5 diff 0.45015907 > 0.12009794", "step 6: top-5 diff 0.21983719 > 0.17517106", "step 7: top-5 diff 0.94973564 > 0.107077494", "step 8: top-5 diff 1.8772259 > 0.19670372", "step 9: top-5 diff 0.65737057 > 0.083096504", "step 10: top-5 diff 0.492136 > 0.12789732", "step 11: top-5 diff 0.1797514 > 0.08599922", "step 12: top-5 diff 0.41753006 > 0.13950367", "step 13: top-5 diff 0.4030018 > 0.076080404", "step 14: top-5 diff 0.22294426 > 0.116973124", "step 15: top-5 diff 0.45671463 > 0.096107215", "step 16: top-5 diff 0.45106697 > 0.13393286", "step 17: top-5 diff 0.16917229 > 0.09601302", "step 18: top-5 diff 0.26890755 > 0.14404477", "step 19: top-5 diff 0.14141464 > 0.09765268", "step 20: top-5 diff 0.1757145 > 0.14946838", "step 21: top-5 diff 0.92092323 > 0.10340646", "step 22: top-5 diff 0.64756966 > 0.15393287", "step 23: top-5 diff 0.3648777 > 0.10695129", "step 24: top-5 diff 0.2124157 > 0.15704255", "step 25: top-5 diff 0.15483665 > 0.107666396", "step 26: top-5 diff 0.9642029 > 0.16193748", "step 28: top-5 diff 0.31832504 > 0.16034754", "step 29: top-5 diff 0.948122 > 0.108510956", "step 30: top-5 diff 0.7905998 > 0.16805519", "step 31: top-5 diff 0.16708565 > 0.11096471", "step 32: top-5 diff 0.4103012 > 0.17036709", "step 33: top-5 diff 0.50404453 > 0.11856576", "step 34: top-5 diff 0.33366013 > 0.16825725", "step 35: top-5 diff 0.2064457 > 0.11397389", "step 36: top-5 diff 0.7384567 > 0.16965061", "step 37: top-5 diff 0.4512558 > 0.11311957", "step 38: top-5 diff 0.43468094 > 0.16892305", "step 39: top-5 diff 0.31451988 > 0.11771217", "step 40: top-5 diff 0.5117836 > 0.17793609", "step 41: top-5 diff 0.18470478 > 0.11653255", "step 43: top-5 diff 0.326087 > 0.11661162", "step 44: top-5 diff 0.75354004 > 0.1722631", "step 45: top-5 diff 1.1922684 > 0.12029602", "step 46: top-5 diff 0.6571827 > 0.1733677", "step 47: top-5 diff 1.0560818 > 0.11320087", "step 48: top-5 diff 0.4491558 > 0.17517968", "step 49: top-5 diff 0.18947983 > 0.117580704", "step 50: top-5 diff 0.4287758 > 0.1758882", "step 51: top-5 diff 0.30445576 > 0.11787082", "step 52: top-5 diff 0.56944275 > 0.17833194", "step 55: top-5 diff 0.20023346 > 0.12203344", "step 56: top-5 diff 0.5233116 > 0.18539473", "step 57: top-5 diff 0.23668098 > 0.12462172", "step 58: top-5 diff 1.1009216 > 0.18647373", "step 59: top-5 diff 0.356802 > 0.124230534", "step 60: top-5 diff 1.1072845 > 0.18559724", "step 61: top-5 diff 0.21286488 > 0.12601556", "step 62: top-5 diff 0.279644 > 0.18386902", "step 63: top-5 diff 0.22125721 > 0.12311236", "step 64: top-5 diff 0.40983582 > 0.18147019"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    gpu2_moe_shapes_match_single
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 13.84s
+
+error: test failed, to rerun pass `-p tetraeder-model --test gpu_sharded_moe`
+RERUN_DONE rc=101
