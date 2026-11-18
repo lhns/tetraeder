@@ -262,7 +262,7 @@ fn drain(mut rx: tokio::sync::mpsc::Receiver<GenEvent>) -> Vec<TokenId> {
                 );
                 finished = true;
             }
-            GenEvent::Error(e) => panic!("{e}"),
+            GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("{e}"),
         }
     }
     assert!(finished, "no terminal event");

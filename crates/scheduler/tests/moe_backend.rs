@@ -411,7 +411,7 @@ fn tokens(mut rx: tokio::sync::mpsc::Receiver<GenEvent>) -> Vec<u32> {
         match rx.blocking_recv().expect("the stream ends with Finished") {
             GenEvent::Token(t) => out.push(t),
             GenEvent::Finished { .. } => return out,
-            GenEvent::Error(e) => panic!("engine error: {e}"),
+            GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("engine error: {e}"),
         }
     }
 }

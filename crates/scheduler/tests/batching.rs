@@ -150,7 +150,7 @@ fn consume(s: &Scheduler, spec: &Spec, constraint: Option<Box<dyn TokenConstrain
                 assert_eq!(stats.generated_tokens as usize, tokens.len(), "{spec:?}");
                 end = Some(Ok(reason));
             }
-            GenEvent::Error(e) => end = Some(Err(e)),
+            GenEvent::Error(e) | GenEvent::ContextExceeded(e) => end = Some(Err(e)),
         }
     }
     Outcome {
@@ -499,7 +499,7 @@ fn a_slow_consumer_does_not_stall_the_batch() {
                 assert_eq!(reason, FinishReason::Length);
                 break;
             }
-            GenEvent::Error(e) => panic!("{e}"),
+            GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("{e}"),
         }
     }
     assert_eq!(n, 200);

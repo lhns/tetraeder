@@ -156,10 +156,13 @@ fn a_requeued_request_that_filled_the_context_ends_with_length() {
         ),
         "{e:?}"
     );
-    // A fresh prompt that long still does not fit.
+    // A fresh prompt that long still does not fit: the client's error.
     let mut rx = submit(&mut w, &prompt(2, 64), 10);
     w.admit();
-    assert!(matches!(events(&mut rx).as_slice(), [GenEvent::Error(_)]));
+    assert!(matches!(
+        events(&mut rx).as_slice(),
+        [GenEvent::ContextExceeded(_)]
+    ));
 }
 
 /// After the idle prefix is cut, `reserved_to` is what the backend holds (the dense backend

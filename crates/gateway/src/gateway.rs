@@ -476,8 +476,8 @@ impl Gateway {
         let ctx = st.info.context_length;
         let n_prompt = prompt.len() as u32;
         if n_prompt >= ctx {
-            return Err(GatewayError::InvalidRequest(format!(
-                "prompt is {n_prompt} tokens, the context length of '{model}' is {ctx}"
+            return Err(GatewayError::ContextExceeded(format!(
+                "{n_prompt} tokens, the context length of '{model}' is {ctx}"
             )));
         }
         let max_tokens = match spec.max_tokens {

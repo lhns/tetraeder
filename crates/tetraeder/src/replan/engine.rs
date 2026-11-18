@@ -55,7 +55,8 @@ fn await_finish(rx: &mut mpsc::Receiver<GenEvent>, clock: &dyn Clock, deadline_s
     loop {
         match rx.try_recv() {
             Ok(GenEvent::Finished { .. }) => return true,
-            Ok(GenEvent::Error(_)) | Err(mpsc::error::TryRecvError::Disconnected) => {
+            Ok(GenEvent::Error(_) | GenEvent::ContextExceeded(_))
+            | Err(mpsc::error::TryRecvError::Disconnected) => {
                 return false;
             }
             Ok(GenEvent::Token(_)) => {}
@@ -260,12 +261,15 @@ async fn forward(
         let ev = tokio::select! {
             ev = inner.recv() => match ev {
                 Some(ev) => ev,
-                // Closed without Finished or Error: the gateway reports it as an error.
+                // Closed without a terminal event: the gateway reports it as an error.
                 None => return,
             },
             () = cut.cancelled() => break,
         };
-        let end = matches!(ev, GenEvent::Finished { .. } | GenEvent::Error(_));
+        let end = matches!(
+            ev,
+            GenEvent::Finished { .. } | GenEvent::Error(_) | GenEvent::ContextExceeded(_)
+        );
         tokio::select! {
             sent = tx.send(ev) => if sent.is_err() { return },
             () = cut.cancelled() => break,

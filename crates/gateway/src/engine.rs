@@ -152,6 +152,9 @@ pub enum GenEvent {
         stats: EngineStats,
     },
     Error(String),
+    /// The prompt does not fit the context or the KV cache: the client's error (HTTP 400), which
+    /// a retry of the same request cannot fix.
+    ContextExceeded(String),
 }
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]

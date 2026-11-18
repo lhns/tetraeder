@@ -159,6 +159,9 @@ impl Run {
                 GenEvent::Error(msg) => {
                     break Outcome::Failed(GatewayError::Internal(format!("engine error: {msg}")));
                 }
+                GenEvent::ContextExceeded(msg) => {
+                    break Outcome::Failed(GatewayError::ContextExceeded(msg));
+                }
             }
             saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
             let sent = self.send_all(&tx, &mut buf).await;

@@ -196,7 +196,9 @@ fn consume(s: &Scheduler, spec: &Spec) -> usize {
                     cancel.cancel();
                 }
             }
-            GenEvent::Finished { .. } | GenEvent::Error(_) => ended = true,
+            GenEvent::Finished { .. } | GenEvent::Error(_) | GenEvent::ContextExceeded(_) => {
+                ended = true
+            }
         }
     }
     assert!(ended, "closed without a terminal event: {spec:?}");
@@ -331,7 +333,7 @@ fn finish(mut rx: Events) -> (Vec<u32>, u32) {
                 assert_eq!(reason, FinishReason::Length);
                 return (toks, stats.cached_tokens);
             }
-            GenEvent::Error(e) => panic!("{e}"),
+            GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("{e}"),
         }
     }
 }

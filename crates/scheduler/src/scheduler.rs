@@ -873,14 +873,19 @@ impl Worker {
                 self.end_unplaced(req, Err(msg));
                 continue;
             }
-            if req.toks.is_empty() || req.toks.len() >= self.n_ctx_seq {
+            if req.toks.is_empty() {
+                let req = self.waiting.pop_front().expect("front");
+                self.end_unplaced(req, Err("an empty prompt".into()));
+                continue;
+            }
+            if req.toks.len() >= self.n_ctx_seq {
                 let n = req.toks.len();
                 let msg = format!(
                     "a prompt of {n} tokens does not fit the context of {}",
                     self.n_ctx_seq
                 );
                 let req = self.waiting.pop_front().expect("front");
-                self.end_unplaced(req, Err(msg));
+                self.hand_off(req, GenEvent::ContextExceeded(msg));
                 continue;
             }
             if self.live_count() >= self.slots.len() {
@@ -977,7 +982,7 @@ impl Worker {
         loop {
             match self.backend.seq_reserve(id as SeqId, target) {
                 Ok(()) => break,
-                Err(BackendError::KvFull { .. }) => {
+                Err(BackendError::KvFull { needed, free, .. }) => {
                     if let Some(o) = self.oldest_idle(Some(id)) {
                         self.evict(o);
                     } else if self.live_count() > 0 {
@@ -985,15 +990,28 @@ impl Worker {
                         self.waiting.push_front(req);
                         self.put_back(picked);
                         return Admission::Wait;
+                    } else if free >= needed && matches!(self.slots[id], Slot::Idle(_)) {
+                        // Alone with the rows free: a layout of one run per sequence (ADR 0067)
+                        // cannot grow this idle prefix's run where it lies. Free it (saved when
+                        // worth it) and place the request again, from row 0 of an empty pool.
+                        tracing::info!(
+                            "sequence {id} cannot grow in place ({needed} rows needed, {free} \
+                             free): placing its request again"
+                        );
+                        self.evict(id);
+                        self.waiting.push_front(req);
+                        self.put_back(picked);
+                        return Admission::Admitted;
                     } else if target > toks.len() + 1 {
                         // Alone: what the pool still holds, the context ends the request.
                         target = toks.len() + 1;
                     } else {
+                        let n = toks.len();
                         let msg = format!(
-                            "a prompt of {} tokens does not fit the KV cache",
-                            toks.len()
+                            "a prompt of {n} tokens does not fit the KV cache ({needed} rows \
+                             needed, {free} free)"
                         );
-                        self.end_unplaced(req, Err(msg));
+                        self.hand_off(req, GenEvent::ContextExceeded(msg));
                         self.put_back(picked);
                         return Admission::Admitted;
                     }
@@ -1214,8 +1232,8 @@ impl Worker {
                 }
                 match r {
                     Ok(()) => seq.reserved_to = got,
-                    Err(BackendError::KvFull { .. }) => {
-                        self.make_room(id);
+                    Err(BackendError::KvFull { needed, free, .. }) => {
+                        self.make_room(id, free >= needed);
                         continue 'plan;
                     }
                     Err(BackendError::Failed(e)) => {
@@ -1260,7 +1278,7 @@ impl Worker {
             let out = match res {
                 Ok(out) => out,
                 Err(BackendError::KvFull { seq, .. }) => {
-                    self.make_room(seq as usize);
+                    self.make_room(seq as usize, false);
                     continue 'plan;
                 }
                 Err(BackendError::Failed(e)) if takes.len() > 1 => {
@@ -1550,8 +1568,9 @@ impl Worker {
     /// Frees rows for `needing` after `KvFull`: idle sequences first (oldest first, saved to
     /// RAM), then the most recently admitted other live sequence is preempted and requeued. If
     /// that one is older than `needing`, `needing` is requeued itself, so the oldest request
-    /// always progresses. With no other sequence the request ends with `Length`.
-    fn make_room(&mut self, needing: usize) {
+    /// always progresses. With no other sequence the request ends with `Length`, unless the
+    /// rows are free and only the layout is `fragmented`: then it is requeued itself.
+    fn make_room(&mut self, needing: usize, fragmented: bool) {
         if let Some(i) = self.oldest_idle(None) {
             self.evict(i);
             return;
@@ -1561,6 +1580,12 @@ impl Worker {
         match victim(&live, needing as SeqId) {
             Some(v) if admitted(v) > admitted(needing as SeqId) => self.preempt(v as usize),
             Some(_) => self.preempt(needing),
+            // Alone, and the rows are free but the layout cannot grow the run where it lies
+            // (ADR 0067): placed again, the sequence starts at row 0 of an empty pool.
+            None if fragmented => {
+                tracing::info!("sequence {needing} cannot grow in place: requeued");
+                self.preempt(needing);
+            }
             None => self.finish(needing, FinishReason::Length),
         }
     }
