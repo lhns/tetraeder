@@ -436,7 +436,8 @@ fn cpu_pipelined_prefill_is_bit_equal_to_serial_chunks() {
             }
             let mut lp = piped.eval_last(&prompt).unwrap();
             assert_eq!(bits(&ls), bits(&lp), "{name}, M = {m}: prompt");
-            assert_eq!(serial.step_graphs_built(), u64::from(m), "{name}");
+            // Chunks of one size reuse a step graph; the serial run builds one per size.
+            assert!(serial.step_graphs_built() >= 2, "{name}");
             assert_eq!(piped.step_graphs_built(), 1, "{name}");
             for step in 0..N_GREEDY {
                 let t = argmax(&ls) as i32;
