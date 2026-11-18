@@ -67,6 +67,13 @@ pub struct CalibFile {
     pub band: f64,
     pub residuals: Vec<(String, f64)>,
     pub hw: HardwareGraph,
+    /// False when the anchors place no compute on the CPU and the CPU term was not fitted.
+    #[serde(default = "default_true")]
+    pub cpu_compute_used: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// `calib-comm.json` of `tetraeder comm-probe` (only the curves are read).
@@ -274,11 +281,15 @@ pub fn calibrate(
         .link_between(&gpu.id, &cpu.id)
         .ok_or("no link between the first GPU and the CPU")?;
     let f = fit(hw, &anchors, &gpu.id, &cpu.id, &link.id).map_err(|e| e.to_string())?;
+    if !f.cpu_compute_used {
+        eprintln!("cpu compute: not used (no anchor places compute on the CPU)");
+    }
     Ok(CalibFile {
         cost_model_version: MODEL_VERSION,
         anchors: anchors.iter().map(|a| a.id.clone()).collect(),
         band: f.band,
         residuals: f.residuals,
         hw: f.hw,
+        cpu_compute_used: f.cpu_compute_used,
     })
 }

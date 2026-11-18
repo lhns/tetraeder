@@ -671,7 +671,7 @@ if len(parts) < want:
 for p in parts:
     mt = re.fullmatch(rf"{re.escape(m)}-(.+)-L(\d+)-r{k}\.json", os.path.basename(p))
     for r in json.load(open(p)):
-        r.setdefault("plan_id", mt.group(1))
+        r["plan_id"] = mt.group(1)  # bench rows carry a content hash there; calibrate wants the shape id
         r.setdefault("layer_limit", int(mt.group(2)))
         rows.append(r)
 json.dump(rows, open(os.path.join(d, f"anchors-{m}-r{k}.json"), "w"))

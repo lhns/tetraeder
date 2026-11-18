@@ -1,0 +1,4 @@
+AllReduce gpu0,gpu1 via nccl: 8 points, 6.101 ms at the largest size
+Copy gpu0,gpu1 via copy: 8 points, 6.001 ms at the largest size
+Copy gpu1,gpu0 via copy: 8 points, 5.943 ms at the largest size
+wrote /root/tetraeder/bench/results/s2e-20261118/phase5/calib-comm.json (all-reduce path nccl)

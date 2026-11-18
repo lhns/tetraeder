@@ -331,3 +331,20 @@ def test_gate_failed_line_shows_the_probe_state(tmp_path):
     assert "gpu-parity=failed" in ok and "comm-probe=ok" in ok
     bad = next(ln for ln in dry(tmp_path / "b", rc=3, DRY_PROBE="fail") if "gate failed" in ln)
     assert "comm-probe=failed" in bad
+
+
+def test_anchor_rows_carry_the_shape_id_not_the_content_hash(tmp_path):
+    """The merge step of `anchors()` sets plan_id from the file name; bench's own plan_id is a hash."""
+    text = SCRIPT.read_text()
+    code = re.search(r"\"\$py\" - \"\$out\" \"\$m\" \"\$k\" << 'EOF'[^\n]*\n(.*?)\nEOF\n", text, re.S).group(1)
+    parts = tmp_path / "anchor-parts"
+    parts.mkdir()
+    for shape in ("single", "tp-2"):
+        for lim in (16, 32):
+            row = {"plan_id": "0123abcd" + shape, "n_prompt": 512, "avg_ts": 1.0}
+            (parts / f"{D}-{shape}-L{lim}-r1.json").write_text(json.dumps([row]))
+    subprocess.run([sys.executable, "-c", code, str(tmp_path), D, "1"], check=True, timeout=60)
+    rows = json.loads((tmp_path / f"anchors-{D}-r1.json").read_text())
+    assert len(rows) == 4
+    assert {r["plan_id"] for r in rows} == {"single", "tp-2"}
+    assert sorted({r["layer_limit"] for r in rows}) == [16, 32]
