@@ -56,12 +56,7 @@ pub fn features(
     let mut add = |dev: &'static str, bytes: f64, active: f64, ops: f64, kv: f64, attn: f64| {
         let p = parts.entry(dev).or_insert_with(|| DevicePart {
             device: dev.into(),
-            weight_bytes_per_token: 0.0,
-            params_per_token: 0.0,
-            resident_matmul_bytes: 0.0,
-            ops_per_token: 0.0,
-            kv_bytes_per_ctx_token: 0.0,
-            attn_flops_per_ctx_token: 0.0,
+            ..empty_part()
         });
         p.weight_bytes_per_token += active;
         p.params_per_token += active / bpp;
@@ -229,6 +224,8 @@ fn empty_part() -> DevicePart {
         ops_per_token: 0.0,
         kv_bytes_per_ctx_token: 0.0,
         attn_flops_per_ctx_token: 0.0,
+        expert_bytes_per_token: 0.0,
+        expert_params_per_token: 0.0,
     }
 }
 

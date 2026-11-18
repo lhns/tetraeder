@@ -79,6 +79,16 @@ pub struct DevicePart {
     pub ops_per_token: f64,
     pub kv_bytes_per_ctx_token: f64,
     pub attn_flops_per_ctx_token: f64,
+    /// Routed-expert matmuls, kept apart from the fields above and priced at the expert rate
+    /// (ranks path only, ADR 0070): bytes read per step and params used per token.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub expert_bytes_per_token: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub expert_params_per_token: f64,
+}
+
+fn is_zero(x: &f64) -> bool {
+    *x == 0.0
 }
 
 /// How the bytes of a RAM-tier miss are read (ADR 0056, section 1).
@@ -153,7 +163,14 @@ pub struct Phase {
     pub ranges_per_rank: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<Coll>,
+    /// The phase computes only the step's output rows (the head, and the dense builder's last
+    /// FFN): a prefill step prices it, and its collective, at [`OUTPUTS_PER_STEP`] rows.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub out_rows: bool,
 }
+
+/// Output rows of a step: the bench and the judged request take the last row's logits.
+pub const OUTPUTS_PER_STEP: f64 = 1.0;
 
 /// A collective that ends a phase.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -211,6 +228,8 @@ impl std::error::Error for PredictError {}
 #[derive(Clone, Copy)]
 struct Rates {
     f: f64,
+    /// Routed-expert matmuls (the ranks path only).
+    f_exp: f64,
     b: f64,
     c0: f64,
 }
@@ -221,26 +240,27 @@ fn rates(dev: &Device, threads: u32, graphs: bool) -> Result<Rates, PredictError
         what,
     };
     let c = dev.compute.ok_or_else(|| missing("compute spec"))?;
-    let (f, b, c0) = if dev.kind == DeviceKind::Cpu {
+    let (f, f_exp, b, c0) = if dev.kind == DeviceKind::Cpu {
         let (f, b) = dev
             .cpu_rates(threads)
             .ok_or_else(|| missing("flops or bandwidth"))?;
-        (f, b, c.c0_eager_s)
+        (f, f, b, c.c0_eager_s)
     } else {
         let b = dev
             .bandwidth_bytes_per_s
             .ok_or_else(|| missing("bandwidth"))?
             .value;
         let c0 = if graphs { c.c0_graph_s } else { c.c0_eager_s };
-        (c.flops_per_s, b, c0)
+        (c.flops_per_s, c.expert_flops(), b, c0)
     };
-    if !(f > 0.0 && b > 0.0 && c0 >= 0.0 && f.is_finite() && b.is_finite() && c0.is_finite()) {
+    let ok = |x: f64| x > 0.0 && x.is_finite();
+    if !(ok(f) && ok(f_exp) && ok(b) && c0 >= 0.0 && c0.is_finite()) {
         return Err(PredictError::Invalid(format!(
             "device {} has non-positive rates",
             dev.id
         )));
     }
-    Ok(Rates { f, b, c0 })
+    Ok(Rates { f, f_exp, b, c0 })
 }
 
 #[derive(Clone, Copy)]
@@ -493,11 +513,18 @@ pub fn predict(
     })
 }
 
-/// Time of one rank's part for `m` tokens at mean context `ctx` (decode is `m = 1`).
+/// Time of one rank's part for `m` tokens at mean context `ctx` (decode is `m = 1`): `c0` per
+/// op plus one roofline per op class, since a class bound by bytes does not hide behind one
+/// bound by compute (ADR 0070, MODEL_VERSION 2):
+///
+/// ```text
+/// t = c0 ops + max(2 p m / F, W / B) + max(2 p_exp m / F_exp, W_exp / B) + max(a m ctx / F, kv ctx / B)
+/// ```
 fn part_time_s(p: &DevicePart, r: &Rates, m: f64, ctx: f64) -> f64 {
     r.c0 * p.ops_per_token
-        + ((2.0 * p.params_per_token * m + p.attn_flops_per_ctx_token * m * ctx) / r.f)
-            .max((p.weight_bytes_per_token + p.kv_bytes_per_ctx_token * ctx) / r.b)
+        + (2.0 * p.params_per_token * m / r.f).max(p.weight_bytes_per_token / r.b)
+        + (2.0 * p.expert_params_per_token * m / r.f_exp).max(p.expert_bytes_per_token / r.b)
+        + (p.attn_flops_per_ctx_token * m * ctx / r.f).max(p.kv_bytes_per_ctx_token * ctx / r.b)
 }
 
 /// `(alpha, beta)` of the link between two devices, beta capped by its lane group.
@@ -516,30 +543,43 @@ fn link_between(hw: &HardwareGraph, a: &str, b: &str) -> Result<Hop, PredictErro
     })
 }
 
+/// All-reduce time of `bytes` over `group` as measured: the probe curve, else the ring prior.
+fn allreduce_curve_s(
+    hw: &HardwareGraph,
+    group: &[String],
+    bytes: f64,
+) -> Result<f64, PredictError> {
+    if let Some(t) = hw.collective_time(CollectiveOp::AllReduce, group, bytes) {
+        return Ok(t);
+    }
+    let (mut alpha, mut beta) = (0.0f64, f64::INFINITY);
+    for d in group.iter().skip(1) {
+        let h = link_between(hw, &group[0], d)?;
+        alpha = alpha.max(h.alpha);
+        beta = beta.min(h.beta);
+    }
+    Ok(allreduce_time(group.len() as u32, alpha, beta, bytes))
+}
+
 /// Seconds of a collective for a step of `m` tokens and its breakdown label: the measured curve
 /// when the graph has one, else the link prior (ring all-reduce, `alpha + n / beta` copy).
-/// The one helper the planner's search shares (ADR 0070).
+/// An all-reduce inside a step pays the share `s` of the curve's zero-byte time
+/// (`RangeCosts::allreduce_latency_share`): `t(n) - (1 - s) t(0)`, so the byte part, the BF16
+/// switch included, stays as measured. The one helper the planner's search shares (ADR 0070).
 pub fn coll_time(hw: &HardwareGraph, c: &Coll, m: f64) -> Result<(String, f64), PredictError> {
     match c {
         Coll::AllReduce {
             group,
             bytes_per_token,
         } => {
-            let bytes = bytes_per_token * m;
             let label = format!("allreduce:{}", group.join("+"));
-            if let Some(t) = hw.collective_time(CollectiveOp::AllReduce, group, bytes) {
+            let t = allreduce_curve_s(hw, group, bytes_per_token * m)?;
+            let s = hw.range_costs_or_prior().allreduce_latency_share;
+            if s == 1.0 {
                 return Ok((label, t));
             }
-            let (mut alpha, mut beta) = (0.0f64, f64::INFINITY);
-            for d in group.iter().skip(1) {
-                let h = link_between(hw, &group[0], d)?;
-                alpha = alpha.max(h.alpha);
-                beta = beta.min(h.beta);
-            }
-            Ok((
-                label,
-                allreduce_time(group.len() as u32, alpha, beta, bytes),
-            ))
+            let t0 = allreduce_curve_s(hw, group, 0.0)?;
+            Ok((label, (t - (1.0 - s) * t0).max(0.0)))
         }
         Coll::Copy {
             pairs,
@@ -569,8 +609,10 @@ pub fn coll_time(hw: &HardwareGraph, c: &Coll, m: f64) -> Result<(String, f64), 
 
 /// Step time with ranks (ADR 0070): `T(M) = sum_p repeat_p (max_r t(r, M) + ranges_p c_range +
 /// t_coll(after_p, M)) + c_step`, summed over the decode tokens and the prefill ubatches as in
-/// [`predict`]. Breakdown labels: `compute:<dev>` (the slowest rank of each phase), `ranges`,
-/// `allreduce:<group>`, `copy:<a>-<b>` and `step`.
+/// [`predict`]. `t(r, M)` is [`part_time_s`] (a roofline per op class); a phase with `out_rows`
+/// runs [`OUTPUTS_PER_STEP`] rows in a prefill step, and a phase with `prefill_parts` uses them
+/// there (every local expert is read). Breakdown labels: `compute:<dev>` (the slowest rank of each
+/// phase), `ranges`, `allreduce:<group>`, `copy:<a>-<b>` and `step`.
 fn predict_ranks(
     hw: &HardwareGraph,
     f: &RunFeatures,
@@ -611,10 +653,11 @@ fn predict_ranks(
                 out: &mut Vec<(String, f64)>|
      -> Result<(), PredictError> {
         for ph in &r.phases {
-            let parts = if prefill {
-                ph.prefill_parts.as_ref().unwrap_or(&ph.parts)
-            } else {
-                &ph.parts
+            // An output-row phase prices a prefill step at its output rows, with the decode parts.
+            let (m, parts) = match (prefill, ph.out_rows) {
+                (true, true) => (OUTPUTS_PER_STEP.min(m), &ph.parts),
+                (true, false) => (m, ph.prefill_parts.as_ref().unwrap_or(&ph.parts)),
+                (false, _) => (m, &ph.parts),
             };
             let rep = f64::from(ph.repeat);
             let mut slowest = (String::new(), 0.0f64);
@@ -690,6 +733,7 @@ pub(crate) mod fixture {
             flops_per_s: 60e12,
             c0_graph_s: 2e-6,
             c0_eager_s: 9e-6,
+            expert_flops_per_s: None,
         });
         gpu.bandwidth_bytes_per_s = Some(Measurement::prior(800e9));
         let mut cpu = Device::new("cpu0", DeviceKind::Cpu, "c", Tier::Ram, 64 << 30);
@@ -698,6 +742,7 @@ pub(crate) mod fixture {
             flops_per_s: 1.2e12,
             c0_graph_s: 3e-6,
             c0_eager_s: 3e-6,
+            expert_flops_per_s: None,
         });
         cpu.bandwidth_bytes_per_s = Some(Measurement::prior(60e9));
         cpu.thread_curve = vec![
@@ -746,6 +791,8 @@ pub(crate) mod fixture {
             ops_per_token: ops,
             kv_bytes_per_ctx_token: 40e3 * gb / 10.0,
             attn_flops_per_ctx_token: 1e5 * gb / 10.0,
+            expert_bytes_per_token: 0.0,
+            expert_params_per_token: 0.0,
         }
     }
 

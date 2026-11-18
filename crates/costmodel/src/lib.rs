@@ -20,7 +20,10 @@ pub mod sim;
 /// Version of the prediction formulas. Bump when `predict` changes any output for a
 /// configuration that already exists (ADR 0056); `tetraeder-plan ledger --write` then
 /// records the new predictions of the committed results under the ratchet.
-pub const MODEL_VERSION: u32 = 1;
+/// 2 (ADR 0070, 2026-11-18): the ranks path prices expert matmuls at their own rate, the head on
+/// output rows, every expert at prefill, one roofline per op class and the all-reduce's in-step
+/// latency share; `single` takes the ranks path. Runs without ranks are unchanged.
+pub const MODEL_VERSION: u32 = 2;
 
 use tetraeder_profiler::Device;
 
@@ -279,6 +282,7 @@ mod tests {
             flops_per_s: 1e12,
             c0_graph_s: 5e-6,
             c0_eager_s: 20e-6,
+            expert_flops_per_s: None,
         });
         d.bandwidth_bytes_per_s = Some(Measurement::prior(1e11));
         assert_eq!(OpCost::from_prior(&d, shape).unwrap(), cost());

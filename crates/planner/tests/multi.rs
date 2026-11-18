@@ -3,7 +3,7 @@
 //! slow-link fault. Hardware label: none (simulated hardware only).
 
 use std::collections::BTreeMap;
-use tetraeder_costmodel::predict::predict;
+use tetraeder_costmodel::predict::{Coll, Phase as RankPhase, RunFeatures, predict};
 use tetraeder_plan::Hints;
 use tetraeder_planner::layout::fixtures::{dense, moe};
 use tetraeder_planner::multi_cli::{self, PHASE};
@@ -217,6 +217,7 @@ fn calibrate_recovers_c_range_and_c_step_from_anchor_rows() {
         c_range_graph_s: 1e-4,
         c_range_eager_s: 4e-5,
         c_step_s: 8e-4,
+        ..RangeCosts::PRIOR
     });
     let l = dense();
     let mut rows = Vec::new();
@@ -239,6 +240,96 @@ fn calibrate_recovers_c_range_and_c_step_from_anchor_rows() {
     let rel = |a: f64, b: f64| (a / b - 1.0).abs();
     assert!(rel(c.c_range_graph_s, 1e-4) < 0.05, "{c:?}");
     assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
+}
+
+fn features_of(l: &ModelLayout, id: &str, limit: Option<u32>) -> RunFeatures {
+    let g = hw(TWO);
+    let c = candidate_for(&g, l, &Hints::default(), PHASE, id).unwrap();
+    let topo = topology_of(&g, l, &c.plan, PHASE).unwrap();
+    features_multi(l, &topo, &c.plan.knobs, limit, None).unwrap()
+}
+
+/// MODEL_VERSION 2: `single` is a one-rank plan on the ranks path, with the step cost and the
+/// logit readback of every other shape (ADR 0070).
+#[test]
+fn single_is_priced_on_the_ranks_path() {
+    for l in [dense(), moe()] {
+        let f = features_of(&l, "single", Some(8));
+        let r = f.ranks.as_ref().expect("single has ranks");
+        assert!(r.step_fixed);
+        let ranges: u32 = r.phases.iter().map(|p| p.repeat * p.ranges_per_rank).sum();
+        assert_eq!(ranges, 1, "{}: one range per step", l.model);
+        let head = r.phases.last().unwrap();
+        assert!(head.out_rows);
+        assert!(matches!(
+            &head.after,
+            Some(Coll::Copy { per_step: true, pairs, .. }) if pairs == &[("gpu0".to_string(), "cpu0".to_string())]
+        ));
+        let p = predict(&hw(TWO), &f, 2048, 128).unwrap();
+        assert!(p.tg_breakdown.iter().any(|e| e.0 == "step"));
+    }
+}
+
+/// The head (and the dense builder's last FFN) on the output rows only, on every shape.
+#[test]
+fn the_head_runs_on_the_output_rows() {
+    for l in [dense(), moe()] {
+        for id in ["single", "layer-2", "tp-2"] {
+            let f = features_of(&l, id, None);
+            let r = f.ranks.unwrap();
+            let out: Vec<&RankPhase> = r.phases.iter().filter(|p| p.out_rows).collect();
+            let head_bytes: f64 = out
+                .iter()
+                .flat_map(|p| p.parts.iter().take(1))
+                .map(|p| p.weight_bytes_per_token)
+                .sum();
+            let tp = if id == "tp-2" { 2.0 } else { 1.0 };
+            let ffn = if l.is_moe() {
+                0.0
+            } else {
+                l.layers.last().unwrap().ffn_bytes as f64 / tp
+            };
+            let want = l.output_bytes as f64 / tp + ffn;
+            assert!(
+                (head_bytes / want - 1.0).abs() < 1e-9,
+                "{}/{id}: {head_bytes} vs {want}",
+                l.model
+            );
+        }
+    }
+}
+
+/// A MoE prefill reads every expert (its column share on tp-2), decode the top-k share; the
+/// FLOPs follow the chosen experts either way.
+#[test]
+fn moe_prefill_reads_every_expert_on_single_and_tp2() {
+    let l = moe();
+    let ex: f64 = l.layers.iter().map(|b| b.expert_bytes as f64).sum();
+    let r = f64::from(l.n_expert_used) / f64::from(l.n_expert);
+    for id in ["single", "tp-2"] {
+        let f = features_of(&l, id, None);
+        let (mut dec, mut pre, mut dec_p, mut pre_p) = (0.0, 0.0, 0.0, 0.0);
+        for ph in &f.ranks.unwrap().phases {
+            let k = f64::from(ph.repeat);
+            let parts = ph.prefill_parts.as_ref().unwrap_or(&ph.parts);
+            // summed over the ranks: the column shares add up to the whole expert
+            dec += k * ph
+                .parts
+                .iter()
+                .map(|p| p.expert_bytes_per_token)
+                .sum::<f64>();
+            pre += k * parts.iter().map(|p| p.expert_bytes_per_token).sum::<f64>();
+            dec_p += k * ph
+                .parts
+                .iter()
+                .map(|p| p.expert_params_per_token)
+                .sum::<f64>();
+            pre_p += k * parts.iter().map(|p| p.expert_params_per_token).sum::<f64>();
+        }
+        assert!((pre / ex - 1.0).abs() < 1e-9, "{id}: prefill {pre} of {ex}");
+        assert!((dec / (r * ex) - 1.0).abs() < 1e-9, "{id}: decode {dec}");
+        assert!((pre_p / dec_p - 1.0).abs() < 1e-9, "{id}: params");
+    }
 }
 
 #[test]

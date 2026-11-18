@@ -114,6 +114,7 @@ pub fn fill_from_priors(hw: &mut HardwareGraph, priors: &Priors) -> Vec<String> 
             flops_per_s: c.flops_per_s,
             c0_graph_s: c.c0_graph_s,
             c0_eager_s: c.c0_eager_s,
+            expert_flops_per_s: None,
         });
         d.bandwidth_bytes_per_s
             .get_or_insert(Measurement::prior(c.bandwidth_bytes_per_s));
@@ -404,6 +405,7 @@ fn add_gpu(hw: &mut HardwareGraph, g: &GpuClass) {
         flops_per_s: g.flops_per_s,
         c0_graph_s: g.c0_graph_s,
         c0_eager_s: g.c0_eager_s,
+        expert_flops_per_s: None,
     });
     d.pcie = Some(Pcie {
         gen_current: g.pcie_gen,

@@ -14,7 +14,7 @@
 //! No randomness, no solver crate.
 //! A parameter is written back (as `Source::Measured` where it has a source) only if it moved.
 
-use crate::predict::{PredictError, RunFeatures, predict};
+use crate::predict::{Coll, PredictError, RunFeatures, predict};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use tetraeder_profiler::{HardwareGraph, Measurement, RangeCosts, Source, ThreadPoint};
@@ -89,6 +89,10 @@ struct Problem<'a> {
     /// Index of `c_range` (graphs), after it `c_range` (eager) and `c_step`; present only when
     /// an anchor has `ranks` (ADR 0070), so fits without ranks are unchanged.
     ranges_at: Option<usize>,
+    /// Index of the GPU's expert-matmul rate: only when a ranks anchor has expert work.
+    exp_at: Option<usize>,
+    /// Index of the all-reduce latency share: only when a ranks anchor has an all-reduce.
+    ar_at: Option<usize>,
     /// Distinct thread counts of anchors with a CPU part; parameters `CURVE + 2k`, `CURVE + 2k + 1`.
     threads: Vec<u32>,
     x0: Vec<f64>,
@@ -117,6 +121,9 @@ impl Problem<'_> {
                     c.flops_per_s = val(c.flops_per_s, GPU_F);
                     c.c0_graph_s = val(c.c0_graph_s, GPU_C0_GRAPH);
                     c.c0_eager_s = val(c.c0_eager_s, GPU_C0_EAGER);
+                    if let Some(i) = self.exp_at.filter(|&i| moved(i)) {
+                        c.expert_flops_per_s = Some(x[i].exp());
+                    }
                 }
                 if let Some(b) = &mut d.bandwidth_bytes_per_s {
                     *b = measured(*b, GPU_B);
@@ -140,15 +147,20 @@ impl Problem<'_> {
                 }
             }
         }
-        if let Some(i) = self.ranges_at
-            && (i..i + 3).any(moved)
-        {
+        let ranges_moved = self.ranges_at.is_some_and(|i| (i..i + 3).any(moved));
+        let ar_moved = self.ar_at.is_some_and(moved);
+        if ranges_moved || ar_moved {
             let c = self.prior.range_costs_or_prior();
-            hw.range_costs = Some(RangeCosts {
-                c_range_graph_s: val(c.c_range_graph_s, i),
-                c_range_eager_s: val(c.c_range_eager_s, i + 1),
-                c_step_s: val(c.c_step_s, i + 2),
-            });
+            let mut r = c;
+            if let Some(i) = self.ranges_at {
+                r.c_range_graph_s = val(c.c_range_graph_s, i);
+                r.c_range_eager_s = val(c.c_range_eager_s, i + 1);
+                r.c_step_s = val(c.c_step_s, i + 2);
+            }
+            if let Some(i) = self.ar_at {
+                r.allreduce_latency_share = val(c.allreduce_latency_share, i);
+            }
+            hw.range_costs = Some(r);
         }
         for l in &mut hw.links {
             if l.id == self.link {
@@ -375,14 +387,43 @@ pub fn fit(
         x0.push(ln(f));
         x0.push(ln(b));
     }
-    let ranges_at = anchors
-        .iter()
-        .any(|a| a.features.ranks.is_some())
-        .then_some(x0.len());
+    // The ranks model's parameters (ADR 0070), each only when an anchor exercises it, so fits
+    // without ranks are unchanged.
+    let phases = || {
+        anchors
+            .iter()
+            .filter_map(|a| a.features.ranks.as_ref())
+            .flat_map(|r| &r.phases)
+    };
+    let has_ranks = anchors.iter().any(|a| a.features.ranks.is_some());
+    let has_experts = phases().any(|ph| {
+        ph.parts
+            .iter()
+            .chain(ph.prefill_parts.iter().flatten())
+            .any(|p| p.expert_params_per_token > 0.0)
+    });
+    let exp_at = has_experts.then_some(x0.len());
+    if has_experts {
+        x0.push(ln(gc.expert_flops()));
+    }
+    let ranges_at = has_ranks.then_some(x0.len());
     if ranges_at.is_some() {
         let c = prior.range_costs_or_prior();
         x0.extend([ln(c.c_range_graph_s), ln(c.c_range_eager_s), ln(c.c_step_s)]);
     }
+    let has_allreduce = phases().any(|ph| matches!(ph.after, Some(Coll::AllReduce { .. })));
+    let ar_at = has_allreduce.then_some(x0.len());
+    if has_allreduce {
+        x0.push(ln(prior.range_costs_or_prior().allreduce_latency_share));
+    }
+    // With ranks and no CPU compute the host link carries only the logit readback, which no
+    // anchor separates from `c_step`: keep the link and the CPU's c0 at the prior.
+    let frozen: Vec<usize> = if has_ranks && !cpu_compute_used {
+        vec![CPU_C0, PCIE_ALPHA, PCIE_BETA]
+    } else {
+        Vec::new()
+    };
+    let free: Vec<usize> = (0..x0.len()).filter(|i| !frozen.contains(i)).collect();
     let twins = prior
         .devices
         .iter()
@@ -398,30 +439,42 @@ pub fn fit(
         link,
         twins,
         ranges_at,
+        exp_at,
+        ar_at,
         threads,
         x0: x0.clone(),
     };
     residuals(&prob.apply(&x0), anchors)?;
 
-    let res = |x: &[f64]| -> Vec<f64> {
-        let mut v = match residuals(&prob.apply(x), anchors) {
+    // The solvers see the free parameters only; `full` writes them into the prior's vector.
+    let full = |y: &[f64]| -> Vec<f64> {
+        let mut x = x0.clone();
+        for (&i, &v) in free.iter().zip(y) {
+            x[i] = v;
+        }
+        x
+    };
+    let res = |y: &[f64]| -> Vec<f64> {
+        let x = full(y);
+        let mut v = match residuals(&prob.apply(&x), anchors) {
             Ok(r) => r.into_iter().map(|e| e.1).collect(),
             Err(_) => vec![1e3; anchors.len() * 2],
         };
-        v.extend(x.iter().zip(&x0).enumerate().map(|(i, (a, b))| {
-            let l = if ranges_at.is_some_and(|r| i >= r) {
+        v.extend(free.iter().map(|&i| {
+            let l = if ranges_at.is_some_and(|r| (r..r + 3).contains(&i)) {
                 LAMBDA_RANGES
             } else {
                 LAMBDA
             };
-            l.sqrt() * (a - b)
+            l.sqrt() * (x[i] - x0[i])
         }));
         v
     };
-    let objective = |x: &[f64]| res(x).iter().map(|v| v * v).sum::<f64>();
-    let x = levenberg_marquardt(&res, &x0);
-    let x = coordinate_search(&objective, &x);
-    let hw = prob.apply(&x);
+    let objective = |y: &[f64]| res(y).iter().map(|v| v * v).sum::<f64>();
+    let y0: Vec<f64> = free.iter().map(|&i| x0[i]).collect();
+    let y = levenberg_marquardt(&res, &y0);
+    let y = coordinate_search(&objective, &y);
+    let hw = prob.apply(&full(&y));
     let residuals = residuals(&hw, anchors)?;
     let worst = residuals.iter().map(|e| e.1.abs()).fold(0.0, f64::max);
     Ok(Fit {
@@ -714,51 +767,15 @@ mod tests {
     /// parameters (ADR 0070).
     #[test]
     fn recovers_c_range_and_c_step_from_tp2_anchors() {
-        use crate::predict::{Coll, DevicePart, Phase, RankFeatures};
-        use tetraeder_profiler::RangeCosts;
-        let prior =
-            HardwareGraph::from_toml(include_str!("../fixtures/two_3090_hoststaged.toml")).unwrap();
+        let prior = two_3090();
         let mut truth = prior.clone();
         truth.range_costs = Some(RangeCosts {
             c_range_graph_s: 1e-4,
             c_range_eager_s: 4e-5,
             c_step_s: 8e-4,
+            ..RangeCosts::PRIOR
         });
-        let part = |dev: &str, layers: f64| DevicePart {
-            device: dev.into(),
-            weight_bytes_per_token: layers * 0.125e9,
-            params_per_token: layers * 0.25e9,
-            resident_matmul_bytes: layers * 0.125e9,
-            ops_per_token: layers * 12.0,
-            kv_bytes_per_ctx_token: layers * 1e4,
-            attn_flops_per_ctx_token: layers * 1e5,
-        };
-        let tp2 = |n: u32| {
-            let phase = || Phase {
-                repeat: n,
-                parts: vec![part("gpu0", 0.5), part("gpu1", 0.5)],
-                prefill_parts: None,
-                ranges_per_rank: 1,
-                after: Some(Coll::AllReduce {
-                    group: vec!["gpu0".into(), "gpu1".into()],
-                    bytes_per_token: 20480.0,
-                }),
-            };
-            RunFeatures {
-                parts: vec![part("gpu0", f64::from(n)), part("gpu1", f64::from(n))],
-                ranks: Some(RankFeatures {
-                    phases: vec![phase(), phase()],
-                    step_fixed: true,
-                }),
-                ..features(1.0, 0.0)
-            }
-        };
-        let mut anchors = Vec::new();
-        for n in [4u32, 8, 16] {
-            let single = features(f64::from(n) * 0.5, 0.0);
-            anchors.push(anchor(&truth, &format!("single-{n}"), single));
-            anchors.push(anchor(&truth, &format!("tp2-{n}"), tp2(n)));
-        }
+        let anchors = single_and_tp2(&truth);
         let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
         let c = fit
             .hw
@@ -771,6 +788,154 @@ mod tests {
             fit.hw.device("gpu1").unwrap().compute,
             fit.hw.device("gpu0").unwrap().compute
         );
+    }
+
+    use crate::predict::{DevicePart, Phase, RankFeatures};
+
+    /// A part of `layers` layers: dense weights and, with `experts`, expert matmuls.
+    fn layer_part(dev: &str, layers: f64, experts: f64) -> DevicePart {
+        DevicePart {
+            device: dev.into(),
+            weight_bytes_per_token: layers * 0.125e9,
+            params_per_token: layers * 0.25e9,
+            resident_matmul_bytes: layers * 0.125e9,
+            ops_per_token: layers * 12.0,
+            kv_bytes_per_ctx_token: layers * 1e4,
+            attn_flops_per_ctx_token: layers * 1e5,
+            expert_bytes_per_token: layers * experts * 0.05e9,
+            expert_params_per_token: layers * experts * 0.1e9,
+        }
+    }
+
+    fn ranked(phases: Vec<Phase>) -> RunFeatures {
+        RunFeatures {
+            parts: phases[0].parts.clone(),
+            ranks: Some(RankFeatures {
+                phases,
+                step_fixed: true,
+            }),
+            ..features(1.0, 0.0)
+        }
+    }
+
+    fn gpus() -> Vec<String> {
+        vec!["gpu0".into(), "gpu1".into()]
+    }
+
+    /// `single` (without ranks) and `tp-2` anchors of 4, 8 and 16 layers on the 2x fixture.
+    fn single_and_tp2(truth: &HardwareGraph) -> Vec<Anchor> {
+        let tp2 = |n: u32| {
+            let phase = || Phase {
+                repeat: n,
+                parts: vec![layer_part("gpu0", 0.5, 0.0), layer_part("gpu1", 0.5, 0.0)],
+                prefill_parts: None,
+                ranges_per_rank: 1,
+                after: Some(Coll::AllReduce {
+                    group: gpus(),
+                    bytes_per_token: 20480.0,
+                }),
+                out_rows: false,
+            };
+            ranked(vec![phase(), phase()])
+        };
+        let mut anchors = Vec::new();
+        for n in [4u32, 8, 16] {
+            let single = features(f64::from(n) * 0.5, 0.0);
+            anchors.push(anchor(truth, &format!("single-{n}"), single));
+            anchors.push(anchor(truth, &format!("tp2-{n}"), tp2(n)));
+        }
+        anchors
+    }
+
+    fn two_3090() -> HardwareGraph {
+        HardwareGraph::from_toml(include_str!("../fixtures/two_3090_hoststaged.toml")).unwrap()
+    }
+
+    /// The share is identified by the tp-2 anchors: a range launch cannot cost less than nothing,
+    /// so with `c_range` near zero only the share explains the cheaper all-reduces. The host link
+    /// carries no anchor's compute and stays at the prior.
+    #[test]
+    fn fits_the_allreduce_latency_share_from_tp2_anchors() {
+        let mut prior = two_3090();
+        prior.range_costs = Some(RangeCosts {
+            c_range_graph_s: 1e-9,
+            ..RangeCosts::PRIOR
+        });
+        let mut truth = prior.clone();
+        truth.range_costs = Some(RangeCosts {
+            c_range_graph_s: 1e-9,
+            c_step_s: 8e-4,
+            allreduce_latency_share: 0.4,
+            ..RangeCosts::PRIOR
+        });
+        let fit = fit(&prior, &single_and_tp2(&truth), "gpu0", "cpu0", "pcie-gpu0").unwrap();
+        let c = fit.hw.range_costs_or_prior();
+        assert!(rel(c.allreduce_latency_share, 0.4) < 0.05, "{c:?}");
+        assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
+        assert_eq!(fit.hw.links, prior.links);
+    }
+
+    /// Anchors without an all-reduce leave the share at 1 (the curve as measured).
+    #[test]
+    fn the_latency_share_stays_at_one_without_allreduce_anchors() {
+        let prior = two_3090();
+        let mut truth = prior.clone();
+        truth.range_costs = Some(RangeCosts {
+            c_step_s: 8e-4,
+            ..RangeCosts::PRIOR
+        });
+        let one_rank = |n: u32| {
+            ranked(vec![Phase {
+                repeat: n,
+                parts: vec![layer_part("gpu0", 1.0, 0.0)],
+                prefill_parts: None,
+                ranges_per_rank: 1,
+                after: None,
+                out_rows: false,
+            }])
+        };
+        let anchors: Vec<Anchor> = [4u32, 8, 16]
+            .iter()
+            .map(|&n| anchor(&truth, &format!("one-{n}"), one_rank(n)))
+            .collect();
+        let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
+        assert_eq!(fit.hw.range_costs_or_prior().allreduce_latency_share, 1.0);
+        let g = fit.hw.device("gpu0").unwrap().compute.unwrap();
+        // no expert work: no expert rate
+        assert_eq!(g.expert_flops_per_s, None);
+    }
+
+    /// Dense and MoE anchors (one rank) separate the expert-matmul rate from the dense rate.
+    #[test]
+    fn fits_the_expert_rate_from_moe_anchors() {
+        let prior = two_3090();
+        let mut truth = prior.clone();
+        let f = truth.device("gpu0").unwrap().compute.unwrap().flops_per_s;
+        for d in &mut truth.devices {
+            if let Some(c) = d.compute.as_mut().filter(|_| d.kind == DeviceKind::Gpu) {
+                c.expert_flops_per_s = Some(f / 3.0);
+            }
+        }
+        let one_rank = |n: u32, experts: f64| {
+            ranked(vec![Phase {
+                repeat: n,
+                parts: vec![layer_part("gpu0", 1.0, experts)],
+                prefill_parts: None,
+                ranges_per_rank: 1,
+                after: None,
+                out_rows: false,
+            }])
+        };
+        let mut anchors = Vec::new();
+        for n in [4u32, 8, 16] {
+            anchors.push(anchor(&truth, &format!("dense-{n}"), one_rank(n, 0.0)));
+            anchors.push(anchor(&truth, &format!("moe-{n}"), one_rank(n, 1.0)));
+        }
+        let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
+        let g = fit.hw.device("gpu0").unwrap().compute.unwrap();
+        assert!(rel(g.flops_per_s, f) < 0.05, "{g:?}");
+        assert!(rel(g.expert_flops(), f / 3.0) < 0.05, "{g:?}");
+        assert_eq!(fit.hw.device("gpu1").unwrap().compute, Some(g));
     }
 
     #[test]

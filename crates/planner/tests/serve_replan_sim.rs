@@ -386,7 +386,8 @@ fn fill_from_priors_names_the_gpu() {
         Some(ComputeSpec {
             flops_per_s: 7.1e13,
             c0_graph_s: 5.0e-6,
-            c0_eager_s: 2.0e-5
+            c0_eager_s: 2.0e-5,
+            expert_flops_per_s: None,
         })
     );
     assert_eq!(g.bandwidth_bytes_per_s.unwrap().value, 9.36e11);
