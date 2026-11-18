@@ -52,8 +52,7 @@ fn moe_sched() -> Scheduler {
     let path = p.clone();
     Scheduler::start(SchedulerConfig::new(p), move || {
         let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
-        o.n_ctx = CTX as usize * n_seq;
-        o.n_seq_max = n_seq;
+        o.n_ctx = CTX as usize;
         load_moe(&path, &o)
     })
     .expect("moe scheduler")
@@ -368,7 +367,8 @@ fn moe_seqs(n_seq: usize, f: &dyn Fn(&mut SchedulerConfig)) -> Scheduler {
     f(&mut cfg);
     Scheduler::start(cfg, move || {
         let mut o = LoadOptions::new(BackendChoice::Cpu { threads: Some(2) });
-        o.n_ctx = CTX as usize;
+        o.n_ctx = CTX as usize * n_seq;
+        o.n_seq_max = n_seq;
         load_moe(&path, &o)
     })
     .expect("moe scheduler")
