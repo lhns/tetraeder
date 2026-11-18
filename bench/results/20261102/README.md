@@ -51,3 +51,15 @@ The exit regime (Qwen3-235B-A22B Q4_K_M, RTX 3090, model larger than RAM, ADR 00
 
 - Colibri v2.1.0 (`scripts/colibri_exit.sh`): 2K profile only; its 32K prefill would take about 4 h (2046 tokens took 895 s on the 5-thread box).
 - ik_llama.cpp: no number. It was OOM-killed at 128 GB on 2026-11-02 (it does not keep CPU-overridden experts mapped, so the 142 GB must fit in RAM; `--no-mmap` and run-time repack need that too). Its llama-bench also lacks `-d` and `;`-joined `-ot` (both fixed in the stage, not run again).
+
+## From ADR 0056 Context (moved verbatim)
+
+- **The ties are not small.** `bench/results/20261102/builder-real-202732.json` (Qwen3-30B-A3B Q4_K_M, 5 threads, 32 VRAM slots, CPU miss policy, same box): decode 19.4 tok/s with 32 RAM slots, 33.8 with all 128, 1.74x apart, predicted equal. The builder fixture (`planner-moe-builder`, `docs/m1-open.md` item 6) has never run; it is the open part of the Phase 3a planner exit test.
+
+## From ADR 0056 "Expected value" (moved verbatim)
+
+A prediction, to be checked by the `b3-planner` session on the builder fixture: today the analytic pick inside a RAM tie group is the smallest RAM tier, and on the 30B that tier decodes up to 1.74x slower than the largest at the same VRAM slots. With the term, RAM-only candidates are ranked by their disk bytes, the close call compares real neighbours, and regret stays within the 10% bar with Spearman at least 0.8. If it does not, the ledger shows which anchors miss and whether the reader formula or the bytes are wrong.
+
+## From ADR 0056 Implementation notes, part B (moved verbatim; the synthetic fixture numbers are local CI runs)
+
+  On the synthetic builder fixture: with the tier file regret 0 and Spearman 1.000, without it (the box reads no disk) regret 0 and Spearman 0.998, as before; RAM tie groups on the 24 candidates: 4 without the replay, 0 with it. On the committed 30B run (`builder-real-202732.json`, 32 VRAM slots, bytes from its expert counters since no 30B trace is committed), decode tok/s for 32 against 128 RAM slots: measured 19.40 against 33.81; before 69.72 against 69.72; after 13.79 against 66.64 (prior curve) and 10.80 against 66.64 (3.3 GB/s). The sign is right and the gap is too wide (4.8x against 1.74x): an uncalibrated prior, and the cold run's fill counted as decode reads. The trace stage of the `b3-planner` session replaces both.

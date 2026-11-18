@@ -13,3 +13,7 @@ Same host (209278, A10, Xeon Gold 6342), new instance, 91 GB balloon, 30 threads
 ## From ADR 0045 (addendum "owner decision on slow disks; correction", the decision paragraph with its numbers, moved verbatim)
 
 Decision (owner, 2026-11-11, after the runs): slow disks are not calculated out of the result, they bound its scope. Phase 2 is met in the measured regime where read waits take at most 18% of the builder's decode step (`read_wait_ms / total_ms` of the overlap runs: 0.05 to 0.18 on every passing box, disks reading 1.8 to 3.0 GB/s during decode); at 0.80 (`20261111b`, 0.5 to 0.6 GB/s) KTransformers decodes 1.6x faster, recorded as a known limitation. Between the two there is no paired KTransformers run (`20261110h`, 0.21, has none). `decode_io.read_gb_s` is not a disk rate (its bytes include prefetch, its time only the waited reads) and is not used for scope. The exit run keeps the disk gate (loaded depth 16 at least 5 GB/s) as a box filter, not as a measured boundary. Follow-up after M1: the post-prefill warm-up, starting with an ADR and a failing test.
+
+## From ADR 0058 Context (moved verbatim; the line also cites `20261111c`)
+
+One Phase 2 loss (`20261111b`, KTransformers 1.6x faster on a 0.5 GB/s disk) took three successive explanations before the data settled it, and a KTransformers outlier (`20261111c`, 0.52 tok/s) was first blamed on thread count when its host block showed page-fault latency (69 MB/s at queue depth 0.37, about 2,600 major faults per token). What was missing was not a label but two measurements:

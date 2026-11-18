@@ -38,3 +38,30 @@ Qwen3-8B, wikitext-2, ik_llama.cpp at its pin with its own perplexity tool and B
 
 **First run** (`bench/results/20261110/kv-quality.json`, box 59998776, RTX A6000): Q8_0/Q8_0 8K mean KL 0.0107, top-1 0.958 (fail), 32K 0.00087, 0.999; Q8_0/Q4_0 8K 0.0169, 0.933 (fail), 32K 0.000037, 1.000. The 32K rows measured nothing: the frozen exit prompt is about 25,848 tokens (Qwen3 vocab), the harness cycled it to 32K, so the scored positions 31744..32767 were a verbatim repeat of text 25,848 positions earlier (every 8-gram of the block occurs in its context; 0.3% at 8K). The model copies there and any KV format scores KL near 0. The calibration set was skipped (`scripts/kv_quality.sh` never set `TETRAEDER_KV_QUALITY_TEXT`). The 8K rows are real text and stand; whether they are the format's cost or a CUDA issue is open, because quantized-KV parity against libllama has only run on the CPU.
 **Fix.** The ADR's "exit prompt at 32K" cannot be met literally, so: each depth's sequence ends with the first 8192 prompt tokens and the rest of the prompt, cycled to end with its last token, fills the front (`depth_seq`). 8K is unchanged; both depths score the same 1024 tokens, so they differ only in depth. The repeated 8-gram share of the scored block (2.4% at 32K, cross-references inside the docs) is in the JSON and must stay at most 0.1. The script fetches wikitext-2 and fails without the calibration set. Informative rows next to the gating ones: the builder's F16 cache again and rotated (noise floor), both formats with the rotation off, and libllama with F16 and both formats against the same reference, plus median, p99 and max KL per row. A bound that still fails goes back to this ADR; the bounds are unchanged.
+
+## From ADR 0057 Context (moved verbatim)
+
+The second Claude Code proxy run (bench/results/20261110/claude-code-proxy, box 59998776, RTX A6000, Qwen3-Coder-30B-A3B Q4_K_M, 10 tasks x 2 reps) gave Tetraeder 12/20 tasks and an 18.5% tool-error rate (100 of 541 calls), llama-server 13/20 and 5.6% (26 of 466). Pairing each `is_error` tool result in the request logs with the `tool_use` it answers:
+
+| Class (proxy) | Count | What it is |
+|---|---|---|
+| input_validation | 52 | Edit `replace_all` sent as the string `"False"` |
+| input_validation | 4 | Edit `replace_all` as `"True"` |
+| input_validation | 2 | ScheduleWakeup `stop` as `"True"` |
+| input_validation | 2 | ReportFindings `findings` (array) as the string of a Python `repr` list (`[{'category': ...}]`) |
+| other | 29 | Bash exit code 1 (pytest failures, scripts) |
+| other | 4 | Bash refused by Claude Code's rm check (multi-line `python -c`) |
+| other | 7 | Read on a directory or missing file, Edit string not found or a no-op edit |
+| unknown_tool | 1 | `Explore` (not in the request's tools) |
+
+The request log holds one more `other` result (40) than the proxy counted (39). The log confirms the proxy's `is_error` patterns, which ADR 0051 left unchecked.
+
+All 60 validation errors are one cause: Qwen3-Coder writes XML parameter values as Python literals (`True`, `False`, `None`, single-quoted strings), which the parser in `toolcall.rs` could not read as JSON, so it kept the text as a string. The "other" errors are the model's work on the task, the same kind llama-server has (26). The five Tetraeder sessions with `is_error` (llama-server: one) all ended at Claude Code's 40-turn limit, and each had 4 to 13 validation errors: the model retried the same Edit with the same `"False"`.
+
+## From ADR 0057 Decision (moved verbatim)
+
+Calls stay counted `parsed/ok`: the call is well formed and the value has the schema's type. Counting them `repaired` would put about 11% of calls into the `ToolCallFailures` alert, which is meant for template or model regressions.
+
+## From ADR 0057 Consequences (moved verbatim)
+
+- The 58 boolean calls of the run become schema-valid; the 2 ReportFindings calls get the right type (their item fields are not checked here). With all else equal the tool-error rate drops from 18.5% to about 7.4% (40 of 541) at best, near llama-server's 5.6%; converted Edits can still fail for task reasons. The turn-limit sessions lose their retry loops. The next proxy run measures it.

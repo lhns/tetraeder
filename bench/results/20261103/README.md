@@ -242,3 +242,65 @@ The builder's CPU experts (Qwen3-235B Q4_K_M, one token, `mul_mat_id` over 8 of 
 ## From ADR 0053 Consequences ("Expected gain, box C", an estimate sized on this session, moved verbatim)
 
 - **Expected gain, box C:** about 8 GB of CPU expert weights per token (87 of 94 layers, gate/up Q4_K, down Q4_K/Q6_K) in 112 ms of compute is about 71 GB/s, against roughly 120 to 140 GB/s of DRAM on an 8-channel 6330N. Compute halved from 15 to 26 threads (ADR 0045), so it is instruction bound, not bandwidth bound. A dpbusd GEMV does about half the integer instructions per block; estimate compute 112 to 70-85 ms, floor about 60 ms from bandwidth. Decode 257 to about 220-230 ms (3.77 to 4.3-4.5 tok/s, +12 to 19%). That closes about half of the 59 ms gap to KTransformers; the streamer's 128 ms (ADR 0045 hypotheses 1 and 2) stays the other lever. No gain on boxes without AVX-512 VNNI. The box run decides; until then this is an estimate.
+
+## From ADR 0054 Context (moved verbatim)
+
+Box C (ADR 0045 addendum, 26-core quota, `bench/results/20261103/exit-main-prefetch-120800.json`): 257 ms per decode token against KTransformers' 198 (5.04 tok/s). Per token:
+
+| Bucket | ms | What it is |
+|---|---|---|
+| compute | 112 | segments; the CPU experts are about 100 (7.1 per layer, 81 MB per layer from DRAM in about 1.07 ms) |
+| prefetch wait | 95 | main thread blocked in `finish_prefetch`: 36 experts, 414 MB per token |
+| synchronous misses | 19.5 | device time of 8.4 experts, 97 MB, at 5.0 GB/s |
+| rest of the streamer | 13 | mostly the bounce-to-slot copy of those 97 MB on the main thread (about 8 GB/s), lookups |
+| alloc, build, readback, inputs | 16 | 95 graphs |
+
+Brief A (ADR 0050 a) targets only the 19.5 ms row. The 95 ms row is larger, and it has a cause in our I/O path, not in the device:
+
+- **The reader is busy 131 ms per token for 414 MB (3.2 GB/s), and the step only has 257.** `Reader` is one thread running `read_batch_with`, which reads a whole sub-batch, waits for all of it, then copies every range into its slot on that same thread (`dio/mod.rs:378-430`). At 5.2 GB/s the device part is about 80 ms; the serial copy adds about 50 ms. ADR 0038 lever 2 (1 MiB chunks at depth 16, implemented, not measured) shortens the device part but leaves the copy serial, so the reader's ceiling stays near 100 to 130 ms per token. Once compute drops (ADR 0053 estimates 27 to 42 ms less), that ceiling is the step.
+
+Per layer the work fits: the reads are 5.4 MB (0.48 experts) per layer, about 1.05 ms at 5.2 GB/s, against 1.19 ms of compute. Fully overlapped, decode is bound by compute plus graph overhead, about 130 ms; after ADR 0053 by the device, about 98 ms of reads per token at today's hit rate.
+
+## From ADR 0054 Options (moved verbatim; the "today" column is measured on box C, the other columns are estimates made before the build)
+
+Both options keep the VRAM hot set and the prefetch prediction (ADR 0038). Per token on box C at today's bytes:
+
+| | today (`main-prefetch`) | A: direct I/O service, arrival order (chosen) | B: page cache, compute in place on mapped pages |
+|---|---|---|---|
+| bytes read | 511 MB | 511 MB; 440 to 470 with the tier sized to the container (replay decides) | similar: the page cache holds about as many experts as RAM plus reserve; kernel LRU instead of ours |
+| device rate under compute | 3.2 GB/s (reader), 5.0 (sync) | 5.2 target: 16 persistent workers, rolling queue | unknown; up to 26 faulting threads, 128 KB readahead per fault, `MADV_WILLNEED` for predictions |
+| copies on a serial path | about 63 ms of thread time, 13 on the main thread | none serial: each worker copies its own 1 MiB chunk | none |
+| granularity of "compute as bytes arrive" | whole layer | per expert (rows of one expert must stay in one `mul_mat_id`, see Exactness) | per page, inside one `mul_mat_id` |
+| exposed wait (estimate) | 95 + 19.5 + 13 | 10 to 25 | 10 to 30 |
+| decode step (estimate) | 257 | 145 to 165 | 140 to 165 |
+| prefill (32K) | 72 tok/s | unchanged path | op offload copies whole 128-expert tensors per ubatch and refaults the uncached half: llama.cpp's mmap `-ot` prefill is 46 to 50 tok/s on the same boxes |
+| control | slot tables, pins, replay | same | kernel reclaim: no pins (a prefetched expert can be dropped before use), no frequency pins (ADR 0050 c), the replay no longer models the tier, `memory()` cannot report used tier bytes (ADR 0037) |
+
+Decode alone does not separate them; prefill and the budget and replay semantics do. llama.cpp `-ot` runs ggml's `mul_mat_id` on mapped pages with all threads faulting and decoded at 0.81x and 0.62x of the builder on boxes A and B, but it also places 7 whole layers in VRAM instead of a per-layer hot set, so those ratios are not evidence against mapped pages as such. Option A keeps every measured advantage and removes the three causes listed above.
+
+## From ADR 0054 Decision, section 3 "RAM tier sized to the container" (moved verbatim)
+
+- The harness reserve (`RAM_RESERVE_GB`, 8 GB) is a guess. Box C peaked at 84.85 of 91.4 GB with the 77-slot tier full (82.6 GB of slots, so about 2.3 GB of everything else), leaving 6.5 GB unused. Under ADR 0031 the tier stays a byte budget; only the reserve changes: 4 GB on the exit boxes, giving 81 slots instead of 77 (`floor(bytes / 1072594944)`), a peak near 89.2 GB, 2.2 GB under the limit. The run's `peak_rss_bytes` checks it; a run above 90 GB goes back to 8.
+- Priced offline before the box run: the replay of ADR 0050 (c) on the 235B trace, `tetraeder-bench replay --trace F --vram 10 --ram 77,79,81,83 --policies lru` (prefetch replayed; the `trace` stage of `exit_run.sh` gains these counts), after its fidelity gate (LRU at 77 within 0.5 points of the measured hit rate). The gain is the drop in decode disk bytes per token; at 75 MB per hit-rate point it is about 14 ms of device time per point. Prior from boxes A and B: 0.2 to 0.3 points per slot near 77, so about one point.
+
+## From ADR 0054 "Expected gain" (estimates made before the build from box C, moved verbatim)
+
+- Against `main-prefetch` on box C (257 ms; the next run will also have ADR 0038 levers 2 and 3, still with the serial copy): 145 to 165 ms per token, 6.1 to 6.9 tok/s, 1.2x to 1.37x KTransformers' 5.04. Reasoning: compute and graph overhead stay at 128 ms; the 95 + 19.5 + 13 ms of waits and copies shrink to 10 to 25 ms of exposed reads (device time 98 ms against 112 of compute, hidden per layer behind the hit group and the prefetch window) plus 2 to 5 ms for about 0.4 extra CPU-only graphs and one `xn` readback per layer step with pending experts.
+- These estimates overlap ADR 0038's for its levers 1 to 3 (150 to 170 ms): those assumed the reader reaches device rate, which the serial copy prevents. The paired run reports the service alone (`main-iosvc`) and with arrival order (`main-overlap`) apart, so each part has its own number.
+- With ADR 0053 (compute 70 to 85 ms) the gains do not add: the step becomes bound by the 98 ms of device time, about 115 to 135 ms. Then bytes per token decide, and the tier sizing (about 14 ms per hit-rate point) and ADR 0050 (c) are the next levers.
+
+## From ADR 0056 Context (moved verbatim)
+
+- **The anchor bands are not candidate bands.** ADR 0040's 9.2% (MoE) and 5.8% (dense) are `Fit::band`, the largest anchor residual of the fit, in sample. On the committed fixtures the candidates' request-time errors are: MoE median 4.3%, 5 of 24 above 9.2%, max 23.1% (c08); dense median 2.1%, 4 of 11 above 5.8%, max 27.8%. A per-result gate at the anchor band would fail on the committed data.
+
+## From ADR 0056 Decision, section 1 "Formula" (moved verbatim)
+
+The reader path is the serial sum because box C shows its prefetch barely hides (95 ms of 257 waiting with the reader busy 131 ms): the sum gives 291 ms there, 13% over. The service formulas are "critical chain or disk busy, whichever is longer", a lower bound until the paired `main-iosvc` and `main-overlap` runs (ADR 0054) measure them. Prefill: misses are read synchronously (ADR 0054 keeps `read_experts` for prefill), so `t_pp` adds `prefill_bytes / disk_rate(sync_depth)` per ubatch, serial. Box C's prefill read 62 s of about 450 s, so the term is not optional.
+
+## From ADR 0056 Decision, section 3 "Snapshot" gate 3 (moved verbatim)
+
+3. per session, the median error of its non-anchor results is at most the class band (MoE 9.2%, dense 5.8%, ADR 0040); today 4.3% and 2.1%;
+
+## From ADR 0056 Implementation notes, part A (moved verbatim)
+
+- **Part A (provenance and ledger).** `MODEL_VERSION` is in `costmodel`; `EnvInfo` gains `session` and prefers `TETRAEDER_GIT_COMMIT`; `exit_regime` writes `provenance` (the io options are omitted until `track-w-iosvc` merges); `scripts/session.sh` exports both variables. `planner::ledger` has `evaluate`, `check`, `write` and `tetraeder-plan ledger [--write] [--accept-worse id=reason]`. Refresh after a version bump or a new fixture: `cargo run -p tetraeder-planner --bin tetraeder-plan -- ledger --write`. `err` is `|predicted - measured| / measured` on the request time. Committed medians: MoE 0.043, dense 0.021. The dense harness files carry no `env`, so its `provenance.json` assumes the `planner-moe` host (noted in the file). A snapshot entry that is missing now, or whose status changed, fails the check; an entry that is new is listed but not a failure until `--write`.
