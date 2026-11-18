@@ -11,13 +11,10 @@ mod common;
 
 use common::multi_seq::max_diff;
 use common::shapes::{layer_g, single, tp, tp2pp2};
+use common::tp_anchor::{libllama_tp_anchor, top5_gap};
 use common::*;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::PathBuf;
 use tetraeder_ggml_sys::ggml::Backend;
-use tetraeder_ggml_sys::llama::{
-    Batch, Context, ContextParams, FlashAttn, Model, ModelParams, SplitMode,
-};
 use tetraeder_model::{BackendChoice, DenseOptions, Qwen3};
 use tetraeder_plan::Topology;
 
@@ -111,94 +108,6 @@ fn gpu_one_rank_is_bit_equal_to_the_scheduler() {
         lb = b.eval_last(&[t]).unwrap();
     }
     assert!(fails.is_empty(), "{}", fails.join("\n"));
-}
-
-/// Top-5 of `want` in `got`: the worst |delta| and its bound `tol.of(want)`.
-fn top5_gap(got: &[f32], want: &[f32], tol: Tol) -> (f32, f32) {
-    let worst = top_k(want, TOP_K)
-        .into_iter()
-        .map(|i| (got[i] - want[i]).abs())
-        .fold(0f32, f32::max);
-    (worst, tol.of(want))
-}
-
-/// The prompt's logits and the logits before each of `tokens` (teacher forced, the first is
-/// the prompt's last row) from libllama with every layer on the GPU: `SplitMode::None` on GPU
-/// 0, or `SplitMode::Tensor` over every visible GPU (`-sm tensor`, ADR 0069's step-0 baseline).
-fn libllama_run(path: &Path, split: SplitMode, tokens: &[i32]) -> (Vec<f32>, Vec<Vec<f32>>) {
-    let model = Arc::new(
-        Model::load(
-            path,
-            &ModelParams {
-                n_gpu_layers: -1,
-                split_mode: split,
-                main_gpu: 0,
-                ..ModelParams::default()
-            },
-        )
-        .expect("libllama loads the model"),
-    );
-    let nv = model.n_vocab() as usize;
-    let mut ctx = Context::new(
-        &model,
-        &ContextParams {
-            n_ctx: 512,
-            n_batch: 64,
-            n_ubatch: 64,
-            flash_attn: FlashAttn::On,
-            ..ContextParams::default()
-        },
-    )
-    .expect("libllama context");
-    let mut batch = Batch::new(64);
-    for (i, &t) in PROMPT.iter().enumerate() {
-        batch.push(t, i as i32, 0, true).unwrap();
-    }
-    ctx.decode(&batch).unwrap();
-    let mut prompt = Vec::with_capacity(PROMPT.len() * nv);
-    for i in 0..PROMPT.len() {
-        prompt.extend_from_slice(ctx.logits_ith(i as i32).unwrap());
-    }
-    let mut steps = vec![prompt[(PROMPT.len() - 1) * nv..].to_vec()];
-    let fed = &tokens[..tokens.len().saturating_sub(1)];
-    for (k, &t) in fed.iter().enumerate() {
-        batch.clear();
-        batch.push(t, (PROMPT.len() + k) as i32, 0, true).unwrap();
-        ctx.decode(&batch).unwrap();
-        steps.push(ctx.logits_ith(-1).unwrap().to_vec());
-    }
-    (prompt, steps)
-}
-
-/// libllama's own tensor-parallel gap on this model and box (ADR 0071's anchored rule for real
-/// models, 2026-11-16 addendum): `-sm tensor` against one GPU on the same tokens, the worst
-/// top-5 |delta| of a row as a share of its largest logit. The tensor-parallel shapes are
-/// bounded by max(`GPU_TOL`, 1.5x this share); the anchor's split degree is every visible GPU.
-fn libllama_tp_anchor(path: &Path, tokens: &[i32]) -> f32 {
-    let (p1, s1) = libllama_run(path, SplitMode::None, tokens);
-    let (pt, st) = libllama_run(path, SplitMode::Tensor, tokens);
-    let nv = s1[0].len();
-    let mut worst = 0f32;
-    let mut row = |name: String, got: &[f32], want: &[f32], print: bool| {
-        let (d, _) = top5_gap(got, want, GPU_TOL);
-        let rel = d / largest(want);
-        worst = worst.max(rel);
-        if print {
-            let top1 = argmax(got) == argmax(want);
-            eprintln!(
-                "libllama tensor / one GPU: {name}: top-5 max |delta| {d:e}                  ({rel:.2e} of largest), top-1 equal {top1}"
-            );
-        }
-    };
-    for p in 0..PROMPT.len() {
-        let r = p * nv..(p + 1) * nv;
-        row(format!("prompt position {p}"), &pt[r.clone()], &p1[r], true);
-    }
-    for (k, (g, w)) in st.iter().zip(&s1).enumerate() {
-        row(format!("step {k}"), g, w, k % 16 == 0);
-    }
-    eprintln!("libllama tensor / one GPU: worst {worst:.2e} of the largest logit");
-    worst
 }
 
 /// One shape against `single` on the model: the prompt's logits and 64 greedy tokens, teacher
@@ -306,7 +215,7 @@ fn shapes_against_single(shapes: Vec<(String, Topology)>) {
         .any(|(_, t)| t.stages.iter().any(|s| s.ranks.len() > 1));
     let tp_tol = if has_tp {
         let tokens: Vec<i32> = steps.iter().map(|(t, _)| *t).collect();
-        let own = libllama_tp_anchor(&path, &tokens);
+        let own = libllama_tp_anchor(&path, &PROMPT, &tokens, true);
         Tol {
             abs: TOL_GPU,
             rel: GPU_TOL.rel.max(1.5 * own),

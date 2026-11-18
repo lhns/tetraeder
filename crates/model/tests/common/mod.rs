@@ -5,6 +5,7 @@ pub mod multi_seq;
 pub mod shapes;
 pub mod split;
 pub mod synth;
+pub mod tp_anchor;
 pub mod trace;
 
 /// The CPU quota of the container (cgroup v2 `cpu.max`), if any.
