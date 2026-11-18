@@ -1,4 +1,4 @@
-"""scripts/idle_gate.sh and scripts/gpu_sampler.sh with a fake nvidia-smi on PATH (ADR 0065 addendum)."""
+"""scripts/idle_gate.sh and scripts/gpu_sampler.sh with a fake nvidia-smi on PATH (ADR 0065 Verdict, "Box choice" and "Throttle record")."""
 
 import os
 import pathlib

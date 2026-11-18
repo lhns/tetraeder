@@ -6,7 +6,7 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 
 ## Context
 
-On the Vast boxes the container's CPU quota throttled the builder in most CFS periods at `threads` = quota with ggml's default polling (`20261112e`, ADR 0045 last paragraph). Idle workers spinning between the about 95 segment graphs per token spent the quota the compute then waited for. With `cpu_poll` 0 the throttled share fell to a few percent and decode ran faster. The run looked like plain CPU-bound compute: the `limits` list said "limited by cpu" and no fault fired. `cpu_cotenant` does not cover it either: nothing else uses the cores, the engine's own threads do.
+On the Vast boxes the container's CPU quota throttled the builder in most CFS periods at `threads` = quota with ggml's default polling (`20261112e`). Idle workers spinning between the about 95 segment graphs per token spent the quota the compute then waited for. With `cpu_poll` 0 the throttled share fell to a few percent and decode ran faster. The run looked like plain CPU-bound compute: the `limits` list said "limited by cpu" and no fault fired. `cpu_cotenant` does not cover it either: nothing else uses the cores, the engine's own threads do.
 
 ## Decision
 

@@ -278,7 +278,7 @@ pub enum ExecError { Invalid(Vec<String>), Ggml(GgmlError) }
 
 **Goal.** `Qwen3Moe` runs `single`, `layer-g`, `tp-g`, `ep-g`, `tp2-pp2` plans with every expert resident on the executor (ADR 0070), and `tetraeder bench --engine moe --plan` measures them.
 
-**Read first.** ADR 0033, 0036 (whole-step graph), 0065 C4 addendum, 0069, 0070 in full; `crates/model/src/{qwen3moe.rs (load 543, build_step 2413),experts.rs,attn.rs}`, `crates/scheduler/src/backend.rs` (`MoeBackend`); E6's diff for the dense pattern (attention sharding, head, pipeline hop: reuse its helpers, do not copy them).
+**Read first.** ADR 0033, 0036 (whole-step graph), 0065 "Backends as built", 0069, 0070 in full; `crates/model/src/{qwen3moe.rs (load 543, build_step 2413),experts.rs,attn.rs}`, `crates/scheduler/src/backend.rs` (`MoeBackend`); E6's diff for the dense pattern (attention sharding, head, pipeline hop: reuse its helpers, do not copy them).
 
 **Decisions.**
 - `Qwen3Moe::load_sharded(path, topo: &Topology, opts: &LoadOptions) -> Result<Qwen3Moe>`; allowed only without a streamer, RAM or NVMe tiers, op offload or CPU experts (error naming the option otherwise). Single-GPU resident loads go through it with `Topology::single`, bit-equal; every streamed or CPU path keeps `Sched`.

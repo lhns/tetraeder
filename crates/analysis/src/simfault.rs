@@ -410,7 +410,7 @@ pub fn simulate(hw: &HardwareGraph, spec: &SimSpec) -> Result<Observation, Strin
             }
             FaultClass::CpuQuotaThrottle => {
                 // Spinning workers burn the quota: 80% to 98% of the periods throttled, decode
-                // 1.30x slower (ADR 0045).
+                // 1.30x slower (ADR 0045, `bench/results/20261112e`).
                 if let Some(r) = find(&mut res, "cpu") {
                     r.rate /= 1.3;
                 }

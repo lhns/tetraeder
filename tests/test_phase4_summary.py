@@ -139,7 +139,7 @@ def test_unclean_pair_with_a_fail_is_still_no_verdict(s):
     "throttle,clean",
     [
         ((IDLE, APPS), True),
-        ((IDLE, POWER), True),  # SW power cap after a run is benign (ADR 0065 addendum)
+        ((IDLE, POWER), True),  # SW power cap after a run is benign (ADR 0065 Verdict, "Throttle record")
         ((POWER, IDLE), False),  # but not before
         ((IDLE, "0x0000000000000024"), False),
         (("0x0000000000000600", IDLE), False),
@@ -456,7 +456,7 @@ def test_stopped_cli(tmp_path):
     assert p4.main([str(d), "--stopped"]) == 0
 
 
-# ---- sampler (gpu-samples.csv, ADR 0065 addendum) -------------------------------------------------------------
+# ---- sampler (gpu-samples.csv, ADR 0065 Verdict, "Throttle record") ------------------------------------------------------
 
 T0 = datetime(2026, 11, 17, 10, 0, 0)
 BOARD = 0x400

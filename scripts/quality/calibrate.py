@@ -29,7 +29,7 @@ import qlib
 KNAPSACK_FRACTIONS = (0.2, 0.35, 0.5)
 
 # A uniform check whose measured KL is more than this above the estimate (relative to measured) gets a
-# format scale. ADR 0048 measured the sum within 14% elsewhere; Q2_K on the 30B was 25% under.
+# format scale. ADR 0048 (`bench/results/20261103`) measured the sum within 14% elsewhere; Q2_K on the 30B was 25% under.
 UNDER_BAND = 0.15
 
 

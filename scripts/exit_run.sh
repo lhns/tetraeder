@@ -147,7 +147,7 @@ ot_fit="${OT_FIT:-blk\.[0-3]\.ffn_.*_exps=CUDA0;exps=CPU}"
 ik_bench="${IK_BENCH:-/opt/ik_llama/bin/llama-bench}"
 bench="${LLAMA_BENCH:-/opt/llama.cpp/bin/llama-bench}"
 # natural text for the prompt (random token ids spread routing pessimistically), frozen: it was built from the
-# checkout's AGENTS.md and ADRs, so every ADR edit changed the 32K prompt (ADR 0038, Results). Copied for the scripts
+# checkout's AGENTS.md and ADRs, so every ADR edit changed the 32K prompt (ADR 0038, "Correction and default on (2026-11-03)"). Copied for the scripts
 # that read /root/exit_prompt.txt (Colibri, KTransformers).
 prompt=/root/exit_prompt.txt
 cp bench/prompts/exit_prompt.txt "$prompt"

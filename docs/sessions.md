@@ -44,7 +44,7 @@ B3 first: its cache tuner gives B1 the llama.cpp CPU share. B3-planner and B3-de
 
 Every session except `b1-exit` (the verdict session, `NOISE_STAGE=1` opts in) now ends with the A/A pair of the "Noise bands" section when 12 minutes of its budget are left: it adds the 8B model (about 5 GB, 0.07 to 0.13 USD of traffic) and up to 12 minutes; `b1b-levers` and `b2-proxy` may skip it when the deadline is near.
 
-Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); box 58900330 paid 0.92 USD for the same 142 GB (ADR 0045), so the low end exists. Rank offers with `--download-gb`.
+Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); box 58900330 paid 0.92 USD for the same 142 GB (`bench/results/20261103`), so the low end exists. Rank offers with `--download-gb`.
 
 ## Sources of the estimates
 
@@ -167,7 +167,7 @@ As one session B3 is 170 to 215 min of script time, more than one box allows, so
 
 ### `b3-builder`
 
-The candidate runs of the builder fixture (`planner-moe-builder`, `docs/m1-open.md` item 6): ADR 0040's builder set with the fill tier (addendum 2026-11-15), Qwen3-30B-A3B Q4_K_M, 24 candidates plus 4 anchors, prompt 2048, 128 decoded tokens, 4 min a run. `scripts/planner_builder_campaign.sh` does the work; the profile is its box driver.
+The candidate runs of the builder fixture (`planner-moe-builder`, `docs/m1-open.md` item 6): ADR 0040's builder set with the fill tier (addendum 2026-11-14), Qwen3-30B-A3B Q4_K_M, 24 candidates plus 4 anchors, prompt 2048, 128 decoded tokens, 4 min a run. `scripts/planner_builder_campaign.sh` does the work; the profile is its box driver.
 
 **Box.** RTX 3090 or a 48 GB card (same fixture on both: `FREE_MOE_MIB`, default 14336, balloons the card to 14 GiB free; `FREE_MOE_MIB=0` holds nothing and the budget is the whole card), 32+ GB RAM, 9+ cores, 60 GB disk. `$T offers --min-cpu-cores 9 --download-gb 20 --min-disk 60`.
 

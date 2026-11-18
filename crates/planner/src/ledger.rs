@@ -841,7 +841,7 @@ mod tests {
             assert_eq!(names.len(), 1, "{class}: {names:?}");
             session_median(&l, names[0]).unwrap()
         };
-        // ADR 0056 context: MoE about 4.3%, dense about 2.1%
+        // ADR 0056 context (`bench/results/20261103`): MoE about 4.3%, dense about 2.1%
         assert!((med("moe") - 0.043).abs() < 0.005, "moe {}", med("moe"));
         assert!(
             (med("dense") - 0.021).abs() < 0.005,

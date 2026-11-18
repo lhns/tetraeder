@@ -33,7 +33,7 @@ Files: `family/impl/moe/expert_cache.{h,cpp}`, `api/ops/expert_slot_cache.h`, `o
 - Segments per MoE layer with a host round trip for routing ids (ADR 0030, 0036), pair groups with misses computed on the CPU (ADR 0035, policy `Cpu`), static VRAM hot set from routing counts.
 - Disk tier with predicted next-layer prefetch (ADR 0038: accuracy 0.85, +11% decode), I/O service and arrival-order compute (ADR 0054), RAM tier per layer with LRU or frequency pins (ADR 0050 c).
 - Admission of a share of CPU misses into VRAM (ADR 0059): measured 0.52 to 0.61x of the default because synchronous uploads ran at 2.56 GB/s (4.47 ms per 11.4 MB expert); an `Async` mode with a pinned ring is designed.
-- Per-token dispatch cost: about 0.88 ms fixed per CPU-carrying segment, about 70 ms of a roughly 200 ms decode token (ADR 0064).
+- Per-token dispatch cost: about 0.88 ms fixed per CPU-carrying segment, about 70 ms of a roughly 200 ms decode token (ADR 0064, `bench/results/20261112c`).
 - Op offload gated by step tokens (ADR 0044), no CPU repack (ADR 0039).
 
 ### Difference

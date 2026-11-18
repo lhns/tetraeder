@@ -78,7 +78,7 @@ log="${P4_LOG_FILE:-runs/vast/phase4_box.log}"
 session="${SESSION:-$(date +%Y%m%d)}"
 out="${P4_OUT:-$PWD/bench/results/$session/phase4}"
 mkdir -p "$out" "$(dirname "$log")"
-# 1 Hz GPU sampler for the whole session (ADR 0065 addendum; scripts/gpu_sampler.sh -> $out/gpu-samples.csv); not in the
+# 1 Hz GPU sampler for the whole session (ADR 0065 Verdict, "Throttle record"; scripts/gpu_sampler.sh -> $out/gpu-samples.csv); not in the
 # CPU rehearsal. It ends on $out/gpu-sampler.stop or when this script is gone.
 if [ "$DRY" = 1 ]; then
   [ "$skip_gpu" = 1 ] || echo "PLAN gpu_sampler.sh -> gpu-samples.csv (stopped at the end)"

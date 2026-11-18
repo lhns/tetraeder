@@ -1767,7 +1767,7 @@ mod tests {
         assert!(o[0].prefetch && o[0].policy == "lru");
     }
 
-    /// The committed 30B run (ADR 0056 context): at 32 VRAM slots, 32 against 128 RAM slots
+    /// The committed 30B run (ADR 0056 context, `bench/results/20261102`): at 32 VRAM slots, 32 against 128 RAM slots
     /// decoded 19.4 against 33.8 tok/s and the model without a RAM tier predicted them equal.
     /// The bytes here come from the run's expert counters (reads beyond the 2898 cold fills are
     /// decode reads), not from a replay: the 30B has no committed trace yet.
