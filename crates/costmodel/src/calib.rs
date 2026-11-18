@@ -17,7 +17,7 @@
 use crate::predict::{Coll, PredictError, RunFeatures, predict};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tetraeder_profiler::{HardwareGraph, Measurement, RangeCosts, Source, ThreadPoint};
+use tetraeder_profiler::{HardwareGraph, Measurement, Source, ThreadPoint};
 
 /// One measured run: its features and the llama-bench rates (either may be absent).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -791,6 +791,7 @@ mod tests {
     }
 
     use crate::predict::{DevicePart, Phase, RankFeatures};
+    use tetraeder_profiler::RangeCosts;
 
     /// A part of `layers` layers: dense weights and, with `experts`, expert matmuls.
     fn layer_part(dev: &str, layers: f64, experts: f64) -> DevicePart {
