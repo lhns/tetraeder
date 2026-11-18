@@ -573,7 +573,7 @@ mod tests {
                 .chain(&kv.v)
                 .map(|t| t.get().get_bytes(0, 32 * row).unwrap())
                 .collect();
-        let mut sched = Sched::new(&[backend.clone()], 64, false).unwrap();
+        let mut sched = Sched::new(std::slice::from_ref(&backend), 64, false).unwrap();
         let copies = [(0, 10, 3), (4, 20, 1), (14, 24, 5)];
         copy_rows(&kv, &mut sched, &copies).unwrap();
         for (ti, t) in kv.k.iter().chain(&kv.v).enumerate() {
