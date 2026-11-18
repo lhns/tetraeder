@@ -19,6 +19,7 @@ fn graph() -> HardwareGraph {
             flops_per_s: 1e13,
             c0_graph_s: 1e-6,
             c0_eager_s: 4e-6,
+            expert_flops_per_s: None,
         });
         d.bandwidth_bytes_per_s = Some(Measurement::prior(1e11));
         d
@@ -47,6 +48,8 @@ fn part(dev: &str, bytes: f64) -> DevicePart {
         ops_per_token: 10.0,
         kv_bytes_per_ctx_token: 0.0,
         attn_flops_per_ctx_token: 0.0,
+        expert_bytes_per_token: 0.0,
+        expert_params_per_token: 0.0,
     }
 }
 
@@ -65,6 +68,7 @@ fn two_phase() -> RunFeatures {
             group: group(),
             bytes_per_token: 1000.0,
         }),
+        out_rows: false,
     };
     let b = Phase {
         repeat: 1,
@@ -72,12 +76,14 @@ fn two_phase() -> RunFeatures {
         prefill_parts: None,
         ranges_per_rank: 1,
         after: None,
+        out_rows: false,
     };
     RunFeatures {
         parts: vec![part("gpu0", 1e9), part("gpu1", 1e9)],
         ranks: Some(RankFeatures {
             phases: vec![a, b],
             step_fixed: true,
+            prefill_micro_batches: 1,
         }),
         ..features(10.0, 0.0)
     }
@@ -107,6 +113,7 @@ fn prefill_collective_bytes_scale_with_the_ubatch_and_c_range_follows_the_mode()
         c_range_graph_s: 1e-5,
         c_range_eager_s: 5e-5,
         c_step_s: 1e-3,
+        allreduce_latency_share: 1.0,
     });
     let mut f = two_phase();
     let a = predict(&hw, &f, 1024, 8).unwrap();
@@ -175,4 +182,198 @@ fn the_logit_readback_is_per_step() {
     // one output per step: the same bytes in decode and in each of the two prefill steps
     close(per(&p.tg_breakdown), 1e-5 + 1e6 / 1e10);
     close(per(&p.pp_breakdown), 2.0 * (1e-5 + 1e6 / 1e10));
+}
+
+// ---- MODEL_VERSION 2 (ADR 0070, 2026-11-18)
+
+/// One rank, one phase: `p` on gpu0.
+fn one_phase(p: DevicePart, out_rows: bool) -> RunFeatures {
+    RunFeatures {
+        parts: vec![p.clone()],
+        ranks: Some(RankFeatures {
+            phases: vec![Phase {
+                repeat: 1,
+                parts: vec![p],
+                prefill_parts: None,
+                ranges_per_rank: 0,
+                after: None,
+                out_rows,
+            }],
+            step_fixed: false,
+            prefill_micro_batches: 1,
+        }),
+        ..features(10.0, 0.0)
+    }
+}
+
+/// Seconds of a 512-token prompt (one ubatch).
+fn prefill_s(hw: &HardwareGraph, f: &RunFeatures) -> f64 {
+    512.0 / predict(hw, f, 512, 8).unwrap().pp_tok_s
+}
+
+fn with_expert_rate(f_exp: Option<f64>) -> HardwareGraph {
+    let mut hw = graph();
+    for d in &mut hw.devices {
+        d.compute.as_mut().unwrap().expert_flops_per_s = f_exp;
+    }
+    hw
+}
+
+#[test]
+fn the_expert_rate_prices_expert_matmuls_only() {
+    let mut p = part("gpu0", 1e8);
+    p.params_per_token = 2e8;
+    p.expert_bytes_per_token = 4e8;
+    p.expert_params_per_token = 1e8;
+    let f = one_phase(p.clone(), false);
+    // dense and experts compute bound at 512 rows, the experts at their own rate
+    let dense = 2.0 * 2e8 * 512.0 / 1e13;
+    close(
+        prefill_s(&with_expert_rate(Some(2.5e12)), &f),
+        1e-6 * 10.0 + dense + 2.0 * 1e8 * 512.0 / 2.5e12,
+    );
+    // without a fitted rate the experts run at F
+    close(
+        prefill_s(&with_expert_rate(None), &f),
+        1e-6 * 10.0 + dense + 2.0 * 1e8 * 512.0 / 1e13,
+    );
+    // a part without expert work does not see the rate
+    let mut dense_only = p;
+    dense_only.expert_bytes_per_token = 0.0;
+    dense_only.expert_params_per_token = 0.0;
+    let f = one_phase(dense_only, false);
+    assert_eq!(
+        prefill_s(&with_expert_rate(Some(2.5e12)), &f).to_bits(),
+        prefill_s(&graph(), &f).to_bits()
+    );
+}
+
+#[test]
+fn each_op_class_has_its_own_roofline() {
+    // dense compute bound at 512 rows, experts bound by their bytes: the times add
+    let mut p = part("gpu0", 1e8);
+    p.params_per_token = 2e8;
+    p.expert_bytes_per_token = 4e9;
+    p.expert_params_per_token = 1e6;
+    let t = prefill_s(&graph(), &one_phase(p, false));
+    let dense = 2.0 * 2e8 * 512.0 / 1e13;
+    close(t, 1e-6 * 10.0 + dense + 4e9 / 1e11);
+    // one roofline over the sums would hide the expert bytes behind the dense FLOPs
+    let mixed = (dense + 2.0 * 1e6 * 512.0 / 1e13).max((1e8 + 4e9) / 1e11);
+    assert!(t > 1e-6 * 10.0 + mixed);
+}
+
+#[test]
+fn an_output_row_phase_computes_one_row_per_prefill_step() {
+    // the head: 1e9 bytes of weights, 2e9 params
+    let mut head = part("gpu0", 1e9);
+    head.params_per_token = 2e9;
+    let all = prefill_s(&graph(), &one_phase(head.clone(), false));
+    close(all, 1e-6 * 10.0 + 2.0 * 2e9 * 512.0 / 1e13);
+    // one row: bound by reading the weights once
+    let out = prefill_s(&graph(), &one_phase(head.clone(), true));
+    close(out, 1e-6 * 10.0 + (2.0 * 2e9 / 1e13f64).max(1e9 / 1e11));
+    // decode is one row either way
+    let tg = |o: bool| {
+        predict(&graph(), &one_phase(head.clone(), o), 512, 8)
+            .unwrap()
+            .tg_tok_s
+    };
+    assert_eq!(tg(true).to_bits(), tg(false).to_bits());
+}
+
+#[test]
+fn the_allreduce_pays_its_latency_share_and_keeps_its_bytes() {
+    let ar = |hw: &HardwareGraph| {
+        let p = predict(hw, &two_phase(), 512, 128).unwrap();
+        let t = |v: &[(String, f64)]| v.iter().find(|e| e.0 == "allreduce:gpu0+gpu1").unwrap().1;
+        (t(&p.tg_breakdown), t(&p.pp_breakdown))
+    };
+    let share = |s: f64, with_curve: bool| {
+        let mut hw = graph();
+        if with_curve {
+            hw.collectives = vec![CollectiveCurve {
+                op: CollectiveOp::AllReduce,
+                ranks: group(),
+                comm: "nccl".into(),
+                points: vec![(4096.0, 3e-5), (1e6, 1e-4)],
+            }];
+        }
+        hw.range_costs = Some(RangeCosts {
+            allreduce_latency_share: s,
+            ..RangeCosts::PRIOR
+        });
+        ar(&hw)
+    };
+    // identity at 1: the curve as measured (1000 bytes is below its first point)
+    let (tg1, pp1) = share(1.0, true);
+    close(tg1, 3.0 * 3e-5);
+    // share 0.25: each all-reduce sheds 0.75 of the zero-byte time, decode and prefill alike
+    let (tg, pp) = share(0.25, true);
+    close(tg, 3.0 * 0.25 * 3e-5);
+    close(pp, pp1 - 3.0 * 0.75 * 3e-5);
+    // without a curve the ring prior's latency 2 (p - 1) alpha is the zero-byte time
+    let (tg, _) = share(0.5, false);
+    close(
+        tg,
+        3.0 * (allreduce_time(2, 1e-5, 1e10, 1000.0) - 0.5 * 2.0 * 1e-5),
+    );
+}
+
+/// A `layer-2` plan: two equal one-rank stages and a hop of `n_embd x 4` bytes per token.
+fn layer2(micro: u32) -> RunFeatures {
+    let stage = |dev: &str, after: Option<Coll>| {
+        let mut p = part(dev, 1e8);
+        p.params_per_token = 1e8;
+        Phase {
+            repeat: 1,
+            parts: vec![p],
+            prefill_parts: None,
+            ranges_per_rank: 0,
+            after,
+            out_rows: false,
+        }
+    };
+    let hop = Coll::Copy {
+        pairs: vec![("gpu0".into(), "gpu1".into())],
+        bytes_per_token: 20480.0,
+        per_step: false,
+    };
+    RunFeatures {
+        parts: vec![part("gpu0", 1e8), part("gpu1", 1e8)],
+        ranks: Some(RankFeatures {
+            phases: vec![stage("gpu0", Some(hop)), stage("gpu1", None)],
+            step_fixed: false,
+            prefill_micro_batches: micro,
+        }),
+        ..features(10.0, 0.0)
+    }
+}
+
+/// ADR 0077: with M chunks the stages overlap (GPipe). Two stages of chunk time t and a hop h:
+/// one ubatch per step costs `4 (2 t + h)` for 2048 tokens, four chunks in one step
+/// `(4 + 2 - 1) t + (2 - 1) h`, the pipeline fill being one chunk time on each end stage.
+#[test]
+fn pipelined_prefill_overlaps_the_stages() {
+    let hw = graph();
+    let t = 1e-6 * 10.0 + 2.0 * 1e8 * 512.0 / 1e13;
+    let h = 1e-5 + 512.0 * 20480.0 / 1e10;
+    let pp_s = |m: u32| 2048.0 / predict(&hw, &layer2(m), 2048, 8).unwrap().pp_tok_s;
+    let (serial, piped) = (pp_s(1), pp_s(4));
+    close(serial, 4.0 * (2.0 * t + h));
+    close(piped, 5.0 * t + h);
+    close(serial - piped, 3.0 * (t + h));
+    // decode does not pipeline
+    let tg = |m: u32| predict(&hw, &layer2(m), 2048, 8).unwrap().tg_tok_s;
+    assert_eq!(tg(1).to_bits(), tg(4).to_bits());
+    // one stage has nothing to pipeline
+    let mut one = layer2(4);
+    if let Some(r) = one.ranks.as_mut() {
+        r.phases[0].after = None;
+        r.phases.truncate(1);
+    }
+    let mut one1 = one.clone();
+    one1.ranks.as_mut().unwrap().prefill_micro_batches = 1;
+    let pp = |f: &RunFeatures| predict(&hw, f, 2048, 8).unwrap().pp_tok_s;
+    assert_eq!(pp(&one).to_bits(), pp(&one1).to_bits());
 }

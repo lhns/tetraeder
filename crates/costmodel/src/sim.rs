@@ -790,6 +790,7 @@ mod tests {
                 flops_per_s: flops[i % flops.len()],
                 c0_graph_s: 10e-6,
                 c0_eager_s: 40e-6,
+                expert_flops_per_s: None,
             });
             d.bandwidth_bytes_per_s = Some(Measurement::prior(5.0e11));
             g.devices.push(d);

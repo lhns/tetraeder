@@ -5,15 +5,14 @@
 //!   GPUs, each a complete plan that passes the Phase 5 validator and
 //!   [`Topology::from_plan`]; shapes the memory check or the block rules prune are listed with the
 //!   reason. It uses no calibration (ADR 0040: the set is fixed before scoring).
-//! - [`features_multi`]: the [`RunFeatures`] of a topology; a one-rank topology gives today's
-//!   features, several ranks give [`RankFeatures`] with shares from [`block_slice`].
+//! - [`features_multi`]: the [`RankFeatures`] of a topology, `single` included, with shares from
+//!   [`block_slice`].
 //! - [`expected_max_local`]: the expert-parallel imbalance by a fixed-seed Monte Carlo.
 
 use crate::candidate::CUDA_RESERVE;
 use crate::layout::ModelLayout;
 use crate::search::{split_layers, vendor};
 use crate::serve::budget_of;
-use crate::{Placement, score};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -660,7 +659,16 @@ fn part(dev: &str, bytes: f64, ops: f64, kv: f64, attn: f64, bpp: f64) -> Device
         ops_per_token: ops,
         kv_bytes_per_ctx_token: kv,
         attn_flops_per_ctx_token: attn,
+        expert_bytes_per_token: 0.0,
+        expert_params_per_token: 0.0,
     }
+}
+
+/// `p` with routed-expert matmuls: `bytes` read per step, `params` used per token.
+fn with_experts(mut p: DevicePart, bytes: f64, params: f64) -> DevicePart {
+    p.expert_bytes_per_token = bytes;
+    p.expert_params_per_token = params;
+    p
 }
 
 fn push_phase(v: &mut Vec<RankPhase>, p: RankPhase) {
@@ -669,15 +677,22 @@ fn push_phase(v: &mut Vec<RankPhase>, p: RankPhase) {
             && q.prefill_parts == p.prefill_parts
             && q.ranges_per_rank == p.ranges_per_rank
             && q.after == p.after
+            && q.out_rows == p.out_rows
     }) {
         Some(q) => q.repeat += p.repeat,
         None => v.push(p),
     }
 }
 
-/// The features of `topo` running `layout`: today's features for one rank, ranks otherwise.
-/// `layer_limit` keeps the first N layers and the head (an anchor, ADR 0068). `routing` holds
-/// per layer per expert selection frequencies for expert parallel; uniform when `None`.
+/// The features of `topo` running `layout` as phases between collectives (ADR 0070), a one-rank
+/// `single` included. `layer_limit` keeps the first N layers and the head (an anchor, ADR 0068).
+/// `routing` holds per layer per expert selection frequencies for expert parallel; uniform when
+/// `None`.
+///
+/// What the builders compute, as MODEL_VERSION 2 prices it: expert matmuls apart from the dense
+/// ones (their own rate), a prefill step reads every local expert (`prefill_parts`), and the head
+/// runs on the output rows only (`out_rows`); the dense builder also runs the last layer's FFN on
+/// them (`qwen3/ranked.rs`), the MoE shard builder does not (`qwen3moe_shard.rs`).
 pub fn features_multi(
     layout: &ModelLayout,
     topo: &Topology,
@@ -691,30 +706,7 @@ pub fn features_multi(
     }
     let threads = knobs.threads.unwrap_or(1);
     let ubatch = knobs.ubatch.unwrap_or(UBATCH);
-    if topo.is_single() {
-        let mut l = layout.clone();
-        l.layers.truncate(lim as usize);
-        l.n_layer = lim;
-        let placement = if l.is_moe() {
-            Placement::Moe {
-                gpu_expert_layers: lim,
-            }
-        } else {
-            Placement::Dense { gpu_layers: lim }
-        };
-        let mut env = BTreeMap::new();
-        if !knobs.cuda_graphs {
-            env.insert("GGML_CUDA_DISABLE_GRAPHS".to_string(), "1".to_string());
-        }
-        let args = vec!["-ub".to_string(), ubatch.to_string()];
-        let mut f = score::features(&l, Some(placement), threads, &args, &env);
-        for p in &mut f.parts {
-            if p.device == "gpu0" {
-                p.device.clone_from(&topo.ranks[0].device);
-            }
-        }
-        return Ok(f);
-    }
+    let last_ffn_on_outputs = !layout.is_moe();
 
     let d = Dims {
         bpp: layout.main_format().bits_per_weight() / 8.0,
@@ -761,30 +753,49 @@ pub fn features_multi(
             per_step: true,
         };
         if tp == 1 {
-            // A stage of one rank is one range per step: its layers summed, the head included.
-            let mut w = 0.0;
-            let (mut ops, mut kv, mut attn) = (0.0, 0.0, 0.0);
-            for lb in &layout.layers[span.start as usize..span.end as usize] {
-                w += (lb.attn_bytes + lb.ffn_bytes) as f64 + d.r * lb.expert_bytes as f64;
-                ops += OPS_ATTN + OPS_FFN + if lb.expert_bytes > 0 { OPS_EXPERT } else { 0.0 };
+            // A stage of one rank is one range per step: its layers summed, then (last stage)
+            // the work on the output rows in the same range.
+            let (mut w, mut ex, mut ops, mut kv, mut attn) = (0.0, 0.0, 0.0, 0.0, 0.0);
+            let (mut out_w, mut out_ops) = (0.0, 0.0);
+            for l in span.clone() {
+                let lb = &layout.layers[l as usize];
+                if last && last_ffn_on_outputs && l + 1 == span.end {
+                    w += lb.attn_bytes as f64;
+                    out_w += lb.ffn_bytes as f64;
+                    ops += OPS_ATTN;
+                    out_ops += OPS_FFN;
+                } else {
+                    w += (lb.attn_bytes + lb.ffn_bytes) as f64;
+                    ops += OPS_ATTN + OPS_FFN;
+                }
+                ex += lb.expert_bytes as f64;
+                ops += if lb.expert_bytes > 0 { OPS_EXPERT } else { 0.0 };
                 kv += d.kv_layer;
                 attn += d.attn_layer;
             }
-            if last {
-                w += layout.output_bytes as f64;
-                ops += OPS_OUTPUT;
-            }
+            let layers = part(&devs[0], w, ops, kv, attn, d.bpp);
+            // decode reads the chosen experts, a prefill every expert
+            let pre = (ex > 0.0).then(|| vec![with_experts(layers.clone(), ex, d.r * ex / d.bpp)]);
             phases.push(RankPhase {
                 repeat: 1,
-                parts: vec![part(&devs[0], w, ops, kv, attn, d.bpp)],
-                prefill_parts: None,
+                parts: vec![with_experts(layers, d.r * ex, d.r * ex / d.bpp)],
+                prefill_parts: pre,
                 ranges_per_rank: 1,
-                after: Some(if last {
-                    readback
-                } else {
-                    hop.expect("not last")
-                }),
+                after: hop,
+                out_rows: false,
             });
+            if last {
+                out_w += layout.output_bytes as f64;
+                out_ops += OPS_OUTPUT;
+                phases.push(RankPhase {
+                    repeat: 1,
+                    parts: vec![part(&devs[0], out_w, out_ops, 0.0, 0.0, d.bpp)],
+                    prefill_parts: None,
+                    ranges_per_rank: 0,
+                    after: Some(readback),
+                    out_rows: true,
+                });
+            }
             continue;
         }
         if !layout.n_head.is_multiple_of(st.tp) || !layout.n_head_kv.is_multiple_of(st.tp) {
@@ -823,6 +834,7 @@ pub fn features_multi(
                     prefill_parts: None,
                     ranges_per_rank: 1,
                     after: Some(group.clone()),
+                    out_rows: false,
                 },
             );
             let ffn = ffn_phase(layout, st, &devs, l, rot, &d, routing, &mut uniform_ep)?;
@@ -830,6 +842,7 @@ pub fn features_multi(
                 &mut phases,
                 RankPhase {
                     after: Some(group.clone()),
+                    out_rows: last && last_ffn_on_outputs && l + 1 == span.end,
                     ..ffn
                 },
             );
@@ -854,6 +867,7 @@ pub fn features_multi(
                 prefill_parts: None,
                 ranges_per_rank: 1,
                 after: Some(readback),
+                out_rows: true,
             });
         } else if let Some(h) = hop {
             // The hop after the last all-reduce: nothing computes, the pairs copy at once.
@@ -867,6 +881,7 @@ pub fn features_multi(
                 prefill_parts: None,
                 ranges_per_rank: 0,
                 after: Some(h),
+                out_rows: false,
             });
         }
     }
@@ -885,6 +900,8 @@ pub fn features_multi(
             t.ops_per_token += k * p.ops_per_token;
             t.kv_bytes_per_ctx_token += k * p.kv_bytes_per_ctx_token;
             t.attn_flops_per_ctx_token += k * p.attn_flops_per_ctx_token;
+            t.expert_bytes_per_token += k * p.expert_bytes_per_token;
+            t.expert_params_per_token += k * p.expert_params_per_token;
         }
     }
     Ok(RunFeatures {
@@ -899,6 +916,13 @@ pub fn features_multi(
         ranks: Some(RankFeatures {
             phases,
             step_fixed: true,
+            // Pipelined prefill over two or more stages (ADR 0077); one stage has nothing to
+            // pipeline.
+            prefill_micro_batches: if stages.len() > 1 {
+                knobs.prefill_micro_batches.max(1)
+            } else {
+                1
+            },
         }),
     })
 }
@@ -931,6 +955,7 @@ fn ffn_phase(
         prefill_parts: pre,
         ranges_per_rank: 1,
         after: None,
+        out_rows: false,
     };
     if !layout.is_moe() {
         let shares = width(layout.ff_dim())?;
@@ -945,14 +970,20 @@ fn ffn_phase(
     let dense = lb.ffn_bytes as f64;
     let ex = lb.expert_bytes as f64;
     if st.ep == 1 {
-        // Experts cut like the rest: every rank reads its column share of the chosen experts.
+        // Experts cut like the rest: every rank reads its column share of the chosen experts at
+        // decode and of every expert at prefill.
         let shares = width(layout.ff_exp_dim())?;
-        let parts = devs
-            .iter()
-            .zip(&shares)
-            .map(|(x, s)| part(x, dense + d.r * ex * s, ops, 0.0, 0.0, d.bpp))
-            .collect();
-        return Ok(mk(parts, None));
+        let ranks = || devs.iter().zip(&shares);
+        let exp = |x: &str, bytes: f64, s: f64| {
+            with_experts(
+                part(x, dense, ops, 0.0, 0.0, d.bpp),
+                bytes,
+                d.r * ex * s / d.bpp,
+            )
+        };
+        let decode = ranks().map(|(x, s)| exp(x, d.r * ex * s, *s)).collect();
+        let prefill = ranks().map(|(x, s)| exp(x, ex * s, *s)).collect();
+        return Ok(mk(decode, Some(prefill)));
     }
     // Whole experts in contiguous spans: the busiest rank sets the time.
     let e = layout.n_expert as usize;
@@ -980,16 +1011,18 @@ fn ffn_phase(
     let k = f64::from(layout.n_expert_used);
     let decode: Vec<DevicePart> = devs
         .iter()
-        .map(|x| part(x, dense + dec_max * eb, ops, 0.0, 0.0, d.bpp))
+        .map(|x| {
+            let p = part(x, dense, ops, 0.0, 0.0, d.bpp);
+            with_experts(p, dec_max * eb, dec_max * eb / d.bpp)
+        })
         .collect();
     // A prefill reads every local expert once; its FLOPs follow the busiest rank's pair share.
     let local = (e / g) as f64 * eb;
     let prefill: Vec<DevicePart> = devs
         .iter()
         .map(|x| {
-            let mut p = part(x, dense + k * mass * eb, ops, 0.0, 0.0, d.bpp);
-            p.weight_bytes_per_token = dense + local;
-            p
+            let p = part(x, dense, ops, 0.0, 0.0, d.bpp);
+            with_experts(p, local, k * mass * eb / d.bpp)
         })
         .collect();
     Ok(mk(decode, Some(prefill)))

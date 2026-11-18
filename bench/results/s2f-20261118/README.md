@@ -33,3 +33,51 @@ From the committed files. The lines are reproduced by `python scripts/costmodel_
 - Cross-box: the lines fitted on s2e anchors predict this session's single and tp-2 within 0.28 (worst 32B single tg); s2e has two truncations only, so no out-of-sample check on its own box.
 - Engine, not cost model: the anchors' line predicts the 30B single pp at 4816 against 4813 measured, so pp per GPU is as the anchors say. llama.cpp `-sm layer` with two GPUs and all layers offloaded enables pipeline parallelism (`llama-context.cpp:528`), overlapping the 4 ubatches across the stages; our layer-2 runs `prefill_micro_batches = 1`. llama.cpp layer over our layer-2: pp 1.36x (30B), 1.51x (32B); tg 1.04x and 1.02x. Phase 4 (`20261117k`) measured 407-token TTFT on another box, not comparable for pp2048; its decode parity (moe builder 196 against llama-server 198 tok/s) shows no per-GPU deficit.
 - `baseline_ratio` null: by design, the gate needs two clean rounds of the pick and the baselines (`phase5_summary.py`, baseline gate). Informal ratios as above.
+
+## Cost model version 2 (2026-11-18, offline)
+
+The fixes of ADR 0070 History 2026-11-18, refitted on this session's committed anchors (ADR 0068's: `single` and `tp-2` at L/4 and L/2, 16 rates) and on S2e's. Reproduced by `python scripts/costmodel_replica.py bench/results/s2f-20261118/phase5` (and `bench/results/s2e-20261118/phase5 --eval bench/results/s2f-20261118/phase5`). The replica gives version 1's `predict-*.json` to the digit. Its version-2 fits are in `costmodel-v2/`; `crates/planner/tests/costmodel_v2.rs` checks that Rust predicts the same rows on those graphs and that Rust's own fit lands on them. Caveats: 32B layer-2 and 30B ep-2 are unclean runs (indications only), and every run here was on a 250 W cap, which slows `single` most (Power). So the 30B, `single` pp and `tp-2` carry the most weight.
+
+Fit on this session (version 1 is the committed `calib.json`):
+
+| | v1 | v2 |
+|---|---|---|
+| F, F_exp (TFLOP/s) | 61.1, none | 73.8, 22.0 |
+| B (GB/s), c0 (us) | 630, 1.22 | 627, 1.46 |
+| c_step, c_range (us) | 0.0001, 0.000003 | 82, 0.0 |
+| all-reduce latency share | none | 0.327 |
+| anchor band (worst residual) | 0.486 | 0.078 (32B tp-2 L32 tg -0.075) |
+
+Predicted / measured and error, pp and tg (tok/s):
+
+| Candidate | v1 pp | v1 tg | v2 pp | v2 tg |
+|---|---|---|---|---|
+| 30B single | 7760 / 4813 (+0.61) | 198 / 177 (+0.12) | 4521 (-0.061) | 179.2 (+0.012) |
+| 30B layer-2 | 7710 / 5230 (+0.47) | 196 / 198 (-0.01) | 4506 (-0.138) | 178.7 (-0.099) |
+| 30B tp-2 | 5860 / 4316 (+0.36) | 147 / 181 (-0.19) | 4304 (-0.003) | 182.1 (+0.005) |
+| 30B ep-2 (unclean) | 6250 / 4502 (+0.39) | 148 / 175 (-0.15) | 4931 (+0.095) | 184.0 (+0.053) |
+| 32B single | 859 / 1084 (-0.21) | 30.7 / 27.7 (+0.11) | 1082 (-0.002) | 30.1 (+0.088) |
+| 32B layer-2 (unclean) | 858 / 1107 (-0.23) | 30.7 / 38.6 (-0.21) | 1080 (-0.025) | 30.1 (-0.221) |
+| 32B tp-2 | 1141 / 1322 (-0.14) | 45.5 / 53.7 (-0.15) | 1333 (+0.009) | 49.7 (-0.074) |
+
+Within 0.15 on both rates: 0 of 7 candidates with v1, 6 of 7 with v2. The miss is 32B layer-2 tg, an unclean run that decoded faster on two GPUs than `single` on one, which batch 1 rules out at full power. The other two layer-2 rates (30B pp -0.14 and tg -0.10) point the same way: under the cap the half-idle stages clock higher.
+
+Cross-box, fit on S2e (host 608696, about 300 W) and predict this session: v2 fits F 79.1 and F_exp 23.8 TFLOP/s, B 770 GB/s, c0 1.56 us, c_step 120 us and share 0.249; anchor band 0.073. Errors (pp, tg):
+- v2: 30B single +0.011, +0.085; layer-2 -0.073, -0.034; tp-2 +0.071, +0.010; ep-2 +0.175, +0.056. 32B single +0.070, +0.306; layer-2 +0.044, -0.064; tp-2 +0.125, +0.056.
+- v1: 30B single +0.74, +0.26; layer-2 +0.59, +0.11; tp-2 +0.44, -0.30; ep-2 +0.47, -0.27. 32B single -0.14, +0.36; layer-2 -0.16, -0.03; tp-2 -0.04, -0.11.
+- The 32B single tg miss is this host's cap: S2e's single decodes 32B at 0.43 ms per layer, this session at 0.54.
+
+Per fix: version 2 refitted on this session with one fix left out (`--drop`):
+- Expert rate: without it the fit finds one F of 50 TFLOP/s, the band rises to 0.55 (worst residual 0.44), and pp misses by +0.48 (30B single), +0.32 (30B tp-2) and -0.32 (32B single). This fix carries most of the pp gain. At prefill an expert layer of the 30B costs about 2.0 ms of FLOPs per ubatch at F_exp, against 0.62 ms to read all its experts.
+- Head on output rows: without it F absorbs the head (83.8 TFLOP/s), and 32B single pp goes from -0.002 to +0.085. The head was 76 ms of 2384 in the committed 32B single pp, and 30 ms of 264 in the 30B's.
+- Every expert at prefill: no change on `single` and `tp-2`. Their expert prefill is bound by FLOPs at F_exp, so the extra bytes never bind. It matters when it binds: smaller ubatches, or `ep` with few pairs per rank.
+- Roofline per op class: no change on this data. Every class is bound by compute at prefill and by bytes at decode, where the sum and the max agree. It matters in mixed regimes.
+- Single on the ranks path: without it (the pre-ranks single features, with no expert rate and no output rows) the band rises to 0.52 and 30B single pp misses by +0.64.
+- All-reduce latency share: without it (share 1) the worst residual is 0.16, and tg misses by -0.16 (30B tp-2), -0.16 (32B tp-2) and +0.16 (30B single). The fit then trades c0 against the all-reduce.
+- Host link held at the prior: no change once the share is fitted (c_step 84 us instead of 82). With the multiplicative form the free link had fitted to 1.4 GB/s and stood in for c_step.
+- One factor on the whole all-reduce time (`--ar-form scale`, the form not taken) fits 0.814 here and 0.633 on S2e. Its anchor residuals stay at up to 0.13 here, with tp-2 pp high and tg low on every anchor. Candidates: 30B single tg +0.120, 30B tp-2 tg -0.112, 32B tp-2 tg -0.126, ep-2 pp +0.155. Cross-box: 30B single tg +0.213, 30B tp-2 pp +0.167 and tg -0.131, 32B tp-2 pp +0.224.
+- Not identified: `c_range` against the share (ADR 0070 History); `c_range` fits to 0 in every fit.
+- Pick (ADR 0068, smallest predicted T = 2048 / pp + 128 / tg), v2 on this fit. 30B predicted: ep-2 1.11 s, single 1.17, layer-2 1.17, tp-2 1.18. Measured: layer-2 1.04, single 1.15, tp-2 1.18, ep-2 1.19 (unclean). The pick moves from `single` to `ep-2`, which measured slowest; the model has ep-2 prefill faster than single, and measured it is slower. Layer-2 is the measured best only under this host's cap. 32B: predicted tp-2 4.11, single 6.15, layer-2 6.15; measured tp-2 3.93, layer-2 5.17, single 6.51. Pick tp-2, the measured best.
+- With M = 4 plans (ADR 0077) the model pipelines layer-2's prefill. On the `two_3090` prior fixture this raises the 30B layer-2 pp 1.45x (`crates/planner/tests/snapshots/multi_predictions.json`). Applied to this fit, that would make layer-2 the 30B pick; not computed on the fit, since the replica does not pipeline.
+- Known gap under pipelining: the MoE shard builder skips the last layer's FFN for the chunks before the last (ADR 0077). The model charges it for every chunk, a few percent of 30B layer-2 pp.
+- Pipelined prefill (ADR 0077) is in the model since; this session's candidate files carry `prefill_micro_batches = 1`, so the rows above are unchanged by it. New layer-N and tp-pp plans carry 4 and are predicted pipelined.

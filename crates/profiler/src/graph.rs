@@ -89,6 +89,17 @@ pub struct ComputeSpec {
     pub c0_graph_s: f64,
     /// Launch and sync cost per op without graphs.
     pub c0_eager_s: f64,
+    /// Rate of the routed-expert matmuls (`mul_mat_id`), fitted from MoE anchors (ADR 0070);
+    /// `None` prices them at `flops_per_s`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expert_flops_per_s: Option<f64>,
+}
+
+impl ComputeSpec {
+    /// The rate of the routed-expert matmuls: the fitted one, else `flops_per_s`.
+    pub fn expert_flops(&self) -> f64 {
+        self.expert_flops_per_s.unwrap_or(self.flops_per_s)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -341,6 +352,15 @@ pub struct RangeCosts {
     pub c_range_eager_s: f64,
     /// Input upload, end-of-step sync and readback.
     pub c_step_s: f64,
+    /// Share of the probe's zero-byte all-reduce time that an all-reduce inside a step pays
+    /// (ADR 0070, 2026-11-18): the probe syncs every rank around each call, a step does not. The
+    /// byte-proportional part of the curve stays as measured. 1 (the default) is the curve as is.
+    #[serde(default = "one")]
+    pub allreduce_latency_share: f64,
+}
+
+fn one() -> f64 {
+    1.0
 }
 
 impl RangeCosts {
@@ -348,6 +368,7 @@ impl RangeCosts {
         c_range_graph_s: 3.0e-5,
         c_range_eager_s: 1.0e-5,
         c_step_s: 2.0e-4,
+        allreduce_latency_share: 1.0,
     };
 }
 
@@ -491,6 +512,7 @@ mod tests {
             flops_per_s: 8e11,
             c0_graph_s: 1e-6,
             c0_eager_s: 1e-6,
+            expert_flops_per_s: None,
         });
         d.bandwidth_bytes_per_s = Some(Measurement::prior(8e10));
         assert_eq!(d.cpu_rates(4), Some((4e11, 4e10)));
@@ -612,8 +634,15 @@ mod tests {
             c_range_graph_s: 1e-5,
             c_range_eager_s: 2e-5,
             c_step_s: 3e-4,
+            allreduce_latency_share: 0.5,
         });
         assert_eq!(HardwareGraph::from_toml(&g.to_toml().unwrap()).unwrap(), g);
+        // range costs written before the latency share read it as 1
+        let rc: RangeCosts = serde_json::from_str(
+            r#"{"c_range_graph_s":1e-5,"c_range_eager_s":2e-5,"c_step_s":3e-4}"#,
+        )
+        .unwrap();
+        assert_eq!(rc.allreduce_latency_share, 1.0);
         assert_eq!(HardwareGraph::from_json(&g.to_json().unwrap()).unwrap(), g);
         // old files have neither field
         let old = HardwareGraph::from_toml(FIXTURE).unwrap();
