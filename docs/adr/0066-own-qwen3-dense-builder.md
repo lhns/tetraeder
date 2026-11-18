@@ -1,6 +1,6 @@
 # 0066. Own Qwen3 dense builder on the shared attention module, multi-sequence from the start
 
-Status: Proposed (2026-11-14). Phase 4. Builds on ADR 0015 (own builders per family, libllama as reference), 0030 (MoE builder), 0036 (whole-step graph), 0050 b (KV formats, rotation) and 0065 (batch backend, attention over a shared pool). Brief: C5 in `docs/phase4-briefs.md`.
+Status: Proposed (2026-11-14). Phase 4. Builds on ADR 0015 (own builders per family, libllama as reference), 0030 (MoE builder), 0036 (whole-step graph), 0050 b (KV formats, rotation) and 0065 (batch backend, attention over a shared pool). Brief: C5 in `docs/phase4-briefs.md`. As the judged Qwen3-8B engine it passed the Phase 4 throughput verdict (`20261117k`, ADR 0065); `auto` still selects libllama.
 
 ## Context
 
@@ -49,4 +49,4 @@ Qwen3-8B: 36 layers, n_embd 4096, 32 heads, 8 KV heads, head 128, n_ff 12288, co
 - **Options.** `DenseOptions` also has `telemetry` (memory, KV tokens, `tetraeder.kv.blocks` used, reserved and free, relocations, step samples). The `tetraeder.builder = dense` attribute is not set: `StepSample` has no attribute slot, adding one touches every step metric. `idle` blocks are the scheduler's to report.
 - **Pool.** `n_ctx_pool` is rounded up to 256 rows and a sequence reserves whole 256-row units, so `n_seq_max` sequences need at least `256 * n_seq_max` rows.
 - **libllama reference.** `ggml-sys`'s `ContextParams` gained `n_seq_max` and `kv_unified` (defaults from libllama) for the `n_seq_max = 3`, unified reference.
-- **Parity measured** (Windows, AVX2, 2 threads, tiny dense fixture): max top-5 logit difference 0 against libllama for F16, Q8_0 and Q8_0/Q4_0 (rotation off), for Q8_0, Q8_0/Q4_0 and Q4_0 with rotation on, for 3 sequences batched against each alone and against libllama (24 rows, one step with every token of a prefill chunk verified), for `seq_cp` and a chunked move. Qwen3-0.6B Q8_0: 96 golden positions, tokens equal, max logit difference 0 against the recorded file.
+- **Parity measured** (Windows, AVX2, 2 threads, tiny dense fixture): max top-5 logit difference 0 against libllama for F16, Q8_0 and Q8_0/Q4_0 (rotation off), for Q8_0, Q8_0/Q4_0 and Q4_0 with rotation on, for 3 sequences batched against each alone and against libllama (24 rows, one step with every token of a prefill chunk verified), for `seq_cp` and a chunked move. Qwen3-0.6B Q8_0: 96 golden positions, tokens equal, max logit difference 0 against the recorded file. (No session directory yet.)

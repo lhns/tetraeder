@@ -2,9 +2,11 @@
 
 Status: Accepted (Phase 2)
 
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
+
 ## Context
 
-ggml's scheduler offloads an op whose weights live in host memory to the GPU when its batch size is at least `op_offload_min_batch_size` (32 on CUDA). For `MUL_MAT_ID` the batch size is `ne[2]` (`get_op_batch_size`, ggml-cuda.cu). In libllama that is the token count. The builder's CPU pair groups (ADR 0035) put one row per (token, expert) pair into `ne[2]`, so a 7-token step at top-8 has 56 rows and every routed RAM expert of the step crosses PCIe. Track E measured it on the 235B at 1K depth (bench/results/20261103/spec-diag-*.json on track-e-spec): a 7-token step 5560 ms with op offload against 1087 ms without, a 4-token step 879 against 765. Single-token steps are unaffected.
+ggml's scheduler offloads an op whose weights live in host memory to the GPU when its batch size is at least `op_offload_min_batch_size` (32 on CUDA). For `MUL_MAT_ID` the batch size is `ne[2]` (`get_op_batch_size`, ggml-cuda.cu). In libllama that is the token count. The builder's CPU pair groups (ADR 0035) put one row per (token, expert) pair into `ne[2]`, so a 7-token step at top-8 has 56 rows and every routed RAM expert of the step crosses PCIe. Track E measured the cost on the 235B at 1K depth: 7-token steps were several times slower with op offload than without, single-token steps unaffected (`20261103`, spec-diag on track-e-spec).
 
 ## Decision
 

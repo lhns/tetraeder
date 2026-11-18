@@ -1,10 +1,12 @@
 # 0043. Speculative decoding in the scheduler: n-gram and draft-model drafts, batched verification
 
-Status: Proposed (pulled forward from Phase 4 for the Phase 2 exit regime). Measured 2026-11-03: not a gain yet in the exit regime, see Results.
+Status: Proposed (pulled forward from Phase 4 for the Phase 2 exit regime). Measured 2026-11-03 (`20261103`): not a gain yet in the exit regime, see Results.
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
-The exit regime (Qwen3-235B-A22B Q4_K_M, RTX 3090, model larger than RAM, ADR 0035, 0037, 0038) decodes at 2.2 to 2.4 tok/s after a 32K prefill (bench/results/20261102/exit-main*-203803.json): per token about 450 ms, compute 190 (attention on the GPU, routed experts on the CPU) and streamer 225 to 250 (about 600 MB of missed experts read per token, plus copies), RAM tier hit rate about 0.92. Almost all of that is per expert, not per token: an expert read from disk or streamed through the CPU's memory bus costs the same for one row as for seven. A step that verifies k drafted tokens reads each needed expert once for all k+1 rows, so its cost grows with the union of routed experts, not with k. Consecutive tokens share experts, so the union grows slower than 8(k+1) per layer.
+The exit regime (Qwen3-235B-A22B Q4_K_M, RTX 3090, model larger than RAM, ADR 0035, 0037, 0038) decodes slowly after a 32K prefill, with per-token time split between compute (attention on the GPU, routed experts on the CPU) and the streamer reading missed experts (`20261102`). Almost all of that is per expert, not per token: an expert read from disk or streamed through the CPU's memory bus costs the same for one row as for seven. A step that verifies k drafted tokens reads each needed expert once for all k+1 rows, so its cost grows with the union of routed experts, not with k. Consecutive tokens share experts, so the union grows slower than 8(k+1) per layer.
 
 The builder already runs multi-token steps (`Qwen3Moe::eval` returns the logits of every position) and its KV cache needs no clearing after a rejection: `run()` writes K and V at positions `n_past..n_past+n` and masks every column above `n_past + i` for row i, so rows left by rejected drafts are invisible to later steps and overwritten by them. Rolling back is setting `n_past`.
 
@@ -40,24 +42,13 @@ Plan rows 27 and 52 put speculative decoding (n-gram, draft model, MTP where the
 
 ## Results (2026-11-03, box 58895206, host 34031, RTX 3090, 91.7 GB container, 5 threads)
 
-Files in bench/results/20261103/. Draft: Qwen3-0.6B Q8_0, fully on the GPU, greedy, p_min 0. Builder: `spec_regime.rs` with op offload and prefetch on (the exit configuration), 32K prefill of the exit prompt, then 3 rounds of 32-token blocks rotating plain, n-gram (adaptive), draft (adaptive, max 6) and draft (fixed 3, llama.cpp's default). llama.cpp: `llama-server` with the same `-ot` (layers 0 to 3 experts on the GPU), 128 tokens, once without and once with `-md ... --spec-type draft-simple` (n_max 3).
+Measured in `20261103`: builder `spec_regime.rs` in the exit configuration (32K prefill of the exit prompt, rounds of plain, n-gram and draft-model blocks) against `llama-server` with the same `-ot`, without and with the same draft (Qwen3-0.6B Q8_0).
 
-| 235B, 32K natural text | tok/s | tokens per step | acceptance | verify step ms (rows) |
-|---|---|---|---|---|
-| builder plain | 2.67 | 1 | | 375 (1) |
-| builder draft, k=3 | 1.76 | 3.88 | 0.96 | 2178 (4) |
-| builder draft, adaptive | 1.13 | 6.87 | 0.98 | 6032 (7) |
-| builder n-gram, adaptive | 1.12 | 6.69 | 0.95 | 5943 (7) |
-| llama.cpp, no draft | 2.53 | 1 | | |
-| llama.cpp, draft n_max 3 | 2.47 | | 0.97 | |
-| llama.cpp code text 4K, no draft / draft | 3.13 / 2.64 | | 0.55 | |
-
-- **Exact on the box.** The plain replay of all 403 continuation tokens (every method mixed) equals the speculative output: on this text and this build, the CUDA and CPU kernel differences listed above did not flip a token.
-- **Verification costs more than it saves, in both engines.** Acceptance is very high (the continuation of the ADR text is predictable), yet a 4-row step costs 5.8x a 1-row step in the builder and llama.cpp gains nothing (0.98x natural, 0.84x code).
-- **Cause in the builder: op offload.** A CPU pair group with 4 or 7 tokens has 32 or 56 rows, which crosses ggml's op-offload batch threshold (32), so the step uploads every CPU-routed expert to the GPU over PCIe. A 1K-depth diagnostic (`spec-diag-tiled0` vs `spec-diag-nooffload`): 7-row steps 5560 ms with offload, 1087 ms without; 1-row steps unchanged. Without offload a verify step costs about 1.5x (4 rows) and 2.2x (7 rows) a 1-row step. With the main run's acceptance that projects to about 2.5x (k=3) to 3x (k=6) the plain decode rate, not measured yet.
-- **Forcing the tiled K-quant kernel for every row count** (`GGML_CPU_TILED_MM_FORCE=1`, `spec-diag-tiled1`) makes 1-row steps 2x slower; no help.
-- The adaptive policy behaves as designed: it picked k=6 on the high-acceptance main text (where its cost model was misled by the offload pathology only after the first steps) and mostly k=0 on the 1K diagnostic text with 0.14 n-gram acceptance.
+- **Exact on the box.** The plain replay of the continuation equals the speculative output.
+- **Verification costs more than it saves, in both engines,** although acceptance was very high.
+- **Cause in the builder: op offload.** A CPU pair group with 4 or 7 tokens crosses ggml's op-offload batch threshold (32 rows), so the step uploads every CPU-routed expert to the GPU over PCIe; a 1K-depth diagnostic without offload makes verify steps far cheaper. Forcing the tiled K-quant kernel for every row count (`GGML_CPU_TILED_MM_FORCE=1`) makes 1-row steps slower; no help.
+- The adaptive policy behaves as designed: long drafts on high-acceptance text, mostly none on low-acceptance text.
 
 Decisions from this: (1) op offload must not apply to decode or verify steps: the threshold should count tokens, not pair rows, or the builder should offload only prefill ubatches (a change in `qwen3moe.rs`, owned by the Phase 2 track); (2) rerun the main pair with that fix before choosing defaults; speculation stays off by default until then.
 
-- **AVX-512 variants (ADR 0052).** Verification batches are not bitwise batch-invariant on AVX-512 variants: CI runners flipped a token at a top-2 margin of 0.0044. `spec_builder` accepts a departure from plain greedy there when the margin is below 1e-2 of the largest logit (1e-3 otherwise); this only skips numeric ties.
+- **AVX-512 variants (ADR 0052).** Verification batches are not bitwise batch-invariant on AVX-512 variants: CI runners flipped a token at a top-2 margin of 0.0044. `spec_builder` accepts a departure from plain greedy there when the margin is below 1e-2 of the largest logit (1e-3 otherwise); this only skips numeric ties. (No session directory yet.)

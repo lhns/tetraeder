@@ -70,7 +70,7 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0062](0062-cpu-quota-throttle-fault.md) | Accepted | Detector fault class cpu_quota_throttle: the cgroup CPU quota throttling the engine's own threads |
 | [0063](0063-genai-request-metrics-and-tier-transfer-family.md) | Accepted | GenAI semconv request metrics from the gateway for every engine; one tier transfer metric family |
 | [0064](0064-decode-dispatch-segment-scheduler-and-one-graph-per-token.md) | Proposed | Decode dispatch: a scheduler sized for one segment, then one graph per decode token with a host callback per layer |
-| [0065](0065-phase4-verdict-multi-sequence-backend-continuous-batching.md) | Proposed | Phase 4: verdict rules, a multi-sequence backend and continuous batching |
+| [0065](0065-phase4-verdict-multi-sequence-backend-continuous-batching.md) | Accepted | Phase 4: verdict rules, a multi-sequence backend and continuous batching |
 | [0066](0066-own-qwen3-dense-builder.md) | Proposed | Own Qwen3 dense builder on the shared attention module, multi-sequence from the start |
 | [0067](0067-kv-layout-experiment-chunked-vs-paged.md) | Proposed | KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now |
 | [0068](0068-phase5-verdict-rules.md) | Proposed | Phase 5: verdict rules for the multi-GPU exit test |
@@ -79,5 +79,5 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Proposed | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
 | [0072](0072-dense-builder-cpu-weights-in-extra-buffer-types.md) | Proposed | Dense builder: CPU weights in libllama's extra buffer types (supersedes 0039 for the dense builder) |
 | [0073](0073-engine-pin-b12426.md) | Proposed | Engine pin moves to llama.cpp b12426 before the Phase 4 verdict |
-| [0074](0074-prefix-save-through-pinned-staging.md) | Proposed | Prefix-cache save on a GPU reads through a reused pinned staging pair |
+| [0074](0074-prefix-save-through-pinned-staging.md) | Proposed | Prefix-cache save on a GPU: pinned staging and prepared snapshot buffers |
 | [0075](0075-executor-ranges-are-graph-views.md) | Proposed | Executor ranges are views of the rank graph (patch 0005) |

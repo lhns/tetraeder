@@ -11,7 +11,7 @@ Input files in DIR (names fixed by the ADR): bench-<model>-<engine>-<c1|c4>-r<re
 replay-<model>-<on|off>-r<rep>.json, gpu-<run>.txt (lines `before: <hex>` / `after: <hex>`, the clocks_throttle_reasons
 bitmask; `power-before: <limit>, <draw>` / `power-after: ...` are copied to verdict.json as is), server-*.log, env.json. A run is `<model>-<engine>-r<rep>`; replay runs are `replay-<model>-<on|off>-r<rep>`.
 gpu-samples.csv (scripts/gpu_sampler.sh, optional): with it a pair is judged on the share of window samples carrying
-0x200 or 0x400 (ADR 0065 addendum) instead of the single before sample; verdict.json records the rule per pair.
+0x200 or 0x400 (ADR 0065 Verdict, "Throttle record") instead of the single before sample; verdict.json records the rule per pair.
 Reps 1 and 2 are the judged pairs: rep 1 runs (baseline, Tetraeder), rep 2 (Tetraeder, baseline). Rep 3 is the one
 rerun pair of phase4_box.sh when rep 1 or 2 is unclean (errors, throttle, co-tenant, a missing result); the judged pairs
 are then the first two CLEAN pairs. Anything missing makes the pair unclean (a reason is recorded) and the verdict
@@ -42,7 +42,7 @@ BASELINE = "llama-server"
 # model -> (judged engine, engine used when no judged-engine files exist, counts then)
 JUDGED = {"q8b": ("tetraeder-dense", None), "q30b": ("tetraeder-moe", "tetraeder-llama")}
 # clocks_throttle_reasons bits that are fine: GPU idle (0x1) and applications clocks setting (0x2) before a run; after a
-# run also the SW power cap (0x4), which the card's own load sets (ADR 0065, addendum). Everything else is unclean.
+# run also the SW power cap (0x4), which the card's own load sets (ADR 0065 Verdict, "Throttle record"). Everything else is unclean.
 BENIGN_THROTTLE = {"before": 0x3, "after": 0x7}
 # With sampler data (gpu-samples.csv, ADR 0065 addendum "BoardLimit and Reliability bits judged under load"): 0x200
 # (BoardLimit) and 0x400 (Reliability) no longer disqualify the single "before" sample; they are judged by their share

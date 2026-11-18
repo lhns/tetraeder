@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Idle gate at SSH (ADR 0065, addendum): 10 samples of the clock event reasons over 30 s; exit 0 only if at least 9
+# Idle gate at SSH (ADR 0065 Verdict, "Box choice"): 10 samples of the clock event reasons over 30 s; exit 0 only if at least 9
 # carry no bit that disqualifies a run (every GPU of a sample): allowed are idle, application clocks, SW power cap
 # (driver 615 reports 0x4 at 35 W idle), display clock, BoardLimit and Reliability, which the session sampler judges. Prints the samples. INTERVAL (s, default 3) and SAMPLES (default 10)
 # exist for tests.

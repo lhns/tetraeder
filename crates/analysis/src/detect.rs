@@ -20,11 +20,11 @@ pub const CPU_OTHER_FRAC: f64 = 0.15;
 /// The same, when the rate residual already shows the CPU is slow (weaker evidence is enough).
 pub const CPU_OTHER_FRAC_RESIDUAL: f64 = 0.05;
 /// Share of CFS periods throttled that marks a quota fault. The 20% of the host alert is a
-/// warning; a run throttled in 80 to 98% of its periods lost 1.30x (ADR 0045), a healthy one
+/// warning; a run throttled in 80 to 98% of its periods lost 1.30x (ADR 0045, `bench/results/20261112e`), a healthy one
 /// stays under 5%.
 pub const THROTTLED_SHARE_MIN: f64 = 0.3;
 /// Cost assumed for a quota throttle without a calibrated CPU rate: the throttled share times
-/// the CPU share times this (0.9 x 0.8 x 0.3 is about 0.23, the 1.30x of ADR 0045).
+/// the CPU share times this (0.9 x 0.8 x 0.3 is about 0.23, the 1.30x of ADR 0045, `20261112e`).
 pub const QUOTA_DEFAULT_LOSS: f64 = 0.3;
 /// VRAM held by others, as a fraction of the device, that matters.
 pub const VRAM_OTHER_FRAC: f64 = 0.05;

@@ -54,7 +54,7 @@ Choices the ADR left to the code:
 - No gateway change: `gateway/pump.rs` already turns a channel that closes without `Finished` or `Error` into an error for the client.
 - vmalert reaches the admin listener from the compose stack only if `serve` listens beyond loopback (`--admin 0.0.0.0:8081`); the route has no authentication, so that is for trusted networks only.
 
-Measured on the Windows dev VM (CPU, tiny MoE fixture, `replan_cpu`): `--plan auto` with `cpu_only.toml` at 2 threads picks `cpu`, threads 2, ubatch 2048 on libllama and ubatch 512 on the builder (the builder projection). A `device_change` after the file drops to 1 thread switches (drain, load, health) in 33 ms on libllama and 17 ms on the builder; greedy output over 16 tokens is identical before and after on both engines; a second trigger is rejected by the dwell. These are tiny-model numbers; the box benchmark above is still open.
+Measured on the Windows dev VM (CPU, tiny MoE fixture, `replan_cpu`): `--plan auto` with `cpu_only.toml` at 2 threads picks `cpu`, threads 2, ubatch 2048 on libllama and ubatch 512 on the builder (the builder projection). A `device_change` after the file drops to 1 thread switches (drain, load, health) in 33 ms on libllama and 17 ms on the builder; greedy output over 16 tokens is identical before and after on both engines; a second trigger is rejected by the dwell. These are tiny-model numbers; the box benchmark above is still open. (No session directory yet.)
 
 Open (part B, needs `track-r-a6000-gap` and `track-s-kv-rotation` in main): the op offload switch of libllama and the builder prefill chunk from the plan (`Applies::all()`), and `Scheduler::shutdown` joining the worker so a GPU restart does not race the old backend's memory release.
 

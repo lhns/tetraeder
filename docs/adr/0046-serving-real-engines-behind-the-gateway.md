@@ -1,6 +1,8 @@
 # 0046. Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log
 
-Status: Accepted (Phase 3b). Partly supersedes ADR 0028 (mask hook, context check); Phase 4 replaces the scheduler loop.
+Status: Accepted (Phase 3b). Partly supersedes ADR 0028 (mask hook, context check); Phase 4 replaces the scheduler loop. The Phase 3b proxy bar is met: all three clauses in `20261110d`; in `20261111d` the cache and non-200 clauses, the tasks clause over all runs under the owner's 2026-11-11 rule. The first proxy run (`20261103`) missed the cache and 400 clauses, fixed by ADR 0049.
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
@@ -35,67 +37,32 @@ ADR 0028 built the gateway against a fake engine and left `tetraeder serve` for 
 ## Consequences
 
 - Concurrency above one queues: throughput at concurrency 4 equals concurrency 1 until Phase 4's continuous batching; llama-server with `-np 4` batches. The benchmark reports this gap as Phase 4-bound.
-- Sampling costs a pass over the vocabulary in Rust per token (about 0.1 ms greedy at 152K tokens); measured in the paired benchmark against llama-server.
+- Sampling costs a pass over the vocabulary in Rust per token (about 0.1 ms greedy at 152K tokens); measured in the paired benchmark against llama-server. (No session directory yet.)
 - Prefix reuse helps one conversation at a time; two interleaved conversations evict each other.
 - The request log holds prompts and code in clear text; it is opt-in and local.
 
-## Measured (bench/results/20261103/gateway, RTX 3090, 11 threads, 2 paired repetitions)
+## Measured
 
-- SDK conformance (openai and anthropic Python SDKs, `tests/conformance`) passes against the fake in CI and against Qwen3-8B (libllama) and Qwen3-30B-A3B (builder) on the box. Claude Code's first request (`/v1/messages?beta=true`, 14 tools, `max_tokens` 32000, streamed) is answered.
-- Against llama-server at concurrency 1, as ratios to llama-server (for TTFT, below 1 is better): decode 1.00 to 1.02, TTFT 0.63 to 0.77 (512 and 3K-token prompts), throughput 1.04 to 1.20; later turns of a growing conversation TTFT 0.89 to 0.94 (both reuse the prefix).
-- Concurrency 4: throughput 0.41 (8B) and 0.59 to 0.61 (30B) of llama-server `-np 4`, TTFT 4.9 to 6.6 times longer (queueing). Phase 4-bound.
-- API overhead: `serve` decode is 0.94 to 0.98 of `tetraeder bench` tg128; llama-server's is 0.93 to 0.97 of llama-bench.
-
-- Claude Code proxy for the week of use (bench/results/20261103/claude-code-proxy, RTX A6000, Qwen3-Coder-30B-A3B Q4_K_M, 128K context, 10 tasks x 2 reps per engine, ABBA): tasks solved 15 of 20 on both engines; decode 0.88 of llama-server; prompt tokens served from cache 85% against 94%, because Claude Code's side requests evict the single cached sequence (llama-server keeps several prompts in host RAM). 12 requests (4 bursts of 3) got a 400 that llama-server accepted: `tool_result` content with `tool_reference` blocks (ADR 0049).
+The first measurements (`20261103`: gateway bench on an RTX 3090 and the first Claude Code proxy run): SDK conformance passes against the fake in CI and against both engines on the box, and Claude Code's first request is answered; at concurrency 1 `serve` is level with llama-server, at concurrency 4 it queues (Phase 4-bound); the proxy run lost cache share to side requests evicting the single cached sequence, and got 400s for `tool_reference` blocks (both fixed in ADR 0049).
 
 ## Addendum (2026-11-08): the week of use became a proxy run
 
-On 2026-11-03 the user replaced the exit test's week of Claude Code use with a proxy run of a few hours: the same tasks against Tetraeder and llama-server on one box, ABBA. The bar: tasks solved at least llama-server's, prompt tokens served from cache at least its share (94% in the first run), and no 400 for a request llama-server accepts. The plan's Phase 3b exit test says so now. The first run (above) missed the cache and 400 parts; ADR 0049 fixed both, a rerun is open.
+On 2026-11-03 the user replaced the exit test's week of Claude Code use with a proxy run of a few hours: the same tasks against Tetraeder and llama-server on one box, ABBA. The bar: tasks solved at least llama-server's, prompt tokens served from cache at least its share, and no 400 for a request llama-server accepts. The plan's Phase 3b exit test says so now. The first run (`20261103`) missed the cache and 400 parts; ADR 0049 fixed both. Since `20261110d` the harness sets `CLAUDE_CODE_ATTRIBUTION_HEADER=0` for both engines (`scripts/claude_code_proxy.py`), so the per-session billing header is not in the prompt start (ADR 0057 addendum).
 
 ## Addendum (2026-11-09): the A6000 decode gap
 
-The proxy run's `tetraeder serve` had no `--engine`, so `auto` served the Qwen3 MoE builder (all experts resident), not libllama; llama-server ran libllama at the same pin. Settings otherwise match: flash attention on both (the builder always uses `flash_attn_ext`, llama-server `auto`), F16 KV, KV length padded to 256, 128K context, 5 threads, one slot, full-vocab logits to the host per token on both. The gap does not grow with depth: 0.90, 0.91, 0.89 and 0.91 at 0-10K, 10-20K, 20-30K and 30-40K tokens (summary.json `decode_by_depth`), about 1 ms per token. The 3090 gateway bench (1.00 to 1.02) sampled greedily; Claude Code's requests take the temperature path.
+The first proxy run's `tetraeder serve` had no `--engine`, so `auto` served the Qwen3 MoE builder (all experts resident), not libllama; other settings matched llama-server's. Its decode gap did not grow with depth, so it was a fixed per-token host cost; the 3090 gateway bench sampled greedily, Claude Code's requests take the temperature path (`20261103`).
 
 Per-token host costs the code shows, fixed (tests in `sample.rs`, `qwen3moe.rs`, `scheduler.rs`):
 
-- Sampling with temperature collected all 152K logits as candidates and ran `select_nth_unstable` for top-k 40: 2 ms per token on the local VM. Now one pass that rejects a logit with one compare against the k-th best (libllama uses a heap partial sort for k <= 128); same candidates, same order, same tokens per seed.
-- The builder's KQ mask had 32 padding rows (`[n_kv, pad(n, 32)]`); libllama's is `[n_kv, n]` at the pin. At 36K positions the decode step built, converted and uploaded 2.4 MB instead of 74 KB; the conversion (`flat_map` into a byte vector in `ggml-sys`) alone took 2 ms locally. Now `[n_kv, n]`.
+- Sampling with temperature collected all 152K logits as candidates and ran `select_nth_unstable` for top-k 40: 2 ms per token on the local VM. Now one pass that rejects a logit with one compare against the k-th best (libllama uses a heap partial sort for k <= 128); same candidates, same order, same tokens per seed. (No session directory yet.)
+- The builder's KQ mask had 32 padding rows (`[n_kv, pad(n, 32)]`); libllama's is `[n_kv, n]` at the pin. At 36K positions the decode step built, converted and uploaded 2.4 MB instead of 74 KB; the conversion (`flat_map` into a byte vector in `ggml-sys`) alone took 2 ms locally. Now `[n_kv, n]`. (No session directory yet.)
 - `ggml-sys` tensor reads and writes copied through a byte vector; they now read into and write from the typed slice, and the builder backend reads each step's 151K logits into one kept buffer instead of a new 600 KB vector.
 
 Not proven, left as measurements: graph rebuild and state reallocation every 256 positions, synchronous input uploads from pageable memory, per-token telemetry in `finish_step`, the gateway's per-token work. `TETRAEDER_DECODE_PROFILE=1` makes serve report per request the decode steps, eval, sample, hand-off and gateway time and the backend's counters (builder step profile and whole-step graph builds, libllama `n_reused`) in the request log and as `tetraeder.scheduler.decode.stage`; `scripts/claude_code_proxy.sh` turns it on and its summary adds `server_decode` (llama-server from its timing lines). `scripts/decode_gap.sh` reproduces the gap without Claude Code: llama-bench `-d` and both serve engines with the serve sampler at depths 0, 20K and 100K (`crates/scheduler/tests/decode_gap.rs`).
 
-## Addendum (2026-11-10, box 60067423): Phase 3b proxy bar met
-
-A40 48 GB, Qwen3-Coder-30B-A3B Q4_K_M, Claude Code 2.1.322, 10 tasks x 2 reps per engine, ABBA blocks (`bench/results/20261110d/claude-code-proxy/`). Since the 20261110b run: ADR 0057 (Python-literal arguments), the bare `<function=` repair, `CLAUDE_CODE_ATTRIBUTION_HEADER=0` for both engines (the per-session billing header is gone from the prompt start).
-
-| | Tetraeder | llama-server |
-|---|---|---|
-| Tasks solved | 15/20 | 14/20 |
-| Prompt-cache share | 95.8% | 94.2% |
-| Non-200 responses | 0 | 0 |
-| Tool-error rate (bash_exit, file, other, unknown_tool) | 10.0% (41, 11, 1, 1) | 6.8% (25, 0, 3, 0) |
-| Call error rate (validation and unknown tool per use) | 0.2% | 0 |
-| Server decode, median | 0.992 of llama-server | |
-
-All three clauses are met. The tool errors are task outcomes (failing tests, missing files), not parse errors; the one unknown tool is the model's misspelt `ScheduledWakeup`. The 20261110b run had missed the cache clause by 0.34 points; the cause was session length against a fixed uncached first request, and one billing-header change (ADR 0057 addendum), not the cache. One run per engine, so the margins carry run-to-run noise; the clauses are met in this run and the previous one met tasks and 400s too.
-
-## Addendum (2026-11-11, box 60205005): rerun on current main
-
-RTX A6000 48 GB, Xeon W-2275, 26 threads, same harness and tasks (`bench/results/20261111d/`); main at e426f8e, so the request log now carries `tool_outcomes`. Session shortened to 130 min (BUDGET_MIN 105) to stay inside the 3 h box cap.
-
-| | Tetraeder | llama-server |
-|---|---|---|
-| Tasks solved | 15/20 | 16/20 |
-| Prompt-cache share | 95.07% | 94.52% |
-| Non-200 responses | 0 | 1 |
-| Tool-error rate | 5.1% (19 bash_exit, 5 file, 1 unknown_tool of 489) | 10.8% (58, 11, 6 other of 695) |
-| Call error rate | 0.2% | 0 |
-| Server decode, median | 1.021 of llama-server | |
-
-Tool-call outcomes: parsed/ok 486, parsed/unknown_tool 1, repaired/no_opener 2, repaired/empty_call 1, failed/bad_xml 2; two leaked markers. Tetraeder solved 0/2 of `fix-rounding` and `feature-late-fee`. Resident decode gap closed (`decode_gap.sh`: 189.8 vs 190.5 tok/s at depth 0, 123.5 vs 123.3 at 20K, 52.0 vs 51.5 at 100K); kv-quality gating rows pass under the excess-over-floor gate. Verdict: the cache and non-200 clauses are met; the tasks clause misses by one task in this run after passing by one in 20261110d. Pooled over both runs on the same harness: 30/40 each. A one-task difference in 20 is within the run-to-run spread, so the tasks clause is a tie, not a clear pass; whether a tie meets "at least as many" over pooled runs is the owner's call.
-
 ## Addendum (2026-11-11): owner decision on the tasks clause
 
-The plan's clause reads "tasks solved at least as many as llama-server" for one run. All proxy runs, Tetraeder against llama-server: 15/15 (`20261103`), 12/13 (`20261110`), 16/16 (`20261110b`), 15/14 (`20261110d`), 15/16 (`20261111d`); per-run differences -1 to +1, pooled 73/100 against 74/100, on the current harness (last two) 30/40 each. No task fails for Tetraeder alone: `fix-rounding` 2/10 against 1/10, `feature-late-fee` 5/10 each. At 20 tasks per run the clause as written is a coin flip.
+The plan's clause reads "tasks solved at least as many as llama-server" for one run. Across the proxy runs per-run differences stay within one task and no task fails for Tetraeder alone, so at 20 tasks per run the clause as written is a coin flip (`20261111d`, which also lists the earlier runs).
 
-Decision (owner, 2026-11-11, post hoc; the original text stays in the plan): the tasks clause is met when Tetraeder is no worse than llama-server beyond the run-to-run spread, judged over all runs, with no task failing for Tetraeder alone. Met: pooled 73 against 74 and every run within one task. The cache and non-200 clauses are met on both current-harness runs (cache 95.8 vs 94.2 and 95.07 vs 94.52; one of four earlier runs missed cache by 0.34). Tool-error rate is not a clause and flips between runs (10.0 vs 6.8, then 5.1 vs 10.8).
+Decision (owner, 2026-11-11, post hoc; the original text stays in the plan): the tasks clause is met when Tetraeder is no worse than llama-server beyond the run-to-run spread, judged over all runs, with no task failing for Tetraeder alone. Met over all runs. The cache and non-200 clauses are met on both current-harness runs (`20261110d`, `20261111d`). Tool-error rate is not a clause and flips between runs.

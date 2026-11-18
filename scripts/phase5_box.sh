@@ -53,7 +53,7 @@
 # verdict.json. Unset, the behaviour is the full session. Order on the first 2x box (S2):
 #   SESSION=<s>-step0 ROUNDS=2 ONLY="tp-2 llama-bench:tensor" bash scripts/phase5_box.sh <s>-step0 2   # round 2 reversed: two interleaved pairs
 #   SESSION=<s> ROUNDS=1 bash scripts/phase5_box.sh <s> 2                                              # the rehearsal
-# GPU throttle (ADR 0068 addendum 2026-11-17): scripts/gpu_sampler.sh runs for the whole session (1 Hz, every GPU,
+# GPU throttle (ADR 0068 "Throttle"): scripts/gpu_sampler.sh runs for the whole session (1 Hz, every GPU,
 # gpu-samples.csv; not with SKIP_GPU/DRY_RUN) and run_one stamps window-<run>.json (box-local start and end); the summary
 # judges each run on the sampler's window samples per GPU.
 # cargo and every long job run with fd 8 closed: a server they start would otherwise keep the lock.
@@ -90,7 +90,7 @@ fi
 log="${P5_LOG_FILE:-runs/vast/phase5_box.log}"
 out="${P5_OUT:-$PWD/bench/results/$session/phase5}"
 mkdir -p "$out/plans" "$out/layouts" "$out/anchor-parts" "$(dirname "$log")"
-# 1 Hz GPU sampler for the whole session (ADR 0068 addendum; scripts/gpu_sampler.sh -> $out/gpu-samples.csv); not in the CPU
+# 1 Hz GPU sampler for the whole session (ADR 0068 "Throttle"; scripts/gpu_sampler.sh -> $out/gpu-samples.csv); not in the CPU
 # rehearsal. It ends on $out/gpu-sampler.stop or when this script is gone.
 if [ "$DRY" = 1 ]; then
   [ "$skip_gpu" = 1 ] || echo "PLAN gpu_sampler.sh -> gpu-samples.csv (stopped at the end)"

@@ -218,7 +218,7 @@ fn cli_mix_writes_the_compare_mix_shape() {
     }
 }
 
-/// The 30B sum underestimates uniform Q2_K by 25% (ADR 0048); the profile's `format_scale` caps
+/// The 30B sum underestimates uniform Q2_K by 25% (ADR 0048, `bench/results/20261103`); the profile's `format_scale` caps
 /// that, and leaves every mix without Q2_K as it was.
 #[test]
 fn q2_k_scale_closes_the_underestimate_on_the_30b() {

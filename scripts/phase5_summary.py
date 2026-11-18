@@ -18,8 +18,8 @@ Input files in DIR (names fixed by ADR 0068 unless marked box):
   run-<run>.rc                             box: exit code of a run; gpu-<run>.txt throttle reasons before and after;
                                            cotenant-<run>.json the host check (cotenant_ok)
   gates.json                               box: {"gpu_parity", "comm_probe"} = ok | failed | skipped
-  gpu-samples.csv                          box: scripts/gpu_sampler.sh, 1 Hz, one line per GPU per second (ADR 0068 addendum
-                                           2026-11-17); window-<run>.json {"start", "end"} box-local stamps of each run
+  gpu-samples.csv                          box: scripts/gpu_sampler.sh, 1 Hz, one line per GPU per second (ADR 0068 "Throttle",
+                                           History 2026-11-17); window-<run>.json {"start", "end"} box-local stamps of each run
   timeline.jsonl                           box: {"t", "event": predict|run, "model", "kind", "sha256"} in order
 A run is `<model>-<id>-r<k>`, `<model>-<id>-aa` or `<model>-<engine>-<sm>-r<k>`. Anything missing makes a run unclean
 or a result null, never true.

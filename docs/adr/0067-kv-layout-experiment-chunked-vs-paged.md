@@ -1,6 +1,8 @@
 # 0067. KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now
 
-Status: Proposed (2026-11-14). Phase 4. Settles the plan's open decision "KV layout in Phase 4" by the procedure below; the result is added here as an addendum and in `docs/plan.md`. Builds on ADR 0065 (one pool per layer, attention with a mask) and 0011 (patch queue). Briefs: C6-1 in `docs/phase4-briefs.md`; step 2 gets its own brief only if step 1 sends it there.
+Status: Proposed (2026-11-14). Phase 4. Settles the plan's open decision "KV layout in Phase 4" by the procedure below; the result is added here as an addendum and in `docs/plan.md`. Builds on ADR 0065 (one pool per layer, attention with a mask) and 0011 (patch queue). Briefs: C6-1 in `docs/phase4-briefs.md`; step 2 gets its own brief only if step 1 sends it there. Step 1 decided: chunked, outcome 4, no patch (`20261114`, addendum below).
+
+Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
 ## Context
 
@@ -48,9 +50,8 @@ Outputs: `bench/results/<date>/kv-layout/sim.json` (`{workload, pool_rows: {chun
 
 ## Addendum 2026-11-14: step 1 result, chunked
 
-`bench/results/20261114/kv-layout/` (`sim.json`, `kv-gather.json`; branch `track-c6-kv`).
-- Memory: paged needs 355 units of 256 rows for W, chunked 553: s = 35.8% (33.1% without idle prefixes), at least X.
-- Reads: y_gather 0.184 and y_sparse 0.056 (256-row blocks, 8 threads; 0.136 and 0.100 at 64-row blocks), both above Y.
-- y_mask: -0.172 with each layout at its own minimal pool, +0.087 with both at chunked's pool. The definition above does not fix the pool, but its concern is that scattered blocks make n_kv follow the pool's high-water mark, which is a comparison at one pool size; at its own smaller pool paged's n_kv is capped by the pool, so the memory saving would count a second time, in Y as well as in X. So y_mask is read at the common pool: +0.087, above Y.
+`bench/results/20261114/kv-layout/` (`20261114`; branch `track-c6-kv`).
+- Memory: paged saves at least X on W. Reads: y_gather and y_sparse are both above Y (`20261114`).
+- y_mask is read at the common pool, chunked's minimal one. The definition above does not fix the pool, but its concern is that scattered blocks make n_kv follow the pool's high-water mark, which is a comparison at one pool size; at its own smaller pool paged's n_kv is capped by the pool, so the memory saving would count a second time, in Y as well as in X. Read that way it is above Y.
 - Outcome 4: **chunked**, no patch. C4 and C5 use chunked (`--kv-layout` default `chunked`); paged stays in `kvcache` for the simulator and tests.
-- Caveats: the timings ran on an SSE-only dev VM under load from parallel builds (attention about 15 ms at L 2048, one run). A faster kernel makes gather overhead relatively larger, so the y values likely understate the cost on real hardware; the verdict does not depend on them being exact (all exceed Y). Revisit only if a later workload needs more than about 1.5x the sequences per VRAM that chunked gives.
+- The timings ran on a slow, loaded dev machine; a faster kernel makes gather overhead relatively larger, so the y values likely understate the cost on real hardware. The verdict does not depend on them being exact (all exceed Y). Revisit only if a later workload needs more than about 1.5x the sequences per VRAM that chunked gives.

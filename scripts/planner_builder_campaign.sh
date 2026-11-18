@@ -15,7 +15,7 @@
 # candidates above), trace (about 5 min: one builder run with the routing recorder on the fixture prompt, then
 # `tetraeder-bench replay` over the slot counts of the anchors and candidates into tier-replay.json; the trace stays
 # when it compresses to under 20 MB). ADR 0056.
-# Candidates (ADR 0040, fill-tier addendum 2026-11-15): the VRAM slot tiers top-k and its doublings that fit, plus the
+# Candidates (ADR 0040, fill-tier addendum 2026-11-14): the VRAM slot tiers top-k and its doublings that fit, plus the
 # largest slot count that fits (the fill tier; the "vram-large" anchor is that tier), times RAM options, threads,
 # ubatch and op offload, thinned to 24; 4 anchors. At the fixture's 14336 MiB free that is 28 variants.
 # Env: FREE_MOE_MIB (default 14336: the VRAM balloon, the same fixture on a 24 GB or a 48 GB card; 0 holds nothing, the
