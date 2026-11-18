@@ -20,3 +20,7 @@
 ## From ADR 0065 (addendum "SW power cap after a run is benign", moved verbatim; the count spans this session and `20261116pinab`)
 
 - Why: the after sample is taken right after the c4 run ends, at the same point for every engine, so a power cap still active from the load is the same for both sides of a pair; the RTX 3090 noise band (`bench/noise/rtx-3090.json`, 11 sessions from llama-bench, not filtered by throttle) already prices power capping. 0x4 after a run appeared in 13 of 22 records in `20261116d2a2` and `20261116pinab`, on drivers 580 and 615, for baseline and Tetraeder runs alike.
+
+## From ADR 0071 (addendum "the anchored re-run", last bullet, moved verbatim)
+
+- GPU-confirmed on box 60919833 (`bench/results/20261116d2a2/`): the 30B alone control is exactly 0 on every row incl. (0,19). A side effect for replay fidelity: with last-only prefill the engine loads fewer last-layer experts than a routing trace (all rows) implies, so tests comparing replay counts against engine stats prefill with `eval` (`replay_fidelity.rs`, `slots.rs`); exit_regime traces taken with `eval_last` overstate last-layer prefill traffic slightly.

@@ -16,3 +16,7 @@ From ADR 0074 (addendum "the pool on the GPU", moved verbatim):
 
 - Probes 8B c4 1.044, 30B c4 0.957; pairs 8B c4 1.054 and 1.046, c1 1.006 and 1.009; 30B c4 0.968 and 0.963, c1 0.998 and 0.972. Every run had 0x400 or 0x600 before it (idle at SSH was 0x1), so every pair is unclean and both per-model passes are null, under the rule fixed before the session. Not rerun on the same host.
 - Drivers: the bits appeared before runs on driver 615 (2026-11-16) and 620, not on 595 (host 264182: 0x0 before every run in `20261117d`). The next verdict box reads the throttle value after the prepass; outside 0x0-0x3 before a run, it is destroyed and another host taken.
+
+## From ADR 0068 (addendum "throttle judged as in Phase 4", moved verbatim)
+
+- Why: on drivers 615 and later the single samples read 0x4 at idle and 0x400 or 0x600 at partial load, which failed almost every Phase 4 host (`20261117e`, `g`, `i`, `j`) while the measured windows were clean.
