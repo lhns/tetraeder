@@ -1,0 +1,848 @@
+{
+  "band": 0.08,
+  "band_source": "provisional cuda-default",
+  "predict_sha256": {
+    "qwen3-30b-a3b": "79515357adac891990040c3909675c10f2625fb5f18a2a3b30cc975c573e7f2a",
+    "qwen3-32b": "e0e3530ddf68879bb99882a7255246dfa6b6cc6352e570635b260ad4e0fe768e"
+  },
+  "cases": [
+    {
+      "case": "M2",
+      "model": "qwen3-30b-a3b",
+      "box_gpus": 2,
+      "gpu_class": "2x-rtx-3090",
+      "p2p": "none",
+      "comm_impl": "nccl",
+      "candidates": [
+        {
+          "id": "single",
+          "shape": "single",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 7759.561686469483,
+            "tg_tps": 198.11076009800962,
+            "t_s": 0.9100356535736093
+          },
+          "measured": {
+            "pp_tps": 4813.190477056577,
+            "tg_tps": 176.98661075549015,
+            "t_s": 1.148715943,
+            "rounds_clean": 1
+          },
+          "err": {
+            "pp": 0.6121451505934807,
+            "tg": 0.11935450513656543
+          },
+          "within": false
+        },
+        {
+          "id": "layer-2",
+          "shape": "layer",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 7710.4840595422165,
+            "tg_tps": 196.25331699321418,
+            "t_s": 0.9178306527962989
+          },
+          "measured": {
+            "pp_tps": 5229.591142010255,
+            "tg_tps": 198.4255869099831,
+            "t_s": 1.03669571,
+            "rounds_clean": 1
+          },
+          "err": {
+            "pp": 0.47439519651976214,
+            "tg": -0.010947529250622257
+          },
+          "within": false
+        },
+        {
+          "id": "tp-2",
+          "shape": "tp",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 5859.909415859423,
+            "tg_tps": 146.60655091916124,
+            "t_s": 1.2225785900388382
+          },
+          "measured": {
+            "pp_tps": 4315.658443896671,
+            "tg_tps": 181.30915405031286,
+            "t_s": 1.180527482,
+            "rounds_clean": 1
+          },
+          "err": {
+            "pp": 0.3578251133721382,
+            "tg": -0.19140017123195963
+          },
+          "within": false
+        },
+        {
+          "id": "ep-2",
+          "shape": "ep",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 6249.891964806766,
+            "tg_tps": 147.82920564293644,
+            "t_s": 1.1935497500631809
+          },
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        }
+      ],
+      "pick": "single",
+      "winner_set": [],
+      "pick_ok": null,
+      "prediction_ok": null,
+      "baselines": [
+        {
+          "engine": "llama-bench",
+          "sm": "layer",
+          "t_s": 0.907048503409951,
+          "comm": null
+        },
+        {
+          "engine": "llama-bench",
+          "sm": "tensor",
+          "t_s": 1.2249309448522343,
+          "comm": null
+        }
+      ],
+      "best_baseline": null,
+      "baseline_ratio": null,
+      "baseline_ok": null,
+      "aa": {
+        "t_start": 1.148715943,
+        "t_end": 1.149351857
+      },
+      "clean": false,
+      "reasons": [
+        "single: 1 clean round(s), need 2",
+        "layer-2: 1 clean round(s), need 2",
+        "tp-2: 1 clean round(s), need 2",
+        "ep-2: 0 clean round(s), need 2",
+        "llama-bench -sm layer: 1 clean round(s), need 2",
+        "llama-bench -sm tensor: 1 clean round(s), need 2"
+      ],
+      "pass": null
+    },
+    {
+      "case": "D2",
+      "model": "qwen3-32b",
+      "box_gpus": 2,
+      "gpu_class": "2x-rtx-3090",
+      "p2p": "none",
+      "comm_impl": "nccl",
+      "candidates": [
+        {
+          "id": "single",
+          "shape": "single",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 859.1869552728474,
+            "tg_tps": 30.72432829389042,
+            "t_s": 6.549728539416062
+          },
+          "measured": {
+            "pp_tps": 1083.6385183222596,
+            "tg_tps": 27.6694997177042,
+            "t_s": 6.515961449000001,
+            "rounds_clean": 1
+          },
+          "err": {
+            "pp": -0.2071277084141664,
+            "tg": 0.1104041853793114
+          },
+          "within": false
+        },
+        {
+          "id": "layer-2",
+          "shape": "layer",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 857.7632609981387,
+            "tg_tps": 30.67814200675064,
+            "t_s": 6.559956940638751
+          },
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "tp-2",
+          "shape": "tp",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 1140.9297385396774,
+            "tg_tps": 45.47426253925628,
+            "t_s": 4.609806292206549
+          },
+          "measured": {
+            "pp_tps": 1321.5099379228254,
+            "tg_tps": 53.68252316011886,
+            "t_s": 3.934131083,
+            "rounds_clean": 1
+          },
+          "err": {
+            "pp": -0.1366468720371392,
+            "tg": -0.15290377831868673
+          },
+          "within": false
+        }
+      ],
+      "pick": "tp-2",
+      "winner_set": [],
+      "pick_ok": null,
+      "prediction_ok": null,
+      "baselines": [
+        {
+          "engine": "llama-bench",
+          "sm": "layer",
+          "t_s": 4.482365915567773,
+          "comm": null
+        },
+        {
+          "engine": "llama-bench",
+          "sm": "tensor",
+          "t_s": 3.9745732724772687,
+          "comm": null
+        }
+      ],
+      "best_baseline": null,
+      "baseline_ratio": null,
+      "baseline_ok": null,
+      "aa": {
+        "t_start": 6.515961449000001,
+        "t_end": 6.541470136
+      },
+      "clean": false,
+      "reasons": [
+        "single: 1 clean round(s), need 2",
+        "layer-2: 0 clean round(s), need 2",
+        "tp-2: 1 clean round(s), need 2",
+        "llama-bench -sm layer: 1 clean round(s), need 2",
+        "llama-bench -sm tensor: 1 clean round(s), need 2"
+      ],
+      "pass": null
+    }
+  ],
+  "phase5_pass": false,
+  "throttle": {
+    "rule": "sampler",
+    "compare": "per-configuration",
+    "share_tolerance": 0.15,
+    "config_median_share": {
+      "qwen3-30b-a3b-ep-2": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.2
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.26666666666666666
+        }
+      },
+      "qwen3-30b-a3b-layer-2": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.2
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.06666666666666667
+        }
+      },
+      "qwen3-30b-a3b-llama-bench-layer": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.3
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.3
+        }
+      },
+      "qwen3-30b-a3b-llama-bench-tensor": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.16666666666666666
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.25
+        }
+      },
+      "qwen3-30b-a3b-single": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.26666666666666666
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.03333333333333333
+        }
+      },
+      "qwen3-30b-a3b-tp-2": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.2
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.2
+        }
+      },
+      "qwen3-32b-layer-2": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.43478260869565216
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.4782608695652174
+        }
+      },
+      "qwen3-32b-llama-bench-layer": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.4
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.4666666666666667
+        }
+      },
+      "qwen3-32b-llama-bench-tensor": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.375
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.375
+        }
+      },
+      "qwen3-32b-single": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.5684615384615385
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.0
+        }
+      },
+      "qwen3-32b-tp-2": {
+        "0": {
+          "share_board": 0.0,
+          "share_cap": 0.4
+        },
+        "1": {
+          "share_board": 0.0,
+          "share_cap": 0.4
+        }
+      }
+    },
+    "runs": {
+      "qwen3-30b-a3b-ep-2-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.2,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.2
+          },
+          "1": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.26666666666666666,
+            "disqualifying": 1,
+            "bad_bits": "0x20",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.26666666666666666
+          }
+        },
+        "disqualifying": 1,
+        "samples": 30,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000000"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-30b-a3b-layer-2-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.2,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.2
+          },
+          "1": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.06666666666666667,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.06666666666666667
+          }
+        },
+        "disqualifying": 0,
+        "samples": 30,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000001"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000004"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-30b-a3b-llama-bench-layer-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 10,
+            "share_board": 0.0,
+            "share_cap": 0.3,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.3
+          },
+          "1": {
+            "samples": 10,
+            "share_board": 0.0,
+            "share_cap": 0.3,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.3
+          }
+        },
+        "disqualifying": 0,
+        "samples": 20,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000000"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-30b-a3b-llama-bench-tensor-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 12,
+            "share_board": 0.0,
+            "share_cap": 0.16666666666666666,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.16666666666666666
+          },
+          "1": {
+            "samples": 12,
+            "share_board": 0.0,
+            "share_cap": 0.25,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.25
+          }
+        },
+        "disqualifying": 0,
+        "samples": 24,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000004"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-30b-a3b-single-aa": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.26666666666666666,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.26666666666666666
+          },
+          "1": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.0,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.03333333333333333
+          }
+        },
+        "disqualifying": 0,
+        "samples": 30,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000001"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000001"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-30b-a3b-single-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.26666666666666666,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.26666666666666666
+          },
+          "1": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.06666666666666667,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.03333333333333333
+          }
+        },
+        "disqualifying": 0,
+        "samples": 30,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000001"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-30b-a3b-tp-2-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.2,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.2
+          },
+          "1": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.2,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.2
+          }
+        },
+        "disqualifying": 0,
+        "samples": 30,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-32b-layer-2-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 23,
+            "share_board": 0.0,
+            "share_cap": 0.43478260869565216,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.43478260869565216
+          },
+          "1": {
+            "samples": 23,
+            "share_board": 0.0,
+            "share_cap": 0.4782608695652174,
+            "disqualifying": 1,
+            "bad_bits": "0x20",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.4782608695652174
+          }
+        },
+        "disqualifying": 1,
+        "samples": 46,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-32b-llama-bench-layer-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.4,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.4
+          },
+          "1": {
+            "samples": 15,
+            "share_board": 0.0,
+            "share_cap": 0.4666666666666667,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.4666666666666667
+          }
+        },
+        "disqualifying": 0,
+        "samples": 30,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000004"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-32b-llama-bench-tensor-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 16,
+            "share_board": 0.0,
+            "share_cap": 0.375,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.375
+          },
+          "1": {
+            "samples": 16,
+            "share_board": 0.0,
+            "share_cap": 0.375,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.375
+          }
+        },
+        "disqualifying": 0,
+        "samples": 32,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-32b-single-aa": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 26,
+            "share_board": 0.0,
+            "share_cap": 0.5769230769230769,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.5684615384615385
+          },
+          "1": {
+            "samples": 26,
+            "share_board": 0.0,
+            "share_cap": 0.0,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.0
+          }
+        },
+        "disqualifying": 0,
+        "samples": 52,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000001"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000001"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-32b-single-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 25,
+            "share_board": 0.0,
+            "share_cap": 0.56,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.5684615384615385
+          },
+          "1": {
+            "samples": 25,
+            "share_board": 0.0,
+            "share_cap": 0.0,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.0
+          }
+        },
+        "disqualifying": 0,
+        "samples": 50,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000000"
+          ],
+          "after": [
+            "0x0000000000000004",
+            "0x0000000000000001"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      },
+      "qwen3-32b-tp-2-r1": {
+        "rule": "sampler",
+        "gpus": {
+          "0": {
+            "samples": 20,
+            "share_board": 0.0,
+            "share_cap": 0.4,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.4
+          },
+          "1": {
+            "samples": 20,
+            "share_board": 0.0,
+            "share_cap": 0.4,
+            "disqualifying": 0,
+            "bad_bits": "0x0",
+            "config_median_share_board": 0.0,
+            "config_median_share_cap": 0.4
+          }
+        },
+        "disqualifying": 0,
+        "samples": 40,
+        "before_after": {
+          "before": [
+            "0x0000000000000000",
+            "0x0000000000000024"
+          ],
+          "after": [
+            "0x0000000000000000",
+            "0x0000000000000004"
+          ],
+          "power_before": [],
+          "power_after": []
+        }
+      }
+    }
+  }
+}

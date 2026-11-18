@@ -1,0 +1,2 @@
+hardware: gpu1: PCIe link is gen2 x16 now, max gen4 x16 (may be idle power saving)
+steps 264 mean 16.40 ms p95 11.81 ms
