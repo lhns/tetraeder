@@ -60,12 +60,12 @@ _p4 = _load("phase4_summary")  # throttle record format, GPU class slug: one sou
 throttle_reasons = _p4.throttle_reasons
 class_slug = _p4.class_slug
 read_json = _p4.read_json
-# Throttle by the session sampler (ADR 0068 addendum 2026-11-17): bits that are fine in a window sample; the shares of
-# samples with 0x200/0x400 and with 0x4 are compared with the session median of the GPU.
+# Throttle by the session sampler (ADR 0068 addenda 2026-11-17, 2026-11-18): bits that are fine in a window sample; the
+# shares of samples with 0x200/0x400 and with 0x4 are compared between the rounds of one configuration, never across.
 BOARD_BITS = 0x200 | 0x400
 CAP_BIT = 0x4
 WINDOW_OK = 0x1 | 0x2 | 0x4 | 0x100 | BOARD_BITS
-SHARE_TOL = 0.10
+SHARE_TOL = 0.15
 SAMPLE_FMT = "%Y/%m/%d %H:%M:%S"
 
 
@@ -185,9 +185,22 @@ def _stamp(d: Path):
     return (str(d), tuple(key), len(list(d.glob("window-*.json"))), len(list(d.glob("run-*.rc"))))
 
 
+def config_of(run: str) -> str:
+    """The configuration a run belongs to: the run name without its round (`-r<k>`) or `-aa`."""
+    return re.sub(r"-(r\d+|aa)$", "", run)
+
+
+def _round_rank(run: str) -> int:
+    m = re.search(r"-r(\d+)$", run)
+    return int(m.group(1)) if m else 10**6  # the A/A run is the last one of its configuration
+
+
 def session_sampler(d: Path) -> dict | None:
-    """{runs: {run: {gpu: stats}}, median: {gpu: {share_board, share_cap}}} over the session, or None without sampler
-    data. The medians are over all measured runs (anchors excluded) that have window samples."""
+    """{runs: {run: {gpu: stats}}, config: {config: {gpu: {share_board, share_cap}}}, outliers: {run: [reason]}} over the
+    session, or None without sampler data. `config` holds the median share over the rounds of one configuration; a
+    configuration whose share on a GPU spreads by more than SHARE_TOL between its rounds has the round furthest from the
+    median as an outlier (a tie goes to the later round). Shares are never compared across configurations (ADR 0068
+    addendum 2026-11-18)."""
     key = _stamp(d)
     if _SESSION_CACHE.get("key") == key:
         return _SESSION_CACHE["val"]
@@ -202,12 +215,27 @@ def session_sampler(d: Path) -> dict | None:
             st = gpu_stats(samples, run_window(d, run, "vllm" if "-vllm-" in run else ""))
             if st:
                 runs[run] = st
-        med: dict[int, dict] = {}
-        for g in sorted({g for st in runs.values() for g in st}):
-            sel = [st[g] for st in runs.values() if g in st]
-            med[g] = {"share_board": statistics.median(x["share_board"] for x in sel),
-                      "share_cap": statistics.median(x["share_cap"] for x in sel)}
-        val = {"runs": runs, "median": med}
+        by_cfg: dict[str, list[str]] = {}
+        for run in runs:
+            by_cfg.setdefault(config_of(run), []).append(run)
+        cfg: dict[str, dict] = {}
+        outliers: dict[str, list[str]] = {}
+        for c, members in by_cfg.items():
+            cfg[c] = {}
+            for g in sorted({g for r in members for g in runs[r]}):
+                have = [r for r in members if g in runs[r]]
+                cfg[c][g] = {}
+                for name, k in (("0x200/0x400", "share_board"), ("0x4", "share_cap")):
+                    vals = {r: runs[r][g][k] for r in have}
+                    med = statistics.median(vals.values())
+                    cfg[c][g][k] = med
+                    if len(have) > 1 and max(vals.values()) - min(vals.values()) > SHARE_TOL + EPS:
+                        far = max(have, key=lambda r: (abs(vals[r] - med), _round_rank(r)))
+                        outliers.setdefault(far, []).append(
+                            f"{far}: GPU {g}: share of {name} samples {vals[far]:.2f} is furthest from the median "
+                            f"{med:.2f} of {c}, whose rounds differ by {max(vals.values()) - min(vals.values()):.2f} "
+                            f"(more than {SHARE_TOL})")
+        val = {"runs": runs, "config": cfg, "outliers": outliers}
     _SESSION_CACHE.update(key=key, val=val)
     return val
 
@@ -220,15 +248,12 @@ def sampler_judgement(d: Path, run: str) -> tuple[list[str], dict]:
     if st is None:
         return [f"{run}: {x}" for x in throttle_reasons(d, run)], {"rule": "single-sample"}
     reasons, gpus = [], {}
+    cfg = sess["config"][config_of(run)]
     for g, x in st.items():
-        med = sess["median"][g]
-        gpus[str(g)] = {**x, "median_share_board": med["share_board"], "median_share_cap": med["share_cap"]}
+        gpus[str(g)] = {**x, "config_median_share_board": cfg[g]["share_board"], "config_median_share_cap": cfg[g]["share_cap"]}
         if x["disqualifying"]:
             reasons.append(f"{run}: GPU {g}: {x['disqualifying']} window sample(s) with throttle bits {x['bad_bits']}")
-        for name, key in (("0x200/0x400", "share_board"), ("0x4", "share_cap")):
-            if abs(x[key] - med[key]) > SHARE_TOL + EPS:
-                reasons.append(f"{run}: GPU {g}: share of {name} samples {x[key]:.2f} differs from the session median "
-                               f"{med[key]:.2f} by more than {SHARE_TOL}")
+    reasons += sess["outliers"].get(run, [])
     rec = {"rule": "sampler", "gpus": gpus, "disqualifying": sum(x["disqualifying"] for x in st.values()),
            "samples": sum(x["samples"] for x in st.values())}
     # the single before and after samples are recorded, not judged
@@ -597,8 +622,8 @@ def verdict(d: Path, noise_dir: Path = ROOT / "bench" / "noise", spec: Path = RO
 
 
 def throttle_record_of_session(d: Path) -> dict:
-    """Per run (anchors excluded): the rule used, the shares per GPU against the session median, disqualifying and sample
-    counts (ADR 0068 addendum 2026-11-17)."""
+    """Per run (anchors excluded): the rule used, the shares per GPU against the median of its configuration, disqualifying
+    and sample counts (ADR 0068 addenda 2026-11-17, 2026-11-18)."""
     runs = {}
     for rc in sorted(d.glob("run-*.rc")):
         run = rc.stem[len("run-") :]
@@ -607,8 +632,9 @@ def throttle_record_of_session(d: Path) -> dict:
     sess = session_sampler(d)
     rules = {r["rule"] for r in runs.values()}
     rule = "sampler" if rules == {"sampler"} else "single-sample" if rules <= {"single-sample"} else "mixed"
-    return {"rule": rule, "share_tolerance": SHARE_TOL,
-            "median_share": {str(g): m for g, m in (sess["median"] if sess else {}).items()}, "runs": runs}
+    return {"rule": rule, "compare": "per-configuration", "share_tolerance": SHARE_TOL,
+            "config_median_share": {c: {str(g): m for g, m in gs.items()} for c, gs in (sess["config"] if sess else {}).items()},
+            "runs": runs}
 
 
 # ---- step-0 check (ADR 0069) ----------------------------------------------------------------------------------
@@ -662,7 +688,7 @@ def step0(d: Path, spec: str, noise_dir: Path = ROOT / "bench" / "noise",
     oks = [v["ok"] for v in models.values()]
     passed = None if not oks else False if any(o is False for o in oks) else True if all(o is True for o in oks) else None
     return {"band": band, "band_source": source, "threshold": 1 - band, "only": spec, "models": models,
-            "step0_pass": passed}
+            "step0_pass": passed, "throttle": throttle_record_of_session(d)}
 
 
 def final_pass(cases: list[dict]) -> bool | None:

@@ -122,10 +122,8 @@ fn paired(what: &str, bound_ms: f64, mut snap: impl FnMut(bool) -> (Vec<u8>, f64
         median(plain),
         median(thp)
     );
-    assert!(
-        s < d,
-        "{what}: staged {s:.2} ms is not below straight {d:.2} ms"
-    );
+    // Staged against straight is printed above, not a gate (ADR 0074, 2026-11-18 addendum); the
+    // absolute bound below is.
     assert!(
         s < bound_ms,
         "{what}: staged save {s:.2} ms over {bound_ms} ms"

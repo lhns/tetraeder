@@ -417,7 +417,7 @@ def test_baseline_modes_gate(tmp_path):
     assert verdict(ok, tmp_path)[2]["pass"] is True
 
 
-# ---- throttle by the session sampler (ADR 0068 addendum 2026-11-17) ----------------------------------------------
+# ---- throttle by the session sampler (ADR 0068 addenda 2026-11-17, 2026-11-18) ----------------------------------------------
 
 from datetime import datetime, timedelta  # noqa: E402
 
@@ -454,22 +454,44 @@ def test_equal_shares_on_two_gpus_are_clean(tmp_path):
     v, notes, c = verdict(d, tmp_path)
     assert c["pass"] is True and not notes["unclean_runs"]
     t = v["throttle"]
-    assert t["rule"] == "sampler" and t["median_share"]["1"] == {"share_board": 0.5, "share_cap": 0.2}
+    assert t["rule"] == "sampler" and t["compare"] == "per-configuration"
+    assert t["config_median_share"][f"{MODEL}-tp-2"]["1"] == {"share_board": 0.5, "share_cap": 0.2}
     r = t["runs"][f"{MODEL}-tp-2-r1"]
     assert r["rule"] == "sampler" and set(r["gpus"]) == {"0", "1"} and r["disqualifying"] == 0 and r["samples"] == 200
     assert r["gpus"]["1"]["samples"] == 100 and r["gpus"]["1"]["share_board"] == 0.5 and r["gpus"]["1"]["share_cap"] == 0.2
 
 
-def test_one_run_off_the_median_on_one_gpu_is_unclean(tmp_path):
+def test_shares_differing_across_configurations_do_not_make_runs_unclean(tmp_path):
+    d = make(tmp_path / "d")
+    shape = {"single": (0.1, 0.8), "layer-2": (0.9, 0.0), "tp-2": (0.5, 0.2)}
+    sampler(d, lambda run, g: next(v for k, v in shape.items() if f"{MODEL}-{k}-" in run + "-") if "llama" not in run else (0.3, 0.5))
+    v, notes, c = verdict(d, tmp_path)
+    assert not notes["unclean_runs"] and c["pass"] is True
+
+
+def test_the_round_furthest_from_the_configuration_median_is_unclean(tmp_path):
     d = make(tmp_path / "d")
     bad = f"{MODEL}-tp-2-r1"
-    sampler(d, lambda run, g: (0.8, 0.2) if (run, g) == (bad, 1) else (0.5, 0.2))  # 0.3 off on GPU 1 only
+    sampler(d, lambda run, g: (0.7, 0.2) if (run, g) == (bad, 1) else (0.5, 0.2))  # 0.2 apart on GPU 1 only
     v, notes, c = verdict(d, tmp_path)
     assert [u["run"] for u in notes["unclean_runs"]] == [bad]
     assert "GPU 1" in notes["unclean_runs"][0]["reasons"][0] and "0x200/0x400" in notes["unclean_runs"][0]["reasons"][0]
     assert c["pass"] is True  # two clean rounds of tp-2 are left
     assert next(x for x in c["candidates"] if x["id"] == "tp-2")["measured"]["rounds_clean"] == 2
-    assert v["throttle"]["runs"][bad]["gpus"]["1"]["median_share_board"] == 0.5
+    assert v["throttle"]["runs"][bad]["gpus"]["1"]["config_median_share_board"] == 0.5
+
+
+def test_two_rounds_tie_goes_to_the_later_round(tmp_path):
+    d = make(tmp_path / "d", rounds=(1, 2))
+    sampler(d, lambda run, g: (0.7, 0.2) if run == f"{MODEL}-tp-2-r2" else (0.5, 0.2))
+    assert [u["run"] for u in verdict(d, tmp_path)[1]["unclean_runs"]] == [f"{MODEL}-tp-2-r2"]
+
+
+def test_the_aa_run_belongs_to_its_configuration(tmp_path):
+    d = make(tmp_path / "d")
+    aa = f"{MODEL}-single-aa"
+    sampler(d, lambda run, g: (0.8, 0.2) if run == aa else (0.5, 0.2))
+    assert [u["run"] for u in verdict(d, tmp_path)[1]["unclean_runs"]] == [aa]
 
 
 def test_cap_share_is_judged_separately_and_exactly_at_tolerance_passes(tmp_path):
@@ -478,8 +500,21 @@ def test_cap_share_is_judged_separately_and_exactly_at_tolerance_passes(tmp_path
     sampler(d, lambda run, g: (0.5, 0.45) if (run, g) == (bad, 0) else (0.5, 0.2))
     assert [u["run"] for u in verdict(d, tmp_path)[1]["unclean_runs"]] == [bad]
     ok = make(tmp_path / "e")
-    sampler(ok, lambda run, g: (0.6, 0.3) if (run, g) == (bad, 0) else (0.5, 0.2))  # exactly 0.10 off
+    sampler(ok, lambda run, g: (0.5, 0.3) if (run, g) == (bad, 0) else (0.5, 0.2))  # 0.10 apart
     assert not verdict(ok, tmp_path)[1]["unclean_runs"]
+    edge = make(tmp_path / "f")
+    sampler(edge, lambda run, g: (0.65, 0.2) if (run, g) == (bad, 0) else (0.5, 0.2))  # exactly 0.15 apart
+    assert not verdict(edge, tmp_path)[1]["unclean_runs"]
+
+
+def test_one_round_only_checks_the_bits(tmp_path):
+    d = make(tmp_path / "d", rounds=(1,))
+    one = f"{MODEL}-tp-2-r1"
+    sampler(d, lambda run, g: (0.9, 0.0) if run == one else (0.5, 0.2))  # alone in its configuration: no spread
+    assert not verdict(d, tmp_path)[1]["unclean_runs"]
+    sampler(d, lambda run, g: (0.9, 0.0) if run == one else (0.5, 0.2),
+            extra=lambda run, g: [0x8] if (run, g) == (one, 0) else [])
+    assert [u["run"] for u in verdict(d, tmp_path)[1]["unclean_runs"]] == [one]
 
 
 def test_a_disqualifying_sample_makes_the_run_unclean(tmp_path):
