@@ -124,6 +124,18 @@ groups:
           summary: "Two or more GPU ranks reduce through the executor's copy fallback"
           description: "ggml's comm (NCCL or its internal two-GPU path) is missing or declined, so every all-reduce is a star of copies through rank 0 and tensor parallel is far slower than predicted. Check the Executor panel's collective bytes by comm path, `tetraeder info` for the NCCL build, and GGML_CUDA_ALLREDUCE."
 
+      # Pipelined prefill (ADR 0077): the planned gauge is recorded only for plans with two or more stages.
+      - alert: TetraederPrefillNotPipelined
+        expr: |
+          max(tetraeder_executor_micro_batches_planned) > 1
+            and sum(rate(tetraeder_executor_micro_batches_sum[15m])) / sum(rate(tetraeder_executor_micro_batches_count[15m])) < 1.5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A pipelined plan's prefill steps run without micro-batches"
+          description: "The plan sets prefill_micro_batches above 1, but its prefill steps averaged under 1.5 micro-batches for 15 minutes, so the stages compute one after another and prefill runs at about half the planned rate on two stages. Only one-sequence prefill steps of two or more tokens pipeline: check for batched prefill or a client sending ubatch-sized steps (Executor micro-batches panel)."
+
       # The backend runs in a worker process (serve --worker, ADR 0069); each restart fails the requests that were running.
       - alert: TetraederWorkerRestarting
         expr: sum(increase(tetraeder_executor_worker_restarts_total[30m])) > 2

@@ -33,7 +33,7 @@ use tetraeder_ggml_sys::ggml::{
 };
 use tetraeder_kvcache::{Chunked, KvError, KvPool, RowCopy, SeqAttn, StepInput, StepPlan};
 use tetraeder_memory::metrics::MemoryMetrics;
-use tetraeder_plan::{KvFormat, Topology};
+use tetraeder_plan::{KvFormat, Topology, micro_batch_sizes};
 use tetraeder_telemetry::{Phase, StepSample, Telemetry};
 
 /// `general.architecture` of a Qwen3 dense model.
@@ -895,18 +895,31 @@ impl Qwen3 {
                 self.seq_reserve(s.seq, need)?;
             }
         }
-        // Attention per sequence needs each input in one run of rows (chunked layout).
-        let per_seq = if self.per_seq_attn && matches!(self.engine, Engine::Sched(_)) {
-            self.pool.plan_step_per_seq(&step).map_err(kv_err)?
-        } else {
-            None
+        // A one-sequence prefill on a pipelined topology runs as micro-batches, each planned as
+        // the same chunk as a step of its own (ADR 0077).
+        let micro = match &self.engine {
+            Engine::Ranked(r) => r.micro_batches(),
+            Engine::Sched(_) => 1,
         };
-        let plan = match per_seq {
-            Some(p) => p,
-            None => self.pool.plan_step(&step).map_err(kv_err)?,
+        let plans = match step.as_slice() {
+            [one] if micro > 1 && one.n_tokens > 1 && !one.all_logits => {
+                let sizes = micro_batch_sizes(one.n_tokens, micro);
+                self.pool.plan_chunks(*one, &sizes).map_err(kv_err)?
+            }
+            _ => {
+                // Attention per sequence needs each input in one run of rows (chunked layout).
+                let per_seq = if self.per_seq_attn && matches!(self.engine, Engine::Sched(_)) {
+                    self.pool.plan_step_per_seq(&step).map_err(kv_err)?
+                } else {
+                    None
+                };
+                vec![match per_seq {
+                    Some(p) => p,
+                    None => self.pool.plan_step(&step).map_err(kv_err)?,
+                }]
+            }
         };
-        let n = plan.pos.len();
-        let n_out = plan.outputs.len();
+        let n: usize = step.iter().map(|s| s.n_tokens).sum();
         let tokens: Vec<i32> = inputs
             .iter()
             .flat_map(|i| i.tokens.iter().copied())
@@ -914,7 +927,7 @@ impl Qwen3 {
         match &mut self.engine {
             Engine::Sched(e) => e.run(
                 &self.h,
-                &plan,
+                &plans[0],
                 &tokens,
                 self.reuse_step_graph,
                 &mut self.step_graphs_built,
@@ -922,9 +935,8 @@ impl Qwen3 {
             )?,
             Engine::Ranked(r) => r.run(
                 &self.h,
-                &plan,
+                &plans,
                 &tokens,
-                (n, plan.n_kv, n_out),
                 self.reuse_step_graph,
                 &mut self.step_graphs_built,
                 self.telemetry.as_deref().map(Telemetry::metrics),

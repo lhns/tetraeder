@@ -42,5 +42,5 @@ pub use quality::{
     EstimateError, GroupEntry, QUALITY_SCHEMA, QualityError, QualityGroup, QualityIssue,
     QualityProfile,
 };
-pub use topology::{RankId, RankSpec, StageSpec, Topology, block_slice};
+pub use topology::{RankId, RankSpec, StageSpec, Topology, block_slice, micro_batch_sizes};
 pub use validate::{At, Context, Issue, validate, validate_partial};

@@ -10,7 +10,9 @@ use tetraeder_ggml_sys::ggml::{Tensor, Type};
 ///   range, computed before it and read only by ranges computed after it;
 /// - a copy goes between two ranks with the same layout, its source (when it is a node) is the
 ///   last node of a range computed before it, its destination is an input (not a node) of its
-///   rank's graph and is read only by ranges computed after it.
+///   rank's graph and is read only by ranges computed after it;
+/// - no tensor is the destination of two copies: in a pipelined program (ADR 0077) a second copy
+///   can land before a range of the destination rank read the first.
 pub fn validate(p: &Program<'_>, n_ranks: usize) -> Result<(), Vec<String>> {
     let mut errs = Vec::new();
 
@@ -67,6 +69,18 @@ pub fn validate(p: &Program<'_>, n_ranks: usize) -> Result<(), Vec<String>> {
         }
     }
 
+    let mut dsts: Vec<(usize, Tensor<'_>)> = Vec::new();
+    for (i, op) in p.ops.iter().enumerate() {
+        if let Op::Copy { dst, .. } = op {
+            if let Some((first, _)) = dsts.iter().find(|(_, t)| t.is(dst.1)) {
+                errs.push(format!(
+                    "op {i}: the tensor on rank {} is the destination of two copies (op {first})",
+                    dst.0
+                ));
+            }
+            dsts.push((i, dst.1));
+        }
+    }
     for (i, op) in p.ops.iter().enumerate() {
         match op {
             Op::Compute { .. } => {}

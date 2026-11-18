@@ -25,6 +25,7 @@ pub fn topology(n_layer: u32, n_ranks: usize, stages: Vec<StageSpec>) -> Topolog
             .collect(),
         stages,
         n_layer,
+        prefill_micro_batches: 1,
     }
 }
 
