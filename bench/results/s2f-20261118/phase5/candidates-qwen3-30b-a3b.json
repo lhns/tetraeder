@@ -1,0 +1,525 @@
+{
+  "model": "Qwen3 30B Gptq Fp16",
+  "gpus": 2,
+  "candidates": [
+    {
+      "id": "single",
+      "gpus": [
+        "gpu0"
+      ],
+      "plan": {
+        "model": "Qwen3 30B Gptq Fp16",
+        "knobs": {
+          "prefill_micro_batches": 1,
+          "cuda_graphs": true,
+          "threads": 46,
+          "ubatch": 512,
+          "op_offload": false
+        },
+        "replicas": [
+          {
+            "stages": [
+              {
+                "layers": [
+                  0,
+                  48
+                ],
+                "devices": [
+                  "gpu0"
+                ],
+                "tp": 1,
+                "ep": 1,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        0,
+                        48
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "embed"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "head"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "expert"
+                      ],
+                      "layers": [
+                        0,
+                        48
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 402653184
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 378273792
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "layers [0, 48) on gpu0 tp 1 ep 1"
+      ]
+    },
+    {
+      "id": "layer-2",
+      "gpus": [
+        "gpu0",
+        "gpu1"
+      ],
+      "plan": {
+        "model": "Qwen3 30B Gptq Fp16",
+        "knobs": {
+          "prefill_micro_batches": 1,
+          "cuda_graphs": true,
+          "threads": 46,
+          "ubatch": 512,
+          "op_offload": false
+        },
+        "replicas": [
+          {
+            "stages": [
+              {
+                "layers": [
+                  0,
+                  28
+                ],
+                "devices": [
+                  "gpu0"
+                ],
+                "tp": 1,
+                "ep": 1,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        0,
+                        28
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "embed"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "expert"
+                      ],
+                      "layers": [
+                        0,
+                        28
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 234881024
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 67108864
+                  }
+                ]
+              },
+              {
+                "layers": [
+                  28,
+                  48
+                ],
+                "devices": [
+                  "gpu1"
+                ],
+                "tp": 1,
+                "ep": 1,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        28,
+                        48
+                      ]
+                    },
+                    "home": [
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "head"
+                      ]
+                    },
+                    "home": [
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "expert"
+                      ],
+                      "layers": [
+                        28,
+                        48
+                      ]
+                    },
+                    "home": [
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu1",
+                    "bytes": 167772160
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu1",
+                    "bytes": 378273792
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "layers [0, 28) on gpu0 tp 1 ep 1",
+        "layers [28, 48) on gpu1 tp 1 ep 1"
+      ]
+    },
+    {
+      "id": "tp-2",
+      "gpus": [
+        "gpu0",
+        "gpu1"
+      ],
+      "plan": {
+        "model": "Qwen3 30B Gptq Fp16",
+        "knobs": {
+          "prefill_micro_batches": 1,
+          "cuda_graphs": true,
+          "threads": 46,
+          "ubatch": 512,
+          "op_offload": false
+        },
+        "replicas": [
+          {
+            "stages": [
+              {
+                "layers": [
+                  0,
+                  48
+                ],
+                "devices": [
+                  "gpu0",
+                  "gpu1"
+                ],
+                "tp": 2,
+                "ep": 1,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        0,
+                        48
+                      ]
+                    },
+                    "home": [
+                      "gpu0",
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "embed"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "head"
+                      ]
+                    },
+                    "home": [
+                      "gpu0",
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "expert"
+                      ],
+                      "layers": [
+                        0,
+                        48
+                      ]
+                    },
+                    "home": [
+                      "gpu0",
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 201326592
+                  },
+                  {
+                    "device": "gpu1",
+                    "bytes": 201326592
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 378273792
+                  },
+                  {
+                    "device": "gpu1",
+                    "bytes": 378273792
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "layers [0, 48) on gpu0+gpu1 tp 2 ep 1"
+      ]
+    },
+    {
+      "id": "ep-2",
+      "gpus": [
+        "gpu0",
+        "gpu1"
+      ],
+      "plan": {
+        "model": "Qwen3 30B Gptq Fp16",
+        "knobs": {
+          "prefill_micro_batches": 1,
+          "cuda_graphs": true,
+          "threads": 46,
+          "ubatch": 512,
+          "op_offload": false
+        },
+        "replicas": [
+          {
+            "stages": [
+              {
+                "layers": [
+                  0,
+                  48
+                ],
+                "devices": [
+                  "gpu0",
+                  "gpu1"
+                ],
+                "tp": 2,
+                "ep": 2,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        0,
+                        48
+                      ]
+                    },
+                    "home": [
+                      "gpu0",
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "embed"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "head"
+                      ]
+                    },
+                    "home": [
+                      "gpu0",
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "expert"
+                      ],
+                      "layers": [
+                        0,
+                        48
+                      ],
+                      "experts": [
+                        0,
+                        64
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "expert"
+                      ],
+                      "layers": [
+                        0,
+                        48
+                      ],
+                      "experts": [
+                        64,
+                        128
+                      ]
+                    },
+                    "home": [
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 201326592
+                  },
+                  {
+                    "device": "gpu1",
+                    "bytes": 201326592
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 378273792
+                  },
+                  {
+                    "device": "gpu1",
+                    "bytes": 378273792
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "layers [0, 48) on gpu0+gpu1 tp 2 ep 2"
+      ]
+    }
+  ],
+  "pruned": []
+}

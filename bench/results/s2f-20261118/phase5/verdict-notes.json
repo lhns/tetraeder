@@ -1,0 +1,16 @@
+{
+  "unclean_runs": [
+    {
+      "run": "qwen3-30b-a3b-ep-2-r1",
+      "reasons": [
+        "qwen3-30b-a3b-ep-2-r1: GPU 1: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-layer-2-r1",
+      "reasons": [
+        "qwen3-32b-layer-2-r1: GPU 1: 1 window sample(s) with throttle bits 0x20"
+      ]
+    }
+  ]
+}
