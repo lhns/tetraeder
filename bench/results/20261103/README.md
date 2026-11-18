@@ -304,3 +304,12 @@ The reader path is the serial sum because box C shows its prefetch barely hides 
 ## From ADR 0056 Implementation notes, part A (moved verbatim)
 
 - **Part A (provenance and ledger).** `MODEL_VERSION` is in `costmodel`; `EnvInfo` gains `session` and prefers `TETRAEDER_GIT_COMMIT`; `exit_regime` writes `provenance` (the io options are omitted until `track-w-iosvc` merges); `scripts/session.sh` exports both variables. `planner::ledger` has `evaluate`, `check`, `write` and `tetraeder-plan ledger [--write] [--accept-worse id=reason]`. Refresh after a version bump or a new fixture: `cargo run -p tetraeder-planner --bin tetraeder-plan -- ledger --write`. `err` is `|predicted - measured| / measured` on the request time. Committed medians: MoE 0.043, dense 0.021. The dense harness files carry no `env`, so its `provenance.json` assumes the `planner-moe` host (noted in the file). A snapshot entry that is missing now, or whose status changed, fails the check; an entry that is new is listed but not a failure until `--write`.
+
+## From ADR 0065 Verdict, "Settled 2026-11-14" (moved verbatim)
+
+- Workload size stays 16 c4 requests: in `bench/results/20261103/gateway/` a c4 run takes 11 s (llama-server) to 27 s (Tetraeder) and the two repeats agree within 0.5%.
+- c1 is not the risk: there Tetraeder already matched llama-server (Qwen3-8B 81.1 against 79.8 tok/s `decode_tps_median`, Qwen3-30B-A3B 129.9 against 129.4); the 0.41 to 0.61 gap is c4 only, which is what batching addresses.
+
+## From ADR 0065 Context (moved verbatim)
+
+The plan's Phase 4 exit test: at least llama.cpp server throughput at concurrency 4; prefix hits cut time to first token (TTFT) on a Claude Code replay. ADR 0046 measured one sequence at a time: concurrency 4 gave 0.41 (Qwen3-8B) and 0.59 to 0.61 (Qwen3-30B-A3B) of llama-server `-np 4` throughput, TTFT 4.9 to 6.6x longer.

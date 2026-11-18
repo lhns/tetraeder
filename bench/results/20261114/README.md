@@ -29,3 +29,12 @@ Trace from `20261114` (box 60591327, 256 decode tokens after the 32K prompt; loc
 Prefetch on, RAM 77 slots, MB per decode token (all 256; first 64):
 - VRAM 10 (`bench/results/20261114/replay-235b-ram.json`): best per-layer `freq:0.5` 252; best across layers `gfreq:0.5` 164 (0.65).
 The build threshold (at most half the bytes of the best per-layer policy) is not met at either VRAM size, so the pool across layers is not built. At VRAM 26 the gain left is about 6 MB of synchronous reads per token, about 2 ms at 3 GB/s. The first 16-token window reads 3 to 4x the later ones under every online policy, so the warm-up is the cost; the cheaper lever named above (tier contents at the switch) stays the next candidate. The VRAM `prefill` policy raises the VRAM pair share from 0.35 to 0.51 but doubles RAM-tier disk bytes (101 to 224 MB per token at `lru`); whether the GPU share pays for that is a box question (`main-overlap-poll0-hot` arm, `docs/m2-plan.md` D1).
+
+## From ADR 0067 (addendum "2026-11-14: step 1 result, chunked", moved verbatim)
+
+`bench/results/20261114/kv-layout/` (`sim.json`, `kv-gather.json`; branch `track-c6-kv`).
+- Memory: paged needs 355 units of 256 rows for W, chunked 553: s = 35.8% (33.1% without idle prefixes), at least X.
+- Reads: y_gather 0.184 and y_sparse 0.056 (256-row blocks, 8 threads; 0.136 and 0.100 at 64-row blocks), both above Y.
+- y_mask: -0.172 with each layout at its own minimal pool, +0.087 with both at chunked's pool. The definition above does not fix the pool, but its concern is that scattered blocks make n_kv follow the pool's high-water mark, which is a comparison at one pool size; at its own smaller pool paged's n_kv is capped by the pool, so the memory saving would count a second time, in Y as well as in X. So y_mask is read at the common pool: +0.087, above Y.
+- Outcome 4: **chunked**, no patch. C4 and C5 use chunked (`--kv-layout` default `chunked`); paged stays in `kvcache` for the simulator and tests.
+- Caveats: the timings ran on an SSE-only dev VM under load from parallel builds (attention about 15 ms at L 2048, one run). A faster kernel makes gather overhead relatively larger, so the y values likely understate the cost on real hardware; the verdict does not depend on them being exact (all exceed Y). Revisit only if a later workload needs more than about 1.5x the sequences per VRAM that chunked gives.

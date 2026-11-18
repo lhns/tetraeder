@@ -12,3 +12,10 @@
 ## From docs/m2-plan.md, section "D2a verdict of record" (moved verbatim)
 
 - D2b (`20261117l`): prefix reuse cuts the 8B's TTFT on the Claude Code replay to 0.20 to 0.22 of reuse off (median) and 0.32 to 0.35 (p90). Phase 4's exit test passes (ADR 0065 addendum); Phase 5 is next.
+
+## From ADR 0065 (addendum "the Phase 4 exit test passes", moved verbatim)
+
+- Throughput: both counting models pass in `20261117k` (main 6b07795; addendum above).
+- TTFT: `bench/results/20261117l/phase4/` (box 61086097, host 34742, RTX 3090, driver 595.71; code e0758c7, the same engine as 6b07795), Qwen3-8B, the Claude Code log recorded on that box (105 requests, `log_sha256` f79b4a6d...5f7b35, kept in `bench/private/`). Pair (on, off): median 1.218 against 6.059 s (ratio 0.201), p90 3.340 against 10.445 s (0.320); pair (off, on): median 1.287 against 5.954 s (0.216), p90 3.630 against 10.249 s (0.354); every ratio at most 1 minus the band (0.925). Both pairs clean by the sampler rule (0 disqualifying samples, share 0), errors 0 on both sides; 10 requests per run without status 200 in both are excluded as the Fields rule says. `ttft.pass` true.
+- That session's own 8B throughput pairs are not used (one is unclean on a 0x4 before sample; the 8B verdict is `20261117k`'s). The informative llama-server TTFT run was skipped for time.
+- `phase4_pass`: true, combining `20261117k` (q8b, q30b) and `20261117l` (ttft) as the addendum "models judged in separate sessions" allows. The milestone M2 continues with Phase 5.

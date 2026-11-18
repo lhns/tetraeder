@@ -16,3 +16,8 @@ From ADR 0074 Context (the measurement that motivated it):
 - Probe against llama-server b12426: 8B c1 0.999, c4 0.986 in the clean round; 30B c1 0.990, c4 0.904 and 0.927 (pass line 0.925).
 - Broken: (1) the dense engine aborts with a CUDA illegal memory access at a fixed point of the c4 workload (4/4 with seed 94), right after 3 to 4 admissions in one pass, i.e. the first step carrying several prompts under the 2048 budget (`track-dense-crash`); (2) `gpu_batched_matches_the_cpu_builder` (MoE fixture) fails at 3x its bound at the new pin (`track-gpu-multiseq`).
 - The remaining c4 loss is the admission save: 41 to 44 ms (8B) and 30 to 33 ms (30B) per reused idle sequence, serialized when several are admitted together (`track-fast-save`). Dense pays about 7% on decode with resident idle sequences, libllama nothing; a follow-up for the dense attention span.
+
+## From ADR 0065 (addendum "one probe decides the pairs at 0.925", moved verbatim)
+
+- The next D2a session runs with `PROBE_MIN=0.925`, the pass line, instead of 0.85: a model whose single probe c4 ratio is below it gets no pairs, and is not re-probed in that session. One probe round per model; the 30B sat at 0.904 and 0.927 around the line, and re-probing until one passes would select on noise.
+- The session runs only after a confirmation on the same box: the dense crash workload (4 of 4 runs crashed before the mask padding fix, `bench/results/20261116pc/pin-confirm/repro/`) with zero CUDA errors, the `gpu_kv_save` and `gpu_multi_seq` tests passing, and the prefix save time measured (ADR 0074).
