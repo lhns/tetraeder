@@ -25,3 +25,7 @@ Hypothesis: raising the decode VRAM share toward llama.cpp's closes most of the 
 ## From ADR 0059 Consequences (estimate made before `20261112c`, moved verbatim)
 
 - The upload adds up to `share x misses x 1 to 2 ms` per token on the main thread. At 0.1 and about 600 misses per token that is 60 to 120 ms, more than the CPU time it saves in the step itself; it only pays through later hits. The paired run decides; if uploads dominate, the async copy comes next.
+
+## From ADR 0064 Context (moved verbatim; same line also filed under 20261112c)
+
+A streamed decode token of Qwen3-235B-A22B (94 layers, 8 of 128 experts) runs 95 segment graphs (`run` in `crates/model/src/qwen3moe.rs`, one `build_segment` per layer boundary) plus the overlap group graphs of ADR 0054 (`run_overlap_layer`, `run_cpu_group` on `sched_cpu`). A fit over the 16 decode windows of `20261112c` (EPYC 7302P, 30 threads) gave 0.88 ms fixed per CPU-carrying segment plus 0.063 ms per CPU pair, so about 70 ms of fixed cost against 40 ms of expert work per token, and 0.44 ms per GPU-only segment. llama.cpp's expert cache (#30966) decoded 1.35x to 1.54x faster on the 7642 hosts (`20261112a`). This ADR counts both engines' dispatch per token from source, says where the fixed term goes, and designs the change that cuts it.

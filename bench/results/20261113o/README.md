@@ -14,3 +14,8 @@ Question: on `20261113o` the builder reads 561 MB per decode token where KTransf
 - 561 MB is the mean of 64 decode tokens. The four 16-token windows read 1147, 549, 215 and 335 MB per token, the same in every session since `20261111h`.
 - KTransformers' host disk counters show the same shape on `20261113o`: 508, 330 and 135 MB per token in its first three windows (160 over the run), and 612, 1048, 645 and 208 in the repeat (314 over the run). Its 160 is the better of two runs that differ by 2x, not a steady rate.
 - Calibration gate: `lru`'s 16-token windows (VRAM 10, RAM 77, prefetch on) must come within 5% of the trace run's own `decode_windows`, which the stage now records (`TETRAEDER_EXIT_DECODE_WINDOWS=16`), before any policy delta counts. The first four should also lie near `main-overlap`'s 1147, 549, 215 and 335 MB. If they do not, overlap changes the reads and the replay misses that.
+
+## From ADR 0060 (addendum "the builder's export does not stall decode; the sampler's smaps_rollup likely does", moved verbatim)
+
+- Shape: at most one stalled window per process, always window 0 or 1. A periodic export would touch every window. In 20261113o (checked there only) the step histogram, exported every second, has one export interval with no step and no step time inside the stalled window. The four intervals around it hold 2.3 s of step time in 4 s, so the missing 1.7 s is the window's whole excess. The step thread was stalled; the exporter kept its schedule.
+- In both 20261113o runs a sampler tick starts 0.1 to 0.2 s before the hole.
