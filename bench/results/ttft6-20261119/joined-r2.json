@@ -1,0 +1,2942 @@
+[
+ {
+  "index": 0,
+  "llama_ttft_s": 2.8394814492203295,
+  "status": 200,
+  "ttft_s": 2.73781635472551,
+  "total_s": 10.143355556763709,
+  "usage": {
+   "input_tokens": 11246,
+   "output_tokens": 773,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.23,
+   "place_ms": 0.17,
+   "save_ms": 0.0,
+   "prompt": 11246,
+   "common": 0,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 1,
+  "llama_ttft_s": 0.17519315611571074,
+  "status": 200,
+  "ttft_s": 0.18643774511292577,
+  "total_s": 6.692476490978152,
+  "usage": {
+   "input_tokens": 313,
+   "output_tokens": 664,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11246
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 11559,
+   "common": 11246,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 2,
+  "llama_ttft_s": 0.17577401082962751,
+  "status": 200,
+  "ttft_s": 0.18292093509808183,
+  "total_s": 6.041690044105053,
+  "usage": {
+   "input_tokens": 297,
+   "output_tokens": 606,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11559
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 11856,
+   "common": 11559,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 3,
+  "llama_ttft_s": 0.285470062866807,
+  "status": 200,
+  "ttft_s": 0.23435185197740793,
+  "total_s": 18.614856624044478,
+  "usage": {
+   "input_tokens": 637,
+   "output_tokens": 1872,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11856
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 12493,
+   "common": 11856,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 4,
+  "llama_ttft_s": 0.21451984578743577,
+  "status": 200,
+  "ttft_s": 0.1929475599899888,
+  "total_s": 15.638771952595562,
+  "usage": {
+   "input_tokens": 360,
+   "output_tokens": 1558,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12493
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.06,
+   "save_ms": 0.0,
+   "prompt": 12853,
+   "common": 12493,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 5,
+  "llama_ttft_s": 0.2274072882719338,
+  "status": 200,
+  "ttft_s": 0.22100740997120738,
+  "total_s": 8.034773088991642,
+  "usage": {
+   "input_tokens": 411,
+   "output_tokens": 791,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12853
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 13264,
+   "common": 12853,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 6,
+  "llama_ttft_s": 0.9097547451965511,
+  "status": 200,
+  "ttft_s": 0.865629811771214,
+  "total_s": 8.732120119966567,
+  "usage": {
+   "input_tokens": 2487,
+   "output_tokens": 770,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13264
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 15751,
+   "common": 13264,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 7,
+  "llama_ttft_s": 0.3641554801724851,
+  "status": 200,
+  "ttft_s": 0.32200465723872185,
+  "total_s": 28.02005028538406,
+  "usage": {
+   "input_tokens": 770,
+   "output_tokens": 2629,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 15751
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 16521,
+   "common": 15751,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 8,
+  "llama_ttft_s": 0.2252568700350821,
+  "status": 200,
+  "ttft_s": 0.2176131666637957,
+  "total_s": 4.902612410951406,
+  "usage": {
+   "input_tokens": 350,
+   "output_tokens": 451,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 16521
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 16871,
+   "common": 16521,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 9,
+  "llama_ttft_s": 0.18130163894966245,
+  "status": 200,
+  "ttft_s": 0.1576045947149396,
+  "total_s": 6.15209050802514,
+  "usage": {
+   "input_tokens": 216,
+   "output_tokens": 572,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 16871
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 17087,
+   "common": 16871,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 10,
+  "llama_ttft_s": 0.1773958713747561,
+  "status": 200,
+  "ttft_s": 0.1556408372707665,
+  "total_s": 3.9865057403221726,
+  "usage": {
+   "input_tokens": 184,
+   "output_tokens": 363,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17087
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.1,
+   "place_ms": 0.17,
+   "save_ms": 0.0,
+   "prompt": 17271,
+   "common": 17087,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 11,
+  "llama_ttft_s": 0.19484962476417422,
+  "status": 200,
+  "ttft_s": 0.17118465574458241,
+  "total_s": 7.234001639764756,
+  "usage": {
+   "input_tokens": 221,
+   "output_tokens": 672,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17271
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 17492,
+   "common": 17271,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 12,
+  "llama_ttft_s": 0.8585570333525538,
+  "status": 200,
+  "ttft_s": 0.7706618718802929,
+  "total_s": 7.191691419109702,
+  "usage": {
+   "input_tokens": 2043,
+   "output_tokens": 594,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17492
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 19535,
+   "common": 17492,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 13,
+  "llama_ttft_s": 0.21109017683193088,
+  "status": 200,
+  "ttft_s": 0.1889093779027462,
+  "total_s": 6.438090656884015,
+  "usage": {
+   "input_tokens": 248,
+   "output_tokens": 574,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 19535
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.12,
+   "save_ms": 0.0,
+   "prompt": 19783,
+   "common": 19535,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 14,
+  "llama_ttft_s": 0.2514862772077322,
+  "status": 200,
+  "ttft_s": 0.23580995202064514,
+  "total_s": 8.201472742948681,
+  "usage": {
+   "input_tokens": 346,
+   "output_tokens": 727,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 19783
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 20129,
+   "common": 19783,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 15,
+  "llama_ttft_s": 0.35082687297835946,
+  "status": 200,
+  "ttft_s": 0.3144899304024875,
+  "total_s": 10.249530531000346,
+  "usage": {
+   "input_tokens": 629,
+   "output_tokens": 893,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 20129
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.09,
+   "place_ms": 0.12,
+   "save_ms": 0.0,
+   "prompt": 20758,
+   "common": 20129,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 16,
+  "llama_ttft_s": 4.848103621974587,
+  "status": 200,
+  "ttft_s": 2.5058896793052554,
+  "total_s": 39.67381402431056,
+  "usage": {
+   "input_tokens": 10740,
+   "output_tokens": 3752,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 491
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.04,
+   "place_ms": 0.86,
+   "save_ms": 0.0,
+   "prompt": 11231,
+   "common": 491,
+   "source": "copy",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 17,
+  "llama_ttft_s": 0.14711748296394944,
+  "status": 200,
+  "ttft_s": 0.1595882996916771,
+  "total_s": 9.968589039053768,
+  "usage": {
+   "input_tokens": 220,
+   "output_tokens": 1009,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11231
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.1,
+   "place_ms": 0.12,
+   "save_ms": 0.0,
+   "prompt": 11451,
+   "common": 11231,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 18,
+  "llama_ttft_s": 0.29947680002078414,
+  "status": 200,
+  "ttft_s": 0.3002257691696286,
+  "total_s": 5.280395713169128,
+  "usage": {
+   "input_tokens": 679,
+   "output_tokens": 501,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11451
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.05,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 12130,
+   "common": 11451,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 19,
+  "llama_ttft_s": 0.5917282998561859,
+  "status": 200,
+  "ttft_s": 0.5481357402168214,
+  "total_s": 7.104951987043023,
+  "usage": {
+   "input_tokens": 1579,
+   "output_tokens": 636,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12130
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.05,
+   "place_ms": 0.12,
+   "save_ms": 0.0,
+   "prompt": 13709,
+   "common": 12130,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 20,
+  "llama_ttft_s": 0.17561596212908626,
+  "status": 200,
+  "ttft_s": 0.1615396561101079,
+  "total_s": 5.594448383431882,
+  "usage": {
+   "input_tokens": 231,
+   "output_tokens": 538,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13709
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.05,
+   "place_ms": 0.14,
+   "save_ms": 0.0,
+   "prompt": 13940,
+   "common": 13709,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 21,
+  "llama_ttft_s": 0.7593514979816973,
+  "status": 200,
+  "ttft_s": 0.6921078581362963,
+  "total_s": 7.202022796031088,
+  "usage": {
+   "input_tokens": 2046,
+   "output_tokens": 618,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13940
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.04,
+   "place_ms": 0.07,
+   "save_ms": 0.0,
+   "prompt": 15986,
+   "common": 13940,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 22,
+  "llama_ttft_s": 0.3367384751327336,
+  "status": 200,
+  "ttft_s": 0.34450035775080323,
+  "total_s": 6.821685948874801,
+  "usage": {
+   "input_tokens": 677,
+   "output_tokens": 619,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 15986
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.1,
+   "place_ms": 0.13,
+   "save_ms": 0.0,
+   "prompt": 16663,
+   "common": 15986,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 23,
+  "llama_ttft_s": 0.37950874399393797,
+  "status": 200,
+  "ttft_s": 0.34661129023879766,
+  "total_s": 5.298707738053054,
+  "usage": {
+   "input_tokens": 815,
+   "output_tokens": 472,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 16663
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.07,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 17478,
+   "common": 16663,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 24,
+  "llama_ttft_s": 0.284680072683841,
+  "status": 200,
+  "ttft_s": 0.2567017409019172,
+  "total_s": 8.041286962106824,
+  "usage": {
+   "input_tokens": 446,
+   "output_tokens": 736,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17478
+  },
+  "admit": {
+   "seq": 1,
+   "queued_ms": 0.05,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 17924,
+   "common": 17478,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 25,
+  "llama_ttft_s": 4.936779259704053,
+  "status": 200,
+  "ttft_s": 4.934539342764765,
+  "total_s": 26.51429352303967,
+  "usage": {
+   "input_tokens": 10808,
+   "output_tokens": 2206,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 492
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 2392.0,
+   "save_ms": 2382.59,
+   "prompt": 11300,
+   "common": 492,
+   "source": "copy",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 26,
+  "llama_ttft_s": 0.2900016359053552,
+  "status": 200,
+  "ttft_s": 0.3021914609707892,
+  "total_s": 13.398971875663847,
+  "usage": {
+   "input_tokens": 702,
+   "output_tokens": 1335,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11300
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 0.07,
+   "save_ms": 0.0,
+   "prompt": 12002,
+   "common": 11300,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 27,
+  "llama_ttft_s": 0.3112887260504067,
+  "status": 200,
+  "ttft_s": 0.3214672519825399,
+  "total_s": 6.5161642716266215,
+  "usage": {
+   "input_tokens": 694,
+   "output_tokens": 631,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12002
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 12696,
+   "common": 12002,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 28,
+  "llama_ttft_s": 0.28075792267918587,
+  "status": 200,
+  "ttft_s": 0.2549762181006372,
+  "total_s": 6.863918260205537,
+  "usage": {
+   "input_tokens": 632,
+   "output_tokens": 662,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12696
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.04,
+   "place_ms": 0.05,
+   "save_ms": 0.0,
+   "prompt": 13328,
+   "common": 12696,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 29,
+  "llama_ttft_s": 0.27642021933570504,
+  "status": 200,
+  "ttft_s": 0.2552167079411447,
+  "total_s": 7.902301527094096,
+  "usage": {
+   "input_tokens": 588,
+   "output_tokens": 746,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13328
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.04,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 13916,
+   "common": 13328,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 30,
+  "llama_ttft_s": 0.37889789370819926,
+  "status": 200,
+  "ttft_s": 0.3440990918315947,
+  "total_s": 4.297034339979291,
+  "usage": {
+   "input_tokens": 845,
+   "output_tokens": 385,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13916
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 0.12,
+   "save_ms": 0.0,
+   "prompt": 14761,
+   "common": 13916,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 31,
+  "llama_ttft_s": 0.15427709929645061,
+  "status": 200,
+  "ttft_s": 0.16172953601926565,
+  "total_s": 12.765053803101182,
+  "usage": {
+   "input_tokens": 182,
+   "output_tokens": 1192,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 14761
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.06,
+   "place_ms": 0.14,
+   "save_ms": 0.0,
+   "prompt": 14943,
+   "common": 14761,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 32,
+  "llama_ttft_s": 0.31770884012803435,
+  "status": 200,
+  "ttft_s": 0.27760527981445193,
+  "total_s": 4.835068889893591,
+  "usage": {
+   "input_tokens": 606,
+   "output_tokens": 436,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 14943
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.08,
+   "place_ms": 0.17,
+   "save_ms": 0.0,
+   "prompt": 15549,
+   "common": 14943,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 33,
+  "llama_ttft_s": 0.8111789566464722,
+  "status": 200,
+  "ttft_s": 0.7858971888199449,
+  "total_s": 6.231094719842076,
+  "usage": {
+   "input_tokens": 2033,
+   "output_tokens": 505,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 15549
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.1,
+   "place_ms": 0.21,
+   "save_ms": 0.0,
+   "prompt": 17582,
+   "common": 15549,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 34,
+  "llama_ttft_s": 0.21346398862078786,
+  "status": 200,
+  "ttft_s": 0.19584454828873277,
+  "total_s": 6.349421036429703,
+  "usage": {
+   "input_tokens": 288,
+   "output_tokens": 572,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17582
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.06,
+   "place_ms": 0.16,
+   "save_ms": 0.0,
+   "prompt": 17870,
+   "common": 17582,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 35,
+  "llama_ttft_s": 0.5628758007660508,
+  "status": 200,
+  "ttft_s": 0.47690527979284525,
+  "total_s": 6.688912409823388,
+  "usage": {
+   "input_tokens": 1191,
+   "output_tokens": 573,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17870
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.04,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 19061,
+   "common": 17870,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 36,
+  "llama_ttft_s": 0.27277776785194874,
+  "status": 200,
+  "ttft_s": 0.26994666596874595,
+  "total_s": 4.614131493959576,
+  "usage": {
+   "input_tokens": 430,
+   "output_tokens": 404,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 19061
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.06,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 19491,
+   "common": 19061,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 37,
+  "llama_ttft_s": 0.3050152361392975,
+  "status": 200,
+  "ttft_s": 0.2825986100360751,
+  "total_s": 3.443594087846577,
+  "usage": {
+   "input_tokens": 496,
+   "output_tokens": 291,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 19491
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 0.07,
+   "save_ms": 0.0,
+   "prompt": 19987,
+   "common": 19491,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 38,
+  "llama_ttft_s": 0.33741564210504293,
+  "status": 200,
+  "ttft_s": 0.2993535422720015,
+  "total_s": 8.027770800050348,
+  "usage": {
+   "input_tokens": 592,
+   "output_tokens": 701,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 19987
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 20579,
+   "common": 19987,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 39,
+  "llama_ttft_s": 0.3418867141008377,
+  "status": 200,
+  "ttft_s": 0.30163546185940504,
+  "total_s": 8.890797761734575,
+  "usage": {
+   "input_tokens": 559,
+   "output_tokens": 774,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 20579
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.07,
+   "place_ms": 0.19,
+   "save_ms": 0.0,
+   "prompt": 21138,
+   "common": 20579,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 40,
+  "llama_ttft_s": 0.1534635042771697,
+  "status": 200,
+  "ttft_s": 0.1393520119599998,
+  "total_s": 11.216584830079228,
+  "usage": {
+   "input_tokens": 104,
+   "output_tokens": 807,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 21138
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 21242,
+   "common": 21138,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 41,
+  "llama_ttft_s": 0.12828612700104713,
+  "status": 200,
+  "ttft_s": 0.104429064784199,
+  "total_s": 4.36536581767723,
+  "usage": {
+   "input_tokens": 55,
+   "output_tokens": 385,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 21242
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 21297,
+   "common": 21242,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 42,
+  "llama_ttft_s": 7.373015413060784,
+  "status": 200,
+  "ttft_s": 6.965854077134281,
+  "total_s": 13.773788216989487,
+  "usage": {
+   "input_tokens": 14407,
+   "output_tokens": 609,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 7169
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.08,
+   "place_ms": 2602.82,
+   "save_ms": 2242.17,
+   "prompt": 21576,
+   "common": 7169,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 43,
+  "llama_ttft_s": 0.2370123378932476,
+  "status": 200,
+  "ttft_s": 0.2089545619674027,
+  "total_s": 5.68513751309365,
+  "usage": {
+   "input_tokens": 301,
+   "output_tokens": 488,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 21576
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.05,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 21877,
+   "common": 21576,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 44,
+  "llama_ttft_s": 0.28529383009299636,
+  "status": 200,
+  "ttft_s": 0.26310555217787623,
+  "total_s": 8.010805567260832,
+  "usage": {
+   "input_tokens": 365,
+   "output_tokens": 684,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 21877
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.07,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 22242,
+   "common": 21877,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 45,
+  "llama_ttft_s": 4.877571602817625,
+  "status": 200,
+  "ttft_s": 1.9797833147458732,
+  "total_s": 9.202079616952688,
+  "usage": {
+   "input_tokens": 8860,
+   "output_tokens": 789,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 1.0,
+   "save_ms": 0.0,
+   "prompt": 8877,
+   "common": 17,
+   "source": "copy",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 46,
+  "llama_ttft_s": 0.4792323508299887,
+  "status": 200,
+  "ttft_s": 0.4258282850496471,
+  "total_s": 13.433695799205452,
+  "usage": {
+   "input_tokens": 1415,
+   "output_tokens": 1385,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 8877
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.07,
+   "save_ms": 0.0,
+   "prompt": 10292,
+   "common": 8877,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 47,
+  "llama_ttft_s": 0.4005004670470953,
+  "status": 200,
+  "ttft_s": 0.3553195516578853,
+  "total_s": 10.418830169830471,
+  "usage": {
+   "input_tokens": 1070,
+   "output_tokens": 1049,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 10292
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.07,
+   "save_ms": 0.0,
+   "prompt": 11362,
+   "common": 10292,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 48,
+  "llama_ttft_s": 0.41714562475681305,
+  "status": 200,
+  "ttft_s": 0.37423532782122493,
+  "total_s": 10.736806537956,
+  "usage": {
+   "input_tokens": 1097,
+   "output_tokens": 1054,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11362
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.05,
+   "save_ms": 0.0,
+   "prompt": 12459,
+   "common": 11362,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 49,
+  "llama_ttft_s": 0.12433465896174312,
+  "status": 200,
+  "ttft_s": 0.1085423119366169,
+  "total_s": 12.29301137663424,
+  "usage": {
+   "input_tokens": 99,
+   "output_tokens": 1217,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12459
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.07,
+   "save_ms": 0.0,
+   "prompt": 12558,
+   "common": 12459,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 50,
+  "llama_ttft_s": 0.12068874901160598,
+  "status": 200,
+  "ttft_s": 0.1163758859038353,
+  "total_s": 7.287005078047514,
+  "usage": {
+   "input_tokens": 89,
+   "output_tokens": 726,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12558
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 12647,
+   "common": 12558,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 51,
+  "llama_ttft_s": 0.4454061249271035,
+  "status": 200,
+  "ttft_s": 0.4032927309162915,
+  "total_s": 9.354701569769531,
+  "usage": {
+   "input_tokens": 1119,
+   "output_tokens": 889,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12647
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 13766,
+   "common": 12647,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 52,
+  "llama_ttft_s": 0.2965448028407991,
+  "status": 200,
+  "ttft_s": 0.2837251299060881,
+  "total_s": 17.198355184867978,
+  "usage": {
+   "input_tokens": 620,
+   "output_tokens": 1655,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13766
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.12,
+   "place_ms": 0.13,
+   "save_ms": 0.0,
+   "prompt": 14386,
+   "common": 13766,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 53,
+  "llama_ttft_s": 2.807331277988851,
+  "status": 200,
+  "ttft_s": 0.43652431201189756,
+  "total_s": 12.499550435692072,
+  "usage": {
+   "input_tokens": 846,
+   "output_tokens": 881,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 22242
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.06,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 23088,
+   "common": 22242,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 54,
+  "llama_ttft_s": 0.30378088215366006,
+  "status": 200,
+  "ttft_s": 0.32482984103262424,
+  "total_s": 11.056053960230201,
+  "usage": {
+   "input_tokens": 404,
+   "output_tokens": 917,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 23088
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.08,
+   "place_ms": 0.16,
+   "save_ms": 0.0,
+   "prompt": 23492,
+   "common": 23088,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 55,
+  "llama_ttft_s": 0.20188279170542955,
+  "status": 200,
+  "ttft_s": 0.1891766730695963,
+  "total_s": 5.873390625696629,
+  "usage": {
+   "input_tokens": 192,
+   "output_tokens": 482,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 23492
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.07,
+   "place_ms": 0.16,
+   "save_ms": 0.0,
+   "prompt": 23684,
+   "common": 23492,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 56,
+  "llama_ttft_s": 0.22286120615899563,
+  "status": 200,
+  "ttft_s": 0.2059791781939566,
+  "total_s": 8.068667168263346,
+  "usage": {
+   "input_tokens": 193,
+   "output_tokens": 669,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 23684
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.07,
+   "place_ms": 0.14,
+   "save_ms": 0.0,
+   "prompt": 23877,
+   "common": 23684,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 57,
+  "llama_ttft_s": 0.32300056936219335,
+  "status": 200,
+  "ttft_s": 0.3106520571745932,
+  "total_s": 5.578828516881913,
+  "usage": {
+   "input_tokens": 423,
+   "output_tokens": 448,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 23877
+  },
+  "admit": {
+   "seq": 2,
+   "queued_ms": 0.07,
+   "place_ms": 0.14,
+   "save_ms": 0.0,
+   "prompt": 24300,
+   "common": 23877,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 58,
+  "llama_ttft_s": 5.6015447662211955,
+  "status": 200,
+  "ttft_s": 2.551704754587263,
+  "total_s": 16.933137306012213,
+  "usage": {
+   "input_tokens": 10815,
+   "output_tokens": 1484,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 491
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.94,
+   "save_ms": 0.0,
+   "prompt": 11306,
+   "common": 491,
+   "source": "copy",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 59,
+  "llama_ttft_s": 0.17835846217349172,
+  "status": 200,
+  "ttft_s": 0.16177877830341458,
+  "total_s": 10.804191225208342,
+  "usage": {
+   "input_tokens": 306,
+   "output_tokens": 1092,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11306
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 11612,
+   "common": 11306,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 60,
+  "llama_ttft_s": 0.3013423499651253,
+  "status": 200,
+  "ttft_s": 0.29087880020961165,
+  "total_s": 11.869400100316852,
+  "usage": {
+   "input_tokens": 715,
+   "output_tokens": 1184,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11612
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 12327,
+   "common": 11612,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 61,
+  "llama_ttft_s": 0.3056214228272438,
+  "status": 200,
+  "ttft_s": 0.2999356030486524,
+  "total_s": 17.55795288272202,
+  "usage": {
+   "input_tokens": 698,
+   "output_tokens": 1705,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12327
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 13025,
+   "common": 12327,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 62,
+  "llama_ttft_s": 0.23232146119698882,
+  "status": 200,
+  "ttft_s": 0.23505525384098291,
+  "total_s": 14.517550971824676,
+  "usage": {
+   "input_tokens": 503,
+   "output_tokens": 1411,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13025
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.18,
+   "save_ms": 0.0,
+   "prompt": 13528,
+   "common": 13025,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 63,
+  "llama_ttft_s": 0.4501482960768044,
+  "status": 200,
+  "ttft_s": 0.40803311113268137,
+  "total_s": 17.277753161266446,
+  "usage": {
+   "input_tokens": 1087,
+   "output_tokens": 1317,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13528
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 14615,
+   "common": 13528,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 64,
+  "llama_ttft_s": 0.5659068920649588,
+  "status": 200,
+  "ttft_s": 0.4969011559151113,
+  "total_s": 41.84249044023454,
+  "usage": {
+   "input_tokens": 1397,
+   "output_tokens": 3906,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 14615
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 16012,
+   "common": 14615,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 65,
+  "llama_ttft_s": 0.5370229710824788,
+  "status": 200,
+  "ttft_s": 0.4810770843178034,
+  "total_s": 13.823997741099447,
+  "usage": {
+   "input_tokens": 1254,
+   "output_tokens": 1247,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 16012
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.13,
+   "save_ms": 0.0,
+   "prompt": 17266,
+   "common": 16012,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 66,
+  "llama_ttft_s": 0.2843977860175073,
+  "status": 200,
+  "ttft_s": 0.24825362861156464,
+  "total_s": 52.06308051478118,
+  "usage": {
+   "input_tokens": 488,
+   "output_tokens": 4730,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17266
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 17754,
+   "common": 17266,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 67,
+  "llama_ttft_s": 0.2400293522514403,
+  "status": 200,
+  "ttft_s": 0.2245807070285082,
+  "total_s": 52.37238383991644,
+  "usage": {
+   "input_tokens": 362,
+   "output_tokens": 4737,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 17754
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.07,
+   "save_ms": 0.0,
+   "prompt": 18116,
+   "common": 17754,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 68,
+  "llama_ttft_s": 0.6301230331882834,
+  "status": 200,
+  "ttft_s": 0.5419038059189916,
+  "total_s": 80.35455480776727,
+  "usage": {
+   "input_tokens": 1400,
+   "output_tokens": 6962,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 18116
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.13,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 19516,
+   "common": 18116,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 69,
+  "llama_ttft_s": 0.20178037136793137,
+  "status": 200,
+  "ttft_s": 0.19239169172942638,
+  "total_s": 270.29559674998745,
+  "usage": {
+   "input_tokens": 245,
+   "output_tokens": 21199,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 19516
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 19761,
+   "common": 19516,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 70,
+  "llama_ttft_s": 0.3062735190615058,
+  "status": 200,
+  "ttft_s": 0.2819437920115888,
+  "total_s": 80.07717025373131,
+  "usage": {
+   "input_tokens": 518,
+   "output_tokens": 6917,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 19761
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 20279,
+   "common": 19761,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 71,
+  "llama_ttft_s": 0.4798803050071001,
+  "status": 200,
+  "ttft_s": 0.43483445327728987,
+  "total_s": 60.29283694596961,
+  "usage": {
+   "input_tokens": 913,
+   "output_tokens": 5182,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 20279
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 21192,
+   "common": 20279,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 72,
+  "llama_ttft_s": 0.3137613879516721,
+  "status": 200,
+  "ttft_s": 0.28360127098858356,
+  "total_s": 43.26678772130981,
+  "usage": {
+   "input_tokens": 518,
+   "output_tokens": 3740,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 21192
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 21710,
+   "common": 21192,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 73,
+  "llama_ttft_s": 0.3217129409313202,
+  "status": 200,
+  "ttft_s": 0.2896332461386919,
+  "total_s": 60.22046172618866,
+  "usage": {
+   "input_tokens": 540,
+   "output_tokens": 5097,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 21710
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 22250,
+   "common": 21710,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 74,
+  "llama_ttft_s": 0.5176454116590321,
+  "status": 200,
+  "ttft_s": 0.5085698538459837,
+  "total_s": 34.55338176107034,
+  "usage": {
+   "input_tokens": 995,
+   "output_tokens": 2912,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 22250
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.14,
+   "save_ms": 0.0,
+   "prompt": 23245,
+   "common": 22250,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 75,
+  "llama_ttft_s": 0.3829679689370096,
+  "status": 200,
+  "ttft_s": 0.3195849400945008,
+  "total_s": 19.489118025172502,
+  "usage": {
+   "input_tokens": 616,
+   "output_tokens": 1643,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 23245
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 23861,
+   "common": 23245,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 76,
+  "llama_ttft_s": 0.7466158270835876,
+  "status": 200,
+  "ttft_s": 0.6557695013470948,
+  "total_s": 23.3081452162005,
+  "usage": {
+   "input_tokens": 1437,
+   "output_tokens": 1897,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 23861
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 25298,
+   "common": 23861,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 77,
+  "llama_ttft_s": 0.22667825734242797,
+  "status": 200,
+  "ttft_s": 0.215793966781348,
+  "total_s": 6.664080860093236,
+  "usage": {
+   "input_tokens": 261,
+   "output_tokens": 545,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 25298
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.08,
+   "save_ms": 0.0,
+   "prompt": 25559,
+   "common": 25298,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 78,
+  "llama_ttft_s": 0.6977988858707249,
+  "status": 200,
+  "ttft_s": 0.6542502148076892,
+  "total_s": 17.100166451651603,
+  "usage": {
+   "input_tokens": 1332,
+   "output_tokens": 1354,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 25559
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 26891,
+   "common": 25559,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 79,
+  "llama_ttft_s": 0.35725690703839064,
+  "status": 200,
+  "ttft_s": 0.31777630327269435,
+  "total_s": 19.7285932530649,
+  "usage": {
+   "input_tokens": 422,
+   "output_tokens": 1582,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 26891
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.13,
+   "save_ms": 0.0,
+   "prompt": 27313,
+   "common": 26891,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 80,
+  "llama_ttft_s": 0.33160431683063507,
+  "status": 200,
+  "ttft_s": 0.3071451517753303,
+  "total_s": 10.509386276826262,
+  "usage": {
+   "input_tokens": 404,
+   "output_tokens": 837,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 27313
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.04,
+   "place_ms": 0.09,
+   "save_ms": 0.0,
+   "prompt": 27717,
+   "common": 27313,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 81,
+  "llama_ttft_s": 0.6294516599737108,
+  "status": 200,
+  "ttft_s": 0.5703101539984345,
+  "total_s": 27.889302829280496,
+  "usage": {
+   "input_tokens": 1086,
+   "output_tokens": 2162,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 27717
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.18,
+   "save_ms": 0.0,
+   "prompt": 28803,
+   "common": 27717,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 82,
+  "llama_ttft_s": 0.4027558509260416,
+  "status": 200,
+  "ttft_s": 0.356708989944309,
+  "total_s": 23.658387855626643,
+  "usage": {
+   "input_tokens": 583,
+   "output_tokens": 1841,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 28803
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.13,
+   "save_ms": 0.0,
+   "prompt": 29386,
+   "common": 28803,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 83,
+  "llama_ttft_s": 0.3321803188882768,
+  "status": 200,
+  "ttft_s": 0.3050612318329513,
+  "total_s": 11.661924900021404,
+  "usage": {
+   "input_tokens": 374,
+   "output_tokens": 891,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 29386
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.15,
+   "save_ms": 0.0,
+   "prompt": 29760,
+   "common": 29386,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 84,
+  "llama_ttft_s": 0.37211825512349606,
+  "status": 200,
+  "ttft_s": 0.3535243822261691,
+  "total_s": 3.8763945079408586,
+  "usage": {
+   "input_tokens": 484,
+   "output_tokens": 280,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 29760
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.08,
+   "place_ms": 0.2,
+   "save_ms": 0.0,
+   "prompt": 30244,
+   "common": 29760,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 85,
+  "llama_ttft_s": 0.2730564079247415,
+  "status": 200,
+  "ttft_s": 0.249269544146955,
+  "total_s": 6.850232856348157,
+  "usage": {
+   "input_tokens": 307,
+   "output_tokens": 521,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 30244
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 30551,
+   "common": 30244,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 86,
+  "llama_ttft_s": 0.26312415301799774,
+  "status": 200,
+  "ttft_s": 0.24282553466036916,
+  "total_s": 7.692253842018545,
+  "usage": {
+   "input_tokens": 299,
+   "output_tokens": 584,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 30551
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.12,
+   "save_ms": 0.0,
+   "prompt": 30850,
+   "common": 30551,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 87,
+  "llama_ttft_s": 0.381765800062567,
+  "status": 200,
+  "ttft_s": 0.3639956070110202,
+  "total_s": 9.300688012968749,
+  "usage": {
+   "input_tokens": 482,
+   "output_tokens": 693,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 30850
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.13,
+   "save_ms": 0.0,
+   "prompt": 31332,
+   "common": 30850,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 88,
+  "llama_ttft_s": 0.4088258920237422,
+  "status": 200,
+  "ttft_s": 0.39090561121702194,
+  "total_s": 13.804899396840483,
+  "usage": {
+   "input_tokens": 542,
+   "output_tokens": 1024,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 31332
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.12,
+   "place_ms": 0.22,
+   "save_ms": 0.0,
+   "prompt": 31874,
+   "common": 31332,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 89,
+  "llama_ttft_s": 0.7569195660762489,
+  "status": 200,
+  "ttft_s": 0.6620614849962294,
+  "total_s": 3.0109959840774536,
+  "usage": {
+   "input_tokens": 1246,
+   "output_tokens": 177,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 31874
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.14,
+   "save_ms": 0.0,
+   "prompt": 33120,
+   "common": 31874,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 90,
+  "llama_ttft_s": 0.3227507760748267,
+  "status": 200,
+  "ttft_s": 0.26766542810946703,
+  "total_s": 10.794761144090444,
+  "usage": {
+   "input_tokens": 315,
+   "output_tokens": 791,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33120
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.08,
+   "place_ms": 0.18,
+   "save_ms": 0.0,
+   "prompt": 33435,
+   "common": 33120,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 91,
+  "llama_ttft_s": 0.2649447126314044,
+  "status": 200,
+  "ttft_s": 0.2667488260194659,
+  "total_s": 4.785825356841087,
+  "usage": {
+   "input_tokens": 279,
+   "output_tokens": 344,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33435
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.15,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33435,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 92,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 7.391280193347484,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 552,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.12,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 93,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 11.83155833184719,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 886,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.1,
+   "place_ms": 0.2,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "small_cut"
+  }
+ },
+ {
+  "index": 94,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 5.437149634119123,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 404,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.09,
+   "place_ms": 0.14,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "small_cut"
+  }
+ },
+ {
+  "index": 95,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 6.236896203830838,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 465,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 96,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 4.172705473843962,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 309,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 97,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 6.978576347697526,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 518,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.14,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 98,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 5.104943150188774,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 375,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.1,
+   "place_ms": 0.22,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "small_cut"
+  }
+ },
+ {
+  "index": 99,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 5.41553118173033,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 401,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.08,
+   "place_ms": 0.18,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 100,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 5.7197720520198345,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 424,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.13,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 101,
+  "llama_ttft_s": null,
+  "status": 200,
+  "ttft_s": null,
+  "total_s": 7.64760870905593,
+  "usage": {
+   "input_tokens": 1,
+   "output_tokens": 571,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 33713
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.07,
+   "place_ms": 0.11,
+   "save_ms": 0.0,
+   "prompt": 33714,
+   "common": 33713,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 102,
+  "llama_ttft_s": 6.943278803024441,
+  "status": 200,
+  "ttft_s": 7.458952745888382,
+  "total_s": 12.400145218707621,
+  "usage": {
+   "input_tokens": 10734,
+   "output_tokens": 518,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 491
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 4948.73,
+   "save_ms": 3846.8,
+   "prompt": 11225,
+   "common": 491,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": null
+  }
+ },
+ {
+  "index": 103,
+  "llama_ttft_s": 0.4576713079586625,
+  "status": 200,
+  "ttft_s": 0.41193313291296363,
+  "total_s": 10.052768032997847,
+  "usage": {
+   "input_tokens": 1225,
+   "output_tokens": 990,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 11225
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.06,
+   "place_ms": 0.1,
+   "save_ms": 0.0,
+   "prompt": 12450,
+   "common": 11225,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ },
+ {
+  "index": 104,
+  "llama_ttft_s": 0.2648152052424848,
+  "status": 200,
+  "ttft_s": 0.2459920379333198,
+  "total_s": 4.097131573129445,
+  "usage": {
+   "input_tokens": 567,
+   "output_tokens": 397,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 12450
+  },
+  "admit": {
+   "seq": 0,
+   "queued_ms": 0.05,
+   "place_ms": 0.07,
+   "save_ms": 0.0,
+   "prompt": 13017,
+   "common": 12450,
+   "source": "live",
+   "live": 0,
+   "pool_spare": 0,
+   "pool_fallback": 0,
+   "pool_ready": 0,
+   "restore_ms": 0.0,
+   "skipped": "own_output"
+  }
+ }
+]

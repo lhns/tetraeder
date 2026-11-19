@@ -1,0 +1,1590 @@
+{
+  "wall_s": 1652.79468514584,
+  "results": [
+    {
+      "index": 0,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 2.8394814492203295,
+      "usage": {
+        "cache_read_input_tokens": 0,
+        "input_tokens": 11251,
+        "output_tokens": 699
+      },
+      "total_s": 9.479674006812274
+    },
+    {
+      "index": 1,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.17519315611571074,
+      "usage": {
+        "cache_read_input_tokens": 11251,
+        "input_tokens": 313,
+        "output_tokens": 509
+      },
+      "total_s": 5.00715395482257
+    },
+    {
+      "index": 2,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.17577401082962751,
+      "usage": {
+        "cache_read_input_tokens": 11564,
+        "input_tokens": 297,
+        "output_tokens": 632
+      },
+      "total_s": 6.207839470822364
+    },
+    {
+      "index": 3,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.285470062866807,
+      "usage": {
+        "cache_read_input_tokens": 11861,
+        "input_tokens": 637,
+        "output_tokens": 1130
+      },
+      "total_s": 11.288468557875603
+    },
+    {
+      "index": 4,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.21451984578743577,
+      "usage": {
+        "cache_read_input_tokens": 12498,
+        "input_tokens": 360,
+        "output_tokens": 1147
+      },
+      "total_s": 11.369619695935398
+    },
+    {
+      "index": 5,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2274072882719338,
+      "usage": {
+        "cache_read_input_tokens": 12858,
+        "input_tokens": 409,
+        "output_tokens": 1728
+      },
+      "total_s": 17.237685543019325
+    },
+    {
+      "index": 6,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.9097547451965511,
+      "usage": {
+        "cache_read_input_tokens": 13267,
+        "input_tokens": 2485,
+        "output_tokens": 2784
+      },
+      "total_s": 29.846820122096688
+    },
+    {
+      "index": 7,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3641554801724851,
+      "usage": {
+        "cache_read_input_tokens": 15752,
+        "input_tokens": 770,
+        "output_tokens": 6015
+      },
+      "total_s": 66.09988064598292
+    },
+    {
+      "index": 8,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2252568700350821,
+      "usage": {
+        "cache_read_input_tokens": 16522,
+        "input_tokens": 350,
+        "output_tokens": 443
+      },
+      "total_s": 4.815431979019195
+    },
+    {
+      "index": 9,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.18130163894966245,
+      "usage": {
+        "cache_read_input_tokens": 16872,
+        "input_tokens": 216,
+        "output_tokens": 384
+      },
+      "total_s": 4.218093957751989
+    },
+    {
+      "index": 10,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.1773958713747561,
+      "usage": {
+        "cache_read_input_tokens": 17088,
+        "input_tokens": 184,
+        "output_tokens": 479
+      },
+      "total_s": 5.169785146135837
+    },
+    {
+      "index": 11,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.19484962476417422,
+      "usage": {
+        "cache_read_input_tokens": 17272,
+        "input_tokens": 221,
+        "output_tokens": 636
+      },
+      "total_s": 6.899999734945595
+    },
+    {
+      "index": 12,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.8585570333525538,
+      "usage": {
+        "cache_read_input_tokens": 17493,
+        "input_tokens": 2043,
+        "output_tokens": 665
+      },
+      "total_s": 8.135008935350925
+    },
+    {
+      "index": 13,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.21109017683193088,
+      "usage": {
+        "cache_read_input_tokens": 19536,
+        "input_tokens": 248,
+        "output_tokens": 818
+      },
+      "total_s": 9.214458494912833
+    },
+    {
+      "index": 14,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2514862772077322,
+      "usage": {
+        "cache_read_input_tokens": 19784,
+        "input_tokens": 346,
+        "output_tokens": 775
+      },
+      "total_s": 8.767594213131815
+    },
+    {
+      "index": 15,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.35082687297835946,
+      "usage": {
+        "cache_read_input_tokens": 20130,
+        "input_tokens": 629,
+        "output_tokens": 786
+      },
+      "total_s": 9.095519683789462
+    },
+    {
+      "index": 16,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 4.848103621974587,
+      "usage": {
+        "cache_read_input_tokens": 0,
+        "input_tokens": 11236,
+        "output_tokens": 4232
+      },
+      "total_s": 46.25474012596533
+    },
+    {
+      "index": 17,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.14711748296394944,
+      "usage": {
+        "cache_read_input_tokens": 11236,
+        "input_tokens": 220,
+        "output_tokens": 2595
+      },
+      "total_s": 25.507535783108324
+    },
+    {
+      "index": 18,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.29947680002078414,
+      "usage": {
+        "cache_read_input_tokens": 11456,
+        "input_tokens": 679,
+        "output_tokens": 552
+      },
+      "total_s": 5.714921148028225
+    },
+    {
+      "index": 19,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.5917282998561859,
+      "usage": {
+        "cache_read_input_tokens": 12135,
+        "input_tokens": 1579,
+        "output_tokens": 574
+      },
+      "total_s": 6.461693036835641
+    },
+    {
+      "index": 20,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.17561596212908626,
+      "usage": {
+        "cache_read_input_tokens": 13714,
+        "input_tokens": 231,
+        "output_tokens": 450
+      },
+      "total_s": 4.833115078974515
+    },
+    {
+      "index": 21,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.7593514979816973,
+      "usage": {
+        "cache_read_input_tokens": 13945,
+        "input_tokens": 2046,
+        "output_tokens": 585
+      },
+      "total_s": 6.774969927966595
+    },
+    {
+      "index": 22,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3367384751327336,
+      "usage": {
+        "cache_read_input_tokens": 15991,
+        "input_tokens": 677,
+        "output_tokens": 561
+      },
+      "total_s": 6.259432492312044
+    },
+    {
+      "index": 23,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.37950874399393797,
+      "usage": {
+        "cache_read_input_tokens": 16668,
+        "input_tokens": 815,
+        "output_tokens": 824
+      },
+      "total_s": 9.33792588301003
+    },
+    {
+      "index": 24,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.284680072683841,
+      "usage": {
+        "cache_read_input_tokens": 17483,
+        "input_tokens": 446,
+        "output_tokens": 737
+      },
+      "total_s": 8.425802471581846
+    },
+    {
+      "index": 25,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 4.936779259704053,
+      "usage": {
+        "cache_read_input_tokens": 0,
+        "input_tokens": 11305,
+        "output_tokens": 3126
+      },
+      "total_s": 35.89831332862377
+    },
+    {
+      "index": 26,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2900016359053552,
+      "usage": {
+        "cache_read_input_tokens": 11305,
+        "input_tokens": 702,
+        "output_tokens": 1560
+      },
+      "total_s": 15.54275835165754
+    },
+    {
+      "index": 27,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3112887260504067,
+      "usage": {
+        "cache_read_input_tokens": 12007,
+        "input_tokens": 694,
+        "output_tokens": 1465
+      },
+      "total_s": 14.746545882895589
+    },
+    {
+      "index": 28,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.28075792267918587,
+      "usage": {
+        "cache_read_input_tokens": 12701,
+        "input_tokens": 632,
+        "output_tokens": 1612
+      },
+      "total_s": 16.422343282960355
+    },
+    {
+      "index": 29,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.27642021933570504,
+      "usage": {
+        "cache_read_input_tokens": 13333,
+        "input_tokens": 588,
+        "output_tokens": 595
+      },
+      "total_s": 6.2189299911260605
+    },
+    {
+      "index": 30,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.37889789370819926,
+      "usage": {
+        "cache_read_input_tokens": 13921,
+        "input_tokens": 843,
+        "output_tokens": 494
+      },
+      "total_s": 5.3778360420838
+    },
+    {
+      "index": 31,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.15427709929645061,
+      "usage": {
+        "cache_read_input_tokens": 14764,
+        "input_tokens": 182,
+        "output_tokens": 927
+      },
+      "total_s": 9.931045429315418
+    },
+    {
+      "index": 32,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.31770884012803435,
+      "usage": {
+        "cache_read_input_tokens": 14946,
+        "input_tokens": 606,
+        "output_tokens": 592
+      },
+      "total_s": 6.5369394132867455
+    },
+    {
+      "index": 33,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.8111789566464722,
+      "usage": {
+        "cache_read_input_tokens": 15552,
+        "input_tokens": 2033,
+        "output_tokens": 441
+      },
+      "total_s": 5.623824612703174
+    },
+    {
+      "index": 34,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.21346398862078786,
+      "usage": {
+        "cache_read_input_tokens": 17585,
+        "input_tokens": 288,
+        "output_tokens": 520
+      },
+      "total_s": 6.038377289660275
+    },
+    {
+      "index": 35,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.5628758007660508,
+      "usage": {
+        "cache_read_input_tokens": 17873,
+        "input_tokens": 1191,
+        "output_tokens": 315
+      },
+      "total_s": 4.0199648989364505
+    },
+    {
+      "index": 36,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.27277776785194874,
+      "usage": {
+        "cache_read_input_tokens": 19064,
+        "input_tokens": 430,
+        "output_tokens": 402
+      },
+      "total_s": 4.764646612107754
+    },
+    {
+      "index": 37,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3050152361392975,
+      "usage": {
+        "cache_read_input_tokens": 19494,
+        "input_tokens": 496,
+        "output_tokens": 249
+      },
+      "total_s": 3.1522970371879637
+    },
+    {
+      "index": 38,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.33741564210504293,
+      "usage": {
+        "cache_read_input_tokens": 19990,
+        "input_tokens": 592,
+        "output_tokens": 713
+      },
+      "total_s": 8.331914329901338
+    },
+    {
+      "index": 39,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3418867141008377,
+      "usage": {
+        "cache_read_input_tokens": 20582,
+        "input_tokens": 559,
+        "output_tokens": 1021
+      },
+      "total_s": 11.861645095981658
+    },
+    {
+      "index": 40,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.1534635042771697,
+      "usage": {
+        "cache_read_input_tokens": 21141,
+        "input_tokens": 102,
+        "output_tokens": 764
+      },
+      "total_s": 8.787481615319848
+    },
+    {
+      "index": 41,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.12828612700104713,
+      "usage": {
+        "cache_read_input_tokens": 21243,
+        "input_tokens": 55,
+        "output_tokens": 790
+      },
+      "total_s": 9.012950234115124
+    },
+    {
+      "index": 42,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 7.373015413060784,
+      "usage": {
+        "cache_read_input_tokens": 7169,
+        "input_tokens": 14408,
+        "output_tokens": 360
+      },
+      "total_s": 11.36943614622578
+    },
+    {
+      "index": 43,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2370123378932476,
+      "usage": {
+        "cache_read_input_tokens": 21577,
+        "input_tokens": 301,
+        "output_tokens": 579
+      },
+      "total_s": 6.821307553909719
+    },
+    {
+      "index": 44,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.28529383009299636,
+      "usage": {
+        "cache_read_input_tokens": 21878,
+        "input_tokens": 365,
+        "output_tokens": 641
+      },
+      "total_s": 7.7008620710112154
+    },
+    {
+      "index": 45,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 4.877571602817625,
+      "usage": {
+        "cache_read_input_tokens": 0,
+        "input_tokens": 8882,
+        "output_tokens": 751
+      },
+      "total_s": 11.745993866119534
+    },
+    {
+      "index": 46,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.4792323508299887,
+      "usage": {
+        "cache_read_input_tokens": 8882,
+        "input_tokens": 1409,
+        "output_tokens": 1331
+      },
+      "total_s": 12.996730434708297
+    },
+    {
+      "index": 47,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.4005004670470953,
+      "usage": {
+        "cache_read_input_tokens": 10291,
+        "input_tokens": 1070,
+        "output_tokens": 1106
+      },
+      "total_s": 11.000968652777374
+    },
+    {
+      "index": 48,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.41714562475681305,
+      "usage": {
+        "cache_read_input_tokens": 11361,
+        "input_tokens": 1097,
+        "output_tokens": 1254
+      },
+      "total_s": 12.743986822199076
+    },
+    {
+      "index": 49,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.12433465896174312,
+      "usage": {
+        "cache_read_input_tokens": 12458,
+        "input_tokens": 99,
+        "output_tokens": 676
+      },
+      "total_s": 6.694233287125826
+    },
+    {
+      "index": 50,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.12068874901160598,
+      "usage": {
+        "cache_read_input_tokens": 12557,
+        "input_tokens": 89,
+        "output_tokens": 611
+      },
+      "total_s": 6.060853625647724
+    },
+    {
+      "index": 51,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.4454061249271035,
+      "usage": {
+        "cache_read_input_tokens": 12646,
+        "input_tokens": 1119,
+        "output_tokens": 1130
+      },
+      "total_s": 11.76555859297514
+    },
+    {
+      "index": 52,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2965448028407991,
+      "usage": {
+        "cache_read_input_tokens": 13765,
+        "input_tokens": 620,
+        "output_tokens": 875
+      },
+      "total_s": 9.082975780125707
+    },
+    {
+      "index": 53,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 2.807331277988851,
+      "usage": {
+        "cache_read_input_tokens": 22243,
+        "input_tokens": 846,
+        "output_tokens": 971
+      },
+      "total_s": 14.094728299882263
+    },
+    {
+      "index": 54,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.30378088215366006,
+      "usage": {
+        "cache_read_input_tokens": 23089,
+        "input_tokens": 404,
+        "output_tokens": 812
+      },
+      "total_s": 9.68457375606522
+    },
+    {
+      "index": 55,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.20188279170542955,
+      "usage": {
+        "cache_read_input_tokens": 23493,
+        "input_tokens": 192,
+        "output_tokens": 376
+      },
+      "total_s": 4.5262709758244455
+    },
+    {
+      "index": 56,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.22286120615899563,
+      "usage": {
+        "cache_read_input_tokens": 23685,
+        "input_tokens": 193,
+        "output_tokens": 723
+      },
+      "total_s": 8.658058665227145
+    },
+    {
+      "index": 57,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.32300056936219335,
+      "usage": {
+        "cache_read_input_tokens": 23878,
+        "input_tokens": 423,
+        "output_tokens": 560
+      },
+      "total_s": 6.872659039217979
+    },
+    {
+      "index": 58,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 5.6015447662211955,
+      "usage": {
+        "cache_read_input_tokens": 0,
+        "input_tokens": 11311,
+        "output_tokens": 3379
+      },
+      "total_s": 38.935112392064184
+    },
+    {
+      "index": 59,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.17835846217349172,
+      "usage": {
+        "cache_read_input_tokens": 11311,
+        "input_tokens": 306,
+        "output_tokens": 3198
+      },
+      "total_s": 31.776041296776384
+    },
+    {
+      "index": 60,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3013423499651253,
+      "usage": {
+        "cache_read_input_tokens": 11617,
+        "input_tokens": 715,
+        "output_tokens": 646
+      },
+      "total_s": 6.615273078903556
+    },
+    {
+      "index": 61,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3056214228272438,
+      "usage": {
+        "cache_read_input_tokens": 12332,
+        "input_tokens": 698,
+        "output_tokens": 1064
+      },
+      "total_s": 10.80406321818009
+    },
+    {
+      "index": 62,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.23232146119698882,
+      "usage": {
+        "cache_read_input_tokens": 13030,
+        "input_tokens": 503,
+        "output_tokens": 2171
+      },
+      "total_s": 22.141822272911668
+    },
+    {
+      "index": 63,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.4501482960768044,
+      "usage": {
+        "cache_read_input_tokens": 13533,
+        "input_tokens": 1087,
+        "output_tokens": 442
+      },
+      "total_s": 4.855851506814361
+    },
+    {
+      "index": 64,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.5659068920649588,
+      "usage": {
+        "cache_read_input_tokens": 14620,
+        "input_tokens": 1395,
+        "output_tokens": 8765
+      },
+      "total_s": 97.55775986518711
+    },
+    {
+      "index": 65,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.5370229710824788,
+      "usage": {
+        "cache_read_input_tokens": 16015,
+        "input_tokens": 1252,
+        "output_tokens": 4086
+      },
+      "total_s": 45.073423861991614
+    },
+    {
+      "index": 66,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2843977860175073,
+      "usage": {
+        "cache_read_input_tokens": 17267,
+        "input_tokens": 488,
+        "output_tokens": 4657
+      },
+      "total_s": 51.74006313690916
+    },
+    {
+      "index": 67,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2400293522514403,
+      "usage": {
+        "cache_read_input_tokens": 17755,
+        "input_tokens": 362,
+        "output_tokens": 4703
+      },
+      "total_s": 53.50498164212331
+    },
+    {
+      "index": 68,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.6301230331882834,
+      "usage": {
+        "cache_read_input_tokens": 18117,
+        "input_tokens": 1398,
+        "output_tokens": 6370
+      },
+      "total_s": 74.00102021824569
+    },
+    {
+      "index": 69,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.20178037136793137,
+      "usage": {
+        "cache_read_input_tokens": 19515,
+        "input_tokens": 245,
+        "output_tokens": 7265
+      },
+      "total_s": 84.41271271929145
+    },
+    {
+      "index": 70,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3062735190615058,
+      "usage": {
+        "cache_read_input_tokens": 19760,
+        "input_tokens": 518,
+        "output_tokens": 4738
+      },
+      "total_s": 54.90125018591061
+    },
+    {
+      "index": 71,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.4798803050071001,
+      "usage": {
+        "cache_read_input_tokens": 20278,
+        "input_tokens": 913,
+        "output_tokens": 4705
+      },
+      "total_s": 55.977399812079966
+    },
+    {
+      "index": 72,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3137613879516721,
+      "usage": {
+        "cache_read_input_tokens": 21191,
+        "input_tokens": 518,
+        "output_tokens": 4336
+      },
+      "total_s": 51.202516050077975
+    },
+    {
+      "index": 73,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3217129409313202,
+      "usage": {
+        "cache_read_input_tokens": 21709,
+        "input_tokens": 538,
+        "output_tokens": 3134
+      },
+      "total_s": 36.91361062787473
+    },
+    {
+      "index": 74,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.5176454116590321,
+      "usage": {
+        "cache_read_input_tokens": 22247,
+        "input_tokens": 995,
+        "output_tokens": 2984
+      },
+      "total_s": 35.591460685711354
+    },
+    {
+      "index": 75,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3829679689370096,
+      "usage": {
+        "cache_read_input_tokens": 23242,
+        "input_tokens": 614,
+        "output_tokens": 1410
+      },
+      "total_s": 16.935969710815698
+    },
+    {
+      "index": 76,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.7466158270835876,
+      "usage": {
+        "cache_read_input_tokens": 23856,
+        "input_tokens": 1437,
+        "output_tokens": 549
+      },
+      "total_s": 7.233029230032116
+    },
+    {
+      "index": 77,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.22667825734242797,
+      "usage": {
+        "cache_read_input_tokens": 25293,
+        "input_tokens": 261,
+        "output_tokens": 784
+      },
+      "total_s": 9.585955433081836
+    },
+    {
+      "index": 78,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.6977988858707249,
+      "usage": {
+        "cache_read_input_tokens": 25554,
+        "input_tokens": 1330,
+        "output_tokens": 456
+      },
+      "total_s": 6.236624638084322
+    },
+    {
+      "index": 79,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.35725690703839064,
+      "usage": {
+        "cache_read_input_tokens": 26884,
+        "input_tokens": 422,
+        "output_tokens": 725
+      },
+      "total_s": 9.286586387082934
+    },
+    {
+      "index": 80,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.33160431683063507,
+      "usage": {
+        "cache_read_input_tokens": 27306,
+        "input_tokens": 404,
+        "output_tokens": 911
+      },
+      "total_s": 11.531573269981891
+    },
+    {
+      "index": 81,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.6294516599737108,
+      "usage": {
+        "cache_read_input_tokens": 27710,
+        "input_tokens": 1086,
+        "output_tokens": 493
+      },
+      "total_s": 6.716189358849078
+    },
+    {
+      "index": 82,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.4027558509260416,
+      "usage": {
+        "cache_read_input_tokens": 28796,
+        "input_tokens": 581,
+        "output_tokens": 1188
+      },
+      "total_s": 15.516552150249481
+    },
+    {
+      "index": 83,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3321803188882768,
+      "usage": {
+        "cache_read_input_tokens": 29377,
+        "input_tokens": 374,
+        "output_tokens": 1291
+      },
+      "total_s": 16.816948142834008
+    },
+    {
+      "index": 84,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.37211825512349606,
+      "usage": {
+        "cache_read_input_tokens": 29751,
+        "input_tokens": 484,
+        "output_tokens": 467
+      },
+      "total_s": 6.274539259262383
+    },
+    {
+      "index": 85,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2730564079247415,
+      "usage": {
+        "cache_read_input_tokens": 30235,
+        "input_tokens": 307,
+        "output_tokens": 409
+      },
+      "total_s": 5.489561117254198
+    },
+    {
+      "index": 86,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.26312415301799774,
+      "usage": {
+        "cache_read_input_tokens": 30542,
+        "input_tokens": 299,
+        "output_tokens": 509
+      },
+      "total_s": 6.735778055619448
+    },
+    {
+      "index": 87,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.381765800062567,
+      "usage": {
+        "cache_read_input_tokens": 30841,
+        "input_tokens": 482,
+        "output_tokens": 603
+      },
+      "total_s": 8.137845056131482
+    },
+    {
+      "index": 88,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.4088258920237422,
+      "usage": {
+        "cache_read_input_tokens": 31323,
+        "input_tokens": 542,
+        "output_tokens": 1103
+      },
+      "total_s": 14.827162615954876
+    },
+    {
+      "index": 89,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.7569195660762489,
+      "usage": {
+        "cache_read_input_tokens": 31865,
+        "input_tokens": 1246,
+        "output_tokens": 895
+      },
+      "total_s": 12.62968138186261
+    },
+    {
+      "index": 90,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.3227507760748267,
+      "usage": {
+        "cache_read_input_tokens": 33111,
+        "input_tokens": 315,
+        "output_tokens": 591
+      },
+      "total_s": 8.254716084804386
+    },
+    {
+      "index": 91,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2649447126314044,
+      "usage": {
+        "cache_read_input_tokens": 33426,
+        "input_tokens": 279,
+        "output_tokens": 284
+      },
+      "total_s": 4.001012090593576
+    },
+    {
+      "index": 92,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 237
+      },
+      "total_s": 3.2432614378631115
+    },
+    {
+      "index": 93,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 430
+      },
+      "total_s": 5.819389389362186
+    },
+    {
+      "index": 94,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 265
+      },
+      "total_s": 3.648055507335812
+    },
+    {
+      "index": 95,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 328
+      },
+      "total_s": 4.455363734159619
+    },
+    {
+      "index": 96,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 557
+      },
+      "total_s": 7.575004485901445
+    },
+    {
+      "index": 97,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 296
+      },
+      "total_s": 4.122777333017439
+    },
+    {
+      "index": 98,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 476
+      },
+      "total_s": 6.465794891119003
+    },
+    {
+      "index": 99,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 232
+      },
+      "total_s": 3.21093080798164
+    },
+    {
+      "index": 100,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 320
+      },
+      "total_s": 4.395259527955204
+    },
+    {
+      "index": 101,
+      "path": "/v1/messages",
+      "stream": false,
+      "logged_status": 500,
+      "status": 200,
+      "ttft_s": null,
+      "usage": {
+        "cache_read_input_tokens": 33704,
+        "input_tokens": 1,
+        "output_tokens": 192
+      },
+      "total_s": 2.6760099502280354
+    },
+    {
+      "index": 102,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 6.943278803024441,
+      "usage": {
+        "cache_read_input_tokens": 0,
+        "input_tokens": 11230,
+        "output_tokens": 475
+      },
+      "total_s": 11.470434966031462
+    },
+    {
+      "index": 103,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.4576713079586625,
+      "usage": {
+        "cache_read_input_tokens": 11230,
+        "input_tokens": 1225,
+        "output_tokens": 1086
+      },
+      "total_s": 11.00353678688407
+    },
+    {
+      "index": 104,
+      "path": "/v1/messages",
+      "stream": true,
+      "logged_status": 200,
+      "status": 200,
+      "first_kind": "thinking",
+      "ttft_s": 0.2648152052424848,
+      "usage": {
+        "cache_read_input_tokens": 12455,
+        "input_tokens": 567,
+        "output_tokens": 580
+      },
+      "total_s": 5.927969839423895
+    }
+  ],
+  "summary": {
+    "requests": 105,
+    "ok": 105,
+    "errors": 0,
+    "status_mismatch": 10,
+    "ttft_median_s": 0.31770884012803435,
+    "ttft_p90_s": 0.8585570333525538,
+    "total_median_s": 8.787481615319848
+  },
+  "finished": "2026-11-19T12:37:21",
+  "params": {
+    "base_url": "http://127.0.0.1:18081",
+    "log": "bench/private/claude-code-requests.jsonl",
+    "speed": 0.0,
+    "concurrency": 1,
+    "max_prompt_tokens": 36000,
+    "skipped": 0,
+    "requests": 105,
+    "log_sha256": "f79b4a6d810f71632fb0633553b32d3c6c18132a137a4005e2129688f95f7b35"
+  }
+}
