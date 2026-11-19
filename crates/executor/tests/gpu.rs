@@ -85,15 +85,15 @@ fn gpu_cuda_graphs_replay_kept_ranges() {
             "a kept range was captured again or reset after its warmup"
         );
         // Four ranges over steps 4 to 7: 16 calls, each a uid reuse with `range_uid`. The
-        // counters are global: other tests of this binary add reuses only when the environment
-        // turns `TETRAEDER_RANGE_UID` on for them.
+        // counters are global: other tests of this binary read `TETRAEDER_RANGE_UID`, which is
+        // on by default, so the zero-reuse check holds only when the environment turns it off.
         let reused = last.reused - warm.reused;
         if uid {
             assert!(
                 reused >= 16,
                 "every later call of a range reuses its uid: {reused}"
             );
-        } else if std::env::var_os("TETRAEDER_RANGE_UID").is_none() {
+        } else if std::env::var("TETRAEDER_RANGE_UID").is_ok_and(|v| v == "0") {
             assert_eq!(reused, 0, "ranges without a uid are compared on every call");
         }
     }

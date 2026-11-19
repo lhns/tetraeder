@@ -3,7 +3,7 @@
 # session (it needs the release build, the models and the session's single and layer-4 plans):
 #   SESSION=<s> bash scripts/layer_decode_box.sh        (taxameter run --env SESSION=<s>)
 # tg128 only (-p 0 -n 128 -r 5), per model: llama.cpp -sm none and -sm layer, our single and layer-4 with the executor
-# toggles off, TETRAEDER_RANGE_UID=1, TETRAEDER_ASYNC_INPUTS=1 and both, and traced runs (TETRAEDER_EXEC_TRACE, issue and
+# toggles off (TETRAEDER_RANGE_UID=0 TETRAEDER_ASYNC_INPUTS=0; both are on by default), each alone and both, and traced runs (TETRAEDER_EXEC_TRACE, issue and
 # sync mode). The 30B (the M4 gate) runs a second, reversed round of the untraced runs for interleaved pairs; the 32B
 # runs one round of the key runs; then the GPU parity tests that cover the toggles run with both on (the kept-range
 # replay with GGML_CUDA_GRAPH_DEBUG=1, the one-rank bit-equality and the gpu4_ shapes of both builders), whose
@@ -19,7 +19,8 @@ fi
 cd "$(dirname "$0")/.." || exit 1
 session="${SESSION:?SESSION required}"
 p5="${P5_DIR:-$PWD/bench/results/$session/phase5}"
-out="${OUT_DIR:-$PWD/bench/results/$session-decode}"
+case $session in *-decode) decode_name=$session ;; *) decode_name=$session-decode ;; esac
+out="${OUT_DIR:-$PWD/bench/results/$decode_name}"
 log=runs/vast/layer_decode.log
 mkdir -p "$out" "$(dirname "$log")"
 [ "$DRY" = 1 ] || exec >> "$log" 2>&1
@@ -31,6 +32,11 @@ if [ "$DRY" != 1 ]; then
   . "${TAXAMETER_HOME:-/root/.taxameter}/cuda_env.sh"
   # shellcheck source=scripts/box_libs.sh
   . scripts/box_libs.sh
+  # the parity step builds ggml-sys; without the arch pin it recompiles for every arch and times out
+  if [ -z "${TETRAEDER_CUDA_ARCHS:-}" ]; then
+    archs=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2> /dev/null | tr -d ' .' | grep -E '^[0-9]+$' | sort -un | paste -sd';')
+    export TETRAEDER_CUDA_ARCHS="${archs:-86}"
+  fi
 fi
 threads=8
 [ "$DRY" = 1 ] || threads=$(bash scripts/cpu_quota.sh)
@@ -76,8 +82,8 @@ run_kind() {
     single*) plan="$p5/plans/$m-single.toml" ;;
     layer4*) plan="$p5/plans/$m-layer-4.toml" ;;
   esac
-  case $kind in *-uid*) envs+=(TETRAEDER_RANGE_UID=1) ;; esac
-  case $kind in *-async*) envs+=(TETRAEDER_ASYNC_INPUTS=1) ;; esac
+  case $kind in *-uid*) envs+=(TETRAEDER_RANGE_UID=1) ;; *) envs+=(TETRAEDER_RANGE_UID=0) ;; esac
+  case $kind in *-async*) envs+=(TETRAEDER_ASYNC_INPUTS=1) ;; *) envs+=(TETRAEDER_ASYNC_INPUTS=0) ;; esac
   case $kind in *-trace*) envs+=("TETRAEDER_EXEC_TRACE=$out/$m-$kind-r$k.trace.jsonl") ;; esac
   case $kind in *-tracesync) envs+=(TETRAEDER_EXEC_TRACE_SYNC=1) ;; esac
   run_cmd "$m-$kind-r$k" env "${envs[@]}" "$tet" bench -m "${FILE[$m]}" --engine "${ENGINE[$m]}" --plan "$plan" \
