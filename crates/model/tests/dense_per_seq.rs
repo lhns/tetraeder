@@ -21,6 +21,8 @@ fn load(kv: KvFormat, per_seq: bool) -> Qwen3 {
         n_seq_max: 3,
         n_ctx_pool: 4096,
         per_seq_attn: per_seq,
+        // Off: the masked path for one-input steps too, the reference these tests compare with.
+        per_seq_attn_single: per_seq,
         extra_bufts: false,
         ..DenseOptions::new(BackendChoice::Cpu { threads: Some(2) })
     };

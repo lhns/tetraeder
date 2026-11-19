@@ -50,3 +50,7 @@ Qwen3-8B: 36 layers, n_embd 4096, 32 heads, 8 KV heads, head 128, n_ff 12288, co
 - **Pool.** `n_ctx_pool` is rounded up to 256 rows and a sequence reserves whole 256-row units, so `n_seq_max` sequences need at least `256 * n_seq_max` rows.
 - **libllama reference.** `ggml-sys`'s `ContextParams` gained `n_seq_max` and `kv_unified` (defaults from libllama) for the `n_seq_max = 3`, unified reference.
 - **Parity measured** (Windows, AVX2, 2 threads, tiny dense fixture): max top-5 logit difference 0 against libllama for F16, Q8_0 and Q8_0/Q4_0 (rotation off), for Q8_0, Q8_0/Q4_0 and Q4_0 with rotation on, for 3 sequences batched against each alone and against libllama (24 rows, one step with every token of a prefill chunk verified), for `seq_cp` and a chunked move. Qwen3-0.6B Q8_0: 96 golden positions, tokens equal, max logit difference 0 against the recorded file. (No session directory yet.)
+
+## History
+
+- 2026-11-19: one-input steps attend over their own run; decided in ADR 0079.

@@ -84,3 +84,4 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0076](0076-judged-predictions-from-per-shape-anchor-lines.md) | Not adopted | Judged predictions from per-shape lines through truncated anchors |
 | [0077](0077-pipelined-prefill-micro-batches.md) | Proposed | Pipelined prefill: micro-batches in one rank program (GPipe order) |
 | [0078](0078-allreduce-in-step-latency.md) | Proposed | Cost model 3: an all-reduce in a step pays its own fitted latency, not a share of the probe's |
+| [0079](0079-one-input-steps-attend-over-their-own-run.md) | Accepted | One-input steps attend over their own KV run |

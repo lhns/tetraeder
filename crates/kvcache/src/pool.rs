@@ -2,6 +2,7 @@
 
 use crate::{F16_NEG_INF, KvError, Layout, ROW_ALIGN, RowCopy, SeqId, round_up};
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StepInput {
@@ -51,6 +52,10 @@ pub struct BlockCounts {
 pub struct KvPool {
     layout: Box<dyn Layout>,
     lens: HashMap<SeqId, usize>,
+    /// The mask buffer of a plan that has run ([`KvPool::recycle`]). A long-context mask is tens
+    /// of MB, above the allocator's mmap threshold: allocated per step, every page faults again
+    /// (suspected in the long-context TTFT tail of ttft5-20261119).
+    spare_mask: Mutex<Vec<u16>>,
 }
 
 impl KvPool {
@@ -58,7 +63,26 @@ impl KvPool {
         Self {
             layout,
             lens: HashMap::new(),
+            spare_mask: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Takes back the mask buffer of a plan that has run, for the masks of later plans.
+    pub fn recycle(&self, plan: StepPlan) {
+        let mut spare = self.spare_mask.lock().unwrap_or_else(|e| e.into_inner());
+        if plan.mask.capacity() > spare.capacity() {
+            *spare = plan.mask;
+        }
+    }
+
+    /// A mask of `n` elements, all [`F16_NEG_INF`], in the recycled buffer when there is one.
+    fn mask_buf(&self, n: usize) -> Vec<u16> {
+        let mut spare = self.spare_mask.lock().unwrap_or_else(|e| e.into_inner());
+        let mut mask = std::mem::take(&mut *spare);
+        drop(spare);
+        mask.clear();
+        mask.resize(n, F16_NEG_INF);
+        mask
     }
 
     pub fn layout_name(&self) -> &'static str {
@@ -207,10 +231,12 @@ impl KvPool {
         let mut pos = Vec::with_capacity(n_tokens);
         let mut rows = Vec::with_capacity(n_tokens);
         let mut outputs = Vec::new();
-        let mut mask = vec![F16_NEG_INF; n_kv * n_tokens];
+        let mut mask = self.mask_buf(n_kv * n_tokens);
         for inp in inputs {
             let len = self.lens[&inp.seq];
             let first = pos.len();
+            // One run of rows: a token's open rows are one slice, not a row lookup each.
+            let run = self.layout.run_start(inp.seq);
             for i in 0..inp.n_tokens {
                 let t = first + i;
                 pos.push((len + i) as i32);
@@ -218,8 +244,14 @@ impl KvPool {
                 if inp.all_logits || i + 1 == inp.n_tokens {
                     outputs.push(t as i32);
                 }
-                for p in 0..=len + i {
-                    mask[t * n_kv + self.layout.row(inp.seq, p)] = 0;
+                let at = t * n_kv;
+                match run {
+                    Some(start) => mask[at + start..=at + start + len + i].fill(0),
+                    None => {
+                        for p in 0..=len + i {
+                            mask[at + self.layout.row(inp.seq, p)] = 0;
+                        }
+                    }
                 }
             }
         }
@@ -262,7 +294,7 @@ impl KvPool {
         let mut pos = Vec::with_capacity(first_token);
         let mut rows = Vec::with_capacity(first_token);
         let mut outputs = Vec::new();
-        let mut mask = vec![F16_NEG_INF; mask_len];
+        let mut mask = self.mask_buf(mask_len);
         for (inp, s) in inputs.iter().zip(&seqs) {
             let len = self.lens[&inp.seq];
             for i in 0..inp.n_tokens {

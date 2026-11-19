@@ -299,7 +299,7 @@ fn prepare_loop(sh: &Shared) {
                 }
                 if !stale.is_empty() {
                     drop(st);
-                    drop(stale);
+                    free_traced(stale);
                     st = sh.lock();
                     continue;
                 }
@@ -307,10 +307,15 @@ fn prepare_loop(sh: &Shared) {
             };
             let target = st.target;
             drop(st);
-            drop(stale);
+            free_traced(stale);
             target
         };
+        let t = std::time::Instant::now();
         let v = prepare(cap, sh.cfg.thp);
+        if crate::qwen3::step_trace() {
+            tracing::info!(target: "tetraeder::trace", bytes = cap,
+                ms = t.elapsed().as_millis() as u64, "snapshot spare touched");
+        }
         let mut st = sh.lock();
         if st.shutdown {
             return;
@@ -323,6 +328,21 @@ fn prepare_loop(sh: &Shared) {
             drop(st);
             drop(v);
         }
+    }
+}
+
+/// Frees spares the target outgrew; with the step trace on, logs the bytes and time (multi-GB
+/// frees overlap the steps of the request that raised the target, ttft5-20261119).
+fn free_traced(stale: Vec<Vec<u8>>) {
+    if stale.is_empty() {
+        return;
+    }
+    let bytes: usize = stale.iter().map(Vec::capacity).sum();
+    let t = std::time::Instant::now();
+    drop(stale);
+    if crate::qwen3::step_trace() {
+        tracing::info!(target: "tetraeder::trace", bytes,
+            ms = t.elapsed().as_millis() as u64, "snapshot spares freed");
     }
 }
 
