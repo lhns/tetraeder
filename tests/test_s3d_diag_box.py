@@ -32,8 +32,15 @@ def test_dry_run_lists_the_diagnostic_runs(tmp_path):
         assert "layer-4.toml" in sync and "TETRAEDER_EXEC_TRACE_SYNC=1" in sync and "-p 0 -n 128" in sync
         assert "single.toml" in by[f"{m}-single-tg-sync"]
         assert "-sm layer" in by[f"{m}-llama-layer-tg"]
+    # the 30B's ep-4 decode: untraced, host trace, then device time per op; none on the dense 32B
+    ep = {mode: by[f"qwen3-30b-a3b-ep4-tg-{mode}"] for mode in ("plain", "trace", "sync")}
+    assert all("ep-4.toml" in v and "-p 0 -n 128" in v for v in ep.values())
+    assert "TETRAEDER_EXEC_TRACE" not in ep["plain"]
+    assert "TETRAEDER_EXEC_TRACE=" in ep["trace"] and "TETRAEDER_EXEC_TRACE_SYNC" not in ep["trace"]
+    assert "TETRAEDER_EXEC_TRACE_SYNC=1" in ep["sync"]
+    assert not any(k.startswith("qwen3-32b-ep4") for k in by)
     # decode toggles are left at their defaults (on)
     assert not any("TETRAEDER_RANGE_UID" in p or "TETRAEDER_ASYNC_INPUTS" in p for p in plans)
     # the 30B comes first; every part B run has a 20 ms clock log
     assert next(iter(by)).startswith("qwen3-30b-a3b")
-    assert len([ln for ln in r.stdout.splitlines() if "-lms 20" in ln]) == 12
+    assert len([ln for ln in r.stdout.splitlines() if "-lms 20" in ln]) == 15

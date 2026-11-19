@@ -4,8 +4,9 @@
 # Part A (tp2-pp2 prefill overlap): per model, pp2048 with prefill_micro_batches 4 and 1: untraced, host trace
 #   (TETRAEDER_EXEC_TRACE), sync trace (+ TETRAEDER_EXEC_TRACE_SYNC=1, device time per op).
 # Part B (decode excess): tg128 of single and layer-4 (decode toggles at their defaults, on) with trace, sync trace and
-#   nvidia-smi clocks every 20 ms beside each run; llama.cpp -sm layer and -sm none with the same clock log; 30B first,
-#   the 32B as control.
+#   nvidia-smi clocks every 20 ms beside each run; on the 30B also ep-4 tg128 untraced, traced and synced (the ep-4
+#   decode residual, ADR 0080 History); llama.cpp -sm layer and -sm none with the same clock log; 30B first, the 32B as
+#   control.
 # Stages: gpus (count and power gate), build, models, plans (hw, layout, candidates), A, B.
 # Results: bench/results/<s>/ (<name>.json|.log|.rc, <name>.trace.jsonl, <name>.clocks.csv, gpu-samples.csv at 1 Hz, env.txt),
 # ends with S3D_DIAG_DONE in runs/vast/s3d_diag.log and the DONE file. A rerun skips runs whose .rc exists.
@@ -190,6 +191,16 @@ if has B; then
     tet_run "$m-single-tg-sync" 1 "$sp" 0 128 sync "$m"
     tet_run "$m-layer4-tg-trace" 1 "$l4" 0 128 trace "$m"
     tet_run "$m-single-tg-trace" 1 "$sp" 0 128 trace "$m"
+    if [ "${ENGINE[$m]}" = moe ]; then
+      ep="$out/plans/$m-ep-4.toml"
+      if [ "$DRY" = 1 ] || [ -s "$ep" ]; then
+        tet_run "$m-ep4-tg-plain" 1 "$ep" 0 128 plain "$m"
+        tet_run "$m-ep4-tg-trace" 1 "$ep" 0 128 trace "$m"
+        tet_run "$m-ep4-tg-sync" 1 "$ep" 0 128 sync "$m"
+      else
+        say "no ep-4 plan for $m: skip its decode traces"
+      fi
+    fi
     run_cmd "$m-llama-layer-tg" 1 "$llama_bench" -m "${FILE[$m]}" -ngl 99 -fa 1 -p 0 -n 128 -r 5 -t "$threads" -sm layer -o json
     run_cmd "$m-llama-none-tg" 1 "$llama_bench" -m "${FILE[$m]}" -ngl 99 -fa 1 -p 0 -n 128 -r 5 -t "$threads" -sm none -mg 0 -o json
   done
