@@ -1,0 +1,60 @@
+== r1
+requests 105, status 200 95, admits 105, joined 105, mismatches 0
+ttft median 0.492 s, p90 1.547 s
+sum ttft 86.4 s; sum save_ms 2.75 s; sum place_ms 4.68 s; sum queued_ms 3.16 s
+sources {'live': 88, 'copy': 4, 'ram': 3}
+llama-server same round, same 95 requests: ttft median 0.467 s, p90 1.030 s, sum 82.8 s
+slowest hits
+  # 42 prompt  21576 cached   7169 new  14407 common   7169 ram      queued   390.6 place   402.4 save    0.0 fb 0 ttft 6.38 ttft-place 5.97 llama 7.09
+  # 53 prompt  23088 cached  22242 new    846 common  22242 live     queued     0.1 place  1531.8 save 1531.6 fb 1 ttft 2.07 ttft-place 0.54 llama 2.44
+  # 39 prompt  21138 cached  20579 new    559 common  20579 ram      queued   732.2 place   591.9 save    0.0 fb 0 ttft 1.69 ttft-place 1.10 llama 0.49
+  # 24 prompt  17924 cached  17478 new    446 common  17478 live     queued     0.1 place  1224.5 save 1217.4 fb 0 ttft 1.55 ttft-place 0.32 llama 0.39
+  # 76 prompt  25298 cached  23861 new   1437 common  23861 live     queued     0.1 place     0.2 save    0.0 fb 1 ttft 1.39 ttft-place 1.39 llama 0.93
+  #  6 prompt  15751 cached  13264 new   2487 common  13264 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.33 ttft-place 1.33 llama 1.01
+  # 21 prompt  15986 cached  13940 new   2046 common  13940 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.31 ttft-place 1.31 llama 0.91
+  # 12 prompt  19535 cached  17492 new   2043 common  17492 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.30 ttft-place 1.30 llama 1.03
+  # 33 prompt  17582 cached  15549 new   2033 common  15549 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.29 ttft-place 1.29 llama 0.97
+  # 78 prompt  26891 cached  25559 new   1332 common  25559 live     queued     0.1 place     0.2 save    0.0 fb 1 ttft 1.28 ttft-place 1.28 llama 0.89
+  # 89 prompt  33120 cached  31874 new   1246 common  31874 live     queued     0.1 place     0.3 save    0.0 fb 1 ttft 1.26 ttft-place 1.26 llama 1.01
+  # 81 prompt  28803 cached  27717 new   1086 common  27717 live     queued     0.1 place     0.2 save    0.0 fb 1 ttft 1.21 ttft-place 1.21 llama 0.84
+  # 19 prompt  13709 cached  12130 new   1579 common  12130 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.00 ttft-place 1.00 llama 0.71
+  # 15 prompt  20758 cached  20129 new    629 common  20129 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 0.89 ttft-place 0.89 llama 0.52
+  # 46 prompt  10292 cached   8877 new   1415 common   8877 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 0.87 ttft-place 0.87 llama 0.6
+slowest misses (common < 1024 tokens)
+  #102 prompt  11225 cached    491 new  10734 common    491 ram      queued  2033.9 place   910.5 save    0.0 fb 1 ttft 5.78 ttft-place 4.87 llama 5.9
+  # 58 prompt  11306 cached    491 new  10815 common    491 copy     queued     0.1 place     1.2 save    0.0 fb 1 ttft 5.70 ttft-place 5.70 llama 5.08
+  # 16 prompt  11231 cached    491 new  10740 common    491 copy     queued     0.1 place     1.2 save    0.0 fb 0 ttft 5.31 ttft-place 5.31 llama 4.7
+  # 25 prompt  11300 cached    492 new  10808 common    492 copy     queued     0.1 place     0.9 save    0.0 fb 0 ttft 5.02 ttft-place 5.02 llama 4.5
+  # 45 prompt   8877 cached     17 new   8860 common     17 copy     queued     0.1 place     0.9 save    0.0 fb 0 ttft 4.35 ttft-place 4.35 llama 4.23
+  #  0 prompt  11246 cached      0 new  11246 common      0 live     queued     0.1 place     0.4 save    0.0 fb 0 ttft 2.96 ttft-place 2.96 llama 3.01
+non-200: []
+== r2
+requests 105, status 200 95, admits 105, joined 105, mismatches 0
+ttft median 0.495 s, p90 2.657 s
+sum ttft 104.2 s; sum save_ms 6.29 s; sum place_ms 8.42 s; sum queued_ms 16.58 s
+sources {'live': 88, 'copy': 4, 'ram': 3}
+llama-server same round, same 95 requests: ttft median 0.492 s, p90 1.044 s, sum 84.7 s
+slowest hits
+  # 39 prompt  21138 cached  20579 new    559 common  20579 ram      queued  7933.9 place   585.9 save    0.0 fb 0 ttft 8.89 ttft-place 8.31 llama 0.49
+  # 42 prompt  21576 cached   7169 new  14407 common   7169 ram      queued  2746.9 place   644.6 save    0.0 fb 1 ttft 8.73 ttft-place 8.09 llama 7.26
+  # 24 prompt  17924 cached  17478 new    446 common  17478 live     queued     0.1 place  4179.9 save 4172.5 fb 0 ttft 4.50 ttft-place 0.32 llama 0.4
+  # 53 prompt  23088 cached  22242 new    846 common  22242 live     queued     0.1 place  2119.6 save 2119.2 fb 2 ttft 2.66 ttft-place 0.54 llama 2.51
+  # 76 prompt  25298 cached  23861 new   1437 common  23861 live     queued     0.1 place     0.3 save    0.0 fb 2 ttft 1.47 ttft-place 1.47 llama 0.94
+  # 78 prompt  26891 cached  25559 new   1332 common  25559 live     queued     0.1 place     0.2 save    0.0 fb 2 ttft 1.42 ttft-place 1.42 llama 0.9
+  # 21 prompt  15986 cached  13940 new   2046 common  13940 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.33 ttft-place 1.33 llama 0.93
+  # 33 prompt  17582 cached  15549 new   2033 common  15549 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.32 ttft-place 1.32 llama 0.98
+  #  6 prompt  15751 cached  13264 new   2487 common  13264 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.32 ttft-place 1.32 llama 1.03
+  # 12 prompt  19535 cached  17492 new   2043 common  17492 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 1.28 ttft-place 1.28 llama 1.04
+  # 81 prompt  28803 cached  27717 new   1086 common  27717 live     queued     0.1 place     0.3 save    0.0 fb 2 ttft 1.21 ttft-place 1.21 llama 0.84
+  # 89 prompt  33120 cached  31874 new   1246 common  31874 live     queued     0.1 place     0.1 save    0.0 fb 2 ttft 1.19 ttft-place 1.19 llama 1.02
+  # 19 prompt  13709 cached  12130 new   1579 common  12130 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 0.99 ttft-place 0.99 llama 0.72
+  # 46 prompt  10292 cached   8877 new   1415 common   8877 live     queued     0.1 place     0.2 save    0.0 fb 1 ttft 0.87 ttft-place 0.87 llama 0.6
+  # 35 prompt  19061 cached  17870 new   1191 common  17870 live     queued     0.1 place     0.1 save    0.0 fb 0 ttft 0.87 ttft-place 0.87 llama 0.7
+slowest misses (common < 1024 tokens)
+  #102 prompt  11225 cached    491 new  10734 common    491 ram      queued  5891.6 place   876.6 save    0.0 fb 2 ttft 9.55 ttft-place 8.67 llama 6.08
+  # 58 prompt  11306 cached    491 new  10815 common    491 copy     queued     0.1 place     1.4 save    0.0 fb 2 ttft 5.79 ttft-place 5.79 llama 5.21
+  # 16 prompt  11231 cached    491 new  10740 common    491 copy     queued     0.1 place     1.4 save    0.0 fb 0 ttft 5.48 ttft-place 5.48 llama 4.77
+  # 25 prompt  11300 cached    492 new  10808 common    492 copy     queued     0.1 place     0.8 save    0.0 fb 0 ttft 5.10 ttft-place 5.10 llama 4.56
+  # 45 prompt   8877 cached     17 new   8860 common     17 copy     queued     0.1 place     1.3 save    0.0 fb 1 ttft 4.42 ttft-place 4.42 llama 4.28
+  #  0 prompt  11246 cached      0 new  11246 common      0 live     queued     0.1 place     0.4 save    0.0 fb 0 ttft 2.97 ttft-place 2.97 llama 3.03
+non-200: []
