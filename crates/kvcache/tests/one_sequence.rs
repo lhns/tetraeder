@@ -2,7 +2,7 @@
 //! (`rows == pos`, `n_kv = pad(len + n, 256)`, the causal mask), which keeps C4 bit-equal.
 
 use tetraeder_kvcache::{
-    Chunked, F16_NEG_INF, KvError, KvPool, Layout, Paged, ROW_ALIGN, StepInput,
+    Chunked, F16_NEG_INF, KvError, KvPool, Layout, Paged, ROW_ALIGN, RowCopy, StepInput,
 };
 
 fn pad(n: usize) -> usize {
@@ -136,6 +136,55 @@ fn chunked_grows_in_place_then_moves_with_grow() {
     assert_eq!(c.row(3, 0), 0);
     // seq 2 can grow in place into nothing: its neighbour starts at 512
     assert_eq!(c.reserve(2, 300).unwrap().len(), 1);
+}
+
+/// ttft4-20261119 #39: a lone sequence whose run neither grows in place nor fits a gap slides
+/// down over itself into the free rows below it, in chunks no longer than the slide.
+#[test]
+fn chunked_slides_a_run_down_when_no_gap_fits() {
+    let mut c = Chunked::new(3584);
+    c.reserve(1, 1024).unwrap();
+    c.reserve(2, 2048).unwrap();
+    c.shrink(1, 0);
+    // seq 2 at 1024..3072: 512 rows after it, 1024 below it, no gap of 3072.
+    let moves = c.reserve(2, 3072).unwrap();
+    assert_eq!(
+        moves,
+        vec![
+            RowCopy {
+                src: 1024,
+                dst: 0,
+                n: 1024
+            },
+            RowCopy {
+                src: 2048,
+                dst: 1024,
+                n: 1024
+            },
+        ]
+    );
+    assert_eq!((c.run_start(2), c.reserved(2)), (Some(0), 3072));
+    // The pool keeps only the positions in use, chunk by chunk.
+    let mut pool = KvPool::new(Box::new(Chunked::new(3584)));
+    pool.reserve(1, 1024).unwrap();
+    pool.reserve(2, 2048).unwrap();
+    pool.commit(&[StepInput {
+        seq: 2,
+        n_tokens: 1500,
+        all_logits: false,
+    }]);
+    pool.seq_rm(1, 0);
+    let moves = pool.reserve(2, 3072).unwrap();
+    assert_eq!(
+        moves
+            .iter()
+            .map(|c| (c.src, c.dst, c.n))
+            .collect::<Vec<_>>(),
+        vec![(1024, 0, 1024), (2048, 1024, 476)]
+    );
+    // Too big for the rows below and after it together: Full, nothing changed.
+    assert!(matches!(c.reserve(2, 3840), Err(KvError::Full { .. })));
+    assert_eq!((c.run_start(2), c.reserved(2)), (Some(0), 3072));
 }
 
 #[test]

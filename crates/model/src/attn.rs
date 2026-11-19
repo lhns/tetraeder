@@ -444,8 +444,37 @@ fn valid_copies(kv: &Kv, copies: &[(usize, usize, usize)]) -> Result<Vec<(usize,
                 kv.n_rows
             )));
         }
+        if s < d + n && d < s + n {
+            return Err(ModelError::Invalid(format!(
+                "KV row copy {s}..{} to {d}..{} overlaps itself",
+                s + n,
+                d + n
+            )));
+        }
     }
     Ok(copies)
+}
+
+/// `copies` cut into consecutive groups whose rows are pairwise disjoint, so each group runs as
+/// one graph and the groups run in order: a slide of a run over itself (ADR 0067 history)
+/// writes, in a later copy, rows an earlier one read.
+fn disjoint_groups(copies: &[(usize, usize, usize)]) -> Vec<&[(usize, usize, usize)]> {
+    let meet = |a: usize, na: usize, b: usize, nb: usize| a < b + nb && b < a + na;
+    let clash = |&(s1, d1, n1): &(usize, usize, usize), &(s2, d2, n2): &(usize, usize, usize)| {
+        meet(d1, n1, s2, n2) || meet(s1, n1, d2, n2) || meet(d1, n1, d2, n2)
+    };
+    let mut groups = Vec::new();
+    let mut start = 0;
+    for (j, c) in copies.iter().enumerate() {
+        if copies[start..j].iter().any(|e| clash(e, c)) {
+            groups.push(&copies[start..j]);
+            start = j;
+        }
+    }
+    if start < copies.len() {
+        groups.push(&copies[start..]);
+    }
+    groups
 }
 
 /// `cpy` between views of the cache, every layer, K and V, in one graph of `ctx`.
@@ -469,23 +498,23 @@ fn copy_graph<'a>(
     g
 }
 
-/// Copies KV rows on the device, every layer, K and V, in one graph of `cpy` between views.
-/// Each entry is `(src_row, dst_row, n_rows)`. The row ranges must be disjoint: no destination
-/// overlaps any source or other destination. Used by C4 and C5 for `seq_cp` and chunked moves.
+/// Copies KV rows on the device, every layer, K and V, with `cpy` between views. Each entry is
+/// `(src_row, dst_row, n_rows)`; its source and destination must not overlap. Entries apply in
+/// order: those whose rows are disjoint share one graph, and an entry touching rows of an
+/// earlier one waits for it in a later graph. Used by C4 and C5 for `seq_cp` and chunked moves.
 pub(crate) fn copy_rows(
     kv: &Kv,
     sched: &mut Sched,
     copies: &[(usize, usize, usize)],
 ) -> Result<()> {
     let copies = valid_copies(kv, copies)?;
-    if copies.is_empty() {
-        return Ok(());
+    for group in disjoint_groups(&copies) {
+        let nodes = group.len() * kv.k.len() * 2;
+        let ctx = Context::new(4 * nodes + 8, 4 * nodes + 8)?;
+        let g = copy_graph(&ctx, kv, group, nodes);
+        sched.alloc_graph(&g)?;
+        sched.compute(&g)?;
     }
-    let nodes = copies.len() * kv.k.len() * 2;
-    let ctx = Context::new(4 * nodes + 8, 4 * nodes + 8)?;
-    let g = copy_graph(&ctx, kv, &copies, nodes);
-    sched.alloc_graph(&g)?;
-    sched.compute(&g)?;
     Ok(())
 }
 
@@ -497,14 +526,13 @@ pub(crate) fn copy_rows_on(
     copies: &[(usize, usize, usize)],
 ) -> Result<()> {
     let copies = valid_copies(kv, copies)?;
-    if copies.is_empty() {
-        return Ok(());
+    for group in disjoint_groups(&copies) {
+        let nodes = group.len() * kv.k.len() * 2;
+        let ctx = Context::new(4 * nodes + 8, 4 * nodes + 8)?;
+        let g = copy_graph(&ctx, kv, group, nodes);
+        backend.compute_async(&g)?;
+        backend.synchronize();
     }
-    let nodes = copies.len() * kv.k.len() * 2;
-    let ctx = Context::new(4 * nodes + 8, 4 * nodes + 8)?;
-    let g = copy_graph(&ctx, kv, &copies, nodes);
-    backend.compute_async(&g)?;
-    backend.synchronize();
     Ok(())
 }
 
@@ -601,5 +629,31 @@ mod tests {
             assert_eq!(after, want, "on tensor {ti}");
         }
         assert!(copy_rows_on(&kv, &backend, &[(30, 0, 5)]).is_err());
+
+        // A slide of rows 8..29 down to 0 in chunks of 8: each chunk reads rows the one before it
+        // wrote over, so the result is the copies applied one after another.
+        let slide = [(8, 0, 8), (16, 8, 8), (24, 16, 5)];
+        for on_rank in [false, true] {
+            for (t, b) in kv.k.iter().chain(&kv.v).zip(&before) {
+                t.get().set_bytes(b, 0).unwrap();
+            }
+            if on_rank {
+                copy_rows_on(&kv, &backend, &slide).unwrap();
+            } else {
+                copy_rows(&kv, &mut sched, &slide).unwrap();
+            }
+            for (ti, t) in kv.k.iter().chain(&kv.v).enumerate() {
+                let after = t.get().get_bytes(0, 32 * row).unwrap();
+                let mut want = before[ti].clone();
+                want[..21 * row].copy_from_slice(&before[ti][8 * row..29 * row]);
+                assert_eq!(after, want, "slide, on rank {on_rank}, tensor {ti}");
+            }
+        }
+        assert!(
+            copy_rows(&kv, &mut sched, &[(0, 4, 8)]).is_err(),
+            "a copy over itself"
+        );
+        assert_eq!(disjoint_groups(&slide).len(), 3);
+        assert_eq!(disjoint_groups(&copies).len(), 1);
     }
 }

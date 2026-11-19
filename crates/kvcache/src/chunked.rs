@@ -95,23 +95,51 @@ impl Layout for Chunked {
         // Else move to a free run of the needed size plus GROW, or of the needed size alone when
         // no gap holds the extra. The old run stays occupied while the destination is chosen, so
         // source and destination never overlap.
-        let (start, size) = match self.first_fit(need + GROW) {
-            Some(start) => (start, need + GROW),
-            None => (
-                self.first_fit(need).ok_or(KvError::Full {
-                    needed: need,
-                    free: self.free(),
-                })?,
-                need,
-            ),
+        if let Some((start, size)) = self
+            .first_fit(need + GROW)
+            .map(|s| (s, need + GROW))
+            .or_else(|| self.first_fit(need).map(|s| (s, need)))
+        {
+            self.runs.remove(i);
+            self.insert(Run { seq, start, size });
+            return Ok(vec![RowCopy {
+                src: run.start,
+                dst: start,
+                n: run.size,
+            }]);
+        }
+        // Else slide the run down over itself into the free rows below it, when they and the rows
+        // after it hold the need: the copies go in chunks no longer than the slide, in position
+        // order, so each chunk reads rows no earlier chunk has written. Without this a lone
+        // sequence was saved to RAM and restored to grow (ADR 0067 history, ADR 0074).
+        let lo = if i == 0 {
+            0
+        } else {
+            self.runs[i - 1].start + self.runs[i - 1].size
         };
-        self.runs.remove(i);
-        self.insert(Run { seq, start, size });
-        Ok(vec![RowCopy {
-            src: run.start,
-            dst: start,
-            n: run.size,
-        }])
+        if lo < run.start && next - lo >= need {
+            let size = if next - lo >= need + GROW {
+                need + GROW
+            } else {
+                need
+            };
+            let d = run.start - lo;
+            let copies = (0..run.size)
+                .step_by(d)
+                .map(|off| RowCopy {
+                    src: run.start + off,
+                    dst: lo + off,
+                    n: d.min(run.size - off),
+                })
+                .collect();
+            self.runs[i].start = lo;
+            self.runs[i].size = size;
+            return Ok(copies);
+        }
+        Err(KvError::Full {
+            needed: need,
+            free: self.free(),
+        })
     }
 
     fn shrink(&mut self, seq: SeqId, keep: usize) {

@@ -62,3 +62,19 @@ r2:
 ## Reading
 
 The save share is now within the bar and the miss prefill matches llama-server. What remains is the tail: a few requests whose TTFT is far above their place_ms plus a small prefill, e.g. #39 (new 559 tokens, restore 0.45 s, TTFT 8.89 s in r2 vs 1.69 s in r1) and #24 (a 1.2 to 4.2 s save of a plain live hit, not skipped), and queueing (sum queued_ms 3.2 s r1, 16.6 s r2, up to 2 s on #102). r2 is slower than r1 on the same code, so the p90 is also noisy on this host. Cause of the #39 and #24 outliers is not diagnosed here.
+
+## Diagnosis (2026-11-19, from the admit lines; no new run)
+
+The replay sends one request at a time, and no request queues behind another: every nonzero `queued_ms` (#39, #42, #102, the only ones above 1 ms) belongs to a request whose first placement attempt put it back in the queue. The admit line timed only the last attempt, so the first attempt's saves showed as queueing. Saves are counted by the pool counters (`pool_spare` plus `pool_fallback` rise by one per save). The pool is 40960 rows, one run per sequence (ADR 0067), and two conversations of about 20k tokens each are resident from #16 on.
+
+| # | what happened | evidence |
+|---|---|---|
+| 24 | Not its own save: its cut is 446 tokens, under the 512 minimum, hence no skip reason. Admission reserved prompt + 1024 rows; seq 1's run could not grow that far (seq 0's run before it, the pool end after it), so the other conversation (seq 0, about 21.6k positions) was evicted and saved: 1217 / 4172 ms. The prompt alone fit. | pool counter +1, `save_ms` = `place_ms`, `queued_ms` 0.1 |
+| 53 | Same: `own_output` is seq 0's cut, skipped; the save is the eviction of seq 1 (the conversation of #45 to #52, about 15.5k positions) for the stretch: 1532 / 2119 ms, through a fallback buffer (`pool_fallback` +1). | as #24 |
+| 39 | Seq 0's run sat behind seq 1's and could not grow past the pool end. Admission evicted seq 1 (save), still could not grow seq 0 where it lay, freed seq 0 itself (second save) and placed the request again from RAM (restore 413 / 445 ms). Both saves are in `queued_ms`: 732 ms in r1, 7934 ms in r2. Prefill of 559 tokens is the rest. | `pool_spare` +2, `queued_ms` with no request ahead, `source=ram` with the idle sequence's own prefix |
+| 42, 102 | A new conversation went to the free slot (copy of 7169 / 491 tokens from the idle sequence), but the free slot's run fit only if that idle sequence was evicted: it was saved, the copy then failed (`cannot copy a busy sequence: unknown sequence 0` / `1`, the WARN lines just before them), and the request was placed again, restoring what had just been saved. Save in `queued_ms` (391 / 2747 ms for #42, 2034 / 5892 ms for #102), restore 402 to 634 ms. Reusing the idle sequence in place costs the save only. | WARN before each, pool counter +1, `source=ram` |
+| 61 (TPOT) | One save during its decode (pool counter +1 at #62): the run grew into the other conversation and evicted it. Not on the TTFT path. | |
+
+Why r2 is slower than r1 on the same requests: the same saves took 1.4 to 3.4x longer (#24 1217 vs 4172 ms, #39 732 vs 7934 ms for two saves, #102 2034 vs 5892 ms); restores and prefill did not change. Not explained by these logs. The rest of r2's p90 follows from those saves.
+
+All the outlier saves above were avoidable on the admission path; the fixes and their rules are in ADR 0074 (2026-11-19 section, after ttft4), on branch `track-ttft-outliers`. A GPU re-run of this replay judges them.

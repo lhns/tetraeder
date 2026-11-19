@@ -18,7 +18,8 @@ pub const ROW_ALIGN: usize = 256;
 /// F16 bits of minus infinity: the mask value of a row a token must not read.
 pub const F16_NEG_INF: u16 = 0xFC00;
 
-/// `n` rows starting at `src` are copied to `dst` (ranges never overlap).
+/// `n` rows starting at `src` are copied to `dst`. The two ranges of one copy never overlap; a
+/// list of copies runs in order, and a later copy may write rows an earlier one read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RowCopy {
     pub src: usize,
@@ -44,9 +45,9 @@ pub trait Layout: Send {
     /// Rows not reserved by any sequence.
     fn free(&self) -> usize;
     fn reserved(&self, seq: SeqId) -> usize;
-    /// Rows for positions 0..n of `seq`; returns moves to apply before the next step. A move
-    /// copies the old rows of the sequence, position 0 first, to its new rows (the pool trims
-    /// it to the positions in use). `Full` changes nothing.
+    /// Rows for positions 0..n of `seq`; returns moves to apply, in order, before the next step.
+    /// A move copies the old rows of the sequence, in position order from position 0, to its
+    /// new rows (the pool trims it to the positions in use). `Full` changes nothing.
     fn reserve(&mut self, seq: SeqId, n: usize) -> Result<Vec<RowCopy>, KvError>;
     /// Releases what positions 0..keep do not need, in ROW_ALIGN units; 0 frees the sequence.
     fn shrink(&mut self, seq: SeqId, keep: usize);

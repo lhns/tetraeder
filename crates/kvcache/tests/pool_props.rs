@@ -52,6 +52,10 @@ struct Sim {
 impl Sim {
     fn apply(&mut self, copies: &[RowCopy]) {
         for c in copies {
+            assert!(
+                c.src + c.n <= c.dst || c.dst + c.n <= c.src,
+                "a copy overlaps itself: {c:?}"
+            );
             let src: Vec<u64> = self.store[c.src..c.src + c.n].to_vec();
             self.store[c.dst..c.dst + c.n].copy_from_slice(&src);
         }
@@ -281,8 +285,9 @@ proptest! {
     }
 }
 
-/// Whether `n` rows can be had for `seq` in `pool`: in place, or in a free gap of `n` rows with
-/// the sequence's own run still occupied (a move copies from it).
+/// Whether `n` rows can be had for `seq` in `pool`: in place, in a free gap of `n` rows with
+/// the sequence's own run still occupied (a move copies from it), or by sliding the run down
+/// into the free rows right below it.
 fn chunked_has_room(pool: &KvPool, seq: SeqId, n: usize) -> bool {
     let mut runs: Vec<(usize, usize, SeqId)> = (0..5u32)
         .filter(|&s| pool.reserved(s) > 0)
@@ -296,7 +301,7 @@ fn chunked_has_room(pool: &KvPool, seq: SeqId, n: usize) -> bool {
         }
         if s == seq {
             let next = runs.get(i + 1).map_or(pool.capacity(), |r| r.0);
-            if start + n <= next {
+            if cursor + n <= next {
                 return true;
             }
         }
@@ -309,7 +314,8 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
     /// A sequence that has to move succeeds whenever a free gap of the rounded need exists, even
-    /// when the gap is smaller than need + GROW (the extra rows are a courtesy, not a demand).
+    /// when the gap is smaller than need + GROW (the extra rows are a courtesy, not a demand), or
+    /// its run can slide down into the free rows below it.
     #[test]
     fn chunked_reserve_succeeds_whenever_a_gap_fits(
         capacity in prop::sample::select(vec![2048usize, 3072, 4096, 6144]),
