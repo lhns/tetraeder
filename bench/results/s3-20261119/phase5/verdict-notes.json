@@ -1,0 +1,10 @@
+{
+  "unclean_runs": [
+    {
+      "run": "qwen3-30b-a3b-single-aa",
+      "reasons": [
+        "qwen3-30b-a3b-single-aa: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    }
+  ]
+}
