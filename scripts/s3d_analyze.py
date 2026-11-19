@@ -13,6 +13,7 @@ import csv
 import glob
 import json
 import os
+import re
 import statistics
 import sys
 
@@ -86,7 +87,61 @@ def clocks(path):
     return out
 
 
+def transports(path):
+    """Lines of an NCCL_DEBUG log that name a transport per channel ("... via P2P/CUMEM"), and a count per transport."""
+    lines, kinds = [], collections.Counter()
+    with open(path, errors="replace") as f:
+        for ln in f:
+            m = re.search(r" via (\S+)", ln)
+            if m:
+                lines.append(ln.rstrip())
+                kinds[m.group(1)] += 1
+    return lines, kinds
+
+
+def pp_ts(path):
+    """Median pp tok/s of a bench json (entries with a prompt and no generation)."""
+    with open(path) as f:
+        rows = json.load(f)
+    ts = [x for r in rows if r.get("n_prompt", 0) > 0 and r.get("n_gen", 0) == 0 for x in r.get("samples_ts") or [r["avg_ts"]]]
+    return statistics.median(ts) if ts else None
+
+
+def ratios(d):
+    """{(model, variant): {mb: tok/s}} from <model>-tp2pp2-mb<N>-pp-<variant>.json; variant plain is the default run."""
+    out = collections.defaultdict(dict)
+    for p in glob.glob(os.path.join(d, "*-tp2pp2-mb*-pp-*.json")):
+        m = re.match(r"(.+)-tp2pp2-mb(\d+)-pp-(.+)\.json$", os.path.basename(p))
+        if not m or os.path.exists(p[:-5] + ".rc") and open(p[:-5] + ".rc").read().strip() != "0":
+            continue
+        try:
+            v = pp_ts(p)
+        except (ValueError, KeyError, OSError):
+            continue
+        if v:
+            out[(m.group(1), m.group(3))][int(m.group(2))] = v
+    return out
+
+
 def main(d):
+    for p in sorted(glob.glob(os.path.join(d, "*.nccl.log")) or glob.glob(os.path.join(d, "*-nccldebug.log"))):
+        lines, kinds = transports(p)
+        print(f"\n{os.path.basename(p)}: {len(lines)} transport lines, per transport {dict(kinds)}")
+        for ln in lines:
+            print("  " + ln)
+    lib = os.path.join(d, "env", "nccl-lib.txt")
+    if os.path.exists(lib):
+        print("\nenv/nccl-lib.txt")
+        print("".join("  " + ln for ln in open(lib, errors="replace")))
+    rt = ratios(d)
+    if rt:
+        print("\npp tok/s mb4 / mb1 per variant (plain = default, internal = GGML_CUDA_ALLREDUCE=internal)")
+        for (model, variant), v in sorted(rt.items()):
+            if 1 in v and 4 in v:
+                print(f"  {model:15} {variant:16} mb4 {v[4]:9.1f}  mb1 {v[1]:9.1f}  ratio {v[4] / v[1]:.3f}")
+        for (model, variant), v in sorted(rt.items()):
+            if 1 not in v:
+                print(f"  {model:15} {variant:16} mb4 {v[4]:9.1f}  (mb4 only)")
     for p in sorted(glob.glob(os.path.join(d, "*.trace.jsonl"))):
         r = report(p)
         if r:

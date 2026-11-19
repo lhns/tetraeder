@@ -3,6 +3,10 @@
 #   SESSION=s3d-20261119 bash scripts/s3d_diag_box.sh        (taxameter run --env SESSION=<s>)
 # Part A (tp2-pp2 prefill overlap): per model, pp2048 with prefill_micro_batches 4 and 1: untraced, host trace
 #   (TETRAEDER_EXEC_TRACE), sync trace (+ TETRAEDER_EXEC_TRACE_SYNC=1, device time per op).
+#   Then the tp2-pp2 overlap probes (s3c README, "Diagnosis of the misses"), after the runs above, both models:
+#   -pp-nccldebug (mb4, NCCL_DEBUG=INFO, subsys INIT,P2P,SHM,NET, untraced; log in <name>.nccl.log) and the libnccl the
+#   binary loads (env/nccl-lib.txt, at the start of part A); -pp-internal-plain/-trace (GGML_CUDA_ALLREDUCE=internal,
+#   mb4 and mb1); -pp-launchparallel (NCCL_LAUNCH_MODE=PARALLEL, mb4, untraced).
 # Part B (decode excess): tg128 of single and layer-4 (decode toggles at their defaults, on) with trace, sync trace and
 #   nvidia-smi clocks every 20 ms beside each run; on the 30B also ep-4 tg128 untraced, traced and synced (the ep-4
 #   decode residual, ADR 0080 History); llama.cpp -sm layer and -sm none with the same clock log; 30B first, the 32B as
@@ -10,7 +14,7 @@
 # Stages: gpus (count and power gate), build, models, plans (hw, layout, candidates), A, B.
 # Results: bench/results/<s>/ (<name>.json|.log|.rc, <name>.trace.jsonl, <name>.clocks.csv, gpu-samples.csv at 1 Hz, env.txt),
 # ends with S3D_DIAG_DONE in runs/vast/s3d_diag.log and the DONE file. A rerun skips runs whose .rc exists.
-# Knobs: BUDGET_MIN (50, measured from the start; runs that would start later are skipped), MODELS, PARTS ("A B"),
+# Knobs: BUDGET_MIN (65, measured from the start; runs that would start later are skipped), MODELS, PARTS ("A B"),
 # DRY_RUN=1 (print the commands only), OUT_DIR.
 DRY="${DRY_RUN:-0}"
 if [ "$DRY" != 1 ]; then
@@ -53,7 +57,7 @@ declare -A ENGINE=([qwen3-32b]=dense [qwen3-30b-a3b]=moe)
 models="${MODELS:-qwen3-30b-a3b qwen3-32b}"
 parts="${PARTS:-A B}"
 t_start=$(date +%s)
-budget_s=$((${BUDGET_MIN:-50} * 60))
+budget_s=$((${BUDGET_MIN:-65} * 60))
 clock_pid=""
 
 finish() {
@@ -156,9 +160,12 @@ run_cmd() {
   say "$name done rc=$rc"
 }
 
-# tet_run NAME CLOCKS PLAN P N MODE MODEL: our engine; MODE plain|trace|sync (trace = host time, sync = device time per op)
+# tet_run NAME CLOCKS PLAN P N MODE MODEL [K=V...]: our engine; MODE plain|trace|sync (trace = host time, sync = device
+# time per op); extra K=V arguments are set in the run's environment
 tet_run() {
   local name=$1 clocks=$2 plan=$3 p=$4 n=$5 mode=$6 m=$7 envs=() r=2
+  shift 7
+  envs+=("$@")
   case $mode in
     trace | sync) envs+=("TETRAEDER_EXEC_TRACE=$out/$name.trace.jsonl") ;;
   esac
@@ -170,14 +177,72 @@ tet_run() {
 
 has() { case " $parts " in *" $1 "*) return 0 ;; esac; return 1; }
 
+# nccl_lib: which libnccl the binary loads (ldd, then a short run under LD_DEBUG=libs with /proc/<pid>/maps polled)
+nccl_lib() {
+  local f="$out/env/nccl-lib.txt" m=${models%% *} pid i
+  mkdir -p "$out/env"
+  [ -s "$f" ] && return 0
+  if [ "$DRY" = 1 ]; then
+    echo "PLAN nccl-lib: ldd $tet, LD_DEBUG=libs short run, /proc/<pid>/maps > env/nccl-lib.txt"
+    return 0
+  fi
+  if [ $(($(date +%s) - t_start)) -gt "$budget_s" ]; then say "BUDGET spent: skip nccl-lib"; return 0; fi
+  {
+    echo "== ldd $tet"
+    ldd "$tet" 2>&1 | grep -i nccl
+    echo "== ldconfig -p"
+    ldconfig -p 2> /dev/null | grep -i nccl
+    echo "== libnccl files"
+    find /usr /opt /root -name 'libnccl*' 2> /dev/null | head -20
+    echo "== pip"
+    pip list 2> /dev/null | grep -i nccl
+    echo "== env LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} LD_PRELOAD=${LD_PRELOAD:-}"
+  } > "$f" 2>&1
+  LD_DEBUG=libs timeout -k 10 120 "$tet" bench -m "${FILE[$m]}" --engine "${ENGINE[$m]}" \
+    --plan "$out/plans/$m-tp2-pp2-mb4.toml" -p 16 -n 0 -r 1 -t "$threads" --ngl -1 --ubatch 512 --flash-attn on -o json \
+    < /dev/null > /dev/null 2> "$out/env/ld-debug.log" 8>&- &
+  pid=$!
+  for i in $(seq 1 100); do
+    kill -0 "$pid" 2> /dev/null || break
+    grep -qi nccl "/proc/$pid/maps" 2> /dev/null && { sleep 2; break; }
+    sleep 1
+  done
+  {
+    echo "== /proc/$pid/maps"
+    grep -i nccl "/proc/$pid/maps" 2> /dev/null | awk '{print $6}' | sort -u
+    echo "== LD_DEBUG=libs"
+    grep -i nccl "$out/env/ld-debug.log" | head -20
+  } >> "$f" 2>&1
+  kill "$pid" 2> /dev/null
+  wait "$pid" 2> /dev/null
+  say "nccl-lib done"
+}
+
 if has A; then
   say "STAGE A"
+  nccl_lib
   for m in $models; do
     for mb in 4 1; do
       for mode in plain trace sync; do
         tet_run "$m-tp2pp2-mb$mb-pp-$mode" 0 "$out/plans/$m-tp2-pp2-mb$mb.toml" 2048 0 "$mode" "$m"
       done
     done
+  done
+  # overlap probes after every model's main runs; run_cmd skips each once the budget is spent
+  for m in $models; do
+    tet_run "$m-tp2pp2-mb4-pp-nccldebug" 0 "$out/plans/$m-tp2-pp2-mb4.toml" 2048 0 plain "$m" NCCL_DEBUG=INFO \
+      NCCL_DEBUG_SUBSYS=INIT,P2P,SHM,NET "NCCL_DEBUG_FILE=$out/$m-tp2pp2-mb4-pp-nccldebug.nccl.log"
+  done
+  for m in $models; do
+    for mb in 4 1; do
+      for mode in plain trace; do
+        tet_run "$m-tp2pp2-mb$mb-pp-internal-$mode" 0 "$out/plans/$m-tp2-pp2-mb$mb.toml" 2048 0 "$mode" "$m" \
+          GGML_CUDA_ALLREDUCE=internal
+      done
+    done
+  done
+  for m in $models; do
+    tet_run "$m-tp2pp2-mb4-pp-launchparallel" 0 "$out/plans/$m-tp2-pp2-mb4.toml" 2048 0 plain "$m" NCCL_LAUNCH_MODE=PARALLEL
   done
 fi
 
