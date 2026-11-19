@@ -1,6 +1,6 @@
 # 0039. No AVX2 repack of the builder's CPU weights for now
 
-Status: Accepted (Phase 2). Revisit for CPU-only prefill (Phase 9 breadth) or if ggml's repack buffer becomes offloadable.
+Status: Accepted (Phase 2). Superseded for the own dense builder only by ADR 0072; the MoE builder stays on this ADR. Revisit for CPU-only prefill (Phase 9 breadth) or if ggml's repack buffer becomes offloadable.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
