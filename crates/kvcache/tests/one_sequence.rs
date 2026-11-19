@@ -348,10 +348,10 @@ fn recycled_mask_buffer_gives_the_same_plans() {
             let got = b.plan_step(&input).unwrap();
             assert_eq!(got, want, "{name}: seq {seq}, {n} tokens");
             let ptr = got.mask.as_ptr();
-            if let Some((p, cap)) = last_ptr {
-                if got.mask.len() <= cap {
-                    assert_eq!(ptr, p, "{name}: buffer reused");
-                }
+            if let Some((p, cap)) = last_ptr
+                && got.mask.len() <= cap
+            {
+                assert_eq!(ptr, p, "{name}: buffer reused");
             }
             last_ptr = Some((ptr, got.mask.capacity()));
             a.commit(&input);

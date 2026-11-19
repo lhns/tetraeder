@@ -1009,7 +1009,9 @@ impl Qwen3 {
             let ms = |d: std::time::Duration| (d.as_secs_f64() * 1e5).round() / 100.0;
             let p = &plans[0];
             let mask_elems: usize = plans.iter().map(|p| p.mask.len()).sum();
-            let faults = faults0.zip(thread_minor_faults()).map(|(a, b)| b - a);
+            let faults = faults0
+                .zip(thread_minor_faults())
+                .map(|(a, b)| b.saturating_sub(a));
             tracing::info!(
                 target: "tetraeder::trace",
                 n_tokens = n,
