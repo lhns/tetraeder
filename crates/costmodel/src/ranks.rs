@@ -114,6 +114,8 @@ fn prefill_collective_bytes_scale_with_the_ubatch_and_c_range_follows_the_mode()
         c_range_eager_s: 5e-5,
         c_step_s: 1e-3,
         allreduce_latency_share: 1.0,
+        allreduce_latency_s: None,
+        allreduce_step_s: None,
     });
     let mut f = two_phase();
     let a = predict(&hw, &f, 1024, 8).unwrap();
@@ -318,6 +320,57 @@ fn the_allreduce_pays_its_latency_share_and_keeps_its_bytes() {
         tg,
         3.0 * (allreduce_time(2, 1e-5, 1e10, 1000.0) - 0.5 * 2.0 * 1e-5),
     );
+}
+
+/// ADR 0078: with a fitted latency `a` (and step latency `b`) an all-reduce over `p` ranks in a
+/// step costs the curve's byte part plus `a + 2 (p - 1) b`, whatever the probe's zero-byte time
+/// of that group was; the share is then not used. Without `b` every group pays `a`.
+#[test]
+fn the_allreduce_pays_its_in_step_latency_and_keeps_its_bytes() {
+    let ids = |n: usize| (0..n).map(|i| format!("gpu{i}")).collect::<Vec<_>>();
+    let mut hw = graph();
+    hw.collectives = vec![
+        CollectiveCurve {
+            op: CollectiveOp::AllReduce,
+            ranks: ids(2),
+            comm: "nccl".into(),
+            points: vec![(4096.0, 4e-5), (1e6, 2e-4)],
+        },
+        CollectiveCurve {
+            op: CollectiveOp::AllReduce,
+            ranks: ids(4),
+            comm: "nccl".into(),
+            points: vec![(4096.0, 3e-5), (1e6, 3e-4)],
+        },
+    ];
+    let t = |hw: &HardwareGraph, p: usize, m: f64| {
+        let c = Coll::AllReduce {
+            group: ids(p),
+            bytes_per_token: 1000.0,
+        };
+        crate::predict::coll_time(hw, &c, m).unwrap().1
+    };
+    let bytes = |a: f64, b: f64| a + (b - a) * (512e3 - 4096.0) / (1e6 - 4096.0);
+    // `a` alone: below the first point only the latency is left, the same on two and four ranks
+    hw.range_costs = Some(RangeCosts {
+        allreduce_latency_share: 0.25,
+        allreduce_latency_s: Some(1.2e-5),
+        ..RangeCosts::PRIOR
+    });
+    close(t(&hw, 2, 1.0), 1.2e-5);
+    close(t(&hw, 4, 1.0), 1.2e-5);
+    // the byte part stays as measured
+    close(t(&hw, 4, 512.0), bytes(3e-5, 3e-4) - 3e-5 + 1.2e-5);
+    // with `b`: 2 ring steps on two ranks, 6 on four
+    hw.range_costs = Some(RangeCosts {
+        allreduce_latency_share: 0.25,
+        allreduce_latency_s: Some(1.2e-5),
+        allreduce_step_s: Some(1e-6),
+        ..RangeCosts::PRIOR
+    });
+    close(t(&hw, 2, 1.0), 1.2e-5 + 2e-6);
+    close(t(&hw, 4, 1.0), 1.2e-5 + 6e-6);
+    close(t(&hw, 2, 512.0), bytes(4e-5, 2e-4) - 4e-5 + 1.4e-5);
 }
 
 /// A `layer-2` plan: two equal one-rank stages and a hop of `n_embd x 4` bytes per token.

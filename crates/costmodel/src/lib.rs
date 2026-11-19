@@ -23,7 +23,11 @@ pub mod sim;
 /// 2 (ADR 0070, 2026-11-18): the ranks path prices expert matmuls at their own rate, the head on
 /// output rows, every expert at prefill, one roofline per op class and the all-reduce's in-step
 /// latency share; `single` takes the ranks path. Runs without ranks are unchanged.
-pub const MODEL_VERSION: u32 = 2;
+/// 3 (ADR 0078): a fit prices an all-reduce in a step at the curve's byte part plus a fitted
+/// in-step latency `a + 2 (p - 1) b` (`b` only with two anchored group sizes) instead of a share
+/// of the probe's zero-byte time. Graphs fitted before (no `allreduce_latency_s`) predict as in
+/// version 2.
+pub const MODEL_VERSION: u32 = 3;
 
 use tetraeder_profiler::Device;
 

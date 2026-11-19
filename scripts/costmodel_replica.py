@@ -13,11 +13,14 @@
 Version 1 matches the session's `predict-*.json` to the printed digit (tests/test_costmodel_replica.py). Version 2 is
 MODEL_VERSION 2 (ADR 0070, History 2026-11-18): expert matmuls at their own rate, the head (and the dense builder's
 last FFN) on output rows, every expert read at prefill, a roofline per op class, `single` on the ranks path, and an
-all-reduce in a step paying the fitted share of the probe's zero-byte time. Rust `predict` reproduces version 2 on the
-graphs this script writes (`crates/planner/tests/costmodel_v2.rs`). The fit is the same Levenberg-Marquardt and
-coordinate search as `calib.rs`, not bit-identical to it. It does not model pipelined prefill (ADR 0077, M > 1). Input files (ADR 0068 names): hw.json, calib-comm.json,
-calib.json, layouts/<model>.json, candidates-<model>.json, anchors-<model>-r<k>.json, bench-<model>-<id>-r<k>.json.
-Standard library only.
+all-reduce in a step paying the fitted share of the probe's zero-byte time. Version 3 (the default) is MODEL_VERSION 3
+(ADR 0078): the all-reduce in a step pays the curve's byte part plus a fitted in-step latency a + 2 (p - 1) b over p
+ranks, b only when the anchors' all-reduces span two group sizes. Pipelined prefill (ADR 0077) is priced as `predict_ranks` does; version 2 on a session's own calib.json
+gives its predict-*.json bit for bit (S2g, S3, S3b). Rust `predict` reproduces version 2 on the graphs this script
+writes (`crates/planner/tests/costmodel_v2.rs`). The fit is the same Levenberg-Marquardt and coordinate search as
+`calib.rs`, not bit-identical to it. Input files (ADR 0068 names): hw.json, calib-comm.json, calib.json,
+layouts/<model>.json, candidates-<model>.json, anchors-<model>-r<k>.json, bench-<model>-<id>-r<k>.json, and on a
+4-GPU box plans-anchor/candidates-<model>.json (the anchors' plans). Standard library only.
 """
 
 from __future__ import annotations
@@ -37,6 +40,8 @@ OPS_ATTN, OPS_FFN, OPS_EXPERT, OPS_OUTPUT = 14.0, 10.0, 10.0, 4.0
 OPS_DENSE_LAYER, OPS_EXPERT_LAYER = 24.0, 10.0
 EP_SEED, EP_STEPS = 20_261_115, 1000
 RANGE_PRIOR = {"c_range_graph_s": 3.0e-5, "c_range_eager_s": 1.0e-5, "c_step_s": 2.0e-4, "allreduce_latency_share": 1.0}
+# calib.rs priors of the all-reduce's in-step latency a and its latency per ring step b (version 3, ADR 0078)
+ALLREDUCE_LATENCY_PRIOR_S, ALLREDUCE_STEP_PRIOR_S = 1.2e-5, 1e-6
 FORMATS = {"F32": (1, 4), "F16": (1, 2), "BF16": (1, 2), "Q8_0": (32, 34), "Q6_K": (256, 210), "Q5_K": (256, 176),
            "Q4_K": (256, 144), "Q4_0": (32, 18)}
 M64 = (1 << 64) - 1
@@ -238,8 +243,6 @@ def features(layout: dict, plan: dict, lim: int | None, version: int) -> dict:
     n_layer = layout["n_layer"]
     lim = min(lim or n_layer, n_layer)
     st_all = stages_of(plan)
-    if len(st_all) > 1 and plan.get("knobs", {}).get("prefill_micro_batches", 1) > 1:
-        raise NotImplementedError("pipelined prefill (ADR 0077, prefill_micro_batches > 1) is in Rust only")
     if (version == 1 or "single_ranks" in DROP) and len(st_all) == 1 and st_all[0][2] == 1:
         return features_single_v1(layout, lim, st_all[0][1][0])
     b = bpp(layout)
@@ -326,7 +329,8 @@ def features(layout: dict, plan: dict, lim: int | None, version: int) -> dict:
         elif hop:
             phases.append({"repeat": 1, "parts": [part(x, 0.0, 0.0, 0.0, 0.0, b) for x in devs], "pre": None,
                            "ranges": 0, "after": hop})
-    return {"phases": phases}
+    micro = max(plan.get("knobs", {}).get("prefill_micro_batches", 1), 1) if len(st_all) > 1 else 1
+    return {"phases": phases, "micro": micro}
 
 
 def ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep):
@@ -430,7 +434,12 @@ def coll_time(hw: dict, c: dict, m: float, version: int) -> tuple[str, float]:
             p = len(c["ar"])
             steps = 2.0 * (p - 1)
             t = steps * alpha + steps / p * n / beta
-        if version >= 2:
+        lat = range_costs(hw).get("allreduce_latency_s")
+        if version >= 2 and lat is not None and "ar_share" not in DROP:
+            # Version 3: the byte part as measured plus the fitted in-step latency a + 2 (p - 1) b.
+            b = range_costs(hw).get("allreduce_step_s") or 0.0
+            t = max(t - ar_latency(hw, c["ar"]), 0.0) + lat + 2.0 * (len(c["ar"]) - 1) * b
+        elif version >= 2:
             # The probe syncs every rank around each call; in a step only the share `s` of its small-message
             # time is paid, the byte-proportional part (the BF16 switch included) stays as measured.
             s = range_costs(hw)["allreduce_latency_share"]
@@ -467,6 +476,25 @@ def predict_single_v1(hw: dict, p: dict, prompt: int, gen: int) -> dict:
     return {"pp": prompt / t_pp, "tg": 1.0 / t_tok, "t": t_pp + gen * t_tok, "tg_bd": [], "pp_bd": []}
 
 
+def micro_batch_sizes(n: int, m: int) -> list:
+    """`plan::micro_batch_sizes`: `min(m, n)` chunks, sizes differ by at most one, the first ones larger."""
+    k = max(min(n, max(m, 1)), 1)
+    return [n // k + (1 if c < n % k else 0) for c in range(k)]
+
+
+def pipeline_stages(phases: list) -> list:
+    """`predict::pipeline_stages`: indices of the phases without output rows, cut after each per-token copy."""
+    out: list = [[]]
+    for i, ph in enumerate(phases):
+        if ph.get("out"):
+            continue
+        out[-1].append(i)
+        a = ph["after"]
+        if a and "copy" in a and not a["per_step"]:
+            out.append([])
+    return [s for s in out if s]
+
+
 def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version: int = 2, ubatch: int = 512) -> dict:
     if "single_v1" in feats:
         return predict_single_v1(hw, feats["single_v1"], prompt, gen)
@@ -477,25 +505,28 @@ def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version
             if p["device"] not in rt_of:
                 rt_of[p["device"]] = rates(hw, p["device"])
 
+    def phase(ph, m, ctx, prefill, with_after, out):
+        # one output row per step (the bench and the judged request take the last row's logits)
+        out_rows = ph.get("out") and "head_rows" not in DROP
+        mm = 1.0 if (prefill and out_rows) else m
+        pre = ph["pre"] if "prefill_experts" not in DROP else None
+        parts = pre if (prefill and pre and not out_rows) else ph["parts"]
+        rep = float(ph["repeat"])
+        slow = ("", 0.0)
+        for p in parts:
+            t = part_time(p, rt_of[p["device"]], mm, ctx, version)
+            if t > slow[1] or slow[0] == "":
+                slow = (p["device"], t)
+        add(out, "compute:" + slow[0], rep * slow[1])
+        if ph["ranges"] > 0:
+            add(out, "ranges", rep * ph["ranges"] * rc["c_range_graph_s"])
+        if ph["after"] and with_after:
+            label, t = coll_time(hw, ph["after"], mm, version)
+            add(out, label, rep * t)
+
     def step(m, ctx, prefill, out):
         for ph in feats["phases"]:
-            # one output row per step (the bench and the judged request take the last row's logits)
-            out_rows = ph.get("out") and "head_rows" not in DROP
-            mm = 1.0 if (prefill and out_rows) else m
-            pre = ph["pre"] if "prefill_experts" not in DROP else None
-            parts = pre if (prefill and pre and not out_rows) else ph["parts"]
-            rep = float(ph["repeat"])
-            slow = ("", 0.0)
-            for p in parts:
-                t = part_time(p, rt_of[p["device"]], mm, ctx, version)
-                if t > slow[1] or slow[0] == "":
-                    slow = (p["device"], t)
-            add(out, "compute:" + slow[0], rep * slow[1])
-            if ph["ranges"] > 0:
-                add(out, "ranges", rep * ph["ranges"] * rc["c_range_graph_s"])
-            if ph["after"]:
-                label, t = coll_time(hw, ph["after"], mm, version)
-                add(out, label, rep * t)
+            phase(ph, m, ctx, prefill, True, out)
         add(out, "step", rc["c_step_s"])
 
     tg: list = []
@@ -503,6 +534,38 @@ def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version
     t_tok = total(tg)
     pp: list = []
     done = 0
+    stages = pipeline_stages(feats["phases"])
+    micro = feats.get("micro", 1)
+    if micro > 1 and len(stages) > 1:
+        # Pipelined prefill (ADR 0077), as `predict_ranks`: chunks of a `micro x ubatch` step in GPipe order, hops
+        # serialized per boundary; the output-row phases and `c_step` once per step.
+        n_st = len(stages)
+        while done < prompt:
+            n = min(ubatch * micro, prompt - done)
+            free, link = [0.0] * n_st, [0.0] * n_st
+            at = done
+            for c in micro_batch_sizes(n, micro):
+                m = float(c)
+                ctx = at + m / 2.0
+                arrive = 0.0
+                for s, st in enumerate(stages):
+                    terms: list = []
+                    last = st[-1]
+                    for i in st:
+                        hop = s + 1 < n_st and i == last
+                        phase(feats["phases"][i], m, ctx, True, not hop, terms)
+                    free[s] = max(arrive, free[s]) + total(terms)
+                    if s + 1 < n_st and feats["phases"][last]["after"]:
+                        link[s] = max(free[s], link[s]) + coll_time(hw, feats["phases"][last]["after"], m, version)[1]
+                        arrive = link[s]
+                at += c
+            add(pp, "pipeline", free[n_st - 1])
+            m = float(n)
+            for ph in feats["phases"]:
+                if ph.get("out"):
+                    phase(ph, m, done + m / 2.0, True, True, pp)
+            add(pp, "step", rc["c_step_s"])
+            done += n
     while done < prompt:
         m_tok = min(ubatch, prompt - done)
         m = float(m_tok)
@@ -558,8 +621,18 @@ class Problem:
         self.ar_at = None
         if version >= 2 and "ar_share" not in DROP and any("ar" in (ph["after"] or {}) for a in anchors for ph in a["f"].get("phases", [])):
             self.ar_at = len(self.x0)
-            self.x0.append(ln(range_costs(prior)["allreduce_latency_share"]))
-            self.lam.append(LAMBDA)
+            rc = range_costs(prior)
+            self.x0.append(ln(rc.get("allreduce_latency_s") or ALLREDUCE_LATENCY_PRIOR_S) if version >= 3
+                           else ln(rc["allreduce_latency_share"]))
+            # version 3: a fixed cost of a few percent of the step, pulled as weakly as the range costs
+            self.lam.append(LAMBDA_RANGES if version >= 3 else LAMBDA)
+        # b only when the anchors' all-reduces span two or more group sizes
+        sizes = {len(ph["after"]["ar"]) for a in anchors for ph in a["f"].get("phases", []) if "ar" in (ph["after"] or {})}
+        self.step_at = None
+        if version >= 3 and self.ar_at is not None and len(sizes) > 1:
+            self.step_at = len(self.x0)
+            self.x0.append(ln(range_costs(prior).get("allreduce_step_s") or ALLREDUCE_STEP_PRIOR_S))
+            self.lam.append(LAMBDA_RANGES)
 
     def apply(self, x: list) -> dict:
         hw = copy.deepcopy(self.prior)
@@ -583,9 +656,15 @@ class Problem:
                         "c_range_eager_s": val(rc["c_range_eager_s"], i + 1),
                         "c_step_s": val(rc["c_step_s"], i + 2)})
             changed = True
-        if self.ar_at is not None and moved(self.ar_at):
+        if self.ar_at is not None and (moved(self.ar_at) or self.version >= 3):
             new.update({k: rc[k] for k in ("c_range_graph_s", "c_range_eager_s", "c_step_s") if k not in new})
-            new["allreduce_latency_share"] = math.exp(x[self.ar_at])
+            if self.version >= 3:
+                new.setdefault("allreduce_latency_share", rc["allreduce_latency_share"])
+                new["allreduce_latency_s"] = math.exp(x[self.ar_at])
+                if self.step_at is not None:
+                    new["allreduce_step_s"] = math.exp(x[self.step_at])
+            else:
+                new["allreduce_latency_share"] = math.exp(x[self.ar_at])
             changed = True
         if changed:
             hw["range_costs"] = new
@@ -768,7 +847,9 @@ def session_anchors(d: Path, version: int) -> list:
     out = []
     for model in models(d):
         layout = load_json(d / "layouts" / f"{model}.json")
-        pl = plans(d, model)
+        # On a 4-GPU box the anchors (single, tp-2) are enumerated on two GPUs into plans-anchor/.
+        pl = plans(d / "plans-anchor", model) if (d / "plans-anchor" / f"candidates-{model}.json").exists() \
+            else plans(d, model)
         acc: dict = {}
         for f in sorted(d.glob(f"anchors-{model}-r*.json")):
             for r in rows(f):
@@ -816,7 +897,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir", type=Path)
     ap.add_argument("--eval", type=Path)
-    ap.add_argument("--version", type=int, default=2)
+    ap.add_argument("--version", type=int, default=3)
     ap.add_argument("--committed", action="store_true")
     ap.add_argument("--json", type=Path)
     ap.add_argument("--ar-form", choices=["offset", "scale"], default="offset")
@@ -839,7 +920,8 @@ def main() -> int:
           f"F_exp {(c.get('expert_flops_per_s') or c['flops_per_s']) / 1e12:.1f}, "
           f"B {g['bandwidth_bytes_per_s']['value'] / 1e9:.0f} GB/s, c0 {c['c0_graph_s'] * 1e6:.2f} us, "
           f"c_range {rc['c_range_graph_s'] * 1e6:.2f} us, c_step {rc['c_step_s'] * 1e6:.1f} us, "
-          f"ar_share {rc['allreduce_latency_share']:.3f}")
+          f"ar_share {rc['allreduce_latency_share']:.3f}, ar_latency {(rc.get('allreduce_latency_s') or 0) * 1e6:.2f} us, "
+          f"ar_step {(rc.get('allreduce_step_s') or 0) * 1e6:.2f} us")
     for k, v in resid:
         print(f"  anchor {k:<50} {v:+.3f}")
     meas = measured(ev)

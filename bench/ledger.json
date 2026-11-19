@@ -1,5 +1,5 @@
 {
-  "cost_model_version": 2,
+  "cost_model_version": 3,
   "sessions": [
     {
       "name": "20261103-744f1ba65ca1-planner",
@@ -53,7 +53,7 @@
       "measured_s": 11.248197661685033,
       "err": 0.02272126151366661,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -65,7 +65,7 @@
       "measured_s": 41.966248409224676,
       "err": 0.020037088570905318,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -77,7 +77,7 @@
       "measured_s": 14.847904712239796,
       "err": 0.18749270775400337,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -89,7 +89,7 @@
       "measured_s": 16.27065920458412,
       "err": 0.00011329271949966201,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -101,7 +101,7 @@
       "measured_s": 74.95297430413599,
       "err": 0.020788874170916172,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -113,7 +113,7 @@
       "measured_s": 14.233769745709983,
       "err": 0.13339315088585144,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -125,7 +125,7 @@
       "measured_s": 74.05318906400159,
       "err": 0.009167832728588973,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -137,7 +137,7 @@
       "measured_s": 23.419688274823315,
       "err": 0.20547103039178893,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -149,7 +149,7 @@
       "measured_s": 146.86338874672262,
       "err": 0.009843171022526178,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -161,7 +161,7 @@
       "measured_s": 21.98239782463878,
       "err": 0.2779183858587022,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -173,7 +173,7 @@
       "measured_s": 21.157583617196288,
       "err": 0.008551192410666196,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -185,7 +185,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -197,7 +197,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -209,7 +209,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -221,7 +221,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -233,7 +233,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -245,7 +245,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -257,7 +257,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -269,7 +269,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -281,7 +281,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -293,7 +293,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -305,7 +305,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -317,7 +317,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/partial-planner-dense",
@@ -329,7 +329,7 @@
       "measured_s": null,
       "err": null,
       "spread": 0.0,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -341,7 +341,7 @@
       "measured_s": 4.0763219125195755,
       "err": 0.07714036006718412,
       "spread": 0.1454662127109461,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -353,7 +353,7 @@
       "measured_s": 10.09459125662465,
       "err": 0.03419987037688802,
       "spread": 0.012231845295870016,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -365,7 +365,7 @@
       "measured_s": 5.312129121627223,
       "err": 0.002395434986482378,
       "spread": 0.025717076740186414,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -377,7 +377,7 @@
       "measured_s": 5.437510322347377,
       "err": 0.003871838195755593,
       "spread": 0.10122016574130126,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -389,7 +389,7 @@
       "measured_s": 13.23291411193949,
       "err": 0.0014964149040464442,
       "spread": 0.09929094340227936,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -401,7 +401,7 @@
       "measured_s": 3.1419509995480044,
       "err": 0.09787190226077622,
       "spread": 0.004184898901339255,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -413,7 +413,7 @@
       "measured_s": 12.775662452349692,
       "err": 0.03257622249022778,
       "spread": 0.023338683576648284,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -425,7 +425,7 @@
       "measured_s": 6.625473546003885,
       "err": 0.005718667279960313,
       "spread": 0.0027204796091941197,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -437,7 +437,7 @@
       "measured_s": 20.70388672058645,
       "err": 0.23106427992980175,
       "spread": 0.012462762846358213,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -449,7 +449,7 @@
       "measured_s": 4.894414984073515,
       "err": 0.05594698431784509,
       "spread": 0.0028856982204780173,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -461,7 +461,7 @@
       "measured_s": 7.027410822531943,
       "err": 0.0832834973691161,
       "spread": 0.0008632122876566905,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -473,7 +473,7 @@
       "measured_s": 16.468738065566424,
       "err": 0.02928813784505849,
       "spread": 0.0038108764879264535,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -485,7 +485,7 @@
       "measured_s": 4.473097662578456,
       "err": 0.09746812744784375,
       "spread": 0.025131922315045303,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -497,7 +497,7 @@
       "measured_s": 15.5346869298399,
       "err": 0.027581416464158307,
       "spread": 0.013787882993252986,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -509,7 +509,7 @@
       "measured_s": 7.67769509532491,
       "err": 0.025798104116345647,
       "spread": 0.010511146503838772,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -521,7 +521,7 @@
       "measured_s": 26.070561544988745,
       "err": 0.18955355601372323,
       "spread": 0.00008119278673690746,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -533,7 +533,7 @@
       "measured_s": 5.694516263873383,
       "err": 0.039297710815529074,
       "spread": 0.0023759021754317555,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -545,7 +545,7 @@
       "measured_s": 14.299093514166167,
       "err": 0.050430234471041974,
       "spread": 0.04970570690487853,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -557,7 +557,7 @@
       "measured_s": 37.41005604930894,
       "err": 0.05585866642165771,
       "spread": 0.01810794979653607,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -569,7 +569,7 @@
       "measured_s": 8.358187541803701,
       "err": 0.028979508338169424,
       "spread": 0.1029831117808413,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -581,7 +581,7 @@
       "measured_s": 34.458501496539085,
       "err": 0.023950284700062992,
       "spread": 0.05229555079039823,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -593,7 +593,7 @@
       "measured_s": 15.575589065711679,
       "err": 0.08142296494086981,
       "spread": 0.004952164837658472,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -605,7 +605,7 @@
       "measured_s": 59.047851218876,
       "err": 0.1778529800704634,
       "spread": 0.0006996061211175568,
-      "cost_model_version": 2
+      "cost_model_version": 3
     },
     {
       "path": "20261103/planner-moe",
@@ -617,7 +617,7 @@
       "measured_s": 10.877893363340204,
       "err": 0.04632246600440944,
       "spread": 0.0060942664778252465,
-      "cost_model_version": 2
+      "cost_model_version": 3
     }
   ],
   "accepted": []

@@ -83,6 +83,24 @@ fn predict_reproduces_the_replica_on_its_fitted_graphs() {
     }
 }
 
+/// MODEL_VERSION 3 (ADR 0078) on S3b's four-rank and pipelined candidates: `predict` gives the
+/// replica's numbers on the replica's version-3 graph (`--json`, committed beside the session).
+#[test]
+fn predict_reproduces_the_v3_replica_on_s3b() {
+    let p = repo().join("bench/results/s3b-20261119/costmodel-v3/fit-s3b.json");
+    if !p.is_file() {
+        eprintln!("skip: {} not committed", p.display());
+        return;
+    }
+    let v: serde_json::Value = serde_json::from_str(&read(&p)).unwrap();
+    assert_eq!(v["version"], 3);
+    let hw: HardwareGraph = serde_json::from_value(v["hw"].clone()).unwrap();
+    assert!(hw.range_costs_or_prior().allreduce_latency_s.is_some());
+    let eval = repo().join(v["eval"].as_str().unwrap());
+    let w = worst(&predictions(&hw, &eval), &v["rows"]);
+    assert!(w < 1e-9, "largest difference {w:e}");
+}
+
 /// The fit is the same algorithm in both, not the same bits: the predictions from Rust's fit
 /// agree with the replica's within 1%.
 #[test]
@@ -111,7 +129,7 @@ fn calibrate_lands_on_the_replica_fit() {
             })
             .collect();
         let fit = calibrate(&hw, &models).unwrap();
-        assert_eq!(fit.cost_model_version, 2);
+        assert_eq!(fit.cost_model_version, tetraeder_costmodel::MODEL_VERSION);
         let rc = fit.hw.range_costs_or_prior();
         eprintln!(
             "{name}: band {:.3}, c_step {:e}, c_range {:e}, all-reduce latency share {:.3}",

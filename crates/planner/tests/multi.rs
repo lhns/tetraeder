@@ -208,7 +208,9 @@ fn tensor_parallel_beats_one_gpu_only_when_collectives_are_cheap() {
 }
 
 /// The anchor plumbing end to end: rows generated from known `c_range` and `c_step` on the 2x
-/// fixture are read back by `calibrate`.
+/// fixture are read back by `calibrate`. The anchors fix the fixed cost of a tp phase (one range
+/// and one all-reduce), `c_range + a`, not its split (ADR 0078); `c_step` shares the single's one
+/// range with `c_range`, hence the wider tolerance.
 #[test]
 fn calibrate_recovers_c_range_and_c_step_from_anchor_rows() {
     let prior = hw(TWO);
@@ -217,6 +219,8 @@ fn calibrate_recovers_c_range_and_c_step_from_anchor_rows() {
         c_range_graph_s: 1e-4,
         c_range_eager_s: 4e-5,
         c_step_s: 8e-4,
+        // at the fit's prior (ADR 0078): c_range and the all-reduce latency share one range
+        allreduce_latency_s: Some(1.2e-5),
         ..RangeCosts::PRIOR
     });
     let l = dense();
@@ -238,8 +242,9 @@ fn calibrate_recovers_c_range_and_c_step_from_anchor_rows() {
     assert_eq!(fit.anchors.len(), 6);
     let c = fit.hw.range_costs.expect("fitted");
     let rel = |a: f64, b: f64| (a / b - 1.0).abs();
-    assert!(rel(c.c_range_graph_s, 1e-4) < 0.05, "{c:?}");
-    assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
+    let per_phase = c.c_range_graph_s + c.allreduce_latency_s.unwrap();
+    assert!(rel(per_phase, 1e-4 + 1.2e-5) < 0.05, "{c:?}");
+    assert!(rel(c.c_step_s, 8e-4) < 0.10, "{c:?}");
 }
 
 fn features_of(l: &ModelLayout, id: &str, limit: Option<u32>) -> RunFeatures {

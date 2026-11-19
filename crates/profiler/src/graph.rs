@@ -357,6 +357,16 @@ pub struct RangeCosts {
     /// byte-proportional part of the curve stays as measured. 1 (the default) is the curve as is.
     #[serde(default = "one")]
     pub allreduce_latency_share: f64,
+    /// In-step latency `a` of an all-reduce (ADR 0078). When set, an all-reduce over `p` ranks
+    /// in a step costs the curve's byte part `t(n) - t(0)` plus `a + 2 (p - 1) b`, `b` being
+    /// `allreduce_step_s`, and `allreduce_latency_share` is not used. `None`: graphs fitted
+    /// before cost model 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allreduce_latency_s: Option<f64>,
+    /// Latency `b` per ring step (ADR 0078); fitted only when anchors have all-reduces over two
+    /// or more group sizes, else `None` (0: every group pays the anchored latency).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allreduce_step_s: Option<f64>,
 }
 
 fn one() -> f64 {
@@ -369,6 +379,8 @@ impl RangeCosts {
         c_range_eager_s: 1.0e-5,
         c_step_s: 2.0e-4,
         allreduce_latency_share: 1.0,
+        allreduce_latency_s: None,
+        allreduce_step_s: None,
     };
 }
 
@@ -635,6 +647,8 @@ mod tests {
             c_range_eager_s: 2e-5,
             c_step_s: 3e-4,
             allreduce_latency_share: 0.5,
+            allreduce_latency_s: Some(1.2e-5),
+            allreduce_step_s: Some(1e-6),
         });
         assert_eq!(HardwareGraph::from_toml(&g.to_toml().unwrap()).unwrap(), g);
         // range costs written before the latency share read it as 1
@@ -643,6 +657,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rc.allreduce_latency_share, 1.0);
+        assert_eq!((rc.allreduce_latency_s, rc.allreduce_step_s), (None, None));
         assert_eq!(HardwareGraph::from_json(&g.to_json().unwrap()).unwrap(), g);
         // old files have neither field
         let old = HardwareGraph::from_toml(FIXTURE).unwrap();
