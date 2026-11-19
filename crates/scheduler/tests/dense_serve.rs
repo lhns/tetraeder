@@ -207,13 +207,17 @@ fn consume(s: &Scheduler, spec: &Spec) -> usize {
 
 fn run_all(s: &Arc<Scheduler>, specs: &[Spec]) -> Vec<usize> {
     let (tx, rx) = std::sync::mpsc::channel();
+    // Every thread submits at once, so on a slow runner a request cannot finish before the
+    // next one has started (the batching tests need them to overlap).
+    let start = Arc::new(std::sync::Barrier::new(specs.len()));
     let threads: Vec<_> = specs
         .iter()
         .cloned()
         .enumerate()
         .map(|(i, spec)| {
-            let (s, tx) = (Arc::clone(s), tx.clone());
+            let (s, tx, start) = (Arc::clone(s), tx.clone(), Arc::clone(&start));
             std::thread::spawn(move || {
+                start.wait();
                 let _ = tx.send((i, consume(&s, &spec)));
             })
         })
