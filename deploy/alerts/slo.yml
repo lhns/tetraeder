@@ -132,7 +132,7 @@ groups:
         annotations:
           summary: "SLO {{ $labels.sli }} burns its error budget at more than 1x over 3d and 6h"
           description: "At this rate the 30 day budget is gone in 30 days. Check the SLO row of the Tetraeder planner dashboard."
-      # Mean relative error |measured - predicted| / predicted of the step time per stage (cost model, ADR 0009).
+      # Mean relative error |measured - predicted| / predicted of the step time per stage (cost model, ADR 0007).
       - alert: TetraederPlanResidualHigh
         expr: |
           sum by (tetraeder_stage) (rate(tetraeder_plan_residual_ratio_sum[10m]))

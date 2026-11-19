@@ -98,7 +98,7 @@ B and C are independent: the file between them is the existing `tetraeder-bench 
 
 **Goal.** No sleeps in I/O tests: one queue type driven by threads in production and by a virtual clock in tests and in the timed replay (ADR 0056 section 2).
 
-**Read first.** `crates/memory/src/io.rs` (whole file), `crates/memory/src/reader.rs` (`HostDst`), `crates/model/src/experts.rs` (the streamer's use of `IoService`), `crates/model/tests/overlap.rs`, `crates/memory/src/replay/sim.rs`.
+**Read first.** `crates/memory/src/io/` (whole module; it was one file `io.rs` when this was written), `crates/memory/src/reader.rs` (`HostDst`), `crates/model/src/experts.rs` (the streamer's use of `IoService`), `crates/model/tests/overlap.rs`, `crates/memory/src/replay/sim.rs`.
 
 **Changes.**
 - `io.rs` split into `io/queue.rs` (`Queue<D>`: heap, units, `submit(now, deadline, parts)`, `pop`, `complete(now, chunk, result)`, `collect`, `inflight`; generic over the destination with a small `Dst` trait providing `len` and `sub`, implemented for `HostDst` and `()`), `io/disk.rs` (`Disk`: processor sharing over a curve of `(depth, bytes_per_s)`, `workers`, `submit(chunk_bytes)`, `next_completion`, `advance_to`), `io/service.rs` (`IoService` on `Mutex<Queue<HostDst>>`, unchanged API, `Instant` turned into seconds for `now`), `io/sim.rs` (feature `sim`: `SimClock`, `SimIo`), and the `Io` trait in `io/mod.rs`. Delete `ServiceOptions::delay` and its sleep.
