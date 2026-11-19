@@ -56,4 +56,5 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 
 - Request #53 of the replay (a miss) prefills about 3x slower than llama-server (`ttft-20261118`); not yet explained.
 - Long sequences evicted for another conversation still pay a multi-GB save; save at idle (off the admission path), pinned restores or chunk-shared cache entries remain the levers if the replay shows they matter.
-- The same save ran 1.4 to 3.4x slower in the second round of `ttft4-20261119` on the same box and code; not yet explained (host memory state, the spare preparer running beside a save, or a spare too small for the snapshot are candidates).
+- Saves ran much slower in the second round of `ttft4-20261119` than in the first, on the same box and code; not yet explained (host memory state, the spare preparer running beside a save, or a spare too small for the snapshot are candidates).
+- Prefill of 1k to 2.5k new tokens at 13k to 33k positions is slower than llama-server's (`ttft4-20261119`); with the admission saves gone it is what holds p90 over the bar.

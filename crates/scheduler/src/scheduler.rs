@@ -1097,18 +1097,23 @@ impl Worker {
         let keep: Vec<usize> = std::iter::once(id)
             .chain(copy_idle.map(|(i, _)| i))
             .collect();
+        // The least admission takes: the prompt and its first token, and all of a RAM entry it
+        // restores (cut to the common prefix afterwards).
+        let least = (toks.len() + 1)
+            .max(picked.as_ref().map_or(0, |(t, _)| t.len()))
+            .min(self.n_ctx_seq);
         loop {
             match self.backend.seq_reserve(id as SeqId, target) {
                 Ok(()) => break,
                 Err(BackendError::KvFull { needed, free, .. }) => {
                     let idle = self.oldest_idle(&keep);
-                    if target > toks.len() + 1 && (idle.is_some() || self.live_count() == 0) {
-                        // The prompt and its first token before an idle sequence is evicted: the
-                        // steps grow the run as it generates, evicting then if they must, and may
-                        // never need the stretch (ADR 0074, 2026-11-19). With only live ones
-                        // left the request waits for the stretch as before, so it is not admitted
-                        // just to be preempted at its next row.
-                        target = toks.len() + 1;
+                    if target > least && (idle.is_some() || self.live_count() == 0) {
+                        // The least before an idle sequence is evicted: the steps grow the run as
+                        // it generates, evicting then if they must, and may never need the
+                        // stretch (ADR 0074, 2026-11-19). With only live ones left the request
+                        // waits for the stretch as before, so it is not admitted just to be
+                        // preempted at its next row.
+                        target = least;
                     } else if let Some(o) = idle {
                         self.evict(o);
                     } else if copy_idle.is_some() {

@@ -567,3 +567,30 @@ fn the_admission_record_counts_every_attempt() {
     assert_eq!(rec.saved.first(), Some(&(0, 400)), "{rec:?}");
     assert_eq!(rec.saved.len(), 2, "{rec:?}");
 }
+
+/// The smaller reservation still holds the RAM entry a request restores: an entry longer than
+/// the prompt plus one would not fit it, and the restore would fall back to a cold prefill.
+#[test]
+fn a_shrunk_reservation_still_holds_the_restored_entry() {
+    let kv = FakeKv::new(N_VOCAB, 2, 8000, 2151);
+    let mut w = worker_with(kv, 2048);
+    let mut b = submit(&mut w, &prompt(2, 1000), 1);
+    pump(&mut w);
+    assert_eq!(tokens(&events(&mut b)), 1);
+    // A saved conversation of 1200 positions; the request shares 1000 of them.
+    let saved = prompt(1, 1200);
+    w.cache.insert(
+        &w.backend.kv_format(),
+        saved.iter().map(|&t| t as i32).collect(),
+        saved
+            .iter()
+            .flat_map(|&t| (t as i32).to_le_bytes())
+            .collect(),
+    );
+    let mut p = saved[..1000].to_vec();
+    p.extend(prompt(7, 100));
+    let _c = submit(&mut w, &p, 2000);
+    w.admit();
+    let rec = w.last_admit.clone().expect("admitted");
+    assert_eq!((rec.source, rec.common), ("ram", 1000), "{rec:?}");
+}
