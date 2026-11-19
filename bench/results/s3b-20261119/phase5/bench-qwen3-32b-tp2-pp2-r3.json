@@ -1,0 +1,60 @@
+[
+  {
+    "build_commit": "9fdaa3e",
+    "engine": "tetraeder",
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "n_threads": 30,
+    "n_gpu_layers": 99,
+    "flash_attn": 1,
+    "tensor_buft_overrides": "none",
+    "cuda_graphs": true,
+    "n_eval": 1,
+    "n_reused": 1,
+    "n_prompt": 2048,
+    "n_gen": 0,
+    "avg_ns": 1457383483,
+    "avg_ts": 1405.258138224694,
+    "stddev_ts": 0.0,
+    "samples_ns": [
+      1457383483
+    ],
+    "samples_ts": [
+      1405.258138224694
+    ],
+    "builder": "dense",
+    "plan_id": "2a87b1a8",
+    "ranks": 4,
+    "comm_path": "nccl",
+    "ranges_per_token": 260.0
+  },
+  {
+    "build_commit": "9fdaa3e",
+    "engine": "tetraeder",
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "n_threads": 30,
+    "n_gpu_layers": 99,
+    "flash_attn": 1,
+    "tensor_buft_overrides": "none",
+    "cuda_graphs": true,
+    "n_eval": 128,
+    "n_reused": 128,
+    "n_prompt": 0,
+    "n_gen": 128,
+    "avg_ns": 2145064705,
+    "avg_ts": 59.671859642108096,
+    "stddev_ts": 0.0,
+    "samples_ns": [
+      2145064705
+    ],
+    "samples_ts": [
+      59.671859642108096
+    ],
+    "builder": "dense",
+    "plan_id": "2a87b1a8",
+    "ranks": 4,
+    "comm_path": "nccl",
+    "ranges_per_token": 65.0
+  }
+]

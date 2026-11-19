@@ -1,0 +1,16 @@
+before: 0x0000000000000000
+before: 0x0000000000000001
+before: 0x0000000000000001
+before: 0x0000000000000001
+# before 0, 1965 MHz, 9751 MHz, 37, 176.10 W, 1 MiB
+# before 1, 210 MHz, 405 MHz, 28, 35.94 W, 1 MiB
+# before 2, 210 MHz, 405 MHz, 30, 37.02 W, 1 MiB
+# before 3, 210 MHz, 405 MHz, 32, 41.62 W, 1 MiB
+after: 0x0000000000000000
+after: 0x0000000000000001
+after: 0x0000000000000001
+after: 0x0000000000000001
+# after 0, 1635 MHz, 9501 MHz, 40, 349.57 W, 1 MiB
+# after 1, 210 MHz, 405 MHz, 27, 35.80 W, 1 MiB
+# after 2, 210 MHz, 405 MHz, 29, 36.55 W, 1 MiB
+# after 3, 210 MHz, 405 MHz, 31, 41.21 W, 1 MiB
