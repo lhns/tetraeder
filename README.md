@@ -81,6 +81,6 @@ schtasks /Create /TN tetraeder-vast-nightly /SC DAILY /ST 03:00 /F /TR "cmd /c c
 schtasks /Create /TN tetraeder-vast-watchdog /SC MINUTE /MO 5 /F /TR "cmd /c cd /d <repo> && uv run taxameter watchdog --once >> .vast\watchdog.out 2>&1"
 ```
 
-Weekly GPU smoke (about 0.25 USD): `scripts/gpu_smoke.sh` prints the commands (dry run), `--run` does the cycle; see `docs/sessions.md`, "GPU smoke". Not scheduled while box runs are on hold.
+Weekly GPU smoke (about 0.25 USD): `scripts/gpu_smoke.sh` prints the commands (dry run), `--run` does the cycle; see `docs/sessions.md`, "GPU smoke". Not scheduled; scheduling it needs the user's go.
 
 Tests: `uv run pytest -q tests` (offline; checks `taxameter.toml` against the repo).
