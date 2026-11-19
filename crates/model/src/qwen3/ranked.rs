@@ -318,6 +318,7 @@ impl Ranked {
         telemetry: Option<&tetraeder_telemetry::Metrics>,
         out: &mut Vec<f32>,
     ) -> Result<()> {
+        let t_step = Instant::now();
         let key: Vec<MbKey> = plans
             .iter()
             .map(|p| (p.pos.len(), p.n_kv, p.outputs.len()))
@@ -434,6 +435,7 @@ impl Ranked {
                 }
             }
         }
+        self.exec.trace_note("step", 0, t_step);
         self.exec.trace_flush();
         Ok(())
     }

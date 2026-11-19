@@ -24,7 +24,9 @@ def test_dry_run_lists_the_pairs_and_toggles(tmp_path):
     r = subprocess.run(["bash", str(ROOT / "scripts" / "layer_decode_box.sh")], capture_output=True, text=True,
                        env=env, cwd=ROOT, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
-    plans = [ln for ln in r.stdout.splitlines() if ln.startswith("PLAN ")]
+    lines = [ln for ln in r.stdout.splitlines() if ln.startswith("PLAN ")]
+    plans = [ln for ln in lines if ln.endswith(".json")]
+    tests = [ln for ln in lines if " cargo test " in ln]
     names = [re.search(r"> (\S+)\.json$", ln).group(1) for ln in plans]
     m = "qwen3-30b-a3b"
     assert names[:2] == [f"{m}-llama-none-r1", f"{m}-llama-layer-r1"]
@@ -42,6 +44,11 @@ def test_dry_run_lists_the_pairs_and_toggles(tmp_path):
     assert "TETRAEDER_EXEC_TRACE=" in sync and "TETRAEDER_EXEC_TRACE_SYNC=1" in sync
     assert "-sm none" in by[f"{m}-llama-none-r1"]
     assert all("-p 0 -n 128" in p for p in plans)
+    # the parity tests run last, with both toggles on
+    assert lines[-2:] == tests and len(tests) == 2
+    assert all("TETRAEDER_RANGE_UID=1 TETRAEDER_ASYNC_INPUTS=1" in t for t in tests)
+    assert "GGML_CUDA_GRAPH_DEBUG=1" in tests[0] and "gpu_cuda_graphs_replay_kept_ranges" in tests[0]
+    assert "gpu_one_rank gpu4_" in tests[1]
 
 
 def test_summary_takes_the_most_common_sequence():

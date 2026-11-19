@@ -5,10 +5,12 @@
 # tg128 only (-p 0 -n 128 -r 5), per model: llama.cpp -sm none and -sm layer, our single and layer-4 with the executor
 # toggles off, TETRAEDER_RANGE_UID=1, TETRAEDER_ASYNC_INPUTS=1 and both, and traced runs (TETRAEDER_EXEC_TRACE, issue and
 # sync mode). The 30B (the M4 gate) runs a second, reversed round of the untraced runs for interleaved pairs; the 32B
-# runs one round of the key runs. About 10 minutes after the build.
+# runs one round of the key runs; then the GPU parity tests that cover the toggles run with both on (the kept-range
+# replay with GGML_CUDA_GRAPH_DEBUG=1, the one-rank bit-equality and the gpu4_ shapes of both builders), whose
+# result decides whether a toggle may become the default. About 15 minutes after the build.
 # Results: bench/results/<s>-decode/ (<model>-<kind>-r<k>.json, .rc, .log, .trace.jsonl, gpu-samples.csv, env.txt);
-# ends with LAYER_DECODE_DONE in runs/vast/layer_decode.log. A rerun skips runs whose .rc exists. Knobs: P5_DIR (the
-# session's phase5 dir), BUDGET_MIN (14), MODELS, DRY_RUN=1 (print the commands only).
+# parity-toggles.log and .rc; ends with LAYER_DECODE_DONE in runs/vast/layer_decode.log. A rerun skips runs whose .rc
+# exists. Knobs: P5_DIR (the session's phase5 dir), BUDGET_MIN (18), MODELS, DRY_RUN=1 (print the commands only).
 DRY="${DRY_RUN:-0}"
 if [ "$DRY" != 1 ]; then
   exec 8> /root/tetraeder_layer_decode.lock
@@ -41,7 +43,7 @@ declare -A FILE=(
 )
 declare -A ENGINE=([qwen3-32b]=dense [qwen3-30b-a3b]=moe)
 t_start=$(date +%s)
-budget_s=$((${BUDGET_MIN:-14} * 60))
+budget_s=$((${BUDGET_MIN:-18} * 60))
 say "layer_decode start (session=$session threads=$threads out=$out)"
 if [ "$DRY" != 1 ]; then
   OUT="$out" SAMPLER_PARENT=$$ setsid nohup bash scripts/gpu_sampler.sh 8>&- > /dev/null 2>&1 &
@@ -104,6 +106,30 @@ for m in ${MODELS:-qwen3-30b-a3b qwen3-32b}; do
     [ "$k" = 1 ] && for kind in $traces; do run_kind "$m" "$kind" 1; done
   done
 done
+# parity with both toggles on: the test binaries are the gpu-parity stage's (same features, release), so nothing builds
+toggles=(TETRAEDER_RANGE_UID=1 TETRAEDER_ASYNC_INPUTS=1 TETRAEDER_REQUIRE_GPU=1 TETRAEDER_REQUIRE_GPUS=4
+  "TETRAEDER_MOE_GGUF=${FILE[qwen3-30b-a3b]}" "TETRAEDER_MODELS_DIR=$models_dir")
+features=(--release --no-fail-fast --features tetraeder-ggml-sys/cuda)
+if [ -f "$out/parity-toggles.rc" ]; then
+  say "parity-toggles: done before"
+elif [ "$DRY" = 1 ]; then
+  echo "PLAN env ${toggles[*]} GGML_CUDA_GRAPH_DEBUG=1 cargo test ${features[*]} -p tetraeder-executor --test gpu -- gpu_cuda_graphs_replay_kept_ranges"
+  echo "PLAN env ${toggles[*]} cargo test ${features[*]} -p tetraeder-model --test gpu_sharded --test gpu_sharded_moe -- gpu_one_rank gpu4_"
+elif [ $(($(date +%s) - t_start)) -gt "$budget_s" ]; then
+  say "BUDGET spent: skip parity-toggles"
+else
+  say "parity-toggles start"
+  {
+    env "${toggles[@]}" GGML_CUDA_GRAPH_DEBUG=1 timeout -k 30 10m cargo test "${features[@]}" -p tetraeder-executor --test gpu       -- gpu_cuda_graphs_replay_kept_ranges --nocapture 8>&- &&
+      env "${toggles[@]}" timeout -k 30 15m cargo test "${features[@]}" -p tetraeder-model --test gpu_sharded         --test gpu_sharded_moe -- gpu_one_rank gpu4_ --nocapture 8>&-
+  } < /dev/null > "$out/parity-toggles.log.full" 2>&1
+  rc=$?
+  # cargo counts a skipped test as passed
+  grep -qE '(^|[ .])skip: ' "$out/parity-toggles.log.full" && rc=3
+  cut -c1-300 "$out/parity-toggles.log.full" > "$out/parity-toggles.log"
+  echo "$rc" > "$out/parity-toggles.rc"
+  say "parity-toggles done rc=$rc"
+fi
 if [ "$DRY" != 1 ]; then
   touch "$out/gpu-sampler.stop"
   for f in "$out"/*.trace.jsonl; do

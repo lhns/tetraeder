@@ -823,6 +823,7 @@ impl Sharded {
         reuse: bool,
         out: &mut Vec<f32>,
     ) -> Result<()> {
+        let t_step = Instant::now();
         let key: Vec<MbKey> = plans
             .iter()
             .map(|p| (p.pos.len(), p.n_kv, p.outputs.len()))
@@ -913,6 +914,7 @@ impl Sharded {
                 }
             }
         }
+        self.exec.trace_note("step", 0, t_step);
         self.exec.trace_flush();
         let c = self.exec.take_counters();
         if let Some(t) = &self.telemetry {
