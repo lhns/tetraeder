@@ -5,13 +5,14 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-/// How an [`crate::Executor`] issues. [`ExecOptions::from_env`] reads them once at construction.
+/// How an [`crate::Executor`] issues. [`ExecOptions::from_env`] reads them once at construction;
+/// `ExecOptions::default()` has every option off.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExecOptions {
-    /// `TETRAEDER_RANGE_UID=1`: ranges get a ggml graph uid, so ggml-cuda skips its per-call node
+    /// On by default, `TETRAEDER_RANGE_UID=0` turns it off: ranges get a ggml graph uid, so ggml-cuda skips its per-call node
     /// comparison before a CUDA graph replay (patch 0005).
     pub range_uid: bool,
-    /// `TETRAEDER_ASYNC_INPUTS=1`: builders upload step inputs on each rank's stream instead of
+    /// On by default, `TETRAEDER_ASYNC_INPUTS=0` turns it off: builders upload step inputs on each rank's stream instead of
     /// one blocking copy per tensor ([`crate::Executor::async_inputs`]).
     pub async_inputs: bool,
     /// `TETRAEDER_EXEC_TRACE=<file>`: one JSON line per step appended to the file.
@@ -25,11 +26,16 @@ fn flag(name: &str) -> bool {
     std::env::var(name).is_ok_and(|v| v == "1")
 }
 
+/// A flag that is on unless the variable is `0`.
+fn flag_default_on(name: &str) -> bool {
+    std::env::var(name).map_or(true, |v| v != "0")
+}
+
 impl ExecOptions {
     pub fn from_env() -> ExecOptions {
         ExecOptions {
-            range_uid: flag("TETRAEDER_RANGE_UID"),
-            async_inputs: flag("TETRAEDER_ASYNC_INPUTS"),
+            range_uid: flag_default_on("TETRAEDER_RANGE_UID"),
+            async_inputs: flag_default_on("TETRAEDER_ASYNC_INPUTS"),
             trace: std::env::var_os("TETRAEDER_EXEC_TRACE")
                 .filter(|p| !p.is_empty())
                 .map(PathBuf::from),

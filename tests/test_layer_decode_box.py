@@ -39,7 +39,11 @@ def test_dry_run_lists_the_pairs_and_toggles(tmp_path):
     both = by[f"{m}-layer4-uid-async-r1"]
     assert "TETRAEDER_RANGE_UID=1" in both and "TETRAEDER_ASYNC_INPUTS=1" in both and "layer-4.toml" in both
     base = by[f"{m}-layer4-r1"]
-    assert "TETRAEDER_" not in base
+    # the off arms switch the on-by-default toggles off explicitly
+    assert "TETRAEDER_RANGE_UID=0" in base and "TETRAEDER_ASYNC_INPUTS=0" in base
+    assert "TETRAEDER_RANGE_UID=1" not in base and "TETRAEDER_ASYNC_INPUTS=1" not in base
+    uid_only = by[f"{m}-layer4-uid-r1"]
+    assert "TETRAEDER_RANGE_UID=1" in uid_only and "TETRAEDER_ASYNC_INPUTS=0" in uid_only
     sync = by[f"{m}-layer4-tracesync-r1"]
     assert "TETRAEDER_EXEC_TRACE=" in sync and "TETRAEDER_EXEC_TRACE_SYNC=1" in sync
     assert "-sm none" in by[f"{m}-llama-none-r1"]
@@ -63,3 +67,14 @@ def test_summary_takes_the_most_common_sequence():
     assert s["kinds"]["compute"] == 5.0
     assert s["total_us"] == 2.0 + 3.0 + 1.0 + 2.0 + 5.0 + 4.0
     assert summary.summarize([])["steps"] == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32" or shutil.which("bash") is None, reason="needs bash on Linux")
+@pytest.mark.parametrize("session,expected", [("s1", "s1-decode"), ("s1-decode", "s1-decode")])
+def test_decode_suffix_added_once(tmp_path, session, expected):
+    env = {k: v for k, v in os.environ.items() if k != "OUT_DIR"}
+    env.update(DRY_RUN="1", SESSION=session, MODELS="none")
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "layer_decode_box.sh")], capture_output=True, text=True,
+                       env=env, cwd=ROOT, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"out={ROOT}/bench/results/{expected})" in r.stdout
