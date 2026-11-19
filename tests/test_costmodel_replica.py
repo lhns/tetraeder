@@ -91,3 +91,46 @@ def test_the_allreduce_pays_its_in_step_latency_in_version_3():
             assert cr.coll_time(hw, c, 1.0, 3)[1] == pytest.approx(lat)
             t = cr.curve_time(pts[n], 512e3)
             assert cr.coll_time(hw, c, 512.0, 3)[1] == pytest.approx(t - pts[n][0][1] + lat)
+
+
+def test_routing_reaches_expert_parallel_only():
+    """ADR 0070's routing input: uniform tables (and --skew 0.25) are today's uniform prices exactly; skew moves ep-4
+    and nothing else; the anchors on a 4-GPU box find tp-4 in the session's own plans."""
+    d = ROOT / "bench" / "results" / "s3b-20261119" / "phase5"
+    if not (d / "calib.json").is_file():
+        pytest.skip("s3b not committed")
+    hw = cr.load_json(d / "calib.json")["hw"]
+    m = "qwen3-30b-a3b"
+    layout = cr.load_json(d / "layouts" / f"{m}.json")
+    pl = cr.plans(d, m)
+    e, n = layout["n_expert"], layout["n_layer"]
+    uniform = cr.routing_tables({"prefill": [[16] * e] * n, "decode": [[1] * e] * n})
+    assert all(x == 1.0 for row in uniform["prefill"] for x in row)
+    assert cr.synthetic_routing(layout, 0.25) == uniform
+
+    def rates(routing):
+        return {cid: cr.predict(hw, cr.features(layout, plan, None, 3, routing), cr.PROMPT, cr.GEN, 3)
+                for cid, plan in pl.items()}
+
+    base, same, skew = rates(None), rates(uniform), rates(cr.synthetic_routing(layout, 0.68))
+    for cid in pl:
+        assert (same[cid]["pp"], same[cid]["tg"]) == (base[cid]["pp"], base[cid]["tg"]), cid
+        if cid.startswith("ep-"):
+            assert skew[cid]["pp"] < base[cid]["pp"] and skew[cid]["tg"] < base[cid]["tg"]
+        else:
+            assert (skew[cid]["pp"], skew[cid]["tg"]) == (base[cid]["pp"], base[cid]["tg"]), cid
+    with pytest.raises(ValueError):
+        cr.routing_tables({"prefill": [[0] * e], "decode": [[1] * e]})
+
+
+def test_anchor_plans_fall_back_to_the_session_plans(tmp_path):
+    """plans-anchor/ holds single and tp-2 (2-GPU graph); a tp-4 anchor uses the session's plan."""
+    cands = {"model": "x", "gpus": 4, "pruned": [],
+             "candidates": [{"id": "single", "plan": {"tag": "main"}}, {"id": "tp-4", "plan": {"tag": "main"}}]}
+    anchor = {"model": "x", "gpus": 2, "pruned": [],
+              "candidates": [{"id": "single", "plan": {"tag": "anchor"}}, {"id": "tp-2", "plan": {"tag": "anchor"}}]}
+    (tmp_path / "plans-anchor").mkdir()
+    (tmp_path / "candidates-x.json").write_text(json.dumps(cands))
+    (tmp_path / "plans-anchor" / "candidates-x.json").write_text(json.dumps(anchor))
+    pl = cr.anchor_plans(tmp_path, "x")
+    assert {k: v["tag"] for k, v in pl.items()} == {"single": "anchor", "tp-4": "main", "tp-2": "anchor"}

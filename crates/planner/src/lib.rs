@@ -60,8 +60,8 @@ pub use lower::{
     to_exit_regime_env, to_llama_bench_args, to_variant_args,
 };
 pub use multi::{
-    MultiCandidate, MultiCandidates, Shape, candidate_for, enumerate_multi, enumerate_multi_with,
-    expected_max_local, features_multi, predict_candidate, topology_of,
+    MultiCandidate, MultiCandidates, Routing, Shape, candidate_for, enumerate_multi,
+    enumerate_multi_with, expected_max_local, features_multi, predict_candidate, topology_of,
 };
 pub use objective::{Choice, SPEED_BAND, Scored, StageTime, choose, pareto_front, resource_cost};
 pub use profile_quality::{

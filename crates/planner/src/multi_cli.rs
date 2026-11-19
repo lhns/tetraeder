@@ -3,7 +3,8 @@
 
 use crate::layout::ModelLayout;
 use crate::multi::{
-    MultiCandidate, candidate_for, enumerate_multi, features_multi, predict_candidate, topology_of,
+    MultiCandidate, Routing, candidate_for, enumerate_multi, features_multi, predict_candidate,
+    topology_of,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -53,6 +54,9 @@ pub struct PredictFile {
     pub hw_sha256: String,
     pub calib_sha256: Option<String>,
     pub comm_sha256: Option<String>,
+    /// `routing-<model>.json`, when expert parallel was priced from recorded routing (ADR 0070).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_sha256: Option<String>,
     pub prompt: u32,
     pub r#gen: u32,
     pub candidates: Vec<PredictRow>,
@@ -74,6 +78,53 @@ pub struct CalibFile {
 
 fn default_true() -> bool {
     true
+}
+
+/// `routing-<model>.json` of `tetraeder bench --routing-out` (ADR 0070): per layer, how often the
+/// router chose each expert over the judged token stream, on one GPU without a plan. `prefill`
+/// counts the rows of the pp test, `decode` the tokens of the tg test.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoutingFile {
+    pub model: String,
+    pub n_expert: u32,
+    pub top_k: u32,
+    pub prefill_tokens: u32,
+    pub decode_tokens: u32,
+    pub prefill: Vec<Vec<u64>>,
+    pub decode: Vec<Vec<u64>>,
+}
+
+/// A routing file checked against the layout: one row per layer and one count per expert, in
+/// both tables. A mismatch is an error, never a silent fall back to uniform routing.
+pub fn parse_routing(text: &str, layout: &ModelLayout) -> Result<Routing, String> {
+    let f: RoutingFile = serde_json::from_str(text).map_err(|e| format!("routing json: {e}"))?;
+    if !layout.is_moe() {
+        return Err(format!(
+            "routing given for {}, which has no experts",
+            layout.model
+        ));
+    }
+    for (what, t) in [("prefill", &f.prefill), ("decode", &f.decode)] {
+        if t.len() != layout.n_layer as usize {
+            return Err(format!(
+                "routing {what}: {} layers, the layout has {}",
+                t.len(),
+                layout.n_layer
+            ));
+        }
+        if let Some((l, r)) = t
+            .iter()
+            .enumerate()
+            .find(|(_, r)| r.len() != layout.n_expert as usize)
+        {
+            return Err(format!(
+                "routing {what} layer {l}: {} experts, the layout has {}",
+                r.len(),
+                layout.n_expert
+            ));
+        }
+    }
+    Routing::from_counts(&f.prefill, &f.decode)
 }
 
 /// `calib-comm.json` of `tetraeder comm-probe` (only the curves are read).
@@ -135,17 +186,20 @@ pub fn candidates_multi(hw: &HardwareGraph, layout: &ModelLayout) -> MultiFile {
 }
 
 /// `predict`: every candidate of the file on `calibrated` (the fit's graph, or the measured
-/// graph itself before a calibration). The hashes name the inputs.
+/// graph itself before a calibration), expert parallel priced from `routing` when given (its
+/// table and the file's sha256). The hashes name the inputs.
 pub fn predict_multi(
     calibrated: &HardwareGraph,
     layout: &ModelLayout,
     cands: &MultiFile,
     hashes: (String, Option<String>, Option<String>),
+    routing: Option<(&Routing, String)>,
     git_commit: &str,
 ) -> Result<PredictFile, String> {
     let mut rows = Vec::new();
+    let table = routing.as_ref().map(|r| r.0);
     for c in &cands.candidates {
-        let p = predict_candidate(calibrated, layout, &c.plan, PHASE, (PROMPT, GEN), None)
+        let p = predict_candidate(calibrated, layout, &c.plan, PHASE, (PROMPT, GEN), table)
             .map_err(|e| format!("{}: {e}", c.id))?;
         rows.push(PredictRow {
             id: c.id.clone(),
@@ -161,6 +215,7 @@ pub fn predict_multi(
         hw_sha256: hashes.0,
         calib_sha256: hashes.1,
         comm_sha256: hashes.2,
+        routing_sha256: routing.map(|r| r.1),
         prompt: PROMPT,
         r#gen: GEN,
         candidates: rows,
@@ -241,6 +296,8 @@ fn collect(files: &[&str]) -> Result<BTreeMap<(String, Option<u32>), Samples>, S
 
 /// `calibrate`: the anchors of every model (`(layout, anchor file texts)`) become features with
 /// [`features_multi`] and fit the parameters of `calib.rs`, `c_range` and `c_step` included.
+/// No routing: the anchors (`single`, `tp-2`, `tp-4`) cut experts by columns, whose cost does
+/// not depend on which experts a token chooses.
 pub fn calibrate(
     hw: &HardwareGraph,
     models: &[(ModelLayout, Vec<String>)],

@@ -8,6 +8,8 @@
 //! - [`features_multi`]: the [`RankFeatures`] of a topology, `single` included, with shares from
 //!   [`block_slice`].
 //! - [`expected_max_local`]: the expert-parallel imbalance by a fixed-seed Monte Carlo.
+//! - [`Routing`]: per-layer expert frequencies of the judged token stream, which set that
+//!   imbalance (ADR 0070); uniform without them.
 
 use crate::candidate::CUDA_RESERVE;
 use crate::layout::ModelLayout;
@@ -578,7 +580,7 @@ pub fn predict_candidate(
     plan: &Plan,
     phase: Phase,
     workload: (u32, u32),
-    routing: Option<&[Vec<f64>]>,
+    routing: Option<&Routing>,
 ) -> Result<Prediction, String> {
     let topo = topology_of(hw, layout, plan, phase)?;
     let f = features_multi(layout, &topo, &plan.knobs, None, routing)?;
@@ -587,6 +589,41 @@ pub fn predict_candidate(
 
 // ---------------------------------------------------------------------------------------------
 // Expert-parallel imbalance
+
+/// Per layer and expert, the relative selection frequency over the judged token stream
+/// (ADR 0070): `prefill` over the rows of the pp test, `decode` over the tokens of the tg test.
+/// Only expert parallel reads it: `prefill` sets the busiest rank's share of a prefill step's
+/// routed rows, `decode` the Monte Carlo of a decode step's busiest rank. Every other shape
+/// reads every expert at prefill and `top_k` per token at decode, whatever the routing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Routing {
+    pub prefill: Vec<Vec<f64>>,
+    pub decode: Vec<Vec<f64>>,
+}
+
+impl Routing {
+    /// From selection counts per layer and expert, each layer scaled to mean 1, so equal counts
+    /// give exactly the uniform prior's 1.0. A layer without selections is an error.
+    pub fn from_counts(prefill: &[Vec<u64>], decode: &[Vec<u64>]) -> Result<Self, String> {
+        let scale = |what: &str, t: &[Vec<u64>]| -> Result<Vec<Vec<f64>>, String> {
+            t.iter()
+                .enumerate()
+                .map(|(l, row)| {
+                    let total: u64 = row.iter().sum();
+                    if total == 0 {
+                        return Err(format!("{what} layer {l}: no selections"));
+                    }
+                    let (e, total) = (row.len() as f64, total as f64);
+                    Ok(row.iter().map(|&c| c as f64 * e / total).collect())
+                })
+                .collect()
+        };
+        Ok(Self {
+            prefill: scale("prefill", prefill)?,
+            decode: scale("decode", decode)?,
+        })
+    }
+}
 
 fn splitmix(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
@@ -704,7 +741,7 @@ fn push_phase(v: &mut Vec<RankPhase>, p: RankPhase) {
 /// The features of `topo` running `layout` as phases between collectives (ADR 0070), a one-rank
 /// `single` included. `layer_limit` keeps the first N layers and the head (an anchor, ADR 0068).
 /// `routing` holds per layer per expert selection frequencies for expert parallel; uniform when
-/// `None`.
+/// `None` (or for a layer whose row does not have `n_expert` entries).
 ///
 /// What the builders compute, as MODEL_VERSION 2 prices it: expert matmuls apart from the dense
 /// ones (their own rate), a prefill step reads every local expert (`prefill_parts`), and the head
@@ -715,7 +752,7 @@ pub fn features_multi(
     topo: &Topology,
     knobs: &Knobs,
     layer_limit: Option<u32>,
-    routing: Option<&[Vec<f64>]>,
+    routing: Option<&Routing>,
 ) -> Result<RunFeatures, String> {
     let lim = layer_limit.unwrap_or(layout.n_layer).min(layout.n_layer);
     if lim == 0 {
@@ -953,7 +990,7 @@ fn ffn_phase(
     l: u32,
     rot: u32,
     d: &Dims,
-    routing: Option<&[Vec<f64>]>,
+    routing: Option<&Routing>,
     uniform_ep: &mut Option<(f64, f64)>,
 ) -> Result<RankPhase, String> {
     let lb = &layout.layers[l as usize];
@@ -1005,25 +1042,21 @@ fn ffn_phase(
     // Whole experts in contiguous spans: the busiest rank sets the time.
     let e = layout.n_expert as usize;
     let g = st.ep as usize;
-    let uniform = vec![1.0; e];
-    let given = routing
-        .and_then(|r| r.get(l as usize))
-        .filter(|f| f.len() == e);
-    let is_uniform = given.is_none();
-    let freq: &[f64] = given.map_or(&uniform[..], |f| &f[..]);
-    let (dec_max, mass) = match (is_uniform, *uniform_ep) {
-        (true, Some(v)) => v,
-        _ => {
-            let v = (
-                expected_max_local(freq, layout.n_expert_used as usize, g, EP_STEPS, EP_SEED),
-                max_mass(freq, g),
-            );
-            if is_uniform {
-                *uniform_ep = Some(v);
-            }
-            v
-        }
-    };
+    let top_k = layout.n_expert_used as usize;
+    let (u_dec, u_mass) = *uniform_ep.get_or_insert_with(|| {
+        let uniform = vec![1.0; e];
+        (
+            expected_max_local(&uniform, top_k, g, EP_STEPS, EP_SEED),
+            max_mass(&uniform, g),
+        )
+    });
+    let row = |t: &[Vec<f64>]| t.get(l as usize).filter(|f| f.len() == e).cloned();
+    let dec_max = routing.and_then(|r| row(&r.decode)).map_or(u_dec, |f| {
+        expected_max_local(&f, top_k, g, EP_STEPS, EP_SEED)
+    });
+    let mass = routing
+        .and_then(|r| row(&r.prefill))
+        .map_or(u_mass, |f| max_mass(&f, g));
     let eb = ex / e as f64;
     let k = f64::from(layout.n_expert_used);
     let decode: Vec<DevicePart> = devs

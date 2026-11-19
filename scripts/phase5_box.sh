@@ -28,13 +28,19 @@
 #               accepts (ok) and which all-reduce path its log names (comm); only accepted modes run in the rounds. A
 #               model with no accepted llama-bench mode has no baseline gate: baseline_modes failed, rc=3 before anchors
 #   anchors     per model the first L/4 and L/2 layers as `single` and `tp-2`, pp2048 and tg128, two rounds ->
-#               anchors-<model>-r<k>.json (on a 4x box the tp-2 plan comes from a 2-GPU hardware graph)
-#   calibrate   `tetraeder-plan calibrate` -> calib.json (one fit over both models)
-#   predict     `tetraeder-plan predict` -> predict-<model>-<n>x.json, its sha256 into predict-<model>-<n>x.sha256, the log
-#               and timeline.jsonl; no candidate runs before this ends
+#               anchors-<model>-r<k>.json (on a 4x box the tp-2 plan comes from a 2-GPU hardware graph); on a 4x box
+#               the dense model also as `tp-4` (the session's plan), so the all-reduces span two group sizes (ADR 0078)
+#   calibrate   per MoE model first the routing of the judged token stream: `tetraeder bench --engine moe
+#               --routing-out` on GPU 0 without a plan (one pass of pp2048 and tg128) -> routing-<model>.json (ADR 0070);
+#               then `tetraeder-plan calibrate` -> calib.json (one fit over both models)
+#   predict     `tetraeder-plan predict` (MoE models with `--routing routing-<model>.json`) -> predict-<model>-<n>x.json,
+#               its sha256 into predict-<model>-<n>x.sha256, the log and timeline.jsonl; no candidate runs before this ends
 #   rounds      per model three rounds (summary --round-order: the case order rotated by k, round 2 reversed) of every
 #               candidate and baseline; up to two more rounds rerun only configurations with fewer than two clean rounds
 #               (an unclean run is rerun, never dropped); then the A/A run (the first candidate again) closes the model
+#   pp-overlap  optional, report only (PP_OVERLAP=1; default on for 4x rehearsals, ROUNDS=1): per model the session's
+#               tp2-pp2 plan with prefill_micro_batches 1 and 4, two rounds interleaved (mb1 mb4, then mb4 mb1) ->
+#               pp-overlap-<model>.json (ADR 0078: does the pipeline of tp stages overlap at all); not judged
 #   vllm        optional, report only: skipped when less than 25 minutes of the budget remain or no AWQ/GPTQ checkpoint
 #   summary     phase5_summary.py -> verdict.json, verdict-notes.json
 #
@@ -47,6 +53,7 @@
 # DRY_RUN only: DRY_POWER=fail plays a lowered power limit, DRY_GPUS=<n> plays an `nvidia-smi -L` count, DRY_GPU_PARITY=fail a failed gpu-parity, DRY_PROBE=fail a
 # failed probe, DRY_PREPASS=fail a baseline build that accepts no split mode.
 # ROUNDS=1 (S2 and S3 rehearsals) runs one round and no reruns (RERUNS=<n> overrides).
+# PP_OVERLAP=1|0 forces the pp-overlap stage on or off (default: on when NGPUS=4 and ROUNDS=1; off under ONLY).
 # ONLY="tp-2 llama-bench:tensor" (ADR 0069 step-0 check): the rounds run only these configurations (a candidate is its plan
 # id, a baseline is <engine>:<sm>), anchors, calibrate, predict, vllm, reruns and the A/A run are skipped, and the summary
 # writes step0.json (own executor against the baseline per model and round, ratios against 1 - band) instead of
@@ -106,6 +113,11 @@ models="${MODELS:-qwen3-32b qwen3-30b-a3b}"
 n_rounds="${ROUNDS:-3}"
 reruns="${RERUNS:-2}" # more rounds for configurations short of two clean ones; ROUNDS=1 (rehearsals) has none
 [ "$n_rounds" -lt 2 ] && reruns=${RERUNS:-0}
+pp_overlap="${PP_OVERLAP:-}"
+if [ -z "$pp_overlap" ]; then
+  pp_overlap=0
+  [ "$ngpu" = 4 ] && [ "$n_rounds" = 1 ] && pp_overlap=1
+fi
 models_dir="$PWD/${TETRAEDER_MODELS_DIR:-.hf_cache}"
 tet="${TET_BIN:-target/release/tetraeder}"
 planbin="${PLAN_BIN:-target/release/tetraeder-plan}"
@@ -657,15 +669,22 @@ anchor_plans_4x() { # a 2-GPU hardware graph (CUDA_VISIBLE_DEVICES=0,1) gives th
   done
 }
 
+# anchor_ids MODEL: the anchored shapes; on a 4x box the dense model adds tp-4, a second all-reduce group size
+anchor_ids() {
+  if [ "$ngpu" = 4 ] && [ "${MODEL_ENGINE[$1]}" = dense ]; then echo "single tp-2 tp-4"; else echo "single tp-2"; fi
+}
+
 anchors() {
-  local m k plan_id lim n_layer f vis
+  local m k plan_id lim n_layer f vis ids want
   anchor_plans_4x
   for m in $models; do
     if [ "$DRY" = 1 ]; then n_layer=64; else n_layer=$("$py" -c 'import json,sys; print(json.load(open(sys.argv[1]))["n_layer"])' "$out/layouts/$m.json"); fi
+    ids=$(anchor_ids "$m")
+    want=$(($(wc -w <<< "$ids") * 2))
     for k in 1 2; do
       f="$out/anchors-$m-r$k.json"
       [ -f "$f" ] && continue
-      for plan_id in single tp-2; do
+      for plan_id in $ids; do
         for lim in $((n_layer / 4)) $((n_layer / 2)); do
           vis=""
           [ "$plan_id" = tp-2 ] && [ "$ngpu" = 4 ] && vis="env CUDA_VISIBLE_DEVICES=0,1"
@@ -675,14 +694,13 @@ anchors() {
         done
       done
       if [ "$DRY" = 1 ]; then
-        plan "merge anchor-parts/$m-*-r$k.json -> anchors-$m-r$k.json (plan_id, layer_limit set on every row)"
+        plan "merge anchor-parts/$m-*-r$k.json ($want parts) -> anchors-$m-r$k.json (plan_id, layer_limit set on every row)"
       else
-        "$py" - "$out" "$m" "$k" << 'EOF' || say "WARNING: anchors for $m round $k incomplete"
+        "$py" - "$out" "$m" "$k" "$want" << 'EOF' || say "WARNING: anchors for $m round $k incomplete"
 import glob, json, os, re, sys
-d, m, k = sys.argv[1:4]
+d, m, k, want = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 rows = []
 parts = sorted(glob.glob(os.path.join(d, "anchor-parts", f"{m}-*-r{k}.json")))
-want = 4
 if len(parts) < want:
     sys.exit(1)
 for p in parts:
@@ -699,8 +717,36 @@ EOF
 }
 
 # ---- stage: calibrate, predict -----------------------------------------------------------------------------
+# routing_cmd MODEL FILE: one pass of the judged pp2048 and tg128 token streams on GPU 0, the router's choices recorded
+routing_cmd() {
+  echo "env CUDA_VISIBLE_DEVICES=0 $tet bench -m ${MODEL_FILE[$1]} --engine moe -p 2048 -n 128 -r 1 -t $threads --ngl -1" \
+    "--ubatch 512 --flash-attn on -o json --routing-out $2"
+}
+
+# routing: per MoE model routing-<model>.json (ADR 0070); a model without it would be priced at uniform routing, so a
+# failure ends the session
+routing() {
+  local m f
+  for m in $models; do
+    [ "${MODEL_ENGINE[$m]}" = moe ] || continue
+    f="$out/routing-$m.json"
+    if [ "$DRY" = 1 ]; then
+      plan "$(routing_cmd "$m" "${f##*/}")"
+      continue
+    fi
+    [ -s "$f" ] && continue
+    say "routing $m start"
+    # shellcheck disable=SC2046
+    timeout -k 30 15m $(routing_cmd "$m" "$f.tmp") < /dev/null > /dev/null 2> "$out/routing-$m.log" 8>&- \
+      || die "routing record of $m failed (see routing-$m.log)"
+    mv "$f.tmp" "$f"
+    tail -n 3 "$out/routing-$m.log"
+  done
+}
+
 calibrate() {
   local comm=()
+  routing
   [ "$skip_gpu" != 1 ] && comm=(--comm "$out/calib-comm.json")
   if [ "$DRY" = 1 ]; then
     plan "$planbin calibrate --hw hw.json --comm calib-comm.json --layout-dir layouts --anchors . --out calib.json"
@@ -713,12 +759,14 @@ calibrate() {
 }
 
 predict() {
-  local m comm=() f sha
+  local m comm=() f sha routing=()
   [ "$skip_gpu" != 1 ] && comm=(--comm "$out/calib-comm.json")
   for m in $models; do
     f="$out/predict-$m-$box.json"
+    routing=()
+    [ "${MODEL_ENGINE[$m]}" = moe ] && routing=(--routing "$out/routing-$m.json")
     if [ "$DRY" = 1 ]; then
-      plan "$planbin predict --hw hw.json --comm calib-comm.json --layout layouts/$m.json --calib calib.json --candidates candidates-$m.json --out ${f##*/}"
+      plan "$planbin predict --hw hw.json --comm calib-comm.json --layout layouts/$m.json --calib calib.json --candidates candidates-$m.json${routing:+ --routing routing-$m.json} --out ${f##*/}"
       plan "sha256 of ${f##*/} -> predict-$m-$box.sha256, timeline.jsonl"
       continue
     fi
@@ -727,7 +775,7 @@ predict() {
       continue
     fi
     TETRAEDER_GIT_COMMIT="$(git rev-parse HEAD 2> /dev/null)" "$planbin" predict --hw "$out/hw.json" "${comm[@]}" \
-      --layout "$out/layouts/$m.json" --calib "$out/calib.json" --candidates "$out/candidates-$m.json" --out "$f" 8>&- \
+      --layout "$out/layouts/$m.json" --calib "$out/calib.json" --candidates "$out/candidates-$m.json" "${routing[@]}" --out "$f" 8>&- \
       || die "predict failed for $m"
     sha=$(sha256sum "$f" | cut -d' ' -f1)
     echo "$sha  ${f##*/}" > "${f%.json}.sha256"
@@ -777,6 +825,78 @@ rounds() {
     # A/A: the first candidate again, the last run of the case
     # shellcheck disable=SC2046
     run_one aa "$m" "$m-$first-aa" "$out/bench-$m-$first-aa.json" 300 $(tet_cmd "$m" "$out/plans/$m-$first.toml")
+  done
+}
+
+# ---- stage: pp-overlap -------------------------------------------------------------------------------------
+# Reported only (ADR 0078): the session's tp2-pp2 plan with prefill_micro_batches 1 and 4, two rounds interleaved. Run
+# names start with ppov- (not the model), so the summary never takes them for candidates.
+pp_overlap_stage() {
+  local m src mb j order
+  if [ "$pp_overlap" != 1 ] || [ -n "$only" ]; then
+    say "pp-overlap skipped (PP_OVERLAP=$pp_overlap${only:+, ONLY})"
+    return 0
+  fi
+  mkdir -p "$out/pp-overlap-parts"
+  for m in $models; do
+    src="$out/plans/$m-tp2-pp2.toml"
+    if ! "$py" -c 'import json,sys; sys.exit(0 if any(c["id"] == "tp2-pp2" for c in json.load(open(sys.argv[1]))["candidates"]) else 1)' \
+      "$out/candidates-$m.json" 2> /dev/null; then
+      say "pp-overlap $m: no tp2-pp2 candidate, skipped"
+      continue
+    fi
+    for mb in 1 4; do
+      if [ "$DRY" = 1 ]; then
+        plan "plans/$m-tp2-pp2.toml with prefill_micro_batches = $mb -> plans/$m-tp2-pp2-mb$mb.toml"
+        continue
+      fi
+      "$py" - "$src" "$out/plans/$m-tp2-pp2-mb$mb.toml" "$mb" << 'EOF' || die "pp-overlap plan of $m failed"
+import re, sys
+src, dst, mb = sys.argv[1:4]
+text, n = re.subn(r"(?m)^prefill_micro_batches\s*=\s*\d+", f"prefill_micro_batches = {mb}", open(src).read())
+if n != 1:
+    sys.exit(f"{src}: {n} prefill_micro_batches lines")
+open(dst, "w").write(text)
+EOF
+    done
+    for j in 1 2; do
+      order="1 4"
+      [ "$j" = 2 ] && order="4 1"
+      for mb in $order; do
+        # shellcheck disable=SC2046
+        run_one overlap "$m" "ppov-$m-mb$mb-r$j" "$out/pp-overlap-parts/$m-mb$mb-r$j.json" 600 \
+          $(tet_cmd "$m" "$out/plans/$m-tp2-pp2-mb$mb.toml")
+      done
+    done
+    if [ "$DRY" = 1 ]; then
+      plan "merge pp-overlap-parts/$m-mb*-r*.json -> pp-overlap-$m.json (reported, not judged)"
+      continue
+    fi
+    "$py" - "$out" "$m" << 'EOF' || say "WARNING: pp-overlap-$m.json not written"
+import glob, json, os, re, statistics, sys
+d, m = sys.argv[1:3]
+runs = []
+for p in sorted(glob.glob(os.path.join(d, "pp-overlap-parts", f"{m}-mb*-r*.json"))):
+    mt = re.fullmatch(rf"{re.escape(m)}-mb(\d+)-r(\d+)\.json", os.path.basename(p))
+    if not mt:
+        continue
+    rate = {}
+    for r in json.load(open(p)):
+        if r.get("n_prompt", 0) > 0 and r.get("n_gen", 0) == 0:
+            rate["pp_tps"] = r["avg_ts"]
+        elif r.get("n_gen", 0) > 0 and r.get("n_prompt", 0) == 0:
+            rate["tg_tps"] = r["avg_ts"]
+    runs.append({"micro_batches": int(mt.group(1)), "round": int(mt.group(2)), **rate})
+med = {}
+for mb in sorted({r["micro_batches"] for r in runs}):
+    v = [r["pp_tps"] for r in runs if r["micro_batches"] == mb and "pp_tps" in r]
+    if v:
+        med[str(mb)] = statistics.median(v)
+ratio = med["4"] / med["1"] if "1" in med and "4" in med else None
+out = {"model": m, "plan": "tp2-pp2", "judged": False, "runs": runs, "median_pp_tps": med, "pp_ratio_mb4_mb1": ratio}
+json.dump(out, open(os.path.join(d, f"pp-overlap-{m}.json"), "w"), indent=2)
+print(f"pp-overlap {m}: median pp {med}, mb4 / mb1 {ratio if ratio is None else round(ratio, 3)}")
+EOF
   done
 }
 
@@ -887,6 +1007,8 @@ main() {
   say "STAGE rounds"
   [ "$DRY" = 1 ] && plan "host sampler beside every run (engine_sample.py) and cotenant_guard.py merge -> cotenant-<run>.json"
   rounds
+  say "STAGE pp-overlap"
+  pp_overlap_stage
   say "STAGE vllm"
   if [ -n "$only" ]; then say "vllm skipped (ONLY)"; else vllm_stage; fi
   say "STAGE summary"

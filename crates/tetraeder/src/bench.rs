@@ -9,8 +9,9 @@ use std::time::{Duration, Instant};
 use tetraeder_engine::{Engine, FlashAttn};
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_model::{
-    BackendChoice, DenseOptions, LoadOptions, ModelError, Qwen3, Qwen3Moe, SeqEval,
+    BackendChoice, DenseOptions, LoadOptions, ModelError, Qwen3, Qwen3Moe, RoutingStep, SeqEval,
 };
+use tetraeder_planner::multi_cli::RoutingFile;
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
 #[derive(Args)]
@@ -47,6 +48,11 @@ pub struct BenchArgs {
     /// real, the logits are not. Needs `--engine dense` or `moe`, and one stage.
     #[arg(long, value_name = "N")]
     layer_limit: Option<u32>,
+    /// Record the router's choices over one pass of the pp and tg tests and write them to FILE
+    /// (`routing-<model>.json`, ADR 0070) instead of timing: the routing frequencies of the
+    /// judged token stream. Needs `--engine moe` on one backend (the sharded load records none).
+    #[arg(long, value_name = "FILE", conflicts_with_all = ["plan", "layer_limit"])]
+    routing_out: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -74,6 +80,22 @@ pub fn run(a: &BenchArgs) -> anyhow::Result<()> {
         a.layer_limit.is_none() || a.engine != BenchEngine::Llama,
         "--layer-limit needs --engine dense or moe"
     );
+    if let Some(path) = &a.routing_out {
+        anyhow::ensure!(
+            a.engine == BenchEngine::Moe,
+            "--routing-out needs --engine moe"
+        );
+        let f = record_routing(a)?;
+        std::fs::write(path, serde_json::to_string(&f)?)?;
+        eprintln!(
+            "routing: {} layers, {} prefill rows, {} decode tokens -> {}",
+            f.prefill.len(),
+            f.prefill_tokens,
+            f.decode_tokens,
+            path.display()
+        );
+        return Ok(());
+    }
     let telemetry = match a.telemetry {
         Switch::On => Some(Arc::new(Telemetry::new(&TelemetryConfig::from_env())?)),
         Switch::Off => None,
@@ -245,16 +267,7 @@ fn run_builder(
     a: &BenchArgs,
     telemetry: &Option<Arc<Telemetry>>,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
-    let on_gpu = a.model.ngl != 0 && Backend::gpu_count() > 0;
-    let backend = if on_gpu {
-        BackendChoice::Gpu {
-            index: usize::try_from(a.model.main_gpu).unwrap_or(0),
-        }
-    } else {
-        BackendChoice::Cpu {
-            threads: a.model.threads.and_then(|t| usize::try_from(t).ok()),
-        }
-    };
+    let (on_gpu, backend) = builder_backend(a);
     let planned = match &a.plan {
         Some(p) => Some(crate::sharded::load_plan(
             &a.model.model,
@@ -286,14 +299,7 @@ fn run_builder(
             (n_prompt + n_gen) as usize + 1,
             telemetry,
         )?;
-        // Byte-level token ids, deterministic: valid in every vocabulary.
-        let mut x = 7u32;
-        let toks: Vec<i32> = (0..(n_prompt.max(n_gen) as usize))
-            .map(|_| {
-                x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-                ((x >> 16) % 256) as i32
-            })
-            .collect();
+        let toks = bench_tokens(n_prompt.max(n_gen) as usize);
         let mut out = Vec::new();
         let mut once = |m: &mut dyn BenchModel| -> anyhow::Result<Duration> {
             m.reset();
@@ -371,6 +377,105 @@ fn run_builder(
         rows.push(r);
     }
     Ok(rows)
+}
+
+/// The own builders' backend: the main GPU when `--ngl` is not 0 and a GPU exists, else the CPU.
+fn builder_backend(a: &BenchArgs) -> (bool, BackendChoice) {
+    let on_gpu = a.model.ngl != 0 && Backend::gpu_count() > 0;
+    let backend = if on_gpu {
+        BackendChoice::Gpu {
+            index: usize::try_from(a.model.main_gpu).unwrap_or(0),
+        }
+    } else {
+        BackendChoice::Cpu {
+            threads: a.model.threads.and_then(|t| usize::try_from(t).ok()),
+        }
+    };
+    (on_gpu, backend)
+}
+
+/// The tokens of the own builders' tests: byte-level ids, deterministic, valid in every
+/// vocabulary. The tg test's are the first `n_gen` of the pp test's.
+fn bench_tokens(n: usize) -> Vec<i32> {
+    let mut x = 7u32;
+    (0..n)
+        .map(|_| {
+            x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            ((x >> 16) % 256) as i32
+        })
+        .collect()
+}
+
+/// Selections per layer and expert in a routing log. Hot-set refresh markers and ids outside
+/// `0..n_expert` (none on one backend) are not selections.
+fn routing_counts(log: &[RoutingStep], n_layer: usize, n_expert: usize) -> Vec<Vec<u64>> {
+    let mut c = vec![vec![0u64; n_expert]; n_layer];
+    for s in log.iter().filter(|s| !s.refresh && s.layer < n_layer) {
+        for i in s.ids.iter().filter_map(|&id| usize::try_from(id).ok()) {
+            if i < n_expert {
+                c[s.layer][i] += 1;
+            }
+        }
+    }
+    c
+}
+
+/// One pass of the pp test (steps of one ubatch, as an unpipelined plan feeds them) and of the
+/// tg test (one token per step) through [`Qwen3Moe`] on one backend with the routing recorded.
+fn record_routing(a: &BenchArgs) -> anyhow::Result<RoutingFile> {
+    anyhow::ensure!(
+        a.n_prompt > 0 && a.n_gen > 0,
+        "--routing-out needs -p and -n above 0"
+    );
+    let (_, backend) = builder_backend(a);
+    let mut o = LoadOptions::new(backend);
+    o.cpu_threads = a.model.threads.and_then(|t| usize::try_from(t).ok());
+    o.n_ctx = a.n_prompt.max(a.n_gen) as usize + 1;
+    o.record_routing = true;
+    let mut m = Qwen3Moe::load(&a.model.model, &o).map_err(model_err)?;
+    let (n_layer, n_expert, top_k) = {
+        let h = m.hparams();
+        (h.n_layer as usize, h.n_expert as usize, h.n_expert_used)
+    };
+    let ubatch = a.model.ubatch.max(1) as usize;
+    let mut out = Vec::new();
+    let mut tables = Vec::new();
+    for (n_prompt, n_gen) in [(a.n_prompt, 0), (0, a.n_gen)] {
+        let toks = bench_tokens(n_prompt.max(n_gen) as usize);
+        m.reset();
+        m.take_routing_log();
+        // pp: steps of one ubatch; tg: one token per step
+        let step = if n_prompt > 0 { ubatch } else { 1 };
+        for chunk in toks.chunks(step) {
+            BenchModel::step(&mut m, chunk, &mut out)?;
+        }
+        let c = routing_counts(&m.take_routing_log(), n_layer, n_expert);
+        let want = toks.len() as u64 * u64::from(top_k);
+        if let Some((l, got)) = c
+            .iter()
+            .map(|r| r.iter().sum::<u64>())
+            .enumerate()
+            .find(|&(_, n)| n != want)
+        {
+            eprintln!("WARNING: routing layer {l}: {got} selections, expected {want}");
+        }
+        tables.push(c);
+    }
+    let decode = tables.pop().unwrap_or_default();
+    let prefill = tables.pop().unwrap_or_default();
+    Ok(RoutingFile {
+        model: a
+            .model
+            .model
+            .file_stem()
+            .map_or_else(String::new, |s| s.to_string_lossy().into_owned()),
+        n_expert: n_expert as u32,
+        top_k,
+        prefill_tokens: a.n_prompt,
+        decode_tokens: a.n_gen,
+        prefill,
+        decode,
+    })
 }
 
 /// Effective settings of one test, reported under llama-bench's field names (`flash_attn`: -1 auto, 0 off, 1 on).
@@ -510,6 +615,68 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("--engine dense"), "{err}");
+    }
+
+    #[test]
+    fn routing_counts_skip_refresh_markers_and_foreign_ids() {
+        let step = |layer, ids: Vec<i32>, refresh| RoutingStep {
+            layer,
+            n_tokens: ids.len() / 2,
+            weights: vec![0.5; ids.len()],
+            ids,
+            predicted: None,
+            predicted2: None,
+            refresh,
+        };
+        let log = [
+            step(0, vec![1, 3, 1, 2], false),
+            step(1, vec![0, 3], false),
+            step(0, vec![], true),
+            step(0, vec![-1, 3], false),
+            step(7, vec![0, 1], false),
+        ];
+        let c = routing_counts(&log, 2, 4);
+        assert_eq!(c, vec![vec![0, 2, 1, 2], vec![1, 0, 0, 1]]);
+    }
+
+    #[test]
+    fn bench_tokens_are_byte_ids_and_tg_is_a_prefix_of_pp() {
+        let pp = bench_tokens(2048);
+        assert!(pp.iter().all(|&t| (0..256).contains(&t)));
+        assert_eq!(bench_tokens(128)[..], pp[..128]);
+    }
+
+    #[test]
+    fn routing_out_excludes_a_plan_and_a_layer_limit() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct P {
+            #[command(flatten)]
+            bench: BenchArgs,
+        }
+        let base = [
+            "x",
+            "-m",
+            "m.gguf",
+            "--engine",
+            "moe",
+            "--routing-out",
+            "r.json",
+        ];
+        let p = P::parse_from(base);
+        assert_eq!(
+            p.bench.routing_out.as_deref(),
+            Some(std::path::Path::new("r.json"))
+        );
+        let with = |extra: &[&'static str]| {
+            P::try_parse_from(base.iter().copied().chain(extra.iter().copied())).is_err()
+        };
+        assert!(with(&["--plan", "p.toml"]));
+        assert!(with(&["--layer-limit", "4"]));
+        let mut dense = base;
+        dense[4] = "dense";
+        let err = run(&P::parse_from(dense).bench).unwrap_err().to_string();
+        assert!(err.contains("--engine moe"), "{err}");
     }
 
     #[test]

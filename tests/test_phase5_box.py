@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 STAGES = ["gpus", "env", "build", "models", "gpu-parity", "discover", "enumerate", "probe", "prepass", "anchors",
-          "calibrate", "predict", "rounds", "vllm", "summary"]
+          "calibrate", "predict", "rounds", "pp-overlap", "vllm", "summary"]
 D = "qwen3-32b"
 M = "qwen3-30b-a3b"
 # the case order of D2 (candidates, then the baselines of the prepass), the order summary --round-order rotates
@@ -336,15 +336,108 @@ def test_gate_failed_line_shows_the_probe_state(tmp_path):
 def test_anchor_rows_carry_the_shape_id_not_the_content_hash(tmp_path):
     """The merge step of `anchors()` sets plan_id from the file name; bench's own plan_id is a hash."""
     text = SCRIPT.read_text()
-    code = re.search(r"\"\$py\" - \"\$out\" \"\$m\" \"\$k\" << 'EOF'[^\n]*\n(.*?)\nEOF\n", text, re.S).group(1)
+    code = re.search(r"\"\$py\" - \"\$out\" \"\$m\" \"\$k\" \"\$want\" << 'EOF'[^\n]*\n(.*?)\nEOF\n", text, re.S).group(1)
     parts = tmp_path / "anchor-parts"
     parts.mkdir()
     for shape in ("single", "tp-2"):
         for lim in (16, 32):
             row = {"plan_id": "0123abcd" + shape, "n_prompt": 512, "avg_ts": 1.0}
             (parts / f"{D}-{shape}-L{lim}-r1.json").write_text(json.dumps([row]))
-    subprocess.run([sys.executable, "-c", code, str(tmp_path), D, "1"], check=True, timeout=60)
+    subprocess.run([sys.executable, "-c", code, str(tmp_path), D, "1", "4"], check=True, timeout=60)
     rows = json.loads((tmp_path / f"anchors-{D}-r1.json").read_text())
     assert len(rows) == 4
     assert {r["plan_id"] for r in rows} == {"single", "tp-2"}
     assert sorted({r["layer_limit"] for r in rows}) == [16, 32]
+
+
+def test_four_gpu_boxes_anchor_tp_4_on_the_dense_model_only(tmp_path):
+    """ADR 0078: a second all-reduce group size fits the latency per ring step; 2-GPU sessions are unchanged."""
+    four = dry(tmp_path, ngpu="4")
+    names = [n for n in runs(four) if "-anchor-" in n]
+    assert [n for n in names if n.startswith(D + "-")] == [
+        f"{D}-anchor-{p}-L{lim}-r{k}" for k in (1, 2) for p in ("single", "tp-2", "tp-4") for lim in (16, 32)]
+    assert not [n for n in names if n.startswith(M + "-") and "-tp-4-" in n]
+    cmd = next(ln for ln in four if "> qwen3-32b-tp-4-L16-r1.json" in ln)
+    # the session's own 4-GPU plan, every GPU visible
+    assert "/plans/qwen3-32b-tp-4.toml" in cmd and "--layer-limit 16" in cmd and "CUDA_VISIBLE_DEVICES" not in cmd
+    assert any(f"anchors-{D}-r1.json" in ln and "(6 parts)" in ln for ln in four)
+    assert any(f"anchors-{M}-r1.json" in ln and "(4 parts)" in ln for ln in four)
+    two = dry(tmp_path / "two")
+    assert not [n for n in runs(two) if "-anchor-tp-4-" in n]
+    assert any(f"anchors-{D}-r1.json" in ln and "(4 parts)" in ln for ln in two)
+
+
+def test_routing_is_recorded_for_the_moe_model_and_passed_to_its_prediction(tmp_path):
+    lines = dry(tmp_path)
+    rec = [i for i, ln in enumerate(lines) if "--routing-out" in ln]
+    assert len(rec) == 1
+    cmd = lines[rec[0]]
+    for x in ("CUDA_VISIBLE_DEVICES=0 ", "tetraeder bench", "--engine moe", "Qwen3-30B-A3B", "-p 2048 -n 128 -r 1",
+              "--ubatch 512", "routing-qwen3-30b-a3b.json"):
+        assert x in cmd
+    assert "--plan" not in cmd and "--layer-limit" not in cmd
+    calib = next(i for i, ln in enumerate(lines) if "tetraeder-plan calibrate" in ln)
+    stage = next(i for i, ln in enumerate(lines) if "STAGE calibrate" in ln)
+    assert stage < rec[0] < calib
+    pred = {m: next(ln for ln in lines if "tetraeder-plan predict" in ln and f"layouts/{m}.json" in ln) for m in (D, M)}
+    assert "--routing routing-qwen3-30b-a3b.json" in pred[M] and "--routing" not in pred[D]
+    # skipped with ONLY, as calibrate is
+    assert not [ln for ln in dry(tmp_path / "only", ROUNDS="2", ONLY="tp-2 llama-bench:tensor") if "--routing-out" in ln]
+
+
+def overlap_runs(lines):
+    return [n for n in runs(lines) if n.startswith("ppov-")]
+
+
+def test_pp_overlap_runs_tp2_pp2_at_one_and_four_micro_batches_interleaved(tmp_path):
+    lines = dry(tmp_path, ngpu="4", ROUNDS="1")
+    for m in (D, M):
+        assert [n for n in overlap_runs(lines) if n.startswith(f"ppov-{m}-")] == [
+            f"ppov-{m}-mb1-r1", f"ppov-{m}-mb4-r1", f"ppov-{m}-mb4-r2", f"ppov-{m}-mb1-r2"]
+        cmd = next(ln for ln in lines if f"plans/{m}-tp2-pp2-mb4.toml -p 2048" in ln)
+        assert "tetraeder bench" in cmd and f"> {m}-mb4-r1.json" in cmd
+        assert any(f"pp-overlap-{m}.json" in ln and "not judged" in ln for ln in lines)
+    st = stages(lines)
+    assert st.index("rounds") < st.index("pp-overlap") < st.index("vllm")
+    # after every A/A run, never counted as a candidate
+    names = runs(lines)
+    assert names.index(f"{M}-single-aa") < names.index(f"ppov-{D}-mb1-r1")
+    assert not [n for n in timed(lines, D) if "ppov" in n or "-mb" in n]
+
+
+def test_pp_overlap_defaults_on_for_four_gpu_rehearsals_only(tmp_path):
+    assert not overlap_runs(dry(tmp_path / "a", ngpu="4"))  # ROUNDS=3: off unless asked
+    assert overlap_runs(dry(tmp_path / "b", ngpu="4", PP_OVERLAP="1"))
+    assert not overlap_runs(dry(tmp_path / "c", ngpu="4", ROUNDS="1", PP_OVERLAP="0"))
+    assert not overlap_runs(dry(tmp_path / "d", ROUNDS="1", PP_OVERLAP="1"))  # 2x: no tp2-pp2 candidate
+    only = dry(tmp_path / "e", ngpu="4", ROUNDS="2", PP_OVERLAP="1", ONLY="tp-4 llama-bench:tensor")
+    assert not overlap_runs(only) and any("pp-overlap skipped" in ln for ln in only)
+
+
+def heredoc(after):
+    text = SCRIPT.read_text()
+    return re.search(re.escape(after) + r"[^\n]*\n(.*?)\nEOF\n", text, re.S).group(1)
+
+
+def test_pp_overlap_plan_variant_and_report(tmp_path):
+    rewrite = heredoc('"$py" - "$src" "$out/plans/$m-tp2-pp2-mb$mb.toml" "$mb" << \'EOF\'')
+    src = tmp_path / "p.toml"
+    src.write_text('id = "x"\n\n[knobs]\nprefill_micro_batches = 4\ncuda_graphs = true\n')
+    dst = tmp_path / "p1.toml"
+    subprocess.run([sys.executable, "-c", rewrite, str(src), str(dst), "1"], check=True, timeout=60)
+    assert "prefill_micro_batches = 1\n" in dst.read_text() and "cuda_graphs = true" in dst.read_text()
+    bad = tmp_path / "bad.toml"
+    bad.write_text("[knobs]\n")
+    assert subprocess.run([sys.executable, "-c", rewrite, str(bad), str(dst), "1"], timeout=60).returncode != 0
+
+    merge = heredoc('"$py" - "$out" "$m" << \'EOF\' || say "WARNING: pp-overlap')
+    parts = tmp_path / "pp-overlap-parts"
+    parts.mkdir()
+    for mb, j, pp in ((1, 1, 1000.0), (4, 1, 1500.0), (4, 2, 1460.0), (1, 2, 1020.0)):
+        rows = [{"n_prompt": 2048, "n_gen": 0, "avg_ts": pp}, {"n_prompt": 0, "n_gen": 128, "avg_ts": 50.0}]
+        (parts / f"{D}-mb{mb}-r{j}.json").write_text(json.dumps(rows))
+    subprocess.run([sys.executable, "-c", merge, str(tmp_path), D], check=True, timeout=60)
+    rep = json.loads((tmp_path / f"pp-overlap-{D}.json").read_text())
+    assert rep["judged"] is False and len(rep["runs"]) == 4
+    assert rep["median_pp_tps"] == {"1": 1010.0, "4": 1480.0}
+    assert abs(rep["pp_ratio_mb4_mb1"] - 1480.0 / 1010.0) < 1e-12

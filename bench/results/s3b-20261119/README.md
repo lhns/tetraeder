@@ -139,3 +139,19 @@ Offline, `scripts/costmodel_replica.py` (branch `track-costmodel-v3`). Version 2
 - A truncated `tp-4` anchor on Qwen3-32B (L/4, L/2) fits the latency per ring step `b` (ADR 0078); without it 4-rank all-reduces pay the 2-rank latency.
 - Routing frequencies of the judged token stream (byte ids) for Qwen3-30B-A3B, recorded in the calibration stage and passed to `predict`, set expert parallel's slowest rank (ADR 0070's input, not wired on the box).
 - tp2-pp2: one paired run at `prefill_micro_batches` 1 and 4 on a 4-GPU box shows whether the tp stages pipeline at all.
+
+## Routing input and tp-4 anchor (offline, ADR 0078 History 2026-11-19)
+
+`scripts/costmodel_replica.py DIR --skew S` (version 3, each session fit on its own anchors). No routing of the judged token stream is recorded yet (the next 4-GPU session writes `routing-qwen3-30b-a3b.json`), so the routing here is synthetic: experts 0 to 31 (rank 0 of `ep-4`, inside rank 0 of `ep-2`) hold the share S of every layer's selections, the rest evenly, prefill and decode alike. S = 0.25 is uniform routing and reproduces the v3 rows above to the digit. The S near 0.68 rows are the share the diagnosis backed out of the measured `ep-4` prefill, so the `ep-4` pp match there is by construction, not a validation.
+
+| S | s3b ep-4 pp / tg | s3 ep-4 pp / tg | s2g ep-2 pp / tg |
+|---|---|---|---|
+| 0.25 (uniform) | +0.353 / +0.495 | +0.377 / +0.391 | +0.111 / +0.013 |
+| 0.50 | +0.106 / +0.462 | +0.130 / +0.362 | -0.007 / +0.000 |
+| 0.68 | -0.022 / +0.407 | +0.000 / +0.312 | -0.078 / -0.021 |
+| 1.00 | -0.189 / +0.297 | -0.169 / +0.213 | -0.181 / -0.070 |
+
+- Every other candidate's prediction is unchanged at every S (single, layer, tp, tp2-pp2; checked row by row).
+- Prefill: the busiest `ep-4` rank's share is S here; a recorded share between 0.5 and 0.7 would bring `ep-4` pp inside 0.15. On `ep-2` the busiest rank holds S + (1 - S) / 3, so s2g's `ep-2` is matched near S = 0.5, a share of 0.67, the diagnosis's figure.
+- Decode: even with every selection on one rank (S = 1, 8 local experts per token against about 3.5 uniform), `ep-4` tg stays +0.21 to +0.30. Routing cannot close the `ep-4` decode miss alone; the rest is the 4-rank all-reduce latency the `tp-4` anchor fits (`b`) and whatever `ep`-specific cost remains. `b` is not fitted offline: no session has a truncated `tp-4` anchor, and fitting it on the judged `tp-4` candidate would fit the model to a judged run.
+- The frequencies are marginals per layer: the Monte Carlo draws each token's experts independently of where its other experts sit, so co-location within a token (all 8 on one rank more often than the marginals imply) is not priced. A recorded trace would; ADR 0070 allows it, it is not built.

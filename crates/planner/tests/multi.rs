@@ -8,8 +8,8 @@ use tetraeder_plan::Hints;
 use tetraeder_planner::layout::fixtures::{dense, moe};
 use tetraeder_planner::multi_cli::{self, PHASE};
 use tetraeder_planner::{
-    ModelLayout, candidate_for, enumerate_multi_with, features_multi, predict_candidate,
-    topology_of,
+    ModelLayout, Routing, candidate_for, enumerate_multi_with, expected_max_local, features_multi,
+    predict_candidate, topology_of,
 };
 use tetraeder_profiler::{HardwareGraph, LinkKind, RangeCosts};
 
@@ -352,8 +352,8 @@ fn predict_file_carries_the_hashes_and_all_candidates() {
     let g = hw(TWO);
     let l = moe();
     let file = multi_cli::candidates_multi(&g, &l);
-    let p =
-        multi_cli::predict_multi(&g, &l, &file, ("abc".into(), None, None), "deadbeef").unwrap();
+    let p = multi_cli::predict_multi(&g, &l, &file, ("abc".into(), None, None), None, "deadbeef")
+        .unwrap();
     assert_eq!(p.candidates.len(), file.candidates.len());
     assert_eq!(
         (p.hw_sha256.as_str(), p.git_commit.as_str()),
@@ -428,6 +428,247 @@ fn every_fixture_splits_within_one_layer_of_equal() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Routing frequencies (ADR 0070, 0068 History 2026-11-19), on both simulated boxes (rule 4)
+
+/// Counts per layer: `hot` on the first `span` experts (rank 0's under expert parallel), 1
+/// elsewhere.
+fn skewed(l: &ModelLayout, span: usize, hot: u64) -> Routing {
+    let e = l.n_expert as usize;
+    let row: Vec<u64> = (0..e).map(|i| if i < span { hot } else { 1 }).collect();
+    let t = vec![row; l.n_layer as usize];
+    Routing::from_counts(&t, &t).unwrap()
+}
+
+fn uniform_routing(l: &ModelLayout) -> Routing {
+    let t = vec![vec![16u64; l.n_expert as usize]; l.n_layer as usize];
+    Routing::from_counts(&t, &t).unwrap()
+}
+
+fn predict_with(g: &HardwareGraph, l: &ModelLayout, id: &str, r: Option<&Routing>) -> (u64, u64) {
+    let c = candidate_for(g, l, &Hints::default(), PHASE, id).unwrap();
+    let p = predict_candidate(g, l, &c.plan, PHASE, (2048, 128), r).unwrap();
+    (p.pp_tok_s.to_bits(), p.tg_tok_s.to_bits())
+}
+
+#[test]
+fn uniform_routing_reproduces_the_prediction_without_routing_exactly() {
+    let l = moe();
+    let u = uniform_routing(&l);
+    assert!(u.prefill.iter().flatten().all(|&x| x == 1.0));
+    for g in [hw(TWO), hw(FOUR)] {
+        for c in enumerate_multi_with(&g, &l, &Hints::default(), PHASE, QUOTA).candidates {
+            assert_eq!(
+                predict_with(&g, &l, &c.id, Some(&u)),
+                predict_with(&g, &l, &c.id, None),
+                "{}",
+                c.id
+            );
+        }
+    }
+}
+
+#[test]
+fn skewed_routing_leaves_single_layer_tp_and_tp_pp_alone() {
+    let l = moe();
+    for g in [hw(TWO), hw(FOUR)] {
+        let r = skewed(&l, 16, 9);
+        for c in enumerate_multi_with(&g, &l, &Hints::default(), PHASE, QUOTA).candidates {
+            if c.id.starts_with("ep-") {
+                continue;
+            }
+            assert_eq!(
+                predict_with(&g, &l, &c.id, Some(&r)),
+                predict_with(&g, &l, &c.id, None),
+                "{}",
+                c.id
+            );
+        }
+    }
+}
+
+/// Sums of the expert terms of the expert-parallel FFN phases: decode expert bytes, prefill
+/// expert params (the routed rows' FLOPs), each the busiest rank's.
+fn ep_expert_terms(f: &RunFeatures) -> (f64, f64) {
+    let ranks = f.ranks.as_ref().unwrap();
+    let (mut dec, mut pre) = (0.0, 0.0);
+    for ph in &ranks.phases {
+        let Some(pp) = &ph.prefill_parts else {
+            continue;
+        };
+        let k = f64::from(ph.repeat);
+        dec += k * ph
+            .parts
+            .iter()
+            .map(|p| p.expert_bytes_per_token)
+            .fold(0.0, f64::max);
+        pre += k * pp
+            .iter()
+            .map(|p| p.expert_params_per_token)
+            .fold(0.0, f64::max);
+    }
+    (dec, pre)
+}
+
+#[test]
+fn skewed_routing_prices_expert_parallel_at_its_slowest_rank() {
+    let l = moe();
+    let e = l.n_expert as usize;
+    for (g, n) in [(hw(TWO), 2usize), (hw(FOUR), 4)] {
+        let id = format!("ep-{n}");
+        let span = e / n;
+        let hot = 5u64;
+        let r = skewed(&l, span, hot);
+        let c = candidate_for(&g, &l, &Hints::default(), PHASE, &id).unwrap();
+        let topo = topology_of(&g, &l, &c.plan, PHASE).unwrap();
+        let feats =
+            |r: Option<&Routing>| features_multi(&l, &topo, &c.plan.knobs, None, r).unwrap();
+        let (dec_u, pre_u) = ep_expert_terms(&feats(None));
+        let (dec_s, pre_s) = ep_expert_terms(&feats(Some(&r)));
+        let rel = |a: f64, b: f64| (a / b - 1.0).abs();
+        // prefill: the busiest rank's share of the routed rows, against 1 / n
+        let hot_rows = hot as f64 * span as f64;
+        let share = hot_rows / (hot_rows + (e - span) as f64);
+        assert!(
+            rel(pre_s / pre_u, share * n as f64) < 1e-9,
+            "{id}: {pre_s} {pre_u}"
+        );
+        // decode: the Monte Carlo of the recorded frequencies, against the uniform one
+        let mc = |f: &[f64]| expected_max_local(f, l.n_expert_used as usize, n, 1000, 20_261_115);
+        let flat = vec![1.0; e];
+        let want = mc(&r.decode[0]) / mc(&flat);
+        assert!(
+            want > 1.0 && rel(dec_s / dec_u, want) < 1e-9,
+            "{id}: {dec_s} {dec_u}"
+        );
+        // and the shape gets slower on both rates
+        let (pu, tu) = predict_with(&g, &l, &id, None);
+        let (ps, ts) = predict_with(&g, &l, &id, Some(&r));
+        assert!(f64::from_bits(ps) < f64::from_bits(pu), "{id}");
+        assert!(f64::from_bits(ts) < f64::from_bits(tu), "{id}");
+    }
+}
+
+#[test]
+fn a_routing_file_must_match_the_layout() {
+    let l = moe();
+    let (n, e) = (l.n_layer as usize, l.n_expert as usize);
+    let file = |layers: usize, experts: usize| multi_cli::RoutingFile {
+        model: "qwen3-30b-a3b".into(),
+        n_expert: experts as u32,
+        top_k: 8,
+        prefill_tokens: 2048,
+        decode_tokens: 128,
+        prefill: vec![vec![16; experts]; layers],
+        decode: vec![vec![1; experts]; layers],
+    };
+    let text = |f: &multi_cli::RoutingFile| serde_json::to_string(f).unwrap();
+    let r = multi_cli::parse_routing(&text(&file(n, e)), &l).unwrap();
+    assert_eq!((r.prefill.len(), r.decode[0].len()), (n, e));
+    assert!(r.decode.iter().flatten().all(|&x| x == 1.0));
+    let err = |f: &multi_cli::RoutingFile, l: &ModelLayout| {
+        multi_cli::parse_routing(&text(f), l).unwrap_err()
+    };
+    assert!(err(&file(n - 1, e), &l).contains("layers"));
+    assert!(err(&file(n, e / 2), &l).contains("experts"));
+    assert!(err(&file(n, e), &dense()).contains("no experts"));
+    let mut none = file(n, e);
+    none.decode[3] = vec![0; e];
+    assert!(err(&none, &l).contains("no selections"));
+}
+
+#[test]
+fn the_predict_file_names_the_routing_it_used() {
+    let g = hw(TWO);
+    let l = moe();
+    let file = multi_cli::candidates_multi(&g, &l);
+    let r = skewed(&l, 64, 3);
+    let hashes = || ("abc".to_string(), None, None);
+    let with =
+        multi_cli::predict_multi(&g, &l, &file, hashes(), Some((&r, "f00d".into())), "x").unwrap();
+    let without = multi_cli::predict_multi(&g, &l, &file, hashes(), None, "x").unwrap();
+    assert_eq!(with.routing_sha256.as_deref(), Some("f00d"));
+    assert!(
+        !serde_json::to_string(&without)
+            .unwrap()
+            .contains("routing_sha256")
+    );
+    let t = |p: &multi_cli::PredictFile, id: &str| {
+        p.candidates.iter().find(|c| c.id == id).unwrap().t_s
+    };
+    assert!(t(&with, "ep-2") > t(&without, "ep-2"));
+    assert_eq!(
+        t(&with, "single").to_bits(),
+        t(&without, "single").to_bits()
+    );
+}
+
+/// ADR 0078: with `tp-2` and `tp-4` anchors the all-reduces span two group sizes, and the fit
+/// gains the latency per ring step `b`, which only the difference between the two identifies.
+#[test]
+fn a_tp4_anchor_fits_the_latency_per_ring_step() {
+    let mut prior = hw(FOUR);
+    prior.range_costs = Some(RangeCosts {
+        c_range_graph_s: 1e-9,
+        ..RangeCosts::PRIOR
+    });
+    let mut truth = prior.clone();
+    truth.range_costs = Some(RangeCosts {
+        c_range_graph_s: 1e-9,
+        c_step_s: 8e-4,
+        allreduce_latency_s: Some(6e-6),
+        allreduce_step_s: Some(3e-6),
+        ..RangeCosts::PRIOR
+    });
+    let l = dense();
+    let rows_of = |ids: &[&str]| {
+        let mut rows = Vec::new();
+        for id in ids {
+            let c = candidate_for(&truth, &l, &Hints::default(), PHASE, id).unwrap();
+            let topo = topology_of(&truth, &l, &c.plan, PHASE).unwrap();
+            for limit in [16u32, 32] {
+                let f = features_multi(&l, &topo, &c.plan.knobs, Some(limit), None).unwrap();
+                let p = predict(&truth, &f, 2048, 128).unwrap();
+                rows.push(serde_json::json!({"plan_id": id, "layer_limit": limit,
+                    "n_prompt": 2048, "n_gen": 0, "avg_ts": p.pp_tok_s}));
+                rows.push(serde_json::json!({"plan_id": id, "layer_limit": limit,
+                    "n_prompt": 0, "n_gen": 128, "avg_ts": p.tg_tok_s}));
+            }
+        }
+        serde_json::to_string(&rows).unwrap()
+    };
+    let two =
+        multi_cli::calibrate(&prior, &[(l.clone(), vec![rows_of(&["single", "tp-2"])])]).unwrap();
+    assert_eq!(two.hw.range_costs_or_prior().allreduce_step_s, None);
+    let four = multi_cli::calibrate(
+        &prior,
+        &[(l.clone(), vec![rows_of(&["single", "tp-2", "tp-4"])])],
+    )
+    .unwrap();
+    assert_eq!(four.anchors.len(), 6);
+    let b = four
+        .hw
+        .range_costs_or_prior()
+        .allreduce_step_s
+        .expect("fitted");
+    assert!(b > 1e-6, "{b}: the prior is 1 us");
+    // the full tp-4 decode, which no anchor is, lands near the truth
+    let tg = |g: &HardwareGraph| {
+        let c = candidate_for(g, &l, &Hints::default(), PHASE, "tp-4").unwrap();
+        predict_candidate(g, &l, &c.plan, PHASE, (2048, 128), None)
+            .unwrap()
+            .tg_tok_s
+    };
+    let err = |g: &HardwareGraph| (tg(g) / tg(&truth) - 1.0).abs();
+    assert!(err(&four.hw) < 0.02, "{} {}", tg(&four.hw), tg(&truth));
+    assert!(
+        err(&four.hw) < err(&two.hw),
+        "{} {}",
+        err(&four.hw),
+        err(&two.hw)
+    );
 }
 
 mod memory_property {

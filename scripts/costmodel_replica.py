@@ -9,6 +9,11 @@
     python scripts/costmodel_replica.py DIR --json OUT.json       also write the fitted graph and the rows
     python scripts/costmodel_replica.py DIR --ar-form scale       the all-reduce time times one factor (not adopted)
     python scripts/costmodel_replica.py DIR --drop roofline       version 2 without one fix (per-fix findings)
+    python scripts/costmodel_replica.py DIR --skew 0.68           synthetic routing (offline only, see --skew)
+
+Routing (ADR 0070): expert parallel is priced from DIR's (or EVAL_DIR's) routing-<model>.json when it exists, as
+`tetraeder-plan predict --routing` does: `prefill` sets the busiest rank's share of a prefill step's routed rows,
+`decode` the Monte Carlo of a decode step. Anchors never read it (they cut experts by columns).
 
 Version 1 matches the session's `predict-*.json` to the printed digit (tests/test_costmodel_replica.py). Version 2 is
 MODEL_VERSION 2 (ADR 0070, History 2026-11-18): expert matmuls at their own rate, the head (and the dense builder's
@@ -51,6 +56,10 @@ AR_FORM = "offset"
 # roofline, single_ranks, ar_share, link
 DROP: set = set()
 # hw.json writes `all_reduce` and `copy`, calib-comm.json `AllReduce` and `Copy`
+# Per model key: {"prefill": [[f]], "decode": [[f]]}, each layer scaled to mean 1 (`multi::Routing::from_counts`)
+ROUTING: dict = {}
+# Monte Carlo results by (frequencies, top_k, ranks): a synthetic table repeats one row per layer
+_MC: dict = {}
 OPS = {"all_reduce": "AllReduce", "copy": "Copy"}
 
 
@@ -183,6 +192,37 @@ def expected_max_local(freq: list, top_k: int, ranks: int, steps: int, seed: int
     return total_sum / steps
 
 
+def expected_max_local_cached(freq: list, top_k: int, ranks: int) -> float:
+    key = (tuple(freq), top_k, ranks)
+    if key not in _MC:
+        _MC[key] = expected_max_local(freq, top_k, ranks, EP_STEPS, EP_SEED)
+    return _MC[key]
+
+
+def routing_tables(counts: dict) -> dict:
+    """A routing-<model>.json as frequencies: each layer scaled to mean 1, equal counts giving exactly 1.0."""
+    def scale(t):
+        out = []
+        for row in t:
+            total = sum(row)
+            if total == 0:
+                raise ValueError("a routing layer without selections")
+            out.append([c * len(row) / total for c in row])
+        return out
+    return {"prefill": scale(counts["prefill"]), "decode": scale(counts["decode"])}
+
+
+def synthetic_routing(layout: dict, share: float) -> dict:
+    """Offline only, no recorded routing: the first n_expert / 4 experts (rank 0 of ep-4, inside rank 0 of ep-2) hold
+    `share` of every layer's selections, the rest the remainder evenly; prefill and decode alike."""
+    e = layout["n_expert"]
+    hot = e // 4
+    row = [share / hot if i < hot else (1.0 - share) / (e - hot) for i in range(e)]
+    row = [x * e for x in row]
+    t = [list(row) for _ in range(layout["n_layer"])]
+    return {"prefill": t, "decode": [list(row) for _ in t]}
+
+
 def max_mass(freq: list, ranks: int) -> float:
     per = max(len(freq) // ranks, 1)
     total = sum(freq)
@@ -238,8 +278,9 @@ def features_single_v1(layout: dict, lim: int, dev: str) -> dict:
     return {"single_v1": p}
 
 
-def features(layout: dict, plan: dict, lim: int | None, version: int) -> dict:
-    """features_multi: {"phases": [...]} (ranks path) or {"single_v1": part}."""
+def features(layout: dict, plan: dict, lim: int | None, version: int, routing: dict | None = None) -> dict:
+    """features_multi: {"phases": [...]} (ranks path) or {"single_v1": part}. `routing`: ROUTING's entry, or None for
+    uniform routing."""
     n_layer = layout["n_layer"]
     lim = min(lim or n_layer, n_layer)
     st_all = stages_of(plan)
@@ -314,7 +355,7 @@ def features(layout: dict, plan: dict, lim: int | None, version: int) -> dict:
                 block_slice(wo, block, tp, i, rot)
             attn_parts = [part(x, lb["attn_bytes"] / tp, OPS_ATTN, kv_layer / tp, attn_layer / tp, b) for x in devs]
             push_phase(phases, {"repeat": 1, "parts": attn_parts, "pre": None, "ranges": 1, "after": group})
-            ffn = ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep)
+            ffn = ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep, routing)
             uniform_ep = ffn.pop("uniform_ep")
             ffn["after"] = group
             if last and last_ffn_out and l + 1 == span[1]:
@@ -333,7 +374,7 @@ def features(layout: dict, plan: dict, lim: int | None, version: int) -> dict:
     return {"phases": phases, "micro": micro}
 
 
-def ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep):
+def ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep, routing=None):
     lb = layout["layers"][l]
     v2 = version >= 2
 
@@ -364,6 +405,15 @@ def ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep):
         uniform_ep = (expected_max_local([1.0] * e, layout["n_expert_used"], g, EP_STEPS, EP_SEED),
                       max_mass([1.0] * e, g))
     dec_max, mass = uniform_ep
+
+    def row(name):
+        t = (routing or {}).get(name) or []
+        return t[l] if l < len(t) and len(t[l]) == e else None
+
+    if row("decode") is not None:
+        dec_max = expected_max_local_cached(row("decode"), layout["n_expert_used"], g)
+    if row("prefill") is not None:
+        mass = max_mass(row("prefill"), g)
     eb = ex / e
     k = float(layout["n_expert_used"])
     local = (e // g) * eb
@@ -843,13 +893,20 @@ def plans(d: Path, model: str) -> dict:
     return {c["id"]: c["plan"] for c in load_json(d / f"candidates-{model}.json")["candidates"]}
 
 
+def anchor_plans(d: Path, model: str) -> dict:
+    """The anchors' plans: on a 4-GPU box single and tp-2 come from a 2-GPU graph (plans-anchor/), tp-4 is the
+    session's own plan."""
+    pl = plans(d, model)
+    if (d / "plans-anchor" / f"candidates-{model}.json").exists():
+        pl.update(plans(d / "plans-anchor", model))
+    return pl
+
+
 def session_anchors(d: Path, version: int) -> list:
     out = []
     for model in models(d):
         layout = load_json(d / "layouts" / f"{model}.json")
-        # On a 4-GPU box the anchors (single, tp-2) are enumerated on two GPUs into plans-anchor/.
-        pl = plans(d / "plans-anchor", model) if (d / "plans-anchor" / f"candidates-{model}.json").exists() \
-            else plans(d, model)
+        pl = anchor_plans(d, model)
         acc: dict = {}
         for f in sorted(d.glob(f"anchors-{model}-r*.json")):
             for r in rows(f):
@@ -888,7 +945,7 @@ def predict_session(hw: dict, d: Path, version: int) -> list:
     for model in models(d):
         layout = load_json(d / "layouts" / f"{model}.json")
         for cid, plan in plans(d, model).items():
-            p = predict(hw, features(layout, plan, None, version), PROMPT, GEN, version)
+            p = predict(hw, features(layout, plan, None, version, ROUTING.get(model)), PROMPT, GEN, version)
             out.append({"model": model, "id": cid, "pp": p["pp"], "tg": p["tg"], "t": p["t"]})
     return out
 
@@ -902,11 +959,25 @@ def main() -> int:
     ap.add_argument("--json", type=Path)
     ap.add_argument("--ar-form", choices=["offset", "scale"], default="offset")
     ap.add_argument("--drop", action="append", default=[], help="leave one version-2 fix out (repeatable)")
+    ap.add_argument("--no-routing", action="store_true", help="uniform routing even where routing-<model>.json exists")
+    ap.add_argument("--skew", type=float, help="synthetic routing for MoE models without a routing file (offline only)")
     a = ap.parse_args()
     global AR_FORM
     AR_FORM = a.ar_form
     DROP.update(a.drop)
     ev = a.eval or a.dir
+    for model in models(ev):
+        layout = load_json(ev / "layouts" / f"{model}.json")
+        f = ev / f"routing-{model}.json"
+        if layout["n_expert"] == 0 or a.no_routing:
+            continue
+        if f.exists():
+            ROUTING[model] = routing_tables(load_json(f))
+        elif a.skew is not None:
+            ROUTING[model] = synthetic_routing(layout, a.skew)
+    if ROUTING:
+        print("routing: " + ", ".join(f"{m} ({'file' if (ev / f'routing-{m}.json').exists() else f'skew {a.skew}'})"
+                                      for m in sorted(ROUTING)))
     if a.committed:
         hw = load_json(a.dir / "calib.json")["hw"]
         version, resid = 1, []
