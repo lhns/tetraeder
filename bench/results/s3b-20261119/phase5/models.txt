@@ -1,0 +1,2 @@
+-rw-r--r-- 1 root root 19762149024 Nov 19 01:27 /root/tetraeder/.hf_cache/Qwen__Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf
+-rw-r--r-- 1 root root 18556685824 Nov 19 01:31 /root/tetraeder/.hf_cache/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf

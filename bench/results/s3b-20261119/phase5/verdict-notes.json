@@ -1,0 +1,90 @@
+{
+  "unclean_runs": [
+    {
+      "run": "qwen3-32b-single-r1",
+      "reasons": [
+        "qwen3-32b-single-r1: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-single-r3",
+      "reasons": [
+        "qwen3-32b-single-r3: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-single-r4",
+      "reasons": [
+        "qwen3-32b-single-r4: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-layer-4-r1",
+      "reasons": [
+        "qwen3-32b-layer-4-r1: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-layer-4-r2",
+      "reasons": [
+        "qwen3-32b-layer-4-r2: GPU 0: 2 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-layer-4-r4",
+      "reasons": [
+        "qwen3-32b-layer-4-r4: GPU 3: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-tp-4-r1",
+      "reasons": [
+        "qwen3-32b-tp-4-r1: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-tp-4-r2",
+      "reasons": [
+        "qwen3-32b-tp-4-r2: GPU 2: share of 0x4 samples 0.22 is furthest from the median 0.11 of qwen3-32b-tp-4, whose rounds differ by 0.17 (more than 0.15)"
+      ]
+    },
+    {
+      "run": "qwen3-32b-tp2-pp2-r2",
+      "reasons": [
+        "qwen3-32b-tp2-pp2-r2: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-tp2-pp2-r3",
+      "reasons": [
+        "qwen3-32b-tp2-pp2-r3: GPU 0: 1 window sample(s) with throttle bits 0x20",
+        "qwen3-32b-tp2-pp2-r3: GPU 0: share of 0x4 samples 0.30 is furthest from the median 0.12 of qwen3-32b-tp2-pp2, whose rounds differ by 0.20 (more than 0.15)"
+      ]
+    },
+    {
+      "run": "qwen3-32b-llama-bench-layer-r1",
+      "reasons": [
+        "qwen3-32b-llama-bench-layer-r1: GPU 0: 2 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-llama-bench-layer-r2",
+      "reasons": [
+        "qwen3-32b-llama-bench-layer-r2: GPU 0: 2 window sample(s) with throttle bits 0x20",
+        "qwen3-32b-llama-bench-layer-r2: GPU 0: share of 0x4 samples 0.36 is furthest from the median 0.14 of qwen3-32b-llama-bench-layer, whose rounds differ by 0.29 (more than 0.15)"
+      ]
+    },
+    {
+      "run": "qwen3-32b-llama-bench-tensor-r1",
+      "reasons": [
+        "qwen3-32b-llama-bench-tensor-r1: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-llama-bench-tensor-r3",
+      "reasons": [
+        "qwen3-32b-llama-bench-tensor-r3: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    }
+  ]
+}
