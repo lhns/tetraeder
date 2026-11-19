@@ -881,8 +881,10 @@ mod tests {
         HardwareGraph::from_toml(include_str!("../fixtures/two_3090_hoststaged.toml")).unwrap()
     }
 
-    /// The all-reduce's in-step latency (ADR 0078) is identified by the tp-2 anchors: with
-    /// `c_range` near zero only it explains the all-reduces' fixed cost. Singles with two op
+    /// The all-reduce's in-step latency (ADR 0078) is identified by the tp-2 anchors when it is
+    /// below the prior: a range launch cannot cost less than nothing, so with `c_range` near zero
+    /// only `a` explains the cheaper all-reduces (above the prior, the weakly pulled `c_range`
+    /// absorbs it, as ADR 0070 notes they share one range per phase). Singles with two op
     /// densities pin `c0` against B, which the per-layer all-reduce cost would otherwise trade
     /// against. One group size fits no step latency. The host link stays at the prior.
     #[test]
@@ -905,7 +907,7 @@ mod tests {
         truth.range_costs = Some(RangeCosts {
             c_range_graph_s: 1e-9,
             c_step_s: 8e-4,
-            allreduce_latency_s: Some(4e-5),
+            allreduce_latency_s: Some(4e-6),
             ..RangeCosts::PRIOR
         });
         let mut anchors = single_and_tp2(&truth);
@@ -916,7 +918,7 @@ mod tests {
         }
         let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
         let c = fit.hw.range_costs_or_prior();
-        assert!(rel(c.allreduce_latency_s.unwrap(), 4e-5) < 0.05, "{c:?}");
+        assert!(rel(c.allreduce_latency_s.unwrap(), 4e-6) < 0.05, "{c:?}");
         assert_eq!((c.allreduce_latency_share, c.allreduce_step_s), (1.0, None));
         assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
         assert_eq!(fit.hw.links, prior.links);
