@@ -14,6 +14,8 @@ All briefs: failing tests first, then code. Every local cargo command goes throu
 | A2 GPU group async | after A, only if A's profiling shows the VRAM group at 5 ms per token or more | |
 | C2 RAM tier policy | after C1 and a box trace, only if the replay passes the threshold | |
 
+Status (2026-11-19): A, B and C1 are built and on main (ADR 0054 Accepted; ADR 0050 (b) and (c) per its Status line); C2 is built in a different form (below); A2 stays behind its gate.
+
 So: C1 and B in two worktrees now; A after C1 merges (or in parallel with a planned rebase onto C1). B and A conflict only textually (different functions of `qwen3moe.rs`, the env var list of `exit_regime.rs`, `telemetry/src/metrics.rs`, `deploy/alerts/engine.yml`, `deploy/grafana/dashboards/overview.json`): merge, do not redesign. Three workers on one machine share the cargo lock; prefer CI for compile loops.
 
 ---
@@ -163,5 +165,7 @@ In the `trace` stage's replay line (line 268) change `--ram 48,64,77,96,110` to 
 Gate: the box run of Brief A's path with the profiling switch (`TETRAEDER_EXIT_TIME_GPU_GROUP=1`) shows the VRAM group at 5 ms per decode token or more. Then: `Sched::compute_async` and `Sched::synchronize` in `crates/ggml-sys/src/ggml/sched.rs` (`ggml_backend_sched_graph_compute_async`, `ggml_backend_sched_synchronize`, safety comments); a third scheduler for the VRAM group graph; launch it before the hit group; assert one split, else fall back to stage 1 for the layer and count `tetraeder.moe.layer.duration{part="gpu_group"}` fallbacks; synchronize before the next segment allocates. Same tests as A with the async path on; bitwise equality holds (same kernels, same inputs).
 
 ## Follow-up C2: RAM tier by routing frequency (only if gated in)
+
+**Status (2026-11-19): built differently, off by default.** The gate passed (`20261112c`) and ADR 0050 (c) was built as recorded in its History, "Addendum 2026-11-12b": pins go through `set_hot_set` instead of the second pin set below, with no new metric, panel or alert. The design below (`set_frequency_pins`, `ram_pin_share`, `tetraeder.expert.pinned`, `TetraederRamTierHitDrop`) was not built; it is kept as the brief that was given.
 
 Gate: ADR 0050 (c) threshold on the box trace. Then: `LayerSlots::set_frequency_pins(&[u32])` with a second pin set, eviction skipping the union, `pinned_count` the union (property tests in `crates/memory/tests/slot_props.rs`: union never exceeds active slots, pinned experts never evicted, `set_hot_set` keeps frequency pins); `LoadOptions::ram_pin_share: f32` (default 0); `Streamer` refreshes frequency pins from `counts` where it refreshes the VRAM hot set and every 16 decode steps; prefetch budget `slots - union` through `prefetch_plan`. Metrics `tetraeder.expert.pinned` (tier, source), panel "RAM tier: hit rate and pinned slots", alert `TetraederRamTierHitDrop`. The replay with the chosen share must predict the box run's RAM hit rate within 0.5 points.
