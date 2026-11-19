@@ -220,6 +220,37 @@ pub(crate) fn scatter_rows(
     Ok(())
 }
 
+/// Writes a step input of a rank: on its stream when `on_stream`
+/// (`Executor::async_inputs`, ADR 0069 History 2026-11-19), else with one blocking copy.
+pub(crate) fn put_i32(
+    t: Tensor<'_>,
+    backend: &Backend,
+    on_stream: bool,
+    data: &[i32],
+) -> Result<()> {
+    if on_stream {
+        t.set_i32_async(backend, data)?;
+    } else {
+        t.set_i32(data)?;
+    }
+    Ok(())
+}
+
+/// [`put_i32`] for F16 bits (the mask).
+pub(crate) fn put_f16(
+    t: Tensor<'_>,
+    backend: &Backend,
+    on_stream: bool,
+    data: &[u16],
+) -> Result<()> {
+    if on_stream {
+        t.set_f16_bits_async(backend, data)?;
+    } else {
+        t.set_f16_bits(data)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

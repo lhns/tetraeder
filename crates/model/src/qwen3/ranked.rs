@@ -23,10 +23,11 @@ use crate::attn::{
 use crate::gguf::Gguf;
 use crate::hparams::names;
 use crate::qwen3moe::{BackendChoice, MemoryUse, ModelError, Result};
-use crate::shard::{WeightLoader, block_part, part, row_part};
+use crate::shard::{WeightLoader, block_part, part, put_f16, put_i32, row_part};
 use std::collections::BTreeSet;
 use std::ops::Range;
 use std::rc::Rc;
+use std::time::Instant;
 use tetraeder_executor::{
     ExecCounters, ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks, gpipe_sort,
 };
@@ -317,6 +318,7 @@ impl Ranked {
         telemetry: Option<&tetraeder_telemetry::Metrics>,
         out: &mut Vec<f32>,
     ) -> Result<()> {
+        let t_step = Instant::now();
         let key: Vec<MbKey> = plans
             .iter()
             .map(|p| (p.pos.len(), p.n_kv, p.outputs.len()))
@@ -337,17 +339,21 @@ impl Ranked {
             }
             self.state_key = Some(key.clone());
         }
-        for rd in &self.ranks {
+        let on_stream = self.exec.async_inputs();
+        for (r, rd) in self.ranks.iter().enumerate() {
+            let t0 = Instant::now();
+            let b = &rd.backend;
             let mut at = 0;
             for (st, plan) in rd.states.iter().zip(plans) {
                 let n = plan.pos.len();
-                st.tokens.get().set_i32(&tokens[at..at + n])?;
-                st.pos.get().set_i32(&plan.pos)?;
-                st.rows.get().set_i32(&plan.rows)?;
-                st.mask.get().set_f16_bits(&plan.mask)?;
-                st.outputs.get().set_i32(&plan.outputs)?;
+                put_i32(st.tokens.get(), b, on_stream, &tokens[at..at + n])?;
+                put_i32(st.pos.get(), b, on_stream, &plan.pos)?;
+                put_i32(st.rows.get(), b, on_stream, &plan.rows)?;
+                put_f16(st.mask.get(), b, on_stream, &plan.mask)?;
+                put_i32(st.outputs.get(), b, on_stream, &plan.outputs)?;
                 at += n;
             }
+            self.exec.trace_note("upload", r, t0);
         }
 
         let reusable = reuse && self.step.as_ref().is_some_and(|s| s.key == key);
@@ -409,15 +415,19 @@ impl Ranked {
         res?;
 
         let n_vocab = h.attn.n_vocab as usize;
-        if let [(_, t)] = step.logits.as_slice() {
+        if let [(r, t)] = step.logits.as_slice() {
+            let t0 = Instant::now();
             t.get().get_f32_into(out)?;
+            self.exec.trace_note("logits", *r, t0);
         } else {
             let n_out = key.last().map_or(0, |k| k.2);
             out.clear();
             out.resize(n_out * n_vocab, 0.0);
             let mut slice = Vec::new();
             for (r, t) in &step.logits {
+                let t0 = Instant::now();
                 t.get().get_f32_into(&mut slice)?;
+                self.exec.trace_note("logits", *r, t0);
                 let v = &self.ranks[*r].vocab;
                 for row in 0..n_out {
                     let from = &slice[row * v.len()..(row + 1) * v.len()];
@@ -425,6 +435,8 @@ impl Ranked {
                 }
             }
         }
+        self.exec.trace_note("step", 0, t_step);
+        self.exec.trace_flush();
         Ok(())
     }
 

@@ -3,8 +3,10 @@
 
 mod common;
 
-use common::{LEN, all_reduce_case, bits, cpu_ranks, pipeline_case};
-use tetraeder_executor::{ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks};
+use common::{LEN, all_reduce_case, bits, cpu_ranks, pipeline_case, pipeline_case_with};
+use tetraeder_executor::{
+    ExecError, ExecOptions, Executor, Op, Program, RankDevice, RankGraph, Ranks,
+};
 use tetraeder_ggml_sys::ggml::{Backend, Context, Gallocr, Tensor, Type};
 
 /// `((x + y) * y * 0.5)` normalized, plus `x`: five nodes.
@@ -229,5 +231,50 @@ fn run_refuses_an_invalid_program() {
     match exec.run(&p) {
         Err(ExecError::Invalid(v)) => assert!(v[0].contains("never computed"), "{v:?}"),
         other => panic!("{other:?}"),
+    }
+}
+
+/// The trace (ADR 0069 History 2026-11-19) writes one line per step with one record per op and
+/// the output sync, in issue and in sync mode; results stay bit-equal to the reference
+/// (`pipeline_case` checks every step), and range uids change nothing on CPU ranks.
+#[test]
+fn trace_records_every_op_per_step() {
+    for (sync, uid) in [(false, false), (true, true)] {
+        let path = std::env::temp_dir().join(format!(
+            "tetraeder-exec-trace-{}-{sync}.jsonl",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let opts = ExecOptions {
+            range_uid: uid,
+            async_inputs: false,
+            trace: Some(path.clone()),
+            trace_sync: sync,
+        };
+        // Rank 0: two ranges, copy, rank 1: two ranges; then the sync of rank 1.
+        pipeline_case_with(opts, [cpu_ranks(1)[0]; 2], &[1, 3], &[2, 3], 3, |_| {});
+        let text = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 3, "{text}");
+        for (i, line) in lines.iter().enumerate() {
+            assert!(
+                line.starts_with(&format!("{{\"step\":{i},\"sync\":{sync},\"ev\":[")),
+                "{line}"
+            );
+            let kinds: Vec<&str> = line
+                .match_indices("[\"")
+                .map(|(at, _)| {
+                    let rest = &line[at + 2..];
+                    &rest[..rest.find('"').unwrap()]
+                })
+                .collect();
+            assert_eq!(
+                kinds,
+                ["compute", "compute", "copy", "compute", "compute", "sync"],
+                "{line}"
+            );
+            assert!(line.contains("[\"copy\",0,1,"), "{line}");
+        }
     }
 }

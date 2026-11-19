@@ -5,36 +5,43 @@ A graph filled with ggml_graph_add_node has an empty visited set, so every node'
 0 and no backend fuses in it (ggml_can_fuse needs a count of 1). The scheduler's splits are
 ggml_graph_view slices that share the source graph's counts, but ggml_graph_view is internal and
 returns the graph by value. This exports it as a graph object allocated in a context. ADR 0075.
+With uid set, the view gets a fresh graph uid so ggml-cuda skips its per-call node comparison,
+as it does for the scheduler's splits (ADR 0069 History 2026-11-19).
 ---
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
 --- a/ggml/include/ggml.h
 +++ b/ggml/include/ggml.h
-@@ -2691,6 +2691,10 @@
+@@ -2691,6 +2691,12 @@
      GGML_API int                   ggml_graph_n_nodes(struct ggml_cgraph * cgraph);
  
      GGML_API void   ggml_graph_add_node(struct ggml_cgraph * cgraph, struct ggml_tensor * tensor);
 +    // nodes [i0, i1) of cgraph as a graph object in ctx that shares cgraph's nodes, use counts and
 +    // visited set, so backends fuse in it as in cgraph (a graph filled with ggml_graph_add_node has
-+    // no use counts); no leafs or gradients; valid while cgraph is
-+    GGML_API struct ggml_cgraph * ggml_graph_view_new(struct ggml_context * ctx, struct ggml_cgraph * cgraph, int i0, int i1);
++    // no use counts); no leafs or gradients; valid while cgraph is. With uid the view gets a new
++    // graph uid, a promise that its nodes and their sources do not change while it is used, so a
++    // backend may skip re-checking them on later calls (ggml-cuda does); else uid 0
++    GGML_API struct ggml_cgraph * ggml_graph_view_new(struct ggml_context * ctx, struct ggml_cgraph * cgraph, int i0, int i1, bool uid);
  
      GGML_API size_t ggml_graph_overhead(void);
      GGML_API size_t ggml_graph_overhead_custom(size_t size, bool grads);
 diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
 --- a/ggml/src/ggml.c
 +++ b/ggml/src/ggml.c
-@@ -7620,9 +7620,17 @@ int ggml_graph_n_nodes(struct ggml_cgraph * cgraph) {
+@@ -7620,9 +7620,20 @@ int ggml_graph_n_nodes(struct ggml_cgraph * cgraph) {
  void ggml_graph_add_node(struct ggml_cgraph * cgraph, struct ggml_tensor * tensor) {
      GGML_ASSERT(cgraph->size > cgraph->n_nodes);
      cgraph->nodes[cgraph->n_nodes] = tensor;
      cgraph->n_nodes++;
  }
  
-+struct ggml_cgraph * ggml_graph_view_new(struct ggml_context * ctx, struct ggml_cgraph * cgraph0, int i0, int i1) {
++struct ggml_cgraph * ggml_graph_view_new(struct ggml_context * ctx, struct ggml_cgraph * cgraph0, int i0, int i1, bool uid) {
 +    GGML_ASSERT(0 <= i0 && i0 <= i1 && i1 <= cgraph0->n_nodes);
 +    struct ggml_object * obj = ggml_new_object(ctx, GGML_OBJECT_TYPE_GRAPH, sizeof(struct ggml_cgraph));
 +    struct ggml_cgraph * cgraph = (struct ggml_cgraph *) ((char *) ctx->mem_buffer + obj->offs);
 +    *cgraph = ggml_graph_view(cgraph0, i0, i1);
++    if (uid) {
++        cgraph->uid = ggml_graph_next_uid();
++    }
 +    return cgraph;
 +}
 +

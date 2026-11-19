@@ -47,6 +47,22 @@ Against s3 (before the fixes): layer-4 pp is now within 0.07 on both models (s3:
 - A/A: D4 single 4.9117 s at start, 4.9093 s at end (-0.05%); M4 single 1.0200 s, 1.0184 s (-0.16%).
 - verdict.json: phase5_pass false, band 0.08 (provisional cuda-default), comm_impl nccl, p2p none. M4: clean true, pass false (baseline_ok false, prediction_ok false). D4: clean false, pass null; reasons "single: 1 clean round(s), need 2", "layer-4: 1 clean round(s), need 2". predict sha256: 32B 64549816..., 30B cabb627c....
 
+## Layer-4 decode (analysis on `track-layer-decode`, ADR 0069 History 2026-11-19)
+
+tg128 in ms per token (1000 / tok/s), from the bench and anchor JSONs of this session.
+
+- 30B single anchors: L12 1.615, L24 2.762, so 1.147 per 12 layers and an intercept (head plus fixed host work) of 0.468; the line gives 5.056 for 48 layers against 5.10 measured.
+- 30B layer-4 5.483: +0.38 to 0.43 over single, about 0.13 per stage boundary. Cross-check: the tp-2 anchors (L12 1.638, L24 2.859) give 5.30 for 48 layers; tp2-pp2 measured 5.50, about 0.2 for its one boundary.
+- 32B single anchors: L16 7.211, L32 13.45, line 25.93 for 64 layers; single 26.05, layer-4 25.85. No visible boundary cost, although the dense builder uploads 20 inputs on layer-4 against 5 on one GPU: either the boundary costs hide behind the 6 ms stages or clocks mask them (GPU 0 of the 32B single sat at the 350 W limit, median sampled SM clock 1695 MHz, while the layer-4 GPUs drew about 240 W). Read the 32B as a bound, not a measurement of the boundary cost.
+- Against llama.cpp `-sm layer` (4.87 and 25.13): our layer-4 is 0.61 (30B) and 0.72 (32B) ms per token slower, about the same absolute gap on both models, so per-token host work rather than compute. No llama.cpp single-GPU run in this session: whether `-sm layer` beats one GPU, or llama.cpp's single GPU already beats ours (the 30B single was not at the power limit), is open; `-sm none` in the box check settles it.
+- M4 gate arithmetic: T = 2048 / 11642 + 128 / 182.4 = 0.878 s against llama.cpp's 0.805 s; the gate (0.92) needs T at most 0.875 s, so about 0.025 ms per decode token. Matching `-sm layer` needs about 0.6.
+- Host work per token that libllama skips, with rough sizes and what each can explain:
+  - The per-call node comparison of uid-0 ranges in ggml-cuda: all nodes of the step, about 2000 to 2600, at roughly 0.1 to 0.2 us each, so 0.2 to 0.5 ms. Single and layer-4 compare the same node total, so it can explain the gap to llama.cpp (both models), not layer-4 against our single.
+  - 13 blocking input copies before the first range on the 30B layer-4 against 4 on single, about 10 to 20 us each: 0.1 to 0.2 ms of the 0.4 layer-4 against single. libllama makes as many blocking copies, but each just before its split, while earlier GPUs compute.
+  - Three staged peer copies per token (no P2P): both engines pay them; if they block the host, every later rank's host work (uploads are already done, but its range's node comparison and launch) lands on the critical path, which would make the comparison also a layer-4 against single cost.
+  - The shares are estimates until the box check (`scripts/layer_decode_box.sh`) times them.
+- Sampled clocks (1 Hz, windows include pp2048, 3 to 7 active samples per GPU): 30B single GPU 0 median 1920 to 1950 MHz; our layer-4 GPUs 1695 to 1957; llama.cpp layer 1830 to 1995. Too few samples to separate from the overhead.
+
 ## Throttle and co-tenant
 
 - 14 of 38 judged runs unclean, all on Qwen3-32B: 13 by one or two window samples with bit 0x20 (12 on GPU 0, one on GPU 3 for layer-4 r4), one by a 0x4 share spread (tp-4 r2, GPU 2, 0.22 against median 0.11). Qwen3-30B-A3B: 0 unclean. The single and layer-4 candidates and both llama-bench baselines hit 0x20 in most rounds; reruns (r3, r4) did not give single and layer-4 a second clean round. Board share 0 everywhere.

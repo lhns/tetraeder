@@ -13,6 +13,7 @@ mod fallback;
 mod program;
 mod ranks;
 mod schedule;
+mod trace;
 mod validate;
 
 pub use error::ExecError;
@@ -20,4 +21,5 @@ pub use exec::{ExecCounters, Executor};
 pub use program::{Op, Program, RankGraph, RankId};
 pub use ranks::{RankDevice, Ranks};
 pub use schedule::gpipe_sort;
+pub use trace::ExecOptions;
 pub use validate::validate;

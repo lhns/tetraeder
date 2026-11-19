@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use tetraeder_executor::{
-    ExecCounters, Executor, Op, Program, RankDevice, RankGraph, RankId, Ranks,
+    ExecCounters, ExecOptions, Executor, Op, Program, RankDevice, RankGraph, RankId, Ranks,
 };
 use tetraeder_ggml_sys::ggml::{Backend, Context, Gallocr, Tensor, Type};
 
@@ -101,9 +101,28 @@ pub fn pipeline_case(
     cuts0: &[usize],
     cuts1: &[usize],
     steps: usize,
+    after_step: impl FnMut(usize),
+) -> ExecCounters {
+    pipeline_case_with(
+        ExecOptions::from_env(),
+        devices,
+        cuts0,
+        cuts1,
+        steps,
+        after_step,
+    )
+}
+
+/// [`pipeline_case`] on an executor with `opts`; the trace (if any) gets one line per step.
+pub fn pipeline_case_with(
+    opts: ExecOptions,
+    devices: [RankDevice; 2],
+    cuts0: &[usize],
+    cuts1: &[usize],
+    steps: usize,
     mut after_step: impl FnMut(usize),
 ) -> ExecCounters {
-    let mut exec = Executor::new(Ranks::open(&devices).unwrap());
+    let mut exec = Executor::with_options(Ranks::open(&devices).unwrap(), opts);
     let (b0, b1) = (
         exec.ranks().backend(0).clone(),
         exec.ranks().backend(1).clone(),
@@ -200,6 +219,7 @@ pub fn pipeline_case(
             bits(&rout.get_f32().unwrap()),
             "step {step} cuts {cuts0:?} {cuts1:?}"
         );
+        exec.trace_flush();
         after_step(step);
     }
     exec.take_counters()

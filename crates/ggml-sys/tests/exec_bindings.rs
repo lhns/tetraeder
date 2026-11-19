@@ -291,10 +291,10 @@ fn range_graphs_cache_matches_the_whole_graph() {
     let whole = out.get_f32().unwrap();
     out.set_f32(&[0.0; N]).unwrap();
 
-    assert!(RangeGraphs::new(&g, &[]).is_err());
-    assert!(RangeGraphs::new(&g, &[3, 3, 6]).is_err());
-    assert!(RangeGraphs::new(&g, &[2, 5]).is_err());
-    let ranges = RangeGraphs::new(&g, &[1, 4, 6]).unwrap();
+    assert!(RangeGraphs::new(&g, &[], false).is_err());
+    assert!(RangeGraphs::new(&g, &[3, 3, 6], false).is_err());
+    assert!(RangeGraphs::new(&g, &[2, 5], false).is_err());
+    let ranges = RangeGraphs::new(&g, &[1, 4, 6], false).unwrap();
     assert_eq!(ranges.len(), 3);
     for i in 0..3 {
         cpu.compute_async(&ranges.get(&g, i).unwrap()).unwrap();
@@ -312,6 +312,53 @@ fn range_graphs_cache_matches_the_whole_graph() {
     let gctx2 = Context::new(16, 8).unwrap();
     let g2 = chain(&gctx2, x, y, out);
     assert!(ranges.get(&g2, 0).is_err());
+}
+
+/// Ranges with a fresh uid (patch 0005; ggml-cuda then skips its node comparison) compute what
+/// ranges without one compute, again and again; the CPU ignores the uid.
+#[test]
+fn ranges_with_a_uid_compute_as_without() {
+    let cpu = Backend::cpu(1).unwrap();
+    let lctx = Context::new(3, 0).unwrap();
+    let [x, y, out] = leaves(&lctx, &cpu);
+    x.set_f32(&xs(0.5)).unwrap();
+    y.set_f32(&xs(2.0)).unwrap();
+    let gctx = Context::new(16, 8).unwrap();
+    let g = chain(&gctx, x, y, out);
+    let mut galloc = Gallocr::new(&cpu).unwrap();
+    galloc.alloc_graph(&g).unwrap();
+    let mut got = Vec::new();
+    for uid in [false, true] {
+        let ranges = RangeGraphs::new(&g, &[1, 4, 6], uid).unwrap();
+        for _ in 0..2 {
+            out.set_f32(&[0.0; N]).unwrap();
+            for i in 0..3 {
+                cpu.compute_async(&ranges.get(&g, i).unwrap()).unwrap();
+            }
+            got.push(out.get_f32().unwrap());
+        }
+    }
+    assert!(got.windows(2).all(|w| w[0] == w[1]), "{got:?}");
+}
+
+/// `set_i32_async` and `set_f16_bits_async` write what they are given on a CPU backend; a write
+/// past the tensor's end is refused.
+#[test]
+fn async_setters_write_on_cpu() {
+    let cpu = Backend::cpu(1).unwrap();
+    let ctx = Context::new(2, 0).unwrap();
+    let a = ctx.new_tensor(Type::I32, &[4]);
+    let h = ctx.new_tensor(Type::F16, &[4]);
+    ctx.alloc_tensors(&cpu).unwrap();
+    a.set_i32_async(&cpu, &[3, -1, 7, 9]).unwrap();
+    h.set_f16_bits_async(&cpu, &[0x3c00, 0xfc00, 0, 0x4000])
+        .unwrap();
+    cpu.synchronize();
+    assert_eq!(a.get_i32().unwrap(), vec![3, -1, 7, 9]);
+    // The four halves read back as two little-endian words.
+    let words: Vec<u32> = h.get_f32().unwrap().iter().map(|v| v.to_bits()).collect();
+    assert_eq!(words, vec![0xfc00_3c00, 0x4000_0000]);
+    assert!(a.set_i32_async(&cpu, &[1, 2, 3, 4, 5]).is_err());
 }
 
 /// A range keeps the whole graph's use counts, so a backend fuses in it as in the whole graph
@@ -347,7 +394,7 @@ fn ranges_fuse_as_the_whole_graph() {
     let whole = z.get_f32().unwrap();
     z.set_f32(&[0.0; N]).unwrap();
 
-    let ranges = RangeGraphs::new(&g, &[2, 3]).unwrap();
+    let ranges = RangeGraphs::new(&g, &[2, 3], false).unwrap();
     for i in 0..2 {
         cpu.compute_async(&ranges.get(&g, i).unwrap()).unwrap();
     }

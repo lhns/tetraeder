@@ -21,11 +21,13 @@ use crate::hparams::{Hparams, ModelFile, names};
 use crate::qwen3moe::{
     Layer, LoadOptions, MemoryUse, ModelError, Result, router, sum_experts, weighted_experts,
 };
+use crate::shard::{put_f16, put_i32};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 use tetraeder_executor::{
     ExecCounters, ExecError, Executor, Op, Program, RankDevice, RankGraph, Ranks, gpipe_sort,
 };
@@ -821,6 +823,7 @@ impl Sharded {
         reuse: bool,
         out: &mut Vec<f32>,
     ) -> Result<()> {
+        let t_step = Instant::now();
         let key: Vec<MbKey> = plans
             .iter()
             .map(|p| (p.pos.len(), p.n_kv, p.outputs.len()))
@@ -833,19 +836,24 @@ impl Sharded {
                 p
             }
         };
+        let on_stream = self.exec.async_inputs();
         let mut at = 0;
         for (states, plan) in prog.states.iter().zip(plans) {
             let n = plan.pos.len();
-            for st in states.iter().flatten() {
+            for (r, st) in states.iter().enumerate() {
+                let Some(st) = st else { continue };
+                let t0 = Instant::now();
+                let b = &self.rank(r).backend;
                 if let Some(t) = &st.tokens {
-                    t.get().set_i32(&tokens[at..at + n])?;
+                    put_i32(t.get(), b, on_stream, &tokens[at..at + n])?;
                 }
-                st.pos.get().set_i32(&plan.pos)?;
-                st.rows.get().set_i32(&plan.rows)?;
-                st.mask.get().set_f16_bits(&plan.mask)?;
+                put_i32(st.pos.get(), b, on_stream, &plan.pos)?;
+                put_i32(st.rows.get(), b, on_stream, &plan.rows)?;
+                put_f16(st.mask.get(), b, on_stream, &plan.mask)?;
                 if let Some(t) = &st.outputs {
-                    t.get().set_i32(&plan.outputs)?;
+                    put_i32(t.get(), b, on_stream, &plan.outputs)?;
                 }
+                self.exec.trace_note("upload", r, t0);
             }
             at += n;
         }
@@ -889,12 +897,16 @@ impl Sharded {
         let n_out = plans.last().map_or(0, |p| p.outputs.len());
         let nv = self.h.n_vocab as usize;
         if prog.logits.len() == 1 && prog.logits[0].2 == (0..nv) {
+            let t0 = Instant::now();
             prog.logits[0].1.get().get_f32_into(out)?;
+            self.exec.trace_note("logits", prog.logits[0].0, t0);
         } else {
             out.clear();
             out.resize(n_out * nv, 0.0);
-            for (_, t, vocab) in &prog.logits {
+            for (r, t, vocab) in &prog.logits {
+                let t0 = Instant::now();
                 let part = t.get().get_f32()?;
+                self.exec.trace_note("logits", *r, t0);
                 let w = vocab.len();
                 for row in 0..n_out {
                     out[row * nv + vocab.start..row * nv + vocab.end]
@@ -902,6 +914,8 @@ impl Sharded {
                 }
             }
         }
+        self.exec.trace_note("step", 0, t_step);
+        self.exec.trace_flush();
         let c = self.exec.take_counters();
         if let Some(t) = &self.telemetry {
             c.record(t.metrics());

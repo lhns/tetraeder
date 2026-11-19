@@ -181,7 +181,10 @@ Phase 4 is done (exit test passed 2026-11-17, ADR 0065). Phase 5's exit test (AD
 - Also on the way: prefix-cache saves off the admission path and no saves nobody reuses (ADR 0074), the long-prompt KV fragmentation fix with a 400 for real overflows (ADR 0067), ADRs hold decisions only with measurements in session READMEs (AGENTS.md).
 
 **Open, in order**
-1. 4-GPU rehearsal with two rounds on the fixed pipeline and splits (`s3b-20261119`): layer-4 prefill predictions now within 15% and both picks right; open: M4 misses the baseline gate on decode (layer-4 decodes slower than llama.cpp `-sm layer`), tp2-pp2 and ep-4 predictions miss, and D4 lacks clean rounds (0x20 on one GPU). Under diagnosis: layer-N decode overhead (`track-layer-decode`), cost model for ep and tp2-pp2 (`track-costmodel-v3`).
+1. 4-GPU rehearsal `s3b-20261119`: layer-4 prefill predictions within 15% and both picks right. Open:
+   - M4's baseline gate missed by 0.003 (T ratio 0.917), from layer-4 decode (about 0.6 ms per token behind `-sm layer`; prefill is ahead). Two fixes behind toggles (range uids, async input uploads; ADR 0069 History 2026-11-19); `scripts/layer_decode_box.sh` on the next 4-GPU box decides which become the default.
+   - tp2-pp2 and ep-4 predictions miss: cost model 3 (ADR 0078, `track-costmodel-v3`).
+   - D4 lacks clean rounds (0x20 on one GPU of that host).
 2. Expert-parallel prefill is over-predicted (ep-2 and ep-4); a cost model term to find, then a check.
 3. Thermal 0x20 samples void runs (one sample voids a run, ADR 0068); size `RERUNS` and `BUDGET_MIN` from the rehearsals, or one model per session.
 4. Verdict sessions V2 (2-GPU, D2 and M2) and V4a, V4b (4-GPU, D4 and M4), on a clean host at default power, two clean rounds per configuration.

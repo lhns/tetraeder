@@ -24,3 +24,7 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 - CUDA graph capture is unchanged: ranges have no `uid` either way and are keyed by their first node.
 - Test: `ranges_fuse_as_the_whole_graph` (`crates/ggml-sys/tests/exec_bindings.rs`, CPU): the CPU's `rms_norm` plus `mul` fusion leaves the norm's own output unwritten in the whole graph and in a range that holds both nodes; a range filled with `ggml_graph_add_node` writes it.
 - One more patch to rebase on a pin move; upstream-clean, not upstreamed (Rule 8).
+
+## History
+
+- 2026-11-19, `track-layer-decode` (ADR 0069 History, same date): `ggml_graph_view_new` takes a `bool uid`; with it the view gets a fresh `ggml_graph_next_uid()`, so ggml-cuda takes its reused-graph path (no compatibility walk, no node comparison) as for the scheduler's splits. A uid promises that the view's nodes and their sources do not change while it is used; the executor keeps that by cutting new ranges whenever a rank graph is built or allocated. Without the flag the view has uid 0 as before. Tests: `ranges_with_a_uid_compute_as_without` (CPU), and `gpu_cuda_graphs_replay_kept_ranges` asserts one uid reuse per later call of each range with the flag and none without.
