@@ -64,8 +64,9 @@ impl fmt::Display for CalibError {
 impl std::error::Error for CalibError {}
 
 const LAMBDA: f64 = 1e-3;
-/// Pull of the range and step costs: residuals are small relative changes of the rates, so the
-/// usual pull would bias a parameter that explains a few percent of the step (ADR 0070).
+/// Pull of the range and step costs and of the all-reduce latency (ADR 0078): residuals are
+/// small relative changes of the rates, so the usual pull would bias a parameter that explains a
+/// few percent of the step (ADR 0070).
 const LAMBDA_RANGES: f64 = 1e-9;
 const MIN_BAND: f64 = 0.05;
 /// Priors of the all-reduce's in-step latency `a` and its latency per ring step `b` (ADR 0078).
@@ -487,11 +488,11 @@ pub fn fit(
             Err(_) => vec![1e3; anchors.len() * 2],
         };
         v.extend(free.iter().map(|&i| {
-            let l = if ranges_at.is_some_and(|r| (r..r + 3).contains(&i)) {
-                LAMBDA_RANGES
-            } else {
-                LAMBDA
-            };
+            // The all-reduce latency is a fixed cost of the same size as the range costs.
+            let weak = ranges_at.is_some_and(|r| (r..r + 3).contains(&i))
+                || ar_at == Some(i)
+                || step_at == Some(i);
+            let l = if weak { LAMBDA_RANGES } else { LAMBDA };
             l.sqrt() * (x[i] - x0[i])
         }));
         v
@@ -912,7 +913,7 @@ mod tests {
         }
         let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
         let c = fit.hw.range_costs_or_prior();
-        assert!(rel(c.allreduce_latency_s.unwrap(), 4e-6) < 0.10, "{c:?}");
+        assert!(rel(c.allreduce_latency_s.unwrap(), 4e-6) < 0.05, "{c:?}");
         assert!(fit.band < 0.06, "{:?}", fit.residuals);
         assert_eq!((c.allreduce_latency_share, c.allreduce_step_s), (1.0, None));
         assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");

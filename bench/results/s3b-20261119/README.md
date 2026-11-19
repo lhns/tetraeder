@@ -64,7 +64,7 @@ Offline, `scripts/costmodel_replica.py` (branch `track-costmodel-v3`). Version 2
 - Per token the model gave ep-4 3.31 ms compute plus 1.52 ms for 96 all-reduces (4 ranks); measured 7.22 ms.
 - The fitted share times the anchored pair's probe floor is the in-step latency the anchors see: 0.445 x 27.9 us = 12.4 us (s3), 0.259 x 43.4 us = 11.2 us (s3b). The share follows the floor's noise; applied to the 4-rank floor it gave 28 us (s3) and 13 us (s3b) per all-reduce, the whole move of the ep-4 decode prediction between the two sessions (same host 20210, measured 142.5 and 138.5).
 - Backed out of measured decode, a 4-rank all-reduce costs about 21 us in tp-4 (dense 32B, no routing) and about 36 us in ep-4. One rank-dependent latency cannot give both; the ep-4 remainder (about 1.4 ms per token) is ep-specific.
-- Version 3 fits the latency `a` directly: 10.9 us on s3b, 12.0 to 12.4 on s3 (from starts at 12 and 25 us), 12.0 to 12.5 on s2g. Without a second anchored group size the 4-rank all-reduce pays `a`, and the ep-4 decode miss becomes stable (+0.39, +0.49, cross-box +0.43). The ring step count `2 (p - 1)` as the other bound fits ep-4 decode (+0.04, -0.05) but over-prices tp-4 (-0.10 on s3b, -0.16 on s3 and cross-box), and tp-4 has no routing term: rejected.
+- Version 3 fits the latency `a` in place of the share, pulled as weakly as the range costs. Every anchored phase has one range and one all-reduce, so the anchors fix `c_range + a` per phase: 7.2 + 3.7 = 10.9 us on s3b, 8.5 + 3.8 = 12.2 on s3, 8.6 + 3.8 = 12.4 on s2g; the split between the two is the prior's, and moving it changes no prediction by more than 0.005 (a regular pull on `a` gave 10.9, 12.0 and 12.0 us with `c_range` near 0, the rows as below within that). Without a second anchored group size the 4-rank all-reduce pays `a`, and the ep-4 decode miss becomes stable (+0.39, +0.49, cross-box +0.43). The ring step count `2 (p - 1)` as the other bound fits ep-4 decode (+0.04, -0.05) but over-prices tp-4 (-0.10 on s3b, -0.16 on s3 and cross-box), and tp-4 has no routing term: rejected.
 
 **ep prefill (ep-4 +0.35, ep-2 +0.11).**
 - With tp-2's all-reduces priced right on the same box (s2g: tp-2 within 0.03), ep-2 measured 263 ms of compute against 211 predicted, ep-4 249 against 114. The slowest rank's expert work that implies is about 0.67 of the layer's at ep-2 and 0.68 at ep-4, where uniform routing gives 0.50 and 0.25.
@@ -83,39 +83,39 @@ Offline, `scripts/costmodel_replica.py` (branch `track-costmodel-v3`). Version 2
 | fit -> eval | model | candidate | v2 pp / tg | v3 pp / tg |
 |---|---|---|---|---|
 | s2g | 30B | single | -0.096 / +0.020 | -0.096 / +0.018 |
-| s2g | 30B | layer-2 | +0.009 / -0.012 | +0.009 / -0.014 |
+| s2g | 30B | layer-2 | +0.009 / -0.012 | +0.009 / -0.016 |
 | s2g | 30B | tp-2 | +0.033 / -0.025 | +0.033 / -0.023 |
 | s2g | 30B | ep-2 | +0.111 / +0.011 | +0.111 / +0.013 |
 | s2g | 32B | single | -0.018 / +0.007 | -0.018 / +0.006 |
 | s2g | 32B | layer-2 | +0.145 / -0.035 | +0.145 / -0.035 |
 | s2g | 32B | tp-2 | +0.039 / -0.002 | +0.039 / -0.001 |
 | s3 | 30B | single | -0.091 / +0.034 | -0.091 / +0.032 |
-| s3 | 30B | layer-4 | +0.269 x / +0.102 | +0.269 x / +0.099 |
+| s3 | 30B | layer-4 | +0.269 x / +0.102 | +0.269 x / +0.094 |
 | s3 | 30B | ep-4 | +0.354 x / +0.066 | +0.377 x / +0.391 x |
 | s3 | 30B | tp2-pp2 | +0.329 x / +0.010 | +0.329 x / +0.014 |
 | s3 | 32B | single | -0.024 / +0.015 | -0.024 / +0.014 |
-| s3 | 32B | layer-4 | +0.350 x / +0.005 | +0.350 x / +0.005 |
+| s3 | 32B | layer-4 | +0.350 x / +0.005 | +0.350 x / +0.004 |
 | s3 | 32B | tp-4 | +0.086 / -0.094 | +0.093 / +0.066 |
 | s3 | 32B | tp2-pp2 | +0.511 x / -0.012 | +0.511 x / -0.010 |
 | s3b | 30B | single | -0.117 / +0.031 | -0.117 / +0.027 |
-| s3b | 30B | layer-4 | -0.065 / +0.099 | -0.065 / +0.095 |
-| s3b | 30B | ep-4 | +0.350 x / +0.444 x | +0.353 x / +0.494 x |
-| s3b | 30B | tp2-pp2 | +0.280 x / +0.050 | +0.279 x / +0.018 |
-| s3b | 32B | single | -0.017 / +0.018 | -0.017 / +0.018 |
-| s3b | 32B | layer-4 | -0.027 / +0.008 | -0.027 / +0.008 |
-| s3b | 32B | tp-4 | +0.092 / +0.098 | +0.093 / +0.120 |
+| s3b | 30B | layer-4 | -0.065 / +0.099 | -0.065 / +0.090 |
+| s3b | 30B | ep-4 | +0.350 x / +0.444 x | +0.353 x / +0.495 x |
+| s3b | 30B | tp2-pp2 | +0.280 x / +0.050 | +0.279 x / +0.019 |
+| s3b | 32B | single | -0.017 / +0.018 | -0.017 / +0.017 |
+| s3b | 32B | layer-4 | -0.027 / +0.008 | -0.027 / +0.007 |
+| s3b | 32B | tp-4 | +0.092 / +0.098 | +0.093 / +0.121 |
 | s3b | 32B | tp2-pp2 | +0.484 x / +0.003 | +0.483 x / -0.010 |
 | s3 -> s3b | 30B | single | -0.088 / +0.030 | -0.088 / +0.028 |
-| s3 -> s3b | 30B | layer-4 | -0.035 / +0.098 | -0.035 / +0.096 |
+| s3 -> s3b | 30B | layer-4 | -0.035 / +0.098 | -0.035 / +0.091 |
 | s3 -> s3b | 30B | ep-4 | +0.361 x / +0.096 | +0.383 x / +0.431 x |
 | s3 -> s3b | 30B | tp2-pp2 | +0.287 x / +0.001 | +0.287 x / +0.005 |
 | s3 -> s3b | 32B | single | -0.023 / +0.015 | -0.023 / +0.015 |
-| s3 -> s3b | 32B | layer-4 | -0.033 / +0.005 | -0.033 / +0.005 |
+| s3 -> s3b | 32B | layer-4 | -0.033 / +0.005 | -0.033 / +0.004 |
 | s3 -> s3b | 32B | tp-4 | +0.094 / -0.093 | +0.101 / +0.066 |
 | s3 -> s3b | 32B | tp2-pp2 | +0.485 x / -0.012 | +0.485 x / -0.011 |
 
 - s3's layer-4 rows are from before the issue-order fix (s3 README); they are not a cost model error.
-- Anchors' worst residual unchanged (0.103, 0.072, 0.097).
+- Anchors' worst residual unchanged (0.103, 0.072, 0.097). On s3b, `c_step` 138 us (v2 144).
 - Picks (smallest predicted T) unchanged by v3 and equal to the measured fastest in every case: s2g layer-2 and tp-2, s3 and s3b layer-4 and tp-4, and s3 -> s3b layer-4 and tp-4.
 - Ring-step bound (`2 (p - 1)` steps at the anchored per-step latency): ep-4 tg +0.043 (s3b), -0.045 (s3), -0.018 (cross); tp-4 tg -0.104, -0.156, -0.156.
 

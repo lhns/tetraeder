@@ -624,14 +624,15 @@ class Problem:
             rc = range_costs(prior)
             self.x0.append(ln(rc.get("allreduce_latency_s") or ALLREDUCE_LATENCY_PRIOR_S) if version >= 3
                            else ln(rc["allreduce_latency_share"]))
-            self.lam.append(LAMBDA)
+            # version 3: a fixed cost of a few percent of the step, pulled as weakly as the range costs
+            self.lam.append(LAMBDA_RANGES if version >= 3 else LAMBDA)
         # b only when the anchors' all-reduces span two or more group sizes
         sizes = {len(ph["after"]["ar"]) for a in anchors for ph in a["f"].get("phases", []) if "ar" in (ph["after"] or {})}
         self.step_at = None
         if version >= 3 and self.ar_at is not None and len(sizes) > 1:
             self.step_at = len(self.x0)
             self.x0.append(ln(range_costs(prior).get("allreduce_step_s") or ALLREDUCE_STEP_PRIOR_S))
-            self.lam.append(LAMBDA)
+            self.lam.append(LAMBDA_RANGES)
 
     def apply(self, x: list) -> dict:
         hw = copy.deepcopy(self.prior)

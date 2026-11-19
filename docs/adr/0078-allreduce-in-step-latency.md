@@ -13,7 +13,7 @@ Measurements live in the session READMEs: the diagnosis and the before/after tab
 ## Decision
 
 - **In-step latency.** An all-reduce over `p` ranks in a step costs `max(t(n) - t(0), 0) + a + 2 (p - 1) b`: the probe curve's byte part, the BF16 switch included, plus a fitted latency. `t(0)` is the curve's first point (else the ring prior's `2 (p - 1) alpha`).
-- `a` (`RangeCosts::allreduce_latency_s`) is fitted whenever an anchor has an all-reduce. `b` (`allreduce_step_s`) is fitted only when the anchors' all-reduces span two or more group sizes; otherwise it is absent and every group pays `a` (ADR 0070's inheritance rule without the probe floor).
+- `a` (`RangeCosts::allreduce_latency_s`) is fitted whenever an anchor has an all-reduce, with the weak pull of the range costs (it is a fixed cost of a few percent of a step). The anchors identify `c_range + a` per phase, not the split (ADR 0070's "Not identified"), which no prediction of a phase with one range and one all-reduce depends on. `b` (`allreduce_step_s`) is fitted only when the anchors' all-reduces span two or more group sizes; otherwise it is absent and every group pays `a` (ADR 0070's inheritance rule without the probe floor).
 - `s` is no longer fitted. Graphs fitted before (no `a`) predict as version 2, so committed calibrations and the ledger keep their numbers; `MODEL_VERSION` is 3.
 - **Owner question (ADR 0068 reopen rule):** `b` needs an anchor over a second group size. The proposal is a truncated `tp-4` anchor on Qwen3-32B at L/4 and L/2 on 4-GPU boxes. Until then `b` is absent.
 
