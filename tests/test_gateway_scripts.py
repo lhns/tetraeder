@@ -92,6 +92,12 @@ def test_replay_sse_helpers():
     assert not replay.sse_has_content('data: {"type":"message_start","message":{}}')
     assert replay.sse_has_content('data: {"choices":[{"delta":{"content":"x"}}]}')
     assert not replay.sse_has_content('data: {"choices":[{"delta":{"role":"assistant"}}]}')
+    kind = replay.sse_content_kind
+    assert kind('data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"a"}}') == "text"
+    assert kind('data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"h"}}') == "thinking"
+    assert kind('data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{"}}') == "tool"
+    assert kind('data: {"choices":[{"delta":{"tool_calls":[{"index":0}]}}]}') == "tool"
+    assert kind('data: {"type":"ping"}') is None
     assert replay.usage_from({"message": {"usage": {"input_tokens": 3}}}) == {"input_tokens": 3}
     s = replay.summarize([
         {"status": 200, "ttft_s": 0.1, "total_s": 1.0, "logged_status": 200},

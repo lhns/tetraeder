@@ -300,3 +300,63 @@ fn chunk_plans_refuse_what_the_step_would() {
     assert_eq!(pool.seq_len(0), 0);
     assert_eq!(pool.plan_chunks(input, &[150, 150]).unwrap().len(), 2);
 }
+
+/// The masks of a run above another sequence, per position from `KvPool::row`: what the plan
+/// filled before it wrote each run as one slice.
+fn row_oracle(pool: &KvPool, inputs: &[StepInput], n_kv: usize) -> Vec<u16> {
+    let n: usize = inputs.iter().map(|i| i.n_tokens).sum();
+    let mut mask = vec![F16_NEG_INF; n_kv * n];
+    let mut t = 0;
+    for inp in inputs {
+        let len = pool.seq_len(inp.seq);
+        for i in 0..inp.n_tokens {
+            for p in 0..=len + i {
+                mask[t * n_kv + pool.row(inp.seq, p).unwrap()] = 0;
+            }
+            t += 1;
+        }
+    }
+    mask
+}
+
+/// Plans are the same with a recycled mask buffer, which is reused while it is large enough
+/// (no allocation per step, ttft5-20261119), and runs above row 0 open the same rows as the
+/// per-position lookup.
+#[test]
+fn recycled_mask_buffer_gives_the_same_plans() {
+    let mut fresh = layouts(4096);
+    let mut reused = layouts(4096);
+    for (a, b) in fresh.iter_mut().zip(reused.iter_mut()) {
+        let name = a.layout_name();
+        for pool in [&mut *a, &mut *b] {
+            pool.reserve(0, 300).unwrap();
+            pool.reserve(1, 900).unwrap();
+        }
+        let mut last_ptr = None;
+        for (seq, n) in [(1u32, 700usize), (0, 200), (1, 1), (1, 150), (0, 1), (1, 3)] {
+            let input = [StepInput {
+                seq,
+                n_tokens: n,
+                all_logits: false,
+            }];
+            let want = a.plan_step(&input).unwrap();
+            assert_eq!(
+                want.mask,
+                row_oracle(a, &input, want.n_kv),
+                "{name}: seq {seq}"
+            );
+            let got = b.plan_step(&input).unwrap();
+            assert_eq!(got, want, "{name}: seq {seq}, {n} tokens");
+            let ptr = got.mask.as_ptr();
+            if let Some((p, cap)) = last_ptr {
+                if got.mask.len() <= cap {
+                    assert_eq!(ptr, p, "{name}: buffer reused");
+                }
+            }
+            last_ptr = Some((ptr, got.mask.capacity()));
+            a.commit(&input);
+            b.commit(&input);
+            b.recycle(got);
+        }
+    }
+}

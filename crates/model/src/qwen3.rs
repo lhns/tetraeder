@@ -47,8 +47,28 @@ const STEP_NODES_PER_SEQ: usize = 8;
 /// Env var that turns on [`DenseOptions::use_executor`] in [`DenseOptions::new`] (`1`).
 pub const EXECUTOR_ENV: &str = "TETRAEDER_DENSE_EXECUTOR";
 
-/// Env var that turns on [`DenseOptions::per_seq_attn`] in [`DenseOptions::new`] (`1`).
+/// Env var read by [`DenseOptions::new`]: `1` turns on [`DenseOptions::per_seq_attn`], `0` turns
+/// off [`DenseOptions::per_seq_attn_single`] (the masked attention for every step, as before
+/// 2026-11-19).
 pub const PER_SEQ_ATTN_ENV: &str = "TETRAEDER_DENSE_PER_SEQ_ATTN";
+
+/// Env var: `1` logs a timing line per prefill step and per step over 50 ms (target
+/// `tetraeder::trace`), and the snapshot spare thread's work (diagnosis of ttft5-20261119).
+pub const STEP_TRACE_ENV: &str = "TETRAEDER_STEP_TRACE";
+
+/// Whether [`STEP_TRACE_ENV`] is `1` (read once).
+pub fn step_trace() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var(STEP_TRACE_ENV).is_ok_and(|v| v == "1"))
+}
+
+/// Minor page faults of the calling thread so far (Linux `/proc/thread-self/stat`), else `None`.
+pub fn thread_minor_faults() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/thread-self/stat").ok()?;
+    // Fields after the command name: state is field 3, minflt field 10.
+    let rest = &stat[stat.rfind(')')? + 1..];
+    rest.split_whitespace().nth(7)?.parse().ok()
+}
 
 /// Hyperparameters of a `qwen3` model (keys as llama.cpp writes them).
 #[derive(Debug, Clone, PartialEq)]
@@ -121,6 +141,12 @@ pub struct DenseOptions {
     /// Attention per sequence over its own run of rows instead of one masked attention over
     /// rows `0..n_kv` of the pool. `new` takes it from `TETRAEDER_DENSE_PER_SEQ_ATTN=1`.
     pub per_seq_attn: bool,
+    /// A step with one input attends over that input's run only, even with `per_seq_attn` off:
+    /// the masked attention reads every row below the run too (another sequence's), which made
+    /// prefill and decode of a sequence above another up to 1.45x slower than libllama, whose
+    /// unified cache attends over the sequence's own cells (`fused_kv_rows`; ttft5-20261119,
+    /// ADR 0066 History). One attention op either way. Default on; `0` in the env turns it off.
+    pub per_seq_attn_single: bool,
     /// On a CPU backend, matmul weights in the CPU's extra buffer types (AMX, repack) where they
     /// run, as libllama's `use_extra_bufts` (default true there and here).
     pub extra_bufts: bool,
@@ -146,6 +172,7 @@ impl DenseOptions {
             threads: None,
             reuse_step_graph: true,
             per_seq_attn: std::env::var(PER_SEQ_ATTN_ENV).is_ok_and(|v| v == "1"),
+            per_seq_attn_single: !std::env::var(PER_SEQ_ATTN_ENV).is_ok_and(|v| v == "0"),
             extra_bufts: true,
             telemetry: None,
             use_executor: std::env::var(EXECUTOR_ENV).is_ok_and(|v| v == "1"),
@@ -165,6 +192,7 @@ impl std::fmt::Debug for DenseOptions {
             .field("threads", &self.threads)
             .field("reuse_step_graph", &self.reuse_step_graph)
             .field("per_seq_attn", &self.per_seq_attn)
+            .field("per_seq_attn_single", &self.per_seq_attn_single)
             .field("extra_bufts", &self.extra_bufts)
             .field("use_executor", &self.use_executor)
             .field("layer_limit", &self.layer_limit)
@@ -262,7 +290,11 @@ pub struct Qwen3 {
     kv_rotated: (bool, bool),
     reuse_step_graph: bool,
     per_seq_attn: bool,
+    per_seq_attn_single: bool,
     step_graphs_built: u64,
+    /// KV rows copied by layout moves and copies since the last step, and the time they took
+    /// (copies wait for the device), for [`STEP_TRACE_ENV`].
+    trace_moves: (usize, std::time::Duration),
     metrics: MemoryMetrics,
     telemetry: Option<Arc<Telemetry>>,
 }
@@ -380,7 +412,9 @@ impl Qwen3 {
             kv_rotated,
             reuse_step_graph: opts.reuse_step_graph,
             per_seq_attn: opts.per_seq_attn,
+            per_seq_attn_single: opts.per_seq_attn_single,
             step_graphs_built: 0,
+            trace_moves: Default::default(),
             metrics: MemoryMetrics::new(opts.telemetry.clone()),
             telemetry: opts.telemetry.clone(),
         })
@@ -417,7 +451,9 @@ impl Qwen3 {
         Ok(Qwen3 {
             h,
             engine: Engine::Ranked(Box::new(ranked)),
+            // The executor has no attention per sequence.
             per_seq_attn: false,
+            per_seq_attn_single: false,
             pool: KvPool::new(Box::new(Chunked::new(rows))),
             n_rows: rows,
             n_seq_max: opts.n_seq_max,
@@ -425,6 +461,7 @@ impl Qwen3 {
             kv_rotated,
             reuse_step_graph: opts.reuse_step_graph,
             step_graphs_built: 0,
+            trace_moves: Default::default(),
             metrics: MemoryMetrics::new(opts.telemetry.clone()),
             telemetry: opts.telemetry.clone(),
         })
@@ -627,10 +664,13 @@ impl Qwen3 {
     /// relocations of a grown sequence (not those of a copy).
     fn apply(&mut self, copies: &[RowCopy], moves: bool) -> Result<()> {
         let copies: Vec<_> = copies.iter().map(|c| (c.src, c.dst, c.n)).collect();
+        let t = Instant::now();
         match &mut self.engine {
             Engine::Sched(e) => copy_rows(&e.kv, &mut e.sched, &copies)?,
             Engine::Ranked(r) => r.copy_rows(&copies)?,
         }
+        self.trace_moves.0 += copies.iter().map(|c| c.2).sum::<usize>();
+        self.trace_moves.1 += t.elapsed();
         // One relocation per move, however many chunks it copies in.
         if let Some(t) = self
             .telemetry
@@ -901,12 +941,16 @@ impl Qwen3 {
                 all_logits: inp.all_logits,
             });
         }
+        let trace = step_trace();
+        let faults0 = if trace { thread_minor_faults() } else { None };
+        let t_reserve = Instant::now();
         for s in &step {
             let need = self.pool.seq_len(s.seq) + s.n_tokens;
             if self.pool.reserved(s.seq) < need {
                 self.seq_reserve(s.seq, need)?;
             }
         }
+        let t_plan = Instant::now();
         // A one-sequence prefill on a pipelined topology runs as micro-batches, each planned as
         // the same chunk as a step of its own (ADR 0077).
         let micro = match &self.engine {
@@ -920,7 +964,9 @@ impl Qwen3 {
             }
             _ => {
                 // Attention per sequence needs each input in one run of rows (chunked layout).
-                let per_seq = if self.per_seq_attn && matches!(self.engine, Engine::Sched(_)) {
+                let per_seq = (self.per_seq_attn || (self.per_seq_attn_single && step.len() == 1))
+                    && matches!(self.engine, Engine::Sched(_));
+                let per_seq = if per_seq {
                     self.pool.plan_step_per_seq(&step).map_err(kv_err)?
                 } else {
                     None
@@ -931,11 +977,13 @@ impl Qwen3 {
                 }]
             }
         };
+        let t_run = Instant::now();
         let n: usize = step.iter().map(|s| s.n_tokens).sum();
         let tokens: Vec<i32> = inputs
             .iter()
             .flat_map(|i| i.tokens.iter().copied())
             .collect();
+        let mut times = RunTimes::default();
         match &mut self.engine {
             Engine::Sched(e) => e.run(
                 &self.h,
@@ -944,6 +992,7 @@ impl Qwen3 {
                 self.reuse_step_graph,
                 &mut self.step_graphs_built,
                 out,
+                &mut times,
             )?,
             Engine::Ranked(r) => r.run(
                 &self.h,
@@ -954,6 +1003,39 @@ impl Qwen3 {
                 self.telemetry.as_deref().map(Telemetry::metrics),
                 out,
             )?,
+        }
+        if trace && (n > 1 || t0.elapsed().as_millis() >= 50) {
+            // Milliseconds to 0.01, MiB to 0.1.
+            let ms = |d: std::time::Duration| (d.as_secs_f64() * 1e5).round() / 100.0;
+            let p = &plans[0];
+            let mask_elems: usize = plans.iter().map(|p| p.mask.len()).sum();
+            let faults = faults0.zip(thread_minor_faults()).map(|(a, b)| b - a);
+            tracing::info!(
+                target: "tetraeder::trace",
+                n_tokens = n,
+                inputs = step.len(),
+                n_kv = p.n_kv,
+                per_seq = !p.seqs.is_empty(),
+                kv_start = p.seqs.first().map_or(0, |s| s.kv_start),
+                attn_rows = p.seqs.first().map_or(p.n_kv, |s| s.n_kv),
+                mask_mib = (mask_elems as f64 * 2.0 / 104857.6).round() / 10.0,
+                moved_rows = self.trace_moves.0,
+                move_ms = ms(self.trace_moves.1),
+                reserve_ms = ms(t_plan - t_reserve),
+                plan_ms = ms(t_run - t_plan),
+                state_ms = ms(times.state),
+                upload_ms = ms(times.upload),
+                build_ms = ms(times.build),
+                compute_ms = ms(times.compute),
+                read_ms = ms(times.read),
+                total_ms = ms(t0.elapsed()),
+                minflt = faults,
+                "step"
+            );
+        }
+        self.trace_moves = Default::default();
+        for p in plans {
+            self.pool.recycle(p);
         }
 
         let mut row = 0;
@@ -985,9 +1067,20 @@ impl Qwen3 {
     }
 }
 
+/// Where a scheduler step's time goes, for [`STEP_TRACE_ENV`]. `compute` waits for the device.
+#[derive(Default)]
+struct RunTimes {
+    state: std::time::Duration,
+    upload: std::time::Duration,
+    build: std::time::Duration,
+    compute: std::time::Duration,
+    read: std::time::Duration,
+}
+
 impl SchedEngine {
     /// One step through the scheduler: the inputs, the kept or fresh whole-step graph, the
     /// logits of the output rows into `out`.
+    #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
         h: &DenseHparams,
@@ -996,7 +1089,9 @@ impl SchedEngine {
         reuse: bool,
         built: &mut u64,
         out: &mut Vec<f32>,
+        times: &mut RunTimes,
     ) -> Result<()> {
+        let t = Instant::now();
         let state_key = state_key(plan);
         let key = (state_key, plan.seqs.clone());
         if self.state.as_ref().is_none_or(|s| s.key != state_key) {
@@ -1006,11 +1101,15 @@ impl SchedEngine {
             self.state = Some(alloc_state(state_key, &self.primary)?);
         }
         let st = self.state.as_ref().expect("state allocated above");
+        let t_upload = Instant::now();
         st.tokens.get().set_i32(tokens)?;
         st.pos.get().set_i32(&plan.pos)?;
         st.rows.get().set_i32(&plan.rows)?;
         st.mask.get().set_f16_bits(&plan.mask)?;
         st.outputs.get().set_i32(&plan.outputs)?;
+        let t_build = Instant::now();
+        times.state = t_upload - t;
+        times.upload = t_build - t_upload;
 
         let reusable = reuse
             && self
@@ -1046,8 +1145,13 @@ impl SchedEngine {
                 &fresh
             }
         };
+        let t_compute = Instant::now();
         self.sched.compute(&graph.graph.get())?;
+        let t_read = Instant::now();
         graph.logits.get().get_f32_into(out)?;
+        times.build = t_compute - t_build;
+        times.compute = t_read - t_compute;
+        times.read = t_read.elapsed();
         Ok(())
     }
 }
@@ -1363,6 +1467,83 @@ mod graph_order {
             // The masked path's batch dependence (dense_per_seq.rs): loosely bounded.
             assert!(worst <= 1e-2 * top, "sequence {s}: max |delta| {worst:e}");
         }
+    }
+
+    fn model_single(n_seq: usize, n_ctx_pool: usize, per_seq_single: bool) -> Qwen3 {
+        let mut m = model_pool(n_seq, n_ctx_pool);
+        m.per_seq_attn = false;
+        m.per_seq_attn_single = per_seq_single;
+        m
+    }
+
+    fn eval(m: &mut Qwen3, seq: u32, tokens: &[i32], all_logits: bool) -> Vec<f32> {
+        let mut out = Vec::new();
+        m.decode(
+            &[SeqEval {
+                seq,
+                tokens,
+                all_logits,
+            }],
+            &mut out,
+        )
+        .unwrap();
+        out
+    }
+
+    fn tokens(seed: usize, n: usize, n_vocab: usize) -> Vec<i32> {
+        (0..n)
+            .map(|i| ((seed * 7919 + i * 31 + 1) % n_vocab) as i32)
+            .collect()
+    }
+
+    /// hardware: cpu. A step with one input attends over that input's run only, not over the
+    /// rows of the sequence below it (ttft5-20261119: 1.35x to 1.45x slower decode and up to
+    /// 0.4 s more prefill above a 22k-row run; libllama's unified cache reads the sequence's own
+    /// cells). Its logits are those of the sequence alone at row 0, bit for bit.
+    #[test]
+    fn single_input_attends_over_its_own_run() {
+        let mut m = model_single(2, 4096, true);
+        let nv = m.n_vocab();
+        let (below, own) = (tokens(1, 300, nv), tokens(2, 100, nv));
+        eval(&mut m, 0, &below, false);
+        let mut got = eval(&mut m, 1, &own[..60], true);
+        got.extend(eval(&mut m, 1, &own[60..], false));
+        assert_eq!(
+            m.pool().row(1, 0),
+            Some(512),
+            "sequence 1 sits above sequence 0"
+        );
+        let Engine::Sched(e) = &m.engine else {
+            panic!("the CPU backend uses the scheduler")
+        };
+        let (n_tokens, n_kv, _, mask) = e.state.as_ref().expect("a step ran").key;
+        assert_eq!(n_tokens, 40);
+        assert_eq!(n_kv, 0, "attention per sequence, not over rows 0..n_kv");
+        assert_eq!(mask, [256 * 40 + mask_tail(40, 256), 1], "its own 256 rows");
+
+        let mut alone = model_single(1, 1024, true);
+        let mut want = eval(&mut alone, 0, &own[..60], true);
+        want.extend(eval(&mut alone, 0, &own[60..], false));
+        assert_eq!(got, want, "bit-equal to the sequence alone");
+    }
+
+    /// hardware: cpu. For a sequence at row 0 attention over its own run is the masked
+    /// attention over rows 0..n_kv (same rows, same mask values): logits bit for bit, prefill,
+    /// chunks with every logit, decodes and a step across a 256-row boundary.
+    #[test]
+    fn single_input_at_row_zero_matches_the_masked_path() {
+        let mut logits = Vec::new();
+        for per_seq_single in [false, true] {
+            let mut m = model_single(1, 1024, per_seq_single);
+            let toks = tokens(3, 300, m.n_vocab());
+            let mut out = eval(&mut m, 0, &toks[..250], false);
+            out.extend(eval(&mut m, 0, &toks[250..290], true));
+            for t in &toks[290..] {
+                out.extend(eval(&mut m, 0, std::slice::from_ref(t), false));
+            }
+            logits.push(out);
+        }
+        assert_eq!(logits[0], logits[1]);
     }
 
     /// Many sequences in one step: the inputs come from the pool's plan.

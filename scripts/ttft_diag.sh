@@ -4,7 +4,8 @@
 #   tet r1 (RUST_LOG=info,tetraeder::step=debug: the admit lines), llama-server r1, llama-server r2, tet r2.
 # Started detached: `taxameter run --id <id> scripts/ttft_diag.sh --env SESSION=ttft-20261118`; ends with
 # TTFT_DIAG_DONE in runs/vast/ttft_diag.log. Results: bench/results/$SESSION/ (replay JSONs, server logs, gpu files).
-# A rerun skips runs whose JSON exists.
+# A rerun skips runs whose JSON exists. TETRAEDER_STEP_TRACE=1 in the env adds the per-step trace lines
+# (target tetraeder::trace) to the tet server logs; TET_R2_ENV gives tet r2 extra env words.
 exec 8> /root/tetraeder_ttft_diag.lock
 flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
@@ -59,7 +60,11 @@ run() { # run MODE REP: MODE tet|llama
   case $mode in
     tet)
       url=http://127.0.0.1:18080
-      RUST_LOG=info,tetraeder::step=debug setsid nohup "$tet" serve -m "$f" --engine dense --ngl -1 --parallel 4 \
+      # TET_R2_ENV: extra VAR=value words for tet r2 only (a paired variant, e.g. TETRAEDER_SNAPSHOT_SPARES=0).
+      local extra=""
+      [ "$rep" = 2 ] && extra="${TET_R2_ENV:-}"
+      # shellcheck disable=SC2086
+      env $extra RUST_LOG=info,tetraeder::step=debug setsid nohup "$tet" serve -m "$f" --engine dense --ngl -1 --parallel 4 \
         --ctx "$rctx" -t "$threads" --port 18080 --alias qwen3-8b --accept-any-model --cache-ram 8192 > "$slog" 2>&1 8>&- &
       server_pid=$! ;;
     llama)

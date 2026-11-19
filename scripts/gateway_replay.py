@@ -105,26 +105,38 @@ def target_url(base: str, entry: dict) -> str:
     return url + ("?" + q) if q else url
 
 
-def sse_has_content(line: str) -> bool:
-    """True for an SSE data line that carries output (first content for TTFT): a content or text delta (OpenAI,
-    delta.content / text) or a content_block_delta (Anthropic)."""
+def sse_content_kind(line: str) -> str | None:
+    """The kind of output an SSE data line carries ("text", "thinking" or "tool"), None without output. A
+    content or text delta (OpenAI, delta.content / text) or a content_block_delta (Anthropic)."""
     if not line.startswith("data:"):
-        return False
+        return None
     data = line[5:].strip()
     if not data or data == "[DONE]":
-        return False
+        return None
     try:
         c = json.loads(data)
     except json.JSONDecodeError:
-        return False
+        return None
     if c.get("type") == "content_block_delta":
         d = c.get("delta") or {}
-        return bool(d.get("text") or d.get("partial_json") or d.get("thinking"))
+        for key, kind in (("text", "text"), ("thinking", "thinking"), ("partial_json", "tool")):
+            if d.get(key):
+                return kind
+        return None
     for ch in c.get("choices") or []:
         d = ch.get("delta") or {}
-        if d.get("content") or d.get("reasoning_content") or d.get("tool_calls") or ch.get("text"):
-            return True
-    return False
+        if d.get("content") or ch.get("text"):
+            return "text"
+        if d.get("reasoning_content"):
+            return "thinking"
+        if d.get("tool_calls"):
+            return "tool"
+    return None
+
+
+def sse_has_content(line: str) -> bool:
+    """True for an SSE data line that carries output (first content for TTFT)."""
+    return sse_content_kind(line) is not None
 
 
 def usage_from(obj: dict) -> dict | None:
@@ -149,8 +161,10 @@ async def send(client, base: str, entry: dict, index: int) -> dict:
             async with client.stream(entry.get("method", "POST"), url, json=body, headers=headers) as r:
                 res["status"] = r.status_code
                 async for line in r.aiter_lines():
-                    if ttft is None and sse_has_content(line):
+                    if ttft is None and (kind := sse_content_kind(line)):
                         ttft = time.perf_counter() - t0
+                        # A tool call streamed whole arrives only once it is generated.
+                        res["first_kind"] = kind
                     if line.startswith("data:"):
                         try:
                             u = usage_from(json.loads(line[5:].strip()))

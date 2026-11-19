@@ -62,3 +62,25 @@ r2:
 ## Reading
 
 The admission-path fixes work as predicted: no restores, no avoidable saves, no queueing (sum `queued_ms` 0.00 s), and #24, #53 and #39 are back to cache-hit TTFT. The big misses (#58, #16, #45, #0, #42, #102, #25) are at or below llama-server. The p90 miss is the tail the ttft4 README predicted: long-context hits with 0.5k to 2.5k new tokens (#76, #89, #81, #6, #21, #78, #12, #33, #88, #14, #82) with `place_ms` under 1 ms and no save, TTFT 0.8 to 1.5 s against llama-server's 0.25 to 0.9 s, about 0.4 to 0.7 s behind. That is prefill speed at 13k to 33k positions, not placement. Median is within the bar.
+
+## Long-context tail (diagnosis, 2026-11-19, from the committed files)
+
+Method: llama-server's own prompt-eval time per request (`print_timing` in `server-replay-q8b-llama-r1.log`) stands in for the prefill time, and the decode ms per token (`(total_s - ttft_s) / (output_tokens - 1)` for tetraeder, `eval time` for llama-server) measures the attention width, since decode is level wherever the two engines attend over the same rows. Gap = tetraeder TTFT - llama prefill - 0.09 s (llama-server's own TTFT minus its prefill is 0.07 to 0.11 s on every hit but #53). Misses (more than 3000 new tokens) are left out.
+
+The tail is not prefill speed at long context: #33 (15.5k cached + 2033 new), #64 (14.6k + 1397), #68 (18.1k + 1400) and #74 (22.2k + 995) are level. Two separate causes:
+
+- **A. Run offset (code-certain).** A sequence whose chunked run sits above another sequence's attends over rows `0..n_kv` including the other run (`KvPool::step_n_kv`, `attn::attention_seqs_out` `kv_view(0, n_kv)`); libllama with `-kvu` and flash attention reads only the sequence's own cells (`fused_kv_rows`: llama-context.cpp 384-390 and 710-716, llama-graph.cpp 102-130 and 3055-3066, llama-kv-cache.cpp 1391-1420 at fc504f91). Seq 1 (#16 to #24, above seq 0's 22k rows) and seq 0 (#45 to #61, above seq 2) decode at 1.34x to 1.45x llama-server's ms per token, every other phase at 0.97 to 1.03x; their gaps grow with the new tokens (#17 220 new 0.05 s, #18 679 0.21 s, #19 1579 0.31 s, #21 2046 0.40 s) and repeat within 0.03 s between r1 and r2. 21 requests, 3.2 s of TTFT per round.
+- **B. Episodic stalls of 0.45 to 0.85 s (mechanism open).** In #76 to #91 (seq 0 alone at the bottom, decode 1.00x) the six slow requests are exactly the six with a step mask over 32 MiB (#88 33.1, #82 32.7 MiB slow; #87 28.9, #84 28.1 MiB level). In #62 to #75 masks up to 52.6 MiB are level. What differs: in #76 to #91 (and #1 to #15) every admission raises the snapshot pool's target (`expect_snapshot`, the longest prompt so far), so the spare thread frees the outgrown multi-GB spares and touches new ones while the prefill runs; in #62 to #75 it does not. A fresh per-step mask above glibc's 32 MiB mmap threshold page-faults on every page, and the stall varies between rounds (#14 0.62 / 0.00 s, #89 0.71 / 0.54 s), as host contention would. 14 (r1) and 11 (r2) requests, 7.0 and 4.9 s.
+
+| without | median ratio | p90 ratio (this README's p90 index) |
+|---|---|---|
+| nothing (measured) | 1.12 / 1.07 | 1.72 / 1.63 |
+| A | 1.03 / 1.02 | 1.72 / 1.63 |
+| B | 1.04 / 1.02 | 1.05 / 1.06 |
+| A and B | 1.02 / 1.01 | 0.97 / 0.98 |
+
+(r1 / r2, removing each cause's gap from the affected requests.) B sets the p90, A the median and the mean.
+
+Tool calls: the gateway sends a tool call whole (`anthropic.rs`, `OutputParser::drain_block`), llama-server streams its arguments (`input_json_delta`, server-task.cpp 1464 at fc504f91), and the replay counts `partial_json` as first content. A response that starts with a tool call therefore shows its whole call in our TTFT. It cannot be the B pattern (it does not depend on mask size or on the target rising), but its share is unmeasured: the replay now records `first_kind`.
+
+Changes on `track-longctx-prefill`: one-input steps attend over their own run (A, ADR 0066 History); the pool reuses its mask buffer (B candidate); `TETRAEDER_STEP_TRACE=1` traces each prefill step (reserve and moves, plan, state, upload, build, compute, read, minor faults) and the spare thread's frees and touches.
