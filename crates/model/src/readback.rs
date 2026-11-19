@@ -42,6 +42,7 @@ pub(crate) fn write_direct(spans: &[Span<'_>], bytes: &[u8]) -> Result<()> {
 
 /// Appends every span to `out` with one blocking copy each.
 pub(crate) fn append_direct(spans: &[Span<'_>], out: &mut Vec<u8>) -> Result<()> {
+    out.reserve_exact(spans.iter().map(|s| s.2).sum());
     for &(t, offset, len) in spans {
         t.get_bytes_into(offset, len, out)?;
     }
@@ -101,7 +102,8 @@ impl Readback {
     /// Appends every span to `out`, in order. Spans the backend cannot read asynchronously (a
     /// KV tensor in host memory) make the whole read direct, which keeps the order.
     pub(crate) fn read(&self, spans: &[Span<'_>], out: &mut Vec<u8>) -> Result<()> {
-        out.reserve(spans.iter().map(|s| s.2).sum());
+        // Exact: a too-small spare grows to the snapshot, not to twice its capacity.
+        out.reserve_exact(spans.iter().map(|s| s.2).sum());
         if !spans.iter().all(|&(t, _, _)| self.backend.can_read(t)) {
             return append_direct(spans, out);
         }

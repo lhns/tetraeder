@@ -245,7 +245,14 @@ mod tests {
         let (_, bytes) = c.take(0);
         let n = pool.stats().recycled;
         c.release(bytes);
-        assert!(pool.stats().recycled > n || pool.stats().ready == 2);
+        // Kept, unless the preparer was filling the second spare: then it is freed and the
+        // fill makes two.
+        let t0 = std::time::Instant::now();
+        let settled = |s: tetraeder_model::snapshot_pool::PoolStats| s.recycled > n || s.ready == 2;
+        while !settled(pool.stats()) && t0.elapsed() < std::time::Duration::from_secs(2) {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(settled(pool.stats()), "{:?}", pool.stats());
     }
 
     /// With no spares the cache behaves as before and the pool stays idle.
