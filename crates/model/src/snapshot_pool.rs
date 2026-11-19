@@ -1,9 +1,15 @@
 //! Spare buffers for KV snapshots (ADR 0074). A snapshot is tens of MB, above the allocator's
 //! mmap threshold, so a fresh `Vec` page-faults on every byte of the save, with every live
-//! sequence stalled. A background thread keeps a few buffers ready (allocated, advised for huge
-//! pages, every page touched); a save takes one, and the prefix cache hands released buffers
-//! back. When none is ready a save allocates plainly, without any advice: advised memory can
-//! stall the faulting thread in direct compaction.
+//! sequence stalled. A background thread keeps a few buffers ready (allocated, every page
+//! touched); a save takes one, and the prefix cache hands released buffers back. When none is
+//! ready a save allocates plainly, without any advice: advised memory can stall the faulting
+//! thread in direct compaction.
+//!
+//! The target size only grows (the longest snapshot hinted so far), usually by a few percent per
+//! request. The preparer grows a spare that fell below it and touches only the new tail; it frees
+//! a spare only when the cache budget no longer holds them all at the target. Frees run on the
+//! preparer thread, in pieces: a multi-GB free in one go stalled the steps it overlapped by up to
+//! 0.7 s, and replacing every spare at each new target left saves without one (ttft6-20261119).
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
@@ -15,6 +21,10 @@ pub const SPARES_ENV: &str = "TETRAEDER_SNAPSHOT_SPARES";
 /// fragmented memory the advice made each spare take 0.5 s of direct compaction, and with the
 /// pages touched off the admission path it gains nothing; `20261117h`, ADR 0074).
 pub const THP_ENV: &str = "TETRAEDER_SNAPSHOT_THP";
+
+/// Bytes a free gives back per piece: about 7 ms of unmapping at the 9.5 GB/s measured on the
+/// ttft6-20261119 host, the longest one free holds the address space.
+pub const FREE_PIECE: usize = 64 << 20;
 
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
@@ -62,13 +72,30 @@ pub struct PoolStats {
     pub fallback: u64,
     /// Released buffers taken back into the pool.
     pub recycled: u64,
+    /// Bytes the preparer touched (new spares and grown tails).
+    pub touched_bytes: u64,
+    /// Bytes the preparer freed (spares over the budget, released buffers without room).
+    pub freed_bytes: u64,
     pub ready: usize,
     pub ready_bytes: usize,
 }
 
+/// Work for the preparer thread.
+enum Job {
+    /// Free this buffer, in pieces.
+    Free(Vec<u8>),
+    /// Touch this buffer up to the given length (a new spare starts empty).
+    Fill(Vec<u8>, usize),
+}
+
 #[derive(Default)]
 struct State {
+    /// Spares; the first `len()` bytes of each are touched (the contents are junk).
     ready: Vec<Vec<u8>>,
+    /// Released buffers without room, to free on the preparer thread.
+    discard: Vec<Vec<u8>>,
+    /// Capacity of the spare the preparer is filling, if any (counted as held).
+    filling: Option<usize>,
     /// Capacity of the buffers to prepare: the largest snapshot asked for, rounded up.
     target: usize,
     /// Most bytes worth holding (the prefix cache budget); 0 means no limit yet.
@@ -82,9 +109,66 @@ impl State {
         self.ready.iter().map(Vec::capacity).sum()
     }
 
+    /// Bytes held as spares, including the one being filled.
+    fn held_bytes(&self) -> usize {
+        self.ready_bytes() + self.filling.unwrap_or(0)
+    }
+
+    fn fits(&self, bytes: usize) -> bool {
+        self.max_bytes == 0 || bytes <= self.max_bytes
+    }
+
     fn has_room(&self, spares: usize, cap: usize) -> bool {
-        self.ready.len() < spares
-            && (self.max_bytes == 0 || self.ready_bytes() + cap <= self.max_bytes)
+        self.ready.len() + usize::from(self.filling.is_some()) < spares
+            && self.fits(self.held_bytes() + cap)
+    }
+
+    /// Spares worth holding at the target: `spares`, fewer when the budget holds fewer.
+    fn keep(&self, spares: usize) -> usize {
+        match (self.max_bytes, self.target) {
+            (0, _) | (_, 0) => spares,
+            (max, t) => spares.min(max / t),
+        }
+    }
+
+    fn take_smallest(&mut self) -> Vec<u8> {
+        let i = (0..self.ready.len())
+            .min_by_key(|&i| self.ready[i].capacity())
+            .expect("a spare to take");
+        self.ready.swap_remove(i)
+    }
+
+    /// The preparer's next job: free a released buffer, free a spare the budget no longer
+    /// holds, grow the least touched spare to the target, or make a new spare.
+    fn next_job(&mut self, spares: usize) -> Option<Job> {
+        if let Some(v) = self.discard.pop() {
+            return Some(Job::Free(v));
+        }
+        let t = self.target;
+        if t == 0 {
+            return None;
+        }
+        if !self.ready.is_empty() && self.ready.len() > self.keep(spares) {
+            return Some(Job::Free(self.take_smallest()));
+        }
+        let short = (0..self.ready.len())
+            .filter(|&i| self.ready[i].len() < t)
+            .min_by_key(|&i| self.ready[i].len());
+        if let Some(i) = short {
+            let grow = t.saturating_sub(self.ready[i].capacity());
+            if !self.fits(self.held_bytes() + grow) {
+                // Growing it needs the bytes of one spare.
+                return Some(Job::Free(self.take_smallest()));
+            }
+            let v = self.ready.swap_remove(i);
+            self.filling = Some(v.capacity().max(t));
+            return Some(Job::Fill(v, t));
+        }
+        if self.has_room(spares, t) {
+            self.filling = Some(t);
+            return Some(Job::Fill(Vec::new(), t));
+        }
+        None
     }
 }
 
@@ -97,6 +181,8 @@ struct Shared {
     from_spare: AtomicU64,
     fallback: AtomicU64,
     recycled: AtomicU64,
+    touched: AtomicU64,
+    freed: AtomicU64,
 }
 
 impl Shared {
@@ -120,6 +206,8 @@ impl SnapshotPool {
                 from_spare: AtomicU64::new(0),
                 fallback: AtomicU64::new(0),
                 recycled: AtomicU64::new(0),
+                touched: AtomicU64::new(0),
+                freed: AtomicU64::new(0),
             }),
         }
     }
@@ -186,8 +274,9 @@ impl SnapshotPool {
 
     /// An empty buffer of capacity at least `need`, for a snapshot of about `need` bytes: a ready
     /// spare of at most about twice that size (the cache budget counts contents, not capacity),
-    /// else a plain allocation (no advice, pages untouched). Also tells the preparer the size to
-    /// keep ready and wakes it.
+    /// else the largest spare that is too small (the read grows it by realloc, which mostly
+    /// extends the mapping, so only the tail pages fault), else a plain allocation (no advice,
+    /// pages untouched). Also tells the preparer the size to keep ready and wakes it.
     pub fn take(&self, need: usize) -> Vec<u8> {
         let sh = &self.shared;
         if !self.enabled() {
@@ -197,27 +286,29 @@ impl SnapshotPool {
         let mut st = sh.lock();
         let worth = self.raise_target(&mut st, cap);
         let limit = 2 * need + sh.cfg.round;
-        let pick = st
-            .ready
-            .iter()
-            .enumerate()
-            .filter(|(_, v)| v.capacity() >= need && v.capacity() <= limit)
-            .min_by_key(|(_, v)| v.capacity())
-            .map(|(i, _)| i)
-            // Else the largest spare that is too small: the read grows it by realloc, which
-            // mostly extends the mapping, so only the tail pages fault.
-            .or_else(|| {
-                st.ready
-                    .iter()
-                    .enumerate()
+        let pick = |small: bool| {
+            let spares = st.ready.iter().enumerate();
+            if small {
+                spares
                     .filter(|(_, v)| v.capacity() < need)
                     .max_by_key(|(_, v)| v.capacity())
                     .map(|(i, _)| i)
-            });
-        let spare = pick.map(|i| st.ready.swap_remove(i));
+            } else {
+                spares
+                    .filter(|(_, v)| v.capacity() >= need && v.capacity() <= limit)
+                    .min_by_key(|(_, v)| v.capacity())
+                    .map(|(i, _)| i)
+            }
+        };
+        let (i, source) = match (pick(false), pick(true)) {
+            (Some(i), _) => (Some(i), "fit"),
+            (None, Some(i)) => (Some(i), "small"),
+            (None, None) => (None, "fallback"),
+        };
+        let spare = i.map(|i| st.ready.swap_remove(i));
         drop(st);
         sh.wake.notify_all();
-        match spare {
+        let mut v = match spare {
             Some(v) => {
                 sh.from_spare.fetch_add(1, Ordering::Relaxed);
                 v
@@ -226,27 +317,37 @@ impl SnapshotPool {
                 sh.fallback.fetch_add(1, Ordering::Relaxed);
                 Vec::with_capacity(if worth { cap } else { need })
             }
+        };
+        if crate::qwen3::step_trace() {
+            tracing::info!(target: "tetraeder::trace", need, cap = v.capacity(),
+                touched = v.len(), source, "snapshot take");
         }
+        v.clear();
+        v
     }
 
-    /// Takes a buffer nobody needs any more (an evicted or replaced snapshot) back, up to the
-    /// number of spares; the rest is freed. Only buffers as large as the target are kept.
-    pub fn recycle(&self, mut v: Vec<u8>) {
+    /// Takes a buffer nobody needs any more (an evicted or replaced snapshot) back while the
+    /// pool has room, whatever its size (the preparer grows it to the target); the rest is
+    /// freed on the preparer thread.
+    pub fn recycle(&self, v: Vec<u8>) {
         let sh = &self.shared;
         if !self.enabled() || v.capacity() < sh.cfg.min_bytes {
             return;
         }
-        v.clear();
         let mut st = sh.lock();
-        if v.capacity() >= st.target && st.has_room(sh.spares.load(Ordering::Relaxed), v.capacity())
-        {
+        if st.has_room(sh.spares.load(Ordering::Relaxed), v.capacity()) {
+            // Its contents are touched pages.
             st.ready.push(v);
             sh.recycled.fetch_add(1, Ordering::Relaxed);
+        } else if st.started {
+            st.discard.push(v);
         } else {
-            // Freed outside the lock.
             drop(st);
             drop(v);
+            return;
         }
+        drop(st);
+        sh.wake.notify_all();
     }
 
     pub fn stats(&self) -> PoolStats {
@@ -256,6 +357,8 @@ impl SnapshotPool {
             from_spare: sh.from_spare.load(Ordering::Relaxed),
             fallback: sh.fallback.load(Ordering::Relaxed),
             recycled: sh.recycled.load(Ordering::Relaxed),
+            touched_bytes: sh.touched.load(Ordering::Relaxed),
+            freed_bytes: sh.freed.load(Ordering::Relaxed),
             ready: st.ready.len(),
             ready_bytes: st.ready_bytes(),
         }
@@ -279,83 +382,91 @@ pub fn global() -> Arc<SnapshotPool> {
     }))
 }
 
-/// Keeps the ready list at `spares` buffers of the target capacity until shutdown.
+/// Grows, touches and frees spares until shutdown, one job at a time, outside the lock.
 fn prepare_loop(sh: &Shared) {
     loop {
-        let cap = {
+        let job = {
             let mut st = sh.lock();
-            let stale = loop {
+            loop {
                 if st.shutdown {
                     return;
                 }
-                let target = st.target;
-                // Buffers smaller than the target will not fit the next save.
-                let (keep, stale): (Vec<_>, Vec<_>) = std::mem::take(&mut st.ready)
-                    .into_iter()
-                    .partition(|v| v.capacity() >= target);
-                st.ready = keep;
-                if target > 0 && st.has_room(sh.spares.load(Ordering::Relaxed), target) {
-                    break stale;
-                }
-                if !stale.is_empty() {
-                    drop(st);
-                    free_traced(stale);
-                    st = sh.lock();
-                    continue;
+                if let Some(j) = st.next_job(sh.spares.load(Ordering::Relaxed)) {
+                    break j;
                 }
                 st = sh.wake.wait(st).unwrap_or_else(|e| e.into_inner());
-            };
-            let target = st.target;
-            drop(st);
-            free_traced(stale);
-            target
+            }
         };
-        let t = std::time::Instant::now();
-        let v = prepare(cap, sh.cfg.thp);
-        if crate::qwen3::step_trace() {
-            tracing::info!(target: "tetraeder::trace", bytes = cap,
-                ms = t.elapsed().as_millis() as u64, "snapshot spare touched");
-        }
-        let mut st = sh.lock();
-        if st.shutdown {
-            return;
-        }
-        if v.capacity() >= st.target && st.has_room(sh.spares.load(Ordering::Relaxed), v.capacity())
-        {
-            st.ready.push(v);
-            tracing::debug!(bytes = cap, ready = st.ready.len(), "snapshot spare ready");
-        } else {
-            drop(st);
-            drop(v);
+        match job {
+            Job::Free(v) => {
+                let bytes = v.capacity();
+                let t = std::time::Instant::now();
+                let pieces = release(v, FREE_PIECE);
+                sh.freed.fetch_add(bytes as u64, Ordering::Relaxed);
+                if crate::qwen3::step_trace() {
+                    tracing::info!(target: "tetraeder::trace", bytes, pieces,
+                        ms = t.elapsed().as_millis() as u64, "snapshot spare freed");
+                }
+            }
+            Job::Fill(mut v, target) => {
+                let t = std::time::Instant::now();
+                let touched = fill(&mut v, target, sh.cfg.thp);
+                sh.touched.fetch_add(touched as u64, Ordering::Relaxed);
+                if crate::qwen3::step_trace() {
+                    tracing::info!(target: "tetraeder::trace", bytes = touched,
+                        cap = v.capacity(), ms = t.elapsed().as_millis() as u64,
+                        "snapshot spare touched");
+                }
+                let mut st = sh.lock();
+                st.filling = None;
+                if st.shutdown {
+                    return;
+                }
+                // Over the count or the budget by now (a recycle, a new budget)? The next job
+                // frees the excess.
+                st.ready.push(v);
+                tracing::debug!(
+                    bytes = target,
+                    ready = st.ready.len(),
+                    "snapshot spare ready"
+                );
+            }
         }
     }
 }
 
-/// Frees spares the target outgrew; with the step trace on, logs the bytes and time (multi-GB
-/// frees overlap the steps of the request that raised the target, ttft5-20261119).
-fn free_traced(stale: Vec<Vec<u8>>) {
-    if stale.is_empty() {
-        return;
+/// Touches `v` up to `target` bytes (its length): grows the capacity by realloc, which moves
+/// the touched pages along, and writes zeros over the new tail only. Returns the bytes touched.
+fn fill(v: &mut Vec<u8>, target: usize, thp: bool) -> usize {
+    let before = v.len();
+    if before >= target {
+        return 0;
     }
-    let bytes: usize = stale.iter().map(Vec::capacity).sum();
-    let t = std::time::Instant::now();
-    drop(stale);
-    if crate::qwen3::step_trace() {
-        tracing::info!(target: "tetraeder::trace", bytes,
-            ms = t.elapsed().as_millis() as u64, "snapshot spares freed");
+    if v.capacity() < target {
+        v.reserve_exact(target - before);
     }
-}
-
-/// A buffer of `cap` bytes whose every page is already faulted in.
-fn prepare(cap: usize, thp: bool) -> Vec<u8> {
-    let mut v: Vec<u8> = Vec::with_capacity(cap);
     if thp {
         advise_hugepages(v.as_ptr() as usize, v.capacity());
     }
-    // Writing zeros touches every page; clearing keeps the capacity.
-    v.resize(v.capacity(), 0);
-    v.clear();
-    v
+    v.resize(target, 0);
+    target - before
+}
+
+/// Frees `v` in pieces of `piece` bytes from its end, yielding between pieces, so no single
+/// unmap runs long (glibc shrinks a mapped block in place by `mremap`, which unmaps the tail).
+/// Elsewhere it is one free. Returns the number of pieces.
+fn release(mut v: Vec<u8>, piece: usize) -> usize {
+    let mut pieces = 1;
+    if cfg!(target_os = "linux") && piece > 0 {
+        v.clear();
+        while v.capacity() > piece {
+            v.shrink_to(v.capacity() - piece);
+            pieces += 1;
+            std::thread::yield_now();
+        }
+    }
+    drop(v);
+    pieces
 }
 
 #[cfg(test)]
@@ -410,21 +521,42 @@ mod tests {
         wait_for(&p, "refill", |s| s.ready == 2);
     }
 
-    /// hardware: cpu. The target follows the largest snapshot; smaller spares are dropped.
+    /// hardware: cpu. The target follows the largest snapshot; spares grow with it and none is
+    /// freed (ttft6-20261119: replacing them freed 2.6 to 8 GB at a time, overlapping steps).
     #[test]
-    fn the_target_grows_and_stale_spares_go() {
+    fn the_target_grows_and_spares_grow_with_it() {
         let p = pool(2);
         drop(p.take(10 * KB));
         wait_for(&p, "fill", |s| s.ready == 2);
         drop(p.take(100 * KB));
-        wait_for(&p, "regrow", |s| {
+        let s = wait_for(&p, "regrow", |s| {
             s.ready == 2 && s.ready_bytes >= 2 * 100 * KB
         });
-        // A somewhat smaller request is served by a bigger spare (the first take above used a
+        assert_eq!(s.freed_bytes, 0, "{s:?}");
+        // A somewhat smaller request is served by a bigger spare (the take above used a
         // too-small one).
         let v = p.take(60 * KB);
-        assert!(v.capacity() >= 100 * KB);
+        assert!(v.is_empty() && v.capacity() >= 100 * KB);
         assert_eq!(p.stats().from_spare, 2);
+    }
+
+    /// hardware: cpu. A target a few percent higher touches only the new tails, not whole
+    /// spares (ttft6-20261119: each new longest prompt re-touched every spare, 1.3 to 4 s each).
+    #[test]
+    fn a_small_rise_touches_only_the_tail() {
+        let p = pool(2);
+        p.expect(100 * KB);
+        let s0 = wait_for(&p, "fill", |s| s.ready == 2 && s.ready_bytes >= 200 * KB);
+        p.expect(104 * KB);
+        let s = wait_for(&p, "grow", |s| s.ready == 2 && s.ready_bytes >= 208 * KB);
+        assert_eq!(
+            s.touched_bytes - s0.touched_bytes,
+            2 * 4 * KB as u64,
+            "{s:?}"
+        );
+        assert_eq!(s.freed_bytes, 0);
+        let v = p.take(104 * KB);
+        assert!(v.is_empty() && v.capacity() >= 104 * KB);
     }
 
     /// hardware: cpu. With no spare that fits, the largest too-small one is taken, not a plain
@@ -490,9 +622,10 @@ mod tests {
         assert_eq!(p.stats().from_spare, 1);
     }
 
-    /// hardware: cpu. Buffers below the minimum or the target are not kept.
+    /// hardware: cpu. Buffers below the minimum are not kept; a released buffer smaller than the
+    /// target is kept and grown, not freed.
     #[test]
-    fn small_and_stale_buffers_are_not_kept() {
+    fn small_buffers_go_and_smaller_released_ones_are_grown() {
         let p = SnapshotPool::new(PoolConfig {
             spares: 2,
             thp: false,
@@ -501,13 +634,18 @@ mod tests {
         });
         p.recycle(Vec::with_capacity(4 * KB));
         assert_eq!(p.stats().ready, 0);
-        drop(p.take(100 * KB));
-        wait_for(&p, "fill", |s| s.ready == 2);
-        p.recycle(Vec::with_capacity(16 * KB));
-        assert_eq!(p.stats().recycled, 0, "smaller than the target");
+        let mut v = Vec::with_capacity(16 * KB);
+        v.resize(16 * KB, 1);
+        p.recycle(v);
+        assert_eq!(p.stats().recycled, 1);
+        p.expect(100 * KB);
+        let s = wait_for(&p, "grow", |s| s.ready == 2 && s.ready_bytes >= 200 * KB);
+        assert_eq!(s.freed_bytes, 0, "{s:?}");
+        assert_eq!(s.touched_bytes, (100 - 16 + 100) as u64 * KB as u64);
     }
 
-    /// hardware: cpu. A request above the budget is served plainly and prepares nothing.
+    /// hardware: cpu. A request above the budget is served plainly and prepares nothing; a
+    /// released buffer without room is freed by the preparer, not the caller.
     #[test]
     fn the_budget_caps_spares() {
         let p = pool(2);
@@ -519,7 +657,22 @@ mod tests {
         let s = wait_for(&p, "fill", |s| s.ready == 2);
         assert!(s.ready_bytes <= 32 * KB, "{s:?}");
         p.recycle(Vec::with_capacity(16 * KB));
-        assert_eq!(p.stats().ready, 2);
+        let s = wait_for(&p, "free", |s| s.freed_bytes == 16 * KB as u64);
+        assert_eq!(s.ready, 2);
+    }
+
+    /// hardware: cpu. When the budget no longer holds every spare at the target, the smallest
+    /// goes and the rest grow (ttft6-20261119: 4 spares, 8 GiB budget, snapshots of 5 GB).
+    #[test]
+    fn spares_over_the_budget_are_freed() {
+        let p = pool(2);
+        p.set_max_bytes(250 * KB);
+        p.expect(100 * KB);
+        wait_for(&p, "fill", |s| s.ready == 2 && s.ready_bytes >= 200 * KB);
+        p.expect(200 * KB);
+        let s = wait_for(&p, "shrink", |s| s.ready == 1 && s.ready_bytes >= 200 * KB);
+        assert_eq!(s.freed_bytes, 100 * KB as u64, "{s:?}");
+        assert!(s.ready_bytes <= 250 * KB);
     }
 
     /// hardware: cpu. Without spares the pool is today's `Vec::with_capacity` and nothing else.
@@ -533,10 +686,24 @@ mod tests {
         assert!(!p.shared.lock().started, "no thread");
     }
 
-    /// hardware: cpu. Prepared buffers are empty and keep their capacity through a use.
+    /// hardware: cpu. A fill touches up to the target once, then only what the target grew by.
     #[test]
-    fn prepared_buffers_are_empty() {
-        let v = prepare(64 * KB, true);
-        assert!(v.is_empty() && v.capacity() == 64 * KB);
+    fn fill_touches_only_the_tail() {
+        let mut v = Vec::new();
+        assert_eq!(fill(&mut v, 64 * KB, true), 64 * KB);
+        assert_eq!((v.len(), v.capacity()), (64 * KB, 64 * KB));
+        assert_eq!(fill(&mut v, 80 * KB, false), 16 * KB);
+        assert!(v.len() == 80 * KB && v.capacity() >= 80 * KB);
+        assert_eq!(fill(&mut v, 80 * KB, false), 0);
+    }
+
+    /// hardware: cpu. On Linux a free gives the memory back piece by piece.
+    #[test]
+    fn release_frees_in_pieces() {
+        let mut v = Vec::with_capacity(100 * KB);
+        v.resize(100 * KB, 3u8);
+        let want = if cfg!(target_os = "linux") { 7 } else { 1 };
+        assert_eq!(release(v, 16 * KB), want);
+        assert_eq!(release(Vec::new(), 16 * KB), 1);
     }
 }

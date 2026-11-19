@@ -52,6 +52,14 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 - Consequence: an eviction that generation really needs now stalls a decode step instead of delaying the first token.
 - Judged by the bar of the 2026-11-18 section, on the same replay.
 
+## History
+
+- 2026-11-19, after `ttft6-20261119` (`track-ttft-spares`): spares grow with the target instead of being replaced, and frees run on the preparer thread in pieces.
+  - Why: the target is the longest prompt plus 512 tokens so far, and on the replay it rises by 0.3 to 5% at most admissions. The preparer then freed every spare below it and touched new ones: 32 frees of 2.6 to 8.3 GB (0.33 to 1.3 s each) and 78 full touches (1.3 to 5 s each) in r1. A free that overlapped a prefill stalled it by 0.15 to 0.72 s (#1, #2, #3, #10). That fits the serving thread's own mmap calls waiting on the address-space lock behind a long unmap, but this is not proven. The churn also left the saves without a fitting spare. Save sizes match ttft5 (21651, 21682, 34392 and 34285 positions), but a save ran at 0.27 to 0.74 s/GB against 0.17 to 0.19 s/GB in ttft5: #42 found nothing ready (fallback), and #25 and #102 got a spare 8 to 55 MB too small while the preparer freed or touched GBs beside them. r2 (spares off) gives the cost of fresh pages on that host, 0.70 to 0.76 s/GB.
+  - Rule: a spare below the target is grown by realloc (glibc moves the mapping, so no copy) and only its new tail is touched. A spare is freed only when the budget no longer holds `spares` buffers at the target (the smallest goes), or when growing one would exceed the budget. A released buffer of any size is kept while there is room and grown later; one without room is freed by the preparer, not by the caller. Frees on Linux give memory back 64 MiB at a time (`shrink_to`, about 7 ms each at the measured rate), yielding in between. Snapshot reads reserve exactly, so a too-small spare grows to the snapshot and not to twice its size.
+  - Step trace (`TETRAEDER_STEP_TRACE=1`): `snapshot take` (need, capacity, bytes already touched, source fit, small or fallback), `snapshot spare touched` (bytes touched, capacity) and `snapshot spare freed` (bytes, pieces). Pool counters `touched_bytes` and `freed_bytes`.
+  - Judged on the next replay by the same bar. Spares on: no `snapshot spare freed` inside a prefill except budget frees, those in pieces; #1 to #10 level with r2; every save `source=fit` or small by at most the generated tail, at about the ttft5 rate per GB.
+
 ## Open
 
 - Request #53 of the replay (a miss) prefills about 3x slower than llama-server (`ttft-20261118`); not yet explained.
