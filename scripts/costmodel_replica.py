@@ -21,8 +21,10 @@ last FFN) on output rows, every expert read at prefill, a roofline per op class,
 all-reduce in a step paying the fitted share of the probe's zero-byte time. Version 3 is MODEL_VERSION 3 (ADR 0078):
 the all-reduce in a step pays the curve's byte part plus a fitted in-step latency a + 2 (p - 1) b over p ranks, b only
 when the anchors' all-reduces span two group sizes. Version 4 (the default) is MODEL_VERSION 4 (ADR 0080): version 3
-plus the routed slots' activation bytes at the memory rate, every slot on every expert-parallel rank; Rust prices them
-on graphs that carry `expert_slot_traffic`, which a version-4 fit writes. Pipelined prefill (ADR 0077) is priced as `predict_ranks` does; version 2 on a session's own calib.json
+plus the routed slots' activation bytes at the memory rate, every slot on every expert-parallel rank, and an
+all-reduce curve whose head point is not below its successor (the probe's floor) read with the head on the next
+segment extended back (`step_curve`); Rust does both on graphs that carry `expert_slot_traffic`, which a version-4
+fit writes. Pipelined prefill (ADR 0077) is priced as `predict_ranks` does; version 2 on a session's own calib.json
 gives its predict-*.json bit for bit (S2g, S3, S3b). Rust `predict` reproduces version 2 on the graphs this script
 writes (`crates/planner/tests/costmodel_v2.rs`). The fit is the same Levenberg-Marquardt and coordinate search as
 `calib.rs`, not bit-identical to it. Input files (ADR 0068 names): hw.json, calib-comm.json, calib.json,
@@ -484,9 +486,29 @@ def part_time(p: dict, rt: tuple, m: float, ctx: float, version: int) -> float:
             + max(p["attn"] * m * ctx / f, p["kv"] * ctx / bw) + p.get("sb", 0.0) * m / bw)
 
 
-def ar_latency(hw: dict, group: list) -> float:
+def step_curve(points: list) -> list:
+    """`predict::allreduce_step_curve_s` (version 4, ADR 0080 History): a head point not below its successor is the
+    probe's floor, so it takes the next segment's time extended back to its size; rising heads are unchanged."""
+    pts = sorted(points, key=lambda p: p[0])
+    if len(pts) > 2 and pts[0][1] >= pts[1][1]:
+        (x1, y1), (x2, y2) = pts[1], pts[2]
+        slope = max((y2 - y1) / (x2 - x1), 0.0)
+        pts[0] = (pts[0][0], max(y1 - slope * (x1 - pts[0][0]), 0.0))
+    return pts
+
+
+def allreduce_time(hw: dict, group: list, n: float, version: int) -> float | None:
+    """The all-reduce curve at n bytes, read through `step_curve` from version 4 on."""
+    if version >= 4:
+        for c in hw.get("collectives", []):
+            if OPS.get(c["op"], c["op"]) == "AllReduce" and len(c["ranks"]) == len(group)                     and all(r in c["ranks"] for r in group):
+                return curve_time(step_curve(c["points"]), n)
+    return collective_time(hw, "AllReduce", group, n)
+
+
+def ar_latency(hw: dict, group: list, version: int = 3) -> float:
     """The all-reduce time at zero bytes: the curve's first point, else the ring prior's `2 (p - 1) alpha`."""
-    t = collective_time(hw, "AllReduce", group, 0.0)
+    t = allreduce_time(hw, group, 0.0, version)
     if t is not None:
         return t
     alpha = 0.0
@@ -512,7 +534,9 @@ def coll_time(hw: dict, c: dict, m: float, version: int) -> tuple[str, float]:
         if version >= 2 and lat is not None and "ar_share" not in DROP:
             # Version 3: the byte part as measured plus the fitted in-step latency a + 2 (p - 1) b.
             b = range_costs(hw).get("allreduce_step_s") or 0.0
-            t = max(t - ar_latency(hw, c["ar"]), 0.0) + lat + 2.0 * (len(c["ar"]) - 1) * b
+            if version >= 4 and collective_time(hw, "AllReduce", c["ar"], n) is not None:
+                t = allreduce_time(hw, c["ar"], n, version)
+            t = max(t - ar_latency(hw, c["ar"], version), 0.0) + lat + 2.0 * (len(c["ar"]) - 1) * b
         elif version >= 2:
             # The probe syncs every rank around each call; in a step only the share `s` of its small-message
             # time is paid, the byte-proportional part (the BF16 switch included) stays as measured.

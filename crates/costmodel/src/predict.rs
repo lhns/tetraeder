@@ -62,7 +62,7 @@
 use crate::{allreduce_time, transfer_time};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tetraeder_profiler::{CollectiveOp, Device, DeviceKind, HardwareGraph};
+use tetraeder_profiler::{CollectiveOp, Device, DeviceKind, HardwareGraph, curve_time};
 
 /// One device's share of the model for a run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -587,12 +587,39 @@ fn allreduce_curve_s(
     Ok(allreduce_time(group.len() as u32, alpha, beta, bytes))
 }
 
+/// The all-reduce curve as cost model 4 reads it inside a step (ADR 0080 History): a head point
+/// not below its successor is the probe's floor (its first timed op), not the op's bytes, so it
+/// takes the next segment's time extended back to its size. Rising heads are unchanged.
+fn allreduce_step_curve_s(
+    hw: &HardwareGraph,
+    group: &[String],
+    bytes: f64,
+) -> Result<f64, PredictError> {
+    let curve = hw.collectives.iter().find(|c| {
+        c.op == CollectiveOp::AllReduce
+            && c.ranks.len() == group.len()
+            && group.iter().all(|r| c.ranks.contains(r))
+    });
+    let Some(curve) = curve else {
+        return allreduce_curve_s(hw, group, bytes);
+    };
+    let mut pts = curve.points.clone();
+    pts.sort_by(|a, b| a.0.total_cmp(&b.0));
+    if pts.len() > 2 && pts[0].1 >= pts[1].1 {
+        let ((x1, y1), (x2, y2)) = (pts[1], pts[2]);
+        let slope = ((y2 - y1) / (x2 - x1)).max(0.0);
+        pts[0].1 = (y1 - slope * (x1 - pts[0].0)).max(0.0);
+    }
+    curve_time(&pts, bytes).map_or_else(|| allreduce_curve_s(hw, group, bytes), Ok)
+}
+
 /// Seconds of a collective for a step of `m` tokens and its breakdown label: the measured curve
 /// when the graph has one, else the link prior (ring all-reduce, `alpha + n / beta` copy).
 /// An all-reduce inside a step keeps the curve's byte part, the BF16 switch included, and pays
 /// its own latency instead of the probe's zero-byte time `t(0)`: with the fitted
 /// `RangeCosts::allreduce_latency_s` = `a` and `allreduce_step_s` = `b` (0 when not fitted,
-/// ADR 0078) it costs `max(t(n) - t(0), 0) + a + 2 (p - 1) b` over `p` ranks; graphs fitted
+/// ADR 0078) it costs `max(t(n) - t(0), 0) + a + 2 (p - 1) b` over `p` ranks, on a curve
+/// without a floor head on graphs of cost model 4 (`allreduce_step_curve_s`); graphs fitted
 /// before that pay the share `s` of `t(0)`, `t(n) - (1 - s) t(0)` (ADR 0070). The one helper the
 /// planner's search shares.
 pub fn coll_time(hw: &HardwareGraph, c: &Coll, m: f64) -> Result<(String, f64), PredictError> {
@@ -605,7 +632,14 @@ pub fn coll_time(hw: &HardwareGraph, c: &Coll, m: f64) -> Result<(String, f64), 
             let t = allreduce_curve_s(hw, group, bytes_per_token * m)?;
             let costs = hw.range_costs_or_prior();
             if let Some(a) = costs.allreduce_latency_s {
-                let t0 = allreduce_curve_s(hw, group, 0.0)?;
+                let (t, t0) = if costs.expert_slot_traffic {
+                    (
+                        allreduce_step_curve_s(hw, group, bytes_per_token * m)?,
+                        allreduce_step_curve_s(hw, group, 0.0)?,
+                    )
+                } else {
+                    (t, allreduce_curve_s(hw, group, 0.0)?)
+                };
                 let steps = 2.0 * (group.len().max(1) - 1) as f64;
                 let b = costs.allreduce_step_s.unwrap_or(0.0);
                 return Ok((label, (t - t0).max(0.0) + a + steps * b));
