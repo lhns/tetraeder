@@ -1,5 +1,6 @@
 # Session s3-20261119
 
+- Ran on main 8341384, before the pipeline issue-order fix (fa9e66c, ADR 0077 History 2026-11-19): prefill numbers of the pipelined shapes (layer-4, tp2-pp2) are from the late-stage order and understate them.
 - Status: unclean, verdict null (phase5_pass false). Phase 5 S3: first 4-GPU session (gpu4_ gates, comm-probe, rehearsal of D4 and M4), ROUNDS=1. Every stage ran; vLLM skipped (no AWQ/GPTQ checkpoint). Every gate passed.
 - Rule: ADR 0068 (band 0.08 provisional, throttle by sampler window per GPU, per-configuration share comparison). One round means no configuration has the two clean rounds the rule needs; the numbers below are a rehearsal, not a verdict.
 - Code: origin/main 8341384 (branch box-s3-20261119). Box 61338045, host 20210 (Finland), 4x RTX 3090, driver 595.91.07, AMD EPYC 7282 (CPU quota 30 cores, 32 threads), memory.max 259 GB, 80 GB disk, NCCL 2.25.1, no P2P.
