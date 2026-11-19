@@ -169,6 +169,7 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
 - First check, before any box: whether libllama at the pin (b12426) converts and loads Qwen3.8 and the draft (architecture, likely hybrid attention, which our own Qwen3 builders do not cover), and that the converted GGUFs keep identical tokenizers. Then a libllama-engine stage: draft on and off, same prompts, tokens per step and tg tok/s.
 
 ## Track B: decode levers (parallel, off the critical path)
+- Parked, candidate first item when Track B resumes (2026-11-19, `docs/notes/inferssd-study.md`): the 235B 32K prefill of `20261113b` mostly waits on synchronous expert misses read on the main thread far below the disk's measured curve; stream prefill misses through the I/O service and compute experts as they land (ADR 0038's named follow-up, amends 0054), after one timed box run of the prefill buckets. InferSSD as an expert-streaming baseline: its published comparisons use llama.cpp without the expert cache on models 4x to 60x larger than RAM, so they do not compare to our verdict baseline; a reported, not gated, run is possible only if it supports a model both engines run on Linux CUDA.
 - **B0. Offline replay at the configuration we use (coordinator, local, no box).**
   - Rerun the replay from the saved trace at about 26 VRAM slots, for policies lru, freq, glru and gfreq, plus the hot-set refresh, and compare synchronous miss bytes over the first four 16-token windows.
   - The result decides B1 against the never-run `REFRESH_HOT` arm.
