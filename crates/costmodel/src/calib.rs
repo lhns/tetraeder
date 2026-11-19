@@ -790,8 +790,9 @@ mod tests {
     }
 
     /// Anchors generated from known `c_range` and `c_step` on the 2x RTX 3090 fixture: single
-    /// runs (no ranks) pin the device rates, `tp-2` runs of three depths identify the new
-    /// parameters (ADR 0070).
+    /// runs (no ranks) pin the device rates, `tp-2` runs of three depths identify `c_step` and the
+    /// fixed cost per phase, `c_range + a`: each phase has one range and one all-reduce, so the
+    /// split between the two is not identified (ADR 0070, 0078).
     #[test]
     fn recovers_c_range_and_c_step_from_tp2_anchors() {
         let prior = two_3090();
@@ -810,7 +811,11 @@ mod tests {
             .hw
             .range_costs
             .expect("ranks anchors fit the range costs");
-        assert!(rel(c.c_range_graph_s, 1e-4) < 0.05, "{c:?}");
+        let per_phase = c.c_range_graph_s + c.allreduce_latency_s.unwrap();
+        assert!(
+            rel(per_phase, 1e-4 + ALLREDUCE_LATENCY_PRIOR_S) < 0.05,
+            "{c:?}"
+        );
         assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
         // the twin GPU took the fitted rates of gpu0
         assert_eq!(
