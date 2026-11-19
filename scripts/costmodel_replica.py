@@ -238,8 +238,6 @@ def features(layout: dict, plan: dict, lim: int | None, version: int) -> dict:
     n_layer = layout["n_layer"]
     lim = min(lim or n_layer, n_layer)
     st_all = stages_of(plan)
-    if len(st_all) > 1 and plan.get("knobs", {}).get("prefill_micro_batches", 1) > 1:
-        raise NotImplementedError("pipelined prefill (ADR 0077, prefill_micro_batches > 1) is in Rust only")
     if (version == 1 or "single_ranks" in DROP) and len(st_all) == 1 and st_all[0][2] == 1:
         return features_single_v1(layout, lim, st_all[0][1][0])
     b = bpp(layout)
@@ -326,7 +324,8 @@ def features(layout: dict, plan: dict, lim: int | None, version: int) -> dict:
         elif hop:
             phases.append({"repeat": 1, "parts": [part(x, 0.0, 0.0, 0.0, 0.0, b) for x in devs], "pre": None,
                            "ranges": 0, "after": hop})
-    return {"phases": phases}
+    micro = max(plan.get("knobs", {}).get("prefill_micro_batches", 1), 1) if len(st_all) > 1 else 1
+    return {"phases": phases, "micro": micro}
 
 
 def ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep):
@@ -467,6 +466,25 @@ def predict_single_v1(hw: dict, p: dict, prompt: int, gen: int) -> dict:
     return {"pp": prompt / t_pp, "tg": 1.0 / t_tok, "t": t_pp + gen * t_tok, "tg_bd": [], "pp_bd": []}
 
 
+def micro_batch_sizes(n: int, m: int) -> list:
+    """`plan::micro_batch_sizes`: `min(m, n)` chunks, sizes differ by at most one, the first ones larger."""
+    k = max(min(n, max(m, 1)), 1)
+    return [n // k + (1 if c < n % k else 0) for c in range(k)]
+
+
+def pipeline_stages(phases: list) -> list:
+    """`predict::pipeline_stages`: indices of the phases without output rows, cut after each per-token copy."""
+    out: list = [[]]
+    for i, ph in enumerate(phases):
+        if ph.get("out"):
+            continue
+        out[-1].append(i)
+        a = ph["after"]
+        if a and "copy" in a and not a["per_step"]:
+            out.append([])
+    return [s for s in out if s]
+
+
 def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version: int = 2, ubatch: int = 512) -> dict:
     if "single_v1" in feats:
         return predict_single_v1(hw, feats["single_v1"], prompt, gen)
@@ -477,25 +495,28 @@ def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version
             if p["device"] not in rt_of:
                 rt_of[p["device"]] = rates(hw, p["device"])
 
+    def phase(ph, m, ctx, prefill, with_after, out):
+        # one output row per step (the bench and the judged request take the last row's logits)
+        out_rows = ph.get("out") and "head_rows" not in DROP
+        mm = 1.0 if (prefill and out_rows) else m
+        pre = ph["pre"] if "prefill_experts" not in DROP else None
+        parts = pre if (prefill and pre and not out_rows) else ph["parts"]
+        rep = float(ph["repeat"])
+        slow = ("", 0.0)
+        for p in parts:
+            t = part_time(p, rt_of[p["device"]], mm, ctx, version)
+            if t > slow[1] or slow[0] == "":
+                slow = (p["device"], t)
+        add(out, "compute:" + slow[0], rep * slow[1])
+        if ph["ranges"] > 0:
+            add(out, "ranges", rep * ph["ranges"] * rc["c_range_graph_s"])
+        if ph["after"] and with_after:
+            label, t = coll_time(hw, ph["after"], mm, version)
+            add(out, label, rep * t)
+
     def step(m, ctx, prefill, out):
         for ph in feats["phases"]:
-            # one output row per step (the bench and the judged request take the last row's logits)
-            out_rows = ph.get("out") and "head_rows" not in DROP
-            mm = 1.0 if (prefill and out_rows) else m
-            pre = ph["pre"] if "prefill_experts" not in DROP else None
-            parts = pre if (prefill and pre and not out_rows) else ph["parts"]
-            rep = float(ph["repeat"])
-            slow = ("", 0.0)
-            for p in parts:
-                t = part_time(p, rt_of[p["device"]], mm, ctx, version)
-                if t > slow[1] or slow[0] == "":
-                    slow = (p["device"], t)
-            add(out, "compute:" + slow[0], rep * slow[1])
-            if ph["ranges"] > 0:
-                add(out, "ranges", rep * ph["ranges"] * rc["c_range_graph_s"])
-            if ph["after"]:
-                label, t = coll_time(hw, ph["after"], mm, version)
-                add(out, label, rep * t)
+            phase(ph, m, ctx, prefill, True, out)
         add(out, "step", rc["c_step_s"])
 
     tg: list = []
@@ -503,6 +524,38 @@ def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version
     t_tok = total(tg)
     pp: list = []
     done = 0
+    stages = pipeline_stages(feats["phases"])
+    micro = feats.get("micro", 1)
+    if micro > 1 and len(stages) > 1:
+        # Pipelined prefill (ADR 0077), as `predict_ranks`: chunks of a `micro x ubatch` step in GPipe order, hops
+        # serialized per boundary; the output-row phases and `c_step` once per step.
+        n_st = len(stages)
+        while done < prompt:
+            n = min(ubatch * micro, prompt - done)
+            free, link = [0.0] * n_st, [0.0] * n_st
+            at = done
+            for c in micro_batch_sizes(n, micro):
+                m = float(c)
+                ctx = at + m / 2.0
+                arrive = 0.0
+                for s, st in enumerate(stages):
+                    terms: list = []
+                    last = st[-1]
+                    for i in st:
+                        hop = s + 1 < n_st and i == last
+                        phase(feats["phases"][i], m, ctx, True, not hop, terms)
+                    free[s] = max(arrive, free[s]) + total(terms)
+                    if s + 1 < n_st and feats["phases"][last]["after"]:
+                        link[s] = max(free[s], link[s]) + coll_time(hw, feats["phases"][last]["after"], m, version)[1]
+                        arrive = link[s]
+                at += c
+            add(pp, "pipeline", free[n_st - 1])
+            m = float(n)
+            for ph in feats["phases"]:
+                if ph.get("out"):
+                    phase(ph, m, done + m / 2.0, True, True, pp)
+            add(pp, "step", rc["c_step_s"])
+            done += n
     while done < prompt:
         m_tok = min(ubatch, prompt - done)
         m = float(m_tok)
