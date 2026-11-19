@@ -6,8 +6,9 @@
 
 mod common;
 
-use common::{LEN, all_reduce_case, pipeline_case};
+use common::{LEN, all_reduce_case, pipeline_case, pipeline_case_with};
 use std::cell::RefCell;
+use tetraeder_executor::ExecOptions;
 use tetraeder_executor::RankDevice::Gpu;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{CudaGraphLogCounts, cuda_graph_log_counts};
@@ -36,8 +37,10 @@ fn gpu_two_backends_of_one_gpu_run_the_fallback_and_the_copy() {
 }
 
 /// ADR 0036 for range graphs: a kept two-rank program captures one CUDA graph per range and
-/// then replays it; range graphs have no `uid`, so a replay is silent in ggml's log and shows as
-/// the absence of new warmups, resets and failed updates on every later step.
+/// then replays it. Without a uid a replay is silent in ggml's log and shows as the absence of
+/// new warmups, resets and failed updates on every later step; with `range_uid` (ADR 0069 History
+/// 2026-11-19) every call after the first of each range also logs a uid reuse (no node
+/// comparison).
 #[test]
 fn gpu_cuda_graphs_replay_kept_ranges() {
     if !Backend::require_gpus(1) {
@@ -55,27 +58,40 @@ fn gpu_cuda_graphs_replay_kept_ranges() {
         eprintln!("skip: CUDA graphs are disabled");
         return;
     }
-    let start = cuda_graph_log_counts();
-    let seen: RefCell<Vec<CudaGraphLogCounts>> = RefCell::new(Vec::new());
-    // Two ranks, two ranges each.
-    pipeline_case([Gpu(0), Gpu(0)], &[1, 3], &[1, 3], 8, |_| {
-        seen.borrow_mut().push(cuda_graph_log_counts());
-    });
-    let seen = seen.into_inner();
-    eprintln!("start {start:?}");
-    for (i, c) in seen.iter().enumerate() {
-        eprintln!("step {i}: {c:?}");
+    for uid in [false, true] {
+        let start = cuda_graph_log_counts();
+        let seen: RefCell<Vec<CudaGraphLogCounts>> = RefCell::new(Vec::new());
+        let opts = ExecOptions {
+            range_uid: uid,
+            ..ExecOptions::default()
+        };
+        // Two ranks, two ranges each.
+        pipeline_case_with(opts, [Gpu(0), Gpu(0)], &[1, 3], &[1, 3], 8, |_| {
+            seen.borrow_mut().push(cuda_graph_log_counts());
+        });
+        let seen = seen.into_inner();
+        eprintln!("uid {uid}: start {start:?}");
+        for (i, c) in seen.iter().enumerate() {
+            eprintln!("step {i}: {c:?}");
+        }
+        let (warm, last) = (seen[3], seen[7]);
+        assert!(
+            warm.warmups - start.warmups >= 4,
+            "one capture per range expected: {start:?} then {warm:?}"
+        );
+        assert_eq!(
+            (warm.warmups, warm.resets, warm.update_failed),
+            (last.warmups, last.resets, last.update_failed),
+            "a kept range was captured again or reset after its warmup"
+        );
+        // Four ranges over steps 4 to 7: 16 calls, each a uid reuse only with `range_uid`.
+        let reused = last.reused - warm.reused;
+        if uid {
+            assert_eq!(reused, 16, "every later call of a range reuses its uid");
+        } else {
+            assert_eq!(reused, 0, "ranges without a uid are compared on every call");
+        }
     }
-    let (warm, last) = (seen[3], seen[7]);
-    assert!(
-        warm.warmups - start.warmups >= 4,
-        "one capture per range expected: {start:?} then {warm:?}"
-    );
-    assert_eq!(
-        (warm.warmups, warm.resets, warm.update_failed),
-        (last.warmups, last.resets, last.update_failed),
-        "a kept range was captured again or reset after its warmup"
-    );
 }
 
 /// An all-reduce through ggml's comm over two GPUs, and a peer copy hop.

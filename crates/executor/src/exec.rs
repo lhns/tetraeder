@@ -1,7 +1,9 @@
 use crate::fallback::Scratch;
 use crate::ranks::{comm_name, group_comm};
+use crate::trace::{ExecOptions, Trace};
 use crate::{ExecError, Op, Program, RankGraph, RankId, Ranks, validate};
 use std::collections::{BTreeMap, HashMap};
+use std::time::Instant;
 use tetraeder_ggml_sys::ggml::{Comm, Gallocr, RangeGraphs, Tensor, Type};
 use tetraeder_telemetry::Metrics;
 
@@ -47,12 +49,22 @@ pub struct Executor {
     /// Fallback scratch by group and tensor shape.
     scratch: HashMap<(Vec<RankId>, [i64; 4]), Scratch>,
     counters: ExecCounters,
+    opts: ExecOptions,
+    trace: Option<Trace>,
 }
 
 impl Executor {
+    /// An executor with the options of the environment ([`ExecOptions::from_env`]).
     pub fn new(ranks: Ranks) -> Executor {
+        Executor::with_options(ranks, ExecOptions::from_env())
+    }
+
+    pub fn with_options(ranks: Ranks, opts: ExecOptions) -> Executor {
         let n = ranks.len();
+        let trace = Trace::open(&opts);
         Executor {
+            opts,
+            trace,
             ranks,
             gallocs: (0..n).map(|_| None).collect(),
             ranges: (0..n).map(|_| None).collect(),
@@ -67,6 +79,28 @@ impl Executor {
 
     pub fn ranks(&self) -> &Ranks {
         &self.ranks
+    }
+
+    /// True when builders should upload step inputs on each rank's stream
+    /// (`Tensor::set_*_async`) rather than with one blocking copy per tensor.
+    pub fn async_inputs(&self) -> bool {
+        self.opts.async_inputs
+    }
+
+    /// Adds a builder record (input upload, logits read) to the current step's trace line, with
+    /// the host nanoseconds since `since`. No-op without a trace.
+    pub fn trace_note(&mut self, kind: &'static str, rank: RankId, since: Instant) {
+        if let Some(t) = &mut self.trace {
+            t.note(kind, rank, None, elapsed_ns(since));
+        }
+    }
+
+    /// Writes the current step's trace line (the executor's records since the last flush and the
+    /// builder's notes). No-op without a trace.
+    pub fn trace_flush(&mut self) {
+        if let Some(t) = &mut self.trace {
+            t.flush();
+        }
     }
 
     /// Allocates rank graphs not allocated yet and cuts their ranges. Both are kept while the
@@ -94,19 +128,24 @@ impl Executor {
             if self.gallocs[r].is_none() {
                 self.gallocs[r] = Some(Gallocr::new(self.ranks.backend(r))?);
             }
+            let mut allocated = false;
             if let Some(galloc) = self.gallocs[r].as_mut()
                 && !galloc.is_allocated(&rg.graph)
             {
                 galloc.alloc_graph(&rg.graph)?;
                 self.counters.allocations += 1;
+                allocated = true;
             }
-            let fresh = !matches!(&self.ranges[r],
+            // A new allocation moves tensors: ranges with a uid promise unchanged nodes and
+            // sources, so they are cut again with new uids.
+            let fresh = allocated
+                || !matches!(&self.ranges[r],
                 Some(c) if c.graph == rg.graph.id() && c.cuts == rg.cuts);
             if fresh {
                 self.ranges[r] = Some(RankRanges {
                     graph: rg.graph.id(),
                     cuts: rg.cuts.clone(),
-                    ranges: RangeGraphs::new(&rg.graph, &rg.cuts)?,
+                    ranges: RangeGraphs::new(&rg.graph, &rg.cuts, self.opts.range_uid)?,
                 });
             }
         }
@@ -133,7 +172,11 @@ impl Executor {
         }
         res?;
         for &r in &p.outputs {
+            let t0 = Instant::now();
             self.ranks.backend(r).synchronize();
+            if let Some(t) = &mut self.trace {
+                t.note("sync", r, None, elapsed_ns(t0));
+            }
         }
         Ok(())
     }
@@ -196,6 +239,7 @@ impl Executor {
             graph_of[g.rank] = Some(g);
         }
         for op in &p.ops {
+            let t0 = self.trace.is_some().then(Instant::now);
             match op {
                 Op::Compute { rank, range } => {
                     let cached = self.ranges.get(*rank).and_then(Option::as_ref);
@@ -211,6 +255,25 @@ impl Executor {
                 }
                 Op::AllReduce { tensors } => self.all_reduce(tensors)?,
                 Op::Copy { src, dst } => self.copy(*src, *dst)?,
+            }
+            if let (Some(t0), Some(t)) = (t0, &mut self.trace) {
+                // Sync mode: wait for the op's ranks, so the record holds its device time.
+                let (kind, rank, peer, waits) = match op {
+                    Op::Compute { rank, .. } => ("compute", *rank, None, vec![*rank]),
+                    Op::AllReduce { tensors } => (
+                        "all_reduce",
+                        tensors[0].0,
+                        None,
+                        tensors.iter().map(|&(r, _)| r).collect(),
+                    ),
+                    Op::Copy { src, dst } => ("copy", src.0, Some(dst.0), vec![src.0, dst.0]),
+                };
+                if t.sync {
+                    for r in waits {
+                        self.ranks.backend(r).synchronize();
+                    }
+                }
+                t.note(kind, rank, peer, elapsed_ns(t0));
             }
         }
         Ok(())
@@ -304,6 +367,10 @@ impl Executor {
             .or_default() += src.1.nbytes() as u64;
         Ok(())
     }
+}
+
+fn elapsed_ns(since: Instant) -> u64 {
+    u64::try_from(since.elapsed().as_nanos()).unwrap_or(u64::MAX)
 }
 
 fn is_all_ranks(group: &[RankId], n: usize) -> bool {

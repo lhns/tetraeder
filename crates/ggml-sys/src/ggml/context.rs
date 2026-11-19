@@ -824,6 +824,45 @@ impl<'a> Tensor<'a> {
         self.set_bytes(pod_bytes(data), 0)
     }
 
+    /// Enqueues the write of `data` at `offset` on `backend`'s stream
+    /// (`ggml_backend_tensor_set_async`) instead of blocking on a copy of its own as
+    /// [`Tensor::set_bytes`] does; without an async path (the CPU backend) it copies before
+    /// returning. CUDA stages a pageable source (memory not registered with CUDA, as every Rust
+    /// allocation here) before the call returns, so `data` may change afterwards; the write is ordered before the work issued later on that stream. `self` must
+    /// be in a buffer `backend` can write, else an error (ggml would abort).
+    pub fn set_bytes_async(self, backend: &Backend, data: &[u8], offset: usize) -> Result<()> {
+        self.check_range(offset, data.len())?;
+        if !backend.can_write(self) {
+            return Err(GgmlError::Invalid(format!(
+                "backend `{}` cannot write tensor `{}`",
+                backend.name(),
+                self.name()
+            )));
+        }
+        // SAFETY: the range is inside the live tensor (checked) and `backend` supports its
+        // buffer type, which ggml asserts. `data` is read before the call returns or staged.
+        unsafe {
+            sys::ggml_backend_tensor_set_async(
+                backend.raw(),
+                self.ptr.as_ptr(),
+                data.as_ptr().cast(),
+                offset,
+                data.len(),
+            )
+        };
+        Ok(())
+    }
+
+    /// [`Tensor::set_i32`] on `backend`'s stream ([`Tensor::set_bytes_async`]).
+    pub fn set_i32_async(self, backend: &Backend, data: &[i32]) -> Result<()> {
+        self.set_bytes_async(backend, pod_bytes(data), 0)
+    }
+
+    /// [`Tensor::set_f16_bits`] on `backend`'s stream ([`Tensor::set_bytes_async`]).
+    pub fn set_f16_bits_async(self, backend: &Backend, data: &[u16]) -> Result<()> {
+        self.set_bytes_async(backend, pod_bytes(data), 0)
+    }
+
     /// The whole tensor as `f32`, read straight into the result (decode reads 151K logits per
     /// token; a byte copy and conversion cost as much as the transfer).
     pub fn get_f32(self) -> Result<Vec<f32>> {
@@ -929,7 +968,13 @@ impl<'a> Graph<'a> {
         // in i32 because n_nodes does. The view points into this graph's arrays, which live as
         // long as its context ('a).
         let ptr = unsafe {
-            sys::ggml_graph_view_new(ctx.ptr.as_ptr(), self.ptr.as_ptr(), i0 as i32, i1 as i32)
+            sys::ggml_graph_view_new(
+                ctx.ptr.as_ptr(),
+                self.ptr.as_ptr(),
+                i0 as i32,
+                i1 as i32,
+                false,
+            )
         };
         Graph {
             ptr: NonNull::new(ptr).expect("ggml returned a null graph view"),
@@ -981,8 +1026,12 @@ pub struct RangeGraphs {
 
 impl RangeGraphs {
     /// Ranges `[0, cuts[0])`, `[cuts[0], cuts[1])` and so on. `cuts` is strictly increasing and
-    /// ends at `src.n_nodes()`.
-    pub fn new(src: &Graph<'_>, cuts: &[usize]) -> Result<RangeGraphs> {
+    /// ends at `src.n_nodes()`. With `uid` each range gets a fresh ggml graph uid (patch 0005),
+    /// which tells a backend that its nodes and their sources do not change while it is computed
+    /// again: ggml-cuda then skips its per-call node comparison before a CUDA graph replay, as for
+    /// the scheduler's splits (ADR 0069 History 2026-11-19). The caller keeps that promise by
+    /// cutting new ranges whenever `src` is built or allocated again.
+    pub fn new(src: &Graph<'_>, cuts: &[usize], uid: bool) -> Result<RangeGraphs> {
         let n = src.n_nodes();
         let mut prev = 0;
         for &c in cuts {
@@ -1012,6 +1061,7 @@ impl RangeGraphs {
                     src.ptr.as_ptr(),
                     start as i32,
                     end as i32,
+                    uid,
                 )
             };
             let ptr = NonNull::new(ptr).expect("ggml returned a null graph view");
