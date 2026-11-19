@@ -410,12 +410,17 @@ fn prepare_loop(sh: &Shared) {
             }
             Job::Fill(mut v, target) => {
                 let t = std::time::Instant::now();
-                let touched = fill(&mut v, target, sh.cfg.thp);
+                let cap0 = v.capacity();
+                grow(&mut v, target, sh.cfg.thp);
+                let t_touch = std::time::Instant::now();
+                let touched = touch(&mut v, target);
                 sh.touched.fetch_add(touched as u64, Ordering::Relaxed);
                 if crate::qwen3::step_trace() {
+                    // The realloc is the one address-space change on this path; timed apart.
                     tracing::info!(target: "tetraeder::trace", bytes = touched,
-                        cap = v.capacity(), ms = t.elapsed().as_millis() as u64,
-                        "snapshot spare touched");
+                        from_cap = cap0, cap = v.capacity(),
+                        grow_ms = (t_touch - t).as_millis() as u64,
+                        ms = t_touch.elapsed().as_millis() as u64, "snapshot spare touched");
                 }
                 let mut st = sh.lock();
                 st.filling = None;
@@ -435,18 +440,23 @@ fn prepare_loop(sh: &Shared) {
     }
 }
 
-/// Touches `v` up to `target` bytes (its length): grows the capacity by realloc, which moves
-/// the touched pages along, and writes zeros over the new tail only. Returns the bytes touched.
-fn fill(v: &mut Vec<u8>, target: usize, thp: bool) -> usize {
-    let before = v.len();
-    if before >= target {
-        return 0;
-    }
+/// Grows the capacity of `v` to at least `target` by realloc, which moves its touched pages
+/// along (glibc remaps a mapped block: no copy, no fault).
+fn grow(v: &mut Vec<u8>, target: usize, thp: bool) {
     if v.capacity() < target {
-        v.reserve_exact(target - before);
+        v.reserve_exact(target - v.len());
     }
     if thp {
         advise_hugepages(v.as_ptr() as usize, v.capacity());
+    }
+}
+
+/// Touches `v` up to `target` bytes (its length), writing zeros over the new tail only.
+/// Returns the bytes touched.
+fn touch(v: &mut Vec<u8>, target: usize) -> usize {
+    let before = v.len();
+    if before >= target {
+        return 0;
     }
     v.resize(target, 0);
     target - before
@@ -689,6 +699,10 @@ mod tests {
     /// hardware: cpu. A fill touches up to the target once, then only what the target grew by.
     #[test]
     fn fill_touches_only_the_tail() {
+        let fill = |v: &mut Vec<u8>, target: usize, thp: bool| {
+            grow(v, target, thp);
+            touch(v, target)
+        };
         let mut v = Vec::new();
         assert_eq!(fill(&mut v, 64 * KB, true), 64 * KB);
         assert_eq!((v.len(), v.capacity()), (64 * KB, 64 * KB));

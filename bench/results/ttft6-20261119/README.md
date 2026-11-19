@@ -77,3 +77,33 @@ Ten slowest tetraeder requests (TTFT s; llama-server same round):
 ## Reading
 
 ADR 0079 closes cause A of ttft5 (decode 1.0x, gaps within 0.02 s) and the reused mask buffer closes the mask-sized stalls (B in #76 to #91); p90 is now below llama-server's. What remains: the saves (#42, #102, #25) are the slowest requests and run 2 to 3 times slower than in ttft5 on the same host, much slower without spares (r2), and a spare free overlapping an early prefill costs up to 0.7 s (r1 #1 to #10). Open for the ADR: why the saves slowed since ttft5, and whether the spare thread should avoid freeing while a step runs.
+
+## Diagnosis of the spare frees and the slow saves (2026-11-19, from the committed files)
+
+Snapshot sizes are positions times 147456 bytes (`kv_row_bytes` of the 8B; the touched spare of 1734344704 bytes is 11246 + 512 positions rounded to 2 MiB).
+
+**Why spares are freed at all.** The pool's target is the longest prompt plus 512 tokens so far. On this replay it rises at most admissions, by 0.3 to 5%. The preparer freed every spare below the new target and touched replacements of the full size. In r1 that is 32 `snapshot spares freed` lines (2.6 to 8.3 GB, 0.33 to 1.3 s each) and 78 full touches (1.7 to 5.1 GB, 0.70 to 1.0 s/GB). Buffers that went stale while being touched were also dropped, without a trace line. There are 4 spares (`--parallel 4`) until the 8 GiB budget holds fewer. The frees that ended inside a prefill are the stalls of check 2. These fit the serving thread's own address-space calls (mmap, faults) waiting behind a long unmap, but the logs cannot tell that apart from contention in the page allocator.
+
+**Why saves slowed.** The same requests saved the same sizes as in ttft5, so the cost is per byte (ms per GB of snapshot):
+
+| save | positions | ttft5 r1 | ttft6 r1 | ttft6 r2 (spares off) |
+|---|---|---|---|---|
+| #25 | 21651 | 174 | 267 | 746 |
+| #42 | 21682 | 192 | 741 | 701 |
+| #102 | 34392 / 34285 | 168 | 348 | 761 |
+
+- r2 gives this host's cost of fresh pages, 0.70 to 0.76 s/GB, the same as the preparer's touch rate. ttft5 r2 ran with spares on, so r2 is a baseline, not a regression.
+- #42 r1 (fallback): the admission at #41 raised the target by 0.26%. The preparer dropped the 3.21 GB spare it had just touched (11:21:31.28), freed the ready one (31.95, 379 ms) and finished the replacement at 34.51. The save started at 34.17, so no spare was ready. In ttft5 the save also started 4.37 s after #41's admission and found a spare. The pool code is the same, so the difference is the preparer's speed on that day. That is inferred: ttft5 has no trace.
+- #25 r1: it took the largest spare, 3.137 GB for a 3.193 GB snapshot (55 MB short), while a 3.14 GB stale spare was freed beside it (15.55 to 15.96 s; save 15.55 to 16.40).
+- #102 r1: it took a 5.048 GB spare for 5.056 GB (7.7 MB short; the sequence generated 571 tokens, more than the 512 hinted), while a 5.06 GB touch ran beside it (29.77 to 34.85 s; save 30.33 to 32.08). Its read reserved with `Vec::reserve`, which doubles a too-small buffer's capacity (to about 10 GB, untouched).
+- `place_ms - save_ms` is 558 ms (#102 r1), 1102 ms (#102 r2) and 360 ms (#42 r2), against 166 ms for #102 in ttft5. It is part of TTFT but not of `save_ms`, and the logs do not attribute it. Candidates are the inline free of an evicted entry (r2, pool off) and `seq_rm`.
+- Pool counters also move between admissions with no logged save (r1: `pool_fallback` 1 to 2 between 11:23:30 and 11:23:42). These are saves from `make_room` or `preempt` inside a step (KV full). They are not in the admission `save_ms`, so the 10% bar does not count them.
+
+**Change** (`track-ttft-spares`, ADR 0074 History 2026-11-19): spares grow with the target (realloc, touch only the tail), and frees happen only over the budget. They run on the preparer thread in 64 MiB pieces, including released buffers without room. Snapshot reads reserve exactly. The step trace logs each take's source and the preparer's grows, touches and frees.
+
+**Next replay checks.**
+- Spares on: no `snapshot spare freed` except budget frees (`pieces=` over 1).
+- #1 to #10 level with r2.
+- Every save's `snapshot take` is `fit`, or `small` by at most the generated tail, at about 170 to 200 ms/GB.
+- `grow_ms` of the touches stays at a few ms.
+- `place_ms - save_ms` of #102 is attributed.
