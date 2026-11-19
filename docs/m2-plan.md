@@ -168,6 +168,29 @@ One stage on box D2 (`scripts/spec_run.sh`, the ADR 0044 fix is in). It is not a
 - Candidate pair (owner, 2026-11-18): `nvidia/Qwen3.5-4B-Qwen3.8-27B-Draft`, a full 4.2B draft model sharing Qwen3.8-27B's tokenizer (248,320 tokens); its card claims 5.58 tokens accepted per target step on SPEED-Bench (block 16) against 3.81 for the target's MTP head. BF16 safetensors only, NVIDIA Open Model Agreement (fine for benchmarks). Both at about 4 bits fit one RTX 3090 (about 16 plus 2.5 GB). (No session directory yet.)
 - First check, before any box: whether libllama at the pin (b12426) converts and loads Qwen3.8 and the draft (architecture, likely hybrid attention, which our own Qwen3 builders do not cover), and that the converted GGUFs keep identical tokenizers. Then a libllama-engine stage: draft on and off, same prompts, tokens per step and tg tok/s.
 
+## Phase 5: where it stands (2026-11-19)
+
+Phase 4 is done (exit test passed 2026-11-17, ADR 0065). Phase 5's exit test (ADR 0068): on a 2-GPU and a 4-GPU box, for the dense 32B (cases D2, D4) and the MoE 30B (M2, M4), the planner's analytic pick is in the measured winner set, every candidate's prediction is within 15%, and the pick is at least as fast as the best llama.cpp split mode within the band. Measurements are in the session READMEs linked here.
+
+**Done since 2026-11-15**
+- Multi-GPU boxes: taxameter 0.3.3 `--num-gpus`; power-limit, idle and co-tenant gates at SSH; a 1 Hz GPU sampler judges throttle per run (ADR 0065, 0068).
+- Executor correctness on CUDA: ranges are graph views so CUDA fuses in them (ADR 0075); GPU parity anchored on libllama's own gaps for tensor and expert parallel (ADR 0071); sharded MoE row copies fixed. All `gpu2_` and `gpu4_` gates pass (`s2c-20261118-step0`, `s3-20261119`).
+- Step-0 check (ADR 0069): own tp-2 at or above llama.cpp `-sm tensor` on both models (`s2f-20261118-step0`); no executor redesign.
+- Cost model version 2 (ADR 0070 History): separate expert rate, head on output rows, single on the ranks path, all-reduce latency share, pipelined prefill. All seven 2-GPU candidates within 15% out of sample (`s2g-20261118`). Owner decision 2026-11-18: predictions stay analytic, made before the candidates run (ADR 0068 History; ADR 0076 not adopted), with reopen criteria fixed.
+- Pipelined layer-N prefill, GPipe micro-batches (ADR 0077), its issue order fixed to llama.cpp's per-ubatch order, and layer splits balanced for the pipelined prefill step (ADR 0070 History, 2026-11-19).
+- Also on the way: prefix-cache saves off the admission path and no saves nobody reuses (ADR 0074), the long-prompt KV fragmentation fix with a 400 for real overflows (ADR 0067), ADRs hold decisions only with measurements in session READMEs (AGENTS.md).
+
+**Open, in order**
+1. 4-GPU rehearsal with two rounds on the fixed pipeline and splits (`s3b-20261119`, running): do the pipelined shapes' prefill predictions come within 15%, and does M4's layer-4 pick reach llama.cpp `-sm layer`?
+2. Expert-parallel prefill is over-predicted (ep-2 and ep-4); a cost model term to find, then a check.
+3. Thermal 0x20 samples void runs (one sample voids a run, ADR 0068); size `RERUNS` and `BUDGET_MIN` from the rehearsals, or one model per session.
+4. Verdict sessions V2 (2-GPU, D2 and M2) and V4a, V4b (4-GPU, D4 and M4), on a clean host at default power, two clean rounds per configuration.
+5. Before reporting M2: one D2a probe on final main (the admission path changed after the Phase 4 verdict commit), and the list of verdict-rule changes made after failed sessions, for the owner.
+
+**TTFT on the Claude Code replay (ADR 0074 bar: median and p90 at most 1.15x llama-server, saves at most 10% of TTFT):** median now at or below llama-server; p90 and save share still over the bar in `ttft3-20261118`; the free-slot placement and pinned restores are the current fix, checked in `ttft4-20261119` (running).
+
+**Parked:** D1 (48 GB box) and Track B (decode levers; first item when it resumes: streaming prefill misses, see below). Speculative rerun with the Qwen3.8-27B draft pair: open.
+
 ## Track B: decode levers (parallel, off the critical path)
 - Parked, candidate first item when Track B resumes (2026-11-19, `docs/notes/inferssd-study.md`): the 235B 32K prefill of `20261113b` mostly waits on synchronous expert misses read on the main thread far below the disk's measured curve; stream prefill misses through the I/O service and compute experts as they land (ADR 0038's named follow-up, amends 0054), after one timed box run of the prefill buckets. InferSSD as an expert-streaming baseline: its published comparisons use llama.cpp without the expert cache on models 4x to 60x larger than RAM, so they do not compare to our verdict baseline; a reported, not gated, run is possible only if it supports a model both engines run on Linux CUDA.
 - **B0. Offline replay at the configuration we use (coordinator, local, no box).**
