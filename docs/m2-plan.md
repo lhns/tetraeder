@@ -27,7 +27,7 @@ The owner chose to keep the own dense builder and the KV-layout experiment insid
 - **The 55 MB routing trace exists only in a driver worktree:** `.claude/worktrees/agent-a0e200fe4acde8ff3/bench/results/20261114/routing-235b-041805.trace.zst`.
 
 ## Step 0: safeguards (coordinator)
-1. Copy the trace to `bench/traces/` and git-ignore it, before any worktree cleanup.
+1. Copy the trace to `runs/traces/` (git-ignored), before any worktree cleanup.
 2. Commit a point-3 session profile in `docs/sessions.md` / `scripts/session.sh` that fixes `EMULATE_RAM_GB=91`, `SESSION_MIN` and `.vast/config.json` `disk_gb 230`. The first driver launched at the wrong budget and only caught it by luck.
 
 ## Track C: Phase 4, the critical path (starts first)
@@ -181,13 +181,13 @@ Phase 4 is done (exit test passed 2026-11-17, ADR 0065). Phase 5's exit test (AD
 - Also on the way: prefix-cache saves off the admission path and no saves nobody reuses (ADR 0074), the long-prompt KV fragmentation fix with a 400 for real overflows (ADR 0067), ADRs hold decisions only with measurements in session READMEs (AGENTS.md).
 
 **Open, in order**
-1. 4-GPU rehearsal with two rounds on the fixed pipeline and splits (`s3b-20261119`, running): do the pipelined shapes' prefill predictions come within 15%, and does M4's layer-4 pick reach llama.cpp `-sm layer`?
+1. 4-GPU rehearsal with two rounds on the fixed pipeline and splits (`s3b-20261119`): layer-4 prefill predictions now within 15% and both picks right; open: M4 misses the baseline gate on decode (layer-4 decodes slower than llama.cpp `-sm layer`), tp2-pp2 and ep-4 predictions miss, and D4 lacks clean rounds (0x20 on one GPU). Under diagnosis: layer-N decode overhead (`track-layer-decode`), cost model for ep and tp2-pp2 (`track-costmodel-v3`).
 2. Expert-parallel prefill is over-predicted (ep-2 and ep-4); a cost model term to find, then a check.
 3. Thermal 0x20 samples void runs (one sample voids a run, ADR 0068); size `RERUNS` and `BUDGET_MIN` from the rehearsals, or one model per session.
 4. Verdict sessions V2 (2-GPU, D2 and M2) and V4a, V4b (4-GPU, D4 and M4), on a clean host at default power, two clean rounds per configuration.
 5. Before reporting M2: one D2a probe on final main (the admission path changed after the Phase 4 verdict commit), and the list of verdict-rule changes made after failed sessions, for the owner.
 
-**TTFT on the Claude Code replay (ADR 0074 bar: median and p90 at most 1.15x llama-server, saves at most 10% of TTFT):** median now at or below llama-server; p90 and save share still over the bar in `ttft3-20261118`; the free-slot placement and pinned restores are the current fix, checked in `ttft4-20261119` (running).
+**TTFT on the Claude Code replay (ADR 0074 bar: median and p90 at most 1.15x llama-server, saves at most 10% of TTFT):** median now at or below llama-server; p90 and save share still over the bar in `ttft3-20261118`; the free-slot placement and pinned restores are the current fix, checked in the next replay (box `ttft4-20261119`).
 
 **Parked:** D1 (48 GB box) and Track B (decode levers; first item when it resumes: streaming prefill misses, see below). Speculative rerun with the Qwen3.8-27B draft pair: open.
 
@@ -209,7 +209,7 @@ Phase 4 is done (exit test passed 2026-11-17, ADR 0065). Phase 5's exit test (AD
   - The ADR 0061 addendum and the rule change follow only if two clean pairs agree.
 - **B4. Smaller levers (one Sonnet worker, after B2):**
   - ADR 0064 step 2 (one graph per token, judged by `segment_overhead`);
-  - tool-call repair G1 and G2 (`docs/gateway-briefs.md`);
+  - tool-call repair G1 and G2 (`docs/gateway-briefs.md`): built (ADR 0051);
   - planner slot-count campaign script (`scripts/planner_builder_campaign.sh`, m1-open item 6);
   - `serve --plan` replanning part B (ADR 0055).
 
