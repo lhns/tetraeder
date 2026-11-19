@@ -533,7 +533,8 @@ fn save_counts(
     use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
     mp.force_flush().unwrap();
     let (mut saves, mut skipped) = (0, 0);
-    for rm in exp.get_finished_metrics().unwrap() {
+    // Exports are cumulative: only the last one counts.
+    for rm in exp.get_finished_metrics().unwrap().iter().next_back() {
         for sm in rm.scope_metrics() {
             for m in sm.metrics() {
                 match (m.name(), m.data()) {
@@ -561,7 +562,8 @@ fn placed_free_count(
     use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
     mp.force_flush().unwrap();
     let mut n = 0;
-    for rm in exp.get_finished_metrics().unwrap() {
+    // Exports are cumulative: only the last one counts.
+    for rm in exp.get_finished_metrics().unwrap().iter().next_back() {
         for sm in rm.scope_metrics() {
             for m in sm.metrics() {
                 if let (
