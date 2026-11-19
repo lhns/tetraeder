@@ -374,8 +374,12 @@ fn reason(issues: &[Issue]) -> String {
 }
 
 /// `n` stages of `tp` GPUs each over `gpus` (stage s takes `gpus[s * tp..]`), spans from the
-/// layer DP: the time of a stage is its decode bytes over its bandwidth, infinite when its
-/// weights, KV and workspace do not fit.
+/// layer DP. The time of a stage is one pipelined prefill step (ADR 0070 History 2026-11-19):
+/// per micro-batch the larger of its matmul flops over the device rate and its weight reads
+/// over the bandwidth, times the micro-batches of the judged prompt, and the head on one row
+/// (the step's output row). Decode runs the stages in turn for one stream, so its total does
+/// not depend on the split and the head's per-token cost does not move the cut. The time is
+/// infinite when the weights, KV and workspace do not fit; `output_bytes` stays in that check.
 fn spans(ctx: &Ctx, gpus: &[String], n: usize, tp: usize) -> Result<Vec<StageDef>, String> {
     let lay = ctx.layout;
     let l = lay.n_layer;
@@ -383,6 +387,12 @@ fn spans(ctx: &Ctx, gpus: &[String], n: usize, tp: usize) -> Result<Vec<StageDef
         f64::from(lay.n_expert_used) / f64::from(lay.n_expert)
     } else {
         0.0
+    };
+    let params_per_byte = 8.0 / ctx.fmt.bits_per_weight();
+    let chunks = if n > 1 {
+        f64::from(crate::multi_cli::PROMPT.div_ceil(UBATCH))
+    } else {
+        1.0
     };
     let est = |s: usize, a: u32, b: u32| -> f64 {
         let dev = &gpus[s * tp];
@@ -392,18 +402,19 @@ fn spans(ctx: &Ctx, gpus: &[String], n: usize, tp: usize) -> Result<Vec<StageDef
         let Some(bw) = d.bandwidth_bytes_per_s.map(|m| m.value) else {
             return f64::INFINITY;
         };
-        let (mut decode, mut weights) = (0.0f64, 0.0f64);
+        let rate = d.compute.as_ref().map(|c| c.flops_per_s);
+        let (mut act, mut weights) = (0.0f64, 0.0f64);
         for x in &lay.layers[a as usize..b as usize] {
-            decode += (x.attn_bytes + x.ffn_bytes) as f64 + r * x.expert_bytes as f64;
+            act += (x.attn_bytes + x.ffn_bytes) as f64 + r * x.expert_bytes as f64;
             weights += (x.attn_bytes + x.ffn_bytes + x.expert_bytes) as f64;
         }
+        let read = weights;
         let first = s == 0;
         let last = b == l;
         if first {
             weights += lay.embed_bytes as f64;
         }
         if last {
-            decode += lay.output_bytes as f64;
             weights += lay.output_bytes as f64;
         }
         let kv = f64::from(b - a) * kv_per_layer(lay) as f64;
@@ -412,7 +423,13 @@ fn spans(ctx: &Ctx, gpus: &[String], n: usize, tp: usize) -> Result<Vec<StageDef
         if per_dev > cap {
             return f64::INFINITY;
         }
-        decode / tp as f64 / bw
+        let flops = 2.0 * act * params_per_byte * f64::from(UBATCH);
+        let compute = rate.map_or(0.0, |f| flops / tp as f64 / f);
+        let mut t = chunks * compute.max(read / tp as f64 / bw);
+        if last {
+            t += lay.output_bytes as f64 / tp as f64 / bw;
+        }
+        t
     };
     let split = split_layers(l, n, est).ok_or_else(|| {
         "memory: no layer split fits the GPUs (weights, KV and workspace)".to_string()

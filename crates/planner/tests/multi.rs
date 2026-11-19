@@ -381,3 +381,76 @@ fn the_comm_probe_report_is_read_as_written() {
     );
     assert_eq!(t, Some(3e-5));
 }
+
+/// The layer counts of the stages of candidate `id`.
+fn stage_layers(g: &HardwareGraph, l: &ModelLayout, id: &str) -> Vec<u32> {
+    let en = enumerate_multi_with(g, l, &Hints::default(), PHASE, QUOTA);
+    let c = en.candidates.iter().find(|c| c.id == id).expect(id);
+    let t = topology_of(g, l, &c.plan, PHASE).unwrap();
+    t.stages.iter().map(|s| s.layers.1 - s.layers.0).collect()
+}
+
+/// The split balances one pipelined prefill step (ADR 0070 History 2026-11-19): the head runs one
+/// row per step, so it no longer pushes layers off the last stage (28/20 on the 30B before).
+#[test]
+fn the_layer_split_balances_the_prefill_step() {
+    let (two, four) = (hw(TWO), hw(FOUR));
+    assert_eq!(stage_layers(&two, &moe(), "layer-2"), [24, 24]);
+    assert_eq!(stage_layers(&two, &dense(), "layer-2"), [32, 32]);
+    assert_eq!(stage_layers(&four, &moe(), "layer-4"), [12, 12, 12, 12]);
+    assert_eq!(stage_layers(&four, &dense(), "layer-4"), [16, 16, 16, 16]);
+    assert_eq!(stage_layers(&four, &moe(), "tp2-pp2"), [24, 24]);
+    assert_eq!(stage_layers(&four, &dense(), "tp2-pp2"), [32, 32]);
+}
+
+/// Every simulated fixture with identical GPUs: the stages of every pipeline candidate tile the
+/// layers once and differ by at most one layer.
+#[test]
+fn every_fixture_splits_within_one_layer_of_equal() {
+    for (name, g) in [("two", hw(TWO)), ("four", hw(FOUR))] {
+        for l in [dense(), moe()] {
+            let en = enumerate_multi_with(&g, &l, &Hints::default(), PHASE, QUOTA);
+            for c in en
+                .candidates
+                .iter()
+                .filter(|c| c.id.contains("layer") || c.id.contains("pp"))
+            {
+                let n = stage_layers(&g, &l, &c.id);
+                let what = format!("{name}/{}/{}: {n:?}", l.model, c.id);
+                assert_eq!(n.iter().sum::<u32>(), l.n_layer, "{what}");
+                let (lo, hi) = (n.iter().min().unwrap(), n.iter().max().unwrap());
+                assert!(hi - lo <= 1, "{what}");
+            }
+        }
+    }
+}
+
+mod memory_property {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Shrinking the cards: whatever the planner still offers tiles the layers once and
+        /// passed the validator's memory check (`output_bytes` included); the rest is pruned,
+        /// never a plan over capacity.
+        #[test]
+        fn layer_splits_never_exceed_memory(gb in 10u64..26, fixture in 0usize..2) {
+            let mut g = hw([TWO, FOUR][fixture]);
+            for d in g.devices.iter_mut().filter(|d| d.id.starts_with("gpu")) {
+                d.capacity_bytes = gb * (1 << 30);
+            }
+            for l in [dense(), moe()] {
+                let en = enumerate_multi_with(&g, &l, &Hints::default(), PHASE, QUOTA);
+                for c in &en.candidates {
+                    let t = topology_of(&g, &l, &c.plan, PHASE).unwrap();
+                    let mut next = 0;
+                    for s in &t.stages {
+                        prop_assert_eq!(s.layers.0, next);
+                        next = s.layers.1;
+                    }
+                    prop_assert_eq!(next, l.n_layer);
+                }
+            }
+        }
+    }
+}
