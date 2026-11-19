@@ -68,6 +68,9 @@ const LAMBDA: f64 = 1e-3;
 /// usual pull would bias a parameter that explains a few percent of the step (ADR 0070).
 const LAMBDA_RANGES: f64 = 1e-9;
 const MIN_BAND: f64 = 0.05;
+/// Priors of the all-reduce's in-step latency `a` and its latency per ring step `b` (ADR 0078).
+const ALLREDUCE_LATENCY_PRIOR_S: f64 = 1.2e-5;
+const ALLREDUCE_STEP_PRIOR_S: f64 = 1e-6;
 
 const GPU_F: usize = 0;
 const GPU_B: usize = 1;
@@ -91,8 +94,12 @@ struct Problem<'a> {
     ranges_at: Option<usize>,
     /// Index of the GPU's expert-matmul rate: only when a ranks anchor has expert work.
     exp_at: Option<usize>,
-    /// Index of the all-reduce latency share: only when a ranks anchor has an all-reduce.
+    /// Index of the all-reduce's in-step latency `a` (ADR 0078): only when a ranks anchor has
+    /// an all-reduce.
     ar_at: Option<usize>,
+    /// Index of its latency per ring step `b`: only when the anchors' all-reduces span two or
+    /// more group sizes, which alone separate it from `a`.
+    step_at: Option<usize>,
     /// Distinct thread counts of anchors with a CPU part; parameters `CURVE + 2k`, `CURVE + 2k + 1`.
     threads: Vec<u32>,
     x0: Vec<f64>,
@@ -148,8 +155,7 @@ impl Problem<'_> {
             }
         }
         let ranges_moved = self.ranges_at.is_some_and(|i| (i..i + 3).any(moved));
-        let ar_moved = self.ar_at.is_some_and(moved);
-        if ranges_moved || ar_moved {
+        if ranges_moved || self.ar_at.is_some() {
             let c = self.prior.range_costs_or_prior();
             let mut r = c;
             if let Some(i) = self.ranges_at {
@@ -158,7 +164,10 @@ impl Problem<'_> {
                 r.c_step_s = val(c.c_step_s, i + 2);
             }
             if let Some(i) = self.ar_at {
-                r.allreduce_latency_share = val(c.allreduce_latency_share, i);
+                r.allreduce_latency_s = Some(x[i].exp());
+            }
+            if let Some(i) = self.step_at {
+                r.allreduce_step_s = Some(x[i].exp());
             }
             hw.range_costs = Some(r);
         }
@@ -414,7 +423,23 @@ pub fn fit(
     let has_allreduce = phases().any(|ph| matches!(ph.after, Some(Coll::AllReduce { .. })));
     let ar_at = has_allreduce.then_some(x0.len());
     if has_allreduce {
-        x0.push(ln(prior.range_costs_or_prior().allreduce_latency_share));
+        let c = prior.range_costs_or_prior();
+        x0.push(ln(c
+            .allreduce_latency_s
+            .unwrap_or(ALLREDUCE_LATENCY_PRIOR_S)));
+    }
+    let mut sizes: Vec<usize> = phases()
+        .filter_map(|ph| match &ph.after {
+            Some(Coll::AllReduce { group, .. }) => Some(group.len()),
+            _ => None,
+        })
+        .collect();
+    sizes.sort_unstable();
+    sizes.dedup();
+    let step_at = (sizes.len() > 1).then_some(x0.len());
+    if step_at.is_some() {
+        let c = prior.range_costs_or_prior();
+        x0.push(ln(c.allreduce_step_s.unwrap_or(ALLREDUCE_STEP_PRIOR_S)));
     }
     // With ranks and no CPU compute the host link carries only the logit readback, which no
     // anchor separates from `c_step`: keep the link and the CPU's c0 at the prior.
@@ -441,6 +466,7 @@ pub fn fit(
         ranges_at,
         exp_at,
         ar_at,
+        step_at,
         threads,
         x0: x0.clone(),
     };
@@ -773,6 +799,8 @@ mod tests {
             c_range_graph_s: 1e-4,
             c_range_eager_s: 4e-5,
             c_step_s: 8e-4,
+            // at the prior: c_range and the all-reduce latency share one range per phase
+            allreduce_latency_s: Some(ALLREDUCE_LATENCY_PRIOR_S),
             ..RangeCosts::PRIOR
         });
         let anchors = single_and_tp2(&truth);
@@ -853,19 +881,19 @@ mod tests {
         HardwareGraph::from_toml(include_str!("../fixtures/two_3090_hoststaged.toml")).unwrap()
     }
 
-    /// The share is identified by the tp-2 anchors: a range launch cannot cost less than nothing,
-    /// so with `c_range` near zero only the share explains the cheaper all-reduces. Singles with
-    /// two op densities pin `c0` against B, which the per-layer all-reduce cost would otherwise
-    /// trade against. The host link carries no anchor's compute and stays at the prior.
+    /// The all-reduce's in-step latency (ADR 0078) is identified by the tp-2 anchors: with
+    /// `c_range` near zero only it explains the all-reduces' fixed cost. Singles with two op
+    /// densities pin `c0` against B, which the per-layer all-reduce cost would otherwise trade
+    /// against. One group size fits no step latency. The host link stays at the prior.
     #[test]
-    fn fits_the_allreduce_latency_share_from_tp2_anchors() {
+    fn fits_the_allreduce_latency_from_tp2_anchors() {
         let mut prior = two_3090();
         prior.range_costs = Some(RangeCosts {
             c_range_graph_s: 1e-9,
             ..RangeCosts::PRIOR
         });
-        // A slow all-reduce path (ten times the fixture's curve), so the share moves the anchors
-        // well above the weak pull of the prior.
+        // A slow all-reduce path (ten times the fixture's curve), so the bytes and the latency
+        // weigh well above the pull of the prior.
         for c in &mut prior.collectives {
             if c.op == tetraeder_profiler::CollectiveOp::AllReduce {
                 for p in &mut c.points {
@@ -877,7 +905,7 @@ mod tests {
         truth.range_costs = Some(RangeCosts {
             c_range_graph_s: 1e-9,
             c_step_s: 8e-4,
-            allreduce_latency_share: 0.4,
+            allreduce_latency_s: Some(4e-5),
             ..RangeCosts::PRIOR
         });
         let mut anchors = single_and_tp2(&truth);
@@ -888,12 +916,13 @@ mod tests {
         }
         let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
         let c = fit.hw.range_costs_or_prior();
-        assert!(rel(c.allreduce_latency_share, 0.4) < 0.05, "{c:?}");
+        assert!(rel(c.allreduce_latency_s.unwrap(), 4e-5) < 0.05, "{c:?}");
+        assert_eq!((c.allreduce_latency_share, c.allreduce_step_s), (1.0, None));
         assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
         assert_eq!(fit.hw.links, prior.links);
     }
 
-    /// Anchors without an all-reduce leave the share at 1 (the curve as measured).
+    /// Anchors without an all-reduce fit no all-reduce latency (the curve as measured).
     #[test]
     fn the_latency_share_stays_at_one_without_allreduce_anchors() {
         let prior = two_3090();
@@ -918,6 +947,7 @@ mod tests {
             .collect();
         let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
         assert_eq!(fit.hw.range_costs_or_prior().allreduce_latency_share, 1.0);
+        assert_eq!(fit.hw.range_costs_or_prior().allreduce_latency_s, None);
         let g = fit.hw.device("gpu0").unwrap().compute.unwrap();
         // no expert work: no expert rate
         assert_eq!(g.expert_flops_per_s, None);

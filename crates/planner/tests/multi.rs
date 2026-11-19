@@ -217,6 +217,8 @@ fn calibrate_recovers_c_range_and_c_step_from_anchor_rows() {
         c_range_graph_s: 1e-4,
         c_range_eager_s: 4e-5,
         c_step_s: 8e-4,
+        // at the fit's prior (ADR 0078): c_range and the all-reduce latency share one range
+        allreduce_latency_s: Some(1.2e-5),
         ..RangeCosts::PRIOR
     });
     let l = dense();

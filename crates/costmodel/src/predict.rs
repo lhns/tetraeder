@@ -574,9 +574,12 @@ fn allreduce_curve_s(
 
 /// Seconds of a collective for a step of `m` tokens and its breakdown label: the measured curve
 /// when the graph has one, else the link prior (ring all-reduce, `alpha + n / beta` copy).
-/// An all-reduce inside a step pays the share `s` of the curve's zero-byte time
-/// (`RangeCosts::allreduce_latency_share`): `t(n) - (1 - s) t(0)`, so the byte part, the BF16
-/// switch included, stays as measured. The one helper the planner's search shares (ADR 0070).
+/// An all-reduce inside a step keeps the curve's byte part, the BF16 switch included, and pays
+/// its own latency instead of the probe's zero-byte time `t(0)`: with the fitted
+/// `RangeCosts::allreduce_latency_s` = `a` and `allreduce_step_s` = `b` (0 when not fitted,
+/// ADR 0078) it costs `max(t(n) - t(0), 0) + a + 2 (p - 1) b` over `p` ranks; graphs fitted
+/// before that pay the share `s` of `t(0)`, `t(n) - (1 - s) t(0)` (ADR 0070). The one helper the
+/// planner's search shares.
 pub fn coll_time(hw: &HardwareGraph, c: &Coll, m: f64) -> Result<(String, f64), PredictError> {
     match c {
         Coll::AllReduce {
@@ -585,7 +588,14 @@ pub fn coll_time(hw: &HardwareGraph, c: &Coll, m: f64) -> Result<(String, f64), 
         } => {
             let label = format!("allreduce:{}", group.join("+"));
             let t = allreduce_curve_s(hw, group, bytes_per_token * m)?;
-            let s = hw.range_costs_or_prior().allreduce_latency_share;
+            let costs = hw.range_costs_or_prior();
+            if let Some(a) = costs.allreduce_latency_s {
+                let t0 = allreduce_curve_s(hw, group, 0.0)?;
+                let steps = 2.0 * (group.len().max(1) - 1) as f64;
+                let b = costs.allreduce_step_s.unwrap_or(0.0);
+                return Ok((label, (t - t0).max(0.0) + a + steps * b));
+            }
+            let s = costs.allreduce_latency_share;
             if s == 1.0 {
                 return Ok((label, t));
             }

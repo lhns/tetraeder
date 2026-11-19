@@ -111,7 +111,7 @@ fn calibrate_lands_on_the_replica_fit() {
             })
             .collect();
         let fit = calibrate(&hw, &models).unwrap();
-        assert_eq!(fit.cost_model_version, 2);
+        assert_eq!(fit.cost_model_version, tetraeder_costmodel::MODEL_VERSION);
         let rc = fit.hw.range_costs_or_prior();
         eprintln!(
             "{name}: band {:.3}, c_step {:e}, c_range {:e}, all-reduce latency share {:.3}",

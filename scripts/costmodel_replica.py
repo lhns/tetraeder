@@ -13,11 +13,14 @@
 Version 1 matches the session's `predict-*.json` to the printed digit (tests/test_costmodel_replica.py). Version 2 is
 MODEL_VERSION 2 (ADR 0070, History 2026-11-18): expert matmuls at their own rate, the head (and the dense builder's
 last FFN) on output rows, every expert read at prefill, a roofline per op class, `single` on the ranks path, and an
-all-reduce in a step paying the fitted share of the probe's zero-byte time. Rust `predict` reproduces version 2 on the
-graphs this script writes (`crates/planner/tests/costmodel_v2.rs`). The fit is the same Levenberg-Marquardt and
-coordinate search as `calib.rs`, not bit-identical to it. It does not model pipelined prefill (ADR 0077, M > 1). Input files (ADR 0068 names): hw.json, calib-comm.json,
-calib.json, layouts/<model>.json, candidates-<model>.json, anchors-<model>-r<k>.json, bench-<model>-<id>-r<k>.json.
-Standard library only.
+all-reduce in a step paying the fitted share of the probe's zero-byte time. Version 3 (the default) is MODEL_VERSION 3
+(ADR 0078): the all-reduce in a step pays the curve's byte part plus a fitted in-step latency a + 2 (p - 1) b over p
+ranks, b only when the anchors' all-reduces span two group sizes. Pipelined prefill (ADR 0077) is priced as `predict_ranks` does; version 2 on a session's own calib.json
+gives its predict-*.json bit for bit (S2g, S3, S3b). Rust `predict` reproduces version 2 on the graphs this script
+writes (`crates/planner/tests/costmodel_v2.rs`). The fit is the same Levenberg-Marquardt and coordinate search as
+`calib.rs`, not bit-identical to it. Input files (ADR 0068 names): hw.json, calib-comm.json, calib.json,
+layouts/<model>.json, candidates-<model>.json, anchors-<model>-r<k>.json, bench-<model>-<id>-r<k>.json, and on a
+4-GPU box plans-anchor/candidates-<model>.json (the anchors' plans). Standard library only.
 """
 
 from __future__ import annotations
@@ -37,6 +40,8 @@ OPS_ATTN, OPS_FFN, OPS_EXPERT, OPS_OUTPUT = 14.0, 10.0, 10.0, 4.0
 OPS_DENSE_LAYER, OPS_EXPERT_LAYER = 24.0, 10.0
 EP_SEED, EP_STEPS = 20_261_115, 1000
 RANGE_PRIOR = {"c_range_graph_s": 3.0e-5, "c_range_eager_s": 1.0e-5, "c_step_s": 2.0e-4, "allreduce_latency_share": 1.0}
+# calib.rs priors of the all-reduce's in-step latency a and its latency per ring step b (version 3, ADR 0078)
+ALLREDUCE_LATENCY_PRIOR_S, ALLREDUCE_STEP_PRIOR_S = 1.2e-5, 1e-6
 FORMATS = {"F32": (1, 4), "F16": (1, 2), "BF16": (1, 2), "Q8_0": (32, 34), "Q6_K": (256, 210), "Q5_K": (256, 176),
            "Q4_K": (256, 144), "Q4_0": (32, 18)}
 M64 = (1 << 64) - 1
@@ -429,7 +434,12 @@ def coll_time(hw: dict, c: dict, m: float, version: int) -> tuple[str, float]:
             p = len(c["ar"])
             steps = 2.0 * (p - 1)
             t = steps * alpha + steps / p * n / beta
-        if version >= 2:
+        lat = range_costs(hw).get("allreduce_latency_s")
+        if version >= 2 and lat is not None and "ar_share" not in DROP:
+            # Version 3: the byte part as measured plus the fitted in-step latency a + 2 (p - 1) b.
+            b = range_costs(hw).get("allreduce_step_s") or 0.0
+            t = max(t - ar_latency(hw, c["ar"]), 0.0) + lat + 2.0 * (len(c["ar"]) - 1) * b
+        elif version >= 2:
             # The probe syncs every rank around each call; in a step only the share `s` of its small-message
             # time is paid, the byte-proportional part (the BF16 switch included) stays as measured.
             s = range_costs(hw)["allreduce_latency_share"]
@@ -611,7 +621,16 @@ class Problem:
         self.ar_at = None
         if version >= 2 and "ar_share" not in DROP and any("ar" in (ph["after"] or {}) for a in anchors for ph in a["f"].get("phases", [])):
             self.ar_at = len(self.x0)
-            self.x0.append(ln(range_costs(prior)["allreduce_latency_share"]))
+            rc = range_costs(prior)
+            self.x0.append(ln(rc.get("allreduce_latency_s") or ALLREDUCE_LATENCY_PRIOR_S) if version >= 3
+                           else ln(rc["allreduce_latency_share"]))
+            self.lam.append(LAMBDA)
+        # b only when the anchors' all-reduces span two or more group sizes
+        sizes = {len(ph["after"]["ar"]) for a in anchors for ph in a["f"].get("phases", []) if "ar" in (ph["after"] or {})}
+        self.step_at = None
+        if version >= 3 and self.ar_at is not None and len(sizes) > 1:
+            self.step_at = len(self.x0)
+            self.x0.append(ln(range_costs(prior).get("allreduce_step_s") or ALLREDUCE_STEP_PRIOR_S))
             self.lam.append(LAMBDA)
 
     def apply(self, x: list) -> dict:
@@ -636,9 +655,15 @@ class Problem:
                         "c_range_eager_s": val(rc["c_range_eager_s"], i + 1),
                         "c_step_s": val(rc["c_step_s"], i + 2)})
             changed = True
-        if self.ar_at is not None and moved(self.ar_at):
+        if self.ar_at is not None and (moved(self.ar_at) or self.version >= 3):
             new.update({k: rc[k] for k in ("c_range_graph_s", "c_range_eager_s", "c_step_s") if k not in new})
-            new["allreduce_latency_share"] = math.exp(x[self.ar_at])
+            if self.version >= 3:
+                new.setdefault("allreduce_latency_share", rc["allreduce_latency_share"])
+                new["allreduce_latency_s"] = math.exp(x[self.ar_at])
+                if self.step_at is not None:
+                    new["allreduce_step_s"] = math.exp(x[self.step_at])
+            else:
+                new["allreduce_latency_share"] = math.exp(x[self.ar_at])
             changed = True
         if changed:
             hw["range_costs"] = new
@@ -821,7 +846,9 @@ def session_anchors(d: Path, version: int) -> list:
     out = []
     for model in models(d):
         layout = load_json(d / "layouts" / f"{model}.json")
-        pl = plans(d, model)
+        # On a 4-GPU box the anchors (single, tp-2) are enumerated on two GPUs into plans-anchor/.
+        pl = plans(d / "plans-anchor", model) if (d / "plans-anchor" / f"candidates-{model}.json").exists() \
+            else plans(d, model)
         acc: dict = {}
         for f in sorted(d.glob(f"anchors-{model}-r*.json")):
             for r in rows(f):
@@ -869,7 +896,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir", type=Path)
     ap.add_argument("--eval", type=Path)
-    ap.add_argument("--version", type=int, default=2)
+    ap.add_argument("--version", type=int, default=3)
     ap.add_argument("--committed", action="store_true")
     ap.add_argument("--json", type=Path)
     ap.add_argument("--ar-form", choices=["offset", "scale"], default="offset")
@@ -892,7 +919,8 @@ def main() -> int:
           f"F_exp {(c.get('expert_flops_per_s') or c['flops_per_s']) / 1e12:.1f}, "
           f"B {g['bandwidth_bytes_per_s']['value'] / 1e9:.0f} GB/s, c0 {c['c0_graph_s'] * 1e6:.2f} us, "
           f"c_range {rc['c_range_graph_s'] * 1e6:.2f} us, c_step {rc['c_step_s'] * 1e6:.1f} us, "
-          f"ar_share {rc['allreduce_latency_share']:.3f}")
+          f"ar_share {rc['allreduce_latency_share']:.3f}, ar_latency {(rc.get('allreduce_latency_s') or 0) * 1e6:.2f} us, "
+          f"ar_step {(rc.get('allreduce_step_s') or 0) * 1e6:.2f} us")
     for k, v in resid:
         print(f"  anchor {k:<50} {v:+.3f}")
     meas = measured(ev)
