@@ -79,10 +79,10 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Accepted | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
 | [0072](0072-dense-builder-cpu-weights-in-extra-buffer-types.md) | Proposed | Dense builder: CPU weights in libllama's extra buffer types (supersedes 0039 for the dense builder) |
 | [0073](0073-engine-pin-b12426.md) | Accepted | Engine pin moves to llama.cpp b12426 before the Phase 4 verdict |
-| [0074](0074-prefix-save-through-pinned-staging.md) | Proposed | Prefix-cache save on a GPU: pinned staging and prepared snapshot buffers |
+| [0074](0074-prefix-save-through-pinned-staging.md) | Accepted | Prefix-cache save on a GPU: pinned staging and prepared snapshot buffers |
 | [0075](0075-executor-ranges-are-graph-views.md) | Accepted | Executor ranges are views of the rank graph (patch 0005) |
 | [0076](0076-judged-predictions-from-per-shape-anchor-lines.md) | Not adopted | Judged predictions from per-shape lines through truncated anchors |
-| [0077](0077-pipelined-prefill-micro-batches.md) | Proposed | Pipelined prefill: micro-batches in one rank program (GPipe order) |
-| [0078](0078-allreduce-in-step-latency.md) | Proposed | Cost model 3: an all-reduce in a step pays its own fitted latency, not a share of the probe's |
+| [0077](0077-pipelined-prefill-micro-batches.md) | Accepted | Pipelined prefill: micro-batches in one rank program (GPipe order) |
+| [0078](0078-allreduce-in-step-latency.md) | Accepted | Cost model 3: an all-reduce in a step pays its own fitted latency, not a share of the probe's |
 | [0079](0079-one-input-steps-attend-over-their-own-run.md) | Accepted | One-input steps attend over their own KV run |
-| [0080](0080-routed-slot-activation-traffic.md) | Proposed | Cost model 4: the routed slots' activation bytes, on every expert-parallel rank |
+| [0080](0080-routed-slot-activation-traffic.md) | Accepted | Cost model 4: the routed slots' activation bytes, on every expert-parallel rank |

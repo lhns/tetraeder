@@ -1,6 +1,6 @@
 # 0077. Pipelined prefill: micro-batches in one rank program (GPipe order)
 
-Status: Proposed (2026-11-18). Phase 5. Amends ADR 0069 ("Rank graph": a rank graph may hold several micro-batches of one step) and implements its "Hazards" paragraph; nothing of 0069 is superseded. Companions: ADR 0068 (verdict), ADR 0070 (layer split, cost model), ADR 0075 (ranges are views).
+Status: Accepted (owner, 2026-11-19; proposed 2026-11-18). Phase 5. Amends ADR 0069 ("Rank graph": a rank graph may hold several micro-batches of one step) and implements its "Hazards" paragraph; nothing of 0069 is superseded. Companions: ADR 0068 (verdict), ADR 0070 (layer split, cost model), ADR 0075 (ranges are views).
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

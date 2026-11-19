@@ -1,6 +1,6 @@
 # 0078. Cost model 3: an all-reduce in a step pays its own fitted latency, not a share of the probe's
 
-Status: Proposed (2026-11-19). Phase 5. Amends ADR 0070 (cost model, "All-reduce in a step" of its 2026-11-18 History); nothing else of 0070 changes. Companions: ADR 0068 (anchors, reopen rule), ADR 0077 (pipelined prefill).
+Status: Accepted (owner, 2026-11-19; proposed 2026-11-19). Phase 5. Amends ADR 0070 (cost model, "All-reduce in a step" of its 2026-11-18 History); nothing else of 0070 changes. Companions: ADR 0068 (anchors, reopen rule), ADR 0077 (pipelined prefill).
 
 Measurements live in the session READMEs: the diagnosis and the before/after table are in `bench/results/s3b-20261119/README.md`, "Cost model diagnosis (v3)".
 

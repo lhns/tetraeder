@@ -1,6 +1,6 @@
 # 0080. Cost model 4: the routed slots' activation bytes, on every expert-parallel rank
 
-Status: Proposed (2026-11-19). Phase 5. Extends ADR 0070 (cost model, ranks path) and ADR 0078 (cost model 3); nothing of either changes. Companion: ADR 0068 (verdict rule, 15% line).
+Status: Accepted (owner, 2026-11-19; proposed 2026-11-19). Phase 5. Extends ADR 0070 (cost model, ranks path) and ADR 0078 (cost model 3); nothing of either changes. Companion: ADR 0068 (verdict rule, 15% line).
 
 Measurements live in `bench/results/s3c-20261119/README.md`, "Diagnosis of the misses (offline, ADR 0080)", with the before/after table over s2f, s2g, s3, s3b and s3c.
 
