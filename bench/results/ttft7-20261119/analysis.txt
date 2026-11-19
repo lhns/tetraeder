@@ -1,0 +1,56 @@
+==== round 1
+n=95 tet med 0.246 p90 0.631 llama med 0.261 p90 0.750 ratio med 0.943 p90 0.842
+sum save_ms 1.21 s, sum ttft 42.1 s, share 2.9% ; llama sum ttft 51.4
+spare event kinds: {'touched': 97, 'freed': 8}
+freed lines: 8 pieces: [31, 40, 48, 48, 48, 63, 55, 52] bytes GB: [2.03, 2.65, 3.19, 3.22, 3.21, 4.16, 3.66, 3.48] ms: ['47', '56', '70', '67', '82', '94', '76', '68']
+freed with pieces<=1: 0
+touched lines: 97 grow_ms max 7.0 median 0.0 nonzero 17 from_cap>0: 87
+grow_ms nonzero values: [3.0, 4.0, 4.0, 4.0, 4.0, 6.0, 6.0, 6.0, 7.0, 7.0, 7.0, 7.0]
+touch ms/GB (grown tail only n/a): touched ms list sample [(-1688207360, '11'), (-1688207360, '10'), (-1688207360, '11'), (-1688207360, '10'), (-1736441856, '10'), (-1736441856, '10'), (-1736441856, '11'), (-1736441856, '10')]
+other snapshot trace lines: []
+check2: gap tet-llama for #1..#10 (s): [(1, -0.002), (2, -0.009), (3, -0.045), (4, -0.013), (5, -0.013), (6, -0.065), (7, -0.034), (8, -0.001), (9, -0.01), (10, -0.014)]
+check3: saves
+  #25 save_ms 349 no take line in window
+  #42 save_ms 341 no take line in window
+  #102 save_ms 519 no take line in window
+all take lines: [('"small"', 3.193, 3.137), ('"fit"', 2.752, 3.209), ('"fit"', 3.197, 3.217), ('"fit"', 2.365, 3.481), ('"fit"', 3.649, 3.66), ('"small"', 5.056, 5.048)]
+check6: >0.1 s behind llama:
+gap median -0.022 mean -0.098 max +0.009; #behind>0.05: []
+check5 #102: ttft 2.796 llama 3.859 place_ms 519.4 save_ms 519.3 diff 0.07 restore 0.0 source live
+   steps in window: 6 sum compute_ms 2203.4 sum total_ms 2241.1 ttft-place-sum(total) 35.0
+   first steps (dt, n, compute, total, minflt, plan,state,upload,build,move,reserve): [(0.35, '2048', '351.65', '354.7', '0', '1.01', '0.0', '0.0'), (0.74, '2048', '382.36', '387.12', '0', '2.01', '0.0', '0.0'), (1.16, '2048', '414.96', '421.85', '0', '3.22', '0.0', '0.0'), (1.61, '2048', '442.26', '450.86', '0', '4.06', '0.0', '0.0')]
+   spare events in window: [(0.74, 'freed', '3659530240', '76', '55'), (0.81, 'freed', '3481272320', '68', '52')]
+   touches in window: [(0.67, '1184', '0')]
+check5 #42: ttft 4.309 llama 5.222 place_ms 341.6 save_ms 341.5 diff 0.07 restore 0.0 source live
+   steps in window: 8 sum compute_ms 3805.0 sum total_ms 3915.8 ttft-place-sum(total) 51.4
+   first steps (dt, n, compute, total, minflt, plan,state,upload,build,move,reserve): [(0.46, '2048', '447.57', '456.66', '0', '4.63', '0.0', '0.0'), (0.95, '2048', '481.68', '493.18', '0', '5.62', '0.0', '0.0'), (1.47, '2048', '508.97', '521.92', '0', '6.27', '0.0', '0.0'), (2.03, '2048', '539.0', '554.93', '0', '8.35', '0.0', '0.0')]
+   spare events in window: [(0.51, 'freed', '3192569856', '70', '48')]
+   touches in window: [(0.44, '766', '0')]
+==== round 2
+n=95 tet med 0.248 p90 0.630 llama med 0.266 p90 0.750 ratio med 0.934 p90 0.840
+sum save_ms 1.22 s, sum ttft 42.1 s, share 2.9% ; llama sum ttft 51.7
+spare event kinds: {'touched': 97, 'freed': 8}
+freed lines: 8 pieces: [31, 40, 48, 48, 48, 63, 55, 52] bytes GB: [2.03, 2.65, 3.19, 3.22, 3.21, 4.16, 3.66, 3.48] ms: ['45', '55', '56', '56', '61', '84', '83', '78']
+freed with pieces<=1: 0
+touched lines: 97 grow_ms max 8.0 median 0.0 nonzero 19 from_cap>0: 87
+grow_ms nonzero values: [4.0, 4.0, 4.0, 5.0, 6.0, 6.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0]
+touch ms/GB (grown tail only n/a): touched ms list sample [(-1688207360, '10'), (-1688207360, '10'), (-1688207360, '10'), (-1688207360, '10'), (-1736441856, '10'), (-1736441856, '9'), (-1736441856, '9'), (-1736441856, '9')]
+other snapshot trace lines: []
+check2: gap tet-llama for #1..#10 (s): [(1, -0.002), (2, -0.01), (3, -0.046), (4, -0.019), (5, -0.009), (6, -0.058), (7, -0.034), (8, -0.005), (9, -0.006), (10, -0.007)]
+check3: saves
+  #25 save_ms 350 no take line in window
+  #42 save_ms 345 no take line in window
+  #102 save_ms 527 no take line in window
+all take lines: [('"small"', 3.193, 3.137), ('"fit"', 2.752, 3.209), ('"fit"', 3.197, 3.217), ('"fit"', 2.365, 3.481), ('"fit"', 3.649, 3.66), ('"small"', 5.056, 5.048)]
+check6: >0.1 s behind llama:
+gap median -0.023 mean -0.101 max +0.008; #behind>0.05: []
+check5 #102: ttft 2.808 llama 3.879 place_ms 527.4 save_ms 527.3 diff 0.08 restore 0.0 source live
+   steps in window: 6 sum compute_ms 2207.2 sum total_ms 2244.9 ttft-place-sum(total) 35.7
+   first steps (dt, n, compute, total, minflt, plan,state,upload,build,move,reserve): [(0.36, '2048', '352.73', '355.69', '0', '1.03', '0.0', '0.0'), (0.74, '2048', '382.44', '387.2', '0', '2.09', '0.0', '0.0'), (1.17, '2048', '417.2', '424.09', '0', '3.27', '0.0', '0.0'), (1.62, '2048', '443.05', '451.76', '0', '4.15', '0.0', '0.0')]
+   spare events in window: [(0.76, 'freed', '3659530240', '83', '55'), (0.84, 'freed', '3481272320', '78', '52')]
+   touches in window: [(0.68, '1203', '0')]
+check5 #42: ttft 4.314 llama 5.257 place_ms 344.7 save_ms 344.6 diff 0.09 restore 0.0 source live
+   steps in window: 8 sum compute_ms 3804.5 sum total_ms 3921.9 ttft-place-sum(total) 47.5
+   first steps (dt, n, compute, total, minflt, plan,state,upload,build,move,reserve): [(0.46, '2048', '448.27', '458.45', '0', '4.95', '0.0', '0.0'), (0.95, '2048', '480.53', '496.4', '0', '10.02', '0.0', '0.0'), (1.48, '2048', '509.22', '522.53', '2', '6.63', '0.0', '0.0'), (2.03, '2048', '537.91', '554.11', '1', '8.68', '0.0', '0.0')]
+   spare events in window: [(0.57, 'freed', '3192569856', '56', '48')]
+   touches in window: [(0.51, '834', '0')]
