@@ -42,7 +42,7 @@ groups:
           severity: warning
         annotations:
           summary: "The prefix cache evicts more sequences than it restores; raise --cache-ram"
-      # A save stalls every live sequence (ADR 0074): the 3090 took 41 ms per 8B save before pinned staging.
+      # A save stalls every live sequence (ADR 0074): the 3090 took 41 ms per 8B save before pinned staging (bench/results/20261116pc).
       - alert: PrefixSaveSlow
         expr: |
           histogram_quantile(0.95, sum by (le) (rate(tetraeder_kv_prefix_save_duration_seconds_bucket[15m]))) > 0.025
@@ -51,7 +51,7 @@ groups:
           severity: warning
         annotations:
           summary: "p95 prefix-cache save over 25 ms; every save stalls all live sequences"
-      # Most saves wrote into a plain allocation instead of a prepared spare (ADR 0074): each costs the old 44 ms.
+      # Most saves wrote into a plain allocation instead of a prepared spare (ADR 0074): each costs the old 44 ms (bench/results/20261116pc).
       - alert: PrefixSaveFallback
         expr: |
           sum(rate(tetraeder_kv_prefix_save_buffers_total{tetraeder_buffer="fallback"}[10m]))
