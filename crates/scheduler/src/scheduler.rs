@@ -428,6 +428,35 @@ struct Idle {
     order: u64,
 }
 
+/// What reusing an idle sequence in place does to the rows a request cuts off (ADR 0074).
+enum LiveCut {
+    /// Too few rows to bother.
+    Nothing,
+    /// Recomputing is cheaper than a save: `small_cut` or `own_output`.
+    Skip(&'static str),
+    /// The sequence is saved first.
+    Save,
+}
+
+impl Idle {
+    /// The fate of this sequence's cut when a request shares its first `common` tokens.
+    /// A cut that is more than `save_min` rows is saved unless it is a quarter of the
+    /// sequence at most, or lies wholly in the tokens the sequence generated itself, which a
+    /// client may never resend.
+    fn live_cut(&self, common: usize, save_min: usize) -> LiveCut {
+        let cut = self.toks.len() - common.min(self.toks.len());
+        if cut < save_min {
+            LiveCut::Nothing
+        } else if common >= self.prompt_len {
+            LiveCut::Skip("own_output")
+        } else if cut as f64 <= LIVE_SAVE_CUT_FRACTION * self.toks.len() as f64 {
+            LiveCut::Skip("small_cut")
+        } else {
+            LiveCut::Save
+        }
+    }
+}
+
 enum Slot {
     Free,
     Idle(Idle),
@@ -969,6 +998,32 @@ impl Worker {
             })
             .filter(|&(_, n)| n > 0 && n >= live_n.max(ram_n) + self.restore_gain)
             .max_by_key(|&(_, n)| n);
+        // A new conversation sharing little with an idle one: reusing that sequence in place
+        // would save it first (seconds at long lengths), so with a free slot the prefix is
+        // copied there and the idle sequence stays resident (ADR 0074).
+        let free_slot = self.slots.iter().any(|s| matches!(s, Slot::Free));
+        let copy_idle = match best_idle {
+            Some((i, n))
+                if free_slot
+                    && ram.is_none()
+                    && busy.is_none()
+                    && busy_ok
+                    && self.cache.enabled() =>
+            {
+                match &self.slots[i] {
+                    Slot::Idle(idle)
+                        if matches!(idle.live_cut(n, self.save_min), LiveCut::Save)
+                            && !self.cache.holds(&fmt, &idle.toks) =>
+                    {
+                        Some((i, n))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let from_idle = copy_idle.is_some();
+        let busy = busy.or(copy_idle);
         let ram = if busy.is_some() { None } else { ram };
         // Take the entry out first: saving a sequence below may evict it.
         let mut picked = ram.map(|(i, _)| self.cache.take(i));
@@ -1046,7 +1101,10 @@ impl Worker {
             match self.backend.seq_cp(src as SeqId, id as SeqId, n) {
                 Ok(()) => {
                     common = n;
-                    source = "seq";
+                    source = if from_idle { "copy" } else { "seq" };
+                    if from_idle && let Some(m) = &self.metrics {
+                        m.kv_prefix_placed_free();
+                    }
                     if let Some(m) = &self.metrics {
                         let bytes = (n * self.backend.kv_row_bytes()) as u64;
                         m.tier_transfer(
@@ -1107,24 +1165,16 @@ impl Worker {
             // The sequence is saved before this request drops much of it, unless the cut is
             // small enough to recompute for less than the save costs, or lies wholly in the
             // tokens the sequence generated itself, which a client may never resend (ADR 0074).
-            let cut = idle.toks.len() - common.min(idle.toks.len());
-            if cut >= self.save_min {
-                skipped = if common >= idle.prompt_len {
-                    Some("own_output")
-                } else if cut as f64 <= LIVE_SAVE_CUT_FRACTION * idle.toks.len() as f64 {
-                    Some("small_cut")
-                } else {
-                    None
-                };
-                match skipped {
-                    None => self.save(id, &idle.toks),
-                    Some(reason) => {
-                        if self.prefix_reuse
-                            && self.cache.enabled()
-                            && let Some(m) = &self.metrics
-                        {
-                            m.kv_prefix_save_skipped(reason);
-                        }
+            match idle.live_cut(common, self.save_min) {
+                LiveCut::Nothing => {}
+                LiveCut::Save => self.save(id, &idle.toks),
+                LiveCut::Skip(reason) => {
+                    skipped = Some(reason);
+                    if self.prefix_reuse
+                        && self.cache.enabled()
+                        && let Some(m) = &self.metrics
+                    {
+                        m.kv_prefix_save_skipped(reason);
                     }
                 }
             }

@@ -26,7 +26,7 @@ use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use crate::qwen3moe_shard::{self, Sharded};
-use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans};
+use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans, write_direct};
 use crate::upload::AdmitUpload;
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, Sched, Tensor,
@@ -1400,14 +1400,11 @@ impl Qwen3Moe {
         if let Some(sh) = &self.shard {
             sh.restore(&runs, bytes)?;
         } else {
-            let mut rest = bytes;
-            for t in self.kv.k.iter().chain(&self.kv.v) {
-                let row = t.get().nbytes() / self.kv.n_rows;
-                for &(start, len) in &runs {
-                    let (head, tail) = rest.split_at(len * row);
-                    t.get().set_bytes(head, start * row)?;
-                    rest = tail;
-                }
+            let tensors = self.kv.k.iter().chain(&self.kv.v).map(|t| t.get());
+            let spans = row_spans(tensors, self.kv.n_rows, &runs);
+            match &self.readback {
+                Some(rb) => rb.write(&spans, bytes)?,
+                None => write_direct(&spans, bytes)?,
             }
         }
         if n > 0 {

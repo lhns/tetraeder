@@ -188,3 +188,100 @@ fn gpu_qwen3_30b_save_through_pinned_staging() {
         (bytes, t.elapsed().as_secs_f64() * 1e3)
     });
 }
+
+/// Restores `want` (a snapshot of `N` positions) with `restore`, which switches the path
+/// (outside the timing) and returns milliseconds; checks the KV reads back byte-identical, then
+/// prints staged against direct, interleaved after a warm-up of each.
+fn paired_restore(
+    what: &str,
+    want: &[u8],
+    mut restore: impl FnMut(bool) -> f64,
+    read_back: impl Fn() -> Vec<u8>,
+) {
+    for staged in [false, true] {
+        restore(staged);
+        assert_eq!(
+            read_back(),
+            want,
+            "{what}: KV after a restore (staged {staged})"
+        );
+    }
+    let (mut staged, mut direct) = (Vec::new(), Vec::new());
+    for _ in 0..REPEATS {
+        direct.push(restore(false));
+        staged.push(restore(true));
+    }
+    let (s, d) = (median(staged), median(direct));
+    let mb = want.len() as f64 / 1e6;
+    eprintln!(
+        "{what}: restore {mb:.1} MB, staged {s:.2} ms ({:.2} GB/s), direct {d:.2} ms ({:.2} GB/s), ratio {:.3}",
+        mb / s,
+        mb / d,
+        s / d
+    );
+}
+
+/// hardware: gpu, model. A restore through the pinned staging pair writes the same KV as the
+/// blocking direct writes (byte-identical snapshot read back) and is timed against them; the
+/// timing is printed, not asserted (it depends on the host).
+#[test]
+fn gpu_restore_through_staging() {
+    if let Some(path) = model("Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf") {
+        let o = DenseOptions {
+            n_seq_max: 4,
+            n_ctx_pool: 4096,
+            ..DenseOptions::new(GPU)
+        };
+        let mut m = Qwen3::load(&path, &o).unwrap();
+        let default = m.snapshot_staging().expect("a GPU model stages");
+        let mut out = Vec::new();
+        prefill(|inp| {
+            m.decode(inp, &mut out).unwrap();
+        });
+        let want = m.seq_snapshot(1).unwrap();
+        let m = std::cell::RefCell::new(m);
+        paired_restore(
+            "qwen3-8b",
+            &want,
+            |staged| {
+                let mut m = m.borrow_mut();
+                m.set_snapshot_staging(staged.then_some(default.0 / 2))
+                    .unwrap();
+                m.seq_rm(2, 0).unwrap();
+                let t = Instant::now();
+                m.seq_restore(2, &want, N).unwrap();
+                t.elapsed().as_secs_f64() * 1e3
+            },
+            || m.borrow().seq_snapshot(2).unwrap(),
+        );
+    }
+    if let Some(path) = model("Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf") {
+        let o = LoadOptions {
+            n_ctx: 4096,
+            n_seq_max: 4,
+            ..LoadOptions::new(GPU)
+        };
+        let mut m = Qwen3Moe::load(&path, &o).unwrap();
+        let default = m.snapshot_staging().expect("a GPU model stages");
+        let mut out = Vec::new();
+        prefill(|inp| {
+            m.decode(inp, &mut out).unwrap();
+        });
+        let want = m.seq_snapshot(1).unwrap();
+        let m = std::cell::RefCell::new(m);
+        paired_restore(
+            "qwen3-30b",
+            &want,
+            |staged| {
+                let mut m = m.borrow_mut();
+                m.set_snapshot_staging(staged.then_some(default.0 / 2))
+                    .unwrap();
+                m.seq_rm(2, 0).unwrap();
+                let t = Instant::now();
+                m.seq_restore(2, &want, N).unwrap();
+                t.elapsed().as_secs_f64() * 1e3
+            },
+            || m.borrow().seq_snapshot(2).unwrap(),
+        );
+    }
+}

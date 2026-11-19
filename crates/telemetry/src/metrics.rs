@@ -182,6 +182,7 @@ pub struct Metrics {
     prefix_save: Histogram<f64>,
     prefix_save_buffers: Counter<u64>,
     prefix_save_skipped: Counter<u64>,
+    prefix_placed_free: Counter<u64>,
     prefix_spares: Gauge<u64>,
     prefix_spare_bytes: Gauge<u64>,
     spec_acceptance: Histogram<f64>,
@@ -451,6 +452,13 @@ impl Metrics {
                 .with_unit("{save}")
                 .with_description(
                     "Saves skipped because a continuation reused its idle sequence in place and cut little of it (ADR 0074)",
+                )
+                .build(),
+            prefix_placed_free: meter
+                .u64_counter("tetraeder.kv.prefix.placed_free")
+                .with_unit("{request}")
+                .with_description(
+                    "Requests placed in a free slot with the common prefix copied from an idle sequence that would have been saved (ADR 0074)",
                 )
                 .build(),
             prefix_spares: meter
@@ -842,7 +850,7 @@ impl Metrics {
             .record(seconds, &[KeyValue::new(attr::STAGE, stage)]);
     }
 
-    /// A request that reused a cached prompt prefix; `source` is `live` (idle sequence), `seq` (copied from a busy one) or `ram`.
+    /// A request that reused a cached prompt prefix; `source` is `live` (idle sequence), `seq` (copied from a busy one), `copy` (copied from an idle one into a free slot) or `ram`.
     pub fn kv_prefix_hit(&self, source: &'static str) {
         self.prefix_hits
             .add(1, &[KeyValue::new(attr::SOURCE, source)]);
@@ -873,6 +881,12 @@ impl Metrics {
     pub fn kv_prefix_save_skipped(&self, reason: &'static str) {
         self.prefix_save_skipped
             .add(1, &[KeyValue::new("tetraeder.reason", reason)]);
+    }
+
+    /// One request placed in a free slot, its prefix copied from an idle sequence left resident
+    /// and unsaved.
+    pub fn kv_prefix_placed_free(&self) {
+        self.prefix_placed_free.add(1, &[]);
     }
 
     /// Saves since the last report that used a prepared spare and that allocated plainly.
