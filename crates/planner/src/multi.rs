@@ -715,6 +715,7 @@ fn part(dev: &str, bytes: f64, ops: f64, kv: f64, attn: f64, bpp: f64) -> Device
         attn_flops_per_ctx_token: attn,
         expert_bytes_per_token: 0.0,
         expert_params_per_token: 0.0,
+        expert_slot_bytes_per_token: 0.0,
     }
 }
 
@@ -723,6 +724,34 @@ fn with_experts(mut p: DevicePart, bytes: f64, params: f64) -> DevicePart {
     p.expert_bytes_per_token = bytes;
     p.expert_params_per_token = params;
     p
+}
+
+/// `p` with `bytes` of routed-slot activations per token (ADR 0080).
+fn with_slots(mut p: DevicePart, bytes: f64) -> DevicePart {
+    p.expert_slot_bytes_per_token = bytes;
+    p
+}
+
+/// Activation bytes of a routed slot per expert column (`n_ff_exp`): gate and up written (8),
+/// swiglu read and written (12), the down input read and quantized to Q8_1 (5.125).
+const SLOT_FF_BYTES: f64 = 25.125;
+/// Per slot and `n_embd` row: the down output written (4), weighted (8), the gate and up inputs
+/// written as Q8_1 (2 x 1.125; MMQ quantizes a broadcast input once per token and scatters it).
+const SLOT_EMBD_BYTES: f64 = 14.25;
+/// Per token and `n_embd` row: the gate and up inputs read once (2 x 4).
+const SLOT_TOKEN_BYTES: f64 = 8.0;
+/// Per added slot and `n_embd` row of the sum over slots: two reads and a write.
+const SLOT_SUM_BYTES: f64 = 12.0;
+
+/// Activation bytes per token of one MoE layer's `k` routed slots outside the matmuls
+/// (`qwen3moe::weighted_experts`, `sum_experts`) on a rank holding `ff_share` of each expert's
+/// columns (ADR 0080). Expert parallel computes every slot on every rank (ids elsewhere are -1,
+/// patch 0004), so it pays the full count, not its share of the routed rows.
+fn slot_bytes(layout: &ModelLayout, ff_share: f64) -> f64 {
+    let k = f64::from(layout.n_expert_used);
+    let (ff, embd) = (f64::from(layout.ff_exp_dim()), f64::from(layout.n_embd));
+    k * (SLOT_FF_BYTES * ff * ff_share + SLOT_EMBD_BYTES * embd)
+        + (SLOT_TOKEN_BYTES + SLOT_SUM_BYTES * (k - 1.0).max(0.0)) * embd
 }
 
 fn push_phase(v: &mut Vec<RankPhase>, p: RankPhase) {
@@ -810,6 +839,7 @@ pub fn features_multi(
             // A stage of one rank is one range per step: its layers summed, then (last stage)
             // the work on the output rows in the same range.
             let (mut w, mut ex, mut ops, mut kv, mut attn) = (0.0, 0.0, 0.0, 0.0, 0.0);
+            let mut slots = 0.0;
             let (mut out_w, mut out_ops) = (0.0, 0.0);
             for l in span.clone() {
                 let lb = &layout.layers[l as usize];
@@ -823,11 +853,14 @@ pub fn features_multi(
                     ops += OPS_ATTN + OPS_FFN;
                 }
                 ex += lb.expert_bytes as f64;
+                if lb.expert_bytes > 0 {
+                    slots += slot_bytes(layout, 1.0);
+                }
                 ops += if lb.expert_bytes > 0 { OPS_EXPERT } else { 0.0 };
                 kv += d.kv_layer;
                 attn += d.attn_layer;
             }
-            let layers = part(&devs[0], w, ops, kv, attn, d.bpp);
+            let layers = with_slots(part(&devs[0], w, ops, kv, attn, d.bpp), slots);
             // decode reads the chosen experts, a prefill every expert
             let pre = (ex > 0.0).then(|| vec![with_experts(layers.clone(), ex, d.r * ex / d.bpp)]);
             phases.push(RankPhase {
@@ -956,6 +989,7 @@ pub fn features_multi(
             t.attn_flops_per_ctx_token += k * p.attn_flops_per_ctx_token;
             t.expert_bytes_per_token += k * p.expert_bytes_per_token;
             t.expert_params_per_token += k * p.expert_params_per_token;
+            t.expert_slot_bytes_per_token += k * p.expert_slot_bytes_per_token;
         }
     }
     Ok(RunFeatures {
@@ -1029,11 +1063,8 @@ fn ffn_phase(
         let shares = width(layout.ff_exp_dim())?;
         let ranks = || devs.iter().zip(&shares);
         let exp = |x: &str, bytes: f64, s: f64| {
-            with_experts(
-                part(x, dense, ops, 0.0, 0.0, d.bpp),
-                bytes,
-                d.r * ex * s / d.bpp,
-            )
+            let p = with_slots(part(x, dense, ops, 0.0, 0.0, d.bpp), slot_bytes(layout, s));
+            with_experts(p, bytes, d.r * ex * s / d.bpp)
         };
         let decode = ranks().map(|(x, s)| exp(x, d.r * ex * s, *s)).collect();
         let prefill = ranks().map(|(x, s)| exp(x, ex * s, *s)).collect();
@@ -1059,10 +1090,12 @@ fn ffn_phase(
         .map_or(u_mass, |f| max_mass(&f, g));
     let eb = ex / e as f64;
     let k = f64::from(layout.n_expert_used);
+    // every slot on every rank, whichever rank holds its expert
+    let slots = slot_bytes(layout, 1.0);
     let decode: Vec<DevicePart> = devs
         .iter()
         .map(|x| {
-            let p = part(x, dense, ops, 0.0, 0.0, d.bpp);
+            let p = with_slots(part(x, dense, ops, 0.0, 0.0, d.bpp), slots);
             with_experts(p, dec_max * eb, dec_max * eb / d.bpp)
         })
         .collect();
@@ -1071,7 +1104,7 @@ fn ffn_phase(
     let prefill: Vec<DevicePart> = devs
         .iter()
         .map(|x| {
-            let p = part(x, dense, ops, 0.0, 0.0, d.bpp);
+            let p = with_slots(part(x, dense, ops, 0.0, 0.0, d.bpp), slots);
             with_experts(p, local, k * mass * eb / d.bpp)
         })
         .collect();

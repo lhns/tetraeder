@@ -50,6 +50,7 @@ fn part(dev: &str, bytes: f64) -> DevicePart {
         attn_flops_per_ctx_token: 0.0,
         expert_bytes_per_token: 0.0,
         expert_params_per_token: 0.0,
+        expert_slot_bytes_per_token: 0.0,
     }
 }
 
@@ -116,6 +117,7 @@ fn prefill_collective_bytes_scale_with_the_ubatch_and_c_range_follows_the_mode()
         allreduce_latency_share: 1.0,
         allreduce_latency_s: None,
         allreduce_step_s: None,
+        expert_slot_traffic: false,
     });
     let mut f = two_phase();
     let a = predict(&hw, &f, 1024, 8).unwrap();

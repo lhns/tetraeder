@@ -226,6 +226,7 @@ fn empty_part() -> DevicePart {
         attn_flops_per_ctx_token: 0.0,
         expert_bytes_per_token: 0.0,
         expert_params_per_token: 0.0,
+        expert_slot_bytes_per_token: 0.0,
     }
 }
 

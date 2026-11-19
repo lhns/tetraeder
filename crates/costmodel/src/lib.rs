@@ -27,7 +27,10 @@ pub mod sim;
 /// in-step latency `a + 2 (p - 1) b` (`b` only with two anchored group sizes) instead of a share
 /// of the probe's zero-byte time. Graphs fitted before (no `allreduce_latency_s`) predict as in
 /// version 2.
-pub const MODEL_VERSION: u32 = 3;
+/// 4 (ADR 0080): a fit with ranks prices the routed slots' activation bytes at the memory rate,
+/// every slot on every expert-parallel rank (`RangeCosts::expert_slot_traffic`). Graphs fitted
+/// before predict as in version 3.
+pub const MODEL_VERSION: u32 = 4;
 
 use tetraeder_profiler::Device;
 
