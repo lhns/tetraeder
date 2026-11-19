@@ -487,6 +487,31 @@ pub fn move_mid_decode(path: &Path, opts: &LoadOptions, tol: impl Into<Tol> + Co
     );
 }
 
+/// A run that slides down over itself (ADR 0067 history, 2026-11-19): sequence 0 sits behind a
+/// neighbour that leaves, and no gap holds its growth, so the layout moves it onto the rows
+/// below it in two chunks, the second writing rows the first read. The copies run on the
+/// device: the snapshot is byte-equal and the length unchanged. `opts.n_ctx` must be 768.
+pub fn slide_keeps_the_bytes(path: &Path, opts: &LoadOptions, what: &str) {
+    assert_eq!(opts.n_ctx, 768);
+    let mut m = load(path, opts, 2);
+    m.eval_seq(1, &prompt(5, 10));
+    m.eval_seq(0, &prompt(4, 300));
+    assert_eq!(
+        m.pool().row(0, 0),
+        Some(256),
+        "{what}: behind the neighbour"
+    );
+    let bytes = m.seq_snapshot(0).unwrap();
+    m.seq_rm(1, 0).unwrap();
+    m.seq_reserve(0, 600).unwrap();
+    assert_eq!(m.pool().row(0, 0), Some(0), "{what}: slid down");
+    assert_eq!(m.seq_len(0), 300);
+    assert!(
+        m.seq_snapshot(0).unwrap() == bytes,
+        "{what}: the slid rows hold other bytes"
+    );
+}
+
 trait EvalSeq {
     fn eval_seq(&mut self, seq: u32, tokens: &[i32]);
 }

@@ -95,6 +95,13 @@ fn gpu_seq_cp_snapshot_and_move() {
         part("move q8_0 kv", || {
             move_mid_decode(&path, &q, GPU_TOL, "gpu q8_0 kv")
         }),
+        part("slide", || {
+            let s = LoadOptions {
+                n_ctx: 768,
+                ..o.clone()
+            };
+            slide_keeps_the_bytes(&fixture(), &s, "gpu")
+        }),
     ]);
 }
 

@@ -246,6 +246,13 @@ fn cpu_chunked_move_mid_decode_with_8_threads() {
     move_mid_decode(&fixture(), &o, TOL_CPU, "8 threads");
 }
 
+/// hardware: cpu. A run slides down over itself when no gap holds its growth.
+#[test]
+fn cpu_chunked_slide_keeps_the_bytes() {
+    let (path, o) = resident();
+    slide_keeps_the_bytes(&path, &LoadOptions { n_ctx: 768, ..o }, "resident");
+}
+
 /// hardware: cpu. Pool limits: a full pool is an error that changes nothing, ids are checked.
 #[test]
 fn cpu_full_pool_and_bad_ids_change_nothing() {
