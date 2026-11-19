@@ -8,7 +8,7 @@ Measurements live in the session READMEs: the diagnosis and the before/after tab
 
 - Version 2 prices an all-reduce in a step at `t(n) - (1 - s) t(0)`: the probe curve minus a fitted share of its zero-byte time. `s` is fitted on the `tp-2` anchors and applied to every group.
 - On one host (s3 and s3b, host 20210) `s` moved from 0.445 to 0.259 while `s x t(0)` of the anchored pair stayed near 12 us: the anchors identify an in-step latency, and `s` only absorbs the noise of the probe's floor (`t(0)` of the anchored pair 27.9 against 43.4 us). Multiplied into the 4-rank floor, that noise moved the `ep-4` decode prediction by a third between the two sessions with the measured rate unchanged.
-- How that latency grows with the ranks is not identified by ADR 0068's anchors, which all-reduce over two ranks only. A ring's step count `2 (p - 1)` is an upper bound: it over-prices `tp-4` on the dense 32B (no routing term there) and can flip the D4 pick.
+- How that latency grows with the ranks is not identified by ADR 0068's anchors, which all-reduce over two ranks only. A ring's step count `2 (p - 1)` at the anchored per-step latency is an upper bound: it over-prices `tp-4` on the dense 32B, which has no routing term, beyond the 15% line.
 
 ## Decision
 

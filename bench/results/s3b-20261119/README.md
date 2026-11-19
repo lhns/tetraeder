@@ -55,3 +55,71 @@ Against s3 (before the fixes): layer-4 pp is now within 0.07 on both models (s3:
 ## Failures
 
 - None: no failed stage, no rc other than 0, no gate failure. D4 is null only for the clean-round count.
+
+## Cost model diagnosis (v3, ADR 0078)
+
+Offline, `scripts/costmodel_replica.py` (branch `track-costmodel-v3`). Version 2 on each session's `calib.json` reproduces its `predict-*.json` bit for bit (S2g, S3, S3b, pipelined prefill included; `tests/test_costmodel_replica.py`). Each "before" below is the replica's own version-2 refit, so before and after share the fit.
+
+**ep-4 decode (pred 200, meas 138.5; s3 152 against 143).**
+- Per token the model gave ep-4 3.31 ms compute plus 1.52 ms for 96 all-reduces (4 ranks); measured 7.22 ms.
+- The fitted share times the anchored pair's probe floor is the in-step latency the anchors see: 0.445 x 27.9 us = 12.4 us (s3), 0.259 x 43.4 us = 11.2 us (s3b). The share follows the floor's noise; applied to the 4-rank floor it gave 28 us (s3) and 13 us (s3b) per all-reduce, the whole move of the ep-4 decode prediction between the two sessions (same host 20210, measured 142.5 and 138.5).
+- Backed out of measured decode, a 4-rank all-reduce costs about 21 us in tp-4 (dense 32B, no routing) and about 36 us in ep-4. One rank-dependent latency cannot give both; the ep-4 remainder (about 1.4 ms per token) is ep-specific.
+- Version 3 fits the latency `a` directly: 10.9 us on s3b, 12.0 to 12.4 on s3 (from starts at 12 and 25 us), 12.0 to 12.5 on s2g. Without a second anchored group size the 4-rank all-reduce pays `a`, and the ep-4 decode miss becomes stable (+0.39, +0.49, cross-box +0.43). The ring step count `2 (p - 1)` as the other bound fits ep-4 decode (+0.04, -0.05) but over-prices tp-4 (-0.10 on s3b, -0.16 on s3 and cross-box), and tp-4 has no routing term: rejected.
+
+**ep prefill (ep-4 +0.35, ep-2 +0.11).**
+- With tp-2's all-reduces priced right on the same box (s2g: tp-2 within 0.03), ep-2 measured 263 ms of compute against 211 predicted, ep-4 249 against 114. The slowest rank's expert work that implies is about 0.67 of the layer's at ep-2 and 0.68 at ep-4, where uniform routing gives 0.50 and 0.25.
+- `tetraeder bench` feeds byte ids 0 to 255 (`crates/tetraeder/src/bench.rs`) in prefill and decode, so concentrated routing is expected; `tetraeder-plan predict` passes no routing frequencies (`features_multi(..., None)`), so expert parallel is priced at uniform routing.
+- Bounds in the replica: decode at `top_k` local experts and prefill mass 1 over-shoot (ep-4 pp -0.18 to -0.20, ep-2 -0.18). Inside them lies the measured rate; which value is a property of the judged token stream, to be recorded (ADR 0070's routing input), not fitted.
+- Not a host sync: at Q4_K and 512 rows `mul_mat_id` takes MMQ with the on-device ids helper (`ggml_cuda_mul_mat_id_needs_sync`), and CUDA graphs stay on.
+
+**tp2-pp2 prefill (+0.48 on 32B, +0.28 on 30B).**
+- It ran pipelined: one 2048-token step (`n_eval` 1), prefill ranges 4x the decode ranges.
+- Stage times are right: stage 0 is the tp-2 L/2 anchor on the same GPUs (32B residual +0.034). Per 512-token micro-batch, 32B: stage 0 99 ms compute plus 98 ms all-reduce, stage 1 97 plus 78; 30B: 33 plus 30 and 33 plus 25.
+- Measured against the stages run in turn: 32B 1454 against 1513 ms (s3: 1508 against 1524), about 11% of the GPipe credit; 30B 403 against 492 ms, about half. layer-4 overlaps as modeled (-0.03, -0.07).
+- Contention of the two groups' host-staged all-reduces is not it: the 4-rank probe is about 1.1x the 2-rank one, and by a rough count serialized all-reduces with overlapping compute would still give about 1000 to 1100 ms on 32B. ggml's NCCL all-reduce does not block the host (`ggml_backend_cuda_comm_allreduce_nccl`: group start, all-reduce, group end, BF16 casts on the stream). The mechanism is not found offline; the measurement that decides it is tp2-pp2 at `prefill_micro_batches` 1 against 4 on one box. No overlap factor is introduced (one constant cannot fit 11% and 50%, and it would be a fit to one candidate).
+
+**Before (v2 refit) and after (v3), err = pred / meas - 1, each session fit on its own anchors, plus s3 anchors judged on s3b; `x` beyond 0.15.**
+
+| fit -> eval | model | candidate | v2 pp / tg | v3 pp / tg |
+|---|---|---|---|---|
+| s2g | 30B | single | -0.096 / +0.020 | -0.096 / +0.018 |
+| s2g | 30B | layer-2 | +0.009 / -0.012 | +0.009 / -0.014 |
+| s2g | 30B | tp-2 | +0.033 / -0.025 | +0.033 / -0.023 |
+| s2g | 30B | ep-2 | +0.111 / +0.011 | +0.111 / +0.013 |
+| s2g | 32B | single | -0.018 / +0.007 | -0.018 / +0.006 |
+| s2g | 32B | layer-2 | +0.145 / -0.035 | +0.145 / -0.035 |
+| s2g | 32B | tp-2 | +0.039 / -0.002 | +0.039 / -0.001 |
+| s3 | 30B | single | -0.091 / +0.034 | -0.091 / +0.032 |
+| s3 | 30B | layer-4 | +0.269 x / +0.102 | +0.269 x / +0.099 |
+| s3 | 30B | ep-4 | +0.354 x / +0.066 | +0.377 x / +0.391 x |
+| s3 | 30B | tp2-pp2 | +0.329 x / +0.010 | +0.329 x / +0.014 |
+| s3 | 32B | single | -0.024 / +0.015 | -0.024 / +0.014 |
+| s3 | 32B | layer-4 | +0.350 x / +0.005 | +0.350 x / +0.005 |
+| s3 | 32B | tp-4 | +0.086 / -0.094 | +0.093 / +0.066 |
+| s3 | 32B | tp2-pp2 | +0.511 x / -0.012 | +0.511 x / -0.010 |
+| s3b | 30B | single | -0.117 / +0.031 | -0.117 / +0.027 |
+| s3b | 30B | layer-4 | -0.065 / +0.099 | -0.065 / +0.095 |
+| s3b | 30B | ep-4 | +0.350 x / +0.444 x | +0.353 x / +0.494 x |
+| s3b | 30B | tp2-pp2 | +0.280 x / +0.050 | +0.279 x / +0.018 |
+| s3b | 32B | single | -0.017 / +0.018 | -0.017 / +0.018 |
+| s3b | 32B | layer-4 | -0.027 / +0.008 | -0.027 / +0.008 |
+| s3b | 32B | tp-4 | +0.092 / +0.098 | +0.093 / +0.120 |
+| s3b | 32B | tp2-pp2 | +0.484 x / +0.003 | +0.483 x / -0.010 |
+| s3 -> s3b | 30B | single | -0.088 / +0.030 | -0.088 / +0.028 |
+| s3 -> s3b | 30B | layer-4 | -0.035 / +0.098 | -0.035 / +0.096 |
+| s3 -> s3b | 30B | ep-4 | +0.361 x / +0.096 | +0.383 x / +0.431 x |
+| s3 -> s3b | 30B | tp2-pp2 | +0.287 x / +0.001 | +0.287 x / +0.005 |
+| s3 -> s3b | 32B | single | -0.023 / +0.015 | -0.023 / +0.015 |
+| s3 -> s3b | 32B | layer-4 | -0.033 / +0.005 | -0.033 / +0.005 |
+| s3 -> s3b | 32B | tp-4 | +0.094 / -0.093 | +0.101 / +0.066 |
+| s3 -> s3b | 32B | tp2-pp2 | +0.485 x / -0.012 | +0.485 x / -0.011 |
+
+- s3's layer-4 rows are from before the issue-order fix (s3 README); they are not a cost model error.
+- Anchors' worst residual unchanged (0.103, 0.072, 0.097).
+- Picks (smallest predicted T) unchanged by v3 and equal to the measured fastest in every case: s2g layer-2 and tp-2, s3 and s3b layer-4 and tp-4, and s3 -> s3b layer-4 and tp-4.
+- Ring-step bound (`2 (p - 1)` steps at the anchored per-step latency): ep-4 tg +0.043 (s3b), -0.045 (s3), -0.018 (cross); tp-4 tg -0.104, -0.156, -0.156.
+
+**What closes the misses (owner, ADR 0068 reopen rule: unanchored shapes, missing physical terms).**
+- A truncated `tp-4` anchor on Qwen3-32B (L/4, L/2) fits the latency per ring step `b` (ADR 0078); without it 4-rank all-reduces pay the 2-rank latency.
+- Routing frequencies of the judged token stream (byte ids) for Qwen3-30B-A3B, recorded in the calibration stage and passed to `predict`, set expert parallel's slowest rank (ADR 0070's input, not wired on the box).
+- tp2-pp2: one paired run at `prefill_micro_batches` 1 and 4 on a 4-GPU box shows whether the tp stages pipeline at all.
