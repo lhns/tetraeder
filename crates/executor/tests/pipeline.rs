@@ -39,6 +39,16 @@ fn gpipe_sort_is_a_wavefront() {
                     if m > 0 {
                         assert!(at(s, m - 1, 1) < at(s, m, 0), "({s}, {m}) before {}", m - 1);
                     }
+                    // A copy enqueues its wait on the destination stream when issued, so the hop
+                    // into stage s for m (last op of (s - 1, m)) must come after stage s issued
+                    // m - 1, or (s, m - 1) waits for (s - 1, m) to finish.
+                    if s > 0 && m > 0 {
+                        assert!(
+                            at(s, m - 1, 1) < at(s - 1, m, 0),
+                            "hop into ({s}, {m}) before ({s}, {})",
+                            m - 1
+                        );
+                    }
                 }
             }
             if micro == 1 {
@@ -204,8 +214,8 @@ fn a_copy_ahead_of_its_micro_batch_is_reported() {
     let [data, g0, g1] = contexts(2);
     let p = micro(&data, &g0, &g1, 2, false);
     let mut o = ops(&p);
-    // GPipe order: C(0,0) Copy0 C(0,1) Copy1 C(1,0) C(1,1). Move Copy1 before C(0,1).
-    o.swap(2, 3);
+    // GPipe order: C(0,0) Copy0 C(1,0) C(0,1) Copy1 C(1,1). Move Copy1 before C(0,1).
+    o.swap(3, 4);
     let program = Program {
         ops: o,
         graphs: p.graphs,
