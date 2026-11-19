@@ -63,7 +63,7 @@ Every candidate has `rounds_clean` 1. All decode rates are within 0.15; the pref
 ## Throttle and co-tenant
 
 - 1 of 30 judged runs unclean by the throttle rule: `qwen3-30b-a3b-single-aa` (one window sample with 0x20 on GPU 0). Co-tenant: 0 of 30 runs flagged (`cotenant ok` on all; outside cores 0.14 to 0.19 on the 30B runs).
-- Capped-clock (0x4) share per configuration highest on 32B single GPU 0 (0.48; one GPU loaded alone), at most 0.17 elsewhere; board share 0 everywhere; no configuration spread above 0.15 needed a round dropped.
+- Capped-clock (0x4) share per configuration highest on 32B single GPU 0 (0.48; one GPU loaded alone), at most 0.17 elsewhere; board share 0 everywhere; each configuration has one run (A/A aside), so the share comparison did not apply.
 
 ## Findings for the planner (rehearsal, one round, so indicative)
 
