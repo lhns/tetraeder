@@ -341,6 +341,42 @@ struct Req {
     no_busy: bool,
     /// When the gateway handed it to the scheduler, for the admission log.
     queued: Instant,
+    /// Placement attempts that put it back in the queue, for the admission log.
+    placing: Placing,
+}
+
+/// What earlier placement attempts of a request cost before it went back to the queue (a
+/// failed copy, a sequence freed to grow, no rows yet). The admission log adds them to the
+/// attempt that places it, so a save is reported on the admission it was made for, not as
+/// queueing (ttft4-20261119).
+#[derive(Debug, Default, Clone)]
+struct Placing {
+    attempts: u32,
+    took: Duration,
+    save: Duration,
+    restore: Duration,
+    /// Sequences saved to RAM, as (sequence, positions).
+    saved: Vec<(usize, usize)>,
+}
+
+/// One admission, as logged (`tetraeder::step` at debug).
+#[derive(Debug, Clone)]
+struct AdmitRecord {
+    seq: usize,
+    /// From arrival to the last attempt, less the earlier attempts.
+    queued: Duration,
+    /// Every attempt.
+    place: Duration,
+    save: Duration,
+    restore: Duration,
+    attempts: u32,
+    /// Sequences saved to RAM while placing it, as (sequence, positions): the one it reuses
+    /// in place, or others evicted for its rows.
+    saved: Vec<(usize, usize)>,
+    prompt: usize,
+    common: usize,
+    source: &'static str,
+    skipped: Option<&'static str>,
 }
 
 impl Req {
@@ -372,6 +408,7 @@ impl Req {
             started: false,
             no_busy: false,
             queued: Instant::now(),
+            placing: Placing::default(),
         }
     }
 
@@ -502,6 +539,10 @@ struct Worker {
     restore_time: Duration,
     /// Snapshot pool counters (spare, fallback) already reported to the metrics.
     pool_seen: (u64, u64),
+    /// Sequences saved since the current placement attempt began, as (sequence, positions).
+    saved: Vec<(usize, usize)>,
+    /// The last admission, as logged.
+    last_admit: Option<AdmitRecord>,
 }
 
 /// Speculation in the loop: drafts for a lone greedy decoding sequence (ADR 0065).
@@ -576,6 +617,8 @@ impl Worker {
             save_time: Duration::ZERO,
             restore_time: Duration::ZERO,
             pool_seen,
+            saved: Vec::new(),
+            last_admit: None,
         }
     }
 
@@ -812,6 +855,7 @@ impl Worker {
         let snap = self.backend.seq_snapshot(id as SeqId);
         let took = t0.elapsed();
         self.save_time += took;
+        self.saved.push((id, toks.len()));
         match snap {
             Ok(bytes) => {
                 let evicted = self
@@ -858,12 +902,12 @@ impl Worker {
         }
     }
 
-    fn oldest_idle(&self, except: Option<usize>) -> Option<usize> {
+    fn oldest_idle(&self, except: &[usize]) -> Option<usize> {
         self.slots
             .iter()
             .enumerate()
             .filter_map(|(i, s)| match s {
-                Slot::Idle(x) if Some(i) != except => Some((x.order, i)),
+                Slot::Idle(x) if !except.contains(&i) => Some((x.order, i)),
                 _ => None,
             })
             .min()
@@ -950,6 +994,7 @@ impl Worker {
             return Admission::Wait;
         };
         let (t_place, save0, restore0) = (Instant::now(), self.save_time, self.restore_time);
+        self.saved.clear();
         let toks = req.toks.clone();
         let last = toks.len() - 1;
         // About what this sequence holds when it is saved later, so a spare is ready by then. Only
@@ -1038,7 +1083,7 @@ impl Worker {
             _ => match self.slots.iter().position(|s| matches!(s, Slot::Free)) {
                 Some(i) => i,
                 None => {
-                    let i = self.oldest_idle(None).expect("a free or idle id");
+                    let i = self.oldest_idle(&[]).expect("a free or idle id");
                     self.evict(i);
                     i
                 }
@@ -1047,32 +1092,57 @@ impl Worker {
         // Rows for the prompt and the first stretch of generation.
         let remaining = (req.params.max_tokens - req.stats.generated_tokens) as usize;
         let mut target = (toks.len() + remaining.min(GROW)).min(self.n_ctx_seq);
+        // Never evicted to make room here: the chosen id and the idle sequence a free-slot copy
+        // reads from.
+        let keep: Vec<usize> = std::iter::once(id)
+            .chain(copy_idle.map(|(i, _)| i))
+            .collect();
+        // The least admission takes: the prompt and its first token, and all of a RAM entry it
+        // restores (cut to the common prefix afterwards).
+        let least = (toks.len() + 1)
+            .max(picked.as_ref().map_or(0, |(t, _)| t.len()))
+            .min(self.n_ctx_seq);
         loop {
             match self.backend.seq_reserve(id as SeqId, target) {
                 Ok(()) => break,
                 Err(BackendError::KvFull { needed, free, .. }) => {
-                    if let Some(o) = self.oldest_idle(Some(id)) {
+                    let idle = self.oldest_idle(&keep);
+                    if target > least && (idle.is_some() || self.live_count() == 0) {
+                        // The least before an idle sequence is evicted: the steps grow the run as
+                        // it generates, evicting then if they must, and may never need the
+                        // stretch (ADR 0074, 2026-11-19). With only live ones left the request
+                        // waits for the stretch as before, so it is not admitted just to be
+                        // preempted at its next row.
+                        target = least;
+                    } else if let Some(o) = idle {
                         self.evict(o);
+                    } else if copy_idle.is_some() {
+                        // Only evicting the copy's own source would make room: reuse that sequence
+                        // in place instead, which saves it once and restores nothing
+                        // (ttft4-20261119 #42 and #102 saved it, failed the copy, restored it).
+                        let mut req = req;
+                        req.no_busy = true;
+                        self.requeue(req, t_place, save0, restore0);
+                        return Admission::Admitted;
                     } else if self.live_count() > 0 {
                         // Others will free rows; keep the order of arrival and the entry.
-                        self.waiting.push_front(req);
                         self.put_back(picked);
+                        self.requeue(req, t_place, save0, restore0);
                         return Admission::Wait;
                     } else if free >= needed && matches!(self.slots[id], Slot::Idle(_)) {
                         // Alone with the rows free: a layout of one run per sequence (ADR 0067)
                         // cannot grow this idle prefix's run where it lies. Free it (saved when
                         // worth it) and place the request again, from row 0 of an empty pool.
+                        // The chunked layout slides a lone run down instead (ADR 0074,
+                        // 2026-11-19), so this is left to layouts that cannot.
                         tracing::info!(
                             "sequence {id} cannot grow in place ({needed} rows needed, {free} \
                              free): placing its request again"
                         );
                         self.evict(id);
-                        self.waiting.push_front(req);
                         self.put_back(picked);
+                        self.requeue(req, t_place, save0, restore0);
                         return Admission::Admitted;
-                    } else if target > toks.len() + 1 {
-                        // Alone: what the pool still holds, the context ends the request.
-                        target = toks.len() + 1;
                     } else {
                         let n = toks.len();
                         let msg = format!(
@@ -1122,7 +1192,7 @@ impl Worker {
                     tracing::warn!("cannot copy a busy sequence: {e}");
                     let _ = self.backend.seq_rm(id as SeqId, 0);
                     req.no_busy = true;
-                    self.waiting.push_front(req);
+                    self.requeue(req, t_place, save0, restore0);
                     return Admission::Admitted;
                 }
             }
@@ -1210,21 +1280,57 @@ impl Worker {
         }
         req.no_busy = false;
         self.report_pool();
-        if tracing::enabled!(target: "tetraeder::step", tracing::Level::DEBUG) {
+        let earlier = std::mem::take(&mut req.placing);
+        let mut saved = earlier.saved;
+        saved.append(&mut self.saved);
+        let rec = AdmitRecord {
+            seq: id,
+            queued: t_place
+                .saturating_duration_since(req.queued)
+                .saturating_sub(earlier.took),
+            place: earlier.took + t_place.elapsed(),
+            save: earlier.save + (self.save_time - save0),
+            restore: earlier.restore + (self.restore_time - restore0),
+            attempts: earlier.attempts + 1,
+            saved,
+            prompt: toks.len(),
+            common,
+            source,
+            skipped,
+        };
+        self.last_admit = Some(rec);
+        if let Some(rec) = &self.last_admit
+            && tracing::enabled!(target: "tetraeder::step", tracing::Level::DEBUG)
+        {
             let ms = |d: Duration| d.as_secs_f64() * 1e3;
+            let saved = rec
+                .saved
+                .iter()
+                .map(|(s, n)| format!("{s}:{n}"))
+                .collect::<Vec<_>>()
+                .join(",");
             tracing::debug!(
                 target: "tetraeder::step",
-                "admit seq={id} queued_ms={:.2} place_ms={:.2} save_ms={:.2} restore_ms={:.2} prompt={} common={common} source={source} live={} pool_spare={} pool_fallback={} pool_ready={}{}",
-                ms(t_place.saturating_duration_since(req.queued)),
-                ms(t_place.elapsed()),
-                ms(self.save_time - save0),
-                ms(self.restore_time - restore0),
-                toks.len(),
+                "admit seq={} queued_ms={:.2} place_ms={:.2} save_ms={:.2} restore_ms={:.2} prompt={} common={} source={} live={} pool_spare={} pool_fallback={} pool_ready={} attempts={}{}{}",
+                rec.seq,
+                ms(rec.queued),
+                ms(rec.place),
+                ms(rec.save),
+                ms(rec.restore),
+                rec.prompt,
+                rec.common,
+                rec.source,
                 self.live_count(),
                 self.pool_seen.0,
                 self.pool_seen.1,
                 self.cache.pool().stats().ready,
-                skipped.map_or(String::new(), |r| format!(" skipped={r}")),
+                rec.attempts,
+                if saved.is_empty() {
+                    String::new()
+                } else {
+                    format!(" saved={saved}")
+                },
+                rec.skipped.map_or(String::new(), |r| format!(" skipped={r}")),
             );
         }
         self.next_admitted += 1;
@@ -1237,6 +1343,19 @@ impl Worker {
             drafts: None,
         }));
         Admission::Admitted
+    }
+
+    /// Puts a request back at the queue front after a placement attempt that began at `t0` with
+    /// the worker's save and restore totals at `save0` and `restore0`; the attempt's cost goes
+    /// to the request's admission log.
+    fn requeue(&mut self, mut req: Req, t0: Instant, save0: Duration, restore0: Duration) {
+        let p = &mut req.placing;
+        p.attempts += 1;
+        p.took += t0.elapsed();
+        p.save += self.save_time - save0;
+        p.restore += self.restore_time - restore0;
+        p.saved.append(&mut self.saved);
+        self.waiting.push_front(req);
     }
 
     /// Returns an entry taken for a restore that did not happen.
@@ -1658,7 +1777,7 @@ impl Worker {
     /// always progresses. With no other sequence the request ends with `Length`, unless the
     /// rows are free and only the layout is `fragmented`: then it is requeued itself.
     fn make_room(&mut self, needing: usize, fragmented: bool) {
-        if let Some(i) = self.oldest_idle(None) {
+        if let Some(i) = self.oldest_idle(&[]) {
             self.evict(i);
             return;
         }

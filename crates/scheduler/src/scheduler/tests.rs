@@ -422,7 +422,8 @@ fn a_prompt_that_fits_the_pool_is_served_when_its_own_run_cannot_grow() {
 }
 
 /// The same layout while generating: a lone sequence whose run cannot grow in place is moved
-/// (saved, freed and placed again) instead of ending early with `Length`.
+/// (slid down on the device, or saved, freed and placed again by a layout that cannot) instead
+/// of ending early with `Length`.
 #[test]
 fn a_lone_sequence_whose_run_cannot_grow_keeps_generating() {
     let kv = FakeKv::new(N_VOCAB, 4, 8192, 8192).with_chunked();
@@ -435,4 +436,161 @@ fn a_lone_sequence_whose_run_cannot_grow_keeps_generating() {
     let mut rx = submit(&mut w, &prompt(1, 5000), 3000);
     pump(&mut w);
     assert_eq!(finished(&events(&mut rx)), (FinishReason::Length, 3000));
+}
+
+/// The slot of `w` holding a live request, with its position count.
+fn live_slot(w: &Worker) -> Option<(usize, usize)> {
+    w.slots.iter().enumerate().find_map(|(i, s)| match s {
+        Slot::Live(s) => Some((i, s.fed)),
+        _ => None,
+    })
+}
+
+/// ttft4-20261119 #42 and #102: a new conversation sharing a short prefix with the idle one
+/// went to the free slot, whose rows only the idle sequence's eviction could give. Admission
+/// evicted that sequence (saving it), the copy from it failed, and the request restored it
+/// from RAM again. It now reuses the idle sequence in place: one save, no restore.
+#[test]
+fn a_free_slot_copy_never_evicts_its_own_source() {
+    let kv = FakeKv::new(N_VOCAB, 2, 8000, 1000);
+    let probe = kv.probe();
+    let mut w = worker_with(kv, 2048);
+    let first = prompt(1, 600);
+    let mut a = submit(&mut w, &first, 1);
+    pump(&mut w);
+    assert_eq!(tokens(&events(&mut a)), 1);
+    let mut other = first[..100].to_vec();
+    other.extend(prompt(9, 500));
+    let _b = submit(&mut w, &other, 1);
+    w.admit();
+    let rec = w.last_admit.clone().expect("admitted");
+    assert_eq!(
+        (rec.source, rec.common, rec.seq),
+        ("live", 100, 0),
+        "{rec:?}"
+    );
+    assert_eq!(live_slot(&w), Some((0, 100)));
+    assert!(probe.seq_cps.lock().unwrap().is_empty());
+    assert_eq!(probe.snapshots.load(Ordering::SeqCst), 1);
+    assert_eq!(w.cache.len(), 1, "the saved sequence stays in RAM");
+    assert_eq!(rec.saved, vec![(0, 600)]);
+    assert_eq!(rec.attempts, 2);
+}
+
+/// ttft4-20261119 #24 and #53: a continuation whose prompt fits where its idle sequence lies,
+/// but not with the stretch of generation admission reserves too, evicted (saved) the other
+/// conversation first. Admission now takes the prompt alone before evicting anything.
+#[test]
+fn admission_shrinks_its_reservation_before_evicting_an_idle_sequence() {
+    let kv = FakeKv::new(N_VOCAB, 2, 8000, 3000);
+    let probe = kv.probe();
+    let mut w = worker_with(kv, 2048);
+    for seed in [1, 2] {
+        let mut rx = submit(&mut w, &prompt(seed, 1000), 1);
+        pump(&mut w);
+        assert_eq!(tokens(&events(&mut rx)), 1);
+    }
+    // 1000 more rows than the idle sequence holds fit; 1000 + GROW do not.
+    let _c = submit(&mut w, &prompt(1, 1500), 2000);
+    w.admit();
+    assert_eq!(
+        probe.snapshots.load(Ordering::SeqCst),
+        0,
+        "a save at admission"
+    );
+    assert!(
+        matches!(w.slots[1], Slot::Idle(_)),
+        "the other conversation stays"
+    );
+    let rec = w.last_admit.clone().expect("admitted");
+    assert_eq!((rec.seq, rec.common, rec.source), (0, 1000, "live"));
+}
+
+/// ttft4-20261119 #39: the conversation's run sat after another one, its next prompt grew past
+/// the pool's end, and the other conversation was evicted. Alone, its run still could not grow
+/// in place, so admission saved it to RAM and restored it. The run now slides down on the
+/// device: only the eviction saves.
+#[test]
+fn a_run_that_cannot_grow_in_place_slides_instead_of_a_round_trip_through_ram() {
+    let kv = FakeKv::new(N_VOCAB, 2, 8192, 4096).with_chunked();
+    let probe = kv.probe();
+    let mut w = worker_with(kv, 2048);
+    // A at rows 0.., B after it; A's next prompt moves it behind B, to the pool's end.
+    for (seed, n) in [(1, 1000), (2, 1000), (1, 1800)] {
+        let mut rx = submit(&mut w, &prompt(seed, n), 1);
+        pump(&mut w);
+        assert_eq!(tokens(&events(&mut rx)), 1);
+    }
+    assert_eq!(probe.snapshots.load(Ordering::SeqCst), 0);
+    let mut rx = submit(&mut w, &prompt(1, 2600), 1);
+    w.admit();
+    let rec = w.last_admit.clone().expect("admitted");
+    assert_eq!(
+        (rec.seq, rec.source, rec.common),
+        (0, "live", 1800),
+        "{rec:?}"
+    );
+    assert_eq!(
+        rec.saved,
+        vec![(1, 1000)],
+        "only the other conversation is saved"
+    );
+    assert_eq!(probe.snapshots.load(Ordering::SeqCst), 1);
+    pump(&mut w);
+    assert_eq!(tokens(&events(&mut rx)), 1);
+}
+
+/// A request that goes back to the queue between placement attempts reports, on its admission,
+/// the saves every attempt made for it, not only the last one's (ttft4-20261119 logged them as
+/// queueing).
+#[test]
+fn the_admission_record_counts_every_attempt() {
+    let kv = FakeKv::new(N_VOCAB, 3, 8000, 1200);
+    let mut w = worker_with(kv, 2048);
+    let mut a = submit(&mut w, &prompt(1, 400), 1);
+    pump(&mut w);
+    assert_eq!(tokens(&events(&mut a)), 1);
+    // A long generation holds 700 rows; the idle sequence 401.
+    let _l = submit(&mut w, &prompt(2, 400), 300);
+    for _ in 0..3 {
+        w.admit();
+        w.step();
+    }
+    // 601 rows: evicting the idle sequence is not enough, so the request waits for the live one.
+    let _c = submit(&mut w, &prompt(3, 600), 1);
+    w.admit();
+    assert_eq!(w.waiting.len(), 1, "it waits");
+    pump(&mut w);
+    let rec = w.last_admit.clone().expect("admitted");
+    assert_eq!(rec.prompt, 600);
+    assert!(rec.attempts > 1, "{rec:?}");
+    assert_eq!(rec.saved.first(), Some(&(0, 400)), "{rec:?}");
+    assert_eq!(rec.saved.len(), 2, "{rec:?}");
+}
+
+/// The smaller reservation still holds the RAM entry a request restores: an entry longer than
+/// the prompt plus one would not fit it, and the restore would fall back to a cold prefill.
+#[test]
+fn a_shrunk_reservation_still_holds_the_restored_entry() {
+    let kv = FakeKv::new(N_VOCAB, 2, 8000, 2151);
+    let mut w = worker_with(kv, 2048);
+    let mut b = submit(&mut w, &prompt(2, 1000), 1);
+    pump(&mut w);
+    assert_eq!(tokens(&events(&mut b)), 1);
+    // A saved conversation of 1200 positions; the request shares 1000 of them.
+    let saved = prompt(1, 1200);
+    w.cache.insert(
+        &w.backend.kv_format(),
+        saved.iter().map(|&t| t as i32).collect(),
+        saved
+            .iter()
+            .flat_map(|&t| (t as i32).to_le_bytes())
+            .collect(),
+    );
+    let mut p = saved[..1000].to_vec();
+    p.extend(prompt(7, 100));
+    let _c = submit(&mut w, &p, 2000);
+    w.admit();
+    let rec = w.last_admit.clone().expect("admitted");
+    assert_eq!((rec.source, rec.common), ("ram", 1000), "{rec:?}");
 }

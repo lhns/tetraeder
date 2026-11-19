@@ -1238,10 +1238,9 @@ impl Qwen3Moe {
             Some(sh) => sh.copy_rows(&list)?,
             None => copy_rows(&self.kv, &mut self.sched, &list)?,
         }
-        if let Some(t) = &self.telemetry {
-            for _ in copies {
-                t.metrics().kv_relocation();
-            }
+        // One relocation per move or copy, however many chunks it copies in.
+        if let Some(t) = self.telemetry.as_ref().filter(|_| !copies.is_empty()) {
+            t.metrics().kv_relocation();
         }
         Ok(())
     }

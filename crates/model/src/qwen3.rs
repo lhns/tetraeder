@@ -631,10 +631,13 @@ impl Qwen3 {
             Engine::Sched(e) => copy_rows(&e.kv, &mut e.sched, &copies)?,
             Engine::Ranked(r) => r.copy_rows(&copies)?,
         }
-        if let Some(t) = self.telemetry.as_ref().filter(|_| moves) {
-            for _ in &copies {
-                t.metrics().kv_relocation();
-            }
+        // One relocation per move, however many chunks it copies in.
+        if let Some(t) = self
+            .telemetry
+            .as_ref()
+            .filter(|_| moves && !copies.is_empty())
+        {
+            t.metrics().kv_relocation();
         }
         Ok(())
     }

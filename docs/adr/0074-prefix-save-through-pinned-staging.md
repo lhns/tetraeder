@@ -42,7 +42,19 @@ Measurements live in the session READMEs (`bench/results/<session>/README.md`), 
 - Implementation: the admission log says `source=copy` for such a placement and the counter `tetraeder.kv.prefix.placed_free` counts it (panel 87). A failed copy falls back to the in-place path with its save. `seq_restore` of the scheduler-path dense and unsharded MoE builders writes through the same 2x8 MiB pair (`Readback::write`: host copy into one half while the async host-to-device copies of the other run); without a GPU it writes directly.
 - Restores from RAM use the pinned staging pair as saves do (the other open lever); judged by the same bar as before, on the same replay.
 
+## Decision: no avoidable save or restore on the admission path (2026-11-19, after ttft4)
+
+- Why: the p90 misses of `ttft4-20261119` are admissions that saved or restored a whole conversation when the pool had room for the prompt, and a log that reported those saves as queueing or under another request's skip reason (diagnosis in that README).
+- Admission reserves the prompt plus a stretch of generation (ADR 0067). When that does not fit and an idle sequence would be evicted for it, or nothing is live, it reserves only the prompt plus one (and all of a RAM entry it restores); the steps grow the run as it generates and evict then if they must. With only live sequences in the way the request waits for the stretch as before, so it is not admitted just to be preempted.
+- A free-slot copy never evicts its own source. When only that eviction would make room, the request reuses the source in place, saved by the rules above, and nothing is restored.
+- A chunked run that can neither grow in place nor move to a free gap slides down over itself into the free rows right below it, on the device, in copies no longer than the slide and applied in order. A lone sequence no longer goes through RAM to grow (ADR 0067 history, 2026-11-18). Moving other sequences' runs to make room stays open.
+- The admission log reports every placement attempt of a request: `queued_ms` excludes earlier attempts, `place_ms`, `save_ms` and `restore_ms` sum them, `attempts=` counts them, and `saved=seq:positions,...` names each sequence saved for it.
+- Consequence: an eviction that generation really needs now stalls a decode step instead of delaying the first token.
+- Judged by the bar of the 2026-11-18 section, on the same replay.
+
 ## Open
 
 - Request #53 of the replay (a miss) prefills about 3x slower than llama-server (`ttft-20261118`); not yet explained.
 - Long sequences evicted for another conversation still pay a multi-GB save; save at idle (off the admission path), pinned restores or chunk-shared cache entries remain the levers if the replay shows they matter.
+- Saves ran much slower in the second round of `ttft4-20261119` than in the first, on the same box and code; not yet explained (host memory state, the spare preparer running beside a save, or a spare too small for the snapshot are candidates).
+- Prefill of 1k to 2.5k new tokens at 13k to 33k positions is slower than llama-server's (`ttft4-20261119`); with the admission saves gone it is expected to hold p90 over the bar.

@@ -89,9 +89,11 @@ impl KvPool {
     /// Rows for positions 0..n of `seq`. The copies move the positions in use.
     pub fn reserve(&mut self, seq: SeqId, n: usize) -> Result<Vec<RowCopy>, KvError> {
         let mut copies = self.layout.reserve(seq, n)?;
-        let len = *self.lens.entry(seq).or_insert(0);
+        // The copies cover the old rows in position order: keep the positions in use.
+        let mut left = *self.lens.entry(seq).or_insert(0);
         for c in &mut copies {
-            c.n = c.n.min(len);
+            c.n = c.n.min(left);
+            left -= c.n;
         }
         copies.retain(|c| c.n > 0);
         Ok(copies)

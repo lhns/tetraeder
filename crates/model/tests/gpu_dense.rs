@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Batch, Context, ContextParams, FlashAttn, Model, ModelParams};
-use tetraeder_model::{BackendChoice, DenseOptions, Qwen3};
+use tetraeder_model::{BackendChoice, DenseOptions, Qwen3, SeqEval};
 use tetraeder_plan::KvFormat;
 
 const GPU: BackendChoice = BackendChoice::Gpu { index: 0 };
@@ -232,4 +232,60 @@ fn gpu_qwen3_8b_matches_libllama() {
         diverged.is_none(),
         "greedy diverges at {diverged:?}: {ours:?} vs {reference:?}"
     );
+}
+
+/// A run that slides down over itself on the dense builder (ADR 0067 history, 2026-11-19), the
+/// path the 8B serves on: sequence 0 sits behind a neighbour that leaves and grows past the
+/// pool's end, so it moves onto the rows below it in two chunks, the second writing rows the
+/// first read. The copies run on the builder's device: the snapshot is byte-equal.
+fn dense_slide_keeps_the_bytes(backend: BackendChoice, what: &str) {
+    let o = DenseOptions {
+        n_seq_max: 2,
+        n_ctx_pool: 768,
+        extra_bufts: false,
+        ..DenseOptions::new(backend)
+    };
+    let mut m = Qwen3::load(dense_fixture(), &o).unwrap();
+    let mut out = Vec::new();
+    for (seq, toks) in [(1, stream(3, 10)), (0, stream(4, 300))] {
+        m.decode(
+            &[SeqEval {
+                seq,
+                tokens: &toks,
+                all_logits: false,
+            }],
+            &mut out,
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        m.pool().row(0, 0),
+        Some(256),
+        "{what}: behind the neighbour"
+    );
+    let bytes = m.seq_snapshot(0).unwrap();
+    m.seq_rm(1, 0).unwrap();
+    m.seq_reserve(0, 600).unwrap();
+    assert_eq!(m.pool().row(0, 0), Some(0), "{what}: slid down");
+    assert_eq!(m.pool().seq_len(0), 300);
+    assert!(
+        m.seq_snapshot(0).unwrap() == bytes,
+        "{what}: the slid rows hold other bytes"
+    );
+}
+
+/// hardware: cpu.
+#[test]
+fn cpu_dense_slide_keeps_the_bytes() {
+    dense_slide_keeps_the_bytes(CPU, "cpu");
+}
+
+/// hardware: gpu.
+#[test]
+fn gpu_dense_slide_keeps_the_bytes() {
+    if !Backend::gpu_available() {
+        eprintln!("skip: no GPU");
+        return;
+    }
+    dense_slide_keeps_the_bytes(GPU, "gpu");
 }
