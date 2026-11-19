@@ -220,19 +220,6 @@ pub(crate) fn scatter_rows(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn row_part_deals_whole_rows() {
-        let cuts: Vec<_> = (0..3).map(|i| row_part(10, 3, i)).collect();
-        assert_eq!(cuts, [0..4, 4..7, 7..10]);
-        assert_eq!(row_part(8, 1, 0), 0..8);
-        assert_eq!(part(64, 4, 1), 16..32);
-    }
-}
-
 /// Writes a step input of a rank: on its stream when `on_stream`
 /// (`Executor::async_inputs`, ADR 0069 History 2026-11-19), else with one blocking copy.
 pub(crate) fn put_i32(
@@ -262,4 +249,17 @@ pub(crate) fn put_f16(
         t.set_f16_bits(data)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn row_part_deals_whole_rows() {
+        let cuts: Vec<_> = (0..3).map(|i| row_part(10, 3, i)).collect();
+        assert_eq!(cuts, [0..4, 4..7, 7..10]);
+        assert_eq!(row_part(8, 1, 0), 0..8);
+        assert_eq!(part(64, 4, 1), 16..32);
+    }
 }
