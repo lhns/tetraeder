@@ -375,6 +375,54 @@ fn the_allreduce_pays_its_in_step_latency_and_keeps_its_bytes() {
     close(t(&hw, 2, 512.0), bytes(4e-5, 2e-4) - 4e-5 + 1.4e-5);
 }
 
+/// ADR 0080 History: on graphs of cost model 4 a curve whose head point is not below its
+/// successor (the probe's floor) reads the head as the next segment extended back; a rising
+/// head and graphs before cost model 4 read the curve as measured.
+#[test]
+fn a_floor_head_takes_the_next_segment_in_cost_model_4() {
+    let ids: Vec<String> = (0..4).map(|i| format!("gpu{i}")).collect();
+    let floor = vec![(4096.0, 7.8e-5), (16384.0, 7.7e-5), (65536.0, 1.03e-4)];
+    let rising = vec![(4096.0, 6.4e-5), (16384.0, 7.6e-5), (65536.0, 1.03e-4)];
+    let t = |points: &[(f64, f64)], slots: bool, bytes: f64| {
+        let mut hw = graph();
+        hw.collectives = vec![CollectiveCurve {
+            op: CollectiveOp::AllReduce,
+            ranks: ids.clone(),
+            comm: "nccl".into(),
+            points: points.to_vec(),
+        }];
+        hw.range_costs = Some(RangeCosts {
+            allreduce_latency_s: Some(3e-6),
+            allreduce_step_s: Some(4e-6),
+            expert_slot_traffic: slots,
+            ..RangeCosts::PRIOR
+        });
+        let c = Coll::AllReduce {
+            group: ids.clone(),
+            bytes_per_token: bytes,
+        };
+        crate::predict::coll_time(&hw, &c, 1.0).unwrap().1
+    };
+    let lat = 3e-6 + 6.0 * 4e-6;
+    let slope = (1.03e-4 - 7.7e-5) / (65536.0 - 16384.0);
+    let head = 7.7e-5 - slope * (16384.0 - 4096.0);
+    // 8 KiB and 20 KiB, the decode all-reduces of n_embd 2048 and 5120
+    for bytes in [8192.0, 20480.0] {
+        let on_line = 7.7e-5 - slope * (16384.0 - bytes);
+        close(t(&floor, true, bytes), on_line - head + lat);
+        let flat = if bytes < 16384.0 {
+            0.0
+        } else {
+            7.7e-5 + slope * (bytes - 16384.0) - 7.8e-5
+        };
+        close(t(&floor, false, bytes), flat.max(0.0) + lat);
+        assert_eq!(
+            t(&rising, true, bytes).to_bits(),
+            t(&rising, false, bytes).to_bits()
+        );
+    }
+}
+
 /// A `layer-2` plan: two equal one-rank stages and a hop of `n_embd x 4` bytes per token.
 fn layer2(micro: u32) -> RunFeatures {
     let stage = |dev: &str, after: Option<Coll>| {

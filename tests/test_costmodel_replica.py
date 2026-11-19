@@ -136,6 +136,26 @@ def test_anchor_plans_fall_back_to_the_session_plans(tmp_path):
     assert {k: v["tag"] for k, v in pl.items()} == {"single": "anchor", "tp-4": "main", "tp-2": "anchor"}
 
 
+def test_a_floor_head_takes_the_next_segment_in_version_4():
+    """ADR 0080 History: a head point not below its successor reads as the next segment extended back, from version 4
+    on; a rising head is unchanged; the same numbers as `ranks.rs`."""
+    ids = [f"gpu{i}" for i in range(4)]
+    floor = [[4096.0, 7.8e-5], [16384.0, 7.7e-5], [65536.0, 1.03e-4]]
+    rising = [[4096.0, 6.4e-5], [16384.0, 7.6e-5], [65536.0, 1.03e-4]]
+    rc = {"allreduce_latency_share": 1.0, "allreduce_latency_s": 3e-6, "allreduce_step_s": 4e-6}
+    hw = lambda pts: {"devices": [], "links": [], "range_costs": rc,
+                      "collectives": [{"op": "all_reduce", "ranks": ids, "points": pts}]}
+    lat = 3e-6 + 6 * 4e-6
+    slope = (1.03e-4 - 7.7e-5) / (65536.0 - 16384.0)
+    head = 7.7e-5 - slope * (16384.0 - 4096.0)
+    for n in (8192.0, 20480.0):
+        c = {"ar": ids, "bpt": n}
+        assert cr.coll_time(hw(floor), c, 1.0, 4)[1] == pytest.approx(7.7e-5 - slope * (16384.0 - n) - head + lat)
+        flat = 0.0 if n < 16384.0 else 7.7e-5 + slope * (n - 16384.0) - 7.8e-5
+        assert cr.coll_time(hw(floor), c, 1.0, 3)[1] == pytest.approx(max(flat, 0.0) + lat)
+        assert cr.coll_time(hw(rising), c, 1.0, 4)[1] == cr.coll_time(hw(rising), c, 1.0, 3)[1]
+
+
 def test_routed_slot_bytes_of_the_30b():
     """ADR 0080: k = 8, n_ff_exp 768, n_embd 2048 give 576256 bytes per token and MoE layer on a whole-expert rank;
     a tp-2 rank halves only the n_ff_exp part; versions before 4 price none."""
