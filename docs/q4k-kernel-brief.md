@@ -5,6 +5,8 @@ For one implementation worker. Read AGENTS.md (Rules 2, 6 to 11), `patches/READM
 below is decided; local choices are yours, list them in the report. Phase: Phase 2 exit follow-up (ADR 0045
 hypothesis 3). Exit test moved: "decode expert matmul on an AVX-512 VNNI host runs iqk kernels, at parity".
 
+Status (2026-11-19): built and on main (patch 0002 in `patches/series`, CI job `avx512-sde`); ADR 0053 is still Proposed.
+
 **Prerequisite:** the ADR 0052 implementation (track-o: DL build with CPU variants, `TETRAEDER_GGML_CPU_VARIANT`,
 `cpu::backend_info()`, `patches/0001`, patch-apply in CI, box scripts and `build.rs`) is merged to main. Branch from
 main after that merge. If it is not merged when you start, stop and report.

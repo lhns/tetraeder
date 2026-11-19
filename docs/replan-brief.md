@@ -2,6 +2,8 @@
 
 Two parts. Every design decision is in ADR 0055; read it first, then AGENTS.md, ADR 0042 and ADR 0040. Do not revisit the decisions; if one turns out wrong, stop and report the evidence. No box runs.
 
+Status (2026-11-19): part A is built and on main; part B is open (ADR 0055, `docs/m2-plan.md` B4).
+
 All parts: failing tests first, then code. Every local cargo command goes through the shared lock with one job: `L=/c/Users/pierr/AppData/Local/Temp/claude/cargo-host.lock; until mkdir "$L" 2>/dev/null; do sleep 20; done; CARGO_BUILD_JOBS=1 cargo <args>; rmdir "$L"`. Prefer `cargo test -p <crate>` while iterating; CI on the pushed `track-*` branch is the compile loop when the lock starves. At most one `gh` call per 15 minutes. Done means `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check` pass on Windows and Linux (Rule 11), `python -m pytest tests/test_alert_rules.py` passes, and ADR 0055 gets an "Implementation notes" section. Commit only if your brief says so.
 
 ## Order

@@ -5,6 +5,8 @@ ADR has the evidence and the decisions. Everything below is decided; local choic
 Phase: Phase 2 exit follow-up (ADR 0045 hypothesis 3). Exit test moved: "same binary, best CPU variant loaded on every
 CI runner and on the box".
 
+Status (2026-11-19): built and on main (the DL build is CI's default; patch 0001); ADR 0052 is still Proposed.
+
 ## Decisions (do not reopen)
 
 - Default build: `BUILD_SHARED_LIBS=ON`, `GGML_BACKEND_DL=ON`, `GGML_CPU_ALL_VARIANTS=ON`, `GGML_NATIVE=OFF`, on Linux and
