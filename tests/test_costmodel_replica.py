@@ -137,11 +137,11 @@ def test_anchor_plans_fall_back_to_the_session_plans(tmp_path):
 
 
 def test_routed_slot_bytes_of_the_30b():
-    """ADR 0080: k = 8, n_ff_exp 768, n_embd 2048 give 690944 bytes per token and MoE layer on a whole-expert rank;
+    """ADR 0080: k = 8, n_ff_exp 768, n_embd 2048 give 576256 bytes per token and MoE layer on a whole-expert rank;
     a tp-2 rank halves only the n_ff_exp part; versions before 4 price none."""
     layout = {"n_expert_used": 8, "n_ff_exp": 768, "n_embd": 2048}
-    assert cr.slot_bytes(layout, 1.0, 4) == 690944.0
-    assert cr.slot_bytes(layout, 0.5, 4) == 690944.0 - 8 * 25.125 * 384
+    assert cr.slot_bytes(layout, 1.0, 4) == 576256.0
+    assert cr.slot_bytes(layout, 0.5, 4) == 576256.0 - 8 * 25.125 * 384
     assert cr.slot_bytes(layout, 1.0, 3) == 0.0
 
 

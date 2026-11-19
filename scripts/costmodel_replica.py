@@ -63,8 +63,9 @@ ROUTING: dict = {}
 # Monte Carlo results by (frequencies, top_k, ranks): a synthetic table repeats one row per layer
 _MC: dict = {}
 OPS = {"all_reduce": "AllReduce", "copy": "Copy"}
-# multi.rs: activation bytes of a routed slot per n_ff_exp column and per n_embd row, the sum per added slot
-SLOT_FF_BYTES, SLOT_EMBD_BYTES, SLOT_SUM_BYTES = 25.125, 22.25, 12.0
+# multi.rs: activation bytes of a routed slot per n_ff_exp column and per n_embd row, of a token per n_embd row, and
+# of the sum per added slot
+SLOT_FF_BYTES, SLOT_EMBD_BYTES, SLOT_TOKEN_BYTES, SLOT_SUM_BYTES = 25.125, 14.25, 8.0, 12.0
 
 
 # ---- hardware graph ---------------------------------------------------------------------------------------------
@@ -246,13 +247,14 @@ def slot_bytes(layout: dict, ff_share: float, version: int) -> float:
     """`multi::slot_bytes` (version 4, ADR 0080): activation bytes per token of one MoE layer's k routed slots on a
     rank whose experts have `ff_share` of the n_ff_exp columns. Per slot and n_ff_exp column: gate and up written (8),
     swiglu read and written (12), the down input read and quantized to Q8_1 (5.125); per slot and n_embd row: the
-    down output written (4), weighted (8), the gate and up inputs quantized (10.25); the sum over k slots 12 (k - 1)
-    per n_embd row. Expert parallel pays every slot, local or not; 0 before version 4."""
+    down output written (4), weighted (8), the gate and up inputs written as Q8_1 (2.25, MMQ quantizes a broadcast
+    input once per token); per token and n_embd row the gate and up inputs read (8) and the sum over k slots 12 (k - 1).
+    Expert parallel pays every slot, local or not; 0 before version 4."""
     if version < 4:
         return 0.0
     k = layout["n_expert_used"]
     return (k * (SLOT_FF_BYTES * layout["n_ff_exp"] * ff_share + SLOT_EMBD_BYTES * layout["n_embd"])
-            + SLOT_SUM_BYTES * (k - 1) * layout["n_embd"])
+            + (SLOT_TOKEN_BYTES + SLOT_SUM_BYTES * (k - 1)) * layout["n_embd"])
 
 
 def push_phase(v: list, p: dict) -> None:

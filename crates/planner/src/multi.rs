@@ -736,8 +736,10 @@ fn with_slots(mut p: DevicePart, bytes: f64) -> DevicePart {
 /// swiglu read and written (12), the down input read and quantized to Q8_1 (5.125).
 const SLOT_FF_BYTES: f64 = 25.125;
 /// Per slot and `n_embd` row: the down output written (4), weighted (8), the gate and up inputs
-/// quantized (2 x 5.125).
-const SLOT_EMBD_BYTES: f64 = 22.25;
+/// written as Q8_1 (2 x 1.125; MMQ quantizes a broadcast input once per token and scatters it).
+const SLOT_EMBD_BYTES: f64 = 14.25;
+/// Per token and `n_embd` row: the gate and up inputs read once (2 x 4).
+const SLOT_TOKEN_BYTES: f64 = 8.0;
 /// Per added slot and `n_embd` row of the sum over slots: two reads and a write.
 const SLOT_SUM_BYTES: f64 = 12.0;
 
@@ -749,7 +751,7 @@ fn slot_bytes(layout: &ModelLayout, ff_share: f64) -> f64 {
     let k = f64::from(layout.n_expert_used);
     let (ff, embd) = (f64::from(layout.ff_exp_dim()), f64::from(layout.n_embd));
     k * (SLOT_FF_BYTES * ff * ff_share + SLOT_EMBD_BYTES * embd)
-        + SLOT_SUM_BYTES * (k - 1.0).max(0.0) * embd
+        + (SLOT_TOKEN_BYTES + SLOT_SUM_BYTES * (k - 1.0).max(0.0)) * embd
 }
 
 fn push_phase(v: &mut Vec<RankPhase>, p: RankPhase) {

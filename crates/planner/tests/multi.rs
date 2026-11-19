@@ -348,8 +348,9 @@ fn routed_slot_bytes_are_not_split_by_expert_parallel() {
         f64::from(l.ff_exp_dim()),
         f64::from(l.n_embd),
     );
-    let full = k * (25.125 * ff + 22.25 * embd) + 12.0 * (k - 1.0) * embd;
-    let half = full - k * 25.125 * ff / 2.0;
+    let full = k * (25.125 * ff + 14.25 * embd) + (8.0 + 12.0 * (k - 1.0)) * embd;
+    // the two tp-2 ranks together: the n_ff_exp part once, the rest on both
+    let pair = 2.0 * full - k * 25.125 * ff;
     let moe_layers = l.layers.iter().filter(|b| b.expert_bytes > 0).count() as f64;
     // per rank, summed over the phases, prefill parts
     let per_rank = |id: &str| {
@@ -368,9 +369,10 @@ fn routed_slot_bytes_are_not_split_by_expert_parallel() {
     for r in per_rank("ep-2") {
         assert!(close(r, moe_layers * full), "{r}");
     }
-    for r in per_rank("tp-2") {
-        assert!(close(r, moe_layers * half), "{r}");
-    }
+    let tp = per_rank("tp-2");
+    assert_eq!(tp.len(), 2);
+    assert!(close(tp.iter().sum(), moe_layers * pair), "{tp:?}");
+    assert!(tp.iter().all(|&r| r < moe_layers * full), "{tp:?}");
     let f = features_of(&dense(), "tp-2", None);
     assert!(f.ranks.unwrap().phases.iter().all(|ph| {
         ph.parts
