@@ -534,7 +534,7 @@ fn save_counts(
     mp.force_flush().unwrap();
     let (mut saves, mut skipped) = (0, 0);
     // Exports are cumulative: only the last one counts.
-    for rm in exp.get_finished_metrics().unwrap().iter().next_back() {
+    for rm in exp.get_finished_metrics().unwrap().iter().rev().take(1) {
         for sm in rm.scope_metrics() {
             for m in sm.metrics() {
                 match (m.name(), m.data()) {
@@ -563,7 +563,7 @@ fn placed_free_count(
     mp.force_flush().unwrap();
     let mut n = 0;
     // Exports are cumulative: only the last one counts.
-    for rm in exp.get_finished_metrics().unwrap().iter().next_back() {
+    for rm in exp.get_finished_metrics().unwrap().iter().rev().take(1) {
         for sm in rm.scope_metrics() {
             for m in sm.metrics() {
                 if let (
