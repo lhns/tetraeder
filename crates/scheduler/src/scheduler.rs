@@ -1128,6 +1128,8 @@ impl Worker {
                         // Alone with the rows free: a layout of one run per sequence (ADR 0067)
                         // cannot grow this idle prefix's run where it lies. Free it (saved when
                         // worth it) and place the request again, from row 0 of an empty pool.
+                        // The chunked layout slides a lone run down instead (ADR 0074,
+                        // 2026-11-19), so this is left to layouts that cannot.
                         tracing::info!(
                             "sequence {id} cannot grow in place ({needed} rows needed, {free} \
                              free): placing its request again"

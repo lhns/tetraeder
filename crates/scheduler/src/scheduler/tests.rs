@@ -422,7 +422,8 @@ fn a_prompt_that_fits_the_pool_is_served_when_its_own_run_cannot_grow() {
 }
 
 /// The same layout while generating: a lone sequence whose run cannot grow in place is moved
-/// (saved, freed and placed again) instead of ending early with `Length`.
+/// (slid down on the device, or saved, freed and placed again by a layout that cannot) instead
+/// of ending early with `Length`.
 #[test]
 fn a_lone_sequence_whose_run_cannot_grow_keeps_generating() {
     let kv = FakeKv::new(N_VOCAB, 4, 8192, 8192).with_chunked();
