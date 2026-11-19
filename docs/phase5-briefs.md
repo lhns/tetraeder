@@ -13,6 +13,8 @@ Briefs for ADR 0068 (verdict), ADR 0069 (own executor) and ADR 0070 (parallel sh
 | 3 | E6, E7, E8 in parallel (need E2, E3, E5; E7's CUDA expert parallel also needs E4) | CI, then S2 and S3 | E6 and E7 both add `--plan` handling to `tetraeder/src/bench.rs` and backends in `scheduler/src/{dense_backend.rs,backend.rs}` (separate files); append only. Both read, never change, `executor` |
 | 4 | Verdict sessions V2, V4 (ADR 0068), run by the coordinator | boxes | |
 
+Status (2026-11-19): waves 1 to 3 are built and on main (E1 to E9; the S2 and S3 rehearsals ran every stage). Wave 4 is open; what is left is in `docs/m2-plan.md`, section "Phase 5: where it stands".
+
 ---
 
 ## Brief E1: ggml-sys bindings for the executor (start now)
@@ -344,14 +346,14 @@ All on Vast through taxameter (ADR 0021, 0029), Linux, RTX 3090 class (the image
 
 **Prerequisite (done 2026-11-17).** taxameter 0.3.3 has `--num-gpus N` on `offers` and `create` (its ADR 0011); a 2x or 4x box is rented with it.
 
-| Session | When | Box | What | Hours | USD (box) |
-|---|---|---|---|---|---|
-| S0 | now, no Tetraeder code | 2x RTX 3090 | baselines only: `llama-bench -sm` layer, row and tensor of the baseline build on both models, pp2048 and tg128, two interleaved rounds; record the P2P matrix and the comm path `-sm tensor` logs. Tells before E5 to E7 whether tensor parallel pays on PCIe 3090s | 1 | 0.4 to 0.6 |
-| S1 | after E4 and E5 | 1x RTX 3090 | E4 `gpu_` tests and timing JSON; E1, E5 `gpu_` tests (two backends on one GPU); existing `gpu_` parity tests unchanged with patch 0004 | 1 | 0.2 to 0.3 |
-| S2 | after E6, E7, E8 | 2x RTX 3090 | `gpu2_` tests; `comm-probe`; ADR 0069 step-0 check (own `tp-2` against llama.cpp `-sm tensor`, both models, two pairs); `phase5_box.sh` rehearsal with one round | 2.5 | 0.9 to 1.5 |
-| S3 | after S2's fixes | 4x RTX 3090 | `gpu4_` tests; probe; rehearsal of D4 and M4, one round | 2 | 1.4 to 2.4 |
-| V2 | after S3 | 2x RTX 3090 | verdict cases D2, M2 (ADR 0068) | 2.5 | 0.9 to 1.5 |
-| V4a | after V2 | 4x RTX 3090 | verdict case D4 | 2 | 1.4 to 2.4 |
-| V4b | after V2, may run beside V4a on a second box | 4x RTX 3090 | verdict case M4 | 2 | 1.4 to 2.4 |
+| Session | When | Box | What | Hours | USD (box) | Ran (sessions in `bench/results/`) |
+|---|---|---|---|---|---|---|
+| S0 | now, no Tetraeder code | 2x RTX 3090 | baselines only: `llama-bench -sm` layer, row and tensor of the baseline build on both models, pp2048 and tg128, two interleaved rounds; record the P2P matrix and the comm path `-sm tensor` logs. Tells before E5 to E7 whether tensor parallel pays on PCIe 3090s | 1 | 0.4 to 0.6 | Not run as its own session; the S2 step-0 checks measured `-sm` modes beside own `tp-2` |
+| S1 | after E4 and E5 | 1x RTX 3090 | E4 `gpu_` tests and timing JSON; E1, E5 `gpu_` tests (two backends on one GPU); existing `gpu_` parity tests unchanged with patch 0004 | 1 | 0.2 to 0.3 | Done: [`20261116gpu3`](../bench/results/20261116gpu3/README.md) (0004 timing flat, test replaced, ADR 0070), [`20261116gpu5`](../bench/results/20261116gpu5/README.md) (one-GPU parity clean); earlier [`20261115gpu`](../bench/results/20261115gpu/README.md) led to ADR 0071 |
+| S2 | after E6, E7, E8 | 2x RTX 3090 | `gpu2_` tests; `comm-probe`; ADR 0069 step-0 check (own `tp-2` against llama.cpp `-sm tensor`, both models, two pairs); `phase5_box.sh` rehearsal with one round | 2.5 | 0.9 to 1.5 | Done: step 0 passes in [`s2f-20261118-step0`](../bench/results/s2f-20261118-step0/README.md); rehearsals [`s2f-20261118`](../bench/results/s2f-20261118/README.md) and [`s2g-20261118`](../bench/results/s2g-20261118/README.md) (verdict null); earlier `s2-20261117-step0`, `s2b`, `s2c`, `s2d`, `s2e` stopped at gates or calibrate |
+| S3 | after S2's fixes | 4x RTX 3090 | `gpu4_` tests; probe; rehearsal of D4 and M4, one round | 2 | 1.4 to 2.4 | Done: [`s3-20261119`](../bench/results/s3-20261119/README.md) (gates pass, verdict null), [`s3b-20261119`](../bench/results/s3b-20261119/README.md) (two rounds: D4 null, M4 fails the baseline gate and prediction) |
+| V2 | after S3 | 2x RTX 3090 | verdict cases D2, M2 (ADR 0068) | 2.5 | 0.9 to 1.5 | Not yet |
+| V4a | after V2 | 4x RTX 3090 | verdict case D4 | 2 | 1.4 to 2.4 | Not yet |
+| V4b | after V2, may run beside V4a on a second box | 4x RTX 3090 | verdict case M4 | 2 | 1.4 to 2.4 | Not yet |
 
-Traffic: about 45 GB of models per box (Qwen3-32B and Qwen3-30B-A3B, plus Qwen3-8B for S2 and S3 tests), 0.6 to 1.2 USD per box at 0.013 to 0.026 USD/GB. Total with one rerun of S2 or a verdict session: about 15 to 18 box hours, 11 to 20 USD. 2x RTX 3090 boxes fit the 0.90 USD/h cap; 4x RTX 3090 offers run about 0.70 to 1.20 USD/h, so S3, V4a and V4b take an offer at or below 0.90 or wait for the owner to raise the cap for them; V4a and V4b side by side need the account cap (1.80 USD/h) and both box slots. Verdict and rehearsal boxes run nothing else (a quiet box); S1 can run beside any other project's box.
+Traffic: about 45 GB of models per box (Qwen3-32B and Qwen3-30B-A3B, plus Qwen3-8B for S2 and S3 tests), 0.6 to 1.2 USD per box at 0.013 to 0.026 USD/GB. Total with one rerun of S2 or a verdict session: about 15 to 18 box hours, 11 to 20 USD. 2x RTX 3090 boxes fit the 0.90 USD/h cap; 4x RTX 3090 offers run about 0.70 to 1.20 USD/h, and the owner allowed up to 1.20 USD/h all-in for a 4-GPU box (2026-11-15, `AGENTS.md`, `--max-price 1.20`); V4a and V4b side by side use both box slots and must stay within the 1.80 USD/h account cap together. Verdict and rehearsal boxes run nothing else (a quiet box); S1 can run beside any other project's box.
