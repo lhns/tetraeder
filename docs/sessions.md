@@ -247,7 +247,7 @@ Run it from a checkout on `main` that is pushed and clean (the wrapper refuses u
 
 ## ADR 0056 stages (disk curve, trace, ledger directory)
 
-Three stages feed the tier term and the calibration ledger. All are written into the scripts and the profiles above, and ran in the M1 sessions (for example `disk-curve` in `20261113b`, `tier-replay.json` in `20261110/planner-moe-builder/`).
+Three stages feed the tier term and the calibration ledger. All are written into the scripts and the profiles above. `disk-curve` and the builder `trace` ran in M1 sessions (for example `20261113b`, `20261110/planner-moe-builder/tier-replay.json`); no session directory shows an `anchors-builder-short` run.
 
 | Stage | Where | Minutes | Decides | Output |
 |---|---|---|---|---|

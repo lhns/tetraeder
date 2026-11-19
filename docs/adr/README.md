@@ -44,7 +44,7 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0036](0036-cpu-threadpool-and-whole-step-graph.md) | Accepted | The CPU backend keeps one threadpool; a step with every expert resident is one graph |
 | [0037](0037-split-gguf-and-slot-tiers-from-byte-budgets.md) | Accepted | Split GGUF files; expert slot tiers sized from byte budgets and reported |
 | [0038](0038-predicted-next-layer-expert-prefetch.md) | Accepted | Predicted next-layer expert prefetch into the RAM tier |
-| [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | Accepted (superseded for the dense builder by 0072) | No AVX2 repack of the builder's CPU weights for now |
+| [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | Accepted (0072, Proposed, supersedes it for the dense builder) | No AVX2 repack of the builder's CPU weights for now |
 | [0040](0040-planner-candidates-calibration-and-scoring.md) | Accepted | Planner: executable candidates, a cost model calibrated from anchor runs, scored by regret and rank |
 | [0041](0041-detector-observation-faults-and-limits.md) | Accepted | Bottleneck detector: one observation type, faults separate from the limiting resource, advisor report only |
 | [0042](0042-slo-burn-rate-alerts-and-drain-restart-replanning.md) | Accepted | SLO burn-rate alerts and drain-and-restart replanning |
