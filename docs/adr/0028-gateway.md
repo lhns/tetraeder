@@ -1,6 +1,6 @@
 # 0028. Gateway: axum, a narrow token-level engine trait, minijinja templates, llguidance constraints
 
-Status: Accepted
+Status: Accepted. Partly superseded by ADR 0046 (mask hook, context check).
 
 ## Context
 

@@ -2,6 +2,8 @@
 
 Six parts; each merges alone in the order below. Every design decision is in ADR 0056; read it first, then AGENTS.md, ADR 0040 ("Cost model", "Calibration", "Builder candidates", "Builder scoring"), ADR 0054 and ADR 0050 (c). Do not revisit the decisions; if one turns out wrong, stop and report the evidence. No box runs until the hold lifts (part F only).
 
+Status (2026-11-19): built and on main (`bench/ledger.json`, the virtual clock in `crates/memory`); ADR 0056 is still Proposed.
+
 All parts: failing tests first, then code. Every local cargo command goes through the shared lock with one job: `L=/c/Users/pierr/AppData/Local/Temp/claude/cargo-host.lock; until mkdir "$L" 2>/dev/null; do sleep 20; done; CARGO_BUILD_JOBS=1 cargo <args>; rmdir "$L"`. Prefer `cargo test -p <crate>` while iterating; CI on the pushed `track-*` branch is the compile loop when the lock starves. At most one `gh` call per 15 minutes. Done means `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check` pass on Windows and Linux (Rule 11), and ADR 0056 gets an "Implementation notes" line for the part. No em dashes in docs or comments. Commit only if your brief says so.
 
 ## Order
@@ -96,7 +98,7 @@ B and C are independent: the file between them is the existing `tetraeder-bench 
 
 **Goal.** No sleeps in I/O tests: one queue type driven by threads in production and by a virtual clock in tests and in the timed replay (ADR 0056 section 2).
 
-**Read first.** `crates/memory/src/io.rs` (whole file), `crates/memory/src/reader.rs` (`HostDst`), `crates/model/src/experts.rs` (the streamer's use of `IoService`), `crates/model/tests/overlap.rs`, `crates/memory/src/replay/sim.rs`.
+**Read first.** `crates/memory/src/io/` (whole module; it was one file `io.rs` when this was written), `crates/memory/src/reader.rs` (`HostDst`), `crates/model/src/experts.rs` (the streamer's use of `IoService`), `crates/model/tests/overlap.rs`, `crates/memory/src/replay/sim.rs`.
 
 **Changes.**
 - `io.rs` split into `io/queue.rs` (`Queue<D>`: heap, units, `submit(now, deadline, parts)`, `pop`, `complete(now, chunk, result)`, `collect`, `inflight`; generic over the destination with a small `Dst` trait providing `len` and `sub`, implemented for `HostDst` and `()`), `io/disk.rs` (`Disk`: processor sharing over a curve of `(depth, bytes_per_s)`, `workers`, `submit(chunk_bytes)`, `next_completion`, `advance_to`), `io/service.rs` (`IoService` on `Mutex<Queue<HostDst>>`, unchanged API, `Instant` turned into seconds for `now`), `io/sim.rs` (feature `sim`: `SimClock`, `SimIo`), and the `Io` trait in `io/mod.rs`. Delete `ServiceOptions::delay` and its sleep.

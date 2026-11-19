@@ -1,6 +1,6 @@
 # 0046. Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log
 
-Status: Accepted (Phase 3b). Partly supersedes ADR 0028 (mask hook, context check); Phase 4 replaces the scheduler loop. The Phase 3b proxy bar is met: all three clauses in `20261110d`; in `20261111d` the cache and non-200 clauses, the tasks clause over all runs under the owner's 2026-11-11 rule. The first proxy run (`20261103`) missed the cache and 400 clauses, fixed by ADR 0049.
+Status: Accepted (Phase 3b). Partly supersedes ADR 0028 (mask hook, context check); Phase 4 replaces the scheduler loop (partly superseded by ADR 0065: backend trait, scheduler loop, one request in generation). The Phase 3b proxy bar is met: all three clauses in `20261110d`; in `20261111d` the cache and non-200 clauses, the tasks clause over all runs under the owner's 2026-11-11 rule. The first proxy run (`20261103`) missed the cache and 400 clauses, fixed by ADR 0049.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

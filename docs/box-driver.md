@@ -32,6 +32,8 @@ The driver picks the box by these rules and does not ask the owner. The coordina
    - at SSH: missing ISA flags, too little `memory.max`, or no `cuda: ok`;
    - at SSH: run `scripts/power_gate.sh` with `scripts/idle_gate.sh`: every GPU's `power.limit` must equal its `power.default_limit` (a capped box, as on `s2f-20261118`, changes the ranking of shapes; ADR 0068, "Power limit");
    - at SSH: run `scripts/idle_gate.sh` (10 samples over 30 s, at least 9 without a disqualifying bit, i.e. nothing outside 0x1, 0x2, 0x4, 0x100, 0x200, 0x400), not a single idle read (ADR 0065, "Box choice");
+   - at SSH: a co-tenant sample, host CPU busy outside the idle container over about 20 s, at most `cotenant_guard.py`'s limit of max(4, 15% of the physical cores); no dedicated script yet (`s3-20261119` destroyed its first box on this);
+   - `phase5_box.sh` repeats the GPU count and power gate in its `gpus` stage and stops on a wrong box;
    - status `loading` (image pull) or SSH refused for more than 10 minutes after create (13f lost 40 minutes to three such boxes: host 213498 rejected the key on direct and proxy ports, host 546840 never finished the pull; skip both; host 109790 stayed loading twice on 13j and host 39788 once on 13l, skip both; hosts 151822, 130210, 51345, 551866, 87657 and 70221, 305845, 116365, 393491 and 92795 never finished the pull or SSH, 166946 and 450573 rejected the key on 2026-11-17 (all slow-network offers): pick offers with `--min-inet 1000` and skip them);
    - model download under 100 MB/s after its first 5 minutes;
    - KT sessions: `runs/vast/ktransformers_build.log` must end ok within 15 minutes of launch; a failed KT build ends the point-3 session (destroy, do not run builder-only stages);

@@ -91,7 +91,7 @@ All 52 wanted features have a home and a phase; the MVP (M1, after Phase 3b) cov
 | 43 | Detailed profiling | step timing always; per-op calibration runs; CUPTI or rocprof in profiling mode | 1, 3a |
 | 44 | Per-request cost accounting (GPU-seconds, bytes streamed) | `telemetry`, `gateway` | 3b |
 | 45 | SLO burn-rate alerts | `telemetry`, dashboards | 3a |
-| 46 | Process isolation per device | `executor` (one worker process per device) | 5 |
+| 46 | Process isolation per device | `executor` (one worker process per box, ADR 0069; per device in ADR 0017) | 5 |
 | 47 | Request cancellation and backpressure | `gateway`, `scheduler` | 3b |
 | 48 | Quality profile per model (measured drift per tensor group and format) | `profiler`, calibration job | 2, used by the planner in 3a |
 | 49 | Load-time conversion from F16 or BF16 with a disk cache | `model` | 2, safetensors with the own loaders |
@@ -130,8 +130,8 @@ Measurements flow down into telemetry and back up: to the planner for calibratio
 | `ggml-sys` | Rust bindings to the pinned, patched ggml | bindgen; ggml patch queue |
 | `model` | GGUF loading, architecture graph builders, tokenizer, chat templates | libllama first (strangler path), then own builders where needed; minijinja |
 | `memory` | Per-device arenas, tiers (VRAM, RAM, NVMe, remote), expert slot cache, direct I/O, prefetch | Own; ggml backend buffers; io\_uring on Linux, unbuffered overlapped I/O or IoRing on Windows |
-| `executor` | One worker per device, runs plan stages, async copies, weight streaming | ggml backend scheduler until Phase 5; then own executor, one worker process per device (ADR 0016, 0017) |
-| `kvcache` | Chunked or paged KV, prefix tree, quantized KV, tiers, migration | Own from Phase 4; llama.cpp's cache before |
+| `executor` | Per-rank graphs cut at collectives, runs plan stages, async copies, weight streaming | ggml backend scheduler until Phase 5; then own executor, one worker process per box (ADR 0016, 0069; ADR 0017 had one per device) |
+| `kvcache` | Chunked KV (paged not needed, ADR 0067), prefix tree, quantized KV, tiers, migration | Own from Phase 4; llama.cpp's cache before |
 | `scheduler` | Continuous batching, chunked prefill, speculative decoding, priorities | Own from Phase 4 |
 | `transport` | One trait for collectives and point-to-point: NCCL or RCCL, QUIC, RDMA, shared memory | NCCL, RCCL, quinn or iroh |
 | `profiler` | Hardware discovery and measurement: per-op curves, bandwidth per tier, link latency and bandwidth | Own; NVML, amdsmi |
@@ -193,19 +193,23 @@ Rust owns everything outside the kernels; ggml supplies the kernels for every ba
 1. **Phase 1, libllama for dense models.** llama.cpp loads, builds the graph, keeps the KV cache and batches. Tetraeder sets placement through its parameters (layer split, split mode, buffer-type overrides, mmap) and measures step times.
 2. **Phase 2, first own graph builder.** Qwen3 MoE, written in Rust on ggml ops, CUDA and CPU only, validated against libllama logits. It owns the expert tensors as slot tensors, reads the router's top-k back and remaps it to slots; that is what makes expert streaming possible, since libllama allocates full expert tensors and runs top-k inside its graph with no public hook.
 3. **Phase 4, own KV cache and scheduler,** plus a second builder (Qwen3 dense), still CUDA and CPU.
-4. **Phase 5, own executor** replaces ggml's backend scheduler across devices, which issues splits one after another from one host thread. The own executor issues per-device graphs, cut at collectives, asynchronously with no host sync between ranks, using ggml's comm API (NCCL or its internal all-reduce) at the pin; all GPU ranks of a box live in one worker process (proposed in ADR 0069; ADR 0017 had one per device).
+4. **Phase 5, own executor** replaces ggml's backend scheduler across devices, which issues splits one after another from one host thread. The own executor issues per-device graphs, cut at collectives, asynchronously with no host sync between ranks, using ggml's comm API (NCCL or its internal all-reduce) at the pin; all GPU ranks of a box live in one worker process (ADR 0069, accepted for that part 2026-11-15; ADR 0017 had one per device).
 5. **Phase 8, backend parity:** own builders on HIP, Vulkan and Metal, with parity tests.
 6. **libllama stays** as the parity reference and as the fallback for model families without an own builder.
 
 ### ggml patch queue (private)
 
-Each patch has an ADR and tests on every backend it touches. Nothing is upstreamed for now (ADR 0011); every rebase is ours, so out-of-tree code is preferred wherever it works.
+Each patch has an ADR and tests on every backend it touches. Nothing is upstreamed for now (ADR 0011); every rebase is ours, so out-of-tree code is preferred wherever it works. The queue is `patches/series`; origins and licenses are in `docs/sources.md`.
 
 | Patch | Why | Needed in | Worth upstreaming later |
 | --- | --- | --- | --- |
+| `0001` MSVC AVX-512 VBMI score | One-line build fix so the MSVC AVX-512 VBMI variant gets its score (ADR 0052) | Phase 2 follow-up (in the queue) | |
+| `0002` iqk AVX-512 Q4_K/Q6_K decode kernels | Copied iqk kernels for CPU expert decode (ADR 0053) | Phase 2 follow-up (in the queue) | |
+| `0003` CPU registry threadpool pause | Exposes `ggml_threadpool_pause` through the CPU registry for the loadable-module build (ADR 0061) | Phase 2 follow-up (in the queue) | |
+| `0004` CUDA `mul_mat_id` skips id -1 | Expert parallel without computing foreign experts; matches the CPU kernel (ADR 0070) | Phase 5 (in the queue) | High: it aligns CUDA with existing CPU semantics |
+| `0005` `ggml_graph_view_new` | Executor ranges as views of the rank graph, so CUDA fuses inside them (ADR 0075) | Phase 5 (in the queue) | |
 | All-reduce as a graph op (dropped) | Not needed: the pin has ggml's comm API (NCCL, a two-GPU internal all-reduce), called between subgraphs (ADR 0069) | | |
-| CUDA `mul_mat_id` skips id -1 | Expert parallel without computing foreign experts; matches the CPU kernel (ADR 0070) | Phase 5 | High: it aligns CUDA with existing CPU semantics |
-| Attention over chunked or paged KV | KV tiers, prefix sharing, migration; only if contiguous chunks are not enough | Phase 4, if the experiment says so | Medium |
+| Attention over chunked or paged KV (not needed) | ADR 0067 step 1 chose chunked KV on unmodified attention, no patch (2026-11-14) | | |
 | Attention returning log-sum-exp | Merge partial attention for context parallel | Phase 9 | Medium |
 | Batched multi-LoRA matmul | Many adapters in one batch | Phase 9 | Medium |
 
@@ -270,7 +274,7 @@ Read on 2026-11-05 from their docs and pull requests; their numbers are self-rep
 | KV partly in RAM, only the most-read part in VRAM | Strata: 50.9 to 62.6 tok/s at 262K | Long contexts; needs a plan option and a streamed-KV path |
 | CPU and GPU expert work overlapping within a layer | Strata's core design | Check first whether the builder's segments overlap them at all |
 | GPU cache of host experts, LRU, misses uploaded | llama.cpp `--moe-cache-mib` (#29887): 1.57x to 2.20x over `--fit` | First a baseline to beat. Unsloth enables it only when 35% to 75% of the experts fit in VRAM |
-| Misses computed on the CPU instead of uploaded | llama.cpp `--moe-cache-cpu-share` (#30966, 2026-11-07) with `scripts/moe-cache-tune.py`: users report about 1.5x to 1.8x over `-cmoe` | The same design as Strata; the tuned pair is the Phase 2 llama.cpp baseline. Newer than our engine pin, so the box image builds a separate baseline copy |
+| Misses computed on the CPU instead of uploaded | llama.cpp `--moe-cache-cpu-share` (#30966, 2026-11-07) with `scripts/moe-cache-tune.py`: users report about 1.5x to 1.8x over `-cmoe` | The same design as Strata; the tuned pair is the Phase 2 llama.cpp baseline. The box image builds it as a separate baseline copy (`vendor/PIN` `baseline_commit`, now the engine pin b12426) |
 | Fast tiers kept by routing frequency | Lottery Ticket (a small subnetwork carries most of the work); our recorded routing | Score an offline replay of recorded routing against the LRU first; build only if the hit rate wins |
 | Drafter built into the model (MTP) | Strata: 2.4 to 3.2 tokens per pass, 1.6x to 1.8x | Speculative decoding (ADR 0043), for models that ship the layers |
 | Message-boundary and near-tail prompt checkpoints | Strata: first edit of a long history 33% faster (combined with larger chunks) | Prefix cache (ADR 0049). Skipped for full-attention models (ADR 0051): the cache already reuses the longest common prefix at any token; revisit with recurrent or sliding-window layers |
@@ -318,7 +322,7 @@ Quantization is not one global setting. The planner chooses a format for every u
 
 ### Formats
 
-At the pin (llama.cpp b11976) ggml offers the usual 8, 6, 5 and 4 bit formats (Q8\_0, Q6\_K, Q5\_K, Q4\_K and others), the importance-weighted IQ4, IQ3 and IQ2 families, and five formats near one bit: IQ1\_S and IQ1\_M (about 1.6 and 1.75 bits per weight), TQ1\_0 and TQ2\_0 (ternary), and Q1\_0. The IQ formats below 4 bits need an importance matrix from calibration text. They damage small models badly and work reasonably on very large MoE models, so they are formats the planner may choose where the quality profile says the loss is small, not a mode of their own.
+At the pin (llama.cpp b12426, ADR 0073) ggml offers the usual 8, 6, 5 and 4 bit formats (Q8\_0, Q6\_K, Q5\_K, Q4\_K and others), the importance-weighted IQ4, IQ3 and IQ2 families, and five formats near one bit: IQ1\_S and IQ1\_M (about 1.6 and 1.75 bits per weight), TQ1\_0 and TQ2\_0 (ternary), and Q1\_0. The IQ formats below 4 bits need an importance matrix from calibration text. They damage small models badly and work reasonably on very large MoE models, so they are formats the planner may choose where the quality profile says the loss is small, not a mode of their own.
 
 Natively ternary models (BitNet b1.58 and similar) are different: they are trained with ternary weights, so nothing is lost by storing them that way. They are a model family. libllama loads BitNet at the pin, so they run through the Phase 1 path; an own builder with faster ternary kernels comes with the other families in Phase 9.
 
@@ -566,8 +570,8 @@ Phases 8 and 9 (backend parity, breadth) can run in parallel with M3 and M4.
 | 2. Own MoE builder, tiers, expert streaming | Plan IR and validator; Qwen3 MoE graph builder in Rust (CUDA, CPU); per-device arenas with measured reserve; VRAM, RAM and NVMe tiers; slot cache with prefetch, one segment per MoE layer (ADR 0030); prefill and decode memory budgets (ADR 0031); aligned direct I/O on Linux and Windows; format per unit in the plan IR; load-time conversion with a disk cache; quality profile format and calibration job | Logit parity with libllama; a MoE larger than RAM (Qwen3-235B-A22B Q4\_K\_M on a box with at most 128 GB RAM) at least as fast as the best tuned baseline that runs it (Colibri, KTransformers, llama.cpp with expert overrides and with `--moe-cache-mib` plus `--moe-cache-cpu-share` as its tuner picks them, ik\_llama.cpp), reporting per-layer full-hit rate and decode speed right after a 32K prefill |
 | 3a. Planner and detector | Profiler with PCIe topology; cost model with c0 per graph mode; simulator; planner with hints, explain, what-if; formats per unit from the quality profile, limits and Pareto front (ADR 0025); bottleneck detector and advisor (report only); SLO burn-rate alerts; drain-and-restart replanning | Regret at most 10% and rank correlation at least 0.8 over at least 20 candidates per fixture; detector: correct top-1 in 9 of 10 single-fault runs, at most 1 false positive in 10 no-fault runs, both faults in the top 3 on two-fault fixtures; at the byte budget of a llama.cpp preset (Q4\_K\_M), the planner's format mix has no higher KL divergence than the preset on every profiled model, and summed profile estimates stay within a stated band of the measured divergence |
 | 3b. Gateway | OpenAI and Anthropic API, streaming, tool calls, structured output (llguidance), chat templates, cancellation, backpressure, per-request cost accounting | Conformance tests for both APIs; a Claude Code proxy run of a few hours (decided 2026-11-03 instead of a week of use, ADR 0046 addendum): tasks solved at least llama-server's, prompt-cache reuse at least its share, no request it accepts rejected |
-| 4. Own KV and scheduler | Qwen3 dense builder; chunked or paged KV (decided by experiment); prefix cache; continuous batching; chunked prefill; speculative decoding (n-gram, draft, self-speculative with a low-bit copy; MTP where available) | At least llama.cpp server throughput at concurrency 4; prefix hits cut time to first token on a Claude Code replay |
-| 5. Own executor, multi-GPU | Executor replacing ggml's backend scheduler; worker process per device; all-reduce patch; tensor, expert and tensor-times-pipeline parallel | Planner picks the measured winner among layer split, tensor and expert parallel; predictions within 15% |
+| 4. Own KV and scheduler | Qwen3 dense builder; chunked or paged KV (decided by experiment: chunked, ADR 0067); prefix cache; continuous batching; chunked prefill; speculative decoding (n-gram, draft, self-speculative with a low-bit copy; MTP where available) | At least llama.cpp server throughput at concurrency 4; prefix hits cut time to first token on a Claude Code replay |
+| 5. Own executor, multi-GPU | Executor replacing ggml's backend scheduler; worker process per box (ADR 0069; per device in ADR 0017); ggml's comm API instead of an all-reduce patch; tensor, expert and tensor-times-pipeline parallel | Planner picks the measured winner among layer split, tensor and expert parallel; predictions within 15% (verdict rules: ADR 0068) |
 | 6. Multi-node | Transport chosen in Phase 0; discovery; mTLS; pipeline and experts across nodes; remote KV; replicas; failover | A model larger than any single node runs within 15% of prediction; killing a node with a replica keeps new requests flowing, in-flight requests on it fail cleanly |
 | 7. Online loop | Advisor auto-apply with rollback; live replica scaling; live reshard via migration DAGs; prefill and decode on different hardware | Day-long trace: at least 10% more goodput than the best static plan, at most 1 switch per hour, zero failed requests |
 | 8. Backend parity | Own builders on HIP, Vulkan, Metal; more model families (GLM, DeepSeek with MLA-aware KV) | Parity per backend and split point; within 15% of llama.cpp per backend |
@@ -619,31 +623,34 @@ Correctness is proven by reference logits, speed by committed benchmarks, planne
 
 ```
 crates/
+  tetraeder/   the binary: serve, bench, plan, doctor, advise, top, worker
   plan/        placement plan IR, validator, diff, migration DAGs
-  ggml-sys/    bindings to the pinned, patched ggml
+  ggml-sys/    bindings to the pinned, patched ggml and libllama
   model/       GGUF, graph builders, tokenizer, chat templates
-  memory/      arenas, tiers, expert slot cache, direct I/O
-  executor/    own executor from Phase 5, worker process per device
-  kvcache/     chunked or paged KV, prefix tree, tiers, migration
+  engine/      Phase 1 engine loop over libllama
+  memory/      arenas, tiers, expert slot cache, direct I/O, prefetch
+  executor/    own executor (Phase 5): per-rank graphs cut at collectives
+  kvcache/     chunked KV, prefix tree, tiers, migration
   scheduler/   batching, chunked prefill, speculative decoding
   transport/   NCCL, RCCL, QUIC, RDMA, shared memory behind one trait
   profiler/    hardware discovery and measurement
-  costmodel/   per-op curves, corrections
-  sim/         discrete-event simulator
+  costmodel/   per-op curves, corrections; `sim` the discrete-event simulator
   planner/     search, hints, explain, what-if
   telemetry/   OpenTelemetry metrics, traces, logs, GPU and host metrics
   analysis/    bottleneck detector, advisor
   control/     discovery, membership, replanning, mTLS
   gateway/     OpenAI and Anthropic API, auth, quotas, routing
-third_party/ggml-patches/   ordered patch queue (private)
-tools/refgen/  Python, offline only: reference logits
-bench/         spec, harness, committed results (JSON)
-fixtures/hw/   simulated hardware: 1x24GB, 2x24GB mixed, 4x80GB NVLink,
-               2 nodes on 10GbE, CPU plus NVMe, injected faults
-dashboards/    Grafana JSON, alert rules
+  bench/       harness: pinned spec, paired runs, JSON results, noise gate
+patches/       ordered ggml patch queue (private), `series`
+vendor/        llama.cpp submodule and `PIN`
+bench/         spec, golden data, committed results (`results/<session>/`)
+deploy/        alert rules, Grafana dashboards, collector config, compose
+scripts/       box drivers, gates, summaries; Python offline only
+tests/         Python tests for scripts and configs
 docs/adr/      one ADR per decision
-docs/prior-art.md
 ```
+
+Hardware fixtures and injected faults live in each crate's `fixtures/` (planner, costmodel, analysis, profiler).
 
 ### Rules for AGENTS.md
 
@@ -654,9 +661,12 @@ docs/prior-art.md
 5. Property tests on plans: memory never exceeded, every unit computed exactly once, every migration DAG ends in its target plan.
 6. Every new component ships with its metrics, a dashboard panel and an alert rule in the same PR.
 7. `unsafe` only in `ggml-sys` and `memory`, each block with a safety comment.
-8. A ggml change goes into the patch queue with an ADR and backend tests; nothing is upstreamed; never edit vendored ggml in place.
+8. A ggml change goes into the patch queue with an ADR and backend tests; nothing is upstreamed; never edit vendored ggml in place. Code or binaries taken from another project get a row in `docs/sources.md`; copied code keeps its copyright notice.
 9. Tests are labelled by the hardware they need and skip cleanly without it.
-10. Small PRs naming the phase and exit test they move; plain, short docs; no em dashes.
+10. Small PRs naming the phase and exit test they move.
+11. Every change builds and tests on Windows and Linux.
+
+`AGENTS.md` is the maintained copy of these rules; plain, short docs, no em dashes.
 
 ### Session prompt template
 
@@ -669,11 +679,11 @@ Update the ADR if a decision changed. Report exit-test numbers.
 
 ### Hardware
 
-Phases 0 to 4 on your Linux host and Windows desktop, with one Linux GPU machine as the nightly CI runner (parity, overhead budgets, fault injection, benchmarks with locked clocks); scripted hourly rentals for multi-GPU and multi-node runs in Phases 5 to 7 (set up, benchmark, upload results, shut down).
+Development on your Linux host and Windows desktop. All GPU work runs on ephemeral Vast boxes (ADR 0021, tooling from taxameter, ADR 0029): nightly runs, parity, fault injection and benchmarks as paired same-box runs, since clocks cannot be locked in a container (`AGENTS.md`); multi-GPU boxes for Phase 5 (`--num-gpus`), multi-node rentals for Phases 6 and 7 (set up, benchmark, fetch results, destroy).
 
 ## Architecture decision records
 
-Twenty-five decisions are made; Phase 0 writes each as `docs/adr/00NN-<slug>.md` (status, context, decision, consequences) so Claude Code can cite them.
+The first twenty-five decisions, made with this plan; each is a file `docs/adr/00NN-<slug>.md` (status, context, decision, consequences) so Claude Code can cite them. Every later ADR (up to 0077 on 2026-11-19) and the current status of each is in [docs/adr/README.md](adr/README.md).
 
 | ADR | Decision | Why | Consequence |
 | --- | --- | --- | --- |
@@ -693,15 +703,15 @@ Twenty-five decisions are made; Phase 0 writes each as `docs/adr/00NN-<slug>.md`
 | 0014 | Expert streaming needs an own graph builder, so the first one (Qwen3 MoE, CUDA and CPU) comes in Phase 2; sync only on a miss, with predictive prefetch | libllama allocates full expert tensors and runs top-k in its graph with no public hook; a sync per layer would break CUDA graphs | Hit rate is a first-class metric; Colibri is the reference design |
 | 0015 | Own graph builders in Rust per family; libllama stays as parity reference and fallback | llama.cpp's builders are internal C++ without a stable API | Parity tests against libllama per family and backend |
 | 0016 | An own executor replaces ggml's backend scheduler in Phase 5 | ggml issues splits sequentially from one host thread; tensor parallel needs concurrent per-device subgraphs with NCCL group semantics | The all-reduce patch is only useful together with it |
-| 0017 | One worker process per device | A sticky CUDA error or driver fault must not take down the whole engine | IPC between workers through shared memory; supervisor restarts a failed worker |
+| 0017 | One worker process per device (in part superseded by ADR 0069: one per box) | A sticky CUDA error or driver fault must not take down the whole engine | IPC between workers through shared memory; supervisor restarts a failed worker |
 | 0018 | Transport is chosen by measurement in Phase 0 (quinn, iroh, TCP with TLS, RDMA where present) | Userspace QUIC costs latency and CPU per hop, which matters for per-layer expert round trips | ADR records the measured numbers |
 | 0019 | M1 scope: dense models via libllama plus one MoE family with an own builder, CUDA and CPU only | Keeps M1 reachable; other backends and families come in Phase 8 | Mixed vendors in M1 only if the Phase 0 multi-backend spike passes |
 | 0020 | No timing patch: whole-step timing with CUDA graphs in production, per-op timing in calibration runs without graphs, CUPTI or rocprof from outside in profiling mode | Timing inside captured graphs is unusable and disabling graphs changes what is measured | Two c0 values per op in the cost model |
-| 0021 | All GPU work runs on ephemeral Vast boxes; nightly GPU CI is a scheduled Vast job on a prebuilt image | No own GPU host; one box at a time under a price cap | Paired same-box benchmarks instead of locked clocks; Windows GPU runtime untested |
+| 0021 | All GPU work runs on ephemeral Vast boxes; nightly GPU CI is a scheduled Vast job on a prebuilt image (tooling superseded by ADR 0029, taxameter) | No own GPU host; boxes under a price cap (caps in `AGENTS.md`) | Paired same-box benchmarks instead of locked clocks; Windows GPU runtime untested |
 | 0022 | No OpenTelemetry exemplars for now | opentelemetry-rust 0.33 emits none | Slow traces kept by tail sampling in the collector |
 | 0023 | Transport spike: QUIC versus TCP with TLS versus plain TCP (Proposed) | Per-hop latency matters for cross-node experts | WAN numbers between two boxes still pending |
-| 0024 | Quantization is a planner choice per unit; quality is measured per model as KL divergence per tensor group and format (Proposed) | Sensitivity differs per tensor; the format should follow the tier | Calibration job and quality profile per model; conversion cache |
-| 0025 | The objective is hard limits plus a position on the speed and quality front, no weighted score (Proposed) | Speed and quality have unrelated scales | A target tok/s alone is enough; `tradeoff` picks a point on the front |
+| 0024 | Quantization is a planner choice per unit; quality is measured per model as KL divergence per tensor group and format (Accepted 2026-11-15) | Sensitivity differs per tensor; the format should follow the tier | Calibration job and quality profile per model; conversion cache |
+| 0025 | The objective is hard limits plus a position on the speed and quality front, no weighted score (Accepted 2026-11-15) | Speed and quality have unrelated scales | A target tok/s alone is enough; `tradeoff` picks a point on the front |
 
 ## Risks and open decisions
 
@@ -714,7 +724,7 @@ The largest risk is calendar time; next come cost-model accuracy, ggml drift and
 | ggml drift | Patches and bindings break as upstream moves; nothing is upstreamed | One pin, weekly rebase CI, short patch queue, out-of-tree code first |
 | libllama internals | Only its C API is stable | Own MoE builder from Phase 2; libllama only through its C API for dense models |
 | CUDA graphs versus streaming | Each expert miss breaks the graph at batch 1 | Predictive prefetch, sync only on miss, hit rate as a metric and planner input |
-| Own executor (Phase 5) | Replacing ggml's scheduler is a large change | Simulator first, process per device, parity tests per split point |
+| Own executor (Phase 5) | Replacing ggml's scheduler is a large change | Simulator first, one worker process per box (ADR 0069), parity tests per split point and per parallel shape (ADR 0071) |
 | Parity across backends | Numerics differ between CUDA, HIP, Vulkan, Metal and CPU, and at split points | CUDA and CPU only until M2; parity phase 8 with per-backend tolerances |
 | Hardware access | Phases 5 to 7 need multi-GPU and multi-node machines | Simulator for logic, nightly GPU host, scripted hourly rentals |
 | Telemetry overhead | Timing can slow decode | Step timing only in production, per-op only in calibration, budgets measured nightly |
@@ -727,10 +737,10 @@ The largest risk is calendar time; next come cost-model accuracy, ggml drift and
 
 - **KV layout in Phase 4:** contiguous chunks on unmodified attention, or paged blocks with a patch; decided by the staged experiment of ADR 0067 (thresholds fixed there: paged must save at least 25% of the KV pool at no more than 3% decode cost). Decided 2026-11-14: chunked (paged saved 35.8% but its reads cost 5.6 to 18% of decode, ADR 0067 addendum).
 - **Mixed vendors in M1:** decided by the Phase 0 multi-backend spike.
-- **Transport:** decided by the Phase 0 latency measurement.
+- **Transport:** decided by the Phase 0 latency measurement (ADR 0023 Proposed: localhost numbers only, WAN and RDMA pending, no transport chosen yet).
 - **Quality profile granularity:** decided for v1 in ADR 0048: per role class and span of layers (6 on Qwen3-8B, 12 on Qwen3-30B-A3B), embed and head apart.
 - **Trace backend:** Jaeger or Grafana Tempo next to VictoriaMetrics.
-- **Name check:** confirm Tetraeder is free on crates.io and GitHub.
+- **Name check:** done 2026-10-29 (ADR 0010): free on crates.io, no conflicting GitHub project.
 
 ## References
 

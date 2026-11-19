@@ -1,6 +1,6 @@
 # Box sessions for the open M1 exit tests
 
-Five exit sessions and a weekly GPU smoke, each a profile of `scripts/session.sh`. Written 2026-11-09 while box runs are on hold; nothing here has run yet. Rules: AGENTS.md "GPU work on Vast.ai" and the caps there (3 h and 0.45 USD/h per box, two boxes, 1.0 USD/h per account; B2 has the user's 48 GB exception, 6 h at 0.50 USD/h).
+Five exit sessions and a weekly GPU smoke, each a profile of `scripts/session.sh`. Written 2026-11-09; the M1 exit tests they served are met (M1 reached 2026-11-14, `docs/m1-open.md`, ADR 0045), and their results are in `bench/results/<session>/`. Phase 4 and Phase 5 sessions do not use these profiles: they run `scripts/phase4_box.sh` and `scripts/phase5_box.sh` (briefs: `docs/phase4-briefs.md`, `docs/phase5-briefs.md`). Rules: AGENTS.md "GPU work on Vast.ai" and the caps there (now 0.90 USD/h per box, two boxes, 1.80 USD/h per account, 3 h per box); the numbers below were planned under the caps of the time (0.45 USD/h per box, 1.0 USD/h per account; B2 had the user's 48 GB exception, 6 h at 0.50 USD/h).
 
 ## How a profile keeps its cap
 
@@ -133,7 +133,7 @@ Traffic is 0.013 to 0.026 USD/GB (Vast `inet_down_cost`, tracks seen so far); bo
 
 ## B2: Claude Code proxy rerun (`b2-proxy`)
 
-**Box.** 48 GB card (CTX 131072 needs it), Ampere: RTX A6000 (the first run) or A40 (the box image's CUDA builds target sm_86; an Ada L40S is unverified), 64 GB RAM, 8+ cores, 80 GB disk, at most 0.50 USD/h (the user's exception, up to 6 h). `$T offers --gpu "RTX A6000,A40" --min-vram 48 --max-price 0.50 --download-gb 20`, then `create` with the same flags. 0.50 is above `max_price_per_hour = 0.45` in `taxameter.toml`, and the caps are not changed for it: renting above 0.45 USD/h needs the user's explicit go at launch time; without it, take an offer at or below 0.45.
+**Box.** 48 GB card (CTX 131072 needs it), Ampere: RTX A6000 (the first run) or A40 (the box image's CUDA builds target sm_86; an Ada L40S is unverified), 64 GB RAM, 8+ cores, 80 GB disk, at most 0.50 USD/h (the user's exception, up to 6 h). `$T offers --gpu "RTX A6000,A40" --min-vram 48 --max-price 0.50 --download-gb 20`, then `create` with the same flags. 0.50 is within today's `max_price_per_hour = 0.90` in `taxameter.toml` (it was above the 0.45 cap when this was written, which is why it needed the user's go).
 
 **Launch.** `$T provision --id <id> --models unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf` (kv-quality fetches Qwen3-30B-A3B itself), then `$T run --id <id> scripts/session.sh --env SESSION=b2-proxy`. Defaults: `REPS=2 BUDGET_MIN=150 STREAMING=1` (BUDGET_MIN is when the last block may start; the run took 82 min before).
 
@@ -235,7 +235,7 @@ cargo run -p tetraeder-bench -- noise update        # fold the new A/A pair into
 
 It passes `--id` to every call after `create`, destroys the box on every exit path after a fetch (and with `--force` only when the fetch failed), writes `cost.json` next to the results (box id, minutes, price cap, taxameter's destroy output with `inet_down_billed` and `inet_down_cost`) and logs to `runs/vast/gpu-smoke-<stamp>.local.log`. Exit codes are at the top of the script. Verify: `summary.json` has `"ok": true`, `DONE` exists, an A/A results JSON is next to it.
 
-**Weekly schedule (not registered).** Box runs are on hold; nothing here may be scheduled until the user lifts the hold and says so. Then, once, from a prompt (the time is an example; it needs the machine on, `uv`, Git Bash and the API key file as in the README section "Vast boxes"):
+**Weekly schedule (not registered).** Nothing here may be scheduled until the user says so. Then, once, from a prompt (the time is an example; it needs the machine on, `uv`, Git Bash and the API key file as in the README section "Vast boxes"):
 
 ```bat
 schtasks /Create /TN tetraeder-gpu-smoke /SC WEEKLY /D SUN /ST 03:00 /F /TR "cmd /c cd /d <repo> && bash scripts/gpu_smoke.sh --run >> .vast\gpu-smoke.out 2>&1"
@@ -247,7 +247,7 @@ Run it from a checkout on `main` that is pushed and clean (the wrapper refuses u
 
 ## ADR 0056 stages (disk curve, trace, ledger directory)
 
-Three stages feed the tier term and the calibration ledger. All are written into the scripts and the profiles above; none has run (box runs are on hold).
+Three stages feed the tier term and the calibration ledger. All are written into the scripts and the profiles above. `disk-curve` and the builder `trace` ran in M1 sessions (for example `20261113b`, `20261110/planner-moe-builder/tier-replay.json`); no session directory shows an `anchors-builder-short` run.
 
 | Stage | Where | Minutes | Decides | Output |
 |---|---|---|---|---|
