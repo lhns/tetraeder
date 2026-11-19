@@ -74,11 +74,11 @@ Optional nightly stages take env vars, so launch with `$T run scripts/nightly.sh
 
 Commit before `provision` or `run`: only committed HEAD (plus the `vendor/llama.cpp` checkout) is pushed. The box image (`ghcr.io/lhns/tetraeder-box:<tag from vendor/PIN>`) is built by `.github/workflows/box-image.yml`; to use a plain CUDA image instead pass `--image nvidia/cuda:12.8.1-devel-ubuntu24.04` and `provision` installs the missing tools. `taxameter.toml` holds the policy (price cap 0.45 USD/h, one instance per project, 1.0 USD/h across all projects on the account, 3 h per box, `auto_replace` off); a `.vast/config.json` still overrides it locally. Project work on the box lives in the hooks `scripts/box_deps.sh` and `scripts/box_verify.sh`; taxameter's own helper files go to `/root/.taxameter` on the box.
 
-Windows Task Scheduler, run once from a prompt (the nightly time is an example). Not registered by the repo; check `watchdog --dry-run` first. Tasks registered earlier with `uv run python scripts/vastctl.py nightly|watchdog --once` keep working: that file is now a shim for taxameter.
+Windows Task Scheduler, run once from a prompt (the nightly time is an example). `conhost.exe --headless` keeps the tasks from opening a console window every run. Not registered by the repo; check `watchdog --dry-run` first. Tasks registered earlier with `uv run python scripts/vastctl.py nightly|watchdog --once` keep working: that file is now a shim for taxameter.
 
 ```bat
-schtasks /Create /TN tetraeder-vast-nightly /SC DAILY /ST 03:00 /F /TR "cmd /c cd /d <repo> && uv run taxameter nightly >> .vast\nightly.out 2>&1"
-schtasks /Create /TN tetraeder-vast-watchdog /SC MINUTE /MO 5 /F /TR "cmd /c cd /d <repo> && uv run taxameter watchdog --once >> .vast\watchdog.out 2>&1"
+schtasks /Create /TN tetraeder-vast-nightly /SC DAILY /ST 03:00 /F /TR "conhost.exe --headless cmd /c cd /d <repo> && uv run taxameter nightly >> .vast\nightly.out 2>&1"
+schtasks /Create /TN tetraeder-vast-watchdog /SC MINUTE /MO 5 /F /TR "conhost.exe --headless cmd /c cd /d <repo> && uv run taxameter watchdog --once >> .vast\watchdog.out 2>&1"
 ```
 
 Weekly GPU smoke (about 0.25 USD): `scripts/gpu_smoke.sh` prints the commands (dry run), `--run` does the cycle; see `docs/sessions.md`, "GPU smoke". Not scheduled while box runs are on hold.
