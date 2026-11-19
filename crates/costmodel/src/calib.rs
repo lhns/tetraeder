@@ -894,15 +894,9 @@ mod tests {
             c_range_graph_s: 1e-9,
             ..RangeCosts::PRIOR
         });
-        // A slow all-reduce path (ten times the fixture's curve), so the bytes and the latency
-        // weigh well above the pull of the prior.
-        for c in &mut prior.collectives {
-            if c.op == tetraeder_profiler::CollectiveOp::AllReduce {
-                for p in &mut c.points {
-                    p.1 *= 10.0;
-                }
-            }
-        }
+        // The fixture's curve as is: the latency replaces its 20 us floor, so a decode
+        // all-reduce is mostly `a` and weighs well above the pull of the prior (a curve scaled
+        // up, as the share's test had, buries `a` under the byte part).
         let mut truth = prior.clone();
         truth.range_costs = Some(RangeCosts {
             c_range_graph_s: 1e-9,
@@ -918,7 +912,8 @@ mod tests {
         }
         let fit = fit(&prior, &anchors, "gpu0", "cpu0", "pcie-gpu0").unwrap();
         let c = fit.hw.range_costs_or_prior();
-        assert!(rel(c.allreduce_latency_s.unwrap(), 4e-6) < 0.05, "{c:?}");
+        assert!(rel(c.allreduce_latency_s.unwrap(), 4e-6) < 0.10, "{c:?}");
+        assert!(fit.band < 0.06, "{:?}", fit.residuals);
         assert_eq!((c.allreduce_latency_share, c.allreduce_step_s), (1.0, None));
         assert!(rel(c.c_step_s, 8e-4) < 0.05, "{c:?}");
         assert_eq!(fit.hw.links, prior.links);
