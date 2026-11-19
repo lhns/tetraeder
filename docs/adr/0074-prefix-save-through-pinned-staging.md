@@ -1,6 +1,6 @@
 # 0074. Prefix-cache save on a GPU: pinned staging and prepared snapshot buffers
 
-Status: Proposed (2026-11-17). The save bar below is met in `bench/results/20261117h/`; the TTFT replay (`20261117l`) shows saves and restores of long conversations still dominate, see "Open".
+Status: Accepted (owner, 2026-11-19; proposed 2026-11-17). The save bar is met in `bench/results/20261117h/`; the TTFT bar (median and p90 at most 1.15x llama-server, saves at most 10% of TTFT) is met in both rounds of `bench/results/ttft7-20261119/` (2026-11-19).
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

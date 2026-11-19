@@ -3,8 +3,14 @@
 //!
 //! Every group the ADR 0068 candidates use gets an all-reduce curve: all GPUs and, on four, each
 //! pair {0,1} and {2,3} (positions in `--gpus`). Every ordered pair gets a copy curve. Sizes run
-//! from 4 KiB to 64 MiB in powers of 4; each point is the median of the repeats, each timed op
-//! between two `Backend::synchronize` calls, through the path the executor uses.
+//! from 4 KiB to 64 MiB in powers of 4, plus 8 and 20 KiB (a decode all-reduce at `n_embd` 2048
+//! and 5120); each point is the median of the repeats, each timed op between two
+//! `Backend::synchronize` calls, through the path the executor uses.
+//!
+//! The first op of a run reads high (s3c: 4-rank 77.7 us at 4 KiB, above 16 KiB's 77.2; ADR
+//! 0080 History), so the probe warms the all-rank group up before timing anything and times
+//! that group's sweep a second time after every other curve, keeping the per-size minimum of
+//! the two medians: what inflates a point (warm-up, a co-tenant burst) only adds time.
 
 use anyhow::{Result, bail};
 use clap::Args;
@@ -28,10 +34,13 @@ pub struct CommProbeArgs {
     repeats: usize,
 }
 
-/// 4 KiB to 64 MiB in powers of 4.
-pub const SIZES: [usize; 8] = [
+/// 4 KiB to 64 MiB in powers of 4, plus the decode all-reduces of `n_embd` 2048 and 5120
+/// (`4 x n_embd` bytes).
+pub const SIZES: [usize; 10] = [
     4 << 10,
+    8 << 10,
     16 << 10,
+    20 << 10,
     64 << 10,
     256 << 10,
     1 << 20,
@@ -116,17 +125,20 @@ pub fn probe(
         groups.push(vec![2, 3]);
     }
     let mut curves = Vec::new();
+    if let Some(&first) = sizes.first() {
+        let bufs = buffers(&exec, &groups[0], first)?;
+        let op = all_reduce(&groups[0], &bufs);
+        for _ in 0..WARMUP_FIRST {
+            exec.transfer(&op)?;
+        }
+        for &r in &groups[0] {
+            exec.ranks().backend(r).synchronize();
+        }
+    }
     for g in &groups {
-        let mut points = Vec::new();
         let mut comm = String::from("fallback");
         exec.take_counters();
-        for &bytes in sizes {
-            let bufs = buffers(&exec, g, bytes)?;
-            let op = Op::AllReduce {
-                tensors: g.iter().zip(&bufs).map(|(&r, t)| (r, t.get())).collect(),
-            };
-            points.push((bytes as f64, time_op(&mut exec, &op, g, repeats)?));
-        }
+        let points = sweep(&mut exec, g, sizes, repeats)?;
         if let Some(&(_, path)) = exec
             .take_counters()
             .collective_bytes
@@ -162,12 +174,47 @@ pub fn probe(
             });
         }
     }
+    let again = sweep(&mut exec, &groups[0], sizes, repeats)?;
+    curves[0].points = min_points(&curves[0].points, &again);
     Ok(Report {
         comm_path: exec.ranks().comm_path().to_string(),
         devices: names.to_vec(),
         repeats,
         curves,
     })
+}
+
+/// Untimed all-reduces of the all-rank group before the first timed op.
+const WARMUP_FIRST: usize = 50;
+
+fn all_reduce<'a>(group: &[RankId], bufs: &'a [OwnedTensor]) -> Op<'a> {
+    Op::AllReduce {
+        tensors: group.iter().zip(bufs).map(|(&r, t)| (r, t.get())).collect(),
+    }
+}
+
+/// One all-reduce point per size over `group`.
+fn sweep(
+    exec: &mut Executor,
+    group: &[RankId],
+    sizes: &[usize],
+    repeats: usize,
+) -> Result<Vec<(f64, f64)>> {
+    let mut points = Vec::with_capacity(sizes.len());
+    for &bytes in sizes {
+        let bufs = buffers(exec, group, bytes)?;
+        let op = all_reduce(group, &bufs);
+        points.push((bytes as f64, time_op(exec, &op, group, repeats)?));
+    }
+    Ok(points)
+}
+
+/// Per size the smaller time of two passes over the same sizes.
+fn min_points(a: &[(f64, f64)], b: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    a.iter()
+        .zip(b)
+        .map(|(&(n, x), &(_, y))| (n, x.min(y)))
+        .collect()
 }
 
 /// One zeroed F32 tensor of `bytes` bytes on each rank of `group`, each holding its own buffer.
@@ -232,6 +279,24 @@ mod tests {
         let w = Wrapper::try_parse_from(["x", "--gpus", "0,1,2,3", "--out", "o.json"]).unwrap();
         assert_eq!((w.args.gpus, w.args.repeats), (vec![0, 1, 2, 3], 20));
         assert!(Wrapper::try_parse_from(["x", "--out", "o.json"]).is_err());
+    }
+
+    /// The decode sizes of both widths are probed, in ascending order.
+    #[test]
+    fn sizes_cover_the_decode_all_reduces() {
+        assert!(SIZES.windows(2).all(|w| w[0] < w[1]));
+        assert!(SIZES.contains(&(4 * 2048)) && SIZES.contains(&(4 * 5120)));
+    }
+
+    /// A point inflated in one pass (s3c's first op) takes the other pass's time.
+    #[test]
+    fn two_passes_keep_the_smaller_time() {
+        let first = [(4096.0, 7.8e-5), (16384.0, 7.7e-5)];
+        let again = [(4096.0, 6.4e-5), (16384.0, 7.8e-5)];
+        assert_eq!(
+            min_points(&first, &again),
+            [(4096.0, 6.4e-5), (16384.0, 7.7e-5)]
+        );
     }
 
     #[test]
