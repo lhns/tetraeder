@@ -1,0 +1,5 @@
+{
+  "gpu_parity": "ok",
+  "comm_probe": "ok",
+  "baseline_modes": "ok"
+}
