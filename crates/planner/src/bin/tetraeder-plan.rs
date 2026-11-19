@@ -105,6 +105,10 @@ enum Command {
         calib: Option<PathBuf>,
         #[arg(long)]
         candidates: PathBuf,
+        /// `routing-<model>.json` of `tetraeder bench --routing-out`: expert parallel priced at
+        /// the recorded routing (ADR 0070); hashed into the file. Without it, uniform routing.
+        #[arg(long)]
+        routing: Option<PathBuf>,
         #[arg(long)]
         out: PathBuf,
     },
@@ -431,6 +435,7 @@ fn main() -> Result<()> {
             layout,
             calib,
             candidates,
+            routing,
             out,
         } => {
             let hw_text = read(&hw)?;
@@ -444,6 +449,15 @@ fn main() -> Result<()> {
                 None => None,
             };
             let layout = multi_cli::parse_layout(&read(&layout)?).map_err(anyhow::Error::msg)?;
+            let routing = match &routing {
+                Some(p) => {
+                    let text = read(p)?;
+                    let r = multi_cli::parse_routing(&text, &layout)
+                        .map_err(|e| anyhow::anyhow!("{}: {e}", p.display()))?;
+                    Some((r, multi_cli::sha256_hex(text.as_bytes())))
+                }
+                None => None,
+            };
             let cands: multi_cli::MultiFile =
                 serde_json::from_str(&read(&candidates)?).context("parse candidates")?;
             let (calibrated, calib_sha) = match calib {
@@ -474,6 +488,7 @@ fn main() -> Result<()> {
                     calib_sha,
                     comm_sha,
                 ),
+                routing.as_ref().map(|(r, sha)| (r, sha.clone())),
                 &commit,
             )
             .map_err(anyhow::Error::msg)?;

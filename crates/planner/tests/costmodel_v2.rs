@@ -32,7 +32,15 @@ fn predictions(hw: &HardwareGraph, dir: &Path) -> Vec<(String, String, f64, f64)
         let layout = parse_layout(&read(&dir.join(format!("layouts/{m}.json")))).unwrap();
         let cands: MultiFile =
             serde_json::from_str(&read(&dir.join(format!("candidates-{m}.json")))).unwrap();
-        let p = predict_multi(hw, &layout, &cands, (String::new(), None, None), "test").unwrap();
+        let p = predict_multi(
+            hw,
+            &layout,
+            &cands,
+            (String::new(), None, None),
+            None,
+            "test",
+        )
+        .unwrap();
         for r in p.candidates {
             out.push((m.clone(), r.id, r.pp_tps, r.tg_tps));
         }
