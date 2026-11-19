@@ -155,10 +155,11 @@ impl Problem<'_> {
                 }
             }
         }
-        let ranges_moved = self.ranges_at.is_some_and(|i| (i..i + 3).any(moved));
-        if ranges_moved || self.ar_at.is_some() {
+        // A fit with ranks is a cost model 4 graph: it prices the routed slots (ADR 0080).
+        if self.ranges_at.is_some() || self.ar_at.is_some() {
             let c = self.prior.range_costs_or_prior();
             let mut r = c;
+            r.expert_slot_traffic = true;
             if let Some(i) = self.ranges_at {
                 r.c_range_graph_s = val(c.c_range_graph_s, i);
                 r.c_range_eager_s = val(c.c_range_eager_s, i + 1);
@@ -839,6 +840,7 @@ mod tests {
             attn_flops_per_ctx_token: layers * 1e5,
             expert_bytes_per_token: layers * experts * 0.05e9,
             expert_params_per_token: layers * experts * 0.1e9,
+            expert_slot_bytes_per_token: 0.0,
         }
     }
 

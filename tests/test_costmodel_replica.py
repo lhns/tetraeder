@@ -134,3 +134,39 @@ def test_anchor_plans_fall_back_to_the_session_plans(tmp_path):
     (tmp_path / "plans-anchor" / "candidates-x.json").write_text(json.dumps(anchor))
     pl = cr.anchor_plans(tmp_path, "x")
     assert {k: v["tag"] for k, v in pl.items()} == {"single": "anchor", "tp-4": "main", "tp-2": "anchor"}
+
+
+def test_routed_slot_bytes_of_the_30b():
+    """ADR 0080: k = 8, n_ff_exp 768, n_embd 2048 give 690944 bytes per token and MoE layer on a whole-expert rank;
+    a tp-2 rank halves only the n_ff_exp part; versions before 4 price none."""
+    layout = {"n_expert_used": 8, "n_ff_exp": 768, "n_embd": 2048}
+    assert cr.slot_bytes(layout, 1.0, 4) == 690944.0
+    assert cr.slot_bytes(layout, 0.5, 4) == 690944.0 - 8 * 25.125 * 384
+    assert cr.slot_bytes(layout, 1.0, 3) == 0.0
+
+
+@pytest.mark.parametrize("path", ["s2f-20261118/costmodel-v4/fit-s2f.json",
+                                  "s2f-20261118/costmodel-v4/fit-s2e-eval-s2f.json",
+                                  "s3c-20261119/costmodel-v4/fit-s3c.json"])
+def test_version_4_rows_follow_from_the_committed_graph(path):
+    """The committed version-4 rows (s3c with its routing record) are the replica's predictions on the graph beside
+    them, which carries expert_slot_traffic for Rust."""
+    p = ROOT / "bench" / "results" / path
+    if not p.is_file():
+        pytest.skip(f"{path} not committed")
+    v = json.loads(p.read_text())
+    assert v["version"] == 4 and v["hw"]["range_costs"]["expert_slot_traffic"] is True
+    ev = ROOT / v["eval"]
+    saved = dict(cr.ROUTING)
+    try:
+        for m in cr.models(ev):
+            f = ev / f"routing-{m}.json"
+            if f.exists():
+                cr.ROUTING[m] = cr.routing_tables(cr.load_json(f))
+        rows = cr.predict_session(v["hw"], ev, 4)
+    finally:
+        cr.ROUTING.clear()
+        cr.ROUTING.update(saved)
+    for r, c in zip(rows, v["rows"]):
+        assert (r["model"], r["id"]) == (c["model"], c["id"])
+        assert r["pp"] == c["pp"] and r["tg"] == c["tg"]

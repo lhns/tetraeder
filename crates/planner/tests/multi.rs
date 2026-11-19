@@ -337,6 +337,74 @@ fn moe_prefill_reads_every_expert_on_single_and_tp2() {
     }
 }
 
+/// ADR 0080: the routed slots' activation bytes per token and MoE layer. Every expert-parallel
+/// rank pays all of them, a tp-2 rank its column share of the n_ff_exp part only, a dense model
+/// none; graphs without `expert_slot_traffic` (fitted before cost model 4) price none.
+#[test]
+fn routed_slot_bytes_are_not_split_by_expert_parallel() {
+    let l = moe();
+    let (k, ff, embd) = (
+        f64::from(l.n_expert_used),
+        f64::from(l.ff_exp_dim()),
+        f64::from(l.n_embd),
+    );
+    let full = k * (25.125 * ff + 22.25 * embd) + 12.0 * (k - 1.0) * embd;
+    let half = full - k * 25.125 * ff / 2.0;
+    let moe_layers = l.layers.iter().filter(|b| b.expert_bytes > 0).count() as f64;
+    // per rank, summed over the phases, prefill parts
+    let per_rank = |id: &str| {
+        let f = features_of(&l, id, None);
+        let mut by: BTreeMap<String, f64> = BTreeMap::new();
+        for ph in &f.ranks.unwrap().phases {
+            for p in ph.prefill_parts.as_ref().unwrap_or(&ph.parts) {
+                *by.entry(p.device.clone()).or_default() +=
+                    f64::from(ph.repeat) * p.expert_slot_bytes_per_token;
+            }
+        }
+        by.into_values().collect::<Vec<_>>()
+    };
+    let close = |a: f64, b: f64| (a / b - 1.0).abs() < 1e-9;
+    assert!(close(per_rank("single")[0], moe_layers * full));
+    for r in per_rank("ep-2") {
+        assert!(close(r, moe_layers * full), "{r}");
+    }
+    for r in per_rank("tp-2") {
+        assert!(close(r, moe_layers * half), "{r}");
+    }
+    let f = features_of(&dense(), "tp-2", None);
+    assert!(f.ranks.unwrap().phases.iter().all(|ph| {
+        ph.parts
+            .iter()
+            .all(|p| p.expert_slot_bytes_per_token == 0.0)
+    }));
+    // priced only on cost model 4 graphs, and then the slower
+    let mut old = hw(TWO);
+    old.range_costs = Some(RangeCosts::PRIOR);
+    let mut new = old.clone();
+    new.range_costs = Some(RangeCosts {
+        expert_slot_traffic: true,
+        ..RangeCosts::PRIOR
+    });
+    let f = features_of(&l, "ep-2", None);
+    let (a, b) = (
+        predict(&old, &f, 2048, 128).unwrap(),
+        predict(&new, &f, 2048, 128).unwrap(),
+    );
+    assert!(b.pp_tok_s < a.pp_tok_s && b.tg_tok_s < a.tg_tok_s);
+    let mut zero = f.clone();
+    for ph in &mut zero.ranks.as_mut().unwrap().phases {
+        for p in ph
+            .parts
+            .iter_mut()
+            .chain(ph.prefill_parts.iter_mut().flatten())
+        {
+            p.expert_slot_bytes_per_token = 0.0;
+        }
+    }
+    let z = predict(&new, &zero, 2048, 128).unwrap();
+    assert_eq!(z.pp_tok_s.to_bits(), a.pp_tok_s.to_bits());
+}
+
 #[test]
 fn anchor_file_names_give_the_model() {
     assert_eq!(

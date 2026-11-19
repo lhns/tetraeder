@@ -85,6 +85,11 @@ pub struct DevicePart {
     pub expert_bytes_per_token: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub expert_params_per_token: f64,
+    /// Activation bytes per token of the routed slots outside the matmuls (gate and up outputs,
+    /// swiglu, input quantization, the weighting and the sum over slots; ADR 0080). Priced at
+    /// `B` only on graphs with `RangeCosts::expert_slot_traffic`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub expert_slot_bytes_per_token: f64,
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -530,12 +535,22 @@ pub fn predict(
 ///
 /// ```text
 /// t = c0 ops + max(2 p m / F, W / B) + max(2 p_exp m / F_exp, W_exp / B) + max(a m ctx / F, kv ctx / B)
+///     + S m / B
 /// ```
-fn part_time_s(p: &DevicePart, r: &Rates, m: f64, ctx: f64) -> f64 {
+///
+/// `S` (the routed slots' activation bytes, ADR 0080) counts only when `slots` (the graph's
+/// `RangeCosts::expert_slot_traffic`); its kernels run apart from the matmuls, so it adds.
+fn part_time_s(p: &DevicePart, r: &Rates, m: f64, ctx: f64, slots: bool) -> f64 {
+    let slot = if slots {
+        p.expert_slot_bytes_per_token * m / r.b
+    } else {
+        0.0
+    };
     r.c0 * p.ops_per_token
         + (2.0 * p.params_per_token * m / r.f).max(p.weight_bytes_per_token / r.b)
         + (2.0 * p.expert_params_per_token * m / r.f_exp).max(p.expert_bytes_per_token / r.b)
         + (p.attn_flops_per_ctx_token * m * ctx / r.f).max(p.kv_bytes_per_ctx_token * ctx / r.b)
+        + slot
 }
 
 /// `(alpha, beta)` of the link between two devices, beta capped by its lane group.
@@ -711,7 +726,7 @@ fn predict_ranks(
                     .find(|e| e.0 == p.device)
                     .map(|e| e.1)
                     .ok_or_else(|| PredictError::UnknownDevice(p.device.clone()))?;
-                let t = part_time_s(p, &rt, m, ctx);
+                let t = part_time_s(p, &rt, m, ctx, costs.expert_slot_traffic);
                 if t > slowest.1 || slowest.0.is_empty() {
                     slowest = (p.device.clone(), t);
                 }
@@ -894,6 +909,7 @@ pub(crate) mod fixture {
             attn_flops_per_ctx_token: 1e5 * gb / 10.0,
             expert_bytes_per_token: 0.0,
             expert_params_per_token: 0.0,
+            expert_slot_bytes_per_token: 0.0,
         }
     }
 

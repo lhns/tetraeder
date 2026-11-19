@@ -109,15 +109,43 @@ fn predict_reproduces_the_v3_replica_on_s3b() {
     assert!(w < 1e-9, "largest difference {w:e}");
 }
 
+/// The replica's version-4 file (ADR 0080, `--json`, committed beside S2f), if present.
+fn replica_v4(name: &str) -> Option<serde_json::Value> {
+    let p = repo()
+        .join("bench/results/s2f-20261118/costmodel-v4")
+        .join(name);
+    if !p.is_file() {
+        eprintln!("skip: {} not committed", p.display());
+        return None;
+    }
+    Some(serde_json::from_str(&read(&p)).unwrap())
+}
+
+/// MODEL_VERSION 4 (ADR 0080): on the replica's version-4 graphs, which carry
+/// `expert_slot_traffic`, `predict` gives the replica's numbers, the routed slots included.
+#[test]
+fn predict_reproduces_the_v4_replica_on_s2f() {
+    for name in ["fit-s2f.json", "fit-s2e-eval-s2f.json"] {
+        let Some(v) = replica_v4(name) else { return };
+        assert_eq!(v["version"], 4);
+        let hw: HardwareGraph = serde_json::from_value(v["hw"].clone()).unwrap();
+        assert!(hw.range_costs_or_prior().expert_slot_traffic);
+        let eval = repo().join(v["eval"].as_str().unwrap());
+        let w = worst(&predictions(&hw, &eval), &v["rows"]);
+        assert!(w < 1e-9, "{name}: largest difference {w:e}");
+    }
+}
+
 /// The fit is the same algorithm in both, not the same bits: the predictions from Rust's fit
-/// agree with the replica's within 1%.
+/// agree with the replica's within 1%. The replica of the current MODEL_VERSION (4).
 #[test]
 fn calibrate_lands_on_the_replica_fit() {
     for (name, fit_dir) in [
         ("fit-s2f.json", "bench/results/s2f-20261118/phase5"),
         ("fit-s2e-eval-s2f.json", "bench/results/s2e-20261118/phase5"),
     ] {
-        let Some(v) = replica(name) else { return };
+        let Some(v) = replica_v4(name) else { return };
+        assert_eq!(v["version"], tetraeder_costmodel::MODEL_VERSION);
         let dir = repo().join(fit_dir);
         let mut hw = parse_hw(&read(&dir.join("hw.json"))).unwrap();
         merge_comm(&mut hw, &read(&dir.join("calib-comm.json"))).unwrap();

@@ -367,10 +367,19 @@ pub struct RangeCosts {
     /// or more group sizes, else `None` (0: every group pays the anchored latency).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allreduce_step_s: Option<f64>,
+    /// Graphs fitted by cost model 4 (ADR 0080): a part's routed-slot activation bytes
+    /// (`DevicePart::expert_slot_bytes_per_token`) cost `bytes x M / B`. `false`: graphs fitted
+    /// before, which keep their numbers.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub expert_slot_traffic: bool,
 }
 
 fn one() -> f64 {
     1.0
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl RangeCosts {
@@ -381,6 +390,7 @@ impl RangeCosts {
         allreduce_latency_share: 1.0,
         allreduce_latency_s: None,
         allreduce_step_s: None,
+        expert_slot_traffic: false,
     };
 }
 
@@ -649,6 +659,7 @@ mod tests {
             allreduce_latency_share: 0.5,
             allreduce_latency_s: Some(1.2e-5),
             allreduce_step_s: Some(1e-6),
+            expert_slot_traffic: true,
         });
         assert_eq!(HardwareGraph::from_toml(&g.to_toml().unwrap()).unwrap(), g);
         // range costs written before the latency share read it as 1
@@ -658,6 +669,7 @@ mod tests {
         .unwrap();
         assert_eq!(rc.allreduce_latency_share, 1.0);
         assert_eq!((rc.allreduce_latency_s, rc.allreduce_step_s), (None, None));
+        assert!(!rc.expert_slot_traffic);
         assert_eq!(HardwareGraph::from_json(&g.to_json().unwrap()).unwrap(), g);
         // old files have neither field
         let old = HardwareGraph::from_toml(FIXTURE).unwrap();

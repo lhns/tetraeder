@@ -18,9 +18,11 @@ Routing (ADR 0070): expert parallel is priced from DIR's (or EVAL_DIR's) routing
 Version 1 matches the session's `predict-*.json` to the printed digit (tests/test_costmodel_replica.py). Version 2 is
 MODEL_VERSION 2 (ADR 0070, History 2026-11-18): expert matmuls at their own rate, the head (and the dense builder's
 last FFN) on output rows, every expert read at prefill, a roofline per op class, `single` on the ranks path, and an
-all-reduce in a step paying the fitted share of the probe's zero-byte time. Version 3 (the default) is MODEL_VERSION 3
-(ADR 0078): the all-reduce in a step pays the curve's byte part plus a fitted in-step latency a + 2 (p - 1) b over p
-ranks, b only when the anchors' all-reduces span two group sizes. Pipelined prefill (ADR 0077) is priced as `predict_ranks` does; version 2 on a session's own calib.json
+all-reduce in a step paying the fitted share of the probe's zero-byte time. Version 3 is MODEL_VERSION 3 (ADR 0078):
+the all-reduce in a step pays the curve's byte part plus a fitted in-step latency a + 2 (p - 1) b over p ranks, b only
+when the anchors' all-reduces span two group sizes. Version 4 (the default) is MODEL_VERSION 4 (ADR 0080): version 3
+plus the routed slots' activation bytes at the memory rate, every slot on every expert-parallel rank; Rust prices them
+on graphs that carry `expert_slot_traffic`, which a version-4 fit writes. Pipelined prefill (ADR 0077) is priced as `predict_ranks` does; version 2 on a session's own calib.json
 gives its predict-*.json bit for bit (S2g, S3, S3b). Rust `predict` reproduces version 2 on the graphs this script
 writes (`crates/planner/tests/costmodel_v2.rs`). The fit is the same Levenberg-Marquardt and coordinate search as
 `calib.rs`, not bit-identical to it. Input files (ADR 0068 names): hw.json, calib-comm.json, calib.json,
@@ -61,6 +63,8 @@ ROUTING: dict = {}
 # Monte Carlo results by (frequencies, top_k, ranks): a synthetic table repeats one row per layer
 _MC: dict = {}
 OPS = {"all_reduce": "AllReduce", "copy": "Copy"}
+# multi.rs: activation bytes of a routed slot per n_ff_exp column and per n_embd row, the sum per added slot
+SLOT_FF_BYTES, SLOT_EMBD_BYTES, SLOT_SUM_BYTES = 25.125, 22.25, 12.0
 
 
 # ---- hardware graph ---------------------------------------------------------------------------------------------
@@ -231,10 +235,24 @@ def max_mass(freq: list, ranks: int) -> float:
 
 # ---- features -----------------------------------------------------------------------------------------------------
 
-def part(dev, w, ops, kv, attn, b, ew=0.0, ep=None):
-    """A DevicePart; `ew`/`ep` are the expert bytes and params (version 2), `ep` defaults to `ew / bpp`."""
+def part(dev, w, ops, kv, attn, b, ew=0.0, ep=None, sb=0.0):
+    """A DevicePart; `ew`/`ep` are the expert bytes and params (version 2), `ep` defaults to `ew / bpp`; `sb` the
+    routed slots' activation bytes per token (version 4)."""
     return {"device": dev, "w": w, "p": w / b, "res": w, "ops": ops, "kv": kv, "attn": attn,
-            "ew": ew, "ep": ew / b if ep is None else ep}
+            "ew": ew, "ep": ew / b if ep is None else ep, "sb": sb}
+
+
+def slot_bytes(layout: dict, ff_share: float, version: int) -> float:
+    """`multi::slot_bytes` (version 4, ADR 0080): activation bytes per token of one MoE layer's k routed slots on a
+    rank whose experts have `ff_share` of the n_ff_exp columns. Per slot and n_ff_exp column: gate and up written (8),
+    swiglu read and written (12), the down input read and quantized to Q8_1 (5.125); per slot and n_embd row: the
+    down output written (4), weighted (8), the gate and up inputs quantized (10.25); the sum over k slots 12 (k - 1)
+    per n_embd row. Expert parallel pays every slot, local or not; 0 before version 4."""
+    if version < 4:
+        return 0.0
+    k = layout["n_expert_used"]
+    return (k * (SLOT_FF_BYTES * layout["n_ff_exp"] * ff_share + SLOT_EMBD_BYTES * layout["n_embd"])
+            + SLOT_SUM_BYTES * (k - 1) * layout["n_embd"])
 
 
 def push_phase(v: list, p: dict) -> None:
@@ -320,7 +338,7 @@ def features(layout: dict, plan: dict, lim: int | None, version: int, routing: d
                                "after": readback if last else hop})
                 continue
             # Version 2: one range per step, priced per op class; the head (and the dense last FFN) on output rows.
-            w = ops = kv = attn = ex = 0.0
+            w = ops = kv = attn = ex = sb = 0.0
             out_w = out_ops = 0.0
             for l in range(span[0], span[1]):
                 lb = layout["layers"][l]
@@ -333,11 +351,12 @@ def features(layout: dict, plan: dict, lim: int | None, version: int, routing: d
                     w += lb["attn_bytes"] + lb["ffn_bytes"]
                     ops += OPS_ATTN + OPS_FFN
                 ex += lb["expert_bytes"]
+                sb += slot_bytes(layout, 1.0, version) if lb["expert_bytes"] > 0 else 0.0
                 ops += OPS_EXPERT if lb["expert_bytes"] > 0 else 0.0
                 kv += kv_layer
                 attn += attn_layer
-            dec = part(devs[0], w, ops, kv, attn, b, ew=r * ex)
-            pre = part(devs[0], w, ops, kv, attn, b, ew=ex, ep=r * ex / b) if ex > 0 else None
+            dec = part(devs[0], w, ops, kv, attn, b, ew=r * ex, sb=sb)
+            pre = part(devs[0], w, ops, kv, attn, b, ew=ex, ep=r * ex / b, sb=sb) if ex > 0 else None
             phases.append({"repeat": 1, "parts": [dec], "pre": [pre] if pre else None, "ranges": 1,
                            "after": None if last else hop})
             if last:
@@ -397,8 +416,10 @@ def ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep, ro
         shares = width(layout["n_ff_exp"])
         if not v2:
             return mk([part(x, dense + r * ex * s, ops, 0.0, 0.0, b) for x, s in zip(devs, shares)], None)
-        dec = [part(x, dense, ops, 0.0, 0.0, b, ew=r * ex * s) for x, s in zip(devs, shares)]
-        pre = [part(x, dense, ops, 0.0, 0.0, b, ew=ex * s, ep=r * ex * s / b) for x, s in zip(devs, shares)]
+        dec = [part(x, dense, ops, 0.0, 0.0, b, ew=r * ex * s, sb=slot_bytes(layout, s, version))
+               for x, s in zip(devs, shares)]
+        pre = [part(x, dense, ops, 0.0, 0.0, b, ew=ex * s, ep=r * ex * s / b, sb=slot_bytes(layout, s, version))
+               for x, s in zip(devs, shares)]
         return mk(dec, pre)
     e, g = layout["n_expert"], ep
     if uniform_ep is None:
@@ -425,8 +446,9 @@ def ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep, ro
             p["w"] = dense + local
             prefill.append(p)
     else:
-        decode = [part(x, dense, ops, 0.0, 0.0, b, ew=dec_max * eb) for x in devs]
-        prefill = [part(x, dense, ops, 0.0, 0.0, b, ew=local, ep=k * mass * eb / b) for x in devs]
+        sb = slot_bytes(layout, 1.0, version)
+        decode = [part(x, dense, ops, 0.0, 0.0, b, ew=dec_max * eb, sb=sb) for x in devs]
+        prefill = [part(x, dense, ops, 0.0, 0.0, b, ew=local, ep=k * mass * eb / b, sb=sb) for x in devs]
     out = mk(decode, prefill)
     out["uniform_ep"] = uniform_ep
     return out
@@ -457,7 +479,7 @@ def part_time(p: dict, rt: tuple, m: float, ctx: float, version: int) -> float:
         return c0 * p["ops"] + max((2.0 * p["p"] * m + p["attn"] * m * ctx) / f + 2.0 * p["ep"] * m / fe,
                                    (p["w"] + p["ew"] + p["kv"] * ctx) / bw)
     return (c0 * p["ops"] + max(2.0 * p["p"] * m / f, p["w"] / bw) + max(2.0 * p["ep"] * m / fe, p["ew"] / bw)
-            + max(p["attn"] * m * ctx / f, p["kv"] * ctx / bw))
+            + max(p["attn"] * m * ctx / f, p["kv"] * ctx / bw) + p.get("sb", 0.0) * m / bw)
 
 
 def ar_latency(hw: dict, group: list) -> float:
@@ -716,6 +738,12 @@ class Problem:
             else:
                 new["allreduce_latency_share"] = math.exp(x[self.ar_at])
             changed = True
+        if self.version >= 4 and self.ranges_at is not None:
+            # graphs fitted by version 4 price the routed slots' activation bytes (ADR 0080)
+            new.update({k: rc[k] for k in ("c_range_graph_s", "c_range_eager_s", "c_step_s") if k not in new})
+            new.setdefault("allreduce_latency_share", rc["allreduce_latency_share"])
+            new["expert_slot_traffic"] = True
+            changed = True
         if changed:
             hw["range_costs"] = new
         for l in hw["links"]:
@@ -954,7 +982,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir", type=Path)
     ap.add_argument("--eval", type=Path)
-    ap.add_argument("--version", type=int, default=3)
+    ap.add_argument("--version", type=int, default=4)
     ap.add_argument("--committed", action="store_true")
     ap.add_argument("--json", type=Path)
     ap.add_argument("--ar-form", choices=["offset", "scale"], default="offset")

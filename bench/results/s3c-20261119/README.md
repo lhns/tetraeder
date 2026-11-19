@@ -75,3 +75,74 @@ The pipeline of two tp-2 stages overlaps, but by 8% (32B) and 23% (30B). The mod
 
 - None in the session. The 32B tensor baseline never reached two clean rounds after two reruns (0x20 and 0x48 sample windows, then the share rule), so D4's verdict is null.
 - vLLM skipped (no AWQ/GPTQ checkpoint).
+
+## Diagnosis of the misses (offline, ADR 0080)
+
+Replica `scripts/costmodel_replica.py`, refit on each session's own anchors, recorded routing where the session has it (s3c only). Errors are pred/meas - 1.
+
+**tp2-pp2 pp (+0.449 on 32B, +0.282 on 30B): the pipeline overlap, not the stage price.**
+- The judged tp2-pp2 runs use `prefill_micro_batches` 4 (candidates file, both models); the model prices them as ADR 0077's GPipe over two stages, which credits 1.56x (32B) and 1.57x (30B) over the stages run in turn.
+- The stage price is right: the model at micro-batches 1 gives 1325.7 tok/s (32B) and 4145 (30B) against the pp-overlap stage's measured mb1 medians 1306.3 and 4055.5 (+0.015, +0.022).
+- Measured mb4/mb1 is 1.082 and 1.235: 24% (32B) and 53% (30B) of the modeled saving. layer-4, the same pipeline without all-reduces, overlaps as modeled (-0.05, -0.04).
+- Contention of the two groups' all-reduces does not explain it: one 2-rank all-reduce moves 3.4 GB/s per GPU link (gen4 x8 now), the 4-rank probe carries about 2.7x a pair's traffic, and with the all-reduces of both stages fully serialized (compute overlapping) the 32B step would still take about 920 ms against 1435 measured. ggml's NCCL path does not block the host (`ggml_backend_cuda_comm_allreduce_nccl`). What serializes the tp stages is not identified offline; no model change.
+- Box measurement that decides it: tp2-pp2 pp2048 at mb 4 with `TETRAEDER_EXEC_TRACE` (host time per op, sync off) and once with `TETRAEDER_EXEC_TRACE_SYNC=1` (device time per op), 32B and 30B. If an issue call (an all-reduce or a range) holds the host for about its device time, the one issuing thread serializes the stages and the fix is in the executor (per-stage issue), not the model; if every issue is short, per-op device times show which op slows down when both stages run (then nsys on the four streams).
+
+**ep-4 pp (+0.188): the routed slots' activation traffic, fixed (ADR 0080).**
+- With the recorded routing the busiest ep-4 rank holds 0.391 of a layer's routed rows on average; version 3 scales the whole expert time by that share. The measured step implies about 0.55.
+- Each rank of an expert-parallel layer computes all k slots of every token (ids of experts elsewhere are -1, patch 0004): gate and up outputs, swiglu, quantized inputs, the down output, its weighting and the sum over slots are full size on every rank, about 690 KB per token and layer on the 30B. Version 3 has no activation term at all, so these bytes sat inside `F_exp` on the single and tp-2 anchors and were scaled down with the rows on ep.
+- Version 4 prices them at the memory rate, apart from the matmuls (`DevicePart::expert_slot_bytes_per_token`). The fit moves `F_exp` from 24.5 to 33.5 TFLOP/s (the slots take about 80 of the single 30B's 400 ms prefill), and ep-4 pp goes to +0.070.
+
+**30B layer-4 tg (+0.169): an excess per stage on the MoE decode, cause open.**
+- Measured layer-4 against single: +0.48 ms per token for three boundaries (s3c), +0.39 (s3b), +0.38 (s3); the model gives -0.09, +0.07, +0.07. Excess per boundary 0.19, 0.11, 0.10 ms. llama.cpp `-sm layer` on the decode session lost a similar 0.15 ms per boundary against `-sm none` on this host.
+- Not a hop: tp2-pp2 has the same cross-NODE hop and its tg is exact (+0.002). Not dense: 32B layer-4 tg has no excess (-0.03 ms per boundary). Not on the 2-GPU host of s2g (layer-2 30B -0.17 ms).
+- The sync-mode trace of the decode session (toggles off) gives 1.27 to 1.30 ms of device time per 12-layer rank against 1.02 to 1.04 predicted, while the 48-layer single is about 0.2 ms over: a fixed device cost of about 0.2 ms per rank per token, which the model does not have and which a constant per boundary would not fit across hosts and models (it would cost the 32B and s2g). Suspected: the clock or wake state of a GPU idle three quarters of each token (a 30B rank works 1.3 ms of 5.3, a 32B rank 6 of 25, where a fixed wake cost hides in 2%).
+- Box measurement: 30B layer-4 and single tg128 with both toggles on and `TETRAEDER_EXEC_TRACE_SYNC=1`, with `nvidia-smi --query-gpu=clocks.sm,clocks.mem,pstate --format=csv -lms 20` alongside. A per-rank excess that is constant in the rank's layer count and comes with a clock or pstate dip at each rank's start confirms the wake cost; then the model needs a measured per-rank decode term, fitted from a layer-N anchor.
+
+**Other.** ep-4 tg goes from -0.148 to -0.150 with the slot bytes (0.04 ms per token), still at the line; its decode all-reduces over four ranks are what is over-priced. tp2-pp2 30B pp improves from +0.282 to +0.240 (the tp-2 stages pay their unsplit slots), still over for the overlap reason above.
+
+### Before and after (version 3 against version 4, err pp / tg, `x` beyond 0.15)
+
+| Session | Model | Candidate | v3 | v4 |
+|---|---|---|---|---|
+| s2f | 30B | single | -0.061 / +0.008 | -0.039 / +0.007 |
+| s2f | 30B | layer-2 | -0.139 / -0.104 | -0.118 / -0.105 |
+| s2f | 30B | tp-2 | -0.002 / +0.009 | -0.045 / +0.010 |
+| s2f | 30B | ep-2 | +0.096 / +0.057 | -0.020 / +0.058 |
+| s2f | 32B | single | -0.002 / +0.087 | -0.003 / +0.086 |
+| s2f | 32B | layer-2 | -0.025 / -0.221 x | -0.026 / -0.222 x |
+| s2f | 32B | tp-2 | +0.009 / -0.072 | +0.008 / -0.071 |
+| s2g | 30B | single | -0.096 / +0.018 | -0.082 / +0.017 |
+| s2g | 30B | layer-2 | +0.009 / -0.016 | +0.024 / -0.017 |
+| s2g | 30B | tp-2 | +0.033 / -0.023 | -0.001 / -0.022 |
+| s2g | 30B | ep-2 | +0.111 / +0.013 | +0.025 / +0.014 |
+| s2g | 32B | single | -0.018 / +0.006 | -0.019 / +0.004 |
+| s2g | 32B | layer-2 | +0.145 / -0.035 | +0.144 / -0.037 |
+| s2g | 32B | tp-2 | +0.039 / -0.001 | +0.038 / -0.001 |
+| s3 | 30B | single | -0.091 / +0.032 | -0.077 / +0.032 |
+| s3 | 30B | layer-4 | +0.269 x / +0.094 | +0.289 x / +0.093 |
+| s3 | 30B | ep-4 | +0.377 x / +0.391 x | +0.186 x / +0.393 x |
+| s3 | 30B | tp2-pp2 | +0.329 x / +0.014 | +0.285 x / +0.015 |
+| s3 | 32B | single | -0.024 / +0.014 | -0.025 / +0.013 |
+| s3 | 32B | layer-4 | +0.350 x / +0.004 | +0.350 x / +0.003 |
+| s3 | 32B | tp-4 | +0.093 / +0.066 | +0.093 / +0.068 |
+| s3 | 32B | tp2-pp2 | +0.511 x / -0.010 | +0.511 x / -0.009 |
+| s3b | 30B | single | -0.117 / +0.027 | -0.104 / +0.026 |
+| s3b | 30B | layer-4 | -0.065 / +0.090 | -0.049 / +0.089 |
+| s3b | 30B | ep-4 | +0.353 x / +0.495 x | +0.170 x / +0.497 x |
+| s3b | 30B | tp2-pp2 | +0.279 x / +0.019 | +0.238 x / +0.020 |
+| s3b | 32B | single | -0.017 / +0.017 | -0.017 / +0.016 |
+| s3b | 32B | layer-4 | -0.027 / +0.007 | -0.027 / +0.005 |
+| s3b | 32B | tp-4 | +0.093 / +0.121 | +0.093 / +0.123 |
+| s3b | 32B | tp2-pp2 | +0.483 x / -0.010 | +0.483 x / -0.010 |
+| s3c | 30B | single | -0.094 / +0.045 | -0.080 / +0.044 |
+| s3c | 30B | layer-4 | -0.059 / +0.169 x | -0.043 / +0.168 x |
+| s3c | 30B | ep-4 | +0.188 x / -0.148 | +0.070 / -0.150 |
+| s3c | 30B | tp2-pp2 | +0.282 x / +0.001 | +0.240 x / +0.002 |
+| s3c | 32B | single | -0.037 / +0.024 | -0.037 / +0.022 |
+| s3c | 32B | layer-4 | -0.051 / +0.020 | -0.052 / +0.019 |
+| s3c | 32B | tp-4 | +0.070 / -0.032 | +0.070 / -0.032 |
+| s3c | 32B | tp2-pp2 | +0.449 x / -0.022 | +0.448 x / -0.021 |
+
+- s3 ran before the pipeline issue-order fix (its layer-4 and tp2-pp2 pp understate the engine); s3 and s3b have no routing record (uniform ep-4). s2f 32B layer-2 tg is an old miss of that session (v3 the same).
+- 30B anchors (pp) on s3c: single L12 -0.007 to +0.013, L24 -0.057 to -0.042, tp-2 L12 +0.093 to +0.063, L24 +0.028 to -0.005.
+- Graph and rows: `costmodel-v4/fit-s3c.json` (`--json`, with the routing record).
