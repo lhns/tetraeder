@@ -1,0 +1,22 @@
+/root/tetraeder/bench/results/s3c-20261119-decode-decode/qwen3-30b-a3b-layer4-uid-async-trace-r1.trace.jsonl: 768 steps of the most common sequence, sync=False
+  upload     rank 0         12.8 us
+  upload     rank 1          8.9 us
+  upload     rank 2          8.8 us
+  upload     rank 3          8.6 us
+  compute    rank 0         11.0 us
+  copy       rank 0>1       15.8 us
+  compute    rank 1         10.0 us
+  copy       rank 1>2       13.8 us
+  compute    rank 2          9.9 us
+  copy       rank 2>3       13.6 us
+  compute    rank 3          9.6 us
+  sync       rank 3       5125.1 us
+  logits     rank 3         92.0 us
+  step       rank 0       5343.7 us
+  sum upload          39.1 us
+  sum compute         40.6 us
+  sum copy            43.2 us
+  sum sync          5125.1 us
+  sum logits          92.0 us
+  sum step          5343.7 us
+  sum all          10683.6 us

@@ -1,0 +1,2 @@
+cpu compute: not used (no anchor places compute on the CPU)
+10 anchors, band 0.108 -> /root/tetraeder/bench/results/s3c-20261119/phase5/calib.json

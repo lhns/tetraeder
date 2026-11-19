@@ -1,0 +1,34 @@
+{
+  "unclean_runs": [
+    {
+      "run": "qwen3-32b-single-r2",
+      "reasons": [
+        "qwen3-32b-single-r2: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-tp-4-r2",
+      "reasons": [
+        "qwen3-32b-tp-4-r2: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-llama-bench-tensor-r2",
+      "reasons": [
+        "qwen3-32b-llama-bench-tensor-r2: GPU 3: 1 window sample(s) with throttle bits 0x48"
+      ]
+    },
+    {
+      "run": "qwen3-32b-llama-bench-tensor-r3",
+      "reasons": [
+        "qwen3-32b-llama-bench-tensor-r3: GPU 0: 1 window sample(s) with throttle bits 0x20"
+      ]
+    },
+    {
+      "run": "qwen3-32b-llama-bench-tensor-r4",
+      "reasons": [
+        "qwen3-32b-llama-bench-tensor-r4: GPU 1: share of 0x4 samples 0.25 is furthest from the median 0.16 of qwen3-32b-llama-bench-tensor, whose rounds differ by 0.19 (more than 0.15)"
+      ]
+    }
+  ]
+}

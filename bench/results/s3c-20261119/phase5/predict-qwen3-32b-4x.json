@@ -1,0 +1,40 @@
+{
+  "model": "Qwen3 32B Awq Compatible Instruct",
+  "git_commit": "",
+  "hw_sha256": "41fc0d0f1e9dda45d32b78a88d5389538d54b1f9ae5ab45687ca0cb817ea4b14",
+  "calib_sha256": "c7481408fe436b453953cbd927b070cc4c21fa69207f68e54f015cc923ce2763",
+  "comm_sha256": "c6704ba1e1cd541467b39d34bdc7bb9bc7fa59213fb9b25b27fb8010be13fc0d",
+  "prompt": 2048,
+  "gen": 128,
+  "candidates": [
+    {
+      "id": "single",
+      "pp_tps": 1251.633742488771,
+      "tg_tps": 39.54255178855825,
+      "t_s": 4.873280632433501,
+      "binding": "compute:gpu0"
+    },
+    {
+      "id": "layer-4",
+      "pp_tps": 2783.5826602117686,
+      "tg_tps": 39.66979189514797,
+      "t_s": 3.9623790149218414,
+      "binding": "compute:gpu3"
+    },
+    {
+      "id": "tp-4",
+      "pp_tps": 1609.0774333124384,
+      "tg_tps": 78.88514064088577,
+      "t_s": 2.8953913272738863,
+      "binding": "compute:gpu0"
+    },
+    {
+      "id": "tp2-pp2",
+      "pp_tps": 2063.93059606074,
+      "tg_tps": 58.80481708118062,
+      "t_s": 3.168973855211439,
+      "binding": "compute:gpu2"
+    }
+  ],
+  "pruned": []
+}
