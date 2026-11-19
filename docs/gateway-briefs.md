@@ -1,6 +1,6 @@
 # Implementation briefs for ADR 0051
 
-Two self-contained briefs. Every design decision is in ADR 0051; read it first, then AGENTS.md. The prefix cache gets no change (ADR 0051: no prompt checkpoints). Box runs are on hold: no brief creates a box.
+Two self-contained briefs. Every design decision is in ADR 0051; read it first, then AGENTS.md. The prefix cache gets no change (ADR 0051: no prompt checkpoints). No brief creates a box. Status: G1 and G2 are built (ADR 0051 Accepted 2026-11-15, ADR 0057).
 
 All briefs: failing tests first, then code. Every local cargo command goes through the shared lock with one job: `L=/c/Users/pierr/AppData/Local/Temp/claude/cargo-host.lock; until mkdir "$L" 2>/dev/null; do sleep 20; done; CARGO_BUILD_JOBS=1 cargo <args>; rmdir "$L"`. Done means `cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check` pass (Rule 11; use CI on the `track-*` branch when the lock starves local builds), `python -m pytest tests/test_alert_rules.py tests/test_claude_code_proxy.py` passes, and ADR 0051 gets an "Implementation notes" section with what was built and any deviation. Commit only if your brief says so.
 

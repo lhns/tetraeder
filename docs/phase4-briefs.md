@@ -14,6 +14,8 @@ Briefs for ADR 0065 (verdict, batch backend, continuous batching), ADR 0066 (own
 
 C3b needs C2. C4 needs C1.5, C2 and C6-1. C5 needs C1.5, C2 and C6-1.
 
+Status: done. Every brief is built and on main; the verdict session passed 2026-11-17 (throughput [`20261117k`](../bench/results/20261117k/README.md), TTFT [`20261117l`](../bench/results/20261117l/README.md), ADR 0065 Accepted). These briefs are kept as the record of what was asked.
+
 ---
 
 ## Brief C1.5: shared attention module, bit-equal

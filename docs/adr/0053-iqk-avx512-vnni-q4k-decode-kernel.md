@@ -1,6 +1,6 @@
 # 0053. iqk AVX-512 VNNI kernels for Q4_K and Q6_K expert decode (patch 0002)
 
-Status: Proposed (Phase 2 exit follow-up, ADR 0045 hypothesis 3). Builds on ADR 0011 (pin, patch queue), 0039 (no repack), 0052 (runtime ISA dispatch). Brief: `docs/q4k-kernel-brief.md`.
+Status: Accepted (owner, 2026-11-19). Proposed (Phase 2 exit follow-up, ADR 0045 hypothesis 3). Builds on ADR 0011 (pin, patch queue), 0039 (no repack), 0052 (runtime ISA dispatch). Brief: `docs/q4k-kernel-brief.md`.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

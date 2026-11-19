@@ -207,7 +207,7 @@ gpu_note() {
 gpus() {
   local n
   if [ "$DRY" = 1 ]; then
-    plan "nvidia-smi -L | count == $ngpu (taxameter has no --num-gpus filter: stop on a wrong box)"
+    plan "nvidia-smi -L | count == $ngpu (taxameter filters by --num-gpus; still stop on a wrong box)"
     n="${DRY_GPUS:-$ngpu}"
   elif [ "$skip_gpu" = 1 ]; then
     say "gpus skipped (SKIP_GPU=1)"

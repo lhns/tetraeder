@@ -1,6 +1,6 @@
 # 0073. Engine pin moves to llama.cpp b12426 before the Phase 4 verdict
 
-Status: Proposed (2026-11-16). Supersedes the engine-pin part of ADR 0065's baseline note ("The engine pin stays at b11976", ADR 0065 History, 2026-11-16, "baseline moved to b12426"). The confirmation box on the new pin is `20261116pc`.
+Status: Accepted (owner, 2026-11-19). Proposed (2026-11-16). Supersedes the engine-pin part of ADR 0065's baseline note ("The engine pin stays at b11976", ADR 0065 History, 2026-11-16, "baseline moved to b12426"). The confirmation box on the new pin is `20261116pc`.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here; the CI numbers below have no session directory yet.
 

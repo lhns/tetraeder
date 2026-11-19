@@ -9,7 +9,7 @@ You set limits such as a target tok/s, a quality floor and which devices it may 
 - Rules for contributors and agents: [AGENTS.md](AGENTS.md)
 - Tests, benchmarks, build modes and the testing roadmap: [docs/testing.md](docs/testing.md)
 
-Status: Phase 0 (foundations). Workspace stubs and Vast tooling only; no engine yet.
+Status (2026-11-19): M1 reached 2026-11-14; Phase 4 (own KV cache, continuous batching) passed its exit test 2026-11-17; Phase 5 (own executor, multi-GPU) is in progress. Where it stands: [docs/m2-plan.md](docs/m2-plan.md), section "Phase 5: where it stands".
 
 Targets Windows and Linux. Build and test: `cargo build --workspace && cargo test --workspace`.
 
@@ -22,7 +22,7 @@ A tetrahedron (German: Tetraeder) has four faces, one for each of the four paral
 `tetraeder serve` runs the OpenAI API (`/v1/chat/completions`, `/v1/completions`) and the Anthropic API (`/v1/messages`, `/v1/messages/count_tokens`) on one port. It prints `listening on http://host:port` to stderr when it is ready.
 
 ```
-# dense model through libllama
+# dense model through libllama (add --engine dense for the own Qwen3 dense builder, ADR 0066)
 tetraeder serve -m model.gguf --alias qwen --ctx 65536 --port 8080
 # Qwen3 MoE through the builder on GPU 0, experts streamed from disk if slots are short
 tetraeder serve -m Qwen3-30B-A3B-Q4_K_M.gguf --engine moe --alias qwen --ctx 65536 --expert-slots 64
@@ -36,7 +36,7 @@ tetraeder serve -m model.gguf --plan auto --hw calibrated-graph.toml
 
 MoE builder with a RAM tier (`--ram-slots`): experts are read by the persistent I/O service (`--io-service on|off`, default on), and with `--miss cpu` the CPU experts of a decode step are computed as their reads land (`--overlap on|off`, default on; it needs the service) (ADR 0054). Prefetch of predicted experts is on too (`--prefetch on|off`, bare `--prefetch` means on; `--prefetch-depth 1|2`, default 2). The same defaults apply under `--plan`.
 
-One request generates at a time; others queue (`--max-queued`). The last conversation's KV cache is kept, so an agent that resends its whole history only pays for the new tokens. Sequences that a different prompt evicts are kept in host RAM (`--cache-ram <MiB>`, default 8192, 0 off) and restored when their prefix comes back.
+Up to `--parallel` requests (default 4) decode together (continuous batching, ADR 0065); more wait in a queue (`--max-queued`). Finished conversations stay resident in the KV cache, so an agent that resends its whole history only pays for the new tokens. Sequences that need to give way are saved to host RAM (`--cache-ram <MiB>`, default 8192, 0 off) and restored when their prefix comes back (ADR 0074).
 
 Claude Code:
 
@@ -54,7 +54,7 @@ All GPU work runs on ephemeral Vast.ai boxes through [taxameter](https://github.
 T="uv run taxameter"
 $T balance                   # credit and runway
 $T offers                    # ranked RTX 3090 offers; the last-good host comes first
-$T create --auto             # rent the best offer under max_price_per_hour (add --image to override the image)
+$T create --auto             # rent the best offer under max_price_per_hour (--image overrides the image, --num-gpus 2|4 rents a multi-GPU box)
 $T provision                 # push committed HEAD, toolchain, models (--models org/name:file.gguf,...), on-box autostop
 $T run scripts/nightly.sh    # start a repo script detached on the box
 $T ssh --timeout 540 -- 'for i in $(seq 100); do grep -q ^NIGHTLY_DONE /root/tetraeder/runs/vast/nightly.log && break; sleep 5; done'
@@ -72,15 +72,15 @@ By default `crates/ggml-sys` builds libllama, ggml and ggml-base as shared libra
 
 Optional nightly stages take env vars, so launch with `$T run scripts/nightly.sh --env MOE_CHECK=1 --env GAP_PAIR=gate-tetraeder-cuda-dense` (add `--env BENCH_SPEC=phase2-baseline` for the Phase 2 baseline). `MOE_CHECK=1` runs the builder on the real Qwen3-30B-A3B (`crates/model/tests/real_moe.rs`, writes `builder-real-<HHMMSS>.json`); `GAP_PAIR=<phase0 pair id>` repeats that pair 10 times into `bench/results/<date>/gap/`. Neither changes the verdict. `nightly_wait_min` in `taxameter.toml` covers all stage limits.
 
-Commit before `provision` or `run`: only committed HEAD (plus the `vendor/llama.cpp` checkout) is pushed. The box image (`ghcr.io/lhns/tetraeder-box:<tag from vendor/PIN>`) is built by `.github/workflows/box-image.yml`; to use a plain CUDA image instead pass `--image nvidia/cuda:12.8.1-devel-ubuntu24.04` and `provision` installs the missing tools. `taxameter.toml` holds the policy (price cap 0.45 USD/h, one instance per project, 1.0 USD/h across all projects on the account, 3 h per box, `auto_replace` off); a `.vast/config.json` still overrides it locally. Project work on the box lives in the hooks `scripts/box_deps.sh` and `scripts/box_verify.sh`; taxameter's own helper files go to `/root/.taxameter` on the box.
+Commit before `provision` or `run`: only committed HEAD (plus the `vendor/llama.cpp` checkout) is pushed. The box image (`ghcr.io/lhns/tetraeder-box:<tag from vendor/PIN>`) is built by `.github/workflows/box-image.yml`; to use a plain CUDA image instead pass `--image nvidia/cuda:12.8.1-devel-ubuntu24.04` and `provision` installs the missing tools. `taxameter.toml` holds the policy (price cap 0.90 USD/h per box all-in, two instances per project, 1.80 USD/h across all projects on the account, 3 h per box, `auto_replace` off; a 4-GPU box may pass `--max-price 1.20`, see `AGENTS.md`); a `.vast/config.json` still overrides it locally. Project work on the box lives in the hooks `scripts/box_deps.sh` and `scripts/box_verify.sh`; taxameter's own helper files go to `/root/.taxameter` on the box.
 
-Windows Task Scheduler, run once from a prompt (the nightly time is an example). Not registered by the repo; check `watchdog --dry-run` first. Tasks registered earlier with `uv run python scripts/vastctl.py nightly|watchdog --once` keep working: that file is now a shim for taxameter.
+Windows Task Scheduler, run once from a prompt (the nightly time is an example). `conhost.exe --headless` keeps the tasks from opening a console window every run. Not registered by the repo; check `watchdog --dry-run` first. Tasks registered earlier with `uv run python scripts/vastctl.py nightly|watchdog --once` keep working: that file is now a shim for taxameter.
 
 ```bat
-schtasks /Create /TN tetraeder-vast-nightly /SC DAILY /ST 03:00 /F /TR "cmd /c cd /d <repo> && uv run taxameter nightly >> .vast\nightly.out 2>&1"
-schtasks /Create /TN tetraeder-vast-watchdog /SC MINUTE /MO 5 /F /TR "cmd /c cd /d <repo> && uv run taxameter watchdog --once >> .vast\watchdog.out 2>&1"
+schtasks /Create /TN tetraeder-vast-nightly /SC DAILY /ST 03:00 /F /TR "conhost.exe --headless cmd /c cd /d <repo> && uv run taxameter nightly >> .vast\nightly.out 2>&1"
+schtasks /Create /TN tetraeder-vast-watchdog /SC MINUTE /MO 5 /F /TR "conhost.exe --headless cmd /c cd /d <repo> && uv run taxameter watchdog --once >> .vast\watchdog.out 2>&1"
 ```
 
-Weekly GPU smoke (about 0.25 USD): `scripts/gpu_smoke.sh` prints the commands (dry run), `--run` does the cycle; see `docs/sessions.md`, "GPU smoke". Not scheduled while box runs are on hold.
+Weekly GPU smoke (about 0.25 USD): `scripts/gpu_smoke.sh` prints the commands (dry run), `--run` does the cycle; see `docs/sessions.md`, "GPU smoke". Not scheduled; scheduling it needs the user's go.
 
 Tests: `uv run pytest -q tests` (offline; checks `taxameter.toml` against the repo).

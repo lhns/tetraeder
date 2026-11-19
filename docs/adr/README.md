@@ -22,7 +22,7 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0014](0014-own-graph-builder-for-expert-streaming.md) | Accepted | Expert streaming needs an own graph builder, so the first one (Qwen3 MoE, CUDA and CPU) comes in Phase 2 |
 | [0015](0015-own-graph-builders-in-rust.md) | Accepted | Own graph builders in Rust per family |
 | [0016](0016-own-executor-in-phase-5.md) | Accepted | An own executor replaces ggml's backend scheduler in Phase 5 |
-| [0017](0017-worker-process-per-device.md) | Accepted | One worker process per device |
+| [0017](0017-worker-process-per-device.md) | Accepted (in part superseded by 0069) | One worker process per device |
 | [0018](0018-transport-chosen-by-measurement.md) | Accepted | Transport is chosen by measurement in Phase 0 (quinn, iroh, TCP with TLS, RDMA where present) |
 | [0019](0019-m1-scope.md) | Accepted | M1 scope: dense models via libllama plus one MoE family with an own builder, CUDA and CPU only |
 | [0020](0020-no-timing-patch.md) | Accepted | No timing patch: whole-step timing with CUDA graphs in production, per-op timing in calibration runs |
@@ -33,35 +33,35 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0025](0025-objective-is-limits-plus-pareto-position.md) | Accepted | The objective is hard limits plus a position on the speed and quality front |
 | [0026](0026-phase1-engine-on-libllama.md) | Accepted | Phase 1 engine interface: safe libllama wrapper in ggml-sys, engine loop in a new engine crate |
 | [0027](0027-placement-plan-ir-shape.md) | Accepted | Placement plan IR: assignment rules over a model description, one expanded form for checks, diff and migration |
-| [0028](0028-gateway.md) | Accepted | Gateway: axum, a narrow token-level engine trait, minijinja templates, llguidance constraints |
+| [0028](0028-gateway.md) | Accepted (partly superseded by 0046) | Gateway: axum, a narrow token-level engine trait, minijinja templates, llguidance constraints |
 | [0029](0029-gpu-tooling-from-taxameter.md) | Accepted | GPU box tooling comes from the shared package taxameter |
 | [0030](0030-own-moe-graph-builder.md) | Accepted (in part superseded by 0036) | Own Qwen3 MoE graph builder: safe ggml surface, builder in model, one segment per MoE layer |
 | [0031](0031-arenas-tiers-slot-cache-direct-io.md) | Accepted | Memory: per-device arenas with prefill and decode budgets, expert slot cache over three tiers, aligned direct I/O |
 | [0032](0032-memory-crate-dependencies-and-budget-semantics.md) | Accepted | Memory crate: reserve as accounting, phase budget semantics, I/O dependencies |
 | [0033](0033-expert-slots-in-the-builder.md) | Accepted (in part superseded by 0034 and 0035) | Expert slots in the builder: lookup order, overflow passes, RAM tier, failure semantics |
-| [0034](0034-expert-slots-at-least-top-k.md) | Superseded by 0035 | Expert slots: at least the experts per token, distinct slots per token in overflow passes |
+| [0034](0034-expert-slots-at-least-top-k.md) | Accepted (superseded by 0035) | Expert slots: at least the experts per token, distinct slots per token in overflow passes |
 | [0035](0035-expert-pair-groups-and-cpu-experts.md) | Accepted (supersedes 0034) | Expert pairs computed in compact groups per backend; non-resident experts on the CPU |
 | [0036](0036-cpu-threadpool-and-whole-step-graph.md) | Accepted | The CPU backend keeps one threadpool; a step with every expert resident is one graph |
 | [0037](0037-split-gguf-and-slot-tiers-from-byte-budgets.md) | Accepted | Split GGUF files; expert slot tiers sized from byte budgets and reported |
 | [0038](0038-predicted-next-layer-expert-prefetch.md) | Accepted | Predicted next-layer expert prefetch into the RAM tier |
-| [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | Accepted | No AVX2 repack of the builder's CPU weights for now |
+| [0039](0039-no-cpu-repack-of-expert-weights-for-now.md) | Accepted (0072, Proposed, supersedes it for the dense builder) | No AVX2 repack of the builder's CPU weights for now |
 | [0040](0040-planner-candidates-calibration-and-scoring.md) | Accepted | Planner: executable candidates, a cost model calibrated from anchor runs, scored by regret and rank |
 | [0041](0041-detector-observation-faults-and-limits.md) | Accepted | Bottleneck detector: one observation type, faults separate from the limiting resource, advisor report only |
 | [0042](0042-slo-burn-rate-alerts-and-drain-restart-replanning.md) | Accepted | SLO burn-rate alerts and drain-and-restart replanning |
 | [0043](0043-speculative-decoding-in-the-scheduler.md) | Proposed | Speculative decoding in the scheduler: n-gram and draft-model drafts, batched verification |
 | [0044](0044-op-offload-by-step-tokens.md) | Accepted | Op offload is gated by the step's token count, not by pair rows |
 | [0045](0045-phase2-exit-verdict.md) | Accepted | Phase 2 exit verdict: Qwen3-235B-A22B larger than RAM, all baselines on the same box |
-| [0046](0046-serving-real-engines-behind-the-gateway.md) | Accepted (partly supersedes 0028) | Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log |
+| [0046](0046-serving-real-engines-behind-the-gateway.md) | Accepted (partly supersedes 0028; partly superseded by 0065) | Serving: one-sequence scheduler over logits, Rust sampling, prefix reuse, request log |
 | [0047](0047-formats-per-role-and-load-time-conversion-cache.md) | Accepted | Formats per tensor role in the plan; load-time conversion into a per-tensor disk cache |
 | [0048](0048-quality-profile-file-and-calibration-job.md) | Accepted | Quality profile file and calibration job |
 | [0049](0049-multi-entry-prefix-cache-and-lenient-anthropic-input.md) | Accepted | Multi-entry prefix cache in host RAM; lenient Anthropic input |
-| [0050](0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md) | Proposed | Decode levers: miss reads under CPU expert work, low-bit KV per attention unit, RAM tier by routing frequency |
+| [0050](0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md) | Proposed ((a) stage 1 superseded by 0054) | Decode levers: miss reads under CPU expert work, low-bit KV per attention unit, RAM tier by routing frequency |
 | [0051](0051-no-prompt-checkpoints-tool-call-outcomes.md) | Accepted | No prompt checkpoints; tool-call outcomes counted, empty calls dropped |
-| [0052](0052-runtime-cpu-isa-dispatch.md) | Proposed | Runtime CPU ISA dispatch: ggml backends as loadable modules, one build for every x86 CPU |
-| [0053](0053-iqk-avx512-vnni-q4k-decode-kernel.md) | Proposed | iqk AVX-512 VNNI kernels for Q4_K/Q6_K expert decode, copied as patch 0002 |
+| [0052](0052-runtime-cpu-isa-dispatch.md) | Accepted | Runtime CPU ISA dispatch: ggml backends as loadable modules, one build for every x86 CPU |
+| [0053](0053-iqk-avx512-vnni-q4k-decode-kernel.md) | Accepted | iqk AVX-512 VNNI kernels for Q4_K/Q6_K expert decode, copied as patch 0002 |
 | [0054](0054-expert-reads-io-service-and-arrival-order-compute.md) | Accepted | Decode expert reads: persistent I/O service, experts computed in arrival order, RAM tier sized to the container |
 | [0055](0055-replanning-wired-into-serve.md) | Accepted (part A built, part B open) | Replanning wired into serve: plan from file or the executable enumerators, lowering from the plan, decode-step residual from the step ring |
-| [0056](0056-tier-and-disk-cost-term-virtual-clock-calibration-ledger.md) | Proposed | Cost model: RAM-tier and disk term from replayed routing, virtual clock for I/O tests, calibration ledger in CI |
+| [0056](0056-tier-and-disk-cost-term-virtual-clock-calibration-ledger.md) | Accepted | Cost model: RAM-tier and disk term from replayed routing, virtual clock for I/O tests, calibration ledger in CI |
 | [0057](0057-qwen-xml-arguments-typed-from-python-literals.md) | Accepted | Qwen XML tool arguments: Python literals typed by the schema |
 | [0058](0058-decode-io-attribution.md) | Accepted | Decode I/O attribution: capacity and demand per window before any bottleneck label |
 | [0059](0059-adaptive-compute-tier-admission.md) | Proposed | Adaptive compute tier: decode admits a share of CPU misses into VRAM slots |
@@ -71,15 +71,15 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0063](0063-genai-request-metrics-and-tier-transfer-family.md) | Accepted | GenAI semconv request metrics from the gateway for every engine; one tier transfer metric family |
 | [0064](0064-decode-dispatch-segment-scheduler-and-one-graph-per-token.md) | Proposed | Decode dispatch: a scheduler sized for one segment, then one graph per decode token with a host callback per layer |
 | [0065](0065-phase4-verdict-multi-sequence-backend-continuous-batching.md) | Accepted | Phase 4: verdict rules, a multi-sequence backend and continuous batching |
-| [0066](0066-own-qwen3-dense-builder.md) | Proposed | Own Qwen3 dense builder on the shared attention module, multi-sequence from the start |
-| [0067](0067-kv-layout-experiment-chunked-vs-paged.md) | Proposed | KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now |
+| [0066](0066-own-qwen3-dense-builder.md) | Accepted | Own Qwen3 dense builder on the shared attention module, multi-sequence from the start |
+| [0067](0067-kv-layout-experiment-chunked-vs-paged.md) | Accepted | KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now |
 | [0068](0068-phase5-verdict-rules.md) | Proposed | Phase 5: verdict rules for the multi-GPU exit test |
 | [0069](0069-own-executor-rank-programs.md) | Proposed | Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box |
-| [0070](0070-parallel-shapes-and-their-cost.md) | Proposed | Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them |
-| [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Proposed | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
+| [0070](0070-parallel-shapes-and-their-cost.md) | Accepted | Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them |
+| [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Accepted | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
 | [0072](0072-dense-builder-cpu-weights-in-extra-buffer-types.md) | Proposed | Dense builder: CPU weights in libllama's extra buffer types (supersedes 0039 for the dense builder) |
-| [0073](0073-engine-pin-b12426.md) | Proposed | Engine pin moves to llama.cpp b12426 before the Phase 4 verdict |
+| [0073](0073-engine-pin-b12426.md) | Accepted | Engine pin moves to llama.cpp b12426 before the Phase 4 verdict |
 | [0074](0074-prefix-save-through-pinned-staging.md) | Proposed | Prefix-cache save on a GPU: pinned staging and prepared snapshot buffers |
-| [0075](0075-executor-ranges-are-graph-views.md) | Proposed | Executor ranges are views of the rank graph (patch 0005) |
+| [0075](0075-executor-ranges-are-graph-views.md) | Accepted | Executor ranges are views of the rank graph (patch 0005) |
 | [0076](0076-judged-predictions-from-per-shape-anchor-lines.md) | Not adopted | Judged predictions from per-shape lines through truncated anchors |
 | [0077](0077-pipelined-prefill-micro-batches.md) | Proposed | Pipelined prefill: micro-batches in one rank program (GPipe order) |

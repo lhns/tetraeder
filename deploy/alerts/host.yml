@@ -14,7 +14,7 @@ groups:
           severity: warning
         annotations:
           summary: "The container is CPU-throttled in more than 20% of its CFS periods"
-          description: "Spinning or runnable threads use up the CPU quota. Check the engine's poll level on the Container CPU panel (ADR 0061: polling 0 cut throttling from 0.80-0.98 to 0.05; fewer threads did not help, ADR 0045 20261112e); side jobs need OMP_NUM_THREADS and cargo -j capped."
+          description: "Spinning or runnable threads use up the CPU quota. Check the engine's poll level on the Container CPU panel (ADR 0061; bench/results/20261112e: polling 0 cut throttling from 0.80-0.98 to 0.05, fewer threads did not help); side jobs need OMP_NUM_THREADS and cargo -j capped."
       # The detector's own finding (ADR 0062): throttled in 30% of the periods and the CPU slower than calibrated. The
       # container alert above fires on the quota alone; this one says the engine lost speed to it.
       - alert: TetraederCpuQuotaThrottleFault
@@ -50,7 +50,7 @@ groups:
           severity: warning
         annotations:
           summary: "The CPU threadpool polls while its threads fill the CPU quota"
-          description: "Idle ggml workers spin between graphs and spend the quota the next graph waits for (ADR 0045 20261112e: throttled in 80-98% of periods, decode 1.30x slower). An explicit cpu_poll (TETRAEDER_EXIT_CPU_POLL) overrides the auto level; drop it unless the run measures polling."
+          description: "Idle ggml workers spin between graphs and spend the quota the next graph waits for (bench/results/20261112e, ADR 0061: throttled in 80-98% of periods, decode 1.30x slower). An explicit cpu_poll (TETRAEDER_EXIT_CPU_POLL) overrides the auto level; drop it unless the run measures polling."
       - alert: TetraederContainerMemoryNearLimit
         expr: max(container_memory_usage_bytes) / max(tetraeder_host_cgroup_memory_limit_bytes) > 0.95
         for: 5m

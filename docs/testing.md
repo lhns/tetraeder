@@ -1,6 +1,6 @@
 # Testing and benchmarking
 
-State as of 2026-11-09 and the roadmap. Rules are in `AGENTS.md`; this file says what runs where.
+State as of 2026-11-09 and the roadmap; facts that changed since are updated (2026-11-19). Rules are in `AGENTS.md`; this file says what runs where.
 
 ## What runs where
 
@@ -14,16 +14,16 @@ State as of 2026-11-09 and the roadmap. Rules are in `AGENTS.md`; this file says
 | Fakes | `FakeDevice`, fake llama-bench, `serve --fake` | CI |
 | CUDA and Vulkan jobs | compile and link only, no GPU, not path-filtered | CI |
 | GPU tests (`gpu_*`), real-model runs | logits against libllama on GPU, 235B decode, speculative, KV formats | Vast boxes only |
-| Box sessions | `docs/sessions.md`; nothing has run yet (box runs on hold) | Vast |
+| Box sessions | `docs/sessions.md` (M1 profiles), `scripts/phase4_box.sh`, `scripts/phase5_box.sh`; results in `bench/results/<session>/` | Vast |
 | Bench gates | paired same-box ratios; bands are provisional | box |
 
-Never tested end to end: the speedup of the prefetch levers, I/O overlap on a real disk, replanning against a real engine, the AVX-512 kernels (the SDE job is on branch `track-z-iqk-kernel`).
+Never tested end to end: replanning against a real engine (ADR 0055 part B is open). Since 2026-11-09 the prefetch levers (ADR 0038, `20261102`) and I/O overlap on a real disk (ADR 0054, `20261110c`) were measured on boxes, and the AVX-512 kernels run under Intel SDE in CI (job `avx512-sde`).
 
 ## Skips
 
 A skipped test used to count as passed. Now:
 - `TETRAEDER_REQUIRE_MODELS=1` (set in the CI test job) makes tests that need the Qwen3-0.6B GGUF fail when it is missing. CI fetches it with `cargo xtask fetch-model` and caches `.hf_cache`.
-- `TETRAEDER_REQUIRE_GPU=1` (set in the box scripts that run GPU tests: `exit_run.sh` gpu-tests, `moe_check.sh`, `graphs_check.sh`, `nightly.sh`) makes a missing GPU fail the test. It is implemented in `Backend::gpu_available()` (branch `track-ad-gpu-smoke`), so every GPU test and `exit_regime` honors it.
+- `TETRAEDER_REQUIRE_GPU=1` (set in the box scripts that run GPU tests: `exit_run.sh` gpu-tests, `moe_check.sh`, `graphs_check.sh`, `nightly.sh`) makes a missing GPU fail the test. It is implemented in `Backend::gpu_available()`, so every GPU test and `exit_regime` honors it. `TETRAEDER_REQUIRE_GPUS=<n>` asks for at least n GPUs (the `gpu2_` and `gpu4_` tests of Phase 5).
 - Skips print `skip: ...`; the CI test job lists those lines in its step summary ("Skipped tests").
 
 ## Build modes
@@ -55,11 +55,11 @@ Float results depend on the CPU tier and on the OS, so `bench/golden/` holds one
 
 1. **Planner verification by simulation is verification of the optimizer under the cost model, never of the model's accuracy.** Scoring the planner against its own model gives regret 0 by construction. The regret exit test needs box measurements; simulation covers enumeration, memory feasibility, the layer DP, expert greedy, quality knapsack, pins and forbids, `lower`/`recognize` round trips (ADR 0055), and the replan decision under a virtual clock.
 2. **Virtual clock, disk curve and tier term.** A virtual clock in the I/O service and prefetch; a measured disk curve (bytes and latency at queue depth, from the `dio` tests) that turns replayed bytes into miss-wait time; CPU expert time from the calibrated thread curve; the missing RAM and disk tier term in the cost model (ADR 0040). Deterministic millisecond tests for overlap order, prefetch depth, RAM-tier policy and replan triggers. 4 to 6 days.
-3. **Fidelity ledger (needs an ADR first).** Re-predict committed box results and fail outside the anchor band (9.2% MoE, 5.8% dense). Results must be compared like with like: a result carries the engine commit, so a re-prediction is checked only against measurements of the same engine build or against a versioned cost model. How versions and commits are recorded and which results stay comparable is design work, not a test.
+3. **Fidelity ledger (ADR 0056; `bench/ledger.json`).** Re-predict committed box results and fail outside the anchor band (9.2% MoE, 5.8% dense). Results must be compared like with like: a result carries the engine commit, so a re-prediction is checked only against measurements of the same engine build or against a versioned cost model. How versions and commits are recorded and which results stay comparable is design work, not a test.
 4. **Fault testbed on CPU runners (nightly).** `exit_regime` on the synthetic model under cgroup faults (`IOReadBandwidthMax`, a thread-capped busy loop, `MemoryMax`, a `CPUQuota` below the thread count); four of nine fault classes, too noisy to gate PRs.
-5. **GPU smoke on Vast** once the hold lifts: weekly or before merging GPU code, the `gpu_*` tests plus the 0.6B golden, about 40 min and at most 0.30 USD.
+5. **GPU smoke on Vast** (script ready, not scheduled; scheduling needs the user's go): weekly or before merging GPU code, the `gpu_*` tests plus the 0.6B golden, about 40 min and at most 0.30 USD.
 6. **Measured noise bands** per GPU class from the A/A pairs the sessions already run (gating code exists).
-7. **AVX-512:** merge the SDE job (ADR 0053); pin goldens per tier with `TETRAEDER_GGML_CPU_VARIANT`.
+7. **AVX-512:** the SDE job is in CI (ADR 0053); pin goldens per tier with `TETRAEDER_GGML_CPU_VARIANT`.
 8. **Nightly CI on GitHub:** everything, plus `exit_regime`, `cpu_bench`, the SDE job and the fault testbed.
 
 ## Rejected

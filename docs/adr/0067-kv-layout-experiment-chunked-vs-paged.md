@@ -1,6 +1,6 @@
 # 0067. KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now
 
-Status: Proposed (2026-11-14). Phase 4. Settles the plan's open decision "KV layout in Phase 4" by the procedure below; the result is added here as an addendum and in `docs/plan.md`. Builds on ADR 0065 (one pool per layer, attention with a mask) and 0011 (patch queue). Briefs: C6-1 in `docs/phase4-briefs.md`; step 2 gets its own brief only if step 1 sends it there. Step 1 decided: chunked, outcome 4, no patch (`20261114`, addendum below).
+Status: Accepted (owner, 2026-11-19). Proposed (2026-11-14). Phase 4. Settles the plan's open decision "KV layout in Phase 4" by the procedure below; the result is added here as an addendum and in `docs/plan.md`. Builds on ADR 0065 (one pool per layer, attention with a mask) and 0011 (patch queue). Briefs: C6-1 in `docs/phase4-briefs.md`; step 2 gets its own brief only if step 1 sends it there. Step 1 decided: chunked, outcome 4, no patch (`20261114`, addendum below).
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
