@@ -1,0 +1,95 @@
+[11:03:00] layer_decode start (session=s3c-20261119-decode threads=30 out=/root/tetraeder/bench/results/s3c-20261119-decode-decode)
+[11:03:00] qwen3-30b-a3b-llama-none-r1 start
+[11:03:09] qwen3-30b-a3b-llama-none-r1 done rc=0
+[11:03:09] qwen3-30b-a3b-llama-layer-r1 start
+[11:03:18] qwen3-30b-a3b-llama-layer-r1 done rc=0
+[11:03:18] qwen3-30b-a3b-single-r1 start
+[11:03:28] qwen3-30b-a3b-single-r1 done rc=0
+[11:03:28] qwen3-30b-a3b-layer4-r1 start
+[11:03:39] qwen3-30b-a3b-layer4-r1 done rc=0
+[11:03:39] qwen3-30b-a3b-layer4-uid-r1 start
+[11:03:51] qwen3-30b-a3b-layer4-uid-r1 done rc=0
+[11:03:51] qwen3-30b-a3b-layer4-async-r1 start
+[11:04:02] qwen3-30b-a3b-layer4-async-r1 done rc=0
+[11:04:02] qwen3-30b-a3b-layer4-uid-async-r1 start
+[11:04:13] qwen3-30b-a3b-layer4-uid-async-r1 done rc=0
+[11:04:13] qwen3-30b-a3b-single-uid-async-r1 start
+[11:04:22] qwen3-30b-a3b-single-uid-async-r1 done rc=0
+[11:04:22] qwen3-30b-a3b-layer4-trace-r1 start
+[11:04:34] qwen3-30b-a3b-layer4-trace-r1 done rc=0
+[11:04:34] qwen3-30b-a3b-layer4-tracesync-r1 start
+[11:04:45] qwen3-30b-a3b-layer4-tracesync-r1 done rc=0
+[11:04:45] qwen3-30b-a3b-single-trace-r1 start
+[11:04:55] qwen3-30b-a3b-single-trace-r1 done rc=0
+[11:04:55] qwen3-30b-a3b-layer4-uid-async-trace-r1 start
+[11:05:06] qwen3-30b-a3b-layer4-uid-async-trace-r1 done rc=0
+[11:05:06] qwen3-30b-a3b-single-uid-async-r2 start
+[11:05:15] qwen3-30b-a3b-single-uid-async-r2 done rc=0
+[11:05:15] qwen3-30b-a3b-layer4-uid-async-r2 start
+[11:05:27] qwen3-30b-a3b-layer4-uid-async-r2 done rc=0
+[11:05:27] qwen3-30b-a3b-layer4-async-r2 start
+[11:05:38] qwen3-30b-a3b-layer4-async-r2 done rc=0
+[11:05:38] qwen3-30b-a3b-layer4-uid-r2 start
+[11:05:49] qwen3-30b-a3b-layer4-uid-r2 done rc=0
+[11:05:49] qwen3-30b-a3b-layer4-r2 start
+[11:06:00] qwen3-30b-a3b-layer4-r2 done rc=0
+[11:06:00] qwen3-30b-a3b-single-r2 start
+[11:06:10] qwen3-30b-a3b-single-r2 done rc=0
+[11:06:10] qwen3-30b-a3b-llama-layer-r2 start
+[11:06:19] qwen3-30b-a3b-llama-layer-r2 done rc=0
+[11:06:19] qwen3-30b-a3b-llama-none-r2 start
+[11:06:28] qwen3-30b-a3b-llama-none-r2 done rc=0
+[11:06:28] qwen3-32b-llama-none-r1 start
+[11:06:51] qwen3-32b-llama-none-r1 done rc=0
+[11:06:51] qwen3-32b-llama-layer-r1 start
+[11:07:14] qwen3-32b-llama-layer-r1 done rc=0
+[11:07:14] qwen3-32b-single-r1 start
+[11:07:39] qwen3-32b-single-r1 done rc=0
+[11:07:39] qwen3-32b-layer4-r1 start
+[11:08:06] qwen3-32b-layer4-r1 done rc=0
+[11:08:06] qwen3-32b-layer4-uid-async-r1 start
+[11:08:32] qwen3-32b-layer4-uid-async-r1 done rc=0
+[11:08:32] qwen3-32b-single-uid-async-r1 start
+[11:08:57] qwen3-32b-single-uid-async-r1 done rc=0
+[11:08:57] qwen3-32b-layer4-trace-r1 start
+[11:09:24] qwen3-32b-layer4-trace-r1 done rc=0
+[11:09:24] parity-toggles start
+[11:19:24] parity-toggles done rc=124
+[11:19:24] LAYER_DECODE_DONE
+[11:19:54] layer_decode start (session=s3c-20261119-decode threads=30 out=/root/tetraeder/bench/results/s3c-20261119-decode-decode)
+[11:19:54] qwen3-30b-a3b-llama-none-r1: done before
+[11:19:54] qwen3-30b-a3b-llama-layer-r1: done before
+[11:19:54] qwen3-30b-a3b-single-r1: done before
+[11:19:54] qwen3-30b-a3b-layer4-r1: done before
+[11:19:54] qwen3-30b-a3b-layer4-uid-r1: done before
+[11:19:54] qwen3-30b-a3b-layer4-async-r1: done before
+[11:19:54] qwen3-30b-a3b-layer4-uid-async-r1: done before
+[11:19:54] qwen3-30b-a3b-single-uid-async-r1: done before
+[11:19:54] qwen3-30b-a3b-layer4-trace-r1: done before
+[11:19:54] qwen3-30b-a3b-layer4-tracesync-r1: done before
+[11:19:54] qwen3-30b-a3b-single-trace-r1: done before
+[11:19:54] qwen3-30b-a3b-layer4-uid-async-trace-r1: done before
+[11:19:54] qwen3-30b-a3b-single-uid-async-r2: done before
+[11:19:54] qwen3-30b-a3b-layer4-uid-async-r2: done before
+[11:19:54] qwen3-30b-a3b-layer4-async-r2: done before
+[11:19:54] qwen3-30b-a3b-layer4-uid-r2: done before
+[11:19:54] qwen3-30b-a3b-layer4-r2: done before
+[11:19:54] qwen3-30b-a3b-single-r2: done before
+[11:19:54] qwen3-30b-a3b-llama-layer-r2: done before
+[11:19:54] qwen3-30b-a3b-llama-none-r2: done before
+[11:19:54] qwen3-32b-llama-none-r1: done before
+[11:19:54] qwen3-32b-llama-layer-r1: done before
+[11:19:54] qwen3-32b-single-r1: done before
+[11:19:54] qwen3-32b-layer4-r1: done before
+[11:19:54] qwen3-32b-layer4-uid-async-r1: done before
+[11:19:54] qwen3-32b-single-uid-async-r1: done before
+[11:19:54] qwen3-32b-layer4-trace-r1: done before
+[11:19:54] parity-toggles start
+[11:21:44] parity-toggles done rc=0
+[11:21:44] LAYER_DECODE_DONE
+====
+[10:52:10] build
+[11:01:31] test binaries
+[11:02:18] wait for models
+[11:02:18] enumerate
+[11:02:21] BOOT_DECODE_DONE rc=0

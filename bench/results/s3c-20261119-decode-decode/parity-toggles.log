@@ -1,0 +1,312 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+    Finished `release` profile [optimized] target(s) in 41.93s
+     Running tests/gpu.rs (target/release/deps/gpu-1857464588be22e7)
+
+running 1 test
+uid false: start CudaGraphLogCounts { warmups: 0, resets: 0, reused: 0, update_failed: 0 }
+step 0: CudaGraphLogCounts { warmups: 0, resets: 0, reused: 0, update_failed: 0 }
+step 1: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 2: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 3: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 4: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 5: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 6: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 7: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+uid true: start CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 0: CudaGraphLogCounts { warmups: 5, resets: 0, reused: 0, update_failed: 0 }
+step 1: CudaGraphLogCounts { warmups: 10, resets: 0, reused: 4, update_failed: 0 }
+step 2: CudaGraphLogCounts { warmups: 10, resets: 0, reused: 8, update_failed: 0 }
+step 3: CudaGraphLogCounts { warmups: 10, resets: 0, reused: 12, update_failed: 0 }
+step 4: CudaGraphLogCounts { warmups: 10, resets: 0, reused: 16, update_failed: 0 }
+step 5: CudaGraphLogCounts { warmups: 10, resets: 0, reused: 20, update_failed: 0 }
+step 6: CudaGraphLogCounts { warmups: 10, resets: 0, reused: 24, update_failed: 0 }
+step 7: CudaGraphLogCounts { warmups: 10, resets: 0, reused: 28, update_failed: 0 }
+test gpu_cuda_graphs_replay_kept_ranges ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.76s
+
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 10.77s
+     Running tests/gpu_sharded.rs (target/release/deps/gpu_sharded-4594c7cc67d520fe)
+
+running 2 tests
+prompt position 0: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+prompt position 1: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+prompt position 2: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+prompt position 3: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+prompt position 4: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+prompt position 5: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+step 0: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+step 16: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+step 32: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+step 48: max |delta| 0e0 (0.00e0 of largest), bit-equal true
+test gpu_one_rank_is_bit_equal_to_the_scheduler ... ok
+libllama tensor / one GPU: prompt position 0: top-5 max |delta| 1.5342712e-2 (1.35e-3 of largest), top-1 equal true
+libllama tensor / one GPU: prompt position 1: top-5 max |delta| 5.657196e-2 (2.67e-3 of largest), top-1 equal true
+libllama tensor / one GPU: prompt position 2: top-5 max |delta| 2.0435333e-2 (8.95e-4 of largest), top-1 equal true
+libllama tensor / one GPU: prompt position 3: top-5 max |delta| 2.0029259e-1 (7.87e-3 of largest), top-1 equal true
+libllama tensor / one GPU: prompt position 4: top-5 max |delta| 5.069542e-2 (2.80e-3 of largest), top-1 equal true
+libllama tensor / one GPU: prompt position 5: top-5 max |delta| 8.7387085e-2 (5.25e-3 of largest), top-1 equal true
+libllama tensor / one GPU: step 0: top-5 max |delta| 8.7387085e-2 (5.25e-3 of largest), top-1 equal true
+libllama tensor / one GPU: step 16: top-5 max |delta| 1.1986637e-1 (5.01e-3 of largest), top-1 equal true
+libllama tensor / one GPU: step 32: top-5 max |delta| 5.958748e-2 (2.37e-3 of largest), top-1 equal true
+libllama tensor / one GPU: step 48: top-5 max |delta| 3.4754753e-2 (1.36e-3 of largest), top-1 equal true
+libllama tensor / one GPU: worst 7.87e-3 of the largest logit
+tp-4: 4 ranks, all-reduce path Some("nccl"), bound max(5e-3, 1.18e-2 of the largest logit)
+tp-4: prompt position 0: top-5 max |delta| 1.5342712e-2, bound 1.3372356e-1
+tp-4: prompt position 1: top-5 max |delta| 5.657196e-2, bound 2.5037366e-1
+tp-4: prompt position 2: top-5 max |delta| 2.0435333e-2, bound 2.693753e-1
+tp-4: prompt position 3: top-5 max |delta| 2.0029259e-1, bound 3.004389e-1
+tp-4: prompt position 4: top-5 max |delta| 5.069542e-2, bound 2.1360394e-1
+tp-4: prompt position 5: top-5 max |delta| 8.7387085e-2, bound 1.9660686e-1
+tp-4: step 0: top-5 max |delta| 8.180618e-2, bound 1.9660601e-1, top-1 equal true
+tp-4: step 16: top-5 max |delta| 1.1986637e-1, bound 2.8240088e-1, top-1 equal true
+tp-4: step 32: top-5 max |delta| 5.958748e-2, bound 2.9615852e-1, top-1 equal true
+tp-4: step 48: top-5 max |delta| 3.4754753e-2, bound 3.0166137e-1, top-1 equal true
+tp-4: ranges [4672, 4672, 4672, 4672] over 64 decode tokens
+layer-4: 4 ranks, all-reduce path Some("nccl"), bound max(5e-3, 5.00e-3 of the largest logit)
+layer-4: prompt position 0: top-5 max |delta| 0e0, bound 5.6648087e-2
+layer-4: prompt position 1: top-5 max |delta| 0e0, bound 1.060635e-1
+layer-4: prompt position 2: top-5 max |delta| 0e0, bound 1.1411299e-1
+layer-4: prompt position 3: top-5 max |delta| 0e0, bound 1.2727217e-1
+layer-4: prompt position 4: top-5 max |delta| 0e0, bound 9.048708e-2
+layer-4: prompt position 5: top-5 max |delta| 0e0, bound 8.328676e-2
+layer-4: step 0: top-5 max |delta| 0e0, bound 8.32864e-2, top-1 equal true
+layer-4: step 16: top-5 max |delta| 0e0, bound 1.1963089e-1, top-1 equal true
+layer-4: step 32: top-5 max |delta| 0e0, bound 1.2545893e-1, top-1 equal true
+layer-4: step 48: top-5 max |delta| 0e0, bound 1.2779003e-1, top-1 equal true
+layer-4: ranges [64, 64, 64, 64] over 64 decode tokens
+tp2-pp2: 4 ranks, all-reduce path Some("nccl"), bound max(5e-3, 1.18e-2 of the largest logit)
+tp2-pp2: prompt position 0: top-5 max |delta| 2.2702217e-2, bound 1.3372356e-1
+tp2-pp2: prompt position 1: top-5 max |delta| 3.3872604e-2, bound 2.5037366e-1
+tp2-pp2: prompt position 2: top-5 max |delta| 6.396866e-2, bound 2.693753e-1
+tp2-pp2: prompt position 3: top-5 max |delta| 1.6387367e-1, bound 3.004389e-1
+tp2-pp2: prompt position 4: top-5 max |delta| 4.831028e-2, bound 2.1360394e-1
+tp2-pp2: prompt position 5: top-5 max |delta| 3.497982e-2, bound 1.9660686e-1
+tp2-pp2: step 0: top-5 max |delta| 3.7945747e-2, bound 1.9660601e-1, top-1 equal true
+tp2-pp2: step 16: top-5 max |delta| 6.4590454e-2, bound 2.8240088e-1, top-1 equal true
+tp2-pp2: step 32: top-5 max |delta| 6.191826e-2, bound 2.9615852e-1, top-1 equal true
+tp2-pp2: step 48: top-5 max |delta| 2.3447037e-2, bound 3.0166137e-1, top-1 equal true
+tp2-pp2: ranges [2368, 2368, 2368, 2368] over 64 decode tokens
+test gpu4_shapes_match_single ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 17.09s
+
+     Running tests/gpu_sharded_moe.rs (target/release/deps/gpu_sharded_moe-dfd4f4fde4c50551)
+
+running 1 test
+libllama tensor / one GPU: step 0: top-5 max |delta| 2.09589e-1 (1.01e-2 of largest), top-1 equal true
+libllama tensor / one GPU: step 16: top-5 max |delta| 2.5153732e-1 (9.58e-3 of largest), top-1 equal true
+libllama tensor / one GPU: step 32: top-5 max |delta| 3.473053e-1 (1.03e-2 of largest), top-1 equal true
+libllama tensor / one GPU: step 48: top-5 max |delta| 2.0415688e-1 (5.86e-3 of largest), top-1 equal true
+libllama tensor / one GPU: step 64: top-5 max |delta| 2.91008e-1 (8.05e-3 of largest), top-1 equal true
+libllama tensor / one GPU: worst 7.77e-2 of the largest logit
+tp2-pp2: bound max(5e-3, 1.16e-1 of the largest logit)
+tp2-pp2, step 0: top-5 max |diff| 4.7460175e-1 (tolerance 2.4199576e0), greedy equal true, single's top-2 margin 1.1373253e0
+tp2-pp2, step 1: top-5 max |diff| 4.2345333e-1 (tolerance 1.397574e0), greedy equal true, single's top-2 margin 5.801153e-1
+tp2-pp2, step 2: top-5 max |diff| 1.253376e-1 (tolerance 2.2826593e0), greedy equal true, single's top-2 margin 3.6128807e-1
+tp2-pp2, step 3: top-5 max |diff| 6.274929e-1 (tolerance 2.2373722e0), greedy equal true, single's top-2 margin 5.4062595e0
+tp2-pp2, step 4: top-5 max |diff| 4.469223e-1 (tolerance 2.7359126e0), greedy equal true, single's top-2 margin 1.522356e0
+tp2-pp2, step 5: top-5 max |diff| 4.5015907e-1 (tolerance 2.7979016e0), greedy equal true, single's top-2 margin 9.145182e0
+tp2-pp2, step 6: top-5 max |diff| 2.1983719e-1 (tolerance 4.0809307e0), greedy equal true, single's top-2 margin 2.7465744e0
+tp2-pp2, step 7: top-5 max |diff| 9.4973564e-1 (tolerance 2.4945664e0), greedy equal true, single's top-2 margin 8.549062e0
+tp2-pp2, step 8: top-5 max |diff| 1.8772259e0 (tolerance 4.5825734e0), greedy equal true, single's top-2 margin 5.236454e0
+tp2-pp2, step 9: top-5 max |diff| 6.5737057e-1 (tolerance 1.9358853e0), greedy equal true, single's top-2 margin 6.0139084e-1
+tp2-pp2, step 10: top-5 max |diff| 4.92136e-1 (tolerance 2.9796026e0), greedy equal false, single's top-2 margin 5.0323486e-2
+tp2-pp2, step 11: top-5 max |diff| 1.797514e-1 (tolerance 2.0035093e0), greedy equal true, single's top-2 margin 4.0569754e0
+tp2-pp2, step 12: top-5 max |diff| 4.1753006e-1 (tolerance 3.2499936e0), greedy equal true, single's top-2 margin 2.2259827e0
+tp2-pp2, step 13: top-5 max |diff| 4.030018e-1 (tolerance 1.7724324e0), greedy equal true, single's top-2 margin 2.5987167e0
+tp2-pp2, step 14: top-5 max |diff| 2.2294426e-1 (tolerance 2.7251031e0), greedy equal true, single's top-2 margin 7.497921e-1
+tp2-pp2, step 15: top-5 max |diff| 4.5671463e-1 (tolerance 2.2389936e0), greedy equal true, single's top-2 margin 7.6243095e0
+tp2-pp2, step 16: top-5 max |diff| 4.5106697e-1 (tolerance 3.1202111e0), greedy equal true, single's top-2 margin 4.3293343e0
+tp2-pp2, step 17: top-5 max |diff| 1.6917229e-1 (tolerance 2.2367992e0), greedy equal true, single's top-2 margin 7.9035892e0
+tp2-pp2, step 18: top-5 max |diff| 2.6890755e-1 (tolerance 3.355787e0), greedy equal true, single's top-2 margin 6.1589813e0
+tp2-pp2, step 19: top-5 max |diff| 1.4141464e-1 (tolerance 2.2749982e0), greedy equal true, single's top-2 margin 7.8761272e0
+tp2-pp2, step 20: top-5 max |diff| 1.757145e-1 (tolerance 3.4821396e0), greedy equal true, single's top-2 margin 7.2264996e0
+tp2-pp2, step 21: top-5 max |diff| 9.2092323e-1 (tolerance 2.4090428e0), greedy equal true, single's top-2 margin 8.455411e0
+tp2-pp2, step 22: top-5 max |diff| 6.4756966e-1 (tolerance 3.586148e0), greedy equal true, single's top-2 margin 7.9924183e0
+tp2-pp2, step 23: top-5 max |diff| 3.648777e-1 (tolerance 2.4916263e0), greedy equal true, single's top-2 margin 8.171288e0
+tp2-pp2, step 24: top-5 max |diff| 2.124157e-1 (tolerance 3.658594e0), greedy equal true, single's top-2 margin 8.971836e0
+tp2-pp2, step 25: top-5 max |diff| 1.5483665e-1 (tolerance 2.508286e0), greedy equal true, single's top-2 margin 8.497646e0
+tp2-pp2, step 26: top-5 max |diff| 9.642029e-1 (tolerance 3.7726302e0), greedy equal true, single's top-2 margin 9.186768e0
+tp2-pp2, step 27: top-5 max |diff| 9.951019e-2 (tolerance 2.4930093e0), greedy equal true, single's top-2 margin 8.709389e0
+tp2-pp2, step 28: top-5 max |diff| 3.1832504e-1 (tolerance 3.7355895e0), greedy equal true, single's top-2 margin 9.592148e0
+tp2-pp2, step 29: top-5 max |diff| 9.48122e-1 (tolerance 2.5279615e0), greedy equal true, single's top-2 margin 8.56028e0
+tp2-pp2, step 30: top-5 max |diff| 7.905998e-1 (tolerance 3.9151535e0), greedy equal true, single's top-2 margin 1.045084e1
+tp2-pp2, step 31: top-5 max |diff| 1.6708565e-1 (tolerance 2.5851262e0), greedy equal true, single's top-2 margin 8.687688e0
+tp2-pp2, step 32: top-5 max |diff| 4.103012e-1 (tolerance 3.9690135e0), greedy equal true, single's top-2 margin 1.0425804e1
+tp2-pp2, step 33: top-5 max |diff| 5.0404453e-1 (tolerance 2.7622066e0), greedy equal true, single's top-2 margin 9.140807e0
+tp2-pp2, step 34: top-5 max |diff| 3.3366013e-1 (tolerance 3.9198608e0), greedy equal true, single's top-2 margin 1.0448496e1
+tp2-pp2, step 35: top-5 max |diff| 2.064457e-1 (tolerance 2.6552305e0), greedy equal true, single's top-2 margin 9.014706e0
+tp2-pp2, step 36: top-5 max |diff| 7.384567e-1 (tolerance 3.9523218e0), greedy equal true, single's top-2 margin 1.0393394e1
+tp2-pp2, step 37: top-5 max |diff| 4.512558e-1 (tolerance 2.6353276e0), greedy equal true, single's top-2 margin 9.122166e0
+tp2-pp2, step 38: top-5 max |diff| 4.3468094e-1 (tolerance 3.9353719e0), greedy equal true, single's top-2 margin 1.0609402e1
+tp2-pp2, step 39: top-5 max |diff| 3.1451988e-1 (tolerance 2.7423208e0), greedy equal true, single's top-2 margin 9.078569e0
+tp2-pp2, step 40: top-5 max |diff| 5.117836e-1 (tolerance 4.145347e0), greedy equal true, single's top-2 margin 1.1301138e1
+tp2-pp2, step 41: top-5 max |diff| 1.8470478e-1 (tolerance 2.7148392e0), greedy equal true, single's top-2 margin 9.328099e0
+tp2-pp2, step 42: top-5 max |diff| 9.106445e-2 (tolerance 3.9849079e0), greedy equal true, single's top-2 margin 1.0784128e1
+tp2-pp2, step 43: top-5 max |diff| 3.26087e-1 (tolerance 2.7166812e0), greedy equal true, single's top-2 margin 8.962576e0
+tp2-pp2, step 44: top-5 max |diff| 7.5354004e-1 (tolerance 4.0131845e0), greedy equal true, single's top-2 margin 1.0408653e1
+tp2-pp2, step 45: top-5 max |diff| 1.1922684e0 (tolerance 2.8025162e0), greedy equal true, single's top-2 margin 9.295533e0
+tp2-pp2, step 46: top-5 max |diff| 6.571827e-1 (tolerance 4.038918e0), greedy equal true, single's top-2 margin 1.0578159e1
+tp2-pp2, step 47: top-5 max |diff| 1.0560818e0 (tolerance 2.6372218e0), greedy equal true, single's top-2 margin 9.072138e0
+tp2-pp2, step 48: top-5 max |diff| 4.491558e-1 (tolerance 4.0811315e0), greedy equal true, single's top-2 margin 1.0960991e1
+tp2-pp2, step 49: top-5 max |diff| 1.8947983e-1 (tolerance 2.739258e0), greedy equal true, single's top-2 margin 9.272864e0
+tp2-pp2, step 50: top-5 max |diff| 4.287758e-1 (tolerance 4.0976377e0), greedy equal true, single's top-2 margin 1.1082111e1
+tp2-pp2, step 51: top-5 max |diff| 3.0445576e-1 (tolerance 2.7460167e0), greedy equal true, single's top-2 margin 9.567222e0
+tp2-pp2, step 52: top-5 max |diff| 5.6944275e-1 (tolerance 4.154569e0), greedy equal true, single's top-2 margin 1.1635788e1
+tp2-pp2, step 53: top-5 max |diff| 1.0137653e-1 (tolerance 2.8509316e0), greedy equal true, single's top-2 margin 9.722304e0
+tp2-pp2, step 54: top-5 max |diff| 1.5312958e-1 (tolerance 4.1324835e0), greedy equal true, single's top-2 margin 1.1669029e1
+tp2-pp2, step 55: top-5 max |diff| 2.0023346e-1 (tolerance 2.8429925e0), greedy equal true, single's top-2 margin 9.583e0
+tp2-pp2, step 56: top-5 max |diff| 5.233116e-1 (tolerance 4.31911e0), greedy equal true, single's top-2 margin 1.2555885e1
+tp2-pp2, step 57: top-5 max |diff| 2.3668098e-1 (tolerance 2.9032912e0), greedy equal true, single's top-2 margin 9.987133e0
+tp2-pp2, step 58: top-5 max |diff| 1.1009216e0 (tolerance 4.3442473e0), greedy equal true, single's top-2 margin 1.2746311e1
+tp2-pp2, step 59: top-5 max |diff| 3.56802e-1 (tolerance 2.894178e0), greedy equal true, single's top-2 margin 9.797531e0
+tp2-pp2, step 60: top-5 max |diff| 1.1072845e0 (tolerance 4.3238277e0), greedy equal true, single's top-2 margin 1.2561062e1
+tp2-pp2, step 61: top-5 max |diff| 2.1286488e-1 (tolerance 2.9357634e0), greedy equal true, single's top-2 margin 9.788776e0
+tp2-pp2, step 62: top-5 max |diff| 2.79644e-1 (tolerance 4.2835655e0), greedy equal true, single's top-2 margin 1.2213133e1
+tp2-pp2, step 63: top-5 max |diff| 2.2125721e-1 (tolerance 2.868128e0), greedy equal true, single's top-2 margin 9.581791e0
+tp2-pp2, step 64: top-5 max |diff| 4.0983582e-1 (tolerance 4.22768e0), greedy equal true, single's top-2 margin 1.2245134e1
+tp2-pp2: 0 of 65 steps over the bound, worst 0.43x the bound
+ep-4: bound max(5e-3, 1.16e-1 of the largest logit)
+ep-4, step 0: top-5 max |diff| 6.691017e-1 (tolerance 2.4199576e0), greedy equal true, single's top-2 margin 1.1373253e0
+ep-4, step 1: top-5 max |diff| 3.2434845e-1 (tolerance 1.397574e0), greedy equal true, single's top-2 margin 5.801153e-1
+ep-4, step 2: top-5 max |diff| 7.1027756e-2 (tolerance 2.2826593e0), greedy equal true, single's top-2 margin 3.6128807e-1
+ep-4, step 3: top-5 max |diff| 6.5423965e-1 (tolerance 2.2373722e0), greedy equal true, single's top-2 margin 5.4062595e0
+ep-4, step 4: top-5 max |diff| 4.8902893e-1 (tolerance 2.7359126e0), greedy equal true, single's top-2 margin 1.522356e0
+ep-4, step 5: top-5 max |diff| 3.4815598e-1 (tolerance 2.7979016e0), greedy equal true, single's top-2 margin 9.145182e0
+ep-4, step 6: top-5 max |diff| 4.908142e-1 (tolerance 4.0809307e0), greedy equal true, single's top-2 margin 2.7465744e0
+ep-4, step 7: top-5 max |diff| 1.3947315e0 (tolerance 2.4945664e0), greedy equal true, single's top-2 margin 8.549062e0
+ep-4, step 8: top-5 max |diff| 1.501585e0 (tolerance 4.5825734e0), greedy equal true, single's top-2 margin 5.236454e0
+ep-4, step 9: top-5 max |diff| 2.2361755e-1 (tolerance 1.9358853e0), greedy equal true, single's top-2 margin 6.0139084e-1
+ep-4, step 10: top-5 max |diff| 7.698803e-1 (tolerance 2.9796026e0), greedy equal true, single's top-2 margin 5.0323486e-2
+ep-4, step 11: top-5 max |diff| 4.2565346e-1 (tolerance 2.0035093e0), greedy equal true, single's top-2 margin 4.0569754e0
+ep-4, step 12: top-5 max |diff| 7.130623e-1 (tolerance 3.2499936e0), greedy equal true, single's top-2 margin 2.2259827e0
+ep-4, step 13: top-5 max |diff| 4.681692e-1 (tolerance 1.7724324e0), greedy equal true, single's top-2 margin 2.5987167e0
+ep-4, step 14: top-5 max |diff| 1.8848228e-1 (tolerance 2.7251031e0), greedy equal true, single's top-2 margin 7.497921e-1
+ep-4, step 15: top-5 max |diff| 2.696724e-1 (tolerance 2.2389936e0), greedy equal true, single's top-2 margin 7.6243095e0
+ep-4, step 16: top-5 max |diff| 1.4115906e-1 (tolerance 3.1202111e0), greedy equal true, single's top-2 margin 4.3293343e0
+ep-4, step 17: top-5 max |diff| 2.1145439e-1 (tolerance 2.2367992e0), greedy equal true, single's top-2 margin 7.9035892e0
+ep-4, step 18: top-5 max |diff| 6.4536285e-1 (tolerance 3.355787e0), greedy equal true, single's top-2 margin 6.1589813e0
+ep-4, step 19: top-5 max |diff| 1.6047096e-1 (tolerance 2.2749982e0), greedy equal true, single's top-2 margin 7.8761272e0
+ep-4, step 20: top-5 max |diff| 3.2302094e-1 (tolerance 3.4821396e0), greedy equal true, single's top-2 margin 7.2264996e0
+ep-4, step 21: top-5 max |diff| 6.386204e-1 (tolerance 2.4090428e0), greedy equal true, single's top-2 margin 8.455411e0
+ep-4, step 22: top-5 max |diff| 8.146992e-1 (tolerance 3.586148e0), greedy equal true, single's top-2 margin 7.9924183e0
+ep-4, step 23: top-5 max |diff| 2.476511e-1 (tolerance 2.4916263e0), greedy equal true, single's top-2 margin 8.171288e0
+ep-4, step 24: top-5 max |diff| 1.822567e-1 (tolerance 3.658594e0), greedy equal true, single's top-2 margin 8.971836e0
+ep-4, step 25: top-5 max |diff| 3.1491852e-1 (tolerance 2.508286e0), greedy equal true, single's top-2 margin 8.497646e0
+ep-4, step 26: top-5 max |diff| 1.1705017e0 (tolerance 3.7726302e0), greedy equal true, single's top-2 margin 9.186768e0
+ep-4, step 27: top-5 max |diff| 2.1745872e-1 (tolerance 2.4930093e0), greedy equal true, single's top-2 margin 8.709389e0
+ep-4, step 28: top-5 max |diff| 1.5159035e-1 (tolerance 3.7355895e0), greedy equal true, single's top-2 margin 9.592148e0
+ep-4, step 29: top-5 max |diff| 5.5425453e-1 (tolerance 2.5279615e0), greedy equal true, single's top-2 margin 8.56028e0
+ep-4, step 30: top-5 max |diff| 8.059845e-1 (tolerance 3.9151535e0), greedy equal true, single's top-2 margin 1.045084e1
+ep-4, step 31: top-5 max |diff| 3.545761e-1 (tolerance 2.5851262e0), greedy equal true, single's top-2 margin 8.687688e0
+ep-4, step 32: top-5 max |diff| 5.7139206e-1 (tolerance 3.9690135e0), greedy equal true, single's top-2 margin 1.0425804e1
+ep-4, step 33: top-5 max |diff| 9.300804e-2 (tolerance 2.7622066e0), greedy equal true, single's top-2 margin 9.140807e0
+ep-4, step 34: top-5 max |diff| 2.4804115e-1 (tolerance 3.9198608e0), greedy equal true, single's top-2 margin 1.0448496e1
+ep-4, step 35: top-5 max |diff| 7.3511314e-1 (tolerance 2.6552305e0), greedy equal true, single's top-2 margin 9.014706e0
+ep-4, step 36: top-5 max |diff| 6.445389e-1 (tolerance 3.9523218e0), greedy equal true, single's top-2 margin 1.0393394e1
+ep-4, step 37: top-5 max |diff| 9.6069336e-2 (tolerance 2.6353276e0), greedy equal true, single's top-2 margin 9.122166e0
+ep-4, step 38: top-5 max |diff| 2.0736313e-1 (tolerance 3.9353719e0), greedy equal true, single's top-2 margin 1.0609402e1
+ep-4, step 39: top-5 max |diff| 3.4103203e-1 (tolerance 2.7423208e0), greedy equal true, single's top-2 margin 9.078569e0
+ep-4, step 40: top-5 max |diff| 3.0153465e-1 (tolerance 4.145347e0), greedy equal true, single's top-2 margin 1.1301138e1
+ep-4, step 41: top-5 max |diff| 3.0556583e-1 (tolerance 2.7148392e0), greedy equal true, single's top-2 margin 9.328099e0
+ep-4, step 42: top-5 max |diff| 2.0648575e-1 (tolerance 3.9849079e0), greedy equal true, single's top-2 margin 1.0784128e1
+ep-4, step 43: top-5 max |diff| 2.9372597e-1 (tolerance 2.7166812e0), greedy equal true, single's top-2 margin 8.962576e0
+ep-4, step 44: top-5 max |diff| 5.582485e-1 (tolerance 4.0131845e0), greedy equal true, single's top-2 margin 1.0408653e1
+ep-4, step 45: top-5 max |diff| 1.6217804e-1 (tolerance 2.8025162e0), greedy equal true, single's top-2 margin 9.295533e0
+ep-4, step 46: top-5 max |diff| 5.105305e-1 (tolerance 4.038918e0), greedy equal true, single's top-2 margin 1.0578159e1
+ep-4, step 47: top-5 max |diff| 1.5511894e-1 (tolerance 2.6372218e0), greedy equal true, single's top-2 margin 9.072138e0
+ep-4, step 48: top-5 max |diff| 3.6091995e-1 (tolerance 4.0811315e0), greedy equal true, single's top-2 margin 1.0960991e1
+ep-4, step 49: top-5 max |diff| 1.7152214e-1 (tolerance 2.739258e0), greedy equal true, single's top-2 margin 9.272864e0
+ep-4, step 50: top-5 max |diff| 4.1101074e-1 (tolerance 4.0976377e0), greedy equal true, single's top-2 margin 1.1082111e1
+ep-4, step 51: top-5 max |diff| 4.332676e-1 (tolerance 2.7460167e0), greedy equal true, single's top-2 margin 9.567222e0
+ep-4, step 52: top-5 max |diff| 4.212265e-1 (tolerance 4.154569e0), greedy equal true, single's top-2 margin 1.1635788e1
+ep-4, step 53: top-5 max |diff| 1.1354256e-1 (tolerance 2.8509316e0), greedy equal true, single's top-2 margin 9.722304e0
+ep-4, step 54: top-5 max |diff| 4.2716026e-1 (tolerance 4.1324835e0), greedy equal true, single's top-2 margin 1.1669029e1
+ep-4, step 55: top-5 max |diff| 3.300438e-1 (tolerance 2.8429925e0), greedy equal true, single's top-2 margin 9.583e0
+ep-4, step 56: top-5 max |diff| 1.136509e0 (tolerance 4.31911e0), greedy equal true, single's top-2 margin 1.2555885e1
+ep-4, step 57: top-5 max |diff| 2.2066498e-1 (tolerance 2.9032912e0), greedy equal true, single's top-2 margin 9.987133e0
+ep-4, step 58: top-5 max |diff| 3.3457947e-1 (tolerance 4.3442473e0), greedy equal true, single's top-2 margin 1.2746311e1
+ep-4, step 59: top-5 max |diff| 1.3496208e-1 (tolerance 2.894178e0), greedy equal true, single's top-2 margin 9.797531e0
+ep-4, step 60: top-5 max |diff| 6.618271e-1 (tolerance 4.3238277e0), greedy equal true, single's top-2 margin 1.2561062e1
+ep-4, step 61: top-5 max |diff| 1.8713474e-1 (tolerance 2.9357634e0), greedy equal true, single's top-2 margin 9.788776e0
+ep-4, step 62: top-5 max |diff| 4.3136978e-1 (tolerance 4.2835655e0), greedy equal true, single's top-2 margin 1.2213133e1
+ep-4, step 63: top-5 max |diff| 1.9025612e-1 (tolerance 2.868128e0), greedy equal true, single's top-2 margin 9.581791e0
+ep-4, step 64: top-5 max |diff| 7.185364e-1 (tolerance 4.22768e0), greedy equal true, single's top-2 margin 1.2245134e1
+ep-4: 0 of 65 steps over the bound, worst 0.56x the bound
+layer-4: bound max(5e-3, 5.00e-3 of the largest logit)
+layer-4, step 0: top-5 max |diff| 0e0 (tolerance 1.0387497e-1), greedy equal true, single's top-2 margin 1.1373253e0
+layer-4, step 1: top-5 max |diff| 0e0 (tolerance 5.998987e-2), greedy equal true, single's top-2 margin 5.801153e-1
+layer-4, step 2: top-5 max |diff| 0e0 (tolerance 9.798153e-2), greedy equal true, single's top-2 margin 3.6128807e-1
+layer-4, step 3: top-5 max |diff| 0e0 (tolerance 9.603761e-2), greedy equal true, single's top-2 margin 5.4062595e0
+layer-4, step 4: top-5 max |diff| 0e0 (tolerance 1.1743711e-1), greedy equal true, single's top-2 margin 1.522356e0
+layer-4, step 5: top-5 max |diff| 0e0 (tolerance 1.2009794e-1), greedy equal true, single's top-2 margin 9.145182e0
+layer-4, step 6: top-5 max |diff| 0e0 (tolerance 1.7517106e-1), greedy equal true, single's top-2 margin 2.7465744e0
+layer-4, step 7: top-5 max |diff| 0e0 (tolerance 1.07077494e-1), greedy equal true, single's top-2 margin 8.549062e0
+layer-4, step 8: top-5 max |diff| 0e0 (tolerance 1.9670372e-1), greedy equal true, single's top-2 margin 5.236454e0
+layer-4, step 9: top-5 max |diff| 0e0 (tolerance 8.3096504e-2), greedy equal true, single's top-2 margin 6.0139084e-1
+layer-4, step 10: top-5 max |diff| 0e0 (tolerance 1.2789732e-1), greedy equal true, single's top-2 margin 5.0323486e-2
+layer-4, step 11: top-5 max |diff| 0e0 (tolerance 8.599922e-2), greedy equal true, single's top-2 margin 4.0569754e0
+layer-4, step 12: top-5 max |diff| 0e0 (tolerance 1.3950367e-1), greedy equal true, single's top-2 margin 2.2259827e0
+layer-4, step 13: top-5 max |diff| 0e0 (tolerance 7.6080404e-2), greedy equal true, single's top-2 margin 2.5987167e0
+layer-4, step 14: top-5 max |diff| 0e0 (tolerance 1.16973124e-1), greedy equal true, single's top-2 margin 7.497921e-1
+layer-4, step 15: top-5 max |diff| 0e0 (tolerance 9.6107215e-2), greedy equal true, single's top-2 margin 7.6243095e0
+layer-4, step 16: top-5 max |diff| 0e0 (tolerance 1.3393286e-1), greedy equal true, single's top-2 margin 4.3293343e0
+layer-4, step 17: top-5 max |diff| 0e0 (tolerance 9.601302e-2), greedy equal true, single's top-2 margin 7.9035892e0
+layer-4, step 18: top-5 max |diff| 0e0 (tolerance 1.4404477e-1), greedy equal true, single's top-2 margin 6.1589813e0
+layer-4, step 19: top-5 max |diff| 0e0 (tolerance 9.765268e-2), greedy equal true, single's top-2 margin 7.8761272e0
+layer-4, step 20: top-5 max |diff| 0e0 (tolerance 1.4946838e-1), greedy equal true, single's top-2 margin 7.2264996e0
+layer-4, step 21: top-5 max |diff| 0e0 (tolerance 1.0340646e-1), greedy equal true, single's top-2 margin 8.455411e0
+layer-4, step 22: top-5 max |diff| 0e0 (tolerance 1.5393287e-1), greedy equal true, single's top-2 margin 7.9924183e0
+layer-4, step 23: top-5 max |diff| 0e0 (tolerance 1.0695129e-1), greedy equal true, single's top-2 margin 8.171288e0
+layer-4, step 24: top-5 max |diff| 0e0 (tolerance 1.5704255e-1), greedy equal true, single's top-2 margin 8.971836e0
+layer-4, step 25: top-5 max |diff| 0e0 (tolerance 1.07666396e-1), greedy equal true, single's top-2 margin 8.497646e0
+layer-4, step 26: top-5 max |diff| 0e0 (tolerance 1.6193748e-1), greedy equal true, single's top-2 margin 9.186768e0
+layer-4, step 27: top-5 max |diff| 0e0 (tolerance 1.07010655e-1), greedy equal true, single's top-2 margin 8.709389e0
+layer-4, step 28: top-5 max |diff| 0e0 (tolerance 1.6034754e-1), greedy equal true, single's top-2 margin 9.592148e0
+layer-4, step 29: top-5 max |diff| 0e0 (tolerance 1.08510956e-1), greedy equal true, single's top-2 margin 8.56028e0
+layer-4, step 30: top-5 max |diff| 0e0 (tolerance 1.6805519e-1), greedy equal true, single's top-2 margin 1.045084e1
+layer-4, step 31: top-5 max |diff| 0e0 (tolerance 1.1096471e-1), greedy equal true, single's top-2 margin 8.687688e0
+layer-4, step 32: top-5 max |diff| 0e0 (tolerance 1.7036709e-1), greedy equal true, single's top-2 margin 1.0425804e1
+layer-4, step 33: top-5 max |diff| 0e0 (tolerance 1.1856576e-1), greedy equal true, single's top-2 margin 9.140807e0
+layer-4, step 34: top-5 max |diff| 0e0 (tolerance 1.6825725e-1), greedy equal true, single's top-2 margin 1.0448496e1
+layer-4, step 35: top-5 max |diff| 0e0 (tolerance 1.1397389e-1), greedy equal true, single's top-2 margin 9.014706e0
+layer-4, step 36: top-5 max |diff| 0e0 (tolerance 1.6965061e-1), greedy equal true, single's top-2 margin 1.0393394e1
+layer-4, step 37: top-5 max |diff| 0e0 (tolerance 1.1311957e-1), greedy equal true, single's top-2 margin 9.122166e0
+layer-4, step 38: top-5 max |diff| 0e0 (tolerance 1.6892305e-1), greedy equal true, single's top-2 margin 1.0609402e1
+layer-4, step 39: top-5 max |diff| 0e0 (tolerance 1.1771217e-1), greedy equal true, single's top-2 margin 9.078569e0
+layer-4, step 40: top-5 max |diff| 0e0 (tolerance 1.7793609e-1), greedy equal true, single's top-2 margin 1.1301138e1
+layer-4, step 41: top-5 max |diff| 0e0 (tolerance 1.1653255e-1), greedy equal true, single's top-2 margin 9.328099e0
+layer-4, step 42: top-5 max |diff| 0e0 (tolerance 1.7104934e-1), greedy equal true, single's top-2 margin 1.0784128e1
+layer-4, step 43: top-5 max |diff| 0e0 (tolerance 1.1661162e-1), greedy equal true, single's top-2 margin 8.962576e0
+layer-4, step 44: top-5 max |diff| 0e0 (tolerance 1.722631e-1), greedy equal true, single's top-2 margin 1.0408653e1
+layer-4, step 45: top-5 max |diff| 0e0 (tolerance 1.2029602e-1), greedy equal true, single's top-2 margin 9.295533e0
+layer-4, step 46: top-5 max |diff| 0e0 (tolerance 1.733677e-1), greedy equal true, single's top-2 margin 1.0578159e1
+layer-4, step 47: top-5 max |diff| 0e0 (tolerance 1.1320087e-1), greedy equal true, single's top-2 margin 9.072138e0
+layer-4, step 48: top-5 max |diff| 0e0 (tolerance 1.7517968e-1), greedy equal true, single's top-2 margin 1.0960991e1
+layer-4, step 49: top-5 max |diff| 0e0 (tolerance 1.17580704e-1), greedy equal true, single's top-2 margin 9.272864e0
+layer-4, step 50: top-5 max |diff| 0e0 (tolerance 1.758882e-1), greedy equal true, single's top-2 margin 1.1082111e1
+layer-4, step 51: top-5 max |diff| 0e0 (tolerance 1.1787082e-1), greedy equal true, single's top-2 margin 9.567222e0
+layer-4, step 52: top-5 max |diff| 0e0 (tolerance 1.7833194e-1), greedy equal true, single's top-2 margin 1.1635788e1
+layer-4, step 53: top-5 max |diff| 0e0 (tolerance 1.22374214e-1), greedy equal true, single's top-2 margin 9.722304e0
+layer-4, step 54: top-5 max |diff| 0e0 (tolerance 1.7738391e-1), greedy equal true, single's top-2 margin 1.1669029e1
+layer-4, step 55: top-5 max |diff| 0e0 (tolerance 1.2203344e-1), greedy equal true, single's top-2 margin 9.583e0
+layer-4, step 56: top-5 max |diff| 0e0 (tolerance 1.8539473e-1), greedy equal true, single's top-2 margin 1.2555885e1
+layer-4, step 57: top-5 max |diff| 0e0 (tolerance 1.2462172e-1), greedy equal true, single's top-2 margin 9.987133e0
+layer-4, step 58: top-5 max |diff| 0e0 (tolerance 1.8647373e-1), greedy equal true, single's top-2 margin 1.2746311e1
+layer-4, step 59: top-5 max |diff| 0e0 (tolerance 1.24230534e-1), greedy equal true, single's top-2 margin 9.797531e0
+layer-4, step 60: top-5 max |diff| 0e0 (tolerance 1.8559724e-1), greedy equal true, single's top-2 margin 1.2561062e1
+layer-4, step 61: top-5 max |diff| 0e0 (tolerance 1.2601556e-1), greedy equal true, single's top-2 margin 9.788776e0
+layer-4, step 62: top-5 max |diff| 0e0 (tolerance 1.8386902e-1), greedy equal true, single's top-2 margin 1.2213133e1
+layer-4, step 63: top-5 max |diff| 0e0 (tolerance 1.2311236e-1), greedy equal true, single's top-2 margin 9.581791e0
+layer-4, step 64: top-5 max |diff| 0e0 (tolerance 1.8147019e-1), greedy equal true, single's top-2 margin 1.2245134e1
+layer-4: 0 of 65 steps over the bound, worst 0.00x the bound
+test gpu4_moe_shapes_match_single ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 37.30s
+

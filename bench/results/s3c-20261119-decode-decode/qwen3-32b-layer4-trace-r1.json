@@ -1,0 +1,39 @@
+[
+  {
+    "build_commit": "27c6e00",
+    "engine": "tetraeder",
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "n_threads": 30,
+    "n_gpu_layers": 99,
+    "flash_attn": 1,
+    "tensor_buft_overrides": "none",
+    "cuda_graphs": true,
+    "n_eval": 640,
+    "n_reused": 640,
+    "n_prompt": 0,
+    "n_gen": 128,
+    "avg_ns": 3309479871,
+    "avg_ts": 38.67677257816752,
+    "stddev_ts": 0.0022225852403185563,
+    "samples_ns": [
+      3309262739,
+      3309397463,
+      3309609986,
+      3309737009,
+      3309392160
+    ],
+    "samples_ts": [
+      38.67931019544229,
+      38.677735579082366,
+      38.67525193042489,
+      38.673767629251536,
+      38.677797556636506
+    ],
+    "builder": "dense",
+    "plan_id": "e037a308",
+    "ranks": 4,
+    "comm_path": "nccl",
+    "ranges_per_token": 1.0
+  }
+]

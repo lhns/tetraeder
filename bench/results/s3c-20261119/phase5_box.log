@@ -1,0 +1,294 @@
+patches: already applied
+[11:23:18] phase5_box start (session=s3c-20261119 ngpu=4 threads=30 models="qwen3-32b qwen3-30b-a3b" budget=105 min) out=/root/tetraeder/bench/results/s3c-20261119/phase5
+[11:23:18] STAGE gpus
+[11:23:18] gpus: 4
+gpu 0: limit 350.00 W, default 350.00 W, max 400.00 W ok
+gpu 1: limit 350.00 W, default 350.00 W, max 400.00 W ok
+gpu 2: limit 350.00 W, default 350.00 W, max 400.00 W ok
+gpu 3: limit 350.00 W, default 350.00 W, max 400.00 W ok
+power gate: 4 GPUs at default power limit
+[11:23:18] STAGE env
+[11:23:19] STAGE build
+[11:23:19] build start
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 9.90s
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+    Finished `release` profile [optimized] target(s) in 4.40s
+[11:23:34] build done
+[11:23:34] STAGE models
+[11:23:34] STAGE gpu-parity
+[11:23:34] gpu-parity start
+[11:29:59] gpu-parity done
+[11:29:59] STAGE discover
+hardware: gpu0: PCIe link is gen2 x8 now, max gen4 x16 (may be idle power saving)
+hardware: gpu1: PCIe link is gen4 x8 now, max gen4 x16 (may be idle power saving)
+hardware: gpu2: PCIe link is gen4 x8 now, max gen4 x16 (may be idle power saving)
+hardware: gpu3: PCIe link is gen4 x8 now, max gen4 x16 (may be idle power saving)
+hardware: pcie topology: 4 GPUs from NVML but 7 PCI display devices, not matched
+[11:30:00] STAGE enumerate
+single: layers [0, 64) on gpu0 tp 1 ep 1
+layer-4: layers [0, 16) on gpu0 tp 1 ep 1; layers [16, 32) on gpu1 tp 1 ep 1; layers [32, 48) on gpu2 tp 1 ep 1; layers [48, 64) on gpu3 tp 1 ep 1
+tp-4: layers [0, 64) on gpu0+gpu1+gpu2+gpu3 tp 4 ep 1
+tp2-pp2: layers [0, 32) on gpu0+gpu1 tp 2 ep 1; layers [32, 64) on gpu2+gpu3 tp 2 ep 1
+[11:30:01] enumerate qwen3-32b: 4 candidates, 0 pruned
+single: layers [0, 48) on gpu0 tp 1 ep 1
+layer-4: layers [0, 12) on gpu0 tp 1 ep 1; layers [12, 24) on gpu1 tp 1 ep 1; layers [24, 36) on gpu2 tp 1 ep 1; layers [36, 48) on gpu3 tp 1 ep 1
+ep-4: layers [0, 48) on gpu0+gpu1+gpu2+gpu3 tp 4 ep 4
+tp2-pp2: layers [0, 24) on gpu0+gpu1 tp 2 ep 1; layers [24, 48) on gpu2+gpu3 tp 2 ep 1
+pruned tp-4: 3 blocks over 4 ranks (expert down rows)
+[11:30:01] enumerate qwen3-30b-a3b: 4 candidates, 1 pruned
+[11:30:01] STAGE probe
+[11:30:10] comm-probe: nccl
+[11:30:10] STAGE prepass
+[11:30:10] prepass qwen3-32b llama-bench layer start
+[11:30:16] prepass qwen3-32b llama-bench layer: ok
+[11:30:16] prepass qwen3-32b llama-bench row start
+[11:30:18] prepass qwen3-32b llama-bench row: rejected rc=1
+[11:30:18] prepass qwen3-32b llama-bench tensor start
+[11:30:27] prepass qwen3-32b llama-bench tensor: ok
+[11:30:29] prepass qwen3-32b ik-llama-bench layer start
+[11:30:36] prepass qwen3-32b ik-llama-bench layer: rejected rc=0
+[11:30:36] prepass qwen3-32b ik-llama-bench row start
+[11:30:44] prepass qwen3-32b ik-llama-bench row: rejected rc=0
+[11:30:44] prepass qwen3-32b ik-llama-bench graph start
+[11:30:54] prepass qwen3-32b ik-llama-bench graph: rejected rc=0
+[11:30:54] prepass qwen3-30b-a3b llama-bench layer start
+[11:31:00] prepass qwen3-30b-a3b llama-bench layer: ok
+[11:31:00] prepass qwen3-30b-a3b llama-bench row start
+[11:31:02] prepass qwen3-30b-a3b llama-bench row: rejected rc=1
+[11:31:02] prepass qwen3-30b-a3b llama-bench tensor start
+[11:31:11] prepass qwen3-30b-a3b llama-bench tensor: ok
+[11:31:13] prepass qwen3-30b-a3b ik-llama-bench layer start
+[11:31:21] prepass qwen3-30b-a3b ik-llama-bench layer: rejected rc=0
+[11:31:21] prepass qwen3-30b-a3b ik-llama-bench row start
+[11:31:28] prepass qwen3-30b-a3b ik-llama-bench row: rejected rc=0
+[11:31:28] prepass qwen3-30b-a3b ik-llama-bench graph start
+[11:31:44] prepass qwen3-30b-a3b ik-llama-bench graph: rejected rc=0
+[11:31:44] STAGE anchors
+hardware: CUDA_VISIBLE_DEVICES=0,1: 2 of 4 GPUs visible
+hardware: gpu0: PCIe link is gen4 x8 now, max gen4 x16 (may be idle power saving)
+hardware: gpu1: PCIe link is gen4 x8 now, max gen4 x16 (may be idle power saving)
+hardware: pcie topology: not read while CUDA_VISIBLE_DEVICES hides GPUs
+single: layers [0, 64) on gpu0 tp 1 ep 1
+layer-2: layers [0, 32) on gpu0 tp 1 ep 1; layers [32, 64) on gpu1 tp 1 ep 1
+tp-2: layers [0, 64) on gpu0+gpu1 tp 2 ep 1
+single: layers [0, 48) on gpu0 tp 1 ep 1
+layer-2: layers [0, 24) on gpu0 tp 1 ep 1; layers [24, 48) on gpu1 tp 1 ep 1
+tp-2: layers [0, 48) on gpu0+gpu1 tp 2 ep 1
+ep-2: layers [0, 48) on gpu0+gpu1 tp 2 ep 2
+[11:31:45] run qwen3-32b-anchor-single-L16-r1 start
+cotenant ok: host 1.265379513795958 cores busy, container 1.0620414597219452, engine 1.0022213495891672, outside 0.20333805407401284, smt pairs 0
+[11:31:53] run qwen3-32b-anchor-single-L16-r1 done
+[11:31:53] run qwen3-32b-anchor-single-L32-r1 start
+cotenant ok: host 1.2012407658331334 cores busy, container 1.0585189019099341, engine 0.9916575541470326, outside 0.1427218639231993, smt pairs 0
+[11:32:05] run qwen3-32b-anchor-single-L32-r1 done
+[11:32:05] run qwen3-32b-anchor-tp-2-L16-r1 start
+cotenant ok: host 1.2325814648934936 cores busy, container 1.057383946470627, engine 0.9914212943050734, outside 0.17519751842286668, smt pairs 0
+[11:32:14] run qwen3-32b-anchor-tp-2-L16-r1 done
+[11:32:14] run qwen3-32b-anchor-tp-2-L32-r1 start
+cotenant ok: host 1.3904271242904067 cores busy, container 1.0858672059457577, engine 1.0202549090822766, outside 0.304559918344649, smt pairs 0
+[11:32:27] run qwen3-32b-anchor-tp-2-L32-r1 done
+[11:32:27] run qwen3-32b-anchor-tp-4-L16-r1 start
+cotenant ok: host 1.3518621693190584 cores busy, container 1.2528245630878057, engine 1.1880181167535004, outside 0.0990376062312528, smt pairs 0
+[11:32:37] run qwen3-32b-anchor-tp-4-L16-r1 done
+[11:32:37] run qwen3-32b-anchor-tp-4-L32-r1 start
+cotenant ok: host 1.3367992405390539 cores busy, container 1.1821177188526606, engine 1.1143131324406446, outside 0.15468152168639326, smt pairs 0
+[11:32:53] run qwen3-32b-anchor-tp-4-L32-r1 done
+[11:32:53] run qwen3-32b-anchor-single-L16-r2 start
+cotenant ok: host 1.2637269537089617 cores busy, container 1.0574403886586796, engine 0.9905493393563523, outside 0.2062865650502821, smt pairs 0
+[11:33:00] run qwen3-32b-anchor-single-L16-r2 done
+[11:33:00] run qwen3-32b-anchor-single-L32-r2 start
+cotenant ok: host 1.230871938311775 cores busy, container 1.0723313103287428, engine 0.9968064053084049, outside 0.15854062798303215, smt pairs 0
+[11:33:11] run qwen3-32b-anchor-single-L32-r2 done
+[11:33:11] run qwen3-32b-anchor-tp-2-L16-r2 start
+cotenant ok: host 1.2147086494885604 cores busy, container 1.057619914240522, engine 0.9897308688480636, outside 0.15708873524803835, smt pairs 0
+[11:33:20] run qwen3-32b-anchor-tp-2-L16-r2 done
+[11:33:20] run qwen3-32b-anchor-tp-2-L32-r2 start
+cotenant ok: host 1.2774941630264172 cores busy, container 1.0993921641423907, engine 1.0319746158952843, outside 0.17810199888402645, smt pairs 0
+[11:33:33] run qwen3-32b-anchor-tp-2-L32-r2 done
+[11:33:33] run qwen3-32b-anchor-tp-4-L16-r2 start
+cotenant ok: host 1.4366166398918103 cores busy, container 1.2560374664829121, engine 1.1867178608015987, outside 0.18057917340889817, smt pairs 0
+[11:33:44] run qwen3-32b-anchor-tp-4-L16-r2 done
+[11:33:44] run qwen3-32b-anchor-tp-4-L32-r2 start
+cotenant ok: host 1.3562365848328262 cores busy, container 1.1744156486614579, engine 1.1084692023343001, outside 0.1818209361713683, smt pairs 0
+[11:33:59] run qwen3-32b-anchor-tp-4-L32-r2 done
+[11:33:59] run qwen3-30b-a3b-anchor-single-L12-r1 start
+cotenant ok: host 1.1936302890103534 cores busy, container 1.0540890249930719, engine 0.9968024206899395, outside 0.1395412640172815, smt pairs 0
+[11:34:04] run qwen3-30b-a3b-anchor-single-L12-r1 done
+[11:34:04] run qwen3-30b-a3b-anchor-single-L24-r1 start
+cotenant ok: host 1.2826942644386037 cores busy, container 1.059331461497275, engine 0.9964911825764351, outside 0.2233628029413286, smt pairs 0
+[11:34:12] run qwen3-30b-a3b-anchor-single-L24-r1 done
+[11:34:12] run qwen3-30b-a3b-anchor-tp-2-L12-r1 start
+cotenant ok: host 1.2556812342088812 cores busy, container 1.093330701150917, engine 1.0242272203897798, outside 0.1623505330579642, smt pairs 0
+[11:34:19] run qwen3-30b-a3b-anchor-tp-2-L12-r1 done
+[11:34:19] run qwen3-30b-a3b-anchor-tp-2-L24-r1 start
+cotenant ok: host 1.268341412602299 cores busy, container 1.0835823452686428, engine 1.018423186973395, outside 0.1847590673336561, smt pairs 0
+[11:34:29] run qwen3-30b-a3b-anchor-tp-2-L24-r1 done
+[11:34:29] run qwen3-30b-a3b-anchor-single-L12-r2 start
+cotenant ok: host 1.2448595599473349 cores busy, container 1.0565776337643678, engine 0.9899624763967612, outside 0.18828192618296713, smt pairs 0
+[11:34:35] run qwen3-30b-a3b-anchor-single-L12-r2 done
+[11:34:35] run qwen3-30b-a3b-anchor-single-L24-r2 start
+cotenant ok: host 1.241709847241633 cores busy, container 1.0708273919011708, engine 0.989732571162936, outside 0.1708824553404622, smt pairs 0
+[11:34:43] run qwen3-30b-a3b-anchor-single-L24-r2 done
+[11:34:43] run qwen3-30b-a3b-anchor-tp-2-L12-r2 start
+cotenant ok: host 1.254743280999093 cores busy, container 1.0227296014201228, engine 0.9537616416937553, outside 0.23201367957897023, smt pairs 0
+[11:34:51] run qwen3-30b-a3b-anchor-tp-2-L12-r2 done
+[11:34:51] run qwen3-30b-a3b-anchor-tp-2-L24-r2 start
+cotenant ok: host 1.252971202221015 cores busy, container 1.0904829790710906, engine 1.0219319470157016, outside 0.1624882231499245, smt pairs 0
+[11:35:01] run qwen3-30b-a3b-anchor-tp-2-L24-r2 done
+[11:35:01] STAGE calibrate
+[11:35:01] routing qwen3-30b-a3b start
+routing: 48 layers, 2048 prefill rows, 128 decode tokens -> /root/tetraeder/bench/results/s3c-20261119/phase5/routing-qwen3-30b-a3b.json.tmp
+cpu compute: not used (no anchor places compute on the CPU)
+10 anchors, band 0.108 -> /root/tetraeder/bench/results/s3c-20261119/phase5/calib.json
+[11:35:08] STAGE predict
+single     pp   1251.6 tg   39.54 T    4.87 s
+layer-4    pp   2783.6 tg   39.67 T    3.96 s
+tp-4       pp   1609.1 tg   78.89 T    2.90 s
+tp2-pp2    pp   2063.9 tg   58.80 T    3.17 s
+[11:35:08] PREDICT qwen3-32b sha256 fd374ec6d68229d51af2f602d6b237ffef0c4ea2e5de760c7971ce138c486643 (written before the first candidate run)
+single     pp   5065.3 tg  214.42 T    1.00 s
+layer-4    pp  11213.3 tg  218.47 T    0.77 s
+ep-4       pp   4800.7 tg  152.83 T    1.26 s
+tp2-pp2    pp   6512.4 tg  184.57 T    1.01 s
+[11:35:08] PREDICT qwen3-30b-a3b sha256 93653c0ca9a1065625177c3cd0219fec3773fa51c7d20ee5d1b3a6078a1e110c (written before the first candidate run)
+[11:35:08] STAGE rounds
+[11:35:08] round qwen3-32b 1: 6 configurations
+[11:35:08] run qwen3-32b-layer-4-r1 start
+cotenant ok: host 1.2505355859817673 cores busy, container 1.0536083465515005, engine 0.9898167331852051, outside 0.1969272394302668, smt pairs 0
+[11:35:29] run qwen3-32b-layer-4-r1 done
+[11:35:29] run qwen3-32b-tp-4-r1 start
+cotenant ok: host 1.279960807744499 cores busy, container 1.121409950058953, engine 1.0547603968845007, outside 0.1585508576855461, smt pairs 0
+[11:35:55] run qwen3-32b-tp-4-r1 done
+[11:35:55] run qwen3-32b-tp2-pp2-r1 start
+cotenant ok: host 1.2330961350419052 cores busy, container 1.049117774853811, engine 0.9857600957120369, outside 0.18397836018809421, smt pairs 0
+[11:36:20] run qwen3-32b-tp2-pp2-r1 done
+[11:36:20] run qwen3-32b-llama-bench-layer-r1 start
+cotenant ok: host 6.927013481507177 cores busy, container 6.771433048970549, engine 6.708302040653398, outside 0.15558043253662746, smt pairs 0
+[11:36:32] run qwen3-32b-llama-bench-layer-r1 done
+[11:36:32] run qwen3-32b-llama-bench-tensor-r1 start
+cotenant ok: host 5.842313806187544 cores busy, container 5.705259577274833, engine 5.635335525025957, outside 0.13705422891271102, smt pairs 0
+[11:36:45] run qwen3-32b-llama-bench-tensor-r1 done
+[11:36:45] run qwen3-32b-single-r1 start
+cotenant ok: host 1.214249402482222 cores busy, container 1.0511002853548255, engine 0.9797638590985003, outside 0.16314911712739644, smt pairs 0
+[11:37:05] run qwen3-32b-single-r1 done
+[11:37:05] round qwen3-32b 2: 6 configurations
+[11:37:05] run qwen3-32b-llama-bench-tensor-r2 start
+cotenant ok: host 5.570707680607008 cores busy, container 5.371433894595065, engine 5.305596867177786, outside 0.19927378601194246, smt pairs 0
+[11:37:20] run qwen3-32b-llama-bench-tensor-r2 done
+[11:37:20] run qwen3-32b-llama-bench-layer-r2 start
+cotenant ok: host 6.871787309199033 cores busy, container 6.692841077336217, engine 6.630990128994168, outside 0.17894623186281589, smt pairs 0
+[11:37:32] run qwen3-32b-llama-bench-layer-r2 done
+[11:37:32] run qwen3-32b-tp2-pp2-r2 start
+cotenant ok: host 1.2158908307552476 cores busy, container 1.0620494355102912, engine 0.9946458031916786, outside 0.15384139524495644, smt pairs 0
+[11:37:57] run qwen3-32b-tp2-pp2-r2 done
+[11:37:57] run qwen3-32b-tp-4-r2 start
+cotenant ok: host 1.3007021018637763 cores busy, container 1.123692054364954, engine 1.0602230931845074, outside 0.17701004749882232, smt pairs 0
+[11:38:23] run qwen3-32b-tp-4-r2 done
+[11:38:23] run qwen3-32b-layer-4-r2 start
+cotenant ok: host 1.2065096450466264 cores busy, container 1.057038185043909, engine 0.9894743641557752, outside 0.14947146000271738, smt pairs 0
+[11:38:44] run qwen3-32b-layer-4-r2 done
+[11:38:44] run qwen3-32b-single-r2 start
+cotenant ok: host 1.264771556276167 cores busy, container 1.0513939897950755, engine 0.9806340947921927, outside 0.21337756648109152, smt pairs 0
+[11:39:05] run qwen3-32b-single-r2 done
+[11:39:05] rerun round 3 for qwen3-32b
+[11:39:05] round qwen3-32b 3: 3 configurations
+[11:39:05] run qwen3-32b-single-r3 start
+cotenant ok: host 1.2026373179449608 cores busy, container 1.0465036024980845, engine 0.9805820114751667, outside 0.15613371544687626, smt pairs 0
+[11:39:26] run qwen3-32b-single-r3 done
+[11:39:26] run qwen3-32b-tp-4-r3 start
+cotenant ok: host 1.2772923817030835 cores busy, container 1.1160453648569422, engine 1.0482748251214138, outside 0.1612470168461413, smt pairs 0
+[11:39:53] run qwen3-32b-tp-4-r3 done
+[11:39:53] run qwen3-32b-llama-bench-tensor-r3 start
+cotenant ok: host 5.715605278717325 cores busy, container 5.471842092222982, engine 5.409521936777612, outside 0.24376318649434303, smt pairs 0
+[11:40:07] run qwen3-32b-llama-bench-tensor-r3 done
+[11:40:07] rerun round 4 for qwen3-32b
+[11:40:07] round qwen3-32b 4: 1 configurations
+[11:40:07] run qwen3-32b-llama-bench-tensor-r4 start
+cotenant ok: host 5.846677925303891 cores busy, container 5.720810268917187, engine 5.658285535099402, outside 0.1258676563867036, smt pairs 0
+[11:40:20] run qwen3-32b-llama-bench-tensor-r4 done
+[11:40:20] run qwen3-32b-single-aa start
+cotenant ok: host 1.2031704743036928 cores busy, container 1.04744563388077, engine 0.9801439049275983, outside 0.15572484042292278, smt pairs 0
+[11:40:41] run qwen3-32b-single-aa done
+[11:40:41] round qwen3-30b-a3b 1: 6 configurations
+[11:40:41] run qwen3-30b-a3b-layer-4-r1 start
+cotenant ok: host 1.3243701353751303 cores busy, container 1.105645717892136, engine 1.0271686414395051, outside 0.21872441748299432, smt pairs 0
+[11:40:56] run qwen3-30b-a3b-layer-4-r1 done
+[11:40:56] run qwen3-30b-a3b-ep-4-r1 start
+cotenant ok: host 1.8677626696841154 cores busy, container 1.132927350694075, engine 1.070812482668858, outside 0.7348353189900405, smt pairs 0
+[11:41:12] run qwen3-30b-a3b-ep-4-r1 done
+[11:41:12] run qwen3-30b-a3b-tp2-pp2-r1 start
+cotenant ok: host 1.2549435969700473 cores busy, container 1.0673738031740587, engine 1.0035530556721421, outside 0.1875697937959886, smt pairs 0
+[11:41:32] run qwen3-30b-a3b-tp2-pp2-r1 done
+[11:41:32] run qwen3-30b-a3b-llama-bench-layer-r1 start
+cotenant ok: host 3.0407686822053956 cores busy, container 2.9283201427203878, engine 2.8680763698466776, outside 0.11244853948500788, smt pairs 0
+[11:41:40] run qwen3-30b-a3b-llama-bench-layer-r1 done
+[11:41:40] run qwen3-30b-a3b-llama-bench-tensor-r1 start
+cotenant ok: host 3.8064001293252243 cores busy, container 3.598347493668216, engine 3.5303221030905134, outside 0.20805263565700827, smt pairs 0
+[11:41:52] run qwen3-30b-a3b-llama-bench-tensor-r1 done
+[11:41:52] run qwen3-30b-a3b-single-r1 start
+cotenant ok: host 1.1922469374761813 cores busy, container 1.0312239855752996, engine 0.9655409815896537, outside 0.16102295190088167, smt pairs 0
+[11:42:05] run qwen3-30b-a3b-single-r1 done
+[11:42:05] round qwen3-30b-a3b 2: 6 configurations
+[11:42:05] run qwen3-30b-a3b-llama-bench-tensor-r2 start
+cotenant ok: host 3.6890490218971683 cores busy, container 3.577408855797373, engine 3.513768902017103, outside 0.11164016609979521, smt pairs 0
+[11:42:18] run qwen3-30b-a3b-llama-bench-tensor-r2 done
+[11:42:18] run qwen3-30b-a3b-llama-bench-layer-r2 start
+cotenant ok: host 3.3991594525913134 cores busy, container 3.249678953250889, engine 3.1860569498804874, outside 0.14948049934042418, smt pairs 0
+[11:42:25] run qwen3-30b-a3b-llama-bench-layer-r2 done
+[11:42:25] run qwen3-30b-a3b-tp2-pp2-r2 start
+cotenant ok: host 1.2515857736368183 cores busy, container 1.0609499921496945, engine 0.9925118767116299, outside 0.1906357814871238, smt pairs 0
+[11:42:45] run qwen3-30b-a3b-tp2-pp2-r2 done
+[11:42:45] run qwen3-30b-a3b-ep-4-r2 start
+cotenant ok: host 1.3264649821144057 cores busy, container 1.1494095080844784, engine 1.081216766190208, outside 0.17705547402992727, smt pairs 0
+[11:43:02] run qwen3-30b-a3b-ep-4-r2 done
+[11:43:02] run qwen3-30b-a3b-layer-4-r2 start
+cotenant ok: host 1.2148264286520805 cores busy, container 1.0845528494764236, engine 1.0207578947462215, outside 0.13027357917565685, smt pairs 0
+[11:43:16] run qwen3-30b-a3b-layer-4-r2 done
+[11:43:16] run qwen3-30b-a3b-single-r2 start
+cotenant ok: host 1.2387703357552264 cores busy, container 1.030056706421947, engine 0.9645863424468335, outside 0.20871362933327942, smt pairs 0
+[11:43:29] run qwen3-30b-a3b-single-r2 done
+[11:43:29] run qwen3-30b-a3b-single-aa start
+cotenant ok: host 1.2051513399235159 cores busy, container 1.0315447056870681, engine 0.9658029379368938, outside 0.17360663423644773, smt pairs 0
+[11:43:43] run qwen3-30b-a3b-single-aa done
+[11:43:43] STAGE pp-overlap
+[11:43:43] run ppov-qwen3-32b-mb1-r1 start
+cotenant ok: host 1.2560384706967875 cores busy, container 1.0488859342157528, engine 0.9838860110124207, outside 0.2071525364810347, smt pairs 0
+[11:44:09] run ppov-qwen3-32b-mb1-r1 done
+[11:44:09] run ppov-qwen3-32b-mb4-r1 start
+cotenant ok: host 1.2107150191857416 cores busy, container 1.0660740138704472, engine 1.0013406529781788, outside 0.14464100531529445, smt pairs 0
+[11:44:34] run ppov-qwen3-32b-mb4-r1 done
+[11:44:34] run ppov-qwen3-32b-mb4-r2 start
+cotenant ok: host 1.229249691458757 cores busy, container 1.0789878452064452, engine 1.0047052936573695, outside 0.15026184625231176, smt pairs 0
+[11:45:00] run ppov-qwen3-32b-mb4-r2 done
+[11:45:00] run ppov-qwen3-32b-mb1-r2 start
+cotenant ok: host 1.2593967449370815 cores busy, container 1.046829667180043, engine 0.98268893909512, outside 0.21256707775703854, smt pairs 0
+[11:45:26] run ppov-qwen3-32b-mb1-r2 done
+pp-overlap qwen3-32b: median pp {'1': 1306.2676810798648, '4': 1413.4204647945069}, mb4 / mb1 1.082
+[11:45:26] run ppov-qwen3-30b-a3b-mb1-r1 start
+cotenant ok: host 1.208115884253084 cores busy, container 1.03931970155821, engine 0.9724616884379832, outside 0.16879618269487384, smt pairs 0
+[11:45:47] run ppov-qwen3-30b-a3b-mb1-r1 done
+[11:45:47] run ppov-qwen3-30b-a3b-mb4-r1 start
+cotenant ok: host 1.2315931289989106 cores busy, container 1.0691983339364588, engine 1.005881708176823, outside 0.1623947950624518, smt pairs 0
+[11:46:07] run ppov-qwen3-30b-a3b-mb4-r1 done
+[11:46:07] run ppov-qwen3-30b-a3b-mb4-r2 start
+cotenant ok: host 1.2070103675433872 cores busy, container 1.0711983523435877, engine 1.005955913275102, outside 0.13581201519979946, smt pairs 0
+[11:46:26] run ppov-qwen3-30b-a3b-mb4-r2 done
+[11:46:26] run ppov-qwen3-30b-a3b-mb1-r2 start
+cotenant ok: host 1.2484125074328158 cores busy, container 1.0758920472213496, engine 1.0029089680757575, outside 0.17252046021146628, smt pairs 0
+[11:46:46] run ppov-qwen3-30b-a3b-mb1-r2 done
+pp-overlap qwen3-30b-a3b: median pp {'1': 4055.4687172236054, '4': 5007.827680526104}, mb4 / mb1 1.235
+[11:46:46] STAGE vllm
+[11:48:37] vllm qwen3-32b: no checkpoint at /root/tetraeder/.hf_cache/Qwen__Qwen3-32B-AWQ, skipped
+[11:48:37] vllm qwen3-30b-a3b: no checkpoint at /root/tetraeder/.hf_cache/Qwen__Qwen3-30B-A3B-GPTQ-Int4, skipped
+[11:48:37] STAGE summary
+{"phase5_pass": false, "band": 0.08, "band_source": "provisional cuda-default", "cases": {"M4": false, "D4": null}}
+[11:48:37] PHASE5_BOX_DONE rc=0
+0
