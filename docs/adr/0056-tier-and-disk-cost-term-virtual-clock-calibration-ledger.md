@@ -1,6 +1,6 @@
 # 0056. Cost model: a RAM-tier and disk term from replayed routing, a virtual clock for I/O tests, a calibration ledger in CI
 
-Status: Proposed (Phase 3a planner exit on the MoE builder fixture; Phase 2 levers). Amends ADR 0040 "Builder scoring" (the RAM tier becomes a cost-model feature). Extends ADR 0050 (c) (the replay) and ADR 0054 (the I/O service). Brief: `docs/costmodel-brief.md`.
+Status: Accepted (owner, 2026-11-19). Proposed (Phase 3a planner exit on the MoE builder fixture; Phase 2 levers). Amends ADR 0040 "Builder scoring" (the RAM tier becomes a cost-model feature). Extends ADR 0050 (c) (the replay) and ADR 0054 (the I/O service). Brief: `docs/costmodel-brief.md`.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

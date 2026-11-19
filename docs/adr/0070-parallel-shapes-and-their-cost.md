@@ -1,6 +1,6 @@
 # 0070. Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them
 
-Status: Proposed (2026-11-15). Phase 5. Builds on ADR 0027 (plan IR), 0040 and 0056 (cost model, calibration), 0069 (executor). Adds patch `0004` to the queue (ADR 0011, Rule 8). Briefs: `docs/phase5-briefs.md`.
+Status: Accepted (owner, 2026-11-19). Proposed (2026-11-15). Phase 5. Builds on ADR 0027 (plan IR), 0040 and 0056 (cost model, calibration), 0069 (executor). Adds patch `0004` to the queue (ADR 0011, Rule 8). Briefs: `docs/phase5-briefs.md`.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

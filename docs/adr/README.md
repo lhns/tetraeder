@@ -57,11 +57,11 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0049](0049-multi-entry-prefix-cache-and-lenient-anthropic-input.md) | Accepted | Multi-entry prefix cache in host RAM; lenient Anthropic input |
 | [0050](0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md) | Proposed ((a) stage 1 superseded by 0054) | Decode levers: miss reads under CPU expert work, low-bit KV per attention unit, RAM tier by routing frequency |
 | [0051](0051-no-prompt-checkpoints-tool-call-outcomes.md) | Accepted | No prompt checkpoints; tool-call outcomes counted, empty calls dropped |
-| [0052](0052-runtime-cpu-isa-dispatch.md) | Proposed | Runtime CPU ISA dispatch: ggml backends as loadable modules, one build for every x86 CPU |
-| [0053](0053-iqk-avx512-vnni-q4k-decode-kernel.md) | Proposed | iqk AVX-512 VNNI kernels for Q4_K/Q6_K expert decode, copied as patch 0002 |
+| [0052](0052-runtime-cpu-isa-dispatch.md) | Accepted | Runtime CPU ISA dispatch: ggml backends as loadable modules, one build for every x86 CPU |
+| [0053](0053-iqk-avx512-vnni-q4k-decode-kernel.md) | Accepted | iqk AVX-512 VNNI kernels for Q4_K/Q6_K expert decode, copied as patch 0002 |
 | [0054](0054-expert-reads-io-service-and-arrival-order-compute.md) | Accepted | Decode expert reads: persistent I/O service, experts computed in arrival order, RAM tier sized to the container |
 | [0055](0055-replanning-wired-into-serve.md) | Accepted (part A built, part B open) | Replanning wired into serve: plan from file or the executable enumerators, lowering from the plan, decode-step residual from the step ring |
-| [0056](0056-tier-and-disk-cost-term-virtual-clock-calibration-ledger.md) | Proposed | Cost model: RAM-tier and disk term from replayed routing, virtual clock for I/O tests, calibration ledger in CI |
+| [0056](0056-tier-and-disk-cost-term-virtual-clock-calibration-ledger.md) | Accepted | Cost model: RAM-tier and disk term from replayed routing, virtual clock for I/O tests, calibration ledger in CI |
 | [0057](0057-qwen-xml-arguments-typed-from-python-literals.md) | Accepted | Qwen XML tool arguments: Python literals typed by the schema |
 | [0058](0058-decode-io-attribution.md) | Accepted | Decode I/O attribution: capacity and demand per window before any bottleneck label |
 | [0059](0059-adaptive-compute-tier-admission.md) | Proposed | Adaptive compute tier: decode admits a share of CPU misses into VRAM slots |
@@ -71,15 +71,15 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0063](0063-genai-request-metrics-and-tier-transfer-family.md) | Accepted | GenAI semconv request metrics from the gateway for every engine; one tier transfer metric family |
 | [0064](0064-decode-dispatch-segment-scheduler-and-one-graph-per-token.md) | Proposed | Decode dispatch: a scheduler sized for one segment, then one graph per decode token with a host callback per layer |
 | [0065](0065-phase4-verdict-multi-sequence-backend-continuous-batching.md) | Accepted | Phase 4: verdict rules, a multi-sequence backend and continuous batching |
-| [0066](0066-own-qwen3-dense-builder.md) | Proposed | Own Qwen3 dense builder on the shared attention module, multi-sequence from the start |
-| [0067](0067-kv-layout-experiment-chunked-vs-paged.md) | Proposed | KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now |
+| [0066](0066-own-qwen3-dense-builder.md) | Accepted | Own Qwen3 dense builder on the shared attention module, multi-sequence from the start |
+| [0067](0067-kv-layout-experiment-chunked-vs-paged.md) | Accepted | KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now |
 | [0068](0068-phase5-verdict-rules.md) | Proposed | Phase 5: verdict rules for the multi-GPU exit test |
 | [0069](0069-own-executor-rank-programs.md) | Proposed | Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box |
-| [0070](0070-parallel-shapes-and-their-cost.md) | Proposed | Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them |
-| [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Proposed | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
+| [0070](0070-parallel-shapes-and-their-cost.md) | Accepted | Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them |
+| [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Accepted | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
 | [0072](0072-dense-builder-cpu-weights-in-extra-buffer-types.md) | Proposed | Dense builder: CPU weights in libllama's extra buffer types (supersedes 0039 for the dense builder) |
-| [0073](0073-engine-pin-b12426.md) | Proposed | Engine pin moves to llama.cpp b12426 before the Phase 4 verdict |
+| [0073](0073-engine-pin-b12426.md) | Accepted | Engine pin moves to llama.cpp b12426 before the Phase 4 verdict |
 | [0074](0074-prefix-save-through-pinned-staging.md) | Proposed | Prefix-cache save on a GPU: pinned staging and prepared snapshot buffers |
-| [0075](0075-executor-ranges-are-graph-views.md) | Proposed | Executor ranges are views of the rank graph (patch 0005) |
+| [0075](0075-executor-ranges-are-graph-views.md) | Accepted | Executor ranges are views of the rank graph (patch 0005) |
 | [0076](0076-judged-predictions-from-per-shape-anchor-lines.md) | Not adopted | Judged predictions from per-shape lines through truncated anchors |
 | [0077](0077-pipelined-prefill-micro-batches.md) | Proposed | Pipelined prefill: micro-batches in one rank program (GPipe order) |

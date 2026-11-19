@@ -1,6 +1,6 @@
 # 0075. Executor ranges are views of the rank graph (patch 0005)
 
-Status: Proposed (2026-11-17). Amends ADR 0069 (range graphs). The GPU parity gates, including `gpu_one_rank_is_bit_equal_to_the_scheduler`, passed on the S2d box with patch 0005 (`s2d-20261118-step0`).
+Status: Accepted (owner, 2026-11-19). Proposed (2026-11-17). Amends ADR 0069 (range graphs). The GPU parity gates, including `gpu_one_rank_is_bit_equal_to_the_scheduler`, passed on the S2d box with patch 0005 (`s2d-20261118-step0`).
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

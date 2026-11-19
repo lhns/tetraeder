@@ -1,6 +1,6 @@
 # 0052. Runtime CPU ISA dispatch: ggml backends as loadable modules, one build for every x86 CPU
 
-Status: Proposed (Phase 2 exit follow-up, ADR 0045 hypothesis 3). Builds on ADR 0011, 0036, 0039.
+Status: Accepted (owner, 2026-11-19). Proposed (Phase 2 exit follow-up, ADR 0045 hypothesis 3). Builds on ADR 0011, 0036, 0039.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

@@ -1,6 +1,6 @@
 # 0071. GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA
 
-Status: Proposed (2026-11-16). The rule holds on every one-GPU parity suite of the fixtures (`20261116gpu5`) and, anchored, on both real models (`20261116rb`, `20261116d2a2`); the anchored tensor-parallel bound for sharded shapes held on the S2d box (`s2d-20261118-step0`). Status stays Proposed until the Phase 4 verdict session runs the parity gate on its own box.
+Status: Accepted (owner, 2026-11-19). Proposed (2026-11-16). The rule holds on every one-GPU parity suite of the fixtures (`20261116gpu5`) and, anchored, on both real models (`20261116rb`, `20261116d2a2`); the anchored tensor-parallel bound for sharded shapes held on the S2d box (`s2d-20261118-step0`). Status stays Proposed until the Phase 4 verdict session runs the parity gate on its own box.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

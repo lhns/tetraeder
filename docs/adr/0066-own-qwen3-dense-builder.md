@@ -1,6 +1,6 @@
 # 0066. Own Qwen3 dense builder on the shared attention module, multi-sequence from the start
 
-Status: Proposed (2026-11-14). Phase 4. Builds on ADR 0015 (own builders per family, libllama as reference), 0030 (MoE builder), 0036 (whole-step graph), 0050 b (KV formats, rotation) and 0065 (batch backend, attention over a shared pool). Brief: C5 in `docs/phase4-briefs.md`. As the judged Qwen3-8B engine it passed the Phase 4 throughput verdict (`20261117k`, ADR 0065); `auto` still selects libllama.
+Status: Accepted (owner, 2026-11-19). Proposed (2026-11-14). Phase 4. Builds on ADR 0015 (own builders per family, libllama as reference), 0030 (MoE builder), 0036 (whole-step graph), 0050 b (KV formats, rotation) and 0065 (batch backend, attention over a shared pool). Brief: C5 in `docs/phase4-briefs.md`. As the judged Qwen3-8B engine it passed the Phase 4 throughput verdict (`20261117k`, ADR 0065); `auto` still selects libllama.
 
 ## Context
 
