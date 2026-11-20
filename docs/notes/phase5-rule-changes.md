@@ -13,6 +13,7 @@ For the owner, before M2 is reported (`docs/m2-plan.md`, Phase 5 item 5). ADR 00
 | 2026-11-18 | The 15% rule judges the analytic prediction made before the candidates run. It does not judge lines fitted from runs of each candidate (ADR 0076 not adopted). Reopen criteria fixed. | `s2g-20261118` misses | owner |
 | 2026-11-19 | 15% stays on every candidate. Calibration gains recorded routing frequencies and, on 4-GPU boxes, tp-4 anchors at L/4 and L/2 (ADR 0078). | `s3b-20261119` ep and tp2-pp2 misses | owner |
 | 2026-11-19 | Phase 5 verdict sessions skip host 20210 (`docs/box-driver.md`). Diagnostics may use it. | `s3b-20261119`, `s3c-20261119`: GPU 0 shows thermal 0x20 on the 32B in every session, so D4 never gets two clean rounds | coordinator (host choice, not a rule) |
+| 2026-11-20 | gpu-parity gate: adds the ggml-sys capture-flag test (`gpu_no_capture_flag_skips_the_cuda_graph`, ADR 0081) and skips the KV save timing tests (`save_through_pinned_staging`, ADR 0074, judged in their own sessions). | `s3f-20261120`: the 8B save timing test missed its bound on host memory speed and ended the session at the gate | coordinator, before the next session |
 
 ## Changes to what is judged, not to the rules
 
