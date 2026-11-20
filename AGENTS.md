@@ -18,6 +18,15 @@ Plain, short docs and comments; no em dashes.
 10. Small PRs naming the phase and exit test they move.
 11. Every change builds and tests on Windows and Linux (`cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check`).
 
+## Local files
+
+The machine is shared with other projects; 2026-11-20 cleanup removed 156 stale worktrees (57 GB) and stray box logs in the parent `git` folder.
+
+- Write only inside this repo's worktrees or the session scratchpad. Never into `Documents/git` or another sibling folder: no logs, scripts or worktrees there (`taxameter` output, `> file` redirects and `git worktree add` paths included).
+- Worktrees live under `.claude/worktrees/` (agent isolation) or the scratchpad. The coordinator removes a worker's worktree when its branch is merged or abandoned, and runs `bash scripts/wt_gc.sh` (dry run first, then `--apply`) after each merge batch and at session end, when no worker is active.
+- Local result files that must survive go in `runs/` (git-ignored), not in a worktree that will be removed.
+- Workers do not build Rust locally (CI builds), so worktrees carry no `target/`.
+
 ## Session prompt template
 
 ```
