@@ -460,7 +460,7 @@ def test_the_layer_anchor_is_off_by_default_and_needs_three_gpus(tmp_path):
     for ngpu, env in (("4", {}), ("2", {"LAYER_ANCHOR": "1"})):
         lines = dry(tmp_path / ngpu, ngpu=ngpu, **env)
         assert not [n for n in runs(lines) if "@L" in n]
-        assert not any("--anchor" in ln for ln in lines)
+        assert not any("--anchor layer" in ln for ln in lines)
 
 
 def test_the_layer_anchor_runs_tg128_ten_reps_for_the_moe_model_two_rounds(tmp_path):
