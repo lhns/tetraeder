@@ -327,6 +327,16 @@ models_check() {
     [ -s "${MODEL_FILE[$m]}" ] || die "model $m missing: ${MODEL_FILE[$m]} (taxameter models)"
     ls -l "${MODEL_FILE[$m]}" >> "$out/models.txt"
   done
+  # gpu-parity's dense tests read Qwen3-8B from the models dir and fail under REQUIRE_GPU without it (s3f-20261120:
+  # the provision list lacked it, found only after the build). Provision it with
+  # Qwen/Qwen3-8B-GGUF:Qwen3-8B-Q4_K_M.gguf.
+  local parity_8b="$models_dir/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf"
+  if [ "$DRY" = 1 ]; then
+    plan "model qwen3-8b (gpu-parity): $parity_8b"
+  elif [ "$skip_gpu" != 1 ]; then
+    [ -s "$parity_8b" ] || die "model qwen3-8b missing (gpu-parity needs it): $parity_8b (taxameter models)"
+    ls -l "$parity_8b" >> "$out/models.txt"
+  fi
 }
 
 # ---- stage: gpu-parity -------------------------------------------------------------------------------------
