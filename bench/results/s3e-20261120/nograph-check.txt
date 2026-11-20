@@ -1,0 +1,2 @@
+ok
+note: qwen3-30b-a3b-tp2pp2-mb4-pp-nccl-graphdebug (graphs on, GRAPH_DEBUG=1) logged no capture line, so a silent nograph run proves nothing
