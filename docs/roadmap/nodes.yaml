@@ -989,6 +989,8 @@ nodes:
   - S2g rehearsal with cost model v2 and pipelined prefill (2026-11-19, commit 912f27f6ae, commit 83413848b2)
   overview: true
   plain: Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows.
+  qualified_by:
+  - multi-defect-capture
 - id: planner-cost-v3
   title: Price all-reduce latency in steps
   track: planner
@@ -1029,6 +1031,8 @@ nodes:
   - Cost model v4 and comm probe warm-up (ADR 0080) (2026-11-19, commit d7e5b5d6e8, commit f363bc6822, commit 7b0ab515f4, commit ad1f0fc0bb, commit 08e948a02d, commit 07003e7dd5, commit c01a354de7, commit 0116a014a6)
   overview: false
   plain: Version 4 prices the activation bytes that expert parallel moves per routed expert, which brought the four-GPU expert-parallel prefill prediction close.
+  qualified_by:
+  - multi-defect-capture
 - id: multi-executor
   title: Own multi-GPU executor
   track: multi

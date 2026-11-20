@@ -161,12 +161,13 @@ flowchart TB
     memory_io_service --> bench_m1_point1
     bench_m1_point1 --> bench_owner_m1
     bench_phase3b_proxy --> bench_owner_m1
+    planner_cost_v2 -.-> multi_defect_capture
     planner_cost_v2 --> bench_owner_analytic
     multi_defect_capture --> multi_prefill_no_capture
     multi_prefill_no_capture --> bench_s3f2
     bench_s3f2 -.-> bench_defect_s3f2_clock
     bench_s3f2 --> bench_defect_s3f2_clock
-    linkStyle 27,37 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 27,34,38 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -199,7 +200,7 @@ flowchart TB
 | Prefetch next layer's experts | ✔ done · very-successful | While one layer computes, predict which experts the next layer will need and start reading them early. |
 | Read experts while computing | ✔ done · very-successful | An I/O service reads missing experts in the background and computes experts in the order they arrive, so disk reads overlap compute; on by default in serve. |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
-| Cost model, version 2 | ✔ done · successful | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
+| Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
 | Price decode at measured clocks | ○ next | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
 | Prefill runs without graph capture | ✔ done · unrated | Every judged prefill had timed the call in which ggml records a CUDA graph, which serialized the pipeline stages; prefill steps now run directly and decode keeps graph replay. |
 | Own multi-GPU executor | ✔ done · unrated | Phase 5: Tetraeder runs its own executor instead of ggml's backend scheduler: one program per GPU (rank), NCCL collectives, and the engine in a worker process. |

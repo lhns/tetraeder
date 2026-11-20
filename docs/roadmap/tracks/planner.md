@@ -83,9 +83,9 @@ flowchart TB
 | `planner-replan` | Replan while serving | feature | none | done | unrated | 2026-11-09 | 2026-11-12 | planner-detector |  |  |  | docs/adr/0055-replanning-wired-into-serve.md; docs/adr/0042-slo-burn-rate-alerts-and-drain-restart-replanning.md |
 | `planner-fill-tier` | Fill free VRAM with experts | feature | none | done | unrated | 2026-11-14 | 2026-11-15 | planner-core |  |  |  | crates/planner |
 | `planner-parallel-shapes` | Plan tensor and expert parallel | feature | none | done | unrated | 2026-11-15 | 2026-11-16 | planner-core |  |  |  | docs/adr/0070-parallel-shapes-and-their-cost.md |
-| `planner-cost-v2` | Cost model, version 2 | feature | none | done | successful | 2026-11-18 | 2026-11-19 | planner-parallel-shapes, multi-pipelined-prefill |  |  |  | docs/adr/0070-parallel-shapes-and-their-cost.md; bench/results/s2g-20261118/README.md |
+| `planner-cost-v2` | Cost model, version 2 | feature | none | done | successful | 2026-11-18 | 2026-11-19 | planner-parallel-shapes, multi-pipelined-prefill |  | multi-defect-capture |  | docs/adr/0070-parallel-shapes-and-their-cost.md; bench/results/s2g-20261118/README.md |
 | `planner-cost-v3` | Price all-reduce latency in steps | feature | none | done | unrated | 2026-11-19 | 2026-11-19 | planner-cost-v2 |  |  |  | docs/adr/0078-allreduce-in-step-latency.md |
-| `planner-cost-v4` | Price routed expert traffic | feature | none | done | successful | 2026-11-19 | 2026-11-19 | planner-cost-v3 |  |  | +0.09 | docs/adr/0080-routed-slot-activation-traffic.md |
+| `planner-cost-v4` | Price routed expert traffic | feature | none | done | successful | 2026-11-19 | 2026-11-19 | planner-cost-v3 |  | multi-defect-capture | +0.09 | docs/adr/0080-routed-slot-activation-traffic.md |
 | `planner-cost-model-v5` | Price decode at measured clocks | feature | local | next | unrated |  |  | planner-cost-v4 |  |  |  |  |
 
 ### Details per node
