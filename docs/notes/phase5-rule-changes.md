@@ -19,9 +19,6 @@ For the owner, before M2 is reported (`docs/m2-plan.md`, Phase 5 item 5). ADR 00
 - Decode toggles TETRAEDER_RANGE_UID and TETRAEDER_ASYNC_INPUTS are on by default (ADR 0069 History). They met their keep rule in `s3c-20261119-decode-decode`, so the judged executor is the one with both on.
 - Cost model versions 2 to 4 (ADR 0070 History, ADR 0077, ADR 0080) change the predictions, not the 15% line. Version 4 adds a floor guard on all-reduce curves whose first point is not rising (ADR 0080). The guard changes how calibration data is read, so it is listed here.
 
-## Open, owner's call
+## D4 host (owner, 2026-11-20)
 
-- D4 needs two clean rounds on a 4-GPU host other than 20210, and so far all usable 4-GPU supply is that one host. The options:
-  - wait for a second host;
-  - one-off cap raise for a host above 1.20 USD/h;
-  - run D4 alone on 20210 with more reruns. Reruns would not change the rule: one 0x20 sample still voids a run (`docs/m2-plan.md`, Phase 5 items 1 and 3).
+One-off cap raise: one V4a box on a host other than 20210, at up to 1.70 USD/h all-in, run alone (AGENTS.md, Money). The rules are unchanged.
