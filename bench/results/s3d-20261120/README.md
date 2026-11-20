@@ -77,6 +77,7 @@ Median SM clock per GPU during the run (samples above 1000 MHz only, 20 ms nvidi
 ### What this says about the decode excess, and what it does not settle
 
 - Says: on this box the 30B layer-4 excess is kernel time scaled by the clock plateau (1695 vs about 1900 MHz), present in llama.cpp too, absent for the 32B. It is not a Tetraeder pipeline cost.
+- Correction (offline, 2026-11-20, 20 ms logs cut to the timed tail): the 1695 MHz state follows each GPU's duty within a step, not the number of GPUs loaded. Plain ep-4 runs 1965 to 1995 on all four; fenced ep-4 (GPUs mostly waiting) and layer-4 (each GPU busy about a quarter of a step) sit at 1695. The ep-4 row in the clock table mixes the load phase with the run.
 - Does not settle: that the clock is the cause. Clocks cannot be locked in the container and the single run leaves three GPUs idle (more power and thermal headroom), so single and layer-4 are not at equal conditions. The 1695 MHz plateau on every active GPU may be a power or thermal governor, a boost limit with several GPUs loaded, or the host. Not shown: the same comparison on another box or night.
 - Does not settle the ep-4 decode residual of ADR 0080: ep-4 is 5.56 ms per token here, 0.2 ms above layer-4, with 96 all-reduces per token; the fenced numbers cannot be split into kernel, launch and wait time without an unfenced device timeline.
 
