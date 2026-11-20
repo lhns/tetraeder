@@ -1,6 +1,6 @@
 # Session s3f-20261120
 
-- Status: pending (box not yet run). Confirmation of ADR 0081 (patch 0006: prefill steps run without CUDA graph capture) on 4 GPUs, host 20210 preferred for comparability with s3c and s3e.
+- Status: not run (two boxes aborted at the gates, see Results). Confirmation of ADR 0081 (patch 0006: prefill steps run without CUDA graph capture) on 4 GPUs, host 20210 preferred for comparability with s3c and s3e.
 - Scripts: `scripts/s3f_confirm_box.sh` (stage A: `phase5_box.sh` with ROUNDS=1; stage B: default against `GGML_CUDA_DISABLE_GRAPHS=1`), `scripts/s3f_analyze.py` (`python -I scripts/s3f_analyze.py bench/results/s3f-20261120 bench/results/s3c-20261119 bench/results/s3e-20261120` writes `analysis.txt`).
 - Stage A is the s3c-style rehearsal: gates (now including the ggml-sys test `gpu_no_capture_flag_skips_the_cuda_graph` under `GGML_CUDA_GRAPH_DEBUG=1`), anchors, calibrate, predict, one round of every candidate and baseline, pp-overlap. Results in `phase5/`. A gate failure (rc=3) ends the session after stage A.
 - Stage B (then part C, below): per model (30B first), tp2-pp2 and layer-4, both at `prefill_micro_batches` 4 (stage A's plans with that line set), arms `default` and `nograph` (`GGML_CUDA_DISABLE_GRAPHS=1`) in the order default, nograph, nograph, default, so two runs per arm. Each run is `bench -p 2048 -n 128 -r 5` (one warm-up and 5 timed reps per row, so `samples_ns` has 5 values for pp and for tg), no `GGML_CUDA_GRAPH_DEBUG`, no trace. 1 Hz `gpu-samples.csv` with throttle reasons, and a `<run>.window.txt` per run to cut it.
@@ -17,4 +17,7 @@
 
 ## Results
 
-Pending.
+No measurement. Two boxes were created and destroyed, 0.29 USD all in (credit 15.34 to 15.05):
+- Box 61625453, host 20210 (offer 57659292, 1.192 USD/h), created 11:48:31 local. Still `loading` (image pull) after 13 min, destroyed 12:01:20 (abort rule: more than 10 min).
+- Box 61627071, host 1276 (Norway, 4x RTX 3090, 64 cores, 1.171 USD/h), created 12:01:37, running 12:07:58. Provision log `cuda: ok`, idle gate 10/10, memory.max 129 GB, CPU quota 60. Power gate failed: every GPU at 300 W against 350 W default (`power gate: 4 of 4 GPUs not at default power limit`), so a capped box (ADR 0068, "Power limit"). Destroyed 12:11:59 before any model download finished; nothing to fetch.
+- `--min-inet 1000` returned no offer at all (host 20210 included), so `--min-inet 500` (the taxameter.toml value) was used.
