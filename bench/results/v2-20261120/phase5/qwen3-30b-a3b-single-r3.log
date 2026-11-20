@@ -1,0 +1,4 @@
+hardware: gpu0: PCIe link is gen4 x8 now, max gen4 x16 (may be idle power saving)
+hardware: gpu1: PCIe link is gen4 x8 now, max gen4 x16 (may be idle power saving)
+hardware: pcie topology: 2 GPUs from NVML but 10 PCI display devices, not matched
+steps 264 mean 8.30 ms p95 5.34 ms
