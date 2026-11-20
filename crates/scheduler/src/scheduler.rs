@@ -537,8 +537,12 @@ struct Worker {
     save_time: Duration,
     /// Time spent restoring saved sequences, for the admission log.
     restore_time: Duration,
-    /// Snapshot pool counters (spare, fallback) already reported to the metrics.
-    pool_seen: (u64, u64),
+    /// Snapshot pool counters (spare, fallback, touched, freed) already reported to the metrics.
+    pool_seen: (u64, u64, u64, u64),
+    /// Saves made inside a step by `make_room` (not part of an admission's `save_ms`) and their
+    /// time; each is also traced as a `step save` line.
+    step_saves: u64,
+    step_save_time: Duration,
     /// Sequences saved since the current placement attempt began, as (sequence, positions).
     saved: Vec<(usize, usize)>,
     /// The last admission, as logged.
@@ -591,7 +595,7 @@ impl Worker {
         let n_vocab = backend.n_vocab();
         let pool_seen = {
             let s = cache.pool().stats();
-            (s.from_spare, s.fallback)
+            (s.from_spare, s.fallback, s.touched_bytes, s.freed_bytes)
         };
         Self {
             backend,
@@ -617,6 +621,8 @@ impl Worker {
             save_time: Duration::ZERO,
             restore_time: Duration::ZERO,
             pool_seen,
+            step_saves: 0,
+            step_save_time: Duration::ZERO,
             saved: Vec::new(),
             last_admit: None,
         }
@@ -890,8 +896,12 @@ impl Worker {
                 s.fallback.saturating_sub(self.pool_seen.1),
             );
             m.kv_prefix_spares(s.ready as u64, s.ready_bytes as u64);
+            m.kv_prefix_spare_bytes_worked(
+                s.touched_bytes.saturating_sub(self.pool_seen.2),
+                s.freed_bytes.saturating_sub(self.pool_seen.3),
+            );
         }
-        self.pool_seen = (s.from_spare, s.fallback);
+        self.pool_seen = (s.from_spare, s.fallback, s.touched_bytes, s.freed_bytes);
     }
 
     /// Saves the idle sequence on `id` (ADR 0049) and frees its id and rows.
@@ -1777,9 +1787,35 @@ impl Worker {
     /// always progresses. With no other sequence the request ends with `Length`, unless the
     /// rows are free and only the layout is `fragmented`: then it is requeued itself.
     fn make_room(&mut self, needing: usize, fragmented: bool) {
+        let (saves0, save0) = (self.saved.len(), self.save_time);
+        // Slots whose first token this step's saves delay (ttft_join.py reads them).
+        let prefilling: Vec<String> = (0..self.slots.len())
+            .filter(|&i| matches!(&self.slots[i], Slot::Live(s) if !s.decoding))
+            .map(|i| i.to_string())
+            .collect();
+        let reason = self.make_room_by(needing, fragmented);
+        if self.saved.len() == saves0 {
+            return;
+        }
+        let took = self.save_time - save0;
+        self.step_saves += 1;
+        self.step_save_time += took;
+        if tracing::enabled!(target: "tetraeder::step", tracing::Level::DEBUG) {
+            tracing::debug!(
+                target: "tetraeder::step",
+                "step save reason={reason} seq={} save_ms={:.2} prefilling={}",
+                self.saved[saves0].0,
+                took.as_secs_f64() * 1e3,
+                prefilling.join(","),
+            );
+        }
+    }
+
+    /// Frees rows for `needing`; returns how, for the trace.
+    fn make_room_by(&mut self, needing: usize, fragmented: bool) -> &'static str {
         if let Some(i) = self.oldest_idle(&[]) {
             self.evict(i);
-            return;
+            return "evict";
         }
         let live = self.live_view();
         let admitted = |id: SeqId| live.iter().find(|l| l.seq == id).map_or(0, |l| l.admitted);
@@ -1794,6 +1830,7 @@ impl Worker {
             }
             None => self.finish(needing, FinishReason::Length),
         }
+        "preempt"
     }
 
     /// Saves the sequence on `id` if it is worth it, frees it and puts its request back at the
