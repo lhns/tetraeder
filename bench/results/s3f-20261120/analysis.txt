@@ -1,0 +1,70 @@
+s3f analysis of bench/results/s3f-20261120
+
+P1: gpu-parity passed, and the ggml-sys test ran and passed
+  gates.json gpu_parity: failed
+  ggml-sys test gpu_no_capture_flag_skips_the_cuda_graph in gpu-parity.log: ran=True ok=True
+  skip: lines in the log: 0
+  P1 FAIL
+
+B runs: pp2048 and tg128, tok/s per timed rep (rep 1 first)
+
+P2 (flag live): default rep 1 within 5% of the median of reps 2 to 5 (each default run), and the
+  default pp median within 5% of the nograph pp median (median of all reps pooled over the arm's runs)
+  qwen3-30b-a3b tp2pp2-mb4: INCOMPLETE (default runs 0, nograph runs 0, or fewer than 5 reps): FAIL
+  qwen3-30b-a3b layer4-mb4: INCOMPLETE (default runs 0, nograph runs 0, or fewer than 5 reps): FAIL
+  qwen3-32b tp2pp2-mb4: INCOMPLETE (default runs 0, nograph runs 0, or fewer than 5 reps): FAIL
+  qwen3-32b layer4-mb4: INCOMPLETE (default runs 0, nograph runs 0, or fewer than 5 reps): FAIL
+  P2 FAIL
+
+P3 (decode keeps replay): 32B default tg median > nograph; 30B (MoE) default tg not slower than nograph by more than 2%
+  P3 FAIL (the flag may have leaked onto decode)
+
+Report only: stage A (ROUNDS=1) measured / predicted, next to s3c (s3c-20261119); * marks |ratio-1| > 15%
+  model          candidate  | s3f pp ratio  tg ratio  | s3c pp ratio  tg ratio  | s3f pp tok/s (pred)  tg tok/s (pred)
+  qwen3-30b-a3b  ep-4      |      n/a       n/a  |   0.842*   1.174*  |
+  qwen3-30b-a3b  layer-4   |      n/a       n/a  |   1.063    0.855   |
+  qwen3-30b-a3b  single    |      n/a       n/a  |   1.104    0.957   |
+  qwen3-30b-a3b  tp2-pp2   |      n/a       n/a  |   0.780*   0.999   |
+  qwen3-32b      layer-4   |      n/a       n/a  |   1.054    0.980   |
+  qwen3-32b      single    |      n/a       n/a  |   1.038    0.977   |
+  qwen3-32b      tp-4      |      n/a       n/a  |   0.932    1.034   |
+  qwen3-32b      tp2-pp2   |      n/a       n/a  |   0.690*   1.022   |
+  s3f candidates past 15%: none
+
+Report only: anchors, s3f against s3c on the same host (expectation, not judged); pp and tg tok/s, mean over the rounds
+  model          plan   layers  kind |   s3f      s3c    shift
+  qwen3-30b-a3b  single 12     pp |      nan  19699.4      n/a
+  qwen3-30b-a3b  single 12     tg |      nan    648.3      n/a
+  qwen3-30b-a3b  single 24     pp |      nan  10665.2      n/a
+  qwen3-30b-a3b  single 24     tg |      nan    379.6      n/a
+  qwen3-30b-a3b  tp-2   12     pp |      nan  14453.8      n/a
+  qwen3-30b-a3b  tp-2   12     tg |      nan    618.1      n/a
+  qwen3-30b-a3b  tp-2   24     pp |      nan   7822.9      n/a
+  qwen3-30b-a3b  tp-2   24     tg |      nan    351.8      n/a
+  qwen3-32b      single 16     pp |      nan   5307.6      n/a
+  qwen3-32b      single 16     tg |      nan    139.8      n/a
+  qwen3-32b      single 32     pp |      nan   2615.1      n/a
+  qwen3-32b      single 32     tg |      nan     74.9      n/a
+  qwen3-32b      tp-2   16     pp |      nan   5089.3      n/a
+  qwen3-32b      tp-2   16     tg |      nan    213.1      n/a
+  qwen3-32b      tp-2   32     pp |      nan   2537.0      n/a
+  qwen3-32b      tp-2   32     tg |      nan    114.4      n/a
+  qwen3-32b      tp-4   16     pp |      nan   5914.0      n/a
+  qwen3-32b      tp-4   16     tg |      nan    291.9      n/a
+  qwen3-32b      tp-4   32     pp |      nan   2974.5      n/a
+  qwen3-32b      tp-4   32     tg |      nan    156.8      n/a
+
+Report only: part C (30B, tg128, -r 5), median tok/s of the 5 reps; s3e layer-4 numbers beside
+  s3f qwen3-30b-a3b-layer-4-L36-tg128: missing
+  s3f qwen3-30b-a3b-single-gpu0-tg128: missing
+  s3f qwen3-30b-a3b-single-gpu1-tg128: missing
+  s3f qwen3-30b-a3b-single-gpu2-tg128: missing
+  s3f qwen3-30b-a3b-single-gpu3-tg128: missing
+  s3e qwen3-30b-a3b-layer-4-L12-tg128: median 649.5 (636.3 649.5 649.5 649.5 649.3)
+  s3e qwen3-30b-a3b-layer-4-L24-tg128: median 384.2 (380.5 384.2 384.3 384.3 384.2)
+  s3e qwen3-30b-a3b-layer-4-tg128: median 186.6 (186.6 186.6 186.6 186.6 186.6)
+
+Report only: 0x20 throttle samples (1 Hz sampler, per GPU) inside each B run window; other reason bits seen in brackets
+  no gpu-samples.csv
+
+Verdicts: P1 FAIL, P2 FAIL, P3 FAIL

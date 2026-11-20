@@ -1,0 +1,253 @@
+{
+  "band": 0.08,
+  "band_source": "provisional cuda-default",
+  "predict_sha256": {},
+  "cases": [
+    {
+      "case": "M4",
+      "model": "qwen3-30b-a3b",
+      "box_gpus": 4,
+      "gpu_class": "4x-rtx-3090",
+      "p2p": "none",
+      "comm_impl": "nccl",
+      "candidates": [
+        {
+          "id": "tp-4",
+          "shape": "tp",
+          "pruned": true,
+          "reason": "3 blocks over 4 ranks (expert down rows)",
+          "predicted": null,
+          "measured": null,
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "single",
+          "shape": "single",
+          "pruned": false,
+          "reason": null,
+          "predicted": null,
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "layer-4",
+          "shape": "layer",
+          "pruned": false,
+          "reason": null,
+          "predicted": null,
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "ep-4",
+          "shape": "ep",
+          "pruned": false,
+          "reason": null,
+          "predicted": null,
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "tp2-pp2",
+          "shape": "tp-pp",
+          "pruned": false,
+          "reason": null,
+          "predicted": null,
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        }
+      ],
+      "pick": null,
+      "winner_set": [],
+      "pick_ok": null,
+      "prediction_ok": null,
+      "baselines": [
+        {
+          "engine": "llama-bench",
+          "sm": "layer",
+          "t_s": null,
+          "comm": null
+        },
+        {
+          "engine": "llama-bench",
+          "sm": "tensor",
+          "t_s": null,
+          "comm": null
+        }
+      ],
+      "best_baseline": null,
+      "baseline_ratio": null,
+      "baseline_ok": null,
+      "aa": {
+        "t_start": null,
+        "t_end": null
+      },
+      "clean": false,
+      "reasons": [
+        "invalid: no predict file",
+        "gate gpu_parity: failed",
+        "single: no prediction",
+        "layer-4: no prediction",
+        "ep-4: no prediction",
+        "tp2-pp2: no prediction",
+        "single: 0 clean round(s), need 2",
+        "layer-4: 0 clean round(s), need 2",
+        "ep-4: 0 clean round(s), need 2",
+        "tp2-pp2: 0 clean round(s), need 2",
+        "llama-bench -sm layer: 0 clean round(s), need 2",
+        "llama-bench -sm tensor: 0 clean round(s), need 2",
+        "A/A: qwen3-30b-a3b-single-aa: no exit code record",
+        "A/A: qwen3-30b-a3b-single-aa: no pp and tg rows",
+        "A/A: qwen3-30b-a3b-single-aa: no gpu-qwen3-30b-a3b-single-aa.txt"
+      ],
+      "pass": null
+    },
+    {
+      "case": "D4",
+      "model": "qwen3-32b",
+      "box_gpus": 4,
+      "gpu_class": "4x-rtx-3090",
+      "p2p": "none",
+      "comm_impl": "nccl",
+      "candidates": [
+        {
+          "id": "single",
+          "shape": "single",
+          "pruned": false,
+          "reason": null,
+          "predicted": null,
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "layer-4",
+          "shape": "layer",
+          "pruned": false,
+          "reason": null,
+          "predicted": null,
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "tp-4",
+          "shape": "tp",
+          "pruned": false,
+          "reason": null,
+          "predicted": null,
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "tp2-pp2",
+          "shape": "tp-pp",
+          "pruned": false,
+          "reason": null,
+          "predicted": null,
+          "measured": {
+            "pp_tps": null,
+            "tg_tps": null,
+            "t_s": null,
+            "rounds_clean": 0
+          },
+          "err": null,
+          "within": null
+        }
+      ],
+      "pick": null,
+      "winner_set": [],
+      "pick_ok": null,
+      "prediction_ok": null,
+      "baselines": [
+        {
+          "engine": "llama-bench",
+          "sm": "layer",
+          "t_s": null,
+          "comm": null
+        },
+        {
+          "engine": "llama-bench",
+          "sm": "tensor",
+          "t_s": null,
+          "comm": null
+        }
+      ],
+      "best_baseline": null,
+      "baseline_ratio": null,
+      "baseline_ok": null,
+      "aa": {
+        "t_start": null,
+        "t_end": null
+      },
+      "clean": false,
+      "reasons": [
+        "invalid: no predict file",
+        "gate gpu_parity: failed",
+        "single: no prediction",
+        "layer-4: no prediction",
+        "tp-4: no prediction",
+        "tp2-pp2: no prediction",
+        "single: 0 clean round(s), need 2",
+        "layer-4: 0 clean round(s), need 2",
+        "tp-4: 0 clean round(s), need 2",
+        "tp2-pp2: 0 clean round(s), need 2",
+        "llama-bench -sm layer: 0 clean round(s), need 2",
+        "llama-bench -sm tensor: 0 clean round(s), need 2",
+        "A/A: qwen3-32b-single-aa: no exit code record",
+        "A/A: qwen3-32b-single-aa: no pp and tg rows",
+        "A/A: qwen3-32b-single-aa: no gpu-qwen3-32b-single-aa.txt"
+      ],
+      "pass": null
+    }
+  ],
+  "phase5_pass": false,
+  "throttle": {
+    "rule": "single-sample",
+    "compare": "per-configuration",
+    "share_tolerance": 0.15,
+    "config_median_share": {},
+    "runs": {}
+  }
+}

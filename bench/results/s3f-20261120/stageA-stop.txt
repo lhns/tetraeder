@@ -1,0 +1,5 @@
+stage A ended with rc=3; stage B did not run
+[11:45:25] gpu-parity FAILED: tests skipped under TETRAEDER_REQUIRE_GPU: test gpu_qwen3_8b_matches_libllama ... skip: /root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf not foun;test gpu_qwen3_8b_save_through_pinned_staging ... skip: /root/tetraeder/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen
+[11:47:12] gate failed (gpu-parity=failed comm-probe=ok): the session ends before anchors
+[12:09:53] gpu-parity FAILED in tetraeder-model (see /root/tetraeder/bench/results/s3f-20261120/phase5/gpu-parity.log)
+[12:10:04] gate failed (gpu-parity=failed comm-probe=ok): the session ends before anchors
