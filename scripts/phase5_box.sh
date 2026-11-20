@@ -15,7 +15,7 @@
 #   build       release build with CUDA: tetraeder and tetraeder-plan
 #   models      both GGUFs must be in .hf_cache (taxameter models); missing files end the session
 #   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_ gpu2_ [gpu4_] on the executor, the sharded builders and
-#               ggml-sys (its gpu_no_capture_flag_skips_the_cuda_graph must run and pass, ADR 0081); log in
+#               ggml-sys (only gpu_no_capture_flag_skips_the_cuda_graph, which must run and pass, ADR 0081); log in
 #               gpu-parity.log (cut to 300 columns; the full log stays on the box as gpu-parity.log.full), result in
 #               gates.json. Every package and test runs (--no-fail-fast); only the executor and ggml-sys packages
 #               get GGML_CUDA_GRAPH_DEBUG=1. A failure does not skip discover to prepass (cheap, and the
@@ -332,14 +332,18 @@ models_check() {
 # ---- stage: gpu-parity -------------------------------------------------------------------------------------
 # No timed run on a box whose executor or sharded builders disagree with the one-rank reference. gpu_ is one GPU, gpu2_
 # two, gpu4_ four (ADR 0069, E5 to E7 tests).
+# ggml-sys runs only its capture-flag test (ADR 0081): its other gpu_ tests are timing and kernel checks of other phases.
+sys_filter=gpu_no_capture_flag_skips_the_cuda_graph
 gpu_parity() {
-  local filters="gpu_ gpu2_" pkg extra failed="" full="$out/gpu-parity.log.full"
+  local filters="gpu_ gpu2_" f pkg extra failed="" full="$out/gpu-parity.log.full"
   [ "$ngpu" = 4 ] && filters="gpu_ gpu2_ gpu4_"
   if [ "$DRY" = 1 ]; then
     for pkg in tetraeder-executor tetraeder-model tetraeder-ggml-sys; do
       extra=""
       [ "$pkg" != tetraeder-model ] && extra="GGML_CUDA_GRAPH_DEBUG=1 "
-      plan "${extra}TETRAEDER_REQUIRE_GPU=1 TETRAEDER_REQUIRE_GPUS=$ngpu TETRAEDER_MOE_GGUF=${MODEL_FILE[qwen3-30b-a3b]} cargo test --release --no-fail-fast -p $pkg --features tetraeder-ggml-sys/cuda -- $filters >> gpu-parity.log.full"
+      f=$filters
+      [ "$pkg" = tetraeder-ggml-sys ] && f=$sys_filter
+      plan "${extra}TETRAEDER_REQUIRE_GPU=1 TETRAEDER_REQUIRE_GPUS=$ngpu TETRAEDER_MOE_GGUF=${MODEL_FILE[qwen3-30b-a3b]} cargo test --release --no-fail-fast -p $pkg --features tetraeder-ggml-sys/cuda -- $f >> gpu-parity.log.full"
     done
     plan "gpu-parity fails if gpu_no_capture_flag_skips_the_cuda_graph did not run (ADR 0081)"
     plan "gpu-parity fails if the log has a skip: line (cargo counts a skipped test as passed)"
@@ -364,9 +368,11 @@ gpu_parity() {
   for pkg in tetraeder-executor tetraeder-model tetraeder-ggml-sys; do
     extra=""
     [ "$pkg" != tetraeder-model ] && extra="GGML_CUDA_GRAPH_DEBUG=1"
+    f=$filters
+    [ "$pkg" = tetraeder-ggml-sys ] && f=$sys_filter
     # shellcheck disable=SC2086
     env $extra TETRAEDER_REQUIRE_GPU=1 TETRAEDER_REQUIRE_GPUS="$ngpu" TETRAEDER_MOE_GGUF="$(realpath "${MODEL_FILE[qwen3-30b-a3b]}")" TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m cargo test --release \
-      --no-fail-fast -p "$pkg" --features tetraeder-ggml-sys/cuda -- --nocapture --test-threads 1 $filters >> "$full" 2>&1 8>&- || {
+      --no-fail-fast -p "$pkg" --features tetraeder-ggml-sys/cuda -- --nocapture --test-threads 1 $f >> "$full" 2>&1 8>&- || {
       say "gpu-parity FAILED in $pkg (see $out/gpu-parity.log)"
       failed="$failed $pkg"
     }

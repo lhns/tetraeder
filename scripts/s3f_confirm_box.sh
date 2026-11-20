@@ -3,7 +3,7 @@
 #   SESSION=s3f-20261120 bash scripts/s3f_confirm_box.sh        (taxameter run --env SESSION=<s>)
 # Stage A: scripts/phase5_box.sh <session> 4 with ROUNDS=1 (the s3c-style rehearsal): gates (now with the ggml-sys test
 #   gpu_no_capture_flag_skips_the_cuda_graph), anchors, calibrate, predict, one round of every candidate and baseline,
-#   pp-overlap. Results in bench/results/<s>/phase5/. If it ends with any rc other than 0 (rc=3: a gate failed), the
+#   pp-overlap. Results in bench/results/<s>/phase5/. If it ends with rc=3 (a gate failed), the
 #   session stops after stage A (reason in stageA-stop.txt) and B does not run.
 # Stage B: per model (30B first), tp2-pp2 and layer-4, both at prefill_micro_batches 4, two arms interleaved per
 #   configuration as default, nograph, nograph, default (so two runs per arm):
@@ -20,8 +20,8 @@
 # stage B about 40 to 60 s per run (s3e: about 40 s per -r 5 run; here pp and tg), 16 runs, about 15 min. A has
 # BUDGET_A_MIN 50 (phase5_box BUDGET_MIN: runs that would start later are skipped, loudly, the verdict is then null), B
 # has BUDGET_MIN 22 from its own start. Box time about 10 + 50 + 22 + 5 for fetch and destroy = 87 min at worst.
-# Results: bench/results/<s>/ (<name>.json|.log|.rc|.window.txt, plans/, gpu-samples.csv, env.txt, stageA.rc), ends with
-# S3F_CONFIRM_DONE rc=<n> in runs/vast/s3f_confirm.log and the DONE file. A rerun skips stage A when stageA.rc exists
+# Results: bench/results/<s>/ (<name>.json|.log|.rc|.window.txt, plans/, gpu-samples.csv, env.txt, stageA.txt), ends with
+# S3F_CONFIRM_DONE rc=<n> in runs/vast/s3f_confirm.log and the DONE file. A rerun skips stage A when stageA.txt exists
 # (phase5_box itself resumes otherwise) and every run whose .rc exists.
 # Knobs: SESSION, BUDGET_MIN (22, stage B), BUDGET_A_MIN (50), MODELS, DRY_RUN=1 (print the commands only), OUT_DIR.
 DRY="${DRY_RUN:-0}"
@@ -40,7 +40,12 @@ say() { echo "[$(date +%T)] $*"; }
 [ "$DRY" = 1 ] || echo "=== RUN $(date +%T) s3f_confirm_box.sh ==="
 
 finish() {
-  [ "$DRY" = 1 ] || touch "$out/gpu-sampler.stop"
+  if [ "$DRY" != 1 ]; then
+    touch "$out/gpu-sampler.stop"
+    # the fetch brings *.log and *.json, not *.rc: logs and the analysis are copied here (the analysis is rerun locally with s3c)
+    cp runs/vast/s3f_confirm.log runs/vast/phase5_box.log "$out/" 2> /dev/null
+    python3 -I scripts/s3f_analyze.py "$out" /nonexistent > /dev/null 2>&1 || say "analysis on the box failed (rerun it locally)"
+  fi
   touch "$out/DONE"
   say "S3F_CONFIRM_DONE rc=${1:-0}"
 }
@@ -57,17 +62,19 @@ say "s3f_confirm start (session=$session models=\"$models\" out=$out)"
 say "STAGE A (phase5_box.sh $session 4, ROUNDS=1)"
 if [ "$DRY" = 1 ]; then
   echo "PLAN SESSION=$session NGPUS=4 ROUNDS=1 BUDGET_MIN=${BUDGET_A_MIN:-50} bash scripts/phase5_box.sh $session 4"
-elif [ -f "$out/stageA.rc" ]; then
-  say "stage A: done before (rc=$(cat "$out/stageA.rc"))"
+elif [ -f "$out/stageA.txt" ]; then
+  say "stage A: done before (rc=$(cat "$out/stageA.txt"))"
 else
   SESSION="$session" NGPUS=4 ROUNDS=1 BUDGET_MIN="${BUDGET_A_MIN:-50}" bash scripts/phase5_box.sh "$session" 4 8>&-
   rc=$?
-  echo "$rc" > "$out/stageA.rc"
+  echo "$rc" > "$out/stageA.txt"
   say "stage A done rc=$rc ($(tail -n 40 runs/vast/phase5_box.log 2> /dev/null | grep -E 'PHASE5_BOX_DONE|gate failed' | tail -n 2 | tr '\n' ' '))"
 fi
 if [ "$DRY" != 1 ]; then
-  rc=$(cat "$out/stageA.rc")
-  if [ "$rc" != 0 ]; then
+  rc=$(cat "$out/stageA.txt")
+  # only a failed gate ends the session; another rc is logged and B's own checks (models, binary, plans) decide
+  [ "$rc" != 0 ] && [ "$rc" != 3 ] && say "stage A rc=$rc (not a gate failure): stage B tries anyway"
+  if [ "$rc" = 3 ]; then
     {
       echo "stage A ended with rc=$rc; stage B did not run"
       grep -E 'gate failed|FAILED|FATAL' runs/vast/phase5_box.log 2> /dev/null | tail -n 10 | cut -c1-300
@@ -121,7 +128,8 @@ for m in $models; do
       continue
     fi
     [ -s "$dst" ] && continue
-    python3 - "$a_out/plans/$m-$cfg.toml" "$dst" << 'PYEOF' || die "mb4 plan of $m $cfg"
+    # a plan that cannot be made skips its configuration (run_one), the others still run
+    python3 - "$a_out/plans/$m-$cfg.toml" "$dst" << 'PYEOF' || say "WARNING: no mb4 plan for $m $cfg, its runs are skipped"
 import re, sys
 src, dst = sys.argv[1:3]
 text = open(src).read()
@@ -145,6 +153,7 @@ run_one() {
     return 0
   fi
   [ -f "$out/$name.rc" ] && { say "$name: done before"; return 0; }
+  [ -s "$plan" ] || { say "$name: skipped, no plan $plan"; return 0; }
   if [ $(($(date +%s) - t_start)) -gt "$budget_s" ]; then say "BUDGET spent: skip $name"; return 0; fi
   say "$name start"
   w0=$(date +%s.%N)

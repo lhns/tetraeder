@@ -320,6 +320,7 @@ def test_gpu_parity_runs_every_package_and_scopes_graph_debug_to_the_executor(tm
     ex, model, sys_ = (next(c for c in cmds if f"-p tetraeder-{p} " in c) for p in ("executor", "model", "ggml-sys"))
     assert "GGML_CUDA_GRAPH_DEBUG=1" in ex and "GGML_CUDA_GRAPH_DEBUG" not in model
     assert "GGML_CUDA_GRAPH_DEBUG=1" in sys_ and "--features tetraeder-ggml-sys/cuda" in sys_
+    assert sys_.endswith("-- gpu_no_capture_flag_skips_the_cuda_graph >> gpu-parity.log.full")
     assert sum("GGML_CUDA_GRAPH_DEBUG=1 " in ln for ln in lines) == 2
     assert any("gpu_no_capture_flag_skips_the_cuda_graph did not run" in ln for ln in lines)
     assert all(">> gpu-parity.log.full" in c for c in cmds)
