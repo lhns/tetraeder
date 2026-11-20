@@ -528,6 +528,9 @@ fn gpu_no_capture_flag_skips_the_cuda_graph() {
         assert_eq!(run(true, whole), 0, "a flagged graph was captured");
     }
     for whole in [true, false] {
-        assert!(run(false, whole) >= 1, "an unflagged graph was not captured");
+        assert!(
+            run(false, whole) >= 1,
+            "an unflagged graph was not captured"
+        );
     }
 }

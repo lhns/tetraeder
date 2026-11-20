@@ -7,19 +7,19 @@ thread. A flagged graph runs directly on every call and its warm-up state, uid a
 properties are left alone. Default false, views start unflagged, other backends ignore it. ADR 0081.
 ---
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
-index 87bca98..7c3afcd 100644
+index 87bca98..03dcf5f 100644
 --- a/ggml/include/ggml.h
 +++ b/ggml/include/ggml.h
-@@ -2697,6 +2697,9 @@ extern "C" {
-     // graph uid, a promise that its nodes and their sources do not change while it is used, so a
-     // backend may skip re-checking them on later calls (ggml-cuda does); else uid 0
-     GGML_API struct ggml_cgraph * ggml_graph_view_new(struct ggml_context * ctx, struct ggml_cgraph * cgraph, int i0, int i1, bool uid);
+@@ -2684,6 +2684,9 @@ extern "C" {
+     GGML_API void                 ggml_graph_cpy       (struct ggml_cgraph * src, struct ggml_cgraph * dst);
+     GGML_API void                 ggml_graph_reset     (struct ggml_cgraph * cgraph); // set regular grads + optimizer momenta to 0, set loss grad to 1
+     GGML_API void                 ggml_graph_clear     (struct ggml_cgraph * cgraph);
 +    // true: ggml-cuda runs this graph directly on every call, never capturing or replaying a CUDA graph
 +    // and leaving its warm-up state alone (for graphs whose shapes change on each call); other backends ignore it
 +    GGML_API void ggml_graph_set_no_capture(struct ggml_cgraph * cgraph, bool no_capture);
  
-     GGML_API size_t ggml_graph_overhead(void);
-     GGML_API size_t ggml_graph_overhead_custom(size_t size, bool grads);
+     GGML_API int                   ggml_graph_size   (struct ggml_cgraph * cgraph);
+     GGML_API struct ggml_tensor *  ggml_graph_node   (struct ggml_cgraph * cgraph, int i); // if i < 0, returns nodes[n_nodes + i]
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
 index a367d7e..b812dc4 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
@@ -48,7 +48,7 @@ index 7c6a605..f377a7d 100644
  
  // returns a slice of cgraph with nodes [i0, i1)
 diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
-index 209e2c2..b9275cd 100644
+index 209e2c2..ab8fade 100644
 --- a/ggml/src/ggml.c
 +++ b/ggml/src/ggml.c
 @@ -7454,6 +7454,7 @@ struct ggml_cgraph * ggml_new_graph_custom(struct ggml_context * ctx, size_t siz
@@ -59,7 +59,7 @@ index 209e2c2..b9275cd 100644
      };
  
      ggml_hash_set_reset(&cgraph->visited_hash_set);
-@@ -7481,7 +7482,8 @@ struct ggml_cgraph ggml_graph_view(struct ggml_cgraph * cgraph0, int i0, int i1)
+@@ -7481,12 +7482,17 @@ struct ggml_cgraph ggml_graph_view(struct ggml_cgraph * cgraph0, int i0, int i1)
          /*.use_counts       =*/ cgraph0->use_counts,
          /*.visited_hash_set =*/ cgraph0->visited_hash_set,
          /*.order            =*/ cgraph0->order,
@@ -69,14 +69,12 @@ index 209e2c2..b9275cd 100644
      };
  
      return cgraph;
-@@ -7623,6 +7625,10 @@ void ggml_graph_add_node(struct ggml_cgraph * cgraph, struct ggml_tensor * tenso
-     cgraph->n_nodes++;
  }
  
 +void ggml_graph_set_no_capture(struct ggml_cgraph * cgraph, bool no_capture) {
 +    cgraph->no_capture = no_capture;
 +}
 +
- struct ggml_cgraph * ggml_graph_view_new(struct ggml_context * ctx, struct ggml_cgraph * cgraph0, int i0, int i1, bool uid) {
-     GGML_ASSERT(0 <= i0 && i0 <= i1 && i1 <= cgraph0->n_nodes);
-     struct ggml_object * obj = ggml_new_object(ctx, GGML_OBJECT_TYPE_GRAPH, sizeof(struct ggml_cgraph));
+ void ggml_graph_cpy(struct ggml_cgraph * src, struct ggml_cgraph * dst) {
+     GGML_ASSERT(dst->size >= src->n_leafs);
+     GGML_ASSERT(dst->size >= src->n_nodes);
