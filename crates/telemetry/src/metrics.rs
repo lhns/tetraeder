@@ -21,6 +21,7 @@ pub mod attr {
     pub const RESULT: &str = "tetraeder.result";
     pub const SOURCE: &str = "tetraeder.source";
     pub const BUFFER: &str = "tetraeder.buffer";
+    pub const WORK: &str = "tetraeder.work";
     pub const TRANSFER_SOURCE: &str = "tetraeder.transfer.source";
     pub const TRANSFER_DESTINATION: &str = "tetraeder.transfer.destination";
     pub const TRANSFER_PURPOSE: &str = "tetraeder.transfer.purpose";
@@ -185,6 +186,7 @@ pub struct Metrics {
     prefix_placed_free: Counter<u64>,
     prefix_spares: Gauge<u64>,
     prefix_spare_bytes: Gauge<u64>,
+    prefix_spare_work: Counter<u64>,
     spec_acceptance: Histogram<f64>,
     spec_drafted: Counter<u64>,
     spec_accepted: Counter<u64>,
@@ -470,6 +472,13 @@ impl Metrics {
                 .u64_gauge("tetraeder.kv.prefix.spare_memory")
                 .with_unit("By")
                 .with_description("Host bytes held by the spare snapshot buffers")
+                .build(),
+            prefix_spare_work: meter
+                .u64_counter("tetraeder.kv.prefix.spare.work")
+                .with_unit("By")
+                .with_description(
+                    "Bytes the snapshot preparer touched (new spares, grown tails) or freed, by kind (ADR 0074)",
+                )
                 .build(),
             spec_acceptance: meter
                 .f64_histogram("tetraeder.spec.acceptance")
@@ -901,6 +910,14 @@ impl Metrics {
     pub fn kv_prefix_spares(&self, ready: u64, bytes: u64) {
         self.prefix_spares.record(ready, &[]);
         self.prefix_spare_bytes.record(bytes, &[]);
+    }
+
+    /// Bytes the snapshot preparer touched and freed since the last report.
+    pub fn kv_prefix_spare_bytes_worked(&self, touched: u64, freed: u64) {
+        self.prefix_spare_work
+            .add(touched, &[KeyValue::new(attr::WORK, "touched")]);
+        self.prefix_spare_work
+            .add(freed, &[KeyValue::new(attr::WORK, "freed")]);
     }
 
     /// One verify step that carried `drafted` > 0 draft tokens of which `accepted` matched.

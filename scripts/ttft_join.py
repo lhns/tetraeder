@@ -14,6 +14,7 @@ import sys
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 ADMIT = re.compile(r"admit seq=(\d+) (.*)")
+STEP_SAVE = re.compile(r"step save (.*)")
 FIELD = re.compile(r"(\w+)=(\S+)")
 INT_FIELDS = ("prompt", "common", "live", "pool_spare", "pool_fallback", "pool_ready")
 
@@ -38,17 +39,46 @@ def parse_admit(line):
     return row
 
 
+def parse_step_save(line):
+    """(save_ms, slots prefilling) of a `step save` line (a save inside a step by make_room, ADR 0074), or None."""
+    m = STEP_SAVE.search(line)
+    if not m:
+        return None
+    f = dict(FIELD.findall(m.group(1)))
+    try:
+        ms = float(f["save_ms"])
+    except (KeyError, ValueError):
+        return None
+    return ms, [int(x) for x in f.get("prefilling", "").split(",") if x]
+
+
 def admits(path):
     out, keep = [], []
+    latest = {}  # slot -> its latest admit row
     for raw in open(path, encoding="utf-8", errors="replace"):
         line = ANSI.sub("", raw.rstrip())
         row = parse_admit(line)
+        step = None if row else parse_step_save(line)
         if row:
             out.append(row)
+            latest[row["seq"]] = row
+            keep.append(line)
+        elif step:
+            # The saves stall every sequence, but only a request still without its first token loses TTFT to it. The line
+            # lists the slots prefilling at that moment, so the time counts against the latest admit of each of them
+            # (every waiting request when several are; the log cannot say which one a stall "belongs" to).
+            for slot in step[1]:
+                if slot in latest:
+                    latest[slot]["step_save_ms"] = latest[slot].get("step_save_ms", 0.0) + step[0]
             keep.append(line)
         elif re.search(r"\b(WARN|ERROR)\b", line):
             keep.append(line)
     return out, keep
+
+
+def save_ms(ad):
+    """Saves that delayed this request: its admission's plus those inside steps while it prefilled."""
+    return ad["save_ms"] + ad.get("step_save_ms", 0.0)
 
 
 def prompt_total(u):
@@ -102,7 +132,9 @@ def main():
           f"mismatches {mism}")
     print(f"ttft median {statistics.median(t):.3f} s, p90 {pct(t, 0.9):.3f} s")
     with_a = [x for x in ok if "admit" in x]
-    print(f"sum ttft {sum(t):.1f} s; sum save_ms {sum(x['admit']['save_ms'] for x in with_a)/1e3:.2f} s; "
+    step_ms = sum(x["admit"].get("step_save_ms", 0.0) for x in with_a)
+    in_step = f" (of which in-step {step_ms/1e3:.2f} s)" if step_ms else ""
+    print(f"sum ttft {sum(t):.1f} s; sum save_ms {sum(save_ms(x['admit']) for x in with_a)/1e3:.2f} s{in_step}; "
           f"sum place_ms {sum(x['admit']['place_ms'] for x in with_a)/1e3:.2f} s; "
           f"sum queued_ms {sum(x['admit']['queued_ms'] for x in with_a)/1e3:.2f} s")
     src = {}
@@ -119,7 +151,7 @@ def main():
         ad, u = x["admit"], x["usage"] or {}
         return (f"#{x['index']:>3} prompt {ad['prompt']:>6} cached {u.get('cache_read_input_tokens', 0):>6} "
                 f"new {u.get('input_tokens', 0):>6} common {ad['common']:>6} {ad['source']:<8} "
-                f"queued {ad['queued_ms']:>7.1f} place {ad['place_ms']:>7.1f} save {ad['save_ms']:>6.1f} "
+                f"queued {ad['queued_ms']:>7.1f} place {ad['place_ms']:>7.1f} save {save_ms(ad):>6.1f} "
                 f"fb {ad['pool_fallback']} ttft {x['ttft_s']:.2f} ttft-place {x['ttft_s'] - ad['place_ms'] / 1e3:.2f} llama "
                 f"{x['llama_ttft_s'] if x['llama_ttft_s'] is None else round(x['llama_ttft_s'], 2)}")
 

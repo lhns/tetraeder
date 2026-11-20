@@ -438,6 +438,27 @@ fn a_lone_sequence_whose_run_cannot_grow_keeps_generating() {
     assert_eq!(finished(&events(&mut rx)), (FinishReason::Length, 3000));
 }
 
+/// A save made inside a step (here a preempt) is counted apart from the admissions' `save_ms`,
+/// so the TTFT save share can include it (ADR 0074 History).
+#[test]
+fn a_preempt_inside_a_step_records_its_save() {
+    let kv = FakeKv::new(N_VOCAB, 2, 8000, 4000);
+    let probe = kv.probe();
+    let mut w = worker_with(kv, 2048);
+    let _a = submit(&mut w, &prompt(1, 100), 50);
+    let _b = submit(&mut w, &prompt(2, 100), 50);
+    w.admit();
+    w.step();
+    assert_eq!(w.step_saves, 0);
+    let saved0 = probe.snapshots.load(Ordering::SeqCst);
+    // Slot 0 is the older: the newer one, on slot 1, is the victim.
+    w.make_room(0, false);
+    assert_eq!(w.step_saves, 1);
+    assert_eq!(probe.snapshots.load(Ordering::SeqCst), saved0 + 1);
+    assert_eq!(w.saved.last().map(|s| s.0), Some(1));
+    assert_eq!(w.waiting.len(), 1, "the victim is requeued");
+}
+
 /// The slot of `w` holding a live request, with its position count.
 fn live_slot(w: &Worker) -> Option<(usize, usize)> {
     w.slots.iter().enumerate().find_map(|(i, s)| match s {
