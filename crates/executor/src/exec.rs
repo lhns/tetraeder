@@ -148,6 +148,11 @@ impl Executor {
                     ranges: RangeGraphs::new(&rg.graph, &rg.cuts, self.opts.range_uid)?,
                 });
             }
+            // Set on every program, not only when cut: the same graph can come back as another
+            // kind of step (ADR 0081).
+            if let Some(c) = self.ranges[r].as_mut() {
+                c.ranges.set_no_capture(p.prefill);
+            }
         }
         for op in &p.ops {
             if let Op::AllReduce { tensors } = op {

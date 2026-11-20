@@ -62,6 +62,7 @@ fn one_rank_is_bit_equal_to_gallocr_and_compute() {
             }],
             ops,
             outputs: vec![0],
+            prefill: false,
         };
         exec.run(&p).unwrap();
         assert_eq!(bits(&e.get_f32().unwrap()), want, "cuts {cuts:?}");
@@ -227,6 +228,7 @@ fn run_refuses_an_invalid_program() {
         }],
         ops: vec![],
         outputs: vec![0],
+        prefill: false,
     };
     match exec.run(&p) {
         Err(ExecError::Invalid(v)) => assert!(v[0].contains("never computed"), "{v:?}"),

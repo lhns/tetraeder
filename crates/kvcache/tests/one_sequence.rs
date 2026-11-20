@@ -360,3 +360,23 @@ fn recycled_mask_buffer_gives_the_same_plans() {
         }
     }
 }
+
+/// ADR 0081: a step is prefill when some input carries more than one token; a decode step with
+/// several sequences at one token each is not, in both plan kinds.
+#[test]
+fn plans_mark_prefill_but_not_multi_sequence_decode() {
+    let mut pool = KvPool::new(Box::new(Chunked::new(2048)));
+    pool.reserve(1, 300).unwrap();
+    pool.reserve(2, 300).unwrap();
+    let input = |seq, n_tokens| StepInput {
+        seq,
+        n_tokens,
+        all_logits: false,
+    };
+    let decode = [input(1, 1), input(2, 1)];
+    let prefill = [input(1, 1), input(2, 3)];
+    assert!(!pool.plan_step(&decode).unwrap().prefill);
+    assert!(pool.plan_step(&prefill).unwrap().prefill);
+    assert!(!pool.plan_step_per_seq(&decode).unwrap().unwrap().prefill);
+    assert!(pool.plan_step_per_seq(&prefill).unwrap().unwrap().prefill);
+}

@@ -1,0 +1,82 @@
+From: Tetraeder
+Subject: [PATCH] ggml: ggml_graph_set_no_capture, a per-graph opt-out of CUDA graph capture
+
+ggml-cuda captures a graph on its second call with unchanged node properties. A graph whose
+shapes change on every call (prefill) never replays, and its capture call blocks the issuing
+thread. A flagged graph runs directly on every call and its warm-up state, uid and node
+properties are left alone. Default false, views start unflagged, other backends ignore it. ADR 0081.
+---
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index 87bca98..7c3afcd 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -2697,6 +2697,9 @@ extern "C" {
+     // graph uid, a promise that its nodes and their sources do not change while it is used, so a
+     // backend may skip re-checking them on later calls (ggml-cuda does); else uid 0
+     GGML_API struct ggml_cgraph * ggml_graph_view_new(struct ggml_context * ctx, struct ggml_cgraph * cgraph, int i0, int i1, bool uid);
++    // true: ggml-cuda runs this graph directly on every call, never capturing or replaying a CUDA graph
++    // and leaving its warm-up state alone (for graphs whose shapes change on each call); other backends ignore it
++    GGML_API void ggml_graph_set_no_capture(struct ggml_cgraph * cgraph, bool no_capture);
+ 
+     GGML_API size_t ggml_graph_overhead(void);
+     GGML_API size_t ggml_graph_overhead_custom(size_t size, bool grads);
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index a367d7e..b812dc4 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -5441,7 +5441,7 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend,
+     ggml_cuda_graph_set_enabled(cuda_ctx, graph_key);
+ 
+     ggml_cuda_graph * graph = cuda_ctx->cuda_graph(graph_key);
+-    if (graph->is_enabled()) {
++    if (!cgraph->no_capture && graph->is_enabled()) {
+         // graph->uid is set only for a compatible graph (see ggml_cuda_graph_update_required), so a reused graph needs no new check
+         const bool graph_reused     = cgraph->uid != 0 && cgraph->uid == graph->uid;
+         const bool graph_compatible = graph_reused || ggml_cuda_graph_check_compability(cgraph);
+diff --git a/ggml/src/ggml-impl.h b/ggml/src/ggml-impl.h
+index 7c6a605..f377a7d 100644
+--- a/ggml/src/ggml-impl.h
++++ b/ggml/src/ggml-impl.h
+@@ -363,6 +363,9 @@ struct ggml_cgraph {
+     // an optional identifier that can be utilized to recognize same graphs if two non-zero values match
+     // a value of 0 means it is not set and should be ignored
+     uint64_t uid;
++
++    // run directly, never as a CUDA graph (ggml_graph_set_no_capture); views start with false
++    bool no_capture;
+ };
+ 
+ // returns a slice of cgraph with nodes [i0, i1)
+diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
+index 209e2c2..b9275cd 100644
+--- a/ggml/src/ggml.c
++++ b/ggml/src/ggml.c
+@@ -7454,6 +7454,7 @@ struct ggml_cgraph * ggml_new_graph_custom(struct ggml_context * ctx, size_t siz
+         /*.hash_table   =*/ { hash_size, hash_used, hash_keys_ptr },
+         /*.order        =*/ GGML_CGRAPH_EVAL_ORDER_LEFT_TO_RIGHT,
+         /*.uid          =*/ 0,
++        /*.no_capture   =*/ false,
+     };
+ 
+     ggml_hash_set_reset(&cgraph->visited_hash_set);
+@@ -7481,7 +7482,8 @@ struct ggml_cgraph ggml_graph_view(struct ggml_cgraph * cgraph0, int i0, int i1)
+         /*.use_counts       =*/ cgraph0->use_counts,
+         /*.visited_hash_set =*/ cgraph0->visited_hash_set,
+         /*.order            =*/ cgraph0->order,
+-        /*.uid              =*/ 0
++        /*.uid              =*/ 0,
++        /*.no_capture       =*/ false,
+     };
+ 
+     return cgraph;
+@@ -7623,6 +7625,10 @@ void ggml_graph_add_node(struct ggml_cgraph * cgraph, struct ggml_tensor * tenso
+     cgraph->n_nodes++;
+ }
+ 
++void ggml_graph_set_no_capture(struct ggml_cgraph * cgraph, bool no_capture) {
++    cgraph->no_capture = no_capture;
++}
++
+ struct ggml_cgraph * ggml_graph_view_new(struct ggml_context * ctx, struct ggml_cgraph * cgraph0, int i0, int i1, bool uid) {
+     GGML_ASSERT(0 <= i0 && i0 <= i1 && i1 <= cgraph0->n_nodes);
+     struct ggml_object * obj = ggml_new_object(ctx, GGML_OBJECT_TYPE_GRAPH, sizeof(struct ggml_cgraph));

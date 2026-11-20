@@ -402,6 +402,7 @@ impl Ranked {
             graphs,
             ops,
             outputs: step.logits.iter().map(|(r, _)| *r).collect(),
+            prefill: plans.iter().any(|p| p.prefill),
         };
         let res = self.exec.run(&program).map_err(exec_err);
         let c = self.exec.take_counters();

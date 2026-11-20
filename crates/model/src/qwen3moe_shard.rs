@@ -891,6 +891,7 @@ impl Sharded {
                 graphs,
                 ops,
                 outputs: prog.outputs.clone(),
+                prefill: plans.iter().any(|p| p.prefill),
             };
             self.exec.run(&p).map_err(exec_err)?;
         }

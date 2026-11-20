@@ -169,6 +169,7 @@ fn pipelined_micro_batches_compute_each_micro_batch() {
         ops: ops(&p),
         graphs: p.graphs,
         outputs: vec![1],
+        prefill: false,
     };
     assert_eq!(validate(&program, 2), Ok(()));
     for step in 0..2 {
@@ -202,6 +203,7 @@ fn a_hop_shared_by_two_micro_batches_is_reported() {
         ops: ops(&p),
         graphs: p.graphs,
         outputs: vec![1],
+        prefill: false,
     };
     let errs = validate(&program, 2).unwrap_err().join("\n");
     assert!(errs.contains("destination of two copies"), "{errs}");
@@ -220,6 +222,7 @@ fn a_copy_ahead_of_its_micro_batch_is_reported() {
         ops: o,
         graphs: p.graphs,
         outputs: vec![1],
+        prefill: false,
     };
     let errs = validate(&program, 2).unwrap_err().join("\n");
     assert!(errs.contains("copy before range 1 of rank 0"), "{errs}");

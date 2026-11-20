@@ -5,6 +5,7 @@
 use tetraeder_ggml_sys::ggml::{
     Backend, Comm, Context, Event, Gallocr, GgmlError, Graph, RangeGraphs, Tensor, Type,
 };
+use tetraeder_ggml_sys::llama::cuda_graph_log_counts;
 
 const N: usize = 8;
 
@@ -426,4 +427,107 @@ fn add_inplace_writes_the_first_operand() {
     let want: Vec<f32> = av.iter().zip(&bv).map(|(a, b)| a + b).collect();
     assert_eq!(a.get_f32().unwrap(), want);
     assert_eq!(b.get_f32().unwrap(), bv);
+}
+
+/// `set_no_capture` (patch 0006, ADR 0081) is callable on a graph, a view and a `RangeGraphs`,
+/// and a flagged graph computes the same bits: the CPU backend ignores the flag.
+#[test]
+fn no_capture_flag_changes_nothing_on_cpu() {
+    let cpu = Backend::cpu(1).unwrap();
+    let lctx = Context::new(3, 0).unwrap();
+    let [x, y, out] = leaves(&lctx, &cpu);
+    x.set_f32(&xs(0.5)).unwrap();
+    y.set_f32(&xs(2.0)).unwrap();
+    let gctx = Context::new(16, 8).unwrap();
+    let mut g = chain(&gctx, x, y, out);
+    let mut galloc = Gallocr::new(&cpu).unwrap();
+    galloc.alloc_graph(&g).unwrap();
+    cpu.compute_async(&g).unwrap();
+    let whole = out.get_f32().unwrap();
+
+    g.set_no_capture(true);
+    out.set_f32(&[0.0; N]).unwrap();
+    cpu.compute_async(&g).unwrap();
+    assert_eq!(out.get_f32().unwrap(), whole);
+    g.set_no_capture(false);
+
+    let vctx = Context::new(0, 1).unwrap();
+    let mut view = g.range(&vctx, 0, 6);
+    view.set_no_capture(true);
+    out.set_f32(&[0.0; N]).unwrap();
+    cpu.compute_async(&view).unwrap();
+    assert_eq!(out.get_f32().unwrap(), whole);
+
+    let mut ranges = RangeGraphs::new(&g, &[1, 4, 6], true).unwrap();
+    for flag in [true, false, true] {
+        ranges.set_no_capture(flag);
+        out.set_f32(&[0.0; N]).unwrap();
+        for i in 0..3 {
+            cpu.compute_async(&ranges.get(&g, i).unwrap()).unwrap();
+        }
+        assert_eq!(out.get_f32().unwrap(), whole);
+    }
+}
+
+/// hardware: gpu (skips without one). A graph flagged with `set_no_capture` is run directly on
+/// every call, an unflagged copy of it is captured on its second call (ggml logs "CUDA graph
+/// warmup complete" only with `GGML_CUDA_GRAPH_DEBUG=1`, read once by ggml, so the test needs it
+/// in the environment). Other tests of this binary compute a graph once, which never warms up.
+#[test]
+fn gpu_no_capture_flag_skips_the_cuda_graph() {
+    if !Backend::require_gpus(1) {
+        return;
+    }
+    if std::env::var_os("GGML_CUDA_GRAPH_DEBUG").is_none() {
+        let required = ["TETRAEDER_REQUIRE_GPU", "TETRAEDER_REQUIRE_GPUS"]
+            .iter()
+            .any(|k| std::env::var_os(k).is_some());
+        assert!(!required, "set GGML_CUDA_GRAPH_DEBUG=1 for this test");
+        eprintln!("skip: set GGML_CUDA_GRAPH_DEBUG=1");
+        return;
+    }
+    if std::env::var_os("GGML_CUDA_DISABLE_GRAPHS").is_some() {
+        eprintln!("skip: CUDA graphs are disabled");
+        return;
+    }
+    let gpu = Backend::gpu(0).unwrap();
+    let lctx = Context::new(3, 0).unwrap();
+    let [x, y, out] = leaves(&lctx, &gpu);
+    let (xv, yv) = (xs(0.5), xs(2.0));
+    x.set_f32(&xv).unwrap();
+    y.set_f32(&yv).unwrap();
+
+    // Four calls of the whole graph, or of a uid view of it in two ranges (a view and the whole
+    // graph share a graph key, so they get a graph each); returns the captures counted.
+    let run = |flag: bool, whole: bool| -> u64 {
+        let gctx = Context::new(16, 8).unwrap();
+        let mut g = chain(&gctx, x, y, out);
+        let mut galloc = Gallocr::new(&gpu).unwrap();
+        galloc.alloc_graph(&g).unwrap();
+        let mut ranges = RangeGraphs::new(&g, &[3, 6], true).unwrap();
+        g.set_no_capture(flag);
+        ranges.set_no_capture(flag);
+        let start = cuda_graph_log_counts().warmups;
+        for _ in 0..4 {
+            out.set_f32(&[0.0; N]).unwrap();
+            if whole {
+                gpu.compute_async(&g).unwrap();
+            } else {
+                for i in 0..2 {
+                    gpu.compute_async(&ranges.get(&g, i).unwrap()).unwrap();
+                }
+            }
+            gpu.synchronize();
+            for (got, want) in out.get_f32().unwrap().iter().zip(reference(&xv, &yv)) {
+                assert!((got - want).abs() <= 1e-4 * want.abs().max(1.0));
+            }
+        }
+        cuda_graph_log_counts().warmups - start
+    };
+    for whole in [true, false] {
+        assert_eq!(run(true, whole), 0, "a flagged graph was captured");
+    }
+    for whole in [true, false] {
+        assert!(run(false, whole) >= 1, "an unflagged graph was not captured");
+    }
 }
