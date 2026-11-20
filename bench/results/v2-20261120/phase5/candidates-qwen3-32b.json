@@ -1,0 +1,326 @@
+{
+  "model": "Qwen3 32B Awq Compatible Instruct",
+  "gpus": 2,
+  "candidates": [
+    {
+      "id": "single",
+      "gpus": [
+        "gpu0"
+      ],
+      "plan": {
+        "model": "Qwen3 32B Awq Compatible Instruct",
+        "knobs": {
+          "prefill_micro_batches": 1,
+          "cuda_graphs": true,
+          "threads": 54,
+          "ubatch": 512,
+          "op_offload": false
+        },
+        "replicas": [
+          {
+            "stages": [
+              {
+                "layers": [
+                  0,
+                  64
+                ],
+                "devices": [
+                  "gpu0"
+                ],
+                "tp": 1,
+                "ep": 1,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        0,
+                        64
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "embed"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "head"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 1073741824
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 478937088
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "layers [0, 64) on gpu0 tp 1 ep 1"
+      ]
+    },
+    {
+      "id": "layer-2",
+      "gpus": [
+        "gpu0",
+        "gpu1"
+      ],
+      "plan": {
+        "model": "Qwen3 32B Awq Compatible Instruct",
+        "knobs": {
+          "prefill_micro_batches": 4,
+          "cuda_graphs": true,
+          "threads": 54,
+          "ubatch": 512,
+          "op_offload": false
+        },
+        "replicas": [
+          {
+            "stages": [
+              {
+                "layers": [
+                  0,
+                  32
+                ],
+                "devices": [
+                  "gpu0"
+                ],
+                "tp": 1,
+                "ep": 1,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        0,
+                        32
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "embed"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 536870912
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 167772160
+                  }
+                ]
+              },
+              {
+                "layers": [
+                  32,
+                  64
+                ],
+                "devices": [
+                  "gpu1"
+                ],
+                "tp": 1,
+                "ep": 1,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        32,
+                        64
+                      ]
+                    },
+                    "home": [
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "head"
+                      ]
+                    },
+                    "home": [
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu1",
+                    "bytes": 536870912
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu1",
+                    "bytes": 478937088
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "layers [0, 32) on gpu0 tp 1 ep 1",
+        "layers [32, 64) on gpu1 tp 1 ep 1"
+      ]
+    },
+    {
+      "id": "tp-2",
+      "gpus": [
+        "gpu0",
+        "gpu1"
+      ],
+      "plan": {
+        "model": "Qwen3 32B Awq Compatible Instruct",
+        "knobs": {
+          "prefill_micro_batches": 1,
+          "cuda_graphs": true,
+          "threads": 54,
+          "ubatch": 512,
+          "op_offload": false
+        },
+        "replicas": [
+          {
+            "stages": [
+              {
+                "layers": [
+                  0,
+                  64
+                ],
+                "devices": [
+                  "gpu0",
+                  "gpu1"
+                ],
+                "tp": 2,
+                "ep": 1,
+                "assign": [
+                  {
+                    "units": {
+                      "kinds": [
+                        "attn",
+                        "mlp"
+                      ],
+                      "layers": [
+                        0,
+                        64
+                      ]
+                    },
+                    "home": [
+                      "gpu0",
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "embed"
+                      ]
+                    },
+                    "home": [
+                      "gpu0"
+                    ],
+                    "format": "Q4_K"
+                  },
+                  {
+                    "units": {
+                      "kinds": [
+                        "head"
+                      ]
+                    },
+                    "home": [
+                      "gpu0",
+                      "gpu1"
+                    ],
+                    "format": "Q4_K"
+                  }
+                ],
+                "kv": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 536870912
+                  },
+                  {
+                    "device": "gpu1",
+                    "bytes": 536870912
+                  }
+                ],
+                "workspace": [
+                  {
+                    "device": "gpu0",
+                    "bytes": 478937088
+                  },
+                  {
+                    "device": "gpu1",
+                    "bytes": 478937088
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "layers [0, 64) on gpu0+gpu1 tp 2 ep 1"
+      ]
+    }
+  ],
+  "pruned": []
+}
