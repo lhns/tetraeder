@@ -1,0 +1,14 @@
+=== RUN 11:29:30 s3f_confirm_box.sh ===
+[11:29:30] s3f_confirm start (session=s3f-20261120 models="qwen3-30b-a3b qwen3-32b" out=/root/tetraeder/bench/results/s3f-20261120)
+[11:29:30] STAGE A (phase5_box.sh s3f-20261120 4, ROUNDS=1)
+patches: already applied
+[11:47:13] stage A done rc=3 ([11:47:12] gate failed (gpu-parity=failed comm-probe=ok): the session ends before anchors [11:47:12] PHASE5_BOX_DONE rc=3 )
+[11:47:13] stage A rc=3: session stops (see stageA-stop.txt)
+[11:47:13] S3F_CONFIRM_DONE rc=3
+=== RUN relaunch after 8B fetch
+=== RUN 12:03:28 s3f_confirm_box.sh ===
+[12:03:28] s3f_confirm start (session=s3f-20261120 models="qwen3-30b-a3b qwen3-32b" out=/root/tetraeder/bench/results/s3f-20261120)
+[12:03:28] STAGE A (phase5_box.sh s3f-20261120 4, ROUNDS=1)
+patches: already applied
+[12:10:04] stage A done rc=3 ([12:10:04] gate failed (gpu-parity=failed comm-probe=ok): the session ends before anchors [12:10:04] PHASE5_BOX_DONE rc=3 )
+[12:10:04] stage A rc=3: session stops (see stageA-stop.txt)
