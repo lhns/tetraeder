@@ -218,7 +218,7 @@ flowchart TB
 | Predictions stay analytic | ✔ done · n/a | ADR 0076 proposed judging predictions from lines fitted to runs of each candidate; the owner kept the 15% test on the planner's analytic predictions made before the candidates run. |
 | Four-GPU check of the fix | ✔ done · successful ⚠ | With prefill run without graph capture, one round of every four-GPU candidate stayed within 15%; the first attempt (s3f) stopped at a gate. |
 | Check host ran at low clocks | ✔ fixed | The s3f2 host held every GPU at 1590 MHz all session, single GPU included, so its layer-4 decode result (0.995) does not show the earlier layer-split decode miss fixed; cost model version 5 is back on. |
-| Two-GPU verdict session | ▶ in progress | The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each. |
+| Two-GPU verdict session | ○ next | The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each. |
 | Admission probe on final main | ○ next | The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported. |
 | Four-GPU verdict, first box | ⛔ blocked | The judged session on four GPUs (cases D4 and M4) on a host other than 20210, run alone; the owner allowed one box up to 1.70 USD/h for it. |
 | Four-GPU verdict, second box | ⛔ blocked | The second four-GPU session, so every configuration has two clean rounds on a clean host. |
@@ -234,15 +234,14 @@ flowchart TB
 
 **box**
 
+- `bench-v2-verdict`: Two-GPU verdict session
 - `bench-d2a-probe`: Admission probe on final main
 <!-- END GENERATED: ready-now -->
 
 ## Running
 
 <!-- BEGIN GENERATED: running -->
-**box**
-
-- `bench-v2-verdict`: Two-GPU verdict session
+_None._
 <!-- END GENERATED: running -->
 
 ## Built, waiting
@@ -675,6 +674,6 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 13 nodes (12 done, 1 next)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 8 nodes (7 done, 1 next)
 - [serving - serving](roadmap/tracks/serving.md): 12 nodes (12 done)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 28 nodes (23 done, 1 in progress, 1 next, 3 blocked)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 28 nodes (23 done, 2 next, 3 blocked)
 - [ops - operations](roadmap/tracks/ops.md): 11 nodes (11 done)
 <!-- END GENERATED: tracks -->

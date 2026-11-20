@@ -2045,7 +2045,7 @@ nodes:
   title: Two-GPU verdict session
   track: bench
   kind: session
-  state: in-progress
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -2056,9 +2056,10 @@ nodes:
   replaced_by: []
   lane: box
   queue_order: 1
-  start: 2026-11-20
+  start: ''
   end: ''
-  folded: []
+  folded:
+  - 'First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20, commit 7dd6dd4)'
   overview: false
   plain: 'The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each.'
   notes: 'Done when: verdict.json for v2-20261120 with both cases judged under ADR 0068.'

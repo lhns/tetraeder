@@ -93,7 +93,6 @@ gantt
     Keep 15% on every candidate :bench_owner_15pct, 2026-11-19, 2026-11-19
     Four-GPU check of the fix :bench_s3f2, 2026-11-20, 2026-11-20
     Check host ran at low clocks :bench_defect_s3f2_clock, 2026-11-20, 2026-11-20
-    Two-GPU verdict session :active, bench_v2_verdict, 2026-11-20, 2026-11-20
     section ops - operations
     Workspace, rules and first ADRs :ops_foundations, 2026-10-29, 2026-10-30
     CI and test infrastructure :ops_ci, 2026-10-30, 2026-11-19
@@ -108,5 +107,5 @@ gantt
     Owner accepts nine design records :ops_owner_accepts_adrs, 2026-11-19, 2026-11-19
 ```
 
-Not shown (no `start`): `planner-cost-model-v5`, `multi-accept-adr-0081`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-m2-report`
+Not shown (no `start`): `planner-cost-model-v5`, `multi-accept-adr-0081`, `bench-v2-verdict`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-m2-report`
 <!-- END GENERATED: timeline -->

@@ -28,7 +28,7 @@ flowchart TB
     bench_s3_rehearsal("✔ Four-GPU rehearsals")
     bench_s3f2("✔ Four-GPU check of<br/>the fix")
     bench_defect_s3f2_clock>"✔ Check host ran at<br/>low clocks"]
-    bench_v2_verdict("▶ Two-GPU verdict<br/>session")
+    bench_v2_verdict("○ Two-GPU verdict<br/>session")
     bench_d2a_probe[/"○ Admission probe on<br/>final main"/]
     bench_v4a_verdict("⛔ Four-GPU verdict,<br/>first box")
     bench_v4b_verdict("⛔ Four-GPU verdict,<br/>second box")
@@ -92,8 +92,7 @@ flowchart TB
     class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock succ
     class bench_m1_point1,bench_m1_point3 vsucc
     class bench_d2a_rerun mixed
-    class bench_v2_verdict inprog
-    class bench_d2a_probe next
+    class bench_v2_verdict,bench_d2a_probe next
     class bench_v4a_verdict,bench_v4b_verdict blocked
 ```
 <!-- END GENERATED: track-bench -->
@@ -126,7 +125,7 @@ flowchart TB
 | `bench-owner-15pct` | Keep 15% on every candidate | owner-decision | owner | done | n/a | 2026-11-19 | 2026-11-19 | bench-s3-rehearsal |  |  |  | docs/notes/phase5-rule-changes.md; docs/adr/0078-allreduce-in-step-latency.md |
 | `bench-s3f2` | Four-GPU check of the fix | session | none | done | successful | 2026-11-20 | 2026-11-20 | multi-prefill-no-capture |  | bench-defect-s3f2-clock |  | bench/results/s3f2-20261120/README.md |
 | `bench-defect-s3f2-clock` | Check host ran at low clocks | defect | none | done | unrated | 2026-11-20 | 2026-11-20 | bench-s3f2 |  |  |  | docs/m2-plan.md; bench/results/s3f2-20261120/README.md |
-| `bench-v2-verdict` | Two-GPU verdict session | session | box | in-progress | unrated | 2026-11-20 |  | multi-prefill-no-capture, bench-throttle-rules |  |  |  |  |
+| `bench-v2-verdict` | Two-GPU verdict session | session | box | next | unrated |  |  | multi-prefill-no-capture, bench-throttle-rules |  |  |  |  |
 | `bench-d2a-probe` | Admission probe on final main | experiment | box | next | unrated |  |  | bench-phase4-exit |  |  |  |  |
 | `bench-v4a-verdict` | Four-GPU verdict, first box | session | box | blocked | unrated |  |  | planner-cost-model-v5, multi-prefill-no-capture, ops-owner-v4a-cap |  |  |  |  |
 | `bench-v4b-verdict` | Four-GPU verdict, second box | session | box | blocked | unrated |  |  | bench-v4a-verdict |  |  |  |  |
@@ -288,4 +287,6 @@ flowchart TB
   - S3f2: ADR 0081 confirmed on 4 GPUs (2026-11-20, commit ce527cce53, commit be0426979c, commit cea2d9bc32, commit fe14d25fa8, commit 347b1693fa)
 - `bench-defect-s3f2-clock`: Check host ran at low clocks
   - m2-plan: s3f2 layer-4 tg not fixed, v5 back before V4a (2026-11-20, commit ef0130e3a2)
+- `bench-v2-verdict`: Two-GPU verdict session
+  - First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20, commit 7dd6dd4)
 <!-- END GENERATED: table-bench -->
