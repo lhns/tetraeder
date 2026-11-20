@@ -340,6 +340,46 @@ pub enum ExecError { Invalid(Vec<String>), Ggml(GgmlError) }
 
 ---
 
+## Brief V5: cost model 5, decode at measured clocks (ADR 0082)
+
+**Goal.** Layer-N decode on 3 or more GPUs is priced at the low clock its GPUs get where single boosts; every other prediction stays as cost model 4. Tech tree node `planner-cost-model-v5`; branch `track-cost-model-v5`.
+
+**Read first.** ADR 0082 (all of it; it holds every decision and number), ADR 0080 (how v4 was gated by a graph field), ADR 0070 "Cost model" and History; `crates/costmodel/src/{predict.rs,calib.rs,lib.rs}` (`predict_ranks`, `part_time_s`, `coll_time`), `crates/profiler/src/graph.rs` (`RangeCosts`, `HardwareGraph`), `crates/planner/src/{multi.rs,multi_cli.rs}` (`candidate_for`, `features_multi`, `calibrate`), `crates/planner/tests/costmodel_v2.rs`, `scripts/costmodel_replica.py`, `scripts/phase5_box.sh` (stage anchors, `run_one`), `scripts/s3e_diag_box.sh` (part C: 20 ms clock log and window file per run).
+
+**Decisions (from ADR 0082; do not reopen).**
+- `HardwareGraph::decode_clocks: Option<DecodeClocks>` (serde default `None`, skipped when `None`):
+  ```rust
+  pub struct DecodeClocks {
+      pub low_mhz: f64,                     // layer anchor, head-free GPUs, timed-tail median
+      pub busy_mhz: BTreeMap<String, f64>,  // per layout.model: its single anchors' tail median
+      pub duty_threshold: f64,              // 0.32
+  }
+  ```
+  `None`, a missing model key, or `busy_mhz <= low_mhz + 15` gives `k = 1`: predictions bit-identical to cost model 4.
+- `RankFeatures::model: Option<String>` (serde default `None`), set by `features_multi` to `layout.model`. `None` gives `k = 1`.
+- In `predict_ranks`, decode step only: compute the step at today's rates and each GPU's busy time `b_r` = sum over phases of `repeat x (part_time_s(r) + coll_time(after) when r is in the all-reduce group)` (copies do not count); `d_r = b_r / T`. For every GPU with `d_r < duty_threshold`, multiply its decode `part_time_s` by `k = busy_mhz[model] / low_mhz`, then recompute the decode step once (no fixed point). Collectives, `c_range`, `c_step` and prefill are unchanged. Report the factor per GPU in the prediction's diagnostics (not in the step sum).
+- The planner search (`stage_time`) uses the same helper; no other search change.
+- `MODEL_VERSION` 5; the replica gets `--version 5` (default) and `--clocks FILE` (`decode-clocks.json` below); versions 1 to 4 stay reproducible.
+- New anchor id `layer-<g>@L<n>`: a layer-g plan whose first g-1 stages hold `n/g` layers each and the last stage the rest of the model, run with `--layer-limit n`, n = L/2 (30B on 4 GPUs: 6/6/6/30, limit 24). `candidate_for` parses the `@L<n>` suffix and builds this cut. Only on boxes with g >= 3, for the session's first MoE model (else its first model); tg128, `-r 10`, two rounds, merged into `anchors-<model>-r<k>.json` like the others. `calibrate` never fits on it: it reports its v5 tg residual as `held_out` in `calib.json` and the log.
+- Box script: every anchor run (old and new) gets `nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,clocks_event_reasons.active --format=csv -lms 20` in the background and a window file (`date +%s.%N` before and after), as `s3e_diag_box.sh` part C; files `phase5/clocks-<run>.csv`, `phase5/window-<run>.txt`. Also log candidate runs the same way (tp2-pp2 decode clocks are an open question of ADR 0082).
+- `scripts/decode_clocks.py` (standard library, `python -I`): reads those files and the anchor JSONs, cuts each run to its timed decode tail (the last `reps x n_gen / tg_tok_s` seconds before the window end), takes per-GPU medians, and writes `decode-clocks.json` in the `DecodeClocks` shape, with per-run medians and the reason when it withholds a value (under 25 tail samples on a GPU, or 0x8, 0x20, 0x40, 0x80 in a tail). `tetraeder-plan calibrate --clocks decode-clocks.json` copies it into the graph; without the flag or the file, `decode_clocks` stays `None`.
+- Rule 6: gauge `tetraeder_plan_decode_clock_hertz{device}` (the clock v5 assumes for each GPU of the loaded plan; absent when `decode_clocks` is `None`), exported where `tetraeder_plan_residual_ratio` is; a line beside `tetraeder_host_gpu_clock_hertz` in the GPU clocks panel of `deploy/grafana/dashboards/overview.json`; alert `TetraederDecodeClockOffPlan` in `deploy/alerts/slo.yml`: measured over assumed clock off by more than 5% for 15 minutes while the plan decodes; covered in `tests/test_alert_rules.py`.
+
+**Tests first.**
+- `costmodel`: a graph without `decode_clocks` and features without `model` predict bit-identically to today on every fixture and the committed v4 graphs; hand-built 4-stage features with duties 0.2 to 0.3 get `k` on decode only (prefill identical); a GPU at `d_r = 0.33` gets none; `busy_mhz < low_mhz` and a missing model key give `k = 1`.
+- Fixtures (Rule 4): `four_3090_hoststaged` with a `decode_clocks` block (busy 1905 for the 30B layout and 1620 for the 32B, low 1695) and without; snapshot both. `two_3090_hoststaged` with the block: every prediction equal to without.
+- `planner`: `candidate_for(.., "layer-4@L24")` gives spans 6/6/6/30 on the 30B layout and is rejected on 2 GPUs; `calibrate` gives the same fit with and without the layer anchor present.
+- Replica and Rust within 1% on committed version-5 graphs (extend `costmodel_v2.rs`); `tests/test_costmodel_replica.py` keeps the version 1 to 4 numbers.
+- `decode_clocks.py` on the `bench/results/s3e-20261120` part C files (20 ms logs and windows): single full 1905 on gpu0, layer-4 full 1695 on all four, L12 and L24 as in ADR 0082's table; a unit test on a small synthetic CSV for the tail cut and the withholding rules.
+
+**Offline check (the done criterion, ADR 0082 "The check").** Write `bench/results/s3c-20261119/costmodel-v5/` with `decode-clocks-host20210.json` (30B busy 1905 and low 1695 from s3e part C, 32B busy 1620 from s3d) and a README table: v4 and v5 `e_pp`, `e_tg` for every candidate of s2f, s2g, s3, s3b, s3c (host-20210 clocks for the 4-GPU sessions, none for the 2-GPU ones), s3f2 (1590 and 1590, from its `gpu-samples.csv`) and v2-20261120 (branch `box-v2-20261120`, no clocks needed on 2 GPUs). Pass: items 1 to 4 of the check. The ADR's prototype numbers are what to expect; a larger gap is a finding to report, not to tune away.
+
+**Done.** Workspace checks (Rule 11), the Python tests named above, the offline table committed, "Implementation notes" in ADR 0082, tech tree node `planner-cost-model-v5` updated with the table as evidence (run the tree's build and check). Report the table and any deviation.
+
+**Must not change.** Any v4 prediction on graphs without `decode_clocks`; the fit (the layer anchor is held out); committed result files other than the new `costmodel-v5/` directory. Until the owner accepts ADR 0082 the new anchor runs only behind `LAYER_ANCHOR=1` (default off) in `phase5_box.sh`; the clock logs are on by default.
+
+---
+
 ## Box sessions
 
 All on Vast through taxameter (ADR 0021, 0029), Linux, RTX 3090 class (the image's CUDA builds are sm_86), commit before provisioning, results fetched and verified before destroy. Prices are estimates for Vast RTX 3090 offers, not quotes.

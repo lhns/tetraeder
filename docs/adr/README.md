@@ -87,3 +87,4 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0079](0079-one-input-steps-attend-over-their-own-run.md) | Accepted | One-input steps attend over their own KV run |
 | [0080](0080-routed-slot-activation-traffic.md) | Accepted | Cost model 4: the routed slots' activation bytes, on every expert-parallel rank |
 | [0081](0081-prefill-steps-are-not-captured.md) | Proposed | Prefill steps run without CUDA graph capture (patch 0006) |
+| [0082](0082-decode-at-measured-clocks.md) | Proposed | Cost model 5: decode priced at the clock a GPU's duty gets (low below duty 0.32) |
