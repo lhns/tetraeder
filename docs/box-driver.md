@@ -58,5 +58,7 @@ The driver picks the box by these rules and does not ask the owner. The coordina
 
 ## On surprises
 - A stage fails: read its log on the box; fix only a trivial env or path issue, with a new script name (never overwrite a running script), and note it; otherwise let the session continue and report.
+- A gate, test or stage fails on a box that works, or a command is denied: keep the box. Stop the work on it and send the coordinator (SendMessage) what failed, the evidence and a proposed next step, then wait up to 15 minutes for an answer, as an on-box wait (`ssh --timeout 540 -- 'sleep 300'`), not a local poll. No answer: fetch what exists, verify, destroy, report. A box idle for 15 minutes costs about 0.30 USD; a new box costs its setup again (`s3f-20261120`: a gate failure on an unrelated timing test threw away 55 minutes, about 1.2 USD).
+- Host faults have nothing to resume, so destroy at once: no `cuda: ok`, a power limit below default, an image pull stalled past 10 minutes, the abort gates above.
 - Anything that risks money (box unreachable, GPU idle, provisioning loops, a cap about to be hit): fetch what exists, destroy, report.
 - Use the advisor when stuck before improvising.
