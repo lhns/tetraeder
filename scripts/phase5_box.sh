@@ -14,10 +14,11 @@
 #               (nvidia-smi topo -p2p r), NCCL version, CPU quota, commits; comm_impl is filled in by probe
 #   build       release build with CUDA: tetraeder and tetraeder-plan
 #   models      both GGUFs must be in .hf_cache (taxameter models); missing files end the session
-#   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_ gpu2_ [gpu4_] on the executor and the sharded builders; log in
+#   gpu-parity  TETRAEDER_REQUIRE_GPU=1 cargo test gpu_ gpu2_ [gpu4_] on the executor, the sharded builders and
+#               ggml-sys (its gpu_no_capture_flag_skips_the_cuda_graph must run and pass, ADR 0081); log in
 #               gpu-parity.log (cut to 300 columns; the full log stays on the box as gpu-parity.log.full), result in
-#               gates.json. Every package and test runs (--no-fail-fast); only the executor package gets
-#               GGML_CUDA_GRAPH_DEBUG=1. A failure does not skip discover to prepass (cheap, and the
+#               gates.json. Every package and test runs (--no-fail-fast); only the executor and ggml-sys packages
+#               get GGML_CUDA_GRAPH_DEBUG=1. A failure does not skip discover to prepass (cheap, and the
 #               diagnosis); the session then ends with rc=3 before anchors
 #   discover    hw.json (the profiler's hardware graph; HW_CMD, default `tetraeder plan hw --out hw.json`)
 #   enumerate   per model layouts/<model>.json, then `tetraeder-plan candidates --multi` -> candidates-<model>.json and
@@ -335,11 +336,12 @@ gpu_parity() {
   local filters="gpu_ gpu2_" pkg extra failed="" full="$out/gpu-parity.log.full"
   [ "$ngpu" = 4 ] && filters="gpu_ gpu2_ gpu4_"
   if [ "$DRY" = 1 ]; then
-    for pkg in tetraeder-executor tetraeder-model; do
+    for pkg in tetraeder-executor tetraeder-model tetraeder-ggml-sys; do
       extra=""
-      [ "$pkg" = tetraeder-executor ] && extra="GGML_CUDA_GRAPH_DEBUG=1 "
+      [ "$pkg" != tetraeder-model ] && extra="GGML_CUDA_GRAPH_DEBUG=1 "
       plan "${extra}TETRAEDER_REQUIRE_GPU=1 TETRAEDER_REQUIRE_GPUS=$ngpu TETRAEDER_MOE_GGUF=${MODEL_FILE[qwen3-30b-a3b]} cargo test --release --no-fail-fast -p $pkg --features tetraeder-ggml-sys/cuda -- $filters >> gpu-parity.log.full"
     done
+    plan "gpu-parity fails if gpu_no_capture_flag_skips_the_cuda_graph did not run (ADR 0081)"
     plan "gpu-parity fails if the log has a skip: line (cargo counts a skipped test as passed)"
     plan "gpu-parity.log = gpu-parity.log.full cut to 300 columns (fetch takes *.log, not *.log.full)"
     if [ "${DRY_GPU_PARITY:-ok}" = fail ]; then gate gpu_parity failed; return 1; fi
@@ -356,12 +358,12 @@ gpu_parity() {
   : > "$full"
   # Every package runs and every test in it (--no-fail-fast): one box run shows all failures. The full log stays on
   # the box (raw logit dumps, 20 MB on S2); results get a copy cut to 300 columns. GGML_CUDA_GRAPH_DEBUG=1 is for the
-  # executor's graph-replay test only and must never reach a timed run.
+  # executor's and ggml-sys's graph tests only and must never reach a timed run.
   # The MoE tests read the 30B file from TETRAEDER_MOE_GGUF and skip (a pass for cargo) without it; REQUIRE_GPUS makes
   # missing GPUs a failure; a skip: line in the log fails the gate below.
-  for pkg in tetraeder-executor tetraeder-model; do
+  for pkg in tetraeder-executor tetraeder-model tetraeder-ggml-sys; do
     extra=""
-    [ "$pkg" = tetraeder-executor ] && extra="GGML_CUDA_GRAPH_DEBUG=1"
+    [ "$pkg" != tetraeder-model ] && extra="GGML_CUDA_GRAPH_DEBUG=1"
     # shellcheck disable=SC2086
     env $extra TETRAEDER_REQUIRE_GPU=1 TETRAEDER_REQUIRE_GPUS="$ngpu" TETRAEDER_MOE_GGUF="$(realpath "${MODEL_FILE[qwen3-30b-a3b]}")" TETRAEDER_MODELS_DIR="$models_dir" timeout -k 30 40m cargo test --release \
       --no-fail-fast -p "$pkg" --features tetraeder-ggml-sys/cuda -- --nocapture --test-threads 1 $filters >> "$full" 2>&1 8>&- || {
@@ -377,6 +379,13 @@ gpu_parity() {
   if grep -qE '(^|[ .])skip: ' "$full"; then
     say "gpu-parity FAILED: tests skipped under TETRAEDER_REQUIRE_GPU: $(grep -E '(^|[ .])skip: ' "$full" | cut -c1-120 | tr '
 ' ';')"
+    gate gpu_parity failed
+    return 1
+  fi
+  # --nocapture lets ggml's debug lines land between "..." and "ok", so only the start line is matched here; a failure
+  # of the package is caught above.
+  if ! grep -qE '^test gpu_no_capture_flag_skips_the_cuda_graph \.\.\.' "$full"; then
+    say "gpu-parity FAILED: gpu_no_capture_flag_skips_the_cuda_graph did not run (ADR 0081)"
     gate gpu_parity failed
     return 1
   fi

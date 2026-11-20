@@ -316,10 +316,12 @@ def test_only_unset_keeps_the_full_session(tmp_path):
 def test_gpu_parity_runs_every_package_and_scopes_graph_debug_to_the_executor(tmp_path):
     lines = dry(tmp_path)
     cmds = [ln for ln in lines if PARITY_CMD.search(ln)]
-    assert len(cmds) == 2 and all("--no-fail-fast" in c for c in cmds)
-    ex, model = (next(c for c in cmds if f"-p tetraeder-{p} " in c) for p in ("executor", "model"))
+    assert len(cmds) == 3 and all("--no-fail-fast" in c for c in cmds)
+    ex, model, sys_ = (next(c for c in cmds if f"-p tetraeder-{p} " in c) for p in ("executor", "model", "ggml-sys"))
     assert "GGML_CUDA_GRAPH_DEBUG=1" in ex and "GGML_CUDA_GRAPH_DEBUG" not in model
-    assert sum("GGML_CUDA_GRAPH_DEBUG" in ln for ln in lines) == 1
+    assert "GGML_CUDA_GRAPH_DEBUG=1" in sys_ and "--features tetraeder-ggml-sys/cuda" in sys_
+    assert sum("GGML_CUDA_GRAPH_DEBUG=1 " in ln for ln in lines) == 2
+    assert any("gpu_no_capture_flag_skips_the_cuda_graph did not run" in ln for ln in lines)
     assert all(">> gpu-parity.log.full" in c for c in cmds)
     assert any("cut to 300 columns" in ln for ln in lines)
     assert all("TETRAEDER_REQUIRE_GPUS=2 TETRAEDER_MOE_GGUF=" in c and "Qwen3-30B-A3B-Q4_K_M.gguf" in c for c in cmds)
