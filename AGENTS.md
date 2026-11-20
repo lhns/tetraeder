@@ -18,6 +18,11 @@ Plain, short docs and comments; no em dashes.
 10. Small PRs naming the phase and exit test they move.
 11. Every change builds and tests on Windows and Linux (`cargo build --workspace`, `cargo test --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo fmt --check`).
 
+## Tech tree
+
+Project state lives in the tech tree (skill `tech-tree`, lhns/design-skills; config `tech-tree.yaml`): `docs/roadmap/nodes.yaml` is the one source of truth, `docs/roadmap.md` and its pages are generated. Update the node in the same push as each result, merge or owner decision (state, outcome with a quoted verdict, plain sentence, new or unblocked nodes), then run
+`python <design-skills>/skills/tech-tree/scripts/build.py --config tech-tree.yaml` and `check.py` with the same config; CI runs the check. `docs/m2-plan.md` keeps the detail of each open item; the order and state are the tree's.
+
 ## Local files
 
 The machine is shared with other projects; 2026-11-20 cleanup removed 156 stale worktrees (57 GB) and stray box logs in the parent `git` folder.
