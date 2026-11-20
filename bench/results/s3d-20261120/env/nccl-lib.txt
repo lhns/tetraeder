@@ -1,0 +1,36 @@
+== ldd target/release/tetraeder
+	libnccl.so.2 => /usr/lib/x86_64-linux-gnu/libnccl.so.2 (0x00007a3f79c38000)
+== ldconfig -p
+	libnccl.so.2 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libnccl.so.2
+	libnccl.so (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libnccl.so
+== libnccl files
+/usr/lib/x86_64-linux-gnu/libnccl.so
+/usr/lib/x86_64-linux-gnu/libnccl_static.a
+/usr/lib/x86_64-linux-gnu/libnccl.so.2
+/usr/lib/x86_64-linux-gnu/libnccl.so.2.25.1
+/usr/share/doc/libnccl-dev
+/usr/share/doc/libnccl2
+== pip
+== env LD_LIBRARY_PATH=:/usr/local/cuda/lib64 LD_PRELOAD=
+== /proc/41152/maps
+== LD_DEBUG=libs
+     41154:	find library=libnccl.so.2 [0]; searching
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl.so.2
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl.so.2
+     41154:	  trying file=libnccl.so.2
+     41154:	  trying file=/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v3/libnccl.so.2
+     41154:	  trying file=/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v2/libnccl.so.2
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/glibc-hwcaps/x86-64-v3/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/glibc-hwcaps/x86-64-v2/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/../glibc-hwcaps/x86-64-v3/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/../glibc-hwcaps/x86-64-v2/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/../libnccl.so.2
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl.so.2
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libnccl.so.2
+     41154:	find library=libnccl-net.so [0]; searching
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-net.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-net.so
+     41154:	  trying file=libnccl-net.so
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl-net.so

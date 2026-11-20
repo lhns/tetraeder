@@ -1,0 +1,22 @@
+/root/tetraeder/bench/results/s3d-20261120/qwen3-32b-layer4-tg-sync.trace.jsonl: 768 steps of the most common sequence, sync=True
+  upload     rank 0         16.1 us
+  upload     rank 1         14.4 us
+  upload     rank 2         14.2 us
+  upload     rank 3         13.9 us
+  compute    rank 0       6282.6 us
+  copy       rank 0>1       19.9 us
+  compute    rank 1       6117.8 us
+  copy       rank 1>2       18.2 us
+  compute    rank 2       6079.2 us
+  copy       rank 2>3       18.4 us
+  compute    rank 3       7035.6 us
+  sync       rank 3          0.8 us
+  logits     rank 3         92.2 us
+  step       rank 0      25727.3 us
+  sum upload          58.7 us
+  sum compute      25515.2 us
+  sum copy            56.5 us
+  sum sync             0.8 us
+  sum logits          92.2 us
+  sum step         25727.3 us
+  sum all          51450.7 us

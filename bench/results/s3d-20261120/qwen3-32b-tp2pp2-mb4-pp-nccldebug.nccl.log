@@ -1,0 +1,255 @@
+c7934b9220d8:42850:42850 [0] NCCL INFO cudaDriverVersion 13020
+c7934b9220d8:42850:42850 [0] NCCL INFO NCCL version 2.25.1+cuda12.8
+c7934b9220d8:42850:42867 [1] NCCL INFO NET/Plugin: Could not find: libnccl-net.so. Using internal network plugin.
+c7934b9220d8:42850:42867 [1] NCCL INFO NET/IB : No device found.
+c7934b9220d8:42850:42867 [1] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.17.0.2<0>
+c7934b9220d8:42850:42867 [1] NCCL INFO NET/Socket : Using [0]eth0:172.17.0.2<0>
+c7934b9220d8:42850:42867 [1] NCCL INFO Using network Socket
+c7934b9220d8:42850:42869 [3] NCCL INFO Using network Socket
+c7934b9220d8:42850:42866 [0] NCCL INFO Using network Socket
+c7934b9220d8:42850:42868 [2] NCCL INFO Using network Socket
+c7934b9220d8:42850:42869 [3] NCCL INFO ncclCommInitAll comm 0x62fd35136df0 rank 3 nranks 4 cudaDev 3 nvmlDev 3 busId c2000 commId 0x224fa0131205229d - Init START
+c7934b9220d8:42850:42866 [0] NCCL INFO ncclCommInitAll comm 0x62fd32869bb0 rank 0 nranks 4 cudaDev 0 nvmlDev 0 busId 1000 commId 0x224fa0131205229d - Init START
+c7934b9220d8:42850:42868 [2] NCCL INFO ncclCommInitAll comm 0x62fd34393090 rank 2 nranks 4 cudaDev 2 nvmlDev 2 busId c1000 commId 0x224fa0131205229d - Init START
+c7934b9220d8:42850:42867 [1] NCCL INFO ncclCommInitAll comm 0x62fd335faaf0 rank 1 nranks 4 cudaDev 1 nvmlDev 1 busId 2000 commId 0x224fa0131205229d - Init START
+c7934b9220d8:42850:42869 [3] NCCL INFO RAS client listening socket at ::1<28028>
+c7934b9220d8:42850:42868 [2] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'eth0'
+c7934b9220d8:42850:42867 [1] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'eth0'
+c7934b9220d8:42850:42869 [3] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'eth0'
+c7934b9220d8:42850:42866 [0] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'eth0'
+c7934b9220d8:42850:42868 [2] NCCL INFO NVLS multicast support is not available on dev 2
+c7934b9220d8:42850:42866 [0] NCCL INFO NVLS multicast support is not available on dev 0
+c7934b9220d8:42850:42869 [3] NCCL INFO NVLS multicast support is not available on dev 3
+c7934b9220d8:42850:42867 [1] NCCL INFO NVLS multicast support is not available on dev 1
+c7934b9220d8:42850:42869 [3] NCCL INFO comm 0x62fd35136df0 rank 3 nRanks 4 nNodes 1 localRanks 4 localRank 3 MNNVL 0
+c7934b9220d8:42850:42866 [0] NCCL INFO comm 0x62fd32869bb0 rank 0 nRanks 4 nNodes 1 localRanks 4 localRank 0 MNNVL 0
+c7934b9220d8:42850:42868 [2] NCCL INFO comm 0x62fd34393090 rank 2 nRanks 4 nNodes 1 localRanks 4 localRank 2 MNNVL 0
+c7934b9220d8:42850:42868 [2] NCCL INFO Trees [0] 3/-1/-1->2->1 [1] 3/-1/-1->2->1
+c7934b9220d8:42850:42867 [1] NCCL INFO comm 0x62fd335faaf0 rank 1 nRanks 4 nNodes 1 localRanks 4 localRank 1 MNNVL 0
+c7934b9220d8:42850:42869 [3] NCCL INFO Trees [0] -1/-1/-1->3->2 [1] -1/-1/-1->3->2
+c7934b9220d8:42850:42869 [3] NCCL INFO P2P Chunksize set to 131072
+c7934b9220d8:42850:42866 [0] NCCL INFO Channel 00/02 : 0 1 2 3
+c7934b9220d8:42850:42868 [2] NCCL INFO P2P Chunksize set to 131072
+c7934b9220d8:42850:42867 [1] NCCL INFO Trees [0] 2/-1/-1->1->0 [1] 2/-1/-1->1->0
+c7934b9220d8:42850:42867 [1] NCCL INFO P2P Chunksize set to 131072
+c7934b9220d8:42850:42866 [0] NCCL INFO Channel 01/02 : 0 1 2 3
+c7934b9220d8:42850:42866 [0] NCCL INFO Trees [0] 1/-1/-1->0->-1 [1] 1/-1/-1->0->-1
+c7934b9220d8:42850:42866 [0] NCCL INFO P2P Chunksize set to 131072
+c7934b9220d8:42850:42866 [0] NCCL INFO Check P2P Type intraNodeP2pSupport 0 directMode 1
+c7934b9220d8:42850:42878 [3] NCCL INFO [Proxy Service] Device 3 CPU core 19
+c7934b9220d8:42850:42879 [0] NCCL INFO [Proxy Service] Device 0 CPU core 14
+c7934b9220d8:42850:42881 [1] NCCL INFO [Proxy Service] Device 1 CPU core 23
+c7934b9220d8:42850:42880 [2] NCCL INFO [Proxy Service] Device 2 CPU core 8
+c7934b9220d8:42850:42882 [3] NCCL INFO [Proxy Service UDS] Device 3 CPU core 13
+c7934b9220d8:42850:42883 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 19
+c7934b9220d8:42850:42884 [2] NCCL INFO [Proxy Service UDS] Device 2 CPU core 14
+c7934b9220d8:42850:42885 [1] NCCL INFO [Proxy Service UDS] Device 1 CPU core 4
+c7934b9220d8:42850:42869 [3] NCCL INFO threadThresholds 8/8/64 | 32/8/64 | 512 | 512
+c7934b9220d8:42850:42869 [3] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 2 p2p channels per peer
+c7934b9220d8:42850:42866 [0] NCCL INFO threadThresholds 8/8/64 | 32/8/64 | 512 | 512
+c7934b9220d8:42850:42866 [0] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 2 p2p channels per peer
+c7934b9220d8:42850:42867 [1] NCCL INFO threadThresholds 8/8/64 | 32/8/64 | 512 | 512
+c7934b9220d8:42850:42867 [1] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 2 p2p channels per peer
+c7934b9220d8:42850:42866 [0] NCCL INFO CC Off, workFifoBytes 1048576
+c7934b9220d8:42850:42868 [2] NCCL INFO threadThresholds 8/8/64 | 32/8/64 | 512 | 512
+c7934b9220d8:42850:42868 [2] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 2 p2p channels per peer
+c7934b9220d8:42850:42868 [2] NCCL INFO ncclCommInitAll comm 0x62fd34393090 rank 2 nranks 4 cudaDev 2 nvmlDev 2 busId c1000 commId 0x224fa0131205229d - Init COMPLETE
+c7934b9220d8:42850:42868 [2] NCCL INFO Init timings - ncclCommInitAll: rank 2 nranks 4 total 0.55 (kernels 0.41, alloc 0.06, bootstrap 0.02, allgathers 0.00, topo 0.05, graphs 0.00, connections 0.01, rest 0.00)
+c7934b9220d8:42850:42866 [0] NCCL INFO ncclCommInitAll comm 0x62fd32869bb0 rank 0 nranks 4 cudaDev 0 nvmlDev 0 busId 1000 commId 0x224fa0131205229d - Init COMPLETE
+c7934b9220d8:42850:42867 [1] NCCL INFO ncclCommInitAll comm 0x62fd335faaf0 rank 1 nranks 4 cudaDev 1 nvmlDev 1 busId 2000 commId 0x224fa0131205229d - Init COMPLETE
+c7934b9220d8:42850:42866 [0] NCCL INFO Init timings - ncclCommInitAll: rank 0 nranks 4 total 0.55 (kernels 0.41, alloc 0.06, bootstrap 0.02, allgathers 0.00, topo 0.05, graphs 0.00, connections 0.01, rest 0.00)
+c7934b9220d8:42850:42869 [3] NCCL INFO ncclCommInitAll comm 0x62fd35136df0 rank 3 nranks 4 cudaDev 3 nvmlDev 3 busId c2000 commId 0x224fa0131205229d - Init COMPLETE
+c7934b9220d8:42850:42867 [1] NCCL INFO Init timings - ncclCommInitAll: rank 1 nranks 4 total 0.55 (kernels 0.41, alloc 0.06, bootstrap 0.02, allgathers 0.00, topo 0.05, graphs 0.00, connections 0.01, rest 0.00)
+c7934b9220d8:42850:42869 [3] NCCL INFO Init timings - ncclCommInitAll: rank 3 nranks 4 total 0.55 (kernels 0.41, alloc 0.06, bootstrap 0.02, allgathers 0.00, topo 0.05, graphs 0.00, connections 0.01, rest 0.00)
+c7934b9220d8:42850:42914 [0] NCCL INFO Using network Socket
+c7934b9220d8:42850:42915 [1] NCCL INFO Using network Socket
+c7934b9220d8:42850:42914 [0] NCCL INFO ncclCommInitAll comm 0x62fd382c04e0 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 1000 commId 0x36f13b93b7bf0ec4 - Init START
+c7934b9220d8:42850:42915 [1] NCCL INFO ncclCommInitAll comm 0x62fd3833bcd0 rank 1 nranks 2 cudaDev 1 nvmlDev 1 busId 2000 commId 0x36f13b93b7bf0ec4 - Init START
+c7934b9220d8:42850:42915 [1] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'eth0'
+c7934b9220d8:42850:42914 [0] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'eth0'
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42915 [1] NCCL INFO comm 0x62fd3833bcd0 rank 1 nRanks 2 nNodes 1 localRanks 2 localRank 1 MNNVL 0
+c7934b9220d8:42850:42915 [1] NCCL INFO Trees [0] -1/-1/-1->1->0 [1] -1/-1/-1->1->0
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P Chunksize set to 131072
+c7934b9220d8:42850:42914 [0] NCCL INFO comm 0x62fd382c04e0 rank 0 nRanks 2 nNodes 1 localRanks 2 localRank 0 MNNVL 0
+c7934b9220d8:42850:42914 [0] NCCL INFO Channel 00/02 : 0 1
+c7934b9220d8:42850:42914 [0] NCCL INFO Channel 01/02 : 0 1
+c7934b9220d8:42850:42915 [1] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO Trees [0] 1/-1/-1->0->-1 [1] 1/-1/-1->0->-1
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P Chunksize set to 131072
+c7934b9220d8:42850:42914 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42914 [0] NCCL INFO Check P2P Type intraNodeP2pSupport 0 directMode 1
+c7934b9220d8:42850:42916 [1] NCCL INFO [Proxy Service] Device 1 CPU core 13
+c7934b9220d8:42850:42917 [0] NCCL INFO [Proxy Service] Device 0 CPU core 23
+c7934b9220d8:42850:42918 [1] NCCL INFO [Proxy Service UDS] Device 1 CPU core 14
+c7934b9220d8:42850:42919 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 0
+c7934b9220d8:42850:42915 [1] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+c7934b9220d8:42850:42915 [1] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 2 p2p channels per peer
+c7934b9220d8:42850:42914 [0] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+c7934b9220d8:42850:42914 [0] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 2 p2p channels per peer
+c7934b9220d8:42850:42914 [0] NCCL INFO CC Off, workFifoBytes 1048576
+c7934b9220d8:42850:42915 [1] NCCL INFO ncclCommInitAll comm 0x62fd3833bcd0 rank 1 nranks 2 cudaDev 1 nvmlDev 1 busId 2000 commId 0x36f13b93b7bf0ec4 - Init COMPLETE
+c7934b9220d8:42850:42915 [1] NCCL INFO Init timings - ncclCommInitAll: rank 1 nranks 2 total 0.04 (kernels 0.00, alloc 0.00, bootstrap 0.00, allgathers 0.00, topo 0.03, graphs 0.00, connections 0.01, rest 0.00)
+c7934b9220d8:42850:42914 [0] NCCL INFO ncclCommInitAll comm 0x62fd382c04e0 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 1000 commId 0x36f13b93b7bf0ec4 - Init COMPLETE
+c7934b9220d8:42850:42914 [0] NCCL INFO Init timings - ncclCommInitAll: rank 0 nranks 2 total 0.04 (kernels 0.00, alloc 0.00, bootstrap 0.00, allgathers 0.00, topo 0.03, graphs 0.00, connections 0.01, rest 0.00)
+c7934b9220d8:42850:42921 [2] NCCL INFO Using network Socket
+c7934b9220d8:42850:42921 [2] NCCL INFO ncclCommInitAll comm 0x62fd383b7c60 rank 0 nranks 2 cudaDev 2 nvmlDev 2 busId c1000 commId 0x2b3e2c8fe926c052 - Init START
+c7934b9220d8:42850:42922 [3] NCCL INFO Using network Socket
+c7934b9220d8:42850:42922 [3] NCCL INFO ncclCommInitAll comm 0x62fd38433910 rank 1 nranks 2 cudaDev 3 nvmlDev 3 busId c2000 commId 0x2b3e2c8fe926c052 - Init START
+c7934b9220d8:42850:42922 [3] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'eth0'
+c7934b9220d8:42850:42921 [2] NCCL INFO NET/Socket : GPU Direct RDMA Disabled for HCA 0 'eth0'
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO comm 0x62fd383b7c60 rank 0 nRanks 2 nNodes 1 localRanks 2 localRank 0 MNNVL 0
+c7934b9220d8:42850:42922 [3] NCCL INFO comm 0x62fd38433910 rank 1 nRanks 2 nNodes 1 localRanks 2 localRank 1 MNNVL 0
+c7934b9220d8:42850:42921 [2] NCCL INFO Channel 00/02 : 0 1
+c7934b9220d8:42850:42921 [2] NCCL INFO Channel 01/02 : 0 1
+c7934b9220d8:42850:42921 [2] NCCL INFO Trees [0] 1/-1/-1->0->-1 [1] 1/-1/-1->0->-1
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P Chunksize set to 131072
+c7934b9220d8:42850:42922 [3] NCCL INFO Trees [0] -1/-1/-1->1->0 [1] -1/-1/-1->1->0
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P Chunksize set to 131072
+c7934b9220d8:42850:42922 [3] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42921 [2] NCCL INFO Check P2P Type intraNodeP2pSupport 0 directMode 1
+c7934b9220d8:42850:42923 [3] NCCL INFO [Proxy Service] Device 3 CPU core 7
+c7934b9220d8:42850:42924 [2] NCCL INFO [Proxy Service] Device 2 CPU core 13
+c7934b9220d8:42850:42925 [3] NCCL INFO [Proxy Service UDS] Device 3 CPU core 7
+c7934b9220d8:42850:42926 [2] NCCL INFO [Proxy Service UDS] Device 2 CPU core 14
+c7934b9220d8:42850:42922 [3] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+c7934b9220d8:42850:42922 [3] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 2 p2p channels per peer
+c7934b9220d8:42850:42921 [2] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+c7934b9220d8:42850:42921 [2] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 2 p2p channels per peer
+c7934b9220d8:42850:42921 [2] NCCL INFO CC Off, workFifoBytes 1048576
+c7934b9220d8:42850:42921 [2] NCCL INFO ncclCommInitAll comm 0x62fd383b7c60 rank 0 nranks 2 cudaDev 2 nvmlDev 2 busId c1000 commId 0x2b3e2c8fe926c052 - Init COMPLETE
+c7934b9220d8:42850:42921 [2] NCCL INFO Init timings - ncclCommInitAll: rank 0 nranks 2 total 0.02 (kernels 0.00, alloc 0.00, bootstrap 0.00, allgathers 0.00, topo 0.01, graphs 0.00, connections 0.01, rest 0.00)
+c7934b9220d8:42850:42922 [3] NCCL INFO ncclCommInitAll comm 0x62fd38433910 rank 1 nranks 2 cudaDev 3 nvmlDev 3 busId c2000 commId 0x2b3e2c8fe926c052 - Init COMPLETE
+c7934b9220d8:42850:42922 [3] NCCL INFO Init timings - ncclCommInitAll: rank 1 nranks 2 total 0.02 (kernels 0.00, alloc 0.00, bootstrap 0.00, allgathers 0.00, topo 0.01, graphs 0.00, connections 0.01, rest 0.00)
+c7934b9220d8:42850:42927 [1] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42928 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42916 [1] NCCL INFO New proxy recv connection 0 from local rank 1, transport 1
+c7934b9220d8:42850:42927 [1] NCCL INFO Connected to proxy localRank 1 -> connection 0x7e685384d390
+c7934b9220d8:42850:42917 [0] NCCL INFO New proxy recv connection 0 from local rank 0, transport 1
+c7934b9220d8:42850:42928 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e68470b2fb0
+c7934b9220d8:42850:42917 [0] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-k6iH5Q size 9637888 ptr 0x7e5fb6ecd000
+c7934b9220d8:42850:42928 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42917 [0] NCCL INFO New proxy recv connection 1 from local rank 0, transport 1
+c7934b9220d8:42850:42928 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e68470b3028
+c7934b9220d8:42850:42916 [1] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-chNhCA size 9637888 ptr 0x7e5fb659b000
+c7934b9220d8:42850:42927 [1] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42916 [1] NCCL INFO New proxy recv connection 1 from local rank 1, transport 1
+c7934b9220d8:42850:42927 [1] NCCL INFO Connected to proxy localRank 1 -> connection 0x7e685384d408
+c7934b9220d8:42850:42916 [1] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-szaCor size 9637888 ptr 0x7e5fb5c69000
+c7934b9220d8:42850:42927 [1] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42916 [1] NCCL INFO New proxy send connection 2 from local rank 1, transport 1
+c7934b9220d8:42850:42927 [1] NCCL INFO Connected to proxy localRank 1 -> connection 0x7e685384d480
+c7934b9220d8:42850:42917 [0] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-TDToYl size 9637888 ptr 0x7e5fb5337000
+c7934b9220d8:42850:42928 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42917 [0] NCCL INFO New proxy send connection 2 from local rank 0, transport 1
+c7934b9220d8:42850:42928 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e68470b30a0
+c7934b9220d8:42850:42916 [1] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-pddvNB size 4096 ptr 0x7e6910ab6000
+c7934b9220d8:42850:42927 [1] NCCL INFO Channel 00 : 1[1] -> 0[0] via SHM/direct/direct
+c7934b9220d8:42850:42927 [1] NCCL INFO P2P is disabled between connected GPUs 1 and 0. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42916 [1] NCCL INFO New proxy send connection 3 from local rank 1, transport 1
+c7934b9220d8:42850:42927 [1] NCCL INFO Connected to proxy localRank 1 -> connection 0x7e685384d4f8
+c7934b9220d8:42850:42917 [0] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-SArHvI size 4096 ptr 0x7e6910ab4000
+c7934b9220d8:42850:42928 [0] NCCL INFO Channel 00 : 0[0] -> 1[1] via SHM/direct/direct
+c7934b9220d8:42850:42928 [0] NCCL INFO P2P is disabled between connected GPUs 0 and 1. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42917 [0] NCCL INFO New proxy send connection 3 from local rank 0, transport 1
+c7934b9220d8:42850:42928 [0] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e68470b3118
+c7934b9220d8:42850:42916 [1] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-l8yjbL size 4096 ptr 0x7e6910716000
+c7934b9220d8:42850:42927 [1] NCCL INFO Channel 01 : 1[1] -> 0[0] via SHM/direct/direct
+c7934b9220d8:42850:42917 [0] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-ZR5E75 size 4096 ptr 0x7e6910714000
+c7934b9220d8:42850:42928 [0] NCCL INFO Channel 01 : 0[0] -> 1[1] via SHM/direct/direct
+c7934b9220d8:42850:42927 [1] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-k6iH5Q size 9637888 ptr 0x7e5fb4a05000
+c7934b9220d8:42850:42928 [0] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-chNhCA size 9637888 ptr 0x7e5fb40d3000
+c7934b9220d8:42850:42927 [1] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-SArHvI size 4096 ptr 0x7e6910712000
+c7934b9220d8:42850:42928 [0] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-pddvNB size 4096 ptr 0x7e6910710000
+c7934b9220d8:42850:42927 [1] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-TDToYl size 9637888 ptr 0x7e5fa76ce000
+c7934b9220d8:42850:42928 [0] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-szaCor size 9637888 ptr 0x7e5fa6d9c000
+c7934b9220d8:42850:42927 [1] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-ZR5E75 size 4096 ptr 0x7e691070e000
+c7934b9220d8:42850:42928 [0] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-l8yjbL size 4096 ptr 0x7e691070c000
+c7934b9220d8:42850:42927 [1] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+c7934b9220d8:42850:42928 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+c7934b9220d8:42850:42929 [3] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42930 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42923 [3] NCCL INFO New proxy recv connection 0 from local rank 1, transport 1
+c7934b9220d8:42850:42924 [2] NCCL INFO New proxy recv connection 0 from local rank 0, transport 1
+c7934b9220d8:42850:42929 [3] NCCL INFO Connected to proxy localRank 1 -> connection 0x7e5fbc000d20
+c7934b9220d8:42850:42930 [2] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e5fb0000d20
+c7934b9220d8:42850:42923 [3] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-KNkXYw size 9637888 ptr 0x7e5fa646a000
+c7934b9220d8:42850:42929 [3] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42923 [3] NCCL INFO New proxy recv connection 1 from local rank 1, transport 1
+c7934b9220d8:42850:42929 [3] NCCL INFO Connected to proxy localRank 1 -> connection 0x7e5fbc000d98
+c7934b9220d8:42850:42924 [2] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-Y2FG0q size 9637888 ptr 0x7e5f816ce000
+c7934b9220d8:42850:42930 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42924 [2] NCCL INFO New proxy recv connection 1 from local rank 0, transport 1
+c7934b9220d8:42850:42930 [2] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e5fb0000d98
+c7934b9220d8:42850:42923 [3] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-2XCnbg size 9637888 ptr 0x7e5f80d9c000
+c7934b9220d8:42850:42929 [3] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42923 [3] NCCL INFO New proxy send connection 2 from local rank 1, transport 1
+c7934b9220d8:42850:42929 [3] NCCL INFO Connected to proxy localRank 1 -> connection 0x7e5fbc000e10
+c7934b9220d8:42850:42924 [2] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-9cuqq3 size 9637888 ptr 0x7e5f8046a000
+c7934b9220d8:42850:42930 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42924 [2] NCCL INFO New proxy send connection 2 from local rank 0, transport 1
+c7934b9220d8:42850:42930 [2] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e5fb0000e10
+c7934b9220d8:42850:42923 [3] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-qff0fw size 4096 ptr 0x7e69094fd000
+c7934b9220d8:42850:42929 [3] NCCL INFO Channel 00 : 1[3] -> 0[2] via SHM/direct/direct
+c7934b9220d8:42850:42929 [3] NCCL INFO P2P is disabled between connected GPUs 3 and 2. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42923 [3] NCCL INFO New proxy send connection 3 from local rank 1, transport 1
+c7934b9220d8:42850:42929 [3] NCCL INFO Connected to proxy localRank 1 -> connection 0x7e5fbc000e88
+c7934b9220d8:42850:42924 [2] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-QS8nJq size 4096 ptr 0x7e69094fb000
+c7934b9220d8:42850:42930 [2] NCCL INFO Channel 00 : 0[2] -> 1[3] via SHM/direct/direct
+c7934b9220d8:42850:42930 [2] NCCL INFO P2P is disabled between connected GPUs 2 and 3. You can repress this message with NCCL_IGNORE_DISABLED_P2P=1.
+c7934b9220d8:42850:42924 [2] NCCL INFO New proxy send connection 3 from local rank 0, transport 1
+c7934b9220d8:42850:42930 [2] NCCL INFO Connected to proxy localRank 0 -> connection 0x7e5fb0000e88
+c7934b9220d8:42850:42923 [3] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-cZVDIn size 4096 ptr 0x7e69094f9000
+c7934b9220d8:42850:42929 [3] NCCL INFO Channel 01 : 1[3] -> 0[2] via SHM/direct/direct
+c7934b9220d8:42850:42924 [2] NCCL INFO MMAP allocated shareable host buffer /dev/shm/nccl-XUntMd size 4096 ptr 0x7e69094f7000
+c7934b9220d8:42850:42930 [2] NCCL INFO Channel 01 : 0[2] -> 1[3] via SHM/direct/direct
+c7934b9220d8:42850:42929 [3] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-Y2FG0q size 9637888 ptr 0x7e5f7fb38000
+c7934b9220d8:42850:42930 [2] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-KNkXYw size 9637888 ptr 0x7e5f7f206000
+c7934b9220d8:42850:42929 [3] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-QS8nJq size 4096 ptr 0x7e69094f5000
+c7934b9220d8:42850:42930 [2] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-qff0fw size 4096 ptr 0x7e69094f3000
+c7934b9220d8:42850:42929 [3] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-9cuqq3 size 9637888 ptr 0x7e5f7e8d4000
+c7934b9220d8:42850:42930 [2] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-2XCnbg size 9637888 ptr 0x7e5f7dfa2000
+c7934b9220d8:42850:42929 [3] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-XUntMd size 4096 ptr 0x7e68d71b2000
+c7934b9220d8:42850:42930 [2] NCCL INFO MMAP imported shareable host buffer /dev/shm/nccl-cZVDIn size 4096 ptr 0x7e68d71b0000
+c7934b9220d8:42850:42929 [3] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+c7934b9220d8:42850:42930 [2] NCCL INFO Connected all rings, use ring PXN 0 GDR 1
+c7934b9220d8:42850:42959 [0] NCCL INFO comm 0x62fd32869bb0 rank 0 nranks 4 cudaDev 0 busId 1000 - Destroy COMPLETE
+c7934b9220d8:42850:42959 [3] NCCL INFO comm 0x62fd35136df0 rank 3 nranks 4 cudaDev 3 busId c2000 - Destroy COMPLETE
+c7934b9220d8:42850:42959 [2] NCCL INFO comm 0x62fd34393090 rank 2 nranks 4 cudaDev 2 busId c1000 - Destroy COMPLETE
+c7934b9220d8:42850:42959 [1] NCCL INFO comm 0x62fd335faaf0 rank 1 nranks 4 cudaDev 1 busId 2000 - Destroy COMPLETE
+c7934b9220d8:42850:42965 [2] NCCL INFO comm 0x62fd383b7c60 rank 0 nranks 2 cudaDev 2 busId c1000 - Destroy COMPLETE
+c7934b9220d8:42850:42965 [3] NCCL INFO comm 0x62fd38433910 rank 1 nranks 2 cudaDev 3 busId c2000 - Destroy COMPLETE
+c7934b9220d8:42850:42967 [0] NCCL INFO comm 0x62fd382c04e0 rank 0 nranks 2 cudaDev 0 busId 1000 - Destroy COMPLETE
+c7934b9220d8:42850:42967 [1] NCCL INFO comm 0x62fd3833bcd0 rank 1 nranks 2 cudaDev 1 busId 2000 - Destroy COMPLETE
