@@ -201,7 +201,7 @@ flowchart TB
 | Read experts while computing | ✔ done · very-successful | An I/O service reads missing experts in the background and computes experts in the order they arrive, so disk reads overlap compute; on by default in serve. |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
 | Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
-| Price decode at measured clocks | ○ next | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
+| Price decode at measured clocks | ⏳ waiting | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
 | Prefill runs without graph capture | ✔ done · unrated | Every judged prefill had timed the call in which ggml records a CUDA graph, which serialized the pipeline stages; prefill steps now run directly and decode keeps graph replay. |
 | Own multi-GPU executor | ✔ done · unrated | Phase 5: Tetraeder runs its own executor instead of ggml's backend scheduler: one program per GPU (rank), NCCL collectives, and the engine in a worker process. |
 | Judged prefill timed graph capture | ✔ fixed | ggml-cuda records a CUDA graph on a range's second call; every judged prefill timed that recording call, which with an NCCL kernel pending serialized the pipeline stages, so earlier prefill verdicts measured a slow state serving never sees. |
@@ -228,10 +228,6 @@ flowchart TB
 ## Ready now
 
 <!-- BEGIN GENERATED: ready-now -->
-**local**
-
-- `planner-cost-model-v5`: Price decode at measured clocks
-
 **box**
 
 - `bench-d2a-probe`: Admission probe on final main
@@ -248,7 +244,9 @@ flowchart TB
 ## Built, waiting
 
 <!-- BEGIN GENERATED: built-waiting -->
-_None._
+**next four-GPU box session on a host where single boosts (item 5 of the check)**
+
+- `planner-cost-model-v5`: Price decode at measured clocks
 <!-- END GENERATED: built-waiting -->
 
 ## Waiting on the owner
@@ -672,7 +670,7 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 13 nodes (12 done, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 9 nodes (8 done, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 13 nodes (12 done, 1 next)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 13 nodes (12 done, 1 in progress)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 8 nodes (7 done, 1 next)
 - [serving - serving](roadmap/tracks/serving.md): 12 nodes (12 done)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 28 nodes (23 done, 1 in progress, 1 next, 3 blocked)

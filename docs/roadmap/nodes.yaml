@@ -2066,9 +2066,11 @@ nodes:
   title: Price decode at measured clocks
   track: planner
   kind: feature
-  state: next
+  state: in-progress
+  waiting_on: next four-GPU box session on a host where single boosts (item 5 of the check)
   outcome: unrated
-  evidence: []
+  evidence:
+  - bench/results/s3c-20261119/costmodel-v5/README.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -2080,7 +2082,7 @@ nodes:
   folded: []
   overview: false
   plain: A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets.
-  notes: 'Done when (ADR 0082, The check): 30B layer-4 e_tg within 0.08 on s3, s3b and s3c and the s3c layer-4/single tg ratio within 0.03 of measured, with host-20210 clocks; s3f2 bit-identical to v4 and its L36 within 0.03; every other candidate moved by at most 0.005; Rust and replica within 1%. Design: ADR 0082 (Proposed), brief V5 in docs/phase5-briefs.md.'
+  notes: 'Done when (ADR 0082, The check): 30B layer-4 e_tg within 0.08 on s3, s3b and s3c and the s3c layer-4/single tg ratio within 0.03 of measured, with host-20210 clocks; s3f2 bit-identical to v4 and its L36 within 0.03; every other candidate moved by at most 0.005; Rust and replica within 1%. Design: ADR 0082 (Proposed), brief V5 in docs/phase5-briefs.md. Offline check passes (branch track-cost-model-v5): layer-4/single tg within 0.03 and e_tg +0.001/-0.003/+0.067 on s3/s3b/s3c, s3f2 bit-identical with L36 230.9 against 231.8, 32B layer-4 moves 0.011, others 0; Rust-replica agreement pending CI. Layer anchor stays behind LAYER_ANCHOR=1 until the owner accepts ADR 0082.'
 - id: bench-d2a-probe
   title: Admission probe on final main
   track: bench
