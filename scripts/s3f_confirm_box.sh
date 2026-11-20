@@ -14,16 +14,21 @@
 #   <name>.window.txt (`start=<epoch s> end=<epoch s>`) to cut it. Names: <model>-<cfg>-mb4-<arm>-r<k>, cfg tp2pp2 or layer4.
 #   The plans come from stage A's enumeration (phase5/plans/<model>-tp2-pp2.toml, -layer-4.toml) with the
 #   prefill_micro_batches line set to 4 (plans/<model>-<cfg>-mb4.toml here).
+# Part C (after B, 30B only, skipped when fewer than 10 min of the B+C budget remain): tg128 -r 5 (-p 0 -n 128, no
+#   trace), each with the 20 ms clock log <name>.clocks.csv and <name>.window.txt as in s3e part C:
+#   (a) layer-4 (stage A's plan) truncated to --layer-limit 36: <30B>-layer-4-L36-tg128
+#   (b) `single` of the full model pinned to one GPU, CUDA_VISIBLE_DEVICES=0,1,2,3: <30B>-single-gpu<k>-tg128
+#   5 runs, about 4 min. s3e's L12, L24 and full-depth layer-4 numbers are the comparison (analysis).
 # Run count B: 2 models x 2 configurations x 4 = 16.
 # Wall time: provision with both models about 10 min (before this script); stage A about 40 min on a cold build (s3c: 25
 # min with ROUNDS=2 on a cached build; here the cold build adds about 10 min for the box and about 5 for the tests);
 # stage B about 40 to 60 s per run (s3e: about 40 s per -r 5 run; here pp and tg), 16 runs, about 15 min. A has
-# BUDGET_A_MIN 50 (phase5_box BUDGET_MIN: runs that would start later are skipped, loudly, the verdict is then null), B
-# has BUDGET_MIN 22 from its own start. Box time about 10 + 50 + 22 + 5 for fetch and destroy = 87 min at worst.
+# BUDGET_A_MIN 45 (phase5_box BUDGET_MIN: runs that would start later are skipped, loudly, the verdict is then null), B
+# has BUDGET_MIN 30 from its own start (B and C). Box time about 10 + 45 + 30 + 5 for fetch and destroy = 90 min at worst.
 # Results: bench/results/<s>/ (<name>.json|.log|.rc|.window.txt, plans/, gpu-samples.csv, env.txt, stageA.txt), ends with
 # S3F_CONFIRM_DONE rc=<n> in runs/vast/s3f_confirm.log and the DONE file. A rerun skips stage A when stageA.txt exists
 # (phase5_box itself resumes otherwise) and every run whose .rc exists.
-# Knobs: SESSION, BUDGET_MIN (22, stage B), BUDGET_A_MIN (50), MODELS, DRY_RUN=1 (print the commands only), OUT_DIR.
+# Knobs: SESSION, BUDGET_MIN (30, stages B and C), BUDGET_A_MIN (45), MODELS, DRY_RUN=1 (print the commands only), OUT_DIR.
 DRY="${DRY_RUN:-0}"
 if [ "$DRY" != 1 ]; then
   exec 8> /root/tetraeder_s3f_confirm.lock
@@ -61,11 +66,11 @@ say "s3f_confirm start (session=$session models=\"$models\" out=$out)"
 # ---- stage A ----
 say "STAGE A (phase5_box.sh $session 4, ROUNDS=1)"
 if [ "$DRY" = 1 ]; then
-  echo "PLAN SESSION=$session NGPUS=4 ROUNDS=1 BUDGET_MIN=${BUDGET_A_MIN:-50} bash scripts/phase5_box.sh $session 4"
+  echo "PLAN SESSION=$session NGPUS=4 ROUNDS=1 BUDGET_MIN=${BUDGET_A_MIN:-45} bash scripts/phase5_box.sh $session 4"
 elif [ -f "$out/stageA.txt" ]; then
   say "stage A: done before (rc=$(cat "$out/stageA.txt"))"
 else
-  SESSION="$session" NGPUS=4 ROUNDS=1 BUDGET_MIN="${BUDGET_A_MIN:-50}" bash scripts/phase5_box.sh "$session" 4 8>&-
+  SESSION="$session" NGPUS=4 ROUNDS=1 BUDGET_MIN="${BUDGET_A_MIN:-45}" bash scripts/phase5_box.sh "$session" 4 8>&-
   rc=$?
   echo "$rc" > "$out/stageA.txt"
   say "stage A done rc=$rc ($(tail -n 40 runs/vast/phase5_box.log 2> /dev/null | grep -E 'PHASE5_BOX_DONE|gate failed' | tail -n 2 | tr '\n' ' '))"
@@ -97,7 +102,7 @@ declare -A FILE=(
 )
 declare -A ENGINE=([qwen3-32b]=dense [qwen3-30b-a3b]=moe)
 t_start=$(date +%s)
-budget_s=$((${BUDGET_MIN:-22} * 60))
+budget_s=$((${BUDGET_MIN:-30} * 60))
 
 if [ "$DRY" != 1 ]; then
   for m in $models; do [ -s "${FILE[$m]}" ] || die "model $m missing: ${FILE[$m]}"; done
@@ -177,4 +182,63 @@ for m in $models; do
     run_one "$base-default-r2" "$plan" "$m"
   done
 done
+
+# ---- part C: 30B tg128 (header) ----
+clock_pid=""
+clock_start() { # nvidia-smi every 20 ms into NAME.clocks.csv (as s3e part C)
+  if [ "$DRY" = 1 ]; then
+    echo "PLAN nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,pstate --format=csv -lms 20 > $1.clocks.csv"
+    return 0
+  fi
+  setsid nohup nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,pstate --format=csv -lms 20 \
+    > "$out/$1.clocks.csv" 2> /dev/null 8>&- &
+  clock_pid=$!
+  sleep 1
+}
+clock_stop() {
+  [ -n "$clock_pid" ] || return 0
+  kill "$clock_pid" 2> /dev/null
+  wait "$clock_pid" 2> /dev/null
+  clock_pid=""
+}
+# run_c NAME PLAN [extra bench args]; the environment of the run is the array env_c
+run_c() {
+  local name=$1 plan=$2 m=qwen3-30b-a3b rc w0 w1
+  shift 2
+  local cmd=("$tet" bench -m "${FILE[$m]}" --engine "${ENGINE[$m]}" --plan "$plan" -p 0 -n 128 -r 5 -t "$threads"
+    --ngl -1 --ubatch 512 --flash-attn on -o json "$@")
+  if [ "$DRY" = 1 ]; then
+    clock_start "$name"
+    echo "PLAN env ${env_c[*]} ${cmd[*]} > $name.json"
+    return 0
+  fi
+  [ -f "$out/$name.rc" ] && { say "$name: done before"; return 0; }
+  [ -s "$plan" ] || { say "$name: skipped, no plan $plan"; return 0; }
+  say "$name start"
+  clock_start "$name"
+  w0=$(date +%s.%N)
+  timeout -k 30 10m env "${env_c[@]}" "${cmd[@]}" < /dev/null > "$out/$name.json" 2> "$out/$name.log" 8>&-
+  rc=$?
+  w1=$(date +%s.%N)
+  clock_stop
+  echo "start=$w0 end=$w1" > "$out/$name.window.txt"
+  echo "$rc" > "$out/$name.rc"
+  say "$name done rc=$rc"
+}
+
+m=qwen3-30b-a3b
+case " $models " in
+  *" $m "*)
+    if [ "$DRY" != 1 ] && [ $((budget_s - ($(date +%s) - t_start))) -lt 600 ]; then
+      say "part C skipped: fewer than 10 min of the budget remain"
+    else
+      env_c=()
+      run_c "$m-layer-4-L36-tg128" "$a_out/plans/$m-layer-4.toml" --layer-limit 36
+      for g in 0 1 2 3; do
+        env_c=("CUDA_VISIBLE_DEVICES=$g")
+        run_c "$m-single-gpu$g-tg128" "$a_out/plans/$m-single.toml"
+      done
+    fi
+    ;;
+esac
 finish 0

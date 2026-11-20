@@ -23,17 +23,24 @@ def test_dry_run_lists_stage_a_and_the_interleaved_arms(tmp_path):
     lines = r.stdout.splitlines()
     stage_a = [ln for ln in lines if "phase5_box.sh" in ln and ln.startswith("PLAN ")]
     assert len(stage_a) == 1
-    assert "NGPUS=4" in stage_a[0] and "ROUNDS=1" in stage_a[0] and "BUDGET_MIN=50" in stage_a[0]
+    assert "NGPUS=4" in stage_a[0] and "ROUNDS=1" in stage_a[0] and "BUDGET_MIN=45" in stage_a[0]
     assert stage_a[0].endswith("phase5_box.sh s1 4")
     runs = [ln for ln in lines if ln.startswith("PLAN env") and ln.endswith(".json")]
     by = {re.search(r"> (\S+)\.json$", ln).group(1): ln for ln in runs}
-    assert len(by) == len(runs) == 16
+    assert len(by) == len(runs) == 21
+    part_c = [f"{MODELS[0]}-layer-4-L36-tg128"] + [f"{MODELS[0]}-single-gpu{g}-tg128" for g in range(4)]
     names = list(by)
     expect = [f"{m}-{c}-mb4-{a}" for m in MODELS for c in ("tp2pp2", "layer4") for a in ARM_ORDER]
-    assert names == expect
+    assert names[:16] == expect and names[16:] == part_c
+    for k in part_c:
+        assert "-p 0 -n 128 -r 5 " in by[k] and "EXEC_TRACE" not in by[k] and "GGML_CUDA" not in by[k]
+        assert ("--layer-limit 36" in by[k]) == ("L36" in k)
+        assert ("CUDA_VISIBLE_DEVICES=" + k.split("gpu")[-1][0] in by[k]) == ("single" in k)
+    clocks = [re.search(r"> (\S+)\.clocks\.csv$", ln).group(1) for ln in lines if ln.startswith("PLAN nvidia-smi ")]
+    assert clocks == part_c
     # stage A comes before every stage B run
     assert lines.index(stage_a[0]) < lines.index(next(ln for ln in lines if ln.startswith("PLAN env")))
-    for name, ln in by.items():
+    for name, ln in list(by.items())[:16]:
         assert "-p 2048 -n 128 -r 5 " in ln
         assert ("GGML_CUDA_DISABLE_GRAPHS=1" in ln) == ("-nograph-" in name)
         # no debug env and no trace in a timed run
