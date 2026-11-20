@@ -123,6 +123,50 @@ def ratios(d):
     return out
 
 
+def step_ops(path):
+    """Every step of a trace (warmup first): [(step, step_ms, {(kind, rank): summed ms})]; the s3e view of the
+    call-count states (call 1 direct, call 2 capture, call 3+ replay)."""
+    out = []
+    for s in load(path):
+        acc = collections.defaultdict(int)
+        for kind, rank, _peer, ns in s["ev"]:
+            acc[(kind, rank)] += ns
+        total = sum(v for (k, _r), v in acc.items() if k == "step")
+        out.append((s["step"], total / 1e6, {k: v / 1e6 for k, v in acc.items() if k[0] != "step"}))
+    return out
+
+
+def samples(d):
+    """Per bench json (not llama): [(name, samples_ns in ms, tok/s per rep)] in file order."""
+    out = []
+    for p in sorted(glob.glob(os.path.join(d, "*.json"))):
+        if os.path.basename(p).startswith(("hw", "candidates")):
+            continue
+        try:
+            with open(p) as f:
+                rows = json.load(f)
+            for r in rows:
+                if r.get("samples_ns"):
+                    out.append((os.path.basename(p)[:-5], [x / 1e6 for x in r["samples_ns"]], r.get("samples_ts") or []))
+        except (ValueError, OSError, TypeError, AttributeError):
+            continue
+    return out
+
+
+def show_samples(d):
+    print("\nper-rep samples (ms; tok/s) per run, rep 1 first")
+    for name, ms, ts in samples(d):
+        print(f"  {name}: " + " ".join(f"{x:.0f}" for x in ms) + "  |  " + " ".join(f"{x:.0f}" for x in ts))
+
+
+def show_steps(d):
+    """Per trace, per step: step time and the per-op sums per kind and rank (ms); step 0 is the warmup."""
+    for p in sorted(glob.glob(os.path.join(d, "*.trace.jsonl"))):
+        print(f"\n{os.path.basename(p)}")
+        for step, total, ops in step_ops(p):
+            print(f"  step {step}: {total:9.1f} ms  " + "  ".join(f"{k[0]}[{k[1]}] {v:.1f}" for k, v in sorted(ops.items()) if v >= 0.5))
+
+
 def main(d):
     for p in sorted(glob.glob(os.path.join(d, "*.nccl.log")) or glob.glob(os.path.join(d, "*-nccldebug.log"))):
         lines, kinds = transports(p)
