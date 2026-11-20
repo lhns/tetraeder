@@ -1,0 +1,52 @@
+=== RUN 12:28:48 s3f_confirm_box.sh ===
+[12:28:48] s3f_confirm start (session=s3f2-20261120 models="qwen3-30b-a3b qwen3-32b" out=/root/tetraeder/bench/results/s3f2-20261120)
+[12:28:48] STAGE A (phase5_box.sh s3f2-20261120 4, ROUNDS=1)
+patches: already applied
+[12:57:50] stage A done rc=0 ([12:57:50] PHASE5_BOX_DONE rc=0 )
+[12:57:50] STAGE B
+/root/tetraeder/bench/results/s3f2-20261120/phase5/plans/qwen3-30b-a3b-tp2-pp2.toml: prefill_micro_batches was 4, now 4
+/root/tetraeder/bench/results/s3f2-20261120/phase5/plans/qwen3-30b-a3b-layer-4.toml: prefill_micro_batches was 4, now 4
+/root/tetraeder/bench/results/s3f2-20261120/phase5/plans/qwen3-32b-tp2-pp2.toml: prefill_micro_batches was 4, now 4
+/root/tetraeder/bench/results/s3f2-20261120/phase5/plans/qwen3-32b-layer-4.toml: prefill_micro_batches was 4, now 4
+[12:57:50] qwen3-30b-a3b-tp2pp2-mb4-default-r1 start
+[12:58:14] qwen3-30b-a3b-tp2pp2-mb4-default-r1 done rc=0
+[12:58:14] qwen3-30b-a3b-tp2pp2-mb4-nograph-r1 start
+[12:58:43] qwen3-30b-a3b-tp2pp2-mb4-nograph-r1 done rc=0
+[12:58:43] qwen3-30b-a3b-tp2pp2-mb4-nograph-r2 start
+[12:59:12] qwen3-30b-a3b-tp2pp2-mb4-nograph-r2 done rc=0
+[12:59:12] qwen3-30b-a3b-tp2pp2-mb4-default-r2 start
+[12:59:36] qwen3-30b-a3b-tp2pp2-mb4-default-r2 done rc=0
+[12:59:36] qwen3-30b-a3b-layer4-mb4-default-r1 start
+[12:59:53] qwen3-30b-a3b-layer4-mb4-default-r1 done rc=0
+[12:59:53] qwen3-30b-a3b-layer4-mb4-nograph-r1 start
+[13:00:12] qwen3-30b-a3b-layer4-mb4-nograph-r1 done rc=0
+[13:00:12] qwen3-30b-a3b-layer4-mb4-nograph-r2 start
+[13:00:31] qwen3-30b-a3b-layer4-mb4-nograph-r2 done rc=0
+[13:00:31] qwen3-30b-a3b-layer4-mb4-default-r2 start
+[13:00:48] qwen3-30b-a3b-layer4-mb4-default-r2 done rc=0
+[13:00:48] qwen3-32b-tp2pp2-mb4-default-r1 start
+[13:01:25] qwen3-32b-tp2pp2-mb4-default-r1 done rc=0
+[13:01:25] qwen3-32b-tp2pp2-mb4-nograph-r1 start
+[13:02:02] qwen3-32b-tp2pp2-mb4-nograph-r1 done rc=0
+[13:02:02] qwen3-32b-tp2pp2-mb4-nograph-r2 start
+[13:02:39] qwen3-32b-tp2pp2-mb4-nograph-r2 done rc=0
+[13:02:39] qwen3-32b-tp2pp2-mb4-default-r2 start
+[13:03:15] qwen3-32b-tp2pp2-mb4-default-r2 done rc=0
+[13:03:15] qwen3-32b-layer4-mb4-default-r1 start
+[13:03:51] qwen3-32b-layer4-mb4-default-r1 done rc=0
+[13:03:51] qwen3-32b-layer4-mb4-nograph-r1 start
+[13:04:28] qwen3-32b-layer4-mb4-nograph-r1 done rc=0
+[13:04:28] qwen3-32b-layer4-mb4-nograph-r2 start
+[13:05:05] qwen3-32b-layer4-mb4-nograph-r2 done rc=0
+[13:05:05] qwen3-32b-layer4-mb4-default-r2 start
+[13:05:41] qwen3-32b-layer4-mb4-default-r2 done rc=0
+[13:05:41] qwen3-30b-a3b-layer-4-L36-tg128 start
+[13:05:52] qwen3-30b-a3b-layer-4-L36-tg128 done rc=0
+[13:05:52] qwen3-30b-a3b-single-gpu0-tg128 start
+[13:06:02] qwen3-30b-a3b-single-gpu0-tg128 done rc=0
+[13:06:02] qwen3-30b-a3b-single-gpu1-tg128 start
+[13:06:13] qwen3-30b-a3b-single-gpu1-tg128 done rc=0
+[13:06:13] qwen3-30b-a3b-single-gpu2-tg128 start
+[13:06:23] qwen3-30b-a3b-single-gpu2-tg128 done rc=0
+[13:06:23] qwen3-30b-a3b-single-gpu3-tg128 start
+[13:06:34] qwen3-30b-a3b-single-gpu3-tg128 done rc=0

@@ -1,0 +1,662 @@
+[12:28:49] phase5_box start (session=s3f2-20261120 ngpu=4 threads=30 models="qwen3-32b qwen3-30b-a3b" budget=45 min) out=/root/tetraeder/bench/results/s3f2-20261120/phase5
+[12:28:49] STAGE gpus
+[12:28:49] gpus: 4
+gpu 0: limit 350.00 W, default 350.00 W, max 350.00 W ok
+gpu 1: limit 350.00 W, default 350.00 W, max 350.00 W ok
+gpu 2: limit 350.00 W, default 350.00 W, max 350.00 W ok
+gpu 3: limit 350.00 W, default 350.00 W, max 350.00 W ok
+power gate: 4 GPUs at default power limit
+[12:28:49] STAGE env
+[12:28:50] STAGE build
+[12:28:50] build start
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded async-trait v0.1.92
+  Downloaded atomic-waker v1.1.2
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded anstyle-parse v1.0.0
+  Downloaded fnv v1.0.7
+  Downloaded futures-sink v0.3.34
+  Downloaded darling v0.20.11
+  Downloaded mime v0.3.17
+  Downloaded nvml-wrapper-sys v0.10.0
+  Downloaded percent-encoding v2.3.2
+  Downloaded http-body v1.1.0
+  Downloaded http-body-util v0.1.5
+  Downloaded futures-executor v0.3.34
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded parking_lot_core v0.9.12
+  Downloaded opentelemetry-appender-tracing v0.33.1
+  Downloaded memchr v2.8.3
+  Downloaded pin-project-lite v0.2.17
+  Downloaded parking_lot v0.12.5
+  Downloaded derivre v0.3.13
+  Downloaded bytes v1.12.1
+  Downloaded serde_urlencoded v0.7.1
+  Downloaded serde_spanned v0.6.9
+  Downloaded nvml-wrapper v0.13.0
+  Downloaded version_check v0.9.5
+  Downloaded toml_datetime v0.6.11
+  Downloaded potential_utf v0.1.6
+  Downloaded itertools v0.13.0
+  Downloaded zerofrom-derive v0.1.8
+  Downloaded utf8_iter v1.0.4
+  Downloaded try-lock v0.2.5
+  Downloaded wrapcenum-derive v0.4.1
+  Downloaded bindgen v0.72.1
+  Downloaded yoke-derive v0.8.4
+  Downloaded zerofrom v0.1.8
+  Downloaded want v0.3.2
+  Downloaded tower-service v0.3.3
+  Downloaded toml_write v0.1.2
+  Downloaded strum v0.28.0
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded minijinja v3.0.4
+  Downloaded utf8parse v0.2.2
+  Downloaded scopeguard v1.2.0
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded tokio-macros v2.7.2
+  Downloaded thiserror v1.0.69
+  Downloaded zmij v1.0.23
+  Downloaded tinystr v0.8.5
+  Downloaded signal-hook-registry v1.4.8
+  Downloaded quote v1.0.47
+  Downloaded zerovec-derive v0.11.7
+  Downloaded shlex v2.0.1
+  Downloaded static_assertions v1.1.0
+  Downloaded writeable v0.6.4
+  Downloaded thiserror-impl v1.0.69
+  Downloaded serde_path_to_error v0.1.20
+  Downloaded slab v0.4.12
+  Downloaded opentelemetry-otlp v0.33.1
+  Downloaded strum_macros v0.28.0
+  Downloaded tracing-attributes v0.1.31
+  Downloaded tracing-log v0.2.0
+  Downloaded prost v0.14.4
+  Downloaded ref-cast-impl v1.0.27
+  Downloaded yoke v0.8.4
+  Downloaded llguidance v1.9.1
+  Downloaded unicode-ident v1.0.27
+  Downloaded thiserror v2.0.21
+  Downloaded tracing-core v0.1.36
+  Downloaded serde_derive v1.0.229
+  Downloaded tracing-opentelemetry v0.34.0
+  Downloaded ryu v1.0.23
+  Downloaded toml v0.8.23
+  Downloaded referencing v0.29.1
+  Downloaded proc-macro2 v1.0.107
+  Downloaded toml_edit v0.22.27
+  Downloaded uuid v1.29.0
+  Downloaded serde_core v1.0.229
+  Downloaded prettyplease v0.2.37
+  Downloaded zerotrie v0.2.5
+  Downloaded socket2 v0.6.5
+  Downloaded sharded-slab v0.1.7
+  Downloaded serde v1.0.229
+  Downloaded tower v0.5.3
+  Downloaded url v2.5.8
+  Downloaded typenum v1.20.1
+  Downloaded rand v0.9.5
+  Downloaded smallvec v1.16.4
+  Downloaded toktrie v1.9.1
+  Downloaded rand_core v0.9.5
+  Downloaded libc v0.2.191
+  Downloaded zerovec v0.11.9
+  Downloaded tokio-util v0.7.20
+  Downloaded tower-http v0.6.11
+  Downloaded winnow v0.7.15
+  Downloaded opentelemetry_sdk v0.33.1
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded serde_json v1.0.154
+  Downloaded reqwest v0.13.5
+  Downloaded regex v1.13.1
+  Downloaded opentelemetry-proto v0.33.1
+  Downloaded sysinfo v0.40.0
+  Downloaded zerocopy v0.8.63
+  Downloaded syn v3.0.9
+  Downloaded syn v2.0.119
+  Downloaded regex-syntax v0.8.11
+  Downloaded icu_normalizer v2.4.0
+  Downloaded thiserror-impl v2.0.21
+  Downloaded synstructure v0.14.0
+  Downloaded tracing v0.1.44
+  Downloaded sha2 v0.10.9
+  Downloaded prost-derive v0.14.4
+  Downloaded shlex v1.3.0
+  Downloaded rand_chacha v0.9.0
+  Downloaded thread_local v1.1.10
+  Downloaded strsim v0.11.1
+  Downloaded icu_properties_data v2.4.0
+  Downloaded regex-automata v0.4.18
+  Downloaded hyper v1.12.0
+  Downloaded futures-util v0.3.34
+  Downloaded axum v0.8.9
+  Downloaded idna v1.1.0
+  Downloaded icu_properties v2.4.0
+  Downloaded hashbrown v0.17.1
+  Downloaded clap_builder v4.6.7
+  Downloaded cc v1.10.0
+  Downloaded sync_wrapper v1.0.2
+  Downloaded hyper-util v0.1.21
+  Downloaded aho-corasick v1.1.5
+  Downloaded tower-layer v0.3.3
+  Downloaded opentelemetry v0.33.1
+  Downloaded nom v7.1.3
+  Downloaded mio v1.2.4
+  Downloaded io-uring v0.7.15
+  Downloaded icu_collections v2.4.0
+  Downloaded http v1.5.0
+  Downloaded minimal-lexical v0.2.1
+  Downloaded tokio v1.54.1
+  Downloaded indexmap v2.14.2
+  Downloaded rustc-hash v2.1.3
+  Downloaded ref-cast v1.0.27
+  Downloaded opentelemetry-http v0.33.1
+  Downloaded icu_normalizer_data v2.4.0
+  Downloaded base64 v0.23.1
+  Downloaded icu_locale_core v2.4.0
+  Downloaded darling_core v0.20.11
+  Downloaded clap v4.6.7
+  Downloaded log v0.4.34
+  Downloaded icu_provider v2.4.0
+  Downloaded getrandom v0.4.3
+  Downloaded getrandom v0.3.4
+  Downloaded once_cell v1.21.4
+  Downloaded minijinja-contrib v3.0.4
+  Downloaded litemap v0.8.3
+  Downloaded httparse v1.10.1
+  Downloaded bytemuck v1.25.2
+  Downloaded matchit v0.8.4
+  Downloaded fluent-uri v0.3.2
+  Downloaded either v1.19.0
+  Downloaded cexpr v0.6.0
+  Downloaded bitflags v2.13.2
+  Downloaded lock_api v0.4.14
+  Downloaded libloading v0.8.9
+  Downloaded digest v0.10.7
+  Downloaded clap_lex v1.1.1
+  Downloaded axum-core v0.5.6
+  Downloaded futures-channel v0.3.34
+  Downloaded foldhash v0.2.0
+  Downloaded displaydoc v0.2.7
+  Downloaded glob v0.3.4
+  Downloaded futures-task v0.3.34
+  Downloaded cmake v0.1.58
+  Downloaded futures-io v0.3.34
+  Downloaded form_urlencoded v1.2.2
+  Downloaded matchers v0.2.0
+  Downloaded ipnet v2.12.2
+  Downloaded colorchoice v1.0.5
+  Downloaded clap_derive v4.6.7
+  Downloaded clang-sys v1.9.1
+  Downloaded cfg-if v1.0.5
+  Downloaded bytemuck_derive v1.12.1
+  Downloaded lazy_static v1.5.1
+  Downloaded itoa v1.0.18
+  Downloaded idna_adapter v1.2.2
+  Downloaded ident_case v1.0.1
+  Downloaded httpdate v1.0.3
+  Downloaded heck v0.5.0
+  Downloaded generic-array v0.14.7
+  Downloaded futures-macro v0.3.34
+  Downloaded find-msvc-tools v0.1.15
+  Downloaded errno v0.3.14
+  Downloaded equivalent v1.0.3
+  Downloaded ahash v0.8.12
+  Downloaded block-buffer v0.10.4
+  Downloaded futures-core v0.3.34
+  Downloaded darling_macro v0.20.11
+  Downloaded anstyle v1.0.14
+  Downloaded anstream v1.0.0
+  Downloaded crypto-common v0.1.7
+  Downloaded cpufeatures v0.2.17
+  Downloaded borrow-or-share v0.2.4
+  Downloaded anstyle-query v1.1.5
+  Downloaded anyhow v1.0.104
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling serde_core v1.0.229
+   Compiling itoa v1.0.18
+   Compiling memchr v2.8.3
+   Compiling pin-project-lite v0.2.17
+   Compiling serde v1.0.229
+   Compiling futures-core v0.3.34
+   Compiling once_cell v1.21.4
+   Compiling smallvec v1.16.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-sink v0.3.34
+   Compiling bytes v1.12.1
+   Compiling hashbrown v0.17.1
+   Compiling tracing-core v0.1.36
+   Compiling percent-encoding v2.3.2
+   Compiling equivalent v1.0.3
+   Compiling bitflags v2.13.2
+   Compiling anyhow v1.0.104
+   Compiling zerocopy v0.8.63
+   Compiling getrandom v0.3.4
+   Compiling ident_case v1.0.1
+   Compiling syn v3.0.9
+   Compiling syn v2.0.119
+   Compiling indexmap v2.14.2
+   Compiling fnv v1.0.7
+   Compiling slab v0.4.12
+   Compiling futures-io v0.3.34
+   Compiling litemap v0.8.3
+   Compiling writeable v0.6.4
+   Compiling futures-task v0.3.34
+   Compiling errno v0.3.14
+   Compiling thiserror v2.0.21
+   Compiling strsim v0.11.1
+   Compiling signal-hook-registry v1.4.8
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling http v1.5.0
+   Compiling zmij v1.0.23
+   Compiling utf8_iter v1.0.4
+   Compiling icu_normalizer_data v2.4.0
+   Compiling icu_properties_data v2.4.0
+   Compiling either v1.19.0
+   Compiling version_check v0.9.5
+   Compiling serde_json v1.0.154
+   Compiling thiserror v1.0.69
+   Compiling itertools v0.13.0
+   Compiling libloading v0.8.9
+   Compiling foldhash v0.2.0
+   Compiling httparse v1.10.1
+   Compiling http-body v1.1.0
+   Compiling tower-service v0.3.3
+   Compiling nvml-wrapper-sys v0.10.0
+   Compiling form_urlencoded v1.2.2
+   Compiling futures-channel v0.3.34
+   Compiling sync_wrapper v1.0.2
+   Compiling regex-syntax v0.8.11
+   Compiling static_assertions v1.1.0
+   Compiling try-lock v0.2.5
+   Compiling glob v0.3.4
+   Compiling log v0.4.34
+   Compiling tower-layer v0.3.3
+   Compiling darling_core v0.20.11
+   Compiling tracing-attributes v0.1.31
+   Compiling thiserror-impl v1.0.69
+   Compiling clang-sys v1.9.1
+   Compiling serde_derive v1.0.229
+   Compiling synstructure v0.14.0
+   Compiling zerovec-derive v0.11.7
+   Compiling displaydoc v0.2.7
+   Compiling tracing v0.1.44
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling futures-macro v0.3.34
+   Compiling thiserror-impl v2.0.21
+   Compiling tokio-macros v2.7.2
+   Compiling darling_macro v0.20.11
+   Compiling zerofrom v0.1.8
+   Compiling futures-util v0.3.34
+   Compiling yoke v0.8.4
+   Compiling darling v0.20.11
+   Compiling wrapcenum-derive v0.4.1
+   Compiling tokio v1.54.1
+   Compiling zerovec v0.11.9
+   Compiling zerotrie v0.2.5
+   Compiling opentelemetry v0.33.1
+   Compiling nvml-wrapper v0.13.0
+   Compiling want v0.3.2
+   Compiling sysinfo v0.40.0
+   Compiling tinystr v0.8.5
+   Compiling icu_locale_core v2.4.0
+   Compiling potential_utf v0.1.6
+   Compiling prettyplease v0.2.37
+   Compiling httpdate v1.0.3
+   Compiling icu_collections v2.4.0
+   Compiling atomic-waker v1.1.2
+   Compiling ppv-lite86 v0.2.21
+   Compiling http-body-util v0.1.5
+   Compiling rand_core v0.9.5
+   Compiling ipnet v2.12.2
+   Compiling base64 v0.23.1
+   Compiling icu_provider v2.4.0
+   Compiling minimal-lexical v0.2.1
+   Compiling icu_properties v2.4.0
+   Compiling icu_normalizer v2.4.0
+   Compiling nom v7.1.3
+   Compiling rand_chacha v0.9.0
+   Compiling regex-automata v0.4.18
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling winnow v0.7.15
+   Compiling find-msvc-tools v0.1.15
+   Compiling idna_adapter v1.2.2
+   Compiling hyper v1.12.0
+   Compiling tower v0.5.3
+   Compiling idna v1.1.0
+   Compiling shlex v2.0.1
+   Compiling lazy_static v1.5.1
+   Compiling toml_write v0.1.2
+   Compiling bindgen v0.72.1
+   Compiling sharded-slab v0.1.7
+   Compiling cc v1.10.0
+   Compiling cexpr v0.6.0
+   Compiling regex v1.13.1
+   Compiling url v2.5.8
+   Compiling rand v0.9.5
+   Compiling prost-derive v0.14.4
+   Compiling toml_edit v0.22.27
+   Compiling futures-executor v0.3.34
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling hyper-util v0.1.21
+   Compiling rustc-hash v2.1.3
+   Compiling matchers v0.2.0
+   Compiling tower-http v0.6.11
+   Compiling shlex v1.3.0
+   Compiling nu-ansi-term v0.50.3
+   Compiling prost v0.14.4
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling cmake v0.1.58
+   Compiling tracing-subscriber v0.3.23
+   Compiling async-trait v0.1.92
+   Compiling generic-array v0.14.7
+   Compiling heck v0.5.0
+   Compiling typenum v1.20.1
+   Compiling ahash v0.8.12
+   Compiling ref-cast v1.0.27
+   Compiling parking_lot_core v0.9.12
+   Compiling reqwest v0.13.5
+   Compiling ref-cast-impl v1.0.27
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling toml v0.8.23
+   Compiling strum_macros v0.28.0
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling bytemuck_derive v1.12.1
+   Compiling bytemuck v1.25.2
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling borrow-or-share v0.2.4
+   Compiling io-uring v0.7.15
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling getrandom v0.4.3
+   Compiling utf8parse v0.2.2
+   Compiling strum v0.28.0
+   Compiling fluent-uri v0.3.2
+   Compiling anstyle-parse v1.0.0
+   Compiling digest v0.10.7
+   Compiling opentelemetry-http v0.33.1
+   Compiling parking_lot v0.12.5
+   Compiling mime v0.3.17
+   Compiling anstyle v1.0.14
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling llguidance v1.9.1
+   Compiling colorchoice v1.0.5
+   Compiling ryu v1.0.23
+   Compiling cpufeatures v0.2.17
+   Compiling axum-core v0.5.6
+   Compiling referencing v0.29.1
+   Compiling anstream v1.0.0
+   Compiling sha2 v0.10.9
+   Compiling serde_urlencoded v0.7.1
+   Compiling opentelemetry-proto v0.33.1
+   Compiling derivre v0.3.13
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling toktrie v1.9.1
+   Compiling minijinja v3.0.4
+   Compiling serde_path_to_error v0.1.20
+   Compiling clap_lex v1.1.1
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling matchit v0.8.4
+   Compiling uuid v1.29.0
+   Compiling clap_builder v4.6.7
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling axum v0.8.9
+   Compiling clap_derive v4.6.7
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tokio-util v0.7.20
+   Compiling tetraeder-kvcache v0.0.0 (/root/tetraeder/crates/kvcache)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling clap v4.6.7
+   Compiling minijinja-contrib v3.0.4
+   Compiling tetraeder-costmodel v0.0.0 (/root/tetraeder/crates/costmodel)
+   Compiling tetraeder-control v0.0.0 (/root/tetraeder/crates/control)
+   Compiling tetraeder-gateway v0.0.0 (/root/tetraeder/crates/gateway)
+   Compiling tetraeder-analysis v0.0.0 (/root/tetraeder/crates/analysis)
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 8m 11s
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.9
+   Compiling serde_json v1.0.154
+   Compiling serde_derive v1.0.229
+   Compiling clap_derive v4.6.7
+   Compiling clap v4.6.7
+   Compiling serde v1.0.229
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling toml_edit v0.22.27
+   Compiling toml v0.8.23
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-costmodel v0.0.0 (/root/tetraeder/crates/costmodel)
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+    Finished `release` profile [optimized] target(s) in 28.39s
+[12:37:31] build done
+[12:37:31] STAGE models
+[12:37:31] STAGE gpu-parity
+[12:37:31] gpu-parity start
+[12:45:32] gpu-parity done
+[12:45:32] STAGE discover
+hardware: gpu0: PCIe link is gen2 x16 now, max gen3 x16 (may be idle power saving)
+hardware: gpu1: PCIe link is gen1 x16 now, max gen3 x16 (may be idle power saving)
+hardware: gpu2: PCIe link is gen1 x16 now, max gen3 x16 (may be idle power saving)
+hardware: gpu3: PCIe link is gen1 x16 now, max gen3 x16 (may be idle power saving)
+hardware: pcie topology: 4 GPUs from NVML but 5 PCI display devices, not matched
+[12:45:33] STAGE enumerate
+single: layers [0, 64) on gpu0 tp 1 ep 1
+layer-4: layers [0, 16) on gpu0 tp 1 ep 1; layers [16, 32) on gpu1 tp 1 ep 1; layers [32, 48) on gpu2 tp 1 ep 1; layers [48, 64) on gpu3 tp 1 ep 1
+tp-4: layers [0, 64) on gpu0+gpu1+gpu2+gpu3 tp 4 ep 1
+tp2-pp2: layers [0, 32) on gpu0+gpu1 tp 2 ep 1; layers [32, 64) on gpu2+gpu3 tp 2 ep 1
+[12:45:33] enumerate qwen3-32b: 4 candidates, 0 pruned
+single: layers [0, 48) on gpu0 tp 1 ep 1
+layer-4: layers [0, 12) on gpu0 tp 1 ep 1; layers [12, 24) on gpu1 tp 1 ep 1; layers [24, 36) on gpu2 tp 1 ep 1; layers [36, 48) on gpu3 tp 1 ep 1
+ep-4: layers [0, 48) on gpu0+gpu1+gpu2+gpu3 tp 4 ep 4
+tp2-pp2: layers [0, 24) on gpu0+gpu1 tp 2 ep 1; layers [24, 48) on gpu2+gpu3 tp 2 ep 1
+pruned tp-4: 3 blocks over 4 ranks (expert down rows)
+[12:45:34] enumerate qwen3-30b-a3b: 4 candidates, 1 pruned
+[12:45:34] STAGE probe
+[12:45:43] comm-probe: nccl
+[12:45:43] STAGE prepass
+[12:45:43] prepass qwen3-32b llama-bench layer start
+[12:45:50] prepass qwen3-32b llama-bench layer: ok
+[12:45:50] prepass qwen3-32b llama-bench row start
+[12:45:51] prepass qwen3-32b llama-bench row: rejected rc=1
+[12:45:51] prepass qwen3-32b llama-bench tensor start
+[12:46:00] prepass qwen3-32b llama-bench tensor: ok
+[12:46:02] prepass qwen3-32b ik-llama-bench layer start
+[12:46:10] prepass qwen3-32b ik-llama-bench layer: rejected rc=0
+[12:46:10] prepass qwen3-32b ik-llama-bench row start
+[12:46:17] prepass qwen3-32b ik-llama-bench row: rejected rc=0
+[12:46:17] prepass qwen3-32b ik-llama-bench graph start
+[12:46:27] prepass qwen3-32b ik-llama-bench graph: rejected rc=0
+[12:46:27] prepass qwen3-30b-a3b llama-bench layer start
+[12:46:34] prepass qwen3-30b-a3b llama-bench layer: ok
+[12:46:34] prepass qwen3-30b-a3b llama-bench row start
+[12:46:35] prepass qwen3-30b-a3b llama-bench row: rejected rc=1
+[12:46:35] prepass qwen3-30b-a3b llama-bench tensor start
+[12:46:45] prepass qwen3-30b-a3b llama-bench tensor: ok
+[12:46:47] prepass qwen3-30b-a3b ik-llama-bench layer start
+[12:46:54] prepass qwen3-30b-a3b ik-llama-bench layer: rejected rc=0
+[12:46:54] prepass qwen3-30b-a3b ik-llama-bench row start
+[12:47:02] prepass qwen3-30b-a3b ik-llama-bench row: rejected rc=0
+[12:47:02] prepass qwen3-30b-a3b ik-llama-bench graph start
+[12:47:18] prepass qwen3-30b-a3b ik-llama-bench graph: rejected rc=0
+[12:47:18] STAGE anchors
+hardware: CUDA_VISIBLE_DEVICES=0,1: 2 of 4 GPUs visible
+hardware: pcie topology: not read while CUDA_VISIBLE_DEVICES hides GPUs
+single: layers [0, 64) on gpu0 tp 1 ep 1
+layer-2: layers [0, 32) on gpu0 tp 1 ep 1; layers [32, 64) on gpu1 tp 1 ep 1
+tp-2: layers [0, 64) on gpu0+gpu1 tp 2 ep 1
+single: layers [0, 48) on gpu0 tp 1 ep 1
+layer-2: layers [0, 24) on gpu0 tp 1 ep 1; layers [24, 48) on gpu1 tp 1 ep 1
+tp-2: layers [0, 48) on gpu0+gpu1 tp 2 ep 1
+ep-2: layers [0, 48) on gpu0+gpu1 tp 2 ep 2
+[12:47:19] run qwen3-32b-anchor-single-L16-r1 start
+cotenant ok: host 1.2729033588688943 cores busy, container 1.0615115238507045, engine 0.9957942567393957, outside 0.2113918350181898, smt pairs 0
+[12:47:26] run qwen3-32b-anchor-single-L16-r1 done
+[12:47:26] run qwen3-32b-anchor-single-L32-r1 start
+cotenant ok: host 1.234161578822397 cores busy, container 1.063614344026299, engine 0.9966635185662184, outside 0.1705472347960979, smt pairs 0
+[12:47:39] run qwen3-32b-anchor-single-L32-r1 done
+[12:47:39] run qwen3-32b-anchor-tp-2-L16-r1 start
+cotenant ok: host 1.1903963894057712 cores busy, container 1.0379080227842317, engine 0.9710067182170277, outside 0.15248836662153953, smt pairs 0
+[12:47:48] run qwen3-32b-anchor-tp-2-L16-r1 done
+[12:47:48] run qwen3-32b-anchor-tp-2-L32-r1 start
+cotenant ok: host 1.3044577679250815 cores busy, container 1.070010044576096, engine 1.0048308618230637, outside 0.23444772334898545, smt pairs 0
+[12:48:01] run qwen3-32b-anchor-tp-2-L32-r1 done
+[12:48:01] run qwen3-32b-anchor-tp-4-L16-r1 start
+cotenant ok: host 1.3488442059696701 cores busy, container 1.2249007490168924, engine 1.1589133372635785, outside 0.12394345695277775, smt pairs 0
+[12:48:11] run qwen3-32b-anchor-tp-4-L16-r1 done
+[12:48:11] run qwen3-32b-anchor-tp-4-L32-r1 start
+cotenant ok: host 1.297185231711275 cores busy, container 1.1347044395197763, engine 1.0667405666470438, outside 0.1624807921914988, smt pairs 0
+[12:48:28] run qwen3-32b-anchor-tp-4-L32-r1 done
+[12:48:28] run qwen3-32b-anchor-single-L16-r2 start
+cotenant ok: host 1.2487955457591906 cores busy, container 1.0414980184626164, engine 0.9781564940880868, outside 0.20729752729657425, smt pairs 0
+[12:48:35] run qwen3-32b-anchor-single-L16-r2 done
+[12:48:35] run qwen3-32b-anchor-single-L32-r2 start
+cotenant ok: host 1.2047297389257305 cores busy, container 1.0650312478800743, engine 0.9966352194761297, outside 0.13969849104565624, smt pairs 0
+[12:48:46] run qwen3-32b-anchor-single-L32-r2 done
+[12:48:46] run qwen3-32b-anchor-tp-2-L16-r2 start
+cotenant ok: host 1.177638996014044 cores busy, container 1.0248582609297159, engine 0.9563390823603898, outside 0.1527807350843282, smt pairs 0
+[12:48:55] run qwen3-32b-anchor-tp-2-L16-r2 done
+[12:48:55] run qwen3-32b-anchor-tp-2-L32-r2 start
+cotenant ok: host 1.3413340473567206 cores busy, container 1.0680621826198076, engine 1.001963535967803, outside 0.273271864736913, smt pairs 0
+[12:49:08] run qwen3-32b-anchor-tp-2-L32-r2 done
+[12:49:08] run qwen3-32b-anchor-tp-4-L16-r2 start
+cotenant ok: host 1.3621690705279008 cores busy, container 1.209330953954772, engine 1.137388159725404, outside 0.15283811657312873, smt pairs 0
+[12:49:19] run qwen3-32b-anchor-tp-4-L16-r2 done
+[12:49:19] run qwen3-32b-anchor-tp-4-L32-r2 start
+cotenant ok: host 1.277819915190103 cores busy, container 1.1294240942487972, engine 1.0658520239419464, outside 0.14839582094130588, smt pairs 0
+[12:49:36] run qwen3-32b-anchor-tp-4-L32-r2 done
+[12:49:36] run qwen3-30b-a3b-anchor-single-L12-r1 start
+cotenant ok: host 1.2032059495810643 cores busy, container 1.0637391322512726, engine 1.0004850295178642, outside 0.13946681732979171, smt pairs 0
+[12:49:41] run qwen3-30b-a3b-anchor-single-L12-r1 done
+[12:49:41] run qwen3-30b-a3b-anchor-single-L24-r1 start
+cotenant ok: host 1.1941684334112752 cores busy, container 1.0627566319293638, engine 0.9979490204784562, outside 0.13141180148191145, smt pairs 0
+[12:49:49] run qwen3-30b-a3b-anchor-single-L24-r1 done
+[12:49:49] run qwen3-30b-a3b-anchor-tp-2-L12-r1 start
+cotenant ok: host 1.1879399362793936 cores busy, container 1.0317490751931657, engine 0.9656860724605091, outside 0.15619086108622793, smt pairs 0
+[12:49:57] run qwen3-30b-a3b-anchor-tp-2-L12-r1 done
+[12:49:57] run qwen3-30b-a3b-anchor-tp-2-L24-r1 start
+cotenant ok: host 1.3264001490300403 cores busy, container 1.0842722971714922, engine 1.0199498626948564, outside 0.24212785185854813, smt pairs 0
+[12:50:07] run qwen3-30b-a3b-anchor-tp-2-L24-r1 done
+[12:50:07] run qwen3-30b-a3b-anchor-single-L12-r2 start
+cotenant ok: host 1.3014719915599429 cores busy, container 1.0404664037668596, engine 0.9775563565478071, outside 0.26100558779308325, smt pairs 0
+[12:50:13] run qwen3-30b-a3b-anchor-single-L12-r2 done
+[12:50:13] run qwen3-30b-a3b-anchor-single-L24-r2 start
+cotenant ok: host 1.3374586123631238 cores busy, container 1.0619313372395718, engine 0.9821695638427695, outside 0.275527275123552, smt pairs 0
+[12:50:21] run qwen3-30b-a3b-anchor-single-L24-r2 done
+[12:50:21] run qwen3-30b-a3b-anchor-tp-2-L12-r2 start
+cotenant ok: host 1.2293155493243575 cores busy, container 1.029197219093347, engine 0.9603673792281374, outside 0.20011833023101055, smt pairs 0
+[12:50:29] run qwen3-30b-a3b-anchor-tp-2-L12-r2 done
+[12:50:29] run qwen3-30b-a3b-anchor-tp-2-L24-r2 start
+cotenant ok: host 1.2409863056162325 cores busy, container 1.0875724445193464, engine 1.0194487151339153, outside 0.15341386109688604, smt pairs 0
+[12:50:39] run qwen3-30b-a3b-anchor-tp-2-L24-r2 done
+[12:50:39] STAGE calibrate
+[12:50:39] routing qwen3-30b-a3b start
+routing: 48 layers, 2048 prefill rows, 128 decode tokens -> /root/tetraeder/bench/results/s3f2-20261120/phase5/routing-qwen3-30b-a3b.json.tmp
+cpu compute: not used (no anchor places compute on the CPU)
+10 anchors, band 0.133 -> /root/tetraeder/bench/results/s3f2-20261120/phase5/calib.json
+[12:50:46] STAGE predict
+single     pp   1157.2 tg   38.24 T    5.12 s
+layer-4    pp   2573.1 tg   37.99 T    4.17 s
+tp-4       pp   1806.0 tg   70.72 T    2.94 s
+tp2-pp2    pp   2290.9 tg   56.83 T    3.15 s
+[12:50:46] PREDICT qwen3-32b sha256 73c19819ef71c928e31d1f8f8ef663d93c729cca12ee289c01d6c5b525fe7ac6 (written before the first candidate run)
+single     pp   5018.5 tg  183.72 T    1.10 s
+layer-4    pp  11095.5 tg  178.44 T    0.90 s
+ep-4       pp   4905.2 tg  140.91 T    1.33 s
+tp2-pp2    pp   7066.2 tg  156.83 T    1.11 s
+[12:50:46] PREDICT qwen3-30b-a3b sha256 8d9a2a7a35a6514b928f8f6810acb8b08c2368945cace9e0c1efd361ba20913b (written before the first candidate run)
+[12:50:46] STAGE rounds
+[12:50:46] round qwen3-32b 1: 6 configurations
+[12:50:46] run qwen3-32b-layer-4-r1 start
+cotenant ok: host 1.2811429140533448 cores busy, container 1.0542621263121654, engine 0.9891145547130716, outside 0.22688078774117937, smt pairs 0
+[12:51:07] run qwen3-32b-layer-4-r1 done
+[12:51:07] run qwen3-32b-tp-4-r1 start
+cotenant ok: host 1.293073700556962 cores busy, container 1.1369861758055686, engine 1.0690650910037567, outside 0.15608752475139331, smt pairs 0
+[12:51:32] run qwen3-32b-tp-4-r1 done
+[12:51:32] run qwen3-32b-tp2-pp2-r1 start
+cotenant ok: host 1.1978315576981284 cores busy, container 1.0371227820124211, engine 0.9718962714255247, outside 0.1607087756857073, smt pairs 0
+[12:51:57] run qwen3-32b-tp2-pp2-r1 done
+[12:51:57] run qwen3-32b-llama-bench-layer-r1 start
+cotenant ok: host 6.720614796507946 cores busy, container 6.469565966739423, engine 6.4067195462862445, outside 0.25104882976852316, smt pairs 0
+[12:52:09] run qwen3-32b-llama-bench-layer-r1 done
+[12:52:09] run qwen3-32b-llama-bench-tensor-r1 start
+cotenant ok: host 5.930025873300895 cores busy, container 5.61964672006365, engine 5.555020205804429, outside 0.3103791532372453, smt pairs 0
+[12:52:23] run qwen3-32b-llama-bench-tensor-r1 done
+[12:52:23] run qwen3-32b-single-r1 start
+cotenant ok: host 1.204948885637363 cores busy, container 1.0405912180216659, engine 0.9758252358917096, outside 0.16435766761569703, smt pairs 0
+[12:52:43] run qwen3-32b-single-r1 done
+[12:52:44] run qwen3-32b-single-aa start
+cotenant ok: host 1.2384406013612057 cores busy, container 1.0433339433674271, engine 0.9757666329128779, outside 0.19510665799377858, smt pairs 0
+[12:53:04] run qwen3-32b-single-aa done
+[12:53:05] round qwen3-30b-a3b 1: 6 configurations
+[12:53:05] run qwen3-30b-a3b-layer-4-r1 start
+cotenant ok: host 1.222825038671544 cores busy, container 1.0652323246305133, engine 0.9950781721832932, outside 0.1575927140410307, smt pairs 0
+[12:53:20] run qwen3-30b-a3b-layer-4-r1 done
+[12:53:20] run qwen3-30b-a3b-ep-4-r1 start
+cotenant ok: host 1.2806436479646814 cores busy, container 1.1255203134159417, engine 1.0619107384463122, outside 0.15512333454873972, smt pairs 0
+[12:53:38] run qwen3-30b-a3b-ep-4-r1 done
+[12:53:38] run qwen3-30b-a3b-tp2-pp2-r1 start
+cotenant ok: host 1.2830108211874647 cores busy, container 1.067716095871714, engine 1.0046639152966623, outside 0.21529472531575067, smt pairs 0
+[12:53:57] run qwen3-30b-a3b-tp2-pp2-r1 done
+[12:53:57] run qwen3-30b-a3b-llama-bench-layer-r1 start
+cotenant ok: host 3.6244934145203045 cores busy, container 3.386607865408576, engine 3.3250409227805697, outside 0.23788554911172843, smt pairs 0
+[12:54:06] run qwen3-30b-a3b-llama-bench-layer-r1 done
+[12:54:06] run qwen3-30b-a3b-llama-bench-tensor-r1 start
+cotenant ok: host 3.8864939967176495 cores busy, container 3.695699851742233, engine 3.629914156345586, outside 0.19079414497541647, smt pairs 0
+[12:54:19] run qwen3-30b-a3b-llama-bench-tensor-r1 done
+[12:54:19] run qwen3-30b-a3b-single-r1 start
+cotenant ok: host 1.1991726186637863 cores busy, container 1.0236427609653955, engine 0.95763212399733, outside 0.1755298576983908, smt pairs 0
+[12:54:32] run qwen3-30b-a3b-single-r1 done
+[12:54:32] run qwen3-30b-a3b-single-aa start
+cotenant ok: host 1.1844195706864495 cores busy, container 1.0198404605233706, engine 0.9539985767899439, outside 0.1645791101630789, smt pairs 0
+[12:54:46] run qwen3-30b-a3b-single-aa done
+[12:54:46] STAGE pp-overlap
+[12:54:46] run ppov-qwen3-32b-mb1-r1 start
+cotenant ok: host 1.219430713971332 cores busy, container 1.043662534902646, engine 0.9780176575123248, outside 0.17576817906868603, smt pairs 0
+[12:55:12] run ppov-qwen3-32b-mb1-r1 done
+[12:55:12] run ppov-qwen3-32b-mb4-r1 start
+cotenant ok: host 1.191715099861034 cores busy, container 1.0427811519464603, engine 0.9739222595570888, outside 0.1489339479145737, smt pairs 0
+[12:55:37] run ppov-qwen3-32b-mb4-r1 done
+[12:55:37] run ppov-qwen3-32b-mb4-r2 start
+cotenant ok: host 1.1947309561113846 cores busy, container 1.0431370092055152, engine 0.9748748067693392, outside 0.15159394690586936, smt pairs 0
+[12:56:02] run ppov-qwen3-32b-mb4-r2 done
+[12:56:02] run ppov-qwen3-32b-mb1-r2 start
+cotenant ok: host 1.1783978746850492 cores busy, container 1.0440791238947642, engine 0.9762553281380343, outside 0.134318750790285, smt pairs 0
+[12:56:28] run ppov-qwen3-32b-mb1-r2 done
+pp-overlap qwen3-32b: median pp {'1': 1338.4867408979599, '4': 2188.750846223111}, mb4 / mb1 1.635
+[12:56:29] run ppov-qwen3-30b-a3b-mb1-r1 start
+cotenant ok: host 1.2473360421667592 cores busy, container 1.0458796199153362, engine 0.9832522047862938, outside 0.20145642225142302, smt pairs 0
+[12:56:49] run ppov-qwen3-30b-a3b-mb1-r1 done
+[12:56:49] run ppov-qwen3-30b-a3b-mb4-r1 start
+cotenant ok: host 1.2276683729034032 cores busy, container 1.0549978936293474, engine 0.9878865353256109, outside 0.17267047927405588, smt pairs 0
+[12:57:09] run ppov-qwen3-30b-a3b-mb4-r1 done
+[12:57:09] run ppov-qwen3-30b-a3b-mb4-r2 start
+cotenant ok: host 1.2111135965910365 cores busy, container 1.0633153265817528, engine 0.9963239760255477, outside 0.1477982700092837, smt pairs 0
+[12:57:29] run ppov-qwen3-30b-a3b-mb4-r2 done
+[12:57:29] run ppov-qwen3-30b-a3b-mb1-r2 start
+cotenant ok: host 1.1954129300559828 cores busy, container 1.0379984150425599, engine 0.9758846795660083, outside 0.15741451501342296, smt pairs 0
+[12:57:49] run ppov-qwen3-30b-a3b-mb1-r2 done
+pp-overlap qwen3-30b-a3b: median pp {'1': 4220.327432220212, '4': 6522.436871628868}, mb4 / mb1 1.545
+[12:57:49] STAGE vllm
+[12:57:49] vllm skipped: 16 min of the budget left, under 25
+[12:57:49] STAGE summary
+{"phase5_pass": false, "band": 0.08, "band_source": "provisional cuda-default", "cases": {"M4": null, "D4": null}}
+[12:57:50] PHASE5_BOX_DONE rc=0

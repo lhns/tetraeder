@@ -1,0 +1,16 @@
+AllReduce gpu0,gpu1,gpu2,gpu3 via nccl: 10 points, 8.348 ms at the largest size
+AllReduce gpu0,gpu1 via nccl: 10 points, 6.268 ms at the largest size
+AllReduce gpu2,gpu3 via nccl: 10 points, 6.826 ms at the largest size
+Copy gpu0,gpu1 via copy: 10 points, 11.357 ms at the largest size
+Copy gpu0,gpu2 via copy: 10 points, 11.400 ms at the largest size
+Copy gpu0,gpu3 via copy: 10 points, 11.356 ms at the largest size
+Copy gpu1,gpu0 via copy: 10 points, 11.346 ms at the largest size
+Copy gpu1,gpu2 via copy: 10 points, 11.397 ms at the largest size
+Copy gpu1,gpu3 via copy: 10 points, 11.361 ms at the largest size
+Copy gpu2,gpu0 via copy: 10 points, 11.359 ms at the largest size
+Copy gpu2,gpu1 via copy: 10 points, 11.358 ms at the largest size
+Copy gpu2,gpu3 via copy: 10 points, 11.355 ms at the largest size
+Copy gpu3,gpu0 via copy: 10 points, 11.365 ms at the largest size
+Copy gpu3,gpu1 via copy: 10 points, 11.371 ms at the largest size
+Copy gpu3,gpu2 via copy: 10 points, 11.393 ms at the largest size
+wrote /root/tetraeder/bench/results/s3f2-20261120/phase5/calib-comm.json (all-reduce path nccl)

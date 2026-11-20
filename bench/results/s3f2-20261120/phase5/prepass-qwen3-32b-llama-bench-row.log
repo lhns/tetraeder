@@ -1,0 +1,8 @@
+ggml_cuda_init: found 4 CUDA devices (Total VRAM: 96504 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+  Device 1: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+  Device 2: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+  Device 3: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+llama_model_load: error loading model: device CUDA0 does not support split buffers
+llama_model_load_from_file_impl: failed to load model
+llama_bench: error: failed to load model '/root/tetraeder/.hf_cache/Qwen__Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf'
