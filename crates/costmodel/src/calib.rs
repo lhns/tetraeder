@@ -851,6 +851,7 @@ mod tests {
                 phases,
                 step_fixed: true,
                 prefill_micro_batches: 1,
+                model: None,
             }),
             ..features(1.0, 0.0)
         }

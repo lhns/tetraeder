@@ -190,3 +190,72 @@ def test_version_4_rows_follow_from_the_committed_graph(path):
     for r, c in zip(rows, v["rows"]):
         assert (r["model"], r["id"]) == (c["model"], c["id"])
         assert r["pp"] == c["pp"] and r["tg"] == c["tg"]
+
+
+V5 = ROOT / "bench" / "results" / "s3c-20261119" / "costmodel-v5"
+needs_v5 = pytest.mark.skipif(not (V5 / "fit-s3b.json").is_file(), reason="costmodel-v5 not committed")
+
+
+@needs_v5
+def test_version_5_rows_follow_from_the_committed_graph_and_only_the_low_duty_decode_moves():
+    """ADR 0082: the committed s3b graph carries decode_clocks; without them version 5 is version 4 to the last bit, with
+    them only the 30B layer-4 decode (duties 0.2 to 0.3) is slower, prefill and every other candidate are untouched."""
+    v = json.loads((V5 / "fit-s3b.json").read_text())
+    assert v["version"] == 5 and v["hw"]["decode_clocks"]["low_mhz"] == 1695.0
+    ev = ROOT / v["eval"]
+    rows = cr.predict_session(v["hw"], ev, 5)
+    for r, c in zip(rows, v["rows"]):
+        assert (r["model"], r["id"]) == (c["model"], c["id"]) and r["pp"] == c["pp"] and r["tg"] == c["tg"]
+    plain = {k: x for k, x in v["hw"].items() if k != "decode_clocks"}
+    v4 = cr.predict_session(plain, ev, 4)
+    assert cr.predict_session(plain, ev, 5) == v4
+    moved = [(a["model"], a["id"]) for a, b in zip(rows, v4) if a["tg"] != b["tg"]]
+    assert all(a["pp"] == b["pp"] for a, b in zip(rows, v4))
+    assert ("qwen3-30b-a3b", "layer-4") in moved
+    assert all(m[0] == "qwen3-30b-a3b" or m[1] == "layer-4" for m in moved)
+
+
+def test_the_decode_factor_follows_the_duty_threshold_and_the_clamp():
+    def feats(ops):
+        parts = lambda i: [{**cr.part(f"gpu{i}", 0.0, ops[i], 0.0, 0.0, 1.0, ew=ops[i] * 1e3, ep=0.0), "sb": 0.0}]  # noqa: E731
+        phases = [{"repeat": 1, "parts": parts(i), "pre": None, "ranges": 0, "after": None} for i in range(len(ops))]
+        return {"phases": phases, "micro": 1, "model": "m"}
+
+    gpu = lambda i: {"id": f"gpu{i}", "kind": "gpu", "compute": {"flops_per_s": 1e13, "c0_graph_s": 1e-6, "c0_eager_s": 4e-6},  # noqa: E731
+                     "bandwidth_bytes_per_s": {"value": 1e11}}
+    hw = {"devices": [gpu(i) for i in range(4)], "links": [], "collectives": [], "range_costs": {"c_step_s": 0.0}}
+    u = 1e-6 + 1e-8
+    base = cr.predict(hw, feats([10.0] * 4), version=5)
+    assert base["tg"] == pytest.approx(1.0 / (40 * u)) and base["clocks"] == []
+    hw["decode_clocks"] = {"low_mhz": 1695.0, "busy_mhz": {"m": 1905.0}, "duty_threshold": 0.32}
+    k = 1905.0 / 1695.0
+    low = cr.predict(hw, feats([10.0] * 4), version=5)
+    assert low["tg"] == pytest.approx(1.0 / (40 * u * k)) and low["pp"] == base["pp"]
+    assert [c["factor"] for c in low["clocks"]] == [k] * 4 and low["clocks"][0]["mhz"] == 1695.0
+    # three equal stages are busy 1/3 of the step each: busy state, no factor
+    assert cr.predict(hw, feats([10.0] * 3), version=5)["tg"] == pytest.approx(1.0 / (30 * u))
+    # a mix: the 60-op stage is busy, the three 10-op stages are low
+    mix = cr.predict(hw, feats([60.0, 10.0, 10.0, 10.0]), version=5)
+    assert mix["tg"] == pytest.approx(1.0 / (60 * u + 30 * u * k))
+    # under one clock step above the low clock, a busy clock below it, a missing model, no model: version 4 numbers
+    for dc, model in (({"low_mhz": 1695.0, "busy_mhz": {"m": 1710.0}}, "m"), ({"low_mhz": 1695.0, "busy_mhz": {"m": 1600.0}}, "m"),
+                      ({"low_mhz": 1695.0, "busy_mhz": {"x": 1905.0}}, "m"), ({"low_mhz": 1695.0, "busy_mhz": {"m": 1905.0}}, None)):
+        f = feats([10.0] * 4)
+        f["model"] = model
+        assert cr.predict({**hw, "decode_clocks": dc}, f, version=5)["tg"] == base["tg"]
+    # version 4 ignores the block
+    assert cr.predict(hw, feats([10.0] * 4), version=4)["tg"] == base["tg"]
+
+
+def test_the_layer_anchor_plan_cuts_the_session_layer_plan():
+    d = ROOT / "bench" / "results" / "s3b-20261119" / "phase5"
+    if not (d / "candidates-qwen3-30b-a3b.json").is_file():
+        pytest.skip("s3b not committed")
+    pl = cr.anchor_plans(d, "qwen3-30b-a3b")
+    plan = cr.layer_anchor_plan(pl, "layer-4@L24", 48)
+    assert [tuple(s["layers"]) for s in plan["replicas"][0]["stages"]] == [(0, 6), (6, 12), (12, 18), (18, 48)]
+    assert [s["devices"] for s in plan["replicas"][0]["stages"]] == [s["devices"] for s in pl["layer-4"]["replicas"][0]["stages"]]
+    assert cr.layer_anchor_plan(pl, "layer-4@L25", 48) is None and cr.layer_anchor_plan(pl, "layer-2@L24", 48) is None
+    f = cr.features(cr.load_json(d / "layouts" / "qwen3-30b-a3b.json"), plan, 24, 5)
+    ops = [ph["parts"][0]["ops"] for ph in f["phases"] if not ph.get("out")]
+    assert len(ops) == 4 and len(set(ops)) == 1

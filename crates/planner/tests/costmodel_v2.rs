@@ -136,8 +136,56 @@ fn predict_reproduces_the_v4_replica_on_s2f() {
     }
 }
 
+/// The replica's version-5 graph of s3b with host 20210's decode clocks (ADR 0082, `--json`,
+/// committed in `costmodel-v5/`), if present.
+fn replica_v5(name: &str) -> Option<serde_json::Value> {
+    let p = repo()
+        .join("bench/results/s3c-20261119/costmodel-v5")
+        .join(name);
+    if !p.is_file() {
+        eprintln!("skip: {} not committed", p.display());
+        return None;
+    }
+    Some(serde_json::from_str(&read(&p)).unwrap())
+}
+
+/// MODEL_VERSION 5 (ADR 0082): on the replica's version-5 graph, which carries `decode_clocks`,
+/// `predict` gives the replica's numbers, the 30B layer-4 decode at the low clock included, and
+/// the same graph without the clocks predicts as cost model 4 (only that decode moves).
+#[test]
+fn predict_reproduces_the_v5_replica_on_s3b() {
+    let Some(v) = replica_v5("fit-s3b.json") else {
+        return;
+    };
+    assert_eq!(v["version"], 5);
+    assert_eq!(tetraeder_costmodel::MODEL_VERSION, 5);
+    let hw: HardwareGraph = serde_json::from_value(v["hw"].clone()).unwrap();
+    assert!(hw.decode_clocks.is_some());
+    let eval = repo().join(v["eval"].as_str().unwrap());
+    let ours = predictions(&hw, &eval);
+    let w = worst(&ours, &v["rows"]);
+    assert!(w < 1e-9, "largest difference {w:e}");
+    let mut plain = hw.clone();
+    plain.decode_clocks = None;
+    let v4 = predictions(&plain, &eval);
+    let mut moved = Vec::new();
+    for (a, b) in ours.iter().zip(&v4) {
+        assert_eq!((&a.0, &a.1), (&b.0, &b.1));
+        assert_eq!(a.2.to_bits(), b.2.to_bits(), "{}/{} pp", a.0, a.1);
+        if a.3.to_bits() != b.3.to_bits() {
+            moved.push((a.0.clone(), a.1.clone(), a.3 / b.3));
+        }
+    }
+    let l4 = moved
+        .iter()
+        .find(|m| m.0 == "qwen3-30b-a3b" && m.1 == "layer-4")
+        .unwrap_or_else(|| panic!("30B layer-4 did not move: {moved:?}"));
+    assert!(l4.2 < 0.97, "{moved:?}");
+}
+
 /// The fit is the same algorithm in both, not the same bits: the predictions from Rust's fit
-/// agree with the replica's within 1%. The replica of the current MODEL_VERSION (4).
+/// agree with the replica's within 1%. The replica's version-4 files: a fit without clocks is
+/// the same in versions 4 and 5.
 #[test]
 fn calibrate_lands_on_the_replica_fit() {
     for (name, fit_dir) in [
@@ -145,7 +193,7 @@ fn calibrate_lands_on_the_replica_fit() {
         ("fit-s2e-eval-s2f.json", "bench/results/s2e-20261118/phase5"),
     ] {
         let Some(v) = replica_v4(name) else { return };
-        assert_eq!(v["version"], tetraeder_costmodel::MODEL_VERSION);
+        assert_eq!(v["version"], 4);
         let dir = repo().join(fit_dir);
         let mut hw = parse_hw(&read(&dir.join("hw.json"))).unwrap();
         merge_comm(&mut hw, &read(&dir.join("calib-comm.json"))).unwrap();

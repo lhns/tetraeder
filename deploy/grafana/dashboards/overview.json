@@ -2281,7 +2281,7 @@
     {
       "id": 79,
       "title": "GPU power, temperature and clocks",
-      "description": "Board power, temperature and the SM and memory clocks; Vast clocks cannot be locked, so these explain drift between paired runs.",
+      "description": "Board power, temperature and the SM and memory clocks; Vast clocks cannot be locked, so these explain drift between paired runs. The 'plan assumes' line is the decode clock cost model 5 priced each GPU of the loaded plan at (ADR 0082); alert TetraederDecodeClockOffPlan fires when the measured SM clock is more than 5% off it.",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -2355,6 +2355,15 @@
           "refId": "C",
           "expr": "max by (tetraeder_gpu_clock) (tetraeder_host_gpu_clock_hertz)",
           "legendFormat": "{{tetraeder_gpu_clock}} clock",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "D",
+          "expr": "max by (tetraeder_device) (tetraeder_plan_decode_clock_hertz)",
+          "legendFormat": "{{tetraeder_device}} plan assumes clock",
           "datasource": {
             "type": "prometheus",
             "uid": "victoriametrics"

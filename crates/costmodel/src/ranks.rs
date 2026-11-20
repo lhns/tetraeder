@@ -85,6 +85,7 @@ fn two_phase() -> RunFeatures {
             phases: vec![a, b],
             step_fixed: true,
             prefill_micro_batches: 1,
+            model: None,
         }),
         ..features(10.0, 0.0)
     }
@@ -205,6 +206,7 @@ fn one_phase(p: DevicePart, out_rows: bool) -> RunFeatures {
             }],
             step_fixed: false,
             prefill_micro_batches: 1,
+            model: None,
         }),
         ..features(10.0, 0.0)
     }
@@ -448,6 +450,7 @@ fn layer2(micro: u32) -> RunFeatures {
             phases: vec![stage("gpu0", Some(hop)), stage("gpu1", None)],
             step_fixed: false,
             prefill_micro_batches: micro,
+            model: None,
         }),
         ..features(10.0, 0.0)
     }
@@ -479,4 +482,161 @@ fn pipelined_prefill_overlaps_the_stages() {
     one1.ranks.as_mut().unwrap().prefill_micro_batches = 1;
     let pp = |f: &RunFeatures| predict(&hw, f, 2048, 8).unwrap().pp_tok_s;
     assert_eq!(pp(&one).to_bits(), pp(&one1).to_bits());
+}
+
+// ---- MODEL_VERSION 5 (ADR 0082): decode priced at the clock a GPU's duty gets
+
+/// Four GPUs, no links: the phases below have no collective.
+fn graph4() -> HardwareGraph {
+    let mut g = graph();
+    let gpu = g.devices[0].clone();
+    g.devices = (0..4)
+        .map(|i| Device {
+            id: format!("gpu{i}"),
+            ..gpu.clone()
+        })
+        .collect();
+    g.links.clear();
+    g
+}
+
+/// One-rank stages in turn; stage `i` costs `ops[i] x U` per decode token, `U = c0 + 1e-8`
+/// (`c0` per op plus the routed-expert roofline at 1e3 bytes per op), all of it clock-bound.
+fn stages(ops: &[f64], model: Option<&str>) -> RunFeatures {
+    let mk = |i: usize| DevicePart {
+        expert_bytes_per_token: ops[i] * 1e3,
+        ops_per_token: ops[i],
+        ..part(&format!("gpu{i}"), 0.0)
+    };
+    let phases = (0..ops.len())
+        .map(|i| Phase {
+            repeat: 1,
+            parts: vec![mk(i)],
+            prefill_parts: None,
+            ranges_per_rank: 0,
+            after: None,
+            out_rows: false,
+        })
+        .collect();
+    RunFeatures {
+        parts: (0..ops.len()).map(mk).collect(),
+        ranks: Some(RankFeatures {
+            phases,
+            step_fixed: false,
+            prefill_micro_batches: 1,
+            model: model.map(str::to_string),
+        }),
+        ..features(10.0, 0.0)
+    }
+}
+
+fn clocks(low: f64, busy: &[(&str, f64)]) -> tetraeder_profiler::DecodeClocks {
+    tetraeder_profiler::DecodeClocks {
+        low_mhz: low,
+        busy_mhz: busy.iter().map(|(m, x)| (m.to_string(), *x)).collect(),
+        duty_threshold: 0.32,
+    }
+}
+
+const U: f64 = 1e-6 + 1e-8;
+
+#[test]
+fn four_low_duty_gpus_decode_at_the_factor_and_prefill_is_unchanged() {
+    let mut hw = graph4();
+    let f = stages(&[10.0; 4], Some("m"));
+    let base = predict(&hw, &f, 512, 128).unwrap();
+    assert!(base.decode_clocks.is_empty());
+    hw.decode_clocks = Some(clocks(1695.0, &[("m", 1905.0)]));
+    let p = predict(&hw, &f, 512, 128).unwrap();
+    let k = 1905.0 / 1695.0;
+    close(1.0 / p.tg_tok_s, 40.0 * U * k);
+    assert_eq!(p.pp_tok_s.to_bits(), base.pp_tok_s.to_bits());
+    assert_eq!(p.decode_clocks.len(), 4);
+    for (i, c) in p.decode_clocks.iter().enumerate() {
+        assert_eq!(c.device, format!("gpu{i}"));
+        close(c.duty, 0.25);
+        close(c.factor, k);
+        assert_eq!(c.mhz, 1695.0);
+    }
+}
+
+#[test]
+fn only_the_gpus_under_the_threshold_are_scaled() {
+    let mut hw = graph4();
+    hw.decode_clocks = Some(clocks(1695.0, &[("m", 1905.0)]));
+    let p = predict(&hw, &stages(&[60.0, 10.0, 10.0, 10.0], Some("m")), 512, 128).unwrap();
+    let k = 1905.0 / 1695.0;
+    close(1.0 / p.tg_tok_s, 60.0 * U + 30.0 * U * k);
+    let c = &p.decode_clocks;
+    close(c[0].duty, 60.0 / 90.0);
+    assert_eq!((c[0].factor, c[0].mhz), (1.0, 1905.0));
+    close(c[1].duty, 10.0 / 90.0);
+    close(c[1].factor, k);
+    assert_eq!(c[1].mhz, 1695.0);
+}
+
+#[test]
+fn a_gpu_at_duty_one_third_keeps_the_busy_clock() {
+    let mut hw = graph4();
+    let f = stages(&[10.0; 3], Some("m"));
+    let base = predict(&hw, &f, 512, 128).unwrap();
+    hw.decode_clocks = Some(clocks(1695.0, &[("m", 1905.0)]));
+    let p = predict(&hw, &f, 512, 128).unwrap();
+    assert_eq!(p.tg_tok_s.to_bits(), base.tg_tok_s.to_bits());
+    assert!(p.decode_clocks.iter().all(|c| c.factor == 1.0));
+    close(p.decode_clocks[0].duty, 1.0 / 3.0);
+}
+
+#[test]
+fn no_gap_a_missing_model_or_no_model_leave_every_bit() {
+    let base = predict(&graph4(), &stages(&[10.0; 4], Some("m")), 512, 128).unwrap();
+    for (low, busy, model) in [
+        (1695.0, 1600.0, Some("m")),
+        (1695.0, 1695.0 + 15.0, Some("m")),
+        (1695.0, 1905.0, Some("other")),
+        (1695.0, 1905.0, None),
+    ] {
+        let mut hw = graph4();
+        hw.decode_clocks = Some(clocks(low, &[("m", busy)]));
+        let p = predict(&hw, &stages(&[10.0; 4], model), 512, 128).unwrap();
+        assert_eq!(
+            p.tg_tok_s.to_bits(),
+            base.tg_tok_s.to_bits(),
+            "{busy} {model:?}"
+        );
+        assert_eq!(p.pp_tok_s.to_bits(), base.pp_tok_s.to_bits());
+    }
+    // one clock step over the low clock is a gap
+    let mut hw = graph4();
+    hw.decode_clocks = Some(clocks(1695.0, &[("m", 1695.0 + 15.1)]));
+    let p = predict(&hw, &stages(&[10.0; 4], Some("m")), 512, 128).unwrap();
+    assert!(p.tg_tok_s < base.tg_tok_s);
+}
+
+#[test]
+fn an_all_reduce_counts_in_the_duty_of_its_group_only() {
+    // gpu0 and gpu1 all-reduce after their phase; the other two are not in the group.
+    let mut f = stages(&[10.0; 4], Some("m"));
+    let r = f.ranks.as_mut().unwrap();
+    r.phases[0].parts.push(DevicePart {
+        ops_per_token: 10.0,
+        expert_bytes_per_token: 1e4,
+        ..part("gpu1", 0.0)
+    });
+    r.phases[0].after = Some(Coll::AllReduce {
+        group: vec!["gpu0".into(), "gpu1".into()],
+        bytes_per_token: 1000.0,
+    });
+    let mut hw = graph4();
+    hw.links = graph().links;
+    hw.decode_clocks = Some(clocks(1695.0, &[("m", 1905.0)]));
+    let p = predict(&hw, &f, 512, 128).unwrap();
+    let ar = allreduce_time(2, 1e-5, 1e10, 1000.0);
+    let c = &p.decode_clocks;
+    // gpu1 is in two phases: gpu0's and its own; the step is the slower of the first two parts
+    // plus the all-reduce, then three more phases
+    let total = 40.0 * U + ar;
+    close(c[0].duty, (10.0 * U + ar) / total);
+    close(c[1].duty, (20.0 * U + ar) / total);
+    close(c[2].duty, 10.0 * U / total);
 }

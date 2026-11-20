@@ -1,6 +1,7 @@
 //! The residual of the decode step time against the plan's prediction (ADR 0055, 3).
 
 use tetraeder_control::Trigger;
+use tetraeder_costmodel::predict::DecodeClock;
 use tetraeder_telemetry::{Metrics, Phase, StepRing};
 
 /// Decode samples of one tick needed before the tick counts.
@@ -46,6 +47,17 @@ impl ResidualMonitor {
         self.last_median_s = None;
         if let (Some(s), Some(m)) = (step_s, m) {
             m.plan_predicted_step(0, s);
+        }
+    }
+
+    /// The clocks the new plan's prediction assumes per GPU (ADR 0082), for the gauge the alert
+    /// `TetraederDecodeClockOffPlan` compares the measured clock with. A plan priced without
+    /// clocks records nothing.
+    pub fn set_decode_clocks(&self, clocks: &[DecodeClock], m: Option<&Metrics>) {
+        if let Some(m) = m {
+            for c in clocks {
+                m.plan_decode_clock(&c.device, c.mhz * 1e6);
+            }
         }
     }
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -14,12 +15,12 @@ RULE_FILES = sorted((ROOT / "deploy" / "alerts").glob("*.yml"))
 CRATES = ROOT / "crates"
 HOST_NAMES = ROOT / "scripts" / "otlp_host.py"
 # Name parts that -opentelemetry.usePrometheusNaming appends (unit, type, histogram series).
-SUFFIX = re.compile(r"^(_(seconds|ratio|bytes|watts|celsius|segment|token|request|expert|layer))*(_total|_bucket|_sum|_count)?$")
+SUFFIX = re.compile(r"^(_(seconds|ratio|bytes|watts|celsius|hertz|segment|token|request|expert|layer))*(_total|_bucket|_sum|_count)?$")
 TOKEN = re.compile(r"[A-Za-z_:][A-Za-z0-9_:]*")
 FUNCS = {
     "sum", "rate", "increase", "by", "without", "on", "ignoring", "group_left", "group_right", "and", "or",
     "unless", "vector", "avg", "max", "min", "count", "histogram_quantile", "abs", "clamp_min", "clamp_max",
-    "avg_over_time", "max_over_time", "bool", "le", "offset",
+    "avg_over_time", "max_over_time", "bool", "le", "offset", "label_replace",
 }
 
 
@@ -104,3 +105,19 @@ def test_kv_near_full_compares_per_device():
     # Tokens and capacity must be matched per device, not as a global max over both.
     rule = next(r for f in RULE_FILES for r in _rules(f) if r.get("alert") == "TetraederKvNearFull")
     assert rule["expr"].count("by (tetraeder_device)") == 2, rule["expr"]
+
+
+def test_decode_clock_off_plan_compares_the_measured_clock_with_the_assumed_one():
+    """ADR 0082: the gauge of the clock cost model 5 assumes, against the sampler's SM clock, 5% for 15 minutes while
+    the plan decodes; the dashboard's GPU clocks panel draws the assumed clock beside the measured ones."""
+    rule = next(r for f in RULE_FILES for r in _rules(f) if r.get("alert") == "TetraederDecodeClockOffPlan")
+    expr = rule["expr"]
+    assert "tetraeder_plan_decode_clock_hertz" in expr and "tetraeder_host_gpu_clock_hertz" in expr
+    assert 'tetraeder_gpu_clock="sm"' in expr and "> 0.05" in expr and "tetraeder_phase=\"decode\"" in expr
+    assert rule["for"] == "15m"
+    dash = json.loads((ROOT / "deploy" / "grafana" / "dashboards" / "overview.json").read_text(encoding="utf-8"))
+    panel = next(p for p in dash["panels"] if p.get("title") == "GPU power, temperature and clocks")
+    exprs = [t["expr"] for t in panel["targets"]]
+    assert any("tetraeder_plan_decode_clock_hertz" in e for e in exprs)
+    legends = [t["legendFormat"] for t in panel["targets"] if "plan_decode_clock" in t["expr"]]
+    assert all(l.endswith(" clock") for l in legends), "the panel's clock override matches '.* clock'"

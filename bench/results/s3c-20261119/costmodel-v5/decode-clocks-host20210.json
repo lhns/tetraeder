@@ -1,0 +1,9 @@
+{
+ "low_mhz": 1695.0,
+ "busy_mhz": {
+  "Qwen3 30B Gptq Fp16": 1905.0,
+  "Qwen3 32B Awq Compatible Instruct": 1905.0
+ },
+ "duty_threshold": 0.32,
+ "source": "bench/results/s3e-20261120 part C by scripts/decode_clocks.py --style diag: single full-depth gpu0 1905, layer-4 full-depth gpus 0 to 2 1695; the 32B takes the 30B's 1905, an upper bound (ADR 0082, The check)"
+}

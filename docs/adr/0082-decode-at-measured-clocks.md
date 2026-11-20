@@ -80,3 +80,15 @@ The old line passes with a 0.02 nudge from v4's +0.167. Instead, offline on comm
 - Layer-N decode on 3 or more GPUs is priced slower wherever single boosts, which can move the pick away from layer-N on those hosts.
 - Calibration depends on 20 ms clock logs; a box without `nvidia-smi` gets cost model 4.
 - ADR number: 0082 was the next free number on `main` and the fetched branches when written.
+
+## Implementation notes
+
+Brief V5, branch `track-cost-model-v5`. Offline numbers: `bench/results/s3c-20261119/costmodel-v5/README.md` (items 1 to 3 pass and equal the prototype's: layer-4 / single tg 0.902, 0.903, 0.930 against 0.930, 0.930, 0.910; `e_tg` +0.001, -0.003, +0.067; s3f2 bit-identical, L36 230.9 against 231.8; 32B layer-4 moves 0.010 to 0.011; every other candidate 0).
+
+- `HardwareGraph::decode_clocks` and `RankFeatures::model` as decided; `predict_ranks` computes the duty from the unscaled step and recomputes the decode step once. `Prediction::decode_clocks` lists duty, factor and assumed MHz per GPU (the diagnostics; not in the step sum) and feeds the gauge `tetraeder_plan_decode_clock_hertz`, set when a plan is loaded or switched to. A switch to a plan priced without clocks leaves the previous gauge value (the series has no delete).
+- The key into `busy_mhz` is `layout.model`, which in session layouts is the GGUF name ("Qwen3 30B Gptq Fp16"), not the file stem. `scripts/decode_clocks.py` writes that key from `layouts/<model>.json`; the host-20210 file of the check uses it.
+- "The planner search (`stage_time`) uses the same helper" has no target: `search/cost.rs::stage_time` is the older single-run search model and shares no code with `part_time_s`. Only the ranks path (`predict_ranks`, so `predict_multi` and `calibrate`) changed.
+- `calibrate` fits on the graph without `decode_clocks` and writes them back after the fit; the layer anchor's residual is `held_out` in `calib.json` (`ln predicted - ln measured`, as `residuals`) and a line in the log. `tetraeder-plan calibrate --clocks FILE` copies `decode-clocks.json`; a file without `low_mhz` leaves the graph at cost model 4.
+- `tetraeder-plan candidates --multi --anchor <id>` writes only the plans of named anchors (`layer-4@L24`); `phase5_box.sh` uses it for `plans-anchor/<model>-layer-4@L24.toml`. With `LAYER_ANCHOR=1` only; the clock logs and `decode_clocks.py` run on every session.
+- `MODEL_VERSION` is 5. `bench/ledger.json` and the two `bench/results/20261103/*/calib.json` still say 4; their entries do not change, so `tetraeder-plan ledger --write` after the merge only rewrites the number (result files were not touched in this branch).
+- Replica: `--version 5` is the default, `--clocks FILE`; without clocks version 5 is version 4 to the last bit (the committed v4 rows reproduce).

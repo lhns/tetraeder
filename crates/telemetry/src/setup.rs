@@ -280,6 +280,7 @@ mod tests {
         m.plan_residual(0, 0.08);
         m.plan_regret("p1", 0.04);
         m.plan_predicted_step(0, 0.012);
+        m.plan_decode_clock("gpu0", 1.695e9);
         m.bottleneck_share("pcie", 0.6);
         m.bottleneck_fault("pcie_degraded", "pcie");
         m.replan("drift", "switched");

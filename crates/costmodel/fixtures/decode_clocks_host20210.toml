@@ -1,0 +1,10 @@
+# Decode clocks of host 20210 (bench/results/s3e-20261120, part C; ADR 0082), appended to a graph
+# fixture: the layer anchor's GPUs ran at 1695 MHz, the 30B single anchors at 1905. The 32B entry is
+# one step below the low clock (a power-capped single, 1620), so its factor clamps to 1.
+[decode_clocks]
+low_mhz = 1695.0
+duty_threshold = 0.32
+
+[decode_clocks.busy_mhz]
+"qwen3-30b-a3b" = 1905.0
+"qwen3-32b" = 1620.0

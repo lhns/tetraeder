@@ -29,8 +29,10 @@ pub mod sim;
 /// version 2.
 /// 4 (ADR 0080): a fit with ranks prices the routed slots' activation bytes at the memory rate,
 /// every slot on every expert-parallel rank (`RangeCosts::expert_slot_traffic`). Graphs fitted
-/// before predict as in version 3.
-pub const MODEL_VERSION: u32 = 4;
+/// before predict as in version 3. 5 (ADR 0082): on a graph with `decode_clocks`, a GPU busy under
+/// the duty threshold in a decode step pays `busy_mhz / low_mhz` on its clock-bound terms; graphs
+/// without them predict as in version 4.
+pub const MODEL_VERSION: u32 = 5;
 
 use tetraeder_profiler::Device;
 

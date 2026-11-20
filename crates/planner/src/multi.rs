@@ -57,6 +57,12 @@ pub enum Shape {
         tp: u32,
         pp: u32,
     },
+    /// The layer-`g` decode-clock anchor `layer-<g>@L<limit>` (ADR 0082): the first `g - 1` stages
+    /// hold `limit / g` layers each, the last the rest, run with `--layer-limit limit`.
+    LayerAnchor {
+        g: u32,
+        limit: u32,
+    },
 }
 
 impl Shape {
@@ -67,12 +73,19 @@ impl Shape {
             Self::Tp(n) => format!("tp-{n}"),
             Self::Ep(n) => format!("ep-{n}"),
             Self::TpPp { tp, pp } => format!("tp{tp}-pp{pp}"),
+            Self::LayerAnchor { g, limit } => format!("layer-{g}@L{limit}"),
         }
     }
 
     pub fn parse(id: &str) -> Option<Self> {
         if id == "single" {
             return Some(Self::Single);
+        }
+        if let Some((head, limit)) = id.split_once("@L") {
+            return Some(Self::LayerAnchor {
+                g: head.strip_prefix("layer-")?.parse().ok()?,
+                limit: limit.parse().ok()?,
+            });
         }
         if let Some((a, b)) = id.split_once('-') {
             if let (Some(tp), Some(pp)) = (a.strip_prefix("tp"), b.strip_prefix("pp")) {
@@ -97,6 +110,7 @@ impl Shape {
             Self::Single => 1,
             Self::Layer(n) | Self::Tp(n) | Self::Ep(n) => n,
             Self::TpPp { tp, pp } => tp * pp,
+            Self::LayerAnchor { g, .. } => g,
         }
     }
 }
@@ -322,6 +336,20 @@ fn build_shape(ctx: &Ctx, shape: Shape) -> Result<MultiCandidate, String> {
             vec![(Span(0, l), gpus.clone(), n, n)]
         }
         Shape::Layer(n) => spans(ctx, &gpus, n as usize, 1)?,
+        Shape::LayerAnchor { g, limit } => {
+            let per = limit / g;
+            if g < 3 || per == 0 || !limit.is_multiple_of(g) || limit >= l {
+                return Err(format!(
+                    "layer anchor needs 3 or more GPUs and a limit that they divide, got {g} and {limit}"
+                ));
+            }
+            (0..g)
+                .map(|s| {
+                    let end = if s + 1 == g { l } else { (s + 1) * per };
+                    (Span(s * per, end), vec![gpus[s as usize].clone()], 1, 1)
+                })
+                .collect()
+        }
         Shape::TpPp { tp, pp } => {
             check_cut(ctx.layout, ctx.fmt, tp, 1)?;
             spans(ctx, &gpus, pp as usize, tp as usize)?
@@ -1002,6 +1030,7 @@ pub fn features_multi(
         graphs: knobs.cuda_graphs,
         tier: None,
         ranks: Some(RankFeatures {
+            model: Some(layout.model.clone()),
             phases,
             step_fixed: true,
             // Pipelined prefill over two or more stages (ADR 0077); one stage has nothing to
@@ -1123,6 +1152,7 @@ mod tests {
             Shape::Tp(2),
             Shape::Ep(2),
             Shape::TpPp { tp: 2, pp: 2 },
+            Shape::LayerAnchor { g: 4, limit: 24 },
         ] {
             assert_eq!(Shape::parse(&s.id()), Some(s));
         }
