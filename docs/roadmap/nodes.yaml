@@ -1,0 +1,2163 @@
+# Tetraeder tech tree (tech-tree.yaml). One node is one thing with its own verdict. History nodes come from the
+# backfill (git history and session transcripts); forward nodes from docs/m2-plan.md as of 2026-11-20.
+nodes:
+- id: multi-prefill-no-capture
+  title: Prefill runs without graph capture
+  track: multi
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0081-prefill-steps-are-not-captured.md
+  - patches/0006-graph-no-capture.patch
+  - bench/results/s3f2-20261120/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - multi-defect-capture
+  replaced_by: []
+  lane: local
+  start: 2026-11-20
+  end: 2026-11-20
+  folded:
+  - Prefill without CUDA graph capture (patch 0006, ADR 0081) (2026-11-20, commit d858e83acf, commit 3b683c8cce, commit 98ba67c377, commit 7222482147, commit 34402e5d9f, commit f7ad9ee4d8)
+  overview: true
+  plain: Every judged prefill had timed the call in which ggml records a CUDA graph, which serialized the pipeline stages; prefill steps now run directly and decode keeps graph replay.
+- id: ops-foundations
+  title: Workspace, rules and first ADRs
+  track: ops
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/plan.md
+  - AGENTS.md
+  - docs/adr/0001-own-rust-engine-on-ggml.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-10-29'
+  end: '2026-10-30'
+  folded:
+  - Phase 0 scaffold, CI and cleanup (2026-10-30, commit 68c6b4b5c9, commit ca1653abfd, commit a3599bb7a4, commit c4765b209c, commit 4389bf8464, commit 594956ef68, commit 65a720b99c)
+  overview: false
+  plain: 'Phase 0: the Cargo workspace with crate stubs from the plan, the agent rules in AGENTS.md and the first design records (ADRs 0001 to 0029).'
+- id: ops-ci
+  title: CI and test infrastructure
+  track: ops
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - .github/workflows
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-10-30'
+  end: '2026-11-19'
+  folded:
+  - CI and build fixes for CUDA, MSVC and Linux (2026-10-31, commit 00924734aa, commit 641025ac9b, commit 5180538c19, commit 26e148befd, commit c83b217cb1, commit 4f9b7cf103)
+  - Phase 2 cleanup (2026-11-03, commit 0024814412, commit 3338d4e2fd, commit 14b806f9b2)
+  - 'Test infra: sccache, required model and GPU tests (track aa) (2026-11-09, commit de42378025, commit 572e83467a, commit aab7f53d80, commit 1d10a30fa6, commit 17f7ef502c, commit 87a836f22d, commit 7670e1d247, commit 110267f75a, commit 022203e8c6, commit b3c0113396, commit 3033405c9a, commit 4d5684d902, commit 708624ccb0)'
+  - 'Small items: planner, memory trace and builder fixes (track t) (2026-11-09, commit cec18fca8c, commit 6b9eaa0f05, commit 31ca2f5e16, commit b6fddd643d, commit 0920b49eae, commit 6bd1127f5d, commit 93624ea89f)'
+  - 'CI follow-up: shared ggml build dir, per-OS goldens (2026-11-10, commit 5ad876774e, commit 11c06dec11, commit 4bb9fb85b4)'
+  - 'gitattributes: every text file LF (2026-11-12, commit 3841ed67f0, commit 0e276df0b2)'
+  - cpu_bench read freed memory after its scheduler dropped (2026-11-13, commit 8842eff3e6)
+  - CI runner and workflow fixes (2026-11-16, commit 5a14317307, commit a4ec02c398, commit ddda74c33b, commit e747040902, commit 35c29bd041, commit 23e9075ac4)
+  - dense_serve test threads start together (2026-11-19, commit 17338a9871, commit b08c6816a4)
+  overview: false
+  plain: Builds and tests on Windows and Linux, CUDA compile jobs, sccache, per-OS golden outputs and required model and GPU tests; small fixes and cleanups are folded here.
+- id: ops-taxameter
+  title: Rented GPU box tool
+  track: ops
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0029-gpu-tooling-from-taxameter.md
+  - taxameter.toml
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-10-30'
+  end: '2026-11-20'
+  folded:
+  - taxameter Vast tooling and box caps (2026-11-02, commit dadea72f33, commit 7a2963f212, commit 344be5963b, commit 1eebcd8402, commit 04be980f06, commit 8feadb5a9b, commit 718aca47b3)
+  - 'taxameter v0.3.0: several boxes per project (2026-11-02, session record)'
+  - taxameter 0.3.0 to 0.3.2 and box sizing (2026-11-03, commit 02206886d9, commit 6e286b92b7, commit 5816341381, commit 340ab494a4, commit 03a4d423bf, commit ee24a0184f)
+  - taxameter 0.3.3 and 0.3.4 (num-gpus, offer retry, box hours) (2026-11-20, commit 640223bf6f, commit b2edfa74f2)
+  overview: false
+  plain: 'taxameter is the project''s own tool to rent and drive Vast.ai GPU boxes: price and age caps, several boxes per project, multi-GPU offers, key redaction.'
+- id: ops-box-driver
+  title: Box session scripts and rules
+  track: ops
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/box-driver.md
+  - docs/sessions.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-20'
+  folded:
+  - Box sessions B1 to B3 plan and script review fixes (2026-11-09, commit c6c989e37d, commit 76bd734b05, commit 776fc53a1f, commit 57c6a76948, commit e454308c8c, commit 0890685270, commit b812ec4951, commit 908f838fba, commit 52729f70d4, commit 373b0e77e7)
+  - Hold on starting new GPU box runs, then lifted (2026-11-09, session record)
+  - Box scripts without vendor git, box lib path, run headers (2026-11-10, commit 145589f2d4, commit b04f8de4fe, commit ed5c868a10)
+  - exit_run.sh sccache start fixes (2026-11-10, commit 2655832972, commit 5185ea987f)
+  - 'exit_run.sh: cache stage budget and tuner on the 235B (2026-11-11, commit b04b7a1d37, commit 1610c3fee3, commit e426f8ecc9)'
+  - 'Box harness wave 20261112: stage minutes, guards, fetch fixes (2026-11-13, commit 8f58b44b49, commit c7de070361, commit 5b9d9fde95, commit cb461df77c, commit 7fd4ea1f56, commit 882761a419, commit 2c6b7e9c0a)'
+  - 'Box-driver policy: host skips, abort gates, machine choice (2026-11-13, commit 890b0927c2, commit 6168f9a682, commit 806ca51381, commit 1f538fa554, commit 52f57341d0, commit fadf871160, commit 85990d9217)'
+  - Box rehearsal CI job (2026-11-13, commit 1fdac9eabb, commit a5e5fb1ca5)
+  - 'Box tooling: session.sh budget and box-driver disk (2026-11-14, commit 0cab5d1ced)'
+  - Box-driver host skip list (2026-11-19, commit 0606d95b3c, commit 96c5e3e9d6, commit 5085adde52, commit 36521fc205, commit a1ada597ba, commit 9b8f80e683, commit 50674af163)
+  - 'Box-driver rules: idle gate, aging, fail-soft, keep a working box (2026-11-20, commit 3406fc4b78, commit ddd760d8ec, commit 0a093864b1, commit f3e1c4e2f8, commit 98fa8a8060)'
+  overview: false
+  plain: 'The scripts and written rules a box session follows: stage budgets, abort gates, host skip list, resume after a dropped connection, keep a working box.'
+- id: ops-telemetry
+  title: Box and host metrics
+  track: ops
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0060-box-host-metrics-as-otel.md
+  - docs/adr/0063-genai-request-metrics-and-tier-transfer-family.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-12'
+  end: '2026-11-14'
+  folded:
+  - Tier transfer metrics and GenAI semconv names (ADR 0063) (2026-11-12, commit 2a1f96315c, commit b514ca75fc, commit 763a9e88dc, commit dc88899a73)
+  - engine_sample CPU attribution and thread clamp (2026-11-12, commit 72ca4af267, commit 37151f9f89)
+  - Box and host metrics as OTel metrics (ADR 0060) (2026-11-12, commit e7711c6989, commit 8916e845b6, commit 827ba95017, commit 9b1448f92c, commit 245cdfdccf, commit ddc91b79ad, commit db1925b2fc)
+  - OTLP box files compressed with zstd (2026-11-13, commit 3b734f7511, commit 7cd4ffcb4e, commit 92cf090a43)
+  - Decode stall investigation (ADR 0060 addendum) (2026-11-14, commit 2d4b2c3805, commit ec779cb622)
+  overview: false
+  plain: 'Box and host samplers export through the same OpenTelemetry path as the engine (OpenTelemetry: the standard metrics and traces format), plus request metrics and tier transfer counters.'
+- id: ops-docs
+  title: Decisions in ADRs, numbers elsewhere
+  track: ops
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/sources.md
+  - docs/m2-plan.md
+  - AGENTS.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-20'
+  folded:
+  - 'Docs: sources.md complete list of external sources (2026-11-09, commit cbd6ac4db9, commit 7200ab691f)'
+  - M2 plan and housekeeping docs (2026-11-16, commit 7579a00260, commit e67d9163fc, commit 758f735de0, commit 0cf081e2bb, commit 9e72fe2540, commit c3b2523087, commit 3de5b6463a, commit 448ce92579, commit 7f9b67f393)
+  - ADRs hold decisions, measurements move to session READMEs (2026-11-18, commit aa3d313ed3, commit 956437b7d0, commit 0de09131f2, commit ed6aa99e47, commit 1324b72c9f, commit 98f216ba17, commit dca3fe0cd5, commit aa01bd8feb, commit 6be899ada5, commit 5dffd123ba, commit d983a30e90, commit ce4c496876, commit 5324d1bfbf, commit 30b71ceb4d, commit 7428a28607, commit b75f925048, commit a9c79d71af, commit aeac1bfbc8, commit 86a0178d54, commit 12b9795eda, commit 2434a4e26f)
+  - 'Docs audit: documents brought to current state (2026-11-19, commit 1f75190ed9, commit 715f320f27, commit 662413f007, commit 2f833f0ab7, commit 32a69c360e, commit 7e5624c8af, commit c9f92e7329, commit 21c66577ca, commit 3641f78508, commit 47615a94ac, commit 144c61176e, commit ae0607422a, commit 42013ffb80, commit 46a92063b7, commit e78b43af92, commit dd830e0d65, commit a4cd4d886d, commit 25083c22bb)'
+  - Tech tree config and generated pages (2026-11-20, commit fd674031d4)
+  - AGENTS local-file rules and worktree gc (2026-11-20, commit 7cf3fd91a8)
+  overview: false
+  plain: 'Documentation conventions: every outside source listed, the M2 plan, ADRs hold decisions while measurements live in each session''s README, and audits that bring documents to the current state.'
+- id: ops-external-reads
+  title: Read other inference engines
+  track: ops
+  kind: experiment
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/notes/external-reads.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-05'
+  end: '2026-11-20'
+  folded:
+  - Review of Strata and Unsloth inference engines, docs updated (2026-11-05, session record)
+  - Read-only study of Surogate (expert cache, multi-GPU, prefix cache) (2026-11-17, commit 6325416704, commit 93bc2a9f15, commit 2f04b14898)
+  - InferSSD study notes (2026-11-19, commit 6ec88d18b0, commit 9b0d7b0b5a, commit 7b69981d5d, commit 6788ac4efb)
+  - NanoQuant sub-1-bit quantization parked for Phase 9 (2026-11-19, session record)
+  - External reads notes (Speedy, Kinetic, Basalt, QuixiInfer) (2026-11-20, commit 8fecfc2a37, commit 2248d2e04a, commit db28821add, commit 70f2d43cc4)
+  overview: false
+  plain: Read-only studies of other engines (Surogate, InferSSD, Speedy, Kinetic, Basalt, QuixiInfer) for ideas, each ranked with the test and the ADR it would change.
+- id: ops-owner-caps
+  title: Owner raises box price caps
+  track: ops
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - AGENTS.md
+  verdict_quote: 'Caps (raised by the user 2026-11-13): 0.90 USD/h per box all-in and two instances for this project'
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-09'
+  end: '2026-11-13'
+  folded:
+  - Box price caps raised for the proxy session and account (2026-11-09, session record)
+  - Box price caps raised (2026-11-13, commit 5aa238e30e, commit e44b24b7ac)
+  overview: false
+  plain: The owner raised the per-box and account price caps for rented GPU boxes, which allowed larger boxes and two at once.
+- id: ops-owner-4gpu-cap
+  title: Owner allows dearer four-GPU boxes
+  track: ops
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - AGENTS.md
+  verdict_quote: 'Exception (user, 2026-11-15): a box with 4 GPUs may cost up to 1.20 USD/h all-in (Phase 5 four-GPU sessions)'
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-15'
+  end: '2026-11-15'
+  folded:
+  - 'Owner decision: 4-GPU boxes may cost up to 1.20 USD per hour (2026-11-15, commit 236236f457)'
+  overview: false
+  plain: Phase 5 needs four-GPU boxes, which cost more than the standing cap; the owner allowed up to 1.20 USD/h for those.
+- id: ops-owner-v4a-cap
+  title: One dearer box for verdict
+  track: ops
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - AGENTS.md
+  - docs/notes/phase5-rule-changes.md
+  verdict_quote: 'One-off exception (user, 2026-11-20): one 4-GPU box for the D4 verdict session (V4a) on a host other than 20210 may cost up to 1.70 USD/h all-in'
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-20'
+  end: '2026-11-20'
+  folded:
+  - Phase 5 notes and owner cap for V4a (2026-11-20, commit c14ff4bacd, commit 278cd1101d, commit a9f4145f8f, commit e495ac2b66)
+  overview: false
+  plain: The only usable four-GPU host so far (20210) throttles one GPU, so the owner allowed one four-GPU verdict box (V4a) elsewhere at up to 1.70 USD/h, run alone.
+- id: ops-owner-accepts-adrs
+  title: Owner accepts nine design records
+  track: ops
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0052-runtime-cpu-isa-dispatch.md
+  - docs/adr/0075-executor-ranges-are-graph-views.md
+  verdict_quote: ADRs 0052, 0053, 0056, 0066, 0067, 0070, 0071, 0073, 0075 accepted (owner)
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-19'
+  end: '2026-11-19'
+  folded:
+  - Owner accepts ADRs 0052 to 0080 (2026-11-19, commit 905931382b, commit b1de379f0b)
+  overview: false
+  plain: The owner moved nine Proposed ADRs (CPU dispatch, AVX-512 kernels, disk cost term, dense builder, KV layout, parallel shapes, GPU tolerance, engine pin, executor graph views) to Accepted.
+- id: engine-libllama
+  title: Engine core on libllama
+  track: engine
+  kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0026-phase1-engine-on-libllama.md
+  verdict_quote: 'gate-tetraeder-cuda-dense: pp ratio 0.993, tg 0.987 (band -5%), Ok.'
+  headline: tg 0.987
+  depends_on:
+  - ops-foundations
+  replaced_by: []
+  lane: none
+  start: '2026-10-29'
+  end: '2026-10-31'
+  folded:
+  - Phase 1 engine on libllama and exit (2026-10-30, commit 9c26860e34, commit 38e37cb323, commit 43134b90ad, commit 1c10d89462, commit cd9d3c1ed5)
+  - Split llama.rs and engine/gateway submodules (2026-10-31, commit d911825d7a, commit c598ef2d3f, commit 2e37f90575)
+  - Engine and plan review fixes (2026-10-31, commit dbbd80b216, commit a58e77e2e6, commit ff7e3939b3, commit d60e2c7918, commit a425dfabf8, commit 2b7f2c02ad)
+  overview: true
+  plain: 'Phase 1: Rust drives llama.cpp''s library (libllama) for dense models; the exit test asks for prompt and generation speed within 5% of llama.cpp.'
+- id: engine-moe-builder
+  title: Own Qwen3 MoE graph builder
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0030-own-moe-graph-builder.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-plan-ir
+  replaced_by: []
+  lane: none
+  start: '2026-10-31'
+  end: '2026-10-31'
+  folded:
+  - Qwen3 MoE builder and safe ggml surface (2026-10-31, commit 5c289e066b, commit 7082123add, commit 7bede0f2a8, commit ff7400a210, commit d2eabef27c)
+  overview: true
+  plain: Tetraeder builds the compute graph of the Qwen3 mixture-of-experts (MoE) model itself in Rust, one segment per MoE layer, so it can place and stream experts on its own.
+- id: engine-overflow-passes
+  title: Extra passes for overflow experts
+  track: engine
+  kind: feature
+  state: abandoned
+  outcome: superseded
+  evidence:
+  - docs/adr/0034-expert-slots-at-least-top-k.md
+  verdict_quote: 'Superseded by ADR 0035: pair groups need no mask, parking entries or distinct-slot rule and allow any slot count again.'
+  headline: ''
+  depends_on:
+  - memory-tiers
+  replaced_by:
+  - memory-pair-groups
+  lane: none
+  start: '2026-11-01'
+  end: '2026-11-01'
+  folded:
+  - Exact overflow passes (ADR 0034) (2026-11-01, commit 591497606e, commit c9387023d4, commit d1d96ef0c9, commit cd053a7d7f, commit aaaed6fdea, commit 4d46d3629e, commit 0d8fdc92f6, commit cefb2245f4, commit 510e405d8e, commit d33bb80cfc, commit 006bc314d0, commit 2c5e420524, commit 60cdfb9bea, commit 9776e222b4, commit 1ee51a228d)
+  overview: false
+  plain: When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
+- id: engine-cpu-threadpool
+  title: One CPU threadpool, one step graph
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0036-cpu-threadpool-and-whole-step-graph.md
+  - docs/adr/0039-no-cpu-repack-of-expert-weights-for-now.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - engine-moe-builder
+  replaced_by: []
+  lane: none
+  start: '2026-11-01'
+  end: '2026-11-02'
+  folded:
+  - 'CPU speed: one threadpool and one-graph resident step (ADR 0036) (2026-11-01, commit 52992a4f5e, commit ecaab3e693, commit 70525df941, commit d244828d56, commit 433a4f4a07, commit 4609a35814)'
+  - CUDA topk-moe fusion fix for the one-graph step (2026-11-01, commit 97de4e6ac5, commit 8136c48f52, commit e8d4bed484, commit d50c5c6af6)
+  - 'ADR 0039: no AVX2 repack of builder CPU weights (2026-11-02, commit e0e74f702a)'
+  overview: false
+  plain: CPU work shares one threadpool and a fully resident step runs as one graph, which fixed a CPU path that got slower with more threads; ADR 0039 kept CPU expert weights unrepacked for now.
+- id: engine-cuda-graphs
+  title: Decode replays CUDA graphs
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - commit 710c907472
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - engine-moe-builder
+  replaced_by: []
+  lane: none
+  start: '2026-11-02'
+  end: '2026-11-02'
+  folded:
+  - CUDA graph replay via set_rows and step graph reuse (2026-11-02, commit 710c907472, commit 5785ad8cc3, commit 23d010d97c)
+  overview: false
+  plain: The builder's decode step had never used CUDA graphs (recorded GPU work replayed with little CPU overhead); step graphs are now reused so ggml can capture and replay them.
+- id: engine-kt-gap
+  title: Find the gap to KTransformers
+  track: engine
+  kind: experiment
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0045-phase2-exit-verdict.md
+  verdict_quote: decode 1.34x behind KTransformers at a 26-core quota, the logit offset is fused-kernel rounding over a different batching
+  headline: ''
+  depends_on:
+  - bench-phase2-exit
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-09'
+  folded:
+  - KTransformers decode gap and 235B logit offset (ADR 0045 addendum) (2026-11-03, commit e740d5016f, commit db37d90e6f, commit 94c03fba9a, commit 2a950be6e2, commit 6eb030e8bb, commit e7418cb64c, commit 171f1f7628, commit 913926a0cd, commit 70ee3b3b8c, commit e9669eeeee, commit 999d584b14)
+  - KTransformers decode design read from source (2026-11-08, session record)
+  - A6000 decode gap fixes and decode profile (2026-11-09, commit 506e0f3417, commit 62ef137701, commit 8e4cf07114, commit 530df65f34, commit f7c3a2ddd0, commit 64003d5ee9, commit 7647828027, commit 4ce5ef3bac, commit 54345dd3cf, commit 88cc6c6d7b, commit d2d7bd6595)
+  - Diagnose the KTransformers decode gap (2026-11-09, commit 37d9eb29c2, commit cc307f2816, commit 8a94dd5fd3)
+  overview: false
+  plain: Diagnosis of why the builder decoded slower than KTransformers (another engine for MoE models on CPU plus GPU) on some CPUs, and fixes for the decode gap found on an RTX A6000 box.
+- id: engine-isa-dispatch
+  title: Pick CPU kernels at run time
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0052-runtime-cpu-isa-dispatch.md
+  - patches
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - engine-kt-gap
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-09'
+  folded:
+  - Runtime CPU ISA dispatch (ADR 0052, patch 0001) (2026-11-09, commit b9104ecedc, commit fd9174f78f, commit 7d958f2946, commit ad52b10408, commit f78de9ee2e, commit d85bc00365, commit 47049e73dc, commit b6513be461, commit 48534c2eb3, commit 778c669a94, commit d17323d984, commit 9615203fc2)
+  overview: false
+  plain: One binary carries CPU kernels for several instruction sets (AVX2, AVX-512) and picks the best at start, as a ggml patch (patch 0001).
+- id: engine-iqk-kernels
+  title: Faster AVX-512 decode kernels
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0053-iqk-avx512-vnni-q4k-decode-kernel.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - engine-kt-gap
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-09'
+  folded:
+  - iqk AVX-512 VNNI Q4_K/Q6_K decode kernels as patch 0002 (ADR 0053) (2026-11-09, commit bf3cf1add4, commit a802dd4d81, commit c4c55a2d6f, commit 03c4aa1f43, commit a4cdaa9617, commit 95d2681b3a, commit 8ae706393f, commit 6cbd3a8a55, commit b4a632b569, commit 87f3e8a580, commit ed872bccbd)
+  overview: false
+  plain: AVX-512 VNNI kernels for 4- and 6-bit weights taken from ik_llama.cpp, as ggml patch 0002, to close the CPU decode gap.
+- id: engine-decode-dispatch
+  title: Fewer graph dispatches per token
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0064-decode-dispatch-segment-scheduler-and-one-graph-per-token.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - engine-cpu-threadpool
+  replaced_by: []
+  lane: none
+  start: '2026-11-12'
+  end: '2026-11-14'
+  folded:
+  - 'ADR 0064 decode dispatch: segment scheduler and one graph per token (2026-11-12, commit 05881948fb, commit a85689c7bc, commit 1388e40e52, commit 33ce62d455, commit 3ad43e4da7, commit 8784fb23e3, commit 2fac23e10d, commit a051162be3, commit 27f1f1a80a, commit 1c3996748e)'
+  - Dispatch floor on the CI runner (ADR 0064) (2026-11-14, commit 775347fa37, commit daaa1891f4, commit d104794bf9)
+  overview: false
+  plain: Cuts the fixed cost of launching many small graph segments per decoded token; steps 0 and 1 built, the floor measured on a CI runner.
+- id: engine-cpu-poll
+  title: CPU polling set from quota
+  track: engine
+  kind: feature
+  state: done
+  outcome: very-successful
+  evidence:
+  - docs/adr/0061-cpu-threadpool-polling-from-the-cgroup-quota.md
+  - bench/results/20261112e/README.md
+  verdict_quote: cpu_poll 0 removes quota throttling (0.80-0.98 to 0.05) and decodes 1.30x, tq4 and huge pages do not help
+  headline: decodes 1.30x
+  depends_on:
+  - engine-cpu-threadpool
+  replaced_by: []
+  lane: none
+  start: '2026-11-12'
+  end: '2026-11-15'
+  folded:
+  - CI poll bench for ggml polling under a CPU quota (ADR 0061) (2026-11-12, commit 9ad7786600, commit 27db57e384, commit 15194481cb, commit 667b181567, commit 271cd10ca3)
+  - CPU threadpool polling chosen from the cgroup quota (ADR 0061 phase 2) (2026-11-12, commit 9abb8988cb, commit 16a4bbb120, commit c35a3d7292)
+  - 'pool_pause: pause CPU threadpool in GPU-only segments (2026-11-12, commit 1d4fbbdf88)'
+  - 'Session 20261112e levers: poll 0 removes throttling, 1.30x decode (2026-11-12, commit f3e2ec59c9, commit e8b51d007e)'
+  - RAM tier huge pages A/B switch (ADR 0035 addendum) (2026-11-12, commit f278a3855c, commit 7ae50324c5, commit 563d63001a)
+  - Point-1 class session 20261115p1 on EPYC 7702 and RTX 4090 (2026-11-15, commit 4dfe8b7d60, commit 79dac2aed3, commit df20096fbf, commit 99893e04d9)
+  overview: true
+  plain: Rented boxes limit CPU time by a container quota; busy-polling worker threads burned that quota and got throttled. Turning polling off under a quota removed the throttling and sped up decode.
+- id: engine-dense-builder
+  title: Own Qwen3 dense builder
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0066-own-qwen3-dense-builder.md
+  - docs/adr/0072-dense-builder-cpu-weights-in-extra-buffer-types.md
+  verdict_quote: parity tests against libllama (bitwise on CPU)
+  headline: ''
+  depends_on:
+  - engine-moe-builder
+  replaced_by: []
+  lane: none
+  start: '2026-11-14'
+  end: '2026-11-16'
+  folded:
+  - Shared attention module for dense and MoE builders (C1.5) (2026-11-14, commit da975ce81b, commit 7529eb796f, commit 5d8b91e9f1, commit 56924953f3)
+  - Qwen3 dense builder and DenseBackend (C5) (2026-11-15, commit 981b3ec34c, commit 4819c77137, commit b9201adfcf, commit 6c0c25e989, commit b170d0e7f8, commit 7f36209582, commit f6d711fe64, commit c86f5fb0c5, commit 51d664982a, commit 847f90ebc5)
+  - 'Dense builder: per-sequence attention and extra buffer types (ADR 0072) (2026-11-16, commit 84e4bebacc, commit 2307ead717, commit 290f1da2f0, commit ac1e7e6e83, commit 6ca3644352, commit 02d77d9b24, commit c586573abf)'
+  overview: false
+  plain: 'Phase 4: Tetraeder''s own graph builder for dense Qwen3 models (the judged path of the Phase 4 test), sharing one attention module with the MoE builder and matching libllama''s logits.'
+- id: engine-gpu-tolerance
+  title: GPU parity anchored on libllama
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0071-gpu-logit-tolerance-relative-anchored-to-libllama.md
+  verdict_quote: gpu-smoke2's failures are F16 kernel noise at the fixtures' logit scale (11 to 15)
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-15'
+  end: '2026-11-17'
+  folded:
+  - GPU parity smoke boxes and relative CUDA tolerance (ADR 0071) (2026-11-16, commit 7fa9f56f46, commit ccb295dbe9, commit fde4066965, commit db7887c71a, commit 6ab7d82fe1, commit 030d1f34ab, commit ca9e4a67af, commit 116f839839, commit 5389bf961e, commit 8ac8664dd6, commit e620987121, commit 78a65ec84e, commit ab1a31adb4, commit 48aee5a414, commit a6aa63423b, commit c3c4f90de4, commit 636f806988, commit bb2515ee70, commit 5db3eaf1e1, commit 1759c23244, commit 57e1d1b3f1)
+  - Real-model batched parity anchor on CUDA (gpu_real_batched) (2026-11-16, commit ee9417c06a, commit b3b0465226, commit 31687299ec, commit f9ecb47160, commit 78b534e4ca, commit be418ea370)
+  - MoE multi-seq GPU test anchored on libllama gap (ADR 0071) (2026-11-17, commit 22c27c72ac, commit a0e714a537, commit 784dd809cb, commit e9630c9c51)
+  overview: false
+  plain: GPU logits never match the CPU bit for bit; the parity tests now allow the gap libllama itself shows between CUDA and CPU, relative to the logit scale.
+- id: engine-pin-b12426
+  title: Move to llama.cpp b12426
+  track: engine
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0073-engine-pin-b12426.md
+  - vendor/PIN
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-pin-ab
+  replaced_by: []
+  lane: none
+  start: '2026-11-16'
+  end: '2026-11-18'
+  folded:
+  - Engine pin move to llama.cpp b12426 (ADR 0073) (2026-11-16, commit 1fd23a671b, commit af492b0878, commit 58567d82c1, commit 877ed4f71f, commit 6c8f5fd30c, commit d2e8696d5b, commit 29f7f57bc9, commit f6889b47e4, commit c174cddc2d, commit adaf829f12, commit 99251de8a9, commit f1aa91c4fc, commit 26b0805d09, commit 759ca1d89f, commit 86663aef34)
+  - AVX2 batch drift diagnostics at the pin move (2026-11-16, commit 1046b72550, commit eecd9586ee, commit cb32c6b70f, commit 4ad2a2a564, commit 05d02fc2bf, commit e1e3c482cb, commit 751c0f12d6)
+  - vendor/llama.cpp gitlink follows the pin (2026-11-18, commit 255eaf72f0, commit f9af174861, commit 9e47f214b4, commit 734222261e, commit 51a86e2ff0)
+  overview: false
+  plain: The engine is built on a pinned llama.cpp release; moving the pin from b11976 to b12426 picked up upstream speedups the baseline already had.
+- id: memory-tiers
+  title: Memory tiers and expert slots
+  track: memory
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0031-arenas-tiers-slot-cache-direct-io.md
+  - docs/adr/0037-split-gguf-and-slot-tiers-from-byte-budgets.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - engine-moe-builder
+  replaced_by: []
+  lane: none
+  start: '2026-10-31'
+  end: '2026-11-03'
+  folded:
+  - Memory arenas, expert slot cache and RAM tier (2026-10-31, commit aa9b1b41d5, commit 69d587aef9, commit 60653a6d4d, commit 149408bfd0, commit e2e7c64b8b, commit fe1fd388e7, commit efada42617)
+  - Lessons from a 125B MoE tuning log (2026-10-31, session record)
+  - 'Phase 2 exit prep: split GGUF, byte-budget slot tiers, miss reads (ADR 0037) (2026-11-01, commit 8665efa643, commit 4c9b322b62, commit 35324d6ce9, commit ab2027bbab, commit dc7b530816, commit 14b787e547, commit 7cfe3b6b75, commit e6794c3325, commit 93eb854401)'
+  - Dio test ranges (2026-11-03, commit de62a00d7a)
+  overview: false
+  plain: Per-device memory arenas, a cache of expert slots on the GPU, a RAM tier and direct disk reads, so a MoE model larger than RAM can run with experts streamed in.
+- id: memory-pair-groups
+  title: Expert pair groups, CPU experts
+  track: memory
+  kind: feature
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/adr/0035-expert-pair-groups-and-cpu-experts.md
+  verdict_quote: 'Phase 2 step 3 GPU run: pair groups correct, CPU path slow'
+  headline: ''
+  depends_on:
+  - memory-tiers
+  replaced_by: []
+  lane: none
+  start: '2026-11-01'
+  end: '2026-11-01'
+  folded:
+  - Expert pair groups and CPU experts (ADR 0035) (2026-11-01, commit d88353e5e3, commit b40de96d02, commit 09f257b705, commit 2f8736a3ae, commit 489f71fa8d, commit 300ee64d59, commit 1add6e8ff3, commit 6fb443d285, commit cef79f252e, commit 39a5837b22, commit a26e2d7a5f)
+  - On-demand expert upload too slow, move to CPU experts (2026-11-01, session record)
+  overview: false
+  plain: Experts missing from GPU slots run on the CPU in groups instead of extra GPU passes; correct on the GPU run, but the CPU path was slow at first.
+- id: memory-prefetch
+  title: Prefetch next layer's experts
+  track: memory
+  kind: feature
+  state: done
+  outcome: very-successful
+  evidence:
+  - docs/adr/0038-predicted-next-layer-expert-prefetch.md
+  - bench/results/20261102/README.md
+  verdict_quote: 'ADR 0038 accepted: 235B decode +8.4%, prefill +6% with prefetch (accuracy 0.85), output-neutral in every pair'
+  headline: 235B decode +8.4%
+  depends_on:
+  - memory-tiers
+  replaced_by: []
+  lane: none
+  start: '2026-11-02'
+  end: '2026-11-03'
+  folded:
+  - Predicted next-layer expert prefetch (ADR 0038) (2026-11-02, commit bda72c808a, commit 32070d9dba, commit a21c2fc737, commit d4ddf3bbf7, commit 4a7f3eba2c, commit 6bdb04519e, commit d45786b636, commit 5c614db366, commit 7281dab9c0, commit b2a9408f91, commit 0b2bd1ed43, commit 64096b65c8, commit 0956ccf4a5)
+  - Prefetch levers and default on (ADR 0038) (2026-11-03, commit 8a8d5bd3fd, commit c6ca86fb6a, commit 08ac97262c, commit 13d918adde, commit a56cf077d2, commit 9b386322fd)
+  overview: true
+  plain: While one layer computes, predict which experts the next layer will need and start reading them early.
+- id: memory-conversion
+  title: Convert formats at load time
+  track: memory
+  kind: feature
+  state: done
+  outcome: very-successful
+  evidence:
+  - docs/adr/0047-formats-per-role-and-load-time-conversion-cache.md
+  verdict_quote: pipelined conversion 13 and 15% faster than llama-quantize (8B, 30B BF16 to Q4_K_M, byte-identical)
+  headline: 15% faster than llama-quantize
+  depends_on:
+  - planner-quality
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-03'
+  folded:
+  - Formats per role and load-time conversion cache (ADR 0041/0047) (2026-11-03, commit c53bdb9c42, commit 22c48b07c1, commit 9fa6970c91, commit 6b2e9d9ca9, commit d969a679c7)
+  - Quality profiles and conversion speed on 8B and 30B (box rounds) (2026-11-03, commit 0698777192, commit 916b00b53b, commit d33e444091, commit 4593939c51, commit 9e4a74b5be, commit d8add49d07, commit ae8e95aa3b, commit f452e4f4aa, commit 418d50dea4)
+  overview: false
+  plain: Weights are converted to the format the plan picks per tensor role when loading, with a disk cache; the converter is faster than llama.cpp's and byte-identical.
+- id: memory-io-service
+  title: Read experts while computing
+  track: memory
+  kind: feature
+  state: done
+  outcome: very-successful
+  evidence:
+  - docs/adr/0054-expert-reads-io-service-and-arrival-order-compute.md
+  - docs/adr/0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md
+  verdict_quote: overlap decode 1.38-1.40x main-prefetch
+  headline: overlap decode 1.38-1.40x
+  depends_on:
+  - memory-prefetch
+  replaced_by: []
+  lane: none
+  start: '2026-11-08'
+  end: '2026-11-11'
+  folded:
+  - ADR 0050 decode levers and briefs (2026-11-09, commit c7b0fc66fc, commit f9636ed2bf, commit 60efb7e976)
+  - I/O service and arrival-order expert compute (ADR 0054) (2026-11-09, commit d03f7f96db, commit 117ce205d3, commit 816c3154c5, commit 88e61fe74c, commit 4bb68ad3bc, commit 94ccfcf773, commit b98f8ca07a, commit 1654234802)
+  - b1b-levers session on box 60057461 (ADR 0054 levers) (2026-11-10, commit 35f424d40a, commit 023f2ccc51, commit 29b0535f15, commit 8c9bc11057)
+  - 'serve: prefetch, io-service and overlap on by default with a RAM tier (2026-11-10, commit 15d19832d6, commit 542e2b4f3b, commit f6bcdb9767, commit 80d595be85, commit 1c253be936, commit cc07a06c0b, commit f0a06df252, commit 13e55686dc)'
+  - 'Hidden share: urgent_first option and read-wait split by class (2026-11-11, commit a656c438b2, commit 85112ee387, commit 0f61576fff, commit f502e01f2f, commit de99f01d17, commit be86632b77, commit c905906c0f)'
+  overview: true
+  plain: An I/O service reads missing experts in the background and computes experts in the order they arrive, so disk reads overlap compute; on by default in serve.
+- id: memory-low-bit-kv
+  title: Low-bit KV cache per layer
+  track: memory
+  kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md
+  verdict_quote: (b) built; its KL acceptance passes under the gate on the cost above the floor (`20261110d`).
+  headline: ''
+  depends_on:
+  - memory-tiers
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-10'
+  folded:
+  - KV Hadamard rotation for a quantized KV cache (ADR 0050 addendum) (2026-11-09, commit 0c0fe35df9, commit 97acf90365, commit 13eea1658e, commit 878a74a294)
+  - Low-bit KV per attention unit (ADR 0050 b) (2026-11-09, commit f21d738c34, commit 5798b47a76, commit cdaccea1a8, commit c755357f69)
+  - b2-proxy rerun on box 60050186 after ADR 0057 (2026-11-10, commit 626f940a73, commit 6a8f3badd9, commit cc4e7cc71b)
+  - kv-quality scored a verbatim repeat at 32K; now scores unseen text (2026-11-10, commit 2b1c10cbff, commit 6bff309921, commit 83838fb0e5, commit 5f60ea7972)
+  - kv-quality gates on cost above the F16-with-rotation floor (2026-11-10, commit 541bd5e4ec, commit bc813cbfc6, commit 5b8cd51fdb)
+  - 'b2-proxy on box 59998776 (A6000): proxy parity, kv-quality fails at 8K (2026-11-10, commit 521c5160cb, commit 158e8501b0)'
+  overview: false
+  plain: The KV cache (the stored attention keys and values) can use fewer bits per attention layer; the quality gate first failed, then was fixed to score unseen text and the cost above the unquantized floor.
+- id: memory-ram-freq
+  title: Keep most-used experts in RAM
+  track: memory
+  kind: feature
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/adr/0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md
+  verdict_quote: frequency pins met the replay bar (`20261112c`) and are built, off by default (slow disks only)
+  headline: ''
+  depends_on:
+  - memory-tiers
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-12'
+  folded:
+  - Routing trace recorder and RAM-tier replay scorer (ADR 0050 c) (2026-11-09, commit cea185807c, commit fb0f15224a, commit 3b4717a188, commit 5fbecb0bdd)
+  - 'ram_policy freq: pin the most routed RAM experts (2026-11-12, commit 9fc0fbde63, commit 4ccc4c83bd, commit 11e7e306ea)'
+  - Replay of VRAM-tier policies (static, prefill, lru, freq) (2026-11-12, commit b3f8aebc2b, commit aed86e24e1, commit c6b6fa6cea, commit 5276afbb1e)
+  overview: false
+  plain: Record which experts a real workload routes to and pin the most used ones in the RAM tier; judged on a replay of the routing trace, built but off by default.
+- id: memory-ram-pool
+  title: Share RAM slots across layers
+  track: memory
+  kind: experiment
+  state: abandoned
+  outcome: dead-end
+  evidence:
+  - docs/adr/0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md
+  - bench/results/replay-20261114-v26
+  verdict_quote: a pool across layers missed its build threshold and is not built
+  headline: ''
+  depends_on:
+  - memory-ram-freq
+  replaced_by: []
+  lane: none
+  start: '2026-11-14'
+  end: '2026-11-14'
+  folded:
+  - RAM-tier policies across layers in the replay (ADR 0050 c) (2026-11-14, commit f826d155be, commit 767f75e3af, commit 87a099b717, commit a92a0f64be, commit 34cc7ada46, commit d1f47d4416, commit 09e61ee743)
+  overview: false
+  plain: One RAM expert pool shared by all layers instead of one per layer; the replay gain stayed under the bar set before measuring, so it was not built.
+- id: memory-adaptive-tier
+  title: Admit CPU misses into VRAM
+  track: memory
+  kind: feature
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/adr/0059-adaptive-compute-tier-admission.md
+  - bench/results/20261112c/README.md
+  verdict_quote: admission raises the decode VRAM share as designed, but the synchronous uploads cost more than the compute they save, so `admit_share` stays off.
+  headline: ''
+  depends_on:
+  - memory-io-service
+  replaced_by: []
+  lane: none
+  start: '2026-11-12'
+  end: '2026-11-12'
+  folded:
+  - Async admission uploads (ADR 0059 addendum) (2026-11-12, commit 798ab4500a, commit c6bc2e12dd, commit 37598aa658, commit 865e7f0111)
+  - 'Session 20261112c: adaptive tier at 0.1 loses to its uploads (2026-11-12, commit 6a2ddc500a, commit eca4dd0094, commit 5e0c25067f)'
+  - 'Adaptive compute tier: decode admits CPU misses into VRAM slots (ADR 0059) (2026-11-12, commit 2f84f0f82c, commit 363a308048, commit 4cf66fd48c, commit a7e310c949)'
+  overview: false
+  plain: During decode, copy a share of experts that ran on the CPU into GPU slots; it worked as designed, but the uploads cost more than they saved, so it stays off.
+- id: planner-plan-ir
+  title: One placement plan format
+  track: planner
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0006-one-placement-plan-ir.md
+  - docs/adr/0027-placement-plan-ir-shape.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-foundations
+  replaced_by: []
+  lane: none
+  start: '2026-10-29'
+  end: '2026-10-31'
+  folded:
+  - Phase 2 plan IR, validator and migration DAG (2026-10-31, commit 7c17b8f854, commit b222af4348, commit eb78211fcc, commit ebdfab43a3, commit a663f051a2, commit 081a1bb194, commit 87fa825558, commit 34c5040f91)
+  overview: false
+  plain: Every placement (which layer, expert and cache goes on which device and tier) is one plan in one format, with a validator and migration steps between plans, property-tested on every hardware fixture.
+- id: planner-quality
+  title: Quality profile per tensor
+  track: planner
+  kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0024-quantization-per-unit-and-quality-profile.md
+  - docs/adr/0048-quality-profile-file-and-calibration-job.md
+  verdict_quote: 'm1-open, ADR 0048: Phase 3a met against ik_llama quant types'
+  headline: ''
+  depends_on:
+  - planner-plan-ir
+  replaced_by: []
+  lane: none
+  start: '2026-10-29'
+  end: '2026-11-10'
+  folded:
+  - 'Design: per-unit quantization and quality profiles (2026-10-29, commit 1e22c82ed5)'
+  - Quality profile, log-power correction and mix at budget (ADR 0040/0048) (2026-11-09, commit 8cea744a77, commit 7de39f4717, commit 8cffa0b049, commit 48e1cc0c89, commit 0250d11e13, commit 5cf985057a)
+  - Importance-matrix quantization deferred until after M1 (2026-11-09, session record)
+  - Phase 3a profile mix vs ik_llama IQ4_KS and IQ4_K on Qwen3-8B (2026-11-10, commit 98fc0b4498, commit 234d43c5bb, commit 1d29c6648e, commit 9f2e6174df, commit ce3cd00162, commit 2d79c5a548)
+  overview: false
+  plain: A measured profile of how much each tensor loses at each bit width lets the planner mix formats; at the same bytes the mix beats llama.cpp's presets and ik_llama.cpp's types.
+- id: planner-core
+  title: Planner, cost model and search
+  track: planner
+  kind: feature
+  state: done
+  outcome: very-successful
+  evidence:
+  - docs/adr/0040-planner-candidates-calibration-and-scoring.md
+  - docs/adr/0007-measured-cost-model.md
+  verdict_quote: 'MoE fixture score: regret 0.000, Spearman 0.997, pick 3.14 s vs llama.cpp fit 4.52 s'
+  headline: pick 3.14 s vs llama.cpp fit 4.52 s
+  depends_on:
+  - planner-plan-ir
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-03'
+  folded:
+  - Phase 3a planner, cost model, detector and replanner (ADRs 0040-0042) (2026-11-03, commit 16ddde9537, commit 883befee1d, commit 4b7c7aefea, commit 929c514d19, commit 17e55524eb, commit 0b8320c11e, commit fdf82b1e8a, commit 6813d51624, commit 9e41df11e2, commit 6314b62c30, commit 9d0da73bd4, commit 4d450acf7e, commit 7a7e7e04cf, commit e84564c0b9, commit b0873da89f, commit c71add4dbb, commit 3c2cf326e7, commit e4dcf1bcbd, commit 7ff41f0b2b, commit bc8578b135, commit 87144fd64f)
+  - Planner search, explain, diff and what-if (2026-11-03, commit 95cdddd7a4, commit 59581dca25, commit 9c4ba9211a, commit fc9f4d0a0c, commit f8387d35a1, commit 729335b6fe, commit 18f2d57217, commit bd6309fb83, commit 971592e694)
+  overview: true
+  plain: 'Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions.'
+- id: planner-exit
+  title: Planner exit test
+  track: planner
+  kind: session
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/20261110/README.md
+  - docs/adr/0040-planner-candidates-calibration-and-scoring.md
+  verdict_quote: planner dense exit test PASS (24 candidates, regret 0, Spearman 0.997)
+  headline: Spearman 0.997
+  depends_on:
+  - planner-core
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-10'
+  folded:
+  - Phase 3a planner exit test on measured MoE and dense fixtures (ADR 0040) (2026-11-03, commit 29fc4eceb2, commit cf18cf9486, commit 2123524af0, commit 5441b550a6, commit c5d02a60a9, commit 36bef359b8, commit f6217abd6c, commit 948d324736, commit 1dc7f7f9be, commit 43d071db56)
+  - 'b3-planner session on box 59977867: dense exit test (2026-11-10, commit 04e61d334c, commit 33a24a9201)'
+  overview: false
+  plain: 'The planner''s predicted ranking against measured runs of 24 candidates on a box: its pick was the real best (regret 0) and the ranks agreed.'
+- id: planner-detector
+  title: Bottleneck detector
+  track: planner
+  kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0041-detector-observation-faults-and-limits.md
+  - docs/adr/0062-cpu-quota-throttle-fault.md
+  verdict_quote: detector exit test PASS on real faults (30/30, 0/10, 9/9)
+  headline: 30/30
+  depends_on:
+  - planner-core
+  replaced_by: []
+  lane: none
+  start: '2026-11-08'
+  end: '2026-11-12'
+  folded:
+  - Detector campaign scorer and CI exit test (2026-11-09, commit a14077aacf, commit 764cbdafb1)
+  - Nightly fault testbed and swapping detector (ADR 0041 addendum) (2026-11-09, commit b2b4fe07b6, commit 012dac2d1b, commit cd434d030f, commit 1c06f0ccb5, commit cd4216b4a3, commit 7263c2a405, commit 6bd12f8f8a)
+  - Fault testbed finds detector gaps the simulator hid (2026-11-09, session record)
+  - 'b3-detector session on box 59978288: detector exit test (2026-11-10, commit 24a5111617, commit 69aac57a0d)'
+  - cpu_quota_throttle fault class and testbed injection (ADR 0062) (2026-11-12, commit d33e1c1bab, commit ef0726dea1, commit dcc72bdb48, commit 7e8628c064, commit 8906aef3f3, commit 5fd244667d)
+  overview: false
+  plain: Names the bottleneck of a running setup (paging, disk, CPU quota throttling and others) from its metrics; passed its exit test on real injected faults.
+- id: planner-tier-cost
+  title: Disk cost and virtual clock
+  track: planner
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0056-tier-and-disk-cost-term-virtual-clock-calibration-ledger.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-core
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-10'
+  folded:
+  - 'ADR 0056 cost model design: tier and disk term, virtual clock, ledger (2026-11-09, commit db4e67706b, commit c7422cce05, commit 502f487956)'
+  - 'ADR 0056 parts A-C: calibration ledger, tier term, replay output (2026-11-09, commit 34e827b5a3, commit 220959dd65, commit 50ecdcb3e1, commit 250870c7aa, commit ac59a94d86, commit dfcf3f0a34, commit bdd745f0d9)'
+  - 'ADR 0056 parts D-F: virtual-clock replay, replanner clock, box stages (2026-11-09, commit 0b9e2d05aa, commit bcad0084c9, commit 3af675ba8e, commit 7050a3fed3, commit 648113580e, commit 20367eded8, commit f9a94ba8f0, commit 08bae73407, commit d3053f935d, commit 7ed905684e, commit 15c65eef1f)'
+  - Cost model predicted different RAM-tier sizes as equal (2026-11-09, session record)
+  - 'ADR 0056 parts D-F: virtual clock, replan clock, restart cut wait (2026-11-10, commit 8835c9db5a, commit 74a22bc214, commit c874f2b677)'
+  overview: false
+  plain: The cost model learns a disk and tier term, keeps a ledger of calibration runs, and replays plans on a virtual clock so tests run fast.
+- id: planner-replan
+  title: Replan while serving
+  track: planner
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0055-replanning-wired-into-serve.md
+  - docs/adr/0042-slo-burn-rate-alerts-and-drain-restart-replanning.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-detector
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-12'
+  folded:
+  - Replanning wired into serve (ADR 0055) (2026-11-09, commit 202c8be165, commit fc64f37597, commit 52a5ea7674, commit 9d0d0a8ebb, commit 3cdae4c533, commit e11b8bca5d, commit 475d5024a2, commit a87ea10810, commit ed2c9ce8ac)
+  - Replan engine test flake fixes (2026-11-12, commit a96d65bed3, commit 1171e3fe11)
+  overview: false
+  plain: When latency goals are missed, serve drains, switches to a new plan and restarts (drain and restart replanning).
+- id: planner-fill-tier
+  title: Fill free VRAM with experts
+  track: planner
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - crates/planner
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-core
+  replaced_by: []
+  lane: none
+  start: '2026-11-14'
+  end: '2026-11-15'
+  folded:
+  - Planner fill tier (largest VRAM slot count that fits) (2026-11-15, commit 01e62d6765, commit d54ca828e9, commit 7a9b0f2b18, commit 397e17900b, commit 2d2551cd0e, commit f11b579026, commit 102d2f43e8)
+  overview: false
+  plain: The planner offers the largest number of GPU expert slots that fits in free VRAM; this vramfill setting is the builder configuration the owner counted for M1.
+- id: planner-parallel-shapes
+  title: Plan tensor and expert parallel
+  track: planner
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0070-parallel-shapes-and-their-cost.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-core
+  replaced_by: []
+  lane: none
+  start: '2026-11-15'
+  end: '2026-11-16'
+  folded:
+  - 'Phase 5 E2: tensor and expert parallel shapes in the planner (2026-11-15, commit ef8575a863, commit 4d9c3c48f6, commit 069d990ffb, commit 6814f9c817, commit 57f77f69e5, commit 70c841d9f0, commit 9421501668, commit 1c2f66e22b)'
+  - 'Phase 5 E3: multi-GPU cost model and enumeration (2026-11-16, commit 8a5ee5095e, commit d41c8d420f, commit 3f3cab0727, commit e068b403ea, commit f823dd123f, commit 39b16d7da2, commit 5e6b605264, commit c92690b3f9, commit 6a4f60a3a3)'
+  - 'Phase 5 S2 prep: plan hw, NVML and CLI tests (2026-11-16, commit cfe86fe4a8)'
+  overview: false
+  plain: 'Phase 5: the planner enumerates multi-GPU shapes (layer split, tensor parallel, expert parallel, pipelines of tensor groups) and prices them.'
+- id: planner-cost-v2
+  title: Cost model, version 2
+  track: planner
+  kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0070-parallel-shapes-and-their-cost.md
+  - bench/results/s2g-20261118/README.md
+  verdict_quote: All seven 2-GPU candidates within 15% out of sample (`s2g-20261118`).
+  headline: ''
+  depends_on:
+  - planner-parallel-shapes
+  - multi-pipelined-prefill
+  replaced_by: []
+  lane: none
+  start: '2026-11-18'
+  end: '2026-11-19'
+  folded:
+  - Cost model v2 (ADR 0070) (2026-11-18, commit e8d8b3f021, commit 1d7279d821, commit b78c206ebe, commit a65b83b6cf, commit 46ec3b0546, commit af893ec1d1)
+  - S2g rehearsal with cost model v2 and pipelined prefill (2026-11-19, commit 912f27f6ae, commit 83413848b2)
+  overview: true
+  plain: Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows.
+  qualified_by:
+  - multi-defect-capture
+- id: planner-cost-v3
+  title: Price all-reduce latency in steps
+  track: planner
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0078-allreduce-in-step-latency.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-cost-v2
+  replaced_by: []
+  lane: none
+  start: '2026-11-19'
+  end: '2026-11-19'
+  folded:
+  - Cost model v3 (ADR 0078) (2026-11-19, commit 4fb8ea79f5, commit 7aa72480ec, commit 5d8f578cea, commit 09d60133d9, commit 7883865ab9, commit 7b90e52de4, commit 5fe8f363e8, commit 02de94a1cb)
+  overview: false
+  plain: Version 3 adds the latency of all-reduces (the sums tensor-parallel GPUs exchange every layer) inside a step, with calibration on four-GPU anchors.
+- id: planner-cost-v4
+  title: Price routed expert traffic
+  track: planner
+  kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0080-routed-slot-activation-traffic.md
+  verdict_quote: Cost model 4 (ADR 0080, routed-slot activation bytes) brings M4 ep-4 pp to +0.09.
+  headline: '+0.09'
+  depends_on:
+  - planner-cost-v3
+  replaced_by: []
+  lane: none
+  start: '2026-11-19'
+  end: '2026-11-19'
+  folded:
+  - Cost model v4 and comm probe warm-up (ADR 0080) (2026-11-19, commit d7e5b5d6e8, commit f363bc6822, commit 7b0ab515f4, commit ad1f0fc0bb, commit 08e948a02d, commit 07003e7dd5, commit c01a354de7, commit 0116a014a6)
+  overview: false
+  plain: Version 4 prices the activation bytes that expert parallel moves per routed expert, which brought the four-GPU expert-parallel prefill prediction close.
+  qualified_by:
+  - multi-defect-capture
+- id: multi-executor
+  title: Own multi-GPU executor
+  track: multi
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0069-own-executor-rank-programs.md
+  - docs/adr/0068-phase5-verdict-rules.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - engine-dense-builder
+  replaced_by: []
+  lane: none
+  start: '2026-11-15'
+  end: '2026-11-16'
+  folded:
+  - 'Phase 5 design: verdict rules, own executor, parallel shapes (ADRs 0068 to 0070) (2026-11-15, commit 151c27deea, commit feb030b81a, commit 30b4823ea2, commit 59598526b7)'
+  - 'Phase 5 E1: ggml-sys executor bindings and NCCL build (2026-11-15, commit 3ee3c17743, commit beddf703e9, commit 43d70cee5f, commit 95c02985cd)'
+  - 'Phase 5 E5: executor core, fallback all-reduce and comm-probe (2026-11-16, commit 3b3d77a5d1, commit bccf579f00, commit 558a82fb51, commit 5307887026, commit 501b1f5210, commit 3e99dd3f57, commit fcd5edd715, commit d19dfdbe40)'
+  - 'Phase 5 E9: worker process behind RemoteBackend (2026-11-16, commit adceba6c68, commit 39f451ce0e, commit cee1271394, commit 67a01b343b, commit 255a1d9118)'
+  overview: true
+  plain: 'Phase 5: Tetraeder runs its own executor instead of ggml''s backend scheduler: one program per GPU (rank), NCCL collectives, and the engine in a worker process.'
+- id: multi-sharded
+  title: Split models across GPUs
+  track: multi
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0070-parallel-shapes-and-their-cost.md
+  - patches
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - multi-executor
+  replaced_by: []
+  lane: none
+  start: '2026-11-15'
+  end: '2026-11-16'
+  folded:
+  - 'Phase 5 E4: CUDA mul_mat_id skips expert id -1 (patch 0004) (2026-11-16, commit 47c97b4647, commit 17b4cefa8f, commit af3be14649)'
+  - 'Phase 5 E6: sharded dense builder on the executor (2026-11-16, commit eb5cb4e10d, commit fecf9d3da0, commit 56084e4ef7, commit 8db9239702, commit 72fa1befe3, commit 2bfaa210a6, commit 07c9274147, commit db0e22dfee, commit 484569ba8d, commit 9a053e2acf, commit d310281e58, commit f532e1a4fd, commit f10d517706, commit 65d68ab972)'
+  - 'Phase 5 E7: sharded resident MoE builder (2026-11-16, commit 10a71b63e2, commit e125e338ac, commit 521dd3b5e8, commit 6e8b4fe62f, commit 33f3559f7e, commit 2247916dc3, commit bc594a8376, commit 43a59a7668)'
+  overview: false
+  plain: The dense and MoE builders load weights and KV per GPU for tensor, pipeline and expert parallel; a CUDA patch lets an expert id of -1 mean no expert.
+- id: multi-graph-views
+  title: Let CUDA fuse inside ranges
+  track: multi
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0075-executor-ranges-are-graph-views.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - multi-executor
+  replaced_by: []
+  lane: none
+  start: '2026-11-17'
+  end: '2026-11-17'
+  folded:
+  - Executor ranges as graph views (patch 0005, ADR 0075) (2026-11-17, commit 3869e29253, commit 170a5eb7f1, commit ef9a810689, commit c0d8a309c6)
+  overview: false
+  plain: The executor's ranges (parts of a step between collectives) become views of one graph, so CUDA's operator fusion works inside them (patch 0005).
+- id: multi-pipelined-prefill
+  title: Pipelined prefill in micro-batches
+  track: multi
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0077-pipelined-prefill-micro-batches.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - multi-executor
+  replaced_by: []
+  lane: none
+  start: '2026-11-18'
+  end: '2026-11-19'
+  folded:
+  - Pipelined layer-N prefill (ADR 0077) (2026-11-19, commit 9d2378e4ad, commit 476e61edc8, commit 3122c8d3e2, commit 41a6f3a9db, commit db13d38031, commit 4ac86df2ea, commit 9d6752f6b0, commit 9ddf12fecb, commit b8b4b33981)
+  - 'GPipe issue order: later stages first (2026-11-19, commit fa9e66cbae, commit bee403b014, commit d8b415d60f, commit 5fc04555d6)'
+  - Layer split balances pipelined prefill (2026-11-19, commit dcbf57cb81, commit 8ba650c29c, commit 02a92fe050)
+  overview: false
+  plain: With layers split across GPUs, prompt processing is cut into micro-batches so all stages work at once (GPipe schedule), issued in llama.cpp's order, with splits balanced for it.
+- id: multi-decode-toggles
+  title: Two decode speedups made default
+  track: multi
+  kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0069-own-executor-rank-programs.md
+  - bench/results/s3c-20261119-decode-decode
+  verdict_quote: Both decode toggles meet the ADR 0069 keep rule on the 30B in both rounds
+  headline: ''
+  depends_on:
+  - multi-graph-views
+  replaced_by: []
+  lane: none
+  start: '2026-11-19'
+  end: '2026-11-19'
+  folded:
+  - Layer-N decode toggles (ADR 0069, 0075) (2026-11-19, commit 3f21e333ad, commit 30b8644b27, commit fe9513cc45, commit 17a044c0cd, commit a94d6e2044, commit c4ab5809f5)
+  - S3c decode toggle check and 4-GPU rehearsal (2026-11-19, commit 490a9be466, commit b8b15dcb5b, commit 8c6143c067)
+  overview: false
+  plain: Two executor options for layer-split decode (range ids for graph reuse, asynchronous inputs) met their keep rule and are on by default.
+- id: multi-defect-capture
+  title: Judged prefill timed graph capture
+  track: multi
+  kind: defect
+  state: done
+  outcome: unrated
+  evidence:
+  - bench/results/s3d-20261120/README.md
+  - bench/results/s3e-20261120/README.md
+  - docs/m2-plan.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-s3-rehearsal
+  replaced_by: []
+  lane: none
+  start: '2026-11-19'
+  end: '2026-11-20'
+  folded:
+  - S3d tp2-pp2 overlap probes and decode traces (2026-11-20, commit 3d898f76a9, commit d0bf6ec305, commit f15204f86e, commit a8a0ff8c02, commit c3e091a4ad, commit c376a54454, commit d68be78570, commit 5d84e74e9d, commit e01f5fb56c, commit 59bf8b2c65, commit 1adad15eb8, commit e6100d1773)
+  - S3e graph-state diagnostic (2026-11-20, commit 245a9b7be3, commit 3ada436ad0, commit fddb502dca, commit ad0d0d0ca9, commit 24fe20e125, commit d4daaade98)
+  overview: true
+  plain: ggml-cuda records a CUDA graph on a range's second call; every judged prefill timed that recording call, which with an NCCL kernel pending serialized the pipeline stages, so earlier prefill verdicts measured a slow state serving never sees.
+- id: serving-gateway
+  title: OpenAI and Anthropic gateway
+  track: serving
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0028-gateway.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-foundations
+  replaced_by: []
+  lane: none
+  start: '2026-10-29'
+  end: '2026-10-31'
+  folded:
+  - Phase 3b gateway with OpenAI and Anthropic APIs (2026-10-30, commit 880d223f61, commit 1a0a423757, commit 6760388da8, commit 6294648a47)
+  - Gateway review cleanup (2026-10-31, commit 5bcc7cdbb9, commit 96b01e6f9d, commit 4c39601abf, commit db2b0e5c12, commit 35a92b0ad8, commit 7079fcadab)
+  overview: false
+  plain: 'Phase 3b: an HTTP gateway with OpenAI- and Anthropic-style APIs, streaming, tool calls, chat templates and structured output.'
+- id: serving-real-engines
+  title: Real engines behind the gateway
+  track: serving
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0046-serving-real-engines-behind-the-gateway.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-gateway
+  - engine-libllama
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-03'
+  folded:
+  - Lenient Anthropic input in the gateway (2026-11-03, commit e1cba91cdc, commit c3338c2c23)
+  - 'Phase 3b: real engines behind the gateway (ADR 0046) (2026-11-03, commit 3994874d70, commit 4d8ce5cefc, commit 19acfdc6fc, commit 7a9b0e7bb1, commit 912077c21c, commit 0172183223, commit 635bd76abf, commit 73a3f40891, commit e5c10d8e2d)'
+  - Phase 3b gateway exit run on RTX 3090 (2026-11-03, commit 37dc752365, commit f2a34f7e55, commit b1784ed9b1)
+  overview: false
+  plain: The gateway serves real models through libllama and the MoE builder, with an SDK conformance suite and paired runs against llama-server.
+- id: serving-prefix-cache
+  title: Prefix cache in host RAM
+  track: serving
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0049-multi-entry-prefix-cache-and-lenient-anthropic-input.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-real-engines
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-15'
+  folded:
+  - Multi-entry prefix cache in host RAM (ADR 0049) (2026-11-03, commit 5e3c0fe6cd, commit 9c892f411b, commit 499644b23b, commit b0288883a9)
+  - 'C3b: prefix reuse from busy sequences (2026-11-15, commit d91ffce275, commit 8902aadfa7, commit d7bd88b470)'
+  overview: false
+  plain: Saved model state for earlier prompts is kept in RAM, so a request that starts with a known prefix skips recomputing it; later also reused from running sequences.
+- id: serving-tool-calls
+  title: Repair and count tool calls
+  track: serving
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0051-no-prompt-checkpoints-tool-call-outcomes.md
+  - docs/adr/0057-qwen-xml-arguments-typed-from-python-literals.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-real-engines
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-11'
+  folded:
+  - Gateway tool-call outcomes and empty-call repair (ADR 0051) (2026-11-09, commit a9383ebc45, commit a713ba6194, commit 4d69150e43, commit 4697d658d3, commit 09e835ab15, commit 725d6348ed, commit 165915cf7a, commit 8b3b90f992, commit a3b6068b4b)
+  - Qwen3-Coder Python-literal tool arguments typed per schema (ADR 0057) (2026-11-10, commit 7ee3a766f5, commit 8fcfc333ba, commit c7fc979c35)
+  - 'Phase 3b proxy gaps: Qwen XML call without opener, tool-error classes (2026-11-11, commit d7823a037a, commit 0e5501f616, commit 9e7efd9088, commit 351ad3c444)'
+  - Tool-call outcome counts in request log and proxy summary (2026-11-11, commit 0994e7622b, commit 63738c70f4)
+  overview: false
+  plain: The gateway repairs malformed tool calls Qwen models emit (empty calls, Python-literal arguments, a missing opening tag) and counts each outcome per request.
+- id: serving-speculative
+  title: Speculative decoding
+  track: serving
+  kind: feature
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/adr/0043-speculative-decoding-in-the-scheduler.md
+  - docs/adr/0044-op-offload-by-step-tokens.md
+  verdict_quote: 'Measured 2026-11-03 (`20261103`): not a gain yet in the exit regime, see Results.'
+  headline: ''
+  depends_on:
+  - serving-real-engines
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-03'
+  folded:
+  - Op offload gated by step tokens (ADR 0044) (2026-11-03, commit 49e34ead2f)
+  - Speculative decoding in the scheduler (ADR 0043) (2026-11-03, commit 6312a410ad, commit 400ad46898, commit 06defa62bd, commit 834ab9b03a, commit 09c59c7c99, commit 44863074d1, commit 4556359efd, commit 3a1b1e3c4d, commit f60bf1e189, commit 0ffdcdba7d, commit 4f6f866f28)
+  - Speculation results on the 235B (ADR 0043) (2026-11-03, commit d6e15a3017, commit f87ffc2434, commit 98422d6a28, commit 0d00c1daa2)
+  overview: false
+  plain: A cheap drafter guesses several tokens and the model checks them in one step; exact, but slower on the 235B with streamed experts until an op-offload fix, rerun still open.
+- id: serving-batching
+  title: Continuous batching over sequences
+  track: serving
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0065-phase4-verdict-multi-sequence-backend-continuous-batching.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-real-engines
+  replaced_by: []
+  lane: none
+  start: '2026-11-14'
+  end: '2026-11-15'
+  folded:
+  - BatchBackend trait and step planner (C2a) (2026-11-14, commit a026f7b1e8, commit 525a8e8724)
+  - Continuous batching loop and multi-sequence libllama (C2b) (2026-11-14, commit 47081fa249, commit 2f4f972818)
+  - 'Phase 4 design: ADRs 0065 to 0067 and settled points (2026-11-14, commit 7068a16c3f, commit 0cfc685aef, commit f75a2afd8f, commit fb1290b51c)'
+  - Review fixes after C2b, C3b, C4 and C5 (2026-11-15, commit 8004383f91, commit 93c8a398f8, commit 1ee262dc5f, commit 40da69bef2, commit f13ca65621, commit 365c1a0310, commit 70f118b0a6)
+  overview: true
+  plain: 'Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders.'
+- id: serving-kv-layout
+  title: Chunked KV beats paged KV
+  track: serving
+  kind: experiment
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0067-kv-layout-experiment-chunked-vs-paged.md
+  verdict_quote: step 1 gives chunked (paged saves 35.8%, reads cost 5.6 to 18%)
+  headline: paged saves 35.8%
+  depends_on:
+  - serving-batching
+  replaced_by: []
+  lane: none
+  start: '2026-11-14'
+  end: '2026-11-18'
+  folded:
+  - 'KV layout experiment: chunked against paged (ADR 0067 step 1) (2026-11-14, commit 51523c8469, commit 9f540efdb7, commit f0be3f4b0e)'
+  - Lone request whose KV run cannot grow (ADR 0067) (2026-11-18, commit ab337db024, commit e4c640b408, commit 68bcd166d8, commit 42a63c2850)
+  overview: false
+  plain: 'Experiment for the KV cache layout: paged blocks saved memory but cost too much on reads, so each sequence keeps one contiguous chunk; paged was refuted at the threshold set beforehand.'
+- id: serving-moe-batch
+  title: MoE builder serves many requests
+  track: serving
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0065-phase4-verdict-multi-sequence-backend-continuous-batching.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-batching
+  - serving-kv-layout
+  replaced_by: []
+  lane: none
+  start: '2026-11-15'
+  end: '2026-11-16'
+  folded:
+  - 'MoE follow-ups: step graph cache, hot set, rollback via KvPool (2026-11-15, commit e298a3dfb7, commit b76e299a7d, commit 73ba05d4ad, commit a5bd13e6a3, commit 295228ef8f)'
+  - 'C4: MoE builder as a native batch backend (2026-11-16, commit 6d9b3f81e6, commit 97ebfd1758, commit 76beda6d07, commit 71149d0914, commit 0619b5751c, commit 2d06d3e363, commit 7e1674aff5, commit a15394b81c, commit 9a3c2f993b, commit 77251050d7)'
+  - MoE selects output rows before the last layer's FFN (2026-11-16, commit 60b7a66d21, commit aae7d49891, commit 56779de690, commit 459e9218f1, commit 30a2e0ee84, commit 5e32610bb1, commit 73a7bcbf94, commit 3a1de18d52, commit 6a4ba6aec1, commit 3ad4fa397c, commit d5e9510054, commit 86c05deeae)
+  overview: false
+  plain: The MoE builder becomes a native batch backend with the shared KV pool, so the streamed 30B MoE can serve four requests at once and count on the own builder.
+- id: serving-c4-gap
+  title: Close the four-request gap
+  track: serving
+  kind: experiment
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0065-phase4-verdict-multi-sequence-backend-continuous-batching.md
+  verdict_quote: 'ADR 0065: step budget 2048, spare sequence slots not adopted'
+  headline: ''
+  depends_on:
+  - serving-batching
+  replaced_by: []
+  lane: none
+  start: '2026-11-15'
+  end: '2026-11-16'
+  folded:
+  - 'Loop-bench workflow: scheduler loop against llama-server on CPU (2026-11-15, commit 31a293c15c, commit 185723a843, commit 4147db80d1, commit 2c2a43f501, commit 98c1fc6717, commit 7bef0300bb, commit 981b62bac1, commit b5c5844248, commit 5833567057, commit fb832e5285, commit 95227b7bef, commit b69672034f, commit e3ba66a6a2)'
+  - 'C4 gap diagnosis: decoders and prompt chunks as separate CPU calls (2026-11-15, commit c3a56d3255, commit 929f25bb9a, commit e061ac786b, commit 1fee0755c7)'
+  - Scheduler step budget of 2048 tokens (2026-11-16, commit 0446bb1c3b, commit 8f1a10c6a5)
+  overview: false
+  plain: At concurrency 4 (c4) Tetraeder trailed llama-server; a CPU loop bench found benchmark artifacts and one-prompt-per-step admission, fixed with a 2048-token step budget.
+- id: serving-spec-batching
+  title: Speculation in the batching loop
+  track: serving
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - crates/scheduler
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-speculative
+  - serving-batching
+  replaced_by: []
+  lane: none
+  start: '2026-11-15'
+  end: '2026-11-16'
+  folded:
+  - Self-speculative decoding and MTP parked until after the Phase 4 verdict (2026-11-15, session record)
+  - Speculative decoding in the batching loop (serve --spec) (2026-11-16, commit e0aae8afb1, commit f9e64ed991, commit ad76785ada, commit be0993b520, commit 16a7360cd3, commit b445a02f47, commit f718e94395, commit 00fcf36c1e, commit 3d069bf386)
+  overview: false
+  plain: serve --spec runs speculative decoding inside the continuous batching loop; self-speculation with a low-bit copy and MTP heads were parked until after the Phase 4 verdict.
+- id: serving-prefix-save
+  title: Fast prefix-cache saves
+  track: serving
+  kind: feature
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0074-prefix-save-through-pinned-staging.md
+  - bench/results/20261117h/README.md
+  verdict_quote: The save bar is met in `bench/results/20261117h/`
+  headline: ''
+  depends_on:
+  - serving-prefix-cache
+  replaced_by: []
+  lane: none
+  start: '2026-11-17'
+  end: '2026-11-20'
+  folded:
+  - Prefix save through pinned staging (ADR 0074) (2026-11-17, commit ee89ac1d2b, commit 50ce56a73e, commit 8ec7f5591e, commit ecf9fee5cd, commit 86f57887b1)
+  - Huge-page advice on the fresh snapshot, then off by default (2026-11-17, commit 99988e3f2c, commit d234c1a72d, commit ac69da154f)
+  - Snapshot buffer pool off the admission path (ADR 0074) (2026-11-17, commit f011e588a7, commit ad679ab881, commit 632f32ebf0, commit afda512a5b, commit 150e62c2ed)
+  - Dense backend reports kv_row_bytes (2026-11-17, commit c56b184551, commit f45f2ce2f7)
+  - 'Box 20261117h: kv-save2 passes ADR 0074 bar, D2a probes stop (2026-11-17, commit 7e150fba8f)'
+  - Overlapping the prefix save with the next step rejected (2026-11-17, session record)
+  - No save when a live hit keeps the cut (ADR 0074) (2026-11-18, commit bc49c20a60, commit 7149b30d4a, commit a8902fc038, commit 00e756cb7a, commit c63a5ed615, commit 938f04c1c3)
+  - New conversation takes a free slot (ADR 0074) (2026-11-19, commit ec914aeaa3, commit b822c044f8, commit 9fdaa3e73b, commit 7d78147d0b, commit 91480cde81, commit 8eacaac472)
+  - Admission-path outlier fixes from ttft4 (2026-11-19, commit c69acd0b99, commit ba4fa0e572, commit b8fe02952e, commit 345b72f344, commit 7677555d48, commit c528d32d62)
+  - Snapshot spares grow instead of replaced (2026-11-19, commit f015938cf1, commit 254f63f11d, commit 4165b4025d)
+  - 'Save metrics: preparer bytes and in-step saves (2026-11-20, commit 159b62c3be, commit 8cb851b5d7)'
+  overview: false
+  plain: Saving a sequence's KV for later reuse stalled admissions; saves go through pinned staging and a pool of spare buffers prepared off the admission path, and saves nobody reuses are skipped.
+- id: serving-own-run-attention
+  title: Long prompts attend their own run
+  track: serving
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0079-one-input-steps-attend-over-their-own-run.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - engine-dense-builder
+  replaced_by: []
+  lane: none
+  start: '2026-11-19'
+  end: '2026-11-19'
+  folded:
+  - 'Long-context prefill: own-run attention, mask reuse (ADR 0079) (2026-11-19, commit b39db8df9f, commit 6a21e33dc0, commit 366d42a8d0)'
+  overview: false
+  plain: A step with a single input attends only over its own KV run instead of the masked shared pool, with the mask buffer reused, which sped up long-context prefill.
+- id: bench-harness
+  title: Paired benchmark harness, baselines
+  track: bench
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/testing.md
+  - docs/adr/0058-decode-io-attribution.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-foundations
+  replaced_by: []
+  lane: none
+  start: '2026-10-30'
+  end: '2026-11-15'
+  folded:
+  - Diagnosis of slow CPU pairs and noisy GPU pairs (2026-10-30, session record)
+  - 'Bench harness: quality gate, equal threads, ABBA order (2026-10-31, commit a03f199e3c, commit 0e2b841ead, commit a3e8a892f3, commit 2f24855700, commit 5b7f1608e2, commit 8337612441, commit 2c123343cd, commit e639050f1f, commit f2eeae504b)'
+  - Nightly 20261031 on RTX 3090 (2026-10-31, commit 0333cf3f9b)
+  - Box -ot pairs and exit-regime numbers (2026-11-01, commit 4a312f6905, commit 9edb830cc3, commit 4e1661e056)
+  - GPU run prep and 2026-11-01 RTX 3090 run (2026-11-01, commit 2992f4126f, commit 4bff0429f3, commit 694a4ba6d6, commit 6728552338, commit 7a2d2a5bb4, commit 6148b4ca08, commit 0b3a6337df, commit f1a6a6fed5, commit a595547c9a, commit 8526ba13fb)
+  - ik_llama.cpp as second baseline engine (2026-11-02, commit e15433ada0, commit 8512dfeaee, commit 7c628413a8, commit 11780fe2b9, commit 6f864a1aba, commit edfdca27e2)
+  - 'Bench pairing: one CPU thread count for both engines (2026-11-02, commit abfb7a74c6, commit 996c6bceec)'
+  - Colibri as an exit-run baseline (2026-11-02, commit 6daf36a619, commit 2455feff89, commit bfb9fc53b3)
+  - Baseline build with MoE cache and resume plan baselines (2026-11-09, commit f3c3f3ea82, commit 20b6f7b20d, commit 68b98e4096)
+  - 'Decode I/O attribution: per-window bytes per token and io_class (ADR 0058) (2026-11-11, commit 0e9d331a28, commit ceb697300b, commit 3d8338e5e9, commit a2ca5bb667, commit d4cb998878)'
+  - 'Baseline pin b12274: llama.cpp FP8 KV cache (2026-11-12, commit a2fc68ad96, commit b435bf9c8e, commit 06cba9eef6, commit e45c8352b7, commit a0c9ffceef)'
+  - Exit harness multi-arm mode with KV snapshot (2026-11-12, commit 13a5daadc4, commit 670d513aaa)
+  - 'KT baseline: real kt-kernel variant names and build gate (2026-11-13, commit 3018488eb6, commit d3bf6079c4, commit 210c8e0083)'
+  - 'FP8 KV cache baseline: pin check and notes (2026-11-15, commit 244c69d2d0, commit ee4b026f24, commit c5694aab1f)'
+  overview: false
+  plain: Runs Tetraeder and baseline engines (llama.cpp with its expert cache, ik_llama.cpp, KTransformers, Colibri) in interleaved pairs on one box with the same threads, quality gate and decode I/O attribution.
+- id: bench-noise-bands
+  title: Measured noise bands per GPU
+  track: bench
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/testing.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-harness
+  replaced_by: []
+  lane: none
+  start: '2026-11-09'
+  end: '2026-11-11'
+  folded:
+  - Weekly GPU smoke profile with measured noise bands (2026-11-09, commit 76c4b84a4b, commit 2a4a5867d9, commit 5121e18a34, commit a37183b764)
+  - Measured noise bands from the 20261110 A/A pairs (2026-11-11, commit a55432850a, commit c6dc94fbfc)
+  overview: false
+  plain: Same-engine A/A pairs measure how much a GPU class varies run to run; verdicts and regressions are judged beyond that band.
+- id: bench-phase2-exit
+  title: 'Phase 2 exit: model beyond RAM'
+  track: bench
+  kind: session
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0045-phase2-exit-verdict.md
+  - bench/results/20261102/README.md
+  - bench/results/20261103/README.md
+  verdict_quote: 'ADR 0045: Phase 2 exit verdict (pass; decode parity with KTransformers on the 91.6 GB box)'
+  headline: ''
+  depends_on:
+  - memory-prefetch
+  - memory-pair-groups
+  - bench-harness
+  replaced_by: []
+  lane: none
+  start: '2026-11-02'
+  end: '2026-11-10'
+  folded:
+  - 'Phase 2 exit run: Qwen3-235B (2026-11-02, commit 67ecac00cd, commit a2cfdba78d, commit e1baa1d71e, commit 98119118bb, commit 98d370afaa, commit bff3868181, commit 8a19d838aa)'
+  - Phase 2 exit runs and verdict (ADR 0045) (2026-11-03, commit 9f99a41b15, commit 1c8e6d6c2a, commit ced6996bd2, commit 217885557e, commit 891b713240, commit aad6cf2cb0, commit 9a3cedec3e, commit f576313ee9, commit cc11229488, commit 0d8bf4bf38)
+  - b1c quota-tight pair and Phase 2 verdict with CPU matched (2026-11-10, commit 39e5e05e97, commit dbc2bc4571, commit d30e0e7287)
+  - b1-exit session on box 60042169 and Phase 2 verdict (2026-11-10, commit ec6af2d7a1, commit 31c466dac5, commit fec6f5486c)
+  overview: true
+  plain: 'Qwen3-235B, larger than the box''s RAM, against the best tuned baselines: the builder passed the Phase 2 exit at decode parity with KTransformers.'
+  qualified_by:
+  - bench-defect-tuned-cache
+- id: bench-defect-tuned-cache
+  title: Tuned llama.cpp cache beat builder
+  track: bench
+  kind: defect
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/m1-open.md
+  - bench/results/20261112a/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase2-exit
+  replaced_by: []
+  lane: none
+  start: '2026-11-05'
+  end: '2026-11-12'
+  folded:
+  - Phase 2 verdict missed llama.cpp's expert cache baseline (2026-11-05, session record)
+  - 'm1-open: M1 declared reached on 2026-11-10 (2026-11-10, commit 4c9feb240b, commit fbb69f2b55, commit a72fc5d745, commit 45b6de50a7)'
+  - 'm1-open: points awaiting the owner, M1 not declared (2026-11-12, commit ccea29252e, commit 3655464824, commit 3cfe150059)'
+  - 'Session 20261112a: builder vs llama.cpp cache at share 0.95 (2026-11-12, commit fdf393b8d2, commit 4f36c0294b)'
+  overview: true
+  plain: The Phase 2 verdict never measured llama.cpp's own expert cache (--moe-cache-mib) as a baseline; once added, and after M1 was first declared on 2026-11-10, the cache tuned to share 0.95 led the builder, so the Phase 2 verdict's point 1 reopened and M1 waited for new sessions.
+- id: bench-m1-point1
+  title: Builder beats llama.cpp expert cache
+  track: bench
+  kind: session
+  state: done
+  outcome: very-successful
+  evidence:
+  - bench/results/20261113k/README.md
+  - bench/results/20261113b/README.md
+  - docs/m1-open.md
+  verdict_quote: 20261113k confirms point 1 on a second host (builder 1.21-1.52x the cache)
+  headline: builder 1.21-1.52x the cache
+  depends_on:
+  - engine-cpu-poll
+  - memory-io-service
+  replaced_by: []
+  lane: none
+  start: '2026-11-10'
+  end: '2026-11-13'
+  folded:
+  - AVX2 closing run 20261110f against the llama.cpp expert cache (2026-11-10, commit c3d0c8a220, commit 7f01f7b2f6, commit ca84487e8c)
+  - 'Session 20261111g: tuner timed out, cache share 0.5 pairs (2026-11-11, commit 04fb868044, commit f99e9d4301, commit 439047582f, commit 104198161f)'
+  - Session 20261111e stopped at the disk gate (2026-11-11, commit 425129aa61, commit de70b20142)
+  - 'Session 20261111c: tuner OOM, cache at share 0.5 (2026-11-11, commit 0b344c53d7, commit b2e3483806, commit 22e2952b26)'
+  - llama.cpp tuner infeasible on the 235B (2026-11-11, session record)
+  - 'Session 20261112g: co-tenant guard, inconclusive pairing (2026-11-12, commit 99d5d1999c, commit d1ccdcdcea, commit ea9f7b6995, commit bba851b575)'
+  - Builder CPU compute variance across sessions unexplained (2026-11-12, commit 909e2dd7a5, commit 273741ff61, commit 7112625196, commit 42b3ef2da6)
+  - 'Session 20261112f invalid: RAM balloon OOM-killed (2026-11-12, commit 442f0ad7de, commit dbcc18676d, commit 490ce4338c)'
+  - 'Session 20261111h: builder vs cache share sweep (2026-11-12, commit 3e819f204e, commit b4a4e194ad)'
+  - 'Session 20261113c: dio server OOM under the balloon (2026-11-13, commit a435489595, commit ef06f98a35)'
+  - 'Session 20261113b: builder vs cache at poll 0, point 1 met (2026-11-13, commit da2c5e9618, commit f9a77641d8)'
+  - 'Session 20261113a: builder vs untuned cache (2026-11-13, commit 1ab510e35e, commit 530a3d4d51)'
+  - 'Session 20261113g: cache thrashed under 91 GB cgroup (2026-11-13, commit c1ce8643aa, commit 57f3f14492, commit 793f833a2f)'
+  - 'Session 20261113k: point 1 confirmed on a second host (2026-11-13, commit 029a4b942a, commit 62fe6e0e39, commit 44fd293788)'
+  - 'Session 20261113f never started: three boxes failed (2026-11-13, session record)'
+  overview: true
+  plain: 'M1 point 1: the builder against llama.cpp''s expert cache at its best share, in clean paired sessions on two hosts; many attempts were void (OOM, slow disk, co-tenants, thrash).'
+- id: bench-m1-point3
+  title: Builder against KTransformers, AVX-512
+  track: bench
+  kind: session
+  state: done
+  outcome: very-successful
+  evidence:
+  - bench/results/20261114/README.md
+  - bench/results/20261114b/README.md
+  - docs/m1-open.md
+  verdict_quote: 20261114 point-3 readings (vramfill 1.29-1.65x KT, poll50 1.16-1.21x)
+  headline: vramfill 1.29-1.65x KT
+  depends_on:
+  - planner-fill-tier
+  replaced_by: []
+  lane: none
+  start: '2026-11-10'
+  end: '2026-11-14'
+  folded:
+  - AVX-512 attempt 20261110h, KT server never came up (2026-11-10, commit 5fc53b1160, commit 00a2881ae1, commit 67e3ce742b, commit 7ec96c4516, commit 9da370f573, commit ed389dfb72)
+  - 'AVX-512 closing run blocked: no AVX-512 RTX 3090 offer (2026-11-10, session record)'
+  - 'Session 20261111b: AVX-512 repeat on a slow disk (2026-11-11, commit a07e32eff0, commit fbadc033fc, commit ac86990674)'
+  - 'Session 20261111a: AVX-512 overlap vs KTransformers, M1 reached (2026-11-11, commit 2056a0601f, commit 355facffec, commit a9588ef595)'
+  - 'Session 20261113h: KT cannot run on Blackwell (2026-11-13, commit 62a678c278, commit 8b8da11a53)'
+  - 'Session 20261113e aborted: slow push and download (2026-11-13, commit bd9933eb4b, commit d80ed118bb, commit 0b01e3b9da)'
+  - 'Session 20261113d: AVX-512 AMX, no point-3 verdict (2026-11-13, commit d72636697f, commit c80811494b)'
+  - Point-3 attempt on host 109790 stuck loading twice (2026-11-13, session record)
+  - 'M1 point 3 session 20261113o: builder against KTransformers (2026-11-14, commit 417c184017, commit a23f9ed30c)'
+  - 'M1 point 3 sessions 20261114 and 20261114b: vramfill and poll 50 arms (2026-11-14, commit ff7ee80d7a, commit 0143d1705d, commit d78316702d, commit caf258593c, commit 2309bdc1db, commit 9d8e64418d)'
+  overview: false
+  plain: 'M1 point 3: on AVX-512 CPUs KTransformers led until the builder filled free VRAM with expert slots; on a 24 GB card with no free VRAM the two tie.'
+- id: bench-owner-proxy-rules
+  title: Owner sets proxy test rules
+  track: bench
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0046-serving-real-engines-behind-the-gateway.md
+  verdict_quote: owner decisions on the tasks clause (no worse beyond spread, 73 vs 74 over five runs) and slow disks (scope, not result)
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-03'
+  end: '2026-11-11'
+  folded:
+  - Shorter Claude Code proxy run instead of a week-long test (2026-11-03, session record)
+  - Owner decisions on the tasks clause and slow disks (2026-11-11, commit 1f60010b7e)
+  overview: false
+  plain: The owner chose a few-hour Claude Code proxy run instead of a week of use, and later ruled the tasks clause means no worse beyond the run-to-run spread, and that slow disks are a scope limit, not a failed result.
+- id: bench-phase3b-proxy
+  title: Claude Code proxy exit test
+  track: bench
+  kind: session
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/20261110d/README.md
+  - docs/adr/0046-serving-real-engines-behind-the-gateway.md
+  verdict_quote: Phase 3b met (tasks 15/20 vs 14/20, cache 95.8% vs 94.2%, 0 400s)
+  headline: tasks 15/20 vs 14/20
+  depends_on:
+  - serving-real-engines
+  - serving-tool-calls
+  - serving-prefix-cache
+  replaced_by: []
+  lane: none
+  start: '2026-11-03'
+  end: '2026-11-11'
+  folded:
+  - Claude Code proxy kit and run on RTX A6000 (2026-11-03, commit 96abee17e5, commit 63b57228d6, commit 7395f04eaf, commit a5fb1fb6be, commit 8b8264a3b6, commit 429416ecc0)
+  - B2 proxy box session could not rent a 48 GB GPU (2026-11-09, session record)
+  - Phase 3b proxy rerun 4 on box 60067423 without the billing header (2026-11-10, commit 7fd4f19782, commit c61b487a71, commit 8b70fa2876, commit 130dfd4af7, commit 3e04ebfa42)
+  - Phase 3b proxy rerun 20261111d on box 60205005 (A6000) (2026-11-11, commit 5ac6a38a63, commit 1466275555, commit 79c73f5a6b)
+  overview: true
+  plain: 'Phase 3b exit: Claude Code works through Tetraeder''s gateway for a few hours, solving at least as many tasks and reusing as much prompt cache as llama-server.'
+- id: bench-owner-m1
+  title: Owner confirms milestone M1
+  track: bench
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/m1-open.md
+  - docs/adr/0045-phase2-exit-verdict.md
+  verdict_quote: 'M1 reached: owner decision on point 3 (vramfill is the builder''s configuration against KTransformers)'
+  headline: ''
+  depends_on:
+  - bench-m1-point1
+  - bench-m1-point3
+  - bench-phase3b-proxy
+  - planner-exit
+  - planner-detector
+  replaced_by: []
+  lane: owner
+  start: '2026-11-14'
+  end: '2026-11-14'
+  folded:
+  - 'Owner decision: M1 reached, vramfill counts as the builder configuration (2026-11-14, commit 1d36cc4239, commit 8e6382c069)'
+  overview: true
+  plain: 'M1 (one machine, MVP) is reached: the owner counted the builder with free VRAM filled with expert slots as its configuration against KTransformers.'
+- id: bench-phase4-harness
+  title: Phase 4 verdict harness
+  track: bench
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/phase4-briefs.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-harness
+  replaced_by: []
+  lane: none
+  start: '2026-11-14'
+  end: '2026-11-16'
+  folded:
+  - Phase 4 CPU rehearsal workflow (2026-11-15, commit 0a963ba7a6, commit 832c122720, commit d8648c593c, commit 4de2f02c56, commit 486e8af04a)
+  - Phase 4 verdict harness and its gates (2026-11-16, commit cf318460e7, commit 37d1a91d3a, commit 2bf1414cc6, commit d5ee72768a, commit 6ff5a528b1, commit ce1340823b, commit 0152eb9c5a, commit d1dfbece75, commit 0fa225def7, commit bb79be8565, commit 04df6cda70)
+  overview: false
+  plain: The box script and summary that judge Phase 4 (throughput pairs and time to first token on a Claude Code replay), with a CPU rehearsal workflow.
+- id: bench-d2a-rerun
+  title: First throughput check misses
+  track: bench
+  kind: session
+  state: done
+  outcome: mixed
+  evidence:
+  - bench/results/20261116d2a2/README.md
+  verdict_quote: D2a rerun misses at c4; builders cleared, loop and pin under test
+  headline: ''
+  depends_on:
+  - serving-moe-batch
+  - engine-dense-builder
+  - bench-phase4-harness
+  replaced_by: []
+  lane: none
+  start: '2026-11-16'
+  end: '2026-11-16'
+  folded:
+  - D2a rerun session 20261116d2a2 and dense-regress tooling (2026-11-16, commit 370efdc2bb, commit 8a87689a25, commit e37463d9fe, commit 07c9827160, commit 86e58528e7, commit ec19cfb7c8)
+  overview: false
+  plain: 'The throughput half of Phase 4 (D2a) on one RTX 3090: parity closed on both models, but four concurrent requests still trailed llama-server.'
+- id: bench-pin-ab
+  title: Old llama.cpp pin explains gap
+  track: bench
+  kind: experiment
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/20261116pinab/README.md
+  verdict_quote: 'The pin: llama-server built from b11976 is slower than b12426 at c4 (level at c1), and so is libllama''s 4-sequence decode step.'
+  headline: ''
+  depends_on:
+  - bench-d2a-rerun
+  replaced_by: []
+  lane: none
+  start: '2026-11-16'
+  end: '2026-11-16'
+  folded:
+  - 'Pin A/B: llama-server b12426 against b11976 (2026-11-16, commit 28914ad332, commit 04bc3a6f6b, commit d3a6913538, commit 7a98f0b412, commit 68fa45418d)'
+  overview: true
+  plain: 'A/B of llama.cpp versions on one box: part of the concurrency-4 gap was the older pinned version, so moving the pin went onto the critical path before the verdict.'
+- id: bench-pin-confirm
+  title: CUDA check on the new pin
+  track: bench
+  kind: session
+  state: done
+  outcome: unrated
+  evidence:
+  - bench/results/20261116pc/README.md
+  verdict_quote: q8b dense c4 seed 94 aborts with a CUDA illegal memory access (repro 4 of 4)
+  headline: ''
+  depends_on:
+  - engine-pin-b12426
+  replaced_by: []
+  lane: none
+  start: '2026-11-16'
+  end: '2026-11-17'
+  folded:
+  - 'Box 60983677: new llama.cpp version confirmed on real models, two bugs found (2026-11-16, session record)'
+  - Pin confirm 20261116pc on CUDA at b12426 (2026-11-17, commit 1d75822c5a, commit 26790f2006, commit 401e62b9e6)
+  - Dense attention mask padded to whole 64-row tiles (2026-11-17, commit b1c5bf8019, commit 728ebecf89, commit 30cfe090af, commit cff830fff7)
+  overview: false
+  plain: 'GPU session on the new pin: parity held on real models, but the dense engine crashed at four requests (fixed by padding the attention mask to whole tiles).'
+- id: bench-phase4-exit
+  title: Phase 4 exit test passes
+  track: bench
+  kind: session
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/20261117k/README.md
+  - bench/results/20261117l
+  - docs/adr/0065-phase4-verdict-multi-sequence-backend-continuous-batching.md
+  verdict_quote: 'The Phase 4 exit test passes: throughput for both counting models in `20261117k`, TTFT in `20261117l`.'
+  headline: ''
+  depends_on:
+  - bench-pin-confirm
+  - serving-c4-gap
+  - serving-prefix-save
+  - engine-gpu-tolerance
+  replaced_by: []
+  lane: none
+  start: '2026-11-17'
+  end: '2026-11-17'
+  folded:
+  - Phase 4 exit test accepted (ADR 0065) (2026-11-17, commit e8dbd1695c, commit 547a171818)
+  - D2a throughput session 20261117k (2026-11-17, commit 8b6db939b2, commit 66f64a6820, commit 1d09caae09)
+  - 'D2b session 20261117l: TTFT reuse and Claude Code recording (2026-11-17, commit 83a38f9664)'
+  - 'Box 20261117c: crash fixed, GPU save not faster (2026-11-17, commit fd856b9cbe, commit 9fa5c76907, commit b3b15d3f53)'
+  - 'Box 20261117d: gpu_kv_save passes with huge pages (2026-11-17, commit 1d1449090a, commit 269d46e640, commit 6f9f950442)'
+  - 'Box 20261117e: kv-save2 and D2a (2026-11-17, commit e99db4d2c1)'
+  - Box 20261117f partial (2026-11-17, commit d8b560bb14)
+  - Box 20261117g attempt 1 partial (2026-11-17, commit cbee1a7dab)
+  - Box 20261117i aborted at throttle gate (2026-11-17, commit a835626375)
+  overview: true
+  plain: 'Phase 4 verdict of record: throughput at one and four concurrent requests at least llama-server''s on the 8B dense and 30B MoE, and prefix reuse cuts time to first token on a Claude Code replay.'
+- id: bench-ttft
+  title: Time to first token bar
+  track: bench
+  kind: session
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/ttft7-20261119/README.md
+  - docs/adr/0074-prefix-save-through-pinned-staging.md
+  verdict_quote: TTFT bar met in two default rounds
+  headline: ''
+  depends_on:
+  - serving-prefix-save
+  - serving-own-run-attention
+  replaced_by: []
+  lane: none
+  start: '2026-11-18'
+  end: '2026-11-19'
+  folded:
+  - TTFT diagnosis ttft-20261118 on Qwen3-8B (2026-11-18, commit 7b64e47735, commit 099b7928c7, commit 1d47f37aa7, commit ab32bebc3c, commit 0b89af019e)
+  - ttft2-20261118 check of the no-save rule (2026-11-18, commit a20598f83c, commit d9b10ac6b7)
+  - ttft3-20261118 check of the no-save rules (2026-11-19, commit bedbf2e095, commit 0e66b2e716)
+  - ttft4-20261119 free-slot check (2026-11-19, commit c0cca8d9a2, commit 77066c1385)
+  - ttft5-20261119 check of admission fixes (2026-11-19, commit bf3543f955, commit 224576e73d)
+  - ttft6-20261119 with ADR 0079 and spares-off arm (2026-11-19, commit 528efd2fea, commit eb5bcdf87b)
+  - 'ttft7-20261119: TTFT bar met (2026-11-19, commit b0f0757c15, commit 3738a924d4, commit 8479badaea)'
+  overview: true
+  plain: 'Time to first token (TTFT) on the Claude Code replay against llama-server: median and p90 at most 1.15x and saves at most 10% of TTFT; met after seven replays and fixes.'
+- id: bench-phase5-harness
+  title: Phase 5 verdict harness and rules
+  track: bench
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0068-phase5-verdict-rules.md
+  - docs/phase5-briefs.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase4-harness
+  replaced_by: []
+  lane: none
+  start: '2026-11-15'
+  end: '2026-11-17'
+  folded:
+  - 'Phase 5 E8: verdict harness and ADR 0068 as built (2026-11-16, commit d7a6072bdc, commit 57f83f7b47, commit 0c6eb948b6, commit 5645ee40d9, commit da57ed851d, commit b6f08f1ae7)'
+  - gpu-parity gate in the Phase 5 box harness (2026-11-17, commit a8297bcc3a, commit 0e98bafd68)
+  overview: false
+  plain: The Phase 5 rules, written before any Phase 5 code (pick in the measured winner set, every prediction within 15%), and the box script with its GPU parity gate.
+- id: bench-throttle-rules
+  title: Judge GPU throttling per run
+  track: bench
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/notes/phase5-rule-changes.md
+  - docs/adr/0068-phase5-verdict-rules.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase5-harness
+  replaced_by: []
+  lane: none
+  start: '2026-11-17'
+  end: '2026-11-18'
+  folded:
+  - Session GPU sampler and idle gate (ADR 0065, 0068) (2026-11-17, commit a0dd2e370a, commit f2b2f866a5, commit dbb427e896, commit 361b346838, commit e0758c7791, commit e4dd103494, commit 8ce7c13797, commit 6b07795889)
+  - Throttle shares per configuration across rounds (2026-11-18, commit 840d9b381e, commit 0d61896072, commit 694e20e6a0)
+  - Power-limit gate at SSH (2026-11-18, commit a29b2b85a4, commit 0ff4acc9f8, commit e677409fc8)
+  overview: false
+  plain: Rented GPUs throttle; a 1 Hz sampler judges each run's window, throttle shares are compared between rounds of one configuration, and every GPU must run at its default power limit.
+- id: bench-s2-step0
+  title: Two-GPU executor check
+  track: bench
+  kind: session
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/s2f-20261118-step0/README.md
+  - docs/adr/0069-own-executor-rank-programs.md
+  verdict_quote: step-0 passed on both models (s2f-20261118-step0)
+  headline: ''
+  depends_on:
+  - multi-sharded
+  - multi-graph-views
+  - bench-throttle-rules
+  replaced_by: []
+  lane: none
+  start: '2026-11-17'
+  end: '2026-11-18'
+  folded:
+  - S2 step-0 session on 2x RTX 3090 stops at gpu-parity gate (2026-11-17, commit 1324f80384)
+  - S2b step-0 session and fixes (2026-11-18, commit c27cb872c3, commit 18eac59ac5, commit 382c1370ef, commit 50130a5aeb, commit 64f532984a, commit ed075574bc, commit 3728dcae25)
+  - S2c step-0 and MoE tp/ep anchor fix (2026-11-18, commit 06be3fa585, commit dfc24b747f, commit 723519f352)
+  - S2d step-0 on 2x RTX 3090 (2026-11-18, commit 36591c6aed, commit 658c8ad683)
+  - S2e step-0 and rehearsal (2026-11-18, commit 4b12355a2f, commit cf3cffb00a, commit 5de0acb7ae)
+  - Calibrate without CPU compute (2026-11-18, commit bec39ef57f, commit 218e58e212, commit e6e5775cd3)
+  - S2f rehearsal and step-0 (2026-11-18, commit d69a035d65, commit 9bc032efc6, commit 47ba678a12)
+  overview: false
+  plain: 'Step 0 of Phase 5 on two RTX 3090s: the own tensor-parallel executor at or above llama.cpp''s tensor split on both models, so no executor redesign; four sessions failed gates first.'
+  qualified_by:
+  - multi-defect-capture
+- id: bench-owner-analytic
+  title: Predictions stay analytic
+  track: bench
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0076-judged-predictions-from-per-shape-anchor-lines.md
+  - docs/notes/phase5-rule-changes.md
+  verdict_quote: 'Not adopted (owner, 2026-11-18): judged predictions stay the planner''s analytic predictions before the candidates run (ADR 0068)'
+  headline: ''
+  depends_on:
+  - planner-cost-v2
+  replaced_by: []
+  lane: owner
+  start: '2026-11-18'
+  end: '2026-11-18'
+  folded:
+  - ADR 0076 judged predictions from anchor lines, not adopted (2026-11-18, commit 46f7c78547, commit 9d9e1f4804, commit 91a3bdb73c)
+  overview: true
+  plain: ADR 0076 proposed judging predictions from lines fitted to runs of each candidate; the owner kept the 15% test on the planner's analytic predictions made before the candidates run.
+- id: bench-s3-rehearsal
+  title: Four-GPU rehearsals
+  track: bench
+  kind: session
+  state: done
+  outcome: unrated
+  evidence:
+  - bench/results/s3-20261119/README.md
+  - bench/results/s3b-20261119/README.md
+  - bench/results/s3c-20261119/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-cost-v3
+  - bench-s2-step0
+  replaced_by: []
+  lane: none
+  start: '2026-11-19'
+  end: '2026-11-19'
+  folded:
+  - S3 first 4-GPU session (2026-11-19, commit 3e7b3f423c, commit 3f29e49649, commit 1055682deb, commit 7ea433f3f8)
+  - S3b 4-GPU rehearsal after pipeline fixes (2026-11-19, commit d3e476f02b, commit 9780c89d72)
+  overview: false
+  plain: 'First four-GPU sessions on host 20210: all gates pass, the picks are right, but tensor-pipeline and expert-parallel predictions missed 15% and one GPU throttles thermally.'
+  qualified_by:
+  - multi-defect-capture
+- id: bench-owner-15pct
+  title: Keep 15% on every candidate
+  track: bench
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/notes/phase5-rule-changes.md
+  - docs/adr/0078-allreduce-in-step-latency.md
+  verdict_quote: 15% stays on every candidate.
+  headline: ''
+  depends_on:
+  - bench-s3-rehearsal
+  replaced_by: []
+  lane: owner
+  start: '2026-11-19'
+  end: '2026-11-19'
+  folded:
+  - Routing frequencies, tp-4 anchor, pp-overlap stage (2026-11-19, commit e25b1fcbff, commit 27c6e00284, commit b1b8b1b622)
+  overview: false
+  plain: After four-GPU misses the owner kept the 15% line on every candidate and had calibration gain recorded routing frequencies and four-GPU tensor-parallel anchors instead.
+- id: bench-s3f2
+  title: Four-GPU check of the fix
+  track: bench
+  kind: session
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/s3f2-20261120/README.md
+  verdict_quote: s3f2 passed (ADR 0081 confirmed on 4 GPUs; no 4-GPU candidate past 15%)
+  headline: ''
+  depends_on:
+  - multi-prefill-no-capture
+  replaced_by: []
+  lane: none
+  start: '2026-11-20'
+  end: '2026-11-20'
+  folded:
+  - S3f stopped at gate, ggml-sys capture test in gpu-parity (2026-11-20, commit ddb614600e, commit ca0934acb8, commit 98795ee71e, commit cdecf2b49d, commit 59b002082e, commit 6e0c670c41, commit b3165e3be8, commit 0c031ebb20)
+  - 'S3f2: ADR 0081 confirmed on 4 GPUs (2026-11-20, commit ce527cce53, commit be0426979c, commit cea2d9bc32, commit fe14d25fa8, commit 347b1693fa)'
+  overview: true
+  plain: With prefill run without graph capture, one round of every four-GPU candidate stayed within 15%; the first attempt (s3f) stopped at a gate.
+  qualified_by:
+  - bench-defect-s3f2-clock
+- id: bench-defect-s3f2-clock
+  title: Check host ran at low clocks
+  track: bench
+  kind: defect
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/m2-plan.md
+  - bench/results/s3f2-20261120/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-s3f2
+  replaced_by: []
+  lane: none
+  start: '2026-11-20'
+  end: '2026-11-20'
+  folded:
+  - 'm2-plan: s3f2 layer-4 tg not fixed, v5 back before V4a (2026-11-20, commit ef0130e3a2)'
+  overview: true
+  plain: The s3f2 host held every GPU at 1590 MHz all session, single GPU included, so its layer-4 decode result (0.995) does not show the earlier layer-split decode miss fixed; cost model version 5 is back on.
+- id: multi-accept-adr-0081
+  title: Accept the prefill capture fix
+  track: multi
+  kind: owner-decision
+  state: next
+  outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - multi-prefill-no-capture
+  - bench-s3f2
+  replaced_by: []
+  lane: owner
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: ADR 0081 is Proposed; its GPU test and the s3f2 confirmation passed, so it waits for the owner's acceptance.
+- id: bench-v2-verdict
+  title: Two-GPU verdict session
+  track: bench
+  kind: session
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - multi-prefill-no-capture
+  - bench-throttle-rules
+  replaced_by: []
+  lane: box
+  queue_order: 1
+  start: 2026-11-20
+  end: ''
+  folded: []
+  overview: false
+  plain: 'The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each.'
+  notes: 'Done when: verdict.json for v2-20261120 with both cases judged under ADR 0068.'
+- id: planner-cost-model-v5
+  title: Price decode at measured clocks
+  track: planner
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-cost-v4
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets.
+  notes: 'Done when: version 5 reproduces s3c''s 30B layer-4 tg within 15% and leaves s3f2 and the other candidates within 0.01 (ADR 0070 History).'
+- id: bench-d2a-probe
+  title: Admission probe on final main
+  track: bench
+  kind: experiment
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase4-exit
+  replaced_by: []
+  lane: box
+  queue_order: 2
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported.
+- id: bench-v4a-verdict
+  title: Four-GPU verdict, first box
+  track: bench
+  kind: session
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-cost-model-v5
+  - multi-prefill-no-capture
+  - ops-owner-v4a-cap
+  replaced_by: []
+  lane: box
+  queue_order: 3
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The judged session on four GPUs (cases D4 and M4) on a host other than 20210, run alone; the owner allowed one box up to 1.70 USD/h for it.
+- id: bench-v4b-verdict
+  title: Four-GPU verdict, second box
+  track: bench
+  kind: session
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-v4a-verdict
+  replaced_by: []
+  lane: box
+  queue_order: 4
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The second four-GPU session, so every configuration has two clean rounds on a clean host.
+- id: bench-m2-report
+  title: Report milestone M2
+  track: bench
+  kind: owner-decision
+  state: blocked
+  outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-v2-verdict
+  - bench-v4a-verdict
+  - bench-v4b-verdict
+  - bench-d2a-probe
+  replaced_by: []
+  lane: owner
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md).'
