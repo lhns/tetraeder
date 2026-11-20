@@ -1,0 +1,432 @@
+     41152:	find library=libc.so.6 [0]; searching
+     41152:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v3:/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v2:/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41152:	  trying file=glibc-hwcaps/x86-64-v3/libc.so.6
+     41152:	  trying file=glibc-hwcaps/x86-64-v2/libc.so.6
+     41152:	  trying file=libc.so.6
+     41152:	  trying file=/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v3/libc.so.6
+     41152:	  trying file=/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v2/libc.so.6
+     41152:	  trying file=/usr/local/cuda/lib64/libc.so.6
+     41152:	 search cache=/etc/ld.so.cache
+     41152:	  trying file=/usr/lib/x86_64-linux-gnu/libc.so.6
+     41152:	
+     41152:	
+     41152:	calling init: /lib64/ld-linux-x86-64.so.2
+     41152:	
+     41152:	
+     41152:	calling init: /usr/lib/x86_64-linux-gnu/libc.so.6
+     41152:	
+     41152:	
+     41152:	initialize program: timeout
+     41152:	
+     41152:	
+     41152:	transferring control: timeout
+     41152:	
+     41154:	find library=libnccl.so.2 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v3:/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v2:/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl.so.2
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl.so.2
+     41154:	  trying file=libnccl.so.2
+     41154:	  trying file=/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v3/libnccl.so.2
+     41154:	  trying file=/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v2/libnccl.so.2
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl.so.2
+     41154:	 search path=/root/tetraeder/target/release/glibc-hwcaps/x86-64-v3:/root/tetraeder/target/release/glibc-hwcaps/x86-64-v2:/root/tetraeder/target/release:/root/tetraeder/target/release/../glibc-hwcaps/x86-64-v3:/root/tetraeder/target/release/../glibc-hwcaps/x86-64-v2:/root/tetraeder/target/release/..		(RUNPATH from file target/release/tetraeder)
+     41154:	  trying file=/root/tetraeder/target/release/glibc-hwcaps/x86-64-v3/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/glibc-hwcaps/x86-64-v2/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/../glibc-hwcaps/x86-64-v3/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/../glibc-hwcaps/x86-64-v2/libnccl.so.2
+     41154:	  trying file=/root/tetraeder/target/release/../libnccl.so.2
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl.so.2
+     41154:	
+     41154:	find library=libstdc++.so.6 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libstdc++.so.6
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libstdc++.so.6
+     41154:	  trying file=libstdc++.so.6
+     41154:	  trying file=/usr/local/cuda/lib64/libstdc++.so.6
+     41154:	 search path=/root/tetraeder/target/release:/root/tetraeder/target/release/..		(RUNPATH from file target/release/tetraeder)
+     41154:	  trying file=/root/tetraeder/target/release/libstdc++.so.6
+     41154:	  trying file=/root/tetraeder/target/release/../libstdc++.so.6
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+     41154:	
+     41154:	find library=libm.so.6 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libm.so.6
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libm.so.6
+     41154:	  trying file=libm.so.6
+     41154:	  trying file=/usr/local/cuda/lib64/libm.so.6
+     41154:	 search path=/root/tetraeder/target/release:/root/tetraeder/target/release/..		(RUNPATH from file target/release/tetraeder)
+     41154:	  trying file=/root/tetraeder/target/release/libm.so.6
+     41154:	  trying file=/root/tetraeder/target/release/../libm.so.6
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libm.so.6
+     41154:	
+     41154:	find library=libcudart.so.12 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libcudart.so.12
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libcudart.so.12
+     41154:	  trying file=libcudart.so.12
+     41154:	  trying file=/usr/local/cuda/lib64/libcudart.so.12
+     41154:	
+     41154:	find library=libcublas.so.12 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libcublas.so.12
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libcublas.so.12
+     41154:	  trying file=libcublas.so.12
+     41154:	  trying file=/usr/local/cuda/lib64/libcublas.so.12
+     41154:	
+     41154:	find library=libcublasLt.so.12 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libcublasLt.so.12
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libcublasLt.so.12
+     41154:	  trying file=libcublasLt.so.12
+     41154:	  trying file=/usr/local/cuda/lib64/libcublasLt.so.12
+     41154:	
+     41154:	find library=libcuda.so.1 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libcuda.so.1
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libcuda.so.1
+     41154:	  trying file=libcuda.so.1
+     41154:	  trying file=/usr/local/cuda/lib64/libcuda.so.1
+     41154:	 search path=/root/tetraeder/target/release:/root/tetraeder/target/release/..		(RUNPATH from file target/release/tetraeder)
+     41154:	  trying file=/root/tetraeder/target/release/libcuda.so.1
+     41154:	  trying file=/root/tetraeder/target/release/../libcuda.so.1
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libcuda.so.1
+     41154:	
+     41154:	find library=libgcc_s.so.1 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libgcc_s.so.1
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libgcc_s.so.1
+     41154:	  trying file=libgcc_s.so.1
+     41154:	  trying file=/usr/local/cuda/lib64/libgcc_s.so.1
+     41154:	 search path=/root/tetraeder/target/release:/root/tetraeder/target/release/..		(RUNPATH from file target/release/tetraeder)
+     41154:	  trying file=/root/tetraeder/target/release/libgcc_s.so.1
+     41154:	  trying file=/root/tetraeder/target/release/../libgcc_s.so.1
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+     41154:	
+     41154:	find library=libc.so.6 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libc.so.6
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libc.so.6
+     41154:	  trying file=libc.so.6
+     41154:	  trying file=/usr/local/cuda/lib64/libc.so.6
+     41154:	 search path=/root/tetraeder/target/release:/root/tetraeder/target/release/..		(RUNPATH from file target/release/tetraeder)
+     41154:	  trying file=/root/tetraeder/target/release/libc.so.6
+     41154:	  trying file=/root/tetraeder/target/release/../libc.so.6
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libc.so.6
+     41154:	
+     41154:	find library=libdl.so.2 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libdl.so.2
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libdl.so.2
+     41154:	  trying file=libdl.so.2
+     41154:	  trying file=/usr/local/cuda/lib64/libdl.so.2
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libdl.so.2
+     41154:	
+     41154:	find library=libpthread.so.0 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libpthread.so.0
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libpthread.so.0
+     41154:	  trying file=libpthread.so.0
+     41154:	  trying file=/usr/local/cuda/lib64/libpthread.so.0
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libpthread.so.0
+     41154:	
+     41154:	find library=librt.so.1 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/librt.so.1
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/librt.so.1
+     41154:	  trying file=librt.so.1
+     41154:	  trying file=/usr/local/cuda/lib64/librt.so.1
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/librt.so.1
+     41154:	
+     41154:	
+     41154:	calling init: /lib64/ld-linux-x86-64.so.2
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libc.so.6
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/librt.so.1
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libpthread.so.0
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libdl.so.2
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libm.so.6
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libcuda.so.1
+     41154:	
+     41154:	
+     41154:	calling init: /usr/local/cuda/lib64/libcublasLt.so.12
+     41154:	
+     41154:	
+     41154:	calling init: /usr/local/cuda/lib64/libcublas.so.12
+     41154:	
+     41154:	
+     41154:	calling init: /usr/local/cuda/lib64/libcudart.so.12
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libstdc++.so.6
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libnccl.so.2
+     41154:	
+     41154:	
+     41154:	initialize program: target/release/tetraeder
+     41154:	
+     41154:	
+     41154:	transferring control: target/release/tetraeder
+     41154:	
+     41154:	find library=libnvidia-ml.so.1 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnvidia-ml.so.1
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnvidia-ml.so.1
+     41154:	  trying file=libnvidia-ml.so.1
+     41154:	  trying file=/usr/local/cuda/lib64/libnvidia-ml.so.1
+     41154:	 search path=/root/tetraeder/target/release:/root/tetraeder/target/release/..		(RUNPATH from file target/release/tetraeder)
+     41154:	  trying file=/root/tetraeder/target/release/libnvidia-ml.so.1
+     41154:	  trying file=/root/tetraeder/target/release/../libnvidia-ml.so.1
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1 [0]
+     41154:	
+hardware: gpu0: PCIe link is gen1 x8 now, max gen4 x16 (may be idle power saving)
+hardware: gpu1: PCIe link is gen1 x8 now, max gen4 x16 (may be idle power saving)
+hardware: gpu2: PCIe link is gen1 x8 now, max gen4 x16 (may be idle power saving)
+hardware: gpu3: PCIe link is gen1 x8 now, max gen4 x16 (may be idle power saving)
+hardware: pcie topology: 4 GPUs from NVML but 7 PCI display devices, not matched
+     41154:	find library=libnccl-net.so [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-net.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-net.so
+     41154:	  trying file=libnccl-net.so
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl-net.so
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	 search path=/lib/x86_64-linux-gnu/glibc-hwcaps/x86-64-v3:/lib/x86_64-linux-gnu/glibc-hwcaps/x86-64-v2:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/glibc-hwcaps/x86-64-v3:/usr/lib/x86_64-linux-gnu/glibc-hwcaps/x86-64-v2:/usr/lib/x86_64-linux-gnu:/lib/glibc-hwcaps/x86-64-v3:/lib/glibc-hwcaps/x86-64-v2:/lib:/usr/lib/glibc-hwcaps/x86-64-v3:/usr/lib/glibc-hwcaps/x86-64-v2:/usr/lib		(system search path)
+     41154:	  trying file=/lib/x86_64-linux-gnu/glibc-hwcaps/x86-64-v3/libnccl-net.so
+     41154:	  trying file=/lib/x86_64-linux-gnu/glibc-hwcaps/x86-64-v2/libnccl-net.so
+     41154:	  trying file=/lib/x86_64-linux-gnu/libnccl-net.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/glibc-hwcaps/x86-64-v3/libnccl-net.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/glibc-hwcaps/x86-64-v2/libnccl-net.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl-net.so
+     41154:	  trying file=/lib/glibc-hwcaps/x86-64-v3/libnccl-net.so
+     41154:	  trying file=/lib/glibc-hwcaps/x86-64-v2/libnccl-net.so
+     41154:	  trying file=/lib/libnccl-net.so
+     41154:	  trying file=/usr/lib/glibc-hwcaps/x86-64-v3/libnccl-net.so
+     41154:	  trying file=/usr/lib/glibc-hwcaps/x86-64-v2/libnccl-net.so
+     41154:	  trying file=/usr/lib/libnccl-net.so
+     41154:	
+     41154:	find library=libibverbs.so [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libibverbs.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libibverbs.so
+     41154:	  trying file=libibverbs.so
+     41154:	  trying file=/usr/local/cuda/lib64/libibverbs.so
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	 search path=/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib		(system search path)
+     41154:	  trying file=/lib/x86_64-linux-gnu/libibverbs.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libibverbs.so
+     41154:	  trying file=/lib/libibverbs.so
+     41154:	  trying file=/usr/lib/libibverbs.so
+     41154:	
+     41154:	find library=libibverbs.so.1 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libibverbs.so.1
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libibverbs.so.1
+     41154:	  trying file=libibverbs.so.1
+     41154:	  trying file=/usr/local/cuda/lib64/libibverbs.so.1
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libibverbs.so.1
+     41154:	
+     41154:	find library=libnl-route-3.so.200 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnl-route-3.so.200
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnl-route-3.so.200
+     41154:	  trying file=libnl-route-3.so.200
+     41154:	  trying file=/usr/local/cuda/lib64/libnl-route-3.so.200
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnl-route-3.so.200
+     41154:	
+     41154:	find library=libnl-3.so.200 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnl-3.so.200
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnl-3.so.200
+     41154:	  trying file=libnl-3.so.200
+     41154:	  trying file=/usr/local/cuda/lib64/libnl-3.so.200
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnl-3.so.200
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libnl-3.so.200
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libnl-route-3.so.200
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libibverbs.so.1
+     41154:	
+     41154:	find library=libnccl-profiler.so [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-profiler.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-profiler.so
+     41154:	  trying file=libnccl-profiler.so
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl-profiler.so
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	 search path=/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib		(system search path)
+     41154:	  trying file=/lib/x86_64-linux-gnu/libnccl-profiler.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl-profiler.so
+     41154:	  trying file=/lib/libnccl-profiler.so
+     41154:	  trying file=/usr/lib/libnccl-profiler.so
+     41154:	
+     41154:	find library=libnvidia-ml.so.1 [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnvidia-ml.so.1
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnvidia-ml.so.1
+     41154:	  trying file=libnvidia-ml.so.1
+     41154:	  trying file=/usr/local/cuda/lib64/libnvidia-ml.so.1
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1
+     41154:	
+     41154:	
+     41154:	calling init: /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1
+     41154:	
+     41154:	find library=libnccl-profiler.so [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-profiler.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-profiler.so
+     41154:	  trying file=libnccl-profiler.so
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl-profiler.so
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	 search path=/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib		(system search path)
+     41154:	  trying file=/lib/x86_64-linux-gnu/libnccl-profiler.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl-profiler.so
+     41154:	  trying file=/lib/libnccl-profiler.so
+     41154:	  trying file=/usr/lib/libnccl-profiler.so
+     41154:	
+     41154:	find library=libnccl-profiler.so [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-profiler.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-profiler.so
+     41154:	  trying file=libnccl-profiler.so
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl-profiler.so
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	 search path=/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib		(system search path)
+     41154:	  trying file=/lib/x86_64-linux-gnu/libnccl-profiler.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl-profiler.so
+     41154:	  trying file=/lib/libnccl-profiler.so
+     41154:	  trying file=/usr/lib/libnccl-profiler.so
+     41154:	
+     41154:	find library=libnccl-profiler.so [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-profiler.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-profiler.so
+     41154:	  trying file=libnccl-profiler.so
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl-profiler.so
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	 search path=/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib		(system search path)
+     41154:	  trying file=/lib/x86_64-linux-gnu/libnccl-profiler.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl-profiler.so
+     41154:	  trying file=/lib/libnccl-profiler.so
+     41154:	  trying file=/usr/lib/libnccl-profiler.so
+     41154:	
+     41154:	find library=libnccl-tuner.so [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-tuner.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-tuner.so
+     41154:	  trying file=libnccl-tuner.so
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl-tuner.so
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	 search path=/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib		(system search path)
+     41154:	  trying file=/lib/x86_64-linux-gnu/libnccl-tuner.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl-tuner.so
+     41154:	  trying file=/lib/libnccl-tuner.so
+     41154:	  trying file=/usr/lib/libnccl-tuner.so
+     41154:	
+     41154:	find library=libnccl-net.so [0]; searching
+     41154:	 search path=glibc-hwcaps/x86-64-v3:glibc-hwcaps/x86-64-v2::/usr/local/cuda/lib64		(LD_LIBRARY_PATH)
+     41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-net.so
+     41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-net.so
+     41154:	  trying file=libnccl-net.so
+     41154:	  trying file=/usr/local/cuda/lib64/libnccl-net.so
+     41154:	 search cache=/etc/ld.so.cache
+     41154:	 search path=/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib		(system search path)
+     41154:	  trying file=/lib/x86_64-linux-gnu/libnccl-net.so
+     41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl-net.so
+     41154:	  trying file=/lib/libnccl-net.so
+     41154:	  trying file=/usr/lib/libnccl-net.so
+     41154:	
+steps 2 mean 314.40 ms p95 508.52 ms
+     41154:	
+     41154:	calling fini:  [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libnccl.so.2 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libstdc++.so.6 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/local/cuda/lib64/libcudart.so.12 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/local/cuda/lib64/libcublas.so.12 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/local/cuda/lib64/libcublasLt.so.12 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libcuda.so.1 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libibverbs.so.1 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libnl-route-3.so.200 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libnl-3.so.200 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/librt.so.1 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libdl.so.2 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libm.so.6 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libpthread.so.0 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /usr/lib/x86_64-linux-gnu/libc.so.6 [0]
+     41154:	
+     41154:	
+     41154:	calling fini: /lib64/ld-linux-x86-64.so.2 [0]
+     41154:	

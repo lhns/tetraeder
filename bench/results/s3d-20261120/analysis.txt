@@ -1,0 +1,525 @@
+
+qwen3-30b-a3b-tp2pp2-mb4-pp-nccldebug.nccl.log: 8 transport lines, per transport {'SHM/direct/direct': 8}
+  c7934b9220d8:42745:42822 [1] NCCL INFO Channel 00 : 1[1] -> 0[0] via SHM/direct/direct
+  c7934b9220d8:42745:42822 [1] NCCL INFO Channel 01 : 1[1] -> 0[0] via SHM/direct/direct
+  c7934b9220d8:42745:42823 [0] NCCL INFO Channel 00 : 0[0] -> 1[1] via SHM/direct/direct
+  c7934b9220d8:42745:42823 [0] NCCL INFO Channel 01 : 0[0] -> 1[1] via SHM/direct/direct
+  c7934b9220d8:42745:42824 [3] NCCL INFO Channel 00 : 1[3] -> 0[2] via SHM/direct/direct
+  c7934b9220d8:42745:42825 [2] NCCL INFO Channel 00 : 0[2] -> 1[3] via SHM/direct/direct
+  c7934b9220d8:42745:42824 [3] NCCL INFO Channel 01 : 1[3] -> 0[2] via SHM/direct/direct
+  c7934b9220d8:42745:42825 [2] NCCL INFO Channel 01 : 0[2] -> 1[3] via SHM/direct/direct
+
+qwen3-32b-tp2pp2-mb4-pp-nccldebug.nccl.log: 8 transport lines, per transport {'SHM/direct/direct': 8}
+  c7934b9220d8:42850:42927 [1] NCCL INFO Channel 00 : 1[1] -> 0[0] via SHM/direct/direct
+  c7934b9220d8:42850:42928 [0] NCCL INFO Channel 00 : 0[0] -> 1[1] via SHM/direct/direct
+  c7934b9220d8:42850:42927 [1] NCCL INFO Channel 01 : 1[1] -> 0[0] via SHM/direct/direct
+  c7934b9220d8:42850:42928 [0] NCCL INFO Channel 01 : 0[0] -> 1[1] via SHM/direct/direct
+  c7934b9220d8:42850:42929 [3] NCCL INFO Channel 00 : 1[3] -> 0[2] via SHM/direct/direct
+  c7934b9220d8:42850:42930 [2] NCCL INFO Channel 00 : 0[2] -> 1[3] via SHM/direct/direct
+  c7934b9220d8:42850:42929 [3] NCCL INFO Channel 01 : 1[3] -> 0[2] via SHM/direct/direct
+  c7934b9220d8:42850:42930 [2] NCCL INFO Channel 01 : 0[2] -> 1[3] via SHM/direct/direct
+
+env/nccl-lib.txt
+  == ldd target/release/tetraeder
+  	libnccl.so.2 => /usr/lib/x86_64-linux-gnu/libnccl.so.2 (0x00007a3f79c38000)
+  == ldconfig -p
+  	libnccl.so.2 (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libnccl.so.2
+  	libnccl.so (libc6,x86-64) => /usr/lib/x86_64-linux-gnu/libnccl.so
+  == libnccl files
+  /usr/lib/x86_64-linux-gnu/libnccl.so
+  /usr/lib/x86_64-linux-gnu/libnccl_static.a
+  /usr/lib/x86_64-linux-gnu/libnccl.so.2
+  /usr/lib/x86_64-linux-gnu/libnccl.so.2.25.1
+  /usr/share/doc/libnccl-dev
+  /usr/share/doc/libnccl2
+  == pip
+  == env LD_LIBRARY_PATH=:/usr/local/cuda/lib64 LD_PRELOAD=
+  == /proc/41152/maps
+  == LD_DEBUG=libs
+       41154:	find library=libnccl.so.2 [0]; searching
+       41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl.so.2
+       41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl.so.2
+       41154:	  trying file=libnccl.so.2
+       41154:	  trying file=/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v3/libnccl.so.2
+       41154:	  trying file=/usr/local/cuda/lib64/glibc-hwcaps/x86-64-v2/libnccl.so.2
+       41154:	  trying file=/usr/local/cuda/lib64/libnccl.so.2
+       41154:	  trying file=/root/tetraeder/target/release/glibc-hwcaps/x86-64-v3/libnccl.so.2
+       41154:	  trying file=/root/tetraeder/target/release/glibc-hwcaps/x86-64-v2/libnccl.so.2
+       41154:	  trying file=/root/tetraeder/target/release/libnccl.so.2
+       41154:	  trying file=/root/tetraeder/target/release/../glibc-hwcaps/x86-64-v3/libnccl.so.2
+       41154:	  trying file=/root/tetraeder/target/release/../glibc-hwcaps/x86-64-v2/libnccl.so.2
+       41154:	  trying file=/root/tetraeder/target/release/../libnccl.so.2
+       41154:	  trying file=/usr/lib/x86_64-linux-gnu/libnccl.so.2
+       41154:	calling init: /usr/lib/x86_64-linux-gnu/libnccl.so.2
+       41154:	find library=libnccl-net.so [0]; searching
+       41154:	  trying file=glibc-hwcaps/x86-64-v3/libnccl-net.so
+       41154:	  trying file=glibc-hwcaps/x86-64-v2/libnccl-net.so
+       41154:	  trying file=libnccl-net.so
+       41154:	  trying file=/usr/local/cuda/lib64/libnccl-net.so
+
+
+pp tok/s mb4 / mb1 per variant (plain = default, internal = GGML_CUDA_ALLREDUCE=internal)
+  qwen3-30b-a3b   internal-plain   mb4    5752.3  mb1    5280.1  ratio 1.089
+  qwen3-30b-a3b   internal-trace   mb4    5772.1  mb1    5275.3  ratio 1.094
+  qwen3-30b-a3b   plain            mb4    5939.9  mb1    4099.1  ratio 1.449
+  qwen3-30b-a3b   sync             mb4    2501.2  mb1    2566.0  ratio 0.975
+  qwen3-30b-a3b   trace            mb4    5989.5  mb1    4111.8  ratio 1.457
+  qwen3-32b       internal-plain   mb4    1717.0  mb1    1660.8  ratio 1.034
+  qwen3-32b       internal-trace   mb4    1716.5  mb1    1657.5  ratio 1.036
+  qwen3-32b       plain            mb4    1719.7  mb1    1302.6  ratio 1.320
+  qwen3-32b       sync             mb4     867.9  mb1     873.6  ratio 0.993
+  qwen3-32b       trace            mb4    1718.0  mb1    1298.2  ratio 1.323
+  qwen3-30b-a3b   launchparallel   mb4    5917.9  (mb4 only)
+  qwen3-30b-a3b   nccldebug        mb4    5979.4  (mb4 only)
+  qwen3-32b       launchparallel   mb4    1732.1  (mb4 only)
+  qwen3-32b       nccldebug        mb4    1726.7  (mb4 only)
+
+qwen3-30b-a3b-ep4-tg-sync.trace.jsonl: 768 steps, sync=True
+  all_reduce rank 0  calls   96  sum     4248.9 us  per call     44.0 us
+  compute    rank 0  calls   97  sum     4604.5 us  per call     48.9 us
+  compute    rank 1  calls   97  sum     4506.0 us  per call     48.0 us
+  compute    rank 2  calls   97  sum     4517.3 us  per call     48.2 us
+  compute    rank 3  calls   97  sum     4390.1 us  per call     46.0 us
+  logits     rank 0  calls    1  sum       37.8 us  per call     37.8 us
+  logits     rank 1  calls    1  sum       32.5 us  per call     32.5 us
+  logits     rank 2  calls    1  sum       32.6 us  per call     32.6 us
+  logits     rank 3  calls    1  sum       31.9 us  per call     31.9 us
+  step       rank 0  calls    1  sum    22531.5 us  per call  22531.5 us
+  sync       rank 0  calls    1  sum        0.8 us  per call      0.8 us
+  sync       rank 1  calls    1  sum        0.7 us  per call      0.7 us
+  sync       rank 2  calls    1  sum        0.7 us  per call      0.7 us
+  sync       rank 3  calls    1  sum        0.6 us  per call      0.6 us
+  upload     rank 0  calls    1  sum       13.5 us  per call     13.5 us
+  upload     rank 1  calls    1  sum       11.5 us  per call     11.5 us
+  upload     rank 2  calls    1  sum       11.4 us  per call     11.4 us
+  upload     rank 3  calls    1  sum       11.2 us  per call     11.2 us
+
+qwen3-30b-a3b-ep4-tg-trace.trace.jsonl: 768 steps, sync=False
+  all_reduce rank 0  calls   96  sum     2522.7 us  per call     26.0 us
+  compute    rank 0  calls   97  sum      370.0 us  per call      3.8 us
+  compute    rank 1  calls   97  sum      334.8 us  per call      3.4 us
+  compute    rank 2  calls   97  sum      328.8 us  per call      3.3 us
+  compute    rank 3  calls   97  sum      326.9 us  per call      3.3 us
+  logits     rank 0  calls    1  sum       35.8 us  per call     35.8 us
+  logits     rank 1  calls    1  sum       31.7 us  per call     31.7 us
+  logits     rank 2  calls    1  sum       31.4 us  per call     31.4 us
+  logits     rank 3  calls    1  sum       31.3 us  per call     31.3 us
+  step       rank 0  calls    1  sum     5564.8 us  per call   5564.8 us
+  sync       rank 0  calls    1  sum     1418.5 us  per call   1418.5 us
+  sync       rank 1  calls    1  sum        1.6 us  per call      1.6 us
+  sync       rank 2  calls    1  sum        1.2 us  per call      1.2 us
+  sync       rank 3  calls    1  sum        1.2 us  per call      1.2 us
+  upload     rank 0  calls    1  sum       12.4 us  per call     12.4 us
+  upload     rank 1  calls    1  sum       10.3 us  per call     10.3 us
+  upload     rank 2  calls    1  sum       10.2 us  per call     10.2 us
+  upload     rank 3  calls    1  sum       10.1 us  per call     10.1 us
+
+qwen3-30b-a3b-layer4-tg-sync.trace.jsonl: 768 steps, sync=True
+  compute    rank 0  calls    1  sum     1239.1 us  per call   1239.1 us
+  compute    rank 1  calls    1  sum     1210.1 us  per call   1210.1 us
+  compute    rank 2  calls    1  sum     1212.4 us  per call   1212.4 us
+  compute    rank 3  calls    1  sum     1528.3 us  per call   1528.3 us
+  copy       rank 0  calls    1  sum       19.2 us  per call     19.2 us
+  copy       rank 1  calls    1  sum       17.6 us  per call     17.6 us
+  copy       rank 2  calls    1  sum       17.4 us  per call     17.4 us
+  logits     rank 3  calls    1  sum       91.3 us  per call     91.3 us
+  step       rank 0  calls    1  sum     5377.7 us  per call   5377.7 us
+  sync       rank 3  calls    1  sum        0.7 us  per call      0.7 us
+  upload     rank 0  calls    1  sum       12.9 us  per call     12.9 us
+  upload     rank 1  calls    1  sum        8.7 us  per call      8.7 us
+  upload     rank 2  calls    1  sum        8.5 us  per call      8.5 us
+  upload     rank 3  calls    1  sum        8.5 us  per call      8.5 us
+
+qwen3-30b-a3b-layer4-tg-trace.trace.jsonl: 768 steps, sync=False
+  compute    rank 0  calls    1  sum       10.7 us  per call     10.7 us
+  compute    rank 1  calls    1  sum        9.7 us  per call      9.7 us
+  compute    rank 2  calls    1  sum        9.6 us  per call      9.6 us
+  compute    rank 3  calls    1  sum        9.4 us  per call      9.4 us
+  copy       rank 0  calls    1  sum       15.7 us  per call     15.7 us
+  copy       rank 1  calls    1  sum       13.8 us  per call     13.8 us
+  copy       rank 2  calls    1  sum       13.6 us  per call     13.6 us
+  logits     rank 3  calls    1  sum       91.1 us  per call     91.1 us
+  step       rank 0  calls    1  sum     5344.5 us  per call   5344.5 us
+  sync       rank 3  calls    1  sum     5127.5 us  per call   5127.5 us
+  upload     rank 0  calls    1  sum       12.9 us  per call     12.9 us
+  upload     rank 1  calls    1  sum        8.9 us  per call      8.9 us
+  upload     rank 2  calls    1  sum        8.9 us  per call      8.9 us
+  upload     rank 3  calls    1  sum        8.6 us  per call      8.6 us
+
+qwen3-30b-a3b-single-tg-sync.trace.jsonl: 768 steps, sync=True
+  compute    rank 0  calls    1  sum     4724.1 us  per call   4724.1 us
+  logits     rank 0  calls    1  sum       91.5 us  per call     91.5 us
+  step       rank 0  calls    1  sum     4829.8 us  per call   4829.8 us
+  sync       rank 0  calls    1  sum        0.7 us  per call      0.7 us
+  upload     rank 0  calls    1  sum       12.1 us  per call     12.1 us
+
+qwen3-30b-a3b-single-tg-trace.trace.jsonl: 768 steps, sync=False
+  compute    rank 0  calls    1  sum       30.4 us  per call     30.4 us
+  logits     rank 0  calls    1  sum       92.0 us  per call     92.0 us
+  step       rank 0  calls    1  sum     4829.7 us  per call   4829.7 us
+  sync       rank 0  calls    1  sum     4691.6 us  per call   4691.6 us
+  upload     rank 0  calls    1  sum       12.2 us  per call     12.2 us
+
+qwen3-30b-a3b-tp2pp2-mb1-pp-internal-trace.trace.jsonl: 12 steps, sync=False
+  all_reduce rank 0  calls   48  sum    33001.3 us  per call    648.9 us
+  all_reduce rank 2  calls   48  sum    33860.2 us  per call    663.9 us
+  compute    rank 0  calls   49  sum     5957.6 us  per call    115.8 us
+  compute    rank 1  calls   49  sum     5628.7 us  per call    110.5 us
+  compute    rank 2  calls   49  sum     6144.9 us  per call    117.5 us
+  compute    rank 3  calls   49  sum     5850.4 us  per call    111.8 us
+  copy       rank 0  calls    1  sum       48.0 us  per call     48.0 us
+  copy       rank 1  calls    1  sum       41.7 us  per call     41.7 us
+  logits     rank 2  calls    1  sum      239.2 us  per call    239.2 us
+  logits     rank 3  calls    1  sum       60.2 us  per call     60.2 us
+  step       rank 0  calls    1  sum    97964.0 us  per call  97964.0 us
+  sync       rank 2  calls    1  sum     1862.2 us  per call   1862.2 us
+  sync       rank 3  calls    1  sum       10.6 us  per call     10.6 us
+  upload     rank 0  calls    1  sum      104.1 us  per call    104.1 us
+  upload     rank 1  calls    1  sum       93.1 us  per call     93.1 us
+  upload     rank 2  calls    1  sum       87.4 us  per call     87.4 us
+  upload     rank 3  calls    1  sum       87.7 us  per call     87.7 us
+
+qwen3-30b-a3b-tp2pp2-mb1-pp-sync.trace.jsonl: 12 steps, sync=True
+  all_reduce rank 0  calls   48  sum    34090.4 us  per call    711.0 us
+  all_reduce rank 2  calls   48  sum    29853.7 us  per call    622.3 us
+  compute    rank 0  calls   49  sum    32636.0 us  per call    534.5 us
+  compute    rank 1  calls   49  sum    32402.2 us  per call    532.3 us
+  compute    rank 2  calls   49  sum    32189.1 us  per call    539.7 us
+  compute    rank 3  calls   49  sum    32063.4 us  per call    535.0 us
+  copy       rank 0  calls    1  sum      705.6 us  per call    705.6 us
+  copy       rank 1  calls    1  sum      695.9 us  per call    695.9 us
+  logits     rank 2  calls    1  sum      227.1 us  per call    227.1 us
+  logits     rank 3  calls    1  sum       59.7 us  per call     59.7 us
+  step       rank 0  calls    1  sum   199970.2 us  per call 199970.2 us
+  sync       rank 2  calls    1  sum        0.9 us  per call      0.9 us
+  sync       rank 3  calls    1  sum        0.7 us  per call      0.7 us
+  upload     rank 0  calls    1  sum      101.3 us  per call    101.3 us
+  upload     rank 1  calls    1  sum       89.8 us  per call     89.8 us
+  upload     rank 2  calls    1  sum       88.0 us  per call     88.0 us
+  upload     rank 3  calls    1  sum       86.0 us  per call     86.0 us
+
+qwen3-30b-a3b-tp2pp2-mb1-pp-trace.trace.jsonl: 12 steps, sync=False
+  all_reduce rank 0  calls   48  sum     1584.0 us  per call     32.1 us
+  all_reduce rank 2  calls   48  sum    40329.1 us  per call     33.2 us
+  compute    rank 0  calls   49  sum     5829.8 us  per call    114.8 us
+  compute    rank 1  calls   49  sum     5635.3 us  per call    109.5 us
+  compute    rank 2  calls   49  sum    12746.5 us  per call    134.6 us
+  compute    rank 3  calls   49  sum     7590.1 us  per call    116.8 us
+  copy       rank 0  calls    1  sum       54.8 us  per call     54.8 us
+  copy       rank 1  calls    1  sum       44.9 us  per call     44.9 us
+  logits     rank 2  calls    1  sum      242.2 us  per call    242.2 us
+  logits     rank 3  calls    1  sum       59.9 us  per call     59.9 us
+  step       rank 0  calls    1  sum   124931.5 us  per call 124931.5 us
+  sync       rank 2  calls    1  sum    45665.0 us  per call  45665.0 us
+  sync       rank 3  calls    1  sum       17.0 us  per call     17.0 us
+  upload     rank 0  calls    1  sum      101.6 us  per call    101.6 us
+  upload     rank 1  calls    1  sum       90.1 us  per call     90.1 us
+  upload     rank 2  calls    1  sum       89.8 us  per call     89.8 us
+  upload     rank 3  calls    1  sum       85.9 us  per call     85.9 us
+
+qwen3-30b-a3b-tp2pp2-mb4-pp-internal-trace.trace.jsonl: 3 steps, sync=False
+  all_reduce rank 0  calls  192  sum   137628.4 us  per call    662.6 us
+  all_reduce rank 2  calls  186  sum   131131.4 us  per call    663.3 us
+  compute    rank 0  calls  196  sum    51587.0 us  per call    127.6 us
+  compute    rank 1  calls  196  sum    46032.3 us  per call    125.0 us
+  compute    rank 2  calls  190  sum    50039.9 us  per call    127.8 us
+  compute    rank 3  calls  190  sum    45605.4 us  per call    121.3 us
+  copy       rank 0  calls    4  sum      208.9 us  per call     49.1 us
+  copy       rank 1  calls    4  sum      179.0 us  per call     42.5 us
+  logits     rank 2  calls    1  sum      259.4 us  per call    259.4 us
+  logits     rank 3  calls    1  sum       61.3 us  per call     61.3 us
+  step       rank 0  calls    1  sum   358211.1 us  per call 358211.1 us
+  sync       rank 2  calls    1  sum     1806.3 us  per call   1806.3 us
+  sync       rank 3  calls    1  sum       84.5 us  per call     84.5 us
+  upload     rank 0  calls    4  sum      366.6 us  per call     99.8 us
+  upload     rank 1  calls    4  sum      358.1 us  per call     88.1 us
+  upload     rank 2  calls    4  sum      342.3 us  per call     81.6 us
+  upload     rank 3  calls    4  sum      343.0 us  per call     80.9 us
+
+qwen3-30b-a3b-tp2pp2-mb4-pp-sync.trace.jsonl: 3 steps, sync=True
+  all_reduce rank 0  calls  192  sum   136613.5 us  per call    707.1 us
+  all_reduce rank 2  calls  186  sum   118830.6 us  per call    636.8 us
+  compute    rank 0  calls  196  sum   168609.4 us  per call    751.9 us
+  compute    rank 1  calls  196  sum   165680.7 us  per call    752.1 us
+  compute    rank 2  calls  190  sum   160568.5 us  per call    753.5 us
+  compute    rank 3  calls  190  sum   153128.6 us  per call    749.2 us
+  copy       rank 0  calls    4  sum     2865.8 us  per call    713.4 us
+  copy       rank 1  calls    4  sum     2817.8 us  per call    703.6 us
+  logits     rank 2  calls    1  sum      264.4 us  per call    264.4 us
+  logits     rank 3  calls    1  sum       61.8 us  per call     61.8 us
+  step       rank 0  calls    1  sum   918334.6 us  per call 918334.6 us
+  sync       rank 2  calls    1  sum        1.1 us  per call      1.1 us
+  sync       rank 3  calls    1  sum        0.7 us  per call      0.7 us
+  upload     rank 0  calls    4  sum      370.2 us  per call    100.0 us
+  upload     rank 1  calls    4  sum      361.7 us  per call     86.6 us
+  upload     rank 2  calls    4  sum      343.7 us  per call     83.0 us
+  upload     rank 3  calls    4  sum      343.0 us  per call     82.6 us
+
+qwen3-30b-a3b-tp2pp2-mb4-pp-trace.trace.jsonl: 3 steps, sync=False
+  all_reduce rank 0  calls  192  sum     6987.4 us  per call     31.9 us
+  all_reduce rank 2  calls  186  sum    14147.2 us  per call     34.0 us
+  compute    rank 0  calls  196  sum   117730.0 us  per call    130.4 us
+  compute    rank 1  calls  196  sum    45587.7 us  per call    124.8 us
+  compute    rank 2  calls  190  sum   157078.4 us  per call    162.9 us
+  compute    rank 3  calls  190  sum    61249.5 us  per call    138.1 us
+  copy       rank 0  calls    4  sum      240.7 us  per call     58.4 us
+  copy       rank 1  calls    4  sum      180.5 us  per call     43.5 us
+  logits     rank 2  calls    1  sum      259.8 us  per call    259.8 us
+  logits     rank 3  calls    1  sum       63.1 us  per call     63.1 us
+  step       rank 0  calls    1  sum   391421.2 us  per call 391421.2 us
+  sync       rank 2  calls    1  sum     9820.8 us  per call   9820.8 us
+  sync       rank 3  calls    1  sum       10.7 us  per call     10.7 us
+  upload     rank 0  calls    4  sum      376.4 us  per call    101.1 us
+  upload     rank 1  calls    4  sum      357.6 us  per call     88.1 us
+  upload     rank 2  calls    4  sum      348.3 us  per call     86.0 us
+  upload     rank 3  calls    4  sum      345.2 us  per call     80.2 us
+
+qwen3-32b-layer4-tg-sync.trace.jsonl: 768 steps, sync=True
+  compute    rank 0  calls    1  sum     6282.6 us  per call   6282.6 us
+  compute    rank 1  calls    1  sum     6117.8 us  per call   6117.8 us
+  compute    rank 2  calls    1  sum     6079.2 us  per call   6079.2 us
+  compute    rank 3  calls    1  sum     7035.6 us  per call   7035.6 us
+  copy       rank 0  calls    1  sum       19.9 us  per call     19.9 us
+  copy       rank 1  calls    1  sum       18.2 us  per call     18.2 us
+  copy       rank 2  calls    1  sum       18.4 us  per call     18.4 us
+  logits     rank 3  calls    1  sum       92.2 us  per call     92.2 us
+  step       rank 0  calls    1  sum    25727.3 us  per call  25727.3 us
+  sync       rank 3  calls    1  sum        0.8 us  per call      0.8 us
+  upload     rank 0  calls    1  sum       16.1 us  per call     16.1 us
+  upload     rank 1  calls    1  sum       14.4 us  per call     14.4 us
+  upload     rank 2  calls    1  sum       14.2 us  per call     14.2 us
+  upload     rank 3  calls    1  sum       13.9 us  per call     13.9 us
+
+qwen3-32b-layer4-tg-trace.trace.jsonl: 768 steps, sync=False
+  compute    rank 0  calls    1  sum        8.1 us  per call      8.1 us
+  compute    rank 1  calls    1  sum        6.3 us  per call      6.3 us
+  compute    rank 2  calls    1  sum        6.1 us  per call      6.1 us
+  compute    rank 3  calls    1  sum        6.0 us  per call      6.0 us
+  copy       rank 0  calls    1  sum       16.9 us  per call     16.9 us
+  copy       rank 1  calls    1  sum       14.0 us  per call     14.0 us
+  copy       rank 2  calls    1  sum       13.6 us  per call     13.6 us
+  logits     rank 3  calls    1  sum       92.8 us  per call     92.8 us
+  step       rank 0  calls    1  sum    25715.0 us  per call  25715.0 us
+  sync       rank 3  calls    1  sum    25485.8 us  per call  25485.8 us
+  upload     rank 0  calls    1  sum       16.5 us  per call     16.5 us
+  upload     rank 1  calls    1  sum       14.7 us  per call     14.7 us
+  upload     rank 2  calls    1  sum       14.7 us  per call     14.7 us
+  upload     rank 3  calls    1  sum       14.3 us  per call     14.3 us
+
+qwen3-32b-single-tg-sync.trace.jsonl: 768 steps, sync=True
+  compute    rank 0  calls    1  sum    25741.4 us  per call  25741.4 us
+  logits     rank 0  calls    1  sum       92.5 us  per call     92.5 us
+  step       rank 0  calls    1  sum    25854.0 us  per call  25854.0 us
+  sync       rank 0  calls    1  sum        0.8 us  per call      0.8 us
+  upload     rank 0  calls    1  sum       15.3 us  per call     15.3 us
+
+qwen3-32b-single-tg-trace.trace.jsonl: 768 steps, sync=False
+  compute    rank 0  calls    1  sum       22.3 us  per call     22.3 us
+  logits     rank 0  calls    1  sum       92.7 us  per call     92.7 us
+  step       rank 0  calls    1  sum    25889.3 us  per call  25889.3 us
+  sync       rank 0  calls    1  sum    25757.0 us  per call  25757.0 us
+  upload     rank 0  calls    1  sum       15.2 us  per call     15.2 us
+
+qwen3-32b-tp2pp2-mb1-pp-internal-trace.trace.jsonl: 12 steps, sync=False
+  all_reduce rank 0  calls   64  sum   139202.1 us  per call   1719.9 us
+  all_reduce rank 2  calls   64  sum   143414.6 us  per call   1725.2 us
+  compute    rank 0  calls   65  sum     4816.3 us  per call     57.7 us
+  compute    rank 1  calls   65  sum     4476.7 us  per call     48.4 us
+  compute    rank 2  calls   65  sum     4838.2 us  per call     53.8 us
+  compute    rank 3  calls   65  sum     4565.3 us  per call     47.9 us
+  copy       rank 0  calls    1  sum       88.3 us  per call     88.3 us
+  copy       rank 1  calls    1  sum       82.7 us  per call     82.7 us
+  logits     rank 2  calls    1  sum      240.8 us  per call    240.8 us
+  logits     rank 3  calls    1  sum       54.8 us  per call     54.8 us
+  step       rank 0  calls    1  sum   309752.9 us  per call 309752.9 us
+  sync       rank 2  calls    1  sum     2357.2 us  per call   2357.2 us
+  sync       rank 3  calls    1  sum        1.2 us  per call      1.2 us
+  upload     rank 0  calls    1  sum      101.3 us  per call    101.3 us
+  upload     rank 1  calls    1  sum       95.0 us  per call     95.0 us
+  upload     rank 2  calls    1  sum       92.8 us  per call     92.8 us
+  upload     rank 3  calls    1  sum       88.0 us  per call     88.0 us
+
+qwen3-32b-tp2pp2-mb1-pp-sync.trace.jsonl: 12 steps, sync=True
+  all_reduce rank 0  calls   64  sum   106535.2 us  per call   1667.4 us
+  all_reduce rank 2  calls   64  sum    92208.9 us  per call   1462.7 us
+  compute    rank 0  calls   65  sum    97527.0 us  per call   1048.7 us
+  compute    rank 1  calls   65  sum    95572.8 us  per call   1038.7 us
+  compute    rank 2  calls   65  sum    95195.6 us  per call   1049.6 us
+  compute    rank 3  calls   65  sum    94604.7 us  per call   1045.4 us
+  copy       rank 0  calls    1  sum     1740.7 us  per call   1740.7 us
+  copy       rank 1  calls    1  sum     1731.5 us  per call   1731.5 us
+  logits     rank 2  calls    1  sum      169.5 us  per call    169.5 us
+  logits     rank 3  calls    1  sum       55.0 us  per call     55.0 us
+  step       rank 0  calls    1  sum   588632.2 us  per call 588632.2 us
+  sync       rank 2  calls    1  sum        0.8 us  per call      0.8 us
+  sync       rank 3  calls    1  sum        0.7 us  per call      0.7 us
+  upload     rank 0  calls    1  sum       98.3 us  per call     98.3 us
+  upload     rank 1  calls    1  sum       91.9 us  per call     91.9 us
+  upload     rank 2  calls    1  sum      102.7 us  per call    102.7 us
+  upload     rank 3  calls    1  sum       88.3 us  per call     88.3 us
+
+qwen3-32b-tp2pp2-mb1-pp-trace.trace.jsonl: 12 steps, sync=False
+  all_reduce rank 0  calls   64  sum     1972.6 us  per call     30.2 us
+  all_reduce rank 2  calls   64  sum     2012.7 us  per call     31.3 us
+  compute    rank 0  calls   65  sum     4689.7 us  per call     68.9 us
+  compute    rank 1  calls   65  sum     4530.0 us  per call     50.3 us
+  compute    rank 2  calls   65  sum     4903.1 us  per call     54.1 us
+  compute    rank 3  calls   65  sum     4723.2 us  per call     50.6 us
+  copy       rank 0  calls    1  sum       95.5 us  per call     95.5 us
+  copy       rank 1  calls    1  sum       84.3 us  per call     84.3 us
+  logits     rank 2  calls    1  sum      176.0 us  per call    176.0 us
+  logits     rank 3  calls    1  sum       54.9 us  per call     54.9 us
+  step       rank 0  calls    1  sum   395570.0 us  per call 395570.0 us
+  sync       rank 2  calls    1  sum   366590.6 us  per call 366590.6 us
+  sync       rank 3  calls    1  sum        3.5 us  per call      3.5 us
+  upload     rank 0  calls    1  sum      102.2 us  per call    102.2 us
+  upload     rank 1  calls    1  sum       91.9 us  per call     91.9 us
+  upload     rank 2  calls    1  sum       88.6 us  per call     88.6 us
+  upload     rank 3  calls    1  sum       91.0 us  per call     91.0 us
+
+qwen3-32b-tp2pp2-mb4-pp-internal-trace.trace.jsonl: 3 steps, sync=False
+  all_reduce rank 0  calls  256  sum   563892.7 us  per call   1872.2 us
+  all_reduce rank 2  calls  250  sum   552935.1 us  per call   1871.6 us
+  compute    rank 0  calls  260  sum    56725.0 us  per call     53.9 us
+  compute    rank 1  calls  260  sum    34307.2 us  per call     48.9 us
+  compute    rank 2  calls  254  sum    56557.8 us  per call     61.5 us
+  compute    rank 3  calls  254  sum    35650.2 us  per call     53.4 us
+  copy       rank 0  calls    4  sum      366.9 us  per call     90.3 us
+  copy       rank 1  calls    4  sum      345.3 us  per call     85.4 us
+  logits     rank 2  calls    1  sum      254.1 us  per call    254.1 us
+  logits     rank 3  calls    1  sum       56.6 us  per call     56.6 us
+  step       rank 0  calls    1  sum  1195599.2 us  per call 1195599.2 us
+  sync       rank 2  calls    1  sum     2376.9 us  per call   2376.9 us
+  sync       rank 3  calls    1  sum        1.5 us  per call      1.5 us
+  upload     rank 0  calls    1  sum      432.2 us  per call    432.2 us
+  upload     rank 1  calls    1  sum      420.5 us  per call    420.5 us
+  upload     rank 2  calls    1  sum      426.0 us  per call    426.0 us
+  upload     rank 3  calls    1  sum      415.1 us  per call    415.1 us
+
+qwen3-32b-tp2pp2-mb4-pp-sync.trace.jsonl: 3 steps, sync=True
+  all_reduce rank 0  calls  256  sum   422715.6 us  per call   1654.4 us
+  all_reduce rank 2  calls  250  sum   362260.6 us  per call   1455.2 us
+  compute    rank 0  calls  260  sum   418602.1 us  per call   1288.5 us
+  compute    rank 1  calls  260  sum   394237.4 us  per call   1214.0 us
+  compute    rank 2  calls  254  sum   404748.5 us  per call   1249.0 us
+  compute    rank 3  calls  254  sum   387167.4 us  per call   1257.6 us
+  copy       rank 0  calls    4  sum     6984.4 us  per call   1743.0 us
+  copy       rank 1  calls    4  sum     6922.8 us  per call   1739.4 us
+  logits     rank 2  calls    1  sum      250.0 us  per call    250.0 us
+  logits     rank 3  calls    1  sum       57.8 us  per call     57.8 us
+  step       rank 0  calls    1  sum  2434425.9 us  per call 2434425.9 us
+  sync       rank 2  calls    1  sum        0.8 us  per call      0.8 us
+  sync       rank 3  calls    1  sum        0.7 us  per call      0.7 us
+  upload     rank 0  calls    1  sum      430.0 us  per call    430.0 us
+  upload     rank 1  calls    1  sum      424.1 us  per call    424.1 us
+  upload     rank 2  calls    1  sum      406.5 us  per call    406.5 us
+  upload     rank 3  calls    1  sum      411.9 us  per call    411.9 us
+
+qwen3-32b-tp2pp2-mb4-pp-trace.trace.jsonl: 3 steps, sync=False
+  all_reduce rank 0  calls  256  sum     9002.3 us  per call     30.5 us
+  all_reduce rank 2  calls  250  sum     8951.4 us  per call     31.4 us
+  compute    rank 0  calls  260  sum    75706.0 us  per call     57.3 us
+  compute    rank 1  calls  260  sum    29071.8 us  per call     49.5 us
+  compute    rank 2  calls  254  sum   752919.4 us  per call     69.2 us
+  compute    rank 3  calls  254  sum    30572.0 us  per call     54.3 us
+  copy       rank 0  calls    4  sum      436.7 us  per call    104.5 us
+  copy       rank 1  calls    4  sum      345.2 us  per call     84.1 us
+  logits     rank 2  calls    1  sum      248.1 us  per call    248.1 us
+  logits     rank 3  calls    1  sum       57.1 us  per call     57.1 us
+  step       rank 0  calls    1  sum  1403135.0 us  per call 1403135.0 us
+  sync       rank 2  calls    1  sum    32493.1 us  per call  32493.1 us
+  sync       rank 3  calls    1  sum        2.3 us  per call      2.3 us
+  upload     rank 0  calls    1  sum      432.4 us  per call    432.4 us
+  upload     rank 1  calls    1  sum      430.4 us  per call    430.4 us
+  upload     rank 2  calls    1  sum      410.8 us  per call    410.8 us
+  upload     rank 3  calls    1  sum      414.1 us  per call    414.1 us
+
+qwen3-30b-a3b-ep4-tg-plain.clocks.csv
+  gpu 0: n 642 sm median 1950.0 p10 1695 min 1695 max 1965 pstate {'P2': 543, 'P0': 99}
+  gpu 1: n 642 sm median 1695.0 p10 210 min 210 max 1995 pstate {'P8': 110, 'P2': 532}
+  gpu 2: n 642 sm median 1695.0 p10 210 min 210 max 1980 pstate {'P8': 125, 'P2': 517}
+  gpu 3: n 642 sm median 1695.0 p10 210 min 210 max 1980 pstate {'P8': 114, 'P0': 24, 'P2': 504}
+
+qwen3-30b-a3b-ep4-tg-sync.clocks.csv
+  gpu 0: n 1273 sm median 1695 p10 1695 min 1695 max 1965 pstate {'P2': 1175, 'P0': 98}
+  gpu 1: n 1273 sm median 1695 p10 1695 min 1695 max 1995 pstate {'P2': 1174, 'P0': 74, 'P3': 25}
+  gpu 2: n 1273 sm median 1695 p10 1695 min 1695 max 1980 pstate {'P2': 1175, 'P0': 98}
+  gpu 3: n 1273 sm median 1695 p10 1695 min 1695 max 1980 pstate {'P2': 1173, 'P0': 100}
+
+qwen3-30b-a3b-ep4-tg-trace.clocks.csv
+  gpu 0: n 630 sm median 1965.0 p10 1695 min 1695 max 1965 pstate {'P2': 532, 'P0': 73, 'P3': 25}
+  gpu 1: n 630 sm median 1995.0 p10 1695 min 1695 max 1995 pstate {'P2': 532, 'P0': 74, 'P3': 24}
+  gpu 2: n 630 sm median 1695.0 p10 1695 min 1695 max 1980 pstate {'P2': 532, 'P0': 98}
+  gpu 3: n 630 sm median 1980.0 p10 1695 min 1695 max 1980 pstate {'P2': 532, 'P0': 74, 'P3': 24}
+
+qwen3-30b-a3b-layer4-tg-sync.clocks.csv
+  gpu 0: n 610 sm median 1695.0 p10 1695 min 1695 max 1965 pstate {'P2': 512, 'P0': 74, 'P3': 24}
+  gpu 1: n 610 sm median 1695.0 p10 1695 min 1695 max 1980 pstate {'P2': 511, 'P0': 74, 'P3': 25}
+  gpu 2: n 610 sm median 1695.0 p10 1695 min 1695 max 1965 pstate {'P2': 487, 'P0': 98, 'P3': 25}
+  gpu 3: n 610 sm median 1695.0 p10 1695 min 1695 max 1965 pstate {'P2': 511, 'P0': 74, 'P3': 25}
+
+qwen3-30b-a3b-layer4-tg-trace.clocks.csv
+  gpu 0: n 614 sm median 1695.0 p10 1695 min 1695 max 1965 pstate {'P0': 97, 'P2': 517}
+  gpu 1: n 614 sm median 1695.0 p10 210 min 210 max 1695 pstate {'P8': 102, 'P0': 24, 'P2': 488}
+  gpu 2: n 614 sm median 1695.0 p10 210 min 210 max 1695 pstate {'P8': 117, 'P2': 497}
+  gpu 3: n 614 sm median 1695.0 p10 210 min 210 max 1695 pstate {'P8': 130, 'P2': 484}
+
+qwen3-30b-a3b-llama-layer-tg.clocks.csv
+  gpu 0: n 502 sm median 1695.0 p10 1695 min 1695 max 1965 pstate {'P2': 428, 'P0': 74}
+  gpu 1: n 502 sm median 1695.0 p10 1695 min 1695 max 1995 pstate {'P2': 428, 'P0': 74}
+  gpu 2: n 502 sm median 1695.0 p10 1695 min 690 max 1980 pstate {'P2': 403, 'P0': 49, 'P5': 50}
+  gpu 3: n 502 sm median 1695.0 p10 1695 min 1695 max 1980 pstate {'P0': 118, 'P2': 384}
+
+qwen3-30b-a3b-llama-none-tg.clocks.csv
+  gpu 0: n 485 sm median 1935 p10 1695 min 1695 max 1965 pstate {'P0': 72, 'P2': 413}
+  gpu 1: n 485 sm median 1695 p10 1695 min 1695 max 1890 pstate {'P2': 386, 'P0': 99}
+  gpu 2: n 485 sm median 1695 p10 1695 min 1695 max 1980 pstate {'P2': 411, 'P0': 74}
+  gpu 3: n 485 sm median 1695 p10 1695 min 825 max 1875 pstate {'P2': 386, 'P0': 74, 'P3': 25}
+
+qwen3-30b-a3b-single-tg-sync.clocks.csv
+  gpu 0: n 499 sm median 1890 p10 1695 min 1695 max 1965 pstate {'P2': 425, 'P0': 74}
+  gpu 1: n 499 sm median 210 p10 210 min 210 max 1980 pstate {'P2': 14, 'P0': 74, 'P3': 24, 'P5': 99, 'P8': 288}
+  gpu 2: n 499 sm median 210 p10 210 min 210 max 1890 pstate {'P2': 4, 'P0': 74, 'P3': 49, 'P5': 74, 'P8': 298}
+  gpu 3: n 499 sm median 210 p10 210 min 210 max 1800 pstate {'P2': 18, 'P0': 74, 'P3': 98, 'P5': 50, 'P8': 259}
+
+qwen3-30b-a3b-single-tg-trace.clocks.csv
+  gpu 0: n 502 sm median 1905.0 p10 1695 min 1695 max 1965 pstate {'P0': 70, 'P3': 25, 'P2': 407}
+  gpu 1: n 502 sm median 210.0 p10 210 min 210 max 1995 pstate {'P2': 1, 'P0': 74, 'P3': 49, 'P5': 74, 'P8': 304}
+  gpu 2: n 502 sm median 300.0 p10 210 min 210 max 1695 pstate {'P2': 16, 'P0': 49, 'P3': 49, 'P5': 99, 'P8': 289}
+  gpu 3: n 502 sm median 210.0 p10 210 min 210 max 1935 pstate {'P2': 5, 'P0': 98, 'P3': 74, 'P5': 99, 'P8': 226}
+
+qwen3-32b-layer4-tg-sync.clocks.csv
+  gpu 0: n 1340 sm median 1695.0 p10 1695 min 1695 max 1965 pstate {'P2': 1242, 'P0': 98}
+  gpu 1: n 1340 sm median 1695.0 p10 1695 min 1695 max 1770 pstate {'P2': 1242, 'P0': 73, 'P5': 25}
+  gpu 2: n 1340 sm median 1695.0 p10 1695 min 1695 max 1980 pstate {'P2': 1242, 'P0': 98}
+  gpu 3: n 1340 sm median 1695.0 p10 1695 min 1695 max 1815 pstate {'P2': 1242, 'P0': 74, 'P5': 24}
+
+qwen3-32b-layer4-tg-trace.clocks.csv
+  gpu 0: n 1358 sm median 1695.0 p10 1695 min 1695 max 1950 pstate {'P2': 1285, 'P0': 73}
+  gpu 1: n 1358 sm median 1695.0 p10 1695 min 210 max 1995 pstate {'P8': 111, 'P2': 1247}
+  gpu 2: n 1358 sm median 1695.0 p10 1695 min 210 max 1695 pstate {'P8': 127, 'P2': 1231}
+  gpu 3: n 1358 sm median 1695.0 p10 210 min 210 max 1980 pstate {'P8': 140, 'P2': 1218}
+
+qwen3-32b-llama-layer-tg.clocks.csv
+  gpu 0: n 1162 sm median 1695.0 p10 1695 min 1620 max 1950 pstate {'P2': 1064, 'P0': 98}
+  gpu 1: n 1162 sm median 1695.0 p10 210 min 210 max 1995 pstate {'P8': 125, 'P2': 1037}
+  gpu 2: n 1162 sm median 1695.0 p10 1695 min 210 max 1980 pstate {'P8': 116, 'P2': 1046}
+  gpu 3: n 1162 sm median 1695.0 p10 210 min 210 max 1995 pstate {'P8': 130, 'P2': 1032}
+
+qwen3-32b-llama-none-tg.clocks.csv
+  gpu 0: n 1164 sm median 1605.0 p10 1605 min 1590 max 1950 pstate {'P2': 1066, 'P0': 98}
+  gpu 1: n 1164 sm median 1695.0 p10 210 min 210 max 1695 pstate {'P2': 846, 'P0': 74, 'P5': 25, 'P8': 219}
+  gpu 2: n 1164 sm median 1695.0 p10 210 min 210 max 1980 pstate {'P2': 812, 'P0': 73, 'P3': 50, 'P5': 49, 'P8': 180}
+  gpu 3: n 1164 sm median 1695.0 p10 210 min 210 max 1980 pstate {'P2': 850, 'P0': 74, 'P5': 25, 'P8': 215}
+
+qwen3-32b-single-tg-sync.clocks.csv
+  gpu 0: n 1278 sm median 1635.0 p10 1620 min 1605 max 1935 pstate {'P2': 1204, 'P0': 74}
+  gpu 1: n 1278 sm median 210.0 p10 210 min 210 max 1770 pstate {'P2': 15, 'P0': 74, 'P3': 148, 'P5': 74, 'P8': 967}
+  gpu 2: n 1278 sm median 210.0 p10 210 min 210 max 1980 pstate {'P2': 6, 'P0': 73, 'P3': 124, 'P5': 73, 'P8': 1002}
+  gpu 3: n 1278 sm median 210.0 p10 210 min 210 max 1815 pstate {'P2': 19, 'P0': 74, 'P3': 148, 'P5': 49, 'P8': 988}
+
+qwen3-32b-single-tg-trace.clocks.csv
+  gpu 0: n 1280 sm median 1635.0 p10 1605 min 1590 max 1950 pstate {'P2': 1205, 'P0': 75}
+  gpu 1: n 1280 sm median 210.0 p10 210 min 210 max 1995 pstate {'P2': 31, 'P0': 49, 'P3': 123, 'P5': 99, 'P8': 978}
+  gpu 2: n 1280 sm median 210.0 p10 210 min 210 max 1980 pstate {'P0': 95, 'P3': 99, 'P5': 123, 'P8': 963}
+  gpu 3: n 1280 sm median 210.0 p10 210 min 210 max 1980 pstate {'P2': 35, 'P0': 49, 'P3': 148, 'P5': 74, 'P8': 974}

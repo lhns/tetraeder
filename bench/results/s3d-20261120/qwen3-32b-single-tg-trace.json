@@ -1,0 +1,39 @@
+[
+  {
+    "build_commit": "e6100d1",
+    "engine": "tetraeder",
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "n_threads": 30,
+    "n_gpu_layers": 99,
+    "flash_attn": 1,
+    "tensor_buft_overrides": "none",
+    "cuda_graphs": true,
+    "n_eval": 640,
+    "n_reused": 640,
+    "n_prompt": 0,
+    "n_gen": 128,
+    "avg_ns": 3315768972,
+    "avg_ts": 38.60342604786486,
+    "stddev_ts": 0.024823623968252908,
+    "samples_ns": [
+      3312459016,
+      3315077243,
+      3316166648,
+      3317367112,
+      3317774844
+    ],
+    "samples_ts": [
+      38.64198753304666,
+      38.61146833615424,
+      38.59878395351379,
+      38.58481611425585,
+      38.580074302353715
+    ],
+    "builder": "dense",
+    "plan_id": "4318722d",
+    "ranks": 1,
+    "comm_path": "fallback",
+    "ranges_per_token": 1.0
+  }
+]
