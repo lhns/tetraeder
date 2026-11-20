@@ -1,0 +1,42 @@
+# Tech tree of Tetraeder (skill: lhns/design-skills, skills/tech-tree). nodes.yaml is the one source of truth;
+# docs/roadmap.md and its pages are generated. Build and check before every push that moves a node (AGENTS.md).
+
+nodes: docs/roadmap/nodes.yaml
+page: docs/roadmap.md
+
+# Tracks by area of the engine, not by phase (the timeline shows time; phases are named in node text).
+tracks:
+  engine:  {name: "engine and builders", scope: "ggml patch queue, model builders (dense, MoE), kernels, parity against libllama"}
+  memory:  {name: "memory and streaming", scope: "expert streaming, RAM and disk tiers, VRAM fill, slot policies, replay"}
+  planner: {name: "planner and cost model", scope: "placement plans, candidates, cost model and calibration, profiler"}
+  multi:   {name: "multi-GPU executor", scope: "own executor, rank programs, tensor, pipeline and expert parallel, NCCL"}
+  serving: {name: "serving", scope: "scheduler, KV cache, prefix cache, gateway, TTFT, speculative decoding"}
+  bench:   {name: "benchmarks and verdicts", scope: "pinned specs, paired runs, exit tests and verdict sessions, baselines"}
+  ops:     {name: "operations", scope: "CI, box tooling (taxameter), telemetry, dashboards, alerts, docs"}
+
+kinds:
+  feature: {}
+  experiment: {shape: slant}            # a measurement or diagnostic with a recorded result
+  session: {shape: round}               # a judged verdict or exit-test session on a box
+  refactor: {}
+  tooling: {}
+  defect:                               # a finding that qualifies earlier results
+    shape: flag
+    rated: false
+    blocks: false
+  owner-decision:
+    shape: hexagon
+    owner_gate: true
+
+# Lanes: what a forward node needs. box is the rented GPU, worked one session at a time.
+lanes: [local, ci, box, owner, none]
+queue_lane: box
+
+# About 3.5 weeks of history (2026-10-29 on); a handful of picks per week.
+overview: {min: 12, max: 30}
+
+history:
+  main: origin/main
+  weak_refs:
+    adr: 'ADR[- ]?0*(\d{1,4})'
+    session: '\b((?:s\d[a-z]?|ttft\d|v\d|d\d[a-z]?)-?20261\d{3}[a-z]?)\b'

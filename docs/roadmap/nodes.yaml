@@ -1,0 +1,154 @@
+# Tetraeder tech tree (tech-tree.yaml). One node is one thing with its own verdict. History nodes come from the
+# backfill (git history and session transcripts); forward nodes from docs/m2-plan.md as of 2026-11-20.
+nodes:
+  # ---- anchors the forward nodes need (history; the backfill extends them) -------------------------------------
+  - id: multi-prefill-no-capture
+    title: "Prefill runs without graph capture"
+    track: multi
+    kind: feature
+    state: done
+    outcome: unrated
+    evidence: ["docs/adr/0081-prefill-steps-are-not-captured.md", "patches/0006-graph-no-capture.patch", "bench/results/s3f2-20261120/README.md"]
+    verdict_quote: ""
+    headline: ""
+    depends_on: []
+    replaced_by: []
+    lane: local
+    start: 2026-11-20
+    end: 2026-11-20
+    folded: []
+    overview: true
+    plain: "Every judged prefill had timed the call in which ggml records a CUDA graph, which serialized the pipeline stages; prefill steps now run directly and decode keeps graph replay."
+
+  # ---- forward nodes -------------------------------------------------------------------------------------------
+  - id: multi-accept-adr-0081
+    title: "Accept the prefill capture fix"
+    track: multi
+    kind: owner-decision
+    state: next
+    outcome: n/a
+    evidence: []
+    verdict_quote: ""
+    headline: ""
+    depends_on: [multi-prefill-no-capture]
+    replaced_by: []
+    lane: owner
+    start: ""
+    end: ""
+    folded: []
+    overview: false
+    plain: "ADR 0081 is Proposed; its GPU test and the s3f2 confirmation passed, so it waits for the owner's acceptance."
+
+  - id: bench-v2-verdict
+    title: "Two-GPU verdict session"
+    track: bench
+    kind: session
+    state: in-progress
+    outcome: unrated
+    evidence: []
+    verdict_quote: ""
+    headline: ""
+    depends_on: [multi-prefill-no-capture]
+    replaced_by: []
+    lane: box
+    queue_order: 1
+    start: 2026-11-20
+    end: ""
+    folded: []
+    overview: false
+    plain: "The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each."
+    notes: "Done when: verdict.json for v2-20261120 with both cases judged under ADR 0068."
+
+  - id: planner-cost-model-v5
+    title: "Price decode at measured clocks"
+    track: planner
+    kind: feature
+    state: next
+    outcome: unrated
+    evidence: []
+    verdict_quote: ""
+    headline: ""
+    depends_on: []
+    replaced_by: []
+    lane: local
+    start: ""
+    end: ""
+    folded: []
+    overview: false
+    plain: "A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets."
+    notes: "Done when: version 5 reproduces s3c's 30B layer-4 tg within 15% and leaves s3f2 and the other candidates within 0.01 (ADR 0070 History)."
+
+  - id: bench-d2a-probe
+    title: "Admission probe on final main"
+    track: bench
+    kind: experiment
+    state: next
+    outcome: unrated
+    evidence: []
+    verdict_quote: ""
+    headline: ""
+    depends_on: []
+    replaced_by: []
+    lane: box
+    queue_order: 2
+    start: ""
+    end: ""
+    folded: []
+    overview: false
+    plain: "The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported."
+
+  - id: bench-v4a-verdict
+    title: "Four-GPU verdict, first box"
+    track: bench
+    kind: session
+    state: blocked
+    outcome: unrated
+    evidence: []
+    verdict_quote: ""
+    headline: ""
+    depends_on: [planner-cost-model-v5, multi-prefill-no-capture]
+    replaced_by: []
+    lane: box
+    queue_order: 3
+    start: ""
+    end: ""
+    folded: []
+    overview: false
+    plain: "The judged session on four GPUs (cases D4 and M4) on a host other than 20210, run alone; the owner allowed one box up to 1.70 USD/h for it."
+
+  - id: bench-v4b-verdict
+    title: "Four-GPU verdict, second box"
+    track: bench
+    kind: session
+    state: blocked
+    outcome: unrated
+    evidence: []
+    verdict_quote: ""
+    headline: ""
+    depends_on: [bench-v4a-verdict]
+    replaced_by: []
+    lane: box
+    queue_order: 4
+    start: ""
+    end: ""
+    folded: []
+    overview: false
+    plain: "The second four-GPU session, so every configuration has two clean rounds on a clean host."
+
+  - id: bench-m2-report
+    title: "Report milestone M2"
+    track: bench
+    kind: owner-decision
+    state: blocked
+    outcome: n/a
+    evidence: []
+    verdict_quote: ""
+    headline: ""
+    depends_on: [bench-v2-verdict, bench-v4a-verdict, bench-v4b-verdict, bench-d2a-probe]
+    replaced_by: []
+    lane: owner
+    start: ""
+    end: ""
+    folded: []
+    overview: false
+    plain: "M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md)."
