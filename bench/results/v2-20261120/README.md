@@ -45,11 +45,11 @@ Medians over the clean rounds only. e = predicted / measured - 1. No candidate i
 
 - Dense 32B: single GPU 0 1725; tp-2 1725 / 1732; layer-2 1920 / 1875; llama.cpp layer 1905 / 1890, tensor 1890 / 1905.
 - MoE 30B: single 1725; tp-2 1725 / 1725; ep-2 1725 / 1725; layer-2 1890 / 1725; llama.cpp layer 1950 / 1747, tensor 1935 / 1950.
-- The own-executor shapes (single, tp-2, ep-2) ran at 1725 MHz and llama.cpp at 1890 to 1950 MHz. 1725 is the clock the 0x200/0x400 board-limit share of the same windows follows. The sampler does not separate the pp and tg phases of one run.
+- The own-executor shapes (single, tp-2, ep-2) ran at 1725 MHz and llama.cpp at 1890 to 1950 MHz. Both sets saw 0x200/0x400 board-limit samples (shares in `verdict.json` throttle block). The sampler does not separate the pp and tg phases of one run.
 
 ## Findings
 
-- The host is the problem: a co-tenant used 19 to 27 of 127 physical cores while runs went, and 0x20 appeared on GPU 0 or GPU 1 in 28 of 69 non-anchor runs. The script's reruns (up to 5 rounds) did not give two clean rounds for tp-2, ep-2 and the llama.cpp baselines.
-- The cost model is within 5% of every clean median on 2x RTX 3090. The pp prediction error of tp-2 (the s3c miss) is gone on 2 GPUs.
+- The host is the problem: a co-tenant used 19 to 27 of 127 physical cores while runs went, and 0x20 appeared on GPU 0 or GPU 1 in 28 runs. The script's reruns (up to 5 rounds) did not give two clean rounds for tp-2, ep-2 and the llama.cpp baselines.
+- The cost model is within 5% of every clean median on 2x RTX 3090.
 - Host 87485 is added to the skip line in `docs/box-driver.md`.
 - Next: V2 on another 2-GPU host. Raw data: `phase5/` (verdict.json, verdict-notes.json, gates.json, env.json, gpu-samples.csv, timeline.jsonl, predictions, plans and all run files).
