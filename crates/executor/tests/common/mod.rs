@@ -61,6 +61,7 @@ pub fn all_reduce_case(devices: &[RankDevice], groups: &[Vec<RankId>]) -> [ExecC
         graphs,
         ops,
         outputs: (0..n).collect(),
+        prefill: false,
     };
     exec.prepare(&p).unwrap();
     let mut counters = Vec::new();
@@ -198,6 +199,7 @@ pub fn pipeline_case_with(
         ],
         ops,
         outputs: vec![1],
+        prefill: false,
     };
     for step in 0..steps {
         let (xv, yv, zv) = (input(0, step), input(1, step), input(2, step));

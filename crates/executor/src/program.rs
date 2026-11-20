@@ -33,4 +33,8 @@ pub struct Program<'a> {
     pub graphs: Vec<RankGraph<'a>>,
     pub ops: Vec<Op<'a>>,
     pub outputs: Vec<RankId>,
+    /// The step carries more than one input row per sequence (prefill, chunked prefill,
+    /// pipelined micro-batches): its range graphs are never captured as CUDA graphs (ADR 0081).
+    /// Decode steps keep capture and replay.
+    pub prefill: bool,
 }

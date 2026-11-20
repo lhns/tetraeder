@@ -93,6 +93,7 @@ fn program<'a>(b: Built<'a>, reduce: &[bool]) -> Program<'a> {
         graphs,
         ops,
         outputs,
+        prefill: false,
     }
 }
 
@@ -127,7 +128,7 @@ proptest! {
             .collect();
 
         // A range nobody computes.
-        let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![] };
+        let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![], prefill: false };
         q.ops.remove(computes[pick % computes.len()]);
         prop_assert!(violations(&q, n).contains("never computed"), "{}", violations(&q, n));
 
@@ -145,13 +146,13 @@ proptest! {
         // An all-reduce issued before the ranges that compute its tensors.
         let ars = all_reduce_positions(&p);
         if let Some(&i) = ars.get(pick % ars.len().max(1)) {
-            let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![] };
+            let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![], prefill: false };
             let op = q.ops.remove(i);
             q.ops.insert(0, op);
             prop_assert!(violations(&q, n).contains("all-reduce before range"), "{}", violations(&q, n));
 
             // ... an all-reduce on a tensor inside a range ...
-            let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![] };
+            let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![], prefill: false };
             if let Op::AllReduce { tensors } = &mut q.ops[i] {
                 let (r, t) = tensors[0];
                 let idx = (0..q.graphs[r].graph.n_nodes())
@@ -168,7 +169,7 @@ proptest! {
             }
 
             // ... and one rank twice.
-            let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![] };
+            let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![], prefill: false };
             if let Op::AllReduce { tensors } = &mut q.ops[i] {
                 tensors[1] = tensors[0];
                 prop_assert!(violations(&q, n).contains("names a rank twice"), "{}", violations(&q, n));
@@ -183,7 +184,7 @@ proptest! {
                 .filter(|&i| matches!(p.ops[i], Op::Compute { rank, .. } if rank == r))
                 .collect();
             if mine.len() >= 2 {
-                let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![] };
+                let mut q = Program { graphs: rebuild(&p), ops: p.ops.clone(), outputs: vec![], prefill: false };
                 q.ops.swap(mine[0], mine[1]);
                 prop_assert!(violations(&q, n).contains("after a later range"), "{}", violations(&q, n));
                 break;
@@ -272,6 +273,7 @@ fn pipe_program<'a>(p: Pipe<'a>, order: &[usize], dst: Tensor<'a>, src: Tensor<'
         graphs: p.graphs,
         ops: order.iter().map(|&i| all[i].clone()).collect(),
         outputs: vec![1],
+        prefill: false,
     }
 }
 

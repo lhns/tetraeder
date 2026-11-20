@@ -4,3 +4,4 @@
 0003-cpu-registry-threadpool-pause.patch
 0004-cuda-mul-mat-id-skip-negative.patch   # ADR 0070
 0005-graph-view-new.patch   # ADR 0075
+0006-graph-no-capture.patch   # ADR 0081

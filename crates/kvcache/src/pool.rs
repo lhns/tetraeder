@@ -26,6 +26,10 @@ pub struct StepPlan {
     /// Empty: one attention over rows 0..n_kv for all tokens. Else one attention per input over
     /// its own run of rows ([`KvPool::plan_step_per_seq`]).
     pub seqs: Vec<SeqAttn>,
+    /// Some input carries more than one token (prefill, a chunk): the step's shapes change from
+    /// call to call, so it never replays a CUDA graph (ADR 0081). False for decode, where every
+    /// input is one token, however many sequences.
+    pub prefill: bool,
 }
 
 /// One input's attention over its own rows: tokens `first_token..+n_tokens` read rows
@@ -262,6 +266,7 @@ impl KvPool {
             mask,
             outputs,
             seqs: Vec::new(),
+            prefill: inputs.iter().any(|i| i.n_tokens > 1),
         })
     }
 
@@ -315,6 +320,7 @@ impl KvPool {
             mask,
             outputs,
             seqs,
+            prefill: inputs.iter().any(|i| i.n_tokens > 1),
         }))
     }
 

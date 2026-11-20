@@ -983,6 +983,14 @@ impl<'a> Graph<'a> {
         }
     }
 
+    /// With `true`, ggml-cuda runs this graph directly on every call and never captures or
+    /// replays a CUDA graph for it (`ggml_graph_set_no_capture`, patch 0006, ADR 0081). Other
+    /// backends ignore it. A view from [`Graph::range`] starts unflagged.
+    pub fn set_no_capture(&mut self, no_capture: bool) {
+        // SAFETY: live graph; the call writes one bool in the graph object.
+        unsafe { sys::ggml_graph_set_no_capture(self.ptr.as_ptr(), no_capture) }
+    }
+
     /// Adds `t` and everything it depends on, in dependency order.
     pub fn expand(&mut self, t: Tensor<'a>) {
         // SAFETY: the graph and the tensor belong to live contexts.
@@ -1073,6 +1081,14 @@ impl RangeGraphs {
             graphs,
             source: src.id,
         })
+    }
+
+    /// Sets or clears [`Graph::set_no_capture`] on every range (patch 0006, ADR 0081).
+    pub fn set_no_capture(&mut self, no_capture: bool) {
+        for &(ptr, _) in &self.graphs {
+            // SAFETY: the graph objects live in `self._ctx`, which `self` owns.
+            unsafe { sys::ggml_graph_set_no_capture(ptr.as_ptr(), no_capture) }
+        }
     }
 
     pub fn len(&self) -> usize {
