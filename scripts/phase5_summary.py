@@ -9,7 +9,10 @@
     python scripts/phase5_summary.py --merge V.json [V.json ...] --out F  the four cases of several sessions
 
 Input files in DIR (names fixed by ADR 0068 unless marked box):
-  env.json                                 gpu_names, gpu_count, p2p, comm_impl (the box script writes them)
+  env.json                                 gpu_names, gpu_count, p2p, comm_impl, devices (two of four: the judged physical
+                                           indices; gpu_count is the case's 2, box_gpus the box's 4); the box script writes them
+  clocks-<run>.csv                         box: clock and memory.used log of every GPU; with devices, a run is unclean when a GPU
+                                           outside the pair gained memory (device_use)
   candidates-<model>.json                  `tetraeder-plan candidates --multi`: candidates (order = case order) and pruned
   predict-<model>-<n>x.json                `tetraeder-plan predict`, committed before the first candidate runs
   bench-<model>-<id>-r<k>.json             one candidate in round k (llama-bench rows); bench-<model>-<id>-aa.json is the A/A run
@@ -86,8 +89,17 @@ def sha256_file(p: Path) -> str:
 # ---- band ---------------------------------------------------------------------------------------------------
 
 
+def devices_of(env: dict) -> list[int] | None:
+    """Two of four (ADR 0068, 2026-11-21): the physical nvidia-smi indices of the judged pair, None on every other session."""
+    dev = env.get("devices")
+    return [int(x) for x in dev] if isinstance(dev, list) and dev else None
+
+
 def band_class(env: dict) -> str:
     names = env.get("gpu_names") or []
+    dev = devices_of(env)
+    if dev and all(0 <= i < len(names) for i in dev):
+        names = [names[i] for i in dev]
     n = env.get("gpu_count") or len(names)
     return f"{n}x-{class_slug(names[0] if names else None)}"
 
@@ -109,7 +121,10 @@ def choose_band(env: dict, noise_dir: Path, spec_path: Path) -> tuple[float, str
 
 def load_samples(d: Path) -> list[tuple[datetime, int, int]] | None:
     """(time, reasons mask, GPU index) per line of gpu-samples.csv (`epoch,timestamp,reasons,...,index`); a file
-    without the index column (older sampler) counts as GPU 0. None when there is no file or no readable line."""
+    without the index column (older sampler) counts as GPU 0. With `devices` in env.json (two of four) only the pair's
+    lines are kept: the physical index stays, the other GPUs are logged but not judged. None when there is no file or no
+    readable line."""
+    dev = devices_of(read_json(d / "env.json") or {})
     try:
         text = (d / "gpu-samples.csv").read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -121,7 +136,9 @@ def load_samples(d: Path) -> list[tuple[datetime, int, int]] | None:
             continue
         try:
             t = datetime.strptime(f[1].split(".")[0], SAMPLE_FMT)
-            out.append((t, int(f[2], 16), int(f[7]) if len(f) > 7 else 0))
+            row = (t, int(f[2], 16), int(f[7]) if len(f) > 7 else 0)
+            if dev is None or row[2] in dev:
+                out.append(row)
         except ValueError:
             continue
     return out or None
@@ -180,7 +197,7 @@ _SESSION_CACHE: dict = {}
 
 def _stamp(d: Path):
     """What changes when the box adds a run or a sample: the cache key of session_sampler."""
-    parts = [d / "gpu-samples.csv", d]
+    parts = [d / "gpu-samples.csv", d / "env.json", d]
     key = [(p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else None for p in parts]
     return (str(d), tuple(key), len(list(d.glob("window-*.json"))), len(list(d.glob("run-*.rc"))))
 
@@ -238,6 +255,52 @@ def session_sampler(d: Path) -> dict | None:
         val = {"runs": runs, "config": cfg, "outliers": outliers}
     _SESSION_CACHE.update(key=key, val=val)
     return val
+
+
+MEM_RISE_MIB = 256  # a CUDA context is about 300 MiB; a GPU that gained less than this was not used by the run
+
+
+def device_use(d: Path, run: str) -> dict | None:
+    """Two of four: which GPUs a run touched, from clocks-<run>.csv (`memory.used`, every GPU, from before the process
+    starts to after it ends): {gpu: rise in MiB} per physical index, and `touched` = those that gained at least
+    MEM_RISE_MIB. None when the file or the memory column is missing."""
+    try:
+        lines = (d / f"clocks-{run}.csv").read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    if not lines:
+        return None
+    head = [c.strip() for c in lines[0].split(",")]
+    idx_i = next((i for i, c in enumerate(head) if c == "index"), None)
+    mem_i = next((i for i, c in enumerate(head) if c.startswith("memory.used")), None)
+    if idx_i is None or mem_i is None:
+        return None
+    lo: dict[int, float] = {}
+    hi: dict[int, float] = {}
+    for ln in lines[1:]:
+        f = [c.strip() for c in ln.split(",")]
+        if len(f) <= max(idx_i, mem_i):
+            continue
+        try:
+            g, m = int(f[idx_i]), float(f[mem_i].split()[0])
+        except (ValueError, IndexError):
+            continue
+        lo[g] = min(lo.get(g, m), m)
+        hi[g] = max(hi.get(g, m), m)
+    if not lo:
+        return None
+    rise = {g: hi[g] - lo[g] for g in sorted(lo)}
+    return {"rise_mib": rise, "touched": [g for g, r in rise.items() if r >= MEM_RISE_MIB]}
+
+
+def device_reasons(d: Path, run: str, dev: list[int]) -> tuple[list[str], dict]:
+    """(reasons, record) of the exactly-the-pair proof: a run that touched a GPU outside `dev`, or has no record, is unclean."""
+    use = device_use(d, run)
+    if use is None:
+        return [f"{run}: no device-use record (memory.used in clocks-{run}.csv)"], {"devices": dev, "touched": None}
+    out = [g for g in use["touched"] if g not in dev]
+    reasons = [f"{run}: touched GPU {g} outside the pair {dev}" for g in out]
+    return reasons, {"devices": dev, "touched": use["touched"], "rise_mib": {str(g): r for g, r in use["rise_mib"].items()}}
 
 
 def sampler_judgement(d: Path, run: str) -> tuple[list[str], dict]:
@@ -317,6 +380,10 @@ def run_status(d: Path, kind: str, run: str, engine: str = "") -> dict:
             t = request_time(pp, tg)
     thr, rec = sampler_judgement(d, run)
     reasons += thr
+    dev = devices_of(read_json(d / "env.json") or {})
+    if dev and "-anchor-" not in run and engine != "vllm":
+        dr, rec["device_use"] = device_reasons(d, run, dev)
+        reasons += dr
     cot = read_json(d / f"cotenant-{run}.json")
     if isinstance(cot, dict) and cot.get("cotenant_ok") is False:
         reasons.append(f"{run}: co-tenant ({cot.get('cotenant_reason', '?')})")
@@ -625,10 +692,13 @@ def throttle_record_of_session(d: Path) -> dict:
     """Per run (anchors excluded): the rule used, the shares per GPU against the median of its configuration, disqualifying
     and sample counts (ADR 0068 addenda 2026-11-17, 2026-11-18)."""
     runs = {}
+    dev = devices_of(read_json(d / "env.json") or {})
     for rc in sorted(d.glob("run-*.rc")):
         run = rc.stem[len("run-") :]
         if "-anchor-" not in run:
             runs[run] = sampler_judgement(d, run)[1]
+            if dev and "-vllm-" not in run:
+                runs[run]["device_use"] = device_reasons(d, run, dev)[1]
     sess = session_sampler(d)
     rules = {r["rule"] for r in runs.values()}
     rule = "sampler" if rules == {"sampler"} else "single-sample" if rules <= {"single-sample"} else "mixed"

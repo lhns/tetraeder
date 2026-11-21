@@ -65,3 +65,32 @@ def test_phase5_box_env_stage_records_power_fields():
     s = BOX.read_text()
     for k in ("power_limit_w", "power_default_limit_w", "power_max_limit_w"):
         assert f'"{k}"' in s
+
+
+def gate_for(tmp_path, output, devices):
+    smi = tmp_path / "nvidia-smi"
+    smi.write_text(f"#!/usr/bin/env bash\ncat <<'EOF'\n{output}\nEOF\n")
+    smi.chmod(0o755)
+    r = subprocess.run(["bash", str(GATE), devices], capture_output=True, text=True, cwd=ROOT, timeout=60,
+                       env={**os.environ, "NVIDIA_SMI": str(smi)})
+    return r.returncode, r.stdout
+
+
+FOUR = "0, 250.00, 350.00, 400.00\n1, 350.00, 350.00, 400.00\n2, 350.00, 350.00, 400.00\n3, 350.00, 350.00, 400.00"
+
+
+def test_two_of_four_judges_only_the_chosen_pair(tmp_path):
+    rc, out = gate_for(tmp_path, FOUR, "2,3")
+    assert rc == 0, out
+    assert "gpu 0: limit 250.00 W, default 350.00 W, max 400.00 W (not judged)" in out
+    assert "2 GPUs at default power limit" in out
+    assert gate(tmp_path, FOUR)[0] == 1  # without a pair every GPU counts: unchanged
+
+
+def test_two_of_four_fails_on_a_limited_gpu_of_the_pair(tmp_path):
+    rc, out = gate_for(tmp_path, FOUR, "0,3")
+    assert rc == 1 and "1 of 2 GPUs" in out
+
+
+def test_two_of_four_fails_when_the_pair_is_not_listed(tmp_path):
+    assert gate_for(tmp_path, FOUR, "4,5")[0] == 1

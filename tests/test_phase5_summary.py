@@ -628,3 +628,84 @@ def test_only_filters_the_round_order_and_alternates(tmp_path, capsys):
     assert order(3) == ["tet tp-2", "base llama-bench tensor"]
     p5.main([str(d), "--round-order", MODEL, "1"])  # ONLY unset: the full rotation
     assert len(capsys.readouterr().out.splitlines()) == 6
+
+
+# ---- two of four: only the pair in env.json `devices` is judged and must be the only one touched ----------------------
+
+
+def two_of_four(d, devices=(2, 3)):
+    env = json.loads((d / "env.json").read_text())
+    env.update(gpu_count=2, box_gpus=4, case_gpus=2, devices=list(devices), gpu_names=["NVIDIA GeForce RTX 3090"] * 4)
+    (d / "env.json").write_text(json.dumps(env))
+
+
+def clock_logs(d, rise=None):
+    """clocks-<run>.csv for every run: memory.used per GPU; rise(run, gpu) -> MiB gained during the run."""
+    rise = rise or (lambda run, g: 20000 if g in (2, 3) else 0)
+    for rc in d.glob("run-*.rc"):
+        run = rc.stem[len("run-"):]
+        lines = ["timestamp, index, clocks.current.sm [MHz], clocks.current.memory [MHz], power.draw [W], "
+                 "clocks_event_reasons.active, memory.used [MiB]"]
+        for g in range(4):
+            for m in (4, 4 + rise(run, g)):
+                lines.append(f"2026/11/21 10:00:00.000, {g}, 1400 MHz, 9501 MHz, 150.00 W, 0x0000000000000001, {m} MiB")
+        (d / f"clocks-{run}.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_two_of_four_throttle_of_the_other_gpus_is_not_judged(tmp_path):
+    d = make(tmp_path / "d")
+    two_of_four(d)
+    # GPUs 0 and 1 are throttled on every run; the pair (2, 3) is clean
+    sampler(d, lambda run, g: (0.9, 0.9) if g in (0, 1) else (0.5, 0.2), gpus=(0, 1, 2, 3))
+    clock_logs(d)
+    v, notes, c = verdict(d, tmp_path)
+    assert c["clean"] is True and c["reasons"] == [] and c["pass"] is True
+    rec = v["throttle"]["runs"][f"{MODEL}-tp-2-r2"]
+    assert set(rec["gpus"]) == {"2", "3"} and rec["disqualifying"] == 0
+    assert rec["device_use"]["touched"] == [2, 3]
+    # the same samples on a session without a pair judge GPUs 0 and 1: unclean
+    d2 = make(tmp_path / "d2")
+    sampler(d2, extra=lambda run, g: [0x8 | BOARD] if g in (0, 1) else [], gpus=(0, 1, 2, 3))
+    assert verdict(d2, tmp_path)[2]["clean"] is False
+
+
+def test_two_of_four_throttle_of_the_pair_is_judged(tmp_path):
+    d = make(tmp_path / "d")
+    two_of_four(d)
+    bad = f"{MODEL}-tp-2-r2"
+    sampler(d, extra=lambda run, g: [0x8 | BOARD] if (run, g) == (bad, 3) else [], gpus=(0, 1, 2, 3))
+    clock_logs(d)
+    st = p5.run_status(d, "bench", bad)
+    assert st["clean"] is False and any("GPU 3" in r for r in st["reasons"])
+    assert p5.run_status(d, "bench", f"{MODEL}-tp-2-r1")["clean"] is True
+
+
+def test_two_of_four_a_run_that_touched_another_gpu_is_unclean(tmp_path):
+    d = make(tmp_path / "d")
+    two_of_four(d)
+    sampler(d, gpus=(0, 1, 2, 3))
+    bad = f"{MODEL}-single-r1"
+    clock_logs(d, lambda run, g: 20000 if g in (2, 3) or (run, g) == (bad, 0) else 0)
+    st = p5.run_status(d, "bench", bad)
+    assert st["clean"] is False and any("touched GPU 0 outside the pair" in r for r in st["reasons"])
+    assert st["throttle"]["device_use"]["touched"] == [0, 2, 3]
+    assert p5.run_status(d, "bench", f"{MODEL}-tp-2-r1")["clean"] is True
+
+
+def test_two_of_four_a_run_without_a_device_record_is_unclean(tmp_path):
+    d = make(tmp_path / "d")
+    two_of_four(d)
+    sampler(d, gpus=(0, 1, 2, 3))
+    st = p5.run_status(d, "bench", f"{MODEL}-tp-2-r1")
+    assert st["clean"] is False and any("no device-use record" in r for r in st["reasons"])
+
+
+def test_without_devices_there_is_no_device_check(tmp_path):
+    d = make(tmp_path / "d")
+    sampler(d)
+    assert p5.run_status(d, "bench", f"{MODEL}-tp-2-r1")["clean"] is True
+
+
+def test_band_class_uses_the_names_of_the_pair():
+    env = {"gpu_count": 2, "devices": [2, 3], "gpu_names": ["NVIDIA GeForce RTX 3090"] * 2 + ["NVIDIA A100"] * 2}
+    assert p5.band_class(env) == "2x-a100"
