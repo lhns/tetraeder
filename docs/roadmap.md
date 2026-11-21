@@ -269,7 +269,7 @@ _None._
 <!-- BEGIN GENERATED: timeline -->
 [The timeline](roadmap/timeline.md) shows every dated node as a bar from its start to its end.
 
-Generated on 2026-11-20.
+Generated on 2026-11-21.
 <!-- END GENERATED: timeline -->
 
 ## Done, by month
