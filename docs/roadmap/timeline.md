@@ -48,6 +48,7 @@ gantt
     Cost model, version 2 :planner_cost_v2, 2026-11-18, 2026-11-19
     Price all-reduce latency in steps :planner_cost_v3, 2026-11-19, 2026-11-19
     Price routed expert traffic :planner_cost_v4, 2026-11-19, 2026-11-19
+    Price decode at measured clocks :planner_cost_model_v5, 2026-11-20, 2026-11-21
     section multi - multi-GPU executor
     Prefill runs without graph capture :multi_prefill_no_capture, 2026-11-20, 2026-11-20
     Own multi-GPU executor :multi_executor, 2026-11-15, 2026-11-16
@@ -93,6 +94,7 @@ gantt
     Keep 15% on every candidate :bench_owner_15pct, 2026-11-19, 2026-11-19
     Four-GPU check of the fix :bench_s3f2, 2026-11-20, 2026-11-20
     Check host ran at low clocks :bench_defect_s3f2_clock, 2026-11-20, 2026-11-20
+    Four-GPU verdict, first box :bench_v4a_verdict, 2026-11-21, 2026-11-21
     section ops - operations
     Workspace, rules and first ADRs :ops_foundations, 2026-10-29, 2026-10-30
     CI and test infrastructure :ops_ci, 2026-10-30, 2026-11-19
@@ -107,5 +109,5 @@ gantt
     Owner accepts nine design records :ops_owner_accepts_adrs, 2026-11-19, 2026-11-19
 ```
 
-Not shown (no `start`): `planner-cost-model-v5`, `multi-accept-adr-0081`, `bench-v2-verdict`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-m2-report`
+Not shown (no `start`): `multi-accept-adr-0081`, `bench-v2-verdict`, `bench-d2a-probe`, `bench-v4b-verdict`, `bench-m2-report`
 <!-- END GENERATED: timeline -->

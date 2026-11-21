@@ -28,9 +28,9 @@ flowchart TB
     bench_s3_rehearsal("✔ Four-GPU rehearsals")
     bench_s3f2("✔ Four-GPU check of<br/>the fix")
     bench_defect_s3f2_clock>"✔ Check host ran at<br/>low clocks"]
+    bench_v4a_verdict("✔ Four-GPU verdict,<br/>first box")
     bench_v2_verdict("○ Two-GPU verdict<br/>session")
     bench_d2a_probe[/"○ Admission probe on<br/>final main"/]
-    bench_v4a_verdict("⛔ Four-GPU verdict,<br/>first box")
     bench_v4b_verdict("⛔ Four-GPU verdict,<br/>second box")
     bench_harness ~~~ bench_phase2_exit
     bench_phase2_exit ~~~ bench_defect_tuned_cache
@@ -51,12 +51,11 @@ flowchart TB
     bench_s2_step0 ~~~ bench_s3_rehearsal
     bench_ttft ~~~ bench_s3f2
     bench_s3_rehearsal ~~~ bench_defect_s3f2_clock
+    bench_s3f2 ~~~ bench_v4a_verdict
     bench_s3f2 ~~~ bench_v2_verdict
-    bench_s3f2 ~~~ bench_d2a_probe
-    bench_defect_s3f2_clock ~~~ bench_v4a_verdict
-    bench_v2_verdict ~~~ bench_v4a_verdict
-    bench_d2a_probe ~~~ bench_v4a_verdict
+    bench_defect_s3f2_clock ~~~ bench_d2a_probe
     bench_v4a_verdict ~~~ bench_v4b_verdict
+    bench_v2_verdict ~~~ bench_v4b_verdict
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -73,7 +72,7 @@ flowchart TB
     bench_s3f2 --> bench_defect_s3f2_clock
     bench_phase4_exit --> bench_d2a_probe
     bench_v4a_verdict --> bench_v4b_verdict
-    linkStyle 26,37 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 25,36 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -89,11 +88,11 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class bench_harness,bench_noise_bands,bench_phase4_harness,bench_phase5_harness,bench_pin_confirm,bench_throttle_rules,bench_s3_rehearsal unrated
-    class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock succ
+    class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v4a_verdict succ
     class bench_m1_point1,bench_m1_point3 vsucc
     class bench_d2a_rerun mixed
     class bench_v2_verdict,bench_d2a_probe next
-    class bench_v4a_verdict,bench_v4b_verdict blocked
+    class bench_v4b_verdict blocked
 ```
 <!-- END GENERATED: track-bench -->
 
@@ -127,7 +126,7 @@ flowchart TB
 | `bench-defect-s3f2-clock` | Check host ran at low clocks | defect | none | done | unrated | 2026-11-20 | 2026-11-20 | bench-s3f2 |  |  |  | docs/m2-plan.md; bench/results/s3f2-20261120/README.md |
 | `bench-v2-verdict` | Two-GPU verdict session | session | box | next | unrated |  |  | multi-prefill-no-capture, bench-throttle-rules |  |  |  |  |
 | `bench-d2a-probe` | Admission probe on final main | experiment | box | next | unrated |  |  | bench-phase4-exit |  |  |  |  |
-| `bench-v4a-verdict` | Four-GPU verdict, first box | session | box | blocked | unrated |  |  | planner-cost-model-v5, multi-prefill-no-capture, ops-owner-v4a-cap |  |  |  |  |
+| `bench-v4a-verdict` | Four-GPU verdict, first box | session | none | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-model-v5, multi-prefill-no-capture, ops-owner-v4a-cap |  |  |  | bench/results/v4a-20261121/README.md; bench/results/v4a-20261121/phase5/verdict.json |
 | `bench-v4b-verdict` | Four-GPU verdict, second box | session | box | blocked | unrated |  |  | bench-v4a-verdict |  |  |  |  |
 | `bench-m2-report` | Report milestone M2 | owner-decision | owner | blocked | n/a |  |  | bench-v2-verdict, bench-v4a-verdict, bench-v4b-verdict, bench-d2a-probe |  |  |  |  |
 
@@ -160,7 +159,7 @@ flowchart TB
 | `bench-defect-s3f2-clock` | Check host ran at low clocks |  |  | The s3f2 host held every GPU at 1590 MHz all session, single GPU included, so its layer-4 decode result (0.995) does not show the earlier layer-split decode miss fixed; cost model version 5 is back on. |  |  |  |  |  |
 | `bench-v2-verdict` | Two-GPU verdict session |  |  | The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each. | Done when: verdict.json for v2-20261120 with both cases judged under ADR 0068. |  |  | 1 |  |
 | `bench-d2a-probe` | Admission probe on final main |  |  | The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported. |  |  |  | 2 |  |
-| `bench-v4a-verdict` | Four-GPU verdict, first box |  |  | The judged session on four GPUs (cases D4 and M4) on a host other than 20210, run alone; the owner allowed one box up to 1.70 USD/h for it. |  |  |  | 3 |  |
+| `bench-v4a-verdict` | Four-GPU verdict, first box | D4 passes and M4 passes at 3 clean rounds each, picks tp-4 (D4) and layer-4 (M4), every candidate within 15% on pp and tg, baseline gate 1.022 and 0.987. |  | The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each. |  |  |  |  |  |
 | `bench-v4b-verdict` | Four-GPU verdict, second box |  |  | The second four-GPU session, so every configuration has two clean rounds on a clean host. |  |  |  | 4 |  |
 | `bench-m2-report` | Report milestone M2 |  |  | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |  |  |  |  |  |
 
@@ -289,4 +288,6 @@ flowchart TB
   - m2-plan: s3f2 layer-4 tg not fixed, v5 back before V4a (2026-11-20, commit ef0130e3a2)
 - `bench-v2-verdict`: Two-GPU verdict session
   - First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20, commit 7dd6dd4)
+- `bench-v4a-verdict`: Four-GPU verdict, first box
+  - v4a-20261121 on host 20210 (box 61850705, 1.203 USD/h, commit 692947a; D4 and M4 pass, three clean rounds each)
 <!-- END GENERATED: table-bench -->
