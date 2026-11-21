@@ -1,0 +1,1270 @@
+{
+  "cost_model_version": 5,
+  "anchors": [
+    "Qwen3 30B Gptq Fp16/single/L12",
+    "Qwen3 30B Gptq Fp16/single/L24",
+    "Qwen3 30B Gptq Fp16/tp-2/L12",
+    "Qwen3 30B Gptq Fp16/tp-2/L24",
+    "Qwen3 32B Awq Compatible Instruct/single/L16",
+    "Qwen3 32B Awq Compatible Instruct/single/L32",
+    "Qwen3 32B Awq Compatible Instruct/tp-2/L16",
+    "Qwen3 32B Awq Compatible Instruct/tp-2/L32",
+    "Qwen3 32B Awq Compatible Instruct/tp-4/L16",
+    "Qwen3 32B Awq Compatible Instruct/tp-4/L32"
+  ],
+  "band": 0.08892746519977557,
+  "residuals": [
+    [
+      "Qwen3 30B Gptq Fp16/single/L12:pp",
+      0.002881360264559957
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/single/L12:tg",
+      -0.010722110977530612
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/single/L24:pp",
+      -0.04015425808968691
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/single/L24:tg",
+      0.00881808726054777
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/tp-2/L12:pp",
+      0.03967091258235077
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/tp-2/L12:tg",
+      0.007580207251232268
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/tp-2/L24:pp",
+      0.02573737248415407
+    ],
+    [
+      "Qwen3 30B Gptq Fp16/tp-2/L24:tg",
+      -0.010664934544344744
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/single/L16:pp",
+      -0.06043965659700161
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/single/L16:tg",
+      -0.0019319586906530273
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/single/L32:pp",
+      -0.04113594531725203
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/single/L32:tg",
+      0.00740599584091272
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-2/L16:pp",
+      0.016158513842077806
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-2/L16:tg",
+      0.002609120036736401
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-2/L32:pp",
+      0.05161877083293121
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-2/L32:tg",
+      -0.0057046118503129625
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-4/L16:pp",
+      0.08519323493706125
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-4/L16:tg",
+      0.0053217286538288265
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-4/L32:pp",
+      0.07917676017005507
+    ],
+    [
+      "Qwen3 32B Awq Compatible Instruct/tp-4/L32:tg",
+      -0.013304047269414586
+    ]
+  ],
+  "held_out": [
+    [
+      "Qwen3 30B Gptq Fp16/layer-4@L24/L24:tg",
+      0.018837595522559775
+    ]
+  ],
+  "hw": {
+    "range_costs": {
+      "c_range_graph_s": 6.124352939792762e-6,
+      "c_range_eager_s": 0.00001,
+      "c_step_s": 0.000047251080345109816,
+      "allreduce_latency_share": 1.0,
+      "allreduce_latency_s": 4.306365213146506e-6,
+      "allreduce_step_s": 2.699540770501756e-6,
+      "expert_slot_traffic": true
+    },
+    "decode_clocks": {
+      "low_mhz": 1695.0,
+      "busy_mhz": {
+        "Qwen3 32B Awq Compatible Instruct": 1650.0
+      },
+      "duty_threshold": 0.32
+    },
+    "devices": [
+      {
+        "id": "cpu0",
+        "kind": "cpu",
+        "name": "AMD EPYC 7282 16-Core Processor",
+        "tier": "ram",
+        "capacity_bytes": 270116970496,
+        "bandwidth_bytes_per_s": {
+          "value": 47491182561.78611,
+          "spread": 0.134368649387515,
+          "samples": 5,
+          "source": "measured"
+        },
+        "cores": 16,
+        "threads": 32,
+        "numa_nodes": 1
+      },
+      {
+        "id": "disk0",
+        "kind": "disk",
+        "name": "overlay",
+        "tier": "nvme",
+        "capacity_bytes": 85899345920,
+        "mount": "/",
+        "media": "unknown"
+      },
+      {
+        "id": "disk1",
+        "kind": "disk",
+        "name": "/dev/mapper/vg0-lv--data",
+        "tier": "nvme",
+        "capacity_bytes": 1831785349120,
+        "mount": "/etc/hostname",
+        "media": "unknown"
+      },
+      {
+        "id": "disk2",
+        "kind": "disk",
+        "name": "/dev/mapper/vg0-lv--root--noble",
+        "tier": "nvme",
+        "capacity_bytes": 83955703808,
+        "mount": "/usr/bin/nvidia-cuda-mps-control",
+        "media": "unknown"
+      },
+      {
+        "id": "gpu0",
+        "kind": "gpu",
+        "name": "NVIDIA GeForce RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 836676042668.8434,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 85647967134822.39,
+          "c0_graph_s": 1.5086377421494123e-6,
+          "c0_eager_s": 0.00002,
+          "expert_flops_per_s": 34391419071891.355
+        },
+        "pcie": {
+          "gen_current": 2,
+          "width_current": 16,
+          "gen_max": 3,
+          "width_max": 16
+        },
+        "index": 0
+      },
+      {
+        "id": "gpu1",
+        "kind": "gpu",
+        "name": "NVIDIA GeForce RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 836676042668.8434,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 85647967134822.39,
+          "c0_graph_s": 1.5086377421494123e-6,
+          "c0_eager_s": 0.00002,
+          "expert_flops_per_s": 34391419071891.355
+        },
+        "pcie": {
+          "gen_current": 1,
+          "width_current": 16,
+          "gen_max": 3,
+          "width_max": 16
+        },
+        "index": 1
+      },
+      {
+        "id": "gpu2",
+        "kind": "gpu",
+        "name": "NVIDIA GeForce RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 836676042668.8434,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 85647967134822.39,
+          "c0_graph_s": 1.5086377421494123e-6,
+          "c0_eager_s": 0.00002,
+          "expert_flops_per_s": 34391419071891.355
+        },
+        "pcie": {
+          "gen_current": 1,
+          "width_current": 16,
+          "gen_max": 3,
+          "width_max": 16
+        },
+        "index": 2
+      },
+      {
+        "id": "gpu3",
+        "kind": "gpu",
+        "name": "NVIDIA GeForce RTX 3090",
+        "tier": "vram",
+        "capacity_bytes": 25769803776,
+        "bandwidth_bytes_per_s": {
+          "value": 836676042668.8434,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "measured"
+        },
+        "compute": {
+          "flops_per_s": 85647967134822.39,
+          "c0_graph_s": 1.5086377421494123e-6,
+          "c0_eager_s": 0.00002,
+          "expert_flops_per_s": 34391419071891.355
+        },
+        "pcie": {
+          "gen_current": 1,
+          "width_current": 16,
+          "gen_max": 3,
+          "width_max": 16
+        },
+        "index": 3
+      }
+    ],
+    "links": [
+      {
+        "id": "storage-disk0",
+        "a": "disk0",
+        "b": "cpu0",
+        "kind": "storage",
+        "alpha_s": {
+          "value": 0.001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 500000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "storage-disk1",
+        "a": "disk1",
+        "b": "cpu0",
+        "kind": "storage",
+        "alpha_s": {
+          "value": 0.001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 500000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "storage-disk2",
+        "a": "disk2",
+        "b": "cpu0",
+        "kind": "storage",
+        "alpha_s": {
+          "value": 0.001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 500000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "pcie-gpu0",
+        "a": "gpu0",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.00001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 6400000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "pcie-gpu1",
+        "a": "gpu1",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.00001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "pcie-gpu2",
+        "a": "gpu2",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.00001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "pcie-gpu3",
+        "a": "gpu3",
+        "b": "cpu0",
+        "kind": "pcie",
+        "alpha_s": {
+          "value": 0.00001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "p2p-gpu2-gpu3",
+        "a": "gpu2",
+        "b": "gpu3",
+        "kind": "p2p",
+        "alpha_s": {
+          "value": 0.00001,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "staged-gpu0-gpu1",
+        "a": "gpu0",
+        "b": "gpu1",
+        "kind": "host_staged",
+        "alpha_s": {
+          "value": 0.00002,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "staged-gpu0-gpu2",
+        "a": "gpu0",
+        "b": "gpu2",
+        "kind": "host_staged",
+        "alpha_s": {
+          "value": 0.00002,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "staged-gpu0-gpu3",
+        "a": "gpu0",
+        "b": "gpu3",
+        "kind": "host_staged",
+        "alpha_s": {
+          "value": 0.00002,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "staged-gpu1-gpu2",
+        "a": "gpu1",
+        "b": "gpu2",
+        "kind": "host_staged",
+        "alpha_s": {
+          "value": 0.00002,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      },
+      {
+        "id": "staged-gpu1-gpu3",
+        "a": "gpu1",
+        "b": "gpu3",
+        "kind": "host_staged",
+        "alpha_s": {
+          "value": 0.00002,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        },
+        "beta_bytes_per_s": {
+          "value": 3200000000.0,
+          "spread": 0.0,
+          "samples": 0,
+          "source": "prior"
+        }
+      }
+    ],
+    "lane_groups": [],
+    "notes": [
+      "gpu0: PCIe link is gen2 x16 now, max gen3 x16 (may be idle power saving)",
+      "gpu1: PCIe link is gen1 x16 now, max gen3 x16 (may be idle power saving)",
+      "gpu2: PCIe link is gen1 x16 now, max gen3 x16 (may be idle power saving)",
+      "gpu3: PCIe link is gen1 x16 now, max gen3 x16 (may be idle power saving)",
+      "pcie topology: 4 GPUs from NVML but 5 PCI display devices, not matched"
+    ],
+    "collectives": [
+      {
+        "op": "all_reduce",
+        "ranks": [
+          "gpu0",
+          "gpu1",
+          "gpu2",
+          "gpu3"
+        ],
+        "comm": "nccl",
+        "points": [
+          [
+            4096.0,
+            0.0000508155
+          ],
+          [
+            8192.0,
+            0.000055435
+          ],
+          [
+            16384.0,
+            0.0000574955
+          ],
+          [
+            20480.0,
+            0.00006390000000000001
+          ],
+          [
+            65536.0,
+            0.00007445999999999999
+          ],
+          [
+            262144.0,
+            0.0001409
+          ],
+          [
+            1048576.0,
+            0.000200505
+          ],
+          [
+            4194304.0,
+            0.0005816910000000001
+          ],
+          [
+            16777216.0,
+            0.0021582525
+          ],
+          [
+            67108864.0,
+            0.00830767
+          ]
+        ]
+      },
+      {
+        "op": "all_reduce",
+        "ranks": [
+          "gpu0",
+          "gpu1"
+        ],
+        "comm": "nccl",
+        "points": [
+          [
+            4096.0,
+            0.0000294255
+          ],
+          [
+            8192.0,
+            0.0000321
+          ],
+          [
+            16384.0,
+            0.000034285
+          ],
+          [
+            20480.0,
+            0.00003616
+          ],
+          [
+            65536.0,
+            0.000047975
+          ],
+          [
+            262144.0,
+            0.00007415
+          ],
+          [
+            1048576.0,
+            0.0001461205
+          ],
+          [
+            4194304.0,
+            0.000455201
+          ],
+          [
+            16777216.0,
+            0.001607632
+          ],
+          [
+            67108864.0,
+            0.0062752369999999995
+          ]
+        ]
+      },
+      {
+        "op": "all_reduce",
+        "ranks": [
+          "gpu2",
+          "gpu3"
+        ],
+        "comm": "nccl",
+        "points": [
+          [
+            4096.0,
+            0.000028985
+          ],
+          [
+            8192.0,
+            0.000031859999999999997
+          ],
+          [
+            16384.0,
+            0.000035205499999999994
+          ],
+          [
+            20480.0,
+            0.000036205
+          ],
+          [
+            65536.0,
+            0.000054845
+          ],
+          [
+            262144.0,
+            0.000078865
+          ],
+          [
+            1048576.0,
+            0.0001476505
+          ],
+          [
+            4194304.0,
+            0.0004472855
+          ],
+          [
+            16777216.0,
+            0.0015405520000000002
+          ],
+          [
+            67108864.0,
+            0.0060804675
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu0",
+          "gpu1"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.00001615
+          ],
+          [
+            8192.0,
+            0.00001616
+          ],
+          [
+            16384.0,
+            0.000016695000000000002
+          ],
+          [
+            20480.0,
+            0.000016955
+          ],
+          [
+            65536.0,
+            0.00003759
+          ],
+          [
+            262144.0,
+            0.000057
+          ],
+          [
+            1048576.0,
+            0.0001850655
+          ],
+          [
+            4194304.0,
+            0.0007123559999999999
+          ],
+          [
+            16777216.0,
+            0.002846554
+          ],
+          [
+            67108864.0,
+            0.011345559
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu0",
+          "gpu2"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.000015335
+          ],
+          [
+            8192.0,
+            0.00001541
+          ],
+          [
+            16384.0,
+            0.000015815
+          ],
+          [
+            20480.0,
+            0.000015995
+          ],
+          [
+            65536.0,
+            0.000036535
+          ],
+          [
+            262144.0,
+            0.000056045
+          ],
+          [
+            1048576.0,
+            0.0001854605
+          ],
+          [
+            4194304.0,
+            0.0007202409999999999
+          ],
+          [
+            16777216.0,
+            0.0028443929999999997
+          ],
+          [
+            67108864.0,
+            0.0113652085
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu0",
+          "gpu3"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.000013505
+          ],
+          [
+            8192.0,
+            0.00001364
+          ],
+          [
+            16384.0,
+            0.000014745
+          ],
+          [
+            20480.0,
+            0.00001562
+          ],
+          [
+            65536.0,
+            0.00003552
+          ],
+          [
+            262144.0,
+            0.000054885
+          ],
+          [
+            1048576.0,
+            0.00018495
+          ],
+          [
+            4194304.0,
+            0.000715356
+          ],
+          [
+            16777216.0,
+            0.0028432835
+          ],
+          [
+            67108864.0,
+            0.0113556085
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu1",
+          "gpu0"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.00001412
+          ],
+          [
+            8192.0,
+            0.000014455
+          ],
+          [
+            16384.0,
+            0.00001589
+          ],
+          [
+            20480.0,
+            0.000024229999999999997
+          ],
+          [
+            65536.0,
+            0.000035510000000000004
+          ],
+          [
+            262144.0,
+            0.000054974999999999995
+          ],
+          [
+            1048576.0,
+            0.00018498
+          ],
+          [
+            4194304.0,
+            0.0007154405
+          ],
+          [
+            16777216.0,
+            0.002848958
+          ],
+          [
+            67108864.0,
+            0.011339733
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu1",
+          "gpu2"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.000015335
+          ],
+          [
+            8192.0,
+            0.000015325
+          ],
+          [
+            16384.0,
+            0.00001583
+          ],
+          [
+            20480.0,
+            0.000016105
+          ],
+          [
+            65536.0,
+            0.00003659
+          ],
+          [
+            262144.0,
+            0.00005603
+          ],
+          [
+            1048576.0,
+            0.0001842355
+          ],
+          [
+            4194304.0,
+            0.0007193659999999999
+          ],
+          [
+            16777216.0,
+            0.0028414135
+          ],
+          [
+            67108864.0,
+            0.0113609735
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu1",
+          "gpu3"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.00001336
+          ],
+          [
+            8192.0,
+            0.00001398
+          ],
+          [
+            16384.0,
+            0.000015354999999999998
+          ],
+          [
+            20480.0,
+            0.00002316
+          ],
+          [
+            65536.0,
+            0.000035499999999999996
+          ],
+          [
+            262144.0,
+            0.000054035
+          ],
+          [
+            1048576.0,
+            0.0001840155
+          ],
+          [
+            4194304.0,
+            0.0007154505
+          ],
+          [
+            16777216.0,
+            0.002840498
+          ],
+          [
+            67108864.0,
+            0.011355648
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu2",
+          "gpu0"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.000015675
+          ],
+          [
+            8192.0,
+            0.00001585
+          ],
+          [
+            16384.0,
+            0.00001597
+          ],
+          [
+            20480.0,
+            0.00001698
+          ],
+          [
+            65536.0,
+            0.000037594999999999995
+          ],
+          [
+            262144.0,
+            0.000057085
+          ],
+          [
+            1048576.0,
+            0.00018504
+          ],
+          [
+            4194304.0,
+            0.000716421
+          ],
+          [
+            16777216.0,
+            0.0028398585
+          ],
+          [
+            67108864.0,
+            0.011359674
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu2",
+          "gpu1"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.000015539999999999997
+          ],
+          [
+            8192.0,
+            0.00001544
+          ],
+          [
+            16384.0,
+            0.0000159955
+          ],
+          [
+            20480.0,
+            0.000016475
+          ],
+          [
+            65536.0,
+            0.00003656
+          ],
+          [
+            262144.0,
+            0.000056470000000000007
+          ],
+          [
+            1048576.0,
+            0.000185021
+          ],
+          [
+            4194304.0,
+            0.000715426
+          ],
+          [
+            16777216.0,
+            0.002841223
+          ],
+          [
+            67108864.0,
+            0.0113596385
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu2",
+          "gpu3"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.00001352
+          ],
+          [
+            8192.0,
+            0.00001364
+          ],
+          [
+            16384.0,
+            0.000014875
+          ],
+          [
+            20480.0,
+            0.000015595000000000002
+          ],
+          [
+            65536.0,
+            0.000035465
+          ],
+          [
+            262144.0,
+            0.000054185500000000005
+          ],
+          [
+            1048576.0,
+            0.0001839905
+          ],
+          [
+            4194304.0,
+            0.0007154209999999999
+          ],
+          [
+            16777216.0,
+            0.0028408235
+          ],
+          [
+            67108864.0,
+            0.011358864
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu3",
+          "gpu0"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.000015929999999999998
+          ],
+          [
+            8192.0,
+            0.0000157
+          ],
+          [
+            16384.0,
+            0.000015985
+          ],
+          [
+            20480.0,
+            0.000016309999999999998
+          ],
+          [
+            65536.0,
+            0.00003735
+          ],
+          [
+            262144.0,
+            0.000057025
+          ],
+          [
+            1048576.0,
+            0.0001850655
+          ],
+          [
+            4194304.0,
+            0.000715481
+          ],
+          [
+            16777216.0,
+            0.0028314984999999997
+          ],
+          [
+            67108864.0,
+            0.0113500485
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu3",
+          "gpu1"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.000015585
+          ],
+          [
+            8192.0,
+            0.00001555
+          ],
+          [
+            16384.0,
+            0.00001618
+          ],
+          [
+            20480.0,
+            0.00001633
+          ],
+          [
+            65536.0,
+            0.0000365405
+          ],
+          [
+            262144.0,
+            0.000056975
+          ],
+          [
+            1048576.0,
+            0.000185195
+          ],
+          [
+            4194304.0,
+            0.0007164805
+          ],
+          [
+            16777216.0,
+            0.0028419285
+          ],
+          [
+            67108864.0,
+            0.0113570235
+          ]
+        ]
+      },
+      {
+        "op": "copy",
+        "ranks": [
+          "gpu3",
+          "gpu2"
+        ],
+        "comm": "copy",
+        "points": [
+          [
+            4096.0,
+            0.000013655
+          ],
+          [
+            8192.0,
+            0.000013685
+          ],
+          [
+            16384.0,
+            0.00001492
+          ],
+          [
+            20480.0,
+            0.00001561
+          ],
+          [
+            65536.0,
+            0.00003554
+          ],
+          [
+            262144.0,
+            0.000054965
+          ],
+          [
+            1048576.0,
+            0.000184885
+          ],
+          [
+            4194304.0,
+            0.000719691
+          ],
+          [
+            16777216.0,
+            0.002843073
+          ],
+          [
+            67108864.0,
+            0.011345659
+          ]
+        ]
+      }
+    ]
+  },
+  "cpu_compute_used": false
+}

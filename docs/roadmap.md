@@ -243,7 +243,7 @@ _None._
 ## Built, waiting
 
 <!-- BEGIN GENERATED: built-waiting -->
-**next four-GPU box session on a host where single boosts (item 5 of the check)**
+**30B single anchors with at least 25 tail clock samples (s3g withheld all four, so k stayed 1 for the 30B), then a rerun of item 5**
 
 - `planner-cost-model-v5`: Price decode at measured clocks
 <!-- END GENERATED: built-waiting -->
