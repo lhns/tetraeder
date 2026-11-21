@@ -7,8 +7,18 @@
 # prepass-*.json, gates.json and timeline.jsonl are this script's, read by phase5_summary.py). A rerun resumes: a stage
 # whose output exists and a run whose result exists are skipped.
 #
+# Two of four (ADR 0068 History, 2026-11-21): NGPUS=2 P5_DEVICES=2,3 runs cases D2 and M2 on two GPUs of a box whose
+# `nvidia-smi -L` lists 4 (4x RTX 3090), when no 2-GPU host at default power is available. The driver picks the pair: a
+# pair with no 0x20 or power-cap history on that host, on the best link in `nvidia-smi topo -m`. P5_DEVICES holds the
+# physical indices of nvidia-smi; the script exports CUDA_DEVICE_ORDER=PCI_BUS_ID and CUDA_VISIBLE_DEVICES=$P5_DEVICES for
+# every process (both engines, anchors, calibrate, gpu-parity, discover, the comm probe, the A/A run, vllm), so all of them
+# see two GPUs numbered 0 and 1 and the plans, the comm probe and the predictions are those of a 2x box. Judged: the power
+# gate, the throttle samples and the clock logs of that pair only (env.json `devices`, `box_gpus` 4, `case_gpus` 2); the
+# samplers and clock logs keep every GPU. Proof of the pair: the clock log of each run has memory.used per GPU, and
+# phase5_summary.py makes a run unclean when a GPU outside the pair gained memory (device_use there).
+#
 # Stages, in order (STAGE <name> lines in the log):
-#   gpus        nvidia-smi -L must list exactly <2|4> GPUs; taxameter 0.3.3 filters offers by `--num-gpus`; still,
+#   gpus        nvidia-smi -L must list exactly <2|4> GPUs (4 listed are accepted for NGPUS=2 with a valid P5_DEVICES); taxameter 0.3.3 filters offers by `--num-gpus`; still,
 #               a wrong box ends the session here (PHASE5_BOX_DONE rc=1) before anything is built or downloaded
 #   env         env.json: host, GPU names, driver, clocks, power limits (power_limit_w, power_default_limit_w, power_max_limit_w), throttle reasons, PCIe gen and width, topo -m, peer-access matrix
 #               (nvidia-smi topo -p2p r), NCCL version, CPU quota, commits; comm_impl is filled in by probe
@@ -48,7 +58,7 @@
 # Models (assumed downloaded, .hf_cache/<org>__<model>/): qwen3-32b (dense, --engine dense), qwen3-30b-a3b (MoE, --engine moe).
 # Env knobs: SESSION, NGPUS, MODELS ("qwen3-32b qwen3-30b-a3b"; one model per session is allowed, ADR 0068), THREADS (CPU
 # quota), BUDGET_MIN (150: runs that would start later are skipped, loudly, and the verdict is then null), ROUNDS (3), RERUNS (2),
-# P5_OUT, P5_LOG_FILE, P5_LOCK, TET_BIN, PLAN_BIN, LLAMA_BENCH, IK_BENCH, HW_CMD, SKIP_GPU=1 (no nvidia-smi or CUDA: the
+# P5_DEVICES (two of four, above), P5_OUT, P5_LOG_FILE, P5_LOCK, TET_BIN, PLAN_BIN, LLAMA_BENCH, IK_BENCH, HW_CMD, SKIP_GPU=1 (no nvidia-smi or CUDA: the
 # rehearsal of the plumbing; gates are written as skipped and the verdict is null), DRY_RUN=1 (print the sequence and the
 # commands, run nothing; needs no GPU, lock or build; writes a synthetic enumeration into P5_OUT).
 # DRY_RUN only: DRY_POWER=fail plays a lowered power limit, DRY_GPUS=<n> plays an `nvidia-smi -L` count, DRY_GPU_PARITY=fail a failed gpu-parity, DRY_PROBE=fail a
@@ -92,6 +102,18 @@ case "$ngpu" in 2 | 4) ;; *)
   exit 2
   ;;
 esac
+# two of four: the physical nvidia-smi indices of the pair; empty on every other session
+devices="${P5_DEVICES:-}"
+first_gpu="${devices%%,*}"
+first_gpu="${first_gpu:-0}" # the routing pass runs on the first GPU (of the pair)
+if [ -n "$devices" ]; then
+  if [ "$ngpu" != 2 ] || ! [[ "$devices" =~ ^([0-9]+),([0-9]+)$ ]] || [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ]; then
+    echo "P5_DEVICES needs NGPUS=2 and two distinct indices (e.g. 2,3), got NGPUS=$ngpu P5_DEVICES=$devices" >&2
+    exit 2
+  fi
+  # CUDA numbers GPUs fastest-first by default; PCI bus order is the order of nvidia-smi
+  export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES="$devices"
+fi
 if [ "$DRY" != 1 ]; then
   if [ "$skip_gpu" != 1 ]; then bash scripts/ensure_patches.sh 8>&- || exit 1; fi # ggml patch queue (ADR 0052)
   if [ -d /opt/cargo ]; then export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}" CARGO_HOME="${CARGO_HOME:-/opt/cargo}"; fi
@@ -169,12 +191,13 @@ die() {
   exit 1
 }
 
-# clocks_start RUN: the 20 ms clock log of every GPU into clocks-RUN.csv (ADR 0082); stop_clocks ends it
+# clocks_start RUN: the 20 ms clock log (with memory.used) of every GPU into clocks-RUN.csv (ADR 0082); stop_clocks ends it
 clocks_start() {
   [ "$skip_gpu" = 1 ] && return 0
   local why=clocks_event_reasons.active
   nvidia-smi --query-gpu="$why" --format=csv,noheader > /dev/null 2>&1 || why=clocks_throttle_reasons.active
-  setsid nohup nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,"$why" --format=csv -lms 10 \
+  # memory.used last: the proof of the devices a run touched (phase5_summary.py device_use)
+  setsid nohup nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,"$why",memory.used --format=csv -lms 10 \
     > "$out/clocks-$1.csv" 2> /dev/null 8>&- &
   clock_pid=$!
 }
@@ -238,8 +261,9 @@ gpu_note() {
     echo "$when: 0x0000000000000000" >> "$f" # no GPU: counts as idle
     return 0
   fi
-  v=$(nvidia-smi --query-gpu=clocks_throttle_reasons.active --format=csv,noheader 2> /dev/null) \
-    || v=$(nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2> /dev/null)
+  # the judged lines are the pair's; the detail lines below list every GPU (recorded, not judged)
+  v=$(nvidia-smi ${devices:+-i "$devices"} --query-gpu=clocks_throttle_reasons.active --format=csv,noheader 2> /dev/null) \
+    || v=$(nvidia-smi ${devices:+-i "$devices"} --query-gpu=clocks_event_reasons.active --format=csv,noheader 2> /dev/null)
   [ -n "$v" ] || say "WARNING: no throttle reasons from nvidia-smi for $1 $when (the run counts as unclean)"
   # shellcheck disable=SC2001
   echo "$v" | sed "s/^ *\([^ ]\)/$when: \1/" >> "$f"
@@ -259,14 +283,22 @@ gpus() {
   else
     n=$(nvidia-smi -L 2> /dev/null | grep -c '^GPU ')
   fi
-  [ "$n" = "$ngpu" ] || die "this box has $n GPU(s), the session needs $ngpu: destroy it and rent another offer"
-  say "gpus: $n"
+  if [ -n "$devices" ] && [ "$n" = 4 ]; then
+    plan "two of four: P5_DEVICES=$devices; CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=$devices for every process"
+  else
+    [ "$n" = "$ngpu" ] || die "this box has $n GPU(s), the session needs $ngpu: destroy it and rent another offer"
+  fi
+  if [ -n "$devices" ]; then
+    local i
+    for i in ${devices//,/ }; do [ "$i" -lt "$n" ] || die "P5_DEVICES=$devices names GPU $i, the box has $n"; done
+  fi
+  say "gpus: $n${devices:+ (judged: $devices)}"
   # power limit at default on every GPU (ADR 0068): a lowered cap changes the ranking of shapes
   if [ "$DRY" = 1 ]; then
-    plan "scripts/power_gate.sh: power.limit == power.default_limit on every GPU (within 1 W)"
+    plan "scripts/power_gate.sh${devices:+ $devices}: power.limit == power.default_limit on ${devices:+GPUs $devices (the others are recorded, not judged)}${devices:-every GPU} (within 1 W)"
     [ "${DRY_POWER:-}" = fail ] && die "power limit below default on a GPU: destroy the box and rent another offer"
   else
-    bash scripts/power_gate.sh 8>&- || die "power limit below default on a GPU: destroy the box and rent another offer"
+    bash scripts/power_gate.sh $devices 8>&- || die "power limit below default on a GPU: destroy the box and rent another offer"
   fi
 }
 
@@ -282,7 +314,7 @@ env_json() {
     nvidia-smi topo -p2p r > "$out/topo-p2p.txt" 2>&1
     nvidia-smi -q -d CLOCK,PERFORMANCE > "$out/nvidia-smi-clock-performance.txt" 2>&1
   fi
-  P5_OUT="$out" P5_THREADS="$threads" P5_QUOTA="$(bash scripts/cpu_quota.sh 2> /dev/null)" P5_NGPU="$ngpu" \
+  P5_OUT="$out" P5_THREADS="$threads" P5_QUOTA="$(bash scripts/cpu_quota.sh 2> /dev/null)" P5_NGPU="$ngpu" P5_DEVICES="$devices" \
     P5_COMMIT="$(git rev-parse HEAD 2> /dev/null)" P5_HOST="$(hostname)" P5_VAST="${VAST_CONTAINERLABEL:-} ${CONTAINER_ID:-}" \
     P5_LLAMA="$("$llama_bench" --version 2>&1 | head -3 | tr '\n' ' ')" P5_SKIP="$skip_gpu" \
     P5_P2P="$(summ --p2p "$out/topo-p2p.txt" 2> /dev/null)" \
@@ -304,7 +336,11 @@ def pw(i):
             out.append(None)
     return out
 env = {
-    "host": e["P5_HOST"], "vast_container": e["P5_VAST"].strip(), "gpu_count": len(gpus) or int(e["P5_NGPU"]),
+    "host": e["P5_HOST"], "vast_container": e["P5_VAST"].strip(),
+    # two of four: gpu_count is the case's (2), box_gpus the box's; devices are physical nvidia-smi indices (null otherwise)
+    "gpu_count": int(e["P5_NGPU"]) if e["P5_DEVICES"] else len(gpus) or int(e["P5_NGPU"]),
+    "box_gpus": len(gpus) or int(e["P5_NGPU"]), "case_gpus": int(e["P5_NGPU"]),
+    "devices": [int(x) for x in e["P5_DEVICES"].split(",")] if e["P5_DEVICES"] else None,
     "gpu_names": col(1), "driver": (col(2) or [""])[0], "clock_sm_mhz": col(3), "clock_sm_max_mhz": col(4),
     "clock_mem_mhz": col(5), "throttle_reasons_active": col(6), "vram": col(7), "pcie_gen": col(8), "pcie_width": col(9),
     "power_limit_w": pw(0), "power_default_limit_w": pw(1), "power_max_limit_w": pw(2),
@@ -604,6 +640,7 @@ run_one() {
   if [ "$DRY" = 1 ]; then
     plan "$* > ${f##*/}"
     plan "nvidia-smi clocks every 20 ms -> clocks-$run.csv, window-$run.txt"
+    [ -n "$devices" ] && plan "run $run: CUDA_VISIBLE_DEVICES=$devices; memory.used of the other GPUs in clocks-$run.csv must stay flat"
     gpu_note "$run" before
     gpu_note "$run" after
     return 0
@@ -831,7 +868,7 @@ EOF
 # ---- stage: calibrate, predict -----------------------------------------------------------------------------
 # routing_cmd MODEL FILE: one pass of the judged pp2048 and tg128 token streams on GPU 0, the router's choices recorded
 routing_cmd() {
-  echo "env CUDA_VISIBLE_DEVICES=0 $tet bench -m ${MODEL_FILE[$1]} --engine moe -p 2048 -n 128 -r 1 -t $threads --ngl -1" \
+  echo "env CUDA_VISIBLE_DEVICES=$first_gpu $tet bench -m ${MODEL_FILE[$1]} --engine moe -p 2048 -n 128 -r 1 -t $threads --ngl -1" \
     "--ubatch 512 --flash-attn on -o json --routing-out $2"
 }
 

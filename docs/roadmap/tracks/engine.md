@@ -22,6 +22,12 @@ flowchart TB
     engine_dense_builder["✔ Own Qwen3 dense<br/>builder"]
     engine_gpu_tolerance["✔ GPU parity anchored<br/>on libllama"]
     engine_pin_b12426["✔ Move to llama.cpp<br/>b12426"]
+    engine_backend_parity["⏸ Builders on HIP,<br/>Vulkan and Metal"]
+    engine_glm_builder["⏸ Own GLM graph<br/>builder"]
+    engine_deepseek_builder["⏸ Own DeepSeek graph<br/>builder"]
+    engine_bitnet_builder["⏸ Own builder for<br/>ternary models"]
+    engine_one_graph_per_token["⏸ One graph per<br/>decoded token"]
+    engine_dense_amx[/"○ Dense builder speed<br/>on AMX CPUs"/]
     engine_libllama ~~~ engine_cpu_threadpool
     engine_moe_builder ~~~ engine_cuda_graphs
     engine_overflow_passes ~~~ engine_kt_gap
@@ -32,8 +38,14 @@ flowchart TB
     engine_iqk_kernels ~~~ engine_dense_builder
     engine_decode_dispatch ~~~ engine_gpu_tolerance
     engine_cpu_poll ~~~ engine_pin_b12426
-    engine_dense_builder ~~~ engine_pin_b12426
-    engine_gpu_tolerance ~~~ engine_pin_b12426
+    engine_dense_builder ~~~ engine_backend_parity
+    engine_gpu_tolerance ~~~ engine_glm_builder
+    engine_pin_b12426 ~~~ engine_deepseek_builder
+    engine_backend_parity ~~~ engine_bitnet_builder
+    engine_glm_builder ~~~ engine_one_graph_per_token
+    engine_deepseek_builder ~~~ engine_dense_amx
+    engine_bitnet_builder ~~~ engine_dense_amx
+    engine_one_graph_per_token ~~~ engine_dense_amx
     engine_moe_builder --> engine_cpu_threadpool
     engine_moe_builder --> engine_cuda_graphs
     engine_kt_gap --> engine_isa_dispatch
@@ -41,6 +53,12 @@ flowchart TB
     engine_cpu_threadpool --> engine_decode_dispatch
     engine_cpu_threadpool --> engine_cpu_poll
     engine_moe_builder --> engine_dense_builder
+    engine_dense_builder --> engine_backend_parity
+    engine_moe_builder --> engine_glm_builder
+    engine_moe_builder --> engine_deepseek_builder
+    engine_dense_builder --> engine_bitnet_builder
+    engine_decode_dispatch --> engine_one_graph_per_token
+    engine_dense_builder --> engine_dense_amx
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -59,6 +77,8 @@ flowchart TB
     class engine_moe_builder,engine_cpu_threadpool,engine_cuda_graphs,engine_kt_gap,engine_isa_dispatch,engine_iqk_kernels,engine_decode_dispatch,engine_dense_builder,engine_gpu_tolerance,engine_pin_b12426 unrated
     class engine_overflow_passes dead
     class engine_cpu_poll vsucc
+    class engine_backend_parity,engine_glm_builder,engine_deepseek_builder,engine_bitnet_builder,engine_one_graph_per_token parked
+    class engine_dense_amx next
 ```
 <!-- END GENERATED: track-engine -->
 
@@ -80,6 +100,12 @@ flowchart TB
 | `engine-dense-builder` | Own Qwen3 dense builder | feature | none | done | unrated | 2026-11-14 | 2026-11-16 | engine-moe-builder |  |  |  | docs/adr/0066-own-qwen3-dense-builder.md; docs/adr/0072-dense-builder-cpu-weights-in-extra-buffer-types.md |
 | `engine-gpu-tolerance` | GPU parity anchored on libllama | feature | none | done | unrated | 2026-11-15 | 2026-11-17 |  |  |  |  | docs/adr/0071-gpu-logit-tolerance-relative-anchored-to-libllama.md |
 | `engine-pin-b12426` | Move to llama.cpp b12426 | feature | none | done | unrated | 2026-11-16 | 2026-11-18 | bench-pin-ab |  |  |  | docs/adr/0073-engine-pin-b12426.md; vendor/PIN |
+| `engine-backend-parity` | Builders on HIP, Vulkan and Metal | feature | none | parked | unrated |  |  | engine-dense-builder, engine-moe-builder |  |  |  |  |
+| `engine-glm-builder` | Own GLM graph builder | feature | none | parked | unrated |  |  | engine-moe-builder |  |  |  |  |
+| `engine-deepseek-builder` | Own DeepSeek graph builder | feature | none | parked | unrated |  |  | engine-moe-builder |  |  |  |  |
+| `engine-bitnet-builder` | Own builder for ternary models | feature | none | parked | unrated |  |  | engine-dense-builder |  |  |  |  |
+| `engine-one-graph-per-token` | One graph per decoded token | feature | local | parked | unrated |  |  | engine-decode-dispatch |  |  |  |  |
+| `engine-dense-amx` | Dense builder speed on AMX CPUs | experiment | ci | next | unrated |  |  | engine-dense-builder |  |  |  |  |
 
 ### Details per node
 
@@ -98,6 +124,12 @@ flowchart TB
 | `engine-dense-builder` | Own Qwen3 dense builder | parity tests against libllama (bitwise on CPU) |  | Phase 4: Tetraeder's own graph builder for dense Qwen3 models (the judged path of the Phase 4 test), sharing one attention module with the MoE builder and matching libllama's logits. |  |  |  |  |  |
 | `engine-gpu-tolerance` | GPU parity anchored on libllama | gpu-smoke2's failures are F16 kernel noise at the fixtures' logit scale (11 to 15) |  | GPU logits never match the CPU bit for bit; the parity tests now allow the gap libllama itself shows between CUDA and CPU, relative to the logit scale. |  |  |  |  |  |
 | `engine-pin-b12426` | Move to llama.cpp b12426 |  |  | The engine is built on a pinned llama.cpp release; moving the pin from b11976 to b12426 picked up upstream speedups the baseline already had. |  |  |  |  |  |
+| `engine-backend-parity` | Builders on HIP, Vulkan and Metal |  |  | The own graph builders run on AMD (HIP), Vulkan and Apple (Metal) GPUs, with parity tests per backend; this is also when mixed GPU vendors in one setup arrive (plan features 14 and Phase 8). | Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Needs AMD and Apple hardware, which Vast does not rent here. Done when: parity per backend and split point. |  |  |  |  |
+| `engine-glm-builder` | Own GLM graph builder |  |  | An own graph builder for the GLM model family, with parity against libllama (plan.md, Phase 8). | Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: logit parity against libllama on CUDA and CPU. |  |  |  |  |
+| `engine-deepseek-builder` | Own DeepSeek graph builder |  |  | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). | Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: logit parity against libllama on CUDA and CPU. |  |  |  |  |
+| `engine-bitnet-builder` | Own builder for ternary models |  |  | An own builder with faster kernels for natively ternary models such as BitNet b1.58, which libllama already runs (plan feature 51, Phase 9 half). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: parity against libllama and faster decode. |  |  |  |  |
+| `engine-one-graph-per-token` | One graph per decoded token |  |  | Step 2 of ADR 0064: one graph per decoded token with a host callback per layer, instead of one graph segment per MoE layer. | Parked with Track B (m2-plan, B4). Done when: judged by segment_overhead in a paired run (ADR 0064). |  |  |  |  |
+| `engine-dense-amx` | Dense builder speed on AMX CPUs |  |  | Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072). | Built (ADR 0072, DenseOptions::extra_bufts default true); only the speed is pending. Done when: step_shapes engines dense against dense_norepack and llama against llama_norepack on an AMX runner, then the owner accepts or reopens ADR 0072. |  |  |  |  |
 
 ### Folded items per node
 
@@ -146,4 +178,9 @@ flowchart TB
   - Engine pin move to llama.cpp b12426 (ADR 0073) (2026-11-16, commit 1fd23a671b, commit af492b0878, commit 58567d82c1, commit 877ed4f71f, commit 6c8f5fd30c, commit d2e8696d5b, commit 29f7f57bc9, commit f6889b47e4, commit c174cddc2d, commit adaf829f12, commit 99251de8a9, commit f1aa91c4fc, commit 26b0805d09, commit 759ca1d89f, commit 86663aef34)
   - AVX2 batch drift diagnostics at the pin move (2026-11-16, commit 1046b72550, commit eecd9586ee, commit cb32c6b70f, commit 4ad2a2a564, commit 05d02fc2bf, commit e1e3c482cb, commit 751c0f12d6)
   - vendor/llama.cpp gitlink follows the pin (2026-11-18, commit 255eaf72f0, commit f9af174861, commit 9e47f214b4, commit 734222261e, commit 51a86e2ff0)
+- `engine-backend-parity`: Builders on HIP, Vulkan and Metal
+  - Phase 0 spike: two ggml backends in one process; moot for M1 (plan.md, Open decisions)
+  - Risk: parity across backends; per-backend tolerances (plan.md, Risks)
+- `engine-one-graph-per-token`: One graph per decoded token
+  - Small-RAM fusion-off drift check in CI (m1-open item 10)
 <!-- END GENERATED: table-engine -->

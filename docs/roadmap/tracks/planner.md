@@ -22,6 +22,13 @@ flowchart TB
     planner_cost_v3["✔ Price all-reduce<br/>latency in steps"]
     planner_cost_v4["✔ Price routed expert<br/>traffic"]
     planner_cost_model_v5["✔ Price decode at<br/>measured clocks"]
+    planner_live_replan["⛔ Replan without<br/>draining"]
+    planner_advisor_auto["⛔ Advisor applies safe<br/>changes itself"]
+    planner_split_layouts["⛔ Separate prefill and<br/>decode layouts"]
+    planner_low_bit_formats["⏸ One and two bit<br/>formats"]
+    planner_slot_campaign[/"⏸ Check planner's<br/>expert slot picks"/]
+    planner_replan_part_b["⏸ Replanning in serve,<br/>part B"]
+    planner_ep_prefill_recheck[/"○ Recheck expert-<br/>parallel prefill error"/]
     planner_plan_ir ~~~ planner_quality
     planner_plan_ir ~~~ planner_core
     planner_quality ~~~ planner_exit
@@ -36,6 +43,14 @@ flowchart TB
     planner_cost_v2 ~~~ planner_cost_v3
     planner_cost_v3 ~~~ planner_cost_v4
     planner_cost_v4 ~~~ planner_cost_model_v5
+    planner_cost_v4 ~~~ planner_live_replan
+    planner_cost_v4 ~~~ planner_advisor_auto
+    planner_cost_model_v5 ~~~ planner_split_layouts
+    planner_live_replan ~~~ planner_low_bit_formats
+    planner_advisor_auto ~~~ planner_slot_campaign
+    planner_split_layouts ~~~ planner_replan_part_b
+    planner_low_bit_formats ~~~ planner_ep_prefill_recheck
+    planner_slot_campaign ~~~ planner_ep_prefill_recheck
     planner_plan_ir --> planner_quality
     planner_plan_ir --> planner_core
     planner_core --> planner_exit
@@ -48,6 +63,9 @@ flowchart TB
     planner_cost_v2 --> planner_cost_v3
     planner_cost_v3 --> planner_cost_v4
     planner_cost_v4 --> planner_cost_model_v5
+    planner_fill_tier --> planner_slot_campaign
+    planner_replan --> planner_replan_part_b
+    planner_cost_v4 --> planner_ep_prefill_recheck
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -65,6 +83,9 @@ flowchart TB
     class planner_plan_ir,planner_tier_cost,planner_replan,planner_fill_tier,planner_parallel_shapes,planner_cost_v3 unrated
     class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4,planner_cost_model_v5 succ
     class planner_core vsucc
+    class planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
+    class planner_low_bit_formats,planner_slot_campaign,planner_replan_part_b parked
+    class planner_ep_prefill_recheck next
 ```
 <!-- END GENERATED: track-planner -->
 
@@ -86,6 +107,13 @@ flowchart TB
 | `planner-cost-v3` | Price all-reduce latency in steps | feature | none | done | unrated | 2026-11-19 | 2026-11-19 | planner-cost-v2 |  |  |  | docs/adr/0078-allreduce-in-step-latency.md |
 | `planner-cost-v4` | Price routed expert traffic | feature | none | done | successful | 2026-11-19 | 2026-11-19 | planner-cost-v3 |  | multi-defect-capture | +0.09 | docs/adr/0080-routed-slot-activation-traffic.md |
 | `planner-cost-model-v5` | Price decode at measured clocks | feature | local | done | successful | 2026-11-20 | 2026-11-21 | planner-cost-v4 |  |  |  | bench/results/s3c-20261119/costmodel-v5/README.md; bench/results/s3g-20261121/README.md; bench/results/v4a-20261121/README.md |
+| `planner-live-replan` | Replan without draining | feature | local | blocked | unrated |  |  | multi-live-reshard |  |  |  |  |
+| `planner-advisor-auto` | Advisor applies safe changes itself | feature | local | blocked | unrated |  |  | bench-m3-report |  |  |  |  |
+| `planner-split-layouts` | Separate prefill and decode layouts | feature | local | blocked | unrated |  |  | bench-m3-report |  |  |  |  |
+| `planner-low-bit-formats` | One and two bit formats | feature | none | parked | unrated |  |  | planner-quality, memory-conversion |  |  |  |  |
+| `planner-slot-campaign` | Check planner's expert slot picks | experiment | box-later | parked | unrated |  |  | planner-fill-tier |  |  |  |  |
+| `planner-replan-part-b` | Replanning in serve, part B | feature | local | parked | unrated |  |  | planner-replan |  |  |  |  |
+| `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | experiment | local | next | unrated |  |  | planner-cost-v4, multi-prefill-no-capture |  |  |  |  |
 
 ### Details per node
 
@@ -104,6 +132,13 @@ flowchart TB
 | `planner-cost-v3` | Price all-reduce latency in steps |  |  | Version 3 adds the latency of all-reduces (the sums tensor-parallel GPUs exchange every layer) inside a step, with calibration on four-GPU anchors. |  |  |  |  |  |
 | `planner-cost-v4` | Price routed expert traffic | Cost model 4 (ADR 0080, routed-slot activation bytes) brings M4 ep-4 pp to +0.09. | +0.09 | Version 4 prices the activation bytes that expert parallel moves per routed expert, which brought the four-GPU expert-parallel prefill prediction close. |  |  |  |  |  |
 | `planner-cost-model-v5` | Price decode at measured clocks | passes with k applied to the 30B: 1800 against 1695, -0.024 |  | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. | Done when (ADR 0082, The check): 30B layer-4 e_tg within 0.08 on s3, s3b and s3c and the s3c layer-4/single tg ratio within 0.03 of measured, with host-20210 clocks; s3f2 bit-identical to v4 and its L36 within 0.03; every other candidate moved by at most 0.005; Rust and replica within 1%. Design: ADR 0082 (Proposed), brief V5 in docs/phase5-briefs.md. Offline check passes (branch track-cost-model-v5): layer-4/single tg within 0.03 and e_tg +0.001/-0.003/+0.067 on s3/s3b/s3c, s3f2 bit-identical with L36 230.9 against 231.8, 32B layer-4 moves 0.011, others 0; Rust-replica agreement pending CI. s3g-20261121 (first box run, host 20210 not clock-limited: busy 1800, low 1695): layer anchor held-out tg +0.019, 30B layer-4 e_tg +0.045, tp2-pp2 decode tail 1800 MHz; offline with the 30B busy clock the held-out is -0.021 and e_tg -0.001. Box check (item 5) passed on v4a-20261121 with k = 1.062 applied to the 30B (held-out -0.024, 30B layer-4 tg 1.007 measured over predicted). Layer anchor stays behind LAYER_ANCHOR=1 on 2 GPUs. |  |  |  |  |
+| `planner-live-replan` | Replan without draining |  |  | Replanning applies a new plan live instead of drain and restart (ADR 0009 until Phase 7), cheap moves first (plan feature 24, Phase 7 half). | Done when: a replan under load switches with zero failed requests and respects the switch limit. Phase 7, blocked behind the M3 report. |  |  |  |  |
+| `planner-advisor-auto` | Advisor applies safe changes itself |  |  | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). | Done when: an injected regression is rolled back, and advisor accuracy (predicted against achieved gain) is a metric. Risk (plan.md): advisor harm. Phase 7, blocked behind the M3 report. |  |  |  |  |
+| `planner-split-layouts` | Separate prefill and decode layouts |  |  | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). | Done when: the planner picks split layouts where they win, and parity holds across the switch. Phase 7, blocked behind the M3 report. |  |  |  |  |
+| `planner-low-bit-formats` | One and two bit formats |  |  | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). | Parked to Phase 9 (m2-plan, m1-open item 10); no exit test needs them. Checked 2026-11-21: crates/plan/src/format.rs lists the formats, but conversion rejects formats that need an importance matrix (ADR 0047) and profile v1 measures none below IQ4_XS (ADR 0048). Done when: the imatrix input lands in conversion and profile, and the planner picks such a format where the profile allows. |  |  |  |  |
+| `planner-slot-campaign` | Check planner's expert slot picks |  |  | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. | Parked with Track B (m2-plan B4, m1-open item 6). Done when: scripts/planner_builder_campaign.sh results committed as planner-moe-builder. |  |  |  |  |
+| `planner-replan-part-b` | Replanning in serve, part B |  |  | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. | Parked with Track B (m2-plan B4, m1-open item 10). Done when: switch time and refused requests, paired against restarting llama-server. |  |  |  |  |
+| `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error |  |  | Expert-parallel prefill was over-predicted (ep-2, ep-4); after the capture fix it read 0.92 and 0.95 in s3f2 and s3g and within 5% in V2, so it may be closed. | recheck against V4a; likely closed by the capture fix. Source: m2-plan, Phase 5 open item 2; ADR 0081. |  |  |  |  |
 
 ### Folded items per node
 
@@ -151,4 +186,6 @@ flowchart TB
 - `planner-cost-model-v5`: Price decode at measured clocks
   - s3g-20261121 box rehearsal on host 20210 (2026-11-21, commit 17249fa; R1 to R4 pass but the 30B busy clock was withheld for under 25 tail samples, so k = 1 there)
   - v4a-20261121 verdict session on host 20210 (2026-11-21, commit 692947a; the 30B busy clock 1800 against low 1695 gave k = 1.062, held-out layer anchor tg -0.024, 30B layer-4 tg measured over predicted 1.007; box check (item 5) passes)
+- `planner-replan-part-b`: Replanning in serve, part B
+  - DRAIN_S and RELOAD_S are guesses; measure them with part B (m1-open item 10)
 <!-- END GENERATED: table-planner -->

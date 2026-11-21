@@ -16,6 +16,7 @@ For the owner, before M2 is reported (`docs/m2-plan.md`, Phase 5 item 5). ADR 00
 | 2026-11-20 | gpu-parity gate: adds the ggml-sys capture-flag test (`gpu_no_capture_flag_skips_the_cuda_graph`, ADR 0081) and skips the KV save timing tests (`save_through_pinned_staging`, ADR 0074, judged in their own sessions). | `s3f-20261120`: the 8B save timing test missed its bound on host memory speed and ended the session at the gate | coordinator, before the next session |
 | 2026-11-21 | Anchor `layer-g@L/2` on 3 or more GPUs (tg only, held out of the fit) to measure the low decode clock (ADR 0082, cost model 5). | s3c 30B layer-4 tg +0.167: GPUs busy under about a third of a decode step stay at 1695 MHz while single boosts to 1905 | owner, by delegation to the advisor |
 | 2026-11-21 | Host 20210 re-admitted for verdict sessions, 4-GPU boxes up to 1.22 USD/h all-in (host choice and cap, not a judging rule). | 0 thermal 0x20 samples on all GPUs in `s3f2-20261120` and `s3g-20261121`; no other usable 4-GPU host on offer (hosts failed pulls, SSH or power) | owner |
+| 2026-11-21 | D2 and M2 may run on two GPUs of a 4-GPU box (`P5_DEVICES`); both engines use the same pair; the power gate, throttle samples and clock logs judge only that pair, and a run that touches another GPU is unclean. | six 2-GPU hosts failed pulls, SSH or the power gate on 2026-11-20 and 21 | owner (by delegation to the advisor) |
 
 ## Changes to what is judged, not to the rules
 
