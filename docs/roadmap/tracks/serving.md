@@ -21,6 +21,13 @@ flowchart TB
     serving_spec_batching["✔ Speculation in the<br/>batching loop"]
     serving_prefix_save["✔ Fast prefix-cache<br/>saves"]
     serving_own_run_attention["✔ Long prompts attend<br/>their own run"]
+    serving_multi_model["⏸ Several models at<br/>once"]
+    serving_multi_lora["⏸ Swap and batch LoRA<br/>adapters"]
+    serving_auth_quotas["⏸ Priorities, quotas<br/>and auth"]
+    serving_multimodal["⏸ Multimodal input and<br/>embeddings"]
+    serving_mtp_drafts["⏸ Drafts from built-in<br/>MTP heads"]
+    serving_self_spec["⏸ Low-bit copy drafts<br/>for itself"]
+    serving_prefix_first["⏸ Admit longest prefix<br/>hit first"]
     serving_gateway ~~~ serving_real_engines
     serving_real_engines ~~~ serving_prefix_cache
     serving_real_engines ~~~ serving_speculative
@@ -34,7 +41,13 @@ flowchart TB
     serving_kv_layout ~~~ serving_spec_batching
     serving_moe_batch ~~~ serving_prefix_save
     serving_c4_gap ~~~ serving_own_run_attention
-    serving_spec_batching ~~~ serving_own_run_attention
+    serving_spec_batching ~~~ serving_multi_model
+    serving_prefix_save ~~~ serving_multi_lora
+    serving_own_run_attention ~~~ serving_auth_quotas
+    serving_multi_model ~~~ serving_multimodal
+    serving_multi_lora ~~~ serving_mtp_drafts
+    serving_auth_quotas ~~~ serving_self_spec
+    serving_multimodal ~~~ serving_prefix_first
     serving_gateway --> serving_real_engines
     serving_real_engines --> serving_prefix_cache
     serving_real_engines --> serving_speculative
@@ -46,6 +59,10 @@ flowchart TB
     serving_speculative --> serving_spec_batching
     serving_batching --> serving_spec_batching
     serving_prefix_cache --> serving_prefix_save
+    serving_gateway --> serving_multi_model
+    serving_batching --> serving_multi_lora
+    serving_gateway --> serving_auth_quotas
+    serving_gateway --> serving_multimodal
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -63,6 +80,7 @@ flowchart TB
     class serving_gateway,serving_real_engines,serving_prefix_cache,serving_tool_calls,serving_batching,serving_moe_batch,serving_spec_batching,serving_own_run_attention unrated
     class serving_speculative mixed
     class serving_kv_layout,serving_c4_gap,serving_prefix_save succ
+    class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_mtp_drafts,serving_self_spec,serving_prefix_first parked
 ```
 <!-- END GENERATED: track-serving -->
 
@@ -83,6 +101,14 @@ flowchart TB
 | `serving-spec-batching` | Speculation in the batching loop | feature | none | done | unrated | 2026-11-15 | 2026-11-16 | serving-speculative, serving-batching |  |  |  | crates/scheduler |
 | `serving-prefix-save` | Fast prefix-cache saves | feature | none | done | successful | 2026-11-17 | 2026-11-20 | serving-prefix-cache |  |  |  | docs/adr/0074-prefix-save-through-pinned-staging.md; bench/results/20261117h/README.md |
 | `serving-own-run-attention` | Long prompts attend their own run | feature | none | done | unrated | 2026-11-19 | 2026-11-19 | engine-dense-builder |  |  |  | docs/adr/0079-one-input-steps-attend-over-their-own-run.md |
+| `serving-multi-model` | Several models at once | feature | none | parked | unrated |  |  | serving-gateway, planner-core |  |  |  |  |
+| `serving-multi-lora` | Swap and batch LoRA adapters | feature | none | parked | unrated |  |  | serving-batching |  |  |  |  |
+| `serving-auth-quotas` | Priorities, quotas and auth | feature | none | parked | unrated |  |  | serving-gateway |  |  |  |  |
+| `serving-multimodal` | Multimodal input and embeddings | feature | none | parked | unrated |  |  | serving-gateway |  |  |  |  |
+| `serving-owner-drafters` | Owner decides on more drafter kinds | owner-decision | owner | blocked | n/a |  |  | bench-spec-rerun |  |  |  |  |
+| `serving-mtp-drafts` | Drafts from built-in MTP heads | feature | local | parked | unrated |  |  | serving-owner-drafters |  |  |  |  |
+| `serving-self-spec` | Low-bit copy drafts for itself | feature | local | parked | unrated |  |  | serving-owner-drafters |  |  |  |  |
+| `serving-prefix-first` | Admit longest prefix hit first | feature | local | parked | unrated |  |  | bench-ttft |  |  |  |  |
 
 ### Details per node
 
@@ -100,6 +126,14 @@ flowchart TB
 | `serving-spec-batching` | Speculation in the batching loop |  |  | serve --spec runs speculative decoding inside the continuous batching loop; self-speculation with a low-bit copy and MTP heads were parked until after the Phase 4 verdict. |  |  |  |  |  |
 | `serving-prefix-save` | Fast prefix-cache saves | The save bar is met in `bench/results/20261117h/` |  | Saving a sequence's KV for later reuse stalled admissions; saves go through pinned staging and a pool of spare buffers prepared off the admission path, and saves nobody reuses are skipped. |  |  |  |  |  |
 | `serving-own-run-attention` | Long prompts attend their own run |  |  | A step with a single input attends only over its own KV run instead of the masked shared pool, with the mask buffer reused, which sped up long-context prefill. |  |  |  |  |  |
+| `serving-multi-model` | Several models at once |  |  | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: a feature test loads a second model on request and serves both. |  |  |  |  |
+| `serving-multi-lora` | Swap and batch LoRA adapters |  |  | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: a batch mixing adapters matches each adapter run alone. |  |  |  |  |
+| `serving-auth-quotas` | Priorities, quotas and auth |  |  | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: feature tests for each. |  |  |  |  |
+| `serving-multimodal` | Multimodal input and embeddings |  |  | Image input through llama.cpp's multimodal library and an embeddings endpoint (plan feature 34). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: feature tests for each. |  |  |  |  |
+| `serving-owner-drafters` | Owner decides on more drafter kinds |  |  | From the rerun, the owner decides whether more drafter kinds (MTP heads, a low-bit copy) are worth building, and whether ADR 0043 is Accepted. | Source: m2-plan (Phase 4 deliverables without a step: the rerun decides), ADR 0043 Proposed. |  |  |  |  |
+| `serving-mtp-drafts` | Drafts from built-in MTP heads |  |  | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). | Parked until after the Phase 4 verdict (m2-plan, 2026-11-15), then behind the rerun. Checked 2026-11-21: no MTP code in crates/. Done when: acceptance per pass and a paired gain on a model with MTP heads. |  |  |  |  |
+| `serving-self-spec` | Low-bit copy drafts for itself |  |  | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). | Parked until after the Phase 4 verdict (m2-plan, 2026-11-15), then behind the rerun. Checked 2026-11-21: no low-bit draft copy in crates/scheduler. Done when: the planner weighs it as a plan option and a paired run shows a gain. |  |  |  |  |
+| `serving-prefix-first` | Admit longest prefix hit first |  |  | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). | Parked: worth a run only if time to first token under contention misses the bar again (m2-plan, TTFT idea 2026-11-20). |  |  |  |  |
 
 ### Folded items per node
 
@@ -155,4 +189,8 @@ flowchart TB
   - Save metrics: preparer bytes and in-step saves (2026-11-20, commit 159b62c3be, commit 8cb851b5d7)
 - `serving-own-run-attention`: Long prompts attend their own run
   - Long-context prefill: own-run attention, mask reuse (ADR 0079) (2026-11-19, commit b39db8df9f, commit 6a21e33dc0, commit 366d42a8d0)
+- `serving-multi-lora`: Swap and batch LoRA adapters
+  - ggml patch: batched multi-LoRA matmul (plan.md, patch queue)
+- `serving-prefix-first`: Admit longest prefix hit first
+  - SAVE_MIN_TOKENS for short prompts (m2-plan, c4 gap on CPU)
 <!-- END GENERATED: table-serving -->

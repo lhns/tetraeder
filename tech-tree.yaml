@@ -13,6 +13,7 @@ tracks:
   serving: {name: "serving", scope: "scheduler, KV cache, prefix cache, gateway, TTFT, speculative decoding"}
   bench:   {name: "benchmarks and verdicts", scope: "pinned specs, paired runs, exit tests and verdict sessions, baselines"}
   ops:     {name: "operations", scope: "CI, box tooling (taxameter), telemetry, dashboards, alerts, docs"}
+  cluster: {name: "multi-node cluster", scope: "Phase 6 and on: transport, discovery, mTLS, replicas, failover, stages, experts and KV across machines"}
 
 kinds:
   feature: {}
@@ -28,8 +29,9 @@ kinds:
     shape: hexagon
     owner_gate: true
 
-# Lanes: what a forward node needs. box is the rented GPU, worked one session at a time.
-lanes: [local, ci, box, owner, none]
+# Lanes: what a forward node needs. box is the rented GPU, worked one session at a time: only sessions in the
+# real session order sit there. box-later: a GPU box session not yet in that order. cluster: several machines.
+lanes: [local, ci, box, box-later, cluster, owner, none]
 queue_lane: box
 
 # About 3.5 weeks of history (2026-10-29 on); a handful of picks per week.

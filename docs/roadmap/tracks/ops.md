@@ -16,12 +16,18 @@ flowchart TB
     ops_external_reads[/"✔ Read other inference<br/>engines"/]
     ops_docs["✔ Decisions in ADRs,<br/>numbers elsewhere"]
     ops_telemetry["✔ Box and host metrics"]
+    ops_packages["⏸ Windows and Linux<br/>packages, container"]
+    ops_profiling_mode["⏸ Profiling mode with<br/>CUPTI"]
     ops_foundations ~~~ ops_box_driver
     ops_ci ~~~ ops_external_reads
     ops_taxameter ~~~ ops_docs
     ops_box_driver ~~~ ops_telemetry
-    ops_external_reads ~~~ ops_telemetry
-    ops_docs ~~~ ops_telemetry
+    ops_external_reads ~~~ ops_packages
+    ops_docs ~~~ ops_packages
+    ops_telemetry ~~~ ops_profiling_mode
+    ops_packages ~~~ ops_profiling_mode
+    ops_ci --> ops_packages
+    ops_telemetry --> ops_profiling_mode
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -37,6 +43,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class ops_foundations,ops_ci,ops_taxameter,ops_box_driver,ops_external_reads,ops_docs,ops_telemetry unrated
+    class ops_packages,ops_profiling_mode parked
 ```
 <!-- END GENERATED: track-ops -->
 
@@ -56,6 +63,8 @@ flowchart TB
 | `ops-owner-4gpu-cap` | Owner allows dearer four-GPU boxes | owner-decision | owner | done | n/a | 2026-11-15 | 2026-11-15 |  |  |  |  | AGENTS.md |
 | `ops-owner-v4a-cap` | One dearer box for verdict | owner-decision | owner | done | n/a | 2026-11-20 | 2026-11-20 |  |  |  |  | AGENTS.md; docs/notes/phase5-rule-changes.md |
 | `ops-owner-accepts-adrs` | Owner accepts nine design records | owner-decision | owner | done | n/a | 2026-11-19 | 2026-11-19 |  |  |  |  | docs/adr/0052-runtime-cpu-isa-dispatch.md; docs/adr/0075-executor-ranges-are-graph-views.md |
+| `ops-packages` | Windows and Linux packages, container | tooling | none | parked | unrated |  |  | ops-ci |  |  |  |  |
+| `ops-profiling-mode` | Profiling mode with CUPTI | feature | box-later | parked | unrated |  |  | ops-telemetry |  |  |  |  |
 
 ### Details per node
 
@@ -72,6 +81,8 @@ flowchart TB
 | `ops-owner-4gpu-cap` | Owner allows dearer four-GPU boxes | Exception (user, 2026-11-15): a box with 4 GPUs may cost up to 1.20 USD/h all-in (Phase 5 four-GPU sessions) |  | Phase 5 needs four-GPU boxes, which cost more than the standing cap; the owner allowed up to 1.20 USD/h for those. |  |  |  |  |  |
 | `ops-owner-v4a-cap` | One dearer box for verdict | One-off exception (user, 2026-11-20): one 4-GPU box for the D4 verdict session (V4a) on a host other than 20210 may cost up to 1.70 USD/h all-in |  | The only usable four-GPU host so far (20210) throttles one GPU, so the owner allowed one four-GPU verdict box (V4a) elsewhere at up to 1.70 USD/h, run alone. |  |  |  |  |  |
 | `ops-owner-accepts-adrs` | Owner accepts nine design records | ADRs 0052, 0053, 0056, 0066, 0067, 0070, 0071, 0073, 0075 accepted (owner) |  | The owner moved nine Proposed ADRs (CPU dispatch, AVX-512 kernels, disk cost term, dense builder, KV layout, parallel shapes, GPU tolerance, engine pin, executor graph views) to Accepted. |  |  |  |  |  |
+| `ops-packages` | Windows and Linux packages, container |  |  | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when (plan.md, Phase 9 exit test): packages install cleanly on both systems. |  |  |  |  |
+| `ops-profiling-mode` | Profiling mode with CUPTI |  |  | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). | Parked: no exit test needs it; Phase 5 diagnoses used sync traces and graphs-off runs. Checked 2026-11-21: no CUPTI or rocprof code in crates/. Done when: a profiling run writes per-kernel times for one step without changing production timing. |  |  |  |  |
 
 ### Folded items per node
 
