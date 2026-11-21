@@ -255,7 +255,7 @@ nodes:
   folded:
   - Phase 5 notes and owner cap for V4a (2026-11-20, commit c14ff4bacd, commit 278cd1101d, commit a9f4145f8f, commit e495ac2b66)
   overview: false
-  plain: The only usable four-GPU host so far (20210) throttles one GPU, so the owner allowed one four-GPU verdict box (V4a) elsewhere at up to 1.70 USD/h, run alone.
+  plain: The only usable four-GPU host so far (20210) throttles one GPU, so the owner allowed one four-GPU verdict box (V4a) elsewhere at up to 1.70 USD/h, run alone. Never used; 20210 was re-admitted on 2026-11-21 and ran V4a at the standard cap.
 - id: ops-owner-accepts-adrs
   title: Owner accepts nine design records
   track: ops
@@ -2122,7 +2122,6 @@ nodes:
   depends_on:
   - planner-cost-model-v5
   - multi-prefill-no-capture
-  - ops-owner-v4a-cap
   replaced_by: []
   lane: none
   start: '2026-11-21'
@@ -3215,19 +3214,79 @@ nodes:
   title: Recheck expert-parallel prefill error
   track: planner
   kind: experiment
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/v4a-20261121/README.md
+  - bench/results/v2c-20261121/README.md
+  verdict_quote: '| M4 | ep-4 | 0.959 | 1.057 | 1.203 / 1.230 |'
+  headline: 'ep-4 pp 0.959'
   depends_on:
   - planner-cost-v4
   - multi-prefill-no-capture
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: 2026-11-21
+  end: 2026-11-21
   folded: []
   overview: true
-  plain: Expert-parallel prefill was over-predicted (ep-2, ep-4); after the capture fix it read 0.92 and 0.95 in s3f2 and s3g and within 5% in V2, so it may be closed.
+  plain: Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed.
   notes: 'recheck against V4a; likely closed by the capture fix. Source: m2-plan, Phase 5 open item 2; ADR 0081.'
+- id: planner-owner-layer-anchor
+  title: Approve the low-clock anchor
+  track: planner
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/notes/phase5-rule-changes.md
+  - docs/adr/0068-phase5-verdict-rules.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: 2026-11-21
+  end: 2026-11-21
+  folded: []
+  overview: false
+  plain: One more calibration run on boxes with three or more GPUs (a layer split cut to half depth) measures the clock of a mostly idle GPU for cost model 5; decided by delegation to the advisor, to be confirmed with the M2 report.
+- id: bench-owner-host-20210
+  title: Readmit host 20210 for verdicts
+  track: bench
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/notes/phase5-rule-changes.md
+  - docs/box-driver.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: 2026-11-21
+  end: 2026-11-21
+  folded:
+  - 'About fifteen two- and four-GPU hosts failed before any work on 2026-11-20 and 21: stalled pulls, no SSH, power below default (2026-11-21, session record)'
+  overview: false
+  plain: Host 20210 had no thermal throttle samples in its last two sessions and was the only usable four-GPU host on offer, so the owner allowed it for the verdicts at up to 1.22 USD/h.
+- id: bench-owner-two-of-four
+  title: Two-GPU cases on a four-GPU box
+  track: bench
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/notes/phase5-rule-changes.md
+  - docs/adr/0068-phase5-verdict-rules.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: 2026-11-21
+  end: 2026-11-21
+  folded: []
+  overview: false
+  plain: With no two-GPU host at default power on offer, cases D2 and M2 ran on GPUs 2 and 3 of the V4a box, both engines on the same pair and only that pair judged; chosen over a looser power gate, by delegation to the advisor, to be confirmed with the M2 report.

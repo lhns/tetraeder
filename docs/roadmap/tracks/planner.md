@@ -22,13 +22,13 @@ flowchart TB
     planner_cost_v3["✔ Price all-reduce<br/>latency in steps"]
     planner_cost_v4["✔ Price routed expert<br/>traffic"]
     planner_cost_model_v5["✔ Price decode at<br/>measured clocks"]
+    planner_ep_prefill_recheck[/"✔ Recheck expert-<br/>parallel prefill error"/]
     planner_live_replan["⛔ Replan without<br/>draining"]
     planner_advisor_auto["⛔ Advisor applies safe<br/>changes itself"]
     planner_split_layouts["⛔ Separate prefill and<br/>decode layouts"]
     planner_low_bit_formats["⏸ One and two bit<br/>formats"]
     planner_slot_campaign[/"⏸ Check planner's<br/>expert slot picks"/]
     planner_replan_part_b["⏸ Replanning in serve,<br/>part B"]
-    planner_ep_prefill_recheck[/"○ Recheck expert-<br/>parallel prefill error"/]
     planner_plan_ir ~~~ planner_quality
     planner_plan_ir ~~~ planner_core
     planner_quality ~~~ planner_exit
@@ -43,14 +43,14 @@ flowchart TB
     planner_cost_v2 ~~~ planner_cost_v3
     planner_cost_v3 ~~~ planner_cost_v4
     planner_cost_v4 ~~~ planner_cost_model_v5
+    planner_cost_v4 ~~~ planner_ep_prefill_recheck
     planner_cost_v4 ~~~ planner_live_replan
-    planner_cost_v4 ~~~ planner_advisor_auto
-    planner_cost_model_v5 ~~~ planner_split_layouts
+    planner_cost_model_v5 ~~~ planner_advisor_auto
+    planner_ep_prefill_recheck ~~~ planner_split_layouts
     planner_live_replan ~~~ planner_low_bit_formats
     planner_advisor_auto ~~~ planner_slot_campaign
     planner_split_layouts ~~~ planner_replan_part_b
-    planner_low_bit_formats ~~~ planner_ep_prefill_recheck
-    planner_slot_campaign ~~~ planner_ep_prefill_recheck
+    planner_low_bit_formats ~~~ planner_replan_part_b
     planner_plan_ir --> planner_quality
     planner_plan_ir --> planner_core
     planner_core --> planner_exit
@@ -63,9 +63,9 @@ flowchart TB
     planner_cost_v2 --> planner_cost_v3
     planner_cost_v3 --> planner_cost_v4
     planner_cost_v4 --> planner_cost_model_v5
+    planner_cost_v4 --> planner_ep_prefill_recheck
     planner_fill_tier --> planner_slot_campaign
     planner_replan --> planner_replan_part_b
-    planner_cost_v4 --> planner_ep_prefill_recheck
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -81,11 +81,10 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class planner_plan_ir,planner_tier_cost,planner_replan,planner_fill_tier,planner_parallel_shapes,planner_cost_v3 unrated
-    class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4,planner_cost_model_v5 succ
+    class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4,planner_cost_model_v5,planner_ep_prefill_recheck succ
     class planner_core vsucc
     class planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
     class planner_low_bit_formats,planner_slot_campaign,planner_replan_part_b parked
-    class planner_ep_prefill_recheck next
 ```
 <!-- END GENERATED: track-planner -->
 
@@ -113,7 +112,8 @@ flowchart TB
 | `planner-low-bit-formats` | One and two bit formats | feature | none | parked | unrated |  |  | planner-quality, memory-conversion |  |  |  |  |
 | `planner-slot-campaign` | Check planner's expert slot picks | experiment | box-later | parked | unrated |  |  | planner-fill-tier |  |  |  |  |
 | `planner-replan-part-b` | Replanning in serve, part B | feature | local | parked | unrated |  |  | planner-replan |  |  |  |  |
-| `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | experiment | local | next | unrated |  |  | planner-cost-v4, multi-prefill-no-capture |  |  |  |  |
+| `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | experiment | local | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-v4, multi-prefill-no-capture |  |  | ep-4 pp 0.959 | bench/results/v4a-20261121/README.md; bench/results/v2c-20261121/README.md |
+| `planner-owner-layer-anchor` | Approve the low-clock anchor | owner-decision | owner | done | n/a | 2026-11-21 | 2026-11-21 |  |  |  |  | docs/notes/phase5-rule-changes.md; docs/adr/0068-phase5-verdict-rules.md |
 
 ### Details per node
 
@@ -138,7 +138,8 @@ flowchart TB
 | `planner-low-bit-formats` | One and two bit formats |  |  | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). | Parked to Phase 9 (m2-plan, m1-open item 10); no exit test needs them. Checked 2026-11-21: crates/plan/src/format.rs lists the formats, but conversion rejects formats that need an importance matrix (ADR 0047) and profile v1 measures none below IQ4_XS (ADR 0048). Done when: the imatrix input lands in conversion and profile, and the planner picks such a format where the profile allows. |  |  |  |  |
 | `planner-slot-campaign` | Check planner's expert slot picks |  |  | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. | Parked with Track B (m2-plan B4, m1-open item 6). Done when: scripts/planner_builder_campaign.sh results committed as planner-moe-builder. |  |  |  |  |
 | `planner-replan-part-b` | Replanning in serve, part B |  |  | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. | Parked with Track B (m2-plan B4, m1-open item 10). Done when: switch time and refused requests, paired against restarting llama-server. |  |  |  |  |
-| `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error |  |  | Expert-parallel prefill was over-predicted (ep-2, ep-4); after the capture fix it read 0.92 and 0.95 in s3f2 and s3g and within 5% in V2, so it may be closed. | recheck against V4a; likely closed by the capture fix. Source: m2-plan, Phase 5 open item 2; ADR 0081. |  |  |  |  |
+| `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | \| M4 \| ep-4 \| 0.959 \| 1.057 \| 1.203 / 1.230 \| | ep-4 pp 0.959 | Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed. | recheck against V4a; likely closed by the capture fix. Source: m2-plan, Phase 5 open item 2; ADR 0081. |  |  |  |  |
+| `planner-owner-layer-anchor` | Approve the low-clock anchor |  |  | One more calibration run on boxes with three or more GPUs (a layer split cut to half depth) measures the clock of a mostly idle GPU for cost model 5; decided by delegation to the advisor, to be confirmed with the M2 report. |  |  |  |  |  |
 
 ### Folded items per node
 

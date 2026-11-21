@@ -49,6 +49,8 @@ gantt
     Price all-reduce latency in steps :planner_cost_v3, 2026-11-19, 2026-11-19
     Price routed expert traffic :planner_cost_v4, 2026-11-19, 2026-11-19
     Price decode at measured clocks :planner_cost_model_v5, 2026-11-20, 2026-11-21
+    Recheck expert-parallel prefill error :planner_ep_prefill_recheck, 2026-11-21, 2026-11-21
+    Approve the low-clock anchor :planner_owner_layer_anchor, 2026-11-21, 2026-11-21
     section multi - multi-GPU executor
     Prefill runs without graph capture :multi_prefill_no_capture, 2026-11-20, 2026-11-20
     Own multi-GPU executor :multi_executor, 2026-11-15, 2026-11-16
@@ -97,6 +99,8 @@ gantt
     Two-GPU verdict session :bench_v2_verdict, 2026-11-20, 2026-11-21
     Four-GPU verdict, first box :bench_v4a_verdict, 2026-11-21, 2026-11-21
     Four-GPU verdict, second box :crit, bench_v4b_verdict, 2026-11-21, 2026-11-21
+    Readmit host 20210 for verdicts :bench_owner_host_20210, 2026-11-21, 2026-11-21
+    Two-GPU cases on a four-GPU box :bench_owner_two_of_four, 2026-11-21, 2026-11-21
     section ops - operations
     Workspace, rules and first ADRs :ops_foundations, 2026-10-29, 2026-10-30
     CI and test infrastructure :ops_ci, 2026-10-30, 2026-11-19
@@ -111,5 +115,5 @@ gantt
     Owner accepts nine design records :ops_owner_accepts_adrs, 2026-11-19, 2026-11-19
 ```
 
-Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-prefill-misses`, `memory-typed-slots`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-slot-campaign`, `planner-replan-part-b`, `planner-ep-prefill-recheck`, `multi-accept-adr-0081`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-prefix-first`, `bench-d2a-probe`, `bench-m2-report`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-transport-wan`, `cluster-owner-transport`, `cluster-transport`, `cluster-mtls`, `cluster-discovery`, `cluster-join-leave`, `cluster-pipeline-nodes`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
+Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-prefill-misses`, `memory-typed-slots`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-accept-adr-0081`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-prefix-first`, `bench-d2a-probe`, `bench-m2-report`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-transport-wan`, `cluster-owner-transport`, `cluster-transport`, `cluster-mtls`, `cluster-discovery`, `cluster-join-leave`, `cluster-pipeline-nodes`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
 <!-- END GENERATED: timeline -->

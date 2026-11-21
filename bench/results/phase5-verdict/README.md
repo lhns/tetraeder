@@ -5,3 +5,5 @@
 - D4: pick tp-4, winner set {tp-4, tp2-pp2}, baseline gate 1.022 (llama.cpp `tensor`). M4: pick layer-4, winner set {layer-4}, gate 0.987 (llama.cpp `layer`). D2: pick tp-2, winner set {tp-2}, gate 1.011. M2: pick layer-2, winner set {layer-2}, gate 1.008. Every candidate within 15% of its prediction on pp and tg; three clean rounds per configuration in both sessions; A/A within 0.2%.
 - Cost model 5 (ADR 0082) applied: 30B k = 1.062 (busy 1800, low 1695 MHz), held-out layer anchor -0.024.
 - Rule changes made after failed sessions, for the owner: `docs/notes/phase5-rule-changes.md`. Still open before M2 is reported: the D2a probe on final main (docs/m2-plan.md item 5).
+- Code: V4a ran at 692947a and V2c at 4c73db7; `git diff 692947a 4c73db7 -- crates patches vendor` is empty, so both sessions judged the same engine.
+- Band: 0.08, the spec band (`cuda-default`), because no measured noise file for these classes has n >= 3 (ADR 0068, "Band b"). M4 is the closest case: the pick (layer-4) is 1.3% slower than llama.cpp `-sm layer` (gate ratio 0.987) and passes inside the band; it would still pass at any band of 0.013 or more. A/A runs agreed within 0.2%.

@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 36 rated nodes are confirmed by the owner.
+0 of 37 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-v4a-verdict`, `bench-v4b-verdict`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-v4a-verdict`, `bench-v4b-verdict`, `planner-ep-prefill-recheck`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -129,11 +129,11 @@ flowchart TB
         bench_v2_verdict("bench · ✔ Two-GPU<br/>verdict session")
         planner_cost_model_v5["planner · ✔ Price<br/>decode at measured<br/>clocks"]
         bench_v4a_verdict("bench · ✔ Four-GPU<br/>verdict, first box")
+        planner_ep_prefill_recheck[/"planner · ✔ Recheck<br/>expert-parallel<br/>prefill error"/]
     end
     subgraph bd_2["Next"]
         bench_d2a_probe[/"bench · ○ Admission<br/>probe on final main"/]
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
-        planner_ep_prefill_recheck[/"planner · ○ Recheck<br/>expert-parallel<br/>prefill error"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
         cluster_transport["cluster · ⛔ Transport<br/>between machines"]
@@ -178,14 +178,12 @@ flowchart TB
     bench_s3f2 ~~~ bench_v2_verdict
     bench_s3f2 ~~~ planner_cost_model_v5
     bench_defect_s3f2_clock ~~~ bench_v4a_verdict
-    bench_v2_verdict ~~~ bench_v4a_verdict
-    planner_cost_model_v5 ~~~ bench_v4a_verdict
+    bench_v2_verdict ~~~ planner_ep_prefill_recheck
+    planner_cost_model_v5 ~~~ planner_ep_prefill_recheck
     bench_v4a_verdict ~~~ bench_d2a_probe
-    bench_v4a_verdict ~~~ engine_dense_amx
-    bench_v4a_verdict ~~~ planner_ep_prefill_recheck
+    planner_ep_prefill_recheck ~~~ engine_dense_amx
     bench_d2a_probe ~~~ cluster_transport
     engine_dense_amx ~~~ cluster_transport
-    planner_ep_prefill_recheck ~~~ cluster_transport
     cluster_transport ~~~ cluster_pipeline_nodes
     cluster_transport ~~~ cluster_experts_nodes
     cluster_transport ~~~ cluster_failover
@@ -216,8 +214,8 @@ flowchart TB
     multi_prefill_no_capture --> bench_v2_verdict
     planner_cost_model_v5 --> bench_v4a_verdict
     multi_prefill_no_capture --> bench_v4a_verdict
-    bench_phase4_exit --> bench_d2a_probe
     multi_prefill_no_capture --> planner_ep_prefill_recheck
+    bench_phase4_exit --> bench_d2a_probe
     cluster_transport --> cluster_pipeline_nodes
     cluster_transport --> cluster_experts_nodes
     cluster_pipeline_nodes --> bench_phase6_exit
@@ -228,7 +226,7 @@ flowchart TB
     planner_advisor_auto --> bench_phase7_exit
     engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
-    linkStyle 51,58,62 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 49,56,60 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -244,10 +242,10 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class multi_prefill_no_capture,engine_moe_builder,multi_executor,serving_batching unrated
-    class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,planner_cost_model_v5,bench_v4a_verdict succ
+    class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,planner_cost_model_v5,bench_v4a_verdict,planner_ep_prefill_recheck succ
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
-    class bench_d2a_probe,engine_dense_amx,planner_ep_prefill_recheck next
+    class bench_d2a_probe,engine_dense_amx next
     class cluster_transport,cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
     class engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
 ```
@@ -282,7 +280,7 @@ flowchart TB
 | One and two bit formats | ⏸ parked | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). |
 | Check planner's expert slot picks | ⏸ parked | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. |
 | Replanning in serve, part B | ⏸ parked | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. |
-| Recheck expert-parallel prefill error | ○ next | Expert-parallel prefill was over-predicted (ep-2, ep-4); after the capture fix it read 0.92 and 0.95 in s3f2 and s3g and within 5% in V2, so it may be closed. |
+| Recheck expert-parallel prefill error | ✔ done · successful | Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed. |
 | Prefill runs without graph capture | ✔ done · unrated | Every judged prefill had timed the call in which ggml records a CUDA graph, which serialized the pipeline stages; prefill steps now run directly and decode keeps graph replay. |
 | Own multi-GPU executor | ✔ done · unrated | Phase 5: Tetraeder runs its own executor instead of ggml's backend scheduler: one program per GPU (rank), NCCL collectives, and the engine in a worker process. |
 | Judged prefill timed graph capture | ✔ fixed | ggml-cuda records a CUDA graph on a range's second call; every judged prefill timed that recording call, which with an NCCL kernel pending serialized the pipeline stages, so earlier prefill verdicts measured a slow state serving never sees. |
@@ -343,10 +341,6 @@ flowchart TB
 ## Ready now
 
 <!-- BEGIN GENERATED: ready-now -->
-**local**
-
-- `planner-ep-prefill-recheck`: Recheck expert-parallel prefill error
-
 **ci**
 
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
@@ -396,7 +390,7 @@ Generated on 2026-11-21.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 83 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 87 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -742,7 +736,7 @@ Generated on 2026-11-21.
   - InferSSD study notes (2026-11-19)
   - NanoQuant sub-1-bit quantization parked for Phase 9 (2026-11-19)
   - External reads notes (Speedy, Kinetic, Basalt, QuixiInfer) (2026-11-20)
-- `ops-owner-v4a-cap`: One dearer box for verdict (✔ done · n/a). The only usable four-GPU host so far (20210) throttles one GPU, so the owner allowed one four-GPU verdict box (V4a) elsewhere at up to 1.70 USD/h, run alone.
+- `ops-owner-v4a-cap`: One dearer box for verdict (✔ done · n/a). The only usable four-GPU host so far (20210) throttles one GPU, so the owner allowed one four-GPU verdict box (V4a) elsewhere at up to 1.70 USD/h, run alone. Never used; 20210 was re-admitted on 2026-11-21 and ran V4a at the standard cap.
   - Phase 5 notes and owner cap for V4a (2026-11-20)
 - `ops-taxameter`: Rented GPU box tool (✔ done · unrated). taxameter is the project's own tool to rent and drive Vast.ai GPU boxes: price and age caps, several boxes per project, multi-GPU offers, key redaction.
   - taxameter Vast tooling and box caps (2026-11-02)
@@ -761,11 +755,16 @@ Generated on 2026-11-21.
   - Admission-path outlier fixes from ttft4 (2026-11-19)
   - Snapshot spares grow instead of replaced (2026-11-19)
   - Save metrics: preparer bytes and in-step saves (2026-11-20)
+- `bench-owner-host-20210`: Readmit host 20210 for verdicts (✔ done · n/a). Host 20210 had no thermal throttle samples in its last two sessions and was the only usable four-GPU host on offer, so the owner allowed it for the verdicts at up to 1.22 USD/h.
+  - About fifteen two- and four-GPU hosts failed before any work on 2026-11-20 and 21: stalled pulls, no SSH, power below default (2026-11-21)
+- `bench-owner-two-of-four`: Two-GPU cases on a four-GPU box (✔ done · n/a). With no two-GPU host at default power on offer, cases D2 and M2 ran on GPUs 2 and 3 of the V4a box, both engines on the same pair and only that pair judged; chosen over a looser power gate, by delegation to the advisor, to be confirmed with the M2 report.
 - `bench-v2-verdict`: Two-GPU verdict session (✔ done · successful). The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each.
   - First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20)
 - `bench-v4a-verdict`: Four-GPU verdict, first box (✔ done · successful). The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each.
 - `bench-v4b-verdict`: Four-GPU verdict, second box (↷ superseded). The second four-GPU session, planned in case V4a could not give every configuration two clean rounds; V4a gave three in one session, so it was not needed.
 - `planner-cost-model-v5`: Price decode at measured clocks (✔ done · successful). A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets.
+- `planner-ep-prefill-recheck`: Recheck expert-parallel prefill error (✔ done · successful). Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed.
+- `planner-owner-layer-anchor`: Approve the low-clock anchor (✔ done · n/a). One more calibration run on boxes with three or more GPUs (a layer split cut to half depth) measures the clock of a mostly idle GPU for cost model 5; decided by delegation to the advisor, to be confirmed with the M2 report.
 
 </details>
 
@@ -795,10 +794,10 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 19 nodes (12 done, 1 next, 5 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 13 nodes (8 done, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 20 nodes (13 done, 1 next, 3 blocked, 3 parked)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 21 nodes (15 done, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (7 done, 1 next, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 20 nodes (12 done, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 38 nodes (25 done, 1 next, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 40 nodes (27 done, 1 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (12 blocked)
 <!-- END GENERATED: tracks -->

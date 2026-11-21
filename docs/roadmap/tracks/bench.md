@@ -147,7 +147,7 @@ flowchart TB
 | `bench-defect-s3f2-clock` | Check host ran at low clocks | defect | none | done | unrated | 2026-11-20 | 2026-11-20 | bench-s3f2 |  |  |  | docs/m2-plan.md; bench/results/s3f2-20261120/README.md |
 | `bench-v2-verdict` | Two-GPU verdict session | session | none | done | successful | 2026-11-20 | 2026-11-21 | multi-prefill-no-capture, bench-throttle-rules |  |  |  | bench/results/v2c-20261121/README.md; bench/results/v2c-20261121/phase5/verdict.json |
 | `bench-d2a-probe` | Admission probe on final main | experiment | box | next | unrated |  |  | bench-phase4-exit |  |  |  |  |
-| `bench-v4a-verdict` | Four-GPU verdict, first box | session | none | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-model-v5, multi-prefill-no-capture, ops-owner-v4a-cap |  |  |  | bench/results/v4a-20261121/README.md; bench/results/v4a-20261121/phase5/verdict.json |
+| `bench-v4a-verdict` | Four-GPU verdict, first box | session | none | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-model-v5, multi-prefill-no-capture |  |  |  | bench/results/v4a-20261121/README.md; bench/results/v4a-20261121/phase5/verdict.json |
 | `bench-v4b-verdict` | Four-GPU verdict, second box | session | box | abandoned | superseded | 2026-11-21 | 2026-11-21 |  | bench-v4a-verdict |  |  | bench/results/v4a-20261121/README.md |
 | `bench-m2-report` | Report milestone M2 | owner-decision | owner | blocked | n/a |  |  | bench-v2-verdict, bench-v4a-verdict, bench-d2a-probe |  |  |  |  |
 | `bench-phase6-exit` | Phase 6 exit: multi-node test | session | cluster | blocked | unrated |  |  | cluster-pipeline-nodes, cluster-experts-nodes, cluster-remote-kv, cluster-replicas, cluster-failover, cluster-mtls, cluster-discovery |  |  |  |  |
@@ -160,6 +160,8 @@ flowchart TB
 | `bench-strata-pairing` | Pair against the Strata engine | session | box-later | parked | unrated |  |  | bench-harness |  |  |  |  |
 | `bench-d1-session` | Session on a 48 GB box | session | box-later | parked | unrated |  |  | planner-fill-tier, memory-io-service |  |  |  |  |
 | `bench-open-records` | Box checks for open design records | session | box-later | parked | unrated |  |  | memory-adaptive-tier, ops-telemetry, bench-ttft |  |  |  |  |
+| `bench-owner-host-20210` | Readmit host 20210 for verdicts | owner-decision | owner | done | n/a | 2026-11-21 | 2026-11-21 |  |  |  |  | docs/notes/phase5-rule-changes.md; docs/box-driver.md |
+| `bench-owner-two-of-four` | Two-GPU cases on a four-GPU box | owner-decision | owner | done | n/a | 2026-11-21 | 2026-11-21 |  |  |  |  | docs/notes/phase5-rule-changes.md; docs/adr/0068-phase5-verdict-rules.md |
 
 ### Details per node
 
@@ -203,6 +205,8 @@ flowchart TB
 | `bench-strata-pairing` | Pair against the Strata engine |  |  | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. | Parked (m2-plan, m1-open item 8): Strata documents Qwen3.8, Qwen3.6 and DeepSeek-V4.1, and the own builders run only Qwen3; revisit when Strata runs Qwen3. Source: plan.md Phase 0 baselines, References. |  |  |  |  |
 | `bench-d1-session` | Session on a 48 GB box |  |  | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. | Parked (m2-plan, Phase 5 Parked: D1). Done when: each stage below has a paired result in its session README; the Reader path is deleted after the ADR 0054 arms. The poll pair is dropped (B3 closed, 20261115p1). |  |  |  |  |
 | `bench-open-records` | Box checks for open design records |  |  | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. | Parked (m2-plan, Housekeeping: candidates for a later combined box session). Neither ADR gates open work. Done when: each stage has a result in the session README and the owner accepts or closes ADRs 0059 and 0060. |  |  |  |  |
+| `bench-owner-host-20210` | Readmit host 20210 for verdicts |  |  | Host 20210 had no thermal throttle samples in its last two sessions and was the only usable four-GPU host on offer, so the owner allowed it for the verdicts at up to 1.22 USD/h. |  |  |  |  |  |
+| `bench-owner-two-of-four` | Two-GPU cases on a four-GPU box |  |  | With no two-GPU host at default power on offer, cases D2 and M2 ran on GPUs 2 and 3 of the V4a box, both engines on the same pair and only that pair judged; chosen over a looser power gate, by delegation to the advisor, to be confirmed with the M2 report. |  |  |  |  |  |
 
 ### Folded items per node
 
@@ -343,4 +347,6 @@ flowchart TB
   - ADR 0059: the upload modes of the 2026-11-12b addendum (m2-plan, Housekeeping)
   - ADR 0060: sampler and OTel paths agree, then the sampler path goes (m2-plan, Housekeeping)
   - TTFT replay with in-step saves counted in save_ms (track-save-metrics) (m2-plan, TTFT)
+- `bench-owner-host-20210`: Readmit host 20210 for verdicts
+  - About fifteen two- and four-GPU hosts failed before any work on 2026-11-20 and 21: stalled pulls, no SSH, power below default (2026-11-21, session record)
 <!-- END GENERATED: table-bench -->
