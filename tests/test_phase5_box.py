@@ -519,3 +519,52 @@ def test_the_layer_anchor_part_keeps_its_shape_id_and_limit_in_the_merge(tmp_pat
     subprocess.run([sys.executable, "-c", code, str(tmp_path), M, "1", "1"], check=True, timeout=60)
     rows = json.loads((tmp_path / f"anchors-{M}-r1.json").read_text())
     assert [(r["plan_id"], r["layer_limit"]) for r in rows] == [("layer-4@L24", 24)]
+
+
+# ---- two of four (ADR 0068 History, 2026-11-21): NGPUS=2 P5_DEVICES=2,3 on a box that lists 4 GPUs ------------------------
+
+
+def test_two_of_four_exports_the_pair_for_every_process(tmp_path):
+    lines = dry(tmp_path, DRY_GPUS="4", P5_DEVICES="2,3")
+    assert stages(lines) == STAGES and lines[-1].endswith("PHASE5_BOX_DONE rc=0")
+    assert any("two of four: P5_DEVICES=2,3; CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2,3" in ln for ln in lines)
+    src = SCRIPT.read_text()
+    assert 'export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES="$devices"' in src
+    # the pair's own 2x plumbing: logical GPUs 0,1, no 4-GPU anchors, the 2x predictions
+    assert not any("tp-4" in ln for ln in lines) and any("predict-qwen3-32b-2x.json" in ln for ln in lines)
+    # the routing pass runs on the first GPU of the pair, not on physical 0
+    routing = next(ln for ln in lines if "--routing-out" in ln)
+    assert "CUDA_VISIBLE_DEVICES=2 " in routing and "CUDA_VISIBLE_DEVICES=0 " not in routing
+    # every run says which devices it runs on and watches the others
+    n = len(runs(lines))
+    assert n and sum("CUDA_VISIBLE_DEVICES=2,3; memory.used of the other GPUs" in ln for ln in lines) == n
+
+
+def test_two_of_four_gate_judges_the_pair_only(tmp_path):
+    lines = dry(tmp_path, DRY_GPUS="4", P5_DEVICES="2,3")
+    assert any("scripts/power_gate.sh 2,3:" in ln and "the others are recorded, not judged" in ln for ln in lines)
+    dry(tmp_path, DRY_GPUS="4", P5_DEVICES="2,3", DRY_POWER="fail", rc=1)  # a lowered cap on the pair still ends it
+
+
+def test_two_of_four_needs_a_valid_pair_on_a_four_gpu_box(tmp_path):
+    dry(tmp_path, DRY_GPUS="4", P5_DEVICES="2,4", rc=1)  # no GPU 4
+    dry(tmp_path, DRY_GPUS="3", P5_DEVICES="1,2", rc=1)  # three listed: neither the exact count nor four
+    dry(tmp_path, DRY_GPUS="4", P5_DEVICES="2,2", rc=2)
+    dry(tmp_path, DRY_GPUS="4", P5_DEVICES="1,2,3", rc=2)
+    dry(tmp_path, DRY_GPUS="4", P5_DEVICES="x", rc=2)
+    dry(tmp_path, ngpu="4", DRY_GPUS="4", P5_DEVICES="2,3", rc=2)  # only for the 2-GPU cases
+
+
+def test_four_listed_gpus_without_a_pair_are_still_a_wrong_box_for_two(tmp_path):
+    lines = dry(tmp_path, DRY_GPUS="4", rc=1)
+    assert "STAGE env" not in "\n".join(lines) and not any("CUDA_VISIBLE_DEVICES=2,3" in ln for ln in lines)
+
+
+def test_without_a_pair_nothing_is_exported_or_filtered(tmp_path):
+    lines = dry(tmp_path)
+    assert not any("P5_DEVICES" in ln or "memory.used of the other GPUs" in ln for ln in lines)
+    routing = next(ln for ln in lines if "--routing-out" in ln)
+    assert "CUDA_VISIBLE_DEVICES=0 " in routing  # unchanged: GPU 0
+    src = SCRIPT.read_text()
+    assert '"devices": [int(x) for x in e["P5_DEVICES"].split(",")] if e["P5_DEVICES"] else None' in src
+    assert ",memory.used --format=csv -lms 10" in src

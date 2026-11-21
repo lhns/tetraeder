@@ -145,6 +145,10 @@ def layout_model(d: Path, name: str) -> str:
 
 
 def summarize(d: Path, style: str = "anchors") -> dict:
+    try:  # env.json `devices` (phase5_box.sh, two of four): physical nvidia-smi indices of the pair
+        devices = json.loads((d / "env.json").read_text()).get("devices") or None
+    except (OSError, ValueError, AttributeError):
+        devices = None
     runs: dict = {}
     for run in runs_in(d):
         info = parse_run(run, style)
@@ -162,6 +166,8 @@ def summarize(d: Path, style: str = "anchors") -> dict:
             entry["withheld"].append("no tg row in the rates file")
             continue
         samples, window = read_clocks(files[0]), read_window(files[1])
+        if devices:  # two of four: the log has every GPU by physical index; rank g runs on devices[g]
+            samples = [(t, devices.index(g), sm, why) for t, g, sm, why in samples if g in devices]
         entry["tail_s"] = tail_s
         # the GPUs that compute: GPU 0 of a single run, the GPUs without the head (0 to g - 2) of a layer run
         gpus = range(info["ranks"]) if info["kind"] == "layer" else [0]
