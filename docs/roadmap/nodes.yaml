@@ -2135,21 +2135,21 @@ nodes:
   title: Four-GPU verdict, second box
   track: bench
   kind: session
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: abandoned
+  outcome: superseded
+  evidence:
+  - bench/results/v4a-20261121/README.md
+  verdict_quote: 'D4 passes and M4 passes at 3 clean rounds each, picks tp-4 (D4) and layer-4 (M4), every candidate within 15% on pp and tg, baseline gate 1.022 and 0.987.'
   headline: ''
-  depends_on:
+  depends_on: []
+  replaced_by:
   - bench-v4a-verdict
-  replaced_by: []
   lane: box
-  queue_order: 4
-  start: ''
-  end: ''
+  start: 2026-11-21
+  end: 2026-11-21
   folded: []
   overview: false
-  plain: The second four-GPU session, so every configuration has two clean rounds on a clean host.
+  plain: The second four-GPU session, planned in case V4a could not give every configuration two clean rounds; V4a gave three in one session, so it was not needed.
 - id: bench-m2-report
   title: Report milestone M2
   track: bench
@@ -2162,7 +2162,6 @@ nodes:
   depends_on:
   - bench-v2-verdict
   - bench-v4a-verdict
-  - bench-v4b-verdict
   - bench-d2a-probe
   replaced_by: []
   lane: owner

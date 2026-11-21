@@ -1,0 +1,542 @@
+{
+  "band": 0.08,
+  "band_source": "provisional cuda-default",
+  "sessions": [
+    {
+      "file": "verdict.json",
+      "band": 0.08,
+      "band_source": "provisional cuda-default"
+    },
+    {
+      "file": "verdict.json",
+      "band": 0.08,
+      "band_source": "provisional cuda-default"
+    }
+  ],
+  "predict_sha256": {
+    "qwen3-30b-a3b-4x": "2314723f7e856a87806daead3f1045c19a0b84d470a0fa61b91d52c99bc7c642",
+    "qwen3-32b-4x": "d648ccfc65c1c43130d2e11e646751e793921160e317e99d21abba90eff0ec28",
+    "qwen3-30b-a3b-2x": "568b05f43100f753eb4b1d415967661e34d671d0389f93cb54479e00072a38fc",
+    "qwen3-32b-2x": "71e8aebc1e415da2e32812225df9074659ab44cdcdd92c6e891c4794d0ef96c2"
+  },
+  "cases": [
+    {
+      "case": "D2",
+      "model": "qwen3-32b",
+      "box_gpus": 2,
+      "gpu_class": "2x-rtx-3090",
+      "p2p": "none",
+      "comm_impl": "nccl",
+      "candidates": [
+        {
+          "id": "single",
+          "shape": "single",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 1293.107240933127,
+            "tg_tps": 39.02685261107169,
+            "t_s": 4.863575072550071
+          },
+          "measured": {
+            "pp_tps": 1328.6047416949593,
+            "tg_tps": 38.85811432318494,
+            "t_s": 4.835502018,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": -0.026717879025891844,
+            "tg": 0.004342420902963662
+          },
+          "within": true
+        },
+        {
+          "id": "layer-2",
+          "shape": "layer",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 2042.7332359278362,
+            "tg_tps": 38.77423733882864,
+            "t_s": 4.30373928986497
+          },
+          "measured": {
+            "pp_tps": 2113.5777027311146,
+            "tg_tps": 39.45105215818952,
+            "t_s": 4.21350003,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": -0.03351874251499476,
+            "tg": -0.017155811628217332
+          },
+          "within": true
+        },
+        {
+          "id": "tp-2",
+          "shape": "tp",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 1560.7733008178311,
+            "tg_tps": 59.40072326923796,
+            "t_s": 3.467025979521682
+          },
+          "measured": {
+            "pp_tps": 1461.0193923094296,
+            "tg_tps": 59.42101178134365,
+            "t_s": 3.555881167,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": 0.06827692297137866,
+            "tg": -0.00034143666520436433
+          },
+          "within": true
+        }
+      ],
+      "pick": "tp-2",
+      "winner_set": [
+        "tp-2"
+      ],
+      "pick_ok": true,
+      "prediction_ok": true,
+      "baselines": [
+        {
+          "engine": "llama-bench",
+          "sm": "layer",
+          "t_s": 4.196221255862526,
+          "comm": null
+        },
+        {
+          "engine": "llama-bench",
+          "sm": "tensor",
+          "t_s": 3.5949008300685334,
+          "comm": null
+        }
+      ],
+      "best_baseline": {
+        "engine": "llama-bench",
+        "sm": "tensor",
+        "t_s": 3.5949008300685334
+      },
+      "baseline_ratio": 1.010973275325017,
+      "baseline_ok": true,
+      "aa": {
+        "t_start": 4.83040315,
+        "t_end": 4.835646198000001
+      },
+      "clean": true,
+      "reasons": [],
+      "pass": true
+    },
+    {
+      "case": "M2",
+      "model": "qwen3-30b-a3b",
+      "box_gpus": 2,
+      "gpu_class": "2x-rtx-3090",
+      "p2p": "none",
+      "comm_impl": "nccl",
+      "candidates": [
+        {
+          "id": "single",
+          "shape": "single",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 5450.618923114098,
+            "tg_tps": 200.25681062050734,
+            "t_s": 1.014916406236025
+          },
+          "measured": {
+            "pp_tps": 5853.768473212789,
+            "tg_tps": 197.10700808577604,
+            "t_s": 0.999253546,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": -0.06887008803705319,
+            "tg": 0.0159801651159992
+          },
+          "within": true
+        },
+        {
+          "id": "layer-2",
+          "shape": "layer",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 8647.720846520842,
+            "tg_tps": 193.8377037391078,
+            "t_s": 0.8971716519612527
+          },
+          "measured": {
+            "pp_tps": 9092.226107609835,
+            "tg_tps": 196.83830593258767,
+            "t_s": 0.875527299,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": -0.048888496153539296,
+            "tg": -0.01524399521355102
+          },
+          "within": true
+        },
+        {
+          "id": "tp-2",
+          "shape": "tp",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 4800.842223178599,
+            "tg_tps": 173.86842650582363,
+            "t_s": 1.1627806829985956
+          },
+          "measured": {
+            "pp_tps": 4748.489616282066,
+            "tg_tps": 177.14353944599537,
+            "t_s": 1.153872898,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": 0.01102510716608096,
+            "tg": -0.018488469579045486
+          },
+          "within": true
+        },
+        {
+          "id": "ep-2",
+          "shape": "ep",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 4893.882096123923,
+            "tg_tps": 175.225592959412,
+            "t_s": 1.1489685785823378
+          },
+          "measured": {
+            "pp_tps": 4869.655792327404,
+            "tg_tps": 170.43317072308955,
+            "t_s": 1.171591117,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": 0.00497495199448994,
+            "tg": 0.02811906987348678
+          },
+          "within": true
+        }
+      ],
+      "pick": "layer-2",
+      "winner_set": [
+        "layer-2"
+      ],
+      "pick_ok": true,
+      "prediction_ok": true,
+      "baselines": [
+        {
+          "engine": "llama-bench",
+          "sm": "layer",
+          "t_s": 0.8825483870850768,
+          "comm": null
+        },
+        {
+          "engine": "llama-bench",
+          "sm": "tensor",
+          "t_s": 1.2198491471744677,
+          "comm": null
+        }
+      ],
+      "best_baseline": {
+        "engine": "llama-bench",
+        "sm": "layer",
+        "t_s": 0.8825483870850768
+      },
+      "baseline_ratio": 1.0080192680377824,
+      "baseline_ok": true,
+      "aa": {
+        "t_start": 0.9999952480000001,
+        "t_end": 0.9990154170000001
+      },
+      "clean": true,
+      "reasons": [],
+      "pass": true
+    },
+    {
+      "case": "D4",
+      "model": "qwen3-32b",
+      "box_gpus": 4,
+      "gpu_class": "4x-rtx-3090",
+      "p2p": "none",
+      "comm_impl": "nccl",
+      "candidates": [
+        {
+          "id": "single",
+          "shape": "single",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 1250.8596772564413,
+            "tg_tps": 39.09177743973236,
+            "t_s": 4.911619847963763
+          },
+          "measured": {
+            "pp_tps": 1309.0273300611534,
+            "tg_tps": 38.6522535469134,
+            "t_s": 4.876099658,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": -0.04443578179685126,
+            "tg": 0.011371235891472598
+          },
+          "within": true
+        },
+        {
+          "id": "layer-4",
+          "shape": "layer",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 2779.9874477416784,
+            "tg_tps": 38.82869539551258,
+            "t_s": 4.033225023744045
+          },
+          "measured": {
+            "pp_tps": 2956.1709975750596,
+            "tg_tps": 38.88519902610962,
+            "t_s": 3.9845289690000003,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": -0.05959856516348483,
+            "tg": -0.0014530883732675193
+          },
+          "within": true
+        },
+        {
+          "id": "tp-4",
+          "shape": "tp",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 1859.2751980085297,
+            "tg_tps": 75.22501403664627,
+            "t_s": 2.8030661646488393
+          },
+          "measured": {
+            "pp_tps": 1726.7131531010268,
+            "tg_tps": 77.39380548953707,
+            "t_s": 2.8399475879999994,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": 0.07677131819459015,
+            "tg": -0.028022804140106605
+          },
+          "within": true
+        },
+        {
+          "id": "tp2-pp2",
+          "shape": "tp-pp",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 2406.367457034395,
+            "tg_tps": 58.36514843490636,
+            "t_s": 3.044164938709443
+          },
+          "measured": {
+            "pp_tps": 2381.373055308758,
+            "tg_tps": 58.83898078229388,
+            "t_s": 3.035436624,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": 0.010495794293933658,
+            "tg": -0.008053034588425545
+          },
+          "within": true
+        }
+      ],
+      "pick": "tp-4",
+      "winner_set": [
+        "tp-4",
+        "tp2-pp2"
+      ],
+      "pick_ok": true,
+      "prediction_ok": true,
+      "baselines": [
+        {
+          "engine": "llama-bench",
+          "sm": "layer",
+          "t_s": 3.9451140895472165,
+          "comm": null
+        },
+        {
+          "engine": "llama-bench",
+          "sm": "tensor",
+          "t_s": 2.9036342605808865,
+          "comm": null
+        }
+      ],
+      "best_baseline": {
+        "engine": "llama-bench",
+        "sm": "tensor",
+        "t_s": 2.9036342605808865
+      },
+      "baseline_ratio": 1.0224252985688858,
+      "baseline_ok": true,
+      "aa": {
+        "t_start": 4.869826223,
+        "t_end": 4.878916739999999
+      },
+      "clean": true,
+      "reasons": [],
+      "pass": true
+    },
+    {
+      "case": "M4",
+      "model": "qwen3-30b-a3b",
+      "box_gpus": 4,
+      "gpu_class": "4x-rtx-3090",
+      "p2p": "none",
+      "comm_impl": "nccl",
+      "candidates": [
+        {
+          "id": "tp-4",
+          "shape": "tp",
+          "pruned": true,
+          "reason": "3 blocks over 4 ranks (expert down rows)",
+          "predicted": null,
+          "measured": null,
+          "err": null,
+          "within": null
+        },
+        {
+          "id": "single",
+          "shape": "single",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 5474.899384423849,
+            "tg_tps": 200.54605097618324,
+            "t_s": 1.0123281959753416
+          },
+          "measured": {
+            "pp_tps": 5805.418572464921,
+            "tg_tps": 196.65403030858647,
+            "t_s": 1.003663153,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": -0.05693287812333181,
+            "tg": 0.019791207235821506
+          },
+          "within": true
+        },
+        {
+          "id": "layer-4",
+          "shape": "layer",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 12091.979273191806,
+            "tg_tps": 185.62488986730156,
+            "t_s": 0.8589311663055414
+          },
+          "measured": {
+            "pp_tps": 12266.495533081981,
+            "tg_tps": 186.89965203490036,
+            "t_s": 0.8518183389999999,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": -0.014227067496133339,
+            "tg": -0.00682057004237091
+          },
+          "within": true
+        },
+        {
+          "id": "ep-4",
+          "shape": "ep",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 5045.7001418354275,
+            "tg_tps": 155.22747243126523,
+            "t_s": 1.2304864561954245
+          },
+          "measured": {
+            "pp_tps": 4839.302341032829,
+            "tg_tps": 164.08036423964194,
+            "t_s": 1.203307031,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": 0.042650321525178336,
+            "tg": -0.05395460845910194
+          },
+          "within": true
+        },
+        {
+          "id": "tp2-pp2",
+          "shape": "tp-pp",
+          "pruned": false,
+          "reason": null,
+          "predicted": {
+            "pp_tps": 7466.960971380297,
+            "tg_tps": 167.7377442284405,
+            "t_s": 1.0373708935637636
+          },
+          "measured": {
+            "pp_tps": 7216.508620429631,
+            "tg_tps": 171.9619709003212,
+            "t_s": 1.028144366,
+            "rounds_clean": 3
+          },
+          "err": {
+            "pp": 0.03470547381342359,
+            "tg": -0.02456488867721396
+          },
+          "within": true
+        }
+      ],
+      "pick": "layer-4",
+      "winner_set": [
+        "layer-4"
+      ],
+      "pick_ok": true,
+      "prediction_ok": true,
+      "baselines": [
+        {
+          "engine": "llama-bench",
+          "sm": "layer",
+          "t_s": 0.8406534095633539,
+          "comm": null
+        },
+        {
+          "engine": "llama-bench",
+          "sm": "tensor",
+          "t_s": 1.2308970929997312,
+          "comm": null
+        }
+      ],
+      "best_baseline": {
+        "engine": "llama-bench",
+        "sm": "layer",
+        "t_s": 0.8406534095633539
+      },
+      "baseline_ratio": 0.9868928280532757,
+      "baseline_ok": true,
+      "aa": {
+        "t_start": 1.003212258,
+        "t_end": 1.005278044
+      },
+      "clean": true,
+      "reasons": [],
+      "pass": true
+    }
+  ],
+  "phase5_pass": true
+}
