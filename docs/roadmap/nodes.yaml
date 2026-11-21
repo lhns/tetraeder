@@ -2068,7 +2068,7 @@ nodes:
   track: planner
   kind: feature
   state: in-progress
-  waiting_on: 30B single anchors with at least 25 tail clock samples (s3g withheld all four, so k stayed 1 for the 30B), then a rerun of item 5
+  waiting_on: the next 4-GPU session with the 10 ms clock logger (s3g withheld all four 30B single anchors at 20 ms, so k stayed 1 for the 30B; offline with its 1800 MHz busy clock the layer-4 e_tg is -0.001)
   outcome: unrated
   evidence:
   - bench/results/s3c-20261119/costmodel-v5/README.md

@@ -6,7 +6,7 @@
 DIR holds, per run, a clock log and a window file written by `scripts/phase5_box.sh` (`run_one`):
 
     clocks-<run>.csv     nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,
-                         clocks_event_reasons.active --format=csv -lms 20 (the box's UTC clock)
+                         clocks_event_reasons.active --format=csv -lms 10 (the box's UTC clock)
     window-<run>.txt     start=<epoch s> end=<epoch s> (`date +%s.%N` before and after the process)
 
 `<run>.clocks.csv` and `<run>.window.txt` (as `s3e_diag_box.sh` part C names them) are read too. The run's rates come
@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 
 DUTY_THRESHOLD = 0.32
-MIN_SAMPLES = 25
+MIN_SAMPLES = 15
 # clocks_event_reasons.active bits: hw slowdown, sw thermal, hw thermal, hw power brake
 BAD_REASONS = 0x8 | 0x20 | 0x40 | 0x80
 

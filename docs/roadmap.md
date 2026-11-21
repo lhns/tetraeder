@@ -243,7 +243,7 @@ _None._
 ## Built, waiting
 
 <!-- BEGIN GENERATED: built-waiting -->
-**30B single anchors with at least 25 tail clock samples (s3g withheld all four, so k stayed 1 for the 30B), then a rerun of item 5**
+**the next 4-GPU session with the 10 ms clock logger (s3g withheld all four 30B single anchors at 20 ms, so k stayed 1 for the 30B; offline with its 1800 MHz busy clock the layer-4 e_tg is -0.001)**
 
 - `planner-cost-model-v5`: Price decode at measured clocks
 <!-- END GENERATED: built-waiting -->

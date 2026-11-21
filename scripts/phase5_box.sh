@@ -62,7 +62,7 @@
 #   SESSION=<s>-step0 ROUNDS=2 ONLY="tp-2 llama-bench:tensor" bash scripts/phase5_box.sh <s>-step0 2   # round 2 reversed: two interleaved pairs
 #   SESSION=<s> ROUNDS=1 bash scripts/phase5_box.sh <s> 2                                              # the rehearsal
 # Clock logs (ADR 0082): every timed run (anchors and candidates) has `nvidia-smi --query-gpu=timestamp,index,clocks.sm,
-# clocks.mem,power.draw,clocks_event_reasons.active --format=csv -lms 20` beside it, clocks-<run>.csv, and window-<run>.txt
+# clocks.mem,power.draw,clocks_event_reasons.active --format=csv -lms 10` beside it, clocks-<run>.csv, and window-<run>.txt
 # (`start=<epoch> end=<epoch>`, `date +%s.%N` before and after the process); scripts/decode_clocks.py cuts them to the timed
 # decode tail and writes decode-clocks.json, which `calibrate --clocks` puts into the graph (cost model 5). Not with SKIP_GPU.
 # Every timed run goes through run_one (candidates, both llama.cpp baselines, the A/A run, anchors, pp-overlap), so the
@@ -174,7 +174,7 @@ clocks_start() {
   [ "$skip_gpu" = 1 ] && return 0
   local why=clocks_event_reasons.active
   nvidia-smi --query-gpu="$why" --format=csv,noheader > /dev/null 2>&1 || why=clocks_throttle_reasons.active
-  setsid nohup nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,"$why" --format=csv -lms 20 \
+  setsid nohup nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,"$why" --format=csv -lms 10 \
     > "$out/clocks-$1.csv" 2> /dev/null 8>&- &
   clock_pid=$!
 }

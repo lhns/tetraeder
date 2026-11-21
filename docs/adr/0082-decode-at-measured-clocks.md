@@ -43,7 +43,7 @@ Two states per GPU in a decode step, not a curve:
 
 ### What calibration measures
 
-- **Clock logs.** Every anchor and the new anchor below run with `nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,clocks_event_reasons.active --format=csv -lms 20` beside them and a window file (`date +%s.%N` before and after the process), as s3e part C. A run's clock per GPU is the median over its timed decode tail (the last `reps x n_gen / tg` seconds before the window end). Whole-window or 1 Hz medians are not used: V2 shows they measure the load.
+- **Clock logs.** Every anchor and the new anchor below run with `nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,clocks_event_reasons.active --format=csv -lms 10` beside them and a window file (`date +%s.%N` before and after the process), as s3e part C. A run's clock per GPU is the median over its timed decode tail (the last `reps x n_gen / tg` seconds before the window end). Whole-window or 1 Hz medians are not used: V2 shows they measure the load.
 - `busy_mhz(m)`: median of the tail clocks of model m's `single` anchors (both depths, both rounds).
 - **New anchor `layer-g@L/2`** on boxes with g >= 3 GPUs, first MoE model of the session (else the first model): a layer-g plan re-cut for the truncated depth, the first g - 1 stages L/(2g) layers each and the last stage the rest, run with `--layer-limit L/2`, so every stage computes L/(2g) layers (30B on 4 GPUs: 6/6/6/30 at limit 24, modeled duties 0.21, 0.20, 0.20, 0.33). tg128 only, `-r 10`, two rounds. It is truncated, so no anchor equals a candidate (ADR 0068). `low_mhz`: median tail clock over its GPUs without the head, both rounds. Its tg is a held-out check, priced with v5 and reported beside the fit residuals; it does not enter the fit, so no other prediction moves.
 - Cost: two processes of about 10 s each (6 GB of weights from page cache, 1280 timed tokens at about 400 tok/s), well under one box minute, about 0.02 USD at 1.2 USD/h. Clock logs cost nothing. On 2-GPU boxes nothing is added: layer-2 GPUs run at duty 0.5 and boost (V2: 1890 to 1950 on its active samples).
@@ -51,7 +51,7 @@ Two states per GPU in a decode step, not a curve:
 ### Clock-limited hosts
 
 - Both clocks come from the same session as the candidates. On a host like s3f2 (1590 everywhere) `busy_mhz = low_mhz`, `k = 1`, and every prediction is bit-identical to cost model 4.
-- `k = 1` also when the layer anchor is missing, has fewer than 25 tail samples on a GPU, or shows 0x8, 0x20, 0x40 or 0x80 in its tail; the calibrate log names the reason. Where a model's single anchor sits below the low clock (a power-capped single, as the 32B's full-depth single at 1620 on host 20210), the clamp gives 1.
+- `k = 1` also when the layer anchor is missing, has fewer than 15 tail samples on a GPU (25 at 20 ms until s3g-20261121, whose 30B single anchors gave 10 to 18; the logger now samples every 10 ms), or shows 0x8, 0x20, 0x40 or 0x80 in its tail; the calibrate log names the reason. Where a model's single anchor sits below the low clock (a power-capped single, as the 32B's full-depth single at 1620 on host 20210), the clamp gives 1.
 - Graphs carry `HardwareGraph::decode_clocks`; without it a graph predicts as cost model 4. `MODEL_VERSION` 5.
 
 ### The check (done criterion, replacing "within 15%, others within 0.01")

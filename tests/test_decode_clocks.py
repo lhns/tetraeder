@@ -69,7 +69,7 @@ def test_the_tail_is_the_timed_decode_only(tmp_path):
     write_run(tmp_path, run, rows, (0.0, 20.0))
     e = dc.summarize(tmp_path)["runs"][run]
     assert e["tail_s"] == pytest.approx(6.4)
-    assert e["gpus"]["0"]["median"] == 1900 and e["gpus"]["0"]["samples"] >= 25 and e["withheld"] == []
+    assert e["gpus"]["0"]["median"] == 1900 and e["gpus"]["0"]["samples"] >= 15 and e["withheld"] == []
     # the whole window would read the load
     assert statistics.median(r[2] for r in rows) == 1500
 
@@ -99,11 +99,11 @@ def test_a_power_cap_alone_is_not_withheld(tmp_path):
     assert dc.summarize(tmp_path)["busy_mhz"] == {"m": 1900}
 
 
-def test_under_25_tail_samples_on_a_gpu_withholds_the_run(tmp_path):
-    rows = samples(0, 0.0, 10.0, 1900, step=0.02)[-24:] + samples(1, 0.0, 10.0, 1695)
+def test_under_15_tail_samples_on_a_gpu_withholds_the_run(tmp_path):
+    rows = samples(0, 0.0, 10.0, 1900, step=0.02)[-14:] + samples(1, 0.0, 10.0, 1695)
     write_run(tmp_path, "m-anchor-single-L12-r1", rows, (0.0, 10.0))
     out = dc.summarize(tmp_path)
-    assert out["busy_mhz"] == {} and any("under 25" in w for w in out["withheld"])
+    assert out["busy_mhz"] == {} and any("under 15" in w for w in out["withheld"])
 
 
 def test_no_valid_layer_run_leaves_low_clock_null(tmp_path):

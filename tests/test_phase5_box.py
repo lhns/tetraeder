@@ -452,7 +452,7 @@ def test_every_timed_run_has_a_clock_log_and_a_window_file(tmp_path):
     n = len(runs(lines))
     assert n and sum("nvidia-smi clocks every 20 ms -> clocks-" in ln for ln in lines) == n
     src = SCRIPT.read_text()
-    assert "--query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw," in src and "-lms 20" in src
+    assert "--query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw," in src and "-lms 10" in src
     assert "window-$run.txt" in src and "clocks-$1.csv" in src and "stop_clocks" in src
 
 
