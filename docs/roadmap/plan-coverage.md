@@ -11,7 +11,7 @@ Items marked "checked" were confirmed done or not done in the code or an ADR, no
 | 1 | Tiered weights across VRAM, RAM, NVMe (2) | existing `memory-tiers` |
 | 2 | MoE expert placement and streaming (2) | existing `memory-tiers`, `memory-prefetch`, `memory-io-service` |
 | 3 | KV cache tiers (4, remote in 6) | VRAM: existing `serving-kv-layout`; RAM snapshots: existing `serving-prefix-cache`; live KV in RAM or on NVMe (checked: `crates/kvcache` has no RAM or disk tier): new node `memory-kv-tiers`; remote: new node `cluster-remote-kv` |
-| 4 | Prefix caching shared across nodes (4, cross-node in 6) | 4: existing `serving-prefix-cache`; cross-node: new node `cluster-shared-prefix` |
+| 4 | Prefix caching shared across nodes (4, cross-node in 6) | 4: existing `serving-prefix-cache`; cross-node: new node `cluster-remote-kv` (one node with row 3's remote half: same prerequisites and done criterion) |
 | 5 | Weight and KV quantization per unit (1, 2) | existing `planner-quality`, `memory-conversion`, `memory-low-bit-kv` |
 | 6 | Fast model loading (2) | existing `memory-tiers` (aligned direct reads), `memory-io-service` |
 | 7 | Tensor parallel (5) | existing `multi-sharded`, `planner-parallel-shapes`; verdict in `bench-v2-verdict`, `bench-v4a-verdict` |

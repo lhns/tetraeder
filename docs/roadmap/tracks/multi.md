@@ -16,6 +16,9 @@ flowchart TB
     multi_decode_toggles["✔ Two decode speedups<br/>made default"]
     multi_defect_capture>"✔ Judged prefill timed<br/>graph capture"]
     multi_prefill_no_capture["✔ Prefill runs without<br/>graph capture"]
+    multi_live_reshard["⛔ Reshard while<br/>serving"]
+    multi_split_hardware["⛔ Prefill and decode<br/>on different hardware"]
+    multi_context_parallel["⏸ Split long contexts<br/>across GPUs"]
     multi_executor ~~~ multi_sharded
     multi_executor ~~~ multi_graph_views
     multi_executor ~~~ multi_pipelined_prefill
@@ -23,12 +26,17 @@ flowchart TB
     multi_graph_views ~~~ multi_defect_capture
     multi_pipelined_prefill ~~~ multi_defect_capture
     multi_decode_toggles ~~~ multi_prefill_no_capture
-    multi_defect_capture ~~~ multi_prefill_no_capture
+    multi_defect_capture ~~~ multi_live_reshard
+    multi_defect_capture ~~~ multi_split_hardware
+    multi_prefill_no_capture ~~~ multi_context_parallel
+    multi_live_reshard ~~~ multi_context_parallel
+    multi_split_hardware ~~~ multi_context_parallel
     multi_executor --> multi_sharded
     multi_executor --> multi_graph_views
     multi_executor --> multi_pipelined_prefill
     multi_graph_views --> multi_decode_toggles
     multi_defect_capture --> multi_prefill_no_capture
+    multi_executor --> multi_context_parallel
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -45,6 +53,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class multi_executor,multi_sharded,multi_graph_views,multi_pipelined_prefill,multi_prefill_no_capture unrated
     class multi_decode_toggles,multi_defect_capture succ
+    class multi_live_reshard,multi_split_hardware blocked
+    class multi_context_parallel parked
 ```
 <!-- END GENERATED: track-multi -->
 
@@ -61,6 +71,9 @@ flowchart TB
 | `multi-decode-toggles` | Two decode speedups made default | feature | none | done | successful | 2026-11-19 | 2026-11-19 | multi-graph-views |  |  |  | docs/adr/0069-own-executor-rank-programs.md; bench/results/s3c-20261119-decode-decode |
 | `multi-defect-capture` | Judged prefill timed graph capture | defect | none | done | unrated | 2026-11-19 | 2026-11-20 | bench-s3-rehearsal |  |  |  | bench/results/s3d-20261120/README.md; bench/results/s3e-20261120/README.md; docs/m2-plan.md |
 | `multi-accept-adr-0081` | Accept the prefill capture fix | owner-decision | owner | next | n/a |  |  | multi-prefill-no-capture, bench-s3f2 |  |  |  |  |
+| `multi-live-reshard` | Reshard while serving | feature | local | blocked | unrated |  |  | bench-m3-report |  |  |  |  |
+| `multi-split-hardware` | Prefill and decode on different hardware | feature | cluster | blocked | unrated |  |  | planner-split-layouts, cluster-remote-kv |  |  |  |  |
+| `multi-context-parallel` | Split long contexts across GPUs | feature | none | parked | unrated |  |  | multi-executor |  |  |  |  |
 
 ### Details per node
 
@@ -74,6 +87,9 @@ flowchart TB
 | `multi-decode-toggles` | Two decode speedups made default | Both decode toggles meet the ADR 0069 keep rule on the 30B in both rounds |  | Two executor options for layer-split decode (range ids for graph reuse, asynchronous inputs) met their keep rule and are on by default. |  |  |  |  |  |
 | `multi-defect-capture` | Judged prefill timed graph capture |  |  | ggml-cuda records a CUDA graph on a range's second call; every judged prefill timed that recording call, which with an NCCL kernel pending serialized the pipeline stages, so earlier prefill verdicts measured a slow state serving never sees. |  |  |  |  |  |
 | `multi-accept-adr-0081` | Accept the prefill capture fix |  |  | ADR 0081 is Proposed; its GPU test and the s3f2 confirmation passed, so it waits for the owner's acceptance. |  |  |  |  |  |
+| `multi-live-reshard` | Reshard while serving |  |  | Change the parallel layout under load: a plan diff compiles to a migration plan of ordered moves, drained first and finished with a two-phase commit (plan feature 38). | Done when: the property test that every migration ends in its target plan passes on every fixture, and a reshard under load fails no request. Risk (plan.md): live reshard bugs; migrations are data, simulator first, drain before move. Phase 7, blocked behind the M3 report. |  |  |  |  |
+| `multi-split-hardware` | Prefill and decode on different hardware |  |  | Prompts are processed on one device or machine and decoding runs on another; the KV cache moves once per request (plan feature 13). | Done when: long prompts gain time to first token or goodput against one machine doing both. Phase 7, blocked behind the M3 report. |  |  |  |  |
+| `multi-context-parallel` | Split long contexts across GPUs |  |  | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: parity against one GPU at long context. |  |  |  |  |
 
 ### Folded items per node
 
@@ -100,4 +116,6 @@ flowchart TB
 - `multi-defect-capture`: Judged prefill timed graph capture
   - S3d tp2-pp2 overlap probes and decode traces (2026-11-20, commit 3d898f76a9, commit d0bf6ec305, commit f15204f86e, commit a8a0ff8c02, commit c3e091a4ad, commit c376a54454, commit d68be78570, commit 5d84e74e9d, commit e01f5fb56c, commit 59bf8b2c65, commit 1adad15eb8, commit e6100d1773)
   - S3e graph-state diagnostic (2026-11-20, commit 245a9b7be3, commit 3ada436ad0, commit fddb502dca, commit ad0d0d0ca9, commit 24fe20e125, commit d4daaade98)
+- `multi-context-parallel`: Split long contexts across GPUs
+  - ggml patch: attention returning log-sum-exp, to merge partial attention (plan.md, patch queue)
 <!-- END GENERATED: table-multi -->

@@ -197,16 +197,44 @@ flowchart TB
 | Engine core on libllama | ✔ done · successful | Phase 1: Rust drives llama.cpp's library (libllama) for dense models; the exit test asks for prompt and generation speed within 5% of llama.cpp. |
 | Own Qwen3 MoE graph builder | ✔ done · unrated | Tetraeder builds the compute graph of the Qwen3 mixture-of-experts (MoE) model itself in Rust, one segment per MoE layer, so it can place and stream experts on its own. |
 | CPU polling set from quota | ✔ done · very-successful | Rented boxes limit CPU time by a container quota; busy-polling worker threads burned that quota and got throttled. Turning polling off under a quota removed the throttling and sped up decode. |
+| Builders on HIP, Vulkan and Metal | ⏸ parked | The own graph builders run on AMD (HIP), Vulkan and Apple (Metal) GPUs, with parity tests per backend; this is also when mixed GPU vendors in one setup arrive (plan features 14 and Phase 8). |
+| Own GLM graph builder | ⏸ parked | An own graph builder for the GLM model family, with parity against libllama (plan.md, Phase 8). |
+| Own DeepSeek graph builder | ⏸ parked | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). |
+| Own builder for ternary models | ⏸ parked | An own builder with faster kernels for natively ternary models such as BitNet b1.58, which libllama already runs (plan feature 51, Phase 9 half). |
+| One graph per decoded token | ⏸ parked | Step 2 of ADR 0064: one graph per decoded token with a host callback per layer, instead of one graph segment per MoE layer. |
+| Dense builder speed on AMX CPUs | ○ next | Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072). |
 | Prefetch next layer's experts | ✔ done · very-successful | While one layer computes, predict which experts the next layer will need and start reading them early. |
 | Read experts while computing | ✔ done · very-successful | An I/O service reads missing experts in the background and computes experts in the order they arrive, so disk reads overlap compute; on by default in serve. |
+| Load safetensors models directly | ⏸ parked | Load Hugging Face safetensors files with a tensor-name map per architecture, converting at load time, instead of needing a GGUF file (plan feature 49). |
+| KV cache spills to RAM, disk | ⏸ parked | Live KV cache rows can spill to RAM or NVMe, keeping only the most-read part in VRAM, for long contexts (plan feature 3, Phase 4 half). |
+| Stream expert misses during prefill | ⏸ parked | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). |
+| Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
 | Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
 | Price decode at measured clocks | ⏳ waiting | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
+| Replan without draining | ⛔ blocked | Replanning applies a new plan live instead of drain and restart (ADR 0009 until Phase 7), cheap moves first (plan feature 24, Phase 7 half). |
+| Advisor applies safe changes itself | ⛔ blocked | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). |
+| Separate prefill and decode layouts | ⛔ blocked | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). |
+| One and two bit formats | ⏸ parked | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). |
+| Check planner's expert slot picks | ⏸ parked | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. |
+| Replanning in serve, part B | ⏸ parked | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. |
+| Recheck expert-parallel prefill error | ○ next | Expert-parallel prefill was over-predicted (ep-2, ep-4); after the capture fix it read 0.92 and 0.95 in s3f2 and s3g and within 5% in V2, so it may be closed. |
 | Prefill runs without graph capture | ✔ done · unrated | Every judged prefill had timed the call in which ggml records a CUDA graph, which serialized the pipeline stages; prefill steps now run directly and decode keeps graph replay. |
 | Own multi-GPU executor | ✔ done · unrated | Phase 5: Tetraeder runs its own executor instead of ggml's backend scheduler: one program per GPU (rank), NCCL collectives, and the engine in a worker process. |
 | Judged prefill timed graph capture | ✔ fixed | ggml-cuda records a CUDA graph on a range's second call; every judged prefill timed that recording call, which with an NCCL kernel pending serialized the pipeline stages, so earlier prefill verdicts measured a slow state serving never sees. |
 | Accept the prefill capture fix | ○ next | ADR 0081 is Proposed; its GPU test and the s3f2 confirmation passed, so it waits for the owner's acceptance. |
+| Reshard while serving | ⛔ blocked | Change the parallel layout under load: a plan diff compiles to a migration plan of ordered moves, drained first and finished with a two-phase commit (plan feature 38). |
+| Prefill and decode on different hardware | ⛔ blocked | Prompts are processed on one device or machine and decoding runs on another; the KV cache moves once per request (plan feature 13). |
+| Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
+| Several models at once | ⏸ parked | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). |
+| Swap and batch LoRA adapters | ⏸ parked | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). |
+| Priorities, quotas and auth | ⏸ parked | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). |
+| Multimodal input and embeddings | ⏸ parked | Image input through llama.cpp's multimodal library and an embeddings endpoint (plan feature 34). |
+| Owner decides on more drafter kinds | ⛔ blocked | From the rerun, the owner decides whether more drafter kinds (MTP heads, a low-bit copy) are worth building, and whether ADR 0043 is Accepted. |
+| Drafts from built-in MTP heads | ⏸ parked | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). |
+| Low-bit copy drafts for itself | ⏸ parked | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). |
+| Admit longest prefix hit first | ⏸ parked | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). |
 | Phase 2 exit: model beyond RAM | ✔ done · successful ⚠ | Qwen3-235B, larger than the box's RAM, against the best tuned baselines: the builder passed the Phase 2 exit at decode parity with KTransformers. |
 | Tuned llama.cpp cache beat builder | ✔ fixed | The Phase 2 verdict never measured llama.cpp's own expert cache (--moe-cache-mib) as a baseline; once added, and after M1 was first declared on 2026-11-10, the cache tuned to share 0.95 led the builder, so the Phase 2 verdict's point 1 reopened and M1 waited for new sessions. |
 | Builder beats llama.cpp expert cache | ✔ done · very-successful | M1 point 1: the builder against llama.cpp's expert cache at its best share, in clean paired sessions on two hosts; many attempts were void (OOM, slow disk, co-tenants, thrash). |
@@ -223,11 +251,43 @@ flowchart TB
 | Four-GPU verdict, first box | ⛔ blocked | The judged session on four GPUs (cases D4 and M4) on a host other than 20210, run alone; the owner allowed one box up to 1.70 USD/h for it. |
 | Four-GPU verdict, second box | ⛔ blocked | The second four-GPU session, so every configuration has two clean rounds on a clean host. |
 | Report milestone M2 | ⛔ blocked | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |
+| Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
+| Report milestone M3 | ⛔ blocked | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). |
+| Phase 7 exit: day-long trace | ⛔ blocked | The Phase 7 exit test: replay a day of traffic with the online loop on and compare with the best fixed plan. |
+| Report milestone M4 | ⛔ blocked | M4 (self-tuning) ends Phase 7: the owner judges the exit test. |
+| Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
+| Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
+| Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
+| Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
+| Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
+| Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
+| Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
+| Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
+| Transport latency between two boxes | ⛔ blocked | Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023). |
+| Owner picks the network transport | ⛔ blocked | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. |
+| Transport between machines | ⛔ blocked | Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16). |
+| Mutual TLS and node trust rules | ⛔ blocked | Every node proves its identity with a certificate (mutual TLS, certificates from step-ca), and rules say which node may see which data (plan feature 20). |
+| Find nodes automatically | ⛔ blocked | Nodes come from a static list or are found on the local network (mDNS), and the profiler measures each link (plan feature 17). |
+| Nodes join and leave live | ⛔ blocked | A node can join or leave while the others keep serving; membership changes trigger a replan (plan feature 18). |
+| Pipeline stages across machines | ⛔ blocked | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
+| Experts on other machines | ⛔ blocked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
+| KV cache on another machine | ⛔ blocked | KV cache and cached prefixes can live on another node and be fetched instead of recomputed, so a prefix computed on one node serves requests on another (plan features 3 and 4, Phase 6 halves). |
+| Model replicas behind one router | ⛔ blocked | Copies of a model on several nodes behind one router; independent requests need no traffic between them, so any link latency is fine (plan feature 11). |
+| Keep serving when a node dies | ⛔ blocked | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
+| Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
 
 <!-- BEGIN GENERATED: ready-now -->
+**local**
+
+- `planner-ep-prefill-recheck`: Recheck expert-parallel prefill error
+
+**ci**
+
+- `engine-dense-amx`: Dense builder speed on AMX CPUs
+
 **box**
 
 - `bench-v2-verdict`: Two-GPU verdict session
@@ -253,6 +313,10 @@ _None._
 <!-- BEGIN GENERATED: waiting-on-owner -->
 - `multi-accept-adr-0081`: Accept the prefill capture fix
 - `bench-m2-report`: Report milestone M2
+- `cluster-owner-transport`: Owner picks the network transport
+- `bench-m3-report`: Report milestone M3
+- `bench-m4-report`: Report milestone M4
+- `serving-owner-drafters`: Owner decides on more drafter kinds
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Queue
@@ -667,11 +731,12 @@ Generated on 2026-11-21.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [engine - engine and builders](roadmap/tracks/engine.md): 13 nodes (12 done, 1 abandoned)
-- [memory - memory and streaming](roadmap/tracks/memory.md): 9 nodes (8 done, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 13 nodes (12 done, 1 in progress)
-- [multi - multi-GPU executor](roadmap/tracks/multi.md): 8 nodes (7 done, 1 next)
-- [serving - serving](roadmap/tracks/serving.md): 12 nodes (12 done)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 28 nodes (23 done, 2 next, 3 blocked)
-- [ops - operations](roadmap/tracks/ops.md): 11 nodes (11 done)
+- [engine - engine and builders](roadmap/tracks/engine.md): 19 nodes (12 done, 1 next, 5 parked, 1 abandoned)
+- [memory - memory and streaming](roadmap/tracks/memory.md): 13 nodes (8 done, 4 parked, 1 abandoned)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 20 nodes (12 done, 1 in progress, 1 next, 3 blocked, 3 parked)
+- [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (7 done, 1 next, 2 blocked, 1 parked)
+- [serving - serving](roadmap/tracks/serving.md): 20 nodes (12 done, 1 blocked, 7 parked)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 38 nodes (23 done, 2 next, 7 blocked, 6 parked)
+- [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (12 blocked)
 <!-- END GENERATED: tracks -->

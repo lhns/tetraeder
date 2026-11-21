@@ -32,6 +32,14 @@ flowchart TB
     bench_d2a_probe[/"○ Admission probe on<br/>final main"/]
     bench_v4a_verdict("⛔ Four-GPU verdict,<br/>first box")
     bench_v4b_verdict("⛔ Four-GPU verdict,<br/>second box")
+    bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
+    bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
+    bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
+    bench_phase9_exit("⏸ Phase 9 exit:<br/>feature tests")
+    bench_spec_rerun("⏸ Speculative rerun<br/>with a draft pair")
+    bench_strata_pairing("⏸ Pair against the<br/>Strata engine")
+    bench_d1_session("⏸ Session on a 48 GB<br/>box")
+    bench_open_records("⏸ Box checks for open<br/>design records")
     bench_harness ~~~ bench_phase2_exit
     bench_phase2_exit ~~~ bench_defect_tuned_cache
     bench_phase2_exit ~~~ bench_phase3b_proxy
@@ -57,6 +65,14 @@ flowchart TB
     bench_v2_verdict ~~~ bench_v4a_verdict
     bench_d2a_probe ~~~ bench_v4a_verdict
     bench_v4a_verdict ~~~ bench_v4b_verdict
+    bench_v4a_verdict ~~~ bench_phase6_exit
+    bench_v4a_verdict ~~~ bench_phase7_exit
+    bench_v4b_verdict ~~~ bench_phase8_exit
+    bench_phase6_exit ~~~ bench_phase9_exit
+    bench_phase7_exit ~~~ bench_spec_rerun
+    bench_phase8_exit ~~~ bench_strata_pairing
+    bench_phase9_exit ~~~ bench_d1_session
+    bench_spec_rerun ~~~ bench_open_records
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -73,7 +89,9 @@ flowchart TB
     bench_s3f2 --> bench_defect_s3f2_clock
     bench_phase4_exit --> bench_d2a_probe
     bench_v4a_verdict --> bench_v4b_verdict
-    linkStyle 26,37 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    bench_harness --> bench_strata_pairing
+    bench_ttft --> bench_open_records
+    linkStyle 34,45 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -93,7 +111,8 @@ flowchart TB
     class bench_m1_point1,bench_m1_point3 vsucc
     class bench_d2a_rerun mixed
     class bench_v2_verdict,bench_d2a_probe next
-    class bench_v4a_verdict,bench_v4b_verdict blocked
+    class bench_v4a_verdict,bench_v4b_verdict,bench_phase6_exit,bench_phase7_exit blocked
+    class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
 ```
 <!-- END GENERATED: track-bench -->
 
@@ -130,6 +149,16 @@ flowchart TB
 | `bench-v4a-verdict` | Four-GPU verdict, first box | session | box | blocked | unrated |  |  | planner-cost-model-v5, multi-prefill-no-capture, ops-owner-v4a-cap |  |  |  |  |
 | `bench-v4b-verdict` | Four-GPU verdict, second box | session | box | blocked | unrated |  |  | bench-v4a-verdict |  |  |  |  |
 | `bench-m2-report` | Report milestone M2 | owner-decision | owner | blocked | n/a |  |  | bench-v2-verdict, bench-v4a-verdict, bench-v4b-verdict, bench-d2a-probe |  |  |  |  |
+| `bench-phase6-exit` | Phase 6 exit: multi-node test | session | cluster | blocked | unrated |  |  | cluster-pipeline-nodes, cluster-experts-nodes, cluster-remote-kv, cluster-replicas, cluster-failover, cluster-mtls, cluster-discovery |  |  |  |  |
+| `bench-m3-report` | Report milestone M3 | owner-decision | owner | blocked | n/a |  |  | bench-phase6-exit |  |  |  |  |
+| `bench-phase7-exit` | Phase 7 exit: day-long trace | session | cluster | blocked | unrated |  |  | planner-advisor-auto, cluster-replica-scaling, multi-live-reshard, multi-split-hardware, planner-split-layouts, planner-live-replan |  |  |  |  |
+| `bench-m4-report` | Report milestone M4 | owner-decision | owner | blocked | n/a |  |  | bench-phase7-exit |  |  |  |  |
+| `bench-phase8-exit` | Phase 8 exit: parity per backend | session | none | parked | unrated |  |  | engine-backend-parity, engine-glm-builder, engine-deepseek-builder |  |  |  |  |
+| `bench-phase9-exit` | Phase 9 exit: feature tests | session | none | parked | unrated |  |  | multi-context-parallel, serving-multi-model, serving-multi-lora, serving-auth-quotas, serving-multimodal, ops-packages, engine-bitnet-builder, planner-low-bit-formats |  |  |  |  |
+| `bench-spec-rerun` | Speculative rerun with a draft pair | session | box-later | parked | unrated |  |  | serving-spec-batching |  |  |  |  |
+| `bench-strata-pairing` | Pair against the Strata engine | session | box-later | parked | unrated |  |  | bench-harness |  |  |  |  |
+| `bench-d1-session` | Session on a 48 GB box | session | box-later | parked | unrated |  |  | planner-fill-tier, memory-io-service |  |  |  |  |
+| `bench-open-records` | Box checks for open design records | session | box-later | parked | unrated |  |  | memory-adaptive-tier, ops-telemetry, bench-ttft |  |  |  |  |
 
 ### Details per node
 
@@ -162,7 +191,17 @@ flowchart TB
 | `bench-d2a-probe` | Admission probe on final main |  |  | The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported. |  |  |  | 2 |  |
 | `bench-v4a-verdict` | Four-GPU verdict, first box |  |  | The judged session on four GPUs (cases D4 and M4) on a host other than 20210, run alone; the owner allowed one box up to 1.70 USD/h for it. |  |  |  | 3 |  |
 | `bench-v4b-verdict` | Four-GPU verdict, second box |  |  | The second four-GPU session, so every configuration has two clean rounds on a clean host. |  |  |  | 4 |  |
-| `bench-m2-report` | Report milestone M2 |  |  | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |  |  |  |  |  |
+| `bench-m2-report` | Report milestone M2 |  |  | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). | With the verdicts the owner accepts or reopens ADRs 0068 (verdict rules), 0069 (own executor) and 0082 (cost model 5), still Proposed. |  |  |  |  |
+| `bench-phase6-exit` | Phase 6 exit: multi-node test |  |  | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. | Done when (plan.md, Phase 6 exit test): a model larger than any single node runs within 15% of prediction; killing a node with a replica keeps new requests flowing, in-flight requests on it fail cleanly. |  |  |  |  |
+| `bench-m3-report` | Report milestone M3 |  |  | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). | Source: plan.md, Roadmap (milestones) and Effort (stop at any milestone). |  |  |  |  |
+| `bench-phase7-exit` | Phase 7 exit: day-long trace |  |  | The Phase 7 exit test: replay a day of traffic with the online loop on and compare with the best fixed plan. | Done when (plan.md, Phase 7 exit test): day-long trace, at least 10% more goodput than the best static plan, at most 1 switch per hour, zero failed requests. |  |  |  |  |
+| `bench-m4-report` | Report milestone M4 |  |  | M4 (self-tuning) ends Phase 7: the owner judges the exit test. | Source: plan.md, Roadmap (milestones). |  |  |  |  |
+| `bench-phase8-exit` | Phase 8 exit: parity per backend |  |  | The Phase 8 exit test: parity and speed on every new backend. | Done when (plan.md, Phase 8 exit test): parity per backend and split point; within 15% of llama.cpp per backend. Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. |  |  |  |  |
+| `bench-phase9-exit` | Phase 9 exit: feature tests |  |  | The Phase 9 exit test: one feature test per breadth item. | Done when (plan.md, Phase 9 exit test): feature tests per item; packages install cleanly on both systems. Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. |  |  |  |  |
+| `bench-spec-rerun` | Speculative rerun with a draft pair |  |  | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. | Parked (m2-plan, Phase 5 Parked: speculative rerun open). Not an exit test. First, before any box: check that libllama at b12426 converts and loads both models with identical tokenizers. Done when: tokens per step and decode tok/s, draft on and off, on one box. Source: m2-plan Speculative rerun, m1-open item 1. |  |  |  |  |
+| `bench-strata-pairing` | Pair against the Strata engine |  |  | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. | Parked (m2-plan, m1-open item 8): Strata documents Qwen3.8, Qwen3.6 and DeepSeek-V4.1, and the own builders run only Qwen3; revisit when Strata runs Qwen3. Source: plan.md Phase 0 baselines, References. |  |  |  |  |
+| `bench-d1-session` | Session on a 48 GB box |  |  | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. | Parked (m2-plan, Phase 5 Parked: D1). Done when: each stage below has a paired result in its session README; the Reader path is deleted after the ADR 0054 arms. The poll pair is dropped (B3 closed, 20261115p1). |  |  |  |  |
+| `bench-open-records` | Box checks for open design records |  |  | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. | Parked (m2-plan, Housekeeping: candidates for a later combined box session). Neither ADR gates open work. Done when: each stage has a result in the session README and the owner accepts or closes ADRs 0059 and 0060. |  |  |  |  |
 
 ### Folded items per node
 
@@ -289,4 +328,15 @@ flowchart TB
   - m2-plan: s3f2 layer-4 tg not fixed, v5 back before V4a (2026-11-20, commit ef0130e3a2)
 - `bench-v2-verdict`: Two-GPU verdict session
   - First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20, commit 7dd6dd4)
+- `bench-d1-session`: Session on a 48 GB box
+  - VRAM fill (B2) against KTransformers, twice (m2-plan, Order step 4)
+  - ADR 0054 arms -uf-w4, -w8, -poll0, then delete Reader (m1-open item 2)
+  - FP8 KV llamacpp-cache against the builder at the b12426 pin (m1-open item 9)
+  - Planner's own fill tier, 35 slots at ubatch 256, peak and prefill rate (m2-plan, Order step 4)
+  - Routing trace (m2-plan, Order step 4)
+  - Host 60400 or a second qualifying host, to widen point 3's scope (m2-plan, Order step 4)
+- `bench-open-records`: Box checks for open design records
+  - ADR 0059: the upload modes of the 2026-11-12b addendum (m2-plan, Housekeeping)
+  - ADR 0060: sampler and OTel paths agree, then the sampler path goes (m2-plan, Housekeeping)
+  - TTFT replay with in-step saves counted in save_ms (track-save-metrics) (m2-plan, TTFT)
 <!-- END GENERATED: table-bench -->
