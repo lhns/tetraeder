@@ -34,8 +34,8 @@ kinds:
 lanes: [local, ci, box, box-later, cluster, owner, none]
 queue_lane: box
 
-# About 3.5 weeks of history (2026-10-29 on); a handful of picks per week.
-overview: {min: 12, max: 30}
+# About 3.5 weeks of history (2026-10-29 on), a handful of picks per week, plus the upcoming milestones.
+overview: {min: 12, max: 45}
 
 history:
   main: origin/main

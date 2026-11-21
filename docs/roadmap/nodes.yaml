@@ -2062,7 +2062,7 @@ nodes:
   folded:
   - 'First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20, commit 7dd6dd4)'
   - v2c-20261121 on GPUs 2 and 3 of the V4a box (host 20210, commit 4c73db7; D2 and M2 pass, three clean rounds each)
-  overview: false
+  overview: true
   plain: 'The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each.'
   notes: 'Done when: verdict.json for v2-20261120 with both cases judged under ADR 0068.'
 - id: planner-cost-model-v5
@@ -2086,7 +2086,7 @@ nodes:
   folded:
   - s3g-20261121 box rehearsal on host 20210 (2026-11-21, commit 17249fa; R1 to R4 pass but the 30B busy clock was withheld for under 25 tail samples, so k = 1 there)
   - v4a-20261121 verdict session on host 20210 (2026-11-21, commit 692947a; the 30B busy clock 1800 against low 1695 gave k = 1.062, held-out layer anchor tg -0.024, 30B layer-4 tg measured over predicted 1.007; box check (item 5) passes)
-  overview: false
+  overview: true
   plain: A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets.
   notes: 'Done when (ADR 0082, The check): 30B layer-4 e_tg within 0.08 on s3, s3b and s3c and the s3c layer-4/single tg ratio within 0.03 of measured, with host-20210 clocks; s3f2 bit-identical to v4 and its L36 within 0.03; every other candidate moved by at most 0.005; Rust and replica within 1%. Design: ADR 0082 (Proposed), brief V5 in docs/phase5-briefs.md. Offline check passes (branch track-cost-model-v5): layer-4/single tg within 0.03 and e_tg +0.001/-0.003/+0.067 on s3/s3b/s3c, s3f2 bit-identical with L36 230.9 against 231.8, 32B layer-4 moves 0.011, others 0; Rust-replica agreement pending CI. s3g-20261121 (first box run, host 20210 not clock-limited: busy 1800, low 1695): layer anchor held-out tg +0.019, 30B layer-4 e_tg +0.045, tp2-pp2 decode tail 1800 MHz; offline with the 30B busy clock the held-out is -0.021 and e_tg -0.001. Box check (item 5) passed on v4a-20261121 with k = 1.062 applied to the 30B (held-out -0.024, 30B layer-4 tg 1.007 measured over predicted). Layer anchor stays behind LAYER_ANCHOR=1 on 2 GPUs.'
 - id: bench-d2a-probe
@@ -2106,7 +2106,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported.
 - id: bench-v4a-verdict
   title: Four-GPU verdict, first box
@@ -2129,7 +2129,7 @@ nodes:
   end: '2026-11-21'
   folded:
   - v4a-20261121 on host 20210 (box 61850705, 1.203 USD/h, commit 692947a; D4 and M4 pass, three clean rounds each)
-  overview: false
+  overview: true
   plain: The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each.
 - id: bench-v4b-verdict
   title: Four-GPU verdict, second box
@@ -2227,7 +2227,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: 'Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16).'
   notes: 'Done when: two nodes exchange activations through the trait on the chosen protocol, with metrics, a dashboard panel and an alert (rule 6). Blocked behind the M2 report and the transport choice.
     Source: plan.md feature 16, Phase 6.'
@@ -2305,7 +2305,7 @@ nodes:
   end: ''
   folded:
   - No ggml_backend_tensor_copy_async binding yet; pipeline peer copies need it (m2-plan, E1 note)
-  overview: false
+  overview: true
   plain: A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
   notes: 'Done when: logit parity across a two-node split, and tok/s within the planner''s prediction band. Blocked behind the M2 report and the transport choice. Source: plan.md feature 8, Parallel shapes
     across slow links.'
@@ -2325,7 +2325,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008).
   notes: 'Done when: logit parity with experts on two nodes, and the per-layer round trip within the measured transport latency. Blocked behind the M2 report and the transport choice. Source: plan.md feature
     9, Experts across nodes.'
@@ -2385,7 +2385,7 @@ nodes:
   end: ''
   folded:
   - Sticky CUDA errors are detected by message text until the backend trait carries a sticky signal (m2-plan, E9 follow-ups)
-  overview: false
+  overview: true
   plain: When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19).
   notes: 'Done when: the Phase 6 kill test passes in CI on simulated nodes. Blocked behind the M2 report and the transport choice. Source: plan.md feature 19.'
 - id: bench-phase6-exit
@@ -2410,7 +2410,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: 'The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load.'
   notes: 'Done when (plan.md, Phase 6 exit test): a model larger than any single node runs within 15% of prediction; killing a node with a replica keeps new requests flowing, in-flight requests on it fail
     cleanly.'
@@ -2449,7 +2449,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: 'Change the parallel layout under load: a plan diff compiles to a migration plan of ordered moves, drained first and finished with a two-phase commit (plan feature 38).'
   notes: 'Done when: the property test that every migration ends in its target plan passes on every fixture, and a reshard under load fails no request. Risk (plan.md): live reshard bugs; migrations are
     data, simulator first, drain before move. Phase 7, blocked behind the M3 report.'
@@ -2488,7 +2488,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half).
   notes: 'Done when: an injected regression is rolled back, and advisor accuracy (predicted against achieved gain) is a metric. Risk (plan.md): advisor harm. Phase 7, blocked behind the M3 report.'
 - id: planner-split-layouts
@@ -2571,7 +2571,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: 'The Phase 7 exit test: replay a day of traffic with the online loop on and compare with the best fixed plan.'
   notes: 'Done when (plan.md, Phase 7 exit test): day-long trace, at least 10% more goodput than the best static plan, at most 1 switch per hour, zero failed requests.'
 - id: bench-m4-report
@@ -2612,7 +2612,7 @@ nodes:
   folded:
   - 'Phase 0 spike: two ggml backends in one process; moot for M1 (plan.md, Open decisions)'
   - 'Risk: parity across backends; per-backend tolerances (plan.md, Risks)'
-  overview: false
+  overview: true
   plain: The own graph builders run on AMD (HIP), Vulkan and Apple (Metal) GPUs, with parity tests per backend; this is also when mixed GPU vendors in one setup arrive (plan features 14 and Phase 8).
   notes: 'Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Needs AMD and Apple hardware, which Vast does not rent here. Done when: parity per backend and
     split point.'
@@ -2672,7 +2672,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: 'The Phase 8 exit test: parity and speed on every new backend.'
   notes: 'Done when (plan.md, Phase 8 exit test): parity per backend and split point; within 15% of llama.cpp per backend. Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing
     is scheduled.'
@@ -2856,7 +2856,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: 'The Phase 9 exit test: one feature test per breadth item.'
   notes: 'Done when (plan.md, Phase 9 exit test): feature tests per item; packages install cleanly on both systems. Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap);
     nothing is scheduled.'
@@ -3064,7 +3064,7 @@ nodes:
   folded:
   - 'Kinetic Flywheel study: CPU run or copy-in for a missing expert, against our miss path (m2-plan, Track B)'
   - 'InferSSD as an expert-streaming baseline: report only, if it runs a shared model on Linux CUDA (m2-plan, Track B)'
-  overview: false
+  overview: true
   plain: During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054).
   notes: 'Parked with Track B (m2-plan, Track B: candidate first item when it resumes). Done when: one timed box run of the prefill buckets first, then a paired run of the 235B 32K prefill.'
 - id: engine-one-graph-per-token
@@ -3207,7 +3207,7 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072).
   notes: 'Built (ADR 0072, DenseOptions::extra_bufts default true); only the speed is pending. Done when: step_shapes engines dense against dense_norepack and llama against llama_norepack on an AMX runner,
     then the owner accepts or reopens ADR 0072.'
@@ -3228,6 +3228,6 @@ nodes:
   start: ''
   end: ''
   folded: []
-  overview: false
+  overview: true
   plain: Expert-parallel prefill was over-predicted (ep-2, ep-4); after the capture fix it read 0.92 and 0.95 in s3f2 and s3g and within 5% in V2, so it may be closed.
   notes: 'recheck against V4a; likely closed by the capture fix. Source: m2-plan, Phase 5 open item 2; ADR 0081.'

@@ -126,6 +126,28 @@ flowchart TB
         multi_prefill_no_capture["multi · ✔ Prefill runs<br/>without graph capture"]
         bench_s3f2("bench · ✔ Four-GPU<br/>check of the fix")
         bench_defect_s3f2_clock>"bench · ✔ Check host<br/>ran at low clocks"]
+        bench_v2_verdict("bench · ✔ Two-GPU<br/>verdict session")
+        planner_cost_model_v5["planner · ✔ Price<br/>decode at measured<br/>clocks"]
+        bench_v4a_verdict("bench · ✔ Four-GPU<br/>verdict, first box")
+    end
+    subgraph bd_2["Next"]
+        bench_d2a_probe[/"bench · ○ Admission<br/>probe on final main"/]
+        engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
+        planner_ep_prefill_recheck[/"planner · ○ Recheck<br/>expert-parallel<br/>prefill error"/]
+    end
+    subgraph bd_3["Later (blocked or parked)"]
+        cluster_transport["cluster · ⛔ Transport<br/>between machines"]
+        cluster_pipeline_nodes["cluster · ⛔ Pipeline<br/>stages across machines"]
+        cluster_experts_nodes["cluster · ⛔ Experts on<br/>other machines"]
+        cluster_failover["cluster · ⛔ Keep<br/>serving when a node<br/>dies"]
+        bench_phase6_exit("bench · ⛔ Phase 6<br/>exit: multi-node test")
+        multi_live_reshard["multi · ⛔ Reshard<br/>while serving"]
+        planner_advisor_auto["planner · ⛔ Advisor<br/>applies safe changes<br/>itself"]
+        bench_phase7_exit("bench · ⛔ Phase 7<br/>exit: day-long trace")
+        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
+        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
+        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
+        memory_prefill_misses["memory · ⏸ Stream<br/>expert misses during<br/>prefill"]
     end
     engine_libllama ~~~ memory_prefetch
     engine_moe_builder ~~~ memory_prefetch
@@ -153,6 +175,30 @@ flowchart TB
     multi_defect_capture ~~~ multi_prefill_no_capture
     multi_prefill_no_capture ~~~ bench_s3f2
     bench_s3f2 ~~~ bench_defect_s3f2_clock
+    bench_s3f2 ~~~ bench_v2_verdict
+    bench_s3f2 ~~~ planner_cost_model_v5
+    bench_defect_s3f2_clock ~~~ bench_v4a_verdict
+    bench_v2_verdict ~~~ bench_v4a_verdict
+    planner_cost_model_v5 ~~~ bench_v4a_verdict
+    bench_v4a_verdict ~~~ bench_d2a_probe
+    bench_v4a_verdict ~~~ engine_dense_amx
+    bench_v4a_verdict ~~~ planner_ep_prefill_recheck
+    bench_d2a_probe ~~~ cluster_transport
+    engine_dense_amx ~~~ cluster_transport
+    planner_ep_prefill_recheck ~~~ cluster_transport
+    cluster_transport ~~~ cluster_pipeline_nodes
+    cluster_transport ~~~ cluster_experts_nodes
+    cluster_transport ~~~ cluster_failover
+    cluster_pipeline_nodes ~~~ bench_phase6_exit
+    cluster_experts_nodes ~~~ bench_phase6_exit
+    cluster_failover ~~~ bench_phase6_exit
+    bench_phase6_exit ~~~ multi_live_reshard
+    bench_phase6_exit ~~~ planner_advisor_auto
+    multi_live_reshard ~~~ bench_phase7_exit
+    planner_advisor_auto ~~~ engine_backend_parity
+    bench_phase7_exit ~~~ bench_phase8_exit
+    engine_backend_parity ~~~ bench_phase9_exit
+    engine_backend_parity ~~~ memory_prefill_misses
     memory_prefetch --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -167,7 +213,22 @@ flowchart TB
     multi_prefill_no_capture --> bench_s3f2
     bench_s3f2 -.-> bench_defect_s3f2_clock
     bench_s3f2 --> bench_defect_s3f2_clock
-    linkStyle 27,34,38 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    multi_prefill_no_capture --> bench_v2_verdict
+    planner_cost_model_v5 --> bench_v4a_verdict
+    multi_prefill_no_capture --> bench_v4a_verdict
+    bench_phase4_exit --> bench_d2a_probe
+    multi_prefill_no_capture --> planner_ep_prefill_recheck
+    cluster_transport --> cluster_pipeline_nodes
+    cluster_transport --> cluster_experts_nodes
+    cluster_pipeline_nodes --> bench_phase6_exit
+    cluster_experts_nodes --> bench_phase6_exit
+    cluster_failover --> bench_phase6_exit
+    bench_phase6_exit --> multi_live_reshard
+    bench_phase6_exit --> planner_advisor_auto
+    planner_advisor_auto --> bench_phase7_exit
+    engine_backend_parity --> bench_phase8_exit
+    memory_io_service --> memory_prefill_misses
+    linkStyle 51,58,62 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -183,9 +244,12 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class multi_prefill_no_capture,engine_moe_builder,multi_executor,serving_batching unrated
-    class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock succ
+    class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,planner_cost_model_v5,bench_v4a_verdict succ
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
+    class bench_d2a_probe,engine_dense_amx,planner_ep_prefill_recheck next
+    class cluster_transport,cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
+    class engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
 ```
 <!-- END GENERATED: overview -->
 
@@ -211,6 +275,7 @@ flowchart TB
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
 | Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
+| Price decode at measured clocks | ✔ done · successful | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
 | Replan without draining | ⛔ blocked | Replanning applies a new plan live instead of drain and restart (ADR 0009 until Phase 7), cheap moves first (plan feature 24, Phase 7 half). |
 | Advisor applies safe changes itself | ⛔ blocked | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). |
 | Separate prefill and decode layouts | ⛔ blocked | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). |
@@ -245,7 +310,9 @@ flowchart TB
 | Predictions stay analytic | ✔ done · n/a | ADR 0076 proposed judging predictions from lines fitted to runs of each candidate; the owner kept the 15% test on the planner's analytic predictions made before the candidates run. |
 | Four-GPU check of the fix | ✔ done · successful ⚠ | With prefill run without graph capture, one round of every four-GPU candidate stayed within 15%; the first attempt (s3f) stopped at a gate. |
 | Check host ran at low clocks | ✔ fixed | The s3f2 host held every GPU at 1590 MHz all session, single GPU included, so its layer-4 decode result (0.995) does not show the earlier layer-split decode miss fixed; cost model version 5 is back on. |
+| Two-GPU verdict session | ✔ done · successful | The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each. |
 | Admission probe on final main | ○ next | The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported. |
+| Four-GPU verdict, first box | ✔ done · successful | The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each. |
 | Report milestone M2 | ⛔ blocked | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |
 | Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
 | Report milestone M3 | ⛔ blocked | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). |
