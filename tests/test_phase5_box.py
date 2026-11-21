@@ -469,10 +469,7 @@ def test_the_layer_anchor_is_on_with_three_or_more_gpus_and_off_on_two(tmp_path)
 def test_calibrate_logs_one_decode_clocks_line_per_model(tmp_path):
     assert any("decode_clocks <model>: busy_mhz=" in ln for ln in dry(tmp_path, ngpu="4"))
     src = SCRIPT.read_text()
-    code = re.search(r"<< 'PYEND'
-(.*?)
-PYEND
-", src, re.S).group(1)
+    code = re.search(r"<< 'PYEND'\n(.*?)\nPYEND\n", src, re.S).group(1)
 
     def line(clocks, layout_model="Qwen3 30B Gptq Fp16"):
         (tmp_path / "decode-clocks.json").write_text(json.dumps(clocks))
