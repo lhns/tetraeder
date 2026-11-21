@@ -1,0 +1,71 @@
+s3f analysis of bench/results/s3g-20261121
+
+P1: gpu-parity passed, and the ggml-sys test ran and passed
+  gates.json gpu_parity: ok
+  ggml-sys test gpu_no_capture_flag_skips_the_cuda_graph in gpu-parity.log: ran=True ok=True
+  skip: lines in the log: 0
+  P1 PASS
+
+B runs: pp2048 and tg128, tok/s per timed rep (rep 1 first)
+
+P2 (flag live): default rep 1 within 5% of the median of reps 2 to 5 (each default run), and the
+  default pp median within 5% of the nograph pp median (median of all reps pooled over the arm's runs)
+  qwen3-30b-a3b tp2pp2-mb4: INCOMPLETE (default runs 0, nograph runs 0, or fewer than 5 reps): FAIL
+  qwen3-30b-a3b layer4-mb4: INCOMPLETE (default runs 0, nograph runs 0, or fewer than 5 reps): FAIL
+  qwen3-32b tp2pp2-mb4: INCOMPLETE (default runs 0, nograph runs 0, or fewer than 5 reps): FAIL
+  qwen3-32b layer4-mb4: INCOMPLETE (default runs 0, nograph runs 0, or fewer than 5 reps): FAIL
+  P2 FAIL
+
+P3 (decode keeps replay): 32B default tg median > nograph; 30B (MoE) default tg not slower than nograph by more than 2%
+  P3 FAIL (the flag may have leaked onto decode)
+
+Report only: stage A (ROUNDS=1) measured / predicted, next to s3c (s3f2-20261120); * marks |ratio-1| > 15%
+  model          candidate  | s3f pp ratio  tg ratio  | s3c pp ratio  tg ratio  | s3f pp tok/s (pred)  tg tok/s (pred)
+  qwen3-30b-a3b  ep-4      |   0.951    1.062   |   0.922    1.065   |     4831 (5080)   164.1 (154.5)
+  qwen3-30b-a3b  layer-4   |   1.026    0.957   |   1.030    0.995   |    12241 (11935)   186.9 (195.3)
+  qwen3-30b-a3b  single    |   1.076    0.975   |   1.053    0.974   |     5810 (5401)   196.6 (201.6)
+  qwen3-30b-a3b  tp2-pp2   |   0.945    1.008   |   0.918    0.998   |     7130 (7544)   172.1 (170.7)
+  qwen3-32b      layer-4   |   1.063    1.001   |   1.072    1.008   |     2964 (2789)    38.9 (38.8)
+  qwen3-32b      single    |   1.046    0.989   |   1.080    0.995   |     1312 (1255)    38.7 (39.1)
+  qwen3-32b      tp-4      |   0.942    1.029   |   0.903    1.031   |     1756 (1863)    77.4 (75.2)
+  qwen3-32b      tp2-pp2   |   0.968    0.999   |   0.957    0.993   |     2352 (2430)    58.9 (58.9)
+  s3f candidates past 15%: none
+
+Report only: anchors, s3f against s3c on the same host (expectation, not judged); pp and tg tok/s, mean over the rounds
+  model          plan   layers  kind |   s3f      s3c    shift
+  qwen3-30b-a3b  layer-4@L24 24     tg |    341.5      nan      n/a
+  qwen3-30b-a3b  single 12     pp |  20917.0  19872.4    +5.3%
+  qwen3-30b-a3b  single 12     tg |    631.4    585.1    +7.9%
+  qwen3-30b-a3b  single 24     pp |  11188.7  10309.9    +8.5%
+  qwen3-30b-a3b  single 24     tg |    365.0    335.1    +8.9%
+  qwen3-30b-a3b  tp-2   12     pp |  17866.9  16913.9    +5.6%
+  qwen3-30b-a3b  tp-2   12     tg |    583.3    539.9    +8.0%
+  qwen3-30b-a3b  tp-2   24     pp |   9190.0   8699.9    +5.6%
+  qwen3-30b-a3b  tp-2   24     tg |    328.7    300.0    +9.6%
+  qwen3-32b      single 16     pp |   5383.3   5090.3    +5.8%
+  qwen3-32b      single 16     tg |    139.6    137.0    +1.9%
+  qwen3-32b      single 32     pp |   2642.2   2508.4    +5.3%
+  qwen3-32b      single 32     tg |     74.9     73.5    +1.8%
+  qwen3-32b      tp-2   16     pp |   6109.2   5645.8    +8.2%
+  qwen3-32b      tp-2   16     tg |    213.0    205.5    +3.7%
+  qwen3-32b      tp-2   32     pp |   2933.3   2779.1    +5.5%
+  qwen3-32b      tp-2   32     tg |    115.1    110.4    +4.3%
+  qwen3-32b      tp-4   16     pp |   6962.8   6488.1    +7.3%
+  qwen3-32b      tp-4   16     tg |    278.2    262.7    +5.9%
+  qwen3-32b      tp-4   32     pp |   3471.8   3253.2    +6.7%
+  qwen3-32b      tp-4   32     tg |    149.0    140.9    +5.8%
+
+Report only: part C (30B, tg128, -r 5), median tok/s of the 5 reps; s3e layer-4 numbers beside
+  s3f qwen3-30b-a3b-layer-4-L36-tg128: missing
+  s3f qwen3-30b-a3b-single-gpu0-tg128: missing
+  s3f qwen3-30b-a3b-single-gpu1-tg128: missing
+  s3f qwen3-30b-a3b-single-gpu2-tg128: missing
+  s3f qwen3-30b-a3b-single-gpu3-tg128: missing
+  s3e qwen3-30b-a3b-layer-4-L12-tg128: median 649.5 (636.3 649.5 649.5 649.5 649.3)
+  s3e qwen3-30b-a3b-layer-4-L24-tg128: median 384.2 (380.5 384.2 384.3 384.3 384.2)
+  s3e qwen3-30b-a3b-layer-4-tg128: median 186.6 (186.6 186.6 186.6 186.6 186.6)
+
+Report only: 0x20 throttle samples (1 Hz sampler, per GPU) inside each B run window; other reason bits seen in brackets
+  no gpu-samples.csv
+
+Verdicts: P1 PASS, P2 FAIL, P3 FAIL

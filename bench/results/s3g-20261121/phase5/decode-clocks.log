@@ -1,0 +1,5 @@
+withheld qwen3-30b-a3b-anchor-single-L12-r1: gpu0: 10 tail samples, under 25
+withheld qwen3-30b-a3b-anchor-single-L12-r2: gpu0: 10 tail samples, under 25
+withheld qwen3-30b-a3b-anchor-single-L24-r1: gpu0: 17 tail samples, under 25
+withheld qwen3-30b-a3b-anchor-single-L24-r2: gpu0: 18 tail samples, under 25
+low 1695.0 MHz, busy {'Qwen3 32B Awq Compatible Instruct': 1650.0} -> /root/tetraeder/bench/results/s3g-20261121/phase5/decode-clocks.json

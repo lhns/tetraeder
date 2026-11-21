@@ -1,0 +1,513 @@
+{
+ "low_mhz": 1695.0,
+ "busy_mhz": {
+  "Qwen3 32B Awq Compatible Instruct": 1650.0
+ },
+ "duty_threshold": 0.32,
+ "withheld": [
+  "qwen3-30b-a3b-anchor-single-L12-r1: gpu0: 10 tail samples, under 25",
+  "qwen3-30b-a3b-anchor-single-L12-r2: gpu0: 10 tail samples, under 25",
+  "qwen3-30b-a3b-anchor-single-L24-r1: gpu0: 17 tail samples, under 25",
+  "qwen3-30b-a3b-anchor-single-L24-r2: gpu0: 18 tail samples, under 25"
+ ],
+ "runs": {
+  "qwen3-30b-a3b-anchor-layer-4@L24-L24-r1": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "layer-4@L24",
+   "limit": 24,
+   "kind": "layer",
+   "withheld": [],
+   "tail_s": 3.7504754859832263,
+   "gpus": {
+    "0": {
+     "samples": 184,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    },
+    "1": {
+     "samples": 184,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    },
+    "2": {
+     "samples": 184,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    },
+    "3": {
+     "samples": 184,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    }
+   },
+   "use": [
+    0,
+    1,
+    2
+   ]
+  },
+  "qwen3-30b-a3b-anchor-layer-4@L24-L24-r2": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "layer-4@L24",
+   "limit": 24,
+   "kind": "layer",
+   "withheld": [],
+   "tail_s": 3.746529770409642,
+   "gpus": {
+    "0": {
+     "samples": 184,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    },
+    "1": {
+     "samples": 184,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    },
+    "2": {
+     "samples": 184,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    },
+    "3": {
+     "samples": 184,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    }
+   },
+   "use": [
+    0,
+    1,
+    2
+   ]
+  },
+  "qwen3-30b-a3b-anchor-single-L12-r1": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "single",
+   "limit": 12,
+   "kind": "single",
+   "withheld": [
+    "gpu0: 10 tail samples, under 25"
+   ],
+   "tail_s": 0.202624049,
+   "gpus": {
+    "0": {
+     "samples": 10,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 10 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-30b-a3b-anchor-single-L12-r2": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "single",
+   "limit": 12,
+   "kind": "single",
+   "withheld": [
+    "gpu0: 10 tail samples, under 25"
+   ],
+   "tail_s": 0.202819148,
+   "gpus": {
+    "0": {
+     "samples": 10,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 10 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-30b-a3b-anchor-single-L24-r1": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "single",
+   "limit": 24,
+   "kind": "single",
+   "withheld": [
+    "gpu0: 17 tail samples, under 25"
+   ],
+   "tail_s": 0.35035458,
+   "gpus": {
+    "0": {
+     "samples": 17,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 17 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-30b-a3b-anchor-single-L24-r2": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "single",
+   "limit": 24,
+   "kind": "single",
+   "withheld": [
+    "gpu0: 18 tail samples, under 25"
+   ],
+   "tail_s": 0.350947564,
+   "gpus": {
+    "0": {
+     "samples": 18,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 18 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-30b-a3b-anchor-tp-2-L12-r1": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "tp-2",
+   "limit": 12,
+   "kind": null,
+   "withheld": [
+    "gpu0: 11 tail samples, under 25"
+   ],
+   "tail_s": 0.219552707,
+   "gpus": {
+    "0": {
+     "samples": 11,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 11 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-30b-a3b-anchor-tp-2-L12-r2": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "tp-2",
+   "limit": 12,
+   "kind": null,
+   "withheld": [
+    "gpu0: 10 tail samples, under 25"
+   ],
+   "tail_s": 0.219311575,
+   "gpus": {
+    "0": {
+     "samples": 10,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 10 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-30b-a3b-anchor-tp-2-L24-r1": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "tp-2",
+   "limit": 24,
+   "kind": null,
+   "withheld": [
+    "gpu0: 19 tail samples, under 25"
+   ],
+   "tail_s": 0.388664663,
+   "gpus": {
+    "0": {
+     "samples": 19,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 19 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-30b-a3b-anchor-tp-2-L24-r2": {
+   "model": "Qwen3 30B Gptq Fp16",
+   "plan": "tp-2",
+   "limit": 24,
+   "kind": null,
+   "withheld": [
+    "gpu0: 20 tail samples, under 25"
+   ],
+   "tail_s": 0.39014543,
+   "gpus": {
+    "0": {
+     "samples": 20,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 20 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-single-L16-r1": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "single",
+   "limit": 16,
+   "kind": "single",
+   "withheld": [],
+   "tail_s": 0.916995643,
+   "gpus": {
+    "0": {
+     "samples": 45,
+     "median": 1665.0,
+     "reasons": "0x4",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-single-L16-r2": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "single",
+   "limit": 16,
+   "kind": "single",
+   "withheld": [],
+   "tail_s": 0.916814814,
+   "gpus": {
+    "0": {
+     "samples": 45,
+     "median": 1605.0,
+     "reasons": "0x4",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-single-L32-r1": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "single",
+   "limit": 32,
+   "kind": "single",
+   "withheld": [],
+   "tail_s": 1.7083703630000002,
+   "gpus": {
+    "0": {
+     "samples": 84,
+     "median": 1650.0,
+     "reasons": "0x4",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-single-L32-r2": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "single",
+   "limit": 32,
+   "kind": "single",
+   "withheld": [],
+   "tail_s": 1.711229715,
+   "gpus": {
+    "0": {
+     "samples": 84,
+     "median": 1650.0,
+     "reasons": "0x4",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-tp-2-L16-r1": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "tp-2",
+   "limit": 16,
+   "kind": null,
+   "withheld": [],
+   "tail_s": 0.601715647,
+   "gpus": {
+    "0": {
+     "samples": 30,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-tp-2-L16-r2": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "tp-2",
+   "limit": 16,
+   "kind": null,
+   "withheld": [],
+   "tail_s": 0.60013513,
+   "gpus": {
+    "0": {
+     "samples": 30,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-tp-2-L32-r1": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "tp-2",
+   "limit": 32,
+   "kind": null,
+   "withheld": [],
+   "tail_s": 1.110883036,
+   "gpus": {
+    "0": {
+     "samples": 55,
+     "median": 1695.0,
+     "reasons": "0x0",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-tp-2-L32-r2": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "tp-2",
+   "limit": 32,
+   "kind": null,
+   "withheld": [],
+   "tail_s": 1.112618688,
+   "gpus": {
+    "0": {
+     "samples": 55,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-tp-4-L16-r1": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "tp-4",
+   "limit": 16,
+   "kind": null,
+   "withheld": [
+    "gpu0: 23 tail samples, under 25"
+   ],
+   "tail_s": 0.46060981900000003,
+   "gpus": {
+    "0": {
+     "samples": 23,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 23 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-tp-4-L16-r2": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "tp-4",
+   "limit": 16,
+   "kind": null,
+   "withheld": [
+    "gpu0: 22 tail samples, under 25"
+   ],
+   "tail_s": 0.459571969,
+   "gpus": {
+    "0": {
+     "samples": 22,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": [
+      "gpu0: 22 tail samples, under 25"
+     ]
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-tp-4-L32-r1": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "tp-4",
+   "limit": 32,
+   "kind": null,
+   "withheld": [],
+   "tail_s": 0.8581020940000001,
+   "gpus": {
+    "0": {
+     "samples": 42,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  },
+  "qwen3-32b-anchor-tp-4-L32-r2": {
+   "model": "Qwen3 32B Awq Compatible Instruct",
+   "plan": "tp-4",
+   "limit": 32,
+   "kind": null,
+   "withheld": [],
+   "tail_s": 0.859991944,
+   "gpus": {
+    "0": {
+     "samples": 43,
+     "median": 1800.0,
+     "reasons": "0x0",
+     "withheld": []
+    }
+   },
+   "use": [
+    0
+   ]
+  }
+ }
+}
