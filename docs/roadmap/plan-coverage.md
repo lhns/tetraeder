@@ -10,7 +10,7 @@ Items marked "checked" were confirmed done or not done in the code or an ADR, no
 |---|---|---|
 | 1 | Tiered weights across VRAM, RAM, NVMe (2) | existing `memory-tiers` |
 | 2 | MoE expert placement and streaming (2) | existing `memory-tiers`, `memory-prefetch`, `memory-io-service` |
-| 3 | KV cache tiers (4, remote in 6) | 4: existing `serving-prefix-cache` (KV snapshots in RAM); remote: new node `cluster-remote-kv` |
+| 3 | KV cache tiers (4, remote in 6) | VRAM: existing `serving-kv-layout`; RAM snapshots: existing `serving-prefix-cache`; live KV in RAM or on NVMe (checked: `crates/kvcache` has no RAM or disk tier): new node `memory-kv-tiers`; remote: new node `cluster-remote-kv` |
 | 4 | Prefix caching shared across nodes (4, cross-node in 6) | 4: existing `serving-prefix-cache`; cross-node: new node `cluster-shared-prefix` |
 | 5 | Weight and KV quantization per unit (1, 2) | existing `planner-quality`, `memory-conversion`, `memory-low-bit-kv` |
 | 6 | Fast model loading (2) | existing `memory-tiers` (aligned direct reads), `memory-io-service` |
@@ -22,13 +22,13 @@ Items marked "checked" were confirmed done or not done in the code or an ADR, no
 | 12 | CPU as a compute device (1, free in 5) | existing `memory-pair-groups` (CPU experts), `multi-executor` (experts only, ADR 0069) |
 | 13 | Prefill and decode on different hardware (7) | new node `multi-split-hardware` |
 | 14 | Mixed GPU sizes and vendors (sizes 1, vendors in 8) | sizes: existing `engine-libllama`; vendors: fold into `engine-backend-parity` |
-| 15 | Interconnect-aware placement, PCIe topology (3a) | existing `planner-core` |
+| 15 | Interconnect-aware placement, PCIe topology (3a) | existing `planner-core` (checked: `crates/profiler/src/pcie.rs`, commit 883befe) |
 | 16 | Multiple nodes (6) | new node `cluster-transport` |
 | 17 | Automatic node discovery (6) | new node `cluster-discovery` |
 | 18 | Live node join and leave (6) | new node `cluster-join-leave` |
 | 19 | Fault tolerance (6) | new node `cluster-failover` |
 | 20 | Security, mTLS and trust rules (6) | new node `cluster-mtls` |
-| 21 | Automatic hardware discovery (0) | existing `planner-core` (profiler) |
+| 21 | Automatic hardware discovery (0) | existing `ops-foundations` (checked: `crates/profiler/src/discover.rs`, commit 68c6b4b) |
 | 22 | Measured-cost planner (3a) | existing `planner-core`, `planner-exit` |
 | 23 | Objective as limits plus a front position (3a) | existing `planner-core` (ADR 0025) |
 | 24 | Live replanning (3a drain-and-restart, 7 live) | 3a: existing `planner-replan`; live: new node `planner-live-replan` |
@@ -66,7 +66,7 @@ Items marked "checked" were confirmed done or not done in the code or an ADR, no
 | Item | Home |
 |---|---|
 | Phase 0 baselines: llama.cpp (with its expert cache), ik_llama.cpp, KTransformers, Colibri | existing `bench-harness` |
-| Phase 0 baseline: vLLM | checked: built as a report-only stage of `scripts/phase5_box.sh` (ADR 0068), never ran (no AWQ or GPTQ checkpoint on the boxes): existing `bench-phase5-harness` |
+| Phase 0 baseline: vLLM | checked: built as a report-only stage of `scripts/phase5_box.sh` (ADR 0068) but it never produced a number (skipped in every session: no AWQ or GPTQ checkpoint on the box): existing `bench-phase5-harness`; not counted as a measured baseline |
 | Phase 0 baseline: Strata | checked: no Strata code or run; parked in m2-plan (no model both engines run): new node `bench-strata-pairing` |
 | Phase 0 spike: two ggml backends in one process | moot for M1 (plan, Open decisions): fold into `engine-backend-parity` |
 | Phase 0 spike: transport latency | localhost run: existing `ops-foundations` (ADR 0023); WAN run: new node `cluster-transport-wan` |
@@ -104,7 +104,7 @@ Items marked "checked" were confirmed done or not done in the code or an ADR, no
 | Open: mixed vendors | fold into `engine-backend-parity` |
 | Open: transport | new node `cluster-owner-transport` |
 | Open: quality profile granularity | existing `planner-quality` (ADR 0048) |
-| Open: trace backend (Jaeger or Tempo) | fold into `cluster-transport` (traces cross nodes there; decided with the Phase 6 collector setup) |
+| Open: trace backend (Jaeger or Tempo) | no node: an open decision that gates nothing; open call for the owner |
 | Open: name check | existing `ops-foundations` (ADR 0010) |
 
 ## m2-plan.md
@@ -115,15 +115,15 @@ Items marked "checked" were confirmed done or not done in the code or an ADR, no
 | C0 to C6, C1.5 (Phase 4 track) | existing `serving-batching`, `engine-dense-builder`, `serving-kv-layout`, `serving-moe-batch`, `serving-prefix-save`, `bench-phase4-exit` |
 | Phase 4 deliverable: speculation in `serve` | existing `serving-spec-batching` |
 | Phase 4 deliverable: self-speculative and MTP, parked | new nodes `serving-self-spec`, `serving-mtp-drafts`, after `serving-owner-drafters` |
-| Review fixes from the C2b and C5 review (7 items) | existing `serving-moe-batch` (commit 8004383, "Review fixes after C3b and C4") |
+| Review fixes from the C2b and C5 review (7 items) | existing `serving-batching` (checked: commit 8004383 in its `folded`) |
 | c4 gap on CPU, unified pool against streams on GPU | existing `serving-c4-gap`; streams question settled by step shapes on GPU (`20261116pc`) |
-| Dense builder CPU prompt kernels (repack or AMX path) | new node `engine-dense-amx` (ADR 0072) |
+| Dense builder CPU prompt kernels (repack or AMX path) | built: existing `engine-dense-builder` (ADR 0072, `DenseOptions::extra_bufts` default true); the pending AMX speed check: new node `engine-dense-amx` (experiment, CI) |
 | `SAVE_MIN_TOKENS` for short prompts | fold into `serving-prefix-first` |
 | Point-1 box result: FP8 KV baseline parked | fold into `bench-d1-session` |
-| Third review follow-ups (5 items) | existing `serving-moe-batch` (checked: merged in `track-moe-followups`, commit b76e299) |
+| Third review follow-ups (5 items) | existing `serving-moe-batch` (checked: commit b76e299 in its `folded`) |
 | Housekeeping: old remote branches (owner's call) | no node (a cleanup, no verdict); open call for the owner |
 | Proposed ADRs waiting on a box: 0059 async stages, 0060 sampler against OTel | new node `bench-open-records` |
-| E9 follow-ups: Executor panel, lost sequences free | existing `multi-executor` (checked: merged in `track-e9-followups`, commit 255eaf7) |
+| E9 follow-ups: Executor panel, lost sequences free | existing `multi-executor` (checked: commit 67a01b3 in its `folded`) |
 | E9 follow-up: sticky CUDA errors detected by message text | fold into `cluster-failover` |
 | E1 note: no `ggml_backend_tensor_copy_async` binding | fold into `cluster-pipeline-nodes` (pipeline peer copies) |
 | Engine pin b12426, D2 split, D2a reruns, pin A/B, CUDA confirmation | existing `engine-pin-b12426`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-pin-confirm`, `bench-phase4-exit` |
@@ -135,7 +135,7 @@ Items marked "checked" were confirmed done or not done in the code or an ADR, no
 | Phase 5 open 4: V2, V4a, V4b | existing `bench-v2-verdict`, `bench-v4a-verdict`, `bench-v4b-verdict` |
 | Phase 5 open 5: D2a probe, rule-change list | existing `bench-d2a-probe`, `bench-m2-report` |
 | TTFT bar (ttft3 to ttft7) | existing `bench-ttft` |
-| TTFT open: in-step saves in `save_ms`, not yet replayed | fold into `bench-open-records` |
+| TTFT open: in-step saves in `save_ms`, not yet replayed | fold into `bench-open-records` (a stage of that one session; a metrics repair, no verdict of its own) |
 | Idea: admit the longest prefix hit first | new node `serving-prefix-first` (parked) |
 | Parked: D1 (48 GB box) | new node `bench-d1-session` |
 | Track B first item: stream prefill misses | new node `memory-prefill-misses` (parked) |
@@ -181,13 +181,13 @@ Items marked "checked" were confirmed done or not done in the code or an ADR, no
 | ADR | Gates | Home |
 |---|---|---|
 | 0023 Transport spike | Phase 6 transport | new nodes `cluster-transport-wan`, `cluster-owner-transport` |
-| 0043 Speculative decoding | more drafter kinds | new node `serving-owner-drafters`, after `bench-spec-rerun` |
-| 0050 Decode levers | (a) stage 2 and the pool: nothing open | existing `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`; remaining parts with Track B (`memory-prefill-misses`) |
-| 0059 Adaptive compute tier | async upload modes, no box result | fold into `bench-open-records` |
-| 0060 Box metrics as OTel | removing the sampler path | fold into `bench-open-records` |
+| 0043 Speculative decoding | `serving-mtp-drafts`, `serving-self-spec` | new owner node `serving-owner-drafters`, after `bench-spec-rerun` |
+| 0050 Decode levers | gates nothing open ((a) stage 2 and the pool are not scheduled) | existing `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`; Track B follow-up `memory-prefill-misses` |
+| 0059 Adaptive compute tier | gates nothing open (`admit_share` stays off) | its pending box result: `bench-open-records` |
+| 0060 Box metrics as OTel | gates only removing the sampler path, a small repair | its pending box result: `bench-open-records` |
 | 0064 Decode dispatch | step 2 | new node `engine-one-graph-per-token` |
-| 0068 Phase 5 verdict rules | the M2 report | existing `bench-m2-report` |
-| 0069 Own executor | the M2 report | existing `bench-m2-report` |
-| 0072 Dense builder extra buffer types | AMX speed pending | new node `engine-dense-amx` |
+| 0068 Phase 5 verdict rules | the M2 report | existing `bench-m2-report` (one-line note added: the owner accepts 0068, 0069 and 0082 with the verdicts) |
+| 0069 Own executor | the M2 report | existing `bench-m2-report` (same note) |
+| 0072 Dense builder extra buffer types | gates nothing open; built, AMX speed pending | new node `engine-dense-amx` |
 | 0081 Prefill without capture | acceptance | existing `multi-accept-adr-0081` |
-| 0082 Cost model 5 | V4a; its added anchor is the owner's call | existing `planner-cost-model-v5`, `bench-m2-report` |
+| 0082 Cost model 5 | V4a; its added anchor was decided 2026-11-21 (ADR 0068 History) | existing `planner-cost-model-v5`; acceptance with `bench-m2-report` (same note) |
