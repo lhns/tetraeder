@@ -74,6 +74,10 @@ enum Command {
         /// Directory for `<model>-<id>.toml`, one plan per candidate.
         #[arg(long)]
         plans_dir: Option<PathBuf>,
+        /// Write only the plan of this calibration anchor, such as `layer-4@L24` (ADR 0082),
+        /// instead of the box's fixed set. Repeatable.
+        #[arg(long, requires = "multi")]
+        anchor: Vec<String>,
     },
     /// Fit the cost model to the anchor runs of a Phase 5 session (ADR 0068): `c_range` and
     /// `c_step` included. Reads `anchors-<model>-r<k>.json` and `<model>.json` layouts.
@@ -83,6 +87,10 @@ enum Command {
         /// `calib-comm.json` of `tetraeder comm-probe`, merged into the graph.
         #[arg(long)]
         comm: Option<PathBuf>,
+        /// `decode-clocks.json` of `scripts/decode_clocks.py` (ADR 0082): the clocks cost model 5
+        /// prices decode at. Without it the graph has none and predicts as cost model 4.
+        #[arg(long)]
+        clocks: Option<PathBuf>,
         #[arg(long)]
         layout_dir: PathBuf,
         #[arg(long)]
@@ -391,6 +399,7 @@ fn main() -> Result<()> {
         Command::Calibrate {
             hw,
             comm,
+            clocks,
             layout_dir,
             anchors,
             out,
@@ -398,6 +407,15 @@ fn main() -> Result<()> {
             let mut hw = multi_cli::parse_hw(&read(&hw)?).map_err(anyhow::Error::msg)?;
             if let Some(c) = &comm {
                 multi_cli::merge_comm(&mut hw, &read(c)?).map_err(anyhow::Error::msg)?;
+            }
+            if let Some(c) = &clocks
+                && !multi_cli::merge_decode_clocks(&mut hw, &read(c)?)
+                    .map_err(anyhow::Error::msg)?
+            {
+                eprintln!(
+                    "decode clocks: {} withholds low_mhz, cost model 4 rates",
+                    c.display()
+                );
             }
             let mut by_model: BTreeMap<String, Vec<String>> = BTreeMap::new();
             for e in std::fs::read_dir(&anchors).with_context(|| anchors.display().to_string())? {
@@ -518,6 +536,7 @@ fn main() -> Result<()> {
             hw,
             out,
             plans_dir,
+            anchor,
         } => {
             if multi {
                 let (Some(hw), Some(out)) = (hw, out) else {
@@ -526,7 +545,12 @@ fn main() -> Result<()> {
                 let graph = multi_cli::parse_hw(&read(&hw)?).map_err(anyhow::Error::msg)?;
                 let layout =
                     multi_cli::parse_layout(&read(&layout)?).map_err(anyhow::Error::msg)?;
-                let file = multi_cli::candidates_multi(&graph, &layout);
+                let file = if anchor.is_empty() {
+                    multi_cli::candidates_multi(&graph, &layout)
+                } else {
+                    multi_cli::anchors_multi(&graph, &layout, &anchor)
+                        .map_err(anyhow::Error::msg)?
+                };
                 std::fs::write(&out, serde_json::to_string_pretty(&file)?)
                     .with_context(|| format!("write {}", out.display()))?;
                 if let Some(dir) = plans_dir {

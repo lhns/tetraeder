@@ -193,6 +193,7 @@ pub struct Metrics {
     plan_residual: Histogram<f64>,
     plan_regret: Gauge<f64>,
     plan_predicted_step: Gauge<f64>,
+    plan_decode_clock: Gauge<f64>,
     bottleneck_share: Gauge<f64>,
     bottleneck_fault: Counter<u64>,
     replan_total: Counter<u64>,
@@ -513,6 +514,13 @@ impl Metrics {
                 .f64_gauge("tetraeder.plan.predicted_step")
                 .with_unit("s")
                 .with_description("Step time the planner predicted for the running plan")
+                .build(),
+            plan_decode_clock: meter
+                .f64_gauge("tetraeder.plan.decode_clock")
+                .with_unit("Hz")
+                .with_description(
+                    "SM clock cost model 5 assumes for a GPU of the running plan in decode",
+                )
                 .build(),
             bottleneck_share: meter
                 .f64_gauge("tetraeder.bottleneck.share")
@@ -947,6 +955,13 @@ impl Metrics {
     pub fn plan_predicted_step(&self, stage: u16, seconds: f64) {
         self.plan_predicted_step
             .record(seconds, &[KeyValue::new(attr::STAGE, i64::from(stage))]);
+    }
+
+    /// The decode clock the cost model assumed for `device` of the running plan (ADR 0082), in Hz.
+    /// Absent for plans priced without `decode_clocks`.
+    pub fn plan_decode_clock(&self, device: &str, hertz: f64) {
+        self.plan_decode_clock
+            .record(hertz, &[KeyValue::new(attr::DEVICE, device.to_owned())]);
     }
 
     /// Share of the step time bound by `resource` (ADR 0041), 0 to 1.

@@ -145,6 +145,9 @@ fn run(p: Params, rx: &mpsc::Receiver<Cmd>, status: &Mutex<Status>) {
     let engine = Arc::clone(&p.engine);
     let mut monitor = ResidualMonitor::new(p.band);
     monitor.set_prediction(p.prediction.as_ref().map(|x| 1.0 / x.tg_tok_s), m.as_ref());
+    if let Some(x) = &p.prediction {
+        monitor.set_decode_clocks(&x.decode_clocks, m.as_ref());
+    }
     let mut r = Replanner::new(
         cfg,
         p.plan,
@@ -169,10 +172,13 @@ fn run(p: Params, rx: &mpsc::Receiver<Cmd>, status: &Mutex<Status>) {
                 .last
                 .take();
             // The proposal that was just served; a stale one (another plan) is not used.
-            let step = last
-                .filter(|l| l.plan == *r.current())
-                .map(|l| 1.0 / l.prediction.tg_tok_s);
+            let last = last.filter(|l| l.plan == *r.current());
+            let step = last.as_ref().map(|l| 1.0 / l.prediction.tg_tok_s);
             monitor.set_prediction(step, m.as_ref());
+            let clocks = last
+                .as_ref()
+                .map_or(&[][..], |l| &l.prediction.decode_clocks[..]);
+            monitor.set_decode_clocks(clocks, m.as_ref());
             let placement = recognize(r.current(), &p.shared.lock().unwrap().inp.layout)
                 .ok()
                 .map(|x| x.0);

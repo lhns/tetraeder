@@ -3,16 +3,17 @@
 
 use crate::layout::ModelLayout;
 use crate::multi::{
-    MultiCandidate, Routing, candidate_for, enumerate_multi, features_multi, predict_candidate,
-    topology_of,
+    MultiCandidate, Routing, Shape, candidate_for, enumerate_multi, features_multi,
+    predict_candidate, topology_of,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use tetraeder_costmodel::MODEL_VERSION;
 use tetraeder_costmodel::calib::{Anchor, fit};
+use tetraeder_costmodel::predict::predict;
 use tetraeder_plan::{Hints, Phase};
-use tetraeder_profiler::{CollectiveCurve, DeviceKind, HardwareGraph};
+use tetraeder_profiler::{CollectiveCurve, DecodeClocks, DeviceKind, HardwareGraph};
 
 /// The phase the multi-GPU commands plan for.
 pub const PHASE: Phase = Phase(5);
@@ -70,6 +71,10 @@ pub struct CalibFile {
     pub anchors: Vec<String>,
     pub band: f64,
     pub residuals: Vec<(String, f64)>,
+    /// Anchors that did not enter the fit (the layer anchor of ADR 0082): `(id:tg, ln predicted -
+    /// ln measured)` on the fitted graph, decode clocks included.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held_out: Vec<(String, f64)>,
     pub hw: HardwareGraph,
     /// False when the anchors place no compute on the CPU and the CPU term was not fitted.
     #[serde(default = "default_true")]
@@ -148,6 +153,41 @@ pub fn merge_comm(hw: &mut HardwareGraph, text: &str) -> Result<String, String> 
     Ok(r.comm_path)
 }
 
+/// Duty threshold of ADR 0082.
+pub const DUTY_THRESHOLD: f64 = 0.32;
+
+/// `decode-clocks.json` of `scripts/decode_clocks.py`: the `DecodeClocks` shape plus the per-run
+/// medians and the reasons for a withheld value, which are not read. A file without `low_mhz`
+/// (the layer anchor was withheld) leaves the graph without clocks.
+#[derive(Debug, Clone, Deserialize)]
+struct DecodeClocksFile {
+    low_mhz: Option<f64>,
+    #[serde(default)]
+    busy_mhz: BTreeMap<String, f64>,
+    duty_threshold: Option<f64>,
+}
+
+/// Puts the clocks of `decode-clocks.json` into `hw` (ADR 0082). `Ok(false)`: the file withholds
+/// `low_mhz`, nothing is set and every prediction stays as cost model 4.
+pub fn merge_decode_clocks(hw: &mut HardwareGraph, text: &str) -> Result<bool, String> {
+    let f: DecodeClocksFile =
+        serde_json::from_str(text).map_err(|e| format!("decode clocks json: {e}"))?;
+    let Some(low_mhz) = f.low_mhz else {
+        return Ok(false);
+    };
+    let duty_threshold = f.duty_threshold.unwrap_or(DUTY_THRESHOLD);
+    let ok = |x: f64| x > 0.0 && x.is_finite();
+    if !ok(low_mhz) || !ok(duty_threshold) || !f.busy_mhz.values().all(|&x| ok(x)) {
+        return Err("decode clocks: clocks and threshold must be positive".into());
+    }
+    hw.decode_clocks = Some(DecodeClocks {
+        low_mhz,
+        busy_mhz: f.busy_mhz,
+        duty_threshold,
+    });
+    Ok(true)
+}
+
 pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -183,6 +223,29 @@ pub fn candidates_multi(hw: &HardwareGraph, layout: &ModelLayout) -> MultiFile {
             .map(|(id, reason)| Pruned { id, reason })
             .collect(),
     }
+}
+
+/// `candidates --multi --anchor <id>`: the plans of calibration anchors that are not in the box's
+/// fixed set, such as `layer-4@L24` (ADR 0082), as a file of their own.
+pub fn anchors_multi(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    ids: &[String],
+) -> Result<MultiFile, String> {
+    let candidates = ids
+        .iter()
+        .map(|id| candidate_for(hw, layout, &Hints::default(), PHASE, id))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(MultiFile {
+        model: layout.model.clone(),
+        gpus: hw
+            .devices
+            .iter()
+            .filter(|d| d.kind == DeviceKind::Gpu)
+            .count(),
+        candidates,
+        pruned: Vec::new(),
+    })
 }
 
 /// `predict`: every candidate of the file on `calibrated` (the fit's graph, or the measured
@@ -298,11 +361,16 @@ fn collect(files: &[&str]) -> Result<BTreeMap<(String, Option<u32>), Samples>, S
 /// [`features_multi`] and fit the parameters of `calib.rs`, `c_range` and `c_step` included.
 /// No routing: the anchors (`single`, `tp-2`, `tp-4`) cut experts by columns, whose cost does
 /// not depend on which experts a token chooses.
+///
+/// The fit runs on `hw` without its `decode_clocks` (ADR 0082) and the fitted graph carries them
+/// again. A layer anchor `layer-<g>@L<n>` never enters the fit: its residual on the fitted graph
+/// goes to `held_out`.
 pub fn calibrate(
     hw: &HardwareGraph,
     models: &[(ModelLayout, Vec<String>)],
 ) -> Result<CalibFile, String> {
     let mut anchors: Vec<Anchor> = Vec::new();
+    let mut held: Vec<Anchor> = Vec::new();
     for (layout, files) in models {
         let texts: Vec<&str> = files.iter().map(String::as_str).collect();
         for ((plan_id, limit), s) in collect(&texts)? {
@@ -310,7 +378,7 @@ pub fn calibrate(
                 .map_err(|e| format!("{}: {plan_id}: {e}", layout.model))?;
             let topo = topology_of(hw, layout, &cand.plan, PHASE)?;
             let f = features_multi(layout, &topo, &cand.plan.knobs, limit, None)?;
-            anchors.push(Anchor {
+            let a = Anchor {
                 id: format!(
                     "{}/{plan_id}/{}",
                     layout.model,
@@ -321,7 +389,12 @@ pub fn calibrate(
                 r#gen: s.r#gen.unwrap_or(GEN),
                 pp_tok_s: median(s.pp),
                 tg_tok_s: median(s.tg),
-            });
+            };
+            if matches!(Shape::parse(&plan_id), Some(Shape::LayerAnchor { .. })) {
+                held.push(a);
+            } else {
+                anchors.push(a);
+            }
         }
     }
     let gpu = hw
@@ -337,7 +410,24 @@ pub fn calibrate(
     let link = hw
         .link_between(&gpu.id, &cpu.id)
         .ok_or("no link between the first GPU and the CPU")?;
-    let f = fit(hw, &anchors, &gpu.id, &cpu.id, &link.id).map_err(|e| e.to_string())?;
+    let mut base = hw.clone();
+    base.decode_clocks = None;
+    let mut f = fit(&base, &anchors, &gpu.id, &cpu.id, &link.id).map_err(|e| e.to_string())?;
+    f.hw.decode_clocks = hw.decode_clocks.clone();
+    let mut held_out = Vec::new();
+    for a in &held {
+        let p =
+            predict(&f.hw, &a.features, a.prompt, a.r#gen).map_err(|e| format!("{}: {e}", a.id))?;
+        if let Some(m) = a.tg_tok_s {
+            held_out.push((format!("{}:tg", a.id), (p.tg_tok_s / m).ln()));
+        }
+    }
+    for (id, r) in &held_out {
+        eprintln!(
+            "held out {id}: {:+.3} (predicted / measured - 1)",
+            r.exp() - 1.0
+        );
+    }
     if !f.cpu_compute_used {
         eprintln!("cpu compute: not used (no anchor places compute on the CPU)");
     }
@@ -346,6 +436,7 @@ pub fn calibrate(
         anchors: anchors.iter().map(|a| a.id.clone()).collect(),
         band: f.band,
         residuals: f.residuals,
+        held_out,
         hw: f.hw,
         cpu_compute_used: f.cpu_compute_used,
     })

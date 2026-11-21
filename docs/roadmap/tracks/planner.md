@@ -21,7 +21,7 @@ flowchart TB
     planner_cost_v2["✔ Cost model, version<br/>2"]
     planner_cost_v3["✔ Price all-reduce<br/>latency in steps"]
     planner_cost_v4["✔ Price routed expert<br/>traffic"]
-    planner_cost_model_v5["○ Price decode at<br/>measured clocks"]
+    planner_cost_model_v5["⏳ Price decode at<br/>measured clocks"]
     planner_plan_ir ~~~ planner_quality
     planner_plan_ir ~~~ planner_core
     planner_quality ~~~ planner_exit
@@ -65,7 +65,7 @@ flowchart TB
     class planner_plan_ir,planner_tier_cost,planner_replan,planner_fill_tier,planner_parallel_shapes,planner_cost_v3 unrated
     class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4 succ
     class planner_core vsucc
-    class planner_cost_model_v5 next
+    class planner_cost_model_v5 waiting
 ```
 <!-- END GENERATED: track-planner -->
 
@@ -86,7 +86,7 @@ flowchart TB
 | `planner-cost-v2` | Cost model, version 2 | feature | none | done | successful | 2026-11-18 | 2026-11-19 | planner-parallel-shapes, multi-pipelined-prefill |  | multi-defect-capture |  | docs/adr/0070-parallel-shapes-and-their-cost.md; bench/results/s2g-20261118/README.md |
 | `planner-cost-v3` | Price all-reduce latency in steps | feature | none | done | unrated | 2026-11-19 | 2026-11-19 | planner-cost-v2 |  |  |  | docs/adr/0078-allreduce-in-step-latency.md |
 | `planner-cost-v4` | Price routed expert traffic | feature | none | done | successful | 2026-11-19 | 2026-11-19 | planner-cost-v3 |  | multi-defect-capture | +0.09 | docs/adr/0080-routed-slot-activation-traffic.md |
-| `planner-cost-model-v5` | Price decode at measured clocks | feature | local | next | unrated |  |  | planner-cost-v4 |  |  |  |  |
+| `planner-cost-model-v5` | Price decode at measured clocks | feature | local | in-progress | unrated |  |  | planner-cost-v4 |  |  |  | bench/results/s3c-20261119/costmodel-v5/README.md |
 
 ### Details per node
 
@@ -104,7 +104,7 @@ flowchart TB
 | `planner-cost-v2` | Cost model, version 2 | All seven 2-GPU candidates within 15% out of sample (`s2g-20261118`). |  | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |  |  |  |  |  |
 | `planner-cost-v3` | Price all-reduce latency in steps |  |  | Version 3 adds the latency of all-reduces (the sums tensor-parallel GPUs exchange every layer) inside a step, with calibration on four-GPU anchors. |  |  |  |  |  |
 | `planner-cost-v4` | Price routed expert traffic | Cost model 4 (ADR 0080, routed-slot activation bytes) brings M4 ep-4 pp to +0.09. | +0.09 | Version 4 prices the activation bytes that expert parallel moves per routed expert, which brought the four-GPU expert-parallel prefill prediction close. |  |  |  |  |  |
-| `planner-cost-model-v5` | Price decode at measured clocks |  |  | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. | Done when: version 5 reproduces s3c's 30B layer-4 tg within 15% and leaves s3f2 and the other candidates within 0.01 (ADR 0070 History). |  |  |  |  |
+| `planner-cost-model-v5` | Price decode at measured clocks |  |  | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. | Done when (ADR 0082, The check): 30B layer-4 e_tg within 0.08 on s3, s3b and s3c and the s3c layer-4/single tg ratio within 0.03 of measured, with host-20210 clocks; s3f2 bit-identical to v4 and its L36 within 0.03; every other candidate moved by at most 0.005; Rust and replica within 1%. Design: ADR 0082 (Proposed), brief V5 in docs/phase5-briefs.md. Offline check passes (branch track-cost-model-v5): layer-4/single tg within 0.03 and e_tg +0.001/-0.003/+0.067 on s3/s3b/s3c, s3f2 bit-identical with L36 230.9 against 231.8, 32B layer-4 moves 0.011, others 0; Rust-replica agreement pending CI. Layer anchor stays behind LAYER_ANCHOR=1 until the owner accepts ADR 0082. |  | next four-GPU box session on a host where single boosts (item 5 of the check) |  |  |
 
 ### Folded items per node
 

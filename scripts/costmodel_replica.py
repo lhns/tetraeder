@@ -5,6 +5,7 @@
     python scripts/costmodel_replica.py DIR                       refit on DIR's anchors, predict DIR's candidates
     python scripts/costmodel_replica.py DIR --eval EVAL_DIR       fit on DIR's anchors, judge EVAL_DIR's candidates
     python scripts/costmodel_replica.py DIR --version 1           the model of MODEL_VERSION 1 (as committed in S2f)
+    python scripts/costmodel_replica.py DIR --clocks FILE         version 5 with decode-clocks.json (scripts/decode_clocks.py)
     python scripts/costmodel_replica.py DIR --committed           version 1 on DIR's own calib.json (no refit)
     python scripts/costmodel_replica.py DIR --json OUT.json       also write the fitted graph and the rows
     python scripts/costmodel_replica.py DIR --ar-form scale       the all-reduce time times one factor (not adopted)
@@ -20,11 +21,15 @@ MODEL_VERSION 2 (ADR 0070, History 2026-11-18): expert matmuls at their own rate
 last FFN) on output rows, every expert read at prefill, a roofline per op class, `single` on the ranks path, and an
 all-reduce in a step paying the fitted share of the probe's zero-byte time. Version 3 is MODEL_VERSION 3 (ADR 0078):
 the all-reduce in a step pays the curve's byte part plus a fitted in-step latency a + 2 (p - 1) b over p ranks, b only
-when the anchors' all-reduces span two group sizes. Version 4 (the default) is MODEL_VERSION 4 (ADR 0080): version 3
+when the anchors' all-reduces span two group sizes. Version 4 is MODEL_VERSION 4 (ADR 0080): version 3
 plus the routed slots' activation bytes at the memory rate, every slot on every expert-parallel rank, and an
 all-reduce curve whose head point is not below its successor (the probe's floor) read with the head on the next
 segment extended back (`step_curve`); Rust does both on graphs that carry `expert_slot_traffic`, which a version-4
-fit writes. Pipelined prefill (ADR 0077) is priced as `predict_ranks` does; version 2 on a session's own calib.json
+fit writes. Version 5 (the default) is MODEL_VERSION 5 (ADR 0082): on a graph with `decode_clocks` (`--clocks`),
+a GPU whose decode duty is under the threshold pays `busy_mhz / low_mhz` on its clock-bound terms (`c0 ops`, the
+routed-expert roofline, the routed slots), decode only; without clocks it is version 4 to the last bit. The layer
+anchor `layer-<g>@L<n>` (6/6/6/30 at n = L/2 on four GPUs) is built from the session's `layer-<g>` plan and held out
+of the fit; its residual is printed. Pipelined prefill (ADR 0077) is priced as `predict_ranks` does; version 2 on a session's own calib.json
 gives its predict-*.json bit for bit (S2g, S3, S3b). Rust `predict` reproduces version 2 on the graphs this script
 writes (`crates/planner/tests/costmodel_v2.rs`). The fit is the same Levenberg-Marquardt and coordinate search as
 `calib.rs`, not bit-identical to it. Input files (ADR 0068 names): hw.json, calib-comm.json, calib.json,
@@ -394,7 +399,7 @@ def features(layout: dict, plan: dict, lim: int | None, version: int, routing: d
             phases.append({"repeat": 1, "parts": [part(x, 0.0, 0.0, 0.0, 0.0, b) for x in devs], "pre": None,
                            "ranges": 0, "after": hop})
     micro = max(plan.get("knobs", {}).get("prefill_micro_batches", 1), 1) if len(st_all) > 1 else 1
-    return {"phases": phases, "micro": micro}
+    return {"phases": phases, "micro": micro, "model": layout.get("model")}
 
 
 def ffn_phase(layout, tp, ep, devs, l, rot, b, r, block, version, uniform_ep, routing=None):
@@ -475,15 +480,17 @@ def total(v: list) -> float:
     return t
 
 
-def part_time(p: dict, rt: tuple, m: float, ctx: float, version: int) -> float:
+def part_time(p: dict, rt: tuple, m: float, ctx: float, version: int, k: float = 1.0) -> float:
+    """`k` (version 5, ADR 0082): the decode factor of a GPU in the low clock state on its clock-bound terms."""
     f, fe, bw, c0 = rt
     if version < 2:
         return c0 * p["ops"] + max((2.0 * p["p"] * m + p["attn"] * m * ctx) / f, (p["w"] + p["kv"] * ctx) / bw)
     if "roofline" in DROP:
         return c0 * p["ops"] + max((2.0 * p["p"] * m + p["attn"] * m * ctx) / f + 2.0 * p["ep"] * m / fe,
                                    (p["w"] + p["ew"] + p["kv"] * ctx) / bw)
-    return (c0 * p["ops"] + max(2.0 * p["p"] * m / f, p["w"] / bw) + max(2.0 * p["ep"] * m / fe, p["ew"] / bw)
-            + max(p["attn"] * m * ctx / f, p["kv"] * ctx / bw) + p.get("sb", 0.0) * m / bw)
+    return (c0 * p["ops"] * k + max(2.0 * p["p"] * m / f, p["w"] / bw)
+            + max(2.0 * p["ep"] * m / fe, p["ew"] / bw) * k
+            + max(p["attn"] * m * ctx / f, p["kv"] * ctx / bw) + p.get("sb", 0.0) * m / bw * k)
 
 
 def step_curve(points: list) -> list:
@@ -603,7 +610,7 @@ def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version
             if p["device"] not in rt_of:
                 rt_of[p["device"]] = rates(hw, p["device"])
 
-    def phase(ph, m, ctx, prefill, with_after, out):
+    def phase(ph, m, ctx, prefill, with_after, out, ks=None):
         # one output row per step (the bench and the judged request take the last row's logits)
         out_rows = ph.get("out") and "head_rows" not in DROP
         mm = 1.0 if (prefill and out_rows) else m
@@ -612,7 +619,7 @@ def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version
         rep = float(ph["repeat"])
         slow = ("", 0.0)
         for p in parts:
-            t = part_time(p, rt_of[p["device"]], mm, ctx, version)
+            t = part_time(p, rt_of[p["device"]], mm, ctx, version, (ks or {}).get(p["device"], 1.0))
             if t > slow[1] or slow[0] == "":
                 slow = (p["device"], t)
         add(out, "compute:" + slow[0], rep * slow[1])
@@ -622,14 +629,44 @@ def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version
             label, t = coll_time(hw, ph["after"], mm, version)
             add(out, label, rep * t)
 
-    def step(m, ctx, prefill, out):
+    def step(m, ctx, prefill, out, ks=None):
         for ph in feats["phases"]:
-            phase(ph, m, ctx, prefill, True, out)
+            phase(ph, m, ctx, prefill, True, out, ks)
         add(out, "step", rc["c_step_s"])
 
     tg: list = []
     step(1.0, gen / 2.0, False, tg)
     t_tok = total(tg)
+    clocks: list = []
+    dc = hw.get("decode_clocks")
+    if version >= 5 and dc and feats.get("model") is not None:
+        # ADR 0082: duty of each GPU in the unscaled decode step, then the step once more with the factor on the
+        # low-duty GPUs
+        model, low = feats["model"], dc["low_mhz"]
+        busy_mhz = dc.get("busy_mhz", {}).get(model)
+        k_model = busy_mhz / low if busy_mhz is not None and low > 0 and busy_mhz > low + 15.0 else 1.0
+        busy: dict = {}
+        for ph in feats["phases"]:
+            ar = ph["after"] if ph["after"] and "ar" in ph["after"] else None
+            tc = coll_time(hw, ar, 1.0, version)[1] if ar else 0.0
+            for p in ph["parts"]:
+                t = part_time(p, rt_of[p["device"]], 1.0, gen / 2.0, version)
+                if ar and p["device"] in ar["ar"]:
+                    t += tc
+                busy[p["device"]] = busy.get(p["device"], 0.0) + float(ph["repeat"]) * t
+        ks: dict = {}
+        for dev, b in busy.items():
+            duty = b / t_tok
+            low_state = duty < dc.get("duty_threshold", 0.32)
+            k = k_model if low_state else 1.0
+            if k > 1.0:
+                ks[dev] = k
+            clocks.append({"device": dev, "duty": duty, "factor": k,
+                           "mhz": low if (low_state or busy_mhz is None) else busy_mhz})
+        if ks:
+            tg = []
+            step(1.0, gen / 2.0, False, tg, ks)
+            t_tok = total(tg)
     pp: list = []
     done = 0
     stages = pipeline_stages(feats["phases"])
@@ -670,7 +707,8 @@ def predict(hw: dict, feats: dict, prompt: int = PROMPT, gen: int = GEN, version
         step(m, done + m / 2.0, True, pp)
         done += m_tok
     t_pp = total(pp)
-    return {"pp": prompt / t_pp, "tg": 1.0 / t_tok, "t": t_pp + gen * t_tok, "tg_bd": tg, "pp_bd": pp}
+    return {"pp": prompt / t_pp, "tg": 1.0 / t_tok, "t": t_pp + gen * t_tok, "tg_bd": tg, "pp_bd": pp,
+            "clocks": clocks}
 
 
 # ---- fit (calib.rs) ------------------------------------------------------------------------------------------------
@@ -956,11 +994,38 @@ def anchor_plans(d: Path, model: str) -> dict:
     return pl
 
 
+LAYER_ANCHOR = re.compile(r"layer-(\d+)@L(\d+)")
+
+
+def layer_anchor_plan(pl: dict, pid: str, n_layer: int) -> dict | None:
+    """`multi::Shape::LayerAnchor` (ADR 0082): the session's `layer-<g>` plan with the first g - 1 stages cut at
+    n / g layers each and the last stage holding the rest. None when the session has no layer-<g> plan."""
+    g, limit = map(int, LAYER_ANCHOR.fullmatch(pid).groups())
+    base = pl.get(f"layer-{g}")
+    per = limit // g
+    if g < 3 or base is None or per == 0 or limit % g or limit >= n_layer:
+        return None
+    plan = copy.deepcopy(base)
+    stages = plan["replicas"][0]["stages"]
+    if len(stages) != g:
+        return None
+    for i, st in enumerate(stages):
+        st["layers"] = [i * per, n_layer if i + 1 == g else (i + 1) * per]
+    return plan
+
+
 def session_anchors(d: Path, version: int) -> list:
     out = []
     for model in models(d):
         layout = load_json(d / "layouts" / f"{model}.json")
         pl = anchor_plans(d, model)
+        for f in d.glob(f"anchors-{model}-r*.json"):
+            for r in rows(f):
+                pid = r.get("plan_id", "")
+                if LAYER_ANCHOR.fullmatch(pid) and pid not in pl:
+                    plan = layer_anchor_plan(pl, pid, layout["n_layer"])
+                    if plan is not None:
+                        pl[pid] = plan
         acc: dict = {}
         for f in sorted(d.glob(f"anchors-{model}-r*.json")):
             for r in rows(f):
@@ -974,7 +1039,10 @@ def session_anchors(d: Path, version: int) -> list:
                 else:
                     e["ng"] = r["n_gen"]
         for (pid, lim), e in sorted(acc.items(), key=lambda kv: (kv[0][0], kv[0][1] or 0)):
+            if pid not in pl:
+                continue
             out.append({"id": f"{layout['model']}/{pid}/{'L' + str(lim) if lim else 'all'}",
+                        "held": bool(LAYER_ANCHOR.fullmatch(pid)),
                         "f": features(layout, pl[pid], lim, version), "prompt": e["np"] or PROMPT,
                         "gen": e["ng"] or GEN, "pp": statistics.median(e["pp"]) if e["pp"] else None,
                         "tg": statistics.median(e["tg"]) if e["tg"] else None})
@@ -1008,7 +1076,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dir", type=Path)
     ap.add_argument("--eval", type=Path)
-    ap.add_argument("--version", type=int, default=4)
+    ap.add_argument("--version", type=int, default=5)
+    ap.add_argument("--clocks", type=Path, help="decode-clocks.json of scripts/decode_clocks.py (version 5)")
     ap.add_argument("--committed", action="store_true")
     ap.add_argument("--json", type=Path)
     ap.add_argument("--ar-form", choices=["offset", "scale"], default="offset")
@@ -1037,7 +1106,19 @@ def main() -> int:
         version, resid = 1, []
     else:
         version = a.version
-        hw, resid = fit(prior_hw(a.dir), session_anchors(a.dir, version), version)
+        anchors = session_anchors(a.dir, version)
+        hw, resid = fit(prior_hw(a.dir), [x for x in anchors if not x.get("held")], version)
+    held: list = []
+    if a.clocks and version >= 5:
+        dc = load_json(a.clocks)
+        if dc.get("low_mhz") is not None:
+            hw["decode_clocks"] = {"low_mhz": dc["low_mhz"], "busy_mhz": dc.get("busy_mhz", {}),
+                                   "duty_threshold": dc.get("duty_threshold", 0.32)}
+    if not a.committed:
+        for x in anchors:
+            if x.get("held") and x["tg"] is not None:
+                p = predict(hw, x["f"], x["prompt"], x["gen"], version)
+                held.append((x["id"] + ":tg", math.log(p["tg"] / x["tg"])))
     g = next(d for d in hw["devices"] if d["kind"] == "gpu")
     c = g["compute"]
     rc = range_costs(hw)
@@ -1049,6 +1130,8 @@ def main() -> int:
           f"ar_step {(rc.get('allreduce_step_s') or 0) * 1e6:.2f} us")
     for k, v in resid:
         print(f"  anchor {k:<50} {v:+.3f}")
+    for k, v in held:
+        print(f"  held out {k:<48} {v:+.3f}")
     meas = measured(ev)
     out = []
     for r in predict_session(hw, ev, version):
@@ -1060,7 +1143,7 @@ def main() -> int:
               f"tg {r['tg']:6.1f} / {m.get('tg') or 0:6.1f} ({f(e['tg'])})")
     if a.json:
         a.json.write_text(json.dumps({"version": version, "ar_form": AR_FORM, "fit": a.dir.as_posix(),
-                                      "eval": ev.as_posix(), "residuals": resid, "rows": out, "hw": hw},
+                                      "eval": ev.as_posix(), "residuals": resid, "held_out": held, "rows": out, "hw": hw},
                                      indent=1) + "\n", newline="\n")
     return 0
 

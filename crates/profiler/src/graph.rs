@@ -3,6 +3,7 @@
 //! Every number carries its provenance (`Source`) and, when measured, the spread over repeats.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Where a number came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -374,6 +375,36 @@ pub struct RangeCosts {
     pub expert_slot_traffic: bool,
 }
 
+/// Decode clocks of a session (ADR 0082), from `scripts/decode_clocks.py`. A GPU whose decode duty
+/// is under `duty_threshold` runs at `low_mhz`, one above at the model's `busy_mhz`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DecodeClocks {
+    /// Median tail clock of the layer anchor's GPUs without the head.
+    pub low_mhz: f64,
+    /// Per `layout.model`: median tail clock of its single anchors.
+    #[serde(default)]
+    pub busy_mhz: BTreeMap<String, f64>,
+    /// Duty below which a GPU is in the low state (0.32).
+    pub duty_threshold: f64,
+}
+
+impl DecodeClocks {
+    /// One clock step of the GPU: a gap this small is not a different state.
+    pub const STEP_MHZ: f64 = 15.0;
+
+    /// The factor on a low-duty GPU's clock-bound decode terms for `model`:
+    /// `busy_mhz / low_mhz`, or 1 when the model has no entry, `low_mhz` is not positive or
+    /// the gap is within one clock step.
+    pub fn factor(&self, model: &str) -> f64 {
+        match self.busy_mhz.get(model) {
+            Some(&busy) if self.low_mhz > 0.0 && busy > self.low_mhz + Self::STEP_MHZ => {
+                busy / self.low_mhz
+            }
+            _ => 1.0,
+        }
+    }
+}
+
 fn one() -> f64 {
     1.0
 }
@@ -399,6 +430,10 @@ pub struct HardwareGraph {
     /// Fitted range and step costs of the multi-rank model; `None` uses the priors.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range_costs: Option<RangeCosts>,
+    /// SM clocks measured over the decode tails of a session (ADR 0082); `None` prices decode
+    /// as cost model 4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decode_clocks: Option<DecodeClocks>,
     #[serde(default)]
     pub devices: Vec<Device>,
     #[serde(default)]
@@ -677,6 +712,30 @@ mod tests {
         let mut bad = g.clone();
         bad.collectives[0].ranks[0] = "nope".into();
         assert!(bad.validate().unwrap_err().contains("unknown device"));
+    }
+
+    #[test]
+    fn decode_clocks_roundtrip_and_factor() {
+        let mut g = HardwareGraph::from_toml(FIXTURE).unwrap();
+        assert!(g.decode_clocks.is_none());
+        assert!(!g.to_json().unwrap().contains("decode_clocks"));
+        g.decode_clocks = Some(DecodeClocks {
+            low_mhz: 1695.0,
+            busy_mhz: BTreeMap::from([("a".to_string(), 1905.0), ("b".to_string(), 1620.0)]),
+            duty_threshold: 0.32,
+        });
+        assert_eq!(HardwareGraph::from_toml(&g.to_toml().unwrap()).unwrap(), g);
+        assert_eq!(HardwareGraph::from_json(&g.to_json().unwrap()).unwrap(), g);
+        let c = g.decode_clocks.as_ref().unwrap();
+        assert_eq!(c.factor("a"), 1905.0 / 1695.0);
+        // below the low clock, within one step of it, and no entry: no factor
+        assert_eq!(c.factor("b"), 1.0);
+        assert_eq!(c.factor("none"), 1.0);
+        let near = DecodeClocks {
+            busy_mhz: BTreeMap::from([("a".to_string(), 1710.0)]),
+            ..c.clone()
+        };
+        assert_eq!(near.factor("a"), 1.0);
     }
 
     #[test]

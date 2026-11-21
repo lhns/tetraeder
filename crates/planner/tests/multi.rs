@@ -18,6 +18,8 @@ const FOUR: &str = include_str!("../../costmodel/fixtures/four_3090_hoststaged.t
 const TWO_GPU: &str = include_str!("../../costmodel/fixtures/two_gpu_cpu_nvme.toml");
 const RTX3090: &str = include_str!("../fixtures/rtx3090_prior.toml");
 const CPU_ONLY: &str = include_str!("../fixtures/cpu_only.toml");
+/// The `decode_clocks` block of host 20210 (ADR 0082), appended to a graph fixture.
+const CLOCKS: &str = include_str!("../../costmodel/fixtures/decode_clocks_host20210.toml");
 
 const QUOTA: u32 = 8;
 
@@ -25,6 +27,10 @@ fn hw(toml: &str) -> HardwareGraph {
     let g = HardwareGraph::from_toml(toml).unwrap();
     g.validate().unwrap();
     g
+}
+
+fn with_clocks(toml: &str) -> HardwareGraph {
+    hw(&format!("{toml}\n{CLOCKS}"))
 }
 
 fn ids(hw: &HardwareGraph, l: &ModelLayout) -> Vec<String> {
@@ -121,12 +127,10 @@ fn round(x: f64) -> String {
     format!("{x:.3e}")
 }
 
-/// The predicted rates per candidate and fixture, committed; a change must update the file on
-/// purpose (`UPDATE_SNAPSHOT=1 cargo test -p tetraeder-planner --test multi`).
-#[test]
-fn predictions_match_the_committed_snapshot() {
+/// Every candidate of the fixtures predicted, as the snapshot files hold them.
+fn snapshot_text(fixtures: [(&str, HardwareGraph); 2]) -> String {
     let mut got: BTreeMap<String, String> = BTreeMap::new();
-    for (name, g) in [("two_3090", hw(TWO)), ("four_3090", hw(FOUR))] {
+    for (name, g) in fixtures {
         for l in [dense(), moe()] {
             let en = enumerate_multi_with(&g, &l, &Hints::default(), PHASE, QUOTA);
             for c in &en.candidates {
@@ -138,21 +142,170 @@ fn predictions_match_the_committed_snapshot() {
             }
         }
     }
-    let text = serde_json::to_string_pretty(&got).unwrap() + "\n";
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/snapshots/multi_predictions.json"
-    );
+    serde_json::to_string_pretty(&got).unwrap() + "\n"
+}
+
+/// The predicted rates per candidate and fixture, committed; a change must update the file on
+/// purpose (`UPDATE_SNAPSHOT=1 cargo test -p tetraeder-planner --test multi`).
+#[test]
+fn predictions_match_the_committed_snapshot() {
+    let text = snapshot_text([("two_3090", hw(TWO)), ("four_3090", hw(FOUR))]);
+    check_snapshot("multi_predictions.json", &text);
+}
+
+/// The same fixtures with host 20210's decode clocks (ADR 0082), committed beside the first.
+#[test]
+fn predictions_with_decode_clocks_match_the_committed_snapshot() {
+    let text = snapshot_text([
+        ("two_3090_clocks", with_clocks(TWO)),
+        ("four_3090_clocks", with_clocks(FOUR)),
+    ]);
+    check_snapshot("multi_predictions_clocks.json", &text);
+}
+
+fn check_snapshot(file: &str, text: &str) {
+    let path = format!("{}/tests/snapshots/{file}", env!("CARGO_MANIFEST_DIR"));
     if std::env::var("UPDATE_SNAPSHOT").is_ok() {
-        std::fs::write(path, &text).unwrap();
+        std::fs::write(&path, text).unwrap();
         return;
     }
-    let want = std::fs::read_to_string(path).unwrap_or_default();
+    let want = std::fs::read_to_string(&path).unwrap_or_default();
     assert_eq!(
         want.replace("\r\n", "\n"),
         text,
         "predictions changed; if on purpose, write this to {path}:\n{text}"
     );
+}
+
+/// ADR 0082 on the 2x fixture: with the clocks block no prediction moves (every GPU is busy
+/// more than 0.32 of a decode step), and the block does not change any prefill number.
+#[test]
+fn decode_clocks_change_nothing_on_two_gpus() {
+    let (plain, clocked) = (hw(TWO), with_clocks(TWO));
+    for l in [dense(), moe()] {
+        for c in enumerate_multi_with(&plain, &l, &Hints::default(), PHASE, QUOTA).candidates {
+            let w = (2048, 128);
+            let a = predict_candidate(&plain, &l, &c.plan, PHASE, w, None).unwrap();
+            let b = predict_candidate(&clocked, &l, &c.plan, PHASE, w, None).unwrap();
+            assert_eq!(a.pp_tok_s.to_bits(), b.pp_tok_s.to_bits(), "{}", c.id);
+            assert_eq!(
+                a.tg_tok_s.to_bits(),
+                b.tg_tok_s.to_bits(),
+                "{}/{}",
+                l.model,
+                c.id
+            );
+            assert!(a.decode_clocks.is_empty() && !b.decode_clocks.is_empty());
+        }
+    }
+}
+
+/// ADR 0082 on the 4x fixture: only 30B decode falls below the duty threshold somewhere; the 32B
+/// gets no factor (its busy clock is under the low one), prefill never moves.
+#[test]
+fn decode_clocks_slow_the_low_duty_30b_decode_on_four_gpus() {
+    let (plain, clocked) = (hw(FOUR), with_clocks(FOUR));
+    let mut moved = Vec::new();
+    for l in [dense(), moe()] {
+        for c in enumerate_multi_with(&plain, &l, &Hints::default(), PHASE, QUOTA).candidates {
+            let w = (2048, 128);
+            let a = predict_candidate(&plain, &l, &c.plan, PHASE, w, None).unwrap();
+            let b = predict_candidate(&clocked, &l, &c.plan, PHASE, w, None).unwrap();
+            assert_eq!(a.pp_tok_s.to_bits(), b.pp_tok_s.to_bits(), "{}", c.id);
+            if a.tg_tok_s.to_bits() != b.tg_tok_s.to_bits() {
+                assert!(b.tg_tok_s < a.tg_tok_s);
+                moved.push(format!("{}/{}", l.model, c.id));
+            }
+            for d in &b.decode_clocks {
+                assert_eq!(d.factor > 1.0, d.duty < 0.32 && l.is_moe(), "{}", c.id);
+            }
+        }
+    }
+    assert!(
+        moved.iter().any(|m| m == "qwen3-30b-a3b/layer-4"),
+        "{moved:?}"
+    );
+    assert!(
+        moved.iter().all(|m| m.starts_with("qwen3-30b-a3b/")),
+        "{moved:?}"
+    );
+}
+
+/// ADR 0082: `layer-4@L24` is the layer anchor, 6/6/6 and the rest of the 30B on the last
+/// stage, and only boxes with 3 or more GPUs have it.
+#[test]
+fn the_layer_anchor_cuts_six_six_six_and_the_rest() {
+    let (g, l) = (hw(FOUR), moe());
+    let c = candidate_for(&g, &l, &Hints::default(), PHASE, "layer-4@L24").unwrap();
+    assert_eq!(c.id, "layer-4@L24");
+    let topo = topology_of(&g, &l, &c.plan, PHASE).unwrap();
+    let spans: Vec<(u32, u32)> = topo
+        .stages
+        .iter()
+        .map(|s| (s.layers.0, s.layers.1))
+        .collect();
+    assert_eq!(spans, [(0, 6), (6, 12), (12, 18), (18, 48)]);
+    // limited to 24 layers every stage computes 6
+    let f = features_multi(&l, &topo, &c.plan.knobs, Some(24), None).unwrap();
+    let r = f.ranks.unwrap();
+    assert_eq!(r.model.as_deref(), Some("qwen3-30b-a3b"));
+    let ops: Vec<f64> = r
+        .phases
+        .iter()
+        .filter(|p| !p.out_rows)
+        .map(|p| p.parts[0].ops_per_token)
+        .collect();
+    assert_eq!(ops.len(), 4);
+    assert!(ops.windows(2).all(|w| w[0] == w[1]), "{ops:?}");
+    for id in ["layer-4@L24", "layer-2@L24"] {
+        assert!(candidate_for(&hw(TWO), &l, &Hints::default(), PHASE, id).is_err());
+    }
+    // not in the box's fixed set, and a limit that 4 does not divide is refused
+    let en = enumerate_multi_with(&g, &l, &Hints::default(), PHASE, QUOTA);
+    assert!(en.candidates.iter().all(|c| !c.id.contains('@')));
+    assert!(candidate_for(&g, &l, &Hints::default(), PHASE, "layer-4@L25").is_err());
+}
+
+/// ADR 0082: the layer anchor is held out. The fit is the same with and without its rows (and
+/// with the clocks in the graph), and its tg residual is reported.
+#[test]
+fn calibrate_holds_the_layer_anchor_out() {
+    let prior = hw(FOUR);
+    let clocked = with_clocks(FOUR);
+    let l = moe();
+    let rows_of = |g: &HardwareGraph, id: &str, limits: &[u32], tg_only: bool| {
+        let c = candidate_for(g, &l, &Hints::default(), PHASE, id).unwrap();
+        let topo = topology_of(g, &l, &c.plan, PHASE).unwrap();
+        let mut rows = Vec::new();
+        for &limit in limits {
+            let f = features_multi(&l, &topo, &c.plan.knobs, Some(limit), None).unwrap();
+            let p = predict(g, &f, 2048, 128).unwrap();
+            if !tg_only {
+                rows.push(serde_json::json!({"plan_id": id, "layer_limit": limit,
+                    "n_prompt": 2048, "n_gen": 0, "avg_ts": p.pp_tok_s}));
+            }
+            rows.push(serde_json::json!({"plan_id": id, "layer_limit": limit,
+                "n_prompt": 0, "n_gen": 128, "avg_ts": p.tg_tok_s}));
+        }
+        rows
+    };
+    let single = rows_of(&clocked, "single", &[8, 16, 24], false);
+    let mut with_layer = single.clone();
+    with_layer.extend(rows_of(&clocked, "layer-4@L24", &[24], true));
+    let text = |v: &[serde_json::Value]| serde_json::to_string(v).unwrap();
+    let without = multi_cli::calibrate(&prior, &[(moe(), vec![text(&single)])]).unwrap();
+    let with = multi_cli::calibrate(&clocked, &[(moe(), vec![text(&with_layer)])]).unwrap();
+    assert_eq!(with.anchors, without.anchors);
+    assert_eq!(with.residuals, without.residuals);
+    assert!(without.held_out.is_empty());
+    let mut fitted = with.hw.clone();
+    assert_eq!(fitted.decode_clocks, clocked.decode_clocks);
+    fitted.decode_clocks = None;
+    assert_eq!(fitted, without.hw);
+    assert_eq!(with.held_out.len(), 1);
+    let (id, r) = &with.held_out[0];
+    assert_eq!(id, "qwen3-30b-a3b/layer-4@L24/L24:tg");
+    assert!(r.is_finite(), "{r}");
 }
 
 /// A slow host link (fault): staged copies and the all-reduce curves get ten times slower. Rules

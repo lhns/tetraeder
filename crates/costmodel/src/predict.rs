@@ -156,6 +156,10 @@ pub struct RankFeatures {
     /// Prefill micro-batches pipelined over the stages (ADR 0077); 1 runs the stages in turn.
     #[serde(default = "one_u32", skip_serializing_if = "is_one")]
     pub prefill_micro_batches: u32,
+    /// `layout.model` of the run (ADR 0082): the key into `HardwareGraph::decode_clocks`.
+    /// `None` prices decode as cost model 4.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 fn one_u32() -> u32 {
@@ -218,6 +222,22 @@ pub struct Prediction {
     pub pp_breakdown: Vec<(String, f64)>,
     /// Label of the largest `tg_breakdown` term.
     pub binding: String,
+    /// The decode clock assumed for each GPU of a ranks plan (ADR 0082); empty without
+    /// `HardwareGraph::decode_clocks`. Not part of the step sum.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decode_clocks: Vec<DecodeClock>,
+}
+
+/// One GPU's decode state in a prediction (ADR 0082).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DecodeClock {
+    pub device: String,
+    /// Busy share of the unscaled decode step.
+    pub duty: f64,
+    /// Factor on the clock-bound terms of the GPU's decode part (1: busy state or no gap).
+    pub factor: f64,
+    /// The SM clock the prediction assumes.
+    pub mhz: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -526,6 +546,7 @@ pub fn predict(
         tg_breakdown: tg,
         pp_breakdown: pp,
         binding,
+        decode_clocks: Vec::new(),
     })
 }
 
@@ -540,17 +561,20 @@ pub fn predict(
 ///
 /// `S` (the routed slots' activation bytes, ADR 0080) counts only when `slots` (the graph's
 /// `RangeCosts::expert_slot_traffic`); its kernels run apart from the matmuls, so it adds.
-fn part_time_s(p: &DevicePart, r: &Rates, m: f64, ctx: f64, slots: bool) -> f64 {
+///
+/// `k` (ADR 0082, decode of a GPU in the low clock state) multiplies the clock-bound terms: `c0 ops`,
+/// the routed-expert roofline and `S m / B`. The dense and KV rooflines stay. `k = 1` changes no bit.
+fn part_time_s(p: &DevicePart, r: &Rates, m: f64, ctx: f64, slots: bool, k: f64) -> f64 {
     let slot = if slots {
         p.expert_slot_bytes_per_token * m / r.b
     } else {
         0.0
     };
-    r.c0 * p.ops_per_token
+    r.c0 * p.ops_per_token * k
         + (2.0 * p.params_per_token * m / r.f).max(p.weight_bytes_per_token / r.b)
-        + (2.0 * p.expert_params_per_token * m / r.f_exp).max(p.expert_bytes_per_token / r.b)
+        + (2.0 * p.expert_params_per_token * m / r.f_exp).max(p.expert_bytes_per_token / r.b) * k
         + (p.attn_flops_per_ctx_token * m * ctx / r.f).max(p.kv_bytes_per_ctx_token * ctx / r.b)
-        + slot
+        + slot * k
 }
 
 /// `(alpha, beta)` of the link between two devices, beta capped by its lane group.
@@ -738,11 +762,13 @@ fn predict_ranks(
     };
     // One phase for `m` tokens at mean context `ctx`, as breakdown terms; `with_after` charges
     // the collective that ends it.
+    // `ks`: the decode factor of each GPU in the low clock state (ADR 0082); empty elsewhere.
     let phase = |ph: &Phase,
                  m: f64,
                  ctx: f64,
                  prefill: bool,
                  with_after: bool,
+                 ks: &[(String, f64)],
                  out: &mut Vec<(String, f64)>|
      -> Result<(), PredictError> {
         {
@@ -760,7 +786,8 @@ fn predict_ranks(
                     .find(|e| e.0 == p.device)
                     .map(|e| e.1)
                     .ok_or_else(|| PredictError::UnknownDevice(p.device.clone()))?;
-                let t = part_time_s(p, &rt, m, ctx, costs.expert_slot_traffic);
+                let k = ks.iter().find(|e| e.0 == p.device).map_or(1.0, |e| e.1);
+                let t = part_time_s(p, &rt, m, ctx, costs.expert_slot_traffic, k);
                 if t > slowest.1 || slowest.0.is_empty() {
                     slowest = (p.device.clone(), t);
                 }
@@ -784,10 +811,11 @@ fn predict_ranks(
     let step = |m: f64,
                 ctx: f64,
                 prefill: bool,
+                ks: &[(String, f64)],
                 out: &mut Vec<(String, f64)>|
      -> Result<(), PredictError> {
         for ph in &r.phases {
-            phase(ph, m, ctx, prefill, true, out)?;
+            phase(ph, m, ctx, prefill, true, ks, out)?;
         }
         if r.step_fixed {
             add(out, "step".into(), costs.c_step_s);
@@ -795,9 +823,62 @@ fn predict_ranks(
         Ok(())
     };
 
+    let dec_ctx = f64::from(gen_tokens) / 2.0;
     let mut tg: Vec<(String, f64)> = Vec::new();
-    step(1.0, f64::from(gen_tokens) / 2.0, false, &mut tg)?;
-    let t_tok: f64 = tg.iter().map(|e| e.1).sum();
+    step(1.0, dec_ctx, false, &[], &mut tg)?;
+    let mut t_tok: f64 = tg.iter().map(|e| e.1).sum();
+    // Cost model 5 (ADR 0082): a GPU busy under the duty threshold of the unscaled step runs at the
+    // low clock; the step is recomputed once with the factor on its clock-bound terms.
+    let mut clocks: Vec<DecodeClock> = Vec::new();
+    if let (Some(dc), Some(model)) = (&hw.decode_clocks, r.model.as_deref()) {
+        let k_model = dc.factor(model);
+        let mut busy: Vec<(String, f64)> = Vec::new();
+        for ph in &r.phases {
+            let rep = f64::from(ph.repeat);
+            let coll = match &ph.after {
+                Some(c @ Coll::AllReduce { group, .. }) => Some((group, coll_time(hw, c, 1.0)?.1)),
+                _ => None,
+            };
+            for p in &ph.parts {
+                let rt = rates_of
+                    .iter()
+                    .find(|e| e.0 == p.device)
+                    .map(|e| e.1)
+                    .ok_or_else(|| PredictError::UnknownDevice(p.device.clone()))?;
+                let mut t = part_time_s(p, &rt, 1.0, dec_ctx, costs.expert_slot_traffic, 1.0);
+                if let Some((group, tc)) = &coll
+                    && group.contains(&p.device)
+                {
+                    t += tc;
+                }
+                add(&mut busy, p.device.clone(), rep * t);
+            }
+        }
+        let mut ks: Vec<(String, f64)> = Vec::new();
+        for (device, b) in busy {
+            let duty = b / t_tok;
+            let low = duty < dc.duty_threshold;
+            let factor = if low { k_model } else { 1.0 };
+            if factor > 1.0 {
+                ks.push((device.clone(), factor));
+            }
+            let mhz = match dc.busy_mhz.get(model) {
+                Some(&busy_mhz) if !low => busy_mhz,
+                _ => dc.low_mhz,
+            };
+            clocks.push(DecodeClock {
+                device,
+                duty,
+                factor,
+                mhz,
+            });
+        }
+        if !ks.is_empty() {
+            tg.clear();
+            step(1.0, dec_ctx, false, &ks, &mut tg)?;
+            t_tok = tg.iter().map(|e| e.1).sum();
+        }
+    }
 
     let mut pp: Vec<(String, f64)> = Vec::new();
     let mut done = 0u32;
@@ -822,7 +903,7 @@ fn predict_ranks(
                     let last = st[st.len() - 1];
                     for &i in st {
                         let hop = s + 1 < n_st && i == last;
-                        phase(&r.phases[i], m, ctx, true, !hop, &mut terms)?;
+                        phase(&r.phases[i], m, ctx, true, !hop, &[], &mut terms)?;
                     }
                     let t: f64 = terms.iter().map(|e| e.1).sum();
                     free[s] = arrive.max(free[s]) + t;
@@ -839,7 +920,7 @@ fn predict_ranks(
             add(&mut pp, "pipeline".into(), free[n_st - 1]);
             let m = f64::from(n);
             for ph in r.phases.iter().filter(|p| p.out_rows) {
-                phase(ph, m, f64::from(done) + m / 2.0, true, true, &mut pp)?;
+                phase(ph, m, f64::from(done) + m / 2.0, true, true, &[], &mut pp)?;
             }
             if r.step_fixed {
                 add(&mut pp, "step".into(), costs.c_step_s);
@@ -850,7 +931,7 @@ fn predict_ranks(
     while done < prompt {
         let m_tok = f.ubatch.min(prompt - done);
         let m = f64::from(m_tok);
-        step(m, f64::from(done) + m / 2.0, true, &mut pp)?;
+        step(m, f64::from(done) + m / 2.0, true, &[], &mut pp)?;
         done += m_tok;
     }
     let t_pp: f64 = pp.iter().map(|e| e.1).sum();
@@ -866,6 +947,7 @@ fn predict_ranks(
         tg_breakdown: tg,
         pp_breakdown: pp,
         binding,
+        decode_clocks: clocks,
     })
 }
 

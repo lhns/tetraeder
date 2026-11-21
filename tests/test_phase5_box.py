@@ -364,7 +364,7 @@ def test_four_gpu_boxes_anchor_tp_4_on_the_dense_model_only(tmp_path):
     # the session's own 4-GPU plan, every GPU visible
     assert "/plans/qwen3-32b-tp-4.toml" in cmd and "--layer-limit 16" in cmd and "CUDA_VISIBLE_DEVICES" not in cmd
     assert any(f"anchors-{D}-r1.json" in ln and "(6 parts)" in ln for ln in four)
-    assert any(f"anchors-{M}-r1.json" in ln and "(4 parts)" in ln for ln in four)
+    assert any(f"anchors-{M}-r1.json" in ln and "(5 parts)" in ln for ln in four)  # plus the layer anchor (ADR 0082)
     two = dry(tmp_path / "two")
     assert not [n for n in runs(two) if "-anchor-tp-4-" in n]
     assert any(f"anchors-{D}-r1.json" in ln and "(4 parts)" in ln for ln in two)
@@ -444,3 +444,78 @@ def test_pp_overlap_plan_variant_and_report(tmp_path):
     assert rep["judged"] is False and len(rep["runs"]) == 4
     assert rep["median_pp_tps"] == {"1": 1010.0, "4": 1480.0}
     assert abs(rep["pp_ratio_mb4_mb1"] - 1480.0 / 1010.0) < 1e-12
+
+
+def test_every_timed_run_has_a_clock_log_and_a_window_file(tmp_path):
+    """ADR 0082: 20 ms nvidia-smi log and `start=<epoch> end=<epoch>` beside every run, anchors and candidates."""
+    lines = dry(tmp_path)
+    n = len(runs(lines))
+    assert n and sum("nvidia-smi clocks every 20 ms -> clocks-" in ln for ln in lines) == n
+    src = SCRIPT.read_text()
+    assert "--query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw," in src and "-lms 20" in src
+    assert "window-$run.txt" in src and "clocks-$1.csv" in src and "stop_clocks" in src
+
+
+def test_the_layer_anchor_is_on_with_three_or_more_gpus_and_off_on_two(tmp_path):
+    """Owner-approved 2026-11-21 (ADR 0082): default on at NGPUS >= 3, off at 2; LAYER_ANCHOR overrides."""
+    on = dry(tmp_path / "four", ngpu="4")
+    assert [n for n in runs(on) if "@L" in n]
+    for ngpu, env, want in (("2", {}, False), ("2", {"LAYER_ANCHOR": "1"}, False), ("4", {"LAYER_ANCHOR": "0"}, False)):
+        lines = dry(tmp_path / f"{ngpu}{env}", ngpu=ngpu, **env)
+        assert bool([n for n in runs(lines) if "@L" in n]) is want
+        assert not any("--anchor layer" in ln for ln in lines)
+
+
+def test_calibrate_logs_one_decode_clocks_line_per_model(tmp_path):
+    assert any("decode_clocks <model>: busy_mhz=" in ln for ln in dry(tmp_path, ngpu="4"))
+    src = SCRIPT.read_text()
+    code = re.search(r"<< 'PYEND'\n(.*?)\nPYEND\n", src, re.S).group(1)
+
+    def line(clocks, layout_model="Qwen3 30B Gptq Fp16"):
+        (tmp_path / "decode-clocks.json").write_text(json.dumps(clocks))
+        (tmp_path / "layout.json").write_text(json.dumps({"model": layout_model}))
+        r = subprocess.run([sys.executable, "-I", "-", str(tmp_path / "decode-clocks.json"), str(tmp_path / "layout.json"), M],
+                           input=code, capture_output=True, text=True, check=True, timeout=60)
+        return r.stdout.strip()
+
+    ok = line({"low_mhz": 1695.0, "busy_mhz": {"Qwen3 30B Gptq Fp16": 1905.0}})
+    assert ok.startswith(f"decode_clocks {M}: busy_mhz=1905 low_mhz=1695 k=1.124") and "(" not in ok
+    # the file stem as key, not the GGUF display name: a reason, not a silent k = 1
+    bad = line({"low_mhz": 1695.0, "busy_mhz": {M: 1905.0}})
+    assert "k=1.000" in bad and "no busy clock for layout model 'Qwen3 30B Gptq Fp16'" in bad and repr(M) in bad
+    assert "no low clock" in line({"low_mhz": None, "busy_mhz": {}})
+    assert "within 15 MHz" in line({"low_mhz": 1590.0, "busy_mhz": {"Qwen3 30B Gptq Fp16": 1590.0}})
+
+
+def test_the_layer_anchor_runs_tg128_ten_reps_for_the_moe_model_two_rounds(tmp_path):
+    lines = dry(tmp_path, ngpu="4")
+    names = [n for n in runs(lines) if "@L" in n]
+    assert names == [f"{M}-anchor-layer-4@L32-L32-r{k}" for k in (1, 2)]  # DRY layouts have 64 layers
+    cmd = next(ln for ln in lines if f"> {M}-layer-4@L32-L32-r1.json" in ln)
+    assert "plans-anchor/qwen3-30b-a3b-layer-4@L32.toml" in cmd and "--layer-limit 32" in cmd
+    assert "-p 0 -n 128 -r 10" in cmd and "-p 2048" not in cmd and "CUDA_VISIBLE_DEVICES" not in cmd
+    assert any("--anchor layer-4@L" in ln and "--plans-dir plans-anchor" in ln for ln in lines)
+    # its part joins the model's merge: single and tp-2 at two depths, plus the layer anchor
+    assert any(f"anchors-{M}-r1.json" in ln and "(5 parts)" in ln for ln in lines)
+    assert any(f"anchors-{D}-r1.json" in ln and "(6 parts)" in ln for ln in lines)
+    # the dense model alone gets it when no MoE model is in the session
+    one = dry(tmp_path / "dense", ngpu="4", MODELS=D)
+    assert [n for n in runs(one) if "@L" in n] == [f"{D}-anchor-layer-4@L32-L32-r{k}" for k in (1, 2)]
+
+
+def test_calibrate_gets_the_decode_clocks(tmp_path):
+    lines = dry(tmp_path, ngpu="4")
+    assert any("scripts/decode_clocks.py" in ln for ln in lines)
+    cal = next(ln for ln in lines if "tetraeder-plan calibrate" in ln)
+    assert "--clocks decode-clocks.json" in cal
+
+
+def test_the_layer_anchor_part_keeps_its_shape_id_and_limit_in_the_merge(tmp_path):
+    text = SCRIPT.read_text()
+    code = re.search(r"\"\$py\" - \"\$out\" \"\$m\" \"\$k\" \"\$want\" << 'EOF'[^\n]*\n(.*?)\nEOF\n", text, re.S).group(1)
+    parts = tmp_path / "anchor-parts"
+    parts.mkdir()
+    (parts / f"{M}-layer-4@L24-L24-r1.json").write_text(json.dumps([{"plan_id": "0123abcd", "n_prompt": 0, "n_gen": 128}]))
+    subprocess.run([sys.executable, "-c", code, str(tmp_path), M, "1", "1"], check=True, timeout=60)
+    rows = json.loads((tmp_path / f"anchors-{M}-r1.json").read_text())
+    assert [(r["plan_id"], r["layer_limit"]) for r in rows] == [("layer-4@L24", 24)]

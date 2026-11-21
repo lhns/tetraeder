@@ -1,5 +1,5 @@
 {
-  "cost_model_version": 4,
+  "cost_model_version": 5,
   "session": "20261103-744f1ba65ca1-planner",
   "key": {
     "engine_commit": "pre-0056",

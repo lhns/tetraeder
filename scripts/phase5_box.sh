@@ -61,12 +61,25 @@
 # verdict.json. Unset, the behaviour is the full session. Order on the first 2x box (S2):
 #   SESSION=<s>-step0 ROUNDS=2 ONLY="tp-2 llama-bench:tensor" bash scripts/phase5_box.sh <s>-step0 2   # round 2 reversed: two interleaved pairs
 #   SESSION=<s> ROUNDS=1 bash scripts/phase5_box.sh <s> 2                                              # the rehearsal
+# Clock logs (ADR 0082): every timed run (anchors and candidates) has `nvidia-smi --query-gpu=timestamp,index,clocks.sm,
+# clocks.mem,power.draw,clocks_event_reasons.active --format=csv -lms 20` beside it, clocks-<run>.csv, and window-<run>.txt
+# (`start=<epoch> end=<epoch>`, `date +%s.%N` before and after the process); scripts/decode_clocks.py cuts them to the timed
+# decode tail and writes decode-clocks.json, which `calibrate --clocks` puts into the graph (cost model 5). Not with SKIP_GPU.
+# Every timed run goes through run_one (candidates, both llama.cpp baselines, the A/A run, anchors, pp-overlap), so the
+# logger is the same for both engines. The layer anchor `layer-<g>@L<L/2>` (owner-approved 2026-11-21) is on by default
+# on boxes with g >= 3 GPUs and off on 2-GPU boxes; LAYER_ANCHOR=0 turns it off, LAYER_ANCHOR=1 on. It goes to the first MoE model (else the first model): the session's layer-<g> shape cut 6/6/6/30 on four GPUs, tg128 -r 10,
+# two rounds, merged into anchors-<model>-r<k>.json; `calibrate` holds it out of the fit and reports its residual.
 # GPU throttle (ADR 0068 "Throttle"): scripts/gpu_sampler.sh runs for the whole session (1 Hz, every GPU,
 # gpu-samples.csv; not with SKIP_GPU/DRY_RUN) and run_one stamps window-<run>.json (box-local start and end); the summary
 # judges each run on the sampler's window samples per GPU.
 # cargo and every long job run with fd 8 closed: a server they start would otherwise keep the lock.
 DRY="${DRY_RUN:-0}"
 skip_gpu="${SKIP_GPU:-0}"
+# layer anchor (ADR 0082): on by default with 3 or more GPUs
+layer_anchor="${LAYER_ANCHOR:-}"
+if [ -z "$layer_anchor" ]; then
+  if [ "${2:-${NGPUS:-0}}" -ge 3 ] 2> /dev/null; then layer_anchor=1; else layer_anchor=0; fi
+fi
 if [ "$DRY" != 1 ]; then
   exec 8> "${P5_LOCK:-/root/tetraeder_phase5_box.lock}"
   flock -n 8 || exit 0
@@ -130,6 +143,7 @@ gpu_list=0,1
 [ "$ngpu" = 4 ] && gpu_list=0,1,2,3
 server_pid=""
 sampler_pid=""
+clock_pid=""
 
 declare -A MODEL_FILE=(
   [qwen3-32b]="${MODEL_QWEN3_32B:-$models_dir/Qwen__Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M.gguf}"
@@ -155,7 +169,24 @@ die() {
   exit 1
 }
 
+# clocks_start RUN: the 20 ms clock log of every GPU into clocks-RUN.csv (ADR 0082); stop_clocks ends it
+clocks_start() {
+  [ "$skip_gpu" = 1 ] && return 0
+  local why=clocks_event_reasons.active
+  nvidia-smi --query-gpu="$why" --format=csv,noheader > /dev/null 2>&1 || why=clocks_throttle_reasons.active
+  setsid nohup nvidia-smi --query-gpu=timestamp,index,clocks.sm,clocks.mem,power.draw,"$why" --format=csv -lms 20 \
+    > "$out/clocks-$1.csv" 2> /dev/null 8>&- &
+  clock_pid=$!
+}
+stop_clocks() {
+  [ -n "$clock_pid" ] || return 0
+  kill "$clock_pid" 2> /dev/null
+  wait "$clock_pid" 2> /dev/null
+  clock_pid=""
+}
+
 stop_server() {
+  stop_clocks
   [ -n "$server_pid" ] || return 0
   kill "$server_pid" 2> /dev/null
   for _ in $(seq 1 30); do kill -0 "$server_pid" 2> /dev/null || break; sleep 1; done
@@ -572,6 +603,7 @@ run_one() {
   say "run $run start"
   if [ "$DRY" = 1 ]; then
     plan "$* > ${f##*/}"
+    plan "nvidia-smi clocks every 20 ms -> clocks-$run.csv, window-$run.txt"
     gpu_note "$run" before
     gpu_note "$run" after
     return 0
@@ -581,6 +613,7 @@ run_one() {
   gpu_note "$run" before
   t0=$(date +%s.%N)
   w0=$(date +%Y-%m-%dT%H:%M:%S)
+  clocks_start "$run"
   setsid nohup timeout -k 30 30m "$@" < /dev/null > "$f.tmp" 2> "$out/$run.log" 8>&- &
   server_pid=$!
   sampler_start "$run" "$model" "$server_pid"
@@ -589,6 +622,8 @@ run_one() {
   server_pid=""
   t1=$(date +%s.%N)
   w1=$(date +%Y-%m-%dT%H:%M:%S)
+  stop_clocks
+  [ "$skip_gpu" = 1 ] || printf 'start=%s end=%s\n' "$t0" "$t1" > "$out/window-$run.txt"
   gpu_note "$run" after
   # box-local start and end of the process, the clock of the sampler's timestamps (phase5_summary.py run_window)
   printf '{"start": "%s", "end": "%s"}\n' "$w0" "$w1" > "$out/window-$run.json"
@@ -601,8 +636,10 @@ run_one() {
 }
 
 # Commands of the three kinds of run. $threads is the one explicit -t of both engines.
-tet_cmd() { # tet_cmd MODEL PLAN_FILE [LAYER_LIMIT]
-  local c=("$tet" bench -m "${MODEL_FILE[$1]}" --engine "${MODEL_ENGINE[$1]}" --plan "$2" -p 2048 -n 128 -r 1 -t "$threads"
+tet_cmd() { # tet_cmd MODEL PLAN_FILE [LAYER_LIMIT [PNR]]: PNR replaces "-p 2048 -n 128 -r 1"
+  local pnr=(-p 2048 -n 128 -r 1)
+  [ -n "${4:-}" ] && read -ra pnr <<< "$4"
+  local c=("$tet" bench -m "${MODEL_FILE[$1]}" --engine "${MODEL_ENGINE[$1]}" --plan "$2" "${pnr[@]}" -t "$threads"
     --ngl -1 --ubatch 512 --flash-attn on -o json)
   [ -n "${3:-}" ] && c+=(--layer-limit "$3")
   echo "${c[@]}"
@@ -680,7 +717,40 @@ prepass() {
 # ---- stage: anchors ----------------------------------------------------------------------------------------
 # Truncated runs; no anchor equals a candidate. tp-2 on a 4x box runs on GPUs 0 and 1 with a plan made from a 2-GPU graph.
 anchor_plan() { # anchor_plan MODEL ID: the plan file of an anchor
-  if [ "$2" = tp-2 ] && [ "$ngpu" = 4 ]; then echo "$out/plans-anchor/$1-tp-2.toml"; else echo "$out/plans/$1-$2.toml"; fi
+  if { [ "$2" = tp-2 ] && [ "$ngpu" = 4 ]; } || [[ "$2" == *@L* ]]; then
+    echo "$out/plans-anchor/$1-$2.toml"
+  else
+    echo "$out/plans/$1-$2.toml"
+  fi
+}
+
+# layer_anchor_model: the model that gets the layer anchor, the first MoE model of the session, else its first model
+layer_anchor_model() {
+  local m
+  for m in $models; do
+    if [ "${MODEL_ENGINE[$m]}" = moe ]; then
+      echo "$m"
+      return 0
+    fi
+  done
+  echo "${models%% *}"
+}
+
+# layer_anchor_plan: the plan of the layer anchor (ADR 0082) from the box's own hardware graph, in plans-anchor/
+layer_anchor_plan() {
+  [ "$layer_anchor" = 1 ] && [ "$ngpu" -ge 3 ] || return 0
+  local m n_layer
+  m=$(layer_anchor_model)
+  if [ "$DRY" = 1 ]; then
+    plan "$planbin candidates --multi --layout layouts/$m.json --hw hw.json --anchor layer-$ngpu@L<L/2> --out plans-anchor/candidates-layer-$m.json --plans-dir plans-anchor"
+    return 0
+  fi
+  n_layer=$("$py" -c 'import json,sys; print(json.load(open(sys.argv[1]))["n_layer"])' "$out/layouts/$m.json")
+  mkdir -p "$out/plans-anchor"
+  [ -s "$out/plans-anchor/$m-layer-$ngpu@L$((n_layer / 2)).toml" ] && return 0
+  "$planbin" candidates --multi --layout "$out/layouts/$m.json" --hw "$out/hw.json" --anchor "layer-$ngpu@L$((n_layer / 2))" \
+    --out "$out/plans-anchor/candidates-layer-$m.json" --plans-dir "$out/plans-anchor" 8>&- || die "layer anchor plan of $m failed"
+  key_plans "$out/plans-anchor" "$m" "$out/layouts/$m.json"
 }
 
 anchor_plans_4x() { # a 2-GPU hardware graph (CUDA_VISIBLE_DEVICES=0,1) gives the tp-2 plan
@@ -706,12 +776,18 @@ anchor_ids() {
 }
 
 anchors() {
-  local m k plan_id lim n_layer f vis ids want
+  local m k plan_id lim n_layer f vis ids want la
   anchor_plans_4x
+  layer_anchor_plan
   for m in $models; do
     if [ "$DRY" = 1 ]; then n_layer=64; else n_layer=$("$py" -c 'import json,sys; print(json.load(open(sys.argv[1]))["n_layer"])' "$out/layouts/$m.json"); fi
     ids=$(anchor_ids "$m")
     want=$(($(wc -w <<< "$ids") * 2))
+    la=""
+    if [ "$layer_anchor" = 1 ] && [ "$ngpu" -ge 3 ] && [ "$m" = "$(layer_anchor_model)" ]; then
+      la="layer-$ngpu@L$((n_layer / 2))"
+      want=$((want + 1))
+    fi
     for k in 1 2; do
       f="$out/anchors-$m-r$k.json"
       [ -f "$f" ] && continue
@@ -724,6 +800,11 @@ anchors() {
             $vis $(tet_cmd "$m" "$(anchor_plan "$m" "$plan_id")" "$lim")
         done
       done
+      if [ -n "$la" ]; then
+        # shellcheck disable=SC2046
+        run_one anchor "$m" "$m-anchor-$la-L$((n_layer / 2))-r$k" "$out/anchor-parts/$m-$la-L$((n_layer / 2))-r$k.json" 0 \
+          $(tet_cmd "$m" "$(anchor_plan "$m" "$la")" "$((n_layer / 2))" "-p 0 -n 128 -r 10")
+      fi
       if [ "$DRY" = 1 ]; then
         plan "merge anchor-parts/$m-*-r$k.json ($want parts) -> anchors-$m-r$k.json (plan_id, layer_limit set on every row)"
       else
@@ -775,18 +856,63 @@ routing() {
   done
 }
 
+# log_decode_clocks: one line per model, what cost model 5 will use (ADR 0082); a key that does not match
+# layout.model is a reason, not a silent k = 1
+log_decode_clocks() {
+  local m
+  for m in $models; do
+    "$py" -I - "$out/decode-clocks.json" "$out/layouts/$m.json" "$m" << 'PYEND'
+import json, sys
+path, layout, key = sys.argv[1:4]
+try:
+    name = json.load(open(layout))["model"]
+except (OSError, ValueError, KeyError):
+    name = key
+try:
+    d = json.load(open(path))
+except (OSError, ValueError):
+    d = None
+low = d.get("low_mhz") if d else None
+busy = (d.get("busy_mhz") or {}).get(name) if d else None
+k, why = 1.0, ""
+if d is None:
+    why = "no decode-clocks.json"
+elif low is None:
+    why = "no low clock: layer anchor missing or withheld, see decode-clocks.log"
+elif busy is None:
+    keys = ", ".join(repr(x) for x in (d.get("busy_mhz") or {})) or "none"
+    why = f"no busy clock for layout model {name!r}; busy_mhz keys: {keys}"
+elif busy <= low + 15:
+    why = "busy clock within 15 MHz of the low clock or below it"
+else:
+    k = busy / low
+show = lambda x: "n/a" if x is None else f"{x:g}"
+print(f"decode_clocks {key}: busy_mhz={show(busy)} low_mhz={show(low)} k={k:.3f}" + (f" ({why})" if why else ""))
+PYEND
+  done
+}
+
 calibrate() {
-  local comm=()
+  local comm=() clocks=()
   routing
   [ "$skip_gpu" != 1 ] && comm=(--comm "$out/calib-comm.json")
   if [ "$DRY" = 1 ]; then
-    plan "$planbin calibrate --hw hw.json --comm calib-comm.json --layout-dir layouts --anchors . --out calib.json"
+    plan "$py -I scripts/decode_clocks.py . --out decode-clocks.json"
+    plan "$planbin calibrate --hw hw.json --comm calib-comm.json --clocks decode-clocks.json --layout-dir layouts --anchors . --out calib.json"
+    plan "log one line per model: decode_clocks <model>: busy_mhz=<x> low_mhz=<y> k=<k> (<reason if k=1>)"
     return 0
   fi
-  [ -s "$out/calib.json" ] && return 0
-  "$planbin" calibrate --hw "$out/hw.json" "${comm[@]}" --layout-dir "$out/layouts" --anchors "$out" --out "$out/calib.json" \
+  [ -s "$out/calib.json" ] && { log_decode_clocks; return 0; }
+  # the decode clocks of the anchors (ADR 0082); without a usable layer anchor the file has no low clock and the graph none
+  if [ "$skip_gpu" != 1 ]; then
+    "$py" -I scripts/decode_clocks.py "$out" --out "$out/decode-clocks.json" > "$out/decode-clocks.log" 2>&1 \
+      && clocks=(--clocks "$out/decode-clocks.json")
+    cat "$out/decode-clocks.log"
+  fi
+  "$planbin" calibrate --hw "$out/hw.json" "${comm[@]}" "${clocks[@]}" --layout-dir "$out/layouts" --anchors "$out" --out "$out/calib.json" \
     > "$out/calibrate.log" 2>&1 8>&- || die "calibrate failed (see calibrate.log)"
   cat "$out/calibrate.log"
+  log_decode_clocks
 }
 
 predict() {

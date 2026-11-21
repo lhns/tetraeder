@@ -1,0 +1,17 @@
+{
+  "four_3090_clocks/qwen3-30b-a3b/ep-4": "pp 5.809e3 tg 6.097e1",
+  "four_3090_clocks/qwen3-30b-a3b/layer-4": "pp 1.257e4 tg 9.792e1",
+  "four_3090_clocks/qwen3-30b-a3b/single": "pp 5.729e3 tg 1.094e2",
+  "four_3090_clocks/qwen3-30b-a3b/tp2-pp2": "pp 8.536e3 tg 7.648e1",
+  "four_3090_clocks/qwen3-32b/layer-4": "pp 1.396e3 tg 3.410e1",
+  "four_3090_clocks/qwen3-32b/single": "pp 6.214e2 tg 3.422e1",
+  "four_3090_clocks/qwen3-32b/tp-4": "pp 1.317e3 tg 4.174e1",
+  "four_3090_clocks/qwen3-32b/tp2-pp2": "pp 1.523e3 tg 4.093e1",
+  "two_3090_clocks/qwen3-30b-a3b/ep-2": "pp 5.846e3 tg 7.678e1",
+  "two_3090_clocks/qwen3-30b-a3b/layer-2": "pp 9.030e3 tg 1.091e2",
+  "two_3090_clocks/qwen3-30b-a3b/single": "pp 5.730e3 tg 1.096e2",
+  "two_3090_clocks/qwen3-30b-a3b/tp-2": "pp 5.372e3 tg 7.654e1",
+  "two_3090_clocks/qwen3-32b/layer-2": "pp 9.827e2 tg 3.420e1",
+  "two_3090_clocks/qwen3-32b/single": "pp 6.214e2 tg 3.425e1",
+  "two_3090_clocks/qwen3-32b/tp-2": "pp 9.614e2 tg 4.095e1"
+}
