@@ -1,0 +1,2 @@
+withheld qwen3-30b-a3b-anchor-single-L12-r2: gpu0: 14 tail samples, under 15
+low None MHz, busy {'Qwen3 30B Gptq Fp16': 1800.0, 'Qwen3 32B Awq Compatible Instruct': 1680.0} -> /root/tetraeder/bench/results/v2c-20261121/phase5/decode-clocks.json

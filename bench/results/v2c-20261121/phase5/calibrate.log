@@ -1,0 +1,3 @@
+decode clocks: /root/tetraeder/bench/results/v2c-20261121/phase5/decode-clocks.json withholds low_mhz, cost model 4 rates
+cpu compute: not used (no anchor places compute on the CPU)
+8 anchors, band 0.069 -> /root/tetraeder/bench/results/v2c-20261121/phase5/calib.json

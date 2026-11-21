@@ -2045,21 +2045,23 @@ nodes:
   title: Two-GPU verdict session
   track: bench
   kind: session
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/v2c-20261121/README.md
+  - bench/results/v2c-20261121/phase5/verdict.json
+  verdict_quote: 'D2 passes and M2 passes at 3 clean rounds each, picks tp-2 (D2) and layer-2 (M2), every candidate within 15% on pp and tg, baseline gate 1.011 and 1.008.'
   headline: ''
   depends_on:
   - multi-prefill-no-capture
   - bench-throttle-rules
   replaced_by: []
-  lane: box
-  queue_order: 1
-  start: ''
-  end: ''
+  lane: none
+  start: '2026-11-20'
+  end: '2026-11-21'
   folded:
   - 'First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20, commit 7dd6dd4)'
+  - v2c-20261121 on GPUs 2 and 3 of the V4a box (host 20210, commit 4c73db7; D2 and M2 pass, three clean rounds each)
   overview: false
   plain: 'The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each.'
   notes: 'Done when: verdict.json for v2-20261120 with both cases judged under ADR 0068.'

@@ -1,0 +1,3 @@
+hardware: CUDA_VISIBLE_DEVICES=2,3: 2 of 4 GPUs visible
+hardware: pcie topology: not read while CUDA_VISIBLE_DEVICES hides GPUs
+steps 264 mean 10.37 ms p95 5.90 ms
