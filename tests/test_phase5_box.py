@@ -364,7 +364,7 @@ def test_four_gpu_boxes_anchor_tp_4_on_the_dense_model_only(tmp_path):
     # the session's own 4-GPU plan, every GPU visible
     assert "/plans/qwen3-32b-tp-4.toml" in cmd and "--layer-limit 16" in cmd and "CUDA_VISIBLE_DEVICES" not in cmd
     assert any(f"anchors-{D}-r1.json" in ln and "(6 parts)" in ln for ln in four)
-    assert any(f"anchors-{M}-r1.json" in ln and "(4 parts)" in ln for ln in four)
+    assert any(f"anchors-{M}-r1.json" in ln and "(5 parts)" in ln for ln in four)  # plus the layer anchor (ADR 0082)
     two = dry(tmp_path / "two")
     assert not [n for n in runs(two) if "-anchor-tp-4-" in n]
     assert any(f"anchors-{D}-r1.json" in ln and "(4 parts)" in ln for ln in two)
