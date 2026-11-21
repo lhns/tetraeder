@@ -175,9 +175,10 @@ fn run(p: Params, rx: &mpsc::Receiver<Cmd>, status: &Mutex<Status>) {
             let last = last.filter(|l| l.plan == *r.current());
             let step = last.as_ref().map(|l| 1.0 / l.prediction.tg_tok_s);
             monitor.set_prediction(step, m.as_ref());
-            if let Some(l) = &last {
-                monitor.set_decode_clocks(&l.prediction.decode_clocks, m.as_ref());
-            }
+            let clocks = last
+                .as_ref()
+                .map_or(&[][..], |l| &l.prediction.decode_clocks[..]);
+            monitor.set_decode_clocks(clocks, m.as_ref());
             let placement = recognize(r.current(), &p.shared.lock().unwrap().inp.layout)
                 .ok()
                 .map(|x| x.0);

@@ -112,6 +112,7 @@ def test_decode_clock_off_plan_compares_the_measured_clock_with_the_assumed_one(
     the plan decodes; the dashboard's GPU clocks panel draws the assumed clock beside the measured ones."""
     rule = next(r for f in RULE_FILES for r in _rules(f) if r.get("alert") == "TetraederDecodeClockOffPlan")
     expr = rule["expr"]
+    assert "tetraeder_plan_decode_clock_hertz > 0" in expr, "a reset gauge (0) must not fire"
     assert "tetraeder_plan_decode_clock_hertz" in expr and "tetraeder_host_gpu_clock_hertz" in expr
     assert 'tetraeder_gpu_clock="sm"' in expr and "> 0.05" in expr and "tetraeder_phase=\"decode\"" in expr
     assert rule["for"] == "15m"

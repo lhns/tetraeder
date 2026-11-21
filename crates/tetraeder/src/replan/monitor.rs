@@ -22,6 +22,8 @@ pub struct ResidualMonitor {
     over: u32,
     /// Median decode step of the last tick that had enough samples.
     pub last_median_s: Option<f64>,
+    /// Devices whose assumed decode clock the gauge shows (ADR 0082).
+    clock_devices: Vec<String>,
 }
 
 impl ResidualMonitor {
@@ -32,6 +34,7 @@ impl ResidualMonitor {
             seen: 0,
             over: 0,
             last_median_s: None,
+            clock_devices: Vec::new(),
         }
     }
 
@@ -51,14 +54,21 @@ impl ResidualMonitor {
     }
 
     /// The clocks the new plan's prediction assumes per GPU (ADR 0082), for the gauge the alert
-    /// `TetraederDecodeClockOffPlan` compares the measured clock with. A plan priced without
-    /// clocks records nothing.
-    pub fn set_decode_clocks(&self, clocks: &[DecodeClock], m: Option<&Metrics>) {
+    /// `TetraederDecodeClockOffPlan` compares the measured clock with. A gauge has no delete, so
+    /// a device the new plan does not price at a clock (a plan without clocks) is set to 0, which
+    /// the alert ignores.
+    pub fn set_decode_clocks(&mut self, clocks: &[DecodeClock], m: Option<&Metrics>) {
         if let Some(m) = m {
+            for d in &self.clock_devices {
+                if !clocks.iter().any(|c| &c.device == d) {
+                    m.plan_decode_clock(d, 0.0);
+                }
+            }
             for c in clocks {
                 m.plan_decode_clock(&c.device, c.mhz * 1e6);
             }
         }
+        self.clock_devices = clocks.iter().map(|c| c.device.clone()).collect();
     }
 
     pub fn tick(&mut self, ring: &StepRing, m: Option<&Metrics>) -> Option<Trigger> {

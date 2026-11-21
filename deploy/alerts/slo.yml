@@ -144,14 +144,14 @@ groups:
           summary: "Measured step time of stage {{ $labels.tetraeder_stage }} is off the plan's prediction by more than 20%"
           description: "Recalibrate the cost model (bench calibrate) or check the bottleneck report; the planner's choices are unreliable until then."
       # Cost model 5 (ADR 0082) prices decode at the SM clock a GPU's duty gets (the gauge is the clock it assumed for
-      # each GPU of the loaded plan, absent without decode clocks). A measured clock more than 5% off for 15 minutes
+      # each GPU of the loaded plan, absent without decode clocks, 0 after a switch to a plan without them). A measured clock more than 5% off for 15 minutes
       # while the plan decodes means the host is in another clock state than the calibration saw: recalibrate with the
       # clock logs of the anchors. The host sampler reports gpu0, so the join is on that device.
       - alert: TetraederDecodeClockOffPlan
         expr: |
           abs(
             max by (tetraeder_device) (label_replace(tetraeder_host_gpu_clock_hertz{tetraeder_gpu_clock="sm"}, "tetraeder_device", "$1", "hw_id", "(.*)"))
-              / on(tetraeder_device) max by (tetraeder_device) (tetraeder_plan_decode_clock_hertz) - 1
+              / on(tetraeder_device) max by (tetraeder_device) (tetraeder_plan_decode_clock_hertz > 0) - 1
           ) > 0.05
             and on() sum(rate(tetraeder_step_duration_seconds_count{tetraeder_phase="decode"}[5m])) > 0
         for: 15m

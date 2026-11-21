@@ -456,15 +456,42 @@ def test_every_timed_run_has_a_clock_log_and_a_window_file(tmp_path):
     assert "window-$run.txt" in src and "clocks-$1.csv" in src and "stop_clocks" in src
 
 
-def test_the_layer_anchor_is_off_by_default_and_needs_three_gpus(tmp_path):
-    for ngpu, env in (("4", {}), ("2", {"LAYER_ANCHOR": "1"})):
-        lines = dry(tmp_path / ngpu, ngpu=ngpu, **env)
-        assert not [n for n in runs(lines) if "@L" in n]
+def test_the_layer_anchor_is_on_with_three_or_more_gpus_and_off_on_two(tmp_path):
+    """Owner-approved 2026-11-21 (ADR 0082): default on at NGPUS >= 3, off at 2; LAYER_ANCHOR overrides."""
+    on = dry(tmp_path / "four", ngpu="4")
+    assert [n for n in runs(on) if "@L" in n]
+    for ngpu, env, want in (("2", {}, False), ("2", {"LAYER_ANCHOR": "1"}, False), ("4", {"LAYER_ANCHOR": "0"}, False)):
+        lines = dry(tmp_path / f"{ngpu}{env}", ngpu=ngpu, **env)
+        assert bool([n for n in runs(lines) if "@L" in n]) is want
         assert not any("--anchor layer" in ln for ln in lines)
 
 
+def test_calibrate_logs_one_decode_clocks_line_per_model(tmp_path):
+    assert any("decode_clocks <model>: busy_mhz=" in ln for ln in dry(tmp_path, ngpu="4"))
+    src = SCRIPT.read_text()
+    code = re.search(r"<< 'PYEND'
+(.*?)
+PYEND
+", src, re.S).group(1)
+
+    def line(clocks, layout_model="Qwen3 30B Gptq Fp16"):
+        (tmp_path / "decode-clocks.json").write_text(json.dumps(clocks))
+        (tmp_path / "layout.json").write_text(json.dumps({"model": layout_model}))
+        r = subprocess.run([sys.executable, "-I", "-", str(tmp_path / "decode-clocks.json"), str(tmp_path / "layout.json"), M],
+                           input=code, capture_output=True, text=True, check=True, timeout=60)
+        return r.stdout.strip()
+
+    ok = line({"low_mhz": 1695.0, "busy_mhz": {"Qwen3 30B Gptq Fp16": 1905.0}})
+    assert ok.startswith(f"decode_clocks {M}: busy_mhz=1905 low_mhz=1695 k=1.124") and "(" not in ok
+    # the file stem as key, not the GGUF display name: a reason, not a silent k = 1
+    bad = line({"low_mhz": 1695.0, "busy_mhz": {M: 1905.0}})
+    assert "k=1.000" in bad and "no busy clock for layout model 'Qwen3 30B Gptq Fp16'" in bad and repr(M) in bad
+    assert "no low clock" in line({"low_mhz": None, "busy_mhz": {}})
+    assert "within 15 MHz" in line({"low_mhz": 1590.0, "busy_mhz": {"Qwen3 30B Gptq Fp16": 1590.0}})
+
+
 def test_the_layer_anchor_runs_tg128_ten_reps_for_the_moe_model_two_rounds(tmp_path):
-    lines = dry(tmp_path, ngpu="4", LAYER_ANCHOR="1")
+    lines = dry(tmp_path, ngpu="4")
     names = [n for n in runs(lines) if "@L" in n]
     assert names == [f"{M}-anchor-layer-4@L32-L32-r{k}" for k in (1, 2)]  # DRY layouts have 64 layers
     cmd = next(ln for ln in lines if f"> {M}-layer-4@L32-L32-r1.json" in ln)
@@ -475,7 +502,7 @@ def test_the_layer_anchor_runs_tg128_ten_reps_for_the_moe_model_two_rounds(tmp_p
     assert any(f"anchors-{M}-r1.json" in ln and "(5 parts)" in ln for ln in lines)
     assert any(f"anchors-{D}-r1.json" in ln and "(6 parts)" in ln for ln in lines)
     # the dense model alone gets it when no MoE model is in the session
-    one = dry(tmp_path / "dense", ngpu="4", LAYER_ANCHOR="1", MODELS=D)
+    one = dry(tmp_path / "dense", ngpu="4", MODELS=D)
     assert [n for n in runs(one) if "@L" in n] == [f"{D}-anchor-layer-4@L32-L32-r{k}" for k in (1, 2)]
 
 
