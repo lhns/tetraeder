@@ -115,6 +115,8 @@ Step 0 is the bench warmup (call 1), step 1 is timed rep 1, steps 2 to 5 reps 2 
 
    Clocks (tail table above): full single GPU0 1905 MHz alone, full layer-4 1695 on all four (ratio 1.124 against measured 1.104). L12: single GPU0 1890, layer-4 1890/1695/1695/1695. L24: single 1905, layer-4 1965/1995/1695/1695. The layer-4 deficit shows at the full model only (-9.5%), not at L12 or L24, although layer-4 L12 has three GPUs at 1695 and no throughput loss. That weakens "the 1695 MHz plateau explains the excess one for one" (s3d): the full-model gap and the clock gap agree in size, the limited runs do not follow the clock. Does not settle: the limited layer-4 plans may place layers differently (not dumped); single leaves three GPUs idle, so conditions are not equal. A calibration from L12 and L24 would see no layer-4 penalty, from the full model 9.5%; the data are given, not a fit.
 
+Correction (2026-11-21, ADR 0082): `--layer-limit` keeps only the stages that start below the limit, so layer-4 L12 ran on one GPU and L24 on two; the other GPUs only held a context (flat 109 W at 1695 MHz). "Three GPUs at 1695 and no loss" counted idle GPUs as active. The working GPUs boosted, which is why L12 and L24 lost nothing.
+
 ## What this does not settle
 
 - That graphs were off in the nograph runs, by the ggml log (the debug line does not reach stderr). Only timing and the host-blocking pattern say so. A proof needs `CudaGraphLogCounts` printed at process end.
