@@ -1,0 +1,4 @@
+hardware: CUDA_VISIBLE_DEVICES=2,3: 2 of 4 GPUs visible
+hardware: gpu1: PCIe link is gen2 x16 now, max gen3 x16 (may be idle power saving)
+hardware: pcie topology: not read while CUDA_VISIBLE_DEVICES hides GPUs
+steps 258 mean 33.03 ms p95 25.40 ms

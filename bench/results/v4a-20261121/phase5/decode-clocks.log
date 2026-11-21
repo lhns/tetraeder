@@ -1,0 +1,1 @@
+low 1695.0 MHz, busy {'Qwen3 30B Gptq Fp16': 1800.0, 'Qwen3 32B Awq Compatible Instruct': 1627.5} -> /root/tetraeder/bench/results/v4a-20261121/phase5/decode-clocks.json

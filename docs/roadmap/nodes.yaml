@@ -2045,21 +2045,23 @@ nodes:
   title: Two-GPU verdict session
   track: bench
   kind: session
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/v2c-20261121/README.md
+  - bench/results/v2c-20261121/phase5/verdict.json
+  verdict_quote: 'D2 passes and M2 passes at 3 clean rounds each, picks tp-2 (D2) and layer-2 (M2), every candidate within 15% on pp and tg, baseline gate 1.011 and 1.008.'
   headline: ''
   depends_on:
   - multi-prefill-no-capture
   - bench-throttle-rules
   replaced_by: []
-  lane: box
-  queue_order: 1
-  start: ''
-  end: ''
+  lane: none
+  start: '2026-11-20'
+  end: '2026-11-21'
   folded:
   - 'First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20, commit 7dd6dd4)'
+  - v2c-20261121 on GPUs 2 and 3 of the V4a box (host 20210, commit 4c73db7; D2 and M2 pass, three clean rounds each)
   overview: false
   plain: 'The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each.'
   notes: 'Done when: verdict.json for v2-20261120 with both cases judged under ADR 0068.'
@@ -2067,25 +2069,26 @@ nodes:
   title: Price decode at measured clocks
   track: planner
   kind: feature
-  state: in-progress
-  waiting_on: the next 4-GPU session with the 10 ms clock logger (s3g withheld all four 30B single anchors at 20 ms, so k stayed 1 for the 30B; offline with its 1800 MHz busy clock the layer-4 e_tg is -0.001)
-  outcome: unrated
+  state: done
+  outcome: successful
   evidence:
   - bench/results/s3c-20261119/costmodel-v5/README.md
   - bench/results/s3g-20261121/README.md
-  verdict_quote: ''
+  - bench/results/v4a-20261121/README.md
+  verdict_quote: 'passes with k applied to the 30B: 1800 against 1695, -0.024'
   headline: ''
   depends_on:
   - planner-cost-v4
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: '2026-11-20'
+  end: '2026-11-21'
   folded:
   - s3g-20261121 box rehearsal on host 20210 (2026-11-21, commit 17249fa; R1 to R4 pass but the 30B busy clock was withheld for under 25 tail samples, so k = 1 there)
+  - v4a-20261121 verdict session on host 20210 (2026-11-21, commit 692947a; the 30B busy clock 1800 against low 1695 gave k = 1.062, held-out layer anchor tg -0.024, 30B layer-4 tg measured over predicted 1.007; box check (item 5) passes)
   overview: false
   plain: A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets.
-  notes: 'Done when (ADR 0082, The check): 30B layer-4 e_tg within 0.08 on s3, s3b and s3c and the s3c layer-4/single tg ratio within 0.03 of measured, with host-20210 clocks; s3f2 bit-identical to v4 and its L36 within 0.03; every other candidate moved by at most 0.005; Rust and replica within 1%. Design: ADR 0082 (Proposed), brief V5 in docs/phase5-briefs.md. Offline check passes (branch track-cost-model-v5): layer-4/single tg within 0.03 and e_tg +0.001/-0.003/+0.067 on s3/s3b/s3c, s3f2 bit-identical with L36 230.9 against 231.8, 32B layer-4 moves 0.011, others 0; Rust-replica agreement pending CI. s3g-20261121 (first box run, host 20210 not clock-limited: busy 1800, low 1695): layer anchor held-out tg +0.019, 30B layer-4 e_tg +0.045, tp2-pp2 decode tail 1800 MHz; offline with the 30B busy clock the held-out is -0.021 and e_tg -0.001. Open: the 30B single anchors (one rep, 10 to 18 tail samples) need more samples. Layer anchor stays behind LAYER_ANCHOR=1 until the owner accepts ADR 0082.'
+  notes: 'Done when (ADR 0082, The check): 30B layer-4 e_tg within 0.08 on s3, s3b and s3c and the s3c layer-4/single tg ratio within 0.03 of measured, with host-20210 clocks; s3f2 bit-identical to v4 and its L36 within 0.03; every other candidate moved by at most 0.005; Rust and replica within 1%. Design: ADR 0082 (Proposed), brief V5 in docs/phase5-briefs.md. Offline check passes (branch track-cost-model-v5): layer-4/single tg within 0.03 and e_tg +0.001/-0.003/+0.067 on s3/s3b/s3c, s3f2 bit-identical with L36 230.9 against 231.8, 32B layer-4 moves 0.011, others 0; Rust-replica agreement pending CI. s3g-20261121 (first box run, host 20210 not clock-limited: busy 1800, low 1695): layer anchor held-out tg +0.019, 30B layer-4 e_tg +0.045, tp2-pp2 decode tail 1800 MHz; offline with the 30B busy clock the held-out is -0.021 and e_tg -0.001. Box check (item 5) passed on v4a-20261121 with k = 1.062 applied to the 30B (held-out -0.024, 30B layer-4 tg 1.007 measured over predicted). Layer anchor stays behind LAYER_ANCHOR=1 on 2 GPUs.'
 - id: bench-d2a-probe
   title: Admission probe on final main
   track: bench
@@ -2109,23 +2112,25 @@ nodes:
   title: Four-GPU verdict, first box
   track: bench
   kind: session
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/v4a-20261121/README.md
+  - bench/results/v4a-20261121/phase5/verdict.json
+  verdict_quote: 'D4 passes and M4 passes at 3 clean rounds each, picks tp-4 (D4) and layer-4 (M4), every candidate within 15% on pp and tg, baseline gate 1.022 and 0.987.'
   headline: ''
   depends_on:
   - planner-cost-model-v5
   - multi-prefill-no-capture
   - ops-owner-v4a-cap
   replaced_by: []
-  lane: box
-  queue_order: 3
-  start: ''
-  end: ''
-  folded: []
+  lane: none
+  start: '2026-11-21'
+  end: '2026-11-21'
+  folded:
+  - v4a-20261121 on host 20210 (box 61850705, 1.203 USD/h, commit 692947a; D4 and M4 pass, three clean rounds each)
   overview: false
-  plain: The judged session on four GPUs (cases D4 and M4) on a host other than 20210, run alone; the owner allowed one box up to 1.70 USD/h for it.
+  plain: The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each.
 - id: bench-v4b-verdict
   title: Four-GPU verdict, second box
   track: bench

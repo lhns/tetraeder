@@ -1,0 +1,41 @@
+{
+  "model": "Qwen3 30B Gptq Fp16",
+  "git_commit": "",
+  "hw_sha256": "eb56a6933c5c08a2689b86187e51c6f9df38ed762c9a8b399f4ce804bfe634d0",
+  "calib_sha256": "757a19b0ae1371d161caa98ac0fb882bc68142709864d15677b8791243eeff9d",
+  "comm_sha256": "ab68be5fa390da9a76a040d80ad0b41e897c39cf911df29c3eca73fb8542dd0a",
+  "routing_sha256": "11f608d4ec9c9743018b058270ecd50d1cb88cb373b2d9d79cb5683ed4738708",
+  "prompt": 2048,
+  "gen": 128,
+  "candidates": [
+    {
+      "id": "single",
+      "pp_tps": 5450.618923114098,
+      "tg_tps": 200.25681062050734,
+      "t_s": 1.014916406236025,
+      "binding": "compute:gpu0"
+    },
+    {
+      "id": "layer-2",
+      "pp_tps": 8647.720846520842,
+      "tg_tps": 193.8377037391078,
+      "t_s": 0.8971716519612527,
+      "binding": "compute:gpu1"
+    },
+    {
+      "id": "tp-2",
+      "pp_tps": 4800.842223178599,
+      "tg_tps": 173.86842650582363,
+      "t_s": 1.1627806829985956,
+      "binding": "compute:gpu0"
+    },
+    {
+      "id": "ep-2",
+      "pp_tps": 4893.882096123923,
+      "tg_tps": 175.225592959412,
+      "t_s": 1.1489685785823378,
+      "binding": "compute:gpu0"
+    }
+  ],
+  "pruned": []
+}

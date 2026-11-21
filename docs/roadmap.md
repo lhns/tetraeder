@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 32 rated nodes are confirmed by the owner.
+0 of 35 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-v4a-verdict`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -211,7 +211,6 @@ flowchart TB
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
 | Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
-| Price decode at measured clocks | ⏳ waiting | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
 | Replan without draining | ⛔ blocked | Replanning applies a new plan live instead of drain and restart (ADR 0009 until Phase 7), cheap moves first (plan feature 24, Phase 7 half). |
 | Advisor applies safe changes itself | ⛔ blocked | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). |
 | Separate prefill and decode layouts | ⛔ blocked | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). |
@@ -246,9 +245,7 @@ flowchart TB
 | Predictions stay analytic | ✔ done · n/a | ADR 0076 proposed judging predictions from lines fitted to runs of each candidate; the owner kept the 15% test on the planner's analytic predictions made before the candidates run. |
 | Four-GPU check of the fix | ✔ done · successful ⚠ | With prefill run without graph capture, one round of every four-GPU candidate stayed within 15%; the first attempt (s3f) stopped at a gate. |
 | Check host ran at low clocks | ✔ fixed | The s3f2 host held every GPU at 1590 MHz all session, single GPU included, so its layer-4 decode result (0.995) does not show the earlier layer-split decode miss fixed; cost model version 5 is back on. |
-| Two-GPU verdict session | ○ next | The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each. |
 | Admission probe on final main | ○ next | The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported. |
-| Four-GPU verdict, first box | ⛔ blocked | The judged session on four GPUs (cases D4 and M4) on a host other than 20210, run alone; the owner allowed one box up to 1.70 USD/h for it. |
 | Four-GPU verdict, second box | ⛔ blocked | The second four-GPU session, so every configuration has two clean rounds on a clean host. |
 | Report milestone M2 | ⛔ blocked | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |
 | Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
@@ -290,7 +287,6 @@ flowchart TB
 
 **box**
 
-- `bench-v2-verdict`: Two-GPU verdict session
 - `bench-d2a-probe`: Admission probe on final main
 <!-- END GENERATED: ready-now -->
 
@@ -303,9 +299,7 @@ _None._
 ## Built, waiting
 
 <!-- BEGIN GENERATED: built-waiting -->
-**the next 4-GPU session with the 10 ms clock logger (s3g withheld all four 30B single anchors at 20 ms, so k stayed 1 for the 30B; offline with its 1800 MHz busy clock the layer-4 e_tg is -0.001)**
-
-- `planner-cost-model-v5`: Price decode at measured clocks
+_None._
 <!-- END GENERATED: built-waiting -->
 
 ## Waiting on the owner
@@ -322,10 +316,8 @@ _None._
 ## Queue
 
 <!-- BEGIN GENERATED: queue -->
-1. `bench-v2-verdict`: Two-GPU verdict session
-2. `bench-d2a-probe`: Admission probe on final main
-3. `bench-v4a-verdict`: Four-GPU verdict, first box
-4. `bench-v4b-verdict`: Four-GPU verdict, second box
+1. `bench-d2a-probe`: Admission probe on final main
+2. `bench-v4b-verdict`: Four-GPU verdict, second box
 <!-- END GENERATED: queue -->
 
 ## Timeline
@@ -339,7 +331,7 @@ Generated on 2026-11-21.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 80 done, 2 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 83 done, 2 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -704,6 +696,10 @@ Generated on 2026-11-21.
   - Admission-path outlier fixes from ttft4 (2026-11-19)
   - Snapshot spares grow instead of replaced (2026-11-19)
   - Save metrics: preparer bytes and in-step saves (2026-11-20)
+- `bench-v2-verdict`: Two-GPU verdict session (✔ done · successful). The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each.
+  - First attempt null: host 87485 co-tenant load and 0x20 samples, tp-2 one clean round (2026-11-20)
+- `bench-v4a-verdict`: Four-GPU verdict, first box (✔ done · successful). The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each.
+- `planner-cost-model-v5`: Price decode at measured clocks (✔ done · successful). A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets.
 
 </details>
 
@@ -733,10 +729,10 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 19 nodes (12 done, 1 next, 5 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 13 nodes (8 done, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 20 nodes (12 done, 1 in progress, 1 next, 3 blocked, 3 parked)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 20 nodes (13 done, 1 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (7 done, 1 next, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 20 nodes (12 done, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 38 nodes (23 done, 2 next, 7 blocked, 6 parked)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 38 nodes (25 done, 1 next, 6 blocked, 6 parked)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (12 blocked)
 <!-- END GENERATED: tracks -->
