@@ -15,6 +15,7 @@ For the owner, before M2 is reported (`docs/m2-plan.md`, Phase 5 item 5). ADR 00
 | 2026-11-19 | Phase 5 verdict sessions skip host 20210 (`docs/box-driver.md`). Diagnostics may use it. | `s3b-20261119`, `s3c-20261119`: GPU 0 shows thermal 0x20 on the 32B in every session, so D4 never gets two clean rounds | coordinator (host choice, not a rule) |
 | 2026-11-20 | gpu-parity gate: adds the ggml-sys capture-flag test (`gpu_no_capture_flag_skips_the_cuda_graph`, ADR 0081) and skips the KV save timing tests (`save_through_pinned_staging`, ADR 0074, judged in their own sessions). | `s3f-20261120`: the 8B save timing test missed its bound on host memory speed and ended the session at the gate | coordinator, before the next session |
 | 2026-11-21 | Anchor `layer-g@L/2` on 3 or more GPUs (tg only, held out of the fit) to measure the low decode clock (ADR 0082, cost model 5). | s3c 30B layer-4 tg +0.167: GPUs busy under about a third of a decode step stay at 1695 MHz while single boosts to 1905 | owner, by delegation to the advisor |
+| 2026-11-21 | Host 20210 re-admitted for verdict sessions, 4-GPU boxes up to 1.22 USD/h all-in (host choice and cap, not a judging rule). | 0 thermal 0x20 samples on all GPUs in `s3f2-20261120` and `s3g-20261121`; no other usable 4-GPU host on offer (hosts failed pulls, SSH or power) | owner |
 
 ## Changes to what is judged, not to the rules
 
