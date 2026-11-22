@@ -1,0 +1,449 @@
+# Cases of the llama-server conformance harness (test_parity.py; ADR 0083, docs/notes/llamacpp-parity.md).
+#
+# id        unique name
+# group     A sampling, B request and response fields, C endpoints (the matrix groups)
+# row       the exact first cell of a row of the appendix of docs/notes/llamacpp-parity.md (checked by test_parity_lib.py)
+# endpoint  "METHOD /path", sent to both servers
+# body      JSON request body; headers: extra request headers
+# mode      status | shape | text | stream | exact (parity_lib.compare)
+# compare_text  false: compare no streamed text; drop_events: SSE event names left out of the sequence
+# paths     compare only the shape under these paths; ignore: extra paths left out of the shape
+# value_paths  paths whose values must be equal (usage counts, finish_reason)
+# premise   what the baseline must show or the case fails (not xfail): finish_reason
+# no_model  send no `model` field (the harness adds one to every other case)
+# probe     a body field derived from the baseline's answer: stop_ascii, ban_first_token (test_parity.py)
+# engines   tetraeder engines the case runs on: auto (libllama on tiny-qwen3), dense (own dense builder, tiny-qwen3),
+#           moe (own MoE builder, tiny-qwen3moe); llama-server serves the same GGUF
+# llama_args, tetraeder_args  extra server flags for the case
+# expect    pass, or `gap <tree node>`: xfail(strict), flipped to pass in the change that closes the gap
+#
+# Tokens are compared at temperature 0 only. The tiny models are random, so the text is byte noise; what
+# matters is that both servers pick the same tokens. Sampler rows that temperature 0 cannot show (min_p,
+# typical_p, top_n_sigma, xtc, dry, mirostat, dynatemp, min_keep, `samplers` order, the random default seed)
+# are left to the sampler unit tests of node serving-parity-sampling.
+#
+# Gap cases carry what llama-server returns today; a gap must fail for the row's own reason (status, a missing
+# path or different tokens), so the comparison is narrowed with `paths` where the rest already differs.
+
+cases:
+  # ---- conformant today ----
+  - id: chat-greedy
+    group: C
+    row: "POST /chat/completions, /v1/chat/completions"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 12}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+      - "usage.prompt_tokens"
+    engines: [auto, dense, moe]
+    expect: pass
+
+  - id: completions-greedy
+    group: C
+    row: "POST /v1/completions"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 12}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+      - "usage.prompt_tokens"
+    engines: [auto, dense, moe]
+    expect: pass
+
+  - id: completions-eos
+    group: B
+    row: "n_predict / max_tokens / max_completion_tokens"
+    endpoint: POST /v1/completions
+    body: {prompt: The, temperature: 0, max_tokens: 40}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+    premise: {finish_reason: stop}
+    engines: [auto, dense]
+    expect: pass
+
+  - id: chat-stream-shape
+    group: B
+    row: "streaming chat chunk"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 12, stream: true}
+    mode: stream
+    engines: [auto, dense, moe]
+    expect: pass
+
+  - id: chat-stream-usage
+    group: B
+    row: "stream_options.include_usage"
+    endpoint: POST /v1/chat/completions
+    body:
+      messages: [{role: user, content: Hello}]
+      temperature: 0
+      max_tokens: 12
+      stream: true
+      stream_options: {include_usage: true}
+    mode: stream
+    engines: [auto]
+    expect: pass
+
+  - id: stop-string
+    group: B
+    row: "stop"
+    endpoint: POST /v1/completions
+    body: {prompt: Once upon a time, temperature: 0, max_tokens: 24}
+    probe: {kind: stop_ascii, length: 2, start: 3}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+    engines: [auto, dense]
+    expect: pass
+
+  - id: stop-string-moe
+    group: B
+    row: "stop"
+    endpoint: POST /v1/completions
+    body: {prompt: "def f(x):", temperature: 0, max_tokens: 24}
+    probe: {kind: stop_ascii, length: 2, start: 3}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+    engines: [moe]
+    expect: pass
+
+  - id: max-tokens
+    group: B
+    row: "n_predict / max_tokens / max_completion_tokens"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 5}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+      - "usage.completion_tokens"
+    engines: [auto, dense]
+    expect: pass
+
+  # the moe fixture writes only invalid UTF-8 for this chat prompt, so it gets a prompt with text
+  - id: max-tokens-moe
+    group: B
+    row: "n_predict / max_tokens / max_completion_tokens"
+    endpoint: POST /v1/completions
+    body: {prompt: a, temperature: 0, max_tokens: 5}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+      - "usage.completion_tokens"
+    engines: [moe]
+    expect: pass
+
+  - id: max-completion-tokens
+    group: B
+    row: "n_predict / max_tokens / max_completion_tokens"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_completion_tokens: 5}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+      - "usage.completion_tokens"
+    engines: [auto]
+    expect: pass
+
+  - id: anthropic-greedy
+    group: C
+    row: "POST /v1/messages (Anthropic)"
+    endpoint: POST /v1/messages
+    headers: {anthropic-version: "2023-06-01"}
+    body: {max_tokens: 8, temperature: 0, messages: [{role: user, content: Hello}]}
+    mode: text
+    value_paths: [stop_reason, usage.output_tokens]
+    engines: [auto, dense, moe]
+    expect: pass
+
+  - id: anthropic-stream-shape
+    group: C
+    row: "POST /v1/messages (Anthropic)"
+    endpoint: POST /v1/messages
+    headers: {anthropic-version: "2023-06-01"}
+    body: {max_tokens: 8, temperature: 0, stream: true, messages: [{role: user, content: Hello}]}
+    mode: stream
+    # llama-server drops the text deltas that carry invalid UTF-8 (the tiny model writes bytes); `ping` is optional
+    compare_text: false
+    drop_events: [ping]
+    engines: [auto]
+    expect: pass
+
+  - id: anthropic-count-tokens
+    group: C
+    row: "POST /v1/messages/count_tokens"
+    endpoint: POST /v1/messages/count_tokens
+    headers: {anthropic-version: "2023-06-01"}
+    body: {messages: [{role: user, content: Hello}]}
+    mode: shape
+    value_paths: [input_tokens]
+    engines: [auto]
+    expect: pass
+
+  - id: usage-fields
+    group: B
+    row: "usage (prompt/completion/total, `prompt_tokens_details.cached_tokens`)"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 6}
+    mode: shape
+    paths: [usage]
+    value_paths: [usage.prompt_tokens, usage.completion_tokens, usage.total_tokens]
+    engines: [auto, dense, moe]
+    expect: pass
+
+  - id: models-v1
+    group: C
+    row: "GET /models, /v1/models"
+    endpoint: GET /v1/models
+    mode: shape
+    paths:
+      - "object"
+      - "data[].id"
+      - "data[].object"
+    engines: [auto]
+    expect: pass
+
+  - id: model-optional
+    group: B
+    row: "model"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3}
+    no_model: true
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  - id: usage-eos-count
+    group: B
+    row: "usage (prompt/completion/total, `prompt_tokens_details.cached_tokens`)"
+    endpoint: POST /v1/completions
+    body: {prompt: The, temperature: 0, max_tokens: 40}
+    mode: shape
+    paths:
+      - "usage"
+    value_paths:
+      - "usage.completion_tokens"
+      - "usage.total_tokens"
+    premise: {finish_reason: stop}
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  # ---- group A: sampling (visible at temperature 0 through the penalties, bias and eos handling) ----
+  - id: repeat-penalty
+    group: A
+    row: "repeat_penalty / repeat_last_n"
+    endpoint: POST /v1/completions
+    body: {prompt: Once upon a time, temperature: 0, max_tokens: 30, repeat_penalty: 1.5}
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-sampling
+
+  - id: presence-penalty
+    group: A
+    row: "frequency_penalty / presence_penalty (OpenAI standard names)"
+    endpoint: POST /v1/completions
+    body: {prompt: Once upon a time, temperature: 0, max_tokens: 30, presence_penalty: 2.0}
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-sampling
+
+  - id: frequency-penalty
+    group: A
+    row: "frequency_penalty / presence_penalty (OpenAI standard names)"
+    endpoint: POST /v1/completions
+    body: {prompt: Once upon a time, temperature: 0, max_tokens: 30, frequency_penalty: 2.0}
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-sampling
+
+  - id: logit-bias
+    group: A
+    row: "logit_bias"
+    endpoint: POST /v1/completions
+    body: {prompt: Once upon a time, temperature: 0, max_tokens: 12}
+    probe: {kind: ban_first_token}
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-sampling
+
+  - id: ignore-eos
+    group: A
+    row: "ignore_eos"
+    endpoint: POST /v1/completions
+    body: {prompt: The, temperature: 0, max_tokens: 40, ignore_eos: true}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+      - "usage.completion_tokens"
+    premise: {finish_reason: length}
+    engines: [auto]
+    expect: gap serving-parity-sampling
+
+  # ---- group B: request and response fields ----
+  - id: logprobs
+    group: B
+    row: "n_probs, logprobs, top_logprobs, post_sampling_probs"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3, logprobs: true, top_logprobs: 2}
+    mode: shape
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  - id: n-choices
+    group: B
+    row: "n (n_cmpl, multiple choices)"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3, n: 2}
+    mode: shape
+    value_paths:
+      - "choices[1].index"
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  - id: grammar-gbnf
+    group: B
+    row: "grammar (GBNF)"
+    endpoint: POST /v1/completions
+    body: {prompt: Once upon a time, temperature: 0, max_tokens: 12, grammar: "root ::= \"ab\""}
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  - id: json-schema-top-level
+    group: B
+    row: "json_schema (native field)"
+    endpoint: POST /v1/completions
+    body: {prompt: Once upon a time, temperature: 0, max_tokens: 12, json_schema: {type: object}}
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  - id: system-fingerprint
+    group: B
+    row: "system_fingerprint"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3}
+    mode: shape
+    paths:
+      - "system_fingerprint"
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  - id: timings
+    group: B
+    row: "timings (`prompt_n`, `prompt_ms`, `predicted_per_second`, `cache_n`, `draft_n`, ...)"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3}
+    mode: shape
+    paths: [timings]
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  # ---- group C: endpoints ----
+  - id: health
+    group: C
+    row: "GET /health, /v1/health (public, no key)"
+    endpoint: GET /health
+    mode: exact
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: metrics
+    group: C
+    row: "GET /metrics (Prometheus, `--metrics`)"
+    endpoint: GET /metrics
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: props
+    group: C
+    row: "GET /props, POST /props (`--props` for POST)"
+    endpoint: GET /props
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: tokenize
+    group: C
+    row: "POST /tokenize, /detokenize"
+    endpoint: POST /tokenize
+    body: {content: Hello world}
+    mode: exact
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: detokenize
+    group: C
+    row: "POST /tokenize, /detokenize"
+    endpoint: POST /detokenize
+    body: {tokens: [39, 68, 75]}
+    mode: exact
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: apply-template
+    group: C
+    row: "POST /apply-template"
+    endpoint: POST /apply-template
+    body: {messages: [{role: user, content: Hello}]}
+    mode: exact
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: native-completion
+    group: C
+    row: "POST /completion, /completions (native, many fields)"
+    endpoint: POST /completion
+    body: {prompt: Once upon a time, temperature: 0, n_predict: 12}
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: models-unprefixed
+    group: C
+    row: "GET /models, /v1/models"
+    endpoint: GET /models
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: chat-unprefixed
+    group: C
+    row: "POST /chat/completions, /v1/chat/completions"
+    endpoint: POST /chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 12}
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: responses
+    group: C
+    row: "POST /v1/responses, /responses (OpenAI Responses API)"
+    endpoint: POST /v1/responses
+    body: {input: Hello, max_output_tokens: 5, temperature: 0}
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: infill
+    group: C
+    row: "POST /infill"
+    endpoint: POST /infill
+    body: {input_prefix: a, input_suffix: b}
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-endpoints
+
+  - id: api-key
+    group: C
+    row: "API key auth (`--api-key`, Bearer)"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3}
+    llama_args: [--api-key, conformance-key]
+    tetraeder_args: [--api-key, conformance-key]
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-endpoints
