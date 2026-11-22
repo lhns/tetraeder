@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 38 rated nodes are confirmed by the owner.
+0 of 39 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `planner-ep-prefill-recheck`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `planner-ep-prefill-recheck`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -131,9 +131,9 @@ flowchart TB
         bench_d2a_probe[/"bench · ✔ Admission<br/>probe on final main"/]
         bench_v4a_verdict("bench · ✔ Four-GPU<br/>verdict, first box")
         planner_ep_prefill_recheck[/"planner · ✔ Recheck<br/>expert-parallel<br/>prefill error"/]
+        bench_d2a_30b("bench · ✔ 30B<br/>admission probe on a<br/>machine of the<br/>original class")
     end
     subgraph bd_2["Next"]
-        bench_d2a_30b("bench · ○ 30B<br/>admission probe on a<br/>machine of the<br/>original class")
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
@@ -182,9 +182,9 @@ flowchart TB
     bench_v2_verdict ~~~ bench_v4a_verdict
     planner_cost_model_v5 ~~~ planner_ep_prefill_recheck
     bench_d2a_probe ~~~ bench_d2a_30b
-    bench_v4a_verdict ~~~ engine_dense_amx
-    planner_ep_prefill_recheck ~~~ engine_dense_amx
-    bench_d2a_30b ~~~ cluster_transport
+    bench_v4a_verdict ~~~ bench_d2a_30b
+    planner_ep_prefill_recheck ~~~ bench_d2a_30b
+    bench_d2a_30b ~~~ engine_dense_amx
     engine_dense_amx ~~~ cluster_transport
     cluster_transport ~~~ cluster_pipeline_nodes
     cluster_transport ~~~ cluster_experts_nodes
@@ -248,10 +248,10 @@ flowchart TB
     class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,planner_cost_model_v5,bench_v4a_verdict,planner_ep_prefill_recheck succ
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
-    class bench_d2a_probe mixed
-    class bench_d2a_30b,engine_dense_amx next
+    class bench_d2a_probe,bench_d2a_30b mixed
     class cluster_transport,cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
     class engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
+    class engine_dense_amx next
 ```
 <!-- END GENERATED: overview -->
 
@@ -315,7 +315,7 @@ flowchart TB
 | Two-GPU verdict session | ✔ done · successful | The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each. |
 | Admission probe on final main | ✔ done · mixed | One D2a run on final main after the admission path changed - the 8B passes; the 30B had no verdict because its pairs were unclean on the board-limit share. The box was a different, slower machine under the same host id, where llama-server ran about 14% slower and the own engine did not, so the higher ratios are not evidence. A 30B-only session on a machine like the original's comes next. |
 | Four-GPU verdict, first box | ✔ done · successful | The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each. |
-| 30B admission probe on a machine of the original class | ○ next | One 30B-only D2a session on a machine like the Phase 4 one (96-CPU EPYC class), criteria committed first, with reruns for both pairs when both are unclean. If it is null again, the owner decides the board-limit rule for this workload; no third box. |
+| 30B admission probe on a machine of the original class | ✔ done · mixed | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. Per the criteria no further box is rented; the owner decides the board-limit rule for this workload. |
 | Report milestone M2 | ⛔ blocked | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |
 | Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
 | Report milestone M3 | ⛔ blocked | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). |
@@ -349,10 +349,6 @@ flowchart TB
 **ci**
 
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
-
-**box**
-
-- `bench-d2a-30b`: 30B admission probe on a machine of the original class
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -396,7 +392,7 @@ Generated on 2026-11-22.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 88 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 89 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -771,6 +767,7 @@ Generated on 2026-11-22.
 - `planner-cost-model-v5`: Price decode at measured clocks (✔ done · successful). A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets.
 - `planner-ep-prefill-recheck`: Recheck expert-parallel prefill error (✔ done · successful). Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed.
 - `planner-owner-layer-anchor`: Approve the low-clock anchor (✔ done · n/a). One more calibration run on boxes with three or more GPUs (a layer split cut to half depth) measures the clock of a mostly idle GPU for cost model 5; decided by delegation to the advisor, to be confirmed with the M2 report.
+- `bench-d2a-30b`: 30B admission probe on a machine of the original class (✔ done · mixed). One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. Per the criteria no further box is rented; the owner decides the board-limit rule for this workload.
 - `bench-d2a-probe`: Admission probe on final main (✔ done · mixed). One D2a run on final main after the admission path changed - the 8B passes; the 30B had no verdict because its pairs were unclean on the board-limit share. The box was a different, slower machine under the same host id, where llama-server ran about 14% slower and the own engine did not, so the higher ratios are not evidence. A 30B-only session on a machine like the original's comes next.
 
 </details>
@@ -804,7 +801,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 21 nodes (15 done, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (7 done, 1 next, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 20 nodes (12 done, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 41 nodes (28 done, 1 next, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 41 nodes (29 done, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (12 blocked)
 <!-- END GENERATED: tracks -->
