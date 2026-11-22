@@ -1,6 +1,6 @@
 # 0083. Feature parity with llama-server: what it means and how it is checked
 
-Status: Proposed (2026-11-22, owner asked for feature parity with llama.cpp and delegated the scope to the advisor). After M2. Gap matrix: `docs/notes/llamacpp-parity.md`. Tree nodes `serving-parity-*`.
+Status: Proposed (2026-11-22, owner asked for feature parity with llama.cpp and delegated the scope to the advisor). After M2. Gap matrix: [docs/notes/llamacpp-parity.md](../notes/llamacpp-parity.md). Tree nodes `serving-parity-*`.
 
 ## Context
 

@@ -8,7 +8,7 @@ One table of the built or measured features from the feature table in [plan.md](
 - **Evidence:** the session `README.md` (or `verdict.json`) under `bench/results/` that holds the number. Every decimal or fraction in a ratio cell is checked against these files by `scripts/check_features.py` (CI job `tech-tree`); node ids are checked against `docs/roadmap/nodes.yaml`.
 - **Scope:** host, GPU class, CPU, threads, model, date and the spread or band the source states. A ratio holds only in that scope. The verdict wording is the owner's where one exists (`docs/m1-open.md`, "M1 status"; `docs/m2-report.md`, Decisions).
 - **Not measured:** a baseline the plan names that has no number, with the reason the source gives.
-- No other page summarizes these pairings: `docs/plan.md` lists the baselines (Projects table) without numbers, `docs/testing.md` covers the test setup, and `docs/m1-open.md` and `docs/m2-report.md` are the owner's reports. The parity matrix against llama.cpp is planned as `docs/notes/llamacpp-parity.md`.
+- No other page summarizes these pairings: `docs/plan.md` lists the baselines (Projects table) without numbers, `docs/testing.md` covers the test setup, and `docs/m1-open.md` and `docs/m2-report.md` are the owner's reports. What works or not against llama-server is the parity matrix, [notes/llamacpp-parity.md](notes/llamacpp-parity.md) (ADR 0083).
 
 ## Table
 

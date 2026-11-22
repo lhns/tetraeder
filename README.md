@@ -48,7 +48,7 @@ Claude Code also asks for its own `claude-*` model ids; `--accept-any-model` (or
 
 ## Measured against other engines
 
-Paired same-box ratios, Tetraeder over the other engine, worst case included. Each line holds only in its scope; the full table, with evidence per row, is [docs/features.md](docs/features.md). The llama.cpp parity matrix is planned as `docs/notes/llamacpp-parity.md`.
+Paired same-box ratios, Tetraeder over the other engine, worst case included. Each line holds only in its scope; the full table, with evidence per row, is [docs/features.md](docs/features.md). What works or not against llama-server (not speed) is the parity matrix, [docs/notes/llamacpp-parity.md](docs/notes/llamacpp-parity.md) (ADR 0083).
 
 - Qwen3-235B-A22B beyond RAM, decode against the llama.cpp expert cache: 1.23 to 1.69 and 1.21 to 1.52 on two hosts (2026-11-13), but 0.643 to 0.748 on one EPYC 7642 host at 24 threads on a 23.04 quota (2026-11-12).
 - Same model against KTransformers: level at the default expert slots (0.85 to 1.15, RTX 4090 48 GB); 1.28 to 1.65 with the free VRAM as expert slots; 0.555 to 0.624 on a 0.5 to 0.7 GB/s disk.

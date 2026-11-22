@@ -1,0 +1,273 @@
+# Feature parity with llama-server: gap matrix
+
+Target and rules: ADR 0083 (llama-server at the pin b12426, fc504f91; a request that works there works against `tetraeder serve` on the same GGUF; above-backend features on all three engines). Speed is in `docs/features.md`, not here. Inventory taken 2026-11-22 from the pinned sources in `vendor/llama.cpp` and the gateway code; the full table with file:line citations is the appendix.
+
+## Groups and order
+
+Each row of the appendix belongs to one group. A row is done when its conformance case passes against the baseline llama-server on the tiny fixture (tree node `serving-parity-harness`), or it is scoped out below with a reason.
+
+| Group | What | Tree node | When |
+|---|---|---|---|
+| A. Sampling | Chain order as llama-server (penalties, dry, top_n_sigma, top_k, typical_p, top_p, min_p, xtc, temperature, then the draw); min_p (default 0.05), repeat/presence/frequency penalties, typical_p, xtc, dry, top_n_sigma, mirostat, dynatemp, logit_bias, ignore_eos, min_keep, `samplers`; random seed when none is given; the model's suppress tokens | `serving-parity-sampling` | now, no box |
+| B. Request and response fields | Every matrix field honoured or rejected with 400, never dropped; logprobs and top_logprobs; `n` above 1; GBNF `grammar` and top-level `json_schema`; `reasoning_effort` (and Anthropic `output_config.effort`); `timings` in responses; `cache_prompt` and `id_slot` accepted | `serving-parity-fields` | after A, no box |
+| C. Endpoints | `/health`, Prometheus `/metrics`, `/props`, `/tokenize`, `/detokenize`, `/apply-template`, native `/completion`, unprefixed `/models` and `/chat/completions`, `/v1/responses`, `/infill` and `suffix`, input-token counting, `--api-key` | `serving-parity-endpoints` | after B, no box |
+| D. What libllama has but the gateway does not expose | embeddings and rerank (libllama engine first), KV cache types (`-ctk`, `-ctv`), context shift, slot save and restore, `--cpu-moe` and `--n-cpu-moe`, model download by name | `serving-parity-libllama` | after C; GPU rows on a later box |
+| E. Own ADR first (owner sees this matrix before work starts) | LoRA (plan feature 30), several models and router mode (29), multimodal, audio, TTS, transcription and realtime (34), other GPU backends (14) | `serving-parity-owner-scope` | owner decision |
+
+## Scoped out (ADR 0083)
+
+| Row | Reason |
+|---|---|
+| Web UI (`--ui`) | not a request-level feature; any OpenAI-compatible UI works against the gateway |
+| `/cors-proxy`, server-side MCP tools (`/tools`, `--allow-unauthenticated-tools`) | agent features of the bundled UI, not of the inference API |
+| GCP compatibility routes | a hosting adapter, not used by the clients this project serves |
+| TLS | terminate at a reverse proxy; the gateway listens on localhost by default |
+| Resumable streams (`/v1/stream`, `/v1/streams/lookup`) | revisit if a client needs it; not part of the OpenAI or Anthropic API |
+| Speed | judged in Phases 2, 4 and 5 (`docs/features.md`) |
+
+## Differences that change outputs today
+
+- Temperature is applied before the top-p mass; llama-server applies it last. Outputs at temperature above 0 differ for the same seed and settings.
+- No min_p: llama-server filters with min_p 0.05 by default.
+- Unseeded requests take a per-process counter seed instead of a random one.
+- Unknown and unsupported fields are dropped silently, so a client asking for `logit_bias` or a penalty gets an answer without it.
+
+Greedy outputs (temperature 0) are not affected by these.
+
+## Appendix: inventory (2026-11-22)
+
+### 0. Source status
+
+- Verified against `vendor/llama.cpp` at **fc504f91d8cf (b12426)** plus the 6 Tetraeder patches (ggml files show as modified; `tools/server`, `common/` are upstream). All llama-server citations below are to this tree. The first draft of this file was made at b11976 (2e0d86be); rows that differ between b11976 and the pin are marked **[changed @pin]** or **[new @pin]**. Rows without a mark are the same in substance at both (line numbers moved).
+- Caveat on the diff: b11976 was read in full for routes, request schema, chat parse, task JSON and arg.cpp flags. `common/sampling.cpp` and the b11976 sampler default chain were only read via `common.h`, so sampler rows in 2b are marked new only where the b11976 text showed a difference.
+- Notation: `L:` = `vendor/llama.cpp/tools/server/`, `C:` = `vendor/llama.cpp/common/`, `T:` = `crates/`. Tetraeder cites are unchanged by this update.
+- Tetraeder gateway structs have no `#[serde(deny_unknown_fields)]` (grep over crates/gateway/src: none), so any field not in the struct is **silently ignored**. Only fields in the structs can be rejected.
+
+### Summary of changes between b11976 and the pin (server side)
+- **[new @pin] routes:** `POST /v1/audio/speech`, `/audio/speech` (`server.cpp:192-193`, handler `post_speech_oai` context.cpp:6432), WebSocket `/v1/realtime` (`server.cpp:194`), `DELETE /v1/stream` (`server.cpp:234`), GCP/Vertex compat routes (`ctx_http.register_gcp_compat()`, `server.cpp:222`). Slot scheduling moved to `server-slot-sched.{h,cpp}` (context.cpp:1132,1448; the b12426 note in ADR 0065 "#32154").
+- **[new @pin] Anthropic:** `output_config.effort` becomes `reasoning_effort` (`server-chat.cpp:662-668`). Tetraeder reads only `output_config.format` (`anthropic.rs:373-388`): effort is ignored.
+- **[new @pin] flags:** `--allow-unauthenticated-tools` (arg.cpp:3447), `--media-allow-private-urls` (3679), `--moe-cache-cpu-share` (2758), `--ple/--shard` (3036). **[removed @pin]:** `-dt/--defrag-thold` (matches ADR 0065 line 213).
+- **Unchanged in substance:** the whole completion schema (`server-schema.cpp:13-470` has identical field lines; only the TTS schema at :540+ changed: adds `speed`, `loudness`), result JSON (usage, finish_reason, timings), chat parse logic, error format, API key middleware, `n_parallel` auto = 4.
+- Other changes inside this range that are not server-visible (CUDA FP8 #28413, stream-k mm tiles) are out of scope here.
+
+### 1. HTTP endpoints
+
+llama-server route table: `L:server.cpp:174-319` (core) and `:555-558` (router mode only). Tetraeder router: `T:gateway/src/server.rs:52-62`.
+
+| Capability | llama-server evidence | Tetraeder status | Engine notes |
+|---|---|---|---|
+| GET /health, /v1/health (public, no key) | server.cpp:174-175; handler server-context.cpp:5673 | **missing** (fallback 404 `not_found`, server.rs:35-43,59) | n/a |
+| GET /metrics (Prometheus, `--metrics`) | server.cpp:176; context.cpp:5686; names `llamacpp:*` via server-task.cpp:1641-1643 | **missing** on the HTTP router. OTLP push only (`T:telemetry/src/setup.rs:64`, env-configured); no scrape endpoint on the gateway | all |
+| GET /props, POST /props (`--props` for POST) | server.cpp:177-178; context.cpp:5823,5835 | **missing** | n/a |
+| GET /models, /v1/models | server.cpp:179-180; context.cpp:6349 | **supported** `/v1/models` only (server.rs:56,28-34); no unprefixed `/models`. Anthropic shape when header `anthropic-version` is present (server.rs:17-19) | all |
+| GET /v1/models/{id} | not registered in llama-server | supported (server.rs:57) | all |
+| POST /completion, /completions (native, many fields) | server.cpp:181-182; context.cpp:5925 | **missing** | n/a |
+| POST /v1/completions | server.cpp:183; context.cpp:5937 | **supported, narrow** (server.rs:53; openai.rs:487; single string prompt only, openai.rs:496-507) | all |
+| POST /chat/completions, /v1/chat/completions | server.cpp:184-185; context.cpp:5949 | supported `/v1/...` only (server.rs:52; openai.rs:338) | all |
+| POST /v1/chat/completions/control (`reasoning_end`) | server.cpp:186; context.cpp:5973-5983 | missing | n/a |
+| POST /v1/responses, /responses (OpenAI Responses API) | server.cpp:187-188; context.cpp:6010 | missing | n/a |
+| POST /v1/audio/transcriptions, /audio/transcriptions, /tts, /v1/systemone | server.cpp:189-191,204 | missing | n/a |
+| **[new @pin]** POST /v1/audio/speech, /audio/speech (OpenAI TTS) | server.cpp:192-193; context.cpp:6432 | missing | n/a |
+| **[new @pin]** WebSocket /v1/realtime | server.cpp:194 | missing | n/a |
+| POST /v1/messages (Anthropic) | server.cpp:195; context.cpp:6307; converter server-chat.cpp:391 | **supported** (server.rs:54; anthropic.rs:466) | all |
+| POST /v1/messages/count_tokens | server.cpp:213; context.cpp:6329 | supported (server.rs:55; anthropic.rs:707; renders template and tokenizes, gateway.rs:352-360) | all |
+| POST /v1/chat/completions/input_tokens, /responses/input_tokens | server.cpp:209-212; context.cpp:5969,6032 | missing | n/a |
+| POST /infill | server.cpp:196; context.cpp:5847 | missing (also `suffix` rejected on /v1/completions, openai.rs:493-495) | n/a |
+| POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`) | server.cpp:197-199; context.cpp:6416,6420,6691 | missing | n/a |
+| POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`) | server.cpp:200-203; context.cpp:6424 | missing | n/a |
+| POST /tokenize, /detokenize | server.cpp:205-206; context.cpp:6361,6402 | missing | n/a |
+| POST /apply-template | server.cpp:207; context.cpp:6334 | missing | n/a |
+| GET/POST /lora-adapters | server.cpp:215-216; context.cpp:6525,6553 | missing | n/a |
+| GET /slots, POST /slots/:id?action=save/restore/erase | server.cpp:218-219; context.cpp:5748,5790,5807-5809 | missing (prefix reuse and RAM cache are internal: `--cache-ram`, `--no-prefix-reuse`, serve.rs:97-103; `cached_tokens` in usage) | n/a |
+| GET /v1/stream, POST /v1/streams/lookup (resumable streams) | server.cpp:232-234 (**[new @pin]** adds `DELETE /v1/stream`) | missing | n/a |
+| /cors-proxy, /tools (MCP/agent features) | server.cpp:284-319 | missing | n/a |
+| Router mode: POST /models, /models/load, /models/unload, GET /models/sse | server.cpp:555-558 | missing (one model per process; `--alias`, `--default-model`, `--accept-any-model`, serve.rs:56-63) | n/a |
+| API key auth (`--api-key`, Bearer) | arg.cpp:3529; server-http.cpp:347-359 | **missing**: no auth in gateway (grep Authorization/api_key in gateway/src, tetraeder/src: only a request-log comment, reqlog.rs:7) | n/a |
+| Web UI (`--ui`) | arg.cpp:3486 | missing | n/a |
+| Tetraeder-only | n/a | admin listener with `--plan`: `POST /admin/replan`, `POST /api/v2/alerts`, `GET /admin/plan` on `--admin 127.0.0.1:8081` (serve.rs:184-186) | planner (replanner) only |
+
+### 2. Request fields
+
+### 2a. llama-server (completion schema shared by /completion, /v1/completions, /v1/chat/completions, /v1/messages)
+
+Parsed in `L:server-schema.cpp:make_llama_cmpl_schema` (lines 13-470), evaluated at `:eval_llama_cmpl_schema` (~480-520). Chat requests go through `oaicompat_chat_params_parse` (`L:server-common.cpp:1489-1700`), which copies every remaining body key through to the schema (server-common.cpp:1690-1697), so native fields work on the OAI endpoints. `null` values count as absent (schema.cpp `has_value`). Out-of-range values are clamped (soft limits) or rejected (hard limits).
+
+| Field | llama-server evidence | Tetraeder status (OpenAI chat / completions / Anthropic) | Engine notes |
+|---|---|---|---|
+| model | context.cpp meta->model_name | supported; unknown ids resolve per `--default-model`/`--accept-any-model` (gateway.rs:303-310; serve.rs:59-63) | all |
+| messages (chat) | common.cpp:1552-1583 | supported: roles system/developer/user/assistant/tool (openai.rs:158-207); other roles rejected (openai.rs:208-212) | all |
+| content parts: text | common.cpp:1580 | supported (openai.rs:103) | all |
+| content parts: image_url / input_audio (needs `--mmproj`) | common.cpp:1580 (`oaicompat_content_load_media` 1415) `oaicompat_content_load_media`; arg.cpp:2549 | **rejected** on OpenAI (openai.rs:106-110 "only text"); Anthropic image block becomes the text `[image]` (anthropic.rs:60) | n/a (no mtmd) |
+| prompt (completions): string / array / token ids / mixed / multimodal | common.cpp:1084-1250 (`tokenize_mixed` 1084, `tokenize_input_prompts` ~1191) | only one string or one-string array; batches and token arrays rejected (openai.rs:496-507) | all |
+| temperature | schema.cpp:118 (clamp >= 0) | supported (openai.rs:358; anthropic.rs:422); default 0.8 (serve.rs:66) | all (scheduler sampler, sample.rs:35-44) |
+| top_k | schema.cpp:91 | supported, OpenAI extension (openai.rs:55,360); default 40 (serve.rs:68) | all |
+| top_p | schema.cpp:95 | supported (openai.rs:359); default 0.95 (serve.rs:70) | all |
+| min_p | schema.cpp:99; **default 0.05** (common.h:239) | **ignored (not parsed)**. No min_p in sampler (sample.rs:37-44). Default behaviour therefore differs (llama-server samples with min_p 0.05 unless overridden) | all |
+| top_n_sigma | schema.cpp:103 | ignored | all |
+| xtc_probability / xtc_threshold | schema.cpp:106,110 | ignored | all |
+| typical_p | schema.cpp:114 | ignored | all |
+| dynatemp_range / dynatemp_exponent | schema.cpp:122,125 | ignored | all |
+| repeat_penalty / repeat_last_n | schema.cpp:132,128 | ignored | all |
+| frequency_penalty / presence_penalty (OpenAI standard names) | schema.cpp:135,138 | **ignored (not parsed)**, not in ChatRequest/CompletionRequest (openai.rs:47-92) | all |
+| dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, dry_sequence_breakers | schema.cpp:141-155,244 | ignored | all |
+| mirostat / mirostat_tau / mirostat_eta | schema.cpp:159-166 | ignored | all |
+| adaptive_target / adaptive_decay | schema.cpp:169,173 | ignored | all |
+| samplers (order) | schema.cpp:472 | ignored. Fixed pipeline: mask, top-k, **temperature applied before top-p mass** (sample.rs:70-104). llama-server default chain is penalties, dry, top_n_sigma, top_k, typical, top_p, min_p, xtc, temperature last (common.h:268-278), so top-p sees untempered probabilities there | all |
+| seed | schema.cpp:178 (-1 random) | supported (openai.rs:56,361; Anthropic has none). Unseeded requests use a per-process counter (`counter_seed`, sample.rs:30; scheduler.rs:1283), not random. Generator is SplitMix64, so seeded streams do not equal llama-server's | all |
+| logit_bias | schema.cpp:401 | ignored | all |
+| ignore_eos | schema.cpp:442 | ignored | all |
+| min_keep | schema.cpp:185 | ignored | all |
+| n_predict / max_tokens / max_completion_tokens | schema.cpp:46 (aliases) | supported: `max_completion_tokens` then `max_tokens` (openai.rs:357); completions default 16 (openai.rs:510); chat default: up to end of context (gateway.rs:88); Anthropic `max_tokens` optional (anthropic.rs:29,421; llama-server defaults it to 4096, chat.cpp:639-643) | all |
+| n_keep, n_discard, context_shift | schema.cpp:56,60; arg.cpp:1720 | ignored; over-length prompts fail with `context_length_exceeded` 400 (error.rs:14-16,50-51; engine.rs:155-157) | all |
+| n (n_cmpl, multiple choices) | schema.cpp:64 (1..n_parallel) | **rejected**: `n` other than 1 gives 400 "only n = 1 is supported" (openai.rs:302-309,340,489) | all |
+| stop | schema.cpp:454; chat copy common.cpp:1513-1518 | supported: string or array (openai.rs:126-143); Anthropic `stop_sequences` (anthropic.rs:33,425); matched in gateway, held-back suffix (decode.rs:50-60) | all |
+| stream | schema.cpp:25 | supported (openai.rs:60,367; anthropic.rs:38) | all |
+| stream_options.include_usage | schema.cpp:28 | supported (openai.rs:41-45,368,463-471) | all |
+| cache_prompt | schema.cpp:33 | **ignored**; prefix reuse is on by default, `--no-prefix-reuse` is server-wide (serve.rs:100-103) | all |
+| n_cache_reuse | schema.cpp:69 | ignored (own prefix cache) | all |
+| id_slot | context.cpp:5301 | ignored (no slots API) | n/a |
+| return_tokens | schema.cpp:36 | ignored | n/a |
+| return_progress / sse_ping_interval | schema.cpp:39,42 | ignored; SSE keep-alive fixed 15 s (openai.rs:334) | n/a |
+| timings_per_token / verbose / response_fields / t_max_predict_ms / n_indent | schema.cpp:19,22,80,76,52 | ignored | n/a |
+| n_probs, logprobs, top_logprobs, post_sampling_probs | schema.cpp:181,192; common.cpp:1679-1688 | **rejected**: chat `logprobs: true` gives 400 "logprobs are not supported" (openai.rs:341-343); completions `logprobs > 0` rejected (openai.rs:490-492); `top_logprobs` ignored; `logprobs: false` accepted | all |
+| grammar (GBNF) | schema.cpp:271 | **ignored (not parsed)**; no GBNF. Tetraeder uses llguidance Lark (constraint.rs:1-6) | all |
+| json_schema (native field) | schema.cpp:271; common.cpp:1520-1523 | ignored as a top-level field; only through `response_format` | all |
+| response_format: json_object / json_schema | common.cpp:1525-1540 | supported (openai.rs:284-300; Anthropic `output_config.format` json_schema only, anthropic.rs:373-388) via llguidance mask | all |
+| tools | common.cpp:1503-1508 (needs `--jinja`, on by default, common.h:675) | supported, function tools only (openai.rs:224-250: other types rejected) | all |
+| tool_choice auto/none/required/named | common.cpp:1588 -> `common_chat_tool_choice_parse_oaicompat` | supported (openai.rs:252-282; Anthropic auto/any/none/tool, anthropic.rs:337-371). Forced choices use a grammar (ADR 0057 line 13: only forced choice builds a grammar; `auto` is parsed after the fact) | all |
+| parallel_tool_calls | common.cpp:1592 | supported (openai.rs:353; Anthropic `disable_parallel_tool_use`, anthropic.rs:348-351) | all |
+| chat_template_kwargs | common.cpp:1626-1630 | supported (openai.rs:70,354) | all |
+| reasoning_format (request) | common.cpp:1618-1621; schema.cpp:313 | ignored | all |
+| reasoning_effort | common.cpp:1643-1650 | ignored (not in ChatRequest) | all |
+| reasoning_budget_tokens / thinking_budget_tokens | common.cpp:1664-1676; schema.cpp:354 | ignored; Anthropic `thinking.type` enabled/adaptive/disabled sets `enable_thinking` kwarg, `budget_tokens` ignored (anthropic.rs:394-407); llama-server maps `thinking.budget_tokens` (chat.cpp:650-657) | all |
+| continue_final_message / add_generation_prompt / prefill_assistant | common.cpp:1593-1610 | partial: Anthropic trailing assistant message becomes `prefill` (anthropic.rs, `Prompt::Chat.prefill`, openai.rs:350 passes `None`) | all |
+| echo | schema.cpp:325 (chat), OAI completions | completions `echo` supported (openai.rs:88,519,533); chat n/a | all |
+| suffix | /infill | rejected (openai.rs:493-495) | n/a |
+| lora (per request) | schema.cpp:231 | ignored | n/a |
+| user | not used for sampling (metadata only) | parsed, used as cost/quota key `caller` (openai.rs:67,364) | all |
+| speculative.* per request | schema.cpp:202-227 are `#if 0` | n/a | n/a |
+| Anthropic: system | server-chat.cpp (converter 391-684) | supported (anthropic.rs:31) | all |
+| Anthropic: metadata.user_id | chat.cpp:668-674 | supported as `caller` (anthropic.rs:427-432) | all |
+| Anthropic: thinking blocks in history | chat.cpp:460,585 | supported -> `reasoning_content` (anthropic.rs:220-226; redacted_thinking dropped) | all |
+| Anthropic: image/document blocks | chat.cpp (media) | image -> `[image]`, document -> its text (anthropic.rs:60-69); unknown blocks dropped with a warning (anthropic.rs:70-77) | all |
+| **[new @pin]** Anthropic: output_config.effort -> reasoning_effort | server-chat.cpp:662-668 | ignored (`anthropic.rs:373-388` reads `output_config.format` only) | n/a |
+| Anthropic: extra_params passthrough (min_p, seed ...) | chat.cpp:676-682 | missing | n/a |
+| Anthropic: top_k / top_p / temperature | chat.cpp:646 | supported (anthropic.rs:34-36) | all |
+| Anthropic: tool defs `input_schema`, `defer_loading`/`tool_reference` | chat.cpp:600-615 | supported (anthropic.rs:330; tool_reference text, anthropic.rs:56) | all |
+
+### 2b. Sampler defaults and order at the pin (`common/common.h`, `common/sampling.cpp`)
+
+| Item | llama-server at the pin | Tetraeder |
+|---|---|---|
+| Defaults (`common_params_sampling`, common.h:231-260) | seed random (`LLAMA_DEFAULT_SEED`, :232), top_k 40 (:237), top_p 0.95 (:238), **min_p 0.05** (:239), xtc_probability 0 (:240), **xtc_threshold 0.10** (:241), typical_p 1.0 (:242), temp 0.80 (:243), penalty_last_n 64 (:246), repeat 1.0, freq 0, presence 0 (:247-249), dry_multiplier 0 (:250), adaptive_target -1 (:254), mirostat 0 (:256), top_n_sigma -1 (:257), ignore_eos false (:260), min_keep 0 (:236), n_probs 0 (:235) | temp 0.8, top_k 40, top_p 0.95 (serve.rs:66-71); everything else absent. Only min_p differs by default: llama-server filters at 0.05, Tetraeder does not |
+| Default sampler order (common.h:268-278) | penalties, dry, top_n_sigma, top_k, typical_p, top_p, min_p, xtc, temperature, then `dist` (seeded) | mask, top-k, then temperature scaling, then top-p mass over the tempered distribution, then draw (sample.rs:63-115). Temperature before top_p; no other stage |
+| Chain construction (sampling.cpp:299-444) | grammar sampler (output-format / tool-call grammars prefilled with the template's generation prompt, :299-313); reasoning-budget sampler (:315-328); `logit_bias` merged with the **model's suppress tokens** (`llama_vocab_get_suppress_tokens`, -inf; :328-342); chain per `samplers` list; ends in `greedy` when temp == 0 (or top_k == 1) and n_probs == 0 (:404-407), else `dist(seed)`; mirostat 1/2 replaces the chain with temp + mirostat (:409-415) | greedy when temperature <= 0; lowest id wins ties (sample.rs:65-66,150-161). No suppress-token handling in the sampler |
+| Sampler names accepted in `samplers` (sampling.cpp:964-980) | dry, top_k, top_p, top_n_sigma, typ_p, min_p, temperature, xtc, infill, penalties, adaptive_p | none |
+| Backend (GPU) sampling | `backend_sampling` field / `-bs` flag, disabled with grammar or reasoning budget (sampling.cpp:424-436) | n/a (host sampler over a logits row) |
+| RNG | `std::mt19937` seeded from the chain seed (sampling.cpp:444) | SplitMix64 (sample.rs:8-27); unseeded requests use `counter_seed` (sample.rs:30) |
+
+Sampler facts for Tetraeder (all engines share one host-side sampler over the logits row): fields are temperature, top_k, top_p, seed, plus the constraint mask (`T:scheduler/src/sample.rs:35-44,63-115`; `T:gateway/src/engine.rs:57-65` `SamplingParams` is only `max_tokens, temperature, top_p, top_k, seed`). Temperature <= 0 is greedy, lowest id wins ties (sample.rs:65-66,150-161). Scheduler fills defaults from `--temp/--top-k/--top-p` (scheduler.rs:1277-1283; serve.rs:65-71). Speculative decoding (`spec/mod.rs`): `Sampling` has only temperature+seed (spec/mod.rs:67-77), the scheduler drafts only for **greedy, unconstrained** sequences (scheduler.rs:1620-1633); `--spec` is off by default.
+
+### 3. Response features
+
+| Capability | llama-server evidence | Tetraeder status | Engine notes |
+|---|---|---|---|
+| usage (prompt/completion/total, `prompt_tokens_details.cached_tokens`) | server-task.cpp:357-364 | supported, same fields (openai.rs:311-318); `completion_tokens` counted by gateway | all |
+| timings (`prompt_n`, `prompt_ms`, `predicted_per_second`, `cache_n`, `draft_n`, ...) | server-common.cpp:146-165; task.cpp:400,448,509 | **missing** from responses. `EngineStats` has gpu_seconds, bytes_streamed, profile (engine.rs:109-145) used for cost/metrics, not returned | all |
+| finish_reason chat | task.cpp:407-416: length / stop / tool_calls | same three (chat.rs:111-119); stop sequence maps to `stop` | all |
+| finish_reason completions | task.cpp:374-377 | stop / length (openai.rs:540) | all |
+| `stop_type`, `stopping_word`, `truncated`, `tokens_cached`, `generation_settings` (native) | task.cpp:337-349 | missing (native endpoint absent) | n/a |
+| logprobs shape | task.cpp:274-300 (`content[]` with token, bytes, logprob, top_logprobs; native `completion_probabilities`) | `logprobs: null` always (openai.rs:394,417,539) | n/a |
+| system_fingerprint | task.cpp:389 | absent | n/a |
+| streaming chat chunk | task.cpp:456-510 (`chat.completion.chunk`, per-diff deltas, incremental tool-call argument deltas, optional `timings`, `prompt_progress`) | `chat.completion.chunk`: first chunk `{role, content:""}`, text/reasoning deltas, tool calls emitted **whole in one delta** with `index` (openai.rs:401-485), final empty delta with finish_reason, optional usage chunk with `choices: []`, `[DONE]`; mid-stream errors as an `error` data frame without `[DONE]` (openai.rs:475-479) | all |
+| tool call output | `msg.to_json_oaicompat` (common_chat parsers, many families under `common/`) | parsed by gateway from text: Hermes `<tool_call>`, Qwen XML `<function=`, Llama3 JSON/`<|python_tag|>`, Mistral `[TOOL_CALLS]`; family detected from chat template, unknown -> Hermes (toolcall.rs:25-56). Arguments typed as strings of JSON (openai.rs:320-326) | all (family from template) |
+| reasoning/thinking content | `--reasoning-format` default deepseek -> `message.reasoning_content` (arg.cpp:3730-3740; common.h:686) | `reasoning_content` field, split on `<think>`/`</think>` when template contains `<think>` (gateway.rs:337, toolcall.rs:12-13); Anthropic `thinking` block with empty `signature` (anthropic.rs:544-549,587,607). Only the `deepseek` mode; no `none` / `deepseek-legacy` choice | all |
+| Anthropic stop_reason | task.cpp:735-737,788: max_tokens / end_turn / tool_use | end_turn / max_tokens / stop_sequence / tool_use (anthropic.rs:436-443) | all |
+| Anthropic usage | task.cpp (anthropic) | input_tokens (minus cached), output_tokens, cache_creation 0, cache_read = cached (anthropic.rs:445-452) | all |
+| Error format | server-common.cpp:98-140: `{code,message,type}`, 501 for not-supported, 503 | OpenAI `{error:{type,code,...}}` and Anthropic errors with `request-id` (error.rs:49-102); overload 429, Anthropic 529 (error.rs:66,100); `Retry-After` (gateway.rs:35) | all |
+| Request log (prompts) | `--log-prompts-dir` arg.cpp:3946 | `--request-log FILE` JSONL, authorization never logged (serve.rs:104-106; reqlog.rs:7) | all |
+
+### 4. Server flags
+
+llama-server flags: `C:arg.cpp` (line is the flag-name line). Tetraeder: `T:tetraeder/src/serve.rs` and `T:tetraeder/src/engine_args.rs`.
+
+| Behaviour | llama-server | Tetraeder `serve` | Engine notes |
+|---|---|---|---|
+| Model | `-m` arg.cpp:3027; `-hf` :3062; `-mu` :3046 | `-m` only (serve.rs:41); no HF download, no `--model-url` | all |
+| Parallel slots | `-np` :2515 (server default auto = 4, kv_unified true; arg.cpp:1382; server.cpp:129-133) | `--parallel` default 4 (`PARALLEL`, scheduler.rs:30; serve.rs:74-75); with `--plan` replanner exactly 1 | libllama, dense, moe |
+| Context size | `-c` :1618 (per-slot split unless `-kvu`) | `--ctx` default 32768, one shared pool for all sequences (serve.rs:47-51) | all |
+| Batch sizes | `-b` :1648, `-ub` :1655 | `--step-tokens` (default 2048), `--ubatch`; `-b` ignored (serve.rs:35-38,76-81) | libllama uses n_batch/n_ubatch; builders use step tokens |
+| KV cache types | `-ctk/-ctv` :2417,2430 | **missing**: ContextConfig has no type_k/type_v (engine/src/config.rs:105-122); ggml-sys context has them (ggml-sys/src/llama/context.rs:74-76) but serve does not expose. Builders: KV type fixed by builder | libllama only could be exposed |
+| Flash attention | `-fa` :1734 | `--flash-attn auto/on/off` (engine_args.rs:54-56) | libllama; builders own kernels |
+| Unified KV / per-slot | `-kvu` :1704 | always unified (serve.rs:635; load.rs:27-30) | all |
+| Context shift | `--context-shift` :1720 | missing | n/a |
+| Prompt cache | `--cache-prompt` :3611, `--cache-reuse` :3619, `--cache-ram` :1695, `--cache-idle-slots` :1712, `--slot-prompt-similarity` :3847 | `--cache-ram` MiB default 8192 (serve.rs:97-99), `--no-prefix-reuse` (serve.rs:100-103) | all |
+| Slot save/restore | `--slot-save-path` :3651 | missing | n/a |
+| Chat template | `--chat-template` :3801, `--chat-template-file` :3813, `--jinja` :3722 (default on) | `--chat-template-file` (serve.rs:107-109), template from GGUF otherwise (minijinja, template.rs:1-8). No built-in named templates | all |
+| chat-template-kwargs | `--chat-template-kwargs` :3571 | per request only | all |
+| Reasoning | `--reasoning-format` :3730, `--reasoning` :3741, `--reasoning-budget` :3771, `--reasoning-effort` :3759 | none (always deepseek-style split) | all |
+| Tools/MCP server side (**[new @pin]** `--allow-unauthenticated-tools` :3447, `--media-allow-private-urls` :3679) | `--tools` :3426, `--mcp-servers-*` :3454-3462, `--agent` :3470 | missing | n/a |
+| Embeddings / rerank | `--embeddings` :3514, `--rerank` :3521, `--pooling` :2293 | missing | n/a |
+| LoRA | `--lora` :2947, `--lora-scaled` :2957, `--lora-init-without-apply` :3854, `--control-vector` :2972 | missing (no lora in crates; only ggml-sys build.rs mention) | n/a |
+| Multimodal | `--mmproj` :2549, `--mmproj-url` :2557, `--image-*` :2600-2623 | missing | n/a |
+| Speculative / draft | `--spec-type` :4325, `--spec-draft-model/-md` :4317, `--spec-ngram-*` :4335-4491, `--draft*` :4463, `--spec-default` :4807 | `--spec ngram|draft:GGUF`, `--spec-max-batch` (default 1), `--spec-max-draft` (default 6, max 6) (serve.rs:82-93,598-618); lone greedy unconstrained requests only | draft model runs on libllama; works with all engines |
+| Grammar flags | `--grammar` :2248, `--json-schema` :2262 (server defaults) | missing | n/a |
+| Sampling defaults | `--temp` :1995, `--top-k` :2004, `--top-p` :2012, `--min-p` :2020, penalties :2058-2106, dry :2106-2141, mirostat :2201, `--samplers` :1965, `--seed` :1974, `--ignore-eos` :1988, `-l/--logit-bias` :2226 | `--temp 0.8`, `--top-k 40`, `--top-p 0.95` only (serve.rs:65-71) | all |
+| API key | `--api-key` :3529, `--api-key-file` :3540 | **missing** | n/a |
+| TLS | `--ssl-key-file` :3557, `--ssl-cert-file` :3564 | missing | n/a |
+| Metrics/props/slots endpoints | `--metrics` :3629, `--props` :3636, `--slots` :3643 | missing; OTLP via env (telemetry setup.rs:64) | n/a |
+| Host/port | `--host` :3323, `--port` :3339 | `--host 127.0.0.1`, `--port 8080` (serve.rs:52-55) | all |
+| CORS, path, api-prefix | :3353-3396 | missing | n/a |
+| HTTP threads, timeout, SSE ping | `--threads-http` :3604, `-to` :3589, `--sse-ping-interval` :3597 | `--max-queued` 16 (serve.rs:94-96; gateway.rs:30-50 stream_buffer 32); SSE keep-alive 15 s fixed | all |
+| GPU layers | `-ngl` :2781 | `--ngl/--n-gpu-layers` default -1 (engine_args.rs:28-29) | libllama; builders: 0 = CPU else GPU `--main-gpu` (serve.rs:538-560) |
+| Split mode | `-sm` :2799 (none/layer/row/tensor) | `--split-mode none/layer/row/tensor` (engine_args.rs:30-32) | libllama; builders only through `--plan FILE` with executor ranks (serve.rs:152-155,437-462) |
+| Tensor split / main GPU | `-ts` :2823, `-mg` :2850 | `--tensor-split`, `--main-gpu` (engine_args.rs:33-37) | same as above |
+| Tensor overrides | `-ot` :2725, `-cmoe` :2731, `-ncmoe` :2738 | `--override-tensor/--ot` (engine_args.rs:39-41); no `--cpu-moe`/`--n-cpu-moe`. MoE builder has its own `--expert-slots`, `--ram-slots`, `--miss`, `--prefetch`, `--io-service`, `--overlap` (serve.rs:116-146) | libllama honours overrides; builders: `--ot` not applied (builder_backend uses only ngl/main-gpu/threads, serve.rs:538-595) |
+| Load mode | `-lm` :2662, mlock/mmap flags | `--load-mode auto/none/mmap/mlock/mmap-mlock/direct-io` (engine_args.rs:42-44) | libllama |
+| Threads | `-t` :1496, `-tb` :1506 | `-t` (engine_args.rs:46-47) | all |
+| Multi-model router | `--models-dir` :3686 etc. | missing | n/a |
+| Planner / replan / worker isolation | none | `--plan auto|FILE`, `--hw`, `--plan-*`, `--worker`, `--admin`, `--replan-*` (serve.rs:147-199) | planner: libllama and MoE builder; dense only with plan FILE |
+| Pin-only flags | `--moe-cache-cpu-share` :2758 and `--ple/--shard` :3036 are **[new @pin]**; `-dt/--defrag-thold` is **[removed @pin]** | none | n/a |
+| Fake engine | none | `--fake` (serve.rs:111-112) | test only |
+
+### 5. Model architectures and engine selection
+
+`serve::loader` (`T:tetraeder/src/serve.rs:399-432`) reads `general.architecture` via `tetraeder_scheduler::architecture` (`T:scheduler/src/load.rs:131-136`) only for `--engine auto`:
+
+- `--engine auto` (default, serve.rs:45-46,405-410): arch `qwen3moe` -> own MoE builder (`load_moe`, load.rs:40-62); **every other arch -> libllama** (`load_llama`, load.rs:20-37). The enum doc says the same: "The Qwen3 MoE builder for GGUF architecture `qwen3moe`, else libllama" (serve.rs:26).
+- `--engine llama`: libllama regardless of arch (serve.rs:403).
+- `--engine moe`: forced MoE builder regardless of arch (serve.rs:404); the builder rejects non-`qwen3moe` GGUFs: `Hparams::from_gguf` errors "architecture `X`, expected `qwen3moe`" (`T:model/src/hparams.rs:65-71`).
+- `--engine dense`: forced dense builder (serve.rs:401,426-427); rejects non-`qwen3`: `DenseHparams::from_gguf` errors "architecture `X`, expected `qwen3`" (`T:model/src/qwen3.rs:84-91`). **`auto` never selects dense**: "`auto` keeps libllama" for `qwen3` (serve.rs:30). Dense must be asked for explicitly.
+- `--plan auto` (replanner): `qwen3moe` -> builder candidates, else libllama (`T:tetraeder/src/replan/start.rs:51-67`); `--engine dense` with `--plan auto` bails (start.rs:54-58); `--engine dense --plan FILE` runs on the executor (serve.rs:441-448).
+- No arch allow-list or rejection exists in the serve path for libllama: `load_llama` calls `Engine::load` with no architecture check (load.rs:20-37). So `llama`, `gemma3`, `qwen3` (under auto), etc. are **routed to libllama, not rejected**; whether they load is libllama's decision. Hence llama-server's architecture coverage (175 `LLM_ARCH_*` names in `vendor/llama.cpp/src/llama-arch.cpp` at the pin, e.g. `llama` :11, `qwen3` :38, `qwen3moe` :40, `gemma3` :63) is inherited by `tetraeder serve` through libllama (the same vendored libllama), minus whatever the gateway cannot do (no mmproj).
+- The tokenizer is always libllama (`vocab_only`) for the builders (load.rs:46-56,108-117).
+- Gateway behaviour per architecture is decided by the chat template text, not the arch: tool format by `ToolFormat::detect` (toolcall.rs:38-56), `<think>` handling when the template contains `<think>` (gateway.rs:337).
+
+| `general.architecture` | `--engine auto` | Forced engines | Evidence |
+|---|---|---|---|
+| `qwen3moe` | own MoE builder | `moe` ok; `llama` ok; `dense` errors | serve.rs:405-410; hparams.rs:65-71; qwen3.rs:85-91 |
+| `qwen3` | libllama | `dense` ok (own builder); `moe` errors; `llama` ok | serve.rs:30,405-410; qwen3.rs:39-40 |
+| `llama`, `gemma3`, anything else | libllama (not rejected) | `moe`/`dense` error with "expected ..." | load.rs:20-37; serve.rs:402-411 |
+| unreadable GGUF / no arch key | error "cannot read the model architecture" (auto path only) | | serve.rs:406-408 |
+
+Note: the planner candidates for architectures other than qwen3/qwen3moe come from `plan::layout` (`T:tetraeder/src/plan.rs:63`, reads arch); not traced here.
+
+### 6. Other features
+
+| Capability | llama-server | Tetraeder | Engine notes |
+|---|---|---|---|
+| Embeddings | `--embeddings`, /v1/embeddings (context.cpp:6416-6424,6691-6760) | missing | n/a |
+| Reranking | `--rerank`, /rerank (arg.cpp:3521; server.cpp:200-203) | missing | n/a |
+| Tokenize / detokenize | server.cpp:205-206; context.cpp:6361,6402 (`add_special`, `parse_special`, `with_pieces`) | missing as endpoints; `count_tokens` (Anthropic) covers token counting for chat only (anthropic.rs:707-720) | all |
+| apply-template | context.cpp:6334 | missing | n/a |
+| /props | context.cpp:5823 | missing | n/a |
+| /slots | context.cpp:5748 | missing | n/a |
+| /metrics | context.cpp:5686 | missing (OTLP push instead) | n/a |
+| /health | context.cpp:5673 | missing | n/a |
+| Infill (FIM) | context.cpp:5847 (`input_prefix`, `input_suffix`, `input_extra`) | missing | n/a |
+| Multimodal (mtmd) | `--mmproj`; server.cpp mtmd ctx (context.cpp:22-23,50-51,268) | missing; OpenAI image parts rejected (openai.rs:106-110); Anthropic image becomes `[image]` | n/a |
+| LoRA adapters | /lora-adapters; `lora` per request (schema.cpp:231) | missing | n/a |
+| Prompt caching | slot prompt cache, `cache_prompt` | internal prefix cache + RAM save/restore (`PrefixCache`, scheduler lib.rs:21; `--cache-ram`); reported as `cached_tokens` | all |
+| Continuous batching | on by default | `--parallel`, step token budget (serve.rs:72-81) | all |
+| Structured output | json_schema -> GBNF | json_schema -> llguidance mask (constraint.rs) | all |
+| Quota / auth / multi-tenant | api keys only | `caller` attribution (openai.rs:364; anthropic.rs:427) and request-log cost; no enforcement in serve (GatewayConfig has no key/quota fields, gateway.rs:29-40) | all |

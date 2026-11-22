@@ -21,6 +21,11 @@ flowchart TB
     serving_spec_batching["✔ Speculation in the<br/>batching loop"]
     serving_prefix_save["✔ Fast prefix-cache<br/>saves"]
     serving_own_run_attention["✔ Long prompts attend<br/>their own run"]
+    serving_parity_harness["○ llama-server<br/>conformance harness"]
+    serving_parity_sampling["⛔ Sampler parity with<br/>llama-server"]
+    serving_parity_fields["⛔ Request field parity"]
+    serving_parity_endpoints["⛔ Endpoint parity"]
+    serving_parity_libllama["⛔ Expose libllama<br/>capabilities"]
     serving_multi_model["⏸ Several models at<br/>once"]
     serving_multi_lora["⏸ Swap and batch LoRA<br/>adapters"]
     serving_auth_quotas["⏸ Priorities, quotas<br/>and auth"]
@@ -41,13 +46,21 @@ flowchart TB
     serving_kv_layout ~~~ serving_spec_batching
     serving_moe_batch ~~~ serving_prefix_save
     serving_c4_gap ~~~ serving_own_run_attention
-    serving_spec_batching ~~~ serving_multi_model
-    serving_prefix_save ~~~ serving_multi_lora
-    serving_own_run_attention ~~~ serving_auth_quotas
+    serving_spec_batching ~~~ serving_parity_harness
+    serving_prefix_save ~~~ serving_parity_sampling
+    serving_own_run_attention ~~~ serving_parity_sampling
+    serving_parity_harness ~~~ serving_parity_sampling
+    serving_parity_sampling ~~~ serving_parity_fields
+    serving_parity_fields ~~~ serving_parity_endpoints
+    serving_parity_endpoints ~~~ serving_parity_libllama
+    serving_parity_endpoints ~~~ serving_multi_model
+    serving_parity_endpoints ~~~ serving_multi_lora
+    serving_parity_libllama ~~~ serving_auth_quotas
     serving_multi_model ~~~ serving_multimodal
     serving_multi_lora ~~~ serving_mtp_drafts
     serving_auth_quotas ~~~ serving_self_spec
     serving_multimodal ~~~ serving_prefix_first
+    serving_mtp_drafts ~~~ serving_prefix_first
     serving_gateway --> serving_real_engines
     serving_real_engines --> serving_prefix_cache
     serving_real_engines --> serving_speculative
@@ -59,6 +72,10 @@ flowchart TB
     serving_speculative --> serving_spec_batching
     serving_batching --> serving_spec_batching
     serving_prefix_cache --> serving_prefix_save
+    serving_parity_harness --> serving_parity_sampling
+    serving_parity_sampling --> serving_parity_fields
+    serving_parity_fields --> serving_parity_endpoints
+    serving_parity_endpoints --> serving_parity_libllama
     serving_gateway --> serving_multi_model
     serving_batching --> serving_multi_lora
     serving_gateway --> serving_auth_quotas
@@ -80,6 +97,8 @@ flowchart TB
     class serving_gateway,serving_real_engines,serving_prefix_cache,serving_tool_calls,serving_batching,serving_moe_batch,serving_spec_batching,serving_own_run_attention unrated
     class serving_speculative mixed
     class serving_kv_layout,serving_c4_gap,serving_prefix_save succ
+    class serving_parity_harness next
+    class serving_parity_sampling,serving_parity_fields,serving_parity_endpoints,serving_parity_libllama blocked
     class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_mtp_drafts,serving_self_spec,serving_prefix_first parked
 ```
 <!-- END GENERATED: track-serving -->
@@ -101,6 +120,12 @@ flowchart TB
 | `serving-spec-batching` | Speculation in the batching loop | feature | none | done | unrated | 2026-11-15 | 2026-11-16 | serving-speculative, serving-batching |  |  |  | crates/scheduler |
 | `serving-prefix-save` | Fast prefix-cache saves | feature | none | done | successful | 2026-11-17 | 2026-11-20 | serving-prefix-cache |  |  |  | docs/adr/0074-prefix-save-through-pinned-staging.md; bench/results/20261117h/README.md |
 | `serving-own-run-attention` | Long prompts attend their own run | feature | none | done | unrated | 2026-11-19 | 2026-11-19 | engine-dense-builder |  |  |  | docs/adr/0079-one-input-steps-attend-over-their-own-run.md |
+| `serving-parity-harness` | llama-server conformance harness | feature | ci | next | unrated |  |  | bench-m2-report |  |  |  |  |
+| `serving-parity-sampling` | Sampler parity with llama-server | feature | local | blocked | unrated |  |  | serving-parity-harness |  |  |  |  |
+| `serving-parity-fields` | Request field parity | feature | local | blocked | unrated |  |  | serving-parity-sampling |  |  |  |  |
+| `serving-parity-endpoints` | Endpoint parity | feature | local | blocked | unrated |  |  | serving-parity-fields |  |  |  |  |
+| `serving-parity-libllama` | Expose libllama capabilities | feature | local | blocked | unrated |  |  | serving-parity-endpoints |  |  |  |  |
+| `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope | owner-decision | owner | blocked | n/a |  |  | serving-parity-libllama |  |  |  |  |
 | `serving-multi-model` | Several models at once | feature | none | parked | unrated |  |  | serving-gateway, planner-core |  |  |  |  |
 | `serving-multi-lora` | Swap and batch LoRA adapters | feature | none | parked | unrated |  |  | serving-batching |  |  |  |  |
 | `serving-auth-quotas` | Priorities, quotas and auth | feature | none | parked | unrated |  |  | serving-gateway |  |  |  |  |
@@ -126,6 +151,12 @@ flowchart TB
 | `serving-spec-batching` | Speculation in the batching loop |  |  | serve --spec runs speculative decoding inside the continuous batching loop; self-speculation with a low-bit copy and MTP heads were parked until after the Phase 4 verdict. |  |  |  |  |  |
 | `serving-prefix-save` | Fast prefix-cache saves | The save bar is met in `bench/results/20261117h/` |  | Saving a sequence's KV for later reuse stalled admissions; saves go through pinned staging and a pool of spare buffers prepared off the admission path, and saves nobody reuses are skipped. |  |  |  |  |  |
 | `serving-own-run-attention` | Long prompts attend their own run |  |  | A step with a single input attends only over its own KV run instead of the masked shared pool, with the mask buffer reused, which sped up long-context prefill. |  |  |  |  |  |
+| `serving-parity-harness` | llama-server conformance harness |  |  | One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083). |  |  |  |  |  |
+| `serving-parity-sampling` | Sampler parity with llama-server |  |  | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |  |  |  |  |  |
+| `serving-parity-fields` | Request field parity |  |  | Every request field llama-server reads is honoured or rejected with 400, including logprobs, n above 1, GBNF grammar, reasoning effort and timings (ADR 0083, group B). |  |  |  |  |  |
+| `serving-parity-endpoints` | Endpoint parity |  |  | Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys, as llama-server serves them (ADR 0083, group C). |  |  |  |  |  |
+| `serving-parity-libllama` | Expose libllama capabilities |  |  | Embeddings, rerank, KV cache types, context shift, slot save and restore and CPU-MoE flags, which libllama has and the gateway does not expose yet (ADR 0083, group D). |  |  |  |  |  |
+| `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope |  |  | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). | The matrix is docs/notes/llamacpp-parity.md. |  |  |  |  |
 | `serving-multi-model` | Several models at once |  |  | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: a feature test loads a second model on request and serves both. |  |  |  |  |
 | `serving-multi-lora` | Swap and batch LoRA adapters |  |  | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: a batch mixing adapters matches each adapter run alone. |  |  |  |  |
 | `serving-auth-quotas` | Priorities, quotas and auth |  |  | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: feature tests for each. |  |  |  |  |

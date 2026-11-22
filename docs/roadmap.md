@@ -137,9 +137,11 @@ flowchart TB
     subgraph bd_2["Next"]
         bench_30b_c4_gap[/"bench · ○ 30B<br/>concurrency-4 gap"/]
         planner_cost_model_v5_host2[/"planner · ○ Cost model<br/>5 second host"/]
+        serving_parity_harness["serving · ○ llama-<br/>server conformance<br/>harness"]
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
+        serving_parity_sampling["serving · ⛔ Sampler<br/>parity with llama-<br/>server"]
         cluster_transport["cluster · ⛔ Transport<br/>between machines"]
         cluster_pipeline_nodes["cluster · ⛔ Pipeline<br/>stages across machines"]
         cluster_experts_nodes["cluster · ⛔ Experts on<br/>other machines"]
@@ -190,11 +192,13 @@ flowchart TB
     bench_d2a_30b ~~~ bench_ab30b
     bench_ab30b ~~~ bench_30b_c4_gap
     bench_ab30b ~~~ planner_cost_model_v5_host2
-    bench_ab30b ~~~ engine_dense_amx
-    bench_30b_c4_gap ~~~ cluster_transport
-    planner_cost_model_v5_host2 ~~~ cluster_transport
+    bench_ab30b ~~~ serving_parity_harness
+    bench_30b_c4_gap ~~~ engine_dense_amx
+    planner_cost_model_v5_host2 ~~~ engine_dense_amx
+    serving_parity_harness ~~~ engine_dense_amx
+    engine_dense_amx ~~~ serving_parity_sampling
     engine_dense_amx ~~~ cluster_transport
-    cluster_transport ~~~ cluster_pipeline_nodes
+    serving_parity_sampling ~~~ cluster_pipeline_nodes
     cluster_transport ~~~ cluster_experts_nodes
     cluster_transport ~~~ cluster_failover
     cluster_pipeline_nodes ~~~ bench_phase6_exit
@@ -228,6 +232,7 @@ flowchart TB
     multi_prefill_no_capture --> planner_ep_prefill_recheck
     bench_d2a_probe --> bench_d2a_30b
     bench_d2a_30b --> bench_ab30b
+    serving_parity_harness --> serving_parity_sampling
     cluster_transport --> cluster_pipeline_nodes
     cluster_transport --> cluster_experts_nodes
     cluster_pipeline_nodes --> bench_phase6_exit
@@ -238,7 +243,7 @@ flowchart TB
     planner_advisor_auto --> bench_phase7_exit
     engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
-    linkStyle 55,62,66 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 57,64,68 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -258,8 +263,8 @@ flowchart TB
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
     class bench_d2a_probe,bench_d2a_30b mixed
-    class bench_30b_c4_gap,planner_cost_model_v5_host2,engine_dense_amx next
-    class cluster_transport,cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
+    class bench_30b_c4_gap,planner_cost_model_v5_host2,serving_parity_harness,engine_dense_amx next
+    class serving_parity_sampling,cluster_transport,cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
     class engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
 ```
 <!-- END GENERATED: overview -->
@@ -303,6 +308,12 @@ flowchart TB
 | Prefill and decode on different hardware | ⛔ blocked | Prompts are processed on one device or machine and decoding runs on another; the KV cache moves once per request (plan feature 13). |
 | Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
+| llama-server conformance harness | ○ next | One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083). |
+| Sampler parity with llama-server | ⛔ blocked | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |
+| Request field parity | ⛔ blocked | Every request field llama-server reads is honoured or rejected with 400, including logprobs, n above 1, GBNF grammar, reasoning effort and timings (ADR 0083, group B). |
+| Endpoint parity | ⛔ blocked | Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys, as llama-server serves them (ADR 0083, group C). |
+| Expose libllama capabilities | ⛔ blocked | Embeddings, rerank, KV cache types, context shift, slot save and restore and CPU-MoE flags, which libllama has and the gateway does not expose yet (ADR 0083, group D). |
+| LoRA, multimodal, multi-model scope | ⛔ blocked | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). |
 | Several models at once | ⏸ parked | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). |
 | Swap and batch LoRA adapters | ⏸ parked | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). |
 | Priorities, quotas and auth | ⏸ parked | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). |
@@ -359,6 +370,7 @@ flowchart TB
 <!-- BEGIN GENERATED: ready-now -->
 **ci**
 
+- `serving-parity-harness`: llama-server conformance harness
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
 **box-later**
@@ -387,6 +399,7 @@ _None._
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
 - `multi-accept-adr-0081`: Accept the prefill capture fix
+- `serving-parity-owner-scope`: LoRA, multimodal, multi-model scope
 - `cluster-owner-transport`: Owner picks the network transport
 - `bench-m3-report`: Report milestone M3
 - `bench-m4-report`: Report milestone M4
@@ -820,7 +833,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [memory - memory and streaming](roadmap/tracks/memory.md): 13 nodes (8 done, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 22 nodes (15 done, 1 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (7 done, 1 next, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 20 nodes (12 done, 1 blocked, 7 parked)
+- [serving - serving](roadmap/tracks/serving.md): 26 nodes (12 done, 1 next, 6 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 43 nodes (31 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 next, 11 blocked)

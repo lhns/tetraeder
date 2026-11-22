@@ -2250,6 +2250,115 @@ nodes:
   folded: []
   overview: true
   plain: Cost model 5 (clock-aware decode) is fitted and confirmed only on host 20210; check its predictions on a second 4-GPU host when one is usable.
+- id: serving-parity-harness
+  title: llama-server conformance harness
+  track: serving
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-m2-report
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
+- id: serving-parity-sampling
+  title: Sampler parity with llama-server
+  track: serving
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-parity-harness
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A).
+- id: serving-parity-fields
+  title: Request field parity
+  track: serving
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-parity-sampling
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Every request field llama-server reads is honoured or rejected with 400, including logprobs, n above 1, GBNF grammar, reasoning effort and timings (ADR 0083, group B).
+- id: serving-parity-endpoints
+  title: Endpoint parity
+  track: serving
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-parity-fields
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys, as llama-server serves them (ADR 0083, group C).
+- id: serving-parity-libllama
+  title: Expose libllama capabilities
+  track: serving
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-parity-endpoints
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Embeddings, rerank, KV cache types, context shift, slot save and restore and CPU-MoE flags, which libllama has and the gateway does not expose yet (ADR 0083, group D).
+- id: serving-parity-owner-scope
+  title: LoRA, multimodal, multi-model scope
+  track: serving
+  kind: owner-decision
+  state: blocked
+  outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-parity-libllama
+  replaced_by: []
+  lane: owner
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E).
+  notes: The matrix is docs/notes/llamacpp-parity.md.
 - id: cluster-transport-wan
   title: Transport latency between two boxes
   track: cluster
