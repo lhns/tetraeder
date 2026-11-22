@@ -2254,17 +2254,19 @@ nodes:
   title: llama-server conformance harness
   track: serving
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - tests/conformance/parity/cases.yaml
+  - docs/notes/llamacpp-parity.md
+  verdict_quote: '15 conformant cases (31 runs over auto, dense and moe) pass and 25 gap cases xfail strictly (sampling 5, fields 8, endpoints 12)'
+  headline: '15 pass, 25 gaps'
   depends_on:
   - bench-m2-report
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: 2026-11-22
+  end: 2026-11-22
   folded: []
   overview: true
   plain: One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
@@ -2272,7 +2274,7 @@ nodes:
   title: Sampler parity with llama-server
   track: serving
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
