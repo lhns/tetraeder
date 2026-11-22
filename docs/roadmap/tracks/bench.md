@@ -33,6 +33,7 @@ flowchart TB
     bench_v4b_verdict("↷ Four-GPU verdict,<br/>second box")
     bench_v4a_verdict("✔ Four-GPU verdict,<br/>first box")
     bench_d2a_30b("✔ 30B admission probe<br/>on a machine of the<br/>original class")
+    bench_ab30b("✔ Same-box A/B of the<br/>own 30B MoE engine,<br/>Phase 4 build against<br/>final main")
     bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
     bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
@@ -67,16 +68,15 @@ flowchart TB
     bench_d2a_probe ~~~ bench_v4b_verdict
     bench_v4b_verdict ~~~ bench_v4a_verdict
     bench_v4b_verdict ~~~ bench_d2a_30b
-    bench_v4b_verdict ~~~ bench_phase6_exit
-    bench_v4a_verdict ~~~ bench_phase7_exit
-    bench_d2a_30b ~~~ bench_phase8_exit
+    bench_v4a_verdict ~~~ bench_ab30b
+    bench_d2a_30b ~~~ bench_phase6_exit
+    bench_d2a_30b ~~~ bench_phase7_exit
+    bench_ab30b ~~~ bench_phase8_exit
     bench_phase6_exit ~~~ bench_phase9_exit
     bench_phase7_exit ~~~ bench_spec_rerun
     bench_phase8_exit ~~~ bench_strata_pairing
     bench_phase9_exit ~~~ bench_d1_session
     bench_spec_rerun ~~~ bench_open_records
-    bench_strata_pairing ~~~ bench_open_records
-    bench_d1_session ~~~ bench_open_records
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -94,9 +94,10 @@ flowchart TB
     bench_phase4_exit --> bench_d2a_probe
     bench_v4b_verdict -.-> bench_v4a_verdict
     bench_d2a_probe --> bench_d2a_30b
+    bench_d2a_30b --> bench_ab30b
     bench_harness --> bench_strata_pairing
     bench_ttft --> bench_open_records
-    linkStyle 37,48 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 36,47 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -112,7 +113,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class bench_harness,bench_noise_bands,bench_phase4_harness,bench_phase5_harness,bench_pin_confirm,bench_throttle_rules,bench_s3_rehearsal unrated
-    class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,bench_v4a_verdict succ
+    class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,bench_v4a_verdict,bench_ab30b succ
     class bench_m1_point1,bench_m1_point3 vsucc
     class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b mixed
     class bench_v4b_verdict dead
@@ -154,7 +155,8 @@ flowchart TB
 | `bench-v4a-verdict` | Four-GPU verdict, first box | session | none | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-model-v5, multi-prefill-no-capture |  |  |  | bench/results/v4a-20261121/README.md; bench/results/v4a-20261121/phase5/verdict.json |
 | `bench-v4b-verdict` | Four-GPU verdict, second box | session | box | abandoned | superseded | 2026-11-21 | 2026-11-21 |  | bench-v4a-verdict |  |  | bench/results/v4a-20261121/README.md |
 | `bench-d2a-30b` | 30B admission probe on a machine of the original class | session | box | done | mixed | 2026-11-22 | 2026-11-22 | bench-d2a-probe |  |  |  | bench/results/d2a30b-20261122/README.md; bench/results/d2a30b-20261122/phase4/probe.json |
-| `bench-m2-report` | Report milestone M2 | owner-decision | owner | blocked | n/a |  |  | bench-v2-verdict, bench-v4a-verdict, bench-d2a-probe, bench-d2a-30b |  |  |  |  |
+| `bench-ab30b` | Same-box A/B of the own 30B MoE engine, Phase 4 build against final main | session | box | done | successful | 2026-11-22 | 2026-11-22 | bench-d2a-30b |  |  |  | bench/results/ab30b-20261122/README.md; bench/results/ab30b-20261122/ab/ab-summary.json |
+| `bench-m2-report` | Report milestone M2 | owner-decision | owner | blocked | n/a |  |  | bench-v2-verdict, bench-v4a-verdict, bench-d2a-probe, bench-d2a-30b, bench-ab30b |  |  |  |  |
 | `bench-phase6-exit` | Phase 6 exit: multi-node test | session | cluster | blocked | unrated |  |  | cluster-pipeline-nodes, cluster-experts-nodes, cluster-remote-kv, cluster-replicas, cluster-failover, cluster-mtls, cluster-discovery |  |  |  |  |
 | `bench-m3-report` | Report milestone M3 | owner-decision | owner | blocked | n/a |  |  | bench-phase6-exit |  |  |  |  |
 | `bench-phase7-exit` | Phase 7 exit: day-long trace | session | cluster | blocked | unrated |  |  | planner-advisor-auto, cluster-replica-scaling, multi-live-reshard, multi-split-hardware, planner-split-layouts, planner-live-replan |  |  |  |  |
@@ -200,6 +202,7 @@ flowchart TB
 | `bench-v4a-verdict` | Four-GPU verdict, first box | D4 passes and M4 passes at 3 clean rounds each, picks tp-4 (D4) and layer-4 (M4), every candidate within 15% on pp and tg, baseline gate 1.022 and 0.987. |  | The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each. |  |  |  |  |  |
 | `bench-v4b-verdict` | Four-GPU verdict, second box | D4 passes and M4 passes at 3 clean rounds each, picks tp-4 (D4) and layer-4 (M4), every candidate within 15% on pp and tg, baseline gate 1.022 and 0.987. |  | The second four-GPU session, planned in case V4a could not give every configuration two clean rounds; V4a gave three in one session, so it was not needed. |  |  |  |  |  |
 | `bench-d2a-30b` | 30B admission probe on a machine of the original class | null. The 30B probe c4 ratio was 0.910, below the 0.925 stop line (original 0.929), so the model was stopped before any pair ran; q30b is recorded null and the 30B Phase 4 throughput is unconfirmed on final main (the board-limit share was not tested: no pairs ran). |  | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step. |  |  |  | 1 |  |
+| `bench-ab30b` | Same-box A/B of the own 30B MoE engine, Phase 4 build against final main | no regression evidence. The median B/A ratio over three clean rounds is 0.992 for c4 and 0.992 for c1, both at least 0.98; final main (05d43b9 code) is within 1% of the Phase 4 verdict build (6b07795) on the same box. |  | A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step. |  |  |  | 3 |  |
 | `bench-m2-report` | Report milestone M2 |  |  | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). | With the verdicts the owner accepts or reopens ADRs 0068 (verdict rules), 0069 (own executor) and 0082 (cost model 5), still Proposed. |  |  |  |  |
 | `bench-phase6-exit` | Phase 6 exit: multi-node test |  |  | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. | Done when (plan.md, Phase 6 exit test): a model larger than any single node runs within 15% of prediction; killing a node with a replica keeps new requests flowing, in-flight requests on it fail cleanly. |  |  |  |  |
 | `bench-m3-report` | Report milestone M3 |  |  | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). | Source: plan.md, Roadmap (milestones) and Effort (stop at any milestone). |  |  |  |  |

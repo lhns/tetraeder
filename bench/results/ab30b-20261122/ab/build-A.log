@@ -1,0 +1,226 @@
+vendor/llama.cpp is not a git repo here: fresh repo from https://github.com/ggml-org/llama.cpp
+From https://github.com/ggml-org/llama.cpp
+ * branch            fc504f91d8cfdfcd9b0fedcf14600fd2b0e63420 -> FETCH_HEAD
+apply 0001-msvc-avx512-vbmi-score.patch
+apply 0002-iqk-avx512-q4k-q6k-decode.patch
+apply 0003-cpu-registry-threadpool-pause.patch
+apply 0004-cuda-mul-mat-id-skip-negative.patch
+ok: fc504f9 + 4 patches
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling serde_core v1.0.229
+   Compiling itoa v1.0.18
+   Compiling serde v1.0.229
+   Compiling pin-project-lite v0.2.17
+   Compiling memchr v2.8.3
+   Compiling futures-core v0.3.34
+   Compiling once_cell v1.21.4
+   Compiling smallvec v1.16.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-sink v0.3.34
+   Compiling tracing-core v0.1.36
+   Compiling bytes v1.12.1
+   Compiling hashbrown v0.17.1
+   Compiling percent-encoding v2.3.2
+   Compiling equivalent v1.0.3
+   Compiling zerocopy v0.8.63
+   Compiling anyhow v1.0.104
+   Compiling getrandom v0.3.4
+   Compiling indexmap v2.14.2
+   Compiling bitflags v2.13.2
+   Compiling thiserror v2.0.21
+   Compiling errno v0.3.14
+   Compiling syn v3.0.9
+   Compiling syn v2.0.119
+   Compiling ident_case v1.0.1
+   Compiling litemap v0.8.3
+   Compiling strsim v0.11.1
+   Compiling slab v0.4.12
+   Compiling futures-task v0.3.34
+   Compiling writeable v0.6.4
+   Compiling futures-io v0.3.34
+   Compiling fnv v1.0.7
+   Compiling signal-hook-registry v1.4.8
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling http v1.5.0
+   Compiling either v1.19.0
+   Compiling version_check v0.9.5
+   Compiling tracing-attributes v0.1.31
+   Compiling darling_core v0.20.11
+   Compiling zmij v1.0.23
+   Compiling utf8_iter v1.0.4
+   Compiling serde_derive v1.0.229
+   Compiling synstructure v0.14.0
+   Compiling zerovec-derive v0.11.7
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling displaydoc v0.2.7
+   Compiling tracing v0.1.44
+   Compiling futures-macro v0.3.34
+   Compiling tokio-macros v2.7.2
+   Compiling thiserror-impl v2.0.21
+   Compiling icu_normalizer_data v2.4.0
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.4
+   Compiling icu_properties_data v2.4.0
+   Compiling zerovec v0.11.9
+   Compiling zerotrie v0.2.5
+   Compiling tinystr v0.8.5
+   Compiling potential_utf v0.1.6
+   Compiling tokio v1.54.1
+   Compiling futures-util v0.3.34
+   Compiling icu_collections v2.4.0
+   Compiling icu_locale_core v2.4.0
+   Compiling darling_macro v0.20.11
+   Compiling icu_provider v2.4.0
+   Compiling itertools v0.13.0
+   Compiling http-body v1.1.0
+   Compiling thiserror v1.0.69
+   Compiling serde_json v1.0.154
+   Compiling darling v0.20.11
+   Compiling thiserror-impl v1.0.69
+   Compiling libloading v0.8.9
+   Compiling httparse v1.10.1
+   Compiling foldhash v0.2.0
+   Compiling tower-service v0.3.3
+   Compiling icu_properties v2.4.0
+   Compiling nvml-wrapper-sys v0.10.0
+   Compiling icu_normalizer v2.4.0
+   Compiling wrapcenum-derive v0.4.1
+   Compiling form_urlencoded v1.2.2
+   Compiling futures-channel v0.3.34
+   Compiling sync_wrapper v1.0.2
+   Compiling regex-syntax v0.8.11
+   Compiling static_assertions v1.1.0
+   Compiling try-lock v0.2.5
+   Compiling tower-layer v0.3.3
+   Compiling glob v0.3.4
+   Compiling log v0.4.34
+   Compiling idna_adapter v1.2.2
+   Compiling clang-sys v1.9.1
+   Compiling want v0.3.2
+   Compiling nvml-wrapper v0.13.0
+   Compiling opentelemetry v0.33.1
+   Compiling sysinfo v0.40.0
+   Compiling httpdate v1.0.3
+   Compiling atomic-waker v1.1.2
+   Compiling prettyplease v0.2.37
+   Compiling idna v1.1.0
+   Compiling http-body-util v0.1.5
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_core v0.9.5
+   Compiling minimal-lexical v0.2.1
+   Compiling base64 v0.23.1
+   Compiling ipnet v2.12.2
+   Compiling nom v7.1.3
+   Compiling url v2.5.8
+   Compiling rand_chacha v0.9.0
+   Compiling regex-automata v0.4.18
+   Compiling tower v0.5.3
+   Compiling hyper v1.12.0
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling toml_write v0.1.2
+   Compiling bindgen v0.72.1
+   Compiling lazy_static v1.5.1
+   Compiling find-msvc-tools v0.1.15
+   Compiling winnow v0.7.15
+   Compiling shlex v2.0.1
+   Compiling cexpr v0.6.0
+   Compiling tower-http v0.6.11
+   Compiling cc v1.10.0
+   Compiling sharded-slab v0.1.7
+   Compiling hyper-util v0.1.21
+   Compiling regex v1.13.1
+   Compiling rand v0.9.5
+   Compiling prost-derive v0.14.4
+   Compiling futures-executor v0.3.34
+   Compiling toml_edit v0.22.27
+   Compiling tracing-log v0.2.0
+   Compiling matchers v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling nu-ansi-term v0.50.3
+   Compiling rustc-hash v2.1.3
+   Compiling shlex v1.3.0
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling prost v0.14.4
+   Compiling cmake v0.1.58
+   Compiling tracing-subscriber v0.3.23
+   Compiling reqwest v0.13.5
+   Compiling async-trait v0.1.92
+   Compiling generic-array v0.14.7
+   Compiling heck v0.5.0
+   Compiling typenum v1.20.1
+   Compiling ahash v0.8.12
+   Compiling ref-cast v1.0.27
+   Compiling parking_lot_core v0.9.12
+   Compiling ref-cast-impl v1.0.27
+   Compiling toml v0.8.23
+   Compiling scopeguard v1.2.0
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder-A/crates/ggml-sys)
+   Compiling opentelemetry-http v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling lock_api v0.4.14
+   Compiling opentelemetry-proto v0.33.1
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling strum_macros v0.28.0
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder-A/crates/profiler)
+   Compiling bytemuck_derive v1.12.1
+   Compiling bytemuck v1.25.2
+   Compiling getrandom v0.4.3
+   Compiling utf8parse v0.2.2
+   Compiling io-uring v0.7.15
+   Compiling borrow-or-share v0.2.4
+   Compiling anstyle-parse v1.0.0
+   Compiling fluent-uri v0.3.2
+   Compiling parking_lot v0.12.5
+   Compiling digest v0.10.7
+   Compiling strum v0.28.0
+   Compiling llguidance v1.9.1
+   Compiling ryu v1.0.23
+   Compiling anstyle v1.0.14
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling colorchoice v1.0.5
+   Compiling cpufeatures v0.2.17
+   Compiling anstyle-query v1.1.5
+   Compiling mime v0.3.17
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling sha2 v0.10.9
+   Compiling axum-core v0.5.6
+   Compiling referencing v0.29.1
+   Compiling anstream v1.0.0
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder-A/crates/plan)
+   Compiling serde_urlencoded v0.7.1
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder-A/crates/telemetry)
+   Compiling derivre v0.3.13
+   Compiling toktrie v1.9.1
+   Compiling minijinja v3.0.4
+   Compiling serde_path_to_error v0.1.20
+   Compiling matchit v0.8.4
+   Compiling clap_lex v1.1.1
+   Compiling uuid v1.29.0
+   Compiling tetraeder-costmodel v0.0.0 (/root/tetraeder-A/crates/costmodel)
+   Compiling clap_builder v4.6.7
+   Compiling axum v0.8.9
+   Compiling clap_derive v4.6.7
+   Compiling tokio-util v0.7.20
+   Compiling tetraeder-kvcache v0.0.0 (/root/tetraeder-A/crates/kvcache)
+   Compiling tetraeder v0.0.0 (/root/tetraeder-A/crates/tetraeder)
+   Compiling tetraeder-analysis v0.0.0 (/root/tetraeder-A/crates/analysis)
+   Compiling clap v4.6.7
+   Compiling tetraeder-control v0.0.0 (/root/tetraeder-A/crates/control)
+   Compiling minijinja-contrib v3.0.4
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder-A/crates/planner)
+   Compiling tetraeder-gateway v0.0.0 (/root/tetraeder-A/crates/gateway)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder-A/crates/executor)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder-A/crates/memory)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder-A/crates/engine)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder-A/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder-A/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 7m 12s
