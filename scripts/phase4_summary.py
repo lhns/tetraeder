@@ -37,7 +37,7 @@ ROOT = HERE.parent
 EPS = 1e-9
 REPS = (1, 2)
 RERUN = 3
-ALL_REPS = (1, 2, 3)
+ALL_REPS = (1, 2, 3, 4)
 BASELINE = "llama-server"
 # model -> (judged engine, engine used when no judged-engine files exist, counts then)
 JUDGED = {"q8b": ("tetraeder-dense", None), "q30b": ("tetraeder-moe", "tetraeder-llama")}
@@ -286,11 +286,11 @@ def kv_unified(d: Path, model: str, variant: str | None) -> str | None:
 
 
 def rerun_reps(d: Path, model: str) -> list[int]:
-    """Unclean reps among 1 and 2 that the single rep-3 pair of phase4_box.sh can replace: none when both are unclean
-    (one more pair cannot make two clean ones). Still the same after rep 3 ran, so a resumed session finishes it."""
+    """Unclean reps among 1 and 2, each replaced by one more pair (rep 3 for the first, rep 4 for the second; the
+    order of the unclean rep, so both unclean give 3 then 4 in the order of 1 then 2). Still the same after the
+    reruns ran, so a resumed session finishes them."""
     engine, _ = judged_engine(d, model)
-    bad = [r for r in REPS if pair_reasons(d, model, engine, r)]
-    return bad if len(bad) == 1 else []
+    return [r for r in REPS if pair_reasons(d, model, engine, r)]
 
 
 def judged_engine(d: Path, model: str) -> tuple[str, bool]:
