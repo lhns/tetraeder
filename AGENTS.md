@@ -23,6 +23,10 @@ Plain, short docs and comments; no em dashes.
 Project state lives in the tech tree (skill `tech-tree`, lhns/design-skills; config `tech-tree.yaml`): `docs/roadmap/nodes.yaml` is the one source of truth, `docs/roadmap.md` and its pages are generated. Update the node in the same push as each result, merge or owner decision (state, outcome with a quoted verdict, plain sentence, new or unblocked nodes), then run
 `python <design-skills>/skills/tech-tree/scripts/build.py --config tech-tree.yaml` and `check.py` with the same config; CI runs the check. `docs/m2-plan.md` keeps the detail of each open item; the order and state are the tree's.
 
+Measured results also update `docs/features.md` in the same push: the row of the plan feature they measure, with the paired ratio copied from the session README or `verdict.json`, its scope and evidence path, including results where Tetraeder is behind or tied. CI checks that every evidence path exists and every ratio appears in it.
+
+Merges to main (rule 10; the coordinator merges branches directly, a PR is optional) carry this in the merge message or PR body: the phase, the plan feature row it moves, and the paired ratio with its session, or "not measured".
+
 ## Local files
 
 The machine is shared with other projects; 2026-11-20 cleanup removed 156 stale worktrees (57 GB) and stray box logs in the parent `git` folder.

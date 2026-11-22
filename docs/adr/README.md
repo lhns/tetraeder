@@ -73,8 +73,8 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0065](0065-phase4-verdict-multi-sequence-backend-continuous-batching.md) | Accepted | Phase 4: verdict rules, a multi-sequence backend and continuous batching |
 | [0066](0066-own-qwen3-dense-builder.md) | Accepted | Own Qwen3 dense builder on the shared attention module, multi-sequence from the start |
 | [0067](0067-kv-layout-experiment-chunked-vs-paged.md) | Accepted | KV layout: chunked contiguous first, paged only if a staged experiment clears thresholds fixed now |
-| [0068](0068-phase5-verdict-rules.md) | Proposed | Phase 5: verdict rules for the multi-GPU exit test |
-| [0069](0069-own-executor-rank-programs.md) | Proposed | Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box |
+| [0068](0068-phase5-verdict-rules.md) | Accepted | Phase 5: verdict rules for the multi-GPU exit test |
+| [0069](0069-own-executor-rank-programs.md) | Accepted | Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box |
 | [0070](0070-parallel-shapes-and-their-cost.md) | Accepted | Parallel shapes: layer split, tensor, expert and tensor-times-pipeline parallel, and how the cost model prices them |
 | [0071](0071-gpu-logit-tolerance-relative-anchored-to-libllama.md) | Accepted | GPU logit tolerance relative to the largest logit, anchored to libllama on CUDA |
 | [0072](0072-dense-builder-cpu-weights-in-extra-buffer-types.md) | Proposed | Dense builder: CPU weights in libllama's extra buffer types (supersedes 0039 for the dense builder) |
@@ -86,5 +86,6 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0078](0078-allreduce-in-step-latency.md) | Accepted | Cost model 3: an all-reduce in a step pays its own fitted latency, not a share of the probe's |
 | [0079](0079-one-input-steps-attend-over-their-own-run.md) | Accepted | One-input steps attend over their own KV run |
 | [0080](0080-routed-slot-activation-traffic.md) | Accepted | Cost model 4: the routed slots' activation bytes, on every expert-parallel rank |
-| [0081](0081-prefill-steps-are-not-captured.md) | Proposed | Prefill steps run without CUDA graph capture (patch 0006) |
-| [0082](0082-decode-at-measured-clocks.md) | Proposed | Cost model 5: decode priced at the clock a GPU's duty gets (low below duty 0.32) |
+| [0081](0081-prefill-steps-are-not-captured.md) | Accepted | Prefill steps run without CUDA graph capture (patch 0006) |
+| [0082](0082-decode-at-measured-clocks.md) | Accepted | Cost model 5: decode priced at the clock a GPU's duty gets (low below duty 0.32) |
+| [0083](0083-llamacpp-feature-parity.md) | Proposed | Feature parity with llama-server at the pin: meaning, scope and conformance check |
