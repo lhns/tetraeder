@@ -1,6 +1,6 @@
 # 0082. Cost model 5: decode priced at the clock a GPU's duty gets
 
-Status: Proposed (2026-11-20). Phase 5. Extends ADR 0070 (ranks path) and ADR 0080 (cost model 4); nothing of either changes. Adds one anchor to ADR 0068's list (owner's call). Brief: `docs/phase5-briefs.md`, "Brief V5". Tech tree node `planner-cost-model-v5`.
+Status: Accepted (owner, 2026-11-22, on the advisor's recommendation); confirmed in `v4a-20261121` (30B k 1.062, held-out -0.024) on host 20210 only. Proposed 2026-11-20. Phase 5. Extends ADR 0070 (ranks path) and ADR 0080 (cost model 4); nothing of either changes. Adds one anchor to ADR 0068's list (owner's call). Brief: `docs/phase5-briefs.md`, "Brief V5". Tech tree node `planner-cost-model-v5`.
 
 Measurements: `bench/results/s3d-20261120/README.md` (part B), `bench/results/s3e-20261120/README.md` (part C), `bench/results/s3f2-20261120/README.md` (part C), `bench/results/v2-20261120/README.md` (branch `box-v2-20261120`). Numbers below that are not in those READMEs come from cutting the committed 20 ms and 1 Hz logs to the timed tail and from an offline prototype on `scripts/costmodel_replica.py` (version-4 fit, then the rule below); the implementation reproduces them in the replica and commits them to `bench/results/s3c-20261119/costmodel-v5/README.md`.
 

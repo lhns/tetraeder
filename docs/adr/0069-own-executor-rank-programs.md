@@ -1,6 +1,6 @@
 # 0069. Own executor: per-rank graphs cut at collectives, issued async from one thread, one worker process per box
 
-Status: Proposed (2026-11-15). Phase 5. Implements ADR 0016. Supersedes in part ADR 0017 (one worker process per device becomes one worker process per collective group, the whole box by default, below; accepted 2026-11-15, owner delegated to the advisor) and amends the Phase 5 column of the capability table (ADR 0006, 0027). Companions: ADR 0068 (verdict), ADR 0070 (shapes and cost). Briefs: `docs/phase5-briefs.md`. Step-0 check: passed on both models with clean pairs (`s2f-20261118-step0`); no meta-device redesign. Earlier: provisional proceed on `s2d-20261118-step0` (null under the clean rule of the time).
+Status: Accepted (owner, 2026-11-22, on the advisor's recommendation); the executor is the judged path of the Phase 5 verdict. Proposed 2026-11-15. Phase 5. Implements ADR 0016. Supersedes in part ADR 0017 (one worker process per device becomes one worker process per collective group, the whole box by default, below; accepted 2026-11-15, owner delegated to the advisor) and amends the Phase 5 column of the capability table (ADR 0006, 0027). Companions: ADR 0068 (verdict), ADR 0070 (shapes and cost). Briefs: `docs/phase5-briefs.md`. Step-0 check: passed on both models with clean pairs (`s2f-20261118-step0`); no meta-device redesign. Earlier: provisional proceed on `s2d-20261118-step0` (null under the clean rule of the time).
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 

@@ -135,6 +135,8 @@ flowchart TB
         bench_ab30b("bench · ✔ 30B same-box<br/>A/B")
     end
     subgraph bd_2["Next"]
+        bench_30b_c4_gap[/"bench · ○ 30B<br/>concurrency-4 gap"/]
+        planner_cost_model_v5_host2[/"planner · ○ Cost model<br/>5 second host"/]
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
@@ -186,7 +188,11 @@ flowchart TB
     bench_v4a_verdict ~~~ bench_d2a_30b
     planner_ep_prefill_recheck ~~~ bench_d2a_30b
     bench_d2a_30b ~~~ bench_ab30b
+    bench_ab30b ~~~ bench_30b_c4_gap
+    bench_ab30b ~~~ planner_cost_model_v5_host2
     bench_ab30b ~~~ engine_dense_amx
+    bench_30b_c4_gap ~~~ cluster_transport
+    planner_cost_model_v5_host2 ~~~ cluster_transport
     engine_dense_amx ~~~ cluster_transport
     cluster_transport ~~~ cluster_pipeline_nodes
     cluster_transport ~~~ cluster_experts_nodes
@@ -232,7 +238,7 @@ flowchart TB
     planner_advisor_auto --> bench_phase7_exit
     engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
-    linkStyle 51,58,62 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 55,62,66 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -252,9 +258,9 @@ flowchart TB
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
     class bench_d2a_probe,bench_d2a_30b mixed
+    class bench_30b_c4_gap,planner_cost_model_v5_host2,engine_dense_amx next
     class cluster_transport,cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
     class engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
-    class engine_dense_amx next
 ```
 <!-- END GENERATED: overview -->
 
@@ -281,6 +287,7 @@ flowchart TB
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
 | Cost model, version 2 | ✔ done · successful ⚠ | Version 2 prices experts, the output head, all-reduce latency and pipelined prefill separately; on a two-GPU rehearsal every candidate came within the 15% the Phase 5 test allows. |
 | Price decode at measured clocks | ✔ done · successful | A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets. |
+| Cost model 5 second host | ○ next | Cost model 5 (clock-aware decode) is fitted and confirmed only on host 20210; check its predictions on a second 4-GPU host when one is usable. |
 | Replan without draining | ⛔ blocked | Replanning applies a new plan live instead of drain and restart (ADR 0009 until Phase 7), cheap moves first (plan feature 24, Phase 7 half). |
 | Advisor applies safe changes itself | ⛔ blocked | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). |
 | Separate prefill and decode layouts | ⛔ blocked | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). |
@@ -320,7 +327,7 @@ flowchart TB
 | Four-GPU verdict, first box | ✔ done · successful | The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each. |
 | 30B admission probe rerun | ✔ done · mixed | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step. |
 | 30B same-box A/B | ✔ done · successful | A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step. |
-| Report milestone M2 | ○ next | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |
+| 30B concurrency-4 gap | ○ next | The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; piggyback an A/A and a bisect of 6b07795 to main on a later box, then find the gap. |
 | Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
 | Report milestone M3 | ⛔ blocked | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). |
 | Phase 7 exit: day-long trace | ⛔ blocked | The Phase 7 exit test: replay a day of traffic with the online loop on and compare with the best fixed plan. |
@@ -333,7 +340,7 @@ flowchart TB
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
-| Transport latency between two boxes | ⛔ blocked | Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023). |
+| Transport latency between two boxes | ○ next | Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023). |
 | Owner picks the network transport | ⛔ blocked | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. |
 | Transport between machines | ⛔ blocked | Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16). |
 | Mutual TLS and node trust rules | ⛔ blocked | Every node proves its identity with a certificate (mutual TLS, certificates from step-ca), and rules say which node may see which data (plan feature 20). |
@@ -353,6 +360,15 @@ flowchart TB
 **ci**
 
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
+
+**box-later**
+
+- `bench-30b-c4-gap`: 30B concurrency-4 gap
+- `planner-cost-model-v5-host2`: Cost model 5 second host
+
+**cluster**
+
+- `cluster-transport-wan`: Transport latency between two boxes
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -371,7 +387,6 @@ _None._
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
 - `multi-accept-adr-0081`: Accept the prefill capture fix
-- `bench-m2-report`: Report milestone M2
 - `cluster-owner-transport`: Owner picks the network transport
 - `bench-m3-report`: Report milestone M3
 - `bench-m4-report`: Report milestone M4
@@ -395,7 +410,7 @@ Generated on 2026-11-22.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 90 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 91 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -773,6 +788,7 @@ Generated on 2026-11-22.
 - `bench-ab30b`: 30B same-box A/B (✔ done · successful). A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step.
 - `bench-d2a-30b`: 30B admission probe rerun (✔ done · mixed). One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step.
 - `bench-d2a-probe`: Admission probe on final main (✔ done · mixed). One D2a run on final main after the admission path changed - the 8B passes; the 30B had no verdict because its pairs were unclean on the board-limit share. The box was a different, slower machine under the same host id, where llama-server ran about 14% slower and the own engine did not, so the higher ratios are not evidence. A 30B-only session on a machine like the original's comes next.
+- `bench-m2-report`: Report milestone M2 (✔ done · n/a). M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md).
 
 </details>
 
@@ -802,10 +818,10 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 19 nodes (12 done, 1 next, 5 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 13 nodes (8 done, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 21 nodes (15 done, 3 blocked, 3 parked)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 22 nodes (15 done, 1 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (7 done, 1 next, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 20 nodes (12 done, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 42 nodes (30 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 43 nodes (31 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (12 blocked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 next, 11 blocked)
 <!-- END GENERATED: tracks -->

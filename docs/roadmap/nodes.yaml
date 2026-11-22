@@ -2194,7 +2194,7 @@ nodes:
   title: Report milestone M2
   track: bench
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
   evidence:
   - docs/m2-report.md
@@ -2208,17 +2208,53 @@ nodes:
   - bench-ab30b
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: '2026-11-22'
+  end: '2026-11-22'
   folded: []
   overview: false
   plain: 'M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md).'
   notes: With the verdicts the owner accepts or reopens ADRs 0068 (verdict rules), 0069 (own executor), 0081 (prefill not captured) and 0082 (cost model 5), still Proposed, and whether the 30B same-box A/B stands in for the 30B half of the D2a probe (report in docs/m2-report.md).
+- id: bench-30b-c4-gap
+  title: 30B concurrency-4 gap
+  track: bench
+  kind: experiment
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-m2-report
+  replaced_by: []
+  lane: box-later
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; piggyback an A/A and a bisect of 6b07795 to main on a later box, then find the gap.
+- id: planner-cost-model-v5-host2
+  title: Cost model 5 second host
+  track: planner
+  kind: experiment
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-m2-report
+  replaced_by: []
+  lane: box-later
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: Cost model 5 (clock-aware decode) is fitted and confirmed only on host 20210; check its predictions on a second 4-GPU host when one is usable.
 - id: cluster-transport-wan
   title: Transport latency between two boxes
   track: cluster
   kind: experiment
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''

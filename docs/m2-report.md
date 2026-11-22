@@ -1,6 +1,6 @@
-# M2: report for the owner (draft, 2026-11-22)
+# M2: report for the owner (2026-11-22; M2 reached, decided below)
 
-M2 ends Phase 5 (`docs/plan.md`, phase table). This report lists what passed, under which caveats, what the owner is asked to decide, and what was planned for Phases 4 and 5 but not built. It is ready for the owner's decisions below.
+M2 ends Phase 5 (`docs/plan.md`, phase table). This report lists what passed, under which caveats, what the owner is asked to decide, and what was planned for Phases 4 and 5 but not built. The owner delegated the decisions to the advisor on 2026-11-22 and took its recommendations; they are recorded under Decisions.
 
 ## What passed
 
@@ -32,9 +32,14 @@ The admission path changed after the Phase 4 verdict commit, so the Phase 4 thro
 4. **M4's pick is 1.3% behind llama.cpp** (0.987). It passes inside the band of 0.08 (the spec band `cuda-default`, since no measured noise file for these GPU classes has n of 3 or more), and would pass at any band of 0.013 or more. A/A runs agreed within 0.2%.
 5. **Rule changes after failed sessions.** Eleven changes to the verdict rules, host choice and what is judged were made after ADR 0068 was written, each before the next session and none after a verdict (`docs/notes/phase5-rule-changes.md`).
 6. **D2a scripts.** The D2a script has no TTFT stage (TTFT was judged in its own sessions). Until `d2a30b-20261122` its rerun rule replaced at most one unclean pair, so a session with both pairs unclean ended without a rerun; the fix (reps 3 and 4) has tests but has not run on a box.
-7. **The 8B margin on `d2a-20261121`** (1.09 to 1.12, against 1.02 in `20261117k`) comes from the same slower baseline as the 30B. The pass stands on two clean pairs; the margin is not a gain.
+7. **The 30B at concurrency 4 is behind llama-server.** In `20261117k` it ran at 0.943 and 0.948 of llama-server and passed only inside the band of 0.075; final main is about 0.8% further behind (`ab30b-20261122`).
+8. **The 8B margin on `d2a-20261121`** (1.09 to 1.12, against 1.02 in `20261117k`) comes from the same slower baseline as the 30B. The pass stands on two clean pairs; the margin is not a gain.
 
-## Decisions for the owner
+## Decisions (owner, 2026-11-22, on the advisor's recommendation)
+
+Taken: 1 ratified (the anchor is held out of the fit, V4a's held-out error -0.024; two-of-four kept the power gate); 2 accepted as listed, each made before the next session and none after a verdict; 3 ADRs 0068, 0069, 0081 and 0082 accepted; 4 the A/B stands in for the 30B half of step 5, a recorded deviation (step 5 was there to catch a regression from the admission-path change, which the A/B measures directly; the probe rule is unchanged); 5 M2 reached, Phase 5 scoped to one host and one evening. No tag (M1 has none either).
+
+The questions as asked:
 
 1. **Ratify two calls made by delegation to the advisor** (`docs/notes/phase5-rule-changes.md`, 2026-11-21):
    - the anchor `layer-g@L/2` on 3 or more GPUs, which measures the low decode clock for cost model 5 (node `planner-owner-layer-anchor`);

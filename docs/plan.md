@@ -579,7 +579,7 @@ Phases 8 and 9 (backend parity, breadth) can run in parallel with M3 and M4.
 
 ## Effort
 
-Status 2026-11-19: M1 reached 2026-11-14 (Phase 0 started 2026-10-29, with parallel Claude Code tracks; verdicts in `docs/m1-open.md` and ADR 0045). Phase 4 passed its exit test 2026-11-17 (ADR 0065). Phase 5, the last phase of M2, is in progress: its verdict sessions are next once the 4-GPU rehearsal holds (`docs/m2-plan.md`, "Phase 5: where it stands"). The estimate below is the original one.
+Status 2026-11-22: M2 reached 2026-11-22 (owner, on the advisor's recommendation; `docs/m2-report.md`): Phase 5 passed 2026-11-21 (ADR 0068). M1 reached 2026-11-14 (Phase 0 started 2026-10-29, with parallel Claude Code tracks; verdicts in `docs/m1-open.md` and ADR 0045). Phase 4 passed its exit test 2026-11-17 (ADR 0065). The estimate below is the original one.
 
 M1 is about 9 to 14 full-time person-months and the whole plan about 29 to 43, so at about 10 hours a week M1 alone takes 3 to 4.5 years; this is the main cost of building an own engine, and the plan is built so that each milestone is worth having if you stop there.
 

@@ -1,6 +1,6 @@
 # 0081. Prefill steps run without CUDA graph capture
 
-Status: Proposed (2026-11-20). Phase 5. Adds ggml patch 0006 (rule 8). Amends ADR 0069 (own executor) and ADR 0075 (range graph views).
+Status: Accepted (owner, 2026-11-22, on the advisor's recommendation); the CUDA backend test ran on a GPU in `s3f2-20261120`. Proposed 2026-11-20. Phase 5. Adds ggml patch 0006 (rule 8). Amends ADR 0069 (own executor) and ADR 0075 (range graph views).
 
 ## Context
 

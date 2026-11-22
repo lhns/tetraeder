@@ -1,6 +1,6 @@
 # 0068. Phase 5: verdict rules for the multi-GPU exit test
 
-Status: Proposed (2026-11-15). Phase 5. Written before any Phase 5 code, as ADR 0065 did for Phase 4. Companions: ADR 0069 (own executor), ADR 0070 (parallel shapes and their cost). Briefs: `docs/phase5-briefs.md`. No verdict session yet; the S2d step-0 session (`s2d-20261118-step0`) was judged null by the throttle rule, which was then replaced (History).
+Status: Accepted (owner, 2026-11-22, on the advisor's recommendation). Phase 5 passed under these rules on 2026-11-21 (`bench/results/phase5-verdict/README.md`), with the rule changes listed in `docs/notes/phase5-rule-changes.md`. Proposed 2026-11-15. Phase 5. Written before any Phase 5 code, as ADR 0065 did for Phase 4. Companions: ADR 0069 (own executor), ADR 0070 (parallel shapes and their cost). Briefs: `docs/phase5-briefs.md`. The S2d step-0 session (`s2d-20261118-step0`) was judged null by the throttle rule, which was then replaced (History).
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
