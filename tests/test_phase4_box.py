@@ -294,3 +294,15 @@ def test_clean_pairs_are_not_rerun(tmp_path):
         for name in ("llama-server", "tetraeder-dense", "tetraeder-llama"):
             write_run(out, "q8b", name, rep)
     assert not [n for n in runs(dry(tmp_path)) if n.endswith("-r3") and n.startswith("q8b")]
+
+
+def test_both_unclean_pairs_are_rerun_as_reps_3_and_4(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    for rep in (1, 2):
+        for name in ("llama-server", "tetraeder-dense", "tetraeder-llama"):
+            write_run(out, "q8b", name, rep, errors=1 if name == "tetraeder-dense" else 0)
+    q8b = [n for n in runs(dry(tmp_path)) if n.startswith("q8b-")]
+    # rep 3 has the order of rep 1 (baseline first), rep 4 the order of rep 2 (judged first)
+    assert q8b == ["q8b-llama-server-r3", "q8b-tetraeder-dense-r3", "q8b-tetraeder-llama-r3",
+                   "q8b-tetraeder-dense-r4", "q8b-llama-server-r4", "q8b-tetraeder-llama-r4"]

@@ -32,7 +32,7 @@ flowchart TB
     bench_d2a_probe[/"✔ Admission probe on<br/>final main"/]
     bench_v4b_verdict("↷ Four-GPU verdict,<br/>second box")
     bench_v4a_verdict("✔ Four-GPU verdict,<br/>first box")
-    bench_d2a_30b("○ 30B admission probe<br/>on a machine of the<br/>original class")
+    bench_d2a_30b("✔ 30B admission probe<br/>on a machine of the<br/>original class")
     bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
     bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
@@ -114,9 +114,8 @@ flowchart TB
     class bench_harness,bench_noise_bands,bench_phase4_harness,bench_phase5_harness,bench_pin_confirm,bench_throttle_rules,bench_s3_rehearsal unrated
     class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,bench_v4a_verdict succ
     class bench_m1_point1,bench_m1_point3 vsucc
-    class bench_d2a_rerun,bench_d2a_probe mixed
+    class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b mixed
     class bench_v4b_verdict dead
-    class bench_d2a_30b next
     class bench_phase6_exit,bench_phase7_exit blocked
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
 ```
@@ -154,7 +153,7 @@ flowchart TB
 | `bench-d2a-probe` | Admission probe on final main | experiment | box | done | mixed | 2026-11-21 | 2026-11-22 | bench-phase4-exit |  |  |  | bench/results/d2a-20261121/README.md; bench/results/d2a-20261121/phase4/verdict.json |
 | `bench-v4a-verdict` | Four-GPU verdict, first box | session | none | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-model-v5, multi-prefill-no-capture |  |  |  | bench/results/v4a-20261121/README.md; bench/results/v4a-20261121/phase5/verdict.json |
 | `bench-v4b-verdict` | Four-GPU verdict, second box | session | box | abandoned | superseded | 2026-11-21 | 2026-11-21 |  | bench-v4a-verdict |  |  | bench/results/v4a-20261121/README.md |
-| `bench-d2a-30b` | 30B admission probe on a machine of the original class | session | box | next | unrated |  |  | bench-d2a-probe |  |  |  |  |
+| `bench-d2a-30b` | 30B admission probe on a machine of the original class | session | box | done | mixed | 2026-11-22 | 2026-11-22 | bench-d2a-probe |  |  |  | bench/results/d2a30b-20261122/README.md; bench/results/d2a30b-20261122/phase4/probe.json |
 | `bench-m2-report` | Report milestone M2 | owner-decision | owner | blocked | n/a |  |  | bench-v2-verdict, bench-v4a-verdict, bench-d2a-probe, bench-d2a-30b |  |  |  |  |
 | `bench-phase6-exit` | Phase 6 exit: multi-node test | session | cluster | blocked | unrated |  |  | cluster-pipeline-nodes, cluster-experts-nodes, cluster-remote-kv, cluster-replicas, cluster-failover, cluster-mtls, cluster-discovery |  |  |  |  |
 | `bench-m3-report` | Report milestone M3 | owner-decision | owner | blocked | n/a |  |  | bench-phase6-exit |  |  |  |  |
@@ -200,7 +199,7 @@ flowchart TB
 | `bench-d2a-probe` | Admission probe on final main | Qwen3-8B passes; Qwen3-30B-A3B is null (every pair unclean on the host's board-limit throttle share, in two attempts); the higher ratios come from a slower baseline on a different machine, not a faster engine (see Diagnosis). |  | One D2a run on final main after the admission path changed - the 8B passes; the 30B had no verdict because its pairs were unclean on the board-limit share. The box was a different, slower machine under the same host id, where llama-server ran about 14% slower and the own engine did not, so the higher ratios are not evidence. A 30B-only session on a machine like the original's comes next. |  |  |  | 2 |  |
 | `bench-v4a-verdict` | Four-GPU verdict, first box | D4 passes and M4 passes at 3 clean rounds each, picks tp-4 (D4) and layer-4 (M4), every candidate within 15% on pp and tg, baseline gate 1.022 and 0.987. |  | The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each. |  |  |  |  |  |
 | `bench-v4b-verdict` | Four-GPU verdict, second box | D4 passes and M4 passes at 3 clean rounds each, picks tp-4 (D4) and layer-4 (M4), every candidate within 15% on pp and tg, baseline gate 1.022 and 0.987. |  | The second four-GPU session, planned in case V4a could not give every configuration two clean rounds; V4a gave three in one session, so it was not needed. |  |  |  |  |  |
-| `bench-d2a-30b` | 30B admission probe on a machine of the original class |  |  | One 30B-only D2a session on a machine like the Phase 4 one (96-CPU EPYC class), criteria committed first, with reruns for both pairs when both are unclean. If it is null again, the owner decides the board-limit rule for this workload; no third box. |  |  |  | 1 |  |
+| `bench-d2a-30b` | 30B admission probe on a machine of the original class | null. The 30B probe c4 ratio was 0.910, below the 0.925 stop line (original 0.929), so the model was stopped before any pair ran; q30b is recorded null and no further box is rented: the owner decides the board-limit rule for this workload. |  | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. Per the criteria no further box is rented; the owner decides the board-limit rule for this workload. |  |  |  | 1 |  |
 | `bench-m2-report` | Report milestone M2 |  |  | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). | With the verdicts the owner accepts or reopens ADRs 0068 (verdict rules), 0069 (own executor) and 0082 (cost model 5), still Proposed. |  |  |  |  |
 | `bench-phase6-exit` | Phase 6 exit: multi-node test |  |  | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. | Done when (plan.md, Phase 6 exit test): a model larger than any single node runs within 15% of prediction; killing a node with a replica keeps new requests flowing, in-flight requests on it fail cleanly. |  |  |  |  |
 | `bench-m3-report` | Report milestone M3 |  |  | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). | Source: plan.md, Roadmap (milestones) and Effort (stop at any milestone). |  |  |  |  |

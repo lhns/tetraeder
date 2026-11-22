@@ -529,25 +529,27 @@ pair_runs() {
   return 0
 }
 
-# unclean_reps MODEL: the unclean judged rep (1 or 2) one more pair can replace, else empty
+# unclean_reps MODEL: the unclean judged reps (1 and/or 2), each replaced by one more pair (rep 3, then 4), else empty
 unclean_reps() {
   if [ "$DRY" = 1 ] && ! ls "$out"/bench-"$1"-*-r1.json > /dev/null 2>&1; then return 0; fi
   "$py" scripts/phase4_summary.py "$out" --rerun-reps "$1"
 }
 
 pairs() {
-  local m j rep bad
+  local m j rep bad new
   for m in $(active); do
     j=$(judged_name "$m")
     for rep in 1 2; do pair_runs "$m" "$j" "$rep" "$rep"; done
-    bad=$(unclean_reps "$m")
-    if [ -z "$bad" ]; then continue; fi
-    if over_budget; then
-      say "BUDGET spent: no rerun pair for $m although rep $bad is unclean"
-    else
-      say "rerun pair $m: rep $bad is unclean, running rep 3"
-      pair_runs "$m" "$j" 3 "$bad"
-    fi
+    new=3
+    for bad in $(unclean_reps "$m"); do
+      if over_budget; then
+        say "BUDGET spent: no rerun pair for $m although rep $bad is unclean"
+      else
+        say "rerun pair $m: rep $bad is unclean, running rep $new"
+        pair_runs "$m" "$j" "$new" "$bad"
+      fi
+      new=$((new + 1))
+    done
   done
 }
 

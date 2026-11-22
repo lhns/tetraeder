@@ -390,13 +390,43 @@ def test_unclean_rep_3_does_not_help(s):
     assert m["reps_used"] == [1, 2] and m["pass"] is None
 
 
-def test_rerun_reps_needs_exactly_one_unclean(s):
+def test_rerun_reps_lists_every_unclean_first_pair(s):
     s.q8b()
     assert p4.rerun_reps(s.d, "q8b") == []
     s.run("q8b", "tetraeder-dense", 1, 100.0, 80.0, errors=1)
+    assert p4.rerun_reps(s.d, "q8b") == [1]
     s.run("q8b", "tetraeder-dense", 2, 100.0, 80.0, errors=1)
-    assert p4.rerun_reps(s.d, "q8b") == []  # one more pair cannot give two clean ones
+    assert p4.rerun_reps(s.d, "q8b") == [1, 2]  # both unclean: both rerun once (reps 3 and 4)
     assert p4.main([str(s.d), "--rerun-reps", "q8b"]) == 0
+
+
+def test_both_unclean_pairs_are_replaced_by_reps_3_and_4(s):
+    s.q8b()
+    for rep in (1, 2):
+        s.run("q8b", "tetraeder-dense", rep, 100.0, 80.0, errors=1)
+    for rep in (3, 4):
+        s.run("q8b", "llama-server", rep, 100.0, 80.0)
+        s.run("q8b", "tetraeder-dense", rep, 95.0 if rep == 3 else 97.0, 80.0)
+    s.ttft()
+    m = s.verdict()["models"]["q8b"]
+    assert m["reps_used"] == [3, 4] and m["pass"] is True and m["worst"]["c4"] == pytest.approx(0.95)
+    # the unclean pairs stay listed
+    assert [d["rep"] for d in m["dropped_pairs"]] == [1, 2] and all(d["reasons"] for d in m["dropped_pairs"])
+    assert p4.rerun_reps(s.d, "q8b") == [1, 2]  # unchanged after the reruns: a resumed session finishes them
+
+
+def test_both_unclean_and_only_one_clean_rerun_is_null(s):
+    s.q8b()
+    for rep in (1, 2):
+        s.run("q8b", "tetraeder-dense", rep, 100.0, 80.0, errors=1)
+    s.run("q8b", "llama-server", 3, 100.0, 80.0)
+    s.run("q8b", "tetraeder-dense", 3, 100.0, 80.0)
+    s.run("q8b", "llama-server", 4, 100.0, 80.0)
+    s.run("q8b", "tetraeder-dense", 4, 100.0, 80.0, errors=1)
+    s.ttft()
+    m = s.verdict()["models"]["q8b"]
+    assert m["pass"] is None and m["reps_used"] == [1, 2]  # no two clean pairs: no verdict, unclean pairs shown
+    assert [d["rep"] for d in m["dropped_pairs"]] == [3, 4]
 
 
 def test_clean_pairs_ignore_extra_rep(s):

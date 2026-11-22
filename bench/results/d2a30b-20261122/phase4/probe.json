@@ -1,0 +1,27 @@
+{
+  "threshold_c4": 0.925,
+  "gpu_parity": "ok",
+  "models": {
+    "q30b": {
+      "engine": "tetraeder-moe",
+      "gpu_parity": "ok",
+      "reasons": [
+        "c4 ratio 0.910 < 0.925"
+      ],
+      "c1_llama-server_errors": 0,
+      "c1_tetraeder-moe_errors": 0,
+      "c1_ratio": 0.9625263366855112,
+      "c4_llama-server_errors": 0,
+      "c4_tetraeder-moe_errors": 0,
+      "c4_ratio": 0.9103578923484074,
+      "stop": true
+    }
+  },
+  "reasons": [
+    "q30b tetraeder-moe: c4 ratio 0.910 < 0.925"
+  ],
+  "stopped": [
+    "q30b"
+  ],
+  "stop": true
+}
