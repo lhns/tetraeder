@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Summary of scripts/ab_moe_box.sh: B/A ratios per round, medians and the reading by the rule fixed in
+bench/results/ab30b-20261122/README.md. Usage: ab_moe_summary.py <results dir> [--rounds N]. Writes ab-summary.json."""
+
+import importlib.util
+import json
+import statistics
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+_spec = importlib.util.spec_from_file_location("phase4_summary", HERE / "phase4_summary.py")
+p4 = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(p4)
+
+NO_REGRESSION = 0.98  # median B/A at least this for both metrics
+REGRESSION = 0.97  # median B/A below this for either metric, every clean round below 1
+MIN_CLEAN = 2  # clean rounds needed for any reading but "inconclusive"
+# metric -> (test, summary field)
+METRICS = {"c4": ("c4", "throughput_tps"), "c1": ("c1", "decode_tps_median")}
+
+
+def read(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def snapshot(d: Path, side: str, rnd: int) -> dict:
+    try:
+        text = (d / f"gpu-{side}-r{rnd}.txt").read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    out: dict = {}
+    for line in text.splitlines():
+        k, _, v = line.partition(":")
+        if k in ("before", "after") and v.strip():
+            out.setdefault(k, []).append(v.strip())
+    return out
+
+
+def run_record(d: Path, side: str, rnd: int, samples) -> dict:
+    res = {t: read(d / f"ab-{side}-{t}-r{rnd}.json") for t in ("c4", "c1")}
+    reasons = []
+    vals = {}
+    for t, j in res.items():
+        if j is None:
+            reasons.append(f"no {t} result")
+            continue
+        s = j.get("summary") or {}
+        if s.get("errors") != 0:
+            reasons.append(f"{t}: errors={s.get('errors')}")
+        if j.get("cotenant_ok") is False:
+            reasons.append(f"{t}: co-tenant ({j.get('cotenant_reason', '?')})")
+        vals[t] = s.get(METRICS[t][1])
+        if not isinstance(vals[t], (int, float)) or vals[t] <= 0:
+            reasons.append(f"{t}: no {METRICS[t][1]}")
+    win = p4.window_stats(samples, [p4.result_window(j) for j in res.values()])
+    if win is None:
+        reasons.append("no sampler data in the run's window")
+    elif win["disqualifying"]:
+        reasons.append(f"{win['disqualifying']} window sample(s) with throttle bits {win['bad_bits']}")
+    return {"clean": not reasons, "reasons": reasons, "c4_tps": vals.get("c4"), "c1_decode_tps": vals.get("c1"),
+            "sampler": win, "snapshots": snapshot(d, side, rnd)}
+
+
+def reading(ratios: dict[str, list[float]], n_clean: int) -> tuple[str, str]:
+    """(reading, why) from the clean rounds' ratios per metric."""
+    if n_clean < MIN_CLEAN:
+        return "inconclusive", f"{n_clean} clean round(s), at least {MIN_CLEAN} needed"
+    med = {m: statistics.median(v) for m, v in ratios.items()}
+    if all(x >= NO_REGRESSION for x in med.values()):
+        return "no regression evidence", f"both medians at least {NO_REGRESSION}"
+    low = [m for m, x in med.items() if x < REGRESSION and all(r < 1 for r in ratios[m])]
+    if low:
+        return "regression", f"median below {REGRESSION} with every clean round below 1 for {', '.join(low)}"
+    return "inconclusive", "between the lines, or a metric below the line with a round at or above 1"
+
+
+def summarize(d: Path, rounds: int = 3) -> dict:
+    samples = p4.load_samples(d)
+    out_rounds, runs = [], {}
+    for n in range(1, rounds + 1):
+        rec = {s: run_record(d, s, n, samples) for s in "AB"}
+        runs.update({f"{s}-r{n}": r for s, r in rec.items()})
+        row = {"round": n, "clean": rec["A"]["clean"] and rec["B"]["clean"]}
+        for m, key in (("c4", "c4_tps"), ("c1", "c1_decode_tps")):
+            a, b = rec["A"][key], rec["B"][key]
+            row[f"{m}_A"], row[f"{m}_B"] = a, b
+            row[f"{m}_ratio"] = b / a if a and b else None
+        sa, sb = rec["A"]["sampler"], rec["B"]["sampler"]
+        row["board_share_A"] = sa and sa["share"]
+        row["board_share_B"] = sb and sb["share"]
+        row["why_unclean"] = [f"{s}: {r}" for s in "AB" for r in rec[s]["reasons"]]
+        out_rounds.append(row)
+    clean = [r for r in out_rounds if r["clean"] and r["c4_ratio"] and r["c1_ratio"]]
+    ratios = {m: [r[f"{m}_ratio"] for r in clean] for m in METRICS}
+    med = {m: (statistics.median(v) if v else None) for m, v in ratios.items()}
+    read_, why = reading(ratios, len(clean))
+    return {"rounds": out_rounds, "clean_rounds": [r["round"] for r in clean],
+            "excluded_rounds": [r["round"] for r in out_rounds if r not in clean],
+            "median_ratio": med, "reading": read_, "reading_why": why, "runs": runs}
+
+
+def main(argv=None) -> int:
+    a = list(sys.argv[1:] if argv is None else argv)
+    rounds = int(a[a.index("--rounds") + 1]) if "--rounds" in a else 3
+    d = Path(a[0])
+    s = summarize(d, rounds)
+    (d / "ab-summary.json").write_text(json.dumps(s, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({k: s[k] for k in ("clean_rounds", "excluded_rounds", "median_ratio", "reading", "reading_why")}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
