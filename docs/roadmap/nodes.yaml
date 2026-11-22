@@ -2026,21 +2026,23 @@ nodes:
   title: Accept the prefill capture fix
   track: multi
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0081-prefill-steps-are-not-captured.md
+  - docs/m2-report.md
+  verdict_quote: 'Accepted (owner, 2026-11-22, on the advisor''s recommendation)'
+  headline: 'accepted 2026-11-22'
   depends_on:
   - multi-prefill-no-capture
   - bench-s3f2
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: 2026-11-22
+  end: 2026-11-22
   folded: []
   overview: false
-  plain: ADR 0081 is Proposed; its GPU test and the s3f2 confirmation passed, so it waits for the owner's acceptance.
+  plain: The owner accepted ADR 0081 with the M2 decisions, after its GPU test and the s3f2 confirmation passed.
 - id: bench-v2-verdict
   title: Two-GPU verdict session
   track: bench
@@ -2268,7 +2270,7 @@ nodes:
   start: 2026-11-22
   end: 2026-11-22
   folded: []
-  overview: true
+  overview: false
   plain: One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
 - id: serving-parity-sampling
   title: Sampler parity with llama-server

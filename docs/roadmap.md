@@ -133,7 +133,6 @@ flowchart TB
         planner_ep_prefill_recheck[/"planner · ✔ Recheck<br/>expert-parallel<br/>prefill error"/]
         bench_d2a_30b("bench · ✔ 30B<br/>admission probe rerun")
         bench_ab30b("bench · ✔ 30B same-box<br/>A/B")
-        serving_parity_harness["serving · ✔ llama-<br/>server conformance<br/>harness"]
     end
     subgraph bd_2["Next"]
         bench_30b_c4_gap[/"bench · ○ 30B<br/>concurrency-4 gap"/]
@@ -190,10 +189,9 @@ flowchart TB
     bench_v4a_verdict ~~~ bench_d2a_30b
     planner_ep_prefill_recheck ~~~ bench_d2a_30b
     bench_d2a_30b ~~~ bench_ab30b
-    bench_d2a_30b ~~~ serving_parity_harness
     bench_ab30b ~~~ bench_30b_c4_gap
-    serving_parity_harness ~~~ planner_cost_model_v5_host2
-    serving_parity_harness ~~~ serving_parity_sampling
+    bench_ab30b ~~~ planner_cost_model_v5_host2
+    bench_ab30b ~~~ serving_parity_sampling
     bench_30b_c4_gap ~~~ engine_dense_amx
     planner_cost_model_v5_host2 ~~~ engine_dense_amx
     serving_parity_sampling ~~~ engine_dense_amx
@@ -232,7 +230,6 @@ flowchart TB
     multi_prefill_no_capture --> planner_ep_prefill_recheck
     bench_d2a_probe --> bench_d2a_30b
     bench_d2a_30b --> bench_ab30b
-    serving_parity_harness --> serving_parity_sampling
     cluster_transport --> cluster_pipeline_nodes
     cluster_transport --> cluster_experts_nodes
     cluster_pipeline_nodes --> bench_phase6_exit
@@ -243,7 +240,7 @@ flowchart TB
     planner_advisor_auto --> bench_phase7_exit
     engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
-    linkStyle 57,64,68 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 56,63,67 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -259,7 +256,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class multi_prefill_no_capture,engine_moe_builder,multi_executor,serving_batching unrated
-    class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,planner_cost_model_v5,bench_v4a_verdict,bench_ab30b,serving_parity_harness,planner_ep_prefill_recheck succ
+    class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,planner_cost_model_v5,bench_v4a_verdict,bench_ab30b,planner_ep_prefill_recheck succ
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
     class bench_d2a_probe,bench_d2a_30b mixed
@@ -303,12 +300,10 @@ flowchart TB
 | Prefill runs without graph capture | ✔ done · unrated | Every judged prefill had timed the call in which ggml records a CUDA graph, which serialized the pipeline stages; prefill steps now run directly and decode keeps graph replay. |
 | Own multi-GPU executor | ✔ done · unrated | Phase 5: Tetraeder runs its own executor instead of ggml's backend scheduler: one program per GPU (rank), NCCL collectives, and the engine in a worker process. |
 | Judged prefill timed graph capture | ✔ fixed | ggml-cuda records a CUDA graph on a range's second call; every judged prefill timed that recording call, which with an NCCL kernel pending serialized the pipeline stages, so earlier prefill verdicts measured a slow state serving never sees. |
-| Accept the prefill capture fix | ○ next | ADR 0081 is Proposed; its GPU test and the s3f2 confirmation passed, so it waits for the owner's acceptance. |
 | Reshard while serving | ⛔ blocked | Change the parallel layout under load: a plan diff compiles to a migration plan of ordered moves, drained first and finished with a two-phase commit (plan feature 38). |
 | Prefill and decode on different hardware | ⛔ blocked | Prompts are processed on one device or machine and decoding runs on another; the KV cache moves once per request (plan feature 13). |
 | Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
-| llama-server conformance harness | ✔ done · successful | One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083). |
 | Sampler parity with llama-server | ○ next | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |
 | Request field parity | ⛔ blocked | Every request field llama-server reads is honoured or rejected with 400, including logprobs, n above 1, GBNF grammar, reasoning effort and timings (ADR 0083, group B). |
 | Endpoint parity | ⛔ blocked | Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys, as llama-server serves them (ADR 0083, group C). |
@@ -401,7 +396,6 @@ _None._
 ## Waiting on the owner
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
-- `multi-accept-adr-0081`: Accept the prefill capture fix
 - `serving-parity-owner-scope`: LoRA, multimodal, multi-model scope
 - `cluster-owner-transport`: Owner picks the network transport
 - `bench-m3-report`: Report milestone M3
@@ -426,7 +420,7 @@ Generated on 2026-11-22.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 92 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 93 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -805,6 +799,7 @@ Generated on 2026-11-22.
 - `bench-d2a-30b`: 30B admission probe rerun (✔ done · mixed). One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step.
 - `bench-d2a-probe`: Admission probe on final main (✔ done · mixed). One D2a run on final main after the admission path changed - the 8B passes; the 30B had no verdict because its pairs were unclean on the board-limit share. The box was a different, slower machine under the same host id, where llama-server ran about 14% slower and the own engine did not, so the higher ratios are not evidence. A 30B-only session on a machine like the original's comes next.
 - `bench-m2-report`: Report milestone M2 (✔ done · n/a). M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md).
+- `multi-accept-adr-0081`: Accept the prefill capture fix (✔ done · n/a). The owner accepted ADR 0081 with the M2 decisions, after its GPU test and the s3f2 confirmation passed.
 - `serving-parity-harness`: llama-server conformance harness (✔ done · successful). One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
 
 </details>
@@ -836,7 +831,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [engine - engine and builders](roadmap/tracks/engine.md): 19 nodes (12 done, 1 next, 5 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 13 nodes (8 done, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 22 nodes (15 done, 1 next, 3 blocked, 3 parked)
-- [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (7 done, 1 next, 2 blocked, 1 parked)
+- [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 26 nodes (13 done, 1 next, 5 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 43 nodes (31 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
