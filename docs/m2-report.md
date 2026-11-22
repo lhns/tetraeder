@@ -20,8 +20,9 @@ The admission path changed after the Phase 4 verdict commit, so the Phase 4 thro
 
 - `d2a-20261121`: Qwen3-8B passes (worst pair c4 1.091, c1 1.022). Qwen3-30B-A3B is null: all four pairs, in two attempts, were unclean on the board-limit throttle share. The box was a different, slower machine under the same host id as `20261117k` (EPYC 7302P, 32 CPUs, against EPYC 7R13, 96 CPUs). llama-server ran about 14% slower there and the own engines did not, so the higher ratios on that box are not evidence (Diagnosis section of its README).
 - `d2a30b-20261122` (node `bench-d2a-30b`): null. On an EPYC 7B12 box (no 7R13 was on offer) the 30B probe c4 ratio was 0.910, under the 0.925 stop line, so no pair ran. The original probe was 0.929 (0.004 over the line) and its pairs 0.943 and 0.948 (0.018 to 0.023 over). The own engine lost 7 to 8% against the original machine, llama-server 4%. Both engines ran 23 threads.
-- So the 30B Phase 4 throughput is unconfirmed on final main. Between the Phase 4 commit (6b07795) and final main the single-GPU MoE path changed only in the restore path and the scheduler's admission changes (ADR 0074); the no-capture flag (ADR 0081) and the decode toggles act only in the multi-GPU executor. The 8B is confirmed.
-- `ab30b-20261122` (owner-approved, node `bench-ab30b`): same box (Ryzen 9 5950X, RTX 3090), the own 30B engine at 6b07795 against final main, three interleaved rounds, all clean. Median B/A 0.992 at c4 and 0.992 at c1 (every round 0.988 to 0.999), so by the rule fixed before the run there is no regression evidence; final main is about 1% behind the Phase 4 build. The 267 tok/s on the 7B12 machine was a machine effect (301 to 305 here). The D2a null against llama-server stays a null: the 30B Phase 4 pass rests on `20261117k`, with final main shown equal to that build within about 1%.
+- So the judged 30B half of the D2a probe has no verdict. Between the Phase 4 commit (6b07795) and final main the single-GPU MoE path changed only in the restore path and the scheduler's admission changes (ADR 0074); the no-capture flag (ADR 0081) and the decode toggles act only in the multi-GPU executor. The 8B is confirmed.
+- `ab30b-20261122` (owner-approved, node `bench-ab30b`): same box (Ryzen 9 5950X, RTX 3090), the own 30B engine at 6b07795 against final main, three interleaved rounds, all clean. Median B/A 0.992 at c4 and 0.992 at c1 (every round 0.988 to 0.999), so by the rule fixed before the run there is no regression evidence; but all six ratios are under 1, so final main is consistently about 0.8% behind the Phase 4 build, cause unknown, and no A/A ran on that box. A was built from 6b07795 at its pin (fc504f91 plus its four patches); B's engine code equals the D2a sessions'. The 267 tok/s on the 7B12 machine was a machine effect (301 to 305 here). The A/B judges nothing against llama-server, so the D2a null stays a null.
+- Arithmetic across machines, not a verdict: the original pairs times 0.992 give about 0.935 and 0.940, 0.010 to 0.015 over the 0.925 line; the original probe times 0.992 gives about 0.922, under the stop line.
 
 ## Caveats
 
@@ -44,10 +45,7 @@ The admission path changed after the Phase 4 verdict commit, so the Phase 4 thro
    - 0069 (own executor, rank programs);
    - 0081 (prefill steps are not captured, patch 0006; its CUDA backend test has run on a GPU in `s3f2-20261120`);
    - 0082 (decode at measured clocks, cost model 5).
-4. **The 30B admission probe** (settled by the owner's choice of the same-box A/B, 2026-11-22; result above). Accept the 30B as confirmed by `20261117k` plus the A/B, or ask for more. The options were:
-   - same-box A/B (recommended): the own MoE engine at 6b07795 against final main, interleaved, c4 and c1, about 0.30 USD. It is the only measurement llama-server's machine sensitivity cannot confound. It judges nothing and cannot turn the null into a pass, but it shows whether final main regressed;
-   - report M2 with the caveat that the 30B is unconfirmed on final main;
-   - another judged D2a session (not recommended: it re-rolls hosts).
+4. **The 30B half of the D2a probe.** `docs/m2-plan.md` step 5 asked for a D2a probe on final main before reporting M2; the 30B half has no verdict after two sessions. The owner chose the same-box A/B as the next measurement (2026-11-22; result above). Decide: accept the A/B in place of the 30B half of that step (a deviation from step 5, recorded here), or require a judged D2a session for the 30B.
    Changing the probe rule or the board-limit share rule after these sessions would be a rule change after a miss, so it is not proposed here.
 5. **Confirm M2 reached**, after decision 4.
 

@@ -2104,7 +2104,6 @@ nodes:
   - bench-phase4-exit
   replaced_by: []
   lane: box
-  queue_order: 2
   start: '2026-11-21'
   end: '2026-11-22'
   folded: []
@@ -2152,7 +2151,7 @@ nodes:
   overview: false
   plain: The second four-GPU session, planned in case V4a could not give every configuration two clean rounds; V4a gave three in one session, so it was not needed.
 - id: bench-d2a-30b
-  title: 30B admission probe on a machine of the original class
+  title: 30B admission probe rerun
   track: bench
   kind: session
   state: done
@@ -2166,14 +2165,13 @@ nodes:
   - bench-d2a-probe
   replaced_by: []
   lane: box
-  queue_order: 1
   start: '2026-11-22'
   end: '2026-11-22'
   folded: []
   overview: true
   plain: One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step.
 - id: bench-ab30b
-  title: Same-box A/B of the own 30B MoE engine, Phase 4 build against final main
+  title: 30B same-box A/B
   track: bench
   kind: session
   state: done
@@ -2187,7 +2185,6 @@ nodes:
   - bench-d2a-30b
   replaced_by: []
   lane: box
-  queue_order: 3
   start: '2026-11-22'
   end: '2026-11-22'
   folded: []
@@ -2197,9 +2194,10 @@ nodes:
   title: Report milestone M2
   track: bench
   kind: owner-decision
-  state: blocked
+  state: next
   outcome: n/a
-  evidence: []
+  evidence:
+  - docs/m2-report.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -2215,7 +2213,7 @@ nodes:
   folded: []
   overview: false
   plain: 'M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md).'
-  notes: With the verdicts the owner accepts or reopens ADRs 0068 (verdict rules), 0069 (own executor) and 0082 (cost model 5), still Proposed.
+  notes: With the verdicts the owner accepts or reopens ADRs 0068 (verdict rules), 0069 (own executor), 0081 (prefill not captured) and 0082 (cost model 5), still Proposed, and whether the 30B same-box A/B stands in for the 30B half of the D2a probe (report in docs/m2-report.md).
 - id: cluster-transport-wan
   title: Transport latency between two boxes
   track: cluster

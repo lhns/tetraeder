@@ -131,8 +131,8 @@ flowchart TB
         bench_d2a_probe[/"bench · ✔ Admission<br/>probe on final main"/]
         bench_v4a_verdict("bench · ✔ Four-GPU<br/>verdict, first box")
         planner_ep_prefill_recheck[/"planner · ✔ Recheck<br/>expert-parallel<br/>prefill error"/]
-        bench_d2a_30b("bench · ✔ 30B<br/>admission probe on a<br/>machine of the<br/>original class")
-        bench_ab30b("bench · ✔ Same-box A/B<br/>of the own 30B MoE<br/>engine, Phase 4 build<br/>against final main")
+        bench_d2a_30b("bench · ✔ 30B<br/>admission probe rerun")
+        bench_ab30b("bench · ✔ 30B same-box<br/>A/B")
     end
     subgraph bd_2["Next"]
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
@@ -318,9 +318,9 @@ flowchart TB
 | Two-GPU verdict session | ✔ done · successful | The judged Phase 5 session on two GPUs (cases D2 and M2): every candidate within 15% of its prediction and the pick in the winner set, two clean rounds each. |
 | Admission probe on final main | ✔ done · mixed | One D2a run on final main after the admission path changed - the 8B passes; the 30B had no verdict because its pairs were unclean on the board-limit share. The box was a different, slower machine under the same host id, where llama-server ran about 14% slower and the own engine did not, so the higher ratios are not evidence. A 30B-only session on a machine like the original's comes next. |
 | Four-GPU verdict, first box | ✔ done · successful | The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each. |
-| 30B admission probe on a machine of the original class | ✔ done · mixed | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step. |
-| Same-box A/B of the own 30B MoE engine, Phase 4 build against final main | ✔ done · successful | A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step. |
-| Report milestone M2 | ⛔ blocked | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |
+| 30B admission probe rerun | ✔ done · mixed | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step. |
+| 30B same-box A/B | ✔ done · successful | A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step. |
+| Report milestone M2 | ○ next | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). |
 | Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
 | Report milestone M3 | ⛔ blocked | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). |
 | Phase 7 exit: day-long trace | ⛔ blocked | The Phase 7 exit test: replay a day of traffic with the online loop on and compare with the best fixed plan. |
@@ -381,9 +381,7 @@ _None._
 ## Queue
 
 <!-- BEGIN GENERATED: queue -->
-1. `bench-d2a-30b`: 30B admission probe on a machine of the original class
-2. `bench-d2a-probe`: Admission probe on final main
-3. `bench-ab30b`: Same-box A/B of the own 30B MoE engine, Phase 4 build against final main
+_The queue is empty._
 <!-- END GENERATED: queue -->
 
 ## Timeline
@@ -772,8 +770,8 @@ Generated on 2026-11-22.
 - `planner-cost-model-v5`: Price decode at measured clocks (✔ done · successful). A GPU kept partly idle by a layer split runs at a lower clock than one GPU alone, so the 30B four-way layer split decodes slower than predicted wherever the single GPU boosts; the cost model has to price decode at the clock each layout actually gets.
 - `planner-ep-prefill-recheck`: Recheck expert-parallel prefill error (✔ done · successful). Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed.
 - `planner-owner-layer-anchor`: Approve the low-clock anchor (✔ done · n/a). One more calibration run on boxes with three or more GPUs (a layer split cut to half depth) measures the clock of a mostly idle GPU for cost model 5; decided by delegation to the advisor, to be confirmed with the M2 report.
-- `bench-ab30b`: Same-box A/B of the own 30B MoE engine, Phase 4 build against final main (✔ done · successful). A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step.
-- `bench-d2a-30b`: 30B admission probe on a machine of the original class (✔ done · mixed). One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step.
+- `bench-ab30b`: 30B same-box A/B (✔ done · successful). A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step.
+- `bench-d2a-30b`: 30B admission probe rerun (✔ done · mixed). One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step.
 - `bench-d2a-probe`: Admission probe on final main (✔ done · mixed). One D2a run on final main after the admission path changed - the 8B passes; the 30B had no verdict because its pairs were unclean on the board-limit share. The box was a different, slower machine under the same host id, where llama-server ran about 14% slower and the own engine did not, so the higher ratios are not evidence. A 30B-only session on a machine like the original's comes next.
 
 </details>
@@ -807,7 +805,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 21 nodes (15 done, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (7 done, 1 next, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 20 nodes (12 done, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 42 nodes (30 done, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 42 nodes (30 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (12 blocked)
 <!-- END GENERATED: tracks -->

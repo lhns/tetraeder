@@ -100,8 +100,8 @@ gantt
     Admission probe on final main :bench_d2a_probe, 2026-11-21, 2026-11-22
     Four-GPU verdict, first box :bench_v4a_verdict, 2026-11-21, 2026-11-21
     Four-GPU verdict, second box :crit, bench_v4b_verdict, 2026-11-21, 2026-11-21
-    30B admission probe on a machine of the… :bench_d2a_30b, 2026-11-22, 2026-11-22
-    Same-box A/B of the own 30B MoE engine,… :bench_ab30b, 2026-11-22, 2026-11-22
+    30B admission probe rerun :bench_d2a_30b, 2026-11-22, 2026-11-22
+    30B same-box A/B :bench_ab30b, 2026-11-22, 2026-11-22
     Readmit host 20210 for verdicts :bench_owner_host_20210, 2026-11-21, 2026-11-21
     Two-GPU cases on a four-GPU box :bench_owner_two_of_four, 2026-11-21, 2026-11-21
     section ops - operations
