@@ -69,7 +69,7 @@ Pairs. Board-limit share = share of window samples with 0x200/0x400, baseline si
 
 - The original 30B pairs had board-limit share 0.0 on both sides; here the baseline side is 0.31 to 0.71, with lower GPU busy share (63 to 85% against 88 to 91%).
 - So the 30B rise from about 0.945 to about 1.08 is the baseline slowing on this machine, not a gain of the own engine. The 8B pass stands on its two clean pairs, but its margin over the original (1.09 to 1.12 against 1.02) has the same cause.
-- What this does show: the own MoE engine's absolute c4 on final main is no lower than on the Phase 4 verdict commit, on a slower CPU. That is consistent with no regression, but it is not the ADR 0065 judgement.
+- On this machine the own MoE engine's absolute c4 matched the Phase 4 commit's on the original machine. That alone does not rule out a regression: on `d2a30b-20261122` (EPYC 7B12) the own engine lost 7 to 8% and llama-server 4%.
 - Next: one 30B-only session on a machine of the original class (EPYC 7R13 or similar, 96 host CPUs), criteria committed first. If it is null again, the owner decides the board-limit rule for this workload; no third box.
 
 ## Deviations

@@ -1,6 +1,6 @@
 # M2: report for the owner (draft, 2026-11-22)
 
-M2 ends Phase 5 (`docs/plan.md`, phase table). This report lists what passed, under which caveats, what the owner is asked to decide, and what was planned for Phases 4 and 5 but not built. It is a draft until the 30B admission probe (`bench-d2a-30b`) is in.
+M2 ends Phase 5 (`docs/plan.md`, phase table). This report lists what passed, under which caveats, what the owner is asked to decide, and what was planned for Phases 4 and 5 but not built. It stays a draft until the owner decides how to settle the 30B admission probe (decision 4).
 
 ## What passed
 
@@ -19,7 +19,8 @@ M2 ends Phase 5 (`docs/plan.md`, phase table). This report lists what passed, un
 The admission path changed after the Phase 4 verdict commit, so the Phase 4 throughput pairs ran again on final main.
 
 - `d2a-20261121`: Qwen3-8B passes (worst pair c4 1.091, c1 1.022). Qwen3-30B-A3B is null: all four pairs, in two attempts, were unclean on the board-limit throttle share. The box was a different, slower machine under the same host id as `20261117k` (EPYC 7302P, 32 CPUs, against EPYC 7R13, 96 CPUs). llama-server ran about 14% slower there and the own engines did not, so the higher ratios on that box are not evidence (Diagnosis section of its README).
-- `bench-d2a-30b`: pending. One 30B-only session on a machine of the original class. If it is null again, no third box is rented and the board-limit rule for this workload becomes an owner question (below).
+- `d2a30b-20261122` (node `bench-d2a-30b`): null. On an EPYC 7B12 box (no 7R13 was on offer) the 30B probe c4 ratio was 0.910, under the 0.925 stop line, so no pair ran. The original probe was 0.929 (0.004 over the line) and its pairs 0.943 and 0.948 (0.018 to 0.023 over). The own engine lost 7 to 8% against the original machine, llama-server 4%. Both engines ran 23 threads.
+- So the 30B Phase 4 throughput is unconfirmed on final main. Between the Phase 4 commit (6b07795) and final main the single-GPU MoE path changed only in the restore path and the scheduler's admission changes (ADR 0074); the no-capture flag (ADR 0081) and the decode toggles act only in the multi-GPU executor. The 8B is confirmed.
 
 ## Caveats
 
@@ -28,7 +29,7 @@ The admission path changed after the Phase 4 verdict commit, so the Phase 4 thro
 3. **Cost model 5 (ADR 0082) is fitted and confirmed only on host 20210.** Its clock ratio k (30B 1.062) comes from the same host's calibration.
 4. **M4's pick is 1.3% behind llama.cpp** (0.987). It passes inside the band of 0.08 (the spec band `cuda-default`, since no measured noise file for these GPU classes has n of 3 or more), and would pass at any band of 0.013 or more. A/A runs agreed within 0.2%.
 5. **Rule changes after failed sessions.** Eleven changes to the verdict rules, host choice and what is judged were made after ADR 0068 was written, each before the next session and none after a verdict (`docs/notes/phase5-rule-changes.md`).
-6. **D2a scripts.** The D2a script has no TTFT stage (TTFT was judged in its own sessions), and until `bench-d2a-30b` its rerun rule replaced at most one unclean pair, so a session with both pairs unclean ended without a rerun.
+6. **D2a scripts.** The D2a script has no TTFT stage (TTFT was judged in its own sessions). Until `d2a30b-20261122` its rerun rule replaced at most one unclean pair, so a session with both pairs unclean ended without a rerun; the fix (reps 3 and 4) has tests but has not run on a box.
 7. **The 8B margin on `d2a-20261121`** (1.09 to 1.12, against 1.02 in `20261117k`) comes from the same slower baseline as the 30B. The pass stands on two clean pairs; the margin is not a gain.
 
 ## Decisions for the owner
@@ -42,8 +43,12 @@ The admission path changed after the Phase 4 verdict commit, so the Phase 4 thro
    - 0069 (own executor, rank programs);
    - 0081 (prefill steps are not captured, patch 0006; its CUDA backend test has run on a GPU in `s3f2-20261120`);
    - 0082 (decode at measured clocks, cost model 5).
-4. **Only if `bench-d2a-30b` is null:** whether the board-limit share rule (0x200/0x400 shares within 0.10 between the two sides of a pair) applies to this workload, given that llama-server's side drew the board limit in every pair on the 32-CPU machine while the own engine's did not.
-5. **Confirm M2 reached.**
+4. **How to settle the 30B admission probe.** Options:
+   - same-box A/B (recommended): the own MoE engine at 6b07795 against final main, interleaved, c4 and c1, about 0.30 USD. It is the only measurement llama-server's machine sensitivity cannot confound. It judges nothing and cannot turn the null into a pass, but it shows whether final main regressed;
+   - report M2 with the caveat that the 30B is unconfirmed on final main;
+   - another judged D2a session (not recommended: it re-rolls hosts).
+   Changing the probe rule or the board-limit share rule after these sessions would be a rule change after a miss, so it is not proposed here.
+5. **Confirm M2 reached**, after decision 4.
 
 ## Planned for Phases 4 and 5 but not built
 

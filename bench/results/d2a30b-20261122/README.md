@@ -1,6 +1,6 @@
 # Session d2a30b-20261122
 
-- Status: null. The 30B probe c4 ratio was 0.910, below the 0.925 stop line (original 0.929), so the model was stopped before any pair ran; q30b is recorded null and no further box is rented: the owner decides the board-limit rule for this workload.
+- Status: null. The 30B probe c4 ratio was 0.910, below the 0.925 stop line (original 0.929), so the model was stopped before any pair ran; q30b is recorded null and the 30B Phase 4 throughput is unconfirmed on final main (the board-limit share was not tested: no pairs ran).
 - Run: box 61881715, host 351328 (Japan), RTX 3090, driver 615.71.09, power 350 W at default, CPU AMD EPYC 7B12 (64 cores, 128 host CPUs, cgroup quota 61), threads 23 (the original's, `THREADS=23`), baseline fc504f9 (reported at SSH), code branch `box-d2a30b-20261122` at 3a39035 (`COMMIT`).
 - Purpose: the 30B-only rerun of the D2a admission probe on a machine of the Phase 4 class, after `d2a-20261121` was null (every 30B pair unclean on the board-limit share, host 49107 as a slower machine, see its "Diagnosis"). Node `bench-d2a-30b`.
 - Code: `scripts/phase4_box_d2a.sh` with `MODELS=q30b PROBE_MIN=0.925`, branch `box-d2a30b-20261122`.
@@ -39,7 +39,7 @@ Absolute c4 tok/s, diagnostic only (never a verdict, AGENTS.md), probe, one roun
 | 30B tetraeder-moe | 267 | 288 to 291 | 285 to 288 |
 
 - Probe errors 0 in all four runs. The board-limit bit (0x400) appears in 10 of the 694 samples of the session, mostly at the end of the own engine's probe run, with 0x600 before the pre-pass and no 0x20 in the probe windows; the probe has no cleanliness rule, only the ratio line.
-- Reading: on this machine (EPYC 7B12, Zen 2) llama-server was 4% slower than on the original (EPYC 7R13) and the own engine 7% to 8% slower (267 against 288 to 291), so the c4 ratio fell to 0.910, about 2 points under the original's 0.929 probe. One probe round has the noise of a single run; the band is 0.0753. The result does not show a regression: the original's pairs (0.943, 0.948) were also below the line of 1.00 and above 0.925, and a probe of 0.910 gives no pairs to judge. It also does not confirm the verdict on this machine.
+- Reading: on this machine (EPYC 7B12, Zen 2) llama-server was 4% slower than on the original (EPYC 7R13) and the own engine 7% to 8% slower (267 against 288 to 291), so the c4 ratio fell to 0.910, about 2 points under the original's 0.929 probe. One probe round has the noise of a single run; the band is 0.0753. The own engine lost more than llama-server on this machine (7 to 8% against 4%), so a regression on final main is not ruled out; the original pass had 0.018 of margin over the line at the probe. Both engines ran 23 threads (server logs), so the session is valid. Code check (coordinator, 2026-11-22): between 6b07795 and 7976b5a the single-GPU MoE path is unchanged apart from the restore path and the scheduler's admission changes (ADR 0074); the no-capture flag (ADR 0081) and the decode toggles act only in the multi-GPU executor. The next measurement that llama-server's machine sensitivity cannot confound is a same-box A/B of the own engine at 6b07795 against final main.
 - The reruns of the script fix (reps 3 and 4) were not exercised: no pair ran.
 
 ## Deviations
