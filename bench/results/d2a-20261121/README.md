@@ -1,6 +1,6 @@
 # Session d2a-20261121
 
-- Status: mixed. Qwen3-8B passes; Qwen3-30B-A3B is null (every pair unclean on the host's board-limit throttle share, in two attempts); throughput ratios are above the original's. `phase4_pass` stays null by design (no TTFT in D2a).
+- Status: mixed. Qwen3-8B passes; Qwen3-30B-A3B is null (every pair unclean on the host's board-limit throttle share, in two attempts); the higher ratios come from a slower baseline on a different machine, not a faster engine (see Diagnosis). `phase4_pass` stays null by design (no TTFT in D2a).
 - Run: box 61874205, host 49107 (the host of `20261117k`), RTX 3090, driver 615.78.08, power 350 W at default, CPU quota 30 (original 23), baseline fc504f9, code origin/main 7976b5a plus the criteria commit bc1966e (`env.json` git_commit).
 - Purpose: confirm the Phase 4 throughput verdict (`20261117k`, main 6b07795) still holds on final main; the admission path changed after the Phase 4 verdict commit (docs/m2-plan.md step 5 before reporting M2). Node `bench-d2a-probe`.
 - Code: origin/main 7976b5a (docs-only difference from the checkout this session was started on); script `scripts/phase4_box_d2a.sh`.
@@ -48,10 +48,29 @@ Pairs. Board-limit share = share of window samples with 0x200/0x400, baseline si
 (8B r2 is unclean on the board-limit share, so r3 replaced it; its files stay in `phase4/`. The 8B spread, r1 1.123, r2 1.124, r3 1.091, probe 1.072, is wide for one host; the original's c4 was 1.021 and 1.022. The baseline's c4 on this box was 275 tok/s.)
 
 - 8B: `pass` true, pairs r1 and r3 clean; worst c4 1.091, worst c1 1.022. A/A (baseline repeat) c4 -0.013, c1 0.009.
-- 30B: `pass` null. Both attempts ran the same two pairs on the same box; every one of the four pairs fails only the board-limit rule (the baseline side spends more of the window under 0x200/0x400 than the own engine in all four pairs, 0.31 to 0.71 against 0.12 to 0.29). No error, no disqualifying bit except one 0x20 sample (attempt 1, r1, baseline side). Throughput is not in doubt (c4 1.075 to 1.086 in every pair, c1 0.979 to 0.997), but the rule fixed before the session gives no verdict: "an unclean pair is rerun, never dropped". One rerun was allowed by the coordinator and recorded as null, host board-limit.
+- 30B: `pass` null. Both attempts ran the same two pairs on the same box; every one of the four pairs fails only the board-limit rule (the baseline side spends more of the window under 0x200/0x400 than the own engine in all four pairs, 0.31 to 0.71 against 0.12 to 0.29). No error, no disqualifying bit except one 0x20 sample (attempt 1, r1, baseline side). These ratios (c4 1.075 to 1.086, c1 0.979 to 0.997) are not evidence: the asymmetry the rule excludes favours the own engine in every pair, and the rule fixed before the session gives no verdict: "an unclean pair is rerun, never dropped". One rerun was allowed by the coordinator and recorded as null, host board-limit.
 - Attempt 1 files (all q30b bench, gpu, server and window files, verdict.json, the box log) are in `phase4/unclean-attempt1/`; the rerun used the same `SESSION`, `PROBE_MIN` and `COMMIT`.
 - The script reruns one pair (rep 3) only when exactly one of two pairs is unclean (`phase4_summary.py rerun_reps`); with both unclean it ends, so the 30B had no rep 3 in either attempt.
 - TTFT: not in this script, not judged (see criteria).
+
+## Diagnosis (coordinator, 2026-11-22, from the committed files)
+
+- Not the same machine as `20261117k`: host id 49107 both times, but the CPU was AMD EPYC 7R13 with 96 host CPUs (threads 23) then and AMD EPYC 7302P with 32 host CPUs (threads 30) now.
+- Absolute c4 tok/s, diagnostic only (never a verdict, AGENTS.md): llama-server fell, the own engines did not.
+
+| run | 20261117k | d2a-20261121 |
+|---|---|---|
+| 30B llama-server | 306 | 263 to 267 |
+| 30B tetraeder-moe | 288 to 291 | 285 to 288 |
+| 30B tetraeder-llama (libllama control) | 301 to 302 | 281 to 283 |
+| 8B llama-server | 306 | 272 to 276 |
+| 8B tetraeder-dense | 313 | 297 to 310 |
+| 8B tetraeder-llama (libllama control) | 304 | 279 to 282 |
+
+- The original 30B pairs had board-limit share 0.0 on both sides; here the baseline side is 0.31 to 0.71, with lower GPU busy share (63 to 85% against 88 to 91%).
+- So the 30B rise from about 0.945 to about 1.08 is the baseline slowing on this machine, not a gain of the own engine. The 8B pass stands on its two clean pairs, but its margin over the original (1.09 to 1.12 against 1.02) has the same cause.
+- What this does show: the own MoE engine's absolute c4 on final main is no lower than on the Phase 4 verdict commit, on a slower CPU. That is consistent with no regression, but it is not the ADR 0065 judgement.
+- Next: one 30B-only session on a machine of the original class (EPYC 7R13 or similar, 96 host CPUs), criteria committed first. If it is null again, the owner decides the board-limit rule for this workload; no third box.
 
 ## Deviations
 

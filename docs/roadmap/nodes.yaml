@@ -2098,7 +2098,7 @@ nodes:
   evidence:
   - bench/results/d2a-20261121/README.md
   - bench/results/d2a-20261121/phase4/verdict.json
-  verdict_quote: 'Qwen3-8B passes; Qwen3-30B-A3B is null (every pair unclean on the host''s board-limit throttle share, in two attempts); throughput ratios are above the original''s.'
+  verdict_quote: 'Qwen3-8B passes; Qwen3-30B-A3B is null (every pair unclean on the host''s board-limit throttle share, in two attempts); the higher ratios come from a slower baseline on a different machine, not a faster engine (see Diagnosis).'
   headline: ''
   depends_on:
   - bench-phase4-exit
@@ -2109,7 +2109,7 @@ nodes:
   end: '2026-11-22'
   folded: []
   overview: true
-  plain: One D2a run on final main after the admission path changed - the 8B passes above the original's ratios; the 30B had no verdict because its pairs were unclean on the host's board-limit share, so it needs another box before M2 is reported.
+  plain: One D2a run on final main after the admission path changed - the 8B passes; the 30B had no verdict because its pairs were unclean on the board-limit share. The box was a different, slower machine under the same host id, where llama-server ran about 14% slower and the own engine did not, so the higher ratios are not evidence. A 30B-only session on a machine like the original's comes next.
 - id: bench-v4a-verdict
   title: Four-GPU verdict, first box
   track: bench
@@ -2151,6 +2151,25 @@ nodes:
   folded: []
   overview: false
   plain: The second four-GPU session, planned in case V4a could not give every configuration two clean rounds; V4a gave three in one session, so it was not needed.
+- id: bench-d2a-30b
+  title: 30B admission probe on a machine of the original class
+  track: bench
+  kind: session
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-d2a-probe
+  replaced_by: []
+  lane: box
+  queue_order: 1
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: One 30B-only D2a session on a machine like the Phase 4 one (96-CPU EPYC class), criteria committed first, with reruns for both pairs when both are unclean. If it is null again, the owner decides the board-limit rule for this workload; no third box.
 - id: bench-m2-report
   title: Report milestone M2
   track: bench
@@ -2164,6 +2183,7 @@ nodes:
   - bench-v2-verdict
   - bench-v4a-verdict
   - bench-d2a-probe
+  - bench-d2a-30b
   replaced_by: []
   lane: owner
   start: ''
