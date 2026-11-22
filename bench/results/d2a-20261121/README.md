@@ -1,6 +1,7 @@
 # Session d2a-20261121
 
-- Status: pending (criteria written before measuring).
+- Status: mixed. Qwen3-8B passes; Qwen3-30B-A3B is null (every pair unclean on the host's board-limit throttle share, in two attempts); throughput ratios are above the original's. `phase4_pass` stays null by design (no TTFT in D2a).
+- Run: box 61874205, host 49107 (the host of `20261117k`), RTX 3090, driver 615.78.08, power 350 W at default, CPU quota 30 (original 23), baseline fc504f9, code origin/main 7976b5a plus the criteria commit bc1966e (`env.json` git_commit).
 - Purpose: confirm the Phase 4 throughput verdict (`20261117k`, main 6b07795) still holds on final main; the admission path changed after the Phase 4 verdict commit (docs/m2-plan.md step 5 before reporting M2). Node `bench-d2a-probe`.
 - Code: origin/main 7976b5a (docs-only difference from the checkout this session was started on); script `scripts/phase4_box_d2a.sh`.
 
@@ -23,4 +24,39 @@ RTX 3090 (as `20261117k`), one box, cap 0.90 USD/h all-in, `--min-inet 1000`, sk
 
 ## Results
 
-(to be filled)
+Rule as the original: line 1 - b = 0.925 (band 0.0753, rtx-3090 n=11). Original = `20261117k`. Ratios are Tetraeder / llama-server; baseline variant nokvu (8B) and kvu (30B; the original picked nokvu for both).
+
+Probes (one round per model):
+
+| model | c4 | original | c1 | original |
+|---|---|---|---|---|
+| 8B dense | 1.072 | 1.000 | 1.057 | 1.019 |
+| 30B moe | 1.018 | 0.929 | 0.999 | 1.008 |
+
+Pairs. Board-limit share = share of window samples with 0x200/0x400, baseline side vs Tetraeder side; a pair is clean only if they differ by at most 0.10 and no disqualifying bit appears.
+
+| model | pair | c4 | original c4 | c1 | original c1 | board-limit share (baseline vs Tetraeder) | clean |
+|---|---|---|---|---|---|---|---|
+| 8B | r1 | 1.123 | 1.022 | 1.031 | 0.995 | 0.17 vs 0.17 | yes |
+| 8B | r2 | 1.124 | 1.021 | 1.036 | 0.997 | 0.26 vs 0.11 | no, replaced by r3 |
+| 8B | r3 | 1.091 | | 1.022 | | 0.06 vs 0.11 | yes |
+| 30B, attempt 1 | r1 | 1.075 | 0.943 | 0.990 | 0.989 | 0.31 vs 0.19, one 0x20 sample on the baseline side | no |
+| 30B, attempt 1 | r2 | 1.086 | 0.948 | 0.984 | 0.990 | 0.59 vs 0.12, 0x404 after the baseline run | no |
+| 30B, attempt 2 | r1 | 1.081 | 0.943 | 0.979 | 0.989 | 0.71 vs 0.29, 0x404 after the baseline run | no |
+| 30B, attempt 2 | r2 | 1.084 | 0.948 | 0.997 | 0.990 | 0.35 vs 0.12 | no |
+
+(8B r2 is unclean on the board-limit share, so r3 replaced it; its files stay in `phase4/`. The 8B spread, r1 1.123, r2 1.124, r3 1.091, probe 1.072, is wide for one host; the original's c4 was 1.021 and 1.022. The baseline's c4 on this box was 275 tok/s.)
+
+- 8B: `pass` true, pairs r1 and r3 clean; worst c4 1.091, worst c1 1.022. A/A (baseline repeat) c4 -0.013, c1 0.009.
+- 30B: `pass` null. Both attempts ran the same two pairs on the same box; every one of the four pairs fails only the board-limit rule (the baseline side spends more of the window under 0x200/0x400 than the own engine in all four pairs, 0.31 to 0.71 against 0.12 to 0.29). No error, no disqualifying bit except one 0x20 sample (attempt 1, r1, baseline side). Throughput is not in doubt (c4 1.075 to 1.086 in every pair, c1 0.979 to 0.997), but the rule fixed before the session gives no verdict: "an unclean pair is rerun, never dropped". One rerun was allowed by the coordinator and recorded as null, host board-limit.
+- Attempt 1 files (all q30b bench, gpu, server and window files, verdict.json, the box log) are in `phase4/unclean-attempt1/`; the rerun used the same `SESSION`, `PROBE_MIN` and `COMMIT`.
+- The script reruns one pair (rep 3) only when exactly one of two pairs is unclean (`phase4_summary.py rerun_reps`); with both unclean it ends, so the 30B had no rep 3 in either attempt.
+- TTFT: not in this script, not judged (see criteria).
+
+## Deviations
+
+- Offer ids rotated between `offers` and `create` (`--offer` failed three times); boxes were created with `create --auto` with the skip list in `--exclude-hosts` and `--min-cpu-cores 20`, so the box was chosen by score among eligible offers.
+- Boxes: 61871432 (host 392144) destroyed at the power gate (350 or 360 W against 420 W); 61871755 (host 73118) stalled in loading past 10 min; 61873014 (host 73118, one re-create per the stall rule) had power 350 W against 420 W; 61874205 (host 49107) ran the session. Total credit used 1.50 USD for the four boxes (33.19 to 31.69).
+- The 30B rerun launched the script with the default MODELS (both), not `MODELS=q30b`, so `verdict.json` and `probe.json` stay complete; the build, gpu-parity and gpu-shapes ran again (4.5 min in all), probes, pre-pass and the 8B pairs resumed as done.
+- CPU quota 30 and 32 cores (original 23); noted, not matched.
+- Model download on host 49107 ran 18 to 25 MB/s (about 13 min for 19.5 GB).

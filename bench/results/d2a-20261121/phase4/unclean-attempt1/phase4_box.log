@@ -1,0 +1,540 @@
+[23:40:20] phase4_box start (threads=30 models="q8b q30b" budget=150 min q30b=moe) out=/root/tetraeder/bench/results/d2a-20261121/phase4
+[23:40:20] STAGE build
+[23:40:20] build start
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded anstyle-query v1.1.5
+  Downloaded atomic-waker v1.1.2
+  Downloaded heck v0.5.0
+  Downloaded httpdate v1.0.3
+  Downloaded futures-macro v0.3.34
+  Downloaded futures-task v0.3.34
+  Downloaded ipnet v2.12.2
+  Downloaded axum-core v0.5.6
+  Downloaded matchers v0.2.0
+  Downloaded mime v0.3.17
+  Downloaded zmij v1.0.23
+  Downloaded nu-ansi-term v0.50.3
+  Downloaded minimal-lexical v0.2.1
+  Downloaded icu_collections v2.4.0
+  Downloaded ref-cast-impl v1.0.27
+  Downloaded indexmap v2.14.2
+  Downloaded rustc-hash v2.1.3
+  Downloaded itertools v0.13.0
+  Downloaded zerofrom-derive v0.1.8
+  Downloaded utf8parse v0.2.2
+  Downloaded bindgen v0.72.1
+  Downloaded scopeguard v1.2.0
+  Downloaded ref-cast v1.0.27
+  Downloaded yoke-derive v0.8.4
+  Downloaded version_check v0.9.5
+  Downloaded strsim v0.11.1
+  Downloaded zerofrom v0.1.8
+  Downloaded tinystr v0.8.5
+  Downloaded zerovec-derive v0.11.7
+  Downloaded tracing-core v0.1.36
+  Downloaded tracing-opentelemetry v0.34.0
+  Downloaded toml_edit v0.22.27
+  Downloaded zerotrie v0.2.5
+  Downloaded rand v0.9.5
+  Downloaded uuid v1.29.0
+  Downloaded zerovec v0.11.9
+  Downloaded opentelemetry-proto v0.33.1
+  Downloaded winnow v0.7.15
+  Downloaded tracing-subscriber v0.3.23
+  Downloaded tower-http v0.6.11
+  Downloaded tokio-util v0.7.20
+  Downloaded opentelemetry_sdk v0.33.1
+  Downloaded serde_json v1.0.154
+  Downloaded syn v3.0.9
+  Downloaded syn v2.0.119
+  Downloaded zerocopy v0.8.63
+  Downloaded sysinfo v0.40.0
+  Downloaded regex-syntax v0.8.11
+  Downloaded llguidance v1.9.1
+  Downloaded libc v0.2.191
+  Downloaded reqwest v0.13.5
+  Downloaded tracing v0.1.44
+  Downloaded regex v1.13.1
+  Downloaded url v2.5.8
+  Downloaded typenum v1.20.1
+  Downloaded tower v0.5.3
+  Downloaded serde v1.0.229
+  Downloaded prettyplease v0.2.37
+  Downloaded regex-automata v0.4.18
+  Downloaded minijinja v3.0.4
+  Downloaded opentelemetry v0.33.1
+  Downloaded opentelemetry-otlp v0.33.1
+  Downloaded icu_normalizer v2.4.0
+  Downloaded thiserror v2.0.21
+  Downloaded serde_derive v1.0.229
+  Downloaded serde_core v1.0.229
+  Downloaded nvml-wrapper-sys v0.10.0
+  Downloaded thiserror-impl v1.0.69
+  Downloaded socket2 v0.6.5
+  Downloaded smallvec v1.16.4
+  Downloaded sharded-slab v0.1.7
+  Downloaded ryu v1.0.23
+  Downloaded prost v0.14.4
+  Downloaded proc-macro2 v1.0.107
+  Downloaded parking_lot v0.12.5
+  Downloaded yoke v0.8.4
+  Downloaded unicode-ident v1.0.27
+  Downloaded tracing-log v0.2.0
+  Downloaded tracing-attributes v0.1.31
+  Downloaded toml v0.8.23
+  Downloaded toktrie v1.9.1
+  Downloaded signal-hook-registry v1.4.8
+  Downloaded shlex v1.3.0
+  Downloaded tokio v1.54.1
+  Downloaded referencing v0.29.1
+  Downloaded rand_chacha v0.9.0
+  Downloaded synstructure v0.14.0
+  Downloaded strum_macros v0.28.0
+  Downloaded static_assertions v1.1.0
+  Downloaded shlex v2.0.1
+  Downloaded sha2 v0.10.9
+  Downloaded rand_core v0.9.5
+  Downloaded prost-derive v0.14.4
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded pin-project-lite v0.2.17
+  Downloaded opentelemetry-appender-tracing v0.33.1
+  Downloaded writeable v0.6.4
+  Downloaded wrapcenum-derive v0.4.1
+  Downloaded want v0.3.2
+  Downloaded tower-layer v0.3.3
+  Downloaded toml_datetime v0.6.11
+  Downloaded tokio-macros v2.7.2
+  Downloaded thiserror-impl v2.0.21
+  Downloaded thiserror v1.0.69
+  Downloaded strum v0.28.0
+  Downloaded slab v0.4.12
+  Downloaded serde_spanned v0.6.9
+  Downloaded serde_path_to_error v0.1.20
+  Downloaded parking_lot_core v0.9.12
+  Downloaded opentelemetry-http v0.33.1
+  Downloaded utf8_iter v1.0.4
+  Downloaded try-lock v0.2.5
+  Downloaded tower-service v0.3.3
+  Downloaded toml_write v0.1.2
+  Downloaded thread_local v1.1.10
+  Downloaded sync_wrapper v1.0.2
+  Downloaded quote v1.0.47
+  Downloaded potential_utf v0.1.6
+  Downloaded percent-encoding v2.3.2
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded serde_urlencoded v0.7.1
+  Downloaded icu_properties_data v2.4.0
+  Downloaded hyper v1.12.0
+  Downloaded futures-util v0.3.34
+  Downloaded clap_builder v4.6.7
+  Downloaded hashbrown v0.17.1
+  Downloaded cc v1.10.0
+  Downloaded axum v0.8.9
+  Downloaded idna v1.1.0
+  Downloaded icu_properties v2.4.0
+  Downloaded hyper-util v0.1.21
+  Downloaded http v1.5.0
+  Downloaded aho-corasick v1.1.5
+  Downloaded nvml-wrapper v0.13.0
+  Downloaded nom v7.1.3
+  Downloaded mio v1.2.4
+  Downloaded memchr v2.8.3
+  Downloaded io-uring v0.7.15
+  Downloaded base64 v0.23.1
+  Downloaded darling_core v0.20.11
+  Downloaded bytes v1.12.1
+  Downloaded log v0.4.34
+  Downloaded icu_locale_core v2.4.0
+  Downloaded httparse v1.10.1
+  Downloaded getrandom v0.3.4
+  Downloaded derivre v0.3.13
+  Downloaded clap v4.6.7
+  Downloaded bitflags v2.13.2
+  Downloaded minijinja-contrib v3.0.4
+  Downloaded matchit v0.8.4
+  Downloaded litemap v0.8.3
+  Downloaded icu_normalizer_data v2.4.0
+  Downloaded http-body-util v0.1.5
+  Downloaded futures-executor v0.3.34
+  Downloaded futures-channel v0.3.34
+  Downloaded foldhash v0.2.0
+  Downloaded find-msvc-tools v0.1.15
+  Downloaded clap_derive v4.6.7
+  Downloaded clang-sys v1.9.1
+  Downloaded cexpr v0.6.0
+  Downloaded bytemuck_derive v1.12.1
+  Downloaded bytemuck v1.25.2
+  Downloaded once_cell v1.21.4
+  Downloaded libloading v0.8.9
+  Downloaded icu_provider v2.4.0
+  Downloaded glob v0.3.4
+  Downloaded either v1.19.0
+  Downloaded crypto-common v0.1.7
+  Downloaded cmake v0.1.58
+  Downloaded http-body v1.1.0
+  Downloaded getrandom v0.4.3
+  Downloaded generic-array v0.14.7
+  Downloaded fluent-uri v0.3.2
+  Downloaded equivalent v1.0.3
+  Downloaded displaydoc v0.2.7
+  Downloaded digest v0.10.7
+  Downloaded darling v0.20.11
+  Downloaded clap_lex v1.1.1
+  Downloaded lock_api v0.4.14
+  Downloaded lazy_static v1.5.1
+  Downloaded itoa v1.0.18
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded ident_case v1.0.1
+  Downloaded futures-sink v0.3.34
+  Downloaded fnv v1.0.7
+  Downloaded darling_macro v0.20.11
+  Downloaded cpufeatures v0.2.17
+  Downloaded anyhow v1.0.104
+  Downloaded idna_adapter v1.2.2
+  Downloaded ahash v0.8.12
+  Downloaded futures-io v0.3.34
+  Downloaded form_urlencoded v1.2.2
+  Downloaded block-buffer v0.10.4
+  Downloaded anstream v1.0.0
+  Downloaded cfg-if v1.0.5
+  Downloaded futures-core v0.3.34
+  Downloaded errno v0.3.14
+  Downloaded colorchoice v1.0.5
+  Downloaded borrow-or-share v0.2.4
+  Downloaded async-trait v0.1.92
+  Downloaded anstyle-parse v1.0.0
+  Downloaded anstyle v1.0.14
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling serde_core v1.0.229
+   Compiling itoa v1.0.18
+   Compiling pin-project-lite v0.2.17
+   Compiling serde v1.0.229
+   Compiling memchr v2.8.3
+   Compiling futures-core v0.3.34
+   Compiling once_cell v1.21.4
+   Compiling smallvec v1.16.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-sink v0.3.34
+   Compiling tracing-core v0.1.36
+   Compiling bytes v1.12.1
+   Compiling hashbrown v0.17.1
+   Compiling percent-encoding v2.3.2
+   Compiling equivalent v1.0.3
+   Compiling zerocopy v0.8.63
+   Compiling anyhow v1.0.104
+   Compiling getrandom v0.3.4
+   Compiling bitflags v2.13.2
+   Compiling indexmap v2.14.2
+   Compiling fnv v1.0.7
+   Compiling syn v3.0.9
+   Compiling syn v2.0.119
+   Compiling futures-io v0.3.34
+   Compiling ident_case v1.0.1
+   Compiling futures-task v0.3.34
+   Compiling errno v0.3.14
+   Compiling writeable v0.6.4
+   Compiling slab v0.4.12
+   Compiling strsim v0.11.1
+   Compiling litemap v0.8.3
+   Compiling thiserror v2.0.21
+   Compiling signal-hook-registry v1.4.8
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling http v1.5.0
+   Compiling version_check v0.9.5
+   Compiling zmij v1.0.23
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling utf8_iter v1.0.4
+   Compiling either v1.19.0
+   Compiling serde_json v1.0.154
+   Compiling thiserror v1.0.69
+   Compiling itertools v0.13.0
+   Compiling libloading v0.8.9
+   Compiling foldhash v0.2.0
+   Compiling http-body v1.1.0
+   Compiling httparse v1.10.1
+   Compiling tower-service v0.3.3
+   Compiling nvml-wrapper-sys v0.10.0
+   Compiling form_urlencoded v1.2.2
+   Compiling futures-channel v0.3.34
+   Compiling sync_wrapper v1.0.2
+   Compiling try-lock v0.2.5
+   Compiling static_assertions v1.1.0
+   Compiling log v0.4.34
+   Compiling tower-layer v0.3.3
+   Compiling glob v0.3.4
+   Compiling regex-syntax v0.8.11
+   Compiling want v0.3.2
+   Compiling darling_core v0.20.11
+   Compiling tracing-attributes v0.1.31
+   Compiling thiserror-impl v1.0.69
+   Compiling serde_derive v1.0.229
+   Compiling synstructure v0.14.0
+   Compiling zerovec-derive v0.11.7
+   Compiling displaydoc v0.2.7
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling tracing v0.1.44
+   Compiling futures-macro v0.3.34
+   Compiling thiserror-impl v2.0.21
+   Compiling zerofrom v0.1.8
+   Compiling tokio-macros v2.7.2
+   Compiling darling_macro v0.20.11
+   Compiling yoke v0.8.4
+   Compiling futures-util v0.3.34
+   Compiling darling v0.20.11
+   Compiling zerovec v0.11.9
+   Compiling zerotrie v0.2.5
+   Compiling tokio v1.54.1
+   Compiling wrapcenum-derive v0.4.1
+   Compiling nvml-wrapper v0.13.0
+   Compiling opentelemetry v0.33.1
+   Compiling clang-sys v1.9.1
+   Compiling tinystr v0.8.5
+   Compiling potential_utf v0.1.6
+   Compiling sysinfo v0.40.0
+   Compiling prettyplease v0.2.37
+   Compiling icu_collections v2.4.0
+   Compiling icu_locale_core v2.4.0
+   Compiling atomic-waker v1.1.2
+   Compiling httpdate v1.0.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling http-body-util v0.1.5
+   Compiling rand_core v0.9.5
+   Compiling ipnet v2.12.2
+   Compiling minimal-lexical v0.2.1
+   Compiling icu_provider v2.4.0
+   Compiling base64 v0.23.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling rand_chacha v0.9.0
+   Compiling nom v7.1.3
+   Compiling regex-automata v0.4.18
+   Compiling serde_spanned v0.6.9
+   Compiling toml_datetime v0.6.11
+   Compiling toml_write v0.1.2
+   Compiling bindgen v0.72.1
+   Compiling tower v0.5.3
+   Compiling hyper v1.12.0
+   Compiling find-msvc-tools v0.1.15
+   Compiling idna_adapter v1.2.2
+   Compiling shlex v2.0.1
+   Compiling idna v1.1.0
+   Compiling lazy_static v1.5.1
+   Compiling winnow v0.7.15
+   Compiling sharded-slab v0.1.7
+   Compiling cc v1.10.0
+   Compiling cexpr v0.6.0
+   Compiling regex v1.13.1
+   Compiling rand v0.9.5
+   Compiling prost-derive v0.14.4
+   Compiling url v2.5.8
+   Compiling futures-executor v0.3.34
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling hyper-util v0.1.21
+   Compiling nu-ansi-term v0.50.3
+   Compiling rustc-hash v2.1.3
+   Compiling toml_edit v0.22.27
+   Compiling matchers v0.2.0
+   Compiling shlex v1.3.0
+   Compiling prost v0.14.4
+   Compiling tower-http v0.6.11
+   Compiling opentelemetry_sdk v0.33.1
+   Compiling tracing-subscriber v0.3.23
+   Compiling cmake v0.1.58
+   Compiling async-trait v0.1.92
+   Compiling generic-array v0.14.7
+   Compiling heck v0.5.0
+   Compiling typenum v1.20.1
+   Compiling ahash v0.8.12
+   Compiling reqwest v0.13.5
+   Compiling parking_lot_core v0.9.12
+   Compiling ref-cast v1.0.27
+   Compiling ref-cast-impl v1.0.27
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling strum_macros v0.28.0
+   Compiling opentelemetry-appender-tracing v0.33.1
+   Compiling tracing-opentelemetry v0.34.0
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling bytemuck_derive v1.12.1
+   Compiling io-uring v0.7.15
+   Compiling toml v0.8.23
+   Compiling getrandom v0.4.3
+   Compiling utf8parse v0.2.2
+   Compiling bytemuck v1.25.2
+   Compiling borrow-or-share v0.2.4
+   Compiling strum v0.28.0
+   Compiling anstyle-parse v1.0.0
+   Compiling opentelemetry-http v0.33.1
+   Compiling fluent-uri v0.3.2
+   Compiling digest v0.10.7
+   Compiling parking_lot v0.12.5
+   Compiling ryu v1.0.23
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling cpufeatures v0.2.17
+   Compiling anstyle-query v1.1.5
+   Compiling mime v0.3.17
+   Compiling colorchoice v1.0.5
+   Compiling llguidance v1.9.1
+   Compiling anstyle v1.0.14
+   Compiling sha2 v0.10.9
+   Compiling referencing v0.29.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling axum-core v0.5.6
+   Compiling anstream v1.0.0
+   Compiling opentelemetry-proto v0.33.1
+   Compiling derivre v0.3.13
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling toktrie v1.9.1
+   Compiling minijinja v3.0.4
+   Compiling serde_path_to_error v0.1.20
+   Compiling clap_lex v1.1.1
+   Compiling matchit v0.8.4
+   Compiling uuid v1.29.0
+   Compiling clap_builder v4.6.7
+   Compiling axum v0.8.9
+   Compiling opentelemetry-otlp v0.33.1
+   Compiling clap_derive v4.6.7
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tokio-util v0.7.20
+   Compiling tetraeder-kvcache v0.0.0 (/root/tetraeder/crates/kvcache)
+   Compiling tetraeder v0.0.0 (/root/tetraeder/crates/tetraeder)
+   Compiling clap v4.6.7
+   Compiling minijinja-contrib v3.0.4
+   Compiling tetraeder-costmodel v0.0.0 (/root/tetraeder/crates/costmodel)
+   Compiling tetraeder-control v0.0.0 (/root/tetraeder/crates/control)
+   Compiling tetraeder-gateway v0.0.0 (/root/tetraeder/crates/gateway)
+   Compiling tetraeder-analysis v0.0.0 (/root/tetraeder/crates/analysis)
+   Compiling tetraeder-planner v0.0.0 (/root/tetraeder/crates/planner)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 7m 51s
+Using CPython 3.12.3 interpreter at: /usr/bin/python3
+Creating virtual environment at: /root/gwvenv
+Activate with: source /root/gwvenv/bin/activate
+Using Python 3.12.3 environment at: /root/gwvenv
+Resolved 7 packages in 10.29s
+Prepared 7 packages in 63ms
+Installed 7 packages in 15ms
+ + anyio==4.16.0
+ + certifi==2026.11.20
+ + h11==0.16.0
+ + httpcore==1.0.9
+ + httpx==0.28.1
+ + idna==3.20
+ + typing-extensions==4.16.0
+[23:48:38] build done
+[23:48:38] STAGE gpu-parity
+[23:48:38] gpu-parity q8b start
+[23:49:23] gpu-parity q8b done
+[23:49:23] gpu-parity q30b start
+[23:49:58] gpu-parity q30b done
+[23:49:58] STAGE gpu-shapes
+[23:49:58] gpu-shapes start
+  SHAPE engine=llama shape=decode4x8 ms=73.7 ms_per_prompt_token=0.18
+  SHAPE engine=llama shape=decode1x8_alone ms=60.7 ms_per_prompt_token=0.15
+  SHAPE engine=llama shape=decode1x8_resident ms=60.4 ms_per_prompt_token=0.15
+  SHAPE engine=llama_streams shape=decode4x8 ms=74.2 ms_per_prompt_token=0.18
+  SHAPE engine=llama_streams shape=decode1x8_alone ms=60.4 ms_per_prompt_token=0.15
+  SHAPE engine=llama_streams shape=decode1x8_resident ms=60.2 ms_per_prompt_token=0.15
+  SHAPE engine=dense shape=decode4x8 ms=78.4 ms_per_prompt_token=0.19
+  SHAPE engine=dense shape=decode1x8_alone ms=62.2 ms_per_prompt_token=0.15
+  SHAPE engine=dense shape=decode1x8_resident ms=62.5 ms_per_prompt_token=0.16
+[23:51:10] gpu-shapes done
+[23:51:10] STAGE prepass
+[23:51:10] prepass q8b kvu start
+[23:51:24] prepass q8b nokvu start
+[23:51:38] prepass q8b: baseline variant nokvu
+[23:51:38] prepass q30b kvu start
+[23:51:57] prepass q30b nokvu start
+[23:52:17] prepass q30b: baseline variant kvu
+[23:52:17] STAGE probe
+[23:52:17] probe q8b llama-server start (nokvu)
+[23:52:36] probe q8b llama-server done
+[23:52:36] probe q8b tetraeder-dense start
+[23:52:55] probe q8b tetraeder-dense done
+[23:52:55] probe q30b llama-server start (kvu)
+[23:53:17] probe q30b llama-server done
+[23:53:17] probe q30b tetraeder-moe start
+[23:53:38] probe q30b tetraeder-moe done
+{"probe_stop": false, "stopped": [], "reasons": []}
+[23:53:38] STAGE env
+[23:53:38] STAGE pairs
+[23:53:39] run q8b-llama-server-r1 start (nokvu)
+cotenant ok: host 15.470987118695671 cores busy, container 15.271226905958999, engine 15.144545155769356, outside 0.19976021273667222, smt pairs 1
+cotenant ok: host 15.470987118695671 cores busy, container 15.271226905958999, engine 15.144545155769356, outside 0.19976021273667222, smt pairs 1
+[23:54:03] run q8b-llama-server-r1 done
+[23:54:03] run q8b-tetraeder-dense-r1 start
+cotenant ok: host 1.2735507046534633 cores busy, container 1.2272719835975368, engine 1.0576213872279818, outside 0.046278721055926564, smt pairs 0
+cotenant ok: host 1.2735507046534633 cores busy, container 1.2272719835975368, engine 1.0576213872279818, outside 0.046278721055926564, smt pairs 0
+[23:54:25] run q8b-tetraeder-dense-r1 done
+[23:54:25] run q8b-tetraeder-llama-r1 start
+cotenant ok: host 15.625065388165213 cores busy, container 15.575711834387446, engine 15.449400081127756, outside 0.049353553777766734, smt pairs 1
+cotenant ok: host 15.625065388165213 cores busy, container 15.575711834387446, engine 15.449400081127756, outside 0.049353553777766734, smt pairs 1
+[23:54:48] run q8b-tetraeder-llama-r1 done
+[23:54:48] run q8b-tetraeder-dense-r2 start
+cotenant ok: host 1.3096559073416123 cores busy, container 1.22390188264068, engine 1.0609688083015492, outside 0.0857540247009323, smt pairs 0
+cotenant ok: host 1.3096559073416123 cores busy, container 1.22390188264068, engine 1.0609688083015492, outside 0.0857540247009323, smt pairs 0
+[23:55:10] run q8b-tetraeder-dense-r2 done
+[23:55:11] run q8b-llama-server-r2 start (nokvu)
+cotenant ok: host 15.101456621137709 cores busy, container 15.085903686625924, engine 14.961632423417973, outside 0.015552934511784855, smt pairs 1
+cotenant ok: host 15.101456621137709 cores busy, container 15.085903686625924, engine 14.961632423417973, outside 0.015552934511784855, smt pairs 1
+[23:55:34] run q8b-llama-server-r2 done
+[23:55:34] run q8b-tetraeder-llama-r2 start
+cotenant ok: host 15.648278119119565 cores busy, container 15.607783104986675, engine 15.48221547862119, outside 0.04049501413289036, smt pairs 3
+cotenant ok: host 15.648278119119565 cores busy, container 15.607783104986675, engine 15.48221547862119, outside 0.04049501413289036, smt pairs 3
+[23:55:57] run q8b-tetraeder-llama-r2 done
+[23:55:57] rerun pair q8b: rep 2 is unclean, running rep 3
+[23:55:57] run q8b-tetraeder-dense-r3 start
+cotenant ok: host 1.2661572307116105 cores busy, container 1.2248029233708495, engine 1.066101775858743, outside 0.041354307340760954, smt pairs 0
+cotenant ok: host 1.2661572307116105 cores busy, container 1.2248029233708495, engine 1.066101775858743, outside 0.041354307340760954, smt pairs 0
+[23:56:20] run q8b-tetraeder-dense-r3 done
+[23:56:20] run q8b-llama-server-r3 start (nokvu)
+cotenant ok: host 15.050746968491985 cores busy, container 15.091240779356564, engine 14.967745807470772, outside 0.0, smt pairs 1
+cotenant ok: host 15.050746968491985 cores busy, container 15.091240779356564, engine 14.967745807470772, outside 0.0, smt pairs 1
+[23:56:44] run q8b-llama-server-r3 done
+[23:56:44] run q8b-tetraeder-llama-r3 start
+cotenant ok: host 15.556346041272482 cores busy, container 15.383414901312428, engine 15.25535247241604, outside 0.17293113996005438, smt pairs 1
+cotenant ok: host 15.556346041272482 cores busy, container 15.383414901312428, engine 15.25535247241604, outside 0.17293113996005438, smt pairs 1
+[23:57:07] run q8b-tetraeder-llama-r3 done
+[23:57:07] run q30b-llama-server-r1 start (kvu)
+cotenant ok: host 16.568957692456248 cores busy, container 16.583148992083352, engine 16.449021514938323, outside 0.0, smt pairs 8
+cotenant ok: host 16.568957692456248 cores busy, container 16.583148992083352, engine 16.449021514938323, outside 0.0, smt pairs 8
+[23:57:34] run q30b-llama-server-r1 done
+[23:57:34] run q30b-tetraeder-moe-r1 start
+cotenant ok: host 1.2555973654349948 cores busy, container 1.208953737426498, engine 1.04500961777425, outside 0.04664362800849675, smt pairs 0
+cotenant ok: host 1.2555973654349948 cores busy, container 1.208953737426498, engine 1.04500961777425, outside 0.04664362800849675, smt pairs 0
+[23:57:59] run q30b-tetraeder-moe-r1 done
+[23:57:59] run q30b-tetraeder-llama-r1 start
+cotenant ok: host 16.002795687458615 cores busy, container 15.980714186225383, engine 15.844711294383561, outside 0.022081501233232714, smt pairs 3
+cotenant ok: host 16.002795687458615 cores busy, container 15.980714186225383, engine 15.844711294383561, outside 0.022081501233232714, smt pairs 3
+[23:58:24] run q30b-tetraeder-llama-r1 done
+[23:58:24] run q30b-tetraeder-moe-r2 start
+cotenant ok: host 1.2561208861332134 cores busy, container 1.2126534671773914, engine 1.04484693252327, outside 0.04346741895582196, smt pairs 0
+cotenant ok: host 1.2561208861332134 cores busy, container 1.2126534671773914, engine 1.04484693252327, outside 0.04346741895582196, smt pairs 0
+[23:58:49] run q30b-tetraeder-moe-r2 done
+[23:58:49] run q30b-llama-server-r2 start (kvu)
+cotenant ok: host 16.51620050889416 cores busy, container 16.541262394704646, engine 16.401862140895165, outside 0.0, smt pairs 9
+cotenant ok: host 16.51620050889416 cores busy, container 16.541262394704646, engine 16.401862140895165, outside 0.0, smt pairs 9
+[23:59:15] run q30b-llama-server-r2 done
+[23:59:15] run q30b-tetraeder-llama-r2 start
+cotenant ok: host 15.962636211701119 cores busy, container 15.912643698050712, engine 15.77872214125407, outside 0.04999251365040713, smt pairs 1
+cotenant ok: host 15.962636211701119 cores busy, container 15.912643698050712, engine 15.77872214125407, outside 0.04999251365040713, smt pairs 1
+[23:59:40] run q30b-tetraeder-llama-r2 done
+[23:59:40] STAGE summary
+{"phase4_pass": null, "band": 0.07531306153550049, "band_source": "measured rtx-3090 n=11", "models": {"q8b": true, "q30b": null}, "ttft": null}
+[23:59:40] PHASE4_BOX_DONE rc=0

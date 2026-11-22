@@ -2093,21 +2093,23 @@ nodes:
   title: Admission probe on final main
   track: bench
   kind: experiment
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: mixed
+  evidence:
+  - bench/results/d2a-20261121/README.md
+  - bench/results/d2a-20261121/phase4/verdict.json
+  verdict_quote: 'Qwen3-8B passes; Qwen3-30B-A3B is null (every pair unclean on the host''s board-limit throttle share, in two attempts); throughput ratios are above the original''s.'
   headline: ''
   depends_on:
   - bench-phase4-exit
   replaced_by: []
   lane: box
   queue_order: 2
-  start: ''
-  end: ''
+  start: '2026-11-21'
+  end: '2026-11-22'
   folded: []
   overview: true
-  plain: The admission path changed after the Phase 4 verdict commit, so one D2a run on final main confirms the Phase 4 result still holds before M2 is reported.
+  plain: One D2a run on final main after the admission path changed - the 8B passes above the original's ratios; the 30B had no verdict because its pairs were unclean on the host's board-limit share, so it needs another box before M2 is reported.
 - id: bench-v4a-verdict
   title: Four-GPU verdict, first box
   track: bench

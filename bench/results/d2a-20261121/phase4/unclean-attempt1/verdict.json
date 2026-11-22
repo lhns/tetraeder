@@ -1,0 +1,318 @@
+{
+  "band": 0.07531306153550049,
+  "band_source": "measured rtx-3090 n=11",
+  "models": {
+    "q8b": {
+      "engine": "tetraeder-dense",
+      "counts": true,
+      "baseline_variant": "nokvu",
+      "baseline_kv_unified": "false",
+      "aa": {
+        "c4": -0.013046147852586731,
+        "c1": 0.009191012384677677
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 1.1230216802572675,
+          "c1_decode_ratio": 1.0313427782890476,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000400"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 18,
+              "share": 0.16666666666666666,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 18,
+              "share": 0.16666666666666666,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        },
+        {
+          "reps": [
+            3
+          ],
+          "c4_throughput_ratio": 1.090541233543738,
+          "c1_decode_ratio": 1.0217941029986242,
+          "clean": true,
+          "reasons": [],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000600"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 18,
+              "share": 0.05555555555555555,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 19,
+              "share": 0.10526315789473684,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 1.090541233543738,
+        "c1": 1.0217941029986242
+      },
+      "pass": true,
+      "reasons": [],
+      "reps_used": [
+        1,
+        3
+      ],
+      "dropped_pairs": [
+        {
+          "rep": 2,
+          "reasons": [
+            "r2 board-limit share differs: 0.26 vs 0.11 (> 0.1)"
+          ]
+        }
+      ]
+    },
+    "q30b": {
+      "engine": "tetraeder-moe",
+      "counts": true,
+      "baseline_variant": "kvu",
+      "baseline_kv_unified": "true",
+      "aa": {
+        "c4": -0.0072122628125673716,
+        "c1": 0.0038087168305971364
+      },
+      "pairs": [
+        {
+          "reps": [
+            1
+          ],
+          "c4_throughput_ratio": 1.0746167155103594,
+          "c1_decode_ratio": 0.9902026767912923,
+          "clean": false,
+          "reasons": [
+            "r1 board-limit share differs: 0.31 vs 0.19 (> 0.1)",
+            "r1 first side: 1 window sample(s) with throttle bits 0x20"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 16,
+              "share": 0.3125,
+              "disqualifying": 1,
+              "bad_bits": "0x20"
+            },
+            "judged": {
+              "samples": 16,
+              "share": 0.1875,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        },
+        {
+          "reps": [
+            2
+          ],
+          "c4_throughput_ratio": 1.0855723425002768,
+          "c1_decode_ratio": 0.9842905641240797,
+          "clean": false,
+          "reasons": [
+            "q30b-llama-server-r2: throttle reasons after the run: 0x404",
+            "r2 board-limit share differs: 0.59 vs 0.12 (> 0.1)"
+          ],
+          "throttle": {
+            "baseline": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000404"
+              ],
+              "power_before": [],
+              "power_after": []
+            },
+            "judged": {
+              "before": [
+                "0x0000000000000000"
+              ],
+              "after": [
+                "0x0000000000000004"
+              ],
+              "power_before": [],
+              "power_after": []
+            }
+          },
+          "sampler": {
+            "rule": "sampler",
+            "baseline": {
+              "samples": 17,
+              "share": 0.5882352941176471,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            },
+            "judged": {
+              "samples": 16,
+              "share": 0.125,
+              "disqualifying": 0,
+              "bad_bits": "0x0"
+            }
+          }
+        }
+      ],
+      "worst": {
+        "c4": 1.0746167155103594,
+        "c1": 0.9842905641240797
+      },
+      "pass": null,
+      "reasons": [
+        "r1 board-limit share differs: 0.31 vs 0.19 (> 0.1)",
+        "r1 first side: 1 window sample(s) with throttle bits 0x20",
+        "q30b-llama-server-r2: throttle reasons after the run: 0x404",
+        "r2 board-limit share differs: 0.59 vs 0.12 (> 0.1)"
+      ],
+      "reps_used": [
+        1,
+        2
+      ],
+      "dropped_pairs": []
+    }
+  },
+  "ttft": {
+    "log_sha256": null,
+    "requests": null,
+    "pairs": [
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r1: no result",
+          "replay-q8b-off-r1: no result"
+        ],
+        "throttle": {
+          "on": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          },
+          "off": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          }
+        },
+        "sampler": {
+          "rule": "single-sample",
+          "on": null,
+          "off": null
+        }
+      },
+      {
+        "median_ratio": null,
+        "p90_ratio": null,
+        "clean": false,
+        "reasons": [
+          "replay-q8b-on-r2: no result",
+          "replay-q8b-off-r2: no result"
+        ],
+        "throttle": {
+          "on": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          },
+          "off": {
+            "before": [],
+            "after": [],
+            "power_before": [],
+            "power_after": []
+          }
+        },
+        "sampler": {
+          "rule": "single-sample",
+          "on": null,
+          "off": null
+        }
+      }
+    ],
+    "pass": null
+  },
+  "phase4_pass": null
+}

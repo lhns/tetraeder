@@ -1,0 +1,57 @@
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-engine v0.0.0 (/root/tetraeder/crates/engine)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-scheduler v0.0.0 (/root/tetraeder/crates/scheduler)
+    Finished `release` profile [optimized] target(s) in 1.79s
+     Running tests/step_shapes.rs (target/release/deps/step_shapes-345a7964ac9ef94d)
+
+running 1 test
+test step_shapes ... SHAPES cpu=Some("AMD EPYC 7302P 16-Core Processor") amx_tile=false amx_int8=false avx512f=false avx512_vnni=false
+SHAPE engine=llama shape=alone ms=90.4 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=resident ms=88.6 ms_per_prompt_token=0.22
+SHAPE engine=llama shape=mixed1 ms=90.7 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=split1 ms=97.6 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed1_prompt_first ms=90.5 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=mixed2 ms=92.6 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=split2 ms=98.0 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=mixed2_prompt_first ms=92.3 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=mixed3 ms=94.5 ms_per_prompt_token=0.24
+SHAPE engine=llama shape=split3 ms=99.1 ms_per_prompt_token=0.25
+SHAPE engine=llama shape=mixed3_prompt_first ms=94.0 ms_per_prompt_token=0.23
+SHAPE engine=llama shape=decode4x8 ms=74.5 ms_per_prompt_token=0.19
+SHAPE engine=llama shape=decode1x8_alone ms=60.8 ms_per_prompt_token=0.15
+SHAPE engine=llama shape=decode1x8_resident ms=60.6 ms_per_prompt_token=0.15
+SHAPE engine=llama_streams shape=alone ms=86.4 ms_per_prompt_token=0.21
+SHAPE engine=llama_streams shape=resident ms=89.0 ms_per_prompt_token=0.22
+SHAPE engine=llama_streams shape=mixed1 ms=95.6 ms_per_prompt_token=0.24
+SHAPE engine=llama_streams shape=split1 ms=97.6 ms_per_prompt_token=0.24
+SHAPE engine=llama_streams shape=mixed1_prompt_first ms=97.0 ms_per_prompt_token=0.24
+SHAPE engine=llama_streams shape=mixed2 ms=96.8 ms_per_prompt_token=0.24
+SHAPE engine=llama_streams shape=split2 ms=98.4 ms_per_prompt_token=0.24
+SHAPE engine=llama_streams shape=mixed2_prompt_first ms=97.6 ms_per_prompt_token=0.24
+SHAPE engine=llama_streams shape=mixed3 ms=97.6 ms_per_prompt_token=0.24
+SHAPE engine=llama_streams shape=split3 ms=99.3 ms_per_prompt_token=0.25
+SHAPE engine=llama_streams shape=mixed3_prompt_first ms=98.5 ms_per_prompt_token=0.25
+SHAPE engine=llama_streams shape=decode4x8 ms=74.8 ms_per_prompt_token=0.19
+SHAPE engine=llama_streams shape=decode1x8_alone ms=60.5 ms_per_prompt_token=0.15
+SHAPE engine=llama_streams shape=decode1x8_resident ms=60.4 ms_per_prompt_token=0.15
+SHAPES dense weight_bufts=[]
+SHAPE engine=dense shape=alone ms=85.7 ms_per_prompt_token=0.21
+SHAPE engine=dense shape=resident ms=86.9 ms_per_prompt_token=0.22
+SHAPE engine=dense shape=mixed1 ms=95.5 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=split1 ms=96.8 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=mixed1_prompt_first ms=95.9 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=mixed2 ms=95.9 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=split2 ms=96.9 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=mixed2_prompt_first ms=95.6 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=mixed3 ms=96.2 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=split3 ms=99.7 ms_per_prompt_token=0.25
+SHAPE engine=dense shape=mixed3_prompt_first ms=96.8 ms_per_prompt_token=0.24
+SHAPE engine=dense shape=decode4x8 ms=77.9 ms_per_prompt_token=0.19
+SHAPE engine=dense shape=decode1x8_alone ms=62.2 ms_per_prompt_token=0.15
+SHAPE engine=dense shape=decode1x8_resident ms=62.6 ms_per_prompt_token=0.16
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 50.59s
+

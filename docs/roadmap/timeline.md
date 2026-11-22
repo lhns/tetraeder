@@ -4,7 +4,7 @@
 
 [Back to the page](../roadmap.md)
 
-Generated on 2026-11-21. Open bars end on that date.
+Generated on 2026-11-22. Open bars end on that date.
 
 <!-- BEGIN GENERATED: timeline -->
 ```mermaid
@@ -97,6 +97,7 @@ gantt
     Four-GPU check of the fix :bench_s3f2, 2026-11-20, 2026-11-20
     Check host ran at low clocks :bench_defect_s3f2_clock, 2026-11-20, 2026-11-20
     Two-GPU verdict session :bench_v2_verdict, 2026-11-20, 2026-11-21
+    Admission probe on final main :bench_d2a_probe, 2026-11-21, 2026-11-22
     Four-GPU verdict, first box :bench_v4a_verdict, 2026-11-21, 2026-11-21
     Four-GPU verdict, second box :crit, bench_v4b_verdict, 2026-11-21, 2026-11-21
     Readmit host 20210 for verdicts :bench_owner_host_20210, 2026-11-21, 2026-11-21
@@ -115,5 +116,5 @@ gantt
     Owner accepts nine design records :ops_owner_accepts_adrs, 2026-11-19, 2026-11-19
 ```
 
-Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-prefill-misses`, `memory-typed-slots`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-accept-adr-0081`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-prefix-first`, `bench-d2a-probe`, `bench-m2-report`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-transport-wan`, `cluster-owner-transport`, `cluster-transport`, `cluster-mtls`, `cluster-discovery`, `cluster-join-leave`, `cluster-pipeline-nodes`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
+Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-prefill-misses`, `memory-typed-slots`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-accept-adr-0081`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-prefix-first`, `bench-m2-report`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-transport-wan`, `cluster-owner-transport`, `cluster-transport`, `cluster-mtls`, `cluster-discovery`, `cluster-join-leave`, `cluster-pipeline-nodes`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
 <!-- END GENERATED: timeline -->
