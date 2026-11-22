@@ -21,7 +21,7 @@ from dataclasses import dataclass
 import httpx
 import pytest
 import yaml
-from parity_lib import compare, parse_sse
+from parity_lib import compare, generated_text, get_path, norm_text, parse_sse
 from servers import FAMILY, ServerStartError, find_llama_server, find_tetraeder, start_llama, start_tetraeder
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -37,11 +37,32 @@ class Answer:
     events: list
 
 
-def missing(what: str, hint: str):
-    msg = f"skip: no {what} ({hint})"
+class PremiseError(Exception):
+    """The baseline did not do what the case assumes (the text is empty, EOS was not reached). Not an
+    AssertionError, so a gap case does not count it as its expected failure."""
+
+
+def skip_or_fail(msg: str):
+    """A skip with its reason; a failure under TETRAEDER_REQUIRE_PARITY=1 (CI), so nothing is skipped silently."""
     if REQUIRE:
-        pytest.fail(msg.replace("skip:", "required but missing:"))
-    pytest.skip(msg)
+        pytest.fail(f"required but skipped: {msg}")
+    pytest.skip(f"skip: {msg}")
+
+
+def missing(what: str, hint: str):
+    skip_or_fail(f"no {what} ({hint})")
+
+
+def check_premise(case: dict, base: Answer):
+    """Cases that compare text need text to compare; `premise: {finish_reason: ...}` states what the baseline must reach."""
+    body = base.body
+    if case["mode"] in ("text",) and base.status == 200:
+        if not norm_text(generated_text(body)):
+            raise PremiseError(f"{case['id']}: the baseline generated no text, so the comparison would be empty")
+    for key, want in case.get("premise", {}).items():
+        got = get_path(body, "choices[0].finish_reason") if key == "finish_reason" else None
+        if got != want:
+            raise PremiseError(f"{case['id']}: the baseline's {key} is {got!r}, the case needs {want!r}")
 
 
 @pytest.fixture(scope="session")
@@ -115,20 +136,20 @@ def _json_or_text(text: str):
         return text
 
 
-def probed_body(pool, case) -> dict:
+def probed_body(pool, case, engine) -> dict:
     """The request body with a field derived from the baseline (the tiny model's text and token ids are not
     known in advance): `stop_ascii` stops on printable ASCII characters of what the baseline generates for the body; `ban_first_token`
     biases the baseline's first token for `prompt` down."""
     probe = case["probe"]
-    base = pool.get("llama", FAMILY[case["engines"][0]]).base_url
+    base = pool.get("llama", FAMILY[engine]).base_url
     if probe["kind"] == "stop_ascii":
         r = send(base, case, case["body"]).body["choices"][0]
         out = r.get("message", {}).get("content") or r.get("text") or ""
         n = probe["length"]
-        # after the first character, so that text is generated before the stop
-        piece = next((out[i : i + n] for i in range(1, len(out) - n + 1) if re.fullmatch(r"[!-~]{%d}" % n, out[i : i + n])), None)
+        # from `start` on, so that text is generated before the stop
+        piece = next((out[i : i + n] for i in range(probe.get("start", 1), len(out) - n + 1) if re.fullmatch(r"[!-~]{%d}" % n, out[i : i + n])), None)
         if piece is None:
-            pytest.skip(f"baseline text {out!r} has no {n} printable ASCII characters in a row")
+            skip_or_fail(f"baseline text {out!r} has no {n} printable ASCII characters in a row")
         return {**case["body"], "stop": [piece]}
     if probe["kind"] == "ban_first_token":
         native = {"endpoint": "POST /completion", "mode": "shape"}
@@ -144,7 +165,7 @@ def params() -> list:
             marks = []
             if case["expect"].startswith("gap "):
                 node = case["expect"][4:]
-                marks.append(pytest.mark.xfail(strict=True, reason=f"gap, tree node {node}", raises=(AssertionError, ServerStartError)))
+                marks.append(pytest.mark.xfail(strict=True, reason=f"gap, tree node {node}", raises=AssertionError))
             out.append(pytest.param(case, engine, id=f"{case['id']}[{engine}]", marks=marks))
     return out
 
@@ -152,12 +173,13 @@ def params() -> list:
 @pytest.mark.parametrize("case,engine", params())
 def test_case(case, engine, pool):
     base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()))
-    body = probed_body(pool, case) if "probe" in case else None
+    body = probed_body(pool, case, engine) if "probe" in case else None
     try:
         other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()))
     except ServerStartError as e:
         raise AssertionError(f"tetraeder did not start with {case.get('tetraeder_args')}: {str(e)[:300]}") from e
     base = send(base_srv.base_url, case, body)
     other = send(other_srv.base_url, case, body)
+    check_premise(case, base)
     diffs = compare(case, base, other)
     assert not diffs, f"{case['row']} ({case['endpoint']}):\n  " + "\n  ".join(diffs)

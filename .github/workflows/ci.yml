@@ -100,6 +100,28 @@ jobs:
         with:
           path: .hf_cache
           key: model-qwen3-0.6b-q8_0
+      # llama-server, the baseline of tests/conformance/parity (ADR 0083): built from the patched vendor tree (the
+      # patch queue above), CPU only, DL multi-variant like our ggml so both load the same kernels. Keyed by the pin
+      # and the patch queue; bump v1 when the cmake options change.
+      - uses: actions/cache/restore@v4
+        if: runner.os == 'Linux'
+        id: llama-server
+        with:
+          path: target/llama-server/bin
+          key: llama-server-v1-${{ hashFiles('vendor/PIN', 'patches/**') }}
+      - name: Build llama-server
+        if: runner.os == 'Linux' && steps.llama-server.outputs.cache-hit != 'true'
+        run: |
+          cmake -S vendor/llama.cpp -B target/llama-server -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DGGML_CUDA=OFF -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON \
+            -DLLAMA_OPENSSL=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_BUILD_UI=OFF
+          cmake --build target/llama-server --target llama-server
+      - uses: actions/cache/save@v4
+        if: runner.os == 'Linux' && steps.llama-server.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        with:
+          path: target/llama-server/bin
+          key: llama-server-v1-${{ hashFiles('vendor/PIN', 'patches/**') }}
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo build -p tetraeder
@@ -139,12 +161,15 @@ jobs:
             grep -a -E '^skipped?:' test.log | sort -u || echo "none"
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: astral-sh/setup-uv@v5
-      # SDK conformance suite (tests/conformance) against `tetraeder serve --fake`
+      # SDK conformance suite (tests/conformance) against `tetraeder serve --fake`, and on Linux the llama-server
+      # conformance (tests/conformance/parity): a missing baseline binary fails there instead of skipping.
       - name: pytest
         shell: bash
         env:
           TETRAEDER_BIN: ${{ runner.os == 'Windows' && 'target/debug/tetraeder.exe' || 'target/debug/tetraeder' }}
-        run: uv run pytest -q tests
+          LLAMA_SERVER_BIN: ${{ runner.os == 'Linux' && 'target/llama-server/bin/llama-server' || '' }}
+          TETRAEDER_REQUIRE_PARITY: ${{ runner.os == 'Linux' && '1' || '' }}
+        run: uv run pytest -q tests -rxs
       - name: bash -n scripts
         if: runner.os == 'Linux'
         run: |
@@ -162,52 +187,6 @@ jobs:
           TETRAEDER_OTEL_DIR="$RUNNER_TEMP/otel" "$OTELCOL_BIN" validate --config=deploy/otelcol/config-file.yaml
           "$OTELCOL_BIN" validate --config=deploy/otelcol/config.yaml
           uv run pytest -q tests/test_otlp_host.py -k end_to_end -rs
-
-  conformance:
-    # llama-server parity (ADR 0083, docs/notes/llamacpp-parity.md): the baseline is llama-server built from the
-    # patched vendor tree (CPU only, DL multi-variant like our ggml, so both load the same kernels), compared with
-    # `tetraeder serve` on the tiny fixtures. Own job: the llama-server build and the serve runs stay off the test gate.
-    if: ${{ !inputs.record_golden }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-          fetch-depth: 1
-      - name: Patch queue
-        run: bash patches/apply.sh
-      - name: Toolchain
-        run: rustup show active-toolchain || rustup toolchain install
-      - name: libclang (bindgen), cmake
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev cmake ninja-build
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      # Keyed by the pin and the patch queue; bump the v1 when the cmake options below change.
-      - uses: actions/cache/restore@v4
-        id: llama-server
-        with:
-          path: target/llama-server/bin
-          key: llama-server-v1-${{ hashFiles('vendor/PIN', 'patches/**') }}
-      - name: Build llama-server
-        if: steps.llama-server.outputs.cache-hit != 'true'
-        run: |
-          cmake -S vendor/llama.cpp -B target/llama-server -G Ninja -DCMAKE_BUILD_TYPE=Release             -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF             -DGGML_CUDA=OFF -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON             -DLLAMA_OPENSSL=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_BUILD_UI=OFF
-          cmake --build target/llama-server --target llama-server
-      - uses: actions/cache/save@v4
-        if: steps.llama-server.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
-        with:
-          path: target/llama-server/bin
-          key: llama-server-v1-${{ hashFiles('vendor/PIN', 'patches/**') }}
-      - run: cargo build -p tetraeder
-      - uses: astral-sh/setup-uv@v5
-      # A missing binary fails here instead of skipping
-      - name: llama-server conformance
-        env:
-          TETRAEDER_REQUIRE_PARITY: "1"
-          TETRAEDER_BIN: target/debug/tetraeder
-          LLAMA_SERVER_BIN: target/llama-server/bin/llama-server
-        run: uv run pytest -q tests/conformance/parity -rxs
 
   cuda-build:
     if: ${{ !inputs.record_golden }}

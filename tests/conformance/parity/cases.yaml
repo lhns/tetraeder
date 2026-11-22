@@ -9,6 +9,7 @@
 # compare_text  false: compare no streamed text; drop_events: SSE event names left out of the sequence
 # paths     compare only the shape under these paths; ignore: extra paths left out of the shape
 # value_paths  paths whose values must be equal (usage counts, finish_reason)
+# premise   what the baseline must show or the case fails (not xfail): finish_reason
 # no_model  send no `model` field (the harness adds one to every other case)
 # probe     a body field derived from the baseline's answer: stop_ascii, ban_first_token (test_parity.py)
 # engines   tetraeder engines the case runs on: auto (libllama on tiny-qwen3), dense (own dense builder, tiny-qwen3),
@@ -42,7 +43,7 @@ cases:
     group: C
     row: "POST /v1/completions"
     endpoint: POST /v1/completions
-    body: {prompt: Once upon a time, temperature: 0, max_tokens: 12}
+    body: {prompt: Hello, temperature: 0, max_tokens: 12}
     mode: text
     value_paths:
       - "choices[0].finish_reason"
@@ -58,7 +59,8 @@ cases:
     mode: text
     value_paths:
       - "choices[0].finish_reason"
-    engines: [auto, dense, moe]
+    premise: {finish_reason: stop}
+    engines: [auto, dense]
     expect: pass
 
   - id: chat-stream-shape
@@ -89,11 +91,23 @@ cases:
     row: "stop"
     endpoint: POST /v1/completions
     body: {prompt: Once upon a time, temperature: 0, max_tokens: 24}
-    probe: {kind: stop_ascii, length: 2}
+    probe: {kind: stop_ascii, length: 2, start: 3}
     mode: text
     value_paths:
       - "choices[0].finish_reason"
-    engines: [auto, dense, moe]
+    engines: [auto, dense]
+    expect: pass
+
+  - id: stop-string-moe
+    group: B
+    row: "stop"
+    endpoint: POST /v1/completions
+    body: {prompt: "def f(x):", temperature: 0, max_tokens: 24}
+    probe: {kind: stop_ascii, length: 2, start: 3}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+    engines: [moe]
     expect: pass
 
   - id: max-tokens
@@ -105,7 +119,20 @@ cases:
     value_paths:
       - "choices[0].finish_reason"
       - "usage.completion_tokens"
-    engines: [auto, dense, moe]
+    engines: [auto, dense]
+    expect: pass
+
+  # the moe fixture writes only invalid UTF-8 for this chat prompt, so it gets a prompt with text
+  - id: max-tokens-moe
+    group: B
+    row: "n_predict / max_tokens / max_completion_tokens"
+    endpoint: POST /v1/completions
+    body: {prompt: a, temperature: 0, max_tokens: 5}
+    mode: text
+    value_paths:
+      - "choices[0].finish_reason"
+      - "usage.completion_tokens"
+    engines: [moe]
     expect: pass
 
   - id: max-completion-tokens
@@ -199,6 +226,7 @@ cases:
     value_paths:
       - "usage.completion_tokens"
       - "usage.total_tokens"
+    premise: {finish_reason: stop}
     engines: [auto]
     expect: gap serving-parity-fields
 
@@ -249,6 +277,7 @@ cases:
     value_paths:
       - "choices[0].finish_reason"
       - "usage.completion_tokens"
+    premise: {finish_reason: length}
     engines: [auto]
     expect: gap serving-parity-sampling
 
@@ -288,6 +317,17 @@ cases:
     endpoint: POST /v1/completions
     body: {prompt: Once upon a time, temperature: 0, max_tokens: 12, json_schema: {type: object}}
     mode: text
+    engines: [auto]
+    expect: gap serving-parity-fields
+
+  - id: system-fingerprint
+    group: B
+    row: "system_fingerprint"
+    endpoint: POST /v1/chat/completions
+    body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3}
+    mode: shape
+    paths:
+      - "system_fingerprint"
     engines: [auto]
     expect: gap serving-parity-fields
 

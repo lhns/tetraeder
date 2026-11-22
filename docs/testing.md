@@ -11,7 +11,7 @@ State as of 2026-11-09 and the roadmap; facts that changed since are updated (20
 | Fault simulator, routing replay | detector signals from nominal busy times; replay counts bytes, not time | CI |
 | Synthetic models | `REALISH` MoE, a tiny f16 fixture, the slab-sized `exit_regime` model (ignored by default) | CI (CPU) |
 | CPU parity | builder against libllama on the synthetic models; Qwen3-0.6B golden (`crates/engine/tests/golden.rs`), run pinned to the SSE4.2 tier against a per-OS file (`bench/golden/*-sse42-<os>.json`) | CI (Linux and Windows), box |
-| llama-server conformance | `tests/conformance/parity`: the same requests to llama-server (built from the patched vendor tree) and `tetraeder serve` on the tiny fixtures; status, JSON shape, greedy text; gaps are strict xfails (docs/notes/llamacpp-parity.md) | CI (Linux job `conformance`) |
+| llama-server conformance | `tests/conformance/parity`: the same requests to llama-server (built from the patched vendor tree) and `tetraeder serve` on the tiny fixtures; status, JSON shape, greedy text; gaps are strict xfails (docs/notes/llamacpp-parity.md) | CI (Linux `test` job) |
 | Fakes | `FakeDevice`, fake llama-bench, `serve --fake` | CI |
 | CUDA and Vulkan jobs | compile and link only, no GPU, not path-filtered | CI |
 | GPU tests (`gpu_*`), real-model runs | logits against libllama on GPU, 235B decode, speculative, KV formats | Vast boxes only |
