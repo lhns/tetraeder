@@ -19,6 +19,7 @@ flowchart TB
     memory_adaptive_tier["✔ Admit CPU misses<br/>into VRAM"]
     memory_ram_pool[/"✖ Share RAM slots<br/>across layers"/]
     memory_safetensors["⏸ Load safetensors<br/>models directly"]
+    memory_kv_host["○ KV cache partly in<br/>RAM"]
     memory_kv_tiers["⏸ KV cache spills to<br/>RAM, disk"]
     memory_prefill_misses["⏸ Stream expert misses<br/>during prefill"]
     memory_typed_slots["⏸ Per-expert formats<br/>by tier"]
@@ -31,9 +32,12 @@ flowchart TB
     memory_io_service ~~~ memory_adaptive_tier
     memory_low_bit_kv ~~~ memory_ram_pool
     memory_ram_freq ~~~ memory_safetensors
-    memory_adaptive_tier ~~~ memory_kv_tiers
-    memory_ram_pool ~~~ memory_prefill_misses
-    memory_safetensors ~~~ memory_typed_slots
+    memory_adaptive_tier ~~~ memory_kv_host
+    memory_ram_pool ~~~ memory_kv_host
+    memory_safetensors ~~~ memory_kv_host
+    memory_kv_host ~~~ memory_kv_tiers
+    memory_kv_host ~~~ memory_prefill_misses
+    memory_kv_host ~~~ memory_typed_slots
     memory_tiers --> memory_pair_groups
     memory_tiers --> memory_prefetch
     memory_prefetch --> memory_io_service
@@ -42,6 +46,7 @@ flowchart TB
     memory_io_service --> memory_adaptive_tier
     memory_ram_freq --> memory_ram_pool
     memory_conversion --> memory_safetensors
+    memory_kv_host --> memory_kv_tiers
     memory_io_service --> memory_prefill_misses
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
@@ -63,6 +68,7 @@ flowchart TB
     class memory_low_bit_kv succ
     class memory_ram_pool dead
     class memory_safetensors,memory_kv_tiers,memory_prefill_misses,memory_typed_slots parked
+    class memory_kv_host next
 ```
 <!-- END GENERATED: track-memory -->
 
@@ -81,7 +87,8 @@ flowchart TB
 | `memory-ram-pool` | Share RAM slots across layers | experiment | none | abandoned | dead-end | 2026-11-14 | 2026-11-14 | memory-ram-freq |  |  |  | docs/adr/0050-decode-levers-overlap-low-bit-kv-frequency-tiers.md; bench/results/replay-20261114-v26 |
 | `memory-adaptive-tier` | Admit CPU misses into VRAM | feature | none | done | mixed | 2026-11-12 | 2026-11-12 | memory-io-service |  |  |  | docs/adr/0059-adaptive-compute-tier-admission.md; bench/results/20261112c/README.md |
 | `memory-safetensors` | Load safetensors models directly | feature | local | parked | unrated |  |  | memory-conversion |  |  |  |  |
-| `memory-kv-tiers` | KV cache spills to RAM, disk | feature | local | parked | unrated |  |  | serving-kv-layout |  |  |  |  |
+| `memory-kv-tiers` | KV cache spills to RAM, disk | feature | local | parked | unrated |  |  | memory-kv-host |  |  |  |  |
+| `memory-kv-host` | KV cache partly in RAM | feature | local | next | unrated |  |  | serving-kv-layout |  |  |  |  |
 | `memory-prefill-misses` | Stream expert misses during prefill | feature | local | parked | unrated |  |  | memory-io-service |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier | feature | local | parked | unrated |  |  | serving-kv-layout, planner-quality |  |  |  |  |
 
@@ -99,7 +106,8 @@ flowchart TB
 | `memory-ram-pool` | Share RAM slots across layers | a pool across layers missed its build threshold and is not built |  | One RAM expert pool shared by all layers instead of one per layer; the replay gain stayed under the bar set before measuring, so it was not built. |  |  |  |  |  |
 | `memory-adaptive-tier` | Admit CPU misses into VRAM | admission raises the decode VRAM share as designed, but the synchronous uploads cost more than the compute they save, so `admit_share` stays off. |  | During decode, copy a share of experts that ran on the CPU into GPU slots; it worked as designed, but the uploads cost more than they saved, so it stays off. |  |  |  |  |  |
 | `memory-safetensors` | Load safetensors models directly |  |  | Load Hugging Face safetensors files with a tensor-name map per architecture, converting at load time, instead of needing a GGUF file (plan feature 49). | Parked: no milestone or exit test needs it; every model in use ships as GGUF. Checked 2026-11-21: no safetensors loader in crates/ (only the KTransformers baseline script reads safetensors). Done when: Qwen3 dense and MoE load from safetensors with logit parity against the GGUF path. |  |  |  |  |
-| `memory-kv-tiers` | KV cache spills to RAM, disk |  |  | Live KV cache rows can spill to RAM or NVMe, keeping only the most-read part in VRAM, for long contexts (plan feature 3, Phase 4 half). | Parked: no exit test needs it. Checked 2026-11-21: crates/kvcache has no RAM or disk tier; the prefix cache keeps whole snapshots in RAM. Done when: a long context beyond VRAM decodes with KV partly in RAM, paired against all in VRAM. |  |  |  |  |
+| `memory-kv-tiers` | KV cache spills to RAM, disk |  |  | Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084). | Parked: no exit test needs it. Checked 2026-11-21: crates/kvcache has no RAM or disk tier; the prefix cache keeps whole snapshots in RAM. Done when: a long context beyond VRAM decodes with KV partly in RAM, paired against all in VRAM. |  |  |  |  |
+| `memory-kv-host` | KV cache partly in RAM |  |  | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). | Planned 2026-11-23 with the advisor after Strata 0.2.20 (position split over mapped host memory, only 8 global layers of Inkling 2 Mini). Every Qwen3 layer is full attention, so host KV is a fit lever, not a speed lever. Done when: ADR 0084 pairs A and B pass. Order against the parity groups is the owner's. |  |  |  |  |
 | `memory-prefill-misses` | Stream expert misses during prefill |  |  | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). | Parked with Track B (m2-plan, Track B: candidate first item when it resumes). Done when: one timed box run of the prefill buckets first, then a paired run of the 235B 32K prefill. |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier |  |  | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). | Parked: was waiting for the KV and slot layout (C6, decided chunked 2026-11-14); nothing schedules it now. Done when: a mix of slot formats passes parity and the quality gate. |  |  |  |  |
 

@@ -283,7 +283,8 @@ flowchart TB
 | Prefetch next layer's experts | ✔ done · very-successful | While one layer computes, predict which experts the next layer will need and start reading them early. |
 | Read experts while computing | ✔ done · very-successful | An I/O service reads missing experts in the background and computes experts in the order they arrive, so disk reads overlap compute; on by default in serve. |
 | Load safetensors models directly | ⏸ parked | Load Hugging Face safetensors files with a tensor-name map per architecture, converting at load time, instead of needing a GGUF file (plan feature 49). |
-| KV cache spills to RAM, disk | ⏸ parked | Live KV cache rows can spill to RAM or NVMe, keeping only the most-read part in VRAM, for long contexts (plan feature 3, Phase 4 half). |
+| KV cache spills to RAM, disk | ⏸ parked | Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084). |
+| KV cache partly in RAM | ○ next | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). |
 | Stream expert misses during prefill | ⏸ parked | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). |
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
@@ -366,6 +367,7 @@ flowchart TB
 **local**
 
 - `serving-parity-sampling`: Sampler parity with llama-server
+- `memory-kv-host`: KV cache partly in RAM
 
 **ci**
 
@@ -414,7 +416,7 @@ _The queue is empty._
 <!-- BEGIN GENERATED: timeline -->
 [The timeline](roadmap/timeline.md) shows every dated node as a bar from its start to its end.
 
-Generated on 2026-11-22.
+Generated on 2026-11-23.
 <!-- END GENERATED: timeline -->
 
 ## Done, by month
@@ -829,7 +831,7 @@ Generated on 2026-11-22.
 Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 19 nodes (12 done, 1 next, 5 parked, 1 abandoned)
-- [memory - memory and streaming](roadmap/tracks/memory.md): 13 nodes (8 done, 4 parked, 1 abandoned)
+- [memory - memory and streaming](roadmap/tracks/memory.md): 14 nodes (8 done, 1 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 22 nodes (15 done, 1 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 26 nodes (13 done, 1 next, 5 blocked, 7 parked)

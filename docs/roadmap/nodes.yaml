@@ -3181,7 +3181,7 @@ nodes:
   verdict_quote: ''
   headline: ''
   depends_on:
-  - serving-kv-layout
+  - memory-kv-host
   replaced_by: []
   lane: local
   start: ''
@@ -3189,9 +3189,28 @@ nodes:
   folded:
   - 'Strata lever: KV partly in RAM, only the most-read part in VRAM (plan.md, Levers)'
   overview: false
-  plain: Live KV cache rows can spill to RAM or NVMe, keeping only the most-read part in VRAM, for long contexts (plan feature 3, Phase 4 half).
+  plain: Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084).
   notes: 'Parked: no exit test needs it. Checked 2026-11-21: crates/kvcache has no RAM or disk tier; the prefix cache keeps whole snapshots in RAM. Done when: a long context beyond VRAM decodes with KV
     partly in RAM, paired against all in VRAM.'
+- id: memory-kv-host
+  title: KV cache partly in RAM
+  track: memory
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-kv-layout
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed).
+  notes: 'Planned 2026-11-23 with the advisor after Strata 0.2.20 (position split over mapped host memory, only 8 global layers of Inkling 2 Mini). Every Qwen3 layer is full attention, so host KV is a fit lever, not a speed lever. Done when: ADR 0084 pairs A and B pass. Order against the parity groups is the owner''s.'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench

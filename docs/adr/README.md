@@ -89,3 +89,4 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0081](0081-prefill-steps-are-not-captured.md) | Accepted | Prefill steps run without CUDA graph capture (patch 0006) |
 | [0082](0082-decode-at-measured-clocks.md) | Accepted | Cost model 5: decode priced at the clock a GPU's duty gets (low below duty 0.32) |
 | [0083](0083-llamacpp-feature-parity.md) | Proposed | Feature parity with llama-server at the pin: meaning, scope and conformance check |
+| [0084](0084-kv-in-host-memory.md) | Proposed | KV cache partly in host memory: `--no-kv-offload` on libllama, then KV of chosen layers on the CPU in the own builders |
