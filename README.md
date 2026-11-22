@@ -46,6 +46,16 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:8080 ANTHROPIC_AUTH_TOKEN=local ANTHROPIC_MO
 
 Claude Code also asks for its own `claude-*` model ids; `--accept-any-model` (or `--default-model <id>`) maps unknown ids to the served model. It sends 15K to 30K tokens of system prompt and tools on each turn, so start with `--ctx 65536` or more. `--request-log <file>` appends one JSON line per request (prompt, response, token counts, timings) for replay; it contains your code, so keep it local. With `TETRAEDER_DECODE_PROFILE=1` each line also gets a `profile`: decode steps and the time per stage (eval, sampling, hand-off, gateway) and the engine's graph counters.
 
+## Measured against other engines
+
+Paired same-box ratios, Tetraeder over the other engine, worst case included. Each line holds only in its scope; the full table, with evidence per row, is [docs/features.md](docs/features.md). The llama.cpp parity matrix is planned as `docs/notes/llamacpp-parity.md`.
+
+- Qwen3-235B-A22B beyond RAM, decode against the llama.cpp expert cache: 1.23 to 1.69 and 1.21 to 1.52 on two hosts (2026-11-13), but 0.643 to 0.748 on one EPYC 7642 host at 24 threads on a 23.04 quota (2026-11-12).
+- Same model against KTransformers: level at the default expert slots (0.85 to 1.15, RTX 4090 48 GB); 1.28 to 1.65 with the free VRAM as expert slots; 0.555 to 0.624 on a 0.5 to 0.7 GB/s disk.
+- Concurrency 4 and 1 against llama-server on one RTX 3090 (2026-11-17): Qwen3-8B 0.995 to 1.022, Qwen3-30B-A3B 0.943 to 0.990. The 30B is behind at concurrency 4 and passes only inside the noise band.
+- Two to four RTX 3090 against llama.cpp `-sm tensor` and `-sm layer` (2026-11-21, one host): 1.011 and 1.022 for tensor split, 1.008 and 0.987 for layer split.
+- Time to first token on the Claude Code replay against llama-server (2026-11-19): median 0.93 to 0.94, p90 0.84.
+
 ## Vast boxes
 
 All GPU work runs on ephemeral Vast.ai boxes through [taxameter](https://github.com/lhns/taxameter), a git dependency pinned by tag in `pyproject.toml`, configured in `taxameter.toml` (ADR 0021, 0029). Needs `uv`, `ssh`, `scp`, `tar` (Git Bash on Windows), the API key in `~/.config/vastai/vast_api_key` and the registered SSH key `~/.ssh/lrn_vast_ed25519`. State lives in `.vast/` (git-ignored). Rules for agents are in [AGENTS.md](AGENTS.md).

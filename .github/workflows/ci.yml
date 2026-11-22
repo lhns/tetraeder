@@ -42,6 +42,8 @@ jobs:
           path: .design-skills
       - run: pip install pyyaml
       - run: python .design-skills/skills/tech-tree/scripts/check.py --config tech-tree.yaml
+      # docs/features.md: evidence paths, node ids and every ratio number against the session files
+      - run: python scripts/check_features.py
 
   test:
     if: ${{ !inputs.record_golden }}
