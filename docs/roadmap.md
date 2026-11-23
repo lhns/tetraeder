@@ -278,6 +278,7 @@ flowchart TB
 | Own GLM graph builder | ⏸ parked | An own graph builder for the GLM model family, with parity against libllama (plan.md, Phase 8). |
 | Own DeepSeek graph builder | ⏸ parked | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). |
 | Own builder for ternary models | ⏸ parked | An own builder with faster kernels for natively ternary models such as BitNet b1.58, which libllama already runs (plan feature 51, Phase 9 half). |
+| Own builder for Qwen3.6 MoE | ⛔ blocked | An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first). |
 | One graph per decoded token | ⏸ parked | Step 2 of ADR 0064: one graph per decoded token with a host callback per layer, instead of one graph segment per MoE layer. |
 | Dense builder speed on AMX CPUs | ○ next | Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072). |
 | Prefetch next layer's experts | ✔ done · very-successful | While one layer computes, predict which experts the next layer will need and start reading them early. |
@@ -285,6 +286,8 @@ flowchart TB
 | Load safetensors models directly | ⏸ parked | Load Hugging Face safetensors files with a tensor-name map per architecture, converting at load time, instead of needing a GGUF file (plan feature 49). |
 | KV cache spills to RAM, disk | ⏸ parked | Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084). |
 | KV cache partly in RAM | ○ next | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). |
+| Planner picks the KV format | ○ next | The planner chooses the KV format (F16, Q8_0, Q8_0/Q4_0) and pool size from free VRAM and slots instead of taking them as given, the way Strata picks FP8 KV on small cards (ADR 0085). |
+| Prefix cache spills to SSD | ○ next | Idle conversations' KV snapshots spill from RAM to NVMe and come back on the next turn, as Strata parks conversations (ADR 0085). |
 | Stream expert misses during prefill | ⏸ parked | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). |
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
@@ -295,6 +298,8 @@ flowchart TB
 | Advisor applies safe changes itself | ⛔ blocked | The advisor applies cheap, reversible changes (batch limits, KV budget, hot set) on its own, verifies the gain and rolls back what misses (plan feature 42, Phase 7 half). |
 | Separate prefill and decode layouts | ⛔ blocked | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). |
 | One and two bit formats | ⏸ parked | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). |
+| Expert-parallel split on two GPUs | ○ next | A new plan shape where each of two GPUs holds a share of every MoE layer's experts, as Strata's --ep-split does, priced by the cost model and tested on every hardware fixture (ADR 0085). |
+| Experts on GPU and SSD only | ○ next | Check that the planner can place experts in VRAM and on NVMe with no RAM tier, or on the CPU and NVMe only, as Strata offers for small machines (ADR 0085). |
 | Check planner's expert slot picks | ⏸ parked | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. |
 | Replanning in serve, part B | ⏸ parked | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. |
 | Recheck expert-parallel prefill error | ✔ done · successful | Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed. |
@@ -317,6 +322,7 @@ flowchart TB
 | Owner decides on more drafter kinds | ⛔ blocked | From the rerun, the owner decides whether more drafter kinds (MTP heads, a low-bit copy) are worth building, and whether ADR 0043 is Accepted. |
 | Drafts from built-in MTP heads | ⏸ parked | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). |
 | Low-bit copy drafts for itself | ⏸ parked | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). |
+| Which Strata model families to add | ○ next | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). |
 | Admit longest prefix hit first | ⏸ parked | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). |
 | Phase 2 exit: model beyond RAM | ✔ done · successful ⚠ | Qwen3-235B, larger than the box's RAM, against the best tuned baselines: the builder passed the Phase 2 exit at decode parity with KTransformers. |
 | Tuned llama.cpp cache beat builder | ✔ fixed | The Phase 2 verdict never measured llama.cpp's own expert cache (--moe-cache-mib) as a baseline; once added, and after M1 was first declared on 2026-11-10, the cache tuned to share 0.95 led the builder, so the Phase 2 verdict's point 1 reopened and M1 waited for new sessions. |
@@ -342,6 +348,7 @@ flowchart TB
 | Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
+| Strata against llama-server on Qwen3.6 | ○ next | One box session runs Strata, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file, to size how far behind a shared model we are (ADR 0085). |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
@@ -368,6 +375,10 @@ flowchart TB
 
 - `serving-parity-sampling`: Sampler parity with llama-server
 - `memory-kv-host`: KV cache partly in RAM
+- `memory-kv-auto`: Planner picks the KV format
+- `planner-ep-split`: Expert-parallel split on two GPUs
+- `planner-low-ram-modes`: Experts on GPU and SSD only
+- `memory-prefix-ssd`: Prefix cache spills to SSD
 
 **ci**
 
@@ -377,6 +388,7 @@ flowchart TB
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
+- `bench-strata-q36`: Strata against llama-server on Qwen3.6
 
 **cluster**
 
@@ -403,6 +415,7 @@ _None._
 - `bench-m3-report`: Report milestone M3
 - `bench-m4-report`: Report milestone M4
 - `serving-owner-drafters`: Owner decides on more drafter kinds
+- `serving-strata-owner-scope`: Which Strata model families to add
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Queue
@@ -830,12 +843,12 @@ Generated on 2026-11-23.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [engine - engine and builders](roadmap/tracks/engine.md): 19 nodes (12 done, 1 next, 5 parked, 1 abandoned)
-- [memory - memory and streaming](roadmap/tracks/memory.md): 14 nodes (8 done, 1 next, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 22 nodes (15 done, 1 next, 3 blocked, 3 parked)
+- [engine - engine and builders](roadmap/tracks/engine.md): 20 nodes (12 done, 1 next, 1 blocked, 5 parked, 1 abandoned)
+- [memory - memory and streaming](roadmap/tracks/memory.md): 16 nodes (8 done, 3 next, 4 parked, 1 abandoned)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 24 nodes (15 done, 3 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 26 nodes (13 done, 1 next, 5 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 43 nodes (31 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
+- [serving - serving](roadmap/tracks/serving.md): 27 nodes (13 done, 2 next, 5 blocked, 7 parked)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (31 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 next, 11 blocked)
 <!-- END GENERATED: tracks -->

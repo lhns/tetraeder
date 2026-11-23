@@ -30,8 +30,8 @@ flowchart TB
     serving_multi_lora["⏸ Swap and batch LoRA<br/>adapters"]
     serving_auth_quotas["⏸ Priorities, quotas<br/>and auth"]
     serving_multimodal["⏸ Multimodal input and<br/>embeddings"]
-    serving_mtp_drafts["⏸ Drafts from built-in<br/>MTP heads"]
     serving_self_spec["⏸ Low-bit copy drafts<br/>for itself"]
+    serving_mtp_drafts["⏸ Drafts from built-in<br/>MTP heads"]
     serving_prefix_first["⏸ Admit longest prefix<br/>hit first"]
     serving_gateway ~~~ serving_real_engines
     serving_real_engines ~~~ serving_prefix_cache
@@ -57,10 +57,10 @@ flowchart TB
     serving_parity_endpoints ~~~ serving_multi_lora
     serving_parity_libllama ~~~ serving_auth_quotas
     serving_multi_model ~~~ serving_multimodal
-    serving_multi_lora ~~~ serving_mtp_drafts
-    serving_auth_quotas ~~~ serving_self_spec
+    serving_multi_lora ~~~ serving_self_spec
+    serving_auth_quotas ~~~ serving_mtp_drafts
     serving_multimodal ~~~ serving_prefix_first
-    serving_mtp_drafts ~~~ serving_prefix_first
+    serving_self_spec ~~~ serving_prefix_first
     serving_gateway --> serving_real_engines
     serving_real_engines --> serving_prefix_cache
     serving_real_engines --> serving_speculative
@@ -99,7 +99,7 @@ flowchart TB
     class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness succ
     class serving_parity_sampling next
     class serving_parity_fields,serving_parity_endpoints,serving_parity_libllama blocked
-    class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_mtp_drafts,serving_self_spec,serving_prefix_first parked
+    class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_self_spec,serving_mtp_drafts,serving_prefix_first parked
 ```
 <!-- END GENERATED: track-serving -->
 
@@ -131,8 +131,9 @@ flowchart TB
 | `serving-auth-quotas` | Priorities, quotas and auth | feature | none | parked | unrated |  |  | serving-gateway |  |  |  |  |
 | `serving-multimodal` | Multimodal input and embeddings | feature | none | parked | unrated |  |  | serving-gateway |  |  |  |  |
 | `serving-owner-drafters` | Owner decides on more drafter kinds | owner-decision | owner | blocked | n/a |  |  | bench-spec-rerun |  |  |  |  |
-| `serving-mtp-drafts` | Drafts from built-in MTP heads | feature | local | parked | unrated |  |  | serving-owner-drafters |  |  |  |  |
+| `serving-mtp-drafts` | Drafts from built-in MTP heads | feature | local | parked | unrated |  |  | serving-owner-drafters, engine-qwen35moe-builder |  |  |  |  |
 | `serving-self-spec` | Low-bit copy drafts for itself | feature | local | parked | unrated |  |  | serving-owner-drafters |  |  |  |  |
+| `serving-strata-owner-scope` | Which Strata model families to add | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
 | `serving-prefix-first` | Admit longest prefix hit first | feature | local | parked | unrated |  |  | bench-ttft |  |  |  |  |
 
 ### Details per node
@@ -164,6 +165,7 @@ flowchart TB
 | `serving-owner-drafters` | Owner decides on more drafter kinds |  |  | From the rerun, the owner decides whether more drafter kinds (MTP heads, a low-bit copy) are worth building, and whether ADR 0043 is Accepted. | Source: m2-plan (Phase 4 deliverables without a step: the rerun decides), ADR 0043 Proposed. |  |  |  |  |
 | `serving-mtp-drafts` | Drafts from built-in MTP heads |  |  | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). | Parked until after the Phase 4 verdict (m2-plan, 2026-11-15), then behind the rerun. Checked 2026-11-21: no MTP code in crates/. Done when: acceptance per pass and a paired gain on a model with MTP heads. |  |  |  |  |
 | `serving-self-spec` | Low-bit copy drafts for itself |  |  | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). | Parked until after the Phase 4 verdict (m2-plan, 2026-11-15), then behind the rerun. Checked 2026-11-21: no low-bit draft copy in crates/scheduler. Done when: the planner weighs it as a plan option and a paired run shows a gain. |  |  |  |  |
+| `serving-strata-owner-scope` | Which Strata model families to add |  |  | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). | Matrix docs/notes/strata-parity.md, class 3. |  |  |  |  |
 | `serving-prefix-first` | Admit longest prefix hit first |  |  | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). | Parked: worth a run only if time to first token under contention misses the bar again (m2-plan, TTFT idea 2026-11-20). |  |  |  |  |
 
 ### Folded items per node

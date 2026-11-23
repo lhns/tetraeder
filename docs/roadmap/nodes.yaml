@@ -3102,6 +3102,7 @@ nodes:
   headline: ''
   depends_on:
   - serving-owner-drafters
+  - engine-qwen35moe-builder
   replaced_by: []
   lane: local
   start: ''
@@ -3211,6 +3212,138 @@ nodes:
   overview: false
   plain: Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed).
   notes: 'Planned 2026-11-23 with the advisor after Strata 0.2.20 (position split over mapped host memory, only 8 global layers of Inkling 2 Mini). Every Qwen3 layer is full attention, so host KV is a fit lever, not a speed lever. Done when: ADR 0084 pairs A and B pass. Order against the parity groups is the owner''s.'
+- id: bench-strata-q36
+  title: Strata against llama-server on Qwen3.6
+  track: bench
+  kind: experiment
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-harness
+  replaced_by: []
+  lane: box-later
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: One box session runs Strata, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file, to size how far behind a shared model we are (ADR 0085).
+  notes: 'Strata claims 1.44x llama.cpp decode on this model (HIP, Strata 0.1.45). Needs a docs/sources.md row for the Strata binary. Can share a box with the ADR 0084 read-rate probes and bench-30b-c4-gap.'
+- id: engine-qwen35moe-builder
+  title: Own builder for Qwen3.6 MoE
+  track: engine
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-strata-q36
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first).
+  notes: 'Design question: recurrent state in the KV pool, seq_rm and the prefix cache (ADR 0051 deferred it). The pin has the graph and CUDA ops, no patch expected.'
+- id: memory-kv-auto
+  title: Planner picks the KV format
+  track: memory
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-kv-layout
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The planner chooses the KV format (F16, Q8_0, Q8_0/Q4_0) and pool size from free VRAM and slots instead of taking them as given, the way Strata picks FP8 KV on small cards (ADR 0085).
+  notes: 'Formats exist (ADR 0050 b); judged by a paired run on a model we run.'
+- id: planner-ep-split
+  title: Expert-parallel split on two GPUs
+  track: planner
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-cost-model-v5
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A new plan shape where each of two GPUs holds a share of every MoE layer's experts, as Strata's --ep-split does, priced by the cost model and tested on every hardware fixture (ADR 0085).
+  notes: 'Rules 4 and 5; judged against layer-2 on the 30B.'
+- id: planner-low-ram-modes
+  title: Experts on GPU and SSD only
+  track: planner
+  kind: experiment
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - memory-tiers
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Check that the planner can place experts in VRAM and on NVMe with no RAM tier, or on the CPU and NVMe only, as Strata offers for small machines (ADR 0085).
+  notes: 'Simulated fixtures first; a box only if a gap shows.'
+- id: memory-prefix-ssd
+  title: Prefix cache spills to SSD
+  track: memory
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-prefix-cache
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Idle conversations' KV snapshots spill from RAM to NVMe and come back on the next turn, as Strata parks conversations (ADR 0085).
+  notes: 'Prefix snapshots are RAM only today (ADR 0049).'
+- id: serving-strata-owner-scope
+  title: Which Strata model families to add
+  track: serving
+  kind: owner-decision
+  state: next
+  outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085).
+  notes: 'Matrix docs/notes/strata-parity.md, class 3.'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench
@@ -3221,7 +3354,7 @@ nodes:
   verdict_quote: ''
   headline: ''
   depends_on:
-  - bench-harness
+  - engine-qwen35moe-builder
   replaced_by: []
   lane: box-later
   start: ''

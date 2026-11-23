@@ -40,6 +40,7 @@ flowchart TB
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
     bench_phase9_exit("⏸ Phase 9 exit:<br/>feature tests")
     bench_spec_rerun("⏸ Speculative rerun<br/>with a draft pair")
+    bench_strata_q36[/"○ Strata against<br/>llama-server on<br/>Qwen3.6"/]
     bench_strata_pairing("⏸ Pair against the<br/>Strata engine")
     bench_d1_session("⏸ Session on a 48 GB<br/>box")
     bench_open_records("⏸ Box checks for open<br/>design records")
@@ -77,9 +78,12 @@ flowchart TB
     bench_30b_c4_gap ~~~ bench_phase8_exit
     bench_phase6_exit ~~~ bench_phase9_exit
     bench_phase7_exit ~~~ bench_spec_rerun
-    bench_phase8_exit ~~~ bench_strata_pairing
-    bench_phase9_exit ~~~ bench_d1_session
-    bench_spec_rerun ~~~ bench_open_records
+    bench_phase8_exit ~~~ bench_strata_q36
+    bench_phase9_exit ~~~ bench_strata_pairing
+    bench_spec_rerun ~~~ bench_d1_session
+    bench_strata_q36 ~~~ bench_open_records
+    bench_strata_pairing ~~~ bench_open_records
+    bench_d1_session ~~~ bench_open_records
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -101,9 +105,9 @@ flowchart TB
     bench_v2_verdict --> bench_30b_c4_gap
     bench_v4a_verdict --> bench_30b_c4_gap
     bench_ab30b --> bench_30b_c4_gap
-    bench_harness --> bench_strata_pairing
+    bench_harness --> bench_strata_q36
     bench_ttft --> bench_open_records
-    linkStyle 38,49 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 41,52 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -123,7 +127,7 @@ flowchart TB
     class bench_m1_point1,bench_m1_point3 vsucc
     class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b mixed
     class bench_v4b_verdict dead
-    class bench_30b_c4_gap next
+    class bench_30b_c4_gap,bench_strata_q36 next
     class bench_phase6_exit,bench_phase7_exit blocked
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
 ```
@@ -172,7 +176,8 @@ flowchart TB
 | `bench-phase8-exit` | Phase 8 exit: parity per backend | session | none | parked | unrated |  |  | engine-backend-parity, engine-glm-builder, engine-deepseek-builder |  |  |  |  |
 | `bench-phase9-exit` | Phase 9 exit: feature tests | session | none | parked | unrated |  |  | multi-context-parallel, serving-multi-model, serving-multi-lora, serving-auth-quotas, serving-multimodal, ops-packages, engine-bitnet-builder, planner-low-bit-formats |  |  |  |  |
 | `bench-spec-rerun` | Speculative rerun with a draft pair | session | box-later | parked | unrated |  |  | serving-spec-batching |  |  |  |  |
-| `bench-strata-pairing` | Pair against the Strata engine | session | box-later | parked | unrated |  |  | bench-harness |  |  |  |  |
+| `bench-strata-q36` | Strata against llama-server on Qwen3.6 | experiment | box-later | next | unrated |  |  | bench-harness |  |  |  |  |
+| `bench-strata-pairing` | Pair against the Strata engine | session | box-later | parked | unrated |  |  | engine-qwen35moe-builder |  |  |  |  |
 | `bench-d1-session` | Session on a 48 GB box | session | box-later | parked | unrated |  |  | planner-fill-tier, memory-io-service |  |  |  |  |
 | `bench-open-records` | Box checks for open design records | session | box-later | parked | unrated |  |  | memory-adaptive-tier, ops-telemetry, bench-ttft |  |  |  |  |
 | `bench-owner-host-20210` | Readmit host 20210 for verdicts | owner-decision | owner | done | n/a | 2026-11-21 | 2026-11-21 |  |  |  |  | docs/notes/phase5-rule-changes.md; docs/box-driver.md |
@@ -220,6 +225,7 @@ flowchart TB
 | `bench-phase8-exit` | Phase 8 exit: parity per backend |  |  | The Phase 8 exit test: parity and speed on every new backend. | Done when (plan.md, Phase 8 exit test): parity per backend and split point; within 15% of llama.cpp per backend. Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. |  |  |  |  |
 | `bench-phase9-exit` | Phase 9 exit: feature tests |  |  | The Phase 9 exit test: one feature test per breadth item. | Done when (plan.md, Phase 9 exit test): feature tests per item; packages install cleanly on both systems. Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. |  |  |  |  |
 | `bench-spec-rerun` | Speculative rerun with a draft pair |  |  | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. | Parked (m2-plan, Phase 5 Parked: speculative rerun open). Not an exit test. First, before any box: check that libllama at b12426 converts and loads both models with identical tokenizers. Done when: tokens per step and decode tok/s, draft on and off, on one box. Source: m2-plan Speculative rerun, m1-open item 1. |  |  |  |  |
+| `bench-strata-q36` | Strata against llama-server on Qwen3.6 |  |  | One box session runs Strata, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file, to size how far behind a shared model we are (ADR 0085). | Strata claims 1.44x llama.cpp decode on this model (HIP, Strata 0.1.45). Needs a docs/sources.md row for the Strata binary. Can share a box with the ADR 0084 read-rate probes and bench-30b-c4-gap. |  |  |  |  |
 | `bench-strata-pairing` | Pair against the Strata engine |  |  | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. | Parked (m2-plan, m1-open item 8): Strata documents Qwen3.8, Qwen3.6 and DeepSeek-V4.1, and the own builders run only Qwen3; revisit when Strata runs Qwen3. Source: plan.md Phase 0 baselines, References. |  |  |  |  |
 | `bench-d1-session` | Session on a 48 GB box |  |  | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. | Parked (m2-plan, Phase 5 Parked: D1). Done when: each stage below has a paired result in its session README; the Reader path is deleted after the ADR 0054 arms. The poll pair is dropped (B3 closed, 20261115p1). |  |  |  |  |
 | `bench-open-records` | Box checks for open design records |  |  | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. | Parked (m2-plan, Housekeeping: candidates for a later combined box session). Neither ADR gates open work. Done when: each stage has a result in the session README and the owner accepts or closes ADRs 0059 and 0060. |  |  |  |  |
