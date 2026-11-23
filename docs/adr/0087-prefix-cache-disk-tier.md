@@ -36,3 +36,10 @@ Spilling stays as decided. Point 4 changes: `take()` of a disk entry no longer r
 - At most two reads run at once, so at most two buffers sit outside the RAM budget. A request that finds the limit reached is placed without the disk entry.
 - Metrics: `tetraeder.kv.prefix.restore.duration{source=disk}` is now the background file read; the copy into the KV cache is recorded only for RAM entries, so a disk restore adds no second sample. New gauge `tetraeder.kv.prefix.restoring` (requests waiting on a disk read), on the prefix cache panel. `PrefixDiskRestoreSlow` stays, now on the read time alone.
 - Not measured: a paired run of disk restore against recompute is still open. The tests are CPU only, with a gated reader.
+
+## Addendum 2026-11-23: review fixes
+
+- Files are named `tetraeder-prefix-<pid>-<instance>-<id>.tkv`, the instance counting the tiers this process opened. A tier removes only its own files on drop, so the tier of a replan (`serve --plan auto` opens the next scheduler on the same directory) no longer deletes the live one's files. At startup a tier removes only files last written before this process first opened a tier, which are an earlier process's. This replaces point 5's "every `tetraeder-prefix-*` file"; the directory still belongs to one server.
+- An aborted read keeps its entry marked as reading until the reader has replied (the next `poll` reaps it and returns the buffer). The entry is not evicted or deleted under the reader, and the read counts against the limit of two until it is done.
+- A spill that cannot make room, because the entries left are being read, is dropped; the disk budget is never exceeded.
+- A backend that cannot cut a suffix (a recurrent model) takes a RAM or disk entry only when the prompt starts with the whole entry (`best_whole`); a partial match would need a cut, and taking the entry first destroyed it for nothing.

@@ -65,7 +65,7 @@ fn builtin() -> Map<String, Value> {
         ("dry_multiplier", json!(0.0)),
         ("dry_base", json!(1.75)),
         ("dry_allowed_length", json!(2)),
-        ("dry_penalty_last_n", json!(-1)),
+        ("dry_penalty_last_n", json!(64)),
         ("dry_sequence_breakers", json!(["\n", ":", "\"", "*"])),
         ("mirostat", json!(0)),
         ("mirostat_tau", json!(5.0)),
@@ -183,6 +183,37 @@ pub fn params(cfg: &GatewayConfig, req: Option<&Request>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// llama.cpp's sampling defaults at the pin (`common_params_sampling`, common/common.h).
+    #[test]
+    fn the_builtin_sampling_defaults_are_the_pins() {
+        let d = builtin();
+        for (k, v) in [
+            ("seed", json!(4_294_967_295u64)),
+            ("temperature", json!(0.8)),
+            ("top_k", json!(40)),
+            ("top_p", json!(0.95)),
+            ("min_p", json!(0.05)),
+            ("top_n_sigma", json!(-1.0)),
+            ("xtc_probability", json!(0.0)),
+            ("xtc_threshold", json!(0.1)),
+            ("typical_p", json!(1.0)),
+            ("repeat_last_n", json!(64)),
+            ("repeat_penalty", json!(1.0)),
+            ("presence_penalty", json!(0.0)),
+            ("frequency_penalty", json!(0.0)),
+            ("dry_multiplier", json!(0.0)),
+            ("dry_base", json!(1.75)),
+            ("dry_allowed_length", json!(2)),
+            ("dry_penalty_last_n", json!(64)),
+            ("mirostat", json!(0)),
+            ("mirostat_tau", json!(5.0)),
+            ("mirostat_eta", json!(0.1)),
+            ("min_keep", json!(0)),
+        ] {
+            assert_eq!(d[k], v, "{k}");
+        }
+    }
 
     #[test]
     fn server_defaults_override_llama_cpps_and_the_request_overrides_both() {

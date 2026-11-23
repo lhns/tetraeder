@@ -1217,9 +1217,17 @@ impl Worker {
             Some((0, common_prefix(etoks, &toks).min(last)))
                 .filter(|&(_, n)| n >= live_n + self.restore_gain)
         } else if self.prefix_reuse && self.cache.enabled() {
-            self.cache
-                .best(&fmt, &toks)
-                .map(|(i, n)| (i, n.min(last)))
+            // A part of an entry is a cut of it: not on a model that cannot cut, so only an
+            // entry the prompt starts with (and that leaves a token to prefill) is taken.
+            let can_cut = self.backend.can_cut_suffix();
+            let best = if can_cut {
+                self.cache.best(&fmt, &toks)
+            } else {
+                self.cache
+                    .best_whole(&fmt, &toks)
+                    .filter(|&(_, n)| n <= last)
+            };
+            best.map(|(i, n)| (i, n.min(last)))
                 .filter(|&(_, n)| n >= live_n + self.restore_gain)
         } else {
             None
@@ -1524,7 +1532,7 @@ impl Worker {
             req.t_start = Some(Instant::now());
             req.stats.cached_tokens = common as u32;
             req.bytes0 = self.backend.bytes_streamed_total();
-            let params = self.defaults.resolve(&req.params);
+            let params = self.defaults.resolve(&req.params, self.n_ctx_seq);
             let env = SamplerEnv {
                 n_vocab: self.n_vocab,
                 eog: &self.vocab.eog,
@@ -1533,7 +1541,7 @@ impl Worker {
             let seed = req
                 .params
                 .seed
-                .map(|s| s as u32)
+                .map(|s| s as u32) // `sampling::libllama_seed` made it fit
                 .or(self.default_seed)
                 .map(|s| s.wrapping_add(req.params.extra.seed_offset));
             match Sampler::new(&params, seed, &env) {
@@ -1884,7 +1892,10 @@ impl Worker {
             .count();
         for slot in &mut self.slots {
             let Slot::Live(seq) = slot else { continue };
-            let greedy = self.defaults.resolve(&seq.req.params).is_plain_greedy();
+            let greedy = self
+                .defaults
+                .resolve(&seq.req.params, self.n_ctx_seq)
+                .is_plain_greedy();
             let eligible = decoding <= spec.max_batch
                 && seq.decoding
                 && !seq.paused()

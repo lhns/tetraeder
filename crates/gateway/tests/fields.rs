@@ -464,3 +464,47 @@ async fn anthropic_model_is_optional_and_effort_is_read() {
     assert_eq!(s, 200, "{v}");
     assert_eq!(v["model"], "fake");
 }
+
+#[tokio::test]
+async fn top_k_below_zero_is_off_not_an_error() {
+    let engine = FakeEngine::fixed("a");
+    let seen = engine.params.clone();
+    let (app, _) = app(engine);
+    for (path, body) in [
+        (
+            "/v1/chat/completions",
+            json!({"model": "fake", "messages": user("x"), "top_k": -5}),
+        ),
+        (
+            "/v1/completions",
+            json!({"model": "fake", "prompt": "x", "top_k": -1}),
+        ),
+        ("/completion", json!({"prompt": "x", "top_k": -1})),
+    ] {
+        let (s, _, v) = post(&app, path, &body, false).await;
+        assert_eq!(s, 200, "{path}: {v}");
+    }
+    assert!(seen.lock().unwrap().iter().all(|p| p.top_k == Some(0)));
+}
+
+/// llama-server drops the probabilities of a token that ends inside a UTF-8 character and
+/// reports the character's bytes on the entry of the token that completes it
+/// (`process_token`: an incomplete token is not added to `generated_token_probs`).
+#[tokio::test]
+async fn logprobs_of_a_token_inside_a_character_follow_llama_server() {
+    let (app, _) = app(FakeEngine::fixed("\u{e9}"));
+    let (s, _, v) = post(
+        &app,
+        "/v1/chat/completions",
+        &json!({"model": "fake", "messages": user("x"), "logprobs": true, "top_logprobs": 1}),
+        false,
+    )
+    .await;
+    assert_eq!(s, 200, "{v}");
+    let content = v["choices"][0]["logprobs"]["content"].as_array().unwrap();
+    // the two-byte character is one entry, then the end-of-generation token
+    assert_eq!(content.len(), 2, "{v}");
+    assert_eq!(content[0]["bytes"], json!([195, 169]));
+    assert_eq!(content[0]["token"], "\u{e9}");
+    assert_eq!(content[1]["bytes"], json!([]));
+}

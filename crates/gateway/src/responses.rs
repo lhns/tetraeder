@@ -3,9 +3,11 @@
 //! `response.*` event stream. No `[DONE]`.
 
 use crate::chat::{Segment, ToolCall, Usage};
-use crate::error::LlamaError;
-use crate::gateway::{Collected, Gateway, Generation, Operation, OutEvent, new_id, tag_generation};
-use crate::openai::{ChatPlan, chat_plan, sse};
+use crate::error::{LlamaError, bad};
+use crate::gateway::{
+    Collected, Gateway, Generation, Operation, OutEvent, new_id, now_unix, tag_generation,
+};
+use crate::openai::{ChatPlan, chat_plan, data, sse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -14,13 +16,8 @@ use axum::response::{IntoResponse, Response};
 use futures_util::stream::{self, Stream};
 use serde_json::{Map, Value, json};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 type Result<T> = std::result::Result<T, LlamaError>;
-
-fn bad(msg: impl Into<String>) -> LlamaError {
-    LlamaError::invalid(msg)
-}
 
 fn is_str(v: &Value, key: &str) -> bool {
     v.get(key).is_some_and(Value::is_string)
@@ -333,12 +330,6 @@ pub(crate) fn to_chat_body(body: &Value) -> Result<Value> {
     Ok(Value::Object(chat))
 }
 
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 /// The id of a tool call without the `call_` the chat parser gave it, so `fc_` and `call_`
 /// prefixes are not doubled.
 fn bare(id: &str) -> &str {
@@ -415,7 +406,7 @@ fn response_json(id: &str, model: &str, c: &Collected) -> Value {
             .iter()
             .map(|tc| call_item(tc, "completed", true)),
     );
-    let t = now();
+    let t = now_unix();
     json!({
         "completed_at": t,
         "created_at": t,
@@ -431,7 +422,7 @@ fn response_json(id: &str, model: &str, c: &Collected) -> Value {
 pub async fn responses(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
     let body: Value =
         serde_json::from_slice(&body).map_err(|e| bad(format!("invalid request body: {e}")))?;
-    let ChatPlan { spec, stream, .. } = chat_plan(to_chat_body(&body)?)?;
+    let ChatPlan { spec, stream, .. } = chat_plan(to_chat_body(&body)?, gw.parallel_slots())?;
     let generation = gw.generate(spec, Operation::Chat).await?;
     let gid = generation.id.clone();
     let resp_id = format!("resp_{gid}");
@@ -581,7 +572,7 @@ impl Stream1 {
         let mut completed = json!({"response": {
             "id": self.id,
             "object": "response",
-            "created_at": now(),
+            "created_at": now_unix(),
             "status": "completed",
             "model": model,
             "output": output,
@@ -629,10 +620,7 @@ fn event_stream(gen_: Generation, id: String) -> impl Stream<Item = Event> + Sen
                 }
                 OutEvent::Error(e) => {
                     // a plain data frame with the error object, as llama-server ends a failed stream
-                    out.push(
-                        Event::default()
-                            .data(json!({"error": LlamaError::from(e).object()}).to_string()),
-                    );
+                    out.push(data(&json!({"error": LlamaError::from(e).object()})));
                     s.done = true;
                 }
             }

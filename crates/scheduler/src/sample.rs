@@ -91,8 +91,11 @@ impl Default for SampleParams {
 
 impl SampleParams {
     /// These server-wide settings with the request's fields on top. Soft limits clamp as
-    /// llama-server's do; the gateway has rejected the hard-limit violations.
-    pub fn resolve(&self, r: &SamplingParams) -> SampleParams {
+    /// llama-server's do; the gateway has rejected the hard-limit violations. The penalty
+    /// windows are capped at the context of a sequence, which the history cannot exceed: libllama
+    /// allocates a ring buffer of that size, so a request cannot ask for gigabytes
+    /// (llama-server does not cap them).
+    pub fn resolve(&self, r: &SamplingParams, n_ctx_seq: usize) -> SampleParams {
         let e = &r.extra;
         let mut p = self.clone();
         if let Some(v) = r.temperature {
@@ -151,6 +154,9 @@ impl SampleParams {
         if let Some(GrammarSource::Gbnf(g)) = &e.grammar {
             p.grammar = Some(g.as_str().into());
         }
+        let cap = i32::try_from(n_ctx_seq).unwrap_or(i32::MAX);
+        p.penalty_last_n = p.penalty_last_n.min(cap);
+        p.dry_penalty_last_n = p.dry_penalty_last_n.min(cap);
         p
     }
 
@@ -856,7 +862,7 @@ mod tests {
             },
             ..SamplingParams::default()
         };
-        let p = d.resolve(&r);
+        let p = d.resolve(&r, 4096);
         assert_eq!((p.temperature, p.min_p, p.penalty_repeat), (0.0, 0.3, 1.2));
         assert_eq!(p.top_k, 40);
         assert!(
@@ -867,6 +873,63 @@ mod tests {
             temperature: Some(0.0),
             ..SamplingParams::default()
         };
-        assert!(d.resolve(&g).is_plain_greedy());
+        assert!(d.resolve(&g, 4096).is_plain_greedy());
+    }
+
+    #[test]
+    fn penalty_windows_are_capped_at_the_context() {
+        use tetraeder_gateway::engine::SamplingExtras;
+        let d = SampleParams::default();
+        let r = SamplingParams {
+            extra: SamplingExtras {
+                repeat_last_n: Some(i32::MAX),
+                dry_penalty_last_n: Some(i32::MAX),
+                ..SamplingExtras::default()
+            },
+            ..SamplingParams::default()
+        };
+        let p = d.resolve(&r, 4096);
+        assert_eq!((p.penalty_last_n, p.dry_penalty_last_n), (4096, 4096));
+        // smaller windows are left as they are
+        let p = d.resolve(&SamplingParams::default(), 4096);
+        assert_eq!((p.penalty_last_n, p.dry_penalty_last_n), (64, 64));
+    }
+
+    /// `/props` reports the same defaults the sampler uses (it once said -1 for the DRY window).
+    #[test]
+    fn the_props_defaults_are_the_samplers() {
+        use serde_json::json;
+        use tetraeder_gateway::gateway::GatewayConfig;
+        let reported = tetraeder_gateway::settings::defaults(&GatewayConfig::default());
+        let d = SampleParams::default();
+        let f = |x: f32| json!(x.to_string().parse::<f64>().unwrap());
+        for (name, want) in [
+            ("temperature", f(d.temperature)),
+            ("top_k", json!(d.top_k)),
+            ("top_p", f(d.top_p)),
+            ("min_p", f(d.min_p)),
+            ("top_n_sigma", f(d.top_n_sigma)),
+            ("xtc_probability", f(d.xtc_probability)),
+            ("xtc_threshold", f(d.xtc_threshold)),
+            ("typical_p", f(d.typical_p)),
+            ("dynatemp_range", f(d.dynatemp_range)),
+            ("dynatemp_exponent", f(d.dynatemp_exponent)),
+            ("repeat_last_n", json!(d.penalty_last_n)),
+            ("repeat_penalty", f(d.penalty_repeat)),
+            ("presence_penalty", f(d.penalty_present)),
+            ("frequency_penalty", f(d.penalty_freq)),
+            ("dry_multiplier", f(d.dry_multiplier)),
+            ("dry_base", f(d.dry_base)),
+            ("dry_allowed_length", json!(d.dry_allowed_length)),
+            ("dry_penalty_last_n", json!(d.dry_penalty_last_n)),
+            ("dry_sequence_breakers", json!(&*d.dry_sequence_breakers)),
+            ("mirostat", json!(d.mirostat)),
+            ("mirostat_tau", f(d.mirostat_tau)),
+            ("mirostat_eta", f(d.mirostat_eta)),
+            ("min_keep", json!(d.min_keep)),
+            ("ignore_eos", json!(d.ignore_eos)),
+        ] {
+            assert_eq!(reported[name], want, "{name}");
+        }
     }
 }

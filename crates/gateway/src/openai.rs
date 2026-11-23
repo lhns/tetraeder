@@ -58,7 +58,7 @@ pub(crate) struct ChatRequest {
     max_completion_tokens: Option<u32>,
     temperature: Option<f32>,
     top_p: Option<f32>,
-    top_k: Option<u32>,
+    top_k: Option<i64>,
     seed: Option<i64>,
     n: Option<u32>,
     stop: Option<Value>,
@@ -89,7 +89,7 @@ struct CompletionRequest {
     max_tokens: Option<u32>,
     temperature: Option<f32>,
     top_p: Option<f32>,
-    top_k: Option<u32>,
+    top_k: Option<i64>,
     seed: Option<i64>,
     n: Option<u32>,
     stop: Option<Value>,
@@ -318,11 +318,18 @@ fn response_format(v: Option<Value>) -> std::result::Result<Option<OutputFormat>
 /// with its build.
 pub(crate) const FINGERPRINT: &str = concat!("tetraeder-", env!("CARGO_PKG_VERSION"));
 
-/// Number of choices: `n`, at least 1. More than the parallel slots is rejected by the gateway.
-pub(crate) fn choice_count(n: Option<u32>) -> std::result::Result<usize, GatewayError> {
+/// Number of choices: `n`, from 1 to the parallel slots (llama-server's hard limits on
+/// `n_cmpl`). Checked before the spec is cloned `n` times.
+pub(crate) fn choice_count(
+    n: Option<u32>,
+    slots: usize,
+) -> std::result::Result<usize, GatewayError> {
     match n {
         None => Ok(1),
         Some(0) => Err(GatewayError::InvalidRequest("n must be at least 1".into())),
+        Some(n) if n as usize > slots => Err(GatewayError::InvalidRequest(format!(
+            "n must be at most {slots}, the number of parallel slots"
+        ))),
         Some(n) => Ok(n as usize),
     }
 }
@@ -415,7 +422,8 @@ pub(crate) fn tool_call_json(tc: &ToolCall) -> Value {
     json!({"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": args}})
 }
 
-fn data(v: &Value) -> Event {
+/// An SSE frame carrying `v` as its data.
+pub(crate) fn data(v: &Value) -> Event {
     Event::default().data(v.to_string())
 }
 
@@ -435,10 +443,10 @@ pub(crate) struct ChatPlan {
 
 /// Validates a chat body and maps it onto a [`GenerateSpec`]; the chat route, `/apply-template`
 /// and `/v1/responses` share it.
-pub(crate) fn chat_plan(body: Value) -> std::result::Result<ChatPlan, GatewayError> {
+pub(crate) fn chat_plan(body: Value, slots: usize) -> std::result::Result<ChatPlan, GatewayError> {
     let req: ChatRequest = serde_json::from_value(body)
         .map_err(|e| GatewayError::InvalidRequest(format!("invalid request body: {e}")))?;
-    let n = choice_count(req.n)?;
+    let n = choice_count(req.n, slots)?;
     if req.sampling.has_grammar_and_schema() {
         return Err(GatewayError::InvalidRequest(
             "Cannot use both json_schema and grammar".into(),
@@ -468,7 +476,7 @@ pub(crate) fn chat_plan(body: Value) -> std::result::Result<ChatPlan, GatewayErr
     spec.max_tokens = req.max_completion_tokens.or(req.max_tokens);
     spec.temperature = req.temperature;
     spec.top_p = req.top_p;
-    spec.top_k = req.top_k;
+    spec.top_k = sampling::top_k(req.top_k);
     spec.seed = sampling::seed(req.seed);
     spec.extra = req.sampling.extras()?;
     spec.extra.logprobs = n_probs;
@@ -489,7 +497,7 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         n,
         stream,
         include_usage,
-    } = chat_plan(parse_body(&body)?)?;
+    } = chat_plan(parse_body(&body)?, gw.parallel_slots())?;
     let generations = gw
         .generate_many(choice_specs(spec, n), Operation::Chat)
         .await?;
@@ -672,7 +680,13 @@ fn oai_stream(
                 out.push(Event::default().data("[DONE]"));
                 s.done = true;
             }
-            None => return None,
+            None => {
+                // Every choice finishes or fails; a stream that ends without that is cut short.
+                let e = GatewayError::Internal("the generation ended without finishing".into());
+                out.push(data(&e.openai_body()));
+                out.push(Event::default().data("[DONE]"));
+                s.done = true;
+            }
         }
         Some((stream::iter(out), s))
     })
@@ -794,7 +808,7 @@ pub(crate) fn total_usage(all: &[Collected]) -> Usage {
 
 pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
     let req: CompletionRequest = parse_body(&body)?;
-    let n = choice_count(req.n)?;
+    let n = choice_count(req.n, gw.parallel_slots())?;
     let n_probs = probs_count(req.n_probs.or(req.logprobs))?;
     if req.suffix.as_deref().is_some_and(|s| !s.is_empty()) {
         return Err(bad("suffix is not supported"));
@@ -812,11 +826,11 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
         _ => return Err(bad("prompt must be a string")),
     };
     let mut spec = GenerateSpec::new(req.model, Prompt::Text(prompt.clone()));
-    // The spec's default.
-    spec.max_tokens = Some(req.max_tokens.unwrap_or(16));
+    // llama-server's `n_predict` default is -1, as for chat: no limit but the context.
+    spec.max_tokens = req.max_tokens;
     spec.temperature = req.temperature;
     spec.top_p = req.top_p;
-    spec.top_k = req.top_k;
+    spec.top_k = sampling::top_k(req.top_k);
     spec.seed = sampling::seed(req.seed);
     spec.extra = req.sampling.extras()?;
     spec.extra.logprobs = n_probs;
@@ -918,10 +932,35 @@ mod tests {
         assert!(chat_n_probs(true, Some(json!(-1)), None, false).is_err());
     }
 
+    /// Every frame of `s` as text.
+    async fn frames(s: impl Stream<Item = Event>) -> Vec<String> {
+        s.map(|e| format!("{e:?}")).collect().await
+    }
+
+    #[tokio::test]
+    async fn a_stream_cut_short_ends_with_an_error_and_done() {
+        let done = OutEvent::Done {
+            finish: Finish::Stop,
+            usage: Usage::default(),
+        };
+        // choice 1 never finishes
+        let gens = vec![
+            Generation::scripted(vec![done]),
+            Generation::scripted(vec![]),
+        ];
+        let f = frames(oai_stream(gens, true, false, None)).await;
+        let n = f.len();
+        assert!(f[n - 2].contains("server_error"), "{f:?}");
+        assert!(f[n - 1].contains("[DONE]"), "{f:?}");
+    }
+
     #[test]
     fn choices_start_at_one_and_total_their_completions() {
-        assert_eq!(choice_count(None).unwrap(), 1);
-        assert!(choice_count(Some(0)).is_err());
+        assert_eq!(choice_count(None, 2).unwrap(), 1);
+        assert!(choice_count(Some(0), 2).is_err());
+        assert_eq!(choice_count(Some(2), 2).unwrap(), 2);
+        assert!(choice_count(Some(3), 2).is_err());
+        assert!(choice_count(Some(u32::MAX), 2).is_err());
         let u = |p, c| Usage {
             prompt_tokens: p,
             completion_tokens: c,

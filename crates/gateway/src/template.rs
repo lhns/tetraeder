@@ -4,8 +4,6 @@
 //! Python string and dict methods, `raise_exception`, `strftime_now` and a `tojson` that matches
 //! `json.dumps(x, ensure_ascii=False)` byte for byte.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use minijinja::syntax::SyntaxConfig;
 use minijinja::value::{Kwargs, Serde};
 use minijinja::{Environment, Error, ErrorKind, UndefinedBehavior, Value};
@@ -50,7 +48,9 @@ impl ChatTemplate {
         env.set_syntax(syntax);
         env.add_filter("tojson", tojson);
         env.add_function("raise_exception", raise_exception);
-        env.add_function("strftime_now", |fmt: String| strftime(&fmt, now_secs()));
+        env.add_function("strftime_now", |fmt: String| {
+            strftime(&fmt, crate::gateway::now_unix() as i64)
+        });
         // jinja2 turns every newline sequence in the source into "\n", string literals included.
         let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
         env.add_template_owned(NAME, normalized)
@@ -240,13 +240,6 @@ fn escape_non_ascii(s: &str) -> String {
 }
 
 // ---- strftime ----
-
-fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
 
 /// Days since 1970-01-01 to (year, month 1-12, day 1-31).
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
