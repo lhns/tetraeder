@@ -1,0 +1,1571 @@
+search costmodel/four_3090_hoststaged dense p3 #0 plan=fffabd75b9406d18 tok_s=4030bcbfc5860b3c ttft=40001c7a92fc7fd1
+search costmodel/four_3090_hoststaged dense p3 #1 plan=6d341019e0868b62 tok_s=4060993929a2acf6 ttft=3fc74dfa70045b14
+search costmodel/four_3090_hoststaged dense p3 #2 plan=d9dd6130e21763ab tok_s=4060879951ebb64e ttft=3fc765de2866f986
+search costmodel/four_3090_hoststaged dense p3 #3 plan=ec3b6a57e55f7ad4 tok_s=406088223f5acd2e ttft=3fc75a67d60ee2cf
+search costmodel/four_3090_hoststaged dense p3 #4 plan=26ef7386510dda22 tok_s=406088223f5acd2e ttft=3fc75a67d60ee2cf
+search costmodel/four_3090_hoststaged dense p3 #5 plan=8c76d584103865d4 tok_s=4060993929a2acf6 ttft=3fc74dfa70045b14
+search costmodel/four_3090_hoststaged dense p3 #6 plan=da7537f35dd2ea76 tok_s=4060879951ebb64e ttft=3fc765de2866f986
+search costmodel/four_3090_hoststaged dense p3 #7 plan=e826ad2a0a446137 tok_s=406088223f5acd2e ttft=3fc75a67d60ee2cf
+search costmodel/four_3090_hoststaged dense p3 #8 plan=956662d7b9f48209 tok_s=406088223f5acd2e ttft=3fc75a67d60ee2cf
+search costmodel/four_3090_hoststaged dense p3 #9 plan=9e602ea14950aaba tok_s=406099880e47e3c2 ttft=3fc7496355a2ba4d
+search costmodel/four_3090_hoststaged dense p3 #10 plan=97c0dd6f12ceaa77 tok_s=406088223f5acd2d ttft=3fc755d5507d3bac
+search costmodel/four_3090_hoststaged dense p3 #11 plan=6b43e061a88f3b55 tok_s=406088223f5acd2d ttft=3fc755d5507d3bac
+search costmodel/four_3090_hoststaged dense p3 #12 plan=17812178ac31ec34 tok_s=4060887081de06b7 ttft=3fc7513e361b9ae5
+search costmodel/four_3090_hoststaged dense p3 #13 plan=a9b4ebb5126fc768 tok_s=406099880e47e3c2 ttft=3fc7496355a2ba4d
+search costmodel/four_3090_hoststaged dense p3 #14 plan=e5d575db56ffc8e8 tok_s=406088223f5acd2d ttft=3fc755d5507d3bac
+search costmodel/four_3090_hoststaged dense p3 #15 plan=647734e0d999f212 tok_s=406088223f5acd2d ttft=3fc755d5507d3bac
+search costmodel/four_3090_hoststaged dense p3 #16 plan=5d8680a0321fc281 tok_s=4060887081de06b7 ttft=3fc7513e361b9ae5
+search costmodel/four_3090_hoststaged dense p3 #17 plan=d59158fd742c7cf1 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search costmodel/four_3090_hoststaged dense p3 #18 plan=a157f7a53d709966 tok_s=4054607d3a321df6 ttft=3fd6690d59fff5e8
+search costmodel/four_3090_hoststaged dense p3 #19 plan=590f297c5595a7c7 tok_s=4060879951ebb64e ttft=3fc75a6fda7ad7af
+search costmodel/four_3090_hoststaged dense p3 #20 plan=724eb57b8f7848fd tok_s=406088223f5acd2d ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p3 #21 plan=520be314f2c702bf tok_s=406088223f5acd2d ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p3 #22 plan=d6e4a1d0bab37031 tok_s=4074291721e38710 ttft=3fa01223e256fd40
+search costmodel/four_3090_hoststaged dense p3 #23 plan=a4461fdb3418131d tok_s=4054532fe8d33b6b ttft=3fd674ff36314521
+search costmodel/four_3090_hoststaged dense p3 #24 plan=10036d2f56b8930b tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17ba
+search costmodel/four_3090_hoststaged dense p3 #25 plan=5bb43b2093f984b3 tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17ba
+search costmodel/four_3090_hoststaged dense p3 #26 plan=2f8ab559136bc65b tok_s=40742b5d479b2e7e ttft=3f9fc8a7852d2b20
+search costmodel/four_3090_hoststaged dense p3 #27 plan=8b3087d9f1ba8156 tok_s=405453976a9868b3 ttft=3fd66cfaca3c6634
+search costmodel/four_3090_hoststaged dense p3 #28 plan=3f84dcc0a73d2db0 tok_s=4073f79ffc0453d4 ttft=3f9fcbae24fd20b9
+search costmodel/four_3090_hoststaged dense p3 #29 plan=d9d82cc63082cafc tok_s=4073f92fa8e45322 ttft=3fa003bf447a1800
+search costmodel/four_3090_hoststaged dense p3 #30 plan=151d8dcbc6a85a49 tok_s=40742b5d479b2e7e ttft=3f9fc8a7852d2b20
+search costmodel/four_3090_hoststaged dense p3 #31 plan=e889fc779f069db3 tok_s=405453976a9868b3 ttft=3fd66cfaca3c6634
+search costmodel/four_3090_hoststaged dense p3 #32 plan=5a3b33313c316bad tok_s=4073f79ffc0453d4 ttft=3f9fcbae24fd20b9
+search costmodel/four_3090_hoststaged dense p3 #33 plan=1a97b871b310fe01 tok_s=4073f92fa8e45322 ttft=3fa003bf447a1800
+search costmodel/four_3090_hoststaged dense p3 #34 plan=04b06d1545fd51c8 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search costmodel/four_3090_hoststaged dense p3 #35 plan=d37b79dc2a3ce188 tok_s=4054607d3a321df6 ttft=3fd6690d59fff5e8
+search costmodel/four_3090_hoststaged dense p3 #36 plan=a7ed4f2cbe9d4d5b tok_s=4060879951ebb64e ttft=3fc75a6fda7ad7af
+search costmodel/four_3090_hoststaged dense p3 #37 plan=e81887147caaa8d7 tok_s=406088223f5acd2d ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p3 #38 plan=09f13edc0f07d601 tok_s=406088223f5acd2d ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p3 #39 plan=b80c5bcdd86c2207 tok_s=4074291721e38710 ttft=3fa01223e256fd40
+search costmodel/four_3090_hoststaged dense p3 #40 plan=892ad4c640113e68 tok_s=4054532fe8d33b6b ttft=3fd674ff36314521
+search costmodel/four_3090_hoststaged dense p3 #41 plan=d1f65868e7c6f256 tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17ba
+search costmodel/four_3090_hoststaged dense p3 #42 plan=ed89d63324cdc40e tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17ba
+search costmodel/four_3090_hoststaged dense p3 #43 plan=d982ed8a99540053 tok_s=40742b5d479b2e7e ttft=3f9fc8a7852d2b20
+search costmodel/four_3090_hoststaged dense p3 #44 plan=b1925c63c7f2094e tok_s=405453976a9868b3 ttft=3fd66cfaca3c6634
+search costmodel/four_3090_hoststaged dense p3 #45 plan=21c9644c196b1548 tok_s=4073f79ffc0453d4 ttft=3f9fcbae24fd20b9
+search costmodel/four_3090_hoststaged dense p3 #46 plan=50638247f1f8b2fc tok_s=4073f92fa8e45322 ttft=3fa003bf447a1800
+search costmodel/four_3090_hoststaged dense p3 #47 plan=f917ecec329b7421 tok_s=40742b5d479b2e7e ttft=3f9fc8a7852d2b20
+search costmodel/four_3090_hoststaged dense p3 #48 plan=c3d644c8a52198eb tok_s=405453976a9868b3 ttft=3fd66cfaca3c6634
+search costmodel/four_3090_hoststaged dense p3 #49 plan=839991c734490fad tok_s=4073f79ffc0453d4 ttft=3f9fcbae24fd20b9
+search costmodel/four_3090_hoststaged dense p3 #50 plan=91230df37486e601 tok_s=4073f92fa8e45322 ttft=3fa003bf447a1800
+search costmodel/four_3090_hoststaged dense p3 #51 plan=716bff79dcf7f117 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search costmodel/four_3090_hoststaged dense p3 #52 plan=3ae2cf660ce26316 tok_s=405460b8accabe71 ttft=3fd666c1cccf2585
+search costmodel/four_3090_hoststaged dense p3 #53 plan=4c8882e2ad073484 tok_s=406088223f5acd2e ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p3 #54 plan=2d59d10f27b14c4a tok_s=406088223f5acd2e ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p3 #55 plan=db227c0aaca89e33 tok_s=4060887081de06b7 ttft=3fc7513e361b9ae6
+search costmodel/four_3090_hoststaged dense p3 #56 plan=cb21fe3e4a9f96b7 tok_s=40742b5d479b2e7e ttft=3f9fc8a7852d2b20
+search costmodel/four_3090_hoststaged dense p3 #57 plan=36f097c438b7e66c tok_s=405453976a9868b3 ttft=3fd66f440d0539c6
+search costmodel/four_3090_hoststaged dense p3 #58 plan=75b8ac7b0eb979d2 tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17bc
+search costmodel/four_3090_hoststaged dense p3 #59 plan=a53ab741718e6baa tok_s=4073f92fa8e45322 ttft=3f9fcb6e019d79c2
+search costmodel/four_3090_hoststaged dense p3 #60 plan=3ed1421e1fc32af9 tok_s=40742b5d479b2e7e ttft=3f9fc8a7852d2b20
+search costmodel/four_3090_hoststaged dense p3 #61 plan=ed7a5a876a6bc559 tok_s=405453976a9868b3 ttft=3fd66f440d0539c6
+search costmodel/four_3090_hoststaged dense p3 #62 plan=31c2fcf334370ff7 tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17bc
+search costmodel/four_3090_hoststaged dense p3 #63 plan=c243904e61361cdf tok_s=4073f92fa8e45322 ttft=3f9fcb6e019d79c2
+search costmodel/four_3090_hoststaged dense p3 #64 plan=420fcd604bfa2cd1 tok_s=40742c4648456de1 ttft=3f9fa40105600b80
+search costmodel/four_3090_hoststaged dense p3 #65 plan=eb4c6cc6f7083def tok_s=405453d292070183 ttft=3fd66aaf3d0b95d1
+search costmodel/four_3090_hoststaged dense p3 #66 plan=713ffcc21db7c901 tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040aa
+search costmodel/four_3090_hoststaged dense p3 #67 plan=3a48ac16b9da8941 tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040aa
+search costmodel/four_3090_hoststaged dense p3 #68 plan=808f5ce08584629e tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search costmodel/four_3090_hoststaged dense p3 #69 plan=ca3282aa0420c8bc tok_s=405460b8accabe71 ttft=3fd666c1cccf2585
+search costmodel/four_3090_hoststaged dense p3 #70 plan=21f1e4e1d64781e4 tok_s=406088223f5acd2e ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p3 #71 plan=01ba03d25a9456aa tok_s=406088223f5acd2e ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p3 #72 plan=069ad15a96090c8d tok_s=4060887081de06b7 ttft=3fc7513e361b9ae6
+search costmodel/four_3090_hoststaged dense p3 #73 plan=70104704e1cb5927 tok_s=40742b5d479b2e7e ttft=3f9fc8a7852d2b20
+search costmodel/four_3090_hoststaged dense p3 #74 plan=6c389d8f9fe50d0c tok_s=405453976a9868b3 ttft=3fd66f440d0539c6
+search costmodel/four_3090_hoststaged dense p3 #75 plan=fb3491603ca8e8aa tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17bc
+search costmodel/four_3090_hoststaged dense p3 #76 plan=f05b71803522e9fa tok_s=4073f92fa8e45322 ttft=3f9fcb6e019d79c2
+search costmodel/four_3090_hoststaged dense p3 #77 plan=1577e792e6e35529 tok_s=40742b5d479b2e7e ttft=3f9fc8a7852d2b20
+search costmodel/four_3090_hoststaged dense p3 #78 plan=e89433f85c143279 tok_s=405453976a9868b3 ttft=3fd66f440d0539c6
+search costmodel/four_3090_hoststaged dense p3 #79 plan=ba7af21575a2388f tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17bc
+search costmodel/four_3090_hoststaged dense p3 #80 plan=9fc2023c9613a54f tok_s=4073f92fa8e45322 ttft=3f9fcb6e019d79c2
+search costmodel/four_3090_hoststaged dense p3 #81 plan=1d3c8c014506be73 tok_s=40742c4648456de1 ttft=3f9fa40105600b80
+search costmodel/four_3090_hoststaged dense p3 #82 plan=ff37bfb65e1c5392 tok_s=405453d292070183 ttft=3fd66aaf3d0b95d1
+search costmodel/four_3090_hoststaged dense p3 #83 plan=38611d0da156d08c tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040aa
+search costmodel/four_3090_hoststaged dense p3 #84 plan=3667533bc97d8504 tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040aa
+search costmodel/four_3090_hoststaged dense p5 #0 plan=fffabd75b9406d18 tok_s=4030bcbfc5860b3c ttft=40001c7a92fc7fd1
+search costmodel/four_3090_hoststaged dense p5 #1 plan=6d341019e0868b62 tok_s=4060993929a2acf6 ttft=3fc74dfa70045b14
+search costmodel/four_3090_hoststaged dense p5 #2 plan=d9dd6130e21763ab tok_s=4060879951ebb64e ttft=3fc765de2866f986
+search costmodel/four_3090_hoststaged dense p5 #3 plan=ec3b6a57e55f7ad4 tok_s=406088223f5acd2e ttft=3fc75a67d60ee2cf
+search costmodel/four_3090_hoststaged dense p5 #4 plan=26ef7386510dda22 tok_s=406088223f5acd2e ttft=3fc75a67d60ee2cf
+search costmodel/four_3090_hoststaged dense p5 #5 plan=32c9512346083066 tok_s=4062490ee98e67c7 ttft=3fc6de8d73900f20
+search costmodel/four_3090_hoststaged dense p5 #6 plan=8e9e7247bbf43633 tok_s=4062490ee98e67c7 ttft=3fc6de8d73900f20
+search costmodel/four_3090_hoststaged dense p5 #7 plan=69b6eabeba57da3d tok_s=406249b6796d9536 ttft=3fc6d3172137f869
+search costmodel/four_3090_hoststaged dense p5 #8 plan=8c76d584103865d4 tok_s=4060993929a2acf6 ttft=3fc74dfa70045b14
+search costmodel/four_3090_hoststaged dense p5 #9 plan=da7537f35dd2ea76 tok_s=4060879951ebb64e ttft=3fc765de2866f986
+search costmodel/four_3090_hoststaged dense p5 #10 plan=e826ad2a0a446137 tok_s=406088223f5acd2e ttft=3fc75a67d60ee2cf
+search costmodel/four_3090_hoststaged dense p5 #11 plan=956662d7b9f48209 tok_s=406088223f5acd2e ttft=3fc75a67d60ee2cf
+search costmodel/four_3090_hoststaged dense p5 #12 plan=2bfd7f8d227e098f tok_s=4062490ee98e67c7 ttft=3fc6de8d73900f20
+search costmodel/four_3090_hoststaged dense p5 #13 plan=cbc269cb8860f2ce tok_s=4062490ee98e67c7 ttft=3fc6de8d73900f20
+search costmodel/four_3090_hoststaged dense p5 #14 plan=44653a8c6c55d1ce tok_s=406249b6796d9536 ttft=3fc6d3172137f869
+search costmodel/four_3090_hoststaged dense p5 #15 plan=9e602ea14950aaba tok_s=406099880e47e3c2 ttft=3fc7496355a2ba4d
+search costmodel/four_3090_hoststaged dense p5 #16 plan=97c0dd6f12ceaa77 tok_s=406088223f5acd2d ttft=3fc755d5507d3bac
+search costmodel/four_3090_hoststaged dense p5 #17 plan=6b43e061a88f3b55 tok_s=406088223f5acd2d ttft=3fc755d5507d3bac
+search costmodel/four_3090_hoststaged dense p5 #18 plan=17812178ac31ec34 tok_s=4060887081de06b7 ttft=3fc7513e361b9ae5
+search costmodel/four_3090_hoststaged dense p5 #19 plan=0daf1766eafdbee9 tok_s=406249b6796d9536 ttft=3fc6ce849ba65146
+search costmodel/four_3090_hoststaged dense p5 #20 plan=899fc225016df32f tok_s=406249b6796d9536 ttft=3fc6ce849ba65146
+search costmodel/four_3090_hoststaged dense p5 #21 plan=0ff1bb36b563e9d9 tok_s=406249b6796d9536 ttft=3fc6ce849ba65146
+search costmodel/four_3090_hoststaged dense p5 #22 plan=a9b4ebb5126fc768 tok_s=406099880e47e3c2 ttft=3fc7496355a2ba4d
+search costmodel/four_3090_hoststaged dense p5 #23 plan=e5d575db56ffc8e8 tok_s=406088223f5acd2d ttft=3fc755d5507d3bac
+search costmodel/four_3090_hoststaged dense p5 #24 plan=647734e0d999f212 tok_s=406088223f5acd2d ttft=3fc755d5507d3bac
+search costmodel/four_3090_hoststaged dense p5 #25 plan=5d8680a0321fc281 tok_s=4060887081de06b7 ttft=3fc7513e361b9ae5
+search costmodel/four_3090_hoststaged dense p5 #26 plan=bbeb5f51ac9b2f82 tok_s=406249b6796d9536 ttft=3fc6ce849ba65146
+search costmodel/four_3090_hoststaged dense p5 #27 plan=38997bdec9f949d5 tok_s=406249b6796d9536 ttft=3fc6ce849ba65146
+search costmodel/four_3090_hoststaged dense p5 #28 plan=808d85b4aa15988f tok_s=406249b6796d9536 ttft=3fc6ce849ba65146
+search costmodel/four_3090_hoststaged dense p5 #29 plan=0a14b3b6c8b1e4df tok_s=4062915afedb3005 ttft=3fc6b921a917f2d8
+search costmodel/four_3090_hoststaged dense p5 #30 plan=64b53d7ce2070c79 tok_s=406249b6796d9536 ttft=3fc6d3172137f86a
+search costmodel/four_3090_hoststaged dense p5 #31 plan=df8801531aaf46e7 tok_s=406249b6796d9536 ttft=3fc6d3172137f86a
+search costmodel/four_3090_hoststaged dense p5 #32 plan=6de5a5eba7efc9f1 tok_s=40627bfb05cb5481 ttft=3fc6c58f0f227a92
+search costmodel/four_3090_hoststaged dense p5 #33 plan=430a17484204e4d8 tok_s=4062915afedb3005 ttft=3fc6b921a917f2d8
+search costmodel/four_3090_hoststaged dense p5 #34 plan=9aa36c6ddd36701c tok_s=4062490ee98e67c7 ttft=3fc6de8d73900f21
+search costmodel/four_3090_hoststaged dense p5 #35 plan=634092aade1c0118 tok_s=406249b6796d9536 ttft=3fc6d3172137f86a
+search costmodel/four_3090_hoststaged dense p5 #36 plan=981a622b8dd70eb0 tok_s=40627b4fd7e4a36f ttft=3fc6d105617a9149
+search costmodel/four_3090_hoststaged dense p5 #37 plan=def5864a7290669a tok_s=4062915afedb3005 ttft=3fc6b921a917f2d8
+search costmodel/four_3090_hoststaged dense p5 #38 plan=d5d3fad89f10ff29 tok_s=4062490ee98e67c7 ttft=3fc6de8d73900f21
+search costmodel/four_3090_hoststaged dense p5 #39 plan=eed58b2a8010635b tok_s=406249b6796d9536 ttft=3fc6d3172137f86a
+search costmodel/four_3090_hoststaged dense p5 #40 plan=75104f8270661147 tok_s=40627b4fd7e4a36f ttft=3fc6d105617a9149
+search costmodel/four_3090_hoststaged dense p5 #41 plan=836cb022db385df5 tok_s=4062915afedb3005 ttft=3fc6b921a917f2d8
+search costmodel/four_3090_hoststaged dense p5 #42 plan=004b72e9b87a9061 tok_s=4062490ee98e67c7 ttft=3fc6de8d73900f21
+search costmodel/four_3090_hoststaged dense p5 #43 plan=ed9a6959af3f5b53 tok_s=406249b6796d9536 ttft=3fc6d3172137f86a
+search costmodel/four_3090_hoststaged dense p5 #44 plan=310301eca9551420 tok_s=40627b4fd7e4a36f ttft=3fc6d105617a9149
+search costmodel/four_3090_hoststaged dense p5 #45 plan=1f0594d1b1655493 tok_s=4062915afedb3005 ttft=3fc6b921a917f2d8
+search costmodel/four_3090_hoststaged dense p5 #46 plan=b367910d54cff04c tok_s=4062490ee98e67c7 ttft=3fc6de8d73900f21
+search costmodel/four_3090_hoststaged dense p5 #47 plan=0bd081eeb62e5694 tok_s=406249b6796d9536 ttft=3fc6d3172137f86a
+search costmodel/four_3090_hoststaged dense p5 #48 plan=488b2327e056688f tok_s=40627b4fd7e4a36f ttft=3fc6d105617a9149
+search costmodel/four_3090_hoststaged dense p5 #49 plan=2d7377b522b41031 tok_s=406291bdb84d3de2 ttft=3fc6b48a8eb65211
+search costmodel/four_3090_hoststaged dense p5 #50 plan=b26e90608dce588d tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #51 plan=c115d6100482916f tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #52 plan=68d23b78bd5f2e3f tok_s=40627bfb05cb5481 ttft=3fc6c0fc8990d36f
+search costmodel/four_3090_hoststaged dense p5 #53 plan=24d6195b4fbcb75c tok_s=4061e02d6de64157 ttft=3fc68455c333a47a
+search costmodel/four_3090_hoststaged dense p5 #54 plan=d59158fd742c7cf1 tok_s=407493ae734d4aea ttft=3f9efc7a398201ce
+search costmodel/four_3090_hoststaged dense p5 #55 plan=a157f7a53d709966 tok_s=4054607d3a321df6 ttft=3fd6690d59fff5e8
+search costmodel/four_3090_hoststaged dense p5 #56 plan=590f297c5595a7c7 tok_s=4060879951ebb64e ttft=3fc75a6fda7ad7af
+search costmodel/four_3090_hoststaged dense p5 #57 plan=724eb57b8f7848fd tok_s=406088223f5acd2d ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p5 #58 plan=520be314f2c702bf tok_s=406088223f5acd2d ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p5 #59 plan=ed34c1ffdfa64ad2 tok_s=4062490ee98e67c7 ttft=3fc6d31f25a3ed49
+search costmodel/four_3090_hoststaged dense p5 #60 plan=b8653a7f638b60af tok_s=4062490ee98e67c7 ttft=3fc6d31f25a3ed49
+search costmodel/four_3090_hoststaged dense p5 #61 plan=7763aa44f3905f79 tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #62 plan=d6e4a1d0bab37031 tok_s=4074291721e38710 ttft=3f9fc3d0e0e9cb72
+search costmodel/four_3090_hoststaged dense p5 #63 plan=a4461fdb3418131d tok_s=4054532fe8d33b6b ttft=3fd674ff36314521
+search costmodel/four_3090_hoststaged dense p5 #64 plan=10036d2f56b8930b tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17ba
+search costmodel/four_3090_hoststaged dense p5 #65 plan=5bb43b2093f984b3 tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17ba
+search costmodel/four_3090_hoststaged dense p5 #66 plan=b46bd2ac8c66bd41 tok_s=4076026e6f5b2d3c ttft=3f9e761e51ae7496
+search costmodel/four_3090_hoststaged dense p5 #67 plan=2f8ab559136bc65b tok_s=40742b5d479b2e7e ttft=3f9f6802d1493be7
+search costmodel/four_3090_hoststaged dense p5 #68 plan=8b3087d9f1ba8156 tok_s=405453976a9868b3 ttft=3fd66cfaca3c6634
+search costmodel/four_3090_hoststaged dense p5 #69 plan=3f84dcc0a73d2db0 tok_s=4073f79ffc0453d4 ttft=3f9fcbae24fd20b9
+search costmodel/four_3090_hoststaged dense p5 #70 plan=d9d82cc63082cafc tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040ab
+search costmodel/four_3090_hoststaged dense p5 #71 plan=c811f7f37867093e tok_s=4076026e6f5b2d3c ttft=3f9e1aabe24d65d9
+search costmodel/four_3090_hoststaged dense p5 #72 plan=151d8dcbc6a85a49 tok_s=40742b5d479b2e7e ttft=3f9f6802d1493be7
+search costmodel/four_3090_hoststaged dense p5 #73 plan=e889fc779f069db3 tok_s=405453976a9868b3 ttft=3fd66cfaca3c6634
+search costmodel/four_3090_hoststaged dense p5 #74 plan=5a3b33313c316bad tok_s=4073f79ffc0453d4 ttft=3f9fcbae24fd20b9
+search costmodel/four_3090_hoststaged dense p5 #75 plan=1a97b871b310fe01 tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040ab
+search costmodel/four_3090_hoststaged dense p5 #76 plan=e2700aec73368456 tok_s=4076026e6f5b2d3c ttft=3f9e1aabe24d65d9
+search costmodel/four_3090_hoststaged dense p5 #77 plan=99702f6c7b44bf32 tok_s=40781d2f07f4bad9 ttft=3f9cce0cec36446c
+search costmodel/four_3090_hoststaged dense p5 #78 plan=3f5caf1b5378df69 tok_s=40553375a95dadf8 ttft=3fd645a2f6e60cb1
+search costmodel/four_3090_hoststaged dense p5 #79 plan=59c0bd6f71e77e6f tok_s=4076964805ab5d90 ttft=3f9e09ddc10285de
+search costmodel/four_3090_hoststaged dense p5 #80 plan=385a9577d1e03bd1 tok_s=40781d2f07f4bad9 ttft=3f9cce0cec36446c
+search costmodel/four_3090_hoststaged dense p5 #81 plan=535ffc41529725ee tok_s=40553375a95dadf8 ttft=3fd645a2f6e60cb1
+search costmodel/four_3090_hoststaged dense p5 #82 plan=37ef69b31b5c4970 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285de
+search costmodel/four_3090_hoststaged dense p5 #83 plan=4eb0905397b80baf tok_s=4078206ff4c3f4c7 ttft=3f9c723edc95b4e1
+search costmodel/four_3090_hoststaged dense p5 #84 plan=755b48909293c73b tok_s=405533e648b9375b ttft=3fd63d9e8af12dc4
+search costmodel/four_3090_hoststaged dense p5 #85 plan=7367ffe596098691 tok_s=4076964805ab5d90 ttft=3f9dae6b51a17722
+search costmodel/four_3090_hoststaged dense p5 #86 plan=04b06d1545fd51c8 tok_s=407493ae734d4aea ttft=3f9efc7a398201ce
+search costmodel/four_3090_hoststaged dense p5 #87 plan=d37b79dc2a3ce188 tok_s=4054607d3a321df6 ttft=3fd6690d59fff5e8
+search costmodel/four_3090_hoststaged dense p5 #88 plan=a7ed4f2cbe9d4d5b tok_s=4060879951ebb64e ttft=3fc75a6fda7ad7af
+search costmodel/four_3090_hoststaged dense p5 #89 plan=e81887147caaa8d7 tok_s=406088223f5acd2d ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p5 #90 plan=09f13edc0f07d601 tok_s=406088223f5acd2d ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p5 #91 plan=897fea459d3e1a52 tok_s=4062490ee98e67c7 ttft=3fc6d31f25a3ed49
+search costmodel/four_3090_hoststaged dense p5 #92 plan=db4f9f7d3a858433 tok_s=4062490ee98e67c7 ttft=3fc6d31f25a3ed49
+search costmodel/four_3090_hoststaged dense p5 #93 plan=dc86d28a8636264f tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #94 plan=b80c5bcdd86c2207 tok_s=4074291721e38710 ttft=3f9fc3d0e0e9cb72
+search costmodel/four_3090_hoststaged dense p5 #95 plan=892ad4c640113e68 tok_s=4054532fe8d33b6b ttft=3fd674ff36314521
+search costmodel/four_3090_hoststaged dense p5 #96 plan=d1f65868e7c6f256 tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17ba
+search costmodel/four_3090_hoststaged dense p5 #97 plan=ed89d63324cdc40e tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17ba
+search costmodel/four_3090_hoststaged dense p5 #98 plan=c94aca00952d0c7a tok_s=4076026e6f5b2d3c ttft=3f9e761e51ae7496
+search costmodel/four_3090_hoststaged dense p5 #99 plan=d982ed8a99540053 tok_s=40742b5d479b2e7e ttft=3f9f6802d1493be7
+search costmodel/four_3090_hoststaged dense p5 #100 plan=b1925c63c7f2094e tok_s=405453976a9868b3 ttft=3fd66cfaca3c6634
+search costmodel/four_3090_hoststaged dense p5 #101 plan=21c9644c196b1548 tok_s=4073f79ffc0453d4 ttft=3f9fcbae24fd20b9
+search costmodel/four_3090_hoststaged dense p5 #102 plan=50638247f1f8b2fc tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040ab
+search costmodel/four_3090_hoststaged dense p5 #103 plan=676f0531d646a558 tok_s=4076026e6f5b2d3c ttft=3f9e1aabe24d65d9
+search costmodel/four_3090_hoststaged dense p5 #104 plan=f917ecec329b7421 tok_s=40742b5d479b2e7e ttft=3f9f6802d1493be7
+search costmodel/four_3090_hoststaged dense p5 #105 plan=c3d644c8a52198eb tok_s=405453976a9868b3 ttft=3fd66cfaca3c6634
+search costmodel/four_3090_hoststaged dense p5 #106 plan=839991c734490fad tok_s=4073f79ffc0453d4 ttft=3f9fcbae24fd20b9
+search costmodel/four_3090_hoststaged dense p5 #107 plan=91230df37486e601 tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040ab
+search costmodel/four_3090_hoststaged dense p5 #108 plan=398ca185f4a3d02c tok_s=4076026e6f5b2d3c ttft=3f9e1aabe24d65d9
+search costmodel/four_3090_hoststaged dense p5 #109 plan=8ae457c8b1f6d260 tok_s=40781d2f07f4bad9 ttft=3f9cce0cec36446c
+search costmodel/four_3090_hoststaged dense p5 #110 plan=41a252197b4a1426 tok_s=40553375a95dadf8 ttft=3fd645a2f6e60cb1
+search costmodel/four_3090_hoststaged dense p5 #111 plan=0e68eaa2604129f8 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285de
+search costmodel/four_3090_hoststaged dense p5 #112 plan=a6afbe79a2c3bbf7 tok_s=40781d2f07f4bad9 ttft=3f9cce0cec36446c
+search costmodel/four_3090_hoststaged dense p5 #113 plan=0908fcf238074861 tok_s=40553375a95dadf8 ttft=3fd645a2f6e60cb1
+search costmodel/four_3090_hoststaged dense p5 #114 plan=859b6d079bf65c37 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285de
+search costmodel/four_3090_hoststaged dense p5 #115 plan=83806bf4c0be88ff tok_s=4078206ff4c3f4c7 ttft=3f9c723edc95b4e1
+search costmodel/four_3090_hoststaged dense p5 #116 plan=848bb73391fd4103 tok_s=405533e648b9375b ttft=3fd63d9e8af12dc4
+search costmodel/four_3090_hoststaged dense p5 #117 plan=af73bd5b19ad84d1 tok_s=4076964805ab5d90 ttft=3f9dae6b51a17722
+search costmodel/four_3090_hoststaged dense p5 #118 plan=716bff79dcf7f117 tok_s=407493ae734d4aea ttft=3f9efc7a398201ce
+search costmodel/four_3090_hoststaged dense p5 #119 plan=3ae2cf660ce26316 tok_s=405460b8accabe71 ttft=3fd666c1cccf2585
+search costmodel/four_3090_hoststaged dense p5 #120 plan=4c8882e2ad073484 tok_s=406088223f5acd2e ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p5 #121 plan=2d59d10f27b14c4a tok_s=406088223f5acd2e ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p5 #122 plan=db227c0aaca89e33 tok_s=4060887081de06b7 ttft=3fc7513e361b9ae6
+search costmodel/four_3090_hoststaged dense p5 #123 plan=c0d297693de55c27 tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #124 plan=18f6d316d9f9c041 tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #125 plan=c7b0d87343107a2b tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #126 plan=cb21fe3e4a9f96b7 tok_s=40742b5d479b2e7e ttft=3f9f6802d1493be7
+search costmodel/four_3090_hoststaged dense p5 #127 plan=36f097c438b7e66c tok_s=405453976a9868b3 ttft=3fd66f440d0539c6
+search costmodel/four_3090_hoststaged dense p5 #128 plan=75b8ac7b0eb979d2 tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17bc
+search costmodel/four_3090_hoststaged dense p5 #129 plan=a53ab741718e6baa tok_s=4073f92fa8e45322 ttft=3f9fcb6e019d79c2
+search costmodel/four_3090_hoststaged dense p5 #130 plan=fc375753c8b9f960 tok_s=4076026e6f5b2d3c ttft=3f9e761e51ae7496
+search costmodel/four_3090_hoststaged dense p5 #131 plan=3ed1421e1fc32af9 tok_s=40742b5d479b2e7e ttft=3f9f6802d1493be7
+search costmodel/four_3090_hoststaged dense p5 #132 plan=ed7a5a876a6bc559 tok_s=405453976a9868b3 ttft=3fd66f440d0539c6
+search costmodel/four_3090_hoststaged dense p5 #133 plan=31c2fcf334370ff7 tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17bc
+search costmodel/four_3090_hoststaged dense p5 #134 plan=c243904e61361cdf tok_s=4073f92fa8e45322 ttft=3f9fcb6e019d79c2
+search costmodel/four_3090_hoststaged dense p5 #135 plan=91ebe7177289f75d tok_s=4076026e6f5b2d3c ttft=3f9e761e51ae7496
+search costmodel/four_3090_hoststaged dense p5 #136 plan=420fcd604bfa2cd1 tok_s=40742c4648456de1 ttft=3f9f4349fe3c35b0
+search costmodel/four_3090_hoststaged dense p5 #137 plan=eb4c6cc6f7083def tok_s=405453d292070183 ttft=3fd66aaf3d0b95d1
+search costmodel/four_3090_hoststaged dense p5 #138 plan=713ffcc21db7c901 tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040aa
+search costmodel/four_3090_hoststaged dense p5 #139 plan=3a48ac16b9da8941 tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040aa
+search costmodel/four_3090_hoststaged dense p5 #140 plan=456cca9e8e526f49 tok_s=407604540ff23ad2 ttft=3f9df5d7926085cb
+search costmodel/four_3090_hoststaged dense p5 #141 plan=81a52a9509545499 tok_s=4078206ff4c3f4c7 ttft=3f9c723edc95b4e1
+search costmodel/four_3090_hoststaged dense p5 #142 plan=1cf26563cb586ac7 tok_s=405533e648b9375c ttft=3fd63fe7cdba0156
+search costmodel/four_3090_hoststaged dense p5 #143 plan=4e1f3f887977ac45 tok_s=407698477978d578 ttft=3f9dae2b2e41d02b
+search costmodel/four_3090_hoststaged dense p5 #144 plan=d83d95b151bee9a3 tok_s=4078206ff4c3f4c7 ttft=3f9c723edc95b4e1
+search costmodel/four_3090_hoststaged dense p5 #145 plan=6b833c2b72de5695 tok_s=405533e648b9375c ttft=3fd63fe7cdba0156
+search costmodel/four_3090_hoststaged dense p5 #146 plan=e2bc41eebf2851d7 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285df
+search costmodel/four_3090_hoststaged dense p5 #147 plan=067af3cde996150d tok_s=4078206ff4c3f4c7 ttft=3f9c723edc95b4e1
+search costmodel/four_3090_hoststaged dense p5 #148 plan=02a5718c1850ae0a tok_s=405533e648b9375c ttft=3fd63fe7cdba0156
+search costmodel/four_3090_hoststaged dense p5 #149 plan=606a58f06cac7430 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285df
+search costmodel/four_3090_hoststaged dense p5 #150 plan=808f5ce08584629e tok_s=407493ae734d4aea ttft=3f9efc7a398201ce
+search costmodel/four_3090_hoststaged dense p5 #151 plan=ca3282aa0420c8bc tok_s=405460b8accabe71 ttft=3fd666c1cccf2585
+search costmodel/four_3090_hoststaged dense p5 #152 plan=21f1e4e1d64781e4 tok_s=406088223f5acd2e ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p5 #153 plan=01ba03d25a9456aa tok_s=406088223f5acd2e ttft=3fc755d5507d3bad
+search costmodel/four_3090_hoststaged dense p5 #154 plan=069ad15a96090c8d tok_s=4060887081de06b7 ttft=3fc7513e361b9ae6
+search costmodel/four_3090_hoststaged dense p5 #155 plan=d1955f2f094e0c35 tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #156 plan=f9a0741b8c0fed1a tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #157 plan=f4f4c1387460f748 tok_s=406249b6796d9536 ttft=3fc6ce849ba65147
+search costmodel/four_3090_hoststaged dense p5 #158 plan=70104704e1cb5927 tok_s=40742b5d479b2e7e ttft=3f9f6802d1493be7
+search costmodel/four_3090_hoststaged dense p5 #159 plan=6c389d8f9fe50d0c tok_s=405453976a9868b3 ttft=3fd66f440d0539c6
+search costmodel/four_3090_hoststaged dense p5 #160 plan=fb3491603ca8e8aa tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17bc
+search costmodel/four_3090_hoststaged dense p5 #161 plan=f05b71803522e9fa tok_s=4073f92fa8e45322 ttft=3f9fcb6e019d79c2
+search costmodel/four_3090_hoststaged dense p5 #162 plan=5fab881c4c67e98f tok_s=4076026e6f5b2d3c ttft=3f9e761e51ae7496
+search costmodel/four_3090_hoststaged dense p5 #163 plan=1577e792e6e35529 tok_s=40742b5d479b2e7e ttft=3f9f6802d1493be7
+search costmodel/four_3090_hoststaged dense p5 #164 plan=e89433f85c143279 tok_s=405453976a9868b3 ttft=3fd66f440d0539c6
+search costmodel/four_3090_hoststaged dense p5 #165 plan=ba7af21575a2388f tok_s=4073f79ffc0453d4 ttft=3fa013904a2f17bc
+search costmodel/four_3090_hoststaged dense p5 #166 plan=9fc2023c9613a54f tok_s=4073f92fa8e45322 ttft=3f9fcb6e019d79c2
+search costmodel/four_3090_hoststaged dense p5 #167 plan=9c3ed36b44d90fa6 tok_s=4076026e6f5b2d3c ttft=3f9e761e51ae7496
+search costmodel/four_3090_hoststaged dense p5 #168 plan=1d3c8c014506be73 tok_s=40742c4648456de1 ttft=3f9f4349fe3c35b0
+search costmodel/four_3090_hoststaged dense p5 #169 plan=ff37bfb65e1c5392 tok_s=405453d292070183 ttft=3fd66aaf3d0b95d1
+search costmodel/four_3090_hoststaged dense p5 #170 plan=38611d0da156d08c tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040aa
+search costmodel/four_3090_hoststaged dense p5 #171 plan=3667533bc97d8504 tok_s=4073f92fa8e45322 ttft=3f9fa6d9d51040aa
+search costmodel/four_3090_hoststaged dense p5 #172 plan=227f7207db7a8396 tok_s=407604540ff23ad2 ttft=3f9df5d7926085cb
+search costmodel/four_3090_hoststaged dense p5 #173 plan=82914f7d3d610601 tok_s=4078206ff4c3f4c7 ttft=3f9c723edc95b4e1
+search costmodel/four_3090_hoststaged dense p5 #174 plan=6a66532452d553a7 tok_s=405533e648b9375c ttft=3fd63fe7cdba0156
+search costmodel/four_3090_hoststaged dense p5 #175 plan=4080b0b5c713e1b5 tok_s=407698477978d578 ttft=3f9dae2b2e41d02b
+search costmodel/four_3090_hoststaged dense p5 #176 plan=66af39701f599334 tok_s=4078206ff4c3f4c7 ttft=3f9c723edc95b4e1
+search costmodel/four_3090_hoststaged dense p5 #177 plan=93250a9457cc5eea tok_s=405533e648b9375c ttft=3fd63fe7cdba0156
+search costmodel/four_3090_hoststaged dense p5 #178 plan=ca70b165dfb65670 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285df
+search costmodel/four_3090_hoststaged dense p5 #179 plan=0d018acb56792166 tok_s=4078206ff4c3f4c7 ttft=3f9c723edc95b4e1
+search costmodel/four_3090_hoststaged dense p5 #180 plan=1a1afaa187aff935 tok_s=405533e648b9375c ttft=3fd63fe7cdba0156
+search costmodel/four_3090_hoststaged dense p5 #181 plan=21ce6e7e6cf3d24f tok_s=4076964805ab5d90 ttft=3f9e09ddc10285df
+search costmodel/four_3090_hoststaged dense p5 #182 plan=7fdd7983463b562e tok_s=407cda9ebe419941 ttft=3f99e9737172d132
+search costmodel/four_3090_hoststaged dense p5 #183 plan=289495b6de38b439 tok_s=4055cbbb3324c85c ttft=3fd61ea0f689c1ca
+search costmodel/four_3090_hoststaged dense p5 #184 plan=29e8ca5cef24ec11 tok_s=406249b6796d9536 ttft=3fc6ce849ba65148
+search costmodel/four_3090_hoststaged dense p5 #185 plan=b4b0fcd682e6759f tok_s=406249b6796d9536 ttft=3fc6ce849ba65148
+search costmodel/four_3090_hoststaged dense p5 #186 plan=afc0eee56e24acd5 tok_s=40627bfb05cb5481 ttft=3fc6c0fc8990d370
+search costmodel/four_3090_hoststaged dense p5 #187 plan=6bcfc68b9af18168 tok_s=4078d28cc9cb78f6 ttft=3f9c05fe4be9c62a
+search costmodel/four_3090_hoststaged dense p5 #188 plan=1c75e1ac055ee843 tok_s=405533e648b9375b ttft=3fd63d9e8af12dc4
+search costmodel/four_3090_hoststaged dense p5 #189 plan=e6f65b96e427758f tok_s=407698477978d577 ttft=3f9d899701b49714
+search costmodel/four_3090_hoststaged dense p5 #190 plan=41608d882bb9623e tok_s=4078d28cc9cb78f6 ttft=3f9c05fe4be9c62a
+search costmodel/four_3090_hoststaged dense p5 #191 plan=8f56d7861882f92e tok_s=405533e648b9375b ttft=3fd63d9e8af12dc4
+search costmodel/four_3090_hoststaged dense p5 #192 plan=39a9e5f9ea8060c2 tok_s=407698477978d577 ttft=3f9d899701b49714
+search costmodel/four_3090_hoststaged dense p5 #193 plan=cd3a903920544900 tok_s=407c0f1f062dc0c1 ttft=3f9a54fc093a0b4b
+search costmodel/four_3090_hoststaged dense p5 #194 plan=211ba4bdc515e8c3 tok_s=4055bcfa3243ae95 ttft=3fd6228e66c63216
+search costmodel/four_3090_hoststaged dense p5 #195 plan=14cecb71b22ad88b tok_s=407cda9ebe419941 ttft=3f99e9737172d132
+search costmodel/four_3090_hoststaged dense p5 #196 plan=49513dee6d031ba8 tok_s=4055cbbb3324c85c ttft=3fd61ea0f689c1ca
+search costmodel/four_3090_hoststaged dense p5 #197 plan=e7702aadbe959052 tok_s=4062490ee98e67c7 ttft=3fc6d31f25a3ed4a
+search costmodel/four_3090_hoststaged dense p5 #198 plan=97fefaab88a4cd86 tok_s=406249b6796d9536 ttft=3fc6ce849ba65148
+search costmodel/four_3090_hoststaged dense p5 #199 plan=6a6d6531af2f14de tok_s=40627b4fd7e4a36f ttft=3fc6c597138e6f72
+search costmodel/four_3090_hoststaged dense p5 #200 plan=605703099afa25bd tok_s=4078cf1b2525fcda ttft=3f9c61cc5b8a55b4
+search costmodel/four_3090_hoststaged dense p5 #201 plan=20ea874898fab4ad tok_s=40553375a95dadf8 ttft=3fd645a2f6e60cb1
+search costmodel/four_3090_hoststaged dense p5 #202 plan=2154a644d5d7ae91 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285de
+search costmodel/four_3090_hoststaged dense p5 #203 plan=d263c951606ab84d tok_s=4078d28cc9cb78f6 ttft=3f9c05fe4be9c62a
+search costmodel/four_3090_hoststaged dense p5 #204 plan=b77c6d09ce12404b tok_s=405533e648b9375b ttft=3fd63d9e8af12dc4
+search costmodel/four_3090_hoststaged dense p5 #205 plan=fec871fdef6d75cb tok_s=4076964805ab5d90 ttft=3f9dae6b51a17722
+search costmodel/four_3090_hoststaged dense p5 #206 plan=dfe185df797fbc8b tok_s=407c0ab88e513735 ttft=3f9ab0ca18da9ad6
+search costmodel/four_3090_hoststaged dense p5 #207 plan=bf6ef5c9c1c79177 tok_s=4055bc83d0597a2b ttft=3fd62a92d2bb1103
+search costmodel/four_3090_hoststaged dense p5 #208 plan=6ba86e6c090d23ac tok_s=407cda9ebe419941 ttft=3f99e9737172d132
+search costmodel/four_3090_hoststaged dense p5 #209 plan=9c50ad19b2254fbe tok_s=4055cbbb3324c85c ttft=3fd61ea0f689c1ca
+search costmodel/four_3090_hoststaged dense p5 #210 plan=a1ca659282aea71a tok_s=4062490ee98e67c7 ttft=3fc6d31f25a3ed4a
+search costmodel/four_3090_hoststaged dense p5 #211 plan=1a7250837967cab4 tok_s=406249b6796d9536 ttft=3fc6ce849ba65148
+search costmodel/four_3090_hoststaged dense p5 #212 plan=37cbff4e067b4e3c tok_s=40627b4fd7e4a36f ttft=3fc6c597138e6f72
+search costmodel/four_3090_hoststaged dense p5 #213 plan=db3fe45b72f3fdbb tok_s=4078cf1b2525fcda ttft=3f9c61cc5b8a55b4
+search costmodel/four_3090_hoststaged dense p5 #214 plan=2398e539b9a83b68 tok_s=40553375a95dadf8 ttft=3fd645a2f6e60cb1
+search costmodel/four_3090_hoststaged dense p5 #215 plan=b1450ce3e4c64b20 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285de
+search costmodel/four_3090_hoststaged dense p5 #216 plan=f180addf0958c481 tok_s=4078d28cc9cb78f6 ttft=3f9c05fe4be9c62a
+search costmodel/four_3090_hoststaged dense p5 #217 plan=62889c2fbead55bb tok_s=405533e648b9375b ttft=3fd63d9e8af12dc4
+search costmodel/four_3090_hoststaged dense p5 #218 plan=bbbe783c5f2511b7 tok_s=4076964805ab5d90 ttft=3f9dae6b51a17722
+search costmodel/four_3090_hoststaged dense p5 #219 plan=8c5502aac6df6269 tok_s=407c0ab88e513735 ttft=3f9ab0ca18da9ad6
+search costmodel/four_3090_hoststaged dense p5 #220 plan=f0bdce3019df9148 tok_s=4055bc83d0597a2b ttft=3fd62a92d2bb1103
+search costmodel/four_3090_hoststaged dense p5 #221 plan=0859456eded7ba08 tok_s=407cda9ebe419941 ttft=3f99e9737172d132
+search costmodel/four_3090_hoststaged dense p5 #222 plan=025073e7c6b70d37 tok_s=4055cbbb3324c85c ttft=3fd61ea0f689c1ca
+search costmodel/four_3090_hoststaged dense p5 #223 plan=df703f5073fc8eb1 tok_s=4062490ee98e67c7 ttft=3fc6d31f25a3ed4a
+search costmodel/four_3090_hoststaged dense p5 #224 plan=5928901b6835ac23 tok_s=406249b6796d9536 ttft=3fc6ce849ba65148
+search costmodel/four_3090_hoststaged dense p5 #225 plan=89ae3c4f59a6aa30 tok_s=40627b4fd7e4a36f ttft=3fc6c597138e6f72
+search costmodel/four_3090_hoststaged dense p5 #226 plan=0ae8fd652e897c3c tok_s=4078cf1b2525fcda ttft=3f9c61cc5b8a55b4
+search costmodel/four_3090_hoststaged dense p5 #227 plan=ddf7792849efbd66 tok_s=40553375a95dadf8 ttft=3fd645a2f6e60cb1
+search costmodel/four_3090_hoststaged dense p5 #228 plan=1cdc3ba8174deb82 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285de
+search costmodel/four_3090_hoststaged dense p5 #229 plan=def4553ad2aa3d4a tok_s=4078d28cc9cb78f6 ttft=3f9c05fe4be9c62a
+search costmodel/four_3090_hoststaged dense p5 #230 plan=20d034bbc850d73d tok_s=405533e648b9375b ttft=3fd63d9e8af12dc4
+search costmodel/four_3090_hoststaged dense p5 #231 plan=9709f2efc1debfed tok_s=4076964805ab5d90 ttft=3f9dae6b51a17722
+search costmodel/four_3090_hoststaged dense p5 #232 plan=8f8b75ce2c1516f7 tok_s=407c0ab88e513735 ttft=3f9ab0ca18da9ad6
+search costmodel/four_3090_hoststaged dense p5 #233 plan=d68d3c0b83bd628b tok_s=4055bc83d0597a2b ttft=3fd62a92d2bb1103
+search costmodel/four_3090_hoststaged dense p5 #234 plan=78b8fafe9d61c647 tok_s=407cda9ebe419941 ttft=3f99e9737172d132
+search costmodel/four_3090_hoststaged dense p5 #235 plan=ebec9a6232ddf7f9 tok_s=4055cbbb3324c85c ttft=3fd61ea0f689c1ca
+search costmodel/four_3090_hoststaged dense p5 #236 plan=ee498fb9fdb933d1 tok_s=4062490ee98e67c7 ttft=3fc6d31f25a3ed4a
+search costmodel/four_3090_hoststaged dense p5 #237 plan=1ddae22e577f8b15 tok_s=406249b6796d9536 ttft=3fc6ce849ba65148
+search costmodel/four_3090_hoststaged dense p5 #238 plan=fca2590819e58af2 tok_s=40627b4fd7e4a36f ttft=3fc6c597138e6f72
+search costmodel/four_3090_hoststaged dense p5 #239 plan=b568adc8fe0825b6 tok_s=4078cf1b2525fcda ttft=3f9c61cc5b8a55b4
+search costmodel/four_3090_hoststaged dense p5 #240 plan=f57da74f131806e7 tok_s=40553375a95dadf8 ttft=3fd645a2f6e60cb1
+search costmodel/four_3090_hoststaged dense p5 #241 plan=cf575884d3d65acf tok_s=4076964805ab5d90 ttft=3f9e09ddc10285de
+search costmodel/four_3090_hoststaged dense p5 #242 plan=794eccf4b38e444e tok_s=4078d28cc9cb78f6 ttft=3f9c05fe4be9c62a
+search costmodel/four_3090_hoststaged dense p5 #243 plan=73bdf1b2cdc94d49 tok_s=405533e648b9375b ttft=3fd63d9e8af12dc4
+search costmodel/four_3090_hoststaged dense p5 #244 plan=8118a6677826bd1d tok_s=4076964805ab5d90 ttft=3f9dae6b51a17722
+search costmodel/four_3090_hoststaged dense p5 #245 plan=aca260bae918a6ad tok_s=407c0ab88e513735 ttft=3f9ab0ca18da9ad6
+search costmodel/four_3090_hoststaged dense p5 #246 plan=f0c8a00aeeef8d80 tok_s=4055bc83d0597a2b ttft=3fd62a92d2bb1103
+search costmodel/four_3090_hoststaged dense p5 #247 plan=f74845a143e41b96 tok_s=407cda9ebe419941 ttft=3f99e9737172d132
+search costmodel/four_3090_hoststaged dense p5 #248 plan=f07c48f06b9ca40f tok_s=4055cbff37084b7b ttft=3fd61c556958f167
+search costmodel/four_3090_hoststaged dense p5 #249 plan=6c53ee8a5d21a4b3 tok_s=406249b6796d9536 ttft=3fc6ce849ba65148
+search costmodel/four_3090_hoststaged dense p5 #250 plan=7fc88ddadb33e60d tok_s=406249b6796d9536 ttft=3fc6ce849ba65148
+search costmodel/four_3090_hoststaged dense p5 #251 plan=320a0948294648f5 tok_s=40627bfb05cb5481 ttft=3fc6c0fc8990d370
+search costmodel/four_3090_hoststaged dense p5 #252 plan=a8e11004ea1808b6 tok_s=4078d28cc9cb78f6 ttft=3f9c05fe4be9c62a
+search costmodel/four_3090_hoststaged dense p5 #253 plan=3e35ae9e7d341e73 tok_s=405533e648b9375c ttft=3fd63fe7cdba0156
+search costmodel/four_3090_hoststaged dense p5 #254 plan=515f41a85008f32b tok_s=4076964805ab5d90 ttft=3f9e09ddc10285df
+search costmodel/four_3090_hoststaged dense p5 #255 plan=7944aee84b69c460 tok_s=4078d28cc9cb78f6 ttft=3f9c05fe4be9c62a
+search costmodel/four_3090_hoststaged dense p5 #256 plan=4ec645f729d0d43e tok_s=405533e648b9375c ttft=3fd63fe7cdba0156
+search costmodel/four_3090_hoststaged dense p5 #257 plan=e1edfa9f17b49ce6 tok_s=4076964805ab5d90 ttft=3f9e09ddc10285df
+search costmodel/four_3090_hoststaged dense p5 #258 plan=9f826a94cd796e70 tok_s=407c0f1f062dc0c1 ttft=3f9a54fc093a0b4b
+search costmodel/four_3090_hoststaged dense p5 #259 plan=a2e11ca7850a91b9 tok_s=4055bcfa3243ae96 ttft=3fd624d7a98f05a8
+search costmodel/four_3090_hoststaged dense p5 #260 plan=e5c35f86c0a6d201 tok_s=4079817be426e181 ttft=3f993d89fcc95b00
+search costmodel/four_3090_hoststaged dense p5 #261 plan=98e24bf3e8867638 tok_s=40554fc0d4c6e952 ttft=3fd6043b03979a9b
+search costmodel/four_3090_hoststaged moe p3 #0 plan=fc7790751ceccd14 tok_s=4020b3b0532ad9dd ttft=40103f6432f714e6
+search costmodel/four_3090_hoststaged moe p3 #1 plan=4c69b155782798e9 tok_s=40505c4402e34004 ttft=3fd86090b3bc29e0
+search costmodel/four_3090_hoststaged moe p3 #2 plan=487bd3237c82c52f tok_s=405053afbb0e6d00 ttft=3fd86c828fed7919
+search costmodel/four_3090_hoststaged moe p3 #3 plan=46d3b392c9efa61f tok_s=405053f28549cd81 ttft=3fd866c766c16dbe
+search costmodel/four_3090_hoststaged moe p3 #4 plan=9e09b7e852a3c177 tok_s=405053f28549cd81 ttft=3fd866c766c16dbe
+search costmodel/four_3090_hoststaged moe p3 #5 plan=cd6376ec3c0b0191 tok_s=40505c4402e34004 ttft=3fd86090b3bc29e0
+search costmodel/four_3090_hoststaged moe p3 #6 plan=a7a790b69b636980 tok_s=405053afbb0e6d00 ttft=3fd86c828fed7919
+search costmodel/four_3090_hoststaged moe p3 #7 plan=ff779093fff8ad90 tok_s=405053f28549cd81 ttft=3fd866c766c16dbe
+search costmodel/four_3090_hoststaged moe p3 #8 plan=e75079d968af4f70 tok_s=405053f28549cd81 ttft=3fd866c766c16dbe
+search costmodel/four_3090_hoststaged moe p3 #9 plan=13bad84b765439a5 tok_s=40505c6a5531e48c ttft=3fd85e45268b597d
+search costmodel/four_3090_hoststaged moe p3 #10 plan=e8649d8f66dfeaa5 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2d
+search costmodel/four_3090_hoststaged moe p3 #11 plan=28e70935af9bae7d tok_s=405053f28549cd81 ttft=3fd8647e23f89a2d
+search costmodel/four_3090_hoststaged moe p3 #12 plan=32b3256a0c89495c tok_s=40505418b0aa3a5d ttft=3fd8623296c7c9c9
+search costmodel/four_3090_hoststaged moe p3 #13 plan=16c6fdab2fb37d3d tok_s=40505c6a5531e48c ttft=3fd85e45268b597d
+search costmodel/four_3090_hoststaged moe p3 #14 plan=e56878bdcefc8fbe tok_s=405053f28549cd81 ttft=3fd8647e23f89a2d
+search costmodel/four_3090_hoststaged moe p3 #15 plan=bf3b4a78561adaae tok_s=405053f28549cd81 ttft=3fd8647e23f89a2d
+search costmodel/four_3090_hoststaged moe p3 #16 plan=cfee57cf59368cbf tok_s=40505418b0aa3a5d ttft=3fd8623296c7c9c9
+search costmodel/four_3090_hoststaged moe p3 #17 plan=ac16ebdf915511a3 tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search costmodel/four_3090_hoststaged moe p3 #18 plan=49d060aa66980db3 tok_s=4048f9fe53c1141d ttft=3fe191506adcf920
+search costmodel/four_3090_hoststaged moe p3 #19 plan=3e95b10c078c72ba tok_s=405053afbb0e6d00 ttft=3fd866cb68f7682d
+search costmodel/four_3090_hoststaged moe p3 #20 plan=d72c31018adf27eb tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p3 #21 plan=f717495c60889733 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p3 #22 plan=8e7f4c2b52c012f3 tok_s=40647dcc60c4ec6f ttft=3fafccac09018c00
+search costmodel/four_3090_hoststaged moe p3 #23 plan=e6fbdaae7a73590d tok_s=4048effdb6330700 ttft=3fe1974958f5a0bc
+search costmodel/four_3090_hoststaged moe p3 #24 plan=dcd228ef5a5a53e9 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p3 #25 plan=a40d91fc27e24f55 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p3 #26 plan=498a4281197f0f47 tok_s=40647ef905051544 ttft=3faf9edbe9412440
+search costmodel/four_3090_hoststaged moe p3 #27 plan=85c2190c644e8cca tok_s=4048f04b9e2f29d7 ttft=3fe1934722fb3146
+search costmodel/four_3090_hoststaged moe p3 #28 plan=1e11f3e826fd18ac tok_s=406464204876e06b ttft=3fafa05f39291f11
+search costmodel/four_3090_hoststaged moe p3 #29 plan=1d3a69dd188e8b14 tok_s=406464f0a9cada0d ttft=3fafbe476b24a6a0
+search costmodel/four_3090_hoststaged moe p3 #30 plan=1794a065c1e5668b tok_s=40647ef905051544 ttft=3faf9edbe9412440
+search costmodel/four_3090_hoststaged moe p3 #31 plan=68e8ad7ac37463db tok_s=4048f04b9e2f29d7 ttft=3fe1934722fb3146
+search costmodel/four_3090_hoststaged moe p3 #32 plan=69df1a3d2af0877b tok_s=406464204876e06b ttft=3fafa05f39291f11
+search costmodel/four_3090_hoststaged moe p3 #33 plan=2795bcacd7bff6ff tok_s=406464f0a9cada0d ttft=3fafbe476b24a6a0
+search costmodel/four_3090_hoststaged moe p3 #34 plan=1d453b7c46afb9ea tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search costmodel/four_3090_hoststaged moe p3 #35 plan=79fbf2315d00ebdf tok_s=4048f9fe53c1141d ttft=3fe191506adcf920
+search costmodel/four_3090_hoststaged moe p3 #36 plan=fe4672029e521324 tok_s=405053afbb0e6d00 ttft=3fd866cb68f7682d
+search costmodel/four_3090_hoststaged moe p3 #37 plan=3f696903091ac4d7 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p3 #38 plan=0c2fd031daf97fcf tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p3 #39 plan=326985e36a1566d9 tok_s=40647dcc60c4ec6f ttft=3fafccac09018c00
+search costmodel/four_3090_hoststaged moe p3 #40 plan=12ac10b6fa638ada tok_s=4048effdb6330700 ttft=3fe1974958f5a0bc
+search costmodel/four_3090_hoststaged moe p3 #41 plan=1c32f3f07a0d3188 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p3 #42 plan=e2bd9c151ac7ef84 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p3 #43 plan=bf018203963cfb31 tok_s=40647ef905051544 ttft=3faf9edbe9412440
+search costmodel/four_3090_hoststaged moe p3 #44 plan=64e77e85b2cb0b8c tok_s=4048f04b9e2f29d7 ttft=3fe1934722fb3146
+search costmodel/four_3090_hoststaged moe p3 #45 plan=cf220beca77c9baa tok_s=406464204876e06b ttft=3fafa05f39291f11
+search costmodel/four_3090_hoststaged moe p3 #46 plan=a90c4594a024b42e tok_s=406464f0a9cada0d ttft=3fafbe476b24a6a0
+search costmodel/four_3090_hoststaged moe p3 #47 plan=3ae3b88f3152b325 tok_s=40647ef905051544 ttft=3faf9edbe9412440
+search costmodel/four_3090_hoststaged moe p3 #48 plan=ef1ef28c6ee065c5 tok_s=4048f04b9e2f29d7 ttft=3fe1934722fb3146
+search costmodel/four_3090_hoststaged moe p3 #49 plan=cb9e75d2bb27d5f9 tok_s=406464204876e06b ttft=3fafa05f39291f11
+search costmodel/four_3090_hoststaged moe p3 #50 plan=68576f39e335a579 tok_s=406464f0a9cada0d ttft=3fafbe476b24a6a0
+search costmodel/four_3090_hoststaged moe p3 #51 plan=625380f68aaa421d tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search costmodel/four_3090_hoststaged moe p3 #52 plan=720ad4256f4bef8b tok_s=4048fa2afbd2f6ce ttft=3fe1902aa44490ee
+search costmodel/four_3090_hoststaged moe p3 #53 plan=b3afb9acc899a5f3 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p3 #54 plan=9e7be1dbdb31362b tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p3 #55 plan=067a7a62756519c3 tok_s=40505418b0aa3a5e ttft=3fd8623296c7c9c9
+search costmodel/four_3090_hoststaged moe p3 #56 plan=b4754be181bf3437 tok_s=40647ef905051544 ttft=3faf9edbe9412440
+search costmodel/four_3090_hoststaged moe p3 #57 plan=f2cbdf768edff78c tok_s=4048f04b9e2f29d7 ttft=3fe1946bc45f9b0f
+search costmodel/four_3090_hoststaged moe p3 #58 plan=724ef65dae686efe tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p3 #59 plan=11667f1949b3a866 tok_s=406464f0a9cada0d ttft=3fafa03f27794b95
+search costmodel/four_3090_hoststaged moe p3 #60 plan=22d975d1cb1f91cb tok_s=40647ef905051544 ttft=3faf9edbe9412440
+search costmodel/four_3090_hoststaged moe p3 #61 plan=13f4dd718df8987d tok_s=4048f04b9e2f29d7 ttft=3fe1946bc45f9b0f
+search costmodel/four_3090_hoststaged moe p3 #62 plan=6c47d1b6da392321 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p3 #63 plan=69fa1dfb48d5a74d tok_s=406464f0a9cada0d ttft=3fafa03f27794b95
+search costmodel/four_3090_hoststaged moe p3 #64 plan=d89116c2e95a1923 tok_s=40647f71505eab11 ttft=3faf8c88a95a9480
+search costmodel/four_3090_hoststaged moe p3 #65 plan=7751ff0fce4e46cb tok_s=4048f0782399cbbe ttft=3fe192215c62c914
+search costmodel/four_3090_hoststaged moe p3 #66 plan=3442356b790d4a37 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p3 #67 plan=dad41be11836f5f3 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p3 #68 plan=4c254b4e26d84dcc tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search costmodel/four_3090_hoststaged moe p3 #69 plan=93b639d0adad254f tok_s=4048fa2afbd2f6ce ttft=3fe1902aa44490ee
+search costmodel/four_3090_hoststaged moe p3 #70 plan=ebfa7c724cf085ff tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p3 #71 plan=ecfcd114cdaf5247 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p3 #72 plan=1ccb4b7c4dfe48f7 tok_s=40505418b0aa3a5e ttft=3fd8623296c7c9c9
+search costmodel/four_3090_hoststaged moe p3 #73 plan=fe8199f3b2998155 tok_s=40647ef905051544 ttft=3faf9edbe9412440
+search costmodel/four_3090_hoststaged moe p3 #74 plan=1eda758425ec4d6e tok_s=4048f04b9e2f29d7 ttft=3fe1946bc45f9b0f
+search costmodel/four_3090_hoststaged moe p3 #75 plan=fdb39a2a73558da8 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p3 #76 plan=4764e8b8ff2f4844 tok_s=406464f0a9cada0d ttft=3fafa03f27794b95
+search costmodel/four_3090_hoststaged moe p3 #77 plan=0ed92d4760a5d559 tok_s=40647ef905051544 ttft=3faf9edbe9412440
+search costmodel/four_3090_hoststaged moe p3 #78 plan=a99cb52e5eb45fc7 tok_s=4048f04b9e2f29d7 ttft=3fe1946bc45f9b0f
+search costmodel/four_3090_hoststaged moe p3 #79 plan=7b67e47288116abb tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p3 #80 plan=873f4892c13d465b tok_s=406464f0a9cada0d ttft=3fafa03f27794b95
+search costmodel/four_3090_hoststaged moe p3 #81 plan=9cb53b657816da2d tok_s=40647f71505eab11 ttft=3faf8c88a95a9480
+search costmodel/four_3090_hoststaged moe p3 #82 plan=f97f67c21f885bc0 tok_s=4048f0782399cbbe ttft=3fe192215c62c914
+search costmodel/four_3090_hoststaged moe p3 #83 plan=1bc2081330494966 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p3 #84 plan=2ef001c508b00772 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #0 plan=fc7790751ceccd14 tok_s=4020b3b0532ad9dd ttft=40103f6432f714e6
+search costmodel/four_3090_hoststaged moe p5 #1 plan=4c69b155782798e9 tok_s=40505c4402e34004 ttft=3fd86090b3bc29e0
+search costmodel/four_3090_hoststaged moe p5 #2 plan=487bd3237c82c52f tok_s=405053afbb0e6d00 ttft=3fd86c828fed7919
+search costmodel/four_3090_hoststaged moe p5 #3 plan=46d3b392c9efa61f tok_s=405053f28549cd81 ttft=3fd866c766c16dbe
+search costmodel/four_3090_hoststaged moe p5 #4 plan=9e09b7e852a3c177 tok_s=405053f28549cd81 ttft=3fd866c766c16dbe
+search costmodel/four_3090_hoststaged moe p5 #5 plan=9d636747f26c7ead tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #6 plan=975a061f50e29738 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #7 plan=ee42a613add6ceff tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #8 plan=5e8c64dfebca1040 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #9 plan=e8d622b60a94244e tok_s=4052bf5cb7250dfd ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #10 plan=e1bd69852b8a6741 tok_s=4052bf5cb7250dfd ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #11 plan=cd6376ec3c0b0191 tok_s=40505c4402e34004 ttft=3fd86090b3bc29e0
+search costmodel/four_3090_hoststaged moe p5 #12 plan=a7a790b69b636980 tok_s=405053afbb0e6d00 ttft=3fd86c828fed7919
+search costmodel/four_3090_hoststaged moe p5 #13 plan=ff779093fff8ad90 tok_s=405053f28549cd81 ttft=3fd866c766c16dbe
+search costmodel/four_3090_hoststaged moe p5 #14 plan=e75079d968af4f70 tok_s=405053f28549cd81 ttft=3fd866c766c16dbe
+search costmodel/four_3090_hoststaged moe p5 #15 plan=31413f0b19bf0ef9 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #16 plan=acfc2e43d11e7e6a tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #17 plan=e029706c9584d247 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #18 plan=0491e82926cb8a02 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #19 plan=495179af888e82e9 tok_s=4052bf5cb7250dfd ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #20 plan=6f21e931971cae9c tok_s=4052bf5cb7250dfd ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #21 plan=13bad84b765439a5 tok_s=40505c6a5531e48c ttft=3fd85e45268b597d
+search costmodel/four_3090_hoststaged moe p5 #22 plan=e8649d8f66dfeaa5 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2d
+search costmodel/four_3090_hoststaged moe p5 #23 plan=28e70935af9bae7d tok_s=405053f28549cd81 ttft=3fd8647e23f89a2d
+search costmodel/four_3090_hoststaged moe p5 #24 plan=32b3256a0c89495c tok_s=40505418b0aa3a5d ttft=3fd8623296c7c9c9
+search costmodel/four_3090_hoststaged moe p5 #25 plan=3edcaea9ab66ae6a tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #26 plan=af19b6338616c1cd tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #27 plan=394d76d8fdc040fa tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #28 plan=3148fb186661437d tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #29 plan=07b3f164a1e2b595 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #30 plan=168922b96d083bfa tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #31 plan=16c6fdab2fb37d3d tok_s=40505c6a5531e48c ttft=3fd85e45268b597d
+search costmodel/four_3090_hoststaged moe p5 #32 plan=e56878bdcefc8fbe tok_s=405053f28549cd81 ttft=3fd8647e23f89a2d
+search costmodel/four_3090_hoststaged moe p5 #33 plan=bf3b4a78561adaae tok_s=405053f28549cd81 ttft=3fd8647e23f89a2d
+search costmodel/four_3090_hoststaged moe p5 #34 plan=cfee57cf59368cbf tok_s=40505418b0aa3a5d ttft=3fd8623296c7c9c9
+search costmodel/four_3090_hoststaged moe p5 #35 plan=35a088669a7441f1 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #36 plan=dfbcf4aec083f8e4 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #37 plan=06a48d9a64b0b9a7 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #38 plan=6bb7404a9b3090a4 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #39 plan=1bf155592ea8185c tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #40 plan=0a6cf12da0457c5f tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #41 plan=f261ac7ef9b08bbf tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #42 plan=f4e1cb572120621a tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #43 plan=39fee00dff3b8a32 tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #44 plan=a8ff67aef794adc7 tok_s=4053078d672364c5 ttft=3fd735ab3669741d
+search costmodel/four_3090_hoststaged moe p5 #45 plan=6ec377cc1db8ed8e tok_s=4053078d672364c5 ttft=3fd735ab3669741d
+search costmodel/four_3090_hoststaged moe p5 #46 plan=3a539040a10b261d tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #47 plan=13218f264ccfb997 tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #48 plan=b53b67ef53e6d637 tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #49 plan=83b672325bf168ba tok_s=4053078d672364c5 ttft=3fd735ab3669741d
+search costmodel/four_3090_hoststaged moe p5 #50 plan=2247450e557c21a5 tok_s=4053078d672364c5 ttft=3fd735ab3669741d
+search costmodel/four_3090_hoststaged moe p5 #51 plan=f3010d57dafe0d2d tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #52 plan=9c9e6f7383ff0114 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #53 plan=7f27629ea5ada114 tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #54 plan=018972a60e3d92c4 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #55 plan=e3c4a29bf60fc815 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #56 plan=a2c8d8a94f982a65 tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #57 plan=2e975adc705d93ab tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #58 plan=559805f769b8fabb tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #59 plan=9b7b95f59d47a659 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #60 plan=ed03e0792de3b036 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #61 plan=361e9cedcedc2502 tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #62 plan=e28960c516ce3388 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #63 plan=948da8ed08609258 tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #64 plan=5970a1c8ee51cf45 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #65 plan=757a2b2ac833e2fc tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #66 plan=29ee76c1288dd51a tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #67 plan=644c37201b3044e1 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #68 plan=7e464672dcd578f9 tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #69 plan=0f31afc36d8540ee tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #70 plan=12737d4289ad8879 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #71 plan=b05ddf59e5367e23 tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #72 plan=9e94db5db7e504ce tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #73 plan=d830c2de4d91d146 tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #74 plan=a5cb94dbd86c056c tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #75 plan=3b3712ffa4ed614f tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #76 plan=89ff9081efe2c975 tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #77 plan=655355ae5224be2f tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #78 plan=978223fdb62c220f tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #79 plan=3b6c5006abfe9781 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #80 plan=d03ae4b2969a6f04 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #81 plan=9b08fc86cc125e88 tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #82 plan=bb51efc684f7001e tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #83 plan=4a0d298d431d385e tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #84 plan=34d2a0ca379ab3c9 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #85 plan=5811a8904c14931a tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #86 plan=eb733e44f1b4b6ea tok_s=405312dad3587a42 ttft=3fd72f748364303f
+search costmodel/four_3090_hoststaged moe p5 #87 plan=919141104253d025 tok_s=4052bf04aa2c9420 ttft=3fd757231e2921cd
+search costmodel/four_3090_hoststaged moe p5 #88 plan=d1b02eff5a1985c5 tok_s=4052bf5cb7250dfc ttft=3fd75167f4fd1672
+search costmodel/four_3090_hoststaged moe p5 #89 plan=a415df05c0e03206 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #90 plan=403b3dbd30ea5a57 tok_s=40530732aefcc0df ttft=3fd73b665f957f78
+search costmodel/four_3090_hoststaged moe p5 #91 plan=5e23fbcd5179a6b1 tok_s=4053130ee9772a41 ttft=3fd72d28f6335fdc
+search costmodel/four_3090_hoststaged moe p5 #92 plan=95b8c7bdd3938526 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #93 plan=4822c22a97783ece tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #94 plan=46104920b9ce89e1 tok_s=4053078d672364c5 ttft=3fd73361f3a0a08c
+search costmodel/four_3090_hoststaged moe p5 #95 plan=c2bcace35915a3b4 tok_s=4053078d672364c5 ttft=3fd73361f3a0a08c
+search costmodel/four_3090_hoststaged moe p5 #96 plan=18fd60d28437d1d7 tok_s=4053130ee9772a41 ttft=3fd72d28f6335fdc
+search costmodel/four_3090_hoststaged moe p5 #97 plan=5a7d0f0d67acbad7 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #98 plan=4db7e2f572e595b7 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e1
+search costmodel/four_3090_hoststaged moe p5 #99 plan=862abc2b8e01c31c tok_s=4053078d672364c5 ttft=3fd73361f3a0a08c
+search costmodel/four_3090_hoststaged moe p5 #100 plan=bf4475ca31bd0123 tok_s=4053078d672364c5 ttft=3fd73361f3a0a08c
+search costmodel/four_3090_hoststaged moe p5 #101 plan=efb0189f3e890703 tok_s=4053b739890bc6af ttft=3fd6a1b6aa01264f
+search costmodel/four_3090_hoststaged moe p5 #102 plan=d3c669d039967e6d tok_s=4053b739890bc6af ttft=3fd6a1b6aa01264f
+search costmodel/four_3090_hoststaged moe p5 #103 plan=ac16ebdf915511a3 tok_s=4064b44dd979785e ttft=3faf38c5436b8f9a
+search costmodel/four_3090_hoststaged moe p5 #104 plan=49d060aa66980db3 tok_s=4048f9fe53c1141d ttft=3fe191506adcf920
+search costmodel/four_3090_hoststaged moe p5 #105 plan=3e95b10c078c72ba tok_s=405053afbb0e6d00 ttft=3fd866cb68f7682d
+search costmodel/four_3090_hoststaged moe p5 #106 plan=d72c31018adf27eb tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p5 #107 plan=f717495c60889733 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p5 #108 plan=1a3c9055c85bcfc9 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #109 plan=bebfecc91f77278c tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #110 plan=3fc582bafbf5005b tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #111 plan=7de0a093403ca714 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #112 plan=2d4b8fcd41d527da tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #113 plan=d38193dc940bab85 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #114 plan=8e7f4c2b52c012f3 tok_s=40647dcc60c4ec6f ttft=3faf9c70971f746d
+search costmodel/four_3090_hoststaged moe p5 #115 plan=e6fbdaae7a73590d tok_s=4048effdb6330700 ttft=3fe1974958f5a0bc
+search costmodel/four_3090_hoststaged moe p5 #116 plan=dcd228ef5a5a53e9 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p5 #117 plan=a40d91fc27e24f55 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p5 #118 plan=21a9fd589d5ffedf tok_s=40684f2b818945cf ttft=3fab789aa9c8493e
+search costmodel/four_3090_hoststaged moe p5 #119 plan=10bbd33b6429a19f tok_s=40684f2b818945cf ttft=3fab789aa9c8493e
+search costmodel/four_3090_hoststaged moe p5 #120 plan=498a4281197f0f47 tok_s=40647ef905051544 ttft=3faf6e898f4f2ca7
+search costmodel/four_3090_hoststaged moe p5 #121 plan=85c2190c644e8cca tok_s=4048f04b9e2f29d7 ttft=3fe1934722fb3146
+search costmodel/four_3090_hoststaged moe p5 #122 plan=1e11f3e826fd18ac tok_s=406464204876e06b ttft=3fafa05f39291f11
+search costmodel/four_3090_hoststaged moe p5 #123 plan=1d3a69dd188e8b14 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #124 plan=2d0698b45eb70f43 tok_s=40684f2b818945cf ttft=3fab4ae17217c1e1
+search costmodel/four_3090_hoststaged moe p5 #125 plan=a3124626a8ed3585 tok_s=40684f2b818945cf ttft=3fab4ae17217c1e1
+search costmodel/four_3090_hoststaged moe p5 #126 plan=1794a065c1e5668b tok_s=40647ef905051544 ttft=3faf6e898f4f2ca7
+search costmodel/four_3090_hoststaged moe p5 #127 plan=68e8ad7ac37463db tok_s=4048f04b9e2f29d7 ttft=3fe1934722fb3146
+search costmodel/four_3090_hoststaged moe p5 #128 plan=69df1a3d2af0877b tok_s=406464204876e06b ttft=3fafa05f39291f11
+search costmodel/four_3090_hoststaged moe p5 #129 plan=2795bcacd7bff6ff tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #130 plan=a378e839ffd0c9fc tok_s=40684f2b818945cf ttft=3fab4ae17217c1e1
+search costmodel/four_3090_hoststaged moe p5 #131 plan=4fc8e0f86609466a tok_s=40684f2b818945cf ttft=3fab4ae17217c1e1
+search costmodel/four_3090_hoststaged moe p5 #132 plan=cc5539fc695ede82 tok_s=406a802e44346e2e ttft=3fa98b26e6d3f1f7
+search costmodel/four_3090_hoststaged moe p5 #133 plan=52006ea750281eac tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #134 plan=3e71a35101f18f27 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #135 plan=58f383d58c4514c6 tok_s=406a802e44346e2e ttft=3fa98b26e6d3f1f7
+search costmodel/four_3090_hoststaged moe p5 #136 plan=5e588f0cc8ac0f98 tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #137 plan=573fff2377d9ed17 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #138 plan=87f0267e8c1ef112 tok_s=406a802e44346e2e ttft=3fa98b26e6d3f1f7
+search costmodel/four_3090_hoststaged moe p5 #139 plan=85057ea9f874264c tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #140 plan=45b8a412dd333ab3 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #141 plan=4c4dbe74c0a8c5f0 tok_s=406a802e44346e2e ttft=3fa98b26e6d3f1f7
+search costmodel/four_3090_hoststaged moe p5 #142 plan=bafa2542cb46130e tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #143 plan=bd0f73f04d5485ff tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #144 plan=7cf34be31e0bb1ef tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #145 plan=9cac4808a7b8c208 tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #146 plan=2e399bedd5a56a37 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3e
+search costmodel/four_3090_hoststaged moe p5 #147 plan=572773b083c45301 tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #148 plan=543b78905db429cc tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #149 plan=f6794d76514f0349 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3e
+search costmodel/four_3090_hoststaged moe p5 #150 plan=1d453b7c46afb9ea tok_s=4064b44dd979785e ttft=3faf38c5436b8f9a
+search costmodel/four_3090_hoststaged moe p5 #151 plan=79fbf2315d00ebdf tok_s=4048f9fe53c1141d ttft=3fe191506adcf920
+search costmodel/four_3090_hoststaged moe p5 #152 plan=fe4672029e521324 tok_s=405053afbb0e6d00 ttft=3fd866cb68f7682d
+search costmodel/four_3090_hoststaged moe p5 #153 plan=3f696903091ac4d7 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p5 #154 plan=0c2fd031daf97fcf tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p5 #155 plan=ed100b3b0f246c62 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #156 plan=f9545df7ab91061b tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #157 plan=f9b2ad03044a009c tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #158 plan=c879337c05073413 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #159 plan=8457e86315181646 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #160 plan=46fce22921ba8679 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #161 plan=326985e36a1566d9 tok_s=40647dcc60c4ec6f ttft=3faf9c70971f746d
+search costmodel/four_3090_hoststaged moe p5 #162 plan=12ac10b6fa638ada tok_s=4048effdb6330700 ttft=3fe1974958f5a0bc
+search costmodel/four_3090_hoststaged moe p5 #163 plan=1c32f3f07a0d3188 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p5 #164 plan=e2bd9c151ac7ef84 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p5 #165 plan=7ae7eefc7485e504 tok_s=40684f2b818945cf ttft=3fab789aa9c8493e
+search costmodel/four_3090_hoststaged moe p5 #166 plan=de519ff5572868b2 tok_s=40684f2b818945cf ttft=3fab789aa9c8493e
+search costmodel/four_3090_hoststaged moe p5 #167 plan=bf018203963cfb31 tok_s=40647ef905051544 ttft=3faf6e898f4f2ca7
+search costmodel/four_3090_hoststaged moe p5 #168 plan=64e77e85b2cb0b8c tok_s=4048f04b9e2f29d7 ttft=3fe1934722fb3146
+search costmodel/four_3090_hoststaged moe p5 #169 plan=cf220beca77c9baa tok_s=406464204876e06b ttft=3fafa05f39291f11
+search costmodel/four_3090_hoststaged moe p5 #170 plan=a90c4594a024b42e tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #171 plan=6a5b58d6b6d37d54 tok_s=40684f2b818945cf ttft=3fab4ae17217c1e1
+search costmodel/four_3090_hoststaged moe p5 #172 plan=180e984645c8dbd2 tok_s=40684f2b818945cf ttft=3fab4ae17217c1e1
+search costmodel/four_3090_hoststaged moe p5 #173 plan=3ae3b88f3152b325 tok_s=40647ef905051544 ttft=3faf6e898f4f2ca7
+search costmodel/four_3090_hoststaged moe p5 #174 plan=ef1ef28c6ee065c5 tok_s=4048f04b9e2f29d7 ttft=3fe1934722fb3146
+search costmodel/four_3090_hoststaged moe p5 #175 plan=cb9e75d2bb27d5f9 tok_s=406464204876e06b ttft=3fafa05f39291f11
+search costmodel/four_3090_hoststaged moe p5 #176 plan=68576f39e335a579 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #177 plan=ca03443b21d1b50b tok_s=40684f2b818945cf ttft=3fab4ae17217c1e1
+search costmodel/four_3090_hoststaged moe p5 #178 plan=f85b5c4c9d6f49bd tok_s=40684f2b818945cf ttft=3fab4ae17217c1e1
+search costmodel/four_3090_hoststaged moe p5 #179 plan=6bcef3a5e7c311e3 tok_s=406a802e44346e2e ttft=3fa98b26e6d3f1f7
+search costmodel/four_3090_hoststaged moe p5 #180 plan=23a272b1f2d0c3ae tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #181 plan=2a9cc2ddc3c31c41 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #182 plan=3b6c7fee844da127 tok_s=406a802e44346e2e ttft=3fa98b26e6d3f1f7
+search costmodel/four_3090_hoststaged moe p5 #183 plan=f104e6efd0a1deec tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #184 plan=771687b2e5edf77f tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #185 plan=f4817f2b2378c07b tok_s=406a802e44346e2e ttft=3fa98b26e6d3f1f7
+search costmodel/four_3090_hoststaged moe p5 #186 plan=ad0ee981282a6036 tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #187 plan=e0747814fb99cbc9 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #188 plan=6f44ec7cf1c8c751 tok_s=406a802e44346e2e ttft=3fa98b26e6d3f1f7
+search costmodel/four_3090_hoststaged moe p5 #189 plan=cbbe13a29cf55db6 tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #190 plan=b6eaa09221f132b7 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #191 plan=11d6ed85c6d62d09 tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #192 plan=811ef171e877ea96 tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #193 plan=6c7e7116e207e359 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3e
+search costmodel/four_3090_hoststaged moe p5 #194 plan=4e46f8db63dd37ab tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #195 plan=1134231b239f67be tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #196 plan=5d2ec837b31aa6d3 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3e
+search costmodel/four_3090_hoststaged moe p5 #197 plan=625380f68aaa421d tok_s=4064b44dd979785e ttft=3faf38c5436b8f9a
+search costmodel/four_3090_hoststaged moe p5 #198 plan=720ad4256f4bef8b tok_s=4048fa2afbd2f6ce ttft=3fe1902aa44490ee
+search costmodel/four_3090_hoststaged moe p5 #199 plan=b3afb9acc899a5f3 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p5 #200 plan=9e7be1dbdb31362b tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p5 #201 plan=067a7a62756519c3 tok_s=40505418b0aa3a5e ttft=3fd8623296c7c9c9
+search costmodel/four_3090_hoststaged moe p5 #202 plan=9183403300a8ea70 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #203 plan=15a881dede71b55f tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #204 plan=e44245acc0c9a630 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #205 plan=8f0190f3af1f2fff tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #206 plan=6dd0787093e5326b tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #207 plan=c97dbd104dd5f244 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #208 plan=b4754be181bf3437 tok_s=40647ef905051544 ttft=3faf6e898f4f2ca7
+search costmodel/four_3090_hoststaged moe p5 #209 plan=f2cbdf768edff78c tok_s=4048f04b9e2f29d7 ttft=3fe1946bc45f9b0f
+search costmodel/four_3090_hoststaged moe p5 #210 plan=724ef65dae686efe tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p5 #211 plan=11667f1949b3a866 tok_s=406464f0a9cada0d ttft=3fafa03f27794b95
+search costmodel/four_3090_hoststaged moe p5 #212 plan=100b981f64f75543 tok_s=40684f2b818945cf ttft=3fab789aa9c8493f
+search costmodel/four_3090_hoststaged moe p5 #213 plan=9855ad0e277a5785 tok_s=40684f2b818945cf ttft=3fab789aa9c8493f
+search costmodel/four_3090_hoststaged moe p5 #214 plan=22d975d1cb1f91cb tok_s=40647ef905051544 ttft=3faf6e898f4f2ca7
+search costmodel/four_3090_hoststaged moe p5 #215 plan=13f4dd718df8987d tok_s=4048f04b9e2f29d7 ttft=3fe1946bc45f9b0f
+search costmodel/four_3090_hoststaged moe p5 #216 plan=6c47d1b6da392321 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p5 #217 plan=69fa1dfb48d5a74d tok_s=406464f0a9cada0d ttft=3fafa03f27794b95
+search costmodel/four_3090_hoststaged moe p5 #218 plan=e71cf3c7daf9a48f tok_s=40684f2b818945cf ttft=3fab789aa9c8493f
+search costmodel/four_3090_hoststaged moe p5 #219 plan=c8c96ab5e76a0d83 tok_s=40684f2b818945cf ttft=3fab789aa9c8493f
+search costmodel/four_3090_hoststaged moe p5 #220 plan=d89116c2e95a1923 tok_s=40647f71505eab11 ttft=3faf5c2d25c8a98c
+search costmodel/four_3090_hoststaged moe p5 #221 plan=7751ff0fce4e46cb tok_s=4048f0782399cbbe ttft=3fe192215c62c914
+search costmodel/four_3090_hoststaged moe p5 #222 plan=3442356b790d4a37 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #223 plan=dad41be11836f5f3 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #224 plan=ab37c99aa784accd tok_s=40685053ab424794 ttft=3fab38774a2151d9
+search costmodel/four_3090_hoststaged moe p5 #225 plan=ee42e1f53cf360a9 tok_s=40685053ab424794 ttft=3fab38774a2151d9
+search costmodel/four_3090_hoststaged moe p5 #226 plan=d7db4d296017d211 tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #227 plan=14dba4c1907fd4fc tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #228 plan=eb53c07b7b12a19b tok_s=4069492282a8944f ttft=3faa6cdb6bcadbc2
+search costmodel/four_3090_hoststaged moe p5 #229 plan=57f4684d88e7c3eb tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #230 plan=7f024805da4475c4 tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #231 plan=ec08cc56f710cc7d tok_s=4069492282a8944f ttft=3faa6cdb6bcadbc2
+search costmodel/four_3090_hoststaged moe p5 #232 plan=5afa176a96462119 tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #233 plan=ccc9250ae2c8236c tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #234 plan=410a2784d4448277 tok_s=406947e23300775b ttft=3faa9ab4b52b369c
+search costmodel/four_3090_hoststaged moe p5 #235 plan=f3ee906e4217a0c7 tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #236 plan=52ab8316bfbd7d88 tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #237 plan=0acd309456d1ef65 tok_s=406947e23300775b ttft=3faa9ab4b52b369c
+search costmodel/four_3090_hoststaged moe p5 #238 plan=72ba5bc427e5363e tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #239 plan=d349f38cad9267b0 tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #240 plan=452bf2daa7779dcb tok_s=406947e23300775b ttft=3faa9ab4b52b369c
+search costmodel/four_3090_hoststaged moe p5 #241 plan=e7b11e2006cf547c tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #242 plan=bf00a2b012ba31a2 tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #243 plan=ea3e2532e53fad87 tok_s=406947e23300775b ttft=3faa9ab4b52b369c
+search costmodel/four_3090_hoststaged moe p5 #244 plan=4c254b4e26d84dcc tok_s=4064b44dd979785e ttft=3faf38c5436b8f9a
+search costmodel/four_3090_hoststaged moe p5 #245 plan=93b639d0adad254f tok_s=4048fa2afbd2f6ce ttft=3fe1902aa44490ee
+search costmodel/four_3090_hoststaged moe p5 #246 plan=ebfa7c724cf085ff tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p5 #247 plan=ecfcd114cdaf5247 tok_s=405053f28549cd81 ttft=3fd8647e23f89a2c
+search costmodel/four_3090_hoststaged moe p5 #248 plan=1ccb4b7c4dfe48f7 tok_s=40505418b0aa3a5e ttft=3fd8623296c7c9c9
+search costmodel/four_3090_hoststaged moe p5 #249 plan=87e136b45b13ad2c tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #250 plan=fbe52ce8ee784a93 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #251 plan=8a3f0ef76b8ee042 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #252 plan=a3fda5121df93a3b tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #253 plan=e4a73538767acb85 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #254 plan=cf8ed7bbf0fab9d0 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #255 plan=fe8199f3b2998155 tok_s=40647ef905051544 ttft=3faf6e898f4f2ca7
+search costmodel/four_3090_hoststaged moe p5 #256 plan=1eda758425ec4d6e tok_s=4048f04b9e2f29d7 ttft=3fe1946bc45f9b0f
+search costmodel/four_3090_hoststaged moe p5 #257 plan=fdb39a2a73558da8 tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p5 #258 plan=4764e8b8ff2f4844 tok_s=406464f0a9cada0d ttft=3fafa03f27794b95
+search costmodel/four_3090_hoststaged moe p5 #259 plan=d8bfd40bd76d7a29 tok_s=40684f2b818945cf ttft=3fab789aa9c8493f
+search costmodel/four_3090_hoststaged moe p5 #260 plan=012bf7613b33e3d9 tok_s=40684f2b818945cf ttft=3fab789aa9c8493f
+search costmodel/four_3090_hoststaged moe p5 #261 plan=0ed92d4760a5d559 tok_s=40647ef905051544 ttft=3faf6e898f4f2ca7
+search costmodel/four_3090_hoststaged moe p5 #262 plan=a99cb52e5eb45fc7 tok_s=4048f04b9e2f29d7 ttft=3fe1946bc45f9b0f
+search costmodel/four_3090_hoststaged moe p5 #263 plan=7b67e47288116abb tok_s=406464204876e06b ttft=3fafce1870d9a66f
+search costmodel/four_3090_hoststaged moe p5 #264 plan=873f4892c13d465b tok_s=406464f0a9cada0d ttft=3fafa03f27794b95
+search costmodel/four_3090_hoststaged moe p5 #265 plan=65b8416b21fdfb85 tok_s=40684f2b818945cf ttft=3fab789aa9c8493f
+search costmodel/four_3090_hoststaged moe p5 #266 plan=54bcd01804b081d3 tok_s=40684f2b818945cf ttft=3fab789aa9c8493f
+search costmodel/four_3090_hoststaged moe p5 #267 plan=9cb53b657816da2d tok_s=40647f71505eab11 ttft=3faf5c2d25c8a98c
+search costmodel/four_3090_hoststaged moe p5 #268 plan=f97f67c21f885bc0 tok_s=4048f0782399cbbe ttft=3fe192215c62c914
+search costmodel/four_3090_hoststaged moe p5 #269 plan=1bc2081330494966 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #270 plan=2ef001c508b00772 tok_s=406464f0a9cada0d ttft=3faf8df51132af09
+search costmodel/four_3090_hoststaged moe p5 #271 plan=15f733bdce444df0 tok_s=40685053ab424794 ttft=3fab38774a2151d9
+search costmodel/four_3090_hoststaged moe p5 #272 plan=af1f2565454956fe tok_s=40685053ab424794 ttft=3fab38774a2151d9
+search costmodel/four_3090_hoststaged moe p5 #273 plan=142a7b36f964ca6b tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #274 plan=d8bc54bf4900e96e tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #275 plan=c1ea2d181a7bd2a9 tok_s=4069492282a8944f ttft=3faa6cdb6bcadbc2
+search costmodel/four_3090_hoststaged moe p5 #276 plan=d922f4eee3cfe7e5 tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #277 plan=28ac5d414e3fd0d2 tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #278 plan=a8671e906a57ff2b tok_s=4069492282a8944f ttft=3faa6cdb6bcadbc2
+search costmodel/four_3090_hoststaged moe p5 #279 plan=76d491c46a35cddb tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #280 plan=eec50a52368ab746 tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #281 plan=4bebc604fd341cfd tok_s=406947e23300775b ttft=3faa9ab4b52b369c
+search costmodel/four_3090_hoststaged moe p5 #282 plan=6739f2e9613b6edf tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #283 plan=fd4750ca655dc604 tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #284 plan=58e8ab57243e101b tok_s=406947e23300775b ttft=3faa9ab4b52b369c
+search costmodel/four_3090_hoststaged moe p5 #285 plan=5a4be3899dc09f90 tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #286 plan=b0bbe719e4f47ad2 tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #287 plan=85046bf8f0d50865 tok_s=406947e23300775b ttft=3faa9ab4b52b369c
+search costmodel/four_3090_hoststaged moe p5 #288 plan=694bc108add50124 tok_s=406a822520ff6c18 ttft=3fa95d3fdf03aa31
+search costmodel/four_3090_hoststaged moe p5 #289 plan=90dc72f5d860585a tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #290 plan=af5c375239184035 tok_s=406947e23300775b ttft=3faa9ab4b52b369c
+search costmodel/four_3090_hoststaged moe p5 #291 plan=6160a3ba069b8be1 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #292 plan=173af300fd19a6ff tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #293 plan=e3a6a03b6b334fbc tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #294 plan=84f9178adbe8a24c tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #295 plan=00d313b9f0500b53 tok_s=4053078d672364c5 ttft=3fd73361f3a0a08c
+search costmodel/four_3090_hoststaged moe p5 #296 plan=be62f9187f806232 tok_s=4053078d672364c5 ttft=3fd73361f3a0a08c
+search costmodel/four_3090_hoststaged moe p5 #297 plan=5299ab8e73683fd0 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #298 plan=7102494369b9317c tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #299 plan=5bf8ef7ec654b2a1 tok_s=4069492282a8944f ttft=3faa5a9155843f34
+search costmodel/four_3090_hoststaged moe p5 #300 plan=e46ea82bd9fea1ec tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #301 plan=4e2c9f1809c2daf5 tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #302 plan=5b8974760925cfce tok_s=4069492282a8944f ttft=3faa5a9155843f34
+search costmodel/four_3090_hoststaged moe p5 #303 plan=f47f450a6cd226d1 tok_s=4070c47c57a8fa4a ttft=3fa507c217f24d00
+search costmodel/four_3090_hoststaged moe p5 #304 plan=9f656b1928660af9 tok_s=404bf8a3f346ff79 ttft=3fe0fab90acf3475
+search costmodel/four_3090_hoststaged moe p5 #305 plan=438ac2b2e6bf3cf4 tok_s=4070c47c57a8fa4a ttft=3fa507c217f24d00
+search costmodel/four_3090_hoststaged moe p5 #306 plan=dab97d466b8a268e tok_s=404bf8a3f346ff79 ttft=3fe0fab90acf3475
+search costmodel/four_3090_hoststaged moe p5 #307 plan=38d5087ea2c0ab18 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #308 plan=7f900aee5247681f tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #309 plan=d35dc3353d460511 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #310 plan=2d837687e1a204c9 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #311 plan=cae176891b4ac3d4 tok_s=4053078d672364c5 ttft=3fd73361f3a0a08c
+search costmodel/four_3090_hoststaged moe p5 #312 plan=47eb36613fa6d2d3 tok_s=4053078d672364c5 ttft=3fd73361f3a0a08c
+search costmodel/four_3090_hoststaged moe p5 #313 plan=200ebd5c45393d34 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #314 plan=362810166b53d94d tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #315 plan=6d835accb2f0a8e7 tok_s=4069492282a8944f ttft=3faa5a9155843f34
+search costmodel/four_3090_hoststaged moe p5 #316 plan=c6736821bf227ee0 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #317 plan=37a995376590590c tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #318 plan=43665e6977f446c4 tok_s=4069492282a8944f ttft=3faa5a9155843f34
+search costmodel/four_3090_hoststaged moe p5 #319 plan=43b38a21b3b766f7 tok_s=4070c47c57a8fa4a ttft=3fa507c217f24d00
+search costmodel/four_3090_hoststaged moe p5 #320 plan=b9bde18fbfabb04a tok_s=404bf8a3f346ff79 ttft=3fe0fab90acf3475
+search costmodel/four_3090_hoststaged moe p5 #321 plan=6f715747455b65e6 tok_s=4070c47c57a8fa4a ttft=3fa507c217f24d00
+search costmodel/four_3090_hoststaged moe p5 #322 plan=6e8f52d7d641e303 tok_s=404bf8a3f346ff79 ttft=3fe0fab90acf3475
+search costmodel/four_3090_hoststaged moe p5 #323 plan=be3a29765d42a2d5 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #324 plan=2a398517234a9177 tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #325 plan=7f2c2f988ca52480 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #326 plan=d20e16627ca39b40 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #327 plan=46fdd4f7d8706b62 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #328 plan=2275abbf643a07e7 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #329 plan=5bc754cb304870de tok_s=406ba8d3aabb28e5 ttft=3fa8ad40f236df54
+search costmodel/four_3090_hoststaged moe p5 #330 plan=a4e277eab3d1a53b tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #331 plan=4c5ef72e659e453a tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #332 plan=9cd128e5a8534c46 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #333 plan=f77519ffcb28e495 tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #334 plan=93a6735dcc1ff220 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3c
+search costmodel/four_3090_hoststaged moe p5 #335 plan=a45edebe7177ae84 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #336 plan=6761969a11c7e501 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #337 plan=0ddfd8363133fe85 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #338 plan=0720952452859ca4 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #339 plan=c0855f4b5dc026a2 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #340 plan=65af8195f687a591 tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #341 plan=9c8f456c4d343b23 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #342 plan=bb03211ab8bea373 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #343 plan=e19eff0de8f6c109 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #344 plan=821b5edee23e9a46 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #345 plan=681d1f8d2ead4e0a tok_s=406ba8d3aabb28e5 ttft=3fa8ad40f236df54
+search costmodel/four_3090_hoststaged moe p5 #346 plan=45e57056b5225f82 tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #347 plan=e8ed2e0b9f8831d4 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #348 plan=592ee7e6601f5e72 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #349 plan=b29d1c386390ffac tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #350 plan=ce29364185508fae tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3c
+search costmodel/four_3090_hoststaged moe p5 #351 plan=d5df74666f772b86 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #352 plan=0fff537b50be600a tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #353 plan=4b75df33c745c0f3 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #354 plan=050429901df8c5c9 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #355 plan=6cb46cd88028553d tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #356 plan=7bb0df8245db537c tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #357 plan=fedfbbf7fda2b49b tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #358 plan=99b37f83f9f288cb tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #359 plan=cb00fa05db4de4c8 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #360 plan=c80a3bfdb69ec397 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #361 plan=6f073f24c0e2faa7 tok_s=406ba8d3aabb28e5 ttft=3fa8ad40f236df54
+search costmodel/four_3090_hoststaged moe p5 #362 plan=2ac5c5bac82e53ab tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #363 plan=a4e316e2f4b51e1c tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #364 plan=c434781fa92c321b tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #365 plan=cb3b18686fca783c tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #366 plan=a8a3c428605c1461 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3c
+search costmodel/four_3090_hoststaged moe p5 #367 plan=0ca97daca8849456 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #368 plan=faaf73d80df34b60 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #369 plan=6a8f0481063be591 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #370 plan=def85279c240aa9d tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #371 plan=3a38a6ed0eb0ae50 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #372 plan=9e1a628e3565d33a tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #373 plan=778e9df7b885a618 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #374 plan=f126072222437168 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #375 plan=2d39e4450a168869 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #376 plan=52c9b1c7fcca0b98 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #377 plan=2d4cc1b10a25b131 tok_s=406ba8d3aabb28e5 ttft=3fa8ad40f236df54
+search costmodel/four_3090_hoststaged moe p5 #378 plan=b3b9efcb8bbf338c tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #379 plan=4c9c0c2db6f9f250 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #380 plan=539e724755f4095d tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #381 plan=c0ae32a6a84f1373 tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #382 plan=ed5b3675c44c1c45 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3c
+search costmodel/four_3090_hoststaged moe p5 #383 plan=e768ffe22cff80da tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #384 plan=626e8d56bcfa5339 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #385 plan=5405d4053f08a0c5 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #386 plan=0e12ac4aefa591d2 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #387 plan=19784fe22f97c2d1 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #388 plan=7cfece84a5c1f937 tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #389 plan=dff555b1adcc08a0 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #390 plan=df049c96c6ce54e0 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #391 plan=f1d1590e9f44f710 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #392 plan=e09f9f663e3a42eb tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #393 plan=3c18d1a7163ad6e8 tok_s=406ba8d3aabb28e5 ttft=3fa8ad40f236df54
+search costmodel/four_3090_hoststaged moe p5 #394 plan=543b23462bff3183 tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #395 plan=3a042d05fb17202c tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #396 plan=d7dd6d0a60f1e784 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #397 plan=df7770fa65b66e24 tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #398 plan=c56253c286402961 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3c
+search costmodel/four_3090_hoststaged moe p5 #399 plan=71637f04fe8de69c tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #400 plan=19186398b38e61b5 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #401 plan=02db8dc0d746f7cf tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #402 plan=a2945bbcc75ee0ba tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #403 plan=c53ae47978113528 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #404 plan=cef04e1f43ebfb33 tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #405 plan=c12ba2a8c1b8fcb1 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #406 plan=90572f068bd3f3a9 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #407 plan=705a0d75065ac8a7 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #408 plan=ea3c526919fb246e tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #409 plan=98e5853fdda94748 tok_s=406ba8d3aabb28e5 ttft=3fa8ad40f236df54
+search costmodel/four_3090_hoststaged moe p5 #410 plan=ff641b14ed8bbaa6 tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #411 plan=c293ed355e39dfd2 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #412 plan=58721f697466e264 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #413 plan=36856afb784968f1 tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #414 plan=12c5b7ba462100f3 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3c
+search costmodel/four_3090_hoststaged moe p5 #415 plan=c31edca9c25ef612 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #416 plan=f952861db94318da tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #417 plan=3da368180d119b01 tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #418 plan=b1229257cb34878f tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #419 plan=46c2e61fea501125 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #420 plan=aa52996d4a6aed14 tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #421 plan=3445e5ed6c551953 tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #422 plan=6b58678c32debc73 tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #423 plan=716dfc3b886afdce tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #424 plan=f7751e28ee05255f tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #425 plan=db18f0c734035d35 tok_s=406ba8d3aabb28e5 ttft=3fa8ad40f236df54
+search costmodel/four_3090_hoststaged moe p5 #426 plan=ce50836753b94617 tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #427 plan=b563b5dcabd6a312 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #428 plan=c1da43a46e3c9b95 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #429 plan=804fbc8ed3023819 tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #430 plan=e609c2ac78e45460 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3c
+search costmodel/four_3090_hoststaged moe p5 #431 plan=5a1f401412ef5fba tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #432 plan=acbbde42820207d0 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #433 plan=8677950864b1295b tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #434 plan=71b0cba8815d4a9f tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #435 plan=d4c585625e1e91de tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #436 plan=d75d4da724b35bac tok_s=404c04d7c14ba318 ttft=3fe0f8c252b0fc4f
+search costmodel/four_3090_hoststaged moe p5 #437 plan=f8c5b69c18b324de tok_s=4052bf04aa2c9420 ttft=3fd7516bf73310e1
+search costmodel/four_3090_hoststaged moe p5 #438 plan=ed33eca09875961e tok_s=4052bf5cb7250dfd ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #439 plan=ca8fb3d709bf1aa3 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #440 plan=4156d148e1f6de88 tok_s=40530732aefcc0df ttft=3fd735af389f6e8d
+search costmodel/four_3090_hoststaged moe p5 #441 plan=d98c7522c1eba2f7 tok_s=406ba8d3aabb28e5 ttft=3fa8ad40f236df54
+search costmodel/four_3090_hoststaged moe p5 #442 plan=5578cec03eb24848 tok_s=404ac90fafbc3603 ttft=3fe13634bdf0e894
+search costmodel/four_3090_hoststaged moe p5 #443 plan=bcdff6ffcb1dece6 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #444 plan=2ddb1ee05f548d77 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #445 plan=e187b9fd567303ce tok_s=404ac969911e80d8 ttft=3fe1323287f6791e
+search costmodel/four_3090_hoststaged moe p5 #446 plan=ca849a6cd88b0d14 tok_s=406947e23300775a ttft=3faa6cfb7d7aaf3c
+search costmodel/four_3090_hoststaged moe p5 #447 plan=8a0f4a426b536f4e tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #448 plan=12042bb6725ad141 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #449 plan=b288cfcb3df381bf tok_s=4070c2e9fae5953d ttft=3fa535a91fc294c6
+search costmodel/four_3090_hoststaged moe p5 #450 plan=8e8af34c8905ab20 tok_s=404bf841f20df8ca ttft=3fe0febb40c9a3ec
+search costmodel/four_3090_hoststaged moe p5 #451 plan=67005a18c7d2f4a5 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #452 plan=acfff9becc3c6d95 tok_s=404c050ff41b744b ttft=3fe0f79c8c18941e
+search costmodel/four_3090_hoststaged moe p5 #453 plan=5cf926cad5c9fed2 tok_s=4052bf5cb7250dfc ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #454 plan=7052adc2306f574a tok_s=4052bf5cb7250dfc ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #455 plan=d359853ef9084acb tok_s=4053078d672364c5 ttft=3fd73361f3a0a08b
+search costmodel/four_3090_hoststaged moe p5 #456 plan=616342fd9c1d11fa tok_s=4053078d672364c5 ttft=3fd73361f3a0a08b
+search costmodel/four_3090_hoststaged moe p5 #457 plan=02ec1d64259a69e6 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #458 plan=119e3e212b513bcc tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #459 plan=f598c4c3b278af35 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #460 plan=161a1715fe0127f2 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #461 plan=9687bc2d72693a5d tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #462 plan=11a3ab8b58b49e3a tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #463 plan=f3ca200ff72aac59 tok_s=4070c47c57a8fa4a ttft=3fa507c217f24d00
+search costmodel/four_3090_hoststaged moe p5 #464 plan=35b6a22f70797c8b tok_s=404bf8a3f346ff7b ttft=3fe0fbddac339e3e
+search costmodel/four_3090_hoststaged moe p5 #465 plan=132b2241971fd0b0 tok_s=4070c47c57a8fa4a ttft=3fa507c217f24d00
+search costmodel/four_3090_hoststaged moe p5 #466 plan=5e4a75f39872978c tok_s=404bf8a3f346ff7b ttft=3fe0fbddac339e3e
+search costmodel/four_3090_hoststaged moe p5 #467 plan=dd71dfed42449e3c tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/four_3090_hoststaged moe p5 #468 plan=964a4d2e8db83271 tok_s=404c050ff41b744b ttft=3fe0f79c8c18941e
+search costmodel/four_3090_hoststaged moe p5 #469 plan=09f66e95cd6e736b tok_s=4052bf5cb7250dfc ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #470 plan=2af1636eb5063c8b tok_s=4052bf5cb7250dfc ttft=3fd74f1eb23442e0
+search costmodel/four_3090_hoststaged moe p5 #471 plan=941ed683fd46e894 tok_s=4053078d672364c5 ttft=3fd73361f3a0a08b
+search costmodel/four_3090_hoststaged moe p5 #472 plan=7cf424ad11c12dbb tok_s=4053078d672364c5 ttft=3fd73361f3a0a08b
+search costmodel/four_3090_hoststaged moe p5 #473 plan=b750ca0d7906e4ba tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #474 plan=edf843307e14b29d tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #475 plan=371943699c9e3d03 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #476 plan=6ae074c6d0e4c416 tok_s=406baaf779697ca5 ttft=3fa87f59ea66978e
+search costmodel/four_3090_hoststaged moe p5 #477 plan=c22dd98a674c58ac tok_s=404ac969911e80d9 ttft=3fe13357295ae2e7
+search costmodel/four_3090_hoststaged moe p5 #478 plan=32ac6c105e0b8548 tok_s=406947e23300775b ttft=3faa9ab4b52b369a
+search costmodel/four_3090_hoststaged moe p5 #479 plan=33f5db6d12fcb7af tok_s=4070c47c57a8fa4a ttft=3fa507c217f24d00
+search costmodel/four_3090_hoststaged moe p5 #480 plan=6e93b8cccd28db88 tok_s=404bf8a3f346ff7b ttft=3fe0fbddac339e3e
+search costmodel/four_3090_hoststaged moe p5 #481 plan=2c8b67dcedf0786a tok_s=4070c47c57a8fa4a ttft=3fa507c217f24d00
+search costmodel/four_3090_hoststaged moe p5 #482 plan=76fce5021af92aed tok_s=404bf8a3f346ff7b ttft=3fe0fbddac339e3e
+search costmodel/four_3090_hoststaged moe p5 #483 plan=740af3d3b0b334d9 tok_s=40738756adabb445 ttft=3fa08d67080f5120
+search costmodel/four_3090_hoststaged moe p5 #484 plan=bf773e2a20ade981 tok_s=404cb49ec7227053 ttft=3fe0b1e365ff7757
+search costmodel/four_3090_hoststaged moe p5 #485 plan=7f101fd082851874 tok_s=40738756adabb445 ttft=3fa08d67080f5120
+search costmodel/four_3090_hoststaged moe p5 #486 plan=72bb67d42821e455 tok_s=404cb49ec7227053 ttft=3fe0b1e365ff7757
+serve costmodel/four_3090_hoststaged dense Llama #0 plan=1305edc786f4c5de pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/four_3090_hoststaged dense Llama #1 plan=cd022590732d25fd pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/four_3090_hoststaged dense Llama #2 plan=e733ccf88e738bdb pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/four_3090_hoststaged dense Llama #3 plan=11a3038db7ff8d26 pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/four_3090_hoststaged dense Llama #4 plan=a6c0ceca7264f17a pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/four_3090_hoststaged dense Llama #5 plan=9d8a495db69d5e61 pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/four_3090_hoststaged dense Llama #6 plan=4fad163e51ff8d98 pp=407fb49d9948195c tg=40297324d34222b4 req=402622f9fb14320e
+serve costmodel/four_3090_hoststaged dense Llama #7 plan=2878d54ce089bca7 pp=405217c5d377a1a5 tg=40297324d34222b4 req=4031223627b22255
+serve costmodel/four_3090_hoststaged dense Llama #8 plan=a4e9407449ba83e1 pp=407fb49d9948195c tg=40297324d34222b4 req=402622f9fb14320e
+serve costmodel/four_3090_hoststaged dense Llama #9 plan=dbba9a4002d7c534 pp=405217c5d377a1a5 tg=40297324d34222b4 req=4031223627b22255
+serve costmodel/four_3090_hoststaged dense Llama #10 plan=1801ead842ed7924 pp=407e1aac9201313a tg=401ec0ca307f8c24 req=4031b632af264097
+serve costmodel/four_3090_hoststaged dense Llama #11 plan=b26fbe0286f8024b pp=40432596ecbff239 tg=401ec0ca307f8c24 req=403e04e34224110e
+serve costmodel/four_3090_hoststaged dense Llama #12 plan=6e18f4385c7a0d29 pp=407b325aeab27dc8 tg=401f3183d63e75d8 req=403197200741796c
+serve costmodel/four_3090_hoststaged dense Llama #13 plan=292050c84cd55a34 pp=40433cd2cc29efd2 tg=401f3183d63e75d8 req=403db893573a0e73
+serve costmodel/four_3090_hoststaged dense Llama #14 plan=1dcf9052a981584e pp=407b325aeab27dc8 tg=401f3183d63e75d8 req=403197200741796c
+serve costmodel/four_3090_hoststaged dense Llama #15 plan=96cfdee949a43e19 pp=40433cd2cc29efd2 tg=401f3183d63e75d8 req=403db893573a0e73
+serve costmodel/four_3090_hoststaged dense Llama #16 plan=9ee20f5e00848efd pp=4078ec1fcfb16707 tg=40114d227693b514 req=403ee08b6a79c88c
+serve costmodel/four_3090_hoststaged dense Llama #17 plan=270d00ee6799fb80 pp=4033c4efa2e11d46 tg=40114d227693b514 req=404bbef6c60ef5f2
+serve costmodel/four_3090_hoststaged dense Llama #18 plan=2c8a03dcb12790c1 pp=4077cf83bc31d68c tg=40167cbf582701a3 req=40381cc310f8d9d0
+serve costmodel/four_3090_hoststaged dense Llama #19 plan=27b6fa7b7e783e84 pp=403a33e66bb47d9b tg=40167cbf582701a3 req=404527784360fd48
+serve costmodel/four_3090_hoststaged dense Llama #20 plan=0db850c64c31fcfa pp=4077cf83bc31d68c tg=40167cbf582701a3 req=40381cc310f8d9d0
+serve costmodel/four_3090_hoststaged dense Llama #21 plan=01170502a026febd pp=403a33e66bb47d9b tg=40167cbf582701a3 req=404527784360fd48
+serve costmodel/four_3090_hoststaged dense Llama #22 plan=6de23fd48b040f45 pp=40754330312f9b98 tg=400812a67286bc28 req=4046057212e6a841
+serve costmodel/four_3090_hoststaged dense Llama #23 plan=40a92c72b1690af0 pp=402aa5d6be5501ba tg=400812a67286bc28 req=40543dbdf585f1af
+serve costmodel/four_3090_hoststaged dense Builder #0 plan=2d7ff34007601634 pp=401887510d987d36 tg=3ff745a1446a277f req=40656fe93295e81f
+serve costmodel/four_3090_hoststaged dense Builder #1 plan=0a18120e3541b43e pp=401887510d987d36 tg=3ff745a1446a277f req=40656fe93295e81f
+serve costmodel/four_3090_hoststaged dense Builder #2 plan=50ffd8c7d48fa648 pp=4008877d87453655 tg=3fe759b6e548eedd req=407566601042d700
+serve costmodel/four_3090_hoststaged dense Builder #3 plan=b340a8976f5ebd2a pp=4008877d87453655 tg=3fe759b6e548eedd req=407566601042d700
+serve costmodel/four_3090_hoststaged moe Llama #0 plan=096a6a1d2270139f pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/four_3090_hoststaged moe Llama #1 plan=c1c0bd770fc15688 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/four_3090_hoststaged moe Llama #2 plan=d11da01b8d082346 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/four_3090_hoststaged moe Llama #3 plan=faf449f20d608a53 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/four_3090_hoststaged moe Llama #4 plan=a6f367b3b6fc3093 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/four_3090_hoststaged moe Llama #5 plan=05ee0277f2ac0e44 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/four_3090_hoststaged moe Llama #6 plan=51fbefd32b68a734 pp=40a3201fc7672965 tg=4054c9d9a6b10e26 req=3ffbf9b07622ec93
+serve costmodel/four_3090_hoststaged moe Llama #7 plan=da020247fe24a68f pp=4090b774f5c18c94 tg=4054c9d9a6b10e26 req=4000249e1a17141f
+serve costmodel/four_3090_hoststaged moe Llama #8 plan=5c2571883b2cfd07 pp=40a3201fc7672965 tg=4054c9d9a6b10e26 req=3ffbf9b07622ec93
+serve costmodel/four_3090_hoststaged moe Llama #9 plan=36267fcef0aa1ae6 pp=4090b774f5c18c94 tg=4054c9d9a6b10e26 req=4000249e1a17141f
+serve costmodel/four_3090_hoststaged moe Llama #10 plan=0102390e16dd39f0 pp=40a3201fc7672965 tg=40506f7f5305f3f0 req=40013fc94a8a6f6d
+serve costmodel/four_3090_hoststaged moe Llama #11 plan=91d587837d27dae3 pp=40827ea50227b64b tg=40506f7f5305f3f0 req=40067f3525451f68
+serve costmodel/four_3090_hoststaged moe Llama #12 plan=171968881c0d1b9c pp=4098985b7ab16646 tg=4050753ba10cf700 req=4002282d41592379
+serve costmodel/four_3090_hoststaged moe Llama #13 plan=7db87e3be1c5a5df pp=408284109cd4101e tg=4050753ba10cf700 req=400677c0dca87279
+serve costmodel/four_3090_hoststaged moe Llama #14 plan=f3e702aa04419ecf pp=4098985b7ab16646 tg=4050753ba10cf700 req=4002282d41592379
+serve costmodel/four_3090_hoststaged moe Llama #15 plan=7c21c351d08efa16 pp=408284109cd4101e tg=4050753ba10cf700 req=400677c0dca87279
+serve costmodel/four_3090_hoststaged moe Llama #16 plan=aab285b715dfb648 pp=4098985b7ab16646 tg=404730d3fd368d7e req=4008ae0f604b15bf
+serve costmodel/four_3090_hoststaged moe Llama #17 plan=4f8575b0677920d3 pp=40738b9ca60daa9f tg=404730d3fd368d7e req=4011967779824484
+serve costmodel/four_3090_hoststaged moe Llama #18 plan=45ee00f344e32eab pp=407586f68c474617 tg=40355a2763975307 req=401decbfc012f3a8
+serve costmodel/four_3090_hoststaged moe Llama #19 plan=939475537aea7c54 pp=405b1ed004f84933 tg=40355a2763975307 req=40256dc71d95887f
+serve costmodel/four_3090_hoststaged moe Llama #20 plan=a690900a00409f12 pp=407586f68c474617 tg=40355a2763975307 req=401decbfc012f3a8
+serve costmodel/four_3090_hoststaged moe Llama #21 plan=6c10328c3f4729ef pp=405b1ed004f84933 tg=40355a2763975307 req=40256dc71d95887f
+serve costmodel/four_3090_hoststaged moe Llama #22 plan=ca4d6ba574fd6827 pp=407586f68c474617 tg=402783afdc6edb20 req=4028bf330e74653e
+serve costmodel/four_3090_hoststaged moe Llama #23 plan=0f3c8e21816a39b8 pp=404b5b01c67a393e tg=402783afdc6edb20 req=40343ec61f8fd52c
+serve costmodel/four_3090_hoststaged moe Builder #0 plan=bb6da39db2884cdd pp=40b429f6536b8f4e tg=405c43044c21db28 req=3ff3b40d70d22e36
+serve costmodel/four_3090_hoststaged moe Builder #1 plan=232266f72dd3f149 pp=4075ad0d317f14da tg=4041f47206002c6d req=401429c2b9634a61
+serve costmodel/four_3090_hoststaged moe Builder #2 plan=7eeb58c98adad758 pp=406a84c80db90817 tg=4041f47206002c6d req=4017e95b2ec2259a
+serve costmodel/four_3090_hoststaged moe Builder #3 plan=d1a241d0b7825f56 pp=40844267a98b7976 tg=4041f47206002c6d req=40116ac0ad3bec1a
+serve costmodel/four_3090_hoststaged moe Builder #4 plan=275120127bccf09d pp=4075ad0d317f14da tg=40354bb101b23072 req=401df295e7ce35cb
+serve costmodel/four_3090_hoststaged moe Builder #5 plan=1315bcf7251937b7 pp=4075ad0d317f14da tg=4041f47206002c6d req=401429c2b9634a61
+serve costmodel/four_3090_hoststaged moe Builder #6 plan=a22f8c0660f1d6c1 pp=406d90f2446be752 tg=403ac7cd5f3bc6d6 req=401bc6e59e0c7b4c
+serve costmodel/four_3090_hoststaged moe Builder #7 plan=2195a5137cb538e4 pp=4061ecf6240bf292 tg=403ac7cd5f3bc6d6 req=4020b3271e5e66e6
+serve costmodel/four_3090_hoststaged moe Builder #8 plan=a1d556fbe4159a76 pp=407c1dceca31195c tg=403ac7cd5f3bc6d6 req=4017abc036a76fe1
+serve costmodel/four_3090_hoststaged moe Builder #9 plan=a47d0d2b93560f97 pp=4061f6561de69ed1 tg=403ac7cd5f3bc6d6 req=4020af6d0ba881bc
+serve costmodel/four_3090_hoststaged moe Builder #10 plan=2e0b77da0e03b465 pp=406d90f2446be752 tg=402e4cdc75df4367 req=40253a1131d66e35
+serve costmodel/four_3090_hoststaged moe Builder #11 plan=91a87a0657cf103b pp=406d90f2446be752 tg=403ac7cd5f3bc6d6 req=401bc6e59e0c7b4c
+serve costmodel/four_3090_hoststaged moe Builder #12 plan=9e1a5d3f465ca4df pp=40698297ff43c1b4 tg=4037c29df4479574 req=401f9577106113c1
+serve costmodel/four_3090_hoststaged moe Builder #13 plan=717ae43e3684fe02 pp=405eda41d23a6b61 tg=4037c29df4479574 req=40231263e1dd10f1
+serve costmodel/four_3090_hoststaged moe Builder #14 plan=3d9875e6e79e5bb8 pp=4078626ff5c7e6fa tg=4037c29df4479574 req=401acc3ffb5d31c5
+serve costmodel/four_3090_hoststaged moe Builder #15 plan=c82ebcee9f8fb3b1 pp=405ee85e433c1011 tg=4037c29df4479574 req=40230e9a149f051e
+serve costmodel/four_3090_hoststaged moe Builder #16 plan=6c6289a1d47123f3 pp=40698297ff43c1b4 tg=402a7abf8fe05f28 req=40285a7450ce17dc
+serve costmodel/four_3090_hoststaged moe Builder #17 plan=6281143f24e5e4b0 pp=40698297ff43c1b4 tg=4037c29df4479574 req=401f9577106113c1
+serve costmodel/four_3090_hoststaged moe Builder #18 plan=5d11f53678c335a3 pp=4067df6528ff4fc9 tg=40367deeabbe1559 req=4020be5fe4c5affe
+serve costmodel/four_3090_hoststaged moe Builder #19 plan=34cba51ec6466478 pp=405cd78513aead9b tg=40367deeabbe1559 req=40244202439c65f8
+serve costmodel/four_3090_hoststaged moe Builder #20 plan=bf815590cc3a1096 pp=4076ddf042aaf32f tg=40367deeabbe1559 req=401c5c7fddb812b8
+serve costmodel/four_3090_hoststaged moe Builder #21 plan=4ebe800ef86d9227 pp=4067df6528ff4fc9 tg=4028e8b5441bc8db req=4029eaa5e049ecb2
+serve costmodel/four_3090_hoststaged moe Builder #22 plan=7634f63686c28294 pp=4067df6528ff4fc9 tg=40367deeabbe1559 req=4020be5fe4c5affe
+serve costmodel/four_3090_hoststaged moe Builder #23 plan=6cfdd67d4367a599 pp=4067df6528ff4fc9 tg=40367deeabbe1559 req=4020be5fe4c5affe
+search costmodel/two_3090_hoststaged dense p3 #0 plan=fffabd75b9406d18 tok_s=4030bcbfc5860b3c ttft=40004e290ff5cf60
+search costmodel/two_3090_hoststaged dense p3 #1 plan=6d341019e0868b62 tok_s=406099880e47e3c2 ttft=3fc79a47d4d41868
+search costmodel/two_3090_hoststaged dense p3 #2 plan=2337a273147fbaf6 tok_s=4060887081de06b7 ttft=3fc7a222b54cf900
+search costmodel/two_3090_hoststaged dense p3 #3 plan=8c76d584103865d4 tok_s=406099880e47e3c2 ttft=3fc79a47d4d41868
+search costmodel/two_3090_hoststaged dense p3 #4 plan=9a2be2ad2f7f51c3 tok_s=4060887081de06b7 ttft=3fc7a222b54cf900
+search costmodel/two_3090_hoststaged dense p3 #5 plan=d59158fd742c7cf1 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search costmodel/two_3090_hoststaged dense p3 #6 plan=a157f7a53d709966 tok_s=405460b8accabe71 ttft=3fd68e8fa1b9e0d0
+search costmodel/two_3090_hoststaged dense p3 #7 plan=f04010640b2e66e7 tok_s=4060887081de06b7 ttft=3fc7a1a4e10bc3c0
+search costmodel/two_3090_hoststaged dense p3 #8 plan=d6e4a1d0bab37031 tok_s=40742c4648456de1 ttft=3f9fa40105600b80
+search costmodel/two_3090_hoststaged dense p3 #9 plan=a4461fdb3418131d tok_s=405453d292070183 ttft=3fd6927d11f65120
+search costmodel/two_3090_hoststaged dense p3 #10 plan=04b06d1545fd51c8 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search costmodel/two_3090_hoststaged dense p3 #11 plan=d37b79dc2a3ce188 tok_s=405460b8accabe71 ttft=3fd68e8fa1b9e0d0
+search costmodel/two_3090_hoststaged dense p3 #12 plan=d4d803b438e3a05d tok_s=4060887081de06b7 ttft=3fc7a1a4e10bc3c0
+search costmodel/two_3090_hoststaged dense p3 #13 plan=b80c5bcdd86c2207 tok_s=40742c4648456de1 ttft=3f9fa40105600b80
+search costmodel/two_3090_hoststaged dense p3 #14 plan=892ad4c640113e68 tok_s=405453d292070183 ttft=3fd6927d11f65120
+search costmodel/two_3090_hoststaged dense p5 #0 plan=fffabd75b9406d18 tok_s=4030bcbfc5860b3c ttft=40004e290ff5cf60
+search costmodel/two_3090_hoststaged dense p5 #1 plan=6d341019e0868b62 tok_s=406099880e47e3c2 ttft=3fc79a47d4d41868
+search costmodel/two_3090_hoststaged dense p5 #2 plan=2337a273147fbaf6 tok_s=4060887081de06b7 ttft=3fc7a222b54cf900
+search costmodel/two_3090_hoststaged dense p5 #3 plan=8c76d584103865d4 tok_s=406099880e47e3c2 ttft=3fc79a47d4d41868
+search costmodel/two_3090_hoststaged dense p5 #4 plan=9a2be2ad2f7f51c3 tok_s=4060887081de06b7 ttft=3fc7a222b54cf900
+search costmodel/two_3090_hoststaged dense p5 #5 plan=0a14b3b6c8b1e4df tok_s=406291bdb84d3de2 ttft=3fc6b48a8eb65211
+search costmodel/two_3090_hoststaged dense p5 #6 plan=d59158fd742c7cf1 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search costmodel/two_3090_hoststaged dense p5 #7 plan=a157f7a53d709966 tok_s=405460b8accabe71 ttft=3fd68e8fa1b9e0d0
+search costmodel/two_3090_hoststaged dense p5 #8 plan=f04010640b2e66e7 tok_s=4060887081de06b7 ttft=3fc7a1a4e10bc3c0
+search costmodel/two_3090_hoststaged dense p5 #9 plan=d6e4a1d0bab37031 tok_s=40742c4648456de1 ttft=3f9fa40105600b80
+search costmodel/two_3090_hoststaged dense p5 #10 plan=a4461fdb3418131d tok_s=405453d292070183 ttft=3fd6927d11f65120
+search costmodel/two_3090_hoststaged dense p5 #11 plan=04b06d1545fd51c8 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search costmodel/two_3090_hoststaged dense p5 #12 plan=d37b79dc2a3ce188 tok_s=405460b8accabe71 ttft=3fd68e8fa1b9e0d0
+search costmodel/two_3090_hoststaged dense p5 #13 plan=d4d803b438e3a05d tok_s=4060887081de06b7 ttft=3fc7a1a4e10bc3c0
+search costmodel/two_3090_hoststaged dense p5 #14 plan=b80c5bcdd86c2207 tok_s=40742c4648456de1 ttft=3f9fa40105600b80
+search costmodel/two_3090_hoststaged dense p5 #15 plan=892ad4c640113e68 tok_s=405453d292070183 ttft=3fd6927d11f65120
+search costmodel/two_3090_hoststaged dense p5 #16 plan=7fdd7983463b562e tok_s=407cda9ebe419941 ttft=3f99e9737172d132
+search costmodel/two_3090_hoststaged dense p5 #17 plan=289495b6de38b439 tok_s=4055cbff37084b7b ttft=3fd61c556958f167
+search costmodel/two_3090_hoststaged moe p3 #0 plan=fc7790751ceccd14 tok_s=4020b3b0532ad9dd ttft=4010583b7173bcb0
+search costmodel/two_3090_hoststaged moe p3 #1 plan=4c69b155782798e9 tok_s=40505c6a5531e48c ttft=3fd886b7662408c0
+search costmodel/two_3090_hoststaged moe p3 #2 plan=222754907fdbf8ea tok_s=40505418b0aa3a5d ttft=3fd88aa4d6607900
+search costmodel/two_3090_hoststaged moe p3 #3 plan=cd6376ec3c0b0191 tok_s=40505c6a5531e48c ttft=3fd886b7662408c0
+search costmodel/two_3090_hoststaged moe p3 #4 plan=79a9a1a90837643d tok_s=40505418b0aa3a5d ttft=3fd88aa4d6607900
+search costmodel/two_3090_hoststaged moe p3 #5 plan=ac16ebdf915511a3 tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search costmodel/two_3090_hoststaged moe p3 #6 plan=49d060aa66980db3 tok_s=4048fa2afbd2f6ce ttft=3fe1a4118eb9eea0
+search costmodel/two_3090_hoststaged moe p3 #7 plan=926183e9b31df1db tok_s=40505418b0aa3a5e ttft=3fd88a65ec3fde80
+search costmodel/two_3090_hoststaged moe p3 #8 plan=8e7f4c2b52c012f3 tok_s=40647f71505eab11 ttft=3faf8c88a95a9480
+search costmodel/two_3090_hoststaged moe p3 #9 plan=e6fbdaae7a73590d tok_s=4048f0782399cbbe ttft=3fe1a60846d826d0
+search costmodel/two_3090_hoststaged moe p3 #10 plan=1d453b7c46afb9ea tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search costmodel/two_3090_hoststaged moe p3 #11 plan=79fbf2315d00ebdf tok_s=4048fa2afbd2f6ce ttft=3fe1a4118eb9eea0
+search costmodel/two_3090_hoststaged moe p3 #12 plan=7749e103d03f08df tok_s=40505418b0aa3a5e ttft=3fd88a65ec3fde80
+search costmodel/two_3090_hoststaged moe p3 #13 plan=326985e36a1566d9 tok_s=40647f71505eab11 ttft=3faf8c88a95a9480
+search costmodel/two_3090_hoststaged moe p3 #14 plan=12ac10b6fa638ada tok_s=4048f0782399cbbe ttft=3fe1a60846d826d0
+search costmodel/two_3090_hoststaged moe p5 #0 plan=fc7790751ceccd14 tok_s=4020b3b0532ad9dd ttft=40103f6432f714e6
+search costmodel/two_3090_hoststaged moe p5 #1 plan=4c69b155782798e9 tok_s=40505c6a5531e48c ttft=3fd886b7662408c0
+search costmodel/two_3090_hoststaged moe p5 #2 plan=222754907fdbf8ea tok_s=40505418b0aa3a5d ttft=3fd88aa4d6607900
+search costmodel/two_3090_hoststaged moe p5 #3 plan=cd6376ec3c0b0191 tok_s=40505c6a5531e48c ttft=3fd886b7662408c0
+search costmodel/two_3090_hoststaged moe p5 #4 plan=79a9a1a90837643d tok_s=40505418b0aa3a5d ttft=3fd88aa4d6607900
+search costmodel/two_3090_hoststaged moe p5 #5 plan=f261ac7ef9b08bbf tok_s=4053130ee9772a41 ttft=3fd72d28f6335fdc
+search costmodel/two_3090_hoststaged moe p5 #6 plan=3a539040a10b261d tok_s=4053130ee9772a41 ttft=3fd72d28f6335fdc
+search costmodel/two_3090_hoststaged moe p5 #7 plan=ac16ebdf915511a3 tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search costmodel/two_3090_hoststaged moe p5 #8 plan=49d060aa66980db3 tok_s=4048fa2afbd2f6ce ttft=3fe1a4118eb9eea0
+search costmodel/two_3090_hoststaged moe p5 #9 plan=926183e9b31df1db tok_s=40505418b0aa3a5e ttft=3fd88a65ec3fde80
+search costmodel/two_3090_hoststaged moe p5 #10 plan=8e7f4c2b52c012f3 tok_s=40647f71505eab11 ttft=3faf8c88a95a9480
+search costmodel/two_3090_hoststaged moe p5 #11 plan=e6fbdaae7a73590d tok_s=4048f0782399cbbe ttft=3fe1a60846d826d0
+search costmodel/two_3090_hoststaged moe p5 #12 plan=1d453b7c46afb9ea tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search costmodel/two_3090_hoststaged moe p5 #13 plan=79fbf2315d00ebdf tok_s=4048fa2afbd2f6ce ttft=3fe1a4118eb9eea0
+search costmodel/two_3090_hoststaged moe p5 #14 plan=7749e103d03f08df tok_s=40505418b0aa3a5e ttft=3fd88a65ec3fde80
+search costmodel/two_3090_hoststaged moe p5 #15 plan=326985e36a1566d9 tok_s=40647f71505eab11 ttft=3faf8c88a95a9480
+search costmodel/two_3090_hoststaged moe p5 #16 plan=12ac10b6fa638ada tok_s=4048f0782399cbbe ttft=3fe1a60846d826d0
+search costmodel/two_3090_hoststaged moe p5 #17 plan=6160a3ba069b8be1 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/two_3090_hoststaged moe p5 #18 plan=173af300fd19a6ff tok_s=404c050ff41b744b ttft=3fe0f79c8c18941e
+search costmodel/two_3090_hoststaged moe p5 #19 plan=38d5087ea2c0ab18 tok_s=40710c561632a75d ttft=3fa4d1fdcc0eaff4
+search costmodel/two_3090_hoststaged moe p5 #20 plan=7f900aee5247681f tok_s=404c050ff41b744b ttft=3fe0f79c8c18941e
+serve costmodel/two_3090_hoststaged dense Llama #0 plan=1305edc786f4c5de pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/two_3090_hoststaged dense Llama #1 plan=cd022590732d25fd pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/two_3090_hoststaged dense Llama #2 plan=e733ccf88e738bdb pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/two_3090_hoststaged dense Llama #3 plan=11a3038db7ff8d26 pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/two_3090_hoststaged dense Llama #4 plan=a6c0ceca7264f17a pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/two_3090_hoststaged dense Llama #5 plan=9d8a495db69d5e61 pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve costmodel/two_3090_hoststaged dense Llama #6 plan=4fad163e51ff8d98 pp=40809c675394c09d tg=40297333505fec6f req=40260b5857235fe2
+serve costmodel/two_3090_hoststaged dense Llama #7 plan=2878d54ce089bca7 pp=40521800692a470c tg=40297333505fec6f req=40312219859e4a14
+serve costmodel/two_3090_hoststaged dense Llama #8 plan=a4e9407449ba83e1 pp=40809c675394c09d tg=40297333505fec6f req=40260b5857235fe2
+serve costmodel/two_3090_hoststaged dense Llama #9 plan=dbba9a4002d7c534 pp=40521800692a470c tg=40297333505fec6f req=40312219859e4a14
+serve costmodel/two_3090_hoststaged dense Llama #10 plan=1801ead842ed7924 pp=407f77ccdd8fcbbb tg=401ec0d4c47eea1e req=4031aa61dd2dd781
+serve costmodel/two_3090_hoststaged dense Llama #11 plan=b26fbe0286f8024b pp=404325b7ba84aa2a tg=401ec0d4c47eea1e req=403e04c6a01038ce
+serve costmodel/two_3090_hoststaged dense Llama #12 plan=6e18f4385c7a0d29 pp=407d7f6e6c0bd1aa tg=401f318eb8584afd req=40317f9b05647f80
+serve costmodel/two_3090_hoststaged dense Llama #13 plan=292050c84cd55a34 pp=40433cf3e9bbe792 tg=401f318eb8584afd req=403db876b5263632
+serve costmodel/two_3090_hoststaged dense Llama #14 plan=1dcf9052a981584e pp=407d7f6e6c0bd1aa tg=401f318eb8584afd req=40317f9b05647f80
+serve costmodel/two_3090_hoststaged dense Llama #15 plan=96cfdee949a43e19 pp=40433cf3e9bbe792 tg=401f318eb8584afd req=403db876b5263632
+serve costmodel/two_3090_hoststaged dense Llama #16 plan=9ee20f5e00848efd pp=407ad75226dc2091 tg=40114d25cfab65cf req=403ec906689ccea0
+serve costmodel/two_3090_hoststaged dense Llama #17 plan=270d00ee6799fb80 pp=4033c5011f261ccf tg=40114d25cfab65cf req=404bbee8750509d2
+serve costmodel/two_3090_hoststaged dense Llama #18 plan=2c8a03dcb12790c1 pp=407a864113e73fc3 tg=40167cc50012a1e1 req=4037f989df374f0f
+serve costmodel/two_3090_hoststaged dense Llama #19 plan=27b6fa7b7e783e84 pp=403a340523740a85 tg=40167cc50012a1e1 req=40452769f2571128
+serve costmodel/two_3090_hoststaged dense Llama #20 plan=0db850c64c31fcfa pp=407a864113e73fc3 tg=40167cc50012a1e1 req=4037f989df374f0f
+serve costmodel/two_3090_hoststaged dense Llama #21 plan=01170502a026febd pp=403a340523740a85 tg=40167cc50012a1e1 req=40452769f2571128
+serve costmodel/two_3090_hoststaged dense Llama #22 plan=6de23fd48b040f45 pp=4077668298c139b3 tg=400812a9b02cfadf req=4045f3d57a05e2e1
+serve costmodel/two_3090_hoststaged dense Llama #23 plan=40a92c72b1690af0 pp=402aa5e6a0e065a9 tg=400812a9b02cfadf req=40543db6cd00fb9f
+serve costmodel/two_3090_hoststaged dense Builder #0 plan=2d7ff34007601634 pp=401887510d987d36 tg=3ff745a1446a277f req=40656fe93295e81f
+serve costmodel/two_3090_hoststaged dense Builder #1 plan=0a18120e3541b43e pp=401887510d987d36 tg=3ff745a1446a277f req=40656fe93295e81f
+serve costmodel/two_3090_hoststaged dense Builder #2 plan=50ffd8c7d48fa648 pp=4008877d87453655 tg=3fe759b6e548eedd req=407566601042d700
+serve costmodel/two_3090_hoststaged dense Builder #3 plan=b340a8976f5ebd2a pp=4008877d87453655 tg=3fe759b6e548eedd req=407566601042d700
+serve costmodel/two_3090_hoststaged moe Llama #0 plan=096a6a1d2270139f pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/two_3090_hoststaged moe Llama #1 plan=c1c0bd770fc15688 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/two_3090_hoststaged moe Llama #2 plan=d11da01b8d082346 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/two_3090_hoststaged moe Llama #3 plan=faf449f20d608a53 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/two_3090_hoststaged moe Llama #4 plan=a6f367b3b6fc3093 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/two_3090_hoststaged moe Llama #5 plan=05ee0277f2ac0e44 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve costmodel/two_3090_hoststaged moe Llama #6 plan=51fbefd32b68a734 pp=40a89a1e3cc13bb3 tg=4054caf02021e1f1 req=3ffb39b44aad6dc1
+serve costmodel/two_3090_hoststaged moe Llama #7 plan=da020247fe24a68f pp=4090c2bd0ec1aeb4 tg=4054caf02021e1f1 req=4000216577db8cd7
+serve costmodel/two_3090_hoststaged moe Llama #8 plan=5c2571883b2cfd07 pp=40a89a1e3cc13bb3 tg=4054caf02021e1f1 req=3ffb39b44aad6dc1
+serve costmodel/two_3090_hoststaged moe Llama #9 plan=36267fcef0aa1ae6 pp=4090c2bd0ec1aeb4 tg=4054caf02021e1f1 req=4000216577db8cd7
+serve costmodel/two_3090_hoststaged moe Llama #10 plan=0102390e16dd39f0 pp=40a89a1e3cc13bb3 tg=4050702d615dc88b req=4000dfcb34cfb005
+serve costmodel/two_3090_hoststaged moe Llama #11 plan=91d587837d27dae3 pp=4082858a82855af3 tg=4050702d615dc88b req=40067bfc83099820
+serve costmodel/two_3090_hoststaged moe Llama #12 plan=171968881c0d1b9c pp=40a138366da1cdd4 tg=4050768558975ec3 req=4001688cb6232577
+serve costmodel/two_3090_hoststaged moe Llama #13 plan=7db87e3be1c5a5df pp=408291236eb61670 tg=4050768558975ec3 req=400671ab3870e4b8
+serve costmodel/two_3090_hoststaged moe Llama #14 plan=f3e702aa04419ecf pp=40a138366da1cdd4 tg=4050768558975ec3 req=4001688cb6232577
+serve costmodel/two_3090_hoststaged moe Llama #15 plan=7c21c351d08efa16 pp=408291236eb61670 tg=4050768558975ec3 req=400671ab3870e4b8
+serve costmodel/two_3090_hoststaged moe Llama #16 plan=aab285b715dfb648 pp=40a138366da1cdd4 tg=4047321b4acc1354 req=4007ee6ed51517bd
+serve costmodel/two_3090_hoststaged moe Llama #17 plan=4f8575b0677920d3 pp=407392e2e39c50e4 tg=4047321b4acc1354 req=4011936ca7667da4
+serve costmodel/two_3090_hoststaged moe Llama #18 plan=45ee00f344e32eab pp=40813763e6117272 tg=40355d3f406925ae req=401baec32f0fbba8
+serve costmodel/two_3090_hoststaged moe Llama #19 plan=939475537aea7c54 pp=405b32d1cce05162 tg=40355d3f406925ae req=402565192f9194e0
+serve costmodel/two_3090_hoststaged moe Llama #20 plan=a690900a00409f12 pp=40813763e6117272 tg=40355d3f406925ae req=401baec32f0fbba8
+serve costmodel/two_3090_hoststaged moe Llama #21 plan=6c10328c3f4729ef pp=405b32d1cce05162 tg=40355d3f406925ae req=402565192f9194e0
+serve costmodel/two_3090_hoststaged moe Llama #22 plan=ca4d6ba574fd6827 pp=40813763e6117272 tg=4027858feb395dd7 req=4027a034c5f2c93e
+serve costmodel/two_3090_hoststaged moe Llama #23 plan=0f3c8e21816a39b8 pp=404b652b8c485227 tg=4027858feb395dd7 req=40343a6f288ddb5c
+serve costmodel/two_3090_hoststaged moe Builder #0 plan=bb6da39db2884cdd pp=40b429f6536b8f4e tg=405c43044c21db28 req=3ff3b40d70d22e36
+serve costmodel/two_3090_hoststaged moe Builder #1 plan=232266f72dd3f149 pp=40814803d14522aa tg=4041f6a7ac5e899f req=4011f45d2e5425cc
+serve costmodel/two_3090_hoststaged moe Builder #2 plan=7eeb58c98adad758 pp=406a981b684571b1 tg=4041f6a7ac5e899f req=4017e09658ae51c7
+serve costmodel/two_3090_hoststaged moe Builder #3 plan=d1a241d0b7825f56 pp=408f4dd8324c4ac7 tg=4041f6a7ac5e899f req=40104bab7caa6fe6
+serve costmodel/two_3090_hoststaged moe Builder #4 plan=275120127bccf09d pp=40814803d14522aa tg=40354d3ecb47fc2f req=401bbd305cbf1136
+serve costmodel/two_3090_hoststaged moe Builder #5 plan=1315bcf7251937b7 pp=40814803d14522aa tg=4041f6a7ac5e899f req=4011f45d2e5425cc
+serve costmodel/two_3090_hoststaged moe Builder #6 plan=a22f8c0660f1d6c1 pp=4077e5bee2a1d783 tg=403acb76cdf59302 req=401876e43585a4a0
+serve costmodel/two_3090_hoststaged moe Builder #7 plan=2195a5137cb538e4 pp=4061fa1dff655036 tg=403acb76cdf59302 req=4020ac9ef1d77822
+serve costmodel/two_3090_hoststaged moe Builder #8 plan=a1d556fbe4159a76 pp=4086370ecc807f98 tg=403acb76cdf59302 req=4015fd3755dd15c8
+serve costmodel/two_3090_hoststaged moe Builder #9 plan=a47d0d2b93560f97 pp=4062038bc49f3ab9 tg=403acb76cdf59302 req=4020a8e4df2192f8
+serve costmodel/two_3090_hoststaged moe Builder #10 plan=2e0b77da0e03b465 pp=4077e5bee2a1d783 tg=402e4f345749cfeb req=402392107d9302de
+serve costmodel/two_3090_hoststaged moe Builder #11 plan=91a87a0657cf103b pp=4077e5bee2a1d783 tg=403acb76cdf59302 req=401876e43585a4a0
+serve costmodel/two_3090_hoststaged moe Builder #12 plan=9e1a5d3f465ca4df pp=4074b404a1c0bec8 tg=4037c5f92e80929a req=401bb827b91e6409
+serve costmodel/two_3090_hoststaged moe Builder #13 plan=717ae43e3684fe02 pp=405ef0f236a1e9a8 tg=4037c5f92e80929a req=40230ac8d4979fc0
+serve costmodel/two_3090_hoststaged moe Builder #14 plan=3d9875e6e79e5bb8 pp=4083661cd63d9d75 tg=4037c5f92e80929a req=4018d5fd427668b7
+serve costmodel/two_3090_hoststaged moe Builder #15 plan=c82ebcee9f8fb3b1 pp=405eff23753c5194 tg=4037c5f92e80929a req=402306ff075993ec
+serve costmodel/two_3090_hoststaged moe Builder #16 plan=6c6289a1d47123f3 pp=4074b404a1c0bec8 tg=402a7cd501f17012 req=40266bcca52cc001
+serve costmodel/two_3090_hoststaged moe Builder #17 plan=6281143f24e5e4b0 pp=4074b404a1c0bec8 tg=4037c5f92e80929a req=401bb827b91e6409
+serve costmodel/two_3090_hoststaged moe Builder #18 plan=5d11f53678c335a3 pp=407367feb4ab2046 tg=40368126f8e06a89 req=401d58c97aeac3be
+serve costmodel/two_3090_hoststaged moe Builder #19 plan=34cba51ec6466478 pp=405cecbf6103fb1f tg=40368126f8e06a89 req=402439ddc5f7b390
+serve costmodel/two_3090_hoststaged moe Builder #20 plan=bf815590cc3a1096 pp=40823e198413079a tg=40368126f8e06a89 req=401a426038c31230
+serve costmodel/two_3090_hoststaged moe Builder #21 plan=4ebe800ef86d9227 pp=407367feb4ab2046 tg=4028eaaea2452ea3 req=4027d8aab8f99e93
+serve costmodel/two_3090_hoststaged moe Builder #22 plan=7634f63686c28294 pp=407367feb4ab2046 tg=40368126f8e06a89 req=401d58c97aeac3be
+serve costmodel/two_3090_hoststaged moe Builder #23 plan=6cfdd67d4367a599 pp=407367feb4ab2046 tg=40368126f8e06a89 req=401d58c97aeac3be
+search costmodel/two_gpu_cpu_nvme dense p3 #0 plan=fffabd75b9406d18 tok_s=4034e826cf9ce534 ttft=3ff3916c22234010
+search costmodel/two_gpu_cpu_nvme dense p3 #1 plan=6d341019e0868b62 tok_s=40646dca053ecd6f ttft=3fbba6fd9fbbd2e0
+search costmodel/two_gpu_cpu_nvme dense p3 #2 plan=eeade2b110347e15 tok_s=4061c8fa27a6008f ttft=3fbdb895740d91a0
+search costmodel/two_gpu_cpu_nvme dense p3 #3 plan=e7f2a00efb9ca003 tok_s=40517de684d11b85 ttft=3fceab9fc001ce80
+search costmodel/two_gpu_cpu_nvme dense p3 #4 plan=da7537f35dd2ea76 tok_s=40630cc8a91509d0 ttft=3fbcde10d248e7e0
+search costmodel/two_gpu_cpu_nvme dense p3 #5 plan=d59158fd742c7cf1 tok_s=407979cc0a54ee5a ttft=3f8f7e14085d7100
+search costmodel/two_gpu_cpu_nvme dense p3 #6 plan=a157f7a53d709966 tok_s=40593e2b95d4e8c6 ttft=3fcac4feda5a4430
+search costmodel/two_gpu_cpu_nvme dense p3 #7 plan=7f135e44d1fd7b9f tok_s=4061c8fa27a6008f ttft=3fbdb84191376e20
+search costmodel/two_gpu_cpu_nvme dense p3 #8 plan=9cac3ea346b79626 tok_s=40706e68de5b2cd9 ttft=3f9b963901e30f40
+search costmodel/two_gpu_cpu_nvme dense p3 #9 plan=e25f0b97f095cca7 tok_s=4057353727129d37 ttft=3fcbd34378de1a90
+search costmodel/two_gpu_cpu_nvme dense p3 #10 plan=04b06d1545fd51c8 tok_s=405f260bc49d7e16 ttft=3faf5abdc1ffbea0
+search costmodel/two_gpu_cpu_nvme dense p3 #11 plan=d37b79dc2a3ce188 tok_s=405123a43a7b0ce0 ttft=3fcfc470c3e45c70
+search costmodel/two_gpu_cpu_nvme dense p3 #12 plan=a7ed4f2cbe9d4d5b tok_s=40630cc8a91509d0 ttft=3fbcbaeb8fa31980
+search costmodel/two_gpu_cpu_nvme dense p3 #13 plan=356a88578a37cbe4 tok_s=40709c6d4c2e7872 ttft=3f9b3bc1a2f91ec0
+search costmodel/two_gpu_cpu_nvme dense p3 #14 plan=fbdf7f16a0cec066 tok_s=4057353727129d37 ttft=3fcbc1dac8f64520
+search costmodel/two_gpu_cpu_nvme dense p5 #0 plan=fffabd75b9406d18 tok_s=4034e826cf9ce534 ttft=3ff3916c22234010
+search costmodel/two_gpu_cpu_nvme dense p5 #1 plan=6d341019e0868b62 tok_s=40646dca053ecd6f ttft=3fbba6fd9fbbd2e0
+search costmodel/two_gpu_cpu_nvme dense p5 #2 plan=eeade2b110347e15 tok_s=4061c8fa27a6008f ttft=3fbdb895740d91a0
+search costmodel/two_gpu_cpu_nvme dense p5 #3 plan=e7f2a00efb9ca003 tok_s=40517de684d11b85 ttft=3fceab9fc001ce80
+search costmodel/two_gpu_cpu_nvme dense p5 #4 plan=da7537f35dd2ea76 tok_s=40630cc8a91509d0 ttft=3fbcde10d248e7e0
+search costmodel/two_gpu_cpu_nvme dense p5 #5 plan=0a14b3b6c8b1e4df tok_s=405eb07d34100ae3 ttft=3fc150135cf185c0
+search costmodel/two_gpu_cpu_nvme dense p5 #6 plan=d59158fd742c7cf1 tok_s=407979cc0a54ee5a ttft=3f8f7e14085d7100
+search costmodel/two_gpu_cpu_nvme dense p5 #7 plan=a157f7a53d709966 tok_s=40593e2b95d4e8c6 ttft=3fcac4feda5a4430
+search costmodel/two_gpu_cpu_nvme dense p5 #8 plan=7f135e44d1fd7b9f tok_s=4061c8fa27a6008f ttft=3fbdb84191376e20
+search costmodel/two_gpu_cpu_nvme dense p5 #9 plan=9cac3ea346b79626 tok_s=40706e68de5b2cd9 ttft=3f9b963901e30f40
+search costmodel/two_gpu_cpu_nvme dense p5 #10 plan=e25f0b97f095cca7 tok_s=4057353727129d37 ttft=3fcbd34378de1a90
+search costmodel/two_gpu_cpu_nvme dense p5 #11 plan=04b06d1545fd51c8 tok_s=405f260bc49d7e16 ttft=3faf5abdc1ffbea0
+search costmodel/two_gpu_cpu_nvme dense p5 #12 plan=d37b79dc2a3ce188 tok_s=405123a43a7b0ce0 ttft=3fcfc470c3e45c70
+search costmodel/two_gpu_cpu_nvme dense p5 #13 plan=a7ed4f2cbe9d4d5b tok_s=40630cc8a91509d0 ttft=3fbcbaeb8fa31980
+search costmodel/two_gpu_cpu_nvme dense p5 #14 plan=356a88578a37cbe4 tok_s=40709c6d4c2e7872 ttft=3f9b3bc1a2f91ec0
+search costmodel/two_gpu_cpu_nvme dense p5 #15 plan=fbdf7f16a0cec066 tok_s=4057353727129d37 ttft=3fcbc1dac8f64520
+search costmodel/two_gpu_cpu_nvme dense p5 #16 plan=7fdd7983463b562e tok_s=406acba914920680 ttft=3fa7cd90ca9ba2bc
+search costmodel/two_gpu_cpu_nvme dense p5 #17 plan=289495b6de38b439 tok_s=4054f41e2aadc2df ttft=3fce4115932cab30
+search costmodel/two_gpu_cpu_nvme moe p3 #0 plan=fc7790751ceccd14 tok_s=4024deb9d4827c5f ttft=40039d4b293c3940
+search costmodel/two_gpu_cpu_nvme moe p3 #1 plan=4c69b155782798e9 tok_s=40544b505f88af6e ttft=3fccbc4fdf2f9610
+search costmodel/two_gpu_cpu_nvme moe p3 #2 plan=50810ff69e79c4e9 tok_s=40524139fc49de8a ttft=3fce42f00a8dc9e0
+search costmodel/two_gpu_cpu_nvme moe p3 #3 plan=be0cfcff15ab7f4c tok_s=4033c6a8c897efcb ttft=3ff20bb2074611d5
+search costmodel/two_gpu_cpu_nvme moe p3 #4 plan=c29fe0369b56c984 tok_s=4029e23a0f424462 ttft=3ff472de1770b260
+search costmodel/two_gpu_cpu_nvme moe p3 #5 plan=a7a790b69b636980 tok_s=4052e616580a865d ttft=3fcdd5adb9ab74f8
+search costmodel/two_gpu_cpu_nvme moe p3 #6 plan=ac16ebdf915511a3 tok_s=4069c16fa9c402ef ttft=3f9f79922ad94740
+search costmodel/two_gpu_cpu_nvme moe p3 #7 plan=49d060aa66980db3 tok_s=404f0c700e83547d ttft=3fd4d6e7f4d5f880
+search costmodel/two_gpu_cpu_nvme moe p3 #8 plan=14b282805ce42955 tok_s=40524139fc49de8b ttft=3fce42c61922b820
+search costmodel/two_gpu_cpu_nvme moe p3 #9 plan=a0ec105c93e1306b tok_s=406183a4cebd1f92 ttft=3fa997029df172a0
+search costmodel/two_gpu_cpu_nvme moe p3 #10 plan=7a1ea3418b95cedb tok_s=404beca023e1fae9 ttft=3fd5dbde854d3880
+search costmodel/two_gpu_cpu_nvme moe p3 #11 plan=cbbef61323248166 tok_s=40357b0366040ce8 ttft=3ff03c43ecd89fad
+search costmodel/two_gpu_cpu_nvme moe p3 #12 plan=53271824407b23db tok_s=40094a0691875f0d ttft=40036c54b9aed840
+search costmodel/two_gpu_cpu_nvme moe p3 #13 plan=358ca10a1fe889b7 tok_s=40328ee3c72e6d07 ttft=3ff39a17c5e6cbf4
+search costmodel/two_gpu_cpu_nvme moe p3 #14 plan=b8345bc0576f8bad tok_s=4028d160ec1dcb67 ttft=3ff60138b8a6f880
+search costmodel/two_gpu_cpu_nvme moe p3 #15 plan=7749e103d03f08df tok_s=4052e616580a865b ttft=3fcdc41b18588dc0
+search costmodel/two_gpu_cpu_nvme moe p3 #16 plan=c1fbdb59f9f0411d tok_s=4060875f769895bc ttft=3fab6117f351cc80
+search costmodel/two_gpu_cpu_nvme moe p3 #17 plan=40a0de922b1a172e tok_s=404beca023e1fae9 ttft=3fd5d32a2d594dc0
+search costmodel/two_gpu_cpu_nvme moe p5 #0 plan=fc7790751ceccd14 tok_s=4024deb9d4827c5f ttft=40037f5ad96a6a02
+search costmodel/two_gpu_cpu_nvme moe p5 #1 plan=4c69b155782798e9 tok_s=40544b505f88af6e ttft=3fccbc4fdf2f9610
+search costmodel/two_gpu_cpu_nvme moe p5 #2 plan=50810ff69e79c4e9 tok_s=40524139fc49de8a ttft=3fce42f00a8dc9e0
+search costmodel/two_gpu_cpu_nvme moe p5 #3 plan=be0cfcff15ab7f4c tok_s=4033c6a8c897efcb ttft=3ff20bb2074611d5
+search costmodel/two_gpu_cpu_nvme moe p5 #4 plan=c29fe0369b56c984 tok_s=4029e23a0f424462 ttft=3ff29e57f00c786a
+search costmodel/two_gpu_cpu_nvme moe p5 #5 plan=a7a790b69b636980 tok_s=4052e616580a865d ttft=3fcdd5adb9ab74f8
+search costmodel/two_gpu_cpu_nvme moe p5 #6 plan=f261ac7ef9b08bbf tok_s=404f9eb5653cf91a ttft=3fd1032203035eb0
+search costmodel/two_gpu_cpu_nvme moe p5 #7 plan=3a539040a10b261d tok_s=404f9eb5653cf91a ttft=3fd1032203035eb0
+search costmodel/two_gpu_cpu_nvme moe p5 #8 plan=ac16ebdf915511a3 tok_s=4069c16fa9c402ef ttft=3f9f79922ad94740
+search costmodel/two_gpu_cpu_nvme moe p5 #9 plan=49d060aa66980db3 tok_s=404f0c700e83547d ttft=3fd4d6e7f4d5f880
+search costmodel/two_gpu_cpu_nvme moe p5 #10 plan=14b282805ce42955 tok_s=40524139fc49de8b ttft=3fce42c61922b820
+search costmodel/two_gpu_cpu_nvme moe p5 #11 plan=a0ec105c93e1306b tok_s=406183a4cebd1f92 ttft=3fa997029df172a0
+search costmodel/two_gpu_cpu_nvme moe p5 #12 plan=7a1ea3418b95cedb tok_s=404beca023e1fae9 ttft=3fd5dbde854d3880
+search costmodel/two_gpu_cpu_nvme moe p5 #13 plan=cbbef61323248166 tok_s=40357b0366040ce8 ttft=3ff03c43ecd89fad
+search costmodel/two_gpu_cpu_nvme moe p5 #14 plan=53271824407b23db tok_s=40094a0691875f0d ttft=3ff527e0ef99806e
+search costmodel/two_gpu_cpu_nvme moe p5 #15 plan=358ca10a1fe889b7 tok_s=40328ee3c72e6d07 ttft=3ff39a17c5e6cbf4
+search costmodel/two_gpu_cpu_nvme moe p5 #16 plan=b8345bc0576f8bad tok_s=4028d160ec1dcb67 ttft=3ff42cbdaead328a
+search costmodel/two_gpu_cpu_nvme moe p5 #17 plan=7749e103d03f08df tok_s=4052e616580a865b ttft=3fcdc41b18588dc0
+search costmodel/two_gpu_cpu_nvme moe p5 #18 plan=c1fbdb59f9f0411d tok_s=4060875f769895bc ttft=3fab6117f351cc80
+search costmodel/two_gpu_cpu_nvme moe p5 #19 plan=40a0de922b1a172e tok_s=404beca023e1fae9 ttft=3fd5d32a2d594dc0
+search costmodel/two_gpu_cpu_nvme moe p5 #20 plan=6160a3ba069b8be1 tok_s=405cda1336cb8d86 ttft=3fb3c40c78a318b7
+search costmodel/two_gpu_cpu_nvme moe p5 #21 plan=173af300fd19a6ff tok_s=404983587e28a276 ttft=3fd77ba31e20f168
+search costmodel/two_gpu_cpu_nvme moe p5 #22 plan=38d5087ea2c0ab18 tok_s=405cda1336cb8d86 ttft=3fb3c40c78a318b7
+search costmodel/two_gpu_cpu_nvme moe p5 #23 plan=7f900aee5247681f tok_s=404983587e28a276 ttft=3fd77ba31e20f168
+serve costmodel/two_gpu_cpu_nvme dense Llama #0 plan=1305edc786f4c5de pp=4092d1223fb0ccd1 tg=40434c0aab5402f3 req=400def0b0c312ff4
+serve costmodel/two_gpu_cpu_nvme dense Llama #1 plan=cd022590732d25fd pp=4092d1223fb0ccd1 tg=40434c0aab5402f3 req=400def0b0c312ff4
+serve costmodel/two_gpu_cpu_nvme dense Llama #2 plan=e733ccf88e738bdb pp=4092d1223fb0ccd1 tg=40434c0aab5402f3 req=400def0b0c312ff4
+serve costmodel/two_gpu_cpu_nvme dense Llama #3 plan=11a3038db7ff8d26 pp=4092d1223fb0ccd1 tg=40434c0aab5402f3 req=400def0b0c312ff4
+serve costmodel/two_gpu_cpu_nvme dense Llama #4 plan=a6c0ceca7264f17a pp=4092d1223fb0ccd1 tg=40434c0aab5402f3 req=400def0b0c312ff4
+serve costmodel/two_gpu_cpu_nvme dense Llama #5 plan=9d8a495db69d5e61 pp=4092d1223fb0ccd1 tg=40434c0aab5402f3 req=400def0b0c312ff4
+serve costmodel/two_gpu_cpu_nvme dense Llama #6 plan=4fad163e51ff8d98 pp=408e95c52c19ba31 tg=40292b41921237d8 req=402563869ce23dd9
+serve costmodel/two_gpu_cpu_nvme dense Llama #7 plan=2878d54ce089bca7 pp=405791d9c25399ee tg=40292b41921237d8 req=402f3432b6d82a32
+serve costmodel/two_gpu_cpu_nvme dense Llama #8 plan=a4e9407449ba83e1 pp=408e95c52c19ba31 tg=40292b41921237d8 req=402563869ce23dd9
+serve costmodel/two_gpu_cpu_nvme dense Llama #9 plan=dbba9a4002d7c534 pp=405791d9c25399ee tg=40292b41921237d8 req=402f3432b6d82a32
+serve costmodel/two_gpu_cpu_nvme dense Llama #10 plan=1801ead842ed7924 pp=408c43b5e1e60352 tg=401dc45767eee8f1 req=4031c430324ff929
+serve costmodel/two_gpu_cpu_nvme dense Llama #11 plan=b26fbe0286f8024b pp=404875075c90b1e0 tg=401dc45767eee8f1 req=403baae5c65c5b76
+serve costmodel/two_gpu_cpu_nvme dense Llama #12 plan=6e18f4385c7a0d29 pp=4089c745544ba74c tg=401e12ff6e147a29 req=4031a52dace2cb71
+serve costmodel/two_gpu_cpu_nvme dense Llama #13 plan=292050c84cd55a34 pp=404887ea23a22ec5 tg=401e12ff6e147a29 req=403b75da6e9e6412
+serve costmodel/two_gpu_cpu_nvme dense Llama #14 plan=1dcf9052a981584e pp=4089c745544ba74c tg=401e12ff6e147a29 req=4031a52dace2cb71
+serve costmodel/two_gpu_cpu_nvme dense Llama #15 plan=96cfdee949a43e19 pp=404887ea23a22ec5 tg=401e12ff6e147a29 req=403b75da6e9e6412
+serve costmodel/two_gpu_cpu_nvme dense Llama #16 plan=9ee20f5e00848efd pp=4086a4fc9ba3bb60 tg=401078e48acdba1b req=403fca0774a07fe9
+serve costmodel/two_gpu_cpu_nvme dense Llama #17 plan=270d00ee6799fb80 pp=4038f6f34178bf79 tg=401078e48acdba1b req=4049cbb9a23f7866
+serve costmodel/two_gpu_cpu_nvme dense Llama #18 plan=2c8a03dcb12790c1 pp=4086470198f82faa tg=401571455a0e9ada req=403898980b5477f5
+serve costmodel/two_gpu_cpu_nvme dense Llama #19 plan=27b6fa7b7e783e84 pp=4040944e08c9709e tg=401571455a0e9ada req=4043a8cdc0e85984
+serve costmodel/two_gpu_cpu_nvme dense Llama #20 plan=0db850c64c31fcfa pp=4086470198f82faa tg=401571455a0e9ada req=403898980b5477f5
+serve costmodel/two_gpu_cpu_nvme dense Llama #21 plan=01170502a026febd pp=4040944e08c9709e tg=401571455a0e9ada req=4043a8cdc0e85984
+serve costmodel/two_gpu_cpu_nvme dense Llama #22 plan=6de23fd48b040f45 pp=4082e382b0bd2533 tg=4006c5f75fdbc786 req=4046e7ef5b788355
+serve costmodel/two_gpu_cpu_nvme dense Llama #23 plan=40a92c72b1690af0 pp=4030c24f2d5ee417 tg=4006c5f75fdbc786 req=4052e10030a86188
+serve costmodel/two_gpu_cpu_nvme dense Builder #0 plan=2d7ff34007601634 pp=401ea8acdf7e61e3 tg=3ff5bc3ef2dd6e59 req=406420c49e600838
+serve costmodel/two_gpu_cpu_nvme dense Builder #1 plan=0a18120e3541b43e pp=401ea8acdf7e61e3 tg=3ff5bc3ef2dd6e59 req=406420c49e600838
+serve costmodel/two_gpu_cpu_nvme dense Builder #2 plan=50ffd8c7d48fa648 pp=400ea920af05b82c tg=3fe5d980114b72fe req=407410e00fd5965a
+serve costmodel/two_gpu_cpu_nvme dense Builder #3 plan=b340a8976f5ebd2a pp=400ea920af05b82c tg=3fe5d980114b72fe req=407410e00fd5965a
+serve costmodel/two_gpu_cpu_nvme moe Llama #0 plan=096a6a1d2270139f pp=40c3851dd373c0e7 tg=4058f245f935836e req=3ff557fc3a733e36
+serve costmodel/two_gpu_cpu_nvme moe Llama #1 plan=c1c0bd770fc15688 pp=40c3851dd373c0e7 tg=4058f245f935836e req=3ff557fc3a733e36
+serve costmodel/two_gpu_cpu_nvme moe Llama #2 plan=d11da01b8d082346 pp=40c3851dd373c0e7 tg=4058f245f935836e req=3ff557fc3a733e36
+serve costmodel/two_gpu_cpu_nvme moe Llama #3 plan=faf449f20d608a53 pp=40c3851dd373c0e7 tg=4058f245f935836e req=3ff557fc3a733e36
+serve costmodel/two_gpu_cpu_nvme moe Llama #4 plan=a6f367b3b6fc3093 pp=40c3851dd373c0e7 tg=4058f245f935836e req=3ff557fc3a733e36
+serve costmodel/two_gpu_cpu_nvme moe Llama #5 plan=05ee0277f2ac0e44 pp=40c3851dd373c0e7 tg=4058f245f935836e req=3ff557fc3a733e36
+serve costmodel/two_gpu_cpu_nvme moe Llama #6 plan=51fbefd32b68a734 pp=40b2a8391b03fd51 tg=40529e8d777f9a9e req=3ffd36a435fb88b4
+serve costmodel/two_gpu_cpu_nvme moe Llama #7 plan=da020247fe24a68f pp=409636c409d2cc07 tg=40529e8d777f9a9e req=4000a155cc3eb62a
+serve costmodel/two_gpu_cpu_nvme moe Llama #8 plan=5c2571883b2cfd07 pp=40b2a8391b03fd51 tg=40529e8d777f9a9e req=3ffd36a435fb88b4
+serve costmodel/two_gpu_cpu_nvme moe Llama #9 plan=36267fcef0aa1ae6 pp=409636c409d2cc07 tg=40529e8d777f9a9e req=4000a155cc3eb62a
+serve costmodel/two_gpu_cpu_nvme moe Llama #10 plan=0102390e16dd39f0 pp=40b2a8391b03fd51 tg=404db80d3eb544b6 req=400215ecd62978c5
+serve costmodel/two_gpu_cpu_nvme moe Llama #11 plan=91d587837d27dae3 pp=4087e72afffe4ffa tg=404db80d3eb544b6 req=400695421d94df7e
+serve costmodel/two_gpu_cpu_nvme moe Llama #12 plan=171968881c0d1b9c pp=40a88b0e311dc4ad tg=404db919122d3457 req=4002878e9236a15d
+serve costmodel/two_gpu_cpu_nvme moe Llama #13 plan=7db87e3be1c5a5df pp=4087ebd6c096ff73 tg=404db919122d3457 req=4006939b32e5e735
+serve costmodel/two_gpu_cpu_nvme moe Llama #14 plan=f3e702aa04419ecf pp=40a88b0e311dc4ad tg=404db919122d3457 req=4002878e9236a15d
+serve costmodel/two_gpu_cpu_nvme moe Llama #15 plan=7c21c351d08efa16 pp=4087ebd6c096ff73 tg=404db919122d3457 req=4006939b32e5e735
+serve costmodel/two_gpu_cpu_nvme moe Llama #16 plan=aab285b715dfb648 pp=40a88b0e311dc4ad tg=40452be262b6a567 req=40097cc4088e0a2f
+serve costmodel/two_gpu_cpu_nvme moe Llama #17 plan=4f8575b0677920d3 pp=4078db8670fefd78 tg=40452be262b6a567 req=40113db9eac91cee
+serve costmodel/two_gpu_cpu_nvme moe Llama #18 plan=45ee00f344e32eab pp=408632b84fd3516e tg=4033b214745c2f10 req=401ce0f59d37a1b9
+serve costmodel/two_gpu_cpu_nvme moe Llama #19 plan=939475537aea7c54 pp=406109ef0109b742 tg=4033b214745c2f10 req=402482944d5b7468
+serve costmodel/two_gpu_cpu_nvme moe Llama #20 plan=a690900a00409f12 pp=408632b84fd3516e tg=4033b214745c2f10 req=401ce0f59d37a1b9
+serve costmodel/two_gpu_cpu_nvme moe Llama #21 plan=6c10328c3f4729ef pp=406109ef0109b742 tg=4033b214745c2f10 req=402482944d5b7468
+serve costmodel/two_gpu_cpu_nvme moe Llama #22 plan=ca4d6ba574fd6827 pp=408632b84fd3516e tg=4025d91a14229ba6 req=4028e04b001eee19
+serve costmodel/two_gpu_cpu_nvme moe Llama #23 plan=0f3c8e21816a39b8 pp=40512462861e133f tg=4025d91a14229ba6 req=40332f2ca0aef832
+serve costmodel/two_gpu_cpu_nvme moe Builder #0 plan=bb6da39db2884cdd pp=40c0d5126bbfcc35 tg=4058f245f935836e req=3ff5797d947af188
+serve costmodel/two_gpu_cpu_nvme moe Builder #1 plan=232266f72dd3f149 pp=4086318fce58973a tg=404072369d91e179 req=4012731da6adf2bc
+serve costmodel/two_gpu_cpu_nvme moe Builder #2 plan=7eeb58c98adad758 pp=4070bb888f4b872b tg=404072369d91e179 req=40173739309b28f5
+serve costmodel/two_gpu_cpu_nvme moe Builder #3 plan=d1a241d0b7825f56 pp=4094b8552e57a74d tg=404072369d91e179 req=40111c40378d0ab2
+serve costmodel/two_gpu_cpu_nvme moe Builder #4 plan=275120127bccf09d pp=4086318fce58973a tg=4033b0b3b41e76af req=401ce2edd8310ffa
+serve costmodel/two_gpu_cpu_nvme moe Builder #5 plan=1315bcf7251937b7 pp=4086318fce58973a tg=404072369d91e179 req=4012731da6adf2bc
+serve costmodel/two_gpu_cpu_nvme moe Builder #6 plan=a22f8c0660f1d6c1 pp=407e6e26d30a66b8 tg=4038a35d29b5e055 req=4018fcb446bc0abd
+serve costmodel/two_gpu_cpu_nvme moe Builder #7 plan=2195a5137cb538e4 pp=40668b5418eb302b tg=4038a35d29b5e055 req=402011701a5b4698
+serve costmodel/two_gpu_cpu_nvme moe Builder #8 plan=a1d556fbe4159a76 pp=408ce8f9d1756ed0 tg=4038a35d29b5e055 req=4016fe9aea625635
+serve costmodel/two_gpu_cpu_nvme moe Builder #9 plan=a47d0d2b93560f97 pp=40669d7fd3e44587 tg=4038a35d29b5e055 req=40200ce0405e0fa0
+serve costmodel/two_gpu_cpu_nvme moe Builder #10 plan=2e0b77da0e03b465 pp=407e6e26d30a66b8 tg=402c1aa74d382cf9 req=4024523648805b4c
+serve costmodel/two_gpu_cpu_nvme moe Builder #11 plan=91a87a0657cf103b pp=407e6e26d30a66b8 tg=4038a35d29b5e055 req=4018fcb446bc0abd
+serve costmodel/two_gpu_cpu_nvme moe Builder #12 plan=9e1a5d3f465ca4df pp=407a4bcb23b2c89c tg=4035e4313aa759d9 req=401c417f96c316be
+serve costmodel/two_gpu_cpu_nvme moe Builder #13 plan=717ae43e3684fe02 pp=406361bbc7ea6023 tg=4035e4313aa759d9 req=40224c59db621fa6
+serve costmodel/two_gpu_cpu_nvme moe Builder #14 plan=3d9875e6e79e5bb8 pp=40891d0534d5a909 tg=4035e4313aa759d9 req=4019efc843ccfbf8
+serve costmodel/two_gpu_cpu_nvme moe Builder #15 plan=c82ebcee9f8fb3b1 pp=40636f56dd5ae43b tg=4035e4313aa759d9 req=402247ba46dcc204
+serve costmodel/two_gpu_cpu_nvme moe Builder #16 plan=6c6289a1d47123f3 pp=407a4bcb23b2c89c tg=4028959673f56ffd req=40274295f6b444f4
+serve costmodel/two_gpu_cpu_nvme moe Builder #17 plan=6281143f24e5e4b0 pp=407a4bcb23b2c89c tg=4035e4313aa759d9 req=401c417f96c316be
+serve costmodel/two_gpu_cpu_nvme moe Builder #18 plan=5d11f53678c335a3 pp=40789f985845925a tg=4034bc4bef25e10d req=401de3e53ec69cbe
+serve costmodel/two_gpu_cpu_nvme moe Builder #19 plan=34cba51ec6466478 pp=40621c87b4a94cb7 tg=4034bc4bef25e10d req=402369cebbe58c2e
+serve costmodel/two_gpu_cpu_nvme moe Builder #20 plan=bf815590cc3a1096 pp=408790e09dfc9843 tg=4034bc4bef25e10d req=401b685ef0824ed8
+serve costmodel/two_gpu_cpu_nvme moe Builder #21 plan=4ebe800ef86d9227 pp=40789f985845925a tg=402722b472e65ea7 req=4028bac5cdce39c8
+serve costmodel/two_gpu_cpu_nvme moe Builder #22 plan=7634f63686c28294 pp=40789f985845925a tg=4034bc4bef25e10d req=401de3e53ec69cbe
+serve costmodel/two_gpu_cpu_nvme moe Builder #23 plan=6cfdd67d4367a599 pp=40789f985845925a tg=4034bc4bef25e10d req=401de3e53ec69cbe
+search costmodel/wan_two_node dense p3 #0 plan=d59158fd742c7cf1 tok_s=407979cc0a54ee5a ttft=3f8f7e14085d7100
+search costmodel/wan_two_node dense p3 #1 plan=d6e4a1d0bab37031 tok_s=4033045d92ffc686 ttft=3fb94a3bdac3fdbe
+search costmodel/wan_two_node dense p3 #2 plan=04b06d1545fd51c8 tok_s=407979cc0a54ee5a ttft=3f8f7e14085d7100
+search costmodel/wan_two_node dense p3 #3 plan=b80c5bcdd86c2207 tok_s=4033045d92ffc686 ttft=3fb94a3bdac3fdbe
+search costmodel/wan_two_node dense p5 #0 plan=d59158fd742c7cf1 tok_s=407979cc0a54ee5a ttft=3f8f7e14085d7100
+search costmodel/wan_two_node dense p5 #1 plan=d6e4a1d0bab37031 tok_s=4033045d92ffc686 ttft=3fb94a3bdac3fdbe
+search costmodel/wan_two_node dense p5 #2 plan=04b06d1545fd51c8 tok_s=407979cc0a54ee5a ttft=3f8f7e14085d7100
+search costmodel/wan_two_node dense p5 #3 plan=b80c5bcdd86c2207 tok_s=4033045d92ffc686 ttft=3fb94a3bdac3fdbe
+search costmodel/wan_two_node moe p3 #0 plan=ac16ebdf915511a3 tok_s=4069c16fa9c402ef ttft=3f9f79922ad94740
+search costmodel/wan_two_node moe p3 #1 plan=8e7f4c2b52c012f3 tok_s=40322fde0f403303 ttft=3fbd38dde46ea16c
+search costmodel/wan_two_node moe p3 #2 plan=1d453b7c46afb9ea tok_s=4069c16fa9c402ef ttft=3f9f79922ad94740
+search costmodel/wan_two_node moe p3 #3 plan=326985e36a1566d9 tok_s=40322fde0f403303 ttft=3fbd38dde46ea16c
+search costmodel/wan_two_node moe p5 #0 plan=ac16ebdf915511a3 tok_s=4069c16fa9c402ef ttft=3f9f79922ad94740
+search costmodel/wan_two_node moe p5 #1 plan=8e7f4c2b52c012f3 tok_s=40322fde0f403303 ttft=3fbd38dde46ea16c
+search costmodel/wan_two_node moe p5 #2 plan=1d453b7c46afb9ea tok_s=4069c16fa9c402ef ttft=3f9f79922ad94740
+search costmodel/wan_two_node moe p5 #3 plan=326985e36a1566d9 tok_s=40322fde0f403303 ttft=3fbd38dde46ea16c
+search analysis/rtx3090_box dense p3 #0 plan=fffabd75b9406d18 tok_s=403914d6397186d4 ttft=3ff39186fa15dad0
+search analysis/rtx3090_box dense p3 #1 plan=6d341019e0868b62 tok_s=406613f2fe9c53ec ttft=3fbc1cbbc7d00de0
+search analysis/rtx3090_box dense p3 #2 plan=d59158fd742c7cf1 tok_s=4077e2c54894a3ac ttft=3f91bb6acefa7f40
+search analysis/rtx3090_box dense p3 #3 plan=a157f7a53d709966 tok_s=405c8495912d5426 ttft=3fcafb28ebb17380
+search analysis/rtx3090_box dense p5 #0 plan=fffabd75b9406d18 tok_s=403914d6397186d4 ttft=3ff39186fa15dad0
+search analysis/rtx3090_box dense p5 #1 plan=6d341019e0868b62 tok_s=406613f2fe9c53ec ttft=3fbc1cbbc7d00de0
+search analysis/rtx3090_box dense p5 #2 plan=d59158fd742c7cf1 tok_s=4077e2c54894a3ac ttft=3f91bb6acefa7f40
+search analysis/rtx3090_box dense p5 #3 plan=a157f7a53d709966 tok_s=405c8495912d5426 ttft=3fcafb28ebb17380
+search analysis/rtx3090_box moe p3 #0 plan=fc7790751ceccd14 tok_s=40290a66c70bb512 ttft=40039d58953586a0
+search analysis/rtx3090_box moe p3 #1 plan=4c69b155782798e9 tok_s=405608fdb15e7c0c ttft=3fcd31aad7d7e5a0
+search analysis/rtx3090_box moe p3 #2 plan=ac16ebdf915511a3 tok_s=406820c02a968b9b ttft=3fa1ba2d606d9000
+search analysis/rtx3090_box moe p3 #3 plan=49d060aa66980db3 tok_s=40514d028576f766 ttft=3fd50f3aefd0a918
+search analysis/rtx3090_box moe p5 #0 plan=fc7790751ceccd14 tok_s=40290a66c70bb512 ttft=40039d58953586a0
+search analysis/rtx3090_box moe p5 #1 plan=4c69b155782798e9 tok_s=405608fdb15e7c0c ttft=3fcd31aad7d7e5a0
+search analysis/rtx3090_box moe p5 #2 plan=ac16ebdf915511a3 tok_s=406820c02a968b9b ttft=3fa1ba2d606d9000
+search analysis/rtx3090_box moe p5 #3 plan=49d060aa66980db3 tok_s=40514d028576f766 ttft=3fd50f3aefd0a918
+serve analysis/rtx3090_box dense Llama #0 plan=1305edc786f4c5de pp=4090bbef519b98cd tg=40426986bd18e1ce req=400fa1d4b90cef44
+serve analysis/rtx3090_box dense Llama #1 plan=cd022590732d25fd pp=4090bbef519b98cd tg=40426986bd18e1ce req=400fa1d4b90cef44
+serve analysis/rtx3090_box dense Llama #2 plan=e733ccf88e738bdb pp=4090bbef519b98cd tg=40426986bd18e1ce req=400fa1d4b90cef44
+serve analysis/rtx3090_box dense Llama #3 plan=11a3038db7ff8d26 pp=4090bbef519b98cd tg=40426986bd18e1ce req=400fa1d4b90cef44
+serve analysis/rtx3090_box dense Llama #4 plan=a6c0ceca7264f17a pp=4090bbef519b98cd tg=40426986bd18e1ce req=400fa1d4b90cef44
+serve analysis/rtx3090_box dense Llama #5 plan=9d8a495db69d5e61 pp=4090bbef519b98cd tg=40426986bd18e1ce req=400fa1d4b90cef44
+serve analysis/rtx3090_box dense Llama #6 plan=4fad163e51ff8d98 pp=408be83c95a6f0b5 tg=402d275e0a4446b1 req=4022b56da7d3567b
+serve analysis/rtx3090_box dense Llama #7 plan=2878d54ce089bca7 pp=4058c871e58938b9 tg=402d275e0a4446b1 req=402be44743c0e188
+serve analysis/rtx3090_box dense Llama #8 plan=a4e9407449ba83e1 pp=408be83c95a6f0b5 tg=402d275e0a4446b1 req=4022b56da7d3567b
+serve analysis/rtx3090_box dense Llama #9 plan=dbba9a4002d7c534 pp=4058c871e58938b9 tg=402d275e0a4446b1 req=402be44743c0e188
+serve analysis/rtx3090_box dense Llama #10 plan=1801ead842ed7924 pp=408a136ada66cb7f tg=4021efc8b6aefc02 req=402dc5a767dac670
+serve analysis/rtx3090_box dense Llama #11 plan=b26fbe0286f8024b pp=4049e4be2b1c8e55 tg=4021efc8b6aefc02 req=403828ba10847e1e
+serve analysis/rtx3090_box dense Llama #12 plan=6e18f4385c7a0d29 pp=4087f252dd8d7adc tg=40222cfd68654a72 req=402d81770470d852
+serve analysis/rtx3090_box dense Llama #13 plan=292050c84cd55a34 pp=4049fc9c099c14ab tg=40222cfd68654a72 req=4037ef95c5eba37e
+serve analysis/rtx3090_box dense Llama #14 plan=1dcf9052a981584e pp=4087f252dd8d7adc tg=40222cfd68654a72 req=402d81770470d852
+serve analysis/rtx3090_box dense Llama #15 plan=96cfdee949a43e19 pp=4049fc9c099c14ab tg=40222cfd68654a72 req=4037ef95c5eba37e
+serve analysis/rtx3090_box dense Llama #16 plan=9ee20f5e00848efd pp=40855eedbf2054bc tg=40146cc013327d8b req=4039d0f5423fdc1f
+serve analysis/rtx3090_box dense Llama #17 plan=270d00ee6799fb80 pp=403a89214ff6c1ad tg=40146cc013327d8b req=40462e615199df18
+serve analysis/rtx3090_box dense Llama #18 plan=2c8a03dcb12790c1 pp=4084f86ef5fbf69f tg=401a68557a8d5bd9 req=403426c030872d15
+serve analysis/rtx3090_box dense Llama #19 plan=27b6fa7b7e783e84 pp=40419c0fe4168f88 tg=401a68557a8d5bd9 req=4040f683f4fb6b1c
+serve analysis/rtx3090_box dense Llama #20 plan=0db850c64c31fcfa pp=4084f86ef5fbf69f tg=401a68557a8d5bd9 req=403426c030872d15
+serve analysis/rtx3090_box dense Llama #21 plan=01170502a026febd pp=40419c0fe4168f88 tg=401a68557a8d5bd9 req=4040f683f4fb6b1c
+serve analysis/rtx3090_box dense Llama #22 plan=6de23fd48b040f45 pp=40821aaa7cdafd06 tg=400c8da9a4257cf8 req=40425f8b68492a83
+serve analysis/rtx3090_box dense Llama #23 plan=40a92c72b1690af0 pp=4031d6807c21981a tg=400c8da9a4257cf8 req=40502432cd78bf91
+serve analysis/rtx3090_box dense Builder #0 plan=2d7ff34007601634 pp=402059ed906622d8 tg=3ffbbd6f908bf937 req=40610e832c744214
+serve analysis/rtx3090_box dense Builder #1 plan=0a18120e3541b43e pp=402059ed906622d8 tg=3ffbbd6f908bf937 req=40610e832c744214
+serve analysis/rtx3090_box dense Builder #2 plan=50ffd8c7d48fa648 pp=40105a2f725aac1a tg=3febed27ebb295cc req=4070fe9e9de9d036
+serve analysis/rtx3090_box dense Builder #3 plan=b340a8976f5ebd2a pp=40105a2f725aac1a tg=3febed27ebb295cc req=4070fe9e9de9d036
+serve analysis/rtx3090_box moe Llama #0 plan=096a6a1d2270139f pp=40c1a4106d62f3f5 tg=4058a3077d60ffac req=3ff5b05a32ce2f50
+serve analysis/rtx3090_box moe Llama #1 plan=c1c0bd770fc15688 pp=40c1a4106d62f3f5 tg=4058a3077d60ffac req=3ff5b05a32ce2f50
+serve analysis/rtx3090_box moe Llama #2 plan=d11da01b8d082346 pp=40c1a4106d62f3f5 tg=4058a3077d60ffac req=3ff5b05a32ce2f50
+serve analysis/rtx3090_box moe Llama #3 plan=faf449f20d608a53 pp=40c1a4106d62f3f5 tg=4058a3077d60ffac req=3ff5b05a32ce2f50
+serve analysis/rtx3090_box moe Llama #4 plan=a6f367b3b6fc3093 pp=40c1a4106d62f3f5 tg=4058a3077d60ffac req=3ff5b05a32ce2f50
+serve analysis/rtx3090_box moe Llama #5 plan=05ee0277f2ac0e44 pp=40c1a4106d62f3f5 tg=4058a3077d60ffac req=3ff5b05a32ce2f50
+serve analysis/rtx3090_box moe Llama #6 plan=51fbefd32b68a734 pp=40b1c0dcf5e4712a tg=40538681cdca031d req=3ffc0653045812f0
+serve analysis/rtx3090_box moe Llama #7 plan=da020247fe24a68f pp=40971ebfdaea8465 tg=40538681cdca031d req=3fffc22f4ed705c6
+serve analysis/rtx3090_box moe Llama #8 plan=5c2571883b2cfd07 pp=40b1c0dcf5e4712a tg=40538681cdca031d req=3ffc0653045812f0
+serve analysis/rtx3090_box moe Llama #9 plan=36267fcef0aa1ae6 pp=40971ebfdaea8465 tg=40538681cdca031d req=3fffc22f4ed705c6
+serve analysis/rtx3090_box moe Llama #10 plan=0102390e16dd39f0 pp=40b1c0dcf5e4712a tg=40502c3e1fc36ead req=4000baf264662e6a
+serve analysis/rtx3090_box moe Llama #11 plan=91d587837d27dae3 pp=408928f79cfd2694 tg=40502c3e1fc36ead req=4004ea9d066d7571
+serve analysis/rtx3090_box moe Llama #12 plan=171968881c0d1b9c pp=40a7bf7efa3b4033 tg=40502e6b39a43262 req=40012b0e6465b309
+serve analysis/rtx3090_box moe Llama #13 plan=7db87e3be1c5a5df pp=408930a0fff650b8 tg=40502e6b39a43262 req=4004e6efed120818
+serve analysis/rtx3090_box moe Llama #14 plan=f3e702aa04419ecf pp=40a7bf7efa3b4033 tg=40502e6b39a43262 req=40012b0e6465b309
+serve analysis/rtx3090_box moe Llama #15 plan=7c21c351d08efa16 pp=408930a0fff650b8 tg=40502e6b39a43262 req=4004e6efed120818
+serve analysis/rtx3090_box moe Llama #16 plan=aab285b715dfb648 pp=40a7bf7efa3b4033 tg=404816334be345bd req=40069aa028d9fcee
+serve analysis/rtx3090_box moe Llama #17 plan=4f8575b0677920d3 pp=407a566b089a6df2 tg=404816334be345bd req=400ef9faab15ed36
+serve analysis/rtx3090_box moe Llama #18 plan=45ee00f344e32eab pp=40860805112d0b36 tg=4037dc36951927e8 req=40185cff9d53295e
+serve analysis/rtx3090_box moe Llama #19 plan=939475537aea7c54 pp=406225acc51f8cf3 tg=4037dc36951927e8 req=4021c858a964cf0e
+serve analysis/rtx3090_box moe Llama #20 plan=a690900a00409f12 pp=40860805112d0b36 tg=4037dc36951927e8 req=40185cff9d53295e
+serve analysis/rtx3090_box moe Llama #21 plan=6c10328c3f4729ef pp=406225acc51f8cf3 tg=4037dc36951927e8 req=4021c858a964cf0e
+serve analysis/rtx3090_box moe Llama #22 plan=ca4d6ba574fd6827 pp=40860805112d0b36 tg=402b1d4fb052710a req=402455da75580386
+serve analysis/rtx3090_box moe Llama #23 plan=0f3c8e21816a39b8 pp=4052455f005f6e9e tg=402b1d4fb052710a req=403072746335535c
+serve analysis/rtx3090_box moe Builder #0 plan=bb6da39db2884cdd pp=40bed52182959291 tg=4058a3077d60ffac req=3ff5d1db8cd5e2a2
+serve analysis/rtx3090_box moe Builder #1 plan=232266f72dd3f149 pp=408606e100027b89 tg=4043349933d7b2de req=40103c2e65c714b2
+serve analysis/rtx3090_box moe Builder #2 plan=7eeb58c98adad758 pp=4071c5f10115e006 tg=4043349933d7b2de req=401488094bafe1be
+serve analysis/rtx3090_box moe Builder #3 plan=d1a241d0b7825f56 pp=40946e687a7288ea tg=4043349933d7b2de req=400dcaa1ed4c5951
+serve analysis/rtx3090_box moe Builder #4 plan=275120127bccf09d pp=408606e100027b89 tg=4037d51ec6fee6ff req=401863890c758389
+serve analysis/rtx3090_box moe Builder #5 plan=1315bcf7251937b7 pp=408606e100027b89 tg=4043349933d7b2de req=40103c2e65c714b2
+serve analysis/rtx3090_box moe Builder #6 plan=a22f8c0660f1d6c1 pp=407e45ef578275f9 tg=403d6f807d7c8119 req=40159f41a6565f8c
+serve analysis/rtx3090_box moe Builder #7 plan=2195a5137cb538e4 pp=4067fc8b96c40c07 tg=403d6f807d7c8119 req=401c110c9e4a443a
+serve analysis/rtx3090_box moe Builder #8 plan=a1d556fbe4159a76 pp=408ca0b6c3f5764d tg=403d6f807d7c8119 req=4013a12849fcab04
+serve analysis/rtx3090_box moe Builder #9 plan=a47d0d2b93560f97 pp=4068111e99d212b1 tg=403d6f807d7c8119 req=401c07ecea4fd64a
+serve analysis/rtx3090_box moe Builder #10 plan=2e0b77da0e03b465 pp=407e45ef578275f9 tg=403148715a441208 req=4020ed24d02e02e8
+serve analysis/rtx3090_box moe Builder #11 plan=91a87a0657cf103b pp=407e45ef578275f9 tg=403d6f807d7c8119 req=40159f41a6565f8c
+serve analysis/rtx3090_box moe Builder #12 plan=9e1a5d3f465ca4df pp=407a2dbdb060b972 tg=403a5b33c35ab905 req=401850cb469e04f8
+serve analysis/rtx3090_box moe Builder #13 plan=717ae43e3684fe02 pp=4064a1b8a316ac12 tg=403a5b33c35ab905 req=401fd58e47977579
+serve analysis/rtx3090_box moe Builder #14 plan=3d9875e6e79e5bb8 pp=4088e66c10ae4255 tg=403a5b33c35ab905 req=4015ff13f3a7ea31
+serve analysis/rtx3090_box moe Builder #15 plan=c82ebcee9f8fb3b1 pp=4064b124294bdc0c tg=403a5b33c35ab905 req=401fcc4f1e8cba34
+serve analysis/rtx3090_box moe Builder #16 plan=6c6289a1d47123f3 pp=407a2dbdb060b972 tg=402e63dfb01bfd71 req=40234ad4f527a377
+serve analysis/rtx3090_box moe Builder #17 plan=6281143f24e5e4b0 pp=407a2dbdb060b972 tg=403a5b33c35ab905 req=401850cb469e04f8
+serve analysis/rtx3090_box moe Builder #18 plan=5d11f53678c335a3 pp=4078853c96056564 tg=40390bd3b44a0133 req=4019a99016c1d7ac
+serve analysis/rtx3090_box moe Builder #19 plan=34cba51ec6466478 pp=406348821cf15fb6 tg=40390bd3b44a0133 req=4020dbe78e1f070b
+serve analysis/rtx3090_box moe Builder #20 plan=bf815590cc3a1096 pp=408760c672f82f96 tg=40390bd3b44a0133 req=40172e09c87d89c6
+serve analysis/rtx3090_box moe Builder #21 plan=4ebe800ef86d9227 pp=4078853c96056564 tg=402ca8b582aef620 req=402479ad07a473c0
+serve analysis/rtx3090_box moe Builder #22 plan=7634f63686c28294 pp=4078853c96056564 tg=40390bd3b44a0133 req=4019a99016c1d7ac
+serve analysis/rtx3090_box moe Builder #23 plan=6cfdd67d4367a599 pp=4078853c96056564 tg=40390bd3b44a0133 req=4019a99016c1d7ac
+search planner/rtx3090_prior dense p3 #0 plan=fffabd75b9406d18 tok_s=4030bcbfc5860b3c ttft=40004e290ff5cf60
+search planner/rtx3090_prior dense p3 #1 plan=6d341019e0868b62 tok_s=406099880e47e3c2 ttft=3fc79a47d4d41868
+search planner/rtx3090_prior dense p3 #2 plan=d59158fd742c7cf1 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search planner/rtx3090_prior dense p3 #3 plan=a157f7a53d709966 tok_s=405460b8accabe71 ttft=3fd68e8fa1b9e0d0
+search planner/rtx3090_prior dense p5 #0 plan=fffabd75b9406d18 tok_s=4030bcbfc5860b3c ttft=40004e290ff5cf60
+search planner/rtx3090_prior dense p5 #1 plan=6d341019e0868b62 tok_s=406099880e47e3c2 ttft=3fc79a47d4d41868
+search planner/rtx3090_prior dense p5 #2 plan=d59158fd742c7cf1 tok_s=407493ae734d4aea ttft=3f9f652a019906c0
+search planner/rtx3090_prior dense p5 #3 plan=a157f7a53d709966 tok_s=405460b8accabe71 ttft=3fd68e8fa1b9e0d0
+search planner/rtx3090_prior moe p3 #0 plan=fc7790751ceccd14 tok_s=4020b3b0532ad9dd ttft=4010583b7173bcb0
+search planner/rtx3090_prior moe p3 #1 plan=4c69b155782798e9 tok_s=40505c6a5531e48c ttft=3fd886b7662408c0
+search planner/rtx3090_prior moe p3 #2 plan=ac16ebdf915511a3 tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search planner/rtx3090_prior moe p3 #3 plan=49d060aa66980db3 tok_s=4048fa2afbd2f6ce ttft=3fe1a4118eb9eea0
+search planner/rtx3090_prior moe p5 #0 plan=fc7790751ceccd14 tok_s=4020b3b0532ad9dd ttft=4010583b7173bcb0
+search planner/rtx3090_prior moe p5 #1 plan=4c69b155782798e9 tok_s=40505c6a5531e48c ttft=3fd886b7662408c0
+search planner/rtx3090_prior moe p5 #2 plan=ac16ebdf915511a3 tok_s=4064b44dd979785e ttft=3faf6d1d27771206
+search planner/rtx3090_prior moe p5 #3 plan=49d060aa66980db3 tok_s=4048fa2afbd2f6ce ttft=3fe1a4118eb9eea0
+serve planner/rtx3090_prior dense Llama #0 plan=1305edc786f4c5de pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve planner/rtx3090_prior dense Llama #1 plan=cd022590732d25fd pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve planner/rtx3090_prior dense Llama #2 plan=e733ccf88e738bdb pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve planner/rtx3090_prior dense Llama #3 plan=11a3038db7ff8d26 pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve planner/rtx3090_prior dense Llama #4 plan=a6c0ceca7264f17a pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve planner/rtx3090_prior dense Llama #5 plan=9d8a495db69d5e61 pp=4083060e3b1d8470 tg=4041497be0f34217 req=40122c4a4c3b875a
+serve planner/rtx3090_prior dense Llama #6 plan=4fad163e51ff8d98 pp=40809c675394c09d tg=40297333505fec6f req=40260b5857235fe2
+serve planner/rtx3090_prior dense Llama #7 plan=2878d54ce089bca7 pp=40521800692a470c tg=40297333505fec6f req=40312219859e4a14
+serve planner/rtx3090_prior dense Llama #8 plan=a4e9407449ba83e1 pp=40809c675394c09d tg=40297333505fec6f req=40260b5857235fe2
+serve planner/rtx3090_prior dense Llama #9 plan=dbba9a4002d7c534 pp=40521800692a470c tg=40297333505fec6f req=40312219859e4a14
+serve planner/rtx3090_prior dense Llama #10 plan=1801ead842ed7924 pp=407f77ccdd8fcbbb tg=401ec0d4c47eea1e req=4031aa61dd2dd781
+serve planner/rtx3090_prior dense Llama #11 plan=b26fbe0286f8024b pp=404325b7ba84aa2a tg=401ec0d4c47eea1e req=403e04c6a01038ce
+serve planner/rtx3090_prior dense Llama #12 plan=6e18f4385c7a0d29 pp=407d7f6e6c0bd1aa tg=401f318eb8584afd req=40317f9b05647f80
+serve planner/rtx3090_prior dense Llama #13 plan=292050c84cd55a34 pp=40433cf3e9bbe792 tg=401f318eb8584afd req=403db876b5263632
+serve planner/rtx3090_prior dense Llama #14 plan=1dcf9052a981584e pp=407d7f6e6c0bd1aa tg=401f318eb8584afd req=40317f9b05647f80
+serve planner/rtx3090_prior dense Llama #15 plan=96cfdee949a43e19 pp=40433cf3e9bbe792 tg=401f318eb8584afd req=403db876b5263632
+serve planner/rtx3090_prior dense Llama #16 plan=9ee20f5e00848efd pp=407ad75226dc2091 tg=40114d25cfab65cf req=403ec906689ccea0
+serve planner/rtx3090_prior dense Llama #17 plan=270d00ee6799fb80 pp=4033c5011f261ccf tg=40114d25cfab65cf req=404bbee8750509d2
+serve planner/rtx3090_prior dense Llama #18 plan=2c8a03dcb12790c1 pp=407a864113e73fc3 tg=40167cc50012a1e1 req=4037f989df374f0f
+serve planner/rtx3090_prior dense Llama #19 plan=27b6fa7b7e783e84 pp=403a340523740a85 tg=40167cc50012a1e1 req=40452769f2571128
+serve planner/rtx3090_prior dense Llama #20 plan=0db850c64c31fcfa pp=407a864113e73fc3 tg=40167cc50012a1e1 req=4037f989df374f0f
+serve planner/rtx3090_prior dense Llama #21 plan=01170502a026febd pp=403a340523740a85 tg=40167cc50012a1e1 req=40452769f2571128
+serve planner/rtx3090_prior dense Llama #22 plan=6de23fd48b040f45 pp=4077668298c139b3 tg=400812a9b02cfadf req=4045f3d57a05e2e1
+serve planner/rtx3090_prior dense Llama #23 plan=40a92c72b1690af0 pp=402aa5e6a0e065a9 tg=400812a9b02cfadf req=40543db6cd00fb9f
+serve planner/rtx3090_prior dense Builder #0 plan=2d7ff34007601634 pp=401887510d987d36 tg=3ff745a1446a277f req=40656fe93295e81f
+serve planner/rtx3090_prior dense Builder #1 plan=0a18120e3541b43e pp=401887510d987d36 tg=3ff745a1446a277f req=40656fe93295e81f
+serve planner/rtx3090_prior dense Builder #2 plan=50ffd8c7d48fa648 pp=4008877d87453655 tg=3fe759b6e548eedd req=407566601042d700
+serve planner/rtx3090_prior dense Builder #3 plan=b340a8976f5ebd2a pp=4008877d87453655 tg=3fe759b6e548eedd req=407566601042d700
+serve planner/rtx3090_prior moe Llama #0 plan=096a6a1d2270139f pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve planner/rtx3090_prior moe Llama #1 plan=c1c0bd770fc15688 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve planner/rtx3090_prior moe Llama #2 plan=d11da01b8d082346 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve planner/rtx3090_prior moe Llama #3 plan=faf449f20d608a53 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve planner/rtx3090_prior moe Llama #4 plan=a6f367b3b6fc3093 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve planner/rtx3090_prior moe Llama #5 plan=05ee0277f2ac0e44 pp=40b5969608f62d12 tg=405c43044c21db28 req=3ff3993f8f326b8d
+serve planner/rtx3090_prior moe Llama #6 plan=51fbefd32b68a734 pp=40a89a1e3cc13bb3 tg=4054caf02021e1f1 req=3ffb39b44aad6dc1
+serve planner/rtx3090_prior moe Llama #7 plan=da020247fe24a68f pp=4090c2bd0ec1aeb4 tg=4054caf02021e1f1 req=4000216577db8cd7
+serve planner/rtx3090_prior moe Llama #8 plan=5c2571883b2cfd07 pp=40a89a1e3cc13bb3 tg=4054caf02021e1f1 req=3ffb39b44aad6dc1
+serve planner/rtx3090_prior moe Llama #9 plan=36267fcef0aa1ae6 pp=4090c2bd0ec1aeb4 tg=4054caf02021e1f1 req=4000216577db8cd7
+serve planner/rtx3090_prior moe Llama #10 plan=0102390e16dd39f0 pp=40a89a1e3cc13bb3 tg=4050702d615dc88b req=4000dfcb34cfb005
+serve planner/rtx3090_prior moe Llama #11 plan=91d587837d27dae3 pp=4082858a82855af3 tg=4050702d615dc88b req=40067bfc83099820
+serve planner/rtx3090_prior moe Llama #12 plan=171968881c0d1b9c pp=40a138366da1cdd4 tg=4050768558975ec3 req=4001688cb6232577
+serve planner/rtx3090_prior moe Llama #13 plan=7db87e3be1c5a5df pp=408291236eb61670 tg=4050768558975ec3 req=400671ab3870e4b8
+serve planner/rtx3090_prior moe Llama #14 plan=f3e702aa04419ecf pp=40a138366da1cdd4 tg=4050768558975ec3 req=4001688cb6232577
+serve planner/rtx3090_prior moe Llama #15 plan=7c21c351d08efa16 pp=408291236eb61670 tg=4050768558975ec3 req=400671ab3870e4b8
+serve planner/rtx3090_prior moe Llama #16 plan=aab285b715dfb648 pp=40a138366da1cdd4 tg=4047321b4acc1354 req=4007ee6ed51517bd
+serve planner/rtx3090_prior moe Llama #17 plan=4f8575b0677920d3 pp=407392e2e39c50e4 tg=4047321b4acc1354 req=4011936ca7667da4
+serve planner/rtx3090_prior moe Llama #18 plan=45ee00f344e32eab pp=40813763e6117272 tg=40355d3f406925ae req=401baec32f0fbba8
+serve planner/rtx3090_prior moe Llama #19 plan=939475537aea7c54 pp=405b32d1cce05162 tg=40355d3f406925ae req=402565192f9194e0
+serve planner/rtx3090_prior moe Llama #20 plan=a690900a00409f12 pp=40813763e6117272 tg=40355d3f406925ae req=401baec32f0fbba8
+serve planner/rtx3090_prior moe Llama #21 plan=6c10328c3f4729ef pp=405b32d1cce05162 tg=40355d3f406925ae req=402565192f9194e0
+serve planner/rtx3090_prior moe Llama #22 plan=ca4d6ba574fd6827 pp=40813763e6117272 tg=4027858feb395dd7 req=4027a034c5f2c93e
+serve planner/rtx3090_prior moe Llama #23 plan=0f3c8e21816a39b8 pp=404b652b8c485227 tg=4027858feb395dd7 req=40343a6f288ddb5c
+serve planner/rtx3090_prior moe Builder #0 plan=bb6da39db2884cdd pp=40b429f6536b8f4e tg=405c43044c21db28 req=3ff3b40d70d22e36
+serve planner/rtx3090_prior moe Builder #1 plan=232266f72dd3f149 pp=40814803d14522aa tg=4041f6a7ac5e899f req=4011f45d2e5425cc
+serve planner/rtx3090_prior moe Builder #2 plan=7eeb58c98adad758 pp=406a981b684571b1 tg=4041f6a7ac5e899f req=4017e09658ae51c7
+serve planner/rtx3090_prior moe Builder #3 plan=d1a241d0b7825f56 pp=408f4dd8324c4ac7 tg=4041f6a7ac5e899f req=40104bab7caa6fe6
+serve planner/rtx3090_prior moe Builder #4 plan=275120127bccf09d pp=40814803d14522aa tg=40354d3ecb47fc2f req=401bbd305cbf1136
+serve planner/rtx3090_prior moe Builder #5 plan=1315bcf7251937b7 pp=40814803d14522aa tg=4041f6a7ac5e899f req=4011f45d2e5425cc
+serve planner/rtx3090_prior moe Builder #6 plan=a22f8c0660f1d6c1 pp=4077e5bee2a1d783 tg=403acb76cdf59302 req=401876e43585a4a0
+serve planner/rtx3090_prior moe Builder #7 plan=2195a5137cb538e4 pp=4061fa1dff655036 tg=403acb76cdf59302 req=4020ac9ef1d77822
+serve planner/rtx3090_prior moe Builder #8 plan=a1d556fbe4159a76 pp=4086370ecc807f98 tg=403acb76cdf59302 req=4015fd3755dd15c8
+serve planner/rtx3090_prior moe Builder #9 plan=a47d0d2b93560f97 pp=4062038bc49f3ab9 tg=403acb76cdf59302 req=4020a8e4df2192f8
+serve planner/rtx3090_prior moe Builder #10 plan=2e0b77da0e03b465 pp=4077e5bee2a1d783 tg=402e4f345749cfeb req=402392107d9302de
+serve planner/rtx3090_prior moe Builder #11 plan=91a87a0657cf103b pp=4077e5bee2a1d783 tg=403acb76cdf59302 req=401876e43585a4a0
+serve planner/rtx3090_prior moe Builder #12 plan=9e1a5d3f465ca4df pp=4074b404a1c0bec8 tg=4037c5f92e80929a req=401bb827b91e6409
+serve planner/rtx3090_prior moe Builder #13 plan=717ae43e3684fe02 pp=405ef0f236a1e9a8 tg=4037c5f92e80929a req=40230ac8d4979fc0
+serve planner/rtx3090_prior moe Builder #14 plan=3d9875e6e79e5bb8 pp=4083661cd63d9d75 tg=4037c5f92e80929a req=4018d5fd427668b7
+serve planner/rtx3090_prior moe Builder #15 plan=c82ebcee9f8fb3b1 pp=405eff23753c5194 tg=4037c5f92e80929a req=402306ff075993ec
+serve planner/rtx3090_prior moe Builder #16 plan=6c6289a1d47123f3 pp=4074b404a1c0bec8 tg=402a7cd501f17012 req=40266bcca52cc001
+serve planner/rtx3090_prior moe Builder #17 plan=6281143f24e5e4b0 pp=4074b404a1c0bec8 tg=4037c5f92e80929a req=401bb827b91e6409
+serve planner/rtx3090_prior moe Builder #18 plan=5d11f53678c335a3 pp=407367feb4ab2046 tg=40368126f8e06a89 req=401d58c97aeac3be
+serve planner/rtx3090_prior moe Builder #19 plan=34cba51ec6466478 pp=405cecbf6103fb1f tg=40368126f8e06a89 req=402439ddc5f7b390
+serve planner/rtx3090_prior moe Builder #20 plan=bf815590cc3a1096 pp=40823e198413079a tg=40368126f8e06a89 req=401a426038c31230
+serve planner/rtx3090_prior moe Builder #21 plan=4ebe800ef86d9227 pp=407367feb4ab2046 tg=4028eaaea2452ea3 req=4027d8aab8f99e93
+serve planner/rtx3090_prior moe Builder #22 plan=7634f63686c28294 pp=407367feb4ab2046 tg=40368126f8e06a89 req=401d58c97aeac3be
+serve planner/rtx3090_prior moe Builder #23 plan=6cfdd67d4367a599 pp=407367feb4ab2046 tg=40368126f8e06a89 req=401d58c97aeac3be
+search planner/cpu_only dense p3 #0 plan=fffabd75b9406d18 tok_s=4030bae2a4acba7c ttft=400875766d245aa8
+search planner/cpu_only dense p5 #0 plan=fffabd75b9406d18 tok_s=4030bae2a4acba7c ttft=400875766d245aa8
+search planner/cpu_only moe p3 #0 plan=fc7790751ceccd14 tok_s=4020b2c2b77e974a ttft=4018847594c76ce0
+search planner/cpu_only moe p5 #0 plan=fc7790751ceccd14 tok_s=4020b2c2b77e974a ttft=4018847594c76ce0
+serve profiler/two_gpu_host dense Llama #0 plan=1305edc786f4c5de pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #1 plan=cd022590732d25fd pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #2 plan=e733ccf88e738bdb pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #3 plan=11a3038db7ff8d26 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #4 plan=a6c0ceca7264f17a pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #5 plan=9d8a495db69d5e61 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #6 plan=4fad163e51ff8d98 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #7 plan=2878d54ce089bca7 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #8 plan=a4e9407449ba83e1 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #9 plan=dbba9a4002d7c534 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #10 plan=1801ead842ed7924 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #11 plan=b26fbe0286f8024b pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #12 plan=6e18f4385c7a0d29 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #13 plan=292050c84cd55a34 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #14 plan=1dcf9052a981584e pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #15 plan=96cfdee949a43e19 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #16 plan=9ee20f5e00848efd pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #17 plan=270d00ee6799fb80 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #18 plan=2c8a03dcb12790c1 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #19 plan=27b6fa7b7e783e84 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #20 plan=0db850c64c31fcfa pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #21 plan=01170502a026febd pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #22 plan=6de23fd48b040f45 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Llama #23 plan=40a92c72b1690af0 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Builder #0 plan=2d7ff34007601634 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Builder #1 plan=0a18120e3541b43e pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Builder #2 plan=50ffd8c7d48fa648 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host dense Builder #3 plan=b340a8976f5ebd2a pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #0 plan=096a6a1d2270139f pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #1 plan=c1c0bd770fc15688 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #2 plan=d11da01b8d082346 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #3 plan=faf449f20d608a53 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #4 plan=a6f367b3b6fc3093 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #5 plan=05ee0277f2ac0e44 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #6 plan=51fbefd32b68a734 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #7 plan=da020247fe24a68f pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #8 plan=5c2571883b2cfd07 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #9 plan=36267fcef0aa1ae6 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #10 plan=0102390e16dd39f0 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #11 plan=91d587837d27dae3 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #12 plan=171968881c0d1b9c pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #13 plan=7db87e3be1c5a5df pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #14 plan=f3e702aa04419ecf pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #15 plan=7c21c351d08efa16 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #16 plan=aab285b715dfb648 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #17 plan=4f8575b0677920d3 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #18 plan=45ee00f344e32eab pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #19 plan=939475537aea7c54 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #20 plan=a690900a00409f12 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #21 plan=6c10328c3f4729ef pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #22 plan=ca4d6ba574fd6827 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Llama #23 plan=0f3c8e21816a39b8 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #0 plan=bb6da39db2884cdd pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #1 plan=232266f72dd3f149 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #2 plan=7eeb58c98adad758 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #3 plan=d1a241d0b7825f56 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #4 plan=275120127bccf09d pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #5 plan=1315bcf7251937b7 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #6 plan=a22f8c0660f1d6c1 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #7 plan=2195a5137cb538e4 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #8 plan=a1d556fbe4159a76 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #9 plan=a47d0d2b93560f97 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #10 plan=2e0b77da0e03b465 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #11 plan=91a87a0657cf103b pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #12 plan=9e1a5d3f465ca4df pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #13 plan=717ae43e3684fe02 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #14 plan=3d9875e6e79e5bb8 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #15 plan=c82ebcee9f8fb3b1 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #16 plan=6c6289a1d47123f3 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #17 plan=6281143f24e5e4b0 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #18 plan=5d11f53678c335a3 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #19 plan=34cba51ec6466478 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #20 plan=bf815590cc3a1096 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #21 plan=4ebe800ef86d9227 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #22 plan=7634f63686c28294 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000
+serve profiler/two_gpu_host moe Builder #23 plan=6cfdd67d4367a599 pp=7ff8000000000000 tg=7ff8000000000000 req=7ff8000000000000

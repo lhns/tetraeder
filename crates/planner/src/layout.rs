@@ -335,6 +335,50 @@ pub mod fixtures {
         (meta, t)
     }
 
+    /// Qwen3-235B-A22B Q4_K_M shape (ADR 0091 exit test): 94 layers, 128 experts of 1536, top 8,
+    /// 4 kv heads of 128, `n_embd` 4096. `ffn_down_exps` is Q6_K in the layers llama.cpp's
+    /// `use_more_bits` picks (the first eighth, the last eighth, every third between), which
+    /// brings the file to about 142 GB; the rest is Q4_K.
+    pub fn moe_235b_tensors() -> (ModelMeta, Vec<TensorRec>) {
+        let (e, v, ex, q, kv, ne, nl) =
+            (4096u64, 151_936u64, 1536u64, 8192u64, 512u64, 128u64, 94u64);
+        let meta = ModelMeta {
+            model: "qwen3-235b-a22b".into(),
+            arch: "qwen3moe".into(),
+            n_layer: nl as u32,
+            n_embd: e as u32,
+            n_head: 64,
+            n_head_kv: 4,
+            head_dim: 128,
+            n_expert: ne as u32,
+            n_expert_used: 8,
+        };
+        let more_bits = |n: u64| n < nl / 8 || n >= 7 * nl / 8 || (n - nl / 8) % 3 == 2;
+        let mut t = vec![rec("token_embd.weight", "Q4_K", &[e, v])];
+        for n in 0..nl {
+            let b = |s: &str| format!("blk.{n}.{s}.weight");
+            t.push(rec(&b("attn_norm"), "F32", &[e]));
+            t.push(rec(&b("attn_q"), "Q4_K", &[e, q]));
+            t.push(rec(&b("attn_k"), "Q4_K", &[e, kv]));
+            t.push(rec(&b("attn_v"), "Q4_K", &[e, kv]));
+            t.push(rec(&b("attn_output"), "Q4_K", &[q, e]));
+            t.push(rec(&b("ffn_norm"), "F32", &[e]));
+            t.push(rec(&b("ffn_gate_inp"), "F32", &[e, ne]));
+            t.push(rec(&b("ffn_gate_exps"), "Q4_K", &[e, ex, ne]));
+            t.push(rec(&b("ffn_up_exps"), "Q4_K", &[e, ex, ne]));
+            let down = if more_bits(n) { "Q6_K" } else { "Q4_K" };
+            t.push(rec(&b("ffn_down_exps"), down, &[ex, e, ne]));
+        }
+        t.push(rec("output_norm.weight", "F32", &[e]));
+        t.push(rec("output.weight", "Q6_K", &[e, v]));
+        (meta, t)
+    }
+
+    pub fn moe_235b() -> ModelLayout {
+        let (m, t) = moe_235b_tensors();
+        build_layout(&m, &t).unwrap()
+    }
+
     pub fn dense() -> ModelLayout {
         let (m, t) = dense_tensors();
         build_layout(&m, &t).unwrap()

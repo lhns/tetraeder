@@ -7,6 +7,7 @@
 //! - [`validate`] / [`validate_partial`]: checks against hardware, model, phase and hints;
 //!   [`validate`] returns the [`Expanded`] form.
 //! - [`Topology`]: ranks and stages of a valid plan, and the slicing rule (ADR 0069, 0070).
+//! - [`segments`]: the per-node parts of a replica across nodes (ADR 0091).
 //! - [`diff`] and [`MigrationDag`]: what changes between two plans and in which order.
 
 mod diff;
@@ -19,6 +20,7 @@ mod model;
 mod phase;
 mod plan;
 mod quality;
+mod segment;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 mod topology;
@@ -42,5 +44,6 @@ pub use quality::{
     EstimateError, GroupEntry, QUALITY_SCHEMA, QualityError, QualityGroup, QualityIssue,
     QualityProfile,
 };
+pub use segment::{Segment, segment_plan, segments};
 pub use topology::{RankId, RankSpec, StageSpec, Topology, block_slice, micro_batch_sizes};
 pub use validate::{At, Context, Issue, validate, validate_partial};

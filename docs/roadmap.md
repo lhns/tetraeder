@@ -345,7 +345,6 @@ flowchart TB
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
-| Plans and predictions across nodes | ○ next | The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091). |
 | Node certificates and trust rules | ⛔ blocked | Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20). |
 | Node list, health and probes | ⛔ blocked | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). |
 | Nodes join and leave live | ⛔ blocked | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). |
@@ -369,7 +368,6 @@ flowchart TB
 
 **ci**
 
-- `cluster-planner`: Plans and predictions across nodes
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
 **box-later**
@@ -417,7 +415,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 112 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 113 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -801,6 +799,7 @@ Generated on 2026-11-24.
 - `bench-strata-q36`: Strata against llama-server on Qwen3.6 (✔ done · unrated). One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085).
 - `cluster-owner-phase6-design`: Owner accepts the Phase 6 design (✔ done · n/a). The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; mDNS in or out of M3; the other scope cuts).
 - `cluster-owner-transport`: Owner picks the network transport (✔ done · n/a). The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links.
+- `cluster-planner`: Plans and predictions across nodes (✔ done · unrated). The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091).
 - `cluster-transport`: Transport between machines (✔ done · unrated). Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16).
 - `cluster-transport-wan`: Transport latency between two boxes (✔ done · unrated). Measured QUIC, TCP with TLS and plain TCP between two rented boxes (Connecticut and Germany, 90 ms), on one host and on Linux loopback; ADR 0023 holds the numbers, and no same-datacenter pair on different hosts was on offer.
 - `memory-kv-auto`: Planner picks the KV format (✔ done · unrated). serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.
@@ -851,5 +850,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (20 done, 3 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (33 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (4 done, 1 next, 8 blocked, 1 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (5 done, 8 blocked, 1 parked)
 <!-- END GENERATED: tracks -->
