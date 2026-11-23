@@ -1,0 +1,102 @@
+{
+  "label": "q36-default-r2-c1",
+  "base_url": "http://127.0.0.1:18080",
+  "model": "qwen36",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 512,
+    "max_tokens": 128,
+    "concurrency": 1,
+    "requests": 8,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 0
+  },
+  "started": "2026-11-23T22:36:28",
+  "finished": "2026-11-23T22:36:28",
+  "results": [
+    {
+      "ttft_s": 0.19661787152290344,
+      "total_s": 1.2141367122530937,
+      "completion_tokens": 128,
+      "prompt_tokens": 410,
+      "usage_from": "usage",
+      "decode_tps": 124.96184406047733,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.1676410809159279,
+      "total_s": 1.1868032068014145,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 124.7339549547252,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.16819333285093307,
+      "total_s": 1.1868773810565472,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 124.82536938063862,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.16589348018169403,
+      "total_s": 1.1714555025100708,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 126.42530146720652,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.1712939515709877,
+      "total_s": 1.1852571666240692,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 125.34724082274401,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.1527196764945984,
+      "total_s": 1.1443550139665604,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 128.17461773353077,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.16025909408926964,
+      "total_s": 1.1519317626953125,
+      "completion_tokens": 128,
+      "prompt_tokens": 409,
+      "usage_from": "usage",
+      "decode_tps": 128.15877758175802,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.160185307264328,
+      "total_s": 1.1546198017895222,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 127.84479627382775,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    }
+  ],
+  "summary": {
+    "requests": 8,
+    "errors": 0,
+    "wall_s": 9.395922064781189,
+    "completion_tokens": 1024,
+    "prompt_tokens_median": 407.0,
+    "ttft_median_s": 0.16676728054881096,
+    "ttft_p90_s": 0.19661787152290344,
+    "decode_tps_median": 125.88627114497527,
+    "throughput_tps": 108.98344972850164
+  }
+}

@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 45 rated nodes are confirmed by the owner.
+0 of 46 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `planner-ep-prefill-recheck`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-regression-gate`, `planner-ep-prefill-recheck`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -340,7 +340,6 @@ flowchart TB
 | Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
-| Regression gate on final main | ○ next | One box session pairs this morning's build (f68d2a0) against main on the 30B and 8B at c1 and c4 with TTFT, under the 0.98 rule, and runs the conformance suite on CUDA, the Qwen3.6 default-flag rerun and the paired runs for kv auto and the disk prefix tier. |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
@@ -379,7 +378,6 @@ flowchart TB
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
 - `bench-235b-stream-predict`: Predict the 235B on one box
-- `bench-regression-gate`: Regression gate on final main
 
 **cluster**
 
@@ -417,13 +415,13 @@ _The queue is empty._
 <!-- BEGIN GENERATED: timeline -->
 [The timeline](roadmap/timeline.md) shows every dated node as a bar from its start to its end.
 
-Generated on 2026-11-23.
+Generated on 2026-11-24.
 <!-- END GENERATED: timeline -->
 
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 110 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 111 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -821,6 +819,7 @@ Generated on 2026-11-23.
 - `serving-parity-sampling`: Sampler parity with llama-server (✔ done · successful). The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A).
 - `serving-recurrent-reuse`: Recurrent models break slot reuse (✔ fixed). A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture.
 - `serving-strata-owner-scope`: Which Strata model families to add (✔ done · n/a). The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085).
+- `bench-regression-gate`: Regression gate on final main (✔ done · mixed). One A100 box session paired this morning's build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay).
 
 </details>
 
@@ -853,7 +852,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 30 nodes (20 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (32 done, 3 next, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (33 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (3 done, 2 next, 8 blocked, 1 parked)
 <!-- END GENERATED: tracks -->

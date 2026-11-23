@@ -1,0 +1,43 @@
+[2m2026-11-23T22:36:01.390058Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_norm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390165Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.post_attention_norm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390178Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_q.weight (size = 17825792 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390184Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_k.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390190Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_v.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390203Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_output.weight (size = 8912896 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390209Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_q_norm.weight (size = 1024 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390215Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_k_norm.weight (size = 1024 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390221Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_gate_inp.weight (size = 1048576 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390227Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_down_exps.weight (size = 184549376 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390236Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_gate_exps.weight (size = 150994944 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390242Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_up_exps.weight (size = 150994944 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390249Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_gate_inp_shexp.weight (size = 4096 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390255Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_gate_shexp.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390262Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_up_shexp.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390268Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_down_shexp.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390275Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.nextn.eh_proj.weight (size = 8912896 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390281Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.nextn.enorm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390287Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.nextn.hnorm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T22:36:01.390300Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.nextn.shared_head_norm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T22:36:07.561507Z[0m [32m INFO[0m [2mtetraeder_model::snapshot_pool[0m[2m:[0m snapshot buffer pool [3mspares[0m[2m=[0m2 [3mthp[0m[2m=[0mfalse
+listening on http://127.0.0.1:18080
+[2m2026-11-23T22:36:09.472334Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:11.752386Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:11.916720Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:11.972018Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:12.033903Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:14.109506Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:14.271626Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:14.331532Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:14.412093Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:16.554773Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:16.719419Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:16.777601Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:16.856006Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:19.304967Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:20.490980Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:21.677981Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:22.864035Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:24.041963Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:25.208263Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:26.356203Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 4 tokens not reused, the sequence is cleared: the memory cannot drop a suffix
+[2m2026-11-23T22:36:27.509062Z[0m [33m WARN[0m [2mtetraeder_scheduler::scheduler[0m[2m:[0m prefix of 3 tokens not reused, the sequence is cleared: the memory cannot drop a suffix

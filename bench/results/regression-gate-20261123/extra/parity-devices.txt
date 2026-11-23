@@ -1,0 +1,3 @@
+      6 W resolve_fused_ops: layer 0 is assigned to device CUDA0 but Flash Attention is assigned to device CPU (usually due to missing support)
+      2 [2m2026-11-23T22:35:01.536497Z[0m [33m WARN[0m [2mllama[0m[2m:[0m resolve_fused_ops: layer 0 is assigned to device CUDA0 but Flash Attention is assigned to device CPU (usually due to missing support)
+      2 [2m2026-11-23T22:34:59.624273Z[0m [33m WARN[0m [2mllama[0m[2m:[0m resolve_fused_ops: layer 0 is assigned to device CUDA0 but Flash Attention is assigned to device CPU (usually due to missing support)

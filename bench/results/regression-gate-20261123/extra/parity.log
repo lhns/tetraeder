@@ -1,0 +1,272 @@
+..............................F.....F................................... [ 49%]
+..............................................F................F...xxxxx [ 99%]
+x                                                                        [100%]
+=================================== FAILURES ===================================
+_______________________ test_case[repeat-penalty[auto]] ________________________
+
+case = {'id': 'repeat-penalty', 'group': 'A', 'row': 'repeat_penalty / repeat_last_n', 'endpoint': 'POST /v1/completions', ...}
+engine = 'auto', pool = <test_parity.Pool object at 0x7fe17d9cbef0>
+
+    @pytest.mark.parametrize("case,engine", params())
+    def test_case(case, engine, pool):
+        if "tetraeder_refuses" in case:
+            return check_refusal(case, engine, pool)
+        ctx = case.get("ctx", CTX)
+        base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()), ctx)
+        body = probed_body(pool, case, engine) if "probe" in case else None
+        try:
+            other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()), ctx)
+        except ServerStartError as e:
+            raise AssertionError(f"tetraeder did not start with {case.get('tetraeder_args')}: {str(e)[:300]}") from e
+        run_setup(case, base_srv)
+        run_setup(case, other_srv)
+        base = send(base_srv.base_url, case, body)
+        other = send(other_srv.base_url, case, body)
+        check_premise(case, base)
+        diffs = compare(case, base, other)
+>       assert not diffs, f"{case['row']} ({case['endpoint']}):\n  " + "\n  ".join(diffs)
+E       AssertionError: repeat_penalty / repeat_last_n (POST /v1/completions):
+E           text: baseline '�}�f�\x17q%�UthA�+\x1c�g\x14', tetraeder '�}�f�\x17q%�UthA�+\x1cޢV'
+E       assert not ["text: baseline '�}�f�\\x17q%�UthA�+\\x1c�g\\x14', tetraeder '�}�f�\\x17q%�UthA�+\\x1cޢV'"]
+
+tests/conformance/parity/test_parity.py:216: AssertionError
+__________________________ test_case[logprobs[auto]] ___________________________
+
+case = {'id': 'logprobs', 'group': 'B', 'row': 'n_probs, logprobs, top_logprobs, post_sampling_probs', 'endpoint': 'POST /v1/chat/completions', ...}
+engine = 'auto', pool = <test_parity.Pool object at 0x7fe17d9cbef0>
+
+    @pytest.mark.parametrize("case,engine", params())
+    def test_case(case, engine, pool):
+        if "tetraeder_refuses" in case:
+            return check_refusal(case, engine, pool)
+        ctx = case.get("ctx", CTX)
+        base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()), ctx)
+        body = probed_body(pool, case, engine) if "probe" in case else None
+        try:
+            other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()), ctx)
+        except ServerStartError as e:
+            raise AssertionError(f"tetraeder did not start with {case.get('tetraeder_args')}: {str(e)[:300]}") from e
+        run_setup(case, base_srv)
+        run_setup(case, other_srv)
+        base = send(base_srv.base_url, case, body)
+        other = send(other_srv.base_url, case, body)
+        check_premise(case, base)
+        diffs = compare(case, base, other)
+>       assert not diffs, f"{case['row']} ({case['endpoint']}):\n  " + "\n  ".join(diffs)
+E       AssertionError: n_probs, logprobs, top_logprobs, post_sampling_probs (POST /v1/chat/completions):
+E           logprobs[0].logprob: baseline -1.81496262550354, tetraeder -1.8332496881484985 (tolerance 0.001)
+E           logprobs[0].top_logprobs[0].logprob: baseline -1.81496262550354, tetraeder -1.8332496881484985 (tolerance 0.001)
+E           logprobs[0].top_logprobs[1].logprob: baseline -2.3706791400909424, tetraeder -2.383786678314209 (tolerance 0.001)
+E           logprobs[1].top_logprobs[1].logprob: baseline -2.7859461307525635, tetraeder -2.792487621307373 (tolerance 0.001)
+E       assert not ['logprobs[0].logprob: baseline -1.81496262550354, tetraeder -1.8332496881484985 (tolerance 0.001)', 'logprobs[0].top_...', 'logprobs[1].top_logprobs[1].logprob: baseline -2.7859461307525635, tetraeder -2.792487621307373 (tolerance 0.001)']
+
+tests/conformance/parity/test_parity.py:216: AssertionError
+____________________ test_case[seeded-sampler-names[auto]] _____________________
+
+case = {'id': 'seeded-sampler-names', 'group': 'A', 'row': 'Sampler names accepted in `samplers` (sampling.cpp:964-980)', 'endpoint': 'POST /v1/completions', ...}
+engine = 'auto', pool = <test_parity.Pool object at 0x7fe17d9cbef0>
+
+    @pytest.mark.parametrize("case,engine", params())
+    def test_case(case, engine, pool):
+        if "tetraeder_refuses" in case:
+            return check_refusal(case, engine, pool)
+        ctx = case.get("ctx", CTX)
+        base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()), ctx)
+        body = probed_body(pool, case, engine) if "probe" in case else None
+        try:
+            other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()), ctx)
+        except ServerStartError as e:
+            raise AssertionError(f"tetraeder did not start with {case.get('tetraeder_args')}: {str(e)[:300]}") from e
+        run_setup(case, base_srv)
+        run_setup(case, other_srv)
+        base = send(base_srv.base_url, case, body)
+        other = send(other_srv.base_url, case, body)
+        check_premise(case, base)
+        diffs = compare(case, base, other)
+>       assert not diffs, f"{case['row']} ({case['endpoint']}):\n  " + "\n  ".join(diffs)
+E       AssertionError: Sampler names accepted in `samplers` (sampling.cpp:964-980) (POST /v1/completions):
+E           text: baseline '�}�f+\x14sN�}�\x14P�}^`㿫Pǈ', tetraeder '�}�f+\x14sN�k\x1c�ǚ�\t�~}�xzֆL'
+E       assert not ["text: baseline '�}�f+\\x14sN�}�\\x14P�}^`㿫Pǈ', tetraeder '�}�f+\\x14sN�k\\x1c�ǚ�\\t�~}�xzֆL'"]
+
+tests/conformance/parity/test_parity.py:216: AssertionError
+_______________________ test_case[logprobs-shape[auto]] ________________________
+
+case = {'id': 'logprobs-shape', 'group': 'B', 'row': 'logprobs shape', 'endpoint': 'POST /v1/chat/completions', ...}
+engine = 'auto', pool = <test_parity.Pool object at 0x7fe17d9cbef0>
+
+    @pytest.mark.parametrize("case,engine", params())
+    def test_case(case, engine, pool):
+        if "tetraeder_refuses" in case:
+            return check_refusal(case, engine, pool)
+        ctx = case.get("ctx", CTX)
+        base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()), ctx)
+        body = probed_body(pool, case, engine) if "probe" in case else None
+        try:
+            other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()), ctx)
+        except ServerStartError as e:
+            raise AssertionError(f"tetraeder did not start with {case.get('tetraeder_args')}: {str(e)[:300]}") from e
+        run_setup(case, base_srv)
+        run_setup(case, other_srv)
+        base = send(base_srv.base_url, case, body)
+        other = send(other_srv.base_url, case, body)
+        check_premise(case, base)
+        diffs = compare(case, base, other)
+>       assert not diffs, f"{case['row']} ({case['endpoint']}):\n  " + "\n  ".join(diffs)
+E       AssertionError: logprobs shape (POST /v1/chat/completions):
+E           logprobs[0].logprob: baseline -1.81496262550354, tetraeder -1.8113999366760254 (tolerance 0.001)
+E           logprobs[0].top_logprobs[0].logprob: baseline -1.81496262550354, tetraeder -1.8113999366760254 (tolerance 0.001)
+E           logprobs[0].top_logprobs[1].logprob: baseline -2.3706791400909424, tetraeder -2.3834691047668457 (tolerance 0.001)
+E           logprobs[1].top_logprobs[1].logprob: baseline -2.7859461307525635, tetraeder -2.793254852294922 (tolerance 0.001)
+E           logprobs[1].top_logprobs[2].logprob: baseline -2.7886431217193604, tetraeder -2.7950286865234375 (tolerance 0.001)
+E       assert not ['logprobs[0].logprob: baseline -1.81496262550354, tetraeder -1.8113999366760254 (tolerance 0.001)', 'logprobs[0].top_..., 'logprobs[1].top_logprobs[2].logprob: baseline -2.7886431217193604, tetraeder -2.7950286865234375 (tolerance 0.001)']
+
+tests/conformance/parity/test_parity.py:216: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-greedy[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-greedy[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-greedy[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[completions-greedy[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[completions-greedy[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[completions-greedy[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[completions-eos[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[completions-eos[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-stream-shape[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-stream-shape[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-stream-shape[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-stream-usage[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[stop-string[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[stop-string[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[stop-string-moe[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[max-tokens[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[max-tokens[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[max-tokens-moe[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[max-completion-tokens[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[anthropic-greedy[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[anthropic-greedy[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[anthropic-greedy[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[anthropic-stream-shape[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[anthropic-count-tokens[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[usage-fields[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[usage-fields[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[usage-fields[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[models-v1[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[model-optional[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[usage-eos-count[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[presence-penalty[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[frequency-penalty[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[logit-bias[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[ignore-eos[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-sampling[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[n-choices[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[n-choices[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[n-choices[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[grammar-gbnf[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[grammar-gbnf[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[json-schema-top-level[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[json-schema-top-level[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[system-fingerprint[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[system-fingerprint[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[system-fingerprint[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[timings[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[timings[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[timings[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[health[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[metrics[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[props[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[tokenize[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[detokenize[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[apply-template[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[native-completion[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[models-unprefixed[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-unprefixed[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[responses[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[infill[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[api-key[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[kv-offload[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[kv-offload-builders[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[kv-offload-builders[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[kv-types[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[kv-types-builders[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[kv-types-builders-refused[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[kv-types-builders-refused[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[cpu-moe[llama-moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[n-cpu-moe[llama-moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[cpu-moe-builder[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-oai[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-oai-batch[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-native[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embedding-legacy-route[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-pooling-none[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-oai-pooling-none[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-unsupported[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-unsupported[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-unsupported[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-builders-refused[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[embeddings-builders-refused[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[rerank-jina[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[rerank-tei[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[rerank-unsupported[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[rerank-unsupported[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[rerank-unsupported[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[rerank-unsupported-with-embeddings[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[reranking-route[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[reranking-builders-refused[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[reranking-builders-refused[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[context-shift[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[context-shift-keep-discard[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[context-shift-builders-refused[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[context-shift-builders-refused[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-save-unsupported[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-save-unsupported[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-save-unsupported[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-save[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-restore[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-erase[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-invalid-action[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-builders-refused[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[slot-builders-refused[moe]]
+PASSED tests/conformance/parity/test_parity.py::test_case[model-download[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-temperature[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-top-k[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-top-p[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-min-p[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-top-n-sigma[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-xtc[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-typical-p[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-dynatemp[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-dry[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-mirostat[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-samplers-order[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-min-keep[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-default-order[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-defaults[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-rng[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[server-sampling-defaults[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[stream-flag[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[stream-flag[dense]]
+PASSED tests/conformance/parity/test_parity.py::test_case[cache-prompt-accepted[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[n-cache-reuse-accepted[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[id-slot-out-of-range[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[id-slot-pinned[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[echo-completions[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[chat-template-kwargs[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[reasoning-effort-none[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[n-keep-discard-fields[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[finish-reason-chat[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[finish-reason-completions[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[native-completion-fields[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[anthropic-system[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[anthropic-sampling-fields[auto]]
+XFAIL tests/conformance/parity/test_parity.py::test_case[gap-response-format-json-object[auto]] - gap, tree node serving-parity-remaining
+XFAIL tests/conformance/parity/test_parity.py::test_case[gap-tool-choice-required[auto]] - gap, tree node serving-parity-remaining
+XFAIL tests/conformance/parity/test_parity.py::test_case[gap-continue-final-message[auto]] - gap, tree node serving-parity-remaining
+XFAIL tests/conformance/parity/test_parity.py::test_case[gap-input-tokens[auto]] - gap, tree node serving-parity-remaining
+XFAIL tests/conformance/parity/test_parity.py::test_case[gap-slots-get[auto]] - gap, tree node serving-parity-remaining
+XFAIL tests/conformance/parity/test_parity.py::test_case[gap-completions-prompt-array[auto]] - gap, tree node serving-parity-remaining
+FAILED tests/conformance/parity/test_parity.py::test_case[repeat-penalty[auto]]
+FAILED tests/conformance/parity/test_parity.py::test_case[logprobs[auto]] - A...
+FAILED tests/conformance/parity/test_parity.py::test_case[seeded-sampler-names[auto]]
+FAILED tests/conformance/parity/test_parity.py::test_case[logprobs-shape[auto]]
+4 failed, 135 passed, 6 xfailed in 44.16s
+rc=1

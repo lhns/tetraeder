@@ -1,0 +1,945 @@
+{
+  "label": "q8b-A-r4-c1",
+  "base_url": "http://127.0.0.1:18080",
+  "model": "qwen3-8b",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 512,
+    "max_tokens": 128,
+    "concurrency": 1,
+    "requests": 8,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 0
+  },
+  "started": "2026-11-23T22:44:45",
+  "finished": "2026-11-23T22:44:45",
+  "results": [
+    {
+      "ttft_s": 0.1635458990931511,
+      "total_s": 1.1252827495336533,
+      "completion_tokens": 128,
+      "prompt_tokens": 404,
+      "usage_from": "usage",
+      "decode_tps": 132.18587497656108,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.14227282628417015,
+      "total_s": 1.1202076263725758,
+      "completion_tokens": 128,
+      "prompt_tokens": 405,
+      "usage_from": "usage",
+      "decode_tps": 129.9856277841107,
+      "text_head": "Okay, let's see. The user provided a long string of text tha"
+    },
+    {
+      "ttft_s": 0.23476509377360344,
+      "total_s": 1.2205894105136395,
+      "completion_tokens": 128,
+      "prompt_tokens": 405,
+      "usage_from": "usage",
+      "decode_tps": 128.9864084584336,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.23359666019678116,
+      "total_s": 1.20977121591568,
+      "completion_tokens": 128,
+      "prompt_tokens": 404,
+      "usage_from": "usage",
+      "decode_tps": 130.26621120910096,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.14545302838087082,
+      "total_s": 1.11992022767663,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 130.46777093521075,
+      "text_head": "Okay, let's see. The user provided a long string of text tha"
+    },
+    {
+      "ttft_s": 0.14646071568131447,
+      "total_s": 1.1445620022714138,
+      "completion_tokens": 128,
+      "prompt_tokens": 403,
+      "usage_from": "usage",
+      "decode_tps": 127.33545567167441,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.24260897561907768,
+      "total_s": 1.2238702923059464,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 129.52526281158873,
+      "text_head": "Okay, let's see. The user provided a long text that starts w"
+    },
+    {
+      "ttft_s": 0.2384927123785019,
+      "total_s": 1.2196331471204758,
+      "completion_tokens": 128,
+      "prompt_tokens": 405,
+      "usage_from": "usage",
+      "decode_tps": 129.57751879101536,
+      "text_head": "Okay, let's see. The user provided a long string of text tha"
+    }
+  ],
+  "summary": {
+    "requests": 8,
+    "errors": 0,
+    "wall_s": 9.384307976812124,
+    "completion_tokens": 1024,
+    "prompt_tokens_median": 405.0,
+    "ttft_median_s": 0.19857127964496613,
+    "ttft_p90_s": 0.24260897561907768,
+    "decode_tps_median": 129.78157328756305,
+    "throughput_tps": 109.1183284404372
+  },
+  "host": {
+    "prefill": {
+      "seconds": 1.108780860900879,
+      "tokens": 1,
+      "samples": 0,
+      "read_bytes": 0,
+      "read_ops": 0,
+      "cgroup_read_bytes": null,
+      "read_bytes_per_token": 0.0,
+      "read_mb_s": 0.0,
+      "disk_queue_depth_mean": 0.025252961146217966,
+      "disk_inflight_max": 0,
+      "io_psi_src": "/proc/pressure/io",
+      "io_some_share": 9.018914695077845e-06,
+      "io_full_share": 9.018914695077845e-06,
+      "cpu_psi_src": "/proc/pressure/cpu",
+      "cpu_some_share": 0.36255044993596475,
+      "cpu_full_share": 0.0,
+      "throttle_src": "/sys/fs/cgroup/cpu/cpu.stat",
+      "throttled_share": 0.0,
+      "throttled_ms_per_s": 0.0,
+      "cpu_steal_share": 0.0,
+      "cpu_mhz_mean": 1709.789794921875,
+      "ctxsw_vol_per_s": 191.2009915356503,
+      "ctxsw_invol_per_s": 4.509457347538922,
+      "anon_huge_gb": null,
+      "cpus_used": null,
+      "numa_nodes_used": null,
+      "top_node_share": null,
+      "majflt": 0,
+      "majflt_per_token": 0.0,
+      "cpu_busy_pct": 4.201963463620039,
+      "host_busy_cores": 36.43801327380302,
+      "container_cores": 1.260589039086012,
+      "engine_cores": 0.9199292988979402,
+      "outside_cores": 35.17742423471701,
+      "smt_pairs_busy": 0,
+      "host_cpus": 256,
+      "cpu_busy_pct_top_cpus": 32.956811819961665,
+      "gpu_busy_pct": null,
+      "gpu_mem_max_mib": null,
+      "rss_max_gb": 0.77722,
+      "cache_file_gb_max": 50.728955904,
+      "anon_gb_max": 0.657657856,
+      "bytes_per_token": 0.0,
+      "disk_util": null,
+      "tok_s_ceiling_disk": null,
+      "read_wait_share": null,
+      "io_class": "not_io_bound",
+      "io_class_missing": []
+    },
+    "decode": {
+      "seconds": 18.050623178482056,
+      "tokens": 1,
+      "samples": 15,
+      "read_bytes": 311296,
+      "read_ops": 4,
+      "cgroup_read_bytes": null,
+      "read_bytes_per_token": 311296.0,
+      "read_mb_s": 0.017245720378845007,
+      "disk_queue_depth_mean": 100.29083107546406,
+      "disk_inflight_max": 0,
+      "io_psi_src": "/proc/pressure/io",
+      "io_some_share": 3.373844736429831e-05,
+      "io_full_share": 3.379384711366498e-05,
+      "cpu_psi_src": "/proc/pressure/cpu",
+      "cpu_some_share": 0.21331291235363306,
+      "cpu_full_share": 0.0,
+      "throttle_src": "/sys/fs/cgroup/cpu/cpu.stat",
+      "throttled_share": 0.0,
+      "throttled_ms_per_s": 0.0,
+      "cpu_steal_share": 0.0,
+      "cpu_mhz_mean": 1643.271947265625,
+      "ctxsw_vol_per_s": 253.06605510692071,
+      "ctxsw_invol_per_s": 13.295939847999337,
+      "anon_huge_gb": null,
+      "cpus_used": 45,
+      "numa_nodes_used": 2,
+      "top_node_share": 0.86875,
+      "majflt": 0,
+      "majflt_per_token": 0.0,
+      "cpu_busy_pct": 4.002228027568584,
+      "host_busy_cores": 25.370328942086374,
+      "container_cores": 1.2006684082705752,
+      "engine_cores": 1.0437312780679482,
+      "outside_cores": 24.169660533815797,
+      "smt_pairs_busy": 0,
+      "host_cpus": 256,
+      "cpu_busy_pct_top_cpus": 22.812760186463315,
+      "gpu_busy_pct": 89.66666666666667,
+      "gpu_mem_max_mib": 10309,
+      "rss_max_gb": 2.46092,
+      "cache_file_gb_max": 50.729111552,
+      "anon_gb_max": 2.37688832,
+      "bytes_per_token": 311296.0,
+      "disk_util": null,
+      "tok_s_ceiling_disk": null,
+      "read_wait_share": null,
+      "io_class": "not_io_bound",
+      "io_class_missing": []
+    },
+    "decode_windows": [
+      {
+        "seconds": 5.578593730926514,
+        "tokens": 0.25,
+        "samples": 4,
+        "read_bytes": 0,
+        "read_ops": 0,
+        "cgroup_read_bytes": null,
+        "read_bytes_per_token": 0.0,
+        "read_mb_s": 0.0,
+        "disk_queue_depth_mean": 133.76417713717711,
+        "disk_inflight_max": 0,
+        "io_psi_src": "/proc/pressure/io",
+        "io_some_share": 6.955157853654267e-05,
+        "io_full_share": 6.973083518225541e-05,
+        "cpu_psi_src": "/proc/pressure/cpu",
+        "cpu_some_share": 0.3684944807154087,
+        "cpu_full_share": 0.0,
+        "throttle_src": "/sys/fs/cgroup/cpu/cpu.stat",
+        "throttled_share": 0.0,
+        "throttled_ms_per_s": 0.0,
+        "cpu_steal_share": 0.0,
+        "cpu_mhz_mean": 1746.983919921875,
+        "ctxsw_vol_per_s": 305.9910942316452,
+        "ctxsw_invol_per_s": 5.556956017094904,
+        "anon_huge_gb": null,
+        "cpus_used": 29,
+        "numa_nodes_used": 2,
+        "top_node_share": 0.87890625,
+        "majflt": 0,
+        "majflt_per_token": 0.0,
+        "cpu_busy_pct": 4.175857654625146,
+        "host_busy_cores": 36.310427293842714,
+        "container_cores": 1.2527572963875437,
+        "engine_cores": 1.0647844755336686,
+        "outside_cores": 35.05766999745517,
+        "smt_pairs_busy": 0,
+        "host_cpus": 256,
+        "cpu_busy_pct_top_cpus": 29.869068187540282,
+        "gpu_busy_pct": 80.75,
+        "gpu_mem_max_mib": 10169,
+        "rss_max_gb": 1.440548,
+        "cache_file_gb_max": 50.728992768,
+        "anon_gb_max": 1.332133888,
+        "bytes_per_token": 0.0,
+        "disk_util": null,
+        "tok_s_ceiling_disk": null,
+        "read_wait_share": null,
+        "io_class": "not_io_bound",
+        "io_class_missing": [],
+        "tokens_estimated": true
+      },
+      {
+        "seconds": 5.676568269729614,
+        "tokens": 0.25,
+        "samples": 4,
+        "read_bytes": 0,
+        "read_ops": 0,
+        "cgroup_read_bytes": null,
+        "read_bytes_per_token": 0.0,
+        "read_mb_s": 0.0,
+        "disk_queue_depth_mean": 53.14548961011083,
+        "disk_inflight_max": 0,
+        "io_psi_src": "/proc/pressure/io",
+        "io_some_share": 7.046510867014602e-06,
+        "io_full_share": 7.046510867014602e-06,
+        "cpu_psi_src": "/proc/pressure/cpu",
+        "cpu_some_share": 0.32787996401365466,
+        "cpu_full_share": 0.0,
+        "throttle_src": "/sys/fs/cgroup/cpu/cpu.stat",
+        "throttled_share": 0.0,
+        "throttled_ms_per_s": 0.0,
+        "cpu_steal_share": 0.0,
+        "cpu_mhz_mean": 1895.8305,
+        "ctxsw_vol_per_s": 287.32148060252035,
+        "ctxsw_invol_per_s": 15.326161135756758,
+        "anon_huge_gb": null,
+        "cpus_used": 30,
+        "numa_nodes_used": 2,
+        "top_node_share": 0.87109375,
+        "majflt": 0,
+        "majflt_per_token": 0.0,
+        "cpu_busy_pct": 3.9429156730755053,
+        "host_busy_cores": 35.56846415069314,
+        "container_cores": 1.1828747019226515,
+        "engine_cores": 1.023505703433871,
+        "outside_cores": 34.38558944877049,
+        "smt_pairs_busy": 0,
+        "host_cpus": 256,
+        "cpu_busy_pct_top_cpus": 30.036598059924625,
+        "gpu_busy_pct": 89.75,
+        "gpu_mem_max_mib": 10205,
+        "rss_max_gb": 1.9457,
+        "cache_file_gb_max": 50.729037824,
+        "anon_gb_max": 1.84915968,
+        "bytes_per_token": 0.0,
+        "disk_util": null,
+        "tok_s_ceiling_disk": null,
+        "read_wait_share": null,
+        "io_class": "not_io_bound",
+        "io_class_missing": [],
+        "tokens_estimated": true
+      },
+      {
+        "seconds": 4.548666715621948,
+        "tokens": 0.25,
+        "samples": 3,
+        "read_bytes": 0,
+        "read_ops": 0,
+        "cgroup_read_bytes": null,
+        "read_bytes_per_token": 0.0,
+        "read_mb_s": 0.0,
+        "disk_queue_depth_mean": 36.53905867167377,
+        "disk_inflight_max": 0,
+        "io_psi_src": "/proc/pressure/io",
+        "io_some_share": 5.71596065957208e-06,
+        "io_full_share": 5.71596065957208e-06,
+        "cpu_psi_src": "/proc/pressure/cpu",
+        "cpu_some_share": 0.12847984619160918,
+        "cpu_full_share": 0.0,
+        "throttle_src": "/sys/fs/cgroup/cpu/cpu.stat",
+        "throttled_share": 0.0,
+        "throttled_ms_per_s": 0.0,
+        "cpu_steal_share": 0.0,
+        "cpu_mhz_mean": 1677.1546328125,
+        "ctxsw_vol_per_s": 238.3115905760052,
+        "ctxsw_invol_per_s": 14.729590930435746,
+        "anon_huge_gb": null,
+        "cpus_used": 25,
+        "numa_nodes_used": 2,
+        "top_node_share": 0.859375,
+        "majflt": 0,
+        "majflt_per_token": 0.0,
+        "cpu_busy_pct": 3.849177739607743,
+        "host_busy_cores": 18.908760105976192,
+        "container_cores": 1.154753321882323,
+        "engine_cores": 1.0530558292057797,
+        "outside_cores": 17.754006784093868,
+        "smt_pairs_busy": 0,
+        "host_cpus": 256,
+        "cpu_busy_pct_top_cpus": 22.684852473868073,
+        "gpu_busy_pct": 94.66666666666667,
+        "gpu_mem_max_mib": 10261,
+        "rss_max_gb": 2.210172,
+        "cache_file_gb_max": 50.729066496,
+        "anon_gb_max": 2.120134656,
+        "bytes_per_token": 0.0,
+        "disk_util": null,
+        "tok_s_ceiling_disk": null,
+        "read_wait_share": null,
+        "io_class": "not_io_bound",
+        "io_class_missing": [],
+        "tokens_estimated": true
+      },
+      {
+        "seconds": 5.641714811325073,
+        "tokens": 0.25,
+        "samples": 4,
+        "read_bytes": 311296,
+        "read_ops": 4,
+        "cgroup_read_bytes": null,
+        "read_bytes_per_token": 311296.0,
+        "read_mb_s": 0.05517754980721645,
+        "disk_queue_depth_mean": 135.13834454544713,
+        "disk_inflight_max": 0,
+        "io_psi_src": "/proc/pressure/io",
+        "io_some_share": 3.190519301661108e-05,
+        "io_full_share": 3.190519301661108e-05,
+        "cpu_psi_src": "/proc/pressure/cpu",
+        "cpu_some_share": 0.015228703128973096,
+        "cpu_full_share": 0.0,
+        "throttle_src": "/sys/fs/cgroup/cpu/cpu.stat",
+        "throttled_share": 0.0,
+        "throttled_ms_per_s": 0.0,
+        "cpu_steal_share": 0.0,
+        "cpu_mhz_mean": 1606.878279296875,
+        "ctxsw_vol_per_s": 189.1268941595779,
+        "ctxsw_invol_per_s": 16.661600797563562,
+        "anon_huge_gb": null,
+        "cpus_used": 28,
+        "numa_nodes_used": 2,
+        "top_node_share": 0.86328125,
+        "majflt": 0,
+        "majflt_per_token": 0.0,
+        "cpu_busy_pct": 3.8980370452593207,
+        "host_busy_cores": 10.067616907315072,
+        "container_cores": 1.169411113577796,
+        "engine_cores": 1.0262837087009897,
+        "outside_cores": 8.898205793737276,
+        "smt_pairs_busy": 0,
+        "host_cpus": 256,
+        "cpu_busy_pct_top_cpus": 22.576613279006548,
+        "gpu_busy_pct": 94.75,
+        "gpu_mem_max_mib": 10309,
+        "rss_max_gb": 2.46092,
+        "cache_file_gb_max": 50.729111552,
+        "anon_gb_max": 2.37688832,
+        "bytes_per_token": 311296.0,
+        "disk_util": null,
+        "tok_s_ceiling_disk": null,
+        "read_wait_share": null,
+        "io_class": "not_io_bound",
+        "io_class_missing": [],
+        "tokens_estimated": true
+      }
+    ]
+  },
+  "host_windows": {
+    "prefill": [
+      1795473867.9021459,
+      1795473867.9021459,
+      1
+    ],
+    "decode": [
+      1795473867.9021459,
+      1795473885.2335966,
+      1
+    ],
+    "threads": 30
+  },
+  "env": {
+    "cpu_model": "AMD EPYC 7713 64-Core Processor",
+    "cpu_avx512_flags": [],
+    "thp_mode": "madvise",
+    "smt_siblings": [
+      [
+        0,
+        128
+      ],
+      [
+        1,
+        129
+      ],
+      [
+        2,
+        130
+      ],
+      [
+        3,
+        131
+      ],
+      [
+        4,
+        132
+      ],
+      [
+        5,
+        133
+      ],
+      [
+        6,
+        134
+      ],
+      [
+        7,
+        135
+      ],
+      [
+        8,
+        136
+      ],
+      [
+        9,
+        137
+      ],
+      [
+        10,
+        138
+      ],
+      [
+        11,
+        139
+      ],
+      [
+        12,
+        140
+      ],
+      [
+        13,
+        141
+      ],
+      [
+        14,
+        142
+      ],
+      [
+        15,
+        143
+      ],
+      [
+        16,
+        144
+      ],
+      [
+        17,
+        145
+      ],
+      [
+        18,
+        146
+      ],
+      [
+        19,
+        147
+      ],
+      [
+        20,
+        148
+      ],
+      [
+        21,
+        149
+      ],
+      [
+        22,
+        150
+      ],
+      [
+        23,
+        151
+      ],
+      [
+        24,
+        152
+      ],
+      [
+        25,
+        153
+      ],
+      [
+        26,
+        154
+      ],
+      [
+        27,
+        155
+      ],
+      [
+        28,
+        156
+      ],
+      [
+        29,
+        157
+      ],
+      [
+        30,
+        158
+      ],
+      [
+        31,
+        159
+      ],
+      [
+        32,
+        160
+      ],
+      [
+        33,
+        161
+      ],
+      [
+        34,
+        162
+      ],
+      [
+        35,
+        163
+      ],
+      [
+        36,
+        164
+      ],
+      [
+        37,
+        165
+      ],
+      [
+        38,
+        166
+      ],
+      [
+        39,
+        167
+      ],
+      [
+        40,
+        168
+      ],
+      [
+        41,
+        169
+      ],
+      [
+        42,
+        170
+      ],
+      [
+        43,
+        171
+      ],
+      [
+        44,
+        172
+      ],
+      [
+        45,
+        173
+      ],
+      [
+        46,
+        174
+      ],
+      [
+        47,
+        175
+      ],
+      [
+        48,
+        176
+      ],
+      [
+        49,
+        177
+      ],
+      [
+        50,
+        178
+      ],
+      [
+        51,
+        179
+      ],
+      [
+        52,
+        180
+      ],
+      [
+        53,
+        181
+      ],
+      [
+        54,
+        182
+      ],
+      [
+        55,
+        183
+      ],
+      [
+        56,
+        184
+      ],
+      [
+        57,
+        185
+      ],
+      [
+        58,
+        186
+      ],
+      [
+        59,
+        187
+      ],
+      [
+        60,
+        188
+      ],
+      [
+        61,
+        189
+      ],
+      [
+        62,
+        190
+      ],
+      [
+        63,
+        191
+      ],
+      [
+        64,
+        192
+      ],
+      [
+        65,
+        193
+      ],
+      [
+        66,
+        194
+      ],
+      [
+        67,
+        195
+      ],
+      [
+        68,
+        196
+      ],
+      [
+        69,
+        197
+      ],
+      [
+        70,
+        198
+      ],
+      [
+        71,
+        199
+      ],
+      [
+        72,
+        200
+      ],
+      [
+        73,
+        201
+      ],
+      [
+        74,
+        202
+      ],
+      [
+        75,
+        203
+      ],
+      [
+        76,
+        204
+      ],
+      [
+        77,
+        205
+      ],
+      [
+        78,
+        206
+      ],
+      [
+        79,
+        207
+      ],
+      [
+        80,
+        208
+      ],
+      [
+        81,
+        209
+      ],
+      [
+        82,
+        210
+      ],
+      [
+        83,
+        211
+      ],
+      [
+        84,
+        212
+      ],
+      [
+        85,
+        213
+      ],
+      [
+        86,
+        214
+      ],
+      [
+        87,
+        215
+      ],
+      [
+        88,
+        216
+      ],
+      [
+        89,
+        217
+      ],
+      [
+        90,
+        218
+      ],
+      [
+        91,
+        219
+      ],
+      [
+        92,
+        220
+      ],
+      [
+        93,
+        221
+      ],
+      [
+        94,
+        222
+      ],
+      [
+        95,
+        223
+      ],
+      [
+        96,
+        224
+      ],
+      [
+        97,
+        225
+      ],
+      [
+        98,
+        226
+      ],
+      [
+        99,
+        227
+      ],
+      [
+        100,
+        228
+      ],
+      [
+        101,
+        229
+      ],
+      [
+        102,
+        230
+      ],
+      [
+        103,
+        231
+      ],
+      [
+        104,
+        232
+      ],
+      [
+        105,
+        233
+      ],
+      [
+        106,
+        234
+      ],
+      [
+        107,
+        235
+      ],
+      [
+        108,
+        236
+      ],
+      [
+        109,
+        237
+      ],
+      [
+        110,
+        238
+      ],
+      [
+        111,
+        239
+      ],
+      [
+        112,
+        240
+      ],
+      [
+        113,
+        241
+      ],
+      [
+        114,
+        242
+      ],
+      [
+        115,
+        243
+      ],
+      [
+        116,
+        244
+      ],
+      [
+        117,
+        245
+      ],
+      [
+        118,
+        246
+      ],
+      [
+        119,
+        247
+      ],
+      [
+        120,
+        248
+      ],
+      [
+        121,
+        249
+      ],
+      [
+        122,
+        250
+      ],
+      [
+        123,
+        251
+      ],
+      [
+        124,
+        252
+      ],
+      [
+        125,
+        253
+      ],
+      [
+        126,
+        254
+      ],
+      [
+        127,
+        255
+      ]
+    ],
+    "disk_curve": null
+  },
+  "cotenant_ok": false,
+  "cotenant_reason": "24.2 cores busy outside the container (limit 19.2 of 128 physical)"
+}

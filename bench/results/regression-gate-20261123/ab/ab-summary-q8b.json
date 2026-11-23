@@ -1,0 +1,356 @@
+{
+  "rounds": [
+    {
+      "round": 1,
+      "clean": false,
+      "c4_A": 334.40674597364057,
+      "c4_B": 329.77215715331675,
+      "c4_ratio": 0.9861408632567205,
+      "c1_A": 137.24942122694762,
+      "c1_B": 136.4198655859772,
+      "c1_ratio": 0.9939558532665962,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": [
+        "A: c4: co-tenant (23.5 cores busy outside the container (limit 19.2 of 128 physical))",
+        "A: c1: co-tenant (23.5 cores busy outside the container (limit 19.2 of 128 physical))"
+      ]
+    },
+    {
+      "round": 2,
+      "clean": true,
+      "c4_A": 332.65894284398115,
+      "c4_B": 282.23685285014517,
+      "c4_ratio": 0.848427071995223,
+      "c1_A": 136.71864165157479,
+      "c1_B": 132.5343939586236,
+      "c1_ratio": 0.9693951926203694,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": []
+    },
+    {
+      "round": 3,
+      "clean": true,
+      "c4_A": 301.5353890673791,
+      "c4_B": 328.90586737643866,
+      "c4_ratio": 1.0907703682599708,
+      "c1_A": 130.4277228252724,
+      "c1_B": 136.02011277609745,
+      "c1_ratio": 1.0428773103576827,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": []
+    },
+    {
+      "round": 4,
+      "clean": false,
+      "c4_A": 271.55387515694855,
+      "c4_B": 305.5832850264399,
+      "c4_ratio": 1.125313659581634,
+      "c1_A": 129.78157328756305,
+      "c1_B": 133.55985012541947,
+      "c1_ratio": 1.0291125831051895,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": [
+        "A: c4: co-tenant (24.2 cores busy outside the container (limit 19.2 of 128 physical))",
+        "A: c1: co-tenant (24.2 cores busy outside the container (limit 19.2 of 128 physical))"
+      ]
+    },
+    {
+      "round": 5,
+      "clean": true,
+      "c4_A": 276.569012091654,
+      "c4_B": 314.1006284914276,
+      "c4_ratio": 1.1357043441560104,
+      "c1_A": 133.7115723602787,
+      "c1_B": 133.74796325912394,
+      "c1_ratio": 1.0002721596807431,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": []
+    },
+    {
+      "round": 6,
+      "clean": true,
+      "c4_A": 328.76494071004527,
+      "c4_B": 291.0881825503969,
+      "c4_ratio": 0.8853990997997641,
+      "c1_A": 136.8000345742359,
+      "c1_B": 130.8730002357744,
+      "c1_ratio": 0.9566737365461329,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": []
+    }
+  ],
+  "clean_rounds": [
+    2,
+    3,
+    5,
+    6
+  ],
+  "excluded_rounds": [
+    1,
+    4
+  ],
+  "median_ratio": {
+    "c4": 0.9880847340298674,
+    "c1": 0.9848336761505563
+  },
+  "metric_readings": {
+    "c4": "no regression evidence",
+    "c1": "no regression evidence"
+  },
+  "reading": "no regression evidence",
+  "reading_why": "both medians at least 0.98",
+  "runs": {
+    "A-r1": {
+      "clean": false,
+      "reasons": [
+        "c4: co-tenant (23.5 cores busy outside the container (limit 19.2 of 128 physical))",
+        "c1: co-tenant (23.5 cores busy outside the container (limit 19.2 of 128 physical))"
+      ],
+      "c4_tps": 334.40674597364057,
+      "c1_decode_tps": 137.24942122694762,
+      "sampler": {
+        "samples": 18,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      }
+    },
+    "B-r1": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 329.77215715331675,
+      "c1_decode_tps": 136.4198655859772,
+      "sampler": {
+        "samples": 17,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      }
+    },
+    "A-r2": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 332.65894284398115,
+      "c1_decode_tps": 136.71864165157479,
+      "sampler": {
+        "samples": 18,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      }
+    },
+    "B-r2": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 282.23685285014517,
+      "c1_decode_tps": 132.5343939586236,
+      "sampler": {
+        "samples": 20,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "A-r3": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 301.5353890673791,
+      "c1_decode_tps": 130.4277228252724,
+      "sampler": {
+        "samples": 19,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "B-r3": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 328.90586737643866,
+      "c1_decode_tps": 136.02011277609745,
+      "sampler": {
+        "samples": 18,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      }
+    },
+    "A-r4": {
+      "clean": false,
+      "reasons": [
+        "c4: co-tenant (24.2 cores busy outside the container (limit 19.2 of 128 physical))",
+        "c1: co-tenant (24.2 cores busy outside the container (limit 19.2 of 128 physical))"
+      ],
+      "c4_tps": 271.55387515694855,
+      "c1_decode_tps": 129.78157328756305,
+      "sampler": {
+        "samples": 20,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      }
+    },
+    "B-r4": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 305.5832850264399,
+      "c1_decode_tps": 133.55985012541947,
+      "sampler": {
+        "samples": 18,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "A-r5": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 276.569012091654,
+      "c1_decode_tps": 133.7115723602787,
+      "sampler": {
+        "samples": 19,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "B-r5": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 314.1006284914276,
+      "c1_decode_tps": 133.74796325912394,
+      "sampler": {
+        "samples": 18,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "A-r6": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 328.76494071004527,
+      "c1_decode_tps": 136.8000345742359,
+      "sampler": {
+        "samples": 17,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "B-r6": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 291.0881825503969,
+      "c1_decode_tps": 130.8730002357744,
+      "sampler": {
+        "samples": 19,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    }
+  }
+}

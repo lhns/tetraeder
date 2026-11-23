@@ -1,0 +1,1 @@
+error: --hf-repo and --hf-file: tetraeder does not download models (no download client, ADR 0090); download the GGUF (for example `hf download <repo> <file>`) and pass it with -m

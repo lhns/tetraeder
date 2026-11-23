@@ -1,0 +1,5 @@
+[2m2026-11-23T22:48:48.188061Z[0m [33m WARN[0m [2mllama[0m[2m:[0m load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+[2m2026-11-23T22:48:48.252604Z[0m [32m INFO[0m [2mtetraeder_model::qwen3moe[0m[2m:[0m cpu threadpool polling [3mlevel[0m[2m=[0m0 [3mauto[0m[2m=[0mtrue [3mquota[0m[2m=[0mSome(30.72) [3monline[0m[2m=[0mSome(256) [3mthreads[0m[2m=[0m30
+[2m2026-11-23T22:48:52.270225Z[0m [31mERROR[0m [2mllama[0m[2m:[0m ggml_backend_cuda_buffer_type_alloc_buffer: allocating 24576.00 MiB on device 0: cudaMalloc failed: out of memory
+[2m2026-11-23T22:48:52.270280Z[0m [31mERROR[0m [2mllama[0m[2m:[0m ggml_backend_buft_alloc_buffer_n_default: failed to allocate CUDA0 buffer of size 25769803776
+error: cannot allocate tensor buffer (0 bytes)
