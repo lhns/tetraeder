@@ -332,7 +332,7 @@ st_prepass() {
     [ -f "$f" ] && continue
     say "prepass $v start"
     : > "$out/gpu-prepass-$v.txt"
-    server_up llama-server "$v" "$out/server-prepass-$v.log" || { stop_server; die "llama-server did not start (prepass $v)"; }
+    server_up llama-server "$v" "$out/server-prepass-$v.log" || { say "prepass $v: server did not start, skipped"; stop_server; continue; }
     gpu_note "prepass-$v" before
     warm_up "$url"
     bench_file "$f" "prepass-$v" "$url" --prompt-tokens "$ptok" --max-tokens "$mtok" --concurrency 4 --requests "$n_c4" --seed 84
