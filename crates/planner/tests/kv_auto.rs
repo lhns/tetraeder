@@ -35,28 +35,6 @@ fn sizing(ctx: u32) -> Workload {
     }
 }
 
-/// The lightest placement of a side: `None` is the CPU.
-fn lightest(layout: &ModelLayout, side: Option<ServeEngine>) -> (Placement, u32) {
-    match side {
-        None => (Placement::Cpu, UBATCHES[0]),
-        Some(ServeEngine::Builder) => {
-            let k = layout.n_expert_used;
-            let pl = Placement::Builder {
-                vram_slots: k,
-                ram_slots: ram_slot_options(layout, k)[0],
-            };
-            (pl, BUILDER_UBATCHES[0])
-        }
-        Some(ServeEngine::Llama) if layout.is_moe() => (
-            Placement::Moe {
-                gpu_expert_layers: 0,
-            },
-            UBATCHES[0],
-        ),
-        Some(ServeEngine::Llama) => (Placement::Dense { gpu_layers: 1 }, UBATCHES[0]),
-    }
-}
-
 fn fits_light(
     layout: &ModelLayout,
     b: &Budget,
@@ -78,8 +56,21 @@ fn fits_light(
             fits(pl, BUILDER_UBATCHES[0])
         });
     }
-    let (pl, ub) = lightest(layout, side);
-    fits(pl, ub)
+    if side.is_some() {
+        // libllama: more GPU layers move weights and KV off the host, so any count may do.
+        let lo = u32::from(!layout.is_moe());
+        return (lo..=layout.n_layer).any(|x| {
+            let pl = if layout.is_moe() {
+                Placement::Moe {
+                    gpu_expert_layers: x,
+                }
+            } else {
+                Placement::Dense { gpu_layers: x }
+            };
+            fits(pl, UBATCHES[0])
+        });
+    }
+    fits(Placement::Cpu, UBATCHES[0])
 }
 
 /// The format `auto` must pick and whether it runs on the CPU, by the oracle.
