@@ -6,9 +6,9 @@ use crate::chat::{
 use crate::constraint::{ConstraintFactory, Reasoning};
 use crate::decode::StopMatcher;
 use crate::engine::{
-    Embedded, EmbeddingCaps, Engine, FimTokens, GenerateRequest, GrammarSource, ModelInfo,
-    Reranked, SamplingExtras, SamplingParams, SlotAction, SlotReply, TokenConstraint, TokenId,
-    Vocab,
+    Embedded, EmbeddingCaps, Engine, EngineError, FimTokens, GenerateRequest, GrammarSource,
+    ModelInfo, Reranked, SamplingExtras, SamplingParams, SlotAction, SlotWait, TokenConstraint,
+    TokenId, Vocab,
 };
 use crate::error::GatewayError;
 use crate::template::ChatTemplate;
@@ -461,11 +461,17 @@ impl Gateway {
         self.engine.slot_actions()
     }
 
-    /// Runs a slot action (blocking, like [`Gateway::embed`]).
-    pub fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotReply, GatewayError> {
+    /// Queues a slot action; await the receiver for its answer. Dropping it cancels the action
+    /// if it has not started.
+    pub fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotWait, GatewayError> {
         self.engine
             .slot_action(id, action)
             .map_err(|e| self.engine_err(e))
+    }
+
+    /// Maps an engine error of a slot action to the gateway's.
+    pub fn slot_err(&self, e: EngineError) -> GatewayError {
+        self.engine_err(e)
     }
 
     /// The prompt text a request renders to, without generating (`/apply-template`).
@@ -917,6 +923,12 @@ impl Gateway {
         };
         let parser = OutputParser::new(st.tool_format, tools, st.think, in_reasoning);
         Ok((Some(parser), constraint))
+    }
+
+    /// A generation slot held for the length of an embedding or rerank request, so those routes
+    /// queue and are refused like generation (503 when the queue is full).
+    pub async fn admit_auxiliary(&self) -> Result<OwnedSemaphorePermit, GatewayError> {
+        self.admit().await
     }
 
     async fn admit(&self) -> Result<OwnedSemaphorePermit, GatewayError> {

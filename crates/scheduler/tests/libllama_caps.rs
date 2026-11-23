@@ -171,22 +171,24 @@ fn a_shifted_sequence_is_not_kept_for_reuse() {
 }
 
 #[test]
-fn context_shift_needs_a_backend_that_can_shift() {
-    let e = start(Setup {
+fn context_shift_is_disabled_with_a_warning_on_a_backend_that_cannot_shift() {
+    // As llama-server ("ctx_shift is not supported by this context, it will be disabled"): the
+    // server starts and a full context ends the request.
+    let s = start(Setup {
         context_shift: true,
         shift_backend: false,
         ..Setup::default()
     })
-    .err()
-    .expect("refused");
-    assert!(
-        e.contains("--context-shift") && e.contains("cannot shift"),
-        "{e}"
-    );
+    .expect("started");
+    let (reason, generated, _) = finished(&run(&s, prompt(10), 200, SamplingExtras::default()));
+    assert_eq!(reason, FinishReason::Length);
+    assert!(generated < 64, "{generated} tokens in a context of 64");
 }
 
 fn slot(s: &Scheduler, id: i32, a: SlotAction) -> Result<SlotReply, EngineError> {
-    s.slot_action(id, a)
+    s.slot_action(id, a)?
+        .blocking_recv()
+        .map_err(|_| EngineError::Other("the engine worker has stopped".into()))?
 }
 
 #[test]

@@ -101,7 +101,7 @@ pub async fn post_props() -> Result<Json<Value>> {
 // ---- tokenize, detokenize, apply-template ----
 
 /// A token id from JSON: an integer inside the vocabulary.
-fn token_id(v: &Value, n_vocab: usize) -> Result<TokenId> {
+pub(crate) fn token_id(v: &Value, n_vocab: usize) -> Result<TokenId> {
     v.as_i64()
         .and_then(|i| TokenId::try_from(i).ok())
         .filter(|&i| (i as usize) < n_vocab)

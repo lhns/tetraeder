@@ -209,7 +209,43 @@ async fn bad_embedding_requests_are_400s_with_llama_servers_words() {
     assert_eq!(s, 400);
 }
 
+#[tokio::test]
+async fn embedding_requests_are_bounded_and_their_token_ids_checked() {
+    let (app, _) = app(embedding_engine(PoolingKind::Mean));
+    // A token id outside the vocabulary is the client's error, not the engine's.
+    for input in [
+        json!([1, 2, 999_999]),
+        json!([[1, 2], [3, 999_999]]),
+        json!([-1]),
+    ] {
+        let (s, _, v) = post(&app, "/v1/embeddings", &json!({"input": input}), false).await;
+        assert_eq!(s, 400, "{input}: {v}");
+    }
+    let many: Vec<Value> = (0..1025).map(|_| json!("a")).collect();
+    let (s, _, v) = post(&app, "/v1/embeddings", &json!({"input": many}), false).await;
+    assert_eq!(s, 400, "{v}");
+    assert!(error(&v).2.contains("too many inputs"), "{v}");
+    let ok: Vec<Value> = (0..1024).map(|_| json!("a")).collect();
+    let (s, _, _) = post(&app, "/v1/embeddings", &json!({"input": ok}), false).await;
+    assert_eq!(s, 200);
+}
+
 // ---- rerank ----
+
+#[tokio::test]
+async fn a_rerank_request_is_bounded_in_documents() {
+    let (app, _) = app(embedding_engine(PoolingKind::Rank));
+    let docs: Vec<Value> = (0..1025).map(|_| json!("a")).collect();
+    let (s, _, v) = post(
+        &app,
+        "/rerank",
+        &json!({"query": "q", "documents": docs}),
+        false,
+    )
+    .await;
+    assert_eq!(s, 400, "{v}");
+    assert!(error(&v).2.contains("too many documents"), "{v}");
+}
 
 #[tokio::test]
 async fn rerank_needs_the_rank_pooling() {
@@ -421,6 +457,11 @@ async fn bad_slot_requests_are_400s() {
         (
             "/slots/0?action=save",
             json!({"filename": "a/b"}),
+            "Invalid filename",
+        ),
+        (
+            "/slots/0?action=restore",
+            json!({"filename": "NUL.bin"}),
             "Invalid filename",
         ),
         (

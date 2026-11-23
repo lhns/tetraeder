@@ -31,6 +31,24 @@ pub fn valid_filename(name: &str) -> bool {
         && !name.starts_with(' ')
         && !name.ends_with([' ', '.'])
         && !name.contains("..")
+        && !windows_reserved(name)
+}
+
+/// A Windows device name (`CON`, `NUL`, `COM1`, `LPT3`, ...), with or without an extension and
+/// in any case. Refused on every platform so a save directory moves between systems.
+fn windows_reserved(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    let stem = stem.trim_end_matches(' ');
+    if matches!(stem, "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$") {
+        return true;
+    }
+    ["COM", "LPT"].iter().any(|p| {
+        stem.strip_prefix(p).is_some_and(|d| {
+            let mut c = d.chars();
+            matches!(c.next(), Some('0'..='9' | '\u{b9}' | '\u{b2}' | '\u{b3}'))
+                && c.next().is_none()
+        })
+    })
 }
 
 /// The filename of a save or restore body (`filename`, a string).
@@ -73,9 +91,17 @@ pub async fn slot_action(
         SlotAction::Save { filename } | SlotAction::Restore { filename } => filename.clone(),
         SlotAction::Erase => String::new(),
     };
-    let reply = tokio::task::spawn_blocking(move || gw.slot_action(id, action))
+    // The answer is awaited, not blocked on: a client that goes away drops the receiver, which
+    // cancels the action if it has not started.
+    let wait = gw.slot_action(id, action)?;
+    let reply = wait
         .await
-        .map_err(|e| LlamaError::from(crate::error::GatewayError::Internal(e.to_string())))??;
+        .map_err(|_| {
+            LlamaError::from(crate::error::GatewayError::Internal(
+                "the engine worker has stopped".into(),
+            ))
+        })?
+        .map_err(|e| LlamaError::from(gw.slot_err(e)))?;
     Ok(Json(match reply {
         SlotReply::Saved { tokens, bytes, ms } if saved => json!({
             "id_slot": id,
@@ -132,5 +158,31 @@ mod tests {
             assert!(!valid_filename(bad), "{bad:?}");
         }
         assert!(valid_filename(&"x".repeat(255)));
+        for reserved in [
+            "CON",
+            "con",
+            "Prn.txt",
+            "aux.tar.gz",
+            "NUL.bin",
+            "COM1",
+            "com0.bin",
+            "LPT9",
+            "lpt3.x",
+            "COM\u{b9}",
+            "NUL .txt",
+        ] {
+            assert!(!valid_filename(reserved), "{reserved}");
+        }
+        for fine in [
+            "COM10",
+            "COMX",
+            "CONSOLE",
+            "xcon",
+            "LPT",
+            "con-1.bin",
+            "COM1x",
+        ] {
+            assert!(valid_filename(fine), "{fine}");
+        }
     }
 }

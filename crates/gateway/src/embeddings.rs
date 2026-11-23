@@ -4,7 +4,7 @@
 use crate::engine::{PoolingKind, TokenId};
 use crate::error::{LlamaError, bad};
 use crate::gateway::Gateway;
-use crate::native::{json_body, tokenize_mixed};
+use crate::native::{json_body, token_id, tokenize_mixed};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -12,6 +12,10 @@ use serde_json::{Map, Value, json};
 use std::sync::Arc;
 
 type Result<T> = std::result::Result<T, LlamaError>;
+
+/// Inputs of one embedding request and documents of one rerank request. llama-server has no
+/// limit; this server shares its workers with generation.
+pub const MAX_ITEMS: usize = 1024;
 
 /// llama.cpp's default `embd_normalize`: euclidean.
 const DEFAULT_NORMALIZE: i32 = 2;
@@ -62,7 +66,14 @@ async fn embeddings_impl(gw: Arc<Gateway>, body: Bytes, mut oai: bool) -> Result
             }
         }
     }
-    let inputs = tokenize_inputs(&gw, prompt)?;
+    // One generation slot for the request, then the tokenizing off the async runtime.
+    let _permit = gw.admit_auxiliary().await?;
+    let inputs = {
+        let (gw, prompt) = (Arc::clone(&gw), prompt.clone());
+        tokio::task::spawn_blocking(move || tokenize_inputs(&gw, &prompt))
+            .await
+            .map_err(|e| LlamaError::from(crate::error::GatewayError::Internal(e.to_string())))??
+    };
     if inputs.is_empty() {
         return Err(bad("\"input\" must not be empty"));
     }
@@ -128,17 +139,13 @@ async fn embeddings_impl(gw: Arc<Gateway>, body: Bytes, mut oai: bool) -> Result
 /// token ids, mixed, or an object with `prompt_string` or OpenAI `content` parts. Special tokens
 /// are added and parsed.
 fn tokenize_inputs(gw: &Gateway, prompt: &Value) -> Result<Vec<Vec<TokenId>>> {
+    let n_vocab = gw.vocab("")?.len();
     let one = |p: &Value| -> Result<Vec<TokenId>> {
         match p {
             Value::String(_) => tokenize_mixed(gw, p, true, true),
-            Value::Array(items) if !items.is_empty() && items.iter().all(Value::is_i64) => items
-                .iter()
-                .map(|v| {
-                    v.as_i64()
-                        .and_then(|i| TokenId::try_from(i).ok())
-                        .ok_or_else(|| bad("token ids must be non-negative integers"))
-                })
-                .collect(),
+            Value::Array(items) if !items.is_empty() && items.iter().all(Value::is_i64) => {
+                items.iter().map(|v| token_id(v, n_vocab)).collect()
+            }
             Value::Array(_) => tokenize_mixed(gw, p, true, true),
             Value::Object(o) => {
                 if let Some(s) = o.get("prompt_string") {
@@ -153,9 +160,20 @@ fn tokenize_inputs(gw: &Gateway, prompt: &Value) -> Result<Vec<Vec<TokenId>>> {
         }
     };
     match prompt {
-        Value::Array(items) if !items.iter().any(Value::is_i64) => items.iter().map(one).collect(),
+        Value::Array(items) if !items.iter().any(Value::is_i64) => {
+            if items.len() > MAX_ITEMS {
+                return Err(too_many("inputs", items.len()));
+            }
+            items.iter().map(one).collect()
+        }
         p => Ok(vec![one(p)?]),
     }
+}
+
+fn too_many(what: &str, n: usize) -> LlamaError {
+    bad(format!(
+        "too many {what}: {n}, at most {MAX_ITEMS} per request"
+    ))
 }
 
 const ELEMENTS: &str = "\"prompt\" elements must be a string, a list of tokens, a JSON object containing a prompt string, or a list of mixed strings & tokens.";
@@ -259,6 +277,9 @@ pub async fn rerank(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Json<
         .and_then(Value::as_array)
         .filter(|d| !d.is_empty())
         .ok_or_else(|| bad("\"documents\" must be a non-empty array of strings or objects"))?;
+    if docs.len() > MAX_ITEMS {
+        return Err(too_many("documents", docs.len()));
+    }
     let documents = docs.iter().map(rerank_item).collect::<Result<Vec<_>>>()?;
     let top_n = match body.get("top_n").and_then(Value::as_i64) {
         Some(n) if n < 0 => return Err(bad("\"top_n\" must be >= 0")),
@@ -266,6 +287,7 @@ pub async fn rerank(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Json<
         None => documents.len(),
     };
 
+    let _permit = gw.admit_auxiliary().await?;
     let mut ranks = Vec::with_capacity(documents.len());
     let mut n_tokens = 0u64;
     for (index, doc) in documents.iter().enumerate() {
