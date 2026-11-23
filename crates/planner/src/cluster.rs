@@ -260,7 +260,10 @@ fn stage_of(
         format: Some(fmt),
         ..Default::default()
     };
-    let main = node.gpu.as_ref().unwrap_or(&node.cpu);
+    let main = match choice.placement {
+        Placement::Cpu => &node.cpu,
+        _ => node.gpu.as_ref().unwrap_or(&node.cpu),
+    };
     let mut rules = Vec::new();
     if embed {
         rules.push(assign(vec![UnitKind::Embed], on(&[&node.cpu]), None));
@@ -400,7 +403,7 @@ fn assemble(
 }
 
 /// Placement and run settings of one segment, read back from its single-node plan.
-fn read_stage(plan: &Plan, node: &Node) -> Result<Placement, String> {
+fn read_stage(plan: &Plan) -> Result<Placement, String> {
     let st = &plan.replicas[0].stages[0];
     let slots = |id: &str| {
         st.expert_cache
@@ -413,9 +416,7 @@ fn read_stage(plan: &Plan, node: &Node) -> Result<Placement, String> {
             vram_slots,
             ram_slots,
         }),
-        (None, None) if !st.devices.iter().any(|d| d == GPU) && node.gpu.is_none() => {
-            Ok(Placement::Cpu)
-        }
+        (None, None) if !st.devices.iter().any(|d| d == GPU) => Ok(Placement::Cpu),
         _ => Err("a segment is a builder placement or all on the CPU".to_string()),
     }
 }
@@ -453,7 +454,7 @@ pub fn cluster_features(
             ));
         } else {
             let sp = segment_plan(plan, 0, s);
-            run_features(&node, &sub, read_stage(&sp, &node)?, ubatch, threads)
+            run_features(&node, &sub, read_stage(&sp)?, ubatch, threads)
         };
         out.push(SegmentFeatures {
             node: s.node.clone(),

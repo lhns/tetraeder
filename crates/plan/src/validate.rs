@@ -194,9 +194,9 @@ pub enum Issue {
         at: At,
         node: String,
     },
-    /// A compute device on another node than its stage that none of the two allowed cases
-    /// covers: the head unit on the leader's node, an expert on a node whose OS and the stage's
-    /// are both Linux (ADR 0091).
+    /// A device on another node than its stage that none of the two allowed cases covers: the
+    /// head unit on the leader's node, an expert homed and computed on one node whose OS and the
+    /// stage's are both Linux (ADR 0091).
     CrossNode {
         at: At,
         device: String,
@@ -475,6 +475,7 @@ impl<'a> Checker<'a> {
             let nodes = group_nodes.iter().map(|n| (*n).to_string()).collect();
             self.issues.push(Issue::StageSpansNodes { at, nodes });
         }
+        self.node_rules(at, st);
 
         if self.complete {
             let mut open = Vec::new();
@@ -787,19 +788,18 @@ impl<'a> Checker<'a> {
                         Issue::NoCompute { at, unit: fu }
                     });
                 } else if !st.devices.is_empty() && !st.devices.iter().any(|g| g == d) {
-                    let issue = match self.other_node(st, a, dev) {
-                        None => Issue::NotInGroup {
+                    // Another node's devices are judged by `node_rules`.
+                    let stage_node = st
+                        .devices
+                        .iter()
+                        .find_map(|g| hw.device(g))
+                        .map(|g| &g.node);
+                    if stage_node.is_none_or(|n| *n == dev.node) {
+                        self.issues.push(Issue::NotInGroup {
                             at,
                             device: d.to_string(),
-                        },
-                        Some(Ok(())) => continue,
-                        Some(Err(detail)) => Issue::CrossNode {
-                            at,
-                            device: d.to_string(),
-                            detail,
-                        },
-                    };
-                    self.issues.push(issue);
+                        });
+                    }
                 }
             }
             if a.home.as_ref().is_some_and(|h| h.len() > 1) {
@@ -815,42 +815,72 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A compute device `dev` outside the stage's group on another node than the stage: `None`
-    /// when it is on the stage's own node (a plain `NotInGroup`), else whether the rule is one of
-    /// the two cross-node cases of ADR 0091.
-    fn other_node(
-        &self,
-        st: &Stage,
-        a: &crate::Assign,
-        dev: &tetraeder_profiler::Device,
-    ) -> Option<Result<(), String>> {
+    /// Everything a stage names is on its node (ADR 0091), except two cases: the head unit's
+    /// rule on the leader's node, and an expert rule whose home and compute are both on one other
+    /// node, Linux on both (ADR 0008). KV, workspace, slot caches and phase budgets never leave
+    /// the node.
+    fn node_rules(&mut self, at: At, st: &Stage) {
         let hw = self.ctx.hw;
-        let stage_dev = st.devices.iter().find_map(|d| hw.device(d))?;
-        let (here, there) = (stage_dev.node.as_deref(), dev.node.as_deref());
-        if here == there {
-            return None;
+        let Some(here) = st.devices.iter().find_map(|d| hw.device(d)) else {
+            return;
+        };
+        let key = |d: &tetraeder_profiler::Device| d.node.clone().unwrap_or_default();
+        let linux = |d: &tetraeder_profiler::Device| d.os.as_deref() == Some("linux");
+        let mut found: Vec<(String, String)> = Vec::new();
+        let buffers = (st.kv.iter().flatten().map(|b| &b.device))
+            .chain(st.workspace.iter().map(|b| &b.device))
+            .chain(st.expert_cache.iter().map(|c| &c.device))
+            .chain(st.phase_budgets.iter().map(|b| &b.device));
+        for id in buffers {
+            if hw.device(id).is_some_and(|d| key(d) != key(here)) {
+                found.push((
+                    id.clone(),
+                    "KV, workspace and slot caches stay on the stage's node".into(),
+                ));
+            }
         }
-        let kinds = a.units.kinds.as_slice();
-        Some(if kinds == [UnitKind::Head] {
-            if there.unwrap_or("") == self.leader {
-                Ok(())
+        for a in &st.assign {
+            let devs: Vec<&tetraeder_profiler::Device> = a
+                .home
+                .iter()
+                .chain(&a.compute)
+                .flatten()
+                .filter_map(|d| hw.device(d))
+                .collect();
+            let Some(away) = devs.iter().find(|d| key(d) != key(here)) else {
+                continue;
+            };
+            let kinds = a.units.kinds.as_slice();
+            let verdict = if kinds == [UnitKind::Head] {
+                if devs.iter().all(|d| key(d) == self.leader) {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "the head unit may use only the leader's node {:?}",
+                        self.leader
+                    ))
+                }
+            } else if kinds == [UnitKind::Expert] {
+                if !devs.iter().all(|d| key(d) == key(away)) {
+                    Err("an expert's home and compute stay on one node".to_string())
+                } else if linux(here) && linux(away) {
+                    Ok(())
+                } else {
+                    Err(
+                        "experts compute on another node only between Linux nodes (ADR 0008)"
+                            .to_string(),
+                    )
+                }
             } else {
-                Err(format!(
-                    "the head unit may compute only on the leader's node {:?}, not on {:?}",
-                    self.leader,
-                    there.unwrap_or("")
-                ))
+                Err("only the head unit and experts may use another node's devices".to_string())
+            };
+            if let Err(detail) = verdict {
+                found.push((away.id.clone(), detail));
             }
-        } else if kinds == [UnitKind::Expert] {
-            let linux = |d: &tetraeder_profiler::Device| d.os.as_deref() == Some("linux");
-            if linux(stage_dev) && linux(dev) {
-                Ok(())
-            } else {
-                Err("experts compute on another node only between Linux nodes (ADR 0008)".into())
-            }
-        } else {
-            Err("only the head unit and experts may compute on another node".into())
-        })
+        }
+        for (device, detail) in found {
+            self.issues.push(Issue::CrossNode { at, device, detail });
+        }
     }
 
     fn buffers(&mut self, r: u32, s: u32, st: &Stage, max_expert: u64) {

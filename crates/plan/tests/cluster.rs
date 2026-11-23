@@ -517,3 +517,76 @@ fn two_node_segments_cover_the_model_in_order() {
         );
     }
 }
+
+/// Layers 0..2 on a with the experts 4..8 as given, the rest as in `two_nodes`.
+fn experts_split(home: &str, compute: &str) -> Plan {
+    let mut p = two_nodes();
+    let st = &mut p.replicas[0].stages[0];
+    st.assign
+        .retain(|a| a.units.kinds != [UnitKind::Attn, UnitKind::Mlp, UnitKind::Expert]);
+    st.assign.push(Assign {
+        units: UnitSel {
+            kinds: vec![UnitKind::Attn, UnitKind::Mlp],
+            ..Default::default()
+        },
+        home: Some(vec!["a/gpu0".into()]),
+        format: Some(Format::F16),
+        ..Default::default()
+    });
+    for (lo, hi, h, c) in [(0, 4, "a/gpu0", None), (4, 8, home, Some(compute))] {
+        st.assign.push(Assign {
+            units: UnitSel {
+                kinds: vec![UnitKind::Expert],
+                experts: Some(Span(lo, hi)),
+                ..Default::default()
+            },
+            home: Some(vec![h.into()]),
+            compute: c.map(|c| vec![c.into()]),
+            format: Some(Format::F16),
+            ..Default::default()
+        });
+    }
+    p
+}
+
+fn cross(issues: &[Issue]) -> Vec<String> {
+    issues
+        .iter()
+        .filter_map(|i| match i {
+            Issue::CrossNode { device, .. } => Some(device.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_stage_names_only_devices_of_its_node() {
+    let hw = cluster();
+    // Experts homed and computed together on another Linux node: the one allowed split.
+    assert_eq!(
+        check(&experts_split("b/gpu1", "b/gpu1"), &hw, 6, None),
+        vec![]
+    );
+    // Homed on another node's disk and computed here, homed here and computed there: refused.
+    let remote_home = check(&experts_split("b/nvme0", "a/cpu0"), &hw, 6, None);
+    assert_eq!(cross(&remote_home), ["b/nvme0"], "{remote_home:?}");
+    let remote_compute = check(&experts_split("a/gpu1", "b/gpu1"), &hw, 6, None);
+    assert_eq!(cross(&remote_compute), ["b/gpu1"], "{remote_compute:?}");
+    // KV, workspace and slot caches stay on the node.
+    let mut p = two_nodes();
+    p.replicas[0].stages[0].kv.as_mut().unwrap()[0].device = "b/gpu0".into();
+    p.replicas[0].stages[0].workspace.push(DeviceBytes {
+        device: "b/gpu0".into(),
+        bytes: 1,
+    });
+    p.replicas[0].stages[1].expert_cache.push(SlotCache {
+        device: "a/gpu0".into(),
+        slots: 2,
+    });
+    let issues = check(&p, &hw, 6, None);
+    assert_eq!(cross(&issues), ["b/gpu0", "b/gpu0", "a/gpu0"], "{issues:?}");
+    // Nothing else may use another node: attention on b's GPU in a's stage.
+    let mut q = two_nodes();
+    q.replicas[0].stages[0].assign[1].home = Some(vec!["b/gpu0".into()]);
+    assert_eq!(cross(&check(&q, &hw, 6, None)), ["b/gpu0"]);
+}

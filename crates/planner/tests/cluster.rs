@@ -281,6 +281,30 @@ fn before_phase_six_nothing_spans_nodes() {
 }
 
 #[test]
+fn a_node_whose_gpu_is_too_small_runs_its_segment_on_the_cpu() {
+    let layout = fixtures::moe();
+    let (_, mut hw) = graphs().remove(0);
+    for d in &mut hw.devices {
+        if d.id == "b/gpu0" {
+            d.capacity_bytes = 400 << 20; // under the CUDA reserve: no GPU placement fits
+        }
+    }
+    let hints = Hints::default();
+    let (cands, pruned) = enumerate_cluster(&hw, &layout, &hints, Phase(6));
+    assert!(!cands.is_empty(), "{pruned:#?}");
+    for c in &cands {
+        check(c, &hw, &layout, &hints, &all_nodes(&hw), &W, "small gpu");
+        let on_b: Vec<_> = c.plan.replicas[0]
+            .stages
+            .iter()
+            .filter(|s| s.devices.iter().all(|d| d.starts_with("b/")))
+            .collect();
+        assert!(on_b.iter().all(|s| s.devices == ["b/cpu0"]), "{}", c.id);
+        assert!(!on_b.is_empty());
+    }
+}
+
+#[test]
 fn a_dense_model_is_refused_with_a_reason() {
     let (_, hw) = graphs().remove(0);
     let (cands, pruned) = enumerate_cluster(&hw, &fixtures::dense(), &Hints::default(), Phase(6));
