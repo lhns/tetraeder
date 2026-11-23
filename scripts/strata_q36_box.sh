@@ -141,7 +141,13 @@ server_up() {
       url="http://127.0.0.1:$port_tet"
       alias=$alias36
       start_server "$slog" "$tet" serve -m "$model" --engine auto --ngl -1 --parallel 4 --ctx "$ctx" -t "$threads" \
-        --flash-attn on --port "$port_tet" --alias "$alias" --accept-any-model
+        --flash-attn on --no-prefix-reuse --cache-ram 0 --port "$port_tet" --alias "$alias" --accept-any-model
+      wait_ready "$url/v1/models" 900 "$slog" ;;
+    tetraeder-default)
+      # informational: no workaround flags; on qwen35moe a reused slot fails with HTTP 500 (the recurrent state cannot drop positions)
+      url="http://127.0.0.1:$port_tet"
+      alias=$alias36
+      start_server "$slog" "$tet" serve -m "$model" --engine auto --ngl -1 --parallel 4 --ctx "$ctx" -t "$threads"         --flash-attn on --port "$port_tet" --alias "$alias" --accept-any-model
       wait_ready "$url/v1/models" 900 "$slog" ;;
     moe30)
       url="http://127.0.0.1:$port_tet"
@@ -367,6 +373,7 @@ st_rounds() {
       esac
     done
   done
+  one_run "b0-default" tetraeder-default "" 1
   touch "$out/stage-rounds.ok"
 }
 
