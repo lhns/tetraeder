@@ -1,0 +1,12 @@
+label=b-115630
+commit=unknown
+date=2026-11-23T08:08:55Z
+kernel=6.8.0-138-generic
+cpu=AMD EPYC 7452 32-Core Processor
+cores_online=64
+cpu_quota=768000 100000
+aes_flag=aes
+public_ip=1.193.139.67
+gpu=NVIDIA GeForce RTX 3060, 580.173.02
+nic_eth0=10000
+nic_lo=?
