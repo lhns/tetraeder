@@ -615,3 +615,40 @@ fn a_shrunk_reservation_still_holds_the_restored_entry() {
     let rec = w.last_admit.clone().expect("admitted");
     assert_eq!((rec.source, rec.common), ("ram", 1000), "{rec:?}");
 }
+
+/// An entry the RAM budget evicted comes back from the disk tier on the next turn (ADR 0087),
+/// and the restore leaves no file behind.
+// hardware: none
+#[test]
+fn a_spilled_entry_is_restored_from_disk() {
+    let dir = std::env::temp_dir().join(format!("tt-sched-disk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let cache = PrefixCache::new(6000).with_disk(&dir, 100_000);
+    let mut w = worker_cache(FakeKv::new(N_VOCAB, 2, 8000, 2151), 2048, cache);
+    let entry = |seed: u32| {
+        let p = prompt(seed, 1200);
+        let toks: Vec<i32> = p.iter().map(|&t| t as i32).collect();
+        let bytes: Vec<u8> = toks.iter().flat_map(|t| t.to_le_bytes()).collect();
+        (p, toks, bytes)
+    };
+    let (saved, toks, bytes) = entry(1);
+    let fmt = w.backend.kv_format();
+    w.cache.insert(&fmt, toks, bytes);
+    // The second entry does not fit beside the first: the first spills.
+    let (_, toks2, bytes2) = entry(9);
+    w.cache.insert(&fmt, toks2, bytes2);
+    w.cache.flush_disk();
+    assert_eq!(w.cache.disk_bytes(), 4800);
+    let mut p = saved[..1000].to_vec();
+    p.extend(prompt(7, 100));
+    let mut rx = submit(&mut w, &p, 2);
+    w.admit();
+    let rec = w.last_admit.clone().expect("admitted");
+    assert_eq!((rec.source, rec.common), ("disk", 1000), "{rec:?}");
+    assert_eq!(w.cache.disk_bytes(), 0);
+    pump(&mut w);
+    assert_eq!(tokens(&events(&mut rx)), 2);
+    drop(w);
+    assert_eq!(std::fs::read_dir(&dir).map_or(0, |r| r.count()), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}

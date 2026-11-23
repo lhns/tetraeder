@@ -26,7 +26,7 @@ Judged by a paired run on a model we run (rule 3); no default changes on Strata'
 | Adaptive expert cache | VRAM cache learns routing, async swaps (`engine/src/core/expert_cache.cpp`, `--adapt-every`) | **have** in parts: pinned hot set, LRU, frequency tiers, prefetch (ADR 0050 c, 0054) | none; compare once a model is shared |
 | GPU plus SSD only, CPU plus SSD only | fit helper sets `--ssd-experts --ram-experts-gb 0` (`inkling_fit.py:398-424`) | to check: the planner has RAM and NVMe tiers; whether it plans a zero-RAM expert tier is untested | `planner-low-ram-modes` |
 | Expert-parallel split on 2 GPUs | each GPU holds a share of every layer's experts (`ep_dual_gpu.cu`, `--ep-split`) | missing: shapes are layer split and tensor parallel (ADR 0069) | `planner-ep-split` |
-| Conversation spill to SSD | parked conversations in RAM with SSD spill (`docs/DETAILS.md` "Conversation cache") | partly: prefix snapshots in RAM only (ADR 0049) | `memory-prefix-ssd` |
+| Conversation spill to SSD | parked conversations in RAM with SSD spill (`docs/DETAILS.md` "Conversation cache") | **have** (2026-11-23): prefix snapshots in RAM spill to NVMe on eviction and return on the next turn, `--cache-disk` and `--cache-disk-mib` (ADR 0087); not measured | none |
 | CUDA graph per token, CPU and GPU expert overlap | `--no-token-graph` A/B, hit poke (`generate.cpp:944,1288`) | **have**: graphs per segment, CPU hit group overlap (ADR 0030, 0054, 0064) | none |
 
 ## Class 2: needs a shared model

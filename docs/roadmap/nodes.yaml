@@ -3309,8 +3309,8 @@ nodes:
   overview: false
   plain: Check that the planner can place experts in VRAM and on NVMe with no RAM tier, or on the CPU and NVMe only, as Strata offers for small machines (ADR 0085).
   notes: 'Simulated fixtures first; a box only if a gap shows.'
-- id: memory-prefix-ssd
-  title: Prefix cache spills to SSD
+- id: memory-prefix-disk-async
+  title: Disk prefix restore off the step
   track: memory
   kind: feature
   state: next
@@ -3319,15 +3319,37 @@ nodes:
   verdict_quote: ''
   headline: ''
   depends_on:
-  - serving-prefix-cache
+  - memory-prefix-ssd
   replaced_by: []
   lane: local
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: Idle conversations' KV snapshots spill from RAM to NVMe and come back on the next turn, as Strata parks conversations (ADR 0085).
-  notes: 'Prefix snapshots are RAM only today (ADR 0049).'
+  plain: A prefix restored from disk is read in the background while the waiting request stays queued, so other sequences keep decoding; today the file read blocks the scheduler step (ADR 0087), then a paired run of disk restore against recompute.
+  notes: 'A 20K-token Qwen3-8B snapshot is about 2.9 GB, about a second of NVMe read that stalls every sequence today.'
+- id: memory-prefix-ssd
+  title: Prefix cache spills to SSD
+  track: memory
+  kind: feature
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0087-prefix-cache-disk-tier.md
+  - crates/scheduler/src/prefix_cache.rs
+  - crates/scheduler/src/prefix_disk.rs
+  verdict_quote: 'CI memory-prefix-ssd run 45091422684: test (ubuntu-24.04) success, test (windows-latest) success; the spill, restore, budget, replacement, cleanup and write-failure tests and the scheduler restore test pass (not measured)'
+  headline: ''
+  depends_on:
+  - serving-prefix-cache
+  replaced_by: []
+  lane: local
+  start: '2026-11-23'
+  end: '2026-11-23'
+  folded: []
+  overview: false
+  plain: Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
+  notes: 'Default off. A paired speed run on a box (disk restore against recompute) is a later item.'
 - id: serving-strata-owner-scope
   title: Which Strata model families to add
   track: serving

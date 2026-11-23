@@ -287,7 +287,7 @@ flowchart TB
 | KV cache spills to RAM, disk | ⏸ parked | Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084). |
 | KV cache partly in RAM | ○ next | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). |
 | Planner picks the KV format | ○ next | The planner chooses the KV format (F16, Q8_0, Q8_0/Q4_0) and pool size from free VRAM and slots instead of taking them as given, the way Strata picks FP8 KV on small cards (ADR 0085). |
-| Prefix cache spills to SSD | ○ next | Idle conversations' KV snapshots spill from RAM to NVMe and come back on the next turn, as Strata parks conversations (ADR 0085). |
+| Disk prefix restore off the step | ○ next | A prefix restored from disk is read in the background while the waiting request stays queued, so other sequences keep decoding; today the file read blocks the scheduler step (ADR 0087), then a paired run of disk restore against recompute. |
 | Stream expert misses during prefill | ⏸ parked | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). |
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
@@ -379,7 +379,7 @@ flowchart TB
 - `memory-kv-auto`: Planner picks the KV format
 - `planner-ep-split`: Expert-parallel split on two GPUs
 - `planner-low-ram-modes`: Experts on GPU and SSD only
-- `memory-prefix-ssd`: Prefix cache spills to SSD
+- `memory-prefix-disk-async`: Disk prefix restore off the step
 - `serving-recurrent-reuse`: Recurrent models break slot reuse
 
 **ci**
@@ -436,7 +436,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 94 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 95 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -818,6 +818,7 @@ Generated on 2026-11-23.
 - `multi-accept-adr-0081`: Accept the prefill capture fix (✔ done · n/a). The owner accepted ADR 0081 with the M2 decisions, after its GPU test and the s3f2 confirmation passed.
 - `serving-parity-harness`: llama-server conformance harness (✔ done · successful). One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
 - `bench-strata-q36`: Strata against llama-server on Qwen3.6 (✔ done · unrated). One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085).
+- `memory-prefix-ssd`: Prefix cache spills to SSD (✔ done · unrated). Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
 
 </details>
 
@@ -846,7 +847,7 @@ Generated on 2026-11-23.
 Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 20 nodes (12 done, 2 next, 5 parked, 1 abandoned)
-- [memory - memory and streaming](roadmap/tracks/memory.md): 16 nodes (8 done, 3 next, 4 parked, 1 abandoned)
+- [memory - memory and streaming](roadmap/tracks/memory.md): 17 nodes (9 done, 3 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 24 nodes (15 done, 3 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 28 nodes (13 done, 3 next, 5 blocked, 7 parked)

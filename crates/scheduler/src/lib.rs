@@ -7,6 +7,7 @@ mod batch;
 mod dense_backend;
 mod load;
 mod prefix_cache;
+mod prefix_disk;
 pub mod sample;
 mod scheduler;
 
