@@ -1,0 +1,6 @@
+[2m2026-11-23T22:35:01.521244Z[0m [33m WARN[0m [2mllama[0m[2m:[0m llama_model_loader: tensor overrides to CPU are used with mmap enabled - consider using --load-mode none for better performance
+[2m2026-11-23T22:35:01.531386Z[0m [33m WARN[0m [2mllama[0m[2m:[0m llama_context: n_ctx_seq (4096) > n_ctx_train (256) -- possible training context overflow
+[2m2026-11-23T22:35:01.536497Z[0m [33m WARN[0m [2mllama[0m[2m:[0m resolve_fused_ops: layer 0 is assigned to device CUDA0 but Flash Attention is assigned to device CPU (usually due to missing support)
+[2m2026-11-23T22:35:01.536511Z[0m [33m WARN[0m [2mllama[0m[2m:[0m resolve_fused_ops: Flash Attention not supported, set to disabled
+[2m2026-11-23T22:35:01.550889Z[0m [32m INFO[0m [2mtetraeder_model::snapshot_pool[0m[2m:[0m snapshot buffer pool [3mspares[0m[2m=[0m2 [3mthp[0m[2m=[0mfalse
+listening on http://127.0.0.1:40225

@@ -3613,21 +3613,25 @@ nodes:
   title: Regression gate on final main
   track: bench
   kind: session
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: mixed
+  evidence:
+  - bench/results/regression-gate-20261123/README.md
+  - bench/results/regression-gate-20261123/ab/judged3-summary-q30b.json
+  - bench/results/regression-gate-20261123/ab/judged3-summary-q8b.json
+  - bench/results/regression-gate-20261123/ab/ab-ttft.json
+  verdict_quote: 'mixed. By the rule fixed before the run, 3 of 4 metrics read no regression evidence (Qwen3-30B-A3B c4 0.982 and c1 0.991, Qwen3-8B c1 1.006) and Qwen3-8B c4 is inconclusive (median 0.970 over 2 clean rounds, 0.848 and 1.091'
   headline: ''
   depends_on:
   - ops-review-group-d
   replaced_by: []
-  lane: box-later
-  start: ''
-  end: ''
+  lane: box
+  start: '2026-11-23'
+  end: '2026-11-24'
   folded: []
   overview: false
-  plain: One box session pairs this morning's build (f68d2a0) against main on the 30B and 8B at c1 and c4 with TTFT, under the 0.98 rule, and runs the conformance suite on CUDA, the Qwen3.6 default-flag rerun and the paired runs for kv auto and the disk prefix tier.
-  notes: 'Until it runs, the M2 numbers are unconfirmed on main.'
+  plain: 'One A100 box session paired this morning''s build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay).'
+  notes: 'Self A/B on a noisy A100 host (co-tenant flags on 2 of 6 8B rounds). Findings for follow-up (not regressions) are 4 CUDA parity failures (repeat-penalty, logprobs, seeded-sampler-names, logprobs-shape on the libllama path, logprob values move between runs), q8_0 KV costs about 8 percent at c4 and 14 percent at c1 against f16 at ctx 32768, and the prefix disk tier needs a workload with more sessions than slots to be measured.'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench

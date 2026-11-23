@@ -1,0 +1,1 @@
+error: --cache-type-k/--cache-type-v q5_0/q5_0: the own builders run these allowed pairs only: f16/f16, bf16/bf16, q8_0/q8_0, q8_0/q4_0, q4_0/q4_0; use --engine llama for other types

@@ -1,0 +1,30 @@
+0.00.002.856 I srv  llama_server: initializing ...
+0.00.066.271 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.066.278 W srv  server_prepa: embeddings enabled with n_batch (2048) > n_ubatch (512)
+0.00.066.279 W srv  server_prepa: setting n_batch = n_ubatch = 512 to avoid assertion failure
+0.00.066.519 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.097.712 I srv    load_model: loading model '/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf'
+0.00.528.329 W llama_init_from_model: model default pooling_type is [-1], but [1] was specified
+0.00.528.368 W llama_context: n_ctx_seq (4096) > n_ctx_train (512) -- possible training context overflow
+0.00.544.839 I cmn          init: llama threadpool init, n_threads = 2
+0.00.546.360 W srv    load_model: the slot context (4096) exceeds the training context of the model (512) - capping
+0.00.546.441 W init: embeddings required but some input tokens were not marked as outputs -> overriding
+0.00.635.361 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 512, kv_unified = 'true'
+0.00.637.980 I srv  server_run_i: model loaded
+0.00.637.992 I srv  server_on_li: listening on http://127.0.0.1:47353
+0.01.422.400 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.422.413 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.01.524.413 I slot      release: id  0 | task 0 | stop processing: n_tokens = 11, truncated = 0
+0.01.722.051 I slot       select: id  1 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.722.068 I slot launch_slot_: id  1 | task 2 | processing task, is_child = 0
+0.01.722.082 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = 23874492242254
+0.01.722.084 I slot launch_slot_: id  0 | task 3 | processing task, is_child = 0
+0.01.830.754 I slot      release: id  0 | task 3 | stop processing: n_tokens = 16, truncated = 0
+0.01.830.797 I slot      release: id  1 | task 2 | stop processing: n_tokens = 11, truncated = 0
+0.01.914.988 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = 23874492548595
+0.01.915.004 I slot launch_slot_: id  0 | task 5 | processing task, is_child = 0
+0.01.916.164 I slot      release: id  0 | task 5 | stop processing: n_tokens = 11, truncated = 0
+0.01.971.881 I slot       select: id  1 | task -1 | selected slot by LRU, n_tokens = 0, t_last = 23874492548632
+0.01.971.888 I slot launch_slot_: id  1 | task 7 | processing task, is_child = 0
+0.01.973.332 I slot      release: id  1 | task 7 | stop processing: n_tokens = 11, truncated = 0
+0.21.989.085 I srv    operator(): operator(): cleaning up before exit...

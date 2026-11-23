@@ -1,0 +1,1 @@
+error: --cpu-moe and --n-cpu-moe: the MoE builder places experts with --expert-slots and --ram-slots (--miss cpu computes the ones outside the GPU slots on the CPU); use --engine llama for llama-server's tensor overrides

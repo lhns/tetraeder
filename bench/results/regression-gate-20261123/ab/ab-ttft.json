@@ -1,0 +1,35 @@
+{
+  "common_requests": 95,
+  "own": {
+    "A": {
+      "requests": 105,
+      "ok": 105,
+      "errors": 0,
+      "status_mismatch": 10,
+      "ttft_median_s": 0.28391118720173836,
+      "ttft_p90_s": 0.6877487823367119,
+      "total_median_s": 7.873189058154821
+    },
+    "B": {
+      "requests": 105,
+      "ok": 105,
+      "errors": 0,
+      "status_mismatch": 10,
+      "ttft_median_s": 0.28924113884568214,
+      "ttft_p90_s": 0.6875695064663887,
+      "total_median_s": 7.88005081936717
+    }
+  },
+  "A": {
+    "median_s": 0.28391118720173836,
+    "p90_s": 0.6877487823367119
+  },
+  "B": {
+    "median_s": 0.28924113884568214,
+    "p90_s": 0.6875695064663887
+  },
+  "ratio_median": 1.0187733061753446,
+  "ratio_p90": 0.9997393294253258,
+  "reading": "no regression",
+  "reading_why": "median and p90 B/A at most 1.05, no errors"
+}

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Summary of scripts/ab_moe_box.sh: B/A ratios per round, medians and the reading by the rule fixed in
-bench/results/ab30b-20261122/README.md. Usage: ab_moe_summary.py <results dir> [--rounds N]. Writes ab-summary.json."""
+bench/results/ab30b-20261122/README.md. Usage: ab_moe_summary.py <results dir> [--rounds N] [--models q30b,q8b].
+Writes ab-summary.json (no --models: files ab-<side>-<test>-r<n>.json) or ab-summary-<model>.json per model (files
+ab-<model>-<side>-...), and ab-ttft.json when the TTFT replays ab-ttft-A.json and ab-ttft-B.json exist."""
 
 import importlib.util
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -15,6 +18,7 @@ _spec.loader.exec_module(p4)
 
 NO_REGRESSION = 0.98  # median B/A at least this for both metrics
 REGRESSION = 0.97  # median B/A below this for either metric, every clean round below 1
+TTFT_LINE = 1.05  # TTFT B/A of the median and of the p90 at most this: no regression, else reported
 MIN_CLEAN = 2  # clean rounds needed for any reading but "inconclusive"
 # metric -> (test, summary field)
 METRICS = {"c4": ("c4", "throughput_tps"), "c1": ("c1", "decode_tps_median")}
@@ -27,9 +31,9 @@ def read(path: Path):
         return None
 
 
-def snapshot(d: Path, side: str, rnd: int) -> dict:
+def snapshot(d: Path, side: str, rnd: int, prefix: str = "") -> dict:
     try:
-        text = (d / f"gpu-{side}-r{rnd}.txt").read_text(encoding="utf-8")
+        text = (d / f"gpu-{prefix}{side}-r{rnd}.txt").read_text(encoding="utf-8")
     except OSError:
         return {}
     out: dict = {}
@@ -40,8 +44,9 @@ def snapshot(d: Path, side: str, rnd: int) -> dict:
     return out
 
 
-def run_record(d: Path, side: str, rnd: int, samples) -> dict:
-    res = {t: read(d / f"ab-{side}-{t}-r{rnd}.json") for t in ("c4", "c1")}
+def run_record(d: Path, side: str, rnd: int, samples, prefix: str = "") -> dict:
+    # ab30b names the files ab-<side>-<test>-r<n>.json, ab_moe_box.sh with models ab-<model>-<side>-r<n>-<test>.json
+    res = {t: read(d / f"ab-{prefix}{side}-{t}-r{rnd}.json") or read(d / f"ab-{prefix}{side}-r{rnd}-{t}.json") for t in ("c4", "c1")}
     reasons = []
     vals = {}
     for t, j in res.items():
@@ -62,7 +67,7 @@ def run_record(d: Path, side: str, rnd: int, samples) -> dict:
     elif win["disqualifying"]:
         reasons.append(f"{win['disqualifying']} window sample(s) with throttle bits {win['bad_bits']}")
     return {"clean": not reasons, "reasons": reasons, "c4_tps": vals.get("c4"), "c1_decode_tps": vals.get("c1"),
-            "sampler": win, "snapshots": snapshot(d, side, rnd)}
+            "sampler": win, "snapshots": snapshot(d, side, rnd, prefix)}
 
 
 def reading(ratios: dict[str, list[float]], n_clean: int) -> tuple[str, str]:
@@ -78,11 +83,23 @@ def reading(ratios: dict[str, list[float]], n_clean: int) -> tuple[str, str]:
     return "inconclusive", "between the lines, or a metric below the line with a round at or above 1"
 
 
-def summarize(d: Path, rounds: int = 3) -> dict:
+def metric_reading(ratios: list[float]) -> str:
+    """The rule for one metric (model and concurrency): the median of its clean rounds."""
+    if len(ratios) < MIN_CLEAN:
+        return "inconclusive"
+    med = statistics.median(ratios)
+    if med >= NO_REGRESSION:
+        return "no regression evidence"
+    if med < REGRESSION and all(r < 1 for r in ratios):
+        return "regression"
+    return "inconclusive"
+
+
+def summarize(d: Path, rounds: int = 3, prefix: str = "") -> dict:
     samples = p4.load_samples(d)
     out_rounds, runs = [], {}
     for n in range(1, rounds + 1):
-        rec = {s: run_record(d, s, n, samples) for s in "AB"}
+        rec = {s: run_record(d, s, n, samples, prefix) for s in "AB"}
         runs.update({f"{s}-r{n}": r for s, r in rec.items()})
         row = {"round": n, "clean": rec["A"]["clean"] and rec["B"]["clean"]}
         for m, key in (("c4", "c4_tps"), ("c1", "c1_decode_tps")):
@@ -100,16 +117,54 @@ def summarize(d: Path, rounds: int = 3) -> dict:
     read_, why = reading(ratios, len(clean))
     return {"rounds": out_rounds, "clean_rounds": [r["round"] for r in clean],
             "excluded_rounds": [r["round"] for r in out_rounds if r not in clean],
-            "median_ratio": med, "reading": read_, "reading_why": why, "runs": runs}
+            "median_ratio": med, "metric_readings": {m: metric_reading(v) for m, v in ratios.items()}, "reading": read_, "reading_why": why, "runs": runs}
+
+
+def pctl(v: list[float], q: float) -> float:
+    """Nearest rank, as gateway_replay.summarize."""
+    v = sorted(v)
+    return v[min(max(math.ceil(q * len(v)) - 1, 0), len(v) - 1)]
+
+
+def ttft_summary(d: Path) -> dict | None:
+    """B/A of the median and p90 TTFT of the request-log replays, over the streamed requests that returned 200 on both
+    sides (same requests), plus the replays' own summaries (all ok requests)."""
+    res = {s: read(d / f"ab-ttft-{s}.json") for s in "AB"}
+    if not all(res.values()):
+        return None
+    by = {s: {r["index"]: r for r in res[s]["results"] if r.get("status") == 200 and r.get("ttft_s") is not None} for s in "AB"}
+    common = sorted(set(by["A"]) & set(by["B"]))
+    out: dict = {"common_requests": len(common), "own": {s: res[s]["summary"] for s in "AB"}}
+    if common:
+        t = {s: [by[s][i]["ttft_s"] for i in common] for s in "AB"}
+        for s in "AB":
+            out[s] = {"median_s": statistics.median(t[s]), "p90_s": pctl(t[s], 0.9)}
+        out["ratio_median"] = out["B"]["median_s"] / out["A"]["median_s"]
+        out["ratio_p90"] = out["B"]["p90_s"] / out["A"]["p90_s"]
+        errs = {s: res[s]["summary"]["errors"] for s in "AB"}
+        ok = not any(errs.values()) and max(out["ratio_median"], out["ratio_p90"]) <= TTFT_LINE
+        out["reading"] = "no regression" if ok else "report"
+        out["reading_why"] = (f"median and p90 B/A at most {TTFT_LINE}, no errors" if ok else
+                              f"median {out['ratio_median']:.3f}, p90 {out['ratio_p90']:.3f} (line {TTFT_LINE}), errors {errs}")
+    return out
 
 
 def main(argv=None) -> int:
     a = list(sys.argv[1:] if argv is None else argv)
     rounds = int(a[a.index("--rounds") + 1]) if "--rounds" in a else 3
+    models = a[a.index("--models") + 1].split(",") if "--models" in a else None
     d = Path(a[0])
-    s = summarize(d, rounds)
-    (d / "ab-summary.json").write_text(json.dumps(s, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({k: s[k] for k in ("clean_rounds", "excluded_rounds", "median_ratio", "reading", "reading_why")}))
+    brief = {}
+    for m in models or [None]:
+        s = summarize(d, rounds, f"{m}-" if m else "")
+        name = f"ab-summary-{m}.json" if m else "ab-summary.json"
+        (d / name).write_text(json.dumps(s, indent=2) + "\n", encoding="utf-8")
+        brief[m or "all"] = {k: s[k] for k in ("clean_rounds", "excluded_rounds", "median_ratio", "metric_readings", "reading", "reading_why")}
+    t = ttft_summary(d)
+    if t:
+        (d / "ab-ttft.json").write_text(json.dumps(t, indent=2) + "\n", encoding="utf-8")
+        brief["ttft"] = {k: t.get(k) for k in ("common_requests", "ratio_median", "ratio_p90", "reading")}
+    print(json.dumps(brief if models else brief["all"]))
     return 0
 
 

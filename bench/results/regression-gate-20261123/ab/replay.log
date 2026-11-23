@@ -1,0 +1,2 @@
+{"requests": 105, "ok": 105, "errors": 0, "status_mismatch": 10, "ttft_median_s": 0.28391118720173836, "ttft_p90_s": 0.6877487823367119, "total_median_s": 7.873189058154821}
+{"requests": 105, "ok": 105, "errors": 0, "status_mismatch": 10, "ttft_median_s": 0.28924113884568214, "ttft_p90_s": 0.6875695064663887, "total_median_s": 7.88005081936717}

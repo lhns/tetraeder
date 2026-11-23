@@ -35,6 +35,7 @@ flowchart TB
     bench_d2a_30b("✔ 30B admission probe<br/>rerun")
     bench_ab30b("✔ 30B same-box A/B")
     bench_strata_q36[/"✔ Strata against<br/>llama-server on<br/>Qwen3.6"/]
+    bench_regression_gate("✔ Regression gate on<br/>final main")
     bench_30b_c4_gap[/"○ 30B concurrency-4<br/>gap"/]
     bench_235b_stream_predict[/"○ Predict the 235B on<br/>one box"/]
     bench_phase6_rehearsal("⛔ First two-box<br/>cluster session")
@@ -43,7 +44,6 @@ flowchart TB
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
     bench_phase9_exit("⏸ Phase 9 exit:<br/>feature tests")
     bench_spec_rerun("⏸ Speculative rerun<br/>with a draft pair")
-    bench_regression_gate("○ Regression gate on<br/>final main")
     bench_strata_pairing("⏸ Pair against the<br/>Strata engine")
     bench_d1_session("⏸ Session on a 48 GB<br/>box")
     bench_open_records("⏸ Box checks for open<br/>design records")
@@ -75,8 +75,10 @@ flowchart TB
     bench_v4b_verdict ~~~ bench_d2a_30b
     bench_v4a_verdict ~~~ bench_ab30b
     bench_d2a_30b ~~~ bench_strata_q36
+    bench_d2a_30b ~~~ bench_regression_gate
     bench_ab30b ~~~ bench_30b_c4_gap
     bench_strata_q36 ~~~ bench_235b_stream_predict
+    bench_regression_gate ~~~ bench_235b_stream_predict
     bench_30b_c4_gap ~~~ bench_phase6_rehearsal
     bench_235b_stream_predict ~~~ bench_phase6_rehearsal
     bench_phase6_rehearsal ~~~ bench_phase6_exit
@@ -84,10 +86,10 @@ flowchart TB
     bench_phase6_rehearsal ~~~ bench_phase8_exit
     bench_phase6_exit ~~~ bench_phase9_exit
     bench_phase7_exit ~~~ bench_spec_rerun
-    bench_phase8_exit ~~~ bench_regression_gate
-    bench_phase9_exit ~~~ bench_strata_pairing
-    bench_spec_rerun ~~~ bench_d1_session
-    bench_regression_gate ~~~ bench_open_records
+    bench_phase8_exit ~~~ bench_strata_pairing
+    bench_phase9_exit ~~~ bench_d1_session
+    bench_spec_rerun ~~~ bench_open_records
+    bench_strata_pairing ~~~ bench_open_records
     bench_harness --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -113,7 +115,7 @@ flowchart TB
     bench_235b_stream_predict --> bench_phase6_rehearsal
     bench_phase6_rehearsal --> bench_phase6_exit
     bench_ttft --> bench_open_records
-    linkStyle 42,53 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 44,55 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -131,9 +133,9 @@ flowchart TB
     class bench_harness,bench_noise_bands,bench_phase4_harness,bench_phase5_harness,bench_pin_confirm,bench_throttle_rules,bench_s3_rehearsal,bench_strata_q36 unrated
     class bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_s2_step0,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,bench_v4a_verdict,bench_ab30b succ
     class bench_m1_point1,bench_m1_point3 vsucc
-    class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b mixed
+    class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b,bench_regression_gate mixed
     class bench_v4b_verdict dead
-    class bench_30b_c4_gap,bench_235b_stream_predict,bench_regression_gate next
+    class bench_30b_c4_gap,bench_235b_stream_predict next
     class bench_phase6_rehearsal,bench_phase6_exit,bench_phase7_exit blocked
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
 ```
@@ -185,7 +187,7 @@ flowchart TB
 | `bench-phase9-exit` | Phase 9 exit: feature tests | session | none | parked | unrated |  |  | multi-context-parallel, serving-multi-model, serving-multi-lora, serving-auth-quotas, serving-multimodal, ops-packages, engine-bitnet-builder, planner-low-bit-formats |  |  |  |  |
 | `bench-spec-rerun` | Speculative rerun with a draft pair | session | box-later | parked | unrated |  |  | serving-spec-batching |  |  |  |  |
 | `bench-strata-q36` | Strata against llama-server on Qwen3.6 | experiment | box-later | done | unrated | 2026-11-23 | 2026-11-23 | bench-harness |  |  | Strata c1 1.503x, c4 0.837x | bench/results/strata-q36-20261123/README.md; bench/results/strata-q36-20261123/summary.json |
-| `bench-regression-gate` | Regression gate on final main | session | box-later | next | unrated |  |  | ops-review-group-d |  |  |  |  |
+| `bench-regression-gate` | Regression gate on final main | session | box | done | mixed | 2026-11-23 | 2026-11-24 | ops-review-group-d |  |  |  | bench/results/regression-gate-20261123/README.md; bench/results/regression-gate-20261123/ab/judged3-summary-q30b.json; bench/results/regression-gate-20261123/ab/judged3-summary-q8b.json; bench/results/regression-gate-20261123/ab/ab-ttft.json |
 | `bench-strata-pairing` | Pair against the Strata engine | session | box-later | parked | unrated |  |  | engine-qwen35moe-builder |  |  |  |  |
 | `bench-d1-session` | Session on a 48 GB box | session | box-later | parked | unrated |  |  | planner-fill-tier, memory-io-service |  |  |  |  |
 | `bench-open-records` | Box checks for open design records | session | box-later | parked | unrated |  |  | memory-adaptive-tier, ops-telemetry, bench-ttft |  |  |  |  |
@@ -237,7 +239,7 @@ flowchart TB
 | `bench-phase9-exit` | Phase 9 exit: feature tests |  |  | The Phase 9 exit test: one feature test per breadth item. | Done when (plan.md, Phase 9 exit test): feature tests per item; packages install cleanly on both systems. Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. |  |  |  |  |
 | `bench-spec-rerun` | Speculative rerun with a draft pair |  |  | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. | Parked (m2-plan, Phase 5 Parked: speculative rerun open). Not an exit test. First, before any box: check that libllama at b12426 converts and loads both models with identical tokenizers. Done when: tokens per step and decode tok/s, draft on and off, on one box. Source: m2-plan Speculative rerun, m1-open item 1. |  |  |  |  |
 | `bench-strata-q36` | Strata against llama-server on Qwen3.6 | measurement, no verdict (ADR 0085), all 9 paired runs clean. Medians of three interleaved rounds, one A40, Qwen3.6-35B-A3B UD-Q4_K_XL: Strata v0.2.20 over llama-server is 1.503 at c1 decode and 0.837 at c4 throughput; tetraeder serve --engine auto (libllama) over llama-server is 1.009 and 0.996. | Strata c1 1.503x, c4 0.837x | One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085). | Strata claims 1.44x llama.cpp decode on this model (HIP, Strata 0.1.45). Box 62065877, host 682584, A40, EPYC 7662, 43 min, 0.47 USD. llama-server needed --ctx-checkpoints 0 --cache-ram 0 -ub 2048 to be a fair baseline (c4 217 against 181 tok/s at defaults); the first pass at defaults is in pass1/. The same box ran the ADR 0084 read-rate probes (PCIe 24.6 GB/s, CPU attention 65 to 67 GB/s at 32K on 61 AVX2 threads) and a 30B A/A (c4 1.001, c1 0.996). The Strata binary has its docs/sources.md row. |  |  |  |  |
-| `bench-regression-gate` | Regression gate on final main |  |  | One box session pairs this morning's build (f68d2a0) against main on the 30B and 8B at c1 and c4 with TTFT, under the 0.98 rule, and runs the conformance suite on CUDA, the Qwen3.6 default-flag rerun and the paired runs for kv auto and the disk prefix tier. | Until it runs, the M2 numbers are unconfirmed on main. |  |  |  |  |
+| `bench-regression-gate` | Regression gate on final main | mixed. By the rule fixed before the run, 3 of 4 metrics read no regression evidence (Qwen3-30B-A3B c4 0.982 and c1 0.991, Qwen3-8B c1 1.006) and Qwen3-8B c4 is inconclusive (median 0.970 over 2 clean rounds, 0.848 and 1.091 |  | One A100 box session paired this morning's build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay). | Self A/B on a noisy A100 host (co-tenant flags on 2 of 6 8B rounds). Findings for follow-up (not regressions) are 4 CUDA parity failures (repeat-penalty, logprobs, seeded-sampler-names, logprobs-shape on the libllama path, logprob values move between runs), q8_0 KV costs about 8 percent at c4 and 14 percent at c1 against f16 at ctx 32768, and the prefix disk tier needs a workload with more sessions than slots to be measured. |  |  |  |  |
 | `bench-strata-pairing` | Pair against the Strata engine |  |  | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. | Parked (m2-plan, m1-open item 8): Strata documents Qwen3.8, Qwen3.6 and DeepSeek-V4.1, and the own builders run only Qwen3; revisit when Strata runs Qwen3. Source: plan.md Phase 0 baselines, References. |  |  |  |  |
 | `bench-d1-session` | Session on a 48 GB box |  |  | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. | Parked (m2-plan, Phase 5 Parked: D1). Done when: each stage below has a paired result in its session README; the Reader path is deleted after the ADR 0054 arms. The poll pair is dropped (B3 closed, 20261115p1). |  |  |  |  |
 | `bench-open-records` | Box checks for open design records |  |  | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. | Parked (m2-plan, Housekeeping: candidates for a later combined box session). Neither ADR gates open work. Done when: each stage has a result in the session README and the owner accepts or closes ADRs 0059 and 0060. |  |  |  |  |
