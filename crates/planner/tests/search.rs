@@ -385,6 +385,7 @@ fn experts_spill_to_nvme_when_ram_is_full() {
         forbid: vec![Forbid {
             units: None,
             device: None,
+            node: None,
             tier: Some(Tier::Nvme),
         }],
         ..Default::default()
@@ -632,6 +633,7 @@ fn pins_and_forbids_are_honored() {
         forbid: vec![Forbid {
             units: None,
             device: Some("cpu0".into()),
+            node: None,
             tier: None,
         }],
         ..Default::default()
@@ -648,6 +650,7 @@ fn pins_and_forbids_are_honored() {
         forbid: vec![Forbid {
             units: None,
             device: None,
+            node: None,
             tier: Some(Tier::Nvme),
         }],
         ..Default::default()
@@ -782,6 +785,7 @@ fn build(k: &Knob) -> (HardwareGraph, ModelDesc, Hints) {
         h.forbid.push(Forbid {
             units: None,
             device: Some(d),
+            node: None,
             tier: None,
         });
     }
@@ -792,6 +796,7 @@ fn build(k: &Knob) -> (HardwareGraph, ModelDesc, Hints) {
                 ..Default::default()
             }),
             device: None,
+            node: None,
             tier: Some(Tier::Nvme),
         });
     }
@@ -833,7 +838,7 @@ proptest! {
         let Some(d) = pick(&hw.devices.iter().map(|d| d.id.clone()).collect::<Vec<_>>(), dev) else {
             return Ok(());
         };
-        h.forbid.push(Forbid { units: None, device: Some(d.clone()), tier: None });
+        h.forbid.push(Forbid { units: None, device: Some(d.clone()), node: None, tier: None });
         h.tradeoff = None;
         let q = BitsQuality::new(&m, 1.0);
         let res = run(&hw, &m, &h, k.phase, &q, None, true);

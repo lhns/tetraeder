@@ -153,6 +153,13 @@ pub struct Device {
     pub kind: DeviceKind,
     pub name: String,
     pub tier: Tier,
+    /// Node of this device (ADR 0091); `None` is the local node, every single-node graph.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
+    /// Operating system of the device's node (`linux`, `windows`); `None` is unknown. Remote
+    /// expert compute needs `linux` on both nodes (ADR 0008, 0091).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
     pub capacity_bytes: u64,
     /// Sequential bandwidth of the tier this device holds (device memory, RAM, disk read).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -200,6 +207,8 @@ impl Device {
             kind,
             name: name.into(),
             tier,
+            node: None,
+            os: None,
             capacity_bytes,
             bandwidth_bytes_per_s: None,
             compute: None,
@@ -405,6 +414,12 @@ impl DecodeClocks {
     }
 }
 
+/// `id` without its `<node>/` prefix; unchanged for the local node and for ids without one.
+fn strip_node<'a>(node: Option<&str>, id: &'a str) -> &'a str {
+    node.and_then(|n| id.strip_prefix(n).and_then(|r| r.strip_prefix('/')))
+        .unwrap_or(id)
+}
+
 fn one() -> f64 {
     1.0
 }
@@ -481,6 +496,178 @@ impl HardwareGraph {
 
     pub fn lane_group(&self, id: &str) -> Option<&LaneGroup> {
         self.lane_groups.iter().find(|g| g.id == id)
+    }
+
+    /// Node of a device (ADR 0091); `None` for an unknown device and for the local node.
+    pub fn node_of(&self, device: &str) -> Option<&str> {
+        self.device(device).and_then(|d| d.node.as_deref())
+    }
+
+    /// The distinct nodes of the devices in first-seen order; `None` is the local node.
+    pub fn nodes(&self) -> Vec<Option<&str>> {
+        let mut out: Vec<Option<&str>> = Vec::new();
+        for d in &self.devices {
+            let n = d.node.as_deref();
+            if !out.contains(&n) {
+                out.push(n);
+            }
+        }
+        out
+    }
+
+    /// The device of `node` whose id is `local` or `<node>/<local>`: how a node's own graph names
+    /// it (`gpu0`) and how the merged graph does (`a/gpu0`).
+    pub fn device_in_node(&self, node: Option<&str>, local: &str) -> Option<&Device> {
+        self.devices
+            .iter()
+            .find(|d| d.node.as_deref() == node && strip_node(node, &d.id) == local)
+    }
+
+    /// The devices of one node with their original ids, for single-node `predict`: ids lose the
+    /// `<node>/` prefix, `node` is cleared, and only the links, lane groups and curves inside the
+    /// node stay. A graph with no node on any device is returned as it is, so every single-node
+    /// graph predicts as before (ADR 0091, C7).
+    pub fn node_graph(&self, node: Option<&str>) -> HardwareGraph {
+        if self.devices.iter().all(|d| d.node.is_none()) {
+            return self.clone();
+        }
+        let inside = |id: &str| self.node_of(id) == node;
+        let strip = |id: &str| strip_node(node, id).to_string();
+        let devices = self
+            .devices
+            .iter()
+            .filter(|d| d.node.as_deref() == node)
+            .map(|d| Device {
+                id: strip(&d.id),
+                node: None,
+                ..d.clone()
+            })
+            .collect();
+        let local_link = |l: &Link| inside(&l.a) && inside(&l.b);
+        let links = self
+            .links
+            .iter()
+            .filter(|l| local_link(l))
+            .map(|l| Link {
+                id: strip(&l.id),
+                a: strip(&l.a),
+                b: strip(&l.b),
+                lane_group: l.lane_group.as_deref().map(strip),
+                ..l.clone()
+            })
+            .collect();
+        let lane_groups = self
+            .lane_groups
+            .iter()
+            .filter(|g| {
+                node.is_some_and(|n| g.id.starts_with(&format!("{n}/")))
+                    || self
+                        .links
+                        .iter()
+                        .any(|l| local_link(l) && l.lane_group.as_ref() == Some(&g.id))
+            })
+            .map(|g| LaneGroup {
+                id: strip(&g.id),
+                ..g.clone()
+            })
+            .collect();
+        let collectives = self
+            .collectives
+            .iter()
+            .filter(|c| c.ranks.iter().all(|r| inside(r)))
+            .map(|c| CollectiveCurve {
+                ranks: c.ranks.iter().map(|r| strip(r)).collect(),
+                ..c.clone()
+            })
+            .collect();
+        HardwareGraph {
+            range_costs: self.range_costs,
+            decode_clocks: self.decode_clocks.clone(),
+            devices,
+            links,
+            lane_groups,
+            notes: self.notes.clone(),
+            collectives,
+        }
+    }
+
+    /// The network link between two nodes, in either direction. Endpoints are devices of the
+    /// nodes; `""` names the local node.
+    pub fn network_link(&self, from: &str, to: &str) -> Option<&Link> {
+        let key = |id: &str| self.node_of(id).unwrap_or("");
+        self.links.iter().find(|l| {
+            l.kind == LinkKind::Network
+                && ((key(&l.a) == from && key(&l.b) == to)
+                    || (key(&l.a) == to && key(&l.b) == from))
+        })
+    }
+
+    /// The probe curve of one-way copies from node `from` to node `to` (ADR 0091): a `Copy`
+    /// curve whose ranks sit on those nodes in that order; the `tls` one when several exist.
+    pub fn network_curve(&self, from: &str, to: &str) -> Option<&CollectiveCurve> {
+        let key = |id: &str| self.node_of(id).unwrap_or("");
+        let mut found = self.collectives.iter().filter(|c| {
+            c.op == CollectiveOp::Copy
+                && c.ranks.len() == 2
+                && from != to
+                && key(&c.ranks[0]) == from
+                && key(&c.ranks[1]) == to
+        });
+        let first = found.next()?;
+        Some(
+            std::iter::once(first)
+                .chain(found)
+                .find(|c| c.comm == "tls")
+                .unwrap_or(first),
+        )
+    }
+
+    /// Union of node graphs (ADR 0091): ids become `<node>/<id>`, every device gets its `node`,
+    /// then the cross-node `links` and probe `curves`. Graph-level fitted costs come from the
+    /// first node that has them (a note says so); single-GPU segments do not use them.
+    pub fn merge_cluster(
+        nodes: &[(String, HardwareGraph)],
+        links: Vec<Link>,
+        curves: Vec<CollectiveCurve>,
+    ) -> HardwareGraph {
+        let mut g = HardwareGraph::default();
+        for (n, h) in nodes {
+            let p = |id: &str| format!("{n}/{id}");
+            if g.range_costs.is_none() && h.range_costs.is_some() {
+                g.range_costs = h.range_costs;
+                g.notes.push(format!("range_costs taken from node {n}"));
+            }
+            if g.decode_clocks.is_none() && h.decode_clocks.is_some() {
+                g.decode_clocks = h.decode_clocks.clone();
+                g.notes.push(format!("decode_clocks taken from node {n}"));
+            }
+            g.devices.extend(h.devices.iter().map(|d| Device {
+                id: p(&d.id),
+                node: Some(n.clone()),
+                ..d.clone()
+            }));
+            g.links.extend(h.links.iter().map(|l| Link {
+                id: p(&l.id),
+                a: p(&l.a),
+                b: p(&l.b),
+                lane_group: l.lane_group.as_deref().map(p),
+                ..l.clone()
+            }));
+            g.lane_groups
+                .extend(h.lane_groups.iter().map(|l| LaneGroup {
+                    id: p(&l.id),
+                    ..l.clone()
+                }));
+            g.collectives
+                .extend(h.collectives.iter().map(|c| CollectiveCurve {
+                    ranks: c.ranks.iter().map(|r| p(r)).collect(),
+                    ..c.clone()
+                }));
+            g.notes.extend(h.notes.iter().map(|x| format!("{n}: {x}")));
+        }
+        g.links.extend(links);
+        g.collectives.extend(curves);
+        g
     }
 
     pub fn to_toml(&self) -> Result<String, toml::ser::Error> {

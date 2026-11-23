@@ -5,6 +5,7 @@
 //! - [`candidate`]: [`enumerate`] the executable candidate plans for one GPU plus the CPU.
 //! - [`builder`]: candidates for the own MoE builder (expert slot counts per tier).
 //! - [`lower`]: a candidate as llama-bench arguments or `exit_regime` environment.
+//! - [`cluster`]: plans across nodes (ADR 0091): candidates that compute on every node, priced with the network hops.
 //! - [`campaign`]: the bench spec that measures the candidates, anchors and baselines.
 //! - [`score`]: calibration from the anchors, regret and rank correlation over the candidates.
 //! - [`ledger`]: CI re-prediction of the committed fixtures with their own session's calibration (ADR 0056).
@@ -27,6 +28,7 @@ pub mod builder;
 pub mod campaign;
 pub mod candidate;
 pub mod cli;
+pub mod cluster;
 pub mod diff;
 pub mod explain;
 pub mod kv_auto;
@@ -52,6 +54,10 @@ pub use candidate::{
     Budget, Candidate, EngineKind, Enumeration, Footprint, Placement, Workload, build_candidate,
     build_candidate_kv, build_plan, enumerate, enumerate_cpu, enumerate_cpu_kv, enumerate_kv,
     footprint,
+};
+pub use cluster::{
+    ClusterCandidate, cluster_features, enumerate_cluster, predict_cluster_plan, segment_layout,
+    single_node_references,
 };
 pub use diff::{PlanSwitch, plan_diff};
 pub use explain::{Explanation, explain};

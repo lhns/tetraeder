@@ -2497,17 +2497,22 @@ nodes:
   title: Plans and predictions across nodes
   track: cluster
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/planner/tests/cluster.rs
+  - crates/plan/tests/cluster.rs
+  - crates/costmodel/src/cluster/tests.rs
+  - crates/planner/tests/single_node_identity.rs
+  verdict_quote: 'VERDICT_QUOTE'
+  headline: 'planner first prediction 235B, WAN 3.62 and same host 5.43 tok/s decode, one node 0.49 (uniform routing prior)'
   depends_on:
   - cluster-owner-transport
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
   plain: 'The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node''s own prediction plus the network hops (ADR 0091).'

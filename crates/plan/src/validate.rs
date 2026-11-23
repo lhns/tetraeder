@@ -184,6 +184,24 @@ pub enum Issue {
     Hint {
         detail: String,
     },
+    /// A stage whose device group spans nodes (ADR 0091: no group spans nodes).
+    StageSpansNodes {
+        at: At,
+        nodes: Vec<String>,
+    },
+    /// A unit homed or computed on a node `forbid node` rules out.
+    ForbiddenNode {
+        at: At,
+        node: String,
+    },
+    /// A compute device on another node than its stage that none of the two allowed cases
+    /// covers: the head unit on the leader's node, an expert on a node whose OS and the stage's
+    /// are both Linux (ADR 0091).
+    CrossNode {
+        at: At,
+        device: String,
+        detail: String,
+    },
 }
 
 impl fmt::Display for Issue {
@@ -228,6 +246,10 @@ struct Checker<'a> {
     exp: Expanded,
     unknown: BTreeSet<(u32, Option<u32>, String)>,
     remote: bool,
+    /// Nodes of the devices the plan names (`""` is the local node).
+    nodes: BTreeSet<String>,
+    /// Node of the current replica's first stage, where its head unit may compute.
+    leader: String,
 }
 
 impl<'a> Checker<'a> {
@@ -244,6 +266,8 @@ impl<'a> Checker<'a> {
             },
             unknown: BTreeSet::new(),
             remote: false,
+            nodes: BTreeSet::new(),
+            leader: String::new(),
         }
     }
 
@@ -267,7 +291,10 @@ impl<'a> Checker<'a> {
                     });
                 }
             }
-            Some(d) => self.remote |= d.tier == Tier::Remote,
+            Some(d) => {
+                self.remote |= d.tier == Tier::Remote;
+                self.nodes.insert(d.node.clone().unwrap_or_default());
+            }
         }
     }
 
@@ -287,7 +314,10 @@ impl<'a> Checker<'a> {
         for (r, rep) in plan.replicas.iter().enumerate() {
             self.replica(r as u32, rep);
         }
-        self.flag_if(self.remote && !multi_node, "multi_node");
+        self.flag_if(
+            (self.remote || self.nodes.len() > 1) && !multi_node,
+            "multi_node",
+        );
         self.memory();
         self.phase_memory();
         self.hints();
@@ -303,6 +333,13 @@ impl<'a> Checker<'a> {
     fn replica(&mut self, r: u32, rep: &Replica) {
         let model = self.ctx.model;
         self.spans(r, rep);
+        self.leader = rep
+            .stages
+            .first()
+            .and_then(|st| st.devices.first())
+            .and_then(|d| self.ctx.hw.device(d))
+            .and_then(|d| d.node.clone())
+            .unwrap_or_default();
         let mut selected = BTreeSet::new();
         let n = rep.stages.len();
         for (s, st) in rep.stages.iter().enumerate() {
@@ -425,6 +462,18 @@ impl<'a> Checker<'a> {
         }
         for b in &st.phase_budgets {
             self.named(at, &b.device);
+        }
+
+        let mut group_nodes: Vec<&str> = Vec::new();
+        for d in st.devices.iter().filter_map(|d| hw.device(d)) {
+            let n = d.node.as_deref().unwrap_or("");
+            if !group_nodes.contains(&n) {
+                group_nodes.push(n);
+            }
+        }
+        if group_nodes.len() > 1 {
+            let nodes = group_nodes.iter().map(|n| (*n).to_string()).collect();
+            self.issues.push(Issue::StageSpansNodes { at, nodes });
         }
 
         if self.complete {
@@ -738,10 +787,19 @@ impl<'a> Checker<'a> {
                         Issue::NoCompute { at, unit: fu }
                     });
                 } else if !st.devices.is_empty() && !st.devices.iter().any(|g| g == d) {
-                    self.issues.push(Issue::NotInGroup {
-                        at,
-                        device: d.to_string(),
-                    });
+                    let issue = match self.other_node(st, a, dev) {
+                        None => Issue::NotInGroup {
+                            at,
+                            device: d.to_string(),
+                        },
+                        Some(Ok(())) => continue,
+                        Some(Err(detail)) => Issue::CrossNode {
+                            at,
+                            device: d.to_string(),
+                            detail,
+                        },
+                    };
+                    self.issues.push(issue);
                 }
             }
             if a.home.as_ref().is_some_and(|h| h.len() > 1) {
@@ -755,6 +813,44 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+    }
+
+    /// A compute device `dev` outside the stage's group on another node than the stage: `None`
+    /// when it is on the stage's own node (a plain `NotInGroup`), else whether the rule is one of
+    /// the two cross-node cases of ADR 0091.
+    fn other_node(
+        &self,
+        st: &Stage,
+        a: &crate::Assign,
+        dev: &tetraeder_profiler::Device,
+    ) -> Option<Result<(), String>> {
+        let hw = self.ctx.hw;
+        let stage_dev = st.devices.iter().find_map(|d| hw.device(d))?;
+        let (here, there) = (stage_dev.node.as_deref(), dev.node.as_deref());
+        if here == there {
+            return None;
+        }
+        let kinds = a.units.kinds.as_slice();
+        Some(if kinds == [UnitKind::Head] {
+            if there.unwrap_or("") == self.leader {
+                Ok(())
+            } else {
+                Err(format!(
+                    "the head unit may compute only on the leader's node {:?}, not on {:?}",
+                    self.leader,
+                    there.unwrap_or("")
+                ))
+            }
+        } else if kinds == [UnitKind::Expert] {
+            let linux = |d: &tetraeder_profiler::Device| d.os.as_deref() == Some("linux");
+            if linux(stage_dev) && linux(dev) {
+                Ok(())
+            } else {
+                Err("experts compute on another node only between Linux nodes (ADR 0008)".into())
+            }
+        } else {
+            Err("only the head unit and experts may compute on another node".into())
+        })
     }
 
     fn buffers(&mut self, r: u32, s: u32, st: &Stage, max_expert: u64) {
@@ -1002,6 +1098,28 @@ impl<'a> Checker<'a> {
             });
             report(format!("forbid {:?} {:?}", f.device, f.tier), bad);
         }
+        let mut banned: BTreeSet<(u32, u32, &str)> = BTreeSet::new();
+        let mut node_issues = Vec::new();
+        for f in &h.forbid {
+            let Some(node) = f.node.as_deref() else {
+                continue;
+            };
+            for (k, pl) in shards {
+                let on = |d: &str| hw.node_of(d) == Some(node);
+                if f.units.as_ref().is_none_or(|u| u.matches(k.unit))
+                    && (on(&pl.home) || on(&pl.compute))
+                    && banned.insert((k.replica, pl.stage, node))
+                {
+                    node_issues.push(Issue::ForbiddenNode {
+                        at: At {
+                            replica: k.replica,
+                            stage: Some(pl.stage),
+                        },
+                        node: node.to_string(),
+                    });
+                }
+            }
+        }
         if let Some(min) = h.min_format {
             let bad = violating(&|_, pl| !pl.all_at_least(min));
             report(format!("min_format {min:?}"), bad);
@@ -1011,5 +1129,6 @@ impl<'a> Checker<'a> {
             report(format!("format_floor {:?}", f.format), bad);
         }
         self.issues.extend(out);
+        self.issues.extend(node_issues);
     }
 }

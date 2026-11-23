@@ -23,14 +23,17 @@ pub struct Pin {
     pub device: String,
 }
 
-/// Units (all when `units` is absent) must not be homed or computed on `device`, nor homed on a
-/// device of `tier`. At least one of `device` and `tier` is set.
+/// Units (all when `units` is absent) must not be homed or computed on `device` or on a device of
+/// `node` (the node trust rule, ADR 0091), nor homed on a
+/// device of `tier`. At least one of `device`, `node` and `tier` is set.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Forbid {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub units: Option<UnitSel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<Tier>,
 }
@@ -156,8 +159,8 @@ impl Hints {
             e.push(format!("tradeoff must be in [0, 1], got {t}"));
         }
         for f in &self.forbid {
-            if f.device.is_none() && f.tier.is_none() {
-                e.push("forbid needs a device or a tier".into());
+            if f.device.is_none() && f.tier.is_none() && f.node.is_none() {
+                e.push("forbid needs a device, a node or a tier".into());
             }
         }
         for (d, c) in &self.cost {
@@ -228,6 +231,7 @@ freeze = [{ from = "09:00", to = "18:00" }]
             forbid: vec![Forbid {
                 units: None,
                 device: None,
+                node: None,
                 tier: None,
             }],
             ..Default::default()

@@ -355,3 +355,7 @@ pub fn enumerate_cluster(hw: &HardwareGraph, layout: &ModelLayout, hints: &Hints
 - `tetraeder cluster cert --id <id>` (run on the box; writes a key that never leaves it and a self-signed certificate; tooling for owner question 2).
 - `tetraeder cluster profile --cluster cluster.toml -o hw.json`, `tetraeder cluster probe --cluster cluster.toml -o probe.json`.
 - `tetraeder replica --plan p.toml` (started by the daemon; the engine of `serve` without HTTP), `tetraeder serve --cluster cluster.toml --plan p.toml`, `tetraeder-plan candidates --cluster`, `tetraeder-plan predict --cluster`.
+
+## As built in step 2 (`cluster-planner`)
+
+`crates/profiler`, `crates/plan`, `crates/costmodel` and `crates/planner` follow the signatures above except for the differences listed in the History of ADR 0091 (2026-11-23, step 2): `Device.os`, network links and probe curves between the nodes' `cpu0` devices (ranks are `[<a>/cpu0, <b>/cpu0]`, not `<node>/host`), `hop_time` on node names, `ClusterCandidate.prediction`, one stage per node, the head unit as a Head rule of its own on the leader. Step 3's `cluster probe` writes curves with those ranks.

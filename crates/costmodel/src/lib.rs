@@ -10,6 +10,7 @@
 //! - memory `W + KV(batch x context) + workspace <= capacity` ([`check_memory`]).
 
 pub mod calib;
+pub mod cluster;
 pub mod predict;
 #[cfg(test)]
 mod ranks;
