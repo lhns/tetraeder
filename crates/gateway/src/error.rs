@@ -128,6 +128,77 @@ impl From<GatewayError> for OpenAiError {
     }
 }
 
+/// An error in llama-server's own format (`format_error_response`), used by the routes that are
+/// llama-server's and not OpenAI's: `{"error": {"code", "message", "type"}}`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LlamaError {
+    pub status: StatusCode,
+    pub kind: &'static str,
+    pub message: String,
+}
+
+impl LlamaError {
+    fn new(status: StatusCode, kind: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            kind,
+            message: message.into(),
+        }
+    }
+
+    pub fn invalid(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, "invalid_request_error", message)
+    }
+
+    pub fn not_supported(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_IMPLEMENTED, "not_supported_error", message)
+    }
+
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable_error",
+            message,
+        )
+    }
+
+    pub fn unauthorized() -> Self {
+        Self::new(
+            StatusCode::UNAUTHORIZED,
+            "authentication_error",
+            "Invalid API Key",
+        )
+    }
+
+    /// The error object, also the body of a mid-stream error frame.
+    pub fn object(&self) -> serde_json::Value {
+        json!({"code": self.status.as_u16(), "message": self.message, "type": self.kind})
+    }
+}
+
+impl From<GatewayError> for LlamaError {
+    fn from(e: GatewayError) -> Self {
+        let msg = e.to_string();
+        match e {
+            GatewayError::InvalidRequest(_) => Self::invalid(msg),
+            GatewayError::ContextExceeded(_) => {
+                Self::new(StatusCode::BAD_REQUEST, "exceed_context_size_error", msg)
+            }
+            GatewayError::NotFound(_) => Self::new(StatusCode::NOT_FOUND, "not_found_error", msg),
+            GatewayError::Overloaded { .. } => Self::unavailable(msg),
+            GatewayError::Internal(_) => {
+                Self::new(StatusCode::INTERNAL_SERVER_ERROR, "server_error", msg)
+            }
+        }
+    }
+}
+
+impl IntoResponse for LlamaError {
+    fn into_response(self) -> Response {
+        (self.status, Json(json!({"error": self.object()}))).into_response()
+    }
+}
+
 /// A [`GatewayError`] rendered in the Anthropic format, with its request id.
 pub struct AnthropicError(pub GatewayError, pub String);
 

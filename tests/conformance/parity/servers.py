@@ -106,7 +106,8 @@ def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="") -> Running:
     argv = [
         str(binary), "serve", "-m", str(FIXTURES / MODEL_FILE[FAMILY[engine]]), "--engine", engine,
         "--host", "127.0.0.1", "--port", str(port), "--ctx", str(CTX), "--parallel", str(SLOTS), "-t", str(THREADS),
-        *SAMPLING, "--chat-template-file", str(TEMPLATE), "--accept-any-model", *extra,
+        *SAMPLING, "--chat-template-file", str(TEMPLATE), "--accept-any-model", "--metrics", *extra,
     ]  # fmt: skip
-    return launch(f"tetraeder-{engine}{tag}", argv, "/v1/models", port, log_dir)
+    # /health is public, so the instance that has an API key is ready too
+    return launch(f"tetraeder-{engine}{tag}", argv, "/health", port, log_dir)
 

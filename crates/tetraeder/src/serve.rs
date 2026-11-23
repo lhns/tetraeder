@@ -93,6 +93,42 @@ pub struct SamplingArgs {
 }
 
 impl SamplingArgs {
+    /// The defaults under llama-server's names, for `/props` and `generation_settings`.
+    pub fn generation_defaults(&self) -> serde_json::Map<String, serde_json::Value> {
+        use serde_json::json;
+        let mut m = serde_json::Map::new();
+        let mut put = |k: &str, v: serde_json::Value| m.insert(k.to_owned(), v);
+        put("temperature", json!(self.temp));
+        put("top_k", json!(self.top_k));
+        put("top_p", json!(self.top_p));
+        put("min_p", json!(self.min_p));
+        put("typical_p", json!(self.typical));
+        put("top_n_sigma", json!(self.top_nsigma));
+        put("xtc_probability", json!(self.xtc_probability));
+        put("xtc_threshold", json!(self.xtc_threshold));
+        put("dynatemp_range", json!(self.dynatemp_range));
+        put("dynatemp_exponent", json!(self.dynatemp_exp));
+        put("repeat_last_n", json!(self.repeat_last_n));
+        put("repeat_penalty", json!(self.repeat_penalty));
+        put("presence_penalty", json!(self.presence_penalty));
+        put("frequency_penalty", json!(self.frequency_penalty));
+        put("dry_multiplier", json!(self.dry_multiplier));
+        put("dry_base", json!(self.dry_base));
+        put("dry_allowed_length", json!(self.dry_allowed_length));
+        put("dry_penalty_last_n", json!(self.dry_penalty_last_n));
+        if !self.dry_sequence_breaker.is_empty() {
+            put("dry_sequence_breakers", json!(self.dry_sequence_breaker));
+        }
+        put("mirostat", json!(self.mirostat));
+        put("mirostat_tau", json!(self.mirostat_ent));
+        put("mirostat_eta", json!(self.mirostat_lr));
+        put("ignore_eos", json!(self.ignore_eos));
+        if let Ok(seed) = u32::try_from(self.seed) {
+            put("seed", json!(seed));
+        }
+        m
+    }
+
     pub fn params(&self) -> anyhow::Result<tetraeder_scheduler::sample::SampleParams> {
         use tetraeder_gateway::engine::SamplerKind;
         anyhow::ensure!(
@@ -229,6 +265,16 @@ pub struct ServeArgs {
     /// Jinja chat template that replaces the one in the GGUF.
     #[arg(long)]
     pub chat_template_file: Option<PathBuf>,
+    /// API keys, comma separated: every route but `/health` then needs one in `Authorization`
+    /// (with or without `Bearer `) or `X-Api-Key`, as in llama-server.
+    #[arg(long, value_name = "KEY", env = "LLAMA_API_KEY")]
+    pub api_key: Option<String>,
+    /// File with API keys, one per line; lines starting with `#` are comments.
+    #[arg(long, value_name = "FILE", env = "LLAMA_ARG_API_KEY_FILE")]
+    pub api_key_file: Option<PathBuf>,
+    /// Serve Prometheus metrics at `/metrics`, with llama-server's names.
+    #[arg(long, env = "LLAMA_ARG_ENDPOINT_METRICS")]
+    pub metrics: bool,
     /// Serve a scripted engine without a model (conformance tests).
     #[arg(long)]
     pub fake: bool,
@@ -416,6 +462,9 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
         } else {
             a.default_model.clone()
         },
+        api_keys: a.api_keys()?,
+        metrics: a.metrics,
+        defaults: a.sampling.generation_defaults(),
         ..GatewayConfig::default()
     };
     let mut gw = Gateway::new(engine, cfg).with_meter(&opentelemetry::global::meter("tetraeder"));
@@ -780,7 +829,32 @@ impl LoadArgs {
     }
 }
 
+/// The keys of `--api-key` (comma separated) and `--api-key-file` (one per line, `#` comments),
+/// as llama-server reads them.
+pub fn read_api_keys(list: Option<&str>, file: Option<&Path>) -> anyhow::Result<Vec<String>> {
+    let mut keys: Vec<String> = list
+        .into_iter()
+        .flat_map(|l| l.split(','))
+        .filter(|k| !k.is_empty())
+        .map(str::to_owned)
+        .collect();
+    if let Some(f) = file {
+        let text = std::fs::read_to_string(f)
+            .with_context(|| format!("cannot read API key file {}", f.display()))?;
+        keys.extend(
+            text.lines()
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                .map(str::to_owned),
+        );
+    }
+    Ok(keys)
+}
+
 impl ServeArgs {
+    fn api_keys(&self) -> anyhow::Result<Vec<String>> {
+        read_api_keys(self.api_key.as_deref(), self.api_key_file.as_deref())
+    }
+
     /// The speculation settings of `--spec` and its companions; `None` when it is off.
     pub fn spec_config(&self) -> Option<SpecConfig> {
         let method = match self.spec.as_ref()? {
@@ -857,6 +931,38 @@ mod tests {
         let mut args = vec!["x", "-m", "m.gguf"];
         args.extend(extra);
         P::parse_from(args).serve
+    }
+
+    // hardware: none
+    #[test]
+    fn api_keys_come_from_the_list_and_the_file() {
+        let dir = std::env::temp_dir().join(format!("tetraeder-keys-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("keys.txt");
+        std::fs::write(&file, "# comment\nk3\n\nk4\n").unwrap();
+        let keys = read_api_keys(Some("k1,,k2"), Some(&file)).unwrap();
+        assert_eq!(keys, ["k1", "k2", "k3", "k4"]);
+        assert!(read_api_keys(None, None).unwrap().is_empty());
+        assert!(read_api_keys(None, Some(&dir.join("missing"))).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // hardware: none
+    #[test]
+    fn generation_defaults_report_the_sampling_flags() {
+        let d = parse(&["--temp", "0.5", "--top-k", "7", "--seed", "9"])
+            .sampling
+            .generation_defaults();
+        assert_eq!(d["top_k"], 7);
+        assert_eq!(d["seed"], 9);
+        assert!((d["temperature"].as_f64().unwrap() - 0.5).abs() < 1e-6);
+        // a random seed is not a default value to report
+        assert!(
+            !parse(&[])
+                .sampling
+                .generation_defaults()
+                .contains_key("seed")
+        );
     }
 
     // hardware: none

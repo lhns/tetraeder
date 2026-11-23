@@ -15,8 +15,8 @@ use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tetraeder_gateway::engine::{
-    DecodeProfile, Engine, EngineError, EngineStats, FinishReason, GenEvent, GenerateRequest,
-    ModelInfo, SamplingParams, TokenConstraint, TokenId, TokenProbs, Vocab,
+    DecodeProfile, Engine, EngineError, EngineStats, FimTokens, FinishReason, GenEvent,
+    GenerateRequest, ModelInfo, SamplingParams, TokenConstraint, TokenId, TokenProbs, Vocab,
 };
 use tetraeder_ggml_sys::llama::Model;
 use tetraeder_telemetry::{Metrics, Purpose, Tier};
@@ -221,6 +221,7 @@ impl Scheduler {
             bos_token: piece(tokenizer.bos()),
             eos_token: piece(tokenizer.eos()),
             created,
+            path: Some(cfg.model_path.display().to_string()),
         };
         Ok(Self {
             info,
@@ -267,6 +268,34 @@ impl Engine for Scheduler {
             .tokenize(text, false, true)
             .map_err(|e| EngineError::Other(e.to_string()))?;
         Ok(toks.into_iter().map(|t| t as TokenId).collect())
+    }
+
+    fn tokenize_with(
+        &self,
+        model: &str,
+        text: &str,
+        add_special: bool,
+        parse_special: bool,
+    ) -> Result<Vec<TokenId>, EngineError> {
+        self.check(model)?;
+        let toks = self
+            .tokenizer
+            .tokenize(text, add_special, parse_special)
+            .map_err(|e| EngineError::Other(e.to_string()))?;
+        Ok(toks.into_iter().map(|t| t as TokenId).collect())
+    }
+
+    fn fim_tokens(&self, _model: &str) -> FimTokens {
+        let id = |t: Option<i32>| t.map(|t| t as TokenId);
+        let m = &self.tokenizer;
+        FimTokens {
+            pre: id(m.fim_pre()),
+            suf: id(m.fim_suf()),
+            mid: id(m.fim_mid()),
+            rep: id(m.fim_rep()),
+            sep: id(m.fim_sep()),
+            bos: (m.add_bos() && m.bos() >= 0).then(|| m.bos() as TokenId),
+        }
     }
 
     fn json_schema_to_grammar(&self, model: &str, schema: &str) -> Result<String, EngineError> {

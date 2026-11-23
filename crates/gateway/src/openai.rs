@@ -49,7 +49,7 @@ struct StreamOptions {
 }
 
 #[derive(Deserialize)]
-struct ChatRequest {
+pub(crate) struct ChatRequest {
     /// Missing: the served model.
     #[serde(default)]
     model: String,
@@ -138,7 +138,7 @@ fn content_text(v: &Value) -> std::result::Result<String, GatewayError> {
     }
 }
 
-fn stop_list(v: Option<Value>) -> std::result::Result<Vec<String>, GatewayError> {
+pub(crate) fn stop_list(v: Option<Value>) -> std::result::Result<Vec<String>, GatewayError> {
     match v {
         None | Some(Value::Null) => Ok(Vec::new()),
         Some(Value::String(s)) => Ok(vec![s]),
@@ -316,10 +316,10 @@ fn response_format(v: Option<Value>) -> std::result::Result<Option<OutputFormat>
 
 /// What a stream or a response calls this server, as llama-server's `system_fingerprint` does
 /// with its build.
-const FINGERPRINT: &str = concat!("tetraeder-", env!("CARGO_PKG_VERSION"));
+pub(crate) const FINGERPRINT: &str = concat!("tetraeder-", env!("CARGO_PKG_VERSION"));
 
 /// Number of choices: `n`, at least 1. More than the parallel slots is rejected by the gateway.
-fn choice_count(n: Option<u32>) -> std::result::Result<usize, GatewayError> {
+pub(crate) fn choice_count(n: Option<u32>) -> std::result::Result<usize, GatewayError> {
     match n {
         None => Ok(1),
         Some(0) => Err(GatewayError::InvalidRequest("n must be at least 1".into())),
@@ -328,7 +328,7 @@ fn choice_count(n: Option<u32>) -> std::result::Result<usize, GatewayError> {
 }
 
 /// `n` copies of the spec; choice `i` samples with seed + i, as llama-server's child tasks do.
-fn choice_specs(spec: GenerateSpec, n: usize) -> Vec<GenerateSpec> {
+pub(crate) fn choice_specs(spec: GenerateSpec, n: usize) -> Vec<GenerateSpec> {
     (0..n)
         .map(|i| {
             let mut s = spec.clone();
@@ -339,7 +339,7 @@ fn choice_specs(spec: GenerateSpec, n: usize) -> Vec<GenerateSpec> {
 }
 
 /// llama-server's `n_probs`: how many top tokens to report; 0 is off.
-fn probs_count(n: Option<i64>) -> std::result::Result<Option<u32>, GatewayError> {
+pub(crate) fn probs_count(n: Option<i64>) -> std::result::Result<Option<u32>, GatewayError> {
     match n {
         None => Ok(None),
         Some(n) => match u32::try_from(n) {
@@ -398,7 +398,7 @@ pub(crate) fn reasoning_effort(kwargs: &mut Map<String, Value>, effort: Option<&
     }
 }
 
-fn usage_json(u: &Usage) -> Value {
+pub(crate) fn usage_json(u: &Usage) -> Value {
     json!({
         "prompt_tokens": u.prompt_tokens,
         "completion_tokens": u.completion_tokens,
@@ -407,7 +407,7 @@ fn usage_json(u: &Usage) -> Value {
     })
 }
 
-fn tool_call_json(tc: &ToolCall) -> Value {
+pub(crate) fn tool_call_json(tc: &ToolCall) -> Value {
     let args = match &tc.arguments {
         Value::String(s) => s.clone(),
         v => v.to_string(),
@@ -425,11 +425,24 @@ pub(crate) fn sse(events: impl Stream<Item = Event> + Send + 'static) -> Respons
         .into_response()
 }
 
-pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
-    let req: ChatRequest = parse_body(&body)?;
+/// A parsed chat request: the generation, the number of choices and the stream options.
+pub(crate) struct ChatPlan {
+    pub spec: GenerateSpec,
+    pub n: usize,
+    pub stream: bool,
+    pub include_usage: bool,
+}
+
+/// Validates a chat body and maps it onto a [`GenerateSpec`]; the chat route, `/apply-template`
+/// and `/v1/responses` share it.
+pub(crate) fn chat_plan(body: Value) -> std::result::Result<ChatPlan, GatewayError> {
+    let req: ChatRequest = serde_json::from_value(body)
+        .map_err(|e| GatewayError::InvalidRequest(format!("invalid request body: {e}")))?;
     let n = choice_count(req.n)?;
     if req.sampling.has_grammar_and_schema() {
-        return Err(bad("Cannot use both json_schema and grammar"));
+        return Err(GatewayError::InvalidRequest(
+            "Cannot use both json_schema and grammar".into(),
+        ));
     }
     let tools = tools(req.tools)?;
     let n_probs = chat_n_probs(
@@ -462,14 +475,28 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     spec.stop = stop_list(req.stop)?;
     spec.format = response_format(req.response_format)?;
     spec.caller = req.user;
+    Ok(ChatPlan {
+        spec,
+        n,
+        stream: req.stream,
+        include_usage: req.stream_options.is_some_and(|o| o.include_usage),
+    })
+}
+
+pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
+    let ChatPlan {
+        spec,
+        n,
+        stream,
+        include_usage,
+    } = chat_plan(parse_body(&body)?)?;
     let generations = gw
         .generate_many(choice_specs(spec, n), Operation::Chat)
         .await?;
     let gid = generations[0].id.clone();
-    if req.stream {
-        let usage = req.stream_options.is_some_and(|o| o.include_usage);
+    if stream {
         return Ok(tag_generation(
-            sse(oai_stream(generations, true, usage, None)),
+            sse(oai_stream(generations, true, include_usage, None)),
             &gid,
         ));
     }
@@ -652,11 +679,11 @@ fn oai_stream(
     .flatten()
 }
 
-type Merged = Pin<Box<dyn Stream<Item = (usize, OutEvent)> + Send>>;
+pub(crate) type Merged = Pin<Box<dyn Stream<Item = (usize, OutEvent)> + Send>>;
 
 /// The events of every generation as one stream tagged with the choice index. Dropping it drops
 /// the generations, which cancels them.
-fn merge(gens: Vec<Generation>) -> Merged {
+pub(crate) fn merge(gens: Vec<Generation>) -> Merged {
     let streams = gens.into_iter().enumerate().map(|(i, g)| {
         stream::unfold(g, move |mut g| async move {
             g.next().await.map(|e| ((i, e), g))
@@ -757,7 +784,7 @@ impl Tally {
     }
 }
 
-fn total_usage(all: &[Collected]) -> Usage {
+pub(crate) fn total_usage(all: &[Collected]) -> Usage {
     let mut t = Tally::new(all.len());
     for (i, c) in all.iter().enumerate() {
         t.add(i, c.usage);

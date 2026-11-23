@@ -6,8 +6,8 @@ use crate::chat::{
 use crate::constraint::{ConstraintFactory, Reasoning};
 use crate::decode::StopMatcher;
 use crate::engine::{
-    Engine, GenerateRequest, GrammarSource, ModelInfo, SamplingExtras, SamplingParams,
-    TokenConstraint, Vocab,
+    Engine, FimTokens, GenerateRequest, GrammarSource, ModelInfo, SamplingExtras, SamplingParams,
+    TokenConstraint, TokenId, Vocab,
 };
 use crate::error::GatewayError;
 use crate::template::ChatTemplate;
@@ -23,9 +23,11 @@ use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::Instrument;
 
 mod cost;
+mod counters;
 mod pump;
 
 pub use cost::{CostSink, RequestCost, attr};
+use counters::Counters;
 use pump::Run;
 
 #[derive(Debug, Clone)]
@@ -40,6 +42,13 @@ pub struct GatewayConfig {
     pub stream_buffer: usize,
     /// Model that unknown ids resolve to (Claude Code sends its own `claude-*` ids).
     pub default_model: Option<String>,
+    /// Keys that open every route but `/health`; empty: no authentication (`--api-key`).
+    pub api_keys: Vec<String>,
+    /// Serve `/metrics` (`--metrics`); without it the route answers 501, as llama-server.
+    pub metrics: bool,
+    /// The server's sampling defaults under llama-server's names, laid over llama.cpp's own
+    /// defaults for `/props` and `generation_settings`.
+    pub defaults: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Default for GatewayConfig {
@@ -50,6 +59,9 @@ impl Default for GatewayConfig {
             retry_after_secs: 1,
             stream_buffer: 32,
             default_model: None,
+            api_keys: Vec::new(),
+            metrics: false,
+            defaults: serde_json::Map::new(),
         }
     }
 }
@@ -83,6 +95,8 @@ pub enum Prompt {
         kwargs: serde_json::Map<String, serde_json::Value>,
     },
     Text(String),
+    /// Token ids as they are (a native `prompt` of ids, `/infill`).
+    Tokens(Vec<TokenId>),
 }
 
 /// One generation request after API-specific parsing.
@@ -193,6 +207,8 @@ struct GatewayMetrics {
     queue_depth: Gauge<u64>,
     /// Tool calls by parser outcome and class (ADR 0051).
     tool_calls: Counter<u64>,
+    /// HTTP requests by matched route and status (ADR 0089).
+    requests: Counter<u64>,
 }
 
 impl GatewayMetrics {
@@ -212,6 +228,11 @@ impl GatewayMetrics {
                 .u64_counter("tetraeder.gateway.tool_calls")
                 .with_unit("{call}")
                 .with_description("Tool calls by parser outcome and class")
+                .build(),
+            requests: meter
+                .u64_counter("tetraeder.gateway.requests")
+                .with_unit("{request}")
+                .with_description("HTTP requests by matched route and response status")
                 .build(),
         }
     }
@@ -251,6 +272,7 @@ pub struct Gateway {
     cost_sink: Option<Arc<dyn CostSink>>,
     models: Mutex<HashMap<String, Arc<ModelState>>>,
     callers: Mutex<HashSet<String>>,
+    counters: Counters,
 }
 
 /// Response header carrying the generation id (the request log joins costs on it).
@@ -293,6 +315,7 @@ impl Gateway {
             cost_sink: None,
             models: Mutex::default(),
             callers: Mutex::default(),
+            counters: Counters::new(),
         }
     }
 
@@ -309,6 +332,73 @@ impl Gateway {
 
     pub fn models(&self) -> Vec<ModelInfo> {
         self.engine.models()
+    }
+
+    pub fn config(&self) -> &GatewayConfig {
+        &self.cfg
+    }
+
+    /// False while the engine cannot take requests (`/health` answers 503).
+    pub fn ready(&self) -> bool {
+        self.engine.ready()
+    }
+
+    /// Counts one HTTP request by matched route and response status.
+    pub fn count_request(&self, route: &str, status: u16) {
+        if let Some(m) = &self.metrics {
+            m.requests.add(
+                1,
+                &[
+                    KeyValue::new("http.route", route.to_owned()),
+                    KeyValue::new("http.response.status_code", i64::from(status)),
+                ],
+            );
+        }
+    }
+
+    /// llama-server's `/metrics` text and the server's start time (Unix seconds).
+    pub fn render_metrics(&self) -> (String, u64) {
+        let processing = self
+            .cfg
+            .max_concurrent
+            .max(1)
+            .saturating_sub(self.admission.slots.available_permits());
+        (
+            self.counters.render(processing, self.queue_depth()),
+            self.counters.started_unix(),
+        )
+    }
+
+    /// Tokenizes `text` as llama.cpp's `llama_tokenize` with the two switches.
+    pub fn tokenize_with(
+        &self,
+        model: &str,
+        text: &str,
+        add_special: bool,
+        parse_special: bool,
+    ) -> Result<Vec<TokenId>, GatewayError> {
+        let id = self.model(model)?.id;
+        self.engine
+            .tokenize_with(&id, text, add_special, parse_special)
+            .map_err(|e| self.engine_err(e))
+    }
+
+    /// The model's vocabulary (token bytes, special and end-of-generation ids).
+    pub fn vocab(&self, model: &str) -> Result<Arc<Vocab>, GatewayError> {
+        let id = self.model(model)?.id;
+        self.engine.vocab(&id).map_err(|e| self.engine_err(e))
+    }
+
+    /// The model's fill-in-the-middle tokens.
+    pub fn fim_tokens(&self, model: &str) -> Result<FimTokens, GatewayError> {
+        let id = self.model(model)?.id;
+        Ok(self.engine.fim_tokens(&id))
+    }
+
+    /// The prompt text a request renders to, without generating (`/apply-template`).
+    pub fn render_prompt(&self, spec: &GenerateSpec) -> Result<String, GatewayError> {
+        let st = self.state(&spec.model)?;
+        self.render(&st, &spec.prompt).map(|(text, _)| text)
     }
 
     /// The model `id` names, or the configured default model for an unknown id.
@@ -370,6 +460,9 @@ impl Gateway {
     /// Renders and tokenizes a chat prompt (`count_tokens`).
     pub fn count_tokens(&self, spec: &GenerateSpec) -> Result<u32, GatewayError> {
         let st = self.state(&spec.model)?;
+        if let Prompt::Tokens(t) = &spec.prompt {
+            return Ok(t.len() as u32);
+        }
         let (text, _) = self.render(&st, &spec.prompt)?;
         let toks = self
             .engine
@@ -382,6 +475,9 @@ impl Gateway {
     fn render(&self, st: &ModelState, prompt: &Prompt) -> Result<(String, bool), GatewayError> {
         match prompt {
             Prompt::Text(t) => Ok((t.clone(), false)),
+            Prompt::Tokens(_) => Err(GatewayError::Internal(
+                "a token prompt has no text to render".into(),
+            )),
             Prompt::Chat {
                 messages,
                 prefill,
@@ -553,11 +649,17 @@ impl Gateway {
     ) -> Result<Generation, GatewayError> {
         let st = self.state(&spec.model)?;
         let model = st.info.id.clone();
-        let (text, in_reasoning) = self.render(&st, &spec.prompt)?;
-        let prompt = self
-            .engine
-            .tokenize(&model, &text)
-            .map_err(|e| self.engine_err(e))?;
+        let (prompt, in_reasoning) = match &spec.prompt {
+            Prompt::Tokens(t) => (t.clone(), false),
+            p => {
+                let (text, in_reasoning) = self.render(&st, p)?;
+                let tokens = self
+                    .engine
+                    .tokenize(&model, &text)
+                    .map_err(|e| self.engine_err(e))?;
+                (tokens, in_reasoning)
+            }
+        };
         let ctx = st.info.context_length;
         let n_prompt = prompt.len() as u32;
         if n_prompt >= ctx {

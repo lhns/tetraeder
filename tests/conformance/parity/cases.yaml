@@ -357,7 +357,7 @@ cases:
     endpoint: GET /health
     mode: exact
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: metrics
     group: C
@@ -365,7 +365,7 @@ cases:
     endpoint: GET /metrics
     mode: status
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: props
     group: C
@@ -373,7 +373,7 @@ cases:
     endpoint: GET /props
     mode: status
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: tokenize
     group: C
@@ -382,7 +382,7 @@ cases:
     body: {content: Hello world}
     mode: exact
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: detokenize
     group: C
@@ -391,7 +391,7 @@ cases:
     body: {tokens: [39, 68, 75]}
     mode: exact
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: apply-template
     group: C
@@ -400,7 +400,7 @@ cases:
     body: {messages: [{role: user, content: Hello}]}
     mode: exact
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: native-completion
     group: C
@@ -409,7 +409,7 @@ cases:
     body: {prompt: Once upon a time, temperature: 0, n_predict: 12}
     mode: text
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: models-unprefixed
     group: C
@@ -417,7 +417,7 @@ cases:
     endpoint: GET /models
     mode: status
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: chat-unprefixed
     group: C
@@ -426,7 +426,7 @@ cases:
     body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 12}
     mode: text
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: responses
     group: C
@@ -435,7 +435,7 @@ cases:
     body: {input: Hello, max_output_tokens: 5, temperature: 0}
     mode: status
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: infill
     group: C
@@ -444,7 +444,7 @@ cases:
     body: {input_prefix: a, input_suffix: b}
     mode: status
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass
 
   - id: api-key
     group: C
@@ -455,4 +455,4 @@ cases:
     tetraeder_args: [--api-key, conformance-key]
     mode: status
     engines: [auto]
-    expect: gap serving-parity-endpoints
+    expect: pass

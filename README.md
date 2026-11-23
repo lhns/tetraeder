@@ -46,6 +46,8 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:8080 ANTHROPIC_AUTH_TOKEN=local ANTHROPIC_MO
 
 Claude Code also asks for its own `claude-*` model ids; `--accept-any-model` (or `--default-model <id>`) maps unknown ids to the served model. It sends 15K to 30K tokens of system prompt and tools on each turn, so start with `--ctx 65536` or more. `--request-log <file>` appends one JSON line per request (prompt, response, token counts, timings) for replay; it contains your code, so keep it local. With `TETRAEDER_DECODE_PROFILE=1` each line also gets a `profile`: decode steps and the time per stage (eval, sampling, hand-off, gateway) and the engine's graph counters.
 
+llama-server's own routes work too (ADR 0089): `/health`, `/props`, `/tokenize`, `/detokenize`, `/apply-template`, native `/completion`, `/infill`, `/v1/responses`, and `/metrics` with `--metrics`. `--api-key KEY` (or `--api-key-file`) asks every route but `/health` for a key in `Authorization` or `X-Api-Key`.
+
 ## Measured against other engines
 
 Paired same-box ratios, Tetraeder over the other engine, worst case included. Each line holds only in its scope; the full table, with evidence per row, is [docs/features.md](docs/features.md). What works or not against llama-server (not speed) is the parity matrix, [docs/notes/llamacpp-parity.md](docs/notes/llamacpp-parity.md) (ADR 0083).

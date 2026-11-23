@@ -10,7 +10,7 @@ Each row of the appendix belongs to one group. A row is done when its conformanc
 |---|---|---|---|
 | A. Sampling | Chain order as llama-server (penalties, dry, top_n_sigma, top_k, typical_p, top_p, min_p, xtc, temperature, then the draw); min_p (default 0.05), repeat/presence/frequency penalties, typical_p, xtc, dry, top_n_sigma, mirostat, dynatemp, logit_bias, ignore_eos, min_keep, `samplers`; random seed when none is given; the model's suppress tokens | `serving-parity-sampling` | **done**, see the appendix rows |
 | B. Request and response fields | Every matrix field honoured or rejected with 400, never dropped; logprobs and top_logprobs; `n` above 1; GBNF `grammar` and top-level `json_schema`; `reasoning_effort` (and Anthropic `output_config.effort`); `timings` in responses; `cache_prompt` and `id_slot` accepted | `serving-parity-fields` | **done**, see the appendix rows (ADR 0088) |
-| C. Endpoints | `/health`, Prometheus `/metrics`, `/props`, `/tokenize`, `/detokenize`, `/apply-template`, native `/completion`, unprefixed `/models` and `/chat/completions`, `/v1/responses`, `/infill` and `suffix`, input-token counting, `--api-key` | `serving-parity-endpoints` | after B, no box |
+| C. Endpoints | `/health`, Prometheus `/metrics`, `/props`, `/tokenize`, `/detokenize`, `/apply-template`, native `/completion`, unprefixed `/models` and `/chat/completions`, `/v1/responses`, `/infill` and `suffix`, input-token counting, `--api-key` | `serving-parity-endpoints` | **done**, see the appendix rows (ADR 0089) |
 | D. What libllama has but the gateway does not expose | embeddings and rerank (libllama engine first), KV cache types (`-ctk`, `-ctv`), KV offload (`-nkvo`), context shift, slot save and restore, `--cpu-moe` and `--n-cpu-moe`, model download by name | `serving-parity-libllama` | after C; GPU rows on a later box |
 | E. Own ADR first (owner sees this matrix before work starts) | LoRA (plan feature 30), several models and router mode (29), multimodal, audio, TTS, transcription and realtime (34), other GPU backends (14) | `serving-parity-owner-scope` | owner decision |
 
@@ -63,33 +63,33 @@ llama-server route table: `L:server.cpp:174-319` (core) and `:555-558` (router m
 
 | Capability | llama-server evidence | Tetraeder status | Engine notes |
 |---|---|---|---|
-| GET /health, /v1/health (public, no key) | server.cpp:174-175; handler server-context.cpp:5673 | **missing** (fallback 404 `not_found`, server.rs:35-43,59) | n/a |
-| GET /metrics (Prometheus, `--metrics`) | server.cpp:176; context.cpp:5686; names `llamacpp:*` via server-task.cpp:1641-1643 | **missing** on the HTTP router. OTLP push only (`T:telemetry/src/setup.rs:64`, env-configured); no scrape endpoint on the gateway | all |
-| GET /props, POST /props (`--props` for POST) | server.cpp:177-178; context.cpp:5823,5835 | **missing** | n/a |
-| GET /models, /v1/models | server.cpp:179-180; context.cpp:6349 | **supported** `/v1/models` only (server.rs:56,28-34); no unprefixed `/models`. Anthropic shape when header `anthropic-version` is present (server.rs:17-19) | all |
+| GET /health, /v1/health (public, no key) | server.cpp:174-175; handler server-context.cpp:5673 | **done** (node `serving-parity-endpoints`, ADR 0089): `{"status": "ok"}`, public with `--api-key`; 503 `Loading model` while the engine is not ready (`serve` binds after the load, so only the replanner's switch shows it). Case `health` | n/a |
+| GET /metrics (Prometheus, `--metrics`) | server.cpp:176; context.cpp:5686; names `llamacpp:*` via server-task.cpp:1641-1643 | **done** (node `serving-parity-endpoints`, ADR 0089): `--metrics` serves llama-server's `llamacpp:*` names from gateway counters, 501 without it. Not exported (no such number here): `n_decode_total`, `n_busy_slots_per_decode`, `spec_decode_*`. The OTLP metrics are unchanged. Case `metrics` | all |
+| GET /props, POST /props (`--props` for POST) | server.cpp:177-178; context.cpp:5823,5835 | **done** (node `serving-parity-endpoints`, ADR 0089): GET gives `default_generation_settings`, `total_slots`, `model_alias`, `model_path`, `chat_template`, `bos_token`, `eos_token`, `build_info` and the constant fields; `model_ftype`, `media_marker`, `chat_template_caps` and `chat_template_tool_use` are left out. POST is 501 (no `--props`: nothing to change). Case `props` | n/a |
+| GET /models, /v1/models | server.cpp:179-180; context.cpp:6349 | **done** (node `serving-parity-endpoints`, ADR 0089): `/models` is the same handler as `/v1/models` (our body, not llama-server's `models` plus `data`). Case `models-unprefixed` | all |
 | GET /v1/models/{id} | not registered in llama-server | supported (server.rs:57) | all |
-| POST /completion, /completions (native, many fields) | server.cpp:181-182; context.cpp:5925 | **missing** | n/a |
+| POST /completion, /completions (native, many fields) | server.cpp:181-182; context.cpp:5925 | **done** (node `serving-parity-endpoints`, ADR 0089): native request (`prompt` as string, token array, mixed array or `{prompt_string}`; `n_predict` and its aliases, `n_cmpl` or `n`, `stop`, `n_probs`, all sampling fields) and response (`content`, empty `tokens`, `stop_type`, `stopping_word`, `tokens_predicted`, `tokens_evaluated`, `tokens_cached`, `generation_settings`, `timings`), stream without `[DONE]`. A batch of prompts and `n_predict` 0 are 400. Case `native-completion` | n/a |
 | POST /v1/completions | server.cpp:183; context.cpp:5937 | **supported, narrow** (server.rs:53; openai.rs:487; single string prompt only, openai.rs:496-507) | all |
-| POST /chat/completions, /v1/chat/completions | server.cpp:184-185; context.cpp:5949 | supported `/v1/...` only (server.rs:52; openai.rs:338) | all |
+| POST /chat/completions, /v1/chat/completions | server.cpp:184-185; context.cpp:5949 | **done** (node `serving-parity-endpoints`, ADR 0089): `/chat/completions` is the same handler. Case `chat-unprefixed` | all |
 | POST /v1/chat/completions/control (`reasoning_end`) | server.cpp:186; context.cpp:5973-5983 | missing | n/a |
-| POST /v1/responses, /responses (OpenAI Responses API) | server.cpp:187-188; context.cpp:6010 | missing | n/a |
+| POST /v1/responses, /responses (OpenAI Responses API) | server.cpp:187-188; context.cpp:6010 | **done** (node `serving-parity-endpoints`, ADR 0089): converted to a chat body as `server_chat_convert_responses_to_chatcmpl` does; `response` object and `response.*` events, no `[DONE]`; `previous_response_id`, `input_file` and images are 400. Case `responses` | n/a |
 | POST /v1/audio/transcriptions, /audio/transcriptions, /tts, /v1/systemone | server.cpp:189-191,204 | missing | n/a |
 | **[new @pin]** POST /v1/audio/speech, /audio/speech (OpenAI TTS) | server.cpp:192-193; context.cpp:6432 | missing | n/a |
 | **[new @pin]** WebSocket /v1/realtime | server.cpp:194 | missing | n/a |
 | POST /v1/messages (Anthropic) | server.cpp:195; context.cpp:6307; converter server-chat.cpp:391 | **supported** (server.rs:54; anthropic.rs:466) | all |
 | POST /v1/messages/count_tokens | server.cpp:213; context.cpp:6329 | supported (server.rs:55; anthropic.rs:707; renders template and tokenizes, gateway.rs:352-360) | all |
 | POST /v1/chat/completions/input_tokens, /responses/input_tokens | server.cpp:209-212; context.cpp:5969,6032 | missing | n/a |
-| POST /infill | server.cpp:196; context.cpp:5847 | missing (also `suffix` rejected on /v1/completions, openai.rs:493-495) | n/a |
+| POST /infill | server.cpp:196; context.cpp:5847 | **done** (node `serving-parity-endpoints`, ADR 0089): FIM prompt of `format_prompt_infill` (repo-level extra chunks, 3:1 prefix and suffix share of 2048 tokens); a model without FIM tokens gets llama-server's 501. The tiny fixtures have none, so the case compares that error; the layout is tested in `crates/gateway/tests/endpoints.rs`. `suffix` on `/v1/completions` is still rejected | n/a |
 | POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`) | server.cpp:197-199; context.cpp:6416,6420,6691 | missing | n/a |
 | POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`) | server.cpp:200-203; context.cpp:6424 | missing | n/a |
-| POST /tokenize, /detokenize | server.cpp:205-206; context.cpp:6361,6402 | missing | n/a |
-| POST /apply-template | server.cpp:207; context.cpp:6334 | missing | n/a |
+| POST /tokenize, /detokenize | server.cpp:205-206; context.cpp:6361,6402 | **done** (node `serving-parity-endpoints`, ADR 0089): `content` (string or mixed array), `add_special`, `parse_special`, `with_pieces`; `tokens`. Cases `tokenize`, `detokenize` | n/a |
+| POST /apply-template | server.cpp:207; context.cpp:6334 | **done** (node `serving-parity-endpoints`, ADR 0089): the chat route's prompt as `{"prompt"}`. Case `apply-template` | n/a |
 | GET/POST /lora-adapters | server.cpp:215-216; context.cpp:6525,6553 | missing | n/a |
 | GET /slots, POST /slots/:id?action=save/restore/erase | server.cpp:218-219; context.cpp:5748,5790,5807-5809 | missing (prefix reuse and RAM cache are internal: `--cache-ram`, `--no-prefix-reuse`, serve.rs:97-103; `cached_tokens` in usage) | n/a |
 | GET /v1/stream, POST /v1/streams/lookup (resumable streams) | server.cpp:232-234 (**[new @pin]** adds `DELETE /v1/stream`) | missing | n/a |
 | /cors-proxy, /tools (MCP/agent features) | server.cpp:284-319 | missing | n/a |
 | Router mode: POST /models, /models/load, /models/unload, GET /models/sse | server.cpp:555-558 | missing (one model per process; `--alias`, `--default-model`, `--accept-any-model`, serve.rs:56-63) | n/a |
-| API key auth (`--api-key`, Bearer) | arg.cpp:3529; server-http.cpp:347-359 | **missing**: no auth in gateway (grep Authorization/api_key in gateway/src, tetraeder/src: only a request-log comment, reqlog.rs:7) | n/a |
+| API key auth (`--api-key`, Bearer) | arg.cpp:3529; server-http.cpp:347-359 | **done** (node `serving-parity-endpoints`, ADR 0089): `--api-key` (comma list, `LLAMA_API_KEY`) and `--api-key-file`; `Authorization` with or without `Bearer `, else `X-Api-Key`; only `/health` is public; 401 `Invalid API Key`. Case `api-key` | n/a |
 | Web UI (`--ui`) | arg.cpp:3486 | missing | n/a |
 | Tetraeder-only | n/a | admin listener with `--plan`: `POST /admin/replan`, `POST /api/v2/alerts`, `GET /admin/plan` on `--admin 127.0.0.1:8081` (serve.rs:184-186) | planner (replanner) only |
 
@@ -183,7 +183,7 @@ Sampler facts for Tetraeder (all engines share one host-side sampler over the lo
 | timings (`prompt_n`, `prompt_ms`, `predicted_per_second`, `cache_n`, `draft_n`, ...) | server-common.cpp:146-165; task.cpp:400,448,509 | **done** (node `serving-parity-fields`): `timings` on non-streaming responses and on the last stream chunk (the usage chunk when there is one), from the scheduler's per-request timestamps: `prompt_n` is the uncached prompt tokens, `prompt_ms` runs from the first admission to the first sampled token, `predicted_ms` from there to the last token, and the rates count the steps after the first token. `draft_n` fields are not reported. Case `timings` | all |
 | finish_reason chat | task.cpp:407-416: length / stop / tool_calls | same three (chat.rs:111-119); stop sequence maps to `stop` | all |
 | finish_reason completions | task.cpp:374-377 | stop / length (openai.rs:540) | all |
-| `stop_type`, `stopping_word`, `truncated`, `tokens_cached`, `generation_settings` (native) | task.cpp:337-349 | missing (native endpoint absent) | n/a |
+| `stop_type`, `stopping_word`, `truncated`, `tokens_cached`, `generation_settings` (native) | task.cpp:337-349 | **done** (node `serving-parity-endpoints`, ADR 0089): in the native response; `generation_settings` is the server defaults plus the request's values, fields the engine lacks carry llama-server's defaults | n/a |
 | logprobs shape | task.cpp:274-300 (`content[]` with token, bytes, logprob, top_logprobs; native `completion_probabilities`) | **done** (node `serving-parity-fields`): see `n_probs`; the shape is the same on completions and chat | n/a |
 | system_fingerprint | task.cpp:389 | **done** (node `serving-parity-fields`): `tetraeder-<version>` on every response and chunk (llama-server writes its build, `b12426-fc504f91d`; a client treats the string as opaque). Case `system-fingerprint` | n/a |
 | streaming chat chunk | task.cpp:456-510 (`chat.completion.chunk`, per-diff deltas, incremental tool-call argument deltas, optional `timings`, `prompt_progress`) | `chat.completion.chunk`: first chunk `{role, content:""}`, text/reasoning deltas, tool calls emitted **whole in one delta** with `index` (openai.rs:401-485), final empty delta with finish_reason, optional usage chunk with `choices: []`, `[DONE]`; mid-stream errors as an `error` data frame without `[DONE]` (openai.rs:475-479) | all |
@@ -221,9 +221,9 @@ llama-server flags: `C:arg.cpp` (line is the flag-name line). Tetraeder: `T:tetr
 | Speculative / draft | `--spec-type` :4325, `--spec-draft-model/-md` :4317, `--spec-ngram-*` :4335-4491, `--draft*` :4463, `--spec-default` :4807 | `--spec ngram|draft:GGUF`, `--spec-max-batch` (default 1), `--spec-max-draft` (default 6, max 6) (serve.rs:82-93,598-618); lone greedy unconstrained requests only | draft model runs on libllama; works with all engines |
 | Grammar flags | `--grammar` :2248, `--json-schema` :2262 (server defaults) | missing | n/a |
 | Sampling defaults | `--temp` :1995, `--top-k` :2004, `--top-p` :2012, `--min-p` :2020, penalties :2058-2106, dry :2106-2141, mirostat :2201, `--samplers` :1965, `--seed` :1974, `--ignore-eos` :1988, `-l/--logit-bias` :2226 | **done** for `--temp`, `--top-k`, `--top-p`, `--min-p`, `--typical`, `--top-nsigma`, `--xtc-*`, `--repeat-*`, `--presence-penalty`, `--frequency-penalty`, `--dry-*` (breakers: `--dry-sequence-breaker`, repeatable), `--mirostat*`, `--dynatemp-*`, `--samplers` (`;` separated), `--seed`, `--ignore-eos`; not `-l/--logit-bias` or `-s` | all |
-| API key | `--api-key` :3529, `--api-key-file` :3540 | **missing** | n/a |
+| API key | `--api-key` :3529, `--api-key-file` :3540 | **done** (ADR 0089): `--api-key`, `--api-key-file`, `LLAMA_API_KEY` | n/a |
 | TLS | `--ssl-key-file` :3557, `--ssl-cert-file` :3564 | missing | n/a |
-| Metrics/props/slots endpoints | `--metrics` :3629, `--props` :3636, `--slots` :3643 | missing; OTLP via env (telemetry setup.rs:64) | n/a |
+| Metrics/props/slots endpoints | `--metrics` :3629, `--props` :3636, `--slots` :3643 | `--metrics` and `/props` **done** (ADR 0089), OTLP via env as before; `--props` (nothing to change) and `--slots` missing | n/a |
 | Host/port | `--host` :3323, `--port` :3339 | `--host 127.0.0.1`, `--port 8080` (serve.rs:52-55) | all |
 | CORS, path, api-prefix | :3353-3396 | missing | n/a |
 | HTTP threads, timeout, SSE ping | `--threads-http` :3604, `-to` :3589, `--sse-ping-interval` :3597 | `--max-queued` 16 (serve.rs:94-96; gateway.rs:30-50 stream_buffer 32); SSE keep-alive 15 s fixed | all |
@@ -266,13 +266,13 @@ Note: the planner candidates for architectures other than qwen3/qwen3moe come fr
 |---|---|---|---|
 | Embeddings | `--embeddings`, /v1/embeddings (context.cpp:6416-6424,6691-6760) | missing | n/a |
 | Reranking | `--rerank`, /rerank (arg.cpp:3521; server.cpp:200-203) | missing | n/a |
-| Tokenize / detokenize | server.cpp:205-206; context.cpp:6361,6402 (`add_special`, `parse_special`, `with_pieces`) | missing as endpoints; `count_tokens` (Anthropic) covers token counting for chat only (anthropic.rs:707-720) | all |
-| apply-template | context.cpp:6334 | missing | n/a |
-| /props | context.cpp:5823 | missing | n/a |
+| Tokenize / detokenize | server.cpp:205-206; context.cpp:6361,6402 (`add_special`, `parse_special`, `with_pieces`) | **done** (ADR 0089): `/tokenize` and `/detokenize`; `count_tokens` (Anthropic) is unchanged | all |
+| apply-template | context.cpp:6334 | **done** (ADR 0089): `/apply-template` | n/a |
+| /props | context.cpp:5823 | **done** (ADR 0089): `/props` | n/a |
 | /slots | context.cpp:5748 | missing | n/a |
-| /metrics | context.cpp:5686 | missing (OTLP push instead) | n/a |
-| /health | context.cpp:5673 | missing | n/a |
-| Infill (FIM) | context.cpp:5847 (`input_prefix`, `input_suffix`, `input_extra`) | missing | n/a |
+| /metrics | context.cpp:5686 | **done** (ADR 0089): `/metrics` behind `--metrics`, OTLP push as before | n/a |
+| /health | context.cpp:5673 | **done** (ADR 0089): `/health`, `/v1/health` | n/a |
+| Infill (FIM) | context.cpp:5847 (`input_prefix`, `input_suffix`, `input_extra`) | **done** (ADR 0089): `/infill` | n/a |
 | Multimodal (mtmd) | `--mmproj`; server.cpp mtmd ctx (context.cpp:22-23,50-51,268) | missing; OpenAI image parts rejected (openai.rs:106-110); Anthropic image becomes `[image]` | n/a |
 | LoRA adapters | /lora-adapters; `lora` per request (schema.cpp:231) | missing | n/a |
 | Prompt caching | slot prompt cache, `cache_prompt` | internal prefix cache + RAM save/restore (`PrefixCache`, scheduler lib.rs:21; `--cache-ram`); reported as `cached_tokens` | all |

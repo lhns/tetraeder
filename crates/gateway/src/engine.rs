@@ -23,6 +23,22 @@ pub struct ModelInfo {
     pub eos_token: Option<String>,
     /// Unix seconds, reported by the models endpoints.
     pub created: u64,
+    /// The GGUF file, reported by `/props` (`model_path`).
+    pub path: Option<String>,
+}
+
+/// The vocabulary's fill-in-the-middle tokens (`/infill`); `None`: the model has none.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FimTokens {
+    pub pre: Option<TokenId>,
+    pub suf: Option<TokenId>,
+    pub mid: Option<TokenId>,
+    /// Repository marker of the repo-level layout.
+    pub rep: Option<TokenId>,
+    /// File separator of the repo-level layout.
+    pub sep: Option<TokenId>,
+    /// The vocabulary adds a BOS to a prompt.
+    pub bos: Option<TokenId>,
 }
 
 /// The tokenizer's vocabulary as bytes per token id.
@@ -305,6 +321,31 @@ pub trait Engine: Send + Sync + 'static {
     fn vocab(&self, model: &str) -> Result<Arc<Vocab>, EngineError>;
     /// Special tokens are parsed; no BOS is added (templates add it).
     fn tokenize(&self, model: &str, text: &str) -> Result<Vec<TokenId>, EngineError>;
+    /// [`Engine::tokenize`] with llama.cpp's two switches: `add_special` adds the BOS and EOS
+    /// the model asks for, `parse_special` turns the text of special tokens into their ids.
+    fn tokenize_with(
+        &self,
+        model: &str,
+        text: &str,
+        add_special: bool,
+        parse_special: bool,
+    ) -> Result<Vec<TokenId>, EngineError> {
+        if !add_special && parse_special {
+            self.tokenize(model, text)
+        } else {
+            Err(EngineError::Invalid(
+                "this engine tokenizes with special tokens parsed and none added only".into(),
+            ))
+        }
+    }
+    /// The model's fill-in-the-middle tokens; none by default.
+    fn fim_tokens(&self, _model: &str) -> FimTokens {
+        FimTokens::default()
+    }
+    /// False while the engine cannot take requests (`/health` answers 503).
+    fn ready(&self) -> bool {
+        true
+    }
     /// Starts generation. The channel is bounded; the engine stops when `req.cancel` fires or
     /// the receiver is dropped, and always ends with `Finished` or `Error` unless the
     /// receiver is gone.

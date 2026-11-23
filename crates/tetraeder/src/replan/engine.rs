@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tetraeder_control::{Clock, EngineControl, SystemClock};
 use tetraeder_gateway::engine::{
-    Engine, EngineError, GenEvent, GenerateRequest, ModelInfo, SamplingParams, TokenId, Vocab,
+    Engine, EngineError, FimTokens, GenEvent, GenerateRequest, ModelInfo, SamplingParams, TokenId,
+    Vocab,
 };
 use tetraeder_plan::Plan;
 use tetraeder_planner::Lowered;
@@ -222,6 +223,43 @@ impl Engine for SwitchableEngine {
         self.scheduler()
             .ok_or(EngineError::Overloaded)?
             .tokenize(model, text)
+    }
+
+    fn tokenize_with(
+        &self,
+        model: &str,
+        text: &str,
+        add_special: bool,
+        parse_special: bool,
+    ) -> Result<Vec<TokenId>, EngineError> {
+        if !self.admitting() {
+            return Err(EngineError::Overloaded);
+        }
+        self.scheduler()
+            .ok_or(EngineError::Overloaded)?
+            .tokenize_with(model, text, add_special, parse_special)
+    }
+
+    fn fim_tokens(&self, model: &str) -> FimTokens {
+        self.scheduler()
+            .map_or_else(FimTokens::default, |s| s.fim_tokens(model))
+    }
+
+    /// Not ready while the replanner has no scheduler loaded.
+    fn ready(&self) -> bool {
+        self.scheduler().is_some()
+    }
+
+    fn json_schema_to_grammar(&self, model: &str, schema: &str) -> Result<String, EngineError> {
+        self.scheduler()
+            .ok_or(EngineError::Overloaded)?
+            .json_schema_to_grammar(model, schema)
+    }
+
+    fn check_grammar(&self, model: &str, grammar: &str) -> Result<(), EngineError> {
+        self.scheduler()
+            .ok_or(EngineError::Overloaded)?
+            .check_grammar(model, grammar)
     }
 
     fn generate(&self, req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError> {
