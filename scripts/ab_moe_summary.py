@@ -45,7 +45,8 @@ def snapshot(d: Path, side: str, rnd: int, prefix: str = "") -> dict:
 
 
 def run_record(d: Path, side: str, rnd: int, samples, prefix: str = "") -> dict:
-    res = {t: read(d / f"ab-{prefix}{side}-{t}-r{rnd}.json") for t in ("c4", "c1")}
+    # ab30b names the files ab-<side>-<test>-r<n>.json, ab_moe_box.sh with models ab-<model>-<side>-r<n>-<test>.json
+    res = {t: read(d / f"ab-{prefix}{side}-{t}-r{rnd}.json") or read(d / f"ab-{prefix}{side}-r{rnd}-{t}.json") for t in ("c4", "c1")}
     reasons = []
     vals = {}
     for t, j in res.items():

@@ -44,7 +44,7 @@ def write_run(d, side, rnd, c4, c1, errors=0, mask=0x4, start=0, prefix=""):
     """Two bench files whose windows are 10 s each, plus one sampler line per second."""
     for i, (test, field, v) in enumerate((("c4", "throughput_tps", c4), ("c1", "decode_tps_median", c1))):
         end = T0 + timedelta(seconds=start + 10 * (i + 1))
-        (d / f"ab-{prefix}{side}-{test}-r{rnd}.json").write_text(json.dumps(
+        (d / (f"ab-{prefix}{side}-r{rnd}-{test}.json" if prefix else f"ab-{side}-{test}-r{rnd}.json")).write_text(json.dumps(
             {"finished": end.strftime("%Y-%m-%dT%H:%M:%S"), "summary": {"errors": errors if test == "c4" else 0, "wall_s": 9.0, field: v}}))
     with (d / "gpu-samples.csv").open("a") as f:
         for s in range(start, start + 21):
