@@ -2492,11 +2492,91 @@ nodes:
   end: ''
   folded: []
   overview: true
-  plain: 'Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16).'
-  notes: 'Done when: two nodes exchange activations through the trait on the chosen protocol, with metrics, a dashboard panel and an alert (rule 6). Blocked behind the M2 report and the transport choice.
-    Source: plan.md feature 16, Phase 6.'
+  plain: 'Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16).'
+  notes: 'Done when (ADR 0091, build order 1), a golden-byte test shows the moved frame code writes the same frames as remote_backend, frame property tests pass, unknown and wrong certificates are refused, pinned self-signed and CA anchors are both accepted, the effective socket buffer sizes are read back and logged (an explicit size on Linux is capped at net.core.rmem_max and turns autotuning off, so the size is measured per link, not fixed), a loopback TLS round trip works, and the RemoteBackend restart tests and the Phase 5 parity and golden tests pass; link metrics, the links panel row and the TLS-rejected alert in the same change. CI only. Phase 6 code stays on its branch until bench-regression-gate has run on main.'
+- id: cluster-owner-phase6-design
+  title: Owner accepts the Phase 6 design
+  track: cluster
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  verdict_quote: 'Vast WAN pair, pinned self-signed certificates, 64 GB emulated by the balloon, mDNS out of M3, no HA gateway, remote experts after the exit (owner 2026-11-23)'
+  headline: 'ADR 0091 accepted'
+  depends_on:
+  - cluster-owner-transport
+  replaced_by: []
+  lane: owner
+  start: 2026-11-23
+  end: 2026-11-23
+  folded: []
+  overview: false
+  plain: 'The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; mDNS in or out of M3; the other scope cuts).'
+  notes: 'Gates the certificate tooling and the box sessions only; the simulated steps (transport, planner) start before it.'
+- id: cluster-planner
+  title: Plans and predictions across nodes
+  track: cluster
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-owner-transport
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node''s own prediction plus the network hops (ADR 0091).'
+  notes: 'Done when (ADR 0091, build order 2), plan, segment and prediction property tests pass on every simulated cluster fixture, and one-node plans predict bit-identically to today. CI only, crates profiler, plan, costmodel and planner; runs in parallel with the transport step.'
+- id: bench-235b-stream-predict
+  title: Predict the 235B on one box
+  track: bench
+  kind: experiment
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: box-later
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'Before any cluster code, the 235B streamed on one RTX 3090 box under a 64 GB RAM budget is predicted and then measured, to see whether the streaming cost model holds the 15% line that the Phase 6 exit needs (ADR 0091, named risk from ADR 0056).'
+  notes: 'Done when a session README gives e_pp and e_tg for pp2048 and tg128 under the balloon (EMULATE_RAM_GB=64), prediction frozen before the run. Above 0.15, a cost-model fix with its own ADR comes before the Phase 6 exit. One box, no cluster code.'
+- id: bench-phase6-rehearsal
+  title: First two-box cluster session
+  track: bench
+  kind: session
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-pipeline-nodes
+  - cluster-failover
+  - cluster-join-leave
+  - cluster-mtls
+  - cluster-owner-phase6-design
+  - bench-235b-stream-predict
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once).'
+  notes: 'Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session.'
 - id: cluster-mtls
-  title: Mutual TLS and node trust rules
+  title: Node certificates and trust rules
   track: cluster
   kind: feature
   state: blocked
@@ -2506,16 +2586,18 @@ nodes:
   headline: ''
   depends_on:
   - cluster-transport
+  - cluster-planner
+  - cluster-owner-phase6-design
   replaced_by: []
   lane: cluster
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: Every node proves its identity with a certificate (mutual TLS, certificates from step-ca), and rules say which node may see which data (plan feature 20).
-  notes: 'Done when: a node without a valid certificate is refused, and a forbid rule keeps a unit off a node. Blocked behind the M2 report and the transport choice. Source: plan.md feature 20.'
+  plain: 'Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).'
+  notes: 'Done when (ADR 0091), the certificate tooling of the owner''s choice exists, a node with another certificate is refused on the rehearsal boxes, and plans with a forbid node rule never use that node (planner property test).'
 - id: cluster-discovery
-  title: Find nodes automatically
+  title: Node list, health and probes
   track: cluster
   kind: feature
   state: blocked
@@ -2531,10 +2613,89 @@ nodes:
   end: ''
   folded: []
   overview: false
-  plain: Nodes come from a static list or are found on the local network (mDNS), and the profiler measures each link (plan feature 17).
-  notes: 'Done when: a second node on the LAN is found and measured without configuration. Blocked behind the M2 report and the transport choice. Source: plan.md feature 17.'
+  plain: 'Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091).'
+  notes: 'Done when (ADR 0091, build order 3), membership property tests pass under every simulated fault, and two node daemons on loopback TLS profile and probe each other (autotuned and explicit buffers); cluster cert generates keys on the box that never enter the repo or a pushed HEAD, and the session driver builds cluster.toml after create and uploads it; panel rows and alerts in the same change. CI only, crates control and tetraeder.'
 - id: cluster-join-leave
   title: Nodes join and leave live
+  track: cluster
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-discovery
+  - cluster-replicas
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7).'
+  notes: 'Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action.'
+- id: cluster-pipeline-nodes
+  title: Pipeline stages across machines
+  track: cluster
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-planner
+  - cluster-discovery
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded:
+  - No ggml_backend_tensor_copy_async binding yet; pipeline peer copies need it (m2-plan, E1 note)
+  overview: true
+  plain: A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
+  notes: 'Done when (ADR 0091, build order 4), two-node splits match the one-node run within tol_batch at the first, middle and last layer boundary, with the head on either node, on simulated CPU nodes in CI; segment residuals, the pipeline panel row and the segment-drift alert in the same change. Builders take and return hidden rows; the head drives segments in order.'
+- id: cluster-experts-nodes
+  title: Experts on other machines
+  track: cluster
+  kind: feature
+  state: parked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-phase6-exit
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008).
+  notes: 'Parked after the Phase 6 exit (ADR 0091), since neither exit case needs it and over the measured WAN one round trip per MoE layer costs about 5.4 s per token. Done when, later, remote experts match local ones within tol_batch on simulated CPU nodes and the round trip on a box pair is within the probe curve; it gets its own ADR addendum.'
+- id: cluster-remote-kv
+  title: KV cache on another machine
+  track: cluster
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - cluster-replicas
+  replaced_by: []
+  lane: cluster
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091).'
+  notes: 'Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3.'
+- id: cluster-replicas
+  title: Model replicas behind one router
   track: cluster
   kind: feature
   state: blocked
@@ -2550,87 +2711,8 @@ nodes:
   end: ''
   folded: []
   overview: false
-  plain: A node can join or leave while the others keep serving; membership changes trigger a replan (plan feature 18).
-  notes: 'Done when: a node joins and leaves under load with no failed request on the other nodes. Blocked behind the M2 report and the transport choice. Source: plan.md feature 18.'
-- id: cluster-pipeline-nodes
-  title: Pipeline stages across machines
-  track: cluster
-  kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
-  depends_on:
-  - cluster-transport
-  replaced_by: []
-  lane: cluster
-  start: ''
-  end: ''
-  folded:
-  - No ggml_backend_tensor_copy_async binding yet; pipeline peer copies need it (m2-plan, E1 note)
-  overview: true
-  plain: A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
-  notes: 'Done when: logit parity across a two-node split, and tok/s within the planner''s prediction band. Blocked behind the M2 report and the transport choice. Source: plan.md feature 8, Parallel shapes
-    across slow links.'
-- id: cluster-experts-nodes
-  title: Experts on other machines
-  track: cluster
-  kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
-  depends_on:
-  - cluster-transport
-  replaced_by: []
-  lane: cluster
-  start: ''
-  end: ''
-  folded: []
-  overview: true
-  plain: Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008).
-  notes: 'Done when: logit parity with experts on two nodes, and the per-layer round trip within the measured transport latency. Blocked behind the M2 report and the transport choice. Source: plan.md feature
-    9, Experts across nodes.'
-- id: cluster-remote-kv
-  title: KV cache on another machine
-  track: cluster
-  kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
-  depends_on:
-  - cluster-transport
-  replaced_by: []
-  lane: cluster
-  start: ''
-  end: ''
-  folded: []
-  overview: false
-  plain: KV cache and cached prefixes can live on another node and be fetched instead of recomputed, so a prefix computed on one node serves requests on another (plan features 3 and 4, Phase 6 halves).
-  notes: 'Done when: a prefix hit served from a remote node cuts time to first token against recomputing it. Blocked behind the M2 report and the transport choice. Source: plan.md features 3 and 4.'
-- id: cluster-replicas
-  title: Model replicas behind one router
-  track: cluster
-  kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
-  depends_on:
-  - cluster-transport
-  replaced_by: []
-  lane: cluster
-  start: ''
-  end: ''
-  folded: []
-  overview: false
-  plain: Copies of a model on several nodes behind one router; independent requests need no traffic between them, so any link latency is fine (plan feature 11).
-  notes: 'Done when: two replicas serve one endpoint and throughput adds up within the band. Blocked behind the M2 report and the transport choice. Source: plan.md feature 11.'
+  plain: 'Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11).'
+  notes: 'Done when (ADR 0091, build order 5), two simulated replicas serve one endpoint through the router with prefix affinity before least-outstanding, a remote replica sends events of a few bytes per token, and the router property tests pass; router metrics, panel row and the replica-out alert in the same change. Can run in parallel with the pipeline step; the shared serve wiring lands last.'
 - id: cluster-failover
   title: Keep serving when a node dies
   track: cluster
@@ -2651,7 +2733,7 @@ nodes:
   - Sticky CUDA errors are detected by message text until the backend trait carries a sticky signal (m2-plan, E9 follow-ups)
   overview: true
   plain: When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19).
-  notes: 'Done when: the Phase 6 kill test passes in CI on simulated nodes. Blocked behind the M2 report and the transport choice. Source: plan.md feature 19.'
+  notes: 'Done when (ADR 0091, Case F), the kill test passes in CI on simulated nodes for a killed worker, a killed node and a silent node, with every in-flight request on it ending in one clean error within node_down_after plus 1 s.'
 - id: bench-phase6-exit
   title: 'Phase 6 exit: multi-node test'
   track: bench
@@ -2662,13 +2744,8 @@ nodes:
   verdict_quote: ''
   headline: ''
   depends_on:
-  - cluster-pipeline-nodes
-  - cluster-experts-nodes
+  - bench-phase6-rehearsal
   - cluster-remote-kv
-  - cluster-replicas
-  - cluster-failover
-  - cluster-mtls
-  - cluster-discovery
   replaced_by: []
   lane: cluster
   start: ''
@@ -2676,8 +2753,7 @@ nodes:
   folded: []
   overview: true
   plain: 'The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load.'
-  notes: 'Done when (plan.md, Phase 6 exit test): a model larger than any single node runs within 15% of prediction; killing a node with a replica keeps new requests flowing, in-flight requests on it fail
-    cleanly.'
+  notes: 'Rules fixed in ADR 0091 before any measurement. Case S, Qwen3-235B-A22B Q4_K_M over two one-GPU nodes of 24 GB VRAM and a 64 GB RAM budget each, pp2048 and tg128 within 15% of the frozen prediction. Case F, two replicas of Qwen3-30B-A3B with node B killed, killed whole and stopped, three trials each.'
 - id: bench-m3-report
   title: Report milestone M3
   track: bench

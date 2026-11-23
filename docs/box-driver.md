@@ -50,7 +50,7 @@ The driver picks the box by these rules and does not ask the owner. The coordina
 
 ## Flow
 1. You are in an isolated worktree. `git fetch origin && git checkout -B <your-branch> origin/main`. taxameter pushes the committed HEAD of this worktree to the box; keep HEAD = origin/main until the results commit.
-2. `date +%T`; `uv run taxameter status`; `offers`; `create` (record the id); `provision --id <id>` with the models your profile needs (docs/sessions.md); the provision log must say `cuda: ok` or `cuda: ok_preload`, else destroy and report.
+2. `date +%T`; `uv run taxameter status`; `offers`; `create` (record the id; a job that needs open ports passes `create --ports 7000,7001/udp` and reads the mapping from `endpoint`, taxameter v0.3.6 ADR 0014; never patch or wrap taxameter); `provision --id <id>` with the models your profile needs (docs/sessions.md); the provision log must say `cuda: ok` or `cuda: ok_preload`, else destroy and report.
 3. Launch: `uv run taxameter run --id <id> scripts/session.sh --env SESSION=<profile> [other --env from your task]`. Check the session log advances within a few minutes; if `run` died silently, use the detached ssh fallback from docs/sessions.md.
 4. Wait on the box with `uv run taxameter ssh --id <id> --timeout 540 -- '<wait loop>'`; between waits compare progress with the estimates and flag overruns. No tight local polling loops (the local machine is low on memory and reaps background shells).
 5. At the session's done marker (or the deadline): `fetch --id <id>`, verify the expected files per docs/sessions.md "Verify", then `destroy --id <id> --yes`. Never destroy before a verified fetch unless the box is already gone.
