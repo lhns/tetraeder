@@ -94,7 +94,7 @@ class Pool:
         if k not in self.running:
             tag = f"-{len(self.running)}"
             tmp = self.log_dir / f"tmp{tag}"
-            tmp.mkdir()
+            tmp.mkdir(exist_ok=True)
             args = [a.replace("{tmp}", str(tmp)) for a in extra]
             if kind == "llama":
                 self.running[k] = start_llama(self.llama_bin, key, self.log_dir, args, tag, ctx)
@@ -191,8 +191,7 @@ def check_refusal(case, engine, pool):
     try:
         pool.get("tetraeder", engine, case.get("tetraeder_args", ()), case.get("ctx", CTX))
     except ServerStartError as e:
-        assert want.lower() in str(e).lower(), f"{case['row']}: tetraeder exited, but without {want!r}:
-{str(e)[-600:]}"
+        assert want.lower() in str(e).lower(), f"{case['row']}: tetraeder exited, but without {want!r}:\n{str(e)[-600:]}"
         return
     raise AssertionError(f"{case['row']}: tetraeder started with {case.get('tetraeder_args')}, the case expects a refusal ({want!r})")
 
@@ -214,6 +213,4 @@ def test_case(case, engine, pool):
     other = send(other_srv.base_url, case, body)
     check_premise(case, base)
     diffs = compare(case, base, other)
-    assert not diffs, f"{case['row']} ({case['endpoint']}):
-  " + "
-  ".join(diffs)
+    assert not diffs, f"{case['row']} ({case['endpoint']}):\n  " + "\n  ".join(diffs)
