@@ -23,3 +23,16 @@ Status: Accepted (owner, 2026-11-23, ADR 0085 class 1)
 - A busy writer drops spills instead of queueing without bound; the hit rate by source shows it.
 - No persistence across restarts and no sharing of the directory between servers.
 - Not measured: a paired speed run on a box (which restore time beats recomputing) is a later item. The tests are CPU only.
+
+## Addendum 2026-11-23: the restore reads in the background
+
+Spilling stays as decided. Point 4 changes: `take()` of a disk entry no longer reads the file on the scheduler thread (a 20K-token Qwen3-8B snapshot is about 2.9 GB, about a second of NVMe, and every running sequence stalled for it).
+
+- When placement finds its best match on disk, the scheduler starts a read on a second thread (`tetraeder-prefix-read`) into a snapshot pool buffer and the request waits in a restoring state. It holds no KV rows and no slot and does not block admission of the requests behind it; the other sequences keep decoding.
+- The entry stays on disk, marked as being read: it is not offered to a second request and not evicted. When the read is in, the entry and its file are consumed and the request is placed like a RAM hit (the hit still counts as `source=disk`).
+- Ordering: a restoring request keeps its queue position. Requests behind it are placed meanwhile; once its read is in, it is placed before any request still waiting behind it. If a better RAM match appears meanwhile, nothing changes.
+- A read that fails gives a warning, drops the entry, and the request is placed without reuse of that entry (full prefill). It does not start a second disk read.
+- A client that leaves during the read ends its request at the next step. The entry and its file stay (it was not consumed); the reader hands the buffer back to the pool when it finishes.
+- At most two reads run at once, so at most two buffers sit outside the RAM budget. A request that finds the limit reached is placed without the disk entry.
+- Metrics: `tetraeder.kv.prefix.restore.duration{source=disk}` is now the background file read; the copy into the KV cache is recorded only for RAM entries, so a disk restore adds no second sample. New gauge `tetraeder.kv.prefix.restoring` (requests waiting on a disk read), on the prefix cache panel. `PrefixDiskRestoreSlow` stays, now on the read time alone.
+- Not measured: a paired run of disk restore against recompute is still open. The tests are CPU only, with a gated reader.

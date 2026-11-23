@@ -6,7 +6,7 @@
 use crate::backend::{BackendError, BatchBackend, SeqId, SeqInput};
 use crate::batch::{Live, plan_step, victim};
 use crate::load::{Loaded, model_id};
-use crate::prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS, common_prefix};
+use crate::prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, Restore, SAVE_MIN_TOKENS, common_prefix};
 use crate::sample::{SampleParams, Sampler, SamplerEnv, token_probs};
 use crate::spec::{Drafter, Sampling, SpecConfig, Speculator};
 use std::collections::VecDeque;
@@ -332,6 +332,15 @@ struct StepTimes {
     sample: Duration,
 }
 
+/// A request's disk restore (ADR 0087 addendum): the background read, then its result until the
+/// request is placed. The request holds no KV rows and no slot meanwhile.
+enum Restoring {
+    Reading(Restore),
+    /// The entry's tokens and bytes, or `None` when the read failed: the request then places
+    /// without disk reuse.
+    Done(Option<(Vec<i32>, Vec<u8>)>),
+}
+
 /// A request from arrival to its last event. It goes back to the queue front on preemption with
 /// its sampler, constraint and channel: `toks` then holds the prompt plus what was generated, and
 /// nothing is sent twice.
@@ -366,6 +375,8 @@ struct Req {
     /// A busy copy for this request failed: its next placement does not offer a busy source, so
     /// it falls back to the idle sequence or the RAM entry. Cleared when it is placed.
     no_busy: bool,
+    /// A disk restore in progress or finished, see [`Restoring`].
+    restore: Option<Restoring>,
     /// When the gateway handed it to the scheduler, for the admission log.
     queued: Instant,
     /// Placement attempts that put it back in the queue, for the admission log.
@@ -438,9 +449,15 @@ impl Req {
             bytes0: None,
             started: false,
             no_busy: false,
+            restore: None,
             queued: Instant::now(),
             placing: Placing::default(),
         }
+    }
+
+    /// Waiting on the read of a disk entry.
+    fn reading(&self) -> bool {
+        matches!(self.restore, Some(Restoring::Reading(_)))
     }
 
     /// Sends what the channel takes, in order. False when the receiver is gone.
@@ -830,6 +847,9 @@ impl Worker {
 
     /// Hands the request's remaining events, then `last`, to the drains.
     fn hand_off(&mut self, mut req: Req, last: GenEvent) {
+        if let Some(Restoring::Done(Some((_, bytes)))) = req.restore.take() {
+            self.cache.release(bytes);
+        }
         req.outbox.push_back(last);
         let mut d = Drain {
             tx: req.tx,
@@ -999,17 +1019,89 @@ impl Worker {
     }
 
     fn admit(&mut self) {
+        self.poll_restores();
         self.drop_lost_idle();
-        while let Some(req) = self.waiting.front() {
+        loop {
+            // A request still reading keeps its place but does not block the ones behind it:
+            // they are placed first, and it is placed from the front once its read is in.
+            let skip = self.waiting.iter().take_while(|r| r.reading()).count();
+            let held: Vec<Req> = self.waiting.drain(..skip).collect();
+            let more = self.admit_front();
+            for r in held.into_iter().rev() {
+                self.waiting.push_front(r);
+            }
+            if !more {
+                break;
+            }
+        }
+    }
+
+    /// Takes in the background reads that finished and ends the reading requests whose client
+    /// went away (the entry and its file stay; the reader hands the buffer back to the pool).
+    fn poll_restores(&mut self) {
+        let mut changed = false;
+        let mut i = 0;
+        while i < self.waiting.len() {
+            let r = &mut self.waiting[i];
+            let Some(Restoring::Reading(read)) = &r.restore else {
+                i += 1;
+                continue;
+            };
+            if r.cancel.is_cancelled() || r.tx.is_closed() {
+                let mut req = self.waiting.remove(i).expect("index in range");
+                if let Some(Restoring::Reading(read)) = req.restore.take() {
+                    self.cache.abort_restore(read);
+                }
+                self.end_unplaced(req, Ok(FinishReason::Cancelled));
+                changed = true;
+                continue;
+            }
+            if let Some((entry, took)) = self.cache.poll_restore(read) {
+                if let Some(m) = &self.metrics {
+                    m.kv_prefix_restore(took, "disk");
+                    if let Some((_, bytes)) = &entry {
+                        m.tier_transfer(
+                            bytes.len() as u64,
+                            Some(took),
+                            Tier::Disk,
+                            Tier::Ram,
+                            Purpose::Kv,
+                        );
+                    }
+                }
+                r.restore = Some(Restoring::Done(entry));
+                changed = true;
+            }
+            i += 1;
+        }
+        if changed {
+            self.report_restoring();
+        }
+    }
+
+    fn report_restoring(&self) {
+        if let Some(m) = &self.metrics {
+            let n = self.waiting.iter().filter(|r| r.reading()).count();
+            m.kv_prefix_restoring(n as u64);
+        }
+    }
+
+    /// Places or ends the first request that is not reading. False when admission stops: the
+    /// queue is empty, no slot is free or the request waits for rows.
+    fn admit_front(&mut self) -> bool {
+        {
+            let Some(req) = self.waiting.front() else {
+                return false;
+            };
             if req.cancel.is_cancelled() || req.tx.is_closed() {
                 let req = self.waiting.pop_front().expect("front");
                 self.end_unplaced(req, Ok(FinishReason::Cancelled));
-                continue;
+                return true;
             }
             if req.stats.generated_tokens >= req.params.max_tokens {
                 let req = self.waiting.pop_front().expect("front");
                 self.end_unplaced(req, Ok(FinishReason::Length));
-                continue;
+                return true;
             }
             if !req.toks.is_empty()
                 && req.toks.len() >= self.n_ctx_seq
@@ -1018,7 +1110,7 @@ impl Worker {
                 // A preempted request that filled the context: it ends as it would have live.
                 let req = self.waiting.pop_front().expect("front");
                 self.end_unplaced(req, Ok(FinishReason::Length));
-                continue;
+                return true;
             }
             if let Some(&t) = req
                 .toks
@@ -1028,12 +1120,12 @@ impl Worker {
                 let msg = format!("token {t} outside the vocabulary of {}", self.n_vocab);
                 let req = self.waiting.pop_front().expect("front");
                 self.end_unplaced(req, Err(msg));
-                continue;
+                return true;
             }
             if req.toks.is_empty() {
                 let req = self.waiting.pop_front().expect("front");
                 self.end_unplaced(req, Err("an empty prompt".into()));
-                continue;
+                return true;
             }
             if req.toks.len() >= self.n_ctx_seq {
                 let n = req.toks.len();
@@ -1043,15 +1135,12 @@ impl Worker {
                 );
                 let req = self.waiting.pop_front().expect("front");
                 self.hand_off(req, GenEvent::ContextExceeded(msg));
-                continue;
+                return true;
             }
             if self.live_count() >= self.slots.len() {
-                break;
+                return false;
             }
-            match self.place() {
-                Admission::Admitted => {}
-                Admission::Wait => break,
-            }
+            matches!(self.place(), Admission::Admitted)
         }
     }
 
@@ -1061,9 +1150,17 @@ impl Worker {
     /// sequence); ties go to the cheaper source (idle, busy copy, RAM). With `prefix_reuse` off
     /// the id starts empty.
     fn place(&mut self) -> Admission {
-        let Some(req) = self.waiting.pop_front() else {
+        let Some(mut req) = self.waiting.pop_front() else {
             return Admission::Wait;
         };
+        // The result of this request's disk read, if it had one.
+        let restored = req.restore.take();
+        let no_disk = matches!(restored, Some(Restoring::Done(None)));
+        let mut pre = match restored {
+            Some(Restoring::Done(entry)) => entry,
+            _ => None,
+        };
+        let from_pre = pre.is_some();
         let (t_place, save0, restore0) = (Instant::now(), self.save_time, self.restore_time);
         self.saved.clear();
         let toks = req.toks.clone();
@@ -1086,7 +1183,11 @@ impl Worker {
             .filter(|&(_, n)| n > 0 && self.prefix_reuse)
             .max_by_key(|&(_, n)| n);
         let live_n = best_idle.map_or(0, |(_, n)| n);
-        let ram = if self.prefix_reuse && self.cache.enabled() {
+        let ram = if let Some((etoks, _)) = &pre {
+            // The restored entry stands in for the RAM entry; its index is not used.
+            Some((0, common_prefix(etoks, &toks).min(last)))
+                .filter(|&(_, n)| n >= live_n + self.restore_gain)
+        } else if self.prefix_reuse && self.cache.enabled() {
             self.cache
                 .best(&fmt, &toks)
                 .map(|(i, n)| (i, n.min(last)))
@@ -1142,13 +1243,43 @@ impl Worker {
         };
         let from_idle = copy_idle.is_some();
         let busy = busy.or(copy_idle);
-        let ram = if busy.is_some() { None } else { ram };
+        let mut ram = if busy.is_some() { None } else { ram };
+        if ram.is_none() {
+            // A restored entry that is not used goes back to the cache.
+            self.put_back(pre.take());
+        }
+        if let Some((i, _)) = ram
+            && !from_pre
+            && self.cache.source(i) == "disk"
+        {
+            // A disk entry is read in the background; the request waits in its place without
+            // a slot and is placed again when the read is in (ADR 0087 addendum).
+            let read = if no_disk {
+                None
+            } else {
+                self.cache.start_restore(i)
+            };
+            match read {
+                Some(read) => {
+                    req.restore = Some(Restoring::Reading(read));
+                    self.waiting.push_front(req);
+                    self.report_restoring();
+                    return Admission::Admitted;
+                }
+                None => ram = None,
+            }
+        }
         // Take the entry out first: saving a sequence below may evict it.
-        let ram_source = ram.map_or("ram", |(i, _)| self.cache.source(i));
-        let t_take = Instant::now();
-        let mut picked = ram.and_then(|(i, _)| self.cache.take(i));
-        // A disk entry is read back here, which belongs to its restore time.
-        let take_time = t_take.elapsed();
+        let ram_source = match ram {
+            _ if from_pre => "disk",
+            Some((i, _)) => self.cache.source(i),
+            None => "ram",
+        };
+        let mut picked = if from_pre {
+            pre.take()
+        } else {
+            ram.and_then(|(i, _)| self.cache.take(i))
+        };
         let ram = ram.filter(|_| picked.is_some());
         if ram.is_some() {
             self.report_cache_bytes();
@@ -1279,15 +1410,17 @@ impl Worker {
                 Ok(()) => {
                     common = common_prefix(&etoks, &toks).min(last);
                     source = ram_source;
-                    let disk = ram_source == "disk";
-                    let took = t0.elapsed() + if disk { take_time } else { Duration::ZERO };
+                    let took = t0.elapsed();
                     self.restore_time += took;
                     if let Some(m) = &self.metrics {
-                        m.kv_prefix_restore(took, ram_source);
+                        // The read of a disk entry was timed when it finished.
+                        if !from_pre {
+                            m.kv_prefix_restore(took, ram_source);
+                        }
                         m.tier_transfer(
                             bytes.len() as u64,
                             Some(took),
-                            if disk { Tier::Disk } else { Tier::Ram },
+                            Tier::Ram,
                             Tier::Vram,
                             Purpose::Kv,
                         );

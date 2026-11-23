@@ -1,14 +1,18 @@
 //! The disk tier of the prefix cache (ADR 0087): entries the RAM budget evicts are written to
-//! files by a background thread, so the scheduler step never waits on disk IO. An entry is
-//! findable only once its write completed. The files are valid for this process only: they are
-//! removed at startup and on drop, and a write that fails drops the entry with a warning.
+//! files by a background thread, and read back by a second one (addendum 2026-11-23), so the
+//! scheduler step never waits on disk IO. An entry is findable only once its write completed.
+//! The files are valid for this process only: they are removed at startup and on drop, and a
+//! write that fails drops the entry with a warning.
 
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender, SyncSender, TrySendError, channel, sync_channel};
+use std::sync::mpsc::{
+    Receiver, SendError, Sender, SyncSender, TryRecvError, TrySendError, channel, sync_channel,
+};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 use tetraeder_model::snapshot_pool::SnapshotPool;
 
 use crate::prefix_cache::common_prefix;
@@ -20,6 +24,13 @@ const FILE_EXT: &str = ".tkv";
 /// Writes queued for the writer. Their buffers are held outside the RAM budget, so the queue is
 /// short; a spill that finds it full is dropped.
 const QUEUE: usize = 2;
+/// Reads in flight at once. Each holds a pool buffer outside the RAM budget; a request that
+/// finds the limit reached is placed without the disk entry.
+pub const MAX_READS: usize = 2;
+
+/// Reads a file back: path, format, payload size, pool for the buffer. Injectable for tests.
+pub type ReadFn =
+    Arc<dyn Fn(&Path, &str, usize, &SnapshotPool) -> io::Result<(Vec<i32>, Vec<u8>)> + Send + Sync>;
 
 struct DiskEntry {
     id: u64,
@@ -29,6 +40,32 @@ struct DiskEntry {
     size: usize,
     /// The write completed.
     ready: bool,
+    /// A background read of it is running: it is not offered again and not evicted.
+    reading: bool,
+}
+
+struct ReadJob {
+    path: PathBuf,
+    format: String,
+    size: usize,
+    reply: Sender<ReadDone>,
+}
+
+/// What the reader thread found.
+pub struct ReadDone {
+    pub res: io::Result<(Vec<i32>, Vec<u8>)>,
+    /// The time of the file read alone.
+    pub took: Duration,
+}
+
+/// What a finished background read gives: the entry's tokens and bytes (`None` when the file was
+/// unreadable) and the time of the read.
+pub type Restored = (Option<(Vec<i32>, Vec<u8>)>, Duration);
+
+/// A background read of one disk entry; end it with `poll_read` (finished) or `abort_read`.
+pub struct ReadHandle {
+    id: u64,
+    rx: Receiver<ReadDone>,
 }
 
 struct Job {
@@ -56,12 +93,19 @@ pub struct DiskTier {
     jobs: Option<SyncSender<Job>>,
     done: Receiver<Done>,
     writer: Option<JoinHandle<()>>,
+    reads: Option<Sender<ReadJob>>,
+    reader: Option<JoinHandle<()>>,
     pool: Arc<SnapshotPool>,
 }
 
 impl DiskTier {
     /// Creates `dir` if needed and removes the files an earlier process left there.
-    pub fn open(dir: &Path, budget: usize, pool: Arc<SnapshotPool>) -> Result<Self, String> {
+    pub fn open(
+        dir: &Path,
+        budget: usize,
+        pool: Arc<SnapshotPool>,
+        read: Option<ReadFn>,
+    ) -> Result<Self, String> {
         fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         remove_stale(dir);
         let (jobs, rx) = sync_channel::<Job>(QUEUE);
@@ -70,6 +114,13 @@ impl DiskTier {
             .name("tetraeder-prefix-disk".into())
             .spawn(move || writer(&rx, &tx))
             .map_err(|e| format!("cannot start the disk writer: {e}"))?;
+        let (reads, read_rx) = channel::<ReadJob>();
+        let read: ReadFn = read.unwrap_or_else(|| Arc::new(read_file));
+        let reader_pool = Arc::clone(&pool);
+        let reader = std::thread::Builder::new()
+            .name("tetraeder-prefix-read".into())
+            .spawn(move || reader(&read_rx, &reader_pool, &read))
+            .map_err(|e| format!("cannot start the disk reader: {e}"))?;
         Ok(Self {
             dir: dir.to_owned(),
             budget,
@@ -79,6 +130,8 @@ impl DiskTier {
             jobs: Some(jobs),
             done,
             writer: Some(writer),
+            reads: Some(reads),
+            reader: Some(reader),
             pool,
         })
     }
@@ -143,7 +196,7 @@ impl DiskTier {
         self.entries
             .iter()
             .enumerate()
-            .filter(|(_, e)| e.ready && e.format == format)
+            .filter(|(_, e)| e.ready && !e.reading && e.format == format)
             .map(|(i, e)| (i, common_prefix(&e.tokens, prompt)))
             .filter(|&(_, n)| n > 0)
             .max_by_key(|&(_, n)| n)
@@ -154,7 +207,7 @@ impl DiskTier {
         let mut i = 0;
         while i < self.entries.len() {
             let e = &self.entries[i];
-            if e.format == format && tokens.starts_with(&e.tokens) {
+            if !e.reading && e.format == format && tokens.starts_with(&e.tokens) {
                 self.drop_entry(i);
             } else {
                 i += 1;
@@ -202,8 +255,10 @@ impl DiskTier {
             }
         }
         self.replace_prefixes(format, &tokens);
-        while self.held + size > self.budget && !self.entries.is_empty() {
-            self.drop_entry(0);
+        while self.held + size > self.budget
+            && let Some(k) = self.entries.iter().position(|e| !e.reading)
+        {
+            self.drop_entry(k);
         }
         self.held += size;
         self.entries.push(DiskEntry {
@@ -212,26 +267,68 @@ impl DiskTier {
             tokens,
             size,
             ready: false,
+            reading: false,
         });
     }
 
-    /// Reads entry `i` back into a pool buffer and deletes it. An unreadable file is dropped
-    /// with a warning.
-    pub fn take(&mut self, i: usize) -> Option<(Vec<i32>, Vec<u8>)> {
-        if !self.entries.get(i).is_some_and(|e| e.ready) {
+    /// Starts reading entry `i` into a pool buffer on the reader thread. `None` when the entry
+    /// is not complete or is being read, or `MAX_READS` reads are running. The entry stays
+    /// until `poll_read` consumes it, so a cancelled restore loses nothing.
+    pub fn start_read(&mut self, i: usize) -> Option<ReadHandle> {
+        if self.reading() >= MAX_READS
+            || !self.entries.get(i).is_some_and(|e| e.ready && !e.reading)
+        {
             return None;
         }
-        let e = self.entries.remove(i);
-        self.held -= e.size;
-        let path = self.path(e.id);
-        let read = read_file(&path, &e.format, e.size, &self.pool);
-        remove_file(&path);
-        match read {
-            Ok(r) => Some(r),
+        let id = self.entries[i].id;
+        let (reply, rx) = channel();
+        let job = ReadJob {
+            path: self.path(id),
+            format: self.entries[i].format.clone(),
+            size: self.entries[i].size,
+            reply,
+        };
+        self.reads.as_ref()?.send(job).ok()?;
+        self.entries[i].reading = true;
+        Some(ReadHandle { id, rx })
+    }
+
+    /// Reads in flight.
+    pub fn reading(&self) -> usize {
+        self.entries.iter().filter(|e| e.reading).count()
+    }
+
+    /// The result of `read` if it is in: the entry's tokens and bytes and the read time. The
+    /// entry and its file are gone then; an unreadable file is dropped with a warning and
+    /// gives no bytes.
+    pub fn poll_read(&mut self, read: &ReadHandle) -> Option<Restored> {
+        let done = match read.rx.try_recv() {
+            Ok(d) => d,
+            Err(TryRecvError::Empty) => return None,
+            Err(TryRecvError::Disconnected) => ReadDone {
+                res: Err(bad("the disk reader stopped")),
+                took: Duration::ZERO,
+            },
+        };
+        if let Some(i) = self.entries.iter().position(|e| e.id == read.id) {
+            let e = self.entries.remove(i);
+            self.held -= e.size;
+        }
+        remove_file(&self.path(read.id));
+        match done.res {
+            Ok(r) => Some((Some(r), done.took)),
             Err(err) => {
                 tracing::warn!("cannot read a saved sequence from disk: {err}");
-                None
+                Some((None, done.took))
             }
+        }
+    }
+
+    /// Gives up `read`: the entry and its file stay. The reader thread hands its buffer back
+    /// to the pool when it finishes.
+    pub fn abort_read(&mut self, read: ReadHandle) {
+        if let Some(e) = self.entries.iter_mut().find(|e| e.id == read.id) {
+            e.reading = false;
         }
     }
 }
@@ -239,8 +336,12 @@ impl DiskTier {
 impl Drop for DiskTier {
     fn drop(&mut self) {
         self.jobs = None;
-        if let Some(w) = self.writer.take() {
-            let _ = w.join();
+        self.reads = None;
+        for t in [self.writer.take(), self.reader.take()]
+            .into_iter()
+            .flatten()
+        {
+            let _ = t.join();
         }
         remove_stale(&self.dir);
     }
@@ -286,6 +387,25 @@ fn writer(rx: &Receiver<Job>, tx: &Sender<Done>) {
         };
         if tx.send(done).is_err() {
             return;
+        }
+    }
+}
+
+fn reader(rx: &Receiver<ReadJob>, pool: &SnapshotPool, read: &ReadFn) {
+    for job in rx {
+        let t0 = Instant::now();
+        let res = read(&job.path, &job.format, job.size, pool);
+        let done = ReadDone {
+            res,
+            took: t0.elapsed(),
+        };
+        // Nobody waits any more (the request was cancelled): the buffer goes back to the pool.
+        if let Err(SendError(ReadDone {
+            res: Ok((_, bytes)),
+            ..
+        })) = job.reply.send(done)
+        {
+            pool.recycle(bytes);
         }
     }
 }

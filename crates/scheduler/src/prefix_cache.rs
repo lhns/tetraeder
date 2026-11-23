@@ -4,9 +4,10 @@
 //! bytes of one format are never restored into a cache of another (ADR 0050 b). Buffers the cache
 //! lets go of go back to the snapshot pool instead of being freed (ADR 0074). With a disk tier
 //! (ADR 0087) an entry the RAM budget evicts spills to a file; indices run over the RAM entries,
-//! then the completed disk entries.
+//! then the completed disk entries. A disk entry is restored by a background read
+//! (`start_restore`), never by `take`.
 
-use crate::prefix_disk::DiskTier;
+use crate::prefix_disk::{DiskTier, ReadFn, ReadHandle, Restored};
 use std::path::Path;
 use std::sync::Arc;
 use tetraeder_model::snapshot_pool::{self, SnapshotPool};
@@ -31,7 +32,12 @@ pub struct PrefixCache {
     held: usize,
     pool: Arc<SnapshotPool>,
     disk: Option<DiskTier>,
+    /// Replaces the file reader of the disk tier (tests).
+    reader: Option<ReadFn>,
 }
+
+/// A background read of a disk entry, started by `PrefixCache::start_restore`.
+pub struct Restore(ReadHandle);
 
 /// Length of the common prefix of `a` and `b`.
 pub fn common_prefix(a: &[i32], b: &[i32]) -> usize {
@@ -52,7 +58,16 @@ impl PrefixCache {
             held: 0,
             pool,
             disk: None,
+            reader: None,
         }
+    }
+
+    /// Reads disk entries with `read` instead of the file reader; call before `with_disk` (tests
+    /// make it slow or failing).
+    #[must_use]
+    pub fn with_disk_reader(mut self, read: ReadFn) -> Self {
+        self.reader = Some(read);
+        self
     }
 
     /// Adds the disk tier: evicted entries spill to files in `dir`, up to `budget` bytes. A
@@ -62,7 +77,7 @@ impl PrefixCache {
         if budget == 0 {
             return self;
         }
-        match DiskTier::open(dir, budget, Arc::clone(&self.pool)) {
+        match DiskTier::open(dir, budget, Arc::clone(&self.pool), self.reader.clone()) {
             Ok(d) => self.disk = Some(d),
             Err(e) => tracing::warn!("prefix cache disk tier is off: {e}"),
         }
@@ -151,16 +166,43 @@ impl PrefixCache {
             || self.disk.as_ref().is_some_and(|d| d.holds(format, tokens))
     }
 
-    /// Removes entry `i` and returns its tokens and bytes. A disk entry is read back first;
-    /// `None` when that fails (the entry is gone either way).
+    /// Removes RAM entry `i` and returns its tokens and bytes. A disk entry is not read here: see
+    /// `start_restore`.
     pub fn take(&mut self, i: usize) -> Option<(Vec<i32>, Vec<u8>)> {
-        if i < self.entries.len() {
-            let e = self.entries.remove(i);
-            self.held -= e.bytes.len();
-            return Some((e.tokens, e.bytes));
+        if i >= self.entries.len() {
+            return None;
         }
+        let e = self.entries.remove(i);
+        self.held -= e.bytes.len();
+        Some((e.tokens, e.bytes))
+    }
+
+    /// Starts reading disk entry `i` in the background. `None` when `i` is not a disk entry or
+    /// the tier is busy (`MAX_READS` reads). The entry stays in the cache, marked as being
+    /// read, until `poll_restore` consumes it.
+    pub fn start_restore(&mut self, i: usize) -> Option<Restore> {
         let n = self.entries.len();
-        self.disk.as_mut()?.take(i - n)
+        i.checked_sub(n)
+            .and_then(|k| self.disk.as_mut()?.start_read(k))
+            .map(Restore)
+    }
+
+    /// The finished read, if it is in. The entry and its file are gone then.
+    pub fn poll_restore(&mut self, r: &Restore) -> Option<Restored> {
+        self.disk.as_mut()?.poll_read(&r.0)
+    }
+
+    /// Gives up a read: the entry and its file stay, and the buffer goes back to the pool when
+    /// the reader is done with it.
+    pub fn abort_restore(&mut self, r: Restore) {
+        if let Some(d) = &mut self.disk {
+            d.abort_read(r.0);
+        }
+    }
+
+    /// Reads in flight.
+    pub fn restoring(&self) -> usize {
+        self.disk.as_ref().map_or(0, DiskTier::reading)
     }
 
     /// Adds a sequence, replacing entries that are a prefix of it and evicting the least recently
@@ -209,6 +251,7 @@ impl PrefixCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
     use tetraeder_model::snapshot_pool::PoolConfig;
 
     const F: &str = "f16/f16";
@@ -365,6 +408,40 @@ mod tests {
         c.with_disk(&dir.0, disk)
     }
 
+    /// Restores disk entry `i` and waits for the read.
+    fn restore(c: &mut PrefixCache, i: usize) -> Restored {
+        let r = c.start_restore(i).expect("a read starts");
+        let t0 = std::time::Instant::now();
+        loop {
+            if let Some(done) = c.poll_restore(&r) {
+                return done;
+            }
+            assert!(t0.elapsed().as_secs() < 30, "the read never finished");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    /// A reader that waits until the test opens the gate.
+    #[derive(Clone, Default)]
+    struct Gate(Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>);
+    impl Gate {
+        fn open(&self) {
+            *self.0.0.lock().unwrap() = true;
+            self.0.1.notify_all();
+        }
+        fn reader(&self) -> ReadFn {
+            let g = self.clone();
+            Arc::new(move |path, format, size, pool| {
+                let mut open = g.0.0.lock().unwrap();
+                while !*open {
+                    open = g.0.1.wait(open).unwrap();
+                }
+                drop(open);
+                crate::prefix_disk::read_file(path, format, size, pool)
+            })
+        }
+    }
+
     // hardware: none
     #[test]
     fn eviction_spills_and_restore_returns_the_same_bytes() {
@@ -381,8 +458,9 @@ mod tests {
         prompt.push(9);
         let (i, n) = c.best(F, &prompt).unwrap();
         assert_eq!((n, c.source(i)), (3, "disk"));
-        let (t, b) = c.take(i).unwrap();
-        assert_eq!((t, b), (seq(3, 0), a));
+        assert_eq!(c.take(i), None, "a disk entry is read by start_restore");
+        let (got, _) = restore(&mut c, i);
+        assert_eq!(got, Some((seq(3, 0), a)));
         // A restored entry leaves the cache and its file is gone.
         assert_eq!((c.disk_bytes(), c.len(), dir.files()), (0, 2, 0));
         assert_eq!(c.best(F, &prompt), None);
@@ -498,7 +576,97 @@ mod tests {
             std::fs::write(f.path(), b"junk").unwrap();
         }
         let (i, _) = c.best(F, &seq(3, 0)).unwrap();
-        assert_eq!(c.take(i), None);
+        assert_eq!(restore(&mut c, i).0, None);
         assert_eq!((c.disk_bytes(), dir.files()), (0, 0));
+    }
+
+    /// A spilled entry on disk behind a gated reader: (cache, its pool, the gate).
+    fn gated(dir: &TmpDir) -> (PrefixCache, Arc<SnapshotPool>, Gate) {
+        let gate = Gate::default();
+        let (c, pool) = pooled(10, 4);
+        let mut c = c.with_disk_reader(gate.reader()).with_disk(&dir.0, 20);
+        c.insert(F, seq(3, 0), vec![1; 10]);
+        c.insert(F, seq(3, 100), vec![2; 10]);
+        c.flush_disk();
+        (c, pool, gate)
+    }
+
+    // hardware: none
+    #[test]
+    fn a_read_in_flight_keeps_its_entry_and_is_not_offered_again() {
+        let dir = TmpDir::new("reading");
+        let (mut c, _pool, gate) = gated(&dir);
+        let (i, _) = c.best(F, &seq(3, 0)).unwrap();
+        let r = c.start_restore(i).unwrap();
+        assert_eq!(c.restoring(), 1);
+        // Not offered to a second request, and not evicted by a spill that needs the room.
+        assert_eq!(c.best(F, &seq(3, 0)), None);
+        assert!(c.start_restore(i).is_none());
+        c.insert(F, seq(3, 200), vec![3; 10]);
+        c.insert(F, seq(3, 300), vec![4; 10]);
+        c.flush_disk();
+        assert!(
+            c.holds(F, &seq(3, 0)) && !c.holds(F, &seq(3, 100)),
+            "the oldest idle entry went instead"
+        );
+        assert!(c.poll_restore(&r).is_none());
+        gate.open();
+        let t0 = std::time::Instant::now();
+        let done = loop {
+            if let Some(d) = c.poll_restore(&r) {
+                break d;
+            }
+            assert!(t0.elapsed().as_secs() < 30);
+            std::thread::sleep(Duration::from_millis(2));
+        };
+        assert_eq!(done.0.map(|(t, _)| t), Some(seq(3, 0)));
+        assert_eq!(c.restoring(), 0);
+    }
+
+    // hardware: none
+    #[test]
+    fn an_aborted_read_keeps_the_file_and_returns_the_buffer() {
+        let dir = TmpDir::new("abort");
+        let (mut c, pool, gate) = gated(&dir);
+        let files = dir.files();
+        let (i, _) = c.best(F, &seq(3, 0)).unwrap();
+        let before = pool.stats().recycled;
+        let r = c.start_restore(i).unwrap();
+        c.abort_restore(r);
+        gate.open();
+        let t0 = std::time::Instant::now();
+        while pool.stats().recycled == before && t0.elapsed().as_secs() < 30 {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(pool.stats().recycled > before, "the buffer went back");
+        assert_eq!(dir.files(), files, "the file was not consumed");
+        // The entry can be restored later.
+        let (i, n) = c.best(F, &seq(3, 0)).unwrap();
+        assert_eq!((n, c.source(i)), (3, "disk"));
+        assert_eq!(restore(&mut c, i).0.map(|(t, _)| t), Some(seq(3, 0)));
+    }
+
+    // hardware: none
+    #[test]
+    fn reads_in_flight_are_bounded() {
+        let dir = TmpDir::new("bounded");
+        let gate = Gate::default();
+        let (c, _) = pooled(10, 0);
+        let mut c = c.with_disk_reader(gate.reader()).with_disk(&dir.0, 100);
+        for k in 0..4 {
+            c.insert(F, seq(3, k * 100), vec![k as u8; 10]);
+            c.flush_disk();
+        }
+        // Disk holds #0..#2.
+        let mut reads = Vec::new();
+        for k in 0..3 {
+            let (i, _) = c.best(F, &seq(3, k * 100)).unwrap();
+            reads.push(c.start_restore(i));
+        }
+        assert_eq!(
+            reads.iter().map(Option::is_some).collect::<Vec<_>>(),
+            [true, true, false]
+        );
+        gate.open();
     }
 }
