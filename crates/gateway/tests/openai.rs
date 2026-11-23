@@ -392,9 +392,10 @@ async fn completions_shape_and_unlimited_default_max_tokens() {
         "no template on completions"
     );
 
+    // llama-server ignores `echo` on completions
     let body = json!({"model": "fake", "prompt": ["P"], "max_tokens": 2, "echo": true});
     let (_, _, v) = post(&app, "/v1/completions", &body, false).await;
-    assert_eq!(v["choices"][0]["text"], "P01");
+    assert_eq!(v["choices"][0]["text"], "01");
 }
 
 #[tokio::test]
@@ -405,18 +406,20 @@ async fn completions_stream() {
     let (_, _, ev) = post_sse(&app, "/v1/completions", &body, false).await;
     assert_eq!(ev.last().unwrap().data, "[DONE]");
     let chunks: Vec<Value> = ev[..ev.len() - 1].iter().map(Sse::json).collect();
-    let (usage, rest) = chunks.split_last().unwrap();
-    assert_eq!(usage["choices"], json!([]));
-    assert_eq!(usage["usage"]["completion_tokens"], 4);
-    for c in rest {
+    // the usage is on the finish chunk, with or without include_usage (llama-server)
+    let (last, rest) = chunks.split_last().unwrap();
+    assert_eq!(last["usage"]["completion_tokens"], 4);
+    assert_eq!(last["usage"]["prompt_tokens_details"]["cached_tokens"], 0);
+    for c in &chunks {
         assert_eq!(c["object"], "text_completion");
     }
-    let text: String = rest
+    let text: String = chunks
         .iter()
         .map(|c| c["choices"][0]["text"].as_str().unwrap())
         .collect();
     assert_eq!(text, "abc");
-    assert_eq!(rest.last().unwrap()["choices"][0]["finish_reason"], "stop");
+    assert_eq!(last["choices"][0]["finish_reason"], "stop");
+    assert!(rest.iter().all(|c| c.get("usage").is_none()));
 }
 
 #[tokio::test]

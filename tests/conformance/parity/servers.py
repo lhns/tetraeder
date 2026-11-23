@@ -27,6 +27,15 @@ MODEL_FILE = {"qwen3": "tiny-qwen3-f16.gguf", "qwen3moe": "tiny-qwen3moe-f16.ggu
 CTX, SLOTS, THREADS = 4096, 2, 2
 SAMPLING = ["--temp", "0.8", "--top-k", "40", "--top-p", "0.95"]
 
+def sampling_for(extra) -> list:
+    """SAMPLING without the flags a case sets itself (tetraeder refuses a flag given twice)."""
+    out = []
+    for flag, value in zip(SAMPLING[::2], SAMPLING[1::2]):
+        if flag not in extra:
+            out += [flag, value]
+    return out
+
+
 EXE = ".exe" if sys.platform == "win32" else ""
 
 
@@ -97,7 +106,7 @@ def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX) -> Runni
     port = free_port()
     argv = [
         str(binary), "-m", str(FIXTURES / MODEL_FILE[model]), "--host", "127.0.0.1", "--port", str(port),
-        "-c", str(ctx), "-np", str(SLOTS), "-kvu", "-t", str(THREADS), *SAMPLING,
+        "-c", str(ctx), "-np", str(SLOTS), "-kvu", "-t", str(THREADS), *sampling_for(extra),
         "--chat-template-file", str(TEMPLATE), "--metrics", "--no-warmup", *extra,
     ]  # fmt: skip
     return launch(f"llama-server-{model}{tag}", argv, "/health", port, log_dir)
@@ -108,7 +117,7 @@ def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="", ctx=CTX) -> 
     argv = [
         str(binary), "serve", "-m", str(FIXTURES / MODEL_FILE[FAMILY[engine]]), "--engine", ENGINE_FLAG.get(engine, engine),
         "--host", "127.0.0.1", "--port", str(port), "--ctx", str(ctx), "--parallel", str(SLOTS), "-t", str(THREADS),
-        *SAMPLING, "--chat-template-file", str(TEMPLATE), "--accept-any-model", "--metrics", *extra,
+        *sampling_for(extra), "--chat-template-file", str(TEMPLATE), "--accept-any-model", "--metrics", *extra,
     ]  # fmt: skip
     # /health is public, so the instance that has an API key is ready too
     return launch(f"tetraeder-{engine}{tag}", argv, "/health", port, log_dir)

@@ -95,9 +95,6 @@ struct CompletionRequest {
     stop: Option<Value>,
     #[serde(default)]
     stream: bool,
-    stream_options: Option<StreamOptions>,
-    #[serde(default)]
-    echo: bool,
     suffix: Option<String>,
     logprobs: Option<i64>,
     n_probs: Option<i64>,
@@ -504,7 +501,7 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     let gid = generations[0].id.clone();
     if stream {
         return Ok(tag_generation(
-            sse(oai_stream(generations, true, include_usage, None)),
+            sse(oai_stream(generations, true, include_usage)),
             &gid,
         ));
     }
@@ -582,12 +579,12 @@ fn response_logprobs(
 }
 
 /// A stream of one or several generations as OpenAI chunks, choices interleaved as they come.
-/// `echo` is the prompt a completions stream sends first for every choice.
+/// A completions stream carries its usage on the finish chunk whatever `stream_options` say, as
+/// llama-server's final result does; a chat stream adds the empty-choices chunk when asked.
 fn oai_stream(
     gens: Vec<Generation>,
     chat: bool,
     usage: bool,
-    echo: Option<String>,
 ) -> impl Stream<Item = Event> + Send + 'static {
     let n = gens.len();
     let prefix = if chat { "chatcmpl-" } else { "cmpl-" };
@@ -597,7 +594,6 @@ fn oai_stream(
         model: gens[0].model.clone(),
         chat,
         usage,
-        echo,
         started: false,
         tool_index: vec![0; n],
         lp: vec![Vec::new(); n],
@@ -615,9 +611,6 @@ fn oai_stream(
             for i in 0..s.tally.n {
                 if s.chat {
                     let c = s.chunk(i, json!({"role": "assistant", "content": ""}), None);
-                    out.push(data(&c));
-                } else if let Some(e) = s.echo.clone() {
-                    let c = s.text_chunk(i, &e, None);
                     out.push(data(&c));
                 }
             }
@@ -659,7 +652,14 @@ fn oai_stream(
                 } else {
                     let total = s.tally.total();
                     let timings = total.timings.map(|t| t.to_json());
-                    if s.usage {
+                    if !s.chat {
+                        // llama-server's final completions chunk: the finish and the usage
+                        fin["usage"] = usage_json(&total);
+                        if let Some(t) = timings {
+                            fin["timings"] = t;
+                        }
+                        out.push(data(&fin));
+                    } else if s.usage {
                         out.push(data(&fin));
                         let mut last = json!({
                             "id": s.id,
@@ -724,7 +724,6 @@ struct OaiStream {
     model: String,
     chat: bool,
     usage: bool,
-    echo: Option<String>,
     started: bool,
     tool_index: Vec<usize>,
     /// Log-probability entries waiting for the next chunk of their choice.
@@ -743,7 +742,7 @@ impl OaiStream {
             "system_fingerprint": FINGERPRINT,
             "choices": [choice],
         });
-        if self.usage {
+        if self.usage && self.chat {
             c["usage"] = Value::Null;
         }
         c
@@ -835,7 +834,7 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
         }
         _ => return Err(bad("prompt must be a string")),
     };
-    let mut spec = GenerateSpec::new(req.model, Prompt::Text(prompt.clone()));
+    let mut spec = GenerateSpec::new(req.model, Prompt::Text(prompt));
     // llama-server's `n_predict` default is -1, as for chat: no limit but the context.
     spec.max_tokens = req.max_tokens;
     spec.temperature = req.temperature;
@@ -850,11 +849,9 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
         .generate_many(choice_specs(spec, n), Operation::TextCompletion)
         .await?;
     let gid = generations[0].id.clone();
-    let echo = req.echo.then_some(prompt);
     if req.stream {
-        let usage = req.stream_options.is_some_and(|o| o.include_usage);
         return Ok(tag_generation(
-            sse(oai_stream(generations, false, usage, echo)),
+            sse(oai_stream(generations, false, false)),
             &gid,
         ));
     }
@@ -869,7 +866,7 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
         .into_iter()
         .enumerate()
         .map(|(i, c)| {
-            let text = echo.clone().unwrap_or_default() + &c.text;
+            let text = c.text;
             let finish = c.finish.as_ref().map_or("stop", Finish::openai_reason);
             let logprobs = response_logprobs(&gw, &model, c.logprobs, c.finish.as_ref());
             json!({"text": text, "index": i, "logprobs": logprobs, "finish_reason": finish})
@@ -958,7 +955,7 @@ mod tests {
             Generation::scripted(vec![done]),
             Generation::scripted(vec![]),
         ];
-        let f = frames(oai_stream(gens, true, false, None)).await;
+        let f = frames(oai_stream(gens, true, false)).await;
         let n = f.len();
         assert!(f[n - 2].contains("server_error"), "{f:?}");
         assert!(f[n - 1].contains("[DONE]"), "{f:?}");

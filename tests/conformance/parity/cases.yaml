@@ -1125,7 +1125,8 @@ cases:
     endpoint: POST /v1/messages
     body: {"max_tokens": 8, "temperature": 0, "system": "Be brief.", "messages": [{"role": "user", "content": "Hello"}]}
     headers: {"anthropic-version": "2023-06-01"}
-    value_paths: ["stop_reason", "usage.input_tokens"]
+    # input_tokens is the prompt minus what the prefix cache reused, which differs by design
+    value_paths: ["stop_reason"]
     mode: text
     engines: [auto]
     expect: pass

@@ -319,8 +319,9 @@ async fn n_streams_interleave_by_index() {
             .count();
         assert_eq!(finished, 1, "choice {i}");
     }
+    // the usage rides the last finish chunk, as in llama-server's final completions result
     let usage = chunks.last().unwrap();
-    assert_eq!(usage["choices"], json!([]));
+    assert_eq!(usage["choices"][0]["finish_reason"], "stop");
     assert_eq!(usage["usage"]["completion_tokens"], 6);
     assert!(usage["timings"].is_object());
 }
@@ -441,7 +442,7 @@ async fn unsupported_fields_are_rejected_unless_at_their_default() {
         }
     }
     // accepted and without effect: prefix reuse is automatic. `id_slot` and `n_keep` act with the
-    // scheduler (ADR 0090); a slot that does not exist is a 400.
+    // scheduler (ADR 0090); a slot out of bounds wraps around, as in llama-server.
     let (s, _, v) = post(
         &app,
         "/v1/completions",
@@ -457,13 +458,7 @@ async fn unsupported_fields_are_rejected_unless_at_their_default() {
         false,
     )
     .await;
-    assert_eq!(s, 400, "{v}");
-    assert!(
-        v["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("Invalid slot ID")
-    );
+    assert_eq!(s, 200, "{v}");
 }
 
 #[tokio::test]

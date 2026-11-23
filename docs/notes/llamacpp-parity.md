@@ -226,10 +226,10 @@ Parsed in `L:server-schema.cpp:make_llama_cmpl_schema` (lines 13-470), evaluated
 | n (n_cmpl, multiple choices) | schema.cpp:64 (1..n_parallel) | **done** (node `serving-parity-fields`): `n` choices through the gateway, each its own sequence with its own constraint and parser (the prompt is shared through prefix reuse where it lands on one sequence); choice i samples with seed + i when seeded, as llama-server's child tasks do; `n` of 0 or above the parallel slots is a 400 (llama-server's hard limit 1..n_parallel); the slots of one request are taken together, so two `n` requests cannot deadlock; usage has one prompt and the summed completions; streams interleave chunks by `index`. Case `n-choices` | all |
 | stop | schema.cpp:454; chat copy common.cpp:1513-1518 | supported: string or array (openai.rs:126-143); Anthropic `stop_sequences` (anthropic.rs:33,425); matched in gateway, held-back suffix (decode.rs:50-60) | all |
 | stream | schema.cpp:25 | supported (openai.rs:60,367; anthropic.rs:38) | all |
-| stream_options.include_usage | schema.cpp:28 | supported (openai.rs:41-45,368,463-471) | all |
+| stream_options.include_usage | schema.cpp:28 | chat: the empty-choices chunk with `usage`. Completions: ignored, the finish chunk always carries `usage` (llama-server's final result is the non-stream body) | all |
 | cache_prompt | schema.cpp:33 | accepted without effect: prefix reuse is automatic and a hit changes no output; `--no-prefix-reuse` is server-wide | all |
 | n_cache_reuse | schema.cpp:69 | accepted without effect (own prefix cache) | all |
-| id_slot | context.cpp:5301 | **done** (ADR 0090): pins the request to sequence `id_slot` (slot `i` of `--parallel`); it waits while that sequence runs and does not hold up other requests; an id out of range is a 400 `Invalid slot ID` | all |
+| id_slot | context.cpp:5301 | **done** (ADR 0090): pins the request to sequence `id_slot` (slot `i` of `--parallel`); it waits while that sequence runs and does not hold up other requests; an id out of range wraps around the slots (`get_slot_by_id`: 99 on two slots is slot 1) | all |
 | return_tokens | schema.cpp:36 | `true` is rejected with 400; `false` is accepted | n/a |
 | return_progress / sse_ping_interval | schema.cpp:39,42 | accepted without effect; SSE keep-alive fixed 15 s (openai.rs) | n/a |
 | timings_per_token / verbose / response_fields / t_max_predict_ms / n_indent | schema.cpp:19,22,80,76,52 | `timings_per_token`, `response_fields`, `t_max_predict_ms` and `n_indent` are rejected with 400 when set to anything but their default; `verbose` is accepted without effect | n/a |
@@ -245,7 +245,7 @@ Parsed in `L:server-schema.cpp:make_llama_cmpl_schema` (lines 13-470), evaluated
 | reasoning_effort | common.cpp:1643-1650 | **done** (node `serving-parity-fields`): `none` sets `enable_thinking` false, any other value goes to the template as `reasoning_effort` | all |
 | reasoning_budget_tokens / thinking_budget_tokens | common.cpp:1664-1676; schema.cpp:354 | ignored; Anthropic `thinking.type` enabled/adaptive/disabled sets `enable_thinking` kwarg, `budget_tokens` ignored (anthropic.rs:394-407); llama-server maps `thinking.budget_tokens` (chat.cpp:650-657) | all |
 | continue_final_message / add_generation_prompt / prefill_assistant | common.cpp:1593-1610 | partial: Anthropic trailing assistant message becomes `prefill` (anthropic.rs, `Prompt::Chat.prefill`, openai.rs:350 passes `None`) | all |
-| echo | schema.cpp:325 (chat), OAI completions | completions `echo` supported (openai.rs:88,519,533); chat n/a | all |
+| echo | schema.cpp:325 (chat), OAI completions | `echo` is ignored on `/v1/completions` (the pin never calls its `echo` check there, `server-common.cpp:1268` is dead code); on chat it means continue-the-final-message, a gap with `continue_final_message` | all |
 | suffix | /infill | rejected (openai.rs:493-495) | n/a |
 | lora (per request) | schema.cpp:231 | a non-empty list is rejected with 400 | n/a |
 | user | not used for sampling (metadata only) | parsed, used as cost/quota key `caller` (openai.rs:67,364) | all |
@@ -287,7 +287,7 @@ Sampler facts for Tetraeder (all engines share one host-side sampler over the lo
 | tool call output | `msg.to_json_oaicompat` (common_chat parsers, many families under `common/`) | parsed by gateway from text: Hermes `<tool_call>`, Qwen XML `<function=`, Llama3 JSON/`<|python_tag|>`, Mistral `[TOOL_CALLS]`; family detected from chat template, unknown -> Hermes (toolcall.rs:25-56). Arguments typed as strings of JSON (openai.rs:320-326) | all (family from template) |
 | reasoning/thinking content | `--reasoning-format` default deepseek -> `message.reasoning_content` (arg.cpp:3730-3740; common.h:686) | `reasoning_content` field, split on `<think>`/`</think>` when template contains `<think>` (gateway.rs:337, toolcall.rs:12-13); Anthropic `thinking` block with empty `signature` (anthropic.rs:544-549,587,607). Only the `deepseek` mode; no `none` / `deepseek-legacy` choice | all |
 | Anthropic stop_reason | task.cpp:735-737,788: max_tokens / end_turn / tool_use | end_turn / max_tokens / stop_sequence / tool_use (anthropic.rs:436-443) | all |
-| Anthropic usage | task.cpp (anthropic) | input_tokens (minus cached), output_tokens, cache_creation 0, cache_read = cached (anthropic.rs:445-452) | all |
+| Anthropic usage | task.cpp (anthropic) | input_tokens (minus cached), output_tokens, cache_creation 0, cache_read = cached (anthropic.rs:445-452), the formula of llama-server; the reused-prefix count differs by design, so cases compare `stop_reason` and not `input_tokens` | all |
 | Error format | server-common.cpp:98-140: `{code,message,type}`, 501 for not-supported, 503 | OpenAI `{error:{type,code,...}}` and Anthropic errors with `request-id` (error.rs:49-102); overload 429, Anthropic 529 (error.rs:66,100); `Retry-After` (gateway.rs:35) | all |
 | Request log (prompts) | `--log-prompts-dir` arg.cpp:3946 | `--request-log FILE` JSONL, authorization never logged (serve.rs:104-106; reqlog.rs:7) | all |
 

@@ -1468,13 +1468,15 @@ impl Worker {
                 self.hand_off(req, GenEvent::ContextExceeded(msg));
                 return true;
             }
+            // llama-server lets id_slot wrap around (`get_slot_by_id`: "allow id_slot to be out
+            // of bounds"), so 99 on two slots is slot 1.
             if let Some(s) = req.params.extra.slot
                 && s >= self.slots.len()
             {
-                let msg = format!("Invalid slot ID: {s} (slots 0 to {})", self.slots.len() - 1);
-                let req = self.waiting.pop_front().expect("front");
-                self.end_unplaced(req, Err(msg));
-                return true;
+                let wrapped = s % self.slots.len();
+                if let Some(r) = self.waiting.front_mut() {
+                    r.params.extra.slot = Some(wrapped);
+                }
             }
             if self.live_count() >= self.slots.len() {
                 return false;

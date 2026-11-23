@@ -295,7 +295,7 @@ fn slot_actions_refuse_what_llama_server_refuses() {
         },
     ));
     assert!(m.contains("not a slot save file"), "{m}");
-    // a request pinned to a slot that does not exist is an error, not a silent other slot
+    // a slot out of bounds wraps around, as in llama-server's `get_slot_by_id`
     let ev = run(
         &s,
         prompt(5),
@@ -305,7 +305,7 @@ fn slot_actions_refuse_what_llama_server_refuses() {
             ..SamplingExtras::default()
         },
     );
-    assert!(matches!(ev.last(), Some(GenEvent::Error(m)) if m.contains("Invalid slot ID")));
+    finished(&ev);
     std::fs::remove_dir_all(&dir).unwrap();
 
     let off = start(Setup::default()).unwrap();

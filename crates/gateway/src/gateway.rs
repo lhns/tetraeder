@@ -657,7 +657,7 @@ impl Gateway {
     /// `extra.seed_offset` only; `n` above the parallel slots is rejected, as in llama-server.
     pub async fn generate_many(
         self: &Arc<Self>,
-        specs: Vec<GenerateSpec>,
+        mut specs: Vec<GenerateSpec>,
         op: Operation,
     ) -> Result<Vec<Generation>, GatewayError> {
         let n = specs.len();
@@ -667,14 +667,9 @@ impl Gateway {
                 "n must be at most {slots}, the number of parallel slots"
             )));
         }
-        if let Some(s) = specs
-            .iter()
-            .find_map(|s| s.extra.slot)
-            .filter(|&s| s >= slots)
-        {
-            return Err(GatewayError::InvalidRequest(format!(
-                "Invalid slot ID: id_slot {s} is not below the {slots} parallel slots"
-            )));
+        // llama-server wraps an id_slot out of bounds around the slots (`get_slot_by_id`).
+        for s in &mut specs {
+            s.extra.slot = s.extra.slot.map(|id| id % slots);
         }
         if n <= 1 {
             let mut out = Vec::with_capacity(n);
