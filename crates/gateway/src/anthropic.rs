@@ -11,6 +11,7 @@ use crate::gateway::{
     Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, new_id, tag_generation,
 };
 use crate::openai::{parse_body, sse};
+use crate::sampling::SamplingFields;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -44,6 +45,8 @@ struct MessagesRequest {
     output_config: Option<Value>,
     /// Deprecated form of `output_config.format`.
     output_format: Option<Value>,
+    #[serde(flatten)]
+    sampling: SamplingFields,
 }
 
 /// Text of one content block that is not a message part of its own. Text is kept; `tool_reference`,
@@ -422,6 +425,7 @@ fn spec(req: MessagesRequest) -> Result<GenerateSpec, GatewayError> {
     s.temperature = req.temperature;
     s.top_p = req.top_p;
     s.top_k = req.top_k;
+    s.extra = req.sampling.extras()?;
     s.stop = req.stop_sequences;
     s.format = format;
     s.caller = req

@@ -149,7 +149,7 @@ struct Keepalive {
 /// A loaded model. Immutable after load.
 pub struct Model {
     pub(super) ptr: *mut sys::llama_model,
-    vocab: *const sys::llama_vocab,
+    pub(super) vocab: *const sys::llama_vocab,
     _keep: Keepalive,
 }
 

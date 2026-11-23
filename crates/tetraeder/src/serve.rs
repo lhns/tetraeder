@@ -31,6 +31,124 @@ pub enum EngineKind {
     Dense,
 }
 
+/// Sampling defaults for requests that send none: llama-server's flags and defaults. A request
+/// field overrides each one.
+#[derive(Args, Debug, Clone)]
+pub struct SamplingArgs {
+    #[arg(long, alias = "temperature", default_value_t = 0.8)]
+    pub temp: f32,
+    #[arg(long, default_value_t = 40)]
+    pub top_k: u32,
+    #[arg(long, default_value_t = 0.95)]
+    pub top_p: f32,
+    #[arg(long, default_value_t = 0.05)]
+    pub min_p: f32,
+    #[arg(long = "typical", alias = "typical-p", default_value_t = 1.0)]
+    pub typical: f32,
+    #[arg(long = "top-nsigma", default_value_t = -1.0, allow_hyphen_values = true)]
+    pub top_nsigma: f32,
+    #[arg(long, default_value_t = 0.0)]
+    pub xtc_probability: f32,
+    #[arg(long, default_value_t = 0.1)]
+    pub xtc_threshold: f32,
+    #[arg(long, default_value_t = 0.0)]
+    pub dynatemp_range: f32,
+    #[arg(long = "dynatemp-exp", default_value_t = 1.0)]
+    pub dynatemp_exp: f32,
+    #[arg(long, default_value_t = 64, allow_hyphen_values = true)]
+    pub repeat_last_n: i32,
+    #[arg(long, default_value_t = 1.0)]
+    pub repeat_penalty: f32,
+    #[arg(long, default_value_t = 0.0)]
+    pub presence_penalty: f32,
+    #[arg(long, default_value_t = 0.0)]
+    pub frequency_penalty: f32,
+    #[arg(long, default_value_t = 0.0)]
+    pub dry_multiplier: f32,
+    #[arg(long, default_value_t = 1.75)]
+    pub dry_base: f32,
+    #[arg(long, default_value_t = 2)]
+    pub dry_allowed_length: i32,
+    #[arg(long, default_value_t = 64)]
+    pub dry_penalty_last_n: i32,
+    /// A string that ends a DRY sequence; repeat the flag for several.
+    #[arg(long)]
+    pub dry_sequence_breaker: Vec<String>,
+    #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(i32).range(0..=2))]
+    pub mirostat: i32,
+    #[arg(long = "mirostat-lr", default_value_t = 0.1)]
+    pub mirostat_lr: f32,
+    #[arg(long = "mirostat-ent", default_value_t = 5.0)]
+    pub mirostat_ent: f32,
+    /// Sampler order, separated by `;` (default `penalties;dry;top_n_sigma;top_k;typ_p;top_p;min_p;xtc;temperature`).
+    #[arg(long)]
+    pub samplers: Option<String>,
+    /// Seed of requests that send none; -1 draws a random one per request.
+    #[arg(long, default_value_t = -1, allow_hyphen_values = true)]
+    pub seed: i64,
+    /// Ban the end-of-generation tokens.
+    #[arg(long)]
+    pub ignore_eos: bool,
+}
+
+impl SamplingArgs {
+    pub fn params(&self) -> anyhow::Result<tetraeder_scheduler::sample::SampleParams> {
+        use tetraeder_gateway::engine::SamplerKind;
+        anyhow::ensure!(
+            self.repeat_penalty.is_finite()
+                && self.repeat_penalty > 0.0
+                && (1.0 / self.repeat_penalty).is_finite(),
+            "--repeat-penalty must be finite and greater than 0"
+        );
+        let mut p = tetraeder_scheduler::sample::SampleParams {
+            temperature: self.temp.max(0.0),
+            top_k: self.top_k,
+            top_p: self.top_p.clamp(0.0, 1.0),
+            min_p: self.min_p.clamp(0.0, 1.0),
+            typical_p: self.typical,
+            top_n_sigma: self.top_nsigma,
+            xtc_probability: self.xtc_probability.clamp(0.0, 1.0),
+            xtc_threshold: self.xtc_threshold.clamp(0.0, 1.0),
+            dynatemp_range: self.dynatemp_range,
+            dynatemp_exponent: self.dynatemp_exp,
+            penalty_last_n: self.repeat_last_n.max(0),
+            penalty_repeat: self.repeat_penalty,
+            penalty_freq: self.frequency_penalty,
+            penalty_present: self.presence_penalty,
+            dry_multiplier: self.dry_multiplier,
+            dry_allowed_length: self.dry_allowed_length.max(0),
+            dry_penalty_last_n: self.dry_penalty_last_n.max(0),
+            mirostat: self.mirostat,
+            mirostat_tau: self.mirostat_ent,
+            mirostat_eta: self.mirostat_lr,
+            ignore_eos: self.ignore_eos,
+            ..Default::default()
+        };
+        if self.dry_base >= 1.0 {
+            p.dry_base = self.dry_base;
+        }
+        if !self.dry_sequence_breaker.is_empty() {
+            p.dry_sequence_breakers = self.dry_sequence_breaker.clone().into();
+        }
+        if let Some(list) = &self.samplers {
+            let kinds = list
+                .split(';')
+                .map(|n| {
+                    SamplerKind::from_name(n.trim())
+                        .with_context(|| format!("--samplers: unknown sampler '{n}'"))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            p.samplers = kinds.into();
+        }
+        Ok(p)
+    }
+
+    /// `None`: a random seed per request.
+    pub fn seed(&self) -> Option<u32> {
+        u32::try_from(self.seed).ok()
+    }
+}
+
 #[derive(Args)]
 #[command(mut_arg(
     "batch",
@@ -62,13 +180,8 @@ pub struct ServeArgs {
     /// Resolve every unknown model id to the served model.
     #[arg(long, conflicts_with = "default_model")]
     pub accept_any_model: bool,
-    /// Sampling defaults for requests that send none.
-    #[arg(long, default_value_t = 0.8)]
-    pub temp: f32,
-    #[arg(long, default_value_t = 40)]
-    pub top_k: u32,
-    #[arg(long, default_value_t = 0.95)]
-    pub top_p: f32,
+    #[command(flatten)]
+    pub sampling: SamplingArgs,
     /// Requests decoded together (sequences in the KV cache, all builders); `--plan` with the
     /// replanner serves one.
     #[arg(long, default_value_t = tetraeder_scheduler::PARALLEL as u32, value_parser = clap::value_parser!(u32).range(1..))]
@@ -464,9 +577,8 @@ fn exec_plan(a: &ServeArgs) -> anyhow::Result<Option<tetraeder_plan::Topology>> 
 /// The parts of a `SchedulerConfig` that do not change when the engine is reloaded.
 pub struct SchedParts {
     alias: Option<String>,
-    temperature: f32,
-    top_k: u32,
-    top_p: f32,
+    sampling: tetraeder_scheduler::sample::SampleParams,
+    seed: Option<u32>,
     cache_ram_bytes: usize,
     prefix_reuse: bool,
     chat_template: Option<String>,
@@ -480,9 +592,8 @@ impl SchedParts {
         let path = a.model.clone().context("-m is required")?;
         Ok(Self {
             alias: a.alias.clone(),
-            temperature: a.temp,
-            top_k: a.top_k,
-            top_p: a.top_p,
+            sampling: a.sampling.params()?,
+            seed: a.sampling.seed(),
             cache_ram_bytes: a.cache_ram << 20,
             prefix_reuse: !a.no_prefix_reuse,
             parallel: a.parallel as usize,
@@ -501,9 +612,8 @@ impl SchedParts {
     pub fn config(&self, path: &Path, metrics: tetraeder_telemetry::Metrics) -> SchedulerConfig {
         let mut cfg = SchedulerConfig::new(path);
         cfg.alias = self.alias.clone();
-        cfg.temperature = self.temperature;
-        cfg.top_k = self.top_k;
-        cfg.top_p = self.top_p;
+        cfg.sampling = self.sampling.clone();
+        cfg.seed = self.seed;
         cfg.metrics = Some(metrics);
         cfg.cache_ram_bytes = self.cache_ram_bytes;
         cfg.prefix_reuse = self.prefix_reuse;

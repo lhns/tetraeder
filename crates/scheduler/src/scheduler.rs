@@ -7,7 +7,7 @@ use crate::backend::{BackendError, BatchBackend, SeqId, SeqInput};
 use crate::batch::{Live, plan_step, victim};
 use crate::load::{Loaded, model_id};
 use crate::prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS, common_prefix};
-use crate::sample::{SampleParams, Sampler, counter_seed};
+use crate::sample::{SampleParams, Sampler, SamplerEnv};
 use crate::spec::{Drafter, Sampling, SpecConfig, Speculator};
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -41,10 +41,10 @@ pub struct SchedulerConfig {
     pub model_path: PathBuf,
     /// Jinja chat template; `None` serves a base model (completions only).
     pub chat_template: Option<String>,
-    /// Defaults for requests that send none (llama-server's: 0.8, 40, 0.95).
-    pub temperature: f32,
-    pub top_k: u32,
-    pub top_p: f32,
+    /// Sampling defaults for requests that send none (`SampleParams::default` is llama-server's).
+    pub sampling: SampleParams,
+    /// Seed of requests that send none; `None` draws a random one per request, like llama-server.
+    pub seed: Option<u32>,
     /// Scheduler metrics are recorded here when set.
     pub metrics: Option<Metrics>,
     /// Host bytes for saved sequences (the prefix cache); 0 turns it off.
@@ -87,9 +87,8 @@ impl SchedulerConfig {
             alias: None,
             model_path: model_path.into(),
             chat_template: None,
-            temperature: 0.8,
-            top_k: 40,
-            top_p: 0.95,
+            sampling: SampleParams::default(),
+            seed: None,
             metrics: None,
             cache_ram_bytes: DEFAULT_CACHE_RAM_BYTES,
             cache_save_min: SAVE_MIN_TOKENS,
@@ -122,11 +121,8 @@ impl Scheduler {
     ) -> Result<Self, String> {
         let (job_tx, job_rx) = std_mpsc::channel::<Req>();
         let (ready_tx, ready_rx) = std_mpsc::channel::<Result<(Arc<Model>, usize), String>>();
-        let defaults = SampleParams {
-            temperature: cfg.temperature,
-            top_k: cfg.top_k,
-            top_p: cfg.top_p,
-        };
+        let defaults = cfg.sampling.clone();
+        let default_seed = cfg.seed;
         let metrics = cfg.metrics.clone();
         let decode_profile = cfg.decode_profile;
         let (parallel, step_tokens) = (cfg.parallel.max(1), cfg.step_tokens.max(1));
@@ -179,6 +175,8 @@ impl Scheduler {
                     parallel,
                     step_tokens,
                 );
+                w.model = Some(Arc::clone(&loaded.tokenizer));
+                w.default_seed = default_seed;
                 if let Some((c, d)) = spec {
                     w.set_spec(&c, d);
                 }
@@ -521,6 +519,10 @@ struct Worker {
     prefix_reuse: bool,
     vocab: Arc<Vocab>,
     defaults: SampleParams,
+    /// Seed of requests that send none.
+    default_seed: Option<u32>,
+    /// The tokenizer model, whose vocabulary DRY needs; `None` rejects DRY requests.
+    model: Option<Arc<Model>>,
     metrics: Option<Metrics>,
     decode_profile: bool,
     /// Tokens per step.
@@ -610,6 +612,8 @@ impl Worker {
             prefix_reuse,
             vocab,
             defaults,
+            default_seed: None,
+            model: None,
             metrics,
             decode_profile,
             budget,
@@ -1274,14 +1278,24 @@ impl Worker {
             req.started = true;
             req.stats.cached_tokens = common as u32;
             req.bytes0 = self.backend.bytes_streamed_total();
-            req.sampler = Some(Sampler::new(
-                SampleParams {
-                    temperature: req.params.temperature.unwrap_or(self.defaults.temperature),
-                    top_k: req.params.top_k.unwrap_or(self.defaults.top_k),
-                    top_p: req.params.top_p.unwrap_or(self.defaults.top_p),
-                },
-                req.params.seed.unwrap_or_else(counter_seed),
-            ));
+            let params = self.defaults.resolve(&req.params);
+            let env = SamplerEnv {
+                n_vocab: self.n_vocab,
+                eog: &self.vocab.eog,
+                model: self.model.as_deref(),
+            };
+            let seed = req.params.seed.map(|s| s as u32).or(self.default_seed);
+            match Sampler::new(&params, seed, &env) {
+                Ok(mut s) => {
+                    s.accept_all(&req.toks);
+                    req.sampler = Some(s);
+                }
+                Err(e) => {
+                    self.end_unplaced(req, Err(e));
+                    let _ = self.backend.seq_rm(id as SeqId, 0);
+                    return Admission::Admitted;
+                }
+            }
         }
         if common > 0
             && let Some(m) = &self.metrics
@@ -1619,12 +1633,7 @@ impl Worker {
             .count();
         for slot in &mut self.slots {
             let Slot::Live(seq) = slot else { continue };
-            let greedy = seq
-                .req
-                .params
-                .temperature
-                .unwrap_or(self.defaults.temperature)
-                <= 0.0;
+            let greedy = self.defaults.resolve(&seq.req.params).is_plain_greedy();
             let eligible = decoding <= spec.max_batch
                 && seq.decoding
                 && !seq.paused()
