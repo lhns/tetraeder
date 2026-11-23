@@ -33,6 +33,7 @@ fn worker_cache(kv: FakeKv, step_tokens: usize, cache: PrefixCache) -> Worker {
         temperature: 0.0,
         top_k: 0,
         top_p: 1.0,
+        ..SampleParams::default()
     };
     Worker::new(
         Box::new(kv),

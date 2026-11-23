@@ -62,6 +62,101 @@ pub struct SamplingParams {
     pub top_p: Option<f32>,
     pub top_k: Option<u32>,
     pub seed: Option<u64>,
+    pub extra: SamplingExtras,
+}
+
+/// One stage of llama.cpp's sampler chain, as the `samplers` request field names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SamplerKind {
+    Penalties,
+    Dry,
+    TopNSigma,
+    TopK,
+    TypicalP,
+    TopP,
+    MinP,
+    Xtc,
+    Temperature,
+}
+
+impl SamplerKind {
+    /// llama-server's default order.
+    pub const DEFAULT_ORDER: [SamplerKind; 9] = [
+        SamplerKind::Penalties,
+        SamplerKind::Dry,
+        SamplerKind::TopNSigma,
+        SamplerKind::TopK,
+        SamplerKind::TypicalP,
+        SamplerKind::TopP,
+        SamplerKind::MinP,
+        SamplerKind::Xtc,
+        SamplerKind::Temperature,
+    ];
+
+    /// A name as llama.cpp reads it: canonical, kebab-case, without separators, or an alias.
+    pub fn from_name(name: &str) -> Option<Self> {
+        let n = name.to_ascii_lowercase();
+        Some(match n.as_str() {
+            "dry" => Self::Dry,
+            "top_k" | "top-k" | "topk" => Self::TopK,
+            "top_p" | "top-p" | "topp" | "nucleus" => Self::TopP,
+            "top_n_sigma" | "top-n-sigma" | "topnsigma" => Self::TopNSigma,
+            "typ_p" | "typ-p" | "typp" | "typ" => Self::TypicalP,
+            "min_p" | "min-p" | "minp" => Self::MinP,
+            "temperature" | "temp" => Self::Temperature,
+            "xtc" => Self::Xtc,
+            "penalties" => Self::Penalties,
+            _ => return None,
+        })
+    }
+
+    /// The one-letter form of the `samplers` string.
+    pub fn from_char(c: char) -> Option<Self> {
+        Some(match c {
+            'd' => Self::Dry,
+            'k' => Self::TopK,
+            'y' => Self::TypicalP,
+            'p' => Self::TopP,
+            's' => Self::TopNSigma,
+            'm' => Self::MinP,
+            't' => Self::Temperature,
+            'x' => Self::Xtc,
+            'e' => Self::Penalties,
+            _ => return None,
+        })
+    }
+}
+
+/// Sampling fields beyond temperature, top-p, top-k and seed (llama-server's group A). `None`
+/// means the engine's default; values are already range-checked by the gateway.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SamplingExtras {
+    pub min_p: Option<f32>,
+    pub typical_p: Option<f32>,
+    pub top_n_sigma: Option<f32>,
+    pub xtc_probability: Option<f32>,
+    pub xtc_threshold: Option<f32>,
+    pub repeat_penalty: Option<f32>,
+    pub repeat_last_n: Option<i32>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
+    pub dry_multiplier: Option<f32>,
+    /// Below 1.0 the request means the server default, so the gateway sends `None`.
+    pub dry_base: Option<f32>,
+    pub dry_allowed_length: Option<i32>,
+    pub dry_penalty_last_n: Option<i32>,
+    pub dry_sequence_breakers: Option<Vec<String>>,
+    /// (token id, bias); `-inf` bans the token. Ids outside the vocabulary are dropped by the
+    /// engine, as llama-server does.
+    pub logit_bias: Vec<(i32, f32)>,
+    pub ignore_eos: Option<bool>,
+    pub mirostat: Option<i32>,
+    pub mirostat_tau: Option<f32>,
+    pub mirostat_eta: Option<f32>,
+    pub dynatemp_range: Option<f32>,
+    pub dynatemp_exponent: Option<f32>,
+    pub min_keep: Option<u32>,
+    pub samplers: Option<Vec<SamplerKind>>,
 }
 
 /// Allowed next tokens as a bitset over the vocabulary (bit `id % 32` of word `id / 32`).

@@ -149,7 +149,7 @@ struct Keepalive {
 /// A loaded model. Immutable after load.
 pub struct Model {
     pub(super) ptr: *mut sys::llama_model,
-    vocab: *const sys::llama_vocab,
+    pub(super) vocab: *const sys::llama_vocab,
     _keep: Keepalive,
 }
 
@@ -310,6 +310,20 @@ impl Model {
         // SAFETY: as `n_vocab`.
         let attr = unsafe { sys::llama_vocab_get_attr(self.vocab, token) } as i64;
         attr & sys::LLAMA_TOKEN_ATTR_CONTROL as i64 != 0
+    }
+
+    /// Tokens the model asks never to sample (GGUF `tokenizer.ggml.suppress_tokens`).
+    pub fn suppress_tokens(&self) -> Vec<Token> {
+        let mut n = 0i32;
+        // SAFETY: the vocab belongs to the live model; the returned array holds `n` ids and
+        // lives as long as the vocab, and is copied before returning.
+        unsafe {
+            let p = sys::llama_vocab_get_suppress_tokens(self.vocab, &mut n);
+            if p.is_null() || n <= 0 {
+                return Vec::new();
+            }
+            std::slice::from_raw_parts(p, n as usize).to_vec()
+        }
     }
 
     pub fn is_eog(&self, token: Token) -> bool {

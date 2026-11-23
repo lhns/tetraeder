@@ -11,6 +11,7 @@ use crate::error::{GatewayError, OpenAiError};
 use crate::gateway::{
     Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, tag_generation,
 };
+use crate::sampling::{self, SamplingFields};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -53,7 +54,7 @@ struct ChatRequest {
     temperature: Option<f32>,
     top_p: Option<f32>,
     top_k: Option<u32>,
-    seed: Option<u64>,
+    seed: Option<i64>,
     n: Option<u32>,
     stop: Option<Value>,
     #[serde(default)]
@@ -68,6 +69,8 @@ struct ChatRequest {
     #[serde(default)]
     logprobs: bool,
     chat_template_kwargs: Option<Map<String, Value>>,
+    #[serde(flatten)]
+    sampling: SamplingFields,
 }
 
 #[derive(Deserialize)]
@@ -78,7 +81,7 @@ struct CompletionRequest {
     temperature: Option<f32>,
     top_p: Option<f32>,
     top_k: Option<u32>,
-    seed: Option<u64>,
+    seed: Option<i64>,
     n: Option<u32>,
     stop: Option<Value>,
     #[serde(default)]
@@ -89,6 +92,8 @@ struct CompletionRequest {
     suffix: Option<String>,
     logprobs: Option<u32>,
     user: Option<String>,
+    #[serde(flatten)]
+    sampling: SamplingFields,
 }
 
 /// Text of a string or an array of `{"type": "text", "text"}` parts; other parts are rejected.
@@ -358,7 +363,8 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     spec.temperature = req.temperature;
     spec.top_p = req.top_p;
     spec.top_k = req.top_k;
-    spec.seed = req.seed;
+    spec.seed = sampling::seed(req.seed);
+    spec.extra = req.sampling.extras()?;
     spec.stop = stop_list(req.stop)?;
     spec.format = response_format(req.response_format)?;
     spec.caller = req.user;
@@ -511,7 +517,8 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
     spec.temperature = req.temperature;
     spec.top_p = req.top_p;
     spec.top_k = req.top_k;
-    spec.seed = req.seed;
+    spec.seed = sampling::seed(req.seed);
+    spec.extra = req.sampling.extras()?;
     spec.stop = stop_list(req.stop)?;
     spec.caller = req.user;
     let generation = gw.generate(spec, Operation::TextCompletion).await?;

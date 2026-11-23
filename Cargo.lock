@@ -2036,6 +2036,7 @@ dependencies = [
  "tetraeder-control",
  "tetraeder-costmodel",
  "tetraeder-engine",
+ "tetraeder-executor",
  "tetraeder-gateway",
  "tetraeder-ggml-sys",
  "tetraeder-kvcache",

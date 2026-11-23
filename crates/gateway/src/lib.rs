@@ -13,6 +13,7 @@ pub mod fake;
 pub mod gateway;
 pub mod openai;
 pub mod reqlog;
+pub mod sampling;
 pub mod server;
 pub mod template;
 pub mod toolcall;

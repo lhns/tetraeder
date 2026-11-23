@@ -8,7 +8,7 @@ Each row of the appendix belongs to one group. A row is done when its conformanc
 
 | Group | What | Tree node | When |
 |---|---|---|---|
-| A. Sampling | Chain order as llama-server (penalties, dry, top_n_sigma, top_k, typical_p, top_p, min_p, xtc, temperature, then the draw); min_p (default 0.05), repeat/presence/frequency penalties, typical_p, xtc, dry, top_n_sigma, mirostat, dynatemp, logit_bias, ignore_eos, min_keep, `samplers`; random seed when none is given; the model's suppress tokens | `serving-parity-sampling` | now, no box |
+| A. Sampling | Chain order as llama-server (penalties, dry, top_n_sigma, top_k, typical_p, top_p, min_p, xtc, temperature, then the draw); min_p (default 0.05), repeat/presence/frequency penalties, typical_p, xtc, dry, top_n_sigma, mirostat, dynatemp, logit_bias, ignore_eos, min_keep, `samplers`; random seed when none is given; the model's suppress tokens | `serving-parity-sampling` | **done**, see the appendix rows |
 | B. Request and response fields | Every matrix field honoured or rejected with 400, never dropped; logprobs and top_logprobs; `n` above 1; GBNF `grammar` and top-level `json_schema`; `reasoning_effort` (and Anthropic `output_config.effort`); `timings` in responses; `cache_prompt` and `id_slot` accepted | `serving-parity-fields` | after A, no box |
 | C. Endpoints | `/health`, Prometheus `/metrics`, `/props`, `/tokenize`, `/detokenize`, `/apply-template`, native `/completion`, unprefixed `/models` and `/chat/completions`, `/v1/responses`, `/infill` and `suffix`, input-token counting, `--api-key` | `serving-parity-endpoints` | after B, no box |
 | D. What libllama has but the gateway does not expose | embeddings and rerank (libllama engine first), KV cache types (`-ctk`, `-ctv`), KV offload (`-nkvo`), context shift, slot save and restore, `--cpu-moe` and `--n-cpu-moe`, model download by name | `serving-parity-libllama` | after C; GPU rows on a later box |
@@ -31,12 +31,14 @@ Harness result (CI run 44983973508, Linux): 15 conformant cases (31 runs over au
 
 ## Differences that change outputs today
 
-- Temperature is applied before the top-p mass; llama-server applies it last. Outputs at temperature above 0 differ for the same seed and settings.
-- No min_p: llama-server filters with min_p 0.05 by default.
-- Unseeded requests take a per-process counter seed instead of a random one.
-- Unknown and unsupported fields are dropped silently, so a client asking for `logit_bias` or a penalty gets an answer without it.
+Group A is closed (node `serving-parity-sampling`): the host sampler is libllama's own chain in llama-server's order and defaults, so the old differences (temperature before top-p, no min_p, counter seed, SplitMix64) are gone. This changes sampled outputs at temperature above 0 for existing clients. Still different:
 
-Greedy outputs (temperature 0) are not affected by these.
+- Unknown and unsupported fields outside group A are dropped silently (group B, `serving-parity-fields`).
+- A request `logit_bias` with text keys is rejected with 400; llama-server tokenizes them.
+- `samplers` names `infill` and `adaptive_p`, and `adaptive_target` and `adaptive_decay`, are not supported; an unknown sampler name is a 400 here, a skipped entry there.
+- Speculation (`--spec`) treats a request as greedy when nothing but the argmax matters; the model's suppress tokens are not part of that test.
+
+Greedy outputs (temperature 0) are not affected by the change.
 
 ## Appendix: inventory (2026-11-22)
 
@@ -106,21 +108,21 @@ Parsed in `L:server-schema.cpp:make_llama_cmpl_schema` (lines 13-470), evaluated
 | temperature | schema.cpp:118 (clamp >= 0) | supported (openai.rs:358; anthropic.rs:422); default 0.8 (serve.rs:66) | all (scheduler sampler, sample.rs:35-44) |
 | top_k | schema.cpp:91 | supported, OpenAI extension (openai.rs:55,360); default 40 (serve.rs:68) | all |
 | top_p | schema.cpp:95 | supported (openai.rs:359); default 0.95 (serve.rs:70) | all |
-| min_p | schema.cpp:99; **default 0.05** (common.h:239) | **ignored (not parsed)**. No min_p in sampler (sample.rs:37-44). Default behaviour therefore differs (llama-server samples with min_p 0.05 unless overridden) | all |
-| top_n_sigma | schema.cpp:103 | ignored | all |
-| xtc_probability / xtc_threshold | schema.cpp:106,110 | ignored | all |
-| typical_p | schema.cpp:114 | ignored | all |
-| dynatemp_range / dynatemp_exponent | schema.cpp:122,125 | ignored | all |
-| repeat_penalty / repeat_last_n | schema.cpp:132,128 | ignored | all |
-| frequency_penalty / presence_penalty (OpenAI standard names) | schema.cpp:135,138 | **ignored (not parsed)**, not in ChatRequest/CompletionRequest (openai.rs:47-92) | all |
-| dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, dry_sequence_breakers | schema.cpp:141-155,244 | ignored | all |
-| mirostat / mirostat_tau / mirostat_eta | schema.cpp:159-166 | ignored | all |
+| min_p | schema.cpp:99; **default 0.05** (common.h:239) | **done** (node `serving-parity-sampling`): parsed and applied (`sampling.rs`, `sample.rs`); default 0.05, as llama-server | all |
+| top_n_sigma | schema.cpp:103 | **done** (node `serving-parity-sampling`): parsed and applied, default off | all |
+| xtc_probability / xtc_threshold | schema.cpp:106,110 | **done** (node `serving-parity-sampling`): parsed and applied, seeded with the request seed | all |
+| typical_p | schema.cpp:114 | **done** (node `serving-parity-sampling`): parsed and applied, default off | all |
+| dynatemp_range / dynatemp_exponent | schema.cpp:122,125 | **done** (node `serving-parity-sampling`): parsed and applied through `llama_sampler_init_temp_ext` | all |
+| repeat_penalty / repeat_last_n | schema.cpp:132,128 | **done** (node `serving-parity-sampling`): parsed and applied; the prompt tokens count as history, as in llama-server. Case `repeat-penalty` | all |
+| frequency_penalty / presence_penalty (OpenAI standard names) | schema.cpp:135,138 | **done** (node `serving-parity-sampling`): parsed on both OpenAI routes and applied. Cases `presence-penalty`, `frequency-penalty` | all |
+| dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, dry_sequence_breakers | schema.cpp:141-155,244 | **done** (node `serving-parity-sampling`): parsed and applied through libllama's DRY sampler on the tokenizer model's vocabulary; works on all three engines (they share the scheduler's tokenizer model). `dry_base` below 1.0 means the server default; breakers must be 1 to 64 distinct strings | all |
+| mirostat / mirostat_tau / mirostat_eta | schema.cpp:159-166 | **done** (node `serving-parity-sampling`): parsed and applied (1 and 2); the chain is temperature plus Mirostat, as in llama-server | all |
 | adaptive_target / adaptive_decay | schema.cpp:169,173 | ignored | all |
-| samplers (order) | schema.cpp:472 | ignored. Fixed pipeline: mask, top-k, **temperature applied before top-p mass** (sample.rs:70-104). llama-server default chain is penalties, dry, top_n_sigma, top_k, typical, top_p, min_p, xtc, temperature last (common.h:268-278), so top-p sees untempered probabilities there | all |
-| seed | schema.cpp:178 (-1 random) | supported (openai.rs:56,361; Anthropic has none). Unseeded requests use a per-process counter (`counter_seed`, sample.rs:30; scheduler.rs:1283), not random. Generator is SplitMix64, so seeded streams do not equal llama-server's | all |
-| logit_bias | schema.cpp:401 | ignored | all |
-| ignore_eos | schema.cpp:442 | ignored | all |
-| min_keep | schema.cpp:185 | ignored | all |
+| samplers (order) | schema.cpp:472 | **done** (node `serving-parity-sampling`): parsed (names, aliases or the letter string) and honoured in list order. `infill` and `adaptive_p` are rejected with 400, as is any unknown name (llama-server logs and skips it) | all |
+| seed | schema.cpp:178 (-1 random) | **done** (node `serving-parity-sampling`): seeded requests use libllama's `dist` sampler (mt19937), the same RNG as llama-server, so seeded outputs can match (case `seeded-sampling`); unseeded requests draw a random seed per request; a negative seed means random. `/v1/messages` accepts `seed` too. Server default seed: `--seed` | all |
+| logit_bias | schema.cpp:401 | **done** (node `serving-parity-sampling`): both forms (`{id: bias}` and `[[id, bias]]`, `false` bans); text keys and string tokens are rejected with 400 (llama-server tokenizes them); ids outside the vocabulary are dropped, as there. Case `logit-bias` | all |
+| ignore_eos | schema.cpp:442 | **done** (node `serving-parity-sampling`): bans every end-of-generation token. Case `ignore-eos` | all |
+| min_keep | schema.cpp:185 | **done** (node `serving-parity-sampling`): parsed and passed to every truncating sampler | all |
 | n_predict / max_tokens / max_completion_tokens | schema.cpp:46 (aliases) | supported: `max_completion_tokens` then `max_tokens` (openai.rs:357); completions default 16 (openai.rs:510); chat default: up to end of context (gateway.rs:88); Anthropic `max_tokens` optional (anthropic.rs:29,421; llama-server defaults it to 4096, chat.cpp:639-643) | all |
 | n_keep, n_discard, context_shift | schema.cpp:56,60; arg.cpp:1720 | ignored; over-length prompts fail with `context_length_exceeded` 400 (error.rs:14-16,50-51; engine.rs:155-157) | all |
 | n (n_cmpl, multiple choices) | schema.cpp:64 (1..n_parallel) | **rejected**: `n` other than 1 gives 400 "only n = 1 is supported" (openai.rs:302-309,340,489) | all |
@@ -163,10 +165,10 @@ Parsed in `L:server-schema.cpp:make_llama_cmpl_schema` (lines 13-470), evaluated
 
 | Item | llama-server at the pin | Tetraeder |
 |---|---|---|
-| Defaults (`common_params_sampling`, common.h:231-260) | seed random (`LLAMA_DEFAULT_SEED`, :232), top_k 40 (:237), top_p 0.95 (:238), **min_p 0.05** (:239), xtc_probability 0 (:240), **xtc_threshold 0.10** (:241), typical_p 1.0 (:242), temp 0.80 (:243), penalty_last_n 64 (:246), repeat 1.0, freq 0, presence 0 (:247-249), dry_multiplier 0 (:250), adaptive_target -1 (:254), mirostat 0 (:256), top_n_sigma -1 (:257), ignore_eos false (:260), min_keep 0 (:236), n_probs 0 (:235) | temp 0.8, top_k 40, top_p 0.95 (serve.rs:66-71); everything else absent. Only min_p differs by default: llama-server filters at 0.05, Tetraeder does not |
-| Default sampler order (common.h:268-278) | penalties, dry, top_n_sigma, top_k, typical_p, top_p, min_p, xtc, temperature, then `dist` (seeded) | mask, top-k, then temperature scaling, then top-p mass over the tempered distribution, then draw (sample.rs:63-115). Temperature before top_p; no other stage |
-| Chain construction (sampling.cpp:299-444) | grammar sampler (output-format / tool-call grammars prefilled with the template's generation prompt, :299-313); reasoning-budget sampler (:315-328); `logit_bias` merged with the **model's suppress tokens** (`llama_vocab_get_suppress_tokens`, -inf; :328-342); chain per `samplers` list; ends in `greedy` when temp == 0 (or top_k == 1) and n_probs == 0 (:404-407), else `dist(seed)`; mirostat 1/2 replaces the chain with temp + mirostat (:409-415) | greedy when temperature <= 0; lowest id wins ties (sample.rs:65-66,150-161). No suppress-token handling in the sampler |
-| Sampler names accepted in `samplers` (sampling.cpp:964-980) | dry, top_k, top_p, top_n_sigma, typ_p, min_p, temperature, xtc, infill, penalties, adaptive_p | none |
+| Defaults (`common_params_sampling`, common.h:231-260) | seed random (`LLAMA_DEFAULT_SEED`, :232), top_k 40 (:237), top_p 0.95 (:238), **min_p 0.05** (:239), xtc_probability 0 (:240), **xtc_threshold 0.10** (:241), typical_p 1.0 (:242), temp 0.80 (:243), penalty_last_n 64 (:246), repeat 1.0, freq 0, presence 0 (:247-249), dry_multiplier 0 (:250), adaptive_target -1 (:254), mirostat 0 (:256), top_n_sigma -1 (:257), ignore_eos false (:260), min_keep 0 (:236), n_probs 0 (:235) | **done**: `SampleParams::default` has all of these (`crates/scheduler/src/sample.rs`); the `adaptive_*` and `n_probs` fields are not supported |
+| Default sampler order (common.h:268-278) | penalties, dry, top_n_sigma, top_k, typical_p, top_p, min_p, xtc, temperature, then `dist` (seeded) | **done**: libllama's chain built in this order, ending in `dist` (`sample.rs`) |
+| Chain construction (sampling.cpp:299-444) | grammar sampler (output-format / tool-call grammars prefilled with the template's generation prompt, :299-313); reasoning-budget sampler (:315-328); `logit_bias` merged with the **model's suppress tokens** (`llama_vocab_get_suppress_tokens`, -inf; :328-342); chain per `samplers` list; ends in `greedy` when temp == 0 (or top_k == 1) and n_probs == 0 (:404-407), else `dist(seed)`; mirostat 1/2 replaces the chain with temp + mirostat (:409-415) | **done** except the grammar and reasoning-budget samplers (Tetraeder masks tokens through its own constraints) and `n_probs`: logit_bias plus the model's suppress tokens, the `samplers` list, greedy when the list ends in temperature 0 or `top_k` 1, Mirostat 1 and 2. Stages that cannot change a token with the given settings are left out |
+| Sampler names accepted in `samplers` (sampling.cpp:964-980) | dry, top_k, top_p, top_n_sigma, typ_p, min_p, temperature, xtc, infill, penalties, adaptive_p | **done** for dry, top_k, top_p, top_n_sigma, typ_p, min_p, temperature, xtc, penalties; `infill` and `adaptive_p` are rejected with 400 |
 | Backend (GPU) sampling | `backend_sampling` field / `-bs` flag, disabled with grammar or reasoning budget (sampling.cpp:424-436) | n/a (host sampler over a logits row) |
 | RNG | `std::mt19937` seeded from the chain seed (sampling.cpp:444) | SplitMix64 (sample.rs:8-27); unseeded requests use `counter_seed` (sample.rs:30) |
 
@@ -217,7 +219,7 @@ llama-server flags: `C:arg.cpp` (line is the flag-name line). Tetraeder: `T:tetr
 | Multimodal | `--mmproj` :2549, `--mmproj-url` :2557, `--image-*` :2600-2623 | missing | n/a |
 | Speculative / draft | `--spec-type` :4325, `--spec-draft-model/-md` :4317, `--spec-ngram-*` :4335-4491, `--draft*` :4463, `--spec-default` :4807 | `--spec ngram|draft:GGUF`, `--spec-max-batch` (default 1), `--spec-max-draft` (default 6, max 6) (serve.rs:82-93,598-618); lone greedy unconstrained requests only | draft model runs on libllama; works with all engines |
 | Grammar flags | `--grammar` :2248, `--json-schema` :2262 (server defaults) | missing | n/a |
-| Sampling defaults | `--temp` :1995, `--top-k` :2004, `--top-p` :2012, `--min-p` :2020, penalties :2058-2106, dry :2106-2141, mirostat :2201, `--samplers` :1965, `--seed` :1974, `--ignore-eos` :1988, `-l/--logit-bias` :2226 | `--temp 0.8`, `--top-k 40`, `--top-p 0.95` only (serve.rs:65-71) | all |
+| Sampling defaults | `--temp` :1995, `--top-k` :2004, `--top-p` :2012, `--min-p` :2020, penalties :2058-2106, dry :2106-2141, mirostat :2201, `--samplers` :1965, `--seed` :1974, `--ignore-eos` :1988, `-l/--logit-bias` :2226 | **done** for `--temp`, `--top-k`, `--top-p`, `--min-p`, `--typical`, `--top-nsigma`, `--xtc-*`, `--repeat-*`, `--presence-penalty`, `--frequency-penalty`, `--dry-*` (breakers: `--dry-sequence-breaker`, repeatable), `--mirostat*`, `--dynatemp-*`, `--samplers` (`;` separated), `--seed`, `--ignore-eos`; not `-l/--logit-bias` or `-s` | all |
 | API key | `--api-key` :3529, `--api-key-file` :3540 | **missing** | n/a |
 | TLS | `--ssl-key-file` :3557, `--ssl-cert-file` :3564 | missing | n/a |
 | Metrics/props/slots endpoints | `--metrics` :3629, `--props` :3636, `--slots` :3643 | missing; OTLP via env (telemetry setup.rs:64) | n/a |

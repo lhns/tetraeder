@@ -17,10 +17,10 @@
 # llama_args, tetraeder_args  extra server flags for the case
 # expect    pass, or `gap <tree node>`: xfail(strict), flipped to pass in the change that closes the gap
 #
-# Tokens are compared at temperature 0 only. The tiny models are random, so the text is byte noise; what
+# Tokens are compared at temperature 0 and in the seeded case (same chain and RNG as llama-server). The tiny models are random, so the text is byte noise; what
 # matters is that both servers pick the same tokens. Sampler rows that temperature 0 cannot show (min_p,
 # typical_p, top_n_sigma, xtc, dry, mirostat, dynatemp, min_keep, `samplers` order, the random default seed)
-# are left to the sampler unit tests of node serving-parity-sampling.
+# are left to the sampler unit tests of node serving-parity-sampling (crates/scheduler/src/sample.rs).
 #
 # Gap cases carry what llama-server returns today; a gap must fail for the row's own reason (status, a missing
 # path or different tokens), so the comparison is narrowed with `paths` where the rest already differs.
@@ -238,7 +238,7 @@ cases:
     body: {prompt: Once upon a time, temperature: 0, max_tokens: 30, repeat_penalty: 1.5}
     mode: text
     engines: [auto]
-    expect: gap serving-parity-sampling
+    expect: pass
 
   - id: presence-penalty
     group: A
@@ -247,7 +247,7 @@ cases:
     body: {prompt: Once upon a time, temperature: 0, max_tokens: 30, presence_penalty: 2.0}
     mode: text
     engines: [auto]
-    expect: gap serving-parity-sampling
+    expect: pass
 
   - id: frequency-penalty
     group: A
@@ -256,7 +256,7 @@ cases:
     body: {prompt: Once upon a time, temperature: 0, max_tokens: 30, frequency_penalty: 2.0}
     mode: text
     engines: [auto]
-    expect: gap serving-parity-sampling
+    expect: pass
 
   - id: logit-bias
     group: A
@@ -266,7 +266,7 @@ cases:
     probe: {kind: ban_first_token}
     mode: text
     engines: [auto]
-    expect: gap serving-parity-sampling
+    expect: pass
 
   - id: ignore-eos
     group: A
@@ -279,7 +279,16 @@ cases:
       - "usage.completion_tokens"
     premise: {finish_reason: length}
     engines: [auto]
-    expect: gap serving-parity-sampling
+    expect: pass
+
+  - id: seeded-sampling
+    group: A
+    row: "seed"
+    endpoint: POST /v1/completions
+    body: {prompt: Once upon a time, temperature: 0.8, top_k: 40, seed: 42, max_tokens: 30}
+    mode: text
+    engines: [auto]
+    expect: pass
 
   # ---- group B: request and response fields ----
   - id: logprobs

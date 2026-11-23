@@ -5,7 +5,9 @@ use crate::chat::{
 };
 use crate::constraint::{ConstraintFactory, Reasoning};
 use crate::decode::StopMatcher;
-use crate::engine::{Engine, GenerateRequest, ModelInfo, SamplingParams, TokenConstraint, Vocab};
+use crate::engine::{
+    Engine, GenerateRequest, ModelInfo, SamplingExtras, SamplingParams, TokenConstraint, Vocab,
+};
 use crate::error::GatewayError;
 use crate::template::ChatTemplate;
 use crate::toolcall::{OutputParser, ToolFormat};
@@ -91,6 +93,7 @@ pub struct GenerateSpec {
     pub top_p: Option<f32>,
     pub top_k: Option<u32>,
     pub seed: Option<u64>,
+    pub extra: SamplingExtras,
     pub stop: Vec<String>,
     pub format: Option<OutputFormat>,
     /// Who pays: OpenAI `user`, Anthropic `metadata.user_id`.
@@ -107,6 +110,7 @@ impl GenerateSpec {
             top_p: None,
             top_k: None,
             seed: None,
+            extra: SamplingExtras::default(),
             stop: Vec::new(),
             format: None,
             caller: None,
@@ -507,6 +511,7 @@ impl Gateway {
                     top_p: spec.top_p,
                     top_k: spec.top_k,
                     seed: spec.seed,
+                    extra: spec.extra.clone(),
                 },
                 constraint,
                 cancel: cancel.clone(),

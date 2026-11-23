@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use tetraeder_engine::{ContextConfig, FlashAttn, Placement};
 use tetraeder_ggml_sys::ggml::Backend as GgmlBackend;
 use tetraeder_model::{BackendChoice, LoadOptions};
-use tetraeder_scheduler::sample::{SampleParams, Sampler, greedy};
+use tetraeder_scheduler::sample::{SampleParams, Sampler, SamplerEnv, greedy};
 use tetraeder_scheduler::{BatchBackend, Loaded, STEP_TOKENS, SeqInput, load_llama, load_moe};
 
 /// Decode steps left out of the steady numbers: graph capture after a depth change.
@@ -39,11 +39,9 @@ fn env_usize(name: &str, default: usize) -> usize {
 }
 
 /// Serve's sampling defaults (llama-server's): what Claude Code requests got.
-const SERVE_SAMPLING: SampleParams = SampleParams {
-    temperature: 0.8,
-    top_k: 40,
-    top_p: 0.95,
-};
+fn serve_sampling() -> SampleParams {
+    SampleParams::default()
+}
 
 fn load(engine: &str, path: &Path, n_ctx: usize, threads: i32) -> Loaded {
     match engine {
@@ -135,7 +133,11 @@ fn gpu_serve_decode_by_depth() {
                 step_one(&mut *backend, chunk);
             }
             let prefill_s = t.elapsed().as_secs_f64();
-            let mut sampler = Sampler::new(SERVE_SAMPLING, 42);
+            let env = SamplerEnv {
+                n_vocab: backend.n_vocab(),
+                ..SamplerEnv::default()
+            };
+            let mut sampler = Sampler::new(&serve_sampling(), Some(42), &env).unwrap();
             let c0 = backend.counters();
             let (mut eval, mut sample, mut argmax) = (Vec::new(), Vec::new(), Vec::new());
             let mut next = tokenizer.bos().max(0);
@@ -181,8 +183,8 @@ fn gpu_serve_decode_by_depth() {
         "model": path.file_name().map(|f| f.to_string_lossy().into_owned()),
         "n_ctx": n_ctx,
         "threads": threads,
-        "sampling": {"temperature": SERVE_SAMPLING.temperature, "top_k": SERVE_SAMPLING.top_k,
-                     "top_p": SERVE_SAMPLING.top_p},
+        "sampling": {"temperature": serve_sampling().temperature, "top_k": serve_sampling().top_k,
+                     "top_p": serve_sampling().top_p},
         "warmup_steps_excluded": WARMUP_STEPS,
         "rows": rows,
     });
