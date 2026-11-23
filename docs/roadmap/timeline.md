@@ -81,7 +81,7 @@ gantt
     Sampler parity with llama-server :serving_parity_sampling, 2026-11-23, 2026-11-23
     Request field parity :serving_parity_fields, 2026-11-23, 2026-11-23
     Endpoint parity :serving_parity_endpoints, 2026-11-23, 2026-11-23
-    Expose libllama capabilities :active, serving_parity_libllama, 2026-11-23, 2026-11-23
+    Expose libllama capabilities :serving_parity_libllama, 2026-11-23, 2026-11-23
     Recurrent models break slot reuse :serving_recurrent_reuse, 2026-11-23, 2026-11-23
     section bench - benchmarks and verdicts
     Paired benchmark harness, baselines :bench_harness, 2026-10-30, 2026-11-15
