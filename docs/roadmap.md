@@ -347,7 +347,7 @@ flowchart TB
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
-| Review the 2026-11-23 batch | ▶ in progress | One fresh reviewer reads the code seven workers merged on 2026-11-23 (llama-server parity A to C, KV format auto, prefix disk tier, recurrent reuse) for bugs, gaps and duplication; real findings get fixed, nitpicks dropped. |
+| Review the parity batch | ▶ in progress | One fresh reviewer reads the code seven workers merged on 2026-11-23 (llama-server parity A to C, KV format auto, prefix disk tier, recurrent reuse) for bugs, gaps and duplication; real findings get fixed, nitpicks dropped. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport latency between two boxes | ▶ in progress | Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023). |
@@ -388,7 +388,7 @@ flowchart TB
 <!-- BEGIN GENERATED: running -->
 **local**
 
-- `ops-review-parity-batch`: Review the 2026-11-23 batch
+- `ops-review-parity-batch`: Review the parity batch
 - `serving-parity-libllama`: Expose libllama capabilities
 
 **cluster**

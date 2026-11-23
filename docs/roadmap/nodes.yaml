@@ -2342,7 +2342,7 @@ nodes:
   overview: false
   plain: Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open.
 - id: ops-review-parity-batch
-  title: Review the 2026-11-23 batch
+  title: Review the parity batch
   track: ops
   kind: refactor
   state: in-progress
