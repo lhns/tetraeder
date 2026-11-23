@@ -92,9 +92,18 @@ impl Sampler {
     }
 
     /// Repeat, frequency and presence penalties over the last `last_n` accepted tokens.
-    pub fn penalties(self, n_vocab: i32, last_n: i32, repeat: f32, freq: f32, present: f32) -> Self {
+    pub fn penalties(
+        self,
+        n_vocab: i32,
+        last_n: i32,
+        repeat: f32,
+        freq: f32,
+        present: f32,
+    ) -> Self {
         // SAFETY: as `greedy`.
-        self.add(unsafe { sys::llama_sampler_init_penalties(n_vocab, last_n, repeat, freq, present) })
+        self.add(unsafe {
+            sys::llama_sampler_init_penalties(n_vocab, last_n, repeat, freq, present)
+        })
     }
 
     /// DRY repetition penalty. Needs the vocabulary of `model` to find the sequence breakers.
@@ -142,9 +151,7 @@ impl Sampler {
             .map(|&(token, bias)| sys::llama_logit_bias { token, bias })
             .collect();
         // SAFETY: `b` holds `b.len()` entries; libllama copies them during init.
-        self.add(unsafe {
-            sys::llama_sampler_init_logit_bias(n_vocab, b.len() as i32, b.as_ptr())
-        })
+        self.add(unsafe { sys::llama_sampler_init_logit_bias(n_vocab, b.len() as i32, b.as_ptr()) })
     }
 
     /// Mirostat 1. Selects the token itself, so it ends the chain.
@@ -181,7 +188,11 @@ impl Sampler {
 
     /// As `sample_logits`, with the ids `allow` rejects set to `-inf` first. `None` when no
     /// allowed id has a finite logit (the chain would draw from nothing).
-    pub fn sample_masked(&mut self, logits: &[f32], allow: impl Fn(usize) -> bool) -> Option<Token> {
+    pub fn sample_masked(
+        &mut self,
+        logits: &[f32],
+        allow: impl Fn(usize) -> bool,
+    ) -> Option<Token> {
         self.cand.clear();
         self.cand.reserve(logits.len());
         let mut any = false;
@@ -206,7 +217,9 @@ impl Sampler {
         // SAFETY: `arr` points at `cand`, which outlives the call; samplers only reorder or
         // shrink the array in place (they may repoint `data` inside `cand`'s buffer).
         unsafe { sys::llama_sampler_apply(self.ptr, &mut arr) };
-        let sel = usize::try_from(arr.selected).ok().filter(|&s| s < arr.size)?;
+        let sel = usize::try_from(arr.selected)
+            .ok()
+            .filter(|&s| s < arr.size)?;
         // SAFETY: `sel < arr.size` and `arr.data` is valid for `arr.size` entries.
         let tok = unsafe { (*arr.data.add(sel)).id };
         self.accept(tok);

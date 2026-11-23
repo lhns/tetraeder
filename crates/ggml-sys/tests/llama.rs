@@ -287,3 +287,39 @@ fn seq_rm_rolls_the_cache_back_and_decoding_resumes() {
     };
     assert_eq!(top(&first), top(&again));
 }
+
+#[test]
+fn dry_penalizes_a_repeated_sequence() {
+    let path = require_model!();
+    let params = ModelParams {
+        vocab_only: true,
+        ..cpu_params()
+    };
+    let model = Model::load(&path, &params).unwrap();
+    let mut dry = Sampler::chain()
+        .dry(&model, 5.0, 1.75, 2, 64, &["\n".to_string()])
+        .unwrap()
+        .then_greedy();
+    let mut plain = Sampler::greedy();
+    // History 1000 1001 1002 1003 1000 1001 1002: token 1003 would extend a 3-token repeat.
+    for t in [1000, 1001, 1002, 1003, 1000, 1001, 1002] {
+        dry.accept(t);
+    }
+    let mut logits = vec![0.0f32; model.n_vocab() as usize];
+    logits[1003] = 2.0;
+    logits[5] = 1.9;
+    assert_eq!(plain.sample_logits(&logits), Some(1003));
+    assert_eq!(dry.sample_logits(&logits), Some(5));
+}
+
+#[test]
+fn suppress_tokens_are_in_the_vocabulary() {
+    let path = require_model!();
+    let params = ModelParams {
+        vocab_only: true,
+        ..cpu_params()
+    };
+    let model = Model::load(&path, &params).unwrap();
+    let n = model.n_vocab();
+    assert!(model.suppress_tokens().iter().all(|&t| (0..n).contains(&t)));
+}

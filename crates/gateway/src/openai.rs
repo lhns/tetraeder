@@ -8,10 +8,10 @@ use crate::chat::{
     ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
 };
 use crate::error::{GatewayError, OpenAiError};
-use crate::sampling::{self, SamplingFields};
 use crate::gateway::{
     Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, tag_generation,
 };
+use crate::sampling::{self, SamplingFields};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

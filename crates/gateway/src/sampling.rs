@@ -62,7 +62,9 @@ fn logit_bias(v: &Value) -> Result<Vec<(i32, f32)>, GatewayError> {
         match v {
             Value::Number(n) => Ok(n.as_f64().unwrap_or(0.0) as f32),
             Value::Bool(false) => Ok(f32::NEG_INFINITY),
-            _ => Err(bad("logit_bias: a bias is a number, or false to ban the token")),
+            _ => Err(bad(
+                "logit_bias: a bias is a number, or false to ban the token",
+            )),
         }
     };
     let token = |v: &Value| -> Result<i32, GatewayError> {
@@ -71,9 +73,8 @@ fn logit_bias(v: &Value) -> Result<Vec<(i32, f32)>, GatewayError> {
             Value::String(s) => s.trim().parse::<i64>().ok(),
             _ => None,
         };
-        id.and_then(|i| i32::try_from(i).ok()).ok_or_else(|| {
-            bad("logit_bias: tokens are integer ids; text keys are not supported")
-        })
+        id.and_then(|i| i32::try_from(i).ok())
+            .ok_or_else(|| bad("logit_bias: tokens are integer ids; text keys are not supported"))
     };
     match v {
         Value::Null => Ok(Vec::new()),
@@ -112,13 +113,18 @@ fn samplers(v: &Value) -> Result<Vec<SamplerKind>, GatewayError> {
             .chars()
             .map(|c| SamplerKind::from_char(c).ok_or_else(|| unsupported(&c.to_string())))
             .collect(),
-        _ => Err(bad("samplers must be an array of names or a string of letters")),
+        _ => Err(bad(
+            "samplers must be an array of names or a string of letters",
+        )),
     }
 }
 
 fn breakers(v: &Value) -> Result<Vec<String>, GatewayError> {
     let msg = "dry_sequence_breakers must be a non-empty array of strings";
-    let a = v.as_array().filter(|a| !a.is_empty()).ok_or_else(|| bad(msg))?;
+    let a = v
+        .as_array()
+        .filter(|a| !a.is_empty())
+        .ok_or_else(|| bad(msg))?;
     let mut out: Vec<String> = Vec::new();
     for b in a {
         let s = b.as_str().ok_or_else(|| bad(msg))?;

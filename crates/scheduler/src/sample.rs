@@ -161,7 +161,9 @@ impl SampleParams {
 
     fn penalties_on(&self) -> bool {
         self.penalty_last_n != 0
-            && (self.penalty_repeat != 1.0 || self.penalty_freq != 0.0 || self.penalty_present != 0.0)
+            && (self.penalty_repeat != 1.0
+                || self.penalty_freq != 0.0
+                || self.penalty_present != 0.0)
     }
 
     fn dry_on(&self) -> bool {
@@ -218,6 +220,14 @@ impl Sampler {
         if p.ignore_eos {
             bias.extend(env.eog.iter().map(|&t| (t as i32, f32::NEG_INFINITY)));
         }
+        // The model's own suppress tokens come last, as in `common_sampler_init`.
+        if let Some(m) = env.model {
+            bias.extend(
+                m.suppress_tokens()
+                    .into_iter()
+                    .map(|t| (t, f32::NEG_INFINITY)),
+            );
+        }
         if !bias.is_empty() {
             chain = chain.logit_bias(n_vocab, &bias);
         }
@@ -244,9 +254,9 @@ impl Sampler {
                     p.penalty_present,
                 ),
                 SamplerKind::Dry if p.dry_on() => {
-                    let model = env
-                        .model
-                        .ok_or("DRY needs the model's vocabulary, which this engine has not loaded")?;
+                    let model = env.model.ok_or(
+                        "DRY needs the model's vocabulary, which this engine has not loaded",
+                    )?;
                     chain
                         .dry(
                             model,
@@ -265,7 +275,9 @@ impl Sampler {
                 // The rest keep the best token, so they cannot change an argmax.
                 _ if greedy => chain,
                 SamplerKind::TopNSigma if p.top_n_sigma > 0.0 => chain.top_n_sigma(p.top_n_sigma),
-                SamplerKind::TopK if p.top_k > 0 => chain.top_k(p.top_k.min(i32::MAX as u32) as i32),
+                SamplerKind::TopK if p.top_k > 0 => {
+                    chain.top_k(p.top_k.min(i32::MAX as u32) as i32)
+                }
                 SamplerKind::TopP if p.top_p < 1.0 => chain.top_p(p.top_p, k),
                 SamplerKind::MinP if p.min_p > 0.0 => chain.min_p(p.min_p, k),
                 SamplerKind::Temperature => {
@@ -274,14 +286,18 @@ impl Sampler {
                 _ => chain,
             };
         }
-        chain = if greedy { chain.then_greedy() } else { chain.dist(seed) };
+        chain = if greedy {
+            chain.then_greedy()
+        } else {
+            chain.dist(seed)
+        };
         Ok(Self { chain })
     }
 
     /// Feeds prompt tokens into the history (penalties, DRY), as llama-server does at admission.
-    pub fn accept_all(&mut self, tokens: &[u32]) {
+    pub fn accept_all(&mut self, tokens: &[i32]) {
         for &t in tokens {
-            self.chain.accept(t as i32);
+            self.chain.accept(t);
         }
     }
 
@@ -308,4 +324,329 @@ pub fn greedy(logits: &[f32], allowed: impl Fn(usize) -> bool) -> Option<u32> {
         }
     }
     best.map(|(_, i)| i as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    //! Pure CPU: no model, no hardware (rule 9). Each case compares the scheduler's `Sampler`
+    //! against a chain built by hand from the same libllama constructors, over 200 draws.
+    use super::*;
+
+    fn mask(allowed: &[u32], n: usize) -> TokenMask {
+        let mut words = vec![0u32; n.div_ceil(32)];
+        for &a in allowed {
+            words[a as usize / 32] |= 1 << (a % 32);
+        }
+        TokenMask { words }
+    }
+
+    const N: usize = 300;
+
+    /// A deterministic, varied logits row for step `i`.
+    fn row(i: usize) -> Vec<f32> {
+        let mut x = (i as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        (0..N)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                ((x >> 40) as f32 / (1u64 << 24) as f32) * 8.0 - 2.0
+            })
+            .collect()
+    }
+
+    fn env() -> SamplerEnv<'static> {
+        SamplerEnv {
+            n_vocab: N,
+            ..SamplerEnv::default()
+        }
+    }
+
+    fn draws(mut next: impl FnMut(&[f32]) -> u32) -> Vec<u32> {
+        (0..200).map(|i| next(&row(i % 17))).collect()
+    }
+
+    fn ours(p: &SampleParams, seed: u32) -> Vec<u32> {
+        let mut s = Sampler::new(p, Some(seed), &env()).unwrap();
+        draws(|l| s.sample(l, None).unwrap())
+    }
+
+    fn reference(c: Chain) -> Vec<u32> {
+        let mut c = c;
+        draws(|l| c.sample_logits(l).unwrap() as u32)
+    }
+
+    fn params(f: impl FnOnce(&mut SampleParams)) -> SampleParams {
+        let mut p = SampleParams::default();
+        f(&mut p);
+        p
+    }
+
+    const SEED: u32 = 1234;
+
+    #[test]
+    fn default_chain_is_llama_servers() {
+        let want = reference(
+            Chain::chain()
+                .top_k(40)
+                .top_p(0.95, 0)
+                .min_p(0.05, 0)
+                .temperature_ext(0.8, 0.0, 1.0)
+                .dist(SEED),
+        );
+        assert_eq!(ours(&SampleParams::default(), SEED), want);
+        assert_ne!(ours(&SampleParams::default(), SEED + 1), want);
+    }
+
+    #[test]
+    fn min_p_typical_top_n_sigma_and_min_keep() {
+        let p = params(|p| {
+            p.min_p = 0.2;
+            p.typical_p = 0.9;
+            p.top_n_sigma = 1.5;
+            p.min_keep = 2;
+        });
+        let want = reference(
+            Chain::chain()
+                .top_n_sigma(1.5)
+                .top_k(40)
+                .typical(0.9, 2)
+                .top_p(0.95, 2)
+                .min_p(0.2, 2)
+                .temperature_ext(0.8, 0.0, 1.0)
+                .dist(SEED),
+        );
+        assert_eq!(ours(&p, SEED), want);
+    }
+
+    #[test]
+    fn xtc_draws_with_the_request_seed() {
+        let p = params(|p| {
+            p.xtc_probability = 0.7;
+            p.xtc_threshold = 0.15;
+        });
+        let want = reference(
+            Chain::chain()
+                .top_k(40)
+                .top_p(0.95, 0)
+                .min_p(0.05, 0)
+                .xtc(0.7, 0.15, 0, SEED)
+                .temperature_ext(0.8, 0.0, 1.0)
+                .dist(SEED),
+        );
+        assert_eq!(ours(&p, SEED), want);
+    }
+
+    fn penalty_chain() -> Chain {
+        Chain::chain()
+            .penalties(N as i32, 32, 1.4, 0.3, 0.2)
+            .top_k(40)
+            .top_p(0.95, 0)
+            .min_p(0.05, 0)
+            .temperature_ext(0.8, 0.0, 1.0)
+            .dist(SEED)
+    }
+
+    #[test]
+    fn penalties_see_the_accepted_tokens() {
+        let p = params(|p| {
+            p.penalty_repeat = 1.4;
+            p.penalty_freq = 0.3;
+            p.penalty_present = 0.2;
+            p.penalty_last_n = 32;
+        });
+        assert_eq!(ours(&p, SEED), reference(penalty_chain()));
+        // The prompt counts as history, as in llama-server.
+        let mut with = Sampler::new(&p, Some(SEED), &env()).unwrap();
+        with.accept_all(&[1, 2, 3]);
+        let mut by_hand = penalty_chain();
+        for t in [1, 2, 3] {
+            by_hand.accept(t);
+        }
+        assert_eq!(
+            draws(|l| with.sample(l, None).unwrap()),
+            draws(|l| by_hand.sample_logits(l).unwrap() as u32)
+        );
+    }
+
+    #[test]
+    fn dynatemp_and_samplers_order() {
+        let p = params(|p| {
+            p.dynatemp_range = 0.5;
+            p.dynatemp_exponent = 1.5;
+            p.samplers = [
+                SamplerKind::Temperature,
+                SamplerKind::MinP,
+                SamplerKind::TopK,
+            ]
+            .to_vec()
+            .into();
+        });
+        let want = reference(
+            Chain::chain()
+                .temperature_ext(0.8, 0.5, 1.5)
+                .min_p(0.05, 0)
+                .top_k(40)
+                .dist(SEED),
+        );
+        assert_eq!(ours(&p, SEED), want);
+        let default_order = params(|p| {
+            p.dynatemp_range = 0.5;
+            p.dynatemp_exponent = 1.5;
+        });
+        assert_ne!(ours(&default_order, SEED), want, "the order must matter");
+    }
+
+    #[test]
+    fn mirostat_replaces_the_list() {
+        for (m, tau, eta) in [(1, 4.0, 0.2), (2, 6.0, 0.05)] {
+            let p = params(|p| {
+                p.mirostat = m;
+                p.mirostat_tau = tau;
+                p.mirostat_eta = eta;
+            });
+            let c = Chain::chain().temperature(0.8);
+            let c = if m == 1 {
+                c.mirostat(N as i32, SEED, tau, eta, 100)
+            } else {
+                c.mirostat_v2(SEED, tau, eta)
+            };
+            assert_eq!(ours(&p, SEED), reference(c), "mirostat {m}");
+        }
+    }
+
+    #[test]
+    fn logit_bias_and_ignore_eos_ban_tokens() {
+        let eog = [7u32];
+        let p = params(|p| {
+            p.temperature = 0.0;
+            p.logit_bias = vec![(3, f32::NEG_INFINITY), (9999, 5.0)].into();
+            p.ignore_eos = true;
+        });
+        let e = SamplerEnv {
+            n_vocab: N,
+            eog: &eog,
+            model: None,
+        };
+        let mut s = Sampler::new(&p, None, &e).unwrap();
+        let mut l = vec![0.0f32; N];
+        l[3] = 10.0;
+        l[7] = 9.0;
+        l[11] = 8.0;
+        // 3 and 7 are banned; id 9999 is outside the vocabulary and dropped.
+        assert_eq!(s.sample(&l, None), Some(11));
+    }
+
+    #[test]
+    fn greedy_is_the_argmax_after_penalties() {
+        let g = params(|p| p.temperature = 0.0);
+        let mut s = Sampler::new(&g, None, &env()).unwrap();
+        for i in 0..20 {
+            let l = row(i);
+            assert_eq!(s.sample(&l, None), greedy(&l, |_| true));
+        }
+        let pen = params(|p| {
+            p.temperature = 0.0;
+            p.penalty_repeat = 100.0;
+        });
+        assert!(g.is_plain_greedy() && !pen.is_plain_greedy());
+        let mut s = Sampler::new(&pen, None, &env()).unwrap();
+        let l = [5.0, 4.0, 1.0];
+        assert_eq!(s.sample(&l, None), Some(0));
+        // Token 0 is now in the history, so the heavy penalty moves the pick.
+        assert_eq!(s.sample(&l, None), Some(1));
+    }
+
+    #[test]
+    fn greedy_takes_the_lowest_id_on_ties() {
+        assert_eq!(greedy(&[1.0, 3.0, 3.0, 2.0], |_| true), Some(1));
+        let g = params(|p| p.temperature = 0.0);
+        let mut s = Sampler::new(&g, None, &env()).unwrap();
+        assert_eq!(s.sample(&[1.0, 3.0, 3.0, 2.0], None), Some(1));
+    }
+
+    #[test]
+    fn mask_restricts_greedy_and_random() {
+        let logits = [5.0, 4.0, 3.0, 2.0, 1.0];
+        let m = mask(&[3, 4], 5);
+        let e = SamplerEnv {
+            n_vocab: 5,
+            ..SamplerEnv::default()
+        };
+        let g = params(|p| p.temperature = 0.0);
+        let mut s = Sampler::new(&g, Some(1), &e).unwrap();
+        assert_eq!(s.sample(&logits, Some(&m)), Some(3));
+        let r = params(|p| p.temperature = 1.0);
+        let mut s = Sampler::new(&r, Some(7), &e).unwrap();
+        for _ in 0..50 {
+            assert!(matches!(s.sample(&logits, Some(&m)), Some(3 | 4)));
+        }
+        assert_eq!(s.sample(&logits, Some(&mask(&[], 5))), None);
+    }
+
+    #[test]
+    fn top_k_one_and_tiny_top_p_are_greedy() {
+        let logits = [0.5, 2.0, 1.0, 1.5];
+        let e = SamplerEnv {
+            n_vocab: 4,
+            ..SamplerEnv::default()
+        };
+        for p in [
+            params(|p| {
+                p.temperature = 2.0;
+                p.top_k = 1;
+            }),
+            params(|p| {
+                p.temperature = 2.0;
+                p.top_k = 0;
+                p.top_p = 0.01;
+                p.min_p = 0.0;
+            }),
+        ] {
+            let mut s = Sampler::new(&p, Some(3), &e).unwrap();
+            for _ in 0..20 {
+                assert_eq!(s.sample(&logits, None), Some(1));
+            }
+        }
+    }
+
+    #[test]
+    fn same_seed_same_tokens() {
+        let p = SampleParams::default();
+        assert_eq!(ours(&p, 5), ours(&p, 5));
+        assert_ne!(ours(&p, 5), ours(&p, 6));
+    }
+
+    #[test]
+    fn dry_without_a_model_is_an_error() {
+        let p = params(|p| p.dry_multiplier = 0.8);
+        assert!(Sampler::new(&p, None, &env()).is_err());
+    }
+
+    #[test]
+    fn request_fields_override_the_defaults() {
+        use tetraeder_gateway::engine::SamplingExtras;
+        let d = SampleParams::default();
+        let r = SamplingParams {
+            temperature: Some(0.0),
+            extra: SamplingExtras {
+                min_p: Some(0.3),
+                repeat_penalty: Some(1.2),
+                ..SamplingExtras::default()
+            },
+            ..SamplingParams::default()
+        };
+        let p = d.resolve(&r);
+        assert_eq!((p.temperature, p.min_p, p.penalty_repeat), (0.0, 0.3, 1.2));
+        assert_eq!(p.top_k, 40);
+        assert!(
+            !p.is_plain_greedy(),
+            "a penalty makes greedy history-dependent"
+        );
+        let g = SamplingParams {
+            temperature: Some(0.0),
+            ..SamplingParams::default()
+        };
+        assert!(d.resolve(&g).is_plain_greedy());
+    }
 }
