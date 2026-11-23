@@ -143,9 +143,9 @@ flowchart TB
     end
     subgraph bd_3["Later (blocked or parked)"]
         cluster_pipeline_nodes["cluster · ⛔ Pipeline<br/>stages across machines"]
-        cluster_experts_nodes["cluster · ⛔ Experts on<br/>other machines"]
         cluster_failover["cluster · ⛔ Keep<br/>serving when a node<br/>dies"]
         bench_phase6_exit("bench · ⛔ Phase 6<br/>exit: multi-node test")
+        cluster_experts_nodes["cluster · ⏸ Experts on<br/>other machines"]
         multi_live_reshard["multi · ⛔ Reshard<br/>while serving"]
         planner_advisor_auto["planner · ⛔ Advisor<br/>applies safe changes<br/>itself"]
         bench_phase7_exit("bench · ⛔ Phase 7<br/>exit: day-long trace")
@@ -197,14 +197,13 @@ flowchart TB
     planner_cost_model_v5_host2 ~~~ engine_dense_amx
     cluster_transport ~~~ engine_dense_amx
     engine_dense_amx ~~~ cluster_pipeline_nodes
-    engine_dense_amx ~~~ cluster_experts_nodes
     engine_dense_amx ~~~ cluster_failover
-    cluster_pipeline_nodes ~~~ bench_phase6_exit
-    cluster_experts_nodes ~~~ bench_phase6_exit
-    cluster_failover ~~~ bench_phase6_exit
-    bench_phase6_exit ~~~ multi_live_reshard
+    engine_dense_amx ~~~ bench_phase6_exit
+    cluster_pipeline_nodes ~~~ cluster_experts_nodes
+    cluster_failover ~~~ multi_live_reshard
     bench_phase6_exit ~~~ planner_advisor_auto
-    multi_live_reshard ~~~ bench_phase7_exit
+    cluster_experts_nodes ~~~ bench_phase7_exit
+    multi_live_reshard ~~~ engine_backend_parity
     planner_advisor_auto ~~~ engine_backend_parity
     bench_phase7_exit ~~~ bench_phase8_exit
     engine_backend_parity ~~~ bench_phase9_exit
@@ -230,17 +229,13 @@ flowchart TB
     multi_prefill_no_capture --> planner_ep_prefill_recheck
     bench_d2a_probe --> bench_d2a_30b
     bench_d2a_30b --> bench_ab30b
-    cluster_transport --> cluster_pipeline_nodes
-    cluster_transport --> cluster_experts_nodes
-    cluster_pipeline_nodes --> bench_phase6_exit
-    cluster_experts_nodes --> bench_phase6_exit
-    cluster_failover --> bench_phase6_exit
+    bench_phase6_exit --> cluster_experts_nodes
     bench_phase6_exit --> multi_live_reshard
     bench_phase6_exit --> planner_advisor_auto
     planner_advisor_auto --> bench_phase7_exit
     engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
-    linkStyle 56,63,67 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 55,62,66 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -261,8 +256,8 @@ flowchart TB
     class bench_owner_m1,bench_owner_analytic decided
     class bench_d2a_probe,bench_d2a_30b mixed
     class bench_30b_c4_gap,planner_cost_model_v5_host2,cluster_transport,engine_dense_amx next
-    class cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
-    class engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
+    class cluster_pipeline_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
+    class cluster_experts_nodes,engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
 ```
 <!-- END GENERATED: overview -->
 
@@ -335,6 +330,8 @@ flowchart TB
 | 30B admission probe rerun | ✔ done · mixed | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step. |
 | 30B same-box A/B | ✔ done · successful | A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step. |
 | 30B concurrency-4 gap | ○ next | The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; the A/A is done (A40 box, two runs 1.001 at c4 and 0.996 at c1, strata-q36-20261123), the bisect of 6b07795 to main and finding the gap are left. |
+| Predict the 235B on one box | ○ next | Before any cluster code, the 235B streamed on one RTX 3090 box under a 64 GB RAM budget is predicted and then measured, to see whether the streaming cost model holds the 15% line that the Phase 6 exit needs (ADR 0091, named risk from ADR 0056). |
+| First two-box cluster session | ⛔ blocked | Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once). |
 | Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
 | Report milestone M3 | ⛔ blocked | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). |
 | Phase 7 exit: day-long trace | ⛔ blocked | The Phase 7 exit test: replay a day of traffic with the online loop on and compare with the best fixed plan. |
@@ -349,14 +346,16 @@ flowchart TB
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Review group D and the fixes | ○ next | A second review of the code merged after the first review (group D and the review fixes), plus the flaky disk-read test, a check that every parity row has a case or a scope-out, and the per-token cost of logprobs and the greedy fast path. |
-| Transport between machines | ○ next | Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16). |
-| Mutual TLS and node trust rules | ⛔ blocked | Every node proves its identity with a certificate (mutual TLS, certificates from step-ca), and rules say which node may see which data (plan feature 20). |
-| Find nodes automatically | ⛔ blocked | Nodes come from a static list or are found on the local network (mDNS), and the profiler measures each link (plan feature 17). |
-| Nodes join and leave live | ⛔ blocked | A node can join or leave while the others keep serving; membership changes trigger a replan (plan feature 18). |
+| Transport between machines | ○ next | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
+| Owner accepts the Phase 6 design | ○ next | The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; mDNS in or out of M3; the other scope cuts). |
+| Plans and predictions across nodes | ○ next | The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091). |
+| Node certificates and trust rules | ⛔ blocked | Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20). |
+| Node list, health and probes | ⛔ blocked | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). |
+| Nodes join and leave live | ⛔ blocked | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). |
 | Pipeline stages across machines | ⛔ blocked | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). |
-| Experts on other machines | ⛔ blocked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
-| KV cache on another machine | ⛔ blocked | KV cache and cached prefixes can live on another node and be fetched instead of recomputed, so a prefix computed on one node serves requests on another (plan features 3 and 4, Phase 6 halves). |
-| Model replicas behind one router | ⛔ blocked | Copies of a model on several nodes behind one router; independent requests need no traffic between them, so any link latency is fine (plan feature 11). |
+| Experts on other machines | ⏸ parked | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). |
+| KV cache on another machine | ⛔ blocked | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). |
+| Model replicas behind one router | ⛔ blocked | Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11). |
 | Keep serving when a node dies | ⛔ blocked | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). |
 | Add and remove replicas live | ⛔ blocked | Replicas are added or removed under load as traffic changes (plan feature 39). |
 <!-- END GENERATED: plain-words -->
@@ -373,12 +372,14 @@ flowchart TB
 
 **ci**
 
+- `cluster-planner`: Plans and predictions across nodes
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
 **box-later**
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
+- `bench-235b-stream-predict`: Predict the 235B on one box
 
 **cluster**
 
@@ -400,6 +401,7 @@ _None._
 ## Waiting on the owner
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
+- `cluster-owner-phase6-design`: Owner accepts the Phase 6 design
 - `bench-m3-report`: Report milestone M3
 - `bench-m4-report`: Report milestone M4
 - `serving-owner-drafters`: Owner decides on more drafter kinds
@@ -850,7 +852,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 29 nodes (20 done, 1 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 45 nodes (32 done, 1 next, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (32 done, 2 next, 6 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (12 done, 1 next, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (2 done, 1 next, 9 blocked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (2 done, 3 next, 8 blocked, 1 parked)
 <!-- END GENERATED: tracks -->
