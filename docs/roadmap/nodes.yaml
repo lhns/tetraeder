@@ -3346,6 +3346,26 @@ nodes:
   overview: false
   plain: The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085).
   notes: 'Matrix docs/notes/strata-parity.md, class 3.'
+- id: serving-recurrent-reuse
+  title: Recurrent models break slot reuse
+  track: serving
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - bench/results/strata-q36-20261123/README.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-strata-q36
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: On Qwen3.6 (recurrent GatedDeltaNet layers) through libllama, reusing a slot's prefix fails with "KV cache cannot drop positions" unless prefix reuse is off, and the failed request streams HTTP 200 with no tokens and no error, so clients count it as a success.
+  notes: 'Found by bench-strata-q36 (default-flag run, 7 of 16 c4 and 4 of 8 c1 requests empty, no server log line). Two fixes - an engine error must reach the client as an error event or status, and a model whose memory cannot drop a suffix must fall back to a full prompt (or snapshot reuse) instead of seq_rm. Conformance case first.'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench
