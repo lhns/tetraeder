@@ -880,3 +880,63 @@ fn cancelling_during_a_disk_read_returns_the_buffer_and_keeps_the_file() {
     assert_eq!(tokens(&events(&mut again)), 2);
     assert_eq!(t.w.last_admit.as_ref().map(|r| r.source), Some("disk"));
 }
+
+// ---- context shift and rerank prompts (ADR 0090) ----
+
+#[test]
+fn the_shift_range_follows_llama_servers_arithmetic() {
+    // default: keep nothing, drop half
+    assert_eq!(shift_range(63, 64, 10, false, None, None), (0, 31));
+    // a BOS is always kept; n_keep counts after it
+    assert_eq!(shift_range(63, 64, 10, true, None, None), (1, 31));
+    assert_eq!(shift_range(63, 64, 10, true, Some(4), None), (5, 29));
+    // negative n_keep keeps the prompt
+    assert_eq!(shift_range(63, 64, 10, false, Some(-1), None), (10, 26));
+    // n_keep is capped at n_ctx - 4
+    assert_eq!(shift_range(63, 64, 10, false, Some(500), None).0, 60);
+    // n_discard is the request's, never all of what is left
+    assert_eq!(shift_range(63, 64, 10, false, Some(4), Some(8)), (4, 8));
+    assert_eq!(shift_range(63, 64, 10, false, Some(4), Some(500)), (4, 58));
+    // one position left, or none: nothing to drop
+    assert_eq!(shift_range(5, 64, 10, false, Some(4), None).1, 0);
+    assert_eq!(shift_range(3, 64, 10, false, Some(4), None).1, 0);
+}
+
+#[test]
+fn the_rerank_template_is_filled_in_one_pass() {
+    assert_eq!(
+        fill_rerank_template("Q: {query}\nD: {document}\n", "a", "b"),
+        "Q: a\nD: b\n"
+    );
+    // a placeholder inside the text is not expanded again
+    assert_eq!(
+        fill_rerank_template("{query}|{document}", "{document}", "{query}"),
+        "{document}|{query}"
+    );
+    assert_eq!(fill_rerank_template("é{query}ü", "x", "y"), "éxü");
+    assert_eq!(
+        fill_rerank_template("no placeholders", "x", "y"),
+        "no placeholders"
+    );
+}
+
+#[test]
+fn a_rerank_pair_without_a_template_is_the_query_and_the_document() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/tiny-qwen3-f16.gguf");
+    let m = Model::load(
+        &path,
+        &tetraeder_ggml_sys::llama::ModelParams {
+            vocab_only: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    // Qwen3 adds no BOS, EOS or SEP: the pair is the two texts' tokens, one after the other
+    let want: Vec<i32> = [
+        m.tokenize("Hello", false, false).unwrap(),
+        m.tokenize("world", false, false).unwrap(),
+    ]
+    .concat();
+    assert_eq!(rerank_tokens(&m, "Hello", "world").unwrap(), want);
+}

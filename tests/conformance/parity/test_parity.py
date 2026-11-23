@@ -22,7 +22,7 @@ import httpx
 import pytest
 import yaml
 from parity_lib import compare, generated_text, get_path, norm_text, parse_sse
-from servers import FAMILY, ServerStartError, find_llama_server, find_tetraeder, start_llama, start_tetraeder
+from servers import CTX, FAMILY, ServerStartError, find_llama_server, find_tetraeder, start_llama, start_tetraeder
 
 HERE = pathlib.Path(__file__).resolve().parent
 CASES = yaml.safe_load((HERE / "cases.yaml").read_text(encoding="utf-8"))["cases"]
@@ -82,20 +82,24 @@ def tetraeder_bin():
 
 
 class Pool:
-    """Servers started on first use and kept for the session, keyed by (kind, key, extra args)."""
+    """Servers started on first use and kept for the session, keyed by (kind, key, extra args, context size).
+    `{tmp}` in an argument is a directory of that server alone (slot files)."""
 
     def __init__(self, llama_bin, tetraeder_bin, log_dir):
         self.llama_bin, self.tetraeder_bin, self.log_dir = llama_bin, tetraeder_bin, log_dir
         self.running = {}
 
-    def get(self, kind, key, extra=()):
-        k = (kind, key, tuple(extra))
+    def get(self, kind, key, extra=(), ctx=CTX):
+        k = (kind, key, tuple(extra), ctx)
         if k not in self.running:
             tag = f"-{len(self.running)}"
+            tmp = self.log_dir / f"tmp{tag}"
+            tmp.mkdir(exist_ok=True)
+            args = [a.replace("{tmp}", str(tmp)) for a in extra]
             if kind == "llama":
-                self.running[k] = start_llama(self.llama_bin, key, self.log_dir, extra, tag)
+                self.running[k] = start_llama(self.llama_bin, key, self.log_dir, args, tag, ctx)
             else:
-                self.running[k] = start_tetraeder(self.tetraeder_bin, key, self.log_dir, extra, tag)
+                self.running[k] = start_tetraeder(self.tetraeder_bin, key, self.log_dir, args, tag, ctx)
         return self.running[k]
 
     def close(self):
@@ -170,14 +174,41 @@ def params() -> list:
     return out
 
 
+def run_setup(case, srv):
+    """Requests the case sends before the compared one (a completion that fills a slot before it is saved)."""
+    for step in case.get("setup", ()):
+        step = {"mode": "shape", **step}
+        got = send(srv.base_url, step, step.get("body"))
+        if got.status != 200:
+            raise PremiseError(f"{case['id']}: setup {step['endpoint']} answered {got.status} on {srv.name}: {got.body}")
+
+
+def check_refusal(case, engine, pool):
+    """`tetraeder_refuses: TEXT`: tetraeder's answer to a flag it cannot honour is to exit before it listens, with TEXT
+    (a pointer to what works) in its message. llama-server is not started: the case is about tetraeder's refusal, and the
+    matrix row says what llama-server does with the flag."""
+    want = case["tetraeder_refuses"]
+    try:
+        pool.get("tetraeder", engine, case.get("tetraeder_args", ()), case.get("ctx", CTX))
+    except ServerStartError as e:
+        assert want.lower() in str(e).lower(), f"{case['row']}: tetraeder exited, but without {want!r}:\n{str(e)[-600:]}"
+        return
+    raise AssertionError(f"{case['row']}: tetraeder started with {case.get('tetraeder_args')}, the case expects a refusal ({want!r})")
+
+
 @pytest.mark.parametrize("case,engine", params())
 def test_case(case, engine, pool):
-    base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()))
+    if "tetraeder_refuses" in case:
+        return check_refusal(case, engine, pool)
+    ctx = case.get("ctx", CTX)
+    base_srv = pool.get("llama", FAMILY[engine], case.get("llama_args", ()), ctx)
     body = probed_body(pool, case, engine) if "probe" in case else None
     try:
-        other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()))
+        other_srv = pool.get("tetraeder", engine, case.get("tetraeder_args", ()), ctx)
     except ServerStartError as e:
         raise AssertionError(f"tetraeder did not start with {case.get('tetraeder_args')}: {str(e)[:300]}") from e
+    run_setup(case, base_srv)
+    run_setup(case, other_srv)
     base = send(base_srv.base_url, case, body)
     other = send(other_srv.base_url, case, body)
     check_premise(case, base)

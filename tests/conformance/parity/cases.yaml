@@ -1,11 +1,11 @@
 # Cases of the llama-server conformance harness (test_parity.py; ADR 0083, docs/notes/llamacpp-parity.md).
 #
 # id        unique name
-# group     A sampling, B request and response fields, C endpoints (the matrix groups)
+# group     A sampling, B request and response fields, C endpoints, D libllama capabilities (the matrix groups)
 # row       the exact first cell of a row of the appendix of docs/notes/llamacpp-parity.md (checked by test_parity_lib.py)
 # endpoint  "METHOD /path", sent to both servers
 # body      JSON request body; headers: extra request headers
-# mode      status | shape | text | logprobs | stream | exact (parity_lib.compare); logprobs also takes `tolerance`
+# mode      status | shape | text | logprobs | stream | exact | vectors (parity_lib.compare); logprobs also takes `tolerance`
 # compare_text  false: compare no streamed text; drop_events: SSE event names left out of the sequence
 # paths     compare only the shape under these paths; ignore: extra paths left out of the shape
 # value_paths  paths whose values must be equal (usage counts, finish_reason)
@@ -13,8 +13,15 @@
 # no_model  send no `model` field (the harness adds one to every other case)
 # probe     a body field derived from the baseline's answer: stop_ascii, ban_first_token (test_parity.py)
 # engines   tetraeder engines the case runs on: auto (libllama on tiny-qwen3), dense (own dense builder, tiny-qwen3),
-#           moe (own MoE builder, tiny-qwen3moe); llama-server serves the same GGUF
+#           moe (own MoE builder, tiny-qwen3moe), llama-moe (libllama on tiny-qwen3moe); llama-server serves the same GGUF
 # llama_args, tetraeder_args  extra server flags for the case
+# ctx       context size of both servers (default 4096), for cases that must reach the context limit
+# setup     requests sent to both servers before the compared one: [{endpoint, body}], each must answer 200
+# vector_paths, tolerance  mode vectors: the numbers under these paths must match within `tolerance` (default 1e-3, parity_lib.py)
+# tetraeder_refuses  TEXT: tetraeder must exit before it listens, with TEXT in its message (a pointer to what works).
+#           No baseline is started and nothing is compared; endpoint, body and mode are placeholders. For flags that
+#           only some engines can honour: the matrix row says what llama-server does with them
+# `{tmp}` in a server argument is a directory of that server alone (slot files)
 # expect    pass, or `gap <tree node>`: xfail(strict), flipped to pass in the change that closes the gap
 #
 # Tokens are compared at temperature 0 and in the seeded case (same chain and RNG as llama-server). The tiny models are random, so the text is byte noise; what
@@ -453,6 +460,392 @@ cases:
     body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3}
     llama_args: [--api-key, conformance-key]
     tetraeder_args: [--api-key, conformance-key]
+    mode: status
+    engines: [auto]
+    expect: pass
+
+  # ---- group D: what libllama has and the gateway did not expose (ADR 0090) ----
+  - id: kv-offload
+    group: D
+    row: "KV offload (`-nkvo`)"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 12}
+    llama_args: [-nkvo]
+    tetraeder_args: [--no-kv-offload]
+    mode: text
+    value_paths: ["choices[0].finish_reason"]
+    engines: [auto]
+    expect: pass
+
+  - id: kv-offload-builders
+    group: D
+    row: "KV offload (`-nkvo`)"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello}
+    tetraeder_args: [--no-kv-offload]
+    tetraeder_refuses: "own builders keep the KV cache"
+    mode: status
+    engines: [dense, moe]
+    expect: pass
+
+  - id: kv-types
+    group: D
+    row: "KV cache types"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 12}
+    llama_args: [-ctk, q8_0, -ctv, q8_0, -fa, "on"]
+    tetraeder_args: [--cache-type-k, q8_0, --cache-type-v, q8_0, --flash-attn, "on"]
+    mode: text
+    value_paths: ["choices[0].finish_reason"]
+    engines: [auto]
+    expect: pass
+
+  - id: kv-types-builders
+    group: D
+    row: "KV cache types"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 4}
+    llama_args: [-ctk, q8_0, -ctv, q8_0, -fa, "on"]
+    tetraeder_args: [--cache-type-k, q8_0, --cache-type-v, q8_0]
+    mode: status
+    engines: [dense]
+    expect: pass
+
+  - id: kv-types-builders-refused
+    group: D
+    row: "KV cache types"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello}
+    tetraeder_args: [--cache-type-k, q5_0, --cache-type-v, q5_0]
+    tetraeder_refuses: "allowed pairs"
+    mode: status
+    engines: [dense, moe]
+    expect: pass
+
+  - id: cpu-moe
+    group: D
+    row: "Tensor overrides"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 12}
+    llama_args: [--cpu-moe]
+    tetraeder_args: [--cpu-moe]
+    mode: text
+    value_paths: ["choices[0].finish_reason"]
+    engines: [llama-moe]
+    expect: pass
+
+  - id: n-cpu-moe
+    group: D
+    row: "Tensor overrides"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 12}
+    llama_args: [--n-cpu-moe, "1"]
+    tetraeder_args: [--n-cpu-moe, "1"]
+    mode: text
+    value_paths: ["choices[0].finish_reason"]
+    engines: [llama-moe]
+    expect: pass
+
+  - id: cpu-moe-builder
+    group: D
+    row: "Tensor overrides"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello}
+    tetraeder_args: [--cpu-moe]
+    tetraeder_refuses: "--expert-slots"
+    mode: status
+    engines: [moe]
+    expect: pass
+
+  # The tiny models have no pooling type of their own (it is `none`), so the value cases pass --pooling mean to both.
+  - id: embeddings-oai
+    group: D
+    row: "POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`)"
+    endpoint: POST /v1/embeddings
+    body: {input: Hello world}
+    llama_args: [--embeddings, --pooling, mean]
+    tetraeder_args: [--embeddings, --pooling, mean]
+    mode: vectors
+    vector_paths: ["data[0].embedding"]
+    value_paths: ["usage.prompt_tokens"]
+    engines: [auto]
+    expect: pass
+
+  - id: embeddings-oai-batch
+    group: D
+    row: "POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`)"
+    endpoint: POST /v1/embeddings
+    body: {input: [Hello world, Once upon a time]}
+    llama_args: [--embeddings, --pooling, mean]
+    tetraeder_args: [--embeddings, --pooling, mean]
+    mode: vectors
+    vector_paths: ["data[0].embedding", "data[1].embedding"]
+    value_paths: ["usage.prompt_tokens", "data[1].index"]
+    engines: [auto]
+    expect: pass
+
+  - id: embeddings-native
+    group: D
+    row: "POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`)"
+    endpoint: POST /embeddings
+    body: {content: Hello world}
+    llama_args: [--embeddings, --pooling, mean]
+    tetraeder_args: [--embeddings, --pooling, mean]
+    mode: vectors
+    vector_paths: ["[0].embedding"]
+    engines: [auto]
+    expect: pass
+
+  - id: embedding-legacy-route
+    group: D
+    row: "POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`)"
+    endpoint: POST /embedding
+    body: {content: Hello world}
+    llama_args: [--embeddings, --pooling, mean]
+    tetraeder_args: [--embeddings, --pooling, mean]
+    mode: vectors
+    vector_paths: ["[0].embedding"]
+    engines: [auto]
+    expect: pass
+
+  - id: embeddings-pooling-none
+    group: D
+    row: "POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`)"
+    endpoint: POST /embeddings
+    body: {content: Hello world}
+    llama_args: [--embeddings]
+    tetraeder_args: [--embeddings]
+    mode: vectors
+    vector_paths: ["[0].embedding"]
+    engines: [auto]
+    expect: pass
+
+  - id: embeddings-oai-pooling-none
+    group: D
+    row: "POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`)"
+    endpoint: POST /v1/embeddings
+    body: {input: Hello world}
+    llama_args: [--embeddings]
+    tetraeder_args: [--embeddings]
+    mode: exact
+    engines: [auto]
+    expect: pass
+
+  - id: embeddings-unsupported
+    group: D
+    row: "POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`)"
+    endpoint: POST /v1/embeddings
+    body: {input: Hello}
+    mode: exact
+    engines: [auto, dense, moe]
+    expect: pass
+
+  - id: embeddings-builders-refused
+    group: D
+    row: "POST /embedding, /embeddings, /v1/embeddings (needs `--embeddings`)"
+    endpoint: POST /v1/embeddings
+    body: {input: Hello}
+    tetraeder_args: [--embeddings]
+    tetraeder_refuses: "--engine llama"
+    mode: status
+    engines: [dense, moe]
+    expect: pass
+
+  # The tiny models have no rank head: libllama then scores with the first value of the pooled state (softmaxed for
+  # Qwen3), the same on both servers, so the scores are compared at 1e-5 (they are about 0.01). A server that is not
+  # started with --reranking answers 501. One document per request: with several in one request llama-server
+  # evaluates them in one batch and, on this fixture, scores a document differently from when it is alone (0.0213
+  # in a batch of three, 0.0058 alone). The cause is libllama's rank pooling, which reads sequence s at n_cls_out * s
+  # floats; the fixture has no classification head, so its rows are n_embd wide. tetraeder scores each alone.
+  - id: rerank-jina
+    group: D
+    row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
+    endpoint: POST /v1/rerank
+    body: {query: Hello world, documents: [The quick brown fox]}
+    llama_args: [--reranking]
+    tetraeder_args: [--reranking]
+    mode: vectors
+    vector_paths: ["results[0].relevance_score"]
+    value_paths: ["results[0].index", "usage.prompt_tokens"]
+    tolerance: 0.00001
+    engines: [auto]
+    expect: pass
+
+  - id: rerank-tei
+    group: D
+    row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
+    endpoint: POST /rerank
+    body: {query: Hello world, texts: [Once upon a time], return_text: true}
+    llama_args: [--reranking]
+    tetraeder_args: [--reranking]
+    mode: vectors
+    vector_paths: ["[0].score"]
+    value_paths: ["[0].index", "[0].text"]
+    tolerance: 0.00001
+    engines: [auto]
+    expect: pass
+
+  - id: rerank-unsupported
+    group: D
+    row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
+    endpoint: POST /v1/rerank
+    body: {query: Hello, documents: [world, there]}
+    mode: exact
+    engines: [auto, dense, moe]
+    expect: pass
+
+  - id: rerank-unsupported-with-embeddings
+    group: D
+    row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
+    endpoint: POST /rerank
+    body: {query: Hello, documents: [world, there]}
+    llama_args: [--embeddings, --pooling, mean]
+    tetraeder_args: [--embeddings, --pooling, mean]
+    mode: exact
+    engines: [auto]
+    expect: pass
+
+  - id: reranking-route
+    group: D
+    row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
+    endpoint: POST /v1/reranking
+    body: {query: Hello, texts: [world]}
+    mode: exact
+    engines: [auto]
+    expect: pass
+
+  - id: reranking-builders-refused
+    group: D
+    row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
+    endpoint: POST /v1/rerank
+    body: {query: Hello, documents: [world]}
+    tetraeder_args: [--reranking]
+    tetraeder_refuses: "--engine llama"
+    mode: status
+    engines: [dense, moe]
+    expect: pass
+
+  # n_ctx 256, 300 tokens asked: only a server that shifts the context reaches them (without it both stop at the limit).
+  - id: context-shift
+    group: D
+    row: "Context shift"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 300, ignore_eos: true}
+    ctx: 256
+    llama_args: [--context-shift]
+    tetraeder_args: [--context-shift]
+    mode: text
+    value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
+    premise: {finish_reason: length}
+    engines: [auto]
+    expect: pass
+
+  # The same with the request's n_keep and n_discard: the greedy text after the shift is equal only if both servers
+  # drop the same positions at the same moment.
+  - id: context-shift-keep-discard
+    group: D
+    row: "Context shift"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 400, ignore_eos: true, n_keep: 4, n_discard: 8}
+    ctx: 256
+    llama_args: [--context-shift]
+    tetraeder_args: [--context-shift]
+    mode: text
+    value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
+    premise: {finish_reason: length}
+    engines: [auto]
+    expect: pass
+
+  - id: context-shift-builders-refused
+    group: D
+    row: "Context shift"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello}
+    tetraeder_args: [--context-shift]
+    tetraeder_refuses: "--engine llama"
+    mode: status
+    engines: [dense, moe]
+    expect: pass
+
+  - id: slot-save-unsupported
+    group: D
+    row: "GET /slots, POST /slots/:id?action=save/restore/erase"
+    endpoint: POST /slots/0?action=save
+    body: {filename: s.bin}
+    mode: exact
+    engines: [auto, dense, moe]
+    expect: pass
+
+  - id: slot-save
+    group: D
+    row: "GET /slots, POST /slots/:id?action=save/restore/erase"
+    endpoint: POST /slots/0?action=save
+    body: {filename: s.bin}
+    setup:
+      - {endpoint: POST /completion, body: {prompt: Hello, n_predict: 4, temperature: 0, id_slot: 0}}
+    llama_args: [--slot-save-path, "{tmp}"]
+    tetraeder_args: [--slot-save-path, "{tmp}"]
+    mode: shape
+    value_paths: ["id_slot", "filename"]
+    engines: [auto]
+    expect: pass
+
+  - id: slot-restore
+    group: D
+    row: "GET /slots, POST /slots/:id?action=save/restore/erase"
+    endpoint: POST /slots/0?action=restore
+    body: {filename: r.bin}
+    setup:
+      - {endpoint: POST /completion, body: {prompt: Hello, n_predict: 4, temperature: 0, id_slot: 0}}
+      - {endpoint: "POST /slots/0?action=save", body: {filename: r.bin}}
+    llama_args: [--slot-save-path, "{tmp}"]
+    tetraeder_args: [--slot-save-path, "{tmp}"]
+    mode: shape
+    value_paths: ["id_slot", "filename"]
+    engines: [auto]
+    expect: pass
+
+  - id: slot-erase
+    group: D
+    row: "GET /slots, POST /slots/:id?action=save/restore/erase"
+    endpoint: POST /slots/0?action=erase
+    setup:
+      - {endpoint: POST /completion, body: {prompt: Hello, n_predict: 4, temperature: 0, id_slot: 0}}
+    llama_args: [--slot-save-path, "{tmp}"]
+    tetraeder_args: [--slot-save-path, "{tmp}"]
+    mode: shape
+    value_paths: ["id_slot"]
+    engines: [auto]
+    expect: pass
+
+  - id: slot-invalid-action
+    group: D
+    row: "GET /slots, POST /slots/:id?action=save/restore/erase"
+    endpoint: POST /slots/0?action=bogus
+    mode: exact
+    llama_args: [--slot-save-path, "{tmp}"]
+    tetraeder_args: [--slot-save-path, "{tmp}"]
+    engines: [auto]
+    expect: pass
+
+  - id: slot-builders-refused
+    group: D
+    row: "GET /slots, POST /slots/:id?action=save/restore/erase"
+    endpoint: POST /slots/0?action=save
+    body: {filename: s.bin}
+    tetraeder_args: [--slot-save-path, "{tmp}"]
+    tetraeder_refuses: "--engine llama"
+    mode: status
+    engines: [dense, moe]
+    expect: pass
+
+  - id: model-download
+    group: D
+    row: "Model"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello}
+    tetraeder_args: [--hf-repo, ggml-org/none-GGUF]
+    tetraeder_refuses: "download the GGUF"
     mode: status
     engines: [auto]
     expect: pass

@@ -6,8 +6,9 @@
 //! token if allowed, else the lowest allowed id.
 
 use crate::engine::{
-    Engine, EngineError, EngineStats, FimTokens, FinishReason, GenEvent, GenerateRequest,
-    ModelInfo, SamplingParams, TokenId, TokenProbs, Vocab,
+    Embedded, EmbeddingCaps, Engine, EngineError, EngineStats, FimTokens, FinishReason, GenEvent,
+    GenerateRequest, ModelInfo, PoolingKind, Reranked, SamplingParams, SlotAction, SlotReply,
+    TokenId, TokenProbs, Vocab,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -65,6 +66,9 @@ pub fn serve_script(prompt: &str) -> String {
 
 type Script = dyn Fn(&str) -> String + Send + Sync;
 
+/// An embedding request the fake saw: the tokens and the normalization mode.
+pub type EmbedCall = (Vec<TokenId>, i32);
+
 pub struct FakeEngine {
     models: Vec<ModelInfo>,
     vocab: Arc<Vocab>,
@@ -94,6 +98,14 @@ pub struct FakeEngine {
     pub bad_grammar_marker: &'static str,
     /// What `ready()` answers.
     pub ready: bool,
+    /// Serve embeddings with this pooling (`--embeddings`); `Rank` serves the rerank routes.
+    pub embeddings: Option<PoolingKind>,
+    /// The tokens and normalization mode of each embedding request, in order.
+    pub embedded: Arc<Mutex<Vec<EmbedCall>>>,
+    /// Slot actions are on (`--slot-save-path`); slots 0 and 1 exist.
+    pub slot_actions: bool,
+    /// The slot actions seen, in order.
+    pub slot_log: Arc<Mutex<Vec<(i32, SlotAction)>>>,
     fim: FimTokens,
 }
 
@@ -141,6 +153,10 @@ impl FakeEngine {
             params: Arc::default(),
             bad_grammar_marker: "BAD",
             ready: true,
+            embeddings: None,
+            embedded: Arc::default(),
+            slot_actions: false,
+            slot_log: Arc::default(),
             fim: FimTokens::default(),
         }
     }
@@ -212,6 +228,77 @@ impl FakeEngine {
 impl Engine for FakeEngine {
     fn models(&self) -> Vec<ModelInfo> {
         self.models.clone()
+    }
+
+    fn embedding_caps(&self, _model: &str) -> Option<EmbeddingCaps> {
+        self.embeddings.map(|pooling| EmbeddingCaps { pooling })
+    }
+
+    /// A pooled vector is `[tokens, sum of ids, 1]`; without pooling each token is `[id, index]`.
+    fn embed(
+        &self,
+        model: &str,
+        tokens: &[TokenId],
+        normalize: i32,
+    ) -> Result<Embedded, EngineError> {
+        self.check(model)?;
+        let pooling = self
+            .embeddings
+            .ok_or_else(|| EngineError::Invalid("no embeddings".into()))?;
+        self.embedded
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((tokens.to_vec(), normalize));
+        let vectors = if pooling == PoolingKind::None {
+            tokens
+                .iter()
+                .enumerate()
+                .map(|(i, &t)| vec![t as f32, i as f32])
+                .collect()
+        } else {
+            let sum: u32 = tokens.iter().sum();
+            vec![vec![tokens.len() as f32, sum as f32, 1.0]]
+        };
+        Ok(Embedded {
+            vectors,
+            tokens: tokens.len() as u32,
+        })
+    }
+
+    /// The score is the document's length in bytes.
+    fn rerank(&self, model: &str, query: &str, document: &str) -> Result<Reranked, EngineError> {
+        self.check(model)?;
+        Ok(Reranked {
+            score: document.len() as f32,
+            tokens: (query.len() + document.len()) as u32,
+        })
+    }
+
+    fn slot_actions(&self) -> bool {
+        self.slot_actions
+    }
+
+    fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotReply, EngineError> {
+        if !(0..2).contains(&id) {
+            return Err(EngineError::Invalid("Invalid slot ID".into()));
+        }
+        self.slot_log
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((id, action.clone()));
+        Ok(match action {
+            SlotAction::Save { .. } => SlotReply::Saved {
+                tokens: 7,
+                bytes: 70,
+                ms: 1.5,
+            },
+            SlotAction::Restore { .. } => SlotReply::Restored {
+                tokens: 7,
+                bytes: 70,
+                ms: 1.5,
+            },
+            SlotAction::Erase => SlotReply::Erased { tokens: 7 },
+        })
     }
 
     fn vocab(&self, model: &str) -> Result<Arc<Vocab>, EngineError> {

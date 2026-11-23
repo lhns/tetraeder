@@ -4,14 +4,20 @@
 //! through one private step function that times decode plus synchronize and feeds telemetry.
 
 mod config;
+mod embed;
 mod engine;
 mod stream;
 
-pub use config::{BufferOverride, ContextConfig, Placement, Sampling};
+pub use config::{
+    BufferOverride, ContextConfig, FFN_EXPS_REGEX, KV_CACHE_TYPES, Placement, Sampling,
+    cpu_moe_overrides, parse_kv_cache_type,
+};
+pub use embed::{EmbedConfig, Embedder, Embedding, normalize};
 pub use engine::{
     Engine, GenerateReport, GenerateRequest, Prompt, SeqEval, StopReason, TokenEvent,
 };
-pub use tetraeder_ggml_sys::llama::{FlashAttn, LoadMode, SplitMode, Token};
+pub use tetraeder_ggml_sys::ggml::Type as CacheType;
+pub use tetraeder_ggml_sys::llama::{FlashAttn, LoadMode, Pooling, SplitMode, Token};
 
 use tetraeder_ggml_sys::llama::LlamaError;
 

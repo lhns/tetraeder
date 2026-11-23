@@ -2370,25 +2370,31 @@ nodes:
   title: Expose libllama capabilities
   track: serving
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - tests/conformance/parity/cases.yaml
+  - docs/notes/llamacpp-parity.md
+  - docs/adr/0090-libllama-capabilities.md
+  - crates/gateway/tests/libllama_routes.rs
+  - crates/scheduler/tests/libllama_caps.rs
+  - crates/engine/tests/embed.rs
+  verdict_quote: '722 passed, 2 skipped in 95.36s (pytest, test ubuntu-24.04, CI run 45145783401); the group D cases pass against llama-server, none xfail'
+  headline: 'Group D: 7 of 8 rows done, model download refused'
   depends_on:
   - serving-parity-endpoints
   replaced_by: []
   lane: local
   start: 2026-11-23
-  end: ''
+  end: 2026-11-23
   folded: []
   overview: false
-  plain: Embeddings, rerank, KV cache types, context shift, slot save and restore and CPU-MoE flags, which libllama has and the gateway does not expose yet (ADR 0083, group D).
+  plain: Embeddings, rerank, KV cache types and offload, CPU-MoE, context shift and slot save and restore work on the libllama engine as in llama-server and the own builders refuse them with a pointer (ADR 0083 group D, ADR 0090); model download by name is refused, GET /slots and GPU runs are open.
 - id: serving-parity-owner-scope
   title: LoRA, multimodal, multi-model scope
   track: serving
   kind: owner-decision
-  state: blocked
+  state: next
   outcome: n/a
   evidence: []
   verdict_quote: ''

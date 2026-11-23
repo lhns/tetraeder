@@ -6,8 +6,9 @@ use crate::chat::{
 use crate::constraint::{ConstraintFactory, Reasoning};
 use crate::decode::StopMatcher;
 use crate::engine::{
-    Engine, FimTokens, GenerateRequest, GrammarSource, ModelInfo, SamplingExtras, SamplingParams,
-    TokenConstraint, TokenId, Vocab,
+    Embedded, EmbeddingCaps, Engine, FimTokens, GenerateRequest, GrammarSource, ModelInfo,
+    Reranked, SamplingExtras, SamplingParams, SlotAction, SlotReply, TokenConstraint, TokenId,
+    Vocab,
 };
 use crate::error::GatewayError;
 use crate::template::ChatTemplate;
@@ -49,6 +50,9 @@ pub struct GatewayConfig {
     /// The server's sampling defaults under llama-server's names, laid over llama.cpp's own
     /// defaults for `/props` and `generation_settings`.
     pub defaults: serde_json::Map<String, serde_json::Value>,
+    /// `--context-shift`: a generation may run past the context (the engine shifts it), so
+    /// `max_tokens` is not clamped to the room left.
+    pub context_shift: bool,
 }
 
 impl Default for GatewayConfig {
@@ -62,6 +66,7 @@ impl Default for GatewayConfig {
             api_keys: Vec::new(),
             metrics: false,
             defaults: serde_json::Map::new(),
+            context_shift: false,
         }
     }
 }
@@ -418,6 +423,51 @@ impl Gateway {
         Ok(self.engine.fim_tokens(&id))
     }
 
+    /// What the served model offers for embeddings and reranking; `None` without `--embeddings`
+    /// or `--reranking`.
+    pub fn embedding_caps(&self) -> Option<EmbeddingCaps> {
+        let id = self.model("").ok()?.id;
+        self.engine.embedding_caps(&id)
+    }
+
+    /// Embeds one input (blocking: run it off the async runtime).
+    pub fn embed(
+        &self,
+        model: &str,
+        tokens: &[TokenId],
+        normalize: i32,
+    ) -> Result<Embedded, GatewayError> {
+        let id = self.model(model)?.id;
+        self.engine
+            .embed(&id, tokens, normalize)
+            .map_err(|e| self.engine_err(e))
+    }
+
+    /// Scores one document against a query (blocking, like [`Gateway::embed`]).
+    pub fn rerank(
+        &self,
+        model: &str,
+        query: &str,
+        document: &str,
+    ) -> Result<Reranked, GatewayError> {
+        let id = self.model(model)?.id;
+        self.engine
+            .rerank(&id, query, document)
+            .map_err(|e| self.engine_err(e))
+    }
+
+    /// Whether `--slot-save-path` is on.
+    pub fn slot_actions(&self) -> bool {
+        self.engine.slot_actions()
+    }
+
+    /// Runs a slot action (blocking, like [`Gateway::embed`]).
+    pub fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotReply, GatewayError> {
+        self.engine
+            .slot_action(id, action)
+            .map_err(|e| self.engine_err(e))
+    }
+
     /// The prompt text a request renders to, without generating (`/apply-template`).
     pub fn render_prompt(&self, spec: &GenerateSpec) -> Result<String, GatewayError> {
         let st = self.state(&spec.model)?;
@@ -611,6 +661,15 @@ impl Gateway {
                 "n must be at most {slots}, the number of parallel slots"
             )));
         }
+        if let Some(s) = specs
+            .iter()
+            .find_map(|s| s.extra.slot)
+            .filter(|&s| s >= slots)
+        {
+            return Err(GatewayError::InvalidRequest(format!(
+                "Invalid slot ID: id_slot {s} is not below the {slots} parallel slots"
+            )));
+        }
         if n <= 1 {
             let mut out = Vec::with_capacity(n);
             for spec in specs {
@@ -698,6 +757,9 @@ impl Gateway {
                     "max_tokens must be at least 1".into(),
                 ));
             }
+            // With the context shift the request may outlive the context, as in llama-server.
+            Some(m) if self.cfg.context_shift => m,
+            None if self.cfg.context_shift => u32::MAX,
             // Clamped to the room left, as llama-server does.
             Some(m) => m.min(ctx - n_prompt),
             None => ctx - n_prompt,

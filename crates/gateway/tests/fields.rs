@@ -440,15 +440,30 @@ async fn unsupported_fields_are_rejected_unless_at_their_default() {
             assert_eq!(s, status, "{field}={value}: {v}");
         }
     }
-    // accepted and without effect: prefix reuse is automatic and there are no slots to pick
+    // accepted and without effect: prefix reuse is automatic. `id_slot` and `n_keep` act with the
+    // scheduler (ADR 0090); a slot that does not exist is a 400.
     let (s, _, v) = post(
         &app,
         "/v1/completions",
-        &json!({"model": "fake", "prompt": "x", "cache_prompt": false, "id_slot": 2, "n_keep": 4}),
+        &json!({"model": "fake", "prompt": "x", "cache_prompt": false, "id_slot": 0, "n_keep": 4}),
         false,
     )
     .await;
     assert_eq!(s, 200, "{v}");
+    let (s, _, v) = post(
+        &app,
+        "/v1/completions",
+        &json!({"model": "fake", "prompt": "x", "id_slot": 2}),
+        false,
+    )
+    .await;
+    assert_eq!(s, 400, "{v}");
+    assert!(
+        v["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid slot ID")
+    );
 }
 
 #[tokio::test]

@@ -5,6 +5,7 @@ use std::ops::ControlFlow;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tetraeder_ggml_sys::ggml::Type;
 use tetraeder_ggml_sys::llama::{
     self, Batch, Context, ContextParams, DeviceKind, Model, Sampler, ThreadPool, Token,
 };
@@ -99,6 +100,8 @@ pub struct Engine {
     lens: Vec<usize>,
     /// Batch indices of the outputs of the last `decode_seqs`, in input order.
     out_rows: Vec<i32>,
+    /// K and V cache types of the context, as built.
+    kv_types: (Type, Type),
 }
 
 /// One sequence's share of a [`Engine::decode_seqs`] step.
@@ -145,6 +148,9 @@ impl Engine {
             op_offload: cfg.op_offload,
             n_seq_max: cfg.n_seq_max.max(1),
             kv_unified: cfg.kv_unified,
+            offload_kqv: cfg.offload_kqv,
+            type_k: cfg.type_k,
+            type_v: cfg.type_v,
             ..ContextParams::default()
         };
         let mut ctx = Context::new(&model, &cparams)?;
@@ -187,6 +193,7 @@ impl Engine {
             rng: 0x9E37_79B9_7F4A_7C15,
             lens: vec![0; ctx_seqs],
             out_rows: Vec::new(),
+            kv_types: (cfg.type_k, cfg.type_v),
         })
     }
 
@@ -202,6 +209,11 @@ impl Engine {
     /// Whether steps are expected to run as CUDA graphs (layers offloaded to CUDA, not disabled by env).
     pub fn graphs(&self) -> bool {
         self.graphs
+    }
+
+    /// The K and V cache types of the context.
+    pub fn kv_types(&self) -> (Type, Type) {
+        self.kv_types
     }
 
     /// libllama's cumulative perf counters; `n_eval` and `n_reused` show how many decodes reused the graph.
@@ -321,6 +333,40 @@ impl Engine {
             self.ctx.memory_seq_cp(src, dst, 0, n as i32);
             self.lens[d] = n;
         }
+        Ok(())
+    }
+
+    /// Whether the memory can drop a middle range and move the rest (not a recurrent state).
+    pub fn can_shift(&self) -> bool {
+        self.ctx.can_shift()
+    }
+
+    /// The context shift: drops positions `keep..keep + discard` of `seq` and moves the later
+    /// ones down by `discard`, as llama-server does when a slot's context is full.
+    pub fn seq_shift(&mut self, seq: i32, keep: usize, discard: usize) -> Result<()> {
+        let i = self.seq_index(seq)?;
+        let len = self.lens[i];
+        if discard == 0 || keep + discard > len {
+            return Err(EngineError::InvalidRequest(format!(
+                "cannot shift {discard} positions after {keep} in a sequence of {len}"
+            )));
+        }
+        if !self.ctx.can_shift() {
+            return Err(EngineError::InvalidRequest(
+                "this model's memory cannot shift".into(),
+            ));
+        }
+        if !self
+            .ctx
+            .memory_seq_rm(seq, keep as i32, (keep + discard) as i32)
+        {
+            return Err(EngineError::InvalidRequest(
+                "libllama could not drop the range to shift out".into(),
+            ));
+        }
+        self.ctx
+            .memory_seq_add(seq, (keep + discard) as i32, -1, -(discard as i32));
+        self.lens[i] = len - discard;
         Ok(())
     }
 

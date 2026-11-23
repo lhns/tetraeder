@@ -7,6 +7,7 @@ mod detector_score;
 mod doctor;
 mod engine_args;
 mod info;
+mod llama_args;
 mod plan;
 mod quant;
 mod replan;
@@ -57,7 +58,7 @@ enum Command {
 }
 
 fn main() -> std::process::ExitCode {
-    let res = match Cli::parse().command {
+    let res = match Cli::parse_from(llama_args::rewrite(std::env::args_os())).command {
         Some(Command::Top(args)) => {
             top::run(&args);
             Ok(())

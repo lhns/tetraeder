@@ -243,6 +243,21 @@ def test_logprobs_mode_needs_entries_and_equal_length():
     assert any("logprobs: missing in tetraeder" in d for d in compare(case, ans(200, lp_body([e])), gone))
 
 
+def test_vectors_mode_allows_float_noise_but_not_other_numbers_or_sizes():
+    case = {"mode": "vectors", "vector_paths": ["data[0].embedding"]}
+    mk = lambda v: ans(200, {"data": [{"embedding": v}]})  # noqa: E731
+    assert compare(case, mk([0.1, 0.2]), mk([0.1004, 0.1996])) == []
+    assert "largest difference" in compare(case, mk([0.1, 0.2]), mk([0.1, 0.25]))[0]
+    assert "2 numbers" in compare(case, mk([0.1, 0.2]), mk([0.1]))[0]
+    # a list of per-token vectors is not the same as one flat vector with as many numbers
+    assert compare(case, mk([[0.1], [0.2]]), mk([0.1, 0.2]))
+    assert compare(case, mk([[0.1], [0.2]]), mk([[0.1], [0.2]])) == []
+    assert "no numbers" in compare(case, mk([]), mk([]))[0]
+    assert any("no numbers" in d for d in compare(case, mk([0.1]), mk("x")))
+    assert compare({"mode": "vectors"}, mk([0.1]), mk([0.1]))[0].startswith("the case lists no vector_paths")
+    assert compare({**case, "tolerance": 0.1}, mk([0.1, 0.2]), mk([0.1, 0.25])) == []
+
+
 # The case file: every row is an exact appendix row, every gap names a tree node.
 
 CASES = yaml.safe_load((HERE / "cases.yaml").read_text(encoding="utf-8"))["cases"]
@@ -258,10 +273,17 @@ def test_case_ids_are_unique():
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["id"])
 def test_case_fields(case):
-    assert case["group"] in "ABC"
+    assert case["group"] in "ABCD"
     assert case["row"] in ROWS, f"row {case['row']!r} is not a first cell of the appendix"
     assert re.fullmatch(r"(GET|POST) /\S*", case["endpoint"])
-    assert case["mode"] in {"status", "shape", "text", "logprobs", "stream", "exact"}
-    assert set(case["engines"]) <= {"auto", "dense", "moe"} and case["engines"]
+    assert case["mode"] in {"status", "shape", "text", "logprobs", "stream", "exact", "vectors"}
+    assert set(case["engines"]) <= {"auto", "dense", "moe", "llama-moe"} and case["engines"]
+    if case["mode"] == "vectors":
+        assert case["vector_paths"]
+    for step in case.get("setup", ()):
+        assert re.fullmatch(r"(GET|POST) /\S*", step["endpoint"])
+    if "tetraeder_refuses" in case:
+        # a refusal case starts no baseline and compares no answer; it names the text the refusal must carry
+        assert case["tetraeder_refuses"] and case.get("tetraeder_args")
     exp = case["expect"]
     assert exp == "pass" or (exp.startswith("gap ") and exp[4:] in NODES), exp

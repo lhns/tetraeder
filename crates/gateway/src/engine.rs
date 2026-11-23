@@ -41,6 +41,58 @@ pub struct FimTokens {
     pub bos: Option<TokenId>,
 }
 
+/// How an embedding server pools the token embeddings of an input (`--pooling`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolingKind {
+    /// One vector per token.
+    None,
+    Mean,
+    Cls,
+    Last,
+    /// A reranker: one score per input.
+    Rank,
+}
+
+/// What an engine started with `--embeddings` or `--reranking` offers (ADR 0090).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmbeddingCaps {
+    pub pooling: PoolingKind,
+}
+
+/// The embedding of one input: one vector, or one per token with pooling `None`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Embedded {
+    pub vectors: Vec<Vec<f32>>,
+    /// Tokens evaluated.
+    pub tokens: u32,
+}
+
+/// What `POST /slots/{id}?action=...` asks of a slot (ADR 0090).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SlotAction {
+    /// Write the slot's tokens and KV cache to `filename` in the slot save directory.
+    Save { filename: String },
+    /// Replace the slot's content with that file's.
+    Restore { filename: String },
+    /// Drop the slot's content.
+    Erase,
+}
+
+/// What a slot action did.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SlotReply {
+    Saved { tokens: u64, bytes: u64, ms: f64 },
+    Restored { tokens: u64, bytes: u64, ms: f64 },
+    Erased { tokens: u64 },
+}
+
+/// The score of one query and document pair.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Reranked {
+    pub score: f32,
+    pub tokens: u32,
+}
+
 /// The tokenizer's vocabulary as bytes per token id.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Vocab {
@@ -181,6 +233,12 @@ pub struct SamplingExtras {
     pub grammar: Option<GrammarSource>,
     /// Added to the seed (`n` above 1: choice `i` samples with seed + i, as llama-server does).
     pub seed_offset: u32,
+    /// Tokens kept when the context shifts (`n_keep`; negative: the whole prompt), and tokens
+    /// dropped (`n_discard`; 0 or `None`: half of what is left). `None`: the server default.
+    pub n_keep: Option<i32>,
+    pub n_discard: Option<u32>,
+    /// The slot (sequence) the request runs on (`id_slot`; `None`: the scheduler picks).
+    pub slot: Option<usize>,
 }
 
 /// What a request's grammar is written in.
@@ -350,6 +408,42 @@ pub trait Engine: Send + Sync + 'static {
     /// the receiver is dropped, and always ends with `Finished` or `Error` unless the
     /// receiver is gone.
     fn generate(&self, req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError>;
+    /// Present when the engine was started with `--embeddings` or `--reranking`; the routes
+    /// answer llama-server's "does not support" error without it.
+    fn embedding_caps(&self, _model: &str) -> Option<EmbeddingCaps> {
+        None
+    }
+    /// Embeds one input of token ids. `normalize` is llama.cpp's `embd_normalize` (-1 none, 0
+    /// int16 scale, 1 taxicab, 2 euclidean, above 2 p-norm); a pooled vector is normalized, a
+    /// per-token one is not, as in llama-server. Blocks: callers run it off the async runtime.
+    fn embed(
+        &self,
+        _model: &str,
+        _tokens: &[TokenId],
+        _normalize: i32,
+    ) -> Result<Embedded, EngineError> {
+        Err(EngineError::Invalid(
+            "this engine does not support embeddings".into(),
+        ))
+    }
+    /// Scores `document` against `query` with the reranker's head. Blocks like [`Engine::embed`].
+    fn rerank(&self, _model: &str, _query: &str, _document: &str) -> Result<Reranked, EngineError> {
+        Err(EngineError::Invalid(
+            "this engine does not support reranking".into(),
+        ))
+    }
+    /// Whether slot actions are on (`--slot-save-path`); the route answers llama-server's
+    /// "does not support slots action" without it.
+    fn slot_actions(&self) -> bool {
+        false
+    }
+    /// Runs a slot action on slot `id`, waiting for the slot to be idle. Blocks like
+    /// [`Engine::embed`].
+    fn slot_action(&self, _id: i32, _action: SlotAction) -> Result<SlotReply, EngineError> {
+        Err(EngineError::Invalid(
+            "this engine does not support slot actions".into(),
+        ))
+    }
     /// GBNF for a JSON schema (JSON text), built as llama-server builds it.
     fn json_schema_to_grammar(&self, _model: &str, _schema: &str) -> Result<String, EngineError> {
         Err(EngineError::Invalid(

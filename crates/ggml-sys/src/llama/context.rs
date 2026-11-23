@@ -54,6 +54,61 @@ pub enum FlashAttn {
     Off,
 }
 
+/// How libllama pools the per-token embeddings of a sequence (`--pooling`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pooling {
+    /// The model's own (its GGUF metadata; `None` when it has none).
+    Unspecified,
+    /// No pooling: one embedding per token.
+    None,
+    Mean,
+    Cls,
+    Last,
+    /// A reranker's classification head: one score per sequence.
+    Rank,
+}
+
+impl Pooling {
+    // bindgen types C enums as i32 on MSVC and u32 elsewhere, so the cast is needed off Windows.
+    #[allow(clippy::unnecessary_cast)]
+    fn raw(self) -> i32 {
+        (match self {
+            Pooling::Unspecified => sys::LLAMA_POOLING_TYPE_UNSPECIFIED,
+            Pooling::None => sys::LLAMA_POOLING_TYPE_NONE,
+            Pooling::Mean => sys::LLAMA_POOLING_TYPE_MEAN,
+            Pooling::Cls => sys::LLAMA_POOLING_TYPE_CLS,
+            Pooling::Last => sys::LLAMA_POOLING_TYPE_LAST,
+            Pooling::Rank => sys::LLAMA_POOLING_TYPE_RANK,
+        }) as i32
+    }
+
+    fn from_raw(v: i64) -> Pooling {
+        match v {
+            x if x == sys::LLAMA_POOLING_TYPE_NONE as i64 => Pooling::None,
+            x if x == sys::LLAMA_POOLING_TYPE_MEAN as i64 => Pooling::Mean,
+            x if x == sys::LLAMA_POOLING_TYPE_CLS as i64 => Pooling::Cls,
+            x if x == sys::LLAMA_POOLING_TYPE_LAST as i64 => Pooling::Last,
+            x if x == sys::LLAMA_POOLING_TYPE_RANK as i64 => Pooling::Rank,
+            _ => Pooling::Unspecified,
+        }
+    }
+}
+
+impl std::str::FromStr for Pooling {
+    type Err = String;
+    /// llama-server's `--pooling` names.
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        Ok(match s {
+            "none" => Pooling::None,
+            "mean" => Pooling::Mean,
+            "cls" => Pooling::Cls,
+            "last" => Pooling::Last,
+            "rank" => Pooling::Rank,
+            _ => return Err(format!("`{s}`: expected none, mean, cls, last or rank")),
+        })
+    }
+}
+
 /// Context parameters. `Default` is libllama's defaults (F16 K and V cache).
 #[derive(Debug, Clone)]
 pub struct ContextParams {
@@ -79,6 +134,12 @@ pub struct ContextParams {
     /// One KV buffer shared by all sequences (rows are found cell by cell) instead of one per
     /// sequence; `n_ctx` is then the pool for all of them.
     pub kv_unified: bool,
+    /// Extract embeddings (an embedding context; libllama's `embeddings`).
+    pub embeddings: bool,
+    pub pooling: Pooling,
+    /// Most outputs per sequence in a ubatch; 0 is libllama's default (`n_outputs_max`). One is
+    /// what pooled embeddings need.
+    pub n_outputs_max_per_seq: u32,
 }
 
 impl Default for ContextParams {
@@ -108,6 +169,9 @@ impl Default for ContextParams {
             type_v: Type::F16,
             n_seq_max: d.n_seq_max,
             kv_unified: d.kv_unified,
+            embeddings: d.embeddings,
+            pooling: Pooling::Unspecified,
+            n_outputs_max_per_seq: 0,
         }
     }
 }
@@ -161,6 +225,9 @@ impl Context {
         p.type_v = params.type_v.raw() as _;
         p.n_seq_max = params.n_seq_max;
         p.kv_unified = params.kv_unified;
+        p.embeddings = params.embeddings;
+        p.pooling_type = params.pooling.raw() as _;
+        p.n_outputs_max_per_seq = params.n_outputs_max_per_seq;
         // SAFETY: the model is live; the context keeps the Arc.
         let ptr = unsafe { sys::llama_init_from_model(model.ptr, p) };
         if ptr.is_null() {
@@ -347,6 +414,60 @@ impl Context {
             ));
         }
         Ok(n)
+    }
+
+    /// Moves positions `p0..p1` of sequence `seq` by `delta` (a negative `delta` after
+    /// [`Context::seq_rm`] closes the gap: the context shift). `p1 < 0` means to the end.
+    /// Only for memories that [`Context::can_shift`].
+    pub fn memory_seq_add(&mut self, seq: i32, p0: i32, p1: i32, delta: i32) {
+        // SAFETY: as `memory_clear`.
+        unsafe { sys::llama_memory_seq_add(sys::llama_get_memory(self.ptr), seq, p0, p1, delta) }
+    }
+
+    /// Whether positions can be removed from the middle and shifted (false for a recurrent
+    /// state or a cache without positional shift).
+    pub fn can_shift(&self) -> bool {
+        // SAFETY: as `memory_clear`.
+        unsafe { sys::llama_memory_can_shift(sys::llama_get_memory(self.ptr)) }
+    }
+
+    /// The pooling type the context runs with (the model's own when none was given).
+    pub fn pooling(&self) -> Pooling {
+        // SAFETY: live context.
+        Pooling::from_raw(unsafe { sys::llama_pooling_type(self.ptr) } as i64)
+    }
+
+    /// The embedding of output `i` of the last decode (`n_embd_out` floats): per token when the
+    /// pooling is `None`.
+    pub fn embeddings_ith(&mut self, i: i32) -> Result<&[f32]> {
+        self.check_output(i)?;
+        let n = self.model.n_embd_out();
+        // SAFETY: live context; the index was validated against the last batch; a non-null
+        // result points at `n_embd_out` floats owned by the context, valid until the next
+        // decode, which needs `&mut self` and so ends this borrow.
+        unsafe {
+            let p = sys::llama_get_embeddings_ith(self.ptr, i);
+            if p.is_null() {
+                return Err(LlamaError::NoLogits(i));
+            }
+            Ok(std::slice::from_raw_parts(p, n))
+        }
+    }
+
+    /// The pooled embedding of sequence `seq` from the last decode: `len` floats (`n_embd_out`,
+    /// or the classification head's outputs for the `Rank` pooling). Fails when the pooling is
+    /// `None` or the sequence had no output.
+    pub fn embeddings_seq(&mut self, seq: i32, len: usize) -> Result<&[f32]> {
+        // SAFETY: live context; a non-null result points at `len` floats (the caller names the
+        // size the pooling type produces) owned by the context, valid until the next decode,
+        // which needs `&mut self` and so ends this borrow.
+        unsafe {
+            let p = sys::llama_get_embeddings_seq(self.ptr, seq);
+            if p.is_null() {
+                return Err(LlamaError::NoLogits(seq));
+            }
+            Ok(std::slice::from_raw_parts(p, len))
+        }
     }
 
     pub fn set_threads(&mut self, n_threads: i32, n_threads_batch: i32) {

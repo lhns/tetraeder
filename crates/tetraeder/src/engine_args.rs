@@ -89,6 +89,7 @@ impl PlacementArgs {
             op_offload: true,
             n_seq_max: 1,
             kv_unified: true,
+            ..ContextConfig::default()
         }
     }
 }
