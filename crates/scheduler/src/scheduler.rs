@@ -12,6 +12,7 @@ use crate::slot_file;
 use crate::spec::{Drafter, Sampling, SpecConfig, Speculator};
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -19,7 +20,7 @@ use tetraeder_engine::{EmbedConfig, Embedder, Embedding, normalize};
 use tetraeder_gateway::engine::{
     DecodeProfile, Embedded, EmbeddingCaps, Engine, EngineError, EngineStats, FimTokens,
     FinishReason, GenEvent, GenerateRequest, ModelInfo, PoolingKind, Reranked, SamplingParams,
-    SlotAction, SlotReply, TokenConstraint, TokenId, TokenProbs, Vocab,
+    SlotAction, SlotReply, SlotWait, TokenConstraint, TokenId, TokenProbs, Vocab,
 };
 use tetraeder_ggml_sys::llama::{Model, Pooling};
 use tetraeder_telemetry::{Metrics, Purpose, Tier};
@@ -130,6 +131,8 @@ pub struct Scheduler {
     worker: std::thread::JoinHandle<()>,
     /// `--slot-save-path` is set.
     slot_actions: bool,
+    /// Slot actions queued or running, against [`MAX_SLOT_JOBS`].
+    slot_jobs: Arc<AtomicUsize>,
     /// The embedding context and its pooling; callers take the lock for the length of one input.
     embedder: Option<(Arc<Mutex<Embedder>>, Pooling)>,
 }
@@ -177,10 +180,17 @@ impl Scheduler {
                 let vocab = Arc::new(build_vocab(&loaded.tokenizer));
                 let _ = worker_vocab.set(Arc::clone(&vocab));
                 let n_ctx = loaded.backend.n_ctx_seq();
-                if context_shift && !loaded.backend.can_shift() {
-                    let _ = ready_tx.send(Err("--context-shift: this backend cannot shift a context (the own builders, a worker process, and models with a recurrent state or a cache without positional shift cannot); start without it".into()));
-                    return;
-                }
+                // As llama-server: a context that cannot shift (a recurrent state, a cache
+                // without positional shift) turns the option off with a warning.
+                let context_shift = context_shift && {
+                    let can = loaded.backend.can_shift();
+                    if !can {
+                        tracing::warn!(
+                            "--context-shift is not supported by this context (a recurrent                              state, a cache without positional shift, an own builder or a                              worker process), it is disabled"
+                        );
+                    }
+                    can
+                };
                 let spec = match spec_cfg
                     .map(|c| c.build_drafter(loaded.backend.n_vocab()).map(|d| (c, d)))
                     .transpose()
@@ -271,6 +281,7 @@ impl Scheduler {
             queue: Mutex::new(job_tx),
             worker,
             slot_actions,
+            slot_jobs: Arc::new(AtomicUsize::new(0)),
             embedder: embed_cell.get().cloned(),
         })
     }
@@ -363,22 +374,26 @@ impl Engine for Scheduler {
         self.slot_actions
     }
 
-    fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotReply, EngineError> {
+    fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotWait, EngineError> {
         if !self.slot_actions {
             return Err(EngineError::Invalid(
                 "This server does not support slots action. Start it with `--slot-save-path`"
                     .into(),
             ));
         }
-        let (reply, answer) = std_mpsc::channel();
+        let held = SlotPermit::take(&self.slot_jobs).ok_or(EngineError::Overloaded)?;
+        let (reply, answer) = tokio::sync::oneshot::channel();
         self.queue
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .send(Job::Slot(SlotJob { id, action, reply }))
+            .send(Job::Slot(SlotJob {
+                id,
+                action,
+                reply,
+                _held: held,
+            }))
             .map_err(|_| EngineError::Other("the engine worker has stopped".into()))?;
-        answer
-            .recv()
-            .map_err(|_| EngineError::Other("the engine worker has stopped".into()))?
+        Ok(answer)
     }
 
     fn embedding_caps(&self, _model: &str) -> Option<EmbeddingCaps> {
@@ -578,7 +593,36 @@ enum Job {
 struct SlotJob {
     id: i32,
     action: SlotAction,
-    reply: std_mpsc::Sender<Result<SlotReply, EngineError>>,
+    /// Closed when the client has gone: the job is then dropped without running.
+    reply: tokio::sync::oneshot::Sender<Result<SlotReply, EngineError>>,
+    _held: SlotPermit,
+}
+
+/// Most slot actions queued or running; more are answered 503 so they cannot pile up behind a
+/// busy slot.
+const MAX_SLOT_JOBS: usize = 16;
+
+/// Header and format name of a slot file, with room to spare.
+const SLOT_FILE_MARGIN: u64 = 1 << 20;
+
+/// One of the [`MAX_SLOT_JOBS`], given back when the job is answered or dropped.
+struct SlotPermit(Arc<AtomicUsize>);
+
+impl SlotPermit {
+    fn take(count: &Arc<AtomicUsize>) -> Option<Self> {
+        count
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                (n < MAX_SLOT_JOBS).then_some(n + 1)
+            })
+            .ok()
+            .map(|_| Self(Arc::clone(count)))
+    }
+}
+
+impl Drop for SlotPermit {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 /// A request from arrival to its last event. It goes back to the queue front on preemption with
@@ -1303,7 +1347,16 @@ impl Worker {
                         .is_some_and(|s| matches!(slots.get(s), Some(Slot::Live(_))))
             };
             let skip = self.waiting.iter().take_while(|r| waits(r)).count();
-            let held: Vec<Req> = self.waiting.drain(..skip).collect();
+            let mut held: Vec<Req> = Vec::new();
+            for r in self.waiting.drain(..skip).collect::<Vec<_>>() {
+                // A pinned request whose client went away must not wait for a slot that may
+                // run for minutes.
+                if !r.reading() && (r.cancel.is_cancelled() || r.tx.is_closed()) {
+                    self.end_unplaced(r, Ok(FinishReason::Cancelled));
+                } else {
+                    held.push(r);
+                }
+            }
             let more = self.admit_front();
             for r in held.into_iter().rev() {
                 self.waiting.push_front(r);
@@ -1415,13 +1468,15 @@ impl Worker {
                 self.hand_off(req, GenEvent::ContextExceeded(msg));
                 return true;
             }
+            // llama-server lets id_slot wrap around (`get_slot_by_id`: "allow id_slot to be out
+            // of bounds"), so 99 on two slots is slot 1.
             if let Some(s) = req.params.extra.slot
                 && s >= self.slots.len()
             {
-                let msg = format!("Invalid slot ID: {s} (slots 0 to {})", self.slots.len() - 1);
-                let req = self.waiting.pop_front().expect("front");
-                self.end_unplaced(req, Err(msg));
-                return true;
+                let wrapped = s % self.slots.len();
+                if let Some(r) = self.waiting.front_mut() {
+                    r.params.extra.slot = Some(wrapped);
+                }
             }
             if self.live_count() >= self.slots.len() {
                 return false;
@@ -1509,7 +1564,8 @@ impl Worker {
             .iter()
             .enumerate()
             .filter_map(|(i, s)| match s {
-                Slot::Live(x) if self.prefix_reuse && busy_ok => {
+                // A shifted sequence holds no prefix of a client's prompt.
+                Slot::Live(x) if self.prefix_reuse && busy_ok && !x.req.shifted => {
                     let held = x.fed.min(self.backend.seq_len(i as SeqId));
                     let n =
                         common_prefix(&x.req.toks[..held.min(x.req.toks.len())], &toks).min(last);
@@ -2328,7 +2384,8 @@ impl Worker {
             seq.req.outbox.clear();
             self.finish(id, FinishReason::Cancelled);
         } else if seq.req.stats.generated_tokens >= seq.req.params.max_tokens
-            || seq.fed >= self.n_ctx_seq
+            // A full context ends the request only without the shift, as in llama-server.
+            || (!self.ctx_shift && seq.fed >= self.n_ctx_seq)
         {
             self.finish(id, FinishReason::Length);
         }
@@ -2481,6 +2538,9 @@ impl Worker {
     /// Runs the slot actions whose slot is not running a request; the others wait.
     fn run_slot_jobs(&mut self) {
         for job in std::mem::take(&mut self.pending_slots) {
+            if job.reply.is_closed() {
+                continue;
+            }
             let slot = usize::try_from(job.id)
                 .ok()
                 .filter(|&i| i < self.slots.len());
@@ -2507,6 +2567,7 @@ impl Worker {
             .slot_dir
             .clone()
             .ok_or_else(|| EngineError::Invalid("slot actions are off".into()))?;
+        let fail_save = |e: std::io::Error| EngineError::Other(format!("Unable to save slot: {e}"));
         match action {
             SlotAction::Erase => {
                 let n = self.erase_slot(id);
@@ -2525,8 +2586,15 @@ impl Worker {
                         .map_err(|e| EngineError::Other(format!("Unable to save slot: {e}")))?
                 };
                 let file = slot_file::encode(&self.backend.kv_format(), &toks, &state);
-                std::fs::write(path(&dir, filename), &file)
-                    .map_err(|e| EngineError::Other(format!("Unable to save slot: {e}")))?;
+                // Written under another name and renamed, so a failed save never leaves a torn
+                // file where a good one was.
+                let tmp = dir.join(format!(".tetraeder-save-{}.tmp", std::process::id()));
+                if let Err(e) = std::fs::write(&tmp, &file)
+                    .and_then(|()| std::fs::rename(&tmp, path(&dir, filename)))
+                {
+                    let _ = std::fs::remove_file(&tmp);
+                    return Err(fail_save(e));
+                }
                 Ok(SlotReply::Saved {
                     tokens: toks.len() as u64,
                     bytes: file.len() as u64,
@@ -2536,7 +2604,26 @@ impl Worker {
             SlotAction::Restore { filename } => {
                 let fail =
                     |why: String| EngineError::Invalid(format!("Unable to restore slot: {why}"));
-                let data = std::fs::read(path(&dir, filename)).map_err(|e| fail(e.to_string()))?;
+                let file_path = path(&dir, filename);
+                let len = std::fs::metadata(&file_path)
+                    .map_err(|e| fail(e.to_string()))
+                    .and_then(|m| {
+                        m.is_file()
+                            .then_some(m.len())
+                            .ok_or_else(|| fail("not a regular file".into()))
+                    })?;
+                // A save is at most the KV bytes of a full slot, its tokens and a header; the
+                // row size is known once a sequence has been snapshotted.
+                let row = self.backend.kv_row_bytes();
+                if row > 0 {
+                    let cap = (row + 4) as u64 * self.n_ctx_seq as u64 + SLOT_FILE_MARGIN;
+                    if len > cap {
+                        return Err(fail(format!(
+                            "the file is {len} bytes, more than a slot holds"
+                        )));
+                    }
+                }
+                let data = std::fs::read(&file_path).map_err(|e| fail(e.to_string()))?;
                 let file = slot_file::decode(&data).map_err(fail)?;
                 let current = self.backend.kv_format();
                 if file.kv_format != current {

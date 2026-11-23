@@ -43,3 +43,7 @@ Spilling stays as decided. Point 4 changes: `take()` of a disk entry no longer r
 - An aborted read keeps its entry marked as reading until the reader has replied (the next `poll` reaps it). The reader frees the buffer itself when the read was given up. The entry is not evicted or deleted under the reader, and the read counts against the limit of two until it is done.
 - A spill that cannot make room, because the entries left are being read, is dropped; the disk budget is never exceeded.
 - A backend that cannot cut a suffix (a recurrent model) takes a RAM or disk entry only when the prompt starts with the whole entry (`best_whole`); a partial match would need a cut, and taking the entry first destroyed it for nothing.
+
+## Addendum 2026-11-23: stale files by pid
+
+Review 2: "older than this process" by file mtime breaks when the clock moves back. On Linux a startup tier now reads the pid in the file name: the file goes when `/proc/<pid>` is gone, and stays while that process runs (a second server, or this one). On Windows and other systems it stays the mtime rule: std has no liveness check and an `OpenProcess` call would need `unsafe` outside `ggml-sys` and `memory` (rule 7) or a new dependency. A name without a pid also falls back to the mtime rule.

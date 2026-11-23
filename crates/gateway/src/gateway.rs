@@ -6,9 +6,9 @@ use crate::chat::{
 use crate::constraint::{ConstraintFactory, Reasoning};
 use crate::decode::StopMatcher;
 use crate::engine::{
-    Embedded, EmbeddingCaps, Engine, FimTokens, GenerateRequest, GrammarSource, ModelInfo,
-    Reranked, SamplingExtras, SamplingParams, SlotAction, SlotReply, TokenConstraint, TokenId,
-    Vocab,
+    Embedded, EmbeddingCaps, Engine, EngineError, FimTokens, GenerateRequest, GrammarSource,
+    ModelInfo, Reranked, SamplingExtras, SamplingParams, SlotAction, SlotWait, TokenConstraint,
+    TokenId, Vocab,
 };
 use crate::error::GatewayError;
 use crate::template::ChatTemplate;
@@ -461,11 +461,17 @@ impl Gateway {
         self.engine.slot_actions()
     }
 
-    /// Runs a slot action (blocking, like [`Gateway::embed`]).
-    pub fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotReply, GatewayError> {
+    /// Queues a slot action; await the receiver for its answer. Dropping it cancels the action
+    /// if it has not started.
+    pub fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotWait, GatewayError> {
         self.engine
             .slot_action(id, action)
             .map_err(|e| self.engine_err(e))
+    }
+
+    /// Maps an engine error of a slot action to the gateway's.
+    pub fn slot_err(&self, e: EngineError) -> GatewayError {
+        self.engine_err(e)
     }
 
     /// The prompt text a request renders to, without generating (`/apply-template`).
@@ -651,7 +657,7 @@ impl Gateway {
     /// `extra.seed_offset` only; `n` above the parallel slots is rejected, as in llama-server.
     pub async fn generate_many(
         self: &Arc<Self>,
-        specs: Vec<GenerateSpec>,
+        mut specs: Vec<GenerateSpec>,
         op: Operation,
     ) -> Result<Vec<Generation>, GatewayError> {
         let n = specs.len();
@@ -661,14 +667,9 @@ impl Gateway {
                 "n must be at most {slots}, the number of parallel slots"
             )));
         }
-        if let Some(s) = specs
-            .iter()
-            .find_map(|s| s.extra.slot)
-            .filter(|&s| s >= slots)
-        {
-            return Err(GatewayError::InvalidRequest(format!(
-                "Invalid slot ID: id_slot {s} is not below the {slots} parallel slots"
-            )));
+        // llama-server wraps an id_slot out of bounds around the slots (`get_slot_by_id`).
+        for s in &mut specs {
+            s.extra.slot = s.extra.slot.map(|id| id % slots);
         }
         if n <= 1 {
             let mut out = Vec::with_capacity(n);
@@ -917,6 +918,12 @@ impl Gateway {
         };
         let parser = OutputParser::new(st.tool_format, tools, st.think, in_reasoning);
         Ok((Some(parser), constraint))
+    }
+
+    /// A generation slot held for the length of an embedding or rerank request, so those routes
+    /// queue and are refused like generation (503 when the queue is full).
+    pub async fn admit_auxiliary(&self) -> Result<OwnedSemaphorePermit, GatewayError> {
+        self.admit().await
     }
 
     async fn admit(&self) -> Result<OwnedSemaphorePermit, GatewayError> {

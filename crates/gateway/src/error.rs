@@ -43,7 +43,9 @@ impl GatewayError {
         }
     }
 
-    /// OpenAI error object: `{"error": {"message", "type", "param", "code"}}`.
+    /// OpenAI error object: `{"error": {"message", "type", "param", "code"}}`. `code` is
+    /// OpenAI's string where it has one, else the HTTP status as a number, as llama-server's
+    /// `format_error_response` puts it.
     pub fn openai_body(&self) -> serde_json::Value {
         let (ty, code) = match self {
             GatewayError::InvalidRequest(_) => ("invalid_request_error", None),
@@ -54,6 +56,7 @@ impl GatewayError {
             GatewayError::Overloaded { .. } => ("rate_limit_error", Some("rate_limit_exceeded")),
             GatewayError::Internal(_) => ("server_error", None),
         };
+        let code = code.map_or_else(|| json!(self.openai_status().as_u16()), |c| json!(c));
         json!({"error": {"message": self.to_string(), "type": ty, "param": null, "code": code}})
     }
 

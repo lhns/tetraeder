@@ -551,7 +551,8 @@ mod tests {
     fn files_of_an_earlier_run_are_removed_at_startup_and_ours_on_drop() {
         let dir = TmpDir::new("cleanup");
         std::fs::create_dir_all(&dir.0).unwrap();
-        let old = dir.0.join("tetraeder-prefix-1-0.tkv");
+        // The pid of a process that is not running (Linux reads it from the name).
+        let old = dir.0.join("tetraeder-prefix-4294967295-0-0.tkv");
         std::fs::write(&old, b"old").unwrap();
         // Written by a process that is gone: older than this one.
         std::fs::File::options()
@@ -671,14 +672,21 @@ mod tests {
         c.abort_restore(r);
         gate.open();
         let t0 = std::time::Instant::now();
-        while pool.stats().recycled == before && t0.elapsed().as_secs() < 30 {
+        // The reader recycles the buffer before it replies; the entry is offered again only once
+        // the abort has been reaped, so wait for both.
+        let found = loop {
             c.flush_disk();
+            if pool.stats().recycled > before
+                && let Some(found) = c.best(F, &seq(3, 0))
+            {
+                break found;
+            }
+            assert!(t0.elapsed().as_secs() < 30, "the abort was not reaped");
             std::thread::sleep(Duration::from_millis(2));
-        }
-        assert!(pool.stats().recycled > before, "the buffer went back");
+        };
         assert_eq!(dir.files(), files, "the file was not consumed");
         // The entry can be restored later.
-        let (i, n) = c.best(F, &seq(3, 0)).unwrap();
+        let (i, n) = found;
         assert_eq!((n, c.source(i)), (3, "disk"));
         assert_eq!(restore(&mut c, i).0.map(|(t, _)| t), Some(seq(3, 0)));
     }

@@ -433,13 +433,39 @@ fn remove_files(dir: &Path, remove: impl Fn(&str, &fs::DirEntry) -> bool) {
     }
 }
 
-/// Removes the cache files in `dir` last written before `start`: an earlier process's.
+/// Removes the cache files in `dir` that an earlier process left. On Linux a file belongs to
+/// the process whose pid its name carries: it goes when that process is gone, and stays while it
+/// runs (a second server on the directory, or ours). Elsewhere, and for a name without a pid,
+/// the rule is the file's last write before `start`: an earlier process's. A wall clock moved
+/// back can keep a stale file or remove a live one there; std has no portable liveness check
+/// and `unsafe` is not allowed outside `ggml-sys` and `memory`.
 fn remove_stale(dir: &Path, start: SystemTime) {
-    remove_files(dir, |_, f| {
+    remove_files(dir, |name, f| {
+        if let Some(gone) = owner_gone(name) {
+            return gone;
+        }
         f.metadata()
             .and_then(|m| m.modified())
             .is_ok_and(|t| t < start)
     });
+}
+
+/// Whether the process that wrote `name` is gone; `None` when this platform or the name cannot
+/// tell.
+#[cfg(target_os = "linux")]
+fn owner_gone(name: &str) -> Option<bool> {
+    let pid: u32 = name
+        .strip_prefix(FILE_PREFIX)?
+        .split('-')
+        .next()?
+        .parse()
+        .ok()?;
+    Some(pid != std::process::id() && !Path::new("/proc").join(pid.to_string()).exists())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn owner_gone(_name: &str) -> Option<bool> {
+    None
 }
 
 /// Removes the files of one tier (names starting with `prefix`).

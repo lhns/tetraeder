@@ -43,7 +43,7 @@ flowchart TB
     bench_phase8_exit("⏸ Phase 8 exit: parity<br/>per backend")
     bench_phase9_exit("⏸ Phase 9 exit:<br/>feature tests")
     bench_spec_rerun("⏸ Speculative rerun<br/>with a draft pair")
-    bench_regression_gate("⛔ Regression gate on<br/>final main")
+    bench_regression_gate("○ Regression gate on<br/>final main")
     bench_strata_pairing("⏸ Pair against the<br/>Strata engine")
     bench_d1_session("⏸ Session on a 48 GB<br/>box")
     bench_open_records("⏸ Box checks for open<br/>design records")
@@ -133,8 +133,8 @@ flowchart TB
     class bench_m1_point1,bench_m1_point3 vsucc
     class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b mixed
     class bench_v4b_verdict dead
-    class bench_30b_c4_gap,bench_235b_stream_predict next
-    class bench_phase6_rehearsal,bench_phase6_exit,bench_phase7_exit,bench_regression_gate blocked
+    class bench_30b_c4_gap,bench_235b_stream_predict,bench_regression_gate next
+    class bench_phase6_rehearsal,bench_phase6_exit,bench_phase7_exit blocked
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
 ```
 <!-- END GENERATED: track-bench -->
@@ -185,7 +185,7 @@ flowchart TB
 | `bench-phase9-exit` | Phase 9 exit: feature tests | session | none | parked | unrated |  |  | multi-context-parallel, serving-multi-model, serving-multi-lora, serving-auth-quotas, serving-multimodal, ops-packages, engine-bitnet-builder, planner-low-bit-formats |  |  |  |  |
 | `bench-spec-rerun` | Speculative rerun with a draft pair | session | box-later | parked | unrated |  |  | serving-spec-batching |  |  |  |  |
 | `bench-strata-q36` | Strata against llama-server on Qwen3.6 | experiment | box-later | done | unrated | 2026-11-23 | 2026-11-23 | bench-harness |  |  | Strata c1 1.503x, c4 0.837x | bench/results/strata-q36-20261123/README.md; bench/results/strata-q36-20261123/summary.json |
-| `bench-regression-gate` | Regression gate on final main | session | box-later | blocked | unrated |  |  | ops-review-group-d |  |  |  |  |
+| `bench-regression-gate` | Regression gate on final main | session | box-later | next | unrated |  |  | ops-review-group-d |  |  |  |  |
 | `bench-strata-pairing` | Pair against the Strata engine | session | box-later | parked | unrated |  |  | engine-qwen35moe-builder |  |  |  |  |
 | `bench-d1-session` | Session on a 48 GB box | session | box-later | parked | unrated |  |  | planner-fill-tier, memory-io-service |  |  |  |  |
 | `bench-open-records` | Box checks for open design records | session | box-later | parked | unrated |  |  | memory-adaptive-tier, ops-telemetry, bench-ttft |  |  |  |  |

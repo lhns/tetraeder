@@ -78,6 +78,9 @@ pub enum SlotAction {
     Erase,
 }
 
+/// The answer to a queued slot action.
+pub type SlotWait = tokio::sync::oneshot::Receiver<Result<SlotReply, EngineError>>;
+
 /// What a slot action did.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SlotReply {
@@ -437,9 +440,10 @@ pub trait Engine: Send + Sync + 'static {
     fn slot_actions(&self) -> bool {
         false
     }
-    /// Runs a slot action on slot `id`, waiting for the slot to be idle. Blocks like
-    /// [`Engine::embed`].
-    fn slot_action(&self, _id: i32, _action: SlotAction) -> Result<SlotReply, EngineError> {
+    /// Queues a slot action on slot `id`; it runs once the slot is idle and its answer comes on
+    /// the returned receiver. Dropping the receiver cancels the action if it has not started.
+    /// `Overloaded` when too many actions are queued.
+    fn slot_action(&self, _id: i32, _action: SlotAction) -> Result<SlotWait, EngineError> {
         Err(EngineError::Invalid(
             "this engine does not support slot actions".into(),
         ))

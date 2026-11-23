@@ -304,6 +304,7 @@ flowchart TB
 | Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
 | Sampler parity with llama-server | ✔ done · successful | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |
+| Close the known parity gaps | ○ next | The audit of ADR 0083 decision 6 found requests that work on llama-server and differ here, each now a strict gap case; json_object and json_schema response_format with llama-server's own grammar, forced tool_choice, continue_final_message with add_generation_prompt and prefill_assistant on the chat routes, the input_tokens routes, GET /slots and prompt arrays on /v1/completions; reasoning_budget_tokens, reasoning_format and the reasoning control route are open too, but the tiny fixture has no thinking template to show them. |
 | Several models at once | ⏸ parked | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). |
 | Swap and batch LoRA adapters | ⏸ parked | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). |
 | Priorities, quotas and auth | ⏸ parked | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). |
@@ -339,13 +340,12 @@ flowchart TB
 | Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
-| Regression gate on final main | ⛔ blocked | One box session pairs this morning's build (f68d2a0) against main on the 30B and 8B at c1 and c4 with TTFT, under the 0.98 rule, and runs the conformance suite on CUDA, the Qwen3.6 default-flag rerun and the paired runs for kv auto and the disk prefix tier. |
+| Regression gate on final main | ○ next | One box session pairs this morning's build (f68d2a0) against main on the 30B and 8B at c1 and c4 with TTFT, under the 0.98 rule, and runs the conformance suite on CUDA, the Qwen3.6 default-flag rerun and the paired runs for kv auto and the disk prefix tier. |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
-| Review group D and the fixes | ○ next | A second review of the code merged after the first review (group D and the review fixes), plus the flaky disk-read test, a check that every parity row has a case or a scope-out, and the per-token cost of logprobs and the greedy fast path. |
 | Transport between machines | ○ next | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
 | Plans and predictions across nodes | ○ next | The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091). |
 | Node certificates and trust rules | ⛔ blocked | Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20). |
@@ -364,10 +364,10 @@ flowchart TB
 <!-- BEGIN GENERATED: ready-now -->
 **local**
 
+- `serving-parity-remaining`: Close the known parity gaps
 - `memory-kv-host`: KV cache partly in RAM
 - `planner-ep-split`: Expert-parallel split on two GPUs
 - `serving-mtp-libllama`: MTP drafts through libllama
-- `ops-review-group-d`: Review group D and the fixes
 
 **ci**
 
@@ -379,6 +379,7 @@ flowchart TB
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
 - `bench-235b-stream-predict`: Predict the 235B on one box
+- `bench-regression-gate`: Regression gate on final main
 
 **cluster**
 
@@ -422,7 +423,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 109 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 110 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -810,6 +811,7 @@ Generated on 2026-11-23.
 - `memory-kv-auto`: Planner picks the KV format (✔ done · unrated). serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.
 - `memory-prefix-disk-async`: Disk prefix restore off the step (✔ done · unrated). A prefix restored from disk is now read in the background while the waiting request queues without a slot, so other sequences keep decoding (ADR 0087 addendum); no speed number yet.
 - `memory-prefix-ssd`: Prefix cache spills to SSD (✔ done · unrated). Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
+- `ops-review-group-d`: Review group D and the fixes (✔ done · unrated). The second review of group D found 11 findings, 10 fixed and 1 dropped with evidence (the pin does not truncate over-long prompts under context shift), and the audit of ADR 0083 decision 6 covers all 165 appendix rows, 75 with a case, 74 scoped out and 16 covered by unit tests, with 6 strict gap cases under serving-parity-remaining; CI run 45256815014 ran the parity suite at 795 passed, 2 skipped and 6 xfailed.
 - `ops-review-parity-batch`: Review the parity batch (✔ done · unrated). A fresh reviewer read the code seven workers merged on 2026-11-23 and found 14 bugs; 13 are fixed (unbounded n, recurrent prefix entries destroyed, disk tier files deleted by a replan, aborted reads, disk budget, cut streams, completions default, top_k, penalty windows, empty key file, seeds, native logprob trim), one already matched llama-server, and five duplicated helpers were merged.
 - `planner-low-ram-modes`: Experts on GPU and SSD only (✔ done · unrated). On a 235B layout the planner has no plan without a RAM expert tier (builder floor of top-k slots per layer, CPU placement needs all weights in RAM); it refuses and names the tier, and ram_slots 0 stays unplanned.
 - `serving-parity-endpoints`: Endpoint parity (✔ done · successful). Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open.
@@ -850,8 +852,8 @@ Each track has its own page with its tree, node table and per-node details.
 - [memory - memory and streaming](roadmap/tracks/memory.md): 17 nodes (11 done, 1 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 29 nodes (20 done, 1 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (32 done, 2 next, 6 blocked, 6 parked, 1 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 15 nodes (12 done, 1 next, 2 parked)
+- [serving - serving](roadmap/tracks/serving.md): 30 nodes (20 done, 2 next, 1 blocked, 7 parked)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (32 done, 3 next, 5 blocked, 6 parked, 1 abandoned)
+- [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (3 done, 2 next, 8 blocked, 1 parked)
 <!-- END GENERATED: tracks -->

@@ -287,3 +287,56 @@ def test_case_fields(case):
         assert case["tetraeder_refuses"] and case.get("tetraeder_args")
     exp = case["expect"]
     assert exp == "pass" or (exp.startswith("gap ") and exp[4:] in NODES), exp
+
+
+# The converse (ADR 0083 decision 6): every appendix row has a case, a scope-out, or a unit-test entry.
+
+NOTE = (ROOT / "docs" / "notes" / "llamacpp-parity.md").read_text(encoding="utf-8")
+
+
+def table_rows(text: str) -> list[list[str]]:
+    """Rows of the markdown tables in `text` as cell lists, without header and separator lines."""
+    rows, lines = [], text.splitlines()
+    for i, line in enumerate(lines):
+        if not line.startswith("| "):
+            continue
+        if i + 1 < len(lines) and re.match(r"^\|[-| :]+\|$", lines[i + 1]):
+            continue  # header line
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", line.strip()[1:-1])]
+        if all(set(c) <= set("-: ") for c in cells):
+            continue  # separator
+        rows.append(cells)
+    return rows
+
+
+def section(title: str) -> str:
+    m = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## )", NOTE, re.M | re.S)
+    assert m, f"section {title!r} missing in the matrix"
+    return m.group(1)
+
+
+APPENDIX_ROWS = [r[0] for r in table_rows(MATRIX)]
+SCOPED_OUT = {r[0]: r for r in table_rows(section("Scoped out (ADR 0083)"))}
+UNIT_TESTED = {r[0]: r for r in table_rows(section("Covered by unit tests"))}
+CASE_ROWS = {c["row"] for c in CASES}
+
+
+def test_every_appendix_row_has_a_case_a_scope_out_or_a_unit_test():
+    open_rows = [r for r in APPENDIX_ROWS if r not in CASE_ROWS and r not in SCOPED_OUT and r not in UNIT_TESTED]
+    assert not open_rows, f"{len(open_rows)} rows without case, scope-out or unit test: {open_rows}"
+
+
+def test_scope_outs_and_unit_tests_name_appendix_rows_and_exist():
+    rows = set(APPENDIX_ROWS)
+    for name in {**SCOPED_OUT, **UNIT_TESTED}:
+        if name in ("Speed", "GCP compatibility routes"):
+            continue
+        assert name in rows, f"{name!r} is not a first cell of the appendix"
+    for name, cells in UNIT_TESTED.items():
+        assert len(cells) >= 2 and cells[1], name
+        paths = [p for p in re.findall(r"`([^`]+)`", cells[1]) if "/" in p]
+        assert paths, f"{name!r} names no test file"
+        for path in paths:
+            assert (ROOT / path.split("::")[0]).exists(), f"{name!r}: {path} does not exist"
+    for name, cells in SCOPED_OUT.items():
+        assert len(cells) >= 2 and cells[1], f"{name!r} has no reason"

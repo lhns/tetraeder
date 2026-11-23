@@ -8,7 +8,7 @@
 use crate::engine::{
     Embedded, EmbeddingCaps, Engine, EngineError, EngineStats, FimTokens, FinishReason, GenEvent,
     GenerateRequest, ModelInfo, PoolingKind, Reranked, SamplingParams, SlotAction, SlotReply,
-    TokenId, TokenProbs, Vocab,
+    SlotWait, TokenId, TokenProbs, Vocab,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -110,6 +110,29 @@ pub struct FakeEngine {
 }
 
 impl FakeEngine {
+    fn slot_now(&self, id: i32, action: SlotAction) -> Result<SlotReply, EngineError> {
+        if !(0..2).contains(&id) {
+            return Err(EngineError::Invalid("Invalid slot ID".into()));
+        }
+        self.slot_log
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((id, action.clone()));
+        Ok(match action {
+            SlotAction::Save { .. } => SlotReply::Saved {
+                tokens: 7,
+                bytes: 70,
+                ms: 1.5,
+            },
+            SlotAction::Restore { .. } => SlotReply::Restored {
+                tokens: 7,
+                bytes: 70,
+                ms: 1.5,
+            },
+            SlotAction::Erase => SlotReply::Erased { tokens: 7 },
+        })
+    }
+
     /// One model `fake` with the ChatML template, 4096 tokens of context, and a script.
     pub fn new(script: impl Fn(&str) -> String + Send + Sync + 'static) -> Self {
         Self::with_template(Some(CHATML_TEMPLATE.to_owned()), script)
@@ -278,27 +301,10 @@ impl Engine for FakeEngine {
         self.slot_actions
     }
 
-    fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotReply, EngineError> {
-        if !(0..2).contains(&id) {
-            return Err(EngineError::Invalid("Invalid slot ID".into()));
-        }
-        self.slot_log
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push((id, action.clone()));
-        Ok(match action {
-            SlotAction::Save { .. } => SlotReply::Saved {
-                tokens: 7,
-                bytes: 70,
-                ms: 1.5,
-            },
-            SlotAction::Restore { .. } => SlotReply::Restored {
-                tokens: 7,
-                bytes: 70,
-                ms: 1.5,
-            },
-            SlotAction::Erase => SlotReply::Erased { tokens: 7 },
-        })
+    fn slot_action(&self, id: i32, action: SlotAction) -> Result<SlotWait, EngineError> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = tx.send(self.slot_now(id, action));
+        Ok(rx)
     }
 
     fn vocab(&self, model: &str) -> Result<Arc<Vocab>, EngineError> {

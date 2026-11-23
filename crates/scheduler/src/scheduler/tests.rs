@@ -940,3 +940,209 @@ fn a_rerank_pair_without_a_template_is_the_query_and_the_document() {
     .concat();
     assert_eq!(rerank_tokens(&m, "Hello", "world").unwrap(), want);
 }
+
+// ---- review 2 (ADR 0090 addendum) ----
+
+/// A drafter that knows the fake backend's next token, so every draft is accepted.
+struct Oracle;
+
+impl Drafter for Oracle {
+    fn draft(&mut self, history: &[i32], max: usize) -> Result<Vec<i32>, crate::spec::SpecError> {
+        let mut h = history.to_vec();
+        let mut out = Vec::new();
+        for _ in 0..max {
+            let l = fake::logits_for(N_VOCAB, &h);
+            let t = (0..l.len()).fold(0, |b, i| if l[i] > l[b] { i } else { b }) as i32;
+            h.push(t);
+            out.push(t);
+        }
+        Ok(out)
+    }
+    fn method(&self) -> &'static str {
+        "oracle"
+    }
+}
+
+// hardware: none
+#[test]
+fn a_full_context_does_not_end_a_shifting_request_that_speculates() {
+    let kv = FakeKv::new(N_VOCAB, 1, 16, 16).with_shift();
+    let mut w = worker(kv);
+    w.ctx_shift = true;
+    let cfg = SpecConfig {
+        method: crate::spec::SpecMethod::Ngram(crate::spec::NgramDrafter::default()),
+        len: crate::spec::DraftLen::Fixed(4),
+        max_batch: 1,
+    };
+    w.set_spec(&cfg, Box::new(Oracle));
+    let mut rx = submit(&mut w, &prompt(1, 6), 60);
+    pump(&mut w);
+    // The drafts that fill the cache to its last row used to end the request with Length.
+    assert_eq!(finished(&events(&mut rx)), (FinishReason::Length, 60));
+}
+
+// hardware: none
+#[test]
+fn a_cancelled_pinned_request_leaves_the_queue_while_its_slot_runs() {
+    let kv = FakeKv::new(N_VOCAB, 2, 256, 512);
+    let mut w = worker(kv);
+    let _a = submit(&mut w, &prompt(1, 20), 100_000);
+    let (mut r, mut rx) = req(&prompt(2, 10), 5);
+    r.params.extra.slot = Some(0);
+    let cancel = r.cancel.clone();
+    w.waiting.push_back(r);
+    for _ in 0..3 {
+        w.admit();
+        w.step();
+    }
+    assert!(matches!(w.slots[0], Slot::Live(_)));
+    assert_eq!(w.waiting.len(), 1, "pinned behind the running request");
+    cancel.cancel();
+    w.admit();
+    assert!(w.waiting.is_empty());
+    assert!(matches!(
+        events(&mut rx).last(),
+        Some(GenEvent::Finished {
+            reason: FinishReason::Cancelled,
+            ..
+        })
+    ));
+    assert!(
+        matches!(w.slots[0], Slot::Live(_)),
+        "the other request runs on"
+    );
+}
+
+// hardware: none
+#[test]
+fn a_shifted_live_sequence_is_not_a_copy_source() {
+    let kv = FakeKv::new(N_VOCAB, 2, 64, 128).with_shift();
+    let probe = kv.probe();
+    let mut w = worker(kv);
+    w.ctx_shift = true;
+    let _a = submit(&mut w, &prompt(1, 40), 100_000);
+    let mut shifted = false;
+    for _ in 0..200 {
+        w.admit();
+        w.step();
+        shifted = matches!(&w.slots[0], Slot::Live(s) if s.req.shifted);
+        if shifted {
+            break;
+        }
+    }
+    assert!(shifted, "the first request shifted");
+    // A prompt that is the first 30 tokens the shifted sequence now holds.
+    let held = match &w.slots[0] {
+        Slot::Live(s) => s.req.toks[..30]
+            .iter()
+            .map(|&t| t as u32)
+            .collect::<Vec<_>>(),
+        _ => unreachable!(),
+    };
+    let _b = submit(&mut w, &held, 3);
+    w.admit();
+    assert!(probe.seq_cps.lock().unwrap().is_empty(), "no copy");
+}
+
+// hardware: none
+#[test]
+fn a_slot_job_whose_client_left_is_dropped_not_kept_waiting() {
+    let kv = FakeKv::new(N_VOCAB, 1, 256, 256);
+    let mut w = worker(kv);
+    let _a = submit(&mut w, &prompt(1, 20), 100_000);
+    for _ in 0..3 {
+        w.admit();
+        w.step();
+    }
+    assert!(matches!(w.slots[0], Slot::Live(_)));
+    let count = Arc::new(AtomicUsize::new(0));
+    let job = |count: &Arc<AtomicUsize>| {
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        let held = SlotPermit::take(count).expect("a permit");
+        (
+            SlotJob {
+                id: 0,
+                action: SlotAction::Erase,
+                reply,
+                _held: held,
+            },
+            rx,
+        )
+    };
+    let (gone, rx) = job(&count);
+    let (waiting, _rx) = job(&count);
+    drop(rx);
+    w.pending_slots.push(gone);
+    w.pending_slots.push(waiting);
+    w.run_slot_jobs();
+    assert_eq!(w.pending_slots.len(), 1, "only the one with a client waits");
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+}
+
+// hardware: none
+#[test]
+fn slot_jobs_are_capped() {
+    let count = Arc::new(AtomicUsize::new(0));
+    let held: Vec<_> = (0..MAX_SLOT_JOBS)
+        .map(|_| SlotPermit::take(&count).expect("under the cap"))
+        .collect();
+    assert!(SlotPermit::take(&count).is_none());
+    drop(held);
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+    assert!(SlotPermit::take(&count).is_some());
+}
+
+fn slot_dir(name: &str) -> std::path::PathBuf {
+    let d = std::env::temp_dir().join(format!("tetraeder-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&d).expect("temp dir");
+    d
+}
+
+// hardware: none
+#[test]
+fn a_restore_refuses_a_directory_and_a_file_larger_than_a_slot() {
+    let dir = slot_dir("restore-guards");
+    let mut w = worker(FakeKv::new(N_VOCAB, 1, 16, 16));
+    w.slot_dir = Some(dir.clone());
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    let restore = |name: &str| SlotAction::Restore {
+        filename: name.into(),
+    };
+    let err = |w: &mut Worker, name: &str| match w.slot_action(0, &restore(name)) {
+        Err(EngineError::Invalid(m)) => m,
+        other => panic!("{other:?}"),
+    };
+    assert!(err(&mut w, "sub").contains("not a regular file"));
+    // The fake's rows are 4 bytes, so a slot of 16 holds far less than 2 MiB.
+    std::fs::write(dir.join("big.bin"), vec![0u8; 2 << 20]).unwrap();
+    assert!(err(&mut w, "big.bin").contains("more than a slot holds"));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+// hardware: none
+#[test]
+fn a_save_is_written_whole_under_its_name_and_leaves_no_temp_file() {
+    let dir = slot_dir("save-atomic");
+    let mut w = worker(FakeKv::new(N_VOCAB, 1, 64, 64));
+    w.slot_dir = Some(dir.clone());
+    std::fs::write(dir.join("s.bin"), b"old").unwrap();
+    let save = SlotAction::Save {
+        filename: "s.bin".into(),
+    };
+    let Ok(SlotReply::Saved { bytes, .. }) = w.slot_action(0, &save) else {
+        panic!("not saved")
+    };
+    assert_eq!(std::fs::metadata(dir.join("s.bin")).unwrap().len(), bytes);
+    let names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    // A save that cannot be renamed into place leaves nothing behind either.
+    std::fs::remove_file(dir.join("s.bin")).unwrap();
+    std::fs::create_dir(dir.join("s.bin")).unwrap();
+    assert!(w.slot_action(0, &save).is_err());
+    let left = std::fs::read_dir(&dir).unwrap().count();
+    assert_eq!(left, 1, "only the directory stays");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
