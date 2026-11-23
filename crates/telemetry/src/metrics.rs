@@ -183,6 +183,7 @@ pub struct Metrics {
     prefix_save: Histogram<f64>,
     prefix_save_buffers: Counter<u64>,
     prefix_save_skipped: Counter<u64>,
+    prefix_fallbacks: Counter<u64>,
     prefix_placed_free: Counter<u64>,
     prefix_spares: Gauge<u64>,
     prefix_spare_bytes: Gauge<u64>,
@@ -455,6 +456,13 @@ impl Metrics {
                 .with_unit("{save}")
                 .with_description(
                     "Saves skipped because a continuation reused its idle sequence in place and cut little of it (ADR 0074)",
+                )
+                .build(),
+            prefix_fallbacks: meter
+                .u64_counter("tetraeder.kv.prefix.fallbacks")
+                .with_unit("{request}")
+                .with_description(
+                    "Requests whose prefix reuse fell back to clearing the sequence and prefilling the whole prompt, by reason (cannot_drop: the KV memory of a recurrent model cannot drop a suffix)",
                 )
                 .build(),
             prefix_placed_free: meter
@@ -899,6 +907,13 @@ impl Metrics {
     /// (`small_cut`) or only its own output (`own_output`).
     pub fn kv_prefix_save_skipped(&self, reason: &'static str) {
         self.prefix_save_skipped
+            .add(1, &[KeyValue::new("tetraeder.reason", reason)]);
+    }
+
+    /// One request whose prefix reuse fell back to a full prefill: the memory could not drop
+    /// the suffix (`cannot_drop`).
+    pub fn kv_prefix_fallback(&self, reason: &'static str) {
+        self.prefix_fallbacks
             .add(1, &[KeyValue::new("tetraeder.reason", reason)]);
     }
 

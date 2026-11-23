@@ -24,6 +24,7 @@ flowchart TB
     serving_parity_harness["✔ llama-server<br/>conformance harness"]
     serving_parity_sampling["✔ Sampler parity with<br/>llama-server"]
     serving_parity_fields["✔ Request field parity"]
+    serving_recurrent_reuse>"✔ Recurrent models<br/>break slot reuse"]
     serving_parity_endpoints["○ Endpoint parity"]
     serving_parity_libllama["⛔ Expose libllama<br/>capabilities"]
     serving_multi_model["⏸ Several models at<br/>once"]
@@ -32,7 +33,6 @@ flowchart TB
     serving_multimodal["⏸ Multimodal input and<br/>embeddings"]
     serving_self_spec["⏸ Low-bit copy drafts<br/>for itself"]
     serving_mtp_drafts["⏸ Drafts from built-in<br/>MTP heads"]
-    serving_recurrent_reuse>"⚠ Recurrent models<br/>break slot reuse"]
     serving_prefix_first["⏸ Admit longest prefix<br/>hit first"]
     serving_gateway ~~~ serving_real_engines
     serving_real_engines ~~~ serving_prefix_cache
@@ -52,7 +52,9 @@ flowchart TB
     serving_own_run_attention ~~~ serving_parity_sampling
     serving_parity_harness ~~~ serving_parity_sampling
     serving_parity_sampling ~~~ serving_parity_fields
+    serving_parity_sampling ~~~ serving_recurrent_reuse
     serving_parity_fields ~~~ serving_parity_endpoints
+    serving_recurrent_reuse ~~~ serving_parity_endpoints
     serving_parity_endpoints ~~~ serving_parity_libllama
     serving_parity_endpoints ~~~ serving_multi_model
     serving_parity_endpoints ~~~ serving_multi_lora
@@ -60,7 +62,7 @@ flowchart TB
     serving_multi_model ~~~ serving_multimodal
     serving_multi_lora ~~~ serving_self_spec
     serving_auth_quotas ~~~ serving_mtp_drafts
-    serving_multimodal ~~~ serving_recurrent_reuse
+    serving_multimodal ~~~ serving_prefix_first
     serving_self_spec ~~~ serving_prefix_first
     serving_gateway --> serving_real_engines
     serving_real_engines --> serving_prefix_cache
@@ -97,11 +99,10 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class serving_gateway,serving_real_engines,serving_prefix_cache,serving_tool_calls,serving_batching,serving_moe_batch,serving_spec_batching,serving_own_run_attention unrated
     class serving_speculative mixed
-    class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields succ
+    class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_recurrent_reuse succ
     class serving_parity_endpoints next
     class serving_parity_libllama blocked
     class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_self_spec,serving_mtp_drafts,serving_prefix_first parked
-    class serving_recurrent_reuse finding
 ```
 <!-- END GENERATED: track-serving -->
 
@@ -136,7 +137,7 @@ flowchart TB
 | `serving-mtp-drafts` | Drafts from built-in MTP heads | feature | local | parked | unrated |  |  | serving-owner-drafters, engine-qwen35moe-builder |  |  |  |  |
 | `serving-self-spec` | Low-bit copy drafts for itself | feature | local | parked | unrated |  |  | serving-owner-drafters |  |  |  |  |
 | `serving-strata-owner-scope` | Which Strata model families to add | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
-| `serving-recurrent-reuse` | Recurrent models break slot reuse | defect | local | next | unrated |  |  | bench-strata-q36 |  |  |  | bench/results/strata-q36-20261123/README.md |
+| `serving-recurrent-reuse` | Recurrent models break slot reuse | defect | local | done | unrated | 2026-11-23 | 2026-11-23 | bench-strata-q36 |  |  |  | bench/results/strata-q36-20261123/README.md; crates/scheduler/tests/no_suffix_cut.rs; crates/gateway/tests/openai.rs; crates/gateway/tests/anthropic.rs |
 | `serving-prefix-first` | Admit longest prefix hit first | feature | local | parked | unrated |  |  | bench-ttft |  |  |  |  |
 
 ### Details per node
@@ -169,7 +170,7 @@ flowchart TB
 | `serving-mtp-drafts` | Drafts from built-in MTP heads |  |  | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). | Parked until after the Phase 4 verdict (m2-plan, 2026-11-15), then behind the rerun. Checked 2026-11-21: no MTP code in crates/. Done when: acceptance per pass and a paired gain on a model with MTP heads. |  |  |  |  |
 | `serving-self-spec` | Low-bit copy drafts for itself |  |  | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). | Parked until after the Phase 4 verdict (m2-plan, 2026-11-15), then behind the rerun. Checked 2026-11-21: no low-bit draft copy in crates/scheduler. Done when: the planner weighs it as a plan option and a paired run shows a gain. |  |  |  |  |
 | `serving-strata-owner-scope` | Which Strata model families to add |  |  | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). | Matrix docs/notes/strata-parity.md, class 3. |  |  |  |  |
-| `serving-recurrent-reuse` | Recurrent models break slot reuse |  |  | On Qwen3.6 (recurrent GatedDeltaNet layers) through libllama, reusing a slot's prefix fails with "KV cache cannot drop positions" unless prefix reuse is off, and the failed request streams HTTP 200 with no tokens and no error, so clients count it as a success. | Found by bench-strata-q36 (default-flag run, 7 of 16 c4 and 4 of 8 c1 requests empty, no server log line). Two fixes - an engine error must reach the client as an error event or status, and a model whose memory cannot drop a suffix must fall back to a full prompt (or snapshot reuse) instead of seq_rm. Conformance case first. |  |  |  |  |
+| `serving-recurrent-reuse` | Recurrent models break slot reuse | no_suffix_cut: 3 passed, 0 failed (cargo test, test ubuntu-24.04 and windows-latest, CI run 45101237756); engine_error_before_a_token_is_not_an_empty_success ok in openai and anthropic |  | A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture. |  |  |  |  |  |
 | `serving-prefix-first` | Admit longest prefix hit first |  |  | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). | Parked: worth a run only if time to first token under contention misses the bar again (m2-plan, TTFT idea 2026-11-20). |  |  |  |  |
 
 ### Folded items per node

@@ -389,8 +389,20 @@ pub fn build_candidate(
     id: &str,
     layout: &ModelLayout,
     placement: Placement,
+    run: (u32, u32, bool),
+    workload: &Workload,
+) -> Candidate {
+    build_candidate_kv(id, layout, placement, run, workload, KvFormat::default())
+}
+
+/// [`build_candidate`] with the KV cache in `kv`.
+pub fn build_candidate_kv(
+    id: &str,
+    layout: &ModelLayout,
+    placement: Placement,
     (threads, ubatch, op_offload): (u32, u32, bool),
     workload: &Workload,
+    kv: KvFormat,
 ) -> Candidate {
     let knobs = Knobs {
         threads: Some(threads),
@@ -398,17 +410,10 @@ pub fn build_candidate(
         op_offload: Some(op_offload),
         ..Default::default()
     };
-    let f = footprint(layout, placement, ubatch, workload, KvFormat::default());
+    let f = footprint(layout, placement, ubatch, workload, kv);
     Candidate {
         id: id.to_string(),
-        plan: build_plan(
-            layout,
-            placement,
-            knobs,
-            ubatch,
-            workload,
-            KvFormat::default(),
-        ),
+        plan: build_plan(layout, placement, knobs, ubatch, workload, kv),
         engine: EngineKind::LlamaBench,
         placement,
         prompt: workload.prompt,
@@ -444,6 +449,7 @@ fn placements(
     budget: &Budget,
     layout: &ModelLayout,
     workload: &Workload,
+    kv: KvFormat,
     dropped: &mut Vec<(String, String)>,
 ) -> Vec<Placement> {
     let l = layout.n_layer;
@@ -458,12 +464,7 @@ fn placements(
         }
     };
     let lo = u32::from(!layout.is_moe());
-    let ok = |x: u32| {
-        fits(
-            budget,
-            &footprint(layout, mk(x), ub, workload, KvFormat::default()),
-        )
-    };
+    let ok = |x: u32| fits(budget, &footprint(layout, mk(x), ub, workload, kv));
     let Some(max) = (lo..=l).rev().find(|&x| ok(x).is_ok()) else {
         let why = ok(lo).err().unwrap_or_default();
         dropped.push(("all placements".into(), why));
@@ -559,8 +560,18 @@ pub(crate) fn thin(mut rows: Vec<Row>, n_placements: usize, cap: usize) -> Vec<R
 /// of `thin`: every placement and every knob value stays represented. Ids `c00`... follow the
 /// final order: placement (most GPU weights first), then threads, ubatch, op offload on before off.
 pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> Enumeration {
+    enumerate_kv(budget, layout, workload, KvFormat::default())
+}
+
+/// [`enumerate`] with the KV cache in `kv`: a smaller format leaves room for more GPU layers.
+pub fn enumerate_kv(
+    budget: &Budget,
+    layout: &ModelLayout,
+    workload: &Workload,
+    kv: KvFormat,
+) -> Enumeration {
     let mut dropped = Vec::new();
-    let places = placements(budget, layout, workload, &mut dropped);
+    let places = placements(budget, layout, workload, kv, &mut dropped);
     let threads = thread_values(budget.threads);
     let ops = [true, false];
     let mut rows = Vec::new();
@@ -570,10 +581,7 @@ pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> 
                 for (o, &op) in ops.iter().enumerate() {
                     let desc =
                         format!("{} threads={th} ubatch={ub} op_offload={op}", pl.describe());
-                    match fits(
-                        budget,
-                        &footprint(layout, pl, ub, workload, KvFormat::default()),
-                    ) {
+                    match fits(budget, &footprint(layout, pl, ub, workload, kv)) {
                         Ok(()) => rows.push(Row { p, k: [t, u, o, 0] }),
                         Err(e) => dropped.push((desc, e)),
                     }
@@ -603,7 +611,14 @@ pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> 
         .enumerate()
         .map(|(i, r)| {
             let knobs = (threads[r.k[0]], UBATCHES[r.k[1]], ops[r.k[2]]);
-            build_candidate(&format!("c{i:02}"), layout, places[r.p], knobs, workload)
+            build_candidate_kv(
+                &format!("c{i:02}"),
+                layout,
+                places[r.p],
+                knobs,
+                workload,
+                kv,
+            )
         })
         .collect();
     Enumeration {
@@ -617,20 +632,31 @@ pub fn enumerate(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> 
 /// times [`UBATCHES`], op offload off. A combination whose host estimate exceeds the RAM budget
 /// is dropped. Ids `c00`... in that order.
 pub fn enumerate_cpu(budget: &Budget, layout: &ModelLayout, workload: &Workload) -> Enumeration {
+    enumerate_cpu_kv(budget, layout, workload, KvFormat::default())
+}
+
+/// [`enumerate_cpu`] with the KV cache in `kv`.
+pub fn enumerate_cpu_kv(
+    budget: &Budget,
+    layout: &ModelLayout,
+    workload: &Workload,
+    kv: KvFormat,
+) -> Enumeration {
     let mut dropped = Vec::new();
     let mut candidates = Vec::new();
     for th in thread_values(budget.threads) {
         for ub in UBATCHES {
-            let f = footprint(layout, Placement::Cpu, ub, workload, KvFormat::default());
+            let f = footprint(layout, Placement::Cpu, ub, workload, kv);
             match fits(budget, &f) {
                 Ok(()) => {
                     let id = format!("c{:02}", candidates.len());
-                    candidates.push(build_candidate(
+                    candidates.push(build_candidate_kv(
                         &id,
                         layout,
                         Placement::Cpu,
                         (th, ub, false),
                         workload,
+                        kv,
                     ));
                 }
                 Err(e) => dropped.push((format!("cpu threads={th} ubatch={ub}"), e)),

@@ -91,5 +91,6 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0083](0083-llamacpp-feature-parity.md) | Accepted | Feature parity with llama-server at the pin: meaning, scope and conformance check |
 | [0084](0084-kv-in-host-memory.md) | Accepted | KV cache partly in host memory: `--no-kv-offload` on libllama, then KV of chosen layers on the CPU in the own builders |
 | [0085](0085-strata-features.md) | Accepted | Strata's features: three classes, measure on Qwen3.6 before an own qwen35moe builder |
+| [0086](0086-kv-format-auto.md) | Accepted | The planner picks the KV format: `--kv auto` tries F16, Q8_0, Q8_0/Q4_0 by fit |
 | [0087](0087-prefix-cache-disk-tier.md) | Accepted | Prefix cache disk tier: `--cache-disk`, spill on RAM eviction, restore on a later turn |
 | [0088](0088-request-fields-group-b.md) | Accepted | llama-server parity group B: EOS in the token count, raw log-probabilities, `n`, grammar and JSON schema, timings |

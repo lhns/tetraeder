@@ -16,7 +16,8 @@ use tetraeder_gateway::reqlog::RequestLog;
 use tetraeder_ggml_sys::ggml::Backend;
 use tetraeder_ggml_sys::llama::{Model, ModelParams};
 use tetraeder_model::{BackendChoice, DenseOptions, LoadOptions, MissPolicy};
-use tetraeder_planner::Workload;
+use tetraeder_plan::KvFormat;
+use tetraeder_planner::{KvChoice, Placement, Workload, budget_of, pick_for_placement};
 use tetraeder_scheduler::spec::{DraftLen, NgramDrafter, SpecConfig, SpecMethod};
 use tetraeder_scheduler::{Loaded, Scheduler, SchedulerConfig};
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
@@ -283,6 +284,11 @@ pub struct ServeArgs {
         ]
     )]
     pub plan: Option<String>,
+    /// KV cache format of the own builders (ADR 0050 b, 0086): `f16` (default), `bf16`, `q8_0`,
+    /// `q8_0/q4_0`, `q4_0`, or `auto`: the first of f16, q8_0, q8_0/q4_0 that fits this box at
+    /// `--ctx`, with the reason on stderr. libllama (`--engine llama`) keeps f16.
+    #[arg(long, default_value = "f16", value_name = "FORMAT|auto")]
+    pub kv: KvChoice,
     /// Hardware graph (TOML or JSON, typically from `tetraeder-plan score`); default: discover
     /// the box and take GPU rates from the priors.
     #[arg(long, value_name = "FILE", requires = "plan")]
@@ -535,7 +541,9 @@ pub fn loader(a: &ServeArgs, tel: Arc<Telemetry>) -> anyhow::Result<Loader> {
             .map_err(anyhow::Error::msg)?;
     }
     let exec = exec_plan(a)?;
-    let a = a.clone_load_args();
+    let kv = resolve_kv(a, &path, moe, dense)?;
+    let mut a = a.clone_load_args();
+    a.kv = kv;
     Ok(Box::new(move || {
         if let (true, Some(topo)) = (moe, &exec) {
             let chunk = tetraeder_scheduler::MOE_CHUNK;
@@ -653,6 +661,58 @@ struct LoadArgs {
     prefetch_depth: u8,
     io_service: Option<bool>,
     overlap: Option<bool>,
+    kv: KvFormat,
+}
+
+/// The KV format of `--kv` for the engine that will run. `auto` asks the planner against the
+/// discovered box (GPU capacity, not free memory, as `--plan` does) and the placement the
+/// builder flags give; libllama and the replanner (`--plan`) size and run F16 only.
+fn resolve_kv(a: &ServeArgs, path: &Path, moe: bool, dense: bool) -> anyhow::Result<KvFormat> {
+    let own = moe || dense;
+    if a.kv.fixed() == Some(KvFormat::default()) {
+        return Ok(KvFormat::default());
+    }
+    if !own || a.plan.is_some() {
+        let why = if own {
+            "--plan sizes and runs f16 only"
+        } else {
+            "libllama has no KV format option here (use --engine moe or dense)"
+        };
+        anyhow::ensure!(a.kv == KvChoice::Auto, "--kv {}: {why}", a.kv);
+        eprintln!("kv auto: f16 ({why})");
+        return Ok(KvFormat::default());
+    }
+    let Some(kv) = a.kv.fixed() else {
+        let layout = crate::plan::layout(path)?;
+        let (hw, _) = replan::source::HwSource::Discover
+            .read(false)
+            .map_err(anyhow::Error::msg)?;
+        let quota = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
+        let budget = budget_of(&hw, quota, None, None);
+        let on_cpu = a.place.ngl == 0 || Backend::gpu_count() == 0;
+        let placement = match (on_cpu, moe) {
+            (true, _) => Placement::Cpu,
+            (false, true) => Placement::Builder {
+                vram_slots: a.expert_slots.map_or(layout.n_expert, |s| s as u32),
+                ram_slots: a.ram_slots.map_or(0, |s| s as u32),
+            },
+            (false, false) => Placement::Dense {
+                gpu_layers: layout.n_layer,
+            },
+        };
+        let w = Workload {
+            prompt: a.ctx.saturating_sub(128).max(1),
+            r#gen: 128,
+        };
+        let at = (placement, tetraeder_planner::SERVE_BUILDER_UBATCH);
+        let (kv, pick) = pick_for_placement(&budget, &layout, &w, at, a.kv)
+            .map_err(|e| anyhow::anyhow!("--kv auto at --ctx {}: {e}", a.ctx))?;
+        if let Some(p) = pick {
+            eprintln!("{}", p.explain());
+        }
+        return Ok(kv);
+    };
+    Ok(kv)
 }
 
 /// Where the own builders run: `--ngl 0` or a machine without a GPU means the CPU, anything else
@@ -691,6 +751,7 @@ impl LoadArgs {
         o.threads = self.place.threads;
         o.n_ctx_pool = self.ctx as usize;
         o.n_seq_max = self.parallel.max(1);
+        o.kv = self.kv;
         o.telemetry = Some(telemetry);
         Ok(o)
     }
@@ -702,6 +763,7 @@ impl LoadArgs {
         o.cpu_threads = self.place.threads.and_then(|t| usize::try_from(t).ok());
         o.n_ctx = self.ctx as usize;
         o.n_seq_max = self.llama.n_seq_max as usize;
+        o.kv = self.kv;
         o.expert_slots = self.expert_slots;
         o.ram_slots = self.ram_slots;
         o.miss = self.miss;
@@ -775,6 +837,7 @@ impl ServeArgs {
             prefetch_depth: self.prefetch_depth,
             io_service: self.io_service,
             overlap: self.overlap,
+            kv: KvFormat::default(),
         }
     }
 }

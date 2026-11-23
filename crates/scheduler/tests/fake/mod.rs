@@ -54,6 +54,8 @@ pub struct Probe {
     /// Set by a test: the backend "restarts" (loses every sequence) at its next call, like the
     /// worker process of `serve --worker`.
     pub restart: AtomicBool,
+    /// `seq_rm` calls that keep a positive part shorter than the sequence (a suffix cut).
+    pub suffix_cuts: AtomicU32,
 }
 
 #[derive(Default, Clone)]
@@ -79,6 +81,10 @@ pub struct FakeKv {
     /// The next `seq_cp` cancels this token and fails, as a request cancelled while its busy
     /// copy fails.
     fail_cp_cancelling: Option<tokio_util::sync::CancellationToken>,
+    /// A recurrent model's memory: a suffix cut fails with `Failed`. See `advertise_no_cut`.
+    refuse_cut: bool,
+    /// Report `can_cut_suffix() == false` (else the scheduler learns of the refusal by trying).
+    advertise_no_cut: bool,
     /// Sequences that held rows when the backend restarted and were not freed or refilled since;
     /// using one fails, as in `RemoteBackend`.
     lost: HashSet<u32>,
@@ -105,6 +111,8 @@ impl FakeKv {
             poison: None,
             shrink_to_multiple: None,
             fail_cp_cancelling: None,
+            refuse_cut: false,
+            advertise_no_cut: false,
             lost: HashSet::new(),
             layout: None,
             decodes: 0,
@@ -133,6 +141,14 @@ impl FakeKv {
 
     pub fn with_fail_cp_cancelling(mut self, token: tokio_util::sync::CancellationToken) -> Self {
         self.fail_cp_cancelling = Some(token);
+        self
+    }
+
+    /// A recurrent memory: a suffix cut fails; `advertised` also says so through
+    /// `can_cut_suffix`.
+    pub fn with_no_suffix_cut(mut self, advertised: bool) -> Self {
+        self.refuse_cut = true;
+        self.advertise_no_cut = advertised;
         self
     }
 
@@ -296,6 +312,10 @@ impl BatchBackend for FakeKv {
         self.seqs.get(seq as usize).map_or(0, |s| s.rows.len())
     }
 
+    fn can_cut_suffix(&self) -> bool {
+        !self.advertise_no_cut
+    }
+
     fn seq_lost(&self, seq: SeqId) -> bool {
         let held = self
             .seqs
@@ -327,6 +347,14 @@ impl BatchBackend for FakeKv {
             self.lost.remove(&seq);
         }
         let had = self.seqs[i].tokens.len();
+        if keep > 0 && keep < had {
+            self.probe.suffix_cuts.fetch_add(1, Ordering::SeqCst);
+            if self.refuse_cut {
+                return Err(BackendError::Failed(
+                    "invalid request: the KV cache cannot drop positions".into(),
+                ));
+            }
+        }
         self.cut(i, keep.min(had), keep > 0);
         if let (Some(m), true) = (self.shrink_to_multiple, keep > 0) {
             let to = keep.div_ceil(m) * m;

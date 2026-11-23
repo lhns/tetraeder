@@ -278,6 +278,18 @@ impl Model {
         unsafe { sys::llama_model_n_layer(self.ptr) }
     }
 
+    /// Whether the model keeps a recurrent state (Mamba, RWKV) that cannot drop a suffix.
+    pub fn is_recurrent(&self) -> bool {
+        // SAFETY: live model.
+        unsafe { sys::llama_model_is_recurrent(self.ptr) }
+    }
+
+    /// Whether the model mixes attention with recurrent layers (Qwen3.5 GatedDeltaNet).
+    pub fn is_hybrid(&self) -> bool {
+        // SAFETY: live model.
+        unsafe { sys::llama_model_is_hybrid(self.ptr) }
+    }
+
     pub fn n_ctx_train(&self) -> i32 {
         // SAFETY: live model.
         unsafe { sys::llama_model_n_ctx_train(self.ptr) }

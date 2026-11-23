@@ -640,8 +640,9 @@ fn oai_stream(
                 }
             }
             Some((_, OutEvent::Error(e))) => {
-                // The spec allows a data frame carrying an `error` object; no [DONE] follows.
+                // A data frame carrying an `error` object, then [DONE], as llama-server ends it.
                 out.push(data(&e.openai_body()));
+                out.push(Event::default().data("[DONE]"));
                 s.done = true;
             }
             None => return None,

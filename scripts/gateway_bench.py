@@ -115,6 +115,9 @@ async def one_request(client, url: str, body: dict) -> dict:
                 chunk = parse_sse_line(line)
                 if chunk is None:
                     continue
+                # a mid-stream error frame (OpenAI shape) is a failed request, not an empty success
+                if chunk.get("error"):
+                    return {"error": f"stream error: {json.dumps(chunk['error'])[:300]}", "total_s": time.perf_counter() - t0}
                 if chunk.get("usage"):
                     usage = chunk["usage"]
                 piece = delta_text(chunk)
@@ -129,6 +132,9 @@ async def one_request(client, url: str, body: dict) -> dict:
         return {"error": f"{type(e).__name__}: {e}", "total_s": time.perf_counter() - t0}
     end = time.perf_counter()
     n = (usage or {}).get("completion_tokens") or deltas
+    if not n and usage is None:
+        # no token, no usage and no error frame: the server ended the stream without an answer
+        return {"error": "empty stream (no tokens, no usage)", "total_s": end - t0}
     return {
         "ttft_s": None if t_first is None else t_first - t0,
         "total_s": end - t0,

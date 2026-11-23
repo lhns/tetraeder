@@ -425,9 +425,37 @@ async fn mid_stream_error_is_a_data_frame() {
     let body = json!({"model": "fake", "messages": user("hi"), "stream": true});
     let (s, _, ev) = post_sse(&app, "/v1/chat/completions", &body, false).await;
     assert_eq!(s, 200);
-    let last = ev.last().unwrap();
-    assert_ne!(last.data, "[DONE]");
-    assert_error(&last.json(), "server_error");
+    assert_eq!(ev.last().unwrap().data, "[DONE]");
+    assert_error(&ev[ev.len() - 2].json(), "server_error");
+}
+
+/// A refused prefix cut ends the request with an engine error before any token
+/// (bench-strata-q36): the client must see it, not an empty success.
+#[tokio::test]
+async fn engine_error_before_a_token_is_not_an_empty_success() {
+    let mut engine = FakeEngine::fixed("abcdef");
+    engine.fail_after = Some(0);
+    let (app, _) = app(engine);
+    let body = json!({"model": "fake", "messages": user("hi")});
+    let (s, _, v) = post(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 500, "{v}");
+    assert_error(&v, "server_error");
+
+    let body = json!({"model": "fake", "messages": user("hi"), "stream": true});
+    let (s, _, ev) = post_sse(&app, "/v1/chat/completions", &body, false).await;
+    assert_eq!(s, 200);
+    let content: String = ev
+        .iter()
+        .filter(|e| e.data != "[DONE]")
+        .filter_map(|e| {
+            e.json()["choices"][0]["delta"]["content"]
+                .as_str()
+                .map(str::to_owned)
+        })
+        .collect();
+    assert_eq!(content, "");
+    assert_eq!(ev.last().unwrap().data, "[DONE]");
+    assert_error(&ev[ev.len() - 2].json(), "server_error");
 }
 
 #[tokio::test]

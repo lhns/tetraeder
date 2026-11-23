@@ -859,7 +859,10 @@ impl Worker {
                     stats: req.stats.clone(),
                 }
             }
-            Err(e) => GenEvent::Error(e),
+            Err(e) => {
+                tracing::error!("request failed before it started: {e}");
+                GenEvent::Error(e)
+            }
         };
         self.hand_off(req, last);
     }
@@ -892,7 +895,7 @@ impl Worker {
         let Slot::Live(seq) = std::mem::replace(&mut self.slots[id], Slot::Free) else {
             return;
         };
-        tracing::warn!("generation failed: {msg}");
+        tracing::error!("generation failed: {msg}");
         let _ = self.backend.seq_rm(id as SeqId, 0);
         self.hand_off(seq.req, GenEvent::Error(msg));
     }
@@ -1095,6 +1098,7 @@ impl Worker {
         // options by `restore_gain` (a copy costs less than a restore, but more than nothing).
         let ram_n = ram.map_or(0, |(_, n)| n);
         let busy_ok = !req.no_busy;
+        let can_cut = self.backend.can_cut_suffix();
         let busy = self
             .slots
             .iter()
@@ -1102,10 +1106,10 @@ impl Worker {
             .filter_map(|(i, s)| match s {
                 Slot::Live(x) if self.prefix_reuse && busy_ok => {
                     let held = x.fed.min(self.backend.seq_len(i as SeqId));
-                    Some((
-                        i,
-                        common_prefix(&x.req.toks[..held.min(x.req.toks.len())], &toks).min(last),
-                    ))
+                    let n =
+                        common_prefix(&x.req.toks[..held.min(x.req.toks.len())], &toks).min(last);
+                    // A copy of a part is a cut of the copy: not on a model that cannot cut.
+                    Some((i, if can_cut || n == held { n } else { 0 }))
                 }
                 _ => None,
             })
@@ -1125,7 +1129,8 @@ impl Worker {
             {
                 match &self.slots[i] {
                     Slot::Idle(idle)
-                        if matches!(idle.live_cut(n, self.save_min), LiveCut::Save)
+                        if (can_cut || n == idle.toks.len())
+                            && matches!(idle.live_cut(n, self.save_min), LiveCut::Save)
                             && !self.cache.holds(&fmt, &idle.toks) =>
                     {
                         Some((i, n))
@@ -1322,12 +1327,32 @@ impl Worker {
             }
         }
         let have = self.backend.seq_len(id as SeqId);
-        if common < have
-            && let Err(e) = self.backend.seq_rm(id as SeqId, common)
-        {
-            self.end_unplaced(req, Err(e.to_string()));
-            let _ = self.backend.seq_rm(id as SeqId, 0);
-            return Admission::Admitted;
+        if common < have {
+            // A model that cannot drop a suffix reuses only what it keeps whole; otherwise, or
+            // when the cut fails anyway, the sequence is cleared and the prompt prefills in full.
+            let cut = if can_cut {
+                self.backend.seq_rm(id as SeqId, common)
+            } else {
+                Err(BackendError::Failed(
+                    "the memory cannot drop a suffix".into(),
+                ))
+            };
+            if let Err(e) = cut {
+                if common > 0 {
+                    tracing::warn!(
+                        "prefix of {common} tokens not reused, the sequence is cleared: {e}"
+                    );
+                    if let Some(m) = &self.metrics {
+                        m.kv_prefix_fallback("cannot_drop");
+                    }
+                }
+                common = 0;
+                if let Err(e) = self.backend.seq_rm(id as SeqId, 0) {
+                    tracing::error!("cannot clear sequence {id}: {e}");
+                    self.end_unplaced(req, Err(e.to_string()));
+                    return Admission::Admitted;
+                }
+            }
         }
         // The restore and the cut may have changed the reservation (the dense backend shrinks it
         // to the rows it keeps), so ask instead of assuming `target`.

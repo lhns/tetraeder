@@ -35,6 +35,7 @@ gantt
     Keep most-used experts in RAM :memory_ram_freq, 2026-11-09, 2026-11-12
     Share RAM slots across layers :crit, memory_ram_pool, 2026-11-14, 2026-11-14
     Admit CPU misses into VRAM :memory_adaptive_tier, 2026-11-12, 2026-11-12
+    Planner picks the KV format :memory_kv_auto, 2026-11-23, 2026-11-23
     Prefix cache spills to SSD :memory_prefix_ssd, 2026-11-23, 2026-11-23
     section planner - planner and cost model
     One placement plan format :planner_plan_ir, 2026-10-29, 2026-10-31
@@ -50,6 +51,7 @@ gantt
     Price all-reduce latency in steps :planner_cost_v3, 2026-11-19, 2026-11-19
     Price routed expert traffic :planner_cost_v4, 2026-11-19, 2026-11-19
     Price decode at measured clocks :planner_cost_model_v5, 2026-11-20, 2026-11-21
+    Experts on GPU and SSD only :planner_low_ram_modes, 2026-11-23, 2026-11-23
     Recheck expert-parallel prefill error :planner_ep_prefill_recheck, 2026-11-21, 2026-11-21
     Approve the low-clock anchor :planner_owner_layer_anchor, 2026-11-21, 2026-11-21
     section multi - multi-GPU executor
@@ -77,6 +79,7 @@ gantt
     llama-server conformance harness :serving_parity_harness, 2026-11-22, 2026-11-22
     Sampler parity with llama-server :serving_parity_sampling, 2026-11-23, 2026-11-23
     Request field parity :serving_parity_fields, 2026-11-23, 2026-11-23
+    Recurrent models break slot reuse :serving_recurrent_reuse, 2026-11-23, 2026-11-23
     section bench - benchmarks and verdicts
     Paired benchmark harness, baselines :bench_harness, 2026-10-30, 2026-11-15
     Measured noise bands per GPU :bench_noise_bands, 2026-11-09, 2026-11-11
@@ -125,5 +128,5 @@ gantt
     Owner accepts nine design records :ops_owner_accepts_adrs, 2026-11-19, 2026-11-19
 ```
 
-Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-kv-auto`, `memory-prefix-disk-async`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-low-ram-modes`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-endpoints`, `serving-parity-libllama`, `serving-parity-owner-scope`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-strata-owner-scope`, `serving-recurrent-reuse`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-transport-wan`, `cluster-owner-transport`, `cluster-transport`, `cluster-mtls`, `cluster-discovery`, `cluster-join-leave`, `cluster-pipeline-nodes`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
+Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefix-disk-async`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-endpoints`, `serving-parity-libllama`, `serving-parity-owner-scope`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-strata-owner-scope`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-transport-wan`, `cluster-owner-transport`, `cluster-transport`, `cluster-mtls`, `cluster-discovery`, `cluster-join-leave`, `cluster-pipeline-nodes`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
 <!-- END GENERATED: timeline -->
