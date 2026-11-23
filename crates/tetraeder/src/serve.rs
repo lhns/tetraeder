@@ -123,7 +123,7 @@ impl SamplingArgs {
         put("mirostat_tau", json!(self.mirostat_ent));
         put("mirostat_eta", json!(self.mirostat_lr));
         put("ignore_eos", json!(self.ignore_eos));
-        if let Ok(seed) = u32::try_from(self.seed) {
+        if let Some(seed) = self.seed() {
             put("seed", json!(seed));
         }
         m
@@ -180,9 +180,10 @@ impl SamplingArgs {
         Ok(p)
     }
 
-    /// `None`: a random seed per request.
+    /// `None`: a random seed per request (-1 or `LLAMA_DEFAULT_SEED`); the conversion is the
+    /// requests', so a flag and a request value mean the same.
     pub fn seed(&self) -> Option<u32> {
-        u32::try_from(self.seed).ok()
+        tetraeder_gateway::sampling::libllama_seed(self.seed)
     }
 }
 
@@ -657,6 +658,9 @@ pub struct SchedParts {
 impl SchedParts {
     pub fn new(a: &ServeArgs) -> anyhow::Result<Self> {
         let path = a.model.clone().context("-m is required")?;
+        if let Some(note) = cache_disk_note(a) {
+            tracing::warn!("{note}");
+        }
         Ok(Self {
             alias: a.alias.clone(),
             sampling: a.sampling.params()?,
@@ -831,23 +835,43 @@ impl LoadArgs {
 
 /// The keys of `--api-key` (comma separated) and `--api-key-file` (one per line, `#` comments),
 /// as llama-server reads them.
+/// Lines are trimmed and blank ones dropped. A key option that yields no key is an error: an
+/// empty key file must not leave the server open.
 pub fn read_api_keys(list: Option<&str>, file: Option<&Path>) -> anyhow::Result<Vec<String>> {
     let mut keys: Vec<String> = list
         .into_iter()
         .flat_map(|l| l.split(','))
+        .map(str::trim)
         .filter(|k| !k.is_empty())
         .map(str::to_owned)
         .collect();
+    if list.is_some() && keys.is_empty() {
+        anyhow::bail!("--api-key (or LLAMA_API_KEY) is set but holds no key");
+    }
     if let Some(f) = file {
         let text = std::fs::read_to_string(f)
             .with_context(|| format!("cannot read API key file {}", f.display()))?;
+        let before = keys.len();
         keys.extend(
             text.lines()
+                .map(str::trim)
                 .filter(|l| !l.is_empty() && !l.starts_with('#'))
                 .map(str::to_owned),
         );
+        if keys.len() == before {
+            anyhow::bail!("API key file {} holds no key", f.display());
+        }
     }
     Ok(keys)
+}
+
+/// Why `--cache-disk` does nothing, when it was given without a budget.
+fn cache_disk_note(a: &ServeArgs) -> Option<String> {
+    let dir = a.cache_disk.as_ref().filter(|_| a.cache_disk_mib == 0)?;
+    Some(format!(
+        "--cache-disk {} is ignored: --cache-disk-mib is 0, so the disk tier is off",
+        dir.display()
+    ))
 }
 
 impl ServeArgs {
@@ -943,6 +967,12 @@ mod tests {
         let keys = read_api_keys(Some("k1,,k2"), Some(&file)).unwrap();
         assert_eq!(keys, ["k1", "k2", "k3", "k4"]);
         assert!(read_api_keys(None, None).unwrap().is_empty());
+        // a key option that yields nothing must not turn authentication off
+        std::fs::write(&file, "# only a comment\n  \n").unwrap();
+        assert!(read_api_keys(None, Some(&file)).is_err());
+        assert!(read_api_keys(Some(" , "), None).is_err());
+        std::fs::write(&file, "  padded  \n").unwrap();
+        assert_eq!(read_api_keys(None, Some(&file)).unwrap(), ["padded"]);
         assert!(read_api_keys(None, Some(&dir.join("missing"))).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -963,6 +993,10 @@ mod tests {
                 .generation_defaults()
                 .contains_key("seed")
         );
+        // LLAMA_DEFAULT_SEED is random too; larger values wrap, as a request's do
+        let seed = |v: &str| parse(&["--seed", v]).sampling.seed();
+        assert_eq!(seed("4294967295"), None);
+        assert_eq!(seed("4294967296"), Some(0));
     }
 
     // hardware: none
@@ -1069,6 +1103,15 @@ mod tests {
         let a = parse(&["--engine", "dense", "--no-prefix-reuse", "--cache-ram", "0"]);
         assert!(a.no_prefix_reuse);
         assert_eq!(a.cache_ram, 0);
+    }
+
+    // hardware: none
+    #[test]
+    fn cache_disk_without_a_budget_is_reported() {
+        assert!(cache_disk_note(&parse(&["--cache-disk", "/tmp/kv"])).is_some());
+        assert!(cache_disk_note(&parse(&[])).is_none());
+        let on = parse(&["--cache-disk", "/tmp/kv", "--cache-disk-mib", "1"]);
+        assert!(cache_disk_note(&on).is_none());
     }
 
     // hardware: none

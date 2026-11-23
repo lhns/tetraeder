@@ -1,18 +1,20 @@
 //! The disk tier of the prefix cache (ADR 0087): entries the RAM budget evicts are written to
 //! files by a background thread, and read back by a second one (addendum 2026-11-23), so the
 //! scheduler step never waits on disk IO. An entry is findable only once its write completed.
-//! The files are valid for this process only: they are removed at startup and on drop, and a
-//! write that fails drops the entry with a warning.
+//! The files are valid for this process only. A tier removes its own files on drop, and at
+//! startup the files an earlier process left (older than this process); a tier opened beside a
+//! live one (a replan) leaves its files alone. A write that fails drops the entry with a warning.
 
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{
     Receiver, SendError, Sender, SyncSender, TryRecvError, TrySendError, channel, sync_channel,
 };
+use std::sync::{Arc, OnceLock};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use tetraeder_model::snapshot_pool::SnapshotPool;
 
 use crate::prefix_cache::common_prefix;
@@ -27,6 +29,15 @@ const QUEUE: usize = 2;
 /// Reads in flight at once. Each holds a pool buffer outside the RAM budget; a request that
 /// finds the limit reached is placed without the disk entry.
 pub const MAX_READS: usize = 2;
+
+/// Tiers opened in this process; part of every file name.
+static INSTANCES: AtomicU64 = AtomicU64::new(0);
+
+/// When this process first opened a tier. Files older than that are an earlier process's.
+pub(crate) fn process_start() -> SystemTime {
+    static START: OnceLock<SystemTime> = OnceLock::new();
+    *START.get_or_init(SystemTime::now)
+}
 
 /// Reads a file back: path, format, payload size, pool for the buffer. Injectable for tests.
 pub type ReadFn =
@@ -49,6 +60,8 @@ struct ReadJob {
     format: String,
     size: usize,
     reply: Sender<ReadDone>,
+    /// Set when nobody wants the result any more: the reader recycles the buffer itself.
+    abandoned: Arc<AtomicBool>,
 }
 
 /// What the reader thread found.
@@ -66,6 +79,7 @@ pub type Restored = (Option<(Vec<i32>, Vec<u8>)>, Duration);
 pub struct ReadHandle {
     id: u64,
     rx: Receiver<ReadDone>,
+    abandoned: Arc<AtomicBool>,
 }
 
 struct Job {
@@ -96,10 +110,17 @@ pub struct DiskTier {
     reads: Option<Sender<ReadJob>>,
     reader: Option<JoinHandle<()>>,
     pool: Arc<SnapshotPool>,
+    /// Which tier of this process owns a file (`FILE_PREFIX`, pid, instance, entry id).
+    instance: u64,
+    /// Reads given up whose reader has not replied yet. Their entries stay marked as reading, so
+    /// they are neither evicted nor deleted under the reader and still count against
+    /// `MAX_READS`.
+    aborted: Vec<ReadHandle>,
 }
 
 impl DiskTier {
-    /// Creates `dir` if needed and removes the files an earlier process left there.
+    /// Creates `dir` if needed and removes the files an earlier process left there (older than
+    /// this process; those of a live tier, as in a replan, stay).
     pub fn open(
         dir: &Path,
         budget: usize,
@@ -107,7 +128,7 @@ impl DiskTier {
         read: Option<ReadFn>,
     ) -> Result<Self, String> {
         fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-        remove_stale(dir);
+        remove_stale(dir, process_start());
         let (jobs, rx) = sync_channel::<Job>(QUEUE);
         let (tx, done) = channel::<Done>();
         let writer = std::thread::Builder::new()
@@ -133,6 +154,8 @@ impl DiskTier {
             reads: Some(reads),
             reader: Some(reader),
             pool,
+            instance: INSTANCES.fetch_add(1, Ordering::Relaxed),
+            aborted: Vec::new(),
         })
     }
 
@@ -146,17 +169,42 @@ impl DiskTier {
         self.entries.iter().filter(|e| e.ready).count()
     }
 
-    fn path(&self, id: u64) -> PathBuf {
-        self.dir.join(format!(
-            "{FILE_PREFIX}{}-{id}{FILE_EXT}",
-            std::process::id()
-        ))
+    /// What every file name of this tier starts with.
+    fn own_prefix(&self) -> String {
+        format!("{FILE_PREFIX}{}-{}-", std::process::id(), self.instance)
     }
 
-    /// Takes in the writes that finished.
+    fn path(&self, id: u64) -> PathBuf {
+        self.dir
+            .join(format!("{}{id}{FILE_EXT}", self.own_prefix()))
+    }
+
+    /// Takes in the writes that finished and the aborted reads whose reader is done.
     pub fn poll(&mut self) {
         while let Ok(d) = self.done.try_recv() {
             self.apply(d);
+        }
+        self.reap_aborted();
+    }
+
+    fn reap_aborted(&mut self) {
+        let mut i = 0;
+        while i < self.aborted.len() {
+            let done = match self.aborted[i].rx.try_recv() {
+                Err(TryRecvError::Empty) => {
+                    i += 1;
+                    continue;
+                }
+                Ok(d) => d.res.ok().map(|(_, bytes)| bytes),
+                Err(TryRecvError::Disconnected) => None,
+            };
+            let read = self.aborted.swap_remove(i);
+            if let Some(bytes) = done {
+                self.pool.recycle(bytes);
+            }
+            if let Some(e) = self.entries.iter_mut().find(|e| e.id == read.id) {
+                e.reading = false;
+            }
         }
     }
 
@@ -191,14 +239,15 @@ impl DiskTier {
     }
 
     /// The completed entry of `format` sharing the longest prefix with `prompt`: its index and
-    /// that length.
-    pub fn best(&self, format: &str, prompt: &[i32]) -> Option<(usize, usize)> {
+    /// that length. With `whole`, only entries `prompt` starts with.
+    pub fn best(&self, format: &str, prompt: &[i32], whole: bool) -> Option<(usize, usize)> {
         self.entries
             .iter()
             .enumerate()
             .filter(|(_, e)| e.ready && !e.reading && e.format == format)
-            .map(|(i, e)| (i, common_prefix(&e.tokens, prompt)))
-            .filter(|&(_, n)| n > 0)
+            .map(|(i, e)| (i, common_prefix(&e.tokens, prompt), e.tokens.len()))
+            .filter(|&(_, n, len)| n > 0 && (!whole || n == len))
+            .map(|(i, n, _)| (i, n))
             .max_by_key(|&(_, n)| n)
     }
 
@@ -233,6 +282,19 @@ impl DiskTier {
             return;
         }
         let size = bytes.len();
+        // Entries a reader has open stay. When the others cannot make room the spill is dropped:
+        // the budget is never exceeded.
+        let evictable: usize = self
+            .entries
+            .iter()
+            .filter(|e| !e.reading)
+            .map(|e| e.size)
+            .sum();
+        if self.held - evictable + size > self.budget {
+            tracing::debug!("prefix cache disk tier is full of reads: an evicted entry is dropped");
+            self.pool.recycle(bytes);
+            return;
+        }
         let id = self.next_id;
         self.next_id += 1;
         let job = Job {
@@ -282,15 +344,17 @@ impl DiskTier {
         }
         let id = self.entries[i].id;
         let (reply, rx) = channel();
+        let abandoned = Arc::new(AtomicBool::new(false));
         let job = ReadJob {
             path: self.path(id),
             format: self.entries[i].format.clone(),
             size: self.entries[i].size,
             reply,
+            abandoned: Arc::clone(&abandoned),
         };
         self.reads.as_ref()?.send(job).ok()?;
         self.entries[i].reading = true;
-        Some(ReadHandle { id, rx })
+        Some(ReadHandle { id, rx, abandoned })
     }
 
     /// Reads in flight.
@@ -324,12 +388,11 @@ impl DiskTier {
         }
     }
 
-    /// Gives up `read`: the entry and its file stay. The reader thread hands its buffer back
-    /// to the pool when it finishes.
+    /// Gives up `read`: the entry and its file stay. The entry stays marked as reading until
+    /// the reader has replied (a later `poll`), which hands its buffer back to the pool.
     pub fn abort_read(&mut self, read: ReadHandle) {
-        if let Some(e) = self.entries.iter_mut().find(|e| e.id == read.id) {
-            e.reading = false;
-        }
+        read.abandoned.store(true, Ordering::Release);
+        self.aborted.push(read);
     }
 }
 
@@ -343,7 +406,7 @@ impl Drop for DiskTier {
         {
             let _ = t.join();
         }
-        remove_stale(&self.dir);
+        remove_own(&self.dir, &self.own_prefix());
     }
 }
 
@@ -355,16 +418,33 @@ fn remove_file(path: &Path) {
     }
 }
 
-/// Removes the files of this cache (any process) in `dir`.
-fn remove_stale(dir: &Path) {
+/// Removes the cache files in `dir` that `remove` accepts (given the file name and its entry).
+fn remove_files(dir: &Path, remove: impl Fn(&str, &fs::DirEntry) -> bool) {
     let Ok(rd) = fs::read_dir(dir) else { return };
     for f in rd.flatten() {
         let name = f.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with(FILE_PREFIX) && (name.ends_with(FILE_EXT) || name.ends_with(".tmp")) {
+        if name.starts_with(FILE_PREFIX)
+            && (name.ends_with(FILE_EXT) || name.ends_with(".tmp"))
+            && remove(&name, &f)
+        {
             remove_file(&f.path());
         }
     }
+}
+
+/// Removes the cache files in `dir` last written before `start`: an earlier process's.
+fn remove_stale(dir: &Path, start: SystemTime) {
+    remove_files(dir, |_, f| {
+        f.metadata()
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t < start)
+    });
+}
+
+/// Removes the files of one tier (names starting with `prefix`).
+fn remove_own(dir: &Path, prefix: &str) {
+    remove_files(dir, |name, _| name.starts_with(prefix));
 }
 
 fn writer(rx: &Receiver<Job>, tx: &Sender<Done>) {
@@ -394,7 +474,13 @@ fn writer(rx: &Receiver<Job>, tx: &Sender<Done>) {
 fn reader(rx: &Receiver<ReadJob>, pool: &SnapshotPool, read: &ReadFn) {
     for job in rx {
         let t0 = Instant::now();
-        let res = read(&job.path, &job.format, job.size, pool);
+        let mut res = read(&job.path, &job.format, job.size, pool);
+        // Nobody waits for it: free the buffer now, not when the tier next polls.
+        if job.abandoned.load(Ordering::Acquire)
+            && let Ok((_, bytes)) = std::mem::replace(&mut res, Err(bad("read given up")))
+        {
+            pool.recycle(bytes);
+        }
         let done = ReadDone {
             res,
             took: t0.elapsed(),

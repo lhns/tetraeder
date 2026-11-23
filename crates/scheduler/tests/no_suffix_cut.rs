@@ -167,6 +167,29 @@ fn a_refused_cut_falls_back_to_a_full_prefill() {
     s.shutdown().expect("shutdown");
 }
 
+/// A saved sequence is restored only when the whole entry is shared: a partial match needs a
+/// cut, so the entry must stay in the cache (not be taken and destroyed) for a later prompt that
+/// continues it.
+#[test]
+fn a_cache_entry_that_would_need_a_cut_is_left_alone() {
+    let (s, probe) = start(|k| k.with_no_suffix_cut(true));
+    let a = prompt(200, 1, 200);
+    let (gen_a, _) = finished(&generate(&s, a.clone(), 8));
+    // Replaces the idle sequence, which saves A (and what it generated) in the cache.
+    finished(&generate(&s, prompt(200, 2, 100), 4));
+    // Shares 150 tokens with A's entry, 100 with the idle sequence: the entry would need a cut.
+    let (_, cached) = finished(&generate(&s, prompt(200, 3, 150), 4));
+    assert_eq!(cached, 0);
+    assert_eq!(probe.suffix_cuts.load(Ordering::SeqCst), 0);
+    // A prompt continuing A exactly still finds the entry.
+    let mut c = a.clone();
+    c.extend(&gen_a);
+    c.extend([20, 21, 22]);
+    let (_, cached) = finished(&generate(&s, c, 4));
+    assert!(cached as usize >= a.len(), "entry lost: cached {cached}");
+    s.shutdown().expect("shutdown");
+}
+
 /// A backend error ends the request with `GenEvent::Error`, never a bare finish.
 #[test]
 fn a_backend_error_reaches_the_client() {

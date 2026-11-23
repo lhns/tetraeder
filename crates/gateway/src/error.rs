@@ -89,17 +89,13 @@ impl GatewayError {
         })
     }
 
+    /// The OpenAI statuses but for the full queue: 529 is Anthropic's "overloaded".
     pub fn anthropic_status(&self) -> StatusCode {
         match self {
-            GatewayError::InvalidRequest(_) | GatewayError::ContextExceeded(_) => {
-                StatusCode::BAD_REQUEST
-            }
-            GatewayError::NotFound(_) => StatusCode::NOT_FOUND,
-            // 529 is Anthropic's "overloaded" status.
             GatewayError::Overloaded { .. } => {
                 StatusCode::from_u16(529).unwrap_or(StatusCode::SERVICE_UNAVAILABLE)
             }
-            GatewayError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            _ => self.openai_status(),
         }
     }
 }
@@ -178,19 +174,26 @@ impl LlamaError {
 
 impl From<GatewayError> for LlamaError {
     fn from(e: GatewayError) -> Self {
-        let msg = e.to_string();
-        match e {
-            GatewayError::InvalidRequest(_) => Self::invalid(msg),
-            GatewayError::ContextExceeded(_) => {
-                Self::new(StatusCode::BAD_REQUEST, "exceed_context_size_error", msg)
-            }
-            GatewayError::NotFound(_) => Self::new(StatusCode::NOT_FOUND, "not_found_error", msg),
-            GatewayError::Overloaded { .. } => Self::unavailable(msg),
-            GatewayError::Internal(_) => {
-                Self::new(StatusCode::INTERNAL_SERVER_ERROR, "server_error", msg)
-            }
-        }
+        let kind = match &e {
+            GatewayError::InvalidRequest(_) => "invalid_request_error",
+            GatewayError::ContextExceeded(_) => "exceed_context_size_error",
+            GatewayError::NotFound(_) => "not_found_error",
+            GatewayError::Overloaded { .. } => "unavailable_error",
+            GatewayError::Internal(_) => "server_error",
+        };
+        // Status codes are the OpenAI ones but for the full queue, which llama-server answers
+        // with 503.
+        let status = match &e {
+            GatewayError::Overloaded { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            _ => e.openai_status(),
+        };
+        Self::new(status, kind, e.to_string())
     }
+}
+
+/// A 400 in llama-server's error format, for the routes that are its own.
+pub(crate) fn bad(msg: impl Into<String>) -> LlamaError {
+    LlamaError::invalid(msg)
 }
 
 impl IntoResponse for LlamaError {
