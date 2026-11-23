@@ -66,6 +66,9 @@ pub fn serve_script(prompt: &str) -> String {
 
 type Script = dyn Fn(&str) -> String + Send + Sync;
 
+/// An embedding request the fake saw: the tokens and the normalization mode.
+pub type EmbedCall = (Vec<TokenId>, i32);
+
 pub struct FakeEngine {
     models: Vec<ModelInfo>,
     vocab: Arc<Vocab>,
@@ -98,7 +101,7 @@ pub struct FakeEngine {
     /// Serve embeddings with this pooling (`--embeddings`); `Rank` serves the rerank routes.
     pub embeddings: Option<PoolingKind>,
     /// The tokens and normalization mode of each embedding request, in order.
-    pub embedded: Arc<Mutex<Vec<(Vec<TokenId>, i32)>>>,
+    pub embedded: Arc<Mutex<Vec<EmbedCall>>>,
     /// Slot actions are on (`--slot-save-path`); slots 0 and 1 exist.
     pub slot_actions: bool,
     /// The slot actions seen, in order.

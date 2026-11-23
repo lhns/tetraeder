@@ -458,7 +458,12 @@ async fn unsupported_fields_are_rejected_unless_at_their_default() {
     )
     .await;
     assert_eq!(s, 400, "{v}");
-    assert!(v["error"]["message"].as_str().unwrap().contains("Invalid slot ID"));
+    assert!(
+        v["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid slot ID")
+    );
 }
 
 #[tokio::test]

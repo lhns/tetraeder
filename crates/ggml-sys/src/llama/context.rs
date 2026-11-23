@@ -69,6 +69,8 @@ pub enum Pooling {
 }
 
 impl Pooling {
+    // bindgen types C enums as i32 on MSVC and u32 elsewhere, so the cast is needed off Windows.
+    #[allow(clippy::unnecessary_cast)]
     fn raw(self) -> i32 {
         (match self {
             Pooling::Unspecified => sys::LLAMA_POOLING_TYPE_UNSPECIFIED,

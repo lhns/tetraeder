@@ -112,7 +112,7 @@ async fn embedding_inputs_take_llama_servers_shapes() {
         false,
     )
     .await;
-    assert_eq!((s, tokens(&v)), (200, vec![2]));
+    assert_eq!((s.as_u16(), tokens(&v)), (200, vec![2]));
     // the default normalization is euclidean (2); the request may change it
     let seen = log.lock().unwrap().clone();
     assert!(seen.iter().all(|(_, n)| *n == 2));
@@ -388,7 +388,7 @@ async fn slot_save_restore_and_erase_answer_in_llama_servers_shape() {
     );
     assert_eq!(v["timings"]["restore_ms"], 1.5);
     let (s, _, v) = post(&app, "/slots/0?action=erase", &json!({}), false).await;
-    assert_eq!((s, v), (200, json!({"id_slot": 0, "n_erased": 7})));
+    assert_eq!((s.as_u16(), v), (200, json!({"id_slot": 0, "n_erased": 7})));
     // erase needs no body at all
     let (s, _, _) = send(&app, request("POST", "/slots/1?action=erase", None, false)).await;
     assert_eq!(s, 200);
@@ -434,4 +434,27 @@ async fn bad_slot_requests_are_400s() {
         assert_eq!(s, 400, "{path} {b}");
         assert_eq!(error(&v).2, msg, "{path} {b}");
     }
+}
+
+// ---- context shift ----
+
+#[tokio::test]
+async fn max_tokens_is_clamped_to_the_context_unless_it_shifts() {
+    async fn max_tokens(shift: bool) -> u32 {
+        let engine = FakeEngine::fixed("x");
+        let seen = std::sync::Arc::clone(&engine.params);
+        let cfg = tetraeder_gateway::gateway::GatewayConfig {
+            context_shift: shift,
+            ..tetraeder_gateway::gateway::GatewayConfig::default()
+        };
+        let (app, _) = app_with(engine, cfg);
+        let body = json!({"model": "fake", "prompt": "abc", "max_tokens": 9000});
+        let (s, _, v) = post(&app, "/v1/completions", &body, false).await;
+        assert_eq!(s, 200, "{v}");
+        let p = seen.lock().unwrap();
+        p[0].max_tokens
+    }
+    // the fake serves a context of 4096 and the prompt is 3 tokens
+    assert_eq!(max_tokens(false).await, 4096 - 3);
+    assert_eq!(max_tokens(true).await, 9000);
 }

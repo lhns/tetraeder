@@ -1,6 +1,6 @@
 //! The embedding context over the tiny Qwen3 fixture (ADR 0090). The fixture has no pooling type
 //! of its own (it is `none`) and no classification head, so the pooled values are checked against
-//! the per-token ones, and the reranker is checked to be refused.
+//! the per-token ones, and the reranker runs on the pooled hidden state, as in llama-server.
 //!
 //! Hardware label: none.
 
@@ -114,15 +114,16 @@ fn inputs_beyond_the_batch_and_empty_ones_are_refused() {
 }
 
 #[test]
-fn a_model_without_a_classification_head_cannot_rerank() {
+fn a_reranker_scores_a_pair_deterministically() {
     let m = model();
-    assert_eq!(m.n_cls_out(), 0);
-    let cfg = EmbedConfig {
-        pooling: Pooling::Rank,
-        n_batch: 64,
-        threads: Some(2),
-        ..EmbedConfig::default()
-    };
-    let err = Embedder::new(&m, &cfg).err().expect("refused").to_string();
-    assert!(err.contains("classification head"), "{err}");
+    let mut e = embedder(&m, Pooling::Rank);
+    assert_eq!(e.pooling(), Pooling::Rank);
+    let a = tokens(&m, "what is rust? Rust is a language");
+    let b = tokens(&m, "what is rust? A fungus on iron");
+    let (sa, sb) = (e.score(&a).unwrap(), e.score(&b).unwrap());
+    assert!(sa.is_finite() && sb.is_finite());
+    assert_ne!(sa, sb, "two different pairs score differently");
+    assert_eq!(e.score(&a).unwrap(), sa, "the same pair scores the same");
+    // only a rank context scores
+    assert!(embedder(&m, Pooling::Mean).score(&a).is_err());
 }

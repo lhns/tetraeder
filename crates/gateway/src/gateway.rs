@@ -50,6 +50,9 @@ pub struct GatewayConfig {
     /// The server's sampling defaults under llama-server's names, laid over llama.cpp's own
     /// defaults for `/props` and `generation_settings`.
     pub defaults: serde_json::Map<String, serde_json::Value>,
+    /// `--context-shift`: a generation may run past the context (the engine shifts it), so
+    /// `max_tokens` is not clamped to the room left.
+    pub context_shift: bool,
 }
 
 impl Default for GatewayConfig {
@@ -63,6 +66,7 @@ impl Default for GatewayConfig {
             api_keys: Vec::new(),
             metrics: false,
             defaults: serde_json::Map::new(),
+            context_shift: false,
         }
     }
 }
@@ -728,6 +732,9 @@ impl Gateway {
                     "max_tokens must be at least 1".into(),
                 ));
             }
+            // With the context shift the request may outlive the context, as in llama-server.
+            Some(m) if self.cfg.context_shift => m,
+            None if self.cfg.context_shift => u32::MAX,
             // Clamped to the room left, as llama-server does.
             Some(m) => m.min(ctx - n_prompt),
             None => ctx - n_prompt,

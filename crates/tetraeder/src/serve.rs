@@ -198,11 +198,7 @@ pub struct ServeArgs {
     pub model: Option<PathBuf>,
     /// llama-server's `-hf USER/MODEL[:QUANT]`: refused, tetraeder does not download models
     /// (ADR 0090). Download the GGUF and pass `-m`.
-    #[arg(
-        long,
-        value_name = "USER/MODEL[:QUANT]",
-        env = "LLAMA_ARG_HF_REPO"
-    )]
+    #[arg(long, value_name = "USER/MODEL[:QUANT]", env = "LLAMA_ARG_HF_REPO")]
     pub hf_repo: Option<String>,
     /// llama-server's `-hff FILE`, refused with `--hf-repo`.
     #[arg(long, value_name = "FILE", env = "LLAMA_ARG_HF_FILE")]
@@ -561,6 +557,7 @@ pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
         api_keys: a.api_keys()?,
         metrics: a.metrics,
         defaults: a.sampling.generation_defaults(),
+        context_shift: a.context_shift,
         ..GatewayConfig::default()
     };
     let mut gw = Gateway::new(engine, cfg).with_meter(&opentelemetry::global::meter("tetraeder"));

@@ -651,8 +651,37 @@ cases:
     engines: [dense, moe]
     expect: pass
 
-  # The tiny models have no rank head, so only the answers of a server that is not started with --reranking are compared;
-  # the scoring is covered by unit tests of the embedder with a fake context (crates/engine).
+  # The tiny models have no rank head: libllama then scores with the first value of the pooled state (softmaxed for
+  # Qwen3), the same on both servers, so the scores are compared at 1e-5 (they are about 0.01). A server that is not
+  # started with --reranking answers 501.
+  - id: rerank-jina
+    group: D
+    row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
+    endpoint: POST /v1/rerank
+    body: {query: Hello world, documents: [Once upon a time, The quick brown fox, Rust is a language], top_n: 3}
+    llama_args: [--reranking]
+    tetraeder_args: [--reranking]
+    mode: vectors
+    vector_paths: ["results[0].relevance_score", "results[1].relevance_score", "results[2].relevance_score"]
+    value_paths: ["results[0].index", "results[1].index", "results[2].index", "usage.prompt_tokens"]
+    tolerance: 0.00001
+    engines: [auto]
+    expect: pass
+
+  - id: rerank-tei
+    group: D
+    row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
+    endpoint: POST /rerank
+    body: {query: Hello world, texts: [Once upon a time, The quick brown fox], return_text: true}
+    llama_args: [--reranking]
+    tetraeder_args: [--reranking]
+    mode: vectors
+    vector_paths: ["[0].score", "[1].score"]
+    value_paths: ["[0].index", "[1].index", "[0].text"]
+    tolerance: 0.00001
+    engines: [auto]
+    expect: pass
+
   - id: rerank-unsupported
     group: D
     row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"

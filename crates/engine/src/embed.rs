@@ -53,17 +53,13 @@ pub struct Embedder {
 }
 
 impl Embedder {
-    /// Creates the embedding context over `model`. A reranker (`Rank`) needs a model with a
-    /// classification head.
+    /// Creates the embedding context over `model`. A reranker (`Rank`) scores with the model's
+    /// classification head; a model without one gives the first value of its pooled hidden
+    /// state, as in llama-server.
     pub fn new(model: &Arc<Model>, cfg: &EmbedConfig) -> Result<Self> {
         if cfg.n_batch == 0 {
             return Err(EngineError::InvalidRequest(
                 "n_batch must be positive".into(),
-            ));
-        }
-        if cfg.pooling == Pooling::Rank && model.n_cls_out() == 0 {
-            return Err(EngineError::InvalidRequest(
-                "the model has no classification head, so it cannot rerank".into(),
             ));
         }
         let threads = cfg
