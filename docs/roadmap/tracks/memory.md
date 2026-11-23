@@ -18,10 +18,10 @@ flowchart TB
     memory_ram_freq["✔ Keep most-used<br/>experts in RAM"]
     memory_adaptive_tier["✔ Admit CPU misses<br/>into VRAM"]
     memory_ram_pool[/"✖ Share RAM slots<br/>across layers"/]
+    memory_kv_auto["✔ Planner picks the KV<br/>format"]
     memory_safetensors["⏸ Load safetensors<br/>models directly"]
     memory_kv_host["○ KV cache partly in<br/>RAM"]
     memory_kv_tiers["⏸ KV cache spills to<br/>RAM, disk"]
-    memory_kv_auto["○ Planner picks the KV<br/>format"]
     memory_prefix_ssd["○ Prefix cache spills<br/>to SSD"]
     memory_prefill_misses["⏸ Stream expert misses<br/>during prefill"]
     memory_typed_slots["⏸ Per-expert formats<br/>by tier"]
@@ -33,16 +33,16 @@ flowchart TB
     memory_conversion ~~~ memory_ram_freq
     memory_io_service ~~~ memory_adaptive_tier
     memory_low_bit_kv ~~~ memory_ram_pool
-    memory_ram_freq ~~~ memory_safetensors
-    memory_adaptive_tier ~~~ memory_kv_host
+    memory_ram_freq ~~~ memory_kv_auto
+    memory_adaptive_tier ~~~ memory_safetensors
     memory_ram_pool ~~~ memory_kv_host
-    memory_safetensors ~~~ memory_kv_host
-    memory_kv_host ~~~ memory_kv_tiers
-    memory_kv_host ~~~ memory_kv_auto
+    memory_kv_auto ~~~ memory_kv_host
+    memory_safetensors ~~~ memory_kv_tiers
     memory_kv_host ~~~ memory_prefix_ssd
-    memory_kv_tiers ~~~ memory_prefill_misses
-    memory_kv_auto ~~~ memory_typed_slots
+    memory_kv_host ~~~ memory_prefill_misses
+    memory_kv_tiers ~~~ memory_typed_slots
     memory_prefix_ssd ~~~ memory_typed_slots
+    memory_prefill_misses ~~~ memory_typed_slots
     memory_tiers --> memory_pair_groups
     memory_tiers --> memory_prefetch
     memory_prefetch --> memory_io_service
@@ -67,13 +67,13 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class memory_tiers unrated
+    class memory_tiers,memory_kv_auto unrated
     class memory_pair_groups,memory_ram_freq,memory_adaptive_tier mixed
     class memory_prefetch,memory_conversion,memory_io_service vsucc
     class memory_low_bit_kv succ
     class memory_ram_pool dead
     class memory_safetensors,memory_kv_tiers,memory_prefill_misses,memory_typed_slots parked
-    class memory_kv_host,memory_kv_auto,memory_prefix_ssd next
+    class memory_kv_host,memory_prefix_ssd next
 ```
 <!-- END GENERATED: track-memory -->
 
@@ -94,7 +94,7 @@ flowchart TB
 | `memory-safetensors` | Load safetensors models directly | feature | local | parked | unrated |  |  | memory-conversion |  |  |  |  |
 | `memory-kv-tiers` | KV cache spills to RAM, disk | feature | local | parked | unrated |  |  | memory-kv-host |  |  |  |  |
 | `memory-kv-host` | KV cache partly in RAM | feature | local | next | unrated |  |  | serving-kv-layout |  |  |  |  |
-| `memory-kv-auto` | Planner picks the KV format | feature | local | next | unrated |  |  | serving-kv-layout |  |  |  |  |
+| `memory-kv-auto` | Planner picks the KV format | feature | local | done | unrated | 2026-11-23 | 2026-11-23 | serving-kv-layout |  |  |  | docs/adr/0086-kv-format-auto.md; crates/planner/tests/kv_auto.rs; docs/notes/strata-parity.md |
 | `memory-prefix-ssd` | Prefix cache spills to SSD | feature | local | next | unrated |  |  | serving-prefix-cache |  |  |  |  |
 | `memory-prefill-misses` | Stream expert misses during prefill | feature | local | parked | unrated |  |  | memory-io-service |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier | feature | local | parked | unrated |  |  | serving-kv-layout, planner-quality |  |  |  |  |
@@ -115,7 +115,7 @@ flowchart TB
 | `memory-safetensors` | Load safetensors models directly |  |  | Load Hugging Face safetensors files with a tensor-name map per architecture, converting at load time, instead of needing a GGUF file (plan feature 49). | Parked: no milestone or exit test needs it; every model in use ships as GGUF. Checked 2026-11-21: no safetensors loader in crates/ (only the KTransformers baseline script reads safetensors). Done when: Qwen3 dense and MoE load from safetensors with logit parity against the GGUF path. |  |  |  |  |
 | `memory-kv-tiers` | KV cache spills to RAM, disk |  |  | Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084). | Parked: no exit test needs it. Checked 2026-11-21: crates/kvcache has no RAM or disk tier; the prefix cache keeps whole snapshots in RAM. Done when: a long context beyond VRAM decodes with KV partly in RAM, paired against all in VRAM. |  |  |  |  |
 | `memory-kv-host` | KV cache partly in RAM |  |  | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). | Planned 2026-11-23 with the advisor after Strata 0.2.20 (position split over mapped host memory, only 8 global layers of Inkling 2 Mini). Every Qwen3 layer is full attention, so host KV is a fit lever, not a speed lever. Done when: ADR 0084 pairs A and B pass. Order against the parity groups is the owner's. |  |  |  |  |
-| `memory-kv-auto` | Planner picks the KV format |  |  | The planner chooses the KV format (F16, Q8_0, Q8_0/Q4_0) and pool size from free VRAM and slots instead of taking them as given, the way Strata picks FP8 KV on small cards (ADR 0085). | Formats exist (ADR 0050 b); judged by a paired run on a model we run. |  |  |  |  |
+| `memory-kv-auto` | Planner picks the KV format | CI run 45097627980 on 948b770 passed cargo test on Linux and Windows, including kv_auto (9 tests, the fixture sweep and the memory proptest). Built, CI-tested, not measured. |  | serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16. | Formats exist (ADR 0050 b); judged by a paired run on a model we run. |  |  |  |  |
 | `memory-prefix-ssd` | Prefix cache spills to SSD |  |  | Idle conversations' KV snapshots spill from RAM to NVMe and come back on the next turn, as Strata parks conversations (ADR 0085). | Prefix snapshots are RAM only today (ADR 0049). |  |  |  |  |
 | `memory-prefill-misses` | Stream expert misses during prefill |  |  | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). | Parked with Track B (m2-plan, Track B: candidate first item when it resumes). Done when: one timed box run of the prefill buckets first, then a paired run of the 235B 32K prefill. |  |  |  |  |
 | `memory-typed-slots` | Per-expert formats by tier |  |  | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). | Parked: was waiting for the KV and slot layout (C6, decided chunked 2026-11-14); nothing schedules it now. Done when: a mix of slot formats passes parity and the quality gate. |  |  |  |  |
