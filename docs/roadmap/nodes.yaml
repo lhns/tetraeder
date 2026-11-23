@@ -3591,27 +3591,29 @@ nodes:
   title: Review group D and the fixes
   track: ops
   kind: refactor
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  evidence:
+  - docs/notes/llamacpp-parity.md
+  - tests/conformance/parity/test_parity_lib.py
+  verdict_quote: 795 passed, 2 skipped, 6 xfailed in 97.55s (0:01:37)
   headline: ''
   depends_on:
   - serving-parity-libllama
   - ops-review-parity-batch
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
-  plain: A second review of the code merged after the first review (group D and the review fixes), plus the flaky disk-read test, a check that every parity row has a case or a scope-out, and the per-token cost of logprobs and the greedy fast path.
+  plain: The second review of group D found 11 findings, 10 fixed and 1 dropped with evidence (the pin does not truncate over-long prompts under context shift), and the audit of ADR 0083 decision 6 covers all 165 appendix rows, 75 with a case, 74 scoped out and 16 covered by unit tests, with 6 strict gap cases under serving-parity-remaining; CI run 45256815014 ran the parity suite at 795 passed, 2 skipped and 6 xfailed.
   notes: 'The first review found 13 real bugs.'
 - id: bench-regression-gate
   title: Regression gate on final main
   track: bench
   kind: session
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
