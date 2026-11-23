@@ -2,8 +2,9 @@
 //! a box, the pick, a drift correction of the hardware graph and the replanner's proposal.
 //! Pure: no I/O, no engine types.
 
+use crate::builder::{BUILDER_UBATCHES, ram_slot_options};
 use crate::candidate::{
-    Budget, CPU, GPU, Placement, Workload, enumerate, enumerate_cpu, footprint,
+    Budget, CPU, GPU, Placement, UBATCHES, Workload, enumerate, enumerate_cpu, footprint,
 };
 use crate::layout::ModelLayout;
 use crate::lower::{Applies, ServeEngine, llama_args, llama_lowered, recognize};
@@ -85,12 +86,12 @@ pub fn fill_knobs(plan: &mut Plan, budget: &Budget) -> Vec<String> {
     notes
 }
 
-fn has_gpu(hw: &HardwareGraph) -> bool {
+pub(crate) fn has_gpu(hw: &HardwareGraph) -> bool {
     hw.device(GPU).is_some_and(|d| d.kind == DeviceKind::Gpu)
 }
 
 /// The workload candidates are sized with: the whole context, generation as asked.
-fn sizing(inp: &ServeInput) -> Workload {
+pub(crate) fn sizing(inp: &ServeInput) -> Workload {
     Workload {
         prompt: inp.ctx.saturating_sub(inp.workload.r#gen).max(1),
         r#gen: inp.workload.r#gen,
@@ -276,6 +277,53 @@ pub fn predict_plan_tier(
     predict(hw, &f, w.prompt, w.r#gen).map_err(|e| e.to_string())
 }
 
+/// Which memory tier a refusal lacks, in words: the RAM the streaming builder needs beyond the
+/// budget, or the RAM the CPU placement needs for all weights. A plan without a RAM tier
+/// (`ram_slots` 0, experts read from NVMe straight into VRAM) is not enumerated (ADR 0034 keeps
+/// at least top-k slots per tier). `None` when no tier is short.
+pub fn missing_tier(inp: &ServeInput) -> Option<String> {
+    let (l, b) = (&inp.layout, &inp.budget);
+    let w = sizing(inp);
+    let mut parts = Vec::new();
+    if has_gpu(&inp.hw) && l.is_moe() && inp.engine == ServeEngine::Builder {
+        // The builder's RAM tier is at least a quarter of the experts not in VRAM, or top-k; the
+        // least host RAM is at the largest VRAM tier that fits.
+        let k = l.n_expert_used.max(1);
+        let least = (k..=l.n_expert.max(k))
+            .filter_map(|v| {
+                let ram_slots = ram_slot_options(l, v)[0];
+                let pl = Placement::Builder {
+                    vram_slots: v,
+                    ram_slots,
+                };
+                let f = footprint(l, pl, BUILDER_UBATCHES[0], &w, KvFormat::default());
+                (f.gpu <= b.gpu_bytes).then_some((v, ram_slots, f.host))
+            })
+            .min_by_key(|x| x.2);
+        match least {
+            Some((v, ram_slots, host)) if host > b.ram_bytes => parts.push(format!(
+                "the builder's smallest RAM tier ({ram_slots} expert slots per layer, {v} in VRAM) needs {:.1} GB of host RAM, the budget has {:.1} GB; a plan with no RAM tier is not planned",
+                host as f64 / 1e9,
+                b.ram_bytes as f64 / 1e9
+            )),
+            None => parts.push(format!(
+                "the VRAM tier: the dense weights and {k} expert slots per layer do not fit {:.1} GB",
+                b.gpu_bytes as f64 / 1e9
+            )),
+            _ => {}
+        }
+    }
+    let f = footprint(l, Placement::Cpu, UBATCHES[0], &w, KvFormat::default());
+    if f.host > b.ram_bytes {
+        parts.push(format!(
+            "the CPU placement holds all weights in RAM and needs {:.1} GB, the budget has {:.1} GB; streaming them from disk with no RAM tier is not planned",
+            f.host as f64 / 1e9,
+            b.ram_bytes as f64 / 1e9
+        ));
+    }
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
 /// The candidate with the lowest predicted request time (ties: enumeration order). When any
 /// prediction fails the first candidate runs, without a prediction. `Err` without candidates.
 pub fn pick(inp: &ServeInput) -> Result<Picked, String> {
@@ -286,7 +334,10 @@ pub fn pick(inp: &ServeInput) -> Result<Picked, String> {
             .first()
             .map(|(d, e)| format!(": {d}: {e}"))
             .unwrap_or_default();
-        return Err(format!("no executable plan fits the budget{why}"));
+        let tier = missing_tier(inp)
+            .map(|t| format!(" (missing tier: {t})"))
+            .unwrap_or_default();
+        return Err(format!("no executable plan fits the budget{why}{tier}"));
     };
     let placement_of = |p: &Plan| recognize(p, &inp.layout).map(|r| r.0);
     let mut best: Option<(&Plan, Prediction)> = None;

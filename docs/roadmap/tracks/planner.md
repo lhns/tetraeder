@@ -23,13 +23,14 @@ flowchart TB
     planner_cost_v4["✔ Price routed expert<br/>traffic"]
     planner_cost_model_v5["✔ Price decode at<br/>measured clocks"]
     planner_ep_prefill_recheck[/"✔ Recheck expert-<br/>parallel prefill error"/]
+    planner_low_ram_modes[/"✔ Experts on GPU and<br/>SSD only"/]
     planner_cost_model_v5_host2[/"○ Cost model 5 second<br/>host"/]
     planner_live_replan["⛔ Replan without<br/>draining"]
     planner_advisor_auto["⛔ Advisor applies safe<br/>changes itself"]
     planner_split_layouts["⛔ Separate prefill and<br/>decode layouts"]
     planner_low_bit_formats["⏸ One and two bit<br/>formats"]
     planner_ep_split["○ Expert-parallel<br/>split on two GPUs"]
-    planner_low_ram_modes[/"○ Experts on GPU and<br/>SSD only"/]
+    planner_ram_slots_zero["⏸ Plan experts with no<br/>RAM tier"]
     planner_slot_campaign[/"⏸ Check planner's<br/>expert slot picks"/]
     planner_replan_part_b["⏸ Replanning in serve,<br/>part B"]
     planner_plan_ir ~~~ planner_quality
@@ -47,16 +48,16 @@ flowchart TB
     planner_cost_v3 ~~~ planner_cost_v4
     planner_cost_v4 ~~~ planner_cost_model_v5
     planner_cost_v4 ~~~ planner_ep_prefill_recheck
-    planner_cost_v4 ~~~ planner_cost_model_v5_host2
-    planner_cost_model_v5 ~~~ planner_live_replan
-    planner_ep_prefill_recheck ~~~ planner_advisor_auto
+    planner_cost_v4 ~~~ planner_low_ram_modes
+    planner_cost_model_v5 ~~~ planner_cost_model_v5_host2
+    planner_ep_prefill_recheck ~~~ planner_live_replan
+    planner_low_ram_modes ~~~ planner_advisor_auto
     planner_cost_model_v5_host2 ~~~ planner_split_layouts
     planner_live_replan ~~~ planner_low_bit_formats
     planner_advisor_auto ~~~ planner_ep_split
-    planner_split_layouts ~~~ planner_low_ram_modes
+    planner_split_layouts ~~~ planner_ram_slots_zero
     planner_low_bit_formats ~~~ planner_slot_campaign
     planner_ep_split ~~~ planner_replan_part_b
-    planner_low_ram_modes ~~~ planner_replan_part_b
     planner_plan_ir --> planner_quality
     planner_plan_ir --> planner_core
     planner_core --> planner_exit
@@ -71,6 +72,7 @@ flowchart TB
     planner_cost_v4 --> planner_cost_model_v5
     planner_cost_v4 --> planner_ep_prefill_recheck
     planner_cost_model_v5 --> planner_ep_split
+    planner_low_ram_modes --> planner_ram_slots_zero
     planner_fill_tier --> planner_slot_campaign
     planner_replan --> planner_replan_part_b
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -87,12 +89,12 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class planner_plan_ir,planner_tier_cost,planner_replan,planner_fill_tier,planner_parallel_shapes,planner_cost_v3 unrated
+    class planner_plan_ir,planner_tier_cost,planner_replan,planner_fill_tier,planner_parallel_shapes,planner_cost_v3,planner_low_ram_modes unrated
     class planner_quality,planner_exit,planner_detector,planner_cost_v2,planner_cost_v4,planner_cost_model_v5,planner_ep_prefill_recheck succ
     class planner_core vsucc
-    class planner_cost_model_v5_host2,planner_ep_split,planner_low_ram_modes next
+    class planner_cost_model_v5_host2,planner_ep_split next
     class planner_live_replan,planner_advisor_auto,planner_split_layouts blocked
-    class planner_low_bit_formats,planner_slot_campaign,planner_replan_part_b parked
+    class planner_low_bit_formats,planner_ram_slots_zero,planner_slot_campaign,planner_replan_part_b parked
 ```
 <!-- END GENERATED: track-planner -->
 
@@ -120,7 +122,8 @@ flowchart TB
 | `planner-split-layouts` | Separate prefill and decode layouts | feature | local | blocked | unrated |  |  | bench-m3-report |  |  |  |  |
 | `planner-low-bit-formats` | One and two bit formats | feature | none | parked | unrated |  |  | planner-quality, memory-conversion |  |  |  |  |
 | `planner-ep-split` | Expert-parallel split on two GPUs | feature | local | next | unrated |  |  | planner-cost-model-v5 |  |  |  |  |
-| `planner-low-ram-modes` | Experts on GPU and SSD only | experiment | local | next | unrated |  |  | memory-tiers |  |  |  |  |
+| `planner-low-ram-modes` | Experts on GPU and SSD only | experiment | local | done | unrated | 2026-11-23 | 2026-11-23 | memory-tiers |  |  |  | crates/planner/tests/low_ram_modes.rs; docs/notes/strata-parity.md |
+| `planner-ram-slots-zero` | Plan experts with no RAM tier | feature | local | parked | unrated |  |  | planner-low-ram-modes |  |  |  | crates/planner/tests/low_ram_modes.rs |
 | `planner-slot-campaign` | Check planner's expert slot picks | experiment | box-later | parked | unrated |  |  | planner-fill-tier |  |  |  |  |
 | `planner-replan-part-b` | Replanning in serve, part B | feature | local | parked | unrated |  |  | planner-replan |  |  |  |  |
 | `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | experiment | local | done | successful | 2026-11-21 | 2026-11-21 | planner-cost-v4, multi-prefill-no-capture |  |  | ep-4 pp 0.959 | bench/results/v4a-20261121/README.md; bench/results/v2c-20261121/README.md |
@@ -149,7 +152,8 @@ flowchart TB
 | `planner-split-layouts` | Separate prefill and decode layouts |  |  | The planner may choose one layout for prefill and another for decode, sharing the weights (plan feature 40). | Done when: the planner picks split layouts where they win, and parity holds across the switch. Phase 7, blocked behind the M3 report. |  |  |  |  |
 | `planner-low-bit-formats` | One and two bit formats |  |  | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). | Parked to Phase 9 (m2-plan, m1-open item 10); no exit test needs them. Checked 2026-11-21: crates/plan/src/format.rs lists the formats, but conversion rejects formats that need an importance matrix (ADR 0047) and profile v1 measures none below IQ4_XS (ADR 0048). Done when: the imatrix input lands in conversion and profile, and the planner picks such a format where the profile allows. |  |  |  |  |
 | `planner-ep-split` | Expert-parallel split on two GPUs |  |  | A new plan shape where each of two GPUs holds a share of every MoE layer's experts, as Strata's --ep-split does, priced by the cost model and tested on every hardware fixture (ADR 0085). | Rules 4 and 5; judged against layer-2 on the 30B. |  |  |  |  |
-| `planner-low-ram-modes` | Experts on GPU and SSD only |  |  | Check that the planner can place experts in VRAM and on NVMe with no RAM tier, or on the CPU and NVMe only, as Strata offers for small machines (ADR 0085). | Simulated fixtures first; a box only if a gap shows. |  |  |  |  |
+| `planner-low-ram-modes` | Experts on GPU and SSD only | CI run 45097627980 on 948b770 passed low_ram_modes (6 tests). Gap found: both modes are refused below the floors, the refusal now names the missing tier, a plan with ram_slots 0 is not planned. |  | On a 235B layout the planner has no plan without a RAM expert tier (builder floor of top-k slots per layer, CPU placement needs all weights in RAM); it refuses and names the tier, and ram_slots 0 stays unplanned. | Simulated fixtures first; a box only if a gap shows. |  |  |  |  |
+| `planner-ram-slots-zero` | Plan experts with no RAM tier |  |  | Enumerate, lower and score a builder plan with ram_slots 0 (experts read from NVMe into VRAM), which the engine already runs and the planner never offers. | Needs recognize, lower and score to carry ram_slots 0; tests on every fixture (rules 4 and 5). |  |  |  |  |
 | `planner-slot-campaign` | Check planner's expert slot picks |  |  | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. | Parked with Track B (m2-plan B4, m1-open item 6). Done when: scripts/planner_builder_campaign.sh results committed as planner-moe-builder. |  |  |  |  |
 | `planner-replan-part-b` | Replanning in serve, part B |  |  | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. | Parked with Track B (m2-plan B4, m1-open item 10). Done when: switch time and refused requests, paired against restarting llama-server. |  |  |  |  |
 | `planner-ep-prefill-recheck` | Recheck expert-parallel prefill error | \| M4 \| ep-4 \| 0.959 \| 1.057 \| 1.203 / 1.230 \| | ep-4 pp 0.959 | Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed. | recheck against V4a; likely closed by the capture fix. Source: m2-plan, Phase 5 open item 2; ADR 0081. |  |  |  |  |

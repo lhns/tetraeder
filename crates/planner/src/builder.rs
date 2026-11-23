@@ -137,9 +137,21 @@ pub fn feasible_vram_tiers_kv(
 pub fn build_builder_candidate(
     id: &str,
     layout: &ModelLayout,
+    slots: (u32, u32),
+    run: (u32, u32, bool),
+    workload: &Workload,
+) -> Candidate {
+    build_builder_candidate_kv(id, layout, slots, run, workload, KvFormat::default())
+}
+
+/// [`build_builder_candidate`] with the KV cache in `kv`.
+pub fn build_builder_candidate_kv(
+    id: &str,
+    layout: &ModelLayout,
     (vram_slots, ram_slots): (u32, u32),
     (threads, ubatch, op_offload): (u32, u32, bool),
     workload: &Workload,
+    kv: KvFormat,
 ) -> Candidate {
     let placement = Placement::Builder {
         vram_slots,
@@ -151,17 +163,10 @@ pub fn build_builder_candidate(
         op_offload: Some(op_offload),
         ..Default::default()
     };
-    let f = footprint(layout, placement, ubatch, workload, KvFormat::default());
+    let f = footprint(layout, placement, ubatch, workload, kv);
     Candidate {
         id: id.to_string(),
-        plan: build_plan(
-            layout,
-            placement,
-            knobs,
-            ubatch,
-            workload,
-            KvFormat::default(),
-        ),
+        plan: build_plan(layout, placement, knobs, ubatch, workload, kv),
         engine: EngineKind::Builder,
         placement,
         prompt: workload.prompt,
@@ -184,6 +189,16 @@ pub fn build_builder_candidate(
 /// tier and every knob value stays represented. Ids `c00`... follow the final order: VRAM slots
 /// descending, then RAM slots, threads, ubatch, op offload on before off.
 pub fn enumerate_builder(budget: &Budget, layout: &ModelLayout, w: &Workload) -> Enumeration {
+    enumerate_builder_kv(budget, layout, w, KvFormat::default())
+}
+
+/// [`enumerate_builder`] with the KV cache in `kv`.
+pub fn enumerate_builder_kv(
+    budget: &Budget,
+    layout: &ModelLayout,
+    w: &Workload,
+    kv: KvFormat,
+) -> Enumeration {
     let mut dropped = Vec::new();
     if !layout.is_moe() {
         dropped.push(("all placements".into(), "the model is not a MoE".into()));
@@ -193,7 +208,7 @@ pub fn enumerate_builder(budget: &Budget, layout: &ModelLayout, w: &Workload) ->
             placements: vec![],
         };
     }
-    let mut tiers = feasible_vram_tiers(budget, layout, w, &mut dropped);
+    let mut tiers = feasible_vram_tiers_kv(budget, layout, w, kv, &mut dropped);
     tiers.reverse();
     let threads = thread_values(budget.threads);
     let ops = [true, false];
@@ -228,7 +243,7 @@ pub fn enumerate_builder(budget: &Budget, layout: &ModelLayout, w: &Workload) ->
                             p,
                             k: [t, u, o, ri],
                         };
-                        match fits_at(budget, layout, pl, ub, w, KvFormat::default()) {
+                        match fits_at(budget, layout, pl, ub, w, kv) {
                             Ok(_) => rows.push(row),
                             Err(e) => dropped.push((describe(desc_of(&row, &rams)), e)),
                         }
@@ -256,7 +271,14 @@ pub fn enumerate_builder(budget: &Budget, layout: &ModelLayout, w: &Workload) ->
         .enumerate()
         .map(|(i, r)| {
             let (v, ram, t, ub, op) = desc_of(r, &rams);
-            let c = build_builder_candidate(&format!("c{i:02}"), layout, (v, ram), (t, ub, op), w);
+            let c = build_builder_candidate_kv(
+                &format!("c{i:02}"),
+                layout,
+                (v, ram),
+                (t, ub, op),
+                w,
+                kv,
+            );
             if !placements.contains(&c.placement) {
                 placements.push(c.placement);
             }

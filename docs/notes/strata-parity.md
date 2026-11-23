@@ -19,12 +19,12 @@ Judged by a paired run on a model we run (rule 3); no default changes on Strata'
 | Strata feature | Mechanism (Strata) | Tetraeder today | Node |
 |---|---|---|---|
 | KV formats fp8, k8v8, k8v4, rotated | `--kv`; k8v4 = int8 K, rotated Q4_0 V (`generate.cpp:1227-1233`, `ink_main.cpp:414-420`) | **have**: F16, BF16, Q8_0, Q8_0/Q4_0, Q4_0 with Hadamard rotation (`crates/plan/src/kv.rs`, ADR 0050 b) | none |
-| Automatic KV format | picks FP8 at 16+ slots or small VRAM (`ink_cuda_backend.cu:148-160`) | missing: the planner takes the format as given | `memory-kv-auto` |
+| Automatic KV format | picks FP8 at 16+ slots or small VRAM (`ink_cuda_backend.cu:148-160`) | built, not measured: `serve --kv auto` (own builders) and the planner try F16, Q8_0, Q8_0/Q4_0 by fit (ADR 0086); libllama and `--plan` keep F16 | `memory-kv-auto` |
 | Elastic KV | allocate only reached cells, the expert cache gives slots back (`--kv-grow`, `profile_rules.hpp:176-183`) | partly: chunked pool reserves per sequence (ADR 0067), the pool size is fixed at load | `memory-kv-auto` |
 | Host KV | position split over mapped pinned host memory, 8 global layers of Inkling only (`ink_runner.cuh:1882-1995`) | missing | `memory-kv-host` (ADR 0084) |
 | Prompt-lookup drafts | suffix drafter (`engine/src/spec/suffix_drafter.cpp`) | **have**: n-gram drafter (`crates/scheduler/src/spec/ngram.rs`, ADR 0043) | none |
 | Adaptive expert cache | VRAM cache learns routing, async swaps (`engine/src/core/expert_cache.cpp`, `--adapt-every`) | **have** in parts: pinned hot set, LRU, frequency tiers, prefetch (ADR 0050 c, 0054) | none; compare once a model is shared |
-| GPU plus SSD only, CPU plus SSD only | fit helper sets `--ssd-experts --ram-experts-gb 0` (`inkling_fit.py:398-424`) | to check: the planner has RAM and NVMe tiers; whether it plans a zero-RAM expert tier is untested | `planner-low-ram-modes` |
+| GPU plus SSD only, CPU plus SSD only | fit helper sets `--ssd-experts --ram-experts-gb 0` (`inkling_fit.py:398-424`) | **gap**, tested: no plan below the floors (builder RAM tier of top-k slots per layer, CPU placement with all weights in RAM); the refusal names the tier; a plan with no RAM tier (`ram_slots` 0) is not enumerated, lowered or scored | `planner-low-ram-modes` |
 | Expert-parallel split on 2 GPUs | each GPU holds a share of every layer's experts (`ep_dual_gpu.cu`, `--ep-split`) | missing: shapes are layer split and tensor parallel (ADR 0069) | `planner-ep-split` |
 | Conversation spill to SSD | parked conversations in RAM with SSD spill (`docs/DETAILS.md` "Conversation cache") | **have** (2026-11-23): prefix snapshots in RAM spill to NVMe on eviction and return on the next turn, `--cache-disk` and `--cache-disk-mib` (ADR 0087); not measured | none |
 | CUDA graph per token, CPU and GPU expert overlap | `--no-token-graph` A/B, hit poke (`generate.cpp:944,1288`) | **have**: graphs per segment, CPU hit group overlap (ADR 0030, 0054, 0064) | none |

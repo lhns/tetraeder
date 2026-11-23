@@ -3260,20 +3260,23 @@ nodes:
   title: Planner picks the KV format
   track: memory
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  evidence:
+  - docs/adr/0086-kv-format-auto.md
+  - crates/planner/tests/kv_auto.rs
+  - docs/notes/strata-parity.md
+  verdict_quote: 'CI run 45097627980 on 948b770 passed cargo test on Linux and Windows, including kv_auto (9 tests, the fixture sweep and the memory proptest). Built, CI-tested, not measured.'
   headline: ''
   depends_on:
   - serving-kv-layout
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
-  plain: The planner chooses the KV format (F16, Q8_0, Q8_0/Q4_0) and pool size from free VRAM and slots instead of taking them as given, the way Strata picks FP8 KV on small cards (ADR 0085).
+  plain: 'serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.'
   notes: 'Formats exist (ADR 0050 b); judged by a paired run on a model we run.'
 - id: planner-ep-split
   title: Expert-parallel split on two GPUs
@@ -3298,21 +3301,43 @@ nodes:
   title: Experts on GPU and SSD only
   track: planner
   kind: experiment
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  evidence:
+  - crates/planner/tests/low_ram_modes.rs
+  - docs/notes/strata-parity.md
+  verdict_quote: 'CI run 45097627980 on 948b770 passed low_ram_modes (6 tests). Gap found: both modes are refused below the floors, the refusal now names the missing tier, a plan with ram_slots 0 is not planned.'
   headline: ''
   depends_on:
   - memory-tiers
+  replaced_by: []
+  lane: local
+  start: 2026-11-23
+  end: 2026-11-23
+  folded: []
+  overview: false
+  plain: 'On a 235B layout the planner has no plan without a RAM expert tier (builder floor of top-k slots per layer, CPU placement needs all weights in RAM); it refuses and names the tier, and ram_slots 0 stays unplanned.'
+  notes: 'Simulated fixtures first; a box only if a gap shows.'
+- id: planner-ram-slots-zero
+  title: Plan experts with no RAM tier
+  track: planner
+  kind: feature
+  state: parked
+  outcome: unrated
+  evidence:
+  - crates/planner/tests/low_ram_modes.rs
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-low-ram-modes
   replaced_by: []
   lane: local
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: Check that the planner can place experts in VRAM and on NVMe with no RAM tier, or on the CPU and NVMe only, as Strata offers for small machines (ADR 0085).
-  notes: 'Simulated fixtures first; a box only if a gap shows.'
+  plain: Enumerate, lower and score a builder plan with ram_slots 0 (experts read from NVMe into VRAM), which the engine already runs and the planner never offers.
+  notes: 'Needs recognize, lower and score to carry ram_slots 0; tests on every fixture (rules 4 and 5).'
 - id: memory-prefix-disk-async
   title: Disk prefix restore off the step
   track: memory
