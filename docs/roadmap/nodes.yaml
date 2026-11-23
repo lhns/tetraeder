@@ -3383,7 +3383,7 @@ nodes:
   - crates/scheduler/tests/no_suffix_cut.rs
   - crates/gateway/tests/openai.rs
   - crates/gateway/tests/anthropic.rs
-  verdict_quote: 'CI_QUOTE'
+  verdict_quote: 'no_suffix_cut: 3 passed, 0 failed (cargo test, test ubuntu-24.04 and windows-latest, CI run 45101237756); engine_error_before_a_token_is_not_an_empty_success ok in openai and anthropic'
   headline: ''
   depends_on:
   - bench-strata-q36
