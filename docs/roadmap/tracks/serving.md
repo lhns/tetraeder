@@ -35,6 +35,7 @@ flowchart TB
     serving_self_spec["⏸ Low-bit copy drafts<br/>for itself"]
     serving_mtp_drafts["⏸ Drafts from built-in<br/>MTP heads"]
     serving_mtp_libllama["○ MTP drafts through<br/>libllama"]
+    serving_cuda_parity>"⚠ libllama path<br/>differs on CUDA"]
     serving_prefix_first["⏸ Admit longest prefix<br/>hit first"]
     serving_gateway ~~~ serving_real_engines
     serving_real_engines ~~~ serving_prefix_cache
@@ -65,7 +66,10 @@ flowchart TB
     serving_multi_lora ~~~ serving_self_spec
     serving_auth_quotas ~~~ serving_mtp_drafts
     serving_multimodal ~~~ serving_mtp_libllama
-    serving_self_spec ~~~ serving_prefix_first
+    serving_self_spec ~~~ serving_cuda_parity
+    serving_mtp_drafts ~~~ serving_prefix_first
+    serving_mtp_libllama ~~~ serving_prefix_first
+    serving_cuda_parity ~~~ serving_prefix_first
     serving_gateway --> serving_real_engines
     serving_real_engines --> serving_prefix_cache
     serving_real_engines --> serving_speculative
@@ -105,6 +109,7 @@ flowchart TB
     class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_parity_endpoints,serving_parity_libllama,serving_recurrent_reuse succ
     class serving_parity_remaining,serving_mtp_libllama next
     class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_self_spec,serving_mtp_drafts,serving_prefix_first parked
+    class serving_cuda_parity finding
 ```
 <!-- END GENERATED: track-serving -->
 
@@ -142,6 +147,7 @@ flowchart TB
 | `serving-strata-owner-scope` | Which Strata model families to add | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 |  |  |  | parked until M3 | docs/notes/strata-parity.md |
 | `serving-recurrent-reuse` | Recurrent models break slot reuse | defect | local | done | unrated | 2026-11-23 | 2026-11-23 | bench-strata-q36 |  |  |  | bench/results/strata-q36-20261123/README.md; crates/scheduler/tests/no_suffix_cut.rs; crates/gateway/tests/openai.rs; crates/gateway/tests/anthropic.rs |
 | `serving-mtp-libllama` | MTP drafts through libllama | feature | local | next | unrated |  |  | bench-strata-q36 |  |  |  |  |
+| `serving-cuda-parity` | libllama path differs on CUDA | defect | box-later | next | unrated |  |  | bench-regression-gate |  |  |  | bench/results/regression-gate-20261123/README.md |
 | `serving-prefix-first` | Admit longest prefix hit first | feature | local | parked | unrated |  |  | bench-ttft |  |  |  |  |
 
 ### Details per node
@@ -177,6 +183,7 @@ flowchart TB
 | `serving-strata-owner-scope` | Which Strata model families to add | Park until M3 (owner 2026-11-23) | parked until M3 | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). | Matrix docs/notes/strata-parity.md, class 3. |  |  |  |  |
 | `serving-recurrent-reuse` | Recurrent models break slot reuse | no_suffix_cut: 3 passed, 0 failed (cargo test, test ubuntu-24.04 and windows-latest, CI run 45101237756); engine_error_before_a_token_is_not_an_empty_success ok in openai and anthropic |  | A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture. |  |  |  |  |  |
 | `serving-mtp-libllama` | MTP drafts through libllama |  |  | Qwen3.6 ships an MTP block and libllama at the pin can run it (LLAMA_CONTEXT_TYPE_MTP, draft-mtp in common/speculative.cpp); drafting with it on the libllama engine tests Strata's 1.5x single-request lead without a new builder (owner 2026-11-23). | Design question: speculative rollback on recurrent state (serving-recurrent-reuse showed seq_rm cannot cut). Judged by a paired run against llama-server with and without its own MTP drafts. |  |  |  |  |
+| `serving-cuda-parity` | libllama path differs on CUDA |  |  | On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics. | Found by bench-regression-gate on an A100. First check whether prefix reuse or batch composition differs from llama-server for these cases, then whether llama-server itself is run-to-run stable on CUDA; the conformance tolerance for CUDA may need a stated band (ADR 0083 decision 2 says CUDA and CPU). |  |  |  |  |
 | `serving-prefix-first` | Admit longest prefix hit first |  |  | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). | Parked: worth a run only if time to first token under contention misses the bar again (m2-plan, TTFT idea 2026-11-20). |  |  |  |  |
 
 ### Folded items per node
