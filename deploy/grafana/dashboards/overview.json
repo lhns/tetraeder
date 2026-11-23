@@ -1562,7 +1562,7 @@
     {
       "id": 38,
       "title": "Prefix cache (RAM and disk)",
-      "description": "Prefix hits per second by source (live sequence, or a saved sequence restored from host RAM or from the disk tier), saved sequences evicted from RAM per second, and bytes held in RAM and on disk (ADR 0049, ADR 0087). Evictions above RAM and disk hits mean --cache-ram is too small for the traffic; disk bytes stay 0 without --cache-disk.",
+      "description": "Prefix hits per second by source (live sequence, or a saved sequence restored from host RAM or from the disk tier), saved sequences evicted from RAM per second, and bytes held in RAM and on disk (ADR 0049, ADR 0087). Evictions above RAM and disk hits mean --cache-ram is too small for the traffic; disk bytes stay 0 without --cache-disk. Requests restoring from disk are the ones waiting on a background file read (ADR 0087 addendum 2026-11-23); they hold no slot and the other sequences keep decoding.",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -1592,6 +1592,18 @@
               {
                 "id": "custom.axisPlacement",
                 "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "requests restoring from disk"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
               }
             ]
           }
@@ -1629,6 +1641,15 @@
           "refId": "D",
           "expr": "max(tetraeder_kv_prefix_bytes_bytes{tetraeder_memory_tier=\"disk\"})",
           "legendFormat": "disk bytes held",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "E",
+          "expr": "max(tetraeder_kv_prefix_restoring)",
+          "legendFormat": "requests restoring from disk",
           "datasource": {
             "type": "prometheus",
             "uid": "victoriametrics"
