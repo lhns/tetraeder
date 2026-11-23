@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Same-box A/B of the own Qwen3-30B-A3B MoE engine (`tetraeder serve --engine moe`): A = Phase 4 verdict commit
-# (6b07795), B = the branch head pushed to the box (final main). Diagnostic, no llama-server (bench/results/ab30b-20261122).
+# Same-box A/B of the own engines (`tetraeder serve --engine moe` on Qwen3-30B-A3B, `--engine dense` on Qwen3-8B): A = an
+# earlier commit (ab30b: Phase 4 verdict 6b07795; regression gate: f68d2a0), B = the branch head pushed to the box.
+# Diagnostic, no llama-server (bench/results/ab30b-20261122, bench/results/regression-gate-20261123).
 # Started detached by `taxameter run scripts/ab_moe_box.sh`; ends with AB_BOX_DONE in runs/vast/ab_moe_box.log.
-# Stages: build (A and B release builds in separate checkouts), env, runs (3 rounds A B, B A, A B; one server start per
-# side and round: warm-up, c4, then c1 of the Phase 4 workload, seeds per round, the same on both sides), summary
-# (scripts/ab_moe_summary.py -> ab-summary.json). A rerun resumes: a run whose c1 and c4 files exist is skipped.
+# Stages: build (A and B release builds in separate checkouts), env, runs (per model of MODELS: 3 rounds A B, B A, A B; one
+# server start per side and round: warm-up, c4, then c1 of the Phase 4 workload, seeds per round, the same on both sides),
+# ttft (TTFT=1: the Qwen3-8B request-log replay of ttft_diag.sh, once on A, once on B), summary
+# (scripts/ab_moe_summary.py -> ab-summary-<model>.json, ab-ttft.json). A rerun resumes: a run whose c1 and c4 files exist
+# is skipped. Result files are ab-<model>-<A|B>-<c4|c1>-r<n>.json.
 # Source of A: a tarball of `git archive <A commit>` (the box has no history), put at A_TAR; unpacked to A_DIR.
-# Env: SESSION, THREADS (CPU quota), ROUNDS (3), A_COMMIT, COMMIT (B), A_DIR, A_TAR, BUDGET_MIN (100), AB_OUT, MODEL_Q30B,
-# DRY_RUN=1 (print the plan, run nothing), SKIP_GPU=1 (tests).
+# Env: SESSION, THREADS (CPU quota), ROUNDS (3), MODELS ("q30b q8b"), A_COMMIT, COMMIT (B), A_DIR, A_TAR, BUDGET_MIN (100),
+# AB_OUT, MODEL_Q30B, MODEL_Q8B, TTFT (1), REQ_LOG (bench/private/claude-code-requests.jsonl), DRY_RUN=1 (print the plan, run nothing), SKIP_GPU=1 (tests).
 DRY="${DRY_RUN:-0}"
 skip_gpu="${SKIP_GPU:-0}"
 if [ "$DRY" != 1 ]; then
@@ -40,8 +43,17 @@ fi
 rounds="${ROUNDS:-3}"
 budget_s=$((${BUDGET_MIN:-100} * 60))
 t_start=$(date +%s)
-model="${MODEL_Q30B:-$PWD/.hf_cache/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf}"
-alias=qwen3-30b-a3b
+models="${MODELS:-q30b q8b}"
+ttft_on="${TTFT:-1}"
+req_log="${REQ_LOG:-bench/private/claude-code-requests.jsonl}"
+rctx=40960 rmax=36000
+declare -A MODEL_FILE=(
+  [q30b]="${MODEL_Q30B:-$PWD/.hf_cache/Qwen__Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q4_K_M.gguf}"
+  [q8b]="${MODEL_Q8B:-$PWD/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf}")
+declare -A MODEL_ENGINE=([q30b]=moe [q8b]=dense)
+declare -A MODEL_NAME=([q30b]=qwen3-30b-a3b [q8b]=qwen3-8b)
+model="${MODEL_FILE[${models%% *}]}" # the file the disk probe reads (one disk)
+mname="" # the served model name of the current run
 ctx=32768 ptok=512 mtok=128 n_c1=8 n_c4=16
 port=18080
 venv=/root/gwvenv
@@ -205,7 +217,7 @@ bench_file() { # bench_file FILE LABEL URL ARGS...: the file is kept even with e
   local f=$1 label=$2 url=$3
   shift 3
   [ "$DRY" = 1 ] && { plan "gateway_bench.py $url --no-keepalive --label $label $* -> ${f##*/}"; return 0; }
-  timeout -k 30 15m "$py" scripts/gateway_bench.py "$url" --model "$alias" --temperature 0 --no-keepalive --label "$label" \
+  timeout -k 30 15m "$py" scripts/gateway_bench.py "$url" --model "$mname" --temperature 0 --no-keepalive --label "$label" \
     --out "$f.tmp" "$@" >> "$out/bench.log" 2>&1
   [ -s "$f.tmp" ] && mv "$f.tmp" "$f"
   return 0
@@ -213,7 +225,7 @@ bench_file() { # bench_file FILE LABEL URL ARGS...: the file is kept even with e
 
 warm_up() {
   [ "$DRY" = 1 ] && { plan "warm-up: 1 request, 128 prompt tokens"; return 0; }
-  "$py" scripts/gateway_bench.py "$1" --model "$alias" --prompt-tokens 128 --max-tokens 16 --requests 1 --no-keepalive > /dev/null 2>&1
+  "$py" scripts/gateway_bench.py "$1" --model "$mname" --prompt-tokens 128 --max-tokens 16 --requests 1 --no-keepalive > /dev/null 2>&1
 }
 
 sampler_start() { # host sampler beside the server, best effort: its host block feeds cotenant_guard.py
@@ -241,9 +253,11 @@ sampler_finish() { # sampler_finish RUN T0 T1 FILES...: needs the server stopped
   for f in "$@"; do [ -s "$f" ] && { python3 -I scripts/cotenant_guard.py merge --json "$f" || true; }; done
 }
 
-one_run() { # one_run SIDE ROUND: fresh server, warm-up, c4, c1; seeds per round, the same on both sides
-  local side=$1 rnd=$2 run="$1-r$2" url="http://127.0.0.1:$port"
-  local c4="$out/ab-$side-c4-r$rnd.json" c1="$out/ab-$side-c1-r$rnd.json"
+one_run() { # one_run MODEL SIDE ROUND: fresh server, warm-up, c4, c1; seeds per round, the same on both sides
+  local m=$1 side=$2 rnd=$3 run="$1-$2-r$3" url="http://127.0.0.1:$port"
+  local c4="$out/ab-$run-c4.json" c1="$out/ab-$run-c1.json"
+  mname=${MODEL_NAME[$m]}
+  model=${MODEL_FILE[$m]}
   if [ -f "$c1" ] && [ -f "$c4" ]; then
     say "run $run: done before"
     return 0
@@ -254,8 +268,7 @@ one_run() { # one_run SIDE ROUND: fresh server, warm-up, c4, c1; seeds per round
   fi
   say "run $run start"
   : > "$out/gpu-$run.txt"
-  start_server "$out/server-$run.log" "$(bin_of "$side")" serve -m "$model" --engine moe --ngl -1 --parallel 4 --ctx "$ctx" \
-    -t "$threads" --port "$port" --alias "$alias" --accept-any-model
+  start_server "$out/server-$run.log" "$(bin_of "$side")" serve -m "$model" --engine "${MODEL_ENGINE[$m]}" --ngl -1 --parallel 4     --ctx "$ctx" -t "$threads" --port "$port" --alias "$mname" --accept-any-model
   wait_ready "$url/v1/models" 900 "$out/server-$run.log"
   gpu_note "$run" before
   sampler_start "$run"
@@ -271,12 +284,45 @@ one_run() { # one_run SIDE ROUND: fresh server, warm-up, c4, c1; seeds per round
   say "run $run done"
 }
 
+# ttft_run SIDE: the request-log replay of ttft_diag.sh on Qwen3-8B (dense, --cache-ram 8192, ctx $rctx), one server per side
+ttft_run() {
+  local side=$1 run="ttft-$1" url="http://127.0.0.1:$port"
+  local res="$out/ab-$run.json" f=${MODEL_FILE[q8b]}
+  [ -f "$res" ] && { say "run $run: done before"; return 0; }
+  say "run $run start"
+  : > "$out/gpu-$run.txt"
+  start_server "$out/server-$run.log" "$(bin_of "$side")" serve -m "$f" --engine dense --ngl -1 --parallel 4 --ctx "$rctx"     -t "$threads" --port "$port" --alias qwen3-8b --accept-any-model --cache-ram 8192
+  wait_ready "$url/v1/models" 900 "$out/server-$run.log"
+  gpu_note "$run" before
+  if [ "$DRY" = 1 ]; then
+    plan "gateway_replay.py $url $req_log --speed 0 --concurrency 1 --max-prompt-tokens $rmax --gguf <q8b> --expect-context-length $rctx -> ab-$run.json"
+  else
+    timeout -k 30 60m "$py" scripts/gateway_replay.py "$url" "$req_log" --speed 0 --concurrency 1       --max-prompt-tokens "$rmax" --gguf "$f" --expect-context-length "$rctx" --out "$res.tmp" >> "$out/replay.log" 2>&1
+    local rc=$?
+    [ "$rc" = 2 ] && die "replay: Qwen3-8B context_length is not $rctx (see $out/replay.log)"
+    [ -s "$res.tmp" ] && mv "$res.tmp" "$res"
+  fi
+  gpu_note "$run" after
+  stop_server
+  say "run $run done"
+}
+
+ttft() {
+  [ "$ttft_on" = 1 ] || return 0
+  if [ "$DRY" != 1 ]; then
+    [ -s "$req_log" ] || { say "ttft: no request log at $req_log, skipped"; return 0; }
+    [ "$(sha256sum "$req_log" | cut -d' ' -f1)" = f79b4a6d810f71632fb0633553b32d3c6c18132a137a4005e2129688f95f7b35 ]       || die "request log sha256 mismatch"
+  fi
+  ttft_run A
+  ttft_run B
+}
+
 summary() {
   if [ "$DRY" = 1 ]; then
-    plan "ab_moe_summary.py $out -> ab-summary.json"
+    plan "ab_moe_summary.py $out --models ${models// /,} -> ab-summary-<model>.json, ab-ttft.json"
     return 0
   fi
-  "$py" scripts/ab_moe_summary.py "$out" --rounds "$rounds"
+  "$py" scripts/ab_moe_summary.py "$out" --rounds "$rounds" --models "${models// /,}"
 }
 
 main() {
@@ -286,17 +332,21 @@ main() {
   say "STAGE env"
   env_json
   say "STAGE runs"
-  local rnd rc
-  for rnd in $(seq 1 "$rounds"); do
-    if [ $((rnd % 2)) = 1 ]; then
-      one_run A "$rnd"
-      one_run B "$rnd"
-    else
-      one_run B "$rnd"
-      one_run A "$rnd"
-    fi
-    summary > /dev/null 2>&1 || true # incremental
+  local rnd rc m
+  for m in $models; do
+    for rnd in $(seq 1 "$rounds"); do
+      if [ $((rnd % 2)) = 1 ]; then
+        one_run "$m" A "$rnd"
+        one_run "$m" B "$rnd"
+      else
+        one_run "$m" B "$rnd"
+        one_run "$m" A "$rnd"
+      fi
+      summary > /dev/null 2>&1 || true # incremental
+    done
   done
+  say "STAGE ttft"
+  ttft
   say "STAGE summary"
   summary
   rc=$?
