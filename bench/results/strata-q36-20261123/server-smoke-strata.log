@@ -1,0 +1,76 @@
+    These files are qwen36 UD-Q4_K_XL.
+    Checking the engine for this computer…
+    No engine is installed yet. Getting the one for your graphics card…
+    Reading the signed update feed
+    Downloading engine 0.1.66 linux-x86_64-cuda-cuda13 (592 MB)
+    Downloading the engine… 0%
+    Downloading the engine… 2%
+    Downloading the engine… 4%
+    Downloading the engine… 6%
+    Downloading the engine… 9%
+    Downloading the engine… 12%
+    Downloading the engine… 14%
+    Downloading the engine… 17%
+    Downloading the engine… 20%
+    Downloading the engine… 23%
+    Downloading the engine… 26%
+    Downloading the engine… 30%
+    Downloading the engine… 33%
+    Downloading the engine… 37%
+    Downloading the engine… 40%
+    Downloading the engine… 44%
+    Downloading the engine… 47%
+    Downloading the engine… 51%
+    Downloading the engine… 55%
+    Downloading the engine… 58%
+    Downloading the engine… 62%
+    Downloading the engine… 66%
+    Downloading the engine… 70%
+    Downloading the engine… 74%
+    Downloading the engine… 78%
+    Downloading the engine… 82%
+    Downloading the engine… 87%
+    Downloading the engine… 92%
+    Downloading the engine… 96%
+    Downloading the engine… 100%
+    Unpacking 0.1.66 linux-x86_64-cuda-cuda13
+    Checking the package signature and every file
+    Test-starting engine 0.1.66 linux-x86_64-cuda-cuda13 before switching to it
+    Switching to engine 0.1.66 linux-x86_64-cuda-cuda13
+    Engine 0.1.66 is installed and will be used on the next start
+    The engine is installed.
+    Preparing Qwen3.6-35B-A3B UD-Q4_K_XL from your model files…
+    Getting your model ready
+    Checking your computer
+    Getting the helper packages ready
+    Checking the engine for this PC
+    Getting the model files
+    The model files are on this computer; checking them
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded)
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 0.0 of 22.9 GB
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 2.6 of 22.9 GB
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 5.1 of 22.9 GB
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 7.7 of 22.9 GB
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 10.3 of 22.9 GB
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 12.8 of 22.9 GB
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 15.4 of 22.9 GB
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 17.9 of 22.9 GB
+    Checking that the model files are complete (a few minutes for a big model; nothing is downloaded): 20.4 of 22.9 GB
+    The model files are on this computer; checking them
+    Preparing the tokenizer
+    Saving the model's settings
+    Qwen3.6-35B-A3B UD-Q4_K_XL is ready.
+    Writing this launch's settings…
+    Settings are saved.
+    Starting the engine and loading the model. The first start can take a few minutes.
+    The model is loaded and answering.
+    Ready: http://127.0.0.1:18090
+    Strata is serving.
+
+Strata is serving.
+  This computer  http://127.0.0.1:18090/v1
+  Anthropic apps http://127.0.0.1:18090   (Claude Code: ANTHROPIC_BASE_URL, no /v1 at the end)
+  Engine log     /root/.local/state/strata/launch/ud-q4_k_xl-8k.engine.log   (follow it: strata logs --follow)
+  Watch it:    strata monitor --url http://127.0.0.1:18090
+  Connect an app:  strata connect opencode      Stop:  strata launch --stop
+  To keep these settings for next time, add --save-preset NAME.

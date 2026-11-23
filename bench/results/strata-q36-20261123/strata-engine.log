@@ -1,0 +1,232 @@
+[strata] 2026-11-23 00:56:31 engine started: /root/.local/share/strata/components/engine/0.1.66-linux-x86_64-cuda-cuda13/strata --serve --native /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --max-context 8192 --prefill auto --mtp 2 --batch 4
+strata-q36: /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf: 753 tensors (layout checked), 4.40 GiB on the GPU in 1.9 s (the routed experts are placed after the engine's buffers)
+strata-q36: prompt experts on the fused int8 kernels
+strata-q36: 4 sessions (--batch): 0.40 GiB of VRAM each at a context of 8192 (1.61 GiB in all), 38.10 GiB free before them
+strata-q36: GDN checkpoints: 4 per session x 62.82 MiB pinned host (251.28 MiB in all for 4) every 4096 tokens; 30 GDN layers, conv 98304 B + S 2097152 B + hlast 8192 B each
+strata-q36: context 8192 cells, prompt chunk 1024, MTP block loaded, K / V cache --kv fp32 (4.00 KiB per token, per attention layer), 36.49 GiB of VRAM free
+strata-q36: every routed expert in VRAM (18.75 GiB) in 3.8 s
+strata-q36: warmed up in 0.4 s (one prompt chunk, a decode step, a speculative step)
+strata batch: slot 0 takes a prompt of 11 tokens = 0 reused + 11 read in 109 ms (100.8 tok/s), done at once
+strata serve: session 1: prompt 115 tokens = 0 reused + 115 read in 173 ms (664.3 tok/s), 16 generated in 77 ms (207.7 tok/s), drafts accepted 10 of 10 (length), 1 ckpt
+strata serve: session 2: prompt 407 tokens = 0 reused + 407 read in 239 ms (1701.2 tok/s), 2 generated in 20 ms (98.2 tok/s), drafts accepted 0 of 2 (cancel), 1 ckpt
+strata batch: slot 1 takes a prompt of 409 tokens = 408 reused + 1 read in 5 ms (195.9 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 235 ms (1733.5 tok/s)
+strata batch: slot 3 takes a prompt of 409 tokens = 0 reused + 409 read in 239 ms (1711.8 tok/s)
+strata batch: slot 0 takes a prompt of 406 tokens = 0 reused + 406 read in 237 ms (1714.0 tok/s)
+[strata] 2026-11-23 00:56:43 native ERR expected: GEN <max_new> [key=value ...] <id,id,...>
+[strata] 2026-11-23 01:02:43 engine started: /root/.local/share/strata/components/engine/0.1.66-linux-x86_64-cuda-cuda13/strata --serve --native /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --max-context 8192 --prefill auto --mtp 2 --batch 4
+strata-q36: /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf: 753 tensors (layout checked), 4.40 GiB on the GPU in 1.8 s (the routed experts are placed after the engine's buffers)
+strata-q36: prompt experts on the fused int8 kernels
+strata-q36: 4 sessions (--batch): 0.40 GiB of VRAM each at a context of 8192 (1.61 GiB in all), 38.10 GiB free before them
+strata-q36: GDN checkpoints: 4 per session x 62.82 MiB pinned host (251.28 MiB in all for 4) every 4096 tokens; 30 GDN layers, conv 98304 B + S 2097152 B + hlast 8192 B each
+strata-q36: context 8192 cells, prompt chunk 1024, MTP block loaded, K / V cache --kv fp32 (4.00 KiB per token, per attention layer), 36.49 GiB of VRAM free
+strata-q36: every routed expert in VRAM (18.75 GiB) in 3.8 s
+strata-q36: warmed up in 0.4 s (one prompt chunk, a decode step, a speculative step)
+strata batch: slot 0 takes a prompt of 11 tokens = 0 reused + 11 read in 106 ms (104.1 tok/s), done at once
+strata serve: session 1: prompt 115 tokens = 0 reused + 115 read in 169 ms (678.8 tok/s), 16 generated in 77 ms (208.9 tok/s), drafts accepted 10 of 10 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 233 ms (1739.1 tok/s), 2 generated in 20 ms (98.6 tok/s), drafts accepted 0 of 2 (cancel), 1 ckpt
+strata batch: slot 1 takes a prompt of 408 tokens = 407 reused + 1 read in 5 ms (197.5 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1744.3 tok/s)
+strata batch: slot 3 takes a prompt of 406 tokens = 0 reused + 406 read in 232 ms (1747.9 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1748.5 tok/s)
+strata batch: slot 1 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1742.9 tok/s)
+strata batch: slot 2 takes a prompt of 410 tokens = 0 reused + 410 read in 234 ms (1753.2 tok/s)
+strata batch: slot 3 takes a prompt of 409 tokens = 0 reused + 409 read in 233 ms (1751.8 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1739.9 tok/s)
+strata batch: slot 1 takes a prompt of 407 tokens = 0 reused + 407 read in 235 ms (1732.1 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1747.9 tok/s)
+strata batch: slot 3 takes a prompt of 406 tokens = 0 reused + 406 read in 232 ms (1747.0 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1737.9 tok/s)
+strata batch: slot 1 takes a prompt of 407 tokens = 0 reused + 407 read in 235 ms (1728.4 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1747.1 tok/s)
+strata batch: slot 3 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1746.1 tok/s)
+strata batch: slot 0 takes a prompt of 410 tokens = 0 reused + 410 read in 235 ms (1745.6 tok/s)
+strata serve: session 1: prompt 409 tokens = 0 reused + 409 read in 235 ms (1743.4 tok/s), 128 generated in 706 ms (181.3 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 233 ms (1739.1 tok/s), 128 generated in 753 ms (169.9 tok/s), drafts accepted 79 of 98 (length), 1 ckpt
+strata serve: session 3: prompt 408 tokens = 0 reused + 408 read in 233 ms (1748.0 tok/s), 128 generated in 755 ms (169.6 tok/s), drafts accepted 80 of 98 (length), 1 ckpt
+strata serve: session 0: prompt 408 tokens = 0 reused + 408 read in 233 ms (1751.1 tok/s), 128 generated in 737 ms (173.8 tok/s), drafts accepted 80 of 96 (length), 1 ckpt
+strata serve: session 1: prompt 405 tokens = 0 reused + 405 read in 234 ms (1730.9 tok/s), 128 generated in 752 ms (170.1 tok/s), drafts accepted 79 of 98 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 234 ms (1737.8 tok/s), 128 generated in 706 ms (181.4 tok/s), drafts accepted 82 of 92 (length), 1 ckpt
+strata serve: session 3: prompt 406 tokens = 0 reused + 406 read in 231 ms (1754.4 tok/s), 128 generated in 705 ms (181.5 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 0: prompt 407 tokens = 0 reused + 407 read in 233 ms (1747.8 tok/s), 128 generated in 737 ms (173.6 tok/s), drafts accepted 81 of 96 (length), 1 ckpt
+[strata] 2026-11-23 01:03:11 native ERR expected: GEN <max_new> [key=value ...] <id,id,...>
+[strata] 2026-11-23 01:03:47 engine started: /root/.local/share/strata/components/engine/0.1.66-linux-x86_64-cuda-cuda13/strata --serve --native /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --max-context 8192 --prefill auto --mtp 2 --batch 4
+strata-q36: /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf: 753 tensors (layout checked), 4.40 GiB on the GPU in 1.8 s (the routed experts are placed after the engine's buffers)
+strata-q36: prompt experts on the fused int8 kernels
+strata-q36: 4 sessions (--batch): 0.40 GiB of VRAM each at a context of 8192 (1.61 GiB in all), 38.10 GiB free before them
+strata-q36: GDN checkpoints: 4 per session x 62.82 MiB pinned host (251.28 MiB in all for 4) every 4096 tokens; 30 GDN layers, conv 98304 B + S 2097152 B + hlast 8192 B each
+strata-q36: context 8192 cells, prompt chunk 1024, MTP block loaded, K / V cache --kv fp32 (4.00 KiB per token, per attention layer), 36.49 GiB of VRAM free
+strata-q36: every routed expert in VRAM (18.75 GiB) in 3.8 s
+strata-q36: warmed up in 0.4 s (one prompt chunk, a decode step, a speculative step)
+strata batch: slot 0 takes a prompt of 11 tokens = 0 reused + 11 read in 106 ms (103.4 tok/s), done at once
+strata serve: session 1: prompt 115 tokens = 0 reused + 115 read in 170 ms (675.8 tok/s), 16 generated in 77 ms (207.7 tok/s), drafts accepted 10 of 10 (length), 1 ckpt
+strata serve: session 2: prompt 407 tokens = 0 reused + 407 read in 234 ms (1741.6 tok/s), 2 generated in 20 ms (100.0 tok/s), drafts accepted 0 of 2 (cancel), 1 ckpt
+strata batch: slot 1 takes a prompt of 409 tokens = 408 reused + 1 read in 5 ms (191.3 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1744.4 tok/s)
+strata batch: slot 3 takes a prompt of 406 tokens = 0 reused + 406 read in 232 ms (1749.9 tok/s)
+strata batch: slot 0 takes a prompt of 405 tokens = 0 reused + 405 read in 233 ms (1736.1 tok/s)
+strata batch: slot 1 takes a prompt of 409 tokens = 0 reused + 409 read in 232 ms (1761.6 tok/s)
+strata batch: slot 2 takes a prompt of 406 tokens = 0 reused + 406 read in 233 ms (1745.0 tok/s)
+strata batch: slot 3 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1753.9 tok/s)
+strata batch: slot 0 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1752.9 tok/s)
+strata batch: slot 1 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1749.2 tok/s)
+strata batch: slot 2 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1737.7 tok/s)
+strata batch: slot 3 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1748.1 tok/s)
+strata batch: slot 0 takes a prompt of 406 tokens = 0 reused + 406 read in 234 ms (1737.6 tok/s)
+strata batch: slot 1 takes a prompt of 410 tokens = 0 reused + 410 read in 234 ms (1753.8 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1749.3 tok/s)
+strata batch: slot 3 takes a prompt of 405 tokens = 0 reused + 405 read in 232 ms (1747.8 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 235 ms (1735.3 tok/s)
+strata serve: session 1: prompt 410 tokens = 0 reused + 410 read in 234 ms (1751.8 tok/s), 128 generated in 754 ms (169.7 tok/s), drafts accepted 79 of 98 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 233 ms (1740.2 tok/s), 128 generated in 752 ms (170.2 tok/s), drafts accepted 79 of 98 (length), 1 ckpt
+strata serve: session 3: prompt 408 tokens = 0 reused + 408 read in 232 ms (1757.5 tok/s), 128 generated in 787 ms (162.7 tok/s), drafts accepted 76 of 102 (length), 1 ckpt
+strata serve: session 0: prompt 407 tokens = 0 reused + 407 read in 234 ms (1738.6 tok/s), 128 generated in 692 ms (185.0 tok/s), drafts accepted 82 of 90 (length), 1 ckpt
+strata serve: session 1: prompt 407 tokens = 0 reused + 407 read in 234 ms (1739.1 tok/s), 128 generated in 709 ms (180.4 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 2: prompt 407 tokens = 0 reused + 407 read in 234 ms (1741.0 tok/s), 128 generated in 723 ms (176.9 tok/s), drafts accepted 81 of 94 (length), 1 ckpt
+strata serve: session 3: prompt 409 tokens = 0 reused + 409 read in 237 ms (1725.4 tok/s), 128 generated in 738 ms (173.3 tok/s), drafts accepted 80 of 96 (length), 1 ckpt
+strata serve: session 0: prompt 406 tokens = 0 reused + 406 read in 233 ms (1739.7 tok/s), 128 generated in 723 ms (177.0 tok/s), drafts accepted 81 of 94 (length), 1 ckpt
+[strata] 2026-11-23 01:04:16 native ERR expected: GEN <max_new> [key=value ...] <id,id,...>
+[strata] 2026-11-23 01:04:57 engine started: /root/.local/share/strata/components/engine/0.1.66-linux-x86_64-cuda-cuda13/strata --serve --native /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --max-context 8192 --prefill auto --mtp 2 --batch 4
+strata-q36: /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf: 753 tensors (layout checked), 4.40 GiB on the GPU in 1.8 s (the routed experts are placed after the engine's buffers)
+strata-q36: prompt experts on the fused int8 kernels
+strata-q36: 4 sessions (--batch): 0.40 GiB of VRAM each at a context of 8192 (1.61 GiB in all), 38.10 GiB free before them
+strata-q36: GDN checkpoints: 4 per session x 62.82 MiB pinned host (251.28 MiB in all for 4) every 4096 tokens; 30 GDN layers, conv 98304 B + S 2097152 B + hlast 8192 B each
+strata-q36: context 8192 cells, prompt chunk 1024, MTP block loaded, K / V cache --kv fp32 (4.00 KiB per token, per attention layer), 36.49 GiB of VRAM free
+strata-q36: every routed expert in VRAM (18.75 GiB) in 3.8 s
+strata-q36: warmed up in 0.4 s (one prompt chunk, a decode step, a speculative step)
+strata batch: slot 0 takes a prompt of 11 tokens = 0 reused + 11 read in 105 ms (104.3 tok/s), done at once
+strata serve: session 1: prompt 116 tokens = 0 reused + 116 read in 170 ms (683.2 tok/s), 16 generated in 77 ms (208.7 tok/s), drafts accepted 10 of 10 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 235 ms (1728.8 tok/s), 2 generated in 21 ms (95.4 tok/s), drafts accepted 0 of 2 (cancel), 1 ckpt
+strata batch: slot 1 takes a prompt of 408 tokens = 407 reused + 1 read in 6 ms (180.6 tok/s)
+strata batch: slot 2 takes a prompt of 407 tokens = 0 reused + 407 read in 236 ms (1726.3 tok/s)
+strata batch: slot 3 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1741.0 tok/s)
+strata batch: slot 0 takes a prompt of 406 tokens = 0 reused + 406 read in 233 ms (1745.3 tok/s)
+strata batch: slot 1 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1748.1 tok/s)
+strata batch: slot 2 takes a prompt of 406 tokens = 0 reused + 406 read in 233 ms (1742.3 tok/s)
+strata batch: slot 3 takes a prompt of 409 tokens = 0 reused + 409 read in 233 ms (1751.7 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1741.4 tok/s)
+strata batch: slot 1 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1750.5 tok/s)
+strata batch: slot 2 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1735.7 tok/s)
+strata batch: slot 3 takes a prompt of 409 tokens = 0 reused + 409 read in 234 ms (1745.5 tok/s)
+strata batch: slot 0 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1746.1 tok/s)
+strata batch: slot 1 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1742.4 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1748.0 tok/s)
+strata batch: slot 3 takes a prompt of 406 tokens = 0 reused + 406 read in 233 ms (1744.4 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1742.5 tok/s)
+strata serve: session 1: prompt 407 tokens = 0 reused + 407 read in 233 ms (1744.9 tok/s), 128 generated in 693 ms (184.6 tok/s), drafts accepted 84 of 90 (length), 1 ckpt
+strata serve: session 2: prompt 408 tokens = 0 reused + 408 read in 234 ms (1745.7 tok/s), 128 generated in 783 ms (163.5 tok/s), drafts accepted 76 of 102 (length), 1 ckpt
+strata serve: session 3: prompt 406 tokens = 0 reused + 406 read in 232 ms (1747.6 tok/s), 128 generated in 758 ms (168.9 tok/s), drafts accepted 78 of 98 (length), 1 ckpt
+strata serve: session 0: prompt 406 tokens = 0 reused + 406 read in 235 ms (1731.3 tok/s), 128 generated in 707 ms (181.0 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 1: prompt 406 tokens = 0 reused + 406 read in 233 ms (1741.9 tok/s), 128 generated in 723 ms (177.2 tok/s), drafts accepted 80 of 94 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 233 ms (1742.2 tok/s), 128 generated in 708 ms (180.9 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 3: prompt 406 tokens = 0 reused + 406 read in 232 ms (1747.9 tok/s), 128 generated in 708 ms (180.9 tok/s), drafts accepted 82 of 92 (length), 1 ckpt
+strata serve: session 0: prompt 406 tokens = 0 reused + 406 read in 233 ms (1745.1 tok/s), 128 generated in 722 ms (177.2 tok/s), drafts accepted 80 of 94 (length), 1 ckpt
+[strata] 2026-11-23 01:05:25 native ERR expected: GEN <max_new> [key=value ...] <id,id,...>
+[strata] 2026-11-23 01:12:45 engine started: /root/.local/share/strata/components/engine/0.1.66-linux-x86_64-cuda-cuda13/strata --serve --native /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --max-context 8192 --prefill auto --mtp 2 --batch 4
+strata-q36: /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf: 753 tensors (layout checked), 4.40 GiB on the GPU in 1.8 s (the routed experts are placed after the engine's buffers)
+strata-q36: prompt experts on the fused int8 kernels
+strata-q36: 4 sessions (--batch): 0.40 GiB of VRAM each at a context of 8192 (1.61 GiB in all), 38.10 GiB free before them
+strata-q36: GDN checkpoints: 4 per session x 62.82 MiB pinned host (251.28 MiB in all for 4) every 4096 tokens; 30 GDN layers, conv 98304 B + S 2097152 B + hlast 8192 B each
+strata-q36: context 8192 cells, prompt chunk 1024, MTP block loaded, K / V cache --kv fp32 (4.00 KiB per token, per attention layer), 36.49 GiB of VRAM free
+strata-q36: every routed expert in VRAM (18.75 GiB) in 3.8 s
+strata-q36: warmed up in 0.4 s (one prompt chunk, a decode step, a speculative step)
+strata batch: slot 0 takes a prompt of 11 tokens = 0 reused + 11 read in 106 ms (104.2 tok/s), done at once
+strata serve: session 1: prompt 113 tokens = 0 reused + 113 read in 170 ms (663.8 tok/s), 16 generated in 76 ms (209.5 tok/s), drafts accepted 10 of 10 (length), 1 ckpt
+strata serve: session 2: prompt 408 tokens = 0 reused + 408 read in 235 ms (1736.4 tok/s), 2 generated in 20 ms (100.8 tok/s), drafts accepted 0 of 2 (cancel), 1 ckpt
+strata batch: slot 1 takes a prompt of 410 tokens = 409 reused + 1 read in 5 ms (214.6 tok/s)
+strata batch: slot 2 takes a prompt of 406 tokens = 0 reused + 406 read in 232 ms (1751.4 tok/s)
+strata batch: slot 3 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1748.1 tok/s)
+strata batch: slot 0 takes a prompt of 406 tokens = 0 reused + 406 read in 231 ms (1756.0 tok/s)
+strata batch: slot 1 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1739.3 tok/s)
+strata batch: slot 2 takes a prompt of 410 tokens = 0 reused + 410 read in 235 ms (1747.4 tok/s)
+strata batch: slot 3 takes a prompt of 409 tokens = 0 reused + 409 read in 235 ms (1740.0 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1749.2 tok/s)
+strata batch: slot 1 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1738.2 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1745.4 tok/s)
+strata batch: slot 3 takes a prompt of 406 tokens = 0 reused + 406 read in 234 ms (1738.7 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1744.1 tok/s)
+strata batch: slot 1 takes a prompt of 407 tokens = 0 reused + 407 read in 235 ms (1732.8 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1749.0 tok/s)
+strata batch: slot 3 takes a prompt of 407 tokens = 0 reused + 407 read in 235 ms (1734.5 tok/s)
+strata batch: slot 0 takes a prompt of 410 tokens = 0 reused + 410 read in 235 ms (1746.7 tok/s)
+strata serve: session 1: prompt 409 tokens = 0 reused + 409 read in 235 ms (1742.2 tok/s), 128 generated in 709 ms (180.5 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 233 ms (1740.7 tok/s), 128 generated in 754 ms (169.7 tok/s), drafts accepted 79 of 98 (length), 1 ckpt
+strata serve: session 3: prompt 408 tokens = 0 reused + 408 read in 234 ms (1744.4 tok/s), 128 generated in 756 ms (169.2 tok/s), drafts accepted 80 of 98 (length), 1 ckpt
+strata serve: session 0: prompt 408 tokens = 0 reused + 408 read in 234 ms (1740.8 tok/s), 128 generated in 738 ms (173.4 tok/s), drafts accepted 80 of 96 (length), 1 ckpt
+strata serve: session 1: prompt 405 tokens = 0 reused + 405 read in 234 ms (1730.6 tok/s), 128 generated in 754 ms (169.9 tok/s), drafts accepted 79 of 98 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 232 ms (1751.7 tok/s), 128 generated in 708 ms (180.9 tok/s), drafts accepted 82 of 92 (length), 1 ckpt
+strata serve: session 3: prompt 406 tokens = 0 reused + 406 read in 233 ms (1743.2 tok/s), 128 generated in 708 ms (180.7 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 0: prompt 407 tokens = 0 reused + 407 read in 235 ms (1734.7 tok/s), 128 generated in 738 ms (173.4 tok/s), drafts accepted 81 of 96 (length), 1 ckpt
+[strata] 2026-11-23 01:13:14 native ERR expected: GEN <max_new> [key=value ...] <id,id,...>
+[strata] 2026-11-23 01:13:50 engine started: /root/.local/share/strata/components/engine/0.1.66-linux-x86_64-cuda-cuda13/strata --serve --native /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --max-context 8192 --prefill auto --mtp 2 --batch 4
+strata-q36: /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf: 753 tensors (layout checked), 4.40 GiB on the GPU in 1.8 s (the routed experts are placed after the engine's buffers)
+strata-q36: prompt experts on the fused int8 kernels
+strata-q36: 4 sessions (--batch): 0.40 GiB of VRAM each at a context of 8192 (1.61 GiB in all), 38.10 GiB free before them
+strata-q36: GDN checkpoints: 4 per session x 62.82 MiB pinned host (251.28 MiB in all for 4) every 4096 tokens; 30 GDN layers, conv 98304 B + S 2097152 B + hlast 8192 B each
+strata-q36: context 8192 cells, prompt chunk 1024, MTP block loaded, K / V cache --kv fp32 (4.00 KiB per token, per attention layer), 36.49 GiB of VRAM free
+strata-q36: every routed expert in VRAM (18.75 GiB) in 3.8 s
+strata-q36: warmed up in 0.4 s (one prompt chunk, a decode step, a speculative step)
+strata batch: slot 0 takes a prompt of 11 tokens = 0 reused + 11 read in 106 ms (103.8 tok/s), done at once
+strata serve: session 1: prompt 116 tokens = 0 reused + 116 read in 170 ms (683.2 tok/s), 16 generated in 77 ms (207.6 tok/s), drafts accepted 10 of 10 (length), 1 ckpt
+strata serve: session 2: prompt 407 tokens = 0 reused + 407 read in 234 ms (1739.1 tok/s), 2 generated in 20 ms (98.8 tok/s), drafts accepted 0 of 2 (cancel), 1 ckpt
+strata batch: slot 1 takes a prompt of 409 tokens = 408 reused + 1 read in 5 ms (192.3 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1744.2 tok/s)
+strata batch: slot 3 takes a prompt of 406 tokens = 0 reused + 406 read in 232 ms (1748.0 tok/s)
+strata batch: slot 0 takes a prompt of 405 tokens = 0 reused + 405 read in 233 ms (1738.7 tok/s)
+strata batch: slot 1 takes a prompt of 409 tokens = 0 reused + 409 read in 235 ms (1740.6 tok/s)
+strata batch: slot 2 takes a prompt of 406 tokens = 0 reused + 406 read in 231 ms (1757.5 tok/s)
+strata batch: slot 3 takes a prompt of 408 tokens = 0 reused + 408 read in 232 ms (1761.4 tok/s)
+strata batch: slot 0 takes a prompt of 408 tokens = 0 reused + 408 read in 231 ms (1765.3 tok/s)
+strata batch: slot 1 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1748.5 tok/s)
+strata batch: slot 2 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1738.1 tok/s)
+strata batch: slot 3 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1745.7 tok/s)
+strata batch: slot 0 takes a prompt of 406 tokens = 0 reused + 406 read in 234 ms (1734.6 tok/s)
+strata batch: slot 1 takes a prompt of 410 tokens = 0 reused + 410 read in 236 ms (1740.9 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1750.6 tok/s)
+strata batch: slot 3 takes a prompt of 405 tokens = 0 reused + 405 read in 232 ms (1743.3 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 235 ms (1735.5 tok/s)
+strata serve: session 1: prompt 410 tokens = 0 reused + 410 read in 236 ms (1739.2 tok/s), 128 generated in 753 ms (169.9 tok/s), drafts accepted 79 of 98 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 233 ms (1739.3 tok/s), 128 generated in 752 ms (170.3 tok/s), drafts accepted 79 of 98 (length), 1 ckpt
+strata serve: session 3: prompt 408 tokens = 0 reused + 408 read in 233 ms (1754.1 tok/s), 128 generated in 785 ms (163.1 tok/s), drafts accepted 76 of 102 (length), 1 ckpt
+strata serve: session 0: prompt 407 tokens = 0 reused + 407 read in 233 ms (1743.2 tok/s), 128 generated in 693 ms (184.8 tok/s), drafts accepted 82 of 90 (length), 1 ckpt
+strata serve: session 1: prompt 407 tokens = 0 reused + 407 read in 235 ms (1733.7 tok/s), 128 generated in 708 ms (180.8 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 2: prompt 407 tokens = 0 reused + 407 read in 234 ms (1737.7 tok/s), 128 generated in 723 ms (177.1 tok/s), drafts accepted 81 of 94 (length), 1 ckpt
+strata serve: session 3: prompt 409 tokens = 0 reused + 409 read in 234 ms (1744.8 tok/s), 128 generated in 737 ms (173.8 tok/s), drafts accepted 80 of 96 (length), 1 ckpt
+strata serve: session 0: prompt 406 tokens = 0 reused + 406 read in 234 ms (1738.8 tok/s), 128 generated in 722 ms (177.3 tok/s), drafts accepted 81 of 94 (length), 1 ckpt
+[strata] 2026-11-23 01:14:19 native ERR expected: GEN <max_new> [key=value ...] <id,id,...>
+[strata] 2026-11-23 01:14:57 engine started: /root/.local/share/strata/components/engine/0.1.66-linux-x86_64-cuda-cuda13/strata --serve --native /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf --max-context 8192 --prefill auto --mtp 2 --batch 4
+strata-q36: /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf: 753 tensors (layout checked), 4.40 GiB on the GPU in 1.8 s (the routed experts are placed after the engine's buffers)
+strata-q36: prompt experts on the fused int8 kernels
+strata-q36: 4 sessions (--batch): 0.40 GiB of VRAM each at a context of 8192 (1.61 GiB in all), 38.10 GiB free before them
+strata-q36: GDN checkpoints: 4 per session x 62.82 MiB pinned host (251.28 MiB in all for 4) every 4096 tokens; 30 GDN layers, conv 98304 B + S 2097152 B + hlast 8192 B each
+strata-q36: context 8192 cells, prompt chunk 1024, MTP block loaded, K / V cache --kv fp32 (4.00 KiB per token, per attention layer), 36.49 GiB of VRAM free
+strata-q36: every routed expert in VRAM (18.75 GiB) in 3.9 s
+strata-q36: warmed up in 0.4 s (one prompt chunk, a decode step, a speculative step)
+strata batch: slot 0 takes a prompt of 11 tokens = 0 reused + 11 read in 105 ms (104.4 tok/s), done at once
+strata serve: session 1: prompt 117 tokens = 0 reused + 117 read in 170 ms (688.0 tok/s), 16 generated in 77 ms (208.0 tok/s), drafts accepted 10 of 10 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 233 ms (1739.8 tok/s), 2 generated in 20 ms (97.9 tok/s), drafts accepted 0 of 2 (cancel), 1 ckpt
+strata batch: slot 1 takes a prompt of 408 tokens = 407 reused + 1 read in 6 ms (178.0 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1746.6 tok/s)
+strata batch: slot 3 takes a prompt of 407 tokens = 0 reused + 407 read in 235 ms (1733.2 tok/s)
+strata batch: slot 0 takes a prompt of 406 tokens = 0 reused + 406 read in 233 ms (1741.7 tok/s)
+strata batch: slot 1 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1747.3 tok/s)
+strata batch: slot 2 takes a prompt of 406 tokens = 0 reused + 406 read in 233 ms (1739.6 tok/s)
+strata batch: slot 3 takes a prompt of 409 tokens = 0 reused + 409 read in 234 ms (1747.0 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1738.5 tok/s)
+strata batch: slot 1 takes a prompt of 408 tokens = 0 reused + 408 read in 233 ms (1752.2 tok/s)
+strata batch: slot 2 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1746.0 tok/s)
+strata batch: slot 3 takes a prompt of 409 tokens = 0 reused + 409 read in 234 ms (1750.0 tok/s)
+strata batch: slot 0 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1741.0 tok/s)
+strata batch: slot 1 takes a prompt of 407 tokens = 0 reused + 407 read in 234 ms (1739.7 tok/s)
+strata batch: slot 2 takes a prompt of 408 tokens = 0 reused + 408 read in 234 ms (1745.0 tok/s)
+strata batch: slot 3 takes a prompt of 406 tokens = 0 reused + 406 read in 233 ms (1740.0 tok/s)
+strata batch: slot 0 takes a prompt of 407 tokens = 0 reused + 407 read in 233 ms (1743.8 tok/s)
+strata serve: session 1: prompt 407 tokens = 0 reused + 407 read in 234 ms (1742.0 tok/s), 128 generated in 693 ms (184.8 tok/s), drafts accepted 84 of 90 (length), 1 ckpt
+strata serve: session 2: prompt 408 tokens = 0 reused + 408 read in 234 ms (1743.2 tok/s), 128 generated in 783 ms (163.5 tok/s), drafts accepted 76 of 102 (length), 1 ckpt
+strata serve: session 3: prompt 406 tokens = 0 reused + 406 read in 233 ms (1743.4 tok/s), 128 generated in 757 ms (169.0 tok/s), drafts accepted 78 of 98 (length), 1 ckpt
+strata serve: session 0: prompt 406 tokens = 0 reused + 406 read in 234 ms (1732.9 tok/s), 128 generated in 707 ms (180.9 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 1: prompt 406 tokens = 0 reused + 406 read in 233 ms (1738.8 tok/s), 128 generated in 722 ms (177.2 tok/s), drafts accepted 80 of 94 (length), 1 ckpt
+strata serve: session 2: prompt 406 tokens = 0 reused + 406 read in 233 ms (1743.1 tok/s), 128 generated in 709 ms (180.7 tok/s), drafts accepted 81 of 92 (length), 1 ckpt
+strata serve: session 3: prompt 406 tokens = 0 reused + 406 read in 233 ms (1739.5 tok/s), 128 generated in 709 ms (180.4 tok/s), drafts accepted 82 of 92 (length), 1 ckpt
+strata serve: session 0: prompt 406 tokens = 0 reused + 406 read in 233 ms (1740.5 tok/s), 128 generated in 722 ms (177.2 tok/s), drafts accepted 80 of 94 (length), 1 ckpt
+[strata] 2026-11-23 01:15:25 native ERR expected: GEN <max_new> [key=value ...] <id,id,...>

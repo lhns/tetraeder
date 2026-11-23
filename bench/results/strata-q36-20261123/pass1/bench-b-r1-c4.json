@@ -1,0 +1,174 @@
+{
+  "label": "b-r1-c4",
+  "base_url": "http://127.0.0.1:18080",
+  "model": "qwen3.6-35b-a3b",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 512,
+    "max_tokens": 128,
+    "concurrency": 4,
+    "requests": 16,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 0
+  },
+  "started": "2026-11-23T01:02:25",
+  "finished": "2026-11-23T01:02:25",
+  "results": [
+    {
+      "ttft_s": 0.12986255111172795,
+      "total_s": 2.3801784380339086,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 56.467707359521775,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.43311084201559424,
+      "total_s": 2.377520715817809,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 65.39679406671407,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.43250272423028946,
+      "total_s": 2.379233061335981,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 65.32759312347056,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.4324581236578524,
+      "total_s": 2.376825318671763,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 65.38115135751715,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.1158640356734395,
+      "total_s": 2.411912325769663,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 55.33792539290673,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.4193949759937823,
+      "total_s": 2.411688496824354,
+      "completion_tokens": 128,
+      "prompt_tokens": 410,
+      "usage_from": "usage",
+      "decode_tps": 63.81739588012286,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.4193080370314419,
+      "total_s": 2.4125091647729278,
+      "completion_tokens": 128,
+      "prompt_tokens": 409,
+      "usage_from": "usage",
+      "decode_tps": 63.78745418024097,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.41755851171910763,
+      "total_s": 2.4111486389301717,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 63.79077858393025,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.11692638322710991,
+      "total_s": 2.3946481640450656,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 55.78326464568901,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.4152166098356247,
+      "total_s": 2.3951831720769405,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 64.2252072686493,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.4146275520324707,
+      "total_s": 2.393962236121297,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 64.23047716946435,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.4135178760625422,
+      "total_s": 2.3915755143389106,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 64.27281003102684,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.11646144511178136,
+      "total_s": 2.4199773431755602,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 55.15400182962444,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.41793012199923396,
+      "total_s": 2.4197082640603185,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 63.50953154462573,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.4169000550173223,
+      "total_s": 2.4191900263540447,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 63.46585076791512,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.41575802816078067,
+      "total_s": 2.4183340379968286,
+      "completion_tokens": 128,
+      "prompt_tokens": 410,
+      "usage_from": "usage",
+      "decode_tps": 63.470946016037416,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    }
+  ],
+  "summary": {
+    "requests": 16,
+    "errors": 0,
+    "wall_s": 9.626457438338548,
+    "completion_tokens": 2048,
+    "prompt_tokens_median": 407.0,
+    "ttft_median_s": 0.4163290415890515,
+    "ttft_p90_s": 0.43250272423028946,
+    "decode_tps_median": 63.78911638208561,
+    "throughput_tps": 212.74700616694037
+  }
+}

@@ -1,0 +1,9 @@
+    These files are qwen36 UD-Q4_K_XL.
+Plan for 'UD-Q4_K_XL 8K':
+  model     Qwen3.6-35B-A3B UD-Q4_K_XL, 23 GB   (your files in /root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf)
+  context   8K    pictures off    parallel 4
+  download  Nothing to download: your model files are used where they are. The engine for your graphics card is downloaded first (from the update source; its size is shown when it starts).
+  drafting  MTP
+  tuning    skip    access This computer only, port 18090
+  same as   strata launch --model-path "/root/tetraeder/.hf_cache/unsloth__Qwen3.6-35B-A3B-MTP-GGUF/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf" --model ud-q4_k_xl --family qwen36 --context 8k --vision off --parallel 4 --tune skip --access local --port 18090
+Nothing was changed.

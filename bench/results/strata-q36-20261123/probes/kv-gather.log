@@ -1,0 +1,21 @@
+    Finished `release` profile [optimized] target(s) in 0.21s
+     Running tests/kv_gather.rs (target/release/deps/kv_gather-9923fd03cc9d9f19)
+
+running 1 test
+L   2048 n_q 1 block  64: contiguous       94.2 us, gather      162.3 us (1.72x), mask      217.0 us (2.30x)
+L   2048 n_q 1 block 256: contiguous       94.3 us, gather      161.1 us (1.71x), mask      226.8 us (2.41x)
+L   2048 n_q 4 block  64: contiguous     1055.4 us, gather     2377.2 us (2.25x), mask     1084.6 us (1.03x)
+L   2048 n_q 4 block 256: contiguous     1111.2 us, gather     2888.2 us (2.60x), mask     1106.6 us (1.00x)
+L   8192 n_q 1 block  64: contiguous      292.0 us, gather      524.7 us (1.80x), mask      552.6 us (1.89x)
+L   8192 n_q 1 block 256: contiguous      281.8 us, gather      523.7 us (1.86x), mask      873.2 us (3.10x)
+L   8192 n_q 4 block  64: contiguous     6781.4 us, gather    10490.5 us (1.55x), mask     6743.6 us (0.99x)
+L   8192 n_q 4 block 256: contiguous     6962.2 us, gather    10660.8 us (1.53x), mask     6661.5 us (0.96x)
+L  32768 n_q 1 block  64: contiguous     2011.8 us, gather     5133.9 us (2.55x), mask     3676.4 us (1.83x)
+L  32768 n_q 1 block 256: contiguous     2051.2 us, gather     4901.7 us (2.39x), mask     4914.7 us (2.40x)
+L  32768 n_q 4 block  64: contiguous    32815.1 us, gather    42910.7 us (1.31x), mask    33004.6 us (1.01x)
+L  32768 n_q 4 block 256: contiguous    32844.7 us, gather    43386.7 us (1.32x), mask    32484.1 us (0.99x)
+ggml CPU tier avx2, 61 threads
+test cpu_kv_gather_bench ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 8.54s
+

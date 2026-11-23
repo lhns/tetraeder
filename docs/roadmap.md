@@ -278,7 +278,7 @@ flowchart TB
 | Own GLM graph builder | ⏸ parked | An own graph builder for the GLM model family, with parity against libllama (plan.md, Phase 8). |
 | Own DeepSeek graph builder | ⏸ parked | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). |
 | Own builder for ternary models | ⏸ parked | An own builder with faster kernels for natively ternary models such as BitNet b1.58, which libllama already runs (plan feature 51, Phase 9 half). |
-| Own builder for Qwen3.6 MoE | ⛔ blocked | An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first). |
+| Own builder for Qwen3.6 MoE | ○ next | An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first). |
 | One graph per decoded token | ⏸ parked | Step 2 of ADR 0064: one graph per decoded token with a host callback per layer, instead of one graph segment per MoE layer. |
 | Dense builder speed on AMX CPUs | ○ next | Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072). |
 | Prefetch next layer's experts | ✔ done · very-successful | While one layer computes, predict which experts the next layer will need and start reading them early. |
@@ -340,7 +340,7 @@ flowchart TB
 | Four-GPU verdict, first box | ✔ done · successful | The judged session on four GPUs (cases D4 and M4) on host 20210; both cases pass with three clean rounds each. |
 | 30B admission probe rerun | ✔ done · mixed | One 30B-only D2a session on a 64-core EPYC 7B12 box (no 7R13 offer existed). The probe c4 ratio was 0.910 against the 0.925 stop line, so no pair ran and the 30B stays null. The own engine ran 267 tok/s against 288 to 291 on the original machine. The own engine lost more than llama-server there, so the 30B throughput is unconfirmed on final main; the owner decides the next step. |
 | 30B same-box A/B | ✔ done · successful | A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step. |
-| 30B concurrency-4 gap | ○ next | The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; piggyback an A/A and a bisect of 6b07795 to main on a later box, then find the gap. |
+| 30B concurrency-4 gap | ○ next | The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; the A/A is done (A40 box, two runs 1.001 at c4 and 0.996 at c1, strata-q36-20261123), the bisect of 6b07795 to main and finding the gap are left. |
 | Phase 6 exit: multi-node test | ⛔ blocked | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. |
 | Report milestone M3 | ⛔ blocked | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). |
 | Phase 7 exit: day-long trace | ⛔ blocked | The Phase 7 exit test: replay a day of traffic with the online loop on and compare with the best fixed plan. |
@@ -348,7 +348,6 @@ flowchart TB
 | Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
-| Strata against llama-server on Qwen3.6 | ○ next | One box session runs Strata, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file, to size how far behind a shared model we are (ADR 0085). |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
@@ -375,6 +374,7 @@ flowchart TB
 
 - `serving-parity-sampling`: Sampler parity with llama-server
 - `memory-kv-host`: KV cache partly in RAM
+- `engine-qwen35moe-builder`: Own builder for Qwen3.6 MoE
 - `memory-kv-auto`: Planner picks the KV format
 - `planner-ep-split`: Expert-parallel split on two GPUs
 - `planner-low-ram-modes`: Experts on GPU and SSD only
@@ -388,7 +388,6 @@ flowchart TB
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
-- `bench-strata-q36`: Strata against llama-server on Qwen3.6
 
 **cluster**
 
@@ -435,7 +434,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 93 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 94 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -816,6 +815,7 @@ Generated on 2026-11-23.
 - `bench-m2-report`: Report milestone M2 (✔ done · n/a). M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md).
 - `multi-accept-adr-0081`: Accept the prefill capture fix (✔ done · n/a). The owner accepted ADR 0081 with the M2 decisions, after its GPU test and the s3f2 confirmation passed.
 - `serving-parity-harness`: llama-server conformance harness (✔ done · successful). One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
+- `bench-strata-q36`: Strata against llama-server on Qwen3.6 (✔ done · unrated). One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085).
 
 </details>
 
@@ -843,12 +843,12 @@ Generated on 2026-11-23.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [engine - engine and builders](roadmap/tracks/engine.md): 20 nodes (12 done, 1 next, 1 blocked, 5 parked, 1 abandoned)
+- [engine - engine and builders](roadmap/tracks/engine.md): 20 nodes (12 done, 2 next, 5 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 16 nodes (8 done, 3 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 24 nodes (15 done, 3 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 27 nodes (13 done, 2 next, 5 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (31 done, 2 next, 4 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (32 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 next, 11 blocked)
 <!-- END GENERATED: tracks -->

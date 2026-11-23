@@ -40,3 +40,7 @@ A decode step of the 8B on a 3090 is under 10 ms, so one GB of KV on host costs 
 - Long contexts that are refused today run, at a cost the planner states in advance.
 - No box until step 1 is built and its CPU tests pass; pair A and B fit one 3090-class box session.
 - The Strata pairing (`bench-strata-pairing`) is unchanged: still no model both engines run.
+
+## History
+
+- 2026-11-23: step 1 read rates measured on an A40 box with a 61-thread EPYC 7662 (`bench/results/strata-q36-20261123/README.md`, "Probes"): PCIe 4.0 x16 mapped read by a kernel 24.6 GB/s and `cudaMemcpy` 24.8 GB/s (the 25 GB/s assumption holds); CPU attention (`kv_gather` contiguous, AVX2 tier) 65 to 67 GB/s of K plus V at 32K per layer, cache-warm, so the step-1 skip rule (CPU attention under the PCIe rate) does not fire on a many-core server. The 0.33 GB/s figure was an 8-thread SSE-tier local CPU; the rate on a smaller box is open (no thread sweep yet).

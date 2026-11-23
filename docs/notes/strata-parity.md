@@ -10,6 +10,8 @@ Closest model: Qwen3.6-35B-A3B (`qwen35moe`): 40 layers, 30 GatedDeltaNet and 10
 
 Strata's claim on that model: decode 117.8 tok/s against llama.cpp 81.9 to 82.1 (1.44x), prompt 6,220 against 3,794 tok/s (R9700, HIP, Strata 0.1.45, llama.cpp 972b5fc; `docs/QWEN36.md`:121-127); at 8 requests 325.4 against 208.1 (`docs/QWEN36.md`, batching). Tetraeder sits at 0.94 to 1.09 of tuned llama-server on Qwen3 (`docs/features.md`).
 
+Measured 2026-11-23 on CUDA (A40, Strata 0.2.20 with engine 0.1.66, `bench/results/strata-q36-20261123/README.md`): Strata over tuned llama-server b12426 is 1.503 at one request (decode, median of three) and 0.837 at four requests (throughput); `tetraeder serve --engine auto` over llama-server is 1.009 and 0.996. The libllama path fails on slot reuse for this model unless prefix reuse is off.
+
 ## Class 1: applies to our Qwen3 models now
 
 Judged by a paired run on a model we run (rule 3); no default changes on Strata's numbers.

@@ -1,0 +1,103 @@
+{
+  "cases": [
+    {
+      "block": 64,
+      "l": 2048,
+      "n_q": 1,
+      "t_contig_us": 94.165,
+      "t_gather_us": 162.3395,
+      "t_mask_us": 217.035
+    },
+    {
+      "block": 256,
+      "l": 2048,
+      "n_q": 1,
+      "t_contig_us": 94.265,
+      "t_gather_us": 161.129,
+      "t_mask_us": 226.779
+    },
+    {
+      "block": 64,
+      "l": 2048,
+      "n_q": 4,
+      "t_contig_us": 1055.4415,
+      "t_gather_us": 2377.2475,
+      "t_mask_us": 1084.5765000000001
+    },
+    {
+      "block": 256,
+      "l": 2048,
+      "n_q": 4,
+      "t_contig_us": 1111.191,
+      "t_gather_us": 2888.2,
+      "t_mask_us": 1106.6015
+    },
+    {
+      "block": 64,
+      "l": 8192,
+      "n_q": 1,
+      "t_contig_us": 291.954,
+      "t_gather_us": 524.6635,
+      "t_mask_us": 552.5730000000001
+    },
+    {
+      "block": 256,
+      "l": 8192,
+      "n_q": 1,
+      "t_contig_us": 281.789,
+      "t_gather_us": 523.738,
+      "t_mask_us": 873.1869999999999
+    },
+    {
+      "block": 64,
+      "l": 8192,
+      "n_q": 4,
+      "t_contig_us": 6781.3925,
+      "t_gather_us": 10490.55,
+      "t_mask_us": 6743.6325
+    },
+    {
+      "block": 256,
+      "l": 8192,
+      "n_q": 4,
+      "t_contig_us": 6962.227,
+      "t_gather_us": 10660.765,
+      "t_mask_us": 6661.503000000001
+    },
+    {
+      "block": 64,
+      "l": 32768,
+      "n_q": 1,
+      "t_contig_us": 2011.7934999999998,
+      "t_gather_us": 5133.9475,
+      "t_mask_us": 3676.4175
+    },
+    {
+      "block": 256,
+      "l": 32768,
+      "n_q": 1,
+      "t_contig_us": 2051.1585000000005,
+      "t_gather_us": 4901.724,
+      "t_mask_us": 4914.693499999999
+    },
+    {
+      "block": 64,
+      "l": 32768,
+      "n_q": 4,
+      "t_contig_us": 32815.091,
+      "t_gather_us": 42910.712,
+      "t_mask_us": 33004.5505
+    },
+    {
+      "block": 256,
+      "l": 32768,
+      "n_q": 4,
+      "t_contig_us": 32844.666,
+      "t_gather_us": 43386.6955,
+      "t_mask_us": 32484.052
+    }
+  ],
+  "cpu": "AMD EPYC 7662 64-Core Processor",
+  "ggml_cpu_tier": "avx2",
+  "threads": 61
+}

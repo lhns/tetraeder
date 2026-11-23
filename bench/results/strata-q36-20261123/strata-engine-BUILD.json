@@ -1,0 +1,1 @@
+{"version": "0.1.66", "source": "tools/packaging/build_cuda_linux.sh", "archs": "75;86;89;120", "cuda": "13.0", "portable": true, "vision_archs": "75;86;89;120"}

@@ -1,0 +1,312 @@
+{
+  "rounds": [
+    {
+      "round": 1,
+      "c4_a": 214.13864677498273,
+      "c4_b": 213.20095430365365,
+      "c4_c": 179.17753882938888,
+      "c4_b_over_a": 0.9956210964930846,
+      "c4_c_over_a": 0.8367361124574069,
+      "c1_a": 116.14474266514617,
+      "c1_b": 116.74140895964857,
+      "c1_c": 172.06008480899544,
+      "c1_b_over_a": 1.0051372647681749,
+      "c1_c_over_a": 1.4814280944687899,
+      "board_share": {
+        "a": 0.0,
+        "b": 0.0,
+        "c": 0.0
+      }
+    },
+    {
+      "round": 2,
+      "c4_a": 213.59137279984904,
+      "c4_b": 212.69429311462218,
+      "c4_c": 180.71158204434127,
+      "c4_b_over_a": 0.9958000191043882,
+      "c4_c_over_a": 0.8460621778655893,
+      "c1_a": 115.88566894043221,
+      "c1_b": 116.89708217562998,
+      "c1_c": 174.22222773981977,
+      "c1_b_over_a": 1.0087276817266995,
+      "c1_c_over_a": 1.5033975238937771,
+      "board_share": {
+        "a": 0.0,
+        "b": 0.0,
+        "c": 0.0
+      }
+    },
+    {
+      "round": 3,
+      "c4_a": 216.6232776318011,
+      "c4_b": 215.75548561733885,
+      "c4_c": 179.50315643038397,
+      "c4_b_over_a": 0.9959940038579914,
+      "c4_c_over_a": 0.8286420480419886,
+      "c1_a": 115.76776535816808,
+      "c1_b": 118.55096973626272,
+      "c1_c": 177.49781038898413,
+      "c1_b_over_a": 1.024041272365272,
+      "c1_c_over_a": 1.5332230853712394,
+      "board_share": {
+        "a": 0.0,
+        "b": 0.0,
+        "c": 0.0
+      }
+    }
+  ],
+  "median_ratio": {
+    "c4_b_over_a": 0.9958000191043882,
+    "c4_c_over_a": 0.8367361124574069,
+    "c1_b_over_a": 1.0087276817266995,
+    "c1_c_over_a": 1.5033975238937771
+  },
+  "runs": {
+    "a-r1": {
+      "c4_tps": 214.13864677498273,
+      "c1_decode_tps": 116.14474266514617,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "b-r1": {
+      "c4_tps": 213.20095430365365,
+      "c1_decode_tps": 116.74140895964857,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 21,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "c-r1": {
+      "c4_tps": 179.17753882938888,
+      "c1_decode_tps": 172.06008480899544,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "a-r2": {
+      "c4_tps": 213.59137279984904,
+      "c1_decode_tps": 115.88566894043221,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "b-r2": {
+      "c4_tps": 212.69429311462218,
+      "c1_decode_tps": 116.89708217562998,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "c-r2": {
+      "c4_tps": 180.71158204434127,
+      "c1_decode_tps": 174.22222773981977,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "a-r3": {
+      "c4_tps": 216.6232776318011,
+      "c1_decode_tps": 115.76776535816808,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "b-r3": {
+      "c4_tps": 215.75548561733885,
+      "c1_decode_tps": 118.55096973626272,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "c-r3": {
+      "c4_tps": 179.50315643038397,
+      "c1_decode_tps": 177.49781038898413,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    }
+  },
+  "aa_30b": {
+    "c4": {
+      "r1": 225.95926418351158,
+      "r2": 226.1756749491076,
+      "r2_over_r1": 1.0009577423894436
+    },
+    "c1": {
+      "r1": 153.10319624381043,
+      "r2": 152.45793400086228,
+      "r2_over_r1": 0.9957854423762611
+    }
+  },
+  "aa_runs": {
+    "aa-r1": {
+      "c4_tps": 225.95926418351158,
+      "c1_decode_tps": 153.10319624381043,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 20,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "aa-r2": {
+      "c4_tps": 226.1756749491076,
+      "c1_decode_tps": 152.45793400086228,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 19,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    }
+  },
+  "baseline_variant": "kvu-ub2048-nocp"
+}

@@ -1,0 +1,66 @@
+{
+  "label": "smoke-llama-server-c4",
+  "base_url": "http://127.0.0.1:18081",
+  "model": "qwen3.6-35b-a3b",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 512,
+    "max_tokens": 128,
+    "concurrency": 4,
+    "requests": 4,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 0
+  },
+  "started": "2026-11-23T00:55:32",
+  "finished": "2026-11-23T00:55:32",
+  "results": [
+    {
+      "ttft_s": 0.6960237021557987,
+      "total_s": 2.705255206208676,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 63.282251716523774,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.680240395013243,
+      "total_s": 2.6849507242441177,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 63.38343493903587,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.6774206352420151,
+      "total_s": 2.684105427004397,
+      "completion_tokens": 128,
+      "prompt_tokens": 409,
+      "usage_from": "usage",
+      "decode_tps": 63.346439083238536,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": 0.672359602060169,
+      "total_s": 2.6811328567564487,
+      "completion_tokens": 128,
+      "prompt_tokens": 407,
+      "usage_from": "usage",
+      "decode_tps": 63.278597962218434,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    }
+  ],
+  "summary": {
+    "requests": 4,
+    "errors": 0,
+    "wall_s": 2.7059022141620517,
+    "completion_tokens": 512,
+    "prompt_tokens_median": 407.5,
+    "ttft_median_s": 0.678830515127629,
+    "ttft_p90_s": 0.6960237021557987,
+    "decode_tps_median": 63.314345399881155,
+    "throughput_tps": 189.2160024557847
+  }
+}

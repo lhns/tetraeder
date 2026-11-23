@@ -1,0 +1,22 @@
+[2m2026-11-23T01:13:17.087440Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_norm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087546Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.post_attention_norm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087564Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_q.weight (size = 17825792 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087573Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_k.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087582Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_v.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087603Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_output.weight (size = 8912896 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087612Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_q_norm.weight (size = 1024 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087621Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.attn_k_norm.weight (size = 1024 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087631Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_gate_inp.weight (size = 1048576 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087640Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_down_exps.weight (size = 184549376 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087653Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_gate_exps.weight (size = 150994944 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087663Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_up_exps.weight (size = 150994944 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087672Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_gate_inp_shexp.weight (size = 4096 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087682Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_gate_shexp.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087691Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_up_shexp.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087700Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.ffn_down_shexp.weight (size = 1114112 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087711Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.nextn.eh_proj.weight (size = 8912896 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087720Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.nextn.enorm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087730Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.nextn.hnorm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T01:13:17.087749Z[0m [33m WARN[0m [2mllama[0m[2m:[0m model has unused tensor blk.40.nextn.shared_head_norm.weight (size = 8192 bytes) -- ignoring
+[2m2026-11-23T01:13:22.299263Z[0m [32m INFO[0m [2mtetraeder_model::snapshot_pool[0m[2m:[0m snapshot buffer pool [3mspares[0m[2m=[0m2 [3mthp[0m[2m=[0mfalse
+listening on http://127.0.0.1:18080
