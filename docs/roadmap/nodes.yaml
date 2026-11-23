@@ -2410,6 +2410,27 @@ nodes:
   overview: false
   plain: The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E).
   notes: The matrix is docs/notes/llamacpp-parity.md.
+- id: serving-parity-remaining
+  title: Close the known parity gaps
+  track: serving
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence:
+  - tests/conformance/parity/cases.yaml
+  - docs/notes/llamacpp-parity.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-parity-libllama
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The audit of ADR 0083 decision 6 found requests that work on llama-server and differ here, each now a strict gap case; json_object and json_schema response_format with llama-server's own grammar, forced tool_choice, continue_final_message with add_generation_prompt and prefill_assistant on the chat routes, the input_tokens routes, GET /slots and prompt arrays on /v1/completions; reasoning_budget_tokens, reasoning_format and the reasoning control route are open too, but the tiny fixture has no thinking template to show them.
+  notes: 'Each gap case flips to pass in the change that closes it (strict xfail). The cases were written without a local llama-server, so CI is the first run.'
 - id: cluster-transport-wan
   title: Transport latency between two boxes
   track: cluster

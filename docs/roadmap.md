@@ -309,6 +309,7 @@ flowchart TB
 | Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
 | Sampler parity with llama-server | ✔ done · successful | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |
+| Close the known parity gaps | ○ next | The audit of ADR 0083 decision 6 found requests that work on llama-server and differ here, each now a strict gap case; json_object and json_schema response_format with llama-server's own grammar, forced tool_choice, continue_final_message with add_generation_prompt and prefill_assistant on the chat routes, the input_tokens routes, GET /slots and prompt arrays on /v1/completions; reasoning_budget_tokens, reasoning_format and the reasoning control route are open too, but the tiny fixture has no thinking template to show them. |
 | Several models at once | ⏸ parked | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). |
 | Swap and batch LoRA adapters | ⏸ parked | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). |
 | Priorities, quotas and auth | ⏸ parked | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). |
@@ -366,6 +367,7 @@ flowchart TB
 <!-- BEGIN GENERATED: ready-now -->
 **local**
 
+- `serving-parity-remaining`: Close the known parity gaps
 - `memory-kv-host`: KV cache partly in RAM
 - `planner-ep-split`: Expert-parallel split on two GPUs
 - `serving-mtp-libllama`: MTP drafts through libllama
@@ -849,7 +851,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [memory - memory and streaming](roadmap/tracks/memory.md): 17 nodes (11 done, 1 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 29 nodes (20 done, 1 next, 1 blocked, 7 parked)
+- [serving - serving](roadmap/tracks/serving.md): 30 nodes (20 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 45 nodes (32 done, 1 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (12 done, 1 next, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (2 done, 1 next, 9 blocked)

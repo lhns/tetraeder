@@ -4,7 +4,7 @@ Target and rules: ADR 0083 (llama-server at the pin b12426, fc504f91; a request 
 
 ## Groups and order
 
-Each row of the appendix belongs to one group. A row is done when its conformance case passes against the baseline llama-server on the tiny fixture (tree node `serving-parity-harness`), or it is scoped out below with a reason.
+Each row of the appendix belongs to one group. A row is done when its conformance case passes against the baseline llama-server on the tiny fixture (tree node `serving-parity-harness`), when it is scoped out below with a reason, or when named unit tests cover it (table "Covered by unit tests"). A request that works on llama-server and differs here is a strict gap case under node `serving-parity-remaining`.
 
 | Group | What | Tree node | When |
 |---|---|---|---|
@@ -16,25 +16,119 @@ Each row of the appendix belongs to one group. A row is done when its conformanc
 
 The conformance cases are `tests/conformance/parity/cases.yaml` (Linux `test` job; a row with `expect: gap <node>` is xfail(strict) and flips to `pass` in the change that closes it). Run locally: build llama-server from the patched `vendor/llama.cpp` into `target/llama-server` (CPU only: `cmake -S vendor/llama.cpp -B target/llama-server -DGGML_CUDA=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_BUILD_UI=OFF`, then `cmake --build target/llama-server --config Release --target llama-server`), `cargo build -p tetraeder`, then `uv run pytest -q tests/conformance/parity -rx` (`LLAMA_SERVER_BIN`, `TETRAEDER_BIN`; the cases skip without the binaries). The baseline is the patched tree: its patches touch ggml CPU internals and must not change CPU tokens, so a case where tokens differ is reported. Sampler rows that temperature 0 cannot show (min_p, typical_p, top_n_sigma, xtc, dry, mirostat, dynatemp, min_keep, `samplers` order, random seeding) stay with the unit tests of `serving-parity-sampling`.
 
-Harness result (CI run 44983973508, Linux): 15 conformant cases (31 runs over auto, dense and moe) pass and 25 gap cases xfail strictly (sampling 5, fields 8, endpoints 12); greedy text and finish reasons of llama-server and `tetraeder serve` agree on auto, dense and moe. Differences the comparison tolerates are listed in `tests/conformance/parity/parity_lib.py` (extra null fields, U+FFFD runs); real ones it found are the `model` field (required by tetraeder), the EOS token (not counted in `completion_tokens`) and `ping` events in the Anthropic stream. Group C closed (CI run 45116789518, Linux): the 12 endpoint cases pass, 645 passed and 2 skipped in the whole pytest run, none xfail; the infill case compares the 501 error because the tiny fixtures have no FIM tokens. Group D closed (CI run 45145783401, Linux): the group D cases pass against llama-server (embedding vectors and rerank scores within a stated tolerance, greedy text equal across context shifts, slot save, restore and erase bodies, the refusals of the own builders by message), 722 passed and 2 skipped in the whole pytest run, none xfail.
+Harness result (audit of ADR 0083 decision 6, 2026-11-23): the appendix has 165 rows. 75 have a conformance case (111 cases, 145 runs over auto, dense, moe and llama-moe; 105 cases expect `pass`, 6 are strict gap cases of node `serving-parity-remaining`), 74 are scoped out with a reason and 16 are covered by named unit tests. `test_parity_lib.py` fails when a row has none of the three. CI history: the first run (CI run 44983973508, Linux) found the differences the comparison now tolerates or that were fixed (the `model` field, the end-of-generation token in `completion_tokens`, `ping` events in the Anthropic stream); group C closed with CI run 45116789518 and group D with CI run 45145783401 (722 passed, 2 skipped, none xfail). The cases added by the audit were written without a local llama-server, so their first run is the next CI run. Greedy text and finish reasons of llama-server and `tetraeder serve` agree on auto, dense and moe. Differences the comparison tolerates are listed in `tests/conformance/parity/parity_lib.py` (extra null fields, U+FFFD runs).
 
 ## Scoped out (ADR 0083)
+
+First cell = the appendix row (exact), so the harness test can match it. Reasons: out of scope by ADR 0083 point 4 (LoRA, multimodal, audio and realtime, router mode), not a request feature (server flags, backend choice), a duplicate of another row, or rejected with 400 by design.
 
 | Row | Reason |
 |---|---|
 | Web UI (`--ui`) | not a request-level feature; any OpenAI-compatible UI works against the gateway |
-| `/cors-proxy`, server-side MCP tools (`/tools`, `--allow-unauthenticated-tools`) | agent features of the bundled UI, not of the inference API |
+| /cors-proxy, /tools (MCP/agent features) | agent features of the bundled UI, not of the inference API |
 | GCP compatibility routes | a hosting adapter, not used by the clients this project serves |
 | TLS | terminate at a reverse proxy; the gateway listens on localhost by default |
-| Resumable streams (`/v1/stream`, `/v1/streams/lookup`) | revisit if a client needs it; not part of the OpenAI or Anthropic API |
+| GET /v1/stream, POST /v1/streams/lookup (resumable streams) | revisit if a client needs it; not part of the OpenAI or Anthropic API |
 | Speed | judged in Phases 2, 4 and 5 (`docs/features.md`) |
+| GET /v1/models/{id} | a Tetraeder extra; llama-server has no such route |
+| POST /v1/chat/completions/control (`reasoning_end`) | control channel of the reasoning budget; open with `reasoning_budget_tokens` (node `serving-parity-remaining`), no signal on a fixture without a thinking template |
+| POST /v1/audio/transcriptions, /audio/transcriptions, /tts, /v1/systemone | audio, ADR 0083 point 4 (plan feature 34, group E) |
+| **[new @pin]** POST /v1/audio/speech, /audio/speech (OpenAI TTS) | audio, ADR 0083 point 4 (plan feature 34, group E) |
+| **[new @pin]** WebSocket /v1/realtime | realtime, ADR 0083 point 4 (plan feature 34, group E) |
+| GET/POST /lora-adapters | LoRA, ADR 0083 point 4 (plan feature 30, group E) |
+| Router mode: POST /models, /models/load, /models/unload, GET /models/sse | several models, ADR 0083 point 4 (plan feature 29, group E) |
+| Tetraeder-only | no llama-server counterpart |
+| content parts: image_url / input_audio (needs `--mmproj`) | multimodal, ADR 0083 point 4 (group E); refused with 400 here |
+| adaptive_target / adaptive_decay | the adaptive-p sampler is not supported; a target of 0 or more is rejected with 400 (`crates/gateway/src/sampling.rs`, test `unsupported_fields_are_rejected_unless_at_their_default`) |
+| return_tokens | `true` is rejected with 400 by design (`crates/gateway/src/sampling.rs`); `false` is the default on both |
+| return_progress / sse_ping_interval | accepted without effect (prompt progress chunks and the ping interval do not change any token or field a client reads) |
+| timings_per_token / verbose / response_fields / t_max_predict_ms / n_indent | rejected with 400 when set to anything but the default (`crates/gateway/src/sampling.rs`) |
+| reasoning_format (request) | ignored; open in node `serving-parity-remaining`, no signal on a fixture without a thinking template |
+| reasoning_budget_tokens / thinking_budget_tokens | ignored; open in node `serving-parity-remaining`, no signal on a fixture without a thinking template |
+| suffix | rejected with 400 on the chat and completions routes; fill-in-the-middle is `/infill` (case `infill`) |
+| lora (per request) | LoRA, ADR 0083 point 4 (plan feature 30, group E); a non-empty list is rejected with 400 |
+| speculative.* per request | `#if 0` at the pin, llama-server ignores it too |
+| Anthropic: extra_params passthrough (min_p, seed ...) | llama-server's extension outside the Anthropic API; clients of that API do not send it |
+| Backend (GPU) sampling | the host sampler is the only one; it changes no token |
+| Request log (prompts) | Tetraeder has its own `--request-log`; a flag, not a request feature |
+| Parallel slots | server flag (`--parallel`); the slot count is not part of a request |
+| Context size | server flag (`--ctx`) |
+| Batch sizes | server flags; no output change |
+| Flash attention | server flag; no output change (case `kv-types` runs with it on) |
+| Unified KV / per-slot | server flag; always unified here |
+| Prompt cache | server flags of the prefix cache; a hit changes no output |
+| Slot save/restore | duplicate of the `/slots` row (cases `slot-save`, `slot-restore`, `slot-erase`) |
+| Chat template | server flag; the template comes from the GGUF or `--chat-template-file` |
+| chat-template-kwargs | server flag; the same values are sent per request (case `chat-template-kwargs`) |
+| Reasoning | server flags; the request fields are rows of their own |
+| Tools/MCP server side (**[new @pin]** `--allow-unauthenticated-tools` :3447, `--media-allow-private-urls` :3679) | agent features of the bundled UI, not of the inference API |
+| Embeddings / rerank | duplicate of the `/embedding` and `/rerank` rows (group D cases) |
+| LoRA | LoRA, ADR 0083 point 4 (plan feature 30, group E) |
+| Multimodal | multimodal, ADR 0083 point 4 (group E) |
+| Speculative / draft | server flags; speculation changes no token and has no request field |
+| Grammar flags | server flags with defaults; the same text is sent per request (cases `grammar-gbnf`, `json-schema-top-level`) |
+| API key | duplicate of the `API key auth` row (case `api-key`) |
+| Metrics/props/slots endpoints | duplicate of the `/metrics`, `/props` and `/slots` rows |
+| Host/port | server flags |
+| CORS, path, api-prefix | server flags; the gateway listens on localhost by default |
+| HTTP threads, timeout, SSE ping | server flags; no output change |
+| GPU layers | backend placement; no output change |
+| Split mode | backend placement; no output change |
+| Tensor split / main GPU | backend placement; no output change |
+| Load mode | backend placement; no output change |
+| Threads | backend placement; no output change |
+| Multi-model router | several models, ADR 0083 point 4 (plan feature 29, group E) |
+| Planner / replan / worker isolation | Tetraeder-only |
+| Pin-only flags | flags of llama-server's own backend (`--moe-cache-cpu-share`, `--ple`, `--shard`) |
+| Fake engine | test only |
+| `qwen3moe` | engine selection (section 5) is Tetraeder's own; the cases run each engine (`engines`) |
+| `qwen3` | engine selection (section 5) is Tetraeder's own; the cases run each engine (`engines`) |
+| `llama`, `gemma3`, anything else | engine selection (section 5) is Tetraeder's own; libllama takes them |
+| unreadable GGUF / no arch key | engine selection (section 5) is Tetraeder's own; an error before the port opens |
+| Embeddings | section 6 duplicate of the `/embedding` row |
+| Reranking | section 6 duplicate of the `/rerank` row |
+| Tokenize / detokenize | section 6 duplicate of the `/tokenize` row |
+| apply-template | section 6 duplicate of the `/apply-template` row |
+| /props | section 6 duplicate of the `/props` row |
+| /slots | section 6 duplicate of the `/slots` row |
+| /metrics | section 6 duplicate of the `/metrics` row |
+| /health | section 6 duplicate of the `/health` row |
+| Infill (FIM) | section 6 duplicate of the `/infill` row |
+| Multimodal (mtmd) | multimodal, ADR 0083 point 4 (group E) |
+| LoRA adapters | LoRA, ADR 0083 point 4 (plan feature 30, group E) |
+| Prompt caching | the prefix cache changes no output (cases `cache-prompt-accepted`, `usage-fields`) |
+| Continuous batching | server behaviour; no output change |
+| Structured output | section 6 duplicate of the `grammar` and `json_schema` rows |
+| Quota / auth / multi-tenant | Tetraeder-only attribution (`caller`); llama-server has api keys only (case `api-key`) |
+
+## Covered by unit tests
+
+The Rust tests run in every CI job. A row is listed here when no live comparison is possible or needed: the behaviour is inside Tetraeder, or the baseline would need a model other than the tiny fixtures. The test column names files and test functions.
+
+| Row | Test |
+|---|---|
+| messages (chat) | `crates/gateway/tests/openai.rs` (`chat_prompt_uses_the_template`), `crates/gateway/tests/serving.rs` (`system_message_in_messages_becomes_user_text`); live in `chat-greedy` |
+| content parts: text | `crates/gateway/tests/openai.rs` (`chat_completion_shape`); live in `chat-greedy` |
+| tools | `crates/gateway/tests/openai.rs` (`tool_call_response`, `tool_history_reaches_the_template`) |
+| parallel_tool_calls | `crates/gateway/tests/anthropic.rs` (`disable_parallel_tool_use_cancels_after_the_first_call`), `crates/gateway/tests/openai.rs` (`single_tool_call_cancels_the_engine`) |
+| tool call output | `crates/gateway/tests/toolcall.rs` (Hermes, Qwen XML, Llama 3 and Mistral parsers) |
+| reasoning/thinking content | `crates/gateway/tests/openai.rs` (`reasoning_content_is_split`), `crates/gateway/tests/toolcall.rs` |
+| user | `crates/gateway/tests/gateway.rs` (`cost_record_per_request`) |
+| Anthropic: metadata.user_id | `crates/gateway/tests/gateway.rs` (`cost_record_per_request`) |
+| Anthropic: thinking blocks in history | `crates/gateway/tests/anthropic.rs` (`thinking_blocks`), `crates/gateway/tests/lenient.rs` (`thinking_blocks_and_unknown_blocks`) |
+| Anthropic: image/document blocks | `crates/gateway/tests/lenient.rs` (`image_and_document_blocks_become_text`); images themselves are multimodal, group E |
+| **[new @pin]** Anthropic: output_config.effort -> reasoning_effort | `crates/gateway/tests/fields.rs` (`anthropic_model_is_optional_and_effort_is_read`) |
+| Anthropic: tool defs `input_schema`, `defer_loading`/`tool_reference` | `crates/gateway/tests/lenient.rs` (`deferred_tools_are_rendered`, `tool_reference_in_tool_result_becomes_text`) |
+| Anthropic stop_reason | `crates/gateway/tests/anthropic.rs` (`stop_sequence_and_max_tokens`); live in `anthropic-greedy` |
+| Anthropic usage | `crates/gateway/tests/anthropic.rs` (`message_shape`, `count_tokens_matches_usage`); live in `anthropic-greedy` |
+| Error format | `crates/gateway/tests/openai.rs` (`errors_use_the_openai_shape`), `crates/gateway/tests/anthropic.rs` (`errors_use_the_anthropic_envelope`) |
+| Chain construction (sampling.cpp:299-444) | `crates/scheduler/src/sample.rs` (`default_chain_is_llama_servers`, `disabled_stages_left_out_change_nothing`, `greedy_keeps_stages_that_can_remove_the_best_token`, `logit_bias_and_ignore_eos_ban_tokens`), `crates/scheduler/tests/sampler_dry.rs` |
 
 ## Differences that change outputs today
 
 Group A is closed (node `serving-parity-sampling`): the host sampler is libllama's own chain in llama-server's order and defaults, so the old differences (temperature before top-p, no min_p, counter seed, SplitMix64) are gone. This changes sampled outputs at temperature above 0 for existing clients. Still different:
 
-- Group B is closed (node `serving-parity-fields`): the fields of the matrix are honoured, rejected with 400 when set to a non-default value, or accepted without effect for a stated reason (appendix rows). Fields no row names are still ignored, as llama-server ignores its unknown ones. Still open from group B: `reasoning_format`, `reasoning_budget_tokens`, `continue_final_message`, `add_generation_prompt`, `prefill_assistant` and the Anthropic `extra_params` passthrough are ignored; `response_format` keeps its own token mask (not llama.cpp's grammar), so its exact tokens can differ from llama-server's.
-- Clients see one more token in `completion_tokens` when a response ends on the end-of-generation token.
+- Group B is closed (node `serving-parity-fields`): the fields of the matrix are honoured, rejected with 400 when set to a non-default value, or accepted without effect for a stated reason (appendix rows). Fields no row names are still ignored, as llama-server ignores its unknown ones. Still open from group B: `reasoning_format`, `reasoning_budget_tokens`, `continue_final_message`, `add_generation_prompt`, `prefill_assistant` and the Anthropic `extra_params` passthrough are ignored; `response_format` keeps its own token mask (not llama.cpp's grammar), so its exact tokens can differ from llama-server's. The audit's strict gap cases and these open items are tracked in node `serving-parity-remaining`.
 - A request `logit_bias` with text keys is rejected with 400; llama-server tokenizes them.
 - `samplers` names `infill` and `adaptive_p`, and `adaptive_target` and `adaptive_decay`, are not supported; an unknown sampler name is a 400 here, a skipped entry there.
 - `repeat_last_n` and `dry_penalty_last_n` are capped at the context of a sequence (`SampleParams::resolve`). The history never exceeds it, so no output changes; llama-server does not cap them and libllama allocates a ring buffer of the size asked for.
@@ -174,7 +268,7 @@ Parsed in `L:server-schema.cpp:make_llama_cmpl_schema` (lines 13-470), evaluated
 | Chain construction (sampling.cpp:299-444) | grammar sampler (output-format / tool-call grammars prefilled with the template's generation prompt, :299-313); reasoning-budget sampler (:315-328); `logit_bias` merged with the **model's suppress tokens** (`llama_vocab_get_suppress_tokens`, -inf; :328-342); chain per `samplers` list; ends in `greedy` when temp == 0 (or top_k == 1) and n_probs == 0 (:404-407), else `dist(seed)`; mirostat 1/2 replaces the chain with temp + mirostat (:409-415) | **done** except the grammar and reasoning-budget samplers (Tetraeder masks tokens through its own constraints) and `n_probs`: logit_bias plus the model's suppress tokens, the `samplers` list, greedy when the list ends in temperature 0 or `top_k` 1, Mirostat 1 and 2. Stages that cannot change a token with the given settings are left out |
 | Sampler names accepted in `samplers` (sampling.cpp:964-980) | dry, top_k, top_p, top_n_sigma, typ_p, min_p, temperature, xtc, infill, penalties, adaptive_p | **done** for dry, top_k, top_p, top_n_sigma, typ_p, min_p, temperature, xtc, penalties; `infill` and `adaptive_p` are rejected with 400 |
 | Backend (GPU) sampling | `backend_sampling` field / `-bs` flag, disabled with grammar or reasoning budget (sampling.cpp:424-436) | n/a (host sampler over a logits row) |
-| RNG | `std::mt19937` seeded from the chain seed (sampling.cpp:444) | SplitMix64 (sample.rs:8-27); unseeded requests use `counter_seed` (sample.rs:30) |
+| RNG | `std::mt19937` seeded from the chain seed (sampling.cpp:444) | **done** (node `serving-parity-sampling`): libllama's `dist` sampler, the same mt19937; unseeded requests draw a random seed. Case `seeded-rng` |
 
 Sampler facts for Tetraeder (all engines share one host-side sampler over the logits row): fields are temperature, top_k, top_p, seed, plus the constraint mask (`T:scheduler/src/sample.rs:35-44,63-115`; `T:gateway/src/engine.rs:57-65` `SamplingParams` is only `max_tokens, temperature, top_p, top_k, seed`). Temperature <= 0 is greedy, lowest id wins ties (sample.rs:65-66,150-161). Scheduler fills defaults from `--temp/--top-k/--top-p` (scheduler.rs:1277-1283; serve.rs:65-71). Speculative decoding (`spec/mod.rs`): `Sampling` has only temperature+seed (spec/mod.rs:67-77), the scheduler drafts only for **greedy, unconstrained** sequences (scheduler.rs:1620-1633); `--spec` is off by default.
 

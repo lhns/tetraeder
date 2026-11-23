@@ -24,10 +24,12 @@
 # `{tmp}` in a server argument is a directory of that server alone (slot files)
 # expect    pass, or `gap <tree node>`: xfail(strict), flipped to pass in the change that closes the gap
 #
-# Tokens are compared at temperature 0 and in the seeded case (same chain and RNG as llama-server). The tiny models are random, so the text is byte noise; what
-# matters is that both servers pick the same tokens. Sampler rows that temperature 0 cannot show (min_p,
-# typical_p, top_n_sigma, xtc, dry, mirostat, dynatemp, min_keep, `samplers` order, the random default seed)
-# are left to the sampler unit tests of node serving-parity-sampling (crates/scheduler/src/sample.rs).
+# Tokens are compared at temperature 0 and in the seeded cases (same chain and RNG as llama-server). The tiny models are
+# random, so the text is byte noise; what matters is that both servers pick the same tokens. The sampler rows that
+# temperature 0 cannot show have a `seeded-*` case each. Only the random default seed has no case (it differs per
+# request by design); it is covered by the sampler unit tests (crates/scheduler/src/sample.rs).
+# Every appendix row has a case, a row of "Scoped out" or a row of "Covered by unit tests" in the matrix
+# (test_parity_lib.py checks it, ADR 0083 decision 6).
 #
 # Gap cases carry what llama-server returns today; a gap must fail for the row's own reason (status, a missing
 # path or different tokens), so the comparison is narrowed with `paths` where the rest already differs.
@@ -849,3 +851,348 @@ cases:
     mode: status
     engines: [auto]
     expect: pass
+
+  # ---- ADR 0083 decision 6 audit: a case for every appendix row that can have one ----
+  # Seeded sampler cases: both servers run the same libllama chain and RNG, so the tokens must be equal.
+  - id: seeded-temperature
+    group: A
+    row: "temperature"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.4, "top_k": 40, "seed": 42, "max_tokens": 30}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-top-k
+    group: A
+    row: "top_k"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 5, "seed": 42, "max_tokens": 30}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-top-p
+    group: A
+    row: "top_p"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "top_p": 0.5}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-min-p
+    group: A
+    row: "min_p"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "min_p": 0.3}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-top-n-sigma
+    group: A
+    row: "top_n_sigma"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "top_n_sigma": 1.0}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-xtc
+    group: A
+    row: "xtc_probability / xtc_threshold"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "xtc_probability": 0.8, "xtc_threshold": 0.05}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-typical-p
+    group: A
+    row: "typical_p"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "typical_p": 0.5}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-dynatemp
+    group: A
+    row: "dynatemp_range / dynatemp_exponent"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "dynatemp_range": 0.8, "dynatemp_exponent": 1.0}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-dry
+    group: A
+    row: "dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, dry_sequence_breakers"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "dry_multiplier": 0.8, "dry_base": 1.75, "dry_allowed_length": 2, "dry_penalty_last_n": -1}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-mirostat
+    group: A
+    row: "mirostat / mirostat_tau / mirostat_eta"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "mirostat": 2, "mirostat_tau": 5.0, "mirostat_eta": 0.1}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-samplers-order
+    group: A
+    row: "samplers (order)"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "samplers": ["top_k", "min_p", "top_p", "temperature"], "top_p": 0.8, "min_p": 0.1}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-min-keep
+    group: A
+    row: "min_keep"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "top_p": 0.01, "min_p": 0.5, "min_keep": 4}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-sampler-names
+    group: A
+    row: "Sampler names accepted in `samplers` (sampling.cpp:964-980)"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "samplers": ["penalties", "dry", "top_n_sigma", "top_k", "typ_p", "top_p", "min_p", "xtc", "temperature"], "repeat_penalty": 1.1, "dry_multiplier": 0.5, "top_n_sigma": 2.0, "typical_p": 0.9, "top_p": 0.9, "min_p": 0.05, "xtc_probability": 0.3}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-default-order
+    group: A
+    row: "Default sampler order (common.h:268-278)"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 40, "seed": 42, "max_tokens": 30, "repeat_penalty": 1.1, "presence_penalty": 0.2, "dry_multiplier": 0.5, "top_n_sigma": 2.0, "typical_p": 0.9, "top_p": 0.9, "min_p": 0.05, "xtc_probability": 0.3}
+    mode: text
+    engines: [auto]
+    expect: pass
+  # no sampling field at all: temperature 0.8, top_k 40, top_p 0.95, min_p 0.05
+  - id: seeded-defaults
+    group: A
+    row: "Defaults (`common_params_sampling`, common.h:231-260)"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "seed": 7, "max_tokens": 30}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: seeded-rng
+    group: A
+    row: "RNG"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "temperature": 1.0, "top_k": 0, "top_p": 1.0, "min_p": 0.0, "seed": 123456789, "max_tokens": 30}
+    mode: text
+    engines: [auto]
+    expect: pass
+  # --temp 0 on both servers, no temperature in the request: greedy
+  - id: server-sampling-defaults
+    group: A
+    row: "Sampling defaults"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Once upon a time", "max_tokens": 20}
+    llama_args: ["--temp", "0"]
+    tetraeder_args: ["--temp", "0"]
+    mode: text
+    engines: [auto]
+    expect: pass
+
+  # ---- group B: fields ----
+  - id: stream-flag
+    group: B
+    row: "stream"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Hello", "temperature": 0, "max_tokens": 8, "stream": true}
+    mode: stream
+    engines: [auto, dense]
+    expect: pass
+  - id: cache-prompt-accepted
+    group: B
+    row: "cache_prompt"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Hello", "temperature": 0, "max_tokens": 8, "cache_prompt": false}
+    value_paths: ["choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: n-cache-reuse-accepted
+    group: B
+    row: "n_cache_reuse"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Hello", "temperature": 0, "max_tokens": 8, "n_cache_reuse": 16}
+    value_paths: ["choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: id-slot-out-of-range
+    group: B
+    row: "id_slot"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Hello", "temperature": 0, "max_tokens": 4, "id_slot": 99}
+    mode: status
+    engines: [auto]
+    expect: pass
+  - id: id-slot-pinned
+    group: B
+    row: "id_slot"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Hello", "temperature": 0, "max_tokens": 8, "id_slot": 0}
+    value_paths: ["choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: echo-completions
+    group: B
+    row: "echo"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Hello", "temperature": 0, "max_tokens": 6, "echo": true}
+    value_paths: ["usage.completion_tokens"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: chat-template-kwargs
+    group: B
+    row: "chat_template_kwargs"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 8, "chat_template_kwargs": {"enable_thinking": false}}
+    value_paths: ["usage.prompt_tokens"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: reasoning-effort-none
+    group: B
+    row: "reasoning_effort"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 8, "reasoning_effort": "none"}
+    value_paths: ["usage.prompt_tokens"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  # the request fields n_keep and n_discard with the server flag; same request as context-shift-keep-discard
+  - id: n-keep-discard-fields
+    group: B
+    row: "n_keep, n_discard, context_shift"
+    endpoint: POST /v1/completions
+    body: {"prompt": "Hello", "temperature": 0, "max_tokens": 400, "ignore_eos": true, "n_keep": 4, "n_discard": 8}
+    ctx: 256
+    llama_args: ["--context-shift"]
+    tetraeder_args: ["--context-shift"]
+    value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
+    premise: {"finish_reason": "length"}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: finish-reason-chat
+    group: B
+    row: "finish_reason chat"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 4}
+    value_paths: ["choices[0].finish_reason"]
+    premise: {"finish_reason": "length"}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: finish-reason-completions
+    group: B
+    row: "finish_reason completions"
+    endpoint: POST /v1/completions
+    body: {"prompt": "The", "temperature": 0, "max_tokens": 40}
+    value_paths: ["choices[0].finish_reason"]
+    premise: {"finish_reason": "stop"}
+    mode: text
+    engines: [auto]
+    expect: pass
+  - id: logprobs-shape
+    group: B
+    row: "logprobs shape"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 3, "logprobs": true, "top_logprobs": 3}
+    mode: logprobs
+    engines: [auto]
+    expect: pass
+  # `generation_settings` is covered by crates/gateway/tests/endpoints.rs (its content differs by build)
+  - id: native-completion-fields
+    group: B
+    row: "`stop_type`, `stopping_word`, `truncated`, `tokens_cached`, `generation_settings` (native)"
+    endpoint: POST /completion
+    body: {"prompt": "Once upon a time", "temperature": 0, "n_predict": 12}
+    paths: ["stop_type", "stopping_word", "truncated", "tokens_cached"]
+    value_paths: ["stop_type", "truncated"]
+    mode: shape
+    engines: [auto]
+    expect: pass
+  - id: anthropic-system
+    group: B
+    row: "Anthropic: system"
+    endpoint: POST /v1/messages
+    body: {"max_tokens": 8, "temperature": 0, "system": "Be brief.", "messages": [{"role": "user", "content": "Hello"}]}
+    headers: {"anthropic-version": "2023-06-01"}
+    value_paths: ["stop_reason", "usage.input_tokens"]
+    mode: text
+    engines: [auto]
+    expect: pass
+  # top_k 1 makes the draw greedy on both
+  - id: anthropic-sampling-fields
+    group: B
+    row: "Anthropic: top_k / top_p / temperature"
+    endpoint: POST /v1/messages
+    body: {"max_tokens": 8, "temperature": 0.7, "top_k": 1, "top_p": 0.9, "messages": [{"role": "user", "content": "Hello"}]}
+    headers: {"anthropic-version": "2023-06-01"}
+    mode: text
+    engines: [auto]
+    expect: pass
+
+  # ---- gaps found by the audit (node serving-parity-remaining); each flips to pass in the change that closes it ----
+  # Tetraeder masks tokens through llguidance; llama-server converts the schema to GBNF. Unverified: the tokens may agree on the fixture
+  - id: gap-response-format-json-object
+    group: B
+    row: "response_format: json_object / json_schema"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}], "temperature": 0, "max_tokens": 16, "response_format": {"type": "json_object"}}
+    value_paths: ["choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-remaining
+  # forced choice: grammar there, mask here. Unverified: the tokens may agree on the fixture
+  - id: gap-tool-choice-required
+    group: B
+    row: "tool_choice auto/none/required/named"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Weather in Paris?"}], "temperature": 0, "max_tokens": 24, "tool_choice": "required", "tools": [{"type": "function", "function": {"name": "get_weather", "description": "Weather of a city", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}]}
+    value_paths: ["choices[0].message.tool_calls[0].function.arguments", "choices[0].finish_reason"]
+    mode: text
+    engines: [auto]
+    expect: gap serving-parity-remaining
+  # llama-server continues the last assistant message; the OpenAI routes here close it and open a new turn, so the prompt differs
+  - id: gap-continue-final-message
+    group: B
+    row: "continue_final_message / add_generation_prompt / prefill_assistant"
+    endpoint: POST /v1/chat/completions
+    body: {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi"}], "temperature": 0, "max_tokens": 3, "continue_final_message": true}
+    value_paths: ["usage.prompt_tokens"]
+    mode: shape
+    engines: [auto]
+    expect: gap serving-parity-remaining
+  - id: gap-input-tokens
+    group: C
+    row: "POST /v1/chat/completions/input_tokens, /responses/input_tokens"
+    endpoint: POST /v1/chat/completions/input_tokens
+    body: {"messages": [{"role": "user", "content": "Hello"}]}
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-remaining
+  # no GET /slots route here (404)
+  - id: gap-slots-get
+    group: D
+    row: "GET /slots, POST /slots/:id?action=save/restore/erase"
+    endpoint: GET /slots
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-remaining
+  # batches are rejected with 400 on /v1/completions here (the native /completion takes them)
+  - id: gap-completions-prompt-array
+    group: B
+    row: "prompt (completions): string / array / token ids / mixed / multimodal"
+    endpoint: POST /v1/completions
+    body: {"prompt": ["Hello", "Once"], "temperature": 0, "max_tokens": 3}
+    mode: status
+    engines: [auto]
+    expect: gap serving-parity-remaining
