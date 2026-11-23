@@ -579,7 +579,7 @@ Phases 8 and 9 (backend parity, breadth) can run in parallel with M3 and M4.
 
 ## Effort
 
-Status 2026-11-23: after M2, llama-server parity groups A to C done (sampling, request fields, endpoints; conformance in CI, ADR 0083), group D, the Phase 6 transport measurement and a review of the batch running; Strata measured on Qwen3.6 (`bench-strata-q36`). M2 reached 2026-11-22 (owner, on the advisor's recommendation; `docs/m2-report.md`): Phase 5 passed 2026-11-21 (ADR 0068). M1 reached 2026-11-14 (Phase 0 started 2026-10-29, with parallel Claude Code tracks; verdicts in `docs/m1-open.md` and ADR 0045). Phase 4 passed its exit test 2026-11-17 (ADR 0065). The estimate below is the original one.
+Status 2026-11-23: after M2, llama-server parity groups A to D done (sampling, request fields, endpoints, libllama capabilities; conformance in CI with no gap left, ADR 0083; group E waits on the owner), the batch reviewed and fixed, the Phase 6 transport measured (ADR 0023, owner pick next), Strata measured on Qwen3.6 (`bench-strata-q36`). M2 reached 2026-11-22 (owner, on the advisor's recommendation; `docs/m2-report.md`): Phase 5 passed 2026-11-21 (ADR 0068). M1 reached 2026-11-14 (Phase 0 started 2026-10-29, with parallel Claude Code tracks; verdicts in `docs/m1-open.md` and ADR 0045). Phase 4 passed its exit test 2026-11-17 (ADR 0065). The estimate below is the original one.
 
 M1 is about 9 to 14 full-time person-months and the whole plan about 29 to 43, so at about 10 hours a week M1 alone takes 3 to 4.5 years; this is the main cost of building an own engine, and the plan is built so that each milestone is worth having if you stop there.
 
