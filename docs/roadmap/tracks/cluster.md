@@ -10,8 +10,8 @@ Scope: Phase 6 and on: transport, discovery, mTLS, replicas, failover, stages, e
 ```mermaid
 flowchart TB
     cluster_transport_wan[/"✔ Transport latency<br/>between two boxes"/]
+    cluster_planner["✔ Plans and<br/>predictions across<br/>nodes"]
     cluster_transport["○ Transport between<br/>machines"]
-    cluster_planner["○ Plans and<br/>predictions across<br/>nodes"]
     cluster_mtls["⛔ Node certificates<br/>and trust rules"]
     cluster_discovery["⛔ Node list, health<br/>and probes"]
     cluster_pipeline_nodes["⛔ Pipeline stages<br/>across machines"]
@@ -21,10 +21,10 @@ flowchart TB
     cluster_failover["⛔ Keep serving when a<br/>node dies"]
     cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
-    cluster_transport_wan ~~~ cluster_transport
     cluster_transport_wan ~~~ cluster_planner
-    cluster_transport ~~~ cluster_mtls
-    cluster_planner ~~~ cluster_discovery
+    cluster_transport_wan ~~~ cluster_transport
+    cluster_planner ~~~ cluster_mtls
+    cluster_transport ~~~ cluster_discovery
     cluster_mtls ~~~ cluster_pipeline_nodes
     cluster_discovery ~~~ cluster_replicas
     cluster_pipeline_nodes ~~~ cluster_join_leave
@@ -32,8 +32,8 @@ flowchart TB
     cluster_join_leave ~~~ cluster_failover
     cluster_remote_kv ~~~ cluster_experts_nodes
     cluster_remote_kv ~~~ cluster_replica_scaling
-    cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
+    cluster_transport_wan --> cluster_transport
     cluster_transport --> cluster_mtls
     cluster_planner --> cluster_mtls
     cluster_transport --> cluster_discovery
@@ -57,8 +57,8 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class cluster_transport_wan unrated
-    class cluster_transport,cluster_planner next
+    class cluster_transport_wan,cluster_planner unrated
+    class cluster_transport next
     class cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_replica_scaling blocked
     class cluster_experts_nodes parked
 ```
@@ -73,7 +73,7 @@ flowchart TB
 | `cluster-owner-transport` | Owner picks the network transport | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 | cluster-transport-wan |  |  | TCP+TLS chosen | docs/adr/0023-transport-spike.md |
 | `cluster-transport` | Transport between machines | feature | cluster | next | unrated |  |  | bench-m2-report, cluster-owner-transport |  |  |  |  |
 | `cluster-owner-phase6-design` | Owner accepts the Phase 6 design | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 | cluster-owner-transport |  |  | ADR 0091 accepted | docs/adr/0091-phase6-multi-node.md |
-| `cluster-planner` | Plans and predictions across nodes | feature | ci | next | unrated |  |  | cluster-owner-transport |  |  |  |  |
+| `cluster-planner` | Plans and predictions across nodes | feature | ci | done | unrated | 2026-11-23 | 2026-11-23 | cluster-owner-transport |  |  | planner first prediction for the 235B, decode 3.62 tok/s on the WAN pair and 5.43 on the same host, one node 0.49 (uniform routing prior) | docs/adr/0091-phase6-multi-node.md; crates/planner/tests/cluster.rs; crates/plan/tests/cluster.rs; crates/costmodel/src/cluster/tests.rs; crates/planner/tests/single_node_identity.rs |
 | `cluster-mtls` | Node certificates and trust rules | feature | cluster | blocked | unrated |  |  | cluster-transport, cluster-planner, cluster-owner-phase6-design |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes | feature | cluster | blocked | unrated |  |  | cluster-transport |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live | feature | cluster | blocked | unrated |  |  | cluster-discovery, cluster-replicas |  |  |  |  |
@@ -92,7 +92,7 @@ flowchart TB
 | `cluster-owner-transport` | Owner picks the network transport | TCP with TLS (mTLS) for Phase 6, QUIC kept as a later option for bulk and WAN, behind a transport trait (owner 2026-11-23) | TCP+TLS chosen | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. | Done when: ADR 0023 is Accepted with a chosen transport. Source: ADR 0018, ADR 0023, plan.md Open decisions. |  |  |  |  |
 | `cluster-transport` | Transport between machines |  |  | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). | Done when (ADR 0091, build order 1), a golden-byte test shows the moved frame code writes the same frames as remote_backend, frame property tests pass, unknown and wrong certificates are refused, pinned self-signed and CA anchors are both accepted, the effective socket buffer sizes are read back and logged (an explicit size on Linux is capped at net.core.rmem_max and turns autotuning off, so the size is measured per link, not fixed), a loopback TLS round trip works, and the RemoteBackend restart tests and the Phase 5 parity and golden tests pass; link metrics, the links panel row and the TLS-rejected alert in the same change. CI only. Phase 6 code stays on its branch until bench-regression-gate has run on main. |  |  |  |  |
 | `cluster-owner-phase6-design` | Owner accepts the Phase 6 design | Vast WAN pair, pinned self-signed certificates, 64 GB emulated by the balloon, mDNS out of M3, no HA gateway, remote experts after the exit (owner 2026-11-23) | ADR 0091 accepted | The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; mDNS in or out of M3; the other scope cuts). | Gates the certificate tooling and the box sessions only; the simulated steps (transport, planner) start before it. |  |  |  |  |
-| `cluster-planner` | Plans and predictions across nodes |  |  | The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091). | Done when (ADR 0091, build order 2), plan, segment and prediction property tests pass on every simulated cluster fixture, and one-node plans predict bit-identically to today. CI only, crates profiler, plan, costmodel and planner; runs in parallel with the transport step. |  |  |  |  |
+| `cluster-planner` | Plans and predictions across nodes | test the_235b_spans_both_nodes_on_every_two_node_fixture ... ok (CI run 45178068154, ubuntu-24.04) | planner first prediction for the 235B, decode 3.62 tok/s on the WAN pair and 5.43 on the same host, one node 0.49 (uniform routing prior) | The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091). | Done when (ADR 0091, build order 2), plan, segment and prediction property tests pass on every simulated cluster fixture, and one-node plans predict bit-identically to today. CI only, crates profiler, plan, costmodel and planner; runs in parallel with the transport step. |  |  |  |  |
 | `cluster-mtls` | Node certificates and trust rules |  |  | Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20). | Done when (ADR 0091), the certificate tooling of the owner's choice exists, a node with another certificate is refused on the rehearsal boxes, and plans with a forbid node rule never use that node (planner property test). |  |  |  |  |
 | `cluster-discovery` | Node list, health and probes |  |  | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). | Done when (ADR 0091, build order 3), membership property tests pass under every simulated fault, and two node daemons on loopback TLS profile and probe each other (autotuned and explicit buffers); cluster cert generates keys on the box that never enter the repo or a pushed HEAD, and the session driver builds cluster.toml after create and uploads it; panel rows and alerts in the same change. CI only, crates control and tetraeder. |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live |  |  | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). | Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action. |  |  |  |  |
