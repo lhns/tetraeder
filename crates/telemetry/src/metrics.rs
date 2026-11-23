@@ -416,7 +416,7 @@ impl Metrics {
                 .u64_counter("tetraeder.kv.prefix.hits")
                 .with_unit("{request}")
                 .with_description(
-                    "Requests that reused a cached prompt prefix, by source (idle or busy sequence, or host RAM)",
+                    "Requests that reused a cached prompt prefix, by source (idle or busy sequence, host RAM or disk)",
                 )
                 .build(),
             prefix_evictions: meter
@@ -427,7 +427,7 @@ impl Metrics {
             prefix_bytes: meter
                 .u64_gauge("tetraeder.kv.prefix.bytes")
                 .with_unit("By")
-                .with_description("Host bytes held by the prefix cache")
+                .with_description("Bytes held by the prefix cache, by tier (ram, disk)")
                 .build(),
             prefix_restore: meter
                 .f64_histogram("tetraeder.kv.prefix.restore.duration")
@@ -867,7 +867,7 @@ impl Metrics {
             .record(seconds, &[KeyValue::new(attr::STAGE, stage)]);
     }
 
-    /// A request that reused a cached prompt prefix; `source` is `live` (idle sequence), `seq` (copied from a busy one), `copy` (copied from an idle one into a free slot) or `ram`.
+    /// A request that reused a cached prompt prefix; `source` is `live` (idle sequence), `seq` (copied from a busy one), `copy` (copied from an idle one into a free slot) `ram` or `disk`.
     pub fn kv_prefix_hit(&self, source: &'static str) {
         self.prefix_hits
             .add(1, &[KeyValue::new(attr::SOURCE, source)]);
@@ -878,14 +878,16 @@ impl Metrics {
         self.prefix_evictions.add(entries, &[]);
     }
 
-    /// Host bytes the prefix cache holds now.
-    pub fn kv_prefix_bytes(&self, bytes: u64) {
-        self.prefix_bytes.record(bytes, &[]);
+    /// Bytes the prefix cache holds now, by `tier` (`ram` or `disk`, ADR 0087).
+    pub fn kv_prefix_bytes(&self, tier: &'static str, bytes: u64) {
+        self.prefix_bytes
+            .record(bytes, &[KeyValue::new(attr::TIER, tier)]);
     }
 
-    /// One saved sequence restored into the KV cache.
-    pub fn kv_prefix_restore(&self, d: Duration) {
-        self.prefix_restore.record(d.as_secs_f64(), &[]);
+    /// One saved sequence restored into the KV cache; `source` is `ram` or `disk` (a disk restore includes the file read).
+    pub fn kv_prefix_restore(&self, d: Duration, source: &'static str) {
+        self.prefix_restore
+            .record(d.as_secs_f64(), &[KeyValue::new(attr::SOURCE, source)]);
     }
 
     /// One sequence saved to the prefix cache (the snapshot read, ADR 0074).

@@ -206,7 +206,7 @@ llama-server flags: `C:arg.cpp` (line is the flag-name line). Tetraeder: `T:tetr
 | Flash attention | `-fa` :1734 | `--flash-attn auto/on/off` (engine_args.rs:54-56) | libllama; builders own kernels |
 | Unified KV / per-slot | `-kvu` :1704 | always unified (serve.rs:635; load.rs:27-30) | all |
 | Context shift | `--context-shift` :1720 | missing | n/a |
-| Prompt cache | `--cache-prompt` :3611, `--cache-reuse` :3619, `--cache-ram` :1695, `--cache-idle-slots` :1712, `--slot-prompt-similarity` :3847 | `--cache-ram` MiB default 8192 (serve.rs:97-99), `--no-prefix-reuse` (serve.rs:100-103) | all |
+| Prompt cache | `--cache-prompt` :3611, `--cache-reuse` :3619, `--cache-ram` :1695, `--cache-idle-slots` :1712, `--slot-prompt-similarity` :3847 | `--cache-ram` MiB default 8192 (serve.rs:97-99), `--cache-disk <dir>` and `--cache-disk-mib` disk tier, default off (ADR 0087), `--no-prefix-reuse` (serve.rs:100-103) | all |
 | Slot save/restore | `--slot-save-path` :3651 | missing | n/a |
 | Chat template | `--chat-template` :3801, `--chat-template-file` :3813, `--jinja` :3722 (default on) | `--chat-template-file` (serve.rs:107-109), template from GGUF otherwise (minijinja, template.rs:1-8). No built-in named templates | all |
 | chat-template-kwargs | `--chat-template-kwargs` :3571 | per request only | all |

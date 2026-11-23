@@ -36,12 +36,21 @@ groups:
       - alert: PrefixCacheThrash
         expr: |
           sum(rate(tetraeder_kv_prefix_evictions_total[15m]))
-            > sum(rate(tetraeder_kv_prefix_hits_total{tetraeder_source="ram"}[15m]))
+            > sum(rate(tetraeder_kv_prefix_hits_total{tetraeder_source=~"ram|disk"}[15m]))
         for: 15m
         labels:
           severity: warning
         annotations:
           summary: "The prefix cache evicts more sequences than it restores; raise --cache-ram"
+      # A restore from the disk tier (ADR 0087) blocks the scheduler for the file read: slow NVMe or a busy disk.
+      - alert: PrefixDiskRestoreSlow
+        expr: |
+          histogram_quantile(0.9, sum by (le) (rate(tetraeder_kv_prefix_restore_duration_seconds_bucket{tetraeder_source="disk"}[10m]))) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p90 prefix-cache restore from disk over 2 s; recomputing the prompt may be faster, check the --cache-disk device"
       # A save stalls every live sequence (ADR 0074): the 3090 took 41 ms per 8B save before pinned staging (bench/results/20261116pc).
       - alert: PrefixSaveSlow
         expr: |

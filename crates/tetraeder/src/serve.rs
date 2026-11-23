@@ -97,6 +97,14 @@ pub struct ServeArgs {
     /// Host RAM for saved sequences (prefix cache), in MiB; 0 turns it off.
     #[arg(long, default_value_t = 8192)]
     pub cache_ram: usize,
+    /// Directory for the prefix cache's disk tier: sequences the RAM budget evicts spill here
+    /// and come back on a later turn (ADR 0087). The cache removes its files at startup and
+    /// shutdown. Needs `--cache-disk-mib`.
+    #[arg(long, value_name = "DIR")]
+    pub cache_disk: Option<PathBuf>,
+    /// Disk budget of the prefix cache's disk tier, in MiB; 0 turns it off.
+    #[arg(long, default_value_t = 0)]
+    pub cache_disk_mib: usize,
     /// Reuse no prefix: every request prefills from an empty sequence (no idle, busy or RAM
     /// reuse). For measuring what reuse is worth; `--cache-ram` is independent.
     #[arg(long)]
@@ -468,6 +476,8 @@ pub struct SchedParts {
     top_k: u32,
     top_p: f32,
     cache_ram_bytes: usize,
+    cache_disk_dir: Option<PathBuf>,
+    cache_disk_bytes: usize,
     prefix_reuse: bool,
     chat_template: Option<String>,
     parallel: usize,
@@ -484,6 +494,8 @@ impl SchedParts {
             top_k: a.top_k,
             top_p: a.top_p,
             cache_ram_bytes: a.cache_ram << 20,
+            cache_disk_dir: a.cache_disk.clone(),
+            cache_disk_bytes: a.cache_disk_mib << 20,
             prefix_reuse: !a.no_prefix_reuse,
             parallel: a.parallel as usize,
             step_tokens: a.step_tokens() as usize,
@@ -506,6 +518,8 @@ impl SchedParts {
         cfg.top_p = self.top_p;
         cfg.metrics = Some(metrics);
         cfg.cache_ram_bytes = self.cache_ram_bytes;
+        cfg.cache_disk_dir.clone_from(&self.cache_disk_dir);
+        cfg.cache_disk_bytes = self.cache_disk_bytes;
         cfg.prefix_reuse = self.prefix_reuse;
         cfg.chat_template = self.chat_template.clone();
         cfg.parallel = self.parallel;
@@ -776,6 +790,16 @@ mod tests {
         let a = parse(&["--engine", "dense", "--no-prefix-reuse", "--cache-ram", "0"]);
         assert!(a.no_prefix_reuse);
         assert_eq!(a.cache_ram, 0);
+    }
+
+    // hardware: none
+    #[test]
+    fn cache_disk_flags_default_off() {
+        let a = parse(&[]);
+        assert_eq!((a.cache_disk.clone(), a.cache_disk_mib), (None, 0));
+        let a = parse(&["--cache-disk", "/tmp/kv", "--cache-disk-mib", "20480"]);
+        assert_eq!(a.cache_disk, Some(PathBuf::from("/tmp/kv")));
+        assert_eq!(a.cache_disk_mib, 20480);
     }
 
     // hardware: none

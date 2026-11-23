@@ -49,6 +49,9 @@ pub struct SchedulerConfig {
     pub metrics: Option<Metrics>,
     /// Host bytes for saved sequences (the prefix cache); 0 turns it off.
     pub cache_ram_bytes: usize,
+    /// Directory for the prefix cache's disk tier (ADR 0087); `None` or 0 bytes turns it off.
+    pub cache_disk_dir: Option<PathBuf>,
+    pub cache_disk_bytes: usize,
     /// A live sequence is saved before it loses this many tokens.
     pub cache_save_min: usize,
     /// A saved sequence is restored when it beats the live one by this many tokens.
@@ -92,6 +95,8 @@ impl SchedulerConfig {
             top_p: 0.95,
             metrics: None,
             cache_ram_bytes: DEFAULT_CACHE_RAM_BYTES,
+            cache_disk_dir: None,
+            cache_disk_bytes: 0,
             cache_save_min: SAVE_MIN_TOKENS,
             cache_restore_gain: RESTORE_MIN_GAIN,
             decode_profile: std::env::var_os("TETRAEDER_DECODE_PROFILE").is_some_and(|v| v == "1"),
@@ -137,6 +142,7 @@ impl Scheduler {
             cfg.cache_save_min,
             cfg.cache_restore_gain,
         );
+        let (cache_disk_dir, cache_disk_bytes) = (cfg.cache_disk_dir.clone(), cfg.cache_disk_bytes);
         let vocab_cell: Arc<std::sync::OnceLock<Arc<Vocab>>> = Arc::default();
         let worker_vocab = Arc::clone(&vocab_cell);
         let worker = std::thread::Builder::new()
@@ -166,9 +172,15 @@ impl Scheduler {
                 let pool = tetraeder_model::snapshot_pool::global();
                 pool.set_max_bytes(cache_ram);
                 pool.set_default_spares(parallel.max(2));
+                let mut cache = PrefixCache::new(cache_ram);
+                if let Some(dir) = &cache_disk_dir
+                    && cache.enabled()
+                {
+                    cache = cache.with_disk(dir, cache_disk_bytes);
+                }
                 let mut w = Worker::new(
                     loaded.backend,
-                    PrefixCache::new(cache_ram),
+                    cache,
                     save_min,
                     restore_gain,
                     prefix_reuse,
@@ -870,12 +882,19 @@ impl Worker {
                 if let Some(m) = &self.metrics {
                     m.kv_prefix_save(took);
                     m.kv_prefix_evicted(evicted as u64);
-                    m.kv_prefix_bytes(self.cache.bytes() as u64);
                 }
+                self.report_cache_bytes();
             }
             Err(e) => tracing::warn!("cannot save a sequence: {e}"),
         }
         self.report_pool();
+    }
+
+    fn report_cache_bytes(&self) {
+        if let Some(m) = &self.metrics {
+            m.kv_prefix_bytes("ram", self.cache.bytes() as u64);
+            m.kv_prefix_bytes("disk", self.cache.disk_bytes() as u64);
+        }
     }
 
     /// A sequence of `positions` may be saved later: tell the snapshot pool its size.
@@ -1081,11 +1100,14 @@ impl Worker {
         let busy = busy.or(copy_idle);
         let ram = if busy.is_some() { None } else { ram };
         // Take the entry out first: saving a sequence below may evict it.
-        let mut picked = ram.map(|(i, _)| self.cache.take(i));
-        if picked.is_some()
-            && let Some(m) = &self.metrics
-        {
-            m.kv_prefix_bytes(self.cache.bytes() as u64);
+        let ram_source = ram.map_or("ram", |(i, _)| self.cache.source(i));
+        let t_take = Instant::now();
+        let mut picked = ram.and_then(|(i, _)| self.cache.take(i));
+        // A disk entry is read back here, which belongs to its restore time.
+        let take_time = t_take.elapsed();
+        let ram = ram.filter(|_| picked.is_some());
+        if ram.is_some() {
+            self.report_cache_bytes();
         }
         // Where the request goes.
         let id = match best_idle {
@@ -1212,15 +1234,16 @@ impl Worker {
             match self.backend.seq_restore(id as SeqId, &bytes, etoks.len()) {
                 Ok(()) => {
                     common = common_prefix(&etoks, &toks).min(last);
-                    source = "ram";
-                    self.restore_time += t0.elapsed();
+                    source = ram_source;
+                    let disk = ram_source == "disk";
+                    let took = t0.elapsed() + if disk { take_time } else { Duration::ZERO };
+                    self.restore_time += took;
                     if let Some(m) = &self.metrics {
-                        let took = t0.elapsed();
-                        m.kv_prefix_restore(took);
+                        m.kv_prefix_restore(took, ram_source);
                         m.tier_transfer(
                             bytes.len() as u64,
                             Some(took),
-                            Tier::Ram,
+                            if disk { Tier::Disk } else { Tier::Ram },
                             Tier::Vram,
                             Purpose::Kv,
                         );
