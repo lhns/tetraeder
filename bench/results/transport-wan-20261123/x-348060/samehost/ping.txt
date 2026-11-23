@@ -1,0 +1,4 @@
+peer=y-348060 ip=47.164.117.172 ports=40280,40150,40255,40226,40783,40377
+-- ping 47.164.117.172
+scripts/transport_wan_bench.sh: line 91: ping: command not found
+ping unavailable or blocked
