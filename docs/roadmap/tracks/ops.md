@@ -19,6 +19,7 @@ flowchart TB
     ops_review_parity_batch["✔ Review the parity<br/>batch"]
     ops_packages["⏸ Windows and Linux<br/>packages, container"]
     ops_profiling_mode["⏸ Profiling mode with<br/>CUPTI"]
+    ops_review_group_d["○ Review group D and<br/>the fixes"]
     ops_foundations ~~~ ops_box_driver
     ops_ci ~~~ ops_external_reads
     ops_taxameter ~~~ ops_docs
@@ -26,10 +27,11 @@ flowchart TB
     ops_external_reads ~~~ ops_review_parity_batch
     ops_docs ~~~ ops_packages
     ops_telemetry ~~~ ops_profiling_mode
-    ops_review_parity_batch ~~~ ops_profiling_mode
-    ops_packages ~~~ ops_profiling_mode
+    ops_review_parity_batch ~~~ ops_review_group_d
+    ops_packages ~~~ ops_review_group_d
     ops_ci --> ops_packages
     ops_telemetry --> ops_profiling_mode
+    ops_review_parity_batch --> ops_review_group_d
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -46,6 +48,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class ops_foundations,ops_ci,ops_taxameter,ops_box_driver,ops_external_reads,ops_docs,ops_telemetry,ops_review_parity_batch unrated
     class ops_packages,ops_profiling_mode parked
+    class ops_review_group_d next
 ```
 <!-- END GENERATED: track-ops -->
 
@@ -68,6 +71,7 @@ flowchart TB
 | `ops-review-parity-batch` | Review the parity batch | refactor | local | done | unrated | 2026-11-23 | 2026-11-23 | serving-parity-endpoints, memory-prefix-disk-async, memory-kv-auto, serving-recurrent-reuse |  |  | 13 of 14 findings fixed | docs/adr/0087-prefix-cache-disk-tier.md; docs/notes/llamacpp-parity.md; crates/scheduler/tests/no_suffix_cut.rs; crates/gateway/tests/fields.rs |
 | `ops-packages` | Windows and Linux packages, container | tooling | none | parked | unrated |  |  | ops-ci |  |  |  |  |
 | `ops-profiling-mode` | Profiling mode with CUPTI | feature | box-later | parked | unrated |  |  | ops-telemetry |  |  |  |  |
+| `ops-review-group-d` | Review group D and the fixes | refactor | local | next | unrated |  |  | serving-parity-libllama, ops-review-parity-batch |  |  |  |  |
 
 ### Details per node
 
@@ -87,6 +91,7 @@ flowchart TB
 | `ops-review-parity-batch` | Review the parity batch | CI run 45138471418 green on all jobs (test ubuntu-24.04 and test windows-latest passed); the new test of finding 2 failed before its fix | 13 of 14 findings fixed | A fresh reviewer read the code seven workers merged on 2026-11-23 and found 14 bugs; 13 are fixed (unbounded n, recurrent prefix entries destroyed, disk tier files deleted by a replan, aborted reads, disk budget, cut streams, completions default, top_k, penalty windows, empty key file, seeds, native logprob trim), one already matched llama-server, and five duplicated helpers were merged. |  |  |  |  |  |
 | `ops-packages` | Windows and Linux packages, container |  |  | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when (plan.md, Phase 9 exit test): packages install cleanly on both systems. |  |  |  |  |
 | `ops-profiling-mode` | Profiling mode with CUPTI |  |  | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). | Parked: no exit test needs it; Phase 5 diagnoses used sync traces and graphs-off runs. Checked 2026-11-21: no CUPTI or rocprof code in crates/. Done when: a profiling run writes per-kernel times for one step without changing production timing. |  |  |  |  |
+| `ops-review-group-d` | Review group D and the fixes |  |  | A second review of the code merged after the first review (group D and the review fixes), plus the flaky disk-read test, a check that every parity row has a case or a scope-out, and the per-token cost of logprobs and the greedy fast path. | The first review found 13 real bugs. |  |  |  |  |
 
 ### Folded items per node
 

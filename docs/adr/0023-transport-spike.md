@@ -1,6 +1,6 @@
 # 0023. Transport spike: QUIC (quinn) versus TCP with TLS versus plain TCP
 
-Status: Proposed (localhost numbers only; WAN and RDMA pending, no transport is chosen yet)
+Status: Accepted (owner, 2026-11-23, on the advisor's recommendation, after the WAN, same-host and loopback numbers of `transport-wan-20261123`). Proposed earlier with localhost numbers only.
 
 ## Context
 
@@ -27,7 +27,11 @@ AES-GCM (rustls default) is software-only here and caps TLS and QUIC at about 40
 
 Reading, with that caveat: on this host TCP is the floor at about 0.3 ms per 8 KB hop (Windows loopback is slow; Linux loopback is typically under 0.1 ms). TLS adds about 0.13 ms per 8 KB hop, QUIC about 0.55 ms, in line with the plan's remark that userspace QUIC costs hundreds of microseconds per hop. At 60 hops per token that is about 8 ms (TLS over TCP) versus 33 ms (QUIC) of overhead on top of the 20 ms TCP floor, before any real network latency. These are indications only: crypto cost depends on the CPU, and the VM is noisy (TCP p99 for 1 MB varies by 10x). (No session directory yet.)
 
-## Decision (proposed, not final)
+## Decision (owner, 2026-11-23)
+
+Phase 6 builds on TCP with TLS (mTLS) for traffic between nodes, behind a transport trait, so the choice is reversible. QUIC stays a later option for bulk transfers and WAN links. That QUIC's 1 MB lead over WAN comes from untuned TCP buffers is a hypothesis, not measured; tune the TCP buffers before relying on it. RDMA is not available on Vast and is revisited on homelab hardware.
+
+## Earlier lean (before the WAN numbers)
 
 Leaning to TCP with TLS (mTLS in Phase 6) for per-layer expert traffic if the WAN numbers confirm a clear latency gap. QUIC stays a candidate for bulk and lossy links (loss recovery, no head-of-line blocking across streams) and for NAT traversal via iroh. Do not decide before the pending measurements.
 

@@ -2394,17 +2394,18 @@ nodes:
   title: LoRA, multimodal, multi-model scope
   track: serving
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/notes/llamacpp-parity.md
+  verdict_quote: 'Park until M3 (owner 2026-11-23)'
+  headline: 'parked until M3'
   depends_on:
   - serving-parity-libllama
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
   plain: The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E).
@@ -2436,17 +2437,18 @@ nodes:
   title: Owner picks the network transport
   track: cluster
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0023-transport-spike.md
+  verdict_quote: 'TCP with TLS (mTLS) for Phase 6, QUIC kept as a later option for bulk and WAN, behind a transport trait (owner 2026-11-23)'
+  headline: 'TCP+TLS chosen'
   depends_on:
   - cluster-transport-wan
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
   plain: The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links.
@@ -2455,7 +2457,7 @@ nodes:
   title: Transport between machines
   track: cluster
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -3286,7 +3288,7 @@ nodes:
   title: Own builder for Qwen3.6 MoE
   track: engine
   kind: feature
-  state: next
+  state: parked
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -3300,7 +3302,7 @@ nodes:
   folded: []
   overview: false
   plain: An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first).
-  notes: 'Design question: recurrent state in the KV pool, seq_rm and the prefix cache (ADR 0051 deferred it). The pin has the graph and CUDA ops, no patch expected. Measured 2026-11-23 (bench-strata-q36): the libllama path already fails on slot reuse (KV cache cannot drop positions) unless --no-prefix-reuse --cache-ram 0; Strata is 1.50x llama-server at c1 and 0.84x at c4 on an A40, so Strata leads at single-request decode (MTP drafts) and trails at c4.'
+  notes: 'Parked by the owner 2026-11-23 in favour of serving-mtp-libllama (MTP drafts through libllama first). Design question when it resumes: recurrent state in the KV pool, seq_rm and the prefix cache (ADR 0051).'
 - id: memory-kv-auto
   title: Planner picks the KV format
   track: memory
@@ -3432,16 +3434,17 @@ nodes:
   title: Which Strata model families to add
   track: serving
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/notes/strata-parity.md
+  verdict_quote: 'Park until M3 (owner 2026-11-23)'
+  headline: 'parked until M3'
   depends_on: []
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
   plain: The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085).
@@ -3468,6 +3471,64 @@ nodes:
   folded: []
   overview: false
   plain: A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture.
+- id: serving-mtp-libllama
+  title: MTP drafts through libllama
+  track: serving
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-strata-q36
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Qwen3.6 ships an MTP block and libllama at the pin can run it (LLAMA_CONTEXT_TYPE_MTP, draft-mtp in common/speculative.cpp); drafting with it on the libllama engine tests Strata's 1.5x single-request lead without a new builder (owner 2026-11-23).
+  notes: 'Design question: speculative rollback on recurrent state (serving-recurrent-reuse showed seq_rm cannot cut). Judged by a paired run against llama-server with and without its own MTP drafts.'
+- id: ops-review-group-d
+  title: Review group D and the fixes
+  track: ops
+  kind: refactor
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-parity-libllama
+  - ops-review-parity-batch
+  replaced_by: []
+  lane: local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A second review of the code merged after the first review (group D and the review fixes), plus the flaky disk-read test, a check that every parity row has a case or a scope-out, and the per-token cost of logprobs and the greedy fast path.
+  notes: 'The first review found 13 real bugs.'
+- id: bench-regression-gate
+  title: Regression gate on final main
+  track: bench
+  kind: session
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-review-group-d
+  replaced_by: []
+  lane: box-later
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: One box session pairs this morning's build (f68d2a0) against main on the 30B and 8B at c1 and c4 with TTFT, under the 0.98 rule, and runs the conformance suite on CUDA, the Qwen3.6 default-flag rerun and the paired runs for kv auto and the disk prefix tier.
+  notes: 'Until it runs, the M2 numbers are unconfirmed on main.'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench

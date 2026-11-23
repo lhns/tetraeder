@@ -28,7 +28,7 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0020](0020-no-timing-patch.md) | Accepted | No timing patch: whole-step timing with CUDA graphs in production, per-op timing in calibration runs |
 | [0021](0021-gpu-work-on-ephemeral-vast-boxes.md) | Accepted (tooling superseded by 0029) | All GPU work runs on ephemeral Vast boxes |
 | [0022](0022-otel-exemplars.md) | Accepted | No OpenTelemetry exemplars for now |
-| [0023](0023-transport-spike.md) | Proposed | Transport spike: QUIC versus TCP with TLS versus plain TCP |
+| [0023](0023-transport-spike.md) | Accepted | Transport spike: QUIC versus TCP with TLS versus plain TCP |
 | [0024](0024-quantization-per-unit-and-quality-profile.md) | Accepted | Quantization is a planner choice per unit; quality is measured per model |
 | [0025](0025-objective-is-limits-plus-pareto-position.md) | Accepted | The objective is hard limits plus a position on the speed and quality front |
 | [0026](0026-phase1-engine-on-libllama.md) | Accepted | Phase 1 engine interface: safe libllama wrapper in ggml-sys, engine loop in a new engine crate |

@@ -33,6 +33,7 @@ flowchart TB
     serving_multimodal["⏸ Multimodal input and<br/>embeddings"]
     serving_self_spec["⏸ Low-bit copy drafts<br/>for itself"]
     serving_mtp_drafts["⏸ Drafts from built-in<br/>MTP heads"]
+    serving_mtp_libllama["○ MTP drafts through<br/>libllama"]
     serving_prefix_first["⏸ Admit longest prefix<br/>hit first"]
     serving_gateway ~~~ serving_real_engines
     serving_real_engines ~~~ serving_prefix_cache
@@ -61,7 +62,10 @@ flowchart TB
     serving_multi_model ~~~ serving_multimodal
     serving_multi_lora ~~~ serving_self_spec
     serving_auth_quotas ~~~ serving_mtp_drafts
-    serving_multimodal ~~~ serving_prefix_first
+    serving_multimodal ~~~ serving_mtp_libllama
+    serving_self_spec ~~~ serving_prefix_first
+    serving_mtp_drafts ~~~ serving_prefix_first
+    serving_mtp_libllama ~~~ serving_prefix_first
     serving_gateway --> serving_real_engines
     serving_real_engines --> serving_prefix_cache
     serving_real_engines --> serving_speculative
@@ -99,6 +103,7 @@ flowchart TB
     class serving_speculative mixed
     class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_parity_endpoints,serving_parity_libllama,serving_recurrent_reuse succ
     class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_self_spec,serving_mtp_drafts,serving_prefix_first parked
+    class serving_mtp_libllama next
 ```
 <!-- END GENERATED: track-serving -->
 
@@ -124,7 +129,7 @@ flowchart TB
 | `serving-parity-fields` | Request field parity | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-sampling |  |  | 8 gaps closed, 12 left | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; docs/adr/0088-request-fields-group-b.md; crates/gateway/tests/fields.rs; crates/scheduler/tests/fields.rs; crates/ggml-sys/tests/schema.rs |
 | `serving-parity-endpoints` | Endpoint parity | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-fields |  |  | 12 gaps closed, 0 left | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; docs/adr/0089-endpoints-group-c.md; crates/gateway/tests/endpoints.rs; crates/scheduler/tests/scheduler.rs |
 | `serving-parity-libllama` | Expose libllama capabilities | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-endpoints |  |  | Group D: 7 of 8 rows done, model download refused | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; docs/adr/0090-libllama-capabilities.md; crates/gateway/tests/libllama_routes.rs; crates/scheduler/tests/libllama_caps.rs; crates/engine/tests/embed.rs |
-| `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope | owner-decision | owner | next | n/a |  |  | serving-parity-libllama |  |  |  |  |
+| `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 | serving-parity-libllama |  |  | parked until M3 | docs/notes/llamacpp-parity.md |
 | `serving-multi-model` | Several models at once | feature | none | parked | unrated |  |  | serving-gateway, planner-core |  |  |  |  |
 | `serving-multi-lora` | Swap and batch LoRA adapters | feature | none | parked | unrated |  |  | serving-batching |  |  |  |  |
 | `serving-auth-quotas` | Priorities, quotas and auth | feature | none | parked | unrated |  |  | serving-gateway |  |  |  |  |
@@ -132,8 +137,9 @@ flowchart TB
 | `serving-owner-drafters` | Owner decides on more drafter kinds | owner-decision | owner | blocked | n/a |  |  | bench-spec-rerun |  |  |  |  |
 | `serving-mtp-drafts` | Drafts from built-in MTP heads | feature | local | parked | unrated |  |  | serving-owner-drafters, engine-qwen35moe-builder |  |  |  |  |
 | `serving-self-spec` | Low-bit copy drafts for itself | feature | local | parked | unrated |  |  | serving-owner-drafters |  |  |  |  |
-| `serving-strata-owner-scope` | Which Strata model families to add | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
+| `serving-strata-owner-scope` | Which Strata model families to add | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 |  |  |  | parked until M3 | docs/notes/strata-parity.md |
 | `serving-recurrent-reuse` | Recurrent models break slot reuse | defect | local | done | unrated | 2026-11-23 | 2026-11-23 | bench-strata-q36 |  |  |  | bench/results/strata-q36-20261123/README.md; crates/scheduler/tests/no_suffix_cut.rs; crates/gateway/tests/openai.rs; crates/gateway/tests/anthropic.rs |
+| `serving-mtp-libllama` | MTP drafts through libllama | feature | local | next | unrated |  |  | bench-strata-q36 |  |  |  |  |
 | `serving-prefix-first` | Admit longest prefix hit first | feature | local | parked | unrated |  |  | bench-ttft |  |  |  |  |
 
 ### Details per node
@@ -157,7 +163,7 @@ flowchart TB
 | `serving-parity-fields` | Request field parity | 630 passed, 2 skipped, 12 xfailed in 76.08s (pytest, test ubuntu-24.04, CI run 45103474572); the 8 group B gap cases pass | 8 gaps closed, 12 left | Requests and responses carry the fields llama-server has (optional model, end token in the count, logprobs, n above 1, GBNF grammar and JSON schema, timings, fingerprint, reasoning effort), and the ones it does not support are rejected with 400 (ADR 0083, group B). |  |  |  |  |  |
 | `serving-parity-endpoints` | Endpoint parity | 645 passed, 2 skipped in 75.81s (pytest, test ubuntu-24.04, CI run 45116789518); the 12 group C gap cases pass, none xfail | 12 gaps closed, 0 left | Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open. |  |  |  |  |  |
 | `serving-parity-libllama` | Expose libllama capabilities | 722 passed, 2 skipped in 95.36s (pytest, test ubuntu-24.04, CI run 45145783401); the group D cases pass against llama-server, none xfail | Group D: 7 of 8 rows done, model download refused | Embeddings, rerank, KV cache types and offload, CPU-MoE, context shift and slot save and restore work on the libllama engine as in llama-server and the own builders refuse them with a pointer (ADR 0083 group D, ADR 0090); model download by name is refused, GET /slots and GPU runs are open. |  |  |  |  |  |
-| `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope |  |  | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). | The matrix is docs/notes/llamacpp-parity.md. |  |  |  |  |
+| `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope | Park until M3 (owner 2026-11-23) | parked until M3 | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). | The matrix is docs/notes/llamacpp-parity.md. |  |  |  |  |
 | `serving-multi-model` | Several models at once |  |  | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: a feature test loads a second model on request and serves both. |  |  |  |  |
 | `serving-multi-lora` | Swap and batch LoRA adapters |  |  | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: a batch mixing adapters matches each adapter run alone. |  |  |  |  |
 | `serving-auth-quotas` | Priorities, quotas and auth |  |  | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: feature tests for each. |  |  |  |  |
@@ -165,8 +171,9 @@ flowchart TB
 | `serving-owner-drafters` | Owner decides on more drafter kinds |  |  | From the rerun, the owner decides whether more drafter kinds (MTP heads, a low-bit copy) are worth building, and whether ADR 0043 is Accepted. | Source: m2-plan (Phase 4 deliverables without a step: the rerun decides), ADR 0043 Proposed. |  |  |  |  |
 | `serving-mtp-drafts` | Drafts from built-in MTP heads |  |  | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). | Parked until after the Phase 4 verdict (m2-plan, 2026-11-15), then behind the rerun. Checked 2026-11-21: no MTP code in crates/. Done when: acceptance per pass and a paired gain on a model with MTP heads. |  |  |  |  |
 | `serving-self-spec` | Low-bit copy drafts for itself |  |  | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). | Parked until after the Phase 4 verdict (m2-plan, 2026-11-15), then behind the rerun. Checked 2026-11-21: no low-bit draft copy in crates/scheduler. Done when: the planner weighs it as a plan option and a paired run shows a gain. |  |  |  |  |
-| `serving-strata-owner-scope` | Which Strata model families to add |  |  | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). | Matrix docs/notes/strata-parity.md, class 3. |  |  |  |  |
+| `serving-strata-owner-scope` | Which Strata model families to add | Park until M3 (owner 2026-11-23) | parked until M3 | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). | Matrix docs/notes/strata-parity.md, class 3. |  |  |  |  |
 | `serving-recurrent-reuse` | Recurrent models break slot reuse | no_suffix_cut: 3 passed, 0 failed (cargo test, test ubuntu-24.04 and windows-latest, CI run 45101237756); engine_error_before_a_token_is_not_an_empty_success ok in openai and anthropic |  | A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture. |  |  |  |  |  |
+| `serving-mtp-libllama` | MTP drafts through libllama |  |  | Qwen3.6 ships an MTP block and libllama at the pin can run it (LLAMA_CONTEXT_TYPE_MTP, draft-mtp in common/speculative.cpp); drafting with it on the libllama engine tests Strata's 1.5x single-request lead without a new builder (owner 2026-11-23). | Design question: speculative rollback on recurrent state (serving-recurrent-reuse showed seq_rm cannot cut). Judged by a paired run against llama-server with and without its own MTP drafts. |  |  |  |  |
 | `serving-prefix-first` | Admit longest prefix hit first |  |  | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). | Parked: worth a run only if time to first token under contention misses the bar again (m2-plan, TTFT idea 2026-11-20). |  |  |  |  |
 
 ### Folded items per node

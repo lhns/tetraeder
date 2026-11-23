@@ -10,7 +10,7 @@ Scope: Phase 6 and on: transport, discovery, mTLS, replicas, failover, stages, e
 ```mermaid
 flowchart TB
     cluster_transport_wan[/"✔ Transport latency<br/>between two boxes"/]
-    cluster_transport["⛔ Transport between<br/>machines"]
+    cluster_transport["○ Transport between<br/>machines"]
     cluster_mtls["⛔ Mutual TLS and node<br/>trust rules"]
     cluster_discovery["⛔ Find nodes<br/>automatically"]
     cluster_join_leave["⛔ Nodes join and leave<br/>live"]
@@ -56,7 +56,8 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class cluster_transport_wan unrated
-    class cluster_transport,cluster_mtls,cluster_discovery,cluster_join_leave,cluster_pipeline_nodes,cluster_experts_nodes,cluster_remote_kv,cluster_replicas,cluster_failover,cluster_replica_scaling blocked
+    class cluster_transport next
+    class cluster_mtls,cluster_discovery,cluster_join_leave,cluster_pipeline_nodes,cluster_experts_nodes,cluster_remote_kv,cluster_replicas,cluster_failover,cluster_replica_scaling blocked
 ```
 <!-- END GENERATED: track-cluster -->
 
@@ -66,8 +67,8 @@ flowchart TB
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `cluster-transport-wan` | Transport latency between two boxes | experiment | cluster | done | unrated | 2026-11-23 | 2026-11-23 | bench-m2-report |  |  | WAN 90 ms: 8 KB equal within noise; 1 MB QUIC 196 ms vs TLS 274 to 300 ms (untuned TCP); same host 8 KB TLS 0.41 vs QUIC 0.58 ms | bench/results/transport-wan-20261123/README.md; docs/adr/0023-transport-spike.md; scripts/transport_wan_bench.sh |
-| `cluster-owner-transport` | Owner picks the network transport | owner-decision | owner | next | n/a |  |  | cluster-transport-wan |  |  |  |  |
-| `cluster-transport` | Transport between machines | feature | cluster | blocked | unrated |  |  | bench-m2-report, cluster-owner-transport |  |  |  |  |
+| `cluster-owner-transport` | Owner picks the network transport | owner-decision | owner | done | n/a | 2026-11-23 | 2026-11-23 | cluster-transport-wan |  |  | TCP+TLS chosen | docs/adr/0023-transport-spike.md |
+| `cluster-transport` | Transport between machines | feature | cluster | next | unrated |  |  | bench-m2-report, cluster-owner-transport |  |  |  |  |
 | `cluster-mtls` | Mutual TLS and node trust rules | feature | cluster | blocked | unrated |  |  | cluster-transport |  |  |  |  |
 | `cluster-discovery` | Find nodes automatically | feature | cluster | blocked | unrated |  |  | cluster-transport |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live | feature | cluster | blocked | unrated |  |  | cluster-discovery |  |  |  |  |
@@ -83,7 +84,7 @@ flowchart TB
 | id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
 |---|---|---|---|---|---|---|---|---|---|
 | `cluster-transport-wan` | Transport latency between two boxes | Status: clean. WAN set is thin (3 repetitions, 300 round trips per size, so p99 is the third slowest sample); loopback and same-host sets follow ADR 0023's size (2000 round trips, 5 repetitions). | WAN 90 ms: 8 KB equal within noise; 1 MB QUIC 196 ms vs TLS 274 to 300 ms (untuned TCP); same host 8 KB TLS 0.41 vs QUIC 0.58 ms | Measured QUIC, TCP with TLS and plain TCP between two rented boxes (Connecticut and Germany, 90 ms), on one host and on Linux loopback; ADR 0023 holds the numbers, and no same-datacenter pair on different hosts was on offer. | Done when: ADR 0023 holds WAN numbers for 8 KB and 1 MB messages with AES and ChaCha, plus Linux same-datacenter numbers. Needs two instances for about an hour; blocked behind M2 because the verdict sessions hold the box budget, not for a technical reason. RDMA is not on Vast. Source: ADR 0023 (Pending), plan.md Open decisions. |  |  |  |  |
-| `cluster-owner-transport` | Owner picks the network transport |  |  | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. | Done when: ADR 0023 is Accepted with a chosen transport. Source: ADR 0018, ADR 0023, plan.md Open decisions. |  |  |  |  |
+| `cluster-owner-transport` | Owner picks the network transport | TCP with TLS (mTLS) for Phase 6, QUIC kept as a later option for bulk and WAN, behind a transport trait (owner 2026-11-23) | TCP+TLS chosen | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. | Done when: ADR 0023 is Accepted with a chosen transport. Source: ADR 0018, ADR 0023, plan.md Open decisions. |  |  |  |  |
 | `cluster-transport` | Transport between machines |  |  | Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16). | Done when: two nodes exchange activations through the trait on the chosen protocol, with metrics, a dashboard panel and an alert (rule 6). Blocked behind the M2 report and the transport choice. Source: plan.md feature 16, Phase 6. |  |  |  |  |
 | `cluster-mtls` | Mutual TLS and node trust rules |  |  | Every node proves its identity with a certificate (mutual TLS, certificates from step-ca), and rules say which node may see which data (plan feature 20). | Done when: a node without a valid certificate is refused, and a forbid rule keeps a unit off a node. Blocked behind the M2 report and the transport choice. Source: plan.md feature 20. |  |  |  |  |
 | `cluster-discovery` | Find nodes automatically |  |  | Nodes come from a static list or are found on the local network (mDNS), and the profiler measures each link (plan feature 17). | Done when: a second node on the LAN is found and measured without configuration. Blocked behind the M2 report and the transport choice. Source: plan.md feature 17. |  |  |  |  |

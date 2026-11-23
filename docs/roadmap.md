@@ -138,10 +138,10 @@ flowchart TB
     subgraph bd_2["Next"]
         bench_30b_c4_gap[/"bench · ○ 30B<br/>concurrency-4 gap"/]
         planner_cost_model_v5_host2[/"planner · ○ Cost model<br/>5 second host"/]
+        cluster_transport["cluster · ○ Transport<br/>between machines"]
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
-        cluster_transport["cluster · ⛔ Transport<br/>between machines"]
         cluster_pipeline_nodes["cluster · ⛔ Pipeline<br/>stages across machines"]
         cluster_experts_nodes["cluster · ⛔ Experts on<br/>other machines"]
         cluster_failover["cluster · ⛔ Keep<br/>serving when a node<br/>dies"]
@@ -192,13 +192,13 @@ flowchart TB
     bench_d2a_30b ~~~ serving_parity_sampling
     bench_ab30b ~~~ bench_30b_c4_gap
     serving_parity_sampling ~~~ planner_cost_model_v5_host2
-    serving_parity_sampling ~~~ engine_dense_amx
-    bench_30b_c4_gap ~~~ cluster_transport
-    planner_cost_model_v5_host2 ~~~ cluster_transport
-    engine_dense_amx ~~~ cluster_transport
-    cluster_transport ~~~ cluster_pipeline_nodes
-    cluster_transport ~~~ cluster_experts_nodes
-    cluster_transport ~~~ cluster_failover
+    serving_parity_sampling ~~~ cluster_transport
+    bench_30b_c4_gap ~~~ engine_dense_amx
+    planner_cost_model_v5_host2 ~~~ engine_dense_amx
+    cluster_transport ~~~ engine_dense_amx
+    engine_dense_amx ~~~ cluster_pipeline_nodes
+    engine_dense_amx ~~~ cluster_experts_nodes
+    engine_dense_amx ~~~ cluster_failover
     cluster_pipeline_nodes ~~~ bench_phase6_exit
     cluster_experts_nodes ~~~ bench_phase6_exit
     cluster_failover ~~~ bench_phase6_exit
@@ -260,8 +260,8 @@ flowchart TB
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
     class bench_d2a_probe,bench_d2a_30b mixed
-    class bench_30b_c4_gap,planner_cost_model_v5_host2,engine_dense_amx next
-    class cluster_transport,cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
+    class bench_30b_c4_gap,planner_cost_model_v5_host2,cluster_transport,engine_dense_amx next
+    class cluster_pipeline_nodes,cluster_experts_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
     class engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
 ```
 <!-- END GENERATED: overview -->
@@ -278,7 +278,7 @@ flowchart TB
 | Own GLM graph builder | ⏸ parked | An own graph builder for the GLM model family, with parity against libllama (plan.md, Phase 8). |
 | Own DeepSeek graph builder | ⏸ parked | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). |
 | Own builder for ternary models | ⏸ parked | An own builder with faster kernels for natively ternary models such as BitNet b1.58, which libllama already runs (plan feature 51, Phase 9 half). |
-| Own builder for Qwen3.6 MoE | ○ next | An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first). |
+| Own builder for Qwen3.6 MoE | ⏸ parked | An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first). |
 | One graph per decoded token | ⏸ parked | Step 2 of ADR 0064: one graph per decoded token with a host callback per layer, instead of one graph segment per MoE layer. |
 | Dense builder speed on AMX CPUs | ○ next | Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072). |
 | Prefetch next layer's experts | ✔ done · very-successful | While one layer computes, predict which experts the next layer will need and start reading them early. |
@@ -309,7 +309,6 @@ flowchart TB
 | Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
 | Sampler parity with llama-server | ✔ done · successful | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |
-| LoRA, multimodal, multi-model scope | ○ next | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). |
 | Several models at once | ⏸ parked | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). |
 | Swap and batch LoRA adapters | ⏸ parked | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). |
 | Priorities, quotas and auth | ⏸ parked | The gateway authenticates callers, enforces quotas and schedules by priority (plan feature 31). |
@@ -317,7 +316,7 @@ flowchart TB
 | Owner decides on more drafter kinds | ⛔ blocked | From the rerun, the owner decides whether more drafter kinds (MTP heads, a low-bit copy) are worth building, and whether ADR 0043 is Accepted. |
 | Drafts from built-in MTP heads | ⏸ parked | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). |
 | Low-bit copy drafts for itself | ⏸ parked | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). |
-| Which Strata model families to add | ○ next | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). |
+| MTP drafts through libllama | ○ next | Qwen3.6 ships an MTP block and libllama at the pin can run it (LLAMA_CONTEXT_TYPE_MTP, draft-mtp in common/speculative.cpp); drafting with it on the libllama engine tests Strata's 1.5x single-request lead without a new builder (owner 2026-11-23). |
 | Admit longest prefix hit first | ⏸ parked | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). |
 | Phase 2 exit: model beyond RAM | ✔ done · successful ⚠ | Qwen3-235B, larger than the box's RAM, against the best tuned baselines: the builder passed the Phase 2 exit at decode parity with KTransformers. |
 | Tuned llama.cpp cache beat builder | ✔ fixed | The Phase 2 verdict never measured llama.cpp's own expert cache (--moe-cache-mib) as a baseline; once added, and after M1 was first declared on 2026-11-10, the cache tuned to share 0.95 led the builder, so the Phase 2 verdict's point 1 reopened and M1 waited for new sessions. |
@@ -343,13 +342,14 @@ flowchart TB
 | Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
+| Regression gate on final main | ⛔ blocked | One box session pairs this morning's build (f68d2a0) against main on the 30B and 8B at c1 and c4 with TTFT, under the 0.98 rule, and runs the conformance suite on CUDA, the Qwen3.6 default-flag rerun and the paired runs for kv auto and the disk prefix tier. |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
-| Owner picks the network transport | ○ next | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. |
-| Transport between machines | ⛔ blocked | Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16). |
+| Review group D and the fixes | ○ next | A second review of the code merged after the first review (group D and the review fixes), plus the flaky disk-read test, a check that every parity row has a case or a scope-out, and the per-token cost of logprobs and the greedy fast path. |
+| Transport between machines | ○ next | Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16). |
 | Mutual TLS and node trust rules | ⛔ blocked | Every node proves its identity with a certificate (mutual TLS, certificates from step-ca), and rules say which node may see which data (plan feature 20). |
 | Find nodes automatically | ⛔ blocked | Nodes come from a static list or are found on the local network (mDNS), and the profiler measures each link (plan feature 17). |
 | Nodes join and leave live | ⛔ blocked | A node can join or leave while the others keep serving; membership changes trigger a replan (plan feature 18). |
@@ -367,8 +367,9 @@ flowchart TB
 **local**
 
 - `memory-kv-host`: KV cache partly in RAM
-- `engine-qwen35moe-builder`: Own builder for Qwen3.6 MoE
 - `planner-ep-split`: Expert-parallel split on two GPUs
+- `serving-mtp-libllama`: MTP drafts through libllama
+- `ops-review-group-d`: Review group D and the fixes
 
 **ci**
 
@@ -378,6 +379,10 @@ flowchart TB
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
+
+**cluster**
+
+- `cluster-transport`: Transport between machines
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -395,12 +400,9 @@ _None._
 ## Waiting on the owner
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
-- `serving-parity-owner-scope`: LoRA, multimodal, multi-model scope
-- `cluster-owner-transport`: Owner picks the network transport
 - `bench-m3-report`: Report milestone M3
 - `bench-m4-report`: Report milestone M4
 - `serving-owner-drafters`: Owner decides on more drafter kinds
-- `serving-strata-owner-scope`: Which Strata model families to add
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Queue
@@ -420,7 +422,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 105 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 108 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -802,6 +804,7 @@ Generated on 2026-11-23.
 - `multi-accept-adr-0081`: Accept the prefill capture fix (✔ done · n/a). The owner accepted ADR 0081 with the M2 decisions, after its GPU test and the s3f2 confirmation passed.
 - `serving-parity-harness`: llama-server conformance harness (✔ done · successful). One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
 - `bench-strata-q36`: Strata against llama-server on Qwen3.6 (✔ done · unrated). One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085).
+- `cluster-owner-transport`: Owner picks the network transport (✔ done · n/a). The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links.
 - `cluster-transport-wan`: Transport latency between two boxes (✔ done · unrated). Measured QUIC, TCP with TLS and plain TCP between two rented boxes (Connecticut and Germany, 90 ms), on one host and on Linux loopback; ADR 0023 holds the numbers, and no same-datacenter pair on different hosts was on offer.
 - `memory-kv-auto`: Planner picks the KV format (✔ done · unrated). serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.
 - `memory-prefix-disk-async`: Disk prefix restore off the step (✔ done · unrated). A prefix restored from disk is now read in the background while the waiting request queues without a slot, so other sequences keep decoding (ADR 0087 addendum); no speed number yet.
@@ -811,8 +814,10 @@ Generated on 2026-11-23.
 - `serving-parity-endpoints`: Endpoint parity (✔ done · successful). Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open.
 - `serving-parity-fields`: Request field parity (✔ done · successful). Requests and responses carry the fields llama-server has (optional model, end token in the count, logprobs, n above 1, GBNF grammar and JSON schema, timings, fingerprint, reasoning effort), and the ones it does not support are rejected with 400 (ADR 0083, group B).
 - `serving-parity-libllama`: Expose libllama capabilities (✔ done · successful). Embeddings, rerank, KV cache types and offload, CPU-MoE, context shift and slot save and restore work on the libllama engine as in llama-server and the own builders refuse them with a pointer (ADR 0083 group D, ADR 0090); model download by name is refused, GET /slots and GPU runs are open.
+- `serving-parity-owner-scope`: LoRA, multimodal, multi-model scope (✔ done · n/a). The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E).
 - `serving-parity-sampling`: Sampler parity with llama-server (✔ done · successful). The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A).
 - `serving-recurrent-reuse`: Recurrent models break slot reuse (✔ fixed). A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture.
+- `serving-strata-owner-scope`: Which Strata model families to add (✔ done · n/a). The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085).
 
 </details>
 
@@ -840,12 +845,12 @@ Generated on 2026-11-23.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [engine - engine and builders](roadmap/tracks/engine.md): 20 nodes (12 done, 2 next, 5 parked, 1 abandoned)
+- [engine - engine and builders](roadmap/tracks/engine.md): 20 nodes (12 done, 1 next, 6 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 17 nodes (11 done, 1 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 28 nodes (18 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (32 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 14 nodes (12 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 done, 1 next, 10 blocked)
+- [serving - serving](roadmap/tracks/serving.md): 29 nodes (20 done, 1 next, 1 blocked, 7 parked)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 45 nodes (32 done, 1 next, 5 blocked, 6 parked, 1 abandoned)
+- [ops - operations](roadmap/tracks/ops.md): 15 nodes (12 done, 1 next, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (2 done, 1 next, 9 blocked)
 <!-- END GENERATED: tracks -->
