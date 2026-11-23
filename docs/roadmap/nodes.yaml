@@ -3348,21 +3348,25 @@ nodes:
   title: Disk prefix restore off the step
   track: memory
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  evidence:
+  - docs/adr/0087-prefix-cache-disk-tier.md
+  - crates/scheduler/src/prefix_cache.rs
+  - crates/scheduler/src/prefix_disk.rs
+  - crates/scheduler/src/scheduler.rs
+  verdict_quote: 'CI memory-prefix-disk-async run 45115915312: test (ubuntu-24.04) success, test (windows-latest) success; disk restore no longer stalls a running sequence, matches a RAM restore, falls back on a failed read, keeps the file on cancel (not measured)'
   headline: ''
   depends_on:
   - memory-prefix-ssd
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: '2026-11-23'
+  end: '2026-11-23'
   folded: []
   overview: false
-  plain: A prefix restored from disk is read in the background while the waiting request stays queued, so other sequences keep decoding; today the file read blocks the scheduler step (ADR 0087), then a paired run of disk restore against recompute.
-  notes: 'A 20K-token Qwen3-8B snapshot is about 2.9 GB, about a second of NVMe read that stalls every sequence today.'
+  plain: A prefix restored from disk is now read in the background while the waiting request queues without a slot, so other sequences keep decoding (ADR 0087 addendum); no speed number yet.
+  notes: 'A 20K-token Qwen3-8B snapshot is about 2.9 GB, about a second of NVMe read that stalled every sequence before. The tests use a gated reader on a fake backend. A paired run of disk restore against recompute on a box is still open.'
 - id: memory-prefix-ssd
   title: Prefix cache spills to SSD
   track: memory
