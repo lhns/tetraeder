@@ -85,6 +85,8 @@ pub struct FakeKv {
     refuse_cut: bool,
     /// Report `can_cut_suffix() == false` (else the scheduler learns of the refusal by trying).
     advertise_no_cut: bool,
+    /// `can_shift`: the memory can drop a middle range and move the rest (`seq_shift`).
+    shift: bool,
     /// Sequences that held rows when the backend restarted and were not freed or refilled since;
     /// using one fails, as in `RemoteBackend`.
     lost: HashSet<u32>,
@@ -113,6 +115,7 @@ impl FakeKv {
             fail_cp_cancelling: None,
             refuse_cut: false,
             advertise_no_cut: false,
+            shift: false,
             lost: HashSet::new(),
             layout: None,
             decodes: 0,
@@ -159,6 +162,12 @@ impl FakeKv {
 
     /// Reservations also need a contiguous run per sequence in a [`Chunked`] layout of the
     /// pool, so a pool with enough free rows can still refuse one (fragmentation).
+    /// Reports `can_shift` and implements `seq_shift` (a libllama memory that can shift).
+    pub fn with_shift(mut self) -> Self {
+        self.shift = true;
+        self
+    }
+
     pub fn with_chunked(mut self) -> Self {
         self.layout = Some(Chunked::new(self.capacity));
         self
@@ -314,6 +323,35 @@ impl BatchBackend for FakeKv {
 
     fn can_cut_suffix(&self) -> bool {
         !self.advertise_no_cut
+    }
+
+    fn can_shift(&self) -> bool {
+        self.shift
+    }
+
+    fn seq_shift(&mut self, seq: SeqId, keep: usize, discard: usize) -> Result<(), BackendError> {
+        self.apply_restart();
+        let i = self.seq_ok(seq)?;
+        let len = self.seqs[i].tokens.len();
+        if !self.shift || discard == 0 || keep + discard > len {
+            return Err(BackendError::Failed(format!(
+                "cannot shift {discard} after {keep} in {len}"
+            )));
+        }
+        let s = &mut self.seqs[i];
+        s.tokens.drain(keep..keep + discard);
+        // the rows of the dropped positions stay reserved, behind the new end
+        let moved: Vec<usize> = s.rows.drain(keep..keep + discard).collect();
+        let at = len - discard;
+        for (k, r) in moved.into_iter().enumerate() {
+            s.rows.insert(at + k, r);
+        }
+        for p in 0..len {
+            let row = s.rows[p];
+            self.pool[row] = s.tokens.get(p).copied();
+        }
+        self.layout_sync(i);
+        Ok(())
     }
 
     fn seq_lost(&self, seq: SeqId) -> bool {

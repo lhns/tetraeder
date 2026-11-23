@@ -178,6 +178,7 @@ fn llama_engine(path: &Path, threads: usize, ngl: i32, kv_unified: bool, repack:
             op_offload: true,
             n_seq_max: SEQS,
             kv_unified,
+            ..ContextConfig::default()
         },
         None,
     )

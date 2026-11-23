@@ -4,10 +4,11 @@
 //!
 //! Fields llama-server has and this server does not implement are rejected when set to a
 //! non-default value (`UNSUPPORTED`), so a client that sends the defaults still works. A few are
-//! accepted and have no effect, each for a stated reason (`cache_prompt`, `id_slot`, `n_keep`,
-//! `n_discard`, `n_cache_reuse`, `return_progress`, `sse_ping_interval`, `verbose`: prefix reuse
-//! is automatic, there are no slots to pick, the prompt is never truncated, streams keep-alive on
-//! their own).
+//! accepted and have no effect, each for a stated reason (`cache_prompt`, `n_cache_reuse`,
+//! `return_progress`, `sse_ping_interval`, `verbose`: prefix reuse is automatic, streams
+//! keep-alive on their own). `id_slot`, `n_keep` and `n_discard` act with `--context-shift` and
+//! the slot routes (ADR 0090): the slot a request runs on, the tokens a context shift keeps and
+//! drops.
 
 use crate::engine::{GrammarSource, SamplerKind, SamplingExtras};
 use crate::error::GatewayError;
@@ -42,6 +43,9 @@ pub struct SamplingFields {
     dynatemp_range: Option<f32>,
     dynatemp_exponent: Option<f32>,
     min_keep: Option<i64>,
+    n_keep: Option<i64>,
+    n_discard: Option<i64>,
+    id_slot: Option<i64>,
     samplers: Option<Value>,
     grammar: Option<Value>,
     json_schema: Option<Value>,
@@ -290,6 +294,15 @@ impl SamplingFields {
                 .map(|v| samplers(&v))
                 .transpose()?,
             grammar,
+            n_keep: self
+                .n_keep
+                .map(|k| i32::try_from(k).unwrap_or(if k < 0 { -1 } else { i32::MAX })),
+            n_discard: self
+                .n_discard
+                .filter(|&d| d > 0)
+                .map(|d| u32::try_from(d).unwrap_or(u32::MAX)),
+            // a negative id means any slot
+            slot: self.id_slot.and_then(|s| usize::try_from(s).ok()),
             ..SamplingExtras::default()
         })
     }
@@ -309,6 +322,18 @@ mod tests {
         serde_json::from_value::<SamplingFields>(v)
             .map_err(|e| bad(e.to_string()))?
             .extras()
+    }
+
+    // hardware: none
+    #[test]
+    fn slot_and_shift_fields_reach_the_extras() {
+        let e = parse(json!({"id_slot": 1, "n_keep": -1, "n_discard": 7})).unwrap();
+        assert_eq!(
+            (e.slot, e.n_keep, e.n_discard),
+            (Some(1), Some(-1), Some(7))
+        );
+        let e = parse(json!({"id_slot": -1, "n_discard": 0})).unwrap();
+        assert_eq!((e.slot, e.n_keep, e.n_discard), (None, None, None));
     }
 
     #[test]

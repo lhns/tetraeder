@@ -311,6 +311,49 @@ impl Model {
         unsafe { sys::llama_vocab_bos(self.vocab) }
     }
 
+    /// Whether the tokenizer appends EOS when `add_special` is set.
+    pub fn add_eos(&self) -> bool {
+        // SAFETY: as `n_vocab`.
+        unsafe { sys::llama_vocab_get_add_eos(self.vocab) }
+    }
+
+    /// Whether the tokenizer inserts SEP between the parts of a pair (rerank prompts).
+    pub fn add_sep(&self) -> bool {
+        // SAFETY: as `n_vocab`.
+        unsafe { sys::llama_vocab_get_add_sep(self.vocab) }
+    }
+
+    /// Sentence separator token, or a negative value when the vocabulary has none.
+    pub fn sep(&self) -> Token {
+        // SAFETY: as `n_vocab`.
+        unsafe { sys::llama_vocab_sep(self.vocab) }
+    }
+
+    /// A named chat template of the GGUF (`tokenizer.chat_template.<name>`), for example `rerank`.
+    pub fn named_chat_template(&self, name: &str) -> Option<String> {
+        let name = std::ffi::CString::new(name).ok()?;
+        // SAFETY: the model is live; a non-null result is a NUL-terminated string owned by it.
+        let p = unsafe { sys::llama_model_chat_template(self.ptr, name.as_ptr()) };
+        // SAFETY: as above, and `p` was checked for null.
+        (!p.is_null()).then(|| {
+            unsafe { std::ffi::CStr::from_ptr(p) }
+                .to_string_lossy()
+                .into_owned()
+        })
+    }
+
+    /// Floats per embedding the model outputs (`llama_model_n_embd_out`).
+    pub fn n_embd_out(&self) -> usize {
+        // SAFETY: the model is live.
+        usize::try_from(unsafe { sys::llama_model_n_embd_out(self.ptr) }).unwrap_or(0)
+    }
+
+    /// Outputs of the classification head (1 for a reranker with one score).
+    pub fn n_cls_out(&self) -> usize {
+        // SAFETY: the model is live.
+        unsafe { sys::llama_model_n_cls_out(self.ptr) as usize }
+    }
+
     /// End-of-sequence token, or a negative value when the vocabulary has none.
     pub fn eos(&self) -> Token {
         // SAFETY: as `n_vocab`.

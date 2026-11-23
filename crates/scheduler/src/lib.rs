@@ -10,6 +10,7 @@ mod prefix_cache;
 mod prefix_disk;
 pub mod sample;
 mod scheduler;
+mod slot_file;
 
 pub use backend::{
     BackendError, BatchBackend, LlamaBackend, MOE_CHUNK, MoeBackend, Outputs, SeqId, SeqInput,

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tetraeder::remote_backend::{RemoteBackend, RemoteConfig};
+use tetraeder_engine::{BufferOverride, CacheType, EmbedConfig, Pooling};
 use tetraeder_gateway::engine::Engine as GatewayEngine;
 use tetraeder_gateway::fake::{FakeEngine, serve_script};
 use tetraeder_gateway::gateway::{Gateway, GatewayConfig};
@@ -193,8 +194,20 @@ impl SamplingArgs {
 ))]
 pub struct ServeArgs {
     /// GGUF model file (not needed with --fake).
-    #[arg(short = 'm', long, required_unless_present = "fake")]
+    #[arg(short = 'm', long, required_unless_present_any = ["fake", "hf_repo"])]
     pub model: Option<PathBuf>,
+    /// llama-server's `-hf USER/MODEL[:QUANT]`: refused, tetraeder does not download models
+    /// (ADR 0090). Download the GGUF and pass `-m`.
+    #[arg(
+        long,
+        visible_alias = "hf-repo-id",
+        value_name = "USER/MODEL[:QUANT]",
+        env = "LLAMA_ARG_HF_REPO"
+    )]
+    pub hf_repo: Option<String>,
+    /// llama-server's `-hff FILE`, refused with `--hf-repo`.
+    #[arg(long, value_name = "FILE", env = "LLAMA_ARG_HF_FILE")]
+    pub hf_file: Option<String>,
     #[command(flatten)]
     pub place: PlacementArgs,
     #[arg(long, value_enum, default_value = "auto")]
@@ -335,6 +348,78 @@ pub struct ServeArgs {
     /// `--ctx`, with the reason on stderr. libllama (`--engine llama`) keeps f16.
     #[arg(long, default_value = "f16", value_name = "FORMAT|auto")]
     pub kv: KvChoice,
+    /// KV cache type of K, llama-server's `-ctk` (libllama): f32, f16, bf16, f8_e4m3, q8_0, q4_0,
+    /// q4_1, iq4_nl, q5_0 or q5_1. The own builders take the pairs of `--kv` only: a pair of
+    /// `-ctk` and `-ctv` that `--kv` allows is mapped onto it, any other is refused.
+    #[arg(
+        long,
+        value_name = "TYPE",
+        value_parser = tetraeder_engine::parse_kv_cache_type,
+        env = "LLAMA_ARG_CACHE_TYPE_K",
+        conflicts_with_all = ["kv", "plan"]
+    )]
+    pub cache_type_k: Option<CacheType>,
+    /// KV cache type of V, llama-server's `-ctv`, as `--cache-type-k`.
+    #[arg(
+        long,
+        value_name = "TYPE",
+        value_parser = tetraeder_engine::parse_kv_cache_type,
+        env = "LLAMA_ARG_CACHE_TYPE_V",
+        conflicts_with_all = ["kv", "plan"]
+    )]
+    pub cache_type_v: Option<CacheType>,
+    /// Keep the KV cache and the attention on the CPU, llama-server's `-nkvo` (libllama; ADR 0084
+    /// step 0). The own builders refuse it.
+    #[arg(long, overrides_with = "kv_offload", conflicts_with = "plan")]
+    pub no_kv_offload: bool,
+    /// The default of `--no-kv-offload`; the last of the two wins.
+    #[arg(long, overrides_with = "no_kv_offload")]
+    pub kv_offload: bool,
+    /// When a sequence fills the context, drop tokens after `n_keep` (a request field) and go on,
+    /// llama-server's `--context-shift` (ADR 0090). Off by default, as there: the request then
+    /// ends with `length`. libllama only, on models whose cache can shift.
+    #[arg(long, overrides_with = "no_context_shift")]
+    pub context_shift: bool,
+    /// The default of `--context-shift`; the last of the two wins.
+    #[arg(long, overrides_with = "context_shift")]
+    pub no_context_shift: bool,
+    /// Directory for slot save files: turns on `POST /slots/{id}?action=save|restore|erase`
+    /// (ADR 0090). Slot `i` is sequence `i` of `--parallel`. libllama only.
+    #[arg(long, value_name = "PATH", env = "LLAMA_ARG_SLOT_SAVE_PATH", conflicts_with_all = ["plan", "fake"])]
+    pub slot_save_path: Option<PathBuf>,
+    /// Serve `/embedding`, `/embeddings` and `/v1/embeddings` from a second libllama context on
+    /// the model (llama-server's `--embeddings`; ADR 0090). The own builders refuse it.
+    #[arg(
+        long,
+        visible_alias = "embedding",
+        env = "LLAMA_ARG_EMBEDDINGS",
+        conflicts_with_all = ["plan", "worker", "fake"]
+    )]
+    pub embeddings: bool,
+    /// Serve the rerank routes (llama-server's `--rerank`): the model needs a classification
+    /// head, and the pooling is `rank`. libllama only.
+    #[arg(
+        long,
+        visible_alias = "rerank",
+        env = "LLAMA_ARG_RERANKING",
+        conflicts_with_all = ["plan", "worker", "fake"]
+    )]
+    pub reranking: bool,
+    /// Pooling of the embeddings: none, mean, cls, last or rank; the model's own by default.
+    #[arg(long, value_name = "TYPE", env = "LLAMA_ARG_POOLING")]
+    pub pooling: Option<Pooling>,
+    /// Keep every expert tensor on the CPU, llama-server's `-cmoe` (libllama). The MoE builder
+    /// places experts with `--expert-slots` and `--ram-slots` and refuses it.
+    #[arg(long, env = "LLAMA_ARG_CPU_MOE", conflicts_with = "plan")]
+    pub cpu_moe: bool,
+    /// Keep the expert tensors of the first N layers on the CPU, llama-server's `-ncmoe` (libllama).
+    #[arg(
+        long,
+        value_name = "N",
+        env = "LLAMA_ARG_N_CPU_MOE",
+        conflicts_with = "plan"
+    )]
+    pub n_cpu_moe: Option<usize>,
     /// Hardware graph (TOML or JSON, typically from `tetraeder-plan score`); default: discover
     /// the box and take GPU rates from the priors.
     #[arg(long, value_name = "FILE", requires = "plan")]
@@ -430,6 +515,18 @@ pub fn resolve_overlap(
 }
 
 pub fn run(a: &ServeArgs) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        a.hf_repo.is_none() && a.hf_file.is_none(),
+        "--hf-repo and --hf-file: tetraeder does not download models (no download client, ADR 0090); \
+         download the GGUF (for example `hf download <repo> <file>`) and pass it with -m"
+    );
+    if let Some(dir) = &a.slot_save_path {
+        anyhow::ensure!(
+            dir.is_dir(),
+            "--slot-save-path: not a directory: {}",
+            dir.display()
+        );
+    }
     let telemetry = Arc::new(Telemetry::new(&TelemetryConfig::from_env())?);
     telemetry.install_global()?;
     crate::info::record_cpu_backend(telemetry.metrics(), a.place.threads);
@@ -590,7 +687,8 @@ pub fn loader(a: &ServeArgs, tel: Arc<Telemetry>) -> anyhow::Result<Loader> {
             .map_err(anyhow::Error::msg)?;
     }
     let exec = exec_plan(a)?;
-    let kv = resolve_kv(a, &path, moe, dense)?;
+    a.check_libllama_flags(moe || dense, moe)?;
+    let kv = resolve_kv(a, a.kv_choice(moe || dense)?, &path, moe, dense)?;
     let mut a = a.clone_load_args();
     a.kv = kv;
     Ok(Box::new(move || {
@@ -604,7 +702,9 @@ pub fn loader(a: &ServeArgs, tel: Arc<Telemetry>) -> anyhow::Result<Loader> {
         } else if dense {
             tetraeder_scheduler::load_dense(&a.path, &a.dense_options(tel)?)
         } else {
-            tetraeder_scheduler::load_llama(&a.path, &a.place.placement(), &a.llama, Some(tel))
+            let mut placement = a.place.placement();
+            placement.overrides.extend(a.cpu_moe.iter().cloned());
+            tetraeder_scheduler::load_llama(&a.path, &placement, &a.llama, Some(tel))
         }
     }))
 }
@@ -652,6 +752,9 @@ pub struct SchedParts {
     parallel: usize,
     step_tokens: usize,
     spec: Option<SpecConfig>,
+    embed: Option<EmbedConfig>,
+    context_shift: bool,
+    slot_dir: Option<PathBuf>,
 }
 
 impl SchedParts {
@@ -668,6 +771,9 @@ impl SchedParts {
             parallel: a.parallel as usize,
             step_tokens: a.step_tokens() as usize,
             spec: a.spec_config(),
+            embed: a.embed_config()?,
+            context_shift: a.context_shift,
+            slot_dir: a.slot_save_path.clone(),
             chat_template: match &a.chat_template_file {
                 Some(f) => Some(
                     std::fs::read_to_string(f)
@@ -692,6 +798,9 @@ impl SchedParts {
         cfg.parallel = self.parallel;
         cfg.step_tokens = self.step_tokens;
         cfg.spec.clone_from(&self.spec);
+        cfg.embed.clone_from(&self.embed);
+        cfg.context_shift = self.context_shift;
+        cfg.slot_dir.clone_from(&self.slot_dir);
         cfg
     }
 }
@@ -711,27 +820,35 @@ struct LoadArgs {
     io_service: Option<bool>,
     overlap: Option<bool>,
     kv: KvFormat,
+    /// `--cpu-moe` and `--n-cpu-moe`, appended to the placement's overrides.
+    cpu_moe: Vec<BufferOverride>,
 }
 
 /// The KV format of `--kv` for the engine that will run. `auto` asks the planner against the
 /// discovered box (GPU capacity, not free memory, as `--plan` does) and the placement the
 /// builder flags give; libllama and the replanner (`--plan`) size and run F16 only.
-fn resolve_kv(a: &ServeArgs, path: &Path, moe: bool, dense: bool) -> anyhow::Result<KvFormat> {
+fn resolve_kv(
+    a: &ServeArgs,
+    kv_choice: KvChoice,
+    path: &Path,
+    moe: bool,
+    dense: bool,
+) -> anyhow::Result<KvFormat> {
     let own = moe || dense;
-    if a.kv.fixed() == Some(KvFormat::default()) {
+    if kv_choice.fixed() == Some(KvFormat::default()) {
         return Ok(KvFormat::default());
     }
     if !own || a.plan.is_some() {
         let why = if own {
             "--plan sizes and runs f16 only"
         } else {
-            "libllama has no KV format option here (use --engine moe or dense)"
+            "libllama takes --cache-type-k and --cache-type-v, not --kv"
         };
-        anyhow::ensure!(a.kv == KvChoice::Auto, "--kv {}: {why}", a.kv);
+        anyhow::ensure!(kv_choice == KvChoice::Auto, "--kv {kv_choice}: {why}");
         eprintln!("kv auto: f16 ({why})");
         return Ok(KvFormat::default());
     }
-    let Some(kv) = a.kv.fixed() else {
+    let Some(kv) = kv_choice.fixed() else {
         let layout = crate::plan::layout(path)?;
         let (hw, _) = replan::source::HwSource::Discover
             .read(false)
@@ -754,7 +871,7 @@ fn resolve_kv(a: &ServeArgs, path: &Path, moe: bool, dense: bool) -> anyhow::Res
             r#gen: 128,
         };
         let at = (placement, tetraeder_planner::SERVE_BUILDER_UBATCH);
-        let (kv, pick) = pick_for_placement(&budget, &layout, &w, at, a.kv)
+        let (kv, pick) = pick_for_placement(&budget, &layout, &w, at, kv_choice)
             .map_err(|e| anyhow::anyhow!("--kv auto at --ctx {}: {e}", a.ctx))?;
         if let Some(p) = pick {
             eprintln!("{}", p.explain());
@@ -893,6 +1010,13 @@ impl ServeArgs {
             n_ubatch: self.place.ubatch.clamp(1, step),
             n_seq_max: self.parallel,
             kv_unified: true,
+            offload_kqv: !self.no_kv_offload,
+            type_k: self
+                .cache_type_k
+                .unwrap_or(tetraeder_engine::CacheType::F16),
+            type_v: self
+                .cache_type_v
+                .unwrap_or(tetraeder_engine::CacheType::F16),
             ..self.place.context(self.ctx)
         }
     }
@@ -912,7 +1036,87 @@ impl ServeArgs {
             io_service: self.io_service,
             overlap: self.overlap,
             kv: KvFormat::default(),
+            cpu_moe: tetraeder_engine::cpu_moe_overrides(self.cpu_moe, self.n_cpu_moe),
         }
+    }
+
+    /// The embedding context of `--embeddings` and `--reranking`; `None` serves no embeddings.
+    /// `--reranking` is the `rank` pooling, so a `--pooling` that says otherwise is an error.
+    fn embed_config(&self) -> anyhow::Result<Option<EmbedConfig>> {
+        if !self.embeddings && !self.reranking {
+            if let Some(p) = self.pooling {
+                eprintln!("--pooling {p:?} has no effect without --embeddings or --reranking");
+            }
+            return Ok(None);
+        }
+        let pooling = match (self.reranking, self.pooling) {
+            (true, Some(p)) if p != Pooling::Rank => {
+                anyhow::bail!("--reranking uses the rank pooling, not --pooling {p:?}")
+            }
+            (true, _) => Pooling::Rank,
+            (false, Some(p)) => p,
+            (false, None) => Pooling::Unspecified,
+        };
+        Ok(Some(EmbedConfig {
+            pooling,
+            n_batch: self.step_tokens(),
+            threads: self.place.threads,
+            flash_attn: self.place.flash_attn,
+        }))
+    }
+
+    /// `--kv`, or the pair of `-ctk` and `-ctv` mapped onto it for the own builders (`own`): an
+    /// unset side is f16. libllama gets the two types as they are (see [`Self::llama_context`]).
+    fn kv_choice(&self, own: bool) -> anyhow::Result<KvChoice> {
+        if !own || (self.cache_type_k.is_none() && self.cache_type_v.is_none()) {
+            return Ok(self.kv);
+        }
+        let name = |t: Option<CacheType>| t.map_or_else(|| "f16".to_owned(), |t| t.name());
+        let pair = format!("{}/{}", name(self.cache_type_k), name(self.cache_type_v));
+        pair.parse::<KvChoice>().map_err(|_| {
+            anyhow::anyhow!(
+                "--cache-type-k/--cache-type-v {pair}: the own builders run these allowed pairs \
+                 only: {}; use --engine llama for other types",
+                KvFormat::ALLOWED.map(|f| f.to_string()).join(", ")
+            )
+        })
+    }
+
+    /// llama-server flags the own builders (`own`; `moe` for the MoE one) cannot honour, refused
+    /// with a pointer to what works (ADR 0090). libllama honours all of them.
+    fn check_libllama_flags(&self, own: bool, moe: bool) -> anyhow::Result<()> {
+        if !own {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            !self.no_kv_offload,
+            "--no-kv-offload: the own builders keep the KV cache on the GPU that runs them \
+             (ADR 0084 plans host KV); use --engine llama"
+        );
+        anyhow::ensure!(
+            !self.context_shift,
+            "--context-shift: the own builders' KV pool cannot shift positions; use --engine llama"
+        );
+        anyhow::ensure!(
+            self.slot_save_path.is_none(),
+            "--slot-save-path: slot save and restore needs libllama's sequence state; use --engine llama"
+        );
+        anyhow::ensure!(
+            !self.embeddings && !self.reranking,
+            "--embeddings and --reranking: only libllama serves embeddings and reranking; use --engine llama"
+        );
+        if self.cpu_moe || self.n_cpu_moe.is_some() {
+            anyhow::bail!(
+                "--cpu-moe and --n-cpu-moe: {}; use --engine llama for llama-server's tensor overrides",
+                if moe {
+                    "the MoE builder places experts with --expert-slots and --ram-slots (--miss cpu \
+                     computes the ones outside the GPU slots on the CPU)"
+                } else {
+                    "the dense builder has no expert tensors"
+                }
+            );
+        }
+        Ok(())
     }
 }
 
@@ -1128,6 +1332,131 @@ mod tests {
         assert_eq!(parse(&["--prefetch", "off"]).prefetch, Some(false));
         assert_eq!(parse(&[]).prefetch_depth, 2);
         assert!(P::try_parse_from(["x", "--prefetch-depth", "3"]).is_err());
+    }
+
+    fn parse_llama(extra: &[&str]) -> ServeArgs {
+        let argv = std::iter::once("x")
+            .chain(["-m", "m.gguf"])
+            .chain(extra.iter().copied());
+        let argv = crate::llama_args::rewrite(argv.map(std::ffi::OsString::from));
+        P::parse_from(argv).serve
+    }
+
+    // hardware: none
+    #[test]
+    fn kv_offload_and_cache_types_reach_the_libllama_context() {
+        let c = parse(&[]).llama_context();
+        assert!(c.offload_kqv);
+        assert_eq!(
+            (c.type_k.name(), c.type_v.name()),
+            ("f16".into(), "f16".into())
+        );
+        let c = parse_llama(&["-nkvo", "-ctk", "q8_0", "-ctv", "q4_0"]).llama_context();
+        assert!(!c.offload_kqv);
+        assert_eq!(
+            (c.type_k.name(), c.type_v.name()),
+            ("q8_0".into(), "q4_0".into())
+        );
+        // the last of the pair wins
+        assert!(parse_llama(&["-nkvo", "-kvo"]).llama_context().offload_kqv);
+        assert!(
+            !parse_llama(&["-kvo", "--no-kv-offload"])
+                .llama_context()
+                .offload_kqv
+        );
+        // names are llama-server's: exact, lower case
+        assert!(P::try_parse_from(["x", "-m", "m", "--cache-type-k", "Q8_0"]).is_err());
+        assert!(P::try_parse_from(["x", "-m", "m", "--cache-type-v", "q2_k"]).is_err());
+    }
+
+    // hardware: none
+    #[test]
+    fn own_builders_map_a_cache_type_pair_onto_kv_or_refuse_it() {
+        let own = |extra: &[&str]| parse_llama(extra).kv_choice(true);
+        assert_eq!(own(&[]).unwrap(), KvChoice::Fixed(KvFormat::F16));
+        assert_eq!(
+            own(&["-ctk", "q8_0", "-ctv", "q8_0"]).unwrap(),
+            KvChoice::Fixed(KvFormat::Q8_0)
+        );
+        assert_eq!(
+            own(&["-ctk", "q8_0", "-ctv", "q4_0"]).unwrap(),
+            KvChoice::Fixed(KvFormat::Q8_0_Q4_0)
+        );
+        // one side alone leaves the other at f16: q8_0/f16 is not an allowed pair
+        let e = own(&["-ctk", "q8_0"]).unwrap_err().to_string();
+        assert!(
+            e.contains("allowed pairs") && e.contains("q8_0/q4_0"),
+            "{e}"
+        );
+        let e = own(&["-ctk", "q5_0", "-ctv", "q5_0"])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("--engine llama"), "{e}");
+        // libllama takes the types as they are
+        assert_eq!(
+            parse_llama(&["-ctk", "q5_0"]).kv_choice(false).unwrap(),
+            KvChoice::Fixed(KvFormat::F16)
+        );
+        // --kv and the types name the same thing twice; the default --kv is no conflict
+        assert!(P::try_parse_from(["x", "-m", "m", "--kv", "q8_0", "-ctk", "q8_0"]).is_err());
+        assert!(P::try_parse_from(["x", "-m", "m", "--cache-type-k", "q8_0"]).is_ok());
+    }
+
+    // hardware: none
+    #[test]
+    fn own_builders_refuse_what_only_libllama_honours() {
+        let refused = |extra: &[&str], moe: bool| {
+            parse_llama(extra)
+                .check_libllama_flags(true, moe)
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(refused(&["-nkvo"], true).contains("own builders keep the KV cache"));
+        let e = refused(&["-cmoe"], true);
+        assert!(
+            e.contains("--expert-slots") && e.contains("--ram-slots"),
+            "{e}"
+        );
+        assert!(refused(&["-ncmoe", "2"], false).contains("--engine llama"));
+        for extra in [&[][..], &["-nkvo"], &["-cmoe"], &["-ncmoe", "1"]] {
+            assert!(
+                parse_llama(extra)
+                    .check_libllama_flags(false, false)
+                    .is_ok()
+            );
+        }
+        assert!(parse_llama(&[]).check_libllama_flags(true, true).is_ok());
+    }
+
+    // hardware: none
+    #[test]
+    fn cpu_moe_flags_become_tensor_overrides() {
+        let o = |extra: &[&str]| parse_llama(extra).clone_load_args().cpu_moe;
+        assert!(o(&[]).is_empty());
+        assert_eq!(o(&["-cmoe"]).len(), 1);
+        assert_eq!(o(&["-ncmoe", "3"]).len(), 3);
+        assert_eq!(o(&["-cmoe", "-ncmoe", "2"]).len(), 3);
+        assert!(P::try_parse_from(["x", "-m", "m", "--n-cpu-moe", "-1"]).is_err());
+    }
+
+    // hardware: none
+    #[test]
+    fn hf_repo_needs_no_model_path_and_is_refused_by_run() {
+        let a = P::try_parse_from(["x", "-hf", "a/b:Q4_K_M"]);
+        assert!(
+            a.is_err(),
+            "-hf is a short flag cluster until it is rewritten"
+        );
+        let argv = crate::llama_args::rewrite(
+            ["x", "-hf", "a/b:Q4_K_M", "-hff", "f.gguf"].map(std::ffi::OsString::from),
+        );
+        let a = P::parse_from(argv).serve;
+        assert_eq!(
+            (a.hf_repo.as_deref(), a.hf_file.as_deref()),
+            (Some("a/b:Q4_K_M"), Some("f.gguf"))
+        );
+        let e = run(&a).unwrap_err().to_string();
+        assert!(e.contains("download the GGUF") && e.contains("-m"), "{e}");
     }
 
     // hardware: none

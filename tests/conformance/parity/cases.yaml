@@ -475,7 +475,7 @@ cases:
     mode: text
     value_paths: ["choices[0].finish_reason"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: kv-offload-builders
     group: D
@@ -486,7 +486,7 @@ cases:
     tetraeder_refuses: "own builders keep the KV cache"
     mode: status
     engines: [dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: kv-types
     group: D
@@ -498,7 +498,7 @@ cases:
     mode: text
     value_paths: ["choices[0].finish_reason"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: kv-types-builders
     group: D
@@ -509,7 +509,7 @@ cases:
     tetraeder_args: [--cache-type-k, q8_0, --cache-type-v, q8_0]
     mode: status
     engines: [dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: kv-types-builders-refused
     group: D
@@ -520,7 +520,7 @@ cases:
     tetraeder_refuses: "allowed pairs"
     mode: status
     engines: [dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: cpu-moe
     group: D
@@ -532,7 +532,7 @@ cases:
     mode: text
     value_paths: ["choices[0].finish_reason"]
     engines: [llama-moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: n-cpu-moe
     group: D
@@ -544,7 +544,7 @@ cases:
     mode: text
     value_paths: ["choices[0].finish_reason"]
     engines: [llama-moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: cpu-moe-builder
     group: D
@@ -555,7 +555,7 @@ cases:
     tetraeder_refuses: "--expert-slots"
     mode: status
     engines: [moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   # The tiny models have no pooling type of their own (it is `none`), so the value cases pass --pooling mean to both.
   - id: embeddings-oai
@@ -569,7 +569,7 @@ cases:
     vector_paths: ["data[0].embedding"]
     value_paths: ["usage.prompt_tokens"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: embeddings-oai-batch
     group: D
@@ -582,7 +582,7 @@ cases:
     vector_paths: ["data[0].embedding", "data[1].embedding"]
     value_paths: ["usage.prompt_tokens", "data[1].index"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: embeddings-native
     group: D
@@ -594,7 +594,7 @@ cases:
     mode: vectors
     vector_paths: ["[0].embedding"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: embedding-legacy-route
     group: D
@@ -606,7 +606,7 @@ cases:
     mode: vectors
     vector_paths: ["[0].embedding"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: embeddings-pooling-none
     group: D
@@ -618,7 +618,7 @@ cases:
     mode: vectors
     vector_paths: ["[0].embedding"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: embeddings-oai-pooling-none
     group: D
@@ -629,7 +629,7 @@ cases:
     tetraeder_args: [--embeddings]
     mode: exact
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: embeddings-unsupported
     group: D
@@ -638,7 +638,7 @@ cases:
     body: {input: Hello}
     mode: exact
     engines: [auto, dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: embeddings-builders-refused
     group: D
@@ -649,7 +649,7 @@ cases:
     tetraeder_refuses: "--engine llama"
     mode: status
     engines: [dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   # The tiny models have no rank head, so only the answers of a server that is not started with --reranking are compared;
   # the scoring is covered by unit tests of the embedder with a fake context (crates/engine).
@@ -660,7 +660,7 @@ cases:
     body: {query: Hello, documents: [world, there]}
     mode: exact
     engines: [auto, dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: rerank-unsupported-with-embeddings
     group: D
@@ -671,7 +671,7 @@ cases:
     tetraeder_args: [--embeddings, --pooling, mean]
     mode: exact
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: reranking-route
     group: D
@@ -680,7 +680,7 @@ cases:
     body: {query: Hello, texts: [world]}
     mode: exact
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: reranking-builders-refused
     group: D
@@ -691,7 +691,7 @@ cases:
     tetraeder_refuses: "--engine llama"
     mode: status
     engines: [dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   # n_ctx 256, 300 tokens asked: only a server that shifts the context reaches them (without it both stop at the limit).
   - id: context-shift
@@ -706,7 +706,7 @@ cases:
     value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
     premise: {finish_reason: length}
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: context-shift-builders-refused
     group: D
@@ -717,7 +717,7 @@ cases:
     tetraeder_refuses: "--engine llama"
     mode: status
     engines: [dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: slot-save-unsupported
     group: D
@@ -726,7 +726,7 @@ cases:
     body: {filename: s.bin}
     mode: exact
     engines: [auto, dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: slot-save
     group: D
@@ -740,7 +740,7 @@ cases:
     mode: shape
     value_paths: ["id_slot", "filename"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: slot-restore
     group: D
@@ -755,7 +755,7 @@ cases:
     mode: shape
     value_paths: ["id_slot", "filename"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: slot-erase
     group: D
@@ -768,7 +768,7 @@ cases:
     mode: shape
     value_paths: ["id_slot"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: slot-invalid-action
     group: D
@@ -778,7 +778,7 @@ cases:
     llama_args: [--slot-save-path, "{tmp}"]
     tetraeder_args: [--slot-save-path, "{tmp}"]
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: slot-builders-refused
     group: D
@@ -789,7 +789,7 @@ cases:
     tetraeder_refuses: "--engine llama"
     mode: status
     engines: [dense, moe]
-    expect: gap serving-parity-libllama
+    expect: pass
 
   - id: model-download
     group: D
@@ -800,4 +800,4 @@ cases:
     tetraeder_refuses: "download the GGUF"
     mode: status
     engines: [auto]
-    expect: gap serving-parity-libllama
+    expect: pass

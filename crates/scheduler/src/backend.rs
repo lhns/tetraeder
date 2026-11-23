@@ -126,6 +126,23 @@ pub trait BatchBackend {
     fn kv_format(&self) -> String {
         "f16/f16".into()
     }
+    /// Whether [`BatchBackend::seq_shift`] works (`--context-shift`, ADR 0090): a cache that can
+    /// drop a middle range and move the rest down. Default: no.
+    fn can_shift(&self) -> bool {
+        false
+    }
+    /// The context shift: drops positions `keep..keep + discard` of `seq` and moves the ones
+    /// after them down by `discard`; the sequence is `discard` shorter. The reservation stays.
+    fn seq_shift(
+        &mut self,
+        _seq: SeqId,
+        _keep: usize,
+        _discard: usize,
+    ) -> Result<(), BackendError> {
+        Err(BackendError::Failed(
+            "this backend cannot shift a context".into(),
+        ))
+    }
     /// Whether steps run on a GPU, so wall time counts as device time.
     fn on_gpu(&self) -> bool;
     /// Weight bytes read from storage since load; `None` when the backend does not stream.
@@ -397,6 +414,24 @@ impl BatchBackend for LlamaBackend {
 
     fn kv_row_bytes(&self) -> usize {
         self.row_bytes
+    }
+
+    fn can_shift(&self) -> bool {
+        self.can_cut && self.engine.can_shift()
+    }
+
+    fn seq_shift(&mut self, seq: SeqId, keep: usize, discard: usize) -> Result<(), BackendError> {
+        let _ = self.index(seq)?;
+        self.engine
+            .seq_shift(seq as i32, keep, discard)
+            .map_err(|e| BackendError::Failed(e.to_string()))
+    }
+
+    /// The context's real K and V types: they decide the bytes of a snapshot, which the prefix
+    /// cache keys by this string.
+    fn kv_format(&self) -> String {
+        let (k, v) = self.engine.kv_types();
+        format!("{}/{}", k.name(), v.name())
     }
 
     fn seq_restore(&mut self, seq: SeqId, bytes: &[u8], n: usize) -> Result<(), BackendError> {

@@ -190,6 +190,7 @@ fn llama_engine(path: &Path, threads: usize) -> Engine {
             op_offload: true,
             n_seq_max: SEQS,
             kv_unified: true,
+            ..ContextConfig::default()
         },
         None,
     )

@@ -4,7 +4,7 @@ use crate::error::LlamaError;
 use crate::error::{AnthropicError, GatewayError, OpenAiError};
 use crate::gateway::{Gateway, new_id};
 use crate::reqlog::{RequestLog, log_requests};
-use crate::{anthropic, native, openai, responses};
+use crate::{anthropic, embeddings, native, openai, responses, slots};
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, MatchedPath, Path, Request, State};
 use axum::http::{HeaderMap, Uri};
@@ -132,6 +132,14 @@ pub fn router_with(gw: Arc<Gateway>, log: Option<Arc<RequestLog>>) -> Router {
         .route("/completion", post(native::completion))
         .route("/completions", post(native::completion))
         .route("/infill", post(native::infill))
+        .route("/embedding", post(embeddings::embeddings))
+        .route("/embeddings", post(embeddings::embeddings))
+        .route("/v1/embeddings", post(embeddings::embeddings_oai))
+        .route("/rerank", post(embeddings::rerank))
+        .route("/reranking", post(embeddings::rerank))
+        .route("/v1/rerank", post(embeddings::rerank))
+        .route("/v1/reranking", post(embeddings::rerank))
+        .route("/slots/{id_slot}", post(slots::slot_action))
         .fallback(not_found)
         .layer(from_fn_with_state(Arc::clone(&gw), require_key))
         .layer(from_fn_with_state(Arc::clone(&gw), count_request))

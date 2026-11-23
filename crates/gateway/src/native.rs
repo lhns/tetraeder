@@ -34,12 +34,12 @@ const INFILL_N_BATCH: usize = 2048;
 /// Separates extra context chunks when the vocabulary has no FIM separator token.
 const CHUNK_SEPARATOR: &str = "\n\n--- snippet ---\n\n";
 
-fn json_body(body: &Bytes) -> Result<Value> {
+pub(crate) fn json_body(body: &Bytes) -> Result<Value> {
     serde_json::from_slice(body)
         .map_err(|e| LlamaError::invalid(format!("invalid request body: {e}")))
 }
 
-fn bad(msg: impl Into<String>) -> LlamaError {
+pub(crate) fn bad(msg: impl Into<String>) -> LlamaError {
     LlamaError::invalid(msg)
 }
 
@@ -118,7 +118,7 @@ fn token_id(v: &Value, n_vocab: usize) -> Result<TokenId> {
 
 /// llama-server's `tokenize_mixed`: a string, or an array of strings and token ids. The BOS
 /// (`add_special`) goes to the first element only, and only if that is a string.
-fn tokenize_mixed(
+pub(crate) fn tokenize_mixed(
     gw: &Gateway,
     content: &Value,
     add_special: bool,

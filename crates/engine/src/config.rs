@@ -1,6 +1,7 @@
 //! Typed engine configuration: placement (where weights live), context sizing, sampling.
 
 use crate::EngineError;
+use tetraeder_ggml_sys::ggml::Type;
 use tetraeder_ggml_sys::llama::{self, FlashAttn, LoadMode, ModelParams, SplitMode};
 
 /// `<regex>=<buffer type>`: tensors whose name matches the regex (unanchored search) are
@@ -34,6 +35,47 @@ impl std::str::FromStr for BufferOverride {
     fn from_str(s: &str) -> Result<Self, EngineError> {
         Self::parse(s)
     }
+}
+
+/// Tensors that `--cpu-moe` and `--n-cpu-moe` keep on the CPU: the expert FFN weights, by the
+/// regex of llama.cpp's `LLM_FFN_EXPS_REGEX` (common/common.h).
+pub const FFN_EXPS_REGEX: &str = r"\.ffn_(up|down|gate|gate_up)_(ch|)exps";
+
+/// The overrides llama-server adds for `--cpu-moe` (all layers) and `--n-cpu-moe N` (the first
+/// `N`), in its order: the first flag's pattern first. A layer beyond the model's matches nothing.
+pub fn cpu_moe_overrides(all: bool, first_layers: Option<usize>) -> Vec<BufferOverride> {
+    let cpu = |pattern: String| BufferOverride {
+        pattern,
+        buffer: "CPU".into(),
+    };
+    let mut out = Vec::new();
+    if all {
+        out.push(cpu(FFN_EXPS_REGEX.into()));
+    }
+    for i in 0..first_layers.unwrap_or(0) {
+        out.push(cpu(format!(r"blk\.{i}{FFN_EXPS_REGEX}")));
+    }
+    out
+}
+
+/// The KV cache types `-ctk` and `-ctv` accept in llama-server (`kv_cache_types`, common/arg.cpp),
+/// in its order.
+pub const KV_CACHE_TYPES: [&str; 10] = [
+    "f32", "f16", "bf16", "f8_e4m3", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1",
+];
+
+/// A KV cache type by llama-server's names (exact, lower case).
+pub fn parse_kv_cache_type(name: &str) -> Result<Type, String> {
+    KV_CACHE_TYPES
+        .contains(&name)
+        .then(|| Type::from_name(name))
+        .flatten()
+        .ok_or_else(|| {
+            format!(
+                "unsupported cache type `{name}`; allowed: {}",
+                KV_CACHE_TYPES.join(", ")
+            )
+        })
 }
 
 /// Where the weights go. `Default` is libllama's defaults.
@@ -119,6 +161,13 @@ pub struct ContextConfig {
     /// One KV pool shared by all sequences, `n_ctx` positions in total (default true). With
     /// false, libllama gives each sequence `n_ctx / n_seq_max`.
     pub kv_unified: bool,
+    /// Keep the KV cache and the attention on the GPU (libllama's `offload_kqv`, default true);
+    /// false is llama-server's `--no-kv-offload`.
+    pub offload_kqv: bool,
+    /// K and V cache types (default F16). Quantized ones need flash attention (V) and a head
+    /// size that is a multiple of the block size; libllama checks that when it builds the context.
+    pub type_k: Type,
+    pub type_v: Type,
 }
 
 impl Default for ContextConfig {
@@ -134,6 +183,9 @@ impl Default for ContextConfig {
             op_offload: d.op_offload,
             n_seq_max: 1,
             kv_unified: true,
+            offload_kqv: d.offload_kqv,
+            type_k: d.type_k,
+            type_v: d.type_v,
         }
     }
 }
@@ -188,6 +240,39 @@ mod tests {
             ..Placement::cpu()
         };
         assert_eq!(p.to_model_params().unwrap().buffer_overrides.len(), 1);
+    }
+
+    // hardware: none
+    #[test]
+    fn cpu_moe_overrides_are_llama_servers_patterns() {
+        assert!(cpu_moe_overrides(false, None).is_empty());
+        let all = cpu_moe_overrides(true, None);
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].pattern, FFN_EXPS_REGEX);
+        assert_eq!(all[0].buffer, "CPU");
+        let two = cpu_moe_overrides(false, Some(2));
+        assert_eq!(
+            two[0].pattern,
+            r"blk\.0\.ffn_(up|down|gate|gate_up)_(ch|)exps"
+        );
+        assert_eq!(
+            two[1].pattern,
+            r"blk\.1\.ffn_(up|down|gate|gate_up)_(ch|)exps"
+        );
+        assert_eq!(cpu_moe_overrides(true, Some(3)).len(), 4);
+    }
+
+    // hardware: none
+    #[test]
+    fn kv_cache_types_are_llama_servers_names() {
+        for n in KV_CACHE_TYPES {
+            assert_eq!(parse_kv_cache_type(n).unwrap().name(), n, "{n}");
+        }
+        // ggml knows more types and matches case-insensitively; llama-server does not
+        for bad in ["q4_K", "Q8_0", "q2_k", "", "f64"] {
+            let e = parse_kv_cache_type(bad).unwrap_err();
+            assert!(e.contains("allowed: f32, f16, bf16"), "{bad}: {e}");
+        }
     }
 
     #[test]

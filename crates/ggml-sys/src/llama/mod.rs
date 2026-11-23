@@ -22,7 +22,7 @@ mod quantize;
 mod sampler;
 
 pub use batch::Batch;
-pub use context::{Context, ContextParams, FlashAttn, PerfData, ThreadPool};
+pub use context::{Context, ContextParams, FlashAttn, PerfData, Pooling, ThreadPool};
 pub use devices::{
     BufferType, DeviceInfo, DeviceKind, buffer_type, buffer_type_names, devices,
     resolve_buffer_type,
