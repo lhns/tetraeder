@@ -82,6 +82,18 @@ def reading(ratios: dict[str, list[float]], n_clean: int) -> tuple[str, str]:
     return "inconclusive", "between the lines, or a metric below the line with a round at or above 1"
 
 
+def metric_reading(ratios: list[float]) -> str:
+    """The rule for one metric (model and concurrency): the median of its clean rounds."""
+    if len(ratios) < MIN_CLEAN:
+        return "inconclusive"
+    med = statistics.median(ratios)
+    if med >= NO_REGRESSION:
+        return "no regression evidence"
+    if med < REGRESSION and all(r < 1 for r in ratios):
+        return "regression"
+    return "inconclusive"
+
+
 def summarize(d: Path, rounds: int = 3, prefix: str = "") -> dict:
     samples = p4.load_samples(d)
     out_rounds, runs = [], {}
@@ -104,7 +116,7 @@ def summarize(d: Path, rounds: int = 3, prefix: str = "") -> dict:
     read_, why = reading(ratios, len(clean))
     return {"rounds": out_rounds, "clean_rounds": [r["round"] for r in clean],
             "excluded_rounds": [r["round"] for r in out_rounds if r not in clean],
-            "median_ratio": med, "reading": read_, "reading_why": why, "runs": runs}
+            "median_ratio": med, "metric_readings": {m: metric_reading(v) for m, v in ratios.items()}, "reading": read_, "reading_why": why, "runs": runs}
 
 
 def pctl(v: list[float], q: float) -> float:
@@ -146,7 +158,7 @@ def main(argv=None) -> int:
         s = summarize(d, rounds, f"{m}-" if m else "")
         name = f"ab-summary-{m}.json" if m else "ab-summary.json"
         (d / name).write_text(json.dumps(s, indent=2) + "\n", encoding="utf-8")
-        brief[m or "all"] = {k: s[k] for k in ("clean_rounds", "excluded_rounds", "median_ratio", "reading", "reading_why")}
+        brief[m or "all"] = {k: s[k] for k in ("clean_rounds", "excluded_rounds", "median_ratio", "metric_readings", "reading", "reading_why")}
     t = ttft_summary(d)
     if t:
         (d / "ab-ttft.json").write_text(json.dumps(t, indent=2) + "\n", encoding="utf-8")

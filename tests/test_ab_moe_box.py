@@ -110,3 +110,10 @@ def test_ttft_ratio_on_common_requests(tmp_path):
     write_ttft(tmp_path, "B", base, errors=1)
     assert ab.ttft_summary(tmp_path)["reading"] == "report"
     assert ab.ttft_summary(tmp_path / "none") is None
+
+
+def test_reading_per_metric(tmp_path):
+    # c4 regresses on every round, c1 is level: the combined reading is a regression, the metric readings say where
+    make(tmp_path, [(0.95, 1.0), (0.96, 1.0), (0.94, 0.99)])
+    s = ab.summarize(tmp_path)
+    assert s["metric_readings"] == {"c4": "regression", "c1": "no regression evidence"}

@@ -2,8 +2,9 @@
 # Extra stages of the regression-gate box session (node bench-regression-gate), after or beside scripts/ab_moe_box.sh:
 #   llama  build llama-server with CUDA from the patched vendor tree (target/llama-server/bin; the bench's baseline
 #          /opt/llama.cpp-baseline is a different commit and unpatched). Can run beside the A/B builds, never beside runs.
-#   conf   the parity suite (tests/conformance/parity) on CUDA: llama-server (above) against target/release/tetraeder
-#          (CUDA build of the checkout), tiny fixtures, TETRAEDER_REQUIRE_PARITY=1; junit and log in $out.
+#   conf   the parity cases (tests/conformance/parity/test_parity.py; test_parity_lib.py reads docs/, which is not pushed) on CUDA: llama-server (above) against target/release/tetraeder
+#          (CUDA build of the checkout), tiny fixtures, TETRAEDER_REQUIRE_PARITY=1; parity.log (-rA), server logs and the
+#          device lines (parity-devices.txt) in $out.
 #   q36    Qwen3.6-35B-A3B UD-Q4_K_XL, `serve --engine auto` with DEFAULT flags (prefix reuse and RAM cache on), c4 and c1
 #          of the strata-q36 workload, ROUNDS_Q36 fresh servers; expects zero errors (the client counts error frames and
 #          empty streams) and 128 tokens per request.
@@ -54,6 +55,7 @@ trap stop_server EXIT
 die() {
   say "FATAL: $*"
   stop_server
+  touch "$out/DONE"
   say "GATE_EXTRA_DONE rc=1"
   exit 1
 }
@@ -79,16 +81,22 @@ st_llama() {
 st_conf() {
   [ -f "$out/stage-conf.ok" ] && return 0
   say "parity suite on CUDA"
-  [ "$DRY" = 1 ] && { say "PLAN TETRAEDER_BIN=$tet LLAMA_SERVER_BIN=$llama_bin uv run pytest -q tests/conformance/parity -rx"; return 0; }
+  [ "$DRY" = 1 ] && { say "PLAN TETRAEDER_BIN=$tet LLAMA_SERVER_BIN=$llama_bin python -m pytest -rA tests/conformance/parity/test_parity.py"; return 0; }
   [ -x "$llama_bin" ] || die "no $llama_bin (stage llama first)"
   [ -x "$tet" ] || die "no $tet (the A/B stage builds it)"
-  command -v uv > /dev/null 2>&1 || { curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/root/.local/bin sh > /dev/null 2>&1; }
+  # pyproject.toml is not pushed (taxameter.toml [push]), so no `uv run`: the bench venv plus the suite's three imports
+  if ! "$py" -c 'import httpx, pytest, yaml' 2> /dev/null; then
+    command -v uv > /dev/null 2>&1 || { curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/root/.local/bin sh > /dev/null 2>&1; }
+    [ -x "$py" ] || uv venv --allow-existing /root/gwvenv
+    uv pip install --python "$py" httpx pytest pyyaml > "$out/pip-parity.log" 2>&1 || die "parity python env failed"
+  fi
   nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2>&1 | sed 's/^/before: /' > "$out/gpu-conf.txt"
-  TETRAEDER_BIN="$tet" LLAMA_SERVER_BIN="$llama_bin" TETRAEDER_REQUIRE_PARITY=1 \
-    timeout -k 30 60m uv run pytest -q tests/conformance/parity -rx --junitxml="$out/parity-junit.xml" \
-    > "$out/parity.log" 2>&1 8>&-
+  rm -rf "$out/parity-tmp"
+  TETRAEDER_BIN="$tet" LLAMA_SERVER_BIN="$llama_bin" TETRAEDER_REQUIRE_PARITY=1     timeout -k 30 60m "$py" -m pytest -q -rA -p no:cacheprovider --basetemp="$out/parity-tmp" tests/conformance/parity/test_parity.py > "$out/parity.log" 2>&1 8>&-
   echo "rc=$?" >> "$out/parity.log"
   nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2>&1 | sed 's/^/after: /' >> "$out/gpu-conf.txt"
+  # proof the servers ran on CUDA: the device and offload lines of both servers' logs
+  grep -h -i -E 'CUDA[0-9]|offloaded|using device|ggml_cuda_init|found [0-9]+ CUDA' "$out"/parity-tmp/*/*.log 2> /dev/null     | sed 's/^[0-9: .TZ-]*//' | sort | uniq -c | sort -rn | head -40 > "$out/parity-devices.txt"
   tail -n 5 "$out/parity.log"
   touch "$out/stage-conf.ok"
 }
@@ -143,6 +151,7 @@ main() {
     say "STAGE $s"
     "st_$s"
   done
+  touch "$out/DONE"
   say "GATE_EXTRA_DONE rc=0"
 }
 
