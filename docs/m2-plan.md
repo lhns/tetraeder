@@ -234,7 +234,7 @@ Phase 4 is done (exit test passed 2026-11-17, ADR 0065). Phase 5's exit test (AD
 | 8 Frequency tiers (c) | B0, then B1 |
 | 8 Tool-call repair | B4 |
 | 8 Recheck llama-server and planner baselines with the expert cache | box D2 (llama-server baseline for C0) |
-| 8 Strata pairing | parked: needs both engines on one model; revisit when Strata runs Qwen3 |
+| 8 Strata pairing | parked: needs both engines on one model; revisit when Strata runs Qwen3. Qwen3.6-35B-A3B measured through libllama in `bench-strata-q36` (strata-q36-20261123) |
 | 9 FP8-KV llama.cpp baseline | pin already includes #28392 (b12274, `f8_e4m3`, 2026-11-14); still owed: rerun `llamacpp-cache` FP8 against the builder on box D1, which checks whether point 1 holds against the newer baseline |
 | 10 imatrix and IQ formats below 4 bits | parked to Phase 9 (breadth); no exit test needs them |
 | 10 Per-expert formats (typed slots) | parked until C6 decides the KV/slot layout |

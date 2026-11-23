@@ -1,6 +1,6 @@
 # Strata features against Tetraeder (ADR 0085)
 
-Target: Strata tag `v0.2.20` (commit a34979fc, 2026-11-22, MIT), read 2026-11-23 from source and docs without running it. Every number below is Strata's own; none is measured here. Paths are Strata repo paths at that tag.
+Target: Strata tag `v0.2.20` (commit a34979fc, 2026-11-22, MIT), read 2026-11-23 from source and docs. Every number below is Strata's own except the paragraph "Measured 2026-11-23 on CUDA" under "Strata's claim" (`bench-strata-q36`). Paths are Strata repo paths at that tag.
 
 ## What Strata is
 
