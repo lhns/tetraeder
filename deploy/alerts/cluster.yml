@@ -1,0 +1,15 @@
+# Alert rules of the multi-node cluster (ADR 0091); each build step adds the rules of its component.
+# Loaded by vmalert in docker-compose.yml; metric names follow -opentelemetry.usePrometheusNaming.
+groups:
+  - name: tetraeder-cluster
+    rules:
+      # Step 1 (transport): a handshake was refused, so a peer has an unknown, unpinned or expired
+      # certificate, or dials the wrong node. Reasons: untrusted, unknown_node, no_identity, wrong_peer,
+      # duplicate, bad_hello, handshake.
+      - alert: TetraederTlsRejected
+        expr: sum by (reason) (increase(tetraeder_cluster_tls_rejected_total[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A node refused a connection ({{ $labels.reason }})"
+          description: "Handshakes were refused in the last 10 minutes. untrusted or unknown_node: a peer's certificate is not pinned in cluster.toml or its id is not listed; wrong_peer: a dial reached another node; duplicate: a second connection for one purpose."

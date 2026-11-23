@@ -2,6 +2,7 @@
 
 mod advise;
 mod bench;
+mod cluster;
 mod comm_probe;
 mod detector_score;
 mod doctor;
@@ -55,6 +56,9 @@ enum Command {
     Info(info::InfoArgs),
     /// Time the executor's all-reduces and copies between GPUs (collective curves).
     CommProbe(comm_probe::CommProbeArgs),
+    /// Multi-node cluster tooling: node certificates (ADR 0091).
+    #[command(subcommand)]
+    Cluster(cluster::ClusterCommand),
 }
 
 fn main() -> std::process::ExitCode {
@@ -74,6 +78,7 @@ fn main() -> std::process::ExitCode {
         Some(Command::Worker(args)) => worker::run(&args),
         Some(Command::Info(args)) => info::run(&args),
         Some(Command::CommProbe(args)) => comm_probe::run(&args),
+        Some(Command::Cluster(cmd)) => cluster::run(&cmd),
         None => {
             println!("tetraeder {}", env!("CARGO_PKG_VERSION"));
             Ok(())

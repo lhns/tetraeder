@@ -134,11 +134,11 @@ flowchart TB
         bench_d2a_30b("bench · ✔ 30B<br/>admission probe rerun")
         bench_ab30b("bench · ✔ 30B same-box<br/>A/B")
         serving_parity_sampling["serving · ✔ Sampler<br/>parity with llama-<br/>server"]
+        cluster_transport["cluster · ✔ Transport<br/>between machines"]
     end
     subgraph bd_2["Next"]
         bench_30b_c4_gap[/"bench · ○ 30B<br/>concurrency-4 gap"/]
         planner_cost_model_v5_host2[/"planner · ○ Cost model<br/>5 second host"/]
-        cluster_transport["cluster · ○ Transport<br/>between machines"]
         engine_dense_amx[/"engine · ○ Dense<br/>builder speed on AMX<br/>CPUs"/]
     end
     subgraph bd_3["Later (blocked or parked)"]
@@ -190,14 +190,12 @@ flowchart TB
     planner_ep_prefill_recheck ~~~ bench_d2a_30b
     bench_d2a_30b ~~~ bench_ab30b
     bench_d2a_30b ~~~ serving_parity_sampling
+    bench_d2a_30b ~~~ cluster_transport
     bench_ab30b ~~~ bench_30b_c4_gap
     serving_parity_sampling ~~~ planner_cost_model_v5_host2
-    serving_parity_sampling ~~~ cluster_transport
-    bench_30b_c4_gap ~~~ engine_dense_amx
-    planner_cost_model_v5_host2 ~~~ engine_dense_amx
     cluster_transport ~~~ engine_dense_amx
-    engine_dense_amx ~~~ cluster_pipeline_nodes
-    engine_dense_amx ~~~ cluster_failover
+    bench_30b_c4_gap ~~~ cluster_pipeline_nodes
+    planner_cost_model_v5_host2 ~~~ cluster_failover
     engine_dense_amx ~~~ bench_phase6_exit
     cluster_pipeline_nodes ~~~ cluster_experts_nodes
     cluster_failover ~~~ multi_live_reshard
@@ -235,7 +233,7 @@ flowchart TB
     planner_advisor_auto --> bench_phase7_exit
     engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
-    linkStyle 55,62,66 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 53,60,64 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -250,12 +248,12 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class multi_prefill_no_capture,engine_moe_builder,multi_executor,serving_batching unrated
+    class multi_prefill_no_capture,engine_moe_builder,multi_executor,serving_batching,cluster_transport unrated
     class engine_libllama,planner_cost_v2,multi_defect_capture,bench_phase2_exit,bench_defect_tuned_cache,bench_phase3b_proxy,bench_pin_ab,bench_phase4_exit,bench_ttft,bench_s3f2,bench_defect_s3f2_clock,bench_v2_verdict,planner_cost_model_v5,bench_v4a_verdict,bench_ab30b,serving_parity_sampling,planner_ep_prefill_recheck succ
     class engine_cpu_poll,memory_prefetch,memory_io_service,planner_core,bench_m1_point1 vsucc
     class bench_owner_m1,bench_owner_analytic decided
     class bench_d2a_probe,bench_d2a_30b mixed
-    class bench_30b_c4_gap,planner_cost_model_v5_host2,cluster_transport,engine_dense_amx next
+    class bench_30b_c4_gap,planner_cost_model_v5_host2,engine_dense_amx next
     class cluster_pipeline_nodes,cluster_failover,bench_phase6_exit,multi_live_reshard,planner_advisor_auto,bench_phase7_exit blocked
     class cluster_experts_nodes,engine_backend_parity,bench_phase8_exit,bench_phase9_exit,memory_prefill_misses parked
 ```
@@ -346,7 +344,7 @@ flowchart TB
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
-| Transport between machines | ○ next | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
+| Transport between machines | ✔ done · unrated | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). |
 | Plans and predictions across nodes | ○ next | The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091). |
 | Node certificates and trust rules | ⛔ blocked | Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20). |
 | Node list, health and probes | ⛔ blocked | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). |
@@ -380,10 +378,6 @@ flowchart TB
 - `planner-cost-model-v5-host2`: Cost model 5 second host
 - `bench-235b-stream-predict`: Predict the 235B on one box
 - `serving-cuda-parity`: libllama path differs on CUDA
-
-**cluster**
-
-- `cluster-transport`: Transport between machines
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -423,7 +417,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 111 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 112 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -807,6 +801,7 @@ Generated on 2026-11-24.
 - `bench-strata-q36`: Strata against llama-server on Qwen3.6 (✔ done · unrated). One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085).
 - `cluster-owner-phase6-design`: Owner accepts the Phase 6 design (✔ done · n/a). The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; mDNS in or out of M3; the other scope cuts).
 - `cluster-owner-transport`: Owner picks the network transport (✔ done · n/a). The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links.
+- `cluster-transport`: Transport between machines (✔ done · unrated). Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16).
 - `cluster-transport-wan`: Transport latency between two boxes (✔ done · unrated). Measured QUIC, TCP with TLS and plain TCP between two rented boxes (Connecticut and Germany, 90 ms), on one host and on Linux loopback; ADR 0023 holds the numbers, and no same-datacenter pair on different hosts was on offer.
 - `memory-kv-auto`: Planner picks the KV format (✔ done · unrated). serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.
 - `memory-prefix-disk-async`: Disk prefix restore off the step (✔ done · unrated). A prefix restored from disk is now read in the background while the waiting request queues without a slot, so other sequences keep decoding (ADR 0087 addendum); no speed number yet.
@@ -856,5 +851,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (20 done, 3 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (33 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (3 done, 2 next, 8 blocked, 1 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 14 nodes (4 done, 1 next, 8 blocked, 1 parked)
 <!-- END GENERATED: tracks -->
