@@ -396,7 +396,7 @@ fn restrict_windows(path: &std::path::Path) -> Result<()> {
     let out = std::process::Command::new("icacls")
         .arg(path)
         .args(["/inheritance:r", "/grant:r"])
-        .arg(format!("{who}:(R,W)"))
+        .arg(format!("{who}:(F)"))
         .output()
         .context("cannot run icacls to restrict the key file")?;
     if !out.status.success() {
