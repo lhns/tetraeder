@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 42 rated nodes are confirmed by the owner.
+0 of 43 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `planner-ep-prefill-recheck`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `planner-ep-prefill-recheck`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -311,8 +311,7 @@ flowchart TB
 | Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
 | Sampler parity with llama-server | ✔ done · successful | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |
-| Request field parity | ○ next | Every request field llama-server reads is honoured or rejected with 400, including logprobs, n above 1, GBNF grammar, reasoning effort and timings (ADR 0083, group B). |
-| Endpoint parity | ⛔ blocked | Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys, as llama-server serves them (ADR 0083, group C). |
+| Endpoint parity | ○ next | Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys, as llama-server serves them (ADR 0083, group C). |
 | Expose libllama capabilities | ⛔ blocked | Embeddings, rerank, KV cache types, context shift, slot save and restore and CPU-MoE flags, which libllama has and the gateway does not expose yet (ADR 0083, group D). |
 | LoRA, multimodal, multi-model scope | ⛔ blocked | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). |
 | Several models at once | ⏸ parked | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). |
@@ -373,7 +372,7 @@ flowchart TB
 <!-- BEGIN GENERATED: ready-now -->
 **local**
 
-- `serving-parity-fields`: Request field parity
+- `serving-parity-endpoints`: Endpoint parity
 - `memory-kv-host`: KV cache partly in RAM
 - `engine-qwen35moe-builder`: Own builder for Qwen3.6 MoE
 - `memory-kv-auto`: Planner picks the KV format
@@ -436,7 +435,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 96 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 97 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -819,6 +818,7 @@ Generated on 2026-11-23.
 - `serving-parity-harness`: llama-server conformance harness (✔ done · successful). One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
 - `bench-strata-q36`: Strata against llama-server on Qwen3.6 (✔ done · unrated). One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085).
 - `memory-prefix-ssd`: Prefix cache spills to SSD (✔ done · unrated). Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
+- `serving-parity-fields`: Request field parity (✔ done · successful). Requests and responses carry the fields llama-server has (optional model, end token in the count, logprobs, n above 1, GBNF grammar and JSON schema, timings, fingerprint, reasoning effort), and the ones it does not support are rejected with 400 (ADR 0083, group B).
 - `serving-parity-sampling`: Sampler parity with llama-server (✔ done · successful). The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A).
 
 </details>
@@ -851,7 +851,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [memory - memory and streaming](roadmap/tracks/memory.md): 17 nodes (9 done, 3 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 24 nodes (15 done, 3 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 28 nodes (14 done, 3 next, 4 blocked, 7 parked)
+- [serving - serving](roadmap/tracks/serving.md): 28 nodes (15 done, 3 next, 3 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (32 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 next, 11 blocked)
