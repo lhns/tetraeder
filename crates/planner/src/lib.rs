@@ -29,6 +29,7 @@ pub mod candidate;
 pub mod cli;
 pub mod diff;
 pub mod explain;
+pub mod kv_auto;
 pub mod layout;
 pub mod ledger;
 pub mod lower;
@@ -43,14 +44,18 @@ pub mod serve;
 pub mod timemodel;
 pub mod whatif;
 
-pub use builder::{build_builder_candidate, enumerate_builder};
+pub use builder::{
+    build_builder_candidate, build_builder_candidate_kv, enumerate_builder, enumerate_builder_kv,
+};
 pub use campaign::{Campaign, CampaignVariant, CandidateEntry, CandidatesFile, Group};
 pub use candidate::{
     Budget, Candidate, EngineKind, Enumeration, Footprint, Placement, Workload, build_candidate,
-    build_plan, enumerate, enumerate_cpu, footprint,
+    build_candidate_kv, build_plan, enumerate, enumerate_cpu, enumerate_cpu_kv, enumerate_kv,
+    footprint,
 };
 pub use diff::{PlanSwitch, plan_diff};
 pub use explain::{Explanation, explain};
+pub use kv_auto::{AUTO_ORDER, KvChoice, KvPick, enumerate_choice, pick_for_placement, pick_kv};
 pub use layout::{LayerBytes, ModelLayout, ModelMeta, TensorRec, TypeSummary, build_layout};
 pub use ledger::{
     Ledger, LedgerEntry, SessionKey, check as ledger_check, evaluate as ledger_evaluate,
