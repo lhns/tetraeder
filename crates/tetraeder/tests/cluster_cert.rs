@@ -13,7 +13,7 @@ fn out_dir(name: &str) -> PathBuf {
     d
 }
 
-fn cert(dir: &PathBuf, node: &str, force: bool) -> std::process::Output {
+fn cert(dir: &std::path::Path, node: &str, force: bool) -> std::process::Output {
     let mut c = Command::new(env!("CARGO_BIN_EXE_tetraeder"));
     c.args(["cluster", "cert", "--node", node, "--out"])
         .arg(dir);
