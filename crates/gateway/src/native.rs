@@ -4,13 +4,13 @@
 
 use crate::chat::{Finish, LogprobEntry, Segment, Usage};
 use crate::engine::{FimTokens, TokenId};
-use crate::error::LlamaError;
+use crate::error::{GatewayError, LlamaError, bad};
 use crate::gateway::{
     Collected, Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, tag_generation,
 };
 use crate::openai::{
-    ChatPlan, FINGERPRINT, Merged, chat_plan, choice_count, choice_specs, merge, probs_count, sse,
-    stop_list,
+    ChatPlan, FINGERPRINT, Merged, chat_plan, choice_count, choice_specs, data, merge, probs_count,
+    sse, stop_list, trim_stop_logprobs,
 };
 use crate::sampling::{self, SamplingFields};
 use crate::settings;
@@ -37,10 +37,6 @@ const CHUNK_SEPARATOR: &str = "\n\n--- snippet ---\n\n";
 pub(crate) fn json_body(body: &Bytes) -> Result<Value> {
     serde_json::from_slice(body)
         .map_err(|e| LlamaError::invalid(format!("invalid request body: {e}")))
-}
-
-pub(crate) fn bad(msg: impl Into<String>) -> LlamaError {
-    LlamaError::invalid(msg)
 }
 
 // ---- health, metrics, props ----
@@ -202,7 +198,7 @@ pub async fn detokenize(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<J
 }
 
 pub async fn apply_template(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Json<Value>> {
-    let ChatPlan { spec, .. } = chat_plan(json_body(&body)?)?;
+    let ChatPlan { spec, .. } = chat_plan(json_body(&body)?, gw.parallel_slots())?;
     Ok(Json(json!({"prompt": gw.render_prompt(&spec)?})))
 }
 
@@ -224,7 +220,7 @@ struct NativeRequest {
     stop: Option<Value>,
     temperature: Option<f32>,
     top_p: Option<f32>,
-    top_k: Option<u32>,
+    top_k: Option<i64>,
     seed: Option<i64>,
     n_probs: Option<i64>,
     user: Option<String>,
@@ -309,14 +305,14 @@ fn native_plan(gw: &Gateway, body: Value) -> Result<Plan> {
         .ok_or_else(|| bad("\"prompt\" is required"))?;
     let tokens = prompt_tokens(gw, prompt)?;
     let (n_predict, max_tokens) = n_predict(&req)?;
-    let n = choice_count(req.n_cmpl.or(req.n))?;
+    let n = choice_count(req.n_cmpl.or(req.n), gw.parallel_slots())?;
     let n_probs = probs_count(req.n_probs)?;
     let prompt_text = text_of(gw, &tokens)?;
     let mut spec = GenerateSpec::new(req.model, Prompt::Tokens(tokens));
     spec.max_tokens = max_tokens;
     spec.temperature = req.temperature;
     spec.top_p = req.top_p;
-    spec.top_k = req.top_k;
+    spec.top_k = sampling::top_k(req.top_k);
     spec.seed = sampling::seed(req.seed);
     spec.extra = req.sampling.extras()?;
     spec.extra.logprobs = n_probs;
@@ -408,7 +404,11 @@ async fn run(gw: Arc<Gateway>, plan: Plan) -> Result<Response> {
     let mut results: Vec<Value> = all
         .iter()
         .enumerate()
-        .map(|(i, c)| final_json(&plan, &model, i, c, false))
+        .map(|(i, c)| {
+            let mut c = c.clone();
+            trim_stop_logprobs(&gw, &model, &mut c.logprobs, c.finish.as_ref());
+            final_json(&plan, &model, i, &c, false)
+        })
         .collect();
     let body = if results.len() == 1 {
         results.remove(0)
@@ -416,10 +416,6 @@ async fn run(gw: Arc<Gateway>, plan: Plan) -> Result<Response> {
         Value::Array(results)
     };
     Ok(tag_generation(Json(body).into_response(), &gid))
-}
-
-fn data(v: &Value) -> Event {
-    Event::default().data(v.to_string())
 }
 
 struct NativeStream {
@@ -492,7 +488,11 @@ fn native_stream(
                 out.push(data(&json!({"error": LlamaError::from(e).object()})));
                 s.done = true;
             }
-            None => return None,
+            None => {
+                let e = GatewayError::Internal("the generation ended without finishing".into());
+                out.push(data(&json!({"error": LlamaError::from(e).object()})));
+                s.done = true;
+            }
         }
         Some((stream::iter(out), s))
     })
@@ -620,4 +620,27 @@ pub async fn infill(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Respo
     }
     let plan = native_plan(&gw, data)?;
     run(gw, plan).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_native_stream_cut_short_ends_with_an_error_frame() {
+        let plan = Plan {
+            spec: GenerateSpec::new("fake", Prompt::Text(String::new())),
+            n: 1,
+            stream: true,
+            settings: json!({}),
+            prompt_text: String::new(),
+        };
+        let gens = vec![Generation::scripted(vec![])];
+        let f: Vec<String> = native_stream(gens, plan, "fake".into())
+            .map(|e| format!("{e:?}"))
+            .collect()
+            .await;
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].contains("server_error"), "{f:?}");
+    }
 }

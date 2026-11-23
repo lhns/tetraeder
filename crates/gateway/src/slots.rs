@@ -2,9 +2,9 @@
 //! error texts and bodies (`post_slots` and its handlers at the pin).
 
 use crate::engine::{SlotAction, SlotReply};
-use crate::error::LlamaError;
+use crate::error::{LlamaError, bad};
 use crate::gateway::Gateway;
-use crate::native::{bad, json_body};
+use crate::native::json_body;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};

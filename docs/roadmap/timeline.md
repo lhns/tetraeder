@@ -129,7 +129,7 @@ gantt
     Owner allows dearer four-GPU boxes :ops_owner_4gpu_cap, 2026-11-15, 2026-11-15
     One dearer box for verdict :ops_owner_v4a_cap, 2026-11-20, 2026-11-20
     Owner accepts nine design records :ops_owner_accepts_adrs, 2026-11-19, 2026-11-19
-    Review the parity batch :active, ops_review_parity_batch, 2026-11-23, 2026-11-23
+    Review the parity batch :ops_review_parity_batch, 2026-11-23, 2026-11-23
     section cluster - multi-node cluster
     Transport latency between two boxes :active, cluster_transport_wan, 2026-11-23, 2026-11-23
 ```

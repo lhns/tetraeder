@@ -2,9 +2,9 @@
 //! bodies and errors of llama-server's `handle_embeddings_impl` and `handle_rerank_impl`.
 
 use crate::engine::{PoolingKind, TokenId};
-use crate::error::LlamaError;
+use crate::error::{LlamaError, bad};
 use crate::gateway::Gateway;
-use crate::native::{bad, json_body, tokenize_mixed};
+use crate::native::{json_body, tokenize_mixed};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;

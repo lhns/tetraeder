@@ -178,6 +178,23 @@ pub struct Collected {
 }
 
 impl Generation {
+    /// A generation that replays `events` and ends (tests of the stream encoders).
+    #[cfg(test)]
+    pub(crate) fn scripted(events: Vec<OutEvent>) -> Self {
+        let (tx, rx) = mpsc::channel(events.len().max(1));
+        for e in events {
+            assert!(tx.try_send(e).is_ok(), "channel sized for the script");
+        }
+        Self {
+            id: "scripted".into(),
+            model: "fake".into(),
+            created: 0,
+            prompt_tokens: 1,
+            rx,
+            _cancel_on_drop: CancellationToken::new().drop_guard(),
+        }
+    }
+
     pub async fn next(&mut self) -> Option<OutEvent> {
         self.rx.recv().await
     }
@@ -295,7 +312,8 @@ pub fn tag_generation(mut r: axum::response::Response, id: &str) -> axum::respon
 const MAX_CALLERS: usize = 100;
 const MAX_CALLER_LEN: usize = 64;
 
-fn now_unix() -> u64 {
+/// Seconds since the Unix epoch (0 if the clock is before it).
+pub(crate) fn now_unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
@@ -359,6 +377,11 @@ impl Gateway {
                 ],
             );
         }
+    }
+
+    /// Parallel slots: the most completions one request may ask for.
+    pub(crate) fn parallel_slots(&self) -> usize {
+        self.cfg.max_concurrent.max(1)
     }
 
     /// llama-server's `/metrics` text and the server's start time (Unix seconds).
@@ -690,10 +713,12 @@ impl Gateway {
 
     /// The number of tokens `text` makes (llama-server removes that many log-probability entries
     /// when a stop string ends the output).
+    /// How many tokens `text` is as llama-server counts a stop word's (`common_tokenize` with no
+    /// special tokens added and none parsed).
     pub fn token_count(&self, model: &str, text: &str) -> usize {
         self.model(model)
             .ok()
-            .and_then(|m| self.engine.tokenize(&m.id, text).ok())
+            .and_then(|m| self.engine.tokenize_with(&m.id, text, false, false).ok())
             .map_or(0, |t| t.len())
     }
 

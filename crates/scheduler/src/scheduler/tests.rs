@@ -842,7 +842,8 @@ fn cancelling_during_a_disk_read_returns_the_buffer_and_keeps_the_file() {
     let (recycled, freed) = (t.pool.stats().recycled, t.pool.stats().freed_bytes);
     cancel.cancel();
     t.run_until(|w| w.waiting.is_empty());
-    assert_eq!(t.w.cache.restoring(), 0);
+    // The reader still has the file open: the read counts until it replies.
+    assert_eq!(t.w.cache.restoring(), 1);
     let evs = events(&mut rx);
     assert!(
         matches!(
@@ -862,9 +863,16 @@ fn cancelling_during_a_disk_read_returns_the_buffer_and_keeps_the_file() {
         s.recycled > recycled || s.freed_bytes > freed
     };
     while !back(&t) && t0.elapsed() < Duration::from_secs(10) {
+        t.w.cache.flush_disk();
         std::thread::sleep(Duration::from_millis(2));
     }
     assert!(back(&t), "the buffer went back");
+    // The tier notices the reply at its next poll.
+    while t.w.cache.restoring() > 0 && t0.elapsed() < Duration::from_secs(10) {
+        t.w.cache.flush_disk();
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(t.w.cache.restoring(), 0);
     assert_eq!((t.w.cache.disk_bytes(), t.files()), (4800, files));
     // The entry is still usable.
     let mut again = t.submit_follow_up(2);
