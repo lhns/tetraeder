@@ -224,7 +224,8 @@ pub struct SamplerEnv<'a> {
 
 /// One request's sampler: libllama's chain plus its history.
 pub struct Sampler {
-    chain: Chain,
+    /// `None`: plain greedy, which needs no chain and no history.
+    chain: Option<Chain>,
 }
 
 impl Sampler {
@@ -232,6 +233,11 @@ impl Sampler {
     /// Samplers that cannot change the result with these settings are left out, which keeps
     /// the cost of the default chain down without changing any token.
     pub fn new(p: &SampleParams, seed: Option<u32>, env: &SamplerEnv) -> Result<Self, String> {
+        // Plain greedy is an argmax over the logits: no candidate array, no history. The model's
+        // suppress tokens would still need the bias stage.
+        if p.is_plain_greedy() && env.model.is_none_or(|m| m.suppress_tokens().is_empty()) {
+            return Ok(Self { chain: None });
+        }
         let seed = seed.unwrap_or(DEFAULT_SEED);
         let n_vocab = env.n_vocab as i32;
         let mut chain = Chain::chain();
@@ -264,7 +270,7 @@ impl Sampler {
             } else {
                 chain.mirostat_v2(seed, p.mirostat_tau, p.mirostat_eta)
             };
-            return Ok(Self { chain });
+            return Ok(Self { chain: Some(chain) });
         }
 
         let greedy = p.is_greedy();
@@ -318,22 +324,29 @@ impl Sampler {
         } else {
             chain.dist(seed)
         };
-        Ok(Self { chain })
+        Ok(Self { chain: Some(chain) })
     }
 
     /// Feeds prompt tokens into the history (penalties, DRY), as llama-server does at admission.
     pub fn accept_all(&mut self, tokens: &[i32]) {
         for &t in tokens {
-            self.chain.accept(t);
+            if let Some(c) = &mut self.chain {
+                c.accept(t);
+            }
         }
     }
 
     /// The next token, or `None` when the mask leaves no token with a finite logit. The token is
     /// accepted into the history.
     pub fn sample(&mut self, logits: &[f32], mask: Option<&TokenMask>) -> Option<u32> {
+        let Some(chain) = &mut self.chain else {
+            let best = greedy(logits, |i| mask.is_none_or(|m| m.allows(i as u32)))?;
+            // As the chain: nothing to pick when no allowed logit is finite.
+            return logits[best as usize].is_finite().then_some(best);
+        };
         let t = match mask {
-            Some(m) => self.chain.sample_masked(logits, |i| m.allows(i as u32)),
-            None => self.chain.sample_logits(logits),
+            Some(m) => chain.sample_masked(logits, |i| m.allows(i as u32)),
+            None => chain.sample_logits(logits),
         }?;
         u32::try_from(t).ok()
     }
@@ -655,6 +668,38 @@ mod tests {
         assert_eq!(s.sample(&l, None), Some(0));
         // Token 0 is now in the history, so the heavy penalty moves the pick.
         assert_eq!(s.sample(&l, None), Some(1));
+    }
+
+    #[test]
+    fn greedy_fast_path_agrees_with_the_chain() {
+        let g = params(|p| p.temperature = 0.0);
+        assert!(g.is_plain_greedy());
+        let mut fast = Sampler::new(&g, None, &env()).unwrap();
+        assert!(fast.chain.is_none());
+        let mut chain = Chain::chain().then_greedy();
+        for i in 0..200 {
+            // Few distinct values, so ties are common.
+            let l: Vec<f32> = row(i).iter().map(|v| (v * 0.7).round()).collect();
+            assert_eq!(
+                fast.sample(&l, None),
+                chain.sample_logits(&l).map(|t| t as u32)
+            );
+            let allowed: Vec<u32> = (0..N as u32)
+                .filter(|t| (t + i as u32).is_multiple_of(3))
+                .collect();
+            let m = mask(&allowed, N);
+            assert_eq!(
+                fast.sample(&l, Some(&m)),
+                chain
+                    .sample_masked(&l, |t| m.allows(t as u32))
+                    .map(|t| t as u32)
+            );
+        }
+        // Nothing allowed: no token from either.
+        let none = mask(&[], N);
+        let l = row(1);
+        assert_eq!(fast.sample(&l, Some(&none)), None);
+        assert_eq!(chain.sample_masked(&l, |t| none.allows(t as u32)), None);
     }
 
     #[test]
