@@ -2457,18 +2457,29 @@ nodes:
   title: Transport between machines
   track: cluster
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  evidence:
+  - docs/adr/0091-phase6-multi-node.md
+  - crates/transport/src/frame.rs
+  - crates/transport/src/identity.rs
+  - crates/transport/src/mem.rs
+  - crates/transport/src/tls_transport.rs
+  - crates/transport/tests/tls.rs
+  - crates/transport/tests/mem.rs
+  - crates/tetraeder/tests/frame_golden.rs
+  - crates/tetraeder/tests/worker_mem.rs
+  - deploy/alerts/cluster.yml
+  - deploy/grafana/dashboards/cluster.json
+  verdict_quote: 'CI cluster-transport run 45179950926, test (ubuntu-24.04) success, test (windows-latest) success, golden-byte frame test, TLS and Mem transport tests (refusals, pinned and CA anchors, buffers read back) and RemoteBackend cases over MemTransport pass (not measured)'
   headline: ''
   depends_on:
   - bench-m2-report
   - cluster-owner-transport
   replaced_by: []
   lane: cluster
-  start: ''
-  end: ''
+  start: '2026-11-23'
+  end: '2026-11-23'
   folded: []
   overview: true
   plain: 'Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16).'
