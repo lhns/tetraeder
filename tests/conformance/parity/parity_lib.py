@@ -197,6 +197,7 @@ def compare(case: dict, base, other) -> list[str]:
     `base` and `other` have `status`, `body` (parsed JSON, else text) and `events` (parsed SSE of a
     stream case). The case's `mode` picks what is compared beyond the status:
     status (nothing more) | shape | text (shape and generated text) |
+    logprobs (shape, then tokens and candidates equal and log-probabilities within `tolerance`) |
     stream (event sequence and streamed text) | exact (the whole body).
     `value_paths` adds equal values at those paths to any JSON mode.
     `paths` restricts the shape to those prefixes, `ignore` adds paths to DEFAULT_IGNORE.
@@ -231,10 +232,46 @@ def compare(case: dict, base, other) -> list[str]:
         bt, ot = norm_text(generated_text(base.body)), norm_text(generated_text(other.body))
         if bt != ot:
             lines.append(f"text: baseline {bt!r}, tetraeder {ot!r}")
+    if mode == "logprobs":
+        lines += logprob_diffs(base, other, case.get("tolerance", LOGPROB_TOLERANCE))
     for p in case.get("value_paths", ()):
         bv, ov = get_path(base.body, p), get_path(other.body, p)
         if bv != ov:
             lines.append(f"value at {p}: baseline {bv!r}, tetraeder {ov!r}")
+    return lines
+
+
+LOGPROB_TOLERANCE = 1e-3
+
+
+def logprob_diffs(base, other, tol: float = LOGPROB_TOLERANCE) -> list[str]:
+    """Differences of `choices[0].logprobs.content` of two answers: the same tokens (id, text, bytes) and the
+    same top candidates in the same order, with log-probabilities within `tol` (the two servers add floats in
+    a different order, so the values are not bit equal)."""
+    b = get_path(base.body, "choices[0].logprobs.content")
+    o = get_path(other.body, "choices[0].logprobs.content")
+    if not isinstance(b, list) or not b:
+        return ["the baseline gave no logprobs, so the case compares nothing"]
+    if not isinstance(o, list):
+        return ["logprobs: missing in tetraeder"]
+    lines = []
+    if len(b) != len(o):
+        lines.append(f"logprobs entries: baseline {len(b)}, tetraeder {len(o)}")
+    for i, (be, oe) in enumerate(zip(b, o)):
+        for k in ("id", "token", "bytes"):
+            if be.get(k) != oe.get(k):
+                lines.append(f"logprobs[{i}].{k}: baseline {be.get(k)!r}, tetraeder {oe.get(k)!r}")
+        if abs(be["logprob"] - oe.get("logprob", float("inf"))) > tol:
+            lines.append(f"logprobs[{i}].logprob: baseline {be['logprob']}, tetraeder {oe.get('logprob')} (tolerance {tol})")
+        bt, ot = be.get("top_logprobs", []), oe.get("top_logprobs", [])
+        if [t["id"] for t in bt] != [t["id"] for t in ot]:
+            lines.append(f"logprobs[{i}].top_logprobs ids: baseline {[t['id'] for t in bt]}, tetraeder {[t.get('id') for t in ot]}")
+            continue
+        for j, (bj, oj) in enumerate(zip(bt, ot)):
+            if bj["token"] != oj.get("token") or bj["bytes"] != oj.get("bytes"):
+                lines.append(f"logprobs[{i}].top_logprobs[{j}] text: baseline {bj['token']!r}, tetraeder {oj.get('token')!r}")
+            if abs(bj["logprob"] - oj["logprob"]) > tol:
+                lines.append(f"logprobs[{i}].top_logprobs[{j}].logprob: baseline {bj['logprob']}, tetraeder {oj['logprob']} (tolerance {tol})")
     return lines
 
 

@@ -29,7 +29,7 @@ pub use devices::{
 };
 pub use model::{LoadMode, Model, ModelParams, SplitMode};
 pub use quantize::{Ftype, GgmlType, QuantizeParams, gguf_tensor_types, quantize};
-pub use sampler::Sampler;
+pub use sampler::{Sampler, json_schema_to_grammar};
 
 /// A vocabulary token id.
 pub type Token = i32;

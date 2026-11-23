@@ -1,11 +1,18 @@
-//! llama-server's sampling request fields (group A of docs/notes/llamacpp-parity.md), shared by
-//! the OpenAI and Anthropic handlers. Each field is honoured or rejected with 400 (ADR 0083
-//! decision 8). Soft-limit fields are clamped as llama-server does; hard limits are rejected.
+//! llama-server's sampling request fields (groups A and B of docs/notes/llamacpp-parity.md),
+//! shared by the OpenAI and Anthropic handlers. Each field is honoured or rejected with 400 (ADR
+//! 0083 decision 8). Soft-limit fields are clamped as llama-server does; hard limits are rejected.
+//!
+//! Fields llama-server has and this server does not implement are rejected when set to a
+//! non-default value (`UNSUPPORTED`), so a client that sends the defaults still works. A few are
+//! accepted and have no effect, each for a stated reason (`cache_prompt`, `id_slot`, `n_keep`,
+//! `n_discard`, `n_cache_reuse`, `return_progress`, `sse_ping_interval`, `verbose`: prefix reuse
+//! is automatic, there are no slots to pick, the prompt is never truncated, streams keep-alive on
+//! their own).
 
-use crate::engine::{SamplerKind, SamplingExtras};
+use crate::engine::{GrammarSource, SamplerKind, SamplingExtras};
 use crate::error::GatewayError;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// At most this many distinct DRY breakers (`LLAMA_DRY_MAX_SEQ_BREAKERS`).
 const DRY_MAX_BREAKERS: usize = 64;
@@ -36,6 +43,55 @@ pub struct SamplingFields {
     dynatemp_exponent: Option<f32>,
     min_keep: Option<i64>,
     samplers: Option<Value>,
+    grammar: Option<Value>,
+    json_schema: Option<Value>,
+    return_tokens: Option<Value>,
+    timings_per_token: Option<Value>,
+    response_fields: Option<Value>,
+    t_max_predict_ms: Option<Value>,
+    n_indent: Option<Value>,
+    lora: Option<Value>,
+    adaptive_target: Option<Value>,
+    post_sampling_probs: Option<Value>,
+    grammar_lazy: Option<Value>,
+}
+
+/// Fields that are rejected when they differ from llama-server's default, with the reason.
+const UNSUPPORTED: [(&str, &str); 9] = [
+    ("return_tokens", "token ids are not returned"),
+    (
+        "timings_per_token",
+        "timings are reported once per response",
+    ),
+    ("response_fields", "responses are not filtered"),
+    ("t_max_predict_ms", "there is no time limit on prediction"),
+    ("n_indent", "there is no indentation limit"),
+    ("lora", "LoRA adapters are not supported"),
+    ("adaptive_target", "the adaptive-p sampler is not supported"),
+    (
+        "post_sampling_probs",
+        "only probabilities from the raw logits are reported",
+    ),
+    ("grammar_lazy", "lazy grammars are not supported"),
+];
+
+fn is_default(name: &str, v: &Value) -> bool {
+    match v {
+        Value::Null | Value::Bool(false) => true,
+        Value::Bool(true) => false,
+        Value::Number(n) => {
+            let x = n.as_f64().unwrap_or(0.0);
+            // `adaptive_target` is off below zero, the others at zero.
+            if name == "adaptive_target" {
+                x < 0.0
+            } else {
+                x == 0.0
+            }
+        }
+        Value::Array(a) => a.is_empty(),
+        Value::String(s) => s.is_empty(),
+        Value::Object(o) => o.is_empty(),
+    }
 }
 
 fn bad(msg: impl Into<String>) -> GatewayError {
@@ -141,7 +197,59 @@ fn breakers(v: &Value) -> Result<Vec<String>, GatewayError> {
 }
 
 impl SamplingFields {
+    /// Both `grammar` and `json_schema` are set (chat requests reject that, as llama-server does).
+    pub fn has_grammar_and_schema(&self) -> bool {
+        let set = |v: &Option<Value>| v.as_ref().is_some_and(|v| !is_default("", v));
+        set(&self.grammar) && set(&self.json_schema)
+    }
+
+    fn reject_unsupported(&self) -> Result<(), GatewayError> {
+        let fields: [(&str, &Option<Value>); 9] = [
+            ("return_tokens", &self.return_tokens),
+            ("timings_per_token", &self.timings_per_token),
+            ("response_fields", &self.response_fields),
+            ("t_max_predict_ms", &self.t_max_predict_ms),
+            ("n_indent", &self.n_indent),
+            ("lora", &self.lora),
+            ("adaptive_target", &self.adaptive_target),
+            ("post_sampling_probs", &self.post_sampling_probs),
+            ("grammar_lazy", &self.grammar_lazy),
+        ];
+        for (name, v) in fields {
+            if let Some(v) = v
+                && !is_default(name, v)
+            {
+                let why = UNSUPPORTED
+                    .iter()
+                    .find(|(n, _)| *n == name)
+                    .map_or("", |(_, w)| *w);
+                return Err(bad(format!("{name} is not supported: {why}")));
+            }
+        }
+        Ok(())
+    }
+
+    /// `grammar` (GBNF text) or `json_schema`; the grammar wins when both are sent, as in
+    /// llama-server's completion schema.
+    fn grammar(&self) -> Result<Option<GrammarSource>, GatewayError> {
+        let set = |v: &Option<Value>| v.clone().filter(|v| !is_default("", v));
+        match (set(&self.grammar), set(&self.json_schema)) {
+            (Some(Value::String(g)), _) => Ok(Some(GrammarSource::Gbnf(g))),
+            (Some(_), _) => Err(bad("grammar must be a string")),
+            (None, Some(mut schema)) => {
+                // An empty schema means any object.
+                if schema.as_object().is_some_and(Map::is_empty) {
+                    schema = serde_json::json!({"type": "object"});
+                }
+                Ok(Some(GrammarSource::JsonSchema(schema.to_string())))
+            }
+            (None, None) => Ok(None),
+        }
+    }
+
     pub fn extras(self) -> Result<SamplingExtras, GatewayError> {
+        self.reject_unsupported()?;
+        let grammar = self.grammar()?;
         if let Some(r) = self.repeat_penalty
             && (!r.is_finite() || r <= 0.0 || !(1.0 / r).is_finite())
         {
@@ -181,6 +289,8 @@ impl SamplingFields {
             samplers: none_if_null(self.samplers)
                 .map(|v| samplers(&v))
                 .transpose()?,
+            grammar,
+            ..SamplingExtras::default()
         })
     }
 }

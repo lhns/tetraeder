@@ -107,6 +107,7 @@ fn finish(mut rx: Events) -> (Vec<u32>, u32) {
                 assert_eq!(reason, FinishReason::Length);
                 return (toks, stats.cached_tokens);
             }
+            GenEvent::Probs(_) => {}
             GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("{e}"),
         }
     }

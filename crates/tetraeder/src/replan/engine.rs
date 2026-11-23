@@ -59,7 +59,7 @@ fn await_finish(rx: &mut mpsc::Receiver<GenEvent>, clock: &dyn Clock, deadline_s
             | Err(mpsc::error::TryRecvError::Disconnected) => {
                 return false;
             }
-            Ok(GenEvent::Token(_)) => {}
+            Ok(GenEvent::Token(_) | GenEvent::Probs(_)) => {}
             Err(mpsc::error::TryRecvError::Empty) => {
                 if clock.now_s() >= deadline {
                     return false;

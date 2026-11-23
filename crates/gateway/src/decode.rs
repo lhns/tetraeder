@@ -39,6 +39,11 @@ impl Utf8Decoder {
         }
     }
 
+    /// Whether bytes of an incomplete character are waiting for the rest.
+    pub fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
     /// Flushes an incomplete trailing character as a replacement character.
     pub fn finish(&mut self) -> String {
         let s = String::from_utf8_lossy(&self.pending).into_owned();

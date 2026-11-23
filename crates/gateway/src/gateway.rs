@@ -1,12 +1,13 @@
 //! The API-neutral core: prompt building, admission, generation, output parsing, metrics.
 
 use crate::chat::{
-    ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
+    ChatMessage, Finish, LogprobEntry, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
 };
 use crate::constraint::{ConstraintFactory, Reasoning};
 use crate::decode::StopMatcher;
 use crate::engine::{
-    Engine, GenerateRequest, ModelInfo, SamplingExtras, SamplingParams, TokenConstraint, Vocab,
+    Engine, GenerateRequest, GrammarSource, ModelInfo, SamplingExtras, SamplingParams,
+    TokenConstraint, Vocab,
 };
 use crate::error::GatewayError;
 use crate::template::ChatTemplate;
@@ -69,6 +70,7 @@ impl Operation {
     }
 }
 
+#[derive(Clone)]
 pub enum Prompt {
     Chat {
         messages: Vec<ChatMessage>,
@@ -84,6 +86,7 @@ pub enum Prompt {
 }
 
 /// One generation request after API-specific parsing.
+#[derive(Clone)]
 pub struct GenerateSpec {
     pub model: String,
     pub prompt: Prompt,
@@ -121,6 +124,9 @@ impl GenerateSpec {
 #[derive(Debug, Clone, PartialEq)]
 pub enum OutEvent {
     Segment(Segment),
+    /// The probabilities of a generated token (only with `SamplingExtras::logprobs`), sent before
+    /// the text segments of the token.
+    Logprobs(LogprobEntry),
     Done {
         finish: Finish,
         usage: Usage,
@@ -149,6 +155,7 @@ pub struct Collected {
     pub tool_calls: Vec<ToolCall>,
     pub finish: Option<Finish>,
     pub usage: Usage,
+    pub logprobs: Vec<LogprobEntry>,
 }
 
 impl Generation {
@@ -165,6 +172,7 @@ impl Generation {
                     c.reasoning.get_or_insert_with(String::new).push_str(&r)
                 }
                 OutEvent::Segment(Segment::ToolCall(tc)) => c.tool_calls.push(tc),
+                OutEvent::Logprobs(e) => c.logprobs.push(e),
                 OutEvent::Done { finish, usage } => {
                     c.finish = Some(finish);
                     c.usage = usage;
@@ -308,6 +316,13 @@ impl Gateway {
         let models = self.engine.models();
         let default = self.cfg.default_model.as_deref();
         let find = |want: &str| models.iter().find(|m| m.id == want).cloned();
+        // No model named: the served one, as llama-server answers every request with its model.
+        if id.is_empty() {
+            return models
+                .first()
+                .cloned()
+                .ok_or_else(|| GatewayError::NotFound("no model is served".into()));
+        }
         find(id)
             .or_else(|| default.and_then(find))
             .ok_or_else(|| GatewayError::NotFound(format!("model '{id}' not found")))
@@ -440,7 +455,7 @@ impl Gateway {
             otel.status_code = tracing::field::Empty,
         );
         let res = self
-            .start(&spec, op, id, started, span.clone())
+            .start(&spec, op, id, started, span.clone(), None)
             .instrument(span.clone())
             .await;
         if let Err(e) = &res {
@@ -462,6 +477,71 @@ impl Gateway {
         res
     }
 
+    /// Starts `n` generations of one request (`n` above 1 in the OpenAI APIs), the slots taken
+    /// together so that two such requests cannot each hold half of them. `specs` differ in
+    /// `extra.seed_offset` only; `n` above the parallel slots is rejected, as in llama-server.
+    pub async fn generate_many(
+        self: &Arc<Self>,
+        specs: Vec<GenerateSpec>,
+        op: Operation,
+    ) -> Result<Vec<Generation>, GatewayError> {
+        let n = specs.len();
+        let slots = self.cfg.max_concurrent.max(1);
+        if n > slots {
+            return Err(GatewayError::InvalidRequest(format!(
+                "n must be at most {slots}, the number of parallel slots"
+            )));
+        }
+        if n <= 1 {
+            let mut out = Vec::with_capacity(n);
+            for spec in specs {
+                out.push(self.generate(spec, op).await?);
+            }
+            return Ok(out);
+        }
+        let mut permits = self.admit_many(n).await?;
+        let mut out = Vec::with_capacity(n);
+        for spec in specs {
+            let started = Instant::now();
+            let id = new_id();
+            let span = tracing::info_span!(
+                "gen_ai",
+                otel.name = format!("{} {}", op.as_str(), spec.model),
+                otel.kind = "server",
+                gen_ai.operation.name = op.as_str(),
+                gen_ai.request.model = spec.model.as_str(),
+                gen_ai.response.id = id.as_str(),
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.response.finish_reasons = tracing::field::Empty,
+                error.type = tracing::field::Empty,
+                otel.status_code = tracing::field::Empty,
+            );
+            let permit = permits.pop();
+            let res = self
+                .start(&spec, op, id, started, span.clone(), permit)
+                .instrument(span.clone())
+                .await;
+            match res {
+                Ok(g) => out.push(g),
+                Err(e) => {
+                    record_error(&span, e.otel_type());
+                    return Err(e);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The number of tokens `text` makes (llama-server removes that many log-probability entries
+    /// when a stop string ends the output).
+    pub fn token_count(&self, model: &str, text: &str) -> usize {
+        self.model(model)
+            .ok()
+            .and_then(|m| self.engine.tokenize(&m.id, text).ok())
+            .map_or(0, |t| t.len())
+    }
+
     async fn start(
         self: &Arc<Self>,
         spec: &GenerateSpec,
@@ -469,6 +549,7 @@ impl Gateway {
         id: String,
         started: Instant,
         span: tracing::Span,
+        permit: Option<OwnedSemaphorePermit>,
     ) -> Result<Generation, GatewayError> {
         let st = self.state(&spec.model)?;
         let model = st.info.id.clone();
@@ -498,7 +579,32 @@ impl Gateway {
         let (parser, constraint) =
             self.output_setup(&st, &spec.prompt, &spec.format, in_reasoning)?;
 
-        let permit = self.admit().await?;
+        let mut extra = spec.extra.clone();
+        extra.grammar = match extra.grammar.take() {
+            Some(GrammarSource::JsonSchema(s)) => Some(GrammarSource::Gbnf(
+                self.engine
+                    .json_schema_to_grammar(&model, &s)
+                    .map_err(|e| match self.engine_err(e) {
+                        GatewayError::InvalidRequest(m) => {
+                            GatewayError::InvalidRequest(format!("json_schema: {m}"))
+                        }
+                        e => e,
+                    })?,
+            )),
+            Some(GrammarSource::Gbnf(g)) => {
+                self.engine
+                    .check_grammar(&model, &g)
+                    .map_err(|e| self.engine_err(e))?;
+                Some(GrammarSource::Gbnf(g))
+            }
+            None => None,
+        };
+        let want_probs = extra.logprobs.is_some_and(|n| n > 0);
+
+        let permit = match permit {
+            Some(p) => p,
+            None => self.admit().await?,
+        };
         let cancel = CancellationToken::new();
         let erx = self
             .engine
@@ -511,7 +617,7 @@ impl Gateway {
                     top_p: spec.top_p,
                     top_k: spec.top_k,
                     seed: spec.seed,
-                    extra: spec.extra.clone(),
+                    extra,
                 },
                 constraint,
                 cancel: cancel.clone(),
@@ -535,6 +641,7 @@ impl Gateway {
                     if !tools.is_empty() && *tool_choice != ToolChoice::None
             ),
             stop: StopMatcher::new(spec.stop.clone()),
+            special: want_probs.then(|| st.vocab.special.iter().copied().collect()),
             tool_outcomes: Default::default(),
             cancel: cancel.clone(),
             span: span.clone(),
@@ -624,9 +731,24 @@ impl Gateway {
     }
 
     async fn admit(&self) -> Result<OwnedSemaphorePermit, GatewayError> {
+        let mut p = self.admit_many(1).await?;
+        p.pop()
+            .ok_or_else(|| GatewayError::Internal("no admission permit".into()))
+    }
+
+    /// `n` generation slots at once, as `n` permits; waits in the queue as one request.
+    async fn admit_many(&self, n: usize) -> Result<Vec<OwnedSemaphorePermit>, GatewayError> {
         let a = &self.admission;
-        if let Ok(p) = Arc::clone(&a.slots).try_acquire_owned() {
-            return Ok(p);
+        let n32 = u32::try_from(n).unwrap_or(u32::MAX);
+        let split = |mut whole: OwnedSemaphorePermit| {
+            let mut out = Vec::with_capacity(n);
+            while let Some(one) = whole.split(1) {
+                out.push(one);
+            }
+            out
+        };
+        if let Ok(p) = Arc::clone(&a.slots).try_acquire_many_owned(n32) {
+            return Ok(split(p));
         }
         let overloaded = || GatewayError::Overloaded {
             retry_after_secs: self.cfg.retry_after_secs,
@@ -646,8 +768,9 @@ impl Gateway {
         }
         let _leave = Leave(self);
         Arc::clone(&a.slots)
-            .acquire_owned()
+            .acquire_many_owned(n32)
             .await
+            .map(split)
             .map_err(|_| overloaded())
     }
 
@@ -667,6 +790,7 @@ impl Gateway {
             E::Overloaded => GatewayError::Overloaded {
                 retry_after_secs: self.cfg.retry_after_secs,
             },
+            E::Invalid(m) => GatewayError::InvalidRequest(m),
             E::Other(m) => GatewayError::Internal(m),
         }
     }
