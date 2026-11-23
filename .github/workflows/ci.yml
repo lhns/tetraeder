@@ -2,9 +2,12 @@ name: ci
 
 on:
   push:
-    # Phase, track and serving-parity branches get CI before they have a PR.
-    branches: [main, "phase*", "track-*", "serving-*"]
+    # Phase, track and lane branches get CI before they have a PR.
+    branches: [main, "phase*", "track-*", "serving-*", "memory-*", "planner-*", "engine-*"]
+    # Docs-only pushes run only docs.yml (tree, features, sources); bench/results stays here (tests read it).
+    paths-ignore: ["docs/**", "*.md"]
   pull_request:
+    paths-ignore: ["docs/**", "*.md"]
   # record_golden: only the golden-record jobs run (record the golden per OS, upload them as artifacts).
   workflow_dispatch:
     inputs:
@@ -28,23 +31,6 @@ env:
 # the x64 ggml variant with AVX2 (info.rs forced_x64_variant_is_the_sse_tier) and which the CUDA toolkit action
 # cannot install on.
 jobs:
-  tech-tree:
-    # docs/roadmap.md and its pages are generated from docs/roadmap/nodes.yaml (AGENTS.md, "Tech tree"); a stale
-    # page or an invalid node fails here. The skill's scripts are pinned to one design-skills commit.
-    runs-on: ubuntu-24.04
-    if: ${{ !inputs.record_golden }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: lhns/design-skills
-          ref: ea48dcf933d1917d4f42ca79d9d68057a3f7a45e
-          path: .design-skills
-      - run: pip install pyyaml
-      - run: python .design-skills/skills/tech-tree/scripts/check.py --config tech-tree.yaml
-      # docs/features.md: evidence paths, node ids and every ratio number against the session files
-      - run: python scripts/check_features.py
-
   test:
     if: ${{ !inputs.record_golden }}
     name: test (${{ matrix.os }})

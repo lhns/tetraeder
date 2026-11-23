@@ -1,0 +1,29 @@
+name: docs
+
+# Runs on every push, docs-only ones included (ci.yml skips those): the tech tree, docs/features.md and the
+# docs-reading tests. docs/roadmap.md and its pages are generated from docs/roadmap/nodes.yaml (AGENTS.md,
+# "Tech tree"); a stale page or an invalid node fails here. The skill's scripts are pinned to one design-skills commit.
+on:
+  push:
+    branches: [main, "phase*", "track-*", "serving-*", "memory-*", "planner-*", "engine-*"]
+  pull_request:
+
+concurrency:
+  group: docs-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  tech-tree:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: lhns/design-skills
+          ref: ea48dcf933d1917d4f42ca79d9d68057a3f7a45e
+          path: .design-skills
+      - run: pip install pyyaml pytest
+      - run: python .design-skills/skills/tech-tree/scripts/check.py --config tech-tree.yaml
+      # docs/features.md: evidence paths, node ids and every ratio number against the session files
+      - run: python scripts/check_features.py
+      - run: python -m pytest -q tests/test_check_features.py tests/test_sources.py

@@ -1,6 +1,6 @@
 # 0084. KV cache partly in host memory
 
-Status: Proposed (2026-11-23, owner asked for a plan after the Strata 0.2.20 release; planned with the advisor). Plan feature 3 (KV tiers), RAM half; NVMe and remote stay parked in `memory-kv-tiers`. Tree node `memory-kv-host`. Not started: the order against the parity groups (ADR 0083) is the owner's.
+Status: Accepted (owner, 2026-11-23). Proposed (2026-11-23, owner asked for a plan after the Strata 0.2.20 release; planned with the advisor). Plan feature 3 (KV tiers), RAM half; NVMe and remote stay parked in `memory-kv-tiers`. Tree node `memory-kv-host`. Not started: the order against the parity groups (ADR 0083) is the owner's.
 
 ## Context
 

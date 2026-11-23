@@ -1,6 +1,6 @@
 # 0085. Strata's features: what we take, how it is judged
 
-Status: Proposed (2026-11-23, owner asked for a plan to add Strata's features; planned with the advisor). Matrix: [docs/notes/strata-parity.md](../notes/strata-parity.md).
+Status: Accepted (owner, 2026-11-23). Proposed (2026-11-23, owner asked for a plan to add Strata's features; planned with the advisor). Matrix: [docs/notes/strata-parity.md](../notes/strata-parity.md).
 
 ## Context
 
