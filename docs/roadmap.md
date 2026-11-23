@@ -309,7 +309,7 @@ flowchart TB
 | Split long contexts across GPUs | ⏸ parked | One long sequence's attention is split across GPUs and the partial results merged (context parallel, plan feature 10). |
 | Continuous batching over sequences | ✔ done · unrated | Phase 4: the scheduler admits and retires requests every step and decodes several sequences in one batched step, on libllama and the own builders. |
 | Sampler parity with llama-server | ✔ done · successful | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |
-| Expose libllama capabilities | ○ next | Embeddings, rerank, KV cache types, context shift, slot save and restore and CPU-MoE flags, which libllama has and the gateway does not expose yet (ADR 0083, group D). |
+| Expose libllama capabilities | ▶ in progress | Embeddings, rerank, KV cache types, context shift, slot save and restore and CPU-MoE flags, which libllama has and the gateway does not expose yet (ADR 0083, group D). |
 | LoRA, multimodal, multi-model scope | ⛔ blocked | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). |
 | Several models at once | ⏸ parked | The gateway serves several models and loads them on demand, with the planner sharing the hardware between them (plan feature 29). |
 | Swap and batch LoRA adapters | ⏸ parked | LoRA adapters (small fine-tuned add-ons to a model) are swapped live, and many of them run in one batch (plan feature 30). |
@@ -349,7 +349,7 @@ flowchart TB
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
-| Transport latency between two boxes | ○ next | Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023). |
+| Transport latency between two boxes | ▶ in progress | Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023). |
 | Owner picks the network transport | ⛔ blocked | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. |
 | Transport between machines | ⛔ blocked | Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16). |
 | Mutual TLS and node trust rules | ⛔ blocked | Every node proves its identity with a certificate (mutual TLS, certificates from step-ca), and rules say which node may see which data (plan feature 20). |
@@ -368,7 +368,6 @@ flowchart TB
 <!-- BEGIN GENERATED: ready-now -->
 **local**
 
-- `serving-parity-libllama`: Expose libllama capabilities
 - `memory-kv-host`: KV cache partly in RAM
 - `engine-qwen35moe-builder`: Own builder for Qwen3.6 MoE
 - `planner-ep-split`: Expert-parallel split on two GPUs
@@ -381,16 +380,18 @@ flowchart TB
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
-
-**cluster**
-
-- `cluster-transport-wan`: Transport latency between two boxes
 <!-- END GENERATED: ready-now -->
 
 ## Running
 
 <!-- BEGIN GENERATED: running -->
-_None._
+**local**
+
+- `serving-parity-libllama`: Expose libllama capabilities
+
+**cluster**
+
+- `cluster-transport-wan`: Transport latency between two boxes
 <!-- END GENERATED: running -->
 
 ## Built, waiting
@@ -427,7 +428,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 102 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 103 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -812,6 +813,7 @@ Generated on 2026-11-23.
 - `memory-kv-auto`: Planner picks the KV format (✔ done · unrated). serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.
 - `memory-prefix-disk-async`: Disk prefix restore off the step (✔ done · unrated). A prefix restored from disk is now read in the background while the waiting request queues without a slot, so other sequences keep decoding (ADR 0087 addendum); no speed number yet.
 - `memory-prefix-ssd`: Prefix cache spills to SSD (✔ done · unrated). Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
+- `ops-review-parity-batch`: Review the parity batch (✔ done · unrated). A fresh reviewer read the code seven workers merged on 2026-11-23 and found 14 bugs; 13 are fixed (unbounded n, recurrent prefix entries destroyed, disk tier files deleted by a replan, aborted reads, disk budget, cut streams, completions default, top_k, penalty windows, empty key file, seeds, native logprob trim), one already matched llama-server, and five duplicated helpers were merged.
 - `planner-low-ram-modes`: Experts on GPU and SSD only (✔ done · unrated). On a 235B layout the planner has no plan without a RAM expert tier (builder floor of top-k slots per layer, CPU placement needs all weights in RAM); it refuses and names the tier, and ram_slots 0 stays unplanned.
 - `serving-parity-endpoints`: Endpoint parity (✔ done · successful). Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open.
 - `serving-parity-fields`: Request field parity (✔ done · successful). Requests and responses carry the fields llama-server has (optional model, end token in the count, logprobs, n above 1, GBNF grammar and JSON schema, timings, fingerprint, reasoning effort), and the ones it does not support are rejected with 400 (ADR 0083, group B).
@@ -848,8 +850,8 @@ Each track has its own page with its tree, node table and per-node details.
 - [memory - memory and streaming](roadmap/tracks/memory.md): 17 nodes (11 done, 1 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 28 nodes (17 done, 2 next, 2 blocked, 7 parked)
+- [serving - serving](roadmap/tracks/serving.md): 28 nodes (17 done, 1 in progress, 1 next, 2 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (32 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 next, 11 blocked)
+- [ops - operations](roadmap/tracks/ops.md): 14 nodes (12 done, 2 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 in progress, 11 blocked)
 <!-- END GENERATED: tracks -->

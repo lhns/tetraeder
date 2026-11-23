@@ -134,6 +134,16 @@ impl PrefixCache {
 
     /// The entry of `format` sharing the longest prefix with `prompt`: its index and that length.
     pub fn best(&mut self, format: &str, prompt: &[i32]) -> Option<(usize, usize)> {
+        self.best_by(format, prompt, false)
+    }
+
+    /// Like `best`, among the entries `prompt` starts with: the only ones a model that cannot
+    /// cut a suffix can use, and taking any other would destroy an entry for nothing.
+    pub fn best_whole(&mut self, format: &str, prompt: &[i32]) -> Option<(usize, usize)> {
+        self.best_by(format, prompt, true)
+    }
+
+    fn best_by(&mut self, format: &str, prompt: &[i32], whole: bool) -> Option<(usize, usize)> {
         if let Some(d) = &mut self.disk {
             d.poll();
         }
@@ -142,13 +152,14 @@ impl PrefixCache {
             .iter()
             .enumerate()
             .filter(|(_, e)| e.format == format)
-            .map(|(i, e)| (i, common_prefix(&e.tokens, prompt)))
-            .filter(|&(_, n)| n > 0)
+            .map(|(i, e)| (i, common_prefix(&e.tokens, prompt), e.tokens.len()))
+            .filter(|&(_, n, len)| n > 0 && (!whole || n == len))
+            .map(|(i, n, _)| (i, n))
             .max_by_key(|&(_, n)| n);
         let disk = self
             .disk
             .as_ref()
-            .and_then(|d| d.best(format, prompt))
+            .and_then(|d| d.best(format, prompt, whole))
             .map(|(i, n)| (self.entries.len() + i, n));
         // RAM wins a tie: it restores faster.
         match (ram, disk) {
@@ -271,6 +282,23 @@ mod tests {
         p.push(7);
         assert_eq!(c.best(F, &p), Some((0, 10)));
         assert_eq!(c.best(F, &[42]), None);
+    }
+
+    #[test]
+    fn best_whole_skips_entries_the_prompt_only_partly_shares() {
+        let mut c = PrefixCache::new(1000);
+        c.insert(F, seq(10, 0), vec![0; 10]);
+        let mut shorter = seq(6, 0);
+        shorter[5] = 99;
+        c.insert(F, shorter, vec![0; 6]);
+        let mut p = seq(8, 0);
+        p.push(7);
+        // The 10-token entry shares 8 of its tokens: a cut. Whole is the other one, if at all.
+        assert_eq!(c.best(F, &p), Some((0, 8)));
+        assert_eq!(c.best_whole(F, &p), None);
+        let mut q = seq(10, 0);
+        q.push(7);
+        assert_eq!(c.best_whole(F, &q), Some((0, 10)));
     }
 
     #[test]
@@ -523,7 +551,15 @@ mod tests {
     fn files_of_an_earlier_run_are_removed_at_startup_and_ours_on_drop() {
         let dir = TmpDir::new("cleanup");
         std::fs::create_dir_all(&dir.0).unwrap();
-        std::fs::write(dir.0.join("tetraeder-prefix-1-0.tkv"), b"old").unwrap();
+        let old = dir.0.join("tetraeder-prefix-1-0.tkv");
+        std::fs::write(&old, b"old").unwrap();
+        // Written by a process that is gone: older than this one.
+        std::fs::File::options()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH)
+            .unwrap();
         std::fs::write(dir.0.join("keep.txt"), b"mine").unwrap();
         let mut c = with_disk(10, 100, &dir);
         assert_eq!(dir.files(), 1);
@@ -636,6 +672,7 @@ mod tests {
         gate.open();
         let t0 = std::time::Instant::now();
         while pool.stats().recycled == before && t0.elapsed().as_secs() < 30 {
+            c.flush_disk();
             std::thread::sleep(Duration::from_millis(2));
         }
         assert!(pool.stats().recycled > before, "the buffer went back");
@@ -668,5 +705,94 @@ mod tests {
             [true, true, false]
         );
         gate.open();
+    }
+
+    // hardware: none
+    #[test]
+    fn a_new_tier_on_the_same_directory_leaves_the_live_ones_files() {
+        // A replan opens the next scheduler's tier while the old one still holds files.
+        crate::prefix_disk::process_start();
+        std::thread::sleep(Duration::from_millis(50));
+        let dir = TmpDir::new("replan");
+        let mut a = with_disk(10, 100, &dir);
+        a.insert(F, seq(3, 0), vec![1; 10]);
+        a.insert(F, seq(3, 100), vec![2; 10]);
+        a.flush_disk();
+        assert_eq!(dir.files(), 1);
+        let b = with_disk(10, 100, &dir);
+        assert_eq!(dir.files(), 1, "opening a tier removed a live file");
+        drop(b);
+        assert_eq!(dir.files(), 1, "dropping a tier removed a live file");
+        let (i, _) = a.best(F, &seq(3, 0)).unwrap();
+        assert_eq!(restore(&mut a, i).0.map(|(t, _)| t), Some(seq(3, 0)));
+        a.insert(F, seq(3, 200), vec![3; 10]);
+        a.flush_disk();
+        assert_eq!(dir.files(), 1);
+        drop(a);
+        assert_eq!(dir.files(), 0);
+    }
+
+    // hardware: none
+    #[test]
+    fn an_aborted_read_still_counts_and_its_entry_is_not_evicted() {
+        let dir = TmpDir::new("abort-busy");
+        let gate = Gate::default();
+        let (c, _) = pooled(10, 4);
+        let mut c = c.with_disk_reader(gate.reader()).with_disk(&dir.0, 30);
+        for k in 0..4 {
+            c.insert(F, seq(3, k * 100), vec![k as u8; 10]);
+            c.flush_disk();
+        }
+        // Disk holds #0..#2, RAM #3. Read #0 and #1, then give both up.
+        for k in 0..2 {
+            let (i, _) = c.best(F, &seq(3, k * 100)).unwrap();
+            let r = c.start_restore(i).unwrap();
+            c.abort_restore(r);
+        }
+        assert_eq!(c.restoring(), 2, "the readers are still running");
+        let (i, _) = c.best(F, &seq(3, 200)).unwrap();
+        assert!(c.start_restore(i).is_none(), "MAX_READS exceeded");
+        // A spill needing room evicts the idle entry, never one a reader has open.
+        c.insert(F, seq(3, 400), vec![9; 10]);
+        c.flush_disk();
+        assert!(c.holds(F, &seq(3, 0)) && c.holds(F, &seq(3, 100)));
+        assert!(!c.holds(F, &seq(3, 200)));
+        gate.open();
+        let t0 = std::time::Instant::now();
+        while c.restoring() > 0 {
+            c.flush_disk();
+            assert!(t0.elapsed().as_secs() < 30, "the readers never finished");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            c.best(F, &seq(3, 0)).is_some(),
+            "the entry is offered again"
+        );
+    }
+
+    // hardware: none
+    #[test]
+    fn a_spill_that_cannot_make_room_is_dropped_not_over_budget() {
+        let dir = TmpDir::new("overshoot");
+        let gate = Gate::default();
+        let (c, _) = pooled(10, 4);
+        let mut c = c.with_disk_reader(gate.reader()).with_disk(&dir.0, 20);
+        for k in 0..3 {
+            c.insert(F, seq(3, k * 100), vec![k as u8; 10]);
+            c.flush_disk();
+        }
+        // Both disk entries are being read: nothing can be evicted.
+        let reads: Vec<_> = (0..2)
+            .map(|k| {
+                let (i, _) = c.best(F, &seq(3, k * 100)).unwrap();
+                c.start_restore(i).unwrap()
+            })
+            .collect();
+        c.insert(F, seq(3, 300), vec![7; 10]);
+        c.flush_disk();
+        assert_eq!(c.disk_bytes(), 20, "over the disk budget");
+        assert!(!c.holds(F, &seq(3, 200)), "the spill was dropped");
+        gate.open();
+        drop(reads);
     }
 }

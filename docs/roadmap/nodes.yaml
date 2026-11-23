@@ -2341,11 +2341,36 @@ nodes:
   folded: []
   overview: false
   plain: Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open.
+- id: ops-review-parity-batch
+  title: Review the parity batch
+  track: ops
+  kind: refactor
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0087-prefix-cache-disk-tier.md
+  - docs/notes/llamacpp-parity.md
+  - crates/scheduler/tests/no_suffix_cut.rs
+  - crates/gateway/tests/fields.rs
+  verdict_quote: 'CI run 45138471418 green on all jobs (test ubuntu-24.04 and test windows-latest passed); the new test of finding 2 failed before its fix'
+  headline: '13 of 14 findings fixed'
+  depends_on:
+  - serving-parity-endpoints
+  - memory-prefix-disk-async
+  - memory-kv-auto
+  - serving-recurrent-reuse
+  replaced_by: []
+  lane: local
+  start: 2026-11-23
+  end: 2026-11-23
+  folded: []
+  overview: false
+  plain: A fresh reviewer read the code seven workers merged on 2026-11-23 and found 14 bugs; 13 are fixed (unbounded n, recurrent prefix entries destroyed, disk tier files deleted by a replan, aborted reads, disk budget, cut streams, completions default, top_k, penalty windows, empty key file, seeds, native logprob trim), one already matched llama-server, and five duplicated helpers were merged.
 - id: serving-parity-libllama
   title: Expose libllama capabilities
   track: serving
   kind: feature
-  state: next
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -2354,7 +2379,7 @@ nodes:
   - serving-parity-endpoints
   replaced_by: []
   lane: local
-  start: ''
+  start: 2026-11-23
   end: ''
   folded: []
   overview: false
@@ -2382,7 +2407,7 @@ nodes:
   title: Transport latency between two boxes
   track: cluster
   kind: experiment
-  state: next
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -2391,7 +2416,7 @@ nodes:
   - bench-m2-report
   replaced_by: []
   lane: cluster
-  start: ''
+  start: 2026-11-23
   end: ''
   folded: []
   overview: false

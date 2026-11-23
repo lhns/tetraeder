@@ -45,15 +45,9 @@ pub struct SamplingFields {
     samplers: Option<Value>,
     grammar: Option<Value>,
     json_schema: Option<Value>,
-    return_tokens: Option<Value>,
-    timings_per_token: Option<Value>,
-    response_fields: Option<Value>,
-    t_max_predict_ms: Option<Value>,
-    n_indent: Option<Value>,
-    lora: Option<Value>,
-    adaptive_target: Option<Value>,
-    post_sampling_probs: Option<Value>,
-    grammar_lazy: Option<Value>,
+    /// The fields no struct above names; `UNSUPPORTED` is looked up here.
+    #[serde(flatten)]
+    other: Map<String, Value>,
 }
 
 /// Fields that are rejected when they differ from llama-server's default, with the reason.
@@ -75,22 +69,24 @@ const UNSUPPORTED: [(&str, &str); 9] = [
     ("grammar_lazy", "lazy grammars are not supported"),
 ];
 
-fn is_default(name: &str, v: &Value) -> bool {
+/// Null, false, zero or empty: a field llama-server treats as not sent.
+fn is_unset(v: &Value) -> bool {
     match v {
         Value::Null | Value::Bool(false) => true,
         Value::Bool(true) => false,
-        Value::Number(n) => {
-            let x = n.as_f64().unwrap_or(0.0);
-            // `adaptive_target` is off below zero, the others at zero.
-            if name == "adaptive_target" {
-                x < 0.0
-            } else {
-                x == 0.0
-            }
-        }
+        Value::Number(n) => n.as_f64().unwrap_or(0.0) == 0.0,
         Value::Array(a) => a.is_empty(),
         Value::String(s) => s.is_empty(),
         Value::Object(o) => o.is_empty(),
+    }
+}
+
+/// Whether `v` is the default of the `UNSUPPORTED` field `name`.
+fn is_default(name: &str, v: &Value) -> bool {
+    match (name, v) {
+        // Off below zero, not at zero.
+        ("adaptive_target", Value::Number(n)) => n.as_f64().unwrap_or(0.0) < 0.0,
+        _ => is_unset(v),
     }
 }
 
@@ -199,30 +195,15 @@ fn breakers(v: &Value) -> Result<Vec<String>, GatewayError> {
 impl SamplingFields {
     /// Both `grammar` and `json_schema` are set (chat requests reject that, as llama-server does).
     pub fn has_grammar_and_schema(&self) -> bool {
-        let set = |v: &Option<Value>| v.as_ref().is_some_and(|v| !is_default("", v));
+        let set = |v: &Option<Value>| v.as_ref().is_some_and(|v| !is_unset(v));
         set(&self.grammar) && set(&self.json_schema)
     }
 
     fn reject_unsupported(&self) -> Result<(), GatewayError> {
-        let fields: [(&str, &Option<Value>); 9] = [
-            ("return_tokens", &self.return_tokens),
-            ("timings_per_token", &self.timings_per_token),
-            ("response_fields", &self.response_fields),
-            ("t_max_predict_ms", &self.t_max_predict_ms),
-            ("n_indent", &self.n_indent),
-            ("lora", &self.lora),
-            ("adaptive_target", &self.adaptive_target),
-            ("post_sampling_probs", &self.post_sampling_probs),
-            ("grammar_lazy", &self.grammar_lazy),
-        ];
-        for (name, v) in fields {
-            if let Some(v) = v
+        for (name, why) in UNSUPPORTED {
+            if let Some(v) = self.other.get(name)
                 && !is_default(name, v)
             {
-                let why = UNSUPPORTED
-                    .iter()
-                    .find(|(n, _)| *n == name)
-                    .map_or("", |(_, w)| *w);
                 return Err(bad(format!("{name} is not supported: {why}")));
             }
         }
@@ -232,7 +213,7 @@ impl SamplingFields {
     /// `grammar` (GBNF text) or `json_schema`; the grammar wins when both are sent, as in
     /// llama-server's completion schema.
     fn grammar(&self) -> Result<Option<GrammarSource>, GatewayError> {
-        let set = |v: &Option<Value>| v.clone().filter(|v| !is_default("", v));
+        let set = |v: &Option<Value>| v.clone().filter(|v| !is_unset(v));
         match (set(&self.grammar), set(&self.json_schema)) {
             (Some(Value::String(g)), _) => Ok(Some(GrammarSource::Gbnf(g))),
             (Some(_), _) => Err(bad("grammar must be a string")),
@@ -295,9 +276,25 @@ impl SamplingFields {
     }
 }
 
-/// A request `seed`: negative means random, like llama-server.
+/// `top_k` as sent: below 0 clamps to 0 (off) and above `i32::MAX` to it, as llama-server's
+/// soft limits do.
+pub fn top_k(v: Option<i64>) -> Option<u32> {
+    v.map(|k| k.clamp(0, i64::from(i32::MAX)) as u32)
+}
+
+/// The libllama seed of a request or flag `seed`, as llama-server converts it: the JSON integer
+/// is cast to `uint32_t`, so it wraps modulo 2^32 (-1 becomes 4294967295), and
+/// `LLAMA_DEFAULT_SEED` (4294967295) asks libllama for a random seed. `None` is that random seed.
+pub fn libllama_seed(v: i64) -> Option<u32> {
+    match v as u32 {
+        u32::MAX => None,
+        s => Some(s),
+    }
+}
+
+/// A request `seed` for the engine; see [`libllama_seed`].
 pub fn seed(v: Option<i64>) -> Option<u64> {
-    v.and_then(|s| u64::try_from(s).ok())
+    v.and_then(libllama_seed).map(u64::from)
 }
 
 #[cfg(test)]
@@ -341,6 +338,24 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_fields_are_rejected_unless_at_their_default() {
+        for (name, _) in UNSUPPORTED {
+            let on = if name == "adaptive_target" {
+                json!(0.5)
+            } else {
+                json!(true)
+            };
+            assert!(parse(json!({name: on})).is_err(), "{name}");
+            let off = if name == "adaptive_target" {
+                json!(-1)
+            } else {
+                json!(false)
+            };
+            assert!(parse(json!({name: off})).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
     fn samplers_by_name_and_by_letter() {
         let a = parse(json!({"samplers": ["top-k", "Min_P", "temp"]})).unwrap();
         let b = parse(json!({"samplers": "kmt"})).unwrap();
@@ -357,8 +372,23 @@ mod tests {
     }
 
     #[test]
-    fn negative_seed_is_random() {
-        assert_eq!(seed(Some(-1)), None);
+    fn seeds_convert_as_llama_server_casts_them() {
+        assert_eq!(seed(None), None);
         assert_eq!(seed(Some(7)), Some(7));
+        // -1 and LLAMA_DEFAULT_SEED are the random seed
+        assert_eq!(seed(Some(-1)), None);
+        assert_eq!(seed(Some(4_294_967_295)), None);
+        // other values wrap modulo 2^32, as the uint32_t cast does
+        assert_eq!(seed(Some(4_294_967_296)), Some(0));
+        assert_eq!(seed(Some(-5)), Some(4_294_967_291));
+        assert_eq!(libllama_seed(i64::MAX), None);
+    }
+
+    #[test]
+    fn top_k_below_zero_is_off_and_huge_values_clamp() {
+        assert_eq!(top_k(None), None);
+        assert_eq!(top_k(Some(-1)), Some(0));
+        assert_eq!(top_k(Some(40)), Some(40));
+        assert_eq!(top_k(Some(i64::MAX)), Some(i32::MAX as u32));
     }
 }

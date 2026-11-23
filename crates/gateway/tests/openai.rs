@@ -362,7 +362,7 @@ async fn models_endpoints() {
 }
 
 #[tokio::test]
-async fn completions_shape_and_default_max_tokens() {
+async fn completions_shape_and_unlimited_default_max_tokens() {
     let engine = FakeEngine::fixed("0123456789abcdefghijXYZ");
     let prompts = engine.prompts.clone();
     let (app, _) = app(engine);
@@ -378,12 +378,14 @@ async fn completions_shape_and_default_max_tokens() {
     assert_eq!(v["object"], "text_completion");
     assert!(v["created"].is_u64());
     let c = &v["choices"][0];
-    assert_eq!(c["text"], "0123456789abcdef", "default max_tokens is 16");
+    // llama-server's n_predict default is -1: no limit but the context
+    assert_eq!(c["text"], "0123456789abcdefghijXYZ");
     assert_eq!(c["index"], 0);
     assert!(c["logprobs"].is_null());
-    assert_eq!(c["finish_reason"], "length");
+    assert_eq!(c["finish_reason"], "stop");
     assert_eq!(v["usage"]["prompt_tokens"], 6);
-    assert_eq!(v["usage"]["completion_tokens"], 16);
+    // the text and the end-of-generation token
+    assert_eq!(v["usage"]["completion_tokens"], 24);
     assert_eq!(
         prompts.lock().unwrap()[0],
         "Count:",

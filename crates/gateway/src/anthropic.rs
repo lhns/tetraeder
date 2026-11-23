@@ -36,7 +36,7 @@ struct MessagesRequest {
     stop_sequences: Vec<String>,
     temperature: Option<f32>,
     top_p: Option<f32>,
-    top_k: Option<u32>,
+    top_k: Option<i64>,
     seed: Option<i64>,
     #[serde(default)]
     stream: bool,
@@ -434,7 +434,7 @@ fn spec(req: MessagesRequest) -> Result<GenerateSpec, GatewayError> {
     s.max_tokens = req.max_tokens;
     s.temperature = req.temperature;
     s.top_p = req.top_p;
-    s.top_k = req.top_k;
+    s.top_k = crate::sampling::top_k(req.top_k);
     s.seed = crate::sampling::seed(req.seed);
     s.extra = req.sampling.extras()?;
     s.stop = req.stop_sequences;
