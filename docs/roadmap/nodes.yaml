@@ -2341,11 +2341,32 @@ nodes:
   folded: []
   overview: false
   plain: Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open.
+- id: ops-review-parity-batch
+  title: Review the parity batch
+  track: ops
+  kind: refactor
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - serving-parity-endpoints
+  - memory-prefix-disk-async
+  - memory-kv-auto
+  - serving-recurrent-reuse
+  replaced_by: []
+  lane: local
+  start: 2026-11-23
+  end: ''
+  folded: []
+  overview: false
+  plain: One fresh reviewer reads the code seven workers merged on 2026-11-23 (llama-server parity A to C, KV format auto, prefix disk tier, recurrent reuse) for bugs, gaps and duplication; real findings get fixed, nitpicks dropped.
 - id: serving-parity-libllama
   title: Expose libllama capabilities
   track: serving
   kind: feature
-  state: next
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -2354,7 +2375,7 @@ nodes:
   - serving-parity-endpoints
   replaced_by: []
   lane: local
-  start: ''
+  start: 2026-11-23
   end: ''
   folded: []
   overview: false
@@ -2382,7 +2403,7 @@ nodes:
   title: Transport latency between two boxes
   track: cluster
   kind: experiment
-  state: next
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -2391,7 +2412,7 @@ nodes:
   - bench-m2-report
   replaced_by: []
   lane: cluster
-  start: ''
+  start: 2026-11-23
   end: ''
   folded: []
   overview: false

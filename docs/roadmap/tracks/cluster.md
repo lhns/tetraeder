@@ -9,7 +9,7 @@ Scope: Phase 6 and on: transport, discovery, mTLS, replicas, failover, stages, e
 <!-- BEGIN GENERATED: track-cluster -->
 ```mermaid
 flowchart TB
-    cluster_transport_wan[/"○ Transport latency<br/>between two boxes"/]
+    cluster_transport_wan[/"▶ Transport latency<br/>between two boxes"/]
     cluster_transport["⛔ Transport between<br/>machines"]
     cluster_mtls["⛔ Mutual TLS and node<br/>trust rules"]
     cluster_discovery["⛔ Find nodes<br/>automatically"]
@@ -55,7 +55,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class cluster_transport_wan next
+    class cluster_transport_wan inprog
     class cluster_transport,cluster_mtls,cluster_discovery,cluster_join_leave,cluster_pipeline_nodes,cluster_experts_nodes,cluster_remote_kv,cluster_replicas,cluster_failover,cluster_replica_scaling blocked
 ```
 <!-- END GENERATED: track-cluster -->
@@ -65,7 +65,7 @@ flowchart TB
 <!-- BEGIN GENERATED: table-cluster -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `cluster-transport-wan` | Transport latency between two boxes | experiment | cluster | next | unrated |  |  | bench-m2-report |  |  |  |  |
+| `cluster-transport-wan` | Transport latency between two boxes | experiment | cluster | in-progress | unrated | 2026-11-23 |  | bench-m2-report |  |  |  |  |
 | `cluster-owner-transport` | Owner picks the network transport | owner-decision | owner | blocked | n/a |  |  | cluster-transport-wan |  |  |  |  |
 | `cluster-transport` | Transport between machines | feature | cluster | blocked | unrated |  |  | bench-m2-report, cluster-owner-transport |  |  |  |  |
 | `cluster-mtls` | Mutual TLS and node trust rules | feature | cluster | blocked | unrated |  |  | cluster-transport |  |  |  |  |
