@@ -348,8 +348,7 @@ flowchart TB
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
-| Transport latency between two boxes | ▶ in progress | Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023). |
-| Owner picks the network transport | ⛔ blocked | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. |
+| Owner picks the network transport | ○ next | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. |
 | Transport between machines | ⛔ blocked | Phase 6: one transport trait for point-to-point and collective traffic between nodes, with trace context crossing nodes (plan feature 16). |
 | Mutual TLS and node trust rules | ⛔ blocked | Every node proves its identity with a certificate (mutual TLS, certificates from step-ca), and rules say which node may see which data (plan feature 20). |
 | Find nodes automatically | ⛔ blocked | Nodes come from a static list or are found on the local network (mDNS), and the profiler measures each link (plan feature 17). |
@@ -384,9 +383,7 @@ flowchart TB
 ## Running
 
 <!-- BEGIN GENERATED: running -->
-**cluster**
-
-- `cluster-transport-wan`: Transport latency between two boxes
+_None._
 <!-- END GENERATED: running -->
 
 ## Built, waiting
@@ -423,7 +420,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 104 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 105 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -805,6 +802,7 @@ Generated on 2026-11-23.
 - `multi-accept-adr-0081`: Accept the prefill capture fix (✔ done · n/a). The owner accepted ADR 0081 with the M2 decisions, after its GPU test and the s3f2 confirmation passed.
 - `serving-parity-harness`: llama-server conformance harness (✔ done · successful). One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
 - `bench-strata-q36`: Strata against llama-server on Qwen3.6 (✔ done · unrated). One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085).
+- `cluster-transport-wan`: Transport latency between two boxes (✔ done · unrated). Measured QUIC, TCP with TLS and plain TCP between two rented boxes (Connecticut and Germany, 90 ms), on one host and on Linux loopback; ADR 0023 holds the numbers, and no same-datacenter pair on different hosts was on offer.
 - `memory-kv-auto`: Planner picks the KV format (✔ done · unrated). serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.
 - `memory-prefix-disk-async`: Disk prefix restore off the step (✔ done · unrated). A prefix restored from disk is now read in the background while the waiting request queues without a slot, so other sequences keep decoding (ADR 0087 addendum); no speed number yet.
 - `memory-prefix-ssd`: Prefix cache spills to SSD (✔ done · unrated). Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
@@ -849,5 +847,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [serving - serving](roadmap/tracks/serving.md): 28 nodes (18 done, 2 next, 1 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (32 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 14 nodes (12 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 in progress, 11 blocked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 done, 1 next, 10 blocked)
 <!-- END GENERATED: tracks -->

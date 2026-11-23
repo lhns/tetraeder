@@ -33,10 +33,33 @@ Leaning to TCP with TLS (mTLS in Phase 6) for per-layer expert traffic if the WA
 
 Pending, to fill in before this ADR is Accepted:
 
-- WAN numbers between two Vast boxes (`transport-bench server` on one, `client --addr` on the other; needs `max_instances 2` for about an hour; run AES and ChaCha, the boxes have AES-NI).
-- Linux loopback and same-datacenter numbers, to separate protocol cost from Windows loopback cost.
+- WAN numbers between two Vast boxes: measured 2026-11-23, see "WAN, loopback and same-host numbers" below.
+- Linux loopback: measured on five boxes. Same datacenter: no second host in the datacenter was on offer, so the "same-DC" row is two containers on one host (RTT 0.23 ms minimum); a switch-level same-DC pair is still open.
 - RDMA: not available on Vast; revisit on homelab hardware (Phase 6) or drop from the options.
 - iroh (QUIC with relay and hole punching) is not measured here; add it if NAT traversal is a requirement.
+
+## WAN, loopback and same-host numbers (2026-11-23)
+
+Session `bench-transport-wan`, tree node `cluster-transport-wan`. Full tables, boxes, parameters and limits: [`bench/results/transport-wan-20261123/README.md`](../../bench/results/transport-wan-20261123/README.md). Two Vast boxes, Connecticut (US) and Germany, RTT about 90 ms (minimum plain-TCP 8 KB round trip 88.8 ms; ICMP is blocked in the containers). All boxes have AES-NI. Medians over repetitions of each call's p50 and p99, in ms; WAN: 3 repetitions of 300 round trips (60 for 1 MB), so its p99 is a tail estimate from few samples. Same host and Linux loopback: 5 repetitions of 2000 round trips (400 for 1 MB). The p50 range over repetitions and p90 are in the README.
+
+| Path | Size | Cipher | TCP p50 / p99 | TCP+TLS p50 / p99 | QUIC p50 / p99 |
+| --- | --- | --- | --- | --- | --- |
+| WAN, 90 ms | 8 KB | AES | 93.8 / 94.3 | 91.0 / 92.3 | 93.8 / 94.3 |
+| WAN, 90 ms | 8 KB | ChaCha | 89.5 / 89.9 | 99.4 / 99.9 | 93.6 / 93.9 |
+| WAN, 90 ms | 1 MB | AES | 286 / 379 | 300 / 304 | 196 / 214 |
+| WAN, 90 ms | 1 MB | ChaCha | 274 / 365 | 274 / 305 | 198 / 207 |
+| Same host, 0.3 ms | 8 KB | AES | 0.52 / 0.62 | 0.41 / 0.66 | 0.58 / 0.78 |
+| Same host, 0.3 ms | 8 KB | ChaCha | 0.53 / 0.63 | 0.46 / 0.62 | 0.62 / 0.81 |
+| Same host, 0.3 ms | 1 MB | AES | 6.3 / 10.3 | 5.1 / 10.5 | 22.3 / 43.4 |
+| Same host, 0.3 ms | 1 MB | ChaCha | 4.2 / 14.4 | 5.1 / 11.7 | 23.6 / 46.0 |
+| Linux loopback (a-348060) | 8 KB | AES | 0.07 / 0.09 | 0.12 / 0.14 | 0.22 / 0.30 |
+| Linux loopback (a-348060) | 8 KB | ChaCha | 0.07 / 0.11 | 0.14 / 0.16 | 0.23 / 0.29 |
+| Linux loopback (a-348060) | 1 MB | AES | 0.71 / 0.95 | 1.56 / 1.96 | 8.5 / 10.6 |
+| Linux loopback (a-348060) | 1 MB | ChaCha | 0.74 / 0.96 | 1.94 / 2.10 | 9.8 / 12.1 |
+
+Throughput (MiB/s, median): WAN 1 MB stream TCP 35 to 36, TCP+TLS 35 to 39, QUIC 48 to 54; loopback TCP about 3600, TCP+TLS 1000 to 1300, QUIC 200 to 220.
+
+What the numbers say. At 8 KB the WAN round trip is the network: TCP+TLS and QUIC sit within 6 ms of each other and of plain TCP (about 90 to 99 ms) with the sign flipping between AES and ChaCha, so the gap is below the path noise (the plain-TCP rows alone move 4 ms between calls) and no TLS-versus-QUIC latency gap can be claimed on WAN. At 1 MB QUIC is faster on the WAN, by 78 to 104 ms at p50 (196 to 198 ms against 274 to 300 ms), because quinn's 32 MiB windows keep the 90 ms path full (48 to 54 MiB/s) while TCP ran on stock buffers (35 to 39 MiB/s); that is an untuned-TCP effect, not a protocol property, and a tuned TCP would need its own run. On the same host, where the network is not the limit, the cost of the protocol shows: TCP+TLS is 0.41 to 0.46 ms and QUIC 0.58 to 0.62 ms at 8 KB (QUIC about 0.15 to 0.2 ms slower per hop, matching Linux loopback: 0.12 to 0.14 against 0.22 to 0.23 ms), and at 1 MB TCP+TLS takes 5.1 ms against 22 to 24 ms for QUIC. The ChaCha-versus-AES choice made no consistent difference on these AES-NI hosts. At 60 hops per token, 0.15 to 0.2 ms per hop is 9 to 12 ms per token in favor of TCP+TLS on a fast link, while a 90 ms WAN hop would cost about 5.4 s per token whatever the protocol, so per-layer expert traffic over a WAN is out of reach for any transport tested; the decision matters for LAN-class links. No same-datacenter pair on different hosts was available; the same-host pair goes through the host's NAT.
 
 ## Consequences
 

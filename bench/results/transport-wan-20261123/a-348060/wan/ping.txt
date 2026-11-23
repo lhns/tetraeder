@@ -1,0 +1,4 @@
+peer=b-62819 ip=158.181.52.18 ports=43216,43648,43950,43477,43040,43974
+-- ping 158.181.52.18
+scripts/transport_wan_bench.sh: line 91: /usr/bin/ping: Operation not permitted
+ping unavailable or blocked

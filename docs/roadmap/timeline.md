@@ -131,7 +131,7 @@ gantt
     Owner accepts nine design records :ops_owner_accepts_adrs, 2026-11-19, 2026-11-19
     Review the parity batch :ops_review_parity_batch, 2026-11-23, 2026-11-23
     section cluster - multi-node cluster
-    Transport latency between two boxes :active, cluster_transport_wan, 2026-11-23, 2026-11-23
+    Transport latency between two boxes :cluster_transport_wan, 2026-11-23, 2026-11-23
 ```
 
 Not shown (no `start`): `engine-backend-parity`, `engine-glm-builder`, `engine-deepseek-builder`, `engine-bitnet-builder`, `engine-qwen35moe-builder`, `engine-one-graph-per-token`, `engine-dense-amx`, `memory-safetensors`, `memory-kv-tiers`, `memory-kv-host`, `memory-prefill-misses`, `memory-typed-slots`, `planner-cost-model-v5-host2`, `planner-live-replan`, `planner-advisor-auto`, `planner-split-layouts`, `planner-low-bit-formats`, `planner-ep-split`, `planner-ram-slots-zero`, `planner-slot-campaign`, `planner-replan-part-b`, `multi-live-reshard`, `multi-split-hardware`, `multi-context-parallel`, `serving-parity-owner-scope`, `serving-multi-model`, `serving-multi-lora`, `serving-auth-quotas`, `serving-multimodal`, `serving-owner-drafters`, `serving-mtp-drafts`, `serving-self-spec`, `serving-strata-owner-scope`, `serving-prefix-first`, `bench-30b-c4-gap`, `bench-phase6-exit`, `bench-m3-report`, `bench-phase7-exit`, `bench-m4-report`, `bench-phase8-exit`, `bench-phase9-exit`, `bench-spec-rerun`, `bench-strata-pairing`, `bench-d1-session`, `bench-open-records`, `ops-packages`, `ops-profiling-mode`, `cluster-owner-transport`, `cluster-transport`, `cluster-mtls`, `cluster-discovery`, `cluster-join-leave`, `cluster-pipeline-nodes`, `cluster-experts-nodes`, `cluster-remote-kv`, `cluster-replicas`, `cluster-failover`, `cluster-replica-scaling`
