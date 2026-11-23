@@ -321,7 +321,7 @@ struct Req {
     tx: mpsc::Sender<GenEvent>,
     /// Events not yet accepted by the channel; while there are any the request is paused.
     outbox: VecDeque<GenEvent>,
-    /// Created at the first admission, in arrival order of admissions (`counter_seed`).
+    /// Created at the first admission.
     sampler: Option<Sampler>,
     stats: EngineStats,
     times: StepTimes,

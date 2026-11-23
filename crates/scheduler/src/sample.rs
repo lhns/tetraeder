@@ -159,6 +159,31 @@ impl SampleParams {
             }
     }
 
+    /// Whether a greedy chain may leave out its truncating stages (top_n_sigma, top_k, top_p,
+    /// min_p, temperature): they keep the best token, so they only matter when a later stage
+    /// can remove it (typical_p, XTC) or sees the truncated candidates (penalties and DRY
+    /// placed after one of them in a custom order).
+    fn greedy_can_elide(&self) -> bool {
+        if self.typical_p < 1.0 || self.xtc_on() {
+            return false;
+        }
+        let truncates = |k: &SamplerKind| match k {
+            SamplerKind::TopNSigma => self.top_n_sigma > 0.0,
+            SamplerKind::TopK => self.top_k > 0,
+            SamplerKind::TopP => self.top_p < 1.0,
+            SamplerKind::MinP => self.min_p > 0.0,
+            _ => false,
+        };
+        let first = self.samplers.iter().position(truncates);
+        first.is_none_or(|f| {
+            !self.samplers[f..].iter().any(|k| match k {
+                SamplerKind::Penalties => self.penalties_on(),
+                SamplerKind::Dry => self.dry_on(),
+                _ => false,
+            })
+        })
+    }
+
     fn penalties_on(&self) -> bool {
         self.penalty_last_n != 0
             && (self.penalty_repeat != 1.0
@@ -243,6 +268,7 @@ impl Sampler {
         }
 
         let greedy = p.is_greedy();
+        let elide = greedy && p.greedy_can_elide();
         let k = p.min_keep;
         for kind in p.samplers.iter() {
             chain = match kind {
@@ -272,8 +298,9 @@ impl Sampler {
                 SamplerKind::Xtc if p.xtc_on() => {
                     chain.xtc(p.xtc_probability, p.xtc_threshold, k, seed)
                 }
-                // The rest keep the best token, so they cannot change an argmax.
-                _ if greedy => chain,
+                // With nothing before the end that removes the best token or reads the
+                // candidates after truncation, the rest cannot change an argmax.
+                _ if elide => chain,
                 SamplerKind::TopNSigma if p.top_n_sigma > 0.0 => chain.top_n_sigma(p.top_n_sigma),
                 SamplerKind::TopK if p.top_k > 0 => {
                     chain.top_k(p.top_k.min(i32::MAX as u32) as i32)
@@ -396,6 +423,79 @@ mod tests {
         );
         assert_eq!(ours(&SampleParams::default(), SEED), want);
         assert_ne!(ours(&SampleParams::default(), SEED + 1), want);
+    }
+
+    #[test]
+    fn disabled_stages_left_out_change_nothing() {
+        // The literal list of llama-server with every stage present, disabled ones included.
+        let want = reference(
+            Chain::chain()
+                .penalties(N as i32, 64, 1.0, 0.0, 0.0)
+                .top_n_sigma(-1.0)
+                .top_k(40)
+                .typical(1.0, 0)
+                .top_p(0.95, 0)
+                .min_p(0.05, 0)
+                .xtc(0.0, 0.1, 0, SEED)
+                .temperature_ext(0.8, 0.0, 1.0)
+                .dist(SEED),
+        );
+        assert_eq!(ours(&SampleParams::default(), SEED), want);
+    }
+
+    #[test]
+    fn greedy_keeps_stages_that_can_remove_the_best_token() {
+        // Typical sampling and XTC may drop the argmax, so the stages before them must run.
+        let typical = params(|p| {
+            p.temperature = 0.0;
+            p.typical_p = 0.3;
+        });
+        let want = reference(
+            Chain::chain()
+                .top_k(40)
+                .typical(0.3, 0)
+                .top_p(0.95, 0)
+                .min_p(0.05, 0)
+                .temperature_ext(0.0, 0.0, 1.0)
+                .then_greedy(),
+        );
+        assert_eq!(ours(&typical, SEED), want);
+        let xtc = params(|p| {
+            p.temperature = 0.0;
+            p.xtc_probability = 1.0;
+            p.xtc_threshold = 0.05;
+        });
+        let want = reference(
+            Chain::chain()
+                .top_k(40)
+                .top_p(0.95, 0)
+                .min_p(0.05, 0)
+                .xtc(1.0, 0.05, 0, SEED)
+                .temperature_ext(0.0, 0.0, 1.0)
+                .then_greedy(),
+        );
+        assert_eq!(ours(&xtc, SEED), want);
+        // Penalties after top_k see the truncated candidates only.
+        let late = params(|p| {
+            p.temperature = 0.0;
+            p.penalty_repeat = 1.5;
+            p.penalty_last_n = 16;
+            p.samplers = [
+                SamplerKind::TopK,
+                SamplerKind::Penalties,
+                SamplerKind::Temperature,
+            ]
+            .to_vec()
+            .into();
+        });
+        let want = reference(
+            Chain::chain()
+                .top_k(40)
+                .penalties(N as i32, 16, 1.5, 0.0, 0.0)
+                .temperature_ext(0.0, 0.0, 1.0)
+                .then_greedy(),
+        );
+        assert_eq!(ours(&late, SEED), want);
     }
 
     #[test]

@@ -35,6 +35,7 @@ struct MessagesRequest {
     temperature: Option<f32>,
     top_p: Option<f32>,
     top_k: Option<u32>,
+    seed: Option<i64>,
     #[serde(default)]
     stream: bool,
     #[serde(default)]
@@ -425,6 +426,7 @@ fn spec(req: MessagesRequest) -> Result<GenerateSpec, GatewayError> {
     s.temperature = req.temperature;
     s.top_p = req.top_p;
     s.top_k = req.top_k;
+    s.seed = crate::sampling::seed(req.seed);
     s.extra = req.sampling.extras()?;
     s.stop = req.stop_sequences;
     s.format = format;

@@ -55,7 +55,7 @@ pub struct SamplingArgs {
     pub dynatemp_range: f32,
     #[arg(long = "dynatemp-exp", default_value_t = 1.0)]
     pub dynatemp_exp: f32,
-    #[arg(long, default_value_t = 64, allow_hyphen_values = true)]
+    #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(i32).range(0..))]
     pub repeat_last_n: i32,
     #[arg(long, default_value_t = 1.0)]
     pub repeat_penalty: f32,
@@ -67,9 +67,9 @@ pub struct SamplingArgs {
     pub dry_multiplier: f32,
     #[arg(long, default_value_t = 1.75)]
     pub dry_base: f32,
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(i32).range(0..))]
     pub dry_allowed_length: i32,
-    #[arg(long, default_value_t = 64)]
+    #[arg(long, default_value_t = 64, value_parser = clap::value_parser!(i32).range(0..))]
     pub dry_penalty_last_n: i32,
     /// A string that ends a DRY sequence; repeat the flag for several.
     #[arg(long)]
@@ -111,13 +111,13 @@ impl SamplingArgs {
             xtc_threshold: self.xtc_threshold.clamp(0.0, 1.0),
             dynatemp_range: self.dynatemp_range,
             dynatemp_exponent: self.dynatemp_exp,
-            penalty_last_n: self.repeat_last_n.max(0),
+            penalty_last_n: self.repeat_last_n,
             penalty_repeat: self.repeat_penalty,
             penalty_freq: self.frequency_penalty,
             penalty_present: self.presence_penalty,
             dry_multiplier: self.dry_multiplier,
-            dry_allowed_length: self.dry_allowed_length.max(0),
-            dry_penalty_last_n: self.dry_penalty_last_n.max(0),
+            dry_allowed_length: self.dry_allowed_length,
+            dry_penalty_last_n: self.dry_penalty_last_n,
             mirostat: self.mirostat,
             mirostat_tau: self.mirostat_ent,
             mirostat_eta: self.mirostat_lr,
