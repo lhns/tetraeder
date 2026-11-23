@@ -2322,25 +2322,30 @@ nodes:
   title: Endpoint parity
   track: serving
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - tests/conformance/parity/cases.yaml
+  - docs/notes/llamacpp-parity.md
+  - docs/adr/0089-endpoints-group-c.md
+  - crates/gateway/tests/endpoints.rs
+  - crates/scheduler/tests/scheduler.rs
+  verdict_quote: '645 passed, 2 skipped in 75.81s (pytest, test ubuntu-24.04, CI run 45116789518); the 12 group C gap cases pass, none xfail'
+  headline: '12 gaps closed, 0 left'
   depends_on:
   - serving-parity-fields
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
-  plain: Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys, as llama-server serves them (ADR 0083, group C).
+  plain: Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open.
 - id: serving-parity-libllama
   title: Expose libllama capabilities
   track: serving
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''

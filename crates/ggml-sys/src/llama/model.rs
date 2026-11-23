@@ -317,6 +317,41 @@ impl Model {
         unsafe { sys::llama_vocab_eos(self.vocab) }
     }
 
+    /// A fill-in-the-middle token of the vocabulary, `None` when it has none.
+    fn fim(token: Token) -> Option<Token> {
+        (token >= 0).then_some(token)
+    }
+
+    /// FIM prefix token, `None` when the vocabulary has none.
+    pub fn fim_pre(&self) -> Option<Token> {
+        // SAFETY: as `n_vocab`.
+        Self::fim(unsafe { sys::llama_vocab_fim_pre(self.vocab) })
+    }
+
+    /// FIM suffix token.
+    pub fn fim_suf(&self) -> Option<Token> {
+        // SAFETY: as `n_vocab`.
+        Self::fim(unsafe { sys::llama_vocab_fim_suf(self.vocab) })
+    }
+
+    /// FIM middle token.
+    pub fn fim_mid(&self) -> Option<Token> {
+        // SAFETY: as `n_vocab`.
+        Self::fim(unsafe { sys::llama_vocab_fim_mid(self.vocab) })
+    }
+
+    /// FIM repository token of the repo-level layout.
+    pub fn fim_rep(&self) -> Option<Token> {
+        // SAFETY: as `n_vocab`.
+        Self::fim(unsafe { sys::llama_vocab_fim_rep(self.vocab) })
+    }
+
+    /// FIM file separator token of the repo-level layout.
+    pub fn fim_sep(&self) -> Option<Token> {
+        // SAFETY: as `n_vocab`.
+        Self::fim(unsafe { sys::llama_vocab_fim_sep(self.vocab) })
+    }
+
     /// Control tokens (`<|im_start|>`, BOS, EOS, ...): their text is syntax, not content.
     pub fn is_control(&self, token: Token) -> bool {
         // SAFETY: as `n_vocab`.

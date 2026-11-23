@@ -142,6 +142,43 @@ fn model_info_and_vocab_come_from_libllama() {
 }
 
 #[test]
+fn tokenize_switches_and_fim_tokens_come_from_libllama() {
+    for s in [llama_sched(), moe_sched()] {
+        let m = &s.models()[0];
+        assert!(
+            m.path
+                .as_deref()
+                .is_some_and(|p| p.ends_with("tiny-qwen3moe-f16.gguf"))
+        );
+        // the two switches change nothing for plain text on this model, and the default is the
+        // trait's own: special tokens parsed, none added
+        let plain = s.tokenize(&m.id, "Hello world").unwrap();
+        assert_eq!(
+            s.tokenize_with(&m.id, "Hello world", false, true).unwrap(),
+            plain
+        );
+        assert!(
+            !s.tokenize_with(&m.id, "Hello world", true, false)
+                .unwrap()
+                .is_empty()
+        );
+        // `<|im_start|>` is one token when parsed, several when not
+        let parsed = s.tokenize_with(&m.id, "<|im_start|>", false, true).unwrap();
+        let text = s
+            .tokenize_with(&m.id, "<|im_start|>", false, false)
+            .unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert!(text.len() > 1);
+        assert!(s.tokenize_with("other", "x", false, true).is_err());
+        // the tiny vocabulary has no fill-in-the-middle tokens
+        assert_eq!(
+            s.fim_tokens(&m.id),
+            tetraeder_gateway::engine::FimTokens::default()
+        );
+    }
+}
+
+#[test]
 fn greedy_sequence_equals_engine_generate() {
     let s = llama_sched();
     let p = prompt(&s, "Hello, tiny world");

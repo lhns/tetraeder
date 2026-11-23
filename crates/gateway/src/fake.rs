@@ -6,8 +6,8 @@
 //! token if allowed, else the lowest allowed id.
 
 use crate::engine::{
-    Engine, EngineError, EngineStats, FinishReason, GenEvent, GenerateRequest, ModelInfo,
-    SamplingParams, TokenId, TokenProbs, Vocab,
+    Engine, EngineError, EngineStats, FimTokens, FinishReason, GenEvent, GenerateRequest,
+    ModelInfo, SamplingParams, TokenId, TokenProbs, Vocab,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,15 +15,26 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Special tokens after the 256 byte tokens, in id order.
-pub const SPECIALS: [&str; 6] = [
+pub const SPECIALS: [&str; 11] = [
     "<|im_end|>",
     "<|im_start|>",
     "<tool_call>",
     "</tool_call>",
     "<think>",
     "</think>",
+    "<fim_prefix>",
+    "<fim_suffix>",
+    "<fim_middle>",
+    "<fim_repo>",
+    "<fim_sep>",
 ];
 pub const IM_END: TokenId = 256;
+/// Ids of the FIM tokens in the vocabulary; the engine reports them only after `with_fim`.
+pub const FIM_PRE: TokenId = 262;
+pub const FIM_SUF: TokenId = 263;
+pub const FIM_MID: TokenId = 264;
+pub const FIM_REP: TokenId = 265;
+pub const FIM_SEP: TokenId = 266;
 
 /// ChatML template, the shape Qwen and Hermes models use, with tools in the system turn.
 pub const CHATML_TEMPLATE: &str = r##"{%- if tools %}{{ '<|im_start|>system\n' }}{% if messages[0].role == 'system' %}{{ messages[0].content + '\n\n' }}{% endif %}{{ '# Tools\n\n<tools>' }}{% for tool in tools %}{{ '\n' + (tool | tojson) }}{% endfor %}{{ '\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call><|im_end|>\n' }}
@@ -81,6 +92,9 @@ pub struct FakeEngine {
     pub params: Arc<Mutex<Vec<SamplingParams>>>,
     /// A grammar containing this text does not parse (`check_grammar`).
     pub bad_grammar_marker: &'static str,
+    /// What `ready()` answers.
+    pub ready: bool,
+    fim: FimTokens,
 }
 
 impl FakeEngine {
@@ -106,6 +120,7 @@ impl FakeEngine {
                 bos_token: None,
                 eos_token: Some("<|im_end|>".into()),
                 created: 1_700_000_000,
+                path: Some("/models/fake.gguf".into()),
             }],
             vocab: Arc::new(Vocab {
                 tokens,
@@ -125,7 +140,22 @@ impl FakeEngine {
             prompts: Arc::default(),
             params: Arc::default(),
             bad_grammar_marker: "BAD",
+            ready: true,
+            fim: FimTokens::default(),
         }
+    }
+
+    /// Gives the model FIM tokens; `repo` adds the repo-level markers.
+    pub fn with_fim(mut self, repo: bool) -> Self {
+        self.fim = FimTokens {
+            pre: Some(FIM_PRE),
+            suf: Some(FIM_SUF),
+            mid: Some(FIM_MID),
+            rep: repo.then_some(FIM_REP),
+            sep: repo.then_some(FIM_SEP),
+            bos: None,
+        };
+        self
     }
 
     /// Always answers `text`.
@@ -192,6 +222,29 @@ impl Engine for FakeEngine {
     fn tokenize(&self, model: &str, text: &str) -> Result<Vec<TokenId>, EngineError> {
         self.check(model)?;
         Ok(self.encode(text))
+    }
+
+    fn tokenize_with(
+        &self,
+        model: &str,
+        text: &str,
+        _add_special: bool,
+        parse_special: bool,
+    ) -> Result<Vec<TokenId>, EngineError> {
+        self.check(model)?;
+        if parse_special {
+            Ok(self.encode(text))
+        } else {
+            Ok(text.bytes().map(TokenId::from).collect())
+        }
+    }
+
+    fn fim_tokens(&self, _model: &str) -> FimTokens {
+        self.fim
+    }
+
+    fn ready(&self) -> bool {
+        self.ready
     }
 
     fn generate(&self, mut req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError> {

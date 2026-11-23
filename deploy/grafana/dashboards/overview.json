@@ -2796,6 +2796,39 @@
           }
         }
       ]
+    },
+    {
+      "id": 89,
+      "title": "Requests by route",
+      "description": "HTTP requests per second by matched route and response status (ADR 0089); unknown paths count as one route, unmatched. A 401 share above 20% fires GatewayAuthFailures.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 155,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (http_route, http_response_status_code) (rate(tetraeder_gateway_requests_total[$__rate_interval]))",
+          "legendFormat": "{{http_route}} {{http_response_status_code}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

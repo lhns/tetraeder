@@ -249,6 +249,16 @@ impl Run {
             }),
             ..usage
         };
+        if matches!(outcome, Outcome::Done(_)) {
+            self.gw.counters.finished(
+                (
+                    self.prompt_tokens.saturating_sub(stats.cached_tokens),
+                    stats.cached_tokens,
+                    stats.prompt_ms,
+                ),
+                (predicted_n, stats.predicted_ms),
+            );
+        }
         let last_event = match outcome {
             Outcome::Done(finish) => Some(OutEvent::Done {
                 finish,

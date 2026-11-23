@@ -23,9 +23,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Paths that are logged (POST only).
-const LOGGED: [&str; 4] = [
+const LOGGED: [&str; 10] = [
     "/v1/chat/completions",
+    "/chat/completions",
     "/v1/completions",
+    "/completion",
+    "/completions",
+    "/infill",
+    "/v1/responses",
+    "/responses",
     "/v1/messages",
     "/v1/messages/count_tokens",
 ];

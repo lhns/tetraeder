@@ -22,6 +22,16 @@ groups:
           severity: critical
         annotations:
           summary: "More than 1% of gateway requests fail with internal errors"
+      # Clients send a wrong or no API key (`--api-key`, ADR 0089): a misconfigured client or a probe.
+      - alert: GatewayAuthFailures
+        expr: |
+          sum(rate(tetraeder_gateway_requests_total{http_response_status_code="401"}[5m]))
+            / sum(rate(tetraeder_gateway_requests_total[5m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 20% of gateway requests are rejected with 401: a client has a wrong API key"
       # Requests wait but the engine produces no output: a hung worker or a stuck backend.
       - alert: GatewayStalled
         expr: |
