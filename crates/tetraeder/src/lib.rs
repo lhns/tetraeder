@@ -2,3 +2,4 @@
 //! worker process (ADR 0069).
 
 pub mod remote_backend;
+pub mod worker_loop;

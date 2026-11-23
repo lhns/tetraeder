@@ -44,6 +44,8 @@ tokio-util = "0.7.20"
 tracing = "0.1"
 toml = "0.8"
 tetraeder-telemetry = { path = "../telemetry" }
+tetraeder-transport = { path = "../transport" }
+tracing-opentelemetry = "0.34.0"
 
 [dev-dependencies]
 http-body-util = "0.1"

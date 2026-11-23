@@ -3,7 +3,7 @@ name: ci
 on:
   push:
     # Phase, track and lane branches get CI before they have a PR.
-    branches: [main, "phase*", "track-*", "serving-*", "memory-*", "planner-*", "engine-*"]
+    branches: [main, "phase*", "track-*", "serving-*", "memory-*", "planner-*", "engine-*", "cluster-*"]
     # Docs-only pushes run only docs.yml (tree, features, sources); bench/results stays here (tests read it).
     paths-ignore: ["docs/**", "*.md"]
   pull_request:

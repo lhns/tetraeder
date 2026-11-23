@@ -15,17 +15,17 @@
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 use std::collections::{HashSet, VecDeque};
 use std::ffi::OsString;
 use std::io::{BufReader, Read, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 use tetraeder_scheduler::{BackendError, BatchBackend, Outputs, SeqId, SeqInput};
+use tetraeder_transport::{LinkMetrics, Peer, Purpose, Transport};
 
 /// What the two processes say to each other.
 pub mod wire {
@@ -58,6 +58,14 @@ pub mod wire {
         },
         Decode {
             inputs: Vec<WireInput>,
+            /// W3C trace context of the step (ADR 0091). Left out of the frame when `None`, so
+            /// a header without a trace is byte-identical to the one before the field existed.
+            #[serde(
+                default,
+                rename = "traceparent",
+                skip_serializing_if = "Option::is_none"
+            )]
+            trace: Option<String>,
         },
         SeqSnapshot {
             seq: u32,
@@ -136,86 +144,31 @@ pub mod wire {
 
 use wire::{Reply, Request, WireError};
 
-/// Largest frame accepted; a length beyond it is a protocol error, not an allocation.
-pub const MAX_FRAME: u64 = 1 << 30;
+// The frame format lives in `tetraeder-transport` (ADR 0091), byte for byte as it was here.
+pub use tetraeder_transport::frame::{
+    Frame, MAX_FRAME, encode, encode_raw, parse_header, read_frame, write_frame,
+};
 
-#[derive(Debug)]
-pub struct Frame {
-    pub header: Vec<u8>,
-    pub payload: Vec<u8>,
-}
-
-/// A frame with an already serialized header.
-pub fn encode_raw(header: &[u8], payload: &[u8]) -> Result<Vec<u8>, String> {
-    let total = 4 + header.len() + payload.len();
-    let total32 = u32::try_from(total).map_err(|_| "frame too large".to_owned())?;
-    let mut out = Vec::with_capacity(4 + total);
-    out.extend_from_slice(&total32.to_le_bytes());
-    out.extend_from_slice(&(header.len() as u32).to_le_bytes());
-    out.extend_from_slice(header);
-    out.extend_from_slice(payload);
-    Ok(out)
-}
-
-pub fn encode<T: Serialize>(header: &T, payload: &[u8]) -> Result<Vec<u8>, String> {
-    let h = serde_json::to_vec(header).map_err(|e| format!("cannot encode a header: {e}"))?;
-    encode_raw(&h, payload)
-}
-
-pub fn write_frame<W: Write, T: Serialize>(
-    w: &mut W,
-    header: &T,
-    payload: &[u8],
-) -> Result<(), String> {
-    let bytes = encode(header, payload)?;
-    w.write_all(&bytes)
-        .and_then(|()| w.flush())
-        .map_err(|e| format!("write failed: {e}"))
-}
-
-/// The next frame; `Ok(None)` at a clean end of input (EOF before the first byte).
-pub fn read_frame<R: Read>(r: &mut R) -> Result<Option<Frame>, String> {
-    let mut len = [0u8; 4];
-    let mut got = 0;
-    while got < len.len() {
-        match r.read(&mut len[got..]) {
-            Ok(0) if got == 0 => return Ok(None),
-            Ok(0) => return Err("truncated frame".into()),
-            Ok(n) => got += n,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-            Err(e) => return Err(format!("read failed: {e}")),
-        }
-    }
-    let total = u64::from(u32::from_le_bytes(len));
-    if !(4..=MAX_FRAME).contains(&total) {
-        return Err(format!("bad frame length {total}"));
-    }
-    // `take` grows the buffer as bytes arrive, so a corrupt length cannot allocate ahead.
-    let mut body = Vec::new();
-    r.by_ref()
-        .take(total)
-        .read_to_end(&mut body)
-        .map_err(|e| format!("read failed: {e}"))?;
-    if body.len() as u64 != total {
-        return Err("truncated frame".into());
-    }
-    let hlen = u32::from_le_bytes([body[0], body[1], body[2], body[3]]) as usize;
-    if 4 + hlen > body.len() {
-        return Err("bad header length".into());
-    }
-    let payload = body.split_off(4 + hlen);
-    let header = body.split_off(4);
-    Ok(Some(Frame { header, payload }))
-}
-
-pub fn parse_header<T: DeserializeOwned>(f: &Frame) -> Result<T, String> {
-    serde_json::from_slice(&f.header).map_err(|e| format!("bad header: {e}"))
+/// Where the worker runs.
+pub enum Endpoint {
+    /// A child process on this box, framed over its stdin and stdout (ADR 0069).
+    Child {
+        program: PathBuf,
+        args: Vec<OsString>,
+    },
+    /// A worker on a node: connect with `Purpose::Segment`. The node's daemon starts and
+    /// restarts the worker; this side reconnects with the same backoff and restart cap.
+    Node {
+        transport: Arc<dyn Transport>,
+        peer: Peer,
+        replica: u32,
+        segment: u32,
+    },
 }
 
 /// How to start and supervise the worker.
 pub struct RemoteConfig {
-    pub program: PathBuf,
-    pub args: Vec<OsString>,
+    pub endpoint: Endpoint,
     /// Predicted step time of the served plan, when there is one.
     pub predicted_step: Option<Duration>,
     /// Shortest reply deadline (5 s).
@@ -233,9 +186,25 @@ pub struct RemoteConfig {
 
 impl RemoteConfig {
     pub fn new(program: impl Into<PathBuf>, args: Vec<OsString>) -> Self {
-        Self {
+        Self::with_endpoint(Endpoint::Child {
             program: program.into(),
             args,
+        })
+    }
+
+    /// A worker on a node of the cluster, reached over `transport`.
+    pub fn node(transport: Arc<dyn Transport>, peer: Peer, replica: u32, segment: u32) -> Self {
+        Self::with_endpoint(Endpoint::Node {
+            transport,
+            peer,
+            replica,
+            segment,
+        })
+    }
+
+    fn with_endpoint(endpoint: Endpoint) -> Self {
+        Self {
+            endpoint,
             predicted_step: None,
             deadline_floor: Duration::from_secs(5),
             startup_timeout: Duration::from_secs(30 * 60),
@@ -256,48 +225,50 @@ impl RemoteConfig {
     }
 }
 
+/// How the worker is reached, and what ending it means.
+enum Link {
+    Proc(std::process::Child),
+    /// The `close` of the connection: a blocked read or write on it fails at once.
+    Conn(Arc<dyn Fn() + Send + Sync>),
+}
+
 struct Child {
-    proc: std::process::Child,
+    link: Link,
     tx: Sender<Vec<u8>>,
     rx: Receiver<Result<Frame, String>>,
 }
 
 impl Child {
-    fn kill(mut self) {
-        let _ = self.proc.kill();
-        let _ = self.proc.wait();
+    fn kill(self) {
+        match self.link {
+            Link::Proc(mut p) => {
+                let _ = p.kill();
+                let _ = p.wait();
+            }
+            Link::Conn(close) => close(),
+        }
     }
 }
 
-/// Starts the worker with a thread for each pipe, so a worker that stops reading or writing
-/// never blocks the caller past its deadline.
-fn spawn_child(cfg: &RemoteConfig) -> Result<Child, String> {
-    let mut proc = Command::new(&cfg.program)
-        .args(&cfg.args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("cannot start {}: {e}", cfg.program.display()))?;
-    let mut stdin = proc.stdin.take().ok_or("worker has no stdin")?;
-    let stdout = proc.stdout.take().ok_or("worker has no stdout")?;
+/// A thread for each direction, so a worker that stops reading or writing never blocks the
+/// caller past its deadline.
+fn pump(
+    mut out: impl Write + Send + 'static,
+    input: impl Read + Send + 'static,
+) -> (Sender<Vec<u8>>, Receiver<Result<Frame, String>>) {
     let (tx, wrx) = mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         while let Ok(bytes) = wrx.recv() {
-            if stdin
-                .write_all(&bytes)
-                .and_then(|()| stdin.flush())
-                .is_err()
-            {
+            if out.write_all(&bytes).and_then(|()| out.flush()).is_err() {
                 break;
             }
         }
     });
     let (rtx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let mut out = BufReader::new(stdout);
+        let mut input = BufReader::new(input);
         loop {
-            match read_frame(&mut out) {
+            match read_frame(&mut input) {
                 Ok(Some(f)) => {
                     if rtx.send(Ok(f)).is_err() {
                         break;
@@ -314,7 +285,52 @@ fn spawn_child(cfg: &RemoteConfig) -> Result<Child, String> {
             }
         }
     });
-    Ok(Child { proc, tx, rx })
+    (tx, rx)
+}
+
+/// Starts the worker, or connects to it.
+fn open(cfg: &RemoteConfig) -> Result<Child, String> {
+    match &cfg.endpoint {
+        Endpoint::Child { program, args } => {
+            let mut proc = Command::new(program)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .map_err(|e| format!("cannot start {}: {e}", program.display()))?;
+            let stdin = proc.stdin.take().ok_or("worker has no stdin")?;
+            let stdout = proc.stdout.take().ok_or("worker has no stdout")?;
+            let (tx, rx) = pump(stdin, stdout);
+            Ok(Child {
+                link: Link::Proc(proc),
+                tx,
+                rx,
+            })
+        }
+        Endpoint::Node {
+            transport,
+            peer,
+            replica,
+            segment,
+        } => {
+            let conn = transport
+                .connect(
+                    peer,
+                    Purpose::Segment {
+                        replica: *replica,
+                        segment: *segment,
+                    },
+                )
+                .map_err(|e| format!("cannot connect to node {}: {e}", peer.id))?;
+            let (tx, rx) = pump(conn.tx, conn.rx);
+            Ok(Child {
+                link: Link::Conn(conn.close),
+                tx,
+                rx,
+            })
+        }
+    }
 }
 
 fn exchange(
@@ -338,7 +354,7 @@ fn exchange(
 
 /// Starts a worker and reads its `Info`.
 fn handshake(cfg: &RemoteConfig) -> Result<(Child, wire::Info, wire::State), String> {
-    let child = spawn_child(cfg)?;
+    let child = open(cfg)?;
     match exchange(&child, &Request::Info, &[], cfg.startup_timeout) {
         Ok((
             Reply {
@@ -374,12 +390,71 @@ pub struct RemoteBackend {
     spans: Vec<Range<usize>>,
     ipc: Histogram<f64>,
     restart_counter: Counter<u64>,
+    /// Round trips as `tetraeder.link.latency`, for a worker on a node.
+    link: Option<LinkLatency>,
+}
+
+/// `tetraeder.link.latency` of one link, by what the call carries.
+struct LinkLatency {
+    hidden: LinkMetrics,
+    kv: LinkMetrics,
+    request: LinkMetrics,
+}
+
+impl LinkLatency {
+    fn new(transport: &dyn Transport, peer: &Peer) -> Self {
+        let m = |p| LinkMetrics::new(transport.local(), &peer.id, transport.name(), p);
+        Self {
+            hidden: m("hidden"),
+            kv: m("kv"),
+            request: m("request"),
+        }
+    }
+
+    fn record(&self, call: &str, secs: f64) {
+        match call {
+            "decode" => &self.hidden,
+            "seq_snapshot" | "seq_restore" => &self.kv,
+            _ => &self.request,
+        }
+        .latency(secs);
+    }
+}
+
+/// The W3C `traceparent` of the current span, if there is a valid one.
+fn current_traceparent() -> Option<String> {
+    use opentelemetry::trace::TraceContextExt;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+    let from_tracing = tracing::Span::current().context();
+    let sc = from_tracing.span().span_context().clone();
+    let sc = if sc.is_valid() {
+        sc
+    } else {
+        opentelemetry::Context::current()
+            .span()
+            .span_context()
+            .clone()
+    };
+    sc.is_valid().then(|| {
+        format!(
+            "00-{}-{}-{:02x}",
+            sc.trace_id(),
+            sc.span_id(),
+            sc.trace_flags().to_u8()
+        )
+    })
 }
 
 impl RemoteBackend {
     /// Starts the worker and waits until it has loaded. An error is a startup error.
     pub fn start(cfg: RemoteConfig) -> Result<Self, String> {
         let (child, info, state) = handshake(&cfg)?;
+        let link = match &cfg.endpoint {
+            Endpoint::Node {
+                transport, peer, ..
+            } => Some(LinkLatency::new(transport.as_ref(), peer)),
+            Endpoint::Child { .. } => None,
+        };
         let meter = opentelemetry::global::meter("tetraeder");
         Ok(Self {
             ipc: meter
@@ -402,6 +477,7 @@ impl RemoteBackend {
             gave_up: false,
             logits: Vec::new(),
             spans: Vec::new(),
+            link,
         })
     }
 
@@ -487,10 +563,12 @@ impl RemoteBackend {
         let child = self.child.as_ref().expect("running");
         let t0 = Instant::now();
         let res = exchange(child, req, payload, self.cfg.deadline());
-        self.ipc.record(
-            t0.elapsed().as_secs_f64(),
-            &[KeyValue::new("tetraeder.call", req.name())],
-        );
+        let took = t0.elapsed().as_secs_f64();
+        self.ipc
+            .record(took, &[KeyValue::new("tetraeder.call", req.name())]);
+        if let Some(l) = &self.link {
+            l.record(req.name(), took);
+        }
         match res {
             Err(e) => {
                 self.kill();
@@ -610,6 +688,7 @@ impl BatchBackend for RemoteBackend {
                     all_logits: i.all_logits,
                 })
                 .collect(),
+            trace: current_traceparent(),
         };
         let (reply, payload) = self.call(&req, &[])?;
         let nv = self.info.n_vocab;
@@ -669,46 +748,6 @@ impl BatchBackend for RemoteBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // hardware: none
-    #[test]
-    fn frames_round_trip() {
-        let mut buf = Vec::new();
-        write_frame(&mut buf, &Request::SeqRm { seq: 3, keep: 7 }, &[1, 2, 3]).unwrap();
-        write_frame(&mut buf, &Request::Info, &[]).unwrap();
-        let mut r = buf.as_slice();
-        let f = read_frame(&mut r).unwrap().unwrap();
-        assert_eq!(f.payload, [1, 2, 3]);
-        assert!(matches!(
-            parse_header::<Request>(&f).unwrap(),
-            Request::SeqRm { seq: 3, keep: 7 }
-        ));
-        let f = read_frame(&mut r).unwrap().unwrap();
-        assert!(matches!(
-            parse_header::<Request>(&f).unwrap(),
-            Request::Info
-        ));
-        assert!(read_frame(&mut r).unwrap().is_none());
-    }
-
-    // hardware: none
-    #[test]
-    fn bad_frames_are_errors_not_allocations() {
-        // Longer than the cap.
-        let mut r: &[u8] = &u32::MAX.to_le_bytes();
-        assert!(read_frame(&mut r).unwrap_err().contains("length"));
-        // Shorter than its own header length field.
-        let mut r: &[u8] = &[2, 0, 0, 0, 1, 0];
-        assert!(read_frame(&mut r).unwrap_err().contains("length"));
-        // Truncated body and truncated length.
-        let mut r: &[u8] = &[100, 0, 0, 0, 1, 2];
-        assert!(read_frame(&mut r).unwrap_err().contains("truncated"));
-        let mut r: &[u8] = &[100, 0];
-        assert!(read_frame(&mut r).unwrap_err().contains("truncated"));
-        // Header length beyond the frame.
-        let mut r: &[u8] = &[4, 0, 0, 0, 9, 0, 0, 0];
-        assert!(read_frame(&mut r).unwrap_err().contains("header"));
-    }
 
     // hardware: none
     #[test]
