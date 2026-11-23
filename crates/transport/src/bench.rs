@@ -275,6 +275,7 @@ pub struct Row {
     pub iters: usize,
     pub min_us: f64,
     pub p50_us: f64,
+    pub p90_us: f64,
     pub p99_us: f64,
     pub mean_us: f64,
     pub max_us: f64,
@@ -286,12 +287,14 @@ fn percentile(sorted: &[Duration], q: f64) -> f64 {
     sorted[idx].as_secs_f64() * 1e6
 }
 
-pub fn latency_stats(mut d: Vec<Duration>) -> (f64, f64, f64, f64, f64) {
+/// (min, p50, p90, p99, mean, max) in microseconds.
+pub fn latency_stats(mut d: Vec<Duration>) -> (f64, f64, f64, f64, f64, f64) {
     d.sort();
     let mean = d.iter().map(Duration::as_secs_f64).sum::<f64>() / d.len() as f64 * 1e6;
     (
         percentile(&d, 0.0),
         percentile(&d, 0.5),
+        percentile(&d, 0.9),
         percentile(&d, 0.99),
         mean,
         percentile(&d, 1.0),
@@ -319,7 +322,7 @@ pub async fn measure(transport: Transport, addr: SocketAddr, plan: &Plan) -> Res
             plan.iters
         };
         let samples = client.latency(size, plan.warmup, iters).await?;
-        let (min_us, p50_us, p99_us, mean_us, max_us) = latency_stats(samples);
+        let (min_us, p50_us, p90_us, p99_us, mean_us, max_us) = latency_stats(samples);
         let throughput_mib_s = client.throughput(size, plan.throughput_bytes).await?;
         rows.push(Row {
             transport,
@@ -327,6 +330,7 @@ pub async fn measure(transport: Transport, addr: SocketAddr, plan: &Plan) -> Res
             iters,
             min_us,
             p50_us,
+            p90_us,
             p99_us,
             mean_us,
             max_us,
@@ -338,17 +342,18 @@ pub async fn measure(transport: Transport, addr: SocketAddr, plan: &Plan) -> Res
 
 pub fn table(rows: &[Row]) -> String {
     let mut s = format!(
-        "{:<6} {:>9} {:>6} {:>10} {:>10} {:>10} {:>10} {:>12}\n",
-        "xport", "size", "iters", "min us", "p50 us", "p99 us", "mean us", "MiB/s"
+        "{:<6} {:>9} {:>6} {:>10} {:>10} {:>10} {:>10} {:>10} {:>12}\n",
+        "xport", "size", "iters", "min us", "p50 us", "p90 us", "p99 us", "mean us", "MiB/s"
     );
     for r in rows {
         s += &format!(
-            "{:<6} {:>9} {:>6} {:>10.1} {:>10.1} {:>10.1} {:>10.1} {:>12.1}\n",
+            "{:<6} {:>9} {:>6} {:>10.1} {:>10.1} {:>10.1} {:>10.1} {:>10.1} {:>12.1}\n",
             r.transport.name(),
             r.size,
             r.iters,
             r.min_us,
             r.p50_us,
+            r.p90_us,
             r.p99_us,
             r.mean_us,
             r.throughput_mib_s

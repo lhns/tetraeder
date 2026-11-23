@@ -18,7 +18,7 @@ async fn check(t: Transport) {
     assert_eq!(rows.len(), 3);
     for r in &rows {
         assert!(
-            r.p50_us > 0.0 && r.p50_us <= r.p99_us && r.min_us <= r.p50_us,
+            r.p50_us > 0.0 && r.p50_us <= r.p90_us && r.p90_us <= r.p99_us && r.min_us <= r.p50_us,
             "{r:?}"
         );
         assert!(r.throughput_mib_s > 0.0);
