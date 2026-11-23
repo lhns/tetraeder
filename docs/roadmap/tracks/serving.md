@@ -25,8 +25,8 @@ flowchart TB
     serving_parity_sampling["✔ Sampler parity with<br/>llama-server"]
     serving_parity_fields["✔ Request field parity"]
     serving_parity_endpoints["✔ Endpoint parity"]
+    serving_parity_libllama["▶ Expose libllama<br/>capabilities"]
     serving_recurrent_reuse>"✔ Recurrent models<br/>break slot reuse"]
-    serving_parity_libllama["○ Expose libllama<br/>capabilities"]
     serving_multi_model["⏸ Several models at<br/>once"]
     serving_multi_lora["⏸ Swap and batch LoRA<br/>adapters"]
     serving_auth_quotas["⏸ Priorities, quotas<br/>and auth"]
@@ -53,16 +53,15 @@ flowchart TB
     serving_parity_harness ~~~ serving_parity_sampling
     serving_parity_sampling ~~~ serving_parity_fields
     serving_parity_fields ~~~ serving_parity_endpoints
-    serving_parity_fields ~~~ serving_recurrent_reuse
     serving_parity_endpoints ~~~ serving_parity_libllama
-    serving_recurrent_reuse ~~~ serving_multi_model
-    serving_recurrent_reuse ~~~ serving_multi_lora
-    serving_parity_libllama ~~~ serving_auth_quotas
+    serving_parity_endpoints ~~~ serving_recurrent_reuse
+    serving_parity_endpoints ~~~ serving_multi_model
+    serving_parity_libllama ~~~ serving_multi_lora
+    serving_recurrent_reuse ~~~ serving_auth_quotas
     serving_multi_model ~~~ serving_multimodal
     serving_multi_lora ~~~ serving_self_spec
     serving_auth_quotas ~~~ serving_mtp_drafts
     serving_multimodal ~~~ serving_prefix_first
-    serving_self_spec ~~~ serving_prefix_first
     serving_gateway --> serving_real_engines
     serving_real_engines --> serving_prefix_cache
     serving_real_engines --> serving_speculative
@@ -99,7 +98,7 @@ flowchart TB
     class serving_gateway,serving_real_engines,serving_prefix_cache,serving_tool_calls,serving_batching,serving_moe_batch,serving_spec_batching,serving_own_run_attention unrated
     class serving_speculative mixed
     class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_parity_endpoints,serving_recurrent_reuse succ
-    class serving_parity_libllama next
+    class serving_parity_libllama inprog
     class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_self_spec,serving_mtp_drafts,serving_prefix_first parked
 ```
 <!-- END GENERATED: track-serving -->
@@ -125,7 +124,7 @@ flowchart TB
 | `serving-parity-sampling` | Sampler parity with llama-server | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-harness |  |  | 5 gaps closed, 20 left | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; crates/scheduler/src/sample.rs; crates/scheduler/tests/sampler_dry.rs |
 | `serving-parity-fields` | Request field parity | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-sampling |  |  | 8 gaps closed, 12 left | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; docs/adr/0088-request-fields-group-b.md; crates/gateway/tests/fields.rs; crates/scheduler/tests/fields.rs; crates/ggml-sys/tests/schema.rs |
 | `serving-parity-endpoints` | Endpoint parity | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-fields |  |  | 12 gaps closed, 0 left | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; docs/adr/0089-endpoints-group-c.md; crates/gateway/tests/endpoints.rs; crates/scheduler/tests/scheduler.rs |
-| `serving-parity-libllama` | Expose libllama capabilities | feature | local | next | unrated |  |  | serving-parity-endpoints |  |  |  |  |
+| `serving-parity-libllama` | Expose libllama capabilities | feature | local | in-progress | unrated | 2026-11-23 |  | serving-parity-endpoints |  |  |  |  |
 | `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope | owner-decision | owner | blocked | n/a |  |  | serving-parity-libllama |  |  |  |  |
 | `serving-multi-model` | Several models at once | feature | none | parked | unrated |  |  | serving-gateway, planner-core |  |  |  |  |
 | `serving-multi-lora` | Swap and batch LoRA adapters | feature | none | parked | unrated |  |  | serving-batching |  |  |  |  |
