@@ -931,5 +931,13 @@ mod tests {
         ] {
             assert_eq!(reported[name], want, "{name}");
         }
+        let samplers: Vec<_> = reported["samplers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| SamplerKind::from_name(n.as_str().unwrap()))
+            .collect();
+        let want: Vec<_> = d.samplers.iter().map(|k| Some(*k)).collect();
+        assert_eq!(samplers, want);
     }
 }

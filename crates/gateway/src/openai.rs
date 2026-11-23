@@ -552,18 +552,28 @@ fn chat_choice(gw: &Gateway, model: &str, index: usize, c: Collected) -> Value {
     json!({"index": index, "message": message, "logprobs": logprobs, "finish_reason": finish})
 }
 
-/// The `logprobs` of a non-streaming choice: null without entries. When a stop string ended the
-/// output, the entries of the tokens that made it up are dropped, as llama-server does.
+/// When a stop string ended the output, drops the last entries, as many as the stop string has
+/// tokens: what llama-server does in a non-streaming response (`server_slot::to_final`).
+pub(crate) fn trim_stop_logprobs(
+    gw: &Gateway,
+    model: &str,
+    entries: &mut Vec<LogprobEntry>,
+    finish: Option<&Finish>,
+) {
+    if let Some(Finish::StopSequence(s)) = finish {
+        let k = gw.token_count(model, s);
+        entries.truncate(entries.len().saturating_sub(k));
+    }
+}
+
+/// The `logprobs` of a non-streaming choice: null without entries.
 fn response_logprobs(
     gw: &Gateway,
     model: &str,
     mut entries: Vec<LogprobEntry>,
     finish: Option<&Finish>,
 ) -> Value {
-    if let Some(Finish::StopSequence(s)) = finish {
-        let k = gw.token_count(model, s);
-        entries.truncate(entries.len().saturating_sub(k));
-    }
+    trim_stop_logprobs(gw, model, &mut entries, finish);
     if entries.is_empty() {
         Value::Null
     } else {

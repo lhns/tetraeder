@@ -654,10 +654,12 @@ impl Gateway {
 
     /// The number of tokens `text` makes (llama-server removes that many log-probability entries
     /// when a stop string ends the output).
+    /// How many tokens `text` is as llama-server counts a stop word's (`common_tokenize` with no
+    /// special tokens added and none parsed).
     pub fn token_count(&self, model: &str, text: &str) -> usize {
         self.model(model)
             .ok()
-            .and_then(|m| self.engine.tokenize(&m.id, text).ok())
+            .and_then(|m| self.engine.tokenize_with(&m.id, text, false, false).ok())
             .map_or(0, |t| t.len())
     }
 

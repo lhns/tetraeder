@@ -8,7 +8,7 @@
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{
     Receiver, SendError, Sender, SyncSender, TryRecvError, TrySendError, channel, sync_channel,
 };
@@ -60,6 +60,8 @@ struct ReadJob {
     format: String,
     size: usize,
     reply: Sender<ReadDone>,
+    /// Set when nobody wants the result any more: the reader recycles the buffer itself.
+    abandoned: Arc<AtomicBool>,
 }
 
 /// What the reader thread found.
@@ -77,6 +79,7 @@ pub type Restored = (Option<(Vec<i32>, Vec<u8>)>, Duration);
 pub struct ReadHandle {
     id: u64,
     rx: Receiver<ReadDone>,
+    abandoned: Arc<AtomicBool>,
 }
 
 struct Job {
@@ -341,15 +344,17 @@ impl DiskTier {
         }
         let id = self.entries[i].id;
         let (reply, rx) = channel();
+        let abandoned = Arc::new(AtomicBool::new(false));
         let job = ReadJob {
             path: self.path(id),
             format: self.entries[i].format.clone(),
             size: self.entries[i].size,
             reply,
+            abandoned: Arc::clone(&abandoned),
         };
         self.reads.as_ref()?.send(job).ok()?;
         self.entries[i].reading = true;
-        Some(ReadHandle { id, rx })
+        Some(ReadHandle { id, rx, abandoned })
     }
 
     /// Reads in flight.
@@ -386,6 +391,7 @@ impl DiskTier {
     /// Gives up `read`: the entry and its file stay. The entry stays marked as reading until
     /// the reader has replied (a later `poll`), which hands its buffer back to the pool.
     pub fn abort_read(&mut self, read: ReadHandle) {
+        read.abandoned.store(true, Ordering::Release);
         self.aborted.push(read);
     }
 }
@@ -468,7 +474,13 @@ fn writer(rx: &Receiver<Job>, tx: &Sender<Done>) {
 fn reader(rx: &Receiver<ReadJob>, pool: &SnapshotPool, read: &ReadFn) {
     for job in rx {
         let t0 = Instant::now();
-        let res = read(&job.path, &job.format, job.size, pool);
+        let mut res = read(&job.path, &job.format, job.size, pool);
+        // Nobody waits for it: free the buffer now, not when the tier next polls.
+        if job.abandoned.load(Ordering::Acquire)
+            && let Ok((_, bytes)) = std::mem::replace(&mut res, Err(bad("read given up")))
+        {
+            pool.recycle(bytes);
+        }
         let done = ReadDone {
             res,
             took: t0.elapsed(),

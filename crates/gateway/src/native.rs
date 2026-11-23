@@ -10,7 +10,7 @@ use crate::gateway::{
 };
 use crate::openai::{
     ChatPlan, FINGERPRINT, Merged, chat_plan, choice_count, choice_specs, data, merge, probs_count,
-    sse, stop_list,
+    sse, stop_list, trim_stop_logprobs,
 };
 use crate::sampling::{self, SamplingFields};
 use crate::settings;
@@ -404,7 +404,11 @@ async fn run(gw: Arc<Gateway>, plan: Plan) -> Result<Response> {
     let mut results: Vec<Value> = all
         .iter()
         .enumerate()
-        .map(|(i, c)| final_json(&plan, &model, i, c, false))
+        .map(|(i, c)| {
+            let mut c = c.clone();
+            trim_stop_logprobs(&gw, &model, &mut c.logprobs, c.finish.as_ref());
+            final_json(&plan, &model, i, &c, false)
+        })
         .collect();
     let body = if results.len() == 1 {
         results.remove(0)

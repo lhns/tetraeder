@@ -40,6 +40,6 @@ Spilling stays as decided. Point 4 changes: `take()` of a disk entry no longer r
 ## Addendum 2026-11-23: review fixes
 
 - Files are named `tetraeder-prefix-<pid>-<instance>-<id>.tkv`, the instance counting the tiers this process opened. A tier removes only its own files on drop, so the tier of a replan (`serve --plan auto` opens the next scheduler on the same directory) no longer deletes the live one's files. At startup a tier removes only files last written before this process first opened a tier, which are an earlier process's. This replaces point 5's "every `tetraeder-prefix-*` file"; the directory still belongs to one server.
-- An aborted read keeps its entry marked as reading until the reader has replied (the next `poll` reaps it and returns the buffer). The entry is not evicted or deleted under the reader, and the read counts against the limit of two until it is done.
+- An aborted read keeps its entry marked as reading until the reader has replied (the next `poll` reaps it). The reader frees the buffer itself when the read was given up. The entry is not evicted or deleted under the reader, and the read counts against the limit of two until it is done.
 - A spill that cannot make room, because the entries left are being read, is dropped; the disk budget is never exceeded.
 - A backend that cannot cut a suffix (a recurrent model) takes a RAM or disk entry only when the prompt starts with the whole entry (`best_whole`); a partial match would need a cut, and taking the entry first destroyed it for nothing.

@@ -867,6 +867,11 @@ fn cancelling_during_a_disk_read_returns_the_buffer_and_keeps_the_file() {
         std::thread::sleep(Duration::from_millis(2));
     }
     assert!(back(&t), "the buffer went back");
+    // The tier notices the reply at its next poll.
+    while t.w.cache.restoring() > 0 && t0.elapsed() < Duration::from_secs(10) {
+        t.w.cache.flush_disk();
+        std::thread::sleep(Duration::from_millis(2));
+    }
     assert_eq!(t.w.cache.restoring(), 0);
     assert_eq!((t.w.cache.disk_bytes(), t.files()), (4800, files));
     // The entry is still usable.

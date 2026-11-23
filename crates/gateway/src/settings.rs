@@ -157,7 +157,12 @@ pub fn params(cfg: &GatewayConfig, req: Option<&Request>) -> Value {
             }
         }
         // A negative seed asks for a random one, which the defaults already say.
-        if let Some(s) = r.body.get("seed").and_then(Value::as_u64) {
+        if let Some(s) = r
+            .body
+            .get("seed")
+            .and_then(Value::as_i64)
+            .and_then(crate::sampling::libllama_seed)
+        {
             m.insert("seed".into(), json!(s));
         }
         if let Some(Value::Array(a)) = r.body.get("dry_sequence_breakers") {
@@ -234,6 +239,13 @@ mod tests {
         // a value of the wrong type is not reported
         assert_eq!(p["top_p"], 0.95);
         assert_eq!(p["seed"], 5);
+        // the seed that is used, not the one that was sent
+        let wrapped = json!({"seed": 4_294_967_301u64});
+        let r = Request {
+            body: &wrapped,
+            ..r
+        };
+        assert_eq!(params(&cfg, Some(&r))["seed"], 5);
         assert_eq!(p["n_predict"], 9);
         assert_eq!(p["stop"], json!(["z"]));
         assert_eq!(p["dry_sequence_breakers"], json!(["a"]));

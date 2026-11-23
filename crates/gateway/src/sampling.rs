@@ -283,7 +283,7 @@ pub fn top_k(v: Option<i64>) -> Option<u32> {
 }
 
 /// The libllama seed of a request or flag `seed`, as llama-server converts it: the JSON integer
-/// is cast to `uint32_t` (so -1 and values that are a multiple of 2^32 below it wrap), and
+/// is cast to `uint32_t`, so it wraps modulo 2^32 (-1 becomes 4294967295), and
 /// `LLAMA_DEFAULT_SEED` (4294967295) asks libllama for a random seed. `None` is that random seed.
 pub fn libllama_seed(v: i64) -> Option<u32> {
     match v as u32 {

@@ -508,3 +508,40 @@ async fn logprobs_of_a_token_inside_a_character_follow_llama_server() {
     assert_eq!(content[0]["token"], "\u{e9}");
     assert_eq!(content[1]["bytes"], json!([]));
 }
+
+/// A stop string drops the entries of its tokens from a non-streaming response
+/// (`server_slot::to_final`), on every route that has log-probabilities.
+#[tokio::test]
+async fn a_stop_string_drops_its_logprob_entries_on_every_route() {
+    let (app, _) = app(FakeEngine::fixed("abcd"));
+    let (s, _, v) = post(
+        &app,
+        "/v1/completions",
+        &json!({"model": "fake", "prompt": "x", "logprobs": 1, "stop": ["c"]}),
+        false,
+    )
+    .await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["choices"][0]["text"], "ab");
+    assert_eq!(
+        v["choices"][0]["logprobs"]["content"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let (s, _, v) = post(
+        &app,
+        "/completion",
+        &json!({"prompt": "x", "n_probs": 1, "stop": ["c"]}),
+        false,
+    )
+    .await;
+    assert_eq!(s, 200, "{v}");
+    assert_eq!(v["content"], "ab");
+    assert_eq!(
+        v["completion_probabilities"].as_array().unwrap().len(),
+        2,
+        "{v}"
+    );
+}
