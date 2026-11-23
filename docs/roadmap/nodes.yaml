@@ -2407,27 +2407,30 @@ nodes:
   title: Transport latency between two boxes
   track: cluster
   kind: experiment
-  state: in-progress
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - bench/results/transport-wan-20261123/README.md
+  - docs/adr/0023-transport-spike.md
+  - scripts/transport_wan_bench.sh
+  verdict_quote: 'Status: clean. WAN set is thin (3 repetitions, 300 round trips per size, so p99 is the third slowest sample); loopback and same-host sets follow ADR 0023''s size (2000 round trips, 5 repetitions).'
+  headline: 'WAN 90 ms: 8 KB equal within noise; 1 MB QUIC 196 ms vs TLS 274 to 300 ms (untuned TCP); same host 8 KB TLS 0.41 vs QUIC 0.58 ms'
   depends_on:
   - bench-m2-report
   replaced_by: []
   lane: cluster
   start: 2026-11-23
-  end: ''
+  end: 2026-11-23
   folded: []
   overview: false
-  plain: Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023).
+  plain: Measured QUIC, TCP with TLS and plain TCP between two rented boxes (Connecticut and Germany, 90 ms), on one host and on Linux loopback; ADR 0023 holds the numbers, and no same-datacenter pair on different hosts was on offer.
   notes: 'Done when: ADR 0023 holds WAN numbers for 8 KB and 1 MB messages with AES and ChaCha, plus Linux same-datacenter numbers. Needs two instances for about an hour; blocked behind M2 because the verdict
     sessions hold the box budget, not for a technical reason. RDMA is not on Vast. Source: ADR 0023 (Pending), plan.md Open decisions.'
 - id: cluster-owner-transport
   title: Owner picks the network transport
   track: cluster
   kind: owner-decision
-  state: blocked
+  state: next
   outcome: n/a
   evidence: []
   verdict_quote: ''
