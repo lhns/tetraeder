@@ -200,7 +200,6 @@ pub struct ServeArgs {
     /// (ADR 0090). Download the GGUF and pass `-m`.
     #[arg(
         long,
-        visible_alias = "hf-repo-id",
         value_name = "USER/MODEL[:QUANT]",
         env = "LLAMA_ARG_HF_REPO"
     )]
