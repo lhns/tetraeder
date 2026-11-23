@@ -1,0 +1,10 @@
+device NVIDIA A40, 2.00 GB buffer, 7 repeats
+rep 0 mapped_kernel GB/s=24.58 memcpy_h2d GB/s=24.80
+rep 1 mapped_kernel GB/s=24.62 memcpy_h2d GB/s=24.79
+rep 2 mapped_kernel GB/s=24.60 memcpy_h2d GB/s=24.77
+rep 3 mapped_kernel GB/s=24.60 memcpy_h2d GB/s=24.78
+rep 4 mapped_kernel GB/s=24.57 memcpy_h2d GB/s=24.75
+rep 5 mapped_kernel GB/s=24.58 memcpy_h2d GB/s=24.75
+rep 6 mapped_kernel GB/s=24.61 memcpy_h2d GB/s=24.81
+median mapped_kernel GB/s=24.60
+median memcpy_h2d GB/s=24.78

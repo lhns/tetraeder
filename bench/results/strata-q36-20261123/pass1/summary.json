@@ -1,0 +1,258 @@
+{
+  "rounds": [
+    {
+      "round": 1,
+      "c4_a": 180.65669724929393,
+      "c4_b": 212.74700616694037,
+      "c4_c": 178.75533476542844,
+      "c4_b_over_a": 1.1776314380051132,
+      "c4_c_over_a": 0.9894752726424433,
+      "c1_a": 116.1923497521318,
+      "c1_b": 117.32431412045173,
+      "c1_c": 172.3709970910406,
+      "c1_b_over_a": 1.0097421591932232,
+      "c1_c_over_a": 1.4834969553395927,
+      "board_share": {
+        "a": 0.0,
+        "b": 0.0,
+        "c": 0.0
+      }
+    },
+    {
+      "round": 2,
+      "c4_a": 185.6324036375379,
+      "c4_b": 213.44697158964476,
+      "c4_c": 180.82396318713842,
+      "c4_b_over_a": 1.1498368140856325,
+      "c4_c_over_a": 0.9740969768414552,
+      "c1_a": 116.75034078174546,
+      "c1_b": 117.24676478245371,
+      "c1_c": 173.82578922910824,
+      "c1_b_over_a": 1.00425201329079,
+      "c1_c_over_a": 1.4888675104945546,
+      "board_share": {
+        "a": 0.0,
+        "b": 0.0,
+        "c": 0.0
+      }
+    },
+    {
+      "round": 3,
+      "c4_a": 179.11743885053372,
+      "c4_b": 212.3535487735396,
+      "c4_c": 179.62746277719998,
+      "c4_b_over_a": 1.185554852371131,
+      "c4_c_over_a": 1.0028474275310058,
+      "c1_a": 114.50171576544146,
+      "c1_b": 117.28571093532932,
+      "c1_c": 177.669860857228,
+      "c1_b_over_a": 1.0243140039542369,
+      "c1_c_over_a": 1.5516785898753471,
+      "board_share": {
+        "a": 0.0,
+        "b": 0.0,
+        "c": 0.0
+      }
+    }
+  ],
+  "median_ratio": {
+    "c4_b_over_a": 1.1776314380051132,
+    "c4_c_over_a": 0.9894752726424433,
+    "c1_b_over_a": 1.0097421591932232,
+    "c1_c_over_a": 1.4888675104945546
+  },
+  "runs": {
+    "a-r1": {
+      "c4_tps": 180.65669724929393,
+      "c1_decode_tps": 116.1923497521318,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 25,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "b-r1": {
+      "c4_tps": 212.74700616694037,
+      "c1_decode_tps": 117.32431412045173,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "c-r1": {
+      "c4_tps": 178.75533476542844,
+      "c1_decode_tps": 172.3709970910406,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 23,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "a-r2": {
+      "c4_tps": 185.6324036375379,
+      "c1_decode_tps": 116.75034078174546,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 25,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "b-r2": {
+      "c4_tps": 213.44697158964476,
+      "c1_decode_tps": 117.24676478245371,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 21,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "c-r2": {
+      "c4_tps": 180.82396318713842,
+      "c1_decode_tps": 173.82578922910824,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "a-r3": {
+      "c4_tps": 179.11743885053372,
+      "c1_decode_tps": 114.50171576544146,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 25,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "b-r3": {
+      "c4_tps": 212.3535487735396,
+      "c1_decode_tps": 117.28571093532932,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    },
+    "c-r3": {
+      "c4_tps": 179.62746277719998,
+      "c1_decode_tps": 177.669860857228,
+      "c4_tokens_per_request": 128.0,
+      "c1_tokens_per_request": 128.0,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      },
+      "notes": []
+    }
+  },
+  "aa_30b": {},
+  "aa_runs": {},
+  "baseline_variant": "kvu"
+}

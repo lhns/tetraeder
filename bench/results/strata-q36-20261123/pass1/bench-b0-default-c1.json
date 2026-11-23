@@ -1,0 +1,102 @@
+{
+  "label": "b0-default-c1",
+  "base_url": "http://127.0.0.1:18080",
+  "model": "qwen3.6-35b-a3b",
+  "endpoint": "chat",
+  "params": {
+    "prompt_tokens": 512,
+    "max_tokens": 128,
+    "concurrency": 1,
+    "requests": 8,
+    "temperature": 0.0,
+    "shared_prefix": false,
+    "multi_turn": 0
+  },
+  "started": "2026-11-23T01:06:46",
+  "finished": "2026-11-23T01:06:46",
+  "results": [
+    {
+      "ttft_s": 0.12470345292240381,
+      "total_s": 1.2090055411681533,
+      "completion_tokens": 128,
+      "prompt_tokens": 409,
+      "usage_from": "usage",
+      "decode_tps": 117.25799452881917,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": null,
+      "total_s": 0.07232173020020127,
+      "completion_tokens": 0,
+      "prompt_tokens": null,
+      "usage_from": "deltas",
+      "decode_tps": null,
+      "text_head": ""
+    },
+    {
+      "ttft_s": 0.10317424219101667,
+      "total_s": 1.1893700528889894,
+      "completion_tokens": 128,
+      "prompt_tokens": 408,
+      "usage_from": "usage",
+      "decode_tps": 117.01357325052432,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": null,
+      "total_s": 0.07310287794098258,
+      "completion_tokens": 0,
+      "prompt_tokens": null,
+      "usage_from": "deltas",
+      "decode_tps": null,
+      "text_head": ""
+    },
+    {
+      "ttft_s": 0.10301787219941616,
+      "total_s": 1.191479217261076,
+      "completion_tokens": 128,
+      "prompt_tokens": 405,
+      "usage_from": "usage",
+      "decode_tps": 116.76933991417019,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": null,
+      "total_s": 0.07326739700511098,
+      "completion_tokens": 0,
+      "prompt_tokens": null,
+      "usage_from": "deltas",
+      "decode_tps": null,
+      "text_head": ""
+    },
+    {
+      "ttft_s": 0.10376556916162372,
+      "total_s": 1.192282224074006,
+      "completion_tokens": 128,
+      "prompt_tokens": 406,
+      "usage_from": "usage",
+      "decode_tps": 116.75964789406794,
+      "text_head": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   -"
+    },
+    {
+      "ttft_s": null,
+      "total_s": 0.07277137786149979,
+      "completion_tokens": 0,
+      "prompt_tokens": null,
+      "usage_from": "deltas",
+      "decode_tps": null,
+      "text_head": ""
+    }
+  ],
+  "summary": {
+    "requests": 8,
+    "errors": 0,
+    "wall_s": 5.0740261962637305,
+    "completion_tokens": 512,
+    "prompt_tokens_median": 407.0,
+    "ttft_median_s": 0.1034699056763202,
+    "ttft_p90_s": 0.12470345292240381,
+    "decode_tps_median": 116.89145658234725,
+    "throughput_tps": 100.90606161572683
+  }
+}

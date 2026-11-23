@@ -33,6 +33,7 @@ Updating `0002`: the copied file is frozen (ik moved Q4_K/Q6_K to `Q8_2_X4` acti
 | KTransformers (kt-kernel, sglang-kt) | [kvcache-ai/ktransformers](https://github.com/kvcache-ai/ktransformers) | `KT_VERSION` in `scripts/ktransformers_build.sh` (0.7.2 = a02efe36) | Apache-2.0 | Change `KT_VERSION` |
 | Colibri | [JustVugg/colibri](https://github.com/JustVugg/colibri) | `COLIBRI_COMMIT` in `scripts/colibri_build.sh` (v2.1.0 = 704a3f68) | see its repo | Change `COLIBRI_COMMIT` |
 | sccache (image build cache) | [mozilla/sccache](https://github.com/mozilla/sccache) | `SCCACHE_VERSION` in `docker/box/Dockerfile` | Apache-2.0 | Change the ARG |
+| Strata Terminal 0.2.20 and its CUDA engine 0.1.66 (`strata-engine-0.1.66-linux-x86_64-cuda-cuda13`), a reference engine in `bench-strata-q36` only; not part of any build | [Niko1221/Strata](https://github.com/Niko1221/Strata), release folder `https://github.com/Niko1221/Strata/releases/download/v0.2.20` (tag v0.2.20, commit a34979fc94f3d126b9bb8210f4ad311345688b52), `install.sh` from that folder, the engine package fetched by `strata launch --feed <folder>` into `~/.local/share/strata/components/engine/` on the box; the engine binary has sha256 `a8b072a9b8befd2510df89d448439f61265487a562bf969a5dbc6fed0b9a2ca5` | `strata_feed` in `scripts/strata_q36_box.sh` (v0.2.20, engine 0.1.66) | MIT | Change `strata_feed` to the new release folder and rerun `bench-strata-q36`; ADR 0085 decision 1 says moving the tag means rereading `docs/notes/strata-parity.md` |
 | Claude Code (client in the Phase 3b proxy test) | npm `@anthropic-ai/claude-code` | `CLAUDE_CODE_VERSION` in `scripts/claude_code_proxy.sh` | proprietary, used as a client only | Change the variable |
 
 ## Tooling
@@ -46,6 +47,6 @@ Updating `0002`: the copied file is frozen (ik moved Q4_K/Q6_K to `Q8_2_X4` acti
 
 | Project | What we took | Why no code |
 |---|---|---|
-| [Strata](https://github.com/Niko1221/Strata) | Expert tiering, low-bit KV, checkpoints (plan.md levers table) | Different engine; designs only |
+| [Strata](https://github.com/Niko1221/Strata) | Expert tiering, low-bit KV, checkpoints (plan.md levers table) | Different engine; designs only (its release binary runs as a measured reference, see Baselines) |
 | [Unsloth](https://github.com/unslothai/unsloth) | Tool-call repair idea | `studio/` is AGPL-3.0: never copy |
 | KTransformers | Parallel faulting I/O as the explanation of its decode speed (ADR 0045 addenda) | Read only |

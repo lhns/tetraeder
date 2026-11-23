@@ -2233,7 +2233,7 @@ nodes:
   end: ''
   folded: []
   overview: true
-  plain: The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; piggyback an A/A and a bisect of 6b07795 to main on a later box, then find the gap.
+  plain: The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; the A/A is done (A40 box, two runs 1.001 at c4 and 0.996 at c1, strata-q36-20261123), the bisect of 6b07795 to main and finding the gap are left.
 - id: planner-cost-model-v5-host2
   title: Cost model 5 second host
   track: planner
@@ -3216,26 +3216,28 @@ nodes:
   title: Strata against llama-server on Qwen3.6
   track: bench
   kind: experiment
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - bench/results/strata-q36-20261123/README.md
+  - bench/results/strata-q36-20261123/summary.json
+  verdict_quote: 'measurement, no verdict (ADR 0085), all 9 paired runs clean. Medians of three interleaved rounds, one A40, Qwen3.6-35B-A3B UD-Q4_K_XL: Strata v0.2.20 over llama-server is 1.503 at c1 decode and 0.837 at c4 throughput; tetraeder serve --engine auto (libllama) over llama-server is 1.009 and 0.996.'
+  headline: 'Strata c1 1.503x, c4 0.837x'
   depends_on:
   - bench-harness
   replaced_by: []
   lane: box-later
-  start: ''
-  end: ''
+  start: '2026-11-23'
+  end: '2026-11-23'
   folded: []
   overview: false
-  plain: One box session runs Strata, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file, to size how far behind a shared model we are (ADR 0085).
-  notes: 'Strata claims 1.44x llama.cpp decode on this model (HIP, Strata 0.1.45). Needs a docs/sources.md row for the Strata binary. Can share a box with the ADR 0084 read-rate probes and bench-30b-c4-gap.'
+  plain: One A40 box ran Strata v0.2.20, llama-server at the pin and tetraeder serve (libllama) on the same Qwen3.6-35B-A3B file. Strata decodes one request 1.50 times faster than llama-server (its claim is 1.44) but is 0.84 of it at four requests; libllama is level (0.996 and 1.009), and fails on slot reuse unless prefix reuse is off, the recurrent-state problem of the own builder (ADR 0085).
+  notes: 'Strata claims 1.44x llama.cpp decode on this model (HIP, Strata 0.1.45). Box 62065877, host 682584, A40, EPYC 7662, 43 min, 0.47 USD. llama-server needed --ctx-checkpoints 0 --cache-ram 0 -ub 2048 to be a fair baseline (c4 217 against 181 tok/s at defaults); the first pass at defaults is in pass1/. The same box ran the ADR 0084 read-rate probes (PCIe 24.6 GB/s, CPU attention 65 to 67 GB/s at 32K on 61 AVX2 threads) and a 30B A/A (c4 1.001, c1 0.996). The Strata binary has its docs/sources.md row.'
 - id: engine-qwen35moe-builder
   title: Own builder for Qwen3.6 MoE
   track: engine
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -3249,7 +3251,7 @@ nodes:
   folded: []
   overview: false
   plain: An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first).
-  notes: 'Design question: recurrent state in the KV pool, seq_rm and the prefix cache (ADR 0051 deferred it). The pin has the graph and CUDA ops, no patch expected.'
+  notes: 'Design question: recurrent state in the KV pool, seq_rm and the prefix cache (ADR 0051 deferred it). The pin has the graph and CUDA ops, no patch expected. Measured 2026-11-23 (bench-strata-q36): the libllama path already fails on slot reuse (KV cache cannot drop positions) unless --no-prefix-reuse --cache-ram 0; Strata is 1.50x llama-server at c1 and 0.84x at c4 on an A40, so Strata leads at single-request decode (MTP drafts) and trails at c4.'
 - id: memory-kv-auto
   title: Planner picks the KV format
   track: memory

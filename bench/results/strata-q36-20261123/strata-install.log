@@ -1,0 +1,10 @@
+Strata Terminal installer
+  This computer: Linux x86_64 (linux-x86_64), graphics: NVIDIA A40
+  Release folder: https://github.com/Niko1221/Strata/releases/download/v0.2.20
+  Terminal 0.1.66 (90 MB)
+Downloading…
+  Checksum ok.
+Checking the release's signature…
+  Signature ok.
+Installed. Run: strata launch
+strata 0.2.20 (build 0.1.66; python 3.12.15 at /root/.local/share/strata/terminal/0.1.66/python/bin/python3.12)

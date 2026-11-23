@@ -1,0 +1,18 @@
+    These files are qwen36 UD-Q4_K_XL.
+    Checking the engine for this computer…
+    Engine 0.1.66 (cuda) is installed.
+    qwen36 UD-Q4_K_XL is already installed with these choices.
+    Writing this launch's settings…
+    Settings are saved.
+    Starting the engine and loading the model. The first start can take a few minutes.
+    The model is loaded and answering.
+    Ready: http://127.0.0.1:18090
+    Strata is serving.
+
+Strata is serving.
+  This computer  http://127.0.0.1:18090/v1
+  Anthropic apps http://127.0.0.1:18090   (Claude Code: ANTHROPIC_BASE_URL, no /v1 at the end)
+  Engine log     /root/.local/state/strata/launch/ud-q4_k_xl-8k.engine.log   (follow it: strata logs --follow)
+  Watch it:    strata monitor --url http://127.0.0.1:18090
+  Connect an app:  strata connect opencode      Stop:  strata launch --stop
+  To keep these settings for next time, add --save-preset NAME.
