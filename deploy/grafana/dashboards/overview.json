@@ -2650,7 +2650,7 @@
     {
       "id": 87,
       "title": "Prefix cache: snapshot buffer pool",
-      "description": "Saves per second by the buffer they wrote into (ADR 0074): a spare prepared off the admission path, or a plain allocation (fallback, about 44 ms per 8B save), and the spare buffers ready. Saves skipped/s counts continuations that reused their idle sequence in place and cut at most a quarter of it, so nothing was saved. PrefixSaveFallback fires when most saves fall back: the preparer cannot keep up, the snapshot outgrew the cache budget, or TETRAEDER_SNAPSHOT_SPARES=0. The spare MiB series is the host memory the spares hold. Preparer MiB/s is what the preparer thread touched (new spares, grown tails) and freed; sustained freeing next to fallback saves means the target keeps outgrowing the budget.",
+      "description": "Saves per second by the buffer they wrote into (ADR 0074): a spare prepared off the admission path, or a plain allocation (fallback, about 44 ms per 8B save), and the spare buffers ready. Saves skipped/s counts continuations that reused their idle sequence in place and cut at most a quarter of it, so nothing was saved. PrefixSaveFallback fires when most saves fall back: the preparer cannot keep up, the snapshot outgrew the cache budget, or TETRAEDER_SNAPSHOT_SPARES=0. The spare MiB series is the host memory the spares hold. Full prefill instead of reuse/s counts requests of a recurrent or hybrid model whose KV memory cannot drop a suffix, so the prefix was not reused (reason cannot_drop). Preparer MiB/s is what the preparer thread touched (new spares, grown tails) and freed; sustained freeing next to fallback saves means the target keeps outgrowing the budget.",
       "type": "timeseries",
       "datasource": {
         "type": "prometheus",
@@ -2709,6 +2709,15 @@
           "refId": "E",
           "expr": "sum(rate(tetraeder_kv_prefix_placed_free_total[$__rate_interval]))",
           "legendFormat": "placed in a free slot/s (no save)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "G",
+          "expr": "sum by (tetraeder_reason) (rate(tetraeder_kv_prefix_fallbacks_total[$__rate_interval]))",
+          "legendFormat": "full prefill instead of reuse/s {{tetraeder_reason}}",
           "datasource": {
             "type": "prometheus",
             "uid": "victoriametrics"

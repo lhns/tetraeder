@@ -479,8 +479,9 @@ fn chat_stream(g: Generation, usage: bool) -> impl Stream<Item = Event> + Send +
                 s.done = true;
             }
             Some(OutEvent::Error(e)) => {
-                // The spec allows a data frame carrying an `error` object; no [DONE] follows.
+                // A data frame carrying an `error` object, then [DONE], as llama-server ends it.
                 out.push(data(&e.openai_body()));
+                out.push(Event::default().data("[DONE]"));
                 s.done = true;
             }
             None => return None,
@@ -598,6 +599,7 @@ fn completion_stream(
                 }
                 Some(OutEvent::Error(e)) => {
                     out.push(data(&e.openai_body()));
+                    out.push(Event::default().data("[DONE]"));
                     done = true;
                 }
                 None => return None,

@@ -428,3 +428,23 @@ async fn disable_parallel_tool_use_cancels_after_the_first_call() {
     assert_eq!(v["content"].as_array().unwrap().len(), 1, "{v}");
     assert_eq!(cancelled.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn engine_error_before_a_token_is_not_an_empty_success() {
+    let mut engine = FakeEngine::fixed("abcdef");
+    engine.fail_after = Some(0);
+    let (app, _) = app(engine);
+    let (s, _, v) = post(&app, "/v1/messages", &req("hi"), true).await;
+    assert_eq!(s, 500, "{v}");
+    assert_eq!(v["type"], "error");
+    assert_eq!(v["error"]["type"], "api_error");
+
+    let mut body = req("hi");
+    body["stream"] = json!(true);
+    let (_, _, ev) = post_sse(&app, "/v1/messages", &body, true).await;
+    let ev = typed(&ev);
+    assert!(ev.iter().all(|(n, _)| n != "content_block_delta"));
+    let (name, v) = ev.last().unwrap();
+    assert_eq!(name, "error");
+    assert_eq!(v["error"]["type"], "api_error");
+}

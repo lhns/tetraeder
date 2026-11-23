@@ -322,7 +322,6 @@ flowchart TB
 | Drafts from built-in MTP heads | ⏸ parked | Models that ship extra prediction layers (MTP, multi-token prediction) draft their own next tokens for speculative decoding (plan feature 27). |
 | Low-bit copy drafts for itself | ⏸ parked | A low-bit copy of the same model drafts tokens and the full model checks them, so output is unchanged at a speed between the two (plan feature 52). |
 | Which Strata model families to add | ○ next | The owner decides whether Inkling 2 Mini, Hy4-Flash, Qwen3.8-Flash-Next, vision input and the AMD, Intel and Apple backends come in, each with its own ADR (ADR 0085). |
-| Recurrent models break slot reuse | ⚠ open | On Qwen3.6 (recurrent GatedDeltaNet layers) through libllama, reusing a slot's prefix fails with "KV cache cannot drop positions" unless prefix reuse is off, and the failed request streams HTTP 200 with no tokens and no error, so clients count it as a success. |
 | Admit longest prefix hit first | ⏸ parked | When several requests wait, admit first the one with the longest cached prefix (idea from QuixiInfer). |
 | Phase 2 exit: model beyond RAM | ✔ done · successful ⚠ | Qwen3-235B, larger than the box's RAM, against the best tuned baselines: the builder passed the Phase 2 exit at decode parity with KTransformers. |
 | Tuned llama.cpp cache beat builder | ✔ fixed | The Phase 2 verdict never measured llama.cpp's own expert cache (--moe-cache-mib) as a baseline; once added, and after M1 was first declared on 2026-11-10, the cache tuned to share 0.95 led the builder, so the Phase 2 verdict's point 1 reopened and M1 waited for new sessions. |
@@ -377,7 +376,6 @@ flowchart TB
 - `engine-qwen35moe-builder`: Own builder for Qwen3.6 MoE
 - `planner-ep-split`: Expert-parallel split on two GPUs
 - `memory-prefix-disk-async`: Disk prefix restore off the step
-- `serving-recurrent-reuse`: Recurrent models break slot reuse
 
 **ci**
 
@@ -433,7 +431,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 98 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 99 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -819,6 +817,7 @@ Generated on 2026-11-23.
 - `memory-prefix-ssd`: Prefix cache spills to SSD (✔ done · unrated). Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
 - `planner-low-ram-modes`: Experts on GPU and SSD only (✔ done · unrated). On a 235B layout the planner has no plan without a RAM expert tier (builder floor of top-k slots per layer, CPU placement needs all weights in RAM); it refuses and names the tier, and ram_slots 0 stays unplanned.
 - `serving-parity-sampling`: Sampler parity with llama-server (✔ done · successful). The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A).
+- `serving-recurrent-reuse`: Recurrent models break slot reuse (✔ fixed). A model whose memory cannot drop a suffix (Qwen3.6) now reuses only a prefix it keeps whole and otherwise clears the sequence and prefills the prompt, counted in tetraeder.kv.prefix.fallbacks; an engine error now ends an OpenAI stream with an error frame and DONE, is logged at error level with the request id, and no longer passes as an empty success. Checked with a fake backend only, no recurrent model fixture.
 
 </details>
 
@@ -850,7 +849,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [memory - memory and streaming](roadmap/tracks/memory.md): 17 nodes (10 done, 2 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
-- [serving - serving](roadmap/tracks/serving.md): 28 nodes (14 done, 3 next, 4 blocked, 7 parked)
+- [serving - serving](roadmap/tracks/serving.md): 28 nodes (15 done, 2 next, 4 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (32 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 next, 11 blocked)
