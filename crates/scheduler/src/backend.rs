@@ -116,6 +116,12 @@ pub trait BatchBackend {
     fn seq_lost(&self, _seq: SeqId) -> bool {
         false
     }
+    /// Whether `seq_rm(seq, keep)` with `keep > 0` can cut a suffix. A recurrent or hybrid model
+    /// keeps one state per sequence and cannot, so the scheduler reuses only a prefix it keeps
+    /// whole and otherwise clears the sequence and prefills the prompt.
+    fn can_cut_suffix(&self) -> bool {
+        true
+    }
     /// The KV cache format the snapshots are in, keying the prefix cache (ADR 0050 b).
     fn kv_format(&self) -> String {
         "f16/f16".into()
@@ -188,6 +194,8 @@ pub struct LlamaBackend {
     reserved: Vec<usize>,
     /// KV bytes per position, learned from the last snapshot (0 before the first).
     row_bytes: usize,
+    /// False for a recurrent or hybrid model, whose memory cannot drop a suffix.
+    can_cut: bool,
     logits: Vec<f32>,
     spans: Vec<Range<usize>>,
 }
@@ -196,12 +204,14 @@ impl LlamaBackend {
     pub fn new(engine: Engine, on_gpu: bool) -> Self {
         let n_vocab = usize::try_from(engine.model().n_vocab()).unwrap_or(0);
         let reserved = vec![0; engine.n_seq_max()];
+        let can_cut = !(engine.model().is_recurrent() || engine.model().is_hybrid());
         Self {
             engine,
             on_gpu,
             n_vocab,
             reserved,
             row_bytes: 0,
+            can_cut,
             logits: Vec::new(),
             spans: Vec::new(),
         }
@@ -292,6 +302,10 @@ impl BatchBackend for LlamaBackend {
             self.reserved[i] = 0;
         }
         Ok(())
+    }
+
+    fn can_cut_suffix(&self) -> bool {
+        self.can_cut
     }
 
     fn seq_cp(&mut self, src: SeqId, dst: SeqId, n: usize) -> Result<(), BackendError> {

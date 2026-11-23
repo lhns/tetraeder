@@ -207,7 +207,12 @@ impl Run {
         let last_event = match outcome {
             Outcome::Done(finish) => Some(OutEvent::Done { finish, usage }),
             Outcome::ClientGone => None,
-            Outcome::Failed(e) => Some(OutEvent::Error(e)),
+            Outcome::Failed(e) => {
+                if matches!(e, GatewayError::Internal(_)) {
+                    tracing::error!(request_id = %self.id, "generation failed: {e}");
+                }
+                Some(OutEvent::Error(e))
+            }
         };
         if let Some(ev) = last_event {
             let _ = tx.send(ev).await;
