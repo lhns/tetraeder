@@ -18,6 +18,18 @@ use tetraeder_transport::{
     effective_buffers, frame,
 };
 
+/// The refusal is counted by the node that refused, which may be a moment after the dialer
+/// saw its error.
+fn refused_since(reason: &str, before: u64) {
+    for _ in 0..200 {
+        if rejected_total(reason) > before {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("no `{reason}` refusal was counted");
+}
+
 fn id(s: &str) -> NodeId {
     NodeId::new(s)
 }
@@ -155,7 +167,7 @@ fn a_second_connection_for_the_same_purpose_is_refused_until_the_first_ends() {
         .err()
         .expect("duplicate refused");
     assert!(err.to_string().contains("duplicate"), "{err}");
-    assert!(rejected_total("duplicate") > before);
+    refused_since("duplicate", before);
     // Another purpose is fine.
     let acc2 = accept_in_background(&a);
     let _other = b.connect(&peer(&a, "a"), Purpose::Control).unwrap();
@@ -189,7 +201,7 @@ fn a_client_certificate_no_anchor_vouches_for_is_refused() {
     let before = rejected_total("untrusted");
     let err = d.connect(&peer(&a, "a"), Purpose::Control).err();
     assert!(err.is_some(), "the stranger was let in");
-    assert!(rejected_total("untrusted") > before);
+    refused_since("untrusted", before);
 }
 
 // hardware: none
@@ -218,7 +230,7 @@ fn a_server_the_dialer_does_not_pin_is_refused() {
         ),
         "{err:?}"
     );
-    assert!(rejected_total("untrusted") > before);
+    refused_since("untrusted", before);
 }
 
 // hardware: none
@@ -236,7 +248,7 @@ fn a_node_the_cluster_does_not_list_is_refused_even_with_a_trusted_certificate()
     let before = rejected_total("unknown_node");
     let err = c.connect(&peer(&a, "a"), Purpose::Control);
     assert!(err.is_err(), "unlisted node was let in");
-    assert!(rejected_total("unknown_node") > before);
+    refused_since("unknown_node", before);
 }
 
 // hardware: none
@@ -262,7 +274,7 @@ fn dialing_the_wrong_node_is_refused() {
         .err()
         .expect("a answered for c");
     assert!(err.to_string().contains("names a"), "{err}");
-    assert!(rejected_total("wrong_peer") > before);
+    refused_since("wrong_peer", before);
 }
 
 // hardware: none
