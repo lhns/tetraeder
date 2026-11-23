@@ -36,6 +36,7 @@ flowchart TB
     bench_ab30b("✔ 30B same-box A/B")
     bench_strata_q36[/"✔ Strata against<br/>llama-server on<br/>Qwen3.6"/]
     bench_30b_c4_gap[/"○ 30B concurrency-4<br/>gap"/]
+    bench_235b_stream_predict[/"○ Predict the 235B on<br/>one box"/]
     bench_phase6_rehearsal("⛔ First two-box<br/>cluster session")
     bench_phase6_exit("⛔ Phase 6 exit: multi-<br/>node test")
     bench_phase7_exit("⛔ Phase 7 exit: day-<br/>long trace")
@@ -75,8 +76,10 @@ flowchart TB
     bench_v4a_verdict ~~~ bench_ab30b
     bench_d2a_30b ~~~ bench_strata_q36
     bench_ab30b ~~~ bench_30b_c4_gap
-    bench_strata_q36 ~~~ bench_phase6_rehearsal
-    bench_30b_c4_gap ~~~ bench_phase6_exit
+    bench_strata_q36 ~~~ bench_235b_stream_predict
+    bench_30b_c4_gap ~~~ bench_phase6_rehearsal
+    bench_235b_stream_predict ~~~ bench_phase6_rehearsal
+    bench_phase6_rehearsal ~~~ bench_phase6_exit
     bench_phase6_rehearsal ~~~ bench_phase7_exit
     bench_phase6_rehearsal ~~~ bench_phase8_exit
     bench_phase6_exit ~~~ bench_phase9_exit
@@ -107,9 +110,10 @@ flowchart TB
     bench_v2_verdict --> bench_30b_c4_gap
     bench_v4a_verdict --> bench_30b_c4_gap
     bench_ab30b --> bench_30b_c4_gap
+    bench_235b_stream_predict --> bench_phase6_rehearsal
     bench_phase6_rehearsal --> bench_phase6_exit
     bench_ttft --> bench_open_records
-    linkStyle 40,51 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 42,53 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -129,7 +133,7 @@ flowchart TB
     class bench_m1_point1,bench_m1_point3 vsucc
     class bench_d2a_rerun,bench_d2a_probe,bench_d2a_30b mixed
     class bench_v4b_verdict dead
-    class bench_30b_c4_gap next
+    class bench_30b_c4_gap,bench_235b_stream_predict next
     class bench_phase6_rehearsal,bench_phase6_exit,bench_phase7_exit,bench_regression_gate blocked
     class bench_phase8_exit,bench_phase9_exit,bench_spec_rerun,bench_strata_pairing,bench_d1_session,bench_open_records parked
 ```
@@ -171,7 +175,8 @@ flowchart TB
 | `bench-ab30b` | 30B same-box A/B | session | box | done | successful | 2026-11-22 | 2026-11-22 | bench-d2a-30b |  |  |  | bench/results/ab30b-20261122/README.md; bench/results/ab30b-20261122/ab/ab-summary.json |
 | `bench-m2-report` | Report milestone M2 | owner-decision | owner | done | n/a | 2026-11-22 | 2026-11-22 | bench-v2-verdict, bench-v4a-verdict, bench-d2a-probe, bench-d2a-30b, bench-ab30b |  |  |  | docs/m2-report.md |
 | `bench-30b-c4-gap` | 30B concurrency-4 gap | experiment | box-later | next | unrated |  |  | bench-m2-report |  |  |  |  |
-| `bench-phase6-rehearsal` | First two-box cluster session | session | cluster | blocked | unrated |  |  | cluster-pipeline-nodes, cluster-failover, cluster-join-leave, cluster-experts-nodes, cluster-mtls, cluster-owner-phase6-design |  |  |  |  |
+| `bench-235b-stream-predict` | Predict the 235B on one box | experiment | box-later | next | unrated |  |  |  |  |  |  |  |
+| `bench-phase6-rehearsal` | First two-box cluster session | session | cluster | blocked | unrated |  |  | cluster-pipeline-nodes, cluster-failover, cluster-join-leave, cluster-mtls, cluster-owner-phase6-design, bench-235b-stream-predict |  |  |  |  |
 | `bench-phase6-exit` | Phase 6 exit: multi-node test | session | cluster | blocked | unrated |  |  | bench-phase6-rehearsal, cluster-remote-kv |  |  |  |  |
 | `bench-m3-report` | Report milestone M3 | owner-decision | owner | blocked | n/a |  |  | bench-phase6-exit |  |  |  |  |
 | `bench-phase7-exit` | Phase 7 exit: day-long trace | session | cluster | blocked | unrated |  |  | planner-advisor-auto, cluster-replica-scaling, multi-live-reshard, multi-split-hardware, planner-split-layouts, planner-live-replan |  |  |  |  |
@@ -222,7 +227,8 @@ flowchart TB
 | `bench-ab30b` | 30B same-box A/B | no regression evidence. The median B/A ratio over three clean rounds is 0.992 for c4 and 0.992 for c1, both at least 0.98; final main (05d43b9 code) is within 1% of the Phase 4 verdict build (6b07795) on the same box. |  | A diagnostic on one RTX 3090 box (Ryzen 9 5950X), three rounds of the own 30B engine at the Phase 4 verdict commit 6b07795 against final main. The median B/A ratio was 0.992 for both c4 and c1, so final main did not regress; the lower tok/s of d2a30b-20261122 came from that machine. The D2a null is unchanged and the owner decides the next step. |  |  |  |  |  |
 | `bench-m2-report` | Report milestone M2 |  |  | M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md). | With the verdicts the owner accepts or reopens ADRs 0068 (verdict rules), 0069 (own executor), 0081 (prefill not captured) and 0082 (cost model 5), still Proposed, and whether the 30B same-box A/B stands in for the 30B half of the D2a probe (report in docs/m2-report.md). |  |  |  |  |
 | `bench-30b-c4-gap` | 30B concurrency-4 gap |  |  | The own 30B engine runs 5 to 6% behind llama-server at concurrency 4 and final main about 0.8% behind the Phase 4 build; the A/A is done (A40 box, two runs 1.001 at c4 and 0.996 at c1, strata-q36-20261123), the bisect of 6b07795 to main and finding the gap are left. |  |  |  |  |  |
-| `bench-phase6-rehearsal` | First two-box cluster session |  |  | Two rented boxes run the whole Phase 6 path once without a verdict (profile and probe, a two-node split of the 30B with parity, the kill test once, and a remote expert round trip). | Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session. |  |  |  |  |
+| `bench-235b-stream-predict` | Predict the 235B on one box |  |  | Before any cluster code, the 235B streamed on one RTX 3090 box under a 64 GB RAM budget is predicted and then measured, to see whether the streaming cost model holds the 15% line that the Phase 6 exit needs (ADR 0091, named risk from ADR 0056). | Done when a session README gives e_pp and e_tg for pp2048 and tg128 under the balloon (EMULATE_RAM_GB=64), prediction frozen before the run. Above 0.15, a cost-model fix with its own ADR comes before the Phase 6 exit. One box, no cluster code. |  |  |  |  |
+| `bench-phase6-rehearsal` | First two-box cluster session |  |  | Two rented boxes run the whole Phase 6 path once without a verdict (certificates and the cluster file, profile and probe, a two-node split of the 30B with parity, the kill test once). | Done when (ADR 0091, build order 7), a session README with every step run; about 1.5 h on two boxes. Faults found here go back to their step before the exit session. |  |  |  |  |
 | `bench-phase6-exit` | Phase 6 exit: multi-node test |  |  | The Phase 6 exit test on rented machines: a model larger than any one node, and a node killed under load. | Rules fixed in ADR 0091 before any measurement. Case S, Qwen3-235B-A22B Q4_K_M over two one-GPU nodes of 24 GB VRAM and a 64 GB RAM budget each, pp2048 and tg128 within 15% of the frozen prediction. Case F, two replicas of Qwen3-30B-A3B with node B killed, killed whole and stopped, three trials each. |  |  |  |  |
 | `bench-m3-report` | Report milestone M3 |  |  | M3 (homelab cluster) ends Phase 6: the owner judges the exit test and decides whether M4 is worth building (plan.md, Effort). | Source: plan.md, Roadmap (milestones) and Effort (stop at any milestone). |  |  |  |  |
 | `bench-phase7-exit` | Phase 7 exit: day-long trace |  |  | The Phase 7 exit test: replay a day of traffic with the online loop on and compare with the best fixed plan. | Done when (plan.md, Phase 7 exit test): day-long trace, at least 10% more goodput than the best static plan, at most 1 switch per hour, zero failed requests. |  |  |  |  |

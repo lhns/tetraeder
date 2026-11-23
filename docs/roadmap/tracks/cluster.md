@@ -15,23 +15,22 @@ flowchart TB
     cluster_mtls["⛔ Node certificates<br/>and trust rules"]
     cluster_discovery["⛔ Node list, health<br/>and probes"]
     cluster_pipeline_nodes["⛔ Pipeline stages<br/>across machines"]
-    cluster_experts_nodes["⛔ Experts on other<br/>machines"]
     cluster_replicas["⛔ Model replicas<br/>behind one router"]
     cluster_join_leave["⛔ Nodes join and leave<br/>live"]
     cluster_remote_kv["⛔ KV cache on another<br/>machine"]
     cluster_failover["⛔ Keep serving when a<br/>node dies"]
+    cluster_experts_nodes["⏸ Experts on other<br/>machines"]
     cluster_replica_scaling["⛔ Add and remove<br/>replicas live"]
     cluster_transport_wan ~~~ cluster_transport
     cluster_transport_wan ~~~ cluster_planner
     cluster_transport ~~~ cluster_mtls
     cluster_planner ~~~ cluster_discovery
     cluster_mtls ~~~ cluster_pipeline_nodes
-    cluster_discovery ~~~ cluster_pipeline_nodes
-    cluster_pipeline_nodes ~~~ cluster_experts_nodes
-    cluster_pipeline_nodes ~~~ cluster_replicas
-    cluster_experts_nodes ~~~ cluster_join_leave
+    cluster_discovery ~~~ cluster_replicas
+    cluster_pipeline_nodes ~~~ cluster_join_leave
     cluster_replicas ~~~ cluster_remote_kv
     cluster_join_leave ~~~ cluster_failover
+    cluster_remote_kv ~~~ cluster_experts_nodes
     cluster_remote_kv ~~~ cluster_replica_scaling
     cluster_transport_wan --> cluster_transport
     cluster_transport_wan --> cluster_planner
@@ -40,7 +39,6 @@ flowchart TB
     cluster_transport --> cluster_discovery
     cluster_planner --> cluster_pipeline_nodes
     cluster_discovery --> cluster_pipeline_nodes
-    cluster_pipeline_nodes --> cluster_experts_nodes
     cluster_discovery --> cluster_replicas
     cluster_replicas --> cluster_join_leave
     cluster_replicas --> cluster_remote_kv
@@ -61,7 +59,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class cluster_transport_wan unrated
     class cluster_transport,cluster_planner next
-    class cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_experts_nodes,cluster_replicas,cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_replica_scaling blocked
+    class cluster_mtls,cluster_discovery,cluster_pipeline_nodes,cluster_replicas,cluster_join_leave,cluster_remote_kv,cluster_failover,cluster_replica_scaling blocked
+    class cluster_experts_nodes parked
 ```
 <!-- END GENERATED: track-cluster -->
 
@@ -79,7 +78,7 @@ flowchart TB
 | `cluster-discovery` | Node list, health and probes | feature | cluster | blocked | unrated |  |  | cluster-transport |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live | feature | cluster | blocked | unrated |  |  | cluster-discovery, cluster-replicas |  |  |  |  |
 | `cluster-pipeline-nodes` | Pipeline stages across machines | feature | cluster | blocked | unrated |  |  | cluster-planner, cluster-discovery |  |  |  |  |
-| `cluster-experts-nodes` | Experts on other machines | feature | cluster | blocked | unrated |  |  | cluster-pipeline-nodes |  |  |  |  |
+| `cluster-experts-nodes` | Experts on other machines | feature | cluster | parked | unrated |  |  | bench-phase6-exit |  |  |  |  |
 | `cluster-remote-kv` | KV cache on another machine | feature | cluster | blocked | unrated |  |  | cluster-replicas |  |  |  |  |
 | `cluster-replicas` | Model replicas behind one router | feature | cluster | blocked | unrated |  |  | cluster-discovery |  |  |  |  |
 | `cluster-failover` | Keep serving when a node dies | feature | cluster | blocked | unrated |  |  | cluster-replicas, cluster-join-leave |  |  |  |  |
@@ -91,16 +90,16 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|
 | `cluster-transport-wan` | Transport latency between two boxes | Status: clean. WAN set is thin (3 repetitions, 300 round trips per size, so p99 is the third slowest sample); loopback and same-host sets follow ADR 0023's size (2000 round trips, 5 repetitions). | WAN 90 ms: 8 KB equal within noise; 1 MB QUIC 196 ms vs TLS 274 to 300 ms (untuned TCP); same host 8 KB TLS 0.41 vs QUIC 0.58 ms | Measured QUIC, TCP with TLS and plain TCP between two rented boxes (Connecticut and Germany, 90 ms), on one host and on Linux loopback; ADR 0023 holds the numbers, and no same-datacenter pair on different hosts was on offer. | Done when: ADR 0023 holds WAN numbers for 8 KB and 1 MB messages with AES and ChaCha, plus Linux same-datacenter numbers. Needs two instances for about an hour; blocked behind M2 because the verdict sessions hold the box budget, not for a technical reason. RDMA is not on Vast. Source: ADR 0023 (Pending), plan.md Open decisions. |  |  |  |  |
 | `cluster-owner-transport` | Owner picks the network transport | TCP with TLS (mTLS) for Phase 6, QUIC kept as a later option for bulk and WAN, behind a transport trait (owner 2026-11-23) | TCP+TLS chosen | The owner chooses the transport between machines from the measured numbers; ADR 0023 leans to TCP with TLS for per-layer expert traffic and keeps QUIC for bulk and lossy links. | Done when: ADR 0023 is Accepted with a chosen transport. Source: ADR 0018, ADR 0023, plan.md Open decisions. |  |  |  |  |
-| `cluster-transport` | Transport between machines |  |  | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). | Done when (ADR 0091, build order 1), frame property tests pass, unknown and wrong certificates are refused, pinned self-signed and CA anchors are both accepted, a loopback TLS round trip works, and the RemoteBackend restart tests pass over the in-process transport; link metrics, the links panel row and the TLS-rejected alert in the same change. CI only, crates transport and tetraeder. Interfaces in docs/notes/phase6-interfaces.md. |  |  |  |  |
-| `cluster-owner-phase6-design` | Owner accepts the Phase 6 design |  |  | The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; the M3 scope cuts). | Gates the certificate tooling and the box sessions only; the simulated steps (transport, planner) start before it. |  |  |  |  |
+| `cluster-transport` | Transport between machines |  |  | Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16). | Done when (ADR 0091, build order 1), a golden-byte test shows the moved frame code writes the same frames as remote_backend, frame property tests pass, unknown and wrong certificates are refused, pinned self-signed and CA anchors are both accepted, the effective socket buffer sizes are read back and logged (an explicit size on Linux is capped at net.core.rmem_max and turns autotuning off, so the size is measured per link, not fixed), a loopback TLS round trip works, and the RemoteBackend restart tests and the Phase 5 parity and golden tests pass; link metrics, the links panel row and the TLS-rejected alert in the same change. CI only. Phase 6 code stays on its branch until bench-regression-gate has run on main. |  |  |  |  |
+| `cluster-owner-phase6-design` | Owner accepts the Phase 6 design |  |  | The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; mDNS in or out of M3; the other scope cuts). | Gates the certificate tooling and the box sessions only; the simulated steps (transport, planner) start before it. |  |  |  |  |
 | `cluster-planner` | Plans and predictions across nodes |  |  | The planner sees nodes and the measured links between them, cuts a model into per-node segments, and predicts their speed as the sum of each node's own prediction plus the network hops (ADR 0091). | Done when (ADR 0091, build order 2), plan, segment and prediction property tests pass on every simulated cluster fixture, and one-node plans predict bit-identically to today. CI only, crates profiler, plan, costmodel and planner; runs in parallel with the transport step. |  |  |  |  |
 | `cluster-mtls` | Node certificates and trust rules |  |  | Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20). | Done when (ADR 0091), the certificate tooling of the owner's choice exists, a node with another certificate is refused on the rehearsal boxes, and plans with a forbid node rule never use that node (planner property test). |  |  |  |  |
-| `cluster-discovery` | Node list, health and probes |  |  | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). | Done when (ADR 0091, build order 3), membership property tests pass under every simulated fault, and two node daemons on loopback TLS profile and probe each other; cluster dashboard panel and alerts in the same change. CI only, crates control and tetraeder. |  |  |  |  |
+| `cluster-discovery` | Node list, health and probes |  |  | Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091). | Done when (ADR 0091, build order 3), membership property tests pass under every simulated fault, and two node daemons on loopback TLS profile and probe each other (autotuned and explicit buffers); cluster cert generates keys on the box that never enter the repo or a pushed HEAD, and the session driver builds cluster.toml after create and uploads it; panel rows and alerts in the same change. CI only, crates control and tetraeder. |  |  |  |  |
 | `cluster-join-leave` | Nodes join and leave live |  |  | A node can join or leave while the others keep serving; a replica joins the router once loaded and probed and leaves when its node goes down, and a pipeline over nodes is drained and restarted with a new plan (plan feature 18; live resharding is Phase 7). | Done when (ADR 0091), on simulated nodes a node joins and leaves under load with no failed request on the other nodes, and a restored node rejoins without manual action. |  |  |  |  |
 | `cluster-pipeline-nodes` | Pipeline stages across machines |  |  | A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half). | Done when (ADR 0091, build order 4), two-node splits match the one-node run within tol_batch at the first, middle and last layer boundary, with the head on either node, on simulated CPU nodes in CI; segment residuals, the pipeline panel row and the segment-drift alert in the same change. Builders take and return hidden rows; the head drives segments in order. |  |  |  |  |
-| `cluster-experts-nodes` | Experts on other machines |  |  | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). | Done when (ADR 0091, build order 6), remote experts match local ones within tol_batch on simulated CPU nodes, and the round trip on the rehearsal boxes is within the probe curve. Parity-tested, not judged in the exit test. |  |  |  |  |
-| `cluster-remote-kv` | KV cache on another machine |  |  | A prefix computed on one replica is restored on another from the head's shared prefix cache through snapshots over the network, instead of being recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). | Done when (ADR 0091), in CI a prefix computed on one simulated replica restores on the other and decodes equal; on the rehearsal boxes time to first token of a remote restore is measured against recompute. KV tiers on a remote node during attention are out of M3. |  |  |  |  |
-| `cluster-replicas` | Model replicas behind one router |  |  | Copies of a model on several nodes behind one router; independent requests need no traffic between them, so any link latency is fine (plan feature 11). | Done when (ADR 0091, build order 5), two simulated replicas serve one endpoint through the router, and the router property tests pass; router metrics, panel row and the replica-out alert in the same change. Can run in parallel with the pipeline step; the shared serve wiring lands last. |  |  |  |  |
+| `cluster-experts-nodes` | Experts on other machines |  |  | Each machine computes the experts it holds and only activations cross the network, one round trip per MoE layer (plan feature 9, Phase 6 half; Linux only, ADR 0008). | Parked after the Phase 6 exit (ADR 0091), since neither exit case needs it and over the measured WAN one round trip per MoE layer costs about 5.4 s per token. Done when, later, remote experts match local ones within tol_batch on simulated CPU nodes and the round trip on a box pair is within the probe curve; it gets its own ADR addendum. |  |  |  |  |
+| `cluster-remote-kv` | KV cache on another machine |  |  | A prefix that one replica holds is fetched by another only when moving its snapshot is predicted faster than recomputing it; otherwise it is recomputed (plan features 3 and 4, Phase 6 halves; ADR 0091). | Done when (ADR 0091), in CI a simulated replica fetches or recomputes a prefix held by the other exactly as the priced rule says, and a fetched prefix decodes equal; on the rehearsal boxes time to first token of a fetch is measured against recompute. KV tiers on a remote node during attention are out of M3. |  |  |  |  |
+| `cluster-replicas` | Model replicas behind one router |  |  | Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11). | Done when (ADR 0091, build order 5), two simulated replicas serve one endpoint through the router with prefix affinity before least-outstanding, a remote replica sends events of a few bytes per token, and the router property tests pass; router metrics, panel row and the replica-out alert in the same change. Can run in parallel with the pipeline step; the shared serve wiring lands last. |  |  |  |  |
 | `cluster-failover` | Keep serving when a node dies |  |  | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). | Done when (ADR 0091, Case F), the kill test passes in CI on simulated nodes for a killed worker, a killed node and a silent node, with every in-flight request on it ending in one clean error within node_down_after plus 1 s. |  |  |  |  |
 | `cluster-replica-scaling` | Add and remove replicas live |  |  | Replicas are added or removed under load as traffic changes (plan feature 39). | Done when: a load step adds a replica and a quiet period removes it, with no failed request. Phase 7, blocked behind the M3 report. |  |  |  |  |
 

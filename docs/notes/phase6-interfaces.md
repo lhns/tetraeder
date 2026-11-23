@@ -14,8 +14,12 @@ pub struct NodeId(pub String);
 #[serde(tag = "purpose", rename_all = "snake_case")]
 pub enum Purpose {
     Control,
+    /// Head to a replica leader: `Generate` requests and their events.
+    Replica { replica: u32 },
+    /// Leader to a segment worker: today's backend calls.
     Segment { replica: u32, segment: u32 },
-    Experts { replica: u32, layers: (u32, u32) },
+    /// Leader to leader: prefix snapshot fetch.
+    Prefix,
 }
 
 pub struct Peer {
@@ -50,8 +54,13 @@ pub trait Transport: Send + Sync + 'static {
 pub struct TlsTransport { /* listener, client and server configs */ }
 impl TlsTransport {
     pub fn new(identity: &Identity, anchors: &[CertificateDer<'static>], nodes: &[NodeId],
-               listen: Option<&str>) -> anyhow::Result<Self>;
+               listen: Option<&str>, buffers: SocketBuffers) -> anyhow::Result<Self>;
 }
+/// Kernel autotuning, or explicit sizes (Linux caps them at `net.core.{r,w}mem_max` and
+/// turns autotuning off). The probe picks one per link; the effective sizes are read back
+/// with `getsockopt` and logged.
+pub enum SocketBuffers { Auto, Explicit { send: usize, recv: usize } }
+pub fn effective_buffers(s: &std::net::TcpStream) -> std::io::Result<(usize, usize)>;
 pub struct Identity { pub cert: CertificateDer<'static>, pub key: PrivateKeyDer<'static> }
 
 /// In-process transport for simulated nodes; every link follows its fault script.
@@ -130,13 +139,19 @@ impl Membership {
 }
 
 /// Picks a replica for each new request.
-pub struct Router { /* per replica: health, outstanding */ }
+pub struct Router { /* per replica: health, outstanding, cap, prefix index */ }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplicaId(pub u32);
 impl Router {
-    pub fn new(replicas: u32) -> Self;
-    /// The `Up` replica with the fewest outstanding requests; `None` if none is up.
-    pub fn route(&mut self) -> Option<ReplicaId>;
+    /// `caps[r]` is replica r's `n_seq_max`: no more requests are sent to it at once.
+    pub fn new(caps: &[u32]) -> Self;
+    /// An `Up` replica with room: first the one holding the longest prefix of `prompt`
+    /// (live or cached), else the one with the fewest outstanding requests. `None`: the
+    /// request waits at the router (and can still go to any replica).
+    pub fn route(&mut self, prompt: &[TokenId]) -> Option<ReplicaId>;
+    /// Prefix index, fed by the replicas' save and evict events.
+    pub fn prefix_saved(&mut self, r: ReplicaId, key: PrefixKey, tokens: u32);
+    pub fn prefix_evicted(&mut self, r: ReplicaId, key: PrefixKey);
     pub fn finished(&mut self, r: ReplicaId);
     /// A replica joins (loaded and probed) or leaves (a node of it went `Down`).
     pub fn set_up(&mut self, r: ReplicaId, up: bool);
@@ -156,6 +171,8 @@ pub enum NodeRequest {
     Heartbeat { n: u64 },
     /// The node's hardware graph (profiler JSON) in the reply.
     Profile,
+    /// Start a replica engine (`tetraeder replica`) led by this node; `plan` is the replica's plan TOML.
+    StartReplica { replica: u32, plan: String, model_sha256: String },
     /// Start a worker for a segment; `plan` is the segment's single-node plan TOML.
     Assign { replica: u32, segment: u32, plan: String, model_sha256: String },
     Release { replica: u32, segment: u32 },
@@ -169,11 +186,45 @@ pub enum NodeReply {
     Hello { node: NodeId, version: String },
     Alive { n: u64, workers: u32 },
     Profile,
+    Started,
     Assigned,
     Released,
     Probe,
     Error { msg: String },
 }
+```
+
+## Replica protocol (`Purpose::Replica`, `Purpose::Prefix`)
+
+```rust
+/// The gateway's `Engine` for a replica led by another node. Tokenization and templates
+/// stay on the head; sampling and constraints run on the leader.
+pub struct RemoteEngine { /* transport, peer, replica, vocab fetched once */ }
+impl gateway::Engine for RemoteEngine { /* `generate` sends `Generate`, streams `GenEvent`s */ }
+
+/// `GenerateRequest` on the wire: the constraint as its source, compiled on the leader,
+/// because `TokenConstraint` is a trait object.
+#[derive(Serialize, Deserialize)]
+pub struct WireGenerate {
+    pub model: String,
+    pub prompt: Vec<TokenId>,
+    pub params: SamplingParams,
+    pub constraint: Option<ConstraintSpec>,
+    pub trace: Option<String>,
+}
+#[derive(Serialize, Deserialize)]
+pub enum ConstraintSpec { Grammar(String), JsonSchema(serde_json::Value), Regex(String) }
+/// One frame per event: `GenEvent` (token id, probabilities when asked, finish, error),
+/// a few bytes per generated token. Cancel is a `Cancel` frame on the same connection.
+
+/// Leader to leader. Reply payload: the snapshot bytes (C5), or an empty `Gone` reply.
+#[derive(Serialize, Deserialize)]
+pub enum PrefixRequest { Fetch { key: PrefixKey } }
+
+/// The fetch rule: fetch when `hop_time(bytes) + restore_s(bytes)` times `RESTORE_MIN_GAIN`
+/// beats recomputing `tokens` at the replica's predicted prefill rate, else recompute.
+pub fn fetch_beats_recompute(hw: &HardwareGraph, from: &str, to: &str, bytes: u64,
+                             tokens: u32, predicted_pp_tps: f64) -> bool;
 ```
 
 ## Worker protocol (`remote_backend::wire`)
@@ -186,7 +237,7 @@ pub struct RemoteConfig {
 }
 pub enum Endpoint {
     Child { program: PathBuf, args: Vec<OsString> },
-    /// A segment on a node: connect with `Purpose::Segment`, after `Assign` on the control link.
+    /// A worker on a node: connect with `Purpose::Segment`, after `Assign` on the control link.
     /// The node's daemon restarts its worker; the head reconnects and re-assigns when the node
     /// is `Up` again. The restart cap calls `on_give_up`, which for a node endpoint takes the
     /// replica out of the router and never exits the head.
@@ -201,10 +252,6 @@ pub enum Request {
         #[serde(default)]
         trace: Option<String>,
     },
-    /// Remote experts of one MoE layer (`Purpose::Experts`). Payload: `n` normed hidden rows
-    /// (f32, `n x n_embd`), then ids (i32, `n x k`, -1 for experts not held), then weights
-    /// (f32, `n x k`). Reply payload: the partial sums (f32, `n x n_embd`).
-    ExpertCall { layer: u32, n: u32, k: u32 },
 }
 
 pub struct Info {
@@ -233,7 +280,7 @@ pub trait SegmentBackend: BatchBackend {
 }
 ```
 
-`tetraeder::PipelineBackend` holds one `RemoteBackend` per segment and implements `BatchBackend`: sequence calls go to every segment, `decode` walks the segments in order (micro-batches in flight for prefill, ADR 0077), and any segment's failure fails the step for all (ADR 0065 rollback): each worker advances its own KV when its segment succeeds, so on a later segment's failure the head sends `seq_rm(seq, old_len)` for every input to the earlier segments; a segment that cannot roll back marks those sequences lost (`seq_lost`).
+`tetraeder::PipelineBackend` holds one `RemoteBackend` per segment and implements `BatchBackend`: sequence calls go to every segment, `decode` walks the segments in order (micro-batches in flight for prefill, ADR 0077), and any segment's failure fails the step for all (ADR 0065 rollback): each worker advances its own KV when its segment succeeds, so on a later segment's failure the leader sends `seq_rm(seq, old_len)` for every input to the earlier segments; a segment that cannot roll back marks those sequences lost (`seq_lost`).
 
 ## `crates/profiler` and `crates/plan`
 
@@ -272,7 +319,6 @@ pub fn segment_plan(plan: &Plan, replica: usize, seg: &Segment) -> Plan;
 // plan::validate: new issues
 pub enum Issue { /* existing */
     StageSpansNodes { at: At, nodes: Vec<String> },
-    RemoteExpertNotLinux { at: At, node: String },
     ForbiddenNode { at: At, node: String },
 }
 ```
@@ -292,8 +338,6 @@ pub struct ClusterFeatures {
     pub n_embd: u32,
     pub n_vocab: u32,
     pub prefill_micro_batches: u32,
-    /// Per MoE layer with remote experts: node of the experts, dispatch and combine bytes per token.
-    pub remote_experts: Vec<RemoteExpertFeature>,
 }
 pub struct ClusterPrediction { pub segments: Vec<Prediction>, pub hop_s_per_token: f64, pub pp_tps: f64, pub tg_tps: f64 }
 pub fn predict_cluster(hw: &HardwareGraph, f: &ClusterFeatures, prompt: u32, gen_tokens: u32)
@@ -308,6 +352,6 @@ pub fn enumerate_cluster(hw: &HardwareGraph, layout: &ModelLayout, hints: &Hints
 ## CLI
 
 - `tetraeder node --cluster cluster.toml --id <id> [--key key.pem --cert cert.pem]`, `tetraeder node --drain`.
-- `tetraeder cluster cert --id <id>` (writes a key and a self-signed certificate; tooling for owner question 2).
+- `tetraeder cluster cert --id <id>` (run on the box; writes a key that never leaves it and a self-signed certificate; tooling for owner question 2).
 - `tetraeder cluster profile --cluster cluster.toml -o hw.json`, `tetraeder cluster probe --cluster cluster.toml -o probe.json`.
-- `tetraeder serve --cluster cluster.toml --plan p.toml`, `tetraeder-plan candidates --cluster`, `tetraeder-plan predict --cluster`.
+- `tetraeder replica --plan p.toml` (started by the daemon; the engine of `serve` without HTTP), `tetraeder serve --cluster cluster.toml --plan p.toml`, `tetraeder-plan candidates --cluster`, `tetraeder-plan predict --cluster`.

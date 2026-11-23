@@ -62,7 +62,7 @@ All 52 wanted features have a home and a phase; the MVP (M1, after Phase 3b) cov
 | 14 | Mixed GPU sizes and vendors | ggml backends, `planner` | sizes 1, vendors after the Phase 0 spike, own builders on HIP, Vulkan, Metal in 8 |
 | 15 | Interconnect-aware placement, PCIe topology included | `profiler`, `costmodel` | 3a |
 | 16 | Multiple nodes | `transport`, `control` | 6 |
-| 17 | Automatic node discovery | `control` (static list; mDNS later, ADR 0091) | 6 static list, mDNS later |
+| 17 | Automatic node discovery | `control` (static list, mDNS) | 6 |
 | 18 | Live node join and leave | `control`, `planner` | 6 |
 | 19 | Fault tolerance | replicas, `control` | 6 |
 | 20 | Security (mTLS, node trust rules) | `transport`, `control` | 6 |
