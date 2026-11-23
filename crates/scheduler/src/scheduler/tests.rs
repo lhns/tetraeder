@@ -617,39 +617,258 @@ fn a_shrunk_reservation_still_holds_the_restored_entry() {
     assert_eq!((rec.source, rec.common), ("ram", 1000), "{rec:?}");
 }
 
-/// An entry the RAM budget evicted comes back from the disk tier on the next turn (ADR 0087),
-/// and the restore leaves no file behind.
+// ---- disk restore off the step (ADR 0087 addendum 2026-11-23) ----
+
+use crate::prefix_disk::ReadFn;
+use std::sync::atomic::AtomicBool;
+use tetraeder_model::snapshot_pool::{PoolConfig, SnapshotPool};
+
+/// A reader that waits for the test's gate, then reads the file; with `fail` it errors instead.
+fn gated_reader(gate: &Arc<AtomicBool>, fail: bool) -> ReadFn {
+    let gate = Arc::clone(gate);
+    Arc::new(move |path, format, size, pool| {
+        while !gate.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if fail {
+            return Err(std::io::Error::other("injected read failure"));
+        }
+        crate::prefix_disk::read_file(path, format, size, pool)
+    })
+}
+
+struct Spilled {
+    w: Worker,
+    pool: Arc<SnapshotPool>,
+    gate: Arc<AtomicBool>,
+    dir: PathBuf,
+    /// The prompt of the entry that sits on disk.
+    saved: Vec<TokenId>,
+}
+
+impl Spilled {
+    /// Two slots; one entry of 1200 tokens spilled to disk behind a closed gate.
+    fn new(tag: &str, fail: bool) -> Self {
+        let dir = std::env::temp_dir().join(format!("tt-sched-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let pool = Arc::new(SnapshotPool::new(PoolConfig {
+            spares: 4,
+            thp: false,
+            min_bytes: 1,
+            round: 1,
+        }));
+        let gate = Arc::new(AtomicBool::new(false));
+        let cache = PrefixCache::with_pool(6000, Arc::clone(&pool))
+            .with_disk_reader(gated_reader(&gate, fail))
+            .with_disk(&dir, 100_000);
+        let mut w = worker_cache(FakeKv::new(N_VOCAB, 2, 8000, 4000), 2048, cache);
+        let fmt = w.backend.kv_format();
+        let mut saved = Vec::new();
+        for seed in [1, 9] {
+            let p = prompt(seed, 1200);
+            let toks: Vec<i32> = p.iter().map(|&t| t as i32).collect();
+            let bytes: Vec<u8> = toks.iter().flat_map(|t| t.to_le_bytes()).collect();
+            w.cache.insert(&fmt, toks, bytes);
+            if seed == 1 {
+                saved = p;
+            }
+        }
+        // The second entry does not fit beside the first: the first spills.
+        w.cache.flush_disk();
+        assert_eq!(w.cache.disk_bytes(), 4800);
+        Self {
+            w,
+            pool,
+            gate,
+            dir,
+            saved,
+        }
+    }
+
+    /// A prompt that shares 1000 tokens with the spilled entry.
+    fn follow_up(&self) -> Vec<TokenId> {
+        let mut p = self.saved[..1000].to_vec();
+        p.extend(prompt(7, 100));
+        p
+    }
+
+    fn submit_follow_up(&mut self, max: u32) -> Rx {
+        let p = self.follow_up();
+        submit(&mut self.w, &p, max)
+    }
+
+    fn files(&self) -> usize {
+        std::fs::read_dir(&self.dir).map_or(0, |r| r.count())
+    }
+
+    /// Steps the worker until `done`, without a hot spin; panics after ten seconds.
+    fn run_until(&mut self, mut done: impl FnMut(&mut Worker) -> bool) {
+        let t0 = Instant::now();
+        while !done(&mut self.w) {
+            assert!(t0.elapsed() < Duration::from_secs(10), "timed out");
+            self.w.flush_drains();
+            self.w.admit();
+            self.w.sweep();
+            if !self.w.step() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+    }
+}
+
+impl Drop for Spilled {
+    fn drop(&mut self) {
+        self.gate.store(true, Ordering::SeqCst);
+    }
+}
+
+/// While the read is slow, another running sequence keeps producing tokens and the restoring
+/// request holds no slot; once the read is in it is admitted with the entry and finishes.
 // hardware: none
 #[test]
-fn a_spilled_entry_is_restored_from_disk() {
-    let dir = std::env::temp_dir().join(format!("tt-sched-disk-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let cache = PrefixCache::new(6000).with_disk(&dir, 100_000);
-    let mut w = worker_cache(FakeKv::new(N_VOCAB, 2, 8000, 2151), 2048, cache);
-    let entry = |seed: u32| {
-        let p = prompt(seed, 1200);
-        let toks: Vec<i32> = p.iter().map(|&t| t as i32).collect();
-        let bytes: Vec<u8> = toks.iter().flat_map(|t| t.to_le_bytes()).collect();
-        (p, toks, bytes)
-    };
-    let (saved, toks, bytes) = entry(1);
-    let fmt = w.backend.kv_format();
-    w.cache.insert(&fmt, toks, bytes);
-    // The second entry does not fit beside the first: the first spills.
-    let (_, toks2, bytes2) = entry(9);
-    w.cache.insert(&fmt, toks2, bytes2);
-    w.cache.flush_disk();
-    assert_eq!(w.cache.disk_bytes(), 4800);
-    let mut p = saved[..1000].to_vec();
-    p.extend(prompt(7, 100));
-    let mut rx = submit(&mut w, &p, 2);
-    w.admit();
-    let rec = w.last_admit.clone().expect("admitted");
+fn a_disk_restore_does_not_stall_a_running_sequence() {
+    let mut t = Spilled::new("nostall", false);
+    let mut other = submit(&mut t.w, &prompt(3, 40), 400);
+    t.run_until(|w| w.live_count() == 1);
+    let mut restoring = t.submit_follow_up(2);
+    let mut seen = 0;
+    t.run_until(|_| {
+        seen += tokens(&events(&mut other));
+        seen >= 25
+    });
+    assert!(t.w.waiting.front().is_some_and(Req::reading));
+    assert_eq!((t.w.live_count(), t.w.cache.restoring()), (1, 1));
+    assert!(events(&mut restoring).is_empty());
+    // The file is not consumed until the read is in.
+    assert_eq!(t.w.cache.disk_bytes(), 4800);
+    t.gate.store(true, Ordering::SeqCst);
+    t.run_until(|w| w.last_admit.as_ref().is_some_and(|r| r.source == "disk"));
+    let rec = t.w.last_admit.clone().expect("admitted");
     assert_eq!((rec.source, rec.common), ("disk", 1000), "{rec:?}");
-    assert_eq!(w.cache.disk_bytes(), 0);
+    assert_eq!((t.w.cache.disk_bytes(), t.w.cache.restoring()), (0, 0));
+    pump(&mut t.w);
+    assert_eq!(tokens(&events(&mut restoring)), 2);
+    drop(t);
+}
+
+/// A request behind a restoring one is admitted at once; the restoring one keeps its place.
+// hardware: none
+#[test]
+fn a_request_behind_a_restoring_one_is_admitted_first() {
+    let mut t = Spilled::new("behind", false);
+    let mut restoring = t.submit_follow_up(2);
+    t.run_until(|w| w.cache.restoring() == 1);
+    let mut behind = submit(&mut t.w, &prompt(4, 30), 3);
+    t.run_until(|w| w.live_count() == 1);
+    t.run_until(|w| tokens(&events(&mut behind)) == 3 || w.live_count() == 0);
+    assert!(events(&mut restoring).is_empty());
+    assert!(t.w.waiting.front().is_some_and(Req::reading));
+    t.gate.store(true, Ordering::SeqCst);
+    pump(&mut t.w);
+    assert_eq!(tokens(&events(&mut restoring)), 2);
+}
+
+/// The generated tokens of a request restored from disk equal those of a RAM restore.
+// hardware: none
+#[test]
+fn a_disk_restore_gives_the_tokens_of_a_ram_restore() {
+    let mut t = Spilled::new("same", false);
+    t.gate.store(true, Ordering::SeqCst);
+    let mut rx = t.submit_follow_up(6);
+    pump(&mut t.w);
+    let disk = events(&mut rx);
+    assert_eq!(t.w.last_admit.as_ref().map(|r| r.source), Some("disk"));
+
+    // The same entry kept in RAM.
+    let mut w = worker_cache(
+        FakeKv::new(N_VOCAB, 2, 8000, 4000),
+        2048,
+        PrefixCache::new(1 << 20),
+    );
+    let toks: Vec<i32> = t.saved.iter().map(|&x| x as i32).collect();
+    let bytes: Vec<u8> = toks.iter().flat_map(|x| x.to_le_bytes()).collect();
+    w.cache.insert(&w.backend.kv_format(), toks, bytes);
+    let mut rx = submit(&mut w, &t.follow_up(), 6);
     pump(&mut w);
-    assert_eq!(tokens(&events(&mut rx)), 2);
-    drop(w);
-    assert_eq!(std::fs::read_dir(&dir).map_or(0, |r| r.count()), 0);
-    let _ = std::fs::remove_dir_all(&dir);
+    let ram = events(&mut rx);
+    let rec = w.last_admit.clone().expect("admitted");
+    assert_eq!((rec.source, rec.common), ("ram", 1000));
+    let toks = |evs: &[GenEvent]| {
+        evs.iter()
+            .filter_map(|e| match e {
+                GenEvent::Token(t) => Some(*t),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(toks(&disk).len(), 6);
+    assert_eq!(toks(&disk), toks(&ram));
+}
+
+/// A read that fails admits the request without reuse, with the whole prompt prefilled.
+// hardware: none
+#[test]
+fn a_failed_disk_read_falls_back_to_a_full_prefill() {
+    let mut t = Spilled::new("fail", true);
+    let mut rx = t.submit_follow_up(2);
+    t.gate.store(true, Ordering::SeqCst);
+    pump(&mut t.w);
+    let evs = events(&mut rx);
+    assert_eq!(tokens(&evs), 2, "{evs:?}");
+    assert!(matches!(evs.last(), Some(GenEvent::Finished { .. })));
+    let rec = t.w.last_admit.clone().expect("admitted");
+    assert_eq!(rec.common, 0, "{rec:?}");
+    // The unreadable entry is gone.
+    assert_eq!((t.w.cache.disk_bytes(), t.files()), (0, 0));
+}
+
+/// A client that leaves during the read ends its request; the buffer goes back to the pool and
+/// the file stays, so the next request restores from it.
+// hardware: none
+#[test]
+fn cancelling_during_a_disk_read_returns_the_buffer_and_keeps_the_file() {
+    let mut t = Spilled::new("cancel", false);
+    let (tx, mut rx) = mpsc::channel(100);
+    let cancel = CancellationToken::new();
+    let params = SamplingParams {
+        max_tokens: 2,
+        temperature: Some(0.0),
+        ..SamplingParams::default()
+    };
+    t.w.waiting
+        .push_back(Req::new(t.follow_up(), params, None, cancel.clone(), tx));
+    t.run_until(|w| w.cache.restoring() == 1);
+    let files = t.files();
+    let (recycled, freed) = (t.pool.stats().recycled, t.pool.stats().freed_bytes);
+    cancel.cancel();
+    t.run_until(|w| w.waiting.is_empty());
+    assert_eq!(t.w.cache.restoring(), 0);
+    let evs = events(&mut rx);
+    assert!(
+        matches!(
+            evs.last(),
+            Some(GenEvent::Finished {
+                reason: FinishReason::Cancelled,
+                ..
+            })
+        ),
+        "{evs:?}"
+    );
+    t.gate.store(true, Ordering::SeqCst);
+    let t0 = Instant::now();
+    // Kept by the pool, or freed when its spares are full.
+    let back = |t: &Spilled| {
+        let s = t.pool.stats();
+        s.recycled > recycled || s.freed_bytes > freed
+    };
+    while !back(&t) && t0.elapsed() < Duration::from_secs(10) {
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(back(&t), "the buffer went back");
+    assert_eq!((t.w.cache.disk_bytes(), t.files()), (4800, files));
+    // The entry is still usable.
+    let mut again = t.submit_follow_up(2);
+    pump(&mut t.w);
+    assert_eq!(tokens(&events(&mut again)), 2);
+    assert_eq!(t.w.last_admit.as_ref().map(|r| r.source), Some("disk"));
 }

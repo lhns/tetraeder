@@ -187,6 +187,7 @@ pub struct Metrics {
     prefix_placed_free: Counter<u64>,
     prefix_spares: Gauge<u64>,
     prefix_spare_bytes: Gauge<u64>,
+    prefix_restoring: Gauge<u64>,
     prefix_spare_work: Counter<u64>,
     spec_acceptance: Histogram<f64>,
     spec_drafted: Counter<u64>,
@@ -476,6 +477,13 @@ impl Metrics {
                 .u64_gauge("tetraeder.kv.prefix.spares")
                 .with_unit("{buffer}")
                 .with_description("Spare snapshot buffers ready for the next save")
+                .build(),
+            prefix_restoring: meter
+                .u64_gauge("tetraeder.kv.prefix.restoring")
+                .with_unit("{request}")
+                .with_description(
+                    "Requests waiting on a background read of a prefix cache entry from disk (ADR 0087 addendum)",
+                )
                 .build(),
             prefix_spare_bytes: meter
                 .u64_gauge("tetraeder.kv.prefix.spare_memory")
@@ -892,7 +900,12 @@ impl Metrics {
             .record(bytes, &[KeyValue::new(attr::TIER, tier)]);
     }
 
-    /// One saved sequence restored into the KV cache; `source` is `ram` or `disk` (a disk restore includes the file read).
+    /// Requests waiting on a background disk read now.
+    pub fn kv_prefix_restoring(&self, n: u64) {
+        self.prefix_restoring.record(n, &[]);
+    }
+
+    /// One saved sequence restored: `ram` is the copy into the KV cache, `disk` is the background file read (ADR 0087 addendum).
     pub fn kv_prefix_restore(&self, d: Duration, source: &'static str) {
         self.prefix_restore
             .record(d.as_secs_f64(), &[KeyValue::new(attr::SOURCE, source)]);
