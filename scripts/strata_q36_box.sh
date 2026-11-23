@@ -130,8 +130,12 @@ server_up() {
   local name=$1 variant=$2 slog=$3
   case $name in
     llama-server)
+      # variant = kvu | nokvu, optionally with -ub2048 (physical batch 2048) and -nocp (no context checkpoints, no host
+      # prompt cache: the unique prompts of this workload never reuse them)
       local kv=-kvu
-      [ "$variant" = nokvu ] && kv=-no-kvu
+      case $variant in nokvu*) kv=-no-kvu ;; esac
+      case $variant in *-ub2048*) kv="$kv -ub 2048" ;; esac
+      case $variant in *-nocp*) kv="$kv --ctx-checkpoints 0 --cache-ram 0" ;; esac
       url="http://127.0.0.1:$port_ll"
       alias=$alias36
       start_server "$slog" "$baseline_bin" -m "$model" -ngl 99 -np 4 -c "$ctx" -fa on -ctk f16 -ctv f16 -t "$threads" \
@@ -323,7 +327,7 @@ st_probes() {
 # ---- stage: prepass ----------------------------------------------------------------------------------------
 st_prepass() {
   local v f
-  for v in kvu nokvu; do
+  for v in ${PREPASS_VARIANTS:-kvu nokvu kvu-ub2048 kvu-nocp kvu-ub2048-nocp}; do
     f="$out/prepass-$v.json"
     [ -f "$f" ] && continue
     say "prepass $v start"
@@ -338,14 +342,15 @@ st_prepass() {
   touch "$out/stage-prepass.ok"
 }
 
-pick_variant() { # the higher c4 throughput of the two pre-pass runs
+pick_variant() { # the pre-pass variant with the highest c4 throughput
   "$py" - "$out" << 'PYEOF'
 import json, sys
 d = sys.argv[1]
 t = {}
-for v in ("kvu", "nokvu"):
+import glob, os
+for f in glob.glob(f"{d}/prepass-*.json"):
     try:
-        t[v] = json.load(open(f"{d}/prepass-{v}.json"))["summary"]["throughput_tps"]
+        t[os.path.basename(f)[8:-5]] = json.load(open(f))["summary"]["throughput_tps"]
     except Exception:
         pass
 print(max(t, key=t.get) if t else "kvu")
