@@ -347,7 +347,6 @@ flowchart TB
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
-| Review the parity batch | ▶ in progress | One fresh reviewer reads the code seven workers merged on 2026-11-23 (llama-server parity A to C, KV format auto, prefix disk tier, recurrent reuse) for bugs, gaps and duplication; real findings get fixed, nitpicks dropped. |
 | Windows and Linux packages, container | ⏸ parked | Installable packages for Windows and Linux, and a container image (plan feature 37, Phase 9 half). |
 | Profiling mode with CUPTI | ⏸ parked | A profiling mode that records per-kernel GPU timings from outside the engine with CUPTI (NVIDIA) or rocprof (AMD), on top of the step timing and calibration runs that exist (plan feature 43). |
 | Transport latency between two boxes | ▶ in progress | Measure QUIC, TCP with TLS and plain TCP between two rented boxes, so the transport between machines is chosen on real network numbers, not only localhost ones (ADR 0023). |
@@ -388,7 +387,6 @@ flowchart TB
 <!-- BEGIN GENERATED: running -->
 **local**
 
-- `ops-review-parity-batch`: Review the parity batch
 - `serving-parity-libllama`: Expose libllama capabilities
 
 **cluster**
@@ -430,7 +428,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 102 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 103 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -815,6 +813,7 @@ Generated on 2026-11-23.
 - `memory-kv-auto`: Planner picks the KV format (✔ done · unrated). serve --kv auto and the planner pick the first of F16, Q8_0, Q8_0/Q4_0 that fits the context, on the GPU before the CPU, with the reason in the plan notes (ADR 0086); not measured, the default stays F16.
 - `memory-prefix-disk-async`: Disk prefix restore off the step (✔ done · unrated). A prefix restored from disk is now read in the background while the waiting request queues without a slot, so other sequences keep decoding (ADR 0087 addendum); no speed number yet.
 - `memory-prefix-ssd`: Prefix cache spills to SSD (✔ done · unrated). Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
+- `ops-review-parity-batch`: Review the parity batch (✔ done · unrated). A fresh reviewer read the code seven workers merged on 2026-11-23 and found 14 bugs; 13 are fixed (unbounded n, recurrent prefix entries destroyed, disk tier files deleted by a replan, aborted reads, disk budget, cut streams, completions default, top_k, penalty windows, empty key file, seeds, native logprob trim), one already matched llama-server, and five duplicated helpers were merged.
 - `planner-low-ram-modes`: Experts on GPU and SSD only (✔ done · unrated). On a 235B layout the planner has no plan without a RAM expert tier (builder floor of top-k slots per layer, CPU placement needs all weights in RAM); it refuses and names the tier, and ram_slots 0 stays unplanned.
 - `serving-parity-endpoints`: Endpoint parity (✔ done · successful). Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys work as in llama-server (ADR 0083 group C, ADR 0089); input-token routes, suffix on completions, slots and LoRA routes are still open.
 - `serving-parity-fields`: Request field parity (✔ done · successful). Requests and responses carry the fields llama-server has (optional model, end token in the count, logprobs, n above 1, GBNF grammar and JSON schema, timings, fingerprint, reasoning effort), and the ones it does not support are rejected with 400 (ADR 0083, group B).
@@ -853,6 +852,6 @@ Each track has its own page with its tree, node table and per-node details.
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 28 nodes (17 done, 1 in progress, 1 next, 2 blocked, 7 parked)
 - [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 44 nodes (32 done, 1 next, 4 blocked, 6 parked, 1 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 14 nodes (11 done, 1 in progress, 2 parked)
+- [ops - operations](roadmap/tracks/ops.md): 14 nodes (12 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 12 nodes (1 in progress, 11 blocked)
 <!-- END GENERATED: tracks -->
