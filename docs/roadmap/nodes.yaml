@@ -2477,18 +2477,18 @@ nodes:
   title: Owner accepts the Phase 6 design
   track: cluster
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
   evidence:
   - docs/adr/0091-phase6-multi-node.md
-  verdict_quote: ''
-  headline: ''
+  verdict_quote: 'Vast WAN pair, pinned self-signed certificates, 64 GB emulated by the balloon, mDNS out of M3, no HA gateway, remote experts after the exit (owner 2026-11-23)'
+  headline: 'ADR 0091 accepted'
   depends_on:
   - cluster-owner-transport
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
   plain: 'The owner accepts ADR 0091 and answers its open questions (exit hardware, Vast pair or homelab; how nodes get certificates; the emulated RAM budget; mDNS in or out of M3; the other scope cuts).'

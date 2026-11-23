@@ -1,6 +1,6 @@
 # 0091. Phase 6: nodes, the transport trait, plans across nodes, replicas and failover
 
-Status: Proposed (2026-11-23). Phase 6, milestone M3. Builds on ADR 0023 (TCP+TLS chosen), 0069 (worker process per box, `RemoteBackend`), 0070 (shapes, measured curves), 0077 (pipelined prefill), 0008 (Linux-only expert parallel across nodes), 0042 (drain-and-restart replanning), 0049 and 0087 (prefix cache). Written before any Phase 6 code (rule 1), as ADR 0068 did for Phase 5. Interfaces: [`docs/notes/phase6-interfaces.md`](../notes/phase6-interfaces.md). Tree nodes: track `cluster`.
+Status: Accepted (owner, 2026-11-23, on the advisor's recommendation; answers under "Owner answers"). Proposed 2026-11-23. Phase 6, milestone M3. Builds on ADR 0023 (TCP+TLS chosen), 0069 (worker process per box, `RemoteBackend`), 0070 (shapes, measured curves), 0077 (pipelined prefill), 0008 (Linux-only expert parallel across nodes), 0042 (drain-and-restart replanning), 0049 and 0087 (prefix cache). Written before any Phase 6 code (rule 1), as ADR 0068 did for Phase 5. Interfaces: [`docs/notes/phase6-interfaces.md`](../notes/phase6-interfaces.md). Tree nodes: track `cluster`.
 
 Measurements live in the session READMEs (`bench/results/<session>/README.md`), not here.
 
@@ -201,7 +201,15 @@ Phase 6 code stays on branches until the regression-gate box (`bench-regression-
 - On the WAN, two nodes are expected to tie one streaming node on decode and win on prefill (estimates above); the value of two nodes there is fitting the model in RAM, not decode speed.
 - The head is a single point of failure for the gateway; acceptable for two to three nodes and revisited with Phase 7.
 
-## Open for the owner
+## Owner answers (2026-11-23)
+
+1. Exit hardware: a Vast WAN pair (option a); a same-host pair runs in the rehearsal as an unjudged point; the homelab later.
+2. Certificates: pinned self-signed per node (option a).
+3. Node size: the 64 GB budget is emulated with `EMULATE_RAM_GB`, recorded as a caveat as M1 did.
+4. mDNS: out of M3; `docs/plan.md` feature row 17 reads "static list in Phase 6, mDNS later".
+5. Scope cuts confirmed: no highly available gateway in M3; experts across nodes parked until after the exit.
+
+## Questions as asked
 
 1. **Exit hardware.** (a) Two Vast boxes as specified, a low-RTT pair if offered, else WAN (recommended: available now, within caps, and the 15% rule judges the prediction, which prices the link); (b) your Linux host and Windows desktop on your LAN, the real homelab (needs a 24 GB-class GPU in each and the 235B on both disks; the Windows node then runs pipeline segments only, ADR 0008); (c) two containers on one Vast host (0.23 ms, but shared host memory and PCIe make it less like two machines). Recommendation: (a) for the verdict, (b) as a later confirmation.
 2. **Certificates.** (a) Each node generates a self-signed certificate and `cluster.toml` pins them (recommended: no CA to run, adding a node is one line on every node); (b) an own small CA from `tetraeder cluster ca` (rcgen), one anchor for all; (c) step-ca, as plan.md names it (renewal and revocation, one more service). The code is the same for all three (trust anchors); only tooling differs.

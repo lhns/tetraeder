@@ -96,4 +96,4 @@ An ADR holds what was chosen: the decision, its reasons in words, and the number
 | [0088](0088-request-fields-group-b.md) | Accepted | llama-server parity group B: EOS in the token count, raw log-probabilities, `n`, grammar and JSON schema, timings |
 | [0089](0089-endpoints-group-c.md) | Accepted | llama-server parity group C: health, metrics, props, tokenize, apply-template, native completion, infill, Responses, API keys |
 | [0090](0090-libllama-capabilities.md) | Accepted | llama-server parity group D: embeddings, rerank, KV cache types and offload, CPU-MoE, context shift, slot save and restore; the own builders refuse them |
-| [0091](0091-phase6-multi-node.md) | Proposed | Phase 6: nodes, the transport trait, plans across nodes as segments, replicas, failover and the exit test |
+| [0091](0091-phase6-multi-node.md) | Accepted | Phase 6: nodes, the transport trait, plans across nodes as segments, replicas, failover and the exit test |
