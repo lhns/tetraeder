@@ -309,3 +309,69 @@ fn slot_actions_refuse_what_llama_server_refuses() {
     let off = start(Setup::default()).unwrap();
     assert!(!off.slot_actions());
 }
+
+/// Events of `rx` until it ends, or `None` after `secs` seconds.
+fn collect_within(
+    rx: &mut tokio::sync::mpsc::Receiver<GenEvent>,
+    secs: u64,
+) -> Option<Vec<GenEvent>> {
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    let mut out = Vec::new();
+    while std::time::Instant::now() < end {
+        match rx.try_recv() {
+            Ok(ev) => out.push(ev),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => return Some(out),
+        }
+    }
+    None
+}
+
+fn submit(
+    s: &Scheduler,
+    prompt: Vec<u32>,
+    max_tokens: u32,
+    slot: Option<usize>,
+) -> tokio::sync::mpsc::Receiver<GenEvent> {
+    s.generate(GenerateRequest {
+        model: s.models()[0].id.clone(),
+        prompt,
+        params: SamplingParams {
+            max_tokens,
+            temperature: Some(0.0),
+            extra: SamplingExtras {
+                slot,
+                ..SamplingExtras::default()
+            },
+            ..SamplingParams::default()
+        },
+        constraint: Some(Box::new(Only(vec![65, 66, 67]))),
+        cancel: CancellationToken::new(),
+    })
+    .expect("generate")
+}
+
+/// A request pinned to a running slot waits for it; the ones behind it do not wait with it.
+#[test]
+fn a_request_pinned_to_a_busy_slot_does_not_hold_up_the_others() {
+    let s = start(Setup::default()).unwrap();
+    // never read: after its channel fills the request is paused and its slot stays busy
+    let a = submit(&s, prompt(8), 60, Some(0));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let mut b = submit(&s, prompt(9), 3, Some(0));
+    let mut c = submit(&s, prompt(10), 3, None);
+    let c_events =
+        collect_within(&mut c, 10).expect("the unpinned request ran beside the waiting one");
+    assert!(matches!(c_events.last(), Some(GenEvent::Finished { .. })));
+    assert!(
+        b.try_recv().is_err(),
+        "the pinned request is still waiting for slot 0"
+    );
+    // the first request goes away; the pinned one takes the slot
+    drop(a);
+    let b_events =
+        collect_within(&mut b, 10).expect("the pinned request ran once its slot was free");
+    assert!(matches!(b_events.last(), Some(GenEvent::Finished { .. })));
+}

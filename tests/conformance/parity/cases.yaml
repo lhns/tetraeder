@@ -654,8 +654,9 @@ cases:
   # The tiny models have no rank head: libllama then scores with the first value of the pooled state (softmaxed for
   # Qwen3), the same on both servers, so the scores are compared at 1e-5 (they are about 0.01). A server that is not
   # started with --reranking answers 501. One document per request: with several in one request llama-server
-  # evaluates them in one batch and, on this fixture, scores a document differently from when it is alone (the
-  # score of "The quick brown fox" was 0.0213 in a batch of three and 0.0058 alone); tetraeder scores each alone.
+  # evaluates them in one batch and, on this fixture, scores a document differently from when it is alone (0.0213
+  # in a batch of three, 0.0058 alone). The cause is libllama's rank pooling, which reads sequence s at n_cls_out * s
+  # floats; the fixture has no classification head, so its rows are n_embd wide. tetraeder scores each alone.
   - id: rerank-jina
     group: D
     row: "POST /rerank, /reranking, /v1/rerank, /v1/reranking (`--rerank`)"
@@ -733,7 +734,23 @@ cases:
     ctx: 256
     llama_args: [--context-shift]
     tetraeder_args: [--context-shift]
-    mode: shape
+    mode: text
+    value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
+    premise: {finish_reason: length}
+    engines: [auto]
+    expect: pass
+
+  # The same with the request's n_keep and n_discard: the greedy text after the shift is equal only if both servers
+  # drop the same positions at the same moment.
+  - id: context-shift-keep-discard
+    group: D
+    row: "Context shift"
+    endpoint: POST /v1/completions
+    body: {prompt: Hello, temperature: 0, max_tokens: 400, ignore_eos: true, n_keep: 4, n_discard: 8}
+    ctx: 256
+    llama_args: [--context-shift]
+    tetraeder_args: [--context-shift]
+    mode: text
     value_paths: ["choices[0].finish_reason", "usage.completion_tokens"]
     premise: {finish_reason: length}
     engines: [auto]

@@ -1291,9 +1291,18 @@ impl Worker {
         self.poll_restores();
         self.drop_lost_idle();
         loop {
-            // A request still reading keeps its place but does not block the ones behind it:
-            // they are placed first, and it is placed from the front once its read is in.
-            let skip = self.waiting.iter().take_while(|r| r.reading()).count();
+            // A request still reading, or pinned to a slot that is running, keeps its place but
+            // does not block the ones behind it: they are placed first, and it is placed from
+            // the front once its read is in or its slot is free.
+            let slots = &self.slots;
+            let waits = |r: &Req| {
+                r.reading()
+                    || r.params
+                        .extra
+                        .slot
+                        .is_some_and(|s| matches!(slots.get(s), Some(Slot::Live(_))))
+            };
+            let skip = self.waiting.iter().take_while(|r| waits(r)).count();
             let held: Vec<Req> = self.waiting.drain(..skip).collect();
             let more = self.admit_front();
             for r in held.into_iter().rev() {

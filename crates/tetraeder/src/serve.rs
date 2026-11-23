@@ -373,7 +373,11 @@ pub struct ServeArgs {
     /// When a sequence fills the context, drop tokens after `n_keep` (a request field) and go on,
     /// llama-server's `--context-shift` (ADR 0090). Off by default, as there: the request then
     /// ends with `length`. libllama only, on models whose cache can shift.
-    #[arg(long, overrides_with = "no_context_shift")]
+    #[arg(
+        long,
+        overrides_with = "no_context_shift",
+        conflicts_with_all = ["plan", "worker", "fake"]
+    )]
     pub context_shift: bool,
     /// The default of `--context-shift`; the last of the two wins.
     #[arg(long, overrides_with = "context_shift")]
