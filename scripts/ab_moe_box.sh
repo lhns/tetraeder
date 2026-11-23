@@ -154,6 +154,8 @@ build_one() {
 }
 
 build() {
+  # SKIP_BUILD=1: a rerun on a box that built both sides already (a push rewrites the sources, which would rebuild B)
+  [ "${SKIP_BUILD:-0}" = 1 ] && { say "build skipped"; return 0; }
   if [ "$DRY" = 1 ]; then
     plan "unpack $a_tar to $a_dir; cargo build --release -p tetraeder --features cuda in A and in B (two target dirs); python env $venv"
     return 0
