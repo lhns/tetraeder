@@ -17,7 +17,9 @@ FIXTURES = ROOT / "tests" / "fixtures"
 # The tiny GGUFs carry no chat template; both servers get this one, so the prompts are the same.
 TEMPLATE = FIXTURES / "chatml.jinja"
 # tetraeder engine -> model family; llama-server is keyed by family (auto and dense share the qwen3 fixture)
-FAMILY = {"auto": "qwen3", "dense": "qwen3", "moe": "qwen3moe"}
+FAMILY = {"auto": "qwen3", "dense": "qwen3", "moe": "qwen3moe", "llama-moe": "qwen3moe"}
+# the `--engine` value of a case engine: `llama-moe` is libllama on the MoE fixture (`auto` would pick the own MoE builder)
+ENGINE_FLAG = {"llama-moe": "llama"}
 MODEL_FILE = {"qwen3": "tiny-qwen3-f16.gguf", "qwen3moe": "tiny-qwen3moe-f16.gguf"}
 
 # Matching settings of both servers: context and slots (llama-server splits -c over slots unless -kvu,
@@ -91,21 +93,21 @@ def launch(name, argv, ready_path, port, log_dir: pathlib.Path, timeout=180) -> 
     raise ServerStartError(f"{name} not ready after {timeout} s:\n{log.read_text(errors='replace')[-1500:]}")
 
 
-def start_llama(binary, model: str, log_dir, extra=(), tag="") -> Running:
+def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX) -> Running:
     port = free_port()
     argv = [
         str(binary), "-m", str(FIXTURES / MODEL_FILE[model]), "--host", "127.0.0.1", "--port", str(port),
-        "-c", str(CTX), "-np", str(SLOTS), "-kvu", "-t", str(THREADS), *SAMPLING,
+        "-c", str(ctx), "-np", str(SLOTS), "-kvu", "-t", str(THREADS), *SAMPLING,
         "--chat-template-file", str(TEMPLATE), "--metrics", "--no-warmup", *extra,
     ]  # fmt: skip
     return launch(f"llama-server-{model}{tag}", argv, "/health", port, log_dir)
 
 
-def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="") -> Running:
+def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="", ctx=CTX) -> Running:
     port = free_port()
     argv = [
-        str(binary), "serve", "-m", str(FIXTURES / MODEL_FILE[FAMILY[engine]]), "--engine", engine,
-        "--host", "127.0.0.1", "--port", str(port), "--ctx", str(CTX), "--parallel", str(SLOTS), "-t", str(THREADS),
+        str(binary), "serve", "-m", str(FIXTURES / MODEL_FILE[FAMILY[engine]]), "--engine", ENGINE_FLAG.get(engine, engine),
+        "--host", "127.0.0.1", "--port", str(port), "--ctx", str(ctx), "--parallel", str(SLOTS), "-t", str(THREADS),
         *SAMPLING, "--chat-template-file", str(TEMPLATE), "--accept-any-model", "--metrics", *extra,
     ]  # fmt: skip
     # /health is public, so the instance that has an API key is ready too

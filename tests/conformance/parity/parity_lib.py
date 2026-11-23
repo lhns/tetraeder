@@ -198,6 +198,7 @@ def compare(case: dict, base, other) -> list[str]:
     stream case). The case's `mode` picks what is compared beyond the status:
     status (nothing more) | shape | text (shape and generated text) |
     logprobs (shape, then tokens and candidates equal and log-probabilities within `tolerance`) |
+    vectors (shape, then the numbers under each of `vector_paths` equal in count and within `tolerance`) |
     stream (event sequence and streamed text) | exact (the whole body).
     `value_paths` adds equal values at those paths to any JSON mode.
     `paths` restricts the shape to those prefixes, `ignore` adds paths to DEFAULT_IGNORE.
@@ -234,6 +235,8 @@ def compare(case: dict, base, other) -> list[str]:
             lines.append(f"text: baseline {bt!r}, tetraeder {ot!r}")
     if mode == "logprobs":
         lines += logprob_diffs(base, other, case.get("tolerance", LOGPROB_TOLERANCE))
+    if mode == "vectors":
+        lines += vector_diffs(base, other, case.get("vector_paths", ()), case.get("tolerance", VECTOR_TOLERANCE))
     for p in case.get("value_paths", ()):
         bv, ov = get_path(base.body, p), get_path(other.body, p)
         if bv != ov:
@@ -242,6 +245,50 @@ def compare(case: dict, base, other) -> list[str]:
 
 
 LOGPROB_TOLERANCE = 1e-3
+# Embeddings of the same GGUF on both servers differ by float summation order only (different batch shapes, thread
+# counts); the vectors are unit length or per-token activations well below 10, so 1e-3 absolute is far above that noise
+# and far below a wrong pooling, normalization or token list.
+VECTOR_TOLERANCE = 1e-3
+
+
+def flatten_numbers(v) -> list[float] | None:
+    """All numbers of a nested list in order; None when something else is inside."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return [float(v)]
+    if isinstance(v, list):
+        out: list[float] = []
+        for x in v:
+            f = flatten_numbers(x)
+            if f is None:
+                return None
+            out += f
+        return out
+    return None
+
+
+def vector_diffs(base, other, paths, tol: float = VECTOR_TOLERANCE) -> list[str]:
+    """For each path: the same list structure (per-token embeddings are a list of vectors) and every number within `tol`."""
+    if not paths:
+        return ["the case lists no vector_paths, so it compares nothing"]
+    lines = []
+    for p in paths:
+        bv, ov = get_path(base.body, p), get_path(other.body, p)
+        bf = flatten_numbers(bv)
+        if not bf:
+            lines.append(f"{p}: the baseline has no numbers there ({_clip(bv)}), so the case compares nothing")
+            continue
+        of = flatten_numbers(ov)
+        if of is None:
+            lines.append(f"{p}: tetraeder has no numbers there ({_clip(ov)})")
+        elif len(bf) != len(of) or shape(bv) != shape(ov):
+            lines.append(f"{p}: baseline {len(bf)} numbers {sorted(shape(bv))[:3]}, tetraeder {len(of)} numbers {sorted(shape(ov))[:3]}")
+        else:
+            worst = max(abs(a - b) for a, b in zip(bf, of))
+            if worst > tol:
+                lines.append(f"{p}: largest difference {worst:.6f} above the tolerance {tol}")
+    return lines
 
 
 def logprob_diffs(base, other, tol: float = LOGPROB_TOLERANCE) -> list[str]:
