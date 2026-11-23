@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 41 rated nodes are confirmed by the owner.
+0 of 42 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `planner-ep-prefill-recheck`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `memory-prefix-ssd`, `planner-ep-prefill-recheck`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -287,7 +287,6 @@ flowchart TB
 | KV cache spills to RAM, disk | ⏸ parked | Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084). |
 | KV cache partly in RAM | ○ next | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). |
 | Planner picks the KV format | ○ next | The planner chooses the KV format (F16, Q8_0, Q8_0/Q4_0) and pool size from free VRAM and slots instead of taking them as given, the way Strata picks FP8 KV on small cards (ADR 0085). |
-| Prefix cache spills to SSD | ○ next | Idle conversations' KV snapshots spill from RAM to NVMe and come back on the next turn, as Strata parks conversations (ADR 0085). |
 | Stream expert misses during prefill | ⏸ parked | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). |
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
@@ -378,7 +377,6 @@ flowchart TB
 - `memory-kv-auto`: Planner picks the KV format
 - `planner-ep-split`: Expert-parallel split on two GPUs
 - `planner-low-ram-modes`: Experts on GPU and SSD only
-- `memory-prefix-ssd`: Prefix cache spills to SSD
 
 **ci**
 
@@ -435,7 +433,7 @@ Generated on 2026-11-23.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 93 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 94 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -816,6 +814,7 @@ Generated on 2026-11-23.
 - `bench-m2-report`: Report milestone M2 (✔ done · n/a). M2 ends Phase 5: the owner judges the verdicts together with the list of rule changes made after failed sessions (docs/notes/phase5-rule-changes.md).
 - `multi-accept-adr-0081`: Accept the prefill capture fix (✔ done · n/a). The owner accepted ADR 0081 with the M2 decisions, after its GPU test and the s3f2 confirmation passed.
 - `serving-parity-harness`: llama-server conformance harness (✔ done · successful). One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083).
+- `memory-prefix-ssd`: Prefix cache spills to SSD (✔ done · successful). Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
 
 </details>
 
@@ -844,7 +843,7 @@ Generated on 2026-11-23.
 Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 20 nodes (12 done, 1 next, 1 blocked, 5 parked, 1 abandoned)
-- [memory - memory and streaming](roadmap/tracks/memory.md): 16 nodes (8 done, 3 next, 4 parked, 1 abandoned)
+- [memory - memory and streaming](roadmap/tracks/memory.md): 16 nodes (9 done, 2 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 24 nodes (15 done, 3 next, 3 blocked, 3 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 27 nodes (13 done, 2 next, 5 blocked, 7 parked)

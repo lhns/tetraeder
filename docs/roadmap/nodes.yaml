@@ -3311,21 +3311,24 @@ nodes:
   title: Prefix cache spills to SSD
   track: memory
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/adr/0087-prefix-cache-disk-tier.md
+  - crates/scheduler/src/prefix_cache.rs
+  - crates/scheduler/src/prefix_disk.rs
+  verdict_quote: 'CI memory-prefix-ssd run 45091422684: test (ubuntu-24.04) success, test (windows-latest) success; the spill, restore, budget, replacement, cleanup and write-failure tests and the scheduler restore test pass (not measured)'
   headline: ''
   depends_on:
   - serving-prefix-cache
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: '2026-11-23'
+  end: '2026-11-23'
   folded: []
   overview: false
-  plain: Idle conversations' KV snapshots spill from RAM to NVMe and come back on the next turn, as Strata parks conversations (ADR 0085).
-  notes: 'Prefix snapshots are RAM only today (ADR 0049).'
+  plain: Saved conversation state that no longer fits in RAM is written to a disk folder in the background and read back on the next turn (--cache-disk, ADR 0087); no speed number yet.
+  notes: 'Default off. A paired speed run on a box (disk restore against recompute) is a later item.'
 - id: serving-strata-owner-scope
   title: Which Strata model families to add
   track: serving
