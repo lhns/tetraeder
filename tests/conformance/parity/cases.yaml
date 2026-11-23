@@ -5,7 +5,7 @@
 # row       the exact first cell of a row of the appendix of docs/notes/llamacpp-parity.md (checked by test_parity_lib.py)
 # endpoint  "METHOD /path", sent to both servers
 # body      JSON request body; headers: extra request headers
-# mode      status | shape | text | stream | exact (parity_lib.compare)
+# mode      status | shape | text | logprobs | stream | exact (parity_lib.compare); logprobs also takes `tolerance`
 # compare_text  false: compare no streamed text; drop_events: SSE event names left out of the sequence
 # paths     compare only the shape under these paths; ignore: extra paths left out of the shape
 # value_paths  paths whose values must be equal (usage counts, finish_reason)
@@ -213,7 +213,7 @@ cases:
     no_model: true
     mode: text
     engines: [auto]
-    expect: gap serving-parity-fields
+    expect: pass
 
   - id: usage-eos-count
     group: B
@@ -228,7 +228,7 @@ cases:
       - "usage.total_tokens"
     premise: {finish_reason: stop}
     engines: [auto]
-    expect: gap serving-parity-fields
+    expect: pass
 
   # ---- group A: sampling (visible at temperature 0 through the penalties, bias and eos handling) ----
   - id: repeat-penalty
@@ -296,9 +296,9 @@ cases:
     row: "n_probs, logprobs, top_logprobs, post_sampling_probs"
     endpoint: POST /v1/chat/completions
     body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3, logprobs: true, top_logprobs: 2}
-    mode: shape
+    mode: logprobs
     engines: [auto]
-    expect: gap serving-parity-fields
+    expect: pass
 
   - id: n-choices
     group: B
@@ -308,8 +308,8 @@ cases:
     mode: shape
     value_paths:
       - "choices[1].index"
-    engines: [auto]
-    expect: gap serving-parity-fields
+    engines: [auto, dense, moe]
+    expect: pass
 
   - id: grammar-gbnf
     group: B
@@ -317,8 +317,8 @@ cases:
     endpoint: POST /v1/completions
     body: {prompt: Once upon a time, temperature: 0, max_tokens: 12, grammar: "root ::= \"ab\""}
     mode: text
-    engines: [auto]
-    expect: gap serving-parity-fields
+    engines: [auto, dense]
+    expect: pass
 
   - id: json-schema-top-level
     group: B
@@ -326,8 +326,8 @@ cases:
     endpoint: POST /v1/completions
     body: {prompt: Once upon a time, temperature: 0, max_tokens: 12, json_schema: {type: object}}
     mode: text
-    engines: [auto]
-    expect: gap serving-parity-fields
+    engines: [auto, dense]
+    expect: pass
 
   - id: system-fingerprint
     group: B
@@ -337,8 +337,8 @@ cases:
     mode: shape
     paths:
       - "system_fingerprint"
-    engines: [auto]
-    expect: gap serving-parity-fields
+    engines: [auto, dense, moe]
+    expect: pass
 
   - id: timings
     group: B
@@ -347,8 +347,8 @@ cases:
     body: {messages: [{role: user, content: Hello}], temperature: 0, max_tokens: 3}
     mode: shape
     paths: [timings]
-    engines: [auto]
-    expect: gap serving-parity-fields
+    engines: [auto, dense, moe]
+    expect: pass
 
   # ---- group C: endpoints ----
   - id: health

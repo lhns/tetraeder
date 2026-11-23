@@ -62,6 +62,7 @@ fn run(s: &Scheduler, prompt: Vec<u32>) -> Result<(Vec<u32>, u32), String> {
         match ev {
             GenEvent::Token(t) => tokens.push(t),
             GenEvent::Finished { stats, .. } => return Ok((tokens, stats.cached_tokens)),
+            GenEvent::Probs(_) => {}
             GenEvent::Error(e) | GenEvent::ContextExceeded(e) => return Err(e),
         }
     }

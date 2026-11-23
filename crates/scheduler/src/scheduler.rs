@@ -7,7 +7,7 @@ use crate::backend::{BackendError, BatchBackend, SeqId, SeqInput};
 use crate::batch::{Live, plan_step, victim};
 use crate::load::{Loaded, model_id};
 use crate::prefix_cache::{PrefixCache, RESTORE_MIN_GAIN, SAVE_MIN_TOKENS, common_prefix};
-use crate::sample::{SampleParams, Sampler, SamplerEnv};
+use crate::sample::{SampleParams, Sampler, SamplerEnv, token_probs};
 use crate::spec::{Drafter, Sampling, SpecConfig, Speculator};
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tetraeder_gateway::engine::{
     DecodeProfile, Engine, EngineError, EngineStats, FinishReason, GenEvent, GenerateRequest,
-    ModelInfo, SamplingParams, TokenConstraint, TokenId, Vocab,
+    ModelInfo, SamplingParams, TokenConstraint, TokenId, TokenProbs, Vocab,
 };
 use tetraeder_ggml_sys::llama::Model;
 use tetraeder_telemetry::{Metrics, Purpose, Tier};
@@ -269,6 +269,17 @@ impl Engine for Scheduler {
         Ok(toks.into_iter().map(|t| t as TokenId).collect())
     }
 
+    fn json_schema_to_grammar(&self, model: &str, schema: &str) -> Result<String, EngineError> {
+        self.check(model)?;
+        tetraeder_ggml_sys::llama::json_schema_to_grammar(schema).map_err(EngineError::Invalid)
+    }
+
+    fn check_grammar(&self, model: &str, grammar: &str) -> Result<(), EngineError> {
+        self.check(model)?;
+        tetraeder_ggml_sys::llama::Sampler::check_grammar(&self.tokenizer, grammar)
+            .map_err(|e| EngineError::Invalid(format!("invalid grammar: {e}")))
+    }
+
     fn generate(&self, req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError> {
         self.check(&req.model)?;
         let (tx, rx) = mpsc::channel(EVENT_BUFFER);
@@ -335,7 +346,13 @@ struct Req {
     outbox: VecDeque<GenEvent>,
     /// Created at the first admission.
     sampler: Option<Sampler>,
+    /// Probabilities of sampled tokens not yet sent (requests with log-probabilities only).
+    pending_probs: VecDeque<TokenProbs>,
     stats: EngineStats,
+    /// First admission, first sampled token and last sampled token, for the `timings`.
+    t_start: Option<Instant>,
+    t_first: Option<Instant>,
+    t_last: Option<Instant>,
     times: StepTimes,
     /// This request's share of the step times, by tokens. Shares of concurrent requests add up
     /// to the step, so it depends on who else ran; no gate may use per-request `gpu_seconds`.
@@ -409,7 +426,11 @@ impl Req {
             tx,
             outbox: VecDeque::new(),
             sampler: None,
+            pending_probs: VecDeque::new(),
             stats,
+            t_start: None,
+            t_first: None,
+            t_last: None,
             times: StepTimes::default(),
             gpu: Duration::ZERO,
             emit: Duration::ZERO,
@@ -580,6 +601,10 @@ fn sample_one(req: &mut Req, logits: &[f32]) -> Result<u32, String> {
     let tok = sampler
         .sample(logits, mask.as_ref())
         .ok_or("the constraint allows no token")?;
+    if let Some(n) = req.params.extra.logprobs.filter(|&n| n > 0) {
+        req.pending_probs
+            .push_back(token_probs(logits, tok, n as usize));
+    }
     if let Some(c) = req.constraint.as_mut() {
         c.commit(tok)?;
     }
@@ -747,6 +772,16 @@ impl Worker {
 
     /// Fills in the stats that need the backend.
     fn finalize(&self, req: &mut Req) {
+        if let (Some(t0), Some(t1)) = (req.t_start, req.t_first) {
+            req.stats.prompt_ms = t1.saturating_duration_since(t0).as_secs_f64() * 1e3;
+        }
+        if let (Some(t1), Some(t2)) = (req.t_first, req.t_last) {
+            // At least 1 us, as llama-server clamps it.
+            let gen_time = t2
+                .saturating_duration_since(t1)
+                .max(Duration::from_micros(1));
+            req.stats.predicted_ms = gen_time.as_secs_f64() * 1e3;
+        }
         if self.backend.on_gpu() {
             req.stats.gpu_seconds = Some(req.gpu.as_secs_f64());
         }
@@ -1324,6 +1359,7 @@ impl Worker {
         let reserved_to = self.backend.seq_reserved(id as SeqId);
         if !req.started {
             req.started = true;
+            req.t_start = Some(Instant::now());
             req.stats.cached_tokens = common as u32;
             req.bytes0 = self.backend.bytes_streamed_total();
             let params = self.defaults.resolve(&req.params);
@@ -1332,7 +1368,12 @@ impl Worker {
                 eog: &self.vocab.eog,
                 model: self.model.as_deref(),
             };
-            let seed = req.params.seed.map(|s| s as u32).or(self.default_seed);
+            let seed = req
+                .params
+                .seed
+                .map(|s| s as u32)
+                .or(self.default_seed)
+                .map(|s| s.wrapping_add(req.params.extra.seed_offset));
             match Sampler::new(&params, seed, &env) {
                 Ok(mut s) => {
                     s.accept_all(&req.toks);
@@ -1818,6 +1859,12 @@ impl Worker {
             return;
         };
         seq.decoding = true;
+        let now = Instant::now();
+        seq.req.t_first.get_or_insert(now);
+        seq.req.t_last = Some(now);
+        if let Some(p) = seq.req.pending_probs.pop_front() {
+            seq.req.outbox.push_back(GenEvent::Probs(p));
+        }
         if self.vocab.is_eog(tok) {
             self.finish(id, FinishReason::EndOfGeneration);
             return;

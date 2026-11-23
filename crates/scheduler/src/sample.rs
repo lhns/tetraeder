@@ -4,7 +4,9 @@
 //! setting masked logits to `-inf`.
 
 use std::sync::Arc;
-use tetraeder_gateway::engine::{SamplerKind, SamplingParams, TokenMask};
+use tetraeder_gateway::engine::{
+    GrammarSource, SamplerKind, SamplingParams, TokenId, TokenMask, TokenProbs,
+};
 use tetraeder_ggml_sys::llama::{Model, Sampler as Chain};
 
 /// `LLAMA_DEFAULT_SEED`: libllama draws a random seed.
@@ -49,6 +51,8 @@ pub struct SampleParams {
     pub samplers: Arc<[SamplerKind]>,
     pub logit_bias: Arc<[(i32, f32)]>,
     pub ignore_eos: bool,
+    /// GBNF the output must follow; the gateway has turned a JSON schema into one.
+    pub grammar: Option<Arc<str>>,
 }
 
 impl Default for SampleParams {
@@ -80,6 +84,7 @@ impl Default for SampleParams {
             samplers: SamplerKind::DEFAULT_ORDER.to_vec().into(),
             logit_bias: Arc::default(),
             ignore_eos: false,
+            grammar: None,
         }
     }
 }
@@ -142,6 +147,9 @@ impl SampleParams {
         }
         if let Some(v) = &e.samplers {
             p.samplers = v.clone().into();
+        }
+        if let Some(GrammarSource::Gbnf(g)) = &e.grammar {
+            p.grammar = Some(g.as_str().into());
         }
         p
     }
@@ -209,6 +217,7 @@ impl SampleParams {
             && self.typical_p >= 1.0
             && self.logit_bias.is_empty()
             && !self.ignore_eos
+            && self.grammar.is_none()
     }
 }
 
@@ -241,6 +250,14 @@ impl Sampler {
         let seed = seed.unwrap_or(DEFAULT_SEED);
         let n_vocab = env.n_vocab as i32;
         let mut chain = Chain::chain();
+        if let Some(g) = &p.grammar {
+            let model = env.model.ok_or(
+                "a grammar needs the model's vocabulary, which this engine has not loaded",
+            )?;
+            chain = chain
+                .with_grammar(model, g)
+                .map_err(|e| format!("invalid grammar: {e}"))?;
+        }
 
         let mut bias: Vec<(i32, f32)> = p
             .logit_bias
@@ -352,6 +369,42 @@ impl Sampler {
     }
 }
 
+/// The probabilities of `token` under the softmax of the raw `logits`, with the `n_top` most
+/// likely tokens (ties by lower id), as llama-server's `get_token_probabilities` reports them.
+pub fn token_probs(logits: &[f32], token: u32, n_top: usize) -> TokenProbs {
+    let max = logits
+        .iter()
+        .copied()
+        .filter(|l| !l.is_nan())
+        .fold(f32::NEG_INFINITY, f32::max);
+    let mut sum = 0.0f32;
+    for &l in logits {
+        sum += (l - max).exp();
+    }
+    let logprob = |id: usize| {
+        let p = (logits[id] - max).exp() / sum;
+        // JSON has no -inf: the lowest float stands for log(0).
+        if p > 0.0 { p.ln() } else { f32::MIN }
+    };
+    let n = n_top.min(logits.len());
+    let mut ids: Vec<u32> = (0..logits.len() as u32).collect();
+    let better = |a: &u32, b: &u32| {
+        logits[*b as usize]
+            .total_cmp(&logits[*a as usize])
+            .then(a.cmp(b))
+    };
+    if n < ids.len() {
+        ids.select_nth_unstable_by(n, better);
+        ids.truncate(n);
+    }
+    ids.sort_unstable_by(better);
+    TokenProbs {
+        token: token as TokenId,
+        logprob: logprob(token as usize),
+        top: ids.into_iter().map(|i| (i, logprob(i as usize))).collect(),
+    }
+}
+
 /// Argmax over the allowed ids; the lowest id wins ties, like libllama's greedy sampler.
 pub fn greedy(logits: &[f32], allowed: impl Fn(usize) -> bool) -> Option<u32> {
     let mut best: Option<(f32, usize)> = None;
@@ -414,6 +467,28 @@ mod tests {
     fn reference(c: Chain) -> Vec<u32> {
         let mut c = c;
         draws(|l| c.sample_logits(l).unwrap() as u32)
+    }
+
+    #[test]
+    fn token_probs_are_a_softmax_with_the_best_first() {
+        let l = [1.0f32, 3.0, 2.0, 3.0];
+        let p = token_probs(&l, 2, 3);
+        // ties go to the lower id
+        let ids: Vec<u32> = p.top.iter().map(|t| t.0).collect();
+        assert_eq!(ids, [1, 3, 2]);
+        let total: f32 = (0..4).map(|i| token_probs(&l, i, 0).logprob.exp()).sum();
+        assert!((total - 1.0).abs() < 1e-6, "{total}");
+        let z: f32 = l.iter().map(|x| x.exp()).sum();
+        assert!((p.logprob - (2.0f32.exp() / z).ln()).abs() < 1e-6);
+        assert!((p.top[0].1 - (3.0f32.exp() / z).ln()).abs() < 1e-6);
+        // more asked than the vocabulary has
+        assert_eq!(token_probs(&l, 0, 10).top.len(), 4);
+    }
+
+    #[test]
+    fn a_banned_token_has_the_lowest_float_as_log_probability() {
+        let l = [0.0f32, f32::NEG_INFINITY];
+        assert_eq!(token_probs(&l, 1, 2).logprob, f32::MIN);
     }
 
     fn params(f: impl FnOnce(&mut SampleParams)) -> SampleParams {

@@ -26,6 +26,8 @@ use std::sync::Arc;
 
 #[derive(Deserialize)]
 struct MessagesRequest {
+    /// Missing: the served model.
+    #[serde(default)]
     model: String,
     max_tokens: Option<u32>,
     messages: Vec<Value>,
@@ -409,6 +411,13 @@ fn spec(req: MessagesRequest) -> Result<GenerateSpec, GatewayError> {
         }
         _ => {}
     }
+    // `output_config.effort` is llama-server's `reasoning_effort`.
+    let effort = req
+        .output_config
+        .as_ref()
+        .and_then(|c| c.get("effort"))
+        .and_then(Value::as_str);
+    crate::openai::reasoning_effort(&mut kwargs, effort);
     let format = output_format(&req)?;
     let (messages, prefill) = messages(req.system.as_ref(), &req.messages)?;
     let mut s = GenerateSpec::new(
@@ -503,6 +512,7 @@ async fn messages_inner(
     while let Some(ev) = g.next().await {
         match ev {
             OutEvent::Segment(s) => push_block(&mut content, s),
+            OutEvent::Logprobs(_) => {}
             OutEvent::Done {
                 finish: f,
                 usage: u,
@@ -683,6 +693,7 @@ fn message_stream(g: Generation, request_id: String) -> impl Stream<Item = Event
                 ));
                 s.index += 1;
             }
+            Some(OutEvent::Logprobs(_)) => {}
             Some(OutEvent::Done { finish, usage }) => {
                 s.close(&mut out);
                 let (reason, seq) = stop_reason(&finish);

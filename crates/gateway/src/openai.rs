@@ -5,11 +5,12 @@
 //! llama.cpp and vLLM).
 
 use crate::chat::{
-    ChatMessage, Finish, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
+    ChatMessage, Finish, LogprobEntry, OutputFormat, Segment, ToolCall, ToolChoice, ToolDef, Usage,
+    logprobs_json,
 };
 use crate::error::{GatewayError, OpenAiError};
 use crate::gateway::{
-    Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, tag_generation,
+    Collected, Gateway, GenerateSpec, Generation, Operation, OutEvent, Prompt, tag_generation,
 };
 use crate::sampling::{self, SamplingFields};
 use axum::Json;
@@ -18,10 +19,12 @@ use axum::extract::{Path, State};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use futures_util::StreamExt;
+use futures_util::future::try_join_all;
 use futures_util::stream::{self, Stream};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::convert::Infallible;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -47,6 +50,8 @@ struct StreamOptions {
 
 #[derive(Deserialize)]
 struct ChatRequest {
+    /// Missing: the served model.
+    #[serde(default)]
     model: String,
     messages: Vec<Value>,
     max_tokens: Option<u32>,
@@ -66,8 +71,10 @@ struct ChatRequest {
     parallel_tool_calls: Option<bool>,
     response_format: Option<Value>,
     user: Option<String>,
-    #[serde(default)]
-    logprobs: bool,
+    logprobs: Option<bool>,
+    top_logprobs: Option<Value>,
+    n_probs: Option<i64>,
+    reasoning_effort: Option<String>,
     chat_template_kwargs: Option<Map<String, Value>>,
     #[serde(flatten)]
     sampling: SamplingFields,
@@ -75,6 +82,8 @@ struct ChatRequest {
 
 #[derive(Deserialize)]
 struct CompletionRequest {
+    /// Missing: the served model.
+    #[serde(default)]
     model: String,
     prompt: Value,
     max_tokens: Option<u32>,
@@ -90,7 +99,8 @@ struct CompletionRequest {
     #[serde(default)]
     echo: bool,
     suffix: Option<String>,
-    logprobs: Option<u32>,
+    logprobs: Option<i64>,
+    n_probs: Option<i64>,
     user: Option<String>,
     #[serde(flatten)]
     sampling: SamplingFields,
@@ -304,12 +314,87 @@ fn response_format(v: Option<Value>) -> std::result::Result<Option<OutputFormat>
     }
 }
 
-fn check_n(n: Option<u32>) -> std::result::Result<(), GatewayError> {
+/// What a stream or a response calls this server, as llama-server's `system_fingerprint` does
+/// with its build.
+const FINGERPRINT: &str = concat!("tetraeder-", env!("CARGO_PKG_VERSION"));
+
+/// Number of choices: `n`, at least 1. More than the parallel slots is rejected by the gateway.
+fn choice_count(n: Option<u32>) -> std::result::Result<usize, GatewayError> {
     match n {
-        None | Some(1) => Ok(()),
-        Some(_) => Err(GatewayError::InvalidRequest(
-            "only n = 1 is supported".into(),
-        )),
+        None => Ok(1),
+        Some(0) => Err(GatewayError::InvalidRequest("n must be at least 1".into())),
+        Some(n) => Ok(n as usize),
+    }
+}
+
+/// `n` copies of the spec; choice `i` samples with seed + i, as llama-server's child tasks do.
+fn choice_specs(spec: GenerateSpec, n: usize) -> Vec<GenerateSpec> {
+    (0..n)
+        .map(|i| {
+            let mut s = spec.clone();
+            s.extra.seed_offset = i as u32;
+            s
+        })
+        .collect()
+}
+
+/// llama-server's `n_probs`: how many top tokens to report; 0 is off.
+fn probs_count(n: Option<i64>) -> std::result::Result<Option<u32>, GatewayError> {
+    match n {
+        None => Ok(None),
+        Some(n) => match u32::try_from(n) {
+            Ok(0) => Ok(None),
+            Ok(n) => Ok(Some(n)),
+            Err(_) => Err(GatewayError::InvalidRequest(
+                "n_probs must not be negative".into(),
+            )),
+        },
+    }
+}
+
+/// `logprobs: true` takes `top_logprobs` (default 20) as `n_probs`; `top_logprobs` alone is an
+/// error (llama-server, `oaicompat_chat_params_parse`).
+fn chat_n_probs(
+    logprobs: bool,
+    top_logprobs: Option<Value>,
+    n_probs: Option<i64>,
+    tools_and_stream: bool,
+) -> std::result::Result<Option<u32>, GatewayError> {
+    let top = top_logprobs.filter(|v| !v.is_null());
+    if logprobs {
+        if tools_and_stream {
+            return Err(GatewayError::InvalidRequest(
+                "logprobs is not supported with tools + stream".into(),
+            ));
+        }
+        let n = match top {
+            None => 20,
+            Some(v) => v.as_i64().ok_or_else(|| {
+                GatewayError::InvalidRequest("top_logprobs must be an integer".into())
+            })?,
+        };
+        return probs_count(Some(n));
+    }
+    if top.is_some() {
+        return Err(GatewayError::InvalidRequest(
+            "top_logprobs requires logprobs to be set to true".into(),
+        ));
+    }
+    probs_count(n_probs)
+}
+
+/// `reasoning_effort` as llama-server reads it: `none` turns thinking off, any other value goes
+/// to the template as the `reasoning_effort` variable.
+pub(crate) fn reasoning_effort(kwargs: &mut Map<String, Value>, effort: Option<&str>) {
+    match effort {
+        Some("none") => {
+            kwargs.insert("enable_thinking".into(), Value::Bool(false));
+            kwargs.remove("reasoning_effort");
+        }
+        Some(e) if !e.is_empty() => {
+            kwargs.insert("reasoning_effort".into(), Value::String(e.to_owned()));
+        }
+        _ => {}
     }
 }
 
@@ -342,12 +427,20 @@ pub(crate) fn sse(events: impl Stream<Item = Event> + Send + 'static) -> Respons
 
 pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
     let req: ChatRequest = parse_body(&body)?;
-    check_n(req.n)?;
-    if req.logprobs {
-        return Err(bad("logprobs are not supported"));
+    let n = choice_count(req.n)?;
+    if req.sampling.has_grammar_and_schema() {
+        return Err(bad("Cannot use both json_schema and grammar"));
     }
     let tools = tools(req.tools)?;
+    let n_probs = chat_n_probs(
+        req.logprobs.unwrap_or(false),
+        req.top_logprobs,
+        req.n_probs,
+        req.stream && !tools.is_empty(),
+    )?;
     let choice = tool_choice(req.tool_choice, !tools.is_empty())?;
+    let mut kwargs = req.chat_template_kwargs.unwrap_or_default();
+    reasoning_effort(&mut kwargs, req.reasoning_effort.as_deref());
     let mut spec = GenerateSpec::new(
         req.model,
         Prompt::Chat {
@@ -356,7 +449,7 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
             tools,
             tool_choice: choice,
             parallel_tool_calls: req.parallel_tool_calls.unwrap_or(true),
-            kwargs: req.chat_template_kwargs.unwrap_or_default(),
+            kwargs,
         },
     );
     spec.max_tokens = req.max_completion_tokens.or(req.max_tokens);
@@ -365,21 +458,49 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
     spec.top_k = req.top_k;
     spec.seed = sampling::seed(req.seed);
     spec.extra = req.sampling.extras()?;
+    spec.extra.logprobs = n_probs;
     spec.stop = stop_list(req.stop)?;
     spec.format = response_format(req.response_format)?;
     spec.caller = req.user;
-    let generation = gw.generate(spec, Operation::Chat).await?;
-    let gid = generation.id.clone();
+    let generations = gw
+        .generate_many(choice_specs(spec, n), Operation::Chat)
+        .await?;
+    let gid = generations[0].id.clone();
     if req.stream {
         let usage = req.stream_options.is_some_and(|o| o.include_usage);
-        return Ok(tag_generation(sse(chat_stream(generation, usage)), &gid));
+        return Ok(tag_generation(
+            sse(oai_stream(generations, true, usage, None)),
+            &gid,
+        ));
     }
     let (id, model, created) = (
-        format!("chatcmpl-{}", generation.id),
-        generation.model.clone(),
-        generation.created,
+        format!("chatcmpl-{gid}"),
+        generations[0].model.clone(),
+        generations[0].created,
     );
-    let c = generation.collect().await?;
+    let all = try_join_all(generations.into_iter().map(Generation::collect)).await?;
+    let usage = total_usage(&all);
+    let choices: Vec<Value> = all
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| chat_choice(&gw, &model, i, c))
+        .collect();
+    let mut body = json!({
+        "id": id,
+        "object": "chat.completion",
+        "created": created,
+        "model": model,
+        "system_fingerprint": FINGERPRINT,
+        "choices": choices,
+        "usage": usage_json(&usage),
+    });
+    if let Some(t) = &usage.timings {
+        body["timings"] = t.to_json();
+    }
+    Ok(tag_generation(Json(body).into_response(), &gid))
+}
+
+fn chat_choice(gw: &Gateway, model: &str, index: usize, c: Collected) -> Value {
     let mut message = json!({
         "role": "assistant",
         "content": if c.text.is_empty() && !c.tool_calls.is_empty() { Value::Null } else { Value::String(c.text) },
@@ -392,51 +513,52 @@ pub async fn chat_completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Re
         message["reasoning_content"] = Value::String(r);
     }
     let finish = c.finish.as_ref().map_or("stop", Finish::openai_reason);
-    let resp = Json(json!({
-        "id": id,
-        "object": "chat.completion",
-        "created": created,
-        "model": model,
-        "choices": [{"index": 0, "message": message, "logprobs": null, "finish_reason": finish}],
-        "usage": usage_json(&c.usage),
-    }))
-    .into_response();
-    Ok(tag_generation(resp, &gid))
+    let logprobs = response_logprobs(gw, model, c.logprobs, c.finish.as_ref());
+    json!({"index": index, "message": message, "logprobs": logprobs, "finish_reason": finish})
 }
 
-struct ChatStream {
-    g: Generation,
-    id: String,
-    usage: bool,
-    started: bool,
-    tool_index: usize,
-    done: bool,
-}
-
-impl ChatStream {
-    fn chunk(&self, delta: Value, finish: Option<&str>) -> Value {
-        let mut c = json!({
-            "id": self.id,
-            "object": "chat.completion.chunk",
-            "created": self.g.created,
-            "model": self.g.model,
-            "choices": [{"index": 0, "delta": delta, "logprobs": null, "finish_reason": finish}],
-        });
-        if self.usage {
-            c["usage"] = Value::Null;
-        }
-        c
+/// The `logprobs` of a non-streaming choice: null without entries. When a stop string ended the
+/// output, the entries of the tokens that made it up are dropped, as llama-server does.
+fn response_logprobs(
+    gw: &Gateway,
+    model: &str,
+    mut entries: Vec<LogprobEntry>,
+    finish: Option<&Finish>,
+) -> Value {
+    if let Some(Finish::StopSequence(s)) = finish {
+        let k = gw.token_count(model, s);
+        entries.truncate(entries.len().saturating_sub(k));
+    }
+    if entries.is_empty() {
+        Value::Null
+    } else {
+        logprobs_json(&entries)
     }
 }
 
-fn chat_stream(g: Generation, usage: bool) -> impl Stream<Item = Event> + Send + 'static {
-    let s = ChatStream {
-        id: format!("chatcmpl-{}", g.id),
-        g,
+/// A stream of one or several generations as OpenAI chunks, choices interleaved as they come.
+/// `echo` is the prompt a completions stream sends first for every choice.
+fn oai_stream(
+    gens: Vec<Generation>,
+    chat: bool,
+    usage: bool,
+    echo: Option<String>,
+) -> impl Stream<Item = Event> + Send + 'static {
+    let n = gens.len();
+    let prefix = if chat { "chatcmpl-" } else { "cmpl-" };
+    let s = OaiStream {
+        id: format!("{prefix}{}", gens[0].id),
+        created: gens[0].created,
+        model: gens[0].model.clone(),
+        chat,
         usage,
+        echo,
         started: false,
-        tool_index: 0,
+        tool_index: vec![0; n],
+        lp: vec![Vec::new(); n],
+        tally: Tally::new(n),
         done: false,
+        events: merge(gens),
     };
     stream::unfold(s, |mut s| async move {
         if s.done {
@@ -445,40 +567,79 @@ fn chat_stream(g: Generation, usage: bool) -> impl Stream<Item = Event> + Send +
         let mut out = Vec::new();
         if !s.started {
             s.started = true;
-            out.push(data(
-                &s.chunk(json!({"role": "assistant", "content": ""}), None),
-            ));
-            return Some((stream::iter(out), s));
-        }
-        match s.g.next().await {
-            Some(OutEvent::Segment(Segment::Text(t))) => {
-                out.push(data(&s.chunk(json!({"content": t}), None)));
-            }
-            Some(OutEvent::Segment(Segment::Reasoning(r))) => {
-                out.push(data(&s.chunk(json!({"reasoning_content": r}), None)));
-            }
-            Some(OutEvent::Segment(Segment::ToolCall(tc))) => {
-                let mut call = tool_call_json(&tc);
-                call["index"] = json!(s.tool_index);
-                s.tool_index += 1;
-                out.push(data(&s.chunk(json!({"tool_calls": [call]}), None)));
-            }
-            Some(OutEvent::Done { finish, usage }) => {
-                out.push(data(&s.chunk(json!({}), Some(finish.openai_reason()))));
-                if s.usage {
-                    out.push(data(&json!({
-                        "id": s.id,
-                        "object": "chat.completion.chunk",
-                        "created": s.g.created,
-                        "model": s.g.model,
-                        "choices": [],
-                        "usage": usage_json(&usage),
-                    })));
+            for i in 0..s.tally.n {
+                if s.chat {
+                    let c = s.chunk(i, json!({"role": "assistant", "content": ""}), None);
+                    out.push(data(&c));
+                } else if let Some(e) = s.echo.clone() {
+                    let c = s.text_chunk(i, &e, None);
+                    out.push(data(&c));
                 }
-                out.push(Event::default().data("[DONE]"));
-                s.done = true;
             }
-            Some(OutEvent::Error(e)) => {
+            if !out.is_empty() {
+                return Some((stream::iter(out), s));
+            }
+        }
+        match s.events.next().await {
+            Some((i, OutEvent::Segment(Segment::Text(t)))) => {
+                let c = if s.chat {
+                    s.chunk(i, json!({"content": t}), None)
+                } else {
+                    s.text_chunk(i, &t, None)
+                };
+                out.push(data(&c));
+            }
+            Some((i, OutEvent::Segment(Segment::Reasoning(r)))) if s.chat => {
+                let c = s.chunk(i, json!({"reasoning_content": r}), None);
+                out.push(data(&c));
+            }
+            Some((i, OutEvent::Segment(Segment::ToolCall(tc)))) if s.chat => {
+                let mut call = tool_call_json(&tc);
+                call["index"] = json!(s.tool_index[i]);
+                s.tool_index[i] += 1;
+                let c = s.chunk(i, json!({"tool_calls": [call]}), None);
+                out.push(data(&c));
+            }
+            Some((_, OutEvent::Segment(_))) => {}
+            Some((i, OutEvent::Logprobs(e))) => s.lp[i].push(e),
+            Some((i, OutEvent::Done { finish, usage })) => {
+                let mut fin = if s.chat {
+                    s.chunk(i, json!({}), Some(finish.openai_reason()))
+                } else {
+                    s.text_chunk(i, "", Some(finish.openai_reason()))
+                };
+                s.tally.add(i, usage);
+                if !s.tally.complete() {
+                    out.push(data(&fin));
+                } else {
+                    let total = s.tally.total();
+                    let timings = total.timings.map(|t| t.to_json());
+                    if s.usage {
+                        out.push(data(&fin));
+                        let mut last = json!({
+                            "id": s.id,
+                            "object": if s.chat { "chat.completion.chunk" } else { "text_completion" },
+                            "created": s.created,
+                            "model": s.model,
+                            "system_fingerprint": FINGERPRINT,
+                            "choices": [],
+                            "usage": usage_json(&total),
+                        });
+                        if let Some(t) = timings {
+                            last["timings"] = t;
+                        }
+                        out.push(data(&last));
+                    } else {
+                        if let Some(t) = timings {
+                            fin["timings"] = t;
+                        }
+                        out.push(data(&fin));
+                    }
+                    out.push(Event::default().data("[DONE]"));
+                    s.done = true;
+                }
+            }
+            Some((_, OutEvent::Error(e))) => {
                 // A data frame carrying an `error` object, then [DONE], as llama-server ends it.
                 out.push(data(&e.openai_body()));
                 out.push(Event::default().data("[DONE]"));
@@ -491,12 +652,123 @@ fn chat_stream(g: Generation, usage: bool) -> impl Stream<Item = Event> + Send +
     .flatten()
 }
 
+type Merged = Pin<Box<dyn Stream<Item = (usize, OutEvent)> + Send>>;
+
+/// The events of every generation as one stream tagged with the choice index. Dropping it drops
+/// the generations, which cancels them.
+fn merge(gens: Vec<Generation>) -> Merged {
+    let streams = gens.into_iter().enumerate().map(|(i, g)| {
+        stream::unfold(g, move |mut g| async move {
+            g.next().await.map(|e| ((i, e), g))
+        })
+        .boxed()
+    });
+    Box::pin(stream::select_all(streams))
+}
+
+struct OaiStream {
+    events: Merged,
+    id: String,
+    created: u64,
+    model: String,
+    chat: bool,
+    usage: bool,
+    echo: Option<String>,
+    started: bool,
+    tool_index: Vec<usize>,
+    /// Log-probability entries waiting for the next chunk of their choice.
+    lp: Vec<Vec<LogprobEntry>>,
+    tally: Tally,
+    done: bool,
+}
+
+impl OaiStream {
+    fn envelope(&self, choice: Value) -> Value {
+        let mut c = json!({
+            "id": self.id,
+            "object": if self.chat { "chat.completion.chunk" } else { "text_completion" },
+            "created": self.created,
+            "model": self.model,
+            "system_fingerprint": FINGERPRINT,
+            "choices": [choice],
+        });
+        if self.usage {
+            c["usage"] = Value::Null;
+        }
+        c
+    }
+
+    fn logprobs(&mut self, index: usize) -> Value {
+        let lp = std::mem::take(&mut self.lp[index]);
+        if lp.is_empty() {
+            Value::Null
+        } else {
+            logprobs_json(&lp)
+        }
+    }
+
+    fn chunk(&mut self, index: usize, delta: Value, finish: Option<&str>) -> Value {
+        let logprobs = self.logprobs(index);
+        self.envelope(
+            json!({"index": index, "delta": delta, "logprobs": logprobs, "finish_reason": finish}),
+        )
+    }
+
+    fn text_chunk(&mut self, index: usize, text: &str, finish: Option<&str>) -> Value {
+        let logprobs = self.logprobs(index);
+        self.envelope(
+            json!({"text": text, "index": index, "logprobs": logprobs, "finish_reason": finish}),
+        )
+    }
+}
+
+/// Usage of a request with several choices: one prompt, the completions added up (llama-server
+/// takes the prompt, cache and timings of the first result).
+struct Tally {
+    n: usize,
+    done: usize,
+    total: Usage,
+}
+
+impl Tally {
+    fn new(n: usize) -> Self {
+        Self {
+            n,
+            done: 0,
+            total: Usage::default(),
+        }
+    }
+
+    fn add(&mut self, index: usize, u: Usage) {
+        let sum = self.total.completion_tokens + u.completion_tokens;
+        if index == 0 {
+            self.total = u;
+        }
+        self.total.completion_tokens = sum;
+        self.done += 1;
+    }
+
+    fn complete(&self) -> bool {
+        self.done >= self.n
+    }
+
+    fn total(&self) -> Usage {
+        self.total
+    }
+}
+
+fn total_usage(all: &[Collected]) -> Usage {
+    let mut t = Tally::new(all.len());
+    for (i, c) in all.iter().enumerate() {
+        t.add(i, c.usage);
+    }
+    t.total()
+}
+
 pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<Response> {
     let req: CompletionRequest = parse_body(&body)?;
-    check_n(req.n)?;
-    if req.logprobs.is_some_and(|n| n > 0) {
-        return Err(bad("logprobs are not supported"));
-    }
+    let n = choice_count(req.n)?;
+    let n_probs = probs_count(req.n_probs.or(req.logprobs))?;
     if req.suffix.as_deref().is_some_and(|s| !s.is_empty()) {
         return Err(bad("suffix is not supported"));
     }
@@ -520,94 +792,51 @@ pub async fn completions(State(gw): State<Arc<Gateway>>, body: Bytes) -> Result<
     spec.top_k = req.top_k;
     spec.seed = sampling::seed(req.seed);
     spec.extra = req.sampling.extras()?;
+    spec.extra.logprobs = n_probs;
     spec.stop = stop_list(req.stop)?;
     spec.caller = req.user;
-    let generation = gw.generate(spec, Operation::TextCompletion).await?;
-    let gid = generation.id.clone();
+    let generations = gw
+        .generate_many(choice_specs(spec, n), Operation::TextCompletion)
+        .await?;
+    let gid = generations[0].id.clone();
     let echo = req.echo.then_some(prompt);
     if req.stream {
         let usage = req.stream_options.is_some_and(|o| o.include_usage);
         return Ok(tag_generation(
-            sse(completion_stream(generation, usage, echo)),
+            sse(oai_stream(generations, false, usage, echo)),
             &gid,
         ));
     }
     let (id, model, created) = (
-        format!("cmpl-{}", generation.id),
-        generation.model.clone(),
-        generation.created,
+        format!("cmpl-{gid}"),
+        generations[0].model.clone(),
+        generations[0].created,
     );
-    let c = generation.collect().await?;
-    let text = echo.unwrap_or_default() + &c.text;
-    let resp = Json(json!({
+    let all = try_join_all(generations.into_iter().map(Generation::collect)).await?;
+    let usage = total_usage(&all);
+    let choices: Vec<Value> = all
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let text = echo.clone().unwrap_or_default() + &c.text;
+            let finish = c.finish.as_ref().map_or("stop", Finish::openai_reason);
+            let logprobs = response_logprobs(&gw, &model, c.logprobs, c.finish.as_ref());
+            json!({"text": text, "index": i, "logprobs": logprobs, "finish_reason": finish})
+        })
+        .collect();
+    let mut body = json!({
         "id": id,
         "object": "text_completion",
         "created": created,
         "model": model,
-        "choices": [{"text": text, "index": 0, "logprobs": null,
-                     "finish_reason": c.finish.as_ref().map_or("stop", Finish::openai_reason)}],
-        "usage": usage_json(&c.usage),
-    }))
-    .into_response();
-    Ok(tag_generation(resp, &gid))
-}
-
-fn completion_stream(
-    g: Generation,
-    usage: bool,
-    echo: Option<String>,
-) -> impl Stream<Item = Event> + Send + 'static {
-    let id = format!("cmpl-{}", g.id);
-    let chunk = move |g: &Generation, text: &str, finish: Option<&str>| {
-        let mut c = json!({
-            "id": id,
-            "object": "text_completion",
-            "created": g.created,
-            "model": g.model,
-            "choices": [{"text": text, "index": 0, "logprobs": null, "finish_reason": finish}],
-        });
-        if usage {
-            c["usage"] = Value::Null;
-        }
-        c
-    };
-    stream::unfold((g, echo, false), move |(mut g, mut echo, done)| {
-        let chunk = chunk.clone();
-        async move {
-            if done {
-                return None;
-            }
-            let mut out = Vec::new();
-            if let Some(e) = echo.take() {
-                out.push(data(&chunk(&g, &e, None)));
-                return Some((stream::iter(out), (g, None, false)));
-            }
-            let mut done = false;
-            match g.next().await {
-                Some(OutEvent::Segment(Segment::Text(t))) => out.push(data(&chunk(&g, &t, None))),
-                Some(OutEvent::Segment(_)) => {}
-                Some(OutEvent::Done { finish, usage: u }) => {
-                    out.push(data(&chunk(&g, "", Some(finish.openai_reason()))));
-                    if usage {
-                        let mut last = chunk(&g, "", None);
-                        last["choices"] = json!([]);
-                        last["usage"] = usage_json(&u);
-                        out.push(data(&last));
-                    }
-                    out.push(Event::default().data("[DONE]"));
-                    done = true;
-                }
-                Some(OutEvent::Error(e)) => {
-                    out.push(data(&e.openai_body()));
-                    out.push(Event::default().data("[DONE]"));
-                    done = true;
-                }
-                None => return None,
-            }
-            Some((stream::iter(out), (g, None, done)))
-        }
-    })
-    .flatten()
+        "system_fingerprint": FINGERPRINT,
+        "choices": choices,
+        "usage": usage_json(&usage),
+    });
+    if let Some(t) = &usage.timings {
+        body["timings"] = t.to_json();
+    }
+    Ok(tag_generation(Json(body).into_response(), &gid))
 }
 
 pub(crate) fn model_json(m: &crate::engine::ModelInfo) -> Value {
@@ -622,4 +851,62 @@ pub async fn list_models(gw: &Gateway) -> Response {
 pub async fn get_model(gw: &Gateway, Path(id): Path<String>) -> Result<Response> {
     let m = gw.model(&id)?;
     Ok(Json(model_json(&m)).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reasoning_effort_none_turns_thinking_off() {
+        let mut k = Map::new();
+        k.insert("reasoning_effort".into(), json!("high"));
+        reasoning_effort(&mut k, Some("none"));
+        assert_eq!(k.get("enable_thinking"), Some(&json!(false)));
+        assert!(!k.contains_key("reasoning_effort"));
+        let mut k = Map::new();
+        reasoning_effort(&mut k, Some("low"));
+        assert_eq!(k.get("reasoning_effort"), Some(&json!("low")));
+        reasoning_effort(&mut k, None);
+        reasoning_effort(&mut k, Some(""));
+        assert_eq!(k.len(), 1);
+    }
+
+    #[test]
+    fn n_probs_follow_llama_server() {
+        assert_eq!(chat_n_probs(false, None, None, false).unwrap(), None);
+        assert_eq!(chat_n_probs(true, None, None, false).unwrap(), Some(20));
+        assert_eq!(
+            chat_n_probs(true, Some(json!(3)), None, false).unwrap(),
+            Some(3)
+        );
+        // zero is off, as `n_probs` 0 is
+        assert_eq!(
+            chat_n_probs(true, Some(json!(0)), None, false).unwrap(),
+            None
+        );
+        assert_eq!(chat_n_probs(false, None, Some(5), false).unwrap(), Some(5));
+        assert!(chat_n_probs(false, Some(json!(3)), None, false).is_err());
+        assert!(chat_n_probs(true, None, None, true).is_err());
+        assert!(chat_n_probs(true, Some(json!(-1)), None, false).is_err());
+    }
+
+    #[test]
+    fn choices_start_at_one_and_total_their_completions() {
+        assert_eq!(choice_count(None).unwrap(), 1);
+        assert!(choice_count(Some(0)).is_err());
+        let u = |p, c| Usage {
+            prompt_tokens: p,
+            completion_tokens: c,
+            ..Usage::default()
+        };
+        let mut t = Tally::new(2);
+        // the second choice finishes first
+        t.add(1, u(9, 4));
+        assert!(!t.complete());
+        t.add(0, u(7, 5));
+        assert!(t.complete());
+        assert_eq!(t.total().prompt_tokens, 7);
+        assert_eq!(t.total().completion_tokens, 9);
+    }
 }

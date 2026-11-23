@@ -102,6 +102,7 @@ fn drain(mut rx: tokio::sync::mpsc::Receiver<GenEvent>) -> Out {
                     stats,
                 };
             }
+            GenEvent::Probs(_) => {}
             GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("engine error: {e}"),
         }
     }
@@ -273,6 +274,7 @@ fn cancellation_stops_generation_and_the_worker_goes_on() {
                     assert!(stats.generated_tokens < 100);
                     break reason;
                 }
+                GenEvent::Probs(_) => {}
                 GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("{e}"),
             }
         };

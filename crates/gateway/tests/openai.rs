@@ -45,8 +45,9 @@ async fn chat_completion_shape() {
     let u = &v["usage"];
     let prompt = chatml_user_tokens("hi") as u64;
     assert_eq!(u["prompt_tokens"], prompt);
-    assert_eq!(u["completion_tokens"], 11);
-    assert_eq!(u["total_tokens"], prompt + 11);
+    // "Hello there" and the end-of-generation token, which llama-server counts too
+    assert_eq!(u["completion_tokens"], 12);
+    assert_eq!(u["total_tokens"], prompt + 12);
     assert_eq!(u["prompt_tokens_details"]["cached_tokens"], 0);
 }
 
@@ -129,10 +130,10 @@ async fn chat_stream_include_usage() {
         assert!(c.get("usage").is_some_and(Value::is_null), "{c}");
     }
     assert_eq!(last["choices"], json!([]));
-    assert_eq!(last["usage"]["completion_tokens"], 3);
+    assert_eq!(last["usage"]["completion_tokens"], 4);
     assert_eq!(
         last["usage"]["total_tokens"],
-        last["usage"]["prompt_tokens"].as_u64().unwrap() + 3
+        last["usage"]["prompt_tokens"].as_u64().unwrap() + 4
     );
 }
 
@@ -404,7 +405,7 @@ async fn completions_stream() {
     let chunks: Vec<Value> = ev[..ev.len() - 1].iter().map(Sse::json).collect();
     let (usage, rest) = chunks.split_last().unwrap();
     assert_eq!(usage["choices"], json!([]));
-    assert_eq!(usage["usage"]["completion_tokens"], 3);
+    assert_eq!(usage["usage"]["completion_tokens"], 4);
     for c in rest {
         assert_eq!(c["object"], "text_completion");
     }

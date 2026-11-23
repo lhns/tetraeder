@@ -129,6 +129,7 @@ fn dry_request_runs_on_both_backends() {
             match rx.blocking_recv().expect("stream ended") {
                 GenEvent::Token(_) => {}
                 GenEvent::Finished { .. } => break,
+                GenEvent::Probs(_) => {}
                 GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("engine error: {e}"),
             }
         }

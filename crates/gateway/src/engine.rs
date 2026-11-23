@@ -157,6 +157,33 @@ pub struct SamplingExtras {
     pub dynatemp_exponent: Option<f32>,
     pub min_keep: Option<u32>,
     pub samplers: Option<Vec<SamplerKind>>,
+    /// Report the log-probabilities of the sampled token and this many top tokens (0 or `None`:
+    /// off), from the raw logits before the token mask and the chain, as llama-server does.
+    pub logprobs: Option<u32>,
+    /// Constrains the output like `grammar` or `json_schema` of llama-server. The gateway turns a
+    /// schema into GBNF before the engine sees the request.
+    pub grammar: Option<GrammarSource>,
+    /// Added to the seed (`n` above 1: choice `i` samples with seed + i, as llama-server does).
+    pub seed_offset: u32,
+}
+
+/// What a request's grammar is written in.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GrammarSource {
+    /// GBNF, root rule `root`.
+    Gbnf(String),
+    /// A JSON schema as JSON text; converted with [`Engine::json_schema_to_grammar`].
+    JsonSchema(String),
+}
+
+/// What the sampler saw for one sampled token (see [`SamplingExtras::logprobs`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TokenProbs {
+    pub token: TokenId,
+    /// Natural log of the token's probability under the softmax of the raw logits.
+    pub logprob: f32,
+    /// The most likely tokens with their log-probabilities, best first.
+    pub top: Vec<(TokenId, f32)>,
 }
 
 /// Allowed next tokens as a bitset over the vocabulary (bit `id % 32` of word `id / 32`).
@@ -208,6 +235,10 @@ pub struct EngineStats {
     /// Prompt tokens served from a prefix cache.
     pub cached_tokens: u32,
     pub generated_tokens: u32,
+    /// From the start of the request's prompt processing to its first sampled token.
+    pub prompt_ms: f64,
+    /// From the first sampled token to the last one (the end-of-generation token included).
+    pub predicted_ms: f64,
     /// Device time attributed to this request: its token share of the steps it took part in, so it
     /// depends on who ran beside it. No gate may use it per request.
     pub gpu_seconds: Option<f64>,
@@ -242,6 +273,9 @@ pub struct DecodeProfile {
 #[derive(Debug, Clone, PartialEq)]
 pub enum GenEvent {
     Token(TokenId),
+    /// The probabilities of a sampled token, sent before its `Token` (also for the
+    /// end-of-generation token, which has no `Token`). Only with `SamplingExtras::logprobs`.
+    Probs(TokenProbs),
     Finished {
         reason: FinishReason,
         stats: EngineStats,
@@ -258,6 +292,9 @@ pub enum EngineError {
     ModelNotFound(String),
     #[error("engine overloaded")]
     Overloaded,
+    /// The client's request is wrong (HTTP 400).
+    #[error("{0}")]
+    Invalid(String),
     #[error("{0}")]
     Other(String),
 }
@@ -272,4 +309,16 @@ pub trait Engine: Send + Sync + 'static {
     /// the receiver is dropped, and always ends with `Finished` or `Error` unless the
     /// receiver is gone.
     fn generate(&self, req: GenerateRequest) -> Result<mpsc::Receiver<GenEvent>, EngineError>;
+    /// GBNF for a JSON schema (JSON text), built as llama-server builds it.
+    fn json_schema_to_grammar(&self, _model: &str, _schema: &str) -> Result<String, EngineError> {
+        Err(EngineError::Invalid(
+            "json_schema is not supported by this engine".into(),
+        ))
+    }
+    /// Checks that a GBNF grammar parses, so a bad one is a 400 before generation starts.
+    fn check_grammar(&self, _model: &str, _grammar: &str) -> Result<(), EngineError> {
+        Err(EngineError::Invalid(
+            "grammar is not supported by this engine".into(),
+        ))
+    }
 }

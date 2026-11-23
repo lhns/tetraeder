@@ -2298,25 +2298,31 @@ nodes:
   title: Request field parity
   track: serving
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - tests/conformance/parity/cases.yaml
+  - docs/notes/llamacpp-parity.md
+  - docs/adr/0088-request-fields-group-b.md
+  - crates/gateway/tests/fields.rs
+  - crates/scheduler/tests/fields.rs
+  - crates/ggml-sys/tests/schema.rs
+  verdict_quote: '630 passed, 2 skipped, 12 xfailed in 76.08s (pytest, test ubuntu-24.04, CI run 45103474572); the 8 group B gap cases pass'
+  headline: '8 gaps closed, 12 left'
   depends_on:
   - serving-parity-sampling
   replaced_by: []
   lane: local
-  start: ''
-  end: ''
+  start: 2026-11-23
+  end: 2026-11-23
   folded: []
   overview: false
-  plain: Every request field llama-server reads is honoured or rejected with 400, including logprobs, n above 1, GBNF grammar, reasoning effort and timings (ADR 0083, group B).
+  plain: Requests and responses carry the fields llama-server has (optional model, end token in the count, logprobs, n above 1, GBNF grammar and JSON schema, timings, fingerprint, reasoning effort), and the ones it does not support are rejected with 400 (ADR 0083, group B).
 - id: serving-parity-endpoints
   title: Endpoint parity
   track: serving
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''

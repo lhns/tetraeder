@@ -4,11 +4,14 @@ use super::context::Context;
 use super::model::Model;
 use super::{LlamaError, Result, Token, init};
 use crate::raw as sys;
-use std::ffi::CString;
+use std::ffi::{CStr, CString, c_char};
 
 /// A sampler chain. Build with [`Sampler::chain`] and the adders, or use [`Sampler::greedy`].
 pub struct Sampler {
     ptr: *mut sys::llama_sampler,
+    /// GBNF grammar sampler, applied as `common_sampler_sample` does (see `sample_masked`). Not
+    /// part of the chain: only generated tokens are accepted into it.
+    grammar: Option<*mut sys::llama_sampler>,
     /// Candidate buffer of `sample_logits`, kept between calls.
     cand: Vec<sys::llama_token_data>,
 }
@@ -28,6 +31,7 @@ impl Sampler {
         };
         Self {
             ptr,
+            grammar: None,
             cand: Vec::new(),
         }
     }
@@ -186,13 +190,64 @@ impl Sampler {
         self.sample_masked(logits, |_| true)
     }
 
+    /// Constrains the output to a GBNF grammar (root rule `root`) over the vocabulary of `model`,
+    /// which must outlive the sampler. Fails when the grammar does not parse.
+    pub fn with_grammar(mut self, model: &Model, grammar: &str) -> Result<Self> {
+        let g = new_grammar(model, grammar)?;
+        if let Some(old) = self.grammar.replace(g) {
+            // SAFETY: `old` came from `new_grammar` and is owned by this sampler.
+            unsafe { sys::llama_sampler_free(old) };
+        }
+        Ok(self)
+    }
+
+    /// Whether `grammar` parses as GBNF with root rule `root` (builds and frees a grammar sampler).
+    pub fn check_grammar(model: &Model, grammar: &str) -> Result<()> {
+        init();
+        let g = new_grammar(model, grammar)?;
+        // SAFETY: just created, owned here.
+        unsafe { sys::llama_sampler_free(g) };
+        Ok(())
+    }
+
     /// As `sample_logits`, with the ids `allow` rejects set to `-inf` first. `None` when no
     /// allowed id has a finite logit (the chain would draw from nothing).
+    ///
+    /// With a grammar this is `common_sampler_sample`: the chain picks a token first; if the
+    /// grammar rejects it, the candidates are rebuilt, the grammar applied, then the chain again.
+    /// The chosen token is accepted into the chain and the grammar.
     pub fn sample_masked(
         &mut self,
         logits: &[f32],
         allow: impl Fn(usize) -> bool,
     ) -> Option<Token> {
+        if !self.fill(logits, &allow) {
+            return None;
+        }
+        let mut tok = self.pick()?;
+        if let Some(g) = self.grammar
+            && !grammar_accepts(g, tok)
+        {
+            self.fill(logits, &allow);
+            let mut arr = self.arr();
+            // SAFETY: `arr` points at `cand`; the grammar only masks logits in place.
+            unsafe { sys::llama_sampler_apply(g, &mut arr) };
+            // A grammar that allows nothing leaves no finite logit: no token, not an abort.
+            if !self.cand.iter().any(|c| c.logit.is_finite()) {
+                return None;
+            }
+            tok = self.pick()?;
+        }
+        if let Some(g) = self.grammar {
+            // SAFETY: `tok` passed the grammar (accepting an invalid token throws in C++).
+            unsafe { sys::llama_sampler_accept(g, tok) };
+        }
+        self.accept(tok);
+        Some(tok)
+    }
+
+    /// Fills the candidate buffer from `logits`; false when no allowed logit is finite.
+    fn fill(&mut self, logits: &[f32], allow: &impl Fn(usize) -> bool) -> bool {
         self.cand.clear();
         self.cand.reserve(logits.len());
         let mut any = false;
@@ -205,15 +260,21 @@ impl Sampler {
                 p: 0.0,
             });
         }
-        if !any {
-            return None;
-        }
-        let mut arr = sys::llama_token_data_array {
+        any
+    }
+
+    fn arr(&mut self) -> sys::llama_token_data_array {
+        sys::llama_token_data_array {
             data: self.cand.as_mut_ptr(),
             size: self.cand.len(),
             selected: -1,
             sorted: false,
-        };
+        }
+    }
+
+    /// Runs the chain over the filled candidates and returns the token it selects.
+    fn pick(&mut self) -> Option<Token> {
+        let mut arr = self.arr();
         // SAFETY: `arr` points at `cand`, which outlives the call; samplers only reorder or
         // shrink the array in place (they may repoint `data` inside `cand`'s buffer).
         unsafe { sys::llama_sampler_apply(self.ptr, &mut arr) };
@@ -221,21 +282,78 @@ impl Sampler {
             .ok()
             .filter(|&s| s < arr.size)?;
         // SAFETY: `sel < arr.size` and `arr.data` is valid for `arr.size` entries.
-        let tok = unsafe { (*arr.data.add(sel)).id };
-        self.accept(tok);
-        Some(tok)
+        Some(unsafe { (*arr.data.add(sel)).id })
     }
 
-    /// Feeds a token into the chain's state (for example repetition history). `sample`
-    /// already does this for the token it returns.
+    /// Feeds a token into the chain's state (for example repetition history), not into the
+    /// grammar. `sample_masked` already does this for the token it returns.
     pub fn accept(&mut self, token: Token) {
         // SAFETY: live sampler.
         unsafe { sys::llama_sampler_accept(self.ptr, token) }
     }
 }
 
+unsafe extern "C" {
+    fn tetraeder_json_schema_to_grammar(schema: *const c_char, out: *mut *mut c_char) -> i32;
+    fn tetraeder_schema_free(p: *mut c_char);
+}
+
+/// GBNF for a JSON schema (given as JSON text), built by llama.cpp's own converter at the pin
+/// (`shim/schema.cpp`). The error is the converter's message.
+pub fn json_schema_to_grammar(schema_json: &str) -> std::result::Result<String, String> {
+    let c = CString::new(schema_json).map_err(|_| "the schema contains a NUL byte".to_owned())?;
+    let mut out: *mut c_char = std::ptr::null_mut();
+    // SAFETY: `c` is NUL-terminated; on return `out` is null or a malloc'ed string, which is
+    // copied and freed here.
+    unsafe {
+        let status = tetraeder_json_schema_to_grammar(c.as_ptr(), &mut out);
+        let text = if out.is_null() {
+            String::new()
+        } else {
+            let t = CStr::from_ptr(out).to_string_lossy().into_owned();
+            tetraeder_schema_free(out);
+            t
+        };
+        if status == 0 { Ok(text) } else { Err(text) }
+    }
+}
+
+fn new_grammar(model: &Model, grammar: &str) -> Result<*mut sys::llama_sampler> {
+    let g = CString::new(grammar)
+        .map_err(|_| LlamaError::Invalid("grammar contains a NUL byte".into()))?;
+    // SAFETY: the vocab belongs to the live model; both strings are NUL-terminated and libllama
+    // copies them during init. It returns null when the grammar does not parse.
+    let s = unsafe { sys::llama_sampler_init_grammar(model.vocab, g.as_ptr(), c"root".as_ptr()) };
+    if s.is_null() {
+        return Err(LlamaError::Invalid("the grammar does not parse".into()));
+    }
+    Ok(s)
+}
+
+/// Whether the grammar sampler allows `tok` as the next token (llama-server's rejection check).
+fn grammar_accepts(g: *mut sys::llama_sampler, tok: Token) -> bool {
+    let mut one = sys::llama_token_data {
+        id: tok,
+        logit: 1.0,
+        p: 0.0,
+    };
+    let mut arr = sys::llama_token_data_array {
+        data: &mut one,
+        size: 1,
+        selected: -1,
+        sorted: false,
+    };
+    // SAFETY: `g` is a live grammar sampler and `arr` holds one valid entry.
+    unsafe { sys::llama_sampler_apply(g, &mut arr) };
+    one.logit != f32::NEG_INFINITY
+}
+
 impl Drop for Sampler {
     fn drop(&mut self) {
+        if let Some(g) = self.grammar {
+            // SAFETY: owned by this sampler.
+            unsafe { sys::llama_sampler_free(g) }
+        }
         // SAFETY: owned chain; its members are freed with it.
         unsafe { sys::llama_sampler_free(self.ptr) }
     }

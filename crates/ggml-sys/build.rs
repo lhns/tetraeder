@@ -136,6 +136,8 @@ fn main() {
         }
     }
     let out = cfg.build();
+    // Before the link-lib lines below, so the shim precedes the libraries it uses.
+    build_schema_shim(&src);
 
     if cuda && nccl {
         link_nccl(&out);
@@ -194,6 +196,36 @@ fn main() {
     }
 
     generate_bindings(&src);
+}
+
+/// Compiles llama.cpp's JSON-schema-to-GBNF converter (a few files of `common/`, which is not built
+/// otherwise) with a C wrapper, `shim/schema.cpp` (ADR 0083 group B, docs/sources.md).
+fn build_schema_shim(src: &Path) {
+    let common = src.join("common");
+    println!("cargo:rerun-if-changed=shim/schema.cpp");
+    let mut b = cc::Build::new();
+    b.cpp(true)
+        .std("c++17")
+        .warnings(false)
+        .include(&common)
+        .include(src.join("include"))
+        .include(src.join("ggml/include"))
+        .include(src.join("vendor"))
+        .file("shim/schema.cpp");
+    for f in [
+        "json-schema-to-grammar.cpp",
+        "json-schema.cpp",
+        "json.cpp",
+        "trie.cpp",
+        "unicode.cpp",
+    ] {
+        b.file(common.join(f));
+    }
+    if env("CARGO_CFG_TARGET_ENV") == "msvc" {
+        // The converter reports errors by exceptions; without /EHsc a throw ends the process.
+        b.flag("/utf-8").flag("/EHsc");
+    }
+    b.compile("tetraeder_schema");
 }
 
 fn env(k: &str) -> String {

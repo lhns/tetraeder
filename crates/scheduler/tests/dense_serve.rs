@@ -196,6 +196,7 @@ fn consume(s: &Scheduler, spec: &Spec) -> usize {
                     cancel.cancel();
                 }
             }
+            GenEvent::Probs(_) => {}
             GenEvent::Finished { .. } | GenEvent::Error(_) | GenEvent::ContextExceeded(_) => {
                 ended = true
             }
@@ -337,6 +338,7 @@ fn finish(mut rx: Events) -> (Vec<u32>, u32) {
                 assert_eq!(reason, FinishReason::Length);
                 return (toks, stats.cached_tokens);
             }
+            GenEvent::Probs(_) => {}
             GenEvent::Error(e) | GenEvent::ContextExceeded(e) => panic!("{e}"),
         }
     }

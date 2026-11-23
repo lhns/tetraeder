@@ -6,8 +6,8 @@
 //! token if allowed, else the lowest allowed id.
 
 use crate::engine::{
-    Engine, EngineError, EngineStats, FinishReason, GenEvent, GenerateRequest, ModelInfo, TokenId,
-    Vocab,
+    Engine, EngineError, EngineStats, FinishReason, GenEvent, GenerateRequest, ModelInfo,
+    SamplingParams, TokenId, TokenProbs, Vocab,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -77,6 +77,10 @@ pub struct FakeEngine {
     pub started: Arc<AtomicUsize>,
     /// Prompts seen, decoded, in order.
     pub prompts: Arc<Mutex<Vec<String>>>,
+    /// Sampling parameters of each request, in order.
+    pub params: Arc<Mutex<Vec<SamplingParams>>>,
+    /// A grammar containing this text does not parse (`check_grammar`).
+    pub bad_grammar_marker: &'static str,
 }
 
 impl FakeEngine {
@@ -119,6 +123,8 @@ impl FakeEngine {
             cancelled: Arc::default(),
             started: Arc::default(),
             prompts: Arc::default(),
+            params: Arc::default(),
+            bad_grammar_marker: "BAD",
         }
     }
 
@@ -195,6 +201,8 @@ impl Engine for FakeEngine {
         }
         let prompt = self.decode(&req.prompt);
         self.prompts.lock().unwrap().push(prompt.clone());
+        self.params.lock().unwrap().push(req.params.clone());
+        let n_probs = req.params.extra.logprobs.unwrap_or(0) as usize;
         self.started.fetch_add(1, Ordering::SeqCst);
         let script = self.encode(&(self.script)(&prompt));
         let (tx, rx) = mpsc::channel(self.channel_capacity.max(1));
@@ -211,6 +219,8 @@ impl Engine for FakeEngine {
             prompt_tokens: req.prompt.len() as u32,
             cached_tokens: 0,
             generated_tokens: 0,
+            prompt_ms: 1.5,
+            predicted_ms: 2.5,
             gpu_seconds: self.gpu_seconds,
             bytes_streamed: self.bytes_streamed,
             profile: None,
@@ -260,6 +270,20 @@ impl Engine for FakeEngine {
                     let _ = tx.blocking_send(GenEvent::Error(e));
                     return;
                 }
+                if n_probs > 0 {
+                    // Fixed fake numbers: the sampled token at -0.5, then others lower.
+                    let top = (0..n_probs.min(5))
+                        .map(|i| (tok + i as TokenId, -0.5 - i as f32))
+                        .collect();
+                    let probs = TokenProbs {
+                        token: tok,
+                        logprob: -0.5,
+                        top,
+                    };
+                    if tx.blocking_send(GenEvent::Probs(probs)).is_err() {
+                        break FinishReason::Cancelled;
+                    }
+                }
                 if tok == IM_END {
                     break FinishReason::EndOfGeneration;
                 }
@@ -277,6 +301,20 @@ impl Engine for FakeEngine {
             let _ = tx.blocking_send(GenEvent::Finished { reason, stats });
         });
         Ok(rx)
+    }
+
+    fn json_schema_to_grammar(&self, _model: &str, schema: &str) -> Result<String, EngineError> {
+        if schema.contains("BAD") {
+            return Err(EngineError::Invalid("bad schema".into()));
+        }
+        Ok("root ::= \"{}\"".into())
+    }
+
+    fn check_grammar(&self, _model: &str, grammar: &str) -> Result<(), EngineError> {
+        if grammar.contains(self.bad_grammar_marker) {
+            return Err(EngineError::Invalid("the grammar does not parse".into()));
+        }
+        Ok(())
     }
 }
 

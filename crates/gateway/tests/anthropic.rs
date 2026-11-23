@@ -50,7 +50,8 @@ async fn message_shape() {
     assert_eq!(v["stop_reason"], "end_turn");
     assert!(v["stop_sequence"].is_null());
     assert_eq!(v["usage"]["input_tokens"], chatml_user_tokens("hi") as u64);
-    assert_eq!(v["usage"]["output_tokens"], 6);
+    // "Hello!" and the end-of-generation token, which llama-server counts too
+    assert_eq!(v["usage"]["output_tokens"], 7);
     assert_eq!(v["usage"]["cache_read_input_tokens"], 0);
 }
 
@@ -126,7 +127,7 @@ async fn stream_event_sequence() {
         d["delta"],
         json!({"stop_reason": "end_turn", "stop_sequence": null})
     );
-    assert_eq!(d["usage"]["output_tokens"], 6);
+    assert_eq!(d["usage"]["output_tokens"], 7);
     assert_eq!(ev[ev.len() - 1].1, json!({"type": "message_stop"}));
 }
 

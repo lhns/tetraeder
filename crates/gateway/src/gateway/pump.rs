@@ -1,13 +1,13 @@
 //! The output pump: engine events to decoded, parsed segments for one generation.
 
 use super::{Gateway, Operation, OutEvent};
-use crate::chat::{Finish, Segment, Usage};
+use crate::chat::{Finish, LogprobEntry, LogprobTop, Segment, Timings, Usage};
 use crate::decode::{StopMatcher, Utf8Decoder};
-use crate::engine::{EngineStats, FinishReason, GenEvent, Vocab};
+use crate::engine::{EngineStats, FinishReason, GenEvent, TokenId, TokenProbs, Vocab};
 use crate::error::GatewayError;
 use crate::toolcall::OutputParser;
 use opentelemetry::KeyValue;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{OwnedSemaphorePermit, mpsc};
@@ -27,6 +27,9 @@ pub(super) struct Run {
     /// Parallel calls are off: generation ends after the first complete tool call.
     pub(super) single_call: bool,
     pub(super) stop: StopMatcher,
+    /// Control tokens, which add no text to a log-probability entry; `Some` only when the
+    /// request asked for log-probabilities.
+    pub(super) special: Option<HashSet<TokenId>>,
     /// Tool-call outcomes of this run, keyed `outcome/class`.
     pub(super) tool_outcomes: BTreeMap<String, u32>,
     pub(super) cancel: CancellationToken,
@@ -88,6 +91,12 @@ impl Run {
         let mut call_done = false;
         let mut stats = EngineStats::default();
         let mut buf = Vec::new();
+        // Log-probabilities: the entry waits for its token's text, and for the end of an
+        // incomplete UTF-8 character (llama-server reports no entry before it is complete).
+        let mut pending_probs: Option<TokenProbs> = None;
+        let mut lp_bytes: Vec<u8> = Vec::new();
+        let mut lp_buf: Vec<LogprobEntry> = Vec::new();
+        let mut eos_hit = false;
         // Gateway time per token, for the decode profile; two clock reads per token.
         let mut gateway = std::time::Duration::ZERO;
 
@@ -101,6 +110,12 @@ impl Run {
             // Only the token arm reaches the send below; the others break or continue.
             let tok_start: Instant;
             match ev {
+                GenEvent::Probs(p) => {
+                    if stop_hit.is_none() && !call_done {
+                        pending_probs = Some(p);
+                    }
+                    continue;
+                }
                 GenEvent::Token(id) => {
                     if stop_hit.is_some() || call_done {
                         continue;
@@ -120,6 +135,12 @@ impl Run {
                     last = now;
                     n_out += 1;
                     let text = utf8.push(self.vocab.bytes(id));
+                    if let Some(p) = pending_probs.take() {
+                        lp_bytes.extend(self.piece(id));
+                        if !utf8.has_pending() {
+                            lp_buf.push(self.entry(&p, std::mem::take(&mut lp_bytes)));
+                        }
+                    }
                     let (emit, hit) = self.stop.push(&text);
                     self.segments(&emit, &mut buf);
                     if hit.is_some() {
@@ -132,6 +153,12 @@ impl Run {
                     let ended_early = stop_hit.is_some() || call_done;
                     if reason == FinishReason::Cancelled && !ended_early {
                         break Outcome::ClientGone;
+                    }
+                    if reason == FinishReason::EndOfGeneration && !ended_early {
+                        eos_hit = true;
+                        if let Some(p) = pending_probs.take() {
+                            lp_buf.push(self.entry(&p, Vec::new()));
+                        }
                     }
                     if !ended_early {
                         let (emit, _) = self.stop.push(&utf8.finish());
@@ -151,7 +178,9 @@ impl Run {
                         _ if saw_tool_call => Finish::ToolCalls,
                         _ => Finish::Stop,
                     };
-                    if !self.send_all(&tx, &mut buf).await {
+                    if !self.send_logprobs(&tx, &mut lp_buf).await
+                        || !self.send_all(&tx, &mut buf).await
+                    {
                         break Outcome::ClientGone;
                     }
                     break Outcome::Done(finish);
@@ -164,7 +193,8 @@ impl Run {
                 }
             }
             saw_tool_call |= buf.iter().any(|s| matches!(s, Segment::ToolCall(_)));
-            let sent = self.send_all(&tx, &mut buf).await;
+            let sent =
+                self.send_logprobs(&tx, &mut lp_buf).await && self.send_all(&tx, &mut buf).await;
             gateway += tok_start.elapsed();
             if !sent {
                 self.cancel.cancel();
@@ -188,10 +218,13 @@ impl Run {
         if let Some(p) = stats.profile.as_mut() {
             p.gateway_s = gateway.as_secs_f64();
         }
+        // Metrics and the request log count the tokens that were emitted; the client's usage
+        // counts every sampled token, the end-of-generation token included, as llama-server does.
         let usage = Usage {
             prompt_tokens: self.prompt_tokens,
             completion_tokens: n_out,
             cached_tokens: stats.cached_tokens,
+            timings: None,
         };
         // Account before the final event so a caller that saw it also sees the metrics.
         let error_type = match &outcome {
@@ -204,8 +237,23 @@ impl Run {
             Outcome::Failed(e) => Some(e.otel_type()),
         };
         self.finish(usage, &stats, first, last, error_type);
+        let predicted_n = n_out + u32::from(eos_hit);
+        let client_usage = Usage {
+            completion_tokens: predicted_n,
+            timings: Some(Timings {
+                cache_n: stats.cached_tokens,
+                prompt_n: self.prompt_tokens.saturating_sub(stats.cached_tokens),
+                prompt_ms: stats.prompt_ms,
+                predicted_n,
+                predicted_ms: stats.predicted_ms,
+            }),
+            ..usage
+        };
         let last_event = match outcome {
-            Outcome::Done(finish) => Some(OutEvent::Done { finish, usage }),
+            Outcome::Done(finish) => Some(OutEvent::Done {
+                finish,
+                usage: client_usage,
+            }),
             Outcome::ClientGone => None,
             Outcome::Failed(e) => {
                 if matches!(e, GatewayError::Internal(_)) {
@@ -217,6 +265,44 @@ impl Run {
         if let Some(ev) = last_event {
             let _ = tx.send(ev).await;
         }
+    }
+
+    /// What a token adds to the output as llama-server reports it: control tokens nothing.
+    fn piece(&self, id: TokenId) -> Vec<u8> {
+        match &self.special {
+            Some(s) if s.contains(&id) => Vec::new(),
+            _ => self.vocab.bytes(id).to_vec(),
+        }
+    }
+
+    fn entry(&self, p: &TokenProbs, bytes: Vec<u8>) -> LogprobEntry {
+        LogprobEntry {
+            id: p.token,
+            bytes,
+            logprob: p.logprob,
+            top: p
+                .top
+                .iter()
+                .map(|&(id, logprob)| LogprobTop {
+                    id,
+                    bytes: self.piece(id),
+                    logprob,
+                })
+                .collect(),
+        }
+    }
+
+    async fn send_logprobs(
+        &self,
+        tx: &mpsc::Sender<OutEvent>,
+        buf: &mut Vec<LogprobEntry>,
+    ) -> bool {
+        for e in buf.drain(..) {
+            if tx.send(OutEvent::Logprobs(e)).await.is_err() {
+                return false;
+            }
+        }
+        true
     }
 
     async fn send_all(&self, tx: &mpsc::Sender<OutEvent>, buf: &mut Vec<Segment>) -> bool {

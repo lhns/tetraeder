@@ -9,7 +9,7 @@ Each row of the appendix belongs to one group. A row is done when its conformanc
 | Group | What | Tree node | When |
 |---|---|---|---|
 | A. Sampling | Chain order as llama-server (penalties, dry, top_n_sigma, top_k, typical_p, top_p, min_p, xtc, temperature, then the draw); min_p (default 0.05), repeat/presence/frequency penalties, typical_p, xtc, dry, top_n_sigma, mirostat, dynatemp, logit_bias, ignore_eos, min_keep, `samplers`; random seed when none is given; the model's suppress tokens | `serving-parity-sampling` | **done**, see the appendix rows |
-| B. Request and response fields | Every matrix field honoured or rejected with 400, never dropped; logprobs and top_logprobs; `n` above 1; GBNF `grammar` and top-level `json_schema`; `reasoning_effort` (and Anthropic `output_config.effort`); `timings` in responses; `cache_prompt` and `id_slot` accepted | `serving-parity-fields` | after A, no box |
+| B. Request and response fields | Every matrix field honoured or rejected with 400, never dropped; logprobs and top_logprobs; `n` above 1; GBNF `grammar` and top-level `json_schema`; `reasoning_effort` (and Anthropic `output_config.effort`); `timings` in responses; `cache_prompt` and `id_slot` accepted | `serving-parity-fields` | **done**, see the appendix rows (ADR 0088) |
 | C. Endpoints | `/health`, Prometheus `/metrics`, `/props`, `/tokenize`, `/detokenize`, `/apply-template`, native `/completion`, unprefixed `/models` and `/chat/completions`, `/v1/responses`, `/infill` and `suffix`, input-token counting, `--api-key` | `serving-parity-endpoints` | after B, no box |
 | D. What libllama has but the gateway does not expose | embeddings and rerank (libllama engine first), KV cache types (`-ctk`, `-ctv`), KV offload (`-nkvo`), context shift, slot save and restore, `--cpu-moe` and `--n-cpu-moe`, model download by name | `serving-parity-libllama` | after C; GPU rows on a later box |
 | E. Own ADR first (owner sees this matrix before work starts) | LoRA (plan feature 30), several models and router mode (29), multimodal, audio, TTS, transcription and realtime (34), other GPU backends (14) | `serving-parity-owner-scope` | owner decision |
@@ -33,7 +33,8 @@ Harness result (CI run 44983973508, Linux): 15 conformant cases (31 runs over au
 
 Group A is closed (node `serving-parity-sampling`): the host sampler is libllama's own chain in llama-server's order and defaults, so the old differences (temperature before top-p, no min_p, counter seed, SplitMix64) are gone. This changes sampled outputs at temperature above 0 for existing clients. Still different:
 
-- Unknown and unsupported fields outside group A are dropped silently (group B, `serving-parity-fields`).
+- Group B is closed (node `serving-parity-fields`): the fields of the matrix are honoured, rejected with 400 when set to a non-default value, or accepted without effect for a stated reason (appendix rows). Fields no row names are still ignored, as llama-server ignores its unknown ones. Still open from group B: `reasoning_format`, `reasoning_budget_tokens`, `continue_final_message`, `add_generation_prompt`, `prefill_assistant` and the Anthropic `extra_params` passthrough are ignored; `response_format` keeps its own token mask (not llama.cpp's grammar), so its exact tokens can differ from llama-server's.
+- Clients see one more token in `completion_tokens` when a response ends on the end-of-generation token.
 - A request `logit_bias` with text keys is rejected with 400; llama-server tokenizes them.
 - `samplers` names `infill` and `adaptive_p`, and `adaptive_target` and `adaptive_decay`, are not supported; an unknown sampler name is a 400 here, a skipped entry there.
 - Speculation (`--spec`) treats a request as greedy when nothing but the argmax matters; the model's suppress tokens are not part of that test.
@@ -100,7 +101,7 @@ Parsed in `L:server-schema.cpp:make_llama_cmpl_schema` (lines 13-470), evaluated
 
 | Field | llama-server evidence | Tetraeder status (OpenAI chat / completions / Anthropic) | Engine notes |
 |---|---|---|---|
-| model | context.cpp meta->model_name | supported; unknown ids resolve per `--default-model`/`--accept-any-model` (gateway.rs:303-310; serve.rs:59-63) | all |
+| model | context.cpp meta->model_name | **done** (node `serving-parity-fields`): optional, as there: a request without `model` gets the served model; a named unknown id still resolves per `--default-model`/`--accept-any-model`. Case `model-optional` | all |
 | messages (chat) | common.cpp:1552-1583 | supported: roles system/developer/user/assistant/tool (openai.rs:158-207); other roles rejected (openai.rs:208-212) | all |
 | content parts: text | common.cpp:1580 | supported (openai.rs:103) | all |
 | content parts: image_url / input_audio (needs `--mmproj`) | common.cpp:1580 (`oaicompat_content_load_media` 1415) `oaicompat_content_load_media`; arg.cpp:2549 | **rejected** on OpenAI (openai.rs:106-110 "only text"); Anthropic image block becomes the text `[image]` (anthropic.rs:60) | n/a (no mtmd) |
@@ -117,46 +118,46 @@ Parsed in `L:server-schema.cpp:make_llama_cmpl_schema` (lines 13-470), evaluated
 | frequency_penalty / presence_penalty (OpenAI standard names) | schema.cpp:135,138 | **done** (node `serving-parity-sampling`): parsed on both OpenAI routes and applied. Cases `presence-penalty`, `frequency-penalty` | all |
 | dry_multiplier, dry_base, dry_allowed_length, dry_penalty_last_n, dry_sequence_breakers | schema.cpp:141-155,244 | **done** (node `serving-parity-sampling`): parsed and applied through libllama's DRY sampler on the tokenizer model's vocabulary; works on all three engines (they share the scheduler's tokenizer model). `dry_base` below 1.0 means the server default; breakers must be 1 to 64 distinct strings | all |
 | mirostat / mirostat_tau / mirostat_eta | schema.cpp:159-166 | **done** (node `serving-parity-sampling`): parsed and applied (1 and 2); the chain is temperature plus Mirostat, as in llama-server | all |
-| adaptive_target / adaptive_decay | schema.cpp:169,173 | ignored | all |
+| adaptive_target / adaptive_decay | schema.cpp:169,173 | `adaptive_target` of 0 or more is rejected with 400 (the adaptive-p sampler is not supported), `adaptive_decay` is ignored; both at their defaults are accepted | all |
 | samplers (order) | schema.cpp:472 | **done** (node `serving-parity-sampling`): parsed (names, aliases or the letter string) and honoured in list order. `infill` and `adaptive_p` are rejected with 400, as is any unknown name (llama-server logs and skips it) | all |
 | seed | schema.cpp:178 (-1 random) | **done** (node `serving-parity-sampling`): seeded requests use libllama's `dist` sampler (mt19937), the same RNG as llama-server, so seeded outputs can match (case `seeded-sampling`); unseeded requests draw a random seed per request; a negative seed means random. `/v1/messages` accepts `seed` too. Server default seed: `--seed` | all |
 | logit_bias | schema.cpp:401 | **done** (node `serving-parity-sampling`): both forms (`{id: bias}` and `[[id, bias]]`, `false` bans); text keys and string tokens are rejected with 400 (llama-server tokenizes them); ids outside the vocabulary are dropped, as there. Case `logit-bias` | all |
 | ignore_eos | schema.cpp:442 | **done** (node `serving-parity-sampling`): bans every end-of-generation token. Case `ignore-eos` | all |
 | min_keep | schema.cpp:185 | **done** (node `serving-parity-sampling`): parsed and passed to every truncating sampler | all |
 | n_predict / max_tokens / max_completion_tokens | schema.cpp:46 (aliases) | supported: `max_completion_tokens` then `max_tokens` (openai.rs:357); completions default 16 (openai.rs:510); chat default: up to end of context (gateway.rs:88); Anthropic `max_tokens` optional (anthropic.rs:29,421; llama-server defaults it to 4096, chat.cpp:639-643) | all |
-| n_keep, n_discard, context_shift | schema.cpp:56,60; arg.cpp:1720 | ignored; over-length prompts fail with `context_length_exceeded` 400 (error.rs:14-16,50-51; engine.rs:155-157) | all |
-| n (n_cmpl, multiple choices) | schema.cpp:64 (1..n_parallel) | **rejected**: `n` other than 1 gives 400 "only n = 1 is supported" (openai.rs:302-309,340,489) | all |
+| n_keep, n_discard, context_shift | schema.cpp:56,60; arg.cpp:1720 | accepted without effect (the prompt is never truncated); over-length prompts fail with `context_length_exceeded` 400 (error.rs:14-16,50-51; engine.rs:155-157) | all |
+| n (n_cmpl, multiple choices) | schema.cpp:64 (1..n_parallel) | **done** (node `serving-parity-fields`): `n` choices through the gateway, each its own sequence with its own constraint and parser (the prompt is shared through prefix reuse where it lands on one sequence); choice i samples with seed + i when seeded, as llama-server's child tasks do; `n` of 0 or above the parallel slots is a 400 (llama-server's hard limit 1..n_parallel); the slots of one request are taken together, so two `n` requests cannot deadlock; usage has one prompt and the summed completions; streams interleave chunks by `index`. Case `n-choices` | all |
 | stop | schema.cpp:454; chat copy common.cpp:1513-1518 | supported: string or array (openai.rs:126-143); Anthropic `stop_sequences` (anthropic.rs:33,425); matched in gateway, held-back suffix (decode.rs:50-60) | all |
 | stream | schema.cpp:25 | supported (openai.rs:60,367; anthropic.rs:38) | all |
 | stream_options.include_usage | schema.cpp:28 | supported (openai.rs:41-45,368,463-471) | all |
-| cache_prompt | schema.cpp:33 | **ignored**; prefix reuse is on by default, `--no-prefix-reuse` is server-wide (serve.rs:100-103) | all |
-| n_cache_reuse | schema.cpp:69 | ignored (own prefix cache) | all |
-| id_slot | context.cpp:5301 | ignored (no slots API) | n/a |
-| return_tokens | schema.cpp:36 | ignored | n/a |
-| return_progress / sse_ping_interval | schema.cpp:39,42 | ignored; SSE keep-alive fixed 15 s (openai.rs:334) | n/a |
-| timings_per_token / verbose / response_fields / t_max_predict_ms / n_indent | schema.cpp:19,22,80,76,52 | ignored | n/a |
-| n_probs, logprobs, top_logprobs, post_sampling_probs | schema.cpp:181,192; common.cpp:1679-1688 | **rejected**: chat `logprobs: true` gives 400 "logprobs are not supported" (openai.rs:341-343); completions `logprobs > 0` rejected (openai.rs:490-492); `top_logprobs` ignored; `logprobs: false` accepted | all |
-| grammar (GBNF) | schema.cpp:271 | **ignored (not parsed)**; no GBNF. Tetraeder uses llguidance Lark (constraint.rs:1-6) | all |
-| json_schema (native field) | schema.cpp:271; common.cpp:1520-1523 | ignored as a top-level field; only through `response_format` | all |
+| cache_prompt | schema.cpp:33 | accepted without effect: prefix reuse is automatic and a hit changes no output; `--no-prefix-reuse` is server-wide | all |
+| n_cache_reuse | schema.cpp:69 | accepted without effect (own prefix cache) | all |
+| id_slot | context.cpp:5301 | accepted without effect: there are no slots to pick | n/a |
+| return_tokens | schema.cpp:36 | `true` is rejected with 400; `false` is accepted | n/a |
+| return_progress / sse_ping_interval | schema.cpp:39,42 | accepted without effect; SSE keep-alive fixed 15 s (openai.rs) | n/a |
+| timings_per_token / verbose / response_fields / t_max_predict_ms / n_indent | schema.cpp:19,22,80,76,52 | `timings_per_token`, `response_fields`, `t_max_predict_ms` and `n_indent` are rejected with 400 when set to anything but their default; `verbose` is accepted without effect | n/a |
+| n_probs, logprobs, top_logprobs, post_sampling_probs | schema.cpp:181,192; common.cpp:1679-1688 | **done** (node `serving-parity-fields`): chat `logprobs: true` with `top_logprobs` (default 20), completions `logprobs: N`, and `n_probs` on both; the probabilities are the softmax of the raw logits (before the token mask, bias, grammar and the sampling chain), which is what llama-server reports by default; `post_sampling_probs: true` is rejected with 400; `top_logprobs` without `logprobs` is 400, as is `logprobs` with tools and a stream. Shape as there: `content[]` of `id`, `token`, `bytes`, `logprob`, `top_logprobs[]`; the end-of-generation token has an entry with no text; no entry for a token that leaves an incomplete UTF-8 character; a stop string drops the entries of its tokens in non-streaming responses. Streams carry them on the chunks. Case `logprobs`, compared with a tolerance | all |
+| grammar (GBNF) | schema.cpp:271 | **done** (node `serving-parity-fields`): `grammar` on chat, completions and Anthropic requests runs libllama's grammar sampler on the tokenizer model's vocabulary, applied as `common_sampler_sample` does (chain first, grammar as a rejection check, then the grammar before the chain); it composes with the tool-call token mask (the mask applies first); a grammar that does not parse is a 400 before generation starts. `grammar_lazy: true` is rejected. Case `grammar-gbnf` | all |
+| json_schema (native field) | schema.cpp:271; common.cpp:1520-1523 | **done** (node `serving-parity-fields`): `json_schema` is converted to GBNF by llama.cpp's own converter (`common/json-schema-to-grammar.cpp` at the pin, built through a shim in `crates/ggml-sys/shim`, `docs/sources.md`); `{}` means any object; with both fields on a completion the grammar wins (as there), on chat both is a 400. Case `json-schema-top-level` | all |
 | response_format: json_object / json_schema | common.cpp:1525-1540 | supported (openai.rs:284-300; Anthropic `output_config.format` json_schema only, anthropic.rs:373-388) via llguidance mask | all |
 | tools | common.cpp:1503-1508 (needs `--jinja`, on by default, common.h:675) | supported, function tools only (openai.rs:224-250: other types rejected) | all |
 | tool_choice auto/none/required/named | common.cpp:1588 -> `common_chat_tool_choice_parse_oaicompat` | supported (openai.rs:252-282; Anthropic auto/any/none/tool, anthropic.rs:337-371). Forced choices use a grammar (ADR 0057 line 13: only forced choice builds a grammar; `auto` is parsed after the fact) | all |
 | parallel_tool_calls | common.cpp:1592 | supported (openai.rs:353; Anthropic `disable_parallel_tool_use`, anthropic.rs:348-351) | all |
 | chat_template_kwargs | common.cpp:1626-1630 | supported (openai.rs:70,354) | all |
 | reasoning_format (request) | common.cpp:1618-1621; schema.cpp:313 | ignored | all |
-| reasoning_effort | common.cpp:1643-1650 | ignored (not in ChatRequest) | all |
+| reasoning_effort | common.cpp:1643-1650 | **done** (node `serving-parity-fields`): `none` sets `enable_thinking` false, any other value goes to the template as `reasoning_effort` | all |
 | reasoning_budget_tokens / thinking_budget_tokens | common.cpp:1664-1676; schema.cpp:354 | ignored; Anthropic `thinking.type` enabled/adaptive/disabled sets `enable_thinking` kwarg, `budget_tokens` ignored (anthropic.rs:394-407); llama-server maps `thinking.budget_tokens` (chat.cpp:650-657) | all |
 | continue_final_message / add_generation_prompt / prefill_assistant | common.cpp:1593-1610 | partial: Anthropic trailing assistant message becomes `prefill` (anthropic.rs, `Prompt::Chat.prefill`, openai.rs:350 passes `None`) | all |
 | echo | schema.cpp:325 (chat), OAI completions | completions `echo` supported (openai.rs:88,519,533); chat n/a | all |
 | suffix | /infill | rejected (openai.rs:493-495) | n/a |
-| lora (per request) | schema.cpp:231 | ignored | n/a |
+| lora (per request) | schema.cpp:231 | a non-empty list is rejected with 400 | n/a |
 | user | not used for sampling (metadata only) | parsed, used as cost/quota key `caller` (openai.rs:67,364) | all |
 | speculative.* per request | schema.cpp:202-227 are `#if 0` | n/a | n/a |
 | Anthropic: system | server-chat.cpp (converter 391-684) | supported (anthropic.rs:31) | all |
 | Anthropic: metadata.user_id | chat.cpp:668-674 | supported as `caller` (anthropic.rs:427-432) | all |
 | Anthropic: thinking blocks in history | chat.cpp:460,585 | supported -> `reasoning_content` (anthropic.rs:220-226; redacted_thinking dropped) | all |
 | Anthropic: image/document blocks | chat.cpp (media) | image -> `[image]`, document -> its text (anthropic.rs:60-69); unknown blocks dropped with a warning (anthropic.rs:70-77) | all |
-| **[new @pin]** Anthropic: output_config.effort -> reasoning_effort | server-chat.cpp:662-668 | ignored (`anthropic.rs:373-388` reads `output_config.format` only) | n/a |
+| **[new @pin]** Anthropic: output_config.effort -> reasoning_effort | server-chat.cpp:662-668 | **done** (node `serving-parity-fields`): read as `reasoning_effort` | n/a |
 | Anthropic: extra_params passthrough (min_p, seed ...) | chat.cpp:676-682 | missing | n/a |
 | Anthropic: top_k / top_p / temperature | chat.cpp:646 | supported (anthropic.rs:34-36) | all |
 | Anthropic: tool defs `input_schema`, `defer_loading`/`tool_reference` | chat.cpp:600-615 | supported (anthropic.rs:330; tool_reference text, anthropic.rs:56) | all |
@@ -178,13 +179,13 @@ Sampler facts for Tetraeder (all engines share one host-side sampler over the lo
 
 | Capability | llama-server evidence | Tetraeder status | Engine notes |
 |---|---|---|---|
-| usage (prompt/completion/total, `prompt_tokens_details.cached_tokens`) | server-task.cpp:357-364 | supported, same fields (openai.rs:311-318); `completion_tokens` counted by gateway | all |
-| timings (`prompt_n`, `prompt_ms`, `predicted_per_second`, `cache_n`, `draft_n`, ...) | server-common.cpp:146-165; task.cpp:400,448,509 | **missing** from responses. `EngineStats` has gpu_seconds, bytes_streamed, profile (engine.rs:109-145) used for cost/metrics, not returned | all |
+| usage (prompt/completion/total, `prompt_tokens_details.cached_tokens`) | server-task.cpp:357-364 | **done** (node `serving-parity-fields`): `completion_tokens` counts every sampled token, the end-of-generation token included, as llama-server's `n_decoded` does (also Anthropic `output_tokens`); the request log and the decode metrics keep counting emitted tokens. Case `usage-eos-count` | all |
+| timings (`prompt_n`, `prompt_ms`, `predicted_per_second`, `cache_n`, `draft_n`, ...) | server-common.cpp:146-165; task.cpp:400,448,509 | **done** (node `serving-parity-fields`): `timings` on non-streaming responses and on the last stream chunk (the usage chunk when there is one), from the scheduler's per-request timestamps: `prompt_n` is the uncached prompt tokens, `prompt_ms` runs from the first admission to the first sampled token, `predicted_ms` from there to the last token, and the rates count the steps after the first token. `draft_n` fields are not reported. Case `timings` | all |
 | finish_reason chat | task.cpp:407-416: length / stop / tool_calls | same three (chat.rs:111-119); stop sequence maps to `stop` | all |
 | finish_reason completions | task.cpp:374-377 | stop / length (openai.rs:540) | all |
 | `stop_type`, `stopping_word`, `truncated`, `tokens_cached`, `generation_settings` (native) | task.cpp:337-349 | missing (native endpoint absent) | n/a |
-| logprobs shape | task.cpp:274-300 (`content[]` with token, bytes, logprob, top_logprobs; native `completion_probabilities`) | `logprobs: null` always (openai.rs:394,417,539) | n/a |
-| system_fingerprint | task.cpp:389 | absent | n/a |
+| logprobs shape | task.cpp:274-300 (`content[]` with token, bytes, logprob, top_logprobs; native `completion_probabilities`) | **done** (node `serving-parity-fields`): see `n_probs`; the shape is the same on completions and chat | n/a |
+| system_fingerprint | task.cpp:389 | **done** (node `serving-parity-fields`): `tetraeder-<version>` on every response and chunk (llama-server writes its build, `b12426-fc504f91d`; a client treats the string as opaque). Case `system-fingerprint` | n/a |
 | streaming chat chunk | task.cpp:456-510 (`chat.completion.chunk`, per-diff deltas, incremental tool-call argument deltas, optional `timings`, `prompt_progress`) | `chat.completion.chunk`: first chunk `{role, content:""}`, text/reasoning deltas, tool calls emitted **whole in one delta** with `index` (openai.rs:401-485), final empty delta with finish_reason, optional usage chunk with `choices: []`, `[DONE]`; mid-stream errors as an `error` data frame without `[DONE]` (openai.rs:475-479) | all |
 | tool call output | `msg.to_json_oaicompat` (common_chat parsers, many families under `common/`) | parsed by gateway from text: Hermes `<tool_call>`, Qwen XML `<function=`, Llama3 JSON/`<|python_tag|>`, Mistral `[TOOL_CALLS]`; family detected from chat template, unknown -> Hermes (toolcall.rs:25-56). Arguments typed as strings of JSON (openai.rs:320-326) | all (family from template) |
 | reasoning/thinking content | `--reasoning-format` default deepseek -> `message.reasoning_content` (arg.cpp:3730-3740; common.h:686) | `reasoning_content` field, split on `<think>`/`</think>` when template contains `<think>` (gateway.rs:337, toolcall.rs:12-13); Anthropic `thinking` block with empty `signature` (anthropic.rs:544-549,587,607). Only the `deepseek` mode; no `none` / `deepseek-legacy` choice | all |

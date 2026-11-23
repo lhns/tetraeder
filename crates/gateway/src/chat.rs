@@ -119,11 +119,114 @@ impl Finish {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub cached_tokens: u32,
+    /// What llama-server reports as `timings`; `None` when the request did not finish.
+    pub timings: Option<Timings>,
+}
+
+/// The `timings` object of llama-server (`server_slot_stats::to_json`).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Timings {
+    /// Prompt tokens served from the cache.
+    pub cache_n: u32,
+    /// Prompt tokens processed.
+    pub prompt_n: u32,
+    pub prompt_ms: f64,
+    /// Sampled tokens, the end-of-generation token included.
+    pub predicted_n: u32,
+    pub predicted_ms: f64,
+}
+
+impl Timings {
+    pub fn to_json(&self) -> Value {
+        // The first token comes from the prompt step, so the rates count the steps after it.
+        let steps = f64::from(self.predicted_n.saturating_sub(1));
+        let per = |ms: f64, n: f64| if n > 0.0 { ms / n } else { 0.0 };
+        let rate = |ms: f64, n: f64| if ms > 0.0 { 1e3 / ms * n } else { 0.0 };
+        let prompt_n = f64::from(self.prompt_n);
+        serde_json::json!({
+            "cache_n": self.cache_n,
+            "prompt_n": self.prompt_n,
+            "prompt_ms": self.prompt_ms,
+            "prompt_per_token_ms": per(self.prompt_ms, prompt_n),
+            "prompt_per_second": rate(self.prompt_ms, prompt_n),
+            "predicted_n": self.predicted_n,
+            "predicted_ms": self.predicted_ms,
+            "predicted_per_token_ms": per(self.predicted_ms, steps),
+            "predicted_per_second": rate(self.predicted_ms, steps),
+        })
+    }
+}
+
+/// One generated token with its probabilities, as llama-server's `completion_probabilities`
+/// entry (`content[]` of `logprobs`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogprobEntry {
+    pub id: u32,
+    /// The bytes the token added to the output (control tokens add none).
+    pub bytes: Vec<u8>,
+    pub logprob: f32,
+    pub top: Vec<LogprobTop>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogprobTop {
+    pub id: u32,
+    pub bytes: Vec<u8>,
+    pub logprob: f32,
+}
+
+/// A token's text for JSON: the bytes without an incomplete UTF-8 tail, invalid bytes replaced.
+fn token_text(bytes: &[u8]) -> String {
+    let end = match std::str::from_utf8(bytes) {
+        Ok(_) => bytes.len(),
+        Err(e) if e.error_len().is_none() => e.valid_up_to(),
+        Err(_) => bytes.len(),
+    };
+    String::from_utf8_lossy(&bytes[..end]).into_owned()
+}
+
+fn finite(x: f32) -> f64 {
+    // llama-server writes log(0) as the lowest float, because JSON has no -inf.
+    if x.is_finite() {
+        f64::from(x)
+    } else {
+        f64::from(f32::MIN)
+    }
+}
+
+impl LogprobEntry {
+    /// `{"id", "token", "bytes", "logprob", "top_logprobs": [...]}`.
+    pub fn to_json(&self) -> Value {
+        let top: Vec<Value> = self
+            .top
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "id": t.id,
+                    "token": token_text(&t.bytes),
+                    "bytes": t.bytes,
+                    "logprob": finite(t.logprob),
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "id": self.id,
+            "token": token_text(&self.bytes),
+            "bytes": self.bytes,
+            "logprob": finite(self.logprob),
+            "top_logprobs": top,
+        })
+    }
+}
+
+/// `{"content": [...]}`, the `logprobs` value of a choice.
+pub fn logprobs_json(entries: &[LogprobEntry]) -> Value {
+    serde_json::json!({"content": entries.iter().map(LogprobEntry::to_json).collect::<Vec<_>>()})
 }
 
 /// One piece of parsed model output, in order.

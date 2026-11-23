@@ -23,9 +23,9 @@ flowchart TB
     serving_own_run_attention["✔ Long prompts attend<br/>their own run"]
     serving_parity_harness["✔ llama-server<br/>conformance harness"]
     serving_parity_sampling["✔ Sampler parity with<br/>llama-server"]
+    serving_parity_fields["✔ Request field parity"]
     serving_recurrent_reuse>"✔ Recurrent models<br/>break slot reuse"]
-    serving_parity_fields["○ Request field parity"]
-    serving_parity_endpoints["⛔ Endpoint parity"]
+    serving_parity_endpoints["○ Endpoint parity"]
     serving_parity_libllama["⛔ Expose libllama<br/>capabilities"]
     serving_multi_model["⏸ Several models at<br/>once"]
     serving_multi_lora["⏸ Swap and batch LoRA<br/>adapters"]
@@ -49,11 +49,12 @@ flowchart TB
     serving_c4_gap ~~~ serving_own_run_attention
     serving_spec_batching ~~~ serving_parity_harness
     serving_prefix_save ~~~ serving_parity_sampling
-    serving_own_run_attention ~~~ serving_recurrent_reuse
-    serving_parity_harness ~~~ serving_recurrent_reuse
+    serving_own_run_attention ~~~ serving_parity_sampling
+    serving_parity_harness ~~~ serving_parity_sampling
     serving_parity_sampling ~~~ serving_parity_fields
-    serving_recurrent_reuse ~~~ serving_parity_fields
+    serving_parity_sampling ~~~ serving_recurrent_reuse
     serving_parity_fields ~~~ serving_parity_endpoints
+    serving_recurrent_reuse ~~~ serving_parity_endpoints
     serving_parity_endpoints ~~~ serving_parity_libllama
     serving_parity_endpoints ~~~ serving_multi_model
     serving_parity_endpoints ~~~ serving_multi_lora
@@ -98,9 +99,9 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class serving_gateway,serving_real_engines,serving_prefix_cache,serving_tool_calls,serving_batching,serving_moe_batch,serving_spec_batching,serving_own_run_attention unrated
     class serving_speculative mixed
-    class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_recurrent_reuse succ
-    class serving_parity_fields next
-    class serving_parity_endpoints,serving_parity_libllama blocked
+    class serving_kv_layout,serving_c4_gap,serving_prefix_save,serving_parity_harness,serving_parity_sampling,serving_parity_fields,serving_recurrent_reuse succ
+    class serving_parity_endpoints next
+    class serving_parity_libllama blocked
     class serving_multi_model,serving_multi_lora,serving_auth_quotas,serving_multimodal,serving_self_spec,serving_mtp_drafts,serving_prefix_first parked
 ```
 <!-- END GENERATED: track-serving -->
@@ -124,8 +125,8 @@ flowchart TB
 | `serving-own-run-attention` | Long prompts attend their own run | feature | none | done | unrated | 2026-11-19 | 2026-11-19 | engine-dense-builder |  |  |  | docs/adr/0079-one-input-steps-attend-over-their-own-run.md |
 | `serving-parity-harness` | llama-server conformance harness | feature | ci | done | successful | 2026-11-22 | 2026-11-22 | bench-m2-report |  |  | 15 pass, 25 gaps | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md |
 | `serving-parity-sampling` | Sampler parity with llama-server | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-harness |  |  | 5 gaps closed, 20 left | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; crates/scheduler/src/sample.rs; crates/scheduler/tests/sampler_dry.rs |
-| `serving-parity-fields` | Request field parity | feature | local | next | unrated |  |  | serving-parity-sampling |  |  |  |  |
-| `serving-parity-endpoints` | Endpoint parity | feature | local | blocked | unrated |  |  | serving-parity-fields |  |  |  |  |
+| `serving-parity-fields` | Request field parity | feature | local | done | successful | 2026-11-23 | 2026-11-23 | serving-parity-sampling |  |  | 8 gaps closed, 12 left | tests/conformance/parity/cases.yaml; docs/notes/llamacpp-parity.md; docs/adr/0088-request-fields-group-b.md; crates/gateway/tests/fields.rs; crates/scheduler/tests/fields.rs; crates/ggml-sys/tests/schema.rs |
+| `serving-parity-endpoints` | Endpoint parity | feature | local | next | unrated |  |  | serving-parity-fields |  |  |  |  |
 | `serving-parity-libllama` | Expose libllama capabilities | feature | local | blocked | unrated |  |  | serving-parity-endpoints |  |  |  |  |
 | `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope | owner-decision | owner | blocked | n/a |  |  | serving-parity-libllama |  |  |  |  |
 | `serving-multi-model` | Several models at once | feature | none | parked | unrated |  |  | serving-gateway, planner-core |  |  |  |  |
@@ -157,7 +158,7 @@ flowchart TB
 | `serving-own-run-attention` | Long prompts attend their own run |  |  | A step with a single input attends only over its own KV run instead of the masked shared pool, with the mask buffer reused, which sped up long-context prefill. |  |  |  |  |  |
 | `serving-parity-harness` | llama-server conformance harness | 15 conformant cases (31 runs over auto, dense and moe) pass and 25 gap cases xfail strictly (sampling 5, fields 8, endpoints 12) | 15 pass, 25 gaps | One request set runs against the baseline llama-server and tetraeder serve on the tiny fixture in CI, comparing response shape and, at temperature 0, tokens; every parity row gets a failing case first (ADR 0083). |  |  |  |  |  |
 | `serving-parity-sampling` | Sampler parity with llama-server | 612 passed, 2 skipped, 20 xfailed in 99.06s (pytest, test ubuntu-24.04, CI run 45091508137); the 5 sampling gap cases pass and the seeded case passes | 5 gaps closed, 20 left | The sampler runs llama-server's chain in its order with its defaults (min-p 0.05, penalties, dry, xtc, typical-p, logit bias, random seed), so the same settings sample the same way (ADR 0083, group A). |  |  |  |  |  |
-| `serving-parity-fields` | Request field parity |  |  | Every request field llama-server reads is honoured or rejected with 400, including logprobs, n above 1, GBNF grammar, reasoning effort and timings (ADR 0083, group B). |  |  |  |  |  |
+| `serving-parity-fields` | Request field parity | 630 passed, 2 skipped, 12 xfailed in 76.08s (pytest, test ubuntu-24.04, CI run 45103474572); the 8 group B gap cases pass | 8 gaps closed, 12 left | Requests and responses carry the fields llama-server has (optional model, end token in the count, logprobs, n above 1, GBNF grammar and JSON schema, timings, fingerprint, reasoning effort), and the ones it does not support are rejected with 400 (ADR 0083, group B). |  |  |  |  |  |
 | `serving-parity-endpoints` | Endpoint parity |  |  | Health, metrics, props, tokenize, detokenize, apply-template, native completion, Responses API, infill and API keys, as llama-server serves them (ADR 0083, group C). |  |  |  |  |  |
 | `serving-parity-libllama` | Expose libllama capabilities |  |  | Embeddings, rerank, KV cache types, context shift, slot save and restore and CPU-MoE flags, which libllama has and the gateway does not expose yet (ADR 0083, group D). |  |  |  |  |  |
 | `serving-parity-owner-scope` | LoRA, multimodal, multi-model scope |  |  | The owner decides from the gap matrix whether and in which order LoRA, several models, multimodal and audio, and other GPU backends are built, each with its own ADR (ADR 0083, group E). | The matrix is docs/notes/llamacpp-parity.md. |  |  |  |  |

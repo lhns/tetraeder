@@ -206,6 +206,43 @@ def test_diff_sequences_reports_first_divergence():
     assert diff_sequences(a, a) == []
 
 
+def lp_body(entries):
+    return {"choices": [{"logprobs": {"content": entries}}]}
+
+
+def lp_entry(tok, logprob, top):
+    return {
+        "id": ord(tok),
+        "token": tok,
+        "bytes": [ord(tok)],
+        "logprob": logprob,
+        "top_logprobs": [{"id": ord(t), "token": t, "bytes": [ord(t)], "logprob": lp} for t, lp in top],
+    }
+
+
+def test_logprobs_mode_allows_float_noise_but_not_other_tokens():
+    case = {"mode": "logprobs"}
+    base = ans(200, lp_body([lp_entry("a", -0.5, [("a", -0.5), ("b", -1.5)])]))
+    near = ans(200, lp_body([lp_entry("a", -0.5004, [("a", -0.5004), ("b", -1.4996)])]))
+    assert compare(case, base, near) == []
+    far = ans(200, lp_body([lp_entry("a", -0.6, [("a", -0.6), ("b", -1.5)])]))
+    assert "logprob: baseline -0.5, tetraeder -0.6" in compare(case, base, far)[0]
+    other_top = ans(200, lp_body([lp_entry("a", -0.5, [("a", -0.5), ("c", -1.5)])]))
+    assert "top_logprobs ids" in compare(case, base, other_top)[0]
+    other_tok = ans(200, lp_body([lp_entry("z", -0.5, [("a", -0.5), ("b", -1.5)])]))
+    assert any(".id:" in d or ".token:" in d for d in compare(case, base, other_tok))
+    assert compare({"mode": "logprobs", "tolerance": 0.2}, base, far) == []
+
+
+def test_logprobs_mode_needs_entries_and_equal_length():
+    case = {"mode": "logprobs"}
+    e = lp_entry("a", -0.5, [("a", -0.5)])
+    assert any("no logprobs" in d for d in compare(case, ans(200, lp_body([])), ans(200, lp_body([e]))))
+    assert "entries: baseline 1, tetraeder 2" in compare(case, ans(200, lp_body([e])), ans(200, lp_body([e, e])))[0]
+    gone = ans(200, {"choices": [{"logprobs": None}]})
+    assert any("logprobs: missing in tetraeder" in d for d in compare(case, ans(200, lp_body([e])), gone))
+
+
 # The case file: every row is an exact appendix row, every gap names a tree node.
 
 CASES = yaml.safe_load((HERE / "cases.yaml").read_text(encoding="utf-8"))["cases"]
@@ -224,7 +261,7 @@ def test_case_fields(case):
     assert case["group"] in "ABC"
     assert case["row"] in ROWS, f"row {case['row']!r} is not a first cell of the appendix"
     assert re.fullmatch(r"(GET|POST) /\S*", case["endpoint"])
-    assert case["mode"] in {"status", "shape", "text", "stream", "exact"}
+    assert case["mode"] in {"status", "shape", "text", "logprobs", "stream", "exact"}
     assert set(case["engines"]) <= {"auto", "dense", "moe"} and case["engines"]
     exp = case["expect"]
     assert exp == "pass" or (exp.startswith("gap ") and exp[4:] in NODES), exp
