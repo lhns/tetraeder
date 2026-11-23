@@ -29,6 +29,8 @@ m8="${MODEL_Q8B:-$root/.hf_cache/Qwen__Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf}"
 req_log=bench/private/claude-code-requests.jsonl
 probe_ctxs="${KV_PROBE_CTXS:-65536 98304 131072 163840 196608 229376 262144}"
 limit="${REPLAY_LIMIT:-50}"
+# CACHE_RAM_MIB: the RAM budget of the disk pass; DISK_TAG names a rerun's files (the first pass, 2048 MiB, never evicted)
+cache_ram="${CACHE_RAM_MIB:-2048}" tag="${DISK_TAG:-}"
 py=/root/gwvenv/bin/python
 [ "$DRY" = 1 ] && py=python3
 port=18080
@@ -148,14 +150,14 @@ st_kv() {
 
 # disk_run MODE: the replay of the first $limit requests, RAM cache of 2048 MiB, with or without the disk tier
 disk_run() {
-  local mode=$1 res="$out/disk-$1.json" url="http://127.0.0.1:$port" extra=()
+  local mode=$1 res="$out/disk$tag-$1.json" url="http://127.0.0.1:$port" extra=()
   [ -f "$res" ] && return 0
   [ "$mode" = disk ] && { rm -rf /root/kvdisk; extra=(--cache-disk /root/kvdisk --cache-disk-mib 30720); }
   say "disk run $mode start"
-  start "$out/server-disk-$mode.log" env RUST_LOG=info,tetraeder::step=debug "$tet" serve -m "$m8" --engine dense --ngl -1 --parallel 4 \
-    --ctx 40960 -t "$threads" --port "$port" --alias qwen3-8b --accept-any-model --cache-ram 2048 "${extra[@]}"
-  ready "$out/server-disk-$mode.log" 600 || { say "disk run $mode: server did not start"; stop_server; return 1; }
-  nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2> /dev/null | sed 's/^/before: /' > "$out/gpu-disk-$mode.txt"
+  start "$out/server-disk$tag-$mode.log" env RUST_LOG=info,tetraeder::step=debug "$tet" serve -m "$m8" --engine dense --ngl -1 --parallel 4 \
+    --ctx 40960 -t "$threads" --port "$port" --alias qwen3-8b --accept-any-model --cache-ram "$cache_ram" "${extra[@]}"
+  ready "$out/server-disk$tag-$mode.log" 600 || { say "disk run $mode: server did not start"; stop_server; return 1; }
+  nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2> /dev/null | sed 's/^/before: /' > "$out/gpu-disk$tag-$mode.txt"
   if [ "$DRY" = 1 ]; then
     say "PLAN gateway_replay.py $url $req_log --speed 0 --concurrency 1 --max-prompt-tokens 36000 --limit $limit -> disk-$mode.json"
   else
@@ -163,21 +165,21 @@ disk_run() {
       --gguf "$m8" --expect-context-length 40960 --limit "$limit" --out "$res.tmp" >> "$out/replay.log" 2>&1
     [ -s "$res.tmp" ] && mv "$res.tmp" "$res"
   fi
-  nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2> /dev/null | sed 's/^/after: /' >> "$out/gpu-disk-$mode.txt"
+  nvidia-smi --query-gpu=clocks_event_reasons.active --format=csv,noheader 2> /dev/null | sed 's/^/after: /' >> "$out/gpu-disk$tag-$mode.txt"
   stop_server
   # the cache's own lines (save, restore, spill) without the step trace
-  grep -a -i -E 'disk|restore|spill|evict' "$out/server-disk-$mode.log" 2> /dev/null | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-300 | head -n 400 \
-    > "$out/server-disk-$mode.cache.log"
-  rm -f "$out/server-disk-$mode.log" # the step trace is large; the cache lines are kept
+  grep -a -i -E 'disk|restore|spill|evict' "$out/server-disk$tag-$mode.log" 2> /dev/null | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-300 | head -n 400 \
+    > "$out/server-disk$tag-$mode.cache.log"
+  rm -f "$out/server-disk$tag-$mode.log" # the step trace is large; the cache lines are kept
   say "disk run $mode done"
 }
 
 st_disk() {
-  [ -f "$out/stage-disk.ok" ] && return 0
+  [ -f "$out/stage-disk$tag.ok" ] && return 0
   [ "$DRY" = 1 ] || [ -s "$req_log" ] || { say "disk: no request log"; return 0; }
   disk_run ram
   disk_run disk
-  touch "$out/stage-disk.ok"
+  touch "$out/stage-disk$tag.ok"
 }
 
 main() {
