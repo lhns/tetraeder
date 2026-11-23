@@ -31,6 +31,9 @@ pub struct Conn {
     pub purpose: Purpose,
     pub rx: Box<dyn std::io::Read + Send>,
     pub tx: Box<dyn std::io::Write + Send>,
+    /// Closes both halves from any thread; a blocked read or write then fails at once.
+    /// Membership calls it on every connection of a node that goes `Down`.
+    pub close: std::sync::Arc<dyn Fn() + Send + Sync>,
 }
 
 pub trait Transport: Send + Sync + 'static {
@@ -184,6 +187,9 @@ pub struct RemoteConfig {
 pub enum Endpoint {
     Child { program: PathBuf, args: Vec<OsString> },
     /// A segment on a node: connect with `Purpose::Segment`, after `Assign` on the control link.
+    /// The node's daemon restarts its worker; the head reconnects and re-assigns when the node
+    /// is `Up` again. The restart cap calls `on_give_up`, which for a node endpoint takes the
+    /// replica out of the router and never exits the head.
     Node { transport: Arc<dyn Transport>, peer: Peer, replica: u32, segment: u32 },
 }
 
@@ -227,7 +233,7 @@ pub trait SegmentBackend: BatchBackend {
 }
 ```
 
-`tetraeder::PipelineBackend` holds one `RemoteBackend` per segment and implements `BatchBackend`: sequence calls go to every segment, `decode` walks the segments in order (micro-batches in flight for prefill, ADR 0077), and any segment's failure fails the step for all (ADR 0065 rollback; lengths advance only when the last segment succeeds).
+`tetraeder::PipelineBackend` holds one `RemoteBackend` per segment and implements `BatchBackend`: sequence calls go to every segment, `decode` walks the segments in order (micro-batches in flight for prefill, ADR 0077), and any segment's failure fails the step for all (ADR 0065 rollback): each worker advances its own KV when its segment succeeds, so on a later segment's failure the head sends `seq_rm(seq, old_len)` for every input to the earlier segments; a segment that cannot roll back marks those sequences lost (`seq_lost`).
 
 ## `crates/profiler` and `crates/plan`
 

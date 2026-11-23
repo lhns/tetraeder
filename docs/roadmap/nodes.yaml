@@ -2472,7 +2472,7 @@ nodes:
   folded: []
   overview: true
   plain: 'Phase 6 step 1 (ADR 0091), one transport trait with a TLS implementation (mutual authentication against trust anchors) and an in-process one with injected faults; the worker protocol runs over it unchanged (plan feature 16).'
-  notes: 'Done when (ADR 0091, build order 1), frame property tests pass, unknown and wrong certificates are refused, a loopback TLS round trip works, and the RemoteBackend restart tests pass over the in-process transport; link metrics emitted. CI only, crates transport and tetraeder. Interfaces in docs/notes/phase6-interfaces.md.'
+  notes: 'Done when (ADR 0091, build order 1), frame property tests pass, unknown and wrong certificates are refused, pinned self-signed and CA anchors are both accepted, a loopback TLS round trip works, and the RemoteBackend restart tests pass over the in-process transport; link metrics, the links panel row and the TLS-rejected alert in the same change. CI only, crates transport and tetraeder. Interfaces in docs/notes/phase6-interfaces.md.'
 - id: cluster-owner-phase6-design
   title: Owner accepts the Phase 6 design
   track: cluster
@@ -2616,7 +2616,7 @@ nodes:
   - No ggml_backend_tensor_copy_async binding yet; pipeline peer copies need it (m2-plan, E1 note)
   overview: true
   plain: A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
-  notes: 'Done when (ADR 0091, build order 4), two-node splits match the one-node run within tol_batch at the first, middle and last layer boundary, with the head on either node, on simulated CPU nodes in CI. Builders take and return hidden rows; the head drives segments in order.'
+  notes: 'Done when (ADR 0091, build order 4), two-node splits match the one-node run within tol_batch at the first, middle and last layer boundary, with the head on either node, on simulated CPU nodes in CI; segment residuals, the pipeline panel row and the segment-drift alert in the same change. Builders take and return hidden rows; the head drives segments in order.'
 - id: cluster-experts-nodes
   title: Experts on other machines
   track: cluster
@@ -2673,7 +2673,7 @@ nodes:
   folded: []
   overview: false
   plain: Copies of a model on several nodes behind one router; independent requests need no traffic between them, so any link latency is fine (plan feature 11).
-  notes: 'Done when (ADR 0091, build order 5), two simulated replicas serve one endpoint through the router, and the router property tests pass. Can run in parallel with the pipeline step; the shared serve wiring lands last.'
+  notes: 'Done when (ADR 0091, build order 5), two simulated replicas serve one endpoint through the router, and the router property tests pass; router metrics, panel row and the replica-out alert in the same change. Can run in parallel with the pipeline step; the shared serve wiring lands last.'
 - id: cluster-failover
   title: Keep serving when a node dies
   track: cluster
