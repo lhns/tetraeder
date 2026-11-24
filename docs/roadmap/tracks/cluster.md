@@ -92,6 +92,7 @@ flowchart TB
 | `cluster-replicas` | Model replicas behind one router | feature | cluster | next | unrated |  |  | cluster-discovery |  |  |  |  |
 | `cluster-failover` | Keep serving when a node dies | feature | cluster | blocked | unrated |  |  | cluster-replicas, cluster-join-leave |  |  |  |  |
 | `cluster-replica-scaling` | Add and remove replicas live | feature | cluster | blocked | unrated |  |  | cluster-replicas, bench-m3-report |  |  |  |  |
+| `cluster-owner-routing-input` | Routing trace as prediction input | owner-decision | owner | done | n/a | 2026-11-24 | 2026-11-24 | bench-235b-stream-predict |  |  | trace allowed | docs/notes/stream-predict-diagnosis.md |
 
 ### Details per node
 
@@ -113,6 +114,7 @@ flowchart TB
 | `cluster-replicas` | Model replicas behind one router |  |  | Copies of a model on several nodes behind one router; each replica runs its scheduler and sampling on its own node and returns only tokens, and a conversation stays on the replica that holds its prefix (plan feature 11). | Done when (ADR 0091, build order 5), two simulated replicas serve one endpoint through the router with prefix affinity before least-outstanding, a remote replica sends events of a few bytes per token, and the router property tests pass; router metrics, panel row and the replica-out alert in the same change. Can run in parallel with the pipeline step; the shared serve wiring lands last. |  |  |  |  |
 | `cluster-failover` | Keep serving when a node dies |  |  | When a node fails, new requests go to the remaining replicas and in-flight requests on it fail cleanly (plan feature 19). | Done when (ADR 0091, Case F), the kill test passes in CI on simulated nodes for a killed worker, a killed node and a silent node, with every in-flight request on it ending in one clean error within node_down_after plus 1 s. |  |  |  |  |
 | `cluster-replica-scaling` | Add and remove replicas live |  |  | Replicas are added or removed under load as traffic changes (plan feature 39). | Done when: a load step adds a replica and a quiet period removes it, with no failed request. Phase 7, blocked behind the M3 report. |  |  |  |  |
+| `cluster-owner-routing-input` | Routing trace as prediction input | Allow the frozen exit prompt routing trace (owner 2026-11-24) | trace allowed | The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft). |  |  |  |  |  |
 
 ### Folded items per node
 

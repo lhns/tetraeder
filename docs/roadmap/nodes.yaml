@@ -2587,6 +2587,7 @@ nodes:
   - cluster-mtls
   - cluster-owner-phase6-design
   - bench-235b-stream-predict
+  - bench-235b-segment-confirm
   replaced_by: []
   lane: cluster
   start: ''
@@ -3722,6 +3723,119 @@ nodes:
   overview: false
   plain: On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
   notes: 'Found by bench-regression-gate on an A100. First check whether prefix reuse or batch composition differs from llama-server for these cases, then whether llama-server itself is run-to-run stable on CUDA; the conformance tolerance for CUDA may need a stated band (ADR 0083 decision 2 says CUDA and CPU). Diagnosed 2026-11-24 (stream-predict-20261124, A40, correctness only) - the 4 cases fail in the suite twice and pass with prefix reuse and the prompt caches off (tetraeder --no-prefix-reuse --cache-ram 0, llama-server --no-cache-prompt --cache-ram 0) and each alone on fresh servers; llama-server alone is stable across fresh servers but its second identical request on one server differs (logprob -1.8332 then -1.8114 on logprobs and logprobs-shape, the two values tetraeder shows). So the logits of a prompt evaluated from scratch and after reuse differ on CUDA in both engines, and which one a case sees depends on the cases before it. The own dense and moe engines run on the GPU (CUDA0 in the log, GPU memory 0 to 277 MiB). Left to do - decide the CUDA band or run those cases with reuse off in the CUDA run.'
+- id: planner-node-predict-check
+  title: Node prediction equals the cluster reference
+  track: planner
+  kind: tooling
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-235b-stream-predict
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix).
+- id: memory-ram-tier-complement
+  title: Read-free covering expert tiers
+  track: memory
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-235b-stream-predict
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again).
+- id: engine-exit-segment-harness
+  title: Exit segment harness
+  track: engine
+  kind: tooling
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-235b-stream-predict
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and warms up until a prefill reads nothing from disk.
+- id: cluster-owner-routing-input
+  title: Routing trace as prediction input
+  track: cluster
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/notes/stream-predict-diagnosis.md
+  verdict_quote: 'Allow the frozen exit prompt routing trace (owner 2026-11-24)'
+  headline: trace allowed
+  depends_on:
+  - bench-235b-stream-predict
+  replaced_by: []
+  lane: owner
+  start: 2026-11-24
+  end: 2026-11-24
+  folded: []
+  overview: false
+  plain: The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft).
+- id: planner-costmodel-stream-terms
+  title: Cost model 6 for streamed MoE
+  track: planner
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - bench-235b-stream-predict
+  - planner-node-predict-check
+  - cluster-owner-routing-input
+  replaced_by: []
+  lane: ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves.
+- id: bench-235b-segment-confirm
+  title: Confirm one exit segment
+  track: bench
+  kind: experiment
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-costmodel-stream-terms
+  - memory-ram-tier-complement
+  - engine-exit-segment-harness
+  replaced_by: []
+  lane: box-later
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: One 3090 box under the 64 GB balloon runs the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated the exit way and predicted before measuring, and must land within 15% on both rates before the two-box sessions.
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench

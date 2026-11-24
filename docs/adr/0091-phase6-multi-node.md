@@ -220,6 +220,8 @@ Phase 6 code stays on branches until the regression-gate box (`bench-regression-
 4. mDNS: out of M3; `docs/plan.md` feature row 17 reads "static list in Phase 6, mDNS later".
 5. Scope cuts confirmed: no highly available gateway in M3; experts across nodes parked until after the exit.
 
+6. Routing input (2026-11-24, after `stream-predict-20261124` and `docs/notes/stream-predict-diagnosis.md`): the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction; it describes the workload, not its timing. The uniform-prior "Expected numbers" above are unreliable where they rest on the routing share (see the diagnosis).
+
 ## Questions as asked
 
 1. **Exit hardware.** (a) Two Vast boxes as specified, a low-RTT pair if offered, else WAN (recommended: available now, within caps, and the 15% rule judges the prediction, which prices the link); (b) your Linux host and Windows desktop on your LAN, the real homelab (needs a 24 GB-class GPU in each and the 235B on both disks; the Windows node then runs pipeline segments only, ADR 0008); (c) two containers on one Vast host (0.23 ms, but shared host memory and PCIe make it less like two machines). Recommendation: (a) for the verdict, (b) as a later confirmation.

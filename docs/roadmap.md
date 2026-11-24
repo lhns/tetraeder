@@ -144,14 +144,14 @@ flowchart TB
     end
     subgraph bd_3["Later (blocked or parked)"]
         cluster_failover["cluster · ⛔ Keep<br/>serving when a node<br/>dies"]
+        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
+        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
+        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
         bench_phase6_exit("bench · ⛔ Phase 6<br/>exit: multi-node test")
         cluster_experts_nodes["cluster · ⏸ Experts on<br/>other machines"]
         multi_live_reshard["multi · ⛔ Reshard<br/>while serving"]
         planner_advisor_auto["planner · ⛔ Advisor<br/>applies safe changes<br/>itself"]
         bench_phase7_exit("bench · ⛔ Phase 7<br/>exit: day-long trace")
-        engine_backend_parity["engine · ⏸ Builders on<br/>HIP, Vulkan and Metal"]
-        bench_phase8_exit("bench · ⏸ Phase 8<br/>exit: parity per<br/>backend")
-        bench_phase9_exit("bench · ⏸ Phase 9<br/>exit: feature tests")
         memory_prefill_misses["memory · ⏸ Stream<br/>expert misses during<br/>prefill"]
     end
     engine_libllama ~~~ memory_prefetch
@@ -198,17 +198,17 @@ flowchart TB
     cluster_pipeline_nodes ~~~ planner_cost_model_v5_host2
     cluster_pipeline_nodes ~~~ engine_dense_amx
     bench_30b_c4_gap ~~~ cluster_failover
-    planner_cost_model_v5_host2 ~~~ bench_phase6_exit
-    engine_dense_amx ~~~ bench_phase6_exit
-    cluster_failover ~~~ cluster_experts_nodes
-    bench_phase6_exit ~~~ multi_live_reshard
+    planner_cost_model_v5_host2 ~~~ engine_backend_parity
+    engine_dense_amx ~~~ engine_backend_parity
+    cluster_failover ~~~ bench_phase8_exit
+    engine_backend_parity ~~~ bench_phase9_exit
+    engine_backend_parity ~~~ bench_phase6_exit
+    bench_phase8_exit ~~~ cluster_experts_nodes
+    bench_phase9_exit ~~~ multi_live_reshard
     bench_phase6_exit ~~~ planner_advisor_auto
     cluster_experts_nodes ~~~ bench_phase7_exit
-    multi_live_reshard ~~~ engine_backend_parity
-    planner_advisor_auto ~~~ engine_backend_parity
-    bench_phase7_exit ~~~ bench_phase8_exit
-    engine_backend_parity ~~~ bench_phase9_exit
-    engine_backend_parity ~~~ memory_prefill_misses
+    multi_live_reshard ~~~ memory_prefill_misses
+    planner_advisor_auto ~~~ memory_prefill_misses
     memory_prefetch --> bench_phase2_exit
     bench_phase2_exit -.-> bench_defect_tuned_cache
     bench_phase2_exit --> bench_defect_tuned_cache
@@ -230,11 +230,11 @@ flowchart TB
     multi_prefill_no_capture --> planner_ep_prefill_recheck
     bench_d2a_probe --> bench_d2a_30b
     bench_d2a_30b --> bench_ab30b
+    engine_backend_parity --> bench_phase8_exit
     bench_phase6_exit --> cluster_experts_nodes
     bench_phase6_exit --> multi_live_reshard
     bench_phase6_exit --> planner_advisor_auto
     planner_advisor_auto --> bench_phase7_exit
-    engine_backend_parity --> bench_phase8_exit
     memory_io_service --> memory_prefill_misses
     linkStyle 56,63,67 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -275,6 +275,7 @@ flowchart TB
 | Own DeepSeek graph builder | ⏸ parked | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). |
 | Own builder for ternary models | ⏸ parked | An own builder with faster kernels for natively ternary models such as BitNet b1.58, which libllama already runs (plan feature 51, Phase 9 half). |
 | Own builder for Qwen3.6 MoE | ⏸ parked | An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first). |
+| Exit segment harness | ○ next | The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and warms up until a prefill reads nothing from disk. |
 | One graph per decoded token | ⏸ parked | Step 2 of ADR 0064: one graph per decoded token with a host callback per layer, instead of one graph segment per MoE layer. |
 | Dense builder speed on AMX CPUs | ○ next | Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072). |
 | Prefetch next layer's experts | ✔ done · very-successful | While one layer computes, predict which experts the next layer will need and start reading them early. |
@@ -282,6 +283,7 @@ flowchart TB
 | Load safetensors models directly | ⏸ parked | Load Hugging Face safetensors files with a tensor-name map per architecture, converting at load time, instead of needing a GGUF file (plan feature 49). |
 | KV cache spills to RAM, disk | ⏸ parked | Live KV cache rows can spill to NVMe or a remote tier for very long contexts (plan feature 3); the RAM half is memory-kv-host (ADR 0084). |
 | KV cache partly in RAM | ○ next | Contexts too long for VRAM run with part of the KV in host memory, first through libllama's --no-kv-offload, then by putting chosen layers' KV and attention on the CPU in the own builders (ADR 0084, Proposed). |
+| Read-free covering expert tiers | ⚠ open | When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again). |
 | Stream expert misses during prefill | ⏸ parked | During a long prefill, missed experts are read through the I/O service and computed as they land, instead of read synchronously on the main thread (ADR 0038 follow-up, amends 0054). |
 | Per-expert formats by tier | ⏸ parked | Expert slots carry their own weight format, so hot experts stay at high precision in VRAM and cold ones are smaller in RAM or on disk (m1-open item 10). |
 | Planner, cost model and search | ✔ done · very-successful | Phase 3a: the planner enumerates candidate placements, prices each with a cost model calibrated on the machine, and explains, diffs and answers what-if questions. |
@@ -294,6 +296,8 @@ flowchart TB
 | One and two bit formats | ⏸ parked | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). |
 | Expert-parallel split on two GPUs | ○ next | A new plan shape where each of two GPUs holds a share of every MoE layer's experts, as Strata's --ep-split does, priced by the cost model and tested on every hardware fixture (ADR 0085). |
 | Plan experts with no RAM tier | ⏸ parked | Enumerate, lower and score a builder plan with ram_slots 0 (experts read from NVMe into VRAM), which the engine already runs and the planner never offers. |
+| Node prediction equals the cluster reference | ○ next | A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix). |
+| Cost model 6 for streamed MoE | ⛔ blocked | ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves. |
 | Check planner's expert slot picks | ⏸ parked | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. |
 | Replanning in serve, part B | ⏸ parked | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. |
 | Recheck expert-parallel prefill error | ✔ done · successful | Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed. |
@@ -341,6 +345,7 @@ flowchart TB
 | Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
+| Confirm one exit segment | ⛔ blocked | One 3090 box under the 64 GB balloon runs the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated the exit way and predicted before measuring, and must land within 15% on both rates before the two-box sessions. |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
@@ -372,6 +377,9 @@ flowchart TB
 
 - `cluster-planner-hardening`: Harden the cluster planner inputs
 - `cluster-pipeline-prefill`: Prefill pipelined across stages
+- `planner-node-predict-check`: Node prediction equals the cluster reference
+- `memory-ram-tier-complement`: Read-free covering expert tiers
+- `engine-exit-segment-harness`: Exit segment harness
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
 **box-later**
@@ -422,7 +430,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 117 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 118 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -826,6 +834,7 @@ Generated on 2026-11-24.
 - `bench-regression-gate`: Regression gate on final main (✔ done · mixed). One A100 box session paired this morning's build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay).
 - `cluster-discovery`: Node list, health and probes (✔ done · unrated). Nodes come from a static cluster file; a node daemon on each box answers heartbeats, reports its hardware and starts workers, and a probe measures every link through the real transport (plan feature 17; mDNS later, ADR 0091).
 - `cluster-mtls`: Node certificates and trust rules (✔ done · unrated). Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).
+- `cluster-owner-routing-input`: Routing trace as prediction input (✔ done · n/a). The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft).
 - `cluster-pipeline-nodes`: Pipeline stages across machines (✔ done · unrated). A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
 
 </details>
@@ -854,12 +863,12 @@ Generated on 2026-11-24.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [engine - engine and builders](roadmap/tracks/engine.md): 20 nodes (12 done, 1 next, 6 parked, 1 abandoned)
-- [memory - memory and streaming](roadmap/tracks/memory.md): 17 nodes (11 done, 1 next, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 25 nodes (16 done, 2 next, 3 blocked, 4 parked)
+- [engine - engine and builders](roadmap/tracks/engine.md): 21 nodes (12 done, 2 next, 6 parked, 1 abandoned)
+- [memory - memory and streaming](roadmap/tracks/memory.md): 18 nodes (11 done, 2 next, 4 parked, 1 abandoned)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 27 nodes (16 done, 3 next, 4 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (20 done, 3 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 47 nodes (34 done, 1 next, 5 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 48 nodes (34 done, 1 next, 6 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
-- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 16 nodes (8 done, 3 next, 4 blocked, 1 parked)
+- [cluster - multi-node cluster](roadmap/tracks/cluster.md): 17 nodes (9 done, 3 next, 4 blocked, 1 parked)
 <!-- END GENERATED: tracks -->

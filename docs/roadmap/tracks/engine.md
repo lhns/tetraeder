@@ -27,6 +27,7 @@ flowchart TB
     engine_deepseek_builder["⏸ Own DeepSeek graph<br/>builder"]
     engine_bitnet_builder["⏸ Own builder for<br/>ternary models"]
     engine_qwen35moe_builder["⏸ Own builder for<br/>Qwen3.6 MoE"]
+    engine_exit_segment_harness["○ Exit segment harness"]
     engine_one_graph_per_token["⏸ One graph per<br/>decoded token"]
     engine_dense_amx[/"○ Dense builder speed<br/>on AMX CPUs"/]
     engine_libllama ~~~ engine_cpu_threadpool
@@ -44,8 +45,8 @@ flowchart TB
     engine_pin_b12426 ~~~ engine_deepseek_builder
     engine_backend_parity ~~~ engine_bitnet_builder
     engine_glm_builder ~~~ engine_qwen35moe_builder
-    engine_deepseek_builder ~~~ engine_one_graph_per_token
-    engine_bitnet_builder ~~~ engine_dense_amx
+    engine_deepseek_builder ~~~ engine_exit_segment_harness
+    engine_bitnet_builder ~~~ engine_one_graph_per_token
     engine_qwen35moe_builder ~~~ engine_dense_amx
     engine_moe_builder --> engine_cpu_threadpool
     engine_moe_builder --> engine_cuda_graphs
@@ -79,7 +80,7 @@ flowchart TB
     class engine_overflow_passes dead
     class engine_cpu_poll vsucc
     class engine_backend_parity,engine_glm_builder,engine_deepseek_builder,engine_bitnet_builder,engine_qwen35moe_builder,engine_one_graph_per_token parked
-    class engine_dense_amx next
+    class engine_exit_segment_harness,engine_dense_amx next
 ```
 <!-- END GENERATED: track-engine -->
 
@@ -106,6 +107,7 @@ flowchart TB
 | `engine-deepseek-builder` | Own DeepSeek graph builder | feature | none | parked | unrated |  |  | engine-moe-builder |  |  |  |  |
 | `engine-bitnet-builder` | Own builder for ternary models | feature | none | parked | unrated |  |  | engine-dense-builder |  |  |  |  |
 | `engine-qwen35moe-builder` | Own builder for Qwen3.6 MoE | feature | local | parked | unrated |  |  | bench-strata-q36 |  |  |  |  |
+| `engine-exit-segment-harness` | Exit segment harness | tooling | ci | next | unrated |  |  | bench-235b-stream-predict |  |  |  |  |
 | `engine-one-graph-per-token` | One graph per decoded token | feature | local | parked | unrated |  |  | engine-decode-dispatch |  |  |  |  |
 | `engine-dense-amx` | Dense builder speed on AMX CPUs | experiment | ci | next | unrated |  |  | engine-dense-builder |  |  |  |  |
 
@@ -131,6 +133,7 @@ flowchart TB
 | `engine-deepseek-builder` | Own DeepSeek graph builder |  |  | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). | Parked: Phase 8 runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: logit parity against libllama on CUDA and CPU. |  |  |  |  |
 | `engine-bitnet-builder` | Own builder for ternary models |  |  | An own builder with faster kernels for natively ternary models such as BitNet b1.58, which libllama already runs (plan feature 51, Phase 9 half). | Parked: Phase 9 (breadth) runs in parallel with M3 and M4, after M2 (plan.md, Roadmap); nothing is scheduled. Done when: parity against libllama and faster decode. |  |  |  |  |
 | `engine-qwen35moe-builder` | Own builder for Qwen3.6 MoE |  |  | An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first). | Parked by the owner 2026-11-23 in favour of serving-mtp-libllama (MTP drafts through libllama first). Design question when it resumes: recurrent state in the KV pool, seq_rm and the prefix cache (ADR 0051). |  |  |  |  |
+| `engine-exit-segment-harness` | Exit segment harness |  |  | The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and warms up until a prefill reads nothing from disk. |  |  |  |  |  |
 | `engine-one-graph-per-token` | One graph per decoded token |  |  | Step 2 of ADR 0064: one graph per decoded token with a host callback per layer, instead of one graph segment per MoE layer. | Parked with Track B (m2-plan, B4). Done when: judged by segment_overhead in a paired run (ADR 0064). |  |  |  |  |
 | `engine-dense-amx` | Dense builder speed on AMX CPUs |  |  | Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072). | Built (ADR 0072, DenseOptions::extra_bufts default true); only the speed is pending. Done when: step_shapes engines dense against dense_norepack and llama against llama_norepack on an AMX runner, then the owner accepts or reopens ADR 0072. |  |  |  |  |
 
