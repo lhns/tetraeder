@@ -134,14 +134,20 @@ impl ConstraintFactory {
         } else {
             "think_text[suffix=\"</think>\"]: /(?s:.*)/\nWS: /[ \\t\\r\\n]*/\n"
         };
-        let lark = format!("{start}{think}{body}");
+        self.from_lark(&format!("{start}{think}{body}"))
+    }
+
+    /// A constraint from a complete Lark grammar, as [`TokenConstraint::source`] returns it: a
+    /// replica on another node rebuilds the head's constraint from it (ADR 0091).
+    pub fn from_lark(&self, lark: &str) -> Result<Box<dyn TokenConstraint>, String> {
         let parser = self
             .factory
-            .create_parser(TopLevelGrammar::from_lark(lark))
+            .create_parser(TopLevelGrammar::from_lark(lark.to_owned()))
             .map_err(|e| format!("grammar: {e}"))?;
         Ok(Box::new(Constraint {
             matcher: Matcher::new(Ok(parser)),
             eog: self.eog.clone(),
+            lark: lark.to_owned(),
         }))
     }
 }
@@ -216,9 +222,14 @@ fn lark_string(s: &str) -> String {
 struct Constraint {
     matcher: Matcher,
     eog: Vec<TokenId>,
+    lark: String,
 }
 
 impl TokenConstraint for Constraint {
+    fn source(&self) -> Option<String> {
+        Some(self.lark.clone())
+    }
+
     fn mask(&mut self) -> Result<Option<TokenMask>, String> {
         let v = self
             .matcher

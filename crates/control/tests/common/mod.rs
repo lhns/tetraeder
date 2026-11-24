@@ -150,3 +150,55 @@ impl Launcher for EchoLauncher {
         })
     }
 }
+
+/// A replica "process": `ReplicaServer` over pipes, one per launch, each over a fresh engine from
+/// `make`. `crash` ends the running one as `kill -9` ends a process.
+pub struct ReplicaLauncher {
+    #[allow(clippy::type_complexity)]
+    pub make: Box<dyn Fn() -> Arc<dyn tetraeder_gateway::engine::Engine> + Send + Sync>,
+    pub cap: u32,
+    pub launches: AtomicUsize,
+    pub current: Mutex<Option<Arc<AtomicBool>>>,
+    /// Prefix hooks of the replicas this launcher starts.
+    #[allow(clippy::type_complexity)]
+    pub kv: Mutex<Option<Arc<dyn Fn() -> tetraeder_control::replica::KvHooks + Send + Sync>>>,
+}
+
+impl ReplicaLauncher {
+    pub fn new(
+        cap: u32,
+        make: impl Fn() -> Arc<dyn tetraeder_gateway::engine::Engine> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            make: Box::new(make),
+            cap,
+            launches: AtomicUsize::new(0),
+            current: Mutex::new(None),
+            kv: Mutex::new(None),
+        }
+    }
+
+    pub fn crash(&self) {
+        if let Some(d) = self.current.lock().unwrap().as_ref() {
+            d.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
+impl Launcher for ReplicaLauncher {
+    fn launch(&self, _a: &Assignment) -> io::Result<WorkerIo> {
+        self.launches.fetch_add(1, Ordering::SeqCst);
+        let dead = Arc::new(AtomicBool::new(false));
+        *self.current.lock().unwrap() = Some(Arc::clone(&dead));
+        let ((in_tx, in_rx), (out_tx, out_rx)) = (pipe(&dead), pipe(&dead));
+        let kv = self.kv.lock().unwrap().as_ref().map(|f| f());
+        let server = tetraeder_control::replica::ReplicaServer::new((self.make)(), self.cap, kv);
+        std::thread::spawn(move || server.serve(in_rx, out_tx));
+        let d = Arc::clone(&dead);
+        Ok(WorkerIo {
+            stdin: Box::new(in_tx),
+            stdout: Box::new(out_rx),
+            kill: Arc::new(move || d.store(true, Ordering::SeqCst)),
+        })
+    }
+}

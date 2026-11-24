@@ -2211,9 +2211,13 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "tetraeder-costmodel",
+ "tetraeder-gateway",
  "tetraeder-plan",
  "tetraeder-profiler",
  "tetraeder-transport",
+ "tokio",
+ "tokio-util",
  "toml",
  "tracing",
 ]

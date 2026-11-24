@@ -7,10 +7,15 @@ mod replan;
 
 pub mod client;
 pub mod cluster;
+pub mod head;
+pub mod kv;
 pub mod membership;
+pub mod metrics;
 pub mod monitor;
 pub mod node;
 pub mod proto;
+pub mod replica;
+pub mod router;
 
 pub use cluster::{ClusterConfig, NodeConfig};
 pub use membership::{Membership, NodeEvent, NodeState};
