@@ -306,8 +306,7 @@ fn scratch(tag: &str) -> PathBuf {
     // Tests of one process run in parallel: each call gets a folder of its own.
     static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = N.fetch_add(1, Ordering::SeqCst);
-    let dir =
-        std::env::temp_dir().join(format!("tetraeder-pipe-{tag}-{}-{n}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tetraeder-pipe-{tag}-{}-{n}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
