@@ -22,6 +22,7 @@
 # MODEL (the first shard), PROMPT_FILE (default bench/prompts/exit_prompt.txt; empty = pseudo-random ids), SPLIT, END, A1_END,
 # A2_END, V, R, DUMP_V, DUMP_R, UBATCH, PREFILL, DECODE. Defaults are the 235B segment; the rehearsal on the synthetic model
 # overrides them (docs in bench/results/<name>/README.md). Never overwrite this file while it runs.
+if [ -n "${PIN_CPUS:-}" ] && [ -z "${SC_PINNED:-}" ]; then SC_PINNED=1 exec taskset -c "$PIN_CPUS" bash "$0" "$@"; fi
 exec 8> /root/tetraeder_sc_box.lock
 flock -n 8 || exit 0
 cd "$(dirname "$0")/.." || exit 1
