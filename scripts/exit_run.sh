@@ -132,6 +132,14 @@ if [ "$balloon" -gt 0 ]; then
   start_balloon
   trap 'kill $balloon_pid 2> /dev/null' EXIT
   mem=$emulated
+  # ADR 0092 section 4: the planner's RAM budget under the balloon is measured, not the nominal EMULATE_RAM_GB. Wait
+  # until the balloon holds its full target (not 90%), then read the cgroup with the samplers running and before the
+  # engine starts: memory.max - memory.current + inactive_file - 1 GiB. env.json gets it with its inputs; a node
+  # graph named in RAM_BUDGET_HW gets it as cpu0 capacity_bytes (each node of a cluster before `cluster profile`).
+  python3 -I scripts/balloon_guard.py wait --pid "$balloon_pid" --target "$balloon" --timeout "${BALLOON_FULL_WAIT_S:-1800}" \
+    || echo "[$(date +%T)] balloon not at its full target; the budget below is read anyway"
+  python3 -I scripts/balloon_guard.py budget --cgroup "${CGROUP_DIR:-/sys/fs/cgroup}" --env-json "$date_dir/env.json" \
+    ${RAM_BUDGET_HW:+--hw "$RAM_BUDGET_HW"} || echo "[$(date +%T)] RAM budget not measured; plan against the nominal size"
 fi
 # The builder reads with direct I/O (no page cache): besides the tiers it holds the bounce buffers (1.3 GB) and about
 # 1 GB of process memory (peak RSS 72.75 GB with a 70.8 GB RAM tier, 2026-11-02), so 8 GB is left for the rest.
