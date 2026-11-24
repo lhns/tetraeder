@@ -275,7 +275,6 @@ flowchart TB
 | Own DeepSeek graph builder | ⏸ parked | An own graph builder for DeepSeek-style MoE models, with a KV cache shaped for their compressed attention (MLA, multi-head latent attention) (plan.md, Phase 8). |
 | Own builder for ternary models | ⏸ parked | An own builder with faster kernels for natively ternary models such as BitNet b1.58, which libllama already runs (plan feature 51, Phase 9 half). |
 | Own builder for Qwen3.6 MoE | ⏸ parked | An own graph builder for qwen35moe (GatedDeltaNet layers, 256 experts, shared expert, MTP block), the first model both Tetraeder and Strata run (ADR 0085; own ADR first). |
-| Exit segment harness | ○ next | The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and warms up until a prefill reads nothing from disk. |
 | One graph per decoded token | ⏸ parked | Step 2 of ADR 0064: one graph per decoded token with a host callback per layer, instead of one graph segment per MoE layer. |
 | Dense builder speed on AMX CPUs | ○ next | Measure whether the dense builder's prompt speed on Intel AMX CPUs now matches libllama's, with weights in libllama's extra buffer types (ADR 0072). |
 | Prefetch next layer's experts | ✔ done · very-successful | While one layer computes, predict which experts the next layer will need and start reading them early. |
@@ -374,7 +373,6 @@ flowchart TB
 
 - `cluster-planner-hardening`: Harden the cluster planner inputs
 - `cluster-pipeline-prefill`: Prefill pipelined across stages
-- `engine-exit-segment-harness`: Exit segment harness
 - `planner-costmodel-stream-terms`: Cost model 6 for streamed MoE
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
@@ -425,7 +423,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 121 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 122 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -831,6 +829,7 @@ Generated on 2026-11-24.
 - `cluster-mtls`: Node certificates and trust rules (✔ done · unrated). Each node gets a certificate the way the owner picks (pinned self-signed, own CA or step-ca), and a forbid rule keeps units, and the request content they see, off a node (plan feature 20).
 - `cluster-owner-routing-input`: Routing trace as prediction input (✔ done · n/a). The owner decides whether the routing trace of the frozen exit prompt, recorded before the judged runs, may price the judged prediction (recommended, ADR 0092 draft).
 - `cluster-pipeline-nodes`: Pipeline stages across machines (✔ done · unrated). A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
+- `engine-exit-segment-harness`: Exit segment harness (✔ done · unrated). The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and runs warm requests before a timed one that recomputes every token and reports its disk bytes (a covering plan that reads any is flagged unclean).
 - `memory-ram-tier-complement`: Read-free covering expert tiers (✔ fixed). When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again).
 - `planner-node-predict-check`: Node prediction equals the cluster reference (✔ done · unrated). A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix).
 - `serving-cuda-parity`: libllama path differs on CUDA (✔ fixed). On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
@@ -861,7 +860,7 @@ Generated on 2026-11-24.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [engine - engine and builders](roadmap/tracks/engine.md): 21 nodes (12 done, 2 next, 6 parked, 1 abandoned)
+- [engine - engine and builders](roadmap/tracks/engine.md): 21 nodes (13 done, 1 next, 6 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 18 nodes (12 done, 1 next, 4 parked, 1 abandoned)
 - [planner - planner and cost model](roadmap/tracks/planner.md): 27 nodes (17 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)

@@ -76,6 +76,38 @@ impl RoutingRecorder {
         }
     }
 
+    /// [`RoutingRecorder::drain`] for a model run as consecutive layer segments (the hidden-row
+    /// dump of the exit harness): the layer steps of every segment in segment order, then one
+    /// hot-set marker if any segment refreshed, so the trace reads as a whole-model run's.
+    pub fn drain_chain(&mut self, ms: &mut [&mut Qwen3Moe]) {
+        let mut refresh = false;
+        for m in ms.iter_mut() {
+            for r in m.take_routing_log() {
+                if r.refresh {
+                    refresh = true;
+                    continue;
+                }
+                if r.layer == 0 {
+                    self.step = self.next_step;
+                    self.next_step += 1;
+                }
+                self.writer
+                    .layer_step(
+                        self.step,
+                        r.layer as u16,
+                        r.n_tokens as u32,
+                        &r.ids,
+                        r.predicted.as_deref(),
+                        r.predicted2.as_deref(),
+                    )
+                    .expect("trace write");
+            }
+        }
+        if refresh {
+            self.writer.hot_refresh(self.step).expect("trace write");
+        }
+    }
+
     pub fn finish(self) {
         self.writer.finish().expect("trace flush");
     }
