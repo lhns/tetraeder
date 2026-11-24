@@ -126,3 +126,13 @@ Metrics (rule 6): no runtime component is added. The runtime counterparts exist:
 | 5 | `bench-235b-segment-confirm` | Section 6 | Session README with the gate and `e_pp`, `e_tg` |
 
 Steps 2 and 3 can run in parallel with step 1; step 4 needs 1 and the exit JSON fields of 3; step 5 needs 2 to 4.
+
+## History
+
+One bullet per step: its date and title, what changed against the text above, why.
+
+- 2026-11-24, "Step 3, exit segment harness (`engine-exit-segment-harness`)": built in `crates/model/tests/exit_regime.rs` and `tests/common/exit_segment.rs`. Decisions that the text left open:
+  - **Warm.** `TETRAEDER_EXIT_PREFILL_WARM=n` now means `n` full untimed requests (it was one untimed prefill); `warm_prefill` keeps the first request's prefill for `sp_table.py`. The routing of the warm requests is dropped, so a trace holds the timed request only. Result block `warm`: `requests`, `covering` (VRAM plus RAM slots hold every expert), `timed_prefill_disk_bytes`, `unclean`, `prefix_reuse` and `prompt_cache` (both false: the harness drives the model, not the scheduler).
+  - **Span.** `TETRAEDER_EXIT_LAYERS=a..b` runs the span with no head (`TETRAEDER_EXIT_HEAD=1` keeps it for a span that ends at the last layer, used by the parity test). Input of a span after layer 0: `TETRAEDER_EXIT_HIDDEN_IN` (dump file) or standard-normal rows from `TETRAEDER_EXIT_HIDDEN_SEED` (default 20261124). A span cannot pick tokens, so its decode steps use the dump file's token ids, else fixed pseudo-random ones.
+  - **Dump.** `TETRAEDER_EXIT_HIDDEN_OUT=layer,file` runs the whole model as two chained builders (layers below `layer` without the head, the rest with it), because the engine has no tap at a layer boundary. The file holds the rows entering `layer` for every prompt and decode token and the token ids. The run is report only (no counters or profile) and its routing trace is the whole model's.
+  - **Per layer.** `decode_layers` covers the run's layers only (the counter tables hold zeros outside a segment) and gains `first_layer`, `vram_pair_share_layers` (null where a layer saw no pair) and `pairs_layers`; the aggregate is their pair-weighted mean. A whole-model run's output is unchanged.

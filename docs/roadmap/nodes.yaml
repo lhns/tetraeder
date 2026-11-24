@@ -3763,20 +3763,23 @@ nodes:
   title: Exit segment harness
   track: engine
   kind: tooling
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  evidence:
+  - docs/adr/0092-costmodel-6-streamed-moe-segments.md
+  - crates/model/tests/exit_regime.rs
+  - crates/model/tests/common/exit_segment.rs
+  verdict_quote: 'ci::cpu_two_span_run_matches_the_whole_run ... ok (CI run 45421446213, Windows and Linux, tol_batch)'
+  headline: span, dump and warm protocol built
   depends_on:
   - bench-235b-stream-predict
   replaced_by: []
   lane: ci
-  start: ''
-  end: ''
+  start: '2026-11-24'
+  end: '2026-11-24'
   folded: []
   overview: false
-  plain: The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and warms up until a prefill reads nothing from disk.
+  plain: The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and runs warm requests before a timed one that recomputes every token and reports its disk bytes (a covering plan that reads any is flagged unclean).
 - id: cluster-owner-routing-input
   title: Routing trace as prediction input
   track: cluster
