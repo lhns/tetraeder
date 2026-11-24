@@ -129,6 +129,8 @@ Steps 2 and 3 can run in parallel with step 1; step 4 needs 1 and the exit JSON 
 
 ## History
 
+- 2026-11-24, cost model 6 built (`planner-costmodel-stream-terms`, steps 1 to 8 of the build order; MODEL_VERSION 6): in sample on `stream-predict-20261124` arm D2 tg -0.101 (within 0.15, the done line) and pp +1.116; arm R (report only) tg +0.071, pp -0.199 (`bench/results/stream-predict-20261124/costmodel-v6/README.md`). Not implemented here, carried by `planner-costmodel-v6-rest`: `predict --cluster` (so `--judged` exists for node-predict only), prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, the footprint-within-budget property, the anchor fit-back test through the scorer (a feature-equality test stands in), and a replay versus engine segment counter test.
+
 One bullet per step: its date and title, what changed against the text above, why.
 
 - 2026-11-24, "Step 3, exit segment harness (`engine-exit-segment-harness`)": built in `crates/model/tests/exit_regime.rs` and `tests/common/exit_segment.rs`. Decisions that the text left open:

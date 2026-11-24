@@ -91,9 +91,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 47 rated nodes are confirmed by the owner.
+0 of 48 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-ep-prefill-recheck`.
+Not yet confirmed: `engine-libllama`, `engine-overflow-passes`, `engine-cpu-poll`, `memory-pair-groups`, `memory-prefetch`, `memory-conversion`, `memory-io-service`, `memory-low-bit-kv`, `memory-ram-freq`, `memory-ram-pool`, `memory-adaptive-tier`, `planner-quality`, `planner-core`, `planner-exit`, `planner-detector`, `planner-cost-v2`, `planner-cost-v4`, `multi-decode-toggles`, `serving-speculative`, `serving-kv-layout`, `serving-c4-gap`, `serving-prefix-save`, `bench-phase2-exit`, `bench-m1-point1`, `bench-m1-point3`, `bench-phase3b-proxy`, `bench-d2a-rerun`, `bench-pin-ab`, `bench-phase4-exit`, `bench-ttft`, `bench-s2-step0`, `bench-s3f2`, `bench-v2-verdict`, `planner-cost-model-v5`, `bench-d2a-probe`, `bench-v4a-verdict`, `bench-v4b-verdict`, `bench-d2a-30b`, `bench-ab30b`, `serving-parity-harness`, `serving-parity-sampling`, `serving-parity-fields`, `serving-parity-endpoints`, `serving-parity-libllama`, `bench-235b-stream-predict`, `bench-regression-gate`, `planner-costmodel-stream-terms`, `planner-ep-prefill-recheck`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -294,7 +294,7 @@ flowchart TB
 | One and two bit formats | ⏸ parked | Formats near one or two bits per weight (IQ1, IQ2, TQ, Q1_0) become planner choices, which needs an importance matrix from calibration text (plan feature 50). |
 | Expert-parallel split on two GPUs | ○ next | A new plan shape where each of two GPUs holds a share of every MoE layer's experts, as Strata's --ep-split does, priced by the cost model and tested on every hardware fixture (ADR 0085). |
 | Plan experts with no RAM tier | ⏸ parked | Enumerate, lower and score a builder plan with ram_slots 0 (experts read from NVMe into VRAM), which the engine already runs and the planner never offers. |
-| Cost model 6 for streamed MoE | ○ next | ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves. |
+| Cost model 6 remaining parts | ○ next | The ADR 0092 parts not built in the first pass - predict --cluster with the judged refusal, prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, a footprint-within-budget property, the anchor fit-back test and a replay against engine segment counter test. |
 | Check planner's expert slot picks | ⏸ parked | Run the planner's builder candidates with different expert slot counts on Qwen3-30B-A3B and score its picks. |
 | Replanning in serve, part B | ⏸ parked | Part B of ADR 0055: switch libllama's op offload, take the builder's prefill chunk from the plan and join the scheduler on shutdown, then time a switch on a box. |
 | Recheck expert-parallel prefill error | ✔ done · successful | Expert-parallel prefill was over-predicted (ep-2, ep-4) while every judged prefill timed the graph capture call; after the capture fix it reads 0.959 (ep-4, V4a) and 0.995 (ep-2, V2c) of prediction, so no cost model term was needed. |
@@ -341,7 +341,7 @@ flowchart TB
 | Phase 8 exit: parity per backend | ⏸ parked | The Phase 8 exit test: parity and speed on every new backend. |
 | Phase 9 exit: feature tests | ⏸ parked | The Phase 9 exit test: one feature test per breadth item. |
 | Speculative rerun with a draft pair | ⏸ parked | Rerun speculative decoding after the op-offload fix, with a draft model sharing the target's tokenizer (Qwen3.8-27B and its 4B draft), draft on against off. |
-| Confirm one exit segment | ⛔ blocked | One 3090 box under the 64 GB balloon runs the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated the exit way and predicted before measuring, and must land within 15% on both rates before the two-box sessions. |
+| Confirm one exit segment | ○ next | One 3090 box under the 64 GB balloon runs the 47-layer exit segment with 32 VRAM and 96 RAM slots on real hidden-state input, calibrated the exit way and predicted before measuring, and must land within 15% on both rates before the two-box sessions. |
 | Pair against the Strata engine | ⏸ parked | A paired run against Strata, a reference engine for expert tiering, once both engines run one model. |
 | Session on a 48 GB box | ⏸ parked | One box session on a 48 GB card with AVX-512, for the Phase 2 follow-ups that need that hardware. |
 | Box checks for open design records | ⏸ parked | One later box session with the measurements Proposed design records still wait for, so they can be accepted or closed. |
@@ -373,13 +373,14 @@ flowchart TB
 
 - `cluster-planner-hardening`: Harden the cluster planner inputs
 - `cluster-pipeline-prefill`: Prefill pipelined across stages
-- `planner-costmodel-stream-terms`: Cost model 6 for streamed MoE
+- `planner-costmodel-v6-rest`: Cost model 6 remaining parts
 - `engine-dense-amx`: Dense builder speed on AMX CPUs
 
 **box-later**
 
 - `bench-30b-c4-gap`: 30B concurrency-4 gap
 - `planner-cost-model-v5-host2`: Cost model 5 second host
+- `bench-235b-segment-confirm`: Confirm one exit segment
 
 **cluster**
 
@@ -423,7 +424,7 @@ Generated on 2026-11-24.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 122 done, 3 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 123 done, 3 abandoned</summary>
 
 - `engine-overflow-passes`: Extra passes for overflow experts (↷ superseded). When a token needs more experts than there are GPU slots, run extra exact passes; bitwise correct, but replaced two days later by expert pair groups.
   - Exact overflow passes (ADR 0034) (2026-11-01)
@@ -831,6 +832,7 @@ Generated on 2026-11-24.
 - `cluster-pipeline-nodes`: Pipeline stages across machines (✔ done · unrated). A model's layers are split into stages on different machines; only one activation per stage boundary crosses the network (plan feature 8, Phase 6 half).
 - `engine-exit-segment-harness`: Exit segment harness (✔ done · unrated). The exit harness runs a span of layers without the head, takes hidden rows from a file or a fixed seed, dumps them at a layer boundary from a whole-model run, and runs warm requests before a timed one that recomputes every token and reports its disk bytes (a covering plan that reads any is flagged unclean).
 - `memory-ram-tier-complement`: Read-free covering expert tiers (✔ fixed). When VRAM and RAM slots together hold every expert, the hot-set refresh leaves the RAM tier holding exactly the other experts, so from the second request on nothing is read from disk (today about 16% of the tier is read again).
+- `planner-costmodel-stream-terms`: Cost model 6 for streamed MoE (✔ done · successful). ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves.
 - `planner-node-predict-check`: Node prediction equals the cluster reference (✔ done · unrated). A test pins that the single-node prediction tool and the cluster reference price the same plan bit for bit, and a second test pins that the reader copy rate does not depend on the thread count (fails until the cost-model fix).
 - `serving-cuda-parity`: libllama path differs on CUDA (✔ fixed). On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
 
@@ -862,10 +864,10 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [engine - engine and builders](roadmap/tracks/engine.md): 21 nodes (13 done, 1 next, 6 parked, 1 abandoned)
 - [memory - memory and streaming](roadmap/tracks/memory.md): 18 nodes (12 done, 1 next, 4 parked, 1 abandoned)
-- [planner - planner and cost model](roadmap/tracks/planner.md): 27 nodes (17 done, 3 next, 3 blocked, 4 parked)
+- [planner - planner and cost model](roadmap/tracks/planner.md): 28 nodes (18 done, 3 next, 3 blocked, 4 parked)
 - [multi - multi-GPU executor](roadmap/tracks/multi.md): 11 nodes (8 done, 2 blocked, 1 parked)
 - [serving - serving](roadmap/tracks/serving.md): 31 nodes (21 done, 2 next, 1 blocked, 7 parked)
-- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 48 nodes (34 done, 1 next, 6 blocked, 6 parked, 1 abandoned)
+- [bench - benchmarks and verdicts](roadmap/tracks/bench.md): 48 nodes (34 done, 2 next, 5 blocked, 6 parked, 1 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 15 nodes (13 done, 2 parked)
 - [cluster - multi-node cluster](roadmap/tracks/cluster.md): 17 nodes (9 done, 3 next, 4 blocked, 1 parked)
 <!-- END GENERATED: tracks -->

@@ -3811,27 +3811,47 @@ nodes:
   title: Cost model 6 for streamed MoE
   track: planner
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - bench/results/stream-predict-20261124/costmodel-v6/README.md
+  - docs/adr/0092-costmodel-6-streamed-moe-segments.md
+  verdict_quote: 'IN_SAMPLE D2 trace v6 - tg 2.3703 tok/s (meas 2.6360, e -0.101)'
+  headline: 'D2 tg -0.10 in sample'
   depends_on:
   - bench-235b-stream-predict
   - planner-node-predict-check
   - cluster-owner-routing-input
   replaced_by: []
   lane: ci
+  start: 2026-11-24
+  end: 2026-11-24
+  folded: []
+  overview: false
+  plain: ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves.
+- id: planner-costmodel-v6-rest
+  title: Cost model 6 remaining parts
+  track: planner
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - planner-costmodel-stream-terms
+  replaced_by: []
+  lane: ci
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: ADR 0092 makes routing an input from a trace replay, fits anchors with their own measured shares, prices the reader copy at a measured single-thread rate and the prefill offload copy per chunk, and gives the planner the RAM budget the balloon really leaves.
+  plain: The ADR 0092 parts not built in the first pass - predict --cluster with the judged refusal, prefill disk bytes from the replay, per-segment tier replay, the routing-gate fixture, a footprint-within-budget property, the anchor fit-back test and a replay against engine segment counter test.
 - id: bench-235b-segment-confirm
   title: Confirm one exit segment
   track: bench
   kind: experiment
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
