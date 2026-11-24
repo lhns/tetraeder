@@ -1,0 +1,24 @@
+case results per run (PASSED or FAILED of the four cases; [auto] is libllama)
+== a1: 4 failed, 135 passed, 6 xfailed in 40.43s
+FAILED tests/conformance/parity/test_parity.py::test_case[repeat-penalty[auto]]
+FAILED tests/conformance/parity/test_parity.py::test_case[logprobs[auto]] - A...
+FAILED tests/conformance/parity/test_parity.py::test_case[seeded-sampler-names[auto]]
+FAILED tests/conformance/parity/test_parity.py::test_case[logprobs-shape[auto]]
+== a2: 4 failed, 135 passed, 6 xfailed in 38.93s
+FAILED tests/conformance/parity/test_parity.py::test_case[repeat-penalty[auto]]
+FAILED tests/conformance/parity/test_parity.py::test_case[logprobs[auto]] - A...
+FAILED tests/conformance/parity/test_parity.py::test_case[seeded-sampler-names[auto]]
+FAILED tests/conformance/parity/test_parity.py::test_case[logprobs-shape[auto]]
+== b: 139 passed, 6 xfailed in 38.73s
+PASSED tests/conformance/parity/test_parity.py::test_case[repeat-penalty[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[logprobs[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-sampler-names[auto]]
+PASSED tests/conformance/parity/test_parity.py::test_case[logprobs-shape[auto]]
+== c-logprobs-shape: 1 passed in 2.12s
+PASSED tests/conformance/parity/test_parity.py::test_case[logprobs-shape[auto]]
+== c-logprobs: 1 passed in 2.11s
+PASSED tests/conformance/parity/test_parity.py::test_case[logprobs[auto]]
+== c-repeat-penalty: 1 passed in 1.92s
+PASSED tests/conformance/parity/test_parity.py::test_case[repeat-penalty[auto]]
+== c-seeded-sampler-names: 1 passed in 1.93s
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-sampler-names[auto]]

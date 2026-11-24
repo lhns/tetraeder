@@ -1,0 +1,55 @@
+{
+ "ram": {
+  "requests": 96,
+  "errors": 0,
+  "wall_s": 97.48597006686032,
+  "ttft_all_median_s": 0.9887371161021292,
+  "ttft_all_p90_s": 1.0075419410131872,
+  "ttft_turn1_median_s": 0.9166042720898986,
+  "ttft_later_turns_median_s": 0.9947424717247486,
+  "ttft_later_turns_p90_s": 1.0075635719113052,
+  "admits_by_source": {
+   "copy": 3,
+   "live": 94
+  },
+  "restore_ms_by_source": {
+   "copy": {
+    "p50": 0.0,
+    "p90": 0.0
+   },
+   "live": {
+    "p50": 0.0,
+    "p90": 0.0
+   }
+  }
+ },
+ "disk": {
+  "requests": 96,
+  "errors": 0,
+  "wall_s": 80.42610492417589,
+  "ttft_all_median_s": 0.7457320499233902,
+  "ttft_all_p90_s": 0.9592400141991675,
+  "ttft_turn1_median_s": 0.9583500269800425,
+  "ttft_later_turns_median_s": 0.733959536999464,
+  "ttft_later_turns_p90_s": 0.7592824860475957,
+  "admits_by_source": {
+   "copy": 3,
+   "disk": 71,
+   "live": 23
+  },
+  "restore_ms_by_source": {
+   "copy": {
+    "p50": 0.0,
+    "p90": 0.0
+   },
+   "disk": {
+    "p50": 85.94,
+    "p90": 88.3
+   },
+   "live": {
+    "p50": 0.0,
+    "p90": 0.0
+   }
+  }
+ }
+}

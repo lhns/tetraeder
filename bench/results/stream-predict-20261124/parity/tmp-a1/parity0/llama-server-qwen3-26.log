@@ -1,0 +1,19 @@
+0.00.003.431 I srv  llama_server: initializing ...
+0.00.029.061 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.029.202 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.087.153 I srv    load_model: loading model '/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf'
+0.00.450.041 W llama_context: n_ctx_seq (4096) > n_ctx_train (512) -- possible training context overflow
+0.00.463.137 I cmn          init: llama threadpool init, n_threads = 2
+0.00.465.126 W srv    load_model: the slot context (4096) exceeds the training context of the model (512) - capping
+0.00.518.735 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 512, kv_unified = 'true'
+0.00.520.243 I srv  server_run_i: model loaded
+0.00.520.253 I srv  server_on_li: listening on http://127.0.0.1:57355
+0.01.734.108 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.734.151 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.01.750.783 I slot print_timing: id  0 | task 0 | prompt eval time =      11.64 ms /    16 tokens (    0.73 ms per token,  1374.10 tokens per second)
+0.01.750.794 I slot print_timing: id  0 | task 0 |        eval time =       4.95 ms /    20 tokens (    0.26 ms per token,  3837.61 tokens per second)
+0.01.750.795 I slot print_timing: id  0 | task 0 |       total time =      16.59 ms /    36 tokens
+0.01.750.796 I slot print_timing: id  0 | task 0 |    graphs reused =         18
+0.01.750.796 I slot print_timing: id  0 | task 0 |   graph reallocs =          0    /     0        (same size) / (changed size)
+0.01.750.816 I slot      release: id  0 | task 0 | stop processing: n_tokens = 35, truncated = 0
+0.08.468.389 I srv    operator(): operator(): cleaning up before exit...

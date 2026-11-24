@@ -1,0 +1,181 @@
+{
+  "rounds": [
+    {
+      "round": 1,
+      "clean": true,
+      "c4_A": 227.54223893239595,
+      "c4_B": 243.127655915777,
+      "c4_ratio": 1.0684946103040305,
+      "c1_A": 102.69997948998082,
+      "c1_B": 102.2381230750004,
+      "c1_ratio": 0.9955028577680926,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": []
+    },
+    {
+      "round": 2,
+      "clean": true,
+      "c4_A": 244.75490168266825,
+      "c4_B": 237.4684930435932,
+      "c4_ratio": 0.9702297744029573,
+      "c1_A": 102.46361235147734,
+      "c1_B": 101.84066968267743,
+      "c1_ratio": 0.9939203522645381,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": []
+    },
+    {
+      "round": 3,
+      "clean": true,
+      "c4_A": 245.4849381766006,
+      "c4_B": 243.60471425293764,
+      "c4_ratio": 0.9923407768410202,
+      "c1_A": 102.61615041376851,
+      "c1_B": 102.0388953193256,
+      "c1_ratio": 0.9943746175225313,
+      "board_share_A": 0.0,
+      "board_share_B": 0.0,
+      "why_unclean": []
+    }
+  ],
+  "clean_rounds": [
+    1,
+    2,
+    3
+  ],
+  "excluded_rounds": [],
+  "median_ratio": {
+    "c4": 0.9923407768410202,
+    "c1": 0.9943746175225313
+  },
+  "metric_readings": {
+    "c4": "no regression evidence",
+    "c1": "no regression evidence"
+  },
+  "reading": "no regression evidence",
+  "reading_why": "both medians at least 0.98",
+  "runs": {
+    "A-r1": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 227.54223893239595,
+      "c1_decode_tps": 102.69997948998082,
+      "sampler": {
+        "samples": 23,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      }
+    },
+    "B-r1": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 243.127655915777,
+      "c1_decode_tps": 102.2381230750004,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000000"
+        ]
+      }
+    },
+    "A-r2": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 244.75490168266825,
+      "c1_decode_tps": 102.46361235147734,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "B-r2": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 237.4684930435932,
+      "c1_decode_tps": 101.84066968267743,
+      "sampler": {
+        "samples": 23,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "A-r3": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 245.4849381766006,
+      "c1_decode_tps": 102.61615041376851,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    },
+    "B-r3": {
+      "clean": true,
+      "reasons": [],
+      "c4_tps": 243.60471425293764,
+      "c1_decode_tps": 102.0388953193256,
+      "sampler": {
+        "samples": 22,
+        "share": 0.0,
+        "disqualifying": 0,
+        "bad_bits": "0x0"
+      },
+      "snapshots": {
+        "before": [
+          "0x0000000000000000"
+        ],
+        "after": [
+          "0x0000000000000004"
+        ]
+      }
+    }
+  }
+}

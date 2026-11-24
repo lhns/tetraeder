@@ -1,0 +1,72 @@
+0.00.003.455 I srv  llama_server: initializing ...
+0.00.029.429 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.029.568 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.094.542 I srv    load_model: loading model '/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf'
+0.00.430.807 I cmn          init: llama threadpool init, n_threads = 2
+0.00.490.905 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 256, kv_unified = 'true'
+0.00.492.412 I srv  server_run_i: model loaded
+0.00.492.421 I srv  server_on_li: listening on http://127.0.0.1:40375
+0.01.150.217 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.150.260 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.01.217.112 W slot   operator(): id  0 | task 0 | slot context shift, n_keep = 0, n_left = 255, n_discard = 127
+0.01.228.590 I slot print_timing: id  0 | task 0 | prompt eval time =      10.60 ms /     5 tokens (    2.12 ms per token,   471.70 tokens per second)
+0.01.228.596 I slot print_timing: id  0 | task 0 |        eval time =      67.69 ms /   300 tokens (    0.23 ms per token,  4417.07 tokens per second)
+0.01.228.597 I slot print_timing: id  0 | task 0 |       total time =      78.29 ms /   305 tokens
+0.01.228.597 I slot print_timing: id  0 | task 0 |    graphs reused =        297
+0.01.228.598 I slot print_timing: id  0 | task 0 |   graph reallocs =          0    /     0        (same size) / (changed size)
+0.01.228.620 I slot      release: id  0 | task 0 | stop processing: n_tokens = 177, truncated = 1
+0.01.425.519 I slot       select: id  1 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.425.544 I slot launch_slot_: id  1 | task 301 | processing task, is_child = 0
+0.01.483.203 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.486.409 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.489.253 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.491.528 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.493.697 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.495.877 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.498.041 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.500.196 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.502.520 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.504.689 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.506.849 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.509.010 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.511.141 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.513.273 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.515.439 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.517.577 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.519.722 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.521.910 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.524.044 W slot   operator(): id  1 | task 301 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.01.525.616 I slot print_timing: id  1 | task 301 | prompt eval time =       0.62 ms /     5 tokens (    0.12 ms per token,  8012.82 tokens per second)
+0.01.525.621 I slot print_timing: id  1 | task 301 |        eval time =      99.12 ms /   400 tokens (    0.25 ms per token,  4025.55 tokens per second)
+0.01.525.623 I slot print_timing: id  1 | task 301 |       total time =      99.74 ms /   405 tokens
+0.01.525.623 I slot print_timing: id  1 | task 301 |    graphs reused =        676
+0.01.525.624 I slot print_timing: id  1 | task 301 |   graph reallocs =          0    /     0        (same size) / (changed size)
+0.01.525.637 I slot      release: id  1 | task 301 | stop processing: n_tokens = 252, truncated = 1
+0.08.536.506 I slot       select: id  1 | task -1 | selected slot by LCP similarity, f_sim_best = 0.800 (> 0.100 thold), f_keep = 0.016
+0.08.537.226 I slot launch_slot_: id  1 | task 702 | processing task, is_child = 0
+0.08.610.253 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.613.596 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.616.828 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.620.043 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.623.160 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.626.111 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.629.185 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.632.132 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.635.111 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.638.068 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.641.006 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.643.950 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.646.891 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.649.838 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.652.818 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.655.749 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.658.698 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.661.443 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.663.621 W slot   operator(): id  1 | task 702 | slot context shift, n_keep = 4, n_left = 251, n_discard = 8
+0.08.665.136 I slot print_timing: id  1 | task 702 | prompt eval time =       0.61 ms /     1 tokens (    0.61 ms per token,  1633.99 tokens per second)
+0.08.665.140 I slot print_timing: id  1 | task 702 |        eval time =     127.27 ms /   400 tokens (    0.32 ms per token,  3135.12 tokens per second)
+0.08.665.141 I slot print_timing: id  1 | task 702 |       total time =     127.88 ms /   401 tokens
+0.08.665.142 I slot print_timing: id  1 | task 702 |    graphs reused =       1057
+0.08.665.143 I slot print_timing: id  1 | task 702 |   graph reallocs =          0    /     0        (same size) / (changed size)
+0.08.665.162 I slot      release: id  1 | task 702 | stop processing: n_tokens = 252, truncated = 1
+0.13.995.376 I srv    operator(): operator(): cleaning up before exit...

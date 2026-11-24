@@ -1,0 +1,12 @@
+0.00.003.274 I srv  llama_server: initializing ...
+0.00.027.550 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.087.919 I srv    load_model: loading model '/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf'
+0.00.317.560 W llama_context: n_ctx_seq (4096) > n_ctx_train (512) -- possible training context overflow
+0.00.331.211 I cmn          init: llama threadpool init, n_threads = 2
+0.00.333.210 W srv    load_model: the slot context (4096) exceeds the training context of the model (512) - capping
+0.00.386.850 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 512, kv_unified = 'true'
+0.00.386.919 W srv          init: --cache-idle-slots requires --cache-ram, disabling
+0.00.388.345 I srv  server_run_i: model loaded
+0.00.388.352 I srv  server_on_li: listening on http://127.0.0.1:34477
+0.01.144.870 W srv    operator(): unauthorized: Invalid API Key
+0.26.190.880 I srv    operator(): operator(): cleaning up before exit...

@@ -1,0 +1,17 @@
+0.00.003.179 I srv  llama_server: initializing ...
+0.00.029.758 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.029.765 W srv  server_prepa: embeddings enabled with n_batch (2048) > n_ubatch (512)
+0.00.029.766 W srv  server_prepa: setting n_batch = n_ubatch = 512 to avoid assertion failure
+0.00.029.871 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.090.186 I srv    load_model: loading model '/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf'
+0.00.488.025 W llama_context: n_ctx_seq (4096) > n_ctx_train (512) -- possible training context overflow
+0.00.501.116 I cmn          init: llama threadpool init, n_threads = 2
+0.00.503.151 W srv    load_model: the slot context (4096) exceeds the training context of the model (512) - capping
+0.00.503.202 W init: embeddings required but some input tokens were not marked as outputs -> overriding
+0.00.559.483 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 512, kv_unified = 'true'
+0.00.560.902 I srv  server_run_i: model loaded
+0.00.560.910 I srv  server_on_li: listening on http://127.0.0.1:41955
+0.01.438.165 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.438.184 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.01.539.598 I slot      release: id  0 | task 0 | stop processing: n_tokens = 11, truncated = 0
+0.18.199.757 I srv    operator(): operator(): cleaning up before exit...

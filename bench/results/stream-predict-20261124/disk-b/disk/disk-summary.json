@@ -1,0 +1,50 @@
+{
+ "ram": {
+  "requests": 96,
+  "errors": 0,
+  "wall_s": 129.0012240051292,
+  "ttft_all_median_s": 1.3578464887104928,
+  "ttft_all_p90_s": 1.380996119696647,
+  "ttft_turn1_median_s": 1.2551361192017794,
+  "ttft_later_turns_median_s": 1.365164427086711,
+  "ttft_later_turns_p90_s": 1.382384974975139,
+  "admits_by_source": {
+   "copy": 3,
+   "live": 94
+  },
+  "restore_ms_by_source": {
+   "copy": {
+    "p50": 0.0,
+    "p90": 0.0
+   },
+   "live": {
+    "p50": 0.0,
+    "p90": 0.0
+   }
+  }
+ },
+ "disk": {
+  "requests": 96,
+  "errors": 0,
+  "wall_s": 126.33556334208697,
+  "ttft_all_median_s": 1.3175316909328103,
+  "ttft_all_p90_s": 1.3417249009944499,
+  "ttft_turn1_median_s": 1.2622806560248137,
+  "ttft_later_turns_median_s": 1.3276678593829274,
+  "ttft_later_turns_p90_s": 1.3426901455968618,
+  "admits_by_source": {
+   "copy": 3,
+   "live": 94
+  },
+  "restore_ms_by_source": {
+   "copy": {
+    "p50": 0.0,
+    "p90": 0.0
+   },
+   "live": {
+    "p50": 0.0,
+    "p90": 0.0
+   }
+  }
+ }
+}

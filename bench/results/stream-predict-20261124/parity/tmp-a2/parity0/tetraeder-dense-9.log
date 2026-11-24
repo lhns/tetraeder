@@ -1,0 +1,1 @@
+error: --no-kv-offload: the own builders keep the KV cache on the GPU that runs them (ADR 0084 plans host KV); use --engine llama

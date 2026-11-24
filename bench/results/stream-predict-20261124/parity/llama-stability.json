@@ -1,0 +1,1186 @@
+{
+ "repeat-penalty": {
+  "across_servers": [],
+  "same_server_1": [
+   "text: baseline '\ufffd}\ufffdf\ufffd\\x17q%\ufffdUthA\ufffd+\\x1c\u07a2V', tetraeder '\ufffd}\ufffdf\ufffd\\x17q%\ufffdUthA\ufffd+\\x1c\ufffdg\\x14'"
+  ],
+  "same_server_2": [
+   "text: baseline '\ufffd}\ufffdf\ufffd\\x17q%\ufffdUthA\ufffd+\\x1c\u07a2V', tetraeder '\ufffd}\ufffdf\ufffd\\x17q%\ufffdUthA\ufffd+\\x1c\ufffdg\\x14'"
+  ],
+  "answers": {
+   "server1_first": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "text": "\ufffd}\ufffd\ufffd\ufffdf\ufffd\ufffd\ufffd\ufffd\u0017q%\ufffd\ufffd\ufffdUthA\ufffd\ufffd+\u001c\u07a2V\ufffd\ufffd",
+       "index": 0,
+       "logprobs": null,
+       "finish_reason": "stop"
+      }
+     ],
+     "created": 1795485832,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "text_completion",
+     "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 16,
+      "total_tokens": 46,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     },
+     "id": "chatcmpl-xUZLLPOwWTcTPax6HymSmIkcsEHKoh1v",
+     "timings": {
+      "cache_n": 0,
+      "prompt_n": 16,
+      "prompt_ms": 11.998,
+      "prompt_per_token_ms": 0.749875,
+      "prompt_per_second": 1333.5555925987665,
+      "predicted_n": 30,
+      "predicted_ms": 7.614,
+      "predicted_per_token_ms": 0.26255172413793104,
+      "predicted_per_second": 3808.773312319411
+     }
+    },
+    "events": []
+   },
+   "server1_second": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "text": "\ufffd}\ufffd\ufffd\ufffdf\ufffd\ufffd\ufffd\ufffd\u0017q%\ufffd\ufffd\ufffdUthA\ufffd\ufffd+\u001c\ufffd\ufffd\ufffd\ufffdg\u0014",
+       "index": 0,
+       "logprobs": null,
+       "finish_reason": "length"
+      }
+     ],
+     "created": 1795485832,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "text_completion",
+     "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 16,
+      "total_tokens": 46,
+      "prompt_tokens_details": {
+       "cached_tokens": 15
+      }
+     },
+     "id": "chatcmpl-WutU7KwvNVW1LtPy07sL5YXkmXyK8szc",
+     "timings": {
+      "cache_n": 15,
+      "prompt_n": 1,
+      "prompt_ms": 0.343,
+      "prompt_per_token_ms": 0.343,
+      "prompt_per_second": 2915.4518950437314,
+      "predicted_n": 30,
+      "predicted_ms": 8.745,
+      "predicted_per_token_ms": 0.301551724137931,
+      "predicted_per_second": 3316.180674671241
+     }
+    },
+    "events": []
+   },
+   "server2_first": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "text": "\ufffd}\ufffd\ufffd\ufffdf\ufffd\ufffd\ufffd\ufffd\u0017q%\ufffd\ufffd\ufffdUthA\ufffd\ufffd+\u001c\u07a2V\ufffd\ufffd",
+       "index": 0,
+       "logprobs": null,
+       "finish_reason": "stop"
+      }
+     ],
+     "created": 1795485833,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "text_completion",
+     "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 16,
+      "total_tokens": 46,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     },
+     "id": "chatcmpl-wYWXBpLdVR1trc4HWy4VWNN7Sl1Gu2DW",
+     "timings": {
+      "cache_n": 0,
+      "prompt_n": 16,
+      "prompt_ms": 12.352,
+      "prompt_per_token_ms": 0.772,
+      "prompt_per_second": 1295.3367875647668,
+      "predicted_n": 30,
+      "predicted_ms": 7.055,
+      "predicted_per_token_ms": 0.2432758620689655,
+      "predicted_per_second": 4110.559886605244
+     }
+    },
+    "events": []
+   },
+   "server2_second": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "text": "\ufffd}\ufffd\ufffd\ufffdf\ufffd\ufffd\ufffd\ufffd\u0017q%\ufffd\ufffd\ufffdUthA\ufffd\ufffd+\u001c\ufffd\ufffd\ufffd\ufffdg\u0014",
+       "index": 0,
+       "logprobs": null,
+       "finish_reason": "length"
+      }
+     ],
+     "created": 1795485833,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "text_completion",
+     "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 16,
+      "total_tokens": 46,
+      "prompt_tokens_details": {
+       "cached_tokens": 15
+      }
+     },
+     "id": "chatcmpl-NWafakeahHOX0ktpxCppxiDShlCjnvLV",
+     "timings": {
+      "cache_n": 15,
+      "prompt_n": 1,
+      "prompt_ms": 0.383,
+      "prompt_per_token_ms": 0.383,
+      "prompt_per_second": 2610.9660574412533,
+      "predicted_n": 30,
+      "predicted_ms": 8.471,
+      "predicted_per_token_ms": 0.2921034482758621,
+      "predicted_per_second": 3423.4446936607246
+     }
+    },
+    "events": []
+   }
+  }
+ },
+ "seeded-sampler-names": {
+  "across_servers": [],
+  "same_server_1": [],
+  "same_server_2": [],
+  "answers": {
+   "server1_first": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "text": "\ufffd}\ufffd\ufffd\ufffd\ufffdf+\u0014sN\ufffd\ufffd\ufffdk\u001c\ufffd\u01da\ufffd\t\ufffd~}\ufffdxz\u0586L",
+       "index": 0,
+       "logprobs": null,
+       "finish_reason": "length"
+      }
+     ],
+     "created": 1795485834,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "text_completion",
+     "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 16,
+      "total_tokens": 46,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     },
+     "id": "chatcmpl-nkIqKchA6WcICeAdrDZEt339FhcAUKIT",
+     "timings": {
+      "cache_n": 0,
+      "prompt_n": 16,
+      "prompt_ms": 11.493,
+      "prompt_per_token_ms": 0.7183125,
+      "prompt_per_second": 1392.1517445401548,
+      "predicted_n": 30,
+      "predicted_ms": 7.747,
+      "predicted_per_token_ms": 0.26713793103448275,
+      "predicted_per_second": 3743.3845359494003
+     }
+    },
+    "events": []
+   },
+   "server1_second": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "text": "\ufffd}\ufffd\ufffd\ufffd\ufffdf+\u0014sN\ufffd\ufffd\ufffdk\u001c\ufffd\u01da\ufffd\t\ufffd~}\ufffdxz\u0586L",
+       "index": 0,
+       "logprobs": null,
+       "finish_reason": "length"
+      }
+     ],
+     "created": 1795485834,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "text_completion",
+     "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 16,
+      "total_tokens": 46,
+      "prompt_tokens_details": {
+       "cached_tokens": 15
+      }
+     },
+     "id": "chatcmpl-l0AOkn3P5UlR4d9m1X7US7IgGyFQ1AkP",
+     "timings": {
+      "cache_n": 15,
+      "prompt_n": 1,
+      "prompt_ms": 0.301,
+      "prompt_per_token_ms": 0.301,
+      "prompt_per_second": 3322.2591362126245,
+      "predicted_n": 30,
+      "predicted_ms": 8.805,
+      "predicted_per_token_ms": 0.3036206896551724,
+      "predicted_per_second": 3293.583191368541
+     }
+    },
+    "events": []
+   },
+   "server2_first": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "text": "\ufffd}\ufffd\ufffd\ufffd\ufffdf+\u0014sN\ufffd\ufffd\ufffdk\u001c\ufffd\u01da\ufffd\t\ufffd~}\ufffdxz\u0586L",
+       "index": 0,
+       "logprobs": null,
+       "finish_reason": "length"
+      }
+     ],
+     "created": 1795485835,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "text_completion",
+     "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 16,
+      "total_tokens": 46,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     },
+     "id": "chatcmpl-wEJBsPrfsxEBrOMN4vV3LtkrHFpuc5bq",
+     "timings": {
+      "cache_n": 0,
+      "prompt_n": 16,
+      "prompt_ms": 12.026,
+      "prompt_per_token_ms": 0.751625,
+      "prompt_per_second": 1330.4506901712955,
+      "predicted_n": 30,
+      "predicted_ms": 7.333,
+      "predicted_per_token_ms": 0.2528620689655173,
+      "predicted_per_second": 3954.7252147824897
+     }
+    },
+    "events": []
+   },
+   "server2_second": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "text": "\ufffd}\ufffd\ufffd\ufffd\ufffdf+\u0014sN\ufffd\ufffd\ufffdk\u001c\ufffd\u01da\ufffd\t\ufffd~}\ufffdxz\u0586L",
+       "index": 0,
+       "logprobs": null,
+       "finish_reason": "length"
+      }
+     ],
+     "created": 1795485835,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "text_completion",
+     "usage": {
+      "completion_tokens": 30,
+      "prompt_tokens": 16,
+      "total_tokens": 46,
+      "prompt_tokens_details": {
+       "cached_tokens": 15
+      }
+     },
+     "id": "chatcmpl-0u51tIEzNOD2wPLZVQOzYQulzjSzEeEG",
+     "timings": {
+      "cache_n": 15,
+      "prompt_n": 1,
+      "prompt_ms": 0.392,
+      "prompt_per_token_ms": 0.392,
+      "prompt_per_second": 2551.020408163265,
+      "predicted_n": 30,
+      "predicted_ms": 8.657,
+      "predicted_per_token_ms": 0.29851724137931035,
+      "predicted_per_second": 3349.8902622155483
+     }
+    },
+    "events": []
+   }
+  }
+ },
+ "logprobs": {
+  "across_servers": [],
+  "same_server_1": [
+   "logprobs[0].logprob: baseline -1.833249568939209, tetraeder -1.8113999366760254 (tolerance 0.001)",
+   "logprobs[0].top_logprobs[0].logprob: baseline -1.833249568939209, tetraeder -1.8113999366760254 (tolerance 0.001)"
+  ],
+  "same_server_2": [
+   "logprobs[0].logprob: baseline -1.833249568939209, tetraeder -1.8113999366760254 (tolerance 0.001)",
+   "logprobs[0].top_logprobs[0].logprob: baseline -1.833249568939209, tetraeder -1.8113999366760254 (tolerance 0.001)"
+  ],
+  "answers": {
+   "server1_first": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "finish_reason": "length",
+       "index": 0,
+       "message": {
+        "role": "assistant",
+        "content": "=\u000f"
+       },
+       "logprobs": {
+        "content": [
+         {
+          "id": 28,
+          "token": "=",
+          "bytes": [
+           61
+          ],
+          "logprob": -1.833249568939209,
+          "top_logprobs": [
+           {
+            "id": 28,
+            "token": "=",
+            "bytes": [
+             61
+            ],
+            "logprob": -1.833249568939209
+           },
+           {
+            "id": 15,
+            "token": "0",
+            "bytes": [
+             48
+            ],
+            "logprob": -2.383786678314209
+           }
+          ]
+         },
+         {
+          "id": 203,
+          "token": "\u000f",
+          "bytes": [
+           15
+          ],
+          "logprob": -0.19038598239421844,
+          "top_logprobs": [
+           {
+            "id": 203,
+            "token": "\u000f",
+            "bytes": [
+             15
+            ],
+            "logprob": -0.19038598239421844
+           },
+           {
+            "id": 140,
+            "token": "",
+            "bytes": [
+             208
+            ],
+            "logprob": -2.792487382888794
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1795485836,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "chat.completion",
+     "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 24,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     },
+     "id": "chatcmpl-Y7bqEIRgwFgIIqmJyYayGsCOmzbcvxMS",
+     "timings": {
+      "cache_n": 0,
+      "prompt_n": 24,
+      "prompt_ms": 89.116,
+      "prompt_per_token_ms": 3.7131666666666665,
+      "prompt_per_second": 269.3119080748687,
+      "predicted_n": 3,
+      "predicted_ms": 1.222,
+      "predicted_per_token_ms": 0.611,
+      "predicted_per_second": 1636.6612111292964
+     }
+    },
+    "events": []
+   },
+   "server1_second": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "finish_reason": "length",
+       "index": 0,
+       "message": {
+        "role": "assistant",
+        "content": "=\u000f"
+       },
+       "logprobs": {
+        "content": [
+         {
+          "id": 28,
+          "token": "=",
+          "bytes": [
+           61
+          ],
+          "logprob": -1.8113999366760254,
+          "top_logprobs": [
+           {
+            "id": 28,
+            "token": "=",
+            "bytes": [
+             61
+            ],
+            "logprob": -1.8113999366760254
+           },
+           {
+            "id": 15,
+            "token": "0",
+            "bytes": [
+             48
+            ],
+            "logprob": -2.3834691047668457
+           }
+          ]
+         },
+         {
+          "id": 203,
+          "token": "\u000f",
+          "bytes": [
+           15
+          ],
+          "logprob": -0.19017480313777924,
+          "top_logprobs": [
+           {
+            "id": 203,
+            "token": "\u000f",
+            "bytes": [
+             15
+            ],
+            "logprob": -0.19017480313777924
+           },
+           {
+            "id": 140,
+            "token": "",
+            "bytes": [
+             208
+            ],
+            "logprob": -2.7932546138763428
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1795485836,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "chat.completion",
+     "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 24,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+       "cached_tokens": 23
+      }
+     },
+     "id": "chatcmpl-nWxhh0w1esYJ118xy0kdkHYAKplWso5F",
+     "timings": {
+      "cache_n": 23,
+      "prompt_n": 1,
+      "prompt_ms": 0.32,
+      "prompt_per_token_ms": 0.32,
+      "prompt_per_second": 3125.0,
+      "predicted_n": 3,
+      "predicted_ms": 0.461,
+      "predicted_per_token_ms": 0.2305,
+      "predicted_per_second": 4338.394793926247
+     }
+    },
+    "events": []
+   },
+   "server2_first": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "finish_reason": "length",
+       "index": 0,
+       "message": {
+        "role": "assistant",
+        "content": "=\u000f"
+       },
+       "logprobs": {
+        "content": [
+         {
+          "id": 28,
+          "token": "=",
+          "bytes": [
+           61
+          ],
+          "logprob": -1.833249568939209,
+          "top_logprobs": [
+           {
+            "id": 28,
+            "token": "=",
+            "bytes": [
+             61
+            ],
+            "logprob": -1.833249568939209
+           },
+           {
+            "id": 15,
+            "token": "0",
+            "bytes": [
+             48
+            ],
+            "logprob": -2.383786678314209
+           }
+          ]
+         },
+         {
+          "id": 203,
+          "token": "\u000f",
+          "bytes": [
+           15
+          ],
+          "logprob": -0.19038598239421844,
+          "top_logprobs": [
+           {
+            "id": 203,
+            "token": "\u000f",
+            "bytes": [
+             15
+            ],
+            "logprob": -0.19038598239421844
+           },
+           {
+            "id": 140,
+            "token": "",
+            "bytes": [
+             208
+            ],
+            "logprob": -2.792487382888794
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1795485837,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "chat.completion",
+     "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 24,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     },
+     "id": "chatcmpl-zUwAAZZ6OMKHvWvbPIOH6i63c8CTopdR",
+     "timings": {
+      "cache_n": 0,
+      "prompt_n": 24,
+      "prompt_ms": 90.338,
+      "prompt_per_token_ms": 3.7640833333333332,
+      "prompt_per_second": 265.6689322322832,
+      "predicted_n": 3,
+      "predicted_ms": 1.251,
+      "predicted_per_token_ms": 0.6255,
+      "predicted_per_second": 1598.721023181455
+     }
+    },
+    "events": []
+   },
+   "server2_second": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "finish_reason": "length",
+       "index": 0,
+       "message": {
+        "role": "assistant",
+        "content": "=\u000f"
+       },
+       "logprobs": {
+        "content": [
+         {
+          "id": 28,
+          "token": "=",
+          "bytes": [
+           61
+          ],
+          "logprob": -1.8113999366760254,
+          "top_logprobs": [
+           {
+            "id": 28,
+            "token": "=",
+            "bytes": [
+             61
+            ],
+            "logprob": -1.8113999366760254
+           },
+           {
+            "id": 15,
+            "token": "0",
+            "bytes": [
+             48
+            ],
+            "logprob": -2.3834691047668457
+           }
+          ]
+         },
+         {
+          "id": 203,
+          "token": "\u000f",
+          "bytes": [
+           15
+          ],
+          "logprob": -0.19017480313777924,
+          "top_logprobs": [
+           {
+            "id": 203,
+            "token": "\u000f",
+            "bytes": [
+             15
+            ],
+            "logprob": -0.19017480313777924
+           },
+           {
+            "id": 140,
+            "token": "",
+            "bytes": [
+             208
+            ],
+            "logprob": -2.7932546138763428
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1795485837,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "chat.completion",
+     "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 24,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+       "cached_tokens": 23
+      }
+     },
+     "id": "chatcmpl-vYqmQfS9K48FdRA8Kdo6fWia2oSZmnlM",
+     "timings": {
+      "cache_n": 23,
+      "prompt_n": 1,
+      "prompt_ms": 0.258,
+      "prompt_per_token_ms": 0.258,
+      "prompt_per_second": 3875.968992248062,
+      "predicted_n": 3,
+      "predicted_ms": 0.46,
+      "predicted_per_token_ms": 0.23,
+      "predicted_per_second": 4347.826086956522
+     }
+    },
+    "events": []
+   }
+  }
+ },
+ "logprobs-shape": {
+  "across_servers": [],
+  "same_server_1": [
+   "logprobs[0].logprob: baseline -1.8332496881484985, tetraeder -1.8113999366760254 (tolerance 0.001)",
+   "logprobs[0].top_logprobs[0].logprob: baseline -1.8332496881484985, tetraeder -1.8113999366760254 (tolerance 0.001)",
+   "logprobs[0].top_logprobs[2].logprob: baseline -2.5327792167663574, tetraeder -2.5200352668762207 (tolerance 0.001)",
+   "logprobs[1].top_logprobs[2].logprob: baseline -2.7924997806549072, tetraeder -2.7950284481048584 (tolerance 0.001)"
+  ],
+  "same_server_2": [
+   "logprobs[0].logprob: baseline -1.8332496881484985, tetraeder -1.8113999366760254 (tolerance 0.001)",
+   "logprobs[0].top_logprobs[0].logprob: baseline -1.8332496881484985, tetraeder -1.8113999366760254 (tolerance 0.001)",
+   "logprobs[0].top_logprobs[2].logprob: baseline -2.5327792167663574, tetraeder -2.5200352668762207 (tolerance 0.001)",
+   "logprobs[1].top_logprobs[2].logprob: baseline -2.7924997806549072, tetraeder -2.7950284481048584 (tolerance 0.001)"
+  ],
+  "answers": {
+   "server1_first": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "finish_reason": "length",
+       "index": 0,
+       "message": {
+        "role": "assistant",
+        "content": "=\u000f"
+       },
+       "logprobs": {
+        "content": [
+         {
+          "id": 28,
+          "token": "=",
+          "bytes": [
+           61
+          ],
+          "logprob": -1.8332496881484985,
+          "top_logprobs": [
+           {
+            "id": 28,
+            "token": "=",
+            "bytes": [
+             61
+            ],
+            "logprob": -1.8332496881484985
+           },
+           {
+            "id": 15,
+            "token": "0",
+            "bytes": [
+             48
+            ],
+            "logprob": -2.383786678314209
+           },
+           {
+            "id": 141,
+            "token": "",
+            "bytes": [
+             209
+            ],
+            "logprob": -2.5327792167663574
+           }
+          ]
+         },
+         {
+          "id": 203,
+          "token": "\u000f",
+          "bytes": [
+           15
+          ],
+          "logprob": -0.19038598239421844,
+          "top_logprobs": [
+           {
+            "id": 203,
+            "token": "\u000f",
+            "bytes": [
+             15
+            ],
+            "logprob": -0.19038598239421844
+           },
+           {
+            "id": 140,
+            "token": "",
+            "bytes": [
+             208
+            ],
+            "logprob": -2.792487382888794
+           },
+           {
+            "id": 149,
+            "token": "",
+            "bytes": [
+             217
+            ],
+            "logprob": -2.7924997806549072
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1795485838,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "chat.completion",
+     "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 24,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     },
+     "id": "chatcmpl-TZHHufvGnKzcIXYOq8N2iSGxW7xOufrx",
+     "timings": {
+      "cache_n": 0,
+      "prompt_n": 24,
+      "prompt_ms": 87.912,
+      "prompt_per_token_ms": 3.6630000000000003,
+      "prompt_per_second": 273.00027300027295,
+      "predicted_n": 3,
+      "predicted_ms": 1.31,
+      "predicted_per_token_ms": 0.655,
+      "predicted_per_second": 1526.7175572519084
+     }
+    },
+    "events": []
+   },
+   "server1_second": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "finish_reason": "length",
+       "index": 0,
+       "message": {
+        "role": "assistant",
+        "content": "=\u000f"
+       },
+       "logprobs": {
+        "content": [
+         {
+          "id": 28,
+          "token": "=",
+          "bytes": [
+           61
+          ],
+          "logprob": -1.8113999366760254,
+          "top_logprobs": [
+           {
+            "id": 28,
+            "token": "=",
+            "bytes": [
+             61
+            ],
+            "logprob": -1.8113999366760254
+           },
+           {
+            "id": 15,
+            "token": "0",
+            "bytes": [
+             48
+            ],
+            "logprob": -2.3834691047668457
+           },
+           {
+            "id": 141,
+            "token": "",
+            "bytes": [
+             209
+            ],
+            "logprob": -2.5200352668762207
+           }
+          ]
+         },
+         {
+          "id": 203,
+          "token": "\u000f",
+          "bytes": [
+           15
+          ],
+          "logprob": -0.19017480313777924,
+          "top_logprobs": [
+           {
+            "id": 203,
+            "token": "\u000f",
+            "bytes": [
+             15
+            ],
+            "logprob": -0.19017480313777924
+           },
+           {
+            "id": 140,
+            "token": "",
+            "bytes": [
+             208
+            ],
+            "logprob": -2.7932546138763428
+           },
+           {
+            "id": 149,
+            "token": "",
+            "bytes": [
+             217
+            ],
+            "logprob": -2.7950284481048584
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1795485838,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "chat.completion",
+     "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 24,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+       "cached_tokens": 23
+      }
+     },
+     "id": "chatcmpl-j1idLzlxlA7Smk6w6yTPK0sLGIRCJDry",
+     "timings": {
+      "cache_n": 23,
+      "prompt_n": 1,
+      "prompt_ms": 0.306,
+      "prompt_per_token_ms": 0.306,
+      "prompt_per_second": 3267.97385620915,
+      "predicted_n": 3,
+      "predicted_ms": 0.474,
+      "predicted_per_token_ms": 0.237,
+      "predicted_per_second": 4219.409282700422
+     }
+    },
+    "events": []
+   },
+   "server2_first": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "finish_reason": "length",
+       "index": 0,
+       "message": {
+        "role": "assistant",
+        "content": "=\u000f"
+       },
+       "logprobs": {
+        "content": [
+         {
+          "id": 28,
+          "token": "=",
+          "bytes": [
+           61
+          ],
+          "logprob": -1.8332496881484985,
+          "top_logprobs": [
+           {
+            "id": 28,
+            "token": "=",
+            "bytes": [
+             61
+            ],
+            "logprob": -1.8332496881484985
+           },
+           {
+            "id": 15,
+            "token": "0",
+            "bytes": [
+             48
+            ],
+            "logprob": -2.383786678314209
+           },
+           {
+            "id": 141,
+            "token": "",
+            "bytes": [
+             209
+            ],
+            "logprob": -2.5327792167663574
+           }
+          ]
+         },
+         {
+          "id": 203,
+          "token": "\u000f",
+          "bytes": [
+           15
+          ],
+          "logprob": -0.19038598239421844,
+          "top_logprobs": [
+           {
+            "id": 203,
+            "token": "\u000f",
+            "bytes": [
+             15
+            ],
+            "logprob": -0.19038598239421844
+           },
+           {
+            "id": 140,
+            "token": "",
+            "bytes": [
+             208
+            ],
+            "logprob": -2.792487382888794
+           },
+           {
+            "id": 149,
+            "token": "",
+            "bytes": [
+             217
+            ],
+            "logprob": -2.7924997806549072
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1795485839,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "chat.completion",
+     "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 24,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     },
+     "id": "chatcmpl-H6sJxG8b9wQ6aacLYFMzeJOIAJHlk9Gk",
+     "timings": {
+      "cache_n": 0,
+      "prompt_n": 24,
+      "prompt_ms": 87.413,
+      "prompt_per_token_ms": 3.642208333333333,
+      "prompt_per_second": 274.55870408291673,
+      "predicted_n": 3,
+      "predicted_ms": 1.252,
+      "predicted_per_token_ms": 0.626,
+      "predicted_per_second": 1597.444089456869
+     }
+    },
+    "events": []
+   },
+   "server2_second": {
+    "status": 200,
+    "body": {
+     "choices": [
+      {
+       "finish_reason": "length",
+       "index": 0,
+       "message": {
+        "role": "assistant",
+        "content": "=\u000f"
+       },
+       "logprobs": {
+        "content": [
+         {
+          "id": 28,
+          "token": "=",
+          "bytes": [
+           61
+          ],
+          "logprob": -1.8113999366760254,
+          "top_logprobs": [
+           {
+            "id": 28,
+            "token": "=",
+            "bytes": [
+             61
+            ],
+            "logprob": -1.8113999366760254
+           },
+           {
+            "id": 15,
+            "token": "0",
+            "bytes": [
+             48
+            ],
+            "logprob": -2.3834691047668457
+           },
+           {
+            "id": 141,
+            "token": "",
+            "bytes": [
+             209
+            ],
+            "logprob": -2.5200352668762207
+           }
+          ]
+         },
+         {
+          "id": 203,
+          "token": "\u000f",
+          "bytes": [
+           15
+          ],
+          "logprob": -0.19017480313777924,
+          "top_logprobs": [
+           {
+            "id": 203,
+            "token": "\u000f",
+            "bytes": [
+             15
+            ],
+            "logprob": -0.19017480313777924
+           },
+           {
+            "id": 140,
+            "token": "",
+            "bytes": [
+             208
+            ],
+            "logprob": -2.7932546138763428
+           },
+           {
+            "id": 149,
+            "token": "",
+            "bytes": [
+             217
+            ],
+            "logprob": -2.7950284481048584
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1795485839,
+     "model": "/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf",
+     "system_fingerprint": "b1-fc504f9",
+     "object": "chat.completion",
+     "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 24,
+      "total_tokens": 27,
+      "prompt_tokens_details": {
+       "cached_tokens": 23
+      }
+     },
+     "id": "chatcmpl-FQ3gHOQ98EXWP2GG1Yx6vH3CR2wzyAIg",
+     "timings": {
+      "cache_n": 23,
+      "prompt_n": 1,
+      "prompt_ms": 0.255,
+      "prompt_per_token_ms": 0.255,
+      "prompt_per_second": 3921.5686274509803,
+      "predicted_n": 3,
+      "predicted_ms": 0.436,
+      "predicted_per_token_ms": 0.218,
+      "predicted_per_second": 4587.155963302753
+     }
+    },
+    "events": []
+   }
+  }
+ }
+}

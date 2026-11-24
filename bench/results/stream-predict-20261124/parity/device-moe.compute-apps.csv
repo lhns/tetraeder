@@ -1,0 +1,2 @@
+pid, process_name, used_gpu_memory [MiB]
+179970, /root/tetraeder/target/release/tetraeder, 310 MiB

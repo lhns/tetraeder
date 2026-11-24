@@ -1,0 +1,5 @@
+engine moe: gpu memory.used MiB before start 0, server idle 273, after a request 319
+2026-11-24T02:01:38.540808Z DEBUG llama: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 45490 MiB):
+2026-11-24T02:01:38.543028Z DEBUG llama:   Device 0: NVIDIA A40, compute capability 8.6, VMM: yes, VRAM: 45490 MiB
+2026-11-24T02:01:38.721996Z DEBUG llama: llama_prepare_model_devices: using device CUDA0 (NVIDIA A40) (0000:41:00.0) - 45219 MiB free
+2026-11-24T02:01:38.737931Z DEBUG tetraeder_model::qwen3moe: qwen3moe loaded backend="CUDA0" n_layer=2 n_expert=8

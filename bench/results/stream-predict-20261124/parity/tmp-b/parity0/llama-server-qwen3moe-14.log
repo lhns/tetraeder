@@ -1,0 +1,23 @@
+0.00.003.356 I srv  llama_server: initializing ...
+0.00.028.582 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.028.722 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.085.064 I srv    load_model: loading model '/root/tetraeder/tests/fixtures/tiny-qwen3moe-f16.gguf'
+0.00.334.327 W llama_model_loader: tensor overrides to CPU are used with mmap enabled - consider using --load-mode none for better performance
+0.00.348.101 W llama_context: n_ctx_seq (4096) > n_ctx_train (256) -- possible training context overflow
+0.00.355.559 W resolve_fused_ops: layer 0 is assigned to device CUDA0 but Flash Attention is assigned to device CPU (usually due to missing support)
+0.00.355.563 W resolve_fused_ops: Flash Attention not supported, set to disabled
+0.00.364.283 I cmn          init: llama threadpool init, n_threads = 2
+0.00.366.326 W srv    load_model: the slot context (4096) exceeds the training context of the model (256) - capping
+0.00.499.892 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 256, kv_unified = 'true'
+0.00.499.970 W srv          init: --cache-idle-slots requires --cache-ram, disabling
+0.00.501.439 I srv  server_run_i: model loaded
+0.00.501.448 I srv  server_on_li: listening on http://127.0.0.1:52371
+0.01.201.093 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.201.152 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.01.271.128 I slot print_timing: id  0 | task 0 | prompt eval time =      64.61 ms /     5 tokens (   12.92 ms per token,    77.39 tokens per second)
+0.01.271.134 I slot print_timing: id  0 | task 0 |        eval time =       5.34 ms /    12 tokens (    0.49 ms per token,  2060.31 tokens per second)
+0.01.271.135 I slot print_timing: id  0 | task 0 |       total time =      69.95 ms /    17 tokens
+0.01.271.136 I slot print_timing: id  0 | task 0 |    graphs reused =         10
+0.01.271.137 I slot print_timing: id  0 | task 0 |   graph reallocs =          1    /     0        (same size) / (changed size)
+0.01.271.152 I slot      release: id  0 | task 0 | stop processing: n_tokens = 16, truncated = 0
+0.20.335.835 I srv    operator(): operator(): cleaning up before exit...

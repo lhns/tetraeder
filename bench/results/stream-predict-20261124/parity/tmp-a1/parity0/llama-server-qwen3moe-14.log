@@ -1,0 +1,22 @@
+0.00.003.459 I srv  llama_server: initializing ...
+0.00.029.202 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.029.385 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.092.216 I srv    load_model: loading model '/root/tetraeder/tests/fixtures/tiny-qwen3moe-f16.gguf'
+0.00.369.857 W llama_model_loader: tensor overrides to CPU are used with mmap enabled - consider using --load-mode none for better performance
+0.00.383.516 W llama_context: n_ctx_seq (4096) > n_ctx_train (256) -- possible training context overflow
+0.00.391.382 W resolve_fused_ops: layer 0 is assigned to device CUDA0 but Flash Attention is assigned to device CPU (usually due to missing support)
+0.00.391.389 W resolve_fused_ops: Flash Attention not supported, set to disabled
+0.00.400.666 I cmn          init: llama threadpool init, n_threads = 2
+0.00.402.769 W srv    load_model: the slot context (4096) exceeds the training context of the model (256) - capping
+0.00.541.247 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 256, kv_unified = 'true'
+0.00.542.803 I srv  server_run_i: model loaded
+0.00.542.813 I srv  server_on_li: listening on http://127.0.0.1:49637
+0.01.195.304 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.195.350 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.01.268.245 I slot print_timing: id  0 | task 0 | prompt eval time =      67.15 ms /     5 tokens (   13.43 ms per token,    74.46 tokens per second)
+0.01.268.252 I slot print_timing: id  0 | task 0 |        eval time =       5.71 ms /    12 tokens (    0.52 ms per token,  1928.13 tokens per second)
+0.01.268.253 I slot print_timing: id  0 | task 0 |       total time =      72.86 ms /    17 tokens
+0.01.268.254 I slot print_timing: id  0 | task 0 |    graphs reused =         10
+0.01.268.254 I slot print_timing: id  0 | task 0 |   graph reallocs =          1    /     0        (same size) / (changed size)
+0.01.268.270 I slot      release: id  0 | task 0 | stop processing: n_tokens = 16, truncated = 0
+0.21.778.146 I srv    operator(): operator(): cleaning up before exit...

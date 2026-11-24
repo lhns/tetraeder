@@ -1,0 +1,6 @@
+host bfa0764a1c37 date 2026-11-24T01:55:18+00:00
+memory.max 1032772911104
+cpu.max 6120000 100000
+cpu quota (cores) 61, nproc 255
+TETRAEDER_CUDA_ARCHS 86
+commit unknown tetraeder_git 
