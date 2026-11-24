@@ -1,0 +1,313 @@
+{
+  "hw_sha256": "dedc9503433425d8306fb435423452441b3cfecd7685ce601929f8f90cc16955",
+  "layout_sha256": "489ef9e3b706e43c09dc6aaa6e625a2958e43653a2b1bfbce64c8bf4489d8c3d",
+  "routing": "uniform",
+  "workload": {
+    "prompt": 2048,
+    "gen": 128
+  },
+  "pinned": false,
+  "pick": {
+    "vram_slots": 32,
+    "ram_slots": 96,
+    "ubatch": 2048,
+    "pp_tps": 257.7796907962267,
+    "tg_tps": 5.447816618912733,
+    "request_s": 31.44041999551147,
+    "binding": "compute:cpu0",
+    "tg_breakdown": [
+      [
+        "compute:gpu0",
+        0.01830920832
+      ],
+      [
+        "compute:cpu0",
+        0.16300424160000002
+      ],
+      [
+        "switches",
+        0.0022463264
+      ]
+    ],
+    "pp_breakdown": [
+      [
+        "compute:gpu0",
+        1.3822567239850674
+      ],
+      [
+        "offload_copy:cpu0",
+        5.148470731200001
+      ],
+      [
+        "offload_compute:cpu0",
+        1.1715597041664
+      ],
+      [
+        "compute:cpu0",
+        0.002115
+      ],
+      [
+        "switches",
+        0.24036646720000002
+      ]
+    ]
+  },
+  "exit_regime_env": {
+    "TETRAEDER_EXIT_DECODE": "128",
+    "TETRAEDER_EXIT_GPU": "1",
+    "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+    "TETRAEDER_EXIT_PREFILL": "2048",
+    "TETRAEDER_EXIT_RAM_SLOT_BYTES": "102969114624",
+    "TETRAEDER_EXIT_UBATCH": "2048",
+    "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "34323038208"
+  },
+  "runners_up": [
+    {
+      "vram_slots": 16,
+      "ram_slots": 112,
+      "ubatch": 2048,
+      "pp_tps": 231.6085497579378,
+      "tg_tps": 4.778101218109707,
+      "request_s": 35.631390191671464,
+      "binding": "compute:cpu0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.01649846464
+        ],
+        [
+          "compute:cpu0",
+          0.1901716152
+        ],
+        [
+          "switches",
+          0.0026180775999999997
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.1865267732906668
+        ],
+        [
+          "offload_copy:cpu0",
+          6.0065466864
+        ],
+        [
+          "offload_compute:cpu0",
+          1.3668196548608
+        ],
+        [
+          "compute:cpu0",
+          0.0024675
+        ],
+        [
+          "switches",
+          0.28014542480000004
+        ]
+      ]
+    },
+    {
+      "vram_slots": 8,
+      "ram_slots": 120,
+      "ubatch": 2048,
+      "pp_tps": 220.4194810823295,
+      "tg_tps": 4.501415398049271,
+      "request_s": 37.72687528975147,
+      "binding": "compute:cpu0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.0155930928
+        ],
+        [
+          "compute:cpu0",
+          0.203755302
+        ],
+        [
+          "switches",
+          0.0028039531999999997
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.0886617979434667
+        ],
+        [
+          "offload_copy:cpu0",
+          6.435584664
+        ],
+        [
+          "offload_compute:cpu0",
+          1.464449630208
+        ],
+        [
+          "compute:cpu0",
+          0.0026437500000000003
+        ],
+        [
+          "switches",
+          0.3000349036
+        ]
+      ]
+    },
+    {
+      "vram_slots": 39,
+      "ram_slots": 89,
+      "ubatch": 256,
+      "pp_tps": 49.875431571969244,
+      "tg_tps": 5.803708943982995,
+      "request_s": 63.11716335279148,
+      "binding": "compute:cpu0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.01910140868
+        ],
+        [
+          "compute:cpu0",
+          0.15111851564999998
+        ],
+        [
+          "switches",
+          0.00208368525
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.5391879524138676
+        ],
+        [
+          "offload_copy:cpu0",
+          38.18450000640001
+        ],
+        [
+          "offload_compute:cpu0",
+          1.0861334757376
+        ],
+        [
+          "compute:cpu0",
+          0.01568625
+        ],
+        [
+          "switches",
+          0.23679364200000005
+        ]
+      ]
+    },
+    {
+      "vram_slots": 32,
+      "ram_slots": 96,
+      "ubatch": 256,
+      "pp_tps": 46.45714506120574,
+      "tg_tps": 5.447816618912733,
+      "request_s": 67.57929011391147,
+      "binding": "compute:cpu0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.01830920832
+        ],
+        [
+          "compute:cpu0",
+          0.16300424160000002
+        ],
+        [
+          "switches",
+          0.0022463264
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.452116723985067
+        ],
+        [
+          "offload_copy:cpu0",
+          41.187765849600005
+        ],
+        [
+          "offload_compute:cpu0",
+          1.1715597041664
+        ],
+        [
+          "compute:cpu0",
+          0.01692
+        ],
+        [
+          "switches",
+          0.2552764672
+        ]
+      ]
+    },
+    {
+      "vram_slots": 16,
+      "ram_slots": 112,
+      "ubatch": 256,
+      "pp_tps": 40.16509041096459,
+      "tg_tps": 4.778101218109707,
+      "request_s": 77.77843699647146,
+      "binding": "compute:cpu0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.01649846464
+        ],
+        [
+          "compute:cpu0",
+          0.1901716152
+        ],
+        [
+          "switches",
+          0.0026180775999999997
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.253096773290667
+        ],
+        [
+          "offload_copy:cpu0",
+          48.0523734912
+        ],
+        [
+          "offload_compute:cpu0",
+          1.3668196548608
+        ],
+        [
+          "compute:cpu0",
+          0.019740000000000004
+        ],
+        [
+          "switches",
+          0.29752292480000003
+        ]
+      ]
+    }
+  ],
+  "dropped": [
+    [
+      "builder vram_slots=64 ram_slots=16",
+      "gpu estimate 74480871424 B > budget 47822741109 B"
+    ],
+    [
+      "builder vram_slots=128 ram_slots=8",
+      "gpu estimate 143126947840 B > budget 47822741109 B"
+    ],
+    [
+      "v39 r22 ub2048",
+      "needs gpu 49459718144 B (budget 47822741109) and host 26363068416 B (budget 1022445181989)"
+    ],
+    [
+      "v39 r44 ub2048",
+      "needs gpu 49459718144 B (budget 47822741109) and host 49960157184 B (budget 1022445181989)"
+    ],
+    [
+      "v39 r89 ub2048",
+      "needs gpu 49459718144 B (budget 47822741109) and host 98226929664 B (budget 1022445181989)"
+    ]
+  ]
+}

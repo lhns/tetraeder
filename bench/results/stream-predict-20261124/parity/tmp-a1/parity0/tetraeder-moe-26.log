@@ -1,0 +1,1 @@
+error: --slot-save-path: slot save and restore needs libllama's sequence state; use --engine llama

@@ -1,0 +1,22 @@
+0.00.003.637 I srv  llama_server: initializing ...
+0.00.029.236 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.029.242 W srv  server_prepa: embeddings enabled with n_batch (2048) > n_ubatch (512)
+0.00.029.242 W srv  server_prepa: setting n_batch = n_ubatch = 512 to avoid assertion failure
+0.00.029.367 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.093.284 I srv    load_model: loading model '/root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf'
+0.00.445.336 W llama_init_from_model: model default pooling_type is [-1], but [4] was specified
+0.00.445.362 W llama_context: n_ctx_seq (4096) > n_ctx_train (512) -- possible training context overflow
+0.00.458.800 I cmn          init: llama threadpool init, n_threads = 2
+0.00.460.855 W srv    load_model: the slot context (4096) exceeds the training context of the model (512) - capping
+0.00.460.913 W init: embeddings required but some input tokens were not marked as outputs -> overriding
+0.00.500.130 I srv    load_model: initializing, n_slots = 2, n_ctx_slot = 512, kv_unified = 'true'
+0.00.500.200 W srv          init: --cache-idle-slots requires --cache-ram, disabling
+0.00.501.734 I srv  server_run_i: model loaded
+0.00.501.743 I srv  server_on_li: listening on http://127.0.0.1:49905
+0.01.183.466 I slot       select: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.183.481 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.01.271.060 I slot      release: id  0 | task 0 | stop processing: n_tokens = 30, truncated = 0
+0.01.466.609 I slot       select: id  1 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.01.466.624 I slot launch_slot_: id  1 | task 2 | processing task, is_child = 0
+0.01.468.578 I slot      release: id  1 | task 2 | stop processing: n_tokens = 27, truncated = 0
+0.15.562.002 I srv    operator(): operator(): cleaning up before exit...

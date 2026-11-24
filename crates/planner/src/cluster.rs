@@ -778,3 +778,107 @@ pub fn single_node_references(
 pub fn candidate_segments(hw: &HardwareGraph, c: &ClusterCandidate) -> Vec<Segment> {
     segments(&c.plan, 0, hw).unwrap_or_default()
 }
+
+/// A builder placement on one node with its prediction, for the single-node streaming measurement
+/// (tree node `bench-235b-stream-predict`, ADR 0091 "named risk").
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NodeRun {
+    pub vram_slots: u32,
+    pub ram_slots: u32,
+    pub ubatch: u32,
+    pub pp_tps: f64,
+    pub tg_tps: f64,
+    pub request_s: f64,
+    pub binding: String,
+    pub tg_breakdown: Vec<(String, f64)>,
+    pub pp_breakdown: Vec<(String, f64)>,
+}
+
+/// Every builder placement of the whole model on the only node of `hw` that fits, priced like a
+/// segment of [`enumerate_cluster`] (reader path, the disk of the node), best predicted request
+/// first. `pin` limits it to one slot pair. With `replay` (outcomes of `tetraeder-bench replay` on a
+/// routing trace) decode is priced from the matching outcome (policy `lru`, prefetch on) and
+/// prefill keeps the uniform prior, whose 2048-token reads a 32K-prefill trace does not describe;
+/// a pair without an outcome is left out. The second value says what was dropped and why.
+#[allow(clippy::type_complexity)]
+pub fn single_node_runs(
+    hw: &HardwareGraph,
+    layout: &ModelLayout,
+    w: &Workload,
+    pin: Option<(u32, u32)>,
+    replay: Option<&[crate::score::TierOutcome]>,
+) -> Result<(Vec<NodeRun>, Vec<(String, String)>), String> {
+    let node = node_of(hw, None)?;
+    if node.gpu.is_none() || node.disk.is_none() {
+        return Err("the node needs a GPU and the builder disk".into());
+    }
+    let sub = segment_layout(layout, Span(0, layout.n_layer), true, true);
+    let budget = Budget {
+        gpu_bytes: node.gpu_bytes / 100 * 99,
+        ram_bytes: node.ram_bytes / 100 * 99,
+        threads: node.threads,
+    };
+    let mut dropped = Vec::new();
+    let pairs: Vec<(u32, u32)> = match pin {
+        Some(p) => vec![p],
+        None => feasible_vram_tiers(&budget, &sub, w, &mut dropped)
+            .into_iter()
+            .flat_map(|v| ram_slot_options(&sub, v).into_iter().map(move |r| (v, r)))
+            .collect(),
+    };
+    let mut out = Vec::new();
+    for (v, r) in pairs {
+        let mut tier = uniform_tier(&sub, &[(v, r)]).remove(0);
+        if let Some(rep) = replay {
+            let Some(t) = rep
+                .iter()
+                .find(|t| t.vram_slots == v && t.ram_slots == r && t.policy == "lru" && t.prefetch)
+            else {
+                dropped.push((format!("v{v} r{r}"), "no replay outcome".into()));
+                continue;
+            };
+            tier.decode = t.decode.clone();
+        }
+        for &ubatch in &CLUSTER_UBATCHES {
+            let p = Placement::Builder {
+                vram_slots: v,
+                ram_slots: r,
+            };
+            let f = footprint(&sub, p, ubatch, w, KvFormat::default());
+            if f.gpu > budget.gpu_bytes || f.host > budget.ram_bytes {
+                dropped.push((
+                    format!("v{v} r{r} ub{ubatch}"),
+                    format!(
+                        "needs gpu {} B (budget {}) and host {} B (budget {})",
+                        f.gpu, budget.gpu_bytes, f.host, budget.ram_bytes
+                    ),
+                ));
+                continue;
+            }
+            let feat = builder_features_tier(
+                &sub,
+                v,
+                &tier,
+                (node.threads, ubatch, true),
+                ReadPath::Reader,
+                (READER_DEPTH, READER_DEPTH),
+                BUILDER_DISK,
+            );
+            let pr = tetraeder_costmodel::predict::predict(&node.graph, &feat, w.prompt, w.r#gen)
+                .map_err(|e| e.to_string())?;
+            out.push(NodeRun {
+                vram_slots: v,
+                ram_slots: r,
+                ubatch,
+                pp_tps: pr.pp_tok_s,
+                tg_tps: pr.tg_tok_s,
+                request_s: pr.request_s,
+                binding: pr.binding,
+                tg_breakdown: pr.tg_breakdown,
+                pp_breakdown: pr.pp_breakdown,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.request_s.total_cmp(&b.request_s));
+    Ok((out, dropped))
+}

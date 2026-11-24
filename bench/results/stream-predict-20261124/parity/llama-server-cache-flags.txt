@@ -1,0 +1,4 @@
+-cram, --cache-ram N                    set the maximum cache size in MiB (default: 8192, 0 for decision
+                                        using unified KV (default: enabled, requires cache-ram)
+--cache-prompt, --no-cache-prompt       whether to enable prompt caching (default: enabled)
+--cache-reuse N                         min chunk size to attempt reusing from the cache via KV shifting,

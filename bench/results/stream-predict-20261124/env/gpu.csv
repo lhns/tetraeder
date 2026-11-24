@@ -1,0 +1,2 @@
+index, name, driver_version, memory.total [MiB], compute_cap, power.limit [W], power.default_limit [W], clocks.max.sm [MHz], pci.bus_id
+0, NVIDIA A40, 595.99.02, 46068 MiB, 8.6, 300.00 W, 300.00 W, 1740 MHz, 00000000:41:00.0

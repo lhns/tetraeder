@@ -1,0 +1,10 @@
+    Finished `release` profile [optimized] target(s) in 0.37s
+     Running tests/exit_regime.rs (target/release/deps/exit_regime-cae74c78839bbc2a)
+
+running 2 tests
+skip: TETRAEDER_EXIT_ARMS is not set
+test exit_regime_arms ... ok
+error: test failed, to rerun pass `-p tetraeder-model --test exit_regime`
+
+Caused by:
+  process didn't exit successfully: `/root/tetraeder/target/release/deps/exit_regime-cae74c78839bbc2a --ignored --nocapture` (signal: 9, SIGKILL: kill)

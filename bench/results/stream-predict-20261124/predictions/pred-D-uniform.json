@@ -1,0 +1,393 @@
+{
+  "hw_sha256": "76b72b4db845ac52a562ff8b2abc3ed8f552575f9a1f390aec304ea0425b332e",
+  "layout_sha256": "489ef9e3b706e43c09dc6aaa6e625a2958e43653a2b1bfbce64c8bf4489d8c3d",
+  "routing": "uniform",
+  "workload": {
+    "prompt": 2048,
+    "gen": 128
+  },
+  "pinned": false,
+  "pick": {
+    "vram_slots": 16,
+    "ram_slots": 56,
+    "ubatch": 2048,
+    "pp_tps": 85.7420210727887,
+    "tg_tps": 0.14546602782039741,
+    "request_s": 903.8161416190508,
+    "binding": "read:nvme0",
+    "tg_breakdown": [
+      [
+        "compute:gpu0",
+        0.01649846464
+      ],
+      [
+        "compute:cpu0",
+        0.1901716152
+      ],
+      [
+        "switches",
+        0.0026180775999999997
+      ],
+      [
+        "read:nvme0",
+        6.665169164201245
+      ]
+    ],
+    "pp_breakdown": [
+      [
+        "compute:gpu0",
+        1.1865267732906668
+      ],
+      [
+        "offload_copy:cpu0",
+        6.0065466864
+      ],
+      [
+        "offload_compute:cpu0",
+        1.3668196548608
+      ],
+      [
+        "compute:cpu0",
+        0.0024675
+      ],
+      [
+        "switches",
+        0.28014542480000004
+      ],
+      [
+        "read:nvme0",
+        15.043098409619919
+      ]
+    ]
+  },
+  "exit_regime_env": {
+    "TETRAEDER_EXIT_DECODE": "128",
+    "TETRAEDER_EXIT_GPU": "1",
+    "TETRAEDER_EXIT_OP_OFFLOAD": "1",
+    "TETRAEDER_EXIT_PREFILL": "2048",
+    "TETRAEDER_EXIT_RAM_SLOT_BYTES": "60065316864",
+    "TETRAEDER_EXIT_UBATCH": "2048",
+    "TETRAEDER_EXIT_VRAM_SLOT_BYTES": "17161519104"
+  },
+  "runners_up": [
+    {
+      "vram_slots": 18,
+      "ram_slots": 55,
+      "ubatch": 256,
+      "pp_tps": 31.555858571111862,
+      "tg_tps": 0.14809943120075983,
+      "request_s": 929.184995930899,
+      "binding": "read:nvme0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.0167248076
+        ],
+        [
+          "compute:cpu0",
+          0.1867756935
+        ],
+        [
+          "switches",
+          0.0025716086999999998
+        ],
+        [
+          "read:nvme0",
+          6.54614828626908
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.2779742671274672
+        ],
+        [
+          "offload_copy:cpu0",
+          47.19429753600001
+        ],
+        [
+          "offload_compute:cpu0",
+          1.3424121610240003
+        ],
+        [
+          "compute:cpu0",
+          0.019387500000000002
+        ],
+        [
+          "switches",
+          0.2922421176
+        ],
+        [
+          "read:nvme0",
+          14.774471652305278
+        ]
+      ]
+    },
+    {
+      "vram_slots": 16,
+      "ram_slots": 56,
+      "ubatch": 256,
+      "pp_tps": 31.014959434678627,
+      "tg_tps": 0.14546602782039741,
+      "request_s": 945.9631884238507,
+      "binding": "read:nvme0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.01649846464
+        ],
+        [
+          "compute:cpu0",
+          0.1901716152
+        ],
+        [
+          "switches",
+          0.0026180775999999997
+        ],
+        [
+          "read:nvme0",
+          6.665169164201245
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.253096773290667
+        ],
+        [
+          "offload_copy:cpu0",
+          48.0523734912
+        ],
+        [
+          "offload_compute:cpu0",
+          1.3668196548608
+        ],
+        [
+          "compute:cpu0",
+          0.019740000000000004
+        ],
+        [
+          "switches",
+          0.29752292480000003
+        ],
+        [
+          "read:nvme0",
+          15.043098409619917
+        ]
+      ]
+    },
+    {
+      "vram_slots": 16,
+      "ram_slots": 28,
+      "ubatch": 2048,
+      "pp_tps": 65.20807401320896,
+      "tg_tps": 0.0979715778019294,
+      "request_s": 1337.9085173327403,
+      "binding": "read:nvme0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.01649846464
+        ],
+        [
+          "compute:cpu0",
+          0.1901716152
+        ],
+        [
+          "switches",
+          0.0026180775999999997
+        ],
+        [
+          "read:nvme0",
+          9.997753746301868
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.1865267732906668
+        ],
+        [
+          "offload_copy:cpu0",
+          6.0065466864
+        ],
+        [
+          "offload_compute:cpu0",
+          1.3668196548608
+        ],
+        [
+          "compute:cpu0",
+          0.0024675
+        ],
+        [
+          "switches",
+          0.28014542480000004
+        ],
+        [
+          "read:nvme0",
+          22.564647614429877
+        ]
+      ]
+    },
+    {
+      "vram_slots": 18,
+      "ram_slots": 27,
+      "ubatch": 256,
+      "pp_tps": 28.278569254471655,
+      "tg_tps": 0.09915908162474854,
+      "request_s": 1363.2773716445888,
+      "binding": "read:nvme0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.0167248076
+        ],
+        [
+          "compute:cpu0",
+          0.1867756935
+        ],
+        [
+          "switches",
+          0.0025716086999999998
+        ],
+        [
+          "read:nvme0",
+          9.878732868369703
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.2779742671274672
+        ],
+        [
+          "offload_copy:cpu0",
+          47.19429753600001
+        ],
+        [
+          "offload_compute:cpu0",
+          1.3424121610240003
+        ],
+        [
+          "compute:cpu0",
+          0.019387500000000002
+        ],
+        [
+          "switches",
+          0.2922421176
+        ],
+        [
+          "read:nvme0",
+          22.296020857115238
+        ]
+      ]
+    },
+    {
+      "vram_slots": 16,
+      "ram_slots": 28,
+      "ubatch": 256,
+      "pp_tps": 27.84341325487233,
+      "tg_tps": 0.0979715778019294,
+      "request_s": 1380.0555641375404,
+      "binding": "read:nvme0",
+      "tg_breakdown": [
+        [
+          "compute:gpu0",
+          0.01649846464
+        ],
+        [
+          "compute:cpu0",
+          0.1901716152
+        ],
+        [
+          "switches",
+          0.0026180775999999997
+        ],
+        [
+          "read:nvme0",
+          9.997753746301868
+        ]
+      ],
+      "pp_breakdown": [
+        [
+          "compute:gpu0",
+          1.253096773290667
+        ],
+        [
+          "offload_copy:cpu0",
+          48.0523734912
+        ],
+        [
+          "offload_compute:cpu0",
+          1.3668196548608
+        ],
+        [
+          "compute:cpu0",
+          0.019740000000000004
+        ],
+        [
+          "switches",
+          0.29752292480000003
+        ],
+        [
+          "read:nvme0",
+          22.564647614429877
+        ]
+      ]
+    }
+  ],
+  "dropped": [
+    [
+      "builder vram_slots=32 ram_slots=24",
+      "gpu estimate 40157833216 B > budget 25512105663 B"
+    ],
+    [
+      "builder vram_slots=64 ram_slots=16",
+      "gpu estimate 74480871424 B > budget 25512105663 B"
+    ],
+    [
+      "builder vram_slots=128 ram_slots=8",
+      "gpu estimate 143126947840 B > budget 25512105663 B"
+    ],
+    [
+      "v8 r60 ub256",
+      "needs gpu 14415554560 B (budget 25512105663) and host 67121676288 B (budget 63360000000)"
+    ],
+    [
+      "v8 r60 ub2048",
+      "needs gpu 16209274880 B (budget 25512105663) and host 67121676288 B (budget 63360000000)"
+    ],
+    [
+      "v8 r120 ub256",
+      "needs gpu 14415554560 B (budget 25512105663) and host 131477372928 B (budget 63360000000)"
+    ],
+    [
+      "v8 r120 ub2048",
+      "needs gpu 16209274880 B (budget 25512105663) and host 131477372928 B (budget 63360000000)"
+    ],
+    [
+      "v16 r112 ub256",
+      "needs gpu 22996314112 B (budget 25512105663) and host 122896613376 B (budget 63360000000)"
+    ],
+    [
+      "v16 r112 ub2048",
+      "needs gpu 24790034432 B (budget 25512105663) and host 122896613376 B (budget 63360000000)"
+    ],
+    [
+      "v18 r27 ub2048",
+      "needs gpu 26935224320 B (budget 25512105663) and host 31726043136 B (budget 63360000000)"
+    ],
+    [
+      "v18 r55 ub2048",
+      "needs gpu 26935224320 B (budget 25512105663) and host 61758701568 B (budget 63360000000)"
+    ],
+    [
+      "v18 r110 ub256",
+      "needs gpu 25141504000 B (budget 25512105663) and host 120751423488 B (budget 63360000000)"
+    ],
+    [
+      "v18 r110 ub2048",
+      "needs gpu 26935224320 B (budget 25512105663) and host 120751423488 B (budget 63360000000)"
+    ]
+  ]
+}

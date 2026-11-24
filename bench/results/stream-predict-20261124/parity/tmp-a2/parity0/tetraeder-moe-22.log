@@ -1,0 +1,1 @@
+error: --embeddings and --reranking: only libllama serves embeddings and reranking; use --engine llama

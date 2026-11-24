@@ -1,0 +1,4 @@
+repeat-penalty: across servers stable, same server DIFFERS
+seeded-sampler-names: across servers stable, same server stable
+logprobs: across servers stable, same server DIFFERS
+logprobs-shape: across servers stable, same server DIFFERS

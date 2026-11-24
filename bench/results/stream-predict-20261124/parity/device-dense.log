@@ -1,0 +1,74 @@
+[2m2026-11-24T02:01:34.273869Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m ggml_cuda_init: found 1 CUDA devices (Total VRAM: 45490 MiB):
+[2m2026-11-24T02:01:34.276300Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m   Device 0: NVIDIA A40, compute capability 8.6, VMM: yes, VRAM: 45490 MiB
+[2m2026-11-24T02:01:34.311643Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: loaded meta data with 21 key-value pairs and 25 tensors from /root/tetraeder/tests/fixtures/tiny-qwen3-f16.gguf (version GGUF V3 (latest))
+[2m2026-11-24T02:01:34.311688Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+[2m2026-11-24T02:01:34.311700Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   0:                       general.architecture str              = qwen3
+[2m2026-11-24T02:01:34.311705Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   1:                               general.name str              = tiny-qwen3
+[2m2026-11-24T02:01:34.311711Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   2:                          qwen3.block_count u32              = 2
+[2m2026-11-24T02:01:34.311716Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   3:                       qwen3.context_length u32              = 512
+[2m2026-11-24T02:01:34.311721Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   4:                     qwen3.embedding_length u32              = 128
+[2m2026-11-24T02:01:34.311726Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   5:                  qwen3.feed_forward_length u32              = 256
+[2m2026-11-24T02:01:34.311731Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   6:                 qwen3.attention.head_count u32              = 4
+[2m2026-11-24T02:01:34.311736Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   7:              qwen3.attention.head_count_kv u32              = 2
+[2m2026-11-24T02:01:34.311741Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   8:                 qwen3.attention.key_length u32              = 64
+[2m2026-11-24T02:01:34.311746Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv   9:               qwen3.attention.value_length u32              = 64
+[2m2026-11-24T02:01:34.311764Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  10:                       qwen3.rope.freq_base f32              = 10000.000000
+[2m2026-11-24T02:01:34.311769Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  11:     qwen3.attention.layer_norm_rms_epsilon f32              = 0.000001
+[2m2026-11-24T02:01:34.311774Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  12:                          general.file_type u32              = 1
+[2m2026-11-24T02:01:34.311779Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  13:                       tokenizer.ggml.model str              = gpt2
+[2m2026-11-24T02:01:34.311784Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  14:                         tokenizer.ggml.pre str              = qwen2
+[2m2026-11-24T02:01:34.311792Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  15:                      tokenizer.ggml.tokens arr[str,260]     = ["!", "\"", "#", "$", "%", "&", "'", ...
+[2m2026-11-24T02:01:34.311800Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  16:                  tokenizer.ggml.token_type arr[i32,260]     = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+[2m2026-11-24T02:01:34.311805Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  17:                      tokenizer.ggml.merges arr[str,1]       = ["t h"]
+[2m2026-11-24T02:01:34.311811Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  18:                tokenizer.ggml.eos_token_id u32              = 258
+[2m2026-11-24T02:01:34.311815Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  19:            tokenizer.ggml.padding_token_id u32              = 259
+[2m2026-11-24T02:01:34.311831Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - kv  20:               tokenizer.ggml.add_bos_token bool             = false
+[2m2026-11-24T02:01:34.311836Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - type  f32:    9 tensors
+[2m2026-11-24T02:01:34.311840Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_loader: - type  f16:   16 tensors
+[2m2026-11-24T02:01:34.311845Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: file format = GGUF V3 (latest)
+[2m2026-11-24T02:01:34.311849Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: file type   = F16
+[2m2026-11-24T02:01:34.311855Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: file size   = 0.88 MiB (16.03 BPW) 
+[2m2026-11-24T02:01:34.467957Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_prepare_model_devices: using device CUDA0 (NVIDIA A40) (0000:41:00.0) - 45219 MiB free
+[2m2026-11-24T02:01:34.469755Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m load: 0 unused tokens
+[2m2026-11-24T02:01:34.469791Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m load: printing all EOG tokens:
+[2m2026-11-24T02:01:34.469796Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m load:   - 258 ('<|im_end|>')
+[2m2026-11-24T02:01:34.469800Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m load:   - 259 ('<|endoftext|>')
+[2m2026-11-24T02:01:34.469806Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m load: special tokens cache size = 3
+[2m2026-11-24T02:01:34.469858Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m load: token to piece cache size = 0.0003 MB
+[2m2026-11-24T02:01:34.469868Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: arch                  = qwen3
+[2m2026-11-24T02:01:34.469873Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: vocab_only            = 1
+[2m2026-11-24T02:01:34.469877Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: no_alloc              = 0
+[2m2026-11-24T02:01:34.469882Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: vocab type            = BPE
+[2m2026-11-24T02:01:34.469887Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: n_vocab               = 260
+[2m2026-11-24T02:01:34.469892Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: n_merges              = 1
+[2m2026-11-24T02:01:34.469896Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: BOS token             = 11 ','
+[2m2026-11-24T02:01:34.469901Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: EOS token             = 258 '<|im_end|>'
+[2m2026-11-24T02:01:34.469907Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: EOT token             = 259 '<|endoftext|>'
+[2m2026-11-24T02:01:34.469911Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: PAD token             = 259 '<|endoftext|>'
+[2m2026-11-24T02:01:34.469916Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: LF token              = 198 'Ċ'
+[2m2026-11-24T02:01:34.469921Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: EOG token             = 258 '<|im_end|>'
+[2m2026-11-24T02:01:34.469926Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: EOG token             = 259 '<|endoftext|>'
+[2m2026-11-24T02:01:34.469930Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m print_info: max token length      = 13
+[2m2026-11-24T02:01:34.469935Z[0m [34mDEBUG[0m [2mllama[0m[2m:[0m llama_model_load: vocab only - skipping tensors
+[2m2026-11-24T02:01:34.484162Z[0m [34mDEBUG[0m [2mtetraeder_model::qwen3[0m[2m:[0m qwen3 dense loaded [3mbackend[0m[2m=[0m"CUDA0" [3mn_layer[0m[2m=[0m2 [3mrows[0m[2m=[0m4096 [3mextra[0m[2m=[0m[]
+[2m2026-11-24T02:01:34.500186Z[0m [32m INFO[0m [2mtetraeder_model::readback[0m[2m:[0m kv readback staging [3mbytes[0m[2m=[0m16777216 [3mpinned[0m[2m=[0mtrue
+[2m2026-11-24T02:01:34.500356Z[0m [32m INFO[0m [2mtetraeder_model::snapshot_pool[0m[2m:[0m snapshot buffer pool [3mspares[0m[2m=[0m2 [3mthp[0m[2m=[0mfalse
+[2m2026-11-24T02:01:34.500475Z[0m [34mDEBUG[0m [2mopentelemetry_sdk[0m[2m:[0m [3mname[0m[2m=[0m"MeterProvider.ExistingMeterReturned" [3mmeter_name[0m[2m=[0m"tetraeder"
+listening on http://127.0.0.1:18181
+[2m2026-11-24T02:01:35.155379Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m admit seq=0 queued_ms=0.08 place_ms=0.07 save_ms=0.00 restore_ms=0.00 prompt=16 common=0 source=live live=0 pool_spare=0 pool_fallback=0 pool_ready=0 attempts=1
+[2m2026-11-24T02:01:35.223276Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=0 dec_toks=0 pre_seqs=1 pre_toks=16 decode_ms=67.73              gap_ms=-1.00 sample_ms=0.00 post_ms=0.04 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.229086Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=5.71              gap_ms=0.09 sample_ms=0.00 post_ms=0.02 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.229752Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.63              gap_ms=0.03 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.229919Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.02 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.230065Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.230208Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.230353Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.230502Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.230650Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.230792Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.230935Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.231084Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.231231Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.231373Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.231516Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=1 paused=0 idle=0 waiting=0
+[2m2026-11-24T02:01:35.231667Z[0m [34mDEBUG[0m [2mtetraeder::step[0m[2m:[0m step dec_seqs=1 dec_toks=1 pre_seqs=0 pre_toks=0 decode_ms=0.13              gap_ms=0.01 sample_ms=0.00 post_ms=0.01 live=0 paused=0 idle=1 waiting=0

@@ -1,0 +1,6 @@
+.                                                                        [100%]
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/conformance/parity/test_parity.py::test_case[seeded-sampler-names[auto]]
+1 passed in 1.93s
+rc=0

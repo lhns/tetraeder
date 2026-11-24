@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import shlex
 import socket
 import subprocess
 import sys
@@ -102,7 +103,13 @@ def launch(name, argv, ready_path, port, log_dir: pathlib.Path, timeout=180) -> 
     raise ServerStartError(f"{name} not ready after {timeout} s:\n{log.read_text(errors='replace')[-1500:]}")
 
 
+def env_extra(name: str) -> list:
+    """Extra server flags of a diagnostic run (PARITY_LLAMA_EXTRA, PARITY_TETRAEDER_EXTRA; shell-split)."""
+    return shlex.split(os.environ.get(name, ""))
+
+
 def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX) -> Running:
+    extra = [*extra, *env_extra("PARITY_LLAMA_EXTRA")]
     port = free_port()
     argv = [
         str(binary), "-m", str(FIXTURES / MODEL_FILE[model]), "--host", "127.0.0.1", "--port", str(port),
@@ -113,6 +120,7 @@ def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX) -> Runni
 
 
 def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="", ctx=CTX) -> Running:
+    extra = [*extra, *env_extra("PARITY_TETRAEDER_EXTRA")]
     port = free_port()
     argv = [
         str(binary), "serve", "-m", str(FIXTURES / MODEL_FILE[FAMILY[engine]]), "--engine", ENGINE_FLAG.get(engine, engine),

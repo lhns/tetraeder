@@ -66,6 +66,9 @@
 //!   (default: all).
 //! - `TETRAEDER_EXIT_REFRESH_HOT=1`: rebuild the hot set from the whole prefill before decode
 //!   (by default it comes from the first ubatch).
+//! - `TETRAEDER_EXIT_PREFILL_WARM=1`: one untimed prefill of the same prompt before the timed one
+//!   (KV reset between), so a RAM tier that holds every expert is full when the timed prefill
+//!   starts; the pass is reported as `warm_prefill`.
 //! - `TETRAEDER_EXIT_PROMPT_FILE`: text tokenized with the model's vocab (libllama, vocab
 //!   only), repeated to length. Default: deterministic pseudo-random token ids.
 //! - `TETRAEDER_EXIT_ENGINE=libllama`: the reference instead of the builder: libllama with
@@ -857,7 +860,26 @@ fn exit_regime() {
         let load_s = t0.elapsed().as_secs_f64();
         io_backend = m.io_backend();
         cpu_poll = Some(m.cpu_poll());
-        let s0 = m.expert_stats().expect("the exit regime streams experts");
+        let mut s0 = m.expert_stats().expect("the exit regime streams experts");
+        // TETRAEDER_EXIT_PREFILL_WARM=1: one untimed prefill first, so a RAM tier that holds every
+        // expert is full before the timed one and no read from disk is left in it (the
+        // measurement of tree node bench-235b-stream-predict, arm R); its time is `warm_prefill`.
+        let mut warm_prefill = Value::Null;
+        if env_flag("TETRAEDER_EXIT_PREFILL_WARM") {
+            let t = Instant::now();
+            for chunk in tokens.chunks(ub.max(1)) {
+                m.eval_last(chunk).expect("warm prefill");
+            }
+            let warm_s = t.elapsed().as_secs_f64();
+            m.reset();
+            let se = m.expert_stats().unwrap();
+            warm_prefill = json!({
+                "prefill_s": warm_s,
+                "prefill_tok_s": n_prefill as f64 / warm_s,
+                "io": io_json(&s0.io, &se.io, n_prefill as f64, warm_s),
+            });
+            s0 = se;
+        }
         let mut recorder = routing_out.as_ref().map(|p| {
             let path = trace_path(p, ub, ubatches.len() > 1);
             let hot = if refresh_hot {
@@ -963,6 +985,7 @@ fn exit_regime() {
             "engine": "tetraeder",
             "ubatch": ub,
             "load_s": load_s,
+            "warm_prefill": warm_prefill,
             "prefill_tokens": n_prefill,
             "prefill_s": prefill_s,
             "prefill_tok_s": n_prefill as f64 / prefill_s,

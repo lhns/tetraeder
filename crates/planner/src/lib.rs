@@ -56,8 +56,8 @@ pub use candidate::{
     footprint,
 };
 pub use cluster::{
-    ClusterCandidate, cluster_features, enumerate_cluster, predict_cluster_plan, segment_layout,
-    single_node_references,
+    ClusterCandidate, NodeRun, cluster_features, enumerate_cluster, predict_cluster_plan,
+    segment_layout, single_node_references, single_node_runs,
 };
 pub use diff::{PlanSwitch, plan_diff};
 pub use explain::{Explanation, explain};

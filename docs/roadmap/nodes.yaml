@@ -2553,20 +2553,24 @@ nodes:
   title: Predict the 235B on one box
   track: bench
   kind: experiment
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: bad
+  evidence:
+  - bench/results/stream-predict-20261124/README.md
+  - bench/results/stream-predict-20261124/errors.json
+  - bench/results/stream-predict-20261124/predictions/FROZEN.sha256
+  - bench/results/stream-predict-20261124/predictions/d2/FROZEN.sha256
+  verdict_quote: 'clean measurement, bad outcome. On one box the planner''s frozen, uncalibrated prediction of the single-node Qwen3-235B-A22B is outside 15% in both regimes, for pp2048 and tg128: arm R (all experts in RAM, 32 VRAM slots) e_pp +0.350, e_tg -0.448'
+  headline: 'e_pp +0.35 and e_tg -0.45 with every expert in RAM; +1.32 and -0.95 streamed from NVMe'
   depends_on: []
   replaced_by: []
-  lane: box-later
-  start: ''
-  end: ''
+  lane: box
+  start: 2026-11-24
+  end: 2026-11-24
   folded: []
   overview: false
-  plain: 'Before any cluster code, the 235B streamed on one RTX 3090 box under a 64 GB RAM budget is predicted and then measured, to see whether the streaming cost model holds the 15% line that the Phase 6 exit needs (ADR 0091, named risk from ADR 0056).'
-  notes: 'Done when a session README gives e_pp and e_tg for pp2048 and tg128 under the balloon (EMULATE_RAM_GB=64), prediction frozen before the run. Above 0.15, a cost-model fix with its own ADR comes before the Phase 6 exit. One box, no cluster code.'
+  plain: 'Before any cluster code, the planner predicted the single-node 235B in two regimes (all experts in RAM with 32 VRAM slots; a 64 GB budget with experts streamed from NVMe), and one A40 box measured both. Neither is within 15% (prefill over-predicted by 34 to 132%, decode under-predicted by 33 to 95%), so the cost-model fix of ADR 0091 comes before the Phase 6 exit. The planner''s own pick for 64 GB was not measured (OOM-killed, the harness gave the process under 64 GB); a pinned neighbour of it ran. The predictions are uncalibrated, so part of the error is a prior the exit anchors fit.'
+  notes: 'Predictions frozen and committed before each arm (fc2807b1, 29663e1e), medians of three rounds. Measured against the frozen breakdowns - decode disk time is priced at 0.56 GB/s with no overlap where the builder read 3.3 GB/s hidden behind compute (bytes within 8% with the trace prior, about 6x too high with the uniform prior), the 2048-token prefill reads the whole file through a 52-slot RAM tier (137.8 GB), and CPU expert compute is priced 2.0x too slow (1.55x with the trace prior; this one is a prior the anchor calibration fits, the others are structure). The recorded routing trace can price decode (node-predict --tier-replay, one replay per slot pair) and helps but does not reach 0.15. Next - a cost-model fix with its own ADR and a rerun of these two arms (same README spec) before the Phase 6 exit session.'
 - id: bench-phase6-rehearsal
   title: First two-box cluster session
   track: bench
@@ -3697,7 +3701,7 @@ nodes:
   folded: []
   overview: false
   plain: 'One A100 box session paired this morning''s build (f68d2a0) against main on the 30B and 8B at c4 and c1 with a TTFT replay. Three of the four throughput metrics read no regression evidence and the 8B at c4 is inconclusive (a noisy host, one round lost to a co-tenant flag; three more rounds put every median at 0.985 or above); TTFT B/A is 1.019 at the median and 1.000 at p90. Parity on CUDA has 4 failures that CPU CI does not show (logprob and sampled-text differences), the Qwen3.6 default-flag rerun has zero errors, and --kv auto and the disk tier are reported only (the tier was never exercised by the replay).'
-  notes: 'Self A/B on a noisy A100 host (co-tenant flags on 2 of 6 8B rounds). Findings for follow-up (not regressions) are 4 CUDA parity failures (repeat-penalty, logprobs, seeded-sampler-names, logprobs-shape on the libllama path, logprob values move between runs), q8_0 KV costs about 8 percent at c4 and 14 percent at c1 against f16 at ctx 32768, and the prefix disk tier needs a workload with more sessions than slots to be measured.'
+  notes: 'Self A/B on a noisy A100 host (co-tenant flags on 2 of 6 8B rounds). Findings for follow-up (not regressions) are 4 CUDA parity failures (repeat-penalty, logprobs, seeded-sampler-names, logprobs-shape on the libllama path, logprob values move between runs), q8_0 KV costs about 8 percent at c4 and 14 percent at c1 against f16 at ctx 32768, and the prefix disk tier needs a workload with more sessions than slots to be measured. Rerun 2026-11-24 (stream-predict-20261124, A40, B = 41dcedd2) - the Qwen3-8B c4 gate with three clean interleaved rounds reads no regression evidence, B/A c4 1.068, 0.970, 0.992 (median 0.992) and c1 0.996, 0.994, 0.994 (median 0.994). The disk tier with more sessions than slots restores from disk, 34 and 71 restores at p50 37 and 86 ms, later-turn TTFT 0.37 against 0.47 s and 0.73 against 1.00 s with recompute; it does nothing when --cache-ram is below one saved sequence.'
 - id: serving-cuda-parity
   title: libllama path differs on CUDA
   track: serving
@@ -3717,7 +3721,7 @@ nodes:
   folded: []
   overview: false
   plain: On CUDA the parity suite fails 4 libllama-engine cases that pass on CPU (repeat-penalty, seeded-sampler-names, logprobs, logprobs-shape); the same prompt gives tetraeder different logprobs between runs (-1.8332 and -1.8114 against llama-server's -1.8150 both times), so batch or reuse state changes CUDA numerics.
-  notes: 'Found by bench-regression-gate on an A100. First check whether prefix reuse or batch composition differs from llama-server for these cases, then whether llama-server itself is run-to-run stable on CUDA; the conformance tolerance for CUDA may need a stated band (ADR 0083 decision 2 says CUDA and CPU).'
+  notes: 'Found by bench-regression-gate on an A100. First check whether prefix reuse or batch composition differs from llama-server for these cases, then whether llama-server itself is run-to-run stable on CUDA; the conformance tolerance for CUDA may need a stated band (ADR 0083 decision 2 says CUDA and CPU). Diagnosed 2026-11-24 (stream-predict-20261124, A40, correctness only) - the 4 cases fail in the suite twice and pass with prefix reuse and the prompt caches off (tetraeder --no-prefix-reuse --cache-ram 0, llama-server --no-cache-prompt --cache-ram 0) and each alone on fresh servers; llama-server alone is stable across fresh servers but its second identical request on one server differs (logprob -1.8332 then -1.8114 on logprobs and logprobs-shape, the two values tetraeder shows). So the logits of a prompt evaluated from scratch and after reuse differ on CUDA in both engines, and which one a case sees depends on the cases before it. The own dense and moe engines run on the GPU (CUDA0 in the log, GPU memory 0 to 277 MiB). Left to do - decide the CUDA band or run those cases with reuse off in the CUDA run.'
 - id: bench-strata-pairing
   title: Pair against the Strata engine
   track: bench

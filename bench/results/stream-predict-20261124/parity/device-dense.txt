@@ -1,0 +1,5 @@
+engine dense: gpu memory.used MiB before start 0, server idle 277, after a request 309
+2026-11-24T02:01:34.273869Z DEBUG llama: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 45490 MiB):
+2026-11-24T02:01:34.276300Z DEBUG llama:   Device 0: NVIDIA A40, compute capability 8.6, VMM: yes, VRAM: 45490 MiB
+2026-11-24T02:01:34.467957Z DEBUG llama: llama_prepare_model_devices: using device CUDA0 (NVIDIA A40) (0000:41:00.0) - 45219 MiB free
+2026-11-24T02:01:34.484162Z DEBUG tetraeder_model::qwen3: qwen3 dense loaded backend="CUDA0" n_layer=2 rows=4096 extra=[]

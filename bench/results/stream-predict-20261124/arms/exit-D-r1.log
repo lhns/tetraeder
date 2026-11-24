@@ -1,0 +1,20 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-kvcache v0.0.0 (/root/tetraeder/crates/kvcache)
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+    Finished `release` profile [optimized] target(s) in 21.90s
+     Running tests/exit_regime.rs (target/release/deps/exit_regime-cae74c78839bbc2a)
+
+running 2 tests
+skip: TETRAEDER_EXIT_ARMS is not set
+test exit_regime_arms ... ok
+test exit_regime has been running for over 60 seconds
+error: test failed, to rerun pass `-p tetraeder-model --test exit_regime`
+
+Caused by:
+  process didn't exit successfully: `/root/tetraeder/target/release/deps/exit_regime-cae74c78839bbc2a --ignored --nocapture` (signal: 9, SIGKILL: kill)

@@ -1,0 +1,3 @@
+[2m2026-11-24T02:03:43.645195Z[0m [33m WARN[0m [2mllama[0m[2m:[0m llama_context: n_ctx_seq (4096) > n_ctx_train (512) -- possible training context overflow
+[2m2026-11-24T02:03:43.672996Z[0m [32m INFO[0m [2mtetraeder_model::snapshot_pool[0m[2m:[0m snapshot buffer pool [3mspares[0m[2m=[0m2 [3mthp[0m[2m=[0mfalse
+listening on http://127.0.0.1:36867

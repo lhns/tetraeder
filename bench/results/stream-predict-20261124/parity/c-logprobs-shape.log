@@ -1,0 +1,6 @@
+.                                                                        [100%]
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/conformance/parity/test_parity.py::test_case[logprobs-shape[auto]]
+1 passed in 2.12s
+rc=0
