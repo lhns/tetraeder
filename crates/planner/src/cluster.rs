@@ -149,6 +149,7 @@ fn run_features(
                     (READER_DEPTH, READER_DEPTH),
                     BUILDER_DISK,
                 )
+                .expect("a uniform tier has no per-layer rows")
             } else {
                 let hit = f64::from(vram_slots) / f64::from(sub.n_expert.max(1));
                 builder_features(sub, vram_slots, hit, knobs)
@@ -863,7 +864,7 @@ pub fn single_node_runs(
                 ReadPath::Reader,
                 (READER_DEPTH, READER_DEPTH),
                 BUILDER_DISK,
-            );
+            )?;
             let pr = tetraeder_costmodel::predict::predict(&node.graph, &feat, w.prompt, w.r#gen)
                 .map_err(|e| e.to_string())?;
             out.push(NodeRun {

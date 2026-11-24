@@ -116,13 +116,23 @@ pub fn builder_features(
     hit: f64,
     knobs: (u32, u32, bool),
 ) -> RunFeatures {
-    builder_features_with(layout, vram_slots, hit, hit, knobs, None)
+    let shares = Shares {
+        vram: hit,
+        full_hit: hit,
+        layers: None,
+    };
+    builder_features_with(layout, vram_slots, &shares, knobs, None)
 }
 
 /// [`builder_features`] from a routing replay (ADR 0056): the GPU share of the active expert
 /// bytes is the replay's decode `vram_share`, the switches follow its `full_hit_share`, and the
 /// disk reads of the RAM tier become the run's [`TierFeatures`]. `path` and `(depth, sync_depth)`
 /// describe how the run reads (see [`read_path`]); `disk` is the device id of the disk.
+///
+/// ADR 0092: with per-layer decode counters (`tier.decode.layers`, one row per layer of
+/// `layout`, in order) each layer takes its own VRAM share and full-hit share, which is how a
+/// segment's span is priced from a replay of that span; rows that do not match the layout are an
+/// error. Without them the aggregate applies to every layer as in cost model 5.
 pub fn builder_features_tier(
     layout: &ModelLayout,
     vram_slots: u32,
@@ -131,7 +141,8 @@ pub fn builder_features_tier(
     path: ReadPath,
     (depth, sync_depth): (u32, u32),
     disk: &str,
-) -> RunFeatures {
+) -> Result<RunFeatures, String> {
+    let layers = layer_rows(layout, tier)?;
     let t = TierFeatures {
         disk: disk.to_string(),
         path,
@@ -141,24 +152,58 @@ pub fn builder_features_tier(
         decode_prefetch_bytes_per_token: tier.decode.prefetch_bytes_per_token,
         prefill_bytes_per_token: tier.prefill.disk_bytes_per_token,
     };
-    builder_features_with(
+    let shares = Shares {
+        vram: tier.decode.vram_share,
+        full_hit: tier.decode.full_hit(),
+        layers,
+    };
+    Ok(builder_features_with(
         layout,
         vram_slots,
-        tier.decode.vram_share,
-        tier.decode.full_hit(),
+        &shares,
         knobs,
         Some(t),
-    )
+    ))
+}
+
+/// The decode rows of a replay outcome for the layers of `layout`: `None` without them (the
+/// aggregates apply), an error unless they are one row per layer of the layout, in order.
+fn layer_rows<'a>(
+    layout: &ModelLayout,
+    tier: &'a TierOutcome,
+) -> Result<Option<&'a [TierLayer]>, String> {
+    let Some(rows) = &tier.decode.layers else {
+        return Ok(None);
+    };
+    let contiguous = rows.windows(2).all(|w| w[1].layer == w[0].layer + 1);
+    if rows.len() != layout.layers.len() || !contiguous {
+        return Err(format!(
+            "the replay's {} layer rows do not cover the layout's {} layers exactly",
+            rows.len(),
+            layout.layers.len()
+        ));
+    }
+    Ok(Some(rows.as_slice()))
+}
+
+/// The routing inputs of [`builder_features_with`].
+struct Shares<'a> {
+    /// Aggregate decode share of expert pairs served from VRAM.
+    vram: f64,
+    /// Aggregate share of layer steps with every routed expert in VRAM.
+    full_hit: f64,
+    /// Per-layer decode shares, one row per layer of the layout; they replace the aggregates.
+    layers: Option<&'a [TierLayer]>,
 }
 
 fn builder_features_with(
     layout: &ModelLayout,
     vram_slots: u32,
-    vram_share: f64,
-    full_hit: f64,
+    shares: &Shares,
     (threads, ubatch, op_offload): (u32, u32, bool),
     tier: Option<TierFeatures>,
 ) -> RunFeatures {
+    let (vram_share, full_hit) = (shares.vram, shares.full_hit);
     let bpp = layout.main_format().bits_per_weight() / 8.0;
     let n_expert = f64::from(layout.n_expert.max(1));
     let r = f64::from(layout.n_expert_used) / n_expert;
@@ -181,7 +226,14 @@ fn builder_features_with(
         p.params_per_token += active / bpp;
         p.ops_per_token += ops;
     };
-    for lb in &layout.layers {
+    let mut any_cpu = shares.layers.is_none() && hit < 1.0;
+    for (i, lb) in layout.layers.iter().enumerate() {
+        let hit = shares
+            .layers
+            .map_or(hit, |p| p[i].vram_share.clamp(0.0, 1.0));
+        if shares.layers.is_some() {
+            any_cpu |= hit < 1.0;
+        }
         let d = (lb.attn_bytes + lb.ffn_bytes) as f64;
         add(&mut gpu, d, d, OPS_DENSE_LAYER);
         gpu.kv_bytes_per_ctx_token += kv_layer;
@@ -198,13 +250,23 @@ fn builder_features_with(
     let o = layout.output_bytes as f64;
     add(&mut gpu, o, o, OPS_OUTPUT);
     let mut parts = vec![gpu];
-    if hit < 1.0 {
+    if any_cpu {
         parts.push(cpu);
     }
+    // embed (CPU) to the first layer, plus a GPU to CPU and back hop per layer step with a miss
+    let switches_per_token = match shares.layers {
+        Some(rows) => {
+            1.0 + 2.0
+                * rows
+                    .iter()
+                    .map(|l| 1.0 - l.full_hit_share.clamp(0.0, 1.0))
+                    .sum::<f64>()
+        }
+        None => 1.0 + 2.0 * f64::from(layout.n_layer) * (1.0 - full_hit),
+    };
     RunFeatures {
         parts,
-        // embed (CPU) to the first layer, plus a GPU to CPU and back hop per layer step with a miss
-        switches_per_token: 1.0 + 2.0 * f64::from(layout.n_layer) * (1.0 - full_hit),
+        switches_per_token,
         activation_bytes_per_token: 4.0 * f64::from(layout.n_embd),
         threads,
         ubatch,
@@ -247,6 +309,24 @@ pub struct TierPhase {
     /// The engine's mean over layers of the RAM hit rate, what `exit_regime` measures as
     /// `decode_layers.ram_hit_rate_mean`.
     pub ram_hit_rate_engine_mean: f64,
+    /// Per-layer counters of the replayed span (replay version 2, ADR 0092); absent in older
+    /// files, where the aggregates stand for every layer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layers: Option<Vec<TierLayer>>,
+}
+
+/// One layer of a replay phase: the counters of `tetraeder-bench replay` per layer.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TierLayer {
+    pub layer: u32,
+    pub pairs: u64,
+    pub vram_share: f64,
+    pub full_hit_share: f64,
+    pub ram_hit_rate: f64,
+    pub sync_miss_bytes_per_token: f64,
+    pub prefetch_bytes_per_token: f64,
+    pub disk_bytes_per_token: f64,
 }
 
 impl TierPhase {
@@ -371,6 +451,46 @@ pub struct BuilderRun {
     pub hit_rate: Option<f64>,
     /// Median decode `ram_hit_rate_mean` (the fidelity gate of the routing replay).
     pub ram_hit_rate: Option<f64>,
+    /// Median decode `vram_pair_share`: the share of routed pairs the compute tier served (what
+    /// the cost model's VRAM share is). Absent in exit files from before ADR 0050's 2026-11-12
+    /// addendum.
+    pub pair_share: Option<f64>,
+    /// Median decode disk bytes per token (`decode_io`) and the part the prefetch read.
+    pub decode_bytes: Option<f64>,
+    pub decode_prefetch_bytes: Option<f64>,
+    /// Median disk bytes per prompt token of the prefill (`prefill_io`).
+    pub prefill_bytes: Option<f64>,
+}
+
+impl BuilderRun {
+    /// The routing this run measured as a replay outcome for the slot pair (ADR 0092, routing
+    /// `measured`): the pair share as the VRAM share, the full-hit rate for the switches only,
+    /// the disk bytes of its own IO counters. `None` without a pair share (the file is from
+    /// before it was recorded, and the hit model stays).
+    pub fn measured_outcome(&self, vram_slots: u32, ram_slots: u32) -> Option<TierOutcome> {
+        let share = self.pair_share?;
+        let disk = self.decode_bytes.unwrap_or(0.0);
+        let prefetch = self.decode_prefetch_bytes.unwrap_or(0.0).clamp(0.0, disk);
+        Some(TierOutcome {
+            vram_slots,
+            ram_slots,
+            policy: "lru".into(),
+            prefetch: true,
+            decode: TierPhase {
+                vram_share: share,
+                full_hit_share: self.hit_rate,
+                sync_miss_bytes_per_token: disk - prefetch,
+                prefetch_bytes_per_token: prefetch,
+                disk_bytes_per_token: disk,
+                ram_hit_rate_engine_mean: self.ram_hit_rate.unwrap_or(0.0),
+                layers: None,
+            },
+            prefill: TierPhase {
+                disk_bytes_per_token: self.prefill_bytes.unwrap_or(0.0),
+                ..TierPhase::default()
+            },
+        })
+    }
 }
 
 /// Builder results from the `exit_regime` JSON files of one variant (one per repeat); the last
@@ -389,6 +509,12 @@ pub fn builder_run(files: &[Value]) -> BuilderRun {
         tg_tok_s: col(&|r| r["decode_tok_s"].as_f64()),
         hit_rate: col(&|r| r["decode_layers"]["full_hit_rate_mean"].as_f64()),
         ram_hit_rate: col(&|r| r["decode_layers"]["ram_hit_rate_mean"].as_f64()),
+        pair_share: col(&|r| r["decode_layers"]["vram_pair_share"].as_f64()),
+        decode_bytes: col(&|r| r["decode_io"]["bytes_per_token"].as_f64()),
+        decode_prefetch_bytes: col(&|r| {
+            Some(r["decode_prefetch"]["bytes"].as_f64()? / r["decode_tokens"].as_f64()?.max(1.0))
+        }),
+        prefill_bytes: col(&|r| r["prefill_io"]["bytes_per_token"].as_f64()),
     }
 }
 
@@ -659,6 +785,7 @@ pub fn outcome_of<'a>(outs: &'a [TierOutcome], v: &CampaignVariant) -> Option<&'
 /// is within 0.5 points of the measured one. `Err` names the first miss.
 fn fidelity(
     outs: &[TierOutcome],
+    layout: &ModelLayout,
     cands: &CandidatesFile,
     runs: &BTreeMap<String, BuilderRun>,
 ) -> Result<(), String> {
@@ -667,9 +794,10 @@ fn fidelity(
         .iter()
         .chain(cands.candidates.iter().map(|e| &e.variant));
     for v in all {
-        if outcome_of(outs, v).is_none() {
+        let Some(o) = outcome_of(outs, v) else {
             return Err(format!("no outcome for {}, {:?}", v.id, variant_slots(v)));
-        }
+        };
+        layer_rows(layout, o).map_err(|why| format!("{}: {why}", v.id))?;
     }
     let mut checked = 0;
     for v in &cands.anchors {
@@ -752,7 +880,7 @@ pub fn score_builder_curve(
         })
         .collect();
     let model = HitModel::from_points(&points);
-    let (outs, source) = match replay.map(|o| (o, fidelity(o, cands, runs))) {
+    let (outs, source) = match replay.map(|o| (o, fidelity(o, layout, cands, runs))) {
         None => (None, "hitmodel".to_string()),
         Some((o, Ok(()))) => (Some(o), "replay".to_string()),
         Some((_, Err(why))) => (None, format!("hitmodel (fidelity gate failed: {why})")),
@@ -760,6 +888,28 @@ pub fn score_builder_curve(
     if outs.is_none() && model.is_none() {
         return Err(format!("{fixture}: no anchor measured a hit rate"));
     }
+    // ADR 0092: an anchor is priced at the routing it measured, not at a replay or a prior.
+    let measured_of = |v: &CampaignVariant| -> Option<TierOutcome> {
+        let (vram, ram) = variant_slots(v)?;
+        cands
+            .anchors
+            .iter()
+            .any(|a| a.id == v.id)
+            .then(|| runs.get(&v.id)?.measured_outcome(vram, ram))
+            .flatten()
+    };
+    let anchors_measured = cands
+        .anchors
+        .iter()
+        .filter(|a| measured_of(a).is_some())
+        .count();
+    let source = if anchors_measured > 0 {
+        format!("{source} (anchors measured)")
+    } else if source == "hitmodel" {
+        "hitmodel (no pair share)".to_string()
+    } else {
+        source
+    };
     let feat = |v: &CampaignVariant| {
         let s = variant_slots(v).map_or(0, |x| x.0);
         let env = |k: &str| v.env.get(k).map(String::as_str);
@@ -768,7 +918,11 @@ pub fn score_builder_curve(
             .unwrap_or(256);
         let op = env("TETRAEDER_EXIT_OP_OFFLOAD").is_none_or(|x| x == "1");
         let knobs = (v.threads, ub, op);
-        match outs.and_then(|o| outcome_of(o, v)) {
+        let measured = measured_of(v);
+        match measured
+            .as_ref()
+            .or_else(|| outs.and_then(|o| outcome_of(o, v)))
+        {
             Some(o) => {
                 let (path, depth) = read_path(&v.env, layout, o);
                 builder_features_tier(
@@ -780,6 +934,7 @@ pub fn score_builder_curve(
                     (depth, READER_DEPTH),
                     BUILDER_DISK,
                 )
+                .expect("the fidelity gate checked the replay's layer rows")
             }
             None => {
                 let hit = model.map_or(0.0, |m| m.at(f64::from(s) / n));
@@ -822,7 +977,7 @@ pub fn predict_builder(
         let op = env("TETRAEDER_EXIT_OP_OFFLOAD").is_none_or(|x| x == "1");
         let (path, depth) = read_path(&v.env, layout, o);
         let slots = variant_slots(v).map_or(0, |x| x.0);
-        let f = builder_features_tier(
+        let f = match builder_features_tier(
             layout,
             slots,
             o,
@@ -830,7 +985,13 @@ pub fn predict_builder(
             path,
             (depth, READER_DEPTH),
             BUILDER_DISK,
-        );
+        ) {
+            Ok(f) => f,
+            Err(why) => {
+                dropped.push((e.candidate.id.clone(), why));
+                continue;
+            }
+        };
         match predict(hw, &f, v.prompt, v.r#gen) {
             Ok(p) => ok.push((e.candidate.id.clone(), p.request_s)),
             Err(err) => dropped.push((e.candidate.id.clone(), err.to_string())),
@@ -874,7 +1035,7 @@ pub fn builder_time_model(
         path,
         (depth, READER_DEPTH),
         BUILDER_DISK,
-    );
+    )?;
     let workers = env("TETRAEDER_EXIT_IO_WORKERS")
         .and_then(|x| x.parse().ok())
         .unwrap_or(SERVICE_WORKERS);
@@ -1165,6 +1326,52 @@ mod tests {
         assert_eq!(builder_run(&[]), BuilderRun::default());
     }
 
+    /// ADR 0092: an anchor whose exit JSON carries `vram_pair_share` is priced at the routing it
+    /// measured, which for the synthetic box is the routing of `truth_outcome`: the same
+    /// features, so a fit on those anchors finds the graph the times came from.
+    // hardware: none
+    #[test]
+    fn a_run_that_measured_its_routing_prices_as_the_replay_of_that_routing() {
+        let l = fixtures::moe();
+        let truth = truth_outcome(&l, 32, 60);
+        let tokens = 128.0;
+        let run = serde_json::json!({"runs": [{
+            "decode_tokens": 128,
+            "decode_layers": {
+                "vram_pair_share": truth.decode.vram_share,
+                "full_hit_rate_mean": truth.decode.full_hit(),
+                "ram_hit_rate_mean": truth.decode.ram_hit_rate_engine_mean,
+            },
+            "decode_io": {"bytes_per_token": truth.decode.disk_bytes_per_token},
+            "decode_prefetch": {"bytes": truth.decode.prefetch_bytes_per_token * tokens},
+            "prefill_io": {"bytes_per_token": truth.prefill.disk_bytes_per_token},
+        }]});
+        let measured = builder_run(&[run]).measured_outcome(32, 60).unwrap();
+        let hw = HardwareGraph::from_toml(RTX3090_PRIOR).unwrap();
+        let tg = |o: &TierOutcome| {
+            let f = builder_features_tier(
+                &l,
+                32,
+                o,
+                (12, 256, true),
+                ReadPath::Reader,
+                (16, 16),
+                BUILDER_DISK,
+            )
+            .unwrap();
+            let p = predict(&hw, &f, 512, 64).unwrap();
+            (p.tg_tok_s, p.pp_tok_s)
+        };
+        let (a, b) = (tg(&measured), tg(&truth));
+        assert!(
+            (a.0 - b.0).abs() <= 1e-9 * b.0 && (a.1 - b.1).abs() <= 1e-9 * b.1,
+            "{a:?} {b:?}"
+        );
+        // a file from before the pair share was recorded keeps the hit model
+        let old = serde_json::json!({"runs": [{"decode_layers": {"full_hit_rate_mean": 0.5}}]});
+        assert!(builder_run(&[old]).measured_outcome(32, 60).is_none());
+    }
+
     // The scorer's numbers on the synthetic fixture before ADR 0056 (no tier file, no disk).
     const OLD_REGRET_ANALYTIC: f64 = 0.0;
     const OLD_REGRET_FINAL: f64 = 0.0;
@@ -1192,6 +1399,7 @@ mod tests {
             prefetch_bytes_per_token: prefetch,
             disk_bytes_per_token: per_token,
             ram_hit_rate_engine_mean: held,
+            layers: None,
         };
         // a prompt of 2048 tokens reads every missing expert about once
         let prefill = (1.0 - share) * experts * (1.0 - held) / 2048.0;
@@ -1294,6 +1502,7 @@ mod tests {
                     (depth, READER_DEPTH),
                     BUILDER_DISK,
                 )
+                .unwrap()
             } else {
                 builder_features(&l, vram_slots, hit, knobs)
             };
@@ -1323,7 +1532,12 @@ mod tests {
     fn check_builder_score(dir: &Path) {
         let s = score_dir(dir).unwrap();
         let has_file = dir.join("tier-replay.json").is_file();
-        assert_eq!(s.tier_source, if has_file { "replay" } else { "hitmodel" });
+        let want = if has_file {
+            "replay"
+        } else {
+            "hitmodel (no pair share)"
+        };
+        assert_eq!(s.tier_source, want);
         eprintln!(
             "{}: regret analytic {} final {}, spearman {}, tier {}",
             dir.display(),
@@ -1830,6 +2044,7 @@ mod tests {
         assert_eq!(tg(&g, &before(&small)), tg(&g, &before(&big)));
         let after = |o: &TierOutcome| {
             builder_features_tier(&l, 32, o, knobs, ReadPath::Reader, (16, 16), BUILDER_DISK)
+                .unwrap()
         };
         let (a_small, a_big) = (tg(&g, &after(&small)), tg(&g, &after(&big)));
         let (m_small, m_big) = (
@@ -1937,7 +2152,8 @@ mod tests {
                     },
                     ..TierOutcome::default()
                 };
-                let f = builder_features_tier(&l, 32, &o, (12, 256, true), path, (16, 16), BUILDER_DISK);
+                let f = builder_features_tier(&l, 32, &o, (12, 256, true), path, (16, 16), BUILDER_DISK)
+                    .unwrap();
                 predict(&g, &f, 512, 64).unwrap().request_s
             };
             proptest::prop_assert!(time(share_hi) <= time(share_lo) * (1.0 + 1e-12));

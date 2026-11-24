@@ -80,7 +80,7 @@ pub use profile_quality::{
     group_of_tensor, mix_at_budget, tensor_formats,
 };
 pub use quality::{BitsQuality, NullQuality, QualityModel, TableQuality};
-pub use score::{TierOutcome, read_tier_replay};
+pub use score::{TierLayer, TierOutcome, read_tier_replay};
 pub use search::{SearchInput, SearchResult, Split, search, split_layers};
 pub use serve::{
     Picked, Proposed, ServeInput, budget_of, candidates, correct_for_drift, fill_knobs, pick,
