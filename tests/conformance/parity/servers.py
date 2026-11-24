@@ -108,8 +108,16 @@ def env_extra(name: str) -> list:
     return shlex.split(os.environ.get(name, ""))
 
 
-def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX) -> Running:
-    extra = [*extra, *env_extra("PARITY_LLAMA_EXTRA")]
+# Reuse pinned off (serving-cuda-parity): on CUDA the logits of a prompt differ between a fresh evaluation and one
+# after prompt-cache reuse, in llama-server too, so token- and logprob-comparing cases must not depend on which
+# cases ran before them. Both servers keep no prompt cache between requests; llama-server's per-request
+# `cache_prompt: false` is added by test_parity.send.
+PIN_LLAMA = ["--cache-ram", "0"]
+PIN_TETRAEDER = ["--no-prefix-reuse", "--cache-ram", "0"]
+
+
+def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX, pin=False) -> Running:
+    extra = [*extra, *(PIN_LLAMA if pin else []), *env_extra("PARITY_LLAMA_EXTRA")]
     port = free_port()
     argv = [
         str(binary), "-m", str(FIXTURES / MODEL_FILE[model]), "--host", "127.0.0.1", "--port", str(port),
@@ -119,8 +127,8 @@ def start_llama(binary, model: str, log_dir, extra=(), tag="", ctx=CTX) -> Runni
     return launch(f"llama-server-{model}{tag}", argv, "/health", port, log_dir)
 
 
-def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="", ctx=CTX) -> Running:
-    extra = [*extra, *env_extra("PARITY_TETRAEDER_EXTRA")]
+def start_tetraeder(binary, engine: str, log_dir, extra=(), tag="", ctx=CTX, pin=False) -> Running:
+    extra = [*extra, *(PIN_TETRAEDER if pin else []), *env_extra("PARITY_TETRAEDER_EXTRA")]
     port = free_port()
     argv = [
         str(binary), "serve", "-m", str(FIXTURES / MODEL_FILE[FAMILY[engine]]), "--engine", ENGINE_FLAG.get(engine, engine),

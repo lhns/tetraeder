@@ -1100,6 +1100,23 @@ impl Qwen3Moe {
         Ok(())
     }
 
+    /// Warms the RAM tier of a covering plan: where the compute and RAM slots together hold
+    /// every expert of a layer, the RAM tier is read to hold the experts outside the compute
+    /// tier, so no later request reads the disk. [`Self::refresh_hot_set`] does this after the
+    /// hot set; call this to warm without a refresh (the exit harness). Needs `MissPolicy::Cpu`;
+    /// does nothing for a layer the slots do not cover.
+    pub fn warm_ram_tier(&mut self) -> Result<()> {
+        if self.policy != MissPolicy::Cpu {
+            return Err(ModelError::Invalid(
+                "the RAM tier warm-up needs the cpu miss policy".into(),
+            ));
+        }
+        let Some(streamer) = &mut self.streamer else {
+            return Ok(());
+        };
+        streamer.warm_ram_tier(&self.file)
+    }
+
     /// Ranks of the executor; 1 on the scheduler path.
     pub fn n_ranks(&self) -> usize {
         self.shard.as_ref().map_or(1, |s| s.n_ranks())
