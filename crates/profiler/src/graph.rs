@@ -189,6 +189,11 @@ pub struct Device {
     /// fields so TOML output stays valid.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub queue_chunk_bytes: Option<u64>,
+    /// CPU: one thread's copy rate from a direct-I/O bounce buffer into a RAM slot, bytes per
+    /// second (`tetraeder-bench disk-curve`, ADR 0092). Measured, never fitted. The reader's copy
+    /// term uses it; without it the cost model's prior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copy_bytes_per_s: Option<f64>,
     /// CPU: measured or fitted rates per thread count; empty means use `compute` and
     /// `bandwidth_bytes_per_s` scaled by threads.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -222,6 +227,7 @@ impl Device {
             thread_curve: Vec::new(),
             queue_curve: Vec::new(),
             queue_chunk_bytes: None,
+            copy_bytes_per_s: None,
         }
     }
 

@@ -876,6 +876,9 @@ pub fn score_builder_tier(
 pub struct DiskCurve {
     pub curve: Vec<QueuePoint>,
     pub chunk_bytes: Option<u64>,
+    /// One reader thread's copy rate, measured in the same stage (ADR 0092); the CPU's
+    /// `copy_bytes_per_s` in the session graph.
+    pub copy_bytes_per_s: Option<f64>,
 }
 
 /// Reads the `queue_curve` and `queue_chunk_bytes` of a `disk-curve` output.
@@ -890,6 +893,7 @@ pub fn read_disk_curve(path: &Path) -> Result<DiskCurve, String> {
     Ok(DiskCurve {
         curve,
         chunk_bytes: v["queue_chunk_bytes"].as_u64(),
+        copy_bytes_per_s: v["copy_bytes_per_s"].as_f64().filter(|r| *r > 0.0),
     })
 }
 
@@ -1127,6 +1131,11 @@ fn score_with(
     ) {
         n.queue_curve = d.curve.clone();
         n.queue_chunk_bytes = d.chunk_bytes;
+    }
+    if let Some(rate) = disk.and_then(|d| d.copy_bytes_per_s)
+        && let Some(c) = prior.devices.iter_mut().find(|d| d.id == "cpu0")
+    {
+        c.copy_bytes_per_s = Some(rate);
     }
     let anchors: Vec<Anchor> = cands
         .anchors
@@ -1783,6 +1792,7 @@ mod tests {
                 })
                 .collect(),
             chunk_bytes: Some(1 << 20),
+            copy_bytes_per_s: None,
         };
         let q = cands.budget.threads;
         let base = score_builder_curve("s", &layout, &cands, &runs, q, Some(&outs), None).unwrap();

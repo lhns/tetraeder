@@ -34,6 +34,8 @@ fn one_point_per_depth_with_positive_rates() {
     let curve = doc["queue_curve"].as_array().unwrap();
     assert_eq!(curve.len(), depths.len());
     assert_eq!(doc["queue_chunk_bytes"], 64 << 10);
+    // one reader thread's copy rate, measured in the same stage (ADR 0092)
+    assert!(doc["copy_bytes_per_s"].as_f64().unwrap() > 1e8, "{doc}");
     assert!(doc["provenance"]["host_id"].is_string());
     assert_eq!(doc["buffered"], true);
     assert_eq!(doc["load_threads"], 0);

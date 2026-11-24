@@ -55,6 +55,10 @@ def main() -> None:
         pts = json.load(open(a.disk_curve, encoding="utf-8"))["queue_curve"]
         pts = sorted(pts, key=lambda p: p["depth"])
         curve = ",\n".join(f'  {{ depth = {p["depth"]}, bytes_per_s = {p["bytes_per_s"]:.6e} }}' for p in pts)
+        copy = json.load(open(a.disk_curve, encoding="utf-8")).get("copy_bytes_per_s")
+        if copy:
+            # measured with the curve (ADR 0092); without it the cost model's prior
+            text = sub_in(text, "cpu0", r"threads = \d+", f"threads = {a.threads}\ncopy_bytes_per_s = {copy:.6e}")
         at16 = next((p["bytes_per_s"] for p in pts if p["depth"] >= 16), pts[-1]["bytes_per_s"])
         text = sub_in(text, "nvme0", r"queue_curve = \[.*?\n\]", f"queue_curve = [\n{curve},\n]")
         text = sub_in(
