@@ -66,7 +66,13 @@ time.sleep(10**9)
   balloon_pid=$!
   balloon_size=$n
   if echo -1000 > /proc/$balloon_pid/oom_score_adj 2> /dev/null; then say "balloon pid $balloon_pid oom_score_adj -1000"; else say "balloon pid $balloon_pid: oom_score_adj -1000 not allowed"; fi
-  sleep 60
+  # touching the pages takes minutes for a balloon of hundreds of GB: wait until it holds 90% of its size
+  local i
+  for i in $(seq 1 90); do
+    sleep 10
+    python3 -I scripts/balloon_guard.py check --pid "$balloon_pid" --target "$n" > /dev/null 2>&1 && return 0
+  done
+  die "the balloon did not reach its size in 15 minutes"
 }
 stop_balloon() {
   [ -n "$balloon_pid" ] || return 0
