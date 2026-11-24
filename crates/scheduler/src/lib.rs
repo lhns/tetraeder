@@ -5,6 +5,7 @@
 mod backend;
 mod batch;
 mod dense_backend;
+mod front;
 mod load;
 mod prefix_cache;
 mod prefix_disk;
@@ -17,6 +18,7 @@ pub use backend::{
     SegmentInfo, SeqId, SeqInput, StepOut,
 };
 pub use dense_backend::DenseBackend;
+pub use front::FrontEngine;
 pub use load::{
     Loaded, architecture, chat_template, load_dense, load_dense_sharded, load_llama, load_moe,
     load_moe_chunked, load_moe_sharded, model_id,

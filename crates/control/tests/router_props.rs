@@ -6,7 +6,8 @@
 //! - none is sent to a replica that is not up, and no replica gets more than its cap;
 //! - a request that goes out at once goes to the replica holding the longest prefix among those
 //!   with room, else to the one with the fewest outstanding requests;
-//! - a leaving replica fails exactly the requests in flight on it, and keeps none.
+//! - a leaving replica fails exactly the requests in flight on it, and keeps none;
+//! - a draining replica (a planned drain) gets nothing new and loses nothing in flight.
 //!
 //! Hardware label: none.
 
@@ -24,6 +25,8 @@ enum Op {
     Cancel(usize),
     Up(u8),
     Down(u8),
+    Drain(u8),
+    Undrain(u8),
 }
 
 fn op() -> impl Strategy<Value = Op> {
@@ -34,6 +37,8 @@ fn op() -> impl Strategy<Value = Op> {
         1 => (0usize..64).prop_map(Op::Cancel),
         2 => (0u8..3).prop_map(Op::Up),
         2 => (0u8..3).prop_map(Op::Down),
+        1 => (0u8..3).prop_map(Op::Drain),
+        1 => (0u8..3).prop_map(Op::Undrain),
     ]
 }
 
@@ -62,6 +67,7 @@ impl Model {
                 Action::Dispatch { req, to, .. } => {
                     assert!(self.queued.remove(req), "dispatched a request not waiting");
                     assert!(r.is_up(*to), "dispatched to a replica that is not up");
+                    assert!(!r.is_draining(*to), "dispatched to a draining replica");
                     self.inflight.insert(*req, *to);
                 }
                 Action::Fail { req, replica } => {
@@ -108,7 +114,10 @@ proptest! {
                     let p = prompt(kind, &tail);
                     // What the rule says, before the request goes in.
                     let cand: Vec<usize> = (0..CAPS.len())
-                        .filter(|&i| r.is_up(ReplicaId(i as u32)) && r.outstanding(ReplicaId(i as u32)) < CAPS[i])
+                        .filter(|&i| {
+                            let id = ReplicaId(i as u32);
+                            r.is_up(id) && !r.is_draining(id) && r.outstanding(id) < CAPS[i]
+                        })
                         .collect();
                     let sc: Vec<u32> = (0..CAPS.len())
                         .map(|i| {
@@ -175,11 +184,24 @@ proptest! {
                     let a = r.set_up(ReplicaId(u32::from(x)), false);
                     m.apply(&r, &a);
                 }
+                Op::Drain(x) => {
+                    let id = ReplicaId(u32::from(x));
+                    let before = r.outstanding(id);
+                    let a = r.set_draining(id, true);
+                    prop_assert!(a.is_empty(), "a drain sends and fails nothing");
+                    prop_assert_eq!(r.outstanding(id), before, "a drain keeps what is in flight");
+                }
+                Op::Undrain(x) => {
+                    let a = r.set_draining(ReplicaId(u32::from(x)), false);
+                    m.apply(&r, &a);
+                }
             }
         }
         // Drain: every replica up, finish whatever is in flight until nothing is left.
         for x in 0..CAPS.len() {
             let a = r.set_up(ReplicaId(x as u32), true);
+            m.apply(&r, &a);
+            let a = r.set_draining(ReplicaId(x as u32), false);
             m.apply(&r, &a);
         }
         while let Some((&req, _)) = m.inflight.iter().next() {

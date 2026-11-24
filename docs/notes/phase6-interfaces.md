@@ -385,3 +385,7 @@ The differences from the sketches above are listed in the History of ADR 0091 (2
 - Gateway: `TokenConstraint::source()` and `ConstraintFactory::from_lark`; `Serialize` and `Deserialize` on the request and event types (`SamplingParams`, `SamplingExtras`, `GenEvent`, `EngineStats`, `ModelInfo`, `EngineError`, ...).
 - CLI: `tetraeder replica` (flags of `serve`, started by the daemon with `node --replica-arg ...`), `serve --cluster cluster.toml --replicas replicas.toml [--key --cert]`.
 - `tetraeder::pipeline::replica_pipeline` builds the `PipelineBackend` of a replica with `with_metrics` and `set_predicted` wired.
+
+## As built in step 6 (`cluster-integration`)
+
+The differences are listed in the History of ADR 0091 (2026-11-24, step 6). In short: `serve --cluster [--replicas | --cluster-plan --cluster-hw --model-sha256]` with a tokenizer-only head (`FrontEngine`); `head::specs_from_plan`; `Scheduler::{prefix_get, prefix_put}` behind the replica child's loopback prefix listener and the daemon's `kv::relay_prefix`; `Trigger::NodeChange`, `cluster_replan::{ClusterControl, ReplanWatcher}`, `Router::set_draining`, `ClusterEngine::drain`, `ClusterHead::specs()`.

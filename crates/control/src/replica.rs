@@ -102,6 +102,9 @@ pub enum ReplicaEvent {
         kv_format: String,
         /// Requests the replica takes at once (`n_seq_max`).
         cap: u32,
+        /// Bytes of one cached token in its snapshots (0: no prefix store).
+        #[serde(default)]
+        kv_row_bytes: u64,
     },
     Event {
         id: u64,
@@ -146,6 +149,9 @@ pub struct ReplicaServer {
     cap: u32,
     kv: Option<KvHooks>,
     factories: Mutex<HashMap<String, Arc<ConstraintFactory>>>,
+    /// One fetch at a time: a second `Prefix` connection to the same node replaces the first
+    /// (the transport keeps one per peer and purpose), which would break the one in progress.
+    fetching: Mutex<()>,
 }
 
 impl ReplicaServer {
@@ -155,6 +161,7 @@ impl ReplicaServer {
             cap,
             kv,
             factories: Mutex::new(HashMap::new()),
+            fetching: Mutex::new(()),
         })
     }
 
@@ -212,6 +219,7 @@ impl ReplicaServer {
                             .map(|k| k.store.kv_format())
                             .unwrap_or_default(),
                         cap: self.cap,
+                        kv_row_bytes: self.kv.as_ref().map_or(0, |k| k.store.row_bytes()),
                     };
                     if !send(&tx, &info) {
                         break;
@@ -359,9 +367,17 @@ impl ReplicaServer {
         let Some(peer) = (kv.peers)(&f.node) else {
             return false;
         };
+        let _one = lock(&self.fetching);
         match fetch_prefix(kv.transport.as_ref(), &peer, &f.key) {
-            Ok(Some(bytes)) => {
-                kv.store.put(f.key.clone(), bytes);
+            Ok(Some((tokens, bytes))) => {
+                // Installed under the tokens the snapshot really holds.
+                kv.store.put(
+                    PrefixKey {
+                        format: f.key.format.clone(),
+                        tokens,
+                    },
+                    bytes,
+                );
                 true
             }
             Ok(None) => false,
@@ -521,6 +537,7 @@ pub struct ReplicaInfo {
     pub models: Vec<ModelInfo>,
     pub kv_format: String,
     pub cap: u32,
+    pub kv_row_bytes: u64,
 }
 
 /// The gateway's `Engine` for a replica led by another node (ADR 0091). Tokenization, templates
@@ -634,10 +651,12 @@ impl RemoteEngine {
                     models,
                     kv_format,
                     cap,
+                    kv_row_bytes,
                 }) => Ok(ReplicaInfo {
                     models,
                     kv_format,
                     cap,
+                    kv_row_bytes,
                 }),
                 _ => Err(format!("replica {} did not answer", self.replica)),
             }

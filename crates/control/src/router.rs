@@ -63,6 +63,8 @@ struct Entry {
 struct Replica {
     cap: u32,
     up: bool,
+    /// Takes no new request; its in-flight ones go on (a planned drain).
+    draining: bool,
     outstanding: u32,
     entries: Vec<Entry>,
 }
@@ -97,6 +99,7 @@ impl Router {
                 .map(|&cap| Replica {
                     cap,
                     up: false,
+                    draining: false,
                     outstanding: 0,
                     entries: Vec::new(),
                 })
@@ -114,6 +117,10 @@ impl Router {
 
     pub fn is_up(&self, r: ReplicaId) -> bool {
         self.replicas.get(r.0 as usize).is_some_and(|x| x.up)
+    }
+
+    pub fn is_draining(&self, r: ReplicaId) -> bool {
+        self.replicas.get(r.0 as usize).is_some_and(|x| x.draining)
     }
 
     pub fn up_count(&self) -> usize {
@@ -190,7 +197,7 @@ impl Router {
     fn pick(&self, prompt: &[TokenId]) -> Option<(ReplicaId, Route, Option<PrefixHit>)> {
         let mut best: Option<(u32, u32, usize)> = None; // (prefix, outstanding, index)
         for (i, x) in self.replicas.iter().enumerate() {
-            if !x.up || x.outstanding >= x.cap {
+            if !x.up || x.draining || x.outstanding >= x.cap {
                 continue;
             }
             let p = self.holds(ReplicaId(i as u32), prompt);
@@ -210,7 +217,7 @@ impl Router {
             .replicas
             .iter()
             .enumerate()
-            .filter(|(j, x)| *j != i && x.up)
+            .filter(|(j, x)| *j != i && x.up && !x.draining)
             .map(|(j, _)| (j, self.holds(ReplicaId(j as u32), prompt)))
             .filter(|&(_, h)| h >= self.min_prefix && h > p)
             .max_by_key(|&(j, h)| (h, std::cmp::Reverse(j)))
@@ -313,6 +320,16 @@ impl Router {
         self.pump()
     }
 
+    /// A planned drain: a draining replica gets no new request and keeps its in-flight ones,
+    /// which end as usual (`done`). Clearing it lets the waiting requests in.
+    pub fn set_draining(&mut self, r: ReplicaId, draining: bool) -> Vec<Action> {
+        match self.replicas.get_mut(r.0 as usize) {
+            Some(x) if x.draining != draining => x.draining = draining,
+            _ => return Vec::new(),
+        }
+        self.pump()
+    }
+
     /// A replica joins (loaded, probed) or leaves (its node went `Down`, or its link broke). A
     /// leaving replica's in-flight requests fail; its prefixes are forgotten; the requests
     /// waiting here go to the others.
@@ -324,6 +341,7 @@ impl Router {
             return Vec::new();
         }
         x.up = up;
+        x.draining = false;
         let mut out = Vec::new();
         if !up {
             self.leaves += 1;

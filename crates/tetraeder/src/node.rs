@@ -14,6 +14,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use tetraeder_control::ClusterConfig;
 use tetraeder_control::client;
+use tetraeder_control::kv::relay_prefix;
 use tetraeder_control::node::{Assignment, Daemon, Launcher, NodeOptions, RestartPolicy, WorkerIo};
 use tetraeder_control::proto::NodeRequest;
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
@@ -101,6 +102,12 @@ pub fn parse_buffers(s: &str) -> Result<SocketBuffers, String> {
     })
 }
 
+/// Where a replica engine of this node writes its prefix listener's port (one engine per node
+/// serves prefixes: the last one started).
+fn prefix_port_file(state_dir: &std::path::Path) -> PathBuf {
+    state_dir.join("prefix-port")
+}
+
 /// Starts `tetraeder worker` for an assignment.
 struct ChildLauncher {
     exe: PathBuf,
@@ -155,7 +162,13 @@ impl Launcher for ChildLauncher {
                         .collect::<Vec<_>>()
                         .join(","),
                 )
-                .env("TETRAEDER_REPLICA_PLAN", &plan);
+                .env("TETRAEDER_REPLICA_PLAN", &plan)
+                .env(
+                    crate::replica::PREFIX_PORT_FILE_ENV,
+                    prefix_port_file(&self.state_dir),
+                );
+            // A port left by an earlier engine must not be read for this one.
+            let _ = std::fs::remove_file(prefix_port_file(&self.state_dir));
         } else {
             let plan = self.state_dir.join(format!(
                 "replica-{}-segment-{}.plan.toml",
@@ -292,7 +305,8 @@ pub fn run(a: &NodeArgs) -> Result<()> {
             a.cluster.cert.clone().into(),
         ],
     });
-    let _daemon = Daemon::start(
+    let state_dir = a.state_dir.clone();
+    let daemon = Daemon::start(
         transport,
         NodeOptions {
             cfg,
@@ -302,6 +316,17 @@ pub fn run(a: &NodeArgs) -> Result<()> {
             restart: RestartPolicy::default(),
         },
     );
+    // Other nodes fetch prefixes from this node's replica: its child listens on loopback and the
+    // daemon relays the authenticated connection to it.
+    daemon.set_prefix_handler(Arc::new(move |conn| {
+        let port = std::fs::read_to_string(prefix_port_file(&state_dir))
+            .ok()
+            .and_then(|t| t.trim().parse::<u16>().ok());
+        match port {
+            Some(p) => relay_prefix(conn, std::net::SocketAddr::from(([127, 0, 0, 1], p))),
+            None => (conn.close)(),
+        }
+    }));
     // The daemon runs until the process is stopped.
     loop {
         std::thread::park();
