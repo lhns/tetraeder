@@ -26,6 +26,7 @@ fn cases() -> Vec<(&'static str, Vec<u8>)> {
         spans,
         info,
         state: state.clone(),
+        step_s: None,
     };
     vec![
         ("info", encode(&Request::Info, &[]).unwrap()),
@@ -94,6 +95,7 @@ fn cases() -> Vec<(&'static str, Vec<u8>)> {
                         on_gpu: false,
                         kv_row_bytes: 128,
                         max_step_tokens: 512,
+                        segment: None,
                     }),
                 ),
                 &[],

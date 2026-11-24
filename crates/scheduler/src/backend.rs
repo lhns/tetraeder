@@ -713,11 +713,7 @@ impl MoeBackend {
 
     /// Runs `inputs` as `step_groups` splits them (on the CPU decoders and prompt chunks apart),
     /// and collects the rows of every input in `self.logits`, `self.spans` in input order.
-    fn run(
-        &mut self,
-        inputs: &[SeqInput<'_>],
-        hidden: Option<&[f32]>,
-    ) -> Result<(), BackendError> {
+    fn run(&mut self, inputs: &[SeqInput<'_>], hidden: Option<&[f32]>) -> Result<(), BackendError> {
         self.spans.clear();
         let n_embd = self.model.hparams().n_embd as usize;
         let mut done = 0;

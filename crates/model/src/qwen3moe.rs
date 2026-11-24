@@ -28,8 +28,8 @@ use crate::experts::{ExpertStats, MissPolicy, RoutingStep, StagedLayer, Streamer
 use crate::gguf::GgufError;
 use crate::hparams::{Hparams, ModelFile, names};
 use crate::qwen3moe_shard::{self, Sharded};
-use crate::segment::SegmentSpec;
 use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans, write_direct};
+use crate::segment::SegmentSpec;
 use crate::upload::AdmitUpload;
 use tetraeder_ggml_sys::ggml::{
     Backend, Context, GgmlError, Graph, HugepageAdvice, OwnedGraph, OwnedTensor, Sched, Tensor,
@@ -1554,7 +1554,8 @@ impl Qwen3Moe {
     /// Floats per output row: `n_vocab` with the head, else `n_embd` (hidden rows).
     pub fn out_width(&self) -> usize {
         let h = &self.file.hparams;
-        self.segment.out_width(h.n_embd as usize, h.n_vocab as usize)
+        self.segment
+            .out_width(h.n_embd as usize, h.n_vocab as usize)
     }
 
     /// [`Qwen3Moe::decode`] for a segment (ADR 0091). Without the embedding `hidden` holds the
@@ -1815,15 +1816,8 @@ impl Qwen3Moe {
             } else {
                 entry.step = None;
                 let ctx = Rc::new(Context::new(step_nodes(&h), step_nodes(&h))?);
-                let (graph, out, routed) = build_step(
-                    &h,
-                    &self.weights,
-                    &self.kv,
-                    st,
-                    &ctx,
-                    record,
-                    &self.segment,
-                );
+                let (graph, out, routed) =
+                    build_step(&h, &self.weights, &self.kv, st, &ctx, record, &self.segment);
                 let mut deps = vec![self.weights.anchor(), &st.tokens];
                 deps.extend(self.kv.k.first().into_iter().chain(self.kv.v.first()));
                 deps.extend(self.kv.rot_k.iter().chain(&self.kv.rot_v));
@@ -3012,7 +3006,10 @@ fn head<'a>(
     st: &'a State,
     x: Tensor<'a>,
 ) -> Tensor<'a> {
-    let norm = w.out_norm.as_ref().expect("a head segment holds the output norm");
+    let norm = w
+        .out_norm
+        .as_ref()
+        .expect("a head segment holds the output norm");
     let mut cur = ctx.mul(ctx.rms_norm(x, h.rms_eps), norm.get());
     // The whole-step graph already selected the rows in the last layer; `outputs` indexes the
     // original token rows, so gathering again would read out of range.
@@ -3404,7 +3401,16 @@ mod graph_order {
         for seg in 0..=n_layer {
             let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
             let (g, _, _) = build_segment(
-                h, &m.weights, &m.kv, st, &ctx, seg, 0, record, &[], &m.segment,
+                h,
+                &m.weights,
+                &m.kv,
+                st,
+                &ctx,
+                seg,
+                0,
+                record,
+                &[],
+                &m.segment,
             );
             if seg > 0 && seg < n_layer {
                 // A middle segment holds the previous layer's reduction and one router, and
@@ -3430,10 +3436,18 @@ mod graph_order {
             for seg in 0..=n_layer {
                 let build = |depth: usize| {
                     let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-                    let (g, _, _) =
-                        build_segment(
-                            &h, &m.weights, &m.kv, &st, &ctx, seg, depth, false, &[], &m.segment,
-                        );
+                    let (g, _, _) = build_segment(
+                        &h,
+                        &m.weights,
+                        &m.kv,
+                        &st,
+                        &ctx,
+                        seg,
+                        depth,
+                        false,
+                        &[],
+                        &m.segment,
+                    );
                     ops(&g, |_| false)
                 };
                 let plain = build(0);
@@ -3542,7 +3556,18 @@ mod graph_order {
             let (mut rows, mut gets) = (Vec::new(), 0);
             for seg in 0..=n_layer {
                 let ctx = Context::new(SEGMENT_NODES, SEGMENT_NODES).unwrap();
-                let (g, _, _) = build_segment(&h, &m.weights, &m.kv, &st, &ctx, seg, 0, false, &[], &m.segment);
+                let (g, _, _) = build_segment(
+                    &h,
+                    &m.weights,
+                    &m.kv,
+                    &st,
+                    &ctx,
+                    seg,
+                    0,
+                    false,
+                    &[],
+                    &m.segment,
+                );
                 for i in 0..g.n_nodes() {
                     let t = g.node(i);
                     match t.op_name().as_str() {

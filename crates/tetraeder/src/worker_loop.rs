@@ -59,7 +59,7 @@ pub enum Flow {
 }
 
 enum Handled {
-    Reply(Reply),
+    Reply(Box<Reply>),
     Exit(i32),
 }
 
@@ -83,7 +83,7 @@ pub fn serve_loop(
         let req: Request = parse_header(&frame).map_err(anyhow::Error::msg)?;
         let mut payload = Vec::new();
         let mut reply = match handle(backend, &req, &frame.payload, faults, output, &mut payload)? {
-            Handled::Reply(r) => r,
+            Handled::Reply(r) => *r,
             Handled::Exit(code) => return Ok(Flow::Exit(code)),
         };
         reply.state = state(backend);
@@ -216,7 +216,7 @@ fn handle(
                             msg: "CUDA error: injected".into(),
                             sticky: true,
                         });
-                        return Ok(Handled::Reply(reply));
+                        return Ok(Handled::Reply(Box::new(reply)));
                     }
                 }
             }
@@ -254,7 +254,7 @@ fn handle(
         }
     };
     reply.err = res.err().map(error);
-    Ok(Handled::Reply(reply))
+    Ok(Handled::Reply(Box::new(reply)))
 }
 
 fn fault_for(inputs: &[WireInput], faults: &[(Fault, i32)]) -> Option<Fault> {

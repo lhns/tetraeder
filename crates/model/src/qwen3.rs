@@ -19,8 +19,8 @@ use crate::cpu_poll;
 use crate::gguf::{Gguf, GgufError};
 use crate::hparams::names;
 use crate::qwen3moe::{BackendChoice, MemoryUse, ModelError, Result};
-use crate::segment::SegmentSpec;
 use crate::readback::{Readback, STAGING_HALF, append_direct, row_spans, write_direct};
+use crate::segment::SegmentSpec;
 use crate::shard::{gather_rows, scatter_rows};
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
@@ -1468,7 +1468,10 @@ fn build_step<'a>(
         // A head-only segment selects the rows here; with layers the last one did.
         x = ctx.get_rows(x, st.outputs.get());
     }
-    let norm = w.out_norm.as_ref().expect("a head segment holds the output norm");
+    let norm = w
+        .out_norm
+        .as_ref()
+        .expect("a head segment holds the output norm");
     let cur = rms_norm_mul(ctx, x, norm.get(), a.rms_eps);
     let head = w
         .output

@@ -702,7 +702,11 @@ pub fn loader_with(
         segment.is_none() || moe || dense,
         "a segment runs on the own builders: use --engine dense or moe (libllama cannot cut its layers)"
     );
-    let exec = if segment.is_some() { None } else { exec_plan(a)? };
+    let exec = if segment.is_some() {
+        None
+    } else {
+        exec_plan(a)?
+    };
     a.check_libllama_flags(moe || dense, moe)?;
     let kv = resolve_kv(a, a.kv_choice(moe || dense)?, &path, moe, dense)?;
     let mut a = a.clone_load_args();

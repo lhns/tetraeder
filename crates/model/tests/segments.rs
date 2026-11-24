@@ -368,7 +368,11 @@ fn cpu_segments_batch_sequences() {
         assert_eq!(r_want, r_got, "{}", m.name);
         let nv = want.len() / r_want.last().unwrap().end;
         for (g, w) in got.chunks(nv).zip(want.chunks(nv)) {
-            let d = g.iter().zip(w).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+            let d = g
+                .iter()
+                .zip(w)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0f32, f32::max);
             assert!(d <= tol_batch(w), "{}: {d:e}", m.name);
         }
         // Cut sequence 0 back and run it again with one more sequence-1 token.
@@ -388,7 +392,11 @@ fn cpu_segments_batch_sequences() {
         whole.decode(&again(true), None, &mut want);
         let (got, _) = pipeline(&mut segs, &again(true));
         for (g, w) in got.chunks(nv).zip(want.chunks(nv)) {
-            let d = g.iter().zip(w).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+            let d = g
+                .iter()
+                .zip(w)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0f32, f32::max);
             assert!(d <= tol_batch(w), "{} after seq_rm: {d:e}", m.name);
         }
     }
@@ -406,7 +414,11 @@ fn cpu_segments_hold_only_their_share() {
         let b = Net::load(&m, Some(sp[1].clone()));
         let (wa, kva) = a.bytes();
         let (wb, kvb) = b.bytes();
-        assert!(wa < w_all && wb < w_all, "{} weights {wa} {wb} {w_all}", m.name);
+        assert!(
+            wa < w_all && wb < w_all,
+            "{} weights {wa} {wb} {w_all}",
+            m.name
+        );
         assert!(kva < kv_all && kvb < kv_all, "{} kv", m.name);
         assert!(kva + kvb <= kv_all, "{} kv sum", m.name);
         assert!(wa + wb <= w_all + w_all / 8, "{} weights sum", m.name);

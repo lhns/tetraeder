@@ -1003,8 +1003,10 @@ impl Metrics {
     /// Relative decode step time error of a segment of a replica across nodes (ADR 0091, step
     /// 4): `|measured - predicted| / predicted`, measured as the segment's own compute time.
     pub fn plan_residual_segment(&self, segment: u32, residual: f64) {
-        self.plan_residual
-            .record(residual, &[KeyValue::new(attr::SEGMENT, i64::from(segment))]);
+        self.plan_residual.record(
+            residual,
+            &[KeyValue::new(attr::SEGMENT, i64::from(segment))],
+        );
     }
 
     /// The decode step time the planner predicted for a segment.

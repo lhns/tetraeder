@@ -256,6 +256,142 @@
           }
         }
       ]
+    },
+    {
+      "id": 9,
+      "title": "Pipeline: predicted and measured time per segment and hop",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 10,
+      "title": "Segment step time: predicted and measured",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (tetraeder_segment) (tetraeder_plan_predicted_step_seconds{tetraeder_segment!=\"\"})",
+          "legendFormat": "predicted segment {{tetraeder_segment}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.5, sum by (le, tetraeder_segment) (rate(tetraeder_segment_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "measured p50 segment {{tetraeder_segment}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Hop round trip per link and purpose (hidden: hidden rows back, logits: the head's reply)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 27,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, destination, tetraeder_purpose) (rate(tetraeder_link_latency_seconds_bucket{tetraeder_purpose=~\"hidden|logits\"}[$__rate_interval])))",
+          "legendFormat": "p50 to {{destination}} {{tetraeder_purpose}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, destination, tetraeder_purpose) (rate(tetraeder_link_latency_seconds_bucket{tetraeder_purpose=~\"hidden|logits\"}[$__rate_interval])))",
+          "legendFormat": "p95 to {{destination}} {{tetraeder_purpose}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Segment residual, |measured - predicted| / predicted (alert line 0.15)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "victoriametrics"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 27,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, tetraeder_segment) (rate(tetraeder_plan_residual_ratio_bucket{tetraeder_segment!=\"\"}[$__rate_interval])))",
+          "legendFormat": "p50 segment {{tetraeder_segment}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "vector(0.15)",
+          "legendFormat": "exit-test line",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "victoriametrics"
+          }
+        }
+      ]
     }
   ]
 }

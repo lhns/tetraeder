@@ -8,8 +8,8 @@ use anyhow::Context;
 use clap::Args;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tetraeder_model::SegmentSpec;
 use tetraeder::worker_loop::{Fault, Flow, parse_fault, serve_loop};
+use tetraeder_model::SegmentSpec;
 use tetraeder_scheduler::BatchBackend;
 use tetraeder_telemetry::{Telemetry, TelemetryConfig};
 
@@ -57,20 +57,10 @@ pub fn segment_spec(a: &ServeArgs) -> anyhow::Result<Option<SegmentSpec>> {
     };
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("cannot read the segment plan {}", path.display()))?;
-    let plan = tetraeder_plan::Plan::from_toml(&text)
-        .with_context(|| format!("{} is not a plan", path.display()))?;
     let model = a.model.as_ref().context("-m is required")?;
-    let gguf = tetraeder_model::Gguf::open(model)
-        .with_context(|| format!("cannot open {}", model.display()))?;
-    let arch = gguf.str("general.architecture")?.to_string();
-    let n_layer = u32::try_from(gguf.u64(&format!("{arch}.block_count"))?)?;
-    let shape = tetraeder_plan::segment_shape(&plan, n_layer).map_err(anyhow::Error::msg)?;
-    let spec = SegmentSpec {
-        layers: shape.layers.0..shape.layers.1,
-        embed: shape.embed,
-        head: shape.head,
-    };
-    spec.validate(n_layer)?;
+    let n_layer = tetraeder::pipeline::n_layer_of(model).map_err(anyhow::Error::msg)?;
+    let spec = tetraeder::pipeline::segment_spec_of(&text, n_layer)
+        .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
     Ok(Some(spec))
 }
 

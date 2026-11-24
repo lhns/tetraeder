@@ -262,8 +262,10 @@ impl BatchBackend for PipelineBackend {
                 )));
             }
         }
-        let before: Vec<(SeqId, usize)> =
-            inputs.iter().map(|i| (i.seq, self.seq_len(i.seq))).collect();
+        let before: Vec<(SeqId, usize)> = inputs
+            .iter()
+            .map(|i| (i.seq, self.seq_len(i.seq)))
+            .collect();
         let n_tokens: usize = inputs.iter().map(|i| i.tokens.len()).sum();
         let decode_step = is_decode_step(inputs);
         let last = self.segs.len() - 1;
@@ -288,11 +290,7 @@ impl BatchBackend for PipelineBackend {
             // The rows of every input, in input order.
             let width = out.n_vocab().max(1);
             let rows: usize = (0..out.len()).map(|k| out.rows(k).len() / width).sum();
-            let expect = if i == last {
-                None
-            } else {
-                Some(n_tokens)
-            };
+            let expect = if i == last { None } else { Some(n_tokens) };
             if expect.is_some_and(|n| n != rows) || out.len() != inputs.len() {
                 let msg = format!(
                     "segment {i} returned {rows} rows for {n_tokens} tokens of {} inputs",
@@ -357,13 +355,19 @@ impl BatchBackend for PipelineBackend {
             )));
         }
         let mut rest = bytes;
-        for i in 0..self.segs.len() {
-            let (mine, tail) = rest.split_at(rows[i] * n);
+        let mut failed = None;
+        for (i, (s, &r)) in self.segs.iter_mut().zip(&rows).enumerate() {
+            let (mine, tail) = rest.split_at(r * n);
             rest = tail;
-            if let Err(e) = self.segs[i].seq_restore(seq, mine, n) {
-                self.free_on(i, seq);
-                return Err(e);
+            if let Err(e) = s.seq_restore(seq, mine, n) {
+                failed = Some((i, e));
+                break;
             }
+        }
+        if let Some((i, e)) = failed {
+            // The sequence is empty on every segment, so they agree.
+            self.free_on(i + 1, seq);
+            return Err(e);
         }
         self.lost.remove(&seq);
         Ok(())
@@ -406,4 +410,99 @@ impl BatchBackend for PipelineBackend {
 /// How long a step took in each segment, for tests.
 pub fn step_times(p: &PipelineBackend) -> Vec<Option<Duration>> {
     p.segs.iter().map(|s| s.last_step_time()).collect()
+}
+
+/// The share of the layers of a segment plan (the TOML of `plan::segment_plan`) for a model of
+/// `n_layer` layers. The embedding and the head come from the layer bounds, not from the rules
+/// (a catch-all rule matches both in any stage): `plan::segment_shape`.
+pub fn segment_spec_of(
+    plan_toml: &str,
+    n_layer: u32,
+) -> Result<tetraeder_model::SegmentSpec, String> {
+    let plan =
+        tetraeder_plan::Plan::from_toml(plan_toml).map_err(|e| format!("not a plan: {e}"))?;
+    let shape = tetraeder_plan::segment_shape(&plan, n_layer)?;
+    let spec = tetraeder_model::SegmentSpec {
+        layers: shape.layers.0..shape.layers.1,
+        embed: shape.embed,
+        head: shape.head,
+    };
+    spec.validate(n_layer).map_err(|e| e.to_string())?;
+    Ok(spec)
+}
+
+/// Layers of the model in a GGUF.
+pub fn n_layer_of(model: &std::path::Path) -> Result<u32, String> {
+    let g = tetraeder_model::Gguf::open(model).map_err(|e| format!("{}: {e}", model.display()))?;
+    let arch = g.str("general.architecture").map_err(|e| e.to_string())?;
+    let n = g
+        .u64(&format!("{arch}.block_count"))
+        .map_err(|e| e.to_string())?;
+    u32::try_from(n).map_err(|e| e.to_string())
+}
+
+/// One segment of a replica: the node that runs it and the single-node plan its worker reads.
+#[derive(Debug, Clone)]
+pub struct SegmentAssign {
+    pub peer: tetraeder_transport::Peer,
+    pub plan_toml: String,
+}
+
+/// The segments of `replica` of `plan` on the hardware graph `hw`, each with its node's address
+/// from `cfg` and its sub-plan (`plan::segments` and `plan::segment_plan`).
+pub fn segment_assignments(
+    plan: &tetraeder_plan::Plan,
+    replica: usize,
+    hw: &tetraeder_profiler::HardwareGraph,
+    cfg: &tetraeder_control::ClusterConfig,
+) -> Result<Vec<SegmentAssign>, String> {
+    let segs = tetraeder_plan::segments(plan, replica, hw).map_err(|e| e.join("; "))?;
+    segs.iter()
+        .map(|s| {
+            let node = s
+                .node
+                .clone()
+                .ok_or("a segment of a cluster plan sits on a node")?;
+            let peer = cfg
+                .peer(&tetraeder_transport::NodeId::new(node.clone()))
+                .ok_or_else(|| format!("`{node}` is not a node of cluster.toml"))?;
+            let sub = tetraeder_plan::segment_plan(plan, replica, s);
+            let plan_toml = sub.to_toml().map_err(|e| e.to_string())?;
+            Ok(SegmentAssign { peer, plan_toml })
+        })
+        .collect()
+}
+
+/// Tells each segment's daemon to start its worker (`Assign`, as the head, on a probe connection
+/// of session 0) and connects a [`RemoteBackend`] to each worker. `tune` adjusts the config of
+/// every backend (deadlines, restart policy). The backends are in segment order, ready for
+/// [`PipelineBackend::new`].
+pub fn start_remote_segments(
+    t: &std::sync::Arc<dyn tetraeder_transport::Transport>,
+    replica: u32,
+    segs: &[SegmentAssign],
+    model_sha256: &str,
+    tune: &dyn Fn(&mut crate::remote_backend::RemoteConfig),
+) -> Result<Vec<crate::remote_backend::RemoteBackend>, String> {
+    use crate::remote_backend::{RemoteBackend, RemoteConfig};
+    let mut out = Vec::new();
+    for (i, s) in segs.iter().enumerate() {
+        let segment = u32::try_from(i).map_err(|e| e.to_string())?;
+        tetraeder_control::client::request(
+            t.as_ref(),
+            &s.peer,
+            &tetraeder_control::proto::NodeRequest::Assign {
+                replica,
+                segment,
+                plan: s.plan_toml.clone(),
+                model_sha256: model_sha256.to_owned(),
+            },
+            &[],
+        )?;
+        let mut cfg =
+            RemoteConfig::node(std::sync::Arc::clone(t), s.peer.clone(), replica, segment);
+        tune(&mut cfg);
+        out.push(RemoteBackend::start(cfg).map_err(|e| format!("segment {i}: {e}"))?);
+    }
+    Ok(out)
 }

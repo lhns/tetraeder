@@ -1627,7 +1627,14 @@ impl Streamer {
             if let Some(cpu) = pause.take() {
                 cpu.pause_cpu_pool();
             }
-            let waited = match up.copy(il, &src, rslot, &self.compute_tensors[il - self.first], cslot, &sizes) {
+            let waited = match up.copy(
+                il,
+                &src,
+                rslot,
+                &self.compute_tensors[il - self.first],
+                cslot,
+                &sizes,
+            ) {
                 Ok(w) => w,
                 Err(err) => {
                     self.compute.layer_mut(il).clear();
