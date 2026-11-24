@@ -2632,7 +2632,7 @@ nodes:
   - crates/control/tests/planned_drain.rs
   - crates/control/tests/specs_from_plan.rs
   - crates/control/tests/router_props.rs
-  verdict_quote: 'prefix fetch real scheduler fetched_cached_tokens 145 recomputed_cached_tokens 6 tokens_equal true; planned drain pipeline replica dense4 failed_requests 0 ok_requests 114 tokens_equal true; cluster plan pipeline replica dense4 greedy_equal_one_node true'
+  verdict_quote: 'prefix fetch real scheduler fetched_cached_tokens 145 recomputed_cached_tokens 6 tokens_equal true; planned drain pipeline replica dense4 failed_requests 0 ok_requests 114 tokens_equal true; cluster plan pipeline replica dense4 greedy_equal_one_node true (CI run 45476953829)'
   headline: 'serve --cluster runs as a process with a head that leads no replica, replicas derived from a cluster plan, a pipeline replica across two daemons equals the one-node run, the real prefix cache is fetched and restored, and a planned drain of a replica across nodes fails no request; the planner cannot plan CPU nodes and a lost leader is not retargeted'
   depends_on:
   - cluster-replicas
