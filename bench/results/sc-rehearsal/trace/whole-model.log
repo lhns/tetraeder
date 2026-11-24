@@ -1,0 +1,20 @@
+   Compiling tetraeder-ggml-sys v0.0.0 (/root/tetraeder/crates/ggml-sys)
+   Compiling tetraeder-kvcache v0.0.0 (/root/tetraeder/crates/kvcache)
+   Compiling tetraeder-profiler v0.0.0 (/root/tetraeder/crates/profiler)
+   Compiling tetraeder-telemetry v0.0.0 (/root/tetraeder/crates/telemetry)
+   Compiling tetraeder-plan v0.0.0 (/root/tetraeder/crates/plan)
+   Compiling tetraeder-memory v0.0.0 (/root/tetraeder/crates/memory)
+   Compiling tetraeder-executor v0.0.0 (/root/tetraeder/crates/executor)
+   Compiling tetraeder-bench v0.0.0 (/root/tetraeder/crates/bench)
+   Compiling tetraeder-model v0.0.0 (/root/tetraeder/crates/model)
+    Finished `release` profile [optimized] target(s) in 7.76s
+     Running tests/exit_regime.rs (target/release/deps/exit_regime-cae74c78839bbc2a)
+
+running 2 tests
+skip: TETRAEDER_EXIT_ARMS is not set
+test exit_regime_arms ... ok
+{"decode_fed":[36,72,21,30,242,184,181,86,78,118,60,41,156,98,124,226],"decode_io":null,"decode_layers":null,"decode_profile_per_token":null,"decode_tok_s":37.73618120619873,"decode_tokens":16,"decode_windows":[{"end_unix_s":1795544201.2265794,"start_unix_s":1795544200.8025832,"tokens":16}],"engine":"tetraeder","first_top":[[176,61.710941314697266],[202,58.36747741699219],[116,53.663963317871094],[138,52.013832092285156],[229,50.371315002441406],[185,49.16069412231445],[167,47.63286590576172],[252,47.39103698730469],[114,47.38566589355469],[56,46.99449157714844]],"greedy":[36,72,21,30,242,184,181,86,78,118,60,41,156,98,124,226],"hot_refresh_s":0.0,"load_s":0.117043385,"max_splits":4,"memory":[{"capacity":25028096,"device":"CUDA0","kind":"weights","tier":"vram","used":25028096},{"capacity":45711360,"device":"CUDA0","kind":"slots","tier":"vram","used":45711360},{"capacity":2097152,"device":"CUDA0","kind":"kv","tier":"vram","used":2097152},{"capacity":68567040,"device":"host","kind":"slots","tier":"ram","used":68567040},{"capacity":36864000,"device":"host","kind":"io","tier":"ram","used":36864000},{"capacity":16777216,"device":"host","kind":"staging","tier":"ram","used":16777216},{"capacity":9758464,"device":"CUDA0","kind":"workspace","tier":"vram","used":9758464},{"capacity":770432,"device":"CPU","kind":"workspace","tier":"ram","used":770432},{"capacity":25173632,"device":"CUDA0","kind":"weights","tier":"vram","used":25173632},{"capacity":45711360,"device":"CUDA0","kind":"slots","tier":"vram","used":45711360},{"capacity":2097152,"device":"CUDA0","kind":"kv","tier":"vram","used":2097152},{"capacity":68567040,"device":"host","kind":"slots","tier":"ram","used":68567040},{"capacity":36864000,"device":"host","kind":"io","tier":"ram","used":36864000},{"capacity":16777216,"device":"host","kind":"staging","tier":"ram","used":16777216},{"capacity":9530240,"device":"CUDA0","kind":"workspace","tier":"vram","used":9530240},{"capacity":819680,"device":"CPU","kind":"workspace","tier":"ram","used":819680}],"peak_rss_bytes":794103808,"prefill_io":null,"prefill_profile_per_ubatch":null,"prefill_s":0.583303645,"prefill_tok_s":109.71986982868931,"prefill_tokens":64,"request_log":["timed:reset","timed:prefill","timed:decode"],"rss_bytes":794103808,"segment":{"hidden_in":null,"hidden_out":{"bytes":655708,"file":"/root/tetraeder/runs/sc/hidden.bin","fnv1a64":"6cad81264ae33b61","layer":4,"rows":80},"layers":[0,8],"segments":[{"embed":true,"head":false,"layers":[0,4]},{"embed":false,"head":true,"layers":[4,8]}]},"ubatch":64,"ubatch_s":[0.583284425],"warm":{"covering":false,"prefix_reuse":false,"prompt_cache":false,"requests":0,"timed_prefill_disk_bytes":0,"unclean":false},"warm_prefill":null,"warm_requests":[]}
+test exit_regime ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1.56s
+

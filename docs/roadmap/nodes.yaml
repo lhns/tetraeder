@@ -3898,7 +3898,7 @@ nodes:
   - bench/results/segment-confirm-20261124/README.md
   - bench/results/segment-confirm-20261124/verdict.json
   - bench/results/segment-confirm-20261124/predictions/FROZEN.sha256
-  verdict_quote: 'pass by the rule, with a caveat that limits what it carries. On one RTX 3090 box the frozen prediction of exit segment 47..94 of Qwen3-235B-A22B (32 VRAM + 96 RAM slots, ubatch 2048, pp2048 then tg128, cost model 6) is within 15% on the medians of three clean rounds, e_pp +0.077 (199.35 against 185.16 tok/s) and e_tg -0.044 (13.58 against 14.20 tok/s), and the routing gate held'
+  verdict_quote: 'the frozen prediction of exit segment 47..94 of Qwen3-235B-A22B (32 VRAM + 96 RAM slots, ubatch 2048, pp2048 then tg128, cost model 6) is within 15% on the medians of three clean rounds, e_pp +0.077 (199.35 against 185.16 tok/s) and e_tg -0.044 (13.58 against 14.20 tok/s)'
   headline: 'e_pp +0.077 and e_tg -0.044 on three clean rounds, gate held; prefill rounds span 8.6x'
   depends_on:
   - planner-costmodel-stream-terms
