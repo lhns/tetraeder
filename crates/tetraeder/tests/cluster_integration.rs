@@ -424,21 +424,29 @@ fn cpu_serve_cluster_plan_runs_a_pipeline_replica_across_two_nodes_like_one_node
     }
 }
 
+fn greedy_request(prompt: &[u32], n: u32) -> GenerateRequest {
+    GenerateRequest {
+        model: "tiny".into(),
+        prompt: prompt.to_vec(),
+        params: SamplingParams {
+            max_tokens: n,
+            temperature: Some(0.0),
+            ..SamplingParams::default()
+        },
+        constraint: None,
+        cancel: CancellationToken::new(),
+    }
+}
+
 /// The tokens of one greedy request on `e`, the cached prompt tokens of the stats, or the error.
 fn greedy(e: &dyn Engine, prompt: &[u32], n: u32) -> Result<(Vec<u32>, u32), String> {
-    let mut rx = e
-        .generate(GenerateRequest {
-            model: "tiny".into(),
-            prompt: prompt.to_vec(),
-            params: SamplingParams {
-                max_tokens: n,
-                temperature: Some(0.0),
-                ..SamplingParams::default()
-            },
-            constraint: None,
-            cancel: CancellationToken::new(),
-        })
+    let rx = e
+        .generate(greedy_request(prompt, n))
         .map_err(|e| e.to_string())?;
+    collect(rx)
+}
+
+fn collect(mut rx: tokio::sync::mpsc::Receiver<GenEvent>) -> Result<(Vec<u32>, u32), String> {
     let (mut out, mut cached, mut err) = (Vec::new(), 0, None);
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
@@ -605,31 +613,33 @@ fn cpu_a_fetched_prefix_decodes_like_a_recomputed_one() {
         "the replica reports its snapshot format"
     );
 
-    // Round one fetches, round two recomputes.
+    // Round one fetches, round two recomputes. The follow-up of a conversation that replica 0
+    // holds is sent to replica 1 with the hint the rule gives (the router does the same when
+    // replica 0 is full; the control crate's simulation covers that decision), so no timing
+    // decides what is tested here.
     let mut cached_seen = Vec::new();
     for (round, slow) in [(0, true), (1, false)] {
         policy.slow_prefill.store(slow, Ordering::SeqCst);
-        let seed = format!("round {round}");
-        let base = long_prompt(&front, &seed);
-        let (first, _) = greedy(engine.as_ref(), &base, 6).unwrap();
+        let base = long_prompt(&front, &format!("round {round}"));
+        let (first, _) = greedy(remotes[0].as_ref(), &base, 6).unwrap();
         assert_eq!(first.len(), 6);
-        // The unrelated request keeps replica 0 busy while the follow-up arrives; the router
-        // sends the follow-up to replica 1, with the prefix replica 0 holds as the fetch hint.
-        let other = long_prompt(&front, &format!("something else {round}"));
         let mut follow = base.clone();
         follow.extend(first.iter().copied());
         follow.extend(front.tokenize("tiny", " and then?").unwrap());
-        let busy = {
-            let e = Arc::clone(&engine);
-            std::thread::spawn(move || greedy(e.as_ref(), &other, 300))
+        let kv = KvInfo {
+            format: engine.kv_format(0),
+            row_bytes: engine.kv_row_bytes(0),
         };
-        wait_for(
-            "the unrelated request is in flight",
-            Duration::from_secs(10),
-            || engine.outstanding(0) == 1,
+        let hint = policy.plan(0, 1, &base, &kv);
+        assert_eq!(
+            hint.is_some(),
+            slow,
+            "the rule decides: fetch only when prefill is slow"
         );
-        let (got, cached) = greedy(engine.as_ref(), &follow, 12).unwrap();
-        busy.join().unwrap().unwrap();
+        let rx = remotes[1]
+            .generate_with(greedy_request(&follow, 12), hint)
+            .unwrap();
+        let (got, cached) = collect(rx).unwrap();
         let (want, _) = greedy(front.as_ref(), &follow, 12).unwrap();
         assert_eq!(
             got, want,

@@ -271,6 +271,14 @@ impl ClusterEngine {
         }
     }
 
+    pub fn kv_row_bytes(&self, r: u32) -> u64 {
+        lock(&self.inner.state)
+            .kv_row_bytes
+            .get(r as usize)
+            .copied()
+            .unwrap_or(0)
+    }
+
     pub fn kv_format(&self, r: u32) -> String {
         lock(&self.inner.state)
             .kv_formats
